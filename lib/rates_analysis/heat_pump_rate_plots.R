@@ -13,7 +13,7 @@ hist_for_single_rate_version <- function(
   season = 'Annual',
   title = "auto",
   second_subtitle = NULL,
-  x_limits = c(-3000, 3000), 
+  x_limits = c(-3000, 3000),
   y_limits = c(0, 1000),
   binwidth = 100,
   show_category_labels = TRUE
@@ -26,14 +26,14 @@ hist_for_single_rate_version <- function(
 
   # Define the breaks for binning
   breaks <- seq(floor(x_min/binwidth)*binwidth, ceiling(x_max/binwidth)*binwidth, by = binwidth)
-  
+
   # More balanced color palette with less contrast
   dark_red <- "#db8b87"        # dark red
   light_red <- "#eaada9"       # light red
-  light_green <- "#8ebd85"     # light green 
+  light_green <- "#8ebd85"     # light green
   dark_green <- "#5e8a5e"      # dark green
   # --------------------------------------
-  
+
   # Filter data for mid_hp
   plot_data <- annual_change_table |>
     filter(hvac == hvac_option, version_elec == !!version_elec) |>
@@ -45,7 +45,7 @@ hist_for_single_rate_version <- function(
       annual_change_total < 1000 ~ "small_increase",
       TRUE ~ "large_increase"
     ))
-  
+
   # Calculate percentages for each category
   category_percentages <- plot_data %>%
     group_by(bill_category) %>%
@@ -68,41 +68,41 @@ hist_for_single_rate_version <- function(
         percentage = sum(.$percentage[.$bill_category %in% c("small_increase", "large_increase")])
       )
     )
-  
+
   # Get percentages for annotation
-  pct_large_savings <- category_percentages |> 
-    filter(bill_category == "large_savings") |> 
-    pull(percentage) |> 
+  pct_large_savings <- category_percentages |>
+    filter(bill_category == "large_savings") |>
+    pull(percentage) |>
     round(1)
   if(length(pct_large_savings) == 0) pct_large_savings <- 0
-  
-  pct_small_savings <- category_percentages |> 
-    filter(bill_category == "small_savings") |> 
-    pull(percentage) |> 
+
+  pct_small_savings <- category_percentages |>
+    filter(bill_category == "small_savings") |>
+    pull(percentage) |>
     round(1)
   if(length(pct_small_savings) == 0) pct_small_savings <- 0
-  
+
   pct_that_save <- pct_large_savings + pct_small_savings
 
-  pct_small_increase <- category_percentages |> 
-    filter(bill_category == "small_increase") |> 
-    pull(percentage) |> 
+  pct_small_increase <- category_percentages |>
+    filter(bill_category == "small_increase") |>
+    pull(percentage) |>
     round(1)
   if(length(pct_small_increase) == 0) pct_small_increase <- 0
-  
-  pct_large_increase <- category_percentages |> 
-    filter(bill_category == "large_increase") |> 
-    pull(percentage) |> 
+
+  pct_large_increase <- category_percentages |>
+    filter(bill_category == "large_increase") |>
+    pull(percentage) |>
     round(1)
   if(length(pct_large_increase) == 0) pct_large_increase <- 0
-    
+
   pct_that_lose <- pct_small_increase + pct_large_increase
 
   # Manually bin the data and calculate counts - this preserves the bill_category
   binned_data <- plot_data |>
-    mutate(bin = cut(annual_change_total, 
-                     breaks = breaks, 
-                     include.lowest = TRUE, 
+    mutate(bin = cut(annual_change_total,
+                     breaks = breaks,
+                     include.lowest = TRUE,
                      right = FALSE)) |>
     group_by(bin, bill_category) |>
     summarise(count = n(), .groups = "drop") |>
@@ -114,25 +114,25 @@ hist_for_single_rate_version <- function(
         return(mean(vals))
       })
     )))
-    
+
   # Position the bars at the very top and text just below
   bar_y_pos <- y_limits[2]  # Exactly at the top
   text_y_pos <- y_limits[2] * 0.95  # Just below the colored line
-  
+
   # Calculate x positions for percentage labels (center of each category)
   x_large_savings <- mean(c(x_min, -1000))
   x_small_savings <- mean(c(-1000, 0))
   x_small_increase <- mean(c(0, 1000))
   x_large_increase <- mean(c(1000, x_max))
-  
+
   # Create the plot using geom_col() with binned data
   px_hist_by_rate_version <- ggplot(binned_data, aes(x = bin_mid, y = count, fill = bill_category)) +
     # Add vertical dotted lines at the category boundaries
     geom_vline(xintercept = c(-1000, 0, 1000), linetype = "dotted", color = "gray50", size = 0.5) +
-    
+
     # Add the bars
     geom_col(position = "stack", width = binwidth * 0.9) +
-    
+
     # Set the fill colors manually with expanded categories
     scale_fill_manual(
       values = c(
@@ -143,55 +143,55 @@ hist_for_single_rate_version <- function(
       ),
       guide = "none"
     ) +
-    
+
     # Add horizontal lines at the very top of the plot
     # With colors matching their respective categories
-    annotate("segment", 
+    annotate("segment",
              x = x_min, xend = -1000,
              y = bar_y_pos, yend = bar_y_pos,
              color = dark_green, size = 1) +
-    
-    annotate("segment", 
+
+    annotate("segment",
              x = -1000, xend = 0,
              y = bar_y_pos, yend = bar_y_pos,
              color = light_green, size = 1) +
-    
-    annotate("segment", 
+
+    annotate("segment",
              x = 0, xend = 1000,
              y = bar_y_pos, yend = bar_y_pos,
              color = light_red, size = 1) +
-    
-    annotate("segment", 
+
+    annotate("segment",
              x = 1000, xend = x_max,
              y = bar_y_pos, yend = bar_y_pos,
              color = dark_red, size = 1) +
-    
+
     # Add percentage labels for each category directly below the lines
-    annotate("text", 
-             x = x_large_savings, 
+    annotate("text",
+             x = x_large_savings,
              y = text_y_pos * 0.95,
              label = paste0(pct_large_savings, "%"),
              size = 3,
              fontface = "bold") +
-    annotate("text", 
-             x = x_small_savings, 
+    annotate("text",
+             x = x_small_savings,
              y = text_y_pos * 0.95,
              label = paste0(pct_small_savings, "%"),
              size = 3,
              fontface = "bold") +
-    annotate("text", 
-             x = x_small_increase, 
+    annotate("text",
+             x = x_small_increase,
              y = text_y_pos * 0.95,
              label = paste0(pct_small_increase, "%"),
              size = 3,
              fontface = "bold") +
-    annotate("text", 
-             x = x_large_increase, 
+    annotate("text",
+             x = x_large_increase,
              y = text_y_pos * 0.95,
              label = paste0(pct_large_increase, "%"),
              size = 3,
              fontface = "bold") +
-    
+
     # Rest of the plot styling
     labs(
       title = if (title == "auto") {
@@ -266,14 +266,14 @@ plot_bill_change_histograms <- function(
   binwidth = 100
 ) {
 
-  
+
   # Create nicer version labels
   version_labels <- c(
     "hp_low" = "HSPF 9.2 - Energy Star Minimum",
     "hp_high" = "HSPF 11 - Minimum for Climate Zone 5",
     "hp_best" = "HSPF 13 - Best Available"
   )
-  
+
   # Create three histograms without individual titles
 
   # Plot 1: hp_low
@@ -291,8 +291,8 @@ plot_bill_change_histograms <- function(
     binwidth = binwidth,
     show_category_labels = FALSE
   )
-  
-  p1 <- result_1[[1]] + 
+
+  p1 <- result_1[[1]] +
     labs(title = NULL) +  # Remove title
     ylab(NULL) +                 # Remove y-axis label
     theme(
@@ -304,15 +304,15 @@ plot_bill_change_histograms <- function(
       aspect.ratio = 0.18
     ) +
     # Add elegant version label on right side
-    annotate("text", 
-             x = x_limits[2] * 0.95, 
+    annotate("text",
+             x = x_limits[2] * 0.95,
              y = y_limits[2] * 0.7,
              label = glue::glue("{version_labels[hvac_option[1]]}\n{version_elec[1]} rates"),
              hjust = 1,
              fontface = "bold",
              size = 4,
              color = "#023047")
-  
+
   # Plot 2: hp_mid
   # -----------------------------------------------
   result_2 <- hist_for_single_rate_version(
@@ -328,8 +328,8 @@ plot_bill_change_histograms <- function(
     binwidth = binwidth,
     show_category_labels = FALSE
   )
-  
-  p2 <- result_2[[1]] + 
+
+  p2 <- result_2[[1]] +
     labs(title = NULL) +  # Remove title
     ylab(NULL) +
     theme(
@@ -341,19 +341,19 @@ plot_bill_change_histograms <- function(
       aspect.ratio = 0.18
     ) +
     # Add elegant version label on right side
-    annotate("text", 
-             x = x_limits[2] * 0.95, 
+    annotate("text",
+             x = x_limits[2] * 0.95,
              y = y_limits[2] * 0.7,
              label = glue::glue("{version_labels[hvac_option[2]]}\n{version_elec[2]} rates"),
              hjust = 1,
              fontface = "bold",
              size = 4,
              color = "#FC9706")
-  
+
   # Plot 3: hp_best
   # -----------------------------------------------
   result_3 <- hist_for_single_rate_version(
-    annual_change_table = annual_change_table, 
+    annual_change_table = annual_change_table,
     bill_type = bill_type,
     version_elec = version_elec[3],
     baseline_heating_type_option = baseline_heating_type_option,
@@ -365,8 +365,8 @@ plot_bill_change_histograms <- function(
     binwidth = binwidth,
     show_category_labels = FALSE
   )
-  
-  p3 <- result_3[[1]] + 
+
+  p3 <- result_3[[1]] +
     labs(title = NULL) +  # Remove title
     ylab(NULL) +
     theme(
@@ -376,15 +376,15 @@ plot_bill_change_histograms <- function(
       aspect.ratio = 0.18
     ) +
     # Add elegant version label on right side
-    annotate("text", 
-             x = x_limits[2] * 0.95, 
+    annotate("text",
+             x = x_limits[2] * 0.95,
              y = y_limits[2] * 0.7,
              label = glue::glue("{version_labels[hvac_option[3]]}\n{version_elec[3]} rates"),
              hjust = 1,
              fontface = "bold",
              size = 4,
              color = "#68BED8")
-  
+
 
   # Combine plots with shared x and y axes
   combined_plot <- p1 / p2 / p3 +
@@ -437,42 +437,42 @@ plot_energy_burden_histogram_standalone <- function(data, name, x_limits = c(0, 
       burden_total < high_burden_threshold ~ "high_energy_burden",
       TRUE ~ "very_high_energy_burden"
     ))
-  
+
   # Calculate percentages for each category
   category_percentages <- data |>
     group_by(burden_group) |>
     summarise(count = n(), .groups = "drop") |>
     mutate(percentage = count / sum(count) * 100)
-  
+
   # Get percentages for annotation
-  pct_low_energy_burden <- category_percentages |> 
-    filter(burden_group == "low_energy_burden") |> 
-    pull(percentage) |> 
+  pct_low_energy_burden <- category_percentages |>
+    filter(burden_group == "low_energy_burden") |>
+    pull(percentage) |>
     round(1)
-  
-  pct_moderate_energy_burden <- category_percentages |> 
-    filter(burden_group == "moderate_energy_burden") |> 
-    pull(percentage) |> 
+
+  pct_moderate_energy_burden <- category_percentages |>
+    filter(burden_group == "moderate_energy_burden") |>
+    pull(percentage) |>
     round(1)
-  
-  pct_high_energy_burden <- category_percentages |> 
-    filter(burden_group == "high_energy_burden") |> 
-    pull(percentage) |> 
+
+  pct_high_energy_burden <- category_percentages |>
+    filter(burden_group == "high_energy_burden") |>
+    pull(percentage) |>
     round(1)
-  
-  pct_very_high_energy_burden <- category_percentages |> 
-    filter(burden_group == "very_high_energy_burden") |> 
-    pull(percentage) |> 
+
+  pct_very_high_energy_burden <- category_percentages |>
+    filter(burden_group == "very_high_energy_burden") |>
+    pull(percentage) |>
     round(1)
-  
+
   # Calculate bin breaks and midpoints
   breaks <- seq(floor(x_limits[1]/binwidth)*binwidth, ceiling(x_limits[2]/binwidth)*binwidth, by = binwidth)
-  
+
   # Manually bin the data
   binned_data <- data |>
-    mutate(bin = cut(burden_total, 
-                    breaks = breaks, 
-                    include.lowest = TRUE, 
+    mutate(bin = cut(burden_total,
+                    breaks = breaks,
+                    include.lowest = TRUE,
                     right = FALSE)) |>
     group_by(bin, burden_group) |>
     summarise(count = n(), .groups = "drop") |>
@@ -482,23 +482,23 @@ plot_energy_burden_histogram_standalone <- function(data, name, x_limits = c(0, 
         return(mean(vals))
       })
     )))
-  
 
-  
+
+
   # Position the bars at the top and text just below
   bar_y_pos <- y_limits[2]
   text_y_pos <- y_limits[2] * 0.90
-  
+
   # Calculate x positions for percentage labels
   x_low_energy_burden <- mean(c(0, low_burden_threshold-0.002))
   x_moderate_energy_burden <- mean(c(low_burden_threshold, moderate_burden_threshold))
   x_high_energy_burden <- mean(c(moderate_burden_threshold, high_burden_threshold))
   x_very_high_energy_burden <- mean(c(high_burden_threshold, x_limits[2]))
-  
+
   # Create the plot
   plot <- ggplot(binned_data, aes(x = bin_mid, y = count, fill = burden_group)) +
     # Add vertical dotted lines at the category boundaries
-    geom_vline(xintercept = c(low_burden_threshold, moderate_burden_threshold, high_burden_threshold), 
+    geom_vline(xintercept = c(low_burden_threshold, moderate_burden_threshold, high_burden_threshold),
                linetype = "dotted", color = "gray50", size = 0.5) +
     # Add bars
     geom_col(position = "stack", width = binwidth * 0.9) +
@@ -509,42 +509,42 @@ plot_energy_burden_histogram_standalone <- function(data, name, x_limits = c(0, 
       guide = "none"
     ) +
     # Add vertical lines at the category boundaries
-    annotate("segment", 
+    annotate("segment",
               x = x_limits[1], xend = low_burden_threshold,
               y = bar_y_pos, yend = bar_y_pos,
               color = energy_burden_colors["low_energy_burden"], size = 1) +
-    annotate("segment", 
+    annotate("segment",
               x = low_burden_threshold, xend = moderate_burden_threshold,
               y = bar_y_pos, yend = bar_y_pos,
               color = energy_burden_colors["moderate_energy_burden"], size = 1) +
-    annotate("segment", 
+    annotate("segment",
               x = moderate_burden_threshold, xend = high_burden_threshold,
               y = bar_y_pos, yend = bar_y_pos,
               color = energy_burden_colors["high_energy_burden"], size = 1) +
-    annotate("segment", 
+    annotate("segment",
               x = high_burden_threshold, xend = x_limits[2],
               y = bar_y_pos, yend = bar_y_pos,
               color = energy_burden_colors["very_high_energy_burden"], size = 1) +
-    annotate("text", 
-              x = x_low_energy_burden, 
+    annotate("text",
+              x = x_low_energy_burden,
               y = text_y_pos * 0.95,
               label = paste0(pct_low_energy_burden, "%"),
               size = 3,
               fontface = "bold") +
-    annotate("text", 
-              x = x_moderate_energy_burden, 
+    annotate("text",
+              x = x_moderate_energy_burden,
               y = text_y_pos * 0.95,
               label = paste0(pct_moderate_energy_burden, "%"),
               size = 3,
               fontface = "bold") +
-    annotate("text", 
-              x = x_high_energy_burden, 
+    annotate("text",
+              x = x_high_energy_burden,
               y = text_y_pos * 0.95,
               label = paste0(pct_high_energy_burden, "%"),
               size = 3,
               fontface = "bold") +
-    annotate("text", 
-              x = x_very_high_energy_burden, 
+    annotate("text",
+              x = x_very_high_energy_burden,
               y = text_y_pos * 0.95,
               label = paste0(pct_very_high_energy_burden, "%"),
               size = 3,
@@ -568,26 +568,26 @@ plot_energy_burden_histogram_standalone <- function(data, name, x_limits = c(0, 
       aspect.ratio = 0.18,
       axis.title.x = element_text(size = 8)
     )
-  
+
   # Remove x-axis elements if requested
   if (!show_x_axis) {
-    plot <- plot + 
+    plot <- plot +
       theme(
         axis.title.x = element_blank(),
         axis.text.x = element_blank(),
         axis.ticks.x = element_blank()
       )
   }
-  
+
   # Remove y-axis elements if requested
   if (!show_y_axis) {
-    plot <- plot + 
+    plot <- plot +
       theme(
         axis.title.y = element_blank(),
         axis.text.y = element_blank(),
         axis.ticks.y = element_blank()
       )
   }
-  
+
   return(list(plot = plot, category_percentages = category_percentages))
 }

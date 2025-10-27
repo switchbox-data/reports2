@@ -417,7 +417,7 @@ get_housing_units_column_counts <- function(
       con,
       sprintf(
         "
-          SELECT 
+          SELECT
             %s,
             COUNT(*) as count
           FROM housing_units
@@ -433,7 +433,7 @@ get_housing_units_column_counts <- function(
       con,
       sprintf(
         "
-          SELECT 
+          SELECT
             %s,
             COUNT(*) as count
           FROM housing_units
@@ -1872,7 +1872,7 @@ get_monthly_bills_elec_old <- function(path_rs_db, year) {
     ) h ON m.bldg_id = h.bldg_id
   ),
   with_delivery AS (
-    SELECT b.*, 
+    SELECT b.*,
            d1.value as customer_charge,
            d2.value as delivery_rate,
            d3.value as sales_tax_rate,
@@ -1881,22 +1881,22 @@ get_monthly_bills_elec_old <- function(path_rs_db, year) {
     FROM base_data b
     LEFT JOIN (
       SELECT month, electric_utility, value, version, tariff_id
-      FROM delivery_tariffs_elec 
+      FROM delivery_tariffs_elec
       WHERE type = 'customer_charge'
     ) d1 ON b.month = d1.month AND b.electric_utility = d1.electric_utility
     LEFT JOIN (
       SELECT month, electric_utility, value, version, tariff_id
-      FROM delivery_tariffs_elec 
+      FROM delivery_tariffs_elec
       WHERE type = 'delivery_rate'
-    ) d2 ON b.month = d2.month 
+    ) d2 ON b.month = d2.month
       AND b.electric_utility = d2.electric_utility
       AND d2.version = d1.version
       AND d2.tariff_id = d1.tariff_id
     LEFT JOIN (
       SELECT month, electric_utility, value, version, tariff_id
-      FROM delivery_tariffs_elec 
+      FROM delivery_tariffs_elec
       WHERE type = 'sales_tax_rate'
-    ) d3 ON b.month = d3.month 
+    ) d3 ON b.month = d3.month
       AND b.electric_utility = d3.electric_utility
       AND d3.version = d1.version
       AND d3.tariff_id = d1.tariff_id
@@ -1909,7 +1909,7 @@ get_monthly_bills_elec_old <- function(path_rs_db, year) {
            w.elec_consumption * s.supply_rate as supply_charge,
            (w.elec_consumption * w.delivery_rate + w.elec_consumption * s.supply_rate + w.customer_charge) as total_pretax_bill,
            (w.elec_consumption * w.delivery_rate + w.elec_consumption * s.supply_rate + w.customer_charge) * w.sales_tax_rate as sales_tax_charge,
-           (w.elec_consumption * w.delivery_rate + w.elec_consumption * s.supply_rate + w.customer_charge) + 
+           (w.elec_consumption * w.delivery_rate + w.elec_consumption * s.supply_rate + w.customer_charge) +
            ((w.elec_consumption * w.delivery_rate + w.elec_consumption * s.supply_rate + w.customer_charge) * w.sales_tax_rate) as monthly_bill
     FROM with_delivery w
     LEFT JOIN (
@@ -1923,7 +1923,7 @@ get_monthly_bills_elec_old <- function(path_rs_db, year) {
     upgrade,
     hvac,
     shell,
-    appliances, 
+    appliances,
     month,
     year,
     electric_utility,
@@ -1939,7 +1939,7 @@ get_monthly_bills_elec_old <- function(path_rs_db, year) {
     delivery_rate,
     supply_rate,
     customer_charge,
-    delivery_charge, 
+    delivery_charge,
     supply_charge,
     total_pretax_bill,
     sales_tax_charge,
@@ -1964,7 +1964,7 @@ get_monthly_bills_gas <- function(path_rs_db, year) {
     SELECT m.bldg_id, m.month, m.upgrade, m.hvac, m.shell, m.appliances,
            m.total_gas_kwh as gas_consumption,
            h.electric_utility, h.gas_utility, h.city, h.county, h.county_and_puma, h.building_type, h.occupants,
-           CASE 
+           CASE
              WHEN m.hvac = 'current' THEN 'R-3'
              WHEN m.hvac IN ('low_hp','mid_hp','high_hp') THEN 'R-1'
            END as customer_class
@@ -1992,7 +1992,7 @@ get_monthly_bills_gas <- function(path_rs_db, year) {
       SELECT month, gas_utility, value, version, tariff_id, customer_class
       FROM delivery_tariffs_gas
       WHERE type = 'delivery_rate'
-    ) d2 ON b.month = d2.month 
+    ) d2 ON b.month = d2.month
       AND b.gas_utility = d2.gas_utility
       AND b.customer_class = d2.customer_class
       AND d2.version = d1.version
@@ -2001,7 +2001,7 @@ get_monthly_bills_gas <- function(path_rs_db, year) {
       SELECT month, gas_utility, value, version, tariff_id, customer_class
       FROM delivery_tariffs_gas
       WHERE type = 'sales_tax_rate'
-    ) d3 ON b.month = d3.month 
+    ) d3 ON b.month = d3.month
       AND b.gas_utility = d3.gas_utility
       AND b.customer_class = d3.customer_class
       AND d3.version = d1.version
@@ -2016,7 +2016,7 @@ get_monthly_bills_gas <- function(path_rs_db, year) {
            w.gas_consumption * s.supply_rate as supply_charge,
            (w.gas_consumption * w.delivery_rate + w.gas_consumption * s.supply_rate + w.customer_charge) as total_pretax_bill,
            (w.gas_consumption * w.delivery_rate + w.gas_consumption * s.supply_rate + w.customer_charge) * w.sales_tax_rate as sales_tax_charge,
-           (w.gas_consumption * w.delivery_rate + w.gas_consumption * s.supply_rate + w.customer_charge) + 
+           (w.gas_consumption * w.delivery_rate + w.gas_consumption * s.supply_rate + w.customer_charge) +
            ((w.gas_consumption * w.delivery_rate + w.gas_consumption * s.supply_rate + w.customer_charge) * w.sales_tax_rate) as monthly_bill
     FROM with_delivery w
     LEFT JOIN (
@@ -2030,7 +2030,7 @@ get_monthly_bills_gas <- function(path_rs_db, year) {
     upgrade,
     hvac,
     shell,
-    appliances, 
+    appliances,
     month,
     year,
     electric_utility,
@@ -2046,7 +2046,7 @@ get_monthly_bills_gas <- function(path_rs_db, year) {
     delivery_rate,
     supply_rate,
     customer_charge,
-    delivery_charge, 
+    delivery_charge,
     supply_charge,
     total_pretax_bill,
     sales_tax_charge,
@@ -2100,12 +2100,12 @@ get_monthly_bills_fueloil <- function(path_rs_db, year) {
       SELECT month, value
       FROM delivery_tariffs_fueloil
       WHERE type = 'delivery_rate'
-    ) d2 ON b.month = d2.month 
+    ) d2 ON b.month = d2.month
     LEFT JOIN (
       SELECT month, value
       FROM delivery_tariffs_fueloil
       WHERE type = 'sales_tax_rate'
-    ) d3 ON b.month = d3.month 
+    ) d3 ON b.month = d3.month
   ),
   final AS (
     SELECT w.*,
@@ -2115,7 +2115,7 @@ get_monthly_bills_fueloil <- function(path_rs_db, year) {
            w.fueloil_consumption * w.delivery_rate as delivery_charge,
            (w.fueloil_consumption * w.delivery_rate + w.fueloil_consumption * supply_rate + w.customer_charge) as total_pretax_bill,
            (w.fueloil_consumption * w.delivery_rate + w.fueloil_consumption * supply_rate + w.customer_charge) * w.sales_tax_rate as sales_tax_charge,
-           (w.fueloil_consumption * w.delivery_rate + w.fueloil_consumption * supply_rate + w.customer_charge) + 
+           (w.fueloil_consumption * w.delivery_rate + w.fueloil_consumption * supply_rate + w.customer_charge) +
            ((w.fueloil_consumption * w.delivery_rate + w.fueloil_consumption * supply_rate + w.customer_charge) * w.sales_tax_rate) as monthly_bill
     FROM with_delivery w
     LEFT JOIN (
@@ -2129,7 +2129,7 @@ get_monthly_bills_fueloil <- function(path_rs_db, year) {
     upgrade,
     hvac,
     shell,
-    appliances, 
+    appliances,
     month,
     year,
     electric_utility,
@@ -2194,12 +2194,12 @@ get_monthly_bills_propane <- function(path_rs_db, year) {
       SELECT month, value
       FROM delivery_tariffs_propane
       WHERE type = 'delivery_rate'
-    ) d2 ON b.month = d2.month 
+    ) d2 ON b.month = d2.month
     LEFT JOIN (
       SELECT month, value
       FROM delivery_tariffs_propane
       WHERE type = 'sales_tax_rate'
-    ) d3 ON b.month = d3.month 
+    ) d3 ON b.month = d3.month
   ),
   final AS (
     SELECT w.*,
@@ -2209,7 +2209,7 @@ get_monthly_bills_propane <- function(path_rs_db, year) {
            w.propane_consumption * w.delivery_rate as delivery_charge,
            (w.propane_consumption * w.delivery_rate + w.propane_consumption * supply_rate + w.customer_charge) as total_pretax_bill,
            (w.propane_consumption * w.delivery_rate + w.propane_consumption * supply_rate + w.customer_charge) * w.sales_tax_rate as sales_tax_charge,
-           (w.propane_consumption * w.delivery_rate + w.propane_consumption * supply_rate + w.customer_charge) + 
+           (w.propane_consumption * w.delivery_rate + w.propane_consumption * supply_rate + w.customer_charge) +
            ((w.propane_consumption * w.delivery_rate + w.propane_consumption * supply_rate + w.customer_charge) * w.sales_tax_rate) as monthly_bill
     FROM with_delivery w
     LEFT JOIN (
@@ -2223,7 +2223,7 @@ get_monthly_bills_propane <- function(path_rs_db, year) {
     upgrade,
     hvac,
     shell,
-    appliances, 
+    appliances,
     month,
     year,
     electric_utility,

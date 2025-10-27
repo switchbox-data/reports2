@@ -1,6 +1,5 @@
 ---
-title: ANALYSIS TEMPLATE
-
+title: Analysis - ny_aeba_grid
 toc: true
 reference-location: margin
 fig-cap-location: bottom
@@ -14,3 +13,235 @@ format:
   html:
     page-layout: full
 ---
+
+
+```{r}
+#| label: setup
+library(tidyverse)
+library(scales)
+library(gt)
+library(gtExtras)
+library(arrow)
+
+source("/workspaces/reports2/lib/ggplot/switchbox_theme.R")
+```
+
+
+```{r}
+
+path_nyiso_hourly_load_csv <- "/workspaces/reports2/data/nyiso/hourly/20151025-20251026 NYISO Hourly Actual Load.csv"
+path_nyiso_hourly_load_parquet <- "/workspaces/reports2/data/nyiso/hourly/nyiso_hourly_load.parquet"
+
+# Based on the image, the CSV's columns are: Date, Load, Zone (and probably more for time parsing)
+# Let's cleanly parse the timestamp, extract date/hour, and aggregate total load (sum) across all zones per hour
+
+# first look for the parquet, fallback to loading and parsing CSV if not found
+if (file.exists(path_nyiso_hourly_load_parquet)) {
+    nyiso_hourly_load <- read_parquet(path_nyiso_hourly_load_parquet)
+} else {
+    nyiso_hourly_load <- read_csv(path_nyiso_hourly_load_csv)
+
+    nyiso_hourly_load <- nyiso_hourly_load |>
+        # Rename columns to lowercase for easier handling if needed
+        rename(
+            datetime = Date,
+            load = Load,
+            zone = Zone
+        ) |>
+        # ensure load is numeric
+        mutate(load = as.numeric(load)) |>
+        # Parse the datetime (given as e.g. "10/25/2015  7:00:00 PM" -- note double space between date and hour)
+        mutate(
+            datetime = lubridate::mdy_hms(
+                datetime,
+                tz = "America/New_York",
+                quiet = TRUE
+            ),
+            year = lubridate::year(datetime),
+            month = lubridate::month(datetime),
+            day = lubridate::day(datetime),
+            hour = lubridate::hour(datetime)
+        ) |>
+        select(-datetime)
+
+    # save to parquet
+    write_parquet(
+        nyiso_hourly_load,
+        "/workspaces/reports2/data/nyiso/hourly/nyiso_hourly_load.parquet"
+    )
+}
+
+
+# add a "NY_STATE" zone, which is the sum of all zones
+nyiso_monthly_peak_load <- nyiso_hourly_load |>
+    pivot_wider(
+        names_from = zone,
+        values_from = load,
+        values_fn = first
+    ) |>
+    mutate(
+        NY_STATE = rowSums(pick(-c(year, month, day, hour)), na.rm = TRUE)
+    ) |>
+    pivot_longer(
+        cols = -c(year, month, day, hour),
+        names_to = "zone",
+        values_to = "load"
+    ) |>
+    filter(zone == "NY_STATE") |>
+    # take the maximum hour for each year + month combo
+    group_by(year, month) |>
+    summarize(load = max(load), .groups = "drop") |>
+    ungroup()
+
+View(nyiso_hourly_load |> head(20))
+# Aggregate total NYISO load by date and hour (summing across all zones)
+# nyiso_hourly_load <- nyiso_hourly_load |>
+#     group_by(date, hour) |>
+#     summarize(total_load = sum(load, na.rm = TRUE), .groups = "drop")
+
+```
+
+```{r}
+winter_months <- c(11, 12, 1, 2)
+summer_months <- c(6, 7, 8, 9)
+shoulder_months <- c(3, 4, 5, 10)
+
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+
+# First, we need a datetime column for plotting
+# We'll assume nyiso_monthly_peak_load has year and month columns
+nyiso_monthly_peak_load <- nyiso_monthly_peak_load |>
+    mutate(
+        # Set the datetime to the first of each month
+        datetime = as.Date(paste(year, month, "01", sep = "-"))
+    ) |>
+    mutate(
+        season = case_when(
+            month %in% winter_months ~ "Winter",
+            month %in% summer_months ~ "Summer",
+            month %in% shoulder_months ~ "Shoulder",
+            TRUE ~ "Other"
+        )
+    ) |>
+    # flag the winter peaks
+    mutate(
+        winter_of = case_when(
+            month %in% c(11, 12) ~ paste0("Winter ", year, "-", year + 1),
+            month %in% c(1, 2) ~ paste0("Winter ", year - 1, "-", year),
+            TRUE ~ as.character(year) # Convert year to character for consistency
+        )
+    )
+
+winter_peaks <- nyiso_monthly_peak_load |>
+    filter(season == "Winter") |>
+    group_by(winter_of) |>
+    filter(load == max(load)) |>
+    ungroup()
+
+summer_peaks <- nyiso_monthly_peak_load |>
+    filter(season == "Summer") |>
+    group_by(year) |>
+    filter(load == max(load)) |>
+    ungroup()
+
+# Filter only months in winter, summer, or shoulder for plotting
+nyiso_plot_df <- nyiso_monthly_peak_load |>
+    filter(season %in% c("Winter", "Summer", "Shoulder"))
+
+# Add blue dots at each winter peak
+monthly_peak_load_plot <- ggplot(nyiso_plot_df, aes(x = datetime, y = load)) +
+    # monthly load in black
+    geom_line(size = 1.1) +
+    # -- Winter ---
+    # Add blue dots for the winter peaks
+    geom_point(
+        data = winter_peaks,
+        aes(x = datetime, y = load),
+        color = "blue",
+        size = 3
+    ) +
+    geom_text(
+        data = winter_peaks,
+        aes(
+            x = datetime,
+            y = load,
+            label = paste0(
+                format(datetime, "%b %Y"),
+                "\n",
+                format(round(load, 0), big.mark = ","),
+                " MW"
+            )
+        ),
+        color = "blue",
+        vjust = -1,
+        size = 3
+    ) +
+    # -- Summer ---
+    # Add red dots for the summer peaks
+    geom_point(
+        data = summer_peaks,
+        aes(x = datetime, y = load),
+        color = "red",
+        size = 3
+    ) +
+    geom_text(
+        data = summer_peaks,
+        aes(
+            x = datetime,
+            y = load,
+            label = paste0(
+                format(datetime, "%b %Y"),
+                "\n",
+                format(round(load, 0), big.mark = ","),
+                " MW"
+            )
+        ),
+        color = "red",
+        vjust = -1,
+        size = 3
+    ) +
+    # -- winter capacity -- dashed line at 40592 MW
+    geom_hline(
+        yintercept = 40592,
+        linetype = "dashed",
+        color = "black",
+        size = 0.8
+    ) +
+    annotate(
+        "text",
+        x = as.POSIXct("2024-01-01", tz = "America/New_York"),
+        y = 40592 + 1200,
+        label = "Winter Generation Capacity 2024-2025",
+        color = "black",
+        size = 4,
+        fontface = "bold"
+    ) +
+    labs(
+        title = "NYISO Monthly Peak Load by Season",
+        x = "Time",
+        y = "Monthly Peak Load (MW)",
+        color = "Season"
+    ) +
+    ylim(0, 45000)
+
+
+# save the plot to a file
+ggsave(
+    "/workspaces/reports2/reports/ny_aeba_grid/cache/monthly_peak_load_plot.png",
+    monthly_peak_load_plot,
+    width = 10,
+    height = 6
+)
+ggsave(
+    "/workspaces/reports2/reports/ny_aeba_grid/cache/monthly_peak_load_plot.svg",
+    monthly_peak_load_plot,
+    width = 10,
+    height = 6
+)
+
+
+monthly_peak_load_plot
+
+```

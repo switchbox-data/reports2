@@ -67,7 +67,7 @@ fi
 # Install packages from lockfile
 if [[ -f "$PROJECT_ROOT/pkg.lock" ]]; then
     echo "📦 Installing packages from pak lockfile..."
-    
+
     if Rscript -e "setwd('$PROJECT_ROOT'); pak::lockfile_install(lockfile = 'pkg.lock')"; then
         echo "✅ Packages installed successfully from pak lockfile"
     else

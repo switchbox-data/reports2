@@ -26,8 +26,15 @@ test:
     echo "🚀 Testing code: Running pytest"
     uv run python -m pytest --doctest-modules
 
-
-
+# =============================================================================
+# 🏗️  NEW QUARTO REPORT
+# =============================================================================
+# These commands help you create a new Quarto report
+new_report:
+  @read -p "Enter the name of the directory to create for the project: " dir_name && \
+  mkdir -p reports/$dir_name && \
+  cd reports/$dir_name && \
+  QUARTO_TEMPLATE_TRUST=true quarto use template switchbox-data/report_template --no-prompt
 
 
 # =============================================================================

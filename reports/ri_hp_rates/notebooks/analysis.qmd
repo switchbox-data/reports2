@@ -19,6 +19,41 @@ format:
 ## Setup
 ```{r}
 #| label: setup
+
+# =============================================================================
+# PATH DEFINITIONS
+# =============================================================================
+# Project root
+repo_root <- "/workspaces/reports2"
+
+# Base directory paths
+path_to_lib <- file.path(repo_root, "lib")
+path_to_data <- file.path(repo_root, "data")
+path_to_report <- file.path(repo_root, "reports", "ri_hp_rates")
+path_to_cache <- file.path(path_to_report, "cache")
+
+# Library paths
+path_switchbox_theme <- file.path(path_to_lib, "ggplot", "switchbox_theme.R")
+path_heat_pump_funcs <- file.path(path_to_lib, "rates_analysis", "heat_pump_rate_funcs.R")
+path_heat_pump_plots <- file.path(path_to_lib, "rates_analysis", "heat_pump_rate_plots.R")
+path_create_housing_units <- file.path(path_to_lib, "rates_analysis", "create_sb_housing_units.R")
+
+# Data paths
+path_monthly_data <- file.path(path_to_data, "resstock", "2024_release2_tmy3", "load_curve_monthly")
+path_supply_year_metadata_dir <- file.path(path_to_data, "resstock", "2024_release2_tmy3", "metadata")
+path_fuel_oil_supply_rates <- file.path(path_to_data, "eia", "heating_oil", "ri_eia_heating_oil_prices_monthly.parquet")
+path_propane_supply_rates <- file.path(path_to_data, "eia", "propane", "ri_eia_propane_prices_monthly.parquet")
+
+# Cache paths
+path_calculated_bills_electric <- file.path(path_to_cache, "calculated_bills_electric.RData")
+path_calculated_bills_fuel_oil <- file.path(path_to_cache, "calculated_bills_fuel_oil.RData")
+path_calculated_bills_propane <- file.path(path_to_cache, "calculated_bills_propane.RData")
+path_calculated_bills_gas <- file.path(path_to_cache, "calculated_bills_gas.RData")
+path_report_variables <- file.path(path_to_cache, "report_variables.RData")
+
+# =============================================================================
+# LIBRARY LOADING
+# =============================================================================
 library(googlesheets4)
 library(arrow)
 library(dplyr)
@@ -29,10 +64,10 @@ library(patchwork)
 library(ggrepel)
 
 # Switchbox Libraries
-source("/workspaces/reports2/lib/ggplot/switchbox_theme.R")
-source("/workspaces/reports2/lib/rates_analysis/heat_pump_rate_funcs.R")
-source("/workspaces/reports2/lib/rates_analysis/heat_pump_rate_plots.R")
-source("/workspaces/reports2/lib/rates_analysis/create_sb_housing_units.R")
+source(path_switchbox_theme)
+source(path_heat_pump_funcs)
+source(path_heat_pump_plots)
+source(path_create_housing_units)
 ```
 
 ## Parameters
@@ -43,8 +78,7 @@ round_percent = 1
 round_dollars <- 0
 
 # Define which monthly data and which upgrades to use
-#path_monthly_data <- "/workspaces/reports2/data/resstock/2024_release2_tmy3/load_curve_monthly_10"
-path_monthly_data <- "/workspaces/reports2/data/resstock/2024_release2_tmy3/load_curve_monthly"
+# path_monthly_data <- file.path(project_root, "data", "resstock", "2024_release2_tmy3", "load_curve_monthly_10")
 use_these_upgrades <- c("00", "01", "02", "03")
 
 # Define seasons
@@ -67,10 +101,6 @@ url_delivery_rates <- "https://docs.google.com/spreadsheets/d/17mTVgMnZaROOimWJB
 
 # SMI thresholds
 url_smi_thresholds <- "https://docs.google.com/spreadsheets/d/1bVbr8jDF8YgT6-yiEEpg-RFvMdV7veoapFzhZYVcaWg/edit?gid=0#gid=0"
-
-# Cache
-path_to_cache <- "/workspaces/reports2/src/ri_hp_rates/cache"
-
 
 load_tariffs_from_cache <- FALSE
 load_results_from_cache <- FALSE
@@ -175,7 +205,7 @@ energy_burden_colors = c(
 #| label: load delivery tariffs and supply rates
 
 # Delivery Tariffs and LMI Discount Thresholds
-load_or_download <- function(table_name, url, path_to_cache="/workspaces/reports2/src/ri_hp_rates/cache", load_from_cache=FALSE) {
+load_or_download <- function(table_name, url, path_to_cache, load_from_cache=FALSE) {
   # Construct file path for this table
   file_path <- paste0(path_to_cache, "/", table_name, ".RData")
   print(paste0("file_path: ", file_path))
@@ -322,7 +352,6 @@ use_these_out_columns <- c(
 
 
 use_these_states <- c("RI")
-path_to_supply_year_metadata_dir <- "/workspaces/reports2/data/resstock/2024_release2_tmy3/metadata"
 
 
 # Create pattern to match only the desired upgrade files
@@ -331,7 +360,7 @@ upgrade_pattern <- paste(upgrade_patterns, collapse = "|")
 
 # Get only the upgrade parquet files that match our criteria
 parquet_files <- list.files(
-  path_to_supply_year_metadata_dir,
+  path_supply_year_metadata_dir,
   pattern = upgrade_pattern,
   full.names = TRUE
 )
@@ -420,8 +449,8 @@ housing_units$smi_tier <- factor(
 housing_units <- assign_utilities(housing_units)
 
 # Add LMI discounts
-load_or_download("electric_lmi_thresholds", url_delivery_rates, load_from_cache = FALSE)
-load_or_download("gas_lmi_thresholds", url_delivery_rates, load_from_cache = FALSE)
+load_or_download("electric_lmi_thresholds", url_delivery_rates, path_to_cache, load_from_cache = FALSE)
+load_or_download("gas_lmi_thresholds", url_delivery_rates, path_to_cache, load_from_cache = FALSE)
 housing_units <- add_lmi_discount(housing_units, electric_lmi_thresholds, gas_lmi_thresholds)
 
 
@@ -477,12 +506,12 @@ monthly_consumption_heating_elec <- get_monthly_consumption(
 #| label: electric bills calculations
 # Electric
 url_electric_supply_rates <- "https://docs.google.com/spreadsheets/d/1oq0WxARD6cY6gPE4s2TH59O4pHY0sreZNKpHFayn36g/edit?gid=0#gid=0"
-load_or_download("electric_supply_rates", url_electric_supply_rates, load_from_cache = load_tariffs_from_cache)
-load_or_download("electric_delivery_tariffs", url_delivery_rates, load_from_cache = load_tariffs_from_cache)
+load_or_download("electric_supply_rates", url_electric_supply_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
+load_or_download("electric_delivery_tariffs", url_delivery_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
 
 # Load from cache
 if (load_results_from_cache) {
-  load(file = "/workspaces/reports2/src/ri_hp_rates/cache/calculated_bills_electric.RData")
+  load(file = path_calculated_bills_electric)
 } else {
 
   # Monthly Load Data
@@ -547,7 +576,7 @@ if (load_results_from_cache) {
     summer_changes_elec,
     annual_bills_elec,
     annual_changes_elec,
-    file = "/workspaces/reports2/src/ri_hp_rates/cache/calculated_bills_electric.RData")
+    file = path_calculated_bills_electric)
 }
 
 # monthly_bills_elec_x <- monthly_bills_elec |> filter(bldg_id == bldg_id_x) |> View()
@@ -560,19 +589,18 @@ if (load_results_from_cache) {
 ```{r}
 #| label: fuel oil bills calculations
 # Fuel Oil Supply Rates
-path_fuel_oil_supply_rates <- "/workspaces/reports2/data/eia/heating_oil/ri_eia_heating_oil_prices_monthly.parquet"
 fuel_oil_supply_rates <- open_dataset(path_fuel_oil_supply_rates) |>
   select(year, month, supply_rate, fuel_oil_utility) |>
   filter(year == supply_year) |>
   collect()
 
 # Delivery Tariffs
-load_or_download("fuel_oil_delivery_tariffs", url_delivery_rates, load_from_cache = load_tariffs_from_cache)
-load_or_download("fuel_oil_lmi_thresholds", url_delivery_rates, load_from_cache = load_tariffs_from_cache)
+load_or_download("fuel_oil_delivery_tariffs", url_delivery_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
+load_or_download("fuel_oil_lmi_thresholds", url_delivery_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
 
 # Load from cache
 if (load_results_from_cache) {
-  load(file = "/workspaces/reports2/src/ri_hp_rates/cache/calculated_bills_fuel_oil.RData")
+  load(file = path_calculated_bills_fuel_oil)
 } else {
 
   # Monthly Load Data
@@ -636,7 +664,7 @@ if (load_results_from_cache) {
     summer_changes_fuel_oil,
     annual_bills_fuel_oil,
     annual_changes_fuel_oil,
-    file = "/workspaces/reports2/src/ri_hp_rates/cache/calculated_bills_fuel_oil.RData")
+    file = path_calculated_bills_fuel_oil)
 }
 
 # monthly_bills_fuel_oil_x <- monthly_bills_fuel_oil |> filter(bldg_id == bldg_id_x) |> View()
@@ -650,19 +678,18 @@ if (load_results_from_cache) {
 ```{r}
 #| label: propane bills calculations
 # Propane Supply Rates
-path_propane_supply_rates <- "/workspaces/reports2/data/eia/propane/ri_eia_propane_prices_monthly.parquet"
 propane_supply_rates <- open_dataset(path_propane_supply_rates) |>
   select(year, month, supply_rate, propane_utility) |>
   filter(year == supply_year) |>
   collect()
 
 # Delivery Tariffs
-load_or_download("propane_delivery_tariffs", url_delivery_rates, load_from_cache = load_tariffs_from_cache)
-load_or_download("propane_lmi_thresholds", url_delivery_rates, load_from_cache = load_tariffs_from_cache)
+load_or_download("propane_delivery_tariffs", url_delivery_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
+load_or_download("propane_lmi_thresholds", url_delivery_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
 
 # Load from cache
 if (load_results_from_cache) {
-  load(file = "/workspaces/reports2/src/ri_hp_rates/cache/calculated_bills_propane.RData")
+  load(file = path_calculated_bills_propane)
 } else {
 
   # Monthly Load Data
@@ -725,7 +752,7 @@ if (load_results_from_cache) {
     summer_changes_propane,
     annual_bills_propane,
     annual_changes_propane,
-    file = "/workspaces/reports2/src/ri_hp_rates/cache/calculated_bills_propane.RData")
+    file = path_calculated_bills_propane)
 }
 
 
@@ -741,13 +768,13 @@ if (load_results_from_cache) {
 #| label: gas bills calculations
 # Gas Supply Rates
 url_gas_supply_rates <- "https://docs.google.com/spreadsheets/d/1_2u9S3r2JWKREhD_pnWXfyQKqjc4IsImbbTdHHN7xqM/edit?gid=0#gid=0"
-load_or_download("gas_supply_rates", url_gas_supply_rates, load_from_cache = load_tariffs_from_cache)
-load_or_download("gas_delivery_tariffs", url_delivery_rates, load_from_cache = load_tariffs_from_cache)
-load_or_download("gas_lmi_thresholds", url_delivery_rates, load_from_cache = load_tariffs_from_cache)
+load_or_download("gas_supply_rates", url_gas_supply_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
+load_or_download("gas_delivery_tariffs", url_delivery_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
+load_or_download("gas_lmi_thresholds", url_delivery_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
 
 # Load from cache
 if (load_results_from_cache) {
-  load(file = "/workspaces/reports2/src/ri_hp_rates/cache/calculated_bills_gas.RData")
+  load(file = path_calculated_bills_gas)
 } else {
   # Monthly Gas Bills
   monthly_bills_gas <- calc_monthly_bills_gas(
@@ -802,7 +829,7 @@ if (load_results_from_cache) {
     summer_changes_gas,
     annual_bills_gas,
     annual_changes_gas,
-    file = "/workspaces/reports2/src/ri_hp_rates/cache/calculated_bills_gas.RData")
+    file = path_calculated_bills_gas)
 }
 
 # monthly_bills_gas_x <- monthly_bills_gas |> filter(bldg_id == bldg_id_x) |> View()
@@ -2955,7 +2982,7 @@ save(
   burden_hists_not_lmi_current_pct_low_burden,
   burden_hists_not_lmi_current_pct_burdened,
 
-  file = "/workspaces/reports2/src/ri_hp_rates/cache/report_variables.RData"
+  file = path_report_variables
 )
 
 ```

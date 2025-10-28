@@ -61,29 +61,33 @@ hist_for_single_rate_version <- function(
   category_percentages <- plot_data |>
     group_by(bill_category) |>
     summarise(count = n(), .groups = "drop") |>
-    mutate(percentage = round(count / sum(count) * 100, 1)) |>
-    # Add a row for 'pct_that_save' as the sum of 'small_savings' and 'large_savings'
+    mutate(percentage = round(count / sum(count) * 100, 1))
+
+  # Add a row for 'pct_that_save' as the sum of 'small_savings' and 'large_savings'
+  category_percentages <- category_percentages |>
     bind_rows(
-      .,
       tibble(
         bill_category = "pct_that_save",
-        count = sum(.$count[
-          .$bill_category %in% c("small_savings", "large_savings")
+        count = sum(category_percentages$count[
+          category_percentages$bill_category %in%
+            c("small_savings", "large_savings")
         ]),
-        percentage = sum(.$percentage[
-          .$bill_category %in% c("small_savings", "large_savings")
+        percentage = sum(category_percentages$percentage[
+          category_percentages$bill_category %in%
+            c("small_savings", "large_savings")
         ])
       )
     ) |>
     bind_rows(
-      .,
       tibble(
         bill_category = "pct_that_lose",
-        count = sum(.$count[
-          .$bill_category %in% c("small_increase", "large_increase")
+        count = sum(category_percentages$count[
+          category_percentages$bill_category %in%
+            c("small_increase", "large_increase")
         ]),
-        percentage = sum(.$percentage[
-          .$bill_category %in% c("small_increase", "large_increase")
+        percentage = sum(category_percentages$percentage[
+          category_percentages$bill_category %in%
+            c("small_increase", "large_increase")
         ])
       )
     )

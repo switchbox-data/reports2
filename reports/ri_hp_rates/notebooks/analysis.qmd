@@ -1685,53 +1685,51 @@ monthly_bills_elec_by_component <- monthly_bills_elec |>
             .groups = "drop") |>
   ungroup()
 
-monthly_bills_resistance_by_component <- monthly_bills_elec |>
-  # add some metadata from housing_units
-  left_join(housing_units |> filter(upgrade==0) |> select(bldg_id, baseline_heating_type), by = c("bldg_id")) |>
-  filter(baseline_heating_type == "Electric Resistance") |>
-  # rename hvac column to "current" (was natural_gas, propane, etc)
-  mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
-  ) |>
-  # get just the current and hp_high cases
-  filter(
-    (hvac == "current" & version == "baseline") |
-    (hvac == hp_option & version == "baseline")
-  ) |>
-  # take the median for each group
-  group_by(upgrade, hvac, month) |>
-  summarise(supply_charge = median(supply_charge),
-            delivery_charge = median(delivery_charge),
-            customer_charge = median(customer_charge),
-            .groups = "drop") |>
-  ungroup() |>
-  mutate(
-    total_elec_bill = supply_charge + delivery_charge + customer_charge
-  ) |>
-  # drop the supply_charge, delivery_charge, and customer_charge columns
-  select(-supply_charge, -delivery_charge, -customer_charge)
+# monthly_bills_resistance_by_component <- monthly_bills_elec |>
+#   # add some metadata from housing_units
+#   left_join(housing_units |> filter(upgrade==0) |> select(bldg_id, baseline_heating_type), by = c("bldg_id")) |>
+#   filter(baseline_heating_type == "Electric Resistance") |>
+#   # rename hvac column to "current" (was natural_gas, propane, etc)
+#   mutate(
+#     hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+#   ) |>
+#   # get just the current and hp_high cases
+#   filter(
+#     (hvac == "current" & version == "baseline") |
+#     (hvac == hp_option & version == "baseline")
+#   ) |>
+#   # take the median for each group
+#   group_by(upgrade, hvac, month) |>
+#   summarise(supply_charge = median(supply_charge),
+#             delivery_charge = median(delivery_charge),
+#             customer_charge = median(customer_charge),
+#             .groups = "drop") |>
+#   ungroup() |>
+#   mutate(
+#     total_elec_bill = supply_charge + delivery_charge + customer_charge
+#   ) |>
+#   # drop the supply_charge, delivery_charge, and customer_charge columns
+#   select(-supply_charge, -delivery_charge, -customer_charge)
 
 monthly_bills_combined_resistance_customers <- monthly_bills_elec_by_component |>
-  left_join(monthly_bills_resistance_by_component, by = c("upgrade", "hvac", "month")) |>
-  mutate(total_bill = supply_charge + delivery_charge + customer_charge + total_elec_bill)
+  mutate(total_bill = supply_charge + delivery_charge + customer_charge)
 
 
 
 # Create 12 stacked bars, one for each month, for upgrade==0
 monthly_bills_combined_resistance_customers_long <- monthly_bills_combined_resistance_customers |>
-  pivot_longer(cols = c(customer_charge, delivery_charge, supply_charge, total_elec_bill, total_bill),
+  pivot_longer(cols = c(customer_charge, delivery_charge, supply_charge, total_bill),
                names_to = "component",
                values_to = "amount")
 
 #Set factor order for stacking: customer_charge (bottom), delivery_charge (middle), supply_charge (top)
 monthly_bills_combined_resistance_customers_long$component <- factor(
   monthly_bills_combined_resistance_customers_long$component,
-  levels = c("total_elec_bill", "supply_charge", "delivery_charge", "customer_charge", "total_bill")
+  levels = c("supply_charge", "delivery_charge", "customer_charge", "total_bill")
 )
 
 
 bill_component_colors = c(
-  "total_elec_bill" = "grey50", # grey
   "supply_charge" = "#A0AF12",
   "delivery_charge" = "#023047",
   "customer_charge" = "#68BED8",
@@ -1754,7 +1752,7 @@ print(ggplot(
   labs(
     x = "Month",
     y = "Median Monthly Total Bill ($)",
-    title = "Median Monthly Total Bill (Electric + Electric Resistance)",
+    title = "Median Monthly Total Electricity Bill",
     subtitle = "Electric resistance-heated homes, before upgrade"
   ) +
   theme(
@@ -1768,7 +1766,7 @@ print(ggplot(
 ### month_bills_resistance_after
 ```{r}
 #| label: fig-monthly_bills_resistance_after
-#| fig-cap: "The electric bill components and total fuel oil bill for fuel oil heated homes, after upgrade."
+#| fig-cap: "The electric bill components and total electricity bill for electric resistance heated homes, after upgrade."
 
 ggplot()+
   # BEFORE

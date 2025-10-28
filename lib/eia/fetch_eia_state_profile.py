@@ -5,6 +5,7 @@ from datetime import datetime  # Add datetime import
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
+from requests.exceptions import RequestException
 
 
 def fetch_heating_data(state_abbrev):
@@ -23,7 +24,7 @@ def fetch_heating_data(state_abbrev):
         response = requests.get(url)
         response.raise_for_status()  # Raise an exception for HTTP errors
         html_content = response.text
-    except requests.exceptions.RequestException as e:
+    except RequestException as e:
         raise Exception(f"Failed to fetch data from URL: {e}") from e
 
     # Parse the HTML content

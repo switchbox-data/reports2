@@ -995,9 +995,7 @@ get_monthly_consumption <- function(
   target_columns <- ddl_filtered$timeseries_field_name
 
   # Read the dataset from the parquet directory
-  data <- open_dataset(path_monthly_data)
-
-  monthly_consumption <- data |>
+  monthly_consumption <- open_dataset(path_monthly_data) |>
     filter(year(timestamp) == 2018) |>
     filter(upgrade %in% use_these_upgrades) |>
     mutate(

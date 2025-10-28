@@ -994,7 +994,21 @@ get_monthly_consumption <- function(
   # target columns
   target_columns <- ddl_filtered$timeseries_field_name
 
-  # Read the dataset from the parquet directory
+  # Build an Arrow-translatable sum over target columns with NA -> 0
+  sum_expr <- Reduce(
+    function(acc, nm) {
+      x <- rlang::sym(nm)
+      if (is.null(acc)) {
+        dplyr::expr(coalesce(!!x, 0))
+      } else {
+        dplyr::expr((!!acc) + coalesce(!!x, 0))
+      }
+    },
+    target_columns,
+    init = NULL
+  )
+
+  # Read the dataset from the parquet directory and compute within Arrow; collect at end
   monthly_consumption <- open_dataset(path_monthly_data) |>
     filter(year(timestamp) == 2018) |>
     filter(upgrade %in% use_these_upgrades) |>
@@ -1003,13 +1017,9 @@ get_monthly_consumption <- function(
       month = as.integer(month(timestamp))
     ) |>
     select(all_of(c("bldg_id", "upgrade", "month", target_columns))) |>
+    mutate(consumption_kwh = !!sum_expr) |>
+    select(all_of(c("bldg_id", "upgrade", "month", "consumption_kwh"))) |>
     collect()
-
-  monthly_consumption <- monthly_consumption |>
-    mutate(
-      "consumption_kwh" := rowSums(across(all_of(target_columns)), na.rm = TRUE)
-    ) |>
-    select(all_of(c("bldg_id", "upgrade", "month", "consumption_kwh")))
 
   return(monthly_consumption)
 }

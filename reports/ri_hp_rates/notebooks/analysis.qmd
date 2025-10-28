@@ -102,8 +102,8 @@ url_delivery_rates <- "https://docs.google.com/spreadsheets/d/17mTVgMnZaROOimWJB
 # SMI thresholds
 url_smi_thresholds <- "https://docs.google.com/spreadsheets/d/1bVbr8jDF8YgT6-yiEEpg-RFvMdV7veoapFzhZYVcaWg/edit?gid=0#gid=0"
 
-load_tariffs_from_cache <- FALSE
-load_thresholds_from_cache <- FALSE
+load_tariffs_from_cache <- TRUE
+load_thresholds_from_cache <- TRUE
 load_results_from_cache <- FALSE
 ```
 
@@ -885,32 +885,30 @@ stack_order_gas_on_top = c(
   "annual_elec_customer_charge" # bottom
 )
 
-components <- factor(stack_order_gas_on_top, levels = stack_order_gas_on_top)
+components <- forcats::as_factor(stack_order_gas_on_top)
 
 annual_bills_elec_by_component <- monthly_bills_elec |>
-  left_join(housing_units |> filter(upgrade==0) |> select(bldg_id, baseline_heating_type), by = c("bldg_id")) |>
+  left_join(housing_units |> filter(upgrade == 0) |> select(bldg_id, baseline_heating_type), by = "bldg_id") |>
   filter(baseline_heating_type == "Natural Gas") |>
   mutate(
     hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
   ) |>
-  group_by(bldg_id, upgrade, electric_utility, version, hvac) |>
-  summarise(supply_charge = sum(supply_charge),
-            delivery_charge = sum(delivery_charge),
-            customer_charge = sum(customer_charge),
-            .groups = "drop") |>
-  ungroup() |>
+  summarize(
+    supply_charge = sum(supply_charge),
+    delivery_charge = sum(delivery_charge),
+    customer_charge = sum(customer_charge),
+    .by = c(bldg_id, upgrade, electric_utility, version, hvac)
+  ) |>
   filter(
     (!(hvac %in% c("hp_low", "hp_high", "hp_best")) & version == "baseline") |
     (hvac == hp_option & version == "baseline")
   ) |>
-  # take the median for each group
-  group_by(upgrade, electric_utility, version, hvac) |>
-  summarise(supply_charge = median(supply_charge),
-            delivery_charge = median(delivery_charge),
-            customer_charge = median(customer_charge),
-            .groups = "drop") |>
-  ungroup()
-
+  summarize(
+    supply_charge = median(supply_charge),
+    delivery_charge = median(delivery_charge),
+    customer_charge = median(customer_charge),
+    .by = c(upgrade, electric_utility, version, hvac)
+  )
 
 
 annual_bills_gas_median <- annual_bills_gas |>
@@ -918,10 +916,10 @@ annual_bills_gas_median <- annual_bills_gas |>
   mutate(
     hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
   ) |>
-  group_by(upgrade, hvac) |>
-  summarise(annual_gas_bill = median(annual_bill),
-            .groups = "drop") |>
-  ungroup()
+  summarize(
+    annual_gas_bill = median(annual_bill),
+    .by = c(upgrade, hvac)
+  )
 
 
 
@@ -931,16 +929,30 @@ annual_bills_by_component_plot <- annual_bills_elec_by_component |>
                names_to = "charge_type",
                values_to = "amount") |>
   mutate(
-    charge_type = factor(charge_type, levels = c("annual_gas_bill", "supply_charge", "delivery_charge","customer_charge")),
-    scenario = factor(paste(hvac, version, sep = "_"),
-                      levels = c("current_baseline","hp_high_baseline"))
+    charge_type = forcats::fct_relevel(charge_type, "annual_gas_bill", "supply_charge", "delivery_charge","customer_charge"),
+    scenario = forcats::fct_relevel(
+      forcats::as_factor(paste(hvac, version, sep = "_")),
+      "current_baseline","hp_high_baseline"
+    )
   ) |>
   filter(electric_utility == "rhode_island_energy")
 
-y_rightmost_customer_charge <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "customer_charge") |> pull(amount)
-y_rightmost_delivery_charge <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "delivery_charge") |> pull(amount)
-y_rightmost_supply_charge <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "supply_charge") |> pull(amount)
-y_rightmost_gas_bill <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "annual_gas_bill") |> pull(amount)
+# Extract both bars' component values for Gas baseline customers
+pre_hp_customer_charge_gas <- annual_bills_by_component_plot |> filter(scenario == "current_baseline", charge_type == "customer_charge") |> pull(amount)
+post_hp_customer_charge_gas <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "customer_charge") |> pull(amount)
+
+pre_hp_delivery_charge_gas <- annual_bills_by_component_plot |> filter(scenario == "current_baseline", charge_type == "delivery_charge") |> pull(amount)
+post_hp_delivery_charge_gas <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "delivery_charge") |> pull(amount)
+
+pre_hp_supply_charge_gas <- annual_bills_by_component_plot |> filter(scenario == "current_baseline", charge_type == "supply_charge") |> pull(amount)
+post_hp_supply_charge_gas <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "supply_charge") |> pull(amount)
+
+pre_hp_annual_gas_bill <- annual_bills_by_component_plot |> filter(scenario == "current_baseline", charge_type == "annual_gas_bill") |> pull(amount)
+post_hp_annual_gas_bill <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "annual_gas_bill") |> pull(amount)
+
+# Totals (Electric + Gas bill)
+pre_hp_total_bill_gas <- pre_hp_customer_charge_gas + pre_hp_delivery_charge_gas + pre_hp_supply_charge_gas + pre_hp_annual_gas_bill
+post_hp_total_bill_gas <- post_hp_customer_charge_gas + post_hp_delivery_charge_gas + post_hp_supply_charge_gas + post_hp_annual_gas_bill
 
 annotation_text_size <- 4
 y_annotation_offset <- 0
@@ -950,6 +962,13 @@ x_label_offset <- 2.5
 fig_bill_stacked_bar_gas_on_top <- ggplot(annual_bills_by_component_plot,
        aes(x = scenario, y = amount, fill = charge_type)) +
   geom_col() +
+  geom_text(
+    aes(label = scales::dollar(amount, accuracy = 1)),
+    position = position_stack(vjust = 0.5),
+    family = "IBM-Plex-Sans",
+    color = "white",
+    size = 3.2
+  ) +
   labs(title = "Components of Annual Electricity Bill",
        x = "",
        y = "Annual Cost ($)",
@@ -970,12 +989,11 @@ fig_bill_stacked_bar_gas_on_top <- ggplot(annual_bills_by_component_plot,
     legend.position = "bottom",
     plot.margin = margin(t = 3, r = 200, b = 0, l = 10, unit = "pt")
   ) +
-
   # instead of a legend, write annotation for the 3 categories to the right of the right-most bar
   annotate(
     "text",
     x = x_label_offset,
-    y = (y_rightmost_customer_charge/2) + y_annotation_offset,
+    y = (post_hp_customer_charge_gas/2) + y_annotation_offset,
     label = "Customer Charge",
     hjust = 0,
     family = "IBM-Plex-Sans",
@@ -986,7 +1004,7 @@ fig_bill_stacked_bar_gas_on_top <- ggplot(annual_bills_by_component_plot,
   annotate(
     "text",
     x = x_label_offset,
-    y = (y_rightmost_customer_charge) + y_rightmost_delivery_charge/2 + y_annotation_offset,
+    y = (post_hp_customer_charge_gas) + post_hp_delivery_charge_gas/2 + y_annotation_offset,
     label = "Delivery Charge",
     hjust = 0,
     family = "IBM-Plex-Sans",
@@ -997,7 +1015,7 @@ fig_bill_stacked_bar_gas_on_top <- ggplot(annual_bills_by_component_plot,
   annotate(
     "text",
     x = x_label_offset,
-    y = (y_rightmost_customer_charge) + y_rightmost_delivery_charge + y_rightmost_supply_charge/2 + y_annotation_offset,
+    y = (post_hp_customer_charge_gas) + post_hp_delivery_charge_gas + post_hp_supply_charge_gas/2 + y_annotation_offset,
     label = "Supply Charge",
     hjust = 0,
     family = "IBM-Plex-Sans",
@@ -1008,7 +1026,7 @@ fig_bill_stacked_bar_gas_on_top <- ggplot(annual_bills_by_component_plot,
     annotate(
     "text",
     x = x_label_offset,
-    y = (y_rightmost_customer_charge) + y_rightmost_delivery_charge + y_rightmost_supply_charge + y_rightmost_gas_bill/2 + y_annotation_offset,
+    y = (post_hp_customer_charge_gas) + post_hp_delivery_charge_gas + post_hp_supply_charge_gas + post_hp_annual_gas_bill/2 + y_annotation_offset,
     label = "Gas Bill",
     hjust = 0,
     family = "IBM-Plex-Sans",
@@ -1016,7 +1034,6 @@ fig_bill_stacked_bar_gas_on_top <- ggplot(annual_bills_by_component_plot,
     size = annotation_text_size,
     fontface = "bold"
   ) +
-
   # No legend
   theme(legend.position = "none")
 
@@ -1190,7 +1207,7 @@ stack_order_fuel_oil_on_top = c(
   "annual_elec_customer_charge" # bottom
 )
 
-components <- factor(stack_order_fuel_oil_on_top, levels = stack_order_fuel_oil_on_top)
+components <- forcats::as_factor(stack_order_fuel_oil_on_top)
 
 annual_bills_elec_by_component <- monthly_bills_elec |>
   left_join(housing_units |> filter(upgrade==0) |> select(bldg_id, baseline_heating_type), by = c("bldg_id")) |>
@@ -1198,23 +1215,23 @@ annual_bills_elec_by_component <- monthly_bills_elec |>
   mutate(
     hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
   ) |>
-  group_by(bldg_id, upgrade, electric_utility, version, hvac) |>
-  summarise(supply_charge = sum(supply_charge),
-            delivery_charge = sum(delivery_charge),
-            customer_charge = sum(customer_charge),
-            .groups = "drop") |>
-  ungroup() |>
+  summarize(
+    supply_charge = sum(supply_charge),
+    delivery_charge = sum(delivery_charge),
+    customer_charge = sum(customer_charge),
+    .by = c(bldg_id, upgrade, electric_utility, version, hvac)
+  ) |>
   filter(
     (!(hvac %in% c("hp_low", "hp_high", "hp_best")) & version == "baseline") |
     (hvac == hp_option & version == "baseline")
   ) |>
   # take the median for each group
-  group_by(upgrade, electric_utility, version, hvac) |>
-  summarise(supply_charge = median(supply_charge),
-            delivery_charge = median(delivery_charge),
-            customer_charge = median(customer_charge),
-            .groups = "drop") |>
-  ungroup()
+  summarize(
+    supply_charge = median(supply_charge),
+    delivery_charge = median(delivery_charge),
+    customer_charge = median(customer_charge),
+    .by = c(upgrade, electric_utility, version, hvac)
+  )
 
 
 
@@ -1223,10 +1240,10 @@ annual_bills_fuel_oil_median <- annual_bills_fuel_oil |>
   mutate(
     hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
   ) |>
-  group_by(upgrade, hvac) |>
-  summarise(annual_fuel_oil_bill = median(annual_bill),
-            .groups = "drop") |>
-  ungroup()
+  summarize(
+    annual_fuel_oil_bill = median(annual_bill),
+    .by = c(upgrade, hvac)
+  )
 
 
 
@@ -1236,16 +1253,30 @@ annual_bills_by_component_plot <- annual_bills_elec_by_component |>
                names_to = "charge_type",
                values_to = "amount") |>
   mutate(
-    charge_type = factor(charge_type, levels = c("annual_fuel_oil_bill", "supply_charge", "delivery_charge", "customer_charge")),
-    scenario = factor(paste(hvac, version, sep = "_"),
-                      levels = c("current_baseline","hp_high_baseline"))
+    charge_type = forcats::fct_relevel(charge_type, "annual_fuel_oil_bill", "supply_charge", "delivery_charge", "customer_charge"),
+    scenario = forcats::fct_relevel(
+      forcats::as_factor(paste(hvac, version, sep = "_")),
+      "current_baseline","hp_high_baseline"
+    )
   ) |>
   filter(electric_utility == "rhode_island_energy")
 
-y_rightmost_customer_charge <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "customer_charge") |> pull(amount)
-y_rightmost_delivery_charge <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "delivery_charge") |> pull(amount)
-y_rightmost_supply_charge <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "supply_charge") |> pull(amount)
-y_rightmost_fuel_oil_bill <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "annual_fuel_oil_bill") |> pull(amount)
+# Extract both bars' component values for Fuel Oil baseline customers
+pre_hp_customer_charge_fuel <- annual_bills_by_component_plot |> filter(scenario == "current_baseline", charge_type == "customer_charge") |> pull(amount)
+post_hp_customer_charge_fuel <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "customer_charge") |> pull(amount)
+
+pre_hp_delivery_charge_fuel <- annual_bills_by_component_plot |> filter(scenario == "current_baseline", charge_type == "delivery_charge") |> pull(amount)
+post_hp_delivery_charge_fuel <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "delivery_charge") |> pull(amount)
+
+pre_hp_supply_charge_fuel <- annual_bills_by_component_plot |> filter(scenario == "current_baseline", charge_type == "supply_charge") |> pull(amount)
+post_hp_supply_charge_fuel <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "supply_charge") |> pull(amount)
+
+pre_hp_annual_fuel_oil_bill <- annual_bills_by_component_plot |> filter(scenario == "current_baseline", charge_type == "annual_fuel_oil_bill") |> pull(amount)
+post_hp_annual_fuel_oil_bill <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "annual_fuel_oil_bill") |> pull(amount)
+
+# Totals (Electric + Fuel Oil bill)
+pre_hp_total_bill_fuel <- pre_hp_customer_charge_fuel + pre_hp_delivery_charge_fuel + pre_hp_supply_charge_fuel + pre_hp_annual_fuel_oil_bill
+post_hp_total_bill_fuel <- post_hp_customer_charge_fuel + post_hp_delivery_charge_fuel + post_hp_supply_charge_fuel + post_hp_annual_fuel_oil_bill
 
 annotation_text_size <- 4
 y_annotation_offset <- 0
@@ -1255,6 +1286,13 @@ x_label_offset <- 2.5
 fig_bill_stacked_bar_fuel_oil_on_top <- ggplot(annual_bills_by_component_plot,
        aes(x = scenario, y = amount, fill = charge_type)) +
   geom_col() +
+  geom_text(
+    aes(label = scales::dollar(amount, accuracy = 1)),
+    position = position_stack(vjust = 0.5),
+    family = "IBM-Plex-Sans",
+    color = "white",
+    size = 3.2
+  ) +
   labs(title = "Components of Annual Electricity Bill",
        x = "",
        y = "Annual Cost ($)",
@@ -1280,7 +1318,7 @@ fig_bill_stacked_bar_fuel_oil_on_top <- ggplot(annual_bills_by_component_plot,
   annotate(
     "text",
     x = x_label_offset,
-    y = (y_rightmost_customer_charge/2) + y_annotation_offset,
+    y = (post_hp_customer_charge_fuel/2) + y_annotation_offset,
     label = "Customer Charge",
     hjust = 0,
     family = "IBM-Plex-Sans",
@@ -1291,7 +1329,7 @@ fig_bill_stacked_bar_fuel_oil_on_top <- ggplot(annual_bills_by_component_plot,
   annotate(
     "text",
     x = x_label_offset,
-    y = (y_rightmost_customer_charge) + y_rightmost_delivery_charge/2 + y_annotation_offset,
+    y = (post_hp_customer_charge_fuel) + post_hp_delivery_charge_fuel/2 + y_annotation_offset,
     label = "Delivery Charge",
     hjust = 0,
     family = "IBM-Plex-Sans",
@@ -1302,7 +1340,7 @@ fig_bill_stacked_bar_fuel_oil_on_top <- ggplot(annual_bills_by_component_plot,
   annotate(
     "text",
     x = x_label_offset,
-    y = (y_rightmost_customer_charge) + y_rightmost_delivery_charge + y_rightmost_supply_charge/2 + y_annotation_offset,
+    y = (post_hp_customer_charge_fuel) + post_hp_delivery_charge_fuel + post_hp_supply_charge_fuel/2 + y_annotation_offset,
     label = "Supply Charge",
     hjust = 0,
     family = "IBM-Plex-Sans",
@@ -1313,7 +1351,7 @@ fig_bill_stacked_bar_fuel_oil_on_top <- ggplot(annual_bills_by_component_plot,
   annotate(
     "text",
     x = x_label_offset,
-    y = (y_rightmost_customer_charge) + y_rightmost_delivery_charge + y_rightmost_supply_charge + y_rightmost_fuel_oil_bill/2 + y_annotation_offset,
+    y = (post_hp_customer_charge_fuel) + post_hp_delivery_charge_fuel + post_hp_supply_charge_fuel + post_hp_annual_fuel_oil_bill/2 + y_annotation_offset,
     label = "Fuel Oil Bill",
     hjust = 0,
     family = "IBM-Plex-Sans",
@@ -1485,7 +1523,7 @@ stack_order_resistance_on_top = c(
   "annual_elec_customer_charge" # bottom
 )
 
-components <- factor(stack_order_resistance_on_top, levels = stack_order_resistance_on_top)
+components <- forcats::as_factor(stack_order_resistance_on_top)
 
 annual_bills_elec_by_component <- monthly_bills_elec |>
   left_join(housing_units |> filter(upgrade==0) |> select(bldg_id, baseline_heating_type), by = c("bldg_id")) |>
@@ -1493,23 +1531,23 @@ annual_bills_elec_by_component <- monthly_bills_elec |>
   mutate(
     hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
   ) |>
-  group_by(bldg_id, upgrade, electric_utility, version, hvac) |>
-  summarise(supply_charge = sum(supply_charge),
-            delivery_charge = sum(delivery_charge),
-            customer_charge = sum(customer_charge),
-            .groups = "drop") |>
-  ungroup() |>
+  summarize(
+    supply_charge = sum(supply_charge),
+    delivery_charge = sum(delivery_charge),
+    customer_charge = sum(customer_charge),
+    .by = c(bldg_id, upgrade, electric_utility, version, hvac)
+  ) |>
   filter(
     (!(hvac %in% c("hp_low", "hp_high", "hp_best")) & version == "baseline") |
     (hvac == hp_option & version == "baseline")
   ) |>
   # take the median for each group
-  group_by(upgrade, electric_utility, version, hvac) |>
-  summarise(supply_charge = median(supply_charge),
-            delivery_charge = median(delivery_charge),
-            customer_charge = median(customer_charge),
-            .groups = "drop") |>
-  ungroup()
+  summarize(
+    supply_charge = median(supply_charge),
+    delivery_charge = median(delivery_charge),
+    customer_charge = median(customer_charge),
+    .by = c(upgrade, electric_utility, version, hvac)
+  )
 
 
 
@@ -1518,15 +1556,27 @@ annual_bills_by_component_plot <- annual_bills_elec_by_component |>
                names_to = "charge_type",
                values_to = "amount") |>
   mutate(
-    charge_type = factor(charge_type, levels = c("supply_charge", "delivery_charge","customer_charge")),
-    scenario = factor(paste(hvac, version, sep = "_"),
-                      levels = c("current_baseline","hp_high_baseline"))
+    charge_type = forcats::fct_relevel(charge_type, "supply_charge", "delivery_charge","customer_charge"),
+    scenario = forcats::fct_relevel(
+      forcats::as_factor(paste(hvac, version, sep = "_")),
+      "current_baseline","hp_high_baseline"
+    )
   ) |>
   filter(electric_utility == "rhode_island_energy")
 
-y_rightmost_customer_charge <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "customer_charge") |> pull(amount)
-y_rightmost_delivery_charge <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "delivery_charge") |> pull(amount)
-y_rightmost_supply_charge <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "supply_charge") |> pull(amount)
+# Extract both bars' component values for Electric Resistance baseline customers
+pre_hp_customer_charge_res <- annual_bills_by_component_plot |> filter(scenario == "current_baseline", charge_type == "customer_charge") |> pull(amount)
+post_hp_customer_charge_res <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "customer_charge") |> pull(amount)
+
+pre_hp_delivery_charge_res <- annual_bills_by_component_plot |> filter(scenario == "current_baseline", charge_type == "delivery_charge") |> pull(amount)
+post_hp_delivery_charge_res <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "delivery_charge") |> pull(amount)
+
+pre_hp_supply_charge_res <- annual_bills_by_component_plot |> filter(scenario == "current_baseline", charge_type == "supply_charge") |> pull(amount)
+post_hp_supply_charge_res <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "supply_charge") |> pull(amount)
+
+# Totals (Electric only for resistance baseline)
+pre_hp_total_bill_res <- pre_hp_customer_charge_res + pre_hp_delivery_charge_res + pre_hp_supply_charge_res
+post_hp_total_bill_res <- post_hp_customer_charge_res + post_hp_delivery_charge_res + post_hp_supply_charge_res
 
 annotation_text_size <- 4
 y_annotation_offset <- 0
@@ -1536,6 +1586,13 @@ x_label_offset <- 2.5
 fig_bill_stacked_bar_resistance_on_top <- ggplot(annual_bills_by_component_plot,
        aes(x = scenario, y = amount, fill = charge_type)) +
   geom_col() +
+  geom_text(
+    aes(label = scales::dollar(amount, accuracy = 1)),
+    position = position_stack(vjust = 0.5),
+    family = "IBM-Plex-Sans",
+    color = "white",
+    size = 3.2
+  ) +
   labs(title = "Components of Annual Electricity Bill",
        x = "",
        y = "Annual Cost ($)",
@@ -1561,7 +1618,7 @@ fig_bill_stacked_bar_resistance_on_top <- ggplot(annual_bills_by_component_plot,
   annotate(
     "text",
     x = x_label_offset,
-    y = (y_rightmost_customer_charge/2) + y_annotation_offset,
+    y = (post_hp_customer_charge_res/2) + y_annotation_offset,
     label = "Customer Charge",
     hjust = 0,
     family = "IBM-Plex-Sans",
@@ -1572,7 +1629,7 @@ fig_bill_stacked_bar_resistance_on_top <- ggplot(annual_bills_by_component_plot,
   annotate(
     "text",
     x = x_label_offset,
-    y = (y_rightmost_customer_charge) + y_rightmost_delivery_charge/2 + y_annotation_offset,
+    y = (post_hp_customer_charge_res) + post_hp_delivery_charge_res/2 + y_annotation_offset,
     label = "Delivery Charge",
     hjust = 0,
     family = "IBM-Plex-Sans",
@@ -1583,7 +1640,7 @@ fig_bill_stacked_bar_resistance_on_top <- ggplot(annual_bills_by_component_plot,
   annotate(
     "text",
     x = x_label_offset,
-    y = (y_rightmost_customer_charge) + y_rightmost_delivery_charge + y_rightmost_supply_charge/2 + y_annotation_offset,
+    y = (post_hp_customer_charge_res) + post_hp_delivery_charge_res + post_hp_supply_charge_res/2 + y_annotation_offset,
     label = "Supply Charge",
     hjust = 0,
     family = "IBM-Plex-Sans",
@@ -2911,6 +2968,26 @@ save(
   winter_changes_elec,
   summer_changes_elec,
   annual_changes_elec,
+
+  # Stacked bar values: Gas baseline (electric components + gas bill)
+  pre_hp_customer_charge_gas, post_hp_customer_charge_gas,
+  pre_hp_delivery_charge_gas, post_hp_delivery_charge_gas,
+  pre_hp_supply_charge_gas, post_hp_supply_charge_gas,
+  pre_hp_annual_gas_bill, post_hp_annual_gas_bill,
+  pre_hp_total_bill_gas, post_hp_total_bill_gas,
+
+  # Stacked bar values: Fuel Oil baseline (electric components + fuel oil bill)
+  pre_hp_customer_charge_fuel, post_hp_customer_charge_fuel,
+  pre_hp_delivery_charge_fuel, post_hp_delivery_charge_fuel,
+  pre_hp_supply_charge_fuel, post_hp_supply_charge_fuel,
+  pre_hp_annual_fuel_oil_bill, post_hp_annual_fuel_oil_bill,
+  pre_hp_total_bill_fuel, post_hp_total_bill_fuel,
+
+  # Stacked bar values: Electric Resistance baseline (electric components)
+  pre_hp_customer_charge_res, post_hp_customer_charge_res,
+  pre_hp_delivery_charge_res, post_hp_delivery_charge_res,
+  pre_hp_supply_charge_res, post_hp_supply_charge_res,
+  pre_hp_total_bill_res, post_hp_total_bill_res,
 
   # Fuel Oil
   winter_bills_fuel_oil,

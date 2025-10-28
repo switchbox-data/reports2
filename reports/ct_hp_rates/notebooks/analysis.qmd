@@ -39,7 +39,13 @@ path_heat_pump_plots <- file.path(path_to_lib, "rates_analysis", "heat_pump_rate
 path_create_housing_units <- file.path(path_to_lib, "rates_analysis", "create_sb_housing_units.R")
 
 # Data paths
+
+# ****************** 100 sample homes ******************
 path_monthly_data <- file.path(path_to_data, "resstock", "2024_release2_tmy3", "load_curve_monthly_100")
+
+# ****************** FULL DATASET ******************
+#path_monthly_data <- file.path(path_to_data, "resstock", "2024_release2_tmy3", "load_curve_monthly")
+
 path_supply_year_metadata_dir <- file.path(path_to_data, "resstock", "2024_release2_tmy3", "metadata")
 path_fuel_oil_supply_rates <- file.path(path_to_data, "eia", "heating_oil", "ct_eia_heating_oil_prices_monthly.parquet")
 path_propane_supply_rates <- file.path(path_to_data, "eia", "propane", "ct_eia_propane_prices_monthly.parquet")
@@ -366,7 +372,6 @@ parquet_files <- list.files(
 )
 
 # Create a lazy dataset from selected parquet files
-# TODO collect at the end of this sequence.
 housing_units <- open_dataset(parquet_files) |>
   select(all_of(use_these_in_columns), all_of(use_these_out_columns)) |>
   filter(`in.state` %in% use_these_states) |>
@@ -426,7 +431,7 @@ housing_units$occupants_group <- factor(
 # Inflate income to 2024
 housing_units <- inflate_income_to_2024(housing_units, from_year = 2019)
 
-# 2024 Rhode Island state median income is $99,240 (https://fred.stlouisfed.org/series/MEHOINUSCTA646N)
+# 2024 Connecticut state median income is $99,240 (https://fred.stlouisfed.org/series/MEHOINUSCTA646N)
 # 60% -> $59,544
 # 80% -> $79,392
 # 100% -> $99,240
@@ -447,7 +452,14 @@ housing_units$smi_tier <- factor(
 # Extensions: add elec and gas utility assignments, then LMI discounts
 #-----------------------------------------------------------------
 # Assign electricity utility
-housing_units <- assign_utilities(housing_units)
+ct_bldg_utility_crosswalk <- "/workspaces/reports2/data/ResStock/2024_release2_tmy3/utility_assignment/rs2024_bldg_utility_crosswalk_ct.feather"
+
+bldg_utility_mapping_ct <- read_feather(ct_bldg_utility_crosswalk)
+
+housing_units <- assign_utilities(
+  housing_units,
+  path_to_bldg_utility_crosswalk = ct_bldg_utility_crosswalk
+)
 
 # Add LMI discounts
 load_or_download("electric_lmi_thresholds", url_delivery_rates, path_to_cache, load_from_cache = load_thresholds_from_cache)
@@ -480,6 +492,43 @@ housing_units <- housing_units |>
   filter(occupants_group != "Vacant")
 
 n_non_vacant_homes <- housing_units |> filter(upgrade == 0) |> filter(occupants_group != "Vacant") |> nrow()
+
+print(paste0("This housing_units dataframe (use_these_states = ", use_these_states, ") has ", n_total_homes, " total bldg_ids"))
+print(paste0("This housing_units dataframe (use_these_states = ", use_these_states, ") has ", n_non_vacant_homes, " non-vacant bldg_ids (", round(n_non_vacant_homes / n_total_homes * 100, 2), "%)"))
+
+summarize_bldg_ids_by <- function(housing_units, column_to_summarize) {
+  # Accepts:
+  #   housing_units: dataframe
+  #   column_to_summarize: unquoted column name (e.g., electric_utility)
+
+  col_sym <- rlang::ensym(column_to_summarize)
+
+  summarized <- housing_units |>
+    filter(upgrade == 0) |>
+    group_by(!!col_sym) |>
+    summarise(
+      total_bldg_ids = n_distinct(bldg_id),
+      .groups = "drop"
+    ) |>
+    mutate(
+      pct = total_bldg_ids / sum(total_bldg_ids) * 100
+    ) |>
+    arrange(desc(pct))
+
+  total_row <- tibble(
+    !!col_sym := "Total",
+    total_bldg_ids = sum(summarized$total_bldg_ids),
+    pct = 100
+  )
+
+  # Print the summary
+  print(bind_rows(summarized, total_row))
+}
+
+# Example usage:
+summarize_bldg_ids_by(housing_units, electric_utility)
+summarize_bldg_ids_by(housing_units, gas_utility)
+
 
 ```
 

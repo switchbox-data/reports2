@@ -442,7 +442,7 @@ assign_utilities <- function(
   housing_units <- housing_units |>
     left_join(
       bldg_utility_mapping,
-      by = c("bldg_id", "in.state", "in.heating_fuel")
+      by = c("bldg_id", "in.state")
     )
   return(housing_units)
 }

@@ -951,6 +951,7 @@ get_monthly_consumption <- function(
   path_monthly_data,
   fuel,
   functional_group,
+  use_these_states,
   use_these_upgrades = c("00")
 ) {
   #' Calculate Monthly Energy Consumption
@@ -999,6 +1000,7 @@ get_monthly_consumption <- function(
 
   monthly_consumption <- data |>
     #filter(year(timestamp) == 2018) |>
+    filter(state %in% use_these_states) |>
     filter(upgrade %in% use_these_upgrades) |>
     mutate(
       bldg_id = as.integer(bldg_id),

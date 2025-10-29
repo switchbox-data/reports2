@@ -242,10 +242,12 @@ load_or_download <- function(table_name, url, path_to_cache, load_from_cache=FAL
         mutate(
           value = case_when(
             billing_unit == "dollars_per_therm" ~ value / 29.3,
+            billing_unit == "dollars_per_ccf" ~ value / 30.3,
             TRUE ~ value
           ),
           billing_unit = case_when(
             billing_unit == "dollars_per_therm" ~ "dollars_per_kwh",
+            billing_unit == "dollars_per_ccf" ~ "dollars_per_kwh",
             TRUE ~ billing_unit
           )
         )
@@ -533,17 +535,7 @@ summarize_bldg_ids_by(housing_units, electric_utility)
 summarize_bldg_ids_by(housing_units, gas_utility)
 ```
 
-
-
 ## Bill Calcuations
-```{r}
-path_to_single_pq <- "/workspaces/reports2/data/ResStock/2024_release2_tmy3/load_curve_monthly_100/state=CT/upgrade=00/bldg0070426_load_curve_monthly.parquet"
-
-
-```
-
-
-
 ### Electric
 ```{r}
 #| label: electric bills calculations
@@ -564,6 +556,7 @@ if (load_results_from_cache) {
     path_monthly_data = path_monthly_data,
     fuel = "electricity",
     functional_group = "total",
+    use_these_states = use_these_states,
     use_these_upgrades = use_these_upgrades
   )
 
@@ -582,7 +575,7 @@ if (load_results_from_cache) {
     supply_rates = electric_supply_rates,
     housing_units = housing_units,
     supply_year = supply_year,
-    state = "RI",
+    state = use_these_states,
     enable_lmi_discount = TRUE,
     use_these_upgrades = use_these_upgrades
   )
@@ -656,6 +649,7 @@ if (load_results_from_cache) {
     path_monthly_data = path_monthly_data,
     fuel = "fuel_oil",
     functional_group = "total",
+    use_these_states = use_these_states,
     use_these_upgrades = use_these_upgrades
   )
 
@@ -672,7 +666,7 @@ if (load_results_from_cache) {
     supply_rates = fuel_oil_supply_rates,
     housing_units = housing_units,
     supply_year = supply_year,
-    state = "RI",
+    state = use_these_states,
     use_these_upgrades = use_these_upgrades
   )
 
@@ -745,6 +739,7 @@ if (load_results_from_cache) {
     path_monthly_data = path_monthly_data,
     fuel = "propane",
     functional_group = "total",
+    use_these_states = use_these_states,
     use_these_upgrades = use_these_upgrades
   )
 
@@ -761,7 +756,7 @@ if (load_results_from_cache) {
     supply_rates = propane_supply_rates,
     housing_units = housing_units,
     supply_year = supply_year,
-    state = "RI",
+    state = use_these_states,
     use_these_upgrades = use_these_upgrades
   )
 
@@ -831,7 +826,7 @@ if (load_results_from_cache) {
     gas_supply_rates = gas_supply_rates,
     housing_units = housing_units,
     supply_year = supply_year,
-    state = "RI",
+    state = use_these_states,
     enable_lmi_discount = TRUE,
     use_these_upgrades = use_these_upgrades
   )
@@ -945,7 +940,7 @@ annual_bills_elec_by_component <- monthly_bills_elec |>
             .groups = "drop") |>
   ungroup() |>
   filter(
-    (!(hvac %in% c("hp_low", "hp_high", "hp_best")) & version == "baseline") |
+    (!(hvac %in% c("hp_high")) & version == "baseline") |
     (hvac == hp_option & version == "baseline")
   ) |>
   # take the median for each group
@@ -961,7 +956,7 @@ annual_bills_elec_by_component <- monthly_bills_elec |>
 annual_bills_gas_median <- annual_bills_gas |>
   filter(baseline_heating_type == "Natural Gas") |>
   mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+    hvac = ifelse((!hvac %in% c("hp_high")), "current", hvac)
   ) |>
   group_by(upgrade, hvac) |>
   summarise(annual_gas_bill = median(annual_bill),
@@ -979,8 +974,7 @@ annual_bills_by_component_plot <- annual_bills_elec_by_component |>
     charge_type = factor(charge_type, levels = c("annual_gas_bill", "supply_charge", "delivery_charge","customer_charge")),
     scenario = factor(paste(hvac, version, sep = "_"),
                       levels = c("current_baseline","hp_high_baseline"))
-  ) |>
-  filter(electric_utility == "rhode_island_energy")
+  )
 
 y_rightmost_customer_charge <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "customer_charge") |> pull(amount)
 y_rightmost_delivery_charge <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "delivery_charge") |> pull(amount)
@@ -1284,8 +1278,7 @@ annual_bills_by_component_plot <- annual_bills_elec_by_component |>
     charge_type = factor(charge_type, levels = c("annual_fuel_oil_bill", "supply_charge", "delivery_charge", "customer_charge")),
     scenario = factor(paste(hvac, version, sep = "_"),
                       levels = c("current_baseline","hp_high_baseline"))
-  ) |>
-  filter(electric_utility == "rhode_island_energy")
+  )
 
 y_rightmost_customer_charge <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "customer_charge") |> pull(amount)
 y_rightmost_delivery_charge <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "delivery_charge") |> pull(amount)
@@ -1566,8 +1559,7 @@ annual_bills_by_component_plot <- annual_bills_elec_by_component |>
     charge_type = factor(charge_type, levels = c("supply_charge", "delivery_charge","customer_charge")),
     scenario = factor(paste(hvac, version, sep = "_"),
                       levels = c("current_baseline","hp_high_baseline"))
-  ) |>
-  filter(electric_utility == "rhode_island_energy")
+  )
 
 y_rightmost_customer_charge <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "customer_charge") |> pull(amount)
 y_rightmost_delivery_charge <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "delivery_charge") |> pull(amount)
@@ -1801,7 +1793,7 @@ result <- hist_for_single_rate_version(
   supply_year = supply_year,
   season = "Winter",
   title = "auto",
-  second_subtitle = "Rhode Island",
+  second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
   y_limits = c(0, 650),
   binwidth = 100
@@ -1826,7 +1818,7 @@ result <- hist_for_single_rate_version(
   supply_year = supply_year,
   season = "Summer",
   title = "auto",
-  second_subtitle = "Rhode Island",
+  second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
   y_limits = c(0, 650),
   binwidth = 100
@@ -1915,7 +1907,7 @@ result <- hist_for_single_rate_version(
   hvac_option = "hp_high",
   supply_year = supply_year,
   title = "auto",
-  second_subtitle = "Rhode Island",
+  second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
   y_limits = c(0, 200),
   binwidth = 100
@@ -1939,7 +1931,7 @@ result <- hist_for_single_rate_version(
   hvac_option = "hp_high",
   supply_year = supply_year,
   title = "auto",
-  second_subtitle = "Rhode Island",
+  second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
   y_limits = c(0, 200),
   binwidth = 100
@@ -1963,7 +1955,7 @@ result <- hist_for_single_rate_version(
   hvac_option = "hp_high",
   supply_year = supply_year,
   title = "auto",
-  second_subtitle = "Rhode Island",
+  second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
   y_limits = c(0, 200),
   binwidth = 100
@@ -1978,7 +1970,7 @@ print(result[[1]])
 ### fig-bar-fuel-types
 ```{r}
 #| label: fig-bar-building-type
-#| fig-cap: "Proportion of RI homes by building type."
+#| fig-cap: "Proportion of CT homes by building type."
 #| fig-width: 8
 #| fig-height: 2
 
@@ -2051,7 +2043,7 @@ result <- hist_for_single_rate_version(
   hvac_option = "hp_high",
   supply_year = supply_year,
   title = "Change in Total Annual Energy Bills for Single-Family Homes Switching to Heat Pumps from All Fuels",
-  second_subtitle = "Rhode Island",
+  second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
   y_limits = c(0, 110),
   binwidth = 100
@@ -2075,7 +2067,7 @@ result <- hist_for_single_rate_version(
   hvac_option = "hp_high",
   supply_year = supply_year,
   title = "Change in Total Annual Energy Bills for 2-4 Unit Multifamily Buildings Switching to Heat Pumps from All Fuels",
-  second_subtitle = "Rhode Island",
+  second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
   y_limits = c(0, 110),
   binwidth = 100
@@ -2099,7 +2091,7 @@ result <- hist_for_single_rate_version(
   hvac_option = "hp_high",
   supply_year = supply_year,
   title = "Change in Total Annual Energy Bills for 5+ Unit Multifamily Buildings Switching to Heat Pumps from All Fuels",
-  second_subtitle = "Rhode Island",
+  second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
   y_limits = c(0, 110),
   binwidth = 100
@@ -2115,7 +2107,7 @@ print(result[[1]])
 ### fig-bar-cooling-types
 ```{r}
 #| label: fig-bar-cooling-types
-#| fig-cap: "Proportion of Rhode Island homes by baseline cooling type."
+#| fig-cap: "Proportion of CT homes by baseline cooling type."
 #| fig-width: 8
 #| fig-height: 2
 
@@ -2187,7 +2179,7 @@ result <- hist_for_single_rate_version(
   hvac_option = "hp_high",
   supply_year = supply_year,
   title = "Change in Total Annual Energy Bills for Homes with Room AC Switching to Heat Pumps from All Fuels",
-  second_subtitle = "Rhode Island",
+  second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
   y_limits = c(0, 160),
   binwidth = 100
@@ -2211,7 +2203,7 @@ result <- hist_for_single_rate_version(
   hvac_option = "hp_high",
   supply_year = supply_year,
   title = "Change in Total Annual Energy Bills for Homes with Central AC Switching to Heat Pumps from All Fuels",
-  second_subtitle = "Rhode Island",
+  second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
   y_limits = c(0, 150),
   binwidth = 100
@@ -2235,7 +2227,7 @@ result <- hist_for_single_rate_version(
   hvac_option = "hp_high",
   supply_year = supply_year,
   title = "Change in Total Annual Energy Bills for Homes with No Cooling Switching to Heat Pumps from All Fuels",
-  second_subtitle = "Rhode Island",
+  second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
   y_limits = c(0, 160),
   binwidth = 100
@@ -2321,7 +2313,7 @@ burden_hists_all_combined <- burden_hists_all_current_plot / burden_hists_all_hp
     heights = c(1, 1)
   ) +
   plot_annotation(
-    title = "Winter Energy Burdens in Rhode Island: Current HVAC vs. Cold Climate Heat Pump",
+    title = "Winter Energy Burdens in Connecticut: Current HVAC vs. Cold Climate Heat Pump",
     subtitle = paste0("Among households of annual income <", scales::dollar(income_threshold_upper)),
     theme = theme(
       plot.title = element_text(hjust = 0.5, size = 9, face = "bold"),
@@ -2345,7 +2337,7 @@ print(burden_hists_all_combined)
 ### fig-bar_dollar_tiers
 ```{r}
 #| label: fig-bar_dollar_tiers
-#| fig-cap: "Proportion of RI homes by dollar tier."
+#| fig-cap: "Proportion of CT homes by dollar tier."
 #| fig-width: 8
 #| fig-height: 2
 
@@ -2407,7 +2399,7 @@ ggplot() +
 ### fig-bar_smi_tiers
 ```{r}
 #| label: fig-bar_smi_tiers
-#| fig-cap: "Proportion of RI homes by State Median Income (SMI) tier. SMI considers both the household's income and the number of occupants in the household."
+#| fig-cap: "Proportion of CT homes by State Median Income (SMI) tier. SMI considers both the household's income and the number of occupants in the household."
 #| fig-width: 8
 #| fig-height: 2
 
@@ -2646,7 +2638,7 @@ burden_hists_3_smi_tiers_current_combined <- burden_hists_low_smi_current_plot /
     heights = c(1, 1, 1)
   ) +
   plot_annotation(
-    title = "Annual Energy Burdens in Rhode Island: Current HVAC for 3 SMI tiers",
+    title = "Annual Energy Burdens in Connecticut: Current HVAC for 3 SMI tiers",
     subtitle = paste0("Among households of annual income <", scales::dollar(income_threshold_upper)),
     theme = theme(
       plot.title = element_text(hjust = 0.5, size = 9, face = "bold"),
@@ -2765,7 +2757,7 @@ burden_hists_3_smi_tiers_hp_high_combined <- burden_hists_low_smi_hp_high_plot /
     heights = c(1, 1, 1)
   ) +
   plot_annotation(
-    title = "Annual Energy Burdens in Rhode Island: Cold Climate Heat Pump for 3 SMI tiers",
+    title = "Annual Energy Burdens in Connecticut: Cold Climate Heat Pump for 3 SMI tiers",
     subtitle = paste0("Among households of annual income <", scales::dollar(income_threshold_upper)),
     theme = theme(
       plot.title = element_text(hjust = 0.5, size = 9, face = "bold"),
@@ -2798,7 +2790,7 @@ result <- hist_for_single_rate_version(
   hvac_option = "hp_low",
   supply_year = supply_year,
   title = "Change in Total Annual Energy Bills for Homes with Low Income Switching to Heat Pumps from All Fuels",
-  second_subtitle = "Rhode Island",
+  second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
   y_limits = c(0, 160),
   binwidth = 100
@@ -2887,34 +2879,34 @@ print(housing_units_pairs_plot)
 #| fig-cap: "Distribution of annual bill changes by heat pump efficiency, all under baseline rates."
 
 
-result_all_fuels <- plot_bill_change_histograms(
-  annual_change_table = annual_changes_total,
-  bill_type = 'annual_change_total',
-  baseline_heating_type_option = 'All Fuels',
-  version_elec = c("baseline", "baseline", "baseline"),
-  hvac_option = c("hp_low", "hp_high", "hp_best"),
-  supply_year = supply_year,
-  second_subtitle = "Rhode Island | Baseline Rates",
-  x_limits = c(-2500, 2500),
-  y_limits = c(0, 90000)/242.13,
-  binwidth = 100
-)
+# result_all_fuels <- plot_bill_change_histograms(
+#   annual_change_table = annual_changes_total,
+#   bill_type = 'annual_change_total',
+#   baseline_heating_type_option = 'All Fuels',
+#   version_elec = c("baseline", "baseline", "baseline"),
+#   hvac_option = c("hp_low", "hp_high", "hp_best"),
+#   supply_year = supply_year,
+#   second_subtitle = "Connecticut | Baseline Rates",
+#   x_limits = c(-2500, 2500),
+#   y_limits = c(0, 90000)/242.13,
+#   binwidth = 100
+# )
 
-stats <- result_all_fuels[[2]]
+# stats <- result_all_fuels[[2]]
 
 
-plot <- result_all_fuels[[1]]
-print(plot)
+# plot <- result_all_fuels[[1]]
+# print(plot)
 
-stats_all_fuels <- annual_changes_total |>
-  group_by(hvac, version_elec) |>
-  summarise(
-    pct_that_save = round(mean(annual_change_total < 0) * 100, round_percent),
-    pct_that_save_big = round(mean(annual_change_total < -1000) * 100, round_percent),
-    pct_that_lose = round(mean(annual_change_total > 0) * 100, round_percent),
-    pct_that_lose_big = round(mean(annual_change_total > 1000) * 100, round_percent)
-  ) |>
-  ungroup()
+# stats_all_fuels <- annual_changes_total |>
+#   group_by(hvac, version_elec) |>
+#   summarise(
+#     pct_that_save = round(mean(annual_change_total < 0) * 100, round_percent),
+#     pct_that_save_big = round(mean(annual_change_total < -1000) * 100, round_percent),
+#     pct_that_lose = round(mean(annual_change_total > 0) * 100, round_percent),
+#     pct_that_lose_big = round(mean(annual_change_total > 1000) * 100, round_percent)
+#   ) |>
+#   ungroup()
 ```
 
 

@@ -42,9 +42,10 @@ path_create_housing_units <- file.path(path_to_lib, "rates_analysis", "create_sb
 
 # ****************** 100 sample homes ******************
 path_monthly_data <- file.path(path_to_data, "resstock", "2024_release2_tmy3", "load_curve_monthly_100")
-
 # ****************** FULL DATASET ******************
 #path_monthly_data <- file.path(path_to_data, "resstock", "2024_release2_tmy3", "load_curve_monthly")
+# ****************************************************
+
 
 path_supply_year_metadata_dir <- file.path(path_to_data, "resstock", "2024_release2_tmy3", "metadata")
 path_fuel_oil_supply_rates <- file.path(path_to_data, "eia", "heating_oil", "ct_eia_heating_oil_prices_monthly.parquet")
@@ -488,6 +489,8 @@ print(colnames(housing_units))
 
 n_total_homes <- housing_units |> filter(upgrade == 0) |> nrow()
 
+housing_units_vacant <- housing_units |> filter(occupants_group == "Vacant")
+
 housing_units <- housing_units |>
   filter(occupants_group != "Vacant")
 
@@ -528,34 +531,24 @@ summarize_bldg_ids_by <- function(housing_units, column_to_summarize) {
 # Example usage:
 summarize_bldg_ids_by(housing_units, electric_utility)
 summarize_bldg_ids_by(housing_units, gas_utility)
-
-
 ```
 
 
 
 ## Bill Calcuations
-### heating bills
 ```{r}
-#| label: heating bills calculations
-# Monthly Load Data
-monthly_consumption_heating_elec <- get_monthly_consumption(
-  path_monthly_data = path_monthly_data,
-  fuel = "electricity",
-  functional_group = "heating",
-  use_these_upgrades = use_these_upgrades
-)
-
+path_to_single_pq <- "/workspaces/reports2/data/ResStock/2024_release2_tmy3/load_curve_monthly_100/state=CT/upgrade=00/bldg0070426_load_curve_monthly.parquet"
 
 
 ```
+
 
 
 ### Electric
 ```{r}
 #| label: electric bills calculations
 # Electric
-url_electric_supply_rates <- "https://docs.google.com/spreadsheets/d/1oq0WxARD6cY6gPE4s2TH59O4pHY0sreZNKpHFayn36g/edit?gid=0#gid=0"
+url_electric_supply_rates <- "https://docs.google.com/spreadsheets/d/1MWg8knT4F_pE1fo6mloAEZKDRFT6Em9EXSLiAt4eElA/edit?gid=0#gid=0"
 # TODO return the data, do not save as a side effect.
 load_or_download("electric_supply_rates", url_electric_supply_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
 load_or_download("electric_delivery_tariffs", url_delivery_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
@@ -566,6 +559,7 @@ if (load_results_from_cache) {
 } else {
 
   # Monthly Load Data
+  print("Monthly consumptions - Electricity")
   monthly_consumption <- get_monthly_consumption(
     path_monthly_data = path_monthly_data,
     fuel = "electricity",
@@ -575,11 +569,12 @@ if (load_results_from_cache) {
 
   # Filter out any vacant homes
   monthly_consumption <- monthly_consumption |>
-    left_join(housing_units |> filter(upgrade == 0) |> select(bldg_id, occupants_group), by = c("bldg_id")) |>
+    left_join(housing_units |> filter(upgrade == 0)|> select(bldg_id, occupants_group), by = c("bldg_id")) |>
     filter(occupants_group != "Vacant") |>
     select(-occupants_group)
 
   # Monthly Bills
+  print("Monthly bills - Electricity")
   monthly_bills_elec <- calc_monthly_bills(
     monthly_consumption = monthly_consumption,
     fuel_type = "electricity",
@@ -593,9 +588,11 @@ if (load_results_from_cache) {
   )
 
   # Monthly Change
+  print("Monthly changes - Electricity")
   monthly_changes_elec <- calc_monthly_changes(monthly_bills_elec, "electricity")
 
   # BILLS by season
+  print("Total Bills by Season")
   winter_bills_elec <- calc_annual_bills_from_monthly(monthly_bills_elec, "electricity", months = winter_months) |>
     left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
 

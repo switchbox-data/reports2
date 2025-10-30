@@ -236,7 +236,7 @@ def main(state_abbrev, duoarea, fuel_type):
 if __name__ == "__main__":
     import sys
 
-    state_to_duoarea = {"RI": "SRI", "PADD_1A": "R1X"}
+    state_to_duoarea = {"CT": "SCT", "RI": "SRI", "PADD_1A": "R1X"}
 
     # Get list of area codes from command line or use default ['SRI', 'R1X']
     if len(sys.argv) > 3:

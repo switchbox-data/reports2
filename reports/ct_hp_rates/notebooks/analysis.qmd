@@ -16,7 +16,7 @@ format:
 ---
 
 # Setup and Data Loading
-## Setup
+## Paths
 ```{r}
 #| label: setup
 
@@ -57,7 +57,10 @@ path_calculated_bills_fuel_oil <- file.path(path_to_cache, "calculated_bills_fue
 path_calculated_bills_propane <- file.path(path_to_cache, "calculated_bills_propane.RData")
 path_calculated_bills_gas <- file.path(path_to_cache, "calculated_bills_gas.RData")
 path_report_variables <- file.path(path_to_cache, "report_variables.RData")
+```
 
+## Library Loading
+```{r}
 # =============================================================================
 # LIBRARY LOADING
 # =============================================================================
@@ -257,8 +260,8 @@ load_or_download <- function(table_name, url, path_to_cache, load_from_cache=FAL
     if (str_detect(table_name, "tariffs")) {
       print("...expanding tariffs out to the monthly grid")
       # The tariffs are specified by season, so we need to expand them out to the monthly grid
-      delivery_winter_months <- c(1, 2, 3, 11, 12)
-      delivery_summer_months <- c(4, 5, 6, 7, 8, 9, 10)
+      delivery_winter_months <- c(1, 2, 3, 4, 5, 10, 11, 12)
+      delivery_summer_months <- c(6, 7, 8, 9)
       data <- data |>
       # Create a mapping of months to each season
       cross_join(
@@ -533,6 +536,9 @@ summarize_bldg_ids_by <- function(housing_units, column_to_summarize) {
 # Example usage:
 summarize_bldg_ids_by(housing_units, electric_utility)
 summarize_bldg_ids_by(housing_units, gas_utility)
+
+View(housing_units |> select(bldg_id, upgrade, occupants, electric_utility, gas_utility, in.representative_income, dollar_tier, smi_tier, discount_rate_elec, discount_rate_gas))
+
 ```
 
 ## Bill Calcuations
@@ -879,6 +885,125 @@ if (load_results_from_cache) {
 # monthly_changes_gas_x <- monthly_changes_gas |> filter(bldg_id == bldg_id_x) |> View()
 # annual_bills_gas_x <- annual_bills_gas |> filter(bldg_id == bldg_id_x) |> View()
 # annual_changes_gas_x <- annual_changes_gas |> filter(bldg_id == bldg_id_x) |> View()
+
+```
+
+```{r}
+#| label: explore natural gas costs
+library(readxl)
+path_eia_gas_prices <- file.path(path_to_data, "eia/natural_gas", "eia_us_ng_prices.xls")
+eia_gas_prices <- read_excel(path_eia_gas_prices, sheet = "Data 1", skip = 2)
+
+
+# Each of the columns is named like "Natural Gas Citygate Price in Alabama (Dollars per Thousand Cubic Feet)", but we want to extract just the state and rename using the 2-letter abbreviation. e.g "Natural Gas Citygate Price in Alabama (Dollars per Thousand Cubic Feet)" => "AL".
+# Except, the first column, for the US average, is "U.S. Natural Gas Citygate Price (Dollars per Thousand Cubic Feet)". Handle this separately.
+rename_gas_columns <- function(col_name) {
+  # ignore Date, year, month, and day columns
+  if (str_detect(col_name, "^Date|^Year|^Month|^Day")) {
+    return(col_name)
+  }
+
+  # Keep original name if anything goes wrong
+  if (str_detect(col_name, "^U\\.S\\.")) {
+    return("US")
+  }
+
+  if (str_detect(col_name, "District of Columbia")) {
+    return("DC")
+  }
+
+  state_full <- str_extract(col_name, "(?<=in ).*?(?= \\()")
+
+  if (is.na(state_full)) {
+    return(col_name)  # Keep original if no state found
+  }
+
+  idx <- match(state_full, state.name)
+
+  if (is.na(idx)) {
+    return(col_name)  # Keep original if state not in lookup
+  }
+
+  return(state.abb[idx])
+}
+
+# Rename columns FIRST, then add year/month/day
+eia_gas_prices <- eia_gas_prices |>
+  rename_with(~ sapply(.x, rename_gas_columns)) |>
+  mutate(year = year(Date),
+         month = month(Date),
+         day = day(Date)) |>
+  select(-Date) |>
+  pivot_longer(
+    cols = -c(year, month, day),  # Exclude all three date columns
+    names_to = "state",
+    values_to = "price"
+  ) |>
+  group_by(year, month, state) |>
+  summarise(price = mean(price), .groups = "drop")
+
+eia_gas_prices_plot <- eia_gas_prices |> filter(
+  state %in% c("CT", "RI", "US"),
+  year > 2012
+  )
+
+# convert the natural gas prices from $/ccf to $/kwh
+eia_gas_prices_plot <- eia_gas_prices_plot |>
+  mutate(price = price / 1000 * 29.3)
+
+
+# Load standard service prices
+path_ct_standard_service_prices <- file.path(path_to_data, "datactgov", "ct_elec_standard_service_prices.xlsx")
+# To specify a sheet when reading Excel files, use read_excel (from readxl), not read_csv.
+ct_standard_service_prices <- read_excel(path_ct_standard_service_prices, sheet = "ct_elec_standard_service_prices")
+
+ct_standard_service_prices <- ct_standard_service_prices |>
+  mutate(
+    ym = as.Date(sprintf("%04d-%02d-15", year, month))
+  )
+
+ggplot(
+  eia_gas_prices_plot |>
+    mutate(ym = as.Date(sprintf("%04d-%02d-01", year, month))),
+  aes(x = ym, y = price, color = state)
+) +
+  geom_line() +
+  geom_line(
+    data = ct_standard_service_prices |> filter(utility == unique(utility)[1]),
+    aes(x = ym, y = price, color = utility),
+    linewidth = 1,
+    inherit.aes = FALSE
+  ) +
+  geom_line(
+    data = ct_standard_service_prices |> filter(utility == unique(utility)[2]),
+    aes(x = ym, y = price, color = utility),
+    linewidth = 1,
+    inherit.aes = FALSE
+  ) +
+  scale_y_continuous(
+    name = "Price ($/Thousand Cubic Feet)",
+    sec.axis = sec_axis(~ ., name = "CT Std Service Price ($/kWh)"),
+    limits = c(0, 25)
+  ) +
+  labs(
+    title = "Natural Gas Citygate Prices by State",
+    x = "Year-Month",
+    y = "Price ($/Thousand Cubic Feet)",
+    color = "State/Utility"
+  ) +
+  scale_x_date(
+    date_breaks = "1 year",
+    date_labels = "%Y"
+  ) +
+  annotate(
+    "rect",
+    xmin = as.Date("2024-01-01"),
+    xmax = as.Date("2024-12-31"),
+    ymin = -Inf,
+    ymax = Inf,
+    alpha = 0.1,
+    fill = "grey70"
+  )
 
 ```
 
@@ -2239,8 +2364,6 @@ print(result[[1]])
 ```
 
 ## How does a home's income affect its energy bills after switching to heat pumps?
-
-
 ## Energy Burdens
 ```{r}
 #| label: energy burden plot parameters

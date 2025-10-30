@@ -1007,9 +1007,13 @@ get_monthly_consumption <- function(
       month = as.integer(month(timestamp))
     ) |>
     select(all_of(c("bldg_id", "upgrade", "month", target_columns))) |>
-    mutate(consumption_kwh = !!sum_expr) |>
-    select(all_of(c("bldg_id", "upgrade", "month", "consumption_kwh"))) |>
     collect()
+
+  monthly_consumption <- monthly_consumption |>
+    mutate(
+      "consumption_kwh" := rowSums(across(all_of(target_columns)), na.rm = TRUE)
+    ) |>
+    select(all_of(c("bldg_id", "upgrade", "month", "consumption_kwh")))
 
   return(monthly_consumption)
 }

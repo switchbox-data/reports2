@@ -84,8 +84,8 @@ use_these_upgrades <- c("00", "01", "02", "03")
 use_these_states <- c("RI")
 
 # Define seasons
-winter_months <- c(1,2,3,4,11,12)
-summer_months <- c(5,6,7,8,9,10)
+winter_months <- c(1,2,3,10,11,12)
+summer_months <- c(4,5,6,7,8,9)
 
 hp_option <- "hp_high"
 
@@ -104,8 +104,8 @@ url_delivery_rates <- "https://docs.google.com/spreadsheets/d/17mTVgMnZaROOimWJB
 # SMI thresholds
 url_smi_thresholds <- "https://docs.google.com/spreadsheets/d/1bVbr8jDF8YgT6-yiEEpg-RFvMdV7veoapFzhZYVcaWg/edit?gid=0#gid=0"
 
-load_tariffs_from_cache <- TRUE
-load_thresholds_from_cache <- TRUE
+load_tariffs_from_cache <- FALSE
+load_thresholds_from_cache <- FALSE
 load_results_from_cache <- FALSE
 ```
 
@@ -211,26 +211,25 @@ energy_burden_colors = c(
 load_or_download <- function(table_name, url, path_to_cache, load_from_cache=FALSE) {
   # Construct file path for this table
   file_path <- paste0(path_to_cache, "/", table_name, ".RData")
-  print(paste0("file_path: ", file_path))
 
   # Try to load from cache first
   if (load_from_cache && file.exists(file_path)) {
     print(paste0("Attempting to load from cache: ", file_path))
     load(file_path, envir = .GlobalEnv)
     assign(table_name, data, envir = .GlobalEnv)
-    print(paste0("Loaded cached ", table_name))
+    print(paste0("    Loaded cached ", table_name))
 
   } else {
     # Download if not found
     googlesheets4::gs4_deauth()
-    print(paste0("Downloading ", table_name))
+    print(paste0("    Downloading ", table_name))
     # Read the sheet and throw out columns-for-humans
     data <- read_sheet(url, sheet = table_name) |>
       select(-source, -notes)
 
     # if billing_unit is anything other than "dollars", "dollars_per_kwh", or "percentage", we convert it to "dollars_per_kwh"
     if (str_detect(table_name, "tariffs")) {
-      print("...converting billing_unit from dollar_per_therm to dollars_per_kwh")
+      print("    ...converting billing_unit from dollar_per_therm to dollars_per_kwh")
       data <- data |>
         mutate(
           value = case_when(
@@ -246,18 +245,16 @@ load_or_download <- function(table_name, url, path_to_cache, load_from_cache=FAL
 
     # tariffs are specified by season, so we need to expand them out to the monthly grid
     if (str_detect(table_name, "tariffs")) {
-      print("...expanding tariffs out to the monthly grid")
+      print("    ...expanding tariffs out to the monthly grid")
       # The tariffs are specified by season, so we need to expand them out to the monthly grid
-      delivery_winter_months <- c(1, 2, 3, 11, 12)
-      delivery_summer_months <- c(4, 5, 6, 7, 8, 9, 10)
       data <- data |>
       # Create a mapping of months to each season
       cross_join(
         tibble(
           month = 1:12,
           season_mapping = case_when(
-            month %in% delivery_winter_months ~ "winter",
-            month %in% delivery_summer_months ~ "summer"
+            month %in% winter_months ~ "winter",
+            month %in% summer_months ~ "summer"
           )
         )
       ) |>
@@ -274,7 +271,7 @@ load_or_download <- function(table_name, url, path_to_cache, load_from_cache=FAL
 
     # if table_name is gas_delivery_tariffs, we need combine several rows to get an all-in delivery rate
     if (str_detect(table_name, "gas_delivery_tariffs")) {
-      print("...combining several rows to get an all-in delivery rate")
+      print("    ...combining several rows to get an all-in delivery rate")
 
       # First, get all the rows that are NOT the ones we want to combine
       other_rows <- data |>
@@ -305,7 +302,7 @@ load_or_download <- function(table_name, url, path_to_cache, load_from_cache=FAL
 
     # supply rates are specified by year
     if (str_detect(table_name, "supply")) {
-      print("...converting supply rates to int32")
+      print("    ...converting supply rates to int32")
       data <- data |>
         mutate(
           month = as.integer(month),
@@ -317,7 +314,7 @@ load_or_download <- function(table_name, url, path_to_cache, load_from_cache=FAL
     # Save to cache
     save(data, file = file_path)
     assign(table_name, data, envir = .GlobalEnv)
-    print(paste0("Downloaded and cached ", table_name))
+    print(paste0("    Downloaded and cached ", table_name))
   }
 }
 ```
@@ -485,25 +482,7 @@ n_non_vacant_homes <- housing_units |> filter(upgrade == 0) |> filter(occupants_
 
 ```
 
-
-
 ## Bill Calcuations
-### heating bills
-```{r}
-#| label: heating bills calculations
-# Monthly Load Data
-monthly_consumption_heating_elec <- get_monthly_consumption(
-  path_monthly_data = path_monthly_data,
-  fuel = "electricity",
-  functional_group = "heating",
-  use_these_upgrades = use_these_upgrades
-)
-
-
-
-```
-
-
 ### Electric
 ```{r}
 #| label: electric bills calculations
@@ -523,6 +502,7 @@ if (load_results_from_cache) {
     path_monthly_data = path_monthly_data,
     fuel = "electricity",
     functional_group = "total",
+    use_these_states = "RI",
     use_these_upgrades = use_these_upgrades
   )
 
@@ -544,6 +524,7 @@ if (load_results_from_cache) {
     enable_lmi_discount = TRUE,
     use_these_upgrades = use_these_upgrades
   )
+
 
   # Monthly Change
   monthly_changes_elec <- calc_monthly_changes(monthly_bills_elec, "electricity")
@@ -612,6 +593,7 @@ if (load_results_from_cache) {
     path_monthly_data = path_monthly_data,
     fuel = "fuel_oil",
     functional_group = "total",
+    use_these_states = "RI",
     use_these_upgrades = use_these_upgrades
   )
 
@@ -701,6 +683,7 @@ if (load_results_from_cache) {
     path_monthly_data = path_monthly_data,
     fuel = "propane",
     functional_group = "total",
+    use_these_states = "RI",
     use_these_upgrades = use_these_upgrades
   )
 
@@ -1259,8 +1242,6 @@ post_hp_supply_charge_fuel <- annual_bills_by_component_plot |> filter(scenario 
 
 pre_hp_annual_fuel_oil_bill <- annual_bills_by_component_plot |> filter(scenario == "current_baseline", charge_type == "annual_fuel_oil_bill") |> pull(amount)
 post_hp_annual_fuel_oil_bill <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "annual_fuel_oil_bill") |> pull(amount)
-
-print(post_hp_annual_fuel_oil_bill)
 
 # Totals (Electric + Fuel Oil bill)
 pre_hp_total_elec_bill_fuel <- pre_hp_customer_charge_fuel + pre_hp_delivery_charge_fuel + pre_hp_supply_charge_fuel
@@ -1883,8 +1864,6 @@ ggplot() +
   theme_void() +
   theme(legend.position = "none")
 ```
-
-### Electric Resistance Customers
 
 ### fig-hist_1_natural_gas_annual_change
 ```{r}

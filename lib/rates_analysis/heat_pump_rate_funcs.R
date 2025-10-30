@@ -951,6 +951,7 @@ get_monthly_consumption <- function(
   path_monthly_data,
   fuel,
   functional_group,
+  use_these_states,
   use_these_upgrades = c("00")
 ) {
   #' Calculate Monthly Energy Consumption
@@ -994,23 +995,12 @@ get_monthly_consumption <- function(
   # target columns
   target_columns <- ddl_filtered$timeseries_field_name
 
-  # Build an Arrow-translatable sum over target columns with NA -> 0
-  sum_expr <- Reduce(
-    function(acc, nm) {
-      x <- rlang::sym(nm)
-      if (is.null(acc)) {
-        dplyr::expr(coalesce(!!x, 0))
-      } else {
-        dplyr::expr((!!acc) + coalesce(!!x, 0))
-      }
-    },
-    target_columns,
-    init = NULL
-  )
+  # Read the dataset from the parquet directory
+  data <- open_dataset(path_monthly_data)
 
-  # Read the dataset from the parquet directory and compute within Arrow; collect at end
-  monthly_consumption <- open_dataset(path_monthly_data) |>
-    filter(year(timestamp) == 2018) |>
+  monthly_consumption <- data |>
+    #filter(year(timestamp) == 2018) |>
+    filter(state %in% use_these_states) |>
     filter(upgrade %in% use_these_upgrades) |>
     mutate(
       bldg_id = as.integer(bldg_id),

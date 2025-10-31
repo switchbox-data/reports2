@@ -1,5 +1,5 @@
 ---
-title: analysis - RI HP Rates
+title: analysis - CT HP Rates
 
 toc: true
 reference-location: margin
@@ -29,7 +29,7 @@ repo_root <- "/workspaces/reports2"
 # Base directory paths
 path_to_lib <- file.path(repo_root, "lib")
 path_to_data <- file.path(repo_root, "data")
-path_to_report <- file.path(repo_root, "reports", "ri_hp_rates")
+path_to_report <- file.path(repo_root, "reports", "ct_hp_rates")
 path_to_cache <- file.path(path_to_report, "cache")
 
 # Library paths
@@ -39,10 +39,17 @@ path_heat_pump_plots <- file.path(path_to_lib, "rates_analysis", "heat_pump_rate
 path_create_housing_units <- file.path(path_to_lib, "rates_analysis", "create_sb_housing_units.R")
 
 # Data paths
+
+# ****************** 100 sample homes ******************
+#path_monthly_data <- file.path(path_to_data, "resstock", "2024_release2_tmy3", "load_curve_monthly_100")
+# ****************** FULL DATASET ******************
 path_monthly_data <- file.path(path_to_data, "resstock", "2024_release2_tmy3", "load_curve_monthly")
+# ****************************************************
+
+
 path_supply_year_metadata_dir <- file.path(path_to_data, "resstock", "2024_release2_tmy3", "metadata")
-path_fuel_oil_supply_rates <- file.path(path_to_data, "eia", "heating_oil", "ri_eia_heating_oil_prices_monthly.parquet")
-path_propane_supply_rates <- file.path(path_to_data, "eia", "propane", "ri_eia_propane_prices_monthly.parquet")
+path_fuel_oil_supply_rates <- file.path(path_to_data, "eia", "heating_oil", "ct_eia_heating_oil_prices_monthly.parquet")
+path_propane_supply_rates <- file.path(path_to_data, "eia", "propane", "ct_eia_propane_prices_monthly.parquet")
 
 # Cache paths
 path_calculated_bills_electric <- file.path(path_to_cache, "calculated_bills_electric.RData")
@@ -50,7 +57,10 @@ path_calculated_bills_fuel_oil <- file.path(path_to_cache, "calculated_bills_fue
 path_calculated_bills_propane <- file.path(path_to_cache, "calculated_bills_propane.RData")
 path_calculated_bills_gas <- file.path(path_to_cache, "calculated_bills_gas.RData")
 path_report_variables <- file.path(path_to_cache, "report_variables.RData")
+```
 
+## Library Loading
+```{r}
 # =============================================================================
 # LIBRARY LOADING
 # =============================================================================
@@ -79,13 +89,13 @@ round_dollars <- 0
 
 # Define which monthly data and which upgrades to use
 # path_monthly_data <- file.path(project_root, "data", "resstock", "2024_release2_tmy3", "load_curve_monthly_10")
-use_these_upgrades <- c("00", "01", "02", "03")
+use_these_upgrades <- c("00", "02")
 
-use_these_states <- c("RI")
+use_these_states <- c("CT")
 
 # Define seasons
-winter_months <- c(1,2,3,10,11,12)
-summer_months <- c(4,5,6,7,8,9)
+winter_months <- c(1,2,3,4,5,10,11,12)
+summer_months <- c(6,7,8,9)
 
 hp_option <- "hp_high"
 
@@ -99,14 +109,14 @@ if (hp_option == "hp_low") {
 
 # Tariffs and other sheets from GDrive
 # Load Delivery Rates and associated LMI Thresholds
-url_delivery_rates <- "https://docs.google.com/spreadsheets/d/17mTVgMnZaROOimWJBaVp-M-p5P96bK9g_iyjkKTJ2Mk/edit?gid=1792930160#gid=1792930160"
+url_delivery_rates <- "https://docs.google.com/spreadsheets/d/1bBAVdWwoUX6MgmxnclLzfvM8WmmI9U58ceMM2xSATLM/edit?gid=101079722#gid=101079722"
 
 # SMI thresholds
-url_smi_thresholds <- "https://docs.google.com/spreadsheets/d/1bVbr8jDF8YgT6-yiEEpg-RFvMdV7veoapFzhZYVcaWg/edit?gid=0#gid=0"
+url_smi_thresholds <- "https://docs.google.com/spreadsheets/d/187FwQj-aLVJXdm2qzZ4uENLqIsuoi47j5MqpYfowUHQ/edit?gid=0#gid=0"
 
-load_tariffs_from_cache <- FALSE
-load_thresholds_from_cache <- FALSE
-load_results_from_cache <- FALSE
+load_tariffs_from_cache <- TRUE
+load_thresholds_from_cache <- TRUE
+load_results_from_cache <- TRUE
 ```
 
 ## Color Definitions
@@ -214,7 +224,7 @@ load_or_download <- function(table_name, url, path_to_cache, load_from_cache=FAL
 
   # Try to load from cache first
   if (load_from_cache && file.exists(file_path)) {
-    print(paste0("Attempting to load from cache: ", file_path))
+    print(paste0("    Attempting to load from cache: ", file_path))
     load(file_path, envir = .GlobalEnv)
     assign(table_name, data, envir = .GlobalEnv)
     print(paste0("    Loaded cached ", table_name))
@@ -234,10 +244,12 @@ load_or_download <- function(table_name, url, path_to_cache, load_from_cache=FAL
         mutate(
           value = case_when(
             billing_unit == "dollars_per_therm" ~ value / 29.3,
+            billing_unit == "dollars_per_ccf" ~ value / 29.3,
             TRUE ~ value
           ),
           billing_unit = case_when(
             billing_unit == "dollars_per_therm" ~ "dollars_per_kwh",
+            billing_unit == "dollars_per_ccf" ~ "dollars_per_kwh",
             TRUE ~ billing_unit
           )
         )
@@ -247,14 +259,16 @@ load_or_download <- function(table_name, url, path_to_cache, load_from_cache=FAL
     if (str_detect(table_name, "tariffs")) {
       print("    ...expanding tariffs out to the monthly grid")
       # The tariffs are specified by season, so we need to expand them out to the monthly grid
+      delivery_winter_months <- c(1, 2, 3, 11, 12)
+      delivery_summer_months <- c(4, 5, 6, 7, 8, 9, 10)
       data <- data |>
       # Create a mapping of months to each season
       cross_join(
         tibble(
           month = 1:12,
           season_mapping = case_when(
-            month %in% winter_months ~ "winter",
-            month %in% summer_months ~ "summer"
+            month %in% delivery_winter_months ~ "winter",
+            month %in% delivery_summer_months ~ "summer"
           )
         )
       ) |>
@@ -271,7 +285,7 @@ load_or_download <- function(table_name, url, path_to_cache, load_from_cache=FAL
 
     # if table_name is gas_delivery_tariffs, we need combine several rows to get an all-in delivery rate
     if (str_detect(table_name, "gas_delivery_tariffs")) {
-      print("    ...combining several rows to get an all-in delivery rate")
+      print("...combining several rows to get an all-in delivery rate")
 
       # First, get all the rows that are NOT the ones we want to combine
       other_rows <- data |>
@@ -302,7 +316,7 @@ load_or_download <- function(table_name, url, path_to_cache, load_from_cache=FAL
 
     # supply rates are specified by year
     if (str_detect(table_name, "supply")) {
-      print("    ...converting supply rates to int32")
+      print("...converting supply rates to int32")
       data <- data |>
         mutate(
           month = as.integer(month),
@@ -314,7 +328,7 @@ load_or_download <- function(table_name, url, path_to_cache, load_from_cache=FAL
     # Save to cache
     save(data, file = file_path)
     assign(table_name, data, envir = .GlobalEnv)
-    print(paste0("    Downloaded and cached ", table_name))
+    print(paste0("Downloaded and cached ", table_name))
   }
 }
 ```
@@ -349,9 +363,6 @@ use_these_out_columns <- c(
   "out.natural_gas.total.energy_consumption.kwh",
   "out.propane.total.energy_consumption.kwh"
 )
-
-
-
 
 
 # Create pattern to match only the desired upgrade files
@@ -425,11 +436,11 @@ housing_units$occupants_group <- factor(
 # Inflate income to 2024
 housing_units <- inflate_income_to_2024(housing_units, from_year = 2019)
 
-# 2024 Rhode Island state median income is $92,290 (https://fred.stlouisfed.org/series/MEHOINUSRIA646N)
-# 60% -> $55,374
-# 80% -> $73,832
-# 100% -> $92,290
-housing_units <- group_income_by_dollars(housing_units, dollar_tiers = c(1000, 55374, 92290))
+# 2024 Connecticut state median income is $99,240 (https://fred.stlouisfed.org/series/MEHOINUSCTA646N)
+# 60% -> $59,544
+# 80% -> $79,392
+# 100% -> $99,240
+housing_units <- group_income_by_dollars(housing_units, dollar_tiers = c(1000, 59544, 99240))
 housing_units$dollar_tier <- factor(
   housing_units$dollar_tier,
   levels = c("No Income", "Low Income", "Moderate Income", "Not LMI")
@@ -446,7 +457,14 @@ housing_units$smi_tier <- factor(
 # Extensions: add elec and gas utility assignments, then LMI discounts
 #-----------------------------------------------------------------
 # Assign electricity utility
-housing_units <- assign_utilities(housing_units)
+ct_bldg_utility_crosswalk <- "/workspaces/reports2/data/ResStock/2024_release2_tmy3/utility_assignment/rs2024_bldg_utility_crosswalk_ct.feather"
+
+bldg_utility_mapping_ct <- read_feather(ct_bldg_utility_crosswalk)
+
+housing_units <- assign_utilities(
+  housing_units,
+  path_to_bldg_utility_crosswalk = ct_bldg_utility_crosswalk
+)
 
 # Add LMI discounts
 load_or_download("electric_lmi_thresholds", url_delivery_rates, path_to_cache, load_from_cache = load_thresholds_from_cache)
@@ -475,19 +493,59 @@ print(colnames(housing_units))
 
 n_total_homes <- housing_units |> filter(upgrade == 0) |> nrow()
 
+housing_units_vacant <- housing_units |> filter(occupants_group == "Vacant")
+
 housing_units <- housing_units |>
   filter(occupants_group != "Vacant")
 
 n_non_vacant_homes <- housing_units |> filter(upgrade == 0) |> filter(occupants_group != "Vacant") |> nrow()
 
+print(paste0("This housing_units dataframe (use_these_states = ", use_these_states, ") has ", n_total_homes, " total bldg_ids"))
+print(paste0("This housing_units dataframe (use_these_states = ", use_these_states, ") has ", n_non_vacant_homes, " non-vacant bldg_ids (", round(n_non_vacant_homes / n_total_homes * 100, 2), "%)"))
+
+summarize_bldg_ids_by <- function(housing_units, column_to_summarize) {
+  # Accepts:
+  #   housing_units: dataframe
+  #   column_to_summarize: unquoted column name (e.g., electric_utility)
+
+  col_sym <- rlang::ensym(column_to_summarize)
+
+  summarized <- housing_units |>
+    filter(upgrade == 0) |>
+    group_by(!!col_sym) |>
+    summarise(
+      total_bldg_ids = n_distinct(bldg_id),
+      .groups = "drop"
+    ) |>
+    mutate(
+      pct = total_bldg_ids / sum(total_bldg_ids) * 100
+    ) |>
+    arrange(desc(pct))
+
+  total_row <- tibble(
+    !!col_sym := "Total",
+    total_bldg_ids = sum(summarized$total_bldg_ids),
+    pct = 100
+  )
+
+  # Print the summary
+  print(bind_rows(summarized, total_row))
+}
+
+# Example usage:
+summarize_bldg_ids_by(housing_units, electric_utility)
+summarize_bldg_ids_by(housing_units, gas_utility)
 ```
 
-## Bill Calcuations
+# ------------------------------------------------------------------------------
+# Bill Calculations
+# ------------------------------------------------------------------------------
+
 ### Electric
 ```{r}
 #| label: electric bills calculations
 # Electric
-url_electric_supply_rates <- "https://docs.google.com/spreadsheets/d/1oq0WxARD6cY6gPE4s2TH59O4pHY0sreZNKpHFayn36g/edit?gid=0#gid=0"
+url_electric_supply_rates <- "https://docs.google.com/spreadsheets/d/1MWg8knT4F_pE1fo6mloAEZKDRFT6Em9EXSLiAt4eElA/edit?gid=0#gid=0"
 # TODO return the data, do not save as a side effect.
 load_or_download("electric_supply_rates", url_electric_supply_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
 load_or_download("electric_delivery_tariffs", url_delivery_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
@@ -498,21 +556,23 @@ if (load_results_from_cache) {
 } else {
 
   # Monthly Load Data
+  print("Monthly consumptions - Electricity")
   monthly_consumption <- get_monthly_consumption(
     path_monthly_data = path_monthly_data,
     fuel = "electricity",
     functional_group = "total",
-    use_these_states = "RI",
+    use_these_states = use_these_states,
     use_these_upgrades = use_these_upgrades
   )
 
   # Filter out any vacant homes
   monthly_consumption <- monthly_consumption |>
-    left_join(housing_units |> filter(upgrade == 0) |> select(bldg_id, occupants_group), by = c("bldg_id")) |>
+    left_join(housing_units |> filter(upgrade == 0)|> select(bldg_id, occupants_group), by = c("bldg_id")) |>
     filter(occupants_group != "Vacant") |>
     select(-occupants_group)
 
   # Monthly Bills
+  print("Monthly bills - Electricity")
   monthly_bills_elec <- calc_monthly_bills(
     monthly_consumption = monthly_consumption,
     fuel_type = "electricity",
@@ -520,16 +580,17 @@ if (load_results_from_cache) {
     supply_rates = electric_supply_rates,
     housing_units = housing_units,
     supply_year = supply_year,
-    state = "RI",
+    state = use_these_states,
     enable_lmi_discount = TRUE,
     use_these_upgrades = use_these_upgrades
   )
 
-
   # Monthly Change
+  print("Monthly changes - Electricity")
   monthly_changes_elec <- calc_monthly_changes(monthly_bills_elec, "electricity")
 
   # BILLS by season
+  print("Total Bills by Season")
   winter_bills_elec <- calc_annual_bills_from_monthly(monthly_bills_elec, "electricity", months = winter_months) |>
     left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
 
@@ -593,7 +654,7 @@ if (load_results_from_cache) {
     path_monthly_data = path_monthly_data,
     fuel = "fuel_oil",
     functional_group = "total",
-    use_these_states = "RI",
+    use_these_states = use_these_states,
     use_these_upgrades = use_these_upgrades
   )
 
@@ -610,7 +671,7 @@ if (load_results_from_cache) {
     supply_rates = fuel_oil_supply_rates,
     housing_units = housing_units,
     supply_year = supply_year,
-    state = "RI",
+    state = use_these_states,
     use_these_upgrades = use_these_upgrades
   )
 
@@ -683,7 +744,7 @@ if (load_results_from_cache) {
     path_monthly_data = path_monthly_data,
     fuel = "propane",
     functional_group = "total",
-    use_these_states = "RI",
+    use_these_states = use_these_states,
     use_these_upgrades = use_these_upgrades
   )
 
@@ -700,7 +761,7 @@ if (load_results_from_cache) {
     supply_rates = propane_supply_rates,
     housing_units = housing_units,
     supply_year = supply_year,
-    state = "RI",
+    state = use_these_states,
     use_these_upgrades = use_these_upgrades
   )
 
@@ -766,11 +827,12 @@ if (load_results_from_cache) {
   # Monthly Gas Bills
   monthly_bills_gas <- calc_monthly_bills_gas(
     path_monthly_data = path_monthly_data,
+
     gas_delivery_tariffs = gas_delivery_tariffs,
     gas_supply_rates = gas_supply_rates,
     housing_units = housing_units,
     supply_year = supply_year,
-    state = "RI",
+    state = use_these_states,
     enable_lmi_discount = TRUE,
     use_these_upgrades = use_these_upgrades
   )
@@ -869,41 +931,43 @@ stack_order_gas_on_top = c(
   "annual_elec_customer_charge" # bottom
 )
 
-components <- forcats::as_factor(stack_order_gas_on_top)
+components <- factor(stack_order_gas_on_top, levels = stack_order_gas_on_top)
 
 annual_bills_elec_by_component <- monthly_bills_elec |>
-  left_join(housing_units |> filter(upgrade == 0) |> select(bldg_id, baseline_heating_type), by = "bldg_id") |>
+  left_join(housing_units |> filter(upgrade==0) |> select(bldg_id, baseline_heating_type), by = c("bldg_id")) |>
   filter(baseline_heating_type == "Natural Gas") |>
   mutate(
     hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
   ) |>
-  summarize(
-    supply_charge = sum(supply_charge),
-    delivery_charge = sum(delivery_charge),
-    customer_charge = sum(customer_charge),
-    .by = c(bldg_id, upgrade, electric_utility, version, hvac)
-  ) |>
+  group_by(bldg_id, upgrade, version, hvac) |>
+  summarise(supply_charge = sum(supply_charge),
+            delivery_charge = sum(delivery_charge),
+            customer_charge = sum(customer_charge),
+            .groups = "drop") |>
+  ungroup() |>
   filter(
-    (!(hvac %in% c("hp_low", "hp_high", "hp_best")) & version == "baseline") |
+    (!(hvac %in% c("hp_high")) & version == "baseline") |
     (hvac == hp_option & version == "baseline")
   ) |>
-  summarize(
-    supply_charge = median(supply_charge),
-    delivery_charge = median(delivery_charge),
-    customer_charge = median(customer_charge),
-    .by = c(upgrade, electric_utility, version, hvac)
-  )
+  # take the median for each group
+  group_by(upgrade, version, hvac) |>
+  summarise(supply_charge = median(supply_charge),
+            delivery_charge = median(delivery_charge),
+            customer_charge = median(customer_charge),
+            .groups = "drop") |>
+  ungroup()
+
 
 
 annual_bills_gas_median <- annual_bills_gas |>
   filter(baseline_heating_type == "Natural Gas") |>
   mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+    hvac = ifelse((!hvac %in% c("hp_high")), "current", hvac)
   ) |>
-  summarize(
-    annual_gas_bill = median(annual_bill),
-    .by = c(upgrade, hvac)
-  )
+  group_by(upgrade, hvac) |>
+  summarise(annual_gas_bill = median(annual_bill),
+            .groups = "drop") |>
+  ungroup()
 
 
 
@@ -913,13 +977,10 @@ annual_bills_by_component_plot <- annual_bills_elec_by_component |>
                names_to = "charge_type",
                values_to = "amount") |>
   mutate(
-    charge_type = forcats::fct_relevel(charge_type, "annual_gas_bill", "supply_charge", "delivery_charge","customer_charge"),
-    scenario = forcats::fct_relevel(
-      forcats::as_factor(paste(hvac, version, sep = "_")),
-      "current_baseline","hp_high_baseline"
-    )
-  ) |>
-  filter(electric_utility == "rhode_island_energy")
+    charge_type = factor(charge_type, levels = c("annual_gas_bill", "supply_charge", "delivery_charge","customer_charge")),
+    scenario = factor(paste(hvac, version, sep = "_"),
+                      levels = c("current_baseline","hp_high_baseline"))
+  )
 
 # Extract both bars' component values for Gas baseline customers
 pre_hp_customer_charge_gas <- annual_bills_by_component_plot |> filter(scenario == "current_baseline", charge_type == "customer_charge") |> pull(amount)
@@ -940,6 +1001,12 @@ post_hp_total_elec_bill_gas <- post_hp_customer_charge_gas + post_hp_delivery_ch
 pre_hp_total_bill_gas <- pre_hp_customer_charge_gas + pre_hp_delivery_charge_gas + pre_hp_supply_charge_gas + pre_hp_annual_gas_bill
 post_hp_total_bill_gas <- post_hp_customer_charge_gas + post_hp_delivery_charge_gas + post_hp_supply_charge_gas + post_hp_annual_gas_bill
 
+
+y_rightmost_customer_charge <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "customer_charge") |> pull(amount)
+y_rightmost_delivery_charge <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "delivery_charge") |> pull(amount)
+y_rightmost_supply_charge <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "supply_charge") |> pull(amount)
+y_rightmost_gas_bill <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "annual_gas_bill") |> pull(amount)
+
 annotation_text_size <- 4
 y_annotation_offset <- 0
 x_label_offset <- 2.5
@@ -948,24 +1015,17 @@ x_label_offset <- 2.5
 fig_bill_stacked_bar_gas_on_top <- ggplot(annual_bills_by_component_plot,
        aes(x = scenario, y = amount, fill = charge_type)) +
   geom_col() +
-  geom_text(
-    aes(label = scales::dollar(amount, accuracy = 1)),
-    position = position_stack(vjust = 0.5),
-    family = "IBM-Plex-Sans",
-    color = "white",
-    size = 3.2
-  ) +
-  labs(title = "Annual Energy Bill, Natural Gas to Heat Pumps",
+  labs(title = "Components of Annual Electricity Bill",
        x = "",
        y = "Annual Cost ($)",
        fill = "Charge Type") +
   scale_fill_manual(values = bill_component_colors[c("customer_charge","delivery_charge","supply_charge","annual_gas_bill")],
                     breaks = c("customer_charge","delivery_charge","supply_charge","annual_gas_bill"),
                     labels = c("Customer charge","Delivery charge","Supply charge","Gas Bill")) +
-  scale_y_continuous(labels = scales::dollar_format(), limits = c(0, 4500), breaks = seq(0, 5000, by = 1000), expand = c(0,0)) +
+  scale_y_continuous(labels = scales::dollar_format(), limits = c(0, 5000), breaks = seq(0, 5000, by = 1000), expand = c(0,0)) +
   scale_x_discrete(labels = c(
-                           current_baseline = "Natural Gas\nCurrent Rates",
-                           hp_high_baseline = "Cold-climate ASHP\nCurrent Rates"
+                           current_baseline = "Current HVAC\nCurrent Rates",
+                           hp_high_baseline = "Cold Climate HP\nCurrent Rates"
                            )) +
   coord_cartesian(clip = "off") +
   theme(
@@ -975,11 +1035,12 @@ fig_bill_stacked_bar_gas_on_top <- ggplot(annual_bills_by_component_plot,
     legend.position = "bottom",
     plot.margin = margin(t = 3, r = 200, b = 0, l = 10, unit = "pt")
   ) +
+
   # instead of a legend, write annotation for the 3 categories to the right of the right-most bar
   annotate(
     "text",
     x = x_label_offset,
-    y = (post_hp_customer_charge_gas/2) + y_annotation_offset,
+    y = (y_rightmost_customer_charge/2) + y_annotation_offset,
     label = "Customer Charge",
     hjust = 0,
     family = "IBM-Plex-Sans",
@@ -990,7 +1051,7 @@ fig_bill_stacked_bar_gas_on_top <- ggplot(annual_bills_by_component_plot,
   annotate(
     "text",
     x = x_label_offset,
-    y = (post_hp_customer_charge_gas) + post_hp_delivery_charge_gas/2 + y_annotation_offset,
+    y = (y_rightmost_customer_charge) + y_rightmost_delivery_charge/2 + y_annotation_offset,
     label = "Delivery Charge",
     hjust = 0,
     family = "IBM-Plex-Sans",
@@ -1001,7 +1062,7 @@ fig_bill_stacked_bar_gas_on_top <- ggplot(annual_bills_by_component_plot,
   annotate(
     "text",
     x = x_label_offset,
-    y = (post_hp_customer_charge_gas) + post_hp_delivery_charge_gas + post_hp_supply_charge_gas/2 + y_annotation_offset,
+    y = (y_rightmost_customer_charge) + y_rightmost_delivery_charge + y_rightmost_supply_charge/2 + y_annotation_offset,
     label = "Supply Charge",
     hjust = 0,
     family = "IBM-Plex-Sans",
@@ -1012,7 +1073,7 @@ fig_bill_stacked_bar_gas_on_top <- ggplot(annual_bills_by_component_plot,
     annotate(
     "text",
     x = x_label_offset,
-    y = (post_hp_customer_charge_gas) + post_hp_delivery_charge_gas + post_hp_supply_charge_gas + post_hp_annual_gas_bill/2 + y_annotation_offset,
+    y = (y_rightmost_customer_charge) + y_rightmost_delivery_charge + y_rightmost_supply_charge + y_rightmost_gas_bill/2 + y_annotation_offset,
     label = "Gas Bill",
     hjust = 0,
     family = "IBM-Plex-Sans",
@@ -1020,6 +1081,7 @@ fig_bill_stacked_bar_gas_on_top <- ggplot(annual_bills_by_component_plot,
     size = annotation_text_size,
     fontface = "bold"
   ) +
+
   # No legend
   theme(legend.position = "none")
 
@@ -1045,7 +1107,7 @@ monthly_bills_elec_by_component <- monthly_bills_elec |>
     (hvac == hp_option & version == "baseline")
   ) |>
   # take the median for each group
-  group_by(upgrade, electric_utility, version, hvac, month) |>
+  group_by(upgrade, version, hvac, month) |>
   summarise(supply_charge = median(supply_charge),
             delivery_charge = median(delivery_charge),
             customer_charge = median(customer_charge),
@@ -1096,6 +1158,15 @@ monthly_bills_combined_gas_customers_long$component <- factor(
   levels = c("total_gas_bill", "supply_charge", "delivery_charge", "customer_charge", "total_bill")
 )
 
+
+bill_component_colors = c(
+  "total_gas_bill" = "grey50", # grey
+  "supply_charge" = "#A0AF12",
+  "delivery_charge" = "#023047",
+  "customer_charge" = "#68BED8",
+  "total_bill" = 'red'
+)
+
 print(ggplot(
   monthly_bills_combined_gas_customers_long |>
     filter(upgrade == 0) |>
@@ -1129,6 +1200,14 @@ print(ggplot(
 #| label: fig-monthly_bills_gas_after
 #| fig-cap: "The electric bill components and total gas bill for natural gas heated homes, after upgrade."
 
+
+bill_component_colors = c(
+  "total_gas_bill" = "grey50", # grey
+  "supply_charge" = "#A0AF12",
+  "delivery_charge" = "#023047",
+  "customer_charge" = "#68BED8",
+  "total_bill" = '#e07a7a'
+)
 
 ggplot()+
   # BEFORE
@@ -1176,7 +1255,7 @@ stack_order_fuel_oil_on_top = c(
   "annual_elec_customer_charge" # bottom
 )
 
-components <- forcats::as_factor(stack_order_fuel_oil_on_top)
+components <- factor(stack_order_fuel_oil_on_top, levels = stack_order_fuel_oil_on_top)
 
 annual_bills_elec_by_component <- monthly_bills_elec |>
   left_join(housing_units |> filter(upgrade==0) |> select(bldg_id, baseline_heating_type), by = c("bldg_id")) |>
@@ -1184,23 +1263,23 @@ annual_bills_elec_by_component <- monthly_bills_elec |>
   mutate(
     hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
   ) |>
-  summarize(
-    supply_charge = sum(supply_charge),
-    delivery_charge = sum(delivery_charge),
-    customer_charge = sum(customer_charge),
-    .by = c(bldg_id, upgrade, electric_utility, version, hvac)
-  ) |>
+  group_by(bldg_id, upgrade, version, hvac) |>
+  summarise(supply_charge = sum(supply_charge),
+            delivery_charge = sum(delivery_charge),
+            customer_charge = sum(customer_charge),
+            .groups = "drop") |>
+  ungroup() |>
   filter(
     (!(hvac %in% c("hp_low", "hp_high", "hp_best")) & version == "baseline") |
     (hvac == hp_option & version == "baseline")
   ) |>
   # take the median for each group
-  summarize(
-    supply_charge = median(supply_charge),
-    delivery_charge = median(delivery_charge),
-    customer_charge = median(customer_charge),
-    .by = c(upgrade, electric_utility, version, hvac)
-  )
+  group_by(upgrade, version, hvac) |>
+  summarise(supply_charge = median(supply_charge),
+            delivery_charge = median(delivery_charge),
+            customer_charge = median(customer_charge),
+            .groups = "drop") |>
+  ungroup()
 
 
 
@@ -1209,10 +1288,10 @@ annual_bills_fuel_oil_median <- annual_bills_fuel_oil |>
   mutate(
     hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
   ) |>
-  summarize(
-    annual_fuel_oil_bill = median(annual_bill),
-    .by = c(upgrade, hvac)
-  )
+  group_by(upgrade, hvac) |>
+  summarise(annual_fuel_oil_bill = median(annual_bill),
+            .groups = "drop") |>
+  ungroup()
 
 
 
@@ -1222,13 +1301,10 @@ annual_bills_by_component_plot <- annual_bills_elec_by_component |>
                names_to = "charge_type",
                values_to = "amount") |>
   mutate(
-    charge_type = forcats::fct_relevel(charge_type, "annual_fuel_oil_bill", "supply_charge", "delivery_charge", "customer_charge"),
-    scenario = forcats::fct_relevel(
-      forcats::as_factor(paste(hvac, version, sep = "_")),
-      "current_baseline","hp_high_baseline"
-    )
-  ) |>
-  filter(electric_utility == "rhode_island_energy")
+    charge_type = factor(charge_type, levels = c("annual_fuel_oil_bill", "supply_charge", "delivery_charge", "customer_charge")),
+    scenario = factor(paste(hvac, version, sep = "_"),
+                      levels = c("current_baseline","hp_high_baseline"))
+  )
 
 # Extract both bars' component values for Fuel Oil baseline customers
 pre_hp_customer_charge_fuel <- annual_bills_by_component_plot |> filter(scenario == "current_baseline", charge_type == "customer_charge") |> pull(amount)
@@ -1249,6 +1325,12 @@ post_hp_total_elec_bill_fuel <- post_hp_customer_charge_fuel + post_hp_delivery_
 pre_hp_total_bill_fuel <- pre_hp_customer_charge_fuel + pre_hp_delivery_charge_fuel + pre_hp_supply_charge_fuel + pre_hp_annual_fuel_oil_bill
 post_hp_total_bill_fuel <- post_hp_customer_charge_fuel + post_hp_delivery_charge_fuel + post_hp_supply_charge_fuel + post_hp_annual_fuel_oil_bill
 
+
+y_rightmost_customer_charge <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "customer_charge") |> pull(amount)
+y_rightmost_delivery_charge <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "delivery_charge") |> pull(amount)
+y_rightmost_supply_charge <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "supply_charge") |> pull(amount)
+y_rightmost_fuel_oil_bill <- annual_bills_by_component_plot |> filter(scenario == "hp_high_baseline", charge_type == "annual_fuel_oil_bill") |> pull(amount)
+
 annotation_text_size <- 4
 y_annotation_offset <- 0
 x_label_offset <- 2.5
@@ -1257,14 +1339,7 @@ x_label_offset <- 2.5
 fig_bill_stacked_bar_fuel_oil_on_top <- ggplot(annual_bills_by_component_plot,
        aes(x = scenario, y = amount, fill = charge_type)) +
   geom_col() +
-  geom_text(
-    aes(label = scales::dollar(amount, accuracy = 1)),
-    position = position_stack(vjust = 0.5),
-    family = "IBM-Plex-Sans",
-    color = "white",
-    size = 3.2
-  ) +
-  labs(title = "Annual Energy Bill, Fuel Oil to Heat Pumps",
+  labs(title = "Components of Annual Electricity Bill",
        x = "",
        y = "Annual Cost ($)",
        fill = "Charge Type") +
@@ -1273,8 +1348,8 @@ fig_bill_stacked_bar_fuel_oil_on_top <- ggplot(annual_bills_by_component_plot,
                     labels = c("Customer charge","Delivery charge","Supply charge","Fuel Oil Bill")) +
   scale_y_continuous(labels = scales::dollar_format(), limits = c(0, 6000), breaks = seq(0, 5000, by = 1000), expand = c(0,0)) +
   scale_x_discrete(labels = c(
-                           current_baseline = "Fuel Oil\nCurrent Rates",
-                           hp_high_baseline = "Cold-climate ASHP\nCurrent Rates"
+                           current_baseline = "Current HVAC\nCurrent Rates",
+                           hp_high_baseline = "Cold Climate HP\nCurrent Rates"
                            )) +
   coord_cartesian(clip = "off") +
   theme(
@@ -1289,7 +1364,7 @@ fig_bill_stacked_bar_fuel_oil_on_top <- ggplot(annual_bills_by_component_plot,
   annotate(
     "text",
     x = x_label_offset,
-    y = (post_hp_customer_charge_fuel/2) + y_annotation_offset,
+    y = (y_rightmost_customer_charge/2) + y_annotation_offset,
     label = "Customer Charge",
     hjust = 0,
     family = "IBM-Plex-Sans",
@@ -1300,7 +1375,7 @@ fig_bill_stacked_bar_fuel_oil_on_top <- ggplot(annual_bills_by_component_plot,
   annotate(
     "text",
     x = x_label_offset,
-    y = (post_hp_customer_charge_fuel) + post_hp_delivery_charge_fuel/2 + y_annotation_offset,
+    y = (y_rightmost_customer_charge) + y_rightmost_delivery_charge/2 + y_annotation_offset,
     label = "Delivery Charge",
     hjust = 0,
     family = "IBM-Plex-Sans",
@@ -1311,7 +1386,7 @@ fig_bill_stacked_bar_fuel_oil_on_top <- ggplot(annual_bills_by_component_plot,
   annotate(
     "text",
     x = x_label_offset,
-    y = (post_hp_customer_charge_fuel) + post_hp_delivery_charge_fuel + post_hp_supply_charge_fuel/2 + y_annotation_offset,
+    y = (y_rightmost_customer_charge) + y_rightmost_delivery_charge + y_rightmost_supply_charge/2 + y_annotation_offset,
     label = "Supply Charge",
     hjust = 0,
     family = "IBM-Plex-Sans",
@@ -1322,7 +1397,7 @@ fig_bill_stacked_bar_fuel_oil_on_top <- ggplot(annual_bills_by_component_plot,
   annotate(
     "text",
     x = x_label_offset,
-    y = (post_hp_customer_charge_fuel) + post_hp_delivery_charge_fuel + post_hp_supply_charge_fuel + post_hp_annual_fuel_oil_bill/2 + y_annotation_offset,
+    y = (y_rightmost_customer_charge) + y_rightmost_delivery_charge + y_rightmost_supply_charge + y_rightmost_fuel_oil_bill/2 + y_annotation_offset,
     label = "Fuel Oil Bill",
     hjust = 0,
     family = "IBM-Plex-Sans",
@@ -1330,6 +1405,7 @@ fig_bill_stacked_bar_fuel_oil_on_top <- ggplot(annual_bills_by_component_plot,
     size = annotation_text_size,
     fontface = "bold"
   ) +
+
   # No legend
   theme(legend.position = "none")
 
@@ -1355,7 +1431,7 @@ monthly_bills_elec_by_component <- monthly_bills_elec |>
     (hvac == hp_option & version == "baseline")
   ) |>
   # take the median for each group
-  group_by(upgrade, electric_utility, version, hvac, month) |>
+  group_by(upgrade, version, hvac, month) |>
   summarise(supply_charge = median(supply_charge),
             delivery_charge = median(delivery_charge),
             customer_charge = median(customer_charge),
@@ -1406,6 +1482,14 @@ monthly_bills_combined_fuel_oil_customers_long$component <- factor(
   levels = c("total_fuel_oil_bill", "supply_charge", "delivery_charge", "customer_charge", "total_bill")
 )
 
+
+bill_component_colors = c(
+  "total_fuel_oil_bill" = "grey50", # grey
+  "supply_charge" = "#A0AF12",
+  "delivery_charge" = "#023047",
+  "customer_charge" = "#68BED8",
+  "total_bill" = 'red'
+)
 
 print(ggplot(
   monthly_bills_combined_fuel_oil_customers_long |>
@@ -1497,7 +1581,7 @@ annual_bills_elec_by_component <- monthly_bills_elec |>
     supply_charge = sum(supply_charge),
     delivery_charge = sum(delivery_charge),
     customer_charge = sum(customer_charge),
-    .by = c(bldg_id, upgrade, electric_utility, version, hvac)
+    .by = c(bldg_id, upgrade, version, hvac)
   ) |>
   filter(
     (!(hvac %in% c("hp_low", "hp_high", "hp_best")) & version == "baseline") |
@@ -1508,7 +1592,7 @@ annual_bills_elec_by_component <- monthly_bills_elec |>
     supply_charge = median(supply_charge),
     delivery_charge = median(delivery_charge),
     customer_charge = median(customer_charge),
-    .by = c(upgrade, electric_utility, version, hvac)
+    .by = c(upgrade, version, hvac)
   )
 
 
@@ -1523,8 +1607,7 @@ annual_bills_by_component_plot <- annual_bills_elec_by_component |>
       forcats::as_factor(paste(hvac, version, sep = "_")),
       "current_baseline","hp_high_baseline"
     )
-  ) |>
-  filter(electric_utility == "rhode_island_energy")
+  )
 
 # Extract both bars' component values for Electric Resistance baseline customers
 pre_hp_customer_charge_res <- annual_bills_by_component_plot |> filter(scenario == "current_baseline", charge_type == "customer_charge") |> pull(amount)
@@ -1620,7 +1703,7 @@ print(fig_bill_stacked_bar_resistance_on_top)
 ### monthly_bills_resistance_before
 ```{r}
 #| label: fig-monthly_bills_resistance_before
-#| fig-cap: "The electric bill components homes heated with electric resistance, before upgrade."
+#| fig-cap: "The electric bill components and total fuel oil bill for fuel oil heated homes, before upgrade."
 
 monthly_bills_elec_by_component <- monthly_bills_elec |>
   # add some metadata from housing_units
@@ -1636,7 +1719,7 @@ monthly_bills_elec_by_component <- monthly_bills_elec |>
     (hvac == hp_option & version == "baseline")
   ) |>
   # take the median for each group
-  group_by(upgrade, electric_utility, version, hvac, month) |>
+  group_by(upgrade, version, hvac, month) |>
   summarise(supply_charge = median(supply_charge),
             delivery_charge = median(delivery_charge),
             customer_charge = median(customer_charge),
@@ -1671,6 +1754,7 @@ monthly_bills_elec_by_component <- monthly_bills_elec |>
 
 monthly_bills_combined_resistance_customers <- monthly_bills_elec_by_component |>
   mutate(total_bill = supply_charge + delivery_charge + customer_charge)
+
 
 
 
@@ -1717,7 +1801,7 @@ print(ggplot(
 ### month_bills_resistance_after
 ```{r}
 #| label: fig-monthly_bills_resistance_after
-#| fig-cap: "The electric bill components and total electricity bill for electric resistance heated homes, after upgrade."
+#| fig-cap: "The electric bill components and total fuel oil bill for fuel oil heated homes, after upgrade."
 
 ggplot()+
   # BEFORE
@@ -1766,9 +1850,9 @@ result <- hist_for_single_rate_version(
   supply_year = supply_year,
   season = "Winter",
   title = "auto",
-  second_subtitle = "Rhode Island",
+  second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
-  y_limits = c(0, 650),
+  y_limits = c(0, 600),
   binwidth = 100
 )
 
@@ -1791,9 +1875,9 @@ result <- hist_for_single_rate_version(
   supply_year = supply_year,
   season = "Summer",
   title = "auto",
-  second_subtitle = "Rhode Island",
+  second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
-  y_limits = c(0, 650),
+  y_limits = c(0, 1800),
   binwidth = 100
 )
 
@@ -1878,9 +1962,9 @@ result <- hist_for_single_rate_version(
   hvac_option = "hp_high",
   supply_year = supply_year,
   title = "auto",
-  second_subtitle = "Rhode Island",
+  second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
-  y_limits = c(0, 200),
+  y_limits = c(0, 400),
   binwidth = 100
 )
 
@@ -1902,9 +1986,9 @@ result <- hist_for_single_rate_version(
   hvac_option = "hp_high",
   supply_year = supply_year,
   title = "auto",
-  second_subtitle = "Rhode Island",
+  second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
-  y_limits = c(0, 200),
+  y_limits = c(0, 400),
   binwidth = 100
 )
 
@@ -1926,9 +2010,9 @@ result <- hist_for_single_rate_version(
   hvac_option = "hp_high",
   supply_year = supply_year,
   title = "auto",
-  second_subtitle = "Rhode Island",
+  second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
-  y_limits = c(0, 200),
+  y_limits = c(0, 100),
   binwidth = 100
 )
 
@@ -1941,7 +2025,7 @@ print(result[[1]])
 ### fig-bar-fuel-types
 ```{r}
 #| label: fig-bar-building-type
-#| fig-cap: "Proportion of RI homes by building type."
+#| fig-cap: "Proportion of CT homes by building type."
 #| fig-width: 8
 #| fig-height: 2
 
@@ -2014,9 +2098,9 @@ result <- hist_for_single_rate_version(
   hvac_option = "hp_high",
   supply_year = supply_year,
   title = "Change in Total Annual Energy Bills for Single-Family Homes Switching to Heat Pumps from All Fuels",
-  second_subtitle = "Rhode Island",
+  second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
-  y_limits = c(0, 110),
+  y_limits = c(0, 300),
   binwidth = 100
 )
 
@@ -2038,9 +2122,9 @@ result <- hist_for_single_rate_version(
   hvac_option = "hp_high",
   supply_year = supply_year,
   title = "Change in Total Annual Energy Bills for 2-4 Unit Multifamily Buildings Switching to Heat Pumps from All Fuels",
-  second_subtitle = "Rhode Island",
+  second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
-  y_limits = c(0, 110),
+  y_limits = c(0, 200),
   binwidth = 100
 )
 
@@ -2062,9 +2146,9 @@ result <- hist_for_single_rate_version(
   hvac_option = "hp_high",
   supply_year = supply_year,
   title = "Change in Total Annual Energy Bills for 5+ Unit Multifamily Buildings Switching to Heat Pumps from All Fuels",
-  second_subtitle = "Rhode Island",
+  second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
-  y_limits = c(0, 110),
+  y_limits = c(0, 200),
   binwidth = 100
 )
 
@@ -2078,7 +2162,7 @@ print(result[[1]])
 ### fig-bar-cooling-types
 ```{r}
 #| label: fig-bar-cooling-types
-#| fig-cap: "Proportion of Rhode Island homes by baseline cooling type."
+#| fig-cap: "Proportion of CT homes by baseline cooling type."
 #| fig-width: 8
 #| fig-height: 2
 
@@ -2150,9 +2234,9 @@ result <- hist_for_single_rate_version(
   hvac_option = "hp_high",
   supply_year = supply_year,
   title = "Change in Total Annual Energy Bills for Homes with Room AC Switching to Heat Pumps from All Fuels",
-  second_subtitle = "Rhode Island",
+  second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
-  y_limits = c(0, 160),
+  y_limits = c(0, 300),
   binwidth = 100
 )
 
@@ -2174,9 +2258,9 @@ result <- hist_for_single_rate_version(
   hvac_option = "hp_high",
   supply_year = supply_year,
   title = "Change in Total Annual Energy Bills for Homes with Central AC Switching to Heat Pumps from All Fuels",
-  second_subtitle = "Rhode Island",
+  second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
-  y_limits = c(0, 150),
+  y_limits = c(0, 200),
   binwidth = 100
 )
 
@@ -2198,9 +2282,9 @@ result <- hist_for_single_rate_version(
   hvac_option = "hp_high",
   supply_year = supply_year,
   title = "Change in Total Annual Energy Bills for Homes with No Cooling Switching to Heat Pumps from All Fuels",
-  second_subtitle = "Rhode Island",
+  second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
-  y_limits = c(0, 160),
+  y_limits = c(0, 100),
   binwidth = 100
 )
 
@@ -2224,6 +2308,8 @@ income_threshold_lower <- 100
 #| label: fig-burden_hists_all_smi_tiers
 #| cap: "Histogram of energy burdens across all fuel types, all building types, all cooling types, all income levels. Assuming 100% participation in low-income discounts."
 
+y_limits <- c(0, 300000/242.13)
+
 # TOP: Current HVAC, 100% Discounts, Default Rates
 burden_hists_all_current <- plot_energy_burden_histogram_standalone(
   data = annual_bills_total |>
@@ -2238,7 +2324,7 @@ burden_hists_all_current <- plot_energy_burden_histogram_standalone(
   name = "Current HVAC, 100% Discounts, Default Rates",
   show_x_axis = TRUE,
   show_y_axis = TRUE,
-  y_limits = c(0, 70000/242.13),
+  y_limits = y_limits,
   x_limits = c(0, 0.3)
 )
 
@@ -2265,7 +2351,7 @@ burden_hists_all_hp_high <- plot_energy_burden_histogram_standalone(
   name = "Cold Climate Heat Pump, 100% Discounts, Default Rates",
   show_x_axis = TRUE,
   show_y_axis = TRUE,
-  y_limits = c(0, 70000/242.13),
+  y_limits = y_limits,
   x_limits = c(0, 0.3)
 )
 
@@ -2284,7 +2370,7 @@ burden_hists_all_combined <- burden_hists_all_current_plot / burden_hists_all_hp
     heights = c(1, 1)
   ) +
   plot_annotation(
-    title = "Winter Energy Burdens in Rhode Island: Current HVAC vs. Cold Climate Heat Pump",
+    title = "Winter Energy Burdens in Connecticut: Current HVAC vs. Cold Climate Heat Pump",
     subtitle = paste0("Among households of annual income <", scales::dollar(income_threshold_upper)),
     theme = theme(
       plot.title = element_text(hjust = 0.5, size = 9, face = "bold"),
@@ -2308,7 +2394,7 @@ print(burden_hists_all_combined)
 ### fig-bar_dollar_tiers
 ```{r}
 #| label: fig-bar_dollar_tiers
-#| fig-cap: "Proportion of RI homes by dollar tier."
+#| fig-cap: "Proportion of CT homes by dollar tier."
 #| fig-width: 8
 #| fig-height: 2
 
@@ -2370,7 +2456,7 @@ ggplot() +
 ### fig-bar_smi_tiers
 ```{r}
 #| label: fig-bar_smi_tiers
-#| fig-cap: "Proportion of RI homes by State Median Income (SMI) tier. SMI considers both the household's income and the number of occupants in the household."
+#| fig-cap: "Proportion of CT homes by State Median Income (SMI) tier. SMI considers both the household's income and the number of occupants in the household."
 #| fig-width: 8
 #| fig-height: 2
 
@@ -2448,7 +2534,7 @@ ggplot() +
 income_threshold_upper <- 300000
 income_threshold_lower <- 4000
 alpha = 0.2
-x_limits = c(0, 0.5)
+x_limits = c(0, 0.3)
 y_limits = c(0, income_threshold_upper)
 
 # Prepare the filtered data first
@@ -2515,7 +2601,7 @@ print(annual_bills_total_plot)
 #| label: fig-burden_hists_3_smi_tiers_current
 #| fig-cap: "Histogram of energy burdens across all fuel types, all building types, all cooling types, all income levels. Assuming 100% participation in low-income discounts."
 
-y_limits <- c(0, 50000/242.13)
+y_limits <- c(0, 200000/242.13)
 
 # TOP: Current HVAC, 100% Discounts, Default Rates, Low SMI tier
 burden_hists_low_smi_current <- plot_energy_burden_histogram_standalone(
@@ -2554,7 +2640,7 @@ burden_hists_moderate_smi_current <- plot_energy_burden_histogram_standalone(
   filter(
     smi_tier == "Moderate Income",
     in.representative_income <= income_threshold_upper,
-    in.representative_income >= income_threshold_lower,
+    in.representative_income > income_threshold_lower,
     version_elec == "baseline",
     hvac == "current"),
   name = "Current HVAC, 100% Discounts, Default Rates, Moderate SMI tier",
@@ -2583,7 +2669,7 @@ burden_hists_not_lmi_current <- plot_energy_burden_histogram_standalone(
   filter(
     smi_tier == "Not LMI",
     in.representative_income <= income_threshold_upper,
-    in.representative_income >= income_threshold_lower,
+    in.representative_income > income_threshold_lower,
     version_elec == "baseline",
     hvac == "current"),
   name = "Current HVAC, 100% Discounts, Default Rates, Not LMI tier",
@@ -2609,7 +2695,7 @@ burden_hists_3_smi_tiers_current_combined <- burden_hists_low_smi_current_plot /
     heights = c(1, 1, 1)
   ) +
   plot_annotation(
-    title = "Annual Energy Burdens in Rhode Island: Current HVAC for 3 SMI tiers",
+    title = "Annual Energy Burdens in Connecticut: Current HVAC for 3 SMI tiers",
     subtitle = paste0("Among households of annual income <", scales::dollar(income_threshold_upper)),
     theme = theme(
       plot.title = element_text(hjust = 0.5, size = 9, face = "bold"),
@@ -2634,7 +2720,7 @@ print(burden_hists_3_smi_tiers_current_combined)
 #| label: fig-burden_hists_3_smi_tiers_hp_high
 #| fig-cap: "Histogram of energy burdens across all fuel types, all building types, all cooling types, all income levels. Assuming 100% participation in low-income discounts."
 
-y_limits <- c(0, 50000/242.13)
+y_limits <- c(0, 200000/242.13)
 
 # TOP: Cold Climate Heat Pump, 100% Discounts, Default Rates, Low SMI tier
 burden_hists_low_smi_hp_high <- plot_energy_burden_histogram_standalone(
@@ -2645,9 +2731,9 @@ burden_hists_low_smi_hp_high <- plot_energy_burden_histogram_standalone(
   filter(
     smi_tier == "Low Income",
     in.representative_income <= income_threshold_upper,
-    in.representative_income >= income_threshold_lower,
+    in.representative_income > income_threshold_lower,
     version_elec == "baseline",
-    hvac == "hp_low"),
+    hvac == "hp_high"),
   name = "Cold Climate Heat Pump, 100% Discounts, Default Rates, Low SMI tier",
   show_x_axis = TRUE,
   show_y_axis = TRUE,
@@ -2673,9 +2759,9 @@ burden_hists_moderate_smi_hp_high <- plot_energy_burden_histogram_standalone(
   filter(
     smi_tier == "Moderate Income",
     in.representative_income <= income_threshold_upper,
-    in.representative_income >= income_threshold_lower,
+    in.representative_income > income_threshold_lower,
     version_elec == "baseline",
-    hvac == "hp_low"),
+    hvac == "hp_high"),
   name = "Cold Climate Heat Pump, 100% Discounts, Default Rates, Moderate SMI tier",
   show_x_axis = TRUE,
   show_y_axis = TRUE,
@@ -2702,9 +2788,9 @@ burden_hists_not_lmi_hp_high <- plot_energy_burden_histogram_standalone(
   filter(
     smi_tier == "Not LMI",
     in.representative_income <= income_threshold_upper,
-    in.representative_income >= income_threshold_lower,
+    in.representative_income > income_threshold_lower,
     version_elec == "baseline",
-    hvac == "hp_low"),
+    hvac == "hp_high"),
   name = "Cold Climate Heat Pump, 100% Discounts, Default Rates, Not LMI tier",
   show_x_axis = TRUE,
   show_y_axis = TRUE,
@@ -2728,7 +2814,7 @@ burden_hists_3_smi_tiers_hp_high_combined <- burden_hists_low_smi_hp_high_plot /
     heights = c(1, 1, 1)
   ) +
   plot_annotation(
-    title = "Annual Energy Burdens in Rhode Island: Cold Climate Heat Pump for 3 SMI tiers",
+    title = "Annual Energy Burdens in Connecticut: Cold Climate Heat Pump for 3 SMI tiers",
     subtitle = paste0("Among households of annual income <", scales::dollar(income_threshold_upper)),
     theme = theme(
       plot.title = element_text(hjust = 0.5, size = 9, face = "bold"),
@@ -2761,9 +2847,9 @@ result <- hist_for_single_rate_version(
   hvac_option = "hp_low",
   supply_year = supply_year,
   title = "Change in Total Annual Energy Bills for Homes with Low Income Switching to Heat Pumps from All Fuels",
-  second_subtitle = "Rhode Island",
+  second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
-  y_limits = c(0, 160),
+  y_limits = c(0, 600),
   binwidth = 100
 )
 
@@ -2844,73 +2930,12 @@ print(housing_units_pairs_plot)
 
 ```
 
-## How does heat pump efficiency impact savings?
-```{r}
-#| label: fig-hists_3_bills_by_hp_model_baseline_rates
-#| fig-cap: "Distribution of annual bill changes by heat pump efficiency, all under baseline rates."
-
-
-result_all_fuels <- plot_bill_change_histograms(
-  annual_change_table = annual_changes_total,
-  bill_type = 'annual_change_total',
-  baseline_heating_type_option = 'All Fuels',
-  version_elec = c("baseline", "baseline", "baseline"),
-  hvac_option = c("hp_low", "hp_high", "hp_best"),
-  supply_year = supply_year,
-  second_subtitle = "Rhode Island | Baseline Rates",
-  x_limits = c(-2500, 2500),
-  y_limits = c(0, 90000)/242.13,
-  binwidth = 100
-)
-
-stats <- result_all_fuels[[2]]
-
-
-plot <- result_all_fuels[[1]]
-print(plot)
-
-stats_all_fuels <- annual_changes_total |>
-  group_by(hvac, version_elec) |>
-  summarise(
-    pct_that_save = round(mean(annual_change_total < 0) * 100, round_percent),
-    pct_that_save_big = round(mean(annual_change_total < -1000) * 100, round_percent),
-    pct_that_lose = round(mean(annual_change_total > 0) * 100, round_percent),
-    pct_that_lose_big = round(mean(annual_change_total > 1000) * 100, round_percent)
-  ) |>
-  ungroup()
-```
-
-
-# ------------------------------------------------------------------------------
-# Lost and Found
-# ------------------------------------------------------------------------------
-## How do seasonal discounts impact electric utility revenue?
-```{r}
-#| label: electric utility revenue impact
-
-#monthly_bills_elec_x <- monthly_bills_elec |> filter(bldg_id == bldg_id_x)
-
-revenue_elec <- monthly_bills_elec |>
-  group_by(version, upgrade) |>
-  summarise(delivery_sum = sum(delivery_charge, na.rm = TRUE), .groups = "drop") |>
-
-  # add a column called "baseline_revenue" for version == "baseline" and upgrade == 0
-  mutate(baseline_revenue = delivery_sum[version == "baseline" & upgrade == 0]) |>
-
-  # scenario revenue normalized by baseline_revenue
-  mutate(scenario_revenue = delivery_sum / baseline_revenue) |>
-  filter(version %in% c("baseline", "winter25", "winter63"))
-
-
-```
-
 
 # ------------------------------------------------------------------------------
 # Export
 # ------------------------------------------------------------------------------
 ```{r}
 #| label: export report variables
-
 save(
   # Electric
   winter_bills_elec,
@@ -2967,7 +2992,6 @@ save(
   annual_changes_gas,
 
   # fuel type
-  stats_all_fuels,
   fuel_types_pct,
   annual_change_stats_gas_baseline_hp_high,
   annual_change_stats_fuel_oil_baseline_hp_high,

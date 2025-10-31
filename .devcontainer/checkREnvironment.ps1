@@ -86,7 +86,7 @@ if (-not (Test-Path $pkgLockPath)) {
 # Install packages from lockfile
 if (Test-Path $pkgLockPath) {
     Write-Host "📦 Installing packages from pak lockfile..." -ForegroundColor Cyan
-    
+
     try {
         Rscript -e "setwd('$projectRoot'); pak::lockfile_install(lockfile = 'pkg.lock')"
         if ($LASTEXITCODE -eq 0) {

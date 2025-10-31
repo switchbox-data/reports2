@@ -15,4 +15,3 @@ prek install --install-hooks
 
 # Check R environment and restore if needed
 & .\.devcontainer\checkREnvironment.ps1
-

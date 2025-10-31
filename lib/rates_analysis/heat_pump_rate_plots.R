@@ -757,7 +757,20 @@ plot_energy_burden_histogram_standalone <- function(
       labels = function(x) paste0(round(x * 242.13 * 0.001), "k"),
       #name = "# of Homes",
       limits = y_limits,
-      breaks = c(0, 10000, 20000, 30000, 40000, 50000) / 242.13
+      breaks = c(
+        0,
+        25000,
+        50000,
+        75000,
+        100000,
+        125000,
+        150000,
+        175000,
+        200000,
+        225000,
+        250000
+      ) /
+        242.13
     ) +
     scale_x_continuous(
       labels = scales::percent_format(accuracy = 1),

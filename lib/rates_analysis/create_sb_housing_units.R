@@ -365,7 +365,7 @@ add_lmi_discount <- function(
       by = join_by(
         electric_utility,
         `in.representative_income` >= income_threshold_lower,
-        `in.representative_income` <= income_threshold_upper,
+        `in.representative_income` < income_threshold_upper,
         `occupants` == occupants_min
       ),
       suffix = c("", "_electric")

@@ -23,7 +23,7 @@ def get_service_info():
     """Get service metadata"""
     print("📡 Fetching service information...")
     params = {"f": "json"}
-    response = requests.get(FEATURE_SERVER, params=params)
+    response = requests.get(FEATURE_SERVER, params=params, timeout=30)
     response.raise_for_status()
     return response.json()
 
@@ -33,7 +33,7 @@ def get_all_object_ids():
     print("🔍 Getting all Object IDs...")
     url = f"{FEATURE_SERVER}/query"
     params = {"where": "1=1", "returnIdsOnly": "true", "f": "json"}
-    response = requests.get(url, params=params)
+    response = requests.get(url, params=params, timeout=30)
     response.raise_for_status()
     data = response.json()
     return data.get("objectIds", [])
@@ -44,9 +44,15 @@ def download_features_batch(object_ids):
     url = f"{FEATURE_SERVER}/query"
     ids_str = ",".join(map(str, object_ids))
 
-    params = {"objectIds": ids_str, "outFields": "*", "returnGeometry": "true", "f": "geojson"}
+    params = {
+        "objectIds": ids_str,
+        "outFields": "*",
+        "returnGeometry": "true",
+        "f": "geojson",  # Request GeoJSON format (auto-converts to WGS84)
+        "outSR": "4326",  # Explicitly request WGS84 coordinates
+    }
 
-    response = requests.get(url, params=params)
+    response = requests.get(url, params=params, timeout=60)
     response.raise_for_status()
     return response.json()
 
@@ -83,14 +89,15 @@ def main():
             print("⚠️  No features found!")
             return
 
-        # Download in batches
-        print(f"\n📥 Downloading features in batches of {max_record_count}...")
+        # Download in batches (use smaller batch size to avoid URL length limits)
+        batch_size = 100  # Smaller batch to avoid "413 Request Entity Too Large"
+        print(f"\n📥 Downloading features in batches of {batch_size}...")
         all_features = []
 
-        for i in range(0, total_features, max_record_count):
-            batch_ids = object_ids[i : i + max_record_count]
-            batch_num = (i // max_record_count) + 1
-            total_batches = (total_features + max_record_count - 1) // max_record_count
+        for i in range(0, total_features, batch_size):
+            batch_ids = object_ids[i : i + batch_size]
+            batch_num = (i // batch_size) + 1
+            total_batches = (total_features + batch_size - 1) // batch_size
 
             print(f"   Batch {batch_num}/{total_batches}: {len(batch_ids)} features...", end=" ")
 
@@ -103,8 +110,8 @@ def main():
                     print("✗ No features returned")
 
                 # Be nice to the server
-                if i + max_record_count < total_features:
-                    time.sleep(0.5)
+                if i + batch_size < total_features:
+                    time.sleep(0.3)
 
             except Exception as e:
                 print(f"✗ Error: {e}")
@@ -121,8 +128,13 @@ def main():
             },
         }
 
-        # Save to file
-        output_file = "peoplesgas_projects.geojson"
+        # Save to file (in utils directory with date)
+        from pathlib import Path
+
+        # Add date to filename in YYYYMMDD format
+        download_date = time.strftime("%Y%m%d")
+        output_file = Path(__file__).parent / f"peoplesgas_projects_{download_date}.geojson"
+
         print(f"\n💾 Saving to {output_file}...")
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(geojson, f, indent=2)

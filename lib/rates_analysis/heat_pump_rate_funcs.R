@@ -2439,7 +2439,7 @@ plot_supply_rates <- function(
   highlight_years = c("2020", "2024")
 ) {
   # Filter data to desired year range
-  supply_rates_filtered <- supply_rates %>%
+  supply_rates_filtered <- supply_rates |>
     filter(year >= start_year & year <= end_year, tariff_name == y)
 
   p <- ggplot(supply_rates_filtered, aes(x = month, y = rate, group = year)) +
@@ -2625,7 +2625,7 @@ plot_supply_rates_12_months <- function(
   # Add colored lines for highlight years
 
   # Filter data for the selected utility
-  filtered_data <- supply_rates_monthly_long %>%
+  filtered_data <- supply_rates_monthly_long |>
     filter(electric_utility == !!electric_utility)
 
   ggplot(filtered_data, aes(x = month, y = supply_rate, group = year)) +

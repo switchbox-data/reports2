@@ -2,6 +2,7 @@ import os
 
 import pandas as pd
 import requests
+from requests.exceptions import RequestException
 
 
 def get_eia_petroleum_data(
@@ -115,7 +116,7 @@ def get_eia_petroleum_data(
 
         return path_parquet
 
-    except requests.exceptions.RequestException as e:
+    except RequestException as e:
         print(f"Error fetching data from EIA API: {e}")
         raise
     except Exception as e:

@@ -1,0 +1,121 @@
+```{python}
+import polars as pl
+import requests
+import fetch_eia_hs861m
+from importlib import reload
+import matplotlib.pyplot as plt
+reload(fetch_eia_hs861m)
+
+path_xlsx = "/workspaces/reports2/data/eia/HS861M/eia_hs861m.xlsx"
+fetch_eia_hs861m.fetch_eia_hs861m(path_xlsx)
+
+residential_df = fetch_eia_hs861m.extract_residential_data(path_xlsx)
+# select just the columns: date, State, residential_rate
+residential_df = residential_df.select(['Year', 'Month', 'State', 'residential_rate'])
+print(residential_df)
+
+```
+
+```{python}
+
+# pivot wider, add national and new_england averages, then melt back to long format
+
+# pivot wider
+residential_df_wide = residential_df.pivot(
+    index=['Year', 'Month'],
+    columns=['State'],
+    values='residential_rate'
+)
+
+# add national and new_england averages
+new_england_states = ['CT', 'MA', 'ME', 'NH', 'RI', 'VT']
+residential_df_wide = residential_df_wide.with_columns(
+    (pl.concat_list([pl.col(c) for c in residential_df_wide.columns if c not in ['Year', 'Month']])
+     .list.mean()
+     .alias('US')),
+    (pl.concat_list([pl.col(c) for c in new_england_states])
+     .list.mean()
+     .alias('New England'))
+)
+
+# pivot back to long format with columns: 'Month', 'year', 'state', 'residential_rate'
+residential_df_long = residential_df_wide.melt(
+    id_vars=['Month', 'Year'],
+    variable_name='state',
+    value_name='residential_rate'
+)
+
+
+# add a column called 'date', using the Month and Year columns, and assuming the first day of the month
+residential_df_long = residential_df_long.with_columns(
+    pl.datetime(year=pl.col('Year'), month=pl.col('Month'), day=1).alias('date')
+)
+
+print(residential_df_long.head(10))
+
+```
+
+```{python}
+
+# residential_df is a polars DataFrame with the following columns:
+# - Year
+# - Month
+# - State
+# - Data_Status
+# - residential_revenue
+# - residential_sales
+# - residential_customers
+# - residential_rate
+
+# Filter for the three states and keep relevant columns
+from plotnine import ggplot, aes, geom_line, labs, theme_bw, scale_color_discrete, scale_color_manual
+import pandas as pd
+
+plot_these_states = {
+    'CT': (1, '#1f77b4'),          # blue
+    'MA': (1, '#ff7f0e'),          # orange
+    'RI': (1, '#2ca02c'),          # green
+    'US': (3, '#d62728'),          # red, highlight as national
+    'New England': (3, '#9467bd'), # purple, highlight as region
+}
+
+resi_df_plot = residential_df_long.filter(
+    pl.col('state').is_in(plot_these_states.keys())
+).select(['date', 'state', 'residential_rate'])
+
+print(resi_df_plot)
+
+# Convert to pandas DataFrame for easier matplotlib plotting
+resi_df_plot_pd = resi_df_plot.to_pandas()
+
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(10, 6))
+for state, (linewidth, color) in plot_these_states.items():
+    state_df = resi_df_plot_pd[resi_df_plot_pd["state"] == state]
+    plt.plot(
+        state_df["date"],
+        state_df["residential_rate"],
+        label=state,
+        linewidth=linewidth,
+        color=color,
+    )
+
+import matplotlib.dates as mdates
+
+plt.xlabel("Date")
+plt.ylabel("Residential Rate")
+plt.title("Residential Rate by Year and State")
+plt.legend(title="State")
+
+# Set major ticks to each year and minor ticks as well (for every year), and add vertical grid lines
+ax = plt.gca()
+ax.xaxis.set_major_locator(mdates.YearLocator(1))  # every year
+ax.xaxis.set_minor_locator(mdates.YearLocator(1))
+ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+ax.grid(which='major', axis='x', linestyle='-', color='#dddddd', alpha=0.8)
+ax.grid(which='minor', axis='x', linestyle=':', color='#eeeeee', alpha=0.5)
+
+plt.tight_layout()
+plt.show()
+```

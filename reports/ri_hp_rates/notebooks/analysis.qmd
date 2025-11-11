@@ -329,6 +329,7 @@ load_or_download <- function(table_name, url, path_to_cache, load_from_cache=FAL
 use_these_in_columns <- c(
   "bldg_id",
   "upgrade",
+  "in.sqft",
   "in.representative_income",
   "in.income",
   "in.city",
@@ -370,6 +371,12 @@ housing_units <- open_dataset(parquet_files) |>
   select(all_of(use_these_in_columns), all_of(use_these_out_columns)) |>
   filter(`in.state` %in% use_these_states) |>
   collect()
+
+#-----------------------------------------------------------------
+# Simple stuff: trim to a max of 4000 sqft
+#-----------------------------------------------------------------
+housing_units <- housing_units |>
+  filter(in.sqft <= 5000)
 
 #-----------------------------------------------------------------
 # Preferred labels for heating type, cooling type, building type, and occupants group
@@ -479,7 +486,6 @@ housing_units <- housing_units |>
   filter(occupants_group != "Vacant")
 
 n_non_vacant_homes <- housing_units |> filter(upgrade == 0) |> filter(occupants_group != "Vacant") |> nrow()
-
 ```
 
 ## Bill Calcuations
@@ -849,6 +855,70 @@ winter_changes_total <- calc_annual_changes_total(winter_changes_elec, winter_ch
 summer_changes_total <- calc_annual_changes_total(summer_changes_elec, summer_changes_gas, summer_changes_fuel_oil, summer_changes_propane)
 ```
 
+# ------------------------------------------------------------------------------
+# Sample Home
+# ------------------------------------------------------------------------------
+
+```{r}
+#| label: find a good sample home
+
+
+# list all the blg_ids where..
+# - upgrade == 0
+# - occupants_group != "Vacant"
+# - representative_income > 1000
+# - baseline_heating_type == "natural_gas"
+# - building_type_group == "Single-Family"
+# - baseline_cooling_type == "Central AC"
+# - dollar_tier == "Not LMI"
+# - smi_tier == "Not LMI"
+# - hvac == "Heat Pump"
+
+
+good_homes <- housing_units |>
+  filter(upgrade == 0) |>
+  filter(occupants_group == "3-4 Occupants") |>
+  filter(smi_tier == "Not LMI") |>
+  filter(in.vintage == "1970s") |>
+  filter(baseline_heating_type == "Natural Gas") |>
+  filter(baseline_cooling_type == "Central AC")
+
+View(good_homes)
+bldg_id_x <- 389325
+
+```
+
+```{r}
+#| label: sample home bills
+
+monthly_bills_elec_x_upgrade_0 <- monthly_bills_elec |>
+  filter(bldg_id == bldg_id_x) |>
+  filter(upgrade == 0) |>
+  filter(version == "baseline") |>
+  View()
+
+monthly_bills_elec_x_upgrade_2 <- monthly_bills_elec |>
+  filter(bldg_id == bldg_id_x) |>
+  filter(upgrade == 2) |>
+  filter(version == "baseline") |>
+  View()
+
+
+monthly_changes_elec_x_upgrade_2 <- monthly_changes_elec |>
+  filter(bldg_id == bldg_id_x) |>
+  filter(upgrade == 2) |>
+  filter(version == "baseline") |>
+  View()
+
+```
+
+```{r}
+annual_changes_total_x <- annual_changes_total |>
+  filter(upgrade == 2) |>
+  filter(bldg_id == bldg_id_x) |>
+  View()
+
+```
 
 
 # ------------------------------------------------------------------------------

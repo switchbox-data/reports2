@@ -1,0 +1,237 @@
+---
+title: IL LEA EDA
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+
+```{r}
+library(tidyverse)
+library(tidyplots)
+library(googlesheets4)
+```
+
+```{r}
+url_sheet <- "https://docs.google.com/spreadsheets/d/1b6I4uyH8H2FiMoeM-trO7eAWk_X2AYhovzEbS9u1cfM/edit?gid=1793277497#gid=1793277497"
+
+gs4_deauth()
+
+nicor_23 <- read_sheet(url_sheet, sheet = "Nicor_23-0066")
+nicor_25 <- read_sheet(url_sheet, sheet = "Nicor_25-0055")
+
+ameren_23 <- read_sheet(url_sheet, sheet = "Ameren_23-0067")
+ameren_25 <- read_sheet(url_sheet, sheet = "Ameren_25-0084")
+
+peoples_23 <- read_sheet(url_sheet, sheet = "NSGC_23-0068")
+
+```
+
+# Clean data
+
+```{r}
+nicor_tmp <- nicor_23 |>
+  select(utility, year, type, main_service, pressure_type, value, historical) |>
+  filter(
+    type %in%
+      c(
+        "extension_cost",
+        "customer_contribution",
+        "n_projects",
+        "lea_cost_per_customer"
+      )
+  ) |>
+  pivot_wider(names_from = c(type), values_from = value) |>
+  mutate(
+    lea_cost = extension_cost + customer_contribution,
+    cost_per_project = lea_cost / n_projects,
+    cost_per_connection = lea_cost_per_customer
+  ) |>
+  select(
+    utility,
+    year,
+    main_service,
+    lea_cost,
+    cost_per_project,
+    cost_per_connection,
+    historical,
+    customer_contribution
+  ) |>
+  bind_rows(
+    nicor_25 |>
+      select(
+        utility,
+        year,
+        type,
+        main_service,
+        pressure_type,
+        value,
+        historical
+      ) |>
+      filter(year > 2026) |>
+      pivot_wider(names_from = c(type), values_from = value) |>
+      select(
+        utility,
+        year,
+        main_service,
+        lea_cost,
+        historical
+      )
+  )
+
+
+ # handle 2026 case where we have broken down forecast from one rate case and combined forecast from another rate case
+
+nicor_26_forecast_original <- nicor_tmp |>
+      filter(year == 2026) |>
+      summarize(lea_cost = sum(lea_cost)) |>
+      pull(lea_cost)
+
+nicor_26 <-     nicor_25 |>
+      select(
+        utility,
+        year,
+        type,
+        main_service,
+        pressure_type,
+        value,
+        historical
+      ) |>
+      filter(year == 2026) |>
+      pivot_wider(names_from = c(type), values_from = value) |>
+      select(
+        utility,
+        year,
+        main_service,
+        lea_cost,
+        historical
+      )|>
+      mutate(lea_cost = lea_cost - nicor_26_forecast_original)
+
+nicor <- bind_rows(nicor_tmp, nicor_26)
+
+```
+
+```{r}
+ameren_tmp <- ameren_23 |>
+  select(utility, year, type, main_service, pressure_type, value, historical) |>
+  filter(type != "lea_allowance") |>
+  pivot_wider(names_from = c(type), values_from = value) |>
+  mutate(
+    lea_cost = distribution_extensions_total +
+      distribution_extensions_customer_contributions,
+    cost_per_project = NA,
+    cost_per_connection = NA
+  ) |>
+  select(
+    utility,
+    year,
+    main_service,
+    lea_cost,
+    cost_per_project,
+    cost_per_connection,
+    historical
+  )
+
+ameren_sce <- ameren_25 |>
+  select(utility, year, type, main_service, pressure_type, value, historical) |>
+  filter(
+    type %in%
+      c(
+        "max_lea_cost_per_connect",
+        "max_lea_cost_per_ft"
+      )
+  ) |>
+  pivot_wider(names_from = c(type), values_from = value)
+
+ameren <- bind_rows(ameren_tmp, ameren_sce)
+
+```
+
+```{r}
+peoples <- peoples_23 |>
+  select(utility, year, type, main_service, pressure_type, value, historical) |>
+  filter(type %in% c("lea_cost", "customer_contribution", "n_projects", "cost_per_new_service")) |>
+  pivot_wider(names_from = c(type), values_from = value) |>
+  mutate(
+    lea_cost = lea_cost,
+    cost_per_connection = cost_per_new_service,
+    cost_per_project = lea_cost / n_projects
+  ) |>
+  select(utility, year, main_service, lea_cost, cost_per_project, cost_per_connection, historical)
+```
+
+```{r}
+df_all <- bind_rows(nicor, ameren, peoples)
+```
+
+
+```{r}
+df_all |>
+  mutate(alpha_val = if_else(historical == "forecast", 0.6, 1)) |>
+  ggplot(aes(x = factor(year), y = lea_cost, fill = main_service, alpha = alpha_val)) +
+  geom_col(position = "stack") +
+  facet_wrap(~utility) +
+  scale_alpha_identity() +
+  scale_y_continuous(labels = function(x) scales::label_dollar(suffix = "M", prefix = "$", scale = 1e-6)(x)) +
+  labs(title = "LEA Costs by Utility and Service Type",
+       x = "Year",
+       y = "LEA Cost ($ millions)",
+       fill = "Pipeline Type",
+       caption = "Note: Forecast data shown with reduced opacity") +
+  theme_minimal()
+```
+
+```{r}
+df_all |>
+  mutate(alpha_val = if_else(historical == "forecast", 0.6, 1)) |>
+  ggplot(aes(x = factor(year), y = cost_per_project, fill = main_service, alpha = alpha_val)) +
+  geom_col(position = "stack") +
+  facet_grid(main_service~utility, scales = "free_y") +
+  scale_alpha_identity() +
+  scale_y_continuous(labels = function(x) scales::label_dollar(suffix = "k", prefix = "$", scale = 1e-3)(x)) +
+  labs(
+    title = "Cost per Project by Utility and Service Type",
+    x = "Year",
+    y = "Cost per Project ($ thousands)",
+    fill = "Pipeline Type",
+    caption = "Note: Forecast data shown with reduced opacity"
+  ) +
+  theme_minimal()
+
+```
+
+```{r}
+df_all |>
+  mutate(alpha_val = if_else(historical == "forecast", 0.6, 1)) |>
+  ggplot(aes(x = factor(year), y = cost_per_connection, fill = main_service, alpha = alpha_val)) +
+  geom_col(position = "stack") +
+  facet_grid(main_service ~ utility, scales = "free_y") +
+  scale_alpha_identity() +
+  scale_y_continuous(labels = function(x) scales::label_dollar(suffix = "k", prefix = "$", scale = 1e-3)(x)) +
+  labs(
+    title = "Cost per New Connection by Utility and Service Type",
+    x = "Year",
+    y = "Cost per New Connection ($ thousands)",
+    fill = "Pipeline Type",
+    caption = "Note: Forecast data shown with reduced opacity"
+  ) +
+  theme_minimal()
+
+```
+
+```{r}
+if (!dir.exists("/workspaces/reports2/reports/il_lea/data_clean")) dir.create("/workspaces/reports2/reports/il_lea/data_clean", recursive = TRUE)
+
+df_all |>
+  write_csv("/workspaces/reports2/reports/il_lea/data_clean/il_lea_data.csv")
+```

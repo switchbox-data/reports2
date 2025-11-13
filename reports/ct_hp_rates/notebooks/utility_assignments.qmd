@@ -1,0 +1,316 @@
+---
+title: utility assignments - CT HP Rates
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+
+
+# Setup and Data Loading
+## Setup
+```{r}
+#| label: setup
+library(googlesheets4)
+library(arrow)
+library(dplyr)
+
+# Plotting
+library(ggplot2)
+library(lubridate)
+library(patchwork)
+library(ggrepel)
+
+# Switchbox Libraries
+source("/workspaces/reports/lib/ggplot/switchbox_theme.R")
+source("/workspaces/reports/lib/rates_analysis/heat_pump_rate_funcs.R")
+source("/workspaces/reports/lib/rates_analysis/create_sb_housing_units.R")
+source("/workspaces/reports/lib/utility_mapping.R")
+
+
+supply_year = 2024
+round_percent = 1
+round_dollars <- 0
+
+# Define which monthly data and which upgrades to use
+#path_monthly_data <- "/workspaces/reports/data/ResStock/2024_release2_tmy3/load_curve_monthly_10"
+path_monthly_data <- "/workspaces/reports/data/ResStock/2024_release2_tmy3/load_curve_monthly"
+use_these_upgrades <- c("00", "01", "02", "03")
+
+
+# Run calcs.qmd to generate the data for this notebook
+# This will be stored in /cache, but removed
+load_from_cache <- FALSE
+#load_from_cache <- TRUE
+
+
+```
+
+## Housing Units
+```{r}
+#| label: load housing units
+source("/workspaces/reports/lib/rates_analysis/create_sb_housing_units.R")
+
+
+use_these_in_columns <- c(
+  "bldg_id",
+  "upgrade",
+  "in.representative_income",
+  "in.city",
+  "in.geometry_building_type_acs",
+  "in.heating_fuel",
+  "in.hvac_cooling_type",
+  "in.hvac_heating_type_and_fuel",
+  "in.occupants",
+  "in.county",
+  "in.state",
+  "in.vintage",
+  "in.weather_file_city",
+  "in.puma"
+)
+
+use_these_out_columns <- c(
+  "out.electricity.total.energy_consumption.kwh",
+  "out.fuel_oil.total.energy_consumption.kwh",
+  "out.natural_gas.total.energy_consumption.kwh",
+  "out.propane.total.energy_consumption.kwh"
+)
+
+
+use_these_states <- c("CT")
+path_to_2024_metadata_dir <- "/workspaces/reports/data/ResStock/2024_release2_tmy3/metadata"
+
+
+# Create pattern to match only the desired upgrade files
+upgrade_patterns <- paste0("upgrade", use_these_upgrades, "_metadata_and_annual_results\\.parquet$")
+upgrade_pattern <- paste(upgrade_patterns, collapse = "|")
+
+# Get only the upgrade parquet files that match our criteria
+parquet_files <- list.files(
+  path_to_2024_metadata_dir,
+  pattern = upgrade_pattern,
+  full.names = TRUE
+)
+
+# Create a lazy dataset from selected parquet files
+housing_units_ct <- open_dataset(parquet_files) |>
+  select(all_of(use_these_in_columns), all_of(use_these_out_columns)) |>
+  filter(`in.state` %in% use_these_states) |>
+  filter(upgrade == 0) |>
+  collect()
+
+print("Unique values of in.city in housing_units_ct:")
+print(unique(housing_units_ct$in.city))
+
+print("Unique values of in.puma in housing_units:")
+print(unique(housing_units_ct$in.puma))
+
+print("Counts for each unique value of in.heating_fuel in housing_units_ct:")
+print(housing_units_ct |>
+  summarise(
+    total_bldg_ids = n_distinct(bldg_id),
+    pct = total_bldg_ids / nrow(housing_units_ct) * 100,
+    .by = in.heating_fuel
+  ) |>
+  arrange(desc(pct))
+)
+
+print("Total bldg_ids for each upgrade in housing_units_ct:")
+print(housing_units_ct |>
+  summarise(total_bldg_ids = n_distinct(bldg_id),
+    pct = total_bldg_ids / nrow(housing_units_ct) * 100,
+    .by = upgrade
+  ) |>
+  arrange(desc(pct))
+)
+
+```
+
+```{r}
+# Town to PUMA
+ct_town_to_puma <- read_csv("/workspaces/reports/data/datactgov/ct-town-to-puma-2010.csv") |>
+  mutate(
+    puma_code = paste0("G", gsub(" ", "0", puma_code))
+  ) |>
+  select(town, puma_code)
+
+ct_utils_by_town <- readxl::read_excel("/workspaces/reports/data/datactgov/ct-utils-by-town-2010.xlsx") |>
+  janitor::clean_names()
+
+# Electric
+utilities <- c("eversource", "avangrid", "municipal")
+
+ct_elec_utils_by_town <- ct_utils_by_town |>
+  filter(utility_type %in% c("Electric Distribution")) |>
+  rename(town = "town_city") |>
+  mutate(electric_utility = case_when(
+    org_name == "United Illuminating Company - Electric Distribution" ~ "avangrid",
+    org_name == "Connecticut Light and Power Company" ~ "eversource",
+    org_name == "Connecticut Light & Power Company" ~ "eversource",
+    .default = "municipal"
+  )) |>
+  select(town, org_name, electric_utility)
+
+
+ct_puma_elec_utils <- ct_town_to_puma |>
+  left_join(ct_elec_utils_by_town, by = "town") |>
+  select(puma_code, town, electric_utility) |>
+  # for any town appearing twice, discard one with electric_utility == "municipal"
+  group_by(town) |>
+  filter(electric_utility != "municipal" | n() == 1) |>
+  ungroup()
+
+print("ct_puma_elec_utils:")
+print(ct_puma_elec_utils)
+
+ct_puma_elec_util_shares <- ct_puma_elec_utils |>
+  count(puma_code, electric_utility, name = "n") |>
+  group_by(puma_code) |>
+  complete(electric_utility = utilities, fill = list(n = 0)) |>
+  mutate(pct = n / sum(n)) |>
+  ungroup()
+
+# print the total counts for each unique electric_utility
+print("Total counts for each unique electric_utility:")
+print(ct_puma_elec_util_shares)
+
+
+# Use the pct to as a weighted random operator to assign the electric_utility to the puma_code
+# For each puma_code, choose a random integer
+housing_units_ct_elec <- housing_units_ct |>
+  left_join(ct_puma_elec_util_shares, by = c("in.puma" = "puma_code")) |>
+  group_by(bldg_id) |>
+  #
+  slice_sample(n = 1, weight_by = pct) |>
+  ungroup() |>
+  select(bldg_id, upgrade, electric_utility) |>
+  filter(upgrade == 0)
+
+print("Counts and percentages of each unique value of result$electric_utility:")
+counts <- table(housing_units_ct_elec$electric_utility)
+percentages <- prop.table(counts) * 100
+count_pct_table <- data.frame(
+  Electric_Utility = names(counts),
+  Count = as.integer(counts),
+  Percentage = round(as.numeric(percentages), 2)
+)
+print(count_pct_table)
+
+
+
+```
+
+```{r}
+# Gas
+ct_gas_utils_by_town <- ct_utils_by_town |>
+  filter(utility_type %in% c("Gas")) |>
+  # Filter out the pipelines...any that have "Pipeline" or "Transmission" in the org_name
+  filter(!str_detect(org_name, "Pipeline|Transmission")) |>
+  rename(town = "town_city") |>
+  mutate(gas_utility = case_when(
+    org_name == "Yankee Gas Services Company" ~ "eversource",
+    org_name == "Connecticut Natural Gas Corporation" ~ "avangrid_cng",
+    org_name == "Southern Connecticut Gas Company" ~ "avangrid_scg",
+    .default = NA_character_
+  )) |>
+  select(town, org_name, gas_utility)
+
+
+ct_puma_gas_utils <- ct_town_to_puma |>
+  left_join(ct_gas_utils_by_town, by = "town") |>
+  select(puma_code, town, gas_utility)
+
+ct_puma_gas_util_shares <- ct_puma_gas_utils |>
+  count(puma_code, gas_utility, name = "n") |>
+  group_by(puma_code) |>
+  complete(gas_utility = utilities, fill = list(n = 0)) |>
+  mutate(pct = n / sum(n)) |>
+  ungroup()
+
+# print the total counts for each unique electric_utility
+print("Total counts for each unique gas_utility:")
+print(ct_puma_gas_util_shares)
+
+# Use the pct to as a weighted random operator to assign the electric_utility to the puma_code
+# For each puma_code, choose a random integer
+set.seed(42)
+housing_units_ct_gas <- housing_units_ct |>
+  filter(in.heating_fuel == "Natural Gas") |>
+  left_join(ct_puma_gas_util_shares, by = c("in.puma" = "puma_code")) |>
+  group_by(bldg_id) |>
+  #
+  slice_sample(n = 1, weight_by = pct) |>
+  ungroup() |>
+  select(bldg_id, upgrade, gas_utility) |>
+  filter(upgrade == 0)
+
+print("Counts and percentages of each unique value of result$gas_utility:")
+counts <- table(housing_units_ct_gas$gas_utility)
+percentages <- prop.table(counts) * 100
+count_pct_table <- data.frame(
+  Gas_Utility = names(counts),
+  Count = as.integer(counts),
+  Percentage = round(as.numeric(percentages), 2)
+)
+print(count_pct_table)
+
+```
+
+
+```{r}
+housing_units <- housing_units_ct |>
+  left_join(housing_units_ct_elec, by = c("bldg_id", "upgrade")) |>
+  left_join(housing_units_ct_gas, by = c("bldg_id", "upgrade")) |>
+  select(bldg_id, in.state, electric_utility, gas_utility)
+
+# Write to feather
+write_feather(housing_units, "/workspaces/reports/data/ResStock/2024_release2_tmy3/utility_assignment/rs2024_bldg_utility_crosswalk_ct.feather")
+
+
+print(housing_units |>
+  summarise(total_bldg_ids = n_distinct(bldg_id),
+    pct = total_bldg_ids / nrow(housing_units) * 100,
+    .by = electric_utility
+  ) |>
+  arrange(desc(pct)) |>
+  bind_rows(
+    tibble(
+      electric_utility = "Total",
+      total_bldg_ids = nrow(housing_units),
+      pct = 100
+    )
+  )
+)
+
+print(housing_units |>
+  summarise(total_bldg_ids = n_distinct(bldg_id),
+    pct = total_bldg_ids / nrow(housing_units) * 100,
+    .by = gas_utility
+  ) |>
+  arrange(desc(pct)) |>
+  bind_rows(
+    tibble(
+      gas_utility = "Total",
+      total_bldg_ids = nrow(housing_units),
+      pct = 100
+    )
+  )
+)
+
+# Write to csv
+write_csv(housing_units, "/workspaces/reports/data/ResStock/2024_release2_tmy3/utility_assignment/rs2024_bldg_utility_crosswalk_ct.csv")
+
+# write to feather
+write_feather(housing_units, "/workspaces/reports/data/ResStock/2024_release2_tmy3/utility_assignment/rs2024_bldg_utility_crosswalk_ct.feather")
+
+
+```

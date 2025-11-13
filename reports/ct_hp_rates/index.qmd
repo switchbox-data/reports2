@@ -1,0 +1,401 @@
+---
+title: "Heat Pump Rates in Connecticut"
+subtitle: "A Detailed Analysis of Proposed Winter Season Delivery Rates for Heat Pump Customers in Existing Construction"
+date: 2025-10-30
+author:
+  - name: Bryan Murray
+    orcid: 0009-0008-4505-0657
+    email: bryan@switch.box
+    affiliations:
+      - Switchbox
+  - name: Juan-Pablo Velez
+    orcid: 0009-0000-5203-1536
+    email: jpv@switch.box
+    affiliations:
+      - Switchbox
+
+keywords: air-source heat pumps, electric rates, rate design, connecticut
+
+bibliography: ../references.bib
+license: "CC BY-NC"
+
+toc: true
+notebook-links: false
+reference-location: margin
+fig-cap: true
+fig-cap-location: margin
+tbl-cap-location: margin
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+# Uncomment this when PDF version has been added to local docs/
+#other-links:
+#  - text: PDF
+#    icon: file-earmark-pdf
+#    href: docs/switchbox_report.pdf
+---
+
+```{r}
+#| label: index-setup
+library(tidyverse)
+library(scales)
+library(gt)
+library(gtExtras)
+
+source("/workspaces/reports2/lib/ggplot/switchbox_theme.R")
+
+# Import variables
+load(file = "/workspaces/reports2/reports/ct_hp_rates/cache/report_variables.RData")
+```
+
+# Introduction
+This memo examines the impact of switching to heat pumps on the energy bills of homes in Connecticut, under today's electric rates.
+
+
+# Scope and Assumptions
+This report is based on the following assumptions:
+
+- This memo focuses only on **cold-climate air-source heat pumps** (ccASHPs) retrofits; ground-source heat pumps (GSHPs) are out of scope.
+- The ccASHPs are assumed to have an **HSPF of 11**, a midrange winter efficiency model commonly available in the market.
+- We only model **HVAC replacements**, not full electrification. Homes are assumed to keep whatever appliances they already had before installing ccASHPs, including their existing hot water heater.
+- We only consider heat pump retrofits in **existing construction**; new construction is out of scope.
+- Unless otherwise noted, the analysis only evaluates households served by **investor-owned electric utilities**. Municipal utilities are out of scope.
+- **Before switching** to heat pumps, homes are assumed to use their **current heating system** (which may be a furnace, boiler, or electric resistance) and **fuel** (natural gas, heating oil, propane, or electricity). The small percentage of existing homes with heat pumps are excluded from the analysis.
+- **After switching**, homes are assumed to use cold-climate air-source heat pumps entirely, **without backup fossil fuel heating**.
+- Homes are not assumed to install additional **weatherization measures** they don't already have, such as insulation, air sealing, or window upgrades.
+- The upfront costs of heat pump installations are out of scope; the focus is on **post-installation operating costs**.
+- The analysis only looks at **home energy bills** during the heating season and throughout the year. While heat pump operating costs are motivation for this analysis, we examine each home's _entire_ energy bill (before and after switching), including any nonheating electrical costs and any remaining fossil fuel costs.
+- The **heating season**, which is also called "**winter**" throughout the report, is defined as October through May in Connecticut.
+- The analysis considers **home energy burdens**, defined as the percentage of a household's total annual income spent on home energy bills throughout the year. Gasoline expenditures are out of scope, so this metric understates the true energy burden of low-income households.
+- **Low-income households** are defined as those making less than 60% of the State Median Income (SMI). **Moderate-income households** are defined as those making between 60% and 100% of the SMI.
+- Gas and electricity **supply rates** (for each investor-owned utility) are from **2024**, as well as state average propane and heating oil prices from the same year, are assumed throughout.
+- **Gas delivery rates** reflect current tariffs of Connecticut gas utilities.
+- Before switching to heat pumps, households on natural gas are assumed to use residential **gas heating delivery rates**. After switching, they are assumed to use residential nonheating gas rates for any residual natural gas usage (though not every home uses natural gas).
+- We model **default electric delivery rates** from Eversource and United Illuminating only. Switchbox has not yet developed heat pump rates for Connecticut, so analyzing their impact is out of scope.
+- Unless otherwise noted, analysis assumes **100% participation in low-income electricity discount programs**, by eligible households. Connecticut has no low-income discount for gas.
+- Pre- and post-switch energy bills are modeled by applying supply and delivery rates (and low-income discounts) to **simulated load profiles** from ResStock.[^note]
+
+[^note]: This is an industry-standard dataset from the National Renewable Energy Laboratory (NREL) that simulates the energy consumption of a statistically representative sample of homes in Connecticut [@nrel_ResStock_2024].
+
+# Findings
+
+## What happens to a home's energy bills after switching to heat pumps?
+
+In this section, we look at the impact of switching to heat pumps on the annual energy bills of a single, representative home in Connecticut.
+
+Because the bill impact of heat pump adoption depends significantly on a home's current heating fuel, we look at natural gas, fuel oil, and electric resistance customers separately.
+
+This section looks the _median_ annual energy bill for each type of customer, and how that changes after switching to heat pumps. In a later section, we will look at the _range_ of bill impacts for all homes in Connecticut.
+
+### Gas Customers
+
+Gas-heated homes in Connecticut pay a median annual energy bill—including both electricity and natural gas—of **`r pre_hp_total_bill_gas |> scales::dollar(accuracy = 1)`**. `r round(pre_hp_annual_gas_bill / pre_hp_total_bill_gas * 100, 0)`% of the annual bill goes to gas, largely for heating the home, and the rest is electricity (@fig-stacked_bar_median_before_after_gas).
+
+::::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-stacked_bar_median_before_after_gas >}}
+::::
+
+After installing heat pumps, the gas bill shrinks to `r post_hp_annual_gas_bill |> scales::dollar(accuracy = 1)`, only `r round(post_hp_annual_gas_bill / post_hp_total_bill_gas * 100, 0)`% of the annual energy bill. This residual gas consumption is used for cooking and hot water.
+
+The annual electric bill, on the other hand, jumps from `r pre_hp_total_elec_bill_gas |> scales::dollar(accuracy = 1)` to `r post_hp_total_elec_bill_gas |> scales::dollar(accuracy = 1)`—a `r (post_hp_total_elec_bill_gas / pre_hp_total_elec_bill_gas) |> round(1)`x increase—as the heating load switches from gas to electricity.
+
+This causes the overall bill to grow `r (post_hp_total_bill_gas / pre_hp_total_bill_gas) |> scales::percent()`, to `r post_hp_total_bill_gas |> scales::dollar(accuracy = 1)`.
+
+The **supply charge** is what the customer pays for the electricity. This increases by `r (post_hp_supply_charge_gas / pre_hp_supply_charge_gas) |> round(1)`x, as the new electrified heating load roughly doubles the household's electricity consumption.
+
+The **customer** and **delivery charges** are what they pay for the poles and wires that deliver this power to their home. Unlike the customer charge, which stays the same, the delivery charge is a volumetric charge that grows in proportion to household electricity consumption.
+
+After installing heat pumps, then, the amount paid by the median gas-heated home for poles and wires grows by `r (post_hp_delivery_charge_gas / pre_hp_delivery_charge_gas) |> round(1)`x.
+
+How are these annual costs spread out over the year? @fig-monthly_bills_gas_before shows the monthly bills for the median gas-heated home before heat pump installation.
+
+::::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-monthly_bills_gas_before >}}
+:::
+
+Since most gas consumption is for heating, the monthly energy bills are significantly higher in the winter months.
+
+For comparison, @fig-monthly_bills_gas_after adds in the the monthly bills after heat pump installation.
+
+::::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-monthly_bills_gas_after >}}
+::::
+
+As expected, the same seasonal pattern holds, with wintertime gas use now converted to electricity. During the eight months of the heating season, the heat pump home has higher bills from January to May. This drives the annual energy bill increase compared to the natural gas home.
+
+Note the increase in delivery charges during the winter months, which runs counter to cost-causation principles. A cost-reflective rate would collect a higher share of a household's delivery payments during the summer months, when they are more likely to contribute to the grid's peak load, and thus to incremental capital costs.
+
+
+### Fuel Oil Customers
+
+For fuel oil customers, fossil fuel consumption is also nearly eliminated—except for a residual amount used as backup heating (in this example), while the electricity bill jumps by `r (post_hp_total_elec_bill_fuel / pre_hp_total_elec_bill_fuel) |> round(1)`x (@fig-stacked_bar_median_before_after_fuel_oil).
+
+::::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-stacked_bar_median_before_after_fuel_oil >}}
+::::
+
+Unlike for gas customers, however, the switch to heat pumps results in an annual energy bill savings of `r (pre_hp_total_bill_fuel - post_hp_total_bill_fuel) |> scales::dollar(accuracy = 1)`.
+
+How are these annual costs spread out over the year? @fig-monthly_bills_fuel_oil_after shows the monthly bills for the median fuel oil-heated home before and after heat pump installation.
+
+::::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-monthly_bills_fuel_oil_after >}}
+::::
+
+The heat pump home has lower every month but January, which drives the annual energy bill savings compared to the fuel oil home.
+
+### Electric Resistance Customers
+
+Electric resistance customers save immediately, consistently, and substantially when switching to a high-efficiency cold-climate heat pump (@fig-stacked_bar_median_before_after_resistance).
+
+::::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-stacked_bar_median_before_after_resistance >}}
+::::
+
+Since they are not switching _fuels_, only technologies, the efficiency advantage from heat pumps leads directly to electrical bill savings. As expected, both supply and delivery charges decrease, in proportion to the lower electricity consumption.
+
+How are these annual costs spread out over the year? @fig-monthly_bills_resistance_after shows the monthly bills for the median electric resistance-heated home before and after heat pump installation.
+
+::::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-monthly_bills_resistance_after >}}
+::::
+
+As expected, the savings occur largely during the heating season, with no significant savings in the summer months.
+
+## What is the statewide bill impact of switching to heat pumps?
+We just examined the _median_ bill for an _individual_ home. But homes in Connecticut are diverse—building size, shells and equipment vary widely—so the results we saw above may not be the same for all homes.
+
+Zooming out to look at the entire building stock in the state, then, what range of bill impacts should we expect when households switch to heat pumps?
+
+We'll start by looking at the bill impacts by season.
+
+### Bill impact under default rates, in the winter
+
+@fig-hist_1_winter_bill_impact shows the distribution of energy bill _changes_ during the winter for every home in Connecticut.
+
+::::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-hist_1_winter_bill_impact >}}
+::::
+59% of homes would cut their wintertime energy bills by switching to heat pumps. That savings would be modest, however: only 16% of homes would see a bill decrease of more than $1,000 per year.
+
+### Bill impact under default rates, in the summer
+
+@fig-hist_1_summer_bill_impact shows the same data, but for the summer months.
+
+::::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-hist_1_summer_bill_impact >}}
+::::
+
+Just under half of households would lower their summer energy bills by switching to heat pumps, while the rest would raise them. What's going on here?
+
+Households that would cut their bills are largely those that already have whole-home air conditioning. Heat pumps tend to be more efficient than the average installed air conditioner, so the same cooling load would cost less to operate.
+
+On the other hand, most homes in Connecticut today have only partial air conditioning (@fig-bar-cooling-types).
+
+::::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-bar-cooling-types >}}
+::::
+
+A large share (`r round(cooling_type_pct |> filter(baseline_cooling_type_group == "Room AC") |> pull(pct) * 100)`%) of homes use room-by-room AC (e.g. window units), which may not provide cooling to the entire home. A significant minority (`r round(cooling_type_pct |> filter(baseline_cooling_type_group == "Central AC") |> pull(pct) * 100)`%) have central AC (e.g. through ducts), which does. There is also an important group (`r round(cooling_type_pct |> filter(baseline_cooling_type_group == "No Cooling") |> pull(pct) * 100)`%) of homes that have no cooling.
+
+Our upgrade scenario assumes that homes install sufficient heat pump capacity to cool the entire home—using minisplits, if they lack ducts—and our results assume that they use it. In other words, unlike winter bill increases, higher summer bills post-heat pumps are not necessarily a bad thing: they reflect higher access to cooling.
+
+In practice, lower-income homes may not choose to use their full cooling capacity, and thus their summer bills may not increase as much as our model predicts. But if they do, this would be a good thing, because they now have air conditioning where previously they did not.
+
+Why is the spread of bill impacts so much tighter in the summer than in the winter? Because, as we saw earlier, cooling bills are much smaller than heating bills, and thus less impactful to annual household budgets.
+
+## How does a home's baseline heating system affect its energy bills after switching to heat pumps?
+
+The findings in preceding sections help us assess the overall impact of default electric rates on heat pump operating costs, compared to current HVAC systems: statewide, just over half of households would lower their existing heating bills by switching to heat pumps. During the summer, households that already have added cooling would cut their bills by switching to heat pumps, while those without would see an increase, reflecting the (optional) gain of function of adding air conditioning.
+
+But these statewide figures also mask important differences in how homes' current heating systems would affect their energy bills after switching to heat pumps.
+
+**@fig-bar-fuel-types** gives a breakdown of the heating systems currently used by homes in Connecticut.
+
+::::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-bar-fuel-types >}}
+::::
+
+(`r round(fuel_types_pct |> filter(hvac_group == "Natural Gas") |> pull(pct) * 100)`%) of Connecticut homes use natural gas as their primary heating fuel, while significant portions use fuel oil (`r round(fuel_types_pct |> filter(hvac_group == "Fuel Oil") |> pull(pct) * 100)`%) and electric resistance (`r round(fuel_types_pct |> filter(hvac_group == "Electric Resistance") |> pull(pct) * 100)`%).
+
+Let's examine each of these populations in turn, looking at the change in their _annual_ energy bills this time.
+
+### Natural Gas Customers
+
+::::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-hist_1_natural_gas_annual_change >}}
+::::
+
+Among natural gas-heated homes that switch to heat pumps under today's electric rates, `r annual_change_stats_gas_baseline_hp_high |> filter(bill_category == "pct_that_lose") |> pull(percentage)`% would see bill increases, but only `r annual_change_stats_gas_baseline_hp_high |> filter(bill_category == "large_increase") |> pull(percentage)`% would face an increase of more than $1,000 per year.
+
+The rest would cut their bills, but only modestly.
+
+### Fuel Oil Customers
+
+::::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-hist_1_fuel_oil_annual_change >}}
+::::
+
+The situation is reversed for fuel oil customers: among those that switch to heat pumps under today's electric rates, `r annual_change_stats_fuel_oil_baseline_hp_high |> filter(bill_category == "pct_that_lose") |> pull(percentage)`% would see bill increases, but only `r annual_change_stats_fuel_oil_baseline_hp_high |> filter(bill_category == "large_increase") |> pull(percentage)`% would face an increase of more than $1,000 per year.
+
+The vast majority of these households would save by switching to heat pumps.
+
+### Electric Resistance Customers
+
+Heat pumps are more efficient than electric resistance heaters in every scenario, so we would expect to see all electric resistance customers save by switching to heat pumps.
+
+::::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-hist_1_resistance_annual_change >}}
+::::
+
+Savings are indeed significant, and nearly universal: a large share of these customers would save over $1,000 per year by switching to heat pumps.
+
+Why would `r annual_change_stats_resistance_baseline_hp_high |> filter(bill_category == "pct_that_lose") |> pull(percentage)`% of these customers see a small increase in their annual energy bills?
+
+These are households that are gaining cooling for the first time, and the increase in their summer bill just manages to offset the savings on their winter bill.
+
+## How does the building type a home is in affect its energy bills after switching to heat pumps?
+
+Another major driver of bill impact is the building type. Single family homes tend to be larger, so they require more energy to heat and cool. They also have more outside walls and surfaces, so they often have higher heat loss.
+
+**@fig-bar-building-type** gives a breakdown of the building types currently used by homes in Connecticut.
+
+::::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-bar-building-type >}}
+::::
+
+A majority (`r round(building_type_pct |> filter(building_type_group == "Single-Family") |> pull(pct) * 100)`%) of Connecticut homes are single-family homes, and the rest are multi-family buildings split among 2-4 unit buildings (`r round(building_type_pct |> filter(building_type_group == "2-4 Units") |> pull(pct) * 100)`%) and 5+ unit multifamily buildings (`r round(building_type_pct |> filter(building_type_group == "5+ Units") |> pull(pct) * 100)`%).
+
+As with fuel type, we'll examine each of these populations in turn, looking at the change in their _annual_ energy bills.
+
+### Single-Family Homes
+
+::::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-hist_1_single_family_annual_change >}}
+::::
+
+Around `r annual_change_stats_single_family_baseline_hp_high |> filter(bill_category == "pct_that_lose") |> pull(percentage)`% of single-family homes would see bill increases, but only `r annual_change_stats_single_family_baseline_hp_high |> filter(bill_category == "large_increase") |> pull(percentage)`% would face an increase of more than $1,000 per year.
+
+The rest would cut their bills.
+
+### 2-4 Unit Multifamily Buildings
+
+::::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-hist_1_small_multifamily_annual_change >}}
+::::
+
+Around `r annual_change_stats_small_multifamily_baseline_hp_high |> filter(bill_category == "pct_that_lose") |> pull(percentage)`% of homes in 2-4 unit multifamily buildings would see bill increases, but only `r annual_change_stats_small_multifamily_baseline_hp_high |> filter(bill_category == "large_increase") |> pull(percentage)`% would face an increase of more than $500 per year.
+
+### 5+ Unit Multifamily Buildings
+
+::::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-hist_1_large_multifamily_annual_change >}}
+::::
+
+For homes in larger multifamily buildings, `r annual_change_stats_small_multifamily_baseline_hp_high |> filter(bill_category == "pct_that_lose") |> pull(percentage)`% would see bill increases, but virtually none would face an increase of more than $1000 per year.
+
+
+## How does a home's income affect its energy bills after switching to heat pumps?
+So far we've discussed energy bills changes in dollar terms, but the more direct question is: how do energy expenses fit into a home's budget?
+
+This is the crux of **affordability**, because the impact of bill changes will depend on the home's income. A bill increase of $300 per year may be a non-event for a household making $100,000 per year, but a significant burden for a household making $10,000 per year.
+
+One common metric for affordability is **energy burden**: the percentage of a home's annual income spent on energy.
+
+### Energy Burdens
+
+Policymakers typically consider households with energy burdens above 6% to be highly burdened. And often set affordability targets below this threshold.
+
+**@fig-burden_hists_all_smi_tiers** shows the distribution of energy burdens for all households in the state, on their current HVAC systems and after switching to heat pumps—under today's electric rates.
+
+::::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-burden_hists_all_smi_tiers >}}
+::::
+
+Note that these figures assume 100% participation in both gas and electric low-income discounts, before and after switching to heat pumps.
+
+Overall, energy burdens in Connecticut are high. Statewide, `r burden_hists_all_current_pct_burdened`% of homes are considered to be highly energy burdened (spending >6% of home's annual income on energy bills), with `r burden_hists_all_current_pct_very_high_burden`% of homes being very highly burdened (spending >12% of home's annual income on energy bills).
+
+The spread of energy burdens does not change much when switching to heat pumps under today's electric rates (the bottom histogram in **@fig-burden_hists_all_smi_tiers**).
+
+Across all income levels, heating and cooling arrangements, building types and occupancy levels, `r burden_hists_all_hp_high_pct_burdened`% of homes would be highly energy burdened after switching to heat pumps, a small improvement on the status quo. `r burden_hists_all_hp_high_pct_very_high_burden`% of homes would be very highly energy burdened after switching.
+
+On the one hand, these findings should allay concerns that heat pumps will systematically worsen Connecticut's energy affordability crisis. But on the other hand, these results make clear that heat pump rates are still needed to turn heat pump adoption into an engine of energy affordability.
+
+### Energy Burden by Income Level
+
+Those are the statewide figures, but how do energy burdens look for different household income levels?
+
+**@fig-bar_smi_tiers** shows the distribution of household incomes in Connecticut, grouped into income tiers by State Median Income (SMI).
+
+::::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-bar_smi_tiers >}}
+::::
+
+The state median income (SMI) is defined by both the household's income and the number of occupants in the household. It is a common classification of relative income, often used to determine eligibility for the low-income discount programs. Typically, households with an income less than 60% of the SMI are eligible for a discount on electricity and gas bills. They might also be eligible for other programs like LIHEAP.
+
+So how does energy burden change by income level?
+
+::::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-burden_hists_3_smi_tiers_current >}}
+::::
+
+The top histogram shows burden for low-income households (<60% SMI), the middle histogram shows burden for moderate-income households (60–100% SMI), and the bottom histogram shows burden for non-LMI households (>100% SMI).
+
+The difference is stark: `r burden_hists_low_smi_current_pct_burdened`% of low-income households are energy burdened, compared to `r burden_hists_moderate_smi_current_pct_burdened`% of moderate-income households and `r burden_hists_not_lmi_current_pct_burdened`% of non-LMI households.
+
+Especially worrying is that `r burden_hists_low_smi_current_pct_very_high_burden`% of low-income households are very highly energy burdened, spending more than 12% of their annual income on energy bills.
+
+How do energy burdens by income level change when switching to heat pumps under today's electric rates?
+
+::::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-burden_hists_3_smi_tiers_hp_high >}}
+::::
+
+@fig-burden_hists_3_smi_tiers_hp_high shows that low-income and moderate-income burdens go up slightly, and the number of highly burdened non-LMI households goes slightly down.
+
+# Appendix: Data and Methods {#sec-data-and-methods}
+Our analysis calculates the monthly electricity, natural gas, fuel oil, and propane bills—before and after switching to cold-climate air-source heat pumps—for a set of several thousand virtual homes, which comprise a statistically representative sample of the Connecticut residential housing stock.
+
+The analysis happens in three steps:
+
+1. First, we take energy consumption profiles from NREL's ResStock, as described in [Building Stock Sampling via ResStock](#sec-resstock). ResStock natively provides energy consumption for each appliance in the home at 15-minute resolution, which we aggregate to monthly totals per fuel type
+2. Next, we assign each virtual home an electric utility, and, if applicable, a gas utility. This allows us to associate each home with the appropriate electric and gas supply and delivery rates. Homes that use delivered fuels are associated with statewide average prices for propane and heating oil.
+3. Finally, to calculate energy burden metrics, we assign to each home a precise income within the income bracket information for each home provided by ResStock.
+
+Delivery tariffs are drawn from the directly from utilities' filings with the Connecticut Public Utilities Regulatory Authority (PURA).
+
+All supply rates are inflated to 2024 dollars to align with our other cost assumptions.
+
+
+### Building Stock Sampling via ResStock {#sec-resstock}
+ResStock is a database of simulated home energy consumption profiles developed and maintained by the National Renewable Energy Lab (NREL).
+
+The database has appliance-level load data for over 500,000 "virtual" homes nationwide at 15-minute resolution, 4 major fuel types (electricity, natural gas, fuel oil, and propane) and several different weather years.
+
+The "baseline" set of virtual homes are meant to collectively represent the United States' residential housing stock as it looked in 2018. The End Use Load Profiles (EULP) project adds several upgrade packages, which virtually "install" various combinations of weatherization, HVAC upgrades, and appliance electrification and recompute each homes' 15-minute energy consumption for each appliance.
+
+We use EULP's 2024.2 release, specifically the Baseline, Upgrade 1 ("ENERGY STAR heat pump with elec backup"), Upgrade 2 ("High efficiency cold-climate heat pump with elec backup"), and Upgrade 3 ("Ultra high efficiency heat pump with elec backup") cases.[^eulp] Upgrade 2 is used throughout the analysis.
+
+[^eulp]: See [@nrel_EndUseLoadProfiles_2022].
+
+
+### Home Income Assignment
+ResStock provides income brackets for each virtual home in 2018 dollars, but not precise income figures, which are required to calculate each homes winter energy burden.
+
+To assign specific annual incomes to each home, we use income distribution data from the US Census Bureau's Public Use Microdata Sample (PUMS) database.[^pums] For each home in our sample, we randomly draw an income value from the PUMS data that falls within that home's ResStock-assigned income bracket.
+
+Finally, we inflate all income values to 2024 dollars to align with our other cost assumptions.
+
+[^pums]: See [@censusbureau_AmericanCommunitySurvey_2022].
+
+
+### Home Utility Assignment
+We assign utilities to each home based on its geographic location. ResStock provides state, county, and [PUMA](https://www.census.gov/programs-surveys/geography/guidance/geo-areas/pumas.html) (Public Use Microdata Area) information for each home, with PUMAs typically being smaller than counties.
+
+For electric utilities, we assign all homes in a PUMA to the utility that serves that area. In cases where a PUMA overlaps multiple electric utility service territories, we divide the homes proportionally based on each utility's share of the PUMA's geographic area.
+
+Gas utility assignment follows a similar process, with two key differences. First, some geographic areas are not served by the natural gas distribution network at all, so homes in these PUMAs are not assigned a gas utility. Second, homes that show no gas heating loads in the ResStock data are also not assigned a gas utility, regardless of their location.

@@ -51,32 +51,31 @@ else
     echo "✅ pak is already installed"
 fi
 
-# Create pak lockfile from project dependencies (only if it doesn't exist)
-if [[ ! -f "$PROJECT_ROOT/pkg.lock" ]]; then
-    echo "🔧 Creating pak lockfile from project dependencies..."
-    if Rscript -e "setwd('$PROJECT_ROOT'); pak::lockfile_create()"; then
-        echo "✅ Pak lockfile created successfully"
-    else
-        echo "❌ Error: Failed to create pak lockfile"
-        exit 2
-    fi
-else
-    echo "ℹ️  Pak lockfile already exists, skipping creation"
-fi
+# Create temporary pak lockfile to scan project dependencies
+echo "🔧 Scanning project for R package dependencies..."
+LOCKFILE="$PROJECT_ROOT/pkg.lock"
+if Rscript -e "setwd('$PROJECT_ROOT'); pak::lockfile_create(lockfile = 'pkg.lock')"; then
+    echo "✅ Project dependencies scanned successfully"
 
-# Install packages from lockfile
-if [[ -f "$PROJECT_ROOT/pkg.lock" ]]; then
-    echo "📦 Installing packages from pak lockfile..."
-
+    # Install packages from temporary lockfile
+    echo "📦 Installing packages from scanned dependencies..."
     if Rscript -e "setwd('$PROJECT_ROOT'); pak::lockfile_install(lockfile = 'pkg.lock')"; then
-        echo "✅ Packages installed successfully from pak lockfile"
+        echo "✅ Packages installed successfully"
     else
-        echo "❌ Error: Failed to install packages from pak lockfile"
-        echo "Please check the pkg.lock file and try again"
+        echo "❌ Error: Failed to install packages"
+        # Clean up lockfile even on failure
+        rm -f "$LOCKFILE"
         exit 2
     fi
+
+    # Clean up temporary lockfile
+    echo "🧹 Cleaning up temporary lockfile..."
+    rm -f "$LOCKFILE"
+    echo "✅ Temporary lockfile removed"
 else
-    echo "❌ Error: Pak lockfile was not created"
+    echo "❌ Error: Failed to scan project dependencies"
+    # Clean up lockfile if it was partially created
+    rm -f "$LOCKFILE"
     exit 2
 fi
 

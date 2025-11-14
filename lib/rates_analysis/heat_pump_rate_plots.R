@@ -176,7 +176,7 @@ hist_for_single_rate_version <- function(
       xintercept = c(-1000, 0, 1000),
       linetype = "dotted",
       color = "gray50",
-      size = 0.5
+      linewidth = 0.5
     ) +
 
     # Add the bars

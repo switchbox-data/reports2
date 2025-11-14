@@ -1370,7 +1370,7 @@ calc_monthly_bills_gas <- function(
         # for gas, we need to flag heat_non_heat
         mutate(
           heat_non_heat = case_when(
-            hvac == "natural_gas" ~ "heat",
+            hvac == "Natural Gas" ~ "heat",
             TRUE ~ "non_heat"
           )
         ) |>

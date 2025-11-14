@@ -273,30 +273,36 @@ load_or_download <- function(table_name, url, path_to_cache, load_from_cache=FAL
     if (str_detect(table_name, "gas_delivery_tariffs")) {
       print("    ...combining several rows to get an all-in delivery rate")
 
-      # First, get all the rows that are NOT the ones we want to combine
-      other_rows <- data |>
-        filter(!type %in% c("adjustment_rate", "distribution_rate", "programs"))
 
-      # Then, create the combined delivery_rate rows
-      delivery_rate_rows <- data |>
-        filter(type %in% c("adjustment_rate", "distribution_rate", "programs")) |>
-        group_by(tariff_name, gas_utility, heat_non_heat, version, month) |>
+      # let's add a "bill_component" column to the data based on the class and type columns
+      # fixed = everything where class == "fixed"
+      # delivery = everything where class == "volumetric", expect if type == "supply"
+      # tax = everything where type == "tax"
+      data <- data |>
+        mutate(bill_component = case_when(
+          class == "fixed" ~ "customer_charge",
+          class == "volumetric" & type != "supply" ~ "delivery_rate",
+          class == "volumetric" & type == "supply" ~ "supply_rate",
+          class == "tax" ~ "sales_tax_rate",
+          TRUE ~ "other"
+        ))
+
+      # now let's group by the bill_component column
+      data <- data |>
+        group_by(bill_component, tariff_name, gas_utility, heat_non_heat, version, month) |>
         summarise(
           value = sum(value, na.rm = TRUE),
-          type = "delivery_rate",
+          type = first(bill_component),
           # Keep other columns from the first row of each group
           class = first(class),
-          cost_category = first(cost_category),
           customer_class = first(customer_class),
           tariff_name = first(tariff_name),
           billing_unit = first(billing_unit),
           lmi = first(lmi),
           effective_date = first(effective_date),
           .groups = "drop"
-        )
-
-      # Combine the results
-      data <- bind_rows(other_rows, delivery_rate_rows)
+        ) |>
+        select(-bill_component)
     }
 
 
@@ -317,6 +323,18 @@ load_or_download <- function(table_name, url, path_to_cache, load_from_cache=FAL
     print(paste0("    Downloaded and cached ", table_name))
   }
 }
+```
+
+```{r}
+# Gas Supply Rates
+url_gas_supply_rates <- "https://docs.google.com/spreadsheets/d/1_2u9S3r2JWKREhD_pnWXfyQKqjc4IsImbbTdHHN7xqM/edit?gid=0#gid=0"
+load_or_download("gas_supply_rates", url_gas_supply_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
+load_or_download("gas_delivery_tariffs", url_delivery_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
+load_or_download("gas_lmi_thresholds", url_delivery_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
+
+View(gas_delivery_tariffs)
+
+
 ```
 
 
@@ -874,7 +892,6 @@ summer_changes_total <- calc_annual_changes_total(summer_changes_elec, summer_ch
 # - smi_tier == "Not LMI"
 # - hvac == "Heat Pump"
 
-
 good_homes <- housing_units |>
   filter(upgrade == 0) |>
   filter(occupants_group == "3-4 Occupants") |>
@@ -883,7 +900,8 @@ good_homes <- housing_units |>
   filter(baseline_heating_type == "Natural Gas") |>
   filter(baseline_cooling_type == "Central AC")
 
-View(good_homes)
+# Take a look at the list and pick your favorite
+#View(good_homes)
 bldg_id_x <- 389325
 
 ```
@@ -894,29 +912,45 @@ bldg_id_x <- 389325
 monthly_bills_elec_x_upgrade_0 <- monthly_bills_elec |>
   filter(bldg_id == bldg_id_x) |>
   filter(upgrade == 0) |>
-  filter(version == "baseline") |>
-  View()
+  filter(version == "baseline")
 
 monthly_bills_elec_x_upgrade_2 <- monthly_bills_elec |>
   filter(bldg_id == bldg_id_x) |>
   filter(upgrade == 2) |>
-  filter(version == "baseline") |>
-  View()
+  filter(version == "baseline")
 
 
 monthly_changes_elec_x_upgrade_2 <- monthly_changes_elec |>
   filter(bldg_id == bldg_id_x) |>
   filter(upgrade == 2) |>
-  filter(version == "baseline") |>
-  View()
+  filter(version == "baseline")
 
 ```
 
 ```{r}
-annual_changes_total_x <- annual_changes_total |>
-  filter(upgrade == 2) |>
+#| label: sample home bills
+
+monthly_bills_gas_x_upgrade_0 <- monthly_bills_gas |>
   filter(bldg_id == bldg_id_x) |>
-  View()
+  filter(upgrade == 0) |>
+  filter(version == "baseline")
+
+monthly_bills_gas_x_upgrade_2 <- monthly_bills_gas |>
+  filter(bldg_id == bldg_id_x) |>
+  filter(upgrade == 2) |>
+  filter(version == "baseline")
+
+monthly_changes_gas_x_upgrade_2 <- monthly_changes_gas |>
+  filter(bldg_id == bldg_id_x) |>
+  filter(upgrade == 2) |>
+  filter(version == "baseline")
+
+```
+
+```{r}
+annual_changes_gas_x_upgrade_2 <- annual_changes_gas |>
+  filter(upgrade == 2) |>
+  filter(bldg_id == bldg_id_x)
 
 ```
 

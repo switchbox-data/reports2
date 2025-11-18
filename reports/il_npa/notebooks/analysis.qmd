@@ -41,6 +41,22 @@ if pg_files:
     print(f"Loading: {pg_file.name}")
     pg_polygons = gpd.read_file(pg_file)
     print(f"Loaded {len(pg_polygons):,} Peoples Gas construction polygons")
+
+    # Rename TYPE to PRP_TYPE
+    if 'TYPE' in pg_polygons.columns:
+        pg_polygons = pg_polygons.rename(columns={'TYPE': 'PRP_TYPE'})
+
+    # Convert datetime columns to readable strings
+    datetime_cols = ['C_START', 'C_FINISH', 'R_START', 'R_FINISH']
+    for col in datetime_cols:
+        if col in pg_polygons.columns:
+            # Handle millisecond timestamps as in sample value 1487548800000
+            pg_polygons[col] = pd.to_datetime(pg_polygons[col], unit='ms', errors='coerce').dt.strftime('%Y-%m-%d')
+
+    # Drop Contractor column if present
+    if 'Contractor' in pg_polygons.columns:
+        pg_polygons = pg_polygons.drop(columns=['Contractor'])
+
 else:
     print("No Peoples Gas data found. Run: just fetch-data")
     pg_polygons = None
@@ -143,9 +159,13 @@ if pg_polygons is not None and parcels is not None:
         pg_buffered,
         how='inner',
         predicate='intersects'
-    )
+    )[['parceltype', 'longitude', 'latitude', 'municipality', 'assessorbldgclass', 'assessornbhd', 'geometry',
+       'OBJECTID', 'PRP_TYPE', 'Project_ID', 'PR_NAME', 'Phase',
+       'Shop', 'STATUS', 'C_START', 'C_FINISH', 'WorkOrderID',
+       'Shape__Area', 'Shape__Length', 'R_START', 'R_FINISH']]
 
-    print(f"Found {len(parcels_in_construction):,} parcels within construction areas (5m buffer)")
+    print(
+        f"Found {len(parcels_in_construction):,} parcels within construction areas (5m buffer)")
 else:
     print("Parcels data not available for clipping")
     parcels_in_construction = None
@@ -163,9 +183,13 @@ if pg_polygons is not None and buildings is not None:
         pg_utm,
         how='inner',
         predicate='intersects'
-    )
+    )[['no_stories', 'vacancy_st','no_of_unit', 'demolished', 'geometry', 'OBJECTID', 'PRP_TYPE',
+       'Project_ID', 'PR_NAME', 'Phase', 'Shop', 'STATUS',
+       'C_START', 'C_FINISH', 'WorkOrderID', 'Shape__Area', 'Shape__Length',
+       'R_START', 'R_FINISH']]
 
-    print(f"Found {len(buildings_in_construction):,} buildings within construction areas")
+    print(
+        f"Found {len(buildings_in_construction):,} buildings within construction areas")
 else:
     print("Buildings data not available for clipping")
     buildings_in_construction = None
@@ -183,60 +207,15 @@ if pg_polygons is not None and streets is not None:
         pg_utm,
         how='inner',
         predicate='intersects'
-    )
+    )[['geometry', 'OBJECTID', 'PRP_TYPE', 'Project_ID', 'PR_NAME', 'Phase',
+       'Shop', 'STATUS', 'C_START', 'C_FINISH', 'WorkOrderID',
+       'Shape__Area', 'Shape__Length', 'R_START', 'R_FINISH']]
 
-    print(f"Found {len(streets_in_construction):,} street segments within construction areas")
+    print(
+        f"Found {len(streets_in_construction):,} street segments within construction areas")
 else:
     print("Streets data not available for clipping")
     streets_in_construction = None
-```
-
-# Parcel-to-Building Mapping
-
-Create one-to-one mapping between parcels and buildings based on maximum overlap area to extract unit counts.
-
-```{python}
-if parcels_in_construction is not None and buildings is not None and len(buildings) > 0:
-    # Use all buildings (already in UTM) for better matching
-    buildings_utm = buildings.to_crs('EPSG:32616')
-
-    # Find all parcel-building intersections and calculate overlap areas
-    overlay = gpd.overlay(
-        parcels_in_construction,
-        buildings_utm[['geometry', 'no_of_unit']],
-        how='intersection',
-        keep_geom_type=False
-    )
-    overlay['overlap_area'] = overlay.geometry.area
-
-    # For each parcel, keep only the building with maximum overlap
-    idx_max_overlap = overlay.groupby(overlay.index)['overlap_area'].idxmax()
-    best_matches = overlay.loc[idx_max_overlap]
-
-    # Create enriched parcels dataset with unit counts
-    parcels_with_units = parcels_in_construction.copy()
-    parcels_with_units['building_units'] = pd.to_numeric(
-        best_matches['no_of_unit'],
-        errors='coerce'
-    )
-
-    # Report statistics
-    matched_count = parcels_with_units['building_units'].notna().sum()
-    total_parcels = len(parcels_with_units)
-    units_with_data = parcels_with_units['building_units'].dropna()
-    units_with_data = units_with_data[units_with_data > 0]
-
-    print(f"Matched {matched_count:,} of {total_parcels:,} parcels to buildings")
-    if len(units_with_data) > 0:
-        print(f"Total units: {units_with_data.sum():,.0f} (mean: {units_with_data.mean():.1f})")
-
-else:
-    print("Cannot create parcel-building mapping: missing data")
-    if parcels_in_construction is not None:
-        parcels_with_units = parcels_in_construction.copy()
-        parcels_with_units['building_units'] = None
-    else:
-        parcels_with_units = None
 ```
 
 # Property Classification
@@ -244,11 +223,11 @@ else:
 Add property type classifications using Cook County Assessor lookup table.
 
 ```{python}
-if parcels_with_units is not None:
+if parcels_in_construction is not None:
     lookup_file = data_dir / 'cook_county_assessor_lookup.csv'
     assessor_lookup = pd.read_csv(lookup_file, dtype={'assessor_class': str})
 
-    parcels_classified = parcels_with_units.merge(
+    parcels_classified = parcels_in_construction.merge(
         assessor_lookup,
         left_on='assessorbldgclass',
         right_on='assessor_class',
@@ -269,6 +248,71 @@ else:
     parcels_classified = None
 ```
 
+# Parcel-to-Building Mapping
+
+Create one-to-one mapping between parcels and buildings based on maximum overlap area to extract unit counts.
+
+```{python}
+if parcels_classified is not None and buildings is not None and len(buildings) > 0:
+    # Use all buildings for better matching
+    buildings_utm = buildings.to_crs('EPSG:32616')
+
+    # Find all parcel-building intersections and calculate overlap areas
+    overlay = gpd.overlay(
+        parcels_classified,
+        buildings_utm[['geometry', 'no_of_unit']],
+        how='intersection',
+        keep_geom_type=False
+    )
+    overlay['overlap_area'] = overlay.geometry.area
+
+    # For each parcel, keep only the building with maximum overlap
+    idx_max_overlap = overlay.groupby(overlay.index)['overlap_area'].idxmax()
+    best_matches = overlay.loc[idx_max_overlap]
+
+    # Create enriched parcels dataset with unit counts
+    parcels_with_units = parcels_classified.copy()
+    parcels_with_units['building_units'] = pd.to_numeric(
+        best_matches['no_of_unit'],
+        errors='coerce'
+    )
+
+    # Apply fallback logic for missing unit data
+    # 1. Single-family: set to 1 unit
+    sf_mask = parcels_with_units['sf_mf'] == 'single-family'
+    parcels_with_units.loc[sf_mask, 'building_units'] = 1
+
+    # 2. Multi-family with missing units: use average of units_min and units_max
+    mf_mask = (parcels_with_units['sf_mf'] == 'multi-family') & \
+              (parcels_with_units['building_units'].isna()) & \
+              (parcels_with_units['units_min'].notna()) & \
+              (parcels_with_units['units_max'].notna())
+
+    parcels_with_units.loc[mf_mask, 'building_units'] = (
+        (parcels_with_units.loc[mf_mask, 'units_min'] +
+         parcels_with_units.loc[mf_mask, 'units_max']) / 2
+    ).round()
+
+    # Report statistics
+    matched_count = parcels_with_units['building_units'].notna().sum()
+    total_parcels = len(parcels_classified)
+    units_with_data = parcels_with_units['building_units'].dropna()
+    units_with_data = units_with_data[units_with_data > 0]
+
+    print(f"Matched {matched_count:,} of {total_parcels:,} parcels to buildings")
+    if len(units_with_data) > 0:
+        print(f"Total units: {units_with_data.sum():,.0f} (mean: {units_with_data.mean():.1f})")
+
+else:
+    print("Cannot create parcel-building mapping: missing data")
+    if parcels_classified is not None:
+        parcels_with_units = parcels_classified.copy()
+        parcels_with_units['building_units'] = None
+    else:
+        parcels_with_units = None
+```
+
+
 # Summary Statistics by Construction Polygon
 
 Calculate key metrics for each Peoples Gas construction polygon.
@@ -280,8 +324,8 @@ if streets_in_construction is not None:
     # Calculate length in meters, convert to miles (already in UTM)
     streets_in_construction['length_miles'] = streets_in_construction.geometry.length / 1609.34
 
-    # Group by construction polygon and sum
-    street_miles_by_polygon = streets_in_construction.groupby('index_right')['length_miles'].sum()
+    # Group by construction polygon OBJECTID and sum
+    street_miles_by_polygon = streets_in_construction.groupby('OBJECTID')['length_miles'].sum()
 
     print(f"Total street miles in construction areas: {street_miles_by_polygon.sum():.2f}")
 else:
@@ -292,16 +336,16 @@ else:
 ## Count Parcels and Units by Construction Polygon
 
 ```{python}
-if parcels_classified is not None:
-    # Count parcels by construction polygon
-    parcel_counts = parcels_classified.groupby('index_right').size()
+if parcels_with_units is not None:
+    # Count parcels by construction polygon OBJECTID
+    parcel_counts = parcels_with_units.groupby('OBJECTID').size()
 
-    # Sum building units by construction polygon
-    unit_counts = parcels_classified.groupby('index_right')['building_units'].sum()
+    # Sum building units by construction polygon OBJECTID
+    unit_counts = parcels_with_units.groupby('OBJECTID')['building_units'].sum()
 
     # Count parcels with unit data
-    parcels_with_unit_data = parcels_classified[parcels_classified['building_units'].notna()]
-    parcels_with_units_count = parcels_with_unit_data.groupby('index_right').size()
+    parcels_with_unit_data = parcels_with_units[parcels_with_units['building_units'].notna()]
+    parcels_with_units_count = parcels_with_unit_data.groupby('OBJECTID').size()
 
     print(f"Total parcels in construction areas: {parcel_counts.sum():,}")
     print(f"Total parcels with unit data: {parcels_with_units_count.sum():,}")
@@ -310,12 +354,12 @@ if parcels_classified is not None:
     # Breakdown by property type
     print(f"\nParcels by Type (across all construction areas):")
     for prop_type in ['residential', 'commercial', 'industrial', 'mixed-use', 'vacant']:
-        type_parcels = parcels_classified[parcels_classified['type'] == prop_type]
+        type_parcels = parcels_with_units[parcels_with_units['type'] == prop_type]
         if len(type_parcels) > 0:
             print(f"  {prop_type}: {len(type_parcels):,}")
 
     # Residential breakdown by single-family vs multi-family
-    residential = parcels_classified[parcels_classified['type'] == 'residential']
+    residential = parcels_with_units[parcels_with_units['type'] == 'residential']
     if len(residential) > 0:
         print(f"\nResidential Parcels Breakdown:")
         sf = residential[residential['sf_mf'] == 'single-family']
@@ -324,31 +368,30 @@ if parcels_classified is not None:
         print(f"  Multi-family: {len(mf):,}")
 
         # Units by residential type
-        if 'building_units' in residential.columns:
-            sf_units = sf['building_units'].sum()
-            mf_units = mf['building_units'].sum()
-            print(f"\nResidential Units:")
-            print(f"  Single-family units: {sf_units:,.0f}")
-            print(f"  Multi-family units: {mf_units:,.0f}")
+        sf_units = sf['building_units'].sum()
+        mf_units = mf['building_units'].sum()
+        print(f"\nResidential Units:")
+        print(f"  Single-family units: {sf_units:,.0f}")
+        print(f"  Multi-family units: {mf_units:,.0f}")
 
-    # Create type-specific counts by polygon for summary
-    sf_counts = parcels_classified[
-        (parcels_classified['type'] == 'residential') &
-        (parcels_classified['sf_mf'] == 'single-family')
-    ].groupby('index_right').size()
+    # Create type-specific counts by polygon OBJECTID for summary
+    sf_counts = parcels_with_units[
+        (parcels_with_units['type'] == 'residential') &
+        (parcels_with_units['sf_mf'] == 'single-family')
+    ].groupby('OBJECTID').size()
 
-    mf_counts = parcels_classified[
-        (parcels_classified['type'] == 'residential') &
-        (parcels_classified['sf_mf'] == 'multi-family')
-    ].groupby('index_right').size()
+    mf_counts = parcels_with_units[
+        (parcels_with_units['type'] == 'residential') &
+        (parcels_with_units['sf_mf'] == 'multi-family')
+    ].groupby('OBJECTID').size()
 
-    commercial_counts = parcels_classified[
-        parcels_classified['type'] == 'commercial'
-    ].groupby('index_right').size()
+    commercial_counts = parcels_with_units[
+        parcels_with_units['type'] == 'commercial'
+    ].groupby('OBJECTID').size()
 
-    industrial_counts = parcels_classified[
-        parcels_classified['type'] == 'industrial'
-    ].groupby('index_right').size()
+    industrial_counts = parcels_with_units[
+        parcels_with_units['type'] == 'industrial'
+    ].groupby('OBJECTID').size()
 
 else:
     print("Parcel data not available for calculation")
@@ -361,15 +404,27 @@ else:
     industrial_counts = None
 ```
 
+# Write out parcels_classified and buildings_utm to GeoJSON
+
+```{python}
+if parcels_with_units is not None:
+    parcels_with_units.to_file(
+        data_dir / "parcels_with_units_classified.geojson", driver="GeoJSON")
+
+if 'buildings_utm' in locals() and buildings_utm is not None:
+    buildings_utm.to_file(
+        data_dir / "buildings_in_construction_utm.geojson", driver="GeoJSON")
+```
+
 ## Combined Summary Dataset
 
 ```{python}
 if pg_polygons is not None:
-    # Create summary dataframe with one row per construction polygon
-    summary = pd.DataFrame(index=pg_polygons.index)
-    summary['polygon_id'] = pg_polygons.index
+    # Create summary dataframe indexed by OBJECTID
+    summary = pd.DataFrame(index=pg_polygons['OBJECTID'])
+    summary['OBJECTID'] = pg_polygons['OBJECTID'].values
 
-    # Add metrics
+    # Add metrics (these are already indexed by OBJECTID from groupby operations)
     if street_miles_by_polygon is not None:
         summary['street_miles'] = street_miles_by_polygon
 
@@ -433,13 +488,20 @@ Export the summary statistics with geometries to GeoJSON.
 
 ```{python}
 if summary is not None and pg_polygons is not None:
-    # Merge summary statistics with Peoples Gas polygon geometries
-    pg_summary = pg_polygons.copy()
+    # Merge summary statistics with Peoples Gas polygon geometries using OBJECTID
+    pg_summary = pg_polygons.merge(
+        summary.reset_index(drop=True),
+        on='OBJECTID',
+        how='left'
+    )
 
-    # Join summary data to polygons
-    for col in summary.columns:
-        if col != 'polygon_id':
-            pg_summary[col] = summary[col]
+    # Fill NaN values with 0 for polygons without data
+    metric_cols = ['street_miles', 'total_parcels', 'single_family_parcels',
+                   'multi_family_parcels', 'commercial_parcels', 'industrial_parcels',
+                   'parcels_with_unit_data', 'total_residential_units']
+    for col in metric_cols:
+        if col in pg_summary.columns:
+            pg_summary[col] = pg_summary[col].fillna(0)
 
     # Create output filename with timestamp
     from datetime import datetime

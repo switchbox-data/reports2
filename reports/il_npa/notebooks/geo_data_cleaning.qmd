@@ -1,0 +1,646 @@
+---
+title: Geo Data Cleaning
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+
+# Data Loading
+
+Load all geospatial datasets for analysis.
+
+```{python}
+import geopandas as gpd
+import pandas as pd
+from pathlib import Path
+from datetime import datetime
+from datetime import datetime
+
+timestamp = datetime.now().strftime('%Y%m%d')
+# Set paths
+data_dir = Path('../data')
+geo_data_dir = data_dir / 'geo_data'
+utils_dir = Path('../utils')
+```
+
+## Peoples Gas Construction Polygons
+
+```{python}
+# Find the most recent Peoples Gas data file
+pg_files = sorted(utils_dir.glob('peoplesgas_projects_*.geojson'))
+if pg_files:
+    pg_file = pg_files[-1]
+    print(f"Loading: {pg_file.name}")
+    pg_polygons = gpd.read_file(pg_file)
+    print(f"Loaded {len(pg_polygons):,} Peoples Gas construction polygons")
+
+    # Rename TYPE to PRP_TYPE
+    if 'TYPE' in pg_polygons.columns:
+        pg_polygons = pg_polygons.rename(columns={'TYPE': 'PRP_TYPE'})
+
+    # Convert datetime columns to readable strings
+    datetime_cols = ['C_START', 'C_FINISH', 'R_START', 'R_FINISH']
+    for col in datetime_cols:
+        if col in pg_polygons.columns:
+            # Handle millisecond timestamps as in sample value 1487548800000
+            pg_polygons[col] = pd.to_datetime(pg_polygons[col], unit='ms', errors='coerce').dt.strftime('%Y-%m-%d')
+
+    # Drop Contractor column if present
+    if 'Contractor' in pg_polygons.columns:
+        pg_polygons = pg_polygons.drop(columns=['Contractor'])
+
+else:
+    print("No Peoples Gas data found. Run: just fetch-data")
+    pg_polygons = None
+```
+
+## Cook County Parcels (Chicago)
+
+```{python}
+# Find the most recent parcels data file
+parcel_files = sorted(geo_data_dir.glob('cook_county_parcels_*.geojson'))
+if parcel_files:
+    parcel_file = parcel_files[-1]
+    print(f"Loading: {parcel_file.name}")
+    parcels = gpd.read_file(parcel_file)
+    print(f"Loaded {len(parcels):,} Chicago parcels")
+else:
+    print("No parcel data found. Run: just fetch-parcels")
+    parcels = None
+```
+
+## Chicago Building Footprints
+
+```{python}
+# Find the most recent buildings data file
+building_files = sorted(geo_data_dir.glob('chicago_buildings_*.geojson'))
+if building_files:
+    building_file = building_files[-1]
+    print(f"Loading: {building_file.name}")
+    buildings = gpd.read_file(building_file)
+    print(f"Loaded {len(buildings):,} building footprints")
+else:
+    print("No building data found. Run: just fetch-buildings")
+    buildings = None
+```
+
+## Chicago Street Centerlines
+
+```{python}
+# Find the most recent streets data file
+street_files = sorted(geo_data_dir.glob('chicago_streets_*.geojson'))
+if street_files:
+    street_file = street_files[-1]
+    print(f"Loading: {street_file.name}")
+    streets = gpd.read_file(street_file)
+    print(f"Loaded {len(streets):,} street centerlines")
+
+    # Diagnostic checks
+    print(f"  CRS: {streets.crs}")
+    print(f"  Valid geometries: {streets.geometry.is_valid.sum():,} / {len(streets):,}")
+    print(f"  Null geometries: {streets.geometry.isna().sum():,}")
+    if len(streets) > 0:
+        print(f"  Geometry types: {streets.geometry.type.value_counts().to_dict()}")
+        print(f"  Sample bounds: {streets.total_bounds}")
+        # Check if we have proper street properties
+        if 'street_nam' in streets.columns:
+            print(f"  ✓ Has street properties (street_nam, etc.)")
+        else:
+            print(f"  ⚠️ Missing street properties - may need to re-download")
+            print(f"  Available columns: {list(streets.columns[:10])}")
+else:
+    print("No street data found. Run: just fetch-streets")
+    streets = None
+```
+
+# Spatial Clipping
+
+Clip all datasets to only include features that fall within Peoples Gas construction polygons.
+
+```{python}
+# Check if all data is loaded
+if pg_polygons is None:
+    print("Cannot proceed without Peoples Gas data")
+else:
+    # Ensure all datasets are in the same CRS
+    print("Checking coordinate reference systems...")
+    print(f"  Peoples Gas: {pg_polygons.crs}")
+    if parcels is not None:
+        print(f"  Parcels: {parcels.crs}")
+    if buildings is not None:
+        print(f"  Buildings: {buildings.crs}")
+    if streets is not None:
+        print(f"  Streets: {streets.crs}")
+```
+
+## Parcels in Construction Areas
+
+```{python}
+if pg_polygons is not None and parcels is not None:
+    # Project to UTM for accurate buffering
+    pg_utm = pg_polygons.to_crs('EPSG:32616')
+    parcels_utm = parcels.to_crs('EPSG:32616')
+
+    # Buffer polygons by 5 meters to capture edge parcels
+    pg_buffered = pg_utm.copy()
+    pg_buffered.geometry = pg_buffered.geometry.buffer(5)
+
+    # Spatial join to find parcels within buffered construction polygons
+    parcels_in_construction = gpd.sjoin(
+        parcels_utm,
+        pg_buffered,
+        how='inner',
+        predicate='intersects'
+    )[['parceltype', 'longitude', 'latitude', 'municipality', 'assessorbldgclass', 'assessornbhd', 'geometry',
+       'OBJECTID', 'PRP_TYPE', 'Project_ID', 'PR_NAME', 'Phase',
+       'Shop', 'STATUS', 'C_START', 'C_FINISH', 'WorkOrderID',
+       'Shape__Area', 'Shape__Length', 'R_START', 'R_FINISH']]
+
+    print(
+        f"Found {len(parcels_in_construction):,} parcels within construction areas (5m buffer)")
+else:
+    print("Parcels data not available for clipping")
+    parcels_in_construction = None
+```
+
+## Buildings in Construction Areas
+
+```{python}
+if pg_polygons is not None and buildings is not None:
+    buildings_utm = buildings.to_crs('EPSG:32616')
+    pg_utm = pg_polygons.to_crs('EPSG:32616')
+
+    buildings_in_construction = gpd.sjoin(
+        buildings_utm,
+        pg_utm,
+        how='inner',
+        predicate='intersects'
+    )[['no_stories', 'vacancy_st','no_of_unit', 'demolished', 'geometry', 'OBJECTID', 'PRP_TYPE',
+       'Project_ID', 'PR_NAME', 'Phase', 'Shop', 'STATUS',
+       'C_START', 'C_FINISH', 'WorkOrderID', 'Shape__Area', 'Shape__Length',
+       'R_START', 'R_FINISH']]
+
+    print(
+        f"Found {len(buildings_in_construction):,} buildings within construction areas")
+else:
+    print("Buildings data not available for clipping")
+    buildings_in_construction = None
+```
+
+## Streets in Construction Areas
+
+```{python}
+if pg_polygons is not None and streets is not None:
+    streets_utm = streets.to_crs('EPSG:32616')
+    pg_utm = pg_polygons.to_crs('EPSG:32616')
+
+    streets_in_construction = gpd.sjoin(
+        streets_utm,
+        pg_utm,
+        how='inner',
+        predicate='intersects'
+    )[['geometry', 'OBJECTID', 'PRP_TYPE', 'Project_ID', 'PR_NAME', 'Phase',
+       'Shop', 'STATUS', 'C_START', 'C_FINISH', 'WorkOrderID',
+       'Shape__Area', 'Shape__Length', 'R_START', 'R_FINISH']]
+
+    print(
+        f"Found {len(streets_in_construction):,} street segments within construction areas")
+else:
+    print("Streets data not available for clipping")
+    streets_in_construction = None
+```
+
+# Property Classification
+
+Add property type classifications using Cook County Assessor lookup table.
+
+```{python}
+if parcels_in_construction is not None:
+    lookup_file = data_dir / 'cook_county_assessor_lookup.csv'
+    assessor_lookup = pd.read_csv(lookup_file, dtype={'assessor_class': str})
+
+    parcels_classified = parcels_in_construction.merge(
+        assessor_lookup,
+        left_on='assessorbldgclass',
+        right_on='assessor_class',
+        how='left'
+    )
+
+    classified_count = parcels_classified['type'].notna().sum()
+    print(f"Classified {classified_count:,} of {len(parcels_classified):,} parcels")
+
+    # Show distribution
+    type_dist = parcels_classified['type'].value_counts()
+    residential = parcels_classified[parcels_classified['type'] == 'residential']
+    if len(residential) > 0:
+        sf_mf_dist = residential['sf_mf'].value_counts()
+        print(f"Residential: {len(residential):,} ({sf_mf_dist.get('single-family', 0):,} SF, {sf_mf_dist.get('multi-family', 0):,} MF)")
+else:
+    print("No parcel data available for classification")
+    parcels_classified = None
+```
+
+# Parcel-to-Building Mapping
+
+Create one-to-one mapping between parcels and buildings based on maximum overlap area to extract unit counts.
+
+```{python}
+if parcels_classified is not None and buildings is not None and len(buildings) > 0:
+    # Use all buildings for better matching
+    buildings_utm = buildings.to_crs('EPSG:32616')
+
+    # Add unique parcel identifier for tracking
+    parcels_classified_utm = parcels_classified.copy()
+    parcels_classified_utm['parcel_idx'] = range(len(parcels_classified_utm))
+
+    # Add building identifier if not present
+    if 'bldg_id' not in buildings_utm.columns:
+        buildings_utm = buildings_utm.copy()
+        buildings_utm['bldg_id'] = buildings_utm.index
+
+    print(f"\n🔍 Starting parcel-building matching...")
+    print(f"  Parcels: {len(parcels_classified_utm):,}")
+    print(f"  Buildings: {len(buildings_utm):,}")
+
+    # Find all parcel-building intersections
+    overlay = gpd.overlay(
+        parcels_classified_utm,
+        buildings_utm[['geometry', 'no_of_unit', 'bldg_id']],
+        how='intersection',
+        keep_geom_type=False
+    )
+
+    print(f"  Intersections found: {len(overlay):,}")
+
+    # Calculate overlap area for each intersection
+    overlay['overlap_area'] = overlay.geometry.area
+
+    # Group by parcel_idx and find building with maximum overlap
+    overlap_by_parcel = overlay.groupby('parcel_idx').apply(
+        lambda x: x.loc[x['overlap_area'].idxmax()]
+    ).reset_index(drop=True)
+
+    print(f"  Parcels with building matches: {len(overlap_by_parcel):,}")
+
+    # Create enriched parcels dataset
+    parcels_with_units = parcels_classified.copy()
+    parcels_with_units['parcel_idx'] = range(len(parcels_with_units))
+
+    # Merge the best matches back to parcels
+    parcels_with_units = parcels_with_units.merge(
+        overlap_by_parcel[['parcel_idx', 'no_of_unit', 'bldg_id', 'overlap_area']],
+        on='parcel_idx',
+        how='left'
+    )
+
+    # Keep original building data in separate column for auditing
+    parcels_with_units['matched_building_id'] = parcels_with_units['bldg_id']
+    parcels_with_units['overlap_area_sqm'] = parcels_with_units['overlap_area']
+    parcels_with_units['building_units_raw'] = pd.to_numeric(
+        parcels_with_units['no_of_unit'],
+        errors='coerce'
+    )
+
+    # Drop temporary columns
+    parcels_with_units = parcels_with_units.drop(columns=['parcel_idx', 'no_of_unit', 'bldg_id', 'overlap_area'])
+
+    # Validate specific example: parcel at -87.57623748, 41.74593814 should match building 631646
+    test_parcel = parcels_with_units[
+        (parcels_with_units['longitude'].astype(float).round(8) == round(-87.57623748, 8)) &
+        (parcels_with_units['latitude'].astype(float).round(8) == round(41.74593814, 8))
+    ]
+    if len(test_parcel) > 0:
+        print(f"\n✅ Validation check for test parcel (-87.57623748, 41.74593814):")
+        print(f"   Matched building_id: {test_parcel['matched_building_id'].values[0]}")
+        print(f"   Building units: {test_parcel['building_units_raw'].values[0]}")
+        print(f"   Expected building_id: 631646")
+        if test_parcel['matched_building_id'].values[0] == "631646":
+            print(f"   ✓ Match is correct!")
+        else:
+            print(f"   ⚠️  Match differs from expected")
+
+    # Create working column starting with raw data
+    parcels_with_units['building_units'] = parcels_with_units['building_units_raw'].copy()
+
+    # Apply fallback logic for missing/zero unit data
+    # 1. Single-family with missing/zero units: set to 1 unit
+    sf_mask = (parcels_with_units['sf_mf'] == 'single-family') & \
+              (parcels_with_units['building_units'].isna() | (parcels_with_units['building_units'] == 0))
+    parcels_with_units.loc[sf_mask, 'building_units'] = 1
+
+    # 2. Multi-family with missing units: use average of units_min and units_max
+    mf_mask = (parcels_with_units['sf_mf'] == 'multi-family') & \
+              (parcels_with_units['building_units'].isna() | (parcels_with_units['building_units'] == 0)) & \
+              (parcels_with_units['units_min'].notna()) & \
+              (parcels_with_units['units_max'].notna())
+
+    parcels_with_units.loc[mf_mask, 'building_units'] = (
+        (parcels_with_units.loc[mf_mask, 'units_min'] +
+         parcels_with_units.loc[mf_mask, 'units_max']) / 2
+    ).round()
+
+    # 3. Multi-family with no data: use units_min if available, otherwise 2 as conservative estimate
+    mf_no_data_mask = (parcels_with_units['sf_mf'] == 'multi-family') & \
+                      (parcels_with_units['building_units'].isna() | (parcels_with_units['building_units'] == 0))
+
+    # Use units_min where available
+    mf_with_min = mf_no_data_mask & parcels_with_units['units_min'].notna()
+    parcels_with_units.loc[mf_with_min, 'building_units'] = parcels_with_units.loc[mf_with_min, 'units_min']
+
+    # Use 2 as absolute fallback where units_min is not available
+    mf_no_min = mf_no_data_mask & parcels_with_units['units_min'].isna()
+    parcels_with_units.loc[mf_no_min, 'building_units'] = 2
+
+    # Report statistics
+    matched_count = parcels_with_units['building_units'].notna().sum()
+    total_parcels = len(parcels_classified)
+    units_with_data = parcels_with_units['building_units'].dropna()
+    units_with_data = units_with_data[units_with_data > 0]
+
+    # Count how many were from raw data vs interpolated
+    raw_data_count = parcels_with_units['building_units_raw'].notna().sum()
+    interpolated_count = matched_count - raw_data_count
+
+    print(f"\n📊 Building Unit Data Summary:")
+    print(f"  Total parcels: {total_parcels:,}")
+    print(f"  From building footprint data: {raw_data_count:,} ({raw_data_count/total_parcels*100:.1f}%)")
+    print(f"  Interpolated from fallback logic: {interpolated_count:,} ({interpolated_count/total_parcels*100:.1f}%)")
+    print(f"  Total with unit data: {matched_count:,} ({matched_count/total_parcels*100:.1f}%)")
+    if len(units_with_data) > 0:
+        print(f"  Total residential units: {units_with_data.sum():,.0f} (mean: {units_with_data.mean():.1f})")
+
+else:
+    print("Cannot create parcel-building mapping: missing data")
+    if parcels_classified is not None:
+        parcels_with_units = parcels_classified.copy()
+        parcels_with_units['building_units'] = None
+    else:
+        parcels_with_units = None
+
+# Exclude columns for export
+exclude_columns = [
+    'PRP_TYPE',
+    'Project_ID', 'PR_NAME', 'Phase', 'Shop', 'STATUS',
+    'C_START', 'C_FINISH', 'WorkOrderID', 'Shape__Area', 'Shape__Length',
+    'R_START', 'R_FINISH'
+]
+export_columns = [col for col in parcels_with_units.columns if col not in exclude_columns]
+
+# Define output filename for exported parcels CSV
+from datetime import datetime
+timestamp = datetime.now().strftime("%Y%m%d")
+output_parcels_csv = data_dir / f"parcels_with_units_{timestamp}.csv"
+
+parcels_with_units.to_csv(output_parcels_csv, index=False, columns=export_columns)
+
+```
+
+
+# Summary Statistics by Construction Polygon
+
+Calculate key metrics for each Peoples Gas construction polygon.
+
+## Calculate Street Miles
+
+```{python}
+if streets_in_construction is not None:
+    # Calculate length in meters, convert to miles (already in UTM)
+    streets_in_construction['length_miles'] = streets_in_construction.geometry.length / 1609.34
+
+    # Group by construction polygon OBJECTID and sum
+    street_miles_by_polygon = streets_in_construction.groupby('OBJECTID')['length_miles'].sum()
+
+    print(f"Total street miles in construction areas: {street_miles_by_polygon.sum():.2f}")
+else:
+    print("Street data not available for calculation")
+    street_miles_by_polygon = None
+```
+
+## Count Parcels and Units by Construction Polygon
+
+```{python}
+if parcels_with_units is not None:
+    # Count parcels by construction polygon OBJECTID
+    parcel_counts = parcels_with_units.groupby('OBJECTID').size()
+
+    # Sum building units by construction polygon OBJECTID
+    unit_counts = parcels_with_units.groupby('OBJECTID')['building_units'].sum()
+
+    # Count parcels with unit data
+    parcels_with_unit_data = parcels_with_units[parcels_with_units['building_units'].notna()]
+    parcels_with_units_count = parcels_with_unit_data.groupby('OBJECTID').size()
+
+    print(f"Total parcels in construction areas: {parcel_counts.sum():,}")
+    print(f"Total parcels with unit data: {parcels_with_units_count.sum():,}")
+    print(f"Total residential units: {unit_counts.sum():,.0f}")
+
+    # Breakdown by property type
+    print(f"\nParcels by Type (across all construction areas):")
+    for prop_type in ['residential', 'commercial', 'industrial', 'mixed-use', 'vacant']:
+        type_parcels = parcels_with_units[parcels_with_units['type'] == prop_type]
+        if len(type_parcels) > 0:
+            print(f"  {prop_type}: {len(type_parcels):,}")
+
+    # Residential breakdown by single-family vs multi-family
+    residential = parcels_with_units[parcels_with_units['type'] == 'residential']
+    if len(residential) > 0:
+        print(f"\nResidential Parcels Breakdown:")
+        sf = residential[residential['sf_mf'] == 'single-family']
+        mf = residential[residential['sf_mf'] == 'multi-family']
+        print(f"  Single-family: {len(sf):,}")
+        print(f"  Multi-family: {len(mf):,}")
+
+        # Units by residential type
+        sf_units = sf['building_units'].sum()
+        mf_units = mf['building_units'].sum()
+        print(f"\nResidential Units:")
+        print(f"  Single-family units: {sf_units:,.0f}")
+        print(f"  Multi-family units: {mf_units:,.0f}")
+
+    # Create type-specific counts by polygon OBJECTID for summary
+    sf_counts = parcels_with_units[
+        (parcels_with_units['type'] == 'residential') &
+        (parcels_with_units['sf_mf'] == 'single-family')
+    ].groupby('OBJECTID').size()
+
+    mf_counts = parcels_with_units[
+        (parcels_with_units['type'] == 'residential') &
+        (parcels_with_units['sf_mf'] == 'multi-family')
+    ].groupby('OBJECTID').size()
+
+    mf_units = parcels_with_units[
+        (parcels_with_units['type'] == 'residential') &
+        (parcels_with_units['sf_mf'] == 'multi-family')
+    ].groupby('OBJECTID')['building_units'].sum()
+
+    commercial_counts = parcels_with_units[
+        parcels_with_units['type'] == 'commercial'
+    ].groupby('OBJECTID').size()
+
+    industrial_counts = parcels_with_units[
+        parcels_with_units['type'] == 'industrial'
+    ].groupby('OBJECTID').size()
+
+else:
+    print("Parcel data not available for calculation")
+    parcel_counts = None
+    unit_counts = None
+    parcels_with_units_count = None
+    sf_counts = None
+    mf_counts = None
+    mf_units = None
+    commercial_counts = None
+    industrial_counts = None
+```
+
+# Write out parcels_classified and buildings_utm to GeoJSON
+
+```{python}
+if parcels_with_units is not None:
+    parcels_with_units.to_file(
+        data_dir / "parcels_with_units_classified.geojson", driver="GeoJSON")
+
+if 'buildings_utm' in locals() and buildings_utm is not None:
+    buildings_utm.to_file(
+        data_dir / "buildings_in_construction_utm.geojson", driver="GeoJSON")
+```
+
+## Combined Summary Dataset
+
+```{python}
+if pg_polygons is not None:
+    # Start with OBJECTID as the key column (not as index)
+    summary = pd.DataFrame({'OBJECTID': pg_polygons['OBJECTID'].values})
+
+    # Add metrics using explicit merges to avoid index alignment issues
+    # Left joins mean missing data just becomes NaN, which we'll fill with 0
+    summary = summary.merge(
+        street_miles_by_polygon.reset_index().rename(columns={'length_miles': 'street_miles'}),
+        on='OBJECTID',
+        how='left'
+    ).merge(
+        parcel_counts.reset_index().rename(columns={0: 'total_parcels'}),
+        on='OBJECTID',
+        how='left'
+    ).merge(
+        sf_counts.reset_index().rename(columns={0: 'sf_parcels'}),
+        on='OBJECTID',
+        how='left'
+    ).merge(
+        mf_counts.reset_index().rename(columns={0: 'mf_parcels'}),
+        on='OBJECTID',
+        how='left'
+    ).merge(
+        mf_units.reset_index().rename(columns={'building_units': 'mf_units'}),
+        on='OBJECTID',
+        how='left'
+    ).merge(
+        commercial_counts.reset_index().rename(columns={0: 'commercial_parcels'}),
+        on='OBJECTID',
+        how='left'
+    ).merge(
+        industrial_counts.reset_index().rename(columns={0: 'industrial_parcels'}),
+        on='OBJECTID',
+        how='left'
+    ).merge(
+        parcels_with_units_count.reset_index().rename(columns={0: 'parcels_with_unit_data'}),
+        on='OBJECTID',
+        how='left'
+    ).merge(
+        unit_counts.reset_index().rename(columns={'building_units': 'total_residential_units'}),
+        on='OBJECTID',
+        how='left'
+    )
+
+    # Fill NaN with 0 (polygons with no intersecting features)
+    summary = summary.fillna(0)
+
+    # Convert to integers where appropriate
+    int_cols = ['total_parcels', 'sf_parcels', 'mf_parcels',
+                'commercial_parcels', 'industrial_parcels', 'parcels_with_unit_data',
+                'total_residential_units']
+    for col in int_cols:
+        if col in summary.columns:
+            summary[col] = summary[col].astype(int)
+
+    print("\nSummary Statistics:")
+    print(summary.describe())
+
+    # Display sample of summary data
+    print("\nSample of summary data (first 5 polygons):")
+    print(summary.head())
+
+    # Show totals
+    print("\nTotals Across All Construction Polygons:")
+    print(f"  Total street miles: {summary['street_miles'].sum():.2f}")
+    print(f"  Total parcels: {summary['total_parcels'].sum():,}")
+    print(f"  Single-family: {summary['sf_parcels'].sum():,}")
+    print(f"  Multi-family: {summary['mf_parcels'].sum():,}")
+    print(f"  Commercial: {summary['commercial_parcels'].sum():,}")
+    print(f"  Industrial: {summary['industrial_parcels'].sum():,}")
+    print(f"  Total residential units: {summary['total_residential_units'].sum():,}")
+else:
+    print("Cannot create summary without Peoples Gas data")
+    summary = None
+```
+
+# Export Final Dataset
+
+Export the summary statistics with geometries to GeoJSON.
+
+```{python}
+if summary is not None and pg_polygons is not None:
+    # Merge summary statistics with Peoples Gas polygon geometries using OBJECTID
+    pg_summary = pg_polygons.merge(
+        summary.reset_index(drop=True),
+        on='OBJECTID',
+        how='left'
+    )
+
+    # # Fill NaN values with 0 for polygons without data
+    # metric_cols = ['street_miles', 'total_parcels', 'single_family_parcels',
+    #                'multi_family_parcels', 'commercial_parcels', 'industrial_parcels',
+    #                'parcels_with_unit_data', 'total_residential_units']
+    # for col in metric_cols:
+    #     if col in pg_summary.columns:
+    #         pg_summary[col] = pg_summary[col].fillna(0)
+
+    # Create output filename with timestamp
+
+    output_file = data_dir / f'peoplesgas_with_buildings_streets_{timestamp}.geojson'
+
+    # Write to GeoJSON
+    print(f"\n💾 Exporting summary dataset to GeoJSON...")
+    pg_summary.to_file(output_file, driver='GeoJSON')
+
+    print(f"✅ Exported {len(pg_summary)} construction polygons with summary statistics")
+    print(f"📁 File: {output_file}")
+
+#     # Show what columns were included
+#     metric_cols = [col for col in pg_summary.columns if col != 'geometry']
+#     print(f"\nIncluded columns ({len(metric_cols)}):")
+#     for col in metric_cols[:15]:  # Show first 15 columns
+#         print(f"  - {col}")
+#     if len(metric_cols) > 15:
+#         print(f"  ... and {len(metric_cols) - 15} more")
+# else:
+#     print("Cannot export: missing summary or polygon data")
+```
+
+# Next Steps
+
+- Visualize construction polygons with summary statistics on a map (use the exported GeoJSON in QGIS or web mapping tools)
+- Analyze temporal patterns if construction timeline data is available in the Peoples Gas dataset
+- Create detailed reports for specific construction areas of interest
+- Calculate cost/impact estimates based on parcel composition and unit counts
+- Compare characteristics across different construction areas to identify patterns

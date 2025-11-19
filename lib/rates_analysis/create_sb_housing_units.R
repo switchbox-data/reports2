@@ -32,59 +32,109 @@ print_all_column_names <- function(table) {
 ########################################################
 # Preferred Labels
 ########################################################
-add_baseline_heating_type <- function(housing_units) {
-  housing_units <- housing_units |>
+get_baseline_heating_type <- function(housing_units) {
+  baseline_heating_type_lookup <- housing_units |>
+    filter(upgrade == 0) |>
     mutate(
       baseline_heating_type = case_when(
         `in.hvac_heating_type_and_fuel` == "Electricity ASHP" ~ "Heat Pump",
         `in.hvac_heating_type_and_fuel` ==
           "Electricity Baseboard" ~ "Electric Resistance",
         `in.hvac_heating_type_and_fuel` ==
-          "Electricity Electric Boiler" ~ "Electric Resistance",
+          "Electricity Boiler" ~ "Electric Resistance",
         `in.hvac_heating_type_and_fuel` ==
-          "Electricity Electric Furnace" ~ "Electric Resistance",
+          "Electricity Furnace" ~ "Electric Resistance",
         `in.hvac_heating_type_and_fuel` ==
-          "Electricity Electric Wall Furnace" ~ "Electric Resistance",
+          "Electricity Wall Furnace" ~ "Electric Resistance",
         `in.hvac_heating_type_and_fuel` == "Electricity MSHP" ~ "Heat Pump",
         `in.hvac_heating_type_and_fuel` ==
           "Electricity Shared Heating" ~ "Electric Resistance",
         `in.hvac_heating_type_and_fuel` == "Fuel Oil Fuel Boiler" ~ "Fuel Oil",
         `in.hvac_heating_type_and_fuel` == "Fuel Oil Fuel Furnace" ~ "Fuel Oil",
         `in.hvac_heating_type_and_fuel` ==
-          "Fuel Oil Fuel Wall/Floor Furnace" ~ "Fuel Oil",
+          "Fuel Oil Wall/Floor Furnace" ~ "Fuel Oil",
         `in.hvac_heating_type_and_fuel` ==
           "Fuel Oil Shared Heating" ~ "Fuel Oil",
+        `in.hvac_heating_type_and_fuel` == "Natural Gas Boiler" ~ "Natural Gas",
         `in.hvac_heating_type_and_fuel` ==
-          "Natural Gas Fuel Boiler" ~ "Natural Gas",
+          "Natural Gas Furnace" ~ "Natural Gas",
         `in.hvac_heating_type_and_fuel` ==
-          "Natural Gas Fuel Furnace" ~ "Natural Gas",
-        `in.hvac_heating_type_and_fuel` ==
-          "Natural Gas Fuel Wall/Floor Furnace" ~ "Natural Gas",
+          "Natural Gas Wall/Floor Furnace" ~ "Natural Gas",
         `in.hvac_heating_type_and_fuel` ==
           "Natural Gas Shared Heating" ~ "Natural Gas",
         `in.hvac_heating_type_and_fuel` == "None" ~ "Other/None",
+        `in.hvac_heating_type_and_fuel` == "Other Fuel Boiler" ~ "Other/None",
+        `in.hvac_heating_type_and_fuel` == "Other Fuel Furnace" ~ "Other/None",
         `in.hvac_heating_type_and_fuel` ==
-          "Other Fuel Fuel Boiler" ~ "Other/None",
-        `in.hvac_heating_type_and_fuel` ==
-          "Other Fuel Fuel Furnace" ~ "Other/None",
-        `in.hvac_heating_type_and_fuel` ==
-          "Other Fuel Fuel Wall/Floor Furnace" ~ "Other/None",
+          "Other Fuel Wall/Floor Furnace" ~ "Other/None",
         `in.hvac_heating_type_and_fuel` ==
           "Other Fuel Shared Heating" ~ "Other/None",
         `in.hvac_heating_type_and_fuel` == "Propane Fuel Boiler" ~ "Propane",
         `in.hvac_heating_type_and_fuel` == "Propane Fuel Furnace" ~ "Propane",
         `in.hvac_heating_type_and_fuel` ==
-          "Propane Fuel Wall/Floor Furnace" ~ "Propane",
+          "Propane Wall/Floor Furnace" ~ "Propane",
         `in.hvac_heating_type_and_fuel` == "Propane Shared Heating" ~ "Propane",
         TRUE ~ "Other/None"
       )
     ) |>
-    select(-`in.hvac_heating_type_and_fuel`)
-  return(housing_units)
+    select(bldg_id, baseline_heating_type)
+  return(baseline_heating_type_lookup)
 }
 
-add_baseline_cooling_type <- function(housing_units) {
-  housing_units <- housing_units |>
+get_hvac_heating_efficiency <- function(housing_units) {
+  hvac_heating_efficiency_lookup <- housing_units |>
+    filter(upgrade == 0) |>
+    mutate(
+      hvac_heating_efficiency = case_when(
+        # using the values as-is from the data dictionary
+        `in.hvac_heating_efficiency` ==
+          "ASHP, SEER 10, 6.2 HSPF" ~ "ASHP, SEER 10, 6.2 HSPF",
+        `in.hvac_heating_efficiency` ==
+          "ASHP, SEER 13, 7.7 HSPF" ~ "ASHP, SEER 13, 7.7 HSPF",
+        `in.hvac_heating_efficiency` ==
+          "ASHP, SEER 15, 8.5 HSPF" ~ "ASHP, SEER 15, 8.5 HSPF",
+        `in.hvac_heating_efficiency` ==
+          "Electric Baseboard, 100% Efficiency" ~ "Electric Baseboard, 100% Efficiency",
+        `in.hvac_heating_efficiency` ==
+          "Electric Boiler, 100% AFUE" ~ "Electric Boiler, 100% AFUE",
+        `in.hvac_heating_efficiency` ==
+          "Electric Furnace, 100% AFUE" ~ "Electric Furnace, 100% AFUE",
+        `in.hvac_heating_efficiency` ==
+          "Electric Wall Furnace, 100% AFUE" ~ "Electric Wall Furnace, 100% AFUE",
+        `in.hvac_heating_efficiency` ==
+          "Fuel Boiler, 76% AFUE" ~ "Fuel Boiler, 76% AFUE",
+        `in.hvac_heating_efficiency` ==
+          "Fuel Boiler, 80% AFUE" ~ "Fuel Boiler, 80% AFUE",
+        `in.hvac_heating_efficiency` ==
+          "Fuel Boiler, 90% AFUE" ~ "Fuel Boiler, 90% AFUE",
+        `in.hvac_heating_efficiency` ==
+          "Fuel Furnace, 60% AFUE" ~ "Fuel Furnace, 60% AFUE",
+        `in.hvac_heating_efficiency` ==
+          "Fuel Furnace, 76% AFUE" ~ "Fuel Furnace, 76% AFUE",
+        `in.hvac_heating_efficiency` ==
+          "Fuel Furnace, 80% AFUE" ~ "Fuel Furnace, 80% AFUE",
+        `in.hvac_heating_efficiency` ==
+          "Fuel Furnace, 92.5% AFUE" ~ "Fuel Furnace, 92.5% AFUE",
+        `in.hvac_heating_efficiency` ==
+          "Fuel Wall/Floor Furnace, 60% AFUE" ~ "Fuel Wall/Floor Furnace, 60% AFUE",
+        `in.hvac_heating_efficiency` ==
+          "Fuel Wall/Floor Furnace, 68% AFUE" ~ "Fuel Wall/Floor Furnace, 68% AFUE",
+        `in.hvac_heating_efficiency` ==
+          "MSHP, SEER 14.5, 8.2 HSPF" ~ "MSHP, SEER 14.5, 8.2 HSPF",
+        `in.hvac_heating_efficiency` ==
+          "MSHP, SEER 29.3, 14 HSPF" ~ "MSHP, SEER 29.3, 14 HSPF",
+        `in.hvac_heating_efficiency` == "None" ~ "None",
+        `in.hvac_heating_efficiency` == "Shared Heating" ~ "Shared Heating",
+        TRUE ~ "Other"
+      )
+    ) |>
+    select(bldg_id, hvac_heating_efficiency)
+  return(hvac_heating_efficiency_lookup)
+}
+
+get_baseline_cooling_type <- function(housing_units) {
+  baseline_cooling_type_lookup <- housing_units |>
+    filter(upgrade == 0) |>
     mutate(
       baseline_cooling_type = case_when(
         `in.hvac_cooling_type` == "Central AC" ~ "Central AC",
@@ -95,8 +145,8 @@ add_baseline_cooling_type <- function(housing_units) {
         TRUE ~ "Other Cooling"
       )
     ) |>
-    select(-`in.hvac_cooling_type`)
-  return(housing_units)
+    select(bldg_id, baseline_cooling_type)
+  return(baseline_cooling_type_lookup)
 }
 
 add_hvac_appliances_shell <- function(housing_units) {
@@ -196,7 +246,6 @@ add_hvac_appliances_shell <- function(housing_units) {
 ########################################################
 # Preferred Groupings (building type, etc)
 ########################################################
-
 # Building Type
 update_building_type_group <- function(housing_units) {
   housing_units <- housing_units |>
@@ -354,6 +403,35 @@ add_liheap_eligibility <- function(
   return(housing_units)
 }
 
+
+get_lmi_discount <- function(
+  housing_units,
+  electric_lmi_thresholds
+) {
+  electric_lmi_discount_lookup <- housing_units |>
+    left_join(
+      electric_lmi_thresholds,
+      by = join_by(
+        electric_utility,
+        `in.representative_income` >= income_threshold_lower,
+        `in.representative_income` < income_threshold_upper,
+        `occupants` == occupants_min
+      ),
+      suffix = c("", "_electric")
+    ) |>
+    # Create electric_discount_rate column, use 0 if no match
+    mutate(discount_rate_elec = coalesce(discount_rate, 0)) |>
+    # Remove the intermediate discount_rate column from the join
+    select(
+      -discount_rate,
+      -customer_class,
+      -income_threshold_lower,
+      -income_threshold_upper
+    ) |>
+    select(bldg_id, discount_rate_elec)
+  return(electric_lmi_discount_lookup)
+}
+
 add_lmi_discount <- function(
   housing_units,
   electric_lmi_thresholds,
@@ -441,7 +519,8 @@ assign_utilities <- function(
 
   housing_units <- housing_units |>
     left_join(
-      bldg_utility_mapping,
+      bldg_utility_mapping |>
+        select(bldg_id, in.state, electric_utility, gas_utility),
       by = c("bldg_id", "in.state")
     )
   return(housing_units)

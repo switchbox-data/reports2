@@ -55,13 +55,14 @@ get_baseline_heating_type <- function(housing_units) {
           "Fuel Oil Wall/Floor Furnace" ~ "Fuel Oil",
         `in.hvac_heating_type_and_fuel` ==
           "Fuel Oil Shared Heating" ~ "Fuel Oil",
-        `in.hvac_heating_type_and_fuel` == "Natural Gas Boiler" ~ "Natural Gas",
         `in.hvac_heating_type_and_fuel` ==
-          "Natural Gas Furnace" ~ "Natural Gas",
+          "Natural Gas Fuel Boiler" ~ "Natural Gas",
         `in.hvac_heating_type_and_fuel` ==
-          "Natural Gas Wall/Floor Furnace" ~ "Natural Gas",
+          "Natural Gas Fuel Furnace" ~ "Natural Gas",
         `in.hvac_heating_type_and_fuel` ==
-          "Natural Gas Shared Heating" ~ "Natural Gas",
+          "Natural Gas Fuel Wall/Floor Furnace" ~ "Natural Gas",
+        `in.hvac_heating_type_and_fuel` ==
+          "Natural Gas Fuel Shared Heating" ~ "Natural Gas",
         `in.hvac_heating_type_and_fuel` == "None" ~ "Other/None",
         `in.hvac_heating_type_and_fuel` == "Other Fuel Boiler" ~ "Other/None",
         `in.hvac_heating_type_and_fuel` == "Other Fuel Furnace" ~ "Other/None",
@@ -128,7 +129,34 @@ get_hvac_heating_efficiency <- function(housing_units) {
         TRUE ~ "Other"
       )
     ) |>
-    select(bldg_id, hvac_heating_efficiency)
+
+    # also add the AFUE value as float
+    mutate(
+      afue_value = case_when(
+        hvac_heating_efficiency == "ASHP, SEER 10, 6.2 HSPF" ~ NA_real_,
+        hvac_heating_efficiency == "ASHP, SEER 13, 7.7 HSPF" ~ NA_real_,
+        hvac_heating_efficiency == "ASHP, SEER 15, 8.5 HSPF" ~ NA_real_,
+        hvac_heating_efficiency == "Electric Baseboard, 100% Efficiency" ~ 100,
+        hvac_heating_efficiency == "Electric Boiler, 100% AFUE" ~ 100,
+        hvac_heating_efficiency == "Electric Furnace, 100% AFUE" ~ 100,
+        hvac_heating_efficiency == "Electric Wall Furnace, 100% AFUE" ~ 100,
+        hvac_heating_efficiency == "Fuel Boiler, 76% AFUE" ~ 76,
+        hvac_heating_efficiency == "Fuel Boiler, 80% AFUE" ~ 80,
+        hvac_heating_efficiency == "Fuel Boiler, 90% AFUE" ~ 90,
+        hvac_heating_efficiency == "Fuel Furnace, 60% AFUE" ~ 60,
+        hvac_heating_efficiency == "Fuel Furnace, 76% AFUE" ~ 76,
+        hvac_heating_efficiency == "Fuel Furnace, 80% AFUE" ~ 80,
+        hvac_heating_efficiency == "Fuel Furnace, 92.5% AFUE" ~ 92.5,
+        hvac_heating_efficiency == "Fuel Wall/Floor Furnace, 60% AFUE" ~ 60,
+        hvac_heating_efficiency == "Fuel Wall/Floor Furnace, 68% AFUE" ~ 68,
+        hvac_heating_efficiency == "MSHP, SEER 14.5, 8.2 HSPF" ~ NA_real_,
+        hvac_heating_efficiency == "MSHP, SEER 29.3, 14 HSPF" ~ NA_real_,
+        hvac_heating_efficiency == "None" ~ NA_real_,
+        hvac_heating_efficiency == "Shared Heating" ~ NA_real_,
+        TRUE ~ NA_real_
+      )
+    ) |>
+    select(bldg_id, hvac_heating_efficiency, afue_value)
   return(hvac_heating_efficiency_lookup)
 }
 

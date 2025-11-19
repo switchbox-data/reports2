@@ -104,8 +104,8 @@ url_delivery_rates <- "https://docs.google.com/spreadsheets/d/17mTVgMnZaROOimWJB
 # SMI thresholds
 url_smi_thresholds <- "https://docs.google.com/spreadsheets/d/1bVbr8jDF8YgT6-yiEEpg-RFvMdV7veoapFzhZYVcaWg/edit?gid=0#gid=0"
 
-load_tariffs_from_cache <- FALSE
-load_thresholds_from_cache <- FALSE
+load_tariffs_from_cache <- TRUE
+load_thresholds_from_cache <- TRUE
 load_results_from_cache <- FALSE
 ```
 
@@ -193,6 +193,12 @@ bill_component_colors = c(
   "pre_hp_delivery_total" = "#FC9706"
 )
 
+savings_colors = c(
+  "dark_red" = "#db8b87", # dark red
+  "light_red" = "#eaada9", # light red
+  "light_green" = "#8ebd85", # light green
+  "dark_green" = "#5e8a5e" # dark green
+)
 
 energy_burden_colors = c(
   "low_energy_burden" = "#5e8a5e", # dark green
@@ -329,7 +335,7 @@ load_or_download <- function(table_name, url, path_to_cache, load_from_cache=FAL
 ### Load and Transform Housing Units
 ```{r}
 #| label: load housing units
-
+source(path_create_housing_units)
 
 use_these_in_columns <- c(
   "bldg_id",
@@ -341,6 +347,7 @@ use_these_in_columns <- c(
   "in.geometry_building_type_acs",
   "in.heating_fuel",
   "in.hvac_cooling_type",
+  "in.hvac_heating_efficiency",
   "in.hvac_heating_type_and_fuel",
   "in.occupants",
   "in.state",
@@ -386,27 +393,25 @@ housing_units <- housing_units |>
 #-----------------------------------------------------------------
 # Preferred labels for heating type, cooling type, building type, and occupants group
 #-----------------------------------------------------------------
-# Update baseline heating type
-housing_units <- add_baseline_heating_type(housing_units)
-housing_units$baseline_heating_type <- factor(
-  housing_units$baseline_heating_type,
-  levels = c("Natural Gas", "Fuel Oil", "Propane", "Electric Resistance", "Heat Pump", "Other/None")
-)
+# Update baseline heating type and set as factor
+housing_units <- get_baseline_heating_type(housing_units) |> right_join(housing_units, by = c("bldg_id"))
+baseline_heating_type_levels <- c("Natural Gas", "Fuel Oil", "Propane", "Electric Resistance", "Heat Pump", "Other/None")
+housing_units$baseline_heating_type <- forcats::fct(housing_units$baseline_heating_type, levels = baseline_heating_type_levels)
 
-# Update baseline cooling type
-housing_units <- add_baseline_cooling_type(housing_units)
-housing_units$baseline_cooling_type <- factor(
-  housing_units$baseline_cooling_type,
-  levels = c("Room AC", "Central AC",  "Heat Pump", "Other Cooling", "None")
-)
+# Update baseline heating type and set as factor
+housing_units <- get_hvac_heating_efficiency(housing_units) |> right_join(housing_units, by = c("bldg_id"))
+hvac_heating_efficiency_levels <- c("ASHP, SEER 10, 6.2 HSPF", "ASHP, SEER 13, 7.7 HSPF", "ASHP, SEER 15, 8.5 HSPF", "Electric Baseboard, 100% Efficiency", "Electric Boiler, 100% AFUE", "Electric Furnace, 100% AFUE", "Electric Wall Furnace, 100% AFUE", "Fuel Boiler, 76% AFUE", "Fuel Boiler, 80% AFUE", "Fuel Boiler, 90% AFUE", "Fuel Furnace, 60% AFUE", "Fuel Furnace, 76% AFUE", "Fuel Furnace, 80% AFUE", "Fuel Furnace, 92.5% AFUE", "Fuel Wall/Floor Furnace, 60% AFUE", "Fuel Wall/Floor Furnace, 68% AFUE", "MSHP, SEER 14.5, 8.2 HSPF", "MSHP, SEER 29.3, 14 HSPF", "None", "Shared Heating", "Other")
+housing_units$hvac_heating_efficiency <- forcats::fct(housing_units$hvac_heating_efficiency, levels = hvac_heating_efficiency_levels)
+
+# Update baseline cooling type and set as factor
+housing_units <- get_baseline_cooling_type(housing_units) |> right_join(housing_units, by = c("bldg_id"))
+baseline_cooling_type_levels <- c("Room AC", "Central AC",  "Heat Pump", "Other Cooling", "None")
+housing_units$baseline_cooling_type <- forcats::fct(housing_units$baseline_cooling_type, levels = baseline_cooling_type_levels)
 
 # Update building type group
 housing_units <- update_building_type_group(housing_units)
-housing_units$building_type_group <- factor(
-  housing_units$building_type_group,
-  levels = c("Single-Family", "2-4 Units", "5+ Units", "Other")
-)
-
+building_type_group_levels <- c("Single-Family", "2-4 Units", "5+ Units", "Other")
+housing_units$building_type_group <- forcats::fct(housing_units$building_type_group, levels = building_type_group_levels)
 
 # Add heat_non_heat
 #housing_units <- add_heat_non_heat(housing_units)
@@ -419,10 +424,8 @@ housing_units <- change_occupants_to_number(housing_units)
 
 # Add occupants group
 housing_units <- add_occupants_group(housing_units)
-housing_units$occupants_group <- factor(
-  housing_units$occupants_group,
-  levels = c("Vacant", "Single", "Couple", "3-4 Occupants", "5+ Occupants")
-)
+occupants_group_levels <- c("Vacant", "Single", "Couple", "3-4 Occupants", "5+ Occupants")
+housing_units$occupants_group <- forcats::fct(housing_units$occupants_group, levels = occupants_group_levels)
 
 # Change upgrade to 2f strings (eg 1 -> "01")
 #housing_units <- change_upgrade_to_2f_strings(housing_units)
@@ -442,24 +445,19 @@ housing_units <- inflate_income_to_2024(housing_units, from_year = 2019)
 # 80% -> $73,832
 # 100% -> $92,290
 housing_units <- group_income_by_dollars(housing_units, dollar_tiers = c(1000, 55374, 92290))
-housing_units$dollar_tier <- factor(
-  housing_units$dollar_tier,
-  levels = c("No Income", "Low Income", "Moderate Income", "Not LMI")
-)
+dollar_tier_levels <- c("No Income", "Low Income", "Moderate Income", "Not LMI")
+housing_units$dollar_tier <- forcats::fct(housing_units$dollar_tier, levels = dollar_tier_levels)
 
 # Add SMI tiers
 housing_units <- group_income_by_smi(housing_units, table_name = "smi_thresholds_2024", url_smi_thresholds = url_smi_thresholds, smi_tiers = c(0.6, 1.0))
-housing_units$smi_tier <- factor(
-  housing_units$smi_tier,
-  levels = c("No Income", "Low Income", "Moderate Income", "Not LMI")
-)
+smi_tier_levels <- c("No Income", "Low Income", "Moderate Income", "Not LMI")
+housing_units$smi_tier <- forcats::fct(housing_units$smi_tier, levels = smi_tier_levels)
 
 #-----------------------------------------------------------------
 # Extensions: add elec and gas utility assignments, then LMI discounts
 #-----------------------------------------------------------------
 # Assign electricity utility
 housing_units <- assign_utilities(housing_units)
-
 # Add LMI discounts
 load_or_download("electric_lmi_thresholds", url_delivery_rates, path_to_cache, load_from_cache = load_thresholds_from_cache)
 load_or_download("gas_lmi_thresholds", url_delivery_rates, path_to_cache, load_from_cache = load_thresholds_from_cache)
@@ -494,6 +492,13 @@ n_non_vacant_homes <- housing_units |> filter(upgrade == 0) |> filter(occupants_
 ```
 
 ## Bill Calcuations
+### parameters
+```{r}
+cols_from_housing_units <- c("bldg_id", "upgrade", "hvac", "baseline_heating_type", "hvac_heating_efficiency")
+
+```
+
+
 ### Electric
 ```{r}
 #| label: electric bills calculations
@@ -542,23 +547,23 @@ if (load_results_from_cache) {
 
   # BILLS by season
   winter_bills_elec <- calc_annual_bills_from_monthly(monthly_bills_elec, "electricity", months = winter_months) |>
-    left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
 
   summer_bills_elec <- calc_annual_bills_from_monthly(monthly_bills_elec, "electricity", months = summer_months) |>
-    left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
 
   annual_bills_elec <- calc_annual_bills_from_monthly(monthly_bills_elec, "electricity") |>
-    left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
 
   # Changes by season
   winter_changes_elec <- calc_annual_change_from_monthly(monthly_changes_elec, "electricity", months = winter_months)|>
-    left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
 
   summer_changes_elec <- calc_annual_change_from_monthly(monthly_changes_elec, "electricity", months = summer_months)|>
-    left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
 
   annual_changes_elec <- calc_annual_change_from_monthly(monthly_changes_elec, "electricity") |>
-    left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
 
   # Save to cache
   save(
@@ -631,23 +636,23 @@ if (load_results_from_cache) {
 
   # BILLS by season
   winter_bills_fuel_oil <- calc_annual_bills_from_monthly(monthly_bills_fuel_oil, "fuel_oil", months = winter_months) |>
-    left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
 
   summer_bills_fuel_oil <- calc_annual_bills_from_monthly(monthly_bills_fuel_oil, "fuel_oil", months = summer_months) |>
-    left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
 
   annual_bills_fuel_oil <- calc_annual_bills_from_monthly(monthly_bills_fuel_oil, "fuel_oil") |>
-    left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
 
   # Changes by season
   winter_changes_fuel_oil <- calc_annual_change_from_monthly(monthly_changes_fuel_oil, "fuel_oil", months = winter_months)|>
-    left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
 
   summer_changes_fuel_oil <- calc_annual_change_from_monthly(monthly_changes_fuel_oil, "fuel_oil", months = summer_months)|>
-    left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
 
   annual_changes_fuel_oil <- calc_annual_change_from_monthly(monthly_changes_fuel_oil, "fuel_oil") |>
-    left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
 
   # Save to cache
   save(
@@ -720,23 +725,23 @@ if (load_results_from_cache) {
 
   # BILLS by season
   winter_bills_propane <- calc_annual_bills_from_monthly(monthly_bills_propane, "propane", months = winter_months) |>
-    left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
 
   summer_bills_propane <- calc_annual_bills_from_monthly(monthly_bills_propane, "propane", months = summer_months) |>
-    left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
 
   annual_bills_propane <- calc_annual_bills_from_monthly(monthly_bills_propane, "propane") |>
-    left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
 
   # Changes by season
   winter_changes_propane <- calc_annual_change_from_monthly(monthly_changes_propane, "propane", months = winter_months)|>
-    left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
 
   summer_changes_propane <- calc_annual_change_from_monthly(monthly_changes_propane, "propane", months = summer_months)|>
-    left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
 
   annual_changes_propane <- calc_annual_change_from_monthly(monthly_changes_propane, "propane") |>
-    left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
 
   # Save to cache
   save(
@@ -797,23 +802,23 @@ if (load_results_from_cache) {
 
   # BILLS by season
   winter_bills_gas <- calc_annual_bills_from_monthly(monthly_bills_gas, "natural_gas", months = winter_months) |>
-    left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
 
   summer_bills_gas <- calc_annual_bills_from_monthly(monthly_bills_gas, "natural_gas", months = summer_months) |>
-    left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
 
   annual_bills_gas <- calc_annual_bills_from_monthly(monthly_bills_gas, "natural_gas") |>
-    left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
 
   # Changes by season
   winter_changes_gas <- calc_annual_change_from_monthly(monthly_changes_gas, "natural_gas", months = winter_months)|>
-    left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
 
   summer_changes_gas <- calc_annual_change_from_monthly(monthly_changes_gas, "natural_gas", months = summer_months)|>
-    left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
 
   annual_changes_gas <- calc_annual_change_from_monthly(monthly_changes_gas, "natural_gas") |>
-    left_join(housing_units |> select(bldg_id, upgrade, hvac, baseline_heating_type), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
 
   # Save to cache
   save(
@@ -859,6 +864,10 @@ annual_changes_total <- calc_annual_changes_total(annual_changes_elec, annual_ch
 winter_changes_total <- calc_annual_changes_total(winter_changes_elec, winter_changes_gas, winter_changes_fuel_oil, winter_changes_propane)
 summer_changes_total <- calc_annual_changes_total(summer_changes_elec, summer_changes_gas, summer_changes_fuel_oil, summer_changes_propane)
 ```
+
+
+
+
 
 # ------------------------------------------------------------------------------
 # Sample Home

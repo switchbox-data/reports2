@@ -273,30 +273,36 @@ load_or_download <- function(table_name, url, path_to_cache, load_from_cache=FAL
     if (str_detect(table_name, "gas_delivery_tariffs")) {
       print("    ...combining several rows to get an all-in delivery rate")
 
-      # First, get all the rows that are NOT the ones we want to combine
-      other_rows <- data |>
-        filter(!type %in% c("adjustment_rate", "distribution_rate", "programs"))
 
-      # Then, create the combined delivery_rate rows
-      delivery_rate_rows <- data |>
-        filter(type %in% c("adjustment_rate", "distribution_rate", "programs")) |>
-        group_by(tariff_name, gas_utility, heat_non_heat, version, month) |>
+      # let's add a "bill_component" column to the data based on the class and type columns
+      # fixed = everything where class == "fixed"
+      # delivery = everything where class == "volumetric", expect if type == "supply"
+      # tax = everything where type == "tax"
+      data <- data |>
+        mutate(bill_component = case_when(
+          class == "fixed" ~ "customer_charge",
+          class == "volumetric" & type != "supply" ~ "delivery_rate",
+          class == "volumetric" & type == "supply" ~ "supply_rate",
+          class == "tax" ~ "sales_tax_rate",
+          TRUE ~ "other"
+        ))
+
+      # now let's group by the bill_component column
+      data <- data |>
+        group_by(bill_component, tariff_name, gas_utility, heat_non_heat, version, month) |>
         summarise(
           value = sum(value, na.rm = TRUE),
-          type = "delivery_rate",
+          type = first(bill_component),
           # Keep other columns from the first row of each group
           class = first(class),
-          cost_category = first(cost_category),
           customer_class = first(customer_class),
           tariff_name = first(tariff_name),
           billing_unit = first(billing_unit),
           lmi = first(lmi),
           effective_date = first(effective_date),
           .groups = "drop"
-        )
-
-      # Combine the results
-      data <- bind_rows(other_rows, delivery_rate_rows)
+        ) |>
+        select(-bill_component)
     }
 
 
@@ -319,7 +325,6 @@ load_or_download <- function(table_name, url, path_to_cache, load_from_cache=FAL
 }
 ```
 
-
 ## Housing Units
 ### Load and Transform Housing Units
 ```{r}
@@ -329,6 +334,7 @@ load_or_download <- function(table_name, url, path_to_cache, load_from_cache=FAL
 use_these_in_columns <- c(
   "bldg_id",
   "upgrade",
+  "in.sqft",
   "in.representative_income",
   "in.income",
   "in.city",
@@ -370,6 +376,12 @@ housing_units <- open_dataset(parquet_files) |>
   select(all_of(use_these_in_columns), all_of(use_these_out_columns)) |>
   filter(`in.state` %in% use_these_states) |>
   collect()
+
+#-----------------------------------------------------------------
+# Simple stuff: trim to a max of 4000 sqft
+#-----------------------------------------------------------------
+housing_units <- housing_units |>
+  filter(in.sqft <= 5000)
 
 #-----------------------------------------------------------------
 # Preferred labels for heating type, cooling type, building type, and occupants group
@@ -479,7 +491,6 @@ housing_units <- housing_units |>
   filter(occupants_group != "Vacant")
 
 n_non_vacant_homes <- housing_units |> filter(upgrade == 0) |> filter(occupants_group != "Vacant") |> nrow()
-
 ```
 
 ## Bill Calcuations
@@ -849,7 +860,37 @@ winter_changes_total <- calc_annual_changes_total(winter_changes_elec, winter_ch
 summer_changes_total <- calc_annual_changes_total(summer_changes_elec, summer_changes_gas, summer_changes_fuel_oil, summer_changes_propane)
 ```
 
+# ------------------------------------------------------------------------------
+# Sample Home
+# ------------------------------------------------------------------------------
 
+```{r}
+#| label: find a good sample home
+
+
+# list all the blg_ids where..
+# - upgrade == 0
+# - occupants_group != "Vacant"
+# - representative_income > 1000
+# - baseline_heating_type == "natural_gas"
+# - building_type_group == "Single-Family"
+# - baseline_cooling_type == "Central AC"
+# - dollar_tier == "Not LMI"
+# - smi_tier == "Not LMI"
+# - hvac == "Heat Pump"
+
+good_homes <- housing_units |>
+  filter(upgrade == 0) |>
+  filter(occupants_group == "3-4 Occupants") |>
+  filter(smi_tier == "Not LMI") |>
+  filter(in.vintage == "1970s") |>
+  filter(baseline_heating_type == "Natural Gas") |>
+  filter(baseline_cooling_type == "Central AC")
+
+# Take a look at the list and pick your favorite
+#View(good_homes)
+bldg_id_x <- 389325
+```
 
 # ------------------------------------------------------------------------------
 # Findings
@@ -1772,7 +1813,7 @@ result <- hist_for_single_rate_version(
   binwidth = 100
 )
 
-category_percentages <- result[[2]]
+winter_changes_all_fuels_category_percentages <- result[[2]]
 
 print(result[[1]])
 ```
@@ -1797,7 +1838,7 @@ result <- hist_for_single_rate_version(
   binwidth = 100
 )
 
-category_percentages <- result[[2]]
+summer_changes_all_fuels_category_percentages <- result[[2]]
 
 print(result[[1]])
 ```
@@ -2863,12 +2904,11 @@ result_all_fuels <- plot_bill_change_histograms(
   binwidth = 100
 )
 
-stats <- result_all_fuels[[2]]
-
-
 plot <- result_all_fuels[[1]]
 print(plot)
 
+
+stats <- result_all_fuels[[2]]
 stats_all_fuels <- annual_changes_total |>
   group_by(hvac, version_elec) |>
   summarise(
@@ -2941,6 +2981,10 @@ save(
   pre_hp_delivery_charge_res, post_hp_delivery_charge_res,
   pre_hp_supply_charge_res, post_hp_supply_charge_res,
   pre_hp_total_bill_res, post_hp_total_bill_res,
+
+  # All Fuels
+  winter_changes_all_fuels_category_percentages,
+  summer_changes_all_fuels_category_percentages,
 
   # Fuel Oil
   winter_bills_fuel_oil,

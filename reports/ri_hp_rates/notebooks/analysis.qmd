@@ -865,8 +865,46 @@ winter_changes_total <- calc_annual_changes_total(winter_changes_elec, winter_ch
 summer_changes_total <- calc_annual_changes_total(summer_changes_elec, summer_changes_gas, summer_changes_fuel_oil, summer_changes_propane)
 ```
 
+# ------------------------------------------------------------------------------
+# Gas Burner Efficiency Impacts
+# ------------------------------------------------------------------------------
+```{r}
+#| label: annual changes by afue value
 
+annual_changes_y  <- annual_changes_total |>
+  filter(upgrade == 2) |>
+  filter(version_elec == "baseline") |>
+  left_join(housing_units |> filter(upgrade==0)|> filter(baseline_heating_type == "Natural Gas")|> select(bldg_id, afue_value), by = c("bldg_id"))
 
+#View(annual_changes_y)
+
+annual_changes_x <- annual_changes_y |>
+  summarize(
+    counts = n(),
+    median_annual_change = median(annual_changes_y),
+    .by = c(afue_value)
+  )
+
+#View(annual_changes_x)
+
+ggplot(annual_changes_x, aes(x = afue_value/100, y = median_annual_change)) +
+  #shade light green above y=0
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 0, ymax = Inf), fill = savings_colors["light_red"], alpha = 0.5) +
+  #shade light red below y=0
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = 0), fill = savings_colors["light_green"], alpha = 0.5) +
+  labs(x = "Baseline Gas Heating Efficiency (AFUE Value)", y = "Median Annual Total Bill Change") +
+  theme_minimal()+
+  scale_x_continuous(breaks = seq(0, 1, by = 0.1), labels = scales::percent_format(accuracy = 1)) +
+  scale_y_continuous(limits = c(-20, 500), breaks = seq(-1000, 1000, by = 100), labels = scales::dollar_format()) +
+  geom_point(size=4, color = sb_colors["midnight"]) +
+  geom_line(size=3, color = sb_colors["midnight"]) +
+  # use ggrepel to write the counts on the points
+  # add a small offset to the counts
+  ggrepel::geom_text_repel(aes(label = counts), size = 8, color = sb_colors["sky"], nudge_y = 15) +
+
+  # add a text that says "Count of Bldg IDs" in sky color
+  annotate("text", x = 0.62, y = 50, label = "Count of Bldg IDs", color = sb_colors["sky"], size = 8)
+```
 
 
 # ------------------------------------------------------------------------------

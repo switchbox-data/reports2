@@ -988,8 +988,8 @@ get_monthly_consumption <- function(
   # filter ddl by fuel and functional_group to get the target columns
   ddl_filtered <- ddl |>
     filter(
-      .data$fuel == .env$fuel,
-      .data$functional_group == .env$functional_group
+      .data$fuel %in% .env$fuel,
+      .data$functional_group %in% .env$functional_group
     )
 
   # target columns
@@ -1018,6 +1018,113 @@ get_monthly_consumption <- function(
   return(monthly_consumption)
 }
 
+get_monthly_consumption_many <- function(
+  path_monthly_data,
+  fuels,
+  functional_groups,
+  use_these_states,
+  use_these_upgrades = c("00")
+) {
+  #' Calculate Monthly Energy Consumption
+  #'
+  #' This function calculates monthly energy consumption for multiple fuel and functional group combinations.
+  #'
+  #' @param path_monthly_data Character string. Path to the directory containing monthly
+  #'   load data in Arrow dataset format.
+  #' @param fuels Character vector. The fuels to calculate consumption for (e.g., c("electricity", "natural_gas")).
+  #' @param functional_groups Character vector. The functional groups to calculate consumption for (e.g., c("heating", "cooling")).
+  #' @param use_these_states Character vector. The states to include in the analysis.
+  #' @param use_these_upgrades Character vector. The upgrades to use for the calculation.
+  #'
+  #' @return A data frame containing monthly energy consumption with the following columns:
+  #'   \item bldg_id - Building identifier
+  #'   \item upgrade - Upgrade scenario identifier
+  #'   \item month - Month number (1-12)
+  #'   \item <fuel>_<functional_group>_consumption_kwh - Energy consumption in kWh for each fuel/functional_group combination
+  #'
+  #' @examples
+  #' \dontrun{
+  #' monthly_consumption <- get_monthly_consumption(
+  #'   path_monthly_data = "/workspaces/reports2/data/ResStock/2024_release2_tmy3/load_curve_monthly_10/state=RI",
+  #'   fuels = c("electricity", "natural_gas"),
+  #'   functional_groups = c("heating", "cooling"),
+  #'   use_these_states = c("RI"),
+  #'   use_these_upgrades = c("00", "01", "02", "03")
+  #' )
+  #' }
+
+  # load the data dictionary labeled (ddl) from feather
+  ddl <- read_feather(
+    "/workspaces/reports2/lib/resstock/2024/end_use_groups.feather"
+  )
+
+  # filter ddl by fuel and functional_group to get all target columns
+  ddl_filtered <- ddl |>
+    filter(
+      .data$fuel %in% .env$fuels,
+      .data$functional_group %in% .env$functional_groups
+    )
+
+  # get all unique target columns needed
+  all_target_columns <- unique(ddl_filtered$timeseries_field_name)
+  print(all_target_columns)
+
+  # Read the dataset from the parquet directory and get base data
+  data <- open_dataset(path_monthly_data)
+
+  monthly_consumption <- data |>
+    filter(state %in% use_these_states) |>
+    filter(upgrade %in% use_these_upgrades) |>
+    mutate(
+      bldg_id = as.integer(bldg_id),
+      month = as.integer(month(timestamp))
+    ) |>
+    select(all_of(c("bldg_id", "upgrade", "month", all_target_columns))) |>
+    collect()
+
+  # print the columns names in monthly_consumption
+
+  # Create a column for each fuel + functional_group combination
+  for (fuel_val in fuels) {
+    for (fg_val in functional_groups) {
+      # Get the target columns for this specific combination
+      combo_columns <- ddl_filtered |>
+        filter(
+          fuel == fuel_val,
+          functional_group == fg_val
+        ) |>
+        pull(timeseries_field_name)
+
+      # Create the column name
+      col_name <- paste0(fuel_val, "_", fg_val, "_consumption_kwh")
+
+      # Calculate the sum for this combination
+      if (length(combo_columns) > 0) {
+        monthly_consumption <- monthly_consumption |>
+          mutate(
+            !!col_name := rowSums(across(all_of(combo_columns)), na.rm = TRUE)
+          )
+      } else {
+        # If no columns found, create a column with 0s
+        monthly_consumption <- monthly_consumption |>
+          mutate(!!col_name := 0)
+      }
+    }
+  }
+
+  # Select only the ID columns and the new consumption columns
+  consumption_cols <- paste0(
+    rep(fuels, each = length(functional_groups)),
+    "_",
+    rep(functional_groups, times = length(fuels)),
+    "_consumption_kwh"
+  )
+
+  monthly_consumption <- monthly_consumption |>
+    select(all_of(c("bldg_id", "upgrade", "month", consumption_cols)))
+
+  return(monthly_consumption)
+}
 
 # monthly bills
 calc_monthly_bills <- function(

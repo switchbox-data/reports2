@@ -451,6 +451,10 @@ if parcels_with_units is not None:
         if len(type_parcels) > 0:
             print(f"  {prop_type}: {len(type_parcels):,}")
 
+    # Non-vacant total
+    non_vacant = parcels_with_units[parcels_with_units['type'] != 'vacant']
+    print(f"  Non-vacant (total): {len(non_vacant):,}")
+
     # Residential breakdown by single-family vs multi-family
     residential = parcels_with_units[parcels_with_units['type'] == 'residential']
     if len(residential) > 0:
@@ -491,6 +495,10 @@ if parcels_with_units is not None:
         parcels_with_units['type'] == 'industrial'
     ].groupby('OBJECTID').size()
 
+    non_vacant_counts = parcels_with_units[
+        parcels_with_units['type'] != 'vacant'
+    ].groupby('OBJECTID').size()
+
 else:
     print("Parcel data not available for calculation")
     parcel_counts = None
@@ -501,6 +509,7 @@ else:
     mf_units = None
     commercial_counts = None
     industrial_counts = None
+    non_vacant_counts = None
 ```
 
 # Write out parcels_classified and buildings_utm to GeoJSON
@@ -525,7 +534,8 @@ if pg_polygons is not None:
     # Add metrics using explicit merges to avoid index alignment issues
     # Left joins mean missing data just becomes NaN, which we'll fill with 0
     summary = summary.merge(
-        street_miles_by_polygon.reset_index().rename(columns={'length_miles': 'street_miles'}),
+        street_miles_by_polygon.reset_index().rename(
+            columns={'length_miles': 'street_miles'}),
         on='OBJECTID',
         how='left'
     ).merge(
@@ -545,19 +555,28 @@ if pg_polygons is not None:
         on='OBJECTID',
         how='left'
     ).merge(
-        commercial_counts.reset_index().rename(columns={0: 'commercial_parcels'}),
+        commercial_counts.reset_index().rename(
+            columns={0: 'commercial_parcels'}),
         on='OBJECTID',
         how='left'
     ).merge(
-        industrial_counts.reset_index().rename(columns={0: 'industrial_parcels'}),
+        industrial_counts.reset_index().rename(
+            columns={0: 'industrial_parcels'}),
         on='OBJECTID',
         how='left'
     ).merge(
-        parcels_with_units_count.reset_index().rename(columns={0: 'parcels_with_unit_data'}),
+        parcels_with_units_count.reset_index().rename(
+            columns={0: 'parcels_with_unit_data'}),
         on='OBJECTID',
         how='left'
     ).merge(
-        unit_counts.reset_index().rename(columns={'building_units': 'total_residential_units'}),
+        unit_counts.reset_index().rename(
+            columns={'building_units': 'total_residential_units'}),
+        on='OBJECTID',
+        how='left'
+    ).merge(
+        non_vacant_counts.reset_index().rename(
+            columns={0: 'non_vacant_parcels'}),
         on='OBJECTID',
         how='left'
     )
@@ -566,7 +585,7 @@ if pg_polygons is not None:
     summary = summary.fillna(0)
 
     # Convert to integers where appropriate
-    int_cols = ['total_parcels', 'sf_parcels', 'mf_parcels',
+    int_cols = ['total_parcels', 'non_vacant_parcels', 'sf_parcels', 'mf_parcels',
                 'commercial_parcels', 'industrial_parcels', 'parcels_with_unit_data',
                 'total_residential_units']
     for col in int_cols:
@@ -584,11 +603,13 @@ if pg_polygons is not None:
     print("\nTotals Across All Construction Polygons:")
     print(f"  Total street miles: {summary['street_miles'].sum():.2f}")
     print(f"  Total parcels: {summary['total_parcels'].sum():,}")
+    print(f"  Non-vacant parcels: {summary['non_vacant_parcels'].sum():,}")
     print(f"  Single-family: {summary['sf_parcels'].sum():,}")
     print(f"  Multi-family: {summary['mf_parcels'].sum():,}")
     print(f"  Commercial: {summary['commercial_parcels'].sum():,}")
     print(f"  Industrial: {summary['industrial_parcels'].sum():,}")
-    print(f"  Total residential units: {summary['total_residential_units'].sum():,}")
+    print(
+        f"  Total residential units: {summary['total_residential_units'].sum():,}")
 else:
     print("Cannot create summary without Peoples Gas data")
     summary = None

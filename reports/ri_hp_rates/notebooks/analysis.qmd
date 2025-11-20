@@ -900,6 +900,105 @@ ggplot(annual_changes_x, aes(x = afue_value/100, y = median_annual_change)) +
 ```
 
 # ------------------------------------------------------------------------------
+# Consumption by End Use Group
+# ------------------------------------------------------------------------------
+```{r}
+#| label: consumption by end use group
+source(path_heat_pump_funcs)
+
+path_end_use_groups_feather <- "/workspaces/reports2/lib/resstock/2024/end_use_groups.feather"
+
+end_use_groups <- arrow::read_feather(path_end_use_groups_feather)
+
+# Monthly Load Data
+monthly_consumption <- get_monthly_consumption_many(
+  path_monthly_data = path_monthly_data,
+  fuels = c("electricity", "natural_gas"),
+  functional_groups = c("appliance", "cooking", "cooling", "heating", "hot_water", "total"),
+  use_these_states = "RI",
+  use_these_upgrades = use_these_upgrades
+)
+
+# Filter out any vacant homes
+monthly_consumption <- monthly_consumption |>
+  left_join(housing_units |> filter(upgrade == 0)|> select(bldg_id, occupants_group, baseline_heating_type), by = c("bldg_id")) |>
+  filter(occupants_group != "Vacant") |>
+  select(-occupants_group)
+
+#View(monthly_consumption)
+
+#| label: consumption by end use group
+baseline_heating_option <- "Natural Gas"
+
+heating_type_to_fuel_lookup <- tibble(
+  heating_type = c("Electric Resistance", "Natural Gas"),
+  fuel = c("electricity", "natural_gas")
+)
+
+fuel <- heating_type_to_fuel_lookup |> filter(heating_type == baseline_heating_option) |> pull(fuel)
+
+
+# get the 10th, 50th, and 90th percentiles of consumption by month
+monthly_consumption_percentiles <- monthly_consumption |>
+  filter(upgrade == 0) |>
+  filter(baseline_heating_type == baseline_heating_option) |>
+  select(-baseline_heating_type) |>
+  # get the quantiles for each column other than bldg_id, upgrade, and month
+  reframe(
+    across(everything(), ~ quantile(.x, c(0.1, 0.5, 0.9))),
+    .by = c(month, upgrade)
+  ) |>
+  mutate(
+    percentile = rep(c("p10", "p50", "p90"),
+                   times = n() / 3)
+  )|>
+  pivot_longer(cols = -c(month, upgrade, percentile), names_to = "functional_group", values_to = "consumption_kwh") |>
+  filter(str_detect(functional_group, fuel)) |>
+
+
+  mutate(
+    functional_group = case_when(
+      str_detect(functional_group, "appliance") ~ "Appliance",
+      str_detect(functional_group, "cooling") ~ "Cooling",
+      str_detect(functional_group, "heating") ~ "Heating",
+      str_detect(functional_group, "hot_water") ~ "Hot Water",
+      str_detect(functional_group, "total") ~ "Total",
+      TRUE ~ "Other"
+    )
+  )
+#View(monthly_consumption_percentiles)
+
+# plot the average consumption by month
+colors = c(
+  "Appliance" = "grey50",
+  "Cooling" = "blue",
+  "Heating" = "red",
+  "Hot Water" = "green",
+  "Total" = "black"
+)
+
+stack_order <- c("Heating", "Appliance", "Cooling", "Hot Water")  # exclude "Total" since we're filtering that group
+
+plot_p50 <- monthly_consumption_percentiles |>
+  filter(percentile == "p50") |>
+  filter(functional_group != "Total") |>
+  mutate(functional_group = factor(functional_group, levels = stack_order)) |>
+  arrange(month, functional_group) |>
+  ggplot(aes(x = month, y = consumption_kwh, fill = functional_group)) +
+  geom_area(position = "stack", alpha = 0.8) +
+  labs(title = paste("Average", baseline_heating_option, "Consumption by Functional Group and Month"),
+       x = "Month",
+       y = "Consumption (kWh)") +
+  scale_x_continuous(breaks = 1:12, labels = month.abb) +
+  scale_y_continuous(labels = scales::comma_format()) +
+  scale_fill_manual(values = colors, breaks = stack_order)
+
+print(plot_p50)
+
+
+```
+
+# ------------------------------------------------------------------------------
 # Sample Home
 # ------------------------------------------------------------------------------
 ```{r}

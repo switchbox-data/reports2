@@ -12,12 +12,15 @@ default:
 # =============================================================================
 # These commands check your code quality and run tests
 
-# Run code quality tools
+# Run code quality tools (same as CI)
 check:
     echo "🚀 Checking lock file consistency with 'pyproject.toml'"
     uv lock --locked
     echo "🚀 Linting, formatting, and type checking code"
     prek run -a
+
+# Check for obsolete dependencies
+check-deps:
     echo "🚀 Checking for obsolete dependencies: Running deptry"
     uv run deptry .
 

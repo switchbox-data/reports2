@@ -53,3 +53,11 @@ install:
 # Clean generated files and caches
 clean:
     rm -rf .pytest_cache .ruff_cache tmp notebooks/.quarto
+
+# =============================================================================
+# 🔍 AWS
+# =============================================================================
+# These commands help you login to AWS from Ona
+
+ona_login_aws:
+    gitpod idp login aws --role-arn arn:aws:iam::536697241055:role/OnaEnvironmentRole --duration-seconds 43200

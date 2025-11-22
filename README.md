@@ -8,6 +8,8 @@ This repository contains Switchbox's reports. We use a modern bilingual stack co
 
 - [Overview](#-overview)
 - [Why Open Source?](#-why-open-source)
+- [Repo Structure](#-repo-structure)
+- [Available Commands](#-available-commands)
 - [Quick Start](#-quick-start)
 - [Creating a New Report](#-creating-a-new-report)
 - [Development Workflow](#-development-workflow)
@@ -19,8 +21,6 @@ This repository contains Switchbox's reports. We use a modern bilingual stack co
 - [Code Quality & Testing](#-code-quality--testing)
 - [CI/CD Pipeline](#-cicd-pipeline)
 - [Cleaning Up](#-cleaning-up)
-- [Available Commands](#-available-commands)
-- [Repo Structure](#-repo-structure)
 - [Additional Resources](#-additional-resources)
 
 ---
@@ -50,6 +50,53 @@ As a research group, our work is frequently cited in the press and aims to shape
 ### 2. 🔬 Open Science
 
 We believe the clean energy transition will happen faster if energy researchers, particularly those working in the nonprofit sector, embrace open data and open source code so that we can build on each other's work rather than reinventing the wheel.
+
+## 📁 Repo Structure
+
+While the rest of this README.md will walk through the containts of this repo in detail, here is an initial overview:
+
+```
+reports2/
+├── .devcontainer/          # Dev container configuration
+├── docs/                   # Published HTML reports (hosted via GitHub Pages at switchbox-data.github.io/reports2)
+├── lib/                    # Shared libraries and utilities
+├── reports/                # Switchbox report projects (source code for reports on our website)
+│   ├── ct_hp_rates/        # Individual Quarto projects for each report
+│   ├── il_lea/
+│   └── ...
+├── tests/                  # Python test suite
+├── .pre-commit-config.yaml # Pre-commit hooks configuration
+├── .Rprofile               # R environment configuration (P3M/pak setup)
+├── pyproject.toml          # Python dependencies and tool configuration
+├── uv.lock                 # Locked Python dependencies
+└── Justfile                # Command runner recipes
+```
+
+## 🛠️ Available Commands
+
+While the rest of this README.md will explain when these commands should be used, here is an initial overview of the "tasks" you can perform in this repo.
+
+**Two places to use `just`**: Commands are available in the **repository root** (for development environment and testing) and in **individual report directories** (for rendering reports). These commands are defined in `Justfile`s in each location - see the [root Justfile](Justfile) and individual report Justfiles (e.g., `reports/ny_aeba_grid/Justfile`).
+
+View all available commands in your current location:
+```bash
+just --list
+```
+
+**Repository root commands**:
+- `just install` - Set up development environment
+- `just check` - Run quality checks (same as CI: lock file + pre-commit hooks)
+- `just check-deps` - Check for obsolete dependencies with [deptry](https://github.com/fpgmaas/deptry)
+- `just test` - Run test suite (same as CI)
+- `just new_report` - Create a new Quarto report in `reports/`
+- `just clean` - Remove generated files and caches
+
+**Report directory commands** (`reports/<project_code>/`):
+- `just render` - Render HTML version of report using Quarto
+- `just draft` - Render Word document for content reviews using Quarto
+- `just icml` - Render ICML for InDesign typesetting using Quarto
+- `just publish` - Copy rendered HTML version of report from project `docs/` to root `docs/` for web publishing
+- `just clean` - Remove generated files and caches
 
 ## 🚀 Quick Start
 
@@ -108,8 +155,12 @@ To create a new Quarto report from the Switchbox template:
 just new_report
 ```
 
-You'll be prompted to enter a directory name. This will:
-- Create `reports/<your-directory>/`
+You'll be prompted to enter a report name.
+
+**Naming convention**: Use `state_topic` format (e.g., `ny_aeba`, `ri_hp_rates`). If we've used a topic before in other states (like `hp_rates`), reuse it to maintain consistency across reports.
+
+This will:
+- Create `reports/<state_topic>/`
 - Initialize it with the [switchbox-data/report_template](https://github.com/switchbox-data/report_template)
 - Set up the necessary Quarto configuration files
 
@@ -186,7 +237,7 @@ reports/your-report/
 
 We keep analysis separate from narrative. Here's how data flows from `notebooks/analysis.qmd` to `index.qmd`:
 
-#### 1. Export Variables from Analysis (R)
+**1. Export Variables from Analysis (R)**
 
 In `notebooks/analysis.qmd`, export objects to a local RData file (gitignored, do not commit):
 
@@ -208,7 +259,7 @@ load("report_vars.RData")
 
 **Note**: The `.RData` file is gitignored - only the code that generates it is versioned.
 
-#### 2. Embed Charts from Analysis
+**2. Embed Charts from Analysis**
 
 For visualizations, use Quarto's [embed syntax](https://quarto.org/docs/authoring/notebook-embed.html) to pull charts from `notebooks/analysis.qmd` into `index.qmd`:
 
@@ -293,19 +344,19 @@ We use [GitHub Pages](https://pages.github.com/) to host our reports automatical
 
 Follow these steps to publish or update a web report:
 
-#### 1. Prepare Your Report
+**1. Prepare Your Report**
 
 - Finish your work following the development workflow (create issue, work in a branch, etc.)
 - Make sure your PR is ready to merge
 - Open your devcontainer terminal
 
-#### 2. Navigate to Your Report Directory
+**2. Navigate to Your Report Directory**
 
 ```bash
 cd reports/<project_code>
 ```
 
-#### 3. Verify Render Configuration
+**3. Verify Render Configuration**
 
 Check that all notebooks needed for the report are listed in `_quarto.yml` under `project > render`:
 
@@ -318,7 +369,7 @@ project:
 
 **Why**: Quarto only renders files you explicitly list, ensuring you have control over what gets published.
 
-#### 4. Clear Cache and Render
+**4. Clear Cache and Render**
 
 ```bash
 # Clear any cached content
@@ -330,7 +381,7 @@ just render
 
 This creates fresh output in `reports/<project_code>/docs/`.
 
-#### 5. Copy to Publishing Directory
+**5. Copy to Publishing Directory**
 
 ```bash
 # Copy rendered report to root docs/ directory
@@ -339,13 +390,13 @@ just publish
 
 **What this does**: Copies all files from `reports/<project_code>/docs/` to `docs/<project_code>/`. If files already exist at `docs/<project_code>/`, they're deleted first to ensure a clean publish.
 
-#### 6. Return to Repository Root
+**6. Return to Repository Root**
 
 ```bash
 cd ../..
 ```
 
-#### 7. Stage the Published Files
+**7. Stage the Published Files**
 
 ```bash
 git add -f docs/
@@ -353,7 +404,7 @@ git add -f docs/
 
 **Why `-f` (force)?** The `docs/` directory is gitignored in report directories to prevent accidental commits during development. The `-f` flag overrides this, allowing you to commit to the root `docs/` directory intentionally.
 
-#### 8. Commit and Push
+**8. Commit and Push**
 
 ```bash
 git commit -m "Publish new version of <project_code> report"
@@ -362,12 +413,12 @@ git push
 
 **Important**: Pushing to your branch does NOT publish the report yet - it must be merged to `main` first.
 
-#### 9. Merge to Main
+**9. Merge to Main**
 
 - Go to your PR on GitHub
 - Merge it to `main`
 
-#### 10. Verify Deployment
+**10. Verify Deployment**
 
 - GitHub automatically triggers a "pages build and deployment" workflow
 - Check [Actions](https://github.com/switchbox-data/reports2/actions) to see the workflow run
@@ -377,12 +428,12 @@ git push
 
 Once you have a final PDF version (typically typeset in InDesign), you can add a download link to the web report:
 
-#### 1. Get the PDF
+**1. Get the PDF**
 
 - Download the final PDF from Google Drive: `Projects > <project_code> > final`
 - Ensure it's named `switchbox_<project_code>.pdf` (rename if needed)
 
-#### 2. Add to Report Directory
+**2. Add to Report Directory**
 
 Place the PDF in your report root:
 ```
@@ -392,7 +443,7 @@ reports/<project_code>/
 └── ...
 ```
 
-#### 3. Update YAML Front Matter
+**3. Update YAML Front Matter**
 
 Add or uncomment this in `index.qmd`'s YAML header:
 
@@ -405,7 +456,7 @@ other-links:
 
 **What this does**: Adds a PDF download button to your web report's navigation.
 
-#### 4. Re-render and Publish
+**4. Re-render and Publish**
 
 ```bash
 # Re-render with PDF link
@@ -427,7 +478,7 @@ Then merge to `main` following steps 9-10 above.
 
 ### Python Dependencies
 
-**Adding a Python package**:
+**Adding a Python package**
 
 ```bash
 uv add <package-name>
@@ -446,9 +497,9 @@ uv add --dev pytest-mock  # Add as a dev dependency
 
 **⚠️ Important**: Do NOT use `pip install` to add packages. Using `pip install` will install the package locally but will not update `pyproject.toml` or `uv.lock`, meaning others won't get your dependencies. Always use `uv add`.
 
-#### How Your Package Persists
+**How Your Package Persists**
 
-**In dev container**:
+*In dev container*:
 - Packages are installed to `.venv/` inside the container
 - The `.venv/` directory *persists to your local filesystem* (it's mounted from the host into the container)
 - When the container dies, `.venv/` remains on your host machine
@@ -457,19 +508,19 @@ uv add --dev pytest-mock  # Add as a dev dependency
 - So `.venv/` will simply be remounted in the container, and you package will be immediately accessible.
 - **Bottom line**: python packages persist as file on your local filesystem, and are immediately available on container start
 
-**On regular laptop**:
+*On regular laptop*:
 - The `.venv/` directory persists in your local workspace
 - Packages remain installed between sessions
 - No reinstallation needed unless you delete `.venv/` or run `uv sync` after changes
 
-#### How Others Get Your Package
+**How Others Get Your Package**
 
-**In dev container**:
+*In dev container*:
 1. You commit both `pyproject.toml` and `uv.lock`, and push to Github
 2. Others pull your changes
 3. When they rebuild their container or it restarts, `uv sync` automatically installs your new dependency from `uv.lock`
 
-**On regular laptop**:
+*On regular laptop*:
 1. You commit both `pyproject.toml` and `uv.lock` to git
 2. Others pull your changes
 3. They must manually run `uv sync` to install the new dependency
@@ -478,7 +529,7 @@ uv add --dev pytest-mock  # Add as a dev dependency
 
 R dependency management works differently - it's more automatic but has no lock file.
 
-**Adding a new R package**:
+**Adding a new R package**
 
 1. **Install it once** in an R session:
    ```r
@@ -492,9 +543,9 @@ R dependency management works differently - it's more automatic but has no lock 
 
 3. **That's it!** No manual dependency file to update. The `library()` call in your code is the only record of the dependency.
 
-#### How Your Package Persists
+**How Your Package Persists**
 
-**In dev container**:
+*In dev container*:
 - Packages are installed to the R library inside the container
 - Unlike Python's `.venv/`, R packages **do NOT persist to your local filesystem**
 - When the container dies, the R packages die with it
@@ -505,21 +556,21 @@ R dependency management works differently - it's more automatic but has no lock 
 - **Don't worry - this is fully automated and fast!** Our `.Rprofile` configures `pak` to use [Posit Public Package Manager (P3M)](https://p3m.dev/), which provides pre-compiled binary packages for your system architecture
 - **Bottom line**: R packages persist as code, and are reinstalled on container startup; `library()` calls committed to git are the source of truth
 
-**On regular laptop**:
+*On regular laptop*:
 - Packages are saved to your global R library (typically `~/R/library/`)
 - Note: If you use `renv`, packages would be project-local instead
 - Packages remain installed between sessions
 - No reinstallation needed unless you uninstall them or use a different R version
 
-#### How Others Get Your Package
+**How Others Get Your Package**
 
-**In dev container**:
+*In dev container*:
 1. You use `library(dplyr)` in your code, commit it, and push to Github
 2. Others pull your changes
 3. When they start their container, it automatically scans for `library()` calls and installs `dplyr` via `pak`
 4. No manual action required - completely automatic
 
-**On regular laptop**:
+*On regular laptop*:
 1. You use `library(dplyr)` in your code and commit it to git
 2. Others pull your changes
 3. They manually install dependencies:
@@ -569,7 +620,7 @@ The dev container automatically mounts your local AWS credentials.
 
 We prefer **Parquet files** in our data lake for efficient columnar storage and compression.
 
-#### Using Python (with [polars](https://pola.rs/) / [arrow](https://arrow.apache.org/docs/python/))
+**Using Python (with [polars](https://pola.rs/) / [arrow](https://arrow.apache.org/docs/python/))**
 
 ```python
 import polars as pl
@@ -597,7 +648,7 @@ df = result.collect()
 pandas_df = result.collect().to_pandas()
 ```
 
-#### Using R (with [dplyr](https://dplyr.tidyverse.org/) / [arrow](https://arrow.apache.org/docs/r/))
+**Using R (with [dplyr](https://dplyr.tidyverse.org/) / [arrow](https://arrow.apache.org/docs/r/))**
 
 ```r
 library(arrow)
@@ -625,7 +676,7 @@ df <- result |> compute()
 tibble_df <- result |> collect()
 ```
 
-#### Performance Considerations
+**Performance Considerations**
 
 **Initial downloads can be slow** depending on:
 - File size
@@ -643,7 +694,7 @@ tibble_df <- result |> collect()
 
 ⚠️ **Note**: We have naming conventions but the upload process is still being standardized.
 
-#### Naming and Organization Conventions
+**Naming and Organization Conventions**
 
 **Directory structure**:
 ```
@@ -685,7 +736,7 @@ s3://data.sb/
         └── monthly_20240301.parquet
 ```
 
-#### Uploading Data
+**Uploading Data**
 
 **Preferred method**: Use scripted downloads via `just` commands
 
@@ -814,41 +865,6 @@ This removes:
 - `.ruff_cache`
 - `tmp/`
 - `notebooks/.quarto`
-
-## 🛠️ Available Commands
-
-View all available commands:
-```bash
-just --list
-```
-
-Current commands include:
-- `just install` - Set up development environment
-- `just check` - Run quality checks (same as CI: lock file + pre-commit hooks)
-- `just check-deps` - Check for obsolete dependencies with [deptry](https://github.com/fpgmaas/deptry)
-- `just test` - Run test suite (same as CI)
-- `just new_report` - Create a new Quarto report
-- `just clean` - Remove generated files and caches
-
-## 📁 Repo Structure
-
-```
-reports2/
-├── .devcontainer/          # Dev container configuration
-├── docs/                   # Published HTML reports (hosted via GitHub Pages at switchbox-data.github.io/reports2)
-├── lib/                    # Shared libraries and utilities
-├── reports/                # Switchbox report projects (source code for reports on our website)
-│   ├── ct_hp_rates/        # Individual Quarto projects for each report
-│   ├── il_lea/
-│   └── ...
-├── tests/                  # Python test suite
-├── .pre-commit-config.yaml # Pre-commit hooks configuration
-├── .Rprofile               # R environment configuration (P3M/pak setup)
-├── pyproject.toml          # Python dependencies and tool configuration
-├── uv.lock                 # Locked Python dependencies
-└── Justfile                # Command runner recipes
-```
-
 
 ## 📚 Additional Resources
 

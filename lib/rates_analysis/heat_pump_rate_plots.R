@@ -759,16 +759,12 @@ plot_energy_burden_histogram_standalone <- function(
       limits = y_limits,
       breaks = c(
         0,
-        25000,
         50000,
-        75000,
         100000,
-        125000,
         150000,
-        175000,
         200000,
-        225000,
-        250000
+        250000,
+        300000
       ) /
         242.13
     ) +

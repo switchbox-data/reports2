@@ -25,26 +25,47 @@ from datetime import datetime
 import polars as pl
 import folium
 import matplotlib.pyplot as plt
+from IPython.display import display, HTML
 # Set paths
 data_dir = Path('../data')
 geo_data_dir = data_dir / 'geo_data'
+outputs_dir = data_dir / 'outputs'
+outputs_dir.mkdir(parents=True, exist_ok=True)  # Ensure outputs directory exists
 utils_dir = Path('../utils')
 
 pd.set_option('display.max_columns', None)
 
+# Set aggregation level for analysis: "poly" or "block"
+ANALYSIS_LEVEL = "block"  # Options: "poly", "block"
+
+# Set display labels based on aggregation level
+unit_label = "blocks" if ANALYSIS_LEVEL == "block" else "construction polygons"
+unit_label_singular = "block" if ANALYSIS_LEVEL == "block" else "construction polygon"
 ```
 
 ```{python}
+# Load summary data based on aggregation level
+if ANALYSIS_LEVEL == "block":
+    geojson_files = sorted(outputs_dir.glob('peoplesgas_with_buildings_streets_block_*.geojson'))
+    print(f"Loading block-level data...")
+else:
+    geojson_files = sorted(outputs_dir.glob('peoplesgas_with_buildings_streets_poly_*.geojson'))
+    print(f"Loading polygon-level data...")
 
-# Find the most recent summary GeoJSON file exported from geo_data_cleaning
-geojson_files = sorted(data_dir.glob('peoplesgas_with_buildings_streets_*.geojson'))
-
+if not geojson_files:
+    raise FileNotFoundError(f"No summary GeoJSON files found for ANALYSIS_LEVEL='{ANALYSIS_LEVEL}'. Run geo_data_cleaning.qmd first.")
 
 latest_geojson = geojson_files[-1]
 pg_summary = gpd.read_file(latest_geojson)
 pg_summary = pg_summary[pg_summary.geometry.notnull()].reset_index(drop=True)
 
-
+print(f"Loaded: {latest_geojson.name}")
+if ANALYSIS_LEVEL == "block":
+    print(f"  {len(pg_summary):,} block segments")
+    print(f"  Unique construction polygons: {pg_summary['OBJECTID'].nunique():,}")
+    print(f"  Unique city blocks: {pg_summary['geoid10'].nunique():,}")
+else:
+    print(f"  {len(pg_summary):,} construction polygons")
 ```
 
 
@@ -140,51 +161,59 @@ pg_summary.loc[pg_summary["comm_ind_flag"],
                "comp_cost_discrete_w_decomm"] = "not eligible"
 ```
 
+# Export the pg_summary GeoDataFrame to GeoJSON
+
+```{python}
+output_geojson = outputs_dir / f"final_peoplesgas_with_buildings_streets_{ANALYSIS_LEVEL}_{datetime.now().strftime('%Y%m%d')}.geojson"
+pg_summary.to_file(output_geojson, driver="GeoJSON")
+print(f"✅ Exported pg_summary to {output_geojson}")
+```
+
 # Summary stats no decommissioning costs
 ```{python}
-# Calculate the percent of polygons where npa_over_lpp > 1
+# Calculate the percent where npa_over_lpp > 1
 num_gt_1 = (pg_summary['lpp_over_npa'] > 1).sum()
-total_polygons = len(pg_summary)
-percent_gt_1 = (num_gt_1 / total_polygons) * 100
+total_units = len(pg_summary)
+percent_gt_1 = (num_gt_1 / total_units) * 100
 
-print(f"{percent_gt_1:.1f}% of construction polygons have npa_over_lpp > 1")
+print(f"{percent_gt_1:.1f}% of {unit_label} have npa_over_lpp > 1")
 
 ```
 
 ## Commercial and industrial parcels
 ```{python}
 
-# Calculate the percent of polygons where comm_ind_flag == False
+# Calculate the percent where comm_ind_flag == False
 num_comm_ind_false = (pg_summary['comm_ind_flag'] == False).sum()
 percent_comm_ind_false = (num_comm_ind_false / len(pg_summary)) * 100
-print(f"{percent_comm_ind_false:.1f}% of construction polygons have comm_ind_flag == False")
+print(f"{percent_comm_ind_false:.1f}% of {unit_label} have comm_ind_flag == False")
 
 ```
 
 ```{python}
-# Calculate the percent of polygons where lpp_over_npa > 1 and com_ind_flag == False
+# Calculate the percent where lpp_over_npa > 1 and com_ind_flag == False
 mask = (pg_summary["lpp_over_npa"] > 1) * (pg_summary["comm_ind_flag"] == False)
 percent_gt_1_and_comm_ind_false = (mask.sum() / len(pg_summary)) * 100
-print(f"{percent_gt_1_and_comm_ind_false:.1f}% of construction polygons have lpp_over_npa > 1 and no commercial or industrial parcels")
+print(f"{percent_gt_1_and_comm_ind_false:.1f}% of {unit_label} have lpp_over_npa > 1 and no commercial or industrial parcels")
 ```
 
 ## Industrial only
 
 ```{python}
-# Calculate the percent of polygons where lpp_over_npa > 1 and ind_flag == False
+# Calculate the percent where lpp_over_npa > 1 and ind_flag == False
 mask_ind = (pg_summary['lpp_over_npa'] > 1) & (pg_summary['ind_flag'] == False)
 percent_gt_1_and_ind_false = (mask_ind.sum() / len(pg_summary)) * 100
-print(f"{percent_gt_1_and_ind_false:.1f}% of construction polygons have lpp_over_npa > 1 and ind_flag == False")
+print(f"{percent_gt_1_and_ind_false:.1f}% of {unit_label} have lpp_over_npa > 1 and ind_flag == False")
 ```
 
 # Summary stats with decommissioning costs
 ```{python}
-# Calculate the percent of polygons where npa_over_lpp > 1 (with _dc suffix)
+# Calculate the percent where npa_over_lpp > 1 (with _dc suffix)
 num_gt_1_dc = (pg_summary['lpp_over_npa_w_decomm'] > 1).sum()
-total_polygons_dc = len(pg_summary)
-percent_gt_1_dc = (num_gt_1_dc / total_polygons_dc) * 100
+total_units_dc = len(pg_summary)
+percent_gt_1_dc = (num_gt_1_dc / total_units_dc) * 100
 
-print(f"{percent_gt_1_dc:.1f}% of construction polygons have npa_over_lpp > 1")
+print(f"{percent_gt_1_dc:.1f}% of {unit_label} have npa_over_lpp > 1")
 
 ```
 
@@ -192,10 +221,10 @@ print(f"{percent_gt_1_dc:.1f}% of construction polygons have npa_over_lpp > 1")
 
 
 ```{python}
-# Calculate the percent of polygons where lpp_over_npa > 1 and com_ind_flag == False (with _dc suffix)
+# Calculate the percent where lpp_over_npa > 1 and com_ind_flag == False (with _dc suffix)
 mask_dc = (pg_summary["lpp_over_npa_w_decomm"] > 1) * (pg_summary["comm_ind_flag"] == False)
 percent_gt_1_and_comm_ind_false_dc = (mask_dc.sum() / len(pg_summary)) * 100
-print(f"{percent_gt_1_and_comm_ind_false_dc:.1f}% of construction polygons have lpp_over_npa > 1 and no commercial or industrial parcels")
+print(f"{percent_gt_1_and_comm_ind_false_dc:.1f}% of {unit_label} have lpp_over_npa > 1 and no commercial or industrial parcels")
 ```
 
 
@@ -205,26 +234,26 @@ print(f"{percent_gt_1_and_comm_ind_false_dc:.1f}% of construction polygons have 
 
 
 ```{python}
-# Calculate the percent of polygons where lpp_over_npa > 1 and ind_flag == False (with _dc suffix)
+# Calculate the percent where lpp_over_npa > 1 and ind_flag == False (with _dc suffix)
 mask_ind_dc = (pg_summary['lpp_over_npa_w_decomm'] > 1) & (pg_summary['ind_flag'] == False)
 num_gt_1_and_ind_false_dc = mask_ind_dc.sum()
 percent_gt_1_and_ind_false_dc = (num_gt_1_and_ind_false_dc / len(pg_summary)) * 100
-print(f"{percent_gt_1_and_ind_false_dc:.1f}% of construction polygons have lpp_over_npa > 1 and ind_flag == False")
+print(f"{percent_gt_1_and_ind_false_dc:.1f}% of {unit_label} have lpp_over_npa > 1 and ind_flag == False")
 ```
 
-# Print summary statistics for construction polygons no decommissioning costs
+# Print summary statistics - no decommissioning costs
 ```{python}
-print(f"{percent_gt_1:.1f}% of construction polygons have npa_over_lpp > 1")
-print(f"{percent_comm_ind_false:.1f}% of construction polygons have comm_ind_flag == False")
-print(f"{percent_gt_1_and_comm_ind_false:.1f}% of construction polygons have lpp_over_npa > 1 and no commercial or industrial parcels")
-print(f"{percent_gt_1_and_ind_false:.1f}% of construction polygons have lpp_over_npa > 1 and ind_flag == False")
+print(f"{percent_gt_1:.1f}% of {unit_label} have npa_over_lpp > 1")
+print(f"{percent_comm_ind_false:.1f}% of {unit_label} have comm_ind_flag == False")
+print(f"{percent_gt_1_and_comm_ind_false:.1f}% of {unit_label} have lpp_over_npa > 1 and no commercial or industrial parcels")
+print(f"{percent_gt_1_and_ind_false:.1f}% of {unit_label} have lpp_over_npa > 1 and ind_flag == False")
 ```
 
-# Print summary statistics for construction polygons with decommissioning costs
+# Print summary statistics - with decommissioning costs
 ```{python}
-print(f"{percent_gt_1_dc:.1f}% of construction polygons have npa_over_lpp > 1")
-print(f"{percent_gt_1_and_comm_ind_false_dc:.1f}% of construction polygons have lpp_over_npa > 1 and no commercial or industrial parcels")
-print(f"{percent_gt_1_and_ind_false_dc:.1f}% of construction polygons have lpp_over_npa > 1 and ind_flag == False")
+print(f"{percent_gt_1_dc:.1f}% of {unit_label} have npa_over_lpp > 1")
+print(f"{percent_gt_1_and_comm_ind_false_dc:.1f}% of {unit_label} have lpp_over_npa > 1 and no commercial or industrial parcels")
+print(f"{percent_gt_1_and_ind_false_dc:.1f}% of {unit_label} have lpp_over_npa > 1 and ind_flag == False")
 ```
 
 ```{python}
@@ -377,15 +406,16 @@ def plot_pg_polygons_map(pg_summary, fill_col, discrete=False, cmap="viridis", l
 
 ```{python}
 # Create interactive map showing count of street miles (continuous)
-m = plot_pg_polygons_map(pg_summary, 'street_miles', discrete=False, cmap='YlOrRd', title = "Street miles in construction polygons")
+map_title = f"Street miles in {unit_label}"
+m = plot_pg_polygons_map(pg_summary, 'street_miles', discrete=False, cmap='YlOrRd', title=map_title)
 m
 ```
 
 ```{python}
-# Create interactive map showing count of  street miles < 1mi
-m = plot_pg_polygons_map(
-    pg_summary[pg_summary["street_miles"] <0.1], "street_miles", discrete=False, cmap="YlOrRd", title="Street miles in construction polygons"
-)
+# Create interactive map showing count of street miles < 0.1mi
+filtered_data = pg_summary[pg_summary["street_miles"] < 0.1]
+map_title = f"Street miles in {unit_label} (< 0.1 mi)"
+m = plot_pg_polygons_map(filtered_data, "street_miles", discrete=False, cmap="YlOrRd", title=map_title)
 m
 ```
 
@@ -393,26 +423,28 @@ m
 
 ```{python}
 #| label: fig-ind-flag
-#| fig-cap: "Industrial flag for construction polygons"
+#| fig-cap: "Industrial flag"
 #| fig-width: 10
 #| fig-height: 10
 
 # Create interactive map showing industrial flag (discrete/categorical)
+map_title = f"{unit_label.capitalize()} with 1 or more industrial parcels"
 m = plot_pg_polygons_map(pg_summary, 'ind_flag', discrete=True, color_dict={
-                         True: '#ff0000', False: '#0000ff'}, title = "Construction polygons with 1 or more industrial parcels")
+                         True: '#ff0000', False: '#0000ff'}, title=map_title)
 m
 ```
 
 # PRP and LPP costs without decommissioning costs
 ```{python}
 # | label: fig-comp-cost-discrete
-# | fig-cap: "Comparison of PRP and LPP costs for construction polygons"
+# | fig-cap: "Comparison of PRP and LPP costs"
 # | fig-width: 10
 # | fig-height: 10
 
-# Create interactive map showing industrial flag (discrete/categorical)
+# Create interactive map showing cost comparison (discrete/categorical)
+filtered_data = pg_summary[np.isfinite(pg_summary['lpp_over_npa'])]
 m = plot_pg_polygons_map(
-    pg_summary[np.isfinite(pg_summary['lpp_over_npa'])],
+    filtered_data,
     'comp_cost_discrete',
     discrete=True,
     color_dict={
@@ -424,20 +456,20 @@ m = plot_pg_polygons_map(
     }
 )
 m
-m
 ```
 
 ### 100% residential areas only
 
 ```{python}
 # | label: fig-comp-cost-discrete-res-only
-# | fig-cap: "Comparison of PRP and LPP costs for construction polygons"
+# | fig-cap: "Comparison of PRP and LPP costs (residential only)"
 # | fig-width: 10
 # | fig-height: 10
 
-# Create interactive map showing industrial flag (discrete/categorical)
+# Create interactive map showing cost comparison for residential only
+filtered_data = pg_summary[np.isfinite(pg_summary['lpp_over_npa'])]
 m = plot_pg_polygons_map(
-    pg_summary[np.isfinite(pg_summary['lpp_over_npa'])],
+    filtered_data,
     'comp_cost_discrete_res_only',
     discrete=True,
     color_dict={
@@ -449,23 +481,24 @@ m = plot_pg_polygons_map(
     }
 )
 m
-m
 ```
 
 # Residential and Commerical (exclude industrial)
 
 ```{python}
 # | label: fig-pct-residential
-# | fig-cap: "Comparison of PRP and LPP costs for construction polygons"
+# | fig-cap: "Percent residential"
 # | fig-width: 10
 # | fig-height: 10
 
-# Create interactive map showing industrial flag (discrete/categorical)
+# Create interactive map showing percent residential (continuous)
+filtered_data = pg_summary[(pg_summary['lpp_over_npa'] > 10) & (pg_summary['ind_flag'] == False)]
+map_title = f"{unit_label.capitalize()} with lpp_over_npa > 10 and no industrial parcels"
 m = plot_pg_polygons_map(
-    pg_summary[(pg_summary['lpp_over_npa'] > 10) & (pg_summary['ind_flag'] == False)],
+    filtered_data,
     'pct_residential',
     discrete=False,
-    title = "Construction polygons with lpp_over_npa > 10 and no industrial parcels"
+    title=map_title
 )
 m
 ```
@@ -475,13 +508,14 @@ m
 # PRP and LPP costs with decommissioning costs
 ```{python}
 # | label: fig-comp-cost-discrete-w-decomm
-# | fig-cap: "Comparison of PRP and LPP costs for construction polygons with decommissioning costs"
+# | fig-cap: "Comparison of PRP and LPP costs with decommissioning"
 # | fig-width: 10
 # | fig-height: 10
 
-# Create interactive map showing industrial flag (discrete/categorical)
+# Create interactive map showing cost comparison with decommissioning
+filtered_data = pg_summary[np.isfinite(pg_summary['lpp_over_npa_w_decomm'])]
 m = plot_pg_polygons_map(
-    pg_summary[np.isfinite(pg_summary['lpp_over_npa_w_decomm'])],
+    filtered_data,
     'comp_cost_discrete_w_decomm',
     discrete=True,
     color_dict={
@@ -492,7 +526,6 @@ m = plot_pg_polygons_map(
         "not eligible": "#8e8b7c"
     }
 )
-m
 m
 ```
 
@@ -525,16 +558,18 @@ m
 
 ```{python}
 # | label: fig-pct-residential-w-decomm
-# | fig-cap: "Comparison of PRP and LPP costs for construction polygons"
+# | fig-cap: "Percent residential (with decommissioning)"
 # | fig-width: 10
 # | fig-height: 10
 
-# Create interactive map showing industrial flag (discrete/categorical)
+# Create interactive map showing percent residential (continuous)
+filtered_data = pg_summary[(pg_summary['lpp_over_npa'] > 10) & (pg_summary['ind_flag'] == False)]
+map_title = f"{unit_label.capitalize()} with lpp_over_npa > 10 and no industrial parcels"
 m = plot_pg_polygons_map(
-    pg_summary[(pg_summary['lpp_over_npa'] > 10) & (pg_summary['ind_flag'] == False)],
+    filtered_data,
     'pct_residential',
     discrete=False,
-    title = "Construction polygons with lpp_over_npa > 10 and no industrial parcels"
+    title=map_title
 )
 m
 ```
@@ -583,9 +618,53 @@ plt.show()
 ```{python}
 plt.figure(figsize=(8, 6))
 plt.hist(pg_summary['street_miles'], bins=100, color='blue', edgecolor='black')
-plt.xlabel('pct_residential')
+plt.xlabel('street_miles')
 plt.ylabel('Count')
-plt.title('Histogram of pct_residential')
+plt.title('Histogram of street_miles')
 plt.grid(True)
 plt.show()
+```
+
+# Polygon-Level Rollup
+
+Optional aggregation of block-level data to polygon level for comparison with original analysis.
+
+```{python}
+if ANALYSIS_LEVEL == "block":
+    print("\n📊 Aggregating block-level data to polygon level for comparison...")
+
+    # Aggregate metrics to polygon level
+    poly_summary = pg_summary.groupby('OBJECTID').agg({
+        'street_miles': 'sum',
+        'sf_parcels': 'sum',
+        'mf_parcels': 'sum',
+        'mf_units': 'sum',
+        'commercial_parcels': 'sum',
+        'industrial_parcels': 'sum',
+        'non_vacant_parcels': 'sum',
+        'total_residential_units': 'sum',
+        'lpp_cost': 'sum',
+        'elec_cost_total': 'sum',
+        'elec_cost_total_w_decomm': 'sum'
+    }).reset_index()
+
+    # Recalculate cost ratios at polygon level
+    poly_summary["lpp_over_npa"] = poly_summary["lpp_cost"] / poly_summary["elec_cost_total"]
+    poly_summary["lpp_over_npa_w_decomm"] = poly_summary["lpp_cost"] / poly_summary["elec_cost_total_w_decomm"]
+
+    # Recalculate flags
+    poly_summary["comm_ind_total_count"] = poly_summary["commercial_parcels"] + poly_summary["industrial_parcels"]
+    poly_summary["comm_ind_flag"] = poly_summary["comm_ind_total_count"] > 0
+    poly_summary["ind_flag"] = poly_summary["industrial_parcels"] > 0
+
+    print(f"  Rolled up {len(pg_summary):,} blocks to {len(poly_summary):,} construction polygons")
+
+    # Show comparison
+    print(f"\n  Polygon-level totals (from block aggregation):")
+    print(f"    Total street miles: {poly_summary['street_miles'].sum():.2f}")
+    print(f"    Total parcels: {(poly_summary['sf_parcels'] + poly_summary['mf_parcels'] + poly_summary['commercial_parcels']).sum():,.0f}")
+    print(f"    Total residential units: {poly_summary['total_residential_units'].sum():,.0f}")
+else:
+    print(f"\nSkipping rollup (already at polygon level)")
+    poly_summary = None
 ```

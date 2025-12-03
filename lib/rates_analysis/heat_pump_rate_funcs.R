@@ -624,7 +624,7 @@ calc_stats_by_rate_version <- function(
   print_table = TRUE
 ) {
   scenario_stats <- annual_change_table |>
-    filter(hvac == hp_eff_for_stats) |>
+    filter(hvac_primary == hp_eff_for_stats) |>
     group_by(version_elec) |>
     summarise(
       median_change = median(annual_bill_change),
@@ -1129,6 +1129,7 @@ get_monthly_consumption_many <- function(
 # monthly bills
 calc_monthly_bills <- function(
   monthly_consumption,
+  consumption_column,
   fuel_type,
   delivery_tariffs,
   supply_rates,
@@ -1212,38 +1213,38 @@ calc_monthly_bills <- function(
   # ------------
   # Electricity
   if (fuel_type == "electricity") {
-    fuel_consumption_column <- "out.electricity.total.energy_consumption"
+    fuel_consumption_column <- consumption_column
     discount_rate <- "discount_rate_elec"
     utility <- "electric_utility"
     # ------------
     # Gas
   } else if (fuel_type == "natural_gas") {
-    fuel_consumption_column <- "out.natural_gas.total.energy_consumption"
+    fuel_consumption_column <- consumption_column
     discount_rate <- "discount_rate_gas"
     utility <- "gas_utility"
     # ------------
     # Fuel Oil
   } else if (fuel_type == "fuel_oil") {
-    fuel_consumption_column <- "out.fuel_oil.total.energy_consumption"
+    fuel_consumption_column <- consumption_column
     discount_rate <- "discount_rate_fuel_oil"
     utility <- "fuel_oil_utility"
     # ------------
     # Propane
   } else if (fuel_type == "propane") {
-    fuel_consumption_column <- "out.propane.total.energy_consumption"
+    fuel_consumption_column <- consumption_column
     discount_rate <- "discount_rate_propane"
     utility <- "propane_utility"
   }
   # ------------
 
   final_result <- monthly_consumption |>
+    select(bldg_id, upgrade, month, !!sym(consumption_column)) |>
     left_join(
       housing_units |>
         mutate(bldg_id = as.integer(bldg_id)) |>
         select(
           bldg_id,
           upgrade,
-          hvac,
           !!sym(utility),
           lmi,
           !!sym(discount_rate)
@@ -1304,10 +1305,10 @@ calc_monthly_bills <- function(
     ) |>
     mutate(
       customer_charge = customer_charge * (1 - !!sym(discount_rate)),
-      delivery_charge = consumption_kwh *
+      delivery_charge = !!sym(consumption_column) *
         delivery_rate *
         (1 - !!sym(discount_rate)),
-      supply_charge = consumption_kwh *
+      supply_charge = !!sym(consumption_column) *
         supply_rate *
         (1 - !!sym(discount_rate)),
       total_pretax_bill = delivery_charge + supply_charge + customer_charge,
@@ -1318,11 +1319,10 @@ calc_monthly_bills <- function(
     select(
       bldg_id,
       upgrade,
-      hvac,
       month,
       year,
       !!sym(utility),
-      consumption_kwh,
+      !!sym(consumption_column),
       version,
       tariff_name,
       delivery_rate,
@@ -1477,7 +1477,7 @@ calc_monthly_bills_gas <- function(
         # for gas, we need to flag heat_non_heat
         mutate(
           heat_non_heat = case_when(
-            hvac == "Natural Gas" ~ "heat",
+            hvac_primary == "Natural Gas" ~ "heat",
             TRUE ~ "non_heat"
           )
         ) |>
@@ -1486,7 +1486,6 @@ calc_monthly_bills_gas <- function(
           upgrade,
           gas_utility,
           lmi,
-          hvac,
           heat_non_heat,
           discount_rate_gas
         ) |>
@@ -1601,7 +1600,6 @@ calc_monthly_bills_gas <- function(
       bldg_id,
       upgrade,
       heat_non_heat,
-      hvac,
       month,
       year,
       gas_utility,
@@ -1660,7 +1658,6 @@ calc_monthly_changes <- function(monthly_bills, fuel_type) {
     select(
       bldg_id,
       upgrade,
-      hvac,
       year,
       month,
       !!sym(utility),
@@ -1685,7 +1682,6 @@ calc_annual_bills_from_monthly <- function(
     c(
       "bldg_id",
       "upgrade",
-      "hvac",
       "year",
       "electric_utility",
       "version",
@@ -1695,7 +1691,6 @@ calc_annual_bills_from_monthly <- function(
     c(
       "bldg_id",
       "upgrade",
-      "hvac",
       "year",
       "gas_utility",
       "version",
@@ -1705,7 +1700,6 @@ calc_annual_bills_from_monthly <- function(
     c(
       "bldg_id",
       "upgrade",
-      "hvac",
       "year",
       "fuel_oil_utility",
       "version",
@@ -1715,7 +1709,6 @@ calc_annual_bills_from_monthly <- function(
     c(
       "bldg_id",
       "upgrade",
-      "hvac",
       "year",
       "propane_utility",
       "version",
@@ -1745,7 +1738,6 @@ calc_annual_change_from_monthly <- function(
     c(
       "bldg_id",
       "upgrade",
-      "hvac",
       "year",
       "electric_utility",
       "version",
@@ -1755,7 +1747,6 @@ calc_annual_change_from_monthly <- function(
     c(
       "bldg_id",
       "upgrade",
-      "hvac",
       "year",
       "gas_utility",
       "version",
@@ -1765,7 +1756,6 @@ calc_annual_change_from_monthly <- function(
     c(
       "bldg_id",
       "upgrade",
-      "hvac",
       "year",
       "fuel_oil_utility",
       "version",
@@ -1775,7 +1765,6 @@ calc_annual_change_from_monthly <- function(
     c(
       "bldg_id",
       "upgrade",
-      "hvac",
       "year",
       "propane_utility",
       "version",
@@ -1860,10 +1849,9 @@ calc_annual_bills_total <- function(
         select(
           bldg_id,
           upgrade,
-          hvac,
           in.representative_income,
           baseline_heating_type,
-          hvac_heating_efficiency,
+          baseline_heating_efficiency,
           building_type_group,
           baseline_cooling_type,
           dollar_tier,
@@ -1948,9 +1936,8 @@ calc_annual_changes_total <- function(
         select(
           bldg_id,
           upgrade,
-          hvac,
           baseline_heating_type,
-          hvac_heating_efficiency,
+          baseline_heating_efficiency,
           building_type_group,
           baseline_cooling_type,
           dollar_tier,

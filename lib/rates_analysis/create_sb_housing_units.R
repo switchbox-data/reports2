@@ -30,7 +30,7 @@ print_all_column_names <- function(table) {
 }
 
 ########################################################
-# Preferred Labels
+# Immutable characteristics across upgrades
 ########################################################
 get_baseline_heating_type <- function(housing_units) {
   baseline_heating_type_lookup <- housing_units |>
@@ -178,6 +178,74 @@ get_baseline_cooling_type <- function(housing_units) {
   return(baseline_cooling_type_lookup)
 }
 
+# Building Type
+add_building_type_group <- function(housing_units) {
+  building_type_group_lookup <- housing_units |>
+    filter(upgrade == 0) |>
+    mutate(
+      building_type_group = case_when(
+        `in.geometry_building_type_acs` %in%
+          c(
+            "Single-Family Detached",
+            "Mobile Home",
+            "Single-Family Attached"
+          ) ~ "Single-Family",
+        `in.geometry_building_type_acs` %in%
+          c("2 Unit", "3 or 4 Unit") ~ "2-4 Units",
+        `in.geometry_building_type_acs` %in%
+          c(
+            "5 to 9 Unit",
+            "10 to 19 Unit",
+            "20 to 49 Unit",
+            "50 or more Unit"
+          ) ~ "5+ Units",
+        TRUE ~ "Other"
+      )
+    ) |>
+    select(bldg_id, building_type_group)
+
+  return(building_type_group_lookup)
+}
+
+# Occupants
+change_occupants_to_number <- function(housing_units) {
+  housing_units <- housing_units |>
+    mutate(
+      occupants = case_when(
+        in.occupants == "10+" ~ 10,
+        .default = as.numeric(in.occupants)
+      )
+    ) |>
+    select(-in.occupants)
+  return(housing_units)
+}
+
+add_occupants_group <- function(housing_units) {
+  occupants_group_lookup <- housing_units |>
+    filter(upgrade == 0) |>
+    mutate(
+      occupants_group = case_when(
+        occupants == 0 ~ "Vacant",
+        occupants == 1 ~ "Single",
+        occupants == 2 ~ "Couple",
+        occupants == 3 ~ "3-4 Occupants",
+        occupants == 4 ~ "3-4 Occupants",
+        occupants == 5 ~ "5+ Occupants",
+        occupants == 6 ~ "5+ Occupants",
+        occupants == 7 ~ "5+ Occupants",
+        occupants == 8 ~ "5+ Occupants",
+        occupants == 9 ~ "5+ Occupants",
+        occupants == 10 ~ "5+ Occupants",
+        TRUE ~ "Other"
+      )
+    ) |>
+    select(bldg_id, occupants_group)
+  return(occupants_group_lookup)
+}
+
+########################################################
+# Characteristics that change across upgrades
+########################################################
 
 add_hvac_primary <- function(housing_units) {
   hvac_primary_lookup <- housing_units |>
@@ -202,7 +270,8 @@ add_hvac_primary <- function(housing_units) {
         upgrade == 16 ~ baseline_heating_type,
         TRUE ~ "missed_hvac_primary"
       )
-    )
+    ) |>
+    select(bldg_id, upgrade, hvac_primary)
   return(hvac_primary_lookup)
 }
 
@@ -240,23 +309,23 @@ add_appliances <- function(housing_units) {
   appliances_lookup <- housing_units |>
     mutate(
       appliances = case_when(
-        upgrade == 0 ~ "baseline",
-        upgrade == 1 ~ "baseline",
-        upgrade == 2 ~ "baseline",
-        upgrade == 3 ~ "baseline",
-        upgrade == 4 ~ "baseline",
-        upgrade == 5 ~ "baseline",
-        upgrade == 6 ~ "baseline",
-        upgrade == 7 ~ "baseline",
-        upgrade == 8 ~ "baseline",
-        upgrade == 9 ~ "baseline",
-        upgrade == 10 ~ "baseline",
-        upgrade == 11 ~ "all_electric",
-        upgrade == 12 ~ "all_electric",
-        upgrade == 13 ~ "all_electric",
-        upgrade == 14 ~ "all_electric",
-        upgrade == 15 ~ "all_electric",
-        upgrade == 16 ~ "baseline",
+        upgrade == 0 ~ "Baseline",
+        upgrade == 1 ~ "Baseline",
+        upgrade == 2 ~ "Baseline",
+        upgrade == 3 ~ "Baseline",
+        upgrade == 4 ~ "Baseline",
+        upgrade == 5 ~ "Baseline",
+        upgrade == 6 ~ "Baseline",
+        upgrade == 7 ~ "Baseline",
+        upgrade == 8 ~ "Baseline",
+        upgrade == 9 ~ "Baseline",
+        upgrade == 10 ~ "Baseline",
+        upgrade == 11 ~ "All Electric",
+        upgrade == 12 ~ "All Electric",
+        upgrade == 13 ~ "All Electric",
+        upgrade == 14 ~ "All Electric",
+        upgrade == 15 ~ "All Electric",
+        upgrade == 16 ~ "Baseline",
         TRUE ~ "missed_appliances"
       )
     ) |>
@@ -269,23 +338,23 @@ add_shell <- function(housing_units) {
   shell_lookup <- housing_units |>
     mutate(
       shell = case_when(
-        upgrade == 0 ~ "baseline",
-        upgrade == 1 ~ "baseline",
-        upgrade == 2 ~ "baseline",
-        upgrade == 3 ~ "baseline",
-        upgrade == 4 ~ "baseline",
-        upgrade == 5 ~ "baseline",
-        upgrade == 6 ~ "light_touch",
-        upgrade == 7 ~ "light_touch",
-        upgrade == 8 ~ "light_touch",
-        upgrade == 9 ~ "light_touch",
-        upgrade == 10 ~ "light_touch",
-        upgrade == 11 ~ "light_touch",
-        upgrade == 12 ~ "light_touch",
-        upgrade == 13 ~ "light_touch",
-        upgrade == 14 ~ "light_touch",
-        upgrade == 15 ~ "light_touch",
-        upgrade == 16 ~ "light_touch",
+        upgrade == 0 ~ "Baseline",
+        upgrade == 1 ~ "Baseline",
+        upgrade == 2 ~ "Baseline",
+        upgrade == 3 ~ "Baseline",
+        upgrade == 4 ~ "Baseline",
+        upgrade == 5 ~ "Baseline",
+        upgrade == 6 ~ "Light Touch",
+        upgrade == 7 ~ "Light Touch",
+        upgrade == 8 ~ "Light Touch",
+        upgrade == 9 ~ "Light Touch",
+        upgrade == 10 ~ "Light Touch",
+        upgrade == 11 ~ "Light Touch",
+        upgrade == 12 ~ "Light Touch",
+        upgrade == 13 ~ "Light Touch",
+        upgrade == 14 ~ "Light Touch",
+        upgrade == 15 ~ "Light Touch",
+        upgrade == 16 ~ "Light Touch",
         TRUE ~ "missed_shell"
       )
     ) |>
@@ -297,78 +366,13 @@ add_heat_non_heat_flag <- function(housing_units) {
   heat_non_heat_lookup <- housing_units |>
     mutate(
       heat_non_heat = case_when(
-        hvac == "Natural Gas" ~ "heat",
+        hvac_primary == "Natural Gas" ~ "heat",
         TRUE ~ "non_heat"
       )
-    )
+    ) |>
+    select(bldg_id, upgrade, heat_non_heat)
   return(heat_non_heat_lookup)
 }
-
-########################################################
-# Preferred Groupings (building type, etc)
-########################################################
-# Building Type
-update_building_type_group <- function(housing_units) {
-  housing_units <- housing_units |>
-    mutate(
-      building_type_group = case_when(
-        `in.geometry_building_type_acs` %in%
-          c(
-            "Single-Family Detached",
-            "Mobile Home",
-            "Single-Family Attached"
-          ) ~ "Single-Family",
-        `in.geometry_building_type_acs` %in%
-          c("2 Unit", "3 or 4 Unit") ~ "2-4 Units",
-        `in.geometry_building_type_acs` %in%
-          c(
-            "5 to 9 Unit",
-            "10 to 19 Unit",
-            "20 to 49 Unit",
-            "50 or more Unit"
-          ) ~ "5+ Units",
-        TRUE ~ "Other"
-      )
-    ) |>
-    select(-`in.geometry_building_type_acs`)
-
-  return(housing_units)
-}
-
-# Occupants
-change_occupants_to_number <- function(housing_units) {
-  housing_units <- housing_units |>
-    mutate(
-      occupants = case_when(
-        in.occupants == "10+" ~ 10,
-        .default = as.numeric(in.occupants)
-      )
-    ) |>
-    select(-in.occupants)
-  return(housing_units)
-}
-
-add_occupants_group <- function(housing_units) {
-  housing_units <- housing_units |>
-    mutate(
-      occupants_group = case_when(
-        occupants == 0 ~ "Vacant",
-        occupants == 1 ~ "Single",
-        occupants == 2 ~ "Couple",
-        occupants == 3 ~ "3-4 Occupants",
-        occupants == 4 ~ "3-4 Occupants",
-        occupants == 5 ~ "5+ Occupants",
-        occupants == 6 ~ "5+ Occupants",
-        occupants == 7 ~ "5+ Occupants",
-        occupants == 8 ~ "5+ Occupants",
-        occupants == 9 ~ "5+ Occupants",
-        occupants == 10 ~ "5+ Occupants",
-        TRUE ~ "Other"
-      )
-    )
-  return(housing_units)
-}
-
 
 ########################################################
 # Income and LMI Discounts

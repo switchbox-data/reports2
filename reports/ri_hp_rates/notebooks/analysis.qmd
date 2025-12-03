@@ -405,47 +405,47 @@ baseline_cooling_type_levels <- c("Room AC", "Central AC",  "Heat Pump", "Other 
 housing_units$baseline_cooling_type <- forcats::fct(housing_units$baseline_cooling_type, levels = baseline_cooling_type_levels)
 
 # Add building type group
-housing_units <- add_building_type_group(housing_units)
+housing_units <- add_building_type_group(housing_units) |> right_join(housing_units, by = c("bldg_id"))
 building_type_group_levels <- c("Single-Family", "2-4 Units", "5+ Units", "Other")
 housing_units$building_type_group <- forcats::fct(housing_units$building_type_group, levels = building_type_group_levels)
-```
 
-```{r}
-# Add hvac, hvac_backup, shell, and appliances
-housing_units <- add_hvac_primary(housing_units) |>
-  add_hvac_backup(housing_units) |>
-  add_appliances(housing_units) |>
-  add_shell(housing_units) |>
-  right_join(housing_units, by = c("bldg_id", "upgrade"))
 
-# Factors separately for each
-hvac_levels <- c("current", "hp_low", "hp_high", "hp_best", "hp_geo", "electric_resistance", "none")
-housing_units$hvac <- forcats::fct(housing_units$hvac, levels = hvac_levels)
+# Add occupants group
+housing_units <- change_occupants_to_number(housing_units) # changes occupants to number
+housing_units <- add_occupants_group(housing_units) |> right_join(housing_units, by = c("bldg_id"))
+occupants_group_levels <- c("Vacant", "Single", "Couple", "3-4 Occupants", "5+ Occupants")
+housing_units$occupants_group <- forcats::fct(housing_units$occupants_group, levels = occupants_group_levels)
 ```
 
 ```{r}
 
+housing_units <- add_hvac_primary(housing_units) |> right_join(housing_units, by = c("bldg_id", "upgrade"))
+hvac_primary_levels <- c(baseline_heating_type_levels, "current", "hp_low", "hp_high", "hp_best", "hp_geo")
+housing_units$hvac_primary <- forcats::fct(housing_units$hvac_primary, levels = hvac_primary_levels)
 
+housing_units <- add_hvac_backup(housing_units) |> right_join(housing_units, by = c("bldg_id", "upgrade"))
+hvac_backup_levels <- c(baseline_heating_type_levels, "electric_resistance", "none")
+housing_units$hvac_backup <- forcats::fct(housing_units$hvac_backup, levels = hvac_backup_levels)
+
+housing_units <- add_appliances(housing_units) |> right_join(housing_units, by = c("bldg_id", "upgrade"))
+appliances_levels <- c("Baseline", "All Electric")
+housing_units$appliances <- forcats::fct(housing_units$appliances, levels = appliances_levels)
+
+housing_units <- add_shell(housing_units) |> right_join(housing_units, by = c("bldg_id", "upgrade"))
+shell_levels <- c("Baseline", "All Electric")
+housing_units$shell <- forcats::fct(housing_units$shell, levels = shell_levels)
+
+```
+
+```{r}
 # Add heat_non_heat flag
-housing_units <- add_heat_non_heat_flag(housing_units)
+housing_units <- add_heat_non_heat_flag(housing_units) |> right_join(housing_units, by = c("bldg_id", "upgrade"))
 heat_non_heat_levels <- c("heat", "non_heat")
 housing_units$heat_non_heat <- forcats::fct(housing_units$heat_non_heat, levels = heat_non_heat_levels)
 
+```
 
-# Change occupants to number
-housing_units <- change_occupants_to_number(housing_units)
-
-# Add occupants group
-housing_units <- add_occupants_group(housing_units)
-occupants_group_levels <- c("Vacant", "Single", "Couple", "3-4 Occupants", "5+ Occupants")
-housing_units$occupants_group <- forcats::fct(housing_units$occupants_group, levels = occupants_group_levels)
-
-# Change upgrade to 2f strings (eg 1 -> "01")
-#housing_units <- change_upgrade_to_2f_strings(housing_units)
-# housing_units <- housing_units |>
-#   mutate(upgrade = sprintf("%02d", as.numeric(upgrade))
-#   )
-
+```{r}
 #-----------------------------------------------------------------
 # Income
 #-----------------------------------------------------------------
@@ -504,6 +504,7 @@ housing_units <- housing_units |>
 n_non_vacant_homes <- housing_units |> filter(upgrade == 0) |> filter(occupants_group != "Vacant") |> nrow()
 ```
 
+# Bill Calculations
 ## Bill Calcuations
 ### parameters
 ```{r}

@@ -82,11 +82,11 @@ get_baseline_heating_type <- function(housing_units) {
   return(baseline_heating_type_lookup)
 }
 
-get_hvac_heating_efficiency <- function(housing_units) {
-  hvac_heating_efficiency_lookup <- housing_units |>
+get_baseline_heating_efficiency <- function(housing_units) {
+  baseline_heating_efficiency_lookup <- housing_units |>
     filter(upgrade == 0) |>
     mutate(
-      hvac_heating_efficiency = case_when(
+      baseline_heating_efficiency = case_when(
         # using the values as-is from the data dictionary
         `in.hvac_heating_efficiency` ==
           "ASHP, SEER 10, 6.2 HSPF" ~ "ASHP, SEER 10, 6.2 HSPF",
@@ -133,31 +133,32 @@ get_hvac_heating_efficiency <- function(housing_units) {
     # also add the AFUE value as float
     mutate(
       afue_value = case_when(
-        hvac_heating_efficiency == "ASHP, SEER 10, 6.2 HSPF" ~ NA_real_,
-        hvac_heating_efficiency == "ASHP, SEER 13, 7.7 HSPF" ~ NA_real_,
-        hvac_heating_efficiency == "ASHP, SEER 15, 8.5 HSPF" ~ NA_real_,
-        hvac_heating_efficiency == "Electric Baseboard, 100% Efficiency" ~ 100,
-        hvac_heating_efficiency == "Electric Boiler, 100% AFUE" ~ 100,
-        hvac_heating_efficiency == "Electric Furnace, 100% AFUE" ~ 100,
-        hvac_heating_efficiency == "Electric Wall Furnace, 100% AFUE" ~ 100,
-        hvac_heating_efficiency == "Fuel Boiler, 76% AFUE" ~ 76,
-        hvac_heating_efficiency == "Fuel Boiler, 80% AFUE" ~ 80,
-        hvac_heating_efficiency == "Fuel Boiler, 90% AFUE" ~ 90,
-        hvac_heating_efficiency == "Fuel Furnace, 60% AFUE" ~ 60,
-        hvac_heating_efficiency == "Fuel Furnace, 76% AFUE" ~ 76,
-        hvac_heating_efficiency == "Fuel Furnace, 80% AFUE" ~ 80,
-        hvac_heating_efficiency == "Fuel Furnace, 92.5% AFUE" ~ 92.5,
-        hvac_heating_efficiency == "Fuel Wall/Floor Furnace, 60% AFUE" ~ 60,
-        hvac_heating_efficiency == "Fuel Wall/Floor Furnace, 68% AFUE" ~ 68,
-        hvac_heating_efficiency == "MSHP, SEER 14.5, 8.2 HSPF" ~ NA_real_,
-        hvac_heating_efficiency == "MSHP, SEER 29.3, 14 HSPF" ~ NA_real_,
-        hvac_heating_efficiency == "None" ~ NA_real_,
-        hvac_heating_efficiency == "Shared Heating" ~ NA_real_,
+        baseline_heating_efficiency == "ASHP, SEER 10, 6.2 HSPF" ~ NA_real_,
+        baseline_heating_efficiency == "ASHP, SEER 13, 7.7 HSPF" ~ NA_real_,
+        baseline_heating_efficiency == "ASHP, SEER 15, 8.5 HSPF" ~ NA_real_,
+        baseline_heating_efficiency ==
+          "Electric Baseboard, 100% Efficiency" ~ 100,
+        baseline_heating_efficiency == "Electric Boiler, 100% AFUE" ~ 100,
+        baseline_heating_efficiency == "Electric Furnace, 100% AFUE" ~ 100,
+        baseline_heating_efficiency == "Electric Wall Furnace, 100% AFUE" ~ 100,
+        baseline_heating_efficiency == "Fuel Boiler, 76% AFUE" ~ 76,
+        baseline_heating_efficiency == "Fuel Boiler, 80% AFUE" ~ 80,
+        baseline_heating_efficiency == "Fuel Boiler, 90% AFUE" ~ 90,
+        baseline_heating_efficiency == "Fuel Furnace, 60% AFUE" ~ 60,
+        baseline_heating_efficiency == "Fuel Furnace, 76% AFUE" ~ 76,
+        baseline_heating_efficiency == "Fuel Furnace, 80% AFUE" ~ 80,
+        baseline_heating_efficiency == "Fuel Furnace, 92.5% AFUE" ~ 92.5,
+        baseline_heating_efficiency == "Fuel Wall/Floor Furnace, 60% AFUE" ~ 60,
+        baseline_heating_efficiency == "Fuel Wall/Floor Furnace, 68% AFUE" ~ 68,
+        baseline_heating_efficiency == "MSHP, SEER 14.5, 8.2 HSPF" ~ NA_real_,
+        baseline_heating_efficiency == "MSHP, SEER 29.3, 14 HSPF" ~ NA_real_,
+        baseline_heating_efficiency == "None" ~ NA_real_,
+        baseline_heating_efficiency == "Shared Heating" ~ NA_real_,
         TRUE ~ NA_real_
       )
     ) |>
-    select(bldg_id, hvac_heating_efficiency, afue_value)
-  return(hvac_heating_efficiency_lookup)
+    select(bldg_id, baseline_heating_efficiency, afue_value)
+  return(baseline_heating_efficiency_lookup)
 }
 
 get_baseline_cooling_type <- function(housing_units) {
@@ -177,10 +178,11 @@ get_baseline_cooling_type <- function(housing_units) {
   return(baseline_cooling_type_lookup)
 }
 
-add_hvac_appliances_shell <- function(housing_units) {
-  housing_units <- housing_units |>
+
+add_hvac_primary <- function(housing_units) {
+  hvac_primary_lookup <- housing_units |>
     mutate(
-      hvac = case_when(
+      hvac_primary = case_when(
         upgrade == 0 ~ baseline_heating_type,
         upgrade == 1 ~ "hp_low",
         upgrade == 2 ~ "hp_high",
@@ -198,9 +200,15 @@ add_hvac_appliances_shell <- function(housing_units) {
         upgrade == 14 ~ "hp_low",
         upgrade == 15 ~ "hp_geo",
         upgrade == 16 ~ baseline_heating_type,
-        TRUE ~ "missed_hvac"
+        TRUE ~ "missed_hvac_primary"
       )
-    ) |>
+    )
+  return(hvac_primary_lookup)
+}
+
+
+add_hvac_backup <- function(housing_units) {
+  hvac_backup_lookup <- housing_units |>
     mutate(
       hvac_backup = case_when(
         upgrade == 0 ~ baseline_heating_type,
@@ -223,6 +231,42 @@ add_hvac_appliances_shell <- function(housing_units) {
         TRUE ~ "missed_hvac_backup"
       )
     ) |>
+    select(bldg_id, upgrade, hvac_backup)
+  return(hvac_backup_lookup)
+}
+
+
+add_appliances <- function(housing_units) {
+  appliances_lookup <- housing_units |>
+    mutate(
+      appliances = case_when(
+        upgrade == 0 ~ "baseline",
+        upgrade == 1 ~ "baseline",
+        upgrade == 2 ~ "baseline",
+        upgrade == 3 ~ "baseline",
+        upgrade == 4 ~ "baseline",
+        upgrade == 5 ~ "baseline",
+        upgrade == 6 ~ "baseline",
+        upgrade == 7 ~ "baseline",
+        upgrade == 8 ~ "baseline",
+        upgrade == 9 ~ "baseline",
+        upgrade == 10 ~ "baseline",
+        upgrade == 11 ~ "all_electric",
+        upgrade == 12 ~ "all_electric",
+        upgrade == 13 ~ "all_electric",
+        upgrade == 14 ~ "all_electric",
+        upgrade == 15 ~ "all_electric",
+        upgrade == 16 ~ "baseline",
+        TRUE ~ "missed_appliances"
+      )
+    ) |>
+    select(bldg_id, upgrade, appliances)
+  return(appliances_lookup)
+}
+
+
+add_shell <- function(housing_units) {
+  shell_lookup <- housing_units |>
     mutate(
       shell = case_when(
         upgrade == 0 ~ "baseline",
@@ -245,31 +289,20 @@ add_hvac_appliances_shell <- function(housing_units) {
         TRUE ~ "missed_shell"
       )
     ) |>
-    mutate(
-      appliances = case_when(
-        upgrade == 0 ~ "baseline",
-        upgrade == 1 ~ "baseline",
-        upgrade == 2 ~ "baseline",
-        upgrade == 3 ~ "baseline",
-        upgrade == 4 ~ "baseline",
-        upgrade == 5 ~ "baseline",
-        upgrade == 6 ~ "baseline",
-        upgrade == 7 ~ "baseline",
-        upgrade == 8 ~ "baseline",
-        upgrade == 9 ~ "baseline",
-        upgrade == 10 ~ "baseline",
-        upgrade == 11 ~ "all_electric",
-        upgrade == 12 ~ "all_electric",
-        upgrade == 13 ~ "all_electric",
-        upgrade == 14 ~ "all_electric",
-        upgrade == 15 ~ "all_electric",
-        upgrade == 16 ~ "baseline",
-        TRUE ~ "missed_appliances"
-      )
-    )
-  return(housing_units)
+    select(bldg_id, upgrade, shell)
+  return(shell_lookup)
 }
 
+add_heat_non_heat_flag <- function(housing_units) {
+  heat_non_heat_lookup <- housing_units |>
+    mutate(
+      heat_non_heat = case_when(
+        hvac == "Natural Gas" ~ "heat",
+        TRUE ~ "non_heat"
+      )
+    )
+  return(heat_non_heat_lookup)
+}
 
 ########################################################
 # Preferred Groupings (building type, etc)

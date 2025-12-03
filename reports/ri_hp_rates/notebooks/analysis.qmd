@@ -363,10 +363,6 @@ use_these_out_columns <- c(
   "out.propane.total.energy_consumption.kwh"
 )
 
-
-
-
-
 # Create pattern to match only the desired upgrade files
 upgrade_patterns <- paste0("upgrade", use_these_upgrades, "_metadata_and_annual_results\\.parquet$")
 upgrade_pattern <- paste(upgrade_patterns, collapse = "|")
@@ -393,31 +389,48 @@ housing_units <- housing_units |>
 #-----------------------------------------------------------------
 # Preferred labels for heating type, cooling type, building type, and occupants group
 #-----------------------------------------------------------------
-# Update baseline heating type and set as factor
+# Add baseline heating type and set as factor
 housing_units <- get_baseline_heating_type(housing_units) |> right_join(housing_units, by = c("bldg_id"))
 baseline_heating_type_levels <- c("Natural Gas", "Fuel Oil", "Propane", "Electric Resistance", "Heat Pump", "Other/None")
 housing_units$baseline_heating_type <- forcats::fct(housing_units$baseline_heating_type, levels = baseline_heating_type_levels)
 
-# Update baseline heating type and set as factor
-housing_units <- get_hvac_heating_efficiency(housing_units) |> right_join(housing_units, by = c("bldg_id"))
-hvac_heating_efficiency_levels <- c("ASHP, SEER 10, 6.2 HSPF", "ASHP, SEER 13, 7.7 HSPF", "ASHP, SEER 15, 8.5 HSPF", "Electric Baseboard, 100% Efficiency", "Electric Boiler, 100% AFUE", "Electric Furnace, 100% AFUE", "Electric Wall Furnace, 100% AFUE", "Fuel Boiler, 76% AFUE", "Fuel Boiler, 80% AFUE", "Fuel Boiler, 90% AFUE", "Fuel Furnace, 60% AFUE", "Fuel Furnace, 76% AFUE", "Fuel Furnace, 80% AFUE", "Fuel Furnace, 92.5% AFUE", "Fuel Wall/Floor Furnace, 60% AFUE", "Fuel Wall/Floor Furnace, 68% AFUE", "MSHP, SEER 14.5, 8.2 HSPF", "MSHP, SEER 29.3, 14 HSPF", "None", "Shared Heating", "Other")
-housing_units$hvac_heating_efficiency <- forcats::fct(housing_units$hvac_heating_efficiency, levels = hvac_heating_efficiency_levels)
+# Add baseline heating efficiency and set as factor
+housing_units <- get_baseline_heating_efficiency(housing_units) |> right_join(housing_units, by = c("bldg_id"))
+baseline_heating_efficiency_levels <- c("ASHP, SEER 10, 6.2 HSPF", "ASHP, SEER 13, 7.7 HSPF", "ASHP, SEER 15, 8.5 HSPF", "Electric Baseboard, 100% Efficiency", "Electric Boiler, 100% AFUE", "Electric Furnace, 100% AFUE", "Electric Wall Furnace, 100% AFUE", "Fuel Boiler, 76% AFUE", "Fuel Boiler, 80% AFUE", "Fuel Boiler, 90% AFUE", "Fuel Furnace, 60% AFUE", "Fuel Furnace, 76% AFUE", "Fuel Furnace, 80% AFUE", "Fuel Furnace, 92.5% AFUE", "Fuel Wall/Floor Furnace, 60% AFUE", "Fuel Wall/Floor Furnace, 68% AFUE", "MSHP, SEER 14.5, 8.2 HSPF", "MSHP, SEER 29.3, 14 HSPF", "None", "Shared Heating", "Other")
+housing_units$baseline_heating_efficiency <- forcats::fct(housing_units$baseline_heating_efficiency, levels = baseline_heating_efficiency_levels)
 
-# Update baseline cooling type and set as factor
+# Add baseline cooling type and set as factor
 housing_units <- get_baseline_cooling_type(housing_units) |> right_join(housing_units, by = c("bldg_id"))
 baseline_cooling_type_levels <- c("Room AC", "Central AC",  "Heat Pump", "Other Cooling", "None")
 housing_units$baseline_cooling_type <- forcats::fct(housing_units$baseline_cooling_type, levels = baseline_cooling_type_levels)
 
-# Update building type group
-housing_units <- update_building_type_group(housing_units)
+# Add building type group
+housing_units <- add_building_type_group(housing_units)
 building_type_group_levels <- c("Single-Family", "2-4 Units", "5+ Units", "Other")
 housing_units$building_type_group <- forcats::fct(housing_units$building_type_group, levels = building_type_group_levels)
+```
 
-# Add heat_non_heat
-#housing_units <- add_heat_non_heat(housing_units)
-
+```{r}
 # Add hvac, hvac_backup, shell, and appliances
-housing_units <- add_hvac_appliances_shell(housing_units)
+housing_units <- add_hvac_primary(housing_units) |>
+  add_hvac_backup(housing_units) |>
+  add_appliances(housing_units) |>
+  add_shell(housing_units) |>
+  right_join(housing_units, by = c("bldg_id", "upgrade"))
+
+# Factors separately for each
+hvac_levels <- c("current", "hp_low", "hp_high", "hp_best", "hp_geo", "electric_resistance", "none")
+housing_units$hvac <- forcats::fct(housing_units$hvac, levels = hvac_levels)
+```
+
+```{r}
+
+
+# Add heat_non_heat flag
+housing_units <- add_heat_non_heat_flag(housing_units)
+heat_non_heat_levels <- c("heat", "non_heat")
+housing_units$heat_non_heat <- forcats::fct(housing_units$heat_non_heat, levels = heat_non_heat_levels)
+
 
 # Change occupants to number
 housing_units <- change_occupants_to_number(housing_units)

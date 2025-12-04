@@ -2929,6 +2929,304 @@ stats_all_fuels <- annual_changes_total |>
 
 
 
+# ------------------------------------------------------------------------------
+# Heating Bills
+# ------------------------------------------------------------------------------
+
+```{r}
+#| label: heating bills
+
+
+
+# Monthly Bills
+# Electricity
+monthly_bills_heating_elec <- calc_monthly_bills(
+  monthly_consumption = monthly_consumption,
+  consumption_column = "electricity_heating_consumption_kwh",
+  fuel_type = "electricity",
+  delivery_tariffs = electric_delivery_tariffs,
+  supply_rates = electric_supply_rates,
+  housing_units = housing_units,
+  supply_year = supply_year,
+  state = "RI",
+  enable_lmi_discount = TRUE,
+  use_these_upgrades = use_these_upgrades
+) |>
+mutate(
+  volumetric_rate = delivery_rate + supply_rate,
+  volumetric_bill = !!sym("electricity_heating_consumption_kwh") * volumetric_rate
+)
+
+monthly_changes_heating_elec <- calc_monthly_changes(monthly_bills_heating_elec, "electricity")
+
+annual_changes_heating_elec <- calc_annual_change_from_monthly(monthly_changes_heating_elec, "electricity")
+
+# Gas
+monthly_bills_heating_gas <- calc_monthly_bills(
+  monthly_consumption = monthly_consumption,
+  consumption_column = "natural_gas_heating_consumption_kwh",
+  fuel_type = "natural_gas",
+  delivery_tariffs = gas_delivery_tariffs,
+  supply_rates = gas_supply_rates,
+  housing_units = housing_units,
+  supply_year = supply_year,
+  state = "RI",
+  enable_lmi_discount = TRUE,
+  use_these_upgrades = use_these_upgrades
+) |>
+mutate(
+  volumetric_rate = delivery_rate + supply_rate,
+  volumetric_bill = !!sym("natural_gas_heating_consumption_kwh") * volumetric_rate
+)
+
+monthly_changes_heating_gas <- calc_monthly_changes(monthly_bills_heating_gas, "natural_gas")
+
+annual_changes_heating_gas <- calc_annual_change_from_monthly(monthly_changes_heating_gas, "natural_gas")
+
+# Fuel Oil
+monthly_bills_heating_fuel_oil <- calc_monthly_bills(
+  monthly_consumption = monthly_consumption,
+  consumption_column = "fuel_oil_heating_consumption_kwh",
+  fuel_type = "fuel_oil",
+  delivery_tariffs = fuel_oil_delivery_tariffs,
+  supply_rates = fuel_oil_supply_rates,
+  housing_units = housing_units,
+  supply_year = supply_year,
+  state = "RI",
+  enable_lmi_discount = TRUE,
+  use_these_upgrades = use_these_upgrades
+) |>
+mutate(
+  volumetric_rate = delivery_rate + supply_rate,
+  volumetric_bill = !!sym("fuel_oil_heating_consumption_kwh") * volumetric_rate
+)
+
+monthly_changes_heating_fuel_oil <- calc_monthly_changes(monthly_bills_heating_fuel_oil, "fuel_oil")
+
+annual_changes_heating_fuel_oil <- calc_annual_change_from_monthly(monthly_changes_heating_fuel_oil, "fuel_oil")
+
+# Propane
+monthly_bills_heating_propane <- calc_monthly_bills(
+  monthly_consumption = monthly_consumption,
+  consumption_column = "propane_heating_consumption_kwh",
+  fuel_type = "propane",
+  delivery_tariffs = propane_delivery_tariffs,
+  supply_rates = propane_supply_rates,
+  housing_units = housing_units,
+  supply_year = supply_year,
+  state = "RI",
+  enable_lmi_discount = TRUE,
+  use_these_upgrades = use_these_upgrades
+) |>
+mutate(
+  volumetric_rate = delivery_rate + supply_rate,
+  volumetric_bill = !!sym("propane_heating_consumption_kwh") * volumetric_rate
+)
+
+monthly_changes_heating_propane <- calc_monthly_changes(monthly_bills_heating_propane, "propane")
+
+annual_changes_heating_propane <- calc_annual_change_from_monthly(monthly_changes_heating_propane, "propane")
+
+# # Monthly Combined
+# monthly_changes_heating <- monthly_changes_heating_elec |>
+#   filter(version == "baseline") |>
+#   select(bldg_id, upgrade, year, month, monthly_change) |>
+#   rename(monthly_change_elec = monthly_change) |>
+#   left_join(
+#     monthly_changes_heating_gas |>
+#     select(bldg_id, upgrade, year, month, monthly_change) |>
+#     rename(monthly_change_gas = monthly_change),
+#     by = c("bldg_id", "upgrade", "year", "month")
+#   ) |>
+#   mutate(monthly_change = monthly_change_elec + monthly_change_gas) |>
+#   left_join(housing_units |> filter(upgrade == 0) |> select(bldg_id, afue_value, hvac_primary, baseline_heating_type), by = "bldg_id") |>
+#   filter(afue_value != 'NA')
+# View(monthly_changes_heating)
+
+annual_changes_heating <- calc_annual_changes_total(
+  annual_changes_heating_elec,
+   annual_changes_heating_gas,
+  annual_changes_heating_fuel_oil,
+  annual_changes_heating_propane
+)|>
+left_join(housing_units |> select(bldg_id, upgrade, afue_value, hvac_primary, baseline_heating_type), by = c("bldg_id", "upgrade")) |>
+filter(afue_value != 'NA')
+
+# used summarize to print the counts and percentages of the unique values of afue_value
+annual_changes_heating |>
+summarize(
+  counts = n(),
+  percentages = counts / n(),
+  .by = afue_value
+) |>
+arrange(desc(afue_value)) |>
+print()
+
+
+```
+
+```{r}
+result <- hist_for_single_rate_version(
+  annual_change_table = annual_changes_heating,
+  bill_type = 'annual_change_total',
+  baseline_heating_type_option = 'Natural Gas',
+  version_elec = "baseline",
+  hvac_option = "hp_high",
+  supply_year = supply_year,
+  title = "Change in Total Annual HEATING Bills for Homes Switching to Heat Pumps from Natural Gas",
+  second_subtitle = "Rhode Island",
+  x_limits = c(-3000, 3000),
+  y_limits = c(0, 200),
+  binwidth = 100
+)
+
+annual_change_stats_heating_baseline_hp_high <- result[[2]]
+
+View(annual_change_stats_heating_baseline_hp_high)
+print(result[[1]])
+
+```
+
+```{r}
+x_limits <- c(-2500, 2500)
+y_limits <- c(0, 15000) / 242.13
+binwidth <- 100
+
+version_labels <- c(
+  "hp_low" = "HSPF 9.2 - Energy Star Minimum",
+  "hp_high" = "HSPF 11 - Minimum for Climate Zone 5",
+  "hp_best" = "HSPF 13 - Best Available"
+)
+
+# Plot 1: AFUE = 92.5
+# -----------------------------------------------
+result_1 <- hist_for_single_rate_version(
+  annual_change_table = annual_changes_heating |> filter(afue_value == 92.5),
+  bill_type = 'annual_change_total',
+  version_elec = "baseline",
+  baseline_heating_type_option = 'Natural Gas',
+  hvac_option = "hp_high",
+  supply_year = supply_year,
+  title = 'auto',
+  second_subtitle = "Rhode Island",
+  x_limits = x_limits,
+  y_limits = y_limits,
+  binwidth = 100
+)
+
+p1 <- result_1[[1]] +
+  labs(title = NULL) + # Remove title
+  ylab(NULL) + # Remove y-axis label
+  theme(
+    axis.title.x = element_blank(), # Remove x axis title from top two plots
+    axis.text.x = element_blank(), # Remove x tick labels from top two plots
+    axis.ticks.x = element_blank(), # Remove x ticks from top two plots
+    plot.margin = margin(5, 5, 0, 5), # Consistent margins (top, right, bottom, left)
+    axis.title.y = element_blank(), # Remove y title from top plot
+    aspect.ratio = 0.18
+  ) +
+  # Add elegant version label on right side
+  annotate(
+    "text",
+    x = x_limits[2] * 0.95,
+    y = y_limits[2] * 0.7,
+    label = "AFUE = 92.5",
+    hjust = 1,
+    fontface = "bold",
+    size = 4,
+    color = "#023047"
+  )
+
+# Plot 2: AFUE = 92.5
+# -----------------------------------------------
+result_2 <- hist_for_single_rate_version(
+  annual_change_table = annual_changes_heating |> filter(afue_value == 80),
+  bill_type = 'annual_change_total',
+  version_elec = "baseline",
+  baseline_heating_type_option = 'Natural Gas',
+  hvac_option = "hp_high",
+  supply_year = supply_year,
+  title = 'auto',
+  second_subtitle = "Rhode Island",
+  x_limits = x_limits,
+  y_limits = y_limits,
+  binwidth = 100
+)
+
+p2 <- result_2[[1]] +
+  labs(title = NULL) + # Remove title
+  ylab(NULL) + # Remove y-axis label
+  theme(
+    axis.title.x = element_blank(), # Remove x axis title from top two plots
+    axis.text.x = element_blank(), # Remove x tick labels from top two plots
+    axis.ticks.x = element_blank(), # Remove x ticks from top two plots
+    plot.margin = margin(5, 5, 0, 5), # Consistent margins (top, right, bottom, left)
+    axis.title.y = element_blank(), # Remove y title from top plot
+    aspect.ratio = 0.18
+  ) +
+  # Add elegant version label on right side
+  annotate(
+    "text",
+    x = x_limits[2] * 0.95,
+    y = y_limits[2] * 0.7,
+    label = "AFUE = 80",
+    hjust = 1,
+    fontface = "bold",
+    size = 4,
+    color = "#023047"
+  )
+
+# Plot 3: AFUE = 92.5
+# -----------------------------------------------
+result_3 <- hist_for_single_rate_version(
+  annual_change_table = annual_changes_heating |> filter(afue_value == 68),
+  bill_type = 'annual_change_total',
+  version_elec = "baseline",
+  baseline_heating_type_option = 'Natural Gas',
+  hvac_option = "hp_high",
+  supply_year = supply_year,
+  title = 'auto',
+  second_subtitle = "Rhode Island",
+  x_limits = x_limits,
+  y_limits = y_limits,
+  binwidth = 100
+)
+
+p3 <- result_3[[1]] +
+  labs(title = NULL) + # Remove title
+  ylab(NULL) + # Remove y-axis label
+  theme(
+    axis.title.x = element_blank(), # Remove x axis title from top two plots
+    axis.text.x = element_blank(), # Remove x tick labels from top two plots
+    axis.ticks.x = element_blank(), # Remove x ticks from top two plots
+    plot.margin = margin(5, 5, 0, 5), # Consistent margins (top, right, bottom, left)
+    axis.title.y = element_blank(), # Remove y title from top plot
+    aspect.ratio = 0.18
+  ) +
+  # Add elegant version label on right side
+  annotate(
+    "text",
+    x = x_limits[2] * 0.95,
+    y = y_limits[2] * 0.7,
+    label = "AFUE = 60",
+    hjust = 1,
+    fontface = "bold",
+    size = 4,
+    color = "#023047"
+  )
+
+# Combine plots with shared x and y axes
+combined_plot <- p1 / p2 / p3 +
+plot_layout(heights = c(1, 1, 1)) + plot_annotation(title = "Change in Total Annual HEATING Bills for Homes Switching to Heat Pumps from Natural Gas", subtitle = "Rhode Island") +
+theme(
+  plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),
+  plot.subtitle = element_text(hjust = 0.5, size = 8)
+)
+
+print(combined_plot)
+
+
+```
 
 
 
@@ -2974,10 +3272,10 @@ ggplot(annual_changes_x, aes(x = afue_value/100, y = median_annual_change)) +
 ```
 
 # ------------------------------------------------------------------------------
-# Natural Gas Furnace Efficiency Impacts
+# Natural Gas Consumption by Functional Group and Month
 # ------------------------------------------------------------------------------
 ```{r}
-#| label: natural gas furnace efficiency impacts
+#| label: natural gas consumption by functional group and month
 
 baseline_heating_option <- "Natural Gas"
 

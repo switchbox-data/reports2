@@ -1216,26 +1216,48 @@ calc_monthly_bills <- function(
     fuel_consumption_column <- consumption_column
     discount_rate <- "discount_rate_elec"
     utility <- "electric_utility"
+    delivery_join_columns <- c("month", utility, "lmi")
+    supply_join_columns <- c("month", utility)
+
     # ------------
     # Gas
   } else if (fuel_type == "natural_gas") {
     fuel_consumption_column <- consumption_column
     discount_rate <- "discount_rate_gas"
     utility <- "gas_utility"
+    delivery_join_columns <- c("month", utility, "lmi", "heat_non_heat")
+    supply_join_columns <- c("month", utility, "heat_non_heat")
+
     # ------------
     # Fuel Oil
   } else if (fuel_type == "fuel_oil") {
     fuel_consumption_column <- consumption_column
     discount_rate <- "discount_rate_fuel_oil"
     utility <- "fuel_oil_utility"
+    delivery_join_columns <- c("month", utility, "lmi")
+    supply_join_columns <- c("month", utility)
     # ------------
     # Propane
   } else if (fuel_type == "propane") {
     fuel_consumption_column <- consumption_column
     discount_rate <- "discount_rate_propane"
     utility <- "propane_utility"
+    delivery_join_columns <- c("month", utility, "lmi")
+    supply_join_columns <- c("month", utility)
   }
   # ------------
+
+  print(delivery_join_columns)
+
+  # for delivery tariffs other than natural gas, we need to add the heat_non_heat column
+  # this is only to allow `select()` in the delivery joins (customer_charge, delivery_rate, sales_tax_rate)
+  if (fuel_type != "natural_gas") {
+    delivery_tariffs <- delivery_tariffs |>
+      mutate(heat_non_heat = "non_heat")
+
+    supply_rates <- supply_rates |>
+      mutate(heat_non_heat = "non_heat")
+  }
 
   final_result <- monthly_consumption |>
     select(bldg_id, upgrade, month, !!sym(consumption_column)) |>
@@ -1247,6 +1269,7 @@ calc_monthly_bills <- function(
           upgrade,
           !!sym(utility),
           lmi,
+          heat_non_heat,
           !!sym(discount_rate)
         ) |>
         mutate(
@@ -1267,9 +1290,11 @@ calc_monthly_bills <- function(
           customer_charge = value,
           tariff_name,
           version,
-          lmi
+          lmi,
+          heat_non_heat
         ),
-      by = c("month", utility, "lmi")
+      by = delivery_join_columns,
+      relationship = "many-to-many" # each row of monthly_consumption can match multiple rows of delivery_tariffs (i.e. electric tariff versions)
     ) |>
     left_join(
       delivery_tariffs |>
@@ -1280,9 +1305,10 @@ calc_monthly_bills <- function(
           delivery_rate = value,
           tariff_name,
           version,
-          lmi
+          lmi,
+          heat_non_heat
         ),
-      by = c("month", utility, "version", "lmi", "tariff_name")
+      by = c(delivery_join_columns, "version", "tariff_name")
     ) |>
     left_join(
       delivery_tariffs |>
@@ -1293,15 +1319,16 @@ calc_monthly_bills <- function(
           sales_tax_rate = value,
           tariff_name,
           version,
-          lmi
+          lmi,
+          heat_non_heat
         ),
-      by = c("month", utility, "version", "lmi", "tariff_name")
+      by = c(delivery_join_columns, "version", "tariff_name")
     ) |>
     left_join(
       supply_rates |>
         filter(year == supply_year) |>
-        select(month, !!sym(utility), supply_rate, year),
-      by = c("month", utility)
+        select(month, !!sym(utility), heat_non_heat, supply_rate, year),
+      by = supply_join_columns
     ) |>
     mutate(
       customer_charge = customer_charge * (1 - !!sym(discount_rate)),

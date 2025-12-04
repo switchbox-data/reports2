@@ -104,8 +104,8 @@ url_delivery_rates <- "https://docs.google.com/spreadsheets/d/17mTVgMnZaROOimWJB
 # SMI thresholds
 url_smi_thresholds <- "https://docs.google.com/spreadsheets/d/1bVbr8jDF8YgT6-yiEEpg-RFvMdV7veoapFzhZYVcaWg/edit?gid=0#gid=0"
 
-load_tariffs_from_cache <- TRUE
-load_thresholds_from_cache <- TRUE
+load_tariffs_from_cache <- FALSE
+load_thresholds_from_cache <- FALSE
 load_results_from_cache <- FALSE
 ```
 
@@ -504,18 +504,15 @@ housing_units <- housing_units |>
 n_non_vacant_homes <- housing_units |> filter(upgrade == 0) |> filter(occupants_group != "Vacant") |> nrow()
 ```
 
+# ------------------------------------------------------------------------------
 # Bill Calculations
-## Bill Calcuations
-### parameters
+# ------------------------------------------------------------------------------
+# parameters
 ```{r}
 cols_from_housing_units <- c("bldg_id", "upgrade", "hvac_primary", "baseline_heating_type", "baseline_heating_efficiency")
-
 ```
 
-
-# ------------------------------------------------------------------------------
 # Consumption by End Use Group
-# ------------------------------------------------------------------------------
 ```{r}
 #| label: consumption by end use group
 
@@ -526,7 +523,7 @@ end_use_groups <- arrow::read_feather(path_end_use_groups_feather)
 # Monthly Load Data
 monthly_consumption <- get_monthly_consumption_many(
   path_monthly_data = path_monthly_data,
-  fuels = c("electricity", "natural_gas"),
+  fuels = c("electricity", "natural_gas", "fuel_oil", "propane"),
   functional_groups = c("appliance", "cooking", "cooling", "heating", "hot_water", "total"),
   use_these_states = "RI",
   use_these_upgrades = use_these_upgrades
@@ -570,10 +567,12 @@ if (load_results_from_cache) {
     state = "RI",
     enable_lmi_discount = TRUE,
     use_these_upgrades = use_these_upgrades
-  )
+  ) |>
+  left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
 
   # Monthly Change
-  monthly_changes_elec <- calc_monthly_changes(monthly_bills_elec, "electricity")
+  monthly_changes_elec <- calc_monthly_changes(monthly_bills_elec, "electricity") |>
+    left_join(housing_units |> filter(upgrade == 0) |> select(bldg_id, hvac_primary, baseline_heating_type), by = "bldg_id")
 
   # BILLS by season
   winter_bills_elec <- calc_annual_bills_from_monthly(monthly_bills_elec, "electricity", months = winter_months) |>
@@ -635,23 +634,10 @@ if (load_results_from_cache) {
   load(file = path_calculated_bills_fuel_oil)
 } else {
 
-  # Monthly Load Data
-  monthly_consumption <- get_monthly_consumption(
-    path_monthly_data = path_monthly_data,
-    fuel = "fuel_oil",
-    functional_group = "total",
-    use_these_states = "RI",
-    use_these_upgrades = use_these_upgrades
-  )
-
-  # Filter out any vacant homes
-  monthly_consumption <- monthly_consumption |>
-    left_join(housing_units |> filter(upgrade == 0)|> select(bldg_id, occupants_group), by = c("bldg_id")) |>
-    filter(occupants_group != "Vacant")
-
   # Monthly Bills
   monthly_bills_fuel_oil <- calc_monthly_bills(
     monthly_consumption = monthly_consumption,
+    consumption_column = "fuel_oil_total_consumption_kwh",
     fuel_type = "fuel_oil",
     delivery_tariffs = fuel_oil_delivery_tariffs,
     supply_rates = fuel_oil_supply_rates,
@@ -659,31 +645,33 @@ if (load_results_from_cache) {
     supply_year = supply_year,
     state = "RI",
     use_these_upgrades = use_these_upgrades
-  )
+  ) |>
+  left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
 
 
   # Monthly Change
-  monthly_changes_fuel_oil <- calc_monthly_changes(monthly_bills_fuel_oil, "fuel_oil")
+  monthly_changes_fuel_oil <- calc_monthly_changes(monthly_bills_fuel_oil, "fuel_oil") |>
+    left_join(housing_units |> filter(upgrade == 0) |> select(bldg_id, hvac_primary, baseline_heating_type), by = "bldg_id")
 
   # BILLS by season
   winter_bills_fuel_oil <- calc_annual_bills_from_monthly(monthly_bills_fuel_oil, "fuel_oil", months = winter_months) |>
-    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
 
   summer_bills_fuel_oil <- calc_annual_bills_from_monthly(monthly_bills_fuel_oil, "fuel_oil", months = summer_months) |>
-    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
 
   annual_bills_fuel_oil <- calc_annual_bills_from_monthly(monthly_bills_fuel_oil, "fuel_oil") |>
-    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
 
   # Changes by season
   winter_changes_fuel_oil <- calc_annual_change_from_monthly(monthly_changes_fuel_oil, "fuel_oil", months = winter_months)|>
-    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
 
   summer_changes_fuel_oil <- calc_annual_change_from_monthly(monthly_changes_fuel_oil, "fuel_oil", months = summer_months)|>
-    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
 
   annual_changes_fuel_oil <- calc_annual_change_from_monthly(monthly_changes_fuel_oil, "fuel_oil") |>
-    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
 
   # Save to cache
   save(
@@ -725,23 +713,12 @@ if (load_results_from_cache) {
   load(file = path_calculated_bills_propane)
 } else {
 
-  # Monthly Load Data
-  monthly_consumption <- get_monthly_consumption(
-    path_monthly_data = path_monthly_data,
-    fuel = "propane",
-    functional_group = "total",
-    use_these_states = "RI",
-    use_these_upgrades = use_these_upgrades
-  )
 
-  # Filter out any vacant homes
-  monthly_consumption <- monthly_consumption |>
-    left_join(housing_units |> filter(upgrade == 0)|> select(bldg_id, occupants_group), by = c("bldg_id")) |>
-    filter(occupants_group != "Vacant")
 
   # Monthly Bills
   monthly_bills_propane <- calc_monthly_bills(
     monthly_consumption = monthly_consumption,
+    consumption_column = "propane_total_consumption_kwh",
     fuel_type = "propane",
     delivery_tariffs = propane_delivery_tariffs,
     supply_rates = propane_supply_rates,
@@ -749,30 +726,32 @@ if (load_results_from_cache) {
     supply_year = supply_year,
     state = "RI",
     use_these_upgrades = use_these_upgrades
-  )
+  ) |>
+  left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
 
   # Monthly Change
-  monthly_changes_propane <- calc_monthly_changes(monthly_bills_propane, "propane")
+  monthly_changes_propane <- calc_monthly_changes(monthly_bills_propane, "propane") |>
+    left_join(housing_units |> filter(upgrade == 0) |> select(bldg_id, hvac_primary, baseline_heating_type), by = "bldg_id")
 
   # BILLS by season
   winter_bills_propane <- calc_annual_bills_from_monthly(monthly_bills_propane, "propane", months = winter_months) |>
-    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
 
   summer_bills_propane <- calc_annual_bills_from_monthly(monthly_bills_propane, "propane", months = summer_months) |>
-    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
 
   annual_bills_propane <- calc_annual_bills_from_monthly(monthly_bills_propane, "propane") |>
-    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
 
   # Changes by season
   winter_changes_propane <- calc_annual_change_from_monthly(monthly_changes_propane, "propane", months = winter_months)|>
-    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
 
   summer_changes_propane <- calc_annual_change_from_monthly(monthly_changes_propane, "propane", months = summer_months)|>
-    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
 
   annual_changes_propane <- calc_annual_change_from_monthly(monthly_changes_propane, "propane") |>
-    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
 
   # Save to cache
   save(
@@ -796,11 +775,11 @@ if (load_results_from_cache) {
 # annual_changes_propane_x <- annual_changes_propane |> filter(bldg_id == bldg_id_x) |> View()
 ```
 
-
 ### Gas
 ```{r}
 #| label: gas bills calculations
 # Gas Supply Rates
+source(path_heat_pump_funcs)
 url_gas_supply_rates <- "https://docs.google.com/spreadsheets/d/1_2u9S3r2JWKREhD_pnWXfyQKqjc4IsImbbTdHHN7xqM/edit?gid=0#gid=0"
 load_or_download("gas_supply_rates", url_gas_supply_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
 load_or_download("gas_delivery_tariffs", url_delivery_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
@@ -811,45 +790,43 @@ if (load_results_from_cache) {
   load(file = path_calculated_bills_gas)
 } else {
   # Monthly Gas Bills
-  monthly_bills_gas <- calc_monthly_bills_gas(
-    path_monthly_data = path_monthly_data,
-    gas_delivery_tariffs = gas_delivery_tariffs,
-    gas_supply_rates = gas_supply_rates,
+  monthly_bills_gas <- calc_monthly_bills(
+    monthly_consumption = monthly_consumption,
+    consumption_column = "natural_gas_total_consumption_kwh",
+    fuel_type = "natural_gas",
+    delivery_tariffs = gas_delivery_tariffs,
+    supply_rates = gas_supply_rates,
     housing_units = housing_units,
     supply_year = supply_year,
     state = "RI",
     enable_lmi_discount = TRUE,
     use_these_upgrades = use_these_upgrades
-  )
-
-  # Filter out any vacant homes
-  monthly_bills_gas <- monthly_bills_gas |>
-    left_join(housing_units |> filter(upgrade == 0)|> select(bldg_id, occupants_group), by = c("bldg_id")) |>
-    filter(occupants_group != "Vacant")
+  ) |>
+  left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
 
   # Monthly Change
-  monthly_changes_gas <- calc_monthly_changes(monthly_bills_gas, "natural_gas")
-
+  monthly_changes_gas <- calc_monthly_changes(monthly_bills_gas, "natural_gas") |>
+    left_join(housing_units |> filter(upgrade == 0) |> select(bldg_id, hvac_primary, baseline_heating_type), by = "bldg_id")
 
   # BILLS by season
   winter_bills_gas <- calc_annual_bills_from_monthly(monthly_bills_gas, "natural_gas", months = winter_months) |>
-    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
 
   summer_bills_gas <- calc_annual_bills_from_monthly(monthly_bills_gas, "natural_gas", months = summer_months) |>
-    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
 
   annual_bills_gas <- calc_annual_bills_from_monthly(monthly_bills_gas, "natural_gas") |>
-    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
 
   # Changes by season
   winter_changes_gas <- calc_annual_change_from_monthly(monthly_changes_gas, "natural_gas", months = winter_months)|>
-    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
 
   summer_changes_gas <- calc_annual_change_from_monthly(monthly_changes_gas, "natural_gas", months = summer_months)|>
-    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
 
   annual_changes_gas <- calc_annual_change_from_monthly(monthly_changes_gas, "natural_gas") |>
-    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade", "hvac"))
+    left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
 
   # Save to cache
   save(
@@ -900,7 +877,7 @@ annual_changes_y  <- annual_changes_total |>
   filter(version_elec == "baseline") |>
   right_join(housing_units |> filter(upgrade==0)|> filter(baseline_heating_type == "Natural Gas")|> select(bldg_id, afue_value), by = c("bldg_id"))
 
-View(annual_changes_y)
+#View(annual_changes_y)
 
 annual_changes_x <- annual_changes_y |>
   summarize(
@@ -909,7 +886,7 @@ annual_changes_x <- annual_changes_y |>
     .by = c(afue_value)
   )
 
-View(annual_changes_x)
+#View(annual_changes_x)
 
 ggplot(annual_changes_x, aes(x = afue_value/100, y = median_annual_change)) +
   #shade light green above y=0

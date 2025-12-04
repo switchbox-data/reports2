@@ -39,7 +39,7 @@ hist_for_single_rate_version <- function(
 
   # Filter data for mid_hp
   plot_data <- annual_change_table |>
-    filter(hvac == hvac_option, version_elec == !!version_elec) |>
+    filter(hvac_primary == hvac_option, version_elec == !!version_elec) |>
     filter(
       if (baseline_heating_type_option != "All Fuels") {
         baseline_heating_type == !!baseline_heating_type_option

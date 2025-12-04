@@ -19,37 +19,240 @@ format:
 # 1. clean_peoples_construction_polygons.py
 # 2. match_parcels_buildings.py
 
-# Data Loading
-
-Load all geospatial datasets for analysis.
+# Imports
 
 ```{python}
 import geopandas as gpd
 import pandas as pd
 from pathlib import Path
 from datetime import datetime
+import gc
+```
 
+# Constants
+
+```{python}
+POLYGON_BUFFER_M = 8  # Distance in meters to buffer construction polygons for parcel identification
+
+# Generate timestamp for output files
 timestamp = datetime.now().strftime('%Y%m%d')
+
 # Set paths
 data_dir = Path('../data')
 geo_data_dir = data_dir / 'geo_data'
 outputs_dir = data_dir / 'outputs'
 outputs_dir.mkdir(parents=True, exist_ok=True)  # Ensure outputs directory exists
 utils_dir = Path('../utils')
-
-# Set aggregation level: "poly" or "block"
-AGGREGATION_LEVEL = "block"  # Options: "poly", "block"
 ```
+
+# Utility Functions
+
+```{python}
+def prepare_geometries_for_utm(gdf, name="dataset"):
+    """
+    Prepare geometries for UTM operations: reproject to UTM, make valid, and filter invalid geometries.
+
+    Parameters:
+    -----------
+    gdf : GeoDataFrame
+        Input GeoDataFrame to prepare
+    name : str
+        Name of dataset for warning messages
+
+    Returns:
+    --------
+    GeoDataFrame
+        Validated GeoDataFrame in UTM (EPSG:32616) with reset index
+    """
+    if gdf is None or len(gdf) == 0:
+        return gdf
+
+    # Reproject to UTM for accurate area calculations
+    gdf_utm = gdf.to_crs('EPSG:32616')
+
+    # Make geometries valid to avoid topology errors
+    gdf_utm['geometry'] = gdf_utm['geometry'].make_valid()
+
+    # Check for and remove any invalid geometries
+    gdf_valid = gdf_utm[gdf_utm.geometry.is_valid].copy().reset_index(drop=True)
+
+    if len(gdf_valid) < len(gdf_utm):
+        print(f"  Warning: Removed {len(gdf_utm) - len(gdf_valid)} invalid geometries from {name}")
+
+    return gdf_valid
+
+
+def reproject_to_wgs84(gdf):
+    """
+    Reproject GeoDataFrame to WGS84 (EPSG:4326) for export.
+
+    Parameters:
+    -----------
+    gdf : GeoDataFrame
+        Input GeoDataFrame to reproject
+
+    Returns:
+    --------
+    GeoDataFrame
+        Reprojected GeoDataFrame in WGS84
+    """
+    if gdf is None:
+        return None
+    return gdf.to_crs(epsg=4326)
+
+
+def validate_columns(df, required_cols, dataset_name="dataset"):
+    """
+    Validate that required columns exist in dataframe.
+
+    Parameters:
+    -----------
+    df : DataFrame
+        Input dataframe to check
+    required_cols : list
+        List of required column names
+    dataset_name : str
+        Name of dataset for warning messages
+
+    Returns:
+    --------
+    bool
+        True if all columns present, False otherwise
+    """
+    if df is None:
+        return False
+
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        print(f"WARNING: Missing expected columns in {dataset_name}: {missing_cols}")
+        return False
+    return True
+
+
+def validate_uniqueness(df, column, dataset_name="dataset"):
+    """
+    Validate that a column has unique values.
+
+    Parameters:
+    -----------
+    df : DataFrame
+        Input dataframe to check
+    column : str
+        Column name to check for uniqueness
+    dataset_name : str
+        Name of dataset for messages
+
+    Returns:
+    --------
+    bool
+        True if column is unique, False otherwise
+    """
+    if df is None or column not in df.columns:
+        return False
+
+    unique_count = df[column].nunique()
+    total_count = len(df)
+    is_unique = unique_count == total_count
+
+    if is_unique:
+        print(f"{column} is unique in {dataset_name}: {unique_count:,} unique values")
+    else:
+        print(f"WARNING: {column} is not unique in {dataset_name} ({unique_count:,} unique values for {total_count:,} rows)")
+
+    return is_unique
+
+
+def export_geojson(gdf, output_dir, filename, description="dataset"):
+    """
+    Export GeoDataFrame to GeoJSON file with reprojection to WGS84.
+
+    Parameters:
+    -----------
+    gdf : GeoDataFrame
+        GeoDataFrame to export
+    output_dir : Path
+        Output directory path
+    filename : str
+        Output filename
+    description : str
+        Description of dataset for export message
+
+    Returns:
+    --------
+    Path
+        Path to exported file
+    """
+    if gdf is None or len(gdf) == 0:
+        print(f"Skipping export of {description}: no data")
+        return None
+
+    # Reproject to WGS84 for export
+    gdf_export = reproject_to_wgs84(gdf)
+
+    # Create full file path
+    output_file = output_dir / filename
+
+    # Export to GeoJSON
+    gdf_export.to_file(output_file, driver="GeoJSON")
+
+    print(f"Exported {len(gdf_export):,} {description} to {filename}")
+
+    return output_file
+
+
+def prepare_summary_dataframe(df, int_columns, summary_type="dataset"):
+    """
+    Prepare summary dataframe by converting columns to integers.
+    Does NOT fill NaN with 0 - NaNs are preserved to indicate missing data.
+
+    Parameters:
+    -----------
+    df : DataFrame
+        Input dataframe to prepare
+    int_columns : list
+        List of column names to convert to integers
+    summary_type : str
+        Type of summary for print messages
+
+    Returns:
+    --------
+    DataFrame
+        Prepared dataframe with integer columns converted (NaNs preserved)
+    """
+    if df is None:
+        return None
+
+    # Convert to integers where appropriate (only for non-NaN values)
+    # Use nullable integer type (Int64) to preserve NaNs
+    for col in int_columns:
+        if col in df.columns:
+            # Convert to nullable integer type - preserves NaNs
+            df[col] = pd.to_numeric(df[col], errors='coerce').astype('Int64')
+
+    print(f"\n{summary_type} Summary Statistics:")
+    print(df.describe())
+
+    # Display sample of summary data
+    print(f"\nSample of summary data (first 5 rows):")
+    print(df.head())
+
+    return df
+```
+
+# Data Loading
+
+Load all geospatial datasets for analysis.
 
 ## Peoples Gas Construction Polygons
 
 ```{python}
 # Load pre-processed Peoples Gas polygons (unioned and clipped)
-pg_file = outputs_dir / 'peoples_polygons_unioned_clipped.geojson'
+pg_file = outputs_dir / 'peoples_polygons_unioned.geojson'
 print(f"Loading: {pg_file.name}")
 pg_polygons = gpd.read_file(pg_file)
 print(f"Loaded {len(pg_polygons):,} Peoples Gas construction polygons")
 
+pg_polygons = pg_polygons[pg_polygons["status_simple"] == "planned"]
 # Pre-processed file has: status_simple, C_START_min, C_START_max, geometry
 # Create OBJECTID from index for unique identification
 pg_polygons['OBJECTID'] = pg_polygons.index + 1
@@ -58,10 +261,8 @@ print(f"Summary: {len(pg_polygons):,} polygons, CRS: {pg_polygons.crs}")
 print(f"Columns: {list(pg_polygons.columns)}")
 
 # Validate OBJECTID uniqueness
-unique_objectids = pg_polygons['OBJECTID'].nunique()
-if unique_objectids != len(pg_polygons):
-    raise ValueError(f"OBJECTID is not unique ({unique_objectids:,} unique values for {len(pg_polygons):,} polygons)")
-print(f"OBJECTID is unique: {unique_objectids:,} unique values")
+if not validate_uniqueness(pg_polygons, 'OBJECTID', 'Peoples Gas polygons'):
+    raise ValueError(f"OBJECTID is not unique in Peoples Gas polygons")
 ```
 
 ## City Blocks
@@ -80,202 +281,14 @@ city_blocks = city_blocks[['geoid10', 'geometry']]
 
 print(f"Loaded {len(city_blocks):,} city blocks (memory optimized)")
 print(f"  CRS: {city_blocks.crs}")
-print(f"  geoid10 is unique: {city_blocks['geoid10'].nunique() == len(city_blocks)}")
-```
-
-## Blocks in Construction Areas
-
-```{python}
-if AGGREGATION_LEVEL == "block" and pg_polygons is not None and city_blocks is not None:
-    print("\nSegmenting construction polygons into city blocks...")
-
-    # Reproject to UTM for accurate area calculations
-    pg_utm = pg_polygons.to_crs('EPSG:32616')
-    blocks_utm = city_blocks.to_crs('EPSG:32616')
-
-    # Make geometries valid to avoid topology errors
-    print("  Validating geometries...")
-    pg_utm['geometry'] = pg_utm['geometry'].make_valid()
-    blocks_utm['geometry'] = blocks_utm['geometry'].make_valid()
-
-    # Check for and remove any invalid geometries
-    pg_valid = pg_utm[pg_utm.geometry.is_valid].copy().reset_index(drop=True)
-    blocks_valid = blocks_utm[blocks_utm.geometry.is_valid].copy().reset_index(drop=True)
-
-    if len(pg_valid) < len(pg_utm):
-        print(f"  Warning: Removed {len(pg_utm) - len(pg_valid)} invalid construction polygons")
-    if len(blocks_valid) < len(blocks_utm):
-        print(f"  Warning: Removed {len(blocks_utm) - len(blocks_valid)} invalid city blocks")
-
-    # Intersect blocks with construction polygons
-    # Pre-processed file has: OBJECTID, status_simple, C_START_min, C_START_max, geometry
-    blocks_in_construction = gpd.overlay(
-        blocks_valid,
-        pg_valid[['OBJECTID', 'status_simple', 'C_START_min', 'C_START_max', 'geometry']],
-        how='intersection',
-        keep_geom_type=False
-    )
-
-    # Calculate intersection area for each block segment
-    blocks_in_construction['block_area_sqm'] = blocks_in_construction.geometry.area
-
-    # Create composite ID: OBJECTID_geoid10
-    blocks_in_construction['block_poly_id'] = (
-        blocks_in_construction['OBJECTID'].astype(str) + '_' +
-        blocks_in_construction['geoid10'].astype(str)
-    )
-
-    print(f"Found {len(blocks_in_construction):,} block segments within construction areas")
-    print(f"  Unique construction polygons: {blocks_in_construction['OBJECTID'].nunique():,}")
-    print(f"  Unique city blocks: {blocks_in_construction['geoid10'].nunique():,}")
-    print(f"  Unique block-polygon combinations: {blocks_in_construction['block_poly_id'].nunique():,}")
-
-    # Validate block_poly_id uniqueness
-    unique_block_poly_ids = blocks_in_construction['block_poly_id'].nunique()
-    if unique_block_poly_ids != len(blocks_in_construction):
-        print(f"WARNING: block_poly_id is not unique ({unique_block_poly_ids:,} unique values for {len(blocks_in_construction):,} segments)")
-    else:
-        print(f"block_poly_id is unique: {unique_block_poly_ids:,} unique values")
-
-    # Show distribution of blocks per polygon
-    blocks_per_poly = blocks_in_construction.groupby('OBJECTID').size()
-    print(f"\nBlocks per construction polygon:")
-    print(f"  Mean: {blocks_per_poly.mean():.1f}")
-    print(f"  Median: {blocks_per_poly.median():.1f}")
-    print(f"  Min: {blocks_per_poly.min()}")
-    print(f"  Max: {blocks_per_poly.max()}")
-
-    # Free memory from intermediate datasets
-    del pg_valid, blocks_valid
-    import gc
-    gc.collect()
-
-elif AGGREGATION_LEVEL == "block":
-    print("Cannot create block segments: missing data")
-    blocks_in_construction = None
-else:
-    print(f"Skipping block segmentation (AGGREGATION_LEVEL={AGGREGATION_LEVEL})")
-    blocks_in_construction = None
-```
-
-## Visualize City Blocks
-
-```{python}
-# if AGGREGATION_LEVEL == "block" and blocks_in_construction is not None and city_blocks is not None and pg_polygons is not None:
-#     import folium
-#     import matplotlib.pyplot as plt
-#     import matplotlib.colors as mcolors
-
-#     # Reproject to WGS84 for Folium
-#     blocks_map = blocks_in_construction.to_crs(epsg=4326)
-
-#     # Get original city blocks that intersect with construction polygons (for comparison)
-#     # Find which original blocks have geoid10 values that appear in blocks_in_construction
-#     original_blocks_geoids = set(blocks_in_construction['geoid10'].unique())
-#     original_blocks_filtered = city_blocks[city_blocks['geoid10'].isin(original_blocks_geoids)].to_crs(epsg=4326)
-
-#     print(f"\n📍 Creating map with clipped and original blocks for comparison...")
-#     print(f"  Clipped block segments: {len(blocks_map):,}")
-#     print(f"  Original unclipped blocks: {len(original_blocks_filtered):,}")
-#     print(f"  Unique block IDs in clipped: {len(original_blocks_geoids):,}")
-
-#     # Calculate center of map (use bounds from both datasets)
-#     all_bounds = blocks_map.total_bounds
-#     orig_bounds = original_blocks_filtered.total_bounds
-#     combined_bounds = [
-#         min(all_bounds[0], orig_bounds[0]),
-#         min(all_bounds[1], orig_bounds[1]),
-#         max(all_bounds[2], orig_bounds[2]),
-#         max(all_bounds[3], orig_bounds[3])
-#     ]
-#     center_lat = (combined_bounds[1] + combined_bounds[3]) / 2
-#     center_lon = (combined_bounds[0] + combined_bounds[2]) / 2
-
-#     # Create base map
-#     m = folium.Map(
-#         location=[center_lat, center_lon],
-#         zoom_start=12,
-#         tiles='cartodbpositron'
-#     )
-
-#     # Add original unclipped blocks first (as outlines, lower z-index)
-#     print("  Adding original unclipped blocks (gray outlines)...")
-#     for idx, row in original_blocks_filtered.iterrows():
-#         folium.GeoJson(
-#             row.geometry,
-#             style_function=lambda x: {
-#                 'fillColor': 'transparent',
-#                 'color': '#666666',
-#                 'weight': 1,
-#                 'fillOpacity': 0,
-#                 'opacity': 0.6
-#             },
-#             popup=folium.Popup(f"<b>Original Block (geoid10):</b> {row['geoid10']}<br><b>Status:</b> Unclipped", max_width=200)
-#         ).add_to(m)
-
-#     # Create color mapping for construction polygons
-#     unique_polygons = blocks_map['OBJECTID'].unique()
-#     color_palette = plt.get_cmap("tab20", len(unique_polygons))
-#     polygon_colors = {obj_id: mcolors.rgb2hex(color_palette(i))
-#                       for i, obj_id in enumerate(unique_polygons)}
-
-#     # Add clipped block segments on top (colored, higher z-index)
-#     print("  Adding clipped block segments (colored fills)...")
-#     for idx, row in blocks_map.iterrows():
-#         obj_id = row['OBJECTID']
-#         color = polygon_colors.get(obj_id, '#gray')
-
-#         # Create popup with block info
-#         popup_html = f"""
-#         <b>Block-Polygon ID:</b> {row['block_poly_id']}<br>
-#         <b>Census Block (geoid10):</b> {row['geoid10']}<br>
-#         <b>Construction Polygon (OBJECTID):</b> {row['OBJECTID']}<br>
-#         <b>Project Name:</b> {row['PR_NAME']}<br>
-#         <b>Block Area:</b> {row['block_area_sqm']:,.0f} sqm<br>
-#         <b>Status:</b> Clipped segment<br>
-#         """
-
-#         folium.GeoJson(
-#             row.geometry,
-#             style_function=lambda x, color=color: {
-#                 'fillColor': color,
-#                 'color': 'black',
-#                 'weight': 1.5,
-#                 'fillOpacity': 0.7
-#             },
-#             popup=folium.Popup(popup_html, max_width=300)
-#         ).add_to(m)
-
-#     # Add title and legend
-#     title_html = '''
-#     <div style="position: fixed; top: 10px; left: 50px; width: auto; height: auto;
-#     background-color: white; border:2px solid grey; z-index:9999; font-size:16px;
-#     font-weight: bold; padding: 10px 20px;">
-#     City Blocks: Original (gray outlines) vs Clipped Segments (colored fills)
-#     </div>
-#     '''
-#     m.get_root().html.add_child(folium.Element(title_html))
-
-#     legend_html = '''
-#     <div style="position: fixed; bottom: 10px; right: 10px; width: 250px; height: auto;
-#     background-color: white; border:2px solid grey; z-index:9999; font-size:12px; padding: 10px">
-#     <p style="margin-bottom: 5px;"><b>Legend</b></p>
-#     <p style="margin: 3px 0;"><span style="border: 1px solid #666; width: 20px; height: 20px; display: inline-block; background: transparent;"></span> Original unclipped blocks</p>
-#     <p style="margin: 3px 0;"><span style="border: 1px solid black; width: 20px; height: 20px; display: inline-block; background: #FC9706;"></span> Clipped segments (colored by polygon)</p>
-#     </div>
-#     '''
-#     m.get_root().html.add_child(folium.Element(legend_html))
-
-#     print(f"✅ Interactive map created")
-#     print(f"   Compare original blocks (gray) with clipped segments (colored) to verify all overlaps are captured")
-#     m
+validate_uniqueness(city_blocks, 'geoid10', 'city blocks')
 ```
 
 
 ## Cook County Parcels with Units (Pre-processed)
 
 ```{python}
-# Load pre-processed parcels with units and assessor classification
+# Load pre-processed parcels with units and assessor classification. See reports/il_npa/notebooks/match_parcels_buildings.py
 parcel_file = outputs_dir / 'parcels_with_units_20251125.geojson'
 print(f"Loading: {parcel_file.name}")
 parcels_with_units = gpd.read_file(parcel_file)
@@ -283,42 +296,19 @@ print(f"Loaded {len(parcels_with_units):,} parcels with units and classification
 
 # Validate required columns from pre-processing
 required_cols = ['type', 'building_units', 'geometry']
-missing_cols = [col for col in required_cols if col not in parcels_with_units.columns]
-if missing_cols:
-    print(f"WARNING: Missing expected columns: {missing_cols}")
+validate_columns(parcels_with_units, required_cols, 'parcels_with_units')
 
 # Check for assessor classification columns
 assessor_cols = ['sf_mf', 'units_min', 'units_max']
-has_assessor = all(col in parcels_with_units.columns for col in assessor_cols)
-if not has_assessor:
-    print(f"WARNING: Missing some assessor classification columns. Expected: {assessor_cols}")
+validate_columns(parcels_with_units, assessor_cols, 'parcels_with_units (assessor columns)')
 
 # Check for building matching columns
 building_cols = ['matched_building_id', 'building_units_raw', 'overlap_area_sqm']
-has_building_match = all(col in parcels_with_units.columns for col in building_cols)
-if not has_building_match:
-    print(f"WARNING: Missing some building matching columns. Expected: {building_cols}")
+validate_columns(parcels_with_units, building_cols, 'parcels_with_units (building match columns)')
 
 print(f"Summary: {len(parcels_with_units):,} parcels, CRS: {parcels_with_units.crs}")
 print(f"Parcels with type classification: {parcels_with_units['type'].notna().sum():,}")
 print(f"Parcels with building units: {parcels_with_units['building_units'].notna().sum():,}")
-
-# Check for unique parcel identifier
-potential_parcel_ids = ['pin', 'PIN', 'pin10', 'PIN10', 'pin14', 'PIN14', 'parcel_id', 'parcelid', 'parcel_id_num']
-parcel_id_col = None
-for col in potential_parcel_ids:
-    if col in parcels_with_units.columns:
-        unique_count = parcels_with_units[col].nunique()
-        if unique_count == len(parcels_with_units):
-            parcel_id_col = col
-            print(f"Found unique parcel identifier: {col} ({unique_count:,} unique values)")
-            break
-        elif unique_count > 0:
-            print(f"Found parcel identifier column '{col}' but not unique ({unique_count:,} unique values for {len(parcels_with_units):,} parcels)")
-
-if parcel_id_col is None:
-    print("WARNING: No unique parcel identifier found. Parcels are identified by position (longitude/latitude).")
-    print(f"Available columns: {list(parcels_with_units.columns)}")
 ```
 
 ## Chicago Street Centerlines
@@ -363,185 +353,304 @@ if streets is not None:
     print(f"  Streets: {streets.crs}")
 ```
 
+## Blocks in Construction Areas
+
+```{python}
+print("\nSegmenting construction polygons into city blocks...")
+
+# Prepare geometries for UTM operations
+print("  Validating geometries...")
+pg_valid = prepare_geometries_for_utm(pg_polygons, "construction polygons")
+blocks_valid = prepare_geometries_for_utm(city_blocks, "city blocks")
+
+# Intersect blocks with construction polygons to create CLIPPED block segments
+# Pre-processed file has: OBJECTID, status_simple, C_START_min, C_START_max, geometry
+blocks_in_construction_clipped = gpd.overlay(
+    blocks_valid,
+    pg_valid[['OBJECTID', 'status_simple',
+              'C_START_min', 'C_START_max', 'geometry']],
+    how='intersection',
+    keep_geom_type=False
+)
+
+# Calculate intersection area for each clipped block segment
+blocks_in_construction_clipped['block_area_sqm'] = blocks_in_construction_clipped.geometry.area
+
+# Create composite ID: OBJECTID_geoid10
+blocks_in_construction_clipped['block_poly_id'] = (
+    blocks_in_construction_clipped['OBJECTID'].astype(str) + '_' +
+    blocks_in_construction_clipped['geoid10'].astype(str)
+)
+
+print(
+    f"Found {len(blocks_in_construction_clipped):,} clipped block segments within construction areas")
+print(
+    f"  Unique construction polygons: {blocks_in_construction_clipped['OBJECTID'].nunique():,}")
+print(
+    f"  Unique city blocks: {blocks_in_construction_clipped['geoid10'].nunique():,}")
+print(
+    f"  Unique block-polygon combinations: {blocks_in_construction_clipped['block_poly_id'].nunique():,}")
+
+# Validate block_poly_id uniqueness
+validate_uniqueness(blocks_in_construction_clipped,
+                    'block_poly_id', 'clipped block segments')
+
+# Show distribution of blocks per polygon
+blocks_per_poly = blocks_in_construction_clipped.groupby('OBJECTID').size()
+print(f"\nBlocks per construction polygon:")
+print(f"  Mean: {blocks_per_poly.mean():.1f}")
+print(f"  Median: {blocks_per_poly.median():.1f}")
+print(f"  Min: {blocks_per_poly.min()}")
+print(f"  Max: {blocks_per_poly.max()}")
+
+# Create FULL block geometries for blocks that intersect construction polygons
+print("\n  Creating full block geometries for blocks in construction areas...")
+geoids_in_construction = blocks_in_construction_clipped['geoid10'].unique()
+blocks_in_construction_full = city_blocks[city_blocks['geoid10'].isin(
+    geoids_in_construction)].copy()
+print(
+    f"  Found {len(blocks_in_construction_full):,} full block geometries")
+
+# Free memory from intermediate datasets
+del pg_valid, blocks_valid
+gc.collect()
+
+
+```
+
 ## Parcels in Construction Areas
 
 ```{python}
-if AGGREGATION_LEVEL == "block":
-    print("\nAssigning parcels to city blocks...")
 
-    # Project to UTM for accurate buffering and spatial operations
-    print("  Projecting to UTM and validating geometries...")
-    parcels_utm = parcels_with_units.to_crs('EPSG:32616')
-    pg_utm = pg_polygons.to_crs('EPSG:32616')
+# print("\nFiltering parcels to only include those in construction areas...")
 
-    # Make geometries valid
-    parcels_utm['geometry'] = parcels_utm['geometry'].make_valid()
-    pg_utm['geometry'] = pg_utm['geometry'].make_valid()
+# # Project to UTM for accurate buffering and spatial operations
+# print("  Projecting to UTM and validating geometries...")
+# parcels_utm = prepare_geometries_for_utm(parcels_with_units, "parcels")
+# pg_utm = prepare_geometries_for_utm(pg_polygons, "construction polygons")
 
-    # Buffer construction polygons by 5 meters to capture edge parcels
-    print("  Buffering construction polygons by 5m...")
-    pg_buffered = pg_utm.copy()
-    pg_buffered.geometry = pg_buffered.geometry.buffer(5)
+# # IMPORTANT: Buffer is ONLY used for identifying affected parcels
+# # Some construction polygons only include streets, but we want to count parcels along those streets
+# # The buffer captures parcels that would be affected by the construction
+# # NOTE: Blocks and street miles use UNBUFFERED polygons - buffer is only for parcel identification
+# print("  Buffering construction polygons (for parcel identification only)...")
+# pg_buffered = pg_utm.copy()
+# pg_buffered.geometry = pg_buffered.geometry.buffer(POLYGON_BUFFER_M)
+# pg_buffered.geometry = pg_buffered.geometry.make_valid()
 
-    # Create a bounding box of all buffered polygons to pre-filter parcels
-    # This reduces memory usage before the expensive spatial join
-    print("  Pre-filtering parcels using bounding box...")
-    combined_bounds = pg_buffered.total_bounds  # [minx, miny, maxx, maxy]
+# # Use spatial index for accurate pre-filtering (more accurate than bounding box)
+# # This checks each parcel's bounding box against each polygon's bounding box individually
+# print("  Pre-filtering parcels using spatial index...")
+# # Create spatial index on buffered polygons
+# pg_sindex = pg_buffered.sindex
 
-    # Filter parcels to those within the bounding box (much faster than spatial join)
-    parcels_filtered = parcels_utm.cx[
-        combined_bounds[0]:combined_bounds[2],
-        combined_bounds[1]:combined_bounds[3]
-    ]
-    print(f"  Reduced parcels from {len(parcels_utm):,} to {len(parcels_filtered):,} using bounding box")
+# # Get candidate parcels using spatial index query
+# # This finds parcels whose bounding boxes intersect with any buffered polygon's bounding box
+# candidate_indices = []
+# for idx, parcel_geom in parcels_utm.geometry.items():
+#     # Check if parcel's bounding box intersects with any buffered polygon's bounding box
+#     possible_matches = list(pg_sindex.intersection(parcel_geom.bounds))
+#     if possible_matches:
+#         candidate_indices.append(idx)
 
-    # Clean up full parcels dataset
-    del parcels_utm
-    import gc
-    gc.collect()
+# parcels_filtered = parcels_utm.loc[candidate_indices].copy()
+# print(
+#     f"  Reduced parcels from {len(parcels_utm):,} to {len(parcels_filtered):,} using spatial index")
 
-    # Now do the spatial join with the filtered parcels
-    print("  Performing spatial join with buffered construction polygons...")
-    # Reset indexes to avoid conflicts
-    parcels_filtered = parcels_filtered.reset_index(drop=True)
-    pg_buffered = pg_buffered.reset_index(drop=True)
-    # Pre-processed file has: OBJECTID, status_simple, C_START_min, C_START_max, geometry
-    parcels_in_buffered = gpd.sjoin(
-        parcels_filtered,
-        pg_buffered[['OBJECTID', 'status_simple', 'C_START_min', 'C_START_max', 'geometry']],
-        how='inner',
-        predicate='intersects'
+# # Clean up full parcels dataset
+# del parcels_utm
+# gc.collect()
+
+# # Now do the spatial join with the filtered parcels
+# print("  Performing spatial join with buffered construction polygons...")
+# # Reset indexes to avoid conflicts
+# parcels_filtered = parcels_filtered.reset_index(drop=True)
+# pg_buffered = pg_buffered.reset_index(drop=True)
+# # Pre-processed file has: OBJECTID, status_simple, C_START_min, C_START_max, geometry
+# parcels_in_buffered = gpd.sjoin(
+#     parcels_filtered,
+#     pg_buffered[['OBJECTID', 'status_simple',
+#                     'C_START_min', 'C_START_max', 'geometry']],
+#     how='inner',
+#     predicate='intersects'
+# )
+# print(
+#     f"  Found {len(parcels_in_buffered):,} parcels within 8m buffered construction polygons")
+
+# # Clean up filtered parcels and original pg_utm (no longer needed)
+# del parcels_filtered, pg_buffered, pg_utm
+# gc.collect()
+```
+
+```{python}
+print("\nFiltering parcels to only include those in construction areas...")
+
+# Project to UTM for accurate buffering and spatial operations
+print("  Projecting to UTM and validating geometries...")
+parcels_utm = prepare_geometries_for_utm(parcels_with_units, "parcels")
+pg_utm = prepare_geometries_for_utm(pg_polygons, "construction polygons")
+
+# IMPORTANT: Buffer is ONLY used for identifying affected parcels
+# Some construction polygons only include streets, but we want to count parcels along those streets
+# The buffer captures parcels that would be affected by the construction
+# NOTE: Blocks and street miles use UNBUFFERED polygons - buffer is only for parcel identification
+print("  Buffering construction polygons (for parcel identification only)...")
+pg_buffered = pg_utm.copy()
+pg_buffered.geometry = pg_buffered.geometry.buffer(POLYGON_BUFFER_M)
+pg_buffered.geometry = pg_buffered.geometry.make_valid()
+
+# Now identify which parcels intersect buffered construction polygons
+print("  Identifying parcels that intersect buffered construction polygons...")
+# Use spatial index to find which parcels intersect any buffered polygon
+# This gives us unique parcels without creating duplicates from joins
+pg_sindex = pg_buffered.sindex
+
+# Find all parcel indices that intersect any buffered polygon
+# Use a set to automatically handle uniqueness
+intersecting_indices = set()
+for idx, parcel_geom in parcels_utm.geometry.items():
+    # Check if parcel's bounding box intersects with any buffered polygon's bounding box
+    possible_matches = list(pg_sindex.intersection(parcel_geom.bounds))
+    if possible_matches:
+        # Verify actual intersection (not just bounding box)
+        if any(pg_buffered.loc[i, 'geometry'].intersects(parcel_geom) for i in possible_matches):
+            intersecting_indices.add(idx)
+
+# Subset to only intersecting parcels - this gives us unique parcels only
+parcels_in_buffered = parcels_utm.loc[list(intersecting_indices)].copy()
+
+print(
+    f"  Found {len(parcels_in_buffered):,} unique parcels within {POLYGON_BUFFER_M}m buffered construction polygons")
+
+# Clean up intermediate data
+del pg_buffered, pg_utm
+gc.collect()
+```
+
+# Assign Parcels to Blocks
+
+```{python}
+# Now assign these parcels to blocks using one-to-one assignment (largest overlap)
+# IMPORTANT: Use FULL block geometries (not clipped) for overlap calculation.
+# Only parcels that we identified as affected by construction polygons are available for the join,
+# so even though we use the full block polygon, parcels outside the buffered construction area will be excluded
+
+print("\nAssigning parcels to blocks (one-to-one by largest overlap)...")
+
+# Use FULL city blocks for overlap calculation (not clipped segments)
+# Project full blocks to UTM and prepare geometries
+city_blocks_utm = prepare_geometries_for_utm(
+    blocks_in_construction_full, "full city blocks")
+
+# Reset index on parcels_in_buffered to avoid index conflicts
+parcels_in_buffered = parcels_in_buffered.reset_index(drop=True)
+# Drop any index_right column from previous join
+parcels_in_buffered = parcels_in_buffered.drop(
+    columns=['index_right'], errors='ignore')
+
+# Add unique parcel identifier for tracking through the assignment process
+parcels_in_buffered['parcel_temp_id'] = parcels_in_buffered.index.astype(int)
+
+# Find all parcel-block intersections using FULL block geometries
+# This will create one row per parcel-block intersection
+print("  Finding parcel-block intersections using FULL block geometries...")
+parcel_block_overlaps = gpd.overlay(
+    parcels_in_buffered[['parcel_temp_id', 'geometry']],
+    city_blocks_utm[['geoid10', 'geometry']],
+    how='intersection',
+    keep_geom_type=False
+)
+
+# Calculate overlap area for each intersection
+parcel_block_overlaps['overlap_area_sqm'] = parcel_block_overlaps.geometry.area
+
+print(f"  Found {len(parcel_block_overlaps):,} parcel-block intersections")
+
+# For each parcel, find the block (geoid10) with the largest overlap
+# This uses FULL block geometries, so we get the true best match
+print("  Selecting best block match for each parcel (largest overlap with FULL blocks)...")
+# Use idxmax to find the index of the row with maximum overlap for each parcel
+best_indices = parcel_block_overlaps.groupby(
+    'parcel_temp_id')['overlap_area_sqm'].idxmax()
+best_block_matches = parcel_block_overlaps.loc[best_indices].reset_index(
+    drop=True)
+
+# Verify one-to-one assignment: each parcel should have exactly one best match
+if len(best_block_matches) != len(best_block_matches['parcel_temp_id'].unique()):
+    raise ValueError(
+        f"ERROR: One-to-one assignment failed. "
+        f"Found {len(best_block_matches)} matches for {len(best_block_matches['parcel_temp_id'].unique())} unique parcels"
     )
-    print(f"  Found {len(parcels_in_buffered):,} parcels within 5m buffered construction polygons")
 
-    # Clean up filtered parcels and original pg_utm (no longer needed)
-    del parcels_filtered, pg_buffered, pg_utm
-    gc.collect()
+# Merge best matches back to parcels to preserve all parcel attributes
+# This assigns each parcel to exactly one block (geoid10)
+parcels_by_block = parcels_in_buffered.merge(
+    best_block_matches[['parcel_temp_id', 'geoid10', 'overlap_area_sqm']],
+    on='parcel_temp_id',
+    how='inner'  # Only keep parcels that matched at least one block
+)
 
-    # Now assign these parcels to blocks where they intersect
-    print("  Assigning parcels to blocks...")
-    # blocks_in_construction is already in UTM from the overlay operation
-    blocks_utm = blocks_in_construction.copy().reset_index(drop=True)
-    blocks_utm['geometry'] = blocks_utm['geometry'].make_valid()
+# Drop temporary column
+parcels_by_block = parcels_by_block.drop(
+    columns=['parcel_temp_id'], errors='ignore')
 
-    # Reset index on parcels_in_buffered to avoid index conflicts
-    parcels_in_buffered = parcels_in_buffered.reset_index(drop=True)
-    # Drop any index_right column from previous join
-    parcels_in_buffered = parcels_in_buffered.drop(columns=['index_right'], errors='ignore')
+# Clean up intermediate data
+del parcel_block_overlaps, best_block_matches, city_blocks_utm
+gc.collect()
 
-    parcels_in_construction = gpd.sjoin(
-        parcels_in_buffered,
-        blocks_utm[['geoid10', 'OBJECTID', 'block_poly_id', 'geometry']],
-        how='inner',
-        predicate='intersects'
-    )
+print(f"\nFound {len(parcels_by_block):,} parcels assigned to blocks")
+print(f"  Unique parcels: {parcels_by_block.index.nunique():,}")
+print(f"  Unique blocks: {parcels_by_block['geoid10'].nunique():,}")
 
-    # Preserve all columns from parcels_with_units (including type, building_units, etc.)
-    # Drop the index_right column from spatial join
-    parcels_in_construction = parcels_in_construction.drop(columns=['index_right'])
+# Diagnostic: Verify one-to-one relationship
+print("\n🔍 Verifying parcel-to-block relationship (one-to-one check)...")
+if len(parcels_by_block) == parcels_by_block.index.nunique():
+    print(
+        f"  ✅ Confirmed: All {len(parcels_by_block):,} parcels assigned to exactly one block")
+else:
+    print(
+        f"  ⚠️  WARNING: {len(parcels_by_block):,} rows but only {parcels_by_block.index.nunique():,} unique parcels")
+    print(f"  This should not happen with one-to-one assignment - investigate!")
 
-    print(f"Found {len(parcels_in_construction):,} parcels within 5m buffered construction areas (assigned to blocks)")
-    print(f"  Unique blocks: {parcels_in_construction['geoid10'].nunique():,}")
-    print(f"  Unique block-polygon combinations: {parcels_in_construction['block_poly_id'].nunique():,}")
+# Validation: Check that all expected columns from parcels_with_units are preserved
+expected_cols = ['type', 'building_units', 'sf_mf', 'matched_building_id']
+validate_columns(parcels_by_block, expected_cols, 'parcels_by_block')
 
-    # Validation: Check that all expected columns from parcels_with_units are preserved
-    expected_cols = ['type', 'building_units', 'sf_mf', 'matched_building_id']
-    missing_cols = [col for col in expected_cols if col not in parcels_in_construction.columns]
-    if missing_cols:
-        print(f"  WARNING: Missing expected columns from parcels_with_units: {missing_cols}")
+# Summary statistics
+print(f"\nSummary of parcels in construction areas:")
+print(f"  Total parcels: {len(parcels_by_block):,}")
+if 'type' in parcels_by_block.columns:
+    print(
+        f"  Parcels with type classification: {parcels_by_block['type'].notna().sum():,}")
+    type_dist = parcels_by_block['type'].value_counts()
+    for prop_type, count in type_dist.items():
+        print(f"    {prop_type}: {count:,}")
+if 'building_units' in parcels_by_block.columns:
+    units_with_data = parcels_by_block['building_units'].dropna()
+    units_with_data = units_with_data[units_with_data > 0]
+    if len(units_with_data) > 0:
+        print(
+            f"  Parcels with building units: {len(units_with_data):,}")
+        print(
+            f"  Total residential units: {units_with_data.sum():,.0f}")
 
-    # Summary statistics
-    print(f"\nSummary of parcels in construction areas:")
-    print(f"  Total parcels: {len(parcels_in_construction):,}")
-    if 'type' in parcels_in_construction.columns:
-        print(f"  Parcels with type classification: {parcels_in_construction['type'].notna().sum():,}")
-        type_dist = parcels_in_construction['type'].value_counts()
-        for prop_type, count in type_dist.items():
-            print(f"    {prop_type}: {count:,}")
-    if 'building_units' in parcels_in_construction.columns:
-        units_with_data = parcels_in_construction['building_units'].dropna()
-        units_with_data = units_with_data[units_with_data > 0]
-        if len(units_with_data) > 0:
-            print(f"  Parcels with building units: {len(units_with_data):,}")
-            print(f"  Total residential units: {units_with_data.sum():,.0f}")
 
-    # Clean up intermediate data
-    del parcels_in_buffered, blocks_utm
-    gc.collect()
-
-elif AGGREGATION_LEVEL == "poly":
-    print("\nAssigning parcels to construction polygons...")
-
-    # Project to UTM for accurate buffering
-    pg_utm = pg_polygons.to_crs('EPSG:32616')
-    parcels_utm = parcels_with_units.to_crs('EPSG:32616')
-
-    # Make geometries valid
-    pg_utm['geometry'] = pg_utm['geometry'].make_valid()
-    parcels_utm['geometry'] = parcels_utm['geometry'].make_valid()
-
-    # Buffer polygons by 5 meters to capture edge parcels
-    pg_buffered = pg_utm.copy().reset_index(drop=True)
-    pg_buffered.geometry = pg_buffered.geometry.buffer(5)
-
-    # Reset index on parcels to avoid conflicts
-    parcels_utm = parcels_utm.reset_index(drop=True)
-
-    # Spatial join to find parcels within buffered construction polygons
-    parcels_in_construction = gpd.sjoin(
-        parcels_utm,
-        pg_buffered,
-        how='inner',
-        predicate='intersects'
-    )
-
-    # Drop the index_right column from spatial join
-    parcels_in_construction = parcels_in_construction.drop(columns=['index_right'], errors='ignore')
-
-    print(f"Found {len(parcels_in_construction):,} parcels within construction areas (5m buffer)")
-
-    # Validation: Check that all expected columns from parcels_with_units are preserved
-    expected_cols = ['type', 'building_units', 'sf_mf', 'matched_building_id']
-    missing_cols = [col for col in expected_cols if col not in parcels_in_construction.columns]
-    if missing_cols:
-        print(f"  WARNING: Missing expected columns from parcels_with_units: {missing_cols}")
-
-    # Summary statistics
-    print(f"\nSummary of parcels in construction areas:")
-    print(f"  Total parcels: {len(parcels_in_construction):,}")
-    if 'type' in parcels_in_construction.columns:
-        print(f"  Parcels with type classification: {parcels_in_construction['type'].notna().sum():,}")
-    if 'building_units' in parcels_in_construction.columns:
-        units_with_data = parcels_in_construction['building_units'].dropna()
-        units_with_data = units_with_data[units_with_data > 0]
-        if len(units_with_data) > 0:
-            print(f"  Parcels with building units: {len(units_with_data):,}")
-            print(f"  Total residential units: {units_with_data.sum():,.0f}")
 ```
 
 ## Streets in Construction Areas
 
 ```{python}
-print("\nClipping streets to construction polygon boundaries...")
-streets_utm = streets.to_crs('EPSG:32616')
-pg_utm = pg_polygons.to_crs('EPSG:32616')
-
-# Make geometries valid to avoid topology errors
+# IMPORTANT: Streets are clipped to UNBUFFERED construction polygons
+# This ensures street miles are calculated only for the actual construction area,
+# not the 5m buffer zone. The buffer is only used for identifying affected parcels.
+print("\nClipping streets to construction polygon boundaries (unbuffered)...")
 print("  Validating geometries...")
-streets_utm['geometry'] = streets_utm['geometry'].make_valid()
-pg_utm['geometry'] = pg_utm['geometry'].make_valid()
-
-# Check for and remove any invalid geometries
-streets_valid = streets_utm[streets_utm.geometry.is_valid].copy().reset_index(drop=True)
-pg_valid = pg_utm[pg_utm.geometry.is_valid].copy().reset_index(drop=True)
-
-if len(streets_valid) < len(streets_utm):
-    print(f"  Warning: Removed {len(streets_utm) - len(streets_valid)} invalid street segments")
-if len(pg_valid) < len(pg_utm):
-    print(f"  Warning: Removed {len(pg_utm) - len(pg_valid)} invalid construction polygons")
+streets_valid = prepare_geometries_for_utm(streets, "street segments")
+pg_valid = prepare_geometries_for_utm(pg_polygons, "construction polygons")  # UNBUFFERED polygons
 
 # Clip streets to polygon boundaries using overlay intersection
 # This ensures we only count the portion of streets that lie WITHIN each polygon
+# Uses UNBUFFERED polygons - street miles represent actual construction area
 # Pre-processed file has: OBJECTID, status_simple, C_START_min, C_START_max, geometry
 streets_in_construction = gpd.overlay(
     streets_valid,
@@ -560,183 +669,85 @@ print(f"  Total street length (clipped): {total_length_km:.2f} km")
 
 # Free memory from intermediate datasets
 del streets_valid, pg_valid
-import gc
 gc.collect()
 ```
 
-# Property Classification
 
-SKIPPED: Parcels already have property type classifications from pre-processing (parcels_with_units_20251125.geojson).
-
-```{python}
-# Property classification is already included in parcels_with_units
-# No need to re-classify since parcels were pre-processed with assessor lookup
-print("Skipping property classification - already included in parcels_with_units")
-```
-
-# Parcel-to-Building Mapping
-
-SKIPPED: Parcels already have building matches and unit counts from pre-processing (parcels_with_units_20251125.geojson).
+## Count Parcels and Units at block level
 
 ```{python}
-# Parcel-to-building mapping is already included in parcels_with_units
-# No need to re-match since parcels were pre-processed with building footprints
-print("Skipping parcel-to-building mapping - already included in parcels_with_units")
 
-# Original code commented out - parcels already have building_units, matched_building_id, etc.
-"""
-if parcels_classified is not None and buildings_in_construction is not None and len(buildings_in_construction) > 0:
-    # Use only buildings in construction areas (already filtered) for memory efficiency
-    buildings_utm = buildings_in_construction.copy()
+group_key = 'geoid10'
 
-    # Ensure buildings are in UTM (they should already be from the spatial join)
-    if buildings_utm.crs != 'EPSG:32616':
-        buildings_utm = buildings_utm.to_crs('EPSG:32616')
+# Count parcels by geoid10
+parcel_counts = parcels_by_block.groupby(group_key).size()
+unit_counts = parcels_by_block.groupby(group_key)['building_units'].sum()
+parcels_with_unit_data = parcels_by_block[parcels_by_block['building_units'].notna(
+)]
+parcels_with_units_count = parcels_with_unit_data.groupby(group_key).size()
 
-    # Add unique parcel identifier for tracking
-    parcels_classified_utm = parcels_classified.copy()
-    parcels_classified_utm['parcel_idx'] = range(len(parcels_classified_utm))
+# Type-specific counts by geoid10
+sf_counts = parcels_by_block[
+    (parcels_by_block['type'] == 'residential') &
+    (parcels_by_block['sf_mf'] == 'single-family')
+].groupby(group_key).size()
 
-    # Add building identifier if not present
-    if 'bldg_id' not in buildings_utm.columns:
-        buildings_utm = buildings_utm.copy()
-        buildings_utm['bldg_id'] = buildings_utm.index
+mf_counts = parcels_by_block[
+    (parcels_by_block['type'] == 'residential') &
+    (parcels_by_block['sf_mf'] == 'multi-family')
+].groupby(group_key).size()
 
-    # Make geometries valid to prevent crashes
-    parcels_classified_utm['geometry'] = parcels_classified_utm['geometry'].make_valid()
-    buildings_utm['geometry'] = buildings_utm['geometry'].make_valid()
+mf_units = parcels_by_block[
+    (parcels_by_block['type'] == 'residential') &
+    (parcels_by_block['sf_mf'] == 'multi-family')
+].groupby(group_key)['building_units'].sum()
 
-    print(f"\n🔍 Starting parcel-building matching (memory optimized)...")
-    print(f"  Parcels: {len(parcels_classified_utm):,}")
-    print(f"  Buildings in construction areas: {len(buildings_utm):,}")
+commercial_counts = parcels_by_block[
+    parcels_by_block['type'] == 'commercial'
+].groupby(group_key).size()
 
-    # Find all parcel-building intersections using only relevant columns
-    overlay = gpd.overlay(
-        parcels_classified_utm[['geometry', 'parcel_idx']],
-        buildings_utm[['geometry', 'no_of_unit', 'bldg_id']],
-        how='intersection',
-        keep_geom_type=False
-    )
+industrial_counts = parcels_by_block[
+    parcels_by_block['type'] == 'industrial'
+].groupby(group_key).size()
 
-    print(f"  Intersections found: {len(overlay):,}")
+mixed_use_counts = parcels_by_block[
+    parcels_by_block['type'] == 'mixed-use'
+].groupby(group_key).size()
 
-    # Calculate overlap area for each intersection
-    overlay['overlap_area'] = overlay.geometry.area
+non_vacant_counts = parcels_by_block[
+    parcels_by_block['type'] != 'vacant'
+].groupby(group_key).size()
 
-    # Group by parcel_idx and find building with maximum overlap
-    overlap_by_parcel = overlay.groupby('parcel_idx').apply(
-        lambda x: x.loc[x['overlap_area'].idxmax()]
-    ).reset_index(drop=True)
+print(f"Total parcels in construction areas: {parcel_counts.sum():,}")
+print(f"Total parcels with unit data: {parcels_with_units_count.sum():,}")
+print(f"Total residential units: {unit_counts.sum():,.0f}")
 
-    print(f"  Parcels with building matches: {len(overlap_by_parcel):,}")
+# Validation: Check that sum of parcel counts equals number of parcels in parcels_in_construction - visually inspected unmatched parcels and they are correctly exlcuded
+# expected_parcel_count = len(parcels_in_construction)
+# actual_parcel_count = parcel_counts.sum()
+# if expected_parcel_count != actual_parcel_count:
+#     raise ValueError(
+#         f"Parcel count validation failed: "
+#         f"Expected {expected_parcel_count:,} parcels (from parcels_in_construction), "
+#         f"but sum of parcel_counts is {actual_parcel_count:,}"
+#     )
+# print(f"  ✓ Validation passed: Parcel count sum ({actual_parcel_count:,}) matches parcels_in_construction ({expected_parcel_count:,})")
 
-    # Free memory from large intermediate dataset
-    del overlay
-    import gc
-    gc.collect()
+# Breakdown by property type
+print(f"\nParcels by Type (across all construction areas):")
+for prop_type in ['residential', 'commercial', 'industrial', 'mixed-use', 'vacant']:
+    type_parcels = parcels_by_block[parcels_by_block['type'] == prop_type]
+    if len(type_parcels) > 0:
+        print(f"  {prop_type}: {len(type_parcels):,}")
 
-    # Create enriched parcels dataset
-    parcels_with_units = parcels_classified.copy()
-    parcels_with_units['parcel_idx'] = range(len(parcels_with_units))
+# Non-vacant total
+non_vacant = parcels_by_block[parcels_by_block['type'] != 'vacant']
+print(f"  Non-vacant (total): {len(non_vacant):,}")
 
-    # Merge the best matches back to parcels
-    parcels_with_units = parcels_with_units.merge(
-        overlap_by_parcel[['parcel_idx', 'no_of_unit', 'bldg_id', 'overlap_area']],
-        on='parcel_idx',
-        how='left'
-    )
 
-    # Keep original building data in separate column for auditing
-    parcels_with_units['matched_building_id'] = parcels_with_units['bldg_id']
-    parcels_with_units['overlap_area_sqm'] = parcels_with_units['overlap_area']
-    parcels_with_units['building_units_raw'] = pd.to_numeric(
-        parcels_with_units['no_of_unit'],
-        errors='coerce'
-    )
-
-    # Drop temporary columns
-    parcels_with_units = parcels_with_units.drop(columns=['parcel_idx', 'no_of_unit', 'bldg_id', 'overlap_area'])
-
-    # Validate specific example: parcel at -87.57623748, 41.74593814 should match building 631646
-    test_parcel = parcels_with_units[
-        (parcels_with_units['longitude'].astype(float).round(8) == round(-87.57623748, 8)) &
-        (parcels_with_units['latitude'].astype(float).round(8) == round(41.74593814, 8))
-    ]
-    if len(test_parcel) > 0:
-        print(f"\n✅ Validation check for test parcel (-87.57623748, 41.74593814):")
-        print(f"   Matched building_id: {test_parcel['matched_building_id'].values[0]}")
-        print(f"   Building units: {test_parcel['building_units_raw'].values[0]}")
-        print(f"   Expected building_id: 631646")
-        if test_parcel['matched_building_id'].values[0] == "631646":
-            print(f"   ✓ Match is correct!")
-        else:
-            print(f"   ⚠️  Match differs from expected")
-
-    # Create working column starting with raw data
-    parcels_with_units['building_units'] = parcels_with_units['building_units_raw'].copy()
-
-    # Apply fallback logic for missing/zero unit data
-    # 1. Single-family with missing/zero units: set to 1 unit
-    sf_mask = (parcels_with_units['sf_mf'] == 'single-family') & \
-              (parcels_with_units['building_units'].isna() | (parcels_with_units['building_units'] == 0))
-    parcels_with_units.loc[sf_mask, 'building_units'] = 1
-
-    # 2. Multi-family with missing units: use average of units_min and units_max
-    mf_mask = (parcels_with_units['sf_mf'] == 'multi-family') & \
-              (parcels_with_units['building_units'].isna() | (parcels_with_units['building_units'] == 0)) & \
-              (parcels_with_units['units_min'].notna()) & \
-              (parcels_with_units['units_max'].notna())
-
-    parcels_with_units.loc[mf_mask, 'building_units'] = (
-        (parcels_with_units.loc[mf_mask, 'units_min'] +
-         parcels_with_units.loc[mf_mask, 'units_max']) / 2
-    ).round()
-
-    # 3. Multi-family with no data: use units_min if available, otherwise 2 as conservative estimate
-    mf_no_data_mask = (parcels_with_units['sf_mf'] == 'multi-family') & \
-                      (parcels_with_units['building_units'].isna() | (parcels_with_units['building_units'] == 0))
-
-    # Use units_min where available
-    mf_with_min = mf_no_data_mask & parcels_with_units['units_min'].notna()
-    parcels_with_units.loc[mf_with_min, 'building_units'] = parcels_with_units.loc[mf_with_min, 'units_min']
-
-    # Use 2 as absolute fallback where units_min is not available
-    mf_no_min = mf_no_data_mask & parcels_with_units['units_min'].isna()
-    parcels_with_units.loc[mf_no_min, 'building_units'] = 2
-
-    # Report statistics
-    matched_count = parcels_with_units['building_units'].notna().sum()
-    total_parcels = len(parcels_classified)
-    units_with_data = parcels_with_units['building_units'].dropna()
-    units_with_data = units_with_data[units_with_data > 0]
-
-    # Count how many were from raw data vs interpolated
-    raw_data_count = parcels_with_units['building_units_raw'].notna().sum()
-    interpolated_count = matched_count - raw_data_count
-
-    print(f"\n📊 Building Unit Data Summary:")
-    print(f"  Total parcels: {total_parcels:,}")
-    print(f"  From building footprint data: {raw_data_count:,} ({raw_data_count/total_parcels*100:.1f}%)")
-    print(f"  Interpolated from fallback logic: {interpolated_count:,} ({interpolated_count/total_parcels*100:.1f}%)")
-    print(f"  Total with unit data: {matched_count:,} ({matched_count/total_parcels*100:.1f}%)")
-    if len(units_with_data) > 0:
-        print(f"  Total residential units: {units_with_data.sum():,.0f} (mean: {units_with_data.mean():.1f})")
-
-else:
-    print("Cannot create parcel-building mapping: missing data")
-    if parcels_classified is not None:
-        parcels_with_units = parcels_classified.copy()
-        parcels_with_units['building_units'] = None
-    else:
-        parcels_with_units = None
-
-"""
 ```
 
 
-# Summary Statistics by Construction Polygon
-
-Calculate key metrics for each Peoples Gas construction polygon.
 
 ## Calculate Street Miles
 
@@ -747,141 +758,83 @@ streets_in_construction['length_miles'] = streets_in_construction.geometry.lengt
 
 # Group by construction polygon OBJECTID and sum
 # This gives total street miles WITHIN each polygon (clipped segments only)
-street_miles_by_polygon = streets_in_construction.groupby('OBJECTID')['length_miles'].sum()
+street_miles_by_polygon = streets_in_construction.groupby('OBJECTID')[
+    'length_miles'].sum()
 
-print(f"Total street miles in construction areas (clipped): {street_miles_by_polygon.sum():.2f}")
+print(
+    f"Total street miles in construction areas (clipped): {street_miles_by_polygon.sum():.2f}")
 
 # If using block-level aggregation, allocate street miles to blocks proportionally
-if AGGREGATION_LEVEL == "block":
-    print("\nAllocating street miles to city blocks proportionally by area...")
+# IMPORTANT: Uses CLIPPED block perimeters (from blocks_in_construction) which represent
+# only the portion of each block within the UNBUFFERED construction polygon.
+# This ensures street miles are allocated based on actual block perimeter within CP.
 
-    # Calculate total block area for each construction polygon
-    # Note: blocks_in_construction contains clipped block segments (only portions within polygons)
-    block_areas = blocks_in_construction.groupby('OBJECTID').agg({
-        'block_area_sqm': 'sum'
-    }).rename(columns={'block_area_sqm': 'total_block_area_sqm'})
+print("\nAllocating street miles to city blocks proportionally by perimeter...")
 
-    # Merge total polygon area back to blocks
-    blocks_with_totals = blocks_in_construction.merge(
-        block_areas,
-        left_on='OBJECTID',
-        right_index=True,
-        how='left'
-    )
+# Calculate perimeter for each clipped block segment
+# Note: blocks_in_construction contains CLIPPED block segments (only portions within UNBUFFERED polygons)
+# These clipped perimeters are used for all calculations, even though final export uses full block geometries
+blocks_in_construction_clipped['block_perimeter_m'] = blocks_in_construction_clipped.geometry.length
 
-    # Calculate proportion of polygon area each block represents
-    # This uses clipped block areas, so proportions sum to 1.0 for each polygon
-    blocks_with_totals['block_area_pct'] = (
-        blocks_with_totals['block_area_sqm'] / blocks_with_totals['total_block_area_sqm']
-    )
+# Calculate total block perimeter for each construction polygon
+block_perimeters = blocks_in_construction_clipped.groupby('OBJECTID').agg({
+    'block_perimeter_m': 'sum'
+}).rename(columns={'block_perimeter_m': 'total_block_perimeter_m'})
 
-    # Merge street miles by polygon (clipped street miles within each polygon)
-    blocks_with_totals = blocks_with_totals.merge(
-        street_miles_by_polygon.rename('polygon_street_miles'),
-        left_on='OBJECTID',
-        right_index=True,
-        how='left'
-    )
+# Merge total polygon perimeter back to blocks
+blocks_with_totals = blocks_in_construction_clipped.merge(
+    block_perimeters,
+    left_on='OBJECTID',
+    right_index=True,
+    how='left'
+)
 
-    # Allocate street miles to each block proportionally based on clipped block area
-    # All street miles are allocated (proportions sum to 1.0)
-    blocks_with_totals['street_miles'] = (
-        blocks_with_totals['polygon_street_miles'] * blocks_with_totals['block_area_pct']
-    )
+# Calculate proportion of polygon perimeter each block represents
+# This uses clipped block perimeters, so proportions sum to 1.0 for each polygon
+blocks_with_totals['block_perimeter_pct'] = (
+    blocks_with_totals['block_perimeter_m'] /
+    blocks_with_totals['total_block_perimeter_m']
+)
 
-    # Create street miles lookup by block_poly_id (keep as DataFrame for easier merging)
-    street_miles_by_block = blocks_with_totals[['block_poly_id', 'street_miles']].copy()
+# Merge street miles by polygon (clipped street miles within each polygon)
+blocks_with_totals = blocks_with_totals.merge(
+    street_miles_by_polygon.rename('polygon_street_miles'),
+    left_on='OBJECTID',
+    right_index=True,
+    how='left'
+)
 
-    # Verify allocation sums to original totals
-    allocated_total = blocks_with_totals.groupby('OBJECTID')['street_miles'].sum()
-    original_total = street_miles_by_polygon
+# Allocate street miles to each block proportionally based on CLIPPED block perimeter
+# All street miles are allocated (proportions sum to 1.0)
+# NOTE: Uses clipped block perimeters - represents only the portion of block within CP
+blocks_with_totals['street_miles'] = (
+    blocks_with_totals['polygon_street_miles'] *
+    blocks_with_totals['block_perimeter_pct']
+)
 
-    print(f"  Allocated street miles to {len(street_miles_by_block):,} block segments")
-    print(f"  Verification: Original total = {original_total.sum():.2f} miles")
-    print(f"  Verification: Allocated total = {allocated_total.sum():.2f} miles")
-    print(f"  Verification: Difference = {abs(original_total.sum() - allocated_total.sum()):.6f} miles")
+# Create street miles lookup by block_poly_id (keep as DataFrame for easier merging)
+street_miles_by_block = blocks_with_totals[[
+    'block_poly_id', 'street_miles']].copy()
+
+# Aggregate street miles from block_poly_id to geoid10 (sum across all construction polygons)
+print("  Aggregating street miles to block level (geoid10)...")
+street_miles_by_geoid = blocks_with_totals.groupby('geoid10')[
+    'street_miles'].sum()
+print(
+    f"  Aggregated street miles for {len(street_miles_by_geoid):,} unique blocks")
+
+# Verify allocation sums to original totals
+allocated_total = blocks_with_totals.groupby('OBJECTID')['street_miles'].sum()
+original_total = street_miles_by_polygon
+
+print(
+    f"  Allocated street miles to {len(street_miles_by_block):,} block segments")
+print(f"  Verification: Original total = {original_total.sum():.2f} miles")
+print(f"  Verification: Allocated total = {allocated_total.sum():.2f} miles")
+print(
+    f"  Verification: Difference = {abs(original_total.sum() - allocated_total.sum()):.6f} miles")
 ```
 
-## Count Parcels and Units by Aggregation Level
-
-```{python}
-# Determine grouping key based on aggregation level
-if AGGREGATION_LEVEL == "block" and 'block_poly_id' in parcels_in_construction.columns:
-    group_key = 'block_poly_id'
-    print(f"\nCounting parcels and units by city block...")
-else:
-    group_key = 'OBJECTID'
-    print(f"\nCounting parcels and units by construction polygon...")
-
-# Count parcels by aggregation unit
-parcel_counts = parcels_in_construction.groupby(group_key).size()
-
-# Sum building units by aggregation unit
-unit_counts = parcels_in_construction.groupby(group_key)['building_units'].sum()
-
-# Count parcels with unit data
-parcels_with_unit_data = parcels_in_construction[parcels_in_construction['building_units'].notna()]
-parcels_with_units_count = parcels_with_unit_data.groupby(group_key).size()
-
-print(f"Total parcels in construction areas: {parcel_counts.sum():,}")
-print(f"Total parcels with unit data: {parcels_with_units_count.sum():,}")
-print(f"Total residential units: {unit_counts.sum():,.0f}")
-
-# Breakdown by property type
-print(f"\nParcels by Type (across all construction areas):")
-for prop_type in ['residential', 'commercial', 'industrial', 'mixed-use', 'vacant']:
-    type_parcels = parcels_in_construction[parcels_in_construction['type'] == prop_type]
-    if len(type_parcels) > 0:
-        print(f"  {prop_type}: {len(type_parcels):,}")
-
-# Non-vacant total
-non_vacant = parcels_in_construction[parcels_in_construction['type'] != 'vacant']
-print(f"  Non-vacant (total): {len(non_vacant):,}")
-
-# Residential breakdown by single-family vs multi-family
-residential = parcels_in_construction[parcels_in_construction['type'] == 'residential']
-if len(residential) > 0:
-    print(f"\nResidential Parcels Breakdown:")
-    sf = residential[residential['sf_mf'] == 'single-family']
-    mf = residential[residential['sf_mf'] == 'multi-family']
-    print(f"  Single-family: {len(sf):,}")
-    print(f"  Multi-family: {len(mf):,}")
-
-    # Units by residential type
-    sf_units = sf['building_units'].sum()
-    mf_units = mf['building_units'].sum()
-    print(f"\nResidential Units:")
-    print(f"  Single-family units: {sf_units:,.0f}")
-    print(f"  Multi-family units: {mf_units:,.0f}")
-
-# Create type-specific counts by aggregation unit for summary
-sf_counts = parcels_in_construction[
-    (parcels_in_construction['type'] == 'residential') &
-    (parcels_in_construction['sf_mf'] == 'single-family')
-].groupby(group_key).size()
-
-mf_counts = parcels_in_construction[
-    (parcels_in_construction['type'] == 'residential') &
-    (parcels_in_construction['sf_mf'] == 'multi-family')
-].groupby(group_key).size()
-
-mf_units = parcels_in_construction[
-    (parcels_in_construction['type'] == 'residential') &
-    (parcels_in_construction['sf_mf'] == 'multi-family')
-].groupby(group_key)['building_units'].sum()
-
-commercial_counts = parcels_in_construction[
-    parcels_in_construction['type'] == 'commercial'
-].groupby(group_key).size()
-
-industrial_counts = parcels_in_construction[
-    parcels_in_construction['type'] == 'industrial'
-].groupby(group_key).size()
-
-non_vacant_counts = parcels_in_construction[
-    parcels_in_construction['type'] != 'vacant'
-].groupby(group_key).size()
-```
 
 # Write out intermediate clipped datasets
 
@@ -891,264 +844,187 @@ Export the clipped datasets before aggregation to block or polygon level.
 print("\nExporting intermediate clipped datasets...")
 
 # Export clipped parcels (before classification and unit matching)
-if parcels_in_construction is not None:
-    # Reproject back to WGS84 for export
-    parcels_export = parcels_in_construction.to_crs(epsg=4326)
-    parcels_file = outputs_dir / f"parcels_in_construction_{AGGREGATION_LEVEL}_{timestamp}.geojson"
-    parcels_export.to_file(parcels_file, driver="GeoJSON")
-    print(f"Exported {len(parcels_export):,} clipped parcels to {parcels_file.name}")
-
+if parcels_in_buffered is not None:
+    export_geojson(
+        parcels_in_buffered,
+        outputs_dir,
+        f"parcels_in_construction.geojson",
+        "clipped parcels"
+    )
+if parcels_by_block is not None:
+    export_geojson(
+        parcels_by_block,
+        outputs_dir,
+        f"parcels_by_block.geojson",
+        "clipped parcels"
+    )
 # Export clipped streets
 if streets_in_construction is not None:
-    # Reproject back to WGS84 for export
-    streets_export = streets_in_construction.to_crs(epsg=4326)
-    streets_file = outputs_dir / f"streets_in_construction_{timestamp}.geojson"
-    streets_export.to_file(streets_file, driver="GeoJSON")
-    print(f"Exported {len(streets_export):,} clipped street segments to {streets_file.name}")
+    export_geojson(
+        streets_in_construction,
+        outputs_dir,
+        "streets_in_construction.geojson",
+        "clipped street segments"
+    )
 
 # Export clipped blocks (only for block-level aggregation)
-if AGGREGATION_LEVEL == "block" and blocks_in_construction is not None:
-    # Reproject back to WGS84 for export
-    blocks_export = blocks_in_construction.to_crs(epsg=4326)
-    blocks_file = outputs_dir / f"blocks_in_construction_{timestamp}.geojson"
-    blocks_export.to_file(blocks_file, driver="GeoJSON")
-    print(f"Exported {len(blocks_export):,} clipped block segments to {blocks_file.name}")
+if blocks_in_construction_clipped is not None:
+    export_geojson(
+        blocks_in_construction_clipped,
+        outputs_dir,
+        "blocks_in_construction.geojson",
+        "clipped block segments"
+    )
 
 print("All intermediate clipped datasets exported")
 ```
 
 ## Combined Summary Dataset
+At this point we have:
+- summary statistics at the unclippedblock level for parcel and residential unit counts
+- summary statistics at the clipped block level for street miles. these contain duplicate records for blocks that overlap multiple construction polygons.
+
+We need to aggregate the street miles by geoid10 to get the total street miles for each block and merge into a final dataset where each row is one block that contain counts of all parcels (within 8m of a construction polygon) and the apportioned street miles.
+
 
 ```{python}
-if AGGREGATION_LEVEL == "block" and blocks_in_construction is not None:
-    print("\nCreating block-level summary dataset...")
+print("\nCreating block-level summary dataset...")
 
-    # Start with block identifiers from blocks_in_construction
-    summary = blocks_in_construction[['block_poly_id', 'geoid10', 'OBJECTID', 'block_area_sqm']].copy()
+# Aggregate clipped blocks by geoid10 to get one row per block
+# Keep min/max dates
+summary = blocks_in_construction_clipped.groupby('geoid10').agg({
+    'C_START_min': 'min',  # Earliest construction start date
+    'C_START_max': 'max'  # Latest construction end date
+}).reset_index()
 
-    # Merge street miles by block
-    if 'street_miles_by_block' in locals() and street_miles_by_block is not None:
-        summary = summary.merge(
-            street_miles_by_block,
-            on='block_poly_id',
-            how='left'
-        )
-
-    # Merge parcel counts and other metrics (grouped by block_poly_id)
+# Merge aggregated street miles by geoid10
+if 'street_miles_by_geoid' in locals() and street_miles_by_geoid is not None:
     summary = summary.merge(
-        parcel_counts.reset_index().rename(columns={'block_poly_id': 'block_poly_id', 0: 'total_parcels'}),
-        on='block_poly_id',
-        how='left'
-    ).merge(
-        sf_counts.reset_index().rename(columns={'block_poly_id': 'block_poly_id', 0: 'sf_parcels'}),
-        on='block_poly_id',
-        how='left'
-    ).merge(
-        mf_counts.reset_index().rename(columns={'block_poly_id': 'block_poly_id', 0: 'mf_parcels'}),
-        on='block_poly_id',
-        how='left'
-    ).merge(
-        mf_units.reset_index().rename(columns={'block_poly_id': 'block_poly_id', 'building_units': 'mf_units'}),
-        on='block_poly_id',
-        how='left'
-    ).merge(
-        commercial_counts.reset_index().rename(columns={'block_poly_id': 'block_poly_id', 0: 'commercial_parcels'}),
-        on='block_poly_id',
-        how='left'
-    ).merge(
-        industrial_counts.reset_index().rename(columns={'block_poly_id': 'block_poly_id', 0: 'industrial_parcels'}),
-        on='block_poly_id',
-        how='left'
-    ).merge(
-        parcels_with_units_count.reset_index().rename(columns={'block_poly_id': 'block_poly_id', 0: 'parcels_with_unit_data'}),
-        on='block_poly_id',
-        how='left'
-    ).merge(
-        unit_counts.reset_index().rename(columns={'block_poly_id': 'block_poly_id', 'building_units': 'total_residential_units'}),
-        on='block_poly_id',
-        how='left'
-    ).merge(
-        non_vacant_counts.reset_index().rename(columns={'block_poly_id': 'block_poly_id', 0: 'non_vacant_parcels'}),
-        on='block_poly_id',
+        street_miles_by_geoid.reset_index(),
+        on='geoid10',
         how='left'
     )
 
-    # Fill NaN with 0 (blocks with no intersecting parcels)
-    summary = summary.fillna(0)
+# Merge parcel metrics (all already grouped by geoid10)
+summary = summary.merge(
+    parcel_counts.reset_index().rename(columns={0: 'total_parcels'}),
+    on='geoid10',
+    how='left'
+).merge(
+    sf_counts.reset_index().rename(columns={0: 'sf_parcels'}),
+    on='geoid10',
+    how='left'
+).merge(
+    mf_counts.reset_index().rename(columns={0: 'mf_parcels'}),
+    on='geoid10',
+    how='left'
+).merge(
+    mf_units.reset_index().rename(columns={mf_units.name if mf_units.name else 0: 'mf_units'}),
+    on='geoid10',
+    how='left'
+).merge(
+    commercial_counts.reset_index().rename(columns={0: 'commercial_parcels'}),
+    on='geoid10',
+    how='left'
+).merge(
+    industrial_counts.reset_index().rename(columns={0: 'industrial_parcels'}),
+    on='geoid10',
+    how='left'
+).merge(
+    mixed_use_counts.reset_index().rename(columns={0: 'mixed_use_parcels'}),
+    on='geoid10',
+    how='left'
+).merge(
+    parcels_with_units_count.reset_index().rename(columns={0: 'parcels_with_unit_data'}),
+    on='geoid10',
+    how='left'
+).merge(
+    unit_counts.reset_index().rename(columns={unit_counts.name if unit_counts.name else 0: 'total_residential_units'}),
+    on='geoid10',
+    how='left'
+).merge(
+    non_vacant_counts.reset_index().rename(columns={0: 'non_vacant_parcels'}),
+    on='geoid10',
+    how='left'
+)
 
-    # Convert to integers where appropriate
-    int_cols = ['total_parcels', 'non_vacant_parcels', 'sf_parcels', 'mf_parcels',
-                'commercial_parcels', 'industrial_parcels', 'parcels_with_unit_data',
-                'total_residential_units']
-    for col in int_cols:
-        if col in summary.columns:
-            summary[col] = summary[col].astype(int)
+# Add full unclipped block geometries
+# Project city_blocks to UTM to match summary CRS
+city_blocks_utm = city_blocks.to_crs('EPSG:32616')
+summary = summary.merge(
+    city_blocks_utm[['geoid10', 'geometry']],
+    on='geoid10',
+    how='left'
+)
 
-    print("\nBlock-Level Summary Statistics:")
-    print(summary.describe())
+# Convert to GeoDataFrame
+summary = gpd.GeoDataFrame(summary, geometry='geometry', crs=city_blocks_utm.crs)
 
-    # Display sample of summary data
-    print("\nSample of summary data (first 5 blocks):")
-    print(summary.head())
+# Add full block area for reference
+summary['block_area_full_sqm'] = summary.geometry.area
 
-    # Show totals
-    print("\nTotals Across All City Blocks:")
-    if 'street_miles' in summary.columns:
-        print(f"  Total street miles: {summary['street_miles'].sum():.2f}")
-    print(f"  Total parcels: {summary['total_parcels'].sum():,}")
-    print(f"  Non-vacant parcels: {summary['non_vacant_parcels'].sum():,}")
-    print(f"  Single-family: {summary['sf_parcels'].sum():,}")
-    print(f"  Multi-family: {summary['mf_parcels'].sum():,}")
-    print(f"  Commercial: {summary['commercial_parcels'].sum():,}")
-    print(f"  Industrial: {summary['industrial_parcels'].sum():,}")
-    print(f"  Total residential units: {summary['total_residential_units'].sum():,}")
+# Prepare summary dataframe with integer columns
+int_cols = [
+    'total_parcels', 'non_vacant_parcels', 'sf_parcels', 'mf_parcels',
+    'commercial_parcels', 'industrial_parcels', 'mixed_use_parcels',
+    'parcels_with_unit_data', 'total_residential_units', 'mf_units'
+]
+summary = prepare_summary_dataframe(summary, int_cols, "Block-Level")
 
-elif pg_polygons is not None:
-    print("\nCreating polygon-level summary dataset...")
-
-    # Start with OBJECTID as the key column (not as index)
-    summary = pd.DataFrame({'OBJECTID': pg_polygons['OBJECTID'].values})
-
-    # Add metrics using explicit merges to avoid index alignment issues
-    # Left joins mean missing data just becomes NaN, which we'll fill with 0
-    summary = summary.merge(
-        street_miles_by_polygon.reset_index().rename(
-            columns={'length_miles': 'street_miles'}),
-        on='OBJECTID',
-        how='left'
-    ).merge(
-        parcel_counts.reset_index().rename(columns={0: 'total_parcels'}),
-        on='OBJECTID',
-        how='left'
-    ).merge(
-        sf_counts.reset_index().rename(columns={0: 'sf_parcels'}),
-        on='OBJECTID',
-        how='left'
-    ).merge(
-        mf_counts.reset_index().rename(columns={0: 'mf_parcels'}),
-        on='OBJECTID',
-        how='left'
-    ).merge(
-        mf_units.reset_index().rename(columns={'building_units': 'mf_units'}),
-        on='OBJECTID',
-        how='left'
-    ).merge(
-        commercial_counts.reset_index().rename(
-            columns={0: 'commercial_parcels'}),
-        on='OBJECTID',
-        how='left'
-    ).merge(
-        industrial_counts.reset_index().rename(
-            columns={0: 'industrial_parcels'}),
-        on='OBJECTID',
-        how='left'
-    ).merge(
-        parcels_with_units_count.reset_index().rename(
-            columns={0: 'parcels_with_unit_data'}),
-        on='OBJECTID',
-        how='left'
-    ).merge(
-        unit_counts.reset_index().rename(
-            columns={'building_units': 'total_residential_units'}),
-        on='OBJECTID',
-        how='left'
-    ).merge(
-        non_vacant_counts.reset_index().rename(
-            columns={0: 'non_vacant_parcels'}),
-        on='OBJECTID',
-        how='left'
+# Validation: Check that summary has same count of unique geoid10s as clipped blocks
+expected_geoid_count = blocks_in_construction_clipped['geoid10'].nunique()
+actual_geoid_count = summary['geoid10'].nunique()
+if expected_geoid_count != actual_geoid_count:
+    raise ValueError(
+        f"Block summary validation failed: "
+        f"Expected {expected_geoid_count} unique geoid10s (from blocks_in_construction_clipped), "
+        f"but got {actual_geoid_count} in summary"
     )
 
-    # Fill NaN with 0 (polygons with no intersecting features)
-    summary = summary.fillna(0)
+print(f"\nBlock-level summary created with {len(summary):,} unique blocks")
+print(f"  ✓ Validation passed: {actual_geoid_count:,} unique blocks match blocks_in_construction_clipped")
 
-    # Convert to integers where appropriate
-    int_cols = ['total_parcels', 'non_vacant_parcels', 'sf_parcels', 'mf_parcels',
-                'commercial_parcels', 'industrial_parcels', 'parcels_with_unit_data',
-                'total_residential_units']
-    for col in int_cols:
-        if col in summary.columns:
-            summary[col] = summary[col].astype(int)
-
-    print("\nPolygon-Level Summary Statistics:")
-    print(summary.describe())
-
-    # Display sample of summary data
-    print("\nSample of summary data (first 5 polygons):")
-    print(summary.head())
-
-    # Show totals
-    print("\nTotals Across All Construction Polygons:")
+# Show totals
+print("\nTotals Across All City Blocks:")
+if 'street_miles' in summary.columns:
     print(f"  Total street miles: {summary['street_miles'].sum():.2f}")
-    print(f"  Total parcels: {summary['total_parcels'].sum():,}")
-    print(f"  Non-vacant parcels: {summary['non_vacant_parcels'].sum():,}")
-    print(f"  Single-family: {summary['sf_parcels'].sum():,}")
-    print(f"  Multi-family: {summary['mf_parcels'].sum():,}")
-    print(f"  Commercial: {summary['commercial_parcels'].sum():,}")
-    print(f"  Industrial: {summary['industrial_parcels'].sum():,}")
-    print(
-        f"  Total residential units: {summary['total_residential_units'].sum():,}")
-else:
-    print("Cannot create summary without required data")
-    summary = None
+print(f"  Total parcels: {summary['total_parcels'].sum():,}")
+print(f"  Non-vacant parcels: {summary['non_vacant_parcels'].sum():,}")
+print(f"  Single-family: {summary['sf_parcels'].sum():,}")
+print(f"  Multi-family: {summary['mf_parcels'].sum():,}")
+print(f"  Commercial: {summary['commercial_parcels'].sum():,}")
+print(f"  Industrial: {summary['industrial_parcels'].sum():,}")
+print(f"  Total residential units: {summary['total_residential_units'].sum():,}")
 ```
 
 # Export Final Dataset
 
-Export the summary statistics with geometries to GeoJSON.
+Export the block-level summary statistics with full block geometries to GeoJSON.
 
 ```{python}
-if AGGREGATION_LEVEL == "block" and summary is not None and blocks_in_construction is not None:
+if summary is None:
+    print("Cannot export: summary dataset not created")
+else:
     print("\nExporting block-level summary dataset to GeoJSON...")
 
-    # Merge summary statistics with block geometries using block_poly_id
-    block_summary = blocks_in_construction.merge(
-        summary.reset_index(drop=True),
-        on='block_poly_id',
-        how='left',
-        suffixes=('', '_summary')
-    )
+    # Reproject to WGS84 and export
+    # Summary already has full unclipped block geometries
+    block_summary = reproject_to_wgs84(summary)
 
-    # Drop duplicate geometry columns if any
-    geom_cols = [col for col in block_summary.columns if col.endswith('_summary') and col != 'geometry']
-    if geom_cols:
-        block_summary = block_summary.drop(columns=geom_cols)
-
-    # Create output filename with aggregation level and timestamp
+    # Create output filename with timestamp
     output_file = outputs_dir / f'peoplesgas_with_buildings_streets_block_{timestamp}.geojson'
 
     # Write to GeoJSON
     block_summary.to_file(output_file, driver='GeoJSON')
 
-    print(f"Exported {len(block_summary)} city block segments with summary statistics")
-    print(f"File: {output_file}")
-    print(f"   Aggregation level: block")
-    print(f"   Unique construction polygons: {block_summary['OBJECTID'].nunique()}")
-    print(f"   Unique city blocks: {block_summary['geoid10'].nunique()}")
-
-elif summary is not None and pg_polygons is not None:
-    print("\nExporting polygon-level summary dataset to GeoJSON...")
-
-    # Merge summary statistics with Peoples Gas polygon geometries using OBJECTID
-    pg_summary = pg_polygons.merge(
-        summary.reset_index(drop=True),
-        on='OBJECTID',
-        how='left'
-    )
-
-    # Create output filename with aggregation level and timestamp
-    output_file = outputs_dir / f'peoplesgas_with_buildings_streets_poly_{timestamp}.geojson'
-
-    # Write to GeoJSON
-    pg_summary.to_file(output_file, driver='GeoJSON')
-
-    print(f"Exported {len(pg_summary)} construction polygons with summary statistics")
-    print(f"File: {output_file}")
-    print(f"   Aggregation level: polygon")
-
-else:
-    print("Cannot export: missing summary or geometry data")
+    print(f"\nExported {len(block_summary):,} city blocks with summary statistics")
+    print(f"  File: {output_file.name}")
+    print(f"  Unique city blocks: {block_summary['geoid10'].nunique():,}")
+    print(f"  Geometry: Full unclipped block geometries")
+    print(f"  Statistics: Aggregated across all construction polygons each block intersects")
 ```
+
+
 
 # Next Steps
 

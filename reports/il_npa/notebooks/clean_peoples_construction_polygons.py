@@ -81,8 +81,8 @@ if pg_files:
             filtered[col] = pd.to_datetime(filtered[col], unit="ms", errors="coerce")
 
     # Create status_simple column
-    filtered["status_simple"] = filtered["C_FINISH"].apply(
-        lambda x: "closed" if pd.notnull(x) and x < pd.Timestamp("2025-06-01") else "planned"
+    filtered["status_simple"] = filtered["C_START"].apply(
+        lambda x: "closed" if pd.notnull(x) and x < pd.Timestamp("2026-01-01") else "planned"
     )
 
     # Show summary stats for C_START grouped by status_simple

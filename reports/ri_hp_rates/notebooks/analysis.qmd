@@ -45,6 +45,7 @@ path_fuel_oil_supply_rates <- file.path(path_to_data, "eia", "heating_oil", "ri_
 path_propane_supply_rates <- file.path(path_to_data, "eia", "propane", "ri_eia_propane_prices_monthly.parquet")
 
 # Cache paths
+path_monthly_consumption <- file.path(path_to_cache, "monthly_consumption.RData")
 path_calculated_bills_electric <- file.path(path_to_cache, "calculated_bills_electric.RData")
 path_calculated_bills_fuel_oil <- file.path(path_to_cache, "calculated_bills_fuel_oil.RData")
 path_calculated_bills_propane <- file.path(path_to_cache, "calculated_bills_propane.RData")
@@ -106,6 +107,7 @@ url_smi_thresholds <- "https://docs.google.com/spreadsheets/d/1bVbr8jDF8YgT6-yiE
 
 load_tariffs_from_cache <- FALSE
 load_thresholds_from_cache <- FALSE
+load_monthly_consumption_from_cache <- FALSE
 load_results_from_cache <- FALSE
 ```
 
@@ -335,8 +337,6 @@ load_or_download <- function(table_name, url, path_to_cache, load_from_cache=FAL
 ### Load and Transform Housing Units
 ```{r}
 #| label: load housing units
-source(path_create_housing_units)
-
 use_these_in_columns <- c(
   "bldg_id",
   "upgrade",
@@ -507,43 +507,52 @@ n_non_vacant_homes <- housing_units |> filter(upgrade == 0) |> filter(occupants_
 # ------------------------------------------------------------------------------
 # Bill Calculations
 # ------------------------------------------------------------------------------
-# parameters
+## parameters
 ```{r}
 cols_from_housing_units <- c("bldg_id", "upgrade", "hvac_primary", "baseline_heating_type", "baseline_heating_efficiency")
 ```
 
-# Consumption by End Use Group
+## Consumption by End Use Group
 ```{r}
 #| label: consumption by end use group
+if (file.exists(path_monthly_consumption)) {
+  load(file = path_monthly_consumption)
+} else {
 
-path_end_use_groups_feather <- "/workspaces/reports2/lib/resstock/2024/end_use_groups.feather"
+  # Get the end use groups
+  path_end_use_groups_feather <- "/workspaces/reports2/lib/resstock/2024/end_use_groups.feather"
+  end_use_groups <- arrow::read_feather(path_end_use_groups_feather)
 
-end_use_groups <- arrow::read_feather(path_end_use_groups_feather)
+  # Monthly Load Data
+  monthly_consumption <- get_monthly_consumption_many(
+    path_monthly_data = path_monthly_data,
+    fuels = c("electricity", "natural_gas", "fuel_oil", "propane"),
+    functional_groups = c("appliance", "cooking", "cooling", "heating", "hot_water", "total"),
+    use_these_states = "RI",
+    use_these_upgrades = use_these_upgrades
+  )
 
-# Monthly Load Data
-monthly_consumption <- get_monthly_consumption_many(
-  path_monthly_data = path_monthly_data,
-  fuels = c("electricity", "natural_gas", "fuel_oil", "propane"),
-  functional_groups = c("appliance", "cooking", "cooling", "heating", "hot_water", "total"),
-  use_these_states = "RI",
-  use_these_upgrades = use_these_upgrades
-)
+  # Filter out any vacant homes
+  monthly_consumption <- monthly_consumption |>
+    left_join(housing_units |> filter(upgrade == 0)|> select(bldg_id, occupants_group, baseline_heating_type), by = c("bldg_id")) |>
+    filter(occupants_group != "Vacant") |>
+    select(-occupants_group)
 
-# Filter out any vacant homes
-monthly_consumption <- monthly_consumption |>
-  left_join(housing_units |> filter(upgrade == 0)|> select(bldg_id, occupants_group, baseline_heating_type), by = c("bldg_id")) |>
-  filter(occupants_group != "Vacant") |>
-  select(-occupants_group)
+  # Save to cache
+  save(monthly_consumption, file = path_monthly_consumption)
+}
+
 
 #View(monthly_consumption)
+
+
 ```
 
 
+## Bill Calculations
 ### Electric
 ```{r}
 #| label: electric bills calculations
-source(path_heat_pump_funcs)
-
 # Electric
 url_electric_supply_rates <- "https://docs.google.com/spreadsheets/d/1oq0WxARD6cY6gPE4s2TH59O4pHY0sreZNKpHFayn36g/edit?gid=0#gid=0"
 # TODO return the data, do not save as a side effect.
@@ -633,7 +642,6 @@ load_or_download("fuel_oil_lmi_thresholds", url_delivery_rates, path_to_cache, l
 if (load_results_from_cache) {
   load(file = path_calculated_bills_fuel_oil)
 } else {
-
   # Monthly Bills
   monthly_bills_fuel_oil <- calc_monthly_bills(
     monthly_consumption = monthly_consumption,
@@ -779,7 +787,6 @@ if (load_results_from_cache) {
 ```{r}
 #| label: gas bills calculations
 # Gas Supply Rates
-source(path_heat_pump_funcs)
 url_gas_supply_rates <- "https://docs.google.com/spreadsheets/d/1_2u9S3r2JWKREhD_pnWXfyQKqjc4IsImbbTdHHN7xqM/edit?gid=0#gid=0"
 load_or_download("gas_supply_rates", url_gas_supply_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
 load_or_download("gas_delivery_tariffs", url_delivery_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
@@ -853,166 +860,56 @@ if (load_results_from_cache) {
 ## Total Annual Bills
 ```{r}
 #| label: total annual bills
-annual_bills_total <- calc_annual_bills_total(annual_bills_elec, annual_bills_gas, annual_bills_fuel_oil, annual_bills_propane)
-winter_bills_total <- calc_annual_bills_total(winter_bills_elec, winter_bills_gas, winter_bills_fuel_oil, winter_bills_propane)
-summer_bills_total <- calc_annual_bills_total(summer_bills_elec, summer_bills_gas, summer_bills_fuel_oil, summer_bills_propane)
+cols_from_housing_units <- c(
+  "bldg_id",
+  "upgrade",
+  "baseline_heating_type",
+  "hvac_primary",
+  "building_type_group",
+  "baseline_cooling_type",
+  "dollar_tier",
+  "smi_tier",
+  "occupants_group"
+)
+
+
+annual_bills_total <- calc_annual_bills_total(annual_bills_elec, annual_bills_gas, annual_bills_fuel_oil, annual_bills_propane, housing_units=housing_units) |>
+  left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
+
+winter_bills_total <- calc_annual_bills_total(winter_bills_elec, winter_bills_gas, winter_bills_fuel_oil, winter_bills_propane, housing_units=housing_units) |>
+  left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
+
+summer_bills_total <- calc_annual_bills_total(summer_bills_elec, summer_bills_gas, summer_bills_fuel_oil, summer_bills_propane, housing_units=housing_units) |>
+  left_join(housing_units |> select(all_of(cols_from_housing_units)), by = c("bldg_id", "upgrade"))
 ```
 
 ## Total Annual Changes
 ```{r}
 #| label: total annual changes
-annual_changes_total <- calc_annual_changes_total(annual_changes_elec, annual_changes_gas, annual_changes_fuel_oil, annual_changes_propane)
-winter_changes_total <- calc_annual_changes_total(winter_changes_elec, winter_changes_gas, winter_changes_fuel_oil, winter_changes_propane)
-summer_changes_total <- calc_annual_changes_total(summer_changes_elec, summer_changes_gas, summer_changes_fuel_oil, summer_changes_propane)
-```
 
-# ------------------------------------------------------------------------------
-# Gas Burner Efficiency Impacts
-# ------------------------------------------------------------------------------
-```{r}
-#| label: annual changes by afue value
-
-annual_changes_y  <- annual_changes_total |>
-  filter(upgrade == 2) |>
-  filter(version_elec == "baseline") |>
-  right_join(housing_units |> filter(upgrade==0)|> filter(baseline_heating_type == "Natural Gas")|> select(bldg_id, afue_value), by = c("bldg_id"))
-
-#View(annual_changes_y)
-
-annual_changes_x <- annual_changes_y |>
-  summarize(
-    counts = n(),
-    median_annual_change = median(annual_change_total),
-    .by = c(afue_value)
-  )
-
-#View(annual_changes_x)
-
-ggplot(annual_changes_x, aes(x = afue_value/100, y = median_annual_change)) +
-  #shade light green above y=0
-  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 0, ymax = Inf), fill = savings_colors["light_red"], alpha = 0.5) +
-  #shade light red below y=0
-  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = 0), fill = savings_colors["light_green"], alpha = 0.5) +
-  labs(x = "Baseline Gas Heating Efficiency (AFUE Value)", y = "Median Annual Total Bill Change") +
-  theme_minimal()+
-  scale_x_continuous(breaks = seq(0, 1, by = 0.1), labels = scales::percent_format(accuracy = 1)) +
-  scale_y_continuous(limits = c(-20, 500), breaks = seq(-1000, 1000, by = 100), labels = scales::dollar_format()) +
-  geom_point(size=4, color = sb_colors["midnight"]) +
-  geom_line(size=3, color = sb_colors["midnight"]) +
-  # use ggrepel to write the counts on the points
-  # add a small offset to the counts
-  ggrepel::geom_text_repel(aes(label = counts), size = 8, color = sb_colors["sky"], nudge_y = 15) +
-
-  # add a text that says "Count of Bldg IDs" in sky color
-  annotate("text", x = 0.62, y = 50, label = "Count of Bldg IDs", color = sb_colors["sky"], size = 8)
-```
-
-# ------------------------------------------------------------------------------
-# Natural Gas Furnace Efficiency Impacts
-# ------------------------------------------------------------------------------
-```{r}
-#| label: natural gas furnace efficiency impacts
-
-baseline_heating_option <- "Natural Gas"
-
-heating_type_to_fuel_lookup <- tibble(
-  heating_type = c("Electric Resistance", "Natural Gas"),
-  fuel = c("electricity", "natural_gas")
+cols_from_housing_units_for_analysis <- c(
+  "bldg_id",
+  "upgrade",
+  "baseline_heating_type",
+  "hvac_primary",
+  "building_type_group",
+  "baseline_cooling_type",
+  "dollar_tier",
+  "smi_tier",
+  "occupants_group"
 )
 
-fuel <- heating_type_to_fuel_lookup |> filter(heating_type == baseline_heating_option) |> pull(fuel)
+annual_changes_total <- calc_annual_changes_total(annual_changes_elec, annual_changes_gas, annual_changes_fuel_oil, annual_changes_propane) |>
+  left_join(housing_units |> filter(upgrade %in% c(1,2,3)) |> select(all_of(cols_from_housing_units_for_analysis)), by = c("bldg_id", "upgrade"))
 
+winter_changes_total <- calc_annual_changes_total(winter_changes_elec, winter_changes_gas, winter_changes_fuel_oil, winter_changes_propane) |>
+  left_join(housing_units |> filter(upgrade %in% c(1,2,3)) |> select(all_of(cols_from_housing_units_for_analysis)), by = c("bldg_id", "upgrade"))
 
-# get the 10th, 50th, and 90th percentiles of consumption by month
-monthly_consumption_percentiles <- monthly_consumption |>
-  filter(upgrade == 0) |>
-  filter(baseline_heating_type == baseline_heating_option) |>
-  select(-baseline_heating_type) |>
-  # get the quantiles for each column other than bldg_id, upgrade, and month
-  reframe(
-    across(everything(), ~ quantile(.x, c(0.1, 0.5, 0.9))),
-    .by = c(month, upgrade)
-  ) |>
-  mutate(
-    percentile = rep(c("p10", "p50", "p90"),
-                   times = n() / 3)
-  )|>
-  pivot_longer(cols = -c(month, upgrade, percentile), names_to = "functional_group", values_to = "consumption_kwh") |>
-  filter(str_detect(functional_group, fuel)) |>
-
-
-  mutate(
-    functional_group = case_when(
-      str_detect(functional_group, "appliance") ~ "Appliance",
-      str_detect(functional_group, "cooling") ~ "Cooling",
-      str_detect(functional_group, "heating") ~ "Heating",
-      str_detect(functional_group, "hot_water") ~ "Hot Water",
-      str_detect(functional_group, "total") ~ "Total",
-      TRUE ~ "Other"
-    )
-  )
-#View(monthly_consumption_percentiles)
-
-# plot the average consumption by month
-colors = c(
-  "Appliance" = "grey50",
-  "Cooling" = "blue",
-  "Heating" = "red",
-  "Hot Water" = "green",
-  "Total" = "black"
-)
-
-stack_order <- c("Heating", "Appliance", "Cooling", "Hot Water")  # exclude "Total" since we're filtering that group
-
-plot_p50 <- monthly_consumption_percentiles |>
-  filter(percentile == "p50") |>
-  filter(functional_group != "Total") |>
-  mutate(functional_group = factor(functional_group, levels = stack_order)) |>
-  arrange(month, functional_group) |>
-  ggplot(aes(x = month, y = consumption_kwh, fill = functional_group)) +
-  geom_area(position = "stack", alpha = 0.8) +
-  labs(title = paste("Average", baseline_heating_option, "Consumption by Functional Group and Month"),
-       x = "Month",
-       y = "Consumption (kWh)") +
-  scale_x_continuous(breaks = 1:12, labels = month.abb) +
-  scale_y_continuous(labels = scales::comma_format()) +
-  scale_fill_manual(values = colors, breaks = stack_order)
-
-print(plot_p50)
-
-
+summer_changes_total <- calc_annual_changes_total(summer_changes_elec, summer_changes_gas, summer_changes_fuel_oil, summer_changes_propane) |>
+  left_join(housing_units |> filter(upgrade %in% c(1,2,3)) |> select(all_of(cols_from_housing_units_for_analysis)), by = c("bldg_id", "upgrade"))
 ```
 
-# ------------------------------------------------------------------------------
-# Sample Home
-# ------------------------------------------------------------------------------
-```{r}
-#| label: find a good sample home
 
-
-# list all the blg_ids where..
-# - upgrade == 0
-# - occupants_group != "Vacant"
-# - representative_income > 1000
-# - baseline_heating_type == "natural_gas"
-# - building_type_group == "Single-Family"
-# - baseline_cooling_type == "Central AC"
-# - dollar_tier == "Not LMI"
-# - smi_tier == "Not LMI"
-# - hvac == "Heat Pump"
-
-good_homes <- housing_units |>
-  filter(upgrade == 0) |>
-  filter(occupants_group == "3-4 Occupants") |>
-  filter(smi_tier == "Not LMI") |>
-  filter(in.vintage == "1970s") |>
-  filter(baseline_heating_type == "Natural Gas") |>
-  filter(baseline_cooling_type == "Central AC")
-
-# Take a look at the list and pick your favorite
-#View(good_homes)
-bldg_id_x <- 389325
-```
 
 # ------------------------------------------------------------------------------
 # Findings
@@ -1035,10 +932,9 @@ stack_order_gas_on_top = c(
 components <- forcats::as_factor(stack_order_gas_on_top)
 
 annual_bills_elec_by_component <- monthly_bills_elec |>
-  left_join(housing_units |> filter(upgrade == 0) |> select(bldg_id, baseline_heating_type), by = "bldg_id") |>
   filter(baseline_heating_type == "Natural Gas") |>
   mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+    hvac = ifelse((!hvac_primary %in% c("hp_low", "hp_high", "hp_best")), "current", as.character(hvac_primary))
   ) |>
   summarize(
     supply_charge = sum(supply_charge),
@@ -1061,7 +957,7 @@ annual_bills_elec_by_component <- monthly_bills_elec |>
 annual_bills_gas_median <- annual_bills_gas |>
   filter(baseline_heating_type == "Natural Gas") |>
   mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+    hvac = ifelse((!hvac_primary %in% c("hp_low", "hp_high", "hp_best")), "current", as.character(hvac_primary))
   ) |>
   summarize(
     annual_gas_bill = median(annual_bill),
@@ -1195,12 +1091,10 @@ print(fig_bill_stacked_bar_gas_on_top)
 #| fig-cap: "The electric bill components and total gas bill for natural gas heated homes, before upgrade."
 
 monthly_bills_elec_by_component <- monthly_bills_elec |>
-  # add some metadata from housing_units
-  left_join(housing_units |> filter(upgrade==0) |> select(bldg_id, baseline_heating_type), by = c("bldg_id")) |>
   filter(baseline_heating_type == "Natural Gas") |>
   # rename hvac column to "current" (was natural_gas, propane, etc)
   mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+    hvac = ifelse((!hvac_primary %in% c("hp_low", "hp_high", "hp_best")), "current", as.character(hvac_primary))
   ) |>
   # get just the current and hp_high cases
   filter(
@@ -1216,12 +1110,10 @@ monthly_bills_elec_by_component <- monthly_bills_elec |>
   ungroup()
 
 monthly_bills_gas_by_component <- monthly_bills_gas |>
-  # add some metadata from housing_units
-  left_join(housing_units |> filter(upgrade==0) |> select(bldg_id, baseline_heating_type), by = c("bldg_id")) |>
   filter(baseline_heating_type == "Natural Gas") |>
   # rename hvac column to "current" (was natural_gas, propane, etc)
   mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+    hvac = ifelse((!hvac_primary %in% c("hp_low", "hp_high", "hp_best")), "current", as.character(hvac_primary))
   ) |>
   # get just the current and hp_high cases
   filter(
@@ -1342,10 +1234,9 @@ stack_order_fuel_oil_on_top = c(
 components <- forcats::as_factor(stack_order_fuel_oil_on_top)
 
 annual_bills_elec_by_component <- monthly_bills_elec |>
-  left_join(housing_units |> filter(upgrade==0) |> select(bldg_id, baseline_heating_type), by = c("bldg_id")) |>
   filter(baseline_heating_type == "Fuel Oil") |>
   mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+    hvac = ifelse((!hvac_primary %in% c("hp_low", "hp_high", "hp_best")), "current", as.character(hvac_primary))
   ) |>
   summarize(
     supply_charge = sum(supply_charge),
@@ -1370,7 +1261,7 @@ annual_bills_elec_by_component <- monthly_bills_elec |>
 annual_bills_fuel_oil_median <- annual_bills_fuel_oil |>
   filter(baseline_heating_type == "Fuel Oil") |>
   mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+    hvac = ifelse((!hvac_primary %in% c("hp_low", "hp_high", "hp_best")), "current", as.character(hvac_primary))
   ) |>
   summarize(
     annual_fuel_oil_bill = median(annual_bill),
@@ -1505,12 +1396,10 @@ print(fig_bill_stacked_bar_fuel_oil_on_top)
 #| fig-cap: "The electric bill components and total fuel oil bill for fuel oil heated homes, before upgrade."
 
 monthly_bills_elec_by_component <- monthly_bills_elec |>
-  # add some metadata from housing_units
-  left_join(housing_units |> filter(upgrade==0) |> select(bldg_id, baseline_heating_type), by = c("bldg_id")) |>
   filter(baseline_heating_type == "Fuel Oil") |>
   # rename hvac column to "current" (was natural_gas, propane, etc)
   mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+    hvac = ifelse((!hvac_primary %in% c("hp_low", "hp_high", "hp_best")), "current", as.character(hvac_primary))
   ) |>
   # get just the current and hp_high cases
   filter(
@@ -1526,12 +1415,10 @@ monthly_bills_elec_by_component <- monthly_bills_elec |>
   ungroup()
 
 monthly_bills_fuel_oil_by_component <- monthly_bills_fuel_oil |>
-  # add some metadata from housing_units
-  left_join(housing_units |> filter(upgrade==0) |> select(bldg_id, baseline_heating_type), by = c("bldg_id")) |>
   filter(baseline_heating_type == "Fuel Oil") |>
   # rename hvac column to "current" (was natural_gas, propane, etc)
   mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+    hvac = ifelse((!hvac_primary %in% c("hp_low", "hp_high", "hp_best")), "current", as.character(hvac_primary))
   ) |>
   # get just the current and hp_high cases
   filter(
@@ -1651,10 +1538,9 @@ stack_order_resistance_on_top = c(
 components <- forcats::as_factor(stack_order_resistance_on_top)
 
 annual_bills_elec_by_component <- monthly_bills_elec |>
-  left_join(housing_units |> filter(upgrade==0) |> select(bldg_id, baseline_heating_type), by = c("bldg_id")) |>
   filter(baseline_heating_type == "Electric Resistance") |>
   mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+    hvac = ifelse((!hvac_primary %in% c("hp_low", "hp_high", "hp_best")), "current", as.character(hvac_primary))
   ) |>
   summarize(
     supply_charge = sum(supply_charge),
@@ -1787,11 +1673,10 @@ print(fig_bill_stacked_bar_resistance_on_top)
 
 monthly_bills_elec_by_component <- monthly_bills_elec |>
   # add some metadata from housing_units
-  left_join(housing_units |> filter(upgrade==0) |> select(bldg_id, baseline_heating_type), by = c("bldg_id")) |>
   filter(baseline_heating_type == "Electric Resistance") |>
   # rename hvac column to "current" (was natural_gas, propane, etc)
   mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+    hvac = ifelse((!hvac_primary %in% c("hp_low", "hp_high", "hp_best")), "current", as.character(hvac_primary))
   ) |>
   # get just the current and hp_high cases
   filter(
@@ -1975,14 +1860,14 @@ print(result[[1]])
 
 fuel_types_pct <- housing_units |>
   filter(upgrade == 0) |>
-  group_by(hvac) |>
+  group_by(hvac_primary) |>
   summarize(count = n()) |>
   mutate(percentage = count / sum(count) * 100) |>
   arrange(desc(count)) |>
-  mutate(hvac = factor(hvac, levels = rev(hvac)))
+  mutate(hvac_primary = factor(hvac_primary, levels = rev(hvac_primary)))
 
 fuel_types_pct <- fuel_types_pct |>
-  mutate(hvac_group = factor(hvac,
+  mutate(hvac_group = factor(hvac_primary,
                                    levels = c("Natural Gas", "Propane", "Fuel Oil",  "Heat Pump", "Electric Resistance", "Other/None"))) |>
   group_by(hvac_group, .drop = FALSE) |>
   summarise(count = sum(count), .groups = "drop") |>
@@ -2101,7 +1986,7 @@ print(result[[1]])
 ```
 
 ## How does the building type a home is in affect its energy bills after switching to heat pumps?
-### fig-bar-fuel-types
+### fig-bar-building-type
 ```{r}
 #| label: fig-bar-building-type
 #| fig-cap: "Proportion of RI homes by building type."
@@ -2391,7 +2276,7 @@ income_threshold_lower <- 100
 burden_hists_all_current <- plot_energy_burden_histogram_standalone(
   data = annual_bills_total |>
   mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+    hvac = ifelse((!hvac_primary %in% c("hp_low", "hp_high", "hp_best")), "current", hvac_primary)
   ) |>
   filter(
     in.representative_income <= income_threshold_upper,
@@ -3040,6 +2925,128 @@ stats_all_fuels <- annual_changes_total |>
     pct_that_lose_big = round(mean(annual_change_total > 1000) * 100, round_percent)
   ) |>
   ungroup()
+```
+
+
+
+
+
+
+# ------------------------------------------------------------------------------
+# Gas Burner Efficiency Impacts
+# ------------------------------------------------------------------------------
+```{r}
+#| label: annual changes by afue value
+
+annual_changes_y  <- annual_changes_total |>
+  filter(upgrade == 2) |>
+  filter(version_elec == "baseline") |>
+  right_join(housing_units |> filter(upgrade==0)|> filter(baseline_heating_type == "Natural Gas")|> select(bldg_id, afue_value), by = c("bldg_id"))
+
+#View(annual_changes_y)
+
+annual_changes_x <- annual_changes_y |>
+  summarize(
+    counts = n(),
+    median_annual_change = median(annual_change_total),
+    .by = c(afue_value)
+  )
+
+#View(annual_changes_x)
+
+ggplot(annual_changes_x, aes(x = afue_value/100, y = median_annual_change)) +
+  #shade light green above y=0
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 0, ymax = Inf), fill = savings_colors["light_red"], alpha = 0.5) +
+  #shade light red below y=0
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = 0), fill = savings_colors["light_green"], alpha = 0.5) +
+  labs(x = "Baseline Gas Heating Efficiency (AFUE Value)", y = "Median Annual Total Bill Change") +
+  theme_minimal()+
+  scale_x_continuous(breaks = seq(0, 1, by = 0.1), labels = scales::percent_format(accuracy = 1)) +
+  scale_y_continuous(limits = c(-20, 500), breaks = seq(-1000, 1000, by = 100), labels = scales::dollar_format()) +
+  geom_point(size=4, color = sb_colors["midnight"]) +
+  geom_line(size=3, color = sb_colors["midnight"]) +
+  # use ggrepel to write the counts on the points
+  # add a small offset to the counts
+  ggrepel::geom_text_repel(aes(label = counts), size = 8, color = sb_colors["sky"], nudge_y = 15) +
+
+  # add a text that says "Count of Bldg IDs" in sky color
+  annotate("text", x = 0.62, y = 50, label = "Count of Bldg IDs", color = sb_colors["sky"], size = 8)
+```
+
+# ------------------------------------------------------------------------------
+# Natural Gas Furnace Efficiency Impacts
+# ------------------------------------------------------------------------------
+```{r}
+#| label: natural gas furnace efficiency impacts
+
+baseline_heating_option <- "Natural Gas"
+
+heating_type_to_fuel_lookup <- tibble(
+  heating_type = c("Electric Resistance", "Natural Gas"),
+  fuel = c("electricity", "natural_gas")
+)
+
+fuel <- heating_type_to_fuel_lookup |> filter(heating_type == baseline_heating_option) |> pull(fuel)
+
+
+# get the 10th, 50th, and 90th percentiles of consumption by month
+monthly_consumption_percentiles <- monthly_consumption |>
+  filter(upgrade == 0) |>
+  filter(baseline_heating_type == baseline_heating_option) |>
+  select(-baseline_heating_type) |>
+  # get the quantiles for each column other than bldg_id, upgrade, and month
+  reframe(
+    across(everything(), ~ quantile(.x, c(0.1, 0.5, 0.9))),
+    .by = c(month, upgrade)
+  ) |>
+  mutate(
+    percentile = rep(c("p10", "p50", "p90"),
+                   times = n() / 3)
+  )|>
+  pivot_longer(cols = -c(month, upgrade, percentile), names_to = "functional_group", values_to = "consumption_kwh") |>
+  filter(str_detect(functional_group, fuel)) |>
+
+
+  mutate(
+    functional_group = case_when(
+      str_detect(functional_group, "appliance") ~ "Appliance",
+      str_detect(functional_group, "cooling") ~ "Cooling",
+      str_detect(functional_group, "heating") ~ "Heating",
+      str_detect(functional_group, "hot_water") ~ "Hot Water",
+      str_detect(functional_group, "total") ~ "Total",
+      TRUE ~ "Other"
+    )
+  )
+#View(monthly_consumption_percentiles)
+
+# plot the average consumption by month
+colors = c(
+  "Appliance" = "grey50",
+  "Cooling" = "blue",
+  "Heating" = "red",
+  "Hot Water" = "green",
+  "Total" = "black"
+)
+
+stack_order <- c("Heating", "Appliance", "Cooling", "Hot Water")  # exclude "Total" since we're filtering that group
+
+plot_p50 <- monthly_consumption_percentiles |>
+  filter(percentile == "p50") |>
+  filter(functional_group != "Total") |>
+  mutate(functional_group = factor(functional_group, levels = stack_order)) |>
+  arrange(month, functional_group) |>
+  ggplot(aes(x = month, y = consumption_kwh, fill = functional_group)) +
+  geom_area(position = "stack", alpha = 0.8) +
+  labs(title = paste("Average", baseline_heating_option, "Consumption by Functional Group and Month"),
+       x = "Month",
+       y = "Consumption (kWh)") +
+  scale_x_continuous(breaks = 1:12, labels = month.abb) +
+  scale_y_continuous(labels = scales::comma_format()) +
+  scale_fill_manual(values = colors, breaks = stack_order)
+
+print(plot_p50)
+
+
 ```
 
 

@@ -1067,7 +1067,7 @@ get_monthly_consumption_many <- function(
 
   # get all unique target columns needed
   all_target_columns <- unique(ddl_filtered$timeseries_field_name)
-  print(all_target_columns)
+  #print(all_target_columns)
 
   # Read the dataset from the parquet directory and get base data
   data <- open_dataset(path_monthly_data)
@@ -1097,6 +1097,7 @@ get_monthly_consumption_many <- function(
 
       # Create the column name
       col_name <- paste0(fuel_val, "_", fg_val, "_consumption_kwh")
+      print(col_name)
 
       # Calculate the sum for this combination
       if (length(combo_columns) > 0) {
@@ -1246,9 +1247,6 @@ calc_monthly_bills <- function(
     supply_join_columns <- c("month", utility)
   }
   # ------------
-
-  print(delivery_join_columns)
-
   # for delivery tariffs other than natural gas, we need to add the heat_non_heat column
   # this is only to allow `select()` in the delivery joins (customer_charge, delivery_rate, sales_tax_rate)
   if (fuel_type != "natural_gas") {
@@ -1342,6 +1340,23 @@ calc_monthly_bills <- function(
       sales_tax_charge = total_pretax_bill * sales_tax_rate,
       monthly_bill = total_pretax_bill + sales_tax_charge,
       monthly_bill_undiscounted = monthly_bill / (1 - !!sym(discount_rate))
+    ) |>
+    mutate(
+      year = if_else(is.na(year), supply_year, year),
+      delivery_charge = if_else(is.na(delivery_charge), 0, delivery_charge),
+      supply_charge = if_else(is.na(supply_charge), 0, supply_charge),
+      total_pretax_bill = if_else(
+        is.na(total_pretax_bill),
+        0,
+        total_pretax_bill
+      ),
+      sales_tax_charge = if_else(is.na(sales_tax_charge), 0, sales_tax_charge),
+      monthly_bill = if_else(is.na(monthly_bill), 0, monthly_bill),
+      monthly_bill_undiscounted = if_else(
+        is.na(monthly_bill_undiscounted),
+        0,
+        monthly_bill_undiscounted
+      )
     ) |>
     select(
       bldg_id,
@@ -1821,7 +1836,8 @@ calc_annual_bills_total <- function(
   annual_bills_elec,
   annual_bills_gas,
   annual_bills_fuel_oil,
-  annual_bills_propane
+  annual_bills_propane,
+  housing_units
 ) {
   annual_bills_total <- annual_bills_elec |>
     select(bldg_id, upgrade, year, annual_bill, version, tariff_name) |>
@@ -1877,12 +1893,6 @@ calc_annual_bills_total <- function(
           bldg_id,
           upgrade,
           in.representative_income,
-          baseline_heating_type,
-          baseline_heating_efficiency,
-          building_type_group,
-          baseline_cooling_type,
-          dollar_tier,
-          smi_tier,
           occupants_group
         ),
       by = c("bldg_id", "upgrade")
@@ -1899,7 +1909,8 @@ calc_annual_bills_total <- function(
       burden_fuel_oil = annual_bill_fuel_oil / in.representative_income,
       burden_propane = annual_bill_propane / in.representative_income,
       burden_total = annual_bill_total / in.representative_income
-    )
+    ) |>
+    select(-in.representative_income, -occupants_group)
 
   return(annual_bills_total)
 }
@@ -1956,22 +1967,6 @@ calc_annual_changes_total <- function(
         annual_change_gas +
         annual_change_fuel_oil +
         annual_change_propane
-    ) |>
-    # add some metadata from housing_units
-    left_join(
-      housing_units |>
-        select(
-          bldg_id,
-          upgrade,
-          baseline_heating_type,
-          baseline_heating_efficiency,
-          building_type_group,
-          baseline_cooling_type,
-          dollar_tier,
-          smi_tier,
-          occupants_group
-        ),
-      by = c("bldg_id", "upgrade")
     )
 
   return(annual_changes_total)

@@ -15,9 +15,10 @@ format:
     page-layout: full
 ---
 
-# BEFORE RUNNING THIS NOTEBOOK, RUN THE FOLLOWING SCRIPTS:
-# 1. clean_peoples_construction_polygons.py
-# 2. match_parcels_buildings.py
+# BEFORE RUNNING THIS NOTEBOOK, RUN THE FOLLOWING :
+# 1. run just fetch-all-data
+# 2. clean_peoples_construction_polygons.py
+# 3. match_parcels_buildings.py
 
 # Imports
 
@@ -27,6 +28,10 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime
 import gc
+import os
+import tempfile
+import boto3
+from botocore.exceptions import ClientError, NoCredentialsError
 ```
 
 # Constants
@@ -48,6 +53,66 @@ utils_dir = Path('../utils')
 # Utility Functions
 
 ```{python}
+def read_geojson_with_s3_fallback(local_path, s3_bucket, s3_key):
+    """
+    Read GeoJSON file, checking local path first, then falling back to S3.
+
+    Parameters:
+    -----------
+    local_path : Path
+        Local file path to check first
+    s3_bucket : str
+        S3 bucket name
+    s3_key : str
+        S3 object key (path within bucket)
+
+    Returns:
+    --------
+    GeoDataFrame
+        GeoDataFrame loaded from local file or S3
+    """
+    local_path = Path(local_path)
+
+    # Check if local file exists
+    if local_path.exists():
+        print(f"  Reading from local file: {local_path.name}")
+        return gpd.read_file(local_path)
+
+    # Local file doesn't exist, try reading from S3
+    print(f"  Local file not found, reading from S3: s3://{s3_bucket}/{s3_key}")
+    try:
+        # Create S3 client
+        s3_client = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-west-2"))
+
+        # Download to temporary file
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".geojson", delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+            s3_client.download_fileobj(s3_bucket, s3_key, tmp_file)
+
+        # Read from temporary file
+        gdf = gpd.read_file(tmp_path)
+
+        # Clean up temporary file
+        os.unlink(tmp_path)
+
+        print(f"  ✅ Successfully loaded from S3")
+        return gdf
+
+    except NoCredentialsError:
+        print(f"  ❌ Error: AWS credentials not found. Cannot read from S3.")
+        raise
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "Unknown")
+        if error_code == "NoSuchKey":
+            print(f"  ❌ Error: File not found in S3: s3://{s3_bucket}/{s3_key}")
+        else:
+            print(f"  ❌ AWS Error ({error_code}): {e}")
+        raise
+    except Exception as e:
+        print(f"  ❌ Unexpected error reading from S3: {e}")
+        raise
+
+
 def prepare_geometries_for_utm(gdf, name="dataset"):
     """
     Prepare geometries for UTM operations: reproject to UTM, make valid, and filter invalid geometries.
@@ -270,7 +335,13 @@ if not validate_uniqueness(pg_polygons, 'OBJECTID', 'Peoples Gas polygons'):
 ```{python}
 # Load city blocks data (only keep needed columns to reduce memory usage)
 blocks_file = geo_data_dir / 'city_blocks' / 'pgp_blocks.geojson'
-city_blocks = gpd.read_file(blocks_file)
+s3_key_blocks = 'gis/pgl/pgp_blocks.geojson'
+print(f"Loading city blocks...")
+city_blocks = read_geojson_with_s3_fallback(
+    local_path=blocks_file,
+    s3_bucket='data.sb.east',
+    s3_key=s3_key_blocks
+)
 
 # Rename blockid10 to geoid10 for consistency with rest of code
 if 'blockid10' in city_blocks.columns and 'geoid10' not in city_blocks.columns:
@@ -318,8 +389,41 @@ print(f"Parcels with building units: {parcels_with_units['building_units'].notna
 street_files = sorted(geo_data_dir.glob('chicago_streets_*.geojson'))
 if street_files:
     street_file = street_files[-1]
+    local_path = street_file
+    # Extract date from filename for S3 key
+    s3_key = f'gis/pgl/{street_file.name}'
     print(f"Loading: {street_file.name}")
-    streets = gpd.read_file(street_file)
+else:
+    # No local file found, try to find most recent in S3
+    print("⚠️  No local streets file found, attempting to find most recent in S3...")
+    try:
+        s3_client = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-west-2"))
+        # List objects with prefix
+        response = s3_client.list_objects_v2(
+            Bucket="data.sb.east",
+            Prefix="gis/pgl/chicago_streets_",
+        )
+        if "Contents" in response:
+            # Sort by last modified, get most recent
+            objects = sorted(response["Contents"], key=lambda x: x["LastModified"], reverse=True)
+            s3_key = objects[0]["Key"]
+            local_path = geo_data_dir / 'chicago_streets_NOT_FOUND.geojson'  # Won't exist, triggers S3 read
+            print(f"  Found most recent in S3: {s3_key}")
+        else:
+            raise FileNotFoundError("No streets files found in S3")
+    except Exception as e:
+        print(f"❌ Error finding streets in S3: {e}")
+        print("No street data found. Run: just fetch-streets")
+        streets = None
+        s3_key = None
+        local_path = None
+
+if street_files or (s3_key is not None and local_path is not None):
+    streets = read_geojson_with_s3_fallback(
+        local_path=local_path,
+        s3_bucket='data.sb.east',
+        s3_key=s3_key
+    )
     print(f"Loaded {len(streets):,} street centerlines")
 
     # Diagnostic checks
@@ -335,9 +439,8 @@ if street_files:
         else:
             print(f"  WARNING: Missing street properties - may need to re-download")
             print(f"  Available columns: {list(streets.columns[:10])}")
-else:
-    print("No street data found. Run: just fetch-streets")
-    streets = None
+elif streets is None:
+    pass  # Already set to None above
 ```
 
 # Spatial Clipping

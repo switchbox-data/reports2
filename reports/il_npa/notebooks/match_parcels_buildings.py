@@ -31,11 +31,15 @@ This script is intended to be run independently from the main geo_data_cleaning 
 """
 
 import gc
+import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
+import boto3
 import geopandas as gpd
 import pandas as pd
+from botocore.exceptions import ClientError, NoCredentialsError
 
 # Set paths
 data_dir = Path("../data")
@@ -45,31 +49,138 @@ outputs_dir.mkdir(parents=True, exist_ok=True)
 
 timestamp = datetime.now().strftime("%Y%m%d")
 
+
+def read_geojson_with_s3_fallback(local_path: Path, s3_bucket: str, s3_key: str):
+    """
+    Read GeoJSON file, checking local path first, then falling back to S3.
+
+    Args:
+        local_path: Local file path to check first
+        s3_bucket: S3 bucket name
+        s3_key: S3 object key (path within bucket)
+
+    Returns:
+        GeoDataFrame loaded from local file or S3
+    """
+    local_path = Path(local_path)
+
+    # Check if local file exists
+    if local_path.exists():
+        print(f"  Reading from local file: {local_path.name}")
+        return gpd.read_file(local_path)
+
+    # Local file doesn't exist, try reading from S3
+    print(f"  Local file not found, reading from S3: s3://{s3_bucket}/{s3_key}")
+    try:
+        # Create S3 client
+        s3_client = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-west-2"))
+
+        # Download to temporary file
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".geojson", delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+            s3_client.download_fileobj(s3_bucket, s3_key, tmp_file)
+
+        # Read from temporary file
+        gdf = gpd.read_file(tmp_path)
+
+        # Clean up temporary file
+        os.unlink(tmp_path)
+
+        print("  ✅ Successfully loaded from S3")
+        return gdf
+
+    except NoCredentialsError:
+        print("  ❌ Error: AWS credentials not found. Cannot read from S3.")
+        raise
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "Unknown")
+        if error_code == "NoSuchKey":
+            print(f"  ❌ Error: File not found in S3: s3://{s3_bucket}/{s3_key}")
+        else:
+            print(f"  ❌ AWS Error ({error_code}): {e}")
+        raise
+    except Exception as e:
+        print(f"  ❌ Unexpected error reading from S3: {e}")
+        raise
+
+
 print("🔍 Parcel-Building Matching Script")
 print("=" * 60)
 
 # Find the most recent parcels file (full dataset)
 parcel_files = sorted(geo_data_dir.glob("cook_county_parcels_*.geojson"))
-if not parcel_files:
-    print(f"ERROR: No cook_county_parcels_*.geojson files found in {geo_data_dir}")
-    print("Please run: just fetch-parcels")
-    exit(1)
+if parcel_files:
+    parcels_file = parcel_files[-1]
+    local_path = parcels_file
+    # Extract date from filename for S3 key (e.g., cook_county_parcels_20251117.geojson)
+    s3_key = f"gis/pgl/{parcels_file.name}"
+    print(f"Loading parcels: {parcels_file.name}")
+else:
+    # No local file found, try to find most recent in S3
+    print("⚠️  No local parcels file found, attempting to find most recent in S3...")
+    try:
+        s3_client = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-west-2"))
+        # List objects with prefix
+        response = s3_client.list_objects_v2(
+            Bucket="data.sb.east",
+            Prefix="gis/pgl/cook_county_parcels_",
+        )
+        if "Contents" in response:
+            # Sort by last modified, get most recent
+            objects = sorted(response["Contents"], key=lambda x: x["LastModified"], reverse=True)
+            s3_key = objects[0]["Key"]
+            print(f"  Found most recent in S3: {s3_key}")
+        else:
+            raise FileNotFoundError("No parcels files found in S3")
+    except Exception as e:
+        print(f"❌ Error finding parcels in S3: {e}")
+        print("Please run: just fetch-parcels")
+        exit(1)
+    local_path = geo_data_dir / "cook_county_parcels_NOT_FOUND.geojson"  # Won't exist, triggers S3 read
 
-parcels_file = parcel_files[-1]
-print(f"Loading parcels: {parcels_file.name}")
-parcels = gpd.read_file(parcels_file)
+parcels = read_geojson_with_s3_fallback(
+    local_path=local_path,
+    s3_bucket="data.sb.east",
+    s3_key=s3_key,
+)
 print(f"  Loaded {len(parcels):,} parcels")
 
 # Find the most recent buildings file (full dataset)
 building_files = sorted(geo_data_dir.glob("chicago_buildings_*.geojson"))
-if not building_files:
-    print(f"ERROR: No chicago_buildings_*.geojson files found in {geo_data_dir}")
-    print("Please run: just fetch-buildings")
-    exit(1)
+if building_files:
+    buildings_file = building_files[-1]
+    local_path = buildings_file
+    # Extract date from filename for S3 key
+    s3_key = f"gis/pgl/{buildings_file.name}"
+    print(f"Loading buildings: {buildings_file.name}")
+else:
+    # No local file found, try to find most recent in S3
+    print("⚠️  No local buildings file found, attempting to find most recent in S3...")
+    try:
+        s3_client = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-west-2"))
+        # List objects with prefix
+        response = s3_client.list_objects_v2(
+            Bucket="data.sb.east",
+            Prefix="gis/pgl/chicago_buildings_",
+        )
+        if "Contents" in response:
+            # Sort by last modified, get most recent
+            objects = sorted(response["Contents"], key=lambda x: x["LastModified"], reverse=True)
+            s3_key = objects[0]["Key"]
+            print(f"  Found most recent in S3: {s3_key}")
+        else:
+            raise FileNotFoundError("No buildings files found in S3")
+    except Exception as e:
+        print(f"❌ Error finding buildings in S3: {e}")
+        print("Please run: just fetch-buildings")
+        exit(1)
+    local_path = geo_data_dir / "chicago_buildings_NOT_FOUND.geojson"  # Won't exist, triggers S3 read
 
-buildings_file = building_files[-1]
-print(f"Loading buildings: {buildings_file.name}")
-buildings = gpd.read_file(buildings_file)
+buildings = read_geojson_with_s3_fallback(
+    local_path=local_path,
+    s3_bucket="data.sb.east",
+    s3_key=s3_key,
+)
 print(f"  Loaded {len(buildings):,} buildings")
 
 # Load assessor lookup

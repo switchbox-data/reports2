@@ -35,37 +35,43 @@ utils_dir = Path('../utils')
 
 pd.set_option('display.max_columns', None)
 
-# Set aggregation level for analysis: "poly" or "block"
-ANALYSIS_LEVEL = "block"  # Options: "poly", "block"
 
-# Set display labels based on aggregation level
-unit_label = "blocks" if ANALYSIS_LEVEL == "block" else "construction polygons"
-unit_label_singular = "block" if ANALYSIS_LEVEL == "block" else "construction polygon"
 ```
 
 ```{python}
 # Load summary data based on aggregation level
-if ANALYSIS_LEVEL == "block":
-    geojson_files = sorted(outputs_dir.glob('peoplesgas_with_buildings_streets_block_*.geojson'))
-    print(f"Loading block-level data...")
-else:
-    geojson_files = sorted(outputs_dir.glob('peoplesgas_with_buildings_streets_poly_*.geojson'))
-    print(f"Loading polygon-level data...")
+
+geojson_files = sorted(outputs_dir.glob(
+    'peoplesgas_with_buildings_streets_block_*.geojson'))
+print(f"Loading block-level data...")
 
 if not geojson_files:
-    raise FileNotFoundError(f"No summary GeoJSON files found for ANALYSIS_LEVEL='{ANALYSIS_LEVEL}'. Run geo_data_cleaning.qmd first.")
+    raise FileNotFoundError(
+        f"No summary GeoJSON files found for ANALYSIS_LEVEL='block'. Run geo_data_cleaning.qmd first.")
 
 latest_geojson = geojson_files[-1]
 pg_summary = gpd.read_file(latest_geojson)
 pg_summary = pg_summary[pg_summary.geometry.notnull()].reset_index(drop=True)
 
+int_cols = [
+    'total_parcels', 'non_vacant_parcels', 'sf_parcels', 'mf_parcels',
+    'commercial_parcels', 'industrial_parcels', 'mixed_use_parcels',
+    'total_residential_units', 'mf_units'
+]
+
+for col in int_cols:
+    if col in pg_summary.columns:
+        pg_summary[col] = pg_summary[col].fillna(0)
+
 print(f"Loaded: {latest_geojson.name}")
-if ANALYSIS_LEVEL == "block":
-    print(f"  {len(pg_summary):,} block segments")
-    print(f"  Unique construction polygons: {pg_summary['OBJECTID'].nunique():,}")
-    print(f"  Unique city blocks: {pg_summary['geoid10'].nunique():,}")
-else:
-    print(f"  {len(pg_summary):,} construction polygons")
+
+print(f"  {len(pg_summary):,} block segments")
+# print(f"  Unique construction polygons: {pg_summary['OBJECTID'].nunique():,}")
+print(f"  Unique city blocks: {pg_summary['geoid10'].nunique():,}")
+
+# Define unit label for consistent use in print statements
+unit_label = "blocks"
+
 ```
 
 
@@ -100,7 +106,7 @@ cost_elec_sf = float(cost_elec_sf)
 cost_elec_mf = float(cost_elec_mf)
 cost_elec_comm = 50000  # placeholder value
 
-pg_summary["lpp_cost"] = pg_summary["street_miles"] * cost_lpp_mile
+pg_summary["prp_cost"] = pg_summary["street_miles"] * cost_lpp_mile
 
 pg_summary["elec_sf_cost"] = pg_summary["sf_parcels"] * cost_elec_sf
 pg_summary["elec_mf_cost"] = pg_summary["mf_units"] * cost_elec_mf
@@ -109,7 +115,8 @@ pg_summary["elec_comm_cost"] = pg_summary["commercial_parcels"] * cost_elec_comm
 pg_summary["elec_cost_total"] = pg_summary["elec_sf_cost"] + \
     pg_summary["elec_mf_cost"] + pg_summary["elec_comm_cost"]
 
-pg_summary["elec_cost_total_w_decomm"] = pg_summary["elec_cost_total"] + pg_summary["street_miles"] * cost_decomm_mile
+pg_summary["elec_cost_total_w_decomm"] = pg_summary["elec_cost_total"] + \
+    pg_summary["street_miles"] * cost_decomm_mile
 
 
 pg_summary["pct_residential"] = (
@@ -124,22 +131,23 @@ pg_summary["ind_flag"] = pg_summary["industrial_parcels"] > 0
 
 pg_summary["comm_flag"] = pg_summary["commercial_parcels"] > 1
 
-pg_summary["lpp_over_npa"] = pg_summary["lpp_cost"] / \
-    pg_summary["elec_cost_total"]
-
-pg_summary["lpp_over_npa_w_decomm"] = pg_summary["lpp_cost"] / \
-    pg_summary["elec_cost_total_w_decomm"]
+pg_summary["npa_over_prp"] = pg_summary["elec_cost_total"] / \
+    pg_summary["prp_cost"]
 
 
-# bin the lpp_over_npa values
-pg_summary["comp_cost_discrete"] = pg_summary["lpp_over_npa"].apply(
-    lambda x: ("PRP cheaper" if x < 1 else "equal" if 1 <= x <=
-               1.015 else "1-2 x" if 1.015 < x < 2 else "> 2")
+pg_summary["npa_over_prp_w_decomm"] = pg_summary["elec_cost_total_w_decomm"] / \
+    pg_summary["prp_cost"]
+
+
+# bin the npa_over_prp values
+pg_summary["comp_cost_discrete"] = pg_summary["npa_over_prp"].apply(
+    lambda x: ("50 %" if x < 0.5 else "50-100 %" if 0.5 <= x < 1 else "100-150 %" if 1 <=
+               x < 1.5 else "150-200 %" if 1.5 <= x < 2 else "> 200 %")
 )
 
-pg_summary["comp_cost_discrete_res_only"] = pg_summary["lpp_over_npa"].apply(
-    lambda x: ("PRP cheaper" if x < 1 else "equal" if 1 <= x <=
-               1.015 else "1-2 x" if 1.015 < x < 2 else "> 2")
+pg_summary["comp_cost_discrete_res_only"] = pg_summary["npa_over_prp"].apply(
+    lambda x: ("50 %" if x < 0.5 else "50-100 %" if 0.5 <= x < 1 else "100-150 %" if 1 <=
+               x < 1.5 else "150-200 %" if 1.5 <= x < 2 else "> 200 %")
 )
 # Overwrite comp_cost_discrete where ind_flag is True
 pg_summary.loc[pg_summary["ind_flag"], "comp_cost_discrete"] = "not eligible"
@@ -148,35 +156,36 @@ pg_summary.loc[pg_summary["comm_ind_flag"],
                "comp_cost_discrete_res_only"] = "not eligible"
 
 
-# bin the lpp_over_npa_w_decomm values
-pg_summary["comp_cost_discrete_w_decomm"] = pg_summary["lpp_over_npa_w_decomm"].apply(
-    lambda x: ("PRP cheaper" if x < 1 else "equal" if 1 <= x <=
-               1.015 else "1-2 x" if 1.015 < x < 2 else "> 2")
+# bin the npa_over_prp_w_decomm values
+pg_summary["comp_cost_discrete_w_decomm"] = pg_summary["npa_over_prp_w_decomm"].apply(
+    lambda x: ("50 %" if x < 0.5 else "50-100 %" if 0.5 <= x < 1 else "100-150 %" if 1 <=
+               x < 1.5 else "150-200 %" if 1.5 <= x < 2 else "> 200 %")
 )
 
 # Overwrite comp_cost_discrete_w_decomm where ind_flag is True
-pg_summary.loc[pg_summary["ind_flag"], "comp_cost_discrete_w_decomm"] = "not eligible"
+pg_summary.loc[pg_summary["ind_flag"],
+               "comp_cost_discrete_w_decomm"] = "not eligible"
 
 pg_summary.loc[pg_summary["comm_ind_flag"],
                "comp_cost_discrete_w_decomm"] = "not eligible"
 ```
 
-# Export the pg_summary GeoDataFrame to GeoJSON
-
 ```{python}
-output_geojson = outputs_dir / f"final_peoplesgas_with_buildings_streets_{ANALYSIS_LEVEL}_{datetime.now().strftime('%Y%m%d')}.geojson"
-pg_summary.to_file(output_geojson, driver="GeoJSON")
-print(f"✅ Exported pg_summary to {output_geojson}")
+pg_summary["comp_cost_discrete_w_decomm"]
 ```
+
+# Export the pg_summary GeoDataFrame to GeoJSON
+# (Export moved to after diagnostic calculations - see below)
 
 # Summary stats no decommissioning costs
 ```{python}
-# Calculate the percent where npa_over_lpp > 1
-num_gt_1 = (pg_summary['lpp_over_npa'] > 1).sum()
+
+# Calculate the percent where npa_over_prp > 1
+num_gt_1 = (pg_summary['npa_over_prp'] > 1).sum()
 total_units = len(pg_summary)
 percent_gt_1 = (num_gt_1 / total_units) * 100
 
-print(f"{percent_gt_1:.1f}% of {unit_label} have npa_over_lpp > 1")
+print(f"{percent_gt_1:.1f}% of blocks have npa_over_prp > 1")
 
 ```
 
@@ -191,29 +200,29 @@ print(f"{percent_comm_ind_false:.1f}% of {unit_label} have comm_ind_flag == Fals
 ```
 
 ```{python}
-# Calculate the percent where lpp_over_npa > 1 and com_ind_flag == False
-mask = (pg_summary["lpp_over_npa"] > 1) * (pg_summary["comm_ind_flag"] == False)
+# Calculate the percent where npa_over_prp > 1 and com_ind_flag == False
+mask = (pg_summary["npa_over_prp"] > 1) * (pg_summary["comm_ind_flag"] == False)
 percent_gt_1_and_comm_ind_false = (mask.sum() / len(pg_summary)) * 100
-print(f"{percent_gt_1_and_comm_ind_false:.1f}% of {unit_label} have lpp_over_npa > 1 and no commercial or industrial parcels")
+print(f"{percent_gt_1_and_comm_ind_false:.1f}% of {unit_label} have npa_over_prp > 1 and no commercial or industrial parcels")
 ```
 
 ## Industrial only
 
 ```{python}
-# Calculate the percent where lpp_over_npa > 1 and ind_flag == False
-mask_ind = (pg_summary['lpp_over_npa'] > 1) & (pg_summary['ind_flag'] == False)
+# Calculate the percent where npa_over_prp > 1 and ind_flag == False
+mask_ind = (pg_summary['npa_over_prp'] > 1) & (pg_summary['ind_flag'] == False)
 percent_gt_1_and_ind_false = (mask_ind.sum() / len(pg_summary)) * 100
-print(f"{percent_gt_1_and_ind_false:.1f}% of {unit_label} have lpp_over_npa > 1 and ind_flag == False")
+print(f"{percent_gt_1_and_ind_false:.1f}% of {unit_label} have npa_over_prp > 1 and ind_flag == False")
 ```
 
 # Summary stats with decommissioning costs
 ```{python}
-# Calculate the percent where npa_over_lpp > 1 (with _dc suffix)
-num_gt_1_dc = (pg_summary['lpp_over_npa_w_decomm'] > 1).sum()
+# Calculate the percent where npa_over_prp_w_decomm > 1 (with _dc suffix)
+num_gt_1_dc = (pg_summary['npa_over_prp_w_decomm'] > 1).sum()
 total_units_dc = len(pg_summary)
 percent_gt_1_dc = (num_gt_1_dc / total_units_dc) * 100
 
-print(f"{percent_gt_1_dc:.1f}% of {unit_label} have npa_over_lpp > 1")
+print(f"{percent_gt_1_dc:.1f}% of {unit_label} have npa_over_prp > 1")
 
 ```
 
@@ -221,10 +230,10 @@ print(f"{percent_gt_1_dc:.1f}% of {unit_label} have npa_over_lpp > 1")
 
 
 ```{python}
-# Calculate the percent where lpp_over_npa > 1 and com_ind_flag == False (with _dc suffix)
-mask_dc = (pg_summary["lpp_over_npa_w_decomm"] > 1) * (pg_summary["comm_ind_flag"] == False)
+# Calculate the percent where npa_over_prp > 1 and com_ind_flag == False (with _dc suffix)
+mask_dc = (pg_summary["npa_over_prp_w_decomm"] > 1) * (pg_summary["comm_ind_flag"] == False)
 percent_gt_1_and_comm_ind_false_dc = (mask_dc.sum() / len(pg_summary)) * 100
-print(f"{percent_gt_1_and_comm_ind_false_dc:.1f}% of {unit_label} have lpp_over_npa > 1 and no commercial or industrial parcels")
+print(f"{percent_gt_1_and_comm_ind_false_dc:.1f}% of {unit_label} have npa_over_prp > 1 and no commercial or industrial parcels")
 ```
 
 
@@ -234,26 +243,26 @@ print(f"{percent_gt_1_and_comm_ind_false_dc:.1f}% of {unit_label} have lpp_over_
 
 
 ```{python}
-# Calculate the percent where lpp_over_npa > 1 and ind_flag == False (with _dc suffix)
-mask_ind_dc = (pg_summary['lpp_over_npa_w_decomm'] > 1) & (pg_summary['ind_flag'] == False)
+# Calculate the percent where npa_over_prp > 1 and ind_flag == False (with _dc suffix)
+mask_ind_dc = (pg_summary['npa_over_prp_w_decomm'] > 1) & (pg_summary['ind_flag'] == False)
 num_gt_1_and_ind_false_dc = mask_ind_dc.sum()
 percent_gt_1_and_ind_false_dc = (num_gt_1_and_ind_false_dc / len(pg_summary)) * 100
-print(f"{percent_gt_1_and_ind_false_dc:.1f}% of {unit_label} have lpp_over_npa > 1 and ind_flag == False")
+print(f"{percent_gt_1_and_ind_false_dc:.1f}% of {unit_label} have npa_over_prp > 1 and ind_flag == False")
 ```
 
 # Print summary statistics - no decommissioning costs
 ```{python}
-print(f"{percent_gt_1:.1f}% of {unit_label} have npa_over_lpp > 1")
+print(f"{percent_gt_1:.1f}% of {unit_label} have npa_over_prp > 1")
 print(f"{percent_comm_ind_false:.1f}% of {unit_label} have comm_ind_flag == False")
-print(f"{percent_gt_1_and_comm_ind_false:.1f}% of {unit_label} have lpp_over_npa > 1 and no commercial or industrial parcels")
-print(f"{percent_gt_1_and_ind_false:.1f}% of {unit_label} have lpp_over_npa > 1 and ind_flag == False")
+print(f"{percent_gt_1_and_comm_ind_false:.1f}% of {unit_label} have npa_over_prp > 1 and no commercial or industrial parcels")
+print(f"{percent_gt_1_and_ind_false:.1f}% of {unit_label} have npa_over_prp > 1 and ind_flag == False")
 ```
 
 # Print summary statistics - with decommissioning costs
 ```{python}
-print(f"{percent_gt_1_dc:.1f}% of {unit_label} have npa_over_lpp > 1")
-print(f"{percent_gt_1_and_comm_ind_false_dc:.1f}% of {unit_label} have lpp_over_npa > 1 and no commercial or industrial parcels")
-print(f"{percent_gt_1_and_ind_false_dc:.1f}% of {unit_label} have lpp_over_npa > 1 and ind_flag == False")
+print(f"{percent_gt_1_dc:.1f}% of {unit_label} have npa_over_prp > 1")
+print(f"{percent_gt_1_and_comm_ind_false_dc:.1f}% of {unit_label} have npa_over_prp > 1 and no commercial or industrial parcels")
+print(f"{percent_gt_1_and_ind_false_dc:.1f}% of {unit_label} have npa_over_prp > 1 and ind_flag == False")
 ```
 
 ```{python}
@@ -377,7 +386,7 @@ def plot_pg_polygons_map(pg_summary, fill_col, discrete=False, cmap="viridis", l
 
                 # Create popup with all relevant info
                 popup_html = f"<b>{fill_col}:</b> {value:.2f}<br>"
-                for col in ['street_miles', 'sf_parcels', 'mf_units', 'commercial_parcels', 'industrial_parcels', 'lpp_cost', 'elec_cost_total']:
+                for col in ['street_miles', 'sf_parcels', 'mf_units', 'commercial_parcels', 'industrial_parcels', 'prp_cost', 'elec_cost_total']:
                     if col in row.index and pd.notna(row[col]):
                         popup_html += f"<b>{col}:</b> {row[col]:.2f}<br>"
 
@@ -442,16 +451,17 @@ m
 # | fig-height: 10
 
 # Create interactive map showing cost comparison (discrete/categorical)
-filtered_data = pg_summary[np.isfinite(pg_summary['lpp_over_npa'])]
+filtered_data = pg_summary[np.isfinite(pg_summary['npa_over_prp'])]
 m = plot_pg_polygons_map(
     filtered_data,
     'comp_cost_discrete',
     discrete=True,
     color_dict={
-        "PRP cheaper": "#FC9706",
-        "equal": "#68BED8",
-        "1-2 x": "#A0AF12",
-        "> 2": "#546800",
+        "50 %": "#FC9706",
+        "50-100 %": "#68BED8",
+        "100-150 %": "#A0AF12",
+        "150-200 %": "#546800",
+        "> 200 %": "#546800",
         "not eligible": "#8e8b7c"
     }
 )
@@ -467,23 +477,24 @@ m
 # | fig-height: 10
 
 # Create interactive map showing cost comparison for residential only
-filtered_data = pg_summary[np.isfinite(pg_summary['lpp_over_npa'])]
+filtered_data = pg_summary[np.isfinite(pg_summary['npa_over_prp'])]
 m = plot_pg_polygons_map(
     filtered_data,
     'comp_cost_discrete_res_only',
     discrete=True,
     color_dict={
-        "PRP cheaper": "#FC9706",
-        "equal": "#68BED8",
-        "1-2 x": "#A0AF12",
-        "> 2": "#546800",
+        "50 %": "#FC9706",
+        "50-100 %": "#68BED8",
+        "100-150 %": "#A0AF12",
+        "150-200 %": "#546800",
+        "> 200 %": "#546800",
         "not eligible": "#8e8b7c"
     }
 )
 m
 ```
 
-# Residential and Commerical (exclude industrial)
+# Residential and Commercial (exclude industrial)
 
 ```{python}
 # | label: fig-pct-residential
@@ -492,8 +503,8 @@ m
 # | fig-height: 10
 
 # Create interactive map showing percent residential (continuous)
-filtered_data = pg_summary[(pg_summary['lpp_over_npa'] > 10) & (pg_summary['ind_flag'] == False)]
-map_title = f"{unit_label.capitalize()} with lpp_over_npa > 10 and no industrial parcels"
+filtered_data = pg_summary[(pg_summary['npa_over_prp'] > 10) & (pg_summary['ind_flag'] == False)]
+map_title = f"{unit_label.capitalize()} with npa_over_prp > 10 and no industrial parcels"
 m = plot_pg_polygons_map(
     filtered_data,
     'pct_residential',
@@ -513,16 +524,17 @@ m
 # | fig-height: 10
 
 # Create interactive map showing cost comparison with decommissioning
-filtered_data = pg_summary[np.isfinite(pg_summary['lpp_over_npa_w_decomm'])]
+filtered_data = pg_summary[np.isfinite(pg_summary['npa_over_prp_w_decomm'])]
 m = plot_pg_polygons_map(
     filtered_data,
     'comp_cost_discrete_w_decomm',
     discrete=True,
     color_dict={
-        "PRP cheaper": "#FC9706",
-        "equal": "#68BED8",
-        "1-2 x": "#A0AF12",
-        "> 2": "#546800",
+        "50 %": "#FC9706",
+        "50-100 %": "#68BED8",
+        "100-150 %": "#A0AF12",
+        "150-200 %": "#546800",
+        "> 200 %": "#546800",
         "not eligible": "#8e8b7c"
     }
 )
@@ -554,7 +566,7 @@ m
 # m
 ```
 
-# Residential and Commerical (exclude industrial)
+# Residential and Commercial (exclude industrial)
 
 ```{python}
 # | label: fig-pct-residential-w-decomm
@@ -563,8 +575,8 @@ m
 # | fig-height: 10
 
 # Create interactive map showing percent residential (continuous)
-filtered_data = pg_summary[(pg_summary['lpp_over_npa'] > 10) & (pg_summary['ind_flag'] == False)]
-map_title = f"{unit_label.capitalize()} with lpp_over_npa > 10 and no industrial parcels"
+filtered_data = pg_summary[(pg_summary['npa_over_prp'] > 10) & (pg_summary['ind_flag'] == False)]
+map_title = f"{unit_label.capitalize()} with npa_over_prp > 10 and no industrial parcels"
 m = plot_pg_polygons_map(
     filtered_data,
     'pct_residential',
@@ -580,13 +592,13 @@ m
 ```{python}
 
 # Filter to only finite values
-valid_data = pg_summary[np.isfinite(pg_summary['lpp_over_npa'])]['lpp_over_npa']
+valid_data = pg_summary[np.isfinite(pg_summary['npa_over_prp'])]['npa_over_prp']
 
 plt.figure(figsize=(8, 6))
 plt.hist(valid_data, bins=30, color='skyblue', edgecolor='black')
-plt.xlabel('lpp_over_npa')
+plt.xlabel('npa_over_prp')
 plt.ylabel('Count')
-plt.title('Histogram of lpp_over_npa (finite values only)')
+plt.title('Histogram of npa_over_prp (finite values only)')
 plt.grid(True)
 plt.show()
 ```
@@ -625,46 +637,225 @@ plt.grid(True)
 plt.show()
 ```
 
-# Polygon-Level Rollup
-
-Optional aggregation of block-level data to polygon level for comparison with original analysis.
+## Diagnostic Histograms
 
 ```{python}
-if ANALYSIS_LEVEL == "block":
-    print("\n📊 Aggregating block-level data to polygon level for comparison...")
-
-    # Aggregate metrics to polygon level
-    poly_summary = pg_summary.groupby('OBJECTID').agg({
-        'street_miles': 'sum',
-        'sf_parcels': 'sum',
-        'mf_parcels': 'sum',
-        'mf_units': 'sum',
-        'commercial_parcels': 'sum',
-        'industrial_parcels': 'sum',
-        'non_vacant_parcels': 'sum',
-        'total_residential_units': 'sum',
-        'lpp_cost': 'sum',
-        'elec_cost_total': 'sum',
-        'elec_cost_total_w_decomm': 'sum'
-    }).reset_index()
-
-    # Recalculate cost ratios at polygon level
-    poly_summary["lpp_over_npa"] = poly_summary["lpp_cost"] / poly_summary["elec_cost_total"]
-    poly_summary["lpp_over_npa_w_decomm"] = poly_summary["lpp_cost"] / poly_summary["elec_cost_total_w_decomm"]
-
-    # Recalculate flags
-    poly_summary["comm_ind_total_count"] = poly_summary["commercial_parcels"] + poly_summary["industrial_parcels"]
-    poly_summary["comm_ind_flag"] = poly_summary["comm_ind_total_count"] > 0
-    poly_summary["ind_flag"] = poly_summary["industrial_parcels"] > 0
-
-    print(f"  Rolled up {len(pg_summary):,} blocks to {len(poly_summary):,} construction polygons")
-
-    # Show comparison
-    print(f"\n  Polygon-level totals (from block aggregation):")
-    print(f"    Total street miles: {poly_summary['street_miles'].sum():.2f}")
-    print(f"    Total parcels: {(poly_summary['sf_parcels'] + poly_summary['mf_parcels'] + poly_summary['commercial_parcels']).sum():,.0f}")
-    print(f"    Total residential units: {poly_summary['total_residential_units'].sum():,.0f}")
+# Calculate block perimeter and area
+# Ensure we're using a projected CRS for accurate measurements
+# Use UTM Zone 16N (EPSG:32616) which uses meters, matching the rest of the codebase
+if pg_summary.crs is None or pg_summary.crs.is_geographic:
+    pg_summary_projected = pg_summary.to_crs(epsg=32616)
 else:
-    print(f"\nSkipping rollup (already at polygon level)")
-    poly_summary = None
+    pg_summary_projected = pg_summary.to_crs(epsg=32616)
+
+# Calculate perimeter in meters, then convert to miles
+# UTM Zone 16N uses meters as the unit
+pg_summary['block_perimeter_miles'] = pg_summary_projected.geometry.length / 1609.34  # meters to miles
+
+# Calculate area in square meters, then convert to square kilometers
+# UTM Zone 16N uses meters, so area is in square meters
+pg_summary['block_area_sq_km'] = pg_summary_projected.geometry.area / 1_000_000  # sq meters to sq kilometers
+
+# Calculate ratio of street miles to block perimeter (inverted)
+pg_summary['perimeter_to_street_miles_ratio'] = pg_summary['street_miles'] / pg_summary['block_perimeter_miles']
+
+# Calculate total parcels per area (parcels per square kilometer)
+pg_summary['parcels_per_sq_km'] = pg_summary['non_vacant_parcels'] / pg_summary['block_area_sq_km']
+
+# Diagnostic: Print sample values to verify units
+print("Sample diagnostic values (first 5 rows):")
+print(pg_summary[['block_perimeter_miles', 'street_miles', 'perimeter_to_street_miles_ratio',
+                  'block_area_sq_km', 'parcels_per_sq_km']].head())
+print(f"\nBlock perimeter stats: min={pg_summary['block_perimeter_miles'].min():.4f}, "
+      f"max={pg_summary['block_perimeter_miles'].max():.4f}, "
+      f"median={pg_summary['block_perimeter_miles'].median():.4f} miles")
+print(f"Street miles stats: min={pg_summary['street_miles'].min():.6f}, "
+      f"max={pg_summary['street_miles'].max():.4f}, "
+      f"median={pg_summary['street_miles'].median():.6f} miles")
+
+# Filter out invalid values (infinite, NaN, or zero street_miles)
+valid_perimeter_ratio = pg_summary[
+    (np.isfinite(pg_summary['perimeter_to_street_miles_ratio'])) &
+    (pg_summary['street_miles'] > 0)
+]['perimeter_to_street_miles_ratio']
+
+valid_parcels_density = pg_summary[
+    (np.isfinite(pg_summary['parcels_per_sq_km'])) &
+    (pg_summary['block_area_sq_km'] > 0)
+]['parcels_per_sq_km']
+```
+
+```{python}
+# Histogram: Ratio of street miles to block perimeter - split into 3 ranges
+# Subset data into three groups
+ratio_le_1 = valid_perimeter_ratio[valid_perimeter_ratio <= 1]
+ratio_1_to_2 = valid_perimeter_ratio[(valid_perimeter_ratio > 1) & (valid_perimeter_ratio <= 2)]
+ratio_gt_2 = valid_perimeter_ratio[valid_perimeter_ratio > 2]
+
+# Plot 1: Ratio <= 1
+plt.figure(figsize=(10, 6))
+plt.hist(ratio_le_1, bins=30, color='steelblue', edgecolor='black', alpha=0.7)
+plt.xlabel('Street Miles to Block Perimeter Ratio', fontsize=12)
+plt.ylabel('Count', fontsize=12)
+plt.title('Histogram of Street Miles to Block Perimeter Ratio (Ratio ≤ 1)', fontsize=14)
+plt.grid(True, alpha=0.3)
+if len(ratio_le_1) > 0:
+    plt.axvline(ratio_le_1.median(), color='red', linestyle='--', linewidth=2, label=f'Median: {ratio_le_1.median():.2f}')
+    plt.legend()
+plt.show()
+
+print(f"Summary statistics for ratio ≤ 1:")
+print(f"  Count: {len(ratio_le_1):,}")
+if len(ratio_le_1) > 0:
+    print(f"  Mean: {ratio_le_1.mean():.2f}")
+    print(f"  Median: {ratio_le_1.median():.2f}")
+    print(f"  Std Dev: {ratio_le_1.std():.2f}")
+    print(f"  Min: {ratio_le_1.min():.2f}")
+    print(f"  Max: {ratio_le_1.max():.2f}")
+
+# Plot 2: Ratio 1-2
+plt.figure(figsize=(10, 6))
+plt.hist(ratio_1_to_2, bins=30, color='steelblue', edgecolor='black', alpha=0.7)
+plt.xlabel('Street Miles to Block Perimeter Ratio', fontsize=12)
+plt.ylabel('Count', fontsize=12)
+plt.title('Histogram of Street Miles to Block Perimeter Ratio (1 < Ratio ≤ 2)', fontsize=14)
+plt.grid(True, alpha=0.3)
+if len(ratio_1_to_2) > 0:
+    plt.axvline(ratio_1_to_2.median(), color='red', linestyle='--', linewidth=2, label=f'Median: {ratio_1_to_2.median():.2f}')
+    plt.legend()
+plt.show()
+
+print(f"\nSummary statistics for 1 < ratio ≤ 2:")
+print(f"  Count: {len(ratio_1_to_2):,}")
+if len(ratio_1_to_2) > 0:
+    print(f"  Mean: {ratio_1_to_2.mean():.2f}")
+    print(f"  Median: {ratio_1_to_2.median():.2f}")
+    print(f"  Std Dev: {ratio_1_to_2.std():.2f}")
+    print(f"  Min: {ratio_1_to_2.min():.2f}")
+    print(f"  Max: {ratio_1_to_2.max():.2f}")
+
+# Plot 3: Ratio > 2
+plt.figure(figsize=(10, 6))
+plt.hist(ratio_gt_2, bins=50, color='steelblue', edgecolor='black', alpha=0.7)
+plt.xlabel('Street Miles to Block Perimeter Ratio', fontsize=12)
+plt.ylabel('Count', fontsize=12)
+plt.title('Histogram of Street Miles to Block Perimeter Ratio (Ratio > 2)', fontsize=14)
+plt.grid(True, alpha=0.3)
+if len(ratio_gt_2) > 0:
+    plt.axvline(ratio_gt_2.median(), color='red', linestyle='--', linewidth=2, label=f'Median: {ratio_gt_2.median():.2f}')
+    plt.legend()
+plt.show()
+
+print(f"\nSummary statistics for ratio > 2:")
+print(f"  Count: {len(ratio_gt_2):,}")
+if len(ratio_gt_2) > 0:
+    print(f"  Mean: {ratio_gt_2.mean():.2f}")
+    print(f"  Median: {ratio_gt_2.median():.2f}")
+    print(f"  Std Dev: {ratio_gt_2.std():.2f}")
+    print(f"  Min: {ratio_gt_2.min():.2f}")
+    print(f"  Max: {ratio_gt_2.max():.2f}")
+
+# Overall summary
+print(f"\nOverall summary statistics for all ratios:")
+print(f"  Total Count: {len(valid_perimeter_ratio):,}")
+print(f"  Ratio ≤ 1: {len(ratio_le_1):,} ({len(ratio_le_1)/len(valid_perimeter_ratio)*100:.1f}%)")
+print(f"  1 < Ratio ≤ 2: {len(ratio_1_to_2):,} ({len(ratio_1_to_2)/len(valid_perimeter_ratio)*100:.1f}%)")
+print(f"  Ratio > 2: {len(ratio_gt_2):,} ({len(ratio_gt_2)/len(valid_perimeter_ratio)*100:.1f}%)")
+```
+
+```{python}
+# List block_poly_id where street to perimeter ratio < 0.2
+if 'block_poly_id' in pg_summary.columns:
+    low_ratio_blocks = pg_summary[
+        (np.isfinite(pg_summary['perimeter_to_street_miles_ratio'])) &
+        (pg_summary['perimeter_to_street_miles_ratio'] < 0.2) &
+        (pg_summary['block_perimeter_miles'] > 0)
+    ]
+
+    block_poly_ids = sorted(low_ratio_blocks['block_poly_id'].tolist())
+
+    print(f"Blocks with street to perimeter ratio < 0.2: {len(block_poly_ids):,}")
+    print(f"\nblock_poly_id list ({len(block_poly_ids)} blocks):")
+    print(block_poly_ids)
+
+    # Also show some details for these blocks
+    if len(low_ratio_blocks) > 0:
+        print(f"\nSample details (first 10 blocks):")
+        print(low_ratio_blocks[['block_poly_id', 'perimeter_to_street_miles_ratio',
+                                'street_miles', 'block_perimeter_miles', 'non_vacant_parcels']].head(10))
+else:
+    print("block_poly_id column not found in pg_summary. Available columns:")
+    print(pg_summary.columns.tolist())
+```
+
+```{python}
+# Histogram: Number of parcels per square kilometer
+plt.figure(figsize=(10, 6))
+plt.hist(valid_parcels_density, bins=50, color='coral', edgecolor='black', alpha=0.7)
+plt.xlabel('Parcels per Square Kilometer', fontsize=12)
+plt.ylabel('Count', fontsize=12)
+plt.title('Histogram of Parcels per Square Kilometer by Block', fontsize=14)
+plt.grid(True, alpha=0.3)
+plt.axvline(valid_parcels_density.median(), color='red', linestyle='--', linewidth=2, label=f'Median: {valid_parcels_density.median():.0f}')
+plt.legend()
+plt.show()
+
+print(f"Summary statistics for parcels per square kilometer:")
+print(f"  Count: {len(valid_parcels_density):,}")
+print(f"  Mean: {valid_parcels_density.mean():.0f}")
+print(f"  Median: {valid_parcels_density.median():.0f}")
+print(f"  Std Dev: {valid_parcels_density.std():.0f}")
+print(f"  Min: {valid_parcels_density.min():.0f}")
+print(f"  Max: {valid_parcels_density.max():.0f}")
+```
+
+```{python}
+
+
+# Histogram: npa_over_prp_w_decomm
+
+plt.figure(figsize=(10, 6))
+series = pg_summary['npa_over_prp_w_decomm'][np.isfinite(pg_summary['npa_over_prp_w_decomm'])]
+plt.hist(series, bins=50, color='coral', edgecolor='black', alpha=0.7)
+plt.xlabel('npa_over_prp_w_decomm', fontsize=12)
+plt.ylabel('Count', fontsize=12)
+plt.title('Histogram of npa_over_prp_w_decomm', fontsize=14)
+plt.grid(True, alpha=0.3)
+plt.axvline(series.median(), color='red', linestyle='--', linewidth=2, label=f'Median: {series.median():.2f}')
+plt.legend()
+plt.show()
+
+print(f"Summary statistics for npa_over_prp_w_decomm:")
+print(f"  Count: {len(series):,}")
+print(f"  Mean: {series.mean():.2f}")
+print(f"  Median: {series.median():.2f}")
+print(f"  Std Dev: {series.std():.2f}")
+print(f"  Min: {series.min():.2f}")
+print(f"  Max: {series.max():.2f}")
+```
+
+
+# Export the pg_summary GeoDataFrame to GeoJSON with diagnostic attributes
+
+```{python}
+# Ensure geometry is in WGS84 for export
+pg_summary_export = pg_summary.to_crs(epsg=4326) if pg_summary.crs != 'EPSG:4326' else pg_summary.copy()
+
+# Export final GeoJSON with all attributes including diagnostic metrics
+output_geojson = outputs_dir / \
+    f"final_peoplesgas_with_buildings_streets_block_all_{datetime.now().strftime('%Y%m%d')}.geojson"
+pg_summary_export.to_file(output_geojson, driver="GeoJSON")
+print(f"✅ Exported pg_summary to {output_geojson}")
+print(f"   Includes diagnostic attributes: block_perimeter_miles, block_area_sq_km, perimeter_to_street_miles_ratio, parcels_per_sq_km")
+print(f"   Total features: {len(pg_summary_export):,}")
+
+# # separate layers for closed and open construction polygons
+# closed_construction_polygons = pg_summary_export[pg_summary_export["status_simple"] == "closed"]
+# open_construction_polygons = pg_summary_export[pg_summary_export["status_simple"] == "planned"]
+
+# # export closed and open construction polygons to GeoJSON
+# closed_construction_polygons.to_file(
+#     outputs_dir / f"final_peoplesgas_with_buildings_streets_{ANALYSIS_LEVEL}_closed_{datetime.now().strftime('%Y%m%d')}.geojson", driver="GeoJSON")
+# open_construction_polygons.to_file(
+#     outputs_dir / f"final_peoplesgas_with_buildings_streets_{ANALYSIS_LEVEL}_open_{datetime.now().strftime('%Y%m%d')}.geojson", driver="GeoJSON")
 ```

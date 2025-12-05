@@ -40,7 +40,7 @@ path_create_housing_units <- file.path(path_to_lib, "rates_analysis", "create_sb
 
 # Data paths
 path_monthly_data <- file.path(path_to_data, "resstock", "2024_release2_tmy3", "load_curve_monthly")
-path_supply_year_metadata_dir <- file.path(path_to_data, "resstock", "2024_release2_tmy3", "metadata")
+path_metadata_dir <- file.path(path_to_data, "resstock", "2024_release2_tmy3", "metadata")
 path_fuel_oil_supply_rates <- file.path(path_to_data, "eia", "heating_oil", "ri_eia_heating_oil_prices_monthly.parquet")
 path_propane_supply_rates <- file.path(path_to_data, "eia", "propane", "ri_eia_propane_prices_monthly.parquet")
 
@@ -3205,7 +3205,8 @@ theme(
 )
 
 print(combined_plot)
-
+# save the plot to cache as an image
+ggsave(file.path(path_to_cache, "heating_bill_changes_by_afue_plot.png"), combined_plot, width = 10, height = 8)
 
 ```
 
@@ -3229,7 +3230,7 @@ annual_changes_x <- annual_changes_y |>
 
 #View(annual_changes_x)
 
-ggplot(annual_changes_x, aes(x = afue_value/100, y = median_annual_change)) +
+bill_change_vs_afue_plot <- ggplot(annual_changes_x, aes(x = afue_value/100, y = median_annual_change)) +
   #shade light green above y=0
   geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 0, ymax = Inf), fill = savings_colors["light_red"], alpha = 0.5) +
   #shade light red below y=0
@@ -3246,6 +3247,11 @@ ggplot(annual_changes_x, aes(x = afue_value/100, y = median_annual_change)) +
 
   # add a text that says "Count of Bldg IDs" in sky color
   annotate("text", x = 0.62, y = 50, label = "Count of Bldg IDs", color = sb_colors["sky"], size = 8)
+
+print(bill_change_vs_afue_plot)
+
+# save the plot to cache as an image
+ggsave(file.path(path_to_cache, "bill_change_vs_afue_plot.png"), bill_change_vs_afue_plot, width = 10, height = 8)
 ```
 
 ## Natural Gas consumption by functional group and month
@@ -3313,12 +3319,33 @@ plot_p50 <- monthly_consumption_percentiles |>
   labs(title = paste("Average", baseline_heating_option, "Consumption by Functional Group and Month"),
        x = "Month",
        y = "Consumption (kWh)") +
-  scale_x_continuous(breaks = 1:12, labels = month.abb) +
+  scale_x_continuous(breaks = 1:12, labels = month.abb, limits = c(0, 0.05)) +
   scale_y_continuous(labels = scales::comma_format()) +
   scale_fill_manual(values = colors, breaks = stack_order)
 
 print(plot_p50)
+# save the plot to cache as an image
+ggsave(file.path(path_to_cache, "natural_gas_consumption_by_functional_group_and_month_plot.png"), plot_p50, width = 10, height = 8)
 
+```
+
+```{r}
+path_metadata_upgrade2 = "data/ResStock/2024_release2_tmy3/metadata/RI_upgrade02_metadata_and_annual_results.parquet"
+metadata_upgrade2 <- read_parquet(path_metadata_upgrade2) |>
+filter(in.state == "RI")
+
+# for each row (bldg_id), get the ratio of out.electricity.heating_hp_bkup.energy_consumption to out.electricity.heating.energy_consumption
+heating_change_vs_bkup <- annual_changes_heating |>
+left_join(metadata_upgrade2 |> select(bldg_id, out.electricity.heating_hp_bkup.energy_consumption.kwh, out.electricity.heating.energy_consumption.kwh), by = c("bldg_id")) |>
+mutate(
+  bkup_ratio = !!sym("out.electricity.heating_hp_bkup.energy_consumption.kwh") / !!sym("out.electricity.heating.energy_consumption.kwh")
+)
+
+# plot a scatter diagram: x = bkup_ratio, y = annual_change_total
+p <- ggplot(heating_change_vs_bkup, aes(x = bkup_ratio, y = annual_change_total)) +
+  geom_point(alpha = 0.2) +
+  labs(x = "Backup Ratio", y = "Annual Change Total")
+print(p)
 
 ```
 

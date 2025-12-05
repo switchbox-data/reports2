@@ -3,7 +3,7 @@
 Upload People's Gas GeoJSON to public S3 bucket.
 
 Uploads the peoplesgas_projects.geojson file to:
-  s3://data.sb/gis/pgl/peoplesgas_projects.geojson
+  s3://data.sb.east/gis/pgl/peoplesgas_projects.geojson
 
 Requires AWS credentials configured in ~/.aws/credentials or environment variables.
 """
@@ -18,7 +18,7 @@ from botocore.exceptions import ClientError, NoCredentialsError
 
 def upload_to_s3(
     local_file: str | Path,
-    bucket: str = "data.sb",
+    bucket: str = "data.sb.east",
     s3_key: str = "gis/pgl/peoplesgas_projects.geojson",
 ) -> bool:
     """
@@ -135,33 +135,193 @@ def find_latest_geojson(directory: Path) -> Path | None:
     return sorted(files)[-1]
 
 
+def find_latest_parcels(geo_data_dir: Path) -> Path | None:
+    """
+    Find the most recent cook_county_parcels_YYYYMMDD.geojson file.
+
+    Args:
+        geo_data_dir: Geo data directory to search in
+
+    Returns:
+        Path to the most recent file, or None if not found
+    """
+    pattern = "cook_county_parcels_*.geojson"
+    files = list(geo_data_dir.glob(pattern))
+
+    if not files:
+        return None
+
+    # Sort by filename (YYYYMMDD format sorts chronologically)
+    return sorted(files)[-1]
+
+
+def find_latest_buildings(geo_data_dir: Path) -> Path | None:
+    """
+    Find the most recent chicago_buildings_YYYYMMDD.geojson file.
+
+    Args:
+        geo_data_dir: Geo data directory to search in
+
+    Returns:
+        Path to the most recent file, or None if not found
+    """
+    pattern = "chicago_buildings_*.geojson"
+    files = list(geo_data_dir.glob(pattern))
+
+    if not files:
+        return None
+
+    # Sort by filename (YYYYMMDD format sorts chronologically)
+    return sorted(files)[-1]
+
+
+def find_latest_streets(geo_data_dir: Path) -> Path | None:
+    """
+    Find the most recent chicago_streets_YYYYMMDD.geojson file.
+
+    Args:
+        geo_data_dir: Geo data directory to search in
+
+    Returns:
+        Path to the most recent file, or None if not found
+    """
+    pattern = "chicago_streets_*.geojson"
+    files = list(geo_data_dir.glob(pattern))
+
+    if not files:
+        return None
+
+    # Sort by filename (YYYYMMDD format sorts chronologically)
+    return sorted(files)[-1]
+
+
+def find_city_blocks(geo_data_dir: Path) -> Path | None:
+    """
+    Find the city_blocks/pgp_blocks.geojson file.
+
+    Args:
+        geo_data_dir: Geo data directory to search in
+
+    Returns:
+        Path to the file, or None if not found
+    """
+    blocks_file = geo_data_dir / "city_blocks" / "pgp_blocks.geojson"
+    if blocks_file.exists():
+        return blocks_file
+    return None
+
+
 def main():
-    """Upload the People's Gas GeoJSON file to S3."""
+    """Upload primary geospatial datasets to S3."""
     utils_dir = Path(__file__).parent
+    reports_dir = utils_dir.parent
+    data_dir = reports_dir / "data"
+    geo_data_dir = data_dir / "geo_data"
 
-    # Find the most recent dated GeoJSON file
+    all_success = True
+
+    # Upload People's Gas projects (from utils directory)
+    print("\n" + "=" * 70)
+    print("📤 Uploading People's Gas Projects")
+    print("=" * 70)
     geojson_file = find_latest_geojson(utils_dir)
+    if geojson_file:
+        print(f"📁 Found file: {geojson_file.name}")
+        filename = geojson_file.name
+        s3_key = f"gis/pgl/{filename}"
+        success = upload_to_s3(
+            local_file=geojson_file,
+            bucket="data.sb.east",
+            s3_key=s3_key,
+        )
+        if not success:
+            all_success = False
+    else:
+        print("⚠️  Warning: No People's Gas projects file found (skipping)")
 
-    if not geojson_file:
-        print("❌ Error: No GeoJSON files found matching pattern 'peoplesgas_projects_*.geojson'")
-        print(f"   Searched in: {utils_dir}")
-        print("   Run 'just fetch-data' first to download the data")
-        return 1
+    # Upload Cook County parcels
+    print("\n" + "=" * 70)
+    print("📤 Uploading Cook County Parcels")
+    print("=" * 70)
+    parcels_file = find_latest_parcels(geo_data_dir)
+    if parcels_file:
+        print(f"📁 Found file: {parcels_file.name}")
+        filename = parcels_file.name
+        s3_key = f"gis/pgl/{filename}"
+        success = upload_to_s3(
+            local_file=parcels_file,
+            bucket="data.sb.east",
+            s3_key=s3_key,
+        )
+        if not success:
+            all_success = False
+    else:
+        print("⚠️  Warning: No parcels file found (skipping)")
 
-    print(f"📁 Found file: {geojson_file.name}")
+    # Upload Chicago buildings
+    print("\n" + "=" * 70)
+    print("📤 Uploading Chicago Buildings")
+    print("=" * 70)
+    buildings_file = find_latest_buildings(geo_data_dir)
+    if buildings_file:
+        print(f"📁 Found file: {buildings_file.name}")
+        filename = buildings_file.name
+        s3_key = f"gis/pgl/{filename}"
+        success = upload_to_s3(
+            local_file=buildings_file,
+            bucket="data.sb.east",
+            s3_key=s3_key,
+        )
+        if not success:
+            all_success = False
+    else:
+        print("⚠️  Warning: No buildings file found (skipping)")
 
-    # Extract date from filename for S3 key
-    filename = geojson_file.name  # e.g., peoplesgas_projects_20241104.geojson
-    s3_key = f"gis/pgl/{filename}"
+    # Upload Chicago streets
+    print("\n" + "=" * 70)
+    print("📤 Uploading Chicago Streets")
+    print("=" * 70)
+    streets_file = find_latest_streets(geo_data_dir)
+    if streets_file:
+        print(f"📁 Found file: {streets_file.name}")
+        filename = streets_file.name
+        s3_key = f"gis/pgl/{filename}"
+        success = upload_to_s3(
+            local_file=streets_file,
+            bucket="data.sb.east",
+            s3_key=s3_key,
+        )
+        if not success:
+            all_success = False
+    else:
+        print("⚠️  Warning: No streets file found (skipping)")
 
-    # Upload to S3
-    success = upload_to_s3(
-        local_file=geojson_file,
-        bucket="data.sb",
-        s3_key=s3_key,
-    )
+    # Upload city blocks
+    print("\n" + "=" * 70)
+    print("📤 Uploading City Blocks")
+    print("=" * 70)
+    blocks_file = find_city_blocks(geo_data_dir)
+    if blocks_file:
+        print(f"📁 Found file: {blocks_file.name}")
+        s3_key = "gis/pgl/pgp_blocks.geojson"
+        success = upload_to_s3(
+            local_file=blocks_file,
+            bucket="data.sb.east",
+            s3_key=s3_key,
+        )
+        if not success:
+            all_success = False
+    else:
+        print("⚠️  Warning: No city blocks file found (skipping)")
 
-    return 0 if success else 1
+    print("\n" + "=" * 70)
+    if all_success:
+        print("✅ All uploads completed successfully!")
+    else:
+        print("⚠️  Some uploads failed. Check errors above.")
+    print("=" * 70)
+
+    return 0 if all_success else 1
 
 
 if __name__ == "__main__":

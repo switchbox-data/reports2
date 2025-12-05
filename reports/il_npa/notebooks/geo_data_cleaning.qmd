@@ -740,6 +740,7 @@ if 'building_units' in parcels_by_block.columns:
 
 ```
 
+
 ## Streets in Construction Areas
 
 ```{python}
@@ -851,6 +852,70 @@ print(f"  Non-vacant (total): {len(non_vacant):,}")
 ```
 
 
+## Exlucde blocks with 2 or less parcels
+
+```{python}
+# Identify geoid10 values where:
+# 1. Total number of parcels assigned is < 2, OR
+# 2. All parcels on the block have assessorbldgclass == "RR"
+
+print("\nIdentifying blocks to exclude...")
+
+# Count parcels per geoid10
+parcel_counts_by_block = parcels_by_block.groupby('geoid10').size()
+print(f"  Total blocks with parcels: {len(parcel_counts_by_block):,}")
+
+# Condition 1: Blocks with < 2 parcels
+blocks_with_few_parcels = parcel_counts_by_block[parcel_counts_by_block < 2].index.tolist()
+print(f"  Blocks with < 2 parcels: {len(blocks_with_few_parcels):,}")
+
+# Condition 2: Blocks where all parcels have assessorbldgclass == "RR"
+# First check if assessorbldgclass column exists
+if 'assessorbldgclass' in parcels_by_block.columns:
+    # Group by geoid10 and check if all parcels in each block have assessorbldgclass == "RR"
+    # A block qualifies if: all parcels have assessorbldgclass == "RR" AND no NaN values
+    block_rr_check = parcels_by_block.groupby('geoid10').agg({
+        'assessorbldgclass': lambda x: (x == "RR").all() and x.notna().all()
+    })
+    blocks_all_rr = block_rr_check[block_rr_check['assessorbldgclass']].index.tolist()
+    print(f"  Blocks where all parcels have assessorbldgclass == 'RR': {len(blocks_all_rr):,}")
+else:
+    print("  ⚠️  WARNING: 'assessorbldgclass' column not found in parcels_by_block")
+    print("  Available columns:", list(parcels_by_block.columns))
+    blocks_all_rr = []
+
+# Combine conditions with OR
+excluded_geoid10 = list(set(blocks_with_few_parcels + blocks_all_rr))
+print(f"\n  Total unique geoid10 to exclude: {len(excluded_geoid10):,}")
+
+# Show breakdown
+only_few_parcels = set(blocks_with_few_parcels) - set(blocks_all_rr)
+only_all_rr = set(blocks_all_rr) - set(blocks_with_few_parcels)
+both_conditions = set(blocks_with_few_parcels) & set(blocks_all_rr)
+
+print(f"    Blocks with only < 2 parcels condition: {len(only_few_parcels):,}")
+if 'assessorbldgclass' in parcels_by_block.columns:
+    print(f"    Blocks with only all-RR condition: {len(only_all_rr):,}")
+    print(f"    Blocks meeting both conditions: {len(both_conditions):,}")
+
+# Store as a list for use in subsequent analysis
+excluded_geoid10_list = excluded_geoid10
+print(f"\n✅ Created excluded_geoid10_list with {len(excluded_geoid10_list):,} geoid10 values")
+
+# Display first 20 geoid10 values as a sample
+if len(excluded_geoid10_list) > 0:
+    print(f"\nSample of excluded geoid10 values (first 20):")
+    for i, geoid10 in enumerate(sorted(excluded_geoid10_list)[:20]):
+        print(f"  {geoid10}")
+    if len(excluded_geoid10_list) > 20:
+        print(f"  ... and {len(excluded_geoid10_list) - 20} more")
+
+    # Also create a DataFrame for easier inspection
+    excluded_geoid10_df = pd.DataFrame({'geoid10': sorted(excluded_geoid10_list)})
+    print(f"\nFull list stored in 'excluded_geoid10_list' (list) and 'excluded_geoid10_df' (DataFrame)")
+else:
+    print("\nNo blocks meet the exclusion criteria")
+```
 
 ## Calculate Street Miles
 
@@ -877,6 +942,8 @@ print("\nAllocating street miles to city blocks proportionally by perimeter...")
 # Calculate perimeter for each clipped block segment
 # Note: blocks_in_construction contains CLIPPED block segments (only portions within UNBUFFERED polygons)
 # These clipped perimeters are used for all calculations, even though final export uses full block geometries
+blocks_in_construction_clipped = blocks_in_construction_clipped[~blocks_in_construction_clipped['geoid10'].isin(excluded_geoid10_list)]
+
 blocks_in_construction_clipped['block_perimeter_m'] = blocks_in_construction_clipped.geometry.length
 
 # Calculate total block perimeter for each construction polygon
@@ -1054,6 +1121,8 @@ summary = summary.merge(
 # Add full unclipped block geometries
 # Project city_blocks to UTM to match summary CRS
 city_blocks_utm = city_blocks.to_crs('EPSG:32616')
+city_blocks_utm = city_blocks_utm[~city_blocks_utm['geoid10'].isin(excluded_geoid10_list)]
+
 summary = summary.merge(
     city_blocks_utm[['geoid10', 'geometry']],
     on='geoid10',

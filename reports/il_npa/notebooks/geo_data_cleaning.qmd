@@ -523,67 +523,6 @@ gc.collect()
 
 ## Parcels in Construction Areas
 
-```{python}
-
-# print("\nFiltering parcels to only include those in construction areas...")
-
-# # Project to UTM for accurate buffering and spatial operations
-# print("  Projecting to UTM and validating geometries...")
-# parcels_utm = prepare_geometries_for_utm(parcels_with_units, "parcels")
-# pg_utm = prepare_geometries_for_utm(pg_polygons, "construction polygons")
-
-# # IMPORTANT: Buffer is ONLY used for identifying affected parcels
-# # Some construction polygons only include streets, but we want to count parcels along those streets
-# # The buffer captures parcels that would be affected by the construction
-# # NOTE: Blocks and street miles use UNBUFFERED polygons - buffer is only for parcel identification
-# print("  Buffering construction polygons (for parcel identification only)...")
-# pg_buffered = pg_utm.copy()
-# pg_buffered.geometry = pg_buffered.geometry.buffer(POLYGON_BUFFER_M)
-# pg_buffered.geometry = pg_buffered.geometry.make_valid()
-
-# # Use spatial index for accurate pre-filtering (more accurate than bounding box)
-# # This checks each parcel's bounding box against each polygon's bounding box individually
-# print("  Pre-filtering parcels using spatial index...")
-# # Create spatial index on buffered polygons
-# pg_sindex = pg_buffered.sindex
-
-# # Get candidate parcels using spatial index query
-# # This finds parcels whose bounding boxes intersect with any buffered polygon's bounding box
-# candidate_indices = []
-# for idx, parcel_geom in parcels_utm.geometry.items():
-#     # Check if parcel's bounding box intersects with any buffered polygon's bounding box
-#     possible_matches = list(pg_sindex.intersection(parcel_geom.bounds))
-#     if possible_matches:
-#         candidate_indices.append(idx)
-
-# parcels_filtered = parcels_utm.loc[candidate_indices].copy()
-# print(
-#     f"  Reduced parcels from {len(parcels_utm):,} to {len(parcels_filtered):,} using spatial index")
-
-# # Clean up full parcels dataset
-# del parcels_utm
-# gc.collect()
-
-# # Now do the spatial join with the filtered parcels
-# print("  Performing spatial join with buffered construction polygons...")
-# # Reset indexes to avoid conflicts
-# parcels_filtered = parcels_filtered.reset_index(drop=True)
-# pg_buffered = pg_buffered.reset_index(drop=True)
-# # Pre-processed file has: OBJECTID, status_simple, C_START_min, C_START_max, geometry
-# parcels_in_buffered = gpd.sjoin(
-#     parcels_filtered,
-#     pg_buffered[['OBJECTID', 'status_simple',
-#                     'C_START_min', 'C_START_max', 'geometry']],
-#     how='inner',
-#     predicate='intersects'
-# )
-# print(
-#     f"  Found {len(parcels_in_buffered):,} parcels within 8m buffered construction polygons")
-
-# # Clean up filtered parcels and original pg_utm (no longer needed)
-# del parcels_filtered, pg_buffered, pg_utm
-# gc.collect()
-```
 
 ```{python}
 print("\nFiltering parcels to only include those in construction areas...")
@@ -856,28 +795,28 @@ print(f"  Non-vacant (total): {len(non_vacant):,}")
 
 ```{python}
 # Identify geoid10 values where:
-# 1. Total number of parcels assigned is < 2, OR
+# 1. Total number of parcels assigned is <= 2, OR
 # 2. All parcels on the block have assessorbldgclass == "RR"
 
 print("\nIdentifying blocks to exclude...")
 
 # Count parcels per geoid10
-parcel_counts_by_block = parcels_by_block.groupby('geoid10').size()
+parcel_counts_by_block = parcels_by_block.groupby("geoid10").size()
 print(f"  Total blocks with parcels: {len(parcel_counts_by_block):,}")
 
 # Condition 1: Blocks with < 2 parcels
-blocks_with_few_parcels = parcel_counts_by_block[parcel_counts_by_block < 2].index.tolist()
-print(f"  Blocks with < 2 parcels: {len(blocks_with_few_parcels):,}")
+blocks_with_few_parcels = parcel_counts_by_block[parcel_counts_by_block <= 2].index.tolist()
+print(f"  Blocks with <= 2 parcels: {len(blocks_with_few_parcels):,}")
 
 # Condition 2: Blocks where all parcels have assessorbldgclass == "RR"
 # First check if assessorbldgclass column exists
-if 'assessorbldgclass' in parcels_by_block.columns:
+if "assessorbldgclass" in parcels_by_block.columns:
     # Group by geoid10 and check if all parcels in each block have assessorbldgclass == "RR"
     # A block qualifies if: all parcels have assessorbldgclass == "RR" AND no NaN values
-    block_rr_check = parcels_by_block.groupby('geoid10').agg({
-        'assessorbldgclass': lambda x: (x == "RR").all() and x.notna().all()
-    })
-    blocks_all_rr = block_rr_check[block_rr_check['assessorbldgclass']].index.tolist()
+    block_rr_check = parcels_by_block.groupby("geoid10").agg(
+        {"assessorbldgclass": lambda x: (x == "RR").all() and x.notna().all()}
+    )
+    blocks_all_rr = block_rr_check[block_rr_check["assessorbldgclass"]].index.tolist()
     print(f"  Blocks where all parcels have assessorbldgclass == 'RR': {len(blocks_all_rr):,}")
 else:
     print("  ⚠️  WARNING: 'assessorbldgclass' column not found in parcels_by_block")
@@ -894,12 +833,22 @@ only_all_rr = set(blocks_all_rr) - set(blocks_with_few_parcels)
 both_conditions = set(blocks_with_few_parcels) & set(blocks_all_rr)
 
 print(f"    Blocks with only < 2 parcels condition: {len(only_few_parcels):,}")
-if 'assessorbldgclass' in parcels_by_block.columns:
+if "assessorbldgclass" in parcels_by_block.columns:
     print(f"    Blocks with only all-RR condition: {len(only_all_rr):,}")
     print(f"    Blocks meeting both conditions: {len(both_conditions):,}")
 
-# Store as a list for use in subsequent analysis
-excluded_geoid10_list = excluded_geoid10
+# now find blocks that are included in the clipped blocks dataset but found no parcel match (so they do not appear in parcel counts by block) and add them to the exlusion list
+
+no_parcel_match_blocks = blocks_in_construction_clipped[
+    ~blocks_in_construction_clipped["geoid10"].isin(parcel_counts_by_block.index)
+]
+
+# Store as a list for use in subsequent analysis -  added specific geoids that were invalid after visual inspection
+excluded_geoid10_list = (
+    excluded_geoid10
+    + no_parcel_match_blocks["geoid10"].tolist()
+    + list(["170315001004030", "170315001004015", "170314905002003", "170316609003011", "170318350001018"])
+)
 print(f"\n✅ Created excluded_geoid10_list with {len(excluded_geoid10_list):,} geoid10 values")
 
 # Display first 20 geoid10 values as a sample
@@ -911,7 +860,7 @@ if len(excluded_geoid10_list) > 0:
         print(f"  ... and {len(excluded_geoid10_list) - 20} more")
 
     # Also create a DataFrame for easier inspection
-    excluded_geoid10_df = pd.DataFrame({'geoid10': sorted(excluded_geoid10_list)})
+    excluded_geoid10_df = pd.DataFrame({"geoid10": sorted(excluded_geoid10_list)})
     print(f"\nFull list stored in 'excluded_geoid10_list' (list) and 'excluded_geoid10_df' (DataFrame)")
 else:
     print("\nNo blocks meet the exclusion criteria")
@@ -1195,13 +1144,3 @@ else:
     print(f"  Geometry: Full unclipped block geometries")
     print(f"  Statistics: Aggregated across all construction polygons each block intersects")
 ```
-
-
-
-# Next Steps
-
-- Visualize construction polygons with summary statistics on a map (use the exported GeoJSON in QGIS or web mapping tools)
-- Analyze temporal patterns if construction timeline data is available in the Peoples Gas dataset
-- Create detailed reports for specific construction areas of interest
-- Calculate cost/impact estimates based on parcel composition and unit counts
-- Compare characteristics across different construction areas to identify patterns

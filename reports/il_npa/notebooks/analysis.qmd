@@ -33,7 +33,7 @@ if (!dir.exists(outputs_dir)) {
 
 
 # Set options
-options(dplyr.print_max = Inf)
+# options(dplyr.print_max = Inf)
 ```
 
 ```{r}
@@ -117,6 +117,8 @@ pg_summary <- pg_summary |>
 
 ```{r}
 res_only <- pg_summary |> filter(!comm_ind_flag)
+
+n_blocks_total <- nrow(pg_summary)
 ```
 
 # Report Variables
@@ -124,16 +126,19 @@ res_only <- pg_summary |> filter(!comm_ind_flag)
 ```{r}
 # how many fully residential blocks are cheaper to electrify (total number & percent)
 n_res_blocks <- sum(!pg_summary$comm_ind_flag)
+
+pct_res_blocks_total <- (n_res_blocks / n_blocks_total)
+
 n_res_blocks_cheaper <- sum(res_only$npa_over_prp <= 1, na.rm = TRUE)
-pct_res_blocks_cheaper <- (n_res_blocks_cheaper / n_res_blocks) * 100
+pct_res_blocks_cheaper <- (n_res_blocks_cheaper / n_res_blocks)
 ```
 
 ```{r}
 # how many fully residential blocks are within 1 to 1.5 times the cost of pipeline replacement
 n_res_blocks_1_to_1_5 <- sum(res_only$npa_over_prp > 1 & res_only$npa_over_prp < 1.5, na.rm = TRUE)
 n_res_blocks_0_to_1_5 <- sum(res_only$npa_over_prp < 1.5, na.rm = TRUE)
-pct_res_blocks_1_to_1_5 <- (n_res_blocks_1_to_1_5 / n_res_blocks) * 100
-pct_res_blocks_0_to_1_5 <- (n_res_blocks_0_to_1_5 / n_res_blocks) * 100
+pct_res_blocks_1_to_1_5 <- (n_res_blocks_1_to_1_5 / n_res_blocks)
+pct_res_blocks_0_to_1_5 <- (n_res_blocks_0_to_1_5 / n_res_blocks)
 ```
 
 ```{r}
@@ -321,16 +326,15 @@ ggplot(pg_summary, aes(x = street_miles)) +
 
 ```{r}
 # Calculate block perimeter and area
-pg_summary_projected <- pg_summary |>
-  st_transform(32616)
-
 pg_summary <- pg_summary |>
+  st_transform(32616) |>
   mutate(
-    block_perimeter_miles = st_length(pg_summary_projected$geometry) / 1609.34,
-    block_area_sq_km = st_area(pg_summary_projected$geometry) / 1e6,
-    perimeter_to_street_miles_ratio = street_miles / as.numeric(block_perimeter_miles),
-    parcels_per_sq_km = non_vacant_parcels / as.numeric(block_area_sq_km)
-  )
+    block_perimeter_miles = as.numeric(st_length(geometry)) / 1609.34,
+    block_area_sq_km = as.numeric(st_area(geometry)) / 1e6,
+    perimeter_to_street_miles_ratio = street_miles / block_perimeter_miles,
+    parcels_per_sq_km = non_vacant_parcels / block_area_sq_km
+  ) |>
+  st_transform(4326)  # Transform back to WGS84
 
 cat("Sample diagnostic values (first 5 rows):\n")
 pg_summary |>
@@ -373,7 +377,7 @@ if (length(ratio_le_1) > 0) {
     labs(x = 'Street Miles to Block Perimeter Ratio', y = 'Count',
          title = 'Histogram of Street Miles to Block Perimeter Ratio (Ratio ≤ 1)') +
     theme_minimal() +
-    theme(panel.grid = element_line(alpha = 0.3))
+    theme(panel.grid = element_line(color = "gray90"))
 
   cat("Summary statistics for ratio ≤ 1:\n")
   cat("  Count:", length(ratio_le_1), "\n")
@@ -392,7 +396,7 @@ if (length(ratio_1_to_2) > 0) {
     labs(x = 'Street Miles to Block Perimeter Ratio', y = 'Count',
          title = 'Histogram of Street Miles to Block Perimeter Ratio (1 < Ratio ≤ 2)') +
     theme_minimal() +
-    theme(panel.grid = element_line(alpha = 0.3))
+    theme(panel.grid = element_line(color = "gray90"))
 
   cat("\nSummary statistics for 1 < ratio ≤ 2:\n")
   cat("  Count:", length(ratio_1_to_2), "\n")
@@ -411,7 +415,7 @@ if (length(ratio_gt_2) > 0) {
     labs(x = 'Street Miles to Block Perimeter Ratio', y = 'Count',
          title = 'Histogram of Street Miles to Block Perimeter Ratio (Ratio > 2)') +
     theme_minimal() +
-    theme(panel.grid = element_line(alpha = 0.3))
+    theme(panel.grid = element_line(color = "gray90"))
 
   cat("\nSummary statistics for ratio > 2:\n")
   cat("  Count:", length(ratio_gt_2), "\n")
@@ -469,7 +473,7 @@ ggplot(data.frame(x = valid_parcels_density), aes(x = x)) +
   labs(x = 'Parcels per Square Kilometer', y = 'Count',
        title = 'Histogram of Parcels per Square Kilometer by Block') +
   theme_minimal() +
-  theme(panel.grid = element_line(alpha = 0.3))
+
 
 cat("Summary statistics for parcels per square kilometer:\n")
 cat("  Count:", length(valid_parcels_density), "\n")
@@ -480,29 +484,6 @@ cat("  Min:", round(min(valid_parcels_density)), "\n")
 cat("  Max:", round(max(valid_parcels_density)), "\n")
 ```
 
-```{r}
-# Histogram: npa_over_prp_w_decomm
-series <- pg_summary |>
-  filter(is.finite(npa_over_prp_w_decomm)) |>
-  pull(npa_over_prp_w_decomm)
-
-ggplot(data.frame(x = series), aes(x = x)) +
-  geom_histogram(bins = 50, fill = 'coral', color = 'black', alpha = 0.7) +
-  geom_vline(xintercept = median(series),
-             color = 'red', linetype = 'dashed', linewidth = 1) +
-  labs(x = 'npa_over_prp_w_decomm', y = 'Count',
-       title = 'Histogram of npa_over_prp_w_decomm') +
-  theme_minimal() +
-  theme(panel.grid = element_line(alpha = 0.3))
-
-cat("Summary statistics for npa_over_prp_w_decomm:\n")
-cat("  Count:", length(series), "\n")
-cat("  Mean:", round(mean(series), 2), "\n")
-cat("  Median:", round(median(series), 2), "\n")
-cat("  Std Dev:", round(sd(series), 2), "\n")
-cat("  Min:", round(min(series), 2), "\n")
-cat("  Max:", round(max(series), 2), "\n")
-```
 
 
 # Export the pg_summary GeoDataFrame to GeoJSON with diagnostic attributes
@@ -534,4 +515,10 @@ cat("   Total features:", nrow(pg_summary_export), "\n")
 # st_write(open_construction_polygons,
 #          file.path(outputs_dir, paste0("final_peoplesgas_with_buildings_streets_", ANALYSIS_LEVEL, "_open_", format(Sys.Date(), "%Y%m%d"), ".geojson")),
 #          delete_dsn = TRUE)
+```
+
+
+
+```{r}
+save.image(file = "/workspaces/reports2/reports/il_npa/report_variables.RData")
 ```

@@ -16,637 +16,522 @@ format:
     page-layout: full
 ---
 
-```{python}
-import geopandas as gpd
-import pandas as pd
-import numpy as np
-from pathlib import Path
-from datetime import datetime
-import polars as pl
-import folium
-import matplotlib.pyplot as plt
-from IPython.display import display, HTML
+```{r}
+#| echo: false
+library(sf)
+library(tidyverse)
+library(ggplot2)
+library(leaflet)
+library(lubridate)
+
+
 # Set paths
-data_dir = Path('../data')
-geo_data_dir = data_dir / 'geo_data'
-outputs_dir = data_dir / 'outputs'
-outputs_dir.mkdir(parents=True, exist_ok=True)  # Ensure outputs directory exists
-utils_dir = Path('../utils')
-
-pd.set_option('display.max_columns', None)
+outputs_dir <- '/workspaces/reports2/reports/il_npa/data/outputs'
+if (!dir.exists(outputs_dir)) {
+  dir.create(outputs_dir, recursive = TRUE)
+}
 
 
+# Set options
+options(dplyr.print_max = Inf)
 ```
 
-```{python}
+```{r}
 # Load summary data based on aggregation level
+geojson_files <- list.files(outputs_dir,
+                            pattern = "peoplesgas_with_buildings_streets_block_.*\\.geojson$",
+                            full.names = TRUE) |>
+  sort()
 
-geojson_files = sorted(outputs_dir.glob(
-    'peoplesgas_with_buildings_streets_block_*.geojson'))
-print(f"Loading block-level data...")
+if (length(geojson_files) == 0) {
+  stop("No summary GeoJSON files found for ANALYSIS_LEVEL='block'. Run geo_data_cleaning.qmd first.")
+}
 
-if not geojson_files:
-    raise FileNotFoundError(
-        f"No summary GeoJSON files found for ANALYSIS_LEVEL='block'. Run geo_data_cleaning.qmd first.")
+latest_geojson <- tail(geojson_files, 1)
+pg_summary <- read_sf(latest_geojson) |>
+  filter(!is.na(geometry))
 
-latest_geojson = geojson_files[-1]
-pg_summary = gpd.read_file(latest_geojson)
-pg_summary = pg_summary[pg_summary.geometry.notnull()].reset_index(drop=True)
+int_cols <- c('total_parcels', 'non_vacant_parcels', 'sf_parcels', 'mf_parcels',
+              'commercial_parcels', 'industrial_parcels', 'mixed_use_parcels',
+              'total_residential_units', 'mf_units')
 
-int_cols = [
-    'total_parcels', 'non_vacant_parcels', 'sf_parcels', 'mf_parcels',
-    'commercial_parcels', 'industrial_parcels', 'mixed_use_parcels',
-    'total_residential_units', 'mf_units'
-]
+pg_summary <- pg_summary |>
+  mutate(across(any_of(int_cols), ~ replace_na(.x, 0)))
 
-for col in int_cols:
-    if col in pg_summary.columns:
-        pg_summary[col] = pg_summary[col].fillna(0)
+cat("Loaded:", basename(latest_geojson), "\n")
+cat("  ", nrow(pg_summary), "block segments\n")
+cat("  Unique city blocks:", n_distinct(pg_summary$geoid10), "\n")
 
-print(f"Loaded: {latest_geojson.name}")
-
-print(f"  {len(pg_summary):,} block segments")
-# print(f"  Unique construction polygons: {pg_summary['OBJECTID'].nunique():,}")
-print(f"  Unique city blocks: {pg_summary['geoid10'].nunique():,}")
-
-# Define unit label for consistent use in print statements
-unit_label = "blocks"
-
+unit_label <- "blocks"
 ```
 
 
-```{python}
-# Read from the first sheet of the Google Sheet using polars
-# Use export URL format instead of edit URL
-gsheet_url = "https://docs.google.com/spreadsheets/d/1xxa47dClvp0rosZhUP1R7790CNXMLSD_0ExrPccR3p0/export?format=csv&gid=0"
+```{r}
+# Read from the first sheet of the Google Sheet
+gsheet_url <- "https://docs.google.com/spreadsheets/d/1xxa47dClvp0rosZhUP1R7790CNXMLSD_0ExrPccR3p0/export?format=csv&gid=0"
 
-prp_df = pl.read_csv(gsheet_url)
+prp_df <- read_csv(gsheet_url)
 
 prp_df
-
 ```
 
 
-```{python}
+```{r}
 # cost estimates
-cost_lpp_mile = prp_df.filter(pl.col("variable") == "cost_lpp_mile")["value"][0]
-cost_lpp_mile
-
-cost_elec_sf = prp_df.filter(pl.col("variable") == "cost_elec_sf")["value"][0]
-cost_elec_mf = prp_df.filter(pl.col("variable") == "cost_elec_mf")["value"][0]
-cost_decomm_mile = prp_df.filter(pl.col("variable") == "main_retire_cost_mile")["value"][0]
+cost_lpp_mile <- prp_df |> filter(variable == "cost_lpp_mile") |> pull(value)
+cost_elec_sf <- prp_df |> filter(variable == "cost_elec_sf") |> pull(value)
+cost_elec_mf <- prp_df |> filter(variable == "cost_elec_mf") |> pull(value)
+cost_decomm_mile <- prp_df |> filter(variable == "main_retire_cost_mile") |> pull(value)
 ```
 
-```{python}
-# | echo: false
-# Ensure all cost variables are numeric (float)
-cost_lpp_mile = float(cost_lpp_mile)
-cost_decomm_mile = float(cost_decomm_mile)
-cost_elec_sf = float(cost_elec_sf)
-cost_elec_mf = float(cost_elec_mf)
-cost_elec_comm = 50000  # placeholder value
+```{r}
+#| echo: false
+cost_elec_comm <- 50000
 
-pg_summary["prp_cost"] = pg_summary["street_miles"] * cost_lpp_mile
-
-pg_summary["elec_sf_cost"] = pg_summary["sf_parcels"] * cost_elec_sf
-pg_summary["elec_mf_cost"] = pg_summary["mf_units"] * cost_elec_mf
-pg_summary["elec_comm_cost"] = pg_summary["commercial_parcels"] * cost_elec_comm
-
-pg_summary["elec_cost_total"] = (
-    pg_summary["elec_sf_cost"]
-    + pg_summary["elec_mf_cost"]
-    + pg_summary["elec_comm_cost"]
-    + pg_summary["street_miles"] * cost_decomm_mile
-)
-
-pg_summary["pct_residential"] = (pg_summary["sf_parcels"] + pg_summary["mf_parcels"]) / pg_summary["non_vacant_parcels"]
-
-pg_summary["comm_ind_total_count"] = pg_summary["commercial_parcels"] + pg_summary["industrial_parcels"]
-
-pg_summary["comm_ind_flag"] = pg_summary["comm_ind_total_count"] > 0
-
-pg_summary["ind_flag"] = pg_summary["industrial_parcels"] > 0
-
-pg_summary["comm_flag"] = pg_summary["commercial_parcels"] > 1
-
-pg_summary["npa_over_prp"] = pg_summary["elec_cost_total"] / pg_summary["prp_cost"]
-
-
-# bin the npa_over_prp values
-pg_summary["comp_cost_discrete"] = pg_summary["npa_over_prp"].apply(
-    lambda x: (
-        "50 %"
-        if x <= 0.5
-        else "50-100 %"
-        if 0.5 < x <= 1
-        else "100-150 %"
-        if 1 < x <= 1.5
-        else "150-200 %"
-        if 1.5 < x <= 2
-        else "> 200 %"
-    )
-)
-pg_summary["comp_cost_discrete_res_only"] = pg_summary["npa_over_prp"].apply(
-    lambda x: (
-        "50 %"
-        if x <= 0.5
-        else "50-100 %"
-        if 0.5 < x <= 1
-        else "100-150 %"
-        if 1 < x <= 1.5
-        else "150-200 %"
-        if 1.5 < x <= 2
-        else "> 200 %"
-    )
-)
-# Overwrite comp_cost_discrete where ind_flag is True
-pg_summary.loc[pg_summary["ind_flag"], "comp_cost_discrete"] = "not eligible"
-
-pg_summary.loc[pg_summary["comm_ind_flag"], "comp_cost_discrete_res_only"] = "not eligible"
-
+pg_summary <- pg_summary |>
+  mutate(
+    prp_cost = street_miles * cost_lpp_mile,
+    elec_sf_cost = sf_parcels * cost_elec_sf,
+    elec_mf_cost = mf_units * cost_elec_mf,
+    elec_comm_cost = commercial_parcels * cost_elec_comm,
+    elec_cost_total = elec_sf_cost + elec_mf_cost + elec_comm_cost + street_miles * cost_decomm_mile,
+    pct_residential = (sf_parcels + mf_parcels) / non_vacant_parcels,
+    comm_ind_total_count = commercial_parcels + industrial_parcels,
+    comm_ind_flag = comm_ind_total_count > 0,
+    ind_flag = industrial_parcels > 0,
+    comm_flag = commercial_parcels > 1,
+    npa_over_prp = elec_cost_total / prp_cost,
+    npa_less_prp = elec_cost_total - prp_cost,
+    comp_cost_discrete = case_when(
+      npa_over_prp <= 0.5 ~ "50 %",
+      npa_over_prp <= 1 ~ "50-100 %",
+      npa_over_prp <= 1.5 ~ "100-150 %",
+      npa_over_prp <= 2 ~ "150-200 %",
+      TRUE ~ "> 200 %"
+    ),
+    comp_cost_discrete_res_only = comp_cost_discrete,
+    comp_cost_discrete = if_else(ind_flag, "not eligible", comp_cost_discrete),
+    comp_cost_discrete_res_only = if_else(comm_ind_flag, "not eligible", comp_cost_discrete_res_only)
+  )
 ```
 
-```{python}
-
-res_only = pg_summary.loc[pg_summary["comm_ind_flag"] == False]
-
+```{r}
+res_only <- pg_summary |> filter(!comm_ind_flag)
 ```
 
 # Report Variables
 
-```{python}
-# how many fully residential blocks  are cheaper to electrify (total number & percent)
-
-n_res_blocks = (pg_summary["comm_ind_flag"] == False).sum()
-
-n_res_blocks_cheaper = (res_only["npa_over_prp"] <= 1).sum()
-
-pct_res_blocks_cheaper = (n_res_blocks_cheaper / n_res_blocks) * 100
-
+```{r}
+# how many fully residential blocks are cheaper to electrify (total number & percent)
+n_res_blocks <- sum(!pg_summary$comm_ind_flag)
+n_res_blocks_cheaper <- sum(res_only$npa_over_prp <= 1, na.rm = TRUE)
+pct_res_blocks_cheaper <- (n_res_blocks_cheaper / n_res_blocks) * 100
 ```
 
-```{python}
-# how many fully residential blocks  are within 1 to 1.5 times the cost of pipeline replacement  (total & number percent)
-n_res_blocks_1_to_1_5 = ((res_only["npa_over_prp"] > 1) & (res_only["npa_over_prp"] < 1.5)).sum()
-
-n_res_blocks_0_to_1_5 = (res_only["npa_over_prp"] < 1.5).sum()
-
-pct_res_blocks_1_to_1_5 = (n_res_blocks_1_to_1_5 / n_res_blocks) * 100
-
-pct_res_blocks_0_to_1_5 = (n_res_blocks_0_to_1_5 / n_res_blocks) * 100
+```{r}
+# how many fully residential blocks are within 1 to 1.5 times the cost of pipeline replacement
+n_res_blocks_1_to_1_5 <- sum(res_only$npa_over_prp > 1 & res_only$npa_over_prp < 1.5, na.rm = TRUE)
+n_res_blocks_0_to_1_5 <- sum(res_only$npa_over_prp < 1.5, na.rm = TRUE)
+pct_res_blocks_1_to_1_5 <- (n_res_blocks_1_to_1_5 / n_res_blocks) * 100
+pct_res_blocks_0_to_1_5 <- (n_res_blocks_0_to_1_5 / n_res_blocks) * 100
 ```
 
-```{python}
+```{r}
 # 1.0 threshold cost difference
-prp_total_ce_1_0 = res_only[res_only["npa_over_prp"] < 1.0].prp_cost.sum()
-
-npa_total_ce_1_0 = res_only[res_only["npa_over_prp"] < 1.0].elec_cost_total.sum()
-
-total_cost_diff_1_0 = npa_total_ce_1_0 - prp_total_ce_1_0
+res_1_0 <- res_only |> filter(npa_over_prp < 1.0)
+prp_total_ce_1_0 <- sum(res_1_0$prp_cost, na.rm = TRUE)
+npa_total_ce_1_0 <- sum(res_1_0$elec_cost_total, na.rm = TRUE)
+total_cost_diff_1_0 <- npa_total_ce_1_0 - prp_total_ce_1_0
 
 # 1.5 threshold cost difference
-prp_total_ce_1_5 = res_only[res_only["npa_over_prp"] < 1.5].prp_cost.sum()
-
-npa_total_ce_1_5 = res_only[res_only["npa_over_prp"] < 1.5].elec_cost_total.sum()
-
-total_cost_diff_1_5 = npa_total_ce_1_5 - prp_total_ce_1_5
+res_1_5 <- res_only |> filter(npa_over_prp < 1.5)
+prp_total_ce_1_5 <- sum(res_1_5$prp_cost, na.rm = TRUE)
+npa_total_ce_1_5 <- sum(res_1_5$elec_cost_total, na.rm = TRUE)
+total_cost_diff_1_5 <- npa_total_ce_1_5 - prp_total_ce_1_5
 ```
 
 
-```{python}
+```{r}
 # residential unit counts
+n_res_units <- sum(res_only$total_residential_units, na.rm = TRUE)
+n_sf <- sum(res_only$sf_parcels, na.rm = TRUE)
+n_mf <- sum(res_only$total_residential_units - res_only$sf_parcels, na.rm = TRUE)
 
-n_res_units = res_only["total_residential_units"].sum()
-n_sf = res_only["sf_parcels"].sum()
-n_mf = (res_only["total_residential_units"] - res_only["sf_parcels"]).sum()
+n_res_units_1_0 <- sum(res_1_0$total_residential_units, na.rm = TRUE)
+n_sf_1_0 <- sum(res_1_0$sf_parcels, na.rm = TRUE)
+n_mf_1_0 <- sum(res_1_0$total_residential_units - res_1_0$sf_parcels, na.rm = TRUE)
 
-n_res_units_1_0 = res_only[res_only["npa_over_prp"] < 1.0]["total_residential_units"].sum()
-n_sf_1_0 = res_only[res_only["npa_over_prp"] < 1.0]["sf_parcels"].sum()
-n_mf_1_0 = (res_only[res_only["npa_over_prp"] < 1.0]["total_residential_units"] - res_only[res_only["npa_over_prp"] < 1.0]["sf_parcels"]).sum()
-
-n_res_units_1_5 = res_only[res_only["npa_over_prp"] < 1.5]["total_residential_units"].sum()
-n_sf_1_5 = res_only[res_only["npa_over_prp"] < 1.5]["sf_parcels"].sum()
-n_mf_1_5 = (res_only[res_only["npa_over_prp"] < 1.5]["total_residential_units"] - res_only[res_only["npa_over_prp"] < 1.5]["sf_parcels"]).sum()
-
+n_res_units_1_5 <- sum(res_1_5$total_residential_units, na.rm = TRUE)
+n_sf_1_5 <- sum(res_1_5$sf_parcels, na.rm = TRUE)
+n_mf_1_5 <- sum(res_1_5$total_residential_units - res_1_5$sf_parcels, na.rm = TRUE)
 ```
 
-```{python}
-def plot_pg_polygons_map(pg_summary, fill_col, discrete=False, cmap="viridis", legend=True, color_dict=None, title=None):
-    """
-    Create an interactive Folium map of Peoples Gas construction polygons, coloring by the specified column.
 
-    Args:
-        pg_summary: GeoDataFrame of construction polygons with attributes.
-        fill_col (str): Column to use for fill color.
-        discrete (bool): Whether to treat fill_col as discrete (categorical) or continuous.
-        cmap (str): Colormap to use for continuous fill (e.g., 'viridis', 'YlOrRd', 'RdYlGn').
-        legend (bool): Whether to show the legend.
-        color_dict (dict, optional): For discrete data, a dictionary mapping category values to hex colors.
-                                     If None, colors are automatically assigned.
-        title (str, optional): Title to display at the top of the map.
+```{r}
+# street miles counts
+n_miles <- sum(res_only$street_miles, na.rm = TRUE)
+n_miles_1_0 <- sum(res_1_0$street_miles, na.rm = TRUE)
+n_miles_1_5 <- sum(res_1_5$street_miles, na.rm = TRUE)
+```
 
-    Returns:
-        folium.Map: Interactive Folium map
-    """
-    import folium
-    import branca.colormap as cm
-    import matplotlib.pyplot as plt
-    import matplotlib.colors as mcolors
 
-    # Reproject to WGS84 for Folium and filter out missing geometries
-    pg_map = pg_summary[pg_summary.geometry.notna()].to_crs(epsg=4326)
 
-    # Calculate the center of the map
-    bounds = pg_map.total_bounds
-    center_lat = (bounds[1] + bounds[3]) / 2
-    center_lon = (bounds[0] + bounds[2]) / 2
 
-    # Create the base map
-    m = folium.Map(
-        location=[center_lat, center_lon],
-        zoom_start=11,
-        tiles='cartodbpositron'
-    )
 
-    # Add title if provided
-    if title is not None:
-        title_html = f'''
-        <div style="position: fixed; top: 10px; left: 50px; width: auto; height: auto;
-        background-color: white; border:2px solid grey; z-index:9999; font-size:18px;
-        font-weight: bold; padding: 10px 20px;">
-        {title}
-        </div>
-        '''
-        m.get_root().html.add_child(folium.Element(title_html))
+```{r}
+plot_pg_polygons_map <- function(pg_summary, fill_col, discrete = FALSE,
+                                  cmap = "viridis", legend = TRUE,
+                                  color_dict = NULL, title = NULL) {
+  pg_map <- pg_summary |>
+    filter(!is.na(geometry)) |>
+    st_transform(4326)
 
-    if discrete:
-        # Handle categorical data
-        categories = pg_map[fill_col].dropna().unique()
-        categories_sorted = sorted(categories)
+  bounds <- st_bbox(pg_map)
+  center_lat <- mean(c(bounds[2], bounds[4]))
+  center_lon <- mean(c(bounds[1], bounds[3]))
 
-        # Use provided color_dict or create automatic color palette
-        if color_dict is not None:
-            category_colors = color_dict
-        else:
-            # Create automatic color palette
-            color_palette = plt.get_cmap("tab10", len(categories_sorted))
-            category_colors = {cat: mcolors.rgb2hex(color_palette(i)) for i, cat in enumerate(categories_sorted)}
+  m <- leaflet(pg_map) |>
+    addProviderTiles("CartoDB.Positron") |>
+    setView(lng = center_lon, lat = center_lat, zoom = 11)
 
-        # Add each polygon with its category color
-        for idx, row in pg_map.iterrows():
-            cat_value = row[fill_col]
-            if pd.notna(cat_value) and row.geometry is not None:
-                color = category_colors.get(cat_value, '#gray')
+  if (!is.null(title)) {
+    m <- m |>
+      addControl(title, position = "topleft",
+                 className = "map-title")
+  }
 
-                # Create popup with all relevant info
-                popup_html = f"<b>{fill_col}:</b> {cat_value}<br>"
-                for col in ['street_miles', 'sf_parcels', 'mf_units', 'commercial_parcels', 'industrial_parcels']:
-                    if col in row.index:
-                        popup_html += f"<b>{col}:</b> {row[col]}<br>"
+  fill_vals <- pg_map[[fill_col]]
+  popup_cols <- c('street_miles', 'sf_parcels', 'mf_units',
+                  'commercial_parcels', 'industrial_parcels',
+                  'prp_cost', 'elec_cost_total')
 
-                folium.GeoJson(
-                    row.geometry,
-                    style_function=lambda x, color=color: {
-                        'fillColor': color,
-                        'color': 'black',
-                        'weight': 1,
-                        'fillOpacity': 0.6
-                    },
-                    popup=folium.Popup(popup_html, max_width=300)
-                ).add_to(m)
+  popup_text <- sapply(1:nrow(pg_map), function(i) {
+    val <- fill_vals[i]
+    if (is.na(val)) return("")
 
-        # Add legend for discrete values
-        if legend:
-            legend_html = f'''
-            <div style="position: fixed; top: 10px; right: 10px; width: 200px; height: auto;
-            background-color: white; border:2px solid grey; z-index:9999; font-size:14px; padding: 10px">
-            <p style="margin-bottom: 5px;"><b>{fill_col}</b></p>
-            '''
-            for cat in categories_sorted:
-                color = category_colors.get(cat, '#gray')
-                legend_html += f'<p style="margin: 3px 0;"><span style="background-color:{color}; width: 20px; height: 20px; display: inline-block; border: 1px solid black;"></span> {cat}</p>'
-            legend_html += '</div>'
-            m.get_root().html.add_child(folium.Element(legend_html))
-    else:
-        # Handle continuous data
-        vmin = pg_map[fill_col].min()
-        vmax = pg_map[fill_col].max()
+    txt <- paste0("<b>", fill_col, ":</b> ",
+                  if (discrete) val else round(val, 2), "<br>")
+    for (col in popup_cols) {
+      if (col %in% names(pg_map)) {
+        col_val <- pg_map[[col]][i]
+        if (!is.na(col_val)) {
+          txt <- paste0(txt, "<b>", col, ":</b> ",
+                       if (is.numeric(col_val)) round(col_val, 2) else col_val,
+                       "<br>")
+        }
+      }
+    }
+    txt
+  })
 
-        # Create colormap - convert matplotlib colormap to hex colors
-        mpl_cmap = plt.get_cmap(cmap)
-        colors_list = [mcolors.rgb2hex(mpl_cmap(i/255)) for i in range(256)]
+  if (discrete) {
+    categories <- sort(unique(fill_vals[!is.na(fill_vals)]))
 
-        colormap = cm.LinearColormap(
-            colors=colors_list,
-            vmin=vmin,
-            vmax=vmax,
-            caption=fill_col
-        )
+    if (!is.null(color_dict)) {
+      pal <- colorFactor(palette = color_dict, domain = categories)
+    } else {
+      pal <- colorFactor(palette = "Set3", domain = categories)
+    }
 
-        # Add each polygon with its color based on value
-        for idx, row in pg_map.iterrows():
-            value = row[fill_col]
-            if pd.notna(value) and row.geometry is not None:
-                color = colormap(value)
+    m <- m |>
+      addPolygons(
+        fillColor = ~pal(fill_vals),
+        fillOpacity = 0.6,
+        color = "black",
+        weight = 1,
+        popup = popup_text
+      )
 
-                # Create popup with all relevant info
-                popup_html = f"<b>{fill_col}:</b> {value:.2f}<br>"
-                for col in ['street_miles', 'sf_parcels', 'mf_units', 'commercial_parcels', 'industrial_parcels', 'prp_cost', 'elec_cost_total']:
-                    if col in row.index and pd.notna(row[col]):
-                        popup_html += f"<b>{col}:</b> {row[col]:.2f}<br>"
+    if (legend) {
+      m <- m |> addLegend(pal = pal, values = categories, title = fill_col)
+    }
+  } else {
+    vals <- fill_vals[!is.na(fill_vals)]
+    vmin <- min(vals)
+    vmax <- max(vals)
 
-                folium.GeoJson(
-                    row.geometry,
-                    style_function=lambda x, color=color: {
-                        'fillColor': color,
-                        'color': 'black',
-                        'weight': 1,
-                        'fillOpacity': 0.6
-                    },
-                    popup=folium.Popup(popup_html, max_width=300)
-                ).add_to(m)
+    pal <- colorNumeric(palette = cmap, domain = c(vmin, vmax))
 
-        # Add colormap legend
-        if legend:
-            colormap.add_to(m)
+    m <- m |>
+      addPolygons(
+        fillColor = ~pal(fill_vals),
+        fillOpacity = 0.6,
+        color = "black",
+        weight = 1,
+        popup = popup_text
+      )
 
-    # Add layer control
-    folium.LayerControl().add_to(m)
+    if (legend) {
+      m <- m |> addLegend(pal = pal, values = vals, title = fill_col)
+    }
+  }
 
-    return m
+  m
+}
 ```
 
 
 
 
 # Histograms
-```{python}
+```{r}
+valid_data <- pg_summary |>
+  filter(is.finite(npa_over_prp)) |>
+  pull(npa_over_prp)
 
-# Filter to only finite values
-valid_data = pg_summary[np.isfinite(pg_summary['npa_over_prp'])]['npa_over_prp']
-
-plt.figure(figsize=(8, 6))
-plt.hist(valid_data, bins=30, color='skyblue', edgecolor='black')
-plt.xlabel('npa_over_prp')
-plt.ylabel('Count')
-plt.title('Histogram of npa_over_prp (finite values only)')
-plt.grid(True)
-plt.show()
+ggplot(data.frame(x = res_only$npa_over_prp), aes(x = x)) +
+  geom_histogram(bins = 30, fill = 'skyblue', color = 'black') +
+  labs(x = 'npa_over_prp', y = 'Count',
+       title = 'Histogram of npa_over_prp (finite values only)') +
+  theme_minimal() +
+  theme(panel.grid = element_line())
 ```
 
-```{python}
-
-plt.figure(figsize=(8, 6))
-plt.hist(pg_summary['comm_ind_total_count'], bins=30, color='orange', edgecolor='black')
-plt.xlabel('comm_ind_total_count')
-plt.ylabel('Count')
-plt.title('Histogram of comm_ind_total_count')
-plt.grid(True)
-plt.show()
+```{r}
+ggplot(pg_summary, aes(x = comm_ind_total_count)) +
+  geom_histogram(bins = 30, fill = 'orange', color = 'black') +
+  labs(x = 'comm_ind_total_count', y = 'Count',
+       title = 'Histogram of comm_ind_total_count') +
+  theme_minimal() +
+  theme(panel.grid = element_line())
 ```
 
 
-```{python}
-plt.figure(figsize=(8, 6))
-plt.hist(pg_summary['pct_residential'], bins=100, color='green', edgecolor='black')
-plt.xlabel('pct_residential')
-plt.ylabel('Count')
-plt.title('Histogram of pct_residential')
-plt.grid(True)
-plt.show()
+```{r}
+ggplot(pg_summary, aes(x = pct_residential)) +
+  geom_histogram(bins = 100, fill = 'green', color = 'black') +
+  labs(x = 'pct_residential', y = 'Count',
+       title = 'Histogram of pct_residential') +
+  theme_minimal() +
+  theme(panel.grid = element_line())
 ```
 
 
 
-```{python}
-plt.figure(figsize=(8, 6))
-plt.hist(pg_summary['street_miles'], bins=100, color='blue', edgecolor='black')
-plt.xlabel('street_miles')
-plt.ylabel('Count')
-plt.title('Histogram of street_miles')
-plt.grid(True)
-plt.show()
+```{r}
+ggplot(pg_summary, aes(x = street_miles)) +
+  geom_histogram(bins = 100, fill = 'blue', color = 'black') +
+  labs(x = 'street_miles', y = 'Count',
+       title = 'Histogram of street_miles') +
+  theme_minimal() +
+  theme(panel.grid = element_line())
 ```
 
 ## Diagnostic Histograms
 
-```{python}
+```{r}
 # Calculate block perimeter and area
-# Ensure we're using a projected CRS for accurate measurements
-# Use UTM Zone 16N (EPSG:32616) which uses meters, matching the rest of the codebase
-if pg_summary.crs is None or pg_summary.crs.is_geographic:
-    pg_summary_projected = pg_summary.to_crs(epsg=32616)
-else:
-    pg_summary_projected = pg_summary.to_crs(epsg=32616)
+pg_summary_projected <- pg_summary |>
+  st_transform(32616)
 
-# Calculate perimeter in meters, then convert to miles
-# UTM Zone 16N uses meters as the unit
-pg_summary['block_perimeter_miles'] = pg_summary_projected.geometry.length / 1609.34  # meters to miles
+pg_summary <- pg_summary |>
+  mutate(
+    block_perimeter_miles = st_length(pg_summary_projected$geometry) / 1609.34,
+    block_area_sq_km = st_area(pg_summary_projected$geometry) / 1e6,
+    perimeter_to_street_miles_ratio = street_miles / as.numeric(block_perimeter_miles),
+    parcels_per_sq_km = non_vacant_parcels / as.numeric(block_area_sq_km)
+  )
 
-# Calculate area in square meters, then convert to square kilometers
-# UTM Zone 16N uses meters, so area is in square meters
-pg_summary['block_area_sq_km'] = pg_summary_projected.geometry.area / 1_000_000  # sq meters to sq kilometers
+cat("Sample diagnostic values (first 5 rows):\n")
+pg_summary |>
+  select(block_perimeter_miles, street_miles, perimeter_to_street_miles_ratio,
+         block_area_sq_km, parcels_per_sq_km) |>
+  head() |>
+  print()
 
-# Calculate ratio of street miles to block perimeter (inverted)
-pg_summary['perimeter_to_street_miles_ratio'] = pg_summary['street_miles'] / pg_summary['block_perimeter_miles']
+cat("\nBlock perimeter stats:",
+    sprintf("min=%.4f, max=%.4f, median=%.4f miles\n",
+            min(pg_summary$block_perimeter_miles, na.rm = TRUE),
+            max(pg_summary$block_perimeter_miles, na.rm = TRUE),
+            median(pg_summary$block_perimeter_miles, na.rm = TRUE)))
+cat("Street miles stats:",
+    sprintf("min=%.6f, max=%.4f, median=%.6f miles\n",
+            min(pg_summary$street_miles, na.rm = TRUE),
+            max(pg_summary$street_miles, na.rm = TRUE),
+            median(pg_summary$street_miles, na.rm = TRUE)))
 
-# Calculate total parcels per area (parcels per square kilometer)
-pg_summary['parcels_per_sq_km'] = pg_summary['non_vacant_parcels'] / pg_summary['block_area_sq_km']
+valid_perimeter_ratio <- pg_summary |>
+  filter(is.finite(perimeter_to_street_miles_ratio), street_miles > 0) |>
+  pull(perimeter_to_street_miles_ratio)
 
-# Diagnostic: Print sample values to verify units
-print("Sample diagnostic values (first 5 rows):")
-print(pg_summary[['block_perimeter_miles', 'street_miles', 'perimeter_to_street_miles_ratio',
-                  'block_area_sq_km', 'parcels_per_sq_km']].head())
-print(f"\nBlock perimeter stats: min={pg_summary['block_perimeter_miles'].min():.4f}, "
-      f"max={pg_summary['block_perimeter_miles'].max():.4f}, "
-      f"median={pg_summary['block_perimeter_miles'].median():.4f} miles")
-print(f"Street miles stats: min={pg_summary['street_miles'].min():.6f}, "
-      f"max={pg_summary['street_miles'].max():.4f}, "
-      f"median={pg_summary['street_miles'].median():.6f} miles")
-
-# Filter out invalid values (infinite, NaN, or zero street_miles)
-valid_perimeter_ratio = pg_summary[
-    (np.isfinite(pg_summary['perimeter_to_street_miles_ratio'])) &
-    (pg_summary['street_miles'] > 0)
-]['perimeter_to_street_miles_ratio']
-
-valid_parcels_density = pg_summary[
-    (np.isfinite(pg_summary['parcels_per_sq_km'])) &
-    (pg_summary['block_area_sq_km'] > 0)
-]['parcels_per_sq_km']
+valid_parcels_density <- pg_summary |>
+  filter(is.finite(parcels_per_sq_km), block_area_sq_km > 0) |>
+  pull(parcels_per_sq_km)
 ```
 
-```{python}
+```{r}
 # Histogram: Ratio of street miles to block perimeter - split into 3 ranges
-# Subset data into three groups
-ratio_le_1 = valid_perimeter_ratio[valid_perimeter_ratio <= 1]
-ratio_1_to_2 = valid_perimeter_ratio[(valid_perimeter_ratio > 1) & (valid_perimeter_ratio <= 2)]
-ratio_gt_2 = valid_perimeter_ratio[valid_perimeter_ratio > 2]
+ratio_le_1 <- valid_perimeter_ratio[valid_perimeter_ratio <= 1]
+ratio_1_to_2 <- valid_perimeter_ratio[valid_perimeter_ratio > 1 & valid_perimeter_ratio <= 2]
+ratio_gt_2 <- valid_perimeter_ratio[valid_perimeter_ratio > 2]
 
 # Plot 1: Ratio <= 1
-plt.figure(figsize=(10, 6))
-plt.hist(ratio_le_1, bins=30, color='steelblue', edgecolor='black', alpha=0.7)
-plt.xlabel('Street Miles to Block Perimeter Ratio', fontsize=12)
-plt.ylabel('Count', fontsize=12)
-plt.title('Histogram of Street Miles to Block Perimeter Ratio (Ratio ≤ 1)', fontsize=14)
-plt.grid(True, alpha=0.3)
-if len(ratio_le_1) > 0:
-    plt.axvline(ratio_le_1.median(), color='red', linestyle='--', linewidth=2, label=f'Median: {ratio_le_1.median():.2f}')
-    plt.legend()
-plt.show()
+if (length(ratio_le_1) > 0) {
+  ggplot(data.frame(x = ratio_le_1), aes(x = x)) +
+    geom_histogram(bins = 30, fill = 'steelblue', color = 'black', alpha = 0.7) +
+    geom_vline(xintercept = median(ratio_le_1), color = 'red', linetype = 'dashed', linewidth = 1) +
+    labs(x = 'Street Miles to Block Perimeter Ratio', y = 'Count',
+         title = 'Histogram of Street Miles to Block Perimeter Ratio (Ratio ≤ 1)') +
+    theme_minimal() +
+    theme(panel.grid = element_line(alpha = 0.3))
 
-print(f"Summary statistics for ratio ≤ 1:")
-print(f"  Count: {len(ratio_le_1):,}")
-if len(ratio_le_1) > 0:
-    print(f"  Mean: {ratio_le_1.mean():.2f}")
-    print(f"  Median: {ratio_le_1.median():.2f}")
-    print(f"  Std Dev: {ratio_le_1.std():.2f}")
-    print(f"  Min: {ratio_le_1.min():.2f}")
-    print(f"  Max: {ratio_le_1.max():.2f}")
+  cat("Summary statistics for ratio ≤ 1:\n")
+  cat("  Count:", length(ratio_le_1), "\n")
+  cat("  Mean:", round(mean(ratio_le_1), 2), "\n")
+  cat("  Median:", round(median(ratio_le_1), 2), "\n")
+  cat("  Std Dev:", round(sd(ratio_le_1), 2), "\n")
+  cat("  Min:", round(min(ratio_le_1), 2), "\n")
+  cat("  Max:", round(max(ratio_le_1), 2), "\n")
+}
 
 # Plot 2: Ratio 1-2
-plt.figure(figsize=(10, 6))
-plt.hist(ratio_1_to_2, bins=30, color='steelblue', edgecolor='black', alpha=0.7)
-plt.xlabel('Street Miles to Block Perimeter Ratio', fontsize=12)
-plt.ylabel('Count', fontsize=12)
-plt.title('Histogram of Street Miles to Block Perimeter Ratio (1 < Ratio ≤ 2)', fontsize=14)
-plt.grid(True, alpha=0.3)
-if len(ratio_1_to_2) > 0:
-    plt.axvline(ratio_1_to_2.median(), color='red', linestyle='--', linewidth=2, label=f'Median: {ratio_1_to_2.median():.2f}')
-    plt.legend()
-plt.show()
+if (length(ratio_1_to_2) > 0) {
+  ggplot(data.frame(x = ratio_1_to_2), aes(x = x)) +
+    geom_histogram(bins = 30, fill = 'steelblue', color = 'black', alpha = 0.7) +
+    geom_vline(xintercept = median(ratio_1_to_2), color = 'red', linetype = 'dashed', linewidth = 1) +
+    labs(x = 'Street Miles to Block Perimeter Ratio', y = 'Count',
+         title = 'Histogram of Street Miles to Block Perimeter Ratio (1 < Ratio ≤ 2)') +
+    theme_minimal() +
+    theme(panel.grid = element_line(alpha = 0.3))
 
-print(f"\nSummary statistics for 1 < ratio ≤ 2:")
-print(f"  Count: {len(ratio_1_to_2):,}")
-if len(ratio_1_to_2) > 0:
-    print(f"  Mean: {ratio_1_to_2.mean():.2f}")
-    print(f"  Median: {ratio_1_to_2.median():.2f}")
-    print(f"  Std Dev: {ratio_1_to_2.std():.2f}")
-    print(f"  Min: {ratio_1_to_2.min():.2f}")
-    print(f"  Max: {ratio_1_to_2.max():.2f}")
+  cat("\nSummary statistics for 1 < ratio ≤ 2:\n")
+  cat("  Count:", length(ratio_1_to_2), "\n")
+  cat("  Mean:", round(mean(ratio_1_to_2), 2), "\n")
+  cat("  Median:", round(median(ratio_1_to_2), 2), "\n")
+  cat("  Std Dev:", round(sd(ratio_1_to_2), 2), "\n")
+  cat("  Min:", round(min(ratio_1_to_2), 2), "\n")
+  cat("  Max:", round(max(ratio_1_to_2), 2), "\n")
+}
 
 # Plot 3: Ratio > 2
-plt.figure(figsize=(10, 6))
-plt.hist(ratio_gt_2, bins=50, color='steelblue', edgecolor='black', alpha=0.7)
-plt.xlabel('Street Miles to Block Perimeter Ratio', fontsize=12)
-plt.ylabel('Count', fontsize=12)
-plt.title('Histogram of Street Miles to Block Perimeter Ratio (Ratio > 2)', fontsize=14)
-plt.grid(True, alpha=0.3)
-if len(ratio_gt_2) > 0:
-    plt.axvline(ratio_gt_2.median(), color='red', linestyle='--', linewidth=2, label=f'Median: {ratio_gt_2.median():.2f}')
-    plt.legend()
-plt.show()
+if (length(ratio_gt_2) > 0) {
+  ggplot(data.frame(x = ratio_gt_2), aes(x = x)) +
+    geom_histogram(bins = 50, fill = 'steelblue', color = 'black', alpha = 0.7) +
+    geom_vline(xintercept = median(ratio_gt_2), color = 'red', linetype = 'dashed', linewidth = 1) +
+    labs(x = 'Street Miles to Block Perimeter Ratio', y = 'Count',
+         title = 'Histogram of Street Miles to Block Perimeter Ratio (Ratio > 2)') +
+    theme_minimal() +
+    theme(panel.grid = element_line(alpha = 0.3))
 
-print(f"\nSummary statistics for ratio > 2:")
-print(f"  Count: {len(ratio_gt_2):,}")
-if len(ratio_gt_2) > 0:
-    print(f"  Mean: {ratio_gt_2.mean():.2f}")
-    print(f"  Median: {ratio_gt_2.median():.2f}")
-    print(f"  Std Dev: {ratio_gt_2.std():.2f}")
-    print(f"  Min: {ratio_gt_2.min():.2f}")
-    print(f"  Max: {ratio_gt_2.max():.2f}")
+  cat("\nSummary statistics for ratio > 2:\n")
+  cat("  Count:", length(ratio_gt_2), "\n")
+  cat("  Mean:", round(mean(ratio_gt_2), 2), "\n")
+  cat("  Median:", round(median(ratio_gt_2), 2), "\n")
+  cat("  Std Dev:", round(sd(ratio_gt_2), 2), "\n")
+  cat("  Min:", round(min(ratio_gt_2), 2), "\n")
+  cat("  Max:", round(max(ratio_gt_2), 2), "\n")
+}
 
-# Overall summary
-print(f"\nOverall summary statistics for all ratios:")
-print(f"  Total Count: {len(valid_perimeter_ratio):,}")
-print(f"  Ratio ≤ 1: {len(ratio_le_1):,} ({len(ratio_le_1)/len(valid_perimeter_ratio)*100:.1f}%)")
-print(f"  1 < Ratio ≤ 2: {len(ratio_1_to_2):,} ({len(ratio_1_to_2)/len(valid_perimeter_ratio)*100:.1f}%)")
-print(f"  Ratio > 2: {len(ratio_gt_2):,} ({len(ratio_gt_2)/len(valid_perimeter_ratio)*100:.1f}%)")
+cat("\nOverall summary statistics for all ratios:\n")
+cat("  Total Count:", length(valid_perimeter_ratio), "\n")
+cat("  Ratio ≤ 1:", length(ratio_le_1),
+    sprintf("(%.1f%%)\n", length(ratio_le_1)/length(valid_perimeter_ratio)*100))
+cat("  1 < Ratio ≤ 2:", length(ratio_1_to_2),
+    sprintf("(%.1f%%)\n", length(ratio_1_to_2)/length(valid_perimeter_ratio)*100))
+cat("  Ratio > 2:", length(ratio_gt_2),
+    sprintf("(%.1f%%)\n", length(ratio_gt_2)/length(valid_perimeter_ratio)*100))
 ```
 
-```{python}
+```{r}
 # List block_poly_id where street to perimeter ratio < 0.2
-if 'block_poly_id' in pg_summary.columns:
-    low_ratio_blocks = pg_summary[
-        (np.isfinite(pg_summary['perimeter_to_street_miles_ratio'])) &
-        (pg_summary['perimeter_to_street_miles_ratio'] < 0.2) &
-        (pg_summary['block_perimeter_miles'] > 0)
-    ]
+if ('block_poly_id' %in% names(pg_summary)) {
+  low_ratio_blocks <- pg_summary |>
+    filter(is.finite(perimeter_to_street_miles_ratio),
+           perimeter_to_street_miles_ratio < 0.2,
+           block_perimeter_miles > 0)
 
-    block_poly_ids = sorted(low_ratio_blocks['block_poly_id'].tolist())
+  block_poly_ids <- sort(low_ratio_blocks$block_poly_id)
 
-    print(f"Blocks with street to perimeter ratio < 0.2: {len(block_poly_ids):,}")
-    print(f"\nblock_poly_id list ({len(block_poly_ids)} blocks):")
-    print(block_poly_ids)
+  cat("Blocks with street to perimeter ratio < 0.2:", length(block_poly_ids), "\n")
+  cat("\nblock_poly_id list (", length(block_poly_ids), " blocks):\n", sep = "")
+  print(block_poly_ids)
 
-    # Also show some details for these blocks
-    if len(low_ratio_blocks) > 0:
-        print(f"\nSample details (first 10 blocks):")
-        print(low_ratio_blocks[['block_poly_id', 'perimeter_to_street_miles_ratio',
-                                'street_miles', 'block_perimeter_miles', 'non_vacant_parcels']].head(10))
-else:
-    print("block_poly_id column not found in pg_summary. Available columns:")
-    print(pg_summary.columns.tolist())
+  if (nrow(low_ratio_blocks) > 0) {
+    cat("\nSample details (first 10 blocks):\n")
+    low_ratio_blocks |>
+      select(block_poly_id, perimeter_to_street_miles_ratio,
+             street_miles, block_perimeter_miles, non_vacant_parcels) |>
+      head(10) |>
+      print()
+  }
+} else {
+  cat("block_poly_id column not found in pg_summary. Available columns:\n")
+  print(names(pg_summary))
+}
 ```
 
-```{python}
+```{r}
 # Histogram: Number of parcels per square kilometer
-plt.figure(figsize=(10, 6))
-plt.hist(valid_parcels_density, bins=50, color='coral', edgecolor='black', alpha=0.7)
-plt.xlabel('Parcels per Square Kilometer', fontsize=12)
-plt.ylabel('Count', fontsize=12)
-plt.title('Histogram of Parcels per Square Kilometer by Block', fontsize=14)
-plt.grid(True, alpha=0.3)
-plt.axvline(valid_parcels_density.median(), color='red', linestyle='--', linewidth=2, label=f'Median: {valid_parcels_density.median():.0f}')
-plt.legend()
-plt.show()
+ggplot(data.frame(x = valid_parcels_density), aes(x = x)) +
+  geom_histogram(bins = 50, fill = 'coral', color = 'black', alpha = 0.7) +
+  geom_vline(xintercept = median(valid_parcels_density),
+             color = 'red', linetype = 'dashed', linewidth = 1) +
+  labs(x = 'Parcels per Square Kilometer', y = 'Count',
+       title = 'Histogram of Parcels per Square Kilometer by Block') +
+  theme_minimal() +
+  theme(panel.grid = element_line(alpha = 0.3))
 
-print(f"Summary statistics for parcels per square kilometer:")
-print(f"  Count: {len(valid_parcels_density):,}")
-print(f"  Mean: {valid_parcels_density.mean():.0f}")
-print(f"  Median: {valid_parcels_density.median():.0f}")
-print(f"  Std Dev: {valid_parcels_density.std():.0f}")
-print(f"  Min: {valid_parcels_density.min():.0f}")
-print(f"  Max: {valid_parcels_density.max():.0f}")
+cat("Summary statistics for parcels per square kilometer:\n")
+cat("  Count:", length(valid_parcels_density), "\n")
+cat("  Mean:", round(mean(valid_parcels_density)), "\n")
+cat("  Median:", round(median(valid_parcels_density)), "\n")
+cat("  Std Dev:", round(sd(valid_parcels_density)), "\n")
+cat("  Min:", round(min(valid_parcels_density)), "\n")
+cat("  Max:", round(max(valid_parcels_density)), "\n")
 ```
 
-```{python}
-
-
+```{r}
 # Histogram: npa_over_prp_w_decomm
+series <- pg_summary |>
+  filter(is.finite(npa_over_prp_w_decomm)) |>
+  pull(npa_over_prp_w_decomm)
 
-plt.figure(figsize=(10, 6))
-series = pg_summary['npa_over_prp_w_decomm'][np.isfinite(pg_summary['npa_over_prp_w_decomm'])]
-plt.hist(series, bins=50, color='coral', edgecolor='black', alpha=0.7)
-plt.xlabel('npa_over_prp_w_decomm', fontsize=12)
-plt.ylabel('Count', fontsize=12)
-plt.title('Histogram of npa_over_prp_w_decomm', fontsize=14)
-plt.grid(True, alpha=0.3)
-plt.axvline(series.median(), color='red', linestyle='--', linewidth=2, label=f'Median: {series.median():.2f}')
-plt.legend()
-plt.show()
+ggplot(data.frame(x = series), aes(x = x)) +
+  geom_histogram(bins = 50, fill = 'coral', color = 'black', alpha = 0.7) +
+  geom_vline(xintercept = median(series),
+             color = 'red', linetype = 'dashed', linewidth = 1) +
+  labs(x = 'npa_over_prp_w_decomm', y = 'Count',
+       title = 'Histogram of npa_over_prp_w_decomm') +
+  theme_minimal() +
+  theme(panel.grid = element_line(alpha = 0.3))
 
-print(f"Summary statistics for npa_over_prp_w_decomm:")
-print(f"  Count: {len(series):,}")
-print(f"  Mean: {series.mean():.2f}")
-print(f"  Median: {series.median():.2f}")
-print(f"  Std Dev: {series.std():.2f}")
-print(f"  Min: {series.min():.2f}")
-print(f"  Max: {series.max():.2f}")
+cat("Summary statistics for npa_over_prp_w_decomm:\n")
+cat("  Count:", length(series), "\n")
+cat("  Mean:", round(mean(series), 2), "\n")
+cat("  Median:", round(median(series), 2), "\n")
+cat("  Std Dev:", round(sd(series), 2), "\n")
+cat("  Min:", round(min(series), 2), "\n")
+cat("  Max:", round(max(series), 2), "\n")
 ```
 
 
 # Export the pg_summary GeoDataFrame to GeoJSON with diagnostic attributes
 
-```{python}
+```{r}
 # Ensure geometry is in WGS84 for export
-pg_summary_export = pg_summary.to_crs(epsg=4326) if pg_summary.crs != 'EPSG:4326' else pg_summary.copy()
+pg_summary_export <- pg_summary |>
+  st_transform(4326)
 
 # Export final GeoJSON with all attributes including diagnostic metrics
-output_geojson = outputs_dir / \
-    f"final_peoplesgas_with_buildings_streets_block_all_{datetime.now().strftime('%Y%m%d')}.geojson"
-pg_summary_export.to_file(output_geojson, driver="GeoJSON")
-print(f"✅ Exported pg_summary to {output_geojson}")
-print(f"   Includes diagnostic attributes: block_perimeter_miles, block_area_sq_km, perimeter_to_street_miles_ratio, parcels_per_sq_km")
-print(f"   Total features: {len(pg_summary_export):,}")
+output_geojson <- file.path(outputs_dir,
+    paste0("final_peoplesgas_with_buildings_streets_block_all_",
+           format(Sys.Date(), "%Y%m%d"), ".geojson"))
+st_write(pg_summary_export, output_geojson, delete_dsn = TRUE)
+cat("✅ Exported pg_summary to", output_geojson, "\n")
+cat("   Includes diagnostic attributes: block_perimeter_miles, block_area_sq_km, perimeter_to_street_miles_ratio, parcels_per_sq_km\n")
+cat("   Total features:", nrow(pg_summary_export), "\n")
 
 # # separate layers for closed and open construction polygons
-# closed_construction_polygons = pg_summary_export[pg_summary_export["status_simple"] == "closed"]
-# open_construction_polygons = pg_summary_export[pg_summary_export["status_simple"] == "planned"]
-
+# closed_construction_polygons <- pg_summary_export |>
+#   filter(status_simple == "closed")
+# open_construction_polygons <- pg_summary_export |>
+#   filter(status_simple == "planned")
+#
 # # export closed and open construction polygons to GeoJSON
-# closed_construction_polygons.to_file(
-#     outputs_dir / f"final_peoplesgas_with_buildings_streets_{ANALYSIS_LEVEL}_closed_{datetime.now().strftime('%Y%m%d')}.geojson", driver="GeoJSON")
-# open_construction_polygons.to_file(
-#     outputs_dir / f"final_peoplesgas_with_buildings_streets_{ANALYSIS_LEVEL}_open_{datetime.now().strftime('%Y%m%d')}.geojson", driver="GeoJSON")
+# st_write(closed_construction_polygons,
+#          file.path(outputs_dir, paste0("final_peoplesgas_with_buildings_streets_", ANALYSIS_LEVEL, "_closed_", format(Sys.Date(), "%Y%m%d"), ".geojson")),
+#          delete_dsn = TRUE)
+# st_write(open_construction_polygons,
+#          file.path(outputs_dir, paste0("final_peoplesgas_with_buildings_streets_", ANALYSIS_LEVEL, "_open_", format(Sys.Date(), "%Y%m%d"), ".geojson")),
+#          delete_dsn = TRUE)
 ```

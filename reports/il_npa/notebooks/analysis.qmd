@@ -112,18 +112,16 @@ pg_summary["elec_sf_cost"] = pg_summary["sf_parcels"] * cost_elec_sf
 pg_summary["elec_mf_cost"] = pg_summary["mf_units"] * cost_elec_mf
 pg_summary["elec_comm_cost"] = pg_summary["commercial_parcels"] * cost_elec_comm
 
-pg_summary["elec_cost_total"] = pg_summary["elec_sf_cost"] + \
-    pg_summary["elec_mf_cost"] + pg_summary["elec_comm_cost"]
+pg_summary["elec_cost_total"] = (
+    pg_summary["elec_sf_cost"]
+    + pg_summary["elec_mf_cost"]
+    + pg_summary["elec_comm_cost"]
+    + pg_summary["street_miles"] * cost_decomm_mile
+)
 
-pg_summary["elec_cost_total_w_decomm"] = pg_summary["elec_cost_total"] + \
-    pg_summary["street_miles"] * cost_decomm_mile
+pg_summary["pct_residential"] = (pg_summary["sf_parcels"] + pg_summary["mf_parcels"]) / pg_summary["non_vacant_parcels"]
 
-
-pg_summary["pct_residential"] = (
-    pg_summary["sf_parcels"] + pg_summary["mf_parcels"]) / pg_summary["non_vacant_parcels"]
-
-pg_summary["comm_ind_total_count"] = pg_summary["commercial_parcels"] + \
-    pg_summary["industrial_parcels"]
+pg_summary["comm_ind_total_count"] = pg_summary["commercial_parcels"] + pg_summary["industrial_parcels"]
 
 pg_summary["comm_ind_flag"] = pg_summary["comm_ind_total_count"] > 0
 
@@ -131,138 +129,105 @@ pg_summary["ind_flag"] = pg_summary["industrial_parcels"] > 0
 
 pg_summary["comm_flag"] = pg_summary["commercial_parcels"] > 1
 
-pg_summary["npa_over_prp"] = pg_summary["elec_cost_total"] / \
-    pg_summary["prp_cost"]
-
-
-pg_summary["npa_over_prp_w_decomm"] = pg_summary["elec_cost_total_w_decomm"] / \
-    pg_summary["prp_cost"]
+pg_summary["npa_over_prp"] = pg_summary["elec_cost_total"] / pg_summary["prp_cost"]
 
 
 # bin the npa_over_prp values
 pg_summary["comp_cost_discrete"] = pg_summary["npa_over_prp"].apply(
-    lambda x: ("50 %" if x < 0.5 else "50-100 %" if 0.5 <= x < 1 else "100-150 %" if 1 <=
-               x < 1.5 else "150-200 %" if 1.5 <= x < 2 else "> 200 %")
+    lambda x: (
+        "50 %"
+        if x <= 0.5
+        else "50-100 %"
+        if 0.5 < x <= 1
+        else "100-150 %"
+        if 1 < x <= 1.5
+        else "150-200 %"
+        if 1.5 < x <= 2
+        else "> 200 %"
+    )
 )
-
 pg_summary["comp_cost_discrete_res_only"] = pg_summary["npa_over_prp"].apply(
-    lambda x: ("50 %" if x < 0.5 else "50-100 %" if 0.5 <= x < 1 else "100-150 %" if 1 <=
-               x < 1.5 else "150-200 %" if 1.5 <= x < 2 else "> 200 %")
+    lambda x: (
+        "50 %"
+        if x <= 0.5
+        else "50-100 %"
+        if 0.5 < x <= 1
+        else "100-150 %"
+        if 1 < x <= 1.5
+        else "150-200 %"
+        if 1.5 < x <= 2
+        else "> 200 %"
+    )
 )
 # Overwrite comp_cost_discrete where ind_flag is True
 pg_summary.loc[pg_summary["ind_flag"], "comp_cost_discrete"] = "not eligible"
 
-pg_summary.loc[pg_summary["comm_ind_flag"],
-               "comp_cost_discrete_res_only"] = "not eligible"
-
-
-# bin the npa_over_prp_w_decomm values
-pg_summary["comp_cost_discrete_w_decomm"] = pg_summary["npa_over_prp_w_decomm"].apply(
-    lambda x: ("50 %" if x < 0.5 else "50-100 %" if 0.5 <= x < 1 else "100-150 %" if 1 <=
-               x < 1.5 else "150-200 %" if 1.5 <= x < 2 else "> 200 %")
-)
-
-# Overwrite comp_cost_discrete_w_decomm where ind_flag is True
-pg_summary.loc[pg_summary["ind_flag"],
-               "comp_cost_discrete_w_decomm"] = "not eligible"
-
-pg_summary.loc[pg_summary["comm_ind_flag"],
-               "comp_cost_discrete_w_decomm"] = "not eligible"
-```
-
-```{python}
-pg_summary["comp_cost_discrete_w_decomm"]
-```
-
-# Export the pg_summary GeoDataFrame to GeoJSON
-# (Export moved to after diagnostic calculations - see below)
-
-# Summary stats no decommissioning costs
-```{python}
-
-# Calculate the percent where npa_over_prp > 1
-num_gt_1 = (pg_summary['npa_over_prp'] > 1).sum()
-total_units = len(pg_summary)
-percent_gt_1 = (num_gt_1 / total_units) * 100
-
-print(f"{percent_gt_1:.1f}% of blocks have npa_over_prp > 1")
-
-```
-
-## Commercial and industrial parcels
-```{python}
-
-# Calculate the percent where comm_ind_flag == False
-num_comm_ind_false = (pg_summary['comm_ind_flag'] == False).sum()
-percent_comm_ind_false = (num_comm_ind_false / len(pg_summary)) * 100
-print(f"{percent_comm_ind_false:.1f}% of {unit_label} have comm_ind_flag == False")
+pg_summary.loc[pg_summary["comm_ind_flag"], "comp_cost_discrete_res_only"] = "not eligible"
 
 ```
 
 ```{python}
-# Calculate the percent where npa_over_prp > 1 and com_ind_flag == False
-mask = (pg_summary["npa_over_prp"] > 1) * (pg_summary["comm_ind_flag"] == False)
-percent_gt_1_and_comm_ind_false = (mask.sum() / len(pg_summary)) * 100
-print(f"{percent_gt_1_and_comm_ind_false:.1f}% of {unit_label} have npa_over_prp > 1 and no commercial or industrial parcels")
-```
 
-## Industrial only
-
-```{python}
-# Calculate the percent where npa_over_prp > 1 and ind_flag == False
-mask_ind = (pg_summary['npa_over_prp'] > 1) & (pg_summary['ind_flag'] == False)
-percent_gt_1_and_ind_false = (mask_ind.sum() / len(pg_summary)) * 100
-print(f"{percent_gt_1_and_ind_false:.1f}% of {unit_label} have npa_over_prp > 1 and ind_flag == False")
-```
-
-# Summary stats with decommissioning costs
-```{python}
-# Calculate the percent where npa_over_prp_w_decomm > 1 (with _dc suffix)
-num_gt_1_dc = (pg_summary['npa_over_prp_w_decomm'] > 1).sum()
-total_units_dc = len(pg_summary)
-percent_gt_1_dc = (num_gt_1_dc / total_units_dc) * 100
-
-print(f"{percent_gt_1_dc:.1f}% of {unit_label} have npa_over_prp > 1")
+res_only = pg_summary.loc[pg_summary["comm_ind_flag"] == False]
 
 ```
 
-## Commercial and industrial parcels
-
+# Report Variables
 
 ```{python}
-# Calculate the percent where npa_over_prp > 1 and com_ind_flag == False (with _dc suffix)
-mask_dc = (pg_summary["npa_over_prp_w_decomm"] > 1) * (pg_summary["comm_ind_flag"] == False)
-percent_gt_1_and_comm_ind_false_dc = (mask_dc.sum() / len(pg_summary)) * 100
-print(f"{percent_gt_1_and_comm_ind_false_dc:.1f}% of {unit_label} have npa_over_prp > 1 and no commercial or industrial parcels")
+# how many fully residential blocks  are cheaper to electrify (total number & percent)
+
+n_res_blocks = (pg_summary["comm_ind_flag"] == False).sum()
+
+n_res_blocks_cheaper = (res_only["npa_over_prp"] <= 1).sum()
+
+pct_res_blocks_cheaper = (n_res_blocks_cheaper / n_res_blocks) * 100
+
+```
+
+```{python}
+# how many fully residential blocks  are within 1 to 1.5 times the cost of pipeline replacement  (total & number percent)
+n_res_blocks_1_to_1_5 = ((res_only["npa_over_prp"] > 1) & (res_only["npa_over_prp"] < 1.5)).sum()
+
+n_res_blocks_0_to_1_5 = (res_only["npa_over_prp"] < 1.5).sum()
+
+pct_res_blocks_1_to_1_5 = (n_res_blocks_1_to_1_5 / n_res_blocks) * 100
+
+pct_res_blocks_0_to_1_5 = (n_res_blocks_0_to_1_5 / n_res_blocks) * 100
+```
+
+```{python}
+# 1.0 threshold cost difference
+prp_total_ce_1_0 = res_only[res_only["npa_over_prp"] < 1.0].prp_cost.sum()
+
+npa_total_ce_1_0 = res_only[res_only["npa_over_prp"] < 1.0].elec_cost_total.sum()
+
+total_cost_diff_1_0 = npa_total_ce_1_0 - prp_total_ce_1_0
+
+# 1.5 threshold cost difference
+prp_total_ce_1_5 = res_only[res_only["npa_over_prp"] < 1.5].prp_cost.sum()
+
+npa_total_ce_1_5 = res_only[res_only["npa_over_prp"] < 1.5].elec_cost_total.sum()
+
+total_cost_diff_1_5 = npa_total_ce_1_5 - prp_total_ce_1_5
 ```
 
 
-
- ## Industrial only
-
-
-
 ```{python}
-# Calculate the percent where npa_over_prp > 1 and ind_flag == False (with _dc suffix)
-mask_ind_dc = (pg_summary['npa_over_prp_w_decomm'] > 1) & (pg_summary['ind_flag'] == False)
-num_gt_1_and_ind_false_dc = mask_ind_dc.sum()
-percent_gt_1_and_ind_false_dc = (num_gt_1_and_ind_false_dc / len(pg_summary)) * 100
-print(f"{percent_gt_1_and_ind_false_dc:.1f}% of {unit_label} have npa_over_prp > 1 and ind_flag == False")
-```
+# residential unit counts
 
-# Print summary statistics - no decommissioning costs
-```{python}
-print(f"{percent_gt_1:.1f}% of {unit_label} have npa_over_prp > 1")
-print(f"{percent_comm_ind_false:.1f}% of {unit_label} have comm_ind_flag == False")
-print(f"{percent_gt_1_and_comm_ind_false:.1f}% of {unit_label} have npa_over_prp > 1 and no commercial or industrial parcels")
-print(f"{percent_gt_1_and_ind_false:.1f}% of {unit_label} have npa_over_prp > 1 and ind_flag == False")
-```
+n_res_units = res_only["total_residential_units"].sum()
+n_sf = res_only["sf_parcels"].sum()
+n_mf = (res_only["total_residential_units"] - res_only["sf_parcels"]).sum()
 
-# Print summary statistics - with decommissioning costs
-```{python}
-print(f"{percent_gt_1_dc:.1f}% of {unit_label} have npa_over_prp > 1")
-print(f"{percent_gt_1_and_comm_ind_false_dc:.1f}% of {unit_label} have npa_over_prp > 1 and no commercial or industrial parcels")
-print(f"{percent_gt_1_and_ind_false_dc:.1f}% of {unit_label} have npa_over_prp > 1 and ind_flag == False")
+n_res_units_1_0 = res_only[res_only["npa_over_prp"] < 1.0]["total_residential_units"].sum()
+n_sf_1_0 = res_only[res_only["npa_over_prp"] < 1.0]["sf_parcels"].sum()
+n_mf_1_0 = (res_only[res_only["npa_over_prp"] < 1.0]["total_residential_units"] - res_only[res_only["npa_over_prp"] < 1.0]["sf_parcels"]).sum()
+
+n_res_units_1_5 = res_only[res_only["npa_over_prp"] < 1.5]["total_residential_units"].sum()
+n_sf_1_5 = res_only[res_only["npa_over_prp"] < 1.5]["sf_parcels"].sum()
+n_mf_1_5 = (res_only[res_only["npa_over_prp"] < 1.5]["total_residential_units"] - res_only[res_only["npa_over_prp"] < 1.5]["sf_parcels"]).sum()
+
 ```
 
 ```{python}
@@ -411,180 +376,6 @@ def plot_pg_polygons_map(pg_summary, fill_col, discrete=False, cmap="viridis", l
     return m
 ```
 
-# Street miles
-
-```{python}
-# Create interactive map showing count of street miles (continuous)
-map_title = f"Street miles in {unit_label}"
-m = plot_pg_polygons_map(pg_summary, 'street_miles', discrete=False, cmap='YlOrRd', title=map_title)
-m
-```
-
-```{python}
-# Create interactive map showing count of street miles < 0.1mi
-filtered_data = pg_summary[pg_summary["street_miles"] < 0.1]
-map_title = f"Street miles in {unit_label} (< 0.1 mi)"
-m = plot_pg_polygons_map(filtered_data, "street_miles", discrete=False, cmap="YlOrRd", title=map_title)
-m
-```
-
-# Industrial flag
-
-```{python}
-#| label: fig-ind-flag
-#| fig-cap: "Industrial flag"
-#| fig-width: 10
-#| fig-height: 10
-
-# Create interactive map showing industrial flag (discrete/categorical)
-map_title = f"{unit_label.capitalize()} with 1 or more industrial parcels"
-m = plot_pg_polygons_map(pg_summary, 'ind_flag', discrete=True, color_dict={
-                         True: '#ff0000', False: '#0000ff'}, title=map_title)
-m
-```
-
-# PRP and LPP costs without decommissioning costs
-```{python}
-# | label: fig-comp-cost-discrete
-# | fig-cap: "Comparison of PRP and LPP costs"
-# | fig-width: 10
-# | fig-height: 10
-
-# Create interactive map showing cost comparison (discrete/categorical)
-filtered_data = pg_summary[np.isfinite(pg_summary['npa_over_prp'])]
-m = plot_pg_polygons_map(
-    filtered_data,
-    'comp_cost_discrete',
-    discrete=True,
-    color_dict={
-        "50 %": "#FC9706",
-        "50-100 %": "#68BED8",
-        "100-150 %": "#A0AF12",
-        "150-200 %": "#546800",
-        "> 200 %": "#546800",
-        "not eligible": "#8e8b7c"
-    }
-)
-m
-```
-
-### 100% residential areas only
-
-```{python}
-# | label: fig-comp-cost-discrete-res-only
-# | fig-cap: "Comparison of PRP and LPP costs (residential only)"
-# | fig-width: 10
-# | fig-height: 10
-
-# Create interactive map showing cost comparison for residential only
-filtered_data = pg_summary[np.isfinite(pg_summary['npa_over_prp'])]
-m = plot_pg_polygons_map(
-    filtered_data,
-    'comp_cost_discrete_res_only',
-    discrete=True,
-    color_dict={
-        "50 %": "#FC9706",
-        "50-100 %": "#68BED8",
-        "100-150 %": "#A0AF12",
-        "150-200 %": "#546800",
-        "> 200 %": "#546800",
-        "not eligible": "#8e8b7c"
-    }
-)
-m
-```
-
-# Residential and Commercial (exclude industrial)
-
-```{python}
-# | label: fig-pct-residential
-# | fig-cap: "Percent residential"
-# | fig-width: 10
-# | fig-height: 10
-
-# Create interactive map showing percent residential (continuous)
-filtered_data = pg_summary[(pg_summary['npa_over_prp'] > 10) & (pg_summary['ind_flag'] == False)]
-map_title = f"{unit_label.capitalize()} with npa_over_prp > 10 and no industrial parcels"
-m = plot_pg_polygons_map(
-    filtered_data,
-    'pct_residential',
-    discrete=False,
-    title=map_title
-)
-m
-```
-
-
-
-# PRP and LPP costs with decommissioning costs
-```{python}
-# | label: fig-comp-cost-discrete-w-decomm
-# | fig-cap: "Comparison of PRP and LPP costs with decommissioning"
-# | fig-width: 10
-# | fig-height: 10
-
-# Create interactive map showing cost comparison with decommissioning
-filtered_data = pg_summary[np.isfinite(pg_summary['npa_over_prp_w_decomm'])]
-m = plot_pg_polygons_map(
-    filtered_data,
-    'comp_cost_discrete_w_decomm',
-    discrete=True,
-    color_dict={
-        "50 %": "#FC9706",
-        "50-100 %": "#68BED8",
-        "100-150 %": "#A0AF12",
-        "150-200 %": "#546800",
-        "> 200 %": "#546800",
-        "not eligible": "#8e8b7c"
-    }
-)
-m
-```
-
-### 100% residential areas only
-
-```{python}
-# | label: fig-comp-cost-discrete-w-decomm-res-only
-# | fig-cap: "Comparison of PRP and LPP costs for construction polygons with decommissioning costs"
-# | fig-width: 10
-# | fig-height: 10
-
-# # Create interactive map showing industrial flag (discrete/categorical)
-# m = plot_pg_polygons_map(
-#     pg_summary[np.isfinite(pg_summary['lpp_over_npa_w_decomm'])],
-#     'comp_cost_discrete_w_decomm_res_only',
-#     discrete=True,
-#     color_dict={
-#         "PRP cheaper": "#FC9706",
-#         "equal": "#68BED8",
-#         "1-2 x": "#A0AF12",
-#         "> 2": "#546800",
-#         "not eligible": "#8e8b7c"
-#     }
-# )
-# m
-# m
-```
-
-# Residential and Commercial (exclude industrial)
-
-```{python}
-# | label: fig-pct-residential-w-decomm
-# | fig-cap: "Percent residential (with decommissioning)"
-# | fig-width: 10
-# | fig-height: 10
-
-# Create interactive map showing percent residential (continuous)
-filtered_data = pg_summary[(pg_summary['npa_over_prp'] > 10) & (pg_summary['ind_flag'] == False)]
-map_title = f"{unit_label.capitalize()} with npa_over_prp > 10 and no industrial parcels"
-m = plot_pg_polygons_map(
-    filtered_data,
-    'pct_residential',
-    discrete=False,
-    title=map_title
-)
-m
-```
 
 
 

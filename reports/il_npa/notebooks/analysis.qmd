@@ -31,7 +31,7 @@ if (!dir.exists(outputs_dir)) {
   dir.create(outputs_dir, recursive = TRUE)
 }
 
-
+source("/workspaces/reports2/lib/ggplot/switchbox_theme.R")
 # Set options
 # options(dplyr.print_max = Inf)
 ```
@@ -119,7 +119,7 @@ pg_summary <- pg_summary |>
     npa_over_prp = elec_cost_total / prp_cost,
     npa_less_prp = elec_cost_total - prp_cost,
     comp_cost_discrete = case_when(
-      npa_over_prp <= 0.5 ~ "50 %",
+      npa_over_prp <= 0.5 ~ "< 50 %",
       npa_over_prp <= 1 ~ "50-100 %",
       npa_over_prp <= 1.5 ~ "100-150 %",
       npa_over_prp <= 2 ~ "150-200 %",
@@ -132,16 +132,23 @@ pg_summary <- pg_summary |>
 ```
 
 ```{r}
-res_only <- pg_summary |> filter(!comm_ind_flag)
+res_only <- pg_summary |> filter(!comm_ind_flag & total_residential_units > 0)
 
 n_blocks_total <- nrow(pg_summary)
+```
+
+
+```{r}
+res_only |>
+mutate(res_parcels = sf_parcels + mf_parcels + mixed_use_parcels) |>
+filter(non_vacant_parcels !=res_parcels)
 ```
 
 # Report Variables
 
 ```{r}
 # how many fully residential blocks are cheaper to electrify (total number & percent)
-n_res_blocks <- sum(!pg_summary$comm_ind_flag)
+n_res_blocks <- nrow(res_only)
 
 pct_res_blocks_total <- (n_res_blocks / n_blocks_total)
 
@@ -195,9 +202,142 @@ n_miles_1_0 <- sum(res_1_0$street_miles, na.rm = TRUE)
 n_miles_1_5 <- sum(res_1_5$street_miles, na.rm = TRUE)
 ```
 
+```{r}
+COMP_COST_COLS <-c("< 50 %" = "#1b8813",
+      "50-100 %"= "#9ec23c",
+      "100-150 %" = "#d3bc14",
+      "150-200 %" = "#d6920f",
+      "> 200 %" = "#b5430e")
+
+```
 
 
+# Plotting
 
+```{r}
+#| label: fig-histogram-npa-over-prp
+#| fig-cap: "Histogram of the ratio of the cost of electrification to the cost of PRP per residential block. Values less than 100 percent indicate electrification is cheaper than PRP, values greater than 100 percent indicate electrification is more expensive than PRP."
+#| fig-width: 8
+#| fig-height: 6
+res_only |>
+data.frame() |>
+filter(npa_over_prp <4) |>
+ggplot() +
+  geom_histogram(aes(x = npa_over_prp, fill = factor(comp_cost_discrete, levels = names(COMP_COST_COLS))), breaks = seq(0, 4, 0.1)) +
+  scale_x_continuous(breaks = seq(0, 4, 0.25), labels = scales::percent_format(accuracy = 1), expand = c(0,0.02)) +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_fill_manual(values = COMP_COST_COLS) +
+  labs(x = 'Cost to electrify block as a percentage of PRP cost',
+  y = 'Number of blocks',
+  fill = ''
+  ) +
+  theme(legend.position = "top",
+        axis.text.x = element_text(size = 9),
+        axis.title.x = element_text(margin = margin(t = 10)))
+```
+
+```{r}
+#| label: fig-cumulative-saving
+#| fig-cap: "TK"
+#| fig-width: 8
+#| fig-height: 6
+
+cumulative_data <- res_only |>
+  mutate(npa_less_prp_neg = -1 * npa_less_prp) |>
+  arrange(npa_over_prp) |>
+  mutate(
+    cumulative_saving = cumsum(npa_less_prp_neg),
+    n_elec_blocks = row_number(),
+    pct_elec_blocks = n_elec_blocks / nrow(res_only)
+  )
+
+# Find where cumulative saving crosses zero
+zero_crossing <- cumulative_data |>
+  filter(cumulative_saving <= 0) |>
+  slice(1) |>
+  pull(pct_elec_blocks)
+
+p = cumulative_data |>
+  ggplot() +
+  geom_line(aes(x = pct_elec_blocks, y = cumulative_saving)) +
+  geom_vline(
+    xintercept = zero_crossing,
+    linetype = "dashed",
+    color = sb_colors["pistachio_text"],
+    size = 1
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "solid",
+    color = "gray"
+  ) +
+  annotate(
+    "text",
+    x = zero_crossing,
+    y = max(cumulative_data$cumulative_saving) * 0.9,
+    label = paste0(round(zero_crossing * 100), "%"),
+    hjust = -0.2,
+    color = sb_colors["pistachio_text"]
+  ) +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
+  scale_y_continuous(
+    limits = c(-140e6, 40e6),
+    breaks = seq(-140e6, 40e6, by = 20e6),
+    labels = scales::dollar_format(scale = 1e-6, suffix = "M", accuracy = 1)
+  ) +
+  labs(
+    x = 'Percent of residential blocks electrified',
+    y = 'Cumulative saving from targeted electrification',
+  ) +
+  theme(
+    legend.position = "top",
+    axis.text.x = element_text(size = 9),
+    axis.title.x = element_text(margin = margin(t = 10))
+  )
+
+p
+```
+
+```{r}
+#| label: fig-scatter-density-vs-npa-over-prp
+#| fig-cap: "Housing density  vs the ratio of the cost of electrification to the cost of PRP. Each point represents a block. For blocks with multi-family homes, we count each apartment unit in the total housing count. The color bar shows the percentage of block that is made up of single-family homes where blue is predominately multi-family housing and orange is predominately single-family housing."
+#| fig-width: 8
+#| fig-height: 6
+
+res_only |>
+  filter(npa_over_prp < 4) |>
+  mutate(
+    block_area_acres = block_area_full_sqm / 4046.86,
+    density = total_residential_units / block_area_acres,
+    pct_sf = (sf_parcels / total_residential_units) * 100
+  ) |>
+  ggplot() +
+  geom_point(aes(x = density, y = npa_over_prp, color = pct_sf), alpha = 0.8) +
+  scale_x_continuous(limits = c(0, 60), breaks = seq(0, 60, 10)) +
+  scale_y_continuous(
+    limits = c(0, 4),
+    breaks = seq(0, 4, 0.5),
+    labels = scales::percent_format(accuracy = 1)
+  ) +
+  scale_color_gradient(
+    low = "#68BED8",
+    high = "#FC9706",
+    labels = scales::label_percent(scale = 1),
+    guide = guide_colorbar(barwidth = 15, barheight = 1, nbin = 100)
+  ) +
+  labs(
+    x = 'Housing density (units per acre)',
+    y = 'Cost to electrify block as a percentage of PRP cost',
+    color = 'Homes on block that are single-family'
+  ) +
+  theme(
+    legend.position = "top",
+    legend.key.width = unit(2, "cm"),
+    axis.text.x = element_text(size = 9),
+    axis.title.x = element_text(margin = margin(t = 10)),
+    axis.title.y = element_text(margin = margin(r = 10))
+  )
+```
 
 ```{r}
 plot_pg_polygons_map <- function(pg_summary, fill_col, discrete = FALSE,

@@ -724,7 +724,10 @@ group_key = 'geoid10'
 
 # Count parcels by geoid10
 parcel_counts = parcels_by_block.groupby(group_key).size()
-unit_counts = parcels_by_block.groupby(group_key)['building_units'].sum()
+# Only sum units from residential and mixed-use parcels (exclude commercial/industrial)
+unit_counts = parcels_by_block[
+    parcels_by_block['type'].isin(['residential', 'mixed-use'])
+].groupby(group_key)['building_units'].sum()
 parcels_with_unit_data = parcels_by_block[parcels_by_block['building_units'].notna(
 )]
 parcels_with_units_count = parcels_with_unit_data.groupby(group_key).size()
@@ -735,14 +738,23 @@ sf_counts = parcels_by_block[
     (parcels_by_block['sf_mf'] == 'single-family')
 ].groupby(group_key).size()
 
+# Include mixed-use parcels as multi-family
 mf_counts = parcels_by_block[
-    (parcels_by_block['type'] == 'residential') &
-    (parcels_by_block['sf_mf'] == 'multi-family')
+    ((parcels_by_block['type'] == 'residential') &
+     (parcels_by_block['sf_mf'] == 'multi-family')) |
+    (parcels_by_block['type'] == 'mixed-use')
 ].groupby(group_key).size()
 
+# Include mixed-use units in multi-family units
 mf_units = parcels_by_block[
-    (parcels_by_block['type'] == 'residential') &
-    (parcels_by_block['sf_mf'] == 'multi-family')
+    ((parcels_by_block['type'] == 'residential') &
+     (parcels_by_block['sf_mf'] == 'multi-family')) |
+    (parcels_by_block['type'] == 'mixed-use')
+].groupby(group_key)['building_units'].sum()
+
+# Track mixed-use units separately for identification
+mixed_use_units = parcels_by_block[
+    parcels_by_block['type'] == 'mixed-use'
 ].groupby(group_key)['building_units'].sum()
 
 commercial_counts = parcels_by_block[
@@ -1054,6 +1066,10 @@ summary = summary.merge(
     on='geoid10',
     how='left'
 ).merge(
+    mixed_use_units.reset_index().rename(columns={mixed_use_units.name if mixed_use_units.name else 0: 'mixed_use_units'}),
+    on='geoid10',
+    how='left'
+).merge(
     commercial_counts.reset_index().rename(columns={0: 'commercial_parcels'}),
     on='geoid10',
     how='left'
@@ -1100,7 +1116,7 @@ summary['block_area_full_sqm'] = summary.geometry.area
 int_cols = [
     'total_parcels', 'non_vacant_parcels', 'sf_parcels', 'mf_parcels',
     'commercial_parcels', 'industrial_parcels', 'mixed_use_parcels',
-    'parcels_with_unit_data', 'total_residential_units', 'mf_units'
+    'parcels_with_unit_data', 'total_residential_units', 'mf_units', 'mixed_use_units'
 ]
 summary = prepare_summary_dataframe(summary, int_cols, "Block-Level")
 

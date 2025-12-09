@@ -223,10 +223,10 @@ res_only |>
 data.frame() |>
 filter(npa_over_prp <4) |>
 ggplot() +
-  geom_histogram(aes(x = npa_over_prp, fill = factor(comp_cost_discrete, levels = names(COMP_COST_COLS))), breaks = seq(0, 4, 0.1)) +
-  scale_x_continuous(breaks = seq(0, 4, 0.25), labels = scales::percent_format(accuracy = 1), expand = c(0,0.02)) +
+  geom_histogram(aes(x = npa_over_prp, fill = factor(comp_cost_discrete, levels = names(COMP_COST_COLS))), breaks = seq(0, 4, 0.05)) +
+  scale_x_continuous(limits = c(0, 4.08), breaks = seq(0, 4, 0.25), labels = scales::percent_format(accuracy = 1), expand = c(0,0)) +
   scale_y_continuous(expand = c(0,0)) +
-  scale_fill_manual(values = COMP_COST_COLS) +
+  scale_fill_manual(values = COMP_COST_COLS, drop = FALSE) +
   labs(x = 'Cost to electrify block as a percentage of PRP cost',
   y = 'Number of blocks',
   fill = ''
@@ -337,6 +337,84 @@ res_only |>
     axis.title.x = element_text(margin = margin(t = 10)),
     axis.title.y = element_text(margin = margin(r = 10))
   )
+```
+
+
+```{r}
+#| label: fig-prp-spending-by-year
+#| fig-cap: "Estimated total planned PRP spending by project start year. We only include projects spending that affects fully residential blocks. In cases where a block is included in multiple projects with different start years, we use the latest start year."
+#| fig-width: 8
+#| fig-height: 6
+
+res_only |>
+  data.frame() |>
+  mutate(year = year(C_START_max)) |>
+  summarise(.by = year, prp_cost = sum(prp_cost, na.rm = TRUE)) |>
+  ggplot() +
+  geom_bar(
+    aes(x = year, y = prp_cost),
+    stat = "identity",
+    fill = sb_colors["midnight"]
+  ) +
+  scale_y_continuous(
+    limits = c(0, 210e6),
+    breaks = seq(0, 200e6, 20e6),
+    labels = scales::dollar_format(scale = 1e-6, suffix = "M", accuracy = 1),
+    expand = c(0, 0)
+  ) +
+  labs(x = 'Project start year', y = 'Estimated PRP spending')+
+theme(
+  axis.title.y = element_text(margin = margin(r = 10))
+)
+
+```
+
+```{r}
+#| label: fig-prp-spending-by-year-all
+#| fig-cap: "Estimated total planned PRP spending by project start year. We include all projects, including those that affect blocks with commercial properties."
+pg_summary |>
+  mutate(
+    full_res = case_when(
+      !comm_ind_flag & total_residential_units > 0 ~ "fully residential",
+      .default = "mixed zoning"
+    )
+  ) |>
+  data.frame() |>
+  mutate(year = year(C_START_max)) |>
+  summarise(.by = c(year, full_res), prp_cost = sum(prp_cost, na.rm = TRUE)) |>
+  ggplot() +
+  geom_bar(
+    aes(
+      x = year,
+      y = prp_cost,
+      fill = factor(full_res, levels = c("mixed zoning", "fully residential"))
+    ),
+    stat = "identity",
+    # fill = sb_colors["midnight"]
+  ) +
+  scale_y_continuous(
+    limits = c(0, 250e6),
+    breaks = seq(0, 240e6, 20e6),
+    labels = scales::dollar_format(scale = 1e-6, suffix = "M", accuracy = 1),
+    expand = c(0, 0)
+  ) +
+  scale_fill_manual(
+    values = c(
+      "fully residential" = sb_colors[["midnight"]],
+      "mixed zoning" = sb_colors[["saffron"]]
+    ),
+    drop = FALSE
+  ) +
+
+  labs(
+    x = 'Project start year',
+    y = 'Estimated PRP spending',
+    fill = 'Block type'
+  ) +
+  theme(
+    axis.title.y = element_text(margin = margin(r = 10))
+  )
+
 ```
 
 ```{r}

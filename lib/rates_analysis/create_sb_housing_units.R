@@ -365,7 +365,7 @@ add_lmi_discount <- function(
       by = join_by(
         electric_utility,
         `in.representative_income` >= income_threshold_lower,
-        `in.representative_income` <= income_threshold_upper,
+        `in.representative_income` < income_threshold_upper,
         `occupants` == occupants_min
       ),
       suffix = c("", "_electric")
@@ -442,7 +442,7 @@ assign_utilities <- function(
   housing_units <- housing_units |>
     left_join(
       bldg_utility_mapping,
-      by = c("bldg_id", "in.state", "in.heating_fuel")
+      by = c("bldg_id", "in.state")
     )
   return(housing_units)
 }

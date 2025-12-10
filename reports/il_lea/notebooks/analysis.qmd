@@ -1,0 +1,242 @@
+---
+title: ANALYSIS TEMPLATE
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+```{r}
+library(tidyverse)
+library(tidyplots)
+
+source("/workspaces/reports2/lib/ggplot/switchbox_theme.R")
+```
+
+```{r}
+lea_df <- read_csv("/workspaces/reports2/reports/il_lea/data_clean/il_lea_data.csv")
+```
+
+```{r}
+pipe_colors <- c(
+  "main" = sb_colors["carrot"][[1]],
+  "service" = sb_colors["midnight"][[1]],
+  "combined" = sb_colors["sky"][[1]]
+)
+```
+
+```{r}
+# Function to filter dataframe based on filter string
+# Example: filter_spending(total_spending, "nicor_main_historical")
+fetch_spending_vars <- function(target, df, filter_str) {
+  # Split the filter string by underscores
+  parts <- str_split(filter_str, "_")[[1]]
+
+  # Extract the three parts
+  utility_val <- parts[1]
+  main_service_val <- parts[2]
+  historical_val <- parts[3]
+
+  # Filter the dataframe
+  var <- df |>
+    filter(
+      utility == utility_val,
+      main_service == main_service_val,
+      historical == historical_val
+    ) |>
+    pull(target)
+
+  if (target %in% c("avg_cost", "total")) {
+    return(scales::label_dollar(suffix = "M", prefix = "$", scale = 1e-6, accuracy = 1)(var))
+  } else {
+    return(var)
+  }
+}
+
+spending_plot <- function(df, max_lim, breaks_step) {
+df |>
+  mutate(alpha_val = if_else(historical == "forecast", 0.7, 1)) |>
+  ggplot(aes(
+    x = factor(year),
+    y = lea_cost,
+    fill = main_service,
+    alpha = alpha_val
+  )) +
+  geom_col(position = "stack") +
+  scale_alpha_identity() +
+  scale_y_continuous(limits = c(0, max_lim), breaks = seq(0, max_lim, by = breaks_step), labels = function(x) {
+    scales::label_dollar(suffix = " million", prefix = "$", scale = 1e-6)(x)
+  }) +
+  scale_fill_manual(values = pipe_colors, drop = TRUE) +
+  labs(
+    x = "Year",
+    y = "LEA Subsidy ($ millions)",
+    fill = "Pipeline Type",
+    caption = "Note: Forecast data shown with reduced opacity"
+  )
+}
+
+per_connection_plot <- function(df, max_lim, breaks_step) {
+  df |>
+    mutate(alpha_val = if_else(historical == "forecast", 0.7, 1)) |>
+    ggplot(aes(x = factor(year), y = cost_per_connection, fill = main_service, alpha = alpha_val)) +
+    geom_col(position = "stack") +
+    scale_alpha_identity() +
+    scale_y_continuous(limits = c(0, max_lim), breaks = seq(0, max_lim, by = breaks_step), labels = function(x) {
+      scales::label_dollar(suffix = "k", prefix = "$", scale = 1e-3)(x)
+    }) +
+    scale_fill_manual(values = pipe_colors, drop = TRUE) +
+    labs(
+      x = "Year",
+      y = "LEA cost per new connection ($ thousands)",
+      fill = "Pipeline Type",
+      # caption = "Note: Forecast data shown with reduced opacity"
+    )
+
+}
+# Example usage:
+# fetch_spending_vars("avg_cost", total_spending, "nicor_main_historical")
+# filter_spending("from", total_spending, "peoples_service_forecast")
+# filter_spending("to", total_spending, "ameren_combined_historical")
+```
+
+
+```{r}
+#| label: fig-nicor-spending
+#| fig-cap: "Historical and forecasted LEA subsidy costs for Nicor Gas"
+#| fig-width: 9
+lea_df |>
+  filter(utility == "nicor") |>
+  spending_plot(max_lim = 70e6, breaks_step = 10e6)
+```
+
+
+
+```{r}
+#| label: fig-peoples-spending
+#| fig-cap: "Historical and forecasted LEA subsidy costs for Peoples Gas"
+lea_df |>
+  filter(utility == "peoples") |>
+  filter(!is.na(lea_cost)) |>
+  spending_plot(max_lim = 30e6, breaks_step = 5e6)
+```
+
+
+
+```{r}
+#| label: fig-ameren-spending
+#| fig-cap: "Historical and forecasted LEA subsidy costs for Ameren Gas"
+lea_df |>
+  filter(utility == "ameren") |>
+  filter(!is.na(lea_cost)) |>
+  spending_plot(max_lim = 25e6, breaks_step = 5e6) +
+  labs(y = "Spending on new service requests ($ millions)")
+```
+
+
+
+```{r}
+#| label: fig-nicor-per-connection
+#| fig-cap: "Historical and forecasted LEA subsidy costs per connection for Nicor Gas"
+lea_df |>
+  filter(utility == "nicor") |>
+  filter(!is.na(cost_per_connection)) |>
+  per_connection_plot(max_lim = 16e3, breaks_step = 2e3)
+```
+
+
+
+```{r}
+#| label: fig-peoples-per-connection
+#| fig-cap: "Historical and forecasted  LEA subsidy costs per connection for Peoples Gas"
+lea_df |>
+  filter(utility == "peoples") |>
+  filter(!is.na(cost_per_connection)) |>
+  per_connection_plot(max_lim = 14e3, breaks_step = 2e3)
+```
+
+
+```{r}
+#| label: fig-ameren-per-sce
+#| fig-cap: "Historical standard cost equivalent per connection for Ameren Gas"
+lea_df |>
+  filter(utility == "ameren") |>
+  filter(!is.na(max_lea_cost_per_connect)) |>
+  mutate(alpha_val = if_else(historical == "forecast", 0.7, 1)) |>
+  ggplot(aes(
+    x = factor(year),
+    y = max_lea_cost_per_connect,
+    fill = main_service,
+    alpha = alpha_val
+  )) +
+  geom_col(position = "stack") +
+  scale_alpha_identity() +
+  scale_y_continuous(
+    limits = c(0, 8e3),
+    breaks = seq(0, 8e3, by = 2e3),
+    labels = function(x) {
+      scales::label_dollar(suffix = "k", prefix = "$", scale = 1e-3)(x)
+    }
+  ) +
+  scale_fill_manual(values = pipe_colors, drop = TRUE) +
+  labs(
+    x = "Year",
+    y = "Maximum LEA cost per new connection ($ thousands)",
+    fill = "Pipeline Type",
+    # caption = "Note: Forecast data shown with reduced opacity"
+  )
+```
+
+```{r}
+#| label: vars
+
+total_spending <- lea_df |>
+  filter(!is.na(lea_cost)) |>
+  summarize(
+    .by = c(utility, main_service, historical),
+    avg_cost = mean(lea_cost),
+    total = sum(lea_cost),
+    from = min(year),
+    to = max(year)
+  )
+
+nicor_per_connect_23 <- lea_df |>
+  filter(!is.na(cost_per_connection)) |>
+  filter(utility == "nicor", year == max(year)) |>
+  pull(cost_per_connection) |>
+  (\(x) scales::label_dollar(prefix = "$")(x))()
+
+
+nicor_per_connect_change <- lea_df |>
+  filter(!is.na(cost_per_connection)) |>
+  filter(utility == "nicor") |>
+  arrange(main_service, year) |>
+  group_by(main_service) |>
+  mutate(
+    yoy_change = (cost_per_connection - lag(cost_per_connection)) /
+      lag(cost_per_connection)
+  ) |>
+  summarize(avg_annual_increase = mean(yoy_change, na.rm = TRUE)) |>
+  pull(avg_annual_increase) |>
+  (\(x) scales::percent(x))()
+
+
+peoples_per_connect_22 <- lea_df |>
+  filter(utility == "peoples", !is.na(cost_per_connection)) |>
+  filter( year == max(year)) |>
+  pull(cost_per_connection) |>
+  (\(x) scales::label_dollar(prefix = "$")(x))()
+
+```
+
+```{r}
+save.image("/workspaces/reports2/reports/il_lea/report_vars.RData")
+```

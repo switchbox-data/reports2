@@ -12,12 +12,15 @@ default:
 # =============================================================================
 # These commands check your code quality and run tests
 
-# Run code quality tools
+# Run code quality tools (same as CI)
 check:
     echo "🚀 Checking lock file consistency with 'pyproject.toml'"
     uv lock --locked
     echo "🚀 Linting, formatting, and type checking code"
     prek run -a
+
+# Check for obsolete dependencies
+check-deps:
     echo "🚀 Checking for obsolete dependencies: Running deptry"
     uv run deptry .
 
@@ -50,3 +53,11 @@ install:
 # Clean generated files and caches
 clean:
     rm -rf .pytest_cache .ruff_cache tmp notebooks/.quarto
+
+# =============================================================================
+# 🔍 AWS
+# =============================================================================
+# These commands help you login to AWS from Ona
+
+ona_login_aws:
+    gitpod idp login aws --role-arn arn:aws:iam::536697241055:role/OnaEnvironmentRole --duration-seconds 43200

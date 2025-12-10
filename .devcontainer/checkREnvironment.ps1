@@ -64,43 +64,48 @@ try {
     }
 }
 
-# Create pak lockfile from project dependencies (only if it doesn't exist)
+# Create temporary pak lockfile to scan project dependencies
+Write-Host "🔧 Scanning project for R package dependencies..." -ForegroundColor Cyan
 $pkgLockPath = Join-Path $projectRoot "pkg.lock"
-if (-not (Test-Path $pkgLockPath)) {
-    Write-Host "🔧 Creating pak lockfile from project dependencies..." -ForegroundColor Cyan
-    try {
-        Rscript -e "setwd('$projectRoot'); pak::lockfile_create()"
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "✅ Pak lockfile created successfully" -ForegroundColor Green
-        } else {
-            throw "Creation failed"
-        }
-    } catch {
-        Write-Host "❌ Error: Failed to create pak lockfile" -ForegroundColor Red
-        exit 2
-    }
-} else {
-    Write-Host "ℹ️  Pak lockfile already exists, skipping creation" -ForegroundColor Blue
-}
 
-# Install packages from lockfile
-if (Test-Path $pkgLockPath) {
-    Write-Host "📦 Installing packages from pak lockfile..." -ForegroundColor Cyan
-    
-    try {
-        Rscript -e "setwd('$projectRoot'); pak::lockfile_install(lockfile = 'pkg.lock')"
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "✅ Packages installed successfully from pak lockfile" -ForegroundColor Green
-        } else {
-            throw "Installation failed"
+try {
+    Rscript -e "setwd('$projectRoot'); pak::lockfile_create(lockfile = 'pkg.lock')"
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "✅ Project dependencies scanned successfully" -ForegroundColor Green
+
+        # Install packages from temporary lockfile
+        Write-Host "📦 Installing packages from scanned dependencies..." -ForegroundColor Cyan
+        try {
+            Rscript -e "setwd('$projectRoot'); pak::lockfile_install(lockfile = 'pkg.lock')"
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "✅ Packages installed successfully" -ForegroundColor Green
+            } else {
+                throw "Installation failed"
+            }
+        } catch {
+            Write-Host "❌ Error: Failed to install packages" -ForegroundColor Red
+            # Clean up lockfile even on failure
+            if (Test-Path $pkgLockPath) {
+                Remove-Item $pkgLockPath -Force
+            }
+            exit 2
         }
-    } catch {
-        Write-Host "❌ Error: Failed to install packages from pak lockfile" -ForegroundColor Red
-        Write-Host "Please check the pkg.lock file and try again" -ForegroundColor Yellow
-        exit 2
+
+        # Clean up temporary lockfile
+        Write-Host "🧹 Cleaning up temporary lockfile..." -ForegroundColor Cyan
+        if (Test-Path $pkgLockPath) {
+            Remove-Item $pkgLockPath -Force
+            Write-Host "✅ Temporary lockfile removed" -ForegroundColor Green
+        }
+    } else {
+        throw "Scan failed"
     }
-} else {
-    Write-Host "❌ Error: Pak lockfile was not created" -ForegroundColor Red
+} catch {
+    Write-Host "❌ Error: Failed to scan project dependencies" -ForegroundColor Red
+    # Clean up lockfile if it was partially created
+    if (Test-Path $pkgLockPath) {
+        Remove-Item $pkgLockPath -Force
+    }
     exit 2
 }
 

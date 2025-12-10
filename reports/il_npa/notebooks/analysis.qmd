@@ -1,0 +1,832 @@
+---
+title: Peoples Gas Construction Impact Analysis
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+execute:
+  echo: false
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+
+```{r}
+#| echo: false
+library(sf)
+library(tidyverse)
+library(ggplot2)
+library(leaflet)
+library(lubridate)
+
+
+# Set paths
+outputs_dir <- '/workspaces/reports2/reports/il_npa/data/outputs'
+if (!dir.exists(outputs_dir)) {
+  dir.create(outputs_dir, recursive = TRUE)
+}
+
+source("/workspaces/reports2/lib/ggplot/switchbox_theme.R")
+# Set options
+# options(dplyr.print_max = Inf)
+```
+
+```{r}
+# Load summary data based on aggregation level
+geojson_files <- list.files(outputs_dir,
+                            pattern = "peoplesgas_with_buildings_streets_block_.*\\.geojson$",
+                            full.names = TRUE) |>
+  sort()
+
+if (length(geojson_files) == 0) {
+  stop("No summary GeoJSON files found for ANALYSIS_LEVEL='block'. Run geo_data_cleaning.qmd first.")
+}
+
+latest_geojson <- tail(geojson_files, 1)
+pg_summary <- read_sf(latest_geojson) |>
+  filter(!is.na(geometry))
+
+int_cols <- c('total_parcels', 'non_vacant_parcels', 'sf_parcels', 'mf_parcels',
+              'commercial_parcels', 'industrial_parcels', 'mixed_use_parcels',
+              'total_residential_units', 'mf_units')
+
+pg_summary <- pg_summary |>
+  mutate(across(any_of(int_cols), ~ replace_na(.x, 0)))
+
+cat("Loaded:", basename(latest_geojson), "\n")
+cat("  ", nrow(pg_summary), "block segments\n")
+cat("  Unique city blocks:", n_distinct(pg_summary$geoid10), "\n")
+
+unit_label <- "blocks"
+```
+
+
+```{r}
+# Read from the first sheet of the Google Sheet
+gsheet_url <- "https://docs.google.com/spreadsheets/d/1xxa47dClvp0rosZhUP1R7790CNXMLSD_0ExrPccR3p0/export?format=csv&gid=0"
+
+prp_df <- read_csv(gsheet_url)
+
+prp_df
+```
+
+```{r}
+#manually correct 2 blocks that are coded incorrectly in the parcel data
+pg_summary <- pg_summary |>
+  mutate(
+    sf_parcels = case_when(
+      geoid10 == "170311602004001" ~ 9,
+      geoid10 == "170311602003005" ~ 6,
+      .default = sf_parcels
+    ),
+    total_residential_units = case_when(
+      geoid10 == "170311602004001" ~ 9,
+      geoid10 == "170311602003005" ~ 6,
+      .default = total_residential_units
+    )
+  )
+```
+
+```{r}
+# cost estimates
+cost_lpp_mile <- prp_df |> filter(variable == "cost_lpp_mile") |> pull(value)
+cost_elec_sf <- prp_df |> filter(variable == "cost_elec_sf") |> pull(value)
+cost_elec_mf <- prp_df |> filter(variable == "cost_elec_mf") |> pull(value)
+cost_decomm_mile <- prp_df |> filter(variable == "main_retire_cost_mile") |> pull(value)
+```
+
+```{r}
+#| echo: false
+cost_elec_comm <- 50000
+
+pg_summary <- pg_summary |>
+  mutate(
+    prp_cost = street_miles * cost_lpp_mile,
+    elec_sf_cost = sf_parcels * cost_elec_sf,
+    elec_mf_cost = mf_units * cost_elec_mf,
+    elec_comm_cost = commercial_parcels * cost_elec_comm,
+    elec_cost_total = elec_sf_cost + elec_mf_cost + elec_comm_cost + street_miles * cost_decomm_mile,
+    pct_residential = (sf_parcels + mf_parcels) / non_vacant_parcels,
+    comm_ind_total_count = commercial_parcels + industrial_parcels,
+    comm_ind_flag = comm_ind_total_count > 0,
+    ind_flag = industrial_parcels > 0,
+    comm_flag = commercial_parcels > 1,
+    npa_over_prp = elec_cost_total / prp_cost,
+    npa_less_prp = elec_cost_total - prp_cost,
+    comp_cost_discrete = case_when(
+      npa_over_prp <= 0.5 ~ "< 50 %",
+      npa_over_prp <= 1 ~ "50-100 %",
+      npa_over_prp <= 1.5 ~ "100-150 %",
+      npa_over_prp <= 2 ~ "150-200 %",
+      TRUE ~ "> 200 %"
+    ),
+    comp_cost_discrete_res_only = comp_cost_discrete,
+    comp_cost_discrete = if_else(ind_flag, "not eligible", comp_cost_discrete),
+    comp_cost_discrete_res_only = if_else(comm_ind_flag, "not eligible", comp_cost_discrete_res_only)
+  )
+```
+
+```{r}
+res_only <- pg_summary |> filter(!comm_ind_flag & total_residential_units > 0)
+
+n_blocks_total <- nrow(pg_summary)
+```
+
+
+```{r}
+res_only |>
+mutate(res_parcels = sf_parcels + mf_parcels + mixed_use_parcels) |>
+filter(non_vacant_parcels !=res_parcels)
+```
+
+# Report Variables
+
+```{r}
+# how many fully residential blocks are cheaper to electrify (total number & percent)
+n_res_blocks <- nrow(res_only)
+
+pct_res_blocks_total <- (n_res_blocks / n_blocks_total)
+
+n_res_blocks_cheaper <- sum(res_only$npa_over_prp <= 1, na.rm = TRUE)
+pct_res_blocks_cheaper <- (n_res_blocks_cheaper / n_res_blocks)
+```
+
+```{r}
+# how many fully residential blocks are within 1 to 1.5 times the cost of pipeline replacement
+n_res_blocks_1_to_1_5 <- sum(res_only$npa_over_prp > 1 & res_only$npa_over_prp < 1.5, na.rm = TRUE)
+n_res_blocks_0_to_1_5 <- sum(res_only$npa_over_prp < 1.5, na.rm = TRUE)
+pct_res_blocks_1_to_1_5 <- (n_res_blocks_1_to_1_5 / n_res_blocks)
+pct_res_blocks_0_to_1_5 <- (n_res_blocks_0_to_1_5 / n_res_blocks)
+```
+
+```{r}
+# 1.0 threshold cost difference
+res_1_0 <- res_only |> filter(npa_over_prp < 1.0)
+prp_total_ce_1_0 <- sum(res_1_0$prp_cost, na.rm = TRUE)
+npa_total_ce_1_0 <- sum(res_1_0$elec_cost_total, na.rm = TRUE)
+total_cost_diff_1_0 <- npa_total_ce_1_0 - prp_total_ce_1_0
+
+# 1.5 threshold cost difference
+res_1_5 <- res_only |> filter(npa_over_prp < 1.5)
+prp_total_ce_1_5 <- sum(res_1_5$prp_cost, na.rm = TRUE)
+npa_total_ce_1_5 <- sum(res_1_5$elec_cost_total, na.rm = TRUE)
+total_cost_diff_1_5 <- npa_total_ce_1_5 - prp_total_ce_1_5
+```
+
+
+```{r}
+# residential unit counts
+n_res_units <- sum(res_only$total_residential_units, na.rm = TRUE)
+n_sf <- sum(res_only$sf_parcels, na.rm = TRUE)
+n_mf <- sum(res_only$total_residential_units - res_only$sf_parcels, na.rm = TRUE)
+
+n_res_units_1_0 <- sum(res_1_0$total_residential_units, na.rm = TRUE)
+n_sf_1_0 <- sum(res_1_0$sf_parcels, na.rm = TRUE)
+n_mf_1_0 <- sum(res_1_0$total_residential_units - res_1_0$sf_parcels, na.rm = TRUE)
+
+n_res_units_1_5 <- sum(res_1_5$total_residential_units, na.rm = TRUE)
+n_sf_1_5 <- sum(res_1_5$sf_parcels, na.rm = TRUE)
+n_mf_1_5 <- sum(res_1_5$total_residential_units - res_1_5$sf_parcels, na.rm = TRUE)
+```
+
+
+```{r}
+# street miles counts
+n_miles <- sum(res_only$street_miles, na.rm = TRUE)
+n_miles_1_0 <- sum(res_1_0$street_miles, na.rm = TRUE)
+n_miles_1_5 <- sum(res_1_5$street_miles, na.rm = TRUE)
+```
+
+```{r}
+COMP_COST_COLS <-c("< 50 %" = "#1b8813",
+      "50-100 %"= "#9ec23c",
+      "100-150 %" = "#d3bc14",
+      "150-200 %" = "#d6920f",
+      "> 200 %" = "#b5430e")
+
+```
+
+
+# Plotting
+
+```{r}
+#| label: fig-histogram-npa-over-prp
+#| fig-cap: "Histogram of the ratio of the cost of electrification to the cost of PRP per residential block. Values less than 100 percent indicate electrification is cheaper than PRP, values greater than 100 percent indicate electrification is more expensive than PRP."
+#| fig-width: 8
+#| fig-height: 6
+res_only |>
+data.frame() |>
+filter(npa_over_prp <4) |>
+ggplot() +
+  geom_histogram(aes(x = npa_over_prp, fill = factor(comp_cost_discrete, levels = names(COMP_COST_COLS))), breaks = seq(0, 4, 0.1)) +
+  scale_x_continuous(limits = c(0, 4.08), breaks = seq(0, 4, 0.25), labels = scales::percent_format(accuracy = 1), expand = c(0,0)) +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_fill_manual(values = COMP_COST_COLS, drop = FALSE) +
+  labs(x = 'Cost to electrify block as a percent of PRP cost',
+  y = 'Number of blocks',
+  fill = ''
+  ) +
+  theme(legend.position = "top",
+        axis.text.x = element_text(size = 9),
+        axis.title.x = element_text(margin = margin(t = 10)))
+```
+
+```{r}
+#| label: fig-cumulative-saving
+#| fig-cap: "TK"
+#| fig-width: 8
+#| fig-height: 6
+
+cumulative_data <- res_only |>
+  mutate(npa_less_prp_neg = -1 * npa_less_prp) |>
+  arrange(npa_over_prp) |>
+  mutate(
+    cumulative_saving = cumsum(npa_less_prp_neg),
+    n_elec_blocks = row_number(),
+    pct_elec_blocks = n_elec_blocks / nrow(res_only)
+  )
+
+# Find where cumulative saving crosses zero
+zero_crossing <- cumulative_data |>
+  filter(cumulative_saving <= 0) |>
+  slice(1) |>
+  pull(pct_elec_blocks)
+
+p = cumulative_data |>
+  ggplot() +
+  geom_line(aes(x = pct_elec_blocks, y = cumulative_saving)) +
+  geom_vline(
+    xintercept = zero_crossing,
+    linetype = "dashed",
+    color = sb_colors["pistachio_text"],
+    size = 1
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "solid",
+    color = "gray"
+  ) +
+  annotate(
+    "text",
+    x = zero_crossing,
+    y = max(cumulative_data$cumulative_saving) * 0.9,
+    label = paste0(round(zero_crossing * 100), "%"),
+    hjust = -0.2,
+    color = sb_colors["pistachio_text"]
+  ) +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
+  scale_y_continuous(
+    limits = c(-140e6, 40e6),
+    breaks = seq(-140e6, 40e6, by = 20e6),
+    labels = scales::dollar_format(scale = 1e-6, suffix = "M", accuracy = 1)
+  ) +
+  labs(
+    x = 'Percent of residential blocks electrified',
+    y = 'Cumulative saving from targeted electrification',
+  ) +
+  theme(
+    legend.position = "top",
+    axis.text.x = element_text(size = 9),
+    axis.title.x = element_text(margin = margin(t = 10))
+  )
+
+p
+```
+
+```{r}
+#| label: fig-scatter-density-vs-npa-over-prp
+#| fig-cap: "Housing density  vs the ratio of the cost of electrification to the cost of PRP. Each point represents a block. For blocks with multi-family homes, we count each apartment unit in the total housing count. The color bar shows the percent of block that is made up of single-family homes where blue is predominately multi-family housing and orange is predominately single-family housing."
+#| fig-width: 8
+#| fig-height: 6
+
+res_only |>
+  filter(npa_over_prp < 4) |>
+  mutate(
+    block_area_acres = block_area_full_sqm / 4046.86,
+    density = total_residential_units / block_area_acres,
+    pct_sf = (sf_parcels / total_residential_units) * 100
+  ) |>
+  ggplot() +
+  geom_point(aes(x = density, y = npa_over_prp, color = pct_sf), alpha = 0.8) +
+  scale_x_continuous(limits = c(0, 60), breaks = seq(0, 60, 10)) +
+  scale_y_continuous(
+    limits = c(0, 4),
+    breaks = seq(0, 4, 0.5),
+    labels = scales::percent_format(accuracy = 1)
+  ) +
+  scale_color_gradient(
+    low = "#68BED8",
+    high = "#FC9706",
+    labels = scales::label_percent(scale = 1),
+    guide = guide_colorbar(barwidth = 15, barheight = 1, nbin = 100)
+  ) +
+  labs(
+    x = 'Housing density (units per acre)',
+    y = 'Cost to electrify block as a percent of PRP cost',
+    color = 'Homes on block that are single-family'
+  ) +
+  theme(
+    legend.position = "top",
+    legend.key.width = unit(2, "cm"),
+    axis.text.x = element_text(size = 9),
+    axis.title.x = element_text(margin = margin(t = 10)),
+    axis.title.y = element_text(margin = margin(r = 10))
+  )
+```
+
+
+```{r}
+#| label: fig-prp-spending-by-year
+#| fig-cap: "Estimated total planned PRP spending by project start year. We only include projects spending that affects fully residential blocks. In cases where a block is included in multiple projects with different start years, we use the latest start year."
+#| fig-width: 8
+#| fig-height: 6
+
+res_only |>
+  data.frame() |>
+  mutate(year = year(C_START_max)) |>
+  summarise(.by = year, prp_cost = sum(prp_cost, na.rm = TRUE)) |>
+  ggplot() +
+  geom_bar(
+    aes(x = year, y = prp_cost),
+    stat = "identity",
+    fill = sb_colors["midnight"]
+  ) +
+  scale_y_continuous(
+    limits = c(0, 210e6),
+    breaks = seq(0, 200e6, 20e6),
+    labels = scales::dollar_format(scale = 1e-6, suffix = "M", accuracy = 1),
+    expand = c(0, 0)
+  ) +
+  labs(x = 'Project start year', y = 'Estimated PRP spending')+
+theme(
+  axis.title.y = element_text(margin = margin(r = 10))
+)
+
+```
+
+```{r}
+#| label: fig-prp-spending-by-year-all
+#| fig-cap: "Estimated total planned PRP spending by project start year. We include all projects, including those that affect blocks with commercial properties."
+pg_summary |>
+  mutate(
+    full_res = case_when(
+      !comm_ind_flag & total_residential_units > 0 ~ "fully residential",
+      .default = "mixed zoning"
+    )
+  ) |>
+  data.frame() |>
+  mutate(year = year(C_START_max)) |>
+  summarise(.by = c(year, full_res), prp_cost = sum(prp_cost, na.rm = TRUE)) |>
+  ggplot() +
+  geom_bar(
+    aes(
+      x = year,
+      y = prp_cost,
+      fill = factor(full_res, levels = c("mixed zoning", "fully residential"))
+    ),
+    stat = "identity",
+    # fill = sb_colors["midnight"]
+  ) +
+  scale_y_continuous(
+    limits = c(0, 250e6),
+    breaks = seq(0, 240e6, 20e6),
+    labels = scales::dollar_format(scale = 1e-6, suffix = "M", accuracy = 1),
+    expand = c(0, 0)
+  ) +
+  scale_fill_manual(
+    values = c(
+      "fully residential" = sb_colors[["midnight"]],
+      "mixed zoning" = sb_colors[["saffron"]]
+    ),
+    drop = FALSE
+  ) +
+
+  labs(
+    x = 'Project start year',
+    y = 'Estimated PRP spending',
+    fill = 'Block type'
+  ) +
+  theme(
+    axis.title.y = element_text(margin = margin(r = 10))
+  )
+
+```
+
+```{r}
+#| label: fig-miles-of-prp
+#| fig-cap: "Miles of pipeline replaced by PRP projects."
+#| fig-width: 8
+#| fig-height: 5
+
+# Calculate miles by project type
+n_miles_res <- sum(res_only$street_miles, na.rm = TRUE)
+n_miles_mixed <- sum(pg_summary$street_miles, na.rm = TRUE) - n_miles_res
+n_miles_remaining <- 1000 - n_miles_res - n_miles_mixed
+
+# Create data frame with manual position calculation
+plot_data <- data.frame(
+  category = factor(
+    c("remain", "mixed", "res"),
+    levels = c("remain", "mixed", "res")
+  ),
+  label = c("Remaining PRP miles", "Planned mixed-zoning", "Planned fully residential"),
+  miles = c(n_miles_remaining, n_miles_mixed, n_miles_res)
+) |>
+  arrange(desc(category)) |>
+  mutate(
+    cumsum_miles = cumsum(miles),
+    text_position = c(2, 150, 1000),#cumsum_miles - miles / 2,
+    label_text = paste0(label, "\n(", round(miles), " miles)")
+  )
+
+ggplot() +
+  geom_bar(
+    data = plot_data,
+    aes(x = "", y = miles, fill = category),
+    stat = "identity",
+    width = 0.7
+  ) +
+  ggrepel::geom_text_repel(
+    data = plot_data,
+    aes(x = "", y = text_position, label = label_text, color = category),
+    direction = "y",
+    nudge_x = 0.65,
+    # nudge_y = 10,
+    # segment.color = "gray50",
+    # size = 3.5,
+    force = 1,
+    show.legend = FALSE
+  ) +
+  scale_fill_manual(
+    values = c(
+      "res" = sb_colors[["midnight"]],
+      "mixed" = sb_colors[["saffron"]],
+      "remain" = "gray"
+    )
+  ) +
+  scale_color_manual(
+    values = c(
+      "res" = sb_colors[["midnight"]],
+      "mixed" = sb_colors[["saffron"]],
+      "remain" = "gray"
+    )
+  ) +
+  scale_y_continuous(limits = c(-150, 1150), expand = c(0, 0)) +
+  coord_flip(clip = "off") +
+  labs(y ="", x= "")+
+  theme(
+    axis.line = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank(),
+    legend.position = "none",
+    plot.margin = margin(t = 40, r = 10, b = 10, l = 10)
+  )
+
+```
+
+```{r}
+plot_pg_polygons_map <- function(pg_summary, fill_col, discrete = FALSE,
+                                  cmap = "viridis", legend = TRUE,
+                                  color_dict = NULL, title = NULL) {
+  pg_map <- pg_summary |>
+    filter(!is.na(geometry)) |>
+    st_transform(4326)
+
+  bounds <- st_bbox(pg_map)
+  center_lat <- mean(c(bounds[2], bounds[4]))
+  center_lon <- mean(c(bounds[1], bounds[3]))
+
+  m <- leaflet(pg_map) |>
+    addProviderTiles("CartoDB.Positron") |>
+    setView(lng = center_lon, lat = center_lat, zoom = 11)
+
+  if (!is.null(title)) {
+    m <- m |>
+      addControl(title, position = "topleft",
+                 className = "map-title")
+  }
+
+  fill_vals <- pg_map[[fill_col]]
+  popup_cols <- c('street_miles', 'sf_parcels', 'mf_units',
+                  'commercial_parcels', 'industrial_parcels',
+                  'prp_cost', 'elec_cost_total')
+
+  popup_text <- sapply(1:nrow(pg_map), function(i) {
+    val <- fill_vals[i]
+    if (is.na(val)) return("")
+
+    txt <- paste0("<b>", fill_col, ":</b> ",
+                  if (discrete) val else round(val, 2), "<br>")
+    for (col in popup_cols) {
+      if (col %in% names(pg_map)) {
+        col_val <- pg_map[[col]][i]
+        if (!is.na(col_val)) {
+          txt <- paste0(txt, "<b>", col, ":</b> ",
+                       if (is.numeric(col_val)) round(col_val, 2) else col_val,
+                       "<br>")
+        }
+      }
+    }
+    txt
+  })
+
+  if (discrete) {
+    categories <- sort(unique(fill_vals[!is.na(fill_vals)]))
+
+    if (!is.null(color_dict)) {
+      pal <- colorFactor(palette = color_dict, domain = categories)
+    } else {
+      pal <- colorFactor(palette = "Set3", domain = categories)
+    }
+
+    m <- m |>
+      addPolygons(
+        fillColor = ~pal(fill_vals),
+        fillOpacity = 0.6,
+        color = "black",
+        weight = 1,
+        popup = popup_text
+      )
+
+    if (legend) {
+      m <- m |> addLegend(pal = pal, values = categories, title = fill_col)
+    }
+  } else {
+    vals <- fill_vals[!is.na(fill_vals)]
+    vmin <- min(vals)
+    vmax <- max(vals)
+
+    pal <- colorNumeric(palette = cmap, domain = c(vmin, vmax))
+
+    m <- m |>
+      addPolygons(
+        fillColor = ~pal(fill_vals),
+        fillOpacity = 0.6,
+        color = "black",
+        weight = 1,
+        popup = popup_text
+      )
+
+    if (legend) {
+      m <- m |> addLegend(pal = pal, values = vals, title = fill_col)
+    }
+  }
+
+  m
+}
+```
+
+
+
+
+# Histograms
+```{r}
+valid_data <- pg_summary |>
+  filter(is.finite(npa_over_prp)) |>
+  pull(npa_over_prp)
+
+ggplot(data.frame(x = res_only$npa_over_prp), aes(x = x)) +
+  geom_histogram(bins = 30, fill = 'skyblue', color = 'black') +
+  labs(x = 'npa_over_prp', y = 'Count',
+       title = 'Histogram of npa_over_prp (finite values only)') +
+  theme_minimal() +
+  theme(panel.grid = element_line())
+```
+
+```{r}
+ggplot(pg_summary, aes(x = comm_ind_total_count)) +
+  geom_histogram(bins = 30, fill = 'orange', color = 'black') +
+  labs(x = 'comm_ind_total_count', y = 'Count',
+       title = 'Histogram of comm_ind_total_count') +
+  theme_minimal() +
+  theme(panel.grid = element_line())
+```
+
+
+```{r}
+ggplot(pg_summary, aes(x = pct_residential)) +
+  geom_histogram(bins = 100, fill = 'green', color = 'black') +
+  labs(x = 'pct_residential', y = 'Count',
+       title = 'Histogram of pct_residential') +
+  theme_minimal() +
+  theme(panel.grid = element_line())
+```
+
+
+
+```{r}
+ggplot(pg_summary, aes(x = street_miles)) +
+  geom_histogram(bins = 100, fill = 'blue', color = 'black') +
+  labs(x = 'street_miles', y = 'Count',
+       title = 'Histogram of street_miles') +
+  theme_minimal() +
+  theme(panel.grid = element_line())
+```
+
+## Diagnostic Histograms
+
+```{r}
+# Calculate block perimeter and area
+pg_summary <- pg_summary |>
+  st_transform(32616) |>
+  mutate(
+    block_perimeter_miles = as.numeric(st_length(geometry)) / 1609.34,
+    block_area_sq_km = as.numeric(st_area(geometry)) / 1e6,
+    perimeter_to_street_miles_ratio = street_miles / block_perimeter_miles,
+    parcels_per_sq_km = non_vacant_parcels / block_area_sq_km
+  ) |>
+  st_transform(4326)  # Transform back to WGS84
+
+cat("Sample diagnostic values (first 5 rows):\n")
+pg_summary |>
+  select(block_perimeter_miles, street_miles, perimeter_to_street_miles_ratio,
+         block_area_sq_km, parcels_per_sq_km) |>
+  head() |>
+  print()
+
+cat("\nBlock perimeter stats:",
+    sprintf("min=%.4f, max=%.4f, median=%.4f miles\n",
+            min(pg_summary$block_perimeter_miles, na.rm = TRUE),
+            max(pg_summary$block_perimeter_miles, na.rm = TRUE),
+            median(pg_summary$block_perimeter_miles, na.rm = TRUE)))
+cat("Street miles stats:",
+    sprintf("min=%.6f, max=%.4f, median=%.6f miles\n",
+            min(pg_summary$street_miles, na.rm = TRUE),
+            max(pg_summary$street_miles, na.rm = TRUE),
+            median(pg_summary$street_miles, na.rm = TRUE)))
+
+valid_perimeter_ratio <- pg_summary |>
+  filter(is.finite(perimeter_to_street_miles_ratio), street_miles > 0) |>
+  pull(perimeter_to_street_miles_ratio)
+
+valid_parcels_density <- pg_summary |>
+  filter(is.finite(parcels_per_sq_km), block_area_sq_km > 0) |>
+  pull(parcels_per_sq_km)
+```
+
+```{r}
+# Histogram: Ratio of street miles to block perimeter - split into 3 ranges
+ratio_le_1 <- valid_perimeter_ratio[valid_perimeter_ratio <= 1]
+ratio_1_to_2 <- valid_perimeter_ratio[valid_perimeter_ratio > 1 & valid_perimeter_ratio <= 2]
+ratio_gt_2 <- valid_perimeter_ratio[valid_perimeter_ratio > 2]
+
+# Plot 1: Ratio <= 1
+if (length(ratio_le_1) > 0) {
+  ggplot(data.frame(x = ratio_le_1), aes(x = x)) +
+    geom_histogram(bins = 30, fill = 'steelblue', color = 'black', alpha = 0.7) +
+    geom_vline(xintercept = median(ratio_le_1), color = 'red', linetype = 'dashed', linewidth = 1) +
+    labs(x = 'Street Miles to Block Perimeter Ratio', y = 'Count',
+         title = 'Histogram of Street Miles to Block Perimeter Ratio (Ratio ≤ 1)') +
+    theme_minimal() +
+    theme(panel.grid = element_line(color = "gray90"))
+
+  cat("Summary statistics for ratio ≤ 1:\n")
+  cat("  Count:", length(ratio_le_1), "\n")
+  cat("  Mean:", round(mean(ratio_le_1), 2), "\n")
+  cat("  Median:", round(median(ratio_le_1), 2), "\n")
+  cat("  Std Dev:", round(sd(ratio_le_1), 2), "\n")
+  cat("  Min:", round(min(ratio_le_1), 2), "\n")
+  cat("  Max:", round(max(ratio_le_1), 2), "\n")
+}
+
+# Plot 2: Ratio 1-2
+if (length(ratio_1_to_2) > 0) {
+  ggplot(data.frame(x = ratio_1_to_2), aes(x = x)) +
+    geom_histogram(bins = 30, fill = 'steelblue', color = 'black', alpha = 0.7) +
+    geom_vline(xintercept = median(ratio_1_to_2), color = 'red', linetype = 'dashed', linewidth = 1) +
+    labs(x = 'Street Miles to Block Perimeter Ratio', y = 'Count',
+         title = 'Histogram of Street Miles to Block Perimeter Ratio (1 < Ratio ≤ 2)') +
+    theme_minimal() +
+    theme(panel.grid = element_line(color = "gray90"))
+
+  cat("\nSummary statistics for 1 < ratio ≤ 2:\n")
+  cat("  Count:", length(ratio_1_to_2), "\n")
+  cat("  Mean:", round(mean(ratio_1_to_2), 2), "\n")
+  cat("  Median:", round(median(ratio_1_to_2), 2), "\n")
+  cat("  Std Dev:", round(sd(ratio_1_to_2), 2), "\n")
+  cat("  Min:", round(min(ratio_1_to_2), 2), "\n")
+  cat("  Max:", round(max(ratio_1_to_2), 2), "\n")
+}
+
+# Plot 3: Ratio > 2
+if (length(ratio_gt_2) > 0) {
+  ggplot(data.frame(x = ratio_gt_2), aes(x = x)) +
+    geom_histogram(bins = 50, fill = 'steelblue', color = 'black', alpha = 0.7) +
+    geom_vline(xintercept = median(ratio_gt_2), color = 'red', linetype = 'dashed', linewidth = 1) +
+    labs(x = 'Street Miles to Block Perimeter Ratio', y = 'Count',
+         title = 'Histogram of Street Miles to Block Perimeter Ratio (Ratio > 2)') +
+    theme_minimal() +
+    theme(panel.grid = element_line(color = "gray90"))
+
+  cat("\nSummary statistics for ratio > 2:\n")
+  cat("  Count:", length(ratio_gt_2), "\n")
+  cat("  Mean:", round(mean(ratio_gt_2), 2), "\n")
+  cat("  Median:", round(median(ratio_gt_2), 2), "\n")
+  cat("  Std Dev:", round(sd(ratio_gt_2), 2), "\n")
+  cat("  Min:", round(min(ratio_gt_2), 2), "\n")
+  cat("  Max:", round(max(ratio_gt_2), 2), "\n")
+}
+
+cat("\nOverall summary statistics for all ratios:\n")
+cat("  Total Count:", length(valid_perimeter_ratio), "\n")
+cat("  Ratio ≤ 1:", length(ratio_le_1),
+    sprintf("(%.1f%%)\n", length(ratio_le_1)/length(valid_perimeter_ratio)*100))
+cat("  1 < Ratio ≤ 2:", length(ratio_1_to_2),
+    sprintf("(%.1f%%)\n", length(ratio_1_to_2)/length(valid_perimeter_ratio)*100))
+cat("  Ratio > 2:", length(ratio_gt_2),
+    sprintf("(%.1f%%)\n", length(ratio_gt_2)/length(valid_perimeter_ratio)*100))
+```
+
+```{r}
+# List block_poly_id where street to perimeter ratio < 0.2
+if ('block_poly_id' %in% names(pg_summary)) {
+  low_ratio_blocks <- pg_summary |>
+    filter(is.finite(perimeter_to_street_miles_ratio),
+           perimeter_to_street_miles_ratio < 0.2,
+           block_perimeter_miles > 0)
+
+  block_poly_ids <- sort(low_ratio_blocks$block_poly_id)
+
+  cat("Blocks with street to perimeter ratio < 0.2:", length(block_poly_ids), "\n")
+  cat("\nblock_poly_id list (", length(block_poly_ids), " blocks):\n", sep = "")
+  print(block_poly_ids)
+
+  if (nrow(low_ratio_blocks) > 0) {
+    cat("\nSample details (first 10 blocks):\n")
+    low_ratio_blocks |>
+      select(block_poly_id, perimeter_to_street_miles_ratio,
+             street_miles, block_perimeter_miles, non_vacant_parcels) |>
+      head(10) |>
+      print()
+  }
+} else {
+  cat("block_poly_id column not found in pg_summary. Available columns:\n")
+  print(names(pg_summary))
+}
+```
+
+```{r}
+# Histogram: Number of parcels per square kilometer
+ggplot(data.frame(x = valid_parcels_density), aes(x = x)) +
+  geom_histogram(bins = 50, fill = 'coral', color = 'black', alpha = 0.7) +
+  geom_vline(xintercept = median(valid_parcels_density),
+             color = 'red', linetype = 'dashed', linewidth = 1) +
+  labs(x = 'Parcels per Square Kilometer', y = 'Count',
+       title = 'Histogram of Parcels per Square Kilometer by Block') +
+  theme_minimal() +
+
+
+cat("Summary statistics for parcels per square kilometer:\n")
+cat("  Count:", length(valid_parcels_density), "\n")
+cat("  Mean:", round(mean(valid_parcels_density)), "\n")
+cat("  Median:", round(median(valid_parcels_density)), "\n")
+cat("  Std Dev:", round(sd(valid_parcels_density)), "\n")
+cat("  Min:", round(min(valid_parcels_density)), "\n")
+cat("  Max:", round(max(valid_parcels_density)), "\n")
+```
+
+
+
+# Export the pg_summary GeoDataFrame to GeoJSON with diagnostic attributes
+
+```{r}
+# Ensure geometry is in WGS84 for export
+pg_summary_export <- pg_summary |>
+  st_transform(4326)
+
+# Export final GeoJSON with all attributes including diagnostic metrics
+output_geojson <- file.path(outputs_dir,
+    paste0("final_peoplesgas_with_buildings_streets_block_all_",
+           format(Sys.Date(), "%Y%m%d"), ".geojson"))
+st_write(pg_summary_export, output_geojson, delete_dsn = TRUE)
+cat("✅ Exported pg_summary to", output_geojson, "\n")
+cat("   Includes diagnostic attributes: block_perimeter_miles, block_area_sq_km, perimeter_to_street_miles_ratio, parcels_per_sq_km\n")
+cat("   Total features:", nrow(pg_summary_export), "\n")
+
+# # separate layers for closed and open construction polygons
+# closed_construction_polygons <- pg_summary_export |>
+#   filter(status_simple == "closed")
+# open_construction_polygons <- pg_summary_export |>
+#   filter(status_simple == "planned")
+#
+# # export closed and open construction polygons to GeoJSON
+# st_write(closed_construction_polygons,
+#          file.path(outputs_dir, paste0("final_peoplesgas_with_buildings_streets_", ANALYSIS_LEVEL, "_closed_", format(Sys.Date(), "%Y%m%d"), ".geojson")),
+#          delete_dsn = TRUE)
+# st_write(open_construction_polygons,
+#          file.path(outputs_dir, paste0("final_peoplesgas_with_buildings_streets_", ANALYSIS_LEVEL, "_open_", format(Sys.Date(), "%Y%m%d"), ".geojson")),
+#          delete_dsn = TRUE)
+```
+
+
+
+```{r}
+save.image(file = "/workspaces/reports2/reports/il_npa/report_variables.RData")
+```

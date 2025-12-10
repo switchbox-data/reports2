@@ -186,8 +186,25 @@ print(f"  Loaded {len(buildings):,} buildings")
 # Load assessor lookup
 lookup_file = data_dir / "cook_county_assessor_lookup.csv"
 if not lookup_file.exists():
-    print(f"ERROR: Assessor lookup file not found: {lookup_file}")
-    exit(1)
+    print("⚠️  Assessor lookup file not found locally, downloading from Google Sheets...")
+    try:
+        import urllib.request
+
+        # Ensure data directory exists
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        # Google Sheets CSV export URL
+        sheet_url = "https://docs.google.com/spreadsheets/d/1xxa47dClvp0rosZhUP1R7790CNXMLSD_0ExrPccR3p0/export?format=csv&gid=770211799"
+
+        # Download the file
+        urllib.request.urlretrieve(sheet_url, lookup_file)
+        print("  ✅ Successfully downloaded assessor lookup from Google Sheets")
+    except Exception as e:
+        print(f"  ❌ Error downloading assessor lookup: {e}")
+        print(
+            "  Please manually download from: https://docs.google.com/spreadsheets/d/1xxa47dClvp0rosZhUP1R7790CNXMLSD_0ExrPccR3p0/edit?gid=770211799#gid=770211799"
+        )
+        exit(1)
 
 print(f"Loading assessor lookup: {lookup_file.name}")
 assessor_lookup = pd.read_csv(lookup_file, dtype={"assessor_class": str})

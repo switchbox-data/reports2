@@ -97,7 +97,14 @@ pg_summary <- pg_summary |>
 cost_lpp_mile <- prp_df |> filter(variable == "cost_lpp_mile") |> pull(value)
 cost_elec_sf <- prp_df |> filter(variable == "cost_elec_sf") |> pull(value)
 cost_elec_mf <- prp_df |> filter(variable == "cost_elec_mf") |> pull(value)
-cost_decomm_mile <- prp_df |> filter(variable == "main_retire_cost_mile") |> pull(value)
+cost_decomm_mile <- prp_df |>
+  filter(variable == "main_retire_cost_mile") |>
+  pull(value)
+peak_kw_summer <- prp_df |> filter(variable == "peak_kw_summer") |> pull(value)
+peak_kw_winter <- prp_df |> filter(variable == "peak_kw_winter") |> pull(value)
+peak_kw_delta <- peak_kw_winter - peak_kw_summer
+lrmc_peak_kw <- prp_df |> filter(variable == "LMRC_historical") |> pull(value)
+grid_upgrade_cost_hh <- lrmc_peak_kw * peak_kw_delta
 ```
 
 ```{r}
@@ -107,8 +114,8 @@ cost_elec_comm <- 50000
 pg_summary <- pg_summary |>
   mutate(
     prp_cost = street_miles * cost_lpp_mile,
-    elec_sf_cost = sf_parcels * cost_elec_sf,
-    elec_mf_cost = mf_units * cost_elec_mf,
+    elec_sf_cost = (sf_parcels * cost_elec_sf) + (grid_upgrade_cost_hh * sf_parcels),
+    elec_mf_cost = (mf_units * cost_elec_mf) + (grid_upgrade_cost_hh * mf_units),
     elec_comm_cost = commercial_parcels * cost_elec_comm,
     elec_cost_total = elec_sf_cost + elec_mf_cost + elec_comm_cost + street_miles * cost_decomm_mile,
     pct_residential = (sf_parcels + mf_parcels) / non_vacant_parcels,
@@ -586,7 +593,7 @@ plot_pg_polygons_map <- function(pg_summary, fill_col, discrete = FALSE,
 
 
 
-# Histograms
+# EDA
 ```{r}
 valid_data <- pg_summary |>
   filter(is.finite(npa_over_prp)) |>

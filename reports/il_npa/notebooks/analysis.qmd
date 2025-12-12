@@ -105,6 +105,11 @@ peak_kw_winter <- prp_df |> filter(variable == "peak_kw_winter") |> pull(value)
 peak_kw_delta <- peak_kw_winter - peak_kw_summer
 lrmc_peak_kw <- prp_df |> filter(variable == "LMRC_historical") |> pull(value)
 grid_upgrade_cost_hh <- lrmc_peak_kw * peak_kw_delta
+
+# Scattershot electrification constants
+PCT_ELEC <- 0.30  # 30% electrification rate (Chicago Climate Action Plan goal)
+DISCOUNT_RATE <- 0.05  # 5% discount rate for NPV
+TIME_PERIOD <- 10  # 10-year timeline
 ```
 
 ```{r}
@@ -135,6 +140,40 @@ pg_summary <- pg_summary |>
     comp_cost_discrete_res_only = comp_cost_discrete,
     comp_cost_discrete = if_else(ind_flag, "not eligible", comp_cost_discrete),
     comp_cost_discrete_res_only = if_else(comm_ind_flag, "not eligible", comp_cost_discrete_res_only)
+  )
+```
+
+```{r}
+# Calculate scattershot electrification costs (unmanaged gas transition scenario)
+# Assumes PCT_ELEC of residential units electrify over TIME_PERIOD years
+pg_summary <- pg_summary |>
+  mutate(
+    # Annual cost of scattershot electrification (evenly distributed)
+    scattershot_annual_cost = (PCT_ELEC * elec_cost_total) / TIME_PERIOD,
+
+    # NPV of scattershot costs (t=0 to TIME_PERIOD-1)
+    scattershot_npv = scattershot_annual_cost * sum(1 / (1 + DISCOUNT_RATE)^(0:(TIME_PERIOD-1))),
+
+    # PRP cost plus scattershot electrification NPV
+    prp_cost_ss = prp_cost + scattershot_npv,
+
+    # Cost ratio: NPA vs PRP+scattershot
+    npa_over_prp_ss = elec_cost_total / prp_cost_ss,
+
+    # Cost difference: NPA vs PRP+scattershot
+    npa_less_prp_ss = elec_cost_total - prp_cost_ss,
+
+    # Binned cost comparison categories
+    comp_cost_discrete_ss = case_when(
+      npa_over_prp_ss <= 0.5 ~ "< 50 %",
+      npa_over_prp_ss <= 1 ~ "50-100 %",
+      npa_over_prp_ss <= 1.5 ~ "100-150 %",
+      npa_over_prp_ss <= 2 ~ "150-200 %",
+      TRUE ~ "> 200 %"
+    ),
+    comp_cost_discrete_res_only_ss = comp_cost_discrete_ss,
+    comp_cost_discrete_ss = if_else(ind_flag, "not eligible", comp_cost_discrete_ss),
+    comp_cost_discrete_res_only_ss = if_else(comm_ind_flag, "not eligible", comp_cost_discrete_res_only_ss)
   )
 ```
 
@@ -210,6 +249,44 @@ n_miles_1_5 <- sum(res_1_5$street_miles, na.rm = TRUE)
 ```
 
 ```{r}
+# Scattershot scenario report variables
+# how many fully residential blocks are cheaper to electrify vs PRP+scattershot
+n_res_blocks_cheaper_ss <- sum(res_only$npa_over_prp_ss <= 1, na.rm = TRUE)
+pct_res_blocks_cheaper_ss <- (n_res_blocks_cheaper_ss / n_res_blocks)
+
+# how many fully residential blocks are within 1 to 1.5 times the cost of PRP+scattershot
+n_res_blocks_1_to_1_5_ss <- sum(res_only$npa_over_prp_ss > 1 & res_only$npa_over_prp_ss < 1.5, na.rm = TRUE)
+n_res_blocks_0_to_1_5_ss <- sum(res_only$npa_over_prp_ss < 1.5, na.rm = TRUE)
+pct_res_blocks_1_to_1_5_ss <- (n_res_blocks_1_to_1_5_ss / n_res_blocks)
+pct_res_blocks_0_to_1_5_ss <- (n_res_blocks_0_to_1_5_ss / n_res_blocks)
+
+# 1.0 threshold cost difference (scattershot)
+res_1_0_ss <- res_only |> filter(npa_over_prp_ss < 1.0)
+prp_total_ce_1_0_ss <- sum(res_1_0_ss$prp_cost_ss, na.rm = TRUE)
+npa_total_ce_1_0_ss <- sum(res_1_0_ss$elec_cost_total, na.rm = TRUE)
+total_cost_diff_1_0_ss <- npa_total_ce_1_0_ss - prp_total_ce_1_0_ss
+
+# 1.5 threshold cost difference (scattershot)
+res_1_5_ss <- res_only |> filter(npa_over_prp_ss < 1.5)
+prp_total_ce_1_5_ss <- sum(res_1_5_ss$prp_cost_ss, na.rm = TRUE)
+npa_total_ce_1_5_ss <- sum(res_1_5_ss$elec_cost_total, na.rm = TRUE)
+total_cost_diff_1_5_ss <- npa_total_ce_1_5_ss - prp_total_ce_1_5_ss
+
+# residential unit counts (scattershot)
+n_res_units_1_0_ss <- sum(res_1_0_ss$total_residential_units, na.rm = TRUE)
+n_sf_1_0_ss <- sum(res_1_0_ss$sf_parcels, na.rm = TRUE)
+n_mf_1_0_ss <- sum(res_1_0_ss$total_residential_units - res_1_0_ss$sf_parcels, na.rm = TRUE)
+
+n_res_units_1_5_ss <- sum(res_1_5_ss$total_residential_units, na.rm = TRUE)
+n_sf_1_5_ss <- sum(res_1_5_ss$sf_parcels, na.rm = TRUE)
+n_mf_1_5_ss <- sum(res_1_5_ss$total_residential_units - res_1_5_ss$sf_parcels, na.rm = TRUE)
+
+# street miles counts (scattershot)
+n_miles_1_0_ss <- sum(res_1_0_ss$street_miles, na.rm = TRUE)
+n_miles_1_5_ss <- sum(res_1_5_ss$street_miles, na.rm = TRUE)
+```
+
+```{r}
 COMP_COST_COLS <-c("< 50 %" = "#1b8813",
       "50-100 %"= "#9ec23c",
       "100-150 %" = "#d3bc14",
@@ -235,6 +312,28 @@ ggplot() +
   scale_y_continuous(expand = c(0,0)) +
   scale_fill_manual(values = COMP_COST_COLS, drop = FALSE) +
   labs(x = 'Cost to electrify block as a percent of PRP cost',
+  y = 'Number of blocks',
+  fill = ''
+  ) +
+  theme(legend.position = "top",
+        axis.text.x = element_text(size = 9),
+        axis.title.x = element_text(margin = margin(t = 10)))
+```
+
+```{r}
+#| label: fig-histogram-npa-over-prp-ss
+#| fig-cap: "Histogram of the ratio of the cost of electrification to the cost of PRP + scattershot electrification per residential block. The scattershot scenario assumes 30% of residential units electrify over 10 years (unmanaged gas transition). Values less than 100 percent indicate electrification is cheaper than PRP + scattershot, values greater than 100 percent indicate electrification is more expensive."
+#| fig-width: 8
+#| fig-height: 6
+res_only |>
+data.frame() |>
+filter(npa_over_prp_ss <4) |>
+ggplot() +
+  geom_histogram(aes(x = npa_over_prp_ss, fill = factor(comp_cost_discrete_ss, levels = names(COMP_COST_COLS))), breaks = seq(0, 4, 0.1)) +
+  scale_x_continuous(limits = c(0,2.6), breaks = seq(0, 4, 0.25), labels = scales::percent_format(accuracy = 1), expand = c(0,0)) +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_fill_manual(values = COMP_COST_COLS, drop = FALSE) +
+  labs(x = 'Cost to electrify block as a percent of PRP + scattershot cost',
   y = 'Number of blocks',
   fill = ''
   ) +
@@ -306,6 +405,68 @@ p
 ```
 
 ```{r}
+#| label: fig-cumulative-saving-ss
+#| fig-cap: "Cumulative saving from targeted electrification compared to PRP + scattershot electrification baseline. The scattershot scenario assumes 30% of residential units electrify over 10 years (unmanaged gas transition)."
+#| fig-width: 8
+#| fig-height: 6
+
+cumulative_data_ss <- res_only |>
+  mutate(npa_less_prp_ss_neg = -1 * npa_less_prp_ss) |>
+  arrange(npa_over_prp_ss) |>
+  mutate(
+    cumulative_saving_ss = cumsum(npa_less_prp_ss_neg),
+    n_elec_blocks = row_number(),
+    pct_elec_blocks = n_elec_blocks / nrow(res_only)
+  )
+
+# Find where cumulative saving crosses zero
+zero_crossing_ss <- cumulative_data_ss |>
+  filter(cumulative_saving_ss <= 0) |>
+  slice(1) |>
+  pull(pct_elec_blocks)
+
+p_ss = cumulative_data_ss |>
+  ggplot() +
+  geom_line(aes(x = pct_elec_blocks, y = cumulative_saving_ss)) +
+  geom_vline(
+    xintercept = zero_crossing_ss,
+    linetype = "dashed",
+    color = sb_colors["pistachio_text"],
+    size = 1
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "solid",
+    color = "gray"
+  ) +
+  annotate(
+    "text",
+    x = zero_crossing_ss,
+    y = max(cumulative_data_ss$cumulative_saving_ss) * 0.9,
+    label = paste0(round(zero_crossing_ss * 100), "%"),
+    hjust = -0.2,
+    color = sb_colors["pistachio_text"]
+  ) +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
+  scale_y_continuous(
+    limits = c(0, 100e6),
+    breaks = seq(0, 100e6, by = 20e6),
+    labels = scales::dollar_format(scale = 1e-6, suffix = "M", accuracy = 1)
+  ) +
+  labs(
+    x = 'Percent of residential blocks electrified',
+    y = 'Cumulative saving from targeted electrification vs PRP + scattershot',
+  ) +
+  theme(
+    legend.position = "top",
+    axis.text.x = element_text(size = 9),
+    axis.title.x = element_text(margin = margin(t = 10))
+  )
+
+p_ss
+```
+
+```{r}
 #| label: fig-scatter-density-vs-npa-over-prp
 #| fig-cap: "Housing density  vs the ratio of the cost of electrification to the cost of PRP. Each point represents a block. For blocks with multi-family homes, we count each apartment unit in the total housing count. The color bar shows the percent of block that is made up of single-family homes where blue is predominately multi-family housing and orange is predominately single-family housing."
 #| fig-width: 8
@@ -335,6 +496,47 @@ res_only |>
   labs(
     x = 'Housing density (units per acre)',
     y = 'Cost to electrify block as a percent of PRP cost',
+    color = 'Homes on block that are single-family'
+  ) +
+  theme(
+    legend.position = "top",
+    legend.key.width = unit(2, "cm"),
+    axis.text.x = element_text(size = 9),
+    axis.title.x = element_text(margin = margin(t = 10)),
+    axis.title.y = element_text(margin = margin(r = 10))
+  )
+```
+
+```{r}
+#| label: fig-scatter-density-vs-npa-over-prp-ss
+#| fig-cap: "Housing density vs the ratio of the cost of electrification to the cost of PRP + scattershot electrification. The scattershot scenario assumes 30% of residential units electrify over 10 years (unmanaged gas transition). Each point represents a block. For blocks with multi-family homes, we count each apartment unit in the total housing count. The color bar shows the percent of block that is made up of single-family homes where blue is predominately multi-family housing and orange is predominately single-family housing."
+#| fig-width: 8
+#| fig-height: 6
+
+res_only |>
+  filter(npa_over_prp_ss < 4) |>
+  mutate(
+    block_area_acres = block_area_full_sqm / 4046.86,
+    density = total_residential_units / block_area_acres,
+    pct_sf = (sf_parcels / total_residential_units) * 100
+  ) |>
+  ggplot() +
+  geom_point(aes(x = density, y = npa_over_prp_ss, color = pct_sf), alpha = 0.8) +
+  scale_x_continuous(limits = c(0, 60), breaks = seq(0, 60, 10)) +
+  scale_y_continuous(
+    limits = c(0, 4),
+    breaks = seq(0, 4, 0.5),
+    labels = scales::percent_format(accuracy = 1)
+  ) +
+  scale_color_gradient(
+    low = "#68BED8",
+    high = "#FC9706",
+    labels = scales::label_percent(scale = 1),
+    guide = guide_colorbar(barwidth = 15, barheight = 1, nbin = 100)
+  ) +
+  labs(
+    x = 'Housing density (units per acre)',
+    y = 'Cost to electrify block as a percent of PRP + scattershot cost',
     color = 'Homes on block that are single-family'
   ) +
   theme(

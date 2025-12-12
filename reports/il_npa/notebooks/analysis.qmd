@@ -110,6 +110,9 @@ grid_upgrade_cost_hh <- lrmc_peak_kw * peak_kw_delta
 PCT_ELEC <- 0.30  # 30% electrification rate (Chicago Climate Action Plan goal)
 DISCOUNT_RATE <- 0.05  # 5% discount rate for NPV
 TIME_PERIOD <- 10  # 10-year timeline
+
+# Residential threshold - some blocks have no commerical or industrial but they do have churches, schools, etc. This is a rough threshold to identify fully residential blocks. If the sum of residential parcels divided by the non-vacant parcel count is greater than this threshold, we consider the block fully residential.
+RES_THRESHOLD <- 0.9
 ```
 
 ```{r}
@@ -119,15 +122,28 @@ cost_elec_comm <- 50000
 pg_summary <- pg_summary |>
   mutate(
     prp_cost = street_miles * cost_lpp_mile,
-    elec_sf_cost = (sf_parcels * cost_elec_sf) + (grid_upgrade_cost_hh * sf_parcels),
-    elec_mf_cost = (mf_units * cost_elec_mf) + (grid_upgrade_cost_hh * mf_units),
+    elec_sf_cost = (sf_parcels * cost_elec_sf) +
+      (grid_upgrade_cost_hh * sf_parcels),
+    elec_mf_cost = (mf_units * cost_elec_mf) +
+      (grid_upgrade_cost_hh * mf_units),
     elec_comm_cost = commercial_parcels * cost_elec_comm,
-    elec_cost_total = elec_sf_cost + elec_mf_cost + elec_comm_cost + street_miles * cost_decomm_mile,
-    pct_residential = (sf_parcels + mf_parcels) / non_vacant_parcels,
+    elec_cost_total = elec_sf_cost +
+      elec_mf_cost +
+      elec_comm_cost +
+      street_miles * cost_decomm_mile,
+    pct_residential = (sf_parcels + mf_parcels) /
+      non_vacant_parcels,
     comm_ind_total_count = commercial_parcels + industrial_parcels,
     comm_ind_flag = comm_ind_total_count > 0,
     ind_flag = industrial_parcels > 0,
     comm_flag = commercial_parcels > 1,
+    fully_res = if_else(
+      !comm_ind_flag &
+        total_residential_units > 0 &
+        pct_residential > RES_THRESHOLD,
+      TRUE,
+      FALSE
+    ),
     npa_over_prp = elec_cost_total / prp_cost,
     npa_less_prp = elec_cost_total - prp_cost,
     comp_cost_discrete = case_when(
@@ -137,10 +153,11 @@ pg_summary <- pg_summary |>
       npa_over_prp <= 2 ~ "150-200 %",
       TRUE ~ "> 200 %"
     ),
-    comp_cost_discrete_res_only = comp_cost_discrete,
-    comp_cost_discrete = if_else(ind_flag, "not eligible", comp_cost_discrete),
-    comp_cost_discrete_res_only = if_else(comm_ind_flag, "not eligible", comp_cost_discrete_res_only)
-  )
+    comp_cost_discrete = if_else(
+      !fully_res,
+      "not eligible",
+      comp_cost_discrete
+    )  )
 ```
 
 ```{r}
@@ -152,7 +169,8 @@ pg_summary <- pg_summary |>
     scattershot_annual_cost = (PCT_ELEC * elec_cost_total) / TIME_PERIOD,
 
     # NPV of scattershot costs (t=0 to TIME_PERIOD-1)
-    scattershot_npv = scattershot_annual_cost * sum(1 / (1 + DISCOUNT_RATE)^(0:(TIME_PERIOD-1))),
+    scattershot_npv = scattershot_annual_cost *
+      sum(1 / (1 + DISCOUNT_RATE)^(0:(TIME_PERIOD - 1))),
 
     # PRP cost plus scattershot electrification NPV
     prp_cost_ss = prp_cost + scattershot_npv,
@@ -171,14 +189,17 @@ pg_summary <- pg_summary |>
       npa_over_prp_ss <= 2 ~ "150-200 %",
       TRUE ~ "> 200 %"
     ),
-    comp_cost_discrete_res_only_ss = comp_cost_discrete_ss,
-    comp_cost_discrete_ss = if_else(ind_flag, "not eligible", comp_cost_discrete_ss),
-    comp_cost_discrete_res_only_ss = if_else(comm_ind_flag, "not eligible", comp_cost_discrete_res_only_ss)
+
+    comp_cost_discrete_ss = if_else(
+      !fully_res,
+      "not eligible",
+      comp_cost_discrete_ss
+    )
   )
 ```
 
 ```{r}
-res_only <- pg_summary |> filter(!comm_ind_flag & total_residential_units > 0)
+res_only <- pg_summary |> filter(fully_res)
 
 n_blocks_total <- nrow(pg_summary)
 ```
@@ -186,8 +207,9 @@ n_blocks_total <- nrow(pg_summary)
 
 ```{r}
 res_only |>
-mutate(res_parcels = sf_parcels + mf_parcels + mixed_use_parcels) |>
-filter(non_vacant_parcels !=res_parcels)
+mutate(res_parcels = sf_parcels + mf_parcels,
+diff = non_vacant_parcels - res_parcels) |>
+filter(non_vacant_parcels !=res_parcels) |> View()
 ```
 
 # Report Variables
@@ -449,8 +471,8 @@ p_ss = cumulative_data_ss |>
   ) +
   scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
   scale_y_continuous(
-    limits = c(0, 100e6),
-    breaks = seq(0, 100e6, by = 20e6),
+    limits = c(0, 60e6),
+    breaks = seq(0, 60e6, by = 20e6),
     labels = scales::dollar_format(scale = 1e-6, suffix = "M", accuracy = 1)
   ) +
   labs(

@@ -588,23 +588,27 @@ city_blocks_utm = prepare_geometries_for_utm(
 parcels_in_buffered = parcels_in_buffered.reset_index(drop=True)
 # Drop any index_right column from previous join
 parcels_in_buffered = parcels_in_buffered.drop(
-    columns=['index_right'], errors='ignore')
+    columns=["index_right"], errors="ignore")
 
 # Add unique parcel identifier for tracking through the assignment process
-parcels_in_buffered['parcel_temp_id'] = parcels_in_buffered.index.astype(int)
+parcels_in_buffered["parcel_temp_id"] = parcels_in_buffered.index.astype(int)
+
+parcels_in_buffered = parcels_in_buffered[
+    ~parcels_in_buffered["parcel_temp_id"].isin([25302, 19326, 19336, 19340, 6500, 6499])
+]
 
 # Find all parcel-block intersections using FULL block geometries
 # This will create one row per parcel-block intersection
 print("  Finding parcel-block intersections using FULL block geometries...")
 parcel_block_overlaps = gpd.overlay(
-    parcels_in_buffered[['parcel_temp_id', 'geometry']],
-    city_blocks_utm[['geoid10', 'geometry']],
-    how='intersection',
-    keep_geom_type=False
+    parcels_in_buffered[["parcel_temp_id", "geometry"]],
+    city_blocks_utm[["geoid10", "geometry"]],
+    how="intersection",
+    keep_geom_type=False,
 )
 
 # Calculate overlap area for each intersection
-parcel_block_overlaps['overlap_area_sqm'] = parcel_block_overlaps.geometry.area
+parcel_block_overlaps["overlap_area_sqm"] = parcel_block_overlaps.geometry.area
 
 print(f"  Found {len(parcel_block_overlaps):,} parcel-block intersections")
 
@@ -613,12 +617,12 @@ print(f"  Found {len(parcel_block_overlaps):,} parcel-block intersections")
 print("  Selecting best block match for each parcel (largest overlap with FULL blocks)...")
 # Use idxmax to find the index of the row with maximum overlap for each parcel
 best_indices = parcel_block_overlaps.groupby(
-    'parcel_temp_id')['overlap_area_sqm'].idxmax()
+    "parcel_temp_id")["overlap_area_sqm"].idxmax()
 best_block_matches = parcel_block_overlaps.loc[best_indices].reset_index(
     drop=True)
 
 # Verify one-to-one assignment: each parcel should have exactly one best match
-if len(best_block_matches) != len(best_block_matches['parcel_temp_id'].unique()):
+if len(best_block_matches) != len(best_block_matches["parcel_temp_id"].unique()):
     raise ValueError(
         f"ERROR: One-to-one assignment failed. "
         f"Found {len(best_block_matches)} matches for {len(best_block_matches['parcel_temp_id'].unique())} unique parcels"
@@ -627,14 +631,14 @@ if len(best_block_matches) != len(best_block_matches['parcel_temp_id'].unique())
 # Merge best matches back to parcels to preserve all parcel attributes
 # This assigns each parcel to exactly one block (geoid10)
 parcels_by_block = parcels_in_buffered.merge(
-    best_block_matches[['parcel_temp_id', 'geoid10', 'overlap_area_sqm']],
-    on='parcel_temp_id',
-    how='inner'  # Only keep parcels that matched at least one block
+    best_block_matches[["parcel_temp_id", "geoid10", "overlap_area_sqm"]],
+    on="parcel_temp_id",
+    how="inner",  # Only keep parcels that matched at least one block
 )
 
 # Drop temporary column
 parcels_by_block = parcels_by_block.drop(
-    columns=['parcel_temp_id'], errors='ignore')
+    columns=["parcel_temp_id"], errors="ignore")
 
 # Clean up intermediate data
 del parcel_block_overlaps, best_block_matches, city_blocks_utm
@@ -655,26 +659,24 @@ else:
     print(f"  This should not happen with one-to-one assignment - investigate!")
 
 # Validation: Check that all expected columns from parcels_with_units are preserved
-expected_cols = ['type', 'building_units', 'sf_mf', 'matched_building_id']
-validate_columns(parcels_by_block, expected_cols, 'parcels_by_block')
+expected_cols = ["type", "building_units", "sf_mf", "matched_building_id"]
+validate_columns(parcels_by_block, expected_cols, "parcels_by_block")
 
 # Summary statistics
 print(f"\nSummary of parcels in construction areas:")
 print(f"  Total parcels: {len(parcels_by_block):,}")
-if 'type' in parcels_by_block.columns:
+if "type" in parcels_by_block.columns:
     print(
         f"  Parcels with type classification: {parcels_by_block['type'].notna().sum():,}")
-    type_dist = parcels_by_block['type'].value_counts()
+    type_dist = parcels_by_block["type"].value_counts()
     for prop_type, count in type_dist.items():
         print(f"    {prop_type}: {count:,}")
-if 'building_units' in parcels_by_block.columns:
-    units_with_data = parcels_by_block['building_units'].dropna()
+if "building_units" in parcels_by_block.columns:
+    units_with_data = parcels_by_block["building_units"].dropna()
     units_with_data = units_with_data[units_with_data > 0]
     if len(units_with_data) > 0:
-        print(
-            f"  Parcels with building units: {len(units_with_data):,}")
-        print(
-            f"  Total residential units: {units_with_data.sum():,.0f}")
+        print(f"  Parcels with building units: {len(units_with_data):,}")
+        print(f"  Total residential units: {units_with_data.sum():,.0f}")
 
 
 ```

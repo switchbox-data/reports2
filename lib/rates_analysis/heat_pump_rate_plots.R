@@ -574,6 +574,13 @@ plot_energy_burden_histogram_standalone <- function(
   moderate_burden_threshold <- 0.06
   high_burden_threshold <- 0.12
 
+  # Set y breaks based on y_limits
+  if (y_limits[2] <= 100000 / 242.13) {
+    y_breaks <- c(0, 25000, 50000, 75000, 100000) / 242.13
+  } else {
+    y_breaks <- c(0, 50000, 100000, 150000, 200000, 250000) / 242.13
+  }
+
   # Calculate bill categories
   data <- data |>
     mutate(
@@ -753,24 +760,11 @@ plot_energy_burden_histogram_standalone <- function(
       size = 3,
       fontface = "bold"
     ) +
+    labs(title = name) +
     scale_y_continuous(
       labels = function(x) paste0(round(x * 242.13 * 0.001), "k"),
-      #name = "# of Homes",
       limits = y_limits,
-      breaks = c(
-        0,
-        25000,
-        50000,
-        75000,
-        100000,
-        125000,
-        150000,
-        175000,
-        200000,
-        225000,
-        250000
-      ) /
-        242.13
+      breaks = y_breaks
     ) +
     scale_x_continuous(
       labels = scales::percent_format(accuracy = 1),
@@ -787,7 +781,13 @@ plot_energy_burden_histogram_standalone <- function(
       panel.grid.major = element_line(linewidth = 0.2),
       panel.grid.minor = element_blank(),
       aspect.ratio = 0.18,
-      axis.title.x = element_text(size = 8)
+      axis.title.x = element_text(size = 8),
+      plot.title = element_text(
+        hjust = 0.5,
+        face = "bold",
+        size = 8,
+        color = "black"
+      ),
     )
 
   # Remove x-axis elements if requested

@@ -61,6 +61,7 @@ path_report_variables <- file.path(path_to_cache, "report_variables.RData")
 
 ## Library Loading
 ```{r}
+#| label: library loading
 # =============================================================================
 # LIBRARY LOADING
 # =============================================================================
@@ -114,9 +115,9 @@ url_delivery_rates <- "https://docs.google.com/spreadsheets/d/1bBAVdWwoUX6Mgmxnc
 # SMI thresholds
 url_smi_thresholds <- "https://docs.google.com/spreadsheets/d/187FwQj-aLVJXdm2qzZ4uENLqIsuoi47j5MqpYfowUHQ/edit?gid=0#gid=0"
 
-load_tariffs_from_cache <- TRUE
-load_thresholds_from_cache <- TRUE
-load_results_from_cache <- TRUE
+load_tariffs_from_cache <- FALSE
+load_thresholds_from_cache <- FALSE
+load_results_from_cache <- FALSE
 ```
 
 ## Color Definitions
@@ -502,6 +503,11 @@ n_non_vacant_homes <- housing_units |> filter(upgrade == 0) |> filter(occupants_
 
 print(paste0("This housing_units dataframe (use_these_states = ", use_these_states, ") has ", n_total_homes, " total bldg_ids"))
 print(paste0("This housing_units dataframe (use_these_states = ", use_these_states, ") has ", n_non_vacant_homes, " non-vacant bldg_ids (", round(n_non_vacant_homes / n_total_homes * 100, 2), "%)"))
+
+
+# also throw out any homes that start with a heat pump or "Other/None"
+housing_units <- housing_units |>
+  filter(baseline_heating_type %in% c("Natural Gas", "Fuel Oil", "Propane", "Electric Resistance"))
 
 summarize_bldg_ids_by <- function(housing_units, column_to_summarize) {
   # Accepts:
@@ -1015,7 +1021,7 @@ x_label_offset <- 2.5
 fig_bill_stacked_bar_gas_on_top <- ggplot(annual_bills_by_component_plot,
        aes(x = scenario, y = amount, fill = charge_type)) +
   geom_col() +
-  labs(title = "Components of Annual Electricity Bill",
+  labs(title = "Annual Energy Bills, Before and After Heat Pumps",
        x = "",
        y = "Annual Cost ($)",
        fill = "Charge Type") +
@@ -1198,7 +1204,7 @@ print(ggplot(
 ### month_bills_gas_after
 ```{r}
 #| label: fig-monthly_bills_gas_after
-#| fig-cap: "The electric bill components and total gas bill for natural gas heated homes, after upgrade."
+#| fig-cap: "The electric bill components and total gas bill for natural gas heated homes, before and after upgrade."
 
 
 bill_component_colors = c(
@@ -1231,7 +1237,7 @@ ggplot()+
     x = "Month",
     y = "Median Monthly Total Bill ($)",
     title = "Median Monthly Total Bill (Electric + Gas)",
-    subtitle = "Natural gas-heated homes, after upgrade"
+    subtitle = "Natural gas-heated homes, before and after upgrade"
   ) +
   theme(
     legend.position = "none",
@@ -1339,7 +1345,7 @@ x_label_offset <- 2.5
 fig_bill_stacked_bar_fuel_oil_on_top <- ggplot(annual_bills_by_component_plot,
        aes(x = scenario, y = amount, fill = charge_type)) +
   geom_col() +
-  labs(title = "Components of Annual Electricity Bill",
+  labs(title = "Annual Energy Bills, Before and After Heat Pumps",
        x = "",
        y = "Annual Cost ($)",
        fill = "Charge Type") +
@@ -1522,7 +1528,7 @@ print(ggplot(
 ### month_bills_fuel_oil_after
 ```{r}
 #| label: fig-monthly_bills_fuel_oil_after
-#| fig-cap: "The electric bill components and total fuel oil bill for fuel oil heated homes, after upgrade."
+#| fig-cap: "The electric bill components and total fuel oil bill for fuel oil heated homes, before andafter upgrade."
 
 ggplot() +
   # BEFORE
@@ -1546,7 +1552,7 @@ ggplot() +
     x = "Month",
     y = "Median Monthly Total Bill ($)",
     title = "Median Monthly Total Bill (Electric + Fuel Oil)",
-    subtitle = "Fuel oil-heated homes, after upgrade"
+    subtitle = "Fuel oil-heated homes, before and after upgrade"
   ) +
   theme(
     legend.position = "none",
@@ -1801,7 +1807,7 @@ print(ggplot(
 ### month_bills_resistance_after
 ```{r}
 #| label: fig-monthly_bills_resistance_after
-#| fig-cap: "The electric bill components and total fuel oil bill for fuel oil heated homes, after upgrade."
+#| fig-cap: "The electric bill components electric resistance-heated homes, before and after upgrade."
 
 ggplot()+
   # BEFORE
@@ -1825,7 +1831,7 @@ ggplot()+
     x = "Month",
     y = "Median Monthly Total Bill ($)",
     title = "Median Monthly Total Electricity Bill",
-    subtitle = "Electric resistance-heated homes, after upgrade"
+    subtitle = "Electric resistance-heated homes, before and after upgrade"
   ) +
   theme(
     legend.position = "none",
@@ -1856,7 +1862,7 @@ result <- hist_for_single_rate_version(
   binwidth = 100
 )
 
-category_percentages <- result[[2]]
+winter_change_stats_all_fuels_baseline_hp_high <- result[[2]]
 
 print(result[[1]])
 ```
@@ -1881,7 +1887,7 @@ result <- hist_for_single_rate_version(
   binwidth = 100
 )
 
-category_percentages <- result[[2]]
+summer_change_stats_all_fuels_baseline_hp_high <- result[[2]]
 
 print(result[[1]])
 ```
@@ -1890,7 +1896,7 @@ print(result[[1]])
 ### fig-bar-fuel-types
 ```{r}
 #| label: fig-bar-fuel-types
-#| fig-cap: "Proportion of Rhode Island homes by primary heating fuel."
+#| fig-cap: "Proportion of Connecticut homes by primary heating fuel."
 #| fig-width: 8
 #| fig-height: 2
 
@@ -1910,7 +1916,8 @@ fuel_types_pct <- fuel_types_pct |>
   mutate(pct = count / sum(count),
          cum_pct = cumsum(pct),
          pct_label = paste0(hvac_group, ": ", scales::percent(pct, accuracy=1))
-         )
+         ) |>
+  filter(pct > 0.01)
 
 
 fuel_types_pct_for_plot <- fuel_types_pct |>
@@ -2022,10 +2029,10 @@ print(result[[1]])
 ```
 
 ## How does the building type a home is in affect its energy bills after switching to heat pumps?
-### fig-bar-fuel-types
+### fig-bar-building-type
 ```{r}
 #| label: fig-bar-building-type
-#| fig-cap: "Proportion of CT homes by building type."
+#| fig-cap: "Proportion of Connecticut homes by building type."
 #| fig-width: 8
 #| fig-height: 2
 
@@ -2088,7 +2095,7 @@ ggplot() +
 ### fig-hist_1_single_family_annual_change
 ```{r}
 #| label: fig-hist_1_single_family_annual_change
-#| fig-cap: "Distribution of annual bill changes for homes switching to heat pumps, all under baseline rates."
+#| fig-cap: "Distribution of annual bill changes for single-family homes switching to heat pumps, all under baseline rates."
 
 result <- hist_for_single_rate_version(
   annual_change_table = annual_changes_total |> filter(building_type_group == "Single-Family"),
@@ -2097,7 +2104,7 @@ result <- hist_for_single_rate_version(
   version_elec = "baseline",
   hvac_option = "hp_high",
   supply_year = supply_year,
-  title = "Change in Total Annual Energy Bills for Single-Family Homes Switching to Heat Pumps from All Fuels",
+  title = "Change in Total Annual Energy Bills for Single-Family Homes in Connecticut\nSwitching to Heat Pumps from All Fuels",
   second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
   y_limits = c(0, 300),
@@ -2112,7 +2119,7 @@ print(result[[1]])
 ### fig-hist_1_small_multifamily_annual_change
 ```{r}
 #| label: fig-hist_1_small_multifamily_annual_change
-#| fig-cap: "Distribution of annual bill changes for homes switching to heat pumps, all under baseline rates."
+#| fig-cap: "Distribution of annual bill changes for homes in 2-4 unit multifamily buildings switching to heat pumps, all under baseline rates."
 
 result <- hist_for_single_rate_version(
   annual_change_table = annual_changes_total |> filter(building_type_group == "2-4 Units"),
@@ -2121,7 +2128,7 @@ result <- hist_for_single_rate_version(
   version_elec = "baseline",
   hvac_option = "hp_high",
   supply_year = supply_year,
-  title = "Change in Total Annual Energy Bills for 2-4 Unit Multifamily Buildings Switching to Heat Pumps from All Fuels",
+  title = "Change in Total Annual Energy Bills for Connecticut Homes in 2-4 Unit Multifamily Buildings\nSwitching to Heat Pumps from All Fuels",
   second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
   y_limits = c(0, 200),
@@ -2136,7 +2143,7 @@ print(result[[1]])
 ### fig-hist_1_large_multifamily_annual_change
 ```{r}
 #| label: fig-hist_1_large_multifamily_annual_change
-#| fig-cap: "Distribution of annual bill changes for homes switching to heat pumps, all under baseline rates."
+#| fig-cap: "Distribution of annual bill changes for homes in 5+ unit multifamily buildings switching to heat pumps, all under baseline rates."
 
 result <- hist_for_single_rate_version(
   annual_change_table = annual_changes_total |> filter(building_type_group == "5+ Units"),
@@ -2145,7 +2152,7 @@ result <- hist_for_single_rate_version(
   version_elec = "baseline",
   hvac_option = "hp_high",
   supply_year = supply_year,
-  title = "Change in Total Annual Energy Bills for 5+ Unit Multifamily Buildings Switching to Heat Pumps from All Fuels",
+  title = "Change in Total Annual Energy Bills Connecticut Homes in 5+ Unit Multifamily Buildings\nSwitching to Heat Pumps from All Fuels",
   second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
   y_limits = c(0, 200),
@@ -2162,7 +2169,7 @@ print(result[[1]])
 ### fig-bar-cooling-types
 ```{r}
 #| label: fig-bar-cooling-types
-#| fig-cap: "Proportion of CT homes by baseline cooling type."
+#| fig-cap: "Proportion of Connecticut homes by baseline cooling type."
 #| fig-width: 8
 #| fig-height: 2
 
@@ -2182,7 +2189,8 @@ cooling_type_pct <- cooling_type_pct |>
   mutate(pct = count / sum(count),
          cum_pct = cumsum(pct),
          pct_label = paste0(baseline_cooling_type_group, ": ", scales::percent(pct, accuracy=1))
-         )
+         ) |>
+  filter(pct > 0.01)
 
 
 cooling_type_pct_for_plot <- cooling_type_pct |>
@@ -2233,7 +2241,7 @@ result <- hist_for_single_rate_version(
   version_elec = "baseline",
   hvac_option = "hp_high",
   supply_year = supply_year,
-  title = "Change in Total Annual Energy Bills for Homes with Room AC Switching to Heat Pumps from All Fuels",
+  title = "Change in Total Annual Energy Bills for Connecticut Homes with Room AC\nSwitching to Heat Pumps from All Fuels",
   second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
   y_limits = c(0, 300),
@@ -2257,7 +2265,7 @@ result <- hist_for_single_rate_version(
   version_elec = "baseline",
   hvac_option = "hp_high",
   supply_year = supply_year,
-  title = "Change in Total Annual Energy Bills for Homes with Central AC Switching to Heat Pumps from All Fuels",
+  title = "Change in Total Annual Energy Bills for Connecticut Homes with Central AC\nSwitching to Heat Pumps from All Fuels",
   second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
   y_limits = c(0, 200),
@@ -2281,7 +2289,7 @@ result <- hist_for_single_rate_version(
   version_elec = "baseline",
   hvac_option = "hp_high",
   supply_year = supply_year,
-  title = "Change in Total Annual Energy Bills for Homes with No Cooling Switching to Heat Pumps from All Fuels",
+  title = "Change in Total Annual Energy Bills for Connecticut Homes with No Cooling\nSwitching to Heat Pumps from All Fuels",
   second_subtitle = "Connecticut",
   x_limits = c(-3000, 3000),
   y_limits = c(0, 100),
@@ -2299,14 +2307,14 @@ print(result[[1]])
 ## Energy Burdens
 ```{r}
 #| label: energy burden plot parameters
-income_threshold_upper <- 500000
+income_threshold_upper <- 1000000
 income_threshold_lower <- 100
 ```
 
 ### Energy Burden Histogram - Current HVAC vs. Cold Climate Heat Pump, across all other characteristics
 ```{r}
 #| label: fig-burden_hists_all_smi_tiers
-#| cap: "Histogram of energy burdens across all fuel types, all building types, all cooling types, all income levels. Assuming 100% participation in low-income discounts."
+#| fig-cap: "Distribution of winter energy burdens in CT, before and after heat pumps"
 
 y_limits <- c(0, 300000/242.13)
 
@@ -2371,7 +2379,7 @@ burden_hists_all_combined <- burden_hists_all_current_plot / burden_hists_all_hp
   ) +
   plot_annotation(
     title = "Winter Energy Burdens in Connecticut: Current HVAC vs. Cold Climate Heat Pump",
-    subtitle = paste0("Among households of annual income <", scales::dollar(income_threshold_upper)),
+    #subtitle = paste0("Among households of annual income <", scales::dollar(income_threshold_upper)),
     theme = theme(
       plot.title = element_text(hjust = 0.5, size = 9, face = "bold"),
       plot.subtitle = element_text(hjust = 0.5, size = 8),
@@ -2394,7 +2402,7 @@ print(burden_hists_all_combined)
 ### fig-bar_dollar_tiers
 ```{r}
 #| label: fig-bar_dollar_tiers
-#| fig-cap: "Proportion of CT homes by dollar tier."
+#| fig-cap: "Proportion of Connecticut homes by dollar tier."
 #| fig-width: 8
 #| fig-height: 2
 
@@ -2456,7 +2464,7 @@ ggplot() +
 ### fig-bar_smi_tiers
 ```{r}
 #| label: fig-bar_smi_tiers
-#| fig-cap: "Proportion of CT homes by State Median Income (SMI) tier. SMI considers both the household's income and the number of occupants in the household."
+#| fig-cap: "Proportion of Connecticut homes by State Median Income (SMI) tier. SMI considers both the household's income and the number of occupants in the household."
 #| fig-width: 8
 #| fig-height: 2
 
@@ -2526,6 +2534,271 @@ ggplot() +
   theme(legend.position = "none")
 ```
 
+### Energy Burden Histogram - Current HVAC for 3 SMI tiers
+```{r}
+#| label: fig-burden_hists_3_smi_tiers_current
+#| fig-cap: "Histogram of energy burdens across all fuel types, all building types, all cooling types, all income levels. Assuming 100% participation in low-income discounts."
+
+y_limits <- c(0, 200000/242.13)
+x_limits <- c(0, 0.24)
+
+# TOP: Current HVAC, 100% Discounts, Default Rates, Low SMI tier
+burden_hists_low_smi_current <- plot_energy_burden_histogram_standalone(
+  data = annual_bills_total |>
+  mutate(
+    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+  ) |>
+  filter(
+    smi_tier == "Low Income",
+    in.representative_income <= income_threshold_upper,
+    in.representative_income >= income_threshold_lower,
+    version_elec == "baseline",
+    hvac == "current"),
+  name = "Low Income (<60% SMI)",
+  show_x_axis = FALSE,
+  show_y_axis = TRUE,
+  y_limits = c(0, 50000/242.13),
+  x_limits = x_limits
+)
+
+burden_hists_low_smi_current_plot <- burden_hists_low_smi_current[[1]]
+burden_hists_low_smi_current_pct <- burden_hists_low_smi_current[[2]]
+
+burden_hists_low_smi_current_pct_very_high_burden <- burden_hists_low_smi_current_pct |> filter(burden_group == "very_high_energy_burden") |> pull(percentage) |> round(1)
+burden_hists_low_smi_current_pct_high_burden <- burden_hists_low_smi_current_pct |> filter(burden_group == "high_energy_burden") |> pull(percentage) |> round(1)
+burden_hists_low_smi_current_pct_moderate_burden <- burden_hists_low_smi_current_pct |> filter(burden_group == "moderate_energy_burden") |> pull(percentage) |> round(1)
+burden_hists_low_smi_current_pct_low_burden <- burden_hists_low_smi_current_pct |> filter(burden_group == "low_energy_burden") |> pull(percentage) |> round(1)
+burden_hists_low_smi_current_pct_burdened <- burden_hists_low_smi_current_pct_very_high_burden + burden_hists_low_smi_current_pct_high_burden
+
+# Middle: Current HVAC, 100% Discounts, Default Rates, Moderate SMI tier
+burden_hists_moderate_smi_current <- plot_energy_burden_histogram_standalone(
+  data = annual_bills_total |>
+  mutate(
+    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+  ) |>
+  filter(
+    smi_tier == "Moderate Income",
+    in.representative_income <= income_threshold_upper,
+    in.representative_income > income_threshold_lower,
+    version_elec == "baseline",
+    hvac == "current"),
+  name = "Moderate Income (>60%, <100% SMI)",
+  show_x_axis = FALSE,
+  show_y_axis = TRUE,
+  y_limits = c(0, 50000/242.13),
+  x_limits = x_limits
+)
+
+burden_hists_moderate_smi_current_plot <- burden_hists_moderate_smi_current[[1]]
+burden_hists_moderate_smi_current_pct <- burden_hists_moderate_smi_current[[2]]
+
+burden_hists_moderate_smi_current_pct_very_high_burden <- burden_hists_moderate_smi_current_pct |> filter(burden_group == "very_high_energy_burden") |> pull(percentage) |> round(1)
+burden_hists_moderate_smi_current_pct_high_burden <- burden_hists_moderate_smi_current_pct |> filter(burden_group == "high_energy_burden") |> pull(percentage) |> round(1)
+burden_hists_moderate_smi_current_pct_moderate_burden <- burden_hists_moderate_smi_current_pct |> filter(burden_group == "moderate_energy_burden") |> pull(percentage) |> round(1)
+burden_hists_moderate_smi_current_pct_low_burden <- burden_hists_moderate_smi_current_pct |> filter(burden_group == "low_energy_burden") |> pull(percentage) |> round(1)
+burden_hists_moderate_smi_current_pct_burdened <- burden_hists_moderate_smi_current_pct_very_high_burden + burden_hists_moderate_smi_current_pct_high_burden
+
+
+# Bottom: Current HVAC, 100% Discounts, Default Rates, Not LMI tier
+burden_hists_not_lmi_current <- plot_energy_burden_histogram_standalone(
+  data = annual_bills_total |>
+  mutate(
+    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+  ) |>
+  filter(
+    smi_tier == "Not LMI",
+    in.representative_income <= income_threshold_upper,
+    in.representative_income > income_threshold_lower,
+    version_elec == "baseline",
+    hvac == "current"),
+  name = "Above Median Income (>100% SMI)",
+  show_x_axis = TRUE,
+  show_y_axis = TRUE,
+  y_limits = c(0, 250000/242.13),
+  x_limits = x_limits
+)
+
+burden_hists_not_lmi_current_plot <- burden_hists_not_lmi_current[[1]]
+burden_hists_not_lmi_current_pct <- burden_hists_not_lmi_current[[2]]
+
+burden_hists_not_lmi_current_pct_very_high_burden <- burden_hists_not_lmi_current_pct |> filter(burden_group == "very_high_energy_burden") |> pull(percentage) |> round(1)
+burden_hists_not_lmi_current_pct_high_burden <- burden_hists_not_lmi_current_pct |> filter(burden_group == "high_energy_burden") |> pull(percentage) |> round(1)
+burden_hists_not_lmi_current_pct_moderate_burden <- burden_hists_not_lmi_current_pct |> filter(burden_group == "moderate_energy_burden") |> pull(percentage) |> round(1)
+burden_hists_not_lmi_current_pct_low_burden <- burden_hists_not_lmi_current_pct |> filter(burden_group == "low_energy_burden") |> pull(percentage) |> round(1)
+burden_hists_not_lmi_current_pct_burdened <- burden_hists_not_lmi_current_pct_very_high_burden + burden_hists_not_lmi_current_pct_high_burden
+
+
+# Combine the three histograms
+burden_hists_3_smi_tiers_current_combined <- burden_hists_low_smi_current_plot / burden_hists_moderate_smi_current_plot / burden_hists_not_lmi_current_plot +
+  plot_layout(
+    heights = c(1, 1, 1)
+  ) +
+  plot_annotation(
+    title = "Annual Energy Burdens for 3 Income Tiers in Connecticut: Current HVAC",
+    #subtitle = paste0("Among households of annual income <", scales::dollar(income_threshold_upper)),
+    theme = theme(
+      plot.title = element_text(hjust = 0.5, size = 9, face = "bold"),
+      plot.subtitle = element_text(hjust = 0.5, size = 8),
+      plot.margin = margin(10, 10, 10, 10)
+    )
+  )
+
+# Wrap the plot to add a shared y-axis label on the left
+burden_hists_3_smi_tiers_current_combined <- wrap_elements(burden_hists_3_smi_tiers_current_combined) +
+  labs(tag = "# of Homes") +
+  theme(
+    plot.tag = element_text(angle = 90, vjust = 0.5, hjust = 0.5, face = "plain", size = 9),
+    plot.tag.position = "left"
+  )
+
+print(burden_hists_3_smi_tiers_current_combined)
+```
+
+### Energy Burden Histogram - Cold Climate Heat Pump for 3 SMI tiers
+```{r}
+#| label: fig-burden_hists_3_smi_tiers_hp_high
+#| fig-cap: "Histogram of energy burdens across all fuel types, all building types, all cooling types, all income levels. Assuming 100% participation in low-income discounts."
+
+y_limits <- c(0, 200000/242.13)
+x_limits <- c(0, 0.24)
+
+# TOP: Cold Climate Heat Pump, 100% Discounts, Default Rates, Low SMI tier
+burden_hists_low_smi_hp_high <- plot_energy_burden_histogram_standalone(
+  data = annual_bills_total |>
+  mutate(
+    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+  ) |>
+  filter(
+    smi_tier == "Low Income",
+    in.representative_income <= income_threshold_upper,
+    in.representative_income > income_threshold_lower,
+    version_elec == "baseline",
+    hvac == "hp_high"),
+  name = "Low Income (<60% SMI)",
+  show_x_axis = FALSE,
+  show_y_axis = TRUE,
+  y_limits =  c(0, 50000/242.13),
+  x_limits = x_limits
+)
+
+burden_hists_low_smi_hp_high_plot <- burden_hists_low_smi_hp_high[[1]]
+burden_hists_low_smi_hp_high_pct <- burden_hists_low_smi_hp_high[[2]]
+
+burden_hists_low_smi_hp_high_pct_very_high_burden <- burden_hists_low_smi_hp_high_pct |> filter(burden_group == "very_high_energy_burden") |> pull(percentage) |> round(1)
+burden_hists_low_smi_hp_high_pct_high_burden <- burden_hists_low_smi_hp_high_pct |> filter(burden_group == "high_energy_burden") |> pull(percentage) |> round(1)
+burden_hists_low_smi_hp_high_pct_moderate_burden <- burden_hists_low_smi_hp_high_pct |> filter(burden_group == "moderate_energy_burden") |> pull(percentage) |> round(1)
+burden_hists_low_smi_hp_high_pct_low_burden <- burden_hists_low_smi_hp_high_pct |> filter(burden_group == "low_energy_burden") |> pull(percentage) |> round(1)
+burden_hists_low_smi_hp_high_pct_burdened <- burden_hists_low_smi_hp_high_pct_very_high_burden + burden_hists_low_smi_hp_high_pct_high_burden
+
+# Middle: Cold Climate Heat Pump, 100% Discounts, Default Rates, Moderate SMI tier
+burden_hists_moderate_smi_hp_high <- plot_energy_burden_histogram_standalone(
+  data = annual_bills_total |>
+  mutate(
+    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+  ) |>
+  filter(
+    smi_tier == "Moderate Income",
+    in.representative_income <= income_threshold_upper,
+    in.representative_income > income_threshold_lower,
+    version_elec == "baseline",
+    hvac == "hp_high"),
+  name = "Moderate Income (>60%, <100% SMI)",
+  show_x_axis = FALSE,
+  show_y_axis = TRUE,
+  y_limits =  c(0, 50000/242.13),
+  x_limits = x_limits
+)
+
+burden_hists_moderate_smi_hp_high_plot <- burden_hists_moderate_smi_hp_high[[1]]
+burden_hists_moderate_smi_hp_high_pct <- burden_hists_moderate_smi_hp_high[[2]]
+
+burden_hists_moderate_smi_hp_high_pct_very_high_burden <- burden_hists_moderate_smi_hp_high_pct |> filter(burden_group == "very_high_energy_burden") |> pull(percentage) |> round(1)
+burden_hists_moderate_smi_hp_high_pct_high_burden <- burden_hists_moderate_smi_hp_high_pct |> filter(burden_group == "high_energy_burden") |> pull(percentage) |> round(1)
+burden_hists_moderate_smi_hp_high_pct_moderate_burden <- burden_hists_moderate_smi_hp_high_pct |> filter(burden_group == "moderate_energy_burden") |> pull(percentage) |> round(1)
+burden_hists_moderate_smi_hp_high_pct_low_burden <- burden_hists_moderate_smi_hp_high_pct |> filter(burden_group == "low_energy_burden") |> pull(percentage) |> round(1)
+burden_hists_moderate_smi_hp_high_pct_burdened <- burden_hists_moderate_smi_hp_high_pct_very_high_burden + burden_hists_moderate_smi_hp_high_pct_high_burden
+
+
+# Bottom: Cold Climate Heat Pump, 100% Discounts, Default Rates, Not LMI tier
+burden_hists_not_lmi_hp_high <- plot_energy_burden_histogram_standalone(
+  data = annual_bills_total |>
+  mutate(
+    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+  ) |>
+  filter(
+    smi_tier == "Not LMI",
+    in.representative_income <= income_threshold_upper,
+    in.representative_income > income_threshold_lower,
+    version_elec == "baseline",
+    hvac == "hp_high"),
+  name = "Above Median Income (>100% SMI)",
+  show_x_axis = TRUE,
+  show_y_axis = TRUE,
+  y_limits =  c(0, 250000/242.13),
+  x_limits = x_limits
+)
+
+burden_hists_not_lmi_hp_high_plot <- burden_hists_not_lmi_hp_high[[1]]
+burden_hists_not_lmi_hp_high_pct <- burden_hists_not_lmi_hp_high[[2]]
+
+burden_hists_not_lmi_hp_high_pct_very_high_burden <- burden_hists_not_lmi_hp_high_pct |> filter(burden_group == "very_high_energy_burden") |> pull(percentage) |> round(1)
+burden_hists_not_lmi_hp_high_pct_high_burden <- burden_hists_not_lmi_hp_high_pct |> filter(burden_group == "high_energy_burden") |> pull(percentage) |> round(1)
+burden_hists_not_lmi_hp_high_pct_moderate_burden <- burden_hists_not_lmi_hp_high_pct |> filter(burden_group == "moderate_energy_burden") |> pull(percentage) |> round(1)
+burden_hists_not_lmi_hp_high_pct_low_burden <- burden_hists_not_lmi_hp_high_pct |> filter(burden_group == "low_energy_burden") |> pull(percentage) |> round(1)
+burden_hists_not_lmi_hp_high_pct_burdened <- burden_hists_not_lmi_hp_high_pct_very_high_burden + burden_hists_not_lmi_hp_high_pct_high_burden
+
+
+# Combine the three histograms
+burden_hists_3_smi_tiers_hp_high_combined <- burden_hists_low_smi_hp_high_plot / burden_hists_moderate_smi_hp_high_plot / burden_hists_not_lmi_hp_high_plot +
+  plot_layout(
+    heights = c(1, 1, 1)
+  ) +
+  plot_annotation(
+    title = "Annual Energy Burdens for 3 Income Tiers in Connecticut: Cold Climate Heat Pump",
+    #subtitle = paste0("Among households of annual income <", scales::dollar(income_threshold_upper)),
+    theme = theme(
+      plot.title = element_text(hjust = 0.5, size = 9, face = "bold"),
+      plot.subtitle = element_text(hjust = 0.5, size = 8),
+      plot.margin = margin(10, 10, 10, 10)
+    )
+  )
+
+# Wrap the plot to add a shared y-axis label on the left
+burden_hists_3_smi_tiers_hp_high_combined <- wrap_elements(burden_hists_3_smi_tiers_hp_high_combined) +
+  labs(tag = "# of Homes") +
+  theme(
+    plot.tag = element_text(angle = 90, vjust = 0.5, hjust = 0.5, face = "plain", size = 9),
+    plot.tag.position = "left"
+  )
+
+print(burden_hists_3_smi_tiers_hp_high_combined)
+```
+
+### fig-hist_1_low_income_annual_change
+```{r}
+#| label: fig-hist_1_low_income_annual_change
+#| fig-cap: "Distribution of annual bill changes for homes switching to heat pumps, all under baseline rates."
+
+result <- hist_for_single_rate_version(
+  annual_change_table = annual_changes_total |> filter(dollar_tier == "Low Income"),
+  bill_type = 'annual_change_total',
+  baseline_heating_type_option = 'All Fuels',
+  version_elec = "baseline",
+  hvac_option = "hp_low",
+  supply_year = supply_year,
+  title = "Change in Total Annual Energy Bills for Homes with Low Income \nSwitching to Heat Pumps from All Fuels",
+  second_subtitle = "Connecticut",
+  x_limits = c(-3000, 3000),
+  y_limits = c(0, 600),
+  binwidth = 100
+)
+
+annual_change_stats_low_income_baseline_hp_high <- result[[2]]
+
+print(result[[1]])
+```
+
+
 ### fig-scatter_income_burden_total
 ```{r}
 #| label: fig-scatter_income_burden_total
@@ -2593,269 +2866,6 @@ annual_bills_total_plot <- ggplot(filtered_bills_total, aes(x = burden_total, y 
 
 print(annual_bills_total_plot)
 
-```
-
-
-### Energy Burden Histogram - Current HVAC for 3 SMI tiers
-```{r}
-#| label: fig-burden_hists_3_smi_tiers_current
-#| fig-cap: "Histogram of energy burdens across all fuel types, all building types, all cooling types, all income levels. Assuming 100% participation in low-income discounts."
-
-y_limits <- c(0, 200000/242.13)
-
-# TOP: Current HVAC, 100% Discounts, Default Rates, Low SMI tier
-burden_hists_low_smi_current <- plot_energy_burden_histogram_standalone(
-  data = annual_bills_total |>
-  mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
-  ) |>
-  filter(
-    smi_tier == "Low Income",
-    in.representative_income <= income_threshold_upper,
-    in.representative_income >= income_threshold_lower,
-    version_elec == "baseline",
-    hvac == "current"),
-  name = "Current HVAC, 100% Discounts, Default Rates, Low SMI tier",
-  show_x_axis = TRUE,
-  show_y_axis = TRUE,
-  y_limits = y_limits,
-  x_limits = c(0, 0.3)
-)
-
-burden_hists_low_smi_current_plot <- burden_hists_low_smi_current[[1]]
-burden_hists_low_smi_current_pct <- burden_hists_low_smi_current[[2]]
-
-burden_hists_low_smi_current_pct_very_high_burden <- burden_hists_low_smi_current_pct |> filter(burden_group == "very_high_energy_burden") |> pull(percentage) |> round(1)
-burden_hists_low_smi_current_pct_high_burden <- burden_hists_low_smi_current_pct |> filter(burden_group == "high_energy_burden") |> pull(percentage) |> round(1)
-burden_hists_low_smi_current_pct_moderate_burden <- burden_hists_low_smi_current_pct |> filter(burden_group == "moderate_energy_burden") |> pull(percentage) |> round(1)
-burden_hists_low_smi_current_pct_low_burden <- burden_hists_low_smi_current_pct |> filter(burden_group == "low_energy_burden") |> pull(percentage) |> round(1)
-burden_hists_low_smi_current_pct_burdened <- burden_hists_low_smi_current_pct_very_high_burden + burden_hists_low_smi_current_pct_high_burden
-
-# Middle: Current HVAC, 100% Discounts, Default Rates, Moderate SMI tier
-burden_hists_moderate_smi_current <- plot_energy_burden_histogram_standalone(
-  data = annual_bills_total |>
-  mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
-  ) |>
-  filter(
-    smi_tier == "Moderate Income",
-    in.representative_income <= income_threshold_upper,
-    in.representative_income > income_threshold_lower,
-    version_elec == "baseline",
-    hvac == "current"),
-  name = "Current HVAC, 100% Discounts, Default Rates, Moderate SMI tier",
-  show_x_axis = TRUE,
-  show_y_axis = TRUE,
-  y_limits = y_limits,
-  x_limits = c(0, 0.3)
-)
-
-burden_hists_moderate_smi_current_plot <- burden_hists_moderate_smi_current[[1]]
-burden_hists_moderate_smi_current_pct <- burden_hists_moderate_smi_current[[2]]
-
-burden_hists_moderate_smi_current_pct_very_high_burden <- burden_hists_moderate_smi_current_pct |> filter(burden_group == "very_high_energy_burden") |> pull(percentage) |> round(1)
-burden_hists_moderate_smi_current_pct_high_burden <- burden_hists_moderate_smi_current_pct |> filter(burden_group == "high_energy_burden") |> pull(percentage) |> round(1)
-burden_hists_moderate_smi_current_pct_moderate_burden <- burden_hists_moderate_smi_current_pct |> filter(burden_group == "moderate_energy_burden") |> pull(percentage) |> round(1)
-burden_hists_moderate_smi_current_pct_low_burden <- burden_hists_moderate_smi_current_pct |> filter(burden_group == "low_energy_burden") |> pull(percentage) |> round(1)
-burden_hists_moderate_smi_current_pct_burdened <- burden_hists_moderate_smi_current_pct_very_high_burden + burden_hists_moderate_smi_current_pct_high_burden
-
-
-# Bottom: Current HVAC, 100% Discounts, Default Rates, Not LMI tier
-burden_hists_not_lmi_current <- plot_energy_burden_histogram_standalone(
-  data = annual_bills_total |>
-  mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
-  ) |>
-  filter(
-    smi_tier == "Not LMI",
-    in.representative_income <= income_threshold_upper,
-    in.representative_income > income_threshold_lower,
-    version_elec == "baseline",
-    hvac == "current"),
-  name = "Current HVAC, 100% Discounts, Default Rates, Not LMI tier",
-  show_x_axis = TRUE,
-  show_y_axis = TRUE,
-  y_limits = y_limits,
-  x_limits = c(0, 0.3)
-)
-
-burden_hists_not_lmi_current_plot <- burden_hists_not_lmi_current[[1]]
-burden_hists_not_lmi_current_pct <- burden_hists_not_lmi_current[[2]]
-
-burden_hists_not_lmi_current_pct_very_high_burden <- burden_hists_not_lmi_current_pct |> filter(burden_group == "very_high_energy_burden") |> pull(percentage) |> round(1)
-burden_hists_not_lmi_current_pct_high_burden <- burden_hists_not_lmi_current_pct |> filter(burden_group == "high_energy_burden") |> pull(percentage) |> round(1)
-burden_hists_not_lmi_current_pct_moderate_burden <- burden_hists_not_lmi_current_pct |> filter(burden_group == "moderate_energy_burden") |> pull(percentage) |> round(1)
-burden_hists_not_lmi_current_pct_low_burden <- burden_hists_not_lmi_current_pct |> filter(burden_group == "low_energy_burden") |> pull(percentage) |> round(1)
-burden_hists_not_lmi_current_pct_burdened <- burden_hists_not_lmi_current_pct_very_high_burden + burden_hists_not_lmi_current_pct_high_burden
-
-
-# Combine the three histograms
-burden_hists_3_smi_tiers_current_combined <- burden_hists_low_smi_current_plot / burden_hists_moderate_smi_current_plot / burden_hists_not_lmi_current_plot +
-  plot_layout(
-    heights = c(1, 1, 1)
-  ) +
-  plot_annotation(
-    title = "Annual Energy Burdens in Connecticut: Current HVAC for 3 SMI tiers",
-    subtitle = paste0("Among households of annual income <", scales::dollar(income_threshold_upper)),
-    theme = theme(
-      plot.title = element_text(hjust = 0.5, size = 9, face = "bold"),
-      plot.subtitle = element_text(hjust = 0.5, size = 8),
-      plot.margin = margin(10, 10, 10, 10)
-    )
-  )
-
-# Wrap the plot to add a shared y-axis label on the left
-burden_hists_3_smi_tiers_current_combined <- wrap_elements(burden_hists_3_smi_tiers_current_combined) +
-  labs(tag = "# of Homes") +
-  theme(
-    plot.tag = element_text(angle = 90, vjust = 0.5, hjust = 0.5, face = "plain", size = 9),
-    plot.tag.position = "left"
-  )
-
-print(burden_hists_3_smi_tiers_current_combined)
-```
-
-### Energy Burden Histogram - Cold Climate Heat Pump for 3 SMI tiers
-```{r}
-#| label: fig-burden_hists_3_smi_tiers_hp_high
-#| fig-cap: "Histogram of energy burdens across all fuel types, all building types, all cooling types, all income levels. Assuming 100% participation in low-income discounts."
-
-y_limits <- c(0, 200000/242.13)
-
-# TOP: Cold Climate Heat Pump, 100% Discounts, Default Rates, Low SMI tier
-burden_hists_low_smi_hp_high <- plot_energy_burden_histogram_standalone(
-  data = annual_bills_total |>
-  mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
-  ) |>
-  filter(
-    smi_tier == "Low Income",
-    in.representative_income <= income_threshold_upper,
-    in.representative_income > income_threshold_lower,
-    version_elec == "baseline",
-    hvac == "hp_high"),
-  name = "Cold Climate Heat Pump, 100% Discounts, Default Rates, Low SMI tier",
-  show_x_axis = TRUE,
-  show_y_axis = TRUE,
-  y_limits = y_limits,
-  x_limits = c(0, 0.3)
-)
-
-burden_hists_low_smi_hp_high_plot <- burden_hists_low_smi_hp_high[[1]]
-burden_hists_low_smi_hp_high_pct <- burden_hists_low_smi_hp_high[[2]]
-
-burden_hists_low_smi_hp_high_pct_very_high_burden <- burden_hists_low_smi_hp_high_pct |> filter(burden_group == "very_high_energy_burden") |> pull(percentage) |> round(1)
-burden_hists_low_smi_hp_high_pct_high_burden <- burden_hists_low_smi_hp_high_pct |> filter(burden_group == "high_energy_burden") |> pull(percentage) |> round(1)
-burden_hists_low_smi_hp_high_pct_moderate_burden <- burden_hists_low_smi_hp_high_pct |> filter(burden_group == "moderate_energy_burden") |> pull(percentage) |> round(1)
-burden_hists_low_smi_hp_high_pct_low_burden <- burden_hists_low_smi_hp_high_pct |> filter(burden_group == "low_energy_burden") |> pull(percentage) |> round(1)
-burden_hists_low_smi_hp_high_pct_burdened <- burden_hists_low_smi_hp_high_pct_very_high_burden + burden_hists_low_smi_hp_high_pct_high_burden
-
-# Middle: Cold Climate Heat Pump, 100% Discounts, Default Rates, Moderate SMI tier
-burden_hists_moderate_smi_hp_high <- plot_energy_burden_histogram_standalone(
-  data = annual_bills_total |>
-  mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
-  ) |>
-  filter(
-    smi_tier == "Moderate Income",
-    in.representative_income <= income_threshold_upper,
-    in.representative_income > income_threshold_lower,
-    version_elec == "baseline",
-    hvac == "hp_high"),
-  name = "Cold Climate Heat Pump, 100% Discounts, Default Rates, Moderate SMI tier",
-  show_x_axis = TRUE,
-  show_y_axis = TRUE,
-  y_limits = y_limits,
-  x_limits = c(0, 0.3)
-)
-
-burden_hists_moderate_smi_hp_high_plot <- burden_hists_moderate_smi_hp_high[[1]]
-burden_hists_moderate_smi_hp_high_pct <- burden_hists_moderate_smi_hp_high[[2]]
-
-burden_hists_moderate_smi_hp_high_pct_very_high_burden <- burden_hists_moderate_smi_hp_high_pct |> filter(burden_group == "very_high_energy_burden") |> pull(percentage) |> round(1)
-burden_hists_moderate_smi_hp_high_pct_high_burden <- burden_hists_moderate_smi_hp_high_pct |> filter(burden_group == "high_energy_burden") |> pull(percentage) |> round(1)
-burden_hists_moderate_smi_hp_high_pct_moderate_burden <- burden_hists_moderate_smi_hp_high_pct |> filter(burden_group == "moderate_energy_burden") |> pull(percentage) |> round(1)
-burden_hists_moderate_smi_hp_high_pct_low_burden <- burden_hists_moderate_smi_hp_high_pct |> filter(burden_group == "low_energy_burden") |> pull(percentage) |> round(1)
-burden_hists_moderate_smi_hp_high_pct_burdened <- burden_hists_moderate_smi_hp_high_pct_very_high_burden + burden_hists_moderate_smi_hp_high_pct_high_burden
-
-
-# Bottom: Cold Climate Heat Pump, 100% Discounts, Default Rates, Not LMI tier
-burden_hists_not_lmi_hp_high <- plot_energy_burden_histogram_standalone(
-  data = annual_bills_total |>
-  mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
-  ) |>
-  filter(
-    smi_tier == "Not LMI",
-    in.representative_income <= income_threshold_upper,
-    in.representative_income > income_threshold_lower,
-    version_elec == "baseline",
-    hvac == "hp_high"),
-  name = "Cold Climate Heat Pump, 100% Discounts, Default Rates, Not LMI tier",
-  show_x_axis = TRUE,
-  show_y_axis = TRUE,
-  y_limits = y_limits,
-  x_limits = c(0, 0.3)
-)
-
-burden_hists_not_lmi_hp_high_plot <- burden_hists_not_lmi_hp_high[[1]]
-burden_hists_not_lmi_hp_high_pct <- burden_hists_not_lmi_hp_high[[2]]
-
-burden_hists_not_lmi_hp_high_pct_very_high_burden <- burden_hists_not_lmi_hp_high_pct |> filter(burden_group == "very_high_energy_burden") |> pull(percentage) |> round(1)
-burden_hists_not_lmi_hp_high_pct_high_burden <- burden_hists_not_lmi_hp_high_pct |> filter(burden_group == "high_energy_burden") |> pull(percentage) |> round(1)
-burden_hists_not_lmi_hp_high_pct_moderate_burden <- burden_hists_not_lmi_hp_high_pct |> filter(burden_group == "moderate_energy_burden") |> pull(percentage) |> round(1)
-burden_hists_not_lmi_hp_high_pct_low_burden <- burden_hists_not_lmi_hp_high_pct |> filter(burden_group == "low_energy_burden") |> pull(percentage) |> round(1)
-burden_hists_not_lmi_hp_high_pct_burdened <- burden_hists_not_lmi_hp_high_pct_very_high_burden + burden_hists_not_lmi_hp_high_pct_high_burden
-
-
-# Combine the three histograms
-burden_hists_3_smi_tiers_hp_high_combined <- burden_hists_low_smi_hp_high_plot / burden_hists_moderate_smi_hp_high_plot / burden_hists_not_lmi_hp_high_plot +
-  plot_layout(
-    heights = c(1, 1, 1)
-  ) +
-  plot_annotation(
-    title = "Annual Energy Burdens in Connecticut: Cold Climate Heat Pump for 3 SMI tiers",
-    subtitle = paste0("Among households of annual income <", scales::dollar(income_threshold_upper)),
-    theme = theme(
-      plot.title = element_text(hjust = 0.5, size = 9, face = "bold"),
-      plot.subtitle = element_text(hjust = 0.5, size = 8),
-      plot.margin = margin(10, 10, 10, 10)
-    )
-  )
-
-# Wrap the plot to add a shared y-axis label on the left
-burden_hists_3_smi_tiers_hp_high_combined <- wrap_elements(burden_hists_3_smi_tiers_hp_high_combined) +
-  labs(tag = "# of Homes") +
-  theme(
-    plot.tag = element_text(angle = 90, vjust = 0.5, hjust = 0.5, face = "plain", size = 9),
-    plot.tag.position = "left"
-  )
-
-print(burden_hists_3_smi_tiers_hp_high_combined)
-```
-
-### fig-hist_1_low_income_annual_change
-```{r}
-#| label: fig-hist_1_low_income_annual_change
-#| fig-cap: "Distribution of annual bill changes for homes switching to heat pumps, all under baseline rates."
-
-result <- hist_for_single_rate_version(
-  annual_change_table = annual_changes_total |> filter(dollar_tier == "Low Income"),
-  bill_type = 'annual_change_total',
-  baseline_heating_type_option = 'All Fuels',
-  version_elec = "baseline",
-  hvac_option = "hp_low",
-  supply_year = supply_year,
-  title = "Change in Total Annual Energy Bills for Homes with Low Income Switching to Heat Pumps from All Fuels",
-  second_subtitle = "Connecticut",
-  x_limits = c(-3000, 3000),
-  y_limits = c(0, 600),
-  binwidth = 100
-)
-
-annual_change_stats_low_income_baseline_hp_high <- result[[2]]
-
-print(result[[1]])
 ```
 
 
@@ -2966,6 +2976,10 @@ save(
   pre_hp_delivery_charge_res, post_hp_delivery_charge_res,
   pre_hp_supply_charge_res, post_hp_supply_charge_res,
   pre_hp_total_bill_res, post_hp_total_bill_res,
+
+  # all fuels
+  winter_change_stats_all_fuels_baseline_hp_high,
+  summer_change_stats_all_fuels_baseline_hp_high,
 
   # Fuel Oil
   winter_bills_fuel_oil,

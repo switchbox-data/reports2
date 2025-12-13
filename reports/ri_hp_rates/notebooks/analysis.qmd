@@ -2497,14 +2497,13 @@ y_limits = c(0, income_threshold_upper)
 # Prepare the filtered data first
 filtered_bills_total <- annual_bills_total |>
   mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+    hvac = ifelse((!hvac_primary %in% c("hp_low", "hp_high", "hp_best")), "current", as.character(hvac_primary))
   ) |>
   filter(
-    in.representative_income <= income_threshold_upper,
-    in.representative_income >= income_threshold_lower,
     version_elec == "baseline",
     hvac == "current"
-  )
+  ) |>
+  right_join(housing_units |> select(bldg_id, upgrade, in.representative_income), by = c("bldg_id", "upgrade"))
 
 # Fit a reciprocal model: in.representative_income ~ I(1 / burden_total)
 recip_model <- lm(in.representative_income ~ I(1 / burden_total), data = filtered_bills_total)
@@ -2564,12 +2563,10 @@ y_limits <- c(0, 50000/242.13)
 burden_hists_low_smi_current <- plot_energy_burden_histogram_standalone(
   data = annual_bills_total |>
   mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+    hvac = ifelse((!hvac_primary %in% c("hp_low", "hp_high", "hp_best")), "current", as.character(hvac_primary))
   ) |>
   filter(
     smi_tier == "Low Income",
-    in.representative_income <= income_threshold_upper,
-    in.representative_income >= income_threshold_lower,
     version_elec == "baseline",
     hvac == "current"),
   name = "Current HVAC, 100% Discounts, Default Rates, Low SMI tier",
@@ -2592,12 +2589,10 @@ burden_hists_low_smi_current_pct_burdened <- burden_hists_low_smi_current_pct_ve
 burden_hists_moderate_smi_current <- plot_energy_burden_histogram_standalone(
   data = annual_bills_total |>
   mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+    hvac = ifelse((!hvac_primary %in% c("hp_low", "hp_high", "hp_best")), "current", as.character(hvac_primary))
   ) |>
   filter(
     smi_tier == "Moderate Income",
-    in.representative_income <= income_threshold_upper,
-    in.representative_income >= income_threshold_lower,
     version_elec == "baseline",
     hvac == "current"),
   name = "Current HVAC, 100% Discounts, Default Rates, Moderate SMI tier",
@@ -2621,12 +2616,10 @@ burden_hists_moderate_smi_current_pct_burdened <- burden_hists_moderate_smi_curr
 burden_hists_not_lmi_current <- plot_energy_burden_histogram_standalone(
   data = annual_bills_total |>
   mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+    hvac = ifelse((!hvac_primary %in% c("hp_low", "hp_high", "hp_best")), "current", as.character(hvac_primary))
   ) |>
   filter(
     smi_tier == "Not LMI",
-    in.representative_income <= income_threshold_upper,
-    in.representative_income >= income_threshold_lower,
     version_elec == "baseline",
     hvac == "current"),
   name = "Current HVAC, 100% Discounts, Default Rates, Not LMI tier",
@@ -2683,12 +2676,10 @@ y_limits <- c(0, 50000/242.13)
 burden_hists_low_smi_hp_high <- plot_energy_burden_histogram_standalone(
   data = annual_bills_total |>
   mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+    hvac = ifelse((!hvac_primary %in% c("hp_low", "hp_high", "hp_best")), "current", as.character(hvac_primary))
   ) |>
   filter(
     smi_tier == "Low Income",
-    in.representative_income <= income_threshold_upper,
-    in.representative_income >= income_threshold_lower,
     version_elec == "baseline",
     hvac == "hp_low"),
   name = "Cold Climate Heat Pump, 100% Discounts, Default Rates, Low SMI tier",
@@ -2711,12 +2702,10 @@ burden_hists_low_smi_hp_high_pct_burdened <- burden_hists_low_smi_hp_high_pct_ve
 burden_hists_moderate_smi_hp_high <- plot_energy_burden_histogram_standalone(
   data = annual_bills_total |>
   mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+    hvac = ifelse((!hvac_primary %in% c("hp_low", "hp_high", "hp_best")), "current", as.character(hvac_primary))
   ) |>
   filter(
     smi_tier == "Moderate Income",
-    in.representative_income <= income_threshold_upper,
-    in.representative_income >= income_threshold_lower,
     version_elec == "baseline",
     hvac == "hp_low"),
   name = "Cold Climate Heat Pump, 100% Discounts, Default Rates, Moderate SMI tier",
@@ -2740,12 +2729,10 @@ burden_hists_moderate_smi_hp_high_pct_burdened <- burden_hists_moderate_smi_hp_h
 burden_hists_not_lmi_hp_high <- plot_energy_burden_histogram_standalone(
   data = annual_bills_total |>
   mutate(
-    hvac = ifelse((!hvac %in% c("hp_low", "hp_high", "hp_best")), "current", hvac)
+    hvac = ifelse((!hvac_primary %in% c("hp_low", "hp_high", "hp_best")), "current", as.character(hvac_primary))
   ) |>
   filter(
     smi_tier == "Not LMI",
-    in.representative_income <= income_threshold_upper,
-    in.representative_income >= income_threshold_lower,
     version_elec == "baseline",
     hvac == "hp_low"),
   name = "Cold Climate Heat Pump, 100% Discounts, Default Rates, Not LMI tier",
@@ -2912,7 +2899,7 @@ print(plot)
 
 stats <- result_all_fuels[[2]]
 stats_all_fuels <- annual_changes_total |>
-  group_by(hvac, version_elec) |>
+  group_by(hvac_primary, version_elec) |>
   summarise(
     pct_that_save = round(mean(annual_change_total < 0) * 100, round_percent),
     pct_that_save_big = round(mean(annual_change_total < -1000) * 100, round_percent),
@@ -3325,9 +3312,9 @@ ggsave(file.path(path_to_cache, "natural_gas_consumption_by_functional_group_and
 ```
 
 ```{r}
-path_metadata_upgrade2 = "data/ResStock/2024_release2_tmy3/metadata/RI_upgrade02_metadata_and_annual_results.parquet"
-metadata_upgrade2 <- read_parquet(path_metadata_upgrade2) |>
-filter(in.state == "RI")
+#path_metadata_upgrade2 = "data/ResStock/2024_release2_tmy3/metadata/upgrade02_metadata_and_annual_results.parquet"
+path_metadata_upgrade2 <- file.path(path_to_data, "resstock", "2024_release2_tmy3", "metadata", "upgrade02_metadata_and_annual_results.parquet")
+metadata_upgrade2 <- read_parquet(path_metadata_upgrade2) |> filter(in.state == "RI")
 
 # for each row (bldg_id), get the ratio of out.electricity.heating_hp_bkup.energy_consumption to out.electricity.heating.energy_consumption
 heating_change_vs_bkup <- annual_changes_heating |>
@@ -3435,7 +3422,6 @@ save(
   annual_changes_gas,
 
   # fuel type
-  stats_all_fuels,
   fuel_types_pct,
   annual_change_stats_gas_baseline_hp_high,
   annual_change_stats_fuel_oil_baseline_hp_high,

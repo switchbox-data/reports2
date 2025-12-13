@@ -1,0 +1,1019 @@
+---
+title: Who saves when switching to heat pumps, and why?
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+
+# ------------------------------------------------------------------------------
+# Setup and Data Loading
+# ------------------------------------------------------------------------------
+## Setup
+```{r}
+#| label: setup
+
+# =============================================================================
+# PATH DEFINITIONS
+# =============================================================================
+# Project root
+repo_root <- "/workspaces/reports2"
+
+# Base directory paths
+path_to_lib <- file.path(repo_root, "lib")
+path_to_data <- file.path(repo_root, "data")
+path_to_report <- file.path(repo_root, "reports", "hp_who_saves")
+path_to_cache <- file.path(path_to_report, "cache")
+
+# Library paths
+path_switchbox_theme <- file.path(path_to_lib, "ggplot", "switchbox_theme.R")
+path_heat_pump_funcs <- file.path(path_to_lib, "rates_analysis", "heat_pump_rate_funcs.R")
+path_heat_pump_plots <- file.path(path_to_lib, "rates_analysis", "heat_pump_rate_plots.R")
+path_create_housing_units <- file.path(path_to_lib, "rates_analysis", "create_sb_housing_units.R")
+
+# Data paths
+path_monthly_data <- file.path(path_to_data, "resstock", "2024_release2_tmy3", "load_curve_monthly")
+path_metadata_dir <- file.path(path_to_data, "resstock", "2024_release2_tmy3", "metadata")
+path_fuel_oil_supply_rates <- file.path(path_to_data, "eia", "heating_oil", "ri_eia_heating_oil_prices_monthly.parquet")
+path_propane_supply_rates <- file.path(path_to_data, "eia", "propane", "ri_eia_propane_prices_monthly.parquet")
+
+# Cache paths
+path_monthly_consumption <- file.path(path_to_cache, "monthly_consumption.RData")
+path_calculated_bills_electric <- file.path(path_to_cache, "calculated_bills_electric.RData")
+path_calculated_bills_fuel_oil <- file.path(path_to_cache, "calculated_bills_fuel_oil.RData")
+path_calculated_bills_propane <- file.path(path_to_cache, "calculated_bills_propane.RData")
+path_calculated_bills_gas <- file.path(path_to_cache, "calculated_bills_gas.RData")
+path_report_variables <- file.path(path_to_cache, "report_variables.RData")
+
+# =============================================================================
+# LIBRARY LOADING
+# =============================================================================
+library(googlesheets4)
+library(arrow)
+library(dplyr)
+library(ggplot2)
+library(GGally)
+library(lubridate)
+library(patchwork)
+library(ggrepel)
+
+# Switchbox Libraries
+source(path_switchbox_theme)
+source(path_heat_pump_funcs)
+source(path_heat_pump_plots)
+source(path_create_housing_units)
+```
+
+## Parameters
+```{r}
+#| label: parameters
+supply_year = 2024
+round_percent = 1
+round_dollars <- 0
+
+# Define which monthly data and which upgrades to use
+# path_monthly_data <- file.path(project_root, "data", "resstock", "2024_release2_tmy3", "load_curve_monthly_10")
+use_these_upgrades <- c("00", "01", "02", "03")
+
+use_these_states <- c("RI")
+
+# Define seasons
+winter_months <- c(1,2,3,10,11,12)
+summer_months <- c(4,5,6,7,8,9)
+
+hp_option <- "hp_high"
+
+if (hp_option == "hp_low") {
+  upgrade_option <- 1
+} else if (hp_option == "hp_high") {
+  upgrade_option <- 2
+} else if (hp_option == "hp_best") {
+  upgrade_option <- 3
+}
+
+# Tariffs and other sheets from GDrive
+# Load Delivery Rates and associated LMI Thresholds
+url_delivery_rates <- "https://docs.google.com/spreadsheets/d/17mTVgMnZaROOimWJBaVp-M-p5P96bK9g_iyjkKTJ2Mk/edit?gid=1792930160#gid=1792930160"
+
+# SMI thresholds
+url_smi_thresholds <- "https://docs.google.com/spreadsheets/d/1bVbr8jDF8YgT6-yiEEpg-RFvMdV7veoapFzhZYVcaWg/edit?gid=0#gid=0"
+
+load_tariffs_from_cache <- TRUE
+load_thresholds_from_cache <- TRUE
+load_monthly_consumption_from_cache <- TRUE
+
+```
+
+## Load ri_hp_rates report variables
+```{r}
+#| label: load ri_hp_rates report variables from cache
+
+# if this isn't found...
+# cd ../ri_hp_rates
+# just all
+path_ri_hp_rates_results_cache <- file.path(repo_root, "reports", "ri_hp_rates", "cache", "report_variables.RData")
+print(paste0("Loading ri_hp_rates report variables from: ", path_ri_hp_rates_results_cache))
+load(file = path_ri_hp_rates_results_cache)
+
+```
+
+
+## Color Definitions
+```{r}
+#| label: color definitions
+scenario_colors = c(
+  "baseline_rates_current_hvac" = "grey50",
+
+  "baseline" = "#023047",
+  "baseline_rates_low_hp" = "#023047",
+  "baseline_rates_mid_hp" = "#023047",
+  "baseline_rates_high_hp" = "#023047",
+
+  "hpr_approved" = "#FC9706",
+  "approved_low_hp" = "#FC9706",
+  "approved_mid_hp" = "#FC9706",
+  "approved_high_hp" = "#FC9706",
+
+  "hpr_doer" = "#68BED8",
+  "doer_low_hp" = "#68BED8",
+  "doer_mid_hp" = "#68BED8",
+  "doer_high_hp" = "#68BED8"
+)
+
+heating_type_colors = c(
+  "Natural Gas" = "#8C510A",        # brown
+  "Fuel Oil" = "#D8B365",           # light brown
+  "Propane" = "#F6E8C3",            # very light brown
+  "Electric Resistance" = "#5AB4AC",         # BrBG palette
+  "Heat Pump" = "#80CDC1",          # BrBG palette
+  "Other/None" = "grey50"          # BrBG palette
+)
+
+cooling_type_colors = c(
+  "Central AC" = "#8C510A",        # brown
+  "Room AC" = "#D8B365",           # light brown
+  "Heat Pump" = "#80CDC1",            # very light brown
+  "Other Cooling" = "#5AB4AC",         # BrBG palette
+  "None" = "grey50"        # BrBG palette
+)
+
+building_type_colors = c(
+  "Single-Family" = "#234267",    # darkest dusty blue
+  "2-4 Units" = "#6383A9",        # medium dusty blue
+  "5+ Units" = "#B2C7DF",         # lightest dusty blue
+  "Other" = "#80CDC1"             # BrBG palette for other
+)
+
+occupants_group_colors = c(
+  "Vacant" = "#424242",        # dark grey
+  "Single" = "#D1BFE6",        # light dusty purple
+  "Couple" = "#A285C8",        # medium dusty purple
+  "3-4 Occupants" = "#7C579A", # darker dusty purple
+  "5+ Occupants" = "#4C266A"   # darkest dusty purple
+)
+
+smi_tier_colors = c(
+  "No Income" = "#424242",             # dark grey
+  "Low Income" = "#B4C6A6",            # light dusty green
+  "Moderate Income" = "#7D9D81",       # medium dusty green
+  "Not LMI" = "#475D4B"            # dark dusty green
+)
+
+smi_tier_label_colors = c(
+  "No Income" = "#424242",             # dark grey
+  "Low Income (<60% SMI)" = "#B4C6A6",            # light dusty green
+  "Moderate Income (60–100% SMI)" = "#7D9D81",       # medium dusty green
+  "Not LMI (>100% SMI)" = "#475D4B"            # dark dusty green
+)
+
+dollar_tier_colors = c(
+  "No Income" = "#424242",             # dark grey
+  "Low Income" = "#B4C6A6",            # light dusty green
+  "Moderate Income" = "#7D9D81",       # medium dusty green
+  "Not LMI" = "#475D4B"            # dark dusty green
+)
+
+bill_component_colors = c(
+  "annual_gas_bill" = "grey50", # grey
+  "annual_fuel_oil_bill" = "grey50", # grey
+  "supply_charge" = "#A0AF12",
+  "delivery_charge" = "#023047",
+  "customer_charge" = "#68BED8",
+  "pre_hp_delivery_total" = "#FC9706"
+)
+
+savings_colors = c(
+  "dark_red" = "#db8b87", # dark red
+  "light_red" = "#eaada9", # light red
+  "light_green" = "#8ebd85", # light green
+  "dark_green" = "#5e8a5e" # dark green
+)
+
+energy_burden_colors = c(
+  "low_energy_burden" = "#5e8a5e", # dark green
+  "moderate_energy_burden" = "#8ebd85", # light green
+  "high_energy_burden" = "#eaada9", # light red
+  "very_high_energy_burden" = "#db8b87" # dark red
+)
+
+```
+
+## def load_or_download function
+```{r}
+#| label: load delivery tariffs and supply rates
+
+# Delivery Tariffs and LMI Discount Thresholds
+load_or_download <- function(table_name, url, path_to_cache, load_from_cache=FALSE) {
+  # Construct file path for this table
+  file_path <- paste0(path_to_cache, "/", table_name, ".RData")
+
+  # Try to load from cache first
+  if (load_from_cache && file.exists(file_path)) {
+    print(paste0("Attempting to load from cache: ", file_path))
+    load(file_path, envir = .GlobalEnv)
+    assign(table_name, data, envir = .GlobalEnv)
+    print(paste0("    Loaded cached ", table_name))
+
+  } else {
+    # Download if not found
+    googlesheets4::gs4_deauth()
+    print(paste0("    Downloading ", table_name))
+    # Read the sheet and throw out columns-for-humans
+    data <- read_sheet(url, sheet = table_name) |>
+      select(-source, -notes)
+
+    # if billing_unit is anything other than "dollars", "dollars_per_kwh", or "percentage", we convert it to "dollars_per_kwh"
+    if (str_detect(table_name, "tariffs")) {
+      print("    ...converting billing_unit from dollar_per_therm to dollars_per_kwh")
+      data <- data |>
+        mutate(
+          value = case_when(
+            billing_unit == "dollars_per_therm" ~ value / 29.3,
+            TRUE ~ value
+          ),
+          billing_unit = case_when(
+            billing_unit == "dollars_per_therm" ~ "dollars_per_kwh",
+            TRUE ~ billing_unit
+          )
+        )
+    }
+
+    # tariffs are specified by season, so we need to expand them out to the monthly grid
+    if (str_detect(table_name, "tariffs")) {
+      print("    ...expanding tariffs out to the monthly grid")
+      # The tariffs are specified by season, so we need to expand them out to the monthly grid
+      data <- data |>
+      # Create a mapping of months to each season
+      cross_join(
+        tibble(
+          month = 1:12,
+          season_mapping = case_when(
+            month %in% winter_months ~ "winter",
+            month %in% summer_months ~ "summer"
+          )
+        )
+      ) |>
+      # Keep only the rows where the season matches the month's season
+      filter(season == season_mapping) |>
+      # Convert month to int32
+      mutate(month = as.integer(month)) |>
+      # Remove the helper columns
+      select(-season, -season_mapping) |>
+      # Arrange for better organization
+      arrange(class, type, tariff_name, month)
+    }
+
+
+    # if table_name is gas_delivery_tariffs, we need combine several rows to get an all-in delivery rate
+    if (str_detect(table_name, "gas_delivery_tariffs")) {
+      print("    ...combining several rows to get an all-in delivery rate")
+
+
+      # let's add a "bill_component" column to the data based on the class and type columns
+      # fixed = everything where class == "fixed"
+      # delivery = everything where class == "volumetric", expect if type == "supply"
+      # tax = everything where type == "tax"
+      data <- data |>
+        mutate(bill_component = case_when(
+          class == "fixed" ~ "customer_charge",
+          class == "volumetric" & type != "supply" ~ "delivery_rate",
+          class == "volumetric" & type == "supply" ~ "supply_rate",
+          class == "tax" ~ "sales_tax_rate",
+          TRUE ~ "other"
+        ))
+
+      # now let's group by the bill_component column
+      data <- data |>
+        group_by(bill_component, tariff_name, gas_utility, heat_non_heat, version, month) |>
+        summarise(
+          value = sum(value, na.rm = TRUE),
+          type = first(bill_component),
+          # Keep other columns from the first row of each group
+          class = first(class),
+          customer_class = first(customer_class),
+          tariff_name = first(tariff_name),
+          billing_unit = first(billing_unit),
+          lmi = first(lmi),
+          effective_date = first(effective_date),
+          .groups = "drop"
+        ) |>
+        select(-bill_component)
+    }
+
+
+    # supply rates are specified by year
+    if (str_detect(table_name, "supply")) {
+      print("    ...converting supply rates to int32")
+      data <- data |>
+        mutate(
+          month = as.integer(month),
+          year = as.integer(year)
+        )
+    }
+
+
+    # Save to cache
+    save(data, file = file_path)
+    assign(table_name, data, envir = .GlobalEnv)
+    print(paste0("    Downloaded and cached ", table_name))
+  }
+}
+```
+
+## Housing Units
+### Load and Transform Housing Units
+```{r}
+#| label: load housing units
+use_these_in_columns <- c(
+  "bldg_id",
+  "upgrade",
+  "in.sqft",
+  "in.representative_income",
+  "in.income",
+  "in.city",
+  "in.geometry_building_type_acs",
+  "in.heating_fuel",
+  "in.hvac_cooling_type",
+  "in.hvac_heating_efficiency",
+  "in.hvac_heating_type_and_fuel",
+  "in.occupants",
+  "in.state",
+  "in.vintage",
+  "in.weather_file_city",
+  "in.vacancy_status"
+)
+
+use_these_out_columns <- c(
+  "out.electricity.total.energy_consumption.kwh",
+  "out.fuel_oil.total.energy_consumption.kwh",
+  "out.natural_gas.total.energy_consumption.kwh",
+  "out.propane.total.energy_consumption.kwh"
+)
+
+# Create pattern to match only the desired upgrade files
+upgrade_patterns <- paste0("upgrade", use_these_upgrades, "_metadata_and_annual_results\\.parquet$")
+upgrade_pattern <- paste(upgrade_patterns, collapse = "|")
+
+# Get only the upgrade parquet files that match our criteria
+parquet_files <- list.files(
+  path_metadata_dir,
+  pattern = upgrade_pattern,
+  full.names = TRUE
+)
+
+# Create a lazy dataset from selected parquet files
+housing_units <- open_dataset(parquet_files) |>
+  select(all_of(use_these_in_columns), all_of(use_these_out_columns)) |>
+  filter(`in.state` %in% use_these_states) |>
+  collect()
+
+#-----------------------------------------------------------------
+# Simple stuff: trim to a max of 4000 sqft
+#-----------------------------------------------------------------
+housing_units <- housing_units |>
+  filter(in.sqft <= 5000)
+
+#-----------------------------------------------------------------
+# Preferred labels for heating type, cooling type, building type, and occupants group
+#-----------------------------------------------------------------
+# Add baseline heating type and set as factor
+housing_units <- get_baseline_heating_type(housing_units) |> right_join(housing_units, by = c("bldg_id"))
+baseline_heating_type_levels <- c("Natural Gas", "Fuel Oil", "Propane", "Electric Resistance", "Heat Pump", "Other/None")
+housing_units$baseline_heating_type <- forcats::fct(housing_units$baseline_heating_type, levels = baseline_heating_type_levels)
+
+# Add baseline heating efficiency and set as factor
+housing_units <- get_baseline_heating_efficiency(housing_units) |> right_join(housing_units, by = c("bldg_id"))
+baseline_heating_efficiency_levels <- c("ASHP, SEER 10, 6.2 HSPF", "ASHP, SEER 13, 7.7 HSPF", "ASHP, SEER 15, 8.5 HSPF", "Electric Baseboard, 100% Efficiency", "Electric Boiler, 100% AFUE", "Electric Furnace, 100% AFUE", "Electric Wall Furnace, 100% AFUE", "Fuel Boiler, 76% AFUE", "Fuel Boiler, 80% AFUE", "Fuel Boiler, 90% AFUE", "Fuel Furnace, 60% AFUE", "Fuel Furnace, 76% AFUE", "Fuel Furnace, 80% AFUE", "Fuel Furnace, 92.5% AFUE", "Fuel Wall/Floor Furnace, 60% AFUE", "Fuel Wall/Floor Furnace, 68% AFUE", "MSHP, SEER 14.5, 8.2 HSPF", "MSHP, SEER 29.3, 14 HSPF", "None", "Shared Heating", "Other")
+housing_units$baseline_heating_efficiency <- forcats::fct(housing_units$baseline_heating_efficiency, levels = baseline_heating_efficiency_levels)
+
+# Add baseline cooling type and set as factor
+housing_units <- get_baseline_cooling_type(housing_units) |> right_join(housing_units, by = c("bldg_id"))
+baseline_cooling_type_levels <- c("Room AC", "Central AC",  "Heat Pump", "Other Cooling", "None")
+housing_units$baseline_cooling_type <- forcats::fct(housing_units$baseline_cooling_type, levels = baseline_cooling_type_levels)
+
+# Add building type group
+housing_units <- add_building_type_group(housing_units) |> right_join(housing_units, by = c("bldg_id"))
+building_type_group_levels <- c("Single-Family", "2-4 Units", "5+ Units", "Other")
+housing_units$building_type_group <- forcats::fct(housing_units$building_type_group, levels = building_type_group_levels)
+
+
+# Add occupants group
+housing_units <- change_occupants_to_number(housing_units) # changes occupants to number
+housing_units <- add_occupants_group(housing_units) |> right_join(housing_units, by = c("bldg_id"))
+occupants_group_levels <- c("Vacant", "Single", "Couple", "3-4 Occupants", "5+ Occupants")
+housing_units$occupants_group <- forcats::fct(housing_units$occupants_group, levels = occupants_group_levels)
+
+housing_units <- add_hvac_primary(housing_units) |> right_join(housing_units, by = c("bldg_id", "upgrade"))
+hvac_primary_levels <- c(baseline_heating_type_levels, "current", "hp_low", "hp_high", "hp_best", "hp_geo")
+housing_units$hvac_primary <- forcats::fct(housing_units$hvac_primary, levels = hvac_primary_levels)
+
+housing_units <- add_hvac_backup(housing_units) |> right_join(housing_units, by = c("bldg_id", "upgrade"))
+hvac_backup_levels <- c(baseline_heating_type_levels, "electric_resistance", "none")
+housing_units$hvac_backup <- forcats::fct(housing_units$hvac_backup, levels = hvac_backup_levels)
+
+housing_units <- add_appliances(housing_units) |> right_join(housing_units, by = c("bldg_id", "upgrade"))
+appliances_levels <- c("Baseline", "All Electric")
+housing_units$appliances <- forcats::fct(housing_units$appliances, levels = appliances_levels)
+
+housing_units <- add_shell(housing_units) |> right_join(housing_units, by = c("bldg_id", "upgrade"))
+shell_levels <- c("Baseline", "All Electric")
+housing_units$shell <- forcats::fct(housing_units$shell, levels = shell_levels)
+
+# Add heat_non_heat flag
+housing_units <- add_heat_non_heat_flag(housing_units) |> right_join(housing_units, by = c("bldg_id", "upgrade"))
+heat_non_heat_levels <- c("heat", "non_heat")
+housing_units$heat_non_heat <- forcats::fct(housing_units$heat_non_heat, levels = heat_non_heat_levels)
+
+#-----------------------------------------------------------------
+# Income
+#-----------------------------------------------------------------
+
+# Inflate income to 2024
+housing_units <- inflate_income_to_2024(housing_units, from_year = 2019)
+
+# 2024 Rhode Island state median income is $92,290 (https://fred.stlouisfed.org/series/MEHOINUSRIA646N)
+# 60% -> $55,374
+# 80% -> $73,832
+# 100% -> $92,290
+housing_units <- group_income_by_dollars(housing_units, dollar_tiers = c(1000, 55374, 92290))
+dollar_tier_levels <- c("No Income", "Low Income", "Moderate Income", "Not LMI")
+housing_units$dollar_tier <- forcats::fct(housing_units$dollar_tier, levels = dollar_tier_levels)
+
+# Add SMI tiers
+housing_units <- group_income_by_smi(housing_units, table_name = "smi_thresholds_2024", url_smi_thresholds = url_smi_thresholds, smi_tiers = c(0.6, 1.0))
+smi_tier_levels <- c("No Income", "Low Income", "Moderate Income", "Not LMI")
+housing_units$smi_tier <- forcats::fct(housing_units$smi_tier, levels = smi_tier_levels)
+
+#-----------------------------------------------------------------
+# Extensions: add elec and gas utility assignments, then LMI discounts
+#-----------------------------------------------------------------
+# Assign electricity utility
+housing_units <- assign_utilities(housing_units)
+# Add LMI discounts
+load_or_download("electric_lmi_thresholds", url_delivery_rates, path_to_cache, load_from_cache = load_thresholds_from_cache)
+load_or_download("gas_lmi_thresholds", url_delivery_rates, path_to_cache, load_from_cache = load_thresholds_from_cache)
+housing_units <- add_lmi_discount(housing_units, electric_lmi_thresholds, gas_lmi_thresholds)
+
+
+# Add fuel oil utility
+housing_units <- housing_units |>
+  mutate(
+    fuel_oil_utility = "generic_retail",
+    discount_rate_fuel_oil = 0
+  )
+
+# Add propane utility
+housing_units <- housing_units |>
+  mutate(
+    propane_utility = "generic_retail",
+    discount_rate_propane = 0
+  )
+
+
+# Print column names of housing_units
+print("Column names in housing_units:")
+print(colnames(housing_units))
+
+n_total_homes <- housing_units |> filter(upgrade == 0) |> nrow()
+
+housing_units <- housing_units |>
+  filter(occupants_group != "Vacant")
+
+n_non_vacant_homes <- housing_units |> filter(upgrade == 0) |> filter(occupants_group != "Vacant") |> nrow()
+```
+
+# ------------------------------------------------------------------------------
+# Load Supply Rates and Delivery Tariffs
+# ------------------------------------------------------------------------------
+```{r}
+#| label: supply rates and delivery tariffs
+# Electric
+url_electric_supply_rates <- "https://docs.google.com/spreadsheets/d/1oq0WxARD6cY6gPE4s2TH59O4pHY0sreZNKpHFayn36g/edit?gid=0#gid=0"
+# TODO return the data, do not save as a side effect.
+load_or_download("electric_supply_rates", url_electric_supply_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
+load_or_download("electric_delivery_tariffs", url_delivery_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
+
+# Fuel Oil Supply Rates
+fuel_oil_supply_rates <- open_dataset(path_fuel_oil_supply_rates) |>
+  select(year, month, supply_rate, fuel_oil_utility) |>
+  filter(year == supply_year) |>
+  collect()
+
+# Delivery Tariffs
+load_or_download("fuel_oil_delivery_tariffs", url_delivery_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
+load_or_download("fuel_oil_lmi_thresholds", url_delivery_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
+
+# Propane Supply Rates
+propane_supply_rates <- open_dataset(path_propane_supply_rates) |>
+  select(year, month, supply_rate, propane_utility) |>
+  filter(year == supply_year) |>
+  collect()
+
+# Delivery Tariffs
+load_or_download("propane_delivery_tariffs", url_delivery_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
+load_or_download("propane_lmi_thresholds", url_delivery_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
+
+
+# Gas Supply Rates
+url_gas_supply_rates <- "https://docs.google.com/spreadsheets/d/1_2u9S3r2JWKREhD_pnWXfyQKqjc4IsImbbTdHHN7xqM/edit?gid=0#gid=0"
+load_or_download("gas_supply_rates", url_gas_supply_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
+load_or_download("gas_delivery_tariffs", url_delivery_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
+load_or_download("gas_lmi_thresholds", url_delivery_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
+
+```
+
+# ------------------------------------------------------------------------------
+# Heating Bills
+# ------------------------------------------------------------------------------
+## parameters
+```{r}
+cols_from_housing_units <- c("bldg_id", "upgrade", "hvac_primary", "baseline_heating_type", "baseline_heating_efficiency")
+```
+
+## Consumption by End Use Group
+```{r}
+#| label: consumption by end use group
+if (file.exists(path_monthly_consumption)) {
+  load(file = path_monthly_consumption)
+} else {
+
+  # Get the end use groups
+  path_end_use_groups_feather <- "/workspaces/reports2/lib/resstock/2024/end_use_groups.feather"
+  end_use_groups <- arrow::read_feather(path_end_use_groups_feather)
+
+  # Monthly Load Data
+  monthly_consumption <- get_monthly_consumption_many(
+    path_monthly_data = path_monthly_data,
+    fuels = c("electricity", "natural_gas", "fuel_oil", "propane"),
+    functional_groups = c("appliance", "cooking", "cooling", "heating", "hot_water", "total"),
+    use_these_states = "RI",
+    use_these_upgrades = use_these_upgrades
+  )
+
+  # Filter out any vacant homes
+  monthly_consumption <- monthly_consumption |>
+    left_join(housing_units |> filter(upgrade == 0)|> select(bldg_id, occupants_group, baseline_heating_type), by = c("bldg_id")) |>
+    filter(occupants_group != "Vacant") |>
+    select(-occupants_group)
+
+  # Save to cache
+  save(monthly_consumption, file = path_monthly_consumption)
+}
+
+
+#View(monthly_consumption)
+
+
+```
+
+
+# Heating Bill Calculations
+```{r}
+#| label: heating bills
+
+# Monthly Bills
+# Electricity
+monthly_bills_heating_elec <- calc_monthly_bills(
+  monthly_consumption = monthly_consumption,
+  consumption_column = "electricity_heating_consumption_kwh",
+  fuel_type = "electricity",
+  delivery_tariffs = electric_delivery_tariffs,
+  supply_rates = electric_supply_rates,
+  housing_units = housing_units,
+  supply_year = supply_year,
+  state = "RI",
+  enable_lmi_discount = TRUE,
+  use_these_upgrades = use_these_upgrades
+) |>
+mutate(
+  volumetric_rate = delivery_rate + supply_rate,
+  volumetric_bill = !!sym("electricity_heating_consumption_kwh") * volumetric_rate
+)
+
+monthly_changes_heating_elec <- calc_monthly_changes(monthly_bills_heating_elec, "electricity")
+
+annual_changes_heating_elec <- calc_annual_change_from_monthly(monthly_changes_heating_elec, "electricity")
+
+# Gas
+monthly_bills_heating_gas <- calc_monthly_bills(
+  monthly_consumption = monthly_consumption,
+  consumption_column = "natural_gas_heating_consumption_kwh",
+  fuel_type = "natural_gas",
+  delivery_tariffs = gas_delivery_tariffs,
+  supply_rates = gas_supply_rates,
+  housing_units = housing_units,
+  supply_year = supply_year,
+  state = "RI",
+  enable_lmi_discount = TRUE,
+  use_these_upgrades = use_these_upgrades
+) |>
+mutate(
+  volumetric_rate = delivery_rate + supply_rate,
+  volumetric_bill = !!sym("natural_gas_heating_consumption_kwh") * volumetric_rate
+)
+
+monthly_changes_heating_gas <- calc_monthly_changes(monthly_bills_heating_gas, "natural_gas")
+
+annual_changes_heating_gas <- calc_annual_change_from_monthly(monthly_changes_heating_gas, "natural_gas")
+
+# Fuel Oil
+monthly_bills_heating_fuel_oil <- calc_monthly_bills(
+  monthly_consumption = monthly_consumption,
+  consumption_column = "fuel_oil_heating_consumption_kwh",
+  fuel_type = "fuel_oil",
+  delivery_tariffs = fuel_oil_delivery_tariffs,
+  supply_rates = fuel_oil_supply_rates,
+  housing_units = housing_units,
+  supply_year = supply_year,
+  state = "RI",
+  enable_lmi_discount = TRUE,
+  use_these_upgrades = use_these_upgrades
+) |>
+mutate(
+  volumetric_rate = delivery_rate + supply_rate,
+  volumetric_bill = !!sym("fuel_oil_heating_consumption_kwh") * volumetric_rate
+)
+
+monthly_changes_heating_fuel_oil <- calc_monthly_changes(monthly_bills_heating_fuel_oil, "fuel_oil")
+
+annual_changes_heating_fuel_oil <- calc_annual_change_from_monthly(monthly_changes_heating_fuel_oil, "fuel_oil")
+
+# Propane
+monthly_bills_heating_propane <- calc_monthly_bills(
+  monthly_consumption = monthly_consumption,
+  consumption_column = "propane_heating_consumption_kwh",
+  fuel_type = "propane",
+  delivery_tariffs = propane_delivery_tariffs,
+  supply_rates = propane_supply_rates,
+  housing_units = housing_units,
+  supply_year = supply_year,
+  state = "RI",
+  enable_lmi_discount = TRUE,
+  use_these_upgrades = use_these_upgrades
+) |>
+mutate(
+  volumetric_rate = delivery_rate + supply_rate,
+  volumetric_bill = !!sym("propane_heating_consumption_kwh") * volumetric_rate
+)
+
+monthly_changes_heating_propane <- calc_monthly_changes(monthly_bills_heating_propane, "propane")
+
+annual_changes_heating_propane <- calc_annual_change_from_monthly(monthly_changes_heating_propane, "propane")
+
+annual_changes_heating <- calc_annual_changes_total(
+  annual_changes_heating_elec,
+   annual_changes_heating_gas,
+  annual_changes_heating_fuel_oil,
+  annual_changes_heating_propane
+)|>
+left_join(housing_units |> select(bldg_id, upgrade, afue_value, hvac_primary, baseline_heating_type), by = c("bldg_id", "upgrade")) |>
+filter(afue_value != 'NA')
+
+# used summarize to print the counts and percentages of the unique values of afue_value
+annual_changes_heating |>
+summarize(
+  counts = n(),
+  percentages = counts / n(),
+  .by = afue_value
+) |>
+arrange(desc(afue_value)) |>
+print()
+```
+
+# Heating bill changes
+```{r}
+#| label: fig-hist_1_annual_change_heating_baseline_hp_high
+#| fig-cap: "Distribution of annual _heating_ bill changes for homes switching to heat pumps from natural gas, all under baseline rates."
+
+result <- hist_for_single_rate_version(
+  annual_change_table = annual_changes_heating,
+  bill_type = 'annual_change_total',
+  baseline_heating_type_option = 'Natural Gas',
+  version_elec = "baseline",
+  hvac_option = "hp_high",
+  supply_year = supply_year,
+  title = "Change in Total Annual HEATING Bills for Homes Switching to Heat Pumps from Natural Gas",
+  second_subtitle = "Rhode Island",
+  x_limits = c(-3000, 3000),
+  y_limits = c(0, 200),
+  binwidth = 100
+)
+
+annual_change_stats_heating_baseline_hp_high <- result[[2]]
+print(result[[1]])
+
+```
+
+# Heating bill changes by AFUE value
+```{r}
+#| label: fig-hist_1_annual_change_heating_baseline_hp_high_by_afue
+#| fig-cap: "Distribution of annual _heating_ bill changes for homes switching to heat pumps from natural gas, all under baseline rates, by AFUE value."
+
+x_limits <- c(-2500, 2500)
+y_limits <- c(0, 15000) / 242.13
+binwidth <- 100
+
+# Plot 1: AFUE = 92.5
+# -----------------------------------------------
+result_1 <- hist_for_single_rate_version(
+  annual_change_table = annual_changes_heating |> filter(afue_value == 92.5),
+  bill_type = 'annual_change_total',
+  version_elec = "baseline",
+  baseline_heating_type_option = 'Natural Gas',
+  hvac_option = "hp_high",
+  supply_year = supply_year,
+  title = 'auto',
+  second_subtitle = "Rhode Island",
+  x_limits = x_limits,
+  y_limits = y_limits,
+  binwidth = 100
+)
+
+p1 <- result_1[[1]] +
+  labs(title = NULL) + # Remove title
+  ylab(NULL) + # Remove y-axis label
+  theme(
+    axis.title.x = element_blank(), # Remove x axis title from top two plots
+    axis.text.x = element_blank(), # Remove x tick labels from top two plots
+    axis.ticks.x = element_blank(), # Remove x ticks from top two plots
+    plot.margin = margin(5, 5, 0, 5), # Consistent margins (top, right, bottom, left)
+    axis.title.y = element_blank(), # Remove y title from top plot
+    aspect.ratio = 0.18
+  ) +
+  # Add elegant version label on right side
+  annotate(
+    "text",
+    x = x_limits[2] * 0.95,
+    y = y_limits[2] * 0.7,
+    label = "AFUE = 92.5",
+    hjust = 1,
+    fontface = "bold",
+    size = 4,
+    color = "#023047"
+  )
+
+# Plot 2: AFUE = 92.5
+# -----------------------------------------------
+result_2 <- hist_for_single_rate_version(
+  annual_change_table = annual_changes_heating |> filter(afue_value == 80),
+  bill_type = 'annual_change_total',
+  version_elec = "baseline",
+  baseline_heating_type_option = 'Natural Gas',
+  hvac_option = "hp_high",
+  supply_year = supply_year,
+  title = 'auto',
+  second_subtitle = "Rhode Island",
+  x_limits = x_limits,
+  y_limits = y_limits,
+  binwidth = 100
+)
+
+p2 <- result_2[[1]] +
+  labs(title = NULL) + # Remove title
+  ylab(NULL) + # Remove y-axis label
+  theme(
+    axis.title.x = element_blank(), # Remove x axis title from top two plots
+    axis.text.x = element_blank(), # Remove x tick labels from top two plots
+    axis.ticks.x = element_blank(), # Remove x ticks from top two plots
+    plot.margin = margin(5, 5, 0, 5), # Consistent margins (top, right, bottom, left)
+    axis.title.y = element_blank(), # Remove y title from top plot
+    aspect.ratio = 0.18
+  ) +
+  # Add elegant version label on right side
+  annotate(
+    "text",
+    x = x_limits[2] * 0.95,
+    y = y_limits[2] * 0.7,
+    label = "AFUE = 80",
+    hjust = 1,
+    fontface = "bold",
+    size = 4,
+    color = "#023047"
+  )
+
+# Plot 3: AFUE = 92.5
+# -----------------------------------------------
+result_3 <- hist_for_single_rate_version(
+  annual_change_table = annual_changes_heating |> filter(afue_value == 68),
+  bill_type = 'annual_change_total',
+  version_elec = "baseline",
+  baseline_heating_type_option = 'Natural Gas',
+  hvac_option = "hp_high",
+  supply_year = supply_year,
+  title = 'auto',
+  second_subtitle = "Rhode Island",
+  x_limits = x_limits,
+  y_limits = y_limits,
+  binwidth = 100
+)
+
+p3 <- result_3[[1]] +
+  labs(title = NULL) + # Remove title
+  ylab(NULL) + # Remove y-axis label
+  theme(
+    axis.title.x = element_blank(), # Remove x axis title from top two plots
+    axis.text.x = element_blank(), # Remove x tick labels from top two plots
+    axis.ticks.x = element_blank(), # Remove x ticks from top two plots
+    plot.margin = margin(5, 5, 0, 5), # Consistent margins (top, right, bottom, left)
+    axis.title.y = element_blank(), # Remove y title from top plot
+    aspect.ratio = 0.18
+  ) +
+  # Add elegant version label on right side
+  annotate(
+    "text",
+    x = x_limits[2] * 0.95,
+    y = y_limits[2] * 0.7,
+    label = "AFUE = 60",
+    hjust = 1,
+    fontface = "bold",
+    size = 4,
+    color = "#023047"
+  )
+
+# Combine plots with shared x and y axes
+combined_plot <- p1 / p2 / p3 +
+plot_layout(heights = c(1, 1, 1)) + plot_annotation(title = "Change in Total Annual HEATING Bills for Homes Switching to Heat Pumps from Natural Gas", subtitle = "Rhode Island") +
+theme(
+  plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),
+  plot.subtitle = element_text(hjust = 0.5, size = 8)
+)
+
+print(combined_plot)
+# save the plot to cache as an image
+ggsave(file.path(path_to_cache, "heating_bill_changes_by_afue_plot.png"), combined_plot, width = 10, height = 8)
+
+```
+
+## Annual changes by AFUE value - Line plot
+```{r}
+#| label: annual changes by afue value
+
+annual_changes_y  <- annual_changes_total |>
+  filter(upgrade == 2) |>
+  filter(version_elec == "baseline") |>
+  right_join(housing_units |> filter(upgrade==0)|> filter(baseline_heating_type == "Natural Gas")|> select(bldg_id, afue_value), by = c("bldg_id"))
+
+#View(annual_changes_y)
+
+annual_changes_x <- annual_changes_y |>
+  summarize(
+    counts = n(),
+    median_annual_change = median(annual_change_total),
+    .by = c(afue_value)
+  )
+
+#View(annual_changes_x)
+
+bill_change_vs_afue_plot <- ggplot(annual_changes_x, aes(x = afue_value/100, y = median_annual_change)) +
+  #shade light green above y=0
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 0, ymax = Inf), fill = savings_colors["light_red"], alpha = 0.5) +
+  #shade light red below y=0
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = 0), fill = savings_colors["light_green"], alpha = 0.5) +
+  labs(x = "Baseline Gas Heating Efficiency (AFUE Value)", y = "Median Annual Total Bill Change") +
+  theme_minimal()+
+  scale_x_continuous(breaks = seq(0, 1, by = 0.1), labels = scales::percent_format(accuracy = 1)) +
+  scale_y_continuous(limits = c(-20, 500), breaks = seq(-1000, 1000, by = 100), labels = scales::dollar_format()) +
+  geom_point(size=4, color = sb_colors["midnight"]) +
+  geom_line(size=3, color = sb_colors["midnight"]) +
+  # use ggrepel to write the counts on the points
+  # add a small offset to the counts
+  ggrepel::geom_text_repel(aes(label = counts), size = 8, color = sb_colors["sky"], nudge_y = 15) +
+
+  # add a text that says "Count of Bldg IDs" in sky color
+  annotate("text", x = 0.62, y = 50, label = "Count of Bldg IDs", color = sb_colors["sky"], size = 8)
+
+print(bill_change_vs_afue_plot)
+
+# save the plot to cache as an image
+ggsave(file.path(path_to_cache, "bill_change_vs_afue_plot.png"), bill_change_vs_afue_plot, width = 10, height = 8)
+```
+
+## Natural Gas consumption by functional group and month
+```{r}
+#| label: natural gas consumption by functional group and month
+
+baseline_heating_option <- "Natural Gas"
+
+heating_type_to_fuel_lookup <- tibble(
+  heating_type = c("Electric Resistance", "Natural Gas"),
+  fuel = c("electricity", "natural_gas")
+)
+
+fuel <- heating_type_to_fuel_lookup |> filter(heating_type == baseline_heating_option) |> pull(fuel)
+
+
+# get the 10th, 50th, and 90th percentiles of consumption by month
+monthly_consumption_percentiles <- monthly_consumption |>
+  filter(upgrade == 0) |>
+  filter(baseline_heating_type == baseline_heating_option) |>
+  select(-baseline_heating_type) |>
+  # get the quantiles for each column other than bldg_id, upgrade, and month
+  reframe(
+    across(everything(), ~ quantile(.x, c(0.1, 0.5, 0.9))),
+    .by = c(month, upgrade)
+  ) |>
+  mutate(
+    percentile = rep(c("p10", "p50", "p90"),
+                   times = n() / 3)
+  )|>
+  pivot_longer(cols = -c(month, upgrade, percentile), names_to = "functional_group", values_to = "consumption_kwh") |>
+  filter(str_detect(functional_group, fuel)) |>
+
+
+  mutate(
+    functional_group = case_when(
+      str_detect(functional_group, "appliance") ~ "Appliance",
+      str_detect(functional_group, "cooling") ~ "Cooling",
+      str_detect(functional_group, "heating") ~ "Heating",
+      str_detect(functional_group, "hot_water") ~ "Hot Water",
+      str_detect(functional_group, "total") ~ "Total",
+      TRUE ~ "Other"
+    )
+  )
+#View(monthly_consumption_percentiles)
+
+# plot the average consumption by month
+colors = c(
+  "Appliance" = "grey50",
+  "Cooling" = "blue",
+  "Heating" = "red",
+  "Hot Water" = "green",
+  "Total" = "black"
+)
+
+stack_order <- c("Heating", "Appliance", "Cooling", "Hot Water")  # exclude "Total" since we're filtering that group
+
+plot_p50 <- monthly_consumption_percentiles |>
+  filter(percentile == "p50") |>
+  filter(functional_group != "Total") |>
+  mutate(functional_group = factor(functional_group, levels = stack_order)) |>
+  arrange(month, functional_group) |>
+  ggplot(aes(x = month, y = consumption_kwh, fill = functional_group)) +
+  geom_area(position = "stack", alpha = 0.8) +
+  labs(title = paste("Average", baseline_heating_option, "Consumption by Functional Group and Month"),
+       x = "Month",
+       y = "Consumption (kWh)") +
+  scale_x_continuous(breaks = 1:12, labels = month.abb, limits = c(0, 0.05)) +
+  scale_y_continuous(labels = scales::comma_format()) +
+  scale_fill_manual(values = colors, breaks = stack_order)
+
+print(plot_p50)
+# save the plot to cache as an image
+ggsave(file.path(path_to_cache, "natural_gas_consumption_by_functional_group_and_month_plot.png"), plot_p50, width = 10, height = 8)
+
+```
+
+```{r}
+#path_metadata_upgrade2 = "data/ResStock/2024_release2_tmy3/metadata/upgrade02_metadata_and_annual_results.parquet"
+path_metadata_upgrade2 <- file.path(path_to_data, "resstock", "2024_release2_tmy3", "metadata", "upgrade02_metadata_and_annual_results.parquet")
+metadata_upgrade2 <- read_parquet(path_metadata_upgrade2) |> filter(in.state == "RI")
+
+# for each row (bldg_id), get the ratio of out.electricity.heating_hp_bkup.energy_consumption to out.electricity.heating.energy_consumption
+heating_change_vs_bkup <- annual_changes_heating |>
+left_join(metadata_upgrade2 |> select(bldg_id, out.electricity.heating_hp_bkup.energy_consumption.kwh, out.electricity.heating.energy_consumption.kwh), by = c("bldg_id")) |>
+mutate(
+  bkup_ratio = !!sym("out.electricity.heating_hp_bkup.energy_consumption.kwh") / !!sym("out.electricity.heating.energy_consumption.kwh")
+)
+
+# plot a scatter diagram: x = bkup_ratio, y = annual_change_total
+p <- ggplot(heating_change_vs_bkup, aes(x = bkup_ratio, y = annual_change_total)) +
+  geom_point(alpha = 0.2) +
+  labs(x = "Backup Ratio", y = "Annual Change Total")
+print(p)
+
+```
+
+
+```{r}
+
+
+```

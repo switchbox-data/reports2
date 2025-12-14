@@ -580,11 +580,11 @@ p_ss
 #| fig-height: 9
 #| fig-width: 8
 
-sample_id <- "170316913001026"
-total_pipe_touching <- 0.17
+sample_id <- "170314407001003" #"170316913001026"
+total_pipe_touching <- 0.1726
 total_prp_cost_ex <- total_pipe_touching * cost_lpp_mile
 
-res_only |>
+plot_data <- res_only |>
   filter(geoid10 == sample_id) |>
   data.frame() |>
   select(
@@ -600,7 +600,7 @@ res_only |>
     elec_mf_cost = mf_units * cost_elec_mf,
     pipeline_assigned = street_miles,
     grid_cost = total_residential_units * grid_upgrade_cost_hh,
-    decomm_cost = street_miles * cost_decomm_mile
+    decomm_cost = street_miles * cost_decomm_mile,
   ) |>
   pivot_longer(
     cols = everything(),
@@ -608,17 +608,22 @@ res_only |>
     values_to = "cost"
   ) |>
   mutate(
-    scenario = if_else(str_detect(cost_type, "prp_cost"), "PRP", "NPA"),
+    scenario = if_else(
+      cost_type %in% c("prp_cost", "scattershot_npv_cost"),
+      "PRP",
+      "NPA"
+    ),
     unit = if_else(str_detect(cost_type, "cost"), "dollars", "units")
   ) |>
   filter(unit == "dollars", cost_type != "elec_cost_total") |>
+  filter(cost_type != "scattershot_npv_cost") |>
   mutate(
     labels = case_when(
       cost_type == "prp_cost" ~ "Pipeline replacement",
       cost_type == "elec_sf_cost" ~ "Single-family electrification",
       cost_type == "elec_mf_cost" ~ "Multi-family electrification",
       cost_type == "grid_cost" ~ "Grid upgrade cost",
-      cost_type == "decomm_cost" ~ "Decommissioning cost"
+      cost_type == "decomm_cost" ~ "Decommissioning cost",
     )
   ) |>
   group_by(scenario) |>
@@ -628,7 +633,143 @@ res_only |>
     label_y = cumsum(cost) - cost / 2,
     label_text = paste0(labels, "\n($", scales::comma(round(cost / 1000)), "K)")
   ) |>
-  ungroup() -> plot_data
+  ungroup()
+
+plot_data |>
+ggplot() +
+  geom_bar(
+    aes(x = scenario, y = cost, fill = reorder(cost_type, cost)),
+    stat = "identity",
+    position = "stack"
+  ) +
+  geom_text_repel(
+    data = plot_data |> filter(scenario == "NPA"),
+    aes(x = scenario, y = label_y, label = label_text, color = cost_type),
+    size = 4,
+    nudge_x = -0.9,
+    direction = "y",
+    hjust = 1,
+    box.padding = 0.3,
+    # segment.color = "gray50",
+    min.segment.length = 0
+  ) +
+  geom_text_repel(
+    data = plot_data |> filter(scenario == "PRP"),
+    aes(x = scenario, y = label_y, label = label_text, color = cost_type),
+    size = 4,
+    nudge_x = 0.9,
+    direction = "y",
+    hjust = 0,
+    box.padding = 0.3,
+    # segment.color = "gray50",
+    min.segment.length = 0
+  ) +
+  scale_fill_manual(
+    values = c(
+      "prp_cost" = sb_colors[["midnight"]],
+      "elec_sf_cost" = sb_colors[["saffron"]],
+      "elec_mf_cost" = sb_colors[["carrot"]],
+      "grid_cost" = sb_colors[["sky"]],
+      "decomm_cost" = sb_colors[["pistachio"]]
+    )
+  ) +
+  scale_color_manual(
+    values = c(
+      "prp_cost" = sb_colors[["midnight"]],
+      "elec_sf_cost" = sb_colors[["saffron"]],
+      "elec_mf_cost" = sb_colors[["carrot"]],
+      "grid_cost" = sb_colors[["sky"]],
+      "decomm_cost" = sb_colors[["pistachio"]]
+    ),
+    guide = "none"
+  ) +
+  # scale_y_continuous(
+  #   limits = c(0, 650e3),
+  #   breaks = seq(0, 650e3, by = 50e3),
+  #   labels = scales::dollar_format(scale = 1e-3, suffix = "K", accuracy = 1),
+  #   expand = c(0, 0)
+  # ) +
+  scale_x_discrete(expand = c(2, 0)) +
+  labs(x = "", y = "") +
+  theme(legend.position = "none") +
+  theme(
+    axis.line = element_blank(),
+    axis.title = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank(),
+    legend.position = "none",
+    plot.margin = margin(t = 40, r = 10, b = 10, l = 10)
+  )
+
+
+
+
+```
+
+
+```{r}
+#| label: single-block-eg-ss
+#| fig-height: 9
+#| fig-width: 8
+
+sample_id <- "170314407001003" #"170316913001026"
+total_pipe_touching <- 0.1726
+total_prp_cost_ex <- total_pipe_touching * cost_lpp_mile
+
+plot_data <- res_only |>
+  filter(geoid10 == sample_id) |>
+  data.frame() |>
+  select(
+    elec_cost_total,
+    sf_parcels,
+    mf_units,
+    total_residential_units,
+    street_miles,
+    prp_cost
+  ) |>
+  mutate(
+    elec_sf_cost = sf_parcels * cost_elec_sf,
+    elec_mf_cost = mf_units * cost_elec_mf,
+    pipeline_assigned = street_miles,
+    grid_cost = total_residential_units * grid_upgrade_cost_hh,
+    decomm_cost = street_miles * cost_decomm_mile,
+    scattershot_annual = (PCT_ELEC * elec_cost_total) / TIME_PERIOD,
+    scattershot_npv_cost = scattershot_annual *
+      sum(1 / (1 + DISCOUNT_RATE)^(0:(TIME_PERIOD - 1))),
+  ) |>
+  pivot_longer(
+    cols = everything(),
+    names_to = "cost_type",
+    values_to = "cost"
+  ) |>
+  mutate(
+    scenario = if_else(
+      cost_type %in% c("prp_cost", "scattershot_npv_cost"),
+      "PRP",
+      "NPA"
+    ),
+    unit = if_else(str_detect(cost_type, "cost"), "dollars", "units")
+  ) |>
+  filter(unit == "dollars", cost_type != "elec_cost_total") |>
+  mutate(
+    labels = case_when(
+      cost_type == "prp_cost" ~ "Pipeline replacement",
+      cost_type == "elec_sf_cost" ~ "Single-family electrification",
+      cost_type == "elec_mf_cost" ~ "Multi-family electrification",
+      cost_type == "grid_cost" ~ "Grid upgrade cost",
+      cost_type == "decomm_cost" ~ "Decommissioning cost",
+      cost_type == "scattershot_npv_cost" ~ "Scattershot electrification NPV"
+    )
+  ) |>
+  group_by(scenario) |>
+  mutate(cost_type_ordered = reorder(cost_type, -cost)) |>
+  arrange(scenario, desc(cost)) |>
+  mutate(
+    label_y = cumsum(cost) - cost / 2,
+    label_text = paste0(labels, "\n($", scales::comma(round(cost / 1000)), "K)")
+  ) |>
+  ungroup()
 
 plot_data |>
   ggplot() +
@@ -678,12 +819,12 @@ plot_data |>
     ),
     guide = "none"
   ) +
-  scale_y_continuous(
-    limits = c(0, 650e3),
-    breaks = seq(0, 650e3, by = 50e3),
-    labels = scales::dollar_format(scale = 1e-3, suffix = "K", accuracy = 1),
-    expand = c(0, 0)
-  ) +
+  # scale_y_continuous(
+  #   limits = c(0, 650e3),
+  #   breaks = seq(0, 650e3, by = 50e3),
+  #   labels = scales::dollar_format(scale = 1e-3, suffix = "K", accuracy = 1),
+  #   expand = c(0, 0)
+  # ) +
   scale_x_discrete(expand = c(2, 0)) +
   labs(x = "", y = "") +
   theme(legend.position = "none") +
@@ -699,8 +840,8 @@ plot_data |>
 
 
 
-
 ```
+
 
 ```{r}
 #| label: fig-scatter-density-vs-npa-over-prp

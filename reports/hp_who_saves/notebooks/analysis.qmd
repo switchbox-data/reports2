@@ -120,9 +120,9 @@ load_monthly_consumption_from_cache <- TRUE
 # if this isn't found...
 # cd ../ri_hp_rates
 # just all
-path_ri_hp_rates_results_cache <- file.path(repo_root, "reports", "ri_hp_rates", "cache", "report_variables.RData")
-print(paste0("Loading ri_hp_rates report variables from: ", path_ri_hp_rates_results_cache))
-load(file = path_ri_hp_rates_results_cache)
+# path_ri_hp_rates_results_cache <- file.path(repo_root, "reports", "ri_hp_rates", "cache", "report_variables.RData")
+# print(paste0("Loading ri_hp_rates report variables from: ", path_ri_hp_rates_results_cache))
+# load(file = path_ri_hp_rates_results_cache)
 
 ```
 
@@ -401,12 +401,6 @@ housing_units <- open_dataset(parquet_files) |>
   collect()
 
 #-----------------------------------------------------------------
-# Simple stuff: trim to a max of 4000 sqft
-#-----------------------------------------------------------------
-housing_units <- housing_units |>
-  filter(in.sqft <= 5000)
-
-#-----------------------------------------------------------------
 # Preferred labels for heating type, cooling type, building type, and occupants group
 #-----------------------------------------------------------------
 # Add baseline heating type and set as factor
@@ -501,19 +495,43 @@ housing_units <- housing_units |>
     propane_utility = "generic_retail",
     discount_rate_propane = 0
   )
+```
+
+### Filter Housing Units for analysis
+```{r}
+#| label: filter_housing_units_for_analysis
+
+cat("Rows in housing_units (all of RI):", nrow(housing_units |> filter(upgrade == 0)), "\n")
+
+housing_units <- housing_units |>
+  filter(in.sqft <= 5000)
+cat("Rows in housing_units (all of RI, <= 5000 sqft):", nrow(housing_units |> filter(upgrade == 0)), "\n")
 
 
 # Filter to weather file city of Pawtucket  Awos
 housing_units <- housing_units |>
   filter(in.weather_file_city == "Pawtucket  Awos")
+cat("Rows in housing_units (all of RI, <= 5000 sqft, Pawtucket  Awos):", nrow(housing_units |> filter(upgrade == 0)), "\n")
 
 # Filter out any vacant homes
 n_total_homes <- housing_units |> filter(upgrade == 0) |> nrow()
 
 housing_units <- housing_units |>
   filter(occupants_group != "Vacant")
+cat("Rows in housing_units (all of RI, <= 5000 sqft, Pawtucket  Awos, not vacant):", nrow(housing_units |> filter(upgrade == 0)), "\n")
 
 n_non_vacant_homes <- housing_units |> filter(upgrade == 0) |> filter(occupants_group != "Vacant") |> nrow()
+```
+
+### Count by Baseline Heating Type
+```{r}
+# Filter to baseline homes (upgrade == 0) and give counts by baseline_heating_type
+counts_baseline_heating_type <- housing_units |>
+  filter(upgrade == 0) |>
+  count(baseline_heating_type) |>
+  arrange(desc(n))
+
+print(counts_baseline_heating_type)
 ```
 
 # ------------------------------------------------------------------------------
@@ -584,24 +602,18 @@ if (file.exists(path_monthly_consumption)) {
 
   # Filter out any vacant homes
   monthly_consumption <- monthly_consumption |>
-    left_join(housing_units |> filter(upgrade == 0)|> select(bldg_id, occupants_group, baseline_heating_type), by = c("bldg_id")) |>
-    filter(occupants_group != "Vacant") |>
-    select(-occupants_group)
+    filter(bldg_id %in% (housing_units |> filter(upgrade == 0) |> pull(bldg_id)))
 
   # Save to cache
   save(monthly_consumption, file = path_monthly_consumption)
 }
-
-
 #View(monthly_consumption)
-
-
 ```
 
 
-# Heating Bill Calculations
+## Heating Bill Calculations
 ```{r}
-#| label: heating bills
+#| label: heating_bill_calculations
 
 # Monthly Bills
 # Electricity
@@ -694,13 +706,16 @@ annual_changes_heating_propane <- calc_annual_change_from_monthly(monthly_change
 
 annual_changes_heating <- calc_annual_changes_total(
   annual_changes_heating_elec,
-   annual_changes_heating_gas,
+  annual_changes_heating_gas,
   annual_changes_heating_fuel_oil,
   annual_changes_heating_propane
 )|>
-left_join(housing_units |> select(bldg_id, upgrade, afue_value, hvac_primary, baseline_heating_type), by = c("bldg_id", "upgrade")) |>
-filter(afue_value != 'NA')
+left_join(housing_units |> select(bldg_id, upgrade, afue_value, hvac_primary, baseline_heating_type), by = c("bldg_id", "upgrade"))
 
+```
+
+### Count by AFUE Value
+```{r}
 # used summarize to print the counts and percentages of the unique values of afue_value
 annual_changes_heating |>
 summarize(
@@ -712,7 +727,55 @@ arrange(desc(afue_value)) |>
 print()
 ```
 
-# Heating bill changes
+## Plot: fig-plot_heating_bill_change_vs_afue
+```{r}
+#| label: fig-plot_heating_bill_change_vs_afue
+#| fig-cap: "Median Annual Total Bill Change by Baseline Gas Heating Efficiency (AFUE Value)"
+
+annual_changes_y  <- annual_changes_heating |>
+  filter(afue_value != 'NA') |>
+  filter(upgrade == 2) |>
+  filter(version_elec == "baseline") |>
+  filter(baseline_heating_type == "Natural Gas")
+
+#View(annual_changes_y)s
+annual_changes_x <- annual_changes_y |>
+  summarize(
+    counts = n(),
+    median_annual_change = median(annual_change_total),
+    .by = c(afue_value)
+  )
+
+#View(annual_changes_x)
+
+plot_bill_change_vs_afue <- ggplot(annual_changes_x, aes(x = afue_value/100, y = median_annual_change)) +
+  #shade light green above y=0
+  theme(panel.grid.major = element_line(color = "black"),
+        panel.grid.minor = element_line(color = "grey93")) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 0, ymax = Inf), fill = savings_colors["light_red"], alpha = 0.3) +
+  #shade light red below y=0
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = 0), fill = savings_colors["light_green"], alpha = 0.3) +
+  labs(x = "Baseline Gas Heating Efficiency (AFUE Value)", y = "Median Annual Total Bill Change") +
+  scale_x_continuous(breaks = seq(0, 1, by = 0.1), labels = scales::percent_format(accuracy = 1)) +
+  scale_y_continuous(limits = c(-100, 1000), breaks = seq(-1000, 1000, by = 100), labels = scales::dollar_format()) +
+  geom_point(size=2, color = sb_colors["midnight"]) +
+  geom_line(size=1, color = sb_colors["midnight"]) +
+
+  # use ggrepel to write the counts on the points
+  # add a small offset to the counts
+  ggrepel::geom_text_repel(aes(label = counts), size = 4, color = sb_colors["sky"], nudge_y = 15) +
+
+  # add a text that says "Count of Bldg IDs" in sky color
+  annotate("text", x = 0.62+0.05, y = 50, label = "Count of Bldg IDs", color = sb_colors["sky"], size = 4)
+
+print(plot_bill_change_vs_afue)
+
+# save the plot to cache as an image
+ggsave(file.path(path_to_cache, "bill_change_vs_afue_plot.png"), plot_bill_change_vs_afue, width = 10, height = 8)
+
+```
+
+### Plot: fig-hist_1_annual_change_heating_baseline_hp_high
 ```{r}
 #| label: fig-hist_1_annual_change_heating_baseline_hp_high
 #| fig-cap: "Distribution of annual _heating_ bill changes for homes switching to heat pumps from natural gas, all under baseline rates."
@@ -736,9 +799,9 @@ print(result[[1]])
 
 ```
 
-# Heating bill changes by AFUE value
+### Plot: fig-hist_3_heating_bill_changes_by_afue
 ```{r}
-#| label: fig-hist_1_annual_change_heating_baseline_hp_high_by_afue
+#| label: fig-hist_3_heating_bill_changes_by_afue
 #| fig-cap: "Distribution of annual _heating_ bill changes for homes switching to heat pumps from natural gas, all under baseline rates, by AFUE value."
 
 x_limits <- c(-2500, 2500)
@@ -876,51 +939,6 @@ ggsave(file.path(path_to_cache, "heating_bill_changes_by_afue_plot.png"), plot_3
 
 ```
 
-## Annual changes by AFUE value - Line plot
-```{r}
-#| label: fig-plot_bill_change_vs_afue
-#| fig-cap: "Median Annual Total Bill Change by Baseline Gas Heating Efficiency (AFUE Value)"
-
-annual_changes_y  <- annual_changes_total |>
-  filter(upgrade == 2) |>
-  filter(version_elec == "baseline") |>
-  right_join(housing_units |> filter(upgrade==0)|> filter(baseline_heating_type == "Natural Gas")|> select(bldg_id, afue_value), by = c("bldg_id"))
-
-#View(annual_changes_y)s
-annual_changes_x <- annual_changes_y |>
-  summarize(
-    counts = n(),
-    median_annual_change = median(annual_change_total),
-    .by = c(afue_value)
-  )
-
-#View(annual_changes_x)
-
-plot_bill_change_vs_afue <- ggplot(annual_changes_x, aes(x = afue_value/100, y = median_annual_change)) +
-  #shade light green above y=0
-  theme(panel.grid.major = element_line(color = "black"),
-        panel.grid.minor = element_line(color = "grey93")) +
-  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 0, ymax = Inf), fill = savings_colors["light_red"], alpha = 0.3) +
-  #shade light red below y=0
-  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = 0), fill = savings_colors["light_green"], alpha = 0.3) +
-  labs(x = "Baseline Gas Heating Efficiency (AFUE Value)", y = "Median Annual Total Bill Change") +
-  scale_x_continuous(breaks = seq(0, 1, by = 0.1), labels = scales::percent_format(accuracy = 1)) +
-  scale_y_continuous(limits = c(-100, 550), breaks = seq(-1000, 1000, by = 100), labels = scales::dollar_format()) +
-  geom_point(size=2, color = sb_colors["midnight"]) +
-  geom_line(size=1, color = sb_colors["midnight"]) +
-
-  # use ggrepel to write the counts on the points
-  # add a small offset to the counts
-  ggrepel::geom_text_repel(aes(label = counts), size = 4, color = sb_colors["sky"], nudge_y = 15) +
-
-  # add a text that says "Count of Bldg IDs" in sky color
-  annotate("text", x = 0.62+0.05, y = 50, label = "Count of Bldg IDs", color = sb_colors["sky"], size = 4)
-
-print(plot_bill_change_vs_afue)
-
-# save the plot to cache as an image
-ggsave(file.path(path_to_cache, "bill_change_vs_afue_plot.png"), plot_bill_change_vs_afue, width = 10, height = 8)
-```
 
 ## Natural Gas consumption by functional group and month
 ```{r}
@@ -997,6 +1015,7 @@ ggsave(file.path(path_to_cache, "bill_change_vs_afue_plot.png"), plot_bill_chang
 
 ```
 
+### Plot: Backup Ratio vs Annual Change Total
 ```{r}
 #path_metadata_upgrade2 = "data/ResStock/2024_release2_tmy3/metadata/upgrade02_metadata_and_annual_results.parquet"
 path_metadata_upgrade2 <- file.path(path_to_data, "resstock", "2024_release2_tmy3", "metadata", "upgrade02_metadata_and_annual_results.parquet")
@@ -1013,7 +1032,7 @@ mutate(
 plot_scatter_bkup_ratio_vs_annual_change_total <- ggplot(heating_change_vs_bkup, aes(x = bkup_ratio, y = annual_change_total)) +
   geom_point(alpha = 0.2) +
   labs(x = "Backup Ratio", y = "Annual Change Total")
-#print(plot_scatter_bkup_ratio_vs_annual_change_total)
+print(plot_scatter_bkup_ratio_vs_annual_change_total)
 
 ```
 

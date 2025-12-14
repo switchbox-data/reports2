@@ -376,7 +376,11 @@ use_these_out_columns <- c(
   "out.electricity.total.energy_consumption.kwh",
   "out.fuel_oil.total.energy_consumption.kwh",
   "out.natural_gas.total.energy_consumption.kwh",
-  "out.propane.total.energy_consumption.kwh"
+  "out.propane.total.energy_consumption.kwh",
+  "out.electricity.summer.peak.kw",
+  "out.electricity.winter.peak.kw",
+  "out.load.cooling.energy_delivered.kbtu",
+  "out.load.heating.energy_delivered.kbtu"
 )
 
 # Create pattern to match only the desired upgrade files
@@ -499,10 +503,11 @@ housing_units <- housing_units |>
   )
 
 
-# Print column names of housing_units
-print("Column names in housing_units:")
-print(colnames(housing_units))
+# Filter to weather file city of Pawtucket  Awos
+housing_units <- housing_units |>
+  filter(in.weather_file_city == "Pawtucket  Awos")
 
+# Filter out any vacant homes
 n_total_homes <- housing_units |> filter(upgrade == 0) |> nrow()
 
 housing_units <- housing_units |>
@@ -512,8 +517,14 @@ n_non_vacant_homes <- housing_units |> filter(upgrade == 0) |> filter(occupants_
 ```
 
 # ------------------------------------------------------------------------------
-# Load Supply Rates and Delivery Tariffs
+# Heating Bills
 # ------------------------------------------------------------------------------
+## parameters
+```{r}
+cols_from_housing_units <- c("bldg_id", "upgrade", "hvac_primary", "baseline_heating_type", "baseline_heating_efficiency")
+```
+
+## Load Supply Rates and Delivery Tariffs
 ```{r}
 #| label: supply rates and delivery tariffs
 # Electric
@@ -549,14 +560,6 @@ load_or_download("gas_supply_rates", url_gas_supply_rates, path_to_cache, load_f
 load_or_download("gas_delivery_tariffs", url_delivery_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
 load_or_download("gas_lmi_thresholds", url_delivery_rates, path_to_cache, load_from_cache = load_tariffs_from_cache)
 
-```
-
-# ------------------------------------------------------------------------------
-# Heating Bills
-# ------------------------------------------------------------------------------
-## parameters
-```{r}
-cols_from_housing_units <- c("bldg_id", "upgrade", "hvac_primary", "baseline_heating_type", "baseline_heating_efficiency")
 ```
 
 ## Consumption by End Use Group
@@ -860,30 +863,30 @@ p3 <- result_3[[1]] +
   )
 
 # Combine plots with shared x and y axes
-combined_plot <- p1 / p2 / p3 +
+plot_3hists_heating_bill_changes_by_afue <- p1 / p2 / p3 +
 plot_layout(heights = c(1, 1, 1)) + plot_annotation(title = "Change in Total Annual HEATING Bills for Homes Switching to Heat Pumps from Natural Gas", subtitle = "Rhode Island") +
 theme(
   plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),
   plot.subtitle = element_text(hjust = 0.5, size = 8)
 )
 
-print(combined_plot)
+print(plot_3hists_heating_bill_changes_by_afue)
 # save the plot to cache as an image
-ggsave(file.path(path_to_cache, "heating_bill_changes_by_afue_plot.png"), combined_plot, width = 10, height = 8)
+ggsave(file.path(path_to_cache, "heating_bill_changes_by_afue_plot.png"), plot_3hists_heating_bill_changes_by_afue, width = 10, height = 8)
 
 ```
 
 ## Annual changes by AFUE value - Line plot
 ```{r}
-#| label: annual changes by afue value
+#| label: fig-plot_bill_change_vs_afue
+#| fig-cap: "Median Annual Total Bill Change by Baseline Gas Heating Efficiency (AFUE Value)"
 
 annual_changes_y  <- annual_changes_total |>
   filter(upgrade == 2) |>
   filter(version_elec == "baseline") |>
   right_join(housing_units |> filter(upgrade==0)|> filter(baseline_heating_type == "Natural Gas")|> select(bldg_id, afue_value), by = c("bldg_id"))
 
-#View(annual_changes_y)
-
+#View(annual_changes_y)s
 annual_changes_x <- annual_changes_y |>
   summarize(
     counts = n(),
@@ -893,102 +896,104 @@ annual_changes_x <- annual_changes_y |>
 
 #View(annual_changes_x)
 
-bill_change_vs_afue_plot <- ggplot(annual_changes_x, aes(x = afue_value/100, y = median_annual_change)) +
+plot_bill_change_vs_afue <- ggplot(annual_changes_x, aes(x = afue_value/100, y = median_annual_change)) +
   #shade light green above y=0
-  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 0, ymax = Inf), fill = savings_colors["light_red"], alpha = 0.5) +
+  theme(panel.grid.major = element_line(color = "black"),
+        panel.grid.minor = element_line(color = "grey93")) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 0, ymax = Inf), fill = savings_colors["light_red"], alpha = 0.3) +
   #shade light red below y=0
-  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = 0), fill = savings_colors["light_green"], alpha = 0.5) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = 0), fill = savings_colors["light_green"], alpha = 0.3) +
   labs(x = "Baseline Gas Heating Efficiency (AFUE Value)", y = "Median Annual Total Bill Change") +
-  theme_minimal()+
   scale_x_continuous(breaks = seq(0, 1, by = 0.1), labels = scales::percent_format(accuracy = 1)) +
-  scale_y_continuous(limits = c(-20, 500), breaks = seq(-1000, 1000, by = 100), labels = scales::dollar_format()) +
-  geom_point(size=4, color = sb_colors["midnight"]) +
-  geom_line(size=3, color = sb_colors["midnight"]) +
+  scale_y_continuous(limits = c(-100, 550), breaks = seq(-1000, 1000, by = 100), labels = scales::dollar_format()) +
+  geom_point(size=2, color = sb_colors["midnight"]) +
+  geom_line(size=1, color = sb_colors["midnight"]) +
+
   # use ggrepel to write the counts on the points
   # add a small offset to the counts
-  ggrepel::geom_text_repel(aes(label = counts), size = 8, color = sb_colors["sky"], nudge_y = 15) +
+  ggrepel::geom_text_repel(aes(label = counts), size = 4, color = sb_colors["sky"], nudge_y = 15) +
 
   # add a text that says "Count of Bldg IDs" in sky color
-  annotate("text", x = 0.62, y = 50, label = "Count of Bldg IDs", color = sb_colors["sky"], size = 8)
+  annotate("text", x = 0.62+0.05, y = 50, label = "Count of Bldg IDs", color = sb_colors["sky"], size = 4)
 
-print(bill_change_vs_afue_plot)
+print(plot_bill_change_vs_afue)
 
 # save the plot to cache as an image
-ggsave(file.path(path_to_cache, "bill_change_vs_afue_plot.png"), bill_change_vs_afue_plot, width = 10, height = 8)
+ggsave(file.path(path_to_cache, "bill_change_vs_afue_plot.png"), plot_bill_change_vs_afue, width = 10, height = 8)
 ```
 
 ## Natural Gas consumption by functional group and month
 ```{r}
 #| label: natural gas consumption by functional group and month
 
-baseline_heating_option <- "Natural Gas"
+# baseline_heating_option <- "Natural Gas"
 
-heating_type_to_fuel_lookup <- tibble(
-  heating_type = c("Electric Resistance", "Natural Gas"),
-  fuel = c("electricity", "natural_gas")
-)
+# heating_type_to_fuel_lookup <- tibble(
+#   heating_type = c("Electric Resistance", "Natural Gas"),
+#   fuel = c("electricity", "natural_gas")
+# )
 
-fuel <- heating_type_to_fuel_lookup |> filter(heating_type == baseline_heating_option) |> pull(fuel)
-
-
-# get the 10th, 50th, and 90th percentiles of consumption by month
-monthly_consumption_percentiles <- monthly_consumption |>
-  filter(upgrade == 0) |>
-  filter(baseline_heating_type == baseline_heating_option) |>
-  select(-baseline_heating_type) |>
-  # get the quantiles for each column other than bldg_id, upgrade, and month
-  reframe(
-    across(everything(), ~ quantile(.x, c(0.1, 0.5, 0.9))),
-    .by = c(month, upgrade)
-  ) |>
-  mutate(
-    percentile = rep(c("p10", "p50", "p90"),
-                   times = n() / 3)
-  )|>
-  pivot_longer(cols = -c(month, upgrade, percentile), names_to = "functional_group", values_to = "consumption_kwh") |>
-  filter(str_detect(functional_group, fuel)) |>
+# fuel <- heating_type_to_fuel_lookup |> filter(heating_type == baseline_heating_option) |> pull(fuel)
 
 
-  mutate(
-    functional_group = case_when(
-      str_detect(functional_group, "appliance") ~ "Appliance",
-      str_detect(functional_group, "cooling") ~ "Cooling",
-      str_detect(functional_group, "heating") ~ "Heating",
-      str_detect(functional_group, "hot_water") ~ "Hot Water",
-      str_detect(functional_group, "total") ~ "Total",
-      TRUE ~ "Other"
-    )
-  )
-#View(monthly_consumption_percentiles)
+# # get the 10th, 50th, and 90th percentiles of consumption by month
+# monthly_consumption_percentiles <- monthly_consumption |>
+#   filter(upgrade == 0) |>
+#   filter(baseline_heating_type == baseline_heating_option) |>
+#   select(-baseline_heating_type) |>
+#   # get the quantiles for each column other than bldg_id, upgrade, and month
+#   reframe(
+#     across(everything(), ~ quantile(.x, c(0.1, 0.5, 0.9))),
+#     .by = c(month, upgrade)
+#   ) |>
+#   mutate(
+#     percentile = rep(c("p10", "p50", "p90"),
+#                    times = n() / 3)
+#   )|>
+#   pivot_longer(cols = -c(month, upgrade, percentile), names_to = "functional_group", values_to = "consumption_kwh") |>
+#   filter(str_detect(functional_group, fuel)) |>
 
-# plot the average consumption by month
-colors = c(
-  "Appliance" = "grey50",
-  "Cooling" = "blue",
-  "Heating" = "red",
-  "Hot Water" = "green",
-  "Total" = "black"
-)
 
-stack_order <- c("Heating", "Appliance", "Cooling", "Hot Water")  # exclude "Total" since we're filtering that group
+#   mutate(
+#     functional_group = case_when(
+#       str_detect(functional_group, "appliance") ~ "Appliance",
+#       str_detect(functional_group, "cooling") ~ "Cooling",
+#       str_detect(functional_group, "heating") ~ "Heating",
+#       str_detect(functional_group, "hot_water") ~ "Hot Water",
+#       str_detect(functional_group, "total") ~ "Total",
+#       TRUE ~ "Other"
+#     )
+#   )
+# #View(monthly_consumption_percentiles)
 
-plot_p50 <- monthly_consumption_percentiles |>
-  filter(percentile == "p50") |>
-  filter(functional_group != "Total") |>
-  mutate(functional_group = factor(functional_group, levels = stack_order)) |>
-  arrange(month, functional_group) |>
-  ggplot(aes(x = month, y = consumption_kwh, fill = functional_group)) +
-  geom_area(position = "stack", alpha = 0.8) +
-  labs(title = paste("Average", baseline_heating_option, "Consumption by Functional Group and Month"),
-       x = "Month",
-       y = "Consumption (kWh)") +
-  scale_x_continuous(breaks = 1:12, labels = month.abb, limits = c(0, 0.05)) +
-  scale_y_continuous(labels = scales::comma_format()) +
-  scale_fill_manual(values = colors, breaks = stack_order)
+# # plot the average consumption by month
+# colors = c(
+#   "Appliance" = "grey50",
+#   "Cooling" = "blue",
+#   "Heating" = "red",
+#   "Hot Water" = "green",
+#   "Total" = "black"
+# )
 
-print(plot_p50)
-# save the plot to cache as an image
-ggsave(file.path(path_to_cache, "natural_gas_consumption_by_functional_group_and_month_plot.png"), plot_p50, width = 10, height = 8)
+# stack_order <- c("Heating", "Appliance", "Cooling", "Hot Water")  # exclude "Total" since we're filtering that group
+
+# plot_p50 <- monthly_consumption_percentiles |>
+#   filter(percentile == "p50") |>
+#   filter(functional_group != "Total") |>
+#   mutate(functional_group = factor(functional_group, levels = stack_order)) |>
+#   arrange(month, functional_group) |>
+#   ggplot(aes(x = month, y = consumption_kwh, fill = functional_group)) +
+#   geom_area(position = "stack", alpha = 0.8) +
+#   labs(title = paste("Average", baseline_heating_option, "Consumption by Functional Group and Month"),
+#        x = "Month",
+#        y = "Consumption (kWh)") +
+#   scale_x_continuous(breaks = 1:12, labels = month.abb, limits = c(0, 0.05)) +
+#   scale_y_continuous(labels = scales::comma_format()) +
+#   scale_fill_manual(values = colors, breaks = stack_order)
+
+# print(plot_p50)
+# # save the plot to cache as an image
+# ggsave(file.path(path_to_cache, "natural_gas_consumption_by_functional_group_and_month_plot.png"), plot_p50, width = 10, height = 8)
 
 ```
 
@@ -1005,15 +1010,128 @@ mutate(
 )
 
 # plot a scatter diagram: x = bkup_ratio, y = annual_change_total
-p <- ggplot(heating_change_vs_bkup, aes(x = bkup_ratio, y = annual_change_total)) +
+plot_scatter_bkup_ratio_vs_annual_change_total <- ggplot(heating_change_vs_bkup, aes(x = bkup_ratio, y = annual_change_total)) +
   geom_point(alpha = 0.2) +
   labs(x = "Backup Ratio", y = "Annual Change Total")
-print(p)
+#print(plot_scatter_bkup_ratio_vs_annual_change_total)
 
 ```
 
+# ------------------------------------------------------------------------------
+# Appendix
+# ------------------------------------------------------------------------------
 
+## ------------------------------------------------------------------------------
+## Metadata Due Diligence
+## ------------------------------------------------------------------------------
+
+### Count by Weather File City
 ```{r}
+#| label: count of homes by weather_file_city
+housing_units |>
+group_by(in.weather_file_city) |>
+summarize(n = n()) |>
+arrange(desc(n))
+```
+
+### Count by Heating Fuel
+```{r}
+#| label: count of homes by heating fuel
+housing_units |>
+filter(upgrade == 0) |>
+filter(occupants_group != "Vacant") |>
+filter(in.weather_file_city == "Pawtucket  Awos") |>
+filter(baseline_heating_type == "Natural Gas") |>
+group_by(afue_value) |>
+summarize(n = n()) |>
+arrange(desc(n))
+```
+
+### plot_heating_load_change
+```{r}
+#| label: fig-plot_heating_load_change
+#| fig-cap: "Change in Heating Load by Upgrade (Baseline Heating Type = Natural Gas)"
+
+heating_load_change <- housing_units |>
+filter(upgrade == 0) |>
+filter(baseline_heating_type == "Natural Gas") |>
+select(bldg_id, out.load.heating.energy_delivered.kbtu) |>
+rename(baseline_heating_load = out.load.heating.energy_delivered.kbtu) |>
+right_join(housing_units |> select(bldg_id, upgrade, out.load.heating.energy_delivered.kbtu) |> rename(new_heating_load = out.load.heating.energy_delivered.kbtu), by = c("bldg_id")) |>
+mutate(
+  heating_load_change = new_heating_load - baseline_heating_load,
+  heating_load_change_pct = heating_load_change / baseline_heating_load
+  ) |>
+select(bldg_id, upgrade, baseline_heating_load, new_heating_load, heating_load_change, heating_load_change_pct)
 
 
+# plot three stacked histograms of the heating_load_change_pct by upgrade
+# Manually set titles for each subplot by creating a label column and then faceting by that
+heating_load_change_labeled <- heating_load_change |>
+  filter(upgrade %in% c(1,2,3)) |>
+  mutate(
+    upgrade_label = case_when(
+      upgrade == 1 ~ "Upgrade 1: ENERGY STAR heat pump with elec backup",
+      upgrade == 2 ~ "Upgrade 2: High efficiency cold-climate air-to-air heat pump with electric backup",
+      upgrade == 3 ~ "Upgrade 3: Ultra high efficiency heat pump with elec backup",
+      TRUE ~ as.character(upgrade)
+    )
+  )
+
+plot_heating_load_change <- ggplot(heating_load_change_labeled, aes(x = heating_load_change_pct)) +
+  geom_histogram(binwidth = 0.01) +
+  facet_wrap(~ upgrade_label, nrow = 3) +
+  labs(title = "Change in Heating Load by Upgrade (Baseline Heating Type: Natural Gas)",
+       x = "Change in Heating Load (%)",
+       y = "# of Homes"
+       ) +
+  scale_x_continuous(labels = scales::percent, breaks = seq(-0.3, 0.7, by = 0.1)) +
+  scale_y_continuous(labels = scales::comma)
+
+
+print(plot_heating_load_change)
+```
+
+### plot_cooling_load_change
+```{r}
+#| label: fig-plot_cooling_load_change
+#| fig-cap: "Change in Cooling Load by Upgrade"
+
+cooling_load_change <- housing_units |>
+filter(upgrade == 0) |>
+select(bldg_id, out.load.cooling.energy_delivered.kbtu) |>
+rename(baseline_cooling_load = out.load.cooling.energy_delivered.kbtu) |>
+right_join(housing_units |> select(bldg_id, upgrade, out.load.cooling.energy_delivered.kbtu) |> rename(new_cooling_load = out.load.cooling.energy_delivered.kbtu), by = c("bldg_id")) |>
+mutate(
+  cooling_load_change = new_cooling_load - baseline_cooling_load,
+  cooling_load_change_pct = cooling_load_change / baseline_cooling_load
+  ) |>
+select(bldg_id, upgrade, baseline_cooling_load, new_cooling_load, cooling_load_change, cooling_load_change_pct)
+
+
+# plot three stacked histograms of the cooling_load_change_pct by upgrade
+# Manually set titles for each subplot by creating a label column and then faceting by that
+cooling_load_change_labeled <- cooling_load_change |>
+  filter(upgrade %in% c(1,2,3)) |>
+  mutate(
+    upgrade_label = case_when(
+      upgrade == 1 ~ "Upgrade 1: ENERGY STAR heat pump with elec backup",
+      upgrade == 2 ~ "Upgrade 2: High efficiency cold-climate air-to-air heat pump with electric backup",
+      upgrade == 3 ~ "Upgrade 3: Ultra high efficiency heat pump with elec backup",
+      TRUE ~ as.character(upgrade)
+    )
+  )
+
+plot_cooling_load_change <- ggplot(cooling_load_change_labeled, aes(x = cooling_load_change_pct)) +
+  geom_histogram(binwidth = 0.01) +
+  facet_wrap(~ upgrade_label, nrow = 3) +
+  labs(title = "Change in Cooling Load by Upgrade",
+       x = "Change in Cooling Load (%)",
+       y = "# of Homes"
+       ) +
+  scale_x_continuous(labels = scales::percent, breaks = seq(0, 8, by = 0.5)) +
+  scale_y_continuous(labels = scales::comma)
+
+
+print(plot_cooling_load_change)
 ```

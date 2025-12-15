@@ -410,14 +410,14 @@ COMP_COST_COLS <-c("< 50 %" = "#1b8813",
 ```{r}
 #| label: fig-histogram-npa-over-prp
 #| fig-cap: "Histogram of the ratio of the cost of electrification to the cost of PRP per residential block. Values less than 100 percent indicate electrification is cheaper than PRP, values greater than 100 percent indicate electrification is more expensive than PRP."
-#| fig-width: 8
+#| fig-width: 10
 #| fig-height: 6
 res_only |>
 data.frame() |>
-filter(npa_over_prp <4) |>
+filter(npa_over_prp <3.5) |>
 ggplot() +
   geom_histogram(aes(x = npa_over_prp, fill = factor(comp_cost_discrete, levels = names(COMP_COST_COLS))), breaks = seq(0, 4, 0.1)) +
-  scale_x_continuous(limits = c(0, 4.08), breaks = seq(0, 4, 0.25), labels = scales::percent_format(accuracy = 1), expand = c(0,0)) +
+  scale_x_continuous(limits = c(0, 3.6), breaks = seq(0, 4, 0.25), labels = scales::percent_format(accuracy = 1), expand = c(0,0)) +
   scale_y_continuous(expand = c(0,0)) +
   scale_fill_manual(values = COMP_COST_COLS, drop = FALSE) +
   labs(x = 'Cost to electrify block as a percent of PRP cost',
@@ -432,14 +432,14 @@ ggplot() +
 ```{r}
 #| label: fig-histogram-npa-over-prp-ss
 #| fig-cap: "Histogram of the ratio of the cost of electrification to the cost of PRP + scattershot electrification per residential block. The scattershot scenario assumes 30% of residential units electrify over 10 years (unmanaged gas transition). Values less than 100 percent indicate electrification is cheaper than PRP + scattershot, values greater than 100 percent indicate electrification is more expensive."
-#| fig-width: 8
+#| fig-width: 10
 #| fig-height: 6
 res_only |>
 data.frame() |>
-filter(npa_over_prp_ss <4) |>
+filter(npa_over_prp_ss <3.5) |>
 ggplot() +
   geom_histogram(aes(x = npa_over_prp_ss, fill = factor(comp_cost_discrete_ss, levels = names(COMP_COST_COLS))), breaks = seq(0, 4, 0.1)) +
-  scale_x_continuous(limits = c(0,2.6), breaks = seq(0, 4, 0.25), labels = scales::percent_format(accuracy = 1), expand = c(0,0)) +
+  scale_x_continuous(limits = c(0,3.6), breaks = seq(0, 4, 0.25), labels = scales::percent_format(accuracy = 1), expand = c(0,0)) +
   scale_y_continuous(expand = c(0,0)) +
   scale_fill_manual(values = COMP_COST_COLS, drop = FALSE) +
   labs(x = 'Cost to electrify block as a percent of PRP + scattershot cost',
@@ -481,6 +481,12 @@ p = cumulative_data |>
     color = sb_colors["pistachio_text"],
     size = 1
   ) +
+  geom_vline(
+    xintercept = pct_res_blocks_cheaper,
+    linetype = "dashed",
+    color = sb_colors["pistachio_text"],
+    size = 1
+  ) +
   geom_hline(
     yintercept = 0,
     linetype = "solid",
@@ -492,6 +498,15 @@ p = cumulative_data |>
     y = max(cumulative_data$cumulative_saving) * 0.9,
     label = paste0(round(zero_crossing * 100), "%"),
     hjust = -0.2,
+    color = sb_colors["pistachio_text"]
+  ) +
+  annotate(
+    "text",
+    x = pct_res_blocks_cheaper,
+    y = max(cumulative_data$cumulative_saving) * 0.9,
+    label = paste0(round(pct_res_blocks_cheaper * 100), "% cheaper than PRP"),
+    hjust = 1.1,
+    vjust = -5,
     color = sb_colors["pistachio_text"]
   ) +
   scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
@@ -534,7 +549,7 @@ zero_crossing_ss <- cumulative_data_ss |>
   slice(1) |>
   pull(pct_elec_blocks)
 
-p_ss = cumulative_data_ss |>
+p_ss <- cumulative_data_ss |>
   ggplot() +
   geom_line(aes(x = pct_elec_blocks, y = cumulative_saving_ss)) +
   geom_vline(
@@ -548,18 +563,28 @@ p_ss = cumulative_data_ss |>
     linetype = "solid",
     color = "gray"
   ) +
+  geom_vline(
+    xintercept = pct_res_blocks_cheaper_ss,
+    linetype = "dashed",
+    color = sb_colors["pistachio_text"],
+    size = 1
+  ) +
   annotate(
     "text",
-    x = zero_crossing_ss,
-    y = max(cumulative_data_ss$cumulative_saving_ss) * 0.9,
-    label = paste0(round(zero_crossing_ss * 100), "%"),
-    hjust = -0.2,
+    x = pct_res_blocks_cheaper_ss,
+    y = max(cumulative_data_ss$cumulative_saving_ss),
+    label = paste0(
+      round(pct_res_blocks_cheaper_ss * 100),
+      "% cheaper than PRP + scattershot"
+    ),
+    hjust = 1.1,
+    vjust = -5,
     color = sb_colors["pistachio_text"]
   ) +
   scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
   scale_y_continuous(
-    limits = c(0, 70e6),
-    breaks = seq(0, 70e6, by = 10e6),
+    limits = c(0, 80e6),
+    breaks = seq(0, 80e6, by = 10e6),
     labels = scales::dollar_format(scale = 1e-6, suffix = "M", accuracy = 1)
   ) +
   labs(
@@ -751,7 +776,6 @@ plot_data <- res_only |>
     ),
     unit = if_else(str_detect(cost_type, "cost"), "dollars", "units")
   ) |>
-  filter(unit == "dollars", cost_type != "elec_cost_total") |>
   mutate(
     labels = case_when(
       cost_type == "prp_cost" ~ "Pipeline replacement",
@@ -762,6 +786,7 @@ plot_data <- res_only |>
       cost_type == "scattershot_npv_cost" ~ "Scattershot electrification NPV"
     )
   ) |>
+  filter(unit == "dollars", cost_type != "elec_cost_total") |>
   group_by(scenario) |>
   mutate(cost_type_ordered = reorder(cost_type, -cost)) |>
   arrange(scenario, desc(cost)) |>
@@ -857,7 +882,7 @@ res_only |>
     pct_sf = (sf_parcels / total_residential_units) * 100
   ) |>
   ggplot() +
-  geom_point(aes(x = density, y = npa_over_prp, color = pct_sf), alpha = 0.8) +
+  geom_point(aes(x = density, y = npa_over_prp, color = pct_sf), alpha = 0.9) +
   scale_x_continuous(limits = c(0, 60), breaks = seq(0, 60, 10)) +
   scale_y_continuous(
     limits = c(0, 4),
@@ -898,7 +923,7 @@ res_only |>
     pct_sf = (sf_parcels / total_residential_units) * 100
   ) |>
   ggplot() +
-  geom_point(aes(x = density, y = npa_over_prp_ss, color = pct_sf), alpha = 0.8) +
+  geom_point(aes(x = density, y = npa_over_prp_ss, color = pct_sf), alpha = 0.9) +
   scale_x_continuous(limits = c(0, 60), breaks = seq(0, 60, 10)) +
   scale_y_continuous(
     limits = c(0, 4),
@@ -1004,7 +1029,7 @@ pg_summary |>
 ```
 
 ```{r}
-#| label: fig-miles-of-prp
+#| label: fig-miles-of-prp-3seg
 #| fig-cap: "Miles of pipeline replaced by PRP projects."
 #| fig-width: 8
 #| fig-height: 5
@@ -1012,7 +1037,7 @@ pg_summary |>
 # Calculate miles by project type
 n_miles_res <- sum(res_only$street_miles, na.rm = TRUE)
 n_miles_mixed <- sum(pg_summary$street_miles, na.rm = TRUE) - n_miles_res
-n_miles_remaining <- 1000 - n_miles_res - n_miles_mixed
+n_miles_remaining <- 1112 - n_miles_res - n_miles_mixed
 
 # Create data frame with manual position calculation
 plot_data <- data.frame(
@@ -1020,13 +1045,17 @@ plot_data <- data.frame(
     c("remain", "mixed", "res"),
     levels = c("remain", "mixed", "res")
   ),
-  label = c("Remaining PRP miles", "Planned mixed-zoning", "Planned fully residential"),
+  label = c(
+    "Remaining PRP miles",
+    "Planned mixed-zoning",
+    "Planned fully residential"
+  ),
   miles = c(n_miles_remaining, n_miles_mixed, n_miles_res)
 ) |>
   arrange(desc(category)) |>
   mutate(
     cumsum_miles = cumsum(miles),
-    text_position = c(2, 150, 1000),#cumsum_miles - miles / 2,
+    text_position = c(0, 150, 1112), #cumsum_miles - miles / 2,
     label_text = paste0(label, "\n(", round(miles), " miles)")
   )
 
@@ -1062,9 +1091,9 @@ ggplot() +
       "remain" = "gray"
     )
   ) +
-  scale_y_continuous(limits = c(-150, 1150), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(-250, 1300), expand = c(0, 0)) +
   coord_flip(clip = "off") +
-  labs(y ="", x= "")+
+  labs(y = "", x = "") +
   theme(
     axis.line = element_blank(),
     axis.title = element_blank(),
@@ -1076,6 +1105,154 @@ ggplot() +
   )
 
 ```
+
+
+```{r}
+#| label: fig-miles-of-prp-2seg
+#| fig-cap: "Miles of pipeline replaced by PRP projects."
+#| fig-width: 8
+#| fig-height: 5
+
+# Calculate miles by project type
+
+n_miles_planned <- sum(pg_summary$street_miles, na.rm = TRUE)
+n_miles_remaining <- 1112 - n_miles_planned
+
+# Create data frame with manual position calculation
+plot_data <- data.frame(
+  category = factor(
+    c("remain", "planned"),
+    levels = c("remain", "planned")
+  ),
+  label = c(
+    "Remaining PRP miles",
+    "Planned PRP miles"
+  ),
+  miles = c(n_miles_remaining, n_miles_planned)
+) |>
+  arrange(desc(category)) |>
+  mutate(
+    cumsum_miles = cumsum(miles),
+    text_position = c(145, 1112), #cumsum_miles - miles / 2,
+    label_text = paste0(label, "\n(", round(miles), " miles)")
+  )
+
+ggplot() +
+  geom_bar(
+    data = plot_data,
+    aes(x = "", y = miles, fill = category),
+    stat = "identity",
+    width = 0.7
+  ) +
+  ggrepel::geom_text_repel(
+    data = plot_data,
+    aes(x = "", y = text_position, label = label_text, color = category),
+    direction = "y",
+    nudge_x = 0.65,
+    # nudge_y = 10,
+    # segment.color = "gray50",
+    # size = 3.5,
+    force = 1,
+    show.legend = FALSE
+  ) +
+  scale_fill_manual(
+    values = c(
+      "planned" = sb_colors[["sky"]],
+      "remain" = "gray"
+    )
+  ) +
+  scale_color_manual(
+    values = c(
+      "planned" = sb_colors[["sky"]],
+      "remain" = "gray"
+    )
+  ) +
+  scale_y_continuous(limits = c(-150, 1300), expand = c(0, 0)) +
+  coord_flip(clip = "off") +
+  labs(y = "", x = "") +
+  theme(
+    axis.line = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank(),
+    legend.position = "none",
+    plot.margin = margin(t = 40, r = 10, b = 10, l = 10)
+  )
+```
+
+
+
+```{r}
+#| label: fig-miles-of-prp-1seg
+#| fig-cap: "Miles of pipeline replaced by PRP projects."
+#| fig-width: 8
+#| fig-height: 5
+
+# Calculate miles by project type
+
+n_miles_remaining <- 1112
+
+# Create data frame with manual position calculation
+plot_data <- data.frame(
+  category = factor(
+    c("remain"),
+    levels = c("remain")
+  ),
+  label = c(
+    "Remaining PRP miles"
+  ),
+  miles = c(n_miles_remaining)
+) |>
+  arrange(desc(category)) |>
+  mutate(
+    cumsum_miles = cumsum(miles),
+    text_position = c(1112), #cumsum_miles - miles / 2,
+    label_text = paste0(label, "\n(", scales::comma(round(miles)), " miles)")
+  )
+
+ggplot() +
+  geom_bar(
+    data = plot_data,
+    aes(x = "", y = miles, fill = category),
+    stat = "identity",
+    width = 0.7
+  ) +
+  ggrepel::geom_text_repel(
+    data = plot_data,
+    aes(x = "", y = text_position, label = label_text, color = category),
+    direction = "y",
+    nudge_x = 0.65,
+    # nudge_y = 10,
+    # segment.color = "gray50",
+    # size = 3.5,
+    force = 1,
+    show.legend = FALSE
+  ) +
+  scale_fill_manual(
+    values = c(
+      "remain" = "gray"
+    )
+  ) +
+  scale_color_manual(
+    values = c(
+      "remain" = "gray"
+    )
+  ) +
+  scale_y_continuous(limits = c(-150, 1300), expand = c(0, 0)) +
+  coord_flip(clip = "off") +
+  labs(y = "", x = "") +
+  theme(
+    axis.line = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank(),
+    legend.position = "none",
+    plot.margin = margin(t = 40, r = 10, b = 10, l = 10)
+  )
+```
+
 
 ```{r}
 plot_pg_polygons_map <- function(pg_summary, fill_col, discrete = FALSE,

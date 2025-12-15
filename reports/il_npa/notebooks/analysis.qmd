@@ -66,6 +66,24 @@ cat("  Unique city blocks:", n_distinct(pg_summary$geoid10), "\n")
 unit_label <- "blocks"
 ```
 
+```{r}
+# Load neighborhoods GeoJSON from S3
+s3_uri <- "s3://data.sb.east/gis/pgl/Neighborhoods_2012b_20251215.geojson"
+local_neighborhoods_path <- file.path(outputs_dir, "Neighborhoods_2012b.geojson")
+
+# Download from S3 if not already present or if S3 version is newer
+if (!file.exists(local_neighborhoods_path)) {
+  cat("Downloading neighborhoods data from S3...\n")
+  system2("aws", c("s3", "cp", s3_uri, local_neighborhoods_path))
+}
+
+neighborhoods <- read_sf(local_neighborhoods_path) |>
+select(pri_neigh,sec_neigh,shape_area,shape_len,geometry)
+
+cat("Loaded neighborhoods data:\n")
+cat("  ", nrow(neighborhoods), "neighborhoods\n")
+cat("  CRS:", st_crs(neighborhoods)$input, "\n")
+```
 
 ```{r}
 # Read from the first sheet of the Google Sheet
@@ -402,6 +420,46 @@ COMP_COST_COLS <-c("< 50 %" = "#1b8813",
       "150-200 %" = "#d6920f",
       "> 200 %" = "#b5430e")
 
+```
+
+# Neighborhoods Deeper Dive
+
+```{r}
+target_areas <- c(
+  "Englewood",
+  "Lincoln Square",
+  "Garfield Ridge"
+)
+
+
+# Spatially join blocks with neighborhoods using centroids for one-to-one mapping
+res_only_centroids <- res_only |>
+  st_centroid()
+
+res_only_w_area <- res_only_centroids |>
+  st_join(neighborhoods |> select(pri_neigh), left = TRUE) |>
+  st_drop_geometry() |>
+  mutate(neighborhood = pri_neigh) |>
+  select(-pri_neigh)
+
+# Add neighborhood column back to original res_only with geometry
+res_only_w_area <- res_only |>
+  bind_cols(res_only_w_area |> select(neighborhood))
+
+if (nrow(res_only_w_area) != nrow(res_only)) {
+  stop("Number of blocks with neighborhood info does not match original number of blocks")
+}
+
+res_only_w_area |>
+filter(neighborhood %in% target_areas) |>
+data.frame() |>
+summarise(.by = neighborhood,
+n_res = sum(fully_res),
+n_res_cheaper = sum(npa_over_prp <= 1),
+pct_res_cheaper = (n_res_cheaper / n_res)*100,
+n_res_cheaper_ss = sum(npa_over_prp_ss <= 1),
+pct_res_cheaper_ss = (n_res_cheaper_ss / n_res)*100,
+)
 ```
 
 

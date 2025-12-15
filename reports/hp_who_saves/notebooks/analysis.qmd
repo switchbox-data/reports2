@@ -525,13 +525,15 @@ n_non_vacant_homes <- housing_units |> filter(upgrade == 0) |> filter(occupants_
 
 ### Count by Baseline Heating Type
 ```{r}
+#| label: count_by_baseline_heating_type
+
 # Filter to baseline homes (upgrade == 0) and give counts by baseline_heating_type
 counts_baseline_heating_type <- housing_units |>
   filter(upgrade == 0) |>
   count(baseline_heating_type) |>
   arrange(desc(n))
 
-print(counts_baseline_heating_type)
+#View(counts_baseline_heating_type)
 ```
 
 # ------------------------------------------------------------------------------
@@ -539,6 +541,8 @@ print(counts_baseline_heating_type)
 # ------------------------------------------------------------------------------
 ## parameters
 ```{r}
+#| label: heating bill parameters
+
 cols_from_housing_units <- c("bldg_id", "upgrade", "hvac_primary", "baseline_heating_type", "baseline_heating_efficiency")
 ```
 
@@ -716,6 +720,7 @@ left_join(housing_units |> select(bldg_id, upgrade, afue_value, hvac_primary, ba
 
 ### Count by AFUE Value
 ```{r}
+#| label: count_by_afue_value
 # used summarize to print the counts and percentages of the unique values of afue_value
 annual_changes_heating |>
 summarize(
@@ -1020,6 +1025,9 @@ ggsave(file.path(path_to_cache, "heating_bill_changes_by_afue_plot.png"), plot_3
 
 ### Plot: Backup Ratio vs Annual Change Total
 ```{r}
+#| label: plot_scatter_bkup_ratio_vs_annual_change_total
+#| fig-cap: "Scatter Plot: Backup Ratio vs Annual Change Total"
+
 #path_metadata_upgrade2 = "data/ResStock/2024_release2_tmy3/metadata/upgrade02_metadata_and_annual_results.parquet"
 path_metadata_upgrade2 <- file.path(path_to_data, "resstock", "2024_release2_tmy3", "metadata", "upgrade02_metadata_and_annual_results.parquet")
 metadata_upgrade2 <- read_parquet(path_metadata_upgrade2) |> filter(in.state == "RI")
@@ -1036,6 +1044,200 @@ plot_scatter_bkup_ratio_vs_annual_change_total <- ggplot(heating_change_vs_bkup,
   geom_point(alpha = 0.2) +
   labs(x = "Backup Ratio", y = "Annual Change Total")
 print(plot_scatter_bkup_ratio_vs_annual_change_total)
+
+```
+
+
+# ------------------------------------------------------------------------------
+# Grid Impacts
+# ------------------------------------------------------------------------------
+## Peak Loads
+### Calculate Peak Loads
+```{r}
+#| label: calculate_peak_loads
+
+library(tidyverse)
+
+housing_units_peak_loads <- housing_units |>
+  select(bldg_id, upgrade, out.electricity.winter.peak.kw, out.electricity.summer.peak.kw) |>
+  rename(
+    winter_peak_load = out.electricity.winter.peak.kw,
+    summer_peak_load = out.electricity.summer.peak.kw
+  ) |>
+  mutate(
+    annual_peak_load = pmax(winter_peak_load, summer_peak_load),
+    winter_peak_pct = winter_peak_load/(summer_peak_load)
+  ) |>
+  left_join(
+    # Get the baseline peak for each building (upgrade == 0)
+    housing_units |>
+      filter(upgrade == 0) |>
+      select(bldg_id, out.electricity.winter.peak.kw, out.electricity.summer.peak.kw) |>
+      mutate(
+        baseline_peak_load = pmax(out.electricity.winter.peak.kw, out.electricity.summer.peak.kw)
+      ) |>
+      select(bldg_id, baseline_peak_load),
+    by = "bldg_id"
+  ) |>
+  mutate(
+    annual_peak_load_pct = annual_peak_load / baseline_peak_load
+  )
+
+stats_peak_loads <- housing_units_peak_loads |>
+  group_by(upgrade) |>
+  summarize(
+    mean_winter_peak_pct = mean(winter_peak_pct),
+    median_winter_peak_pct = median(winter_peak_pct),
+    mean_annual_peak_load_pct = mean(annual_peak_load_pct),
+    median_annual_peak_load_pct = median(annual_peak_load_pct),
+    max_annual_peak_load_pct = max(annual_peak_load_pct),
+    min_annual_peak_load_pct = min(annual_peak_load_pct)
+  )
+#Print(stats_peak_loads)
+
+stats_winter_peaking_pct <- housing_units_peak_loads |>
+  mutate(winter_peaking = winter_peak_pct > 1.0) |>
+  group_by(upgrade) |>
+  summarize(
+    pct_winter_peaking = sum(winter_peaking == TRUE) / n()
+  )
+#Print(stats_winter_peaking_pct)
+```
+
+### Scatter Plot: Winter vs Summer Peak Loads
+```{r}
+#| label: fig-plot_scatter_winter_vs_summer_peak_loads
+#| fig-cap: "Winter vs Summer Peak Loads"
+library(tidyverse)
+
+housing_units_peak_loads <- housing_units |>
+  select(bldg_id, upgrade, out.electricity.winter.peak.kw, out.electricity.summer.peak.kw) |>
+  rename(
+    winter_peak_load = out.electricity.winter.peak.kw,
+    summer_peak_load = out.electricity.summer.peak.kw
+  ) |>
+  mutate(
+    annual_peak_load = pmax(winter_peak_load, summer_peak_load),
+    winter_peak_pct = winter_peak_load/(summer_peak_load)
+  ) |>
+  left_join(
+    # Get the baseline peak for each building (upgrade == 0)
+    housing_units |>
+      filter(upgrade == 0) |>
+      select(bldg_id, out.electricity.winter.peak.kw, out.electricity.summer.peak.kw) |>
+      mutate(
+        baseline_peak_load = pmax(out.electricity.winter.peak.kw, out.electricity.summer.peak.kw)
+      ) |>
+      select(bldg_id, baseline_peak_load),
+    by = "bldg_id"
+  ) |>
+  mutate(
+    annual_peak_load_pct = annual_peak_load / baseline_peak_load
+  )
+
+
+plot_winter_vs_summer_peak_loads <- ggplot(
+  housing_units_peak_loads,
+  aes(x = summer_peak_load, y = winter_peak_load, color = as.factor(upgrade))
+) +
+  geom_point() +
+  labs(
+    x = "Summer Peak Load (kW)",
+    y = "Winter Peak Load (kW)",
+    color = "Upgrade"
+  ) +
+  scale_x_continuous(limits = c(0, 60), labels = scales::comma) +
+  scale_y_continuous(limits = c(0, 60), labels = scales::comma) +
+  scale_color_brewer(palette = "Set1")
+print(plot_winter_vs_summer_peak_loads)
+
+```
+
+### fig-hist_4_winter_peak_load_pct_by_upgrade
+```{r}
+#| label: fig-hist_4_winter_peak_load_pct_by_upgrade
+#| fig-cap: "Histograms: Winter vs Summer Peak Loads"
+
+y_max <- 55
+
+# Upgrade 0
+hist_winter_peak_load_pct_hist_upgrade0 <- ggplot(
+  housing_units_peak_loads |> filter(upgrade==0), aes(x = winter_peak_pct)
+) +
+  geom_histogram(binwidth = 0.05, fill = "steelblue", color = "white") +
+  labs(
+    x = NULL,
+    y = NULL,
+    title = "Upgrade 0"
+  ) +
+  scale_x_continuous(limits = c(0, 5), breaks = seq(0, 5, by = 0.5), labels = scales::percent_format(accuracy = 1)) +
+  scale_y_continuous(limits = c(0, 160), labels = scales::comma)
+
+# Upgrade 1
+hist_winter_peak_load_pct_hist_upgrade1 <- ggplot(
+  housing_units_peak_loads |> filter(upgrade==1), aes(x = winter_peak_pct)
+) +
+  geom_histogram(binwidth = 0.05, fill = "steelblue", color = "white") +
+  labs(x = NULL, y = NULL, title = "Upgrade 1") +
+  scale_x_continuous(limits = c(0, 5), breaks = seq(0, 5, by = 0.5), labels = scales::percent_format
+  (accuracy = 1)) +
+  scale_y_continuous(limits = c(0, y_max), breaks = seq(0, y_max, by = 25), labels = scales::comma)
+
+
+# Upgrade 2
+hist_winter_peak_load_pct_hist_upgrade2 <- ggplot(
+  housing_units_peak_loads |> filter(upgrade==2), aes(x = winter_peak_pct)
+) +
+  geom_histogram(binwidth = 0.05, fill = "steelblue", color = "white") +
+  labs(x = NULL, y = NULL, title = "Upgrade 2") +
+  scale_x_continuous(limits = c(0, 5), breaks = seq(0, 5, by = 0.5), labels = scales::percent_format(accuracy = 1)) +
+  scale_y_continuous(limits = c(0, y_max), breaks = seq(0, y_max, by = 25), labels = scales::comma)
+
+# Upgrade 3
+hist_winter_peak_load_pct_hist_upgrade3 <- ggplot(
+  housing_units_peak_loads |> filter(upgrade==3), aes(x = winter_peak_pct)
+) +
+  geom_histogram(binwidth = 0.05, fill = "steelblue", color = "white") +
+  labs(x = "Winter Peak/Summer Peak", y = NULL, title = "Upgrade 3") +
+  scale_x_continuous(limits = c(0, 5), breaks = seq(0, 5, by = 0.5), labels = scales::percent_format(accuracy = 1)) +
+  scale_y_continuous(limits = c(0, y_max), breaks = seq(0, y_max, by = 25), labels = scales::comma)
+
+# Combine all the histograms into a single plot
+plot_winter_vs_summer_peak_loads_histograms <- hist_winter_peak_load_pct_hist_upgrade0 / hist_winter_peak_load_pct_hist_upgrade1 / hist_winter_peak_load_pct_hist_upgrade2 / hist_winter_peak_load_pct_hist_upgrade3 +
+  plot_layout(ncol = 1) +
+  plot_annotation(title = "Winter vs Summer Peak Loads", subtitle = "Rhode Island")
+print(plot_winter_vs_summer_peak_loads_histograms)
+```
+
+### fig-hist_3_annual_peak_growth_by_upgrade
+```{r}
+#| label: fig-hist_3_annual_peak_growth_by_upgrade
+#| fig-cap: "Distribution of Annual Peak Load as a Percentage of Baseline Peak Load by Upgrade"
+
+annual_peak_growth_by_upgrade <- housing_units_peak_loads |>
+  filter(upgrade %in% c(1,2,3)) |>
+  mutate(
+    upgrade_label = case_when(
+      upgrade == 1 ~ "Upgrade 1: ENERGY STAR heat pump with elec backup",
+      upgrade == 2 ~ "Upgrade 2: High efficiency cold-climate air-to-air heat pump with electric backup",
+      upgrade == 3 ~ "Upgrade 3: Ultra high efficiency heat pump with elec backup",
+      TRUE ~ as.character(upgrade)
+    )
+  )
+
+plot_annual_peak_growth_by_upgrade <- ggplot(
+  annual_peak_growth_by_upgrade,
+  aes(x = annual_peak_load_pct)
+) +
+  geom_histogram(binwidth = 0.05) +
+  facet_wrap(~ upgrade_label, ncol = 1) +
+  labs(
+    x = "New Peak Load Relative to Current Annual Peak",
+    y = "Number of Homes",
+    title = "Peak Load Growth by Upgrade"
+  ) +
+  scale_x_continuous(limits = c(0, 5), breaks = seq(0, 5, by = 1), labels = scales::percent_format(accuracy = 1))
+print(plot_annual_peak_growth_by_upgrade)
 
 ```
 
@@ -1158,118 +1360,19 @@ plot_cooling_load_change <- ggplot(cooling_load_change_labeled, aes(x = cooling_
 print(plot_cooling_load_change)
 ```
 
-### Scatter Plot: Winter vs Summer Peak Loads
+# ------------------------------------------------------------------------------
+# Export
+# ------------------------------------------------------------------------------
 ```{r}
-#| label: fig-plot_scatter_winter_vs_summer_peak_loads
-#| fig-cap: "Winter vs Summer Peak Loads"
-library(tidyverse)
+#| label: export report variables
 
-housing_units_peak_loads <- housing_units |>
-  select(bldg_id, upgrade, out.electricity.winter.peak.kw, out.electricity.summer.peak.kw) |>
-  rename(
-    winter_peak_load = out.electricity.winter.peak.kw,
-    summer_peak_load = out.electricity.summer.peak.kw
-  ) |>
-  mutate(
-    annual_peak_load = pmax(winter_peak_load, summer_peak_load)
-  ) |>
-  left_join(
-    # Get the baseline peak for each building (upgrade == 0)
-    housing_units |>
-      filter(upgrade == 0) |>
-      select(bldg_id, out.electricity.winter.peak.kw, out.electricity.summer.peak.kw) |>
-      mutate(
-        baseline_peak_load = pmax(out.electricity.winter.peak.kw, out.electricity.summer.peak.kw)
-      ) |>
-      select(bldg_id, baseline_peak_load),
-    by = "bldg_id"
-  ) |>
-  mutate(
-    annual_peak_load_pct = annual_peak_load / baseline_peak_load
-  )
+save(
 
+  # Peak Loads
+  stats_peak_loads,
+  stats_winter_peaking_pct,
 
-plot_winter_vs_summer_peak_loads <- ggplot(
-  housing_units_peak_loads |> filter(upgrade==0), aes(x = winter_peak_load, y = summer_peak_load)) +
-geom_point() +
-labs(x = "Winter Peak Load (kW)", y = "Summer Peak Load (kW)")
-print(plot_winter_vs_summer_peak_loads)
-
-```
-
-### fig-hist_3_annual_peak_growth_by_upgrade
-```{r}
-#| label: fig-hist_3_annual_peak_growth_by_upgrade
-#| fig-cap: "Distribution of Annual Peak Load as a Percentage of Baseline Peak Load by Upgrade"
-
-plot_annual_peak_growth_by_upgrade <- ggplot(
-  housing_units_peak_loads |> filter(upgrade %in% c(1, 2, 3)),
-  aes(x = annual_peak_load_pct)
-) +
-  geom_histogram(binwidth = 0.05) +
-  facet_wrap(~ upgrade, ncol = 1) +
-  labs(
-    x = "Annual Peak Load Pct",
-    y = "Number of Homes",
-    title = "Upgrade {upgrade}"
-  ) +
-  scale_x_continuous(limits = c(0, 5), breaks = seq(0, 5, by = 1), labels = scales::percent_format(accuracy = 1))
-print(plot_annual_peak_growth_by_upgrade)
-
-```
-
-
-### fig-hist_4_winter_peak_load_pct_by_upgrade
-```{r}
-#| label: fig-hist_4_winter_peak_load_pct_by_upgrade
-#| fig-cap: "Histograms: Winter vs Summer Peak Loads"
-
-# Upgrade 0
-hist_winter_peak_load_pct_hist_upgrade0 <- ggplot(
-  housing_units_peak_loads |> filter(upgrade==0), aes(x = annual_peak_load_pct)
-) +
-  geom_histogram(binwidth = 0.05, fill = "steelblue", color = "white") +
-  labs(
-    x = "Winter Peak Load Pct",
-    y = "Number of Homes",
-    title = "Upgrade 0"
-  ) +
-  scale_x_continuous(limits = c(0, 5), breaks = seq(0, 5, by = 0.5), labels = scales::percent_format(accuracy = 1))
-
-# Upgrade 1
-hist_winter_peak_load_pct_hist_upgrade1 <- ggplot(
-  housing_units_peak_loads |> filter(upgrade==1), aes(x = annual_peak_load_pct)
-) +
-  geom_histogram(binwidth = 0.05, fill = "steelblue", color = "white") +
-  labs(x = "Winter Peak Load Pct", y = "Number of Homes", title = "Upgrade 1") +
-  scale_x_continuous(limits = c(0, 5), breaks = seq(0, 5, by = 0.5), labels = scales::percent_format(accuracy = 1))
-
-# Upgrade 2
-hist_winter_peak_load_pct_hist_upgrade2 <- ggplot(
-  housing_units_peak_loads |> filter(upgrade==2), aes(x = annual_peak_load_pct)
-) +
-  geom_histogram(binwidth = 0.05, fill = "steelblue", color = "white") +
-  labs(
-    x = "Winter Peak Load Pct",
-    y = "Number of Homes",
-    title = "Upgrade 2"
-  ) +
-  scale_x_continuous(limits = c(0, 5), breaks = seq(0, 5, by = 0.5), labels = scales::percent_format(accuracy = 1))
-
-# Upgrade 3
-hist_winter_peak_load_pct_hist_upgrade3 <- ggplot(
-  housing_units_peak_loads |> filter(upgrade==3), aes(x = annual_peak_load_pct)
-) +
-  geom_histogram(binwidth = 0.05, fill = "steelblue", color = "white") +
-  labs(x = "Winter Peak Load Pct", y = "Number of Homes", title = "Upgrade 3") +
-  scale_x_continuous(limits = c(0, 5), breaks = seq(0, 5, by = 0.5), labels = scales::percent_format(accuracy = 1))
-
-
-# Combine all the histograms into a single plot
-plot_winter_vs_summer_peak_loads_histograms <- hist_winter_peak_load_pct_hist_upgrade0 / hist_winter_peak_load_pct_hist_upgrade1 / hist_winter_peak_load_pct_hist_upgrade2 / hist_winter_peak_load_pct_hist_upgrade3 +
-  plot_layout(ncol = 1) +
-  plot_annotation(title = "Winter vs Summer Peak Loads", subtitle = "Rhode Island")
-print(plot_winter_vs_summer_peak_loads_histograms)
-
+  file = path_report_variables
+)
 
 ```

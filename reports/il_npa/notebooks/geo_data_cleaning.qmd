@@ -21,7 +21,7 @@ format:
 # 3. reports/il_npa/notebooks/match_parcels_buildings.py - produced parcels_with_buildings.geojson
 
 This notebook cleans and prepares the geo data for the analysis. We need to create a single geojson file that contains census block level data for:
- 1. Miles of pipleline to be replaced for each block. We use street miles as a proxy. Conceptually, we want to split the cost the the pipeline between the blocks on either side of the street.
+ 1. Miles of pipleline to be replaced for each block. We use street miles as a proxy. Conceptually, we want to split the cost of each pipeline segment between the adjacent blocks on either side of the street.
  2. Counts of parcels and residential units for each block. Counts must be disaggrregated by type of parcel (residential, mixed-use, commercial, industrial) and by type of residential unit (single-family, multi-family)
 
 We need 2 working versions of the inital block level data:
@@ -36,15 +36,15 @@ We use the Peoples Gas construction polygons to subset the complete parcel datas
 
 From this filtered subset of parcels, we assign each parcel to unclipped blocks using one-to-one assignment (largest overlap). We then aggregate the parcel data by block to get the total number of parcels and residential units for each block.
 
-The assessor class codes only provide so much information about the type of parcel. Because our analysis is focused on fully residential blocks, we need to make some additional rules for identifying blocks that have no commercial or industrial parcels but are still not fully residential. Examples of this are blocks that are fully covered by a church, school, parks or railroad properties (RR). Typically if a block has only one or two parcels is is not a residential block so we drop blocks with less than 3 parcels. If all of the parcels on a block have the RR class code, we drop the block. We mapped the results of this programmatic filtering and manually identified some additional blocks to exclude by visually comparing the results to satelite imagery. This process would need to be better refined to replicate this analysis in other areas.
+The assessor class codes only provide so much information about the type of parcel. Because our analysis is focused on fully residential blocks, we need to make some additional rules for identifying blocks that have no commercial or industrial parcels but are still not fully residential. Examples of this are blocks that are fully covered by a church, school, parks (assessor code == "EX") or railroad properties (assessor code == "RR"). Typically if a block has only one or two parcels it is not a residential block so we drop blocks with fewer than 3 parcels. If all of the parcels on a block have the RR class code, we drop the block. We mapped the results of this programmatic filtering and manually identified some additional blocks to exclude by visually comparing the results to satelite imagery. This process would need to be better refined to replicate this analysis in other areas.
 
 
 # Street Data
-We use the Chicago Street Centerlines dataset to calculate street miles. This dataset is downloaded from the Chicago Data Portal using reports/il_npa/utils/download_chicago_streets.py.
+We use the Chicago Street Centerlines dataset to calculate street miles as a proxy for pipeline miles to be replaced. This dataset is downloaded from the Chicago Data Portal using reports/il_npa/utils/download_chicago_streets.py.
 
 Street data is clipped to only include segments that fall within the Peoples Gas construction polygons.
 
-For each clipped block, we calculate the perimeter of the block in meters. We assign a scaling factor to the block equal to the ratio of the block perimeter to the total perimeter of all blocks in the construction area. We then multiply the totallength of the street segments in the construction polygon by the scaling factor to assign the street miles to each of the blocks.
+For each clipped block, we calculate the perimeter of the block in meters. We assign a scaling factor each block equal to the ratio of the block perimeter over the sum of the perimeters of all blocks in the construction area. We then multiply the total length of the street segments contained within the construction polygon by the scaling factor to assign the street miles to each of the blocks.
 
 Note that the exclusion of blocks described above is executed before the street data is apportioned to the blocks. If you imagine a fully residential block across the street from a large park. The cost of replacing the pipeline segement running between these 2 blocks should be fully apportioned to the residential block, since the park would not be considered for electrification.
 
@@ -1167,7 +1167,7 @@ print(f"  Total residential units: {summary['total_residential_units'].sum():,}"
 
 # Export Final Dataset
 
-Export the block-level summary statistics with full block geometries to GeoJSON.
+Export the block-level summary statistics with full block geometries to GeoJSON. We will read this into reports/il_npa/notebooks/analysis.qmd to perform the analysis.
 
 ```{python}
 if summary is None:

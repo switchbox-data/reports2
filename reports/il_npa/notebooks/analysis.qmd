@@ -21,9 +21,10 @@ format:
 library(sf)
 library(tidyverse)
 library(ggplot2)
+library(ggrepel)
 library(leaflet)
 library(lubridate)
-
+library(ggrepel)
 
 # Set paths
 outputs_dir <- '/workspaces/reports2/reports/il_npa/data/outputs'
@@ -65,6 +66,24 @@ cat("  Unique city blocks:", n_distinct(pg_summary$geoid10), "\n")
 unit_label <- "blocks"
 ```
 
+```{r}
+# Load neighborhoods GeoJSON from S3
+s3_uri <- "s3://data.sb.east/gis/pgl/Neighborhoods_2012b_20251215.geojson"
+local_neighborhoods_path <- file.path(outputs_dir, "Neighborhoods_2012b.geojson")
+
+# Download from S3 if not already present or if S3 version is newer
+if (!file.exists(local_neighborhoods_path)) {
+  cat("Downloading neighborhoods data from S3...\n")
+  system2("aws", c("s3", "cp", s3_uri, local_neighborhoods_path))
+}
+
+neighborhoods <- read_sf(local_neighborhoods_path) |>
+select(pri_neigh,sec_neigh,shape_area,shape_len,geometry)
+
+cat("Loaded neighborhoods data:\n")
+cat("  ", nrow(neighborhoods), "neighborhoods\n")
+cat("  CRS:", st_crs(neighborhoods)$input, "\n")
+```
 
 ```{r}
 # Read from the first sheet of the Google Sheet
@@ -105,6 +124,14 @@ peak_kw_winter <- prp_df |> filter(variable == "peak_kw_winter") |> pull(value)
 peak_kw_delta <- peak_kw_winter - peak_kw_summer
 lrmc_peak_kw <- prp_df |> filter(variable == "LMRC_historical") |> pull(value)
 grid_upgrade_cost_hh <- lrmc_peak_kw * peak_kw_delta
+
+# Scattershot electrification constants
+PCT_ELEC <- 0.30  # 30% electrification rate (Chicago Climate Action Plan goal)
+DISCOUNT_RATE <- 0.05  # 5% discount rate for NPV
+TIME_PERIOD <- 10  # 10-year timeline
+
+# Residential threshold - some blocks have no commerical or industrial but they do have churches, schools, etc. This is a rough threshold to identify fully residential blocks. If the sum of residential parcels divided by the non-vacant parcel count is greater than this threshold, we consider the block fully residential.
+RES_THRESHOLD <- 0.9
 ```
 
 ```{r}
@@ -114,15 +141,34 @@ cost_elec_comm <- 50000
 pg_summary <- pg_summary |>
   mutate(
     prp_cost = street_miles * cost_lpp_mile,
-    elec_sf_cost = (sf_parcels * cost_elec_sf) + (grid_upgrade_cost_hh * sf_parcels),
-    elec_mf_cost = (mf_units * cost_elec_mf) + (grid_upgrade_cost_hh * mf_units),
+    elec_sf_cost = (sf_parcels * cost_elec_sf) +
+      (grid_upgrade_cost_hh * sf_parcels),
+    elec_mf_cost = (mf_units * cost_elec_mf) +
+      (grid_upgrade_cost_hh * mf_units),
     elec_comm_cost = commercial_parcels * cost_elec_comm,
-    elec_cost_total = elec_sf_cost + elec_mf_cost + elec_comm_cost + street_miles * cost_decomm_mile,
-    pct_residential = (sf_parcels + mf_parcels) / non_vacant_parcels,
+    elec_cost_total = elec_sf_cost +
+      elec_mf_cost +
+      elec_comm_cost +
+      street_miles * cost_decomm_mile,
+    pct_residential = (sf_parcels + mf_parcels) /
+      non_vacant_parcels,
+    res_parcel_diff = non_vacant_parcels - (sf_parcels + mf_parcels),
+    res_filter = if_else(
+      pct_residential > RES_THRESHOLD | res_parcel_diff <= 1,
+      TRUE,
+      FALSE
+    ),
     comm_ind_total_count = commercial_parcels + industrial_parcels,
     comm_ind_flag = comm_ind_total_count > 0,
     ind_flag = industrial_parcels > 0,
     comm_flag = commercial_parcels > 1,
+    fully_res = if_else(
+      !comm_ind_flag &
+        total_residential_units > 0 &
+        res_filter,
+      TRUE,
+      FALSE
+    ),
     npa_over_prp = elec_cost_total / prp_cost,
     npa_less_prp = elec_cost_total - prp_cost,
     comp_cost_discrete = case_when(
@@ -131,15 +177,134 @@ pg_summary <- pg_summary |>
       npa_over_prp <= 1.5 ~ "100-150 %",
       npa_over_prp <= 2 ~ "150-200 %",
       TRUE ~ "> 200 %"
-    ),
-    comp_cost_discrete_res_only = comp_cost_discrete,
-    comp_cost_discrete = if_else(ind_flag, "not eligible", comp_cost_discrete),
-    comp_cost_discrete_res_only = if_else(comm_ind_flag, "not eligible", comp_cost_discrete_res_only)
+    )
+  )
+
+#visual inspection --> add back in some blocks that are confirmed residential but dont conform to the programmatic filters
+special_cases <- c(
+  "170315609005003",
+  "170315609003000",
+  "170310402022009",
+  "170310402022018",
+  "170311610001013",
+  "170311706001011",
+  "170311903004013",
+  "170311911004001",
+  "170315609003000",
+  "170315609005003",
+  "170316116002002",
+  "170316117002005",
+  "170316404001008",
+  "170316607001006",
+  "170316607001019",
+  "170316610001006",
+  "170316701002009",
+  "170316702001010",
+  "170316702001011",
+  "170316702001012",
+  "170316702001013",
+  "170316702001014",
+  "170316702001018",
+  "170316702001021",
+  "170316702001032",
+  "170316703001000",
+  "170316703001004",
+  "170316703001009",
+  "170316704001030",
+  "170316704001033",
+  "170316704001038",
+  "170316705001037",
+  "170316706001013",
+  "170316706002005",
+  "170316706002006",
+  "170316706002012",
+  "170316706002013",
+  "170316706002014",
+  "170316706002015",
+  "170316707001009",
+  "170316707001016",
+  "170316707001020",
+  "170316707001022",
+  "170316707002005",
+  "170316707002006",
+  "170316707002009",
+  "170316708002000",
+  "170316712001006",
+  "170316712002007",
+  "170316712002008",
+  "170316712002009",
+  "170316713001007",
+  "170316713001008",
+  "170316713001009",
+  "170316713001024",
+  "170316713002001",
+  "170316714001016",
+  "170316715001002",
+  "170316715001004",
+  "170316715002012",
+  "170316715002008",
+  "170316715002013",
+  "170316715002022",
+  "170316715002024",
+  "170316715002031",
+  "170316715003006",
+  "170316715003009",
+  "170316720001007",
+  "170316720003001"
+)
+
+
+pg_summary <- pg_summary |>
+  mutate(
+    fully_res = if_else(geoid10 %in% special_cases, TRUE, fully_res),
+    comp_cost_discrete = if_else(
+      !fully_res,
+      "not eligible",
+      comp_cost_discrete
+    )
   )
 ```
 
 ```{r}
-res_only <- pg_summary |> filter(!comm_ind_flag & total_residential_units > 0)
+# Calculate scattershot electrification costs (unmanaged gas transition scenario)
+# Assumes PCT_ELEC of residential units electrify over TIME_PERIOD years
+pg_summary <- pg_summary |>
+  mutate(
+    # Annual cost of scattershot electrification (evenly distributed)
+    scattershot_annual_cost = (PCT_ELEC * elec_cost_total) / TIME_PERIOD,
+
+    # NPV of scattershot costs (t=0 to TIME_PERIOD-1)
+    scattershot_npv = scattershot_annual_cost *
+      sum(1 / (1 + DISCOUNT_RATE)^(0:(TIME_PERIOD - 1))),
+
+    # PRP cost plus scattershot electrification NPV
+    prp_cost_ss = prp_cost + scattershot_npv,
+
+    # Cost ratio: NPA vs PRP+scattershot
+    npa_over_prp_ss = elec_cost_total / prp_cost_ss,
+
+    # Cost difference: NPA vs PRP+scattershot
+    npa_less_prp_ss = elec_cost_total - prp_cost_ss,
+
+    # Binned cost comparison categories
+    comp_cost_discrete_ss = case_when(
+      npa_over_prp_ss <= 0.5 ~ "< 50 %",
+      npa_over_prp_ss <= 1 ~ "50-100 %",
+      npa_over_prp_ss <= 1.5 ~ "100-150 %",
+      npa_over_prp_ss <= 2 ~ "150-200 %",
+      TRUE ~ "> 200 %"
+    ),
+
+    comp_cost_discrete_ss = if_else(
+      !fully_res,
+      "not eligible",
+      comp_cost_discrete_ss
+    )
+  )
+```
+
+```{r}
+res_only <- pg_summary |> filter(fully_res)
 
 n_blocks_total <- nrow(pg_summary)
 ```
@@ -147,7 +312,8 @@ n_blocks_total <- nrow(pg_summary)
 
 ```{r}
 res_only |>
-mutate(res_parcels = sf_parcels + mf_parcels + mixed_use_parcels) |>
+mutate(res_parcels = sf_parcels + mf_parcels,
+diff = non_vacant_parcels - res_parcels) |>
 filter(non_vacant_parcels !=res_parcels)
 ```
 
@@ -210,6 +376,55 @@ n_miles_1_5 <- sum(res_1_5$street_miles, na.rm = TRUE)
 ```
 
 ```{r}
+# Scattershot scenario report variables
+# how many fully residential blocks are cheaper to electrify vs PRP+scattershot
+n_res_blocks_cheaper_ss <- sum(res_only$npa_over_prp_ss <= 1, na.rm = TRUE)
+pct_res_blocks_cheaper_ss <- (n_res_blocks_cheaper_ss / n_res_blocks)
+
+# how many fully residential blocks are within 1 to 1.5 times the cost of PRP+scattershot
+n_res_blocks_1_to_1_5_ss <- sum(res_only$npa_over_prp_ss > 1 & res_only$npa_over_prp_ss < 1.5, na.rm = TRUE)
+n_res_blocks_0_to_1_5_ss <- sum(res_only$npa_over_prp_ss < 1.5, na.rm = TRUE)
+pct_res_blocks_1_to_1_5_ss <- (n_res_blocks_1_to_1_5_ss / n_res_blocks)
+pct_res_blocks_0_to_1_5_ss <- (n_res_blocks_0_to_1_5_ss / n_res_blocks)
+
+# 1.0 threshold cost difference (scattershot)
+res_1_0_ss <- res_only |> filter(npa_over_prp_ss < 1.0)
+prp_total_ce_1_0_ss <- sum(res_1_0_ss$prp_cost_ss, na.rm = TRUE)
+npa_total_ce_1_0_ss <- sum(res_1_0_ss$elec_cost_total, na.rm = TRUE)
+total_cost_diff_1_0_ss <- npa_total_ce_1_0_ss - prp_total_ce_1_0_ss
+
+# 1.5 threshold cost difference (scattershot)
+res_1_5_ss <- res_only |> filter(npa_over_prp_ss < 1.5)
+prp_total_ce_1_5_ss <- sum(res_1_5_ss$prp_cost_ss, na.rm = TRUE)
+npa_total_ce_1_5_ss <- sum(res_1_5_ss$elec_cost_total, na.rm = TRUE)
+total_cost_diff_1_5_ss <- npa_total_ce_1_5_ss - prp_total_ce_1_5_ss
+
+# residential unit counts (scattershot)
+n_res_units_1_0_ss <- sum(res_1_0_ss$total_residential_units, na.rm = TRUE)
+n_sf_1_0_ss <- sum(res_1_0_ss$sf_parcels, na.rm = TRUE)
+n_mf_1_0_ss <- sum(res_1_0_ss$total_residential_units - res_1_0_ss$sf_parcels, na.rm = TRUE)
+
+n_res_units_1_5_ss <- sum(res_1_5_ss$total_residential_units, na.rm = TRUE)
+n_sf_1_5_ss <- sum(res_1_5_ss$sf_parcels, na.rm = TRUE)
+n_mf_1_5_ss <- sum(res_1_5_ss$total_residential_units - res_1_5_ss$sf_parcels, na.rm = TRUE)
+
+# street miles counts (scattershot)
+n_miles_1_0_ss <- sum(res_1_0_ss$street_miles, na.rm = TRUE)
+n_miles_1_5_ss <- sum(res_1_5_ss$street_miles, na.rm = TRUE)
+```
+
+```{r}
+res_only |>
+data.frame() |>
+summarise(.by = comp_cost_discrete,
+n = n(),
+pct_of_all_res_blocks = round((n / n_res_blocks)*100, 1))|>
+mutate(comp_cost_discrete = factor(comp_cost_discrete, levels = names(COMP_COST_COLS))) |>
+arrange(comp_cost_discrete)
+```
+
+
+```{r}
 COMP_COST_COLS <-c("< 50 %" = "#1b8813",
       "50-100 %"= "#9ec23c",
       "100-150 %" = "#d3bc14",
@@ -218,23 +433,85 @@ COMP_COST_COLS <-c("< 50 %" = "#1b8813",
 
 ```
 
+# Neighborhoods Deeper Dive
+
+```{r}
+target_areas <- c(
+  "Englewood",
+  "Lincoln Square",
+  "Garfield Ridge"
+)
+
+
+# Spatially join blocks with neighborhoods using centroids for one-to-one mapping
+res_only_centroids <- res_only |>
+  st_centroid()
+
+res_only_w_area <- res_only_centroids |>
+  st_join(neighborhoods |> select(pri_neigh), left = TRUE) |>
+  st_drop_geometry() |>
+  mutate(neighborhood = pri_neigh) |>
+  select(-pri_neigh)
+
+# Add neighborhood column back to original res_only with geometry
+res_only_w_area <- res_only |>
+  bind_cols(res_only_w_area |> select(neighborhood))
+
+if (nrow(res_only_w_area) != nrow(res_only)) {
+  stop("Number of blocks with neighborhood info does not match original number of blocks")
+}
+
+res_only_w_area |>
+filter(neighborhood %in% target_areas) |>
+data.frame() |>
+summarise(.by = neighborhood,
+n_res = sum(fully_res),
+n_res_cheaper = sum(npa_over_prp <= 1),
+pct_res_cheaper = (n_res_cheaper / n_res)*100,
+n_res_cheaper_ss = sum(npa_over_prp_ss <= 1),
+pct_res_cheaper_ss = (n_res_cheaper_ss / n_res)*100,
+)
+```
+
 
 # Plotting
 
 ```{r}
 #| label: fig-histogram-npa-over-prp
 #| fig-cap: "Histogram of the ratio of the cost of electrification to the cost of PRP per residential block. Values less than 100 percent indicate electrification is cheaper than PRP, values greater than 100 percent indicate electrification is more expensive than PRP."
-#| fig-width: 8
+#| fig-width: 10
 #| fig-height: 6
 res_only |>
 data.frame() |>
-filter(npa_over_prp <4) |>
+filter(npa_over_prp <3.5) |>
 ggplot() +
   geom_histogram(aes(x = npa_over_prp, fill = factor(comp_cost_discrete, levels = names(COMP_COST_COLS))), breaks = seq(0, 4, 0.1)) +
-  scale_x_continuous(limits = c(0, 4.08), breaks = seq(0, 4, 0.25), labels = scales::percent_format(accuracy = 1), expand = c(0,0)) +
+  scale_x_continuous(limits = c(0, 3.6), breaks = seq(0, 4, 0.25), labels = scales::percent_format(accuracy = 1), expand = c(0,0)) +
   scale_y_continuous(expand = c(0,0)) +
   scale_fill_manual(values = COMP_COST_COLS, drop = FALSE) +
   labs(x = 'Cost to electrify block as a percent of PRP cost',
+  y = 'Number of blocks',
+  fill = ''
+  ) +
+  theme(legend.position = "top",
+        axis.text.x = element_text(size = 9),
+        axis.title.x = element_text(margin = margin(t = 10)))
+```
+
+```{r}
+#| label: fig-histogram-npa-over-prp-ss
+#| fig-cap: "Histogram of the ratio of the cost of electrification to the cost of PRP + scattershot electrification per residential block. The scattershot scenario assumes 30% of residential units electrify over 10 years (unmanaged gas transition). Values less than 100 percent indicate electrification is cheaper than PRP + scattershot, values greater than 100 percent indicate electrification is more expensive."
+#| fig-width: 10
+#| fig-height: 6
+res_only |>
+data.frame() |>
+filter(npa_over_prp_ss <3.5) |>
+ggplot() +
+  geom_histogram(aes(x = npa_over_prp_ss, fill = factor(comp_cost_discrete_ss, levels = names(COMP_COST_COLS))), breaks = seq(0, 4, 0.1)) +
+  scale_x_continuous(limits = c(0,3.6), breaks = seq(0, 4, 0.25), labels = scales::percent_format(accuracy = 1), expand = c(0,0)) +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_fill_manual(values = COMP_COST_COLS, drop = FALSE) +
+  labs(x = 'Cost to electrify block as a percent of PRP + scattershot cost',
   y = 'Number of blocks',
   fill = ''
   ) +
@@ -273,6 +550,12 @@ p = cumulative_data |>
     color = sb_colors["pistachio_text"],
     size = 1
   ) +
+  geom_vline(
+    xintercept = pct_res_blocks_cheaper,
+    linetype = "dashed",
+    color = sb_colors["pistachio_text"],
+    size = 1
+  ) +
   geom_hline(
     yintercept = 0,
     linetype = "solid",
@@ -286,10 +569,19 @@ p = cumulative_data |>
     hjust = -0.2,
     color = sb_colors["pistachio_text"]
   ) +
+  annotate(
+    "text",
+    x = pct_res_blocks_cheaper,
+    y = max(cumulative_data$cumulative_saving) * 0.9,
+    label = paste0(round(pct_res_blocks_cheaper * 100), "% cheaper than PRP"),
+    hjust = 1.1,
+    vjust = -5,
+    color = sb_colors["pistachio_text"]
+  ) +
   scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
   scale_y_continuous(
-    limits = c(-140e6, 40e6),
-    breaks = seq(-140e6, 40e6, by = 20e6),
+    limits = c(-150e6, 30e6),
+    breaks = seq(-150e6, 30e6, by = 20e6),
     labels = scales::dollar_format(scale = 1e-6, suffix = "M", accuracy = 1)
   ) +
   labs(
@@ -306,12 +598,450 @@ p
 ```
 
 ```{r}
+#| label: fig-cumulative-saving-ss
+#| fig-cap: "Cumulative saving from targeted electrification compared to PRP + scattershot electrification baseline. The scattershot scenario assumes 30% of residential units electrify over 10 years (unmanaged gas transition)."
+#| fig-width: 8
+#| fig-height: 6
+
+cumulative_data_ss <- res_only |>
+  mutate(npa_less_prp_ss_neg = -1 * npa_less_prp_ss) |>
+  arrange(npa_over_prp_ss) |>
+  mutate(
+    cumulative_saving_ss = cumsum(npa_less_prp_ss_neg),
+    n_elec_blocks = row_number(),
+    pct_elec_blocks = n_elec_blocks / nrow(res_only)
+  )
+
+# Find where cumulative saving crosses zero
+zero_crossing_ss <- cumulative_data_ss |>
+  filter(cumulative_saving_ss <= 0) |>
+  slice(1) |>
+  pull(pct_elec_blocks)
+
+p_ss <- cumulative_data_ss |>
+  ggplot() +
+  geom_line(aes(x = pct_elec_blocks, y = cumulative_saving_ss)) +
+  geom_vline(
+    xintercept = zero_crossing_ss,
+    linetype = "dashed",
+    color = sb_colors["pistachio_text"],
+    size = 1
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "solid",
+    color = "gray"
+  ) +
+  geom_vline(
+    xintercept = pct_res_blocks_cheaper_ss,
+    linetype = "dashed",
+    color = sb_colors["pistachio_text"],
+    size = 1
+  ) +
+  annotate(
+    "text",
+    x = pct_res_blocks_cheaper_ss,
+    y = max(cumulative_data_ss$cumulative_saving_ss),
+    label = paste0(
+      round(pct_res_blocks_cheaper_ss * 100),
+      "% cheaper than PRP + scattershot"
+    ),
+    hjust = 1.1,
+    vjust = -5,
+    color = sb_colors["pistachio_text"]
+  ) +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
+  scale_y_continuous(
+    limits = c(0, 80e6),
+    breaks = seq(0, 80e6, by = 10e6),
+    labels = scales::dollar_format(scale = 1e-6, suffix = "M", accuracy = 1)
+  ) +
+  labs(
+    x = 'Percent of residential blocks electrified',
+    y = 'Cumulative saving from targeted electrification vs PRP + scattershot',
+  ) +
+  theme(
+    legend.position = "top",
+    axis.text.x = element_text(size = 9),
+    axis.title.x = element_text(margin = margin(t = 10))
+  )
+
+p_ss
+```
+
+```{r}
+#| label: fig-cumulative-saving-bar
+#| fig-width: 8
+#| fig-height: 6
+
+total_rows <- nrow(cumulative_data)
+target_rows <- round(seq(0.05, 1, by = 0.05) * total_rows)
+
+cumulative_data |>
+  # filter(n_elec_blocks %in% target_rows) |>
+  select(n_elec_blocks, pct_elec_blocks, cumulative_saving) |>
+  mutate(color = if_else(cumulative_saving > 0, "#1b8813", "#b5430e")) |>
+
+  ggplot() +
+  geom_bar(
+    aes(x = pct_elec_blocks, y = cumulative_saving, fill = color),
+    stat = "identity"
+  ) +
+  geom_vline(
+    xintercept = pct_res_blocks_cheaper,
+    linetype = "dashed",
+    color = "black",
+    size = 1
+  ) +
+  scale_fill_manual(values = c("#1b8813", "#b5430e")) +
+  scale_x_continuous(
+    breaks = seq(0, 1, by = 0.1),
+    labels = scales::percent_format(accuracy = 1)
+  ) +
+  scale_y_continuous(
+    limits = c(-150e6, 30e6),
+    breaks = seq(-150e6, 30e6, by = 20e6),
+    labels = scales::dollar_format(scale = 1e-6, suffix = "M", accuracy = 1)
+  ) +
+  labs(
+    x = 'Percent of residential blocks electrified',
+    y = 'Cumulative saving from targeted electrification vs PRP',
+  ) +
+  theme(legend.position = "none")
+```
+
+```{r}
+#| label: fig-total-spending-bar-ss
+#| fig-width: 8
+#| fig-height: 6
+
+res_only |>
+  data.frame() |>
+  summarise(
+    total_prp_cost = sum(prp_cost, na.rm = TRUE),
+    total_elec_cost = sum(elec_cost_total, na.rm = TRUE),
+    total_ss_npv = sum(scattershot_npv, na.rm = TRUE)
+  ) |>
+  pivot_longer(
+    cols = everything(),
+    names_to = "cost_type",
+    values_to = "cost"
+  ) |>
+  mutate(
+    scenario = if_else(
+      cost_type == "total_elec_cost",
+      "NPA",
+      "PRP + scattershot"
+    )
+  ) |>
+  ggplot() +
+  geom_bar(
+    aes(x = scenario, y = cost, fill = reorder(cost_type, cost)),
+    stat = "identity"
+  ) +
+
+  scale_y_continuous(
+    limits = c(0, 750e6),
+    breaks = seq(0, 750e6, by = 100e6),
+    labels = scales::dollar_format(scale = 1e-6, suffix = "M", accuracy = 1),
+    expand = c(0, 0)
+  ) +
+  scale_fill_manual(
+    values = c(
+      "total_prp_cost" = sb_colors[["midnight"]],
+      "total_elec_cost" = sb_colors[["pistachio_text"]],
+      "total_ss_npv" = "gray"
+    ),
+    labels = c(
+      "total_prp_cost" = "Pipeline replacement",
+      "total_elec_cost" = "Targeted electrification",
+      "total_ss_npv" = "Scattershot electrification"
+    ),
+    breaks = c("total_elec_cost", "total_ss_npv", "total_prp_cost")
+  ) +
+  labs(
+    x = "",
+    y = "Total saving from targeted electrification vs PRP + scattershot",
+    fill = ""
+  ) +
+  theme(axis.title.y = element_text(margin = margin(r = 10)))
+```
+
+```{r}
+#| label: single-block-eg
+#| fig-height: 9
+#| fig-width: 8
+
+sample_id <- "170314407001003" #"170316913001026"
+total_pipe_touching <- 0.1726
+total_prp_cost_ex <- total_pipe_touching * cost_lpp_mile
+
+plot_data <- res_only |>
+  filter(geoid10 == sample_id) |>
+  data.frame() |>
+  select(
+    elec_cost_total,
+    sf_parcels,
+    mf_units,
+    total_residential_units,
+    street_miles,
+    prp_cost
+  ) |>
+  mutate(
+    elec_sf_cost = sf_parcels * cost_elec_sf,
+    elec_mf_cost = mf_units * cost_elec_mf,
+    pipeline_assigned = street_miles,
+    grid_cost = total_residential_units * grid_upgrade_cost_hh,
+    decomm_cost = street_miles * cost_decomm_mile,
+  ) |>
+  pivot_longer(
+    cols = everything(),
+    names_to = "cost_type",
+    values_to = "cost"
+  ) |>
+  mutate(
+    scenario = if_else(
+      cost_type %in% c("prp_cost", "scattershot_npv_cost"),
+      "PRP",
+      "NPA"
+    ),
+    unit = if_else(str_detect(cost_type, "cost"), "dollars", "units")
+  ) |>
+  filter(unit == "dollars", cost_type != "elec_cost_total") |>
+  filter(cost_type != "scattershot_npv_cost") |>
+  mutate(
+    labels = case_when(
+      cost_type == "prp_cost" ~ "Pipeline replacement",
+      cost_type == "elec_sf_cost" ~ "Single-family electrification",
+      cost_type == "elec_mf_cost" ~ "Multi-family electrification",
+      cost_type == "grid_cost" ~ "Grid upgrade cost",
+      cost_type == "decomm_cost" ~ "Decommissioning cost",
+    )
+  ) |>
+  group_by(scenario) |>
+  mutate(cost_type_ordered = reorder(cost_type, -cost)) |>
+  arrange(scenario, desc(cost)) |>
+  mutate(
+    label_y = cumsum(cost) - cost / 2,
+    label_text = paste0(labels, "\n($", scales::comma(round(cost / 1000)), "K)")
+  ) |>
+  ungroup()
+
+plot_data |>
+ggplot() +
+  geom_bar(
+    aes(x = scenario, y = cost, fill = reorder(cost_type, cost)),
+    stat = "identity",
+    position = "stack"
+  ) +
+  geom_text_repel(
+    data = plot_data |> filter(scenario == "NPA"),
+    aes(x = scenario, y = label_y, label = label_text, color = cost_type),
+    size = 4,
+    nudge_x = -0.9,
+    direction = "y",
+    hjust = 1,
+    box.padding = 0.3,
+    # segment.color = "gray50",
+    min.segment.length = 0
+  ) +
+  geom_text_repel(
+    data = plot_data |> filter(scenario == "PRP"),
+    aes(x = scenario, y = label_y, label = label_text, color = cost_type),
+    size = 4,
+    nudge_x = 0.9,
+    direction = "y",
+    hjust = 0,
+    box.padding = 0.3,
+    # segment.color = "gray50",
+    min.segment.length = 0
+  ) +
+  scale_fill_manual(
+    values = c(
+      "prp_cost" = sb_colors[["midnight"]],
+      "elec_sf_cost" = sb_colors[["saffron"]],
+      "elec_mf_cost" = sb_colors[["carrot"]],
+      "grid_cost" = sb_colors[["sky"]],
+      "decomm_cost" = sb_colors[["pistachio"]]
+    )
+  ) +
+  scale_color_manual(
+    values = c(
+      "prp_cost" = sb_colors[["midnight"]],
+      "elec_sf_cost" = sb_colors[["saffron"]],
+      "elec_mf_cost" = sb_colors[["carrot"]],
+      "grid_cost" = sb_colors[["sky"]],
+      "decomm_cost" = sb_colors[["pistachio"]]
+    ),
+    guide = "none"
+  ) +
+  # scale_y_continuous(
+  #   limits = c(0, 650e3),
+  #   breaks = seq(0, 650e3, by = 50e3),
+  #   labels = scales::dollar_format(scale = 1e-3, suffix = "K", accuracy = 1),
+  #   expand = c(0, 0)
+  # ) +
+  scale_x_discrete(expand = c(2, 0)) +
+  labs(x = "", y = "") +
+  theme(legend.position = "none") +
+  theme(
+    axis.line = element_blank(),
+    axis.title = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank(),
+    legend.position = "none",
+    plot.margin = margin(t = 40, r = 10, b = 10, l = 10)
+  )
+
+
+
+
+```
+
+
+```{r}
+#| label: single-block-eg-ss
+#| fig-height: 9
+#| fig-width: 8
+
+sample_id <- "170314407001003" #"170316913001026"
+total_pipe_touching <- 0.1726
+total_prp_cost_ex <- total_pipe_touching * cost_lpp_mile
+
+plot_data <- res_only |>
+  filter(geoid10 == sample_id) |>
+  data.frame() |>
+  select(
+    elec_cost_total,
+    sf_parcels,
+    mf_units,
+    total_residential_units,
+    street_miles,
+    prp_cost
+  ) |>
+  mutate(
+    elec_sf_cost = sf_parcels * cost_elec_sf,
+    elec_mf_cost = mf_units * cost_elec_mf,
+    pipeline_assigned = street_miles,
+    grid_cost = total_residential_units * grid_upgrade_cost_hh,
+    decomm_cost = street_miles * cost_decomm_mile,
+    scattershot_annual = (PCT_ELEC * elec_cost_total) / TIME_PERIOD,
+    scattershot_npv_cost = scattershot_annual *
+      sum(1 / (1 + DISCOUNT_RATE)^(0:(TIME_PERIOD - 1))),
+  ) |>
+  pivot_longer(
+    cols = everything(),
+    names_to = "cost_type",
+    values_to = "cost"
+  ) |>
+  mutate(
+    scenario = if_else(
+      cost_type %in% c("prp_cost", "scattershot_npv_cost"),
+      "PRP",
+      "NPA"
+    ),
+    unit = if_else(str_detect(cost_type, "cost"), "dollars", "units")
+  ) |>
+  mutate(
+    labels = case_when(
+      cost_type == "prp_cost" ~ "Pipeline replacement",
+      cost_type == "elec_sf_cost" ~ "Single-family electrification",
+      cost_type == "elec_mf_cost" ~ "Multi-family electrification",
+      cost_type == "grid_cost" ~ "Grid upgrade cost",
+      cost_type == "decomm_cost" ~ "Decommissioning cost",
+      cost_type == "scattershot_npv_cost" ~ "Scattershot electrification NPV"
+    )
+  ) |>
+  filter(unit == "dollars", cost_type != "elec_cost_total") |>
+  group_by(scenario) |>
+  mutate(cost_type_ordered = reorder(cost_type, -cost)) |>
+  arrange(scenario, desc(cost)) |>
+  mutate(
+    label_y = cumsum(cost) - cost / 2,
+    label_text = paste0(labels, "\n($", scales::comma(round(cost / 1000)), "K)")
+  ) |>
+  ungroup()
+
+plot_data |>
+  ggplot() +
+  geom_bar(
+    aes(x = scenario, y = cost, fill = reorder(cost_type, cost)),
+    stat = "identity",
+    position = "stack"
+  ) +
+  geom_text_repel(
+    data = plot_data |> filter(scenario == "NPA"),
+    aes(x = scenario, y = label_y, label = label_text, color = cost_type),
+    size = 4,
+    nudge_x = -0.9,
+    direction = "y",
+    hjust = 1,
+    box.padding = 0.3,
+    # segment.color = "gray50",
+    min.segment.length = 0
+  ) +
+  geom_text_repel(
+    data = plot_data |> filter(scenario == "PRP"),
+    aes(x = scenario, y = label_y, label = label_text, color = cost_type),
+    size = 4,
+    nudge_x = 0.9,
+    direction = "y",
+    hjust = 0,
+    box.padding = 0.3,
+    # segment.color = "gray50",
+    min.segment.length = 0
+  ) +
+  scale_fill_manual(
+    values = c(
+      "prp_cost" = sb_colors[["midnight"]],
+      "elec_sf_cost" = sb_colors[["saffron"]],
+      "elec_mf_cost" = sb_colors[["carrot"]],
+      "grid_cost" = sb_colors[["sky"]],
+      "decomm_cost" = sb_colors[["pistachio"]]
+    )
+  ) +
+  scale_color_manual(
+    values = c(
+      "prp_cost" = sb_colors[["midnight"]],
+      "elec_sf_cost" = sb_colors[["saffron"]],
+      "elec_mf_cost" = sb_colors[["carrot"]],
+      "grid_cost" = sb_colors[["sky"]],
+      "decomm_cost" = sb_colors[["pistachio"]]
+    ),
+    guide = "none"
+  ) +
+  # scale_y_continuous(
+  #   limits = c(0, 650e3),
+  #   breaks = seq(0, 650e3, by = 50e3),
+  #   labels = scales::dollar_format(scale = 1e-3, suffix = "K", accuracy = 1),
+  #   expand = c(0, 0)
+  # ) +
+  scale_x_discrete(expand = c(2, 0)) +
+  labs(x = "", y = "") +
+  theme(legend.position = "none") +
+  theme(
+    axis.line = element_blank(),
+    axis.title = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank(),
+    legend.position = "none",
+    plot.margin = margin(t = 40, r = 10, b = 10, l = 10)
+  )
+
+
+
+```
+
+
+```{r}
 #| label: fig-scatter-density-vs-npa-over-prp
 #| fig-cap: "Housing density  vs the ratio of the cost of electrification to the cost of PRP. Each point represents a block. For blocks with multi-family homes, we count each apartment unit in the total housing count. The color bar shows the percent of block that is made up of single-family homes where blue is predominately multi-family housing and orange is predominately single-family housing."
 #| fig-width: 8
 #| fig-height: 6
 
-res_only |>
+p  = res_only |>
   filter(npa_over_prp < 4) |>
   mutate(
     block_area_acres = block_area_full_sqm / 4046.86,
@@ -319,7 +1049,7 @@ res_only |>
     pct_sf = (sf_parcels / total_residential_units) * 100
   ) |>
   ggplot() +
-  geom_point(aes(x = density, y = npa_over_prp, color = pct_sf), alpha = 0.8) +
+  geom_point(aes(x = density, y = npa_over_prp, color = pct_sf), alpha = 0.9) +
   scale_x_continuous(limits = c(0, 60), breaks = seq(0, 60, 10)) +
   scale_y_continuous(
     limits = c(0, 4),
@@ -335,6 +1065,65 @@ res_only |>
   labs(
     x = 'Housing density (units per acre)',
     y = 'Cost to electrify block as a percent of PRP cost',
+    color = 'Homes on block that are single-family'
+  ) +
+  theme(
+    legend.position = "top",
+    legend.key.width = unit(2, "cm"),
+    axis.text.x = element_text(size = 9),
+    axis.title.x = element_text(margin = margin(t = 10)),
+    axis.title.y = element_text(margin = margin(r = 10))
+  )
+
+p
+```
+
+```{r}
+#| label: fig-scatter-density-vs-npa-over-prp-w-line
+#| fig-width: 8
+#| fig-height: 6
+p +
+  geom_smooth(
+    aes(x = density, y = npa_over_prp),
+    method = "lm",
+    se = FALSE,
+    color = "black",
+    linewidth = 0.8,
+    linetype = "dashed"
+  )
+```
+
+
+```{r}
+#| label: fig-scatter-density-vs-npa-over-prp-ss
+#| fig-cap: "Housing density vs the ratio of the cost of electrification to the cost of PRP + scattershot electrification. The scattershot scenario assumes 30% of residential units electrify over 10 years (unmanaged gas transition). Each point represents a block. For blocks with multi-family homes, we count each apartment unit in the total housing count. The color bar shows the percent of block that is made up of single-family homes where blue is predominately multi-family housing and orange is predominately single-family housing."
+#| fig-width: 8
+#| fig-height: 6
+
+res_only |>
+  filter(npa_over_prp_ss < 4) |>
+  mutate(
+    block_area_acres = block_area_full_sqm / 4046.86,
+    density = total_residential_units / block_area_acres,
+    pct_sf = (sf_parcels / total_residential_units) * 100
+  ) |>
+  ggplot() +
+  geom_point(aes(x = density, y = npa_over_prp_ss, color = pct_sf), alpha = 0.9) +
+  scale_x_continuous(limits = c(0, 60), breaks = seq(0, 60, 10)) +
+  scale_y_continuous(
+    limits = c(0, 4),
+    breaks = seq(0, 4, 0.5),
+    labels = scales::percent_format(accuracy = 1)
+  ) +
+  scale_color_gradient(
+    low = "#68BED8",
+    high = "#FC9706",
+    labels = scales::label_percent(scale = 1),
+    guide = guide_colorbar(barwidth = 15, barheight = 1, nbin = 100)
+  ) +
+  labs(
+    x = 'Housing density (units per acre)',
+    y = 'Cost to electrify block as a percent of PRP + scattershot cost',
     color = 'Homes on block that are single-family'
   ) +
   theme(
@@ -424,16 +1213,21 @@ pg_summary |>
 
 ```
 
+
+
+
 ```{r}
-#| label: fig-miles-of-prp
+#| label: fig-miles-of-prp-3seg
 #| fig-cap: "Miles of pipeline replaced by PRP projects."
 #| fig-width: 8
 #| fig-height: 5
 
+total_prp_miles <- 1451
+
 # Calculate miles by project type
 n_miles_res <- sum(res_only$street_miles, na.rm = TRUE)
 n_miles_mixed <- sum(pg_summary$street_miles, na.rm = TRUE) - n_miles_res
-n_miles_remaining <- 1000 - n_miles_res - n_miles_mixed
+n_miles_remaining <- total_prp_miles - n_miles_res - n_miles_mixed
 
 # Create data frame with manual position calculation
 plot_data <- data.frame(
@@ -441,13 +1235,17 @@ plot_data <- data.frame(
     c("remain", "mixed", "res"),
     levels = c("remain", "mixed", "res")
   ),
-  label = c("Remaining PRP miles", "Planned mixed-zoning", "Planned fully residential"),
+  label = c(
+    "Remaining PRP miles",
+    "Planned mixed-zoning",
+    "Planned fully residential"
+  ),
   miles = c(n_miles_remaining, n_miles_mixed, n_miles_res)
 ) |>
   arrange(desc(category)) |>
   mutate(
     cumsum_miles = cumsum(miles),
-    text_position = c(2, 150, 1000),#cumsum_miles - miles / 2,
+    text_position = c(0, 150, total_prp_miles), #cumsum_miles - miles / 2,
     label_text = paste0(label, "\n(", round(miles), " miles)")
   )
 
@@ -483,9 +1281,9 @@ ggplot() +
       "remain" = "gray"
     )
   ) +
-  scale_y_continuous(limits = c(-150, 1150), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(-250, total_prp_miles+200), expand = c(0, 0)) +
   coord_flip(clip = "off") +
-  labs(y ="", x= "")+
+  labs(y = "", x = "") +
   theme(
     axis.line = element_blank(),
     axis.title = element_blank(),
@@ -497,6 +1295,157 @@ ggplot() +
   )
 
 ```
+
+
+```{r}
+#| label: fig-miles-of-prp-2seg
+#| fig-cap: "Miles of pipeline replaced by PRP projects."
+#| fig-width: 8
+#| fig-height: 5
+
+# Calculate miles by project type
+
+n_miles_planned <- sum(pg_summary$street_miles, na.rm = TRUE)
+n_miles_remaining <- total_prp_miles - n_miles_planned
+
+# Create data frame with manual position calculation
+plot_data <- data.frame(
+  category = factor(
+    c("remain", "planned"),
+    levels = c("remain", "planned")
+  ),
+  label = c(
+    "Remaining PRP miles",
+    "Planned PRP miles"
+  ),
+  miles = c(n_miles_remaining, n_miles_planned)
+) |>
+  arrange(desc(category)) |>
+  mutate(
+    cumsum_miles = cumsum(miles),
+    text_position = c(145, total_prp_miles), #cumsum_miles - miles / 2,
+    label_text = paste0(label, "\n(", round(miles), " miles)")
+  )
+
+ggplot() +
+  geom_bar(
+    data = plot_data,
+    aes(x = "", y = miles, fill = category),
+    stat = "identity",
+    width = 0.7
+  ) +
+  ggrepel::geom_text_repel(
+    data = plot_data,
+    aes(x = "", y = text_position, label = label_text, color = category),
+    direction = "y",
+    nudge_x = 0.65,
+    # nudge_y = 10,
+    # segment.color = "gray50",
+    # size = 3.5,
+    force = 1,
+    show.legend = FALSE
+  ) +
+  scale_fill_manual(
+    values = c(
+      "planned" = sb_colors[["sky"]],
+      "remain" = "gray"
+    )
+  ) +
+  scale_color_manual(
+    values = c(
+      "planned" = sb_colors[["sky"]],
+      "remain" = "gray"
+    )
+  ) +
+  scale_y_continuous(
+    limits = c(-250, total_prp_miles + 200),
+    expand = c(0, 0)
+  ) +
+  coord_flip(clip = "off") +
+  labs(y = "", x = "") +
+  theme(
+    axis.line = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank(),
+    legend.position = "none",
+    plot.margin = margin(t = 40, r = 10, b = 10, l = 10)
+  )
+```
+
+
+
+```{r}
+#| label: fig-miles-of-prp-1seg
+#| fig-cap: "Miles of pipeline replaced by PRP projects."
+#| fig-width: 8
+#| fig-height: 5
+
+# Calculate miles by project type
+
+n_miles_remaining <- total_prp_miles
+
+# Create data frame with manual position calculation
+plot_data <- data.frame(
+  category = factor(
+    c("remain"),
+    levels = c("remain")
+  ),
+  label = c(
+    "Remaining PRP miles"
+  ),
+  miles = c(n_miles_remaining)
+) |>
+  arrange(desc(category)) |>
+  mutate(
+    cumsum_miles = cumsum(miles),
+    text_position = c(total_prp_miles), #cumsum_miles - miles / 2,
+    label_text = paste0(label, "\n(", scales::comma(round(miles)), " miles)")
+  )
+
+ggplot() +
+  geom_bar(
+    data = plot_data,
+    aes(x = "", y = miles, fill = category),
+    stat = "identity",
+    width = 0.7
+  ) +
+  ggrepel::geom_text_repel(
+    data = plot_data,
+    aes(x = "", y = text_position, label = label_text, color = category),
+    direction = "y",
+    nudge_x = 0.65,
+    # nudge_y = 10,
+    # segment.color = "gray50",
+    # size = 3.5,
+    force = 1,
+    show.legend = FALSE
+  ) +
+  scale_fill_manual(
+    values = c(
+      "remain" = "gray"
+    )
+  ) +
+  scale_color_manual(
+    values = c(
+      "remain" = "gray"
+    )
+  ) +
+  scale_y_continuous(limits = c(-250, total_prp_miles+200), expand = c(0, 0)) +
+  coord_flip(clip = "off") +
+  labs(y = "", x = "") +
+  theme(
+    axis.line = element_blank(),
+    axis.title = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank(),
+    legend.position = "none",
+    plot.margin = margin(t = 40, r = 10, b = 10, l = 10)
+  )
+```
+
 
 ```{r}
 plot_pg_polygons_map <- function(pg_summary, fill_col, discrete = FALSE,

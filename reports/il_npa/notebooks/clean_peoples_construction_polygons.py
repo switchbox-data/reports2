@@ -7,7 +7,7 @@ Script Workflow and Transformations Summary
 -------------------------------------------
 
 This script prepares and cleans Peoples Gas construction polygons data for further spatial analysis. Below are the key transformations performed:
-
+Data was sourced from the Peoples Gas Construction Polygons dataset using reports/il_npa/utils/download_peoplesgas_data.py
 1. **File Loading and Setup**
    - Sets up directories for input (`../data/geo_data`, `../utils`) and output (`../data/outputs`).
    - Locates and reads the most recent available Peoples Gas construction polygons file.
@@ -21,10 +21,27 @@ This script prepares and cleans Peoples Gas construction polygons data for furth
    - Removes polygons classified as `"PI / SI"` in the `PRP_TYPE` column (with or without trailing space).
    - Removes polygons with `STATUS` set to `"Street and landscape restoration"`.
 
-4. **Diagnostics**
+4. **Unioning Overlapping Polygons**
+   - Uses a threshold of 1 square meter to union overlapping polygons.
+   - Uses a connected components algorithm to find overlapping polygons.
+   - Uses a union operation to combine overlapping polygons.
+
+5. **Status assignment**
+   - Assigns a status to each polygon based on the `C_START` column.
+   - If the `C_START` date is before the `MIN_START` date, the polygon is assigned the status "closed".
+   - If the `C_START` date is after the `MIN_START` date, the polygon is assigned the status "planned".
+
+6. **Diagnostics**
    - Reports counts and summaries to provide transparency about any data removed or modified.
 
-The result is a cleaned and filtered Peoples Gas construction polygon dataset, ready for unioning, further geometric processing, and integration with additional city datasets in downstream workflows.
+The result is 2 versions of the cleaned and filtered Peoples Gas construction polygon dataset, ready for integration with additional city datasets in downstream workflows.
+
+1. `peoples_polygons_unioned.geojson` - Unioned polygons by status_simple (overlap > 1 sq meter)
+    - This file is used for further geometric processing and integration with additional city datasets in downstream workflows.
+    - Planned and closed polygons are unioned separately. No clipping is performed where closed polygons overlap with planned polygons.
+2. `peoples_polygons_unioned_clipped.geojson` - Unioned polygons by status_simple (overlap > 1 sq meter) clipped by closed polygons
+    - This file was not used in the analysis.
+    - Planned and closed polygons are unioned separately. Planned polygons are clipped by the union of all closed polygons.
 """
 
 from datetime import datetime
@@ -32,6 +49,7 @@ from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
+from shapely.ops import unary_union
 
 timestamp = datetime.now().strftime("%Y%m%d")
 # Set paths
@@ -40,7 +58,7 @@ outputs_dir = data_dir / "outputs"
 outputs_dir.mkdir(parents=True, exist_ok=True)  # Ensure outputs directory exists
 utils_dir = Path("../utils")
 
-
+MIN_START = "2026-01-01"
 # --- Code Cell 5 ---
 
 # Find the most recent Peoples Gas data file
@@ -82,7 +100,7 @@ if pg_files:
 
     # Create status_simple column
     filtered["status_simple"] = filtered["C_START"].apply(
-        lambda x: "closed" if pd.notnull(x) and x < pd.Timestamp("2026-01-01") else "planned"
+        lambda x: "closed" if pd.notnull(x) and x < pd.Timestamp(MIN_START) else "planned"
     )
 
     # Show summary stats for C_START grouped by status_simple
@@ -92,7 +110,6 @@ if pg_files:
         print(stats)
 
     # Create a new spatial object that contains a union of overlapping polygons by "status_simple"
-    from shapely.ops import unary_union
 
     # Threshold for unioning overlapping polygons: 1 square meter
     # Note: This is applied in UTM Zone 16N (EPSG:32616) which uses meters, so area is in square meters

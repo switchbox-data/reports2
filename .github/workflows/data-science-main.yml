@@ -6,33 +6,96 @@ on:
   pull_request:
     types: [ opened, synchronize, reopened, ready_for_review ]
 
+# This workflow uses a 3-job structure to optimize CI performance:
+#
+# 1. setup: Builds ONLY the devcontainer image (base environment, no deps) and pushes to registry, for use by subsequent jobs, and to speed upDevpod.
+# 2. quality-checks & tests: Pulls the prebuilt devcontainer image, run in PARALLEL, installing fresh deps each time, to avoid stale dependencies.
+
 jobs:
-  quality-checks:
+  setup:
+    # The point of this job is simply to build and publish the devcontainer image, if devcontainer.json changes.
+    # Uses devcontainer CLI directly instead of devcontainers/ci to avoid pointlessly
+    # running postCreateCommand (which installs Python, R, and prek deps).
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write  # Needed to push image to ghcr.io
     steps:
       - uses: actions/checkout@v5
 
-      - uses: devcontainers/ci@v0.3
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          push: never
-          runCmd: echo "Container started"
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: run quality checks
-        uses: ./.github/actions/run-in-devcontainer
+      - name: Install Dev Container CLI
+        run: npm install -g @devcontainers/cli
+
+      - name: Build devcontainer image
+        run: |
+          devcontainer build \
+            --workspace-folder . \
+            --image-name ghcr.io/switchbox-data/reports2:latest \
+            --cache-from ghcr.io/switchbox-data/reports2:latest
+
+      - name: Push image to registry
+        run: docker push ghcr.io/switchbox-data/reports2:latest
+
+  quality-checks:
+    # Waits for setup to complete, then runs quality checks in parallel with tests.
+    # Pulls prebuilt base image, installs deps fresh, to avoid stale dependencies.
+    needs: setup
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read  # Only need read access to pull image
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run quality checks
+        uses: devcontainers/ci@v0.3
+        with:
+          imageName: ghcr.io/switchbox-data/reports2
+          # cacheFrom: Pull the image setup just pushed
+          cacheFrom: ghcr.io/switchbox-data/reports2
+          # push: never = Don't push, just use the image. It's setup's job to push the image.
+          push: never
+          # postCreateCommand runs automatically before this (installs deps fresh)
           runCmd: just check
 
   tests:
+    # Runs in parallel with quality-checks. Pulls prebuilt base image, installs deps fresh, to avoid stale dependencies.
+    needs: setup
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read  # Only need read access to pull image
     steps:
       - uses: actions/checkout@v5
 
-      - uses: devcontainers/ci@v0.3
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          push: never
-          runCmd: echo "Container started"
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: run tests
-        uses: ./.github/actions/run-in-devcontainer
+      - name: Run tests
+        uses: devcontainers/ci@v0.3
         with:
+          imageName: ghcr.io/switchbox-data/reports2
+          # cacheFrom: Pull the image setup just pushed
+          cacheFrom: ghcr.io/switchbox-data/reports2
+          # push: never = Don't push, just use the image. It's setup's job to push the image.
+          push: never
+          # postCreateCommand runs automatically before this (installs deps fresh)
           runCmd: just test

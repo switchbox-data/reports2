@@ -142,7 +142,7 @@ If you prefer not to use dev containers:
    just install
    ```
 
-   This command runs `.devcontainer/postCreateCommand.sh`, which:
+   This command runs `.devcontainer/installDependencies.sh`, which:
    - Syncs Python dependencies with `uv`
    - Detect R packages used in the reports and install them with `pak`
    - Installs pre-commit hooks

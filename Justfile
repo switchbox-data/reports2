@@ -48,7 +48,7 @@ new_report:
 # Install the virtual environment and install the pre-commit hooks
 install:
     echo "🚀 Creating virtual environment using uv, install pre-commit hooks with prek"
-    .devcontainer/postCreateCommand.sh
+    .devcontainer/installDependencies.sh
 
 # Clean generated files and caches
 clean:

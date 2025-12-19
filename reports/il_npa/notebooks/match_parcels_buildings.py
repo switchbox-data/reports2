@@ -11,10 +11,10 @@ This script executes a spatial join between Cook County parcels and Chicago buil
 
 **Key workflow steps:**
 1. Load the most recent parcels and building footprints from the geo_data directory, as GeoDataFrames.
-2. Load the Cook County Assessor lookup table for unit counts and building class information.
+2. Load the Cook County Assessor lookup table for unit counts and building class information. This table was manually assembled using codes published by the Cook county assessor's office. https://prodassets.cookcountyassessoril.gov/s3fs-public/form_documents/classcode.pdf
 3. Ensure all spatial datasets use a projected CRS suitable for accurate spatial operations.
 4. Clean and validate geometries to avoid spatial errors.
-5. Perform a spatial join between parcels and buildings to determine which buildings are located within which parcels.
+5. Perform a spatial join between parcels and buildings to determine which buildings are located within which parcels. Parcel data provides us with the building type (residential, mixed-use, commercial, industrial) but does not have the number of units in the building for multi-family buildings. Building data provides us with the number of units in the building for multi-family buildings.
 6. For buildings that fall within a parcel, the script aims to establish a 1:1 correspondence between buildings and parcels:
     - If a parcel matches to multiple buildings (a common situation for multi-building lots or complex footprints), the script identifies the building that has the greatest area overlap with the parcel and uses only this building for that parcel.
     - This "area of overlap" is computed via intersection of building and parcel geometries.
@@ -86,25 +86,25 @@ def read_geojson_with_s3_fallback(local_path: Path, s3_bucket: str, s3_key: str)
         # Clean up temporary file
         os.unlink(tmp_path)
 
-        print("  ✅ Successfully loaded from S3")
+        print("  Successfully loaded from S3")
         return gdf
 
     except NoCredentialsError:
-        print("  ❌ Error: AWS credentials not found. Cannot read from S3.")
+        print("  Error: AWS credentials not found. Cannot read from S3.")
         raise
     except ClientError as e:
         error_code = e.response.get("Error", {}).get("Code", "Unknown")
         if error_code == "NoSuchKey":
-            print(f"  ❌ Error: File not found in S3: s3://{s3_bucket}/{s3_key}")
+            print(f"  Error: File not found in S3: s3://{s3_bucket}/{s3_key}")
         else:
-            print(f"  ❌ AWS Error ({error_code}): {e}")
+            print(f"  AWS Error ({error_code}): {e}")
         raise
     except Exception as e:
-        print(f"  ❌ Unexpected error reading from S3: {e}")
+        print(f"  Unexpected error reading from S3: {e}")
         raise
 
 
-print("🔍 Parcel-Building Matching Script")
+print("Parcel-Building Matching Script")
 print("=" * 60)
 
 # Find the most recent parcels file (full dataset)
@@ -117,7 +117,7 @@ if parcel_files:
     print(f"Loading parcels: {parcels_file.name}")
 else:
     # No local file found, try to find most recent in S3
-    print("⚠️  No local parcels file found, attempting to find most recent in S3...")
+    print("No local parcels file found, attempting to find most recent in S3...")
     try:
         s3_client = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-west-2"))
         # List objects with prefix
@@ -133,7 +133,7 @@ else:
         else:
             raise FileNotFoundError("No parcels files found in S3")
     except Exception as e:
-        print(f"❌ Error finding parcels in S3: {e}")
+        print(f"Error finding parcels in S3: {e}")
         print("Please run: just fetch-parcels")
         exit(1)
     local_path = geo_data_dir / "cook_county_parcels_NOT_FOUND.geojson"  # Won't exist, triggers S3 read
@@ -155,7 +155,7 @@ if building_files:
     print(f"Loading buildings: {buildings_file.name}")
 else:
     # No local file found, try to find most recent in S3
-    print("⚠️  No local buildings file found, attempting to find most recent in S3...")
+    print("No local buildings file found, attempting to find most recent in S3...")
     try:
         s3_client = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-west-2"))
         # List objects with prefix
@@ -171,7 +171,7 @@ else:
         else:
             raise FileNotFoundError("No buildings files found in S3")
     except Exception as e:
-        print(f"❌ Error finding buildings in S3: {e}")
+        print(f"Error finding buildings in S3: {e}")
         print("Please run: just fetch-buildings")
         exit(1)
     local_path = geo_data_dir / "chicago_buildings_NOT_FOUND.geojson"  # Won't exist, triggers S3 read
@@ -186,7 +186,7 @@ print(f"  Loaded {len(buildings):,} buildings")
 # Load assessor lookup
 lookup_file = data_dir / "cook_county_assessor_lookup.csv"
 if not lookup_file.exists():
-    print("⚠️  Assessor lookup file not found locally, downloading from Google Sheets...")
+    print("Assessor lookup file not found locally, downloading from Google Sheets...")
     try:
         import urllib.request
 
@@ -198,9 +198,9 @@ if not lookup_file.exists():
 
         # Download the file
         urllib.request.urlretrieve(sheet_url, lookup_file)
-        print("  ✅ Successfully downloaded assessor lookup from Google Sheets")
+        print("  Successfully downloaded assessor lookup from Google Sheets")
     except Exception as e:
-        print(f"  ❌ Error downloading assessor lookup: {e}")
+        print(f"  Error downloading assessor lookup: {e}")
         print(
             "  Please manually download from: https://docs.google.com/spreadsheets/d/1xxa47dClvp0rosZhUP1R7790CNXMLSD_0ExrPccR3p0/edit?gid=770211799#gid=770211799"
         )
@@ -210,7 +210,7 @@ print(f"Loading assessor lookup: {lookup_file.name}")
 assessor_lookup = pd.read_csv(lookup_file, dtype={"assessor_class": str})
 
 # Classify parcels
-print("\n📋 Classifying parcels...")
+print("\nClassifying parcels...")
 parcels_classified = parcels.merge(assessor_lookup, left_on="assessorbldgclass", right_on="assessor_class", how="left")
 
 classified_count = parcels_classified["type"].notna().sum()
@@ -249,7 +249,7 @@ if len(buildings) > 0:
     parcels_classified_utm["geometry"] = parcels_classified_utm["geometry"].make_valid()
     buildings_utm["geometry"] = buildings_utm["geometry"].make_valid()
 
-    print("\n🔍 Starting parcel-building matching...")
+    print("\nStarting parcel-building matching...")
     print(f"  Parcels: {len(parcels_classified_utm):,}")
     print(f"  Buildings: {len(buildings_utm):,}")
 
@@ -300,14 +300,14 @@ if len(buildings) > 0:
         & (parcels_with_units["latitude"].astype(float).round(8) == round(41.74593814, 8))
     ]
     if len(test_parcel) > 0:
-        print("\n✅ Validation check for test parcel (-87.57623748, 41.74593814):")
+        print("\nValidation check for test parcel (-87.57623748, 41.74593814):")
         print(f"   Matched building_id: {test_parcel['matched_building_id'].values[0]}")
         print(f"   Building units: {test_parcel['building_units_raw'].values[0]}")
         print("   Expected building_id: 631646")
         if test_parcel["matched_building_id"].values[0] == "631646":
-            print("   ✓ Match is correct!")
+            print("   Match is correct!")
         else:
-            print("   ⚠️  Match differs from expected")
+            print("   Match differs from expected")
 
     # Create working column starting with raw data
     parcels_with_units["building_units"] = parcels_with_units["building_units_raw"].copy()
@@ -354,7 +354,7 @@ if len(buildings) > 0:
     raw_data_count = parcels_with_units["building_units_raw"].notna().sum()
     interpolated_count = matched_count - raw_data_count
 
-    print("\n📊 Building Unit Data Summary:")
+    print("\nBuilding Unit Data Summary:")
     print(f"  Total parcels: {total_parcels:,}")
     print(f"  From building footprint data: {raw_data_count:,} ({raw_data_count / total_parcels * 100:.1f}%)")
     print(
@@ -373,7 +373,7 @@ else:
     parcels_with_units["building_units_raw"] = None
 
 # Export parcels_with_units as GeoJSON
-print("\n💾 Exporting parcels_with_units...")
+print("\nExporting parcels_with_units...")
 output_file = outputs_dir / f"parcels_with_units_{timestamp}.geojson"
 
 # Ensure geometry is in WGS84 for export (parcels_classified_utm was in UTM, but parcels_with_units may be in original CRS)
@@ -381,7 +381,7 @@ if parcels_with_units.crs != "EPSG:4326":
     parcels_with_units = parcels_with_units.to_crs("EPSG:4326")
 
 parcels_with_units.to_file(output_file, driver="GeoJSON")
-print(f"✅ Exported {len(parcels_with_units):,} parcels with units to {output_file.name}")
-print(f"📁 File: {output_file}")
+print(f"Exported {len(parcels_with_units):,} parcels with units to {output_file.name}")
+print(f"File: {output_file}")
 
-print("\n✅ Parcel-building matching complete!")
+print("\nParcel-building matching complete!")

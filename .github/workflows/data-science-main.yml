@@ -135,8 +135,22 @@ jobs:
             --debug
 
   quality-checks:
-    # Waits for build-devcontainer-image to complete, then runs quality checks in parallel with tests.
-    # Pulls prebuilt base image, installs deps fresh, to avoid stale dependencies.
+    # Runs quality checks (lock file validation + pre-commit hooks) in parallel with tests.
+    #
+    # WHY USE PLAIN DOCKER INSTEAD OF devcontainers/ci?
+    #
+    # The devcontainers/ci action is designed as a "build-and-run" tool. Even when you
+    # provide cacheFrom, it still rebuilds the container (~2-8 minutes). We don't want
+    # to rebuild - we want to pull the exact image that build-devcontainer-image just
+    # pushed and run commands in it.
+    #
+    # Using plain Docker:
+    #   - Pulls the prebuilt :latest image (~10 seconds)
+    #   - Mounts the code from the GHA runner into the container
+    #   - Runs the command directly (no rebuild, no postCreateCommand)
+    #   - All dependencies are already baked into the image
+    #
+    # Time savings: ~2-8 minutes per job
     needs: build-devcontainer-image
     runs-on: ubuntu-latest
     permissions:
@@ -152,19 +166,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run quality checks
-        uses: devcontainers/ci@v0.3
-        with:
-          imageName: ghcr.io/switchbox-data/reports2
-          # cacheFrom: Pull the image build-devcontainer-image just pushed
-          cacheFrom: ghcr.io/switchbox-data/reports2:latest
-          # push: never = Don't push, just use the image. It's build-devcontainer-image's job to push the image.
-          push: never
-          # postCreateCommand runs automatically before this (installs deps fresh)
-          runCmd: just check
+      - name: Pull prebuilt devcontainer image
+        run: docker pull ghcr.io/switchbox-data/reports2:latest
+
+      - name: Run quality checks in container
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspaces/reports2 \
+            -w /workspaces/reports2 \
+            --user vscode \
+            ghcr.io/switchbox-data/reports2:latest \
+            bash -c "just check"
 
   tests:
-    # Runs in parallel with quality-checks. Pulls prebuilt base image, installs deps fresh, to avoid stale dependencies.
+    # Runs pytest test suite in parallel with quality-checks.
+    # Uses the same pull-and-run strategy as quality-checks (see comments there).
     needs: build-devcontainer-image
     runs-on: ubuntu-latest
     permissions:
@@ -180,13 +196,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run tests
-        uses: devcontainers/ci@v0.3
-        with:
-          imageName: ghcr.io/switchbox-data/reports2
-          # cacheFrom: Pull the image build-devcontainer-image just pushed
-          cacheFrom: ghcr.io/switchbox-data/reports2:latest
-          # push: never = Don't push, just use the image. It's build-devcontainer-image's job to push the image.
-          push: never
-          # postCreateCommand runs automatically before this (installs deps fresh)
-          runCmd: just test
+      - name: Pull prebuilt devcontainer image
+        run: docker pull ghcr.io/switchbox-data/reports2:latest
+
+      - name: Run tests in container
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspaces/reports2 \
+            -w /workspaces/reports2 \
+            --user vscode \
+            ghcr.io/switchbox-data/reports2:latest \
+            bash -c "just test"

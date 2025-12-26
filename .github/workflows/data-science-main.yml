@@ -6,15 +6,56 @@ on:
   pull_request:
     types: [ opened, synchronize, reopened, ready_for_review ]
 
+# ============================================================================
+# CI/CD ARCHITECTURE: Devcontainer Build + Parallel Test Execution
+# ============================================================================
+#
 # This workflow uses a 3-job structure to optimize CI performance:
 #
-# 1. build-devcontainer-image: Builds ONLY the devcontainer image (base environment, no deps) and pushes to registry with :latest tag.
-# 2. quality-checks & tests: Pull the prebuilt :latest image and run commands directly in it (no rebuild), running in PARALLEL.
+# 1. build-devcontainer-image: Builds the devcontainer image and pushes to GHCR
+# 2. quality-checks & tests: Pull the prebuilt image and run checks in PARALLEL
+#
+# WHY USE DEVPOD FOR CI BUILDS?
+#
+# We use DevPod CLI (not docker/build-push-action) to build devcontainer images
+# because it provides TWO layers of caching that dramatically reduce build times:
+#
+#   Layer 1: Hash-Based Caching (Complete Skip)
+#     - DevPod hashes devcontainer.json + Dockerfile + build context files
+#     - If hash matches existing image → Skip build entirely (~30s vs ~8min)
+#     - Example: Changing only README.md doesn't rebuild the image
+#
+#   Layer 2: BuildKit Registry Layer Caching (Incremental Build)
+#     - When hash changes → DevPod performs an incremental rebuild
+#     - BuildKit reuses unchanged layers from GHCR registry cache
+#     - Only rebuilds layers starting from the changed file
+#     - Example: Adding a Python package only rebuilds the final Python deps layer
+#
+# CACHE STORAGE:
+#
+#   - Final images: ghcr.io/switchbox-data/reports2:devpod-<hash> (hash-based tag)
+#                   ghcr.io/switchbox-data/reports2:latest (for CI jobs)
+#   - Layer cache:  ghcr.io/switchbox-data/reports2:buildcache (stable tag)
+#
+# WHY A DEDICATED :buildcache TAG?
+#
+# BuildKit needs a stable reference to store/retrieve layer cache. Using the
+# image tags (devpod-<hash>, latest) doesn't work because they change on every
+# build. The :buildcache tag persists across builds, allowing BuildKit to
+# accumulate cached layers over time.
+#
+# EXPECTED BUILD TIMES:
+#
+#   - Cache hit (hash match):      ~30s (no rebuild)
+#   - Layer cache hit:             ~2-4min (incremental rebuild)
+#   - Full rebuild (no cache):     ~8min (everything from scratch)
+#
+# ============================================================================
 
 jobs:
   build-devcontainer-image:
-    # Builds and publishes the devcontainer image using DevPod CLI (required for devpod up compatibility).
-    # DevPod build creates images with hash-based tags, which we also tag as 'latest' for use by CI jobs.
+    # Builds and publishes the devcontainer image using DevPod CLI.
+    # DevPod creates hash-based tags (e.g. devpod-d95c1f5a) and we also tag as :latest.
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -32,7 +73,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # User skevetter's fork of DevPod CLI, which is actually maintained.
+      # Install DevPod CLI (skevetter's maintained fork)
       - name: Install DevPod CLI
         run: |
           curl -L -o devpod "https://github.com/skevetter/devpod/releases/latest/download/devpod-linux-amd64"
@@ -42,45 +83,47 @@ jobs:
       - name: Initialize Docker provider
         run: devpod provider add docker
 
+      # Configure BuildKit layer caching via DevPod
+      # This enables Layer 2 caching (incremental builds when hash changes)
       - name: Configure DevPod to use GHCR as a build cache backend
         run: |
-          # This speeds up devcontainer image builds by reusing cached layers when possible.
-          # Cached layers are stored at ghcr.io/switchbox-data/reports2:buildcache.
-          # Using a dedicated :buildcache tag ensures BuildKit finds the correct cache manifest.
-          # Under the hood, DevPod automatically adds BuildKit cache flags:
+          # DevPod automatically translates REGISTRY_CACHE into BuildKit cache flags:
           #   --cache-from type=registry,ref=ghcr.io/switchbox-data/reports2:buildcache
           #   --cache-to type=registry,ref=ghcr.io/switchbox-data/reports2:buildcache,mode=max
+          #
+          # mode=max ensures ALL intermediate layers are cached (not just the final image).
+          # This allows BuildKit to reuse layers even when the final image hash changes.
+          #
+          # Example: If you add a Python package (changing pyproject.toml):
+          #   - Layers 1-21 (base Ubuntu, R, Quarto, etc.): CACHED ✓ (pulled from :buildcache)
+          #   - Layer 22 (Python deps): REBUILT (only this layer changes)
+          #
+          # This turns an 8-minute full rebuild into a ~2-minute incremental rebuild.
 
           devpod context set-options -o REGISTRY_CACHE=ghcr.io/switchbox-data/reports2:buildcache
 
+      # Build the devcontainer image with DevPod
+      # DevPod provides two-tier caching (see workflow header for details)
       - name: Build and push devcontainer image with DevPod
         run: |
-          # TWO-TIER TAGGING STRATEGY:
+          # DEVPOD TAGGING BEHAVIOR:
           #
-          # DevPod will build the image and tag it with:
-          # 1. A hash-based tag (e.g. devpod-d95c1f5a), for use with `devpod up`. It does this automatically.
-          # 2. The 'latest' tag, for use by downstream jobs. It does this via the --tag flag.
+          # DevPod automatically creates two tags for the built image:
+          #   1. devpod-<hash> - Hash-based tag for `devpod up` compatibility
+          #   2. latest - Via --tag flag, used by downstream CI jobs
           #
+          # The hash is calculated from:
+          #   - devcontainer.json content
+          #   - Dockerfile content
+          #   - Files COPYed in Dockerfile (install scripts, pyproject.toml, uv.lock, etc.)
           #
-          # TWO-TIER CACHING STRATEGY:
+          # If the hash matches an existing image in the registry → DevPod skips the
+          # build entirely and just pulls the existing image (~30s instead of minutes).
           #
-          # 1. DevPod Hash-Based Caching (Complete Skip):
-          #    - DevPod calculates a hash from devcontainer.json (and Dockerfile if used)
-          #    - If hash matches existing image in registry → skip build entirely (~30s)
-          #    - Triggered when: No changes to devcontainer.json, features, or base image
-          #
-          # 2. BuildKit Registry Layer Caching (Incremental Build):
-          #    - If devcontainer.json changes → `devpod build` actually preforms a rebuld
-          #    - With REGISTRY_CACHE set above, BuildKit detects which layers to reuse from GHCR registry cache.
-          #    - Layers BEFORE the change: Pulled from cache and reused (marked CACHED)
-          #    - Layers STARTING WITH the change: Rebuilt from scratch
-          #
-          # Example: Adding a Python package in pyproject.toml
-          #   - Base Ubuntu layer: CACHED ✓
-          #   - Zsh, Just, Python, R, Quarto features: CACHED ✓
-          #   - Python dependencies layer: REBUILT (only this changed)
+          # If the hash is different → DevPod performs a full build, but BuildKit
+          # still uses layer caching (configured above) to reuse unchanged layers.
 
-          # Enable BuildKit debug logs to troubleshoot cache
+          # Enable debug logging to troubleshoot cache behavior
           export BUILDKIT_PROGRESS=plain
 
           devpod build . \
@@ -91,8 +134,18 @@ jobs:
             --debug
 
   quality-checks:
-    # Waits for build-devcontainer-image to complete, then runs quality checks in parallel with tests.
-    # Pulls prebuilt base image, installs deps fresh, to avoid stale dependencies.
+    # Runs quality checks (lock file validation + pre-commit hooks) in the devcontainer.
+    # Waits for build-devcontainer-image to complete, then runs in parallel with tests.
+    #
+    # WHY USE devcontainers/ci INSTEAD OF DOCKER RUN?
+    #
+    # The devcontainers/ci action properly handles devcontainer lifecycle:
+    #   1. Pulls the prebuilt image from cacheFrom (no rebuild)
+    #   2. Runs postCreateCommand (installs R/Python deps fresh from lock files)
+    #   3. Executes the runCmd in the container
+    #
+    # This ensures we test against FRESH dependencies (not stale cached ones) while
+    # still reusing the expensive base environment (Ubuntu, R, Python, Quarto, etc.).
     needs: build-devcontainer-image
     runs-on: ubuntu-latest
     permissions:
@@ -112,15 +165,17 @@ jobs:
         uses: devcontainers/ci@v0.3
         with:
           imageName: ghcr.io/switchbox-data/reports2
-          # cacheFrom: Pull the image build-devcontainer-image just pushed
+          # cacheFrom: Pull the :latest image that build-devcontainer-image just pushed
+          # This avoids rebuilding - we just pull and use the existing image
           cacheFrom: ghcr.io/switchbox-data/reports2:latest
-          # push: never = Don't push, just use the image. It's build-devcontainer-image's job to push the image.
+          # push: never = Don't push, just use the image (build job already pushed it)
           push: never
-          # postCreateCommand runs automatically before this (installs deps fresh)
+          # postCreateCommand runs automatically before runCmd (installs deps fresh)
           runCmd: just check
 
   tests:
-    # Runs in parallel with quality-checks. Pulls prebuilt base image, installs deps fresh, to avoid stale dependencies.
+    # Runs pytest test suite in the devcontainer.
+    # Same strategy as quality-checks - pull prebuilt image, install fresh deps, run tests.
     needs: build-devcontainer-image
     runs-on: ubuntu-latest
     permissions:
@@ -140,9 +195,9 @@ jobs:
         uses: devcontainers/ci@v0.3
         with:
           imageName: ghcr.io/switchbox-data/reports2
-          # cacheFrom: Pull the image build-devcontainer-image just pushed
+          # cacheFrom: Pull the :latest image that build-devcontainer-image just pushed
           cacheFrom: ghcr.io/switchbox-data/reports2:latest
-          # push: never = Don't push, just use the image. It's build-devcontainer-image's job to push the image.
+          # push: never = Don't push, just use the image (build job already pushed it)
           push: never
-          # postCreateCommand runs automatically before this (installs deps fresh)
+          # postCreateCommand runs automatically before runCmd (installs deps fresh)
           runCmd: just test

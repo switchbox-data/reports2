@@ -43,12 +43,16 @@ echo "📦 Installing uv package manager..."
 curl -LsSf https://astral.sh/uv/install.sh | sh
 echo
 
-# Verify installation by checking if uv works
+# Add uv to PATH for this session
+# The installer adds uv to ~/.local/bin, so we add that to PATH
+export PATH="${HOME}/.local/bin:${PATH}"
+
+# Verify installation
 if ! UV_VERSION=$(uv --version 2>&1); then
     echo "❌ ERROR: uv installation failed or uv command not found" >&2
+    echo "Expected location: ${HOME}/.local/bin/uv" >&2
     exit 1
 fi
-
 echo "✅ Installed: ${UV_VERSION}"
 echo
 

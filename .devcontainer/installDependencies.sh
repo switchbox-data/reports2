@@ -16,5 +16,6 @@ prek install --install-hooks
 
 
 # Check R environment and restore if needed
-chmod +x ./.devcontainer/checkREnvironment.sh
-bash ./.devcontainer/checkREnvironment.sh
+# Commented out - now using r-dependent-packages feature in devcontainer.json
+# chmod +x ./.devcontainer/checkREnvironment.sh
+# bash ./.devcontainer/checkREnvironment.sh

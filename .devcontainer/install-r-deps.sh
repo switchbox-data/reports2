@@ -44,14 +44,21 @@ R_VERSION=$(R --version | head -1)
 echo "✅ Using: ${R_VERSION}"
 echo
 
+# Detect platform and set appropriate repository
+OS_TYPE=$(uname -s)
+if [ "$OS_TYPE" = "Linux" ]; then
+    REPO_CONFIG="options(repos = c(CRAN = 'https://cran.rstudio.com/', P3M = 'https://p3m.dev/cran/__linux__/noble/latest'))"
+    echo "🐧 Detected Linux - using P3M for fast binary installs"
+else
+    REPO_CONFIG="options(repos = c(CRAN = 'https://cran.rstudio.com/'))"
+    echo "🍎 Detected macOS - using CRAN"
+fi
+echo
+
 # Create the R script to run
-R_SCRIPT=$(cat <<'RSCRIPT'
-# Set repositories
-# P3M provides pre-compiled binaries for both ARM and x_86 on Ubuntu 24.04 (faster installs)
-options(repos = c(
-  CRAN = 'https://cran.rstudio.com/',
-  P3M = 'https://p3m.dev/cran/__linux__/noble/latest'
-))
+R_SCRIPT=$(cat <<RSCRIPT
+# Set repositories based on platform
+${REPO_CONFIG}
 
 # Check if pak is installed
 if (!requireNamespace("pak", quietly = TRUE)) {

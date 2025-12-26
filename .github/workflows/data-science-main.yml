@@ -18,7 +18,8 @@ on:
 # WHY USE DEVPOD FOR CI BUILDS?
 #
 # We use DevPod CLI (not docker/build-push-action) to build devcontainer images
-# because it provides TWO layers of caching that dramatically reduce build times:
+# because it creates a hash-based tag for the image, which is required if we want
+# to use the prebuilt image with devpod up.
 #
 #   Layer 1: Hash-Based Caching (Complete Skip)
 #     - DevPod hashes devcontainer.json + Dockerfile + build context files
@@ -134,18 +135,8 @@ jobs:
             --debug
 
   quality-checks:
-    # Runs quality checks (lock file validation + pre-commit hooks) in the devcontainer.
-    # Waits for build-devcontainer-image to complete, then runs in parallel with tests.
-    #
-    # WHY USE devcontainers/ci INSTEAD OF DOCKER RUN?
-    #
-    # The devcontainers/ci action properly handles devcontainer lifecycle:
-    #   1. Pulls the prebuilt image from cacheFrom (no rebuild)
-    #   2. Runs postCreateCommand (installs R/Python deps fresh from lock files)
-    #   3. Executes the runCmd in the container
-    #
-    # This ensures we test against FRESH dependencies (not stale cached ones) while
-    # still reusing the expensive base environment (Ubuntu, R, Python, Quarto, etc.).
+    # Waits for build-devcontainer-image to complete, then runs quality checks in parallel with tests.
+    # Pulls prebuilt base image, installs deps fresh, to avoid stale dependencies.
     needs: build-devcontainer-image
     runs-on: ubuntu-latest
     permissions:
@@ -165,17 +156,15 @@ jobs:
         uses: devcontainers/ci@v0.3
         with:
           imageName: ghcr.io/switchbox-data/reports2
-          # cacheFrom: Pull the :latest image that build-devcontainer-image just pushed
-          # This avoids rebuilding - we just pull and use the existing image
+          # cacheFrom: Pull the image build-devcontainer-image just pushed
           cacheFrom: ghcr.io/switchbox-data/reports2:latest
-          # push: never = Don't push, just use the image (build job already pushed it)
+          # push: never = Don't push, just use the image. It's build-devcontainer-image's job to push the image.
           push: never
-          # postCreateCommand runs automatically before runCmd (installs deps fresh)
+          # postCreateCommand runs automatically before this (installs deps fresh)
           runCmd: just check
 
   tests:
-    # Runs pytest test suite in the devcontainer.
-    # Same strategy as quality-checks - pull prebuilt image, install fresh deps, run tests.
+    # Runs in parallel with quality-checks. Pulls prebuilt base image, installs deps fresh, to avoid stale dependencies.
     needs: build-devcontainer-image
     runs-on: ubuntu-latest
     permissions:
@@ -195,9 +184,9 @@ jobs:
         uses: devcontainers/ci@v0.3
         with:
           imageName: ghcr.io/switchbox-data/reports2
-          # cacheFrom: Pull the :latest image that build-devcontainer-image just pushed
+          # cacheFrom: Pull the image build-devcontainer-image just pushed
           cacheFrom: ghcr.io/switchbox-data/reports2:latest
-          # push: never = Don't push, just use the image (build job already pushed it)
+          # push: never = Don't push, just use the image. It's build-devcontainer-image's job to push the image.
           push: never
-          # postCreateCommand runs automatically before runCmd (installs deps fresh)
+          # postCreateCommand runs automatically before this (installs deps fresh)
           runCmd: just test

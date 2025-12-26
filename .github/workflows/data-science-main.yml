@@ -8,8 +8,8 @@ on:
 
 # This workflow uses a 3-job structure to optimize CI performance:
 #
-# 1. build-devcontainer-image: Builds ONLY the devcontainer image (base environment, no deps) and pushes to registry, for use by subsequent jobs, and to speed up Devpod.
-# 2. quality-checks & tests: Pulls the prebuilt devcontainer image, run in PARALLEL, installing fresh deps each time, to avoid stale dependencies.
+# 1. build-devcontainer-image: Builds ONLY the devcontainer image (base environment, no deps) and pushes to registry with :latest tag.
+# 2. quality-checks & tests: Pull the prebuilt :latest image and run commands directly in it (no rebuild), running in PARALLEL.
 
 jobs:
   build-devcontainer-image:
@@ -32,20 +32,53 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # User skevetter's fork of DevPod CLI, which is actually maintained.
       - name: Install DevPod CLI
         run: |
-          curl -L -o devpod "https://github.com/loft-sh/devpod/releases/latest/download/devpod-linux-amd64"
+          curl -L -o devpod "https://github.com/skevetter/devpod/releases/latest/download/devpod-linux-amd64"
           chmod +x devpod
           sudo mv devpod /usr/local/bin/
 
       - name: Initialize Docker provider
         run: devpod provider add docker
 
+      - name: Configure DevPod to use GHCR as a build cache backend.
+        run: |
+          # This speeds up devcontainer image builds by reusing cached layers when possible.
+          # Cached layers are stored at ghcr.io/switchbox-data/reports2.
+          # Under the hood, DevPod automatically adds BuildKit cache flags:
+          #   --cache-from type=registry,ref=ghcr.io/switchbox-data/reports2
+          #   --cache-to type=registry,ref=ghcr.io/switchbox-data/reports2,mode=max
+
+          devpod context set-options -o REGISTRY_CACHE=ghcr.io/switchbox-data/reports2
+
       - name: Build and push devcontainer image with DevPod
         run: |
-          # DevPod will build (or reuse) the image and tag it with:
-          # 1. A hash-based tag (e.g. devpod-d95c1f5a, automatically), for use with DevPod up.
-          # 2. The 'latest' tag (via --tag flag), for use by downstream jobs.
+          # TWO-TIER TAGGING STRATEGY:
+          #
+          # DevPod will build the image and tag it with:
+          # 1. A hash-based tag (e.g. devpod-d95c1f5a), for use with `devpod up`. It does this automatically.
+          # 2. The 'latest' tag, for use by downstream jobs. It does this via the --tag flag.
+          #
+          #
+          # TWO-TIER CACHING STRATEGY:
+          #
+          # 1. DevPod Hash-Based Caching (Complete Skip):
+          #    - DevPod calculates a hash from devcontainer.json (and Dockerfile if used)
+          #    - If hash matches existing image in registry → skip build entirely (~30s)
+          #    - Triggered when: No changes to devcontainer.json, features, or base image
+          #
+          # 2. BuildKit Registry Layer Caching (Incremental Build):
+          #    - If devcontainer.json changes → `devpod build` actually preforms a rebuld
+          #    - With REGISTRY_CACHE set above, BuildKit detects which layers to reuse from GHCR registry cache.
+          #    - Layers BEFORE the change: Pulled from cache and reused (marked CACHED)
+          #    - Layers STARTING WITH the change: Rebuilt from scratch
+          #
+          # Example: Adding a Python package in pyproject.toml
+          #   - Base Ubuntu layer: CACHED ✓
+          #   - Zsh, Just, Python, R, Quarto features: CACHED ✓
+          #   - Python dependencies layer: REBUILT (only this changed)
+
           devpod build . \
             --provider docker \
             --repository ghcr.io/switchbox-data/reports2 \

@@ -1,53 +1,10 @@
 {
   "name": "reports2",
-  // As of 2025-12-25, P3M only has ARM64 binaries for Ubuntu 24.04, so we need to use the base image.
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
-  "features": {
-    "ghcr.io/nils-geistmann/devcontainers-features/zsh:0": {
-      "plugins": "git colored-man-pages colorize history zsh-autosuggestions fast-syntax-highlighting zsh-autocomplete"
-    },
-    "ghcr.io/guiyomh/features/just:0.1.0": { "version": "1.42.4" },
-    "ghcr.io/devcontainers/features/python:1": {
-      "version": "os-provided",
-      "installTools": "false"
-    },
-    "ghcr.io/rocker-org/devcontainer-features/r-rig:1": {
-      // Install R via rig package manager
-      "version": "4.4",
-      // Install pak package manager (stable version) for fast, efficient R package installation
-      "pakVersion": "stable",
-      // Install radian - enhanced R console with multiline editing and syntax highlighting
-      "installRadian": "true"
-      // Don't install rmarkdown, languageserver, or vscDebugger using the r-rig feature, it has outdated detection logic and installs from source (SLOW).
-      // Instead, install them via the r-packages feature to download P3M binaries.
-    },
-    "ghcr.io/rocker-org/devcontainer-features/r-packages:1": {
-      // github::nx10/httpgd: Interactive plot viewer for VSCode - archived from CRAN, must install from GitHub (source build)
-      // pkgdepends: Dependency resolver required by pak - binary install from P3M
-      // rmarkdown: R Markdown document rendering - required for Quarto R documents - binary install from P3M
-      // languageserver: R language server for VSCode (autocomplete, go-to-definition, hover docs) - binary install from P3M
-      // github::ManuelHentschel/vscDebugger: R debugger for VSCode RDebugger extension - must install from GitHub (source build)
-      "packages": "github::nx10/httpgd, pkgdepends, rmarkdown, languageserver, github::ManuelHentschel/vscDebugger",
-      "cranMirror": "https://p3m.dev/cran/__linux__/noble/latest",  // Use P3M binaries for Ubuntu 24.04
-      "installSystemRequirements": true
-    },
-    "ghcr.io/rocker-org/devcontainer-features/r-dependent-packages:latest": {
-      // Install all R packages listed in DESCRIPTION file using pak::local_install_deps()
-      "when": "onCreate",  // installs R packages via onCreateCommand (first time container is created)
-      // Uses P3M binaries for fast installation on Ubuntu 24.04 (both x86_64 and arm64)
-      "additionalRepositories": "P3M = 'https://p3m.dev/cran/__linux__/noble/latest'"
-    },
-    "ghcr.io/rocker-org/devcontainer-features/quarto-cli:1": {
-      "version": "1.8.26",
-      "installChromium": "true"
-    },
-    "ghcr.io/rocker-org/devcontainer-features/apt-packages:1": {
-      "packages": "python3-tk, chromium-browser" // in addition to installChromium = "true" in quarto-cli feature, must also install shared library dependencies of Chromium
-    },
-    "ghcr.io/devcontainers/features/aws-cli:1": {
-      "version": "2.27.4"
-    },
-    "ghcr.io/devcontainers/features/github-cli:1": {}
+  // Build from Dockerfile instead of pulling pre-built image
+  // All devcontainer features and dependencies are baked into the image during build
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
   },
   "containerEnv": {
     "QUARTO_PYTHON": "/workspaces/reports2/.venv/bin/python"
@@ -62,7 +19,10 @@
   "remoteEnv": {
     "AWS_REGION": "us-west-2"
   },
-  "postCreateCommand": "bash ./.devcontainer/installDependencies.sh && bash ./.devcontainer/installOhmyzshPlugins.sh",
+  // Install pre-commit hooks into .git/hooks/
+  // This must run after container creation because .git/ is mounted from the host.
+  // The prek CLI itself is already installed in the Docker image.
+  "postCreateCommand": "prek install --install-hooks",
   "customizations": {
     "vscode": {
       "extensions": [

@@ -127,9 +127,11 @@ RUN chmod +x /tmp/install-python-deps.sh && \
 ENV PATH="/home/vscode/.local/bin:${PATH}"
 
 # Configure Git to trust all directories (needed for CI and when mounting repos)
-# This prevents "dubious ownership" errors when the vscode user accesses repos
-# owned by different users (e.g., when GitHub Actions mounts the workspace).
+# This prevents "dubious ownership" errors when accessing repos owned by different users.
+# Run as root so it applies system-wide for all users (especially needed for GHA which runs as root).
+USER root
 RUN git config --global --add safe.directory '*'
+USER vscode
 
 # Set working directory for development
 WORKDIR /workspaces/reports2

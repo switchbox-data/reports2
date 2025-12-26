@@ -122,5 +122,10 @@ COPY --chown=vscode:vscode pyproject.toml uv.lock /tmp/
 RUN chmod +x /tmp/install-python-deps.sh && \
     /tmp/install-python-deps.sh /tmp
 
+# Configure Git to trust all directories (needed for CI and when mounting repos)
+# This prevents "dubious ownership" errors when the vscode user accesses repos
+# owned by different users (e.g., when GitHub Actions mounts the workspace).
+RUN git config --global --add safe.directory '*'
+
 # Set working directory for development
 WORKDIR /workspaces/reports2

@@ -137,73 +137,40 @@ jobs:
   quality-checks:
     # Runs quality checks (lock file validation + pre-commit hooks) in parallel with tests.
     #
+    # Using GitHub Actions' native container support:
+    #   - Pulls the prebuilt :latest image
+    #   - Runs the entire job inside the container
+    #   - GHA handles mounting workspace, permissions, and environment setup
+    #   - Much cleaner than manual `docker run` commands
     #
-    # Using plain Docker:
-    #   - Pulls the prebuilt :latest image (~10 seconds)
-    #   - Mounts the code from the GHA runner into the container
-    #   - Runs the command directly (no rebuild, no postCreateCommand)
-    #   - All dependencies are already baked into the image
-
-    # Note: why plain docker instead of devcontainers/ci?
-    # Even when you provide cacheFrom, devcontainers/ci still rebuilds the container (~2-8 minutes).
-    # We don't want to rebuild - we want to pull the exact image that build-devcontainer-image just pushed and run commands in it.
+    # Note: why container keyword instead of devcontainers/ci?
+    # devcontainers/ci always rebuilds the image (~2-8 minutes), even with cacheFrom.
+    # We want to use the exact image that build-devcontainer-image just pushed.
     needs: build-devcontainer-image
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: read  # Only need read access to pull image
+    container:
+      image: ghcr.io/switchbox-data/reports2:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v5
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Pull prebuilt devcontainer image
-        run: docker pull ghcr.io/switchbox-data/reports2:latest
-
-      - name: Run quality checks in container
-        run: |
-          docker run --rm \
-            -v ${{ github.workspace }}:/workspaces/reports2 \
-            -w /workspaces/reports2 \
-            --user vscode \
-            ghcr.io/switchbox-data/reports2:latest \
-            zsh -l -c "just check"
-          # Note: -l (login shell) is required to source ~/.zshrc, which adds uv to PATH.
-          # Without it, uv installed in ~/.local/bin won't be found.
+      - name: Run quality checks
+        run: just check
 
   tests:
     # Runs test suite in parallel with quality-checks.
-    # Uses the same pull-and-run strategy as quality-checks (see comments there).
+    # Uses the same container approach as quality-checks (see comments there).
     needs: build-devcontainer-image
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: read  # Only need read access to pull image
+    container:
+      image: ghcr.io/switchbox-data/reports2:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v5
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Pull prebuilt devcontainer image
-        run: docker pull ghcr.io/switchbox-data/reports2:latest
-
-      - name: Run tests in container
-        run: |
-          docker run --rm \
-            -v ${{ github.workspace }}:/workspaces/reports2 \
-            -w /workspaces/reports2 \
-            --user vscode \
-            ghcr.io/switchbox-data/reports2:latest \
-            zsh -l -c "just test"
-          # Note: -l (login shell) is required to source ~/.zshrc, which adds uv to PATH.
-          # Without it, uv installed in ~/.local/bin won't be found.
+      - name: Run tests
+        run: just test

@@ -57,7 +57,7 @@ clean:
 # =============================================================================
 # 🔍 AWS
 # =============================================================================
-# These commands help you login to AWS from Ona
+# These commands help you login to AWS
 
-ona_login_aws:
-    gitpod idp login aws --role-arn arn:aws:iam::536697241055:role/OnaEnvironmentRole --duration-seconds 43200
+aws:
+    aws sso login

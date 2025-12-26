@@ -122,6 +122,10 @@ COPY --chown=vscode:vscode pyproject.toml uv.lock /tmp/
 RUN chmod +x /tmp/install-python-deps.sh && \
     /tmp/install-python-deps.sh /tmp
 
+# Add vscode user's local bin to system PATH so uv is available to all users (including root)
+# This is needed when GitHub Actions runs the container as root
+ENV PATH="/home/vscode/.local/bin:${PATH}"
+
 # Configure Git to trust all directories (needed for CI and when mounting repos)
 # This prevents "dubious ownership" errors when the vscode user accesses repos
 # owned by different users (e.g., when GitHub Actions mounts the workspace).

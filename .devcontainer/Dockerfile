@@ -115,11 +115,14 @@ RUN chmod +x /tmp/install-r-deps.sh && \
 # Install Python dependencies from pyproject.toml + uv.lock
 # This layer rebuilds when either file changes
 # Note: --chown ensures vscode user owns these files (COPY defaults to root:root ownership)
-# Note: Files copied to /tmp (not /workspace) since they're just build-time inputs.
-# The actual project files will be mounted at /workspaces/reports2 at runtime.
+# Note: venv is installed to /opt/venv (not workspace) to avoid being shadowed by mounted code
 COPY --chown=vscode:vscode .devcontainer/install-python-deps.sh /tmp/install-python-deps.sh
 COPY --chown=vscode:vscode pyproject.toml uv.lock /tmp/
-RUN chmod +x /tmp/install-python-deps.sh && \
+# Set UV_PROJECT_ENVIRONMENT to install venv to /opt/venv
+# This ensures uv commands (uv add, uv run, etc.) always use this location
+ENV UV_PROJECT_ENVIRONMENT="/opt/venv"
+RUN mkdir -p /opt/venv && chown vscode:vscode /opt/venv && \
+    chmod +x /tmp/install-python-deps.sh && \
     /tmp/install-python-deps.sh /tmp
 
 # Add vscode user's local bin to system PATH so uv is available to all users (including root)

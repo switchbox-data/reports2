@@ -547,20 +547,16 @@ R dependency management works differently - it's more automatic but has no lock 
    pak::pak("dplyr")
    ```
 
-3. **Use it in your code** - Import it in your Quarto notebook or R script:
-   ```r
-   library(dplyr)
-   ```
-
 **How Your Package Persists**
 
 *In dev container*:
-- When you run `pak::pak("dplyr")`, the package is installed temporarily in the container
+- If you install a package directly with `pak::pak("dplyr")`, the package is installed temporarily in the container
 - It will be gone when the container restarts!
-- To make your package persist, add it to `DESCRIPTION` and commit that file
-- If you're using devcontainers on your laptop, rebuild the container and your package will be permanently installed within the image
+- If you add it to `DESCRIPTION` and run `just install`, as documented above, the package will also install temporarily
+- However, if you then commit `DESCRIPTION` and push to Github...
+- If you're using devcontainers on your laptop, rebuild the container and every package in `DESCRIPTION` (including your new one) will be permanently installed within the image
 - If you're using devcontainers on Devpod, GitHub Actions will automatically rebuild the image with the new package; restart your workspace to use the new image
-- **Bottom line**: Add packages to `DESCRIPTION`, commit it, and rebuild the container to persist them
+- **Bottom line**: Add packages to `DESCRIPTION`, commit it, and rebuild the devcontainer to persist them
 
 *On regular laptop*:
 - Packages are saved to your global R library (typically `~/R/library/`)
@@ -570,13 +566,15 @@ R dependency management works differently - it's more automatic but has no lock 
 **How Others Get Your Package**
 
 *In dev container*:
-1. You add `dplyr` to `DESCRIPTION`, commit it, and push to GitHub
+1. You add a package to `DESCRIPTION`, commit it, and push to GitHub
 2. Others pull your changes
-3. When they rebuild their container, `install-r-deps.sh` reads `DESCRIPTION` and installs all packages (including `dplyr`)
+3. They rebuild their container:
+   - If they're using devcontainers on their laptop, rebuild the container and `install-r-deps.sh` reads `DESCRIPTION` and installs all packages (including your new one)
+   - If they're using devcontainers on Devpod, GitHub Actions will automatically rebuild the image with the new package; restart your workspace to use the new image
 4. Every time they start a container with the image, the package will already be installed in it
 
 *On regular laptop*:
-1. You add `dplyr` to `DESCRIPTION` and commit it to git
+1. You add a package to `DESCRIPTION` and commit it to git
 2. Others pull your changes
 3. They manually install dependencies:
    ```bash

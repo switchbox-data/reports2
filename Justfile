@@ -27,7 +27,7 @@ check-deps:
 # Test the code with pytest
 test:
     echo "🚀 Testing code: Running pytest"
-    uv run python -m pytest --doctest-modules
+    uv run python -m pytest --doctest-modules tests/
 
 # =============================================================================
 # 🏗️  NEW QUARTO REPORT

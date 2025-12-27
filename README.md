@@ -487,7 +487,7 @@ uv add <package-name>
 This command:
 - Adds the package to `pyproject.toml`
 - Updates `uv.lock` with resolved dependencies
-- Installs the package in your virtual environment (`.venv/`)
+- Installs the package in your virtual environment
 
 **Example**:
 ```bash
@@ -500,14 +500,14 @@ uv add --dev pytest-mock  # Add as a dev dependency
 **How Your Package Persists**
 
 *In dev container*:
-- Packages are installed to `/opt/venv/` inside the container
-- The venv persists **within the container image** (not on your local filesystem)
-- When the container restarts, packages are already installed (no reinstallation needed)
-- When you run `uv add package-name`, it updates `/opt/venv/` immediately
-- **Bottom line**: Python packages persist in the container's venv at `/opt/venv/`, ready to use on restart
+- When you run `uv add package-name`, packages are installed to `/opt/venv/` inside the container
+- They stay in the container, and are not exported to your local filesystem. So if you restart the container, the package will be gone!
+- To make your new package persist, you need to add it to the image itself, by committing `pyproject.toml` and `uv.lock` and pushing to Github
+- If you're using devcontainers on your laptop, rebuild the container and your package will be permanently installed within the image
+- If you're using devcontainers on Devpod, Github actions will automatically rebuild the image with the new package; restart your workspace to use the new image
 
 *On regular laptop*:
-- The `.venv/` directory persists in your local workspace
+- When you run `uv add package-name`, packages are installed to `.venv/`, which persists in your local workspace
 - Packages remain installed between sessions
 - No reinstallation needed unless you delete `.venv/` or run `uv sync` after changes
 
@@ -516,7 +516,8 @@ uv add --dev pytest-mock  # Add as a dev dependency
 *In dev container*:
 1. You commit both `pyproject.toml` and `uv.lock`, and push to Github
 2. Others pull your changes
-3. When they rebuild their container or it restarts, `uv sync` automatically installs your new dependency from `uv.lock`
+3. When they rebuild their container or it restarts, `uv sync` automatically installs your new dependency from `uv.lock` directly into the image.
+4. Every time they start a container with the image, the package will already be installed in it.
 
 *On regular laptop*:
 1. You commit both `pyproject.toml` and `uv.lock` to git
@@ -529,55 +530,61 @@ R dependency management works differently - it's more automatic but has no lock 
 
 **Adding a new R package**
 
-1. **Install it once** in an R session:
+1. **Add it to `DESCRIPTION`** in the `Imports` section:
+   ```
+   Imports:
+       dplyr,
+       ggplot2,
+       arrow
+   ```
+
+2. **Install it** by running:
+   ```bash
+   just install
+   ```
+   Or install directly in an R session:
    ```r
    pak::pak("dplyr")
    ```
 
-2. **Use it in your code** - Import it in your Quarto notebook or R script:
+3. **Use it in your code** - Import it in your Quarto notebook or R script:
    ```r
    library(dplyr)
    ```
 
-3. **That's it!** No manual dependency file to update. The `library()` call in your code is the only record of the dependency.
-
 **How Your Package Persists**
 
 *In dev container*:
-- Packages are installed to the R library inside the container
-- Unlike Python's `.venv/`, R packages **do NOT persist to your local filesystem**
-- When the container dies, the R packages die with it
-- On every container startup, packages are reinstalled automatically for you:
-  - The container automatically scans all R files in the project for `library()` calls
-  - Detects which packages you've used
-  - Reinstalls all needed packages using `pak`
-- **Don't worry - this is fully automated and fast!** Our `.Rprofile` configures `pak` to use [Posit Public Package Manager (P3M)](https://p3m.dev/), which provides pre-compiled binary packages for your system architecture
-- **Bottom line**: R packages persist as code, and are reinstalled on container startup; `library()` calls committed to git are the source of truth
+- When you run `pak::pak("dplyr")`, the package is installed temporarily in the container
+- It will be gone when the container restarts!
+- To make your package persist, add it to `DESCRIPTION` and commit that file
+- If you're using devcontainers on your laptop, rebuild the container and your package will be permanently installed within the image
+- If you're using devcontainers on Devpod, GitHub Actions will automatically rebuild the image with the new package; restart your workspace to use the new image
+- **Bottom line**: Add packages to `DESCRIPTION`, commit it, and rebuild the container to persist them
 
 *On regular laptop*:
 - Packages are saved to your global R library (typically `~/R/library/`)
-- Note: If you use `renv`, packages would be project-local instead
 - Packages remain installed between sessions
 - No reinstallation needed unless you uninstall them or use a different R version
 
 **How Others Get Your Package**
 
 *In dev container*:
-1. You use `library(dplyr)` in your code, commit it, and push to Github
+1. You add `dplyr` to `DESCRIPTION`, commit it, and push to GitHub
 2. Others pull your changes
-3. When they start their container, it automatically scans for `library()` calls and installs `dplyr` via `pak`
-4. No manual action required - completely automatic
+3. When they rebuild their container, `install-r-deps.sh` reads `DESCRIPTION` and installs all packages (including `dplyr`)
+4. Every time they start a container with the image, the package will already be installed in it
 
 *On regular laptop*:
-1. You use `library(dplyr)` in your code and commit it to git
+1. You add `dplyr` to `DESCRIPTION` and commit it to git
 2. Others pull your changes
 3. They manually install dependencies:
-   ```r
-   pak::local_install_deps()  # Installs all dependencies found in project files
+   ```bash
+   just install
    ```
-   Or install individually:
+   Or in an R session:
    ```r
-   pak::pak("dplyr")
+   pak::local_install_deps()  # Installs all dependencies from DESCRIPTION
    ```
 
 ## 🔀 When to Use Python vs. R
@@ -817,40 +824,30 @@ Runs the Python test suite with pytest (tests in `tests/` directory), including 
 
 **Note on R tests**: We don't currently have R tests or a testing framework configured for R code. Only Python tests are run by `just test` and in CI.
 
-**Testing across Python versions**: The project includes a `tox.ini` configuration for testing across Python 3.9-3.13. To use it:
-
-```bash
-uv run tox
-```
-
-This is useful for ensuring compatibility across different Python versions.
-
 
 ## 🚦 CI/CD Pipeline
 
-The repository uses [GitHub Actions](https://docs.github.com/en/actions) to automatically run quality checks and tests on your code. **The CI runs the exact same `just` commands** you use locally in the same dev container environment, ensuring perfect consistency.
+The repository uses [GitHub Actions](https://docs.github.com/en/actions) to automatically run quality checks and tests on your code. **The CI runs the exact same `just` commands** you use locally, in the same devcontainer environment, ensuring perfect consistency.
 
 ### What Runs and When
 
 The workflow runs **two jobs in parallel** for speed:
 
 **On Pull Requests** (opened, updated, or marked ready for review):
-1. **Quality Checks Job**: Runs `just check` (lock file validation + pre-commit hooks)
-2. **Tests Job**: Runs `just test` (pytest test suite)
+1. **quality-checks**: Runs `just check` (lock file validation + pre-commit hooks)
+2. **tests**: Runs `just test` (pytest test suite)
 
 **On Push to `main`**:
 - Same checks and tests as pull requests (both jobs run in parallel)
 
-### Build Times
+### Devcontainer in CI/CD
 
-The CI pipeline uses a **two-tier caching strategy** to speed up builds:
-1. **Image caching**: If dependencies haven't changed, the pre-built container image is reused (~30 seconds)
-2. **Layer caching**: If dependencies changed, only affected layers rebuild (incremental builds)
+To run the quality-checks and tests jobs inside the devcontainer, we need to build it first.
 
-**Typical build times**:
-- No changes: ~30 seconds (reuses cached image)
-- Dependency changes: ~2-5 minutes (rebuilds from changed layer)
-- Full rebuild: ~8-10 minutes (rare - only when Dockerfile structure changes)
+In order to avoid building the devcontainer image from scratch on every commit, we use a **two-tier caching strategy** to speed up builds:
+1. **Image caching**: If `.devcontainer/.devcontainer.json`, `pyproject.toml`, `uv.lock`, and `DESCRIPTION` haven't changed, the image is not rebuilt and instead a previously built image is reused (~30 seconds)
+2. **Layer caching**: If any of these filed have changed, then the devcontainer image is rebuilt, but only affected layers rebuild (incremental builds, ~2-5 minutes )
+
 
 ### Why This Matters
 

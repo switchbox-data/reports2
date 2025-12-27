@@ -66,7 +66,6 @@ reports2/
 │   └── ...
 ├── tests/                  # Python test suite
 ├── .pre-commit-config.yaml # Pre-commit hooks configuration
-├── .Rprofile               # R environment configuration (P3M/pak setup)
 ├── pyproject.toml          # Python dependencies and tool configuration
 ├── uv.lock                 # Locked Python dependencies
 └── Justfile                # Command runner recipes
@@ -546,7 +545,7 @@ uv add --dev pytest-mock  # Add as a dev dependency
 
 ### R Dependencies
 
-R dependency management works differently - it's more automatic but has no lock file.
+R dependency management works differently, you have to manually update a file that lists packages, then install them.
 
 **Adding a new R package**
 
@@ -561,10 +560,6 @@ R dependency management works differently - it's more automatic but has no lock 
 2. **Install it** by running:
    ```bash
    just install
-   ```
-   Or install directly in an R session:
-   ```r
-   pak::pak("dplyr")
    ```
 
 **How Your Package Persists**
@@ -859,8 +854,6 @@ The workflow runs **two jobs in parallel** for speed:
 
 ### Devcontainer in CI/CD
 
-### How CI Builds the Devcontainer
-
 On every commit to `main` or a pull request, GitHub Actions actually **builds the devcontainer image** - the same process that happens when you rebuild in VS Code.
 
 To avoid 15-minute builds every time, we use a **two-tier caching strategy**:
@@ -871,12 +864,12 @@ Once built, the image is **pushed to [GitHub Container Registry (GHCR)](https://
 
 The quality-checks and tests jobs then **pull this prebuilt image** and run `just check` and `just test` inside it - no rebuilding required.
 
-### Prebuilds: Double Duty
+### Devcontainer prebuilds: Double Duty
 
 These CI builds serve a dual purpose:
 
 1. **For CI**: Tests run in the exact devcontainer environment
-2. **For Devpod**: Users can launch devcontainers on AWS (similar to Codespaces) using the prebuilt image - unlike when using devcontainers on your laptop, you don't have to wait for the image to build
+2. **For Devpod**: Users can [launch devcontainers on AWS](#option-2-dev-container-on-aws-via-devpod) (similar to Codespaces) using the prebuilt image - unlike when using devcontainers on your laptop, you don't have to wait for the image to build
 
 **Bottom line**: Every commit that modifies the devcontainer or dependencies triggers an automatic devcontainer image build. This ensures CI uses the correct environment, and anyone (including Devpod users) can use the fully built devcontainer without building it from scratch.
 

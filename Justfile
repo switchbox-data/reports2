@@ -66,3 +66,12 @@ clean:
 
 aws:
     aws sso login
+
+# =============================================================================
+# 🚀 DEVPOD
+# =============================================================================
+# Launch a devcontainer on AWS via DevPod, using prebuilt image from GHCR
+
+devpod:
+    devpod up github.com/switchbox-data/reports2 \
+      --prebuild-repository ghcr.io/switchbox-data/reports2

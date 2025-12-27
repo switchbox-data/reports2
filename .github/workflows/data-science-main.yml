@@ -140,8 +140,7 @@ jobs:
     # Using GitHub Actions' native container support:
     #   - Pulls the prebuilt :latest image
     #   - Runs the entire job inside the container
-    #   - GHA handles mounting workspace, permissions, and environment setup
-    #   - Much cleaner than manual `docker run` commands
+    #   - Handles mounting workspace
     #
     # Note: why container keyword instead of devcontainers/ci?
     # devcontainers/ci always rebuilds the image (~2-8 minutes), even with cacheFrom.
@@ -154,11 +153,16 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
       options: --user root
+      # Note: mounted workspace is owned by UID 1001 (runner), container user is UID 1000 (vscode).
+      # Running as root allows us to read/write files in the container regardless of who owns them,
+      # which is needed for quality checks and tests to run correctly.
     steps:
       - uses: actions/checkout@v5
 
+      # When git commands, running as UID 0 (root), see the repo is owned by UID 1001 (runner),
+      #it throws a "dubious ownership" error. This configures Git to trust the directory, avoiding the error.
       - name: Configure Git safe directory
-        run: git config --global --add safe.directory /__w/reports2/reports2
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Run quality checks
         run: just check
@@ -178,7 +182,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Configure Git safe directory
-        run: git config --global --add safe.directory /__w/reports2/reports2
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Run tests
         run: just test

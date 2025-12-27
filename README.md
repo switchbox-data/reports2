@@ -39,7 +39,7 @@ This repository contains Switchbox's reports. We use a modern bilingual stack co
 
 ## 🌍 Why Open Source?
 
-Our reports (on [our website](https://switch.box)) are shared under the [Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/), and the code behind them (contained in this repo) is released under the [MIT License](LICENSE.md).
+Our reports (on [our website](https://switch.box)) are shared under the [Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/), and the code behind them (contained in this repo) is released under the [MIT License](LICENSE).
 
 We do this for two reasons:
 
@@ -53,7 +53,7 @@ We believe the clean energy transition will happen faster if energy researchers,
 
 ## 📁 Repo Structure
 
-While the rest of this README.md will walk through the containts of this repo in detail, here is an initial overview:
+While the rest of this README.md will walk through the contents of this repo in detail, here is an initial overview:
 
 ```
 reports2/
@@ -89,12 +89,14 @@ just --list
 - `just check-deps` - Check for obsolete dependencies with [deptry](https://github.com/fpgmaas/deptry)
 - `just test` - Run test suite (same as CI)
 - `just new_report` - Create a new Quarto report in `reports/`
+- `just aws` - Authenticate with AWS SSO
+- `just devpod` - Launch devcontainer on AWS via DevPod
 - `just clean` - Remove generated files and caches
 
 **Report directory commands** (`reports/<project_code>/`):
 - `just render` - Render HTML version of report using Quarto
 - `just draft` - Render Word document for content reviews using Quarto
-- `just icml` - Render ICML for InDesign typesetting using Quarto
+- `just typeset` - Render ICML for InDesign typesetting using Quarto
 - `just publish` - Copy rendered HTML version of report from project `docs/` to root `docs/` for web publishing
 - `just clean` - Remove generated files and caches
 
@@ -126,26 +128,42 @@ The fastest way to get started is using the provided dev container:
    just --list  # See all available commands
    ```
 
-### Option 2: Manual Installation (Without Dev Container)
+### Option 2: Dev Container on AWS (via DevPod)
+
+For faster data access (especially with large datasets), you can launch the devcontainer on AWS in region `us-west-2`, close to where our data is stored in S3.
+
+1. **Prerequisites**:
+   - Install [DevPod](https://devpod.sh/)
+   - Configure the AWS provider in DevPod (detailed setup documentation coming soon)
+
+2. **Launch**:
+   ```bash
+   just aws      # Authenticate with AWS so Devpod can create an EC2 instance
+   just devpod   # Launch devcontainer on EC2 instance
+   ```
+
+This uses a [prebuilt devcontainer image](#prebuilds-double-duty) from GitHub Container Registry, so you don't have to wait for the image to build.
+
+### Option 3: Manual Installation (Without Dev Container)
 
 If you prefer not to use dev containers:
 
 1. **Install Prerequisites**:
    - Python 3.9+
    - R 4.0+
-   - [uv](https://github.com/astral-sh/uv)
+   - `pak` package for R
    - [just](https://github.com/casey/just)
-   - [prek](https://github.com/j178/prek)
 
 2. **Run Setup**:
    ```bash
    just install
    ```
 
-   This command runs `.devcontainer/installDependencies.sh`, which:
-   - Syncs Python dependencies with `uv`
-   - Detect R packages used in the reports and install them with `pak`
-   - Installs pre-commit hooks
+   This command:
+   - Installs `uv`
+   - Uses `uv` to create a virtualenv and install python packages to it
+   - Uses `pak` to install R packages listed in `DESCRIPTION` file
+   - Installs pre-commit hooks with `prek`
 
 ## 📝 Creating a New Report
 
@@ -291,14 +309,14 @@ Our template includes `just` commands for different outputs:
 
 ```bash
 just render    # Generate HTML for web publishing (static site)
-just draft    # Generate Word doc for content reviews with collaborators
-just icml    # Generate ICML for creating typeset PDFs in InDesign
+just draft     # Generate Word doc for content reviews with collaborators
+just typeset   # Generate ICML for creating typeset PDFs in InDesign
 ```
 
 **When to use each**:
 - **HTML** (`just render`): Publishing our reports as interactive web pages
 - **DOCX** (`just draft`): Sharing drafts for content review and feedback
-- **ICML** (`just icml`): Professional typesetting in Adobe InDesign for PDF export
+- **ICML** (`just typeset`): Professional typesetting in Adobe InDesign for PDF export
 
 The template automatically configures these formats with our stylesheets and branding.
 
@@ -689,7 +707,7 @@ tibble_df <- result |> collect()
 
 **Options to improve performance**:
 1. **Cache locally**: Download files once and cache in `data/` (gitignored)
-2. **Run dev containers in the cloud**: Deploy containers in AWS us-west-2 region, same as the data bucket
+2. **Run dev containers in the cloud**: See [Option 2 in Quick Start](#option-2-dev-container-on-aws-via-devpod) for launching devcontainers on AWS in `us-west-2 region`, same as the data bucket
 3. **Use partitioned datasets**: Only read the partitions you need
 
 **When reports execute**: Data is downloaded from S3 at runtime. The first run may be slower, but subsequent runs can use cached data if you've set up local caching.

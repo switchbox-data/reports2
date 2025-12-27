@@ -98,7 +98,7 @@ USER vscode
 # Note: The actual hook installation (prek install --install-hooks) happens in postCreateCommand
 # because it needs to write to .git/hooks/, which is mounted from the host after container starts
 COPY .devcontainer/install-prek.sh /tmp/install-prek.sh
-# sudo needed: file is root-owned, vscode can't chmod it
+# sudo needed: file is root-owned, vscode user can read but not run it
 RUN sudo chmod +x /tmp/install-prek.sh && \
     /tmp/install-prek.sh
 
@@ -106,7 +106,7 @@ RUN sudo chmod +x /tmp/install-prek.sh && \
 # This layer rebuilds when DESCRIPTION changes
 COPY .devcontainer/install-r-deps.sh /tmp/install-r-deps.sh
 COPY DESCRIPTION /tmp/DESCRIPTION
-# sudo needed: files are root-owned, vscode can't chmod them
+# sudo needed: files are root-owned, vscode user can read but not run them
 RUN sudo chmod +x /tmp/install-r-deps.sh && \
     /tmp/install-r-deps.sh /tmp/DESCRIPTION
 

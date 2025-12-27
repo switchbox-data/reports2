@@ -505,6 +505,7 @@ uv add --dev pytest-mock  # Add as a dev dependency
 - To make your new package persist, you need to add it to the image itself, by committing `pyproject.toml` and `uv.lock` and pushing to Github
 - If you're using devcontainers on your laptop, rebuild the container and your package will be permanently installed within the image
 - If you're using devcontainers on Devpod, Github actions will automatically rebuild the image with the new package; restart your workspace to use the new image
+- **Bottom line**: Run `uv add`, commit `pyproject.toml` and `uv.lock`, and rebuild the devcontainer to persist packages
 
 *On regular laptop*:
 - When you run `uv add package-name`, packages are installed to `.venv/`, which persists in your local workspace
@@ -516,8 +517,9 @@ uv add --dev pytest-mock  # Add as a dev dependency
 *In dev container*:
 1. You commit both `pyproject.toml` and `uv.lock`, and push to Github
 2. Others pull your changes
-3. When they rebuild their container or it restarts, `uv sync` automatically installs your new dependency from `uv.lock` directly into the image.
-4. Every time they start a container with the image, the package will already be installed in it.
+3. They rebuild their container:
+   - If they're using devcontainers on their laptop, when they rebuild their container, all packages in `uv.lock` (including your new one) will be permanently installed into the image
+   - If they're using devcontainers on Devpod, GitHub Actions will automatically rebuild the image with the new package; they just need to restart their workspace to use the new image
 
 *On regular laptop*:
 1. You commit both `pyproject.toml` and `uv.lock` to git
@@ -569,9 +571,8 @@ R dependency management works differently - it's more automatic but has no lock 
 1. You add a package to `DESCRIPTION`, commit it, and push to GitHub
 2. Others pull your changes
 3. They rebuild their container:
-   - If they're using devcontainers on their laptop, rebuild the container and `install-r-deps.sh` reads `DESCRIPTION` and installs all packages (including your new one)
-   - If they're using devcontainers on Devpod, GitHub Actions will automatically rebuild the image with the new package; restart your workspace to use the new image
-4. Every time they start a container with the image, the package will already be installed in it
+   - If they're using devcontainers on their laptop, when they rebuild their container, all packages in `DESCRIPTION` (including your new one) will be pemanently installed into the image
+   - If they're using devcontainers on Devpod, GitHub Actions will automatically rebuild the image with the new package; they just need to restart their workspace to use the new image
 
 *On regular laptop*:
 1. You add a package to `DESCRIPTION` and commit it to git
@@ -840,18 +841,33 @@ The workflow runs **two jobs in parallel** for speed:
 
 ### Devcontainer in CI/CD
 
-To run the quality-checks and tests jobs inside the devcontainer, we need to build it first.
+### How CI Builds the Devcontainer
 
-In order to avoid building the devcontainer image from scratch on every commit, we use a **two-tier caching strategy** to speed up builds:
-1. **Image caching**: If `.devcontainer/.devcontainer.json`, `pyproject.toml`, `uv.lock`, and `DESCRIPTION` haven't changed, the image is not rebuilt and instead a previously built image is reused (~30 seconds)
-2. **Layer caching**: If any of these filed have changed, then the devcontainer image is rebuilt, but only affected layers rebuild (incremental builds, ~2-5 minutes )
+On every commit to `main` or a pull request, GitHub Actions actually **builds the devcontainer image** - the same process that happens when you rebuild in VS Code.
+
+To avoid 15-minute builds every time, we use a **two-tier caching strategy**:
+1. **Image caching**: If `.devcontainer/Dockerfile`, `pyproject.toml`, `uv.lock`, and `DESCRIPTION` haven't changed, the devcontainer image build is skipped, and the most recent image (in GHCR) is reused (~30 seconds)
+2. **Layer caching**: If any of these files changed, the image is rebuilt, but only affected layers rebuild while the others are pulled from GHCR cache (incremental builds, ~2-5 minutes)
+
+Once built, the image is **pushed to [GitHub Container Registry (GHCR)](https://github.com/switchbox-data/reports2/pkgs/container/reports2)**, where it's immediately available as `ghcr.io/switchbox-data/reports2:latest`.
+
+The quality-checks and tests jobs then **pull this prebuilt image** and run `just check` and `just test` inside it - no rebuilding required.
+
+### Prebuilds: Double Duty
+
+These CI builds serve a dual purpose:
+
+1. **For CI**: Tests run in the exact devcontainer environment
+2. **For Devpod**: Users can launch devcontainers on AWS (similar to Codespaces) using the prebuilt image - unlike when using devcontainers on your laptop, you don't have to wait for the image to build
+
+**Bottom line**: Every commit that modifies the devcontainer or dependencies triggers an automatic devcontainer image build. This ensures CI uses the correct environment, and anyone (including Devpod users) can use the fully built devcontainer without building it from scratch.
 
 
 ### Why This Matters
 
-- **Perfect Consistency**: CI literally runs `just check` and `just test` inside of the dev container - exactly what you run locally
-- **Speed**: Quality checks and tests run in parallel, making CI faster
-- **Safety net**: Even if someone skips checks locally, CI catches issues before merge
+- **Perfect Consistency**: CI literally runs `just check` and `just test` inside of the devcontainer - exactly what you run locally — and devcontainer is rebuilt when its definition changes
+- **Speed**: Devcontainer is only rebuilt when necessary, so quality checks and tests usually run immediately, and they run in parallel, making CI faster
+- **Safety net**: Even if someone skips pre-commit checks locally, CI catches code quality issues before merge
 - **Code quality**: Every PR must pass all checks and tests before it can be merged
 - **Optional checks**: Dependency audits (`just check-deps`) are not part of CI but available locally for additional validation
 

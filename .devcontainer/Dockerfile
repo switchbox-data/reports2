@@ -97,8 +97,9 @@ USER vscode
 # Install prek CLI for pre-commit hooks
 # Note: The actual hook installation (prek install --install-hooks) happens in postCreateCommand
 # because it needs to write to .git/hooks/, which is mounted from the host after container starts
-COPY --chown=vscode:vscode .devcontainer/install-prek.sh /tmp/install-prek.sh
-RUN chmod +x /tmp/install-prek.sh && \
+COPY .devcontainer/install-prek.sh /tmp/install-prek.sh
+# sudo needed: file is root-owned, vscode can't chmod it
+RUN sudo chmod +x /tmp/install-prek.sh && \
     /tmp/install-prek.sh
 
 # Install R dependencies from DESCRIPTION

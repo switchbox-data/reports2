@@ -126,15 +126,8 @@ RUN mkdir -p /opt/venv && chown vscode:vscode /opt/venv && \
     /tmp/install-python-deps.sh /tmp
 
 # Add vscode user's local bin to system PATH so uv is available to all users (including root)
-# This is needed when GitHub Actions runs the container as root
+# This is needed when GitHub Actions runs uv commands in the container as root.
 ENV PATH="/home/vscode/.local/bin:${PATH}"
-
-# Configure Git to trust all directories (needed for CI and when mounting repos)
-# This prevents "dubious ownership" errors when accessing repos owned by different users.
-# Run as root so it applies system-wide for all users (especially needed for GHA which runs as root).
-USER root
-RUN git config --global --add safe.directory '*'
-USER vscode
 
 # Set working directory for development
 WORKDIR /workspaces/reports2

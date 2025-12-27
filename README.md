@@ -500,13 +500,11 @@ uv add --dev pytest-mock  # Add as a dev dependency
 **How Your Package Persists**
 
 *In dev container*:
-- Packages are installed to `.venv/` inside the container
-- The `.venv/` directory *persists to your local filesystem* (it's mounted from the host into the container)
-- When the container dies, `.venv/` remains on your host machine
-- On container restart, `uv sync` checks if installed packages `.venv/` match `uv.lock`
-- Your new package will be in both, only packages that are missing or inconsistent are installed/updated
-- So `.venv/` will simply be remounted in the container, and you package will be immediately accessible.
-- **Bottom line**: python packages persist as file on your local filesystem, and are immediately available on container start
+- Packages are installed to `/opt/venv/` inside the container
+- The venv persists **within the container image** (not on your local filesystem)
+- When the container restarts, packages are already installed (no reinstallation needed)
+- When you run `uv add package-name`, it updates `/opt/venv/` immediately
+- **Bottom line**: Python packages persist in the container's venv at `/opt/venv/`, ready to use on restart
 
 *On regular laptop*:
 - The `.venv/` directory persists in your local workspace
@@ -842,6 +840,17 @@ The workflow runs **two jobs in parallel** for speed:
 
 **On Push to `main`**:
 - Same checks and tests as pull requests (both jobs run in parallel)
+
+### Build Times
+
+The CI pipeline uses a **two-tier caching strategy** to speed up builds:
+1. **Image caching**: If dependencies haven't changed, the pre-built container image is reused (~30 seconds)
+2. **Layer caching**: If dependencies changed, only affected layers rebuild (incremental builds)
+
+**Typical build times**:
+- No changes: ~30 seconds (reuses cached image)
+- Dependency changes: ~2-5 minutes (rebuilds from changed layer)
+- Full rebuild: ~8-10 minutes (rare - only when Dockerfile structure changes)
 
 ### Why This Matters
 

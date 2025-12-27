@@ -103,13 +103,10 @@ RUN chmod +x /tmp/install-prek.sh && \
 
 # Install R dependencies from DESCRIPTION
 # This layer rebuilds when DESCRIPTION changes
-# Note: --chown is still needed even though USER is vscode, because COPY always copies files as root:root by default.
-# Without --chown, vscode user can read but not write to these files.
-# Note: Files copied to /tmp (not /workspace) since they're just build-time inputs.
-# The actual project files will be mounted at /workspaces/reports2 at runtime.
-COPY --chown=vscode:vscode .devcontainer/install-r-deps.sh /tmp/install-r-deps.sh
-COPY --chown=vscode:vscode DESCRIPTION /tmp/DESCRIPTION
-RUN chmod +x /tmp/install-r-deps.sh && \
+COPY .devcontainer/install-r-deps.sh /tmp/install-r-deps.sh
+COPY DESCRIPTION /tmp/DESCRIPTION
+# sudo needed: files are root-owned, vscode can't chmod them
+RUN sudo chmod +x /tmp/install-r-deps.sh && \
     /tmp/install-r-deps.sh /tmp/DESCRIPTION
 
 # Install Python dependencies from pyproject.toml + uv.lock
@@ -120,12 +117,15 @@ COPY pyproject.toml uv.lock /tmp/
 # Set UV_PROJECT_ENVIRONMENT to install venv to /opt/venv
 # This ensures uv commands (uv add, uv run, etc.) always use this location
 ENV UV_PROJECT_ENVIRONMENT="/opt/venv"
+# sudo is needed because /opt and /tmp/install-python-deps.sh are owned by root.
+# we chown uv's venv dir from root to vscode user, so vscode user can install packages.
+# install-python-deps.sh runs as vscode user, though, so uv commands get installed at /home/vscode/.local/bin/
 RUN sudo mkdir -p /opt/venv && \
-    sudo chown vscode:vscode /opt/venv && \
     sudo chmod +x /tmp/install-python-deps.sh && \
+    sudo chown vscode:vscode /opt/venv && \
     /tmp/install-python-deps.sh /tmp
 
-# Add vscode user's local bin to system PATH so uv is available to all users (including root)
+# Making uv command available to all users (including root) by adding vscode user's local bin to PATH.
 # This is needed when GitHub Actions runs uv commands in the container as root.
 ENV PATH="/home/vscode/.local/bin:${PATH}"
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+set -x
 
 # install-prek-deps.sh - Install prek pre-commit hooks
 #
@@ -58,7 +59,6 @@ if [ -f "${PRECOMMIT_HOOK}" ]; then
         echo "ℹ️  Pre-commit hooks already installed, checking for updates..."
     fi
 fi
-echo
 
 # Install prek pre-commit hooks
 if [ "$HOOKS_ALREADY_INSTALLED" = true ]; then

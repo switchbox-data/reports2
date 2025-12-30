@@ -70,23 +70,52 @@ else
 fi
 echo
 
-# Get the directory containing DESCRIPTION
-DESC_DIR=$(dirname "${DESCRIPTION_PATH}")
-
 # Install dependencies and capture output
 echo "📥 Installing R dependencies from DESCRIPTION..."
+set +e  # Temporarily disable exit on error to capture output
 PAK_OUTPUT=$(Rscript -e "
 options(${REPO_ARGS})
-result <- pak::local_install_deps(
-  root = '${DESC_DIR}',
-  dependencies = TRUE,
-  upgrade = FALSE,
-  ask = FALSE
-)
+# Read DESCRIPTION file and extract dependencies
+desc_path <- '${DESCRIPTION_PATH}'
+desc <- read.dcf(desc_path)
+
+# Extract package names from Imports, Depends, and Suggests fields
+get_deps <- function(field) {
+  if (field %in% colnames(desc) && !is.na(desc[1, field])) {
+    deps <- desc[1, field]
+    # Split by comma, remove whitespace and version constraints
+    pkgs <- strsplit(deps, ',')[[1]]
+    pkgs <- trimws(pkgs)
+    pkgs <- gsub('\\\\(.*\\\\)', '', pkgs)  # Remove version constraints
+    pkgs <- trimws(pkgs)
+    return(pkgs[pkgs != '' & pkgs != 'R'])
+  }
+  return(character(0))
+}
+
+imports <- get_deps('Imports')
+depends <- get_deps('Depends')
+suggests <- get_deps('Suggests')
+all_deps <- unique(c(imports, depends, suggests))
+
+if (length(all_deps) > 0) {
+  cat('Installing packages:', paste(all_deps, collapse=', '), '\\n')
+  pak::pkg_install(all_deps, upgrade = FALSE, ask = FALSE)
+} else {
+  cat('No dependencies found in DESCRIPTION\\n')
+}
 " 2>&1)
+PAK_EXIT_CODE=$?
+set -e  # Re-enable exit on error
 
 echo "$PAK_OUTPUT"
 echo
+
+# Check if pak failed
+if [ $PAK_EXIT_CODE -ne 0 ]; then
+    echo "❌ ERROR: Failed to install R dependencies (exit code: $PAK_EXIT_CODE)" >&2
+    exit $PAK_EXIT_CODE
+fi
 
 # Parse pak output to show what happened
 # Pak summary format: "✔ N deps: kept X, upd Y, added Z, dld W [time]"

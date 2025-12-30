@@ -107,8 +107,9 @@ RUN sudo chmod +x /tmp/install-prek.sh && \
 # This layer rebuilds when DESCRIPTION changes
 COPY .devcontainer/install-r-deps.sh /tmp/install-r-deps.sh
 COPY DESCRIPTION /tmp/DESCRIPTION
-# sudo needed: files are root-owned, vscode user can read but not run them
+# sudo needed: files are root-owned, make them executable/readable for vscode user
 RUN sudo chmod +x /tmp/install-r-deps.sh && \
+    sudo chmod +r /tmp/DESCRIPTION && \
     /tmp/install-r-deps.sh /tmp/DESCRIPTION
 
 # Install Python dependencies from pyproject.toml + uv.lock

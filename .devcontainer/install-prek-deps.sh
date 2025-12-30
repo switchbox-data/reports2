@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
-set -x
 
 # install-prek-deps.sh - Install prek pre-commit hooks
 #

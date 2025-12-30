@@ -66,33 +66,34 @@ RUN /tmp/install-feature.sh "ghcr.io/rocker-org/devcontainer-features/quarto-cli
 RUN /tmp/install-feature.sh "ghcr.io/rocker-org/devcontainer-features/apt-packages:1" \
     packages="python3-tk, chromium-browser"
 
-# Install zsh with plugins and clone custom plugin repositories
-# The zsh feature enables plugins in .zshrc.
-# Built-in plugins (git, colored-man-pages, colorize, history) are included with oh-my-zsh and don't need separate installation.
-# Custom plugins (zsh-autosuggestions, fast-syntax-highlighting, zsh-autocomplete) need their repositories cloned to
-# ~/.oh-my-zsh/custom/plugins/, which is done via install-ohmyzsh-plugins.sh.
-COPY .devcontainer/install-ohmyzsh-plugins.sh /tmp/install-ohmyzsh-plugins.sh
-RUN chmod +x /tmp/install-ohmyzsh-plugins.sh && \
-    /tmp/install-feature.sh "ghcr.io/nils-geistmann/devcontainers-features/zsh:0" \
-        plugins="git colored-man-pages colorize history zsh-autosuggestions fast-syntax-highlighting zsh-autocomplete" && \
-    /tmp/install-ohmyzsh-plugins.sh
-
 # ============================================================================
 # VSCODE USER SECTION
 # ============================================================================
-# Switch to vscode user for installing R and Python dependencies.
+# Switch to vscode user for installing zsh, R dependencies, Python dependencies, and prek.
 # This is necessary because:
-#   1. The r-rig feature (installed as root above) installs pak for the vscode user
+#   1. oh-my-zsh and its plugins must be owned by vscode user to avoid zsh compinit security warnings.
+#   2. The r-rig feature (installed as root above) installs pak for the vscode user
 #      in /home/vscode/R, not for root. R packages need to be installed as vscode
 #      to access pak and write to vscode's R library.
-#   2. Python venv and packages should be owned by vscode (the user who will
+#   3. Python venv and packages should be owned by vscode (the user who will
 #      actually run the code), not root.
-#   3. prek should be installed for vscode user (who runs pre-commit hooks).
-#   4. This mirrors the container runtime: the devcontainer runs as vscode user,
+#   4. prek should be installed for vscode user (who runs pre-commit hooks).
+#   5. This mirrors the container runtime: the devcontainer runs as vscode user,
 #      not root, so dependencies should be installed as vscode during build.
 #
 # ============================================================================
 USER vscode
+
+# Install zsh with plugins and custom plugin repositories
+# The zsh feature installs oh-my-zsh for the current user (vscode) and enables plugins in .zshrc.
+# Built-in plugins (git, colored-man-pages, colorize, history) are included with oh-my-zsh.
+# Custom plugins (zsh-autosuggestions, fast-syntax-highlighting, zsh-autocomplete) need to be cloned separately.
+# sudo needed: install-feature.sh needs root privileges but installs oh-my-zsh for current user
+COPY .devcontainer/install-ohmyzsh-plugins.sh /tmp/install-ohmyzsh-plugins.sh
+RUN sudo chmod +x /tmp/install-ohmyzsh-plugins.sh && \
+    sudo /tmp/install-feature.sh "ghcr.io/nils-geistmann/devcontainers-features/zsh:0" \
+        plugins="git colored-man-pages colorize history zsh-autosuggestions fast-syntax-highlighting zsh-autocomplete" && \
+    /tmp/install-ohmyzsh-plugins.sh
 
 # Install prek CLI for pre-commit hooks
 # Note: The actual hook installation (prek install --install-hooks) happens in postCreateCommand

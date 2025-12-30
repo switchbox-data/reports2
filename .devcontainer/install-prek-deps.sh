@@ -12,6 +12,16 @@ echo "🪝 Installing prek pre-commit hooks from .pre-commit-config.yaml"
 echo "===================================================================="
 echo
 
+# Find the git repository root and cd there
+# This works in both devcontainers and on laptops
+if ! REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null); then
+    echo "❌ ERROR: Not in a git repository" >&2
+    exit 1
+fi
+cd "${REPO_ROOT}"
+echo "📁 Working in repository: ${REPO_ROOT}"
+echo
+
 # Check if .pre-commit-config.yaml exists
 PRECOMMIT_CONFIG=".pre-commit-config.yaml"
 if [ -f "${PRECOMMIT_CONFIG}" ]; then

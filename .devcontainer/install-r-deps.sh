@@ -16,75 +16,108 @@ set -euo pipefail
 
 DESCRIPTION_PATH="${1:-./DESCRIPTION}"
 
+echo "===================================================================="
+echo "📊 Installing R dependencies from DESCRIPTION"
+echo "===================================================================="
+echo
+
 # Check if R is installed
-if ! command -v R >/dev/null 2>&1; then
+if command -v R >/dev/null 2>&1; then
+    R_VERSION=$(R --version | head -1)
+    echo "✅ Using: ${R_VERSION}"
+else
     echo "❌ ERROR: R is not installed" >&2
     echo "" >&2
     echo "Please install R before running this script." >&2
     exit 1
 fi
+echo
 
 # Check if DESCRIPTION file exists
-if [ ! -f "${DESCRIPTION_PATH}" ]; then
-    echo "❌ ERROR: DESCRIPTION file not found at ${DESCRIPTION_PATH}" >&2
+if [ -f "${DESCRIPTION_PATH}" ]; then
+    echo "✅ Found DESCRIPTION file: $(realpath "${DESCRIPTION_PATH}")"
+else
+    echo "❌ ERROR: DESCRIPTION file is necessary but not found at ${DESCRIPTION_PATH}" >&2
     echo "" >&2
     echo "Usage: $0 [path/to/DESCRIPTION]" >&2
     echo "Default: ./DESCRIPTION" >&2
     exit 1
 fi
-
-echo "===================================================================="
-echo "📊 Installing R dependencies from DESCRIPTION"
-echo "===================================================================="
-echo "📄 DESCRIPTION file: ${DESCRIPTION_PATH}"
-echo
-
-# Print R version
-R_VERSION=$(R --version | head -1)
-echo "✅ Using: ${R_VERSION}"
 echo
 
 # Detect platform and set appropriate repository
 OS_TYPE=$(uname -s)
 if [ "$OS_TYPE" = "Linux" ]; then
-    REPO_CONFIG="options(repos = c(CRAN = 'https://cran.rstudio.com/', P3M = 'https://p3m.dev/cran/__linux__/noble/latest'))"
-    echo "🐧 Detected Linux - using P3M for fast binary installs"
+    REPO_ARGS="repos = c(CRAN = 'https://cran.rstudio.com/', P3M = 'https://p3m.dev/cran/__linux__/noble/latest')"
+    echo "🐧 Detected Linux - using P3M for fast binary package installs"
 else
-    REPO_CONFIG="options(repos = c(CRAN = 'https://cran.rstudio.com/'))"
-    echo "🍎 Detected macOS - using CRAN"
+    REPO_ARGS="repos = c(CRAN = 'https://cran.rstudio.com/')"
+    echo "🍎 Detected macOS - using CRAN to install packages from source"
 fi
 echo
 
-# Create the R script to run
-R_SCRIPT=$(cat <<RSCRIPT
-# Set repositories based on platform
-${REPO_CONFIG}
-
 # Check if pak is installed
-if (!requireNamespace("pak", quietly = TRUE)) {
-  stop("pak is not installed. Install it first with: install.packages('pak')")
-}
+echo "📦 Checking for pak package manager..."
+echo
+if Rscript -e "if (!requireNamespace('pak', quietly = TRUE)) quit(status = 1)" 2>/dev/null; then
+    PAK_VERSION=$(Rscript -e "cat(paste('pak', as.character(packageVersion('pak'))))" 2>/dev/null)
+    echo "✅ Using: ${PAK_VERSION}"
+else
+    echo "❌ ERROR: pak is not installed" >&2
+    echo "" >&2
+    echo "Install pak with: R -e \"install.packages('pak')\"" >&2
+    exit 1
+fi
+echo
 
-# Install dependencies from DESCRIPTION
-cat("📥 Installing dependencies from:", dirname("DESCRIPTION_PATH_PLACEHOLDER"), "\n")
-pak::local_install_deps(
-  root = dirname("DESCRIPTION_PATH_PLACEHOLDER"),
+# Get the directory containing DESCRIPTION
+DESC_DIR=$(dirname "${DESCRIPTION_PATH}")
+
+# Install dependencies and capture output
+echo "📥 Installing R dependencies from DESCRIPTION..."
+PAK_OUTPUT=$(Rscript -e "
+options(${REPO_ARGS})
+result <- pak::local_install_deps(
+  root = '${DESC_DIR}',
   dependencies = TRUE,
   upgrade = FALSE,
   ask = FALSE
 )
+" 2>&1)
 
-cat("\n✅ Done! All R dependencies installed.\n")
-RSCRIPT
-)
+echo "$PAK_OUTPUT"
+echo
 
-# Replace the placeholder with actual path
-R_SCRIPT="${R_SCRIPT//DESCRIPTION_PATH_PLACEHOLDER/$DESCRIPTION_PATH}"
+# Parse pak output to show what happened
+# Pak summary format: "✔ N deps: kept X, upd Y, added Z, dld W [time]"
+if echo "$PAK_OUTPUT" | grep -q "deps:"; then
+    # Extract counts from the summary line
+    SUMMARY_LINE=$(echo "$PAK_OUTPUT" | grep "deps:" | tail -1)
 
-# Run the R script
-echo "📥 Installing dependencies..."
-echo "$R_SCRIPT" | R --vanilla --quiet --no-save
+    KEPT_COUNT=$(echo "$SUMMARY_LINE" | grep -o "kept [0-9]\+" | grep -o "[0-9]\+" || echo "0")
+    ADDED_COUNT=$(echo "$SUMMARY_LINE" | grep -o "added [0-9]\+" | grep -o "[0-9]\+" || echo "0")
+    UPDATED_COUNT=$(echo "$SUMMARY_LINE" | grep -o "upd [0-9]\+" | grep -o "[0-9]\+" || echo "0")
+
+    # Calculate total installed (added + updated)
+    INSTALLED_TOTAL=$((ADDED_COUNT + UPDATED_COUNT))
+
+    # Build the message
+    if [ "$INSTALLED_TOTAL" -gt 0 ] && [ "$KEPT_COUNT" -gt 0 ]; then
+        echo "✅ Installed ${INSTALLED_TOTAL} R packages, ${KEPT_COUNT} already up to date"
+    elif [ "$INSTALLED_TOTAL" -gt 0 ]; then
+        echo "✅ Installed ${INSTALLED_TOTAL} R packages"
+    elif [ "$KEPT_COUNT" -gt 0 ]; then
+        echo "✅ ${KEPT_COUNT} R packages already up to date"
+    else
+        echo "✅ R packages ready"
+    fi
+else
+    echo "✅ R dependencies processed"
+fi
+echo
 
 echo "===================================================================="
 echo "✨ R dependencies installed successfully!"
 echo "===================================================================="
+echo
+echo

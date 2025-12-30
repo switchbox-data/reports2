@@ -47,13 +47,12 @@ new_report:
 
 # Install the virtual environment and install the pre-commit hooks
 install:
-    echo "🚀 Setting up development environment"
-    .devcontainer/install-python-deps.sh .
-    .devcontainer/install-r-deps.sh ./DESCRIPTION
-    .devcontainer/install-prek.sh
-    echo "🪝 Installing pre-commit hooks"
-    prek install --install-hooks
-    echo "✨ Development environment ready!"
+    @echo "🚀 Setting up development environment\n"
+    @.devcontainer/install-python-deps.sh .
+    @.devcontainer/install-r-deps.sh ./DESCRIPTION
+    @.devcontainer/install-prek.sh
+    @.devcontainer/install-prek-deps.sh
+    @echo "✨ Development environment ready!\n"
 
 # Clean generated files and caches
 clean:

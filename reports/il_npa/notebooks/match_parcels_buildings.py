@@ -41,8 +41,8 @@ import geopandas as gpd
 import pandas as pd
 from botocore.exceptions import ClientError, NoCredentialsError
 
-# Set paths
-data_dir = Path("../data")
+# Set paths (explicit container paths for consistent execution)
+data_dir = Path("/workspaces/reports2/reports/il_npa/data")
 geo_data_dir = data_dir / "geo_data"
 outputs_dir = data_dir / "outputs"
 outputs_dir.mkdir(parents=True, exist_ok=True)
@@ -113,7 +113,7 @@ if parcel_files:
     parcels_file = parcel_files[-1]
     local_path = parcels_file
     # Extract date from filename for S3 key (e.g., cook_county_parcels_20251117.geojson)
-    s3_key = f"gis/pgl/{parcels_file.name}"
+    s3_key = f"il_npa/gis/pgl/{parcels_file.name}"
     print(f"Loading parcels: {parcels_file.name}")
 else:
     # No local file found, try to find most recent in S3
@@ -122,8 +122,8 @@ else:
         s3_client = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-west-2"))
         # List objects with prefix
         response = s3_client.list_objects_v2(
-            Bucket="data.sb.east",
-            Prefix="gis/pgl/cook_county_parcels_",
+            Bucket="data.sb",
+            Prefix="il_npa/gis/pgl/cook_county_parcels_",
         )
         if "Contents" in response:
             # Sort by last modified, get most recent
@@ -140,7 +140,7 @@ else:
 
 parcels = read_geojson_with_s3_fallback(
     local_path=local_path,
-    s3_bucket="data.sb.east",
+    s3_bucket="data.sb",
     s3_key=s3_key,
 )
 print(f"  Loaded {len(parcels):,} parcels")
@@ -151,7 +151,7 @@ if building_files:
     buildings_file = building_files[-1]
     local_path = buildings_file
     # Extract date from filename for S3 key
-    s3_key = f"gis/pgl/{buildings_file.name}"
+    s3_key = f"il_npa/gis/pgl/{buildings_file.name}"
     print(f"Loading buildings: {buildings_file.name}")
 else:
     # No local file found, try to find most recent in S3
@@ -160,8 +160,8 @@ else:
         s3_client = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-west-2"))
         # List objects with prefix
         response = s3_client.list_objects_v2(
-            Bucket="data.sb.east",
-            Prefix="gis/pgl/chicago_buildings_",
+            Bucket="data.sb",
+            Prefix="il_npa/gis/pgl/chicago_buildings_",
         )
         if "Contents" in response:
             # Sort by last modified, get most recent
@@ -178,7 +178,7 @@ else:
 
 buildings = read_geojson_with_s3_fallback(
     local_path=local_path,
-    s3_bucket="data.sb.east",
+    s3_bucket="data.sb",
     s3_key=s3_key,
 )
 print(f"  Loaded {len(buildings):,} buildings")

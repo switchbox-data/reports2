@@ -100,7 +100,7 @@ all_deps <- unique(c(imports, depends, suggests))
 
 if (length(all_deps) > 0) {
   cat('Installing packages:', paste(all_deps, collapse=', '), '\\n')
-  pak::pkg_install(all_deps, upgrade = FALSE, ask = FALSE)
+  pak::pkg_install(all_deps, upgrade = FALSE, ask = FALSE, sysreqs = TRUE)
 } else {
   cat('No dependencies found in DESCRIPTION\\n')
 }

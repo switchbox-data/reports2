@@ -27,7 +27,7 @@ check-deps:
 # Test the code with pytest
 test:
     echo "🚀 Testing code: Running pytest"
-    uv run python -m pytest --doctest-modules
+    uv run python -m pytest --doctest-modules tests/
 
 # =============================================================================
 # 🏗️  NEW QUARTO REPORT
@@ -47,8 +47,12 @@ new_report:
 
 # Install the virtual environment and install the pre-commit hooks
 install:
-    echo "🚀 Creating virtual environment using uv"
-    .devcontainer/postCreateCommand.sh
+    @echo "🚀 Setting up development environment\n"
+    @.devcontainer/install-python-deps.sh .
+    @.devcontainer/install-r-deps.sh ./DESCRIPTION
+    @.devcontainer/install-prek.sh
+    @.devcontainer/install-prek-deps.sh
+    @echo "✨ Development environment ready!\n"
 
 # Clean generated files and caches
 clean:
@@ -57,7 +61,16 @@ clean:
 # =============================================================================
 # 🔍 AWS
 # =============================================================================
-# These commands help you login to AWS from Ona
+# These commands help you login to AWS
 
-ona_login_aws:
-    gitpod idp login aws --role-arn arn:aws:iam::536697241055:role/OnaEnvironmentRole --duration-seconds 43200
+aws:
+    aws sso login
+
+# =============================================================================
+# 🚀 DEVPOD
+# =============================================================================
+# Launch a devcontainer on AWS via DevPod, using prebuilt image from GHCR
+
+devpod:
+    devpod up github.com/switchbox-data/reports2 \
+      --prebuild-repository ghcr.io/switchbox-data/reports2

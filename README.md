@@ -39,7 +39,7 @@ This repository contains Switchbox's reports. We use a modern bilingual stack co
 
 ## 🌍 Why Open Source?
 
-Our reports (on [our website](https://switch.box)) are shared under the [Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/), and the code behind them (contained in this repo) is released under the [MIT License](LICENSE.md).
+Our reports (on [our website](https://switch.box)) are shared under the [Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/), and the code behind them (contained in this repo) is released under the [MIT License](LICENSE).
 
 We do this for two reasons:
 
@@ -53,7 +53,7 @@ We believe the clean energy transition will happen faster if energy researchers,
 
 ## 📁 Repo Structure
 
-While the rest of this README.md will walk through the containts of this repo in detail, here is an initial overview:
+While the rest of this README.md will walk through the contents of this repo in detail, here is an initial overview:
 
 ```
 reports2/
@@ -66,7 +66,6 @@ reports2/
 │   └── ...
 ├── tests/                  # Python test suite
 ├── .pre-commit-config.yaml # Pre-commit hooks configuration
-├── .Rprofile               # R environment configuration (P3M/pak setup)
 ├── pyproject.toml          # Python dependencies and tool configuration
 ├── uv.lock                 # Locked Python dependencies
 └── Justfile                # Command runner recipes
@@ -89,12 +88,14 @@ just --list
 - `just check-deps` - Check for obsolete dependencies with [deptry](https://github.com/fpgmaas/deptry)
 - `just test` - Run test suite (same as CI)
 - `just new_report` - Create a new Quarto report in `reports/`
+- `just aws` - Authenticate with AWS SSO
+- `just devpod` - Launch devcontainer on AWS via DevPod
 - `just clean` - Remove generated files and caches
 
 **Report directory commands** (`reports/<project_code>/`):
 - `just render` - Render HTML version of report using Quarto
 - `just draft` - Render Word document for content reviews using Quarto
-- `just icml` - Render ICML for InDesign typesetting using Quarto
+- `just typeset` - Render ICML for InDesign typesetting using Quarto
 - `just publish` - Copy rendered HTML version of report from project `docs/` to root `docs/` for web publishing
 - `just clean` - Remove generated files and caches
 
@@ -126,26 +127,42 @@ The fastest way to get started is using the provided dev container:
    just --list  # See all available commands
    ```
 
-### Option 2: Manual Installation (Without Dev Container)
+### Option 2: Dev Container on AWS (via DevPod)
+
+For faster data access (especially with large datasets), you can launch the devcontainer on AWS in region `us-west-2`, close to where our data is stored in S3.
+
+1. **Prerequisites**:
+   - Install [DevPod](https://devpod.sh/)
+   - Configure the AWS provider in DevPod (detailed setup documentation coming soon)
+
+2. **Launch**:
+   ```bash
+   just aws      # Authenticate with AWS so Devpod can create an EC2 instance
+   just devpod   # Launch devcontainer on EC2 instance
+   ```
+
+This uses a [prebuilt devcontainer image](#prebuilds-double-duty) from GitHub Container Registry, so you don't have to wait for the image to build.
+
+### Option 3: Manual Installation (Without Dev Container)
 
 If you prefer not to use dev containers:
 
 1. **Install Prerequisites**:
    - Python 3.9+
    - R 4.0+
-   - [uv](https://github.com/astral-sh/uv)
+   - `pak` package for R
    - [just](https://github.com/casey/just)
-   - [prek](https://github.com/j178/prek)
 
 2. **Run Setup**:
    ```bash
    just install
    ```
 
-   This command runs `.devcontainer/postCreateCommand.sh`, which:
-   - Syncs Python dependencies with `uv`
-   - Detect R packages used in the reports and install them with `pak`
-   - Installs pre-commit hooks
+   This command:
+   - Installs `uv`
+   - Uses `uv` to create a virtualenv and install python packages to it
+   - Uses `pak` to install R packages listed in `DESCRIPTION` file
+   - Installs pre-commit hooks with `prek`
 
 ## 📝 Creating a New Report
 
@@ -291,14 +308,14 @@ Our template includes `just` commands for different outputs:
 
 ```bash
 just render    # Generate HTML for web publishing (static site)
-just draft    # Generate Word doc for content reviews with collaborators
-just icml    # Generate ICML for creating typeset PDFs in InDesign
+just draft     # Generate Word doc for content reviews with collaborators
+just typeset   # Generate ICML for creating typeset PDFs in InDesign
 ```
 
 **When to use each**:
 - **HTML** (`just render`): Publishing our reports as interactive web pages
 - **DOCX** (`just draft`): Sharing drafts for content review and feedback
-- **ICML** (`just icml`): Professional typesetting in Adobe InDesign for PDF export
+- **ICML** (`just typeset`): Professional typesetting in Adobe InDesign for PDF export
 
 The template automatically configures these formats with our stylesheets and branding.
 
@@ -487,7 +504,7 @@ uv add <package-name>
 This command:
 - Adds the package to `pyproject.toml`
 - Updates `uv.lock` with resolved dependencies
-- Installs the package in your virtual environment (`.venv/`)
+- Installs the package in your virtual environment
 
 **Example**:
 ```bash
@@ -500,16 +517,15 @@ uv add --dev pytest-mock  # Add as a dev dependency
 **How Your Package Persists**
 
 *In dev container*:
-- Packages are installed to `.venv/` inside the container
-- The `.venv/` directory *persists to your local filesystem* (it's mounted from the host into the container)
-- When the container dies, `.venv/` remains on your host machine
-- On container restart, `uv sync` checks if installed packages `.venv/` match `uv.lock`
-- Your new package will be in both, only packages that are missing or inconsistent are installed/updated
-- So `.venv/` will simply be remounted in the container, and you package will be immediately accessible.
-- **Bottom line**: python packages persist as file on your local filesystem, and are immediately available on container start
+- When you run `uv add package-name`, packages are installed to `/opt/venv/` inside the container
+- They stay in the container, and are not exported to your local filesystem. So if you restart the container, the package will be gone!
+- To make your new package persist, you need to add it to the image itself, by committing `pyproject.toml` and `uv.lock` and pushing to Github
+- If you're using devcontainers on your laptop, rebuild the container and your package will be permanently installed within the image
+- If you're using devcontainers on Devpod, Github actions will automatically rebuild the image with the new package; restart your workspace to use the new image
+- **Bottom line**: Run `uv add`, commit `pyproject.toml` and `uv.lock`, and rebuild the devcontainer to persist packages
 
 *On regular laptop*:
-- The `.venv/` directory persists in your local workspace
+- When you run `uv add package-name`, packages are installed to `.venv/`, which persists in your local workspace
 - Packages remain installed between sessions
 - No reinstallation needed unless you delete `.venv/` or run `uv sync` after changes
 
@@ -518,7 +534,9 @@ uv add --dev pytest-mock  # Add as a dev dependency
 *In dev container*:
 1. You commit both `pyproject.toml` and `uv.lock`, and push to Github
 2. Others pull your changes
-3. When they rebuild their container or it restarts, `uv sync` automatically installs your new dependency from `uv.lock`
+3. They rebuild their container:
+   - If they're using devcontainers on their laptop, when they rebuild their container, all packages in `uv.lock` (including your new one) will be permanently installed into the image
+   - If they're using devcontainers on Devpod, GitHub Actions will automatically rebuild the image with the new package; they just need to restart their workspace to use the new image
 
 *On regular laptop*:
 1. You commit both `pyproject.toml` and `uv.lock` to git
@@ -527,59 +545,58 @@ uv add --dev pytest-mock  # Add as a dev dependency
 
 ### R Dependencies
 
-R dependency management works differently - it's more automatic but has no lock file.
+R dependency management works differently, you have to manually update a file that lists packages, then install them.
 
 **Adding a new R package**
 
-1. **Install it once** in an R session:
-   ```r
-   pak::pak("dplyr")
+1. **Add it to `DESCRIPTION`** in the `Imports` section:
+   ```
+   Imports:
+       dplyr,
+       ggplot2,
+       arrow
    ```
 
-2. **Use it in your code** - Import it in your Quarto notebook or R script:
-   ```r
-   library(dplyr)
+2. **Install it** by running:
+   ```bash
+   just install
    ```
-
-3. **That's it!** No manual dependency file to update. The `library()` call in your code is the only record of the dependency.
 
 **How Your Package Persists**
 
 *In dev container*:
-- Packages are installed to the R library inside the container
-- Unlike Python's `.venv/`, R packages **do NOT persist to your local filesystem**
-- When the container dies, the R packages die with it
-- On every container startup, packages are reinstalled automatically for you:
-  - The container automatically scans all R files in the project for `library()` calls
-  - Detects which packages you've used
-  - Reinstalls all needed packages using `pak`
-- **Don't worry - this is fully automated and fast!** Our `.Rprofile` configures `pak` to use [Posit Public Package Manager (P3M)](https://p3m.dev/), which provides pre-compiled binary packages for your system architecture
-- **Bottom line**: R packages persist as code, and are reinstalled on container startup; `library()` calls committed to git are the source of truth
+- If you install a package directly with `pak::pak("dplyr")`, the package is installed temporarily in the container
+- It will be gone when the container restarts!
+- If you add it to `DESCRIPTION` and run `just install`, as documented above, the package will also install temporarily
+- However, if you then commit `DESCRIPTION` and push to Github...
+- If you're using devcontainers on your laptop, rebuild the container and every package in `DESCRIPTION` (including your new one) will be permanently installed within the image
+- If you're using devcontainers on Devpod, GitHub Actions will automatically rebuild the image with the new package; restart your workspace to use the new image
+- **Bottom line**: Add packages to `DESCRIPTION`, commit it, and rebuild the devcontainer to persist them
 
 *On regular laptop*:
 - Packages are saved to your global R library (typically `~/R/library/`)
-- Note: If you use `renv`, packages would be project-local instead
 - Packages remain installed between sessions
 - No reinstallation needed unless you uninstall them or use a different R version
 
 **How Others Get Your Package**
 
 *In dev container*:
-1. You use `library(dplyr)` in your code, commit it, and push to Github
+1. You add a package to `DESCRIPTION`, commit it, and push to GitHub
 2. Others pull your changes
-3. When they start their container, it automatically scans for `library()` calls and installs `dplyr` via `pak`
-4. No manual action required - completely automatic
+3. They rebuild their container:
+   - If they're using devcontainers on their laptop, when they rebuild their container, all packages in `DESCRIPTION` (including your new one) will be pemanently installed into the image
+   - If they're using devcontainers on Devpod, GitHub Actions will automatically rebuild the image with the new package; they just need to restart their workspace to use the new image
 
 *On regular laptop*:
-1. You use `library(dplyr)` in your code and commit it to git
+1. You add a package to `DESCRIPTION` and commit it to git
 2. Others pull your changes
 3. They manually install dependencies:
-   ```r
-   pak::local_install_deps()  # Installs all dependencies found in project files
+   ```bash
+   just install
    ```
-   Or install individually:
+   Or in an R session:
    ```r
-   pak::pak("dplyr")
+   pak::local_install_deps()  # Installs all dependencies from DESCRIPTION
    ```
 
 ## 🔀 When to Use Python vs. R
@@ -685,7 +702,7 @@ tibble_df <- result |> collect()
 
 **Options to improve performance**:
 1. **Cache locally**: Download files once and cache in `data/` (gitignored)
-2. **Run dev containers in the cloud**: Deploy containers in AWS us-west-2 region, same as the data bucket
+2. **Run dev containers in the cloud**: See [Option 2 in Quick Start](#option-2-dev-container-on-aws-via-devpod) for launching devcontainers on AWS in `us-west-2 region`, same as the data bucket
 3. **Use partitioned datasets**: Only read the partitions you need
 
 **When reports execute**: Data is downloaded from S3 at runtime. The first run may be slower, but subsequent runs can use cached data if you've set up local caching.
@@ -819,35 +836,49 @@ Runs the Python test suite with pytest (tests in `tests/` directory), including 
 
 **Note on R tests**: We don't currently have R tests or a testing framework configured for R code. Only Python tests are run by `just test` and in CI.
 
-**Testing across Python versions**: The project includes a `tox.ini` configuration for testing across Python 3.9-3.13. To use it:
-
-```bash
-uv run tox
-```
-
-This is useful for ensuring compatibility across different Python versions.
-
 
 ## 🚦 CI/CD Pipeline
 
-The repository uses [GitHub Actions](https://docs.github.com/en/actions) to automatically run quality checks and tests on your code. **The CI runs the exact same `just` commands** you use locally in the same dev container environment, ensuring perfect consistency.
+The repository uses [GitHub Actions](https://docs.github.com/en/actions) to automatically run quality checks and tests on your code. **The CI runs the exact same `just` commands** you use locally, in the same devcontainer environment, ensuring perfect consistency.
 
 ### What Runs and When
 
 The workflow runs **two jobs in parallel** for speed:
 
 **On Pull Requests** (opened, updated, or marked ready for review):
-1. **Quality Checks Job**: Runs `just check` (lock file validation + pre-commit hooks)
-2. **Tests Job**: Runs `just test` (pytest test suite)
+1. **quality-checks**: Runs `just check` (lock file validation + pre-commit hooks)
+2. **tests**: Runs `just test` (pytest test suite)
 
 **On Push to `main`**:
 - Same checks and tests as pull requests (both jobs run in parallel)
 
+### Devcontainer in CI/CD
+
+On every commit to `main` or a pull request, GitHub Actions actually **builds the devcontainer image** - the same process that happens when you rebuild in VS Code.
+
+To avoid 15-minute builds every time, we use a **two-tier caching strategy**:
+1. **Image caching**: If `.devcontainer/Dockerfile`, `pyproject.toml`, `uv.lock`, and `DESCRIPTION` haven't changed, the devcontainer image build is skipped, and the most recent image (in GHCR) is reused (~30 seconds)
+2. **Layer caching**: If any of these files changed, the image is rebuilt, but only affected layers rebuild while the others are pulled from GHCR cache (incremental builds, ~2-5 minutes)
+
+Once built, the image is **pushed to [GitHub Container Registry (GHCR)](https://github.com/switchbox-data/reports2/pkgs/container/reports2)**, where it's immediately available as `ghcr.io/switchbox-data/reports2:latest`.
+
+The quality-checks and tests jobs then **pull this prebuilt image** and run `just check` and `just test` inside it - no rebuilding required.
+
+### Devcontainer prebuilds: Double Duty
+
+These CI builds serve a dual purpose:
+
+1. **For CI**: Tests run in the exact devcontainer environment
+2. **For Devpod**: Users can [launch devcontainers on AWS](#option-2-dev-container-on-aws-via-devpod) (similar to Codespaces) using the prebuilt image - unlike when using devcontainers on your laptop, you don't have to wait for the image to build
+
+**Bottom line**: Every commit that modifies the devcontainer or dependencies triggers an automatic devcontainer image build. This ensures CI uses the correct environment, and anyone (including Devpod users) can use the fully built devcontainer without building it from scratch.
+
+
 ### Why This Matters
 
-- **Perfect Consistency**: CI literally runs `just check` and `just test` inside of the dev container - exactly what you run locally
-- **Speed**: Quality checks and tests run in parallel, making CI faster
-- **Safety net**: Even if someone skips checks locally, CI catches issues before merge
+- **Perfect Consistency**: CI literally runs `just check` and `just test` inside of the devcontainer - exactly what you run locally — and devcontainer is rebuilt when its definition changes
+- **Speed**: Devcontainer is only rebuilt when necessary, so quality checks and tests usually run immediately, and they run in parallel, making CI faster
+- **Safety net**: Even if someone skips pre-commit checks locally, CI catches code quality issues before merge
 - **Code quality**: Every PR must pass all checks and tests before it can be merged
 - **Optional checks**: Dependency audits (`just check-deps`) are not part of CI but available locally for additional validation
 

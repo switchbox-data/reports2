@@ -6,33 +6,183 @@ on:
   pull_request:
     types: [ opened, synchronize, reopened, ready_for_review ]
 
+# ============================================================================
+# CI/CD ARCHITECTURE: Devcontainer Build + Parallel Test Execution
+# ============================================================================
+#
+# This workflow uses a 3-job structure to optimize CI performance:
+#
+# 1. build-devcontainer-image: Builds the devcontainer image and pushes to GHCR
+# 2. quality-checks & tests: Pull the prebuilt image and run checks in PARALLEL
+#
+# WHY USE DEVPOD FOR CI BUILDS?
+#
+# We use DevPod CLI (not docker/build-push-action) to build devcontainer images
+# because it creates a hash-based tag for the image, which is required if we want
+# to use the prebuilt image with devpod up.
+#
+#   Layer 1: Hash-Based Caching (Complete Skip)
+#     - DevPod hashes devcontainer.json + Dockerfile + build context files
+#     - If hash matches existing image → Skip build entirely (~30s vs ~8min)
+#     - Example: Changing only README.md doesn't rebuild the image
+#
+#   Layer 2: BuildKit Registry Layer Caching (Incremental Build)
+#     - When hash changes → DevPod performs an incremental rebuild
+#     - BuildKit reuses unchanged layers from GHCR registry cache
+#     - Only rebuilds layers starting from the changed file
+#     - Example: Adding a Python package only rebuilds the final Python deps layer
+#
+# CACHE STORAGE:
+#
+#   - Final images: ghcr.io/switchbox-data/reports2:devpod-<hash> (hash-based tag)
+#                   ghcr.io/switchbox-data/reports2:latest (for CI jobs)
+#   - Layer cache:  ghcr.io/switchbox-data/reports2:buildcache (stable tag)
+#
+# WHY A DEDICATED :buildcache TAG?
+#
+# BuildKit needs a stable reference to store/retrieve layer cache. Using the
+# image tags (devpod-<hash>, latest) doesn't work because they change on every
+# build. The :buildcache tag persists across builds, allowing BuildKit to
+# accumulate cached layers over time.
+#
+# EXPECTED BUILD TIMES:
+#
+#   - Cache hit (hash match):      ~30s (no rebuild)
+#   - Layer cache hit:             ~2-4min (incremental rebuild)
+#   - Full rebuild (no cache):     ~8min (everything from scratch)
+#
+# ============================================================================
+
 jobs:
-  quality-checks:
+  build-devcontainer-image:
+    # Builds and publishes the devcontainer image using DevPod CLI.
+    # DevPod creates hash-based tags (e.g. devpod-d95c1f5a) and we also tag as :latest.
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write  # Needed to push image to ghcr.io
     steps:
       - uses: actions/checkout@v5
 
-      - uses: devcontainers/ci@v0.3
-        with:
-          push: never
-          runCmd: echo "Container started"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: run quality checks
-        uses: ./.github/actions/run-in-devcontainer
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          runCmd: just check
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Install DevPod CLI (skevetter's maintained fork)
+      - name: Install DevPod CLI
+        run: |
+          curl -L -o devpod "https://github.com/skevetter/devpod/releases/latest/download/devpod-linux-amd64"
+          chmod +x devpod
+          sudo mv devpod /usr/local/bin/
+
+      - name: Initialize Docker provider
+        run: devpod provider add docker
+
+      # Configure BuildKit layer caching via DevPod
+      # This enables Layer 2 caching (incremental builds when hash changes)
+      - name: Configure DevPod to use GHCR as a build cache backend
+        run: |
+          # DevPod automatically translates REGISTRY_CACHE into BuildKit cache flags:
+          #   --cache-from type=registry,ref=ghcr.io/switchbox-data/reports2:buildcache
+          #   --cache-to type=registry,ref=ghcr.io/switchbox-data/reports2:buildcache,mode=max
+          #
+          # mode=max ensures ALL intermediate layers are cached (not just the final image).
+          # This allows BuildKit to reuse layers even when the final image hash changes.
+          #
+          # Example: If you add a Python package (changing pyproject.toml):
+          #   - Layers 1-21 (base Ubuntu, R, Quarto, etc.): CACHED ✓ (pulled from :buildcache)
+          #   - Layer 22 (Python deps): REBUILT (only this layer changes)
+          #
+          # This turns an 8-minute full rebuild into a ~2-minute incremental rebuild.
+
+          devpod context set-options -o REGISTRY_CACHE=ghcr.io/switchbox-data/reports2:buildcache
+
+      # Build the devcontainer image with DevPod
+      # DevPod provides two-tier caching (see workflow header for details)
+      - name: Build and push devcontainer image with DevPod
+        run: |
+          # DEVPOD TAGGING BEHAVIOR:
+          #
+          # DevPod automatically creates two tags for the built image:
+          #   1. devpod-<hash> - Hash-based tag for `devpod up` compatibility
+          #   2. latest - Via --tag flag, used by downstream CI jobs
+          #
+          # The hash is calculated from:
+          #   - devcontainer.json content
+          #   - Dockerfile content
+          #   - Files COPYed in Dockerfile (install scripts, pyproject.toml, uv.lock, etc.)
+          #
+          # If the hash matches an existing image in the registry → DevPod skips the
+          # build entirely and just pulls the existing image (~30s instead of minutes).
+          #
+          # If the hash is different → DevPod performs a full build, but BuildKit
+          # still uses layer caching (configured above) to reuse unchanged layers.
+
+          # Enable debug logging to troubleshoot cache behavior
+          export BUILDKIT_PROGRESS=plain
+
+          devpod build . \
+            --provider docker \
+            --repository ghcr.io/switchbox-data/reports2 \
+            --platform linux/amd64 \
+            --tag latest \
+            --debug
+
+  quality-checks:
+    # Runs quality checks (lock file validation + pre-commit hooks) in parallel with tests.
+    #
+    # Using GitHub Actions' native container support:
+    #   - Pulls the prebuilt :latest image
+    #   - Runs the entire job inside the container
+    #   - Handles mounting workspace
+    #
+    # Note: why container keyword instead of devcontainers/ci?
+    # devcontainers/ci always rebuilds the image (~2-8 minutes), even with cacheFrom.
+    # We want to use the exact image that build-devcontainer-image just pushed.
+    needs: build-devcontainer-image
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/switchbox-data/reports2:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+      # Note: mounted workspace is owned by UID 1001 (runner), container user is UID 1000 (vscode).
+      # Running as root allows us to read/write files in the container regardless of who owns them,
+      # which is needed for quality checks and tests to run correctly.
+    steps:
+      - uses: actions/checkout@v5
+
+      # When git commands, running as UID 0 (root), see the repo is owned by UID 1001 (runner),
+      #it throws a "dubious ownership" error. This configures Git to trust the directory, avoiding the error.
+      - name: Configure Git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Run quality checks
+        run: just check
 
   tests:
+    # Runs test suite in parallel with quality-checks.
+    # Uses the same container approach as quality-checks (see comments there).
+    needs: build-devcontainer-image
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/switchbox-data/reports2:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
     steps:
       - uses: actions/checkout@v5
 
-      - uses: devcontainers/ci@v0.3
-        with:
-          push: never
-          runCmd: echo "Container started"
+      - name: Configure Git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      - name: run tests
-        uses: ./.github/actions/run-in-devcontainer
-        with:
-          runCmd: just test
+      - name: Run tests
+        run: just test

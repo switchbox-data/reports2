@@ -1,48 +1,25 @@
 {
   "name": "reports2",
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
-  "features": {
-    "ghcr.io/nils-geistmann/devcontainers-features/zsh:0": {
-      "plugins": "git colored-man-pages colorize history zsh-autosuggestions fast-syntax-highlighting zsh-autocomplete"
-    },
-    "ghcr.io/guiyomh/features/just:0.1.0": { "version": "1.42.4" },
-    "ghcr.io/devcontainers/features/python:1": {
-      "version": "os-provided",
-      "installTools": "false"
-    },
-    "ghcr.io/rocker-org/devcontainer-features/r-apt:0.5.0": {
-      "installRMarkdown": "true",
-      "vscodeRSupport": "full",
-      "installVscDebugger": "true",
-      "installRadian": "true"
-    },
-    "ghcr.io/rocker-org/devcontainer-features/quarto-cli:1": {
-      "version": "1.7.33",
-      "installChromium": "true"
-    },
-    "ghcr.io/rocker-org/devcontainer-features/apt-packages:1": {
-      "packages": [
-        "chromium",
-        "python3-tk",
-        "pandoc"
-      ]
-    },
-    "ghcr.io/devcontainers/features/aws-cli:1": {
-      "version": "2.27.4"
-    },
-    "ghcr.io/devcontainers/features/github-cli:1": {}
+  // Build from Dockerfile instead of pulling pre-built image
+  // All devcontainer features and dependencies are baked into the image during build
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
   },
   "containerEnv": {
-    "QUARTO_PYTHON": "/workspaces/reports2/.venv/bin/python"
+    "QUARTO_PYTHON": "/opt/venv/bin/python"
   },
-  "initializeCommand": "mkdir -p ${localEnv:HOME}/.aws",
+  // Create .aws directory on host with proper ownership for container's vscode user (UID 1000).
+  // On EC2 where host runs as root, chown ensures container can access mounted directory.
+  // Falls back to chmod if chown fails (e.g., non-root dev environments).
+  "initializeCommand": "mkdir -p ${localEnv:HOME}/.aws && chown -R 1000:1000 ${localEnv:HOME}/.aws 2>/dev/null || chmod -R 755 ${localEnv:HOME}/.aws",
   "mounts": [
     "source=${localEnv:HOME}/.aws,target=/home/vscode/.aws,type=bind,consistency=cached"
   ],
-  "remoteEnv": {
-    "AWS_REGION": "us-west-2"
-  },
-  "postCreateCommand": "bash ./.devcontainer/postCreateCommand.sh && bash ./.devcontainer/installOhmyzshPlugins.sh",
+  // Install pre-commit hooks into .git/hooks/
+  // This must run after container creation because .git/ is mounted from the host.
+  // The prek CLI itself is already installed in the Docker image.
+  "postCreateCommand": ".devcontainer/install-prek-deps.sh",
   "customizations": {
     "vscode": {
       "extensions": [
@@ -51,15 +28,18 @@
         "ms-python.python",
         "charliermarsh.ruff",
         "astral-sh.ty",
+        // R extension - works with languageserver + httpgd packages (httpgd installed via r-packages feature)
         "REditorSupport.r",
+        // R debugger - requires vscDebugger package (installVscDebugger: true)
         "RDebugger.r-debugger",
+        // Air formatter for R - used as default formatter in [r] settings below
         "Posit.air-vscode",
         "quarto.quarto"
       ],
       "settings": {
-        "python.defaultInterpreterPath": "/workspaces/reports2/.venv/bin/python",
+        "python.defaultInterpreterPath": "/opt/venv/bin/python",
         "python.testing.pytestArgs": ["tests"],
-        "python.testing.pytestPath": "/workspaces/reports2/.venv/bin/pytest",
+        "python.testing.pytestPath": "/opt/venv/bin/pytest",
         "python.testing.unittestEnabled": false,
         "python.testing.pytestEnabled": true,
         "ruff.nativeServer": "on",
@@ -71,14 +51,21 @@
             "source.organizeImports": "explicit"
           }
         },
+        // Enable bracketed paste mode for multi-line code pasting in R terminal
         "r.bracketedPaste": true,
+        // Use httpgd for interactive, resizable plots in VSCode (httpgd installed via r-packages feature)
         "r.plot.useHttpgd": true,
+        // Use radian as the R terminal (installed above)
         "r.rterm.linux": "/usr/local/bin/radian",
+        // Don't save/restore workspace on R session exit (clean sessions)
         "r.rterm.option": ["--no-save", "--no-restore"],
+        // Show memory size of objects in workspace viewer panel
         "r.workspaceViewer.showObjectSize": true,
         "[r]": {
-          "editor.formatOnSave": true,
-          "editor.defaultFormatter": "Posit.air-vscode"
+          // Use Posit's air formatter (opinionated, fast alternative to styler)
+          "editor.defaultFormatter": "Posit.air-vscode",
+          // Auto-format R code using air on save
+          "editor.formatOnSave": true
         }
       }
     }

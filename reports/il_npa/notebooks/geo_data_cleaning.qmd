@@ -72,12 +72,12 @@ POLYGON_BUFFER_M = 8  # Distance in meters to buffer construction polygons for p
 # Generate timestamp for output files
 timestamp = datetime.now().strftime('%Y%m%d')
 
-# Set paths
-data_dir = Path('../data')
+# Set paths (explicit container paths for consistent execution)
+data_dir = Path('/workspaces/reports2/reports/il_npa/data')
 geo_data_dir = data_dir / 'geo_data'
 outputs_dir = data_dir / 'outputs'
 outputs_dir.mkdir(parents=True, exist_ok=True)  # Ensure outputs directory exists
-utils_dir = Path('../utils')
+utils_dir = Path('/workspaces/reports2/reports/il_npa/utils')
 ```
 
 # Utility Functions
@@ -365,11 +365,11 @@ if not validate_uniqueness(pg_polygons, 'OBJECTID', 'Peoples Gas polygons'):
 ```{python}
 # Load city blocks data (only keep needed columns to reduce memory usage)
 blocks_file = geo_data_dir / 'city_blocks' / 'pgp_blocks.geojson'
-s3_key_blocks = 'gis/pgl/pgp_blocks.geojson'
+s3_key_blocks = 'il_npa/gis/pgl/pgp_blocks.geojson'
 print(f"Loading city blocks...")
 city_blocks = read_geojson_with_s3_fallback(
     local_path=blocks_file,
-    s3_bucket='data.sb.east',
+    s3_bucket='data.sb',
     s3_key=s3_key_blocks
 )
 
@@ -390,7 +390,11 @@ validate_uniqueness(city_blocks, 'geoid10', 'city blocks')
 
 ```{python}
 # Load pre-processed parcels with units and assessor classification. See reports/il_npa/notebooks/match_parcels_buildings.py
-parcel_file = outputs_dir / 'parcels_with_units_20251125.geojson'
+# Find the most recent parcels_with_units file
+parcel_files = sorted(outputs_dir.glob('parcels_with_units_*.geojson'))
+if not parcel_files:
+    raise FileNotFoundError(f"No parcels_with_units_*.geojson files found in {outputs_dir}. Run match_parcels_buildings.py first.")
+parcel_file = parcel_files[-1]  # Get most recent
 print(f"Loading: {parcel_file.name}")
 parcels_with_units = gpd.read_file(parcel_file)
 print(f"Loaded {len(parcels_with_units):,} parcels with units and classification")
@@ -421,7 +425,7 @@ if street_files:
     street_file = street_files[-1]
     local_path = street_file
     # Extract date from filename for S3 key
-    s3_key = f'gis/pgl/{street_file.name}'
+    s3_key = f'il_npa/gis/pgl/{street_file.name}'
     print(f"Loading: {street_file.name}")
 else:
     # No local file found, try to find most recent in S3
@@ -430,8 +434,8 @@ else:
         s3_client = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-west-2"))
         # List objects with prefix
         response = s3_client.list_objects_v2(
-            Bucket="data.sb.east",
-            Prefix="gis/pgl/chicago_streets_",
+            Bucket="data.sb",
+            Prefix="il_npa/gis/pgl/chicago_streets_",
         )
         if "Contents" in response:
             # Sort by last modified, get most recent
@@ -451,7 +455,7 @@ else:
 if street_files or (s3_key is not None and local_path is not None):
     streets = read_geojson_with_s3_fallback(
         local_path=local_path,
-        s3_bucket='data.sb.east',
+        s3_bucket='data.sb',
         s3_key=s3_key
     )
     print(f"Loaded {len(streets):,} street centerlines")

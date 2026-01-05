@@ -52,11 +52,11 @@ import pandas as pd
 from shapely.ops import unary_union
 
 timestamp = datetime.now().strftime("%Y%m%d")
-# Set paths
-data_dir = Path("../data")
+# Set paths (explicit container paths for consistent execution)
+data_dir = Path("/workspaces/reports2/reports/il_npa/data")
 outputs_dir = data_dir / "outputs"
 outputs_dir.mkdir(parents=True, exist_ok=True)  # Ensure outputs directory exists
-utils_dir = Path("../utils")
+utils_dir = Path("/workspaces/reports2/reports/il_npa/utils")
 
 MIN_START = "2026-01-01"
 # --- Code Cell 5 ---

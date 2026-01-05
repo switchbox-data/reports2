@@ -98,9 +98,11 @@ depends <- get_deps('Depends')
 suggests <- get_deps('Suggests')
 all_deps <- unique(c(imports, depends, suggests))
 
+options(pkg.sysreqs = TRUE)
+
 if (length(all_deps) > 0) {
   cat('Installing packages:', paste(all_deps, collapse=', '), '\\n')
-  pak::pkg_install(all_deps, upgrade = FALSE, ask = FALSE, sysreqs = TRUE)
+  pak::pkg_install(all_deps, upgrade = FALSE, ask = FALSE)
 } else {
   cat('No dependencies found in DESCRIPTION\\n')
 }

@@ -76,6 +76,17 @@ aws:
 up-local:
     #!/usr/bin/env bash
     set -euo pipefail
+
+    # Check for DevPod CLI (silent if installed, error if not)
+    if ! command -v devpod >/dev/null 2>&1; then
+        echo "❌ ERROR: DevPod CLI is not installed" >&2
+        echo "" >&2
+        echo "Install skevetter fork of DevPod first:" >&2
+        echo "  https://github.com/skevetter/devpod/releases" >&2
+        echo "" >&2
+        exit 1
+    fi
+
     if ! devpod provider list 2>/dev/null | grep -q "^docker\s"; then
         devpod provider add docker 2>/dev/null || true
     fi
@@ -90,6 +101,16 @@ up-local:
 up-aws MACHINE_TYPE="t3.xlarge":
     #!/usr/bin/env bash
     set -euo pipefail
+
+    # Check for DevPod CLI (silent if installed, error if not)
+    if ! command -v devpod >/dev/null 2>&1; then
+        echo "❌ ERROR: DevPod CLI is not installed" >&2
+        echo "" >&2
+        echo "Install skevetter fork of DevPod first:" >&2
+        echo "  https://github.com/skevetter/devpod/releases" >&2
+        echo "" >&2
+        exit 1
+    fi
 
     # Check for AWS CLI (silent if installed, error if not)
     if ! command -v aws >/dev/null 2>&1; then
@@ -165,6 +186,17 @@ up-aws MACHINE_TYPE="t3.xlarge":
 up-aws-list:
     #!/usr/bin/env bash
     set -euo pipefail
+
+    # Check for DevPod CLI (silent if installed, error if not)
+    if ! command -v devpod >/dev/null 2>&1; then
+        echo "❌ ERROR: DevPod CLI is not installed" >&2
+        echo "" >&2
+        echo "Install skevetter fork of DevPod first:" >&2
+        echo "  https://github.com/skevetter/devpod/releases" >&2
+        echo "" >&2
+        exit 1
+    fi
+
     instances=$(devpod list --output json 2>/dev/null | jq -r '.[] | select(.provider.name | startswith("aws-")) | "  \(.id)\n    Provider: \(.provider.name)\n    Status: \(.status // "unknown")\n    IDE: \(.ide.name // "none")\n    └─ To delete: devpod delete \(.id)"' || echo "")
     if [ -z "$instances" ]; then
         echo "Active EC2 instances: None"

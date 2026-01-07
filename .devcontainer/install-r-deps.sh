@@ -70,7 +70,7 @@ else
 fi
 echo
 
-# Install dependencies and capture output
+# Install dependencies with real-time output
 echo "📥 Installing R dependencies from DESCRIPTION..."
 set +e  # Temporarily disable exit on error to capture output
 PAK_OUTPUT=$(Rscript -e "
@@ -106,11 +106,10 @@ if (length(all_deps) > 0) {
 } else {
   cat('No dependencies found in DESCRIPTION\\n')
 }
-" 2>&1)
-PAK_EXIT_CODE=$?
+" 2>&1 | tee /dev/tty)
+PAK_EXIT_CODE=${PIPESTATUS[0]}
 set -e  # Re-enable exit on error
 
-echo "$PAK_OUTPUT"
 echo
 
 # Check if pak failed

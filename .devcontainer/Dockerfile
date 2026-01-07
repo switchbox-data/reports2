@@ -29,7 +29,9 @@ RUN /tmp/install-feature.sh "ghcr.io/devcontainers/features/python:1" \
 RUN /tmp/install-feature.sh "ghcr.io/rocker-org/devcontainer-features/r-rig:1" \
     version=4.4 \
     pakVersion=stable \
-    installRadian=true
+    installRadian=true && \
+    # Remove rig zsh completions to avoid compinit security warnings (we don't use them)
+    rm -rf /usr/local/share/zsh 2>/dev/null || true
 
 # Install R packages needed by toolchain
 # httpgd: Interactive plot viewer (archived from CRAN, requires source build from GitHub)

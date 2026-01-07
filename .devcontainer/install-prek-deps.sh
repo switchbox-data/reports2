@@ -55,27 +55,15 @@ if [ -f "${PRECOMMIT_HOOK}" ]; then
     # Check if it's a prek-managed hook
     if grep -q "prek" "${PRECOMMIT_HOOK}" 2>/dev/null; then
         HOOKS_ALREADY_INSTALLED=true
-        echo "ℹ️  Pre-commit hooks already installed, checking for updates..."
     fi
 fi
 
-# Install prek pre-commit hooks
-if [ "$HOOKS_ALREADY_INSTALLED" = true ]; then
-    echo "📥 Updating prek pre-commit hooks..."
-else
-    echo "📥 Installing prek pre-commit hooks..."
-fi
-
-PREK_OUTPUT=$(prek install --install-hooks 2>&1)
-echo "$PREK_OUTPUT"
-echo
-
-# Parse prek output to show what happened
 # Count total hooks from .pre-commit-config.yaml (look for "- id:" pattern)
 TOTAL_HOOKS=$(grep -c "^\s*- id:" .pre-commit-config.yaml 2>/dev/null || echo "0")
 # Ensure it's a single integer
 TOTAL_HOOKS=$(echo "$TOTAL_HOOKS" | head -1 | tr -d ' ')
 
+# Install prek pre-commit hooks
 if [ "$HOOKS_ALREADY_INSTALLED" = true ]; then
     if [ "$TOTAL_HOOKS" -gt 0 ] 2>/dev/null; then
         echo "✅ ${TOTAL_HOOKS} pre-commit hooks already installed"
@@ -83,6 +71,11 @@ if [ "$HOOKS_ALREADY_INSTALLED" = true ]; then
         echo "✅ Pre-commit hooks already installed"
     fi
 else
+    echo "📥 Installing prek pre-commit hooks..."
+    PREK_OUTPUT=$(prek install --install-hooks 2>&1)
+    echo "$PREK_OUTPUT"
+    echo
+
     if [ "$TOTAL_HOOKS" -gt 0 ] 2>/dev/null; then
         echo "✅ Installed ${TOTAL_HOOKS} pre-commit hooks"
     else

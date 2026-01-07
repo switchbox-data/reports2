@@ -14,10 +14,22 @@ echo
 
 # Find the git repository root and cd there
 # This works in both devcontainers and on laptops
-if ! REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null); then
-    echo "❌ ERROR: Not in a git repository" >&2
-    exit 1
-fi
+REPO_ROOT=$(git rev-parse --show-toplevel 2>&1) || {
+    # Git may fail with "dubious ownership" in containers where mounted files
+    # are owned by a different user than the running process. This happens because:
+    #   - Docker Desktop on Mac maps host user UIDs to container UIDs (often UID 1000)
+    #   - The container runs as root (UID 0)
+    #   - Git sees the mismatch and refuses to operate (security feature from CVE-2022-24765)
+    # The safe.directory config tells git to trust this specific directory.
+    # We only add it when the dubious ownership error occurs, not unconditionally.
+    if echo "$REPO_ROOT" | grep -q "dubious ownership"; then
+        git config --global --add safe.directory "$(pwd)"
+        REPO_ROOT=$(git rev-parse --show-toplevel)
+    else
+        echo "❌ ERROR: Not in a git repository" >&2
+        exit 1
+    fi
+}
 cd "${REPO_ROOT}"
 echo "📁 Working in repository: ${REPO_ROOT}"
 echo

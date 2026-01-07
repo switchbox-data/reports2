@@ -94,7 +94,8 @@ USER vscode
 COPY .devcontainer/install-ohmyzsh-plugins.sh /tmp/install-ohmyzsh-plugins.sh
 RUN sudo chmod +x /tmp/install-ohmyzsh-plugins.sh && \
     sudo /tmp/install-feature.sh "ghcr.io/nils-geistmann/devcontainers-features/zsh:0" \
-        plugins="git colored-man-pages colorize history zsh-autosuggestions fast-syntax-highlighting zsh-autocomplete" && \
+        plugins="git colored-man-pages colorize history zsh-autosuggestions fast-syntax-highlighting zsh-autocomplete" \
+        theme="bira" && \
     /tmp/install-ohmyzsh-plugins.sh
 
 # Install prek CLI for pre-commit hooks

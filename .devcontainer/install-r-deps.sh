@@ -72,8 +72,13 @@ echo
 
 # Install dependencies with real-time output
 echo "📥 Installing R dependencies from DESCRIPTION..."
-set +e  # Temporarily disable exit on error to capture output
-PAK_OUTPUT=$(Rscript -e "
+
+# Create temp file to capture output while streaming
+PAK_LOG=$(mktemp)
+trap "rm -f $PAK_LOG" EXIT
+
+set +e  # Temporarily disable exit on error
+Rscript -e "
 options(${REPO_ARGS})
 # Read DESCRIPTION file and extract dependencies
 desc_path <- '${DESCRIPTION_PATH}'
@@ -106,10 +111,12 @@ if (length(all_deps) > 0) {
 } else {
   cat('No dependencies found in DESCRIPTION\\n')
 }
-" 2>&1 | tee /dev/tty)
+" 2>&1 | tee "$PAK_LOG"
 PAK_EXIT_CODE=${PIPESTATUS[0]}
 set -e  # Re-enable exit on error
 
+# Read captured output for parsing
+PAK_OUTPUT=$(cat "$PAK_LOG")
 echo
 
 # Check if pak failed

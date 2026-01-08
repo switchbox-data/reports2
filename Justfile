@@ -73,7 +73,8 @@ aws:
 # Your workspace files persist between sessions; container state resets each time.
 
 # Launch devcontainer locally with Docker
-up-local:
+[arg("rebuild", long="rebuild", value="true")]
+up-local rebuild="false":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -87,18 +88,39 @@ up-local:
         exit 1
     fi
 
+    REBUILD="{{ rebuild }}"
+
+    # Warn user if rebuilding
+    if [ "${REBUILD}" = "true" ]; then
+        echo "⚠️  WARNING: You are about to rebuild the devcontainer image and relaunch the container."
+        echo "   This will reset the container state (runtime package installs will be lost)."
+        echo "   Workspace files will persist."
+        echo
+    fi
+
     if ! devpod provider list 2>/dev/null | grep -q "^docker\s"; then
         devpod provider add docker 2>/dev/null || true
     fi
-    devpod up . \
-      --id "reports2-docker" \
-      --provider docker \
-      --prebuild-repository ghcr.io/switchbox-data/reports2 `# Use prebuilt images from GHCR (built by CI/CD) for fast startup` \
-      --ide cursor \
-      --recreate  # Always restart container fresh, ensuring env matches current branch (workspace files still persist)
+
+    # Use prebuilt images from GHCR (built by CI/CD) for fast startup
+    if [ "${REBUILD}" = "true" ]; then
+        devpod up . \
+          --id "reports2-docker" \
+          --provider docker \
+          --prebuild-repository ghcr.io/switchbox-data/reports2 \
+          --ide cursor \
+          --recreate
+    else
+        devpod up . \
+          --id "reports2-docker" \
+          --provider docker \
+          --prebuild-repository ghcr.io/switchbox-data/reports2 \
+          --ide cursor
+    fi
 
 # Launch devcontainer on AWS EC2, using the specified machine type
-up-aws MACHINE_TYPE="t3.xlarge":
+[arg("rebuild", long="rebuild", value="true")]
+up-aws MACHINE_TYPE="t3.xlarge" rebuild="false":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -130,6 +152,22 @@ up-aws MACHINE_TYPE="t3.xlarge":
         aws sso login
         echo
         echo "✅ AWS login successful"
+        echo
+    fi
+
+    REBUILD="{{ rebuild }}"
+
+    # Warn user and get confirmation if rebuilding
+    if [ "${REBUILD}" = "true" ]; then
+        echo "⚠️  WARNING: You are about to rebuild the devcontainer image and relaunch the container."
+        echo "   This will reset the container state (runtime package installs will be lost)."
+        echo "   ⚠️  IMPORTANT: This action will wipe any uncommitted files on the server."
+        echo
+        read -p "Do you really want to proceed? (yes/no): " CONFIRM
+        if [ "${CONFIRM}" != "yes" ]; then
+            echo "Aborted."
+            exit 0
+        fi
         echo
     fi
 
@@ -168,18 +206,27 @@ up-aws MACHINE_TYPE="t3.xlarge":
         echo "   This may take a few minutes..."
     fi
     echo
-    devpod up . \
-      --id "${WORKSPACE_ID}" \
-      --provider "${PROVIDER_NAME}" \
-      --prebuild-repository ghcr.io/switchbox-data/reports2 `# Use prebuilt images from GHCR (built by CI/CD) for fast startup` \
-      --ide cursor \
-      --recreate  # Always restart container fresh, ensuring env matches current branch (workspace files still persist)
+
+    # Use prebuilt images from GHCR (built by CI/CD) for fast startup
+    if [ "${REBUILD}" = "true" ]; then
+        devpod up . \
+          --id "${WORKSPACE_ID}" \
+          --provider "${PROVIDER_NAME}" \
+          --prebuild-repository ghcr.io/switchbox-data/reports2 \
+          --ide cursor \
+          --recreate
+    else
+        devpod up . \
+          --id "${WORKSPACE_ID}" \
+          --provider "${PROVIDER_NAME}" \
+          --prebuild-repository ghcr.io/switchbox-data/reports2 \
+          --ide cursor
+    fi
     echo
 
     echo "========================================================================"
     echo "✨ Successfully connected to devcontainer on '${WORKSPACE_ID}'"
     echo "========================================================================"
-    echo
     echo
 
 # Show active EC2 instances running devcontainers, and commands to delete them

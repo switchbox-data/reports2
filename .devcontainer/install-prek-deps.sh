@@ -26,9 +26,9 @@ REPO_ROOT=$(git rev-parse --show-toplevel 2>&1) || {
         git config --global --add safe.directory "$(pwd)"
         REPO_ROOT=$(git rev-parse --show-toplevel)
     else
-        echo "❌ ERROR: Not in a git repository" >&2
-        exit 1
-    fi
+    echo "❌ ERROR: Not in a git repository" >&2
+    exit 1
+fi
 }
 cd "${REPO_ROOT}"
 echo "📁 Working in repository: ${REPO_ROOT}"

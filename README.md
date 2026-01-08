@@ -117,7 +117,7 @@ Using this repo's devcontainer on your laptop is therefore the easiest and faste
 1. **Prerequisites**:
    - Install [VS Code](https://code.visualstudio.com/) or [Cursor](https://www.cursor.com/), which can use devcontainers seamlessly
    - Install [Docker Desktop](https://www.docker.com/products/docker-desktop), which will actually run the devcontainer
-   - Install [DevPod](https://devpod.sh/), which makes it easier to work with devcontainers
+   - Install [DevPod (skevetter fork)](https://github.com/skevetter/devpod/releases), which makes it easier to work with devcontainers (we use this fork because it has important fixes)
    - Install [just](https://github.com/casey/just) to run commands
    - Make sure Docker Desktop is running in the background
 
@@ -181,8 +181,8 @@ Add them to `pyproject.toml` (Python) or `DESCRIPTION` (R), commit the changes, 
 Our data lives on S3, so running a devcontainer locally means waiting for data to download from S3 before report code can be run. For faster data access (and faster computers), you can run the exact same devcontainer on an EC2 instance in AWS (in `us-west-2`, near our S3 data):
 
 1. **Prerequisites**:
-   - Install [DevPod](https://devpod.sh/)
-   - AWS cli installed
+   - Install [DevPod (skevetter fork)](https://github.com/skevetter/devpod/releases) (we use this fork because it has important fixes)
+   - AWS CLI installed
    - AWS credentials configured (see [AWS Configuration](#-aws-configuration))
 
 2. **Launch**:

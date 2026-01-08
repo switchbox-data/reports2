@@ -92,8 +92,8 @@ just --list
 - `just test` - Run test suite
 - `just new_report` - Create a new Quarto report in `reports/`
 - `just aws` - Authenticate with AWS SSO
-- `just up-local [--rebuild]` - Launch dev environment locally (use `--rebuild` to update dev environment)
-- `just up-aws [MACHINE_TYPE] [--rebuild]` - Launch dev environment on AWS EC2 (use `--rebuild` to update dev environment)
+- `just up-local [rebuild]` - Launch dev environment locally (use `rebuild` to update dev environment)
+- `just up-aws [MACHINE_TYPE] [rebuild]` - Launch dev environment on AWS EC2 (use `rebuild` to update dev environment)
 - `just up-aws-list` - Show active EC2 instances (for cleanup)
 - `just clean` - Remove generated files and caches
 
@@ -160,7 +160,7 @@ The dev environment is "frozen" to whatever was on your local branch when you fi
 
 2. **Launch the devcontainer** using the rebuild flag:
    ```bash
-   just up-local --rebuild
+   just up-local rebuild
    ```
 
    This will:
@@ -174,7 +174,7 @@ The dev environment is "frozen" to whatever was on your local branch when you fi
 3. **After rebuilding**, running `just up-local` (without the flag) just reconnects you to the the rebuilt devcontainer
 
 **To persist new packages:**
-Add them to `pyproject.toml` (Python) or `DESCRIPTION` (R), commit the changes, let CI/CD build the devcontainer image, then run `just up-local --rebuild` to use this prebuilt image. (That way, the image gets built once and used by all, rather than everyone needing to rebuild it locally.)
+Add them to `pyproject.toml` (Python) or `DESCRIPTION` (R), commit the changes, let CI/CD build the devcontainer image, then run `just up-local rebuild` to use this prebuilt image. (That way, the image gets built once and used by all, rather than everyone needing to rebuild it locally.)
 
 ### Option 2: Devcontainer on an AWS EC2 instance
 
@@ -229,7 +229,7 @@ The dev environment (Python packages, R packages, tools) is "frozen" to whatever
 
 2. **Rebuild the server devcontainer**:
    ```bash
-   just up-aws --rebuild
+   just up-aws rebuild
    ```
 
    ⚠️ **Warning**: Devpod will:
@@ -240,7 +240,7 @@ The dev environment (Python packages, R packages, tools) is "frozen" to whatever
    - Start a new container on the instance using this prebuilt image
    - Connect your local code editor to this new container via SSH
 
-   **Note**: Unlike `up-local --rebuild` (where uncommitted files persist on your laptop), `up-aws --rebuild` overwrites everything on the server. Always commit or stash your work before rebuilding on AWS.
+   **Note**: Unlike `up-local rebuild` (where uncommitted files persist on your laptop), `up-aws rebuild` overwrites everything on the server. Always commit or stash your work before rebuilding on AWS.
 
 **Managing AWS instances:**
 
@@ -643,9 +643,9 @@ uv add --dev pytest-mock  # Add as a dev dependency
 - When you run `uv add package-name`, packages are installed to `/opt/venv/` inside the container
 - They stay in the container, and are not exported to your local filesystem. So if you restart the container, the package will be gone!
 - To make your new package persist, you need to add it to the image itself, by committing `pyproject.toml` and `uv.lock` and pushing to Github
-- If you're using devcontainers locally, run `just up-local --rebuild` after CI/CD builds the new image, and your package will be permanently installed within the devcontainer
-- If you're using devcontainers on AWS, run `just up-aws --rebuild` after CI/CD builds the new image, and your package will be permanently installed within the devcontainer
-- **Bottom line**: Run `uv add`, commit `pyproject.toml` and `uv.lock`, let CI/CD build the new devcontainer image that contains these packages, then run `just up-local --rebuild` or `just up-aws --rebuild` to use this new image
+- If you're using devcontainers locally, run `just up-local rebuild` after CI/CD builds the new image, and your package will be permanently installed within the devcontainer
+- If you're using devcontainers on AWS, run `just up-aws rebuild` after CI/CD builds the new image, and your package will be permanently installed within the devcontainer
+- **Bottom line**: Run `uv add`, commit `pyproject.toml` and `uv.lock`, let CI/CD build the new devcontainer image that contains these packages, then run `just up-local rebuild` or `just up-aws rebuild` to use this new image
 
 *On regular laptop*:
 - When you run `uv add package-name`, packages are installed to `.venv/`, which persists in your local workspace
@@ -658,8 +658,8 @@ uv add --dev pytest-mock  # Add as a dev dependency
 1. You commit both `pyproject.toml` and `uv.lock`, and push to Github
 2. Others pull your changes
 3. They rebuild their container:
-   - If they're using devcontainers locally, they run `just up-local --rebuild` on their laptop after pulling your changes, and their laptop will automatically download a new devcontainer image (built by CI/CD) that contains all packages in `uv.lock` (including your new one), and spin up a new devcontainer based on this image
-   - If they're using devcontainers on AWS, they run `just up-aws --rebuild` on their laptop after pulling your changes, and the instance will automatically download a new image (built by CI/CD) that contains all packages in `uv.lock` (including your new one), and spin up a new devcontainer based on this image
+   - If they're using devcontainers locally, they run `just up-local rebuild` on their laptop after pulling your changes, and their laptop will automatically download a new devcontainer image (built by CI/CD) that contains all packages in `uv.lock` (including your new one), and spin up a new devcontainer based on this image
+   - If they're using devcontainers on AWS, they run `just up-aws rebuild` on their laptop after pulling your changes, and the instance will automatically download a new image (built by CI/CD) that contains all packages in `uv.lock` (including your new one), and spin up a new devcontainer based on this image
 
 *On regular laptop*:
 1. You commit both `pyproject.toml` and `uv.lock` to git
@@ -692,9 +692,9 @@ R dependency management works differently, you have to manually update a file th
 - It will be gone when the container restarts!
 - If you add it to `DESCRIPTION` and run `just install`, as documented above, the package will also install temporarily
 - However, if you then commit `DESCRIPTION` and push to Github...
-- If you're using devcontainers locally, run `just up-local --rebuild` after CI/CD builds the new image, and every package in `DESCRIPTION` (including your new one) will be permanently installed within the devcontainer
-- If you're using devcontainers on AWS, run `just up-aws --rebuild` after CI/CD builds the new image, and every package in `DESCRIPTION` (including your new one) will be permanently installed within the devcontainer
-- **Bottom line**: Add packages to `DESCRIPTION`, commit this file, let CI/CD build the new devcontainer image that contains these packages, then run `just up-local --rebuild` or `just up-aws --rebuild` on your laptop to use this new image
+- If you're using devcontainers locally, run `just up-local rebuild` after CI/CD builds the new image, and every package in `DESCRIPTION` (including your new one) will be permanently installed within the devcontainer
+- If you're using devcontainers on AWS, run `just up-aws rebuild` after CI/CD builds the new image, and every package in `DESCRIPTION` (including your new one) will be permanently installed within the devcontainer
+- **Bottom line**: Add packages to `DESCRIPTION`, commit this file, let CI/CD build the new devcontainer image that contains these packages, then run `just up-local rebuild` or `just up-aws rebuild` on your laptop to use this new image
 
 *On regular laptop*:
 - Packages are saved to your global R library (typically `~/R/library/`)
@@ -707,8 +707,8 @@ R dependency management works differently, you have to manually update a file th
 1. You add a package to `DESCRIPTION`, commit it, and push to GitHub
 2. Others pull your changes
 3. They rebuild their container:
-   - If they're using devcontainers locally, they run `just up-local --rebuild` on their laptop after pulling your changes, and their laptop will automatically download a new devcontainer image (built by CI/CD) that contains all packages in `DESCRIPTION` (including your new one), and spin up a new devcontainer based on this image
-   - If they're using devcontainers on AWS, they run `just up-aws --rebuild` on their laptop after pulling your changes, and the instance will automatically download a new image (built by CI/CD) that contains all packages in `DESCRIPTION` (including your new one), and spin up a new devcontainer based on this image
+   - If they're using devcontainers locally, they run `just up-local rebuild` on their laptop after pulling your changes, and their laptop will automatically download a new devcontainer image (built by CI/CD) that contains all packages in `DESCRIPTION` (including your new one), and spin up a new devcontainer based on this image
+   - If they're using devcontainers on AWS, they run `just up-aws rebuild` on their laptop after pulling your changes, and the instance will automatically download a new image (built by CI/CD) that contains all packages in `DESCRIPTION` (including your new one), and spin up a new devcontainer based on this image
 
 *On regular laptop*:
 1. You add a package to `DESCRIPTION` and commit it to git

@@ -73,8 +73,7 @@ aws:
 # Your workspace files persist between sessions; container state resets each time.
 
 # Launch devcontainer locally with Docker
-[arg("rebuild", long="rebuild", value="true")]
-up-local rebuild="false":
+up-local rebuild="":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -91,7 +90,7 @@ up-local rebuild="false":
     REBUILD="{{ rebuild }}"
 
     # Warn user if rebuilding
-    if [ "${REBUILD}" = "true" ]; then
+    if [ -n "${REBUILD}" ]; then
         echo "⚠️  WARNING: You are about to rebuild the devcontainer image and relaunch the container."
         echo "   This will reset the container state (runtime package installs will be lost)."
         echo "   Workspace files will persist."
@@ -103,7 +102,7 @@ up-local rebuild="false":
     fi
 
     # Use prebuilt images from GHCR (built by CI/CD) for fast startup
-    if [ "${REBUILD}" = "true" ]; then
+    if [ -n "${REBUILD}" ]; then
         devpod up . \
           --id "reports2-docker" \
           --provider docker \
@@ -119,8 +118,7 @@ up-local rebuild="false":
     fi
 
 # Launch devcontainer on AWS EC2, using the specified machine type
-[arg("rebuild", long="rebuild", value="true")]
-up-aws MACHINE_TYPE="t3.xlarge" rebuild="false":
+up-aws MACHINE_TYPE="t3.xlarge" rebuild="":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -158,10 +156,11 @@ up-aws MACHINE_TYPE="t3.xlarge" rebuild="false":
     REBUILD="{{ rebuild }}"
 
     # Warn user and get confirmation if rebuilding
-    if [ "${REBUILD}" = "true" ]; then
+    if [ -n "${REBUILD}" ]; then
+        echo "==========================================================================="
         echo "⚠️  WARNING: You are about to rebuild the devcontainer image and relaunch the container."
-        echo "   This will reset the container state (runtime package installs will be lost)."
-        echo "   ⚠️  IMPORTANT: This action will wipe any uncommitted files on the server."
+        echo "   This action will wipe any uncommitted files on the server."
+        echo "==========================================================================="
         echo
         read -p "Do you really want to proceed? (yes/no): " CONFIRM
         if [ "${CONFIRM}" != "yes" ]; then
@@ -208,7 +207,7 @@ up-aws MACHINE_TYPE="t3.xlarge" rebuild="false":
     echo
 
     # Use prebuilt images from GHCR (built by CI/CD) for fast startup
-    if [ "${REBUILD}" = "true" ]; then
+    if [ -n "${REBUILD}" ]; then
         devpod up . \
           --id "${WORKSPACE_ID}" \
           --provider "${PROVIDER_NAME}" \

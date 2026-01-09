@@ -2,7 +2,7 @@
 
 Switchbox is a nonprofit think tank that produces rigorous, accessible data on U.S. state climate policy for advocates, policymakers, and the public. Find out more at [www.switch.box](www.switch.box)
 
-This repository contains Switchbox's reports. We use a modern bilingual stack combining **Python** and **R**.
+This repository contains Switchbox's reports. We use a modern stack that uses both **Python** and **R**.
 
 ## 📋 Table of Contents
 
@@ -28,32 +28,32 @@ This repository contains Switchbox's reports. We use a modern bilingual stack co
 ## 🎯 Overview
 
 - **Quarto Reports**: All reports written in [Quarto](https://quarto.org/) (located in `reports/` directory)
-- **Cloud Data**: All data used in our reports is stored in an S3 bucket (`s3://data.sb/) on AWS
+- **Cloud Data**: The data used in our reports is stored in an S3 bucket (`s3://data.sb/) on AWS
 - **Bilingual Analytics**: Reports use both Python (polars) and R (tidyverse)
 - **Fast Package Management**:
   - Python: [uv](https://github.com/astral-sh/uv) for lightning-fast dependency resolution
-  - R: [pak](https://pak.r-lib.org/) with [P3M](https://p3m.dev/) for binary package installation
-- **Reproducible Development Environment**: Intended to be used with [VS Code Dev Containers](https://code.visualstudio.com/docs/devcontainers/containers)
+  - R: [pak](https://pak.r-lib.org/) with [P3M](https://p3m.dev/) for fast binary package installation
+- **Reproducible Development Environment**: Uses devcontainers via DevPod (see [Quick Start](#-quick-start))
 - **Task Runner**: [just](https://github.com/casey/just) for convenient command execution
 - **Code Quality**: Modern linting and formatting with [ruff](https://github.com/astral-sh/ruff) (Python) and [air](https://github.com/posit-dev/air) (R), automated via [prek](https://github.com/j178/prek) pre-commit hooks
 
 ## 🌍 Why Open Source?
 
-Our reports (on [our website](https://switch.box)) are shared under the [Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/), and the code behind them (contained in this repo) is released under the [MIT License](LICENSE).
+The reports (on [our website](https://switch.box)) are shared under the [Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/), and the code behind them (contained in this repo) is released under the [MIT License](LICENSE).
 
 We do this for two reasons:
 
 ### 1. 🔍 Transparency
 
-As a research group, our work is frequently cited in the press and aims to shape the policy conversation. Given this, we believe that the public has a right to see exactly how we produce our findings—going well beyond vague methodology sections.
+As a research group, our work is frequently cited in the press and aims to shape the policy conversation. Given the public nature of our work, we believe everyone has the right to see exactly how we produce our findings—going well beyond vague methodology sections.
 
 ### 2. 🔬 Open Science
 
-We believe the clean energy transition will happen faster if energy researchers, particularly those working in the nonprofit sector, embrace open data and open source code so that we can build on each other's work rather than reinventing the wheel.
+We believe the clean energy transition will happen faster if energy researchers—particularly those working in the nonprofit sector—embrace open data and open source code, so they can build on each other's work rather than reinventing the wheel.
 
 ## 📁 Repo Structure
 
-While the rest of this README.md will walk through the contents of this repo in detail, here is an initial overview:
+Here is an initial overview of our repo. The rest of this README.md will walk through it in detail:
 
 ```
 reports2/
@@ -66,6 +66,7 @@ reports2/
 │   └── ...
 ├── tests/                  # Python test suite
 ├── .pre-commit-config.yaml # Pre-commit hooks configuration
+├── DESCRIPTION             # R dependencies
 ├── pyproject.toml          # Python dependencies and tool configuration
 ├── uv.lock                 # Locked Python dependencies
 └── Justfile                # Command runner recipes
@@ -73,23 +74,27 @@ reports2/
 
 ## 🛠️ Available Commands
 
-While the rest of this README.md will explain when these commands should be used, here is an initial overview of the "tasks" you can perform in this repo.
+To make the core tasks in this repo visible and easy to use, we've automated them using the just command runner.
+
+Here is an initial overview of those tasks. The rest of this README.md will explain when these commands should be used.
 
 **Two places to use `just`**: Commands are available in the **repository root** (for development environment and testing) and in **individual report directories** (for rendering reports). These commands are defined in `Justfile`s in each location - see the [root Justfile](Justfile) and individual report Justfiles (e.g., `reports/ny_aeba_grid/Justfile`).
 
-View all available commands in your current location:
+To wiew all available commands in either of these locations:
 ```bash
 just --list
 ```
 
 **Repository root commands**:
 - `just install` - Set up development environment
-- `just check` - Run quality checks (same as CI: lock file + pre-commit hooks)
+- `just check` - Run quality checks
 - `just check-deps` - Check for obsolete dependencies with [deptry](https://github.com/fpgmaas/deptry)
-- `just test` - Run test suite (same as CI)
+- `just test` - Run test suite
 - `just new_report` - Create a new Quarto report in `reports/`
 - `just aws` - Authenticate with AWS SSO
-- `just devpod` - Launch devcontainer on AWS via DevPod
+- `just up-local [rebuild]` - Launch dev environment locally (use `rebuild` to update dev environment)
+- `just up-aws [MACHINE_TYPE] [rebuild]` - Launch dev environment on AWS EC2 (use `rebuild` to update dev environment)
+- `just up-aws-list` - Show active EC2 instances (for cleanup)
 - `just clean` - Remove generated files and caches
 
 **Report directory commands** (`reports/<project_code>/`):
@@ -103,57 +108,175 @@ just --list
 
 If you want to rerun and edit the code that generates our reports, this section shows you how to get started.
 
-### Option 1: Dev Container (Recommended)
+### Option 1: Devcontainer on your laptops
 
-The fastest way to get started is using the provided dev container:
+Devcontainers make it easy to use Docker images to package and run an entire development environment. This means you don't have to install all the software required to render our reports by hand. It also means that you get the exact same dev environment as everyone else, guaranteeing that everything Just Works.
 
-1. **Prerequisites**:
-   - [VS Code](https://code.visualstudio.com/) or [Cursor](https://www.cursor.com/)
-   - [Docker Desktop](https://www.docker.com/products/docker-desktop)
-   - [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
-
-2. **Launch**:
-   - Open this repository in VS Code or Cursor
-   - Click "Reopen in Container" when prompted (or use `Cmd+Shift+P` → "Dev Containers: Reopen in Container")
-   - The container will automatically install:
-     - **Core Tools**: Quarto, just, AWS CLI, GitHub CLI (gh), prek
-     - **Python Stack**: Python dependencies via `uv`, [ruff](https://github.com/astral-sh/ruff) for fast linting/formatting, [ty](https://github.com/astral-sh/ty) for type checking
-     - **R Stack**: R dependencies via `pak`, [air](https://github.com/posit-dev/air) for fast linting/formatting
-     - **Pre-commit Hooks**: Configured via `prek`
-     - **Editor Extensions**: Python, R, Quarto, TOML, just syntax, and more
-
-3. **Verify Installation**:
-   ```bash
-   just --list  # See all available commands
-   ```
-
-### Option 2: Dev Container on AWS (via DevPod)
-
-For faster data access (especially with large datasets), you can launch the devcontainer on AWS in region `us-west-2`, close to where our data is stored in S3.
+Using this repo's devcontainer on your laptop is therefore the easiest and fastest way to get started. You'll need to install some software first:
 
 1. **Prerequisites**:
-   - Install [DevPod](https://devpod.sh/)
-   - Configure the AWS provider in DevPod (detailed setup documentation coming soon)
+   - Install [VS Code](https://code.visualstudio.com/) or [Cursor](https://www.cursor.com/), which can use devcontainers seamlessly
+   - Install [Docker Desktop](https://www.docker.com/products/docker-desktop), which will actually run the devcontainer
+   - Install [DevPod (skevetter fork)](https://github.com/skevetter/devpod/releases), which makes it easier to work with devcontainers (we use this fork because it has important fixes)
+   - Install [just](https://github.com/casey/just) to run commands
+   - Make sure Docker Desktop is running in the background
 
 2. **Launch**:
    ```bash
-   just aws      # Authenticate with AWS so Devpod can create an EC2 instance
-   just devpod   # Launch devcontainer on EC2 instance
+   just up-local
    ```
 
-This uses a [prebuilt devcontainer image](#prebuilds-double-duty) from GitHub Container Registry, so you don't have to wait for the image to build.
+**How local Devcontainers work:**
+
+Think of your local devcontainer as a **virtal machine** that runs on your laptop, and that VS Code/Cursor can connect to seamlessly, as if you were just running them on your local files. The reports2 repo is automatically synced between your laptop and the container: any changes you make to the files in the container will be reflected on your laptop, and vice versa.
+
+**First time you run `just up-local`, Devpod:**
+- Pulls a prebuilt devcontainer image matching your current local branch/commit (~30x)
+- If for some reason a prebuilt image isn't available, it builds from scratch (~8 min first time)
+- **Note**: if you're already familiar with using local devcontainers in VS Code/Cursor, the reason we use Devpod to run them instead is because it allows us to use prebuilt devcontainer images rather than building them from scratch on your laptoo
+- Starts a new Docker container on your laptop using this prebuilt image
+- Mounts your working directory / the reports2 repo into the container
+- Launches Cursor and connects it to the container via (local) SSH
+
+After a few minutes of inactivity, Devpod will stop the container. However, an uncommitted files you had in the container persist on your laptop directory (because it was mounted into the container). To restart the container...
+
+**Subsequent times you run `just up-local`, Devpod:**
+- Restarts the container using the same prebuilt image that was used when you first created it
+- Re-mounts your working directory / the reports2 repo into the container
+- Connects you to this new container running on your laptop
+- Your uncommitted files are still there (they're in your laptop directory, which is mounted into the container)
+- Inside the container, you can switch branches, pull changes, etc. — it's just a regular devcontainer (but note that if you switch to a branch that contains a different devcontainer definition, it won't automatically update anything.)
+- **Important**: When you restart and reconnect to the devcontainer by running `just up-local` again, the devcontainer stays same as it was when you first ran `just up-local`: it isn't automatically rebuilt—even if the commit that's now checked out on your laptop contains a different devcontainer definition—unless you tell Devpod to do this explicitly.
+
+**When you need to rebuild the devcontainer:**
+
+The dev environment is "frozen" to whatever was on your local branch when you first ran `just up-local`. To update it:
+
+1. **On your laptop**, checkout the branch/commit with the dev environment you want:
+   ```bash
+   git checkout feature-branch
+   git pull
+   ```
+
+2. **Launch the devcontainer** using the rebuild flag:
+   ```bash
+   just up-local rebuild
+   ```
+
+   This will:
+   - Shut down the old container (if still running)
+   - **Your uncommitted files persist on your laptop** (unlike AWS, where they'd be overwritten)
+   - Download the prebuilt image corresponding to the commit you have checked out
+   - Spin up a new container based on that prebuilt image
+   - Mount your local files back into the new container
+   - Connect your code editor to the container via (local) SSH
+
+3. **After rebuilding**, running `just up-local` (without the flag) just reconnects you to the the rebuilt devcontainer
+
+**To persist new packages:**
+Add them to `pyproject.toml` (Python) or `DESCRIPTION` (R), commit the changes, let CI/CD build the devcontainer image, then run `just up-local rebuild` to use this prebuilt image. (That way, the image gets built once and used by all, rather than everyone needing to rebuild it locally.)
+
+### Option 2: Devcontainer on an AWS EC2 instance
+
+Our data lives on S3, so running a devcontainer locally means waiting for data to download from S3 before report code can be run. For faster data access (and faster computers), you can run the exact same devcontainer on an EC2 instance in AWS (in `us-west-2`, near our S3 data):
+
+1. **Prerequisites**:
+   - Install [DevPod (skevetter fork)](https://github.com/skevetter/devpod/releases) (we use this fork because it has important fixes)
+   - AWS CLI installed
+   - AWS credentials configured (see [AWS Configuration](#-aws-configuration))
+
+2. **Launch**:
+   ```bash
+   # Default instance (t3.xlarge: 4 vCPU, 16GB RAM)
+   just up-aws
+
+   # Heavy workloads (t3.2xlarge: 8 vCPU, 32GB RAM)
+   just up-aws t3.2xlarge
+
+   # Memory-intensive work (r6i.xlarge: 4 vCPU, 32GB RAM)
+   just up-aws r6i.xlarge
+   ```
+
+**How Devcontainers on AWS EC2 instances work:**
+
+Think of your Devpod AWS instance as a **persistent server** that runs your devcontainer, much as your laptop would. Here's how they work:
+
+**First time you run `just up-aws`, Devpod:**
+- Creates a new EC2 instance (takes a few minutes)
+- Uploads the reports2 git repo on your laptop to the instance
+- Inspects the current branch/commit (that you had checked out on your laptop, now on the server), determine which prebuilt devcontainer image corresponding to this commit, and pulls it from GitHub Container Registry (GHCR)
+- Starts a new container on the instance using this prebuilt image
+- Connects your local code editor to this container via SSH
+
+You'll get charged for the time that the instance is running. After you disconnect from the container, the instance will actually get paused, so you'll no longer be charged for compute—only for the hard drive, which persists. To wake the server back up, and reconnect your code editor to the container:
+
+**Subsequent times you run `just up-aws`, Devpod:**
+- Starts the instance again, and unpauses the container
+- Reconnects your local coder editor to the container on the instance, via SSH (takes ~30 seconds)
+- ✅ Uncommitted files stay on the server between sessions (because the hard drive persists)
+- ✅ You can switch branches, pull changes, work normally — it's just a regular server, but using our devcontainer environment
+- **Important**: The dev environment (packages, tools) stays static — it won't automatically update when you change branches
+
+**When you need to update the dev environment:**
+
+The dev environment (Python packages, R packages, tools) is "frozen" to whatever was on your local branch when you first created the EC2 instance. To update it:
+
+1. **On your laptop**, checkout the branch/commit that contains the dev environment you want:
+   ```bash
+   git checkout feature-branch
+   git pull
+   ```
+
+2. **Rebuild the server devcontainer**:
+   ```bash
+   just up-aws rebuild
+   ```
+
+   ⚠️ **Warning**: Devpod will:
+   - Keep using the current instance, but destroy the container
+   - Upload the reports2 git repo on your laptop to the instance again, _overwriting the repo that was alread there_
+   - **This means you'll lose any uncommitted work on the server** (save/commit first!)
+   - Inspect the current branch/commit (that you had checked out on your laptop, now on the server), determine which prebuilt devcontainer image corresponding to this commit, and pull it from GitHub Container Registry (GHCR)
+   - Start a new container on the instance using this prebuilt image
+   - Connect your local code editor to this new container via SSH
+
+   **Note**: Unlike `up-local rebuild` (where uncommitted files persist on your laptop), `up-aws rebuild` overwrites everything on the server. Always commit or stash your work before rebuilding on AWS.
+
+**Managing AWS instances:**
+
+After you've created an instance via `just up-aws`, the instance persist indefinity, though they are paused after a period of inactivity. Paused instances are less expensive then running ones, but they still cost money.
+
+**Cost considerations:**
+- **Compute costs**: You only pay for compute time when the instance is running. DevPod automatically stops instances after inactivity (default: 10 minutes), so you're not charged for compute when paused.
+- **Storage costs**: You pay for EBS storage (~$8/month for 100GB) even when the instance is stopped.
+- **Total cost**: Depends on usage, but typically much less than running 24/7. For example, running 2 hours/day costs ~$10/month compute + ~$8/month storage = ~$18/month.
+
+
+To see what instances are already running:
+
+```bash
+# See what's running
+just up-aws-list
+
+# Shows output like:
+#   reports2-aws-t3-xlarge (Running)
+#   └─ To delete: devpod delete reports2-aws-t3-xlarge
+```
+
+To delete the instance, copy and paste delete command shown. The instance terminates immediately.
 
 ### Option 3: Manual Installation (Without Dev Container)
 
-If you prefer not to use dev containers:
+We strongly recommend using devcontainers (either locally or in the cloud), because all the software is already packaged up in a Docker image for you. But if you prefer to install the software directly on your laptop:
 
 1. **Install Prerequisites**:
    - Python 3.9+
    - R 4.0+
    - `pak` package for R
    - [just](https://github.com/casey/just)
+   - quarto
 
-2. **Run Setup**:
+2. **Run install script**:
    ```bash
    just install
    ```
@@ -520,9 +643,9 @@ uv add --dev pytest-mock  # Add as a dev dependency
 - When you run `uv add package-name`, packages are installed to `/opt/venv/` inside the container
 - They stay in the container, and are not exported to your local filesystem. So if you restart the container, the package will be gone!
 - To make your new package persist, you need to add it to the image itself, by committing `pyproject.toml` and `uv.lock` and pushing to Github
-- If you're using devcontainers on your laptop, rebuild the container and your package will be permanently installed within the image
-- If you're using devcontainers on Devpod, Github actions will automatically rebuild the image with the new package; restart your workspace to use the new image
-- **Bottom line**: Run `uv add`, commit `pyproject.toml` and `uv.lock`, and rebuild the devcontainer to persist packages
+- If you're using devcontainers locally, run `just up-local rebuild` after CI/CD builds the new image, and your package will be permanently installed within the devcontainer
+- If you're using devcontainers on AWS, run `just up-aws rebuild` after CI/CD builds the new image, and your package will be permanently installed within the devcontainer
+- **Bottom line**: Run `uv add`, commit `pyproject.toml` and `uv.lock`, let CI/CD build the new devcontainer image that contains these packages, then run `just up-local rebuild` or `just up-aws rebuild` to use this new image
 
 *On regular laptop*:
 - When you run `uv add package-name`, packages are installed to `.venv/`, which persists in your local workspace
@@ -535,8 +658,8 @@ uv add --dev pytest-mock  # Add as a dev dependency
 1. You commit both `pyproject.toml` and `uv.lock`, and push to Github
 2. Others pull your changes
 3. They rebuild their container:
-   - If they're using devcontainers on their laptop, when they rebuild their container, all packages in `uv.lock` (including your new one) will be permanently installed into the image
-   - If they're using devcontainers on Devpod, GitHub Actions will automatically rebuild the image with the new package; they just need to restart their workspace to use the new image
+   - If they're using devcontainers locally, they run `just up-local rebuild` on their laptop after pulling your changes, and their laptop will automatically download a new devcontainer image (built by CI/CD) that contains all packages in `uv.lock` (including your new one), and spin up a new devcontainer based on this image
+   - If they're using devcontainers on AWS, they run `just up-aws rebuild` on their laptop after pulling your changes, and the instance will automatically download a new image (built by CI/CD) that contains all packages in `uv.lock` (including your new one), and spin up a new devcontainer based on this image
 
 *On regular laptop*:
 1. You commit both `pyproject.toml` and `uv.lock` to git
@@ -569,9 +692,9 @@ R dependency management works differently, you have to manually update a file th
 - It will be gone when the container restarts!
 - If you add it to `DESCRIPTION` and run `just install`, as documented above, the package will also install temporarily
 - However, if you then commit `DESCRIPTION` and push to Github...
-- If you're using devcontainers on your laptop, rebuild the container and every package in `DESCRIPTION` (including your new one) will be permanently installed within the image
-- If you're using devcontainers on Devpod, GitHub Actions will automatically rebuild the image with the new package; restart your workspace to use the new image
-- **Bottom line**: Add packages to `DESCRIPTION`, commit it, and rebuild the devcontainer to persist them
+- If you're using devcontainers locally, run `just up-local rebuild` after CI/CD builds the new image, and every package in `DESCRIPTION` (including your new one) will be permanently installed within the devcontainer
+- If you're using devcontainers on AWS, run `just up-aws rebuild` after CI/CD builds the new image, and every package in `DESCRIPTION` (including your new one) will be permanently installed within the devcontainer
+- **Bottom line**: Add packages to `DESCRIPTION`, commit this file, let CI/CD build the new devcontainer image that contains these packages, then run `just up-local rebuild` or `just up-aws rebuild` on your laptop to use this new image
 
 *On regular laptop*:
 - Packages are saved to your global R library (typically `~/R/library/`)
@@ -584,8 +707,8 @@ R dependency management works differently, you have to manually update a file th
 1. You add a package to `DESCRIPTION`, commit it, and push to GitHub
 2. Others pull your changes
 3. They rebuild their container:
-   - If they're using devcontainers on their laptop, when they rebuild their container, all packages in `DESCRIPTION` (including your new one) will be pemanently installed into the image
-   - If they're using devcontainers on Devpod, GitHub Actions will automatically rebuild the image with the new package; they just need to restart their workspace to use the new image
+   - If they're using devcontainers locally, they run `just up-local rebuild` on their laptop after pulling your changes, and their laptop will automatically download a new devcontainer image (built by CI/CD) that contains all packages in `DESCRIPTION` (including your new one), and spin up a new devcontainer based on this image
+   - If they're using devcontainers on AWS, they run `just up-aws rebuild` on their laptop after pulling your changes, and the instance will automatically download a new image (built by CI/CD) that contains all packages in `DESCRIPTION` (including your new one), and spin up a new devcontainer based on this image
 
 *On regular laptop*:
 1. You add a package to `DESCRIPTION` and commit it to git
@@ -702,7 +825,7 @@ tibble_df <- result |> collect()
 
 **Options to improve performance**:
 1. **Cache locally**: Download files once and cache in `data/` (gitignored)
-2. **Run dev containers in the cloud**: See [Option 2 in Quick Start](#option-2-dev-container-on-aws-via-devpod) for launching devcontainers on AWS in `us-west-2 region`, same as the data bucket
+2. **Run dev containers in the cloud**: See [Option 2: Devcontainer on an AWS EC2 instance](#option-2-devcontainer-on-an-aws-ec2-instance) for launching devcontainers on AWS in `us-west-2 region`, same as the data bucket
 3. **Use partitioned datasets**: Only read the partitions you need
 
 **When reports execute**: Data is downloaded from S3 at runtime. The first run may be slower, but subsequent runs can use cached data if you've set up local caching.
@@ -854,33 +977,27 @@ The workflow runs **two jobs in parallel** for speed:
 
 ### Devcontainer in CI/CD
 
-On every commit to `main` or a pull request, GitHub Actions actually **builds the devcontainer image** - the same process that happens when you rebuild in VS Code.
+On every commit to `main` or a pull request, GitHub Actions actually **builds the devcontainer image**, and publishes it to [GitHub Container Registry (GHCR)](https://github.com/switchbox-data/reports2/pkgs/container/reports2), for use by:
 
-To avoid 15-minute builds every time, we use a **two-tier caching strategy**:
+1. **CI/CD**: **quality-checks** and **tests** jobs run inside the devcontainer
+2. **DevPod**: Users can [launch devcontainers locally or on AWS](#option-1-devcontainer-on-your-laptops) using the prebuilt image, so they don't have to wait for the image to build from scratch—since CI/CD has already built it
+
+To avoid long build times on every commit to main or a PR branch, we use a **two-tier caching strategy**:
 1. **Image caching**: If `.devcontainer/Dockerfile`, `pyproject.toml`, `uv.lock`, and `DESCRIPTION` haven't changed, the devcontainer image build is skipped, and the most recent image (in GHCR) is reused (~30 seconds)
 2. **Layer caching**: If any of these files changed, the image is rebuilt, but only affected layers rebuild while the others are pulled from GHCR cache (incremental builds, ~2-5 minutes)
 
-Once built, the image is **pushed to [GitHub Container Registry (GHCR)](https://github.com/switchbox-data/reports2/pkgs/container/reports2)**, where it's immediately available as `ghcr.io/switchbox-data/reports2:latest`.
+Once built, the AMD and ARM versions of the image is pushed to [GHCR](https://github.com/switchbox-data/reports2/pkgs/container/reports2)**, where the AMD version is immediately available as `ghcr.io/switchbox-data/reports2:latest`.
 
-The quality-checks and tests jobs then **pull this prebuilt image** and run `just check` and `just test` inside it - no rebuilding required.
+The quality-checks and tests jobs then **pull the prebuilt AMD image** and run `just check` and `just test` inside it.
 
-### Devcontainer prebuilds: Double Duty
+**Bottom line**: Every commit that modifies the devcontainer or dependencies triggers an automatic devcontainer image build. This ensures CI uses the correct environment, and anyone (including Devpod users) can use the fully built devcontainer (on both AMD and ARM computers) without building it from scratch.
 
-These CI builds serve a dual purpose:
+### Why CI/CD matters
 
-1. **For CI**: Tests run in the exact devcontainer environment
-2. **For Devpod**: Users can [launch devcontainers on AWS](#option-2-dev-container-on-aws-via-devpod) (similar to Codespaces) using the prebuilt image - unlike when using devcontainers on your laptop, you don't have to wait for the image to build
-
-**Bottom line**: Every commit that modifies the devcontainer or dependencies triggers an automatic devcontainer image build. This ensures CI uses the correct environment, and anyone (including Devpod users) can use the fully built devcontainer without building it from scratch.
-
-
-### Why This Matters
-
+- **Code quality**: Every PR must pass all code quality checks and tests before it can be merged
+- **Safety net**: Even if someone skips code quality pre-commit checks locally, CI catches code quality issues before they are merged to main
 - **Perfect Consistency**: CI literally runs `just check` and `just test` inside of the devcontainer - exactly what you run locally — and devcontainer is rebuilt when its definition changes
 - **Speed**: Devcontainer is only rebuilt when necessary, so quality checks and tests usually run immediately, and they run in parallel, making CI faster
-- **Safety net**: Even if someone skips pre-commit checks locally, CI catches code quality issues before merge
-- **Code quality**: Every PR must pass all checks and tests before it can be merged
-- **Optional checks**: Dependency audits (`just check-deps`) are not part of CI but available locally for additional validation
 
 You can see the workflow configuration in `.github/workflows/data-science-main.yml`.
 

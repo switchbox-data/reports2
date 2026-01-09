@@ -84,8 +84,9 @@ for arg in "$@"; do
 done
 
 # Set required environment variables that features expect
-export _REMOTE_USER="${_REMOTE_USER:-vscode}"
-export _REMOTE_USER_HOME="${_REMOTE_USER_HOME:-/home/vscode}"
+# We run the container as root, so set user defaults accordingly
+export _REMOTE_USER="${_REMOTE_USER:-root}"
+export _REMOTE_USER_HOME="${_REMOTE_USER_HOME:-/root}"
 export _CONTAINER_USER="${_CONTAINER_USER:-root}"
 export _CONTAINER_USER_HOME="${_CONTAINER_USER_HOME:-/root}"
 

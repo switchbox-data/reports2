@@ -153,7 +153,16 @@ up-aws MACHINE_TYPE="t3.xlarge" rebuild="":
         echo
     fi
 
+    # Convert just variable to bash
+    MACHINE_TYPE="{{ MACHINE_TYPE }}"
     REBUILD="{{ rebuild }}"
+
+    # Detect if "rebuild" was passed as MACHINE_TYPE (common mistake: just up-aws rebuild)
+    # If so, treat it as the rebuild flag and use default machine type
+    if [ "${MACHINE_TYPE}" = "rebuild" ]; then
+        MACHINE_TYPE="t3.xlarge"
+        REBUILD="rebuild"
+    fi
 
     # Warn user and get confirmation if rebuilding
     if [ -n "${REBUILD}" ]; then
@@ -170,8 +179,7 @@ up-aws MACHINE_TYPE="t3.xlarge" rebuild="":
         echo
     fi
 
-    # Convert just variable to bash, then replace dots with dashes for provider name
-    MACHINE_TYPE="{{ MACHINE_TYPE }}"
+    # Replace dots with dashes for provider name
     PROVIDER_NAME="aws-${MACHINE_TYPE//./-}"
 
     # Add DevPod AWS provider if needed (silent if already exists)
@@ -180,10 +188,10 @@ up-aws MACHINE_TYPE="t3.xlarge" rebuild="":
       --name "${PROVIDER_NAME}" \
       --option AWS_AMI="ami-05134c8ef96964280" \
       --option AWS_DISK_SIZE="100" \
-      --option AWS_INSTANCE_TYPE="{{ MACHINE_TYPE }}" \
+      --option AWS_INSTANCE_TYPE="${MACHINE_TYPE}" \
       --option AWS_REGION="us-west-2" \
       --option AWS_VPC_ID="vpc-0d19afce59d2395d9" >/dev/null 2>&1; then
-        echo "➕ Added DevPod AWS provider '${PROVIDER_NAME}' with machine type {{ MACHINE_TYPE }}"
+        echo "➕ Added DevPod AWS provider '${PROVIDER_NAME}' with machine type ${MACHINE_TYPE}"
         echo
     fi
 

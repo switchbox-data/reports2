@@ -81,6 +81,7 @@ aws:
     # Check if credentials are already valid (early exit if so)
     if aws sts get-caller-identity &>/dev/null; then
         echo "✅ AWS credentials are already valid"
+        echo
         exit 0
     fi
 

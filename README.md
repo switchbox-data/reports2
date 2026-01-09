@@ -49,7 +49,7 @@ As a research group, our work is frequently cited in the press and aims to shape
 
 ### 2. 🔬 Open Science
 
-We believe the clean energy transition will happen faster if energy researchers—particularly those working in the nonprofit sector—embrace open data and open source code, so they can build on each other's work rather than reinventing the wheel.
+We believe the clean energy transition will happen faster if energy researchers (particularly those working in the nonprofit sector) embrace open data and open source code, so they can build on each other's work rather than reinventing the wheel.
 
 ## 📁 Repo Structure
 

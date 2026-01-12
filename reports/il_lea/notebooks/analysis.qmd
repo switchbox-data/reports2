@@ -17,7 +17,7 @@ format:
 ```{r}
 library(tidyverse)
 library(tidyplots)
-
+library(gt)
 source("/workspaces/reports2/lib/ggplot/switchbox_theme.R")
 ```
 
@@ -264,6 +264,119 @@ peoples_per_connect_22 <- lea_df |>
   pull(cost_per_connection) |>
   (\(x) scales::label_dollar(prefix = "$")(x))()
 
+```
+
+```{r}
+#| label: tbl-data-availability
+#| tbl-cap: "Data availability by utility and metric. Green indicates data provided directly by utility, yellow indicates estimated/calculated values, red indicates missing data."
+
+# Create data availability matrix - color info embedded in data
+data_avail <- tribble(
+  ~Utility, ~Period, ~`Mains Total`, ~`Services Total`, ~`Mains Per Connection`, ~`Mains Per Customer`, ~`Services Per Connection`, ~`Services Per Customer`, ~`N Mains`, ~`N Services`,
+  # Nicor Historical
+  "Nicor Gas", "Historical",
+  "2018-2022|green", "2018-2022|green", "red", "2019-2023|green", "2018-2022|yellow", "red", "2018-2022|green", "2018-2022|green",
+  # Nicor Forecast
+  "Nicor Gas", "Forecast",
+  "2023-2026|green", "2023-2026|green", "red", "red", "2023-2026|yellow", "red", "2023-2026|green", "2023-2026|green",
+  # Ameren Historical
+  "Ameren Gas", "Historical",
+  "2021-2022|yellow", "2021-2022|yellow", "2021-2025|yellow", "red", "red", "red", "red", "red",
+  # Ameren Forecast
+  "Ameren Gas", "Forecast",
+  "2023-2024|yellow", "2023-2025|yellow", "red", "red", "red", "red", "red", "red",
+  # Peoples Historical
+  "Peoples Gas", "Historical",
+  "2018-2022|yellow", "2018-2022|yellow", "red", "red", "2020-2022;2023|yellow", "2020-2022|yellow", "2018-2022|yellow", "2018-2022|green",
+  # Peoples Forecast
+  "Peoples Gas", "Forecast",
+  "2023-2024|yellow", "red", "red", "red", "red", "red", "2023-2024|yellow", "red"
+)
+
+# Extract display text
+data_display <- data_avail |>
+  mutate(across(-c(Utility, Period), ~ {
+    case_when(
+      str_detect(.x, "\\|green") ~ str_remove(.x, "\\|green"),
+      str_detect(.x, "\\|yellow") ~ str_remove(.x, "\\|yellow"),
+      .x == "red" ~ "—",
+      TRUE ~ .x
+    )
+  }))
+
+# Extract colors
+data_colors <- data_avail |>
+  mutate(across(-c(Utility, Period), ~ {
+    case_when(
+      str_detect(.x, "\\|green") ~ "green",
+      str_detect(.x, "\\|yellow") ~ "yellow",
+      .x == "red" ~ "red",
+      TRUE ~ "none"
+    )
+  }))
+
+# Color mapping
+color_hex <- c(green = "#d4edda", yellow = "#fff3cd", red = "#f8d7da", none = "#ffffff")
+
+# Create base gt table
+gt_table <- data_display |>
+  gt() |>
+  cols_label(
+    Period = "Period",
+    `Mains Total` = "Mains Total",
+    `Services Total` = "Services Total",
+    `Mains Per Connection` = "Per Connection",
+    `Mains Per Customer` = "Per Customer",
+    `Services Per Connection` = "Per Connection",
+    `Services Per Customer` = "Per Customer",
+    `N Mains` = "Mains",
+    `N Services` = "Services"
+  ) |>
+  tab_spanner(
+    label = "Total Spending Allowance",
+    columns = c(`Mains Total`, `Services Total`)
+  ) |>
+  tab_spanner(
+    label = "Mains Allowance Spending",
+    columns = c(`Mains Per Connection`, `Mains Per Customer`)
+  ) |>
+  tab_spanner(
+    label = "Services Allowance Spending",
+    columns = c(`Services Per Connection`, `Services Per Customer`)
+  ) |>
+  tab_spanner(
+    label = "Projects Per Year",
+    columns = c(`N Mains`, `N Services`)
+  ) |>
+  cols_align(
+    align = "center",
+    columns = -c(Utility, Period)
+  ) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold"
+  ) |>
+  tab_footnote(
+    footnote = "Green: Provided directly by utility | Yellow: Best estimate or calculated | Red: Not available"
+  )
+
+# Apply colors programmatically from the data
+data_cols <- names(data_display)[-(1:2)]  # All columns except Utility and Period
+
+for (i in 1:nrow(data_display)) {
+  for (col_name in data_cols) {
+    cell_color <- data_colors[[col_name]][i]
+    if (cell_color != "none") {
+      gt_table <- gt_table |>
+        tab_style(
+          style = cell_fill(color = color_hex[cell_color]),
+          locations = cells_body(columns = all_of(col_name), rows = i)
+        )
+    }
+  }
+}
+
+gt_table
 ```
 
 ```{r}

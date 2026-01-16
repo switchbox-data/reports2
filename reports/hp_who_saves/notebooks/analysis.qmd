@@ -1059,28 +1059,32 @@ print(plot_scatter_bkup_ratio_vs_annual_change_total)
 library(tidyverse)
 
 housing_units_peak_loads <- housing_units |>
-  select(bldg_id, upgrade, out.electricity.winter.peak.kw, out.electricity.summer.peak.kw) |>
+  select(bldg_id, upgrade, out.electricity.winter.peak.kw, out.electricity.summer.peak.kw, out.electricity.total.energy_consumption.kwh) |>
   rename(
     winter_peak_load = out.electricity.winter.peak.kw,
-    summer_peak_load = out.electricity.summer.peak.kw
+    summer_peak_load = out.electricity.summer.peak.kw,
+    total_energy_consumption = out.electricity.total.energy_consumption.kwh
   ) |>
   mutate(
     annual_peak_load = pmax(winter_peak_load, summer_peak_load),
-    winter_peak_pct = winter_peak_load/(summer_peak_load)
+    winter_peak_pct = winter_peak_load/(summer_peak_load),
+    load_factor = total_energy_consumption / (annual_peak_load * 8760)
   ) |>
   left_join(
     # Get the baseline peak for each building (upgrade == 0)
     housing_units |>
       filter(upgrade == 0) |>
-      select(bldg_id, out.electricity.winter.peak.kw, out.electricity.summer.peak.kw) |>
+      select(bldg_id, out.electricity.winter.peak.kw, out.electricity.summer.peak.kw, out.electricity.total.energy_consumption.kwh) |>
       mutate(
-        baseline_peak_load = pmax(out.electricity.winter.peak.kw, out.electricity.summer.peak.kw)
+        baseline_peak_load = pmax(out.electricity.winter.peak.kw, out.electricity.summer.peak.kw),
+        baseline_total_energy_consumption = out.electricity.total.energy_consumption.kwh
       ) |>
-      select(bldg_id, baseline_peak_load),
+      select(bldg_id, baseline_peak_load, baseline_total_energy_consumption),
     by = "bldg_id"
   ) |>
   mutate(
-    annual_peak_load_pct = annual_peak_load / baseline_peak_load
+    annual_peak_load_pct = annual_peak_load / baseline_peak_load,
+    consumption_growth = total_energy_consumption / baseline_total_energy_consumption
   )
 
 stats_peak_loads <- housing_units_peak_loads |>
@@ -1090,10 +1094,14 @@ stats_peak_loads <- housing_units_peak_loads |>
     median_winter_peak_pct = median(winter_peak_pct),
     mean_annual_peak_load_pct = mean(annual_peak_load_pct),
     median_annual_peak_load_pct = median(annual_peak_load_pct),
-    max_annual_peak_load_pct = max(annual_peak_load_pct),
-    min_annual_peak_load_pct = min(annual_peak_load_pct)
+    mean_load_factor = mean(load_factor),
+    median_load_factor = median(load_factor),
+    mean_total_energy_consumption = mean(total_energy_consumption),
+    median_total_energy_consumption = median(total_energy_consumption),
+    mean_consumption_growth = mean(consumption_growth),
+    median_consumption_growth = median(consumption_growth),
   )
-#Print(stats_peak_loads)
+print(stats_peak_loads)
 
 stats_winter_peaking_pct <- housing_units_peak_loads |>
   mutate(winter_peaking = winter_peak_pct > 1.0) |>
@@ -1103,6 +1111,38 @@ stats_winter_peaking_pct <- housing_units_peak_loads |>
   )
 #Print(stats_winter_peaking_pct)
 ```
+
+```{r}
+#| label: load_factor_histogram
+#| fig-cap: "Histogram of Load Factor"
+# Plot the distribution of load_factor for upgrade = 0 and upgrade = 3
+
+median_load_factor_0 <- stats_peak_loads |> filter(upgrade == 0) |> pull(median_load_factor)
+median_load_factor_3 <- stats_peak_loads |> filter(upgrade == 3) |> pull(median_load_factor)
+
+load_factor_histogram <- ggplot(
+  housing_units_peak_loads %>% filter(upgrade %in% c(0, 3)),
+  aes(x = load_factor, fill = as.factor(upgrade))
+) +
+  geom_histogram(binwidth = 0.01, alpha = 0.4, position = "identity") +
+  geom_vline(xintercept = median_load_factor_0, color = "red", linetype = "dashed") +
+  geom_text(x = median_load_factor_0+0.005, y = 90, label = paste("Median Load Factor (Baseline):", round(median_load_factor_0, 3)), color = "red", vjust = -1, hjust = 0) +
+  geom_vline(xintercept = median_load_factor_3, color = "blue", linetype = "dashed") +
+  geom_text(x = median_load_factor_3+0.005, y = 100, label = paste("Median Load Factor (High-eff. ccASHP):", round(median_load_factor_3, 3)), color = "blue", vjust = -1, hjust = 0) +
+  labs(
+    x = "Load Factor",
+    y = "Number of Homes",
+    fill = "Upgrade",
+    title = "Load Factor Distribution in Rhode Island by Upgrade (2024.2)"
+  ) +
+  scale_fill_brewer(palette = "Set1", labels = c("0" = "Baseline (u0)", "3" = "High-eff. ccASHP (u3)"))
+
+print(load_factor_histogram)
+# save
+ggsave(file.path(path_to_cache, "load_factor_histogram.png"), load_factor_histogram, width = 10, height = 8)
+
+```
+
 
 ### Scatter Plot: Winter vs Summer Peak Loads
 ```{r}

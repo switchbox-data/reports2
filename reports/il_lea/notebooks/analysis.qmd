@@ -145,18 +145,22 @@ lea_df |>
 
 ```{r}
 #| label: fig-nicor-per-connection
-#| fig-cap: "Historical and forecasted LEA subsidy costs per connection for Nicor Gas"
+#| fig-cap: 'Historical and forecasted LEA subsidy costs per connection for Nicor Gas. Note that the service line estimates are based on the avergae reported "per project" cost, which we interpret to mean connections. Costs may reflect both residential and non-residential connections.'
+
 lea_df |>
   filter(utility == "nicor") |>
-  filter(!is.na(cost_per_connection)) |>
-  per_connection_plot(max_lim = 16e3, breaks_step = 2e3)
+  mutate(cost_per_connection = if_else(is.na(cost_per_connection) & main_service == "service", cost_per_project, cost_per_connection)) |>
+  filter(!is.na(cost_per_connection), year <=2023, year >= 2019) |>
+  per_connection_plot(max_lim = 20e3, breaks_step = 2e3)
 ```
 
 
-
+NOTE: This is the only figure for Peoples Gas that is specific to single-family homes. The rest are not specified.
 ```{r}
 #| label: fig-peoples-per-connection
-#| fig-cap: "Historical and forecasted  LEA subsidy costs per connection for Peoples Gas"
+#| fig-cap: "Historical and forecasted LEA subsidy costs per connection of single new residential single-family homes for Peoples Gas"
+
+
 lea_df |>
   filter(utility == "peoples") |>
   filter(!is.na(cost_per_connection)) |>
@@ -208,12 +212,37 @@ total_spending <- lea_df |>
     to = max(year)
   )
 
+lea_total_all_utilities_22 <- lea_df |>
+  filter(!is.na(lea_cost)) |>
+  filter(year == 2022) |>
+  summarize(
+    .by = c(utility, main_service, historical, year),
+    total = sum(lea_cost),
+  ) |>
+  pull(total) |>
+  sum() |>
+  (\(x) scales::label_dollar(suffix = "M", prefix = "$", scale = 1e-6, accuracy = 0.1)(x))()
+
+lea_hist_avg_all_utilities_18to22 <- lea_df |>
+  filter(!is.na(lea_cost), historical == "historical") |>
+  summarize(.by = year,
+    total = sum(lea_cost),
+  )|>
+  pull(total) |>
+  mean() |>
+  (\(x) scales::label_dollar(suffix = "M", prefix = "$", scale = 1e-6, accuracy = 0.1)(x))()
+
 nicor_per_connect_23 <- lea_df |>
   filter(!is.na(cost_per_connection)) |>
   filter(utility == "nicor", year == max(year)) |>
   pull(cost_per_connection) |>
   (\(x) scales::label_dollar(prefix = "$")(x))()
 
+nicor_per_connect_service_23 <- lea_df |>
+  filter(!is.na(cost_per_project)) |>
+  filter(utility == "nicor", year == max(year), main_service == "service") |>
+  pull(cost_per_project) |>
+  (\(x) scales::label_dollar(prefix = "$", accuracy = 1)(x))()
 
 nicor_per_connect_change <- lea_df |>
   filter(!is.na(cost_per_connection)) |>
@@ -231,7 +260,7 @@ nicor_per_connect_change <- lea_df |>
 
 peoples_per_connect_22 <- lea_df |>
   filter(utility == "peoples", !is.na(cost_per_connection)) |>
-  filter( year == max(year)) |>
+  filter(year == max(year)) |>
   pull(cost_per_connection) |>
   (\(x) scales::label_dollar(prefix = "$")(x))()
 

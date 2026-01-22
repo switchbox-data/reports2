@@ -46,22 +46,30 @@ else
 fi
 echo
 
-# Install uv package manager
-echo "📦 Installing uv package manager..."
-curl -LsSf https://astral.sh/uv/install.sh | sh
-echo
-
-# Add uv to PATH for this session so command can be used
-# The installer adds uv to ~/.local/bin
+# Check if uv is already installed
+# Add common uv installation paths to PATH for checking
 export PATH="${HOME}/.local/bin:${PATH}"
 
-# Verify installation
-if UV_VERSION=$(uv --version 2>&1); then
-    echo "✅ Installed: ${UV_VERSION}"
+if command -v uv >/dev/null 2>&1; then
+    UV_VERSION=$(uv --version 2>&1)
+    echo "✅ uv already installed: ${UV_VERSION}"
 else
-    echo "❌ ERROR: uv installation failed or uv command not found" >&2
-    echo "Expected location: ${HOME}/.local/bin/uv" >&2
-    exit 1
+    # Install uv package manager
+    echo "📦 Installing uv package manager..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+
+    # Add uv to PATH for this session so command can be used
+    # The installer adds uv to ~/.local/bin
+    export PATH="${HOME}/.local/bin:${PATH}"
+
+    # Verify installation
+    if UV_VERSION=$(uv --version 2>&1); then
+        echo "✅ Installed: ${UV_VERSION}"
+    else
+        echo "❌ ERROR: uv installation failed or uv command not found" >&2
+        echo "Expected location: ${HOME}/.local/bin/uv" >&2
+        exit 1
+    fi
 fi
 echo
 

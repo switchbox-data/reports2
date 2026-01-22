@@ -3,12 +3,8 @@
 FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04
 
 # ============================================================================
-# ROOT USER SECTION
-# ============================================================================
-# All commands in this section run as root (Dockerfile default).
-# This section installs system-level tools and devcontainer features.
-# This mirrors what happens when you use "features" in devcontainer.json:
-# features are installed as root during the image build phase.
+# All commands run as root. The devcontainer also runs as root (remoteUser).
+# This eliminates permission issues between build-time and run-time users.
 # ============================================================================
 
 # Copy devcontainer-feature installer script
@@ -24,12 +20,16 @@ RUN /tmp/install-feature.sh "ghcr.io/devcontainers/features/python:1" \
 # Install R via rig package manager
 # pak: fast installs of R packages
 # radian: enhanced R console with multiline editing and syntax highlighting
+# USERNAME=root: install pak for root user (default auto-detects vscode user from base image)
 # Note: Don't use r-rig feature for rmarkdown/languageserver/vscDebugger/rmarkdown/httpgd -
 #       they have outdated detection and install from source (slow)
 RUN /tmp/install-feature.sh "ghcr.io/rocker-org/devcontainer-features/r-rig:1" \
     version=4.4 \
     pakVersion=stable \
-    installRadian=true
+    installRadian=true \
+    USERNAME=root && \
+    # Remove rig zsh completions to avoid compinit security warnings (we don't use them)
+    rm -rf /usr/local/share/zsh 2>/dev/null || true
 
 # Install R packages needed by toolchain
 # httpgd: Interactive plot viewer (archived from CRAN, requires source build from GitHub)
@@ -37,11 +37,13 @@ RUN /tmp/install-feature.sh "ghcr.io/rocker-org/devcontainer-features/r-rig:1" \
 # rmarkdown: Required for Quarto R documents, binary install from P3M
 # languageserver: VSCode autocomplete / go-to-definition / hover docs, binary install from P3M
 # vscDebugger: R debugger for VSCode RDebugger extension, binary install from P3M
+# USERNAME=root: install packages for root user
 # Note: Uses P3M mirror for fast binary installs on Ubuntu 24.04
 RUN /tmp/install-feature.sh "ghcr.io/rocker-org/devcontainer-features/r-packages:1" \
     packages="github::nx10/httpgd, pkgdepends, rmarkdown, languageserver, github::ManuelHentschel/vscDebugger" \
     cranMirror="https://p3m.dev/cran/__linux__/noble/latest" \
-    installSystemRequirements=true
+    installSystemRequirements=true \
+    USERNAME=root
 
 # Install AWS CLI
 RUN /tmp/install-feature.sh "ghcr.io/devcontainers/features/aws-cli:1" \
@@ -66,50 +68,29 @@ RUN /tmp/install-feature.sh "ghcr.io/rocker-org/devcontainer-features/quarto-cli
 RUN /tmp/install-feature.sh "ghcr.io/rocker-org/devcontainer-features/apt-packages:1" \
     packages="python3-tk, chromium-browser"
 
-# ============================================================================
-# VSCODE USER SECTION
-# ============================================================================
-# Switch to vscode user for installing zsh, R dependencies, Python dependencies, and prek.
-# This is necessary because:
-#   1. oh-my-zsh and its plugins must be owned by vscode user to avoid zsh compinit security warnings.
-#   2. The r-rig feature (installed as root above) installs pak for the vscode user
-#      in /home/vscode/R, not for root. R packages need to be installed as vscode
-#      to access pak and write to vscode's R library.
-#   3. Python venv and packages should be owned by vscode (the user who will
-#      actually run the code), not root.
-#   4. prek should be installed for vscode user (who runs pre-commit hooks).
-#   5. This mirrors the container runtime: the devcontainer runs as vscode user,
-#      not root, so dependencies should be installed as vscode during build.
-#
-# ============================================================================
-USER vscode
-
 # Install zsh with plugins and custom plugin repositories
-# The zsh feature installs oh-my-zsh for the current user (vscode) and enables plugins in .zshrc.
+# The zsh feature installs oh-my-zsh for root user and enables plugins in .zshrc.
 # Built-in plugins (git, colored-man-pages, colorize, history) are included with oh-my-zsh.
 # Custom plugins (zsh-autosuggestions, fast-syntax-highlighting, zsh-autocomplete) need to be cloned separately.
-# sudo needed: install-feature.sh needs root privileges but installs oh-my-zsh for current user
 COPY .devcontainer/install-ohmyzsh-plugins.sh /tmp/install-ohmyzsh-plugins.sh
-RUN sudo chmod +x /tmp/install-ohmyzsh-plugins.sh && \
-    sudo /tmp/install-feature.sh "ghcr.io/nils-geistmann/devcontainers-features/zsh:0" \
-        plugins="git colored-man-pages colorize history zsh-autosuggestions fast-syntax-highlighting zsh-autocomplete" && \
+RUN chmod +x /tmp/install-ohmyzsh-plugins.sh && \
+    /tmp/install-feature.sh "ghcr.io/nils-geistmann/devcontainers-features/zsh:0" \
+        plugins="git colored-man-pages colorize history zsh-autosuggestions fast-syntax-highlighting zsh-autocomplete" \
+        theme="bira" && \
     /tmp/install-ohmyzsh-plugins.sh
 
 # Install prek CLI for pre-commit hooks
 # Note: The actual hook installation (prek install --install-hooks) happens in postCreateCommand
 # because it needs to write to .git/hooks/, which is mounted from the host after container starts
 COPY .devcontainer/install-prek.sh /tmp/install-prek.sh
-# sudo needed: file is root-owned, vscode user can read but not run it
-RUN sudo chmod +x /tmp/install-prek.sh && \
+RUN chmod +x /tmp/install-prek.sh && \
     /tmp/install-prek.sh
 
 # Install R dependencies from DESCRIPTION
 # This layer rebuilds when DESCRIPTION changes
 COPY .devcontainer/install-r-deps.sh /tmp/install-r-deps.sh
 COPY DESCRIPTION /tmp/DESCRIPTION
-# sudo needed: files are root-owned, make them executable/readable for vscode user
-RUN sudo chmod +x /tmp/install-r-deps.sh && \
-    sudo chmod +r /tmp/DESCRIPTION && \
+RUN chmod +x /tmp/install-r-deps.sh && \
     /tmp/install-r-deps.sh /tmp/DESCRIPTION
 
 # Install Python dependencies from pyproject.toml + uv.lock
@@ -120,17 +101,12 @@ COPY pyproject.toml uv.lock /tmp/
 # Set UV_PROJECT_ENVIRONMENT to install venv to /opt/venv
 # This ensures uv commands (uv add, uv run, etc.) always use this location
 ENV UV_PROJECT_ENVIRONMENT="/opt/venv"
-# sudo is needed because /opt and /tmp/install-python-deps.sh are owned by root.
-# we chown uv's venv dir from root to vscode user, so vscode user can install packages.
-# install-python-deps.sh runs as vscode user, though, so uv commands get installed at /home/vscode/.local/bin/
-RUN sudo mkdir -p /opt/venv && \
-    sudo chmod +x /tmp/install-python-deps.sh && \
-    sudo chown vscode:vscode /opt/venv && \
+RUN mkdir -p /opt/venv && \
+    chmod +x /tmp/install-python-deps.sh && \
     /tmp/install-python-deps.sh /tmp
 
-# Making uv command available to all users (including root) by adding vscode user's local bin to PATH.
-# This is needed when GitHub Actions runs uv commands in the container as root.
-ENV PATH="/home/vscode/.local/bin:${PATH}"
+# Add uv/uvx to PATH (installed to /root/.local/bin)
+ENV PATH="/root/.local/bin:${PATH}"
 
 # Set working directory for development
 WORKDIR /workspaces/reports2

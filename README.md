@@ -117,7 +117,8 @@ Using this repo's devcontainer on your laptop is therefore the easiest and faste
 1. **Prerequisites**:
    - Install [VS Code](https://code.visualstudio.com/) or [Cursor](https://www.cursor.com/), which can use devcontainers seamlessly
    - Install [Docker Desktop](https://www.docker.com/products/docker-desktop), which will actually run the devcontainer
-   - Install [DevPod (skevetter fork)](https://github.com/skevetter/devpod/releases), which makes it easier to work with devcontainers (we use this fork because it has important fixes)
+   - Install latest release of [DevPod (skevetter fork)](https://github.com/skevetter/devpod/releases), which makes it easier to work with devcontainers (we use this fork because it has important fixes)
+     - If you use MacOS, it may not let you open DevPod. Go to `System Settings > Privacy & Security > Security` to enable the app.
    - Install [just](https://github.com/casey/just) to run commands
    - Make sure Docker Desktop is running in the background
 

@@ -79,8 +79,11 @@ aws:
     fi
 
     # Check if credentials are already valid (early exit if so)
-    if aws sts get-caller-identity &>/dev/null; then
+    # Test with an actual EC2 API call since DevPod uses EC2
+    if aws sts get-caller-identity &>/dev/null && \
+       aws ec2 describe-instances --max-results 5 &>/dev/null; then
         echo "✅ AWS credentials are already valid"
+        echo
         exit 0
     fi
 
@@ -134,7 +137,9 @@ aws:
     # Run SSO login (handles browser authentication)
     # Use profile-based login since we configure SSO settings directly on the profile
     echo "🔓 Starting AWS SSO login..."
+    echo
     aws sso login
+    echo
 # Your workspace files persist between sessions; container state resets each time.
 
 # Launch devcontainer locally with Docker

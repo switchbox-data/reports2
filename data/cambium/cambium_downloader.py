@@ -163,7 +163,7 @@ def download_files(files_to_download, project_uuid, year="2024", show_cli_comman
     console.print(f"[green]✓ Got {len(successful)} URL(s)[/green]\n")
 
     # Download files
-    download_dir = Path("files")
+    download_dir = Path("zips")
     download_dir.mkdir(exist_ok=True)
 
     for i, file in enumerate(successful, 1):

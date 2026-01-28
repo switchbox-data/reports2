@@ -178,13 +178,15 @@ up-local rebuild="":
           --provider docker \
           --prebuild-repository ghcr.io/switchbox-data/reports2 \
           --ide cursor \
-          --recreate
+          --recreate \
+          --debug
     else
         devpod up . \
           --id "reports2-docker" \
           --provider docker \
           --prebuild-repository ghcr.io/switchbox-data/reports2 \
-          --ide cursor
+          --ide cursor \
+          --debug
     fi
 
 # Launch devcontainer on AWS EC2, using the specified machine type

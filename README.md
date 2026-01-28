@@ -119,6 +119,7 @@ Using this repo's devcontainer on your laptop is therefore the easiest and faste
    - Install [Docker Desktop](https://www.docker.com/products/docker-desktop), which will actually run the devcontainer
    - Install latest release of [DevPod (skevetter fork)](https://github.com/skevetter/devpod/releases), which makes it easier to work with devcontainers (we use this fork because it has important fixes)
      - If you use MacOS, it may not let you open DevPod. Go to `System Settings > Privacy & Security > Security` to enable the app.
+     - Make sure you enable the Devpod cli.
    - Install [just](https://github.com/casey/just) to run commands
    - Make sure Docker Desktop is running in the background
 

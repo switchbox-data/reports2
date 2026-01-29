@@ -215,6 +215,21 @@ up-aws MACHINE_TYPE="t3.xlarge" rebuild="": aws
         REBUILD="rebuild"
     fi
 
+    # If rebuilding and using default machine type, check if a workspace exists with a different machine type
+    # This allows "just up-aws rebuild" to rebuild the existing workspace rather than defaulting to t3.xlarge
+    if [ -n "${REBUILD}" ] && [ "${MACHINE_TYPE}" = "t3.xlarge" ] && [ "{{ MACHINE_TYPE }}" = "t3.xlarge" ]; then
+        # Look for any existing reports2-aws-* workspace
+        EXISTING_WORKSPACE=$(devpod list --output json 2>/dev/null | jq -r '.[] | select(.id | startswith("reports2-aws-")) | .id' | head -1)
+        if [ -n "${EXISTING_WORKSPACE}" ]; then
+            # Extract machine type from workspace ID (e.g., reports2-aws-t3-xlarge -> t3.xlarge)
+            DETECTED_TYPE=$(echo "${EXISTING_WORKSPACE}" | sed 's/^reports2-aws-//' | tr '-' '.')
+            echo "🔍 Detected existing workspace with machine type: ${DETECTED_TYPE}"
+            echo "   Using this machine type for rebuild instead of default."
+            echo
+            MACHINE_TYPE="${DETECTED_TYPE}"
+        fi
+    fi
+
     # Warn user and get confirmation if rebuilding
     if [ -n "${REBUILD}" ]; then
         echo "==========================================================================="
@@ -272,13 +287,15 @@ up-aws MACHINE_TYPE="t3.xlarge" rebuild="": aws
           --provider "${PROVIDER_NAME}" \
           --prebuild-repository ghcr.io/switchbox-data/reports2 \
           --ide cursor \
-          --recreate
+          --recreate \
+          --debug
     else
         devpod up . \
           --id "${WORKSPACE_ID}" \
           --provider "${PROVIDER_NAME}" \
           --prebuild-repository ghcr.io/switchbox-data/reports2 \
-          --ide cursor
+          --ide cursor \
+          --debug
     fi
     echo
 

@@ -73,9 +73,9 @@ up-local rebuild="":
     .devcontainer/devpod/up-local.sh {{ rebuild }}
 
 # Launch devcontainer on AWS EC2, using the specified machine type
-up-aws MACHINE_TYPE="t3.xlarge" rebuild="": aws
-    .devcontainer/devpod/up-aws.sh {{ MACHINE_TYPE }} {{ rebuild }}
+up-aws MACHINE_TYPE="t3.xlarge" rebuild="":
+    @bash .devcontainer/devpod/up-aws.sh {{ MACHINE_TYPE }} {{ rebuild }}
 
 # Show active EC2 instances running devcontainers, and commands to delete them
 up-aws-list:
-    .devcontainer/devpod/up-aws-list.sh
+    @bash .devcontainer/devpod/up-aws-list.sh

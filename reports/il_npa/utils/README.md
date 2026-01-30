@@ -1,6 +1,7 @@
 # How to download PGL Construction Map Geodata
 
 ## FeatureServer URL:
+
 ```
 https://services.arcgis.com/7AlGmBBkiOr2Pn8A/arcgis/rest/services/PGL_Projects_PROD/FeatureServer/0
 ```
@@ -10,6 +11,7 @@ https://services.arcgis.com/7AlGmBBkiOr2Pn8A/arcgis/rest/services/PGL_Projects_P
 ## ⚡ FASTEST WAY TO GET THE DATA (3 Options)
 
 ### Option 1: pyesridump (EASIEST - Recommended)
+
 ```bash
 # Install once
 pip install pyesridump
@@ -23,12 +25,14 @@ esri2geojson "https://services.arcgis.com/7AlGmBBkiOr2Pn8A/arcgis/rest/services/
 ---
 
 ### Option 2: Custom Python Script (Most Control)
+
 ```bash
 # Run the provided script
 python download_peoplesgas_data.py
 ```
 
 This script will:
+
 - Show you service metadata
 - Display available fields
 - Download all features with progress
@@ -37,6 +41,7 @@ This script will:
 ---
 
 ### Option 3: Direct Curl (No Installation)
+
 ```bash
 # Download all data in one command
 curl "https://services.arcgis.com/7AlGmBBkiOr2Pn8A/arcgis/rest/services/PGL_Projects_PROD/FeatureServer/0/query?where=1%3D1&outFields=*&returnGeometry=true&f=geojson" -o peoplesgas_projects.geojson
@@ -51,11 +56,13 @@ curl "https://services.arcgis.com/7AlGmBBkiOr2Pn8A/arcgis/rest/services/PGL_Proj
 Before downloading, check what's available:
 
 **View metadata in browser:**
+
 ```
 https://services.arcgis.com/7AlGmBBkiOr2Pn8A/arcgis/rest/services/PGL_Projects_PROD/FeatureServer/0?f=pjson
 ```
 
 **Test query (first 10 features):**
+
 ```
 https://services.arcgis.com/7AlGmBBkiOr2Pn8A/arcgis/rest/services/PGL_Projects_PROD/FeatureServer/0/query?where=1=1&outFields=*&returnGeometry=true&resultRecordCount=10&f=geojson
 ```
@@ -119,18 +126,21 @@ python -c "import json; d=json.load(open('peoplesgas_projects.geojson')); print(
 ## 💡 ADVANCED QUERIES
 
 ### Filter by Status
+
 ```bash
 # Only get projects in "Preconstruction" status
 esri2geojson "https://services.arcgis.com/7AlGmBBkiOr2Pn8A/arcgis/rest/services/PGL_Projects_PROD/FeatureServer/0" preconstruction.geojson --where "Status='Preconstruction'"
 ```
 
 ### Filter by Phase
+
 ```bash
 # Only get PH25 projects
 curl "https://services.arcgis.com/7AlGmBBkiOr2Pn8A/arcgis/rest/services/PGL_Projects_PROD/FeatureServer/0/query?where=Phase%3D%27PH25%27&outFields=*&f=geojson" -o ph25_projects.geojson
 ```
 
 ### Filter by Date Range
+
 ```bash
 # Projects starting after Jan 1, 2025
 curl "https://services.arcgis.com/7AlGmBBkiOr2Pn8A/arcgis/rest/services/PGL_Projects_PROD/FeatureServer/0/query?where=Construction_Start%3E%27Jan+1%2C+2025%27&outFields=*&f=geojson" -o future_projects.geojson
@@ -171,6 +181,7 @@ gdf.to_file('peoplesgas_projects.gpkg', driver='GPKG')  # GeoPackage
 ## ✅ VERIFICATION CHECKLIST
 
 After downloading:
+
 - [ ] File exists and is not empty
 - [ ] GeoJSON is valid (test with geojson.io)
 - [ ] Features match what you see on the map

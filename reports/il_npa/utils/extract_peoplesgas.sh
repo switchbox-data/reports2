@@ -69,7 +69,7 @@ echo ""
 
 echo "🚀 QUICK START (Copy/Paste)"
 echo "----------------------------------------"
-cat << 'COMMANDS'
+cat <<'COMMANDS'
 # Install pyesridump
 pip install pyesridump
 

@@ -31,9 +31,11 @@ We use [Linear](https://linear.app/) for issue management, which automatically s
 **All work is tracked with issues, no exceptions.** We use issues for three main types of work:
 
 ### 1. 💻 Code
+
 Any report-related task delivered via commits and pull requests.
 
 **Examples**:
+
 - Data engineering (fetching, cleaning, processing data)
 - Data analysis (statistical modeling, calculations)
 - Report writing (Quarto notebooks, visualizations)
@@ -44,11 +46,13 @@ Any report-related task delivered via commits and pull requests.
 **Workflow**: Issues → Branches → Commits → PRs → Review → Merge
 
 ### 2. 📚 Research
+
 Work that requires investigation, reading, or conceptual thinking to advance a project.
 
 All Research issue started with a **question**.
 
 **Examples**:
+
 - Reading academic papers or technical reports
 - Reviewing regulatory dockets or policy documents
 - Thinking through methodological approaches
@@ -56,6 +60,7 @@ All Research issue started with a **question**.
 - Evaluating technical options
 
 **Deliverables**: Comments on the issue that:
+
 - Answer a research question
 - Summarize findings or key insights
 - Provide recommendations
@@ -66,9 +71,11 @@ All Research issue started with a **question**.
 **Workflow**: Issues → Research → Document findings in issue comments (public) → Close issue
 
 ### 3. 📋 Other
+
 Any other project-related tasks that aren't 💻 Code or 📚 Research.
 
 **Examples**:
+
 - Writing grant proposals or project plans
 - Producing graphics for presentations
 - Preparing report releases and announcements
@@ -96,6 +103,7 @@ Use our private [Linear workspace](https://linear.app/switchbox-data) to view an
 **Public View**: All issues are also visible on [GitHub Issues](https://github.com/switchbox-data/reports2/issues) for transparency.
 
 **Issue Statuses**:
+
 - 📋 **Backlog**: Issues for future sprints
 - ⭕ **To Do**: Issues for the current sprint
 - 🔄 **In Progress**: Currently being worked on
@@ -116,11 +124,13 @@ Use our private [Linear workspace](https://linear.app/switchbox-data) to view an
 All fields below are **required** except **Priority** and **How** (when trivial). These fields apply to **all issue types** (💻 Code, 📚 Research, and 📋 Other).
 
 #### Title
+
 **Format**: `[project_code] Brief description` (e.g., `[ny_aeba] Add winter peak analysis`)
 
 Short, scannable summary of the issue.
 
 #### What
+
 **Purpose**: Answer "what is this even about?"
 
 High-level description of what you're building, changing, or deciding. Keep it concise but clear enough that anyone can understand the scope at a glance.
@@ -128,9 +138,11 @@ High-level description of what you're building, changing, or deciding. Keep it c
 **Example**: "Add winter peak demand forecast visualizations to the NY AEBA report"
 
 #### Why
+
 **Purpose**: Explain context, importance, and value
 
 This is where you justify the work. Answer:
+
 - Why is this important?
 - What value does it deliver, or what problem does it solve?
 - What will it enable or unblock?
@@ -138,14 +150,17 @@ This is where you justify the work. Answer:
 **Example**: "Winter peak demand is a critical metric for grid planning. Adding these visualizations will help policymakers understand the impact of building electrification on winter grid capacity, which is essential for infrastructure planning decisions."
 
 #### How (optional when trivial)
+
 **Purpose**: Provide implementation details or discussion context
 
 **For tech/manual tasks**: Enumerate the steps
+
 - Break down complex work into smaller steps
 - Identify technical decisions or trade-offs
 - List dependencies or prerequisites
 
 **For decision/discussion issues**: Provide context and framing
+
 - Background information needed for the decision
 - Options to consider
 - Criteria for evaluation
@@ -154,6 +169,7 @@ This is where you justify the work. Answer:
 **When to skip**: If the "what" is self-explanatory and the implementation is straightforward, you can leave this blank.
 
 **Example (💻 Code issue)**:
+
 ```
 1. Create new notebook: notebooks/winter_peak_forecast.qmd
 2. Load hourly demand data from S3
@@ -163,6 +179,7 @@ This is where you justify the work. Answer:
 ```
 
 **Example (📚 Research issue requiring discussion)**:
+
 ```
 We need to decide whether to use ASHRAE climate zones or IECC climate zones
 for categorizing building performance. ASHRAE is more granular (8 zones) but
@@ -171,16 +188,19 @@ data availability, and alignment with other reports.
 ```
 
 #### Deliverables
+
 **Purpose**: Define specific, verifiable outputs
 
 🎯 **CRITICAL**: List concrete deliverables as specifically as possible. This defines "done."
 
 **Why this matters**: Clear deliverables are essential for async remote work. They let anyone know:
+
 - ✅ Exactly when the issue is complete
 - 🔍 Exactly what to look for when reviewing
 - 🚫 Without specific deliverables, teammates get blocked and have to ping you with questions instead of moving forward independently
 
 **Examples**:
+
 - ✅ "PR that adds winter peak forecast visualization to NY AEBA report"
 - ✅ "Tests for peak demand calculation function"
 - ✅ "Comment in this issue documenting our climate zone decision with rationale"
@@ -190,6 +210,7 @@ data availability, and alignment with other reports.
 - ❌ "Make it better" (not measurable)
 
 #### Assignee
+
 **Required**: No
 
 Person responsible for the work. Select in Linear; automatically syncs with GitHub username.
@@ -197,9 +218,11 @@ Person responsible for the work. Select in Linear; automatically syncs with GitH
 Fill in if possible, only leave blank if the person doing the work isn't known yet.
 
 #### Status
+
 **Required**: Yes
 
 Current state of the issue. Options:
+
 - **Backlog**: Future work
 - **To Do**: Current sprint
 - **In Progress**: Actively working
@@ -209,11 +232,13 @@ Current state of the issue. Options:
 Defaults to **Backlog**. Status syncs to GitHub automatically.
 
 #### Priority
+
 **Required**: No (not currently enforced)
 
 Indicates urgency/importance. Use to help prioritize work.
 
 #### Project
+
 **Required**: Yes
 
 The Linear project this issue belongs to.
@@ -223,6 +248,7 @@ The Linear project this issue belongs to.
 **Note**: This field is visible in Linear but not synced to GitHub.
 
 #### Milestone
+
 **Required**: When applicable (strongly encouraged)
 
 Internal project management milestone this work contributes to.
@@ -230,6 +256,7 @@ Internal project management milestone this work contributes to.
 Milestones group related issues across projects (e.g., "Q1 2025 Reports Launch", "Data Infrastructure v2").
 
 🗺️ **Why milestones matter**: Milestones are our X-ray of the project. They let us:
+
 - 📊 See the big pieces we need to complete and by when
 - 🔍 See the details of what's needed to achieve the milestone (by viewing associated issues)
 - 🧭 Make sense of a pile of issues by organizing them around major goals
@@ -242,6 +269,7 @@ Milestones group related issues across projects (e.g., "Q1 2025 Reports Launch",
 ### What's Publicly Visible on GitHub
 
 When issues sync to GitHub, the public can see:
+
 - Title
 - What, Why, How, Deliverables (in issue description)
 - Assignee
@@ -252,6 +280,7 @@ When issues sync to GitHub, the public can see:
 - **For 💻 Code issues**: Linked branches, PRs, and all code changes
 
 **Not visible on GitHub** (Linear-only):
+
 - Project field
 - Milestone field
 - Internal Linear discussions
@@ -325,6 +354,7 @@ _**This section applies to 💻 Code issues only.** 📚 Research and 📋 Other
    - Anything that might not be obvious to reviewers
 
 **Why create PRs early?**
+
 - Makes work-in-progress visible to the team
 - Allows for early feedback if direction needs adjustment
 - Shows activity even if work isn't complete
@@ -347,6 +377,7 @@ just check
 ```
 
 **Requirements**:
+
 - ✅ No linter errors or warnings
 - ✅ All checks must pass (green)
 
@@ -363,12 +394,14 @@ just test
 ```
 
 **Requirements**:
+
 - ✅ Write tests for new functionality in the `tests/` directory
 - ✅ All tests must pass
 
 **3. 🔄 Reproducibility**
 
 **Why this matters**: Reproducibility ensures:
+
 1. 👥 Other team members can use and build on your work
 2. ⏰ We (and you!) can use this in 6 months
 3. 🌍 Anyone external can run and build off our work
@@ -381,6 +414,7 @@ just render
 ```
 
 **Requirements**:
+
 - ✅ All data is pulled from S3 (see [README](README.md) for S3 data conventions)
 - ✅ No reliance on local files in `data/` or `cache/` that others won't have (unless generated by the notebooks as part of the reproducible process)
 - ✅ Report renders without errors
@@ -390,23 +424,27 @@ just render
 Here are best practices for commits.
 
 **Keep commits atomic**:
+
 - Small, focused commits are easier to review
 - Each commit should represent one logical change
 - [Read more about atomic commits](https://dev.to/samuelfaure/how-atomic-git-commits-dramatically-increased-my-productivity-and-will-increase-yours-too-4a84)
 
 **Write good commit messages**:
+
 - Start with a verb, using the imperative ("Add feature" not "Added feature")
 - First line: concise summary (<50 characters)
 - Blank line, then detailed explanation if needed
 - [Read more about commit messages](https://cbea.ms/git-commit/)
 
 **Commit frequently**:
+
 - Commit at least once per work session
-- If work is incomplete, prefix message with `WIP: `
+- If work is incomplete, prefix message with `WIP:`
 - Example: `WIP: Add data loading logic`
 - 🚨 **VERY IMPORTANT**: Push your commits regularly! If you don't commit and push frequently, nobody else can see what you've worked on. This blocks teammates who might be waiting on your work or need to coordinate with you.
 
 **Keep PRs short-lived**:
+
 - PRs should be merged _within the sprint_
 - If dragging on, the scope is probably too large
 - Consider breaking into smaller PRs
@@ -418,15 +456,18 @@ Here are best practices for commits.
 **Why we document in issue comments**: This creates a public archive of what we're learning and why we made certain decisions. Future readers (including your future self) can understand our reasoning and methodology.
 
 **Write self-contained documentation**: Document findings to a high standard with all context necessary to understand the issue standalone. This serves three critical purposes:
+
 1. 🚫 **Unblocks reviewers** - they don't need to ping you for clarification
 2. ⏰ **Future understanding** - you and the team can understand it in 6 months
 3. 🌍 **External transparency** - anyone outside can follow our thinking and methodology
 
 **As you work**:
+
 1. **Update status in Linear** regularly (syncs to GitHub - publicly visible)
-3. **Cite sources** - link to papers, documents, or data sources
+2. **Cite sources** - link to papers, documents, or data sources
 
 **When complete**:
+
 1. **Write a summary comment** that includes:
    - **Answer to the original question**: high level answer that summarizes learnings, or proposes recommendation
    - **Rationale** (if applicable) - if answer is a recommendation, argument or evidence in support
@@ -436,9 +477,10 @@ Here are best practices for commits.
 
 2. **Tag relevant team members** who need to see the findings and **Move to "Under Review"**
 
-4. **Close the issue** reviewers close the issue once they have reviewed and commented
+3. **Close the issue** reviewers close the issue once they have reviewed and commented
 
 **Example 1: Research question that requires a decision**:
+
 ```
 **Question**: Should we use ASHRAE or IECC climate zones?
 
@@ -457,6 +499,7 @@ Here are best practices for commits.
 ```
 
 **Example 2: Research question about understanding a paper**:
+
 ```
 **Question**: What are the key takeaways from "Cold Climate Air Source Heat Pump
 Performance" (Metzger et al., 2023)?
@@ -487,14 +530,15 @@ heat configuration. This has important implications for how we model ASHP perfor
 ### For 📋 Other Issues: Document Deliverables
 
 **As you work**:
+
 1. **Update status in Linear** regularly (syncs to GitHub)
 2. **Communicate** about blockers or dependencies via Slack
 
 **When complete**:
+
 1. **Document deliverables** in the issue (publicly visible on GitHub):
    - Link to final Google Docs, slides, or other materials
    - 💡 **Note**: Many of these deliverables will be internal/private (Google Drive docs, internal slides, etc.)
-
 
 ---
 
@@ -503,6 +547,7 @@ heat configuration. This has important implications for how we model ASHP perfor
 ### Code Review (💻 Code Issues Only)
 
 #### Preparing for Code Review
+
 Before requesting review:
 
 1. **Resolve merge conflicts**:
@@ -555,6 +600,7 @@ For these deliverables:
 4. **Iterate** as needed
 
 ## 🎯 Wrapping Up
+
 ### Merging and Closing
 
 **For 💻 Code Issues** - Once the PR is approved:
@@ -578,13 +624,12 @@ For these deliverables:
 1. **Close the issue manually**:
    - Move status to `Done` in Linear (syncs to GitHub)
 
-
 ---
-
 
 ## 🎯 Quick Reference
 
 **💻 Code Issue Lifecycle**:
+
 ```
 Create Issue (Linear) → Syncs to GitHub (public) → [Optional: Issue Review] →
 Create Branch (GitHub) → Move to In Progress (Linear) →
@@ -593,6 +638,7 @@ Merge to Main (GitHub) → Issue Auto-Closes (Linear + GitHub) → Delete Branch
 ```
 
 **📚 Research Issue Lifecycle**:
+
 ```
 Create Issue (Linear) → Syncs to GitHub (public) → [Optional: Issue Review] →
 Move to In Progress → Do Research → Document Findings in Issue (public) →
@@ -600,6 +646,7 @@ Peer Review (required for most) → Close Issue Manually
 ```
 
 **📋 Other Issue Lifecycle**:
+
 ```
 Create Issue (Linear) → Syncs to GitHub (public) → [Optional: Issue Review] →
 Move to In Progress → Do Work → Document Deliverables in Issue →
@@ -641,18 +688,21 @@ Peer Review (only if needed) → Close Issue Manually
 ### Best Practices by Issue Type
 
 **For 💻 Code Issues**:
+
 - **Start with small PRs** - easier to review, faster to merge
 - **Commit & push frequently** - don't lose work, make progress visible, unblock teammates
 - **Test in a clean environment** - catches reproducibility issues early
 - **Keep PRs short-lived** - merge within the sprint
 
 **For 📚 Research Issues**:
+
 - **Document as you go** - add interim findings as comments (publicly visible)
 - **Cite your sources** - link to papers, docs, or conversations
 - **Write self-contained summaries** - high standard with full context (unblocks reviewers, helps future readers)
 - **Be transparent** - research is public, share your thinking and reasoning
 
 **For All Issue Types** (💻📚📋):
+
 - **Communicate blockers** - team can help unblock you via Slack
 - **Review the issue before starting** - make sure you understand the "why"
 - **Keep status updated in Linear** (syncs to GitHub for public visibility)

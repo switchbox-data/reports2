@@ -355,7 +355,6 @@ This process ensures:
 **Simple example:**
 
 ````markdown
-
 ## Heat Pump Adoption
 
 Total residential heat pumps installed in Rhode Island:
@@ -761,7 +760,6 @@ _On regular laptop_:
    Or in an R session:
 
    ```r
-
    pak::local_install_deps()  # Installs all dependencies from DESCRIPTION
    ```
 

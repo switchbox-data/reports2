@@ -55,7 +55,7 @@ We believe the clean energy transition will happen faster if energy researchers 
 
 Here is an initial overview of our repo. The rest of this README.md will walk through it in detail:
 
-```
+```text
 reports2/
 ├── .devcontainer/          # Dev container configuration
 ├── docs/                   # Published HTML reports (hosted via GitHub Pages at switchbox-data.github.io/reports2)
@@ -81,11 +81,13 @@ Here is an initial overview of those tasks. The rest of this README.md will expl
 **Two places to use `just`**: Commands are available in the **repository root** (for development environment and testing) and in **individual report directories** (for rendering reports). These commands are defined in `Justfile`s in each location - see the [root Justfile](Justfile) and individual report Justfiles (e.g., `reports/ny_aeba_grid/Justfile`).
 
 To wiew all available commands in either of these locations:
+
 ```bash
 just --list
 ```
 
-**Repository root commands**:
+**Repository root commands:**
+
 - `just install` - Set up development environment
 - `just check` - Run quality checks
 - `just check-deps` - Check for obsolete dependencies with [deptry](https://github.com/fpgmaas/deptry)
@@ -98,6 +100,7 @@ just --list
 - `just clean` - Remove generated files and caches
 
 **Report directory commands** (`reports/<project_code>/`):
+
 - `just render` - Render HTML version of report using Quarto
 - `just draft` - Render Word document for content reviews using Quarto
 - `just typeset` - Render ICML for InDesign typesetting using Quarto
@@ -114,7 +117,7 @@ Devcontainers make it easy to use Docker images to package and run an entire dev
 
 Using this repo's devcontainer on your laptop is therefore the easiest and fastest way to get started. You'll need to install some software first:
 
-1. **Prerequisites**:
+1. Prerequisites:
    - Install [VS Code](https://code.visualstudio.com/) or [Cursor](https://www.cursor.com/), which can use devcontainers seamlessly
    - Install [Docker Desktop](https://www.docker.com/products/docker-desktop), which will actually run the devcontainer
    - Install latest release of [DevPod (skevetter fork)](https://github.com/skevetter/devpod/releases), which makes it easier to work with devcontainers (we use this fork because it has important fixes)
@@ -123,7 +126,8 @@ Using this repo's devcontainer on your laptop is therefore the easiest and faste
    - Install [just](https://github.com/casey/just) to run commands
    - Make sure Docker Desktop is running in the background
 
-2. **Launch**:
+2. Launch:
+
    ```bash
    just up-local
    ```
@@ -132,7 +136,8 @@ Using this repo's devcontainer on your laptop is therefore the easiest and faste
 
 Think of your local devcontainer as a **virtal machine** that runs on your laptop, and that VS Code/Cursor can connect to seamlessly, as if you were just running them on your local files. The reports2 repo is automatically synced between your laptop and the container: any changes you make to the files in the container will be reflected on your laptop, and vice versa.
 
-**First time you run `just up-local`, Devpod:**
+First time you run `just up-local`, Devpod:
+
 - Pulls a prebuilt devcontainer image matching your current local branch/commit (~30x)
 - If for some reason a prebuilt image isn't available, it builds from scratch (~8 min first time)
 - **Note**: if you're already familiar with using local devcontainers in VS Code/Cursor, the reason we use Devpod to run them instead is because it allows us to use prebuilt devcontainer images rather than building them from scratch on your laptoo
@@ -142,7 +147,8 @@ Think of your local devcontainer as a **virtal machine** that runs on your lapto
 
 After a few minutes of inactivity, Devpod will stop the container. However, an uncommitted files you had in the container persist on your laptop directory (because it was mounted into the container). To restart the container...
 
-**Subsequent times you run `just up-local`, Devpod:**
+Subsequent times you run `just up-local`, Devpod:
+
 - Restarts the container using the same prebuilt image that was used when you first created it
 - Re-mounts your working directory / the reports2 repo into the container
 - Connects you to this new container running on your laptop
@@ -154,13 +160,15 @@ After a few minutes of inactivity, Devpod will stop the container. However, an u
 
 The dev environment is "frozen" to whatever was on your local branch when you first ran `just up-local`. To update it:
 
-1. **On your laptop**, checkout the branch/commit with the dev environment you want:
+1. On your laptop, checkout the branch/commit with the dev environment you want:
+
    ```bash
    git checkout feature-branch
    git pull
    ```
 
-2. **Launch the devcontainer** using the rebuild flag:
+2. Launch the devcontainer using the rebuild flag:
+
    ```bash
    just up-local rebuild
    ```
@@ -182,12 +190,13 @@ Add them to `pyproject.toml` (Python) or `DESCRIPTION` (R), commit the changes, 
 
 Our data lives on S3, so running a devcontainer locally means waiting for data to download from S3 before report code can be run. For faster data access (and faster computers), you can run the exact same devcontainer on an EC2 instance in AWS (in `us-west-2`, near our S3 data):
 
-1. **Prerequisites**:
+1. Prerequisites:
    - Install [DevPod (skevetter fork)](https://github.com/skevetter/devpod/releases) (we use this fork because it has important fixes)
    - AWS CLI installed
    - AWS credentials configured (see [AWS Configuration](#-aws-configuration))
 
-2. **Launch**:
+2. Launch:
+
    ```bash
    # Default instance (t3.xlarge: 4 vCPU, 16GB RAM)
    just up-aws
@@ -203,7 +212,8 @@ Our data lives on S3, so running a devcontainer locally means waiting for data t
 
 Think of your Devpod AWS instance as a **persistent server** that runs your devcontainer, much as your laptop would. Here's how they work:
 
-**First time you run `just up-aws`, Devpod:**
+First time you run `just up-aws`, Devpod:
+
 - Creates a new EC2 instance (takes a few minutes)
 - Uploads the reports2 git repo on your laptop to the instance
 - Inspects the current branch/commit (that you had checked out on your laptop, now on the server), determine which prebuilt devcontainer image corresponding to this commit, and pulls it from GitHub Container Registry (GHCR)
@@ -212,7 +222,8 @@ Think of your Devpod AWS instance as a **persistent server** that runs your devc
 
 You'll get charged for the time that the instance is running. After you disconnect from the container, the instance will actually get paused, so you'll no longer be charged for compute—only for the hard drive, which persists. To wake the server back up, and reconnect your code editor to the container:
 
-**Subsequent times you run `just up-aws`, Devpod:**
+Subsequent times you run `just up-aws`, Devpod:
+
 - Starts the instance again, and unpauses the container
 - Reconnects your local coder editor to the container on the instance, via SSH (takes ~30 seconds)
 - ✅ Uncommitted files stay on the server between sessions (because the hard drive persists)
@@ -223,18 +234,21 @@ You'll get charged for the time that the instance is running. After you disconne
 
 The dev environment (Python packages, R packages, tools) is "frozen" to whatever was on your local branch when you first created the EC2 instance. To update it:
 
-1. **On your laptop**, checkout the branch/commit that contains the dev environment you want:
+1. On your laptop, checkout the branch/commit that contains the dev environment you want:
+
    ```bash
    git checkout feature-branch
    git pull
    ```
 
-2. **Rebuild the server devcontainer**:
+2. Rebuild the server devcontainer:
+
    ```bash
    just up-aws rebuild
    ```
 
    ⚠️ **Warning**: Devpod will:
+
    - Keep using the current instance, but destroy the container
    - Upload the reports2 git repo on your laptop to the instance again, _overwriting the repo that was alread there_
    - **This means you'll lose any uncommitted work on the server** (save/commit first!)
@@ -249,10 +263,10 @@ The dev environment (Python packages, R packages, tools) is "frozen" to whatever
 After you've created an instance via `just up-aws`, the instance persist indefinity, though they are paused after a period of inactivity. Paused instances are less expensive then running ones, but they still cost money.
 
 **Cost considerations:**
+
 - **Compute costs**: You only pay for compute time when the instance is running. DevPod automatically stops instances after inactivity (default: 10 minutes), so you're not charged for compute when paused.
 - **Storage costs**: You pay for EBS storage (~$8/month for 100GB) even when the instance is stopped.
 - **Total cost**: Depends on usage, but typically much less than running 24/7. For example, running 2 hours/day costs ~$10/month compute + ~$8/month storage = ~$18/month.
-
 
 To see what instances are already running:
 
@@ -271,14 +285,15 @@ To delete the instance, copy and paste delete command shown. The instance termin
 
 We strongly recommend using devcontainers (either locally or in the cloud), because all the software is already packaged up in a Docker image for you. But if you prefer to install the software directly on your laptop:
 
-1. **Install Prerequisites**:
+1. Install Prerequisites:
    - Python 3.9+
    - R 4.0+
    - `pak` package for R
    - [just](https://github.com/casey/just)
    - quarto
 
-2. **Run install script**:
+2. Run install script:
+
    ```bash
    just install
    ```
@@ -302,7 +317,9 @@ You'll be prompted to enter a report name.
 **Naming convention**: Use `state_topic` format (e.g., `ny_aeba`, `ri_hp_rates`). If we've used a topic before in other states (like `hp_rates`), reuse it to maintain consistency across reports.
 
 This will:
+
 - Create `reports/<state_topic>/`
+
 - Initialize it with the [switchbox-data/report_template](https://github.com/switchbox-data/report_template)
 - Set up the necessary Quarto configuration files
 
@@ -310,8 +327,10 @@ This will:
 
 We follow a structured development process to ensure all work is tracked, organized, and reviewed. This workflow keeps PRs from growing stale, maintains code quality, and ensures every piece of work is tied to a clear ticket.
 
-**Our workflow**:
+**Our workflow:**
+
 1. **All work starts with a GitHub Issue** - Captured in our Kanban board with clear "What", "Why", "How", and "Deliverables"
+
 2. **Issues are reviewed before work begins** - Ensures alignment before coding starts
 3. **Branches are created from issues** - Automatic linking between code and tickets
 4. **PRs are created early** - Work-in-progress is visible and reviewable
@@ -319,6 +338,7 @@ We follow a structured development process to ensure all work is tracked, organi
 6. **PRs are short-lived** - Merged within a week to keep momentum
 
 This process ensures:
+
 - 📝 Every feature/fix has documentation (the issue)
 - 🔗 Code changes are traceable to requirements
 - 👀 Work is visible and reviewable at all stages
@@ -332,9 +352,10 @@ This process ensures:
 
 [Quarto](https://quarto.org/) is a scientific publishing system that lets you combine **narrative text** with **executable code**. This approach, called [literate programming](https://en.wikipedia.org/wiki/Literate_programming), means your analysis and narrative live together in one document.
 
-**Simple example**:
+**Simple example:**
 
 ````markdown
+
 ## Heat Pump Adoption
 
 Total residential heat pumps installed in Rhode Island:
@@ -357,7 +378,7 @@ We use Quarto in a specific way, defined by our [report template](https://github
 
 After running `just new_report`, you'll have this structure:
 
-```
+```text
 reports/your-report/
 ├── index.qmd              # The actual report (narrative + embedded results)
 ├── notebooks/
@@ -379,7 +400,7 @@ reports/your-report/
 
 We keep analysis separate from narrative. Here's how data flows from `notebooks/analysis.qmd` to `index.qmd`:
 
-**1. Export Variables from Analysis (R)**
+#### 1. Export Variables from Analysis (R)
 
 In `notebooks/analysis.qmd`, export objects to a local RData file (gitignored, do not commit):
 
@@ -401,7 +422,7 @@ load("report_vars.RData")
 
 **Note**: The `.RData` file is gitignored - only the code that generates it is versioned.
 
-**2. Embed Charts from Analysis**
+#### 2. Embed Charts from Analysis
 
 For visualizations, use Quarto's [embed syntax](https://quarto.org/docs/authoring/notebook-embed.html) to pull charts from `notebooks/analysis.qmd` into `index.qmd`:
 
@@ -426,7 +447,6 @@ In `index.qmd`, embed it:
 
 The chart appears in your report without duplicating code!
 
-
 ### Report Output Formats
 
 Our template includes `just` commands for different outputs:
@@ -437,7 +457,8 @@ just draft     # Generate Word doc for content reviews with collaborators
 just typeset   # Generate ICML for creating typeset PDFs in InDesign
 ```
 
-**When to use each**:
+**When to use each:**
+
 - **HTML** (`just render`): Publishing our reports as interactive web pages
 - **DOCX** (`just draft`): Sharing drafts for content review and feedback
 - **ICML** (`just typeset`): Professional typesetting in Adobe InDesign for PDF export
@@ -452,7 +473,7 @@ Once your report is ready to be published, you'll want to get it to the web so o
 
 When you run `just render` in your report directory (e.g., `reports/ny_aeba_grid/`), Quarto generates a complete static website in the `docs/` subdirectory:
 
-```
+```text
 reports/ny_aeba_grid/
 └── docs/                      # Generated by Quarto (gitignored in report dirs)
     ├── index.html             # Main HTML file
@@ -486,19 +507,19 @@ We use [GitHub Pages](https://pages.github.com/) to host our reports automatical
 
 Follow these steps to publish or update a web report:
 
-**1. Prepare Your Report**
+#### 1. Prepare Your Report
 
 - Finish your work following the development workflow (create issue, work in a branch, etc.)
 - Make sure your PR is ready to merge
 - Open your devcontainer terminal
 
-**2. Navigate to Your Report Directory**
+#### 2. Navigate to Your Report Directory
 
 ```bash
 cd reports/<project_code>
 ```
 
-**3. Verify Render Configuration**
+#### 3. Verify Render Configuration
 
 Check that all notebooks needed for the report are listed in `_quarto.yml` under `project > render`:
 
@@ -511,7 +532,7 @@ project:
 
 **Why**: Quarto only renders files you explicitly list, ensuring you have control over what gets published.
 
-**4. Clear Cache and Render**
+#### 4. Clear Cache and Render
 
 ```bash
 # Clear any cached content
@@ -523,7 +544,7 @@ just render
 
 This creates fresh output in `reports/<project_code>/docs/`.
 
-**5. Copy to Publishing Directory**
+#### 5. Copy to Publishing Directory
 
 ```bash
 # Copy rendered report to root docs/ directory
@@ -532,13 +553,13 @@ just publish
 
 **What this does**: Copies all files from `reports/<project_code>/docs/` to `docs/<project_code>/`. If files already exist at `docs/<project_code>/`, they're deleted first to ensure a clean publish.
 
-**6. Return to Repository Root**
+#### 6. Return to Repository Root
 
 ```bash
 cd ../..
 ```
 
-**7. Stage the Published Files**
+#### 7. Stage the Published Files
 
 ```bash
 git add -f docs/
@@ -546,7 +567,7 @@ git add -f docs/
 
 **Why `-f` (force)?** The `docs/` directory is gitignored in report directories to prevent accidental commits during development. The `-f` flag overrides this, allowing you to commit to the root `docs/` directory intentionally.
 
-**8. Commit and Push**
+#### 8. Commit and Push
 
 ```bash
 git commit -m "Publish new version of <project_code> report"
@@ -555,12 +576,12 @@ git push
 
 **Important**: Pushing to your branch does NOT publish the report yet - it must be merged to `main` first.
 
-**9. Merge to Main**
+#### 9. Merge to Main
 
 - Go to your PR on GitHub
 - Merge it to `main`
 
-**10. Verify Deployment**
+#### 10. Verify Deployment
 
 - GitHub automatically triggers a "pages build and deployment" workflow
 - Check [Actions](https://github.com/switchbox-data/reports2/actions) to see the workflow run
@@ -570,22 +591,23 @@ git push
 
 Once you have a final PDF version (typically typeset in InDesign), you can add a download link to the web report:
 
-**1. Get the PDF**
+#### 1. Get the PDF
 
 - Download the final PDF from Google Drive: `Projects > <project_code> > final`
 - Ensure it's named `switchbox_<project_code>.pdf` (rename if needed)
 
-**2. Add to Report Directory**
+#### 2. Add to Report Directory
 
 Place the PDF in your report root:
-```
+
+```text
 reports/<project_code>/
 ├── switchbox_<project_code>.pdf   # ← Add here
 ├── index.qmd
 └── ...
 ```
 
-**3. Update YAML Front Matter**
+#### 3. Update YAML Front Matter
 
 Add or uncomment this in `index.qmd`'s YAML header:
 
@@ -598,7 +620,7 @@ other-links:
 
 **What this does**: Adds a PDF download button to your web report's navigation.
 
-**4. Re-render and Publish**
+#### 4. Re-render and Publish
 
 ```bash
 # Re-render with PDF link
@@ -620,18 +642,20 @@ Then merge to `main` following steps 9-10 above.
 
 ### Python Dependencies
 
-**Adding a Python package**
+**Adding a Python package:**
 
 ```bash
 uv add <package-name>
 ```
 
 This command:
+
 - Adds the package to `pyproject.toml`
 - Updates `uv.lock` with resolved dependencies
 - Installs the package in your virtual environment
 
-**Example**:
+**Example:**
+
 ```bash
 uv add polars  # Add polars as a dependency
 uv add --dev pytest-mock  # Add as a dev dependency
@@ -639,9 +663,10 @@ uv add --dev pytest-mock  # Add as a dev dependency
 
 **⚠️ Important**: Do NOT use `pip install` to add packages. Using `pip install` will install the package locally but will not update `pyproject.toml` or `uv.lock`, meaning others won't get your dependencies. Always use `uv add`.
 
-**How Your Package Persists**
+#### How Your Python Package Persists
 
-*In dev container*:
+_In dev container_:
+
 - When you run `uv add package-name`, packages are installed to `/opt/venv/` inside the container
 - They stay in the container, and are not exported to your local filesystem. So if you restart the container, the package will be gone!
 - To make your new package persist, you need to add it to the image itself, by committing `pyproject.toml` and `uv.lock` and pushing to Github
@@ -649,21 +674,25 @@ uv add --dev pytest-mock  # Add as a dev dependency
 - If you're using devcontainers on AWS, run `just up-aws rebuild` after CI/CD builds the new image, and your package will be permanently installed within the devcontainer
 - **Bottom line**: Run `uv add`, commit `pyproject.toml` and `uv.lock`, let CI/CD build the new devcontainer image that contains these packages, then run `just up-local rebuild` or `just up-aws rebuild` to use this new image
 
-*On regular laptop*:
+_On regular laptop_:
+
 - When you run `uv add package-name`, packages are installed to `.venv/`, which persists in your local workspace
 - Packages remain installed between sessions
 - No reinstallation needed unless you delete `.venv/` or run `uv sync` after changes
 
-**How Others Get Your Package**
+#### How Others Get Your Python Package
 
-*In dev container*:
+_In dev container_:
+
 1. You commit both `pyproject.toml` and `uv.lock`, and push to Github
+
 2. Others pull your changes
 3. They rebuild their container:
    - If they're using devcontainers locally, they run `just up-local rebuild` on their laptop after pulling your changes, and their laptop will automatically download a new devcontainer image (built by CI/CD) that contains all packages in `uv.lock` (including your new one), and spin up a new devcontainer based on this image
    - If they're using devcontainers on AWS, they run `just up-aws rebuild` on their laptop after pulling your changes, and the instance will automatically download a new image (built by CI/CD) that contains all packages in `uv.lock` (including your new one), and spin up a new devcontainer based on this image
 
-*On regular laptop*:
+_On regular laptop_:
+
 1. You commit both `pyproject.toml` and `uv.lock` to git
 2. Others pull your changes
 3. They must manually run `uv sync` to install the new dependency
@@ -672,10 +701,11 @@ uv add --dev pytest-mock  # Add as a dev dependency
 
 R dependency management works differently, you have to manually update a file that lists packages, then install them.
 
-**Adding a new R package**
+**Adding a new R package:**
 
 1. **Add it to `DESCRIPTION`** in the `Imports` section:
-   ```
+
+   ```text
    Imports:
        dplyr,
        ggplot2,
@@ -683,13 +713,15 @@ R dependency management works differently, you have to manually update a file th
    ```
 
 2. **Install it** by running:
+
    ```bash
    just install
    ```
 
-**How Your Package Persists**
+#### How Your R Package Persists
 
-*In dev container*:
+_In dev container_:
+
 - If you install a package directly with `pak::pak("dplyr")`, the package is installed temporarily in the container
 - It will be gone when the container restarts!
 - If you add it to `DESCRIPTION` and run `just install`, as documented above, the package will also install temporarily
@@ -698,29 +730,38 @@ R dependency management works differently, you have to manually update a file th
 - If you're using devcontainers on AWS, run `just up-aws rebuild` after CI/CD builds the new image, and every package in `DESCRIPTION` (including your new one) will be permanently installed within the devcontainer
 - **Bottom line**: Add packages to `DESCRIPTION`, commit this file, let CI/CD build the new devcontainer image that contains these packages, then run `just up-local rebuild` or `just up-aws rebuild` on your laptop to use this new image
 
-*On regular laptop*:
+_On regular laptop_:
+
 - Packages are saved to your global R library (typically `~/R/library/`)
 - Packages remain installed between sessions
 - No reinstallation needed unless you uninstall them or use a different R version
 
-**How Others Get Your Package**
+#### How Others Get Your R Package
 
-*In dev container*:
+_In dev container_:
+
 1. You add a package to `DESCRIPTION`, commit it, and push to GitHub
+
 2. Others pull your changes
 3. They rebuild their container:
    - If they're using devcontainers locally, they run `just up-local rebuild` on their laptop after pulling your changes, and their laptop will automatically download a new devcontainer image (built by CI/CD) that contains all packages in `DESCRIPTION` (including your new one), and spin up a new devcontainer based on this image
    - If they're using devcontainers on AWS, they run `just up-aws rebuild` on their laptop after pulling your changes, and the instance will automatically download a new image (built by CI/CD) that contains all packages in `DESCRIPTION` (including your new one), and spin up a new devcontainer based on this image
 
-*On regular laptop*:
+_On regular laptop_:
+
 1. You add a package to `DESCRIPTION` and commit it to git
+
 2. Others pull your changes
 3. They manually install dependencies:
+
    ```bash
    just install
    ```
+
    Or in an R session:
+
    ```r
+
    pak::local_install_deps()  # Installs all dependencies from DESCRIPTION
    ```
 
@@ -728,13 +769,15 @@ R dependency management works differently, you have to manually update a file th
 
 Both languages are available, but we have clear preferences based on the type of work:
 
-### Use R (with [tidyverse](https://www.tidyverse.org/)) for:
+### Use R (with tidyverse) for
+
 - **Data analysis** - Exploratory data analysis, statistical analysis
 - **Data modeling** - Statistical models, regression, forecasting
 - **Data visualization** - Creating charts and graphs for reports
 - **Default choice** - Unless there's a specific reason to use Python, prefer R for these tasks
 
-### Use Python for:
+### Use Python for
+
 - **Data engineering** - Scripts that fetch, process, and upload data to S3
 - **Numerical simulations** - Generating synthetic data, Monte Carlo simulations
 - **Library requirements** - When a specific Python library is needed
@@ -751,6 +794,7 @@ Both languages are available, but we have clear preferences based on the type of
 ### 🔑 AWS Configuration
 
 Data for analyses is stored on S3. Ensure you have:
+
 - AWS credentials configured in `~/.aws/credentials`
 - Default region set to `us-west-2`
 
@@ -818,14 +862,16 @@ df <- result |> compute()
 tibble_df <- result |> collect()
 ```
 
-**Performance Considerations**
+#### Performance Considerations
 
 **Initial downloads can be slow** depending on:
+
 - File size
 - Your internet connection
 - Distance from the S3 region (us-west-2)
 
-**Options to improve performance**:
+**Options to improve performance:**
+
 1. **Cache locally**: Download files once and cache in `data/` (gitignored)
 2. **Run dev containers in the cloud**: See [Option 2: Devcontainer on an AWS EC2 instance](#option-2-devcontainer-on-an-aws-ec2-instance) for launching devcontainers on AWS in `us-west-2 region`, same as the data bucket
 3. **Use partitioned datasets**: Only read the partitions you need
@@ -836,10 +882,11 @@ tibble_df <- result |> collect()
 
 ⚠️ **Note**: We have naming conventions but the upload process is still being standardized.
 
-**Naming and Organization Conventions**
+#### Naming and Organization Conventions
 
-**Directory structure**:
-```
+**Directory structure:**
+
+```text
 s3://data.sb/<org>/<dataset>/<filename_YYYYMMDD.parquet>
 ```
 
@@ -856,14 +903,18 @@ s3://data.sb/<org>/<dataset>/<filename_YYYYMMDD.parquet>
   - Good: `eia/heating_oil_prices/ri_monthly_20240315.parquet`
   - Bad: `EIA/Heating-Oil_ri_eia_prices_2024-03-15.parquet`
 
-**Why timestamps matter**:
+**Why timestamps matter:**
+
 - **Versioning**: New snapshots get new dates (e.g., `ri_monthly_20240415.parquet`)
+
 - **Reproducibility**: Old code using `ri_monthly_20240315.parquet` continues to work
 - **Traceability**: Know exactly when data was retrieved
 
-**Example structure**:
-```
+**Example structure:**
+
+```text
 s3://data.sb/
+
 ├── eia/
 │   ├── heating_oil_prices/
 │   │   ├── ri_monthly_20240315.parquet
@@ -878,21 +929,24 @@ s3://data.sb/
         └── monthly_20240301.parquet
 ```
 
-**Uploading Data**
+#### Uploading Data
 
 **Preferred method**: Use scripted downloads via `just` commands
 
 Check the `lib/` directory for existing data fetch scripts:
+
 - `lib/eia/fetch_delivered_fuels_prices_eia.py`
 - `lib/eia/fetch_eia_state_profile.py`
 
 These scripts should:
+
 1. Download data from the source
 2. Process and save as Parquet
 3. Upload to S3 with proper naming (including date)
 4. Be runnable via `just` commands for reproducibility
 
 **Manual uploads** (when necessary):
+
 ```bash
 # Using AWS CLI
 aws s3 cp local_file.parquet s3://data.sb/<org>/<dataset>/<filename_YYYYMMDD.parquet>
@@ -902,6 +956,7 @@ aws s3 cp ri_monthly_20240315.parquet s3://data.sb/eia/heating_oil/ri_monthly_20
 ```
 
 ⚠️ **Before uploading**: Coordinate with the team to ensure:
+
 - Naming follows conventions
 - Path doesn't conflict with existing data
 - Date reflects actual download/creation date
@@ -910,14 +965,16 @@ aws s3 cp ri_monthly_20240315.parquet s3://data.sb/eia/heating_oil/ri_monthly_20
 
 ### Pre-commit Hooks
 
-**What are pre-commit hooks?** Pre-commit hooks are automated scripts that run every time you make a git commit. They catch issues (formatting, linting, syntax errors) *before* code enters the repository, ensuring consistent code quality across the team. This saves time in code review and prevents broken code from being committed.
+**What are pre-commit hooks?** Pre-commit hooks are automated scripts that run every time you make a git commit. They catch issues (formatting, linting, syntax errors) _before_ code enters the repository, ensuring consistent code quality across the team. This saves time in code review and prevents broken code from being committed.
 
 **Why we use them**: By automatically formatting and checking code at commit time, we ensure that all code in the repository meets our quality standards without requiring manual intervention. Everyone's code is formatted consistently, and common errors are caught immediately.
 
 Pre-commit hooks are managed by [prek](https://github.com/j178/prek) and configured in `.pre-commit-config.yaml`.
 
-**Configured hooks**:
+**Configured hooks:**
+
 - **ruff-check**: Lints Python code with auto-fix
+
 - **ruff-format**: Formats Python code
 - **ty-check**: Type checks Python code using [ty](https://github.com/astral-sh/ty)
 - **trailing-whitespace**: Removes trailing whitespace
@@ -930,6 +987,7 @@ Pre-commit hooks are managed by [prek](https://github.com/j178/prek) and configu
 **Note on R formatting**: We don't yet have the [air](https://github.com/posit-dev/air) formatter for R integrated with pre-commit hooks. Instead, use air's editor integration via the [Posit.air-vscode extension](https://marketplace.visualstudio.com/items?itemName=Posit.air-vscode), which is pre-installed in the dev container. Air will automatically format your R code in the editor.
 
 Hooks run automatically on `git commit`. To run manually:
+
 ```bash
 prek run -a  # Run all hooks on all files
 ```
@@ -941,10 +999,12 @@ just check
 ```
 
 This command performs (same as CI):
+
 1. **Lock file validation**: Ensures `uv.lock` is consistent with `pyproject.toml`
 2. **Pre-commit hooks**: Runs all configured hooks including type checking (see above)
 
 **Optional - Check for obsolete dependencies:**
+
 ```bash
 just check-deps
 ```
@@ -961,7 +1021,6 @@ Runs the Python test suite with pytest (tests in `tests/` directory), including 
 
 **Note on R tests**: We don't currently have R tests or a testing framework configured for R code. Only Python tests are run by `just test` and in CI.
 
-
 ## 🚦 CI/CD Pipeline
 
 The repository uses [GitHub Actions](https://docs.github.com/en/actions) to automatically run quality checks and tests on your code. **The CI runs the exact same `just` commands** you use locally, in the same devcontainer environment, ensuring perfect consistency.
@@ -971,10 +1030,12 @@ The repository uses [GitHub Actions](https://docs.github.com/en/actions) to auto
 The workflow runs **two jobs in parallel** for speed:
 
 **On Pull Requests** (opened, updated, or marked ready for review):
+
 1. **quality-checks**: Runs `just check` (lock file validation + pre-commit hooks)
 2. **tests**: Runs `just test` (pytest test suite)
 
-**On Push to `main`**:
+**On Push to `main`:**
+
 - Same checks and tests as pull requests (both jobs run in parallel)
 
 ### Devcontainer in CI/CD
@@ -984,7 +1045,8 @@ On every commit to `main` or a pull request, GitHub Actions actually **builds th
 1. **CI/CD**: **quality-checks** and **tests** jobs run inside the devcontainer
 2. **DevPod**: Users can [launch devcontainers locally or on AWS](#option-1-devcontainer-on-your-laptops) using the prebuilt image, so they don't have to wait for the image to build from scratch—since CI/CD has already built it
 
-To avoid long build times on every commit to main or a PR branch, we use a **two-tier caching strategy**:
+To avoid long build times on every commit to main or a PR branch, we use a **two-tier caching strategy:**
+
 1. **Image caching**: If `.devcontainer/Dockerfile`, `pyproject.toml`, `uv.lock`, and `DESCRIPTION` haven't changed, the devcontainer image build is skipped, and the most recent image (in GHCR) is reused (~30 seconds)
 2. **Layer caching**: If any of these files changed, the image is rebuilt, but only affected layers rebuild while the others are pulled from GHCR cache (incremental builds, ~2-5 minutes)
 
@@ -1006,11 +1068,13 @@ You can see the workflow configuration in `.github/workflows/data-science-main.y
 ## 🧹 Cleaning Up
 
 Remove generated files and caches:
+
 ```bash
 just clean
 ```
 
 This removes:
+
 - `.pytest_cache`
 - `.ruff_cache`
 - `tmp/`
@@ -1019,6 +1083,7 @@ This removes:
 ## 📚 Additional Resources
 
 ### Development Environment
+
 - [Dev Containers Documentation](https://code.visualstudio.com/docs/devcontainers/containers)
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
 - [just Documentation](https://just.systems/)
@@ -1026,6 +1091,7 @@ This removes:
 - [prek Documentation](https://github.com/j178/prek) - Pre-commit hook manager
 
 ### Python Tools
+
 - [uv Documentation](https://docs.astral.sh/uv/) - Package manager
 - [ruff Documentation](https://docs.astral.sh/ruff/) - Linter and formatter
 - [ty Documentation](https://docs.astral.sh/ty/) - Type checker
@@ -1034,6 +1100,7 @@ This removes:
 - [PyArrow Documentation](https://arrow.apache.org/docs/python/) - Python bindings for Apache Arrow
 
 ### R Tools
+
 - [pak Documentation](https://pak.r-lib.org/) - Package manager
 - [air Documentation](https://docs.posit.dev/air/) - Linter and formatter
 - [dplyr Documentation](https://dplyr.tidyverse.org/) - Data manipulation grammar

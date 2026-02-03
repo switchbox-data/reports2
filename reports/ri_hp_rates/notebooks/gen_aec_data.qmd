@@ -1,0 +1,162 @@
+---
+title: "Generate AEC Datasets"
+---
+
+Script to read ResStock data from S3 and generate datasets required by AEC
+
+```{python}
+import polars as pl
+from plotnine import *
+import time
+
+# Read Cambium data for New York (NYISO region) for 2030 and 2050
+# Using lazy mode for efficient execution
+df_lazy = (
+    pl.scan_parquet(
+        "s3://data.sb/nrel/resstock/res_2024_amy2018_2/metadata/state=RI/upgrade=01/metadata.parquet"
+        ## "s3://data.sb/nrel/cambium/2024/scenario=MidCase/t=*/gea=NYISO/r=*/data.parquet"
+    )
+    # .filter(pl.col("t").is_in([2030, 2050]))
+)
+
+# Collect basic stats
+df = df_lazy.collect()
+
+print(f"Loaded {len(df):,} rows")
+# print(f"\nBalancing areas: {df['r'].unique().sort()}")
+# print(f"Years: {df['t'].unique().sort()}")
+print(df.head())
+```
+
+```{python}
+    print(f"Loaded {len(df):,} rows")
+    # print(f"\nBalancing areas: {df['r'].unique().sort()}")
+    # print(f"Years: {df['t'].unique().sort()}")
+    print(df.head())
+    for x in sorted(df.columns):
+        print(x)
+```
+
+```{python}
+    print(df["bldg_id"].sum())
+```
+
+```{python}
+    df_lazy_hourly = (
+        pl.scan_parquet(
+            "s3://data.sb/nrel/resstock/res_2024_amy2018_2/load_curve_hourly/state=RI/upgrade=00/98933-0.parquet"
+            ## "s3://data.sb/nrel/cambium/2024/scenario=MidCase/t=*/gea=NYISO/r=*/data.parquet"
+        )
+        # .filter(pl.col("t").is_in([2030, 2050]))
+    )
+
+    # Collect basic stats
+    df_hourly = df_lazy_hourly.collect()
+
+    print(f"Loaded {len(df_hourly):,} rows")
+    # print(f"\nBalancing areas: {df['r'].unique().sort()}")
+    # print(f"Years: {df['t'].unique().sort()}")
+    print(df_hourly.head())
+```
+
+```{python}
+    for x in sorted(df_hourly.columns):
+        print(x)
+```
+
+```{python}
+    import pandas as pd
+    pd.set_option('display.max_rows', None)
+    print(df_hourly.filter(pl.col("bldg_id") == 98933).head(2).to_pandas().transpose())
+    pd.reset_option('display.max_rows')
+```
+
+
+```{python}
+    import re
+    # Filter columns matching the regex pattern: starts with "out.electricity" and ends with "energy_consumption"
+    pattern = r"^out\.electricity.*energy_consumption$"
+    matching_cols = [col for col in df_hourly.columns if re.match(pattern, col)]
+
+    filtered_df = (
+        df_hourly
+        .filter(pl.col("bldg_id") == 98933)
+        .head(2)
+        .select(matching_cols)
+    )
+    # print(filtered_df)
+
+    print(filtered_df.to_pandas().sum(axis=1))
+    print(filtered_df.to_pandas().transpose())
+```
+
+############ actual code starts here ############
+
+```{python}
+
+    ## TODO: replace this with BSF
+    # https://github.com/switchbox-data/buildstock-fetch/blob/main/docs/mixed_upgrades.md
+#     from buildstock_fetch.mixed_upgrade import MixedUpgradeScenario
+
+# mus = MixedUpgradeScenario(
+#     data_path="./data",                  # Path to downloaded data
+#     release="res_2024_tmy3_2",           # BuildStock release
+#     states="NY",                         # State(s) to analyze
+#     sample_n=1000,                       # Sample 1000 buildings (optional)
+#     random=42,                           # Random seed for reproducibility
+#     scenario=scenario,                   # Adoption scenario
+# )
+
+
+    df_lazy_bau = (
+        pl.scan_parquet(
+            "s3://data.sb/nrel/resstock/res_2024_amy2018_2/load_curve_hourly/state=RI/upgrade=00/*.parquet"
+        )
+    )
+    df_lazy_hp = (
+        pl.scan_parquet(
+            "s3://data.sb/nrel/resstock/res_2024_amy2018_2/load_curve_hourly/state=RI/upgrade=01/*.parquet"
+        )
+    )
+```
+
+```{python}
+def sum_energy_by_timestamp(lazy_df):
+    """
+    For each timestamp, sums up various energy consumption values across all bldg_id.
+
+    Args:
+        lazy_df: A polars lazy dataframe
+
+    Returns:
+        A polars dataframe (not lazy) with summed columns per timestamp.
+    """
+    selected_cols = [
+        "timestamp",
+        "out.electricity.net.energy_consumption",
+        "out.fuel_oil.total.energy_consumption",
+        "out.natural_gas.total.energy_consumption",
+        "out.propane.total.energy_consumption",
+    ]
+    return (
+        lazy_df
+        .select(selected_cols)
+        .group_by("timestamp")
+        .agg([
+            pl.col("out.electricity.net.energy_consumption").sum().alias("electricity_kwh"),
+            pl.col("out.fuel_oil.total.energy_consumption").sum().alias("fuel_oil_mmbtu"),
+            pl.col("out.natural_gas.total.energy_consumption").sum().alias("natural_gas_mmbtu"),
+            pl.col("out.propane.total.energy_consumption").sum().alias("propane_mmbtu"),
+        ])
+        .sort("timestamp")
+        .collect()
+    )
+```
+
+```{python}
+    df_bau = sum_energy_by_timestamp(df_lazy_bau)
+    df_hp = sum_energy_by_timestamp(df_lazy_hp)
+
+    print(df_bau.head())
+    print(df_hp.head())
+```

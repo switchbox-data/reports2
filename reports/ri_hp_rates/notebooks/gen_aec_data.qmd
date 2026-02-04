@@ -107,17 +107,60 @@ print(df.head())
 #     scenario=scenario,                   # Adoption scenario
 # )
 
+import polars as pl
 
-    df_lazy_bau = (
-        pl.scan_parquet(
-            "s3://data.sb/nrel/resstock/res_2024_amy2018_2/load_curve_hourly/state=RI/upgrade=00/*.parquet"
-        )
+ldf_bau_loads = (
+    pl.scan_parquet(
+        "s3://data.sb/nrel/resstock/res_2024_amy2018_2/load_curve_hourly/state=RI/upgrade=00/*.parquet"
     )
-    df_lazy_hp = (
-        pl.scan_parquet(
-            "s3://data.sb/nrel/resstock/res_2024_amy2018_2/load_curve_hourly/state=RI/upgrade=01/*.parquet"
-        )
+)
+ldf_hp_loads = (
+    pl.scan_parquet(
+        "s3://data.sb/nrel/resstock/res_2024_amy2018_2/load_curve_hourly/state=RI/upgrade=01/*.parquet"
     )
+)
+```
+
+```{python}
+    from buildstock_fetch.scenarios import uniform_adoption
+    from buildstock_fetch.mixed_upgrade import MixedUpgradeScenario
+    from buildstock_fetch.read import BuildStockRead
+
+    import polars as pl
+
+
+    bsr = BuildStockRead(
+        data_path="s3://data.sb/nrel/resstock/",
+        # data_path="s3://data.sb",
+        release="res_2024_amy2018_2",
+        states="RI",
+    )
+
+
+    bau_metadata = bsr.read_metadata(upgrades="00").collect()
+
+    hp_scenario = uniform_adoption(
+        upgrade_ids=[1],
+        weights={0: 1.0},
+        adoption_trajectory=[0.1, 0.15, 0.2], # PLACEHOLDER
+    )
+
+    hp_mus = MixedUpgradeScenario(
+        data_path="s3://data.sb/nrel/resstock/",
+        release="res_2024_amy2018_2",
+        states="RI",
+        # sample_n=1000,
+        random=67,
+        scenario=hp_scenario,
+    )
+
+    # Read metadata for all years
+    metadata = hp_mus.read_metadata().collect()
+    print(metadata.head())
+
+    # Read 15-minute load curves as lazy dataframe
+    ldf_bau_loads = bsr.read_load_curve_15min(upgrades="0")
+    ldf_hp_loads = hp_mus.read_load_curve_15min()
 ```
 
 ```{python}
@@ -154,9 +197,13 @@ def sum_energy_by_timestamp(lazy_df):
 ```
 
 ```{python}
-    df_bau = sum_energy_by_timestamp(df_lazy_bau)
-    df_hp = sum_energy_by_timestamp(df_lazy_hp)
+    df_bau_loads = sum_energy_by_timestamp(ldf_bau_loads.head(50))
+    df_hp_loads = sum_energy_by_timestamp(ldf_hp_loads.head(50))
 
-    print(df_bau.head())
-    print(df_hp.head())
+    print(df_bau_loads.head())
+    print(df_hp_loads.head())
+```
+
+```{python}
+    print(ldf_bau_loads.filter(pl.col("bldg_id") == 100147).tail(10).collect())
 ```

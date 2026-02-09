@@ -3,132 +3,6 @@ title: "Generate AEC Datasets"
 ---
 
 Script to read ResStock data from S3 and generate datasets required by AEC
-
-```{python}
-import polars as pl
-from plotnine import *
-import time
-
-# Read Cambium data for New York (NYISO region) for 2030 and 2050
-# Using lazy mode for efficient execution
-df_lazy = (
-    pl.scan_parquet(
-        "s3://data.sb/nrel/resstock/res_2024_amy2018_2/metadata/state=RI/upgrade=01/metadata.parquet"
-        ## "s3://data.sb/nrel/cambium/2024/scenario=MidCase/t=*/gea=NYISO/r=*/data.parquet"
-    )
-    # .filter(pl.col("t").is_in([2030, 2050]))
-)
-
-# Collect basic stats
-df = df_lazy.collect()
-
-print(f"Loaded {len(df):,} rows")
-# print(f"\nBalancing areas: {df['r'].unique().sort()}")
-# print(f"Years: {df['t'].unique().sort()}")
-print(df.head())
-```
-
-```{python}
-    print(f"Loaded {len(df):,} rows")
-    # print(f"\nBalancing areas: {df['r'].unique().sort()}")
-    # print(f"Years: {df['t'].unique().sort()}")
-    print(df.head())
-    for x in sorted(df.columns):
-        print(x)
-```
-
-```{python}
-    print(df["bldg_id"].sum())
-```
-
-```{python}
-    df_lazy_hourly = (
-        pl.scan_parquet(
-            "s3://data.sb/nrel/resstock/res_2024_amy2018_2/load_curve_hourly/state=RI/upgrade=00/98933-0.parquet"
-            ## "s3://data.sb/nrel/cambium/2024/scenario=MidCase/t=*/gea=NYISO/r=*/data.parquet"
-        )
-        # .filter(pl.col("t").is_in([2030, 2050]))
-    )
-
-    # Collect basic stats
-    df_hourly = df_lazy_hourly.collect()
-
-    print(f"Loaded {len(df_hourly):,} rows")
-    # print(f"\nBalancing areas: {df['r'].unique().sort()}")
-    # print(f"Years: {df['t'].unique().sort()}")
-    print(df_hourly.head())
-```
-
-```{python}
-    for x in sorted(df_hourly.columns):
-        print(x)
-```
-
-```{python}
-    import pandas as pd
-    pd.set_option('display.max_rows', None)
-    print(df_hourly.filter(pl.col("bldg_id") == 98933).head(2).to_pandas().transpose())
-    pd.reset_option('display.max_rows')
-```
-
-
-```{python}
-    import re
-    # Filter columns matching the regex pattern: starts with "out.electricity" and ends with "energy_consumption"
-    pattern = r"^out\.electricity.*energy_consumption$"
-    matching_cols = [col for col in df_hourly.columns if re.match(pattern, col)]
-
-    filtered_df = (
-        df_hourly
-        .filter(pl.col("bldg_id") == 98933)
-        .head(2)
-        .select(matching_cols)
-    )
-    # print(filtered_df)
-
-    print(filtered_df.to_pandas().sum(axis=1))
-    print(filtered_df.to_pandas().transpose())
-```
-
-```{python}
-#### NOTE: TESTING ONLY
-# Adjust timestamps so that each scenario year is mapped to correct calendar year (e.g., 2018 + year)
-START_YEAR = 2028
-ldf_bau_loads_adj = adjust_timestamp(ldf_bau_loads, START_YEAR)
-
-# Pick a single building ID to visualize
-# We'll take the first bldg_id in the data
-bldg_id_example = 66627
-
-# Extract the new electricity timeseries for a single building
-df_single_bldg = (
-    ldf_bau_loads_adj
-    .filter(pl.col("bldg_id") == bldg_id_example)
-    .select([
-        "timestamp",
-        "out.electricity.net.energy_consumption",
-        "original_timestamp",
-        "year_idx",
-        "year",
-        "upgrade_id"
-    ])
-    .sort("timestamp")
-    .collect()
-)
-
-import matplotlib.pyplot as plt
-
-plt.figure(figsize=(12,5))
-plt.plot(df_single_bldg["timestamp"], df_single_bldg["out.electricity.net.energy_consumption"])
-plt.title(f"Electricity usage for bldg_id={bldg_id_example} (BAU, with adjusted timestamps)")
-plt.xlabel("Timestamp")
-plt.ylabel("Electricity usage (kWh)")
-plt.tight_layout()
-plt.show()
-```
-
-############ actual code starts here ############
-
 ```{python}
 
     from buildstock_fetch.scenarios import uniform_adoption
@@ -139,7 +13,7 @@ plt.show()
 ```
 
 ```{python}
-    def adjust_timestamp(lazy_df, start_year):
+    def adjust_timestamp(lazy_df, start_year, handle_leap_years=True):
         """
         Adjusts the timestamp column in a lazy Polars DataFrame so that each 'year' value corresponds
         to the specified start_year plus its offset.
@@ -165,39 +39,54 @@ plt.show()
             ).with_columns(
                 pl.col("year_idx").add(start_year).alias("year")
             ).with_columns(
-                pl.col("original_timestamp").dt.replace(year=pl.col("year")).alias("timestamp")
+            pl.col("original_timestamp").dt.replace(year=pl.col("year")).alias("timestamp")
         )
 
-        # NOTE: Handle leap years by inserting a duplicate of Feb 28 data as Feb 29
-        # We maybe exclude this to make data more generally interpretable across years?
-        # Insert a duplicate of Feb 28 data as Feb 29 in leap years
-        feb_28 = (
-            updated_df
-            .filter((pl.col("timestamp").dt.month() == 2) &
-                    (pl.col("timestamp").dt.day() == 28) &
-                    ((pl.col("year") % 4) == 0))
-        )
-
-        # Create Feb 29 timestamps by changing day = 29 on a copy of Feb 28 rows
-        feb_29 = (
-            feb_28
-            .with_columns(
-                pl.col("timestamp").dt.replace(day=29).alias("timestamp"),
+        if handle_leap_years:
+            # NOTE: Handle leap years by inserting a duplicate of Feb 28 data as Feb 29
+            # We maybe exclude this to make data more generally interpretable across years?
+            # Insert a duplicate of Feb 28 data as Feb 29 in leap years
+            feb_28 = (
+                updated_df
+                .filter((pl.col("timestamp").dt.month() == 2) &
+                        (pl.col("timestamp").dt.day() == 28) &
+                        ((pl.col("year") % 4) == 0))
             )
-        )
 
-        # Concatenate the original updated_df with the new Feb 29 rows
-        updated_df = pl.concat([updated_df, feb_29]).sort("timestamp")
+            # Create Feb 29 timestamps by changing day = 29 on a copy of Feb 28 rows
+            feb_29 = (
+                feb_28
+                .with_columns(
+                    pl.col("timestamp").dt.replace(day=29).alias("timestamp"),
+                )
+            )
+
+            # Concatenate the original updated_df with the new Feb 29 rows
+            updated_df = pl.concat([updated_df, feb_29]).sort("timestamp")
 
         return updated_df
 ```
+
+```{python}
+    total_num_homes = 412000
+    projection_start_year = 2028
+    hp_projections = [26221, 31666,38199, 44407]
+    bau_pct_projections = [x / total_num_homes for x in hp_projections]
+    hp_pct_projections = [1.5 * x / total_num_homes for x in bau_pct_projections]
+
+    # TODO: adjust the above based on current adoption rate in upgrade 0
+    # to get correct final adoption rate in MixedUpgradeScenario
+
+    print(bau_pct_projections)
+    print(hp_pct_projections)
+    ```
 
 ```{python}
     data_path="s3://data.sb/nrel/resstock/"
     release="res_2024_amy2018_2"
     states="RI"
     random_seed=67
-    sample_n=10
+    sample_n=None # do not downsample
 
     # Convert all *_kwh columns to *_mmbtu and drop the *_kwh columns
     MMBTU_PER_KWH = 0.003412  # 1 kWh = 0.003412 MMBtu
@@ -207,13 +96,13 @@ plt.show()
     bau_scenario = uniform_adoption(
         upgrade_ids=[1],
         weights={1: 1.0},
-        adoption_trajectory=[0.03, 0.05, 0.07], # NOTE: PLACEHOLDER
+        adoption_trajectory=bau_pct_projections, # see above
     )
 
     hp_scenario = uniform_adoption(
         upgrade_ids=[1],
         weights={1: 1.0},
-        adoption_trajectory=[0.1, 0.15, 0.2], # NOTE: PLACEHOLDER
+        adoption_trajectory=hp_pct_projections, # NOTE: PLACEHOLDER
     )
 
     metadata = hp_mus.read_metadata().collect()
@@ -231,7 +120,7 @@ plt.show()
             # of adopting households in BAU isn't a subset of the set
             # of adopting households in HP
             random=random_seed,
-            sample_n=sample_n, #NOTE: DEBUGGING ONLY
+            sample_n=sample_n,
             scenario=scenario,
         )
         # NOTE: should this be piped for something something efficiency
@@ -283,6 +172,7 @@ def sum_energy_by_timestamp(lazy_df):
 ```
 
 ```{python}
+    %%time
     df_bau_loads = sum_energy_by_timestamp(ldf_bau_loads)
     df_hp_loads = sum_energy_by_timestamp(ldf_hp_loads)
 
@@ -291,16 +181,13 @@ def sum_energy_by_timestamp(lazy_df):
 ```
 
 ```{python}
-# Show the range of dates covered by the timestamp column of ldf_bau_loads
-date_range = df_bau_loads.select([
-    pl.col("timestamp").min().alias("start_date"),
-    pl.col("timestamp").max().alias("end_date")
-]).collect()
-print("Date range covered by ldf_bau_loads:")
-print(f"Start: {date_range['start_date'][0]}, End: {date_range['end_date'][0]}")
+    df_bau_loads.write_parquet("nocommit_data/bau_loads.parquet")
+    df_hp_loads.write_parquet("nocommit_data/hp_loads.parquet")
 ```
 
 ```{python}
+# NOTE: Debugging only, sample data plot
+
 from plotnine import ggplot, aes, geom_line, labs, theme_minimal, scale_color_manual
 
 # Prepare data for plotting; add labels for scenario

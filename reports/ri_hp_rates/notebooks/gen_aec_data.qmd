@@ -90,77 +90,156 @@ print(df.head())
     print(filtered_df.to_pandas().transpose())
 ```
 
+```{python}
+#### NOTE: TESTING ONLY
+# Adjust timestamps so that each scenario year is mapped to correct calendar year (e.g., 2018 + year)
+START_YEAR = 2028
+ldf_bau_loads_adj = adjust_timestamp(ldf_bau_loads, START_YEAR)
+
+# Pick a single building ID to visualize
+# We'll take the first bldg_id in the data
+bldg_id_example = 66627
+
+# Extract the new electricity timeseries for a single building
+df_single_bldg = (
+    ldf_bau_loads_adj
+    .filter(pl.col("bldg_id") == bldg_id_example)
+    .select([
+        "timestamp",
+        "out.electricity.net.energy_consumption",
+        "original_timestamp",
+        "year_idx",
+        "year",
+        "upgrade_id"
+    ])
+    .sort("timestamp")
+    .collect()
+)
+
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(12,5))
+plt.plot(df_single_bldg["timestamp"], df_single_bldg["out.electricity.net.energy_consumption"])
+plt.title(f"Electricity usage for bldg_id={bldg_id_example} (BAU, with adjusted timestamps)")
+plt.xlabel("Timestamp")
+plt.ylabel("Electricity usage (kWh)")
+plt.tight_layout()
+plt.show()
+```
+
 ############ actual code starts here ############
 
 ```{python}
 
-    ## TODO: replace this with BSF
-    # https://github.com/switchbox-data/buildstock-fetch/blob/main/docs/mixed_upgrades.md
-#     from buildstock_fetch.mixed_upgrade import MixedUpgradeScenario
-
-# mus = MixedUpgradeScenario(
-#     data_path="./data",                  # Path to downloaded data
-#     release="res_2024_tmy3_2",           # BuildStock release
-#     states="NY",                         # State(s) to analyze
-#     sample_n=1000,                       # Sample 1000 buildings (optional)
-#     random=42,                           # Random seed for reproducibility
-#     scenario=scenario,                   # Adoption scenario
-# )
-
-import polars as pl
-
-ldf_bau_loads = (
-    pl.scan_parquet(
-        "s3://data.sb/nrel/resstock/res_2024_amy2018_2/load_curve_hourly/state=RI/upgrade=00/*.parquet"
-    )
-)
-ldf_hp_loads = (
-    pl.scan_parquet(
-        "s3://data.sb/nrel/resstock/res_2024_amy2018_2/load_curve_hourly/state=RI/upgrade=01/*.parquet"
-    )
-)
-```
-
-```{python}
     from buildstock_fetch.scenarios import uniform_adoption
     from buildstock_fetch.mixed_upgrade import MixedUpgradeScenario
     from buildstock_fetch.read import BuildStockRead
 
     import polars as pl
+```
 
+```{python}
+    def adjust_timestamp(lazy_df, start_year):
+        """
+        Adjusts the timestamp column in a lazy Polars DataFrame so that each 'year' value corresponds
+        to the specified start_year plus its offset.
 
-    bsr = BuildStockRead(
-        data_path="s3://data.sb/nrel/resstock/",
-        # data_path="s3://data.sb",
-        release="res_2024_amy2018_2",
-        states="RI",
+        For example, if start_year=2018:
+            - rows with year==0: timestamps correspond to 2018
+            - rows with year==1: timestamps are shifted to 2019
+            and so on.
+
+        Args:
+            lazy_df: Polars LazyFrame with 'timestamp' and 'year' columns.
+            start_year: The baseline year (integer, e.g., 2018)
+
+        Returns:
+            A new LazyFrame with the 'timestamp' column adjusted so that each 'year' is mapped
+            to start_year + year, preserving month/day/hour/minute.
+        """
+
+        # Adjust the year of each timestamp so that it matches start_year + year
+        updated_df= lazy_df.rename(
+            {"timestamp": "original_timestamp",
+            "year": "year_idx"}
+            ).with_columns(
+                pl.col("year_idx").add(start_year).alias("year")
+            ).with_columns(
+                pl.col("original_timestamp").dt.replace(year=pl.col("year")).alias("timestamp")
+        )
+
+        # NOTE: Handle leap years by inserting a duplicate of Feb 28 data as Feb 29
+        # We maybe exclude this to make data more generally interpretable across years?
+        # Insert a duplicate of Feb 28 data as Feb 29 in leap years
+        feb_28 = (
+            updated_df
+            .filter((pl.col("timestamp").dt.month() == 2) &
+                    (pl.col("timestamp").dt.day() == 28) &
+                    ((pl.col("year") % 4) == 0))
+        )
+
+        # Create Feb 29 timestamps by changing day = 29 on a copy of Feb 28 rows
+        feb_29 = (
+            feb_28
+            .with_columns(
+                pl.col("timestamp").dt.replace(day=29).alias("timestamp"),
+            )
+        )
+
+        # Concatenate the original updated_df with the new Feb 29 rows
+        updated_df = pl.concat([updated_df, feb_29]).sort("timestamp")
+
+        return updated_df
+```
+
+```{python}
+    data_path="s3://data.sb/nrel/resstock/"
+    release="res_2024_amy2018_2"
+    states="RI"
+    random_seed=67
+    sample_n=10
+
+    # Convert all *_kwh columns to *_mmbtu and drop the *_kwh columns
+    MMBTU_PER_KWH = 0.003412  # 1 kWh = 0.003412 MMBtu
+
+    START_YEAR = 2028
+
+    bau_scenario = uniform_adoption(
+        upgrade_ids=[1],
+        weights={1: 1.0},
+        adoption_trajectory=[0.03, 0.05, 0.07], # NOTE: PLACEHOLDER
     )
-
-
-    bau_metadata = bsr.read_metadata(upgrades="00").collect()
 
     hp_scenario = uniform_adoption(
         upgrade_ids=[1],
-        weights={0: 1.0},
-        adoption_trajectory=[0.1, 0.15, 0.2], # PLACEHOLDER
+        weights={1: 1.0},
+        adoption_trajectory=[0.1, 0.15, 0.2], # NOTE: PLACEHOLDER
     )
 
-    hp_mus = MixedUpgradeScenario(
-        data_path="s3://data.sb/nrel/resstock/",
-        release="res_2024_amy2018_2",
-        states="RI",
-        # sample_n=1000,
-        random=67,
-        scenario=hp_scenario,
-    )
-
-    # Read metadata for all years
     metadata = hp_mus.read_metadata().collect()
     print(metadata.head())
 
+    # NOTE: add typehint
+    def _get_load_curves(scenario, scenario_name):
+        mus = MixedUpgradeScenario(
+            scenario_name=scenario_name,
+            data_path=data_path,
+            release=release,
+            states=states,
+            # NOTE:
+            # this is maybe weird, in that the set
+            # of adopting households in BAU isn't a subset of the set
+            # of adopting households in HP
+            random=random_seed,
+            sample_n=sample_n, #NOTE: DEBUGGING ONLY
+            scenario=scenario,
+        )
+        # NOTE: should this be piped for something something efficiency
+        return mus, adjust_timestamp(mus.read_load_curve_hourly(), START_YEAR)
+
     # Read 15-minute load curves as lazy dataframe
-    ldf_bau_loads = bsr.read_load_curve_15min(upgrades="0")
-    ldf_hp_loads = hp_mus.read_load_curve_15min()
+    bau_mus, ldf_bau_loads = _get_load_curves(bau_scenario, "bau")
+    hp_mus, ldf_hp_loads = _get_load_curves(hp_scenario, "hp")
 ```
 
 ```{python}
@@ -187,23 +266,289 @@ def sum_energy_by_timestamp(lazy_df):
         .group_by("timestamp")
         .agg([
             pl.col("out.electricity.net.energy_consumption").sum().alias("electricity_kwh"),
-            pl.col("out.fuel_oil.total.energy_consumption").sum().alias("fuel_oil_mmbtu"),
-            pl.col("out.natural_gas.total.energy_consumption").sum().alias("natural_gas_mmbtu"),
-            pl.col("out.propane.total.energy_consumption").sum().alias("propane_mmbtu"),
+            pl.col("out.fuel_oil.total.energy_consumption").sum().alias("fuel_oil_kwh"),
+            pl.col("out.natural_gas.total.energy_consumption").sum().alias("natural_gas_kwh"),
+            pl.col("out.propane.total.energy_consumption").sum().alias("propane_kwh"),
         ])
         .sort("timestamp")
+
+        .with_columns([
+            (pl.col("fuel_oil_kwh") * MMBTU_PER_KWH).alias("fuel_oil_mmbtu"),
+            (pl.col("natural_gas_kwh") * MMBTU_PER_KWH).alias("natural_gas_mmbtu"),
+            (pl.col("propane_kwh") * MMBTU_PER_KWH).alias("propane_mmbtu"),
+        ])
+        .drop(["fuel_oil_kwh", "natural_gas_kwh", "propane_kwh"])
         .collect()
     )
 ```
 
 ```{python}
-    df_bau_loads = sum_energy_by_timestamp(ldf_bau_loads.head(50))
-    df_hp_loads = sum_energy_by_timestamp(ldf_hp_loads.head(50))
+    df_bau_loads = sum_energy_by_timestamp(ldf_bau_loads)
+    df_hp_loads = sum_energy_by_timestamp(ldf_hp_loads)
 
     print(df_bau_loads.head())
     print(df_hp_loads.head())
 ```
 
 ```{python}
-    print(ldf_bau_loads.filter(pl.col("bldg_id") == 100147).tail(10).collect())
+# Show the range of dates covered by the timestamp column of ldf_bau_loads
+date_range = df_bau_loads.select([
+    pl.col("timestamp").min().alias("start_date"),
+    pl.col("timestamp").max().alias("end_date")
+]).collect()
+print("Date range covered by ldf_bau_loads:")
+print(f"Start: {date_range['start_date'][0]}, End: {date_range['end_date'][0]}")
+```
+
+```{python}
+from plotnine import ggplot, aes, geom_line, labs, theme_minimal, scale_color_manual
+
+# Prepare data for plotting; add labels for scenario
+df_bau_loads_plot = df_bau_loads.with_columns([
+    pl.lit("BAU").alias("scenario")
+])
+df_hp_loads_plot = df_hp_loads.with_columns([
+    pl.lit("Heat Pump").alias("scenario")
+])
+
+# Concatenate into one DataFrame
+plot_df = df_bau_loads_plot.vstack(df_hp_loads_plot)
+
+# plotnine expects a pandas DataFrame, so as a temporary, minimal conversion for plotting:
+# Filter to just February 2028
+feb_2028_df = plot_df.filter(
+    (pl.col("timestamp").dt.year() == 2028) & (pl.col("timestamp").dt.month() == 2)
+    & (pl.col("timestamp").dt.day() >= 24)
+)
+
+p = (
+    ggplot(feb_2028_df.to_pandas(), aes(x='timestamp', y='electricity_kwh', color='scenario'))
+    + geom_line()
+    + labs(
+        title='Electricity Consumption: February 2028',
+        x='Timestamp',
+        y='Electricity Consumption (kWh)',
+        color='Scenario'
+    )
+    + scale_color_manual(values=["#1f77b4", "#ff7f0e"])
+    + theme_minimal()
+)
+
+p.show()
+```
+
+```{python}
+def upload_loads_to_google_sheet(
+    df_bau_loads,
+    df_hp_loads,
+    sheet_url_or_id,
+    credentials_path=None,
+    service_account_info=None,
+):
+    """
+    Upload BAU and HP load data to a Google Sheet with four tabs (one per fuel type).
+
+    Each tab contains:
+    - Year (extracted from timestamp)
+    - Full timestamp
+    - BAU consumption
+    - HP consumption
+    - Delta (HP - BAU)
+
+    Args:
+        df_bau_loads: Polars DataFrame with columns: timestamp, electricity_kwh,
+                      fuel_oil_mmbtu, natural_gas_mmbtu, propane_mmbtu
+        df_hp_loads: Polars DataFrame with same structure as df_bau_loads
+        sheet_url_or_id: Google Sheet URL or ID (e.g., "1abc123..." or full URL)
+        credentials_path: Optional path to service account JSON credentials file
+        service_account_info: Optional dict with service account credentials
+
+    Returns:
+        None (uploads data to Google Sheet)
+
+    Note:
+        Authentication options:
+        1. Use credentials_path pointing to a service account JSON file
+        2. Use service_account_info dict with credentials
+        3. Use default credentials from environment (GOOGLE_APPLICATION_CREDENTIALS)
+        4. Use OAuth (will prompt for authentication)
+    """
+    import os
+
+    try:
+        import gspread
+        from google.oauth2.service_account import Credentials
+    except ImportError:
+        raise ImportError(
+            "gspread is required. Install with: pip install gspread google-auth"
+        )
+
+    # Extract sheet ID from URL if needed
+    if "docs.google.com" in str(sheet_url_or_id) or "/spreadsheets/d/" in str(sheet_url_or_id):
+        # Extract ID from URL like: https://docs.google.com/spreadsheets/d/1abc123.../edit
+        import re
+        match = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", str(sheet_url_or_id))
+        if match:
+            sheet_id = match.group(1)
+        else:
+            raise ValueError(f"Could not extract sheet ID from URL: {sheet_url_or_id}")
+    else:
+        sheet_id = sheet_url_or_id
+
+    # Authenticate with Google Sheets
+    if credentials_path:
+        creds = Credentials.from_service_account_file(credentials_path)
+    elif service_account_info:
+        creds = Credentials.from_service_account_info(service_account_info)
+    else:
+        # Try to use default credentials or OAuth
+        try:
+            creds = Credentials.from_service_account_file(
+                os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+            ) if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") else None
+        except:
+            creds = None
+
+        if creds is None:
+            # Fall back to OAuth (will prompt user)
+            creds = gspread.oauth()
+
+    # Open the Google Sheet
+    gc = gspread.authorize(creds)
+    sh = gc.open_by_key(sheet_id)
+
+    # Merge the two dataframes on timestamp
+    df_merged = (
+        df_bau_loads
+        .join(
+            df_hp_loads,
+            on="timestamp",
+            how="outer",
+            suffix="_hp"
+        )
+        .sort("timestamp")
+        .with_columns([
+            pl.col("timestamp").dt.year().alias("year"),
+        ])
+    )
+
+    # Define fuel types and their corresponding columns
+    fuel_configs = [
+        {
+            "name": "electricity",
+            "bau_col": "electricity_kwh",
+            "hp_col": "electricity_kwh_hp",
+            "unit": "kWh"
+        },
+        {
+            "name": "fuel_oil",
+            "bau_col": "fuel_oil_mmbtu",
+            "hp_col": "fuel_oil_mmbtu_hp",
+            "unit": "MMBtu"
+        },
+        {
+            "name": "natural_gas",
+            "bau_col": "natural_gas_mmbtu",
+            "hp_col": "natural_gas_mmbtu_hp",
+            "unit": "MMBtu"
+        },
+        {
+            "name": "propane",
+            "bau_col": "propane_mmbtu",
+            "hp_col": "propane_mmbtu_hp",
+            "unit": "MMBtu"
+        },
+    ]
+
+    # Process and upload each fuel type
+    for fuel_config in fuel_configs:
+        fuel_name = fuel_config["name"]
+        bau_col = fuel_config["bau_col"]
+        hp_col = fuel_config["hp_col"]
+        unit = fuel_config["unit"]
+
+        # Prepare data for this fuel type (all in Polars)
+        df_fuel = (
+            df_merged
+            .select([
+                "year",
+                "timestamp",
+                pl.col(bau_col).alias("bau_consumption"),
+                pl.col(hp_col).alias("hp_consumption"),
+            ])
+            .with_columns([
+                # Calculate delta (HP - BAU)
+                (pl.col("hp_consumption") - pl.col("bau_consumption")).alias("delta"),
+                # Format timestamp as string for Google Sheets
+                pl.col("timestamp").dt.strftime("%Y-%m-%d %H:%M:%S").alias("timestamp_str"),
+            ])
+            # Fill nulls with 0 (in case of missing data)
+            .fill_null(0)
+            # Select columns in the order we want, using formatted timestamp
+            .select([
+                "year",
+                "timestamp_str",
+                "bau_consumption",
+                "hp_consumption",
+                "delta",
+            ])
+        )
+
+        # Prepare header row
+        header = [
+            "Year",
+            "Timestamp",
+            f"BAU Consumption ({unit})",
+            f"HP Consumption ({unit})",
+            f"Delta ({unit})"
+        ]
+
+        # Convert Polars DataFrame to list of lists for gspread
+        # Get rows as list of lists
+        data_rows = df_fuel.iter_rows(named=False)
+        values = [header] + list(data_rows)
+
+        # Tab name with _load_curves suffix
+        tab_name = f"{fuel_name}_load_curves"
+
+        # Create or update the worksheet
+        try:
+            worksheet = sh.worksheet(tab_name)
+            # Clear existing content
+            worksheet.clear()
+        except gspread.exceptions.WorksheetNotFound:
+            # Create new worksheet
+            worksheet = sh.add_worksheet(title=tab_name, rows=len(values) + 100, cols=5)
+
+        # Update the sheet with new data
+        worksheet.update(values, value_input_option="USER_ENTERED")
+
+        print(f"✅ Uploaded {fuel_name} data ({len(df_fuel)} rows) to tab '{tab_name}'")
+
+    print(f"\n✅ Successfully uploaded all data to Google Sheet: {sheet_url_or_id}")
+
+
+# Example usage:
+# upload_loads_to_google_sheet(
+#     df_bau_loads=df_bau_loads,
+#     df_hp_loads=df_hp_loads,
+#     sheet_url_or_id="https://docs.google.com/spreadsheets/d/1_LM-5bYUAyWSZ6evhf-rpJtWXqC0jILQoKTHTLG35w4/edit?gid=0#gid=0",
+#     credentials_path="/path/to/service-account-key.json"  # Optional
+# )
+#
+# Note: You'll need to install gspread and google-auth:
+#   pip install gspread google-auth
+#
+# For authentication, you can:
+# 1. Use a service account JSON file (recommended for automated scripts)
+# 2. Set GOOGLE_APPLICATION_CREDENTIALS environment variable
+# 3. Use OAuth (will prompt for browser authentication)
+```
+```{python}
+    upload_loads_to_google_sheet(
+        df_bau_loads=df_bau_loads,
+        df_hp_loads=df_hp_loads,
+        sheet_url_or_id="https://docs.google.com/spreadsheets/d/1_LM-5bYUAyWSZ6evhf-rpJtWXqC0jILQoKTHTLG35w4/edit?gid=0#gid=0"
+        # Using OAuth browser authentication (will prompt for login)
+    )
 ```

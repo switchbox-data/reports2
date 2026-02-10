@@ -235,3 +235,49 @@ p = (
 
 p.show()
 ```
+
+```{python}
+    import os
+    import gspread
+    from dotenv import load_dotenv
+
+    # Load variables from .env
+    load_dotenv()
+
+    # Reconstruct the credential dictionary
+    app_creds = {
+        "installed": {
+            "client_id": os.getenv("G_CLIENT_ID"),
+            "client_secret": os.getenv("G_CLIENT_SECRET"),
+            "project_id": os.getenv("G_PROJECT_ID"),
+            "auth_uri": os.getenv("G_AUTH_URI"),
+            "token_uri": os.getenv("G_TOKEN_URI"),
+            "redirect_uris": ["http://localhost"]
+        }
+    }
+
+    # This will trigger the browser login for the user
+    gc, authorized_user = gspread.oauth_from_dict(credentials=app_creds)
+```
+
+
+```{python}
+    def write_to_gsheet(df, sheet_name, worksheet_name):
+        data = [df.columns] + df.to_numpy().tolist()
+        sh = gc.open(sheet_name)
+        worksheets = sh.worksheets()
+        if worksheet_name not in [worksheet.title for worksheet in worksheets]:
+            sh.add_worksheet(worksheet_name, df.height + 1, df.width)
+        else:
+            worksheet = sh.worksheet(worksheet_name)
+            worksheet.clear()
+        worksheet = sh.worksheet(worksheet_name)
+        worksheet.update(data, "A1", value_input_option="USER_ENTERED")
+```
+
+```{python}
+    for col in df_bau_loads.columns[1:]:
+        merged_df = df_bau_loads[["timestamp", col]].rename({col: f"bau_{col}"}).join(df_hp_loads[["timestamp",    col]].rename({col: f"hp_{col}"}), on="timestamp").with_columns([(pl.col(f"hp_{col}") - pl.col(f"bau_{col}")).alias(f"{col}_delta"),  pl.col("timestamp").dt.strftime("%Y-%m-%d %H:%M:%S").alias("timestamp")])
+        print(merged_df.head())
+        write_to_gsheet(merged_df, f"test_data_sheet", f"1_{col}")
+```

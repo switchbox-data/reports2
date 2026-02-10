@@ -68,18 +68,31 @@ Script to read ResStock data from S3 and generate datasets required by AEC
 ```
 
 ```{python}
-    total_num_homes = 412000
+    total_num_homes = 451381 # from slack with Juan-Pablo
     projection_start_year = 2028
-    hp_projections = [26221, 31666,38199, 44407]
-    bau_pct_projections = [x / total_num_homes for x in hp_projections]
-    hp_pct_projections = [1.5 * x / total_num_homes for x in bau_pct_projections]
+    # https://portalconnect.rienergy.com/RI/servlet/servlet.FileDownload?file=015Nu000006oDrR
+    bau_hp_counts = [26221, 31666,38199, 44407]
+
+
+    # TODO: hardcode this as well? or generally push off the s3 access to later in the code?
+    sbmeta = pl.read_parquet("s3://data.sb/nrel/resstock/res_2024_amy2018_2/metadata/state=RI/upgrade=00/metadata-sb.parquet")
+    current_adoption_rate = sbmeta.get_column("postprocess_group.has_hp").value_counts().filter(pl.col("postprocess_group.has_hp") == True).get_column("count")[0] / sbmeta.height
+    print(current_adoption_rate)
+
+    bau_pct_projections = [x / total_num_homes for x in bau_hp_counts]
+    # TODO: come up with better hp rate adoption projections
+    hp_pct_projections = [1.5 * x / total_num_homes for x in bau_hp_counts]
 
     # TODO: adjust the above based on current adoption rate in upgrade 0
     # to get correct final adoption rate in MixedUpgradeScenario
+    bau_pct_upgrade_1 = [(x - current_adoption_rate) / (1 - current_adoption_rate) for x in bau_pct_projections]
+    hp_pct_upgrade_1 = [(x - current_adoption_rate) / (1 - current_adoption_rate) for x in hp_pct_projections]
 
     print(bau_pct_projections)
+    print(bau_pct_upgrade_1)
     print(hp_pct_projections)
-    ```
+    print(hp_pct_upgrade_1)
+```
 
 ```{python}
     data_path="s3://data.sb/nrel/resstock/"
@@ -96,17 +109,14 @@ Script to read ResStock data from S3 and generate datasets required by AEC
     bau_scenario = uniform_adoption(
         upgrade_ids=[1],
         weights={1: 1.0},
-        adoption_trajectory=bau_pct_projections, # see above
+        adoption_trajectory=bau_pct_upgrade_1, # see above
     )
 
     hp_scenario = uniform_adoption(
         upgrade_ids=[1],
         weights={1: 1.0},
-        adoption_trajectory=hp_pct_projections, # NOTE: PLACEHOLDER
+        adoption_trajectory=hp_pct_upgrade_1, # see above
     )
-
-    metadata = hp_mus.read_metadata().collect()
-    print(metadata.head())
 
     # NOTE: add typehint
     def _get_load_curves(scenario, scenario_name):
@@ -176,13 +186,15 @@ def sum_energy_by_timestamp(lazy_df):
     df_bau_loads = sum_energy_by_timestamp(ldf_bau_loads)
     df_hp_loads = sum_energy_by_timestamp(ldf_hp_loads)
 
+    print(len(df_bau_loads))
+    print(len(df_hp_loads))
     print(df_bau_loads.head())
     print(df_hp_loads.head())
 ```
 
 ```{python}
-    df_bau_loads.write_parquet("nocommit_data/bau_loads.parquet")
-    df_hp_loads.write_parquet("nocommit_data/hp_loads.parquet")
+    df_bau_loads.write_parquet("../../ri_hp_rates/notebooks/nocommit_data/bau_loads.parquet")
+    df_hp_loads.write_parquet("../../ri_hp_rates/notebooks/nocommit_data/hp_loads.parquet")
 ```
 
 ```{python}
@@ -222,220 +234,4 @@ p = (
 )
 
 p.show()
-```
-
-```{python}
-def upload_loads_to_google_sheet(
-    df_bau_loads,
-    df_hp_loads,
-    sheet_url_or_id,
-    credentials_path=None,
-    service_account_info=None,
-):
-    """
-    Upload BAU and HP load data to a Google Sheet with four tabs (one per fuel type).
-
-    Each tab contains:
-    - Year (extracted from timestamp)
-    - Full timestamp
-    - BAU consumption
-    - HP consumption
-    - Delta (HP - BAU)
-
-    Args:
-        df_bau_loads: Polars DataFrame with columns: timestamp, electricity_kwh,
-                      fuel_oil_mmbtu, natural_gas_mmbtu, propane_mmbtu
-        df_hp_loads: Polars DataFrame with same structure as df_bau_loads
-        sheet_url_or_id: Google Sheet URL or ID (e.g., "1abc123..." or full URL)
-        credentials_path: Optional path to service account JSON credentials file
-        service_account_info: Optional dict with service account credentials
-
-    Returns:
-        None (uploads data to Google Sheet)
-
-    Note:
-        Authentication options:
-        1. Use credentials_path pointing to a service account JSON file
-        2. Use service_account_info dict with credentials
-        3. Use default credentials from environment (GOOGLE_APPLICATION_CREDENTIALS)
-        4. Use OAuth (will prompt for authentication)
-    """
-    import os
-
-    try:
-        import gspread
-        from google.oauth2.service_account import Credentials
-    except ImportError:
-        raise ImportError(
-            "gspread is required. Install with: pip install gspread google-auth"
-        )
-
-    # Extract sheet ID from URL if needed
-    if "docs.google.com" in str(sheet_url_or_id) or "/spreadsheets/d/" in str(sheet_url_or_id):
-        # Extract ID from URL like: https://docs.google.com/spreadsheets/d/1abc123.../edit
-        import re
-        match = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", str(sheet_url_or_id))
-        if match:
-            sheet_id = match.group(1)
-        else:
-            raise ValueError(f"Could not extract sheet ID from URL: {sheet_url_or_id}")
-    else:
-        sheet_id = sheet_url_or_id
-
-    # Authenticate with Google Sheets
-    if credentials_path:
-        creds = Credentials.from_service_account_file(credentials_path)
-    elif service_account_info:
-        creds = Credentials.from_service_account_info(service_account_info)
-    else:
-        # Try to use default credentials or OAuth
-        try:
-            creds = Credentials.from_service_account_file(
-                os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-            ) if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") else None
-        except:
-            creds = None
-
-        if creds is None:
-            # Fall back to OAuth (will prompt user)
-            creds = gspread.oauth()
-
-    # Open the Google Sheet
-    gc = gspread.authorize(creds)
-    sh = gc.open_by_key(sheet_id)
-
-    # Merge the two dataframes on timestamp
-    df_merged = (
-        df_bau_loads
-        .join(
-            df_hp_loads,
-            on="timestamp",
-            how="outer",
-            suffix="_hp"
-        )
-        .sort("timestamp")
-        .with_columns([
-            pl.col("timestamp").dt.year().alias("year"),
-        ])
-    )
-
-    # Define fuel types and their corresponding columns
-    fuel_configs = [
-        {
-            "name": "electricity",
-            "bau_col": "electricity_kwh",
-            "hp_col": "electricity_kwh_hp",
-            "unit": "kWh"
-        },
-        {
-            "name": "fuel_oil",
-            "bau_col": "fuel_oil_mmbtu",
-            "hp_col": "fuel_oil_mmbtu_hp",
-            "unit": "MMBtu"
-        },
-        {
-            "name": "natural_gas",
-            "bau_col": "natural_gas_mmbtu",
-            "hp_col": "natural_gas_mmbtu_hp",
-            "unit": "MMBtu"
-        },
-        {
-            "name": "propane",
-            "bau_col": "propane_mmbtu",
-            "hp_col": "propane_mmbtu_hp",
-            "unit": "MMBtu"
-        },
-    ]
-
-    # Process and upload each fuel type
-    for fuel_config in fuel_configs:
-        fuel_name = fuel_config["name"]
-        bau_col = fuel_config["bau_col"]
-        hp_col = fuel_config["hp_col"]
-        unit = fuel_config["unit"]
-
-        # Prepare data for this fuel type (all in Polars)
-        df_fuel = (
-            df_merged
-            .select([
-                "year",
-                "timestamp",
-                pl.col(bau_col).alias("bau_consumption"),
-                pl.col(hp_col).alias("hp_consumption"),
-            ])
-            .with_columns([
-                # Calculate delta (HP - BAU)
-                (pl.col("hp_consumption") - pl.col("bau_consumption")).alias("delta"),
-                # Format timestamp as string for Google Sheets
-                pl.col("timestamp").dt.strftime("%Y-%m-%d %H:%M:%S").alias("timestamp_str"),
-            ])
-            # Fill nulls with 0 (in case of missing data)
-            .fill_null(0)
-            # Select columns in the order we want, using formatted timestamp
-            .select([
-                "year",
-                "timestamp_str",
-                "bau_consumption",
-                "hp_consumption",
-                "delta",
-            ])
-        )
-
-        # Prepare header row
-        header = [
-            "Year",
-            "Timestamp",
-            f"BAU Consumption ({unit})",
-            f"HP Consumption ({unit})",
-            f"Delta ({unit})"
-        ]
-
-        # Convert Polars DataFrame to list of lists for gspread
-        # Get rows as list of lists
-        data_rows = df_fuel.iter_rows(named=False)
-        values = [header] + list(data_rows)
-
-        # Tab name with _load_curves suffix
-        tab_name = f"{fuel_name}_load_curves"
-
-        # Create or update the worksheet
-        try:
-            worksheet = sh.worksheet(tab_name)
-            # Clear existing content
-            worksheet.clear()
-        except gspread.exceptions.WorksheetNotFound:
-            # Create new worksheet
-            worksheet = sh.add_worksheet(title=tab_name, rows=len(values) + 100, cols=5)
-
-        # Update the sheet with new data
-        worksheet.update(values, value_input_option="USER_ENTERED")
-
-        print(f"✅ Uploaded {fuel_name} data ({len(df_fuel)} rows) to tab '{tab_name}'")
-
-    print(f"\n✅ Successfully uploaded all data to Google Sheet: {sheet_url_or_id}")
-
-
-# Example usage:
-# upload_loads_to_google_sheet(
-#     df_bau_loads=df_bau_loads,
-#     df_hp_loads=df_hp_loads,
-#     sheet_url_or_id="https://docs.google.com/spreadsheets/d/1_LM-5bYUAyWSZ6evhf-rpJtWXqC0jILQoKTHTLG35w4/edit?gid=0#gid=0",
-#     credentials_path="/path/to/service-account-key.json"  # Optional
-# )
-#
-# Note: You'll need to install gspread and google-auth:
-#   pip install gspread google-auth
-#
-# For authentication, you can:
-# 1. Use a service account JSON file (recommended for automated scripts)
-# 2. Set GOOGLE_APPLICATION_CREDENTIALS environment variable
-# 3. Use OAuth (will prompt for browser authentication)
-```
-```{python}
-    upload_loads_to_google_sheet(
-        df_bau_loads=df_bau_loads,
-        df_hp_loads=df_hp_loads,
-        sheet_url_or_id="https://docs.google.com/spreadsheets/d/1_LM-5bYUAyWSZ6evhf-rpJtWXqC0jILQoKTHTLG35w4/edit?gid=0#gid=0"
-        # Using OAuth browser authentication (will prompt for login)
-    )
 ```

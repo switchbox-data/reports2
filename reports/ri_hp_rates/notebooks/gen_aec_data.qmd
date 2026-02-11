@@ -34,6 +34,14 @@ Script to read ResStock data from S3 and generate datasets required by AEC
 
     total_num_homes = 451381 # from slack with Juan-Pablo
 
+    # For now, using the 1.0 rates from the MA report
+    # https://www.switch.box/mahprates
+    # In MA, the 1.0 rates take HPs from being bill-reducing for 44.7% of homes
+    # to 64.1% of homes, an improvement of 43%, so we assume that in the HP rates case
+    # here in RI, a heat pump rate will increase HP adoption by 43%. That is, a similar share
+    # of homes for which HPs are bill-reducing will choose to adopt HPs in both the BAU and HP cases.
+    heat_pump_adoption_factor = 1.43
+
 ```
 
 ### HELPER FUNCTIONS
@@ -136,9 +144,9 @@ Script to read ResStock data from S3 and generate datasets required by AEC
                         break
                 break
 
-        df = pl.DataFrame([row[:num_cols] for row in rows[start_idx+1:]], schema=rows[start_idx][:num_cols])
+        df = pl.DataFrame([row[:num_cols] for row in rows[start_idx+1:]], schema=rows[start_idx][:num_cols], orient="row")
 
-        return df.filter(pl.col("Year").is_in([str(x) for x in projection_years])).select(pl.col("Cumulative_Base")).to_series().to_list()
+        return df.filter(pl.col("Year").is_in([str(x) for x in projection_years])).select(pl.col("Cumulative_Base")).cast(pl.Float64).to_series().to_list()
 ```
 
 ```{python}
@@ -150,14 +158,15 @@ Script to read ResStock data from S3 and generate datasets required by AEC
 
     # TODO: fix to make sure you get the "true" case
     current_adoption_rate = sbmeta.collect().group_by("postprocess_group.has_hp").agg(pl.col("weight").sum().alias("total_homes")).pipe(lambda df: df.filter(pl.col("postprocess_group.has_hp") == True)["total_homes"] / df["total_homes"].sum()).item()
-    print(current_adoption_rate) # NOTE: DEBUGGING ONLY
+    if DEBUG_MODE:
+        print(current_adoption_rate) # NOTE: DEBUGGING ONLY
 
     # Get adoption forecast number of homes
     bau_hp_counts = get_adoption_forecast_num_homes([2028, 2029, 2030, 2031])
     bau_pct_projections = [x / total_num_homes for x in bau_hp_counts]
 
     # TODO: come up with better hp rate adoption projections
-    hp_pct_projections = [1.5 * x / total_num_homes for x in bau_hp_counts]
+    hp_pct_projections = [heat_pump_adoption_factor * x / total_num_homes for x in bau_hp_counts]
 
 
     bau_pct_total = [x / total_num_homes for x in bau_hp_counts]

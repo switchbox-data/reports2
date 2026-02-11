@@ -3,6 +3,9 @@ title: "Generate AEC Datasets"
 ---
 
 Script to read ResStock data from S3 and generate datasets required by AEC
+
+
+### IMPORTS
 ```{python}
 
     from buildstock_fetch.scenarios import uniform_adoption
@@ -12,6 +15,28 @@ Script to read ResStock data from S3 and generate datasets required by AEC
     import polars as pl
 ```
 
+### INPUT PARAMS AND CONSTANTS
+```{python}
+    DEBUG_MODE = False
+
+    data_path="s3://data.sb/nrel/resstock/"
+    release="res_2024_amy2018_2"
+    states="RI"
+    random_seed=67
+    sample_n=None # do not downsample
+
+    MMBTU_PER_KWH = 0.003412  # 1 kWh = 0.003412 MMBtu
+
+    projection_years = [2028, 2029, 2030, 2031]
+    start_year = projection_years[0]
+    if not all([x+1 == y for x, y in zip(projection_years[:-1], projection_years[1:])]):
+        raise ValueError("Projection years must be consecutive")
+
+    total_num_homes = 451381 # from slack with Juan-Pablo
+
+```
+
+### HELPER FUNCTIONS
 ```{python}
     def adjust_timestamp(lazy_df, start_year, handle_leap_years=True):
         """
@@ -26,6 +51,7 @@ Script to read ResStock data from S3 and generate datasets required by AEC
         Args:
             lazy_df: Polars LazyFrame with 'timestamp' and 'year' columns.
             start_year: The baseline year (integer, e.g., 2018)
+            handle_leap_years: Whether to handle leap years by inserting a duplicate of Feb 28 data as Feb 29
 
         Returns:
             A new LazyFrame with the 'timestamp' column adjusted so that each 'year' is mapped
@@ -67,175 +93,7 @@ Script to read ResStock data from S3 and generate datasets required by AEC
         return updated_df
 ```
 
-```{python}
-    total_num_homes = 451381 # from slack with Juan-Pablo
-    projection_start_year = 2028
-    # https://portalconnect.rienergy.com/RI/servlet/servlet.FileDownload?file=015Nu000006oDrR
-    bau_hp_counts = [26221, 31666,38199, 44407]
-
-
-    # TODO: hardcode this as well? or generally push off the s3 access to later in the code?
-    sbmeta = pl.read_parquet("s3://data.sb/nrel/resstock/res_2024_amy2018_2/metadata/state=RI/upgrade=00/metadata-sb.parquet")
-    current_adoption_rate = sbmeta.get_column("postprocess_group.has_hp").value_counts().filter(pl.col("postprocess_group.has_hp") == True).get_column("count")[0] / sbmeta.height
-    print(current_adoption_rate)
-
-    bau_pct_projections = [x / total_num_homes for x in bau_hp_counts]
-    # TODO: come up with better hp rate adoption projections
-    hp_pct_projections = [1.5 * x / total_num_homes for x in bau_hp_counts]
-
-    # TODO: adjust the above based on current adoption rate in upgrade 0
-    # to get correct final adoption rate in MixedUpgradeScenario
-    bau_pct_upgrade_1 = [(x - current_adoption_rate) / (1 - current_adoption_rate) for x in bau_pct_projections]
-    hp_pct_upgrade_1 = [(x - current_adoption_rate) / (1 - current_adoption_rate) for x in hp_pct_projections]
-
-    print(bau_pct_projections)
-    print(bau_pct_upgrade_1)
-    print(hp_pct_projections)
-    print(hp_pct_upgrade_1)
-```
-
-```{python}
-    data_path="s3://data.sb/nrel/resstock/"
-    release="res_2024_amy2018_2"
-    states="RI"
-    random_seed=67
-    sample_n=None # do not downsample
-
-    # Convert all *_kwh columns to *_mmbtu and drop the *_kwh columns
-    MMBTU_PER_KWH = 0.003412  # 1 kWh = 0.003412 MMBtu
-
-    START_YEAR = 2028
-
-    bau_scenario = uniform_adoption(
-        upgrade_ids=[1],
-        weights={1: 1.0},
-        adoption_trajectory=bau_pct_upgrade_1, # see above
-    )
-
-    hp_scenario = uniform_adoption(
-        upgrade_ids=[1],
-        weights={1: 1.0},
-        adoption_trajectory=hp_pct_upgrade_1, # see above
-    )
-
-    # NOTE: add typehint
-    def _get_load_curves(scenario, scenario_name):
-        mus = MixedUpgradeScenario(
-            scenario_name=scenario_name,
-            data_path=data_path,
-            release=release,
-            states=states,
-            # NOTE:
-            # this is maybe weird, in that the set
-            # of adopting households in BAU isn't a subset of the set
-            # of adopting households in HP
-            random=random_seed,
-            sample_n=sample_n,
-            scenario=scenario,
-        )
-        # NOTE: should this be piped for something something efficiency
-        return mus, adjust_timestamp(mus.read_load_curve_hourly(), START_YEAR)
-
-    # Read 15-minute load curves as lazy dataframe
-    bau_mus, ldf_bau_loads = _get_load_curves(bau_scenario, "bau")
-    hp_mus, ldf_hp_loads = _get_load_curves(hp_scenario, "hp")
-```
-
-```{python}
-def sum_energy_by_timestamp(lazy_df):
-    """
-    For each timestamp, sums up various energy consumption values across all bldg_id.
-
-    Args:
-        lazy_df: A polars lazy dataframe
-
-    Returns:
-        A polars dataframe (not lazy) with summed columns per timestamp.
-    """
-    selected_cols = [
-        "timestamp",
-        "out.electricity.net.energy_consumption",
-        "out.fuel_oil.total.energy_consumption",
-        "out.natural_gas.total.energy_consumption",
-        "out.propane.total.energy_consumption",
-    ]
-    return (
-        lazy_df
-        .select(selected_cols)
-        .group_by("timestamp")
-        .agg([
-            pl.col("out.electricity.net.energy_consumption").sum().alias("electricity_kwh"),
-            pl.col("out.fuel_oil.total.energy_consumption").sum().alias("fuel_oil_kwh"),
-            pl.col("out.natural_gas.total.energy_consumption").sum().alias("natural_gas_kwh"),
-            pl.col("out.propane.total.energy_consumption").sum().alias("propane_kwh"),
-        ])
-        .sort("timestamp")
-
-        .with_columns([
-            (pl.col("fuel_oil_kwh") * MMBTU_PER_KWH).alias("fuel_oil_mmbtu"),
-            (pl.col("natural_gas_kwh") * MMBTU_PER_KWH).alias("natural_gas_mmbtu"),
-            (pl.col("propane_kwh") * MMBTU_PER_KWH).alias("propane_mmbtu"),
-        ])
-        .drop(["fuel_oil_kwh", "natural_gas_kwh", "propane_kwh"])
-        .collect()
-    )
-```
-
-```{python}
-    %%time
-    df_bau_loads = sum_energy_by_timestamp(ldf_bau_loads)
-    df_hp_loads = sum_energy_by_timestamp(ldf_hp_loads)
-
-    print(len(df_bau_loads))
-    print(len(df_hp_loads))
-    print(df_bau_loads.head())
-    print(df_hp_loads.head())
-```
-
-```{python}
-    df_bau_loads.write_parquet("../../ri_hp_rates/notebooks/nocommit_data/bau_loads.parquet")
-    df_hp_loads.write_parquet("../../ri_hp_rates/notebooks/nocommit_data/hp_loads.parquet")
-```
-
-```{python}
-# NOTE: Debugging only, sample data plot
-
-from plotnine import ggplot, aes, geom_line, labs, theme_minimal, scale_color_manual
-
-# Prepare data for plotting; add labels for scenario
-df_bau_loads_plot = df_bau_loads.with_columns([
-    pl.lit("BAU").alias("scenario")
-])
-df_hp_loads_plot = df_hp_loads.with_columns([
-    pl.lit("Heat Pump").alias("scenario")
-])
-
-# Concatenate into one DataFrame
-plot_df = df_bau_loads_plot.vstack(df_hp_loads_plot)
-
-# plotnine expects a pandas DataFrame, so as a temporary, minimal conversion for plotting:
-# Filter to just February 2028
-feb_2028_df = plot_df.filter(
-    (pl.col("timestamp").dt.year() == 2028) & (pl.col("timestamp").dt.month() == 2)
-    & (pl.col("timestamp").dt.day() >= 24)
-)
-
-p = (
-    ggplot(feb_2028_df.to_pandas(), aes(x='timestamp', y='electricity_kwh', color='scenario'))
-    + geom_line()
-    + labs(
-        title='Electricity Consumption: February 2028',
-        x='Timestamp',
-        y='Electricity Consumption (kWh)',
-        color='Scenario'
-    )
-    + scale_color_manual(values=["#1f77b4", "#ff7f0e"])
-    + theme_minimal()
-)
-
-p.show()
-```
-
+### AUTHORIZE GOOGLE SHEET
 ```{python}
     import os
     import gspread
@@ -261,13 +119,200 @@ p.show()
 ```
 
 
+### ADOPTION RATE ESTIMATES
+```{python}
+    def get_adoption_forecast_num_homes(projection_years: list) -> list[float]:
+        rie_proj_sheet = gc.open_by_url("https://docs.google.com/spreadsheets/d/1BX4rp256SB4vI72oUIbZT1BqD6gOO8UJr95578dDM-Q/    edit#gid=2027836829").worksheet("RIE_hp_adoption_forecast")
+        # Get all data as list of lists
+        rows = rie_proj_sheet.get_all_values()
+        start_idx = None
+        num_cols = None
+        for i, row in enumerate(rows):
+            if row[0] == "Year":
+                start_idx = i
+                for j, col in enumerate(row):
+                    if col == "Cumulative_Low":
+                        num_cols = j
+                        break
+                break
+
+        df = pl.DataFrame([row[:num_cols] for row in rows[start_idx+1:]], schema=rows[start_idx][:num_cols])
+
+        return df.filter(pl.col("Year").is_in([str(x) for x in projection_years])).select(pl.col("Cumulative_Base")).to_series().to_list()
+```
+
+```{python}
+    sbmeta = pl.scan_parquet("s3://data.sb/nrel/resstock/res_2024_amy2018_2/metadata/state=RI/upgrade=00/metadata-sb.parquet")
+    # TODO: remove this hack once weight column is in the metadata
+    sbmeta = sbmeta.with_columns(
+        pl.lit(252.301639).alias("weight")
+    )
+
+    # TODO: fix to make sure you get the "true" case
+    current_adoption_rate = sbmeta.collect().group_by("postprocess_group.has_hp").agg(pl.col("weight").sum().alias("total_homes")).pipe(lambda df: df.filter(pl.col("postprocess_group.has_hp") == True)["total_homes"] / df["total_homes"].sum()).item()
+    print(current_adoption_rate) # NOTE: DEBUGGING ONLY
+
+    # Get adoption forecast number of homes
+    bau_hp_counts = get_adoption_forecast_num_homes([2028, 2029, 2030, 2031])
+    bau_pct_projections = [x / total_num_homes for x in bau_hp_counts]
+
+    # TODO: come up with better hp rate adoption projections
+    hp_pct_projections = [1.5 * x / total_num_homes for x in bau_hp_counts]
+
+
+    bau_pct_total = [x / total_num_homes for x in bau_hp_counts]
+    # TODO: come up with better hp rate adoption projections
+    hp_pct_total = [1.5 * x / total_num_homes for x in bau_hp_counts]
+    bau_pct_upgrade_1 = [(x - current_adoption_rate) / (1 - current_adoption_rate) for x in bau_pct_total]
+    hp_pct_upgrade_1 = [(x - current_adoption_rate) / (1 - current_adoption_rate) for x in hp_pct_total]
+```
+
+### GET LOAD CURVES FROM RESSTOCK USING BSF
+```{python}
+    bau_scenario = uniform_adoption(
+        upgrade_ids=[1],
+        weights={1: 1.0},
+        adoption_trajectory=bau_pct_upgrade_1, # see above
+    )
+
+    hp_scenario = uniform_adoption(
+        upgrade_ids=[1],
+        weights={1: 1.0},
+        adoption_trajectory=hp_pct_upgrade_1, # see above
+    )
+
+    def _merge_weights(ldf, metadata = pl.DataFrame()):
+        return ldf.join(metadata.select(["bldg_id", "weight"]), on="bldg_id", how="left")
+
+    # NOTE: add typehint
+    def _get_load_curves(scenario, scenario_name):
+        mus = MixedUpgradeScenario(
+            scenario_name=scenario_name,
+            data_path=data_path,
+            release=release,
+            states=states,
+            # NOTE:
+            # this is maybe weird, in that the set
+            # of adopting households in BAU isn't a subset of the set
+            # of adopting households in HP
+            random=random_seed,
+            sample_n=sample_n,
+            scenario=scenario,
+        )
+        # NOTE: should this be piped for something something efficiency
+        ldf = mus.read_load_curve_hourly().pipe(
+            lambda ldf: adjust_timestamp(ldf, start_year=start_year)
+        ).pipe(lambda ldf: _merge_weights(ldf, metadata=sbmeta))
+        return mus, ldf
+
+    # Read 15-minute load curves as lazy dataframe
+    bau_mus, ldf_bau_loads = _get_load_curves(bau_scenario, "bau")
+    hp_mus, ldf_hp_loads = _get_load_curves(hp_scenario, "hp")
+```
+
+```{python}
+def sum_energy_by_timestamp(lazy_df):
+    """
+    For each timestamp, sums up various energy consumption values across all bldg_id.
+
+    Args:
+        lazy_df: A polars lazy dataframe
+
+    Returns:
+        A polars dataframe (not lazy) with summed columns per timestamp.
+    """
+    selected_cols = [
+        "timestamp",
+        "out.electricity.net.energy_consumption",
+        "out.fuel_oil.total.energy_consumption",
+        "out.natural_gas.total.energy_consumption",
+        "out.propane.total.energy_consumption",
+        "weight",
+    ]
+    return (
+        lazy_df
+        .select(selected_cols)
+        .group_by("timestamp")
+        .agg([
+            (pl.col("weight") * pl.col("out.electricity.net.energy_consumption")).sum().alias("electricity_kwh"),
+            (MMBTU_PER_KWH * pl.col("weight") * pl.col("out.fuel_oil.total.energy_consumption")).sum().alias("fuel_oil_mmbtu"),
+            (MMBTU_PER_KWH * pl.col("weight") * pl.col("out.natural_gas.total.energy_consumption")).sum().alias("natural_gas_mmbtu"),
+            (MMBTU_PER_KWH * pl.col("weight") * pl.col("out.propane.total.energy_consumption")).sum().alias("propane_mmbtu"),
+        ])
+        .sort("timestamp")
+        .collect()
+    )
+```
+
+```{python}
+    %%time
+    df_bau_loads = sum_energy_by_timestamp(ldf_bau_loads)
+    df_hp_loads = sum_energy_by_timestamp(ldf_hp_loads)
+
+    # print(len(df_bau_loads))
+    # print(len(df_hp_loads))
+    # print(df_bau_loads.head())
+    # print(df_hp_loads.head())
+```
+
+```{python}
+    # NOTE: use for saving load files to disk to avoid rerunning the long sum_energy_by_timestamp step
+    if DEBUG_MODE:
+        df_bau_loads.write_parquet("../../ri_hp_rates/notebooks/nocommit_bau_loads.parquet")
+        df_hp_loads.write_parquet("../../ri_hp_rates/notebooks/nocommit_hp_loads.parquet")
+```
+
+```{python}
+
+if DEBUG_MODE:
+    from plotnine import ggplot, aes, geom_line, labs, theme_minimal, scale_color_manual
+
+    # Prepare data for plotting; add labels for scenario
+    df_bau_loads_plot = df_bau_loads.with_columns([
+        pl.lit("BAU").alias("scenario")
+    ])
+    df_hp_loads_plot = df_hp_loads.with_columns([
+        pl.lit("Heat Pump").alias("scenario")
+    ])
+
+    # Concatenate into one DataFrame
+    plot_df = df_bau_loads_plot.vstack(df_hp_loads_plot)
+
+    # plotnine expects a pandas DataFrame, so as a temporary, minimal conversion for plotting:
+    # Filter to just February 2028
+    feb_2028_df = plot_df.filter(
+        (pl.col("timestamp").dt.year() == 2028) & (pl.col("timestamp").dt.month() == 2)
+        & (pl.col("timestamp").dt.day() >= 24)
+    )
+
+    p = (
+        ggplot(feb_2028_df.to_pandas(), aes(x='timestamp', y='electricity_kwh', color='scenario'))
+        + geom_line()
+        + labs(
+            title='Electricity Consumption: February 2028',
+            x='Timestamp',
+            y='Electricity Consumption (kWh)',
+            color='Scenario'
+        )
+        + scale_color_manual(values=["#1f77b4", "#ff7f0e"])
+        + theme_minimal()
+    )
+
+    p.show()
+```
+
+### WRITE FINAL OUTPUT TO GSHEET
 ```{python}
     def write_to_gsheet(df, sheet_name, worksheet_name):
         data = [df.columns] + df.to_numpy().tolist()
         sh = gc.open(sheet_name)
         worksheets = sh.worksheets()
+
+        # TODO: make this more general for sheet sorting
+        ref_sheet_idx = next((i for i, ws in enumerate(worksheets) if ws.title == "Relevant metrics"), None)
+
         if worksheet_name not in [worksheet.title for worksheet in worksheets]:
-            sh.add_worksheet(worksheet_name, df.height + 1, df.width)
+            sh.add_worksheet(worksheet_name, rows=df.height + 1, cols=df.width, index=ref_sheet_idx+1)
         else:
             worksheet = sh.worksheet(worksheet_name)
             worksheet.clear()
@@ -276,8 +321,25 @@ p.show()
 ```
 
 ```{python}
-    for col in df_bau_loads.columns[1:]:
-        merged_df = df_bau_loads[["timestamp", col]].rename({col: f"bau_{col}"}).join(df_hp_loads[["timestamp",    col]].rename({col: f"hp_{col}"}), on="timestamp").with_columns([(pl.col(f"hp_{col}") - pl.col(f"bau_{col}")).alias(f"{col}_delta"),  pl.col("timestamp").dt.strftime("%Y-%m-%d %H:%M:%S").alias("timestamp")])
+    go_live = "YES_GO_LIVE"
+```
+
+```{python}
+    if go_live == "YES_GO_LIVE":
+        if DEBUG_MODE:
+            raise ValueError("DEBUG_MODE is True, are you sure you want to go live?")
+        target_sheet_name = "Switchbox BCA overview"
+        go_live = "nope"
+    else:
+        target_sheet_name = "test_data_sheet"
+
+    # NOTE: remove the "reverse" once sheet sorting is fixed in write_to_gsheet
+    for col in reversed(df_bau_loads.columns[1:]):
+        merged_df = df_bau_loads[["timestamp", col]].rename({col: f"bau_{col}"}).join(df_hp_loads[["timestamp",    col]].rename({col: f"hp_{col}"}), on="timestamp").with_columns([
+            (pl.col(f"hp_{col}") - pl.col(f"bau_{col}")).alias(f"delta_{col}"),
+            pl.col("timestamp").dt.strftime("%Y-%m-%d").cast(pl.Utf8).alias("date"),
+            pl.col("timestamp").dt.strftime("%H:%M:%S").cast(pl.Utf8).alias("time"),
+            ]).select(["date", "time", f"delta_{col}", f"bau_{col}", f"hp_{col}"])
         print(merged_df.head())
-        write_to_gsheet(merged_df, f"test_data_sheet", f"1_{col}")
+        write_to_gsheet(merged_df, target_sheet_name, f"1_{col}")
 ```

@@ -40,7 +40,7 @@ RUN /tmp/install-feature.sh "ghcr.io/rocker-org/devcontainer-features/r-rig:1" \
 # USERNAME=root: install packages for root user
 # Note: Uses P3M mirror for fast binary installs on Ubuntu 24.04
 RUN /tmp/install-feature.sh "ghcr.io/rocker-org/devcontainer-features/r-packages:1" \
-    packages="github::nx10/httpgd, pkgdepends, rmarkdown, languageserver, github::ManuelHentschel/vscDebugger" \
+    packages="github::nx10/unigd, github::nx10/httpgd, pkgdepends, rmarkdown, languageserver, github::ManuelHentschel/vscDebugger" \
     cranMirror="https://p3m.dev/cran/__linux__/noble/latest" \
     installSystemRequirements=true \
     USERNAME=root

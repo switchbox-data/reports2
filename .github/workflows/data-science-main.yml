@@ -129,24 +129,13 @@ jobs:
       - name: Initialize Docker provider
         run: devpod provider add docker
 
-      # Configure BuildKit layer caching via DevPod
-      # This enables Layer 2 caching (incremental builds when hash changes)
-      - name: Configure DevPod to use GHCR as a build cache backend
-        run: |
-          # DevPod automatically translates REGISTRY_CACHE into BuildKit cache flags:
-          #   --cache-from type=registry,ref=ghcr.io/switchbox-data/reports2:buildcache-amd64
-          #   --cache-to type=registry,ref=ghcr.io/switchbox-data/reports2:buildcache-amd64,mode=max
-          #
-          # mode=max ensures ALL intermediate layers are cached (not just the final image).
-          # This allows BuildKit to reuse layers even when the final image hash changes.
-          #
-          # Example: If you add a Python package (changing pyproject.toml):
-          #   - Layers 1-21 (base Ubuntu, R, Quarto, etc.): CACHED ✓ (pulled from :buildcache-amd64)
-          #   - Layer 22 (Python deps): REBUILT (only this layer changes)
-          #
-          # This turns an 8-minute full rebuild into a ~2-minute incremental rebuild.
-
-          devpod context set-options -o REGISTRY_CACHE=ghcr.io/switchbox-data/reports2:buildcache-amd64
+      # NOTE: We intentionally do not set REGISTRY_CACHE here.
+      # In GitHub runners, DevPod currently invokes `docker build` with the docker driver
+      # for this workflow path, and docker driver builds cannot export registry cache
+      # (`--cache-to type=registry`), which causes the build to fail.
+      #
+      # We still keep hash-based prebuild reuse via --repository (Layer 1 cache).
+      # This avoids hard failures on both AMD64 and ARM64 runners.
 
       # Build the devcontainer image with DevPod
       # DevPod provides two-tier caching (see workflow header for details)
@@ -212,14 +201,13 @@ jobs:
       - name: Initialize Docker provider
         run: devpod provider add docker
 
-      # Configure BuildKit layer caching via DevPod
-      # Uses separate cache tag from AMD64 to avoid cross-platform cache conflicts
-      - name: Configure DevPod to use GHCR as a build cache backend
-        run: |
-          # Uses :buildcache-arm64 (separate from :buildcache-amd64) because:
-          #   - BuildKit layer caches are platform-specific
-          #   - Mixing AMD64 and ARM64 layers would cause cache misses or errors
-          devpod context set-options -o REGISTRY_CACHE=ghcr.io/switchbox-data/reports2:buildcache-arm64
+      # NOTE: We intentionally do not set REGISTRY_CACHE here.
+      # In GitHub runners, DevPod currently invokes `docker build` with the docker driver
+      # for this workflow path, and docker driver builds cannot export registry cache
+      # (`--cache-to type=registry`), which causes the build to fail.
+      #
+      # We still keep hash-based prebuild reuse via --repository (Layer 1 cache).
+      # This avoids hard failures on both AMD64 and ARM64 runners.
 
       # Build the ARM64 devcontainer image with DevPod
       # Note: No --tag latest here - only AMD64 gets :latest (used by CI jobs)

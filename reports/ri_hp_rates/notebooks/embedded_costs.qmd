@@ -16,10 +16,48 @@ https://drive.google.com/drive/u/0/folders/16nlFAL_RwGl_INAJrhR5irgnNC-gj9zF
     import polars as pl
 ```
 
+### CHECK HOW MANY HOMES ARE HEATED WITH HPs
 ```{python}
     sbmeta = pl.scan_parquet("s3://data.sb/nrel/resstock/res_2024_amy2018_2/metadata/state=RI/upgrade=00/metadata-sb-with-heating-type.parquet")
 
-    current_adoption_rate = sbmeta.collect().group_by("postprocess_group.heating_type").agg(pl.col("weight").sum().alias("total_homes")).pipe(lambda df: df.filter(pl.col("postprocess_group.heating_type") == "heat_pump")["total_homes"] / df["total_homes"].sum()).item()
+    current_heating_type_distribution = sbmeta.collect().group_by("postprocess_group.heating_type").agg(pl.col("weight").sum().alias("total_homes")).with_columns((pl.col("total_homes") / pl.col("total_homes").sum()).alias("pct_of_total"))
 
-    print(current_adoption_rate)
+    print(current_heating_type_distribution)
+```
+
+### COMPUTE LOAD FACTOR BY HEATING TYPE
+```{python}
+    bsr = BuildStockRead(
+        data_path="s3://data.sb/nrel/resstock/",
+        release="res_2024_amy2018_2",
+        states="RI",
+    )
+
+    load_curves = bsr.read_load_curve_hourly(upgrades="0")
+```
+
+```{python}
+    # Join load_curves with metadata to get heating_type for each home
+    load_curves_with_meta = load_curves.join(sbmeta.select(["bldg_id", "postprocess_group.heating_type", "weight"]), on="bldg_id", how="left")
+
+    # Now, for each heating_type, calculate the load factor:
+    # For each group, get the sum of electricity_kwh over all timestamps, and also the max for that group
+    load_factor_df = (
+        load_curves_with_meta.group_by(["timestamp", "postprocess_group.heating_type"])
+        .agg([
+            (pl.col("out.electricity.net.energy_consumption") * pl.col("weight")).sum().alias("electricity_kwh"),
+        ])
+        # NOTE: can change this to just group by is_hp instead
+        #.group_by(pl.col("postprocess_group.heating_type") == "heat_pump")
+        .group_by("postprocess_group.heating_type")
+        .agg([
+            pl.col("electricity_kwh").sum().alias("annual_electricity_kwh"),
+            pl.col("electricity_kwh").max().alias("ncp_kw"),
+        ])
+        .with_columns(
+            (pl.col("annual_electricity_kwh") / (pl.col("ncp_kw") * 8760)).alias("load_factor")
+        )
+    ).collect()
+
+    print(load_factor_df)
 ```

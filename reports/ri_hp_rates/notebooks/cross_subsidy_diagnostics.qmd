@@ -1,0 +1,365 @@
+---
+title: "RI HP Cross-Subsidy Diagnostics (Direct CAIRO)"
+format:
+  html:
+    page-layout: full
+toc: true
+execute:
+  warning: false
+  message: false
+---
+
+This notebook analyzes RI CAIRO run outputs directly from `/data.sb/switchbox/cairo/ri_default_test_run/`, using CAIRO APIs inside the `reports2` Python environment.
+
+```{python}
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pandas as pd
+from plotnine import (
+    aes,
+    coord_flip,
+    facet_wrap,
+    geom_area,
+    geom_col,
+    geom_line,
+    geom_ribbon,
+    ggplot,
+    labs,
+    position_dodge,
+    scale_fill_manual,
+    theme,
+    theme_minimal,
+)
+
+import sys
+
+for _root in (Path.cwd(), *Path.cwd().parents):
+    _rate_utils = _root / "rate-utils"
+    if (_rate_utils / "plotting_utils.py").is_file():
+        sys.path.insert(0, str(_rate_utils))
+        break
+else:
+    raise FileNotFoundError("Could not locate rate-utils/plotting_utils.py from current working directory.")
+
+from plotting_utils import (
+    build_bldg_id_to_load_filepath,
+    build_cost_mix,
+    build_cross_components,
+    build_hourly_group_loads,
+    build_tariff_components,
+    choose_latest_run,
+    resolve_dist_params,
+    summarize_cross_subsidy,
+    summarize_positive_distribution_hours,
+)
+
+try:
+    from cairo.rates_tool.loads import _return_load
+    from cairo.utils.marginal_costs.marginal_cost_calculator import (
+        _load_cambium_marginal_costs,
+        add_distribution_costs,
+    )
+except ModuleNotFoundError as exc:
+    raise ModuleNotFoundError(
+        "CAIRO is not installed in this reports2 environment. "
+        "Run `uv sync` in reports2 after adding cairo to dependencies."
+    ) from exc
+
+
+pd.set_option("display.max_columns", 100)
+
+RUN_ROOT = Path("/data.sb/switchbox/cairo/ri_default_test_run")
+RESSTOCK_LOADS = Path(
+    "/data.sb/nrel/resstock/res_2024_amy2018_2/load_curve_hourly/state=RI/upgrade=00"
+)
+CAMBIUM_COSTS = Path("/data.sb/nrel/cambium/dummy_rie_marginal_costs.csv")
+
+TARGET_YEAR = 2019
+DIST_DEFAULTS = {
+    "annual_future_distr_costs": 80.24,
+    "distr_peak_hrs": 100,
+    "nc_ratio_baseline": 1.41,
+}
+DIST_PARAM_CANDIDATES = [
+    Path("/workspaces/rate-design-platform/rate_design/ri/hp_rates/data/distribution_cost_params.json"),
+    Path.home() / "rate-design-platform/rate_design/ri/hp_rates/data/distribution_cost_params.json",
+    Path("/ebs/home/sherry_switch_box/rate-design-platform/rate_design/ri/hp_rates/data/distribution_cost_params.json"),
+]
+
+run_dir = choose_latest_run(RUN_ROOT)
+dist_params = resolve_dist_params(defaults=DIST_DEFAULTS, candidates=DIST_PARAM_CANDIDATES)
+
+print(f"Using run: {run_dir}")
+print(f"Distribution params: {dist_params}")
+```
+
+## Load Cross-Subsidy Outputs
+
+```{python}
+metadata = pd.read_csv(run_dir / "customer_metadata.csv")
+cross = pd.read_csv(run_dir / "cross_subsidization/cross_subsidization_BAT_values.csv")
+
+cross_summary = summarize_cross_subsidy(cross=cross, metadata=metadata)
+cross_components = build_cross_components(cross_summary)
+
+cross_summary.sort_values("group")
+```
+
+## Marginal vs Residual Cost Composition (HP vs Non-HP)
+
+```{python}
+cost_mix_long = build_cost_mix(cross_summary)
+cost_mix_long["cost_source"] = pd.Categorical(
+    cost_mix_long["cost_source"],
+    categories=["Residual allocation", "Marginal (economic burden)"],
+    ordered=True,
+)
+
+(
+    ggplot(cost_mix_long, aes(x="group", y="musd_total_per_year", fill="cost_source"))
+    + geom_col(position="stack", width=0.65)
+    + scale_fill_manual(
+        values={
+            "Marginal (economic burden)": "#00BFC4",
+            "Residual allocation": "#F8766D",
+        },
+        breaks=["Marginal (economic burden)", "Residual allocation"],
+    )
+    + facet_wrap("~benchmark")
+    + labs(
+        title="Customer Cost Composition: Marginal vs Residual (Total $/year)",
+        x="Customer group",
+        y="$ million per year",
+        fill="Cost source",
+    )
+    + theme_minimal()
+    + theme(figure_size=(11, 4), legend_position="bottom")
+)
+```
+
+## Build Hourly Loads and Marginal Costs with CAIRO
+
+```{python}
+building_ids = metadata["bldg_id"].astype(int).tolist()
+load_map = build_bldg_id_to_load_filepath(RESSTOCK_LOADS, building_ids)
+
+raw_load_elec = _return_load(
+    load_type="electricity",
+    target_year=TARGET_YEAR,
+    load_filepath_key=load_map,
+    force_tz="EST",
+)
+
+hourly_by_group = build_hourly_group_loads(raw_load_elec=raw_load_elec, metadata=metadata)
+
+dist_costs = add_distribution_costs(
+    raw_load_elec["electricity_net"],
+    annual_future_distr_costs=dist_params["annual_future_distr_costs"],
+    distr_peak_hrs=dist_params["distr_peak_hrs"],
+    nc_ratio_baseline=dist_params["nc_ratio_baseline"],
+)
+
+supply_costs = _load_cambium_marginal_costs(CAMBIUM_COSTS, TARGET_YEAR)
+costs = supply_costs.join(dist_costs, how="left")
+costs["Marginal Supply Costs ($/kWh)"] = (
+    costs["Marginal Energy Costs ($/kWh)"] + costs["Marginal Capacity Costs ($/kWh)"]
+)
+
+hourly = hourly_by_group.join(costs, how="left").reset_index()
+hourly["mdc_positive"] = hourly["Marginal Distribution Costs ($/kWh)"] > 0
+
+hours_positive = int(hourly["mdc_positive"].sum())
+hp_annual_share = hourly["hp_load_kwh"].sum() / hourly["total_load_kwh"].sum()
+hp_peakdist_share = (
+    hourly.loc[hourly["mdc_positive"], "hp_load_kwh"].sum()
+    / hourly.loc[hourly["mdc_positive"], "total_load_kwh"].sum()
+)
+
+print(f"Hours with marginal_distribution_cost > 0: {hours_positive}")
+print(f"HP annual load share: {hp_annual_share:.2%}")
+print(f"HP load share during positive distribution-cost hours: {hp_peakdist_share:.2%}")
+```
+
+## Stacked Aggregated Load Curves (HP + Non-HP)
+
+```{python}
+stacked = hourly[["time", "hp_load_kwh", "non_hp_load_kwh"]].copy()
+stacked["hp_top_kwh"] = stacked["non_hp_load_kwh"] + stacked["hp_load_kwh"]
+
+(
+    ggplot(stacked, aes(x="time"))
+    + geom_area(aes(y="non_hp_load_kwh", fill='"Non-HP"'), alpha=0.85)
+    + geom_ribbon(aes(ymin="non_hp_load_kwh", ymax="hp_top_kwh", fill='"HP"'), alpha=0.95)
+    + geom_line(aes(y="non_hp_load_kwh"), color="#1f4e79", size=0.35)
+    + geom_line(aes(y="hp_top_kwh"), color="#8a3f00", size=0.45)
+    + scale_fill_manual(values={"Non-HP": "#6baed6", "HP": "#fdae6b"})
+    + labs(
+        title="Stacked Weighted Aggregated Load Curves (HP over Non-HP)",
+        x="Time",
+        y="Load (kWh)",
+        fill="Series",
+    )
+    + theme_minimal()
+    + theme(figure_size=(12, 4), legend_position="bottom")
+)
+```
+
+## Hourly Load Line Plot (HP vs Non-HP)
+
+```{python}
+line_plot = stacked.melt(
+    id_vars=["time"],
+    value_vars=["hp_load_kwh", "non_hp_load_kwh"],
+    var_name="group",
+    value_name="load_kwh",
+)
+line_plot["group"] = line_plot["group"].map({"hp_load_kwh": "HP", "non_hp_load_kwh": "Non-HP"})
+
+(
+    ggplot(line_plot, aes(x="time", y="load_kwh", color="group"))
+    + geom_line(size=0.55, alpha=0.9)
+    + labs(
+        title="Hourly Weighted Load Curves: HP vs Non-HP",
+        x="Time",
+        y="Load (kWh)",
+        color="Group",
+    )
+    + theme_minimal()
+    + theme(figure_size=(12, 4), legend_position="bottom")
+)
+```
+
+## Marginal Costs: Distribution vs Supply
+
+```{python}
+cost_plot = hourly[["time", "Marginal Distribution Costs ($/kWh)", "Marginal Supply Costs ($/kWh)"]].melt(
+    id_vars=["time"],
+    var_name="cost_type",
+    value_name="cost",
+)
+
+(
+    ggplot(cost_plot, aes(x="time", y="cost", color="cost_type"))
+    + geom_line(size=0.5)
+    + labs(
+        title="Marginal Cost Time Series",
+        x="Time",
+        y="Marginal cost ($/kWh)",
+        color="Cost type",
+    )
+    + theme_minimal()
+    + theme(figure_size=(12, 4), legend_position="bottom")
+)
+```
+
+## Cross-Subsidy Components by Group
+
+```{python}
+(
+    ggplot(
+        cross_components,
+        aes(x="component_label", y="component_transfer_total_musd_per_year", fill="group"),
+    )
+    + geom_col(position=position_dodge(width=0.8), width=0.7)
+    + coord_flip()
+    + labs(
+        title="Cross-Subsidy BAT Components (Total Transfer, $M/year)",
+        x="Benchmark component",
+        y="Transfer ($ million per year)",
+        fill="Group",
+    )
+    + theme_minimal()
+    + theme(figure_size=(9, 4), legend_position="bottom")
+)
+```
+
+## Consumption During Hours Where `marginal_distribution_cost > 0`
+
+```{python}
+customer_count_map = cross_summary.set_index("group")["customers_weighted"].to_dict()
+positive_hours_summary = summarize_positive_distribution_hours(hourly, customer_count_map)
+positive_hours_summary
+```
+
+```{python}
+(
+    ggplot(
+        positive_hours_summary,
+        aes(x="group", y="positive_dist_cost_hours_load_mwh_per_customer", fill="group"),
+    )
+    + geom_col(width=0.6)
+    + labs(
+        title="Per-Customer Load in Hours with Positive Marginal Distribution Cost",
+        x="Customer group",
+        y="MWh/customer-year in mdc > 0 hours",
+        fill="Group",
+    )
+    + theme_minimal()
+    + theme(figure_size=(7, 4), legend_position="none")
+)
+```
+
+## Tariff Components and Residual Allocation Drivers
+
+```{python}
+with open(run_dir / "tariff_final_config.json") as f:
+    tariff_cfg = json.load(f)
+
+tariff = tariff_cfg["rie_a16"]
+fixed_monthly = float(tariff["ur_monthly_fixed_charge"])
+vol_rate = float(tariff["ur_ec_tou_mat"][0][4])
+
+tariff_components = build_tariff_components(
+    hourly=hourly,
+    cross_summary=cross_summary,
+    fixed_monthly=fixed_monthly,
+    vol_rate=vol_rate,
+)
+
+tariff_components[[
+    "group",
+    "weighted_customers",
+    "annual_load_kwh",
+    "annual_fixed_charge_collected_usd",
+    "annual_volumetric_charge_collected_usd",
+]]
+```
+
+```{python}
+tariff_components_plot = tariff_components.melt(
+    id_vars=["group"],
+    value_vars=["annual_fixed_charge_collected_usd", "annual_volumetric_charge_collected_usd"],
+    var_name="component",
+    value_name="collected_usd",
+)
+tariff_components_plot["component"] = tariff_components_plot["component"].map(
+    {
+        "annual_fixed_charge_collected_usd": "Fixed charge",
+        "annual_volumetric_charge_collected_usd": "Volumetric charge",
+    }
+)
+
+(
+    ggplot(tariff_components_plot, aes(x="group", y="collected_usd", fill="component"))
+    + geom_col(position="fill", width=0.65)
+    + labs(
+        title="Proportion of Fixed vs Volumetric Collected Charges by Group",
+        x="Customer group",
+        y="Share of annual collected charge",
+        fill="Charge component",
+    )
+    + theme_minimal()
+    + theme(figure_size=(8, 4), legend_position="bottom")
+)
+```
+
+### Interpretation Checklist
+
+1. Compare each group's share of annual load vs share of load in `marginal_distribution_cost > 0` hours.
+2. Compare tariff collection mechanics (flat customer + flat volumetric) against benchmark residual allocation policies (volumetric, peak, per-customer).
+3. Confirm whether supply marginal costs are active; if they are zero, distribution/peak logic dominates residual allocation.
+4. Re-run with alternative `distribution_cost_params.json` values (`distr_peak_hrs`, `nc_ratio_baseline`) to test sensitivity of peak BAT.
+5. Re-run with non-dummy Cambium costs to test how non-zero supply/capacity costs shift BAT components.

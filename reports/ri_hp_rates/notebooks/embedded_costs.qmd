@@ -25,7 +25,7 @@ https://drive.google.com/drive/u/0/folders/16nlFAL_RwGl_INAJrhR5irgnNC-gj9zF
     print(current_heating_type_distribution)
 ```
 
-### COMPUTE LOAD FACTOR BY HEATING TYPE
+### COMPUTE LOAD FACTOR BY HP vs NON-HP
 ```{python}
     bsr = BuildStockRead(
         data_path="s3://data.sb/nrel/resstock/",
@@ -35,22 +35,26 @@ https://drive.google.com/drive/u/0/folders/16nlFAL_RwGl_INAJrhR5irgnNC-gj9zF
 
     load_curves = bsr.read_load_curve_hourly(upgrades="0")
 ```
-
 ```{python}
+    %%time
     # Join load_curves with metadata to get heating_type for each home
     load_curves_with_meta = load_curves.join(sbmeta.select(["bldg_id", "postprocess_group.heating_type", "weight"]), on="bldg_id", how="left")
+
+    # Aggregate load curves by heating type and timestamp
+    aggregate_curves = (
+        load_curves_with_meta.group_by(["timestamp", "postprocess_group.heating_type"])
+        .agg([
+            (pl.col("out.electricity.net.energy_consumption") * pl.col("weight")).sum().alias("electricity_kwh"),
+            pl.col("weight").sum().alias("num_homes"),
+        ])
+    )
 
     # Now, for each heating_type, calculate the load factor:
     # For each group, get the sum of electricity_kwh over all timestamps, and also the max for that group
     load_factor_df = (
-        load_curves_with_meta.group_by(["timestamp", "postprocess_group.heating_type"])
+        aggregate_curves.group_by(pl.col("postprocess_group.heating_type") == "heat_pump")
         .agg([
-            (pl.col("out.electricity.net.energy_consumption") * pl.col("weight")).sum().alias("electricity_kwh"),
-        ])
-        # NOTE: can change this to just group by is_hp instead
-        #.group_by(pl.col("postprocess_group.heating_type") == "heat_pump")
-        .group_by("postprocess_group.heating_type")
-        .agg([
+            pl.col("num_homes").max().alias("num_homes"), # should be one unique value for each group
             pl.col("electricity_kwh").sum().alias("annual_electricity_kwh"),
             pl.col("electricity_kwh").max().alias("ncp_kw"),
         ])
@@ -60,4 +64,37 @@ https://drive.google.com/drive/u/0/folders/16nlFAL_RwGl_INAJrhR5irgnNC-gj9zF
     ).collect()
 
     print(load_factor_df)
+```
+
+## DEBUGGING
+
+```{python}
+    df_agg = aggregate_curves.collect()
+    print(df_agg.head())
+```
+
+```{python}
+    %%time
+    from plotnine import ggplot, aes, geom_line, labs, theme_minimal, scale_color_brewer
+
+    df_per_home = df_agg.with_columns(
+        (pl.col("electricity_kwh") / pl.col("num_homes")).alias("electricity_kwh"),
+    )
+
+    # Convert to pandas DataFrame for plotnine
+    pdf = df_per_home.to_pandas()
+
+    p = (
+        ggplot(pdf, aes(x="timestamp", y="electricity_kwh", color="postprocess_group.heating_type"))
+        + geom_line()
+        + labs(
+            x="Timestamp",
+            y="Electricity Consumption (kWh)",
+            color="Heating Type",
+            title="Hourly Electricity Consumption by Heating Type"
+        )
+        + scale_color_brewer(type="qual", palette="Set1")
+        + theme_minimal()
+    )
+    p.show()
 ```

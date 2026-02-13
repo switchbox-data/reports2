@@ -3,7 +3,7 @@
 Upload People's Gas GeoJSON to public S3 bucket.
 
 Uploads the peoplesgas_projects.geojson file to:
-  s3://data.sb.east/gis/pgl/peoplesgas_projects.geojson
+  s3://data.sb/il_npa/gis/pgl/peoplesgas_projects.geojson
 
 Requires AWS credentials configured in ~/.aws/credentials or environment variables.
 """
@@ -18,8 +18,8 @@ from botocore.exceptions import ClientError, NoCredentialsError
 
 def upload_to_s3(
     local_file: str | Path,
-    bucket: str = "data.sb.east",
-    s3_key: str = "gis/pgl/peoplesgas_projects.geojson",
+    bucket: str = "data.sb",
+    s3_key: str = "il_npa/gis/pgl/peoplesgas_projects.geojson",
 ) -> bool:
     """
     Upload a file to an S3 bucket.
@@ -228,10 +228,10 @@ def main():
     if geojson_file:
         print(f"📁 Found file: {geojson_file.name}")
         filename = geojson_file.name
-        s3_key = f"gis/pgl/{filename}"
+        s3_key = f"il_npa/gis/pgl/{filename}"
         success = upload_to_s3(
             local_file=geojson_file,
-            bucket="data.sb.east",
+            bucket="data.sb",
             s3_key=s3_key,
         )
         if not success:
@@ -247,10 +247,10 @@ def main():
     if parcels_file:
         print(f"📁 Found file: {parcels_file.name}")
         filename = parcels_file.name
-        s3_key = f"gis/pgl/{filename}"
+        s3_key = f"il_npa/gis/pgl/{filename}"
         success = upload_to_s3(
             local_file=parcels_file,
-            bucket="data.sb.east",
+            bucket="data.sb",
             s3_key=s3_key,
         )
         if not success:
@@ -266,10 +266,10 @@ def main():
     if buildings_file:
         print(f"📁 Found file: {buildings_file.name}")
         filename = buildings_file.name
-        s3_key = f"gis/pgl/{filename}"
+        s3_key = f"il_npa/gis/pgl/{filename}"
         success = upload_to_s3(
             local_file=buildings_file,
-            bucket="data.sb.east",
+            bucket="data.sb",
             s3_key=s3_key,
         )
         if not success:
@@ -285,10 +285,10 @@ def main():
     if streets_file:
         print(f"📁 Found file: {streets_file.name}")
         filename = streets_file.name
-        s3_key = f"gis/pgl/{filename}"
+        s3_key = f"il_npa/gis/pgl/{filename}"
         success = upload_to_s3(
             local_file=streets_file,
-            bucket="data.sb.east",
+            bucket="data.sb",
             s3_key=s3_key,
         )
         if not success:
@@ -303,10 +303,10 @@ def main():
     blocks_file = find_city_blocks(geo_data_dir)
     if blocks_file:
         print(f"📁 Found file: {blocks_file.name}")
-        s3_key = "gis/pgl/pgp_blocks.geojson"
+        s3_key = "il_npa/gis/pgl/pgp_blocks.geojson"
         success = upload_to_s3(
             local_file=blocks_file,
-            bucket="data.sb.east",
+            bucket="data.sb",
             s3_key=s3_key,
         )
         if not success:

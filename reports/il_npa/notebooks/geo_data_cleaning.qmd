@@ -17,8 +17,38 @@ format:
 
 # BEFORE RUNNING THIS NOTEBOOK, RUN THE FOLLOWING :
 # 1. run just fetch-all-data
-# 2. clean_peoples_construction_polygons.py
-# 3. match_parcels_buildings.py
+# 2. reports/il_npa/notebooks/clean_peoples_construction_polygons.py - produced peoples_polygons_unioned.geojson
+# 3. reports/il_npa/notebooks/match_parcels_buildings.py - produced parcels_with_buildings.geojson
+
+This notebook cleans and prepares the geo data for the analysis. We need to create a single geojson file that contains census block level data for:
+ 1. Miles of pipleline to be replaced for each block. We use street miles as a proxy. Conceptually, we want to split the cost of each pipeline segment between the adjacent blocks on either side of the street.
+ 2. Counts of parcels and residential units for each block. Counts must be disaggrregated by type of parcel (residential, mixed-use, commercial, industrial) and by type of residential unit (single-family, multi-family)
+
+We need 2 working versions of the inital block level data:
+ 1 Blocks clipped to only include the area that overlaps with the Peoples Gas construction polygons.
+ 2 Blocks that overlap with the Peoples Gas construction polygons that are not clipped.
+
+Both verisons have the same data but for blocks which only partially overlap with the Peoples Gas construction polygons, the clipped version will only retain the geometry of the overlap. The un-clipped version will retain the full geometry of the block.
+
+# Parcel Data
+
+We use the Peoples Gas construction polygons to subset the complete parcel dataset down to parcels affected by PRP. Because the construction polygons are irregular, we add a small buffer (8m) to the construction polygons to ensure that we capture all parcels that are affected by the construction. Only the parcels use the buffer.
+
+From this filtered subset of parcels, we assign each parcel to unclipped blocks using one-to-one assignment (largest overlap). We then aggregate the parcel data by block to get the total number of parcels and residential units for each block.
+
+The assessor class codes only provide so much information about the type of parcel. Because our analysis is focused on fully residential blocks, we need to make some additional rules for identifying blocks that have no commercial or industrial parcels but are still not fully residential. Examples of this are blocks that are fully covered by a church, school, parks (assessor code == "EX") or railroad properties (assessor code == "RR"). Typically if a block has only one or two parcels it is not a residential block so we drop blocks with fewer than 3 parcels. If all of the parcels on a block have the RR class code, we drop the block. We mapped the results of this programmatic filtering and manually identified some additional blocks to exclude by visually comparing the results to satelite imagery. This process would need to be better refined to replicate this analysis in other areas.
+
+
+# Street Data
+We use the Chicago Street Centerlines dataset to calculate street miles as a proxy for pipeline miles to be replaced. This dataset is downloaded from the Chicago Data Portal using reports/il_npa/utils/download_chicago_streets.py.
+
+Street data is clipped to only include segments that fall within the Peoples Gas construction polygons.
+
+For each clipped block, we calculate the perimeter of the block in meters. We assign a scaling factor each block equal to the ratio of the block perimeter over the sum of the perimeters of all blocks in the construction area. We then multiply the total length of the street segments contained within the construction polygon by the scaling factor to assign the street miles to each of the blocks.
+
+Note that the exclusion of blocks described above is executed before the street data is apportioned to the blocks. If you imagine a fully residential block across the street from a large park. The cost of replacing the pipeline segement running between these 2 blocks should be fully apportioned to the residential block, since the park would not be considered for electrification.
+
+
 
 # Imports
 
@@ -42,12 +72,12 @@ POLYGON_BUFFER_M = 8  # Distance in meters to buffer construction polygons for p
 # Generate timestamp for output files
 timestamp = datetime.now().strftime('%Y%m%d')
 
-# Set paths
-data_dir = Path('../data')
+# Set paths (explicit container paths for consistent execution)
+data_dir = Path('/workspaces/reports2/reports/il_npa/data')
 geo_data_dir = data_dir / 'geo_data'
 outputs_dir = data_dir / 'outputs'
 outputs_dir.mkdir(parents=True, exist_ok=True)  # Ensure outputs directory exists
-utils_dir = Path('../utils')
+utils_dir = Path('/workspaces/reports2/reports/il_npa/utils')
 ```
 
 # Utility Functions
@@ -95,21 +125,21 @@ def read_geojson_with_s3_fallback(local_path, s3_bucket, s3_key):
         # Clean up temporary file
         os.unlink(tmp_path)
 
-        print(f"  ✅ Successfully loaded from S3")
+        print(f"  Successfully loaded from S3")
         return gdf
 
     except NoCredentialsError:
-        print(f"  ❌ Error: AWS credentials not found. Cannot read from S3.")
+        print(f"  Error: AWS credentials not found. Cannot read from S3.")
         raise
     except ClientError as e:
         error_code = e.response.get("Error", {}).get("Code", "Unknown")
         if error_code == "NoSuchKey":
-            print(f"  ❌ Error: File not found in S3: s3://{s3_bucket}/{s3_key}")
+            print(f"  Error: File not found in S3: s3://{s3_bucket}/{s3_key}")
         else:
-            print(f"  ❌ AWS Error ({error_code}): {e}")
+            print(f"  AWS Error ({error_code}): {e}")
         raise
     except Exception as e:
-        print(f"  ❌ Unexpected error reading from S3: {e}")
+        print(f"  Unexpected error reading from S3: {e}")
         raise
 
 
@@ -311,7 +341,7 @@ Load all geospatial datasets for analysis.
 ## Peoples Gas Construction Polygons
 
 ```{python}
-# Load pre-processed Peoples Gas polygons (unioned and clipped)
+# Load pre-processed Peoples Gas polygons (unioned; not clipped)
 pg_file = outputs_dir / 'peoples_polygons_unioned.geojson'
 print(f"Loading: {pg_file.name}")
 pg_polygons = gpd.read_file(pg_file)
@@ -335,11 +365,11 @@ if not validate_uniqueness(pg_polygons, 'OBJECTID', 'Peoples Gas polygons'):
 ```{python}
 # Load city blocks data (only keep needed columns to reduce memory usage)
 blocks_file = geo_data_dir / 'city_blocks' / 'pgp_blocks.geojson'
-s3_key_blocks = 'gis/pgl/pgp_blocks.geojson'
+s3_key_blocks = 'il_npa/gis/pgl/pgp_blocks.geojson'
 print(f"Loading city blocks...")
 city_blocks = read_geojson_with_s3_fallback(
     local_path=blocks_file,
-    s3_bucket='data.sb.east',
+    s3_bucket='data.sb',
     s3_key=s3_key_blocks
 )
 
@@ -360,7 +390,11 @@ validate_uniqueness(city_blocks, 'geoid10', 'city blocks')
 
 ```{python}
 # Load pre-processed parcels with units and assessor classification. See reports/il_npa/notebooks/match_parcels_buildings.py
-parcel_file = outputs_dir / 'parcels_with_units_20251125.geojson'
+# Find the most recent parcels_with_units file
+parcel_files = sorted(outputs_dir.glob('parcels_with_units_*.geojson'))
+if not parcel_files:
+    raise FileNotFoundError(f"No parcels_with_units_*.geojson files found in {outputs_dir}. Run match_parcels_buildings.py first.")
+parcel_file = parcel_files[-1]  # Get most recent
 print(f"Loading: {parcel_file.name}")
 parcels_with_units = gpd.read_file(parcel_file)
 print(f"Loaded {len(parcels_with_units):,} parcels with units and classification")
@@ -391,17 +425,17 @@ if street_files:
     street_file = street_files[-1]
     local_path = street_file
     # Extract date from filename for S3 key
-    s3_key = f'gis/pgl/{street_file.name}'
+    s3_key = f'il_npa/gis/pgl/{street_file.name}'
     print(f"Loading: {street_file.name}")
 else:
     # No local file found, try to find most recent in S3
-    print("⚠️  No local streets file found, attempting to find most recent in S3...")
+    print("No local streets file found, attempting to find most recent in S3...")
     try:
         s3_client = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-west-2"))
         # List objects with prefix
         response = s3_client.list_objects_v2(
-            Bucket="data.sb.east",
-            Prefix="gis/pgl/chicago_streets_",
+            Bucket="data.sb",
+            Prefix="il_npa/gis/pgl/chicago_streets_",
         )
         if "Contents" in response:
             # Sort by last modified, get most recent
@@ -412,7 +446,7 @@ else:
         else:
             raise FileNotFoundError("No streets files found in S3")
     except Exception as e:
-        print(f"❌ Error finding streets in S3: {e}")
+        print(f"Error finding streets in S3: {e}")
         print("No street data found. Run: just fetch-streets")
         streets = None
         s3_key = None
@@ -421,7 +455,7 @@ else:
 if street_files or (s3_key is not None and local_path is not None):
     streets = read_geojson_with_s3_fallback(
         local_path=local_path,
-        s3_bucket='data.sb.east',
+        s3_bucket='data.sb',
         s3_key=s3_key
     )
     print(f"Loaded {len(streets):,} street centerlines")
@@ -435,7 +469,7 @@ if street_files or (s3_key is not None and local_path is not None):
         print(f"  Sample bounds: {streets.total_bounds}")
         # Check if we have proper street properties
         if 'street_nam' in streets.columns:
-            print(f"  ✓ Has street properties (street_nam, etc.)")
+            print(f"  Has street properties (street_nam, etc.)")
         else:
             print(f"  WARNING: Missing street properties - may need to re-download")
             print(f"  Available columns: {list(streets.columns[:10])}")
@@ -649,13 +683,13 @@ print(f"  Unique parcels: {parcels_by_block.index.nunique():,}")
 print(f"  Unique blocks: {parcels_by_block['geoid10'].nunique():,}")
 
 # Diagnostic: Verify one-to-one relationship
-print("\n🔍 Verifying parcel-to-block relationship (one-to-one check)...")
+print("\nVerifying parcel-to-block relationship (one-to-one check)...")
 if len(parcels_by_block) == parcels_by_block.index.nunique():
     print(
-        f"  ✅ Confirmed: All {len(parcels_by_block):,} parcels assigned to exactly one block")
+        f"  Confirmed: All {len(parcels_by_block):,} parcels assigned to exactly one block")
 else:
     print(
-        f"  ⚠️  WARNING: {len(parcels_by_block):,} rows but only {parcels_by_block.index.nunique():,} unique parcels")
+        f"  WARNING: {len(parcels_by_block):,} rows but only {parcels_by_block.index.nunique():,} unique parcels")
     print(f"  This should not happen with one-to-one assignment - investigate!")
 
 # Validation: Check that all expected columns from parcels_with_units are preserved
@@ -687,7 +721,7 @@ if "building_units" in parcels_by_block.columns:
 ```{python}
 # IMPORTANT: Streets are clipped to UNBUFFERED construction polygons
 # This ensures street miles are calculated only for the actual construction area,
-# not the 5m buffer zone. The buffer is only used for identifying affected parcels.
+# not the 8m buffer zone. The buffer is only used for identifying affected parcels.
 print("\nClipping streets to construction polygon boundaries (unbuffered)...")
 print("  Validating geometries...")
 streets_valid = prepare_geometries_for_utm(streets, "street segments")
@@ -779,17 +813,6 @@ print(f"Total parcels in construction areas: {parcel_counts.sum():,}")
 print(f"Total parcels with unit data: {parcels_with_units_count.sum():,}")
 print(f"Total residential units: {unit_counts.sum():,.0f}")
 
-# Validation: Check that sum of parcel counts equals number of parcels in parcels_in_construction - visually inspected unmatched parcels and they are correctly exlcuded
-# expected_parcel_count = len(parcels_in_construction)
-# actual_parcel_count = parcel_counts.sum()
-# if expected_parcel_count != actual_parcel_count:
-#     raise ValueError(
-#         f"Parcel count validation failed: "
-#         f"Expected {expected_parcel_count:,} parcels (from parcels_in_construction), "
-#         f"but sum of parcel_counts is {actual_parcel_count:,}"
-#     )
-# print(f"  ✓ Validation passed: Parcel count sum ({actual_parcel_count:,}) matches parcels_in_construction ({expected_parcel_count:,})")
-
 # Breakdown by property type
 print(f"\nParcels by Type (across all construction areas):")
 for prop_type in ['residential', 'commercial', 'industrial', 'mixed-use', 'vacant']:
@@ -833,7 +856,7 @@ if "assessorbldgclass" in parcels_by_block.columns:
     blocks_all_rr = block_rr_check[block_rr_check["assessorbldgclass"]].index.tolist()
     print(f"  Blocks where all parcels have assessorbldgclass == 'RR': {len(blocks_all_rr):,}")
 else:
-    print("  ⚠️  WARNING: 'assessorbldgclass' column not found in parcels_by_block")
+    print("  WARNING: 'assessorbldgclass' column not found in parcels_by_block")
     print("  Available columns:", list(parcels_by_block.columns))
     blocks_all_rr = []
 
@@ -868,14 +891,12 @@ excluded_geoid10_list = (
             "170314905002003",
             "170316609003011",
             "170318350001018",
-            # "170311602003005",
-            # "170311602004001",
             "170311609002002",
             "170311610001001",
         ]
     )
 )
-print(f"\n✅ Created excluded_geoid10_list with {len(excluded_geoid10_list):,} geoid10 values")
+print(f"\nCreated excluded_geoid10_list with {len(excluded_geoid10_list):,} geoid10 values")
 
 # Display first 20 geoid10 values as a sample
 if len(excluded_geoid10_list) > 0:
@@ -1026,8 +1047,8 @@ print("All intermediate clipped datasets exported")
 
 ## Combined Summary Dataset
 At this point we have:
-- summary statistics at the unclippedblock level for parcel and residential unit counts
-- summary statistics at the clipped block level for street miles. these contain duplicate records for blocks that overlap multiple construction polygons.
+- summary statistics at the unclipped block level for parcel and residential unit counts
+- summary statistics at the clipped block level for street miles. These contain duplicate records for blocks that overlap multiple construction polygons.
 
 We need to aggregate the street miles by geoid10 to get the total street miles for each block and merge into a final dataset where each row is one block that contain counts of all parcels (within 8m of a construction polygon) and the apportioned street miles.
 
@@ -1133,7 +1154,7 @@ if expected_geoid_count != actual_geoid_count:
     )
 
 print(f"\nBlock-level summary created with {len(summary):,} unique blocks")
-print(f"  ✓ Validation passed: {actual_geoid_count:,} unique blocks match blocks_in_construction_clipped")
+print(f"  Validation passed: {actual_geoid_count:,} unique blocks match blocks_in_construction_clipped")
 
 # Show totals
 print("\nTotals Across All City Blocks:")
@@ -1150,7 +1171,7 @@ print(f"  Total residential units: {summary['total_residential_units'].sum():,}"
 
 # Export Final Dataset
 
-Export the block-level summary statistics with full block geometries to GeoJSON.
+Export the block-level summary statistics with full block geometries to GeoJSON. We will read this into reports/il_npa/notebooks/analysis.qmd to perform the analysis.
 
 ```{python}
 if summary is None:

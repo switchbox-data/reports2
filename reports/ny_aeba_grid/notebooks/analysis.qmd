@@ -29,48 +29,31 @@ source("/workspaces/reports2/lib/ggplot/switchbox_theme.R")
 
 ```{r}
 
-path_nyiso_hourly_load_csv <- "/workspaces/reports2/data/nyiso/hourly/20151025-20251026 NYISO Hourly Actual Load.csv"
-path_nyiso_hourly_load_parquet <- "/workspaces/reports2/data/nyiso/hourly/nyiso_hourly_load.parquet"
+# Read processed NYISO hourly load data from S3
+# Set up S3 filesystem with arrow
+s3_bucket <- arrow::s3_bucket(
+    bucket = "data.sb",
+    region = "us-west-2"
+)
 
-# Based on the image, the CSV's columns are: Date, Load, Zone (and probably more for time parsing)
-# Let's cleanly parse the timestamp, extract date/hour, and aggregate total load (sum) across all zones per hour
+s3_file_path <- "ny_aeba_grid/nyiso/hourly/nyiso_hourly_load.parquet"
 
-# first look for the parquet, fallback to loading and parsing CSV if not found
-if (file.exists(path_nyiso_hourly_load_parquet)) {
-    nyiso_hourly_load <- read_parquet(path_nyiso_hourly_load_parquet)
-} else {
-    nyiso_hourly_load <- read_csv(path_nyiso_hourly_load_csv)
-
-    nyiso_hourly_load <- nyiso_hourly_load |>
-        # Rename columns to lowercase for easier handling if needed
-        rename(
-            datetime = Date,
-            load = Load,
-            zone = Zone
-        ) |>
-        # ensure load is numeric
-        mutate(load = as.numeric(load)) |>
-        # Parse the datetime (given as e.g. "10/25/2015  7:00:00 PM" -- note double space between date and hour)
-        mutate(
-            datetime = lubridate::mdy_hms(
-                datetime,
-                tz = "America/New_York",
-                quiet = TRUE
-            ),
-            year = lubridate::year(datetime),
-            month = lubridate::month(datetime),
-            day = lubridate::day(datetime),
-            hour = lubridate::hour(datetime)
-        ) |>
-        select(-datetime)
-
-    # save to parquet
-    write_parquet(
-        nyiso_hourly_load,
-        "/workspaces/reports2/data/nyiso/hourly/nyiso_hourly_load.parquet"
-    )
-}
-
+nyiso_hourly_load <- tryCatch(
+    {
+        arrow::read_parquet(s3_bucket$path(s3_file_path))
+    },
+    error = function(e) {
+        cat("\n")
+        cat("ERROR: Could not read processed NYISO hourly load data from S3.\n")
+        cat("Bucket: data.sb\n")
+        cat("Path:", s3_file_path, "\n")
+        cat("Error details:", conditionMessage(e), "\n\n")
+        cat("The processed parquet file may not exist yet, or there may be an AWS credentials issue.\n")
+        cat("Please run the data processing script first:\n")
+        cat("  Rscript reports/ny_aeba_grid/utils/make_hourly_nyiso_load.R\n\n")
+        stop("Missing required data file on S3", call. = FALSE)
+    }
+)
 
 # add a "NY_STATE" zone, which is the sum of all zones
 nyiso_monthly_peak_load <- nyiso_hourly_load |>

@@ -8,6 +8,8 @@ the Excel Model sheet formulas.
 
 from __future__ import annotations
 
+import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -1077,10 +1079,246 @@ def run_model() -> pl.DataFrame:
     return compute_savings()
 
 
+def _build_summary_table(full: pl.DataFrame) -> pl.DataFrame:
+    """Build a summary table matching the Excel Model sheet output layout.
+
+    Takes the output of compute_weighted_averages() and returns a DataFrame
+    with one row per metric and one column per scenario (NatGas Z4, NatGas Z5,
+    NatGas Z6, Propane Z4, Propane Z5, Propane Z6), plus weighted averages
+    at the bottom.
+    """
+
+    # Separate scenario rows (6) from aggregate rows
+    scenarios = full.filter(pl.col("key").is_null())
+    aggregates = full.filter(pl.col("key").is_not_null())
+
+    # Build scenario column labels: "NatGas Z4", "Propane Z6", etc.
+    scenarios = scenarios.with_columns(
+        pl.when(pl.col("fuel") == "natural_gas")
+        .then(pl.lit("NatGas Z") + pl.col("zone"))
+        .otherwise(pl.lit("Propane Z") + pl.col("zone"))
+        .alias("scenario"),
+    )
+
+    # Define the metrics to display — these match the Excel output section.
+    # Each tuple: (display_label, column_name)
+    metric_rows: list[tuple[str, str]] = [
+        # Baseline section (Excel rows 59-96)
+        ("Furnace equipment cost", "furnace_equipment_cost"),
+        ("Gas tank cost", "gas_tank_cost"),
+        ("Furnace installed cost", "furnace_installed_cost"),
+        ("Furnace yearly operating", "furnace_yearly_operating_cost"),
+        ("AC equipment cost", "ac_equipment_cost"),
+        ("AC yearly operating", "ac_yearly_operating_cost"),
+        ("Gas water heater equipment", "gwh_equipment_cost"),
+        ("GWH yearly operating", "gwh_yearly_operating_cost"),
+        ("Service line cost", "service_line_cost"),
+        ("Baseline equipment total", "baseline_equipment_total"),
+        ("Baseline equip + service line", "baseline_equipment_with_service_line"),
+        ("Baseline yearly operating", "baseline_yearly_operating"),
+        # Heat pump section (Excel rows 100-123)
+        ("ccASHP equipment cost", "ccashp_equipment_cost"),
+        ("ccASHP net cost", "ccashp_net_cost"),
+        ("ccASHP yearly operating", "ccashp_yearly_operating_cost"),
+        ("HPWH device cost", "hpwh_device_cost"),
+        ("HPWH rebate", "hpwh_rebate"),
+        ("HPWH net cost", "hpwh_net_cost"),
+        ("HPWH yearly operating", "hpwh_yearly_operating_cost"),
+        ("HP equipment total", "hp_equipment_total"),
+        ("HP yearly operating total", "hp_yearly_operating_total"),
+        # Savings section (Excel rows 127-134)
+        ("Construction savings (w/ svc line)", "construction_savings_with_service_line"),
+        ("Mortgage savings (w/ svc line)", "mortgage_savings_with_service_line"),
+        ("Operating savings", "operating_savings"),
+        ("Total yearly savings (w/ svc line)", "total_yearly_savings_with_service_line"),
+        ("15-yr present value", "present_value_15yr"),
+    ]
+
+    # Desired scenario order for columns
+    scenario_order = [
+        "NatGas Z4",
+        "NatGas Z5",
+        "NatGas Z6",
+        "Propane Z4",
+        "Propane Z5",
+        "Propane Z6",
+    ]
+
+    # Pivot: one row per metric, one column per scenario
+    summary_rows: list[dict[str, Any]] = []
+    for label, col_name in metric_rows:
+        row: dict[str, Any] = {"Metric": label}
+        for scenario_name in scenario_order:
+            val = scenarios.filter(pl.col("scenario") == scenario_name)[col_name][0]
+            row[scenario_name] = val
+        summary_rows.append(row)
+
+    # Add a separator row before weighted averages
+    separator: dict[str, Any] = {"Metric": "--- Weighted Averages ---"}
+    for s in scenario_order:
+        separator[s] = None
+    summary_rows.append(separator)
+
+    # Weighted statewide savings by fuel (one value per fuel, show in first zone col)
+    for fuel_key, display_name in [
+        ("natural_gas", "Wtd statewide savings (NatGas)"),
+        ("propane", "Wtd statewide savings (Propane)"),
+    ]:
+        fuel_row = aggregates.filter(pl.col("key") == fuel_key)
+        val = fuel_row["weighted_statewide_savings_by_fuel"][0]
+        row = {"Metric": display_name}
+        for s in scenario_order:
+            row[s] = None
+        # Place the value in the first column of the corresponding fuel group
+        first_col = "NatGas Z4" if fuel_key == "natural_gas" else "Propane Z4"
+        row[first_col] = val
+        summary_rows.append(row)
+
+    # Weighted zonewide savings (one value per zone)
+    for zone in ["4", "5", "6"]:
+        zone_row = aggregates.filter(pl.col("key") == zone)
+        val = zone_row["weighted_zonewide_savings"][0]
+        row = {"Metric": f"Wtd zonewide savings (Z{zone})"}
+        for s in scenario_order:
+            row[s] = None
+        row[f"NatGas Z{zone}"] = val
+        summary_rows.append(row)
+
+    # Overall weighted statewide savings and PV
+    overall_row = aggregates.filter(pl.col("key") == "overall")
+    for col_name, display_name in [
+        ("weighted_statewide_savings", "Wtd statewide yearly savings"),
+        ("weighted_statewide_pv", "Wtd statewide 15-yr PV"),
+    ]:
+        val = overall_row[col_name][0]
+        row = {"Metric": display_name}
+        for s in scenario_order:
+            row[s] = None
+        row["NatGas Z4"] = val
+        summary_rows.append(row)
+
+    return pl.DataFrame(summary_rows)
+
+
+def _format_summary_for_display(summary: pl.DataFrame) -> str:
+    """Format the summary table as a readable string for terminal output.
+
+    Dollar values are formatted with $ prefix and 2 decimal places.
+    The table is formatted to fit within ~120 characters.
+    """
+    lines: list[str] = []
+    scenario_cols = [c for c in summary.columns if c != "Metric"]
+
+    # Header
+    metric_width = 36
+    col_width = 13
+    header = "Metric".ljust(metric_width) + "".join(c.rjust(col_width) for c in scenario_cols)
+    lines.append(header)
+    lines.append("-" * len(header))
+
+    # Rows
+    for i in range(summary.height):
+        metric = summary["Metric"][i]
+
+        # Separator row
+        if metric is not None and metric.startswith("---"):
+            lines.append("")
+            lines.append(metric)
+            lines.append("-" * len(header))
+            continue
+
+        vals: list[str] = []
+        for col in scenario_cols:
+            v = summary[col][i]
+            if v is None:
+                vals.append("".rjust(col_width))
+            else:
+                vals.append(f"${v:,.2f}".rjust(col_width))
+
+        label = (metric or "").ljust(metric_width)
+        lines.append(label + "".join(vals))
+
+    return "\n".join(lines)
+
+
+def _get_git_commit_hash() -> str:
+    """Return the short git commit hash, or 'unknown' if not in a git repo."""
+    result = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"],
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).parent,
+    )
+    if result.returncode == 0:
+        return result.stdout.strip()
+    return "unknown"
+
+
+def _save_outputs(
+    full: pl.DataFrame,
+    summary: pl.DataFrame,
+    output_dir: Path,
+) -> tuple[Path, Path]:
+    """Save full and summary tables to CSV with git metadata headers.
+
+    Returns the paths to the two saved files.
+    """
+    output_dir.mkdir(exist_ok=True)
+
+    commit_hash = _get_git_commit_hash()
+    now = datetime.now(tz=UTC)
+    date_label = now.strftime("%Y-%m-%d")
+    timestamp_file = now.strftime("%Y%m%d_%H%M%S")
+
+    metadata_header = f"# git commit: {commit_hash} ({date_label})\n"
+
+    full_path = output_dir / f"{timestamp_file}_full.csv"
+    summary_path = output_dir / f"{timestamp_file}_summary.csv"
+
+    # Write full table
+    csv_bytes = full.write_csv()
+    with open(full_path, "w") as f:
+        f.write(metadata_header)
+        f.write(csv_bytes)
+
+    # Write summary table
+    csv_bytes = summary.write_csv()
+    with open(summary_path, "w") as f:
+        f.write(metadata_header)
+        f.write(csv_bytes)
+
+    return full_path, summary_path
+
+
 def main() -> None:
-    """Entry point: calls run_model(), prints results."""
-    result = run_model()
-    print(result)
+    """Run the model, print a summary table, and save outputs to CSV."""
+    # Run the full model once; extract the 6 scenario rows for the full CSV
+    weighted = compute_weighted_averages()
+    # Drop columns that only exist for weighted-average aggregation
+    _agg_cols = [
+        "key",
+        "survey_count",
+        "total_ff_survey_responses",
+        "pct_ff_using_fuel",
+        "pct_new_construction_in_zone",
+        "pct_new_construction_fuel_zone",
+        "weighted_statewide_savings_by_fuel",
+        "weighted_zonewide_savings",
+        "weighted_statewide_savings",
+        "weighted_statewide_pv",
+    ]
+    full_results = weighted.filter(pl.col("key").is_null()).drop(_agg_cols)
+
+    # Build and display the summary table
+    summary = _build_summary_table(weighted)
+    print(_format_summary_for_display(summary))
+
+    # Save both tables to output/
+    output_dir = Path(__file__).parent / "output"
+    full_path, summary_path = _save_outputs(full_results, summary, output_dir)
+    print()
+    print(f"Full results saved to:    {full_path}")
+    print(f"Summary results saved to: {summary_path}")
 
 
 if __name__ == "__main__":

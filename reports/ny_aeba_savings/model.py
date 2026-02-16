@@ -8,6 +8,8 @@ the Excel Model sheet formulas.
 
 from __future__ import annotations
 
+import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -1077,10 +1079,180 @@ def run_model() -> pl.DataFrame:
     return compute_savings()
 
 
+def _unit_suffix(unit: str) -> str:
+    """Map unit tokens to column-name suffixes."""
+    return {"$": "dollars", "$/yr": "dollars_per_year", "$_PV": "dollars_pv"}[unit]
+
+
+def build_tidy_results(savings: pl.DataFrame) -> pl.DataFrame:
+    """Reshape model results into a wide-row DataFrame (12 rows x 23 cols).
+
+    Each row is one scenario (baseline_tech x hp_tech x geography).  Columns
+    encode the side, measure, and unit in their names so every metric for a
+    scenario is visible in a single row::
+
+        baseline_tech | hp_tech | geography | baseline-equipment_cost-dollars | …
+
+    Weighting is implicit in the identifier columns:
+
+    * **baseline_tech** ``natural_gas_furnace`` / ``propane_furnace`` = single
+      fuel; ``all_fossil_fuels`` = weighted across fuels (by heating-survey share).
+    * **geography** ``Zone 4/5/6`` = single zone; ``Statewide`` = weighted
+      across zones (by new-construction share).
+
+    Positive deltas mean the heat pump is cheaper / saves money.
+    """
+    # -- Measure definitions ---------------------------------------------------
+    # (measure_name, baseline_source_col, hp_source_col, unit)
+    paired: list[tuple[str, str, str, str]] = [
+        ("equipment_cost", "baseline_equipment_total", "hp_equipment_total", "$"),
+        ("equipment_cost_incl_service_line", "baseline_equipment_with_service_line", "hp_equipment_total", "$"),
+        ("yearly_operating", "baseline_yearly_operating", "hp_yearly_operating_total", "$/yr"),
+        ("yearly_mortgage", "_bl_mortgage", "_hp_mortgage", "$/yr"),
+        ("yearly_mortgage_incl_service_line", "_bl_mortgage_sl", "_hp_mortgage", "$/yr"),
+    ]
+    # (measure_name, source_col, unit) — ordered so headline numbers come first
+    delta_only: list[tuple[str, str, str]] = [
+        ("yearly_total_savings", "total_yearly_savings_with_service_line", "$/yr"),
+        ("present_value_15yr", "present_value_15yr", "$_PV"),
+        ("construction_savings", "construction_savings_with_service_line", "$"),
+        ("yearly_mortgage_savings", "mortgage_savings_with_service_line", "$/yr"),
+        ("yearly_operating_savings", "operating_savings", "$/yr"),
+    ]
+
+    # -- Enrich with mortgage payment columns ----------------------------------
+    rate = savings["mortgage_rate"][0]
+    n = savings["mortgage_term_years"][0]
+    pmt_factor = rate / (1 - (1 + rate) ** (-n))
+
+    enriched = savings.with_columns(
+        (pl.col("baseline_equipment_total") * pmt_factor).alias("_bl_mortgage"),
+        (pl.col("baseline_equipment_with_service_line") * pmt_factor).alias("_bl_mortgage_sl"),
+        (pl.col("hp_equipment_total") * pmt_factor).alias("_hp_mortgage"),
+    )
+
+    # -- Join weights ----------------------------------------------------------
+    survey_weights = _compute_survey_weights()
+    zone_shares = _compute_zone_new_construction_shares()
+    w = enriched.join(survey_weights, on=["fuel", "zone"]).join(zone_shares, on="zone")
+    w = w.with_columns(
+        (pl.col("pct_ff_using_fuel") * pl.col("pct_new_construction_in_zone")).alias("_w_overall"),
+    )
+
+    # Collect every value column that appears in the output
+    val_cols: list[str] = []
+    for _, bl, hp, _ in paired:
+        val_cols.extend([bl, hp])
+    for _, col, _ in delta_only:
+        val_cols.append(col)
+    val_cols = list(dict.fromkeys(val_cols))  # dedupe, preserve order
+
+    # -- Helpers ---------------------------------------------------------------
+    def _wmean(df: pl.DataFrame, weight_col: str) -> dict[str, float]:
+        total = df[weight_col].sum()
+        return {c: float((df[c] * df[weight_col]).sum() / total) for c in val_cols}
+
+    def _make_row(
+        bt: str,
+        ht: str,
+        geo: str,
+        src: dict[str, float] | pl.DataFrame,
+        idx: int | None = None,
+    ) -> dict[str, Any]:
+        row: dict[str, Any] = {"baseline_tech": bt, "hp_tech": ht, "geography": geo}
+        # Delta-only (headline) measures first
+        for name, col, unit in delta_only:
+            sfx = _unit_suffix(unit)
+            val = src[col] if isinstance(src, dict) else float(src[col][idx])
+            row[f"delta-{name}-{sfx}"] = round(val, 2)
+        # Then paired cost breakdowns (baseline / hp / delta)
+        for name, bl_col, hp_col, unit in paired:
+            sfx = _unit_suffix(unit)
+            bl = src[bl_col] if isinstance(src, dict) else float(src[bl_col][idx])
+            hp = src[hp_col] if isinstance(src, dict) else float(src[hp_col][idx])
+            row[f"baseline-{name}-{sfx}"] = round(bl, 2)
+            row[f"hp-{name}-{sfx}"] = round(hp, 2)
+            row[f"delta-{name}-{sfx}"] = round(bl - hp, 2)
+        return row
+
+    # -- Build rows ------------------------------------------------------------
+    rows: list[dict[str, Any]] = []
+
+    # 6 individual scenario rows (fuel x zone)
+    for i in range(w.height):
+        fuel = w["fuel"][i]
+        zone = w["zone"][i]
+        rows.append(_make_row(f"{fuel}_furnace", "ccASHP", f"Zone {zone}", w, i))
+
+    # 2 statewide-by-fuel rows (weighted across zones)
+    for fuel in ["natural_gas", "propane"]:
+        agg = _wmean(w.filter(pl.col("fuel") == fuel), "pct_new_construction_in_zone")
+        rows.append(_make_row(f"{fuel}_furnace", "ccASHP", "Statewide", agg))
+
+    # 3 zone-wide rows (weighted across fuels)
+    for zone in ["4", "5", "6"]:
+        agg = _wmean(w.filter(pl.col("zone") == zone), "pct_ff_using_fuel")
+        rows.append(_make_row("all_fossil_fuels", "ccASHP", f"Zone {zone}", agg))
+
+    # 1 overall statewide row
+    rows.append(_make_row("all_fossil_fuels", "ccASHP", "Statewide", _wmean(w, "_w_overall")))
+
+    return pl.DataFrame(rows)
+
+
+def _get_git_commit_hash() -> str:
+    """Return the short git commit hash, or 'unknown' if not in a git repo."""
+    result = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"],
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).parent,
+    )
+    if result.returncode == 0:
+        return result.stdout.strip()
+    return "unknown"
+
+
+def _save_tidy_results(tidy: pl.DataFrame, output_dir: Path) -> Path:
+    """Save tidy results to a timestamped CSV with a git metadata header.
+
+    Returns the path to the saved file.
+    """
+    output_dir.mkdir(exist_ok=True)
+
+    commit_hash = _get_git_commit_hash()
+    now = datetime.now(tz=UTC)
+    date_label = now.strftime("%Y-%m-%d")
+    timestamp_file = now.strftime("%Y%m%d_%H%M%S")
+
+    metadata_header = f"# git commit: {commit_hash} ({date_label})\n"
+
+    out_path = output_dir / f"{timestamp_file}_results.csv"
+    csv_bytes = tidy.write_csv()
+    with open(out_path, "w") as f:
+        f.write(metadata_header)
+        f.write(csv_bytes)
+
+    return out_path
+
+
 def main() -> None:
-    """Entry point: calls run_model(), prints results."""
-    result = run_model()
-    print(result)
+    """Run the model, print tidy results, and save to CSV."""
+    tidy = build_tidy_results(compute_savings())
+
+    with pl.Config(
+        tbl_rows=-1,
+        tbl_cols=-1,
+        fmt_str_lengths=40,
+        fmt_float="full",
+    ):
+        print(tidy)
+
+    # Save to output/
+    output_dir = Path(__file__).parent / "output"
+    out_path = _save_tidy_results(tidy, output_dir)
+    print()
+    print(f"Results saved to: {out_path}")
 
 
 if __name__ == "__main__":

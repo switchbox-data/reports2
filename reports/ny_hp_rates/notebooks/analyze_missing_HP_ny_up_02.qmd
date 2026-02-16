@@ -19,8 +19,30 @@ state = "NY"
 STORAGE_OPTIONS = {"aws_region": "us-west-2"}
 metadata_path = S3Path(f"{sb_path}/nrel/resstock/{release}/metadata/state={state}/upgrade={upgrade_id}/metadata-sb.parquet")
 
-metadata = pl.scan_parquet(str(metadata_path), storage_options=STORAGE_OPTIONS)
+# Exclude the cases where the customers had other fuel type or no heating to begin with.
+exclude_other_heating_fuel = False
 
+metadata = pl.scan_parquet(str(metadata_path), storage_options=STORAGE_OPTIONS)
+if exclude_other_heating_fuel:
+    col_hvac = pl.col("in.hvac_heating_type_and_fuel")
+    excluded_bldg_ids = (
+        metadata.filter(
+            col_hvac.is_null()
+            | col_hvac.str.contains("Other fuel", literal=True)
+            | (col_hvac == "None")
+        )
+        .select(pl.col("bldg_id"))
+        .collect()
+        .to_series()
+        .to_list()
+    )
+    metadata = metadata.filter(
+        col_hvac.is_not_null()
+        & ~col_hvac.str.contains("Other fuel", literal=True)
+        & (col_hvac != "None")
+    )
+else:
+    excluded_bldg_ids = []
 
 ```
 
@@ -33,12 +55,19 @@ print(f"No HP customers: {no_hp_customers_count}")
 print(f"Percentage of customers with no HP: {no_hp_customers_count / total_customers_count * 100:.2f}%")
 ```
 
+
+
 ### Count total number of customers without HP by utility
 ```{python}
 utility_assignment_path = S3Path(f"{sb_path}/nrel/resstock/{release}/metadata_utility/state={state}/utility_assignment.parquet")
 utility_assignment = pl.scan_parquet(
     str(utility_assignment_path), storage_options=STORAGE_OPTIONS
 ).select(["bldg_id", "sb.electric_utility", "sb.gas_utility"])
+
+if excluded_bldg_ids:
+    utility_assignment = utility_assignment.filter(
+        ~pl.col("bldg_id").is_in(excluded_bldg_ids)
+    )
 
 # Ensure row counts match
 n_metadata = metadata.select(pl.len()).collect().row(0)[0]
@@ -57,6 +86,29 @@ if n_joined != n_metadata:
         f"Non-matching bldg_id's: inner join produced {n_joined} rows "
         f"but metadata has {n_metadata} rows (expected equal)."
     )
+
+# Display names from assign_utility_ny CONFIGS (std_name -> state_name)
+UTILITY_DISPLAY_NAME = {
+    "bath": "Bath Electric Gas and Water",
+    "cenhud": "Central Hudson Gas and Electric",
+    "chautauqua": "Chautauqua Utilities, Inc.",
+    "coned": "Consolidated Edison",
+    "corning": "Corning Natural Gas",
+    "fillmore": "Fillmore Gas Company",
+    "kedny": "National Grid - NYC",
+    "kedli": "National Grid - Long Island",
+    "nimo": "National Grid",
+    "none": "None",
+    "nfg": "National Fuel Gas Distribution",
+    "nyseg": "NYS Electric and Gas",
+    "or": "Orange and Rockland Utilities",
+    "psegli": "Long Island Power Authority",
+    "reserve": "Reserve Gas Company",
+    "rge": "Rochester Gas and Electric",
+    "stlaw": "St. Lawrence Gas",
+    "valley": "Valley Energy",
+    "woodhull": "Woodhull Municipal Gas Company",
+}
 ```
 
 ## By Electric Utility
@@ -70,11 +122,14 @@ by_electric = (
     .with_columns((pl.col("no_hp") / pl.col("total") * 100).alias("pct_no_hp"))
     .collect()
 )
+total_buildings_electric = by_electric["total"].sum()
 print("Missing HP by Electric Utility:")
 for row in by_electric.iter_rows(named=True):
+    name = UTILITY_DISPLAY_NAME.get(row["sb.electric_utility"], row["sb.electric_utility"])
+    pct_of_total = row["total"] / total_buildings_electric * 100
     print(
-        f"{row['sb.electric_utility']}: total={row['total']}, no HP={row['no_hp']}, "
-        f"{row['pct_no_hp']:.2f}%"
+        f"{name}: total={row['total']} ({pct_of_total:.1f}% of total buildings), "
+        f"no HP={row['no_hp']}, {row['pct_no_hp']:.2f}%"
     )
 ```
 
@@ -89,11 +144,14 @@ by_gas = (
     .with_columns((pl.col("no_hp") / pl.col("total") * 100).alias("pct_no_hp"))
     .collect()
 )
+total_buildings_gas = by_gas["total"].sum()
 print("Missing HP by Gas Utility:")
 for row in by_gas.iter_rows(named=True):
+    name = UTILITY_DISPLAY_NAME.get(row["sb.gas_utility"], row["sb.gas_utility"])
+    pct_of_total = row["total"] / total_buildings_gas * 100
     print(
-        f"{row['sb.gas_utility']}: total={row['total']}, no HP={row['no_hp']}, "
-        f"{row['pct_no_hp']:.2f}%"
+        f"{name}: total={row['total']} ({pct_of_total:.1f}% of total buildings), "
+        f"no HP={row['no_hp']}, {row['pct_no_hp']:.2f}%"
     )
 ```
 

@@ -1456,8 +1456,118 @@ class TestRunModel:
 
 
 # =========================================================================
-# Placeholder helpers — these will call the actual model once implemented.
-# For now they define the interface that model.py must satisfy.
+# 10. End-to-end integration test with ALL perturbations applied at once
+# =========================================================================
+
+# Combine one perturbation from each computation stage so that every link
+# in the pipeline is exercised with non-default values simultaneously.
+_ALL_PERTURBATIONS: dict[str, Any] = {
+    # Stage 2 - building geometry: floor area 2363 -> 2000
+    **{f"Model!{c}10": 2000 for c in COLUMNS},
+    # Stage 3 - heat loss rates: ACH50 Zone 5 from 3.0 -> 4.0
+    "Model!F32": 4.0,
+    "Model!I32": 4.0,
+    # Stage 4 - yearly BTU: HDD Zone 5 from 6300 -> 7000
+    "Model!F43": 7000,
+    "Model!I43": 7000,
+    # Stage 6 - baseline costs: furnace AFUE 0.95 -> 0.92
+    **{f"Model!{c}63": 0.92 for c in COLUMNS},
+    # Stage 6 - baseline costs: natural gas price +20%
+    "Model!E6": 15.2921875 * 1.2,
+    "Model!F6": 15.2921875 * 1.2,
+    "Model!G6": 15.2921875 * 1.2,
+    # Stage 7 - heat pump costs: ccASHP HSPF2 10 -> 9
+    **{f"Model!{c}105": 9 for c in COLUMNS},
+    # Stage 8 - savings: mortgage rate 6.38% -> 7.5%
+    **{f"Model!{c}126": 0.075 for c in COLUMNS},
+}
+
+
+class TestEndToEndPerturbed:
+    """Integration test: perturb ALL stages at once, check final savings.
+
+    Each unit test class perturbs one input at a time. This test applies
+    every perturbation simultaneously so that errors in how intermediate
+    values compose (e.g., a perturbed floor area feeding into heat loss
+    feeding into yearly BTU feeding into sizing feeding into costs) are
+    caught even if each stage passes individually.
+    """
+
+    def test_total_yearly_savings_with_service_line(self, recalculate):
+        """Row 133: total yearly savings (with service line), all perturbations."""
+        wb = recalculate(_ALL_PERTURBATIONS)
+        excel_vals = _read_row(wb, 133)
+        model_result = compute_savings(_build_scenarios(_ALL_PERTURBATIONS))
+
+        for i, (fuel, zone) in enumerate(SCENARIOS):
+            model_val = _get_scenario_value(model_result, fuel, zone, "total_yearly_savings_with_service_line")
+            assert model_val == pytest.approx(excel_vals[i], rel=REL_TOL), (
+                f"total_savings_sl [{fuel} Z{zone}]: model={model_val}, excel={excel_vals[i]}"
+            )
+
+    def test_present_value_15yr(self, recalculate):
+        """Row 134: 15-year present value, all perturbations."""
+        wb = recalculate(_ALL_PERTURBATIONS)
+        excel_vals = _read_row(wb, 134)
+        model_result = compute_savings(_build_scenarios(_ALL_PERTURBATIONS))
+
+        for i, (fuel, zone) in enumerate(SCENARIOS):
+            model_val = _get_scenario_value(model_result, fuel, zone, "present_value_15yr")
+            assert model_val == pytest.approx(excel_vals[i], rel=REL_TOL), (
+                f"pv_15yr [{fuel} Z{zone}]: model={model_val}, excel={excel_vals[i]}"
+            )
+
+    def test_baseline_yearly_operating(self, recalculate):
+        """Row 96: baseline operating cost, all perturbations."""
+        wb = recalculate(_ALL_PERTURBATIONS)
+        excel_vals = _read_row(wb, 96)
+        model_result = compute_savings(_build_scenarios(_ALL_PERTURBATIONS))
+
+        for i, (fuel, zone) in enumerate(SCENARIOS):
+            model_val = _get_scenario_value(model_result, fuel, zone, "baseline_yearly_operating")
+            assert model_val == pytest.approx(excel_vals[i], rel=REL_TOL), (
+                f"baseline_op [{fuel} Z{zone}]: model={model_val}, excel={excel_vals[i]}"
+            )
+
+    def test_hp_yearly_operating_total(self, recalculate):
+        """Row 123: heat pump operating cost, all perturbations."""
+        wb = recalculate(_ALL_PERTURBATIONS)
+        excel_vals = _read_row(wb, 123)
+        model_result = compute_savings(_build_scenarios(_ALL_PERTURBATIONS))
+
+        for i, (fuel, zone) in enumerate(SCENARIOS):
+            model_val = _get_scenario_value(model_result, fuel, zone, "hp_yearly_operating_total")
+            assert model_val == pytest.approx(excel_vals[i], rel=REL_TOL), (
+                f"hp_op [{fuel} Z{zone}]: model={model_val}, excel={excel_vals[i]}"
+            )
+
+    def test_construction_savings_with_service_line(self, recalculate):
+        """Row 128: construction savings with service line, all perturbations."""
+        wb = recalculate(_ALL_PERTURBATIONS)
+        excel_vals = _read_row(wb, 128)
+        model_result = compute_savings(_build_scenarios(_ALL_PERTURBATIONS))
+
+        for i, (fuel, zone) in enumerate(SCENARIOS):
+            model_val = _get_scenario_value(model_result, fuel, zone, "construction_savings_with_service_line")
+            assert model_val == pytest.approx(excel_vals[i], rel=REL_TOL), (
+                f"constr_savings_sl [{fuel} Z{zone}]: model={model_val}, excel={excel_vals[i]}"
+            )
+
+    def test_mortgage_savings_with_service_line(self, recalculate):
+        """Row 130: mortgage savings with service line, all perturbations."""
+        wb = recalculate(_ALL_PERTURBATIONS)
+        excel_vals = _read_row(wb, 130)
+        model_result = compute_savings(_build_scenarios(_ALL_PERTURBATIONS))
+
+        for i, (fuel, zone) in enumerate(SCENARIOS):
+            model_val = _get_scenario_value(model_result, fuel, zone, "mortgage_savings_with_service_line")
+            assert model_val == pytest.approx(excel_vals[i], rel=REL_TOL), (
+                f"mortgage_savings_sl [{fuel} Z{zone}]: model={model_val}, excel={excel_vals[i]}"
+            )
+
+
+# =========================================================================
+# Adapter helpers — translate between Excel cell references and model API.
 # =========================================================================
 
 

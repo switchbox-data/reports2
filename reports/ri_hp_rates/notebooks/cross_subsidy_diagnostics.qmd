@@ -54,6 +54,7 @@ from plotting_utils import (
     read_s3_csv,
     read_s3_json,
     summarize_cross_subsidy,
+    summarize_cross_subsidy_by_heating_type,
     summarize_positive_distribution_hours,
 )
 
@@ -134,11 +135,15 @@ for run_label, run_path in run_dirs.items():
     run_cross_components = build_cross_components(run_cross_summary)
     run_cross_components["run_label"] = run_label
 
+    run_ht_summary = summarize_cross_subsidy_by_heating_type(cross=run_cross, metadata=run_metadata)
+    run_ht_summary["run_label"] = run_label
+
     run_payload[run_label] = {
         "metadata": run_metadata,
         "cross": run_cross,
         "cross_summary": run_cross_summary,
         "cross_components": run_cross_components,
+        "ht_summary": run_ht_summary,
     }
 
 cross_summary_all = pd.concat(
@@ -149,11 +154,16 @@ cross_components_all = pd.concat(
     [payload["cross_components"] for payload in run_payload.values()],
     ignore_index=True,
 )
+ht_summary_all = pd.concat(
+    [payload["ht_summary"] for payload in run_payload.values()],
+    ignore_index=True,
+)
 
 metadata = run_payload[ACTIVE_RUN_LABEL]["metadata"]
 cross = run_payload[ACTIVE_RUN_LABEL]["cross"]
 cross_summary = run_payload[ACTIVE_RUN_LABEL]["cross_summary"]
 cross_components = run_payload[ACTIVE_RUN_LABEL]["cross_components"]
+ht_summary = run_payload[ACTIVE_RUN_LABEL]["ht_summary"]
 
 cross_summary_all.sort_values(["run_label", "group"])
 ```
@@ -348,6 +358,47 @@ cost_plot_all = pd.concat(
     )
     + theme_minimal()
     + theme(figure_size=(9, 4), legend_position="bottom")
+)
+```
+
+## BAT Results by Heating Type
+
+```{python}
+ht_summary
+```
+
+```{python}
+ht_bat_long = ht_summary_all.melt(
+    id_vars=["group", "run_label"],
+    value_vars=["BAT_vol_weighted_avg", "BAT_peak_weighted_avg", "BAT_percustomer_weighted_avg"],
+    var_name="bat_key",
+    value_name="bat_usd_per_customer_year",
+).assign(
+    bat_label=lambda d: d["bat_key"].map(
+        {
+            "BAT_vol_weighted_avg": "Volumetric",
+            "BAT_peak_weighted_avg": "Peak",
+            "BAT_percustomer_weighted_avg": "Per-customer",
+        }
+    )
+)
+
+(
+    ggplot(
+        ht_bat_long,
+        aes(x="group", y="bat_usd_per_customer_year", fill="bat_label"),
+    )
+    + geom_col(position=position_dodge(width=0.8), width=0.7)
+    + facet_wrap("~run_label", ncol=1)
+    + coord_flip()
+    + labs(
+        title="BAT by Heating Type and Run ($/customer-year)",
+        x="Heating type",
+        y="BAT ($/customer-year)",
+        fill="Benchmark",
+    )
+    + theme_minimal()
+    + theme(figure_size=(10, 6), legend_position="bottom")
 )
 ```
 

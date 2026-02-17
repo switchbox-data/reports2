@@ -172,6 +172,18 @@ def build_bldg_id_to_load_filepath(path_resstock_loads: Path, building_ids: list
     return mapping
 
 
+_CROSS_SUBSIDY_WEIGHTED_COLS: dict[str, str] = {
+    "BAT_vol": "BAT_vol_weighted_avg",
+    "BAT_peak": "BAT_peak_weighted_avg",
+    "BAT_percustomer": "BAT_percustomer_weighted_avg",
+    "customer_level_residual_share_volumetric": "residual_vol_weighted_avg",
+    "customer_level_residual_share_peak": "residual_peak_weighted_avg",
+    "customer_level_residual_share_percustomer": "residual_percustomer_weighted_avg",
+    "Annual": "Annual_bill_weighted_avg",
+    "customer_level_economic_burden": "Economic_burden_weighted_avg",
+}
+
+
 def summarize_cross_subsidy(cross: pd.DataFrame, metadata: pd.DataFrame) -> pd.DataFrame:
     """Compute weighted cross-subsidy metrics for HP and Non-HP groups."""
     merged = cross.merge(
@@ -179,17 +191,6 @@ def summarize_cross_subsidy(cross: pd.DataFrame, metadata: pd.DataFrame) -> pd.D
         on=["bldg_id", "weight"],
         how="left",
     )
-
-    weighted_cols = {
-        "BAT_vol": "BAT_vol_weighted_avg",
-        "BAT_peak": "BAT_peak_weighted_avg",
-        "BAT_percustomer": "BAT_percustomer_weighted_avg",
-        "customer_level_residual_share_volumetric": "residual_vol_weighted_avg",
-        "customer_level_residual_share_peak": "residual_peak_weighted_avg",
-        "customer_level_residual_share_percustomer": "residual_percustomer_weighted_avg",
-        "Annual": "Annual_bill_weighted_avg",
-        "customer_level_economic_burden": "Economic_burden_weighted_avg",
-    }
 
     rows = []
     for has_hp, group in merged.groupby("postprocess_group.has_hp"):
@@ -199,24 +200,60 @@ def summarize_cross_subsidy(cross: pd.DataFrame, metadata: pd.DataFrame) -> pd.D
             "customers_weighted": weight_sum,
             "group": "HP" if has_hp else "Non-HP",
         }
-        for source_col, output_col in weighted_cols.items():
+        for source_col, output_col in _CROSS_SUBSIDY_WEIGHTED_COLS.items():
             row[output_col] = (group[source_col] * group["weight"]).sum() / weight_sum
         rows.append(row)
 
     return pd.DataFrame(rows)
 
 
+def summarize_cross_subsidy_by_heating_type(
+    cross: pd.DataFrame, metadata: pd.DataFrame
+) -> pd.DataFrame:
+    """Compute weighted cross-subsidy metrics grouped by ``postprocess_group.heating_type``.
+
+    Returns one row per heating type with the same weighted-average columns as
+    ``summarize_cross_subsidy``, plus a ``group`` column equal to the heating type label.
+    """
+    merged = cross.merge(
+        metadata[["bldg_id", "postprocess_group.heating_type", "weight"]],
+        on=["bldg_id", "weight"],
+        how="left",
+    )
+
+    rows = []
+    for heating_type, group in merged.groupby("postprocess_group.heating_type"):
+        weight_sum = group["weight"].sum()
+        row = {
+            "postprocess_group.heating_type": heating_type,
+            "customers_weighted": weight_sum,
+            "group": str(heating_type),
+        }
+        for source_col, output_col in _CROSS_SUBSIDY_WEIGHTED_COLS.items():
+            row[output_col] = (group[source_col] * group["weight"]).sum() / weight_sum
+        rows.append(row)
+
+    return pd.DataFrame(rows).sort_values("customers_weighted", ascending=False).reset_index(drop=True)
+
+
 def build_cost_mix(cross_summary: pd.DataFrame) -> pd.DataFrame:
-    """Build long-form marginal vs residual cost totals by customer group."""
+    """Build long-form marginal vs residual cost totals by customer group.
+
+    If ``cross_summary`` contains a ``run_label`` column it is preserved as an
+    additional id column throughout the melt operations so callers can facet by run.
+    """
     residual_labels = {
         "residual_vol_weighted_avg": "Volumetric residual",
         "residual_peak_weighted_avg": "Peak residual",
         "residual_percustomer_weighted_avg": "Per-customer residual",
     }
 
+    extra_ids = [c for c in ("run_label",) if c in cross_summary.columns]
+
     cost_mix = (
         cross_summary[
             [
+                *extra_ids,
                 "group",
                 "customers_weighted",
                 "Economic_burden_weighted_avg",
@@ -224,7 +261,7 @@ def build_cost_mix(cross_summary: pd.DataFrame) -> pd.DataFrame:
             ]
         ]
         .melt(
-            id_vars=["group", "customers_weighted", "Economic_burden_weighted_avg"],
+            id_vars=[*extra_ids, "group", "customers_weighted", "Economic_burden_weighted_avg"],
             value_vars=list(residual_labels.keys()),
             var_name="benchmark_key",
             value_name="residual_usd_per_customer_year",
@@ -234,13 +271,8 @@ def build_cost_mix(cross_summary: pd.DataFrame) -> pd.DataFrame:
             marginal_usd_per_customer_year=lambda d: d["Economic_burden_weighted_avg"],
             weighted_customers=lambda d: d["customers_weighted"],
         )
-        [[
-            "group",
-            "benchmark",
-            "weighted_customers",
-            "marginal_usd_per_customer_year",
-            "residual_usd_per_customer_year",
-        ]]
+        [[*extra_ids, "group", "benchmark", "weighted_customers",
+          "marginal_usd_per_customer_year", "residual_usd_per_customer_year"]]
     )
 
     totals = cost_mix.assign(
@@ -250,7 +282,7 @@ def build_cost_mix(cross_summary: pd.DataFrame) -> pd.DataFrame:
 
     return (
         totals.melt(
-            id_vars=["group", "benchmark"],
+            id_vars=[*extra_ids, "group", "benchmark"],
             value_vars=["marginal_total_usd_per_year", "residual_total_usd_per_year"],
             var_name="cost_source_key",
             value_name="usd_total_per_year",
@@ -264,7 +296,7 @@ def build_cost_mix(cross_summary: pd.DataFrame) -> pd.DataFrame:
             ),
             musd_total_per_year=lambda d: d["usd_total_per_year"] / 1e6,
         )
-        [["group", "benchmark", "cost_source", "musd_total_per_year"]]
+        [[*extra_ids, "group", "benchmark", "cost_source", "musd_total_per_year"]]
     )
 
 

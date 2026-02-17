@@ -129,6 +129,45 @@ def load_dist_mc_from_run(run_dir: Path | str) -> pd.Series:
     return series
 
 
+def load_cambium_from_parquet_s3(s3_uri: str, target_year: int) -> pd.DataFrame:
+    """Load Cambium marginal costs from an S3 parquet file using pl.scan_parquet.
+
+    Applies a filter on ``t == target_year`` so the call works on multi-year
+    parquets. Selects only ``timestamp_local``, ``energy_cost_enduse``, and
+    ``capacity_cost_enduse``, converts from $/MWh to $/kWh, and returns a
+    pandas DataFrame indexed by ``time`` (EST-localized) with columns:
+
+      - ``Marginal Energy Costs ($/kWh)``
+      - ``Marginal Capacity Costs ($/kWh)``
+    """
+    import polars as pl
+
+    lf = (
+        pl.scan_parquet(s3_uri)
+        .filter(pl.col("t") == target_year)
+        .select(["timestamp_local", "energy_cost_enduse", "capacity_cost_enduse"])
+        .rename(
+            {
+                "energy_cost_enduse": "Marginal Energy Costs ($/kWh)",
+                "capacity_cost_enduse": "Marginal Capacity Costs ($/kWh)",
+            }
+        )
+    )
+
+    df = lf.collect().to_pandas()
+    df["Marginal Energy Costs ($/kWh)"] /= 1000.0
+    df["Marginal Capacity Costs ($/kWh)"] /= 1000.0
+
+    df = df.rename(columns={"timestamp_local": "time"}).set_index("time")
+    df.index = pd.DatetimeIndex(df.index, name="time")
+    if df.index.tz is None:
+        df.index = df.index.tz_localize("EST")
+    else:
+        df.index = df.index.tz_convert("EST")
+
+    return df
+
+
 def force_timezone_est(df: pd.DataFrame, time_col: str = "time") -> pd.DataFrame:
     """Ensure a pandas datetime column is timezone-aware and converted to EST."""
     out = df.copy()

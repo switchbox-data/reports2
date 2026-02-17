@@ -20,6 +20,7 @@ import pandas as pd
 from plotnine import (
     aes,
     coord_flip,
+    facet_grid,
     facet_wrap,
     geom_area,
     geom_col,
@@ -167,48 +168,69 @@ ht_summary = run_payload[ACTIVE_RUN_LABEL]["ht_summary"]
 cross_summary_all.sort_values(["run_label", "group"])
 ```
 
+```{python}
+# Customer counts by group (weighted)
+cross_summary_all[["run_label", "group", "customers_weighted"]].sort_values(
+    ["run_label", "group"]
+).reset_index(drop=True)
+```
+
 ## Marginal vs Residual Cost Composition (HP vs Non-HP)
 
 ```{python}
-cost_mix_long = build_cost_mix(cross_summary_all)
+_residual_cols = {
+    "residual_vol_weighted_avg": "Volumetric",
+    "residual_peak_weighted_avg": "Peak",
+    "residual_percustomer_weighted_avg": "Per-customer",
+}
 
-# Marginal economic burden is benchmark-independent: deduplicate to one row per (run, group)
-marginal_data = (
-    cost_mix_long[cost_mix_long["cost_source"] == "Marginal (economic burden)"]
-    .drop_duplicates(subset=["run_label", "group"])
+per_customer_long = (
+    cross_summary_all
+    .melt(
+        id_vars=["run_label", "group", "Economic_burden_weighted_avg"],
+        value_vars=list(_residual_cols.keys()),
+        var_name="residual_key",
+        value_name="residual_usd_per_customer",
+    )
+    .assign(benchmark=lambda d: d["residual_key"].map(_residual_cols))
+    .melt(
+        id_vars=["run_label", "group", "benchmark"],
+        value_vars=["Economic_burden_weighted_avg", "residual_usd_per_customer"],
+        var_name="cost_source_key",
+        value_name="usd_per_customer",
+    )
+    .assign(
+        cost_source=lambda d: d["cost_source_key"].map({
+            "Economic_burden_weighted_avg": "Marginal (economic burden)",
+            "residual_usd_per_customer": "Residual allocation",
+        })
+    )
+)
+per_customer_long["cost_source"] = pd.Categorical(
+    per_customer_long["cost_source"],
+    categories=["Residual allocation", "Marginal (economic burden)"],
+    ordered=True,
 )
 
 (
-    ggplot(marginal_data, aes(x="group", y="musd_total_per_year", fill="group"))
-    + geom_col(width=0.6)
-    + facet_wrap("~run_label", ncol=2)
+    ggplot(per_customer_long, aes(x="group", y="usd_per_customer", fill="cost_source"))
+    + geom_col(position="stack", width=0.65)
+    + scale_fill_manual(
+        values={
+            "Marginal (economic burden)": "#00BFC4",
+            "Residual allocation": "#F8766D",
+        },
+        breaks=["Marginal (economic burden)", "Residual allocation"],
+    )
+    + facet_grid("run_label ~ benchmark")
     + labs(
-        title="Marginal Economic Burden by Run and Customer Group ($M/year)",
+        title="Cost Composition per Customer: Marginal vs Residual ($/customer/year)",
         x="Customer group",
-        y="$ million per year",
-        fill="Group",
+        y="$/customer/year",
+        fill="Cost source",
     )
     + theme_minimal()
-    + theme(figure_size=(8, 3), legend_position="none")
-)
-```
-
-```{python}
-# Residual allocation varies by benchmark — show all three side-by-side per group
-residual_data = cost_mix_long[cost_mix_long["cost_source"] == "Residual allocation"]
-
-(
-    ggplot(residual_data, aes(x="group", y="musd_total_per_year", fill="benchmark"))
-    + geom_col(position=position_dodge(width=0.8), width=0.7)
-    + facet_wrap("~run_label", ncol=2)
-    + labs(
-        title="Residual Allocation by Benchmark, Run, and Customer Group ($M/year)",
-        x="Customer group",
-        y="$ million per year",
-        fill="Residual benchmark",
-    )
-    + theme_minimal()
-    + theme(figure_size=(9, 4), legend_position="bottom")
+    + theme(figure_size=(10, 5), legend_position="bottom")
 )
 ```
 

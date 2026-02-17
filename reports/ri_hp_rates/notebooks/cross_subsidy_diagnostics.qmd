@@ -1,5 +1,5 @@
 ---
-title: "RI HP Cross-Subsidy Diagnostics (Direct CAIRO)"
+title: "RI HP Cross-Subsidy Diagnostics (Analysis Outputs)"
 format:
   html:
     page-layout: full
@@ -9,12 +9,11 @@ execute:
   message: false
 ---
 
-This notebook analyzes RI CAIRO run outputs directly from `/data.sb/switchbox/cairo/ri_default_test_run/`, using CAIRO APIs inside the `reports2` Python environment.
+This notebook analyzes RI CAIRO run outputs from `s3://data.sb/switchbox/cairo/ri_hp_rates/analysis_outputs/`, comparing two specified analysis-output runs and then doing detailed diagnostics on one selected run.
 
 ```{python}
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pandas as pd
@@ -50,8 +49,9 @@ from plotting_utils import (
     build_cross_components,
     build_hourly_group_loads,
     build_tariff_components,
-    choose_latest_run,
-    resolve_dist_params,
+    load_dist_mc_from_run,
+    read_s3_csv,
+    read_s3_json,
     summarize_cross_subsidy,
     summarize_positive_distribution_hours,
 )
@@ -60,7 +60,6 @@ try:
     from cairo.rates_tool.loads import _return_load
     from cairo.utils.marginal_costs.marginal_cost_calculator import (
         _load_cambium_marginal_costs,
-        add_distribution_costs,
     )
 except ModuleNotFoundError as exc:
     raise ModuleNotFoundError(
@@ -71,47 +70,95 @@ except ModuleNotFoundError as exc:
 
 pd.set_option("display.max_columns", 100)
 
-RUN_ROOT = Path("/data.sb/switchbox/cairo/ri_default_test_run")
+RUN_BASE = "s3://data.sb/switchbox/cairo/ri_hp_rates/analysis_outputs"
+
+# Both runs use the same Cambium MidCase P133 data; delivery_only_rev_req_passed in
+# run_scenario.py controls whether supply costs are included in the revenue requirement.
+_CAMBIUM_S3 = "s3://data.sb/nrel/cambium/2024/scenario=MidCase/t=2025/gea=ISONE/r=p133/data.parquet"
+
+RUN_CONFIG = {
+    "precalc_delivery": {
+        "run_id": "20260217_170234_ri_rie_run_01_precalc_delivery_up00_y2025",
+        "cambium_costs": _CAMBIUM_S3,
+        "target_year": 2025,
+        "precalc_tariff_key": "rie_a16",
+        "label_display": "Delivery (full rev-req)",
+    },
+    "precalc_delivery_supply": {
+        "run_id": "20260217_165709_ri_rie_run_02_precalc_delivery_supply_up00_y2025",
+        "cambium_costs": _CAMBIUM_S3,
+        "target_year": 2025,
+        "precalc_tariff_key": "rie_a16_supply_adj",
+        "label_display": "Delivery+supply (delivery-only rev-req)",
+    },
+}
+ACTIVE_RUN_LABEL = "precalc_delivery"
+
+# ResStock loads accessed via local S3 mount (needed for Path.glob in build_bldg_id_to_load_filepath)
 RESSTOCK_LOADS = Path(
     "/data.sb/nrel/resstock/res_2024_amy2018_2/load_curve_hourly/state=RI/upgrade=00"
 )
-CAMBIUM_COSTS = Path("/data.sb/nrel/cambium/dummy_rie_marginal_costs.csv")
 
-TARGET_YEAR = 2019
-DIST_DEFAULTS = {
-    "annual_future_distr_costs": 80.24,
-    "distr_peak_hrs": 100,
-    "nc_ratio_baseline": 1.41,
-}
-DIST_PARAM_CANDIDATES = [
-    Path("/workspaces/rate-design-platform/rate_design/ri/hp_rates/data/distribution_cost_params.json"),
-    Path.home() / "rate-design-platform/rate_design/ri/hp_rates/data/distribution_cost_params.json",
-    Path("/ebs/home/sherry_switch_box/rate-design-platform/rate_design/ri/hp_rates/data/distribution_cost_params.json"),
-]
+run_dirs = {label: f"{RUN_BASE}/{cfg['run_id']}" for label, cfg in RUN_CONFIG.items()}
 
-run_dir = choose_latest_run(RUN_ROOT)
-dist_params = resolve_dist_params(defaults=DIST_DEFAULTS, candidates=DIST_PARAM_CANDIDATES)
+if ACTIVE_RUN_LABEL not in run_dirs:
+    raise ValueError(
+        f"ACTIVE_RUN_LABEL={ACTIVE_RUN_LABEL!r} is not in configured run labels: {list(run_dirs)}"
+    )
 
-print(f"Using run: {run_dir}")
-print(f"Distribution params: {dist_params}")
+run_dir = run_dirs[ACTIVE_RUN_LABEL]
+
+print("Configured runs:")
+for run_label, run_path in run_dirs.items():
+    print(f"  - {run_label} [{RUN_CONFIG[run_label]['label_display']}]: {run_path}")
+print(f"Using detailed diagnostics run: {ACTIVE_RUN_LABEL} -> {run_dir}")
 ```
 
 ## Load Cross-Subsidy Outputs
 
 ```{python}
-metadata = pd.read_csv(run_dir / "customer_metadata.csv")
-cross = pd.read_csv(run_dir / "cross_subsidization/cross_subsidization_BAT_values.csv")
+run_payload = {}
 
-cross_summary = summarize_cross_subsidy(cross=cross, metadata=metadata)
-cross_components = build_cross_components(cross_summary)
+for run_label, run_path in run_dirs.items():
+    run_metadata = read_s3_csv(f"{run_path}/customer_metadata.csv")
+    run_cross = read_s3_csv(f"{run_path}/cross_subsidization/cross_subsidization_BAT_values.csv")
+    run_cross_summary = summarize_cross_subsidy(cross=run_cross, metadata=run_metadata)
+    run_cross_summary["run_label"] = run_label
 
-cross_summary.sort_values("group")
+    run_cross_components = build_cross_components(run_cross_summary)
+    run_cross_components["run_label"] = run_label
+
+    run_payload[run_label] = {
+        "metadata": run_metadata,
+        "cross": run_cross,
+        "cross_summary": run_cross_summary,
+        "cross_components": run_cross_components,
+    }
+
+cross_summary_all = pd.concat(
+    [payload["cross_summary"] for payload in run_payload.values()],
+    ignore_index=True,
+)
+cross_components_all = pd.concat(
+    [payload["cross_components"] for payload in run_payload.values()],
+    ignore_index=True,
+)
+
+metadata = run_payload[ACTIVE_RUN_LABEL]["metadata"]
+cross = run_payload[ACTIVE_RUN_LABEL]["cross"]
+cross_summary = run_payload[ACTIVE_RUN_LABEL]["cross_summary"]
+cross_components = run_payload[ACTIVE_RUN_LABEL]["cross_components"]
+
+cross_summary_all.sort_values(["run_label", "group"])
 ```
 
 ## Marginal vs Residual Cost Composition (HP vs Non-HP)
 
 ```{python}
-cost_mix_long = build_cost_mix(cross_summary)
+cost_mix_long = build_cost_mix(cross_summary_all)
+cost_mix_long["benchmark_run"] = (
+    cost_mix_long["benchmark"].astype(str) + " | " + cost_mix_long["run_label"].astype(str)
+)
 cost_mix_long["cost_source"] = pd.Categorical(
     cost_mix_long["cost_source"],
     categories=["Residual allocation", "Marginal (economic burden)"],
@@ -128,9 +175,9 @@ cost_mix_long["cost_source"] = pd.Categorical(
         },
         breaks=["Marginal (economic burden)", "Residual allocation"],
     )
-    + facet_wrap("~benchmark")
+    + facet_wrap("~benchmark_run")
     + labs(
-        title="Customer Cost Composition: Marginal vs Residual (Total $/year)",
+        title="Customer Cost Composition by Run: Marginal vs Residual (Total $/year)",
         x="Customer group",
         y="$ million per year",
         fill="Cost source",
@@ -143,44 +190,58 @@ cost_mix_long["cost_source"] = pd.Categorical(
 ## Build Hourly Loads and Marginal Costs with CAIRO
 
 ```{python}
+# Loads are the same for both runs (same ResStock inputs); build once using active-run metadata.
 building_ids = metadata["bldg_id"].astype(int).tolist()
 load_map = build_bldg_id_to_load_filepath(RESSTOCK_LOADS, building_ids)
 
 raw_load_elec = _return_load(
     load_type="electricity",
-    target_year=TARGET_YEAR,
+    target_year=RUN_CONFIG[ACTIVE_RUN_LABEL]["target_year"],
     load_filepath_key=load_map,
     force_tz="EST",
 )
 
 hourly_by_group = build_hourly_group_loads(raw_load_elec=raw_load_elec, metadata=metadata)
 
-dist_costs = add_distribution_costs(
-    raw_load_elec["electricity_net"],
-    annual_future_distr_costs=dist_params["annual_future_distr_costs"],
-    distr_peak_hrs=dist_params["distr_peak_hrs"],
-    nc_ratio_baseline=dist_params["nc_ratio_baseline"],
-)
+# Build per-run hourly DataFrames: each run has its own distribution MC (from the saved CSV)
+# and its own Cambium supply costs (delivery-only run uses dummy zeros; supply-adj uses real costs).
+hourly_runs: dict[str, pd.DataFrame] = {}
 
-supply_costs = _load_cambium_marginal_costs(CAMBIUM_COSTS, TARGET_YEAR)
-costs = supply_costs.join(dist_costs, how="left")
-costs["Marginal Supply Costs ($/kWh)"] = (
-    costs["Marginal Energy Costs ($/kWh)"] + costs["Marginal Capacity Costs ($/kWh)"]
-)
+for run_label, run_cfg in RUN_CONFIG.items():
+    run_path = run_dirs[run_label]
 
-hourly = hourly_by_group.join(costs, how="left").reset_index()
-hourly["mdc_positive"] = hourly["Marginal Distribution Costs ($/kWh)"] > 0
+    # Distribution: load actual CSV written by run_scenario.py into the run output dir
+    dist_costs = load_dist_mc_from_run(run_path)
 
-hours_positive = int(hourly["mdc_positive"].sum())
-hp_annual_share = hourly["hp_load_kwh"].sum() / hourly["total_load_kwh"].sum()
-hp_peakdist_share = (
-    hourly.loc[hourly["mdc_positive"], "hp_load_kwh"].sum()
-    / hourly.loc[hourly["mdc_positive"], "total_load_kwh"].sum()
-)
+    # Supply (Cambium): per-run path from RUN_CONFIG
+    supply_costs = _load_cambium_marginal_costs(run_cfg["cambium_costs"], run_cfg["target_year"])
+    supply_costs["Marginal Supply Costs ($/kWh)"] = (
+        supply_costs["Marginal Energy Costs ($/kWh)"] + supply_costs["Marginal Capacity Costs ($/kWh)"]
+    )
 
-print(f"Hours with marginal_distribution_cost > 0: {hours_positive}")
-print(f"HP annual load share: {hp_annual_share:.2%}")
-print(f"HP load share during positive distribution-cost hours: {hp_peakdist_share:.2%}")
+    costs = supply_costs.join(dist_costs, how="left")
+
+    hrly = hourly_by_group.join(costs, how="left").reset_index()
+    hrly["mdc_positive"] = hrly["Marginal Distribution Costs ($/kWh)"] > 0
+    hrly["run_label"] = run_label
+    hrly["label_display"] = run_cfg["label_display"]
+    hourly_runs[run_label] = hrly
+
+# Active-run hourly kept as `hourly` for single-run sections below
+hourly = hourly_runs[ACTIVE_RUN_LABEL]
+
+for run_label, hrly in hourly_runs.items():
+    hours_positive = int(hrly["mdc_positive"].sum())
+    hp_annual_share = hrly["hp_load_kwh"].sum() / hrly["total_load_kwh"].sum()
+    hp_peakdist_share = (
+        hrly.loc[hrly["mdc_positive"], "hp_load_kwh"].sum()
+        / hrly.loc[hrly["mdc_positive"], "total_load_kwh"].sum()
+    )
+    print(
+        f"[{run_label}] mdc > 0 hours: {hours_positive}, "
+        f"HP annual share: {hp_annual_share:.2%}, "
+        f"HP peak-dist share: {hp_peakdist_share:.2%}"
+    )
 ```
 
 ## Stacked Aggregated Load Curves (HP + Non-HP)
@@ -232,26 +293,33 @@ line_plot["group"] = line_plot["group"].map({"hp_load_kwh": "HP", "non_hp_load_k
 )
 ```
 
-## Marginal Costs: Distribution vs Supply
+## Marginal Costs: Distribution vs Supply (Both Runs)
 
 ```{python}
-cost_plot = hourly[["time", "Marginal Distribution Costs ($/kWh)", "Marginal Supply Costs ($/kWh)"]].melt(
-    id_vars=["time"],
+cost_plot_all = pd.concat(
+    [
+        hrly[["time", "label_display", "Marginal Distribution Costs ($/kWh)", "Marginal Supply Costs ($/kWh)"]]
+        for hrly in hourly_runs.values()
+    ],
+    ignore_index=True,
+).melt(
+    id_vars=["time", "label_display"],
     var_name="cost_type",
     value_name="cost",
 )
 
 (
-    ggplot(cost_plot, aes(x="time", y="cost", color="cost_type"))
+    ggplot(cost_plot_all, aes(x="time", y="cost", color="cost_type"))
     + geom_line(size=0.5)
+    + facet_wrap("~label_display", ncol=1)
     + labs(
-        title="Marginal Cost Time Series",
+        title="Marginal Cost Time Series: Delivery-only vs Total-system",
         x="Time",
         y="Marginal cost ($/kWh)",
         color="Cost type",
     )
     + theme_minimal()
-    + theme(figure_size=(12, 4), legend_position="bottom")
+    + theme(figure_size=(12, 7), legend_position="bottom")
 )
 ```
 
@@ -260,13 +328,14 @@ cost_plot = hourly[["time", "Marginal Distribution Costs ($/kWh)", "Marginal Sup
 ```{python}
 (
     ggplot(
-        cross_components,
+        cross_components_all,
         aes(x="component_label", y="component_transfer_total_musd_per_year", fill="group"),
     )
     + geom_col(position=position_dodge(width=0.8), width=0.7)
+    + facet_wrap("~run_label")
     + coord_flip()
     + labs(
-        title="Cross-Subsidy BAT Components (Total Transfer, $M/year)",
+        title="Cross-Subsidy BAT Components by Run (Total Transfer, $M/year)",
         x="Benchmark component",
         y="Transfer ($ million per year)",
         fill="Group",
@@ -305,10 +374,10 @@ positive_hours_summary
 ## Tariff Components and Residual Allocation Drivers
 
 ```{python}
-with open(run_dir / "tariff_final_config.json") as f:
-    tariff_cfg = json.load(f)
+tariff_cfg = read_s3_json(f"{run_dir}/tariff_final_config.json")
 
-tariff = tariff_cfg["rie_a16"]
+active_tariff_key = RUN_CONFIG[ACTIVE_RUN_LABEL]["precalc_tariff_key"]
+tariff = tariff_cfg[active_tariff_key]
 fixed_monthly = float(tariff["ur_monthly_fixed_charge"])
 vol_rate = float(tariff["ur_ec_tou_mat"][0][4])
 
@@ -360,6 +429,6 @@ tariff_components_plot["component"] = tariff_components_plot["component"].map(
 
 1. Compare each group's share of annual load vs share of load in `marginal_distribution_cost > 0` hours.
 2. Compare tariff collection mechanics (flat customer + flat volumetric) against benchmark residual allocation policies (volumetric, peak, per-customer).
-3. Confirm whether supply marginal costs are active; if they are zero, distribution/peak logic dominates residual allocation.
-4. Re-run with alternative `distribution_cost_params.json` values (`distr_peak_hrs`, `nc_ratio_baseline`) to test sensitivity of peak BAT.
-5. Re-run with non-dummy Cambium costs to test how non-zero supply/capacity costs shift BAT components.
+3. Both runs use the same Cambium P133 supply costs. The difference is `delivery_only_rev_req_passed`: run 1 (full rev-req) passes the total revenue requirement; run 2 (delivery-only rev-req) passes only the delivery portion.
+4. Both runs use the same distribution marginal costs loaded from each run's `distribution_marginal_costs.csv` output (written by `run_scenario.py`).
+5. To change `ACTIVE_RUN_LABEL` for the single-run diagnostics sections, update the variable at the top of the config cell.

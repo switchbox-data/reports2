@@ -6,6 +6,7 @@ Notebooks import it by adding the ``rate-utils`` directory to ``sys.path``.
 
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -14,6 +15,34 @@ import pandas as pd
 
 if TYPE_CHECKING:
     import polars as pl
+
+
+def _parse_s3_uri(uri: str) -> tuple[str, str]:
+    """Split an ``s3://bucket/key`` URI into ``(bucket, key)``."""
+    without_prefix = uri[len("s3://"):]
+    bucket, _, key = without_prefix.partition("/")
+    return bucket, key
+
+
+def read_s3_csv(s3_uri: str, **kwargs) -> pd.DataFrame:
+    """Read a CSV from an S3 URI using boto3 (no s3fs required).
+
+    Extra keyword arguments are forwarded to ``pd.read_csv``.
+    """
+    import boto3
+
+    bucket, key = _parse_s3_uri(s3_uri)
+    response = boto3.client("s3").get_object(Bucket=bucket, Key=key)
+    return pd.read_csv(io.BytesIO(response["Body"].read()), **kwargs)
+
+
+def read_s3_json(s3_uri: str) -> dict:
+    """Read a JSON object from an S3 URI using boto3 (no s3fs required)."""
+    import boto3
+
+    bucket, key = _parse_s3_uri(s3_uri)
+    response = boto3.client("s3").get_object(Bucket=bucket, Key=key)
+    return json.loads(response["Body"].read())
 
 
 DIST_PARAM_KEYS = (
@@ -41,6 +70,28 @@ def choose_latest_run(run_root: Path) -> Path:
     if not runs:
         raise FileNotFoundError(f"No run directories found in {run_root}")
     return runs[-1]
+
+
+def load_dist_mc_from_run(run_dir: Path | str) -> pd.Series:
+    """Load distribution_marginal_costs.csv saved by run_scenario.py into a pandas Series.
+
+    The CSV is written by run_scenario.py with index name 'time' and a single
+    column 'Marginal Distribution Costs ($/kWh)'.
+
+    ``run_dir`` may be a local ``Path`` or an S3 URI string (``s3://...``).
+    S3 URIs are read via boto3 (no s3fs required).
+    """
+    csv_path = f"{str(run_dir).rstrip('/')}/distribution_marginal_costs.csv"
+    if csv_path.startswith("s3://"):
+        df = read_s3_csv(csv_path, index_col="time", parse_dates=True)
+    else:
+        df = pd.read_csv(csv_path, index_col="time", parse_dates=True)
+    series = df.iloc[:, 0].rename("Marginal Distribution Costs ($/kWh)")
+    if series.index.tz is None:
+        series.index = series.index.tz_localize("EST")
+    else:
+        series.index = series.index.tz_convert("EST")
+    return series
 
 
 def force_timezone_est(df: pd.DataFrame, time_col: str = "time") -> pd.DataFrame:

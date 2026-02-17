@@ -360,6 +360,28 @@ def build_hourly_group_loads(raw_load_elec: pd.DataFrame, metadata: pd.DataFrame
     return hourly
 
 
+def build_hourly_heating_type_loads(raw_load_elec: pd.DataFrame, metadata: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate weighted hourly electricity load by heating type.
+
+    Returns a long-form DataFrame with columns ``time``, ``heating_type``, and
+    ``load_kwh`` — one row per (hour, heating type) combination.
+    """
+    weighted = raw_load_elec[["electricity_net"]].reset_index().merge(
+        metadata[["bldg_id", "postprocess_group.heating_type", "weight"]],
+        on="bldg_id",
+        how="left",
+    )
+    weighted["weighted_load_kwh"] = weighted["electricity_net"] * weighted["weight"]
+
+    return (
+        weighted.groupby(["time", "postprocess_group.heating_type"], as_index=False)["weighted_load_kwh"]
+        .sum()
+        .rename(columns={"postprocess_group.heating_type": "heating_type", "weighted_load_kwh": "load_kwh"})
+        .sort_values(["time", "heating_type"])
+        .reset_index(drop=True)
+    )
+
+
 def build_cross_components(cross_summary: pd.DataFrame) -> pd.DataFrame:
     """Build benchmark component contributions for charting cross-subsidy impacts."""
     component_labels = {

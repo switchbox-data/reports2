@@ -48,6 +48,7 @@ from plotting_utils import (
     build_cost_mix,
     build_cross_components,
     build_hourly_group_loads,
+    build_hourly_heating_type_loads,
     build_tariff_components,
     find_latest_run_dir,
     load_cambium_from_parquet_s3,
@@ -170,34 +171,44 @@ cross_summary_all.sort_values(["run_label", "group"])
 
 ```{python}
 cost_mix_long = build_cost_mix(cross_summary_all)
-cost_mix_long["benchmark_run"] = (
-    cost_mix_long["benchmark"].astype(str) + " | " + cost_mix_long["run_label"].astype(str)
-)
-cost_mix_long["cost_source"] = pd.Categorical(
-    cost_mix_long["cost_source"],
-    categories=["Residual allocation", "Marginal (economic burden)"],
-    ordered=True,
+
+# Marginal economic burden is benchmark-independent: deduplicate to one row per (run, group)
+marginal_data = (
+    cost_mix_long[cost_mix_long["cost_source"] == "Marginal (economic burden)"]
+    .drop_duplicates(subset=["run_label", "group"])
 )
 
 (
-    ggplot(cost_mix_long, aes(x="group", y="musd_total_per_year", fill="cost_source"))
-    + geom_col(position="stack", width=0.65)
-    + scale_fill_manual(
-        values={
-            "Marginal (economic burden)": "#00BFC4",
-            "Residual allocation": "#F8766D",
-        },
-        breaks=["Marginal (economic burden)", "Residual allocation"],
-    )
-    + facet_wrap("~benchmark_run")
+    ggplot(marginal_data, aes(x="group", y="musd_total_per_year", fill="group"))
+    + geom_col(width=0.6)
+    + facet_wrap("~run_label", ncol=2)
     + labs(
-        title="Customer Cost Composition by Run: Marginal vs Residual (Total $/year)",
+        title="Marginal Economic Burden by Run and Customer Group ($M/year)",
         x="Customer group",
         y="$ million per year",
-        fill="Cost source",
+        fill="Group",
     )
     + theme_minimal()
-    + theme(figure_size=(11, 4), legend_position="bottom")
+    + theme(figure_size=(8, 3), legend_position="none")
+)
+```
+
+```{python}
+# Residual allocation varies by benchmark — show all three side-by-side per group
+residual_data = cost_mix_long[cost_mix_long["cost_source"] == "Residual allocation"]
+
+(
+    ggplot(residual_data, aes(x="group", y="musd_total_per_year", fill="benchmark"))
+    + geom_col(position=position_dodge(width=0.8), width=0.7)
+    + facet_wrap("~run_label", ncol=2)
+    + labs(
+        title="Residual Allocation by Benchmark, Run, and Customer Group ($M/year)",
+        x="Customer group",
+        y="$ million per year",
+        fill="Residual benchmark",
+    )
+    + theme_minimal()
+    + theme(figure_size=(9, 4), legend_position="bottom")
 )
 ```
 
@@ -216,6 +227,7 @@ raw_load_elec = _return_load(
 )
 
 hourly_by_group = build_hourly_group_loads(raw_load_elec=raw_load_elec, metadata=metadata)
+hourly_by_heating_type = build_hourly_heating_type_loads(raw_load_elec=raw_load_elec, metadata=metadata)
 
 # Build per-run hourly DataFrames: each run has its own distribution MC (from the saved CSV)
 # and its own Cambium supply costs (delivery-only run uses dummy zeros; supply-adj uses real costs).
@@ -258,49 +270,34 @@ for run_label, hrly in hourly_runs.items():
     )
 ```
 
-## Stacked Aggregated Load Curves (HP + Non-HP)
+## Stacked Aggregated Load Curves by Heating Type
 
 ```{python}
-stacked = hourly[["time", "hp_load_kwh", "non_hp_load_kwh"]].copy()
-stacked["hp_top_kwh"] = stacked["non_hp_load_kwh"] + stacked["hp_load_kwh"]
-
 (
-    ggplot(stacked, aes(x="time"))
-    + geom_area(aes(y="non_hp_load_kwh", fill='"Non-HP"'), alpha=0.85)
-    + geom_ribbon(aes(ymin="non_hp_load_kwh", ymax="hp_top_kwh", fill='"HP"'), alpha=0.95)
-    + geom_line(aes(y="non_hp_load_kwh"), color="#1f4e79", size=0.35)
-    + geom_line(aes(y="hp_top_kwh"), color="#8a3f00", size=0.45)
-    + scale_fill_manual(values={"Non-HP": "#6baed6", "HP": "#fdae6b"})
+    ggplot(hourly_by_heating_type, aes(x="time", y="load_kwh", fill="heating_type"))
+    + geom_area(position="stack", alpha=0.85)
     + labs(
-        title="Stacked Weighted Aggregated Load Curves (HP over Non-HP)",
+        title="Stacked Weighted Aggregated Load Curves by Heating Type",
         x="Time",
         y="Load (kWh)",
-        fill="Series",
+        fill="Heating type",
     )
     + theme_minimal()
     + theme(figure_size=(12, 4), legend_position="bottom")
 )
 ```
 
-## Hourly Load Line Plot (HP vs Non-HP)
+## Hourly Load Line Plot by Heating Type
 
 ```{python}
-line_plot = stacked.melt(
-    id_vars=["time"],
-    value_vars=["hp_load_kwh", "non_hp_load_kwh"],
-    var_name="group",
-    value_name="load_kwh",
-)
-line_plot["group"] = line_plot["group"].map({"hp_load_kwh": "HP", "non_hp_load_kwh": "Non-HP"})
-
 (
-    ggplot(line_plot, aes(x="time", y="load_kwh", color="group"))
+    ggplot(hourly_by_heating_type, aes(x="time", y="load_kwh", color="heating_type"))
     + geom_line(size=0.55, alpha=0.9)
     + labs(
-        title="Hourly Weighted Load Curves: HP vs Non-HP",
+        title="Hourly Weighted Load Curves by Heating Type",
         x="Time",
         y="Load (kWh)",
-        color="Group",
+        color="Heating type",
     )
     + theme_minimal()
     + theme(figure_size=(12, 4), legend_position="bottom")

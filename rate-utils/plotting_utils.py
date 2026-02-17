@@ -45,6 +45,41 @@ def read_s3_json(s3_uri: str) -> dict:
     return json.loads(response["Body"].read())
 
 
+def find_latest_run_dir(run_base: str, run_name: str) -> str:
+    """Return the S3 URI of the most recent output directory matching ``run_name``.
+
+    Output directories are named ``{YYYYMMDD_HHMMSS}_{run_name}``. This
+    function lists all directories under ``run_base`` whose name ends with
+    ``_{run_name}``, then returns the lexicographically latest one (the
+    timestamp prefix ensures recency ordering).
+
+    Raises ``FileNotFoundError`` if no matching directory is found.
+    """
+    import boto3
+
+    bucket, prefix = _parse_s3_uri(run_base)
+    prefix = prefix.rstrip("/") + "/"
+    suffix = f"_{run_name}/"
+
+    paginator = boto3.client("s3").get_paginator("list_objects_v2")
+    matching: list[str] = []
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix, Delimiter="/"):
+        for entry in page.get("CommonPrefixes", []):
+            dir_prefix = entry["Prefix"]
+            dir_name = dir_prefix[len(prefix):].rstrip("/")
+            if dir_name.endswith(f"_{run_name}"):
+                matching.append(dir_name)
+
+    if not matching:
+        raise FileNotFoundError(
+            f"No output directory matching run_name={run_name!r} found under {run_base}. "
+            "Re-run the scenario to generate outputs."
+        )
+
+    latest = sorted(matching)[-1]
+    return f"{run_base.rstrip('/')}/{latest}"
+
+
 DIST_PARAM_KEYS = (
     "annual_future_distr_costs",
     "distr_peak_hrs",

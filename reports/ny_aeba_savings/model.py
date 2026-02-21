@@ -587,16 +587,25 @@ def _compute_zone_gshp_rebates() -> pl.DataFrame:
     and project_type=="new_construction". Handles PSEG's per-ton pricing by
     converting to per-project amounts using the GSHP system tonnage.
 
+    Applies the Clean Heat incentive cap (70% of project costs, or 85% for
+    Central Hudson territory) per-utility before zone blending.
+
     Returns a DataFrame with columns: zone, gshp_rebate.
     """
     counties = load_counties()
     rebates = load_utility_rebates()
     equipment = load_equipment()
+    params = load_model_params()
 
-    # Extract GSHP tonnage from equipment.yaml size field ("5 ton horizontal loop")
+    # Extract GSHP tonnage and installed cost from equipment.yaml
     gshp_row = equipment.filter(pl.col("device") == "GSHP")
     gshp_size_str = gshp_row["size"][0]  # "5 ton horizontal loop"
     gshp_tons = float(gshp_size_str.split()[0])  # 5.0
+    gshp_cost = float(gshp_row["avg_price"][0])  # total installed cost
+
+    # Clean Heat incentive caps (% of project costs)
+    cap_default = float(params["clean_heat_cap_rate"])
+    cap_ch = float(params["clean_heat_cap_rate_central_hudson"])
 
     # Filter to GSHP new construction rebates
     gshp_rebates = rebates.filter((pl.col("technology") == "GSHP") & (pl.col("project_type") == "new_construction"))
@@ -614,6 +623,16 @@ def _compute_zone_gshp_rebates() -> pl.DataFrame:
         )
         .otherwise(pl.col("amount"))
         .alias("rebate_per_project"),
+    )
+
+    # Apply Clean Heat incentive cap: 85% for Central Hudson, 70% for others
+    gshp_rebates = gshp_rebates.with_columns(
+        pl.min_horizontal(
+            pl.col("rebate_per_project"),
+            pl.when(pl.col("utility") == "Central Hudson")
+            .then(pl.lit(cap_ch * gshp_cost))
+            .otherwise(pl.lit(cap_default * gshp_cost)),
+        ).alias("rebate_per_project"),
     ).select(
         pl.col("utility").alias("electric_utility"),
         pl.col("rebate_per_project").alias("gshp_rebate_amount"),

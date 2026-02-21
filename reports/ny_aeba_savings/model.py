@@ -4,6 +4,10 @@ Migrated from Excel workbook to polars. This module contains data loading
 functions that read YAML configuration files and return polars DataFrames
 or dicts ready for computation, plus computation functions that replicate
 the Excel Model sheet formulas.
+
+Supports two heat pump technologies:
+  - ccASHP: cold-climate air source heat pump (original Excel model)
+  - GSHP: ground source heat pump (added Feb 2026)
 """
 
 from __future__ import annotations
@@ -44,7 +48,8 @@ def load_model_params() -> dict:
 
     Returns keys: mortgage_rate, mortgage_term_years, discount_rate,
     analysis_period_years, indoor_design_temp_f, sizing_scale_up_factor,
-    internal_heat_gains_btu, epa_hdd_adjustment, propane_tank_cost.
+    internal_heat_gains_btu, epa_hdd_adjustment, propane_tank_cost,
+    ny_geo_tax_credit_rate, ny_geo_tax_credit_cap, federal_25d_rate.
     """
     return _load_yaml("model_params.yaml")
 
@@ -149,6 +154,8 @@ def load_utility_rebates() -> pl.DataFrame:
 
     Each row is one utility x technology combination with columns:
     utility, technology, amount, unit, source, source_notes.
+
+    Dec 2025 update added: project_type, building_type, cap (optional).
     """
     records = _load_yaml("utility_rebates.yaml")
     return pl.DataFrame(records)
@@ -185,6 +192,10 @@ def _apply_overrides(df: pl.DataFrame, overrides: Overrides) -> pl.DataFrame:
     The overrides dict maps (fuel, zone) tuples to dicts of column_name -> value.
     Only columns already present in `df` are overridden; unknown keys are ignored
     so that overrides for later computation stages pass through harmlessly.
+
+    Overrides keyed by (fuel, zone) apply to ALL hp_technology values for that
+    fuel/zone combination -- the building/financial params are identical across
+    technologies.
     """
     if not overrides:
         return df
@@ -240,16 +251,21 @@ def _compute_zone_design_temps() -> pl.DataFrame:
 
 
 def build_scenario_table(overrides: Overrides = None) -> pl.DataFrame:
-    """Build the 6-row scenario table: 3 zones x 2 fuels.
+    """Build the 12-row scenario table: 3 zones x 2 fuels x 2 technologies.
 
     Each row represents one scenario with building params, model params,
     and fuel prices joined in. The overrides dict allows tests to modify
     specific input values per scenario.
+
+    The hp_technology column distinguishes ccASHP from GSHP rows. Building
+    parameters and fuel prices are identical across technologies for the
+    same (fuel, zone) pair.
     """
-    # Create the 6 scenario rows: cross join of fuels x zones
+    # Create the 12 scenario rows: cross join of fuels x zones x technologies
     fuels = pl.DataFrame({"fuel": ["natural_gas", "propane"]})
     zones = pl.DataFrame({"zone": ["4", "5", "6"]})
-    scenarios = fuels.join(zones, how="cross")
+    techs = pl.DataFrame({"hp_technology": ["ccASHP", "GSHP"]})
+    scenarios = fuels.join(zones, how="cross").join(techs, how="cross")
 
     # Join building params by zone (R-values, HDD, ACH50, etc.)
     building = load_building_params()
@@ -265,10 +281,12 @@ def build_scenario_table(overrides: Overrides = None) -> pl.DataFrame:
     scenarios = scenarios.with_columns(
         pl.lit(op["efficiency"]["furnace_afue"]).alias("furnace_afue"),
         pl.lit(op["efficiency"]["ccashp_hspf2"]).alias("ccashp_hspf2"),
+        pl.lit(op["efficiency"]["gshp_cop"]).alias("gshp_cop"),
         pl.lit(op["maintenance"]["furnace"]).alias("furnace_maintenance_cost"),
         pl.lit(op["maintenance"]["ac"]).alias("ac_maintenance_cost"),
         pl.lit(op["maintenance"]["gas_water_heater"]).alias("gwh_maintenance_cost"),
         pl.lit(op["maintenance"]["ccashp"]).alias("ccashp_maintenance_cost"),
+        pl.lit(op["maintenance"]["gshp"]).alias("gshp_maintenance_cost"),
         pl.lit(op["maintenance"]["hpwh"]).alias("hpwh_maintenance_cost"),
         pl.lit(op["fuel_content"]["natural_gas_btu_per_mcf"]).alias("natural_gas_btu_per_mcf"),
         pl.lit(op["fuel_content"]["propane_btu_per_gallon"]).alias("propane_btu_per_gallon"),
@@ -327,6 +345,9 @@ def compute_building_geometry(overrides: Overrides = None) -> pl.DataFrame:
       Row 22: below_grade_basement_wall_area = 4 * below_grade_height * wall_length
       Row 23: basement_floor_perimeter = wall_length * 4
       Row 24: volume = floor_area*wall_height + (above+below)*floor_area/stories
+
+    Geometry is the same for both ccASHP and GSHP rows (the building is
+    identical regardless of which heat pump technology is installed).
     """
     scenarios = build_scenario_table(overrides)
 
@@ -559,6 +580,63 @@ def _compute_zone_hpwh_rebates() -> pl.DataFrame:
     )
 
 
+def _compute_zone_gshp_rebates() -> pl.DataFrame:
+    """Compute blended average GSHP new-construction rebate per zone.
+
+    Similar to _compute_zone_hpwh_rebates but filters to technology=="GSHP"
+    and project_type=="new_construction". Handles PSEG's per-ton pricing by
+    converting to per-project amounts using the GSHP system tonnage.
+
+    Returns a DataFrame with columns: zone, gshp_rebate.
+    """
+    counties = load_counties()
+    rebates = load_utility_rebates()
+    equipment = load_equipment()
+
+    # Extract GSHP tonnage from equipment.yaml size field ("5 ton horizontal loop")
+    gshp_row = equipment.filter(pl.col("device") == "GSHP")
+    gshp_size_str = gshp_row["size"][0]  # "5 ton horizontal loop"
+    gshp_tons = float(gshp_size_str.split()[0])  # 5.0
+
+    # Filter to GSHP new construction rebates
+    gshp_rebates = rebates.filter((pl.col("technology") == "GSHP") & (pl.col("project_type") == "new_construction"))
+
+    # Convert per-ton amounts to per-project, applying cap where present.
+    # $/project amounts pass through unchanged; $/ton amounts get multiplied
+    # by system tonnage and capped.
+    gshp_rebates = gshp_rebates.with_columns(
+        pl.when(pl.col("unit") == "$/ton")
+        .then(
+            pl.min_horizontal(
+                pl.col("amount") * gshp_tons,
+                pl.col("cap").fill_null(float("inf")),
+            )
+        )
+        .otherwise(pl.col("amount"))
+        .alias("rebate_per_project"),
+    ).select(
+        pl.col("utility").alias("electric_utility"),
+        pl.col("rebate_per_project").alias("gshp_rebate_amount"),
+    )
+
+    return (
+        counties.join(gshp_rebates, on="electric_utility", how="left")
+        .with_columns(
+            pl.col("gshp_rebate_amount").fill_null(0),
+        )
+        .with_columns(
+            zone_total=pl.col("new_construction_share").sum().over("zone"),
+        )
+        .with_columns(
+            zone_weight=pl.col("new_construction_share") / pl.col("zone_total"),
+        )
+        .group_by("zone")
+        .agg(
+            (pl.col("gshp_rebate_amount") * pl.col("zone_weight")).sum().alias("gshp_rebate"),
+        )
+    )
+
+
 # ---------------------------------------------------------------------------
 # Computation stage 6: baseline costs (Model rows 59-96)
 # ---------------------------------------------------------------------------
@@ -595,6 +673,9 @@ def compute_baseline_costs(overrides: Overrides = None) -> pl.DataFrame:
       - baseline_equipment_total: furnace_installed + AC + GWH
       - baseline_equipment_with_service_line: above + service line
       - baseline_yearly_operating: furnace_op + AC_op + GWH_op
+
+    Baseline costs are the same for both HP technologies (the baseline
+    system being replaced is identical regardless of which HP replaces it).
     """
     scenarios = compute_system_sizing(overrides)
 
@@ -726,17 +807,28 @@ def compute_baseline_costs(overrides: Overrides = None) -> pl.DataFrame:
 def compute_heat_pump_costs(overrides: Overrides = None) -> pl.DataFrame:
     """Compute heat pump system costs matching Excel rows 100-123.
 
-    ccASHP (rows 100-109):
+    ccASHP (rows 100-109, for hp_technology == "ccASHP" rows only):
       - equipment cost: zone-dependent from equipment.yaml
-      - Clean Heat rebate: $0 (zeroed in the current model)
-      - federal tax credit: $0 (zeroed in the current model)
+      - Clean Heat rebate: $0 (not eligible for new construction)
+      - federal tax credit: $0
       - net cost: equipment - rebate - tax_credit
       - yearly kWh: yearly_btu / (HSPF2 * 1000) where HSPF2 is BTU/Wh
       - yearly electrical cost: kWh * electricity_price
       - yearly maintenance: flat annual cost
       - yearly operating: electrical + maintenance
 
-    HPWH (rows 112-120):
+    GSHP (for hp_technology == "GSHP" rows only):
+      - equipment cost: from equipment.yaml (total installed cost)
+      - Clean Heat rebate: blended average by zone (new construction)
+      - NY State geothermal tax credit: min(25% * installed_cost, $10,000)
+      - Federal 25D tax credit: 30% * installed_cost
+      - net cost: equipment - rebate - ny_tax_credit - federal_tax_credit
+      - yearly kWh: yearly_btu / (COP * 3412) where 3412 BTU = 1 kWh
+      - yearly electrical cost: kWh * electricity_price
+      - yearly maintenance: flat annual cost
+      - yearly operating: electrical + maintenance
+
+    HPWH (rows 112-120, same for both technologies):
       - device cost: from equipment.yaml
       - rebate: blended average by zone, weighted by new_construction_share
       - net cost: device - rebate
@@ -746,8 +838,8 @@ def compute_heat_pump_costs(overrides: Overrides = None) -> pl.DataFrame:
       - yearly operating: electrical + maintenance
 
     Totals (rows 122-123):
-      - hp_equipment_total: ccASHP_net + HPWH_net
-      - hp_yearly_operating_total: ccASHP_operating + HPWH_operating
+      - hp_equipment_total: space_heat_net + HPWH_net
+      - hp_yearly_operating_total: space_heat_operating + HPWH_operating
     """
     scenarios = compute_baseline_costs(overrides)
 
@@ -764,14 +856,29 @@ def compute_heat_pump_costs(overrides: Overrides = None) -> pl.DataFrame:
 
     hpwh_cost = equipment.filter(pl.col("device") == "hpwh")["avg_price"][0]
 
-    # --- ccASHP costs ---
+    # GSHP: single installed cost
+    gshp_cost = equipment.filter(pl.col("device") == "GSHP")["avg_price"][0]
+
+    # Tax credit parameters
+    model_params = load_model_params()
+    ny_geo_rate = model_params["ny_geo_tax_credit_rate"]
+    ny_geo_cap = model_params["ny_geo_tax_credit_cap"]
+    federal_25d_rate = model_params["federal_25d_rate"]
+
+    # Technology predicates
+    is_ccashp = pl.col("hp_technology") == "ccASHP"
+    is_gshp = pl.col("hp_technology") == "GSHP"
+
+    # --- ccASHP costs (only for ccASHP rows; 0 for GSHP rows) ---
     scenarios = scenarios.with_columns(
         # Row 100: ccASHP equipment cost (zone-dependent)
-        pl.when(pl.col("zone") == "4")
+        pl.when(is_ccashp & (pl.col("zone") == "4"))
         .then(pl.lit(ccashp_zone4))
-        .otherwise(pl.lit(ccashp_zone56))
+        .when(is_ccashp)
+        .then(pl.lit(ccashp_zone56))
+        .otherwise(pl.lit(0.0))
         .alias("ccashp_equipment_cost"),
-        # Row 101: Clean Heat rebate (currently $0 for ccASHP)
+        # Row 101: Clean Heat rebate (currently $0 for ccASHP new construction)
         pl.lit(0.0).alias("ccashp_rebate"),
         # Row 102: Federal tax credit (currently $0)
         pl.lit(0.0).alias("ccashp_federal_tax_credit"),
@@ -787,7 +894,10 @@ def compute_heat_pump_costs(overrides: Overrides = None) -> pl.DataFrame:
     scenarios = scenarios.with_columns(
         # Row 106: yearly kWh = yearly_btu / (HSPF2 * 1000)
         # HSPF2 is in BTU/Wh; multiply by 1000 to convert to BTU/kWh
-        (pl.col("yearly_btu") / (pl.col("ccashp_hspf2") * 1000)).alias("ccashp_yearly_kwh"),
+        pl.when(is_ccashp)
+        .then(pl.col("yearly_btu") / (pl.col("ccashp_hspf2") * 1000))
+        .otherwise(pl.lit(0.0))
+        .alias("ccashp_yearly_kwh"),
     )
 
     scenarios = scenarios.with_columns(
@@ -797,12 +907,81 @@ def compute_heat_pump_costs(overrides: Overrides = None) -> pl.DataFrame:
 
     scenarios = scenarios.with_columns(
         # Row 109: yearly operating = electrical + maintenance
-        (pl.col("ccashp_yearly_electrical_cost") + pl.col("ccashp_maintenance_cost")).alias(
-            "ccashp_yearly_operating_cost"
-        ),
+        pl.when(is_ccashp)
+        .then(pl.col("ccashp_yearly_electrical_cost") + pl.col("ccashp_maintenance_cost"))
+        .otherwise(pl.lit(0.0))
+        .alias("ccashp_yearly_operating_cost"),
     )
 
-    # --- HPWH costs ---
+    # --- GSHP costs (only for GSHP rows; 0 for ccASHP rows) ---
+
+    # GSHP rebate: blended average by zone using county weights
+    zone_gshp_rebates = _compute_zone_gshp_rebates()
+    scenarios = scenarios.join(zone_gshp_rebates, on="zone", how="left")
+
+    scenarios = scenarios.with_columns(
+        # GSHP equipment cost
+        pl.when(is_gshp).then(pl.lit(gshp_cost)).otherwise(pl.lit(0.0)).alias("gshp_equipment_cost"),
+    )
+
+    scenarios = scenarios.with_columns(
+        # GSHP rebate (already joined; zero out for ccASHP rows)
+        pl.when(is_gshp).then(pl.col("gshp_rebate")).otherwise(pl.lit(0.0)).alias("gshp_rebate"),
+    )
+
+    # Tax credits (GSHP only)
+    scenarios = scenarios.with_columns(
+        # NY State geothermal tax credit: min(25% * installed_cost, $10,000)
+        pl.when(is_gshp)
+        .then(
+            pl.min_horizontal(
+                pl.col("gshp_equipment_cost") * ny_geo_rate,
+                pl.lit(float(ny_geo_cap)),
+            )
+        )
+        .otherwise(pl.lit(0.0))
+        .alias("gshp_ny_tax_credit"),
+        # Federal 25D tax credit: 30% * installed_cost
+        pl.when(is_gshp)
+        .then(pl.col("gshp_equipment_cost") * federal_25d_rate)
+        .otherwise(pl.lit(0.0))
+        .alias("gshp_federal_tax_credit"),
+    )
+
+    scenarios = scenarios.with_columns(
+        # GSHP net cost = equipment - rebate - ny_tax_credit - federal_tax_credit
+        # Floor at zero: total incentives may exceed gross cost in heavily-
+        # subsidized territories (e.g. ConEd $30K + federal $13K + state $10K).
+        (
+            pl.col("gshp_equipment_cost")
+            - pl.col("gshp_rebate")
+            - pl.col("gshp_ny_tax_credit")
+            - pl.col("gshp_federal_tax_credit")
+        )
+        .clip(lower_bound=0)
+        .alias("gshp_net_cost"),
+    )
+
+    # GSHP energy: yearly_kWh = yearly_btu / (COP * 3412 BTU/kWh)
+    scenarios = scenarios.with_columns(
+        pl.when(is_gshp)
+        .then(pl.col("yearly_btu") / (pl.col("gshp_cop") * 3412))
+        .otherwise(pl.lit(0.0))
+        .alias("gshp_yearly_kwh"),
+    )
+
+    scenarios = scenarios.with_columns(
+        (pl.col("gshp_yearly_kwh") * pl.col("electricity_price")).alias("gshp_yearly_electrical_cost"),
+    )
+
+    scenarios = scenarios.with_columns(
+        pl.when(is_gshp)
+        .then(pl.col("gshp_yearly_electrical_cost") + pl.col("gshp_maintenance_cost"))
+        .otherwise(pl.lit(0.0))
+        .alias("gshp_yearly_operating_cost"),
+    )
+
+    # --- HPWH costs (same for both technologies) ---
     # Join zone-level blended HPWH rebates
     zone_hpwh_rebates = _compute_zone_hpwh_rebates()
     scenarios = scenarios.join(zone_hpwh_rebates, on="zone", how="left")
@@ -829,14 +1008,20 @@ def compute_heat_pump_costs(overrides: Overrides = None) -> pl.DataFrame:
         (pl.col("hpwh_yearly_electrical_cost") + pl.col("hpwh_maintenance_cost")).alias("hpwh_yearly_operating_cost"),
     )
 
-    # --- HP Totals ---
+    # --- HP Totals (generic, picks from the right technology) ---
     scenarios = scenarios.with_columns(
-        # Row 122: equipment total = ccASHP_net + HPWH_net
-        (pl.col("ccashp_net_cost") + pl.col("hpwh_net_cost")).alias("hp_equipment_total"),
-        # Row 123: yearly operating total
-        (pl.col("ccashp_yearly_operating_cost") + pl.col("hpwh_yearly_operating_cost")).alias(
-            "hp_yearly_operating_total"
-        ),
+        # Equipment total: technology-specific space heating net cost + HPWH net cost
+        (
+            pl.when(is_ccashp).then(pl.col("ccashp_net_cost")).otherwise(pl.col("gshp_net_cost"))
+            + pl.col("hpwh_net_cost")
+        ).alias("hp_equipment_total"),
+        # Yearly operating total: technology-specific operating + HPWH operating
+        (
+            pl.when(is_ccashp)
+            .then(pl.col("ccashp_yearly_operating_cost"))
+            .otherwise(pl.col("gshp_yearly_operating_cost"))
+            + pl.col("hpwh_yearly_operating_cost")
+        ).alias("hp_yearly_operating_total"),
     )
 
     return scenarios
@@ -975,29 +1160,33 @@ def _compute_zone_new_construction_shares() -> pl.DataFrame:
 def compute_weighted_averages(overrides: Overrides = None) -> pl.DataFrame:
     """Compute weighted statewide and zonewide savings matching Excel rows 137-149.
 
-    Returns a DataFrame with two groups of rows:
+    Aggregation is performed per hp_technology. Each technology gets its own
+    set of fuel-level, zone-level, and overall statewide weighted averages.
 
-    1. Six scenario rows (fuel x zone) with columns:
+    Returns a DataFrame with:
+
+    1. Twelve scenario rows (fuel x zone x hp_technology) with columns:
        survey_count, total_ff_survey_responses, pct_ff_using_fuel,
        pct_new_construction_in_zone, pct_new_construction_fuel_zone
 
-    2. Aggregate rows keyed by 'key' column:
-       - fuel-level: key="natural_gas" or "propane" with weighted_statewide_savings_by_fuel
-       - zone-level: key="4","5","6" with weighted_zonewide_savings
-       - overall: key="overall" with weighted_statewide_savings and weighted_statewide_pv
+    2. Aggregate rows keyed by 'key' column (per technology):
+       - fuel-level: key="natural_gas" or "propane"
+       - zone-level: key="4","5","6"
+       - overall: key="overall"
 
     Uses heating survey data (what fraction of new construction uses each fuel
     type by zone) and county data (fraction of new construction in each zone)
     to produce statewide weighted averages.
     """
-    # Get the full savings table
+    # Get the full savings table (12 rows: 2 fuels x 3 zones x 2 technologies)
     savings = compute_savings(overrides)
 
     # Compute survey weights and zone new construction shares
     survey_weights = _compute_survey_weights()
     zone_shares = _compute_zone_new_construction_shares()
 
-    # Join survey weights onto the 6-row savings table
+    # Join survey weights onto the scenario rows (by fuel and zone -- same
+    # weights for both technologies)
     scenarios = savings.join(survey_weights, on=["fuel", "zone"])
 
     # Join zone new construction shares
@@ -1008,73 +1197,74 @@ def compute_weighted_averages(overrides: Overrides = None) -> pl.DataFrame:
         (pl.col("pct_ff_using_fuel") * pl.col("pct_new_construction_in_zone")).alias("pct_new_construction_fuel_zone"),
     )
 
-    # --- Build aggregate rows ---
+    # --- Build aggregate rows per technology ---
+    all_aggregates = []
 
-    # Row 144: Weighted statewide yearly savings by fuel type
-    # For each fuel, weighted average of total_yearly_savings_with_service_line
-    # across zones, weighted by pct_new_construction_in_zone (zone share of
-    # new construction, regardless of fuel mix within zone)
-    fuel_agg = (
-        scenarios.group_by("fuel")
-        .agg(
-            (pl.col("total_yearly_savings_with_service_line") * pl.col("pct_new_construction_in_zone")).sum()
-            / pl.col("pct_new_construction_in_zone").sum()
+    for tech in ["ccASHP", "GSHP"]:
+        tech_df = scenarios.filter(pl.col("hp_technology") == tech)
+
+        # Row 144: Weighted statewide yearly savings by fuel type
+        fuel_agg = (
+            tech_df.group_by("fuel")
+            .agg(
+                (pl.col("total_yearly_savings_with_service_line") * pl.col("pct_new_construction_in_zone")).sum()
+                / pl.col("pct_new_construction_in_zone").sum()
+            )
+            .rename({"fuel": "key", "total_yearly_savings_with_service_line": "weighted_statewide_savings_by_fuel"})
+            .with_columns(pl.lit(tech).alias("hp_technology"))
         )
-        .rename({"fuel": "key", "total_yearly_savings_with_service_line": "weighted_statewide_savings_by_fuel"})
-    )
 
-    # Row 146: Weighted zonewide yearly savings (both fuels combined per zone)
-    # For each zone, weighted average across fuel types, weighted by pct_ff_using_fuel
-    zone_agg = (
-        scenarios.group_by("zone")
-        .agg(
-            (pl.col("total_yearly_savings_with_service_line") * pl.col("pct_ff_using_fuel")).sum()
-            / pl.col("pct_ff_using_fuel").sum()
+        # Row 146: Weighted zonewide yearly savings (both fuels combined per zone)
+        zone_agg = (
+            tech_df.group_by("zone")
+            .agg(
+                (pl.col("total_yearly_savings_with_service_line") * pl.col("pct_ff_using_fuel")).sum()
+                / pl.col("pct_ff_using_fuel").sum()
+            )
+            .rename({"zone": "key", "total_yearly_savings_with_service_line": "weighted_zonewide_savings"})
+            .with_columns(pl.lit(tech).alias("hp_technology"))
         )
-        .rename({"zone": "key", "total_yearly_savings_with_service_line": "weighted_zonewide_savings"})
-    )
 
-    # Row 148-149: Weighted overall statewide savings
-    # Sum of (savings * weight) across all 6 scenarios
-    overall_savings = scenarios.select(
-        (pl.col("total_yearly_savings_with_service_line") * pl.col("pct_new_construction_fuel_zone")).sum()
-        / pl.col("pct_new_construction_fuel_zone").sum()
-    ).item()
+        # Row 148-149: Weighted overall statewide savings
+        overall_savings = tech_df.select(
+            (pl.col("total_yearly_savings_with_service_line") * pl.col("pct_new_construction_fuel_zone")).sum()
+            / pl.col("pct_new_construction_fuel_zone").sum()
+        ).item()
 
-    # PV of overall statewide savings
-    discount_rate = scenarios["discount_rate"][0]
-    analysis_years = scenarios["analysis_period_years"][0]
-    pv_factor = (1 - (1 + discount_rate) ** (-analysis_years)) / discount_rate
-    overall_pv = overall_savings * pv_factor
+        discount_rate = tech_df["discount_rate"][0]
+        analysis_years = tech_df["analysis_period_years"][0]
+        pv_factor = (1 - (1 + discount_rate) ** (-analysis_years)) / discount_rate
+        overall_pv = overall_savings * pv_factor
 
-    overall_agg = pl.DataFrame(
-        {
-            "key": ["overall"],
-            "weighted_statewide_savings": [overall_savings],
-            "weighted_statewide_pv": [overall_pv],
-        }
-    )
+        overall_agg = pl.DataFrame(
+            {
+                "key": ["overall"],
+                "weighted_statewide_savings": [overall_savings],
+                "weighted_statewide_pv": [overall_pv],
+                "hp_technology": [tech],
+            }
+        )
 
-    # Combine all aggregate rows using diagonal concatenation
-    # (each aggregate has different columns — align fills with null)
-    aggregates = pl.concat([fuel_agg, zone_agg, overall_agg], how="diagonal")
+        all_aggregates.extend([fuel_agg, zone_agg, overall_agg])
+
+    # Combine all aggregate rows
+    aggregates = pl.concat(all_aggregates, how="diagonal")
 
     # Add a 'key' column to scenarios for compatibility with _get_weighted_avg_value
     scenarios = scenarios.with_columns(pl.lit(None).cast(pl.Utf8).alias("key"))
 
     # Add missing columns to scenarios and aggregates so they can be concatenated
-    # The scenario rows need aggregate columns (null), aggregates need scenario columns (null)
     result = pl.concat([scenarios, aggregates], how="diagonal")
 
     return result
 
 
 def run_model() -> pl.DataFrame:
-    """Run the full model pipeline and return the 6-row result table.
+    """Run the full model pipeline and return the 12-row result table.
 
     Loads all data, builds scenarios, computes building geometry, heat loss,
     yearly BTU, system sizing, baseline costs, heat pump costs, and savings.
-    Returns the 6-row result DataFrame (3 zones x 2 fuels, ccASHP only).
+    Returns the 12-row result DataFrame (3 zones x 2 fuels x 2 technologies).
     """
     return compute_savings()
 
@@ -1085,13 +1275,13 @@ def _unit_suffix(unit: str) -> str:
 
 
 def build_tidy_results(savings: pl.DataFrame) -> pl.DataFrame:
-    """Reshape model results into a wide-row DataFrame (12 rows x 23 cols).
+    """Reshape model results into a wide-row DataFrame.
 
     Each row is one scenario (baseline_tech x hp_tech x geography).  Columns
     encode the side, measure, and unit in their names so every metric for a
     scenario is visible in a single row::
 
-        baseline_tech | hp_tech | geography | baseline-equipment_cost-dollars | …
+        baseline_tech | hp_tech | geography | baseline-equipment_cost-dollars | ...
 
     Weighting is implicit in the identifier columns:
 
@@ -1111,7 +1301,7 @@ def build_tidy_results(savings: pl.DataFrame) -> pl.DataFrame:
         ("yearly_mortgage", "_bl_mortgage", "_hp_mortgage", "$/yr"),
         ("yearly_mortgage_incl_service_line", "_bl_mortgage_sl", "_hp_mortgage", "$/yr"),
     ]
-    # (measure_name, source_col, unit) — ordered so headline numbers come first
+    # (measure_name, source_col, unit) -- ordered so headline numbers come first
     delta_only: list[tuple[str, str, str]] = [
         ("yearly_total_savings", "total_yearly_savings_with_service_line", "$/yr"),
         ("present_value_15yr", "present_value_15yr", "$_PV"),
@@ -1175,27 +1365,30 @@ def build_tidy_results(savings: pl.DataFrame) -> pl.DataFrame:
             row[f"delta-{name}-{sfx}"] = round(bl - hp, 2)
         return row
 
-    # -- Build rows ------------------------------------------------------------
+    # -- Build rows per technology --------------------------------------------
     rows: list[dict[str, Any]] = []
 
-    # 6 individual scenario rows (fuel x zone)
-    for i in range(w.height):
-        fuel = w["fuel"][i]
-        zone = w["zone"][i]
-        rows.append(_make_row(f"{fuel}_furnace", "ccASHP", f"Zone {zone}", w, i))
+    for tech in ["ccASHP", "GSHP"]:
+        wt = w.filter(pl.col("hp_technology") == tech)
 
-    # 2 statewide-by-fuel rows (weighted across zones)
-    for fuel in ["natural_gas", "propane"]:
-        agg = _wmean(w.filter(pl.col("fuel") == fuel), "pct_new_construction_in_zone")
-        rows.append(_make_row(f"{fuel}_furnace", "ccASHP", "Statewide", agg))
+        # 6 individual scenario rows (fuel x zone) per technology
+        for i in range(wt.height):
+            fuel = wt["fuel"][i]
+            zone = wt["zone"][i]
+            rows.append(_make_row(f"{fuel}_furnace", tech, f"Zone {zone}", wt, i))
 
-    # 3 zone-wide rows (weighted across fuels)
-    for zone in ["4", "5", "6"]:
-        agg = _wmean(w.filter(pl.col("zone") == zone), "pct_ff_using_fuel")
-        rows.append(_make_row("all_fossil_fuels", "ccASHP", f"Zone {zone}", agg))
+        # 2 statewide-by-fuel rows (weighted across zones)
+        for fuel in ["natural_gas", "propane"]:
+            agg = _wmean(wt.filter(pl.col("fuel") == fuel), "pct_new_construction_in_zone")
+            rows.append(_make_row(f"{fuel}_furnace", tech, "Statewide", agg))
 
-    # 1 overall statewide row
-    rows.append(_make_row("all_fossil_fuels", "ccASHP", "Statewide", _wmean(w, "_w_overall")))
+        # 3 zone-wide rows (weighted across fuels)
+        for zone in ["4", "5", "6"]:
+            agg = _wmean(wt.filter(pl.col("zone") == zone), "pct_ff_using_fuel")
+            rows.append(_make_row("all_fossil_fuels", tech, f"Zone {zone}", agg))
+
+        # 1 overall statewide row
+        rows.append(_make_row("all_fossil_fuels", tech, "Statewide", _wmean(wt, "_w_overall")))
 
     return pl.DataFrame(rows)
 

@@ -1405,17 +1405,22 @@ class TestRunModel:
 
         result = run_model()
         assert isinstance(result, pl.DataFrame), f"Expected pl.DataFrame, got {type(result)}"
-        # Should have 6 rows (3 zones x 2 fuels, ccASHP only)
-        assert len(result) == 6, f"Expected 6 rows, got {len(result)}"
+        # 12 rows: 3 zones x 2 fuels x 2 technologies (ccASHP + GSHP)
+        assert len(result) == 12, f"Expected 12 rows, got {len(result)}"
+        # 6 ccASHP rows and 6 GSHP rows
+        assert len(result.filter(pl.col("hp_technology") == "ccASHP")) == 6
+        assert len(result.filter(pl.col("hp_technology") == "GSHP")) == 6
 
     def test_run_model_spot_check_natgas_zone5(self, recalculate):
-        """Spot-check: NatGas Zone 5 values from run_model() vs Excel."""
+        """Spot-check: NatGas Zone 5 ccASHP values from run_model() vs Excel."""
         wb = recalculate()
         result = run_model()
 
-        # Filter to NatGas Zone 5
-        row = result.filter((result["fuel"] == "natural_gas") & (result["zone"] == "5"))
-        assert len(row) == 1, f"Expected 1 row for NatGas Zone 5, got {len(row)}"
+        # Filter to NatGas Zone 5 ccASHP (the Excel-validated technology)
+        row = result.filter(
+            (result["fuel"] == "natural_gas") & (result["zone"] == "5") & (result["hp_technology"] == "ccASHP")
+        )
+        assert len(row) == 1, f"Expected 1 row for NatGas Zone 5 ccASHP, got {len(row)}"
 
         # Check key reference values from the project plan
         checks = {
@@ -1434,12 +1439,14 @@ class TestRunModel:
             )
 
     def test_run_model_spot_check_propane_zone5(self, recalculate):
-        """Spot-check: Propane Zone 5 values from run_model() vs Excel."""
+        """Spot-check: Propane Zone 5 ccASHP values from run_model() vs Excel."""
         wb = recalculate()
         result = run_model()
 
-        row = result.filter((result["fuel"] == "propane") & (result["zone"] == "5"))
-        assert len(row) == 1, f"Expected 1 row for Propane Zone 5, got {len(row)}"
+        row = result.filter(
+            (result["fuel"] == "propane") & (result["zone"] == "5") & (result["hp_technology"] == "ccASHP")
+        )
+        assert len(row) == 1, f"Expected 1 row for Propane Zone 5 ccASHP, got {len(row)}"
 
         checks = {
             "baseline_yearly_operating": wb.cell_value("I96"),
@@ -1567,6 +1574,192 @@ class TestEndToEndPerturbed:
 
 
 # =========================================================================
+# 11. GSHP-specific tests (no Excel reference — validated analytically)
+# =========================================================================
+
+
+class TestGSHPScenarios:
+    """Tests for GSHP scenarios added in R2-91.
+
+    GSHP calculations are validated analytically (not against Excel) since
+    the Excel workbook only contains ccASHP scenarios.
+
+    Key GSHP parameters:
+      - Equipment cost: $43,500 (horizontal loop installed)
+      - COP: 3.6 (ENERGY STAR minimum, closed-loop water-to-air)
+      - NY State geo tax credit: 25% of cost, capped at $10,000
+      - Federal 25D credit: 30% of cost, no cap
+      - Clean Heat rebate: blended by zone (new construction)
+    """
+
+    def test_gshp_scenario_count(self):
+        """12-row table: 6 ccASHP + 6 GSHP."""
+        import polars as pl
+
+        result = compute_savings()
+        assert len(result) == 12
+        assert len(result.filter(pl.col("hp_technology") == "GSHP")) == 6
+        assert len(result.filter(pl.col("hp_technology") == "ccASHP")) == 6
+
+    def test_gshp_equipment_cost(self):
+        """GSHP equipment cost = $50,000 for all scenarios."""
+        result = compute_heat_pump_costs()
+        for fuel in ["natural_gas", "propane"]:
+            for zone in ["4", "5", "6"]:
+                val = _get_scenario_value_by_tech(result, fuel, zone, "GSHP", "gshp_equipment_cost")
+                assert val == pytest.approx(50000.0, rel=1e-6), (
+                    f"gshp_equipment_cost [{fuel} Z{zone}]: got {val}, expected 50000"
+                )
+
+    def test_gshp_energy_calculation(self):
+        """GSHP yearly kWh = yearly_btu / (COP * 3412).
+
+        COP = 3.6, so factor = 3.6 * 3412 = 12283.2 BTU/kWh.
+        """
+        result = compute_heat_pump_costs()
+        for fuel in ["natural_gas", "propane"]:
+            for zone in ["4", "5", "6"]:
+                yearly_btu = _get_scenario_value_by_tech(result, fuel, zone, "GSHP", "yearly_btu")
+                gshp_kwh = _get_scenario_value_by_tech(result, fuel, zone, "GSHP", "gshp_yearly_kwh")
+                expected_kwh = yearly_btu / (3.6 * 3412)
+                assert gshp_kwh == pytest.approx(expected_kwh, rel=1e-6), (
+                    f"gshp_kwh [{fuel} Z{zone}]: got {gshp_kwh}, expected {expected_kwh}"
+                )
+
+    def test_gshp_ny_state_tax_credit(self):
+        """NY geo credit: 25% of $50,000 = $12,500, capped at $10,000."""
+        result = compute_heat_pump_costs()
+        for fuel in ["natural_gas", "propane"]:
+            for zone in ["4", "5", "6"]:
+                ny_credit = _get_scenario_value_by_tech(result, fuel, zone, "GSHP", "gshp_ny_tax_credit")
+                # 25% of 50000 = 12500, cap = 10000
+                assert ny_credit == pytest.approx(10000.0, rel=1e-6), (
+                    f"gshp_ny_credit [{fuel} Z{zone}]: got {ny_credit}, expected 10000"
+                )
+
+    def test_gshp_federal_25d_credit(self):
+        """Federal 25D: 30% of $50,000 = $15,000, no cap."""
+        result = compute_heat_pump_costs()
+        for fuel in ["natural_gas", "propane"]:
+            for zone in ["4", "5", "6"]:
+                fed_credit = _get_scenario_value_by_tech(result, fuel, zone, "GSHP", "gshp_federal_tax_credit")
+                expected = 50000.0 * 0.30
+                assert fed_credit == pytest.approx(expected, rel=1e-6), (
+                    f"gshp_fed_credit [{fuel} Z{zone}]: got {fed_credit}, expected {expected}"
+                )
+
+    def test_gshp_net_cost_formula(self):
+        """Net cost = max(0, equipment - rebate - ny_credit - fed_credit)."""
+        result = compute_heat_pump_costs()
+        for fuel in ["natural_gas", "propane"]:
+            for zone in ["4", "5", "6"]:
+                equip = _get_scenario_value_by_tech(result, fuel, zone, "GSHP", "gshp_equipment_cost")
+                rebate = _get_scenario_value_by_tech(result, fuel, zone, "GSHP", "gshp_rebate")
+                ny = _get_scenario_value_by_tech(result, fuel, zone, "GSHP", "gshp_ny_tax_credit")
+                fed = _get_scenario_value_by_tech(result, fuel, zone, "GSHP", "gshp_federal_tax_credit")
+                net = _get_scenario_value_by_tech(result, fuel, zone, "GSHP", "gshp_net_cost")
+                expected = max(0.0, equip - rebate - ny - fed)
+                assert net == pytest.approx(expected, rel=1e-6), (
+                    f"gshp_net [{fuel} Z{zone}]: got {net}, expected {expected}"
+                )
+
+    def test_gshp_rebate_positive(self):
+        """GSHP rebate should be positive for all zones (all utilities offer it)."""
+        result = compute_heat_pump_costs()
+        for zone in ["4", "5", "6"]:
+            rebate = _get_scenario_value_by_tech(result, "natural_gas", zone, "GSHP", "gshp_rebate")
+            assert rebate > 0, f"gshp_rebate Zone {zone}: expected > 0, got {rebate}"
+
+    def test_gshp_hp_totals_include_hpwh(self):
+        """hp_equipment_total for GSHP = gshp_net_cost + hpwh_net_cost."""
+        result = compute_heat_pump_costs()
+        for fuel in ["natural_gas", "propane"]:
+            for zone in ["4", "5", "6"]:
+                gshp_net = _get_scenario_value_by_tech(result, fuel, zone, "GSHP", "gshp_net_cost")
+                hpwh_net = _get_scenario_value_by_tech(result, fuel, zone, "GSHP", "hpwh_net_cost")
+                total = _get_scenario_value_by_tech(result, fuel, zone, "GSHP", "hp_equipment_total")
+                assert total == pytest.approx(gshp_net + hpwh_net, rel=1e-6), (
+                    f"hp_total [{fuel} Z{zone}]: got {total}, expected {gshp_net + hpwh_net}"
+                )
+
+    def test_gshp_yearly_operating_includes_hpwh(self):
+        """hp_yearly_operating_total for GSHP = gshp_operating + hpwh_operating."""
+        result = compute_heat_pump_costs()
+        for fuel in ["natural_gas", "propane"]:
+            for zone in ["4", "5", "6"]:
+                gshp_op = _get_scenario_value_by_tech(result, fuel, zone, "GSHP", "gshp_yearly_operating_cost")
+                hpwh_op = _get_scenario_value_by_tech(result, fuel, zone, "GSHP", "hpwh_yearly_operating_cost")
+                total = _get_scenario_value_by_tech(result, fuel, zone, "GSHP", "hp_yearly_operating_total")
+                assert total == pytest.approx(gshp_op + hpwh_op, rel=1e-6), (
+                    f"hp_op_total [{fuel} Z{zone}]: got {total}, expected {gshp_op + hpwh_op}"
+                )
+
+    def test_ccashp_values_zero_on_gshp_rows(self):
+        """On GSHP rows, ccASHP-specific columns should be 0."""
+        result = compute_heat_pump_costs()
+        for fuel in ["natural_gas", "propane"]:
+            for zone in ["4", "5", "6"]:
+                for col in ["ccashp_equipment_cost", "ccashp_net_cost", "ccashp_yearly_kwh"]:
+                    val = _get_scenario_value_by_tech(result, fuel, zone, "GSHP", col)
+                    assert val == pytest.approx(0.0, abs=1e-6), (
+                        f"{col} on GSHP row [{fuel} Z{zone}]: expected 0, got {val}"
+                    )
+
+    def test_gshp_values_zero_on_ccashp_rows(self):
+        """On ccASHP rows, GSHP-specific columns should be 0."""
+        result = compute_heat_pump_costs()
+        for fuel in ["natural_gas", "propane"]:
+            for zone in ["4", "5", "6"]:
+                for col in ["gshp_equipment_cost", "gshp_net_cost", "gshp_yearly_kwh"]:
+                    val = _get_scenario_value_by_tech(result, fuel, zone, "ccASHP", col)
+                    assert val == pytest.approx(0.0, abs=1e-6), (
+                        f"{col} on ccASHP row [{fuel} Z{zone}]: expected 0, got {val}"
+                    )
+
+    def test_gshp_savings_present_value(self):
+        """GSHP savings PV should be finite and real for all scenarios."""
+        result = compute_savings()
+        for fuel in ["natural_gas", "propane"]:
+            for zone in ["4", "5", "6"]:
+                pv = _get_scenario_value_by_tech(result, fuel, zone, "GSHP", "present_value_15yr")
+                assert pv is not None
+                assert pv == pv  # not NaN
+
+    def test_ccashp_unchanged_by_gshp_addition(self):
+        """ccASHP total yearly savings unchanged from known values.
+
+        Reference values from the passing Excel tests (default inputs):
+          NatGas Zone 5: $133.57 (F133)
+          Propane Zone 5: $2,637.82 (I133)
+        """
+        result = compute_savings()
+        natgas_z5 = _get_scenario_value_by_tech(
+            result, "natural_gas", "5", "ccASHP", "total_yearly_savings_with_service_line"
+        )
+        propane_z5 = _get_scenario_value_by_tech(
+            result, "propane", "5", "ccASHP", "total_yearly_savings_with_service_line"
+        )
+        assert natgas_z5 == pytest.approx(133.57, rel=0.01), f"NatGas Z5 ccASHP savings: {natgas_z5}"
+        assert propane_z5 == pytest.approx(2637.82, rel=0.01), f"Propane Z5 ccASHP savings: {propane_z5}"
+
+    def test_tidy_results_row_count(self):
+        """Tidy results should have 24 rows: 12 per technology."""
+        from model import build_tidy_results  # ty: ignore[unresolved-import]
+
+        tidy = build_tidy_results(compute_savings())
+        assert len(tidy) == 24, f"Expected 24 tidy rows, got {len(tidy)}"
+
+    def test_tidy_results_has_gshp(self):
+        """Tidy results should include GSHP rows."""
+        import polars as pl
+        from model import build_tidy_results  # ty: ignore[unresolved-import]
+
+        tidy = build_tidy_results(compute_savings())
+        gshp_rows = tidy.filter(pl.col("hp_tech") == "GSHP")
+        assert len(gshp_rows) == 12, f"Expected 12 GSHP tidy rows, got {len(gshp_rows)}"
+
+
+# =========================================================================
 # Adapter helpers — translate between Excel cell references and model API.
 # =========================================================================
 
@@ -1673,6 +1866,19 @@ def _get_scenario_value(model_result, fuel: str, zone: str, column: str):
         return model_result.get((fuel, zone), {}).get(column)
     else:
         raise TypeError(f"Unexpected model result type: {type(model_result)}")
+
+
+def _get_scenario_value_by_tech(model_result, fuel: str, zone: str, hp_technology: str, column: str):
+    """Extract a value from the model result for a specific scenario and technology."""
+
+    row = model_result.filter(
+        (model_result["fuel"] == fuel)
+        & (model_result["zone"] == zone)
+        & (model_result["hp_technology"] == hp_technology)
+    )
+    if len(row) == 0:
+        raise ValueError(f"No row found for fuel={fuel}, zone={zone}, hp_technology={hp_technology}")
+    return row[column][0]
 
 
 def _get_weighted_avg_value(model_result, key: str, column: str):

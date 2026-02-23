@@ -550,39 +550,59 @@ def summarize_tariff_for_display(tariff_cfg: dict) -> list[dict]:
             row["flat_rate"] = _rate(0)
 
         elif n_periods == 2:
-            # Seasonal (period 0 = summer, period 1 = winter)
-            summer_months = _months_for_period(schedule, 0)
-            winter_months = _months_for_period(schedule, 1)
+            # Seasonal: two periods. Determine which is summer vs winter by
+            # checking which period July (month 7) belongs to.
+            p0_months = _months_for_period(schedule, 0)
+            p1_months = _months_for_period(schedule, 1)
+            if 7 in p0_months:
+                summer_p, winter_p = 0, 1
+                summer_months, winter_months = p0_months, p1_months
+            else:
+                summer_p, winter_p = 1, 0
+                summer_months, winter_months = p1_months, p0_months
+
             row["tariff_type"] = "seasonal"
-            row["summer_rate"] = _rate(0)
-            row["winter_rate"] = _rate(1)
+            row["summer_rate"] = _rate(summer_p)
+            row["winter_rate"] = _rate(winter_p)
             row["summer_months"] = _format_month_list(summer_months)
             row["winter_months"] = _format_month_list(winter_months)
 
         elif n_periods >= 4:
-            # Seasonal+TOU: period 0 = summer off-peak, 1 = summer peak,
-            #                period 2 = winter off-peak, 3 = winter peak
-            # Derive months from schedule: months with period 0 or 1 → summer
-            summer_months: list[int] = []
-            winter_months: list[int] = []
+            # Seasonal+TOU: each season has two periods (off-peak, peak).
+            # Group months into two season groups by their period pair, then
+            # determine which group is summer (contains July) vs winter.
+            season_a_months: list[int] = []
+            season_b_months: list[int] = []
             for m in range(12):
                 periods_in_month = set(schedule[m])
                 if 0 in periods_in_month or 1 in periods_in_month:
-                    summer_months.append(m + 1)
+                    season_a_months.append(m + 1)
                 else:
-                    winter_months.append(m + 1)
+                    season_b_months.append(m + 1)
 
-            # Peak hours: hours in a representative summer month assigned to period 1
+            # Identify summer by which group contains July
+            if 7 in season_a_months:
+                summer_months = season_a_months
+                winter_months = season_b_months
+                summer_offpeak_p, summer_peak_p = 0, 1
+                winter_offpeak_p, winter_peak_p = 2, 3
+            else:
+                summer_months = season_b_months
+                winter_months = season_a_months
+                summer_offpeak_p, summer_peak_p = 2, 3
+                winter_offpeak_p, winter_peak_p = 0, 1
+
+            # Peak hours from a representative month of each season
             summer_month_0 = summer_months[0] - 1 if summer_months else 0
             winter_month_0 = winter_months[0] - 1 if winter_months else 0
-            summer_peak_hrs = _hours_for_period_in_month(schedule, 1, summer_month_0)
-            winter_peak_hrs = _hours_for_period_in_month(schedule, 3, winter_month_0)
+            summer_peak_hrs = _hours_for_period_in_month(schedule, summer_peak_p, summer_month_0)
+            winter_peak_hrs = _hours_for_period_in_month(schedule, winter_peak_p, winter_month_0)
 
             row["tariff_type"] = "seasonal_tou"
-            row["summer_offpeak"] = _rate(0)
-            row["summer_peak"] = _rate(1)
-            row["winter_offpeak"] = _rate(2)
-            row["winter_peak"] = _rate(3)
+            row["summer_offpeak"] = _rate(summer_offpeak_p)
+            row["summer_peak"] = _rate(summer_peak_p)
+            row["winter_offpeak"] = _rate(winter_offpeak_p)
+            row["winter_peak"] = _rate(winter_peak_p)
             row["summer_months"] = _format_month_list(summer_months)
             row["winter_months"] = _format_month_list(winter_months)
             row["summer_peak_hours"] = _format_hour_window(summer_peak_hrs)

@@ -561,22 +561,33 @@ if not delta_df.empty:
     )
 ```
 
-## Revenue Neutrality Check
+## Revenue Neutrality Check (Precalc Runs Only)
 
-Total weighted bills should approximately equal the revenue requirement.
-Compare total bills across runs.
+Precalc runs calibrate tariff rates to recover the target revenue requirement,
+so total weighted bills should approximately equal the RR. Default runs use the
+calibrated tariff from their precalc counterpart applied to upgrade-2 buildings
+and are **not** expected to be revenue-neutral.
 
 ```{python}
 #| label: revenue-neutrality
-rev_check = (
+rev_all = (
     bill_df.groupby(["run", "tariff", "cost_scope", "run_type", "elasticity"])
     .agg(total_bills_musd=("total_weighted_bills_musd", "sum"))
     .reset_index()
     .sort_values("run")
 )
 
-print("Total weighted bills by run ($M):")
-rev_check
+rev_precalc = rev_all[rev_all["run_type"] == "precalc"].copy()
+print("Revenue neutrality check — precalc runs only ($M):")
+print("  All precalc runs within the same cost_scope should collect similar total revenue.")
+rev_precalc
+```
+
+```{python}
+#| label: revenue-neutrality-default-note
+rev_default = rev_all[rev_all["run_type"] == "default"].copy()
+print("Default runs (NOT expected to be revenue-neutral):")
+rev_default
 ```
 
 # Section 5: Delivery vs Delivery+Supply Validation
@@ -836,7 +847,7 @@ if not flex_df.empty and flex_df["bill_delta"].notna().any():
 
 ```{python}
 #| label: flex-rr-comparison
-flex_rr = rev_check[rev_check["run"].isin([9, 10, 11, 12, 13, 14, 15, 16])].copy()
+flex_rr = rev_all[rev_all["run"].isin([9, 10, 11, 12, 13, 14, 15, 16])].copy()
 flex_rr["flex"] = flex_rr["elasticity"].apply(
     lambda e: "TOU+flex (e=-0.1)" if e != 0 else "TOU (e=0)"
 )

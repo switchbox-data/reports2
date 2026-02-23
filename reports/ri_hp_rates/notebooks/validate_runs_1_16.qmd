@@ -1,0 +1,884 @@
+---
+title: "RI HP Rate Design: Runs 1-16 Validation"
+format:
+  html:
+    page-layout: full
+toc: true
+execute:
+  warning: false
+  message: false
+---
+
+This notebook validates the outputs of all 16 RI CAIRO runs for RIE heat-pump
+rate design. It reads directly from S3 outputs, always selecting the most
+recent output directory for each run. Validation covers:
+
+1. **Run inventory and completeness** — are all 16 runs present on S3?
+2. **Tariff calibration** — do calibrated tariff parameters look reasonable?
+3. **Cross-subsidization (BAT)** — HP vs Non-HP cross-subsidy by benchmark.
+4. **Bill impacts** — how do bills differ across tariff designs?
+5. **Delivery vs delivery+supply** — are differences consistent?
+6. **Demand flex effects** — TOU vs TOU+flex (runs 9-12 vs 13-16).
+
+```{python}
+#| label: setup
+from __future__ import annotations
+
+from pathlib import Path
+
+import pandas as pd
+from plotnine import (
+    aes,
+    coord_flip,
+    element_text,
+    facet_grid,
+    facet_wrap,
+    geom_col,
+    geom_hline,
+    geom_point,
+    geom_text,
+    geom_tile,
+    ggplot,
+    labs,
+    position_dodge,
+    scale_fill_brewer,
+    scale_fill_manual,
+    theme,
+    theme_minimal,
+)
+
+import sys
+
+for _root in (Path.cwd(), *Path.cwd().parents):
+    _rate_utils = _root / "rate-utils"
+    if (_rate_utils / "plotting_utils.py").is_file():
+        sys.path.insert(0, str(_rate_utils))
+        break
+else:
+    raise FileNotFoundError("Could not locate rate-utils/plotting_utils.py")
+
+from plotting_utils import (
+    build_cross_components,
+    find_latest_run_dir,
+    read_s3_csv,
+    read_s3_json,
+    summarize_cross_subsidy,
+)
+
+pd.set_option("display.max_columns", 100)
+pd.set_option("display.width", 200)
+```
+
+# Configuration
+
+All 16 runs are defined here. Run names match `scenarios_rie.yaml` in
+`rate-design-platform`. The notebook resolves each run's most recent S3
+output directory automatically.
+
+```{python}
+#| label: run-config
+RUN_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates/ri"
+
+# fmt: off
+RUN_CONFIG = {
+    1:  {"run_name": "ri_rie_run1_up00_precalc__flat",                       "tariff": "flat",            "cost_scope": "delivery",       "run_type": "precalc", "elasticity": 0.0,  "label": "R1 flat del precalc"},
+    2:  {"run_name": "ri_rie_run2_up00_precalc_supply__flat",                "tariff": "flat",            "cost_scope": "delivery+supply", "run_type": "precalc", "elasticity": 0.0,  "label": "R2 flat sup precalc"},
+    3:  {"run_name": "ri_rie_run3_up02_default__flat",                       "tariff": "flat_calibrated", "cost_scope": "delivery",       "run_type": "default", "elasticity": 0.0,  "label": "R3 flat del default"},
+    4:  {"run_name": "ri_rie_run4_up02_default_supply__flat",                "tariff": "flat_calibrated", "cost_scope": "delivery+supply", "run_type": "default", "elasticity": 0.0,  "label": "R4 flat sup default"},
+    5:  {"run_name": "ri_rie_run5_up00_precalc__hp_seasonal_vs_flat",        "tariff": "seasonal",        "cost_scope": "delivery",       "run_type": "precalc", "elasticity": 0.0,  "label": "R5 seasonal del precalc"},
+    6:  {"run_name": "ri_rie_run6_up00_precalc_supply__hp_seasonal_vs_flat", "tariff": "seasonal",        "cost_scope": "delivery+supply", "run_type": "precalc", "elasticity": 0.0,  "label": "R6 seasonal sup precalc"},
+    7:  {"run_name": "ri_rie_run7_up02_default__hp_seasonal",                "tariff": "seasonal_cal",    "cost_scope": "delivery",       "run_type": "default", "elasticity": 0.0,  "label": "R7 seasonal del default"},
+    8:  {"run_name": "ri_rie_run8_up02_default_supply__hp_seasonal",         "tariff": "seasonal_cal",    "cost_scope": "delivery+supply", "run_type": "default", "elasticity": 0.0,  "label": "R8 seasonal sup default"},
+    9:  {"run_name": "ri_rie_run9_up00_precalc__hp_seasonalTOU_vs_flat",     "tariff": "TOU",             "cost_scope": "delivery",       "run_type": "precalc", "elasticity": 0.0,  "label": "R9 TOU del precalc"},
+    10: {"run_name": "ri_rie_run10_up00_precalc_supply__hp_seasonalTOU_vs_flat", "tariff": "TOU",         "cost_scope": "delivery+supply", "run_type": "precalc", "elasticity": 0.0,  "label": "R10 TOU sup precalc"},
+    11: {"run_name": "ri_rie_run11_up02_default__hp_seasonalTOU",            "tariff": "TOU_cal",         "cost_scope": "delivery",       "run_type": "default", "elasticity": 0.0,  "label": "R11 TOU del default"},
+    12: {"run_name": "ri_rie_run12_up02_default_supply__hp_seasonalTOU",     "tariff": "TOU_cal",         "cost_scope": "delivery+supply", "run_type": "default", "elasticity": 0.0,  "label": "R12 TOU sup default"},
+    13: {"run_name": "ri_rie_run13_up00_precalc__hp_seasonalTOU_flex_vs_flat",   "tariff": "TOU_flex",    "cost_scope": "delivery",       "run_type": "precalc", "elasticity": -0.1, "label": "R13 TOU+flex del precalc"},
+    14: {"run_name": "ri_rie_run14_up00_precalc_supply__hp_seasonalTOU_flex_vs_flat", "tariff": "TOU_flex", "cost_scope": "delivery+supply", "run_type": "precalc", "elasticity": -0.1, "label": "R14 TOU+flex sup precalc"},
+    15: {"run_name": "ri_rie_run15_up02_default__hp_seasonalTOU_flex",       "tariff": "TOU_flex_cal",    "cost_scope": "delivery",       "run_type": "default", "elasticity": -0.1, "label": "R15 TOU+flex del default"},
+    16: {"run_name": "ri_rie_run16_up02_default_supply__hp_seasonalTOU_flex","tariff": "TOU_flex_cal",    "cost_scope": "delivery+supply", "run_type": "default", "elasticity": -0.1, "label": "R16 TOU+flex sup default"},
+}
+# fmt: on
+```
+
+# Section 1: Run Inventory and Completeness
+
+Resolve the most recent S3 output directory for each of the 16 runs and
+check that key output files exist.
+
+```{python}
+#| label: resolve-runs
+run_dirs: dict[int, str | None] = {}
+inventory_rows = []
+
+for run_num, cfg in RUN_CONFIG.items():
+    try:
+        s3_dir = find_latest_run_dir(RUN_BASE, cfg["run_name"])
+    except FileNotFoundError:
+        s3_dir = None
+
+    run_dirs[run_num] = s3_dir
+
+    # Check for key files
+    has_bat = False
+    has_bills = False
+    has_tariff = False
+    has_metadata = False
+    if s3_dir is not None:
+        import boto3
+
+        s3 = boto3.client("s3")
+        bucket, prefix = s3_dir[len("s3://") :].split("/", 1)
+
+        def _s3_exists(suffix: str) -> bool:
+            try:
+                s3.head_object(Bucket=bucket, Key=f"{prefix}/{suffix}")
+                return True
+            except s3.exceptions.ClientError:
+                return False
+
+        has_bat = _s3_exists("cross_subsidization/cross_subsidization_BAT_values.csv")
+        has_bills = _s3_exists("bills/elec_bills_year_run.csv")
+        has_tariff = _s3_exists("tariff_final_config.json")
+        has_metadata = _s3_exists("customer_metadata.csv")
+
+    inventory_rows.append(
+        {
+            "run": run_num,
+            "tariff": cfg["tariff"],
+            "cost_scope": cfg["cost_scope"],
+            "run_type": cfg["run_type"],
+            "elasticity": cfg["elasticity"],
+            "s3_dir": s3_dir or "MISSING",
+            "has_metadata": has_metadata,
+            "has_bat": has_bat,
+            "has_bills": has_bills,
+            "has_tariff_config": has_tariff,
+        }
+    )
+
+inventory_df = pd.DataFrame(inventory_rows)
+inventory_df
+```
+
+```{python}
+#| label: inventory-summary
+available_runs = [r for r, d in run_dirs.items() if d is not None]
+missing_runs = [r for r, d in run_dirs.items() if d is None]
+print(f"Available runs: {len(available_runs)}/16 — {available_runs}")
+if missing_runs:
+    print(f"MISSING runs: {missing_runs}")
+else:
+    print("All 16 runs found on S3.")
+```
+
+```{python}
+#| label: filter-available
+# From here on, only work with runs that are available
+active_runs = {r: cfg for r, cfg in RUN_CONFIG.items() if run_dirs[r] is not None}
+active_run_nums = sorted(active_runs.keys())
+print(f"Proceeding with {len(active_runs)} available runs: {active_run_nums}")
+```
+
+# Section 2: Tariff Calibration Sanity Checks
+
+Extract calibrated tariff parameters from `tariff_final_config.json` for
+each run. For precalc runs, compare fixed charges and volumetric rates.
+For TOU runs, verify peak/off-peak structure.
+
+```{python}
+#| label: load-tariff-configs
+tariff_rows = []
+
+for run_num in active_run_nums:
+    cfg = RUN_CONFIG[run_num]
+    s3_dir = run_dirs[run_num]
+    try:
+        tariff_cfg = read_s3_json(f"{s3_dir}/tariff_final_config.json")
+    except Exception as e:
+        print(f"  Run {run_num}: could not read tariff config: {e}")
+        continue
+
+    for tariff_key, tariff_data in tariff_cfg.items():
+        fixed_charge = tariff_data.get("ur_monthly_fixed_charge")
+        tou_mat = tariff_data.get("ur_ec_tou_mat", [])
+
+        # Extract rates from TOU matrix
+        rates = [row[4] for row in tou_mat if len(row) > 4]
+        min_rate = min(rates) if rates else None
+        max_rate = max(rates) if rates else None
+        n_periods = len(set((row[0], row[1]) for row in tou_mat)) if tou_mat else 0
+
+        tariff_rows.append(
+            {
+                "run": run_num,
+                "label": cfg["label"],
+                "cost_scope": cfg["cost_scope"],
+                "run_type": cfg["run_type"],
+                "tariff_key": tariff_key,
+                "fixed_charge_usd_mo": fixed_charge,
+                "min_rate_usd_kwh": min_rate,
+                "max_rate_usd_kwh": max_rate,
+                "n_tou_periods": n_periods,
+                "is_tou": max_rate != min_rate if (max_rate and min_rate) else False,
+            }
+        )
+
+tariff_df = pd.DataFrame(tariff_rows)
+tariff_df
+```
+
+```{python}
+#| label: tariff-delivery-vs-supply
+# For matched delivery/supply pairs, check that supply rates >= delivery rates
+pairs = [(1, 2), (5, 6), (9, 10), (13, 14)]
+comparison_rows = []
+for del_run, sup_run in pairs:
+    del_tariffs = tariff_df[tariff_df["run"] == del_run]
+    sup_tariffs = tariff_df[tariff_df["run"] == sup_run]
+    if del_tariffs.empty or sup_tariffs.empty:
+        continue
+    del_max = del_tariffs["max_rate_usd_kwh"].max()
+    sup_max = sup_tariffs["max_rate_usd_kwh"].max()
+    comparison_rows.append(
+        {
+            "delivery_run": del_run,
+            "supply_run": sup_run,
+            "tariff": RUN_CONFIG[del_run]["tariff"],
+            "delivery_max_rate": del_max,
+            "supply_max_rate": sup_max,
+            "supply_higher": sup_max > del_max if pd.notna(sup_max) and pd.notna(del_max) else None,
+        }
+    )
+
+tariff_comparison = pd.DataFrame(comparison_rows)
+print("Delivery vs supply rate comparison (precalc runs):")
+print("  Supply rates should be >= delivery rates (supply adds Cambium MCs to RR).")
+tariff_comparison
+```
+
+# Section 3: Cross-Subsidization / BAT Diagnostics
+
+Load BAT outputs for all available runs. Compute weighted BAT summaries by
+HP/Non-HP group and compare across tariff designs and cost scopes.
+
+```{python}
+#| label: load-bat
+run_payload: dict[int, dict] = {}
+
+for run_num in active_run_nums:
+    cfg = RUN_CONFIG[run_num]
+    s3_dir = run_dirs[run_num]
+    try:
+        metadata = read_s3_csv(f"{s3_dir}/customer_metadata.csv")
+        cross = read_s3_csv(
+            f"{s3_dir}/cross_subsidization/cross_subsidization_BAT_values.csv"
+        )
+    except Exception as e:
+        print(f"  Run {run_num}: could not load BAT data: {e}")
+        continue
+
+    cross_summary = summarize_cross_subsidy(cross=cross, metadata=metadata)
+    cross_summary["run"] = run_num
+    cross_summary["label"] = cfg["label"]
+    cross_summary["tariff"] = cfg["tariff"]
+    cross_summary["cost_scope"] = cfg["cost_scope"]
+    cross_summary["run_type"] = cfg["run_type"]
+    cross_summary["elasticity"] = cfg["elasticity"]
+
+    cross_components = build_cross_components(cross_summary)
+    cross_components["run"] = run_num
+    cross_components["label"] = cfg["label"]
+
+    run_payload[run_num] = {
+        "metadata": metadata,
+        "cross": cross,
+        "cross_summary": cross_summary,
+        "cross_components": cross_components,
+    }
+
+cross_summary_all = pd.concat(
+    [p["cross_summary"] for p in run_payload.values()], ignore_index=True
+)
+cross_components_all = pd.concat(
+    [p["cross_components"] for p in run_payload.values()], ignore_index=True
+)
+
+print(f"Loaded BAT data for {len(run_payload)} runs.")
+```
+
+## BAT Per-Customer by Run and Group
+
+```{python}
+#| label: bat-summary-table
+bat_table = cross_summary_all[
+    [
+        "run",
+        "label",
+        "group",
+        "customers_weighted",
+        "BAT_percustomer_weighted_avg",
+        "BAT_vol_weighted_avg",
+        "BAT_peak_weighted_avg",
+        "Annual_bill_weighted_avg",
+    ]
+].sort_values(["run", "group"])
+
+bat_table
+```
+
+```{python}
+#| label: fig-bat-percustomer-all-runs
+#| fig-cap: "BAT per-customer ($/customer-year) by run and HP status. Positive = overpaying, negative = underpaying relative to cost causation."
+bat_plot = cross_summary_all.copy()
+bat_plot["run_label"] = bat_plot["run"].astype(str) + " " + bat_plot["tariff"]
+
+(
+    ggplot(
+        bat_plot,
+        aes(x="run_label", y="BAT_percustomer_weighted_avg", fill="group"),
+    )
+    + geom_col(position=position_dodge(width=0.8), width=0.7)
+    + geom_hline(yintercept=0, linetype="dashed", color="gray")
+    + coord_flip()
+    + labs(
+        title="BAT Per-Customer by Run ($/customer-year)",
+        subtitle="Per-customer benchmark. Positive = cross-subsidizing others.",
+        x="Run",
+        y="BAT ($/customer-year)",
+        fill="Group",
+    )
+    + theme_minimal()
+    + theme(figure_size=(12, 8), legend_position="bottom")
+)
+```
+
+## BAT Heatmap: All Benchmarks
+
+```{python}
+#| label: fig-bat-heatmap
+#| fig-cap: "Heatmap of BAT values across all 16 runs, 3 benchmarks, and 2 groups."
+bat_long = cross_summary_all.melt(
+    id_vars=["run", "label", "group"],
+    value_vars=[
+        "BAT_vol_weighted_avg",
+        "BAT_peak_weighted_avg",
+        "BAT_percustomer_weighted_avg",
+    ],
+    var_name="benchmark_key",
+    value_name="bat_usd",
+)
+bat_long["benchmark"] = bat_long["benchmark_key"].map(
+    {
+        "BAT_vol_weighted_avg": "Volumetric",
+        "BAT_peak_weighted_avg": "Peak",
+        "BAT_percustomer_weighted_avg": "Per-customer",
+    }
+)
+bat_long["run_str"] = "R" + bat_long["run"].astype(str)
+
+(
+    ggplot(bat_long, aes(x="benchmark", y="run_str", fill="bat_usd"))
+    + geom_tile(color="white", size=0.5)
+    + geom_text(aes(label="bat_usd"), format_string="${:.0f}", size=7)
+    + facet_wrap("~group")
+    + labs(
+        title="BAT Heatmap by Run, Benchmark, and Group",
+        x="Benchmark",
+        y="Run",
+        fill="BAT ($/cust-yr)",
+    )
+    + theme_minimal()
+    + theme(figure_size=(12, 10), legend_position="right")
+)
+```
+
+## Cross-Subsidy Components by Group (All Runs)
+
+```{python}
+#| label: fig-cross-components
+#| fig-cap: "Cross-subsidy BAT components by run, benchmark, and group."
+cross_components_all["run_str"] = "R" + cross_components_all["run"].astype(str)
+
+(
+    ggplot(
+        cross_components_all,
+        aes(
+            x="component_label",
+            y="component_transfer_total_musd_per_year",
+            fill="group",
+        ),
+    )
+    + geom_col(position=position_dodge(width=0.8), width=0.7)
+    + facet_wrap("~run_str", ncol=4)
+    + coord_flip()
+    + labs(
+        title="Cross-Subsidy BAT Components by Run ($M/year)",
+        x="Benchmark component",
+        y="Transfer ($M/year)",
+        fill="Group",
+    )
+    + theme_minimal()
+    + theme(
+        figure_size=(16, 12),
+        legend_position="bottom",
+        strip_text=element_text(size=8),
+    )
+)
+```
+
+# Section 4: Bill Impact Comparisons
+
+Compare weighted median and mean annual electric bills across tariff
+designs and cost scopes.
+
+```{python}
+#| label: bill-summary
+
+
+def weighted_median(values: pd.Series, weights: pd.Series) -> float:
+    valid = values.notna() & weights.notna()
+    if not valid.any():
+        return float("nan")
+    frame = pd.DataFrame(
+        {"value": values[valid].astype(float), "weight": weights[valid].astype(float)}
+    )
+    frame = frame.sort_values("value").reset_index(drop=True)
+    cutoff = 0.5 * frame["weight"].sum()
+    return frame.loc[frame["weight"].cumsum() >= cutoff, "value"].iloc[0]
+
+
+bill_rows = []
+for run_num, payload in run_payload.items():
+    cfg = RUN_CONFIG[run_num]
+    merged = payload["cross"].merge(
+        payload["metadata"][["bldg_id", "postprocess_group.has_hp", "weight"]],
+        on=["bldg_id", "weight"],
+        how="left",
+    )
+    for has_hp, grp in merged.groupby("postprocess_group.has_hp"):
+        bill_rows.append(
+            {
+                "run": run_num,
+                "label": cfg["label"],
+                "tariff": cfg["tariff"],
+                "cost_scope": cfg["cost_scope"],
+                "run_type": cfg["run_type"],
+                "elasticity": cfg["elasticity"],
+                "group": "HP" if has_hp else "Non-HP",
+                "annual_bill_weighted_median": weighted_median(
+                    grp["Annual"], grp["weight"]
+                ),
+                "annual_bill_weighted_mean": (grp["Annual"] * grp["weight"]).sum()
+                / grp["weight"].sum(),
+                "total_weighted_bills_musd": (grp["Annual"] * grp["weight"]).sum()
+                / 1e6,
+                "customers_weighted": grp["weight"].sum(),
+            }
+        )
+
+bill_df = pd.DataFrame(bill_rows)
+bill_df.sort_values(["run", "group"])
+```
+
+```{python}
+#| label: fig-bills-by-run
+#| fig-cap: "Weighted mean annual electric bill by run and customer group."
+bill_plot = bill_df.copy()
+bill_plot["run_label"] = bill_plot["run"].astype(str) + " " + bill_plot["tariff"]
+
+(
+    ggplot(
+        bill_plot,
+        aes(x="run_label", y="annual_bill_weighted_mean", fill="group"),
+    )
+    + geom_col(position=position_dodge(width=0.8), width=0.7)
+    + coord_flip()
+    + labs(
+        title="Weighted Mean Annual Electric Bill by Run",
+        x="Run",
+        y="Annual bill ($/customer-year)",
+        fill="Group",
+    )
+    + theme_minimal()
+    + theme(figure_size=(12, 8), legend_position="bottom")
+)
+```
+
+## Bill Deltas Across Tariff Designs
+
+Compare bill changes relative to the flat tariff baseline (runs 1/2) for
+each cost scope.
+
+```{python}
+#| label: fig-bill-deltas
+#| fig-cap: "Bill change relative to flat tariff (runs 1/2) for each tariff design."
+# Compute bill deltas relative to flat precalc baseline
+flat_bills = bill_df[bill_df["tariff"] == "flat"].set_index(["cost_scope", "group"])[
+    "annual_bill_weighted_mean"
+]
+
+delta_rows = []
+for _, row in bill_df[bill_df["run_type"] == "precalc"].iterrows():
+    key = (row["cost_scope"], row["group"])
+    if key in flat_bills.index:
+        baseline = flat_bills.loc[key]
+        delta_rows.append(
+            {
+                "run": row["run"],
+                "tariff": row["tariff"],
+                "cost_scope": row["cost_scope"],
+                "group": row["group"],
+                "elasticity": row["elasticity"],
+                "bill_delta": row["annual_bill_weighted_mean"] - baseline,
+                "bill_delta_pct": (row["annual_bill_weighted_mean"] - baseline)
+                / baseline
+                * 100,
+            }
+        )
+
+delta_df = pd.DataFrame(delta_rows)
+if not delta_df.empty:
+    delta_df["tariff_scope"] = delta_df["tariff"] + " (" + delta_df["cost_scope"] + ")"
+
+    (
+        ggplot(
+            delta_df,
+            aes(x="tariff_scope", y="bill_delta", fill="group"),
+        )
+        + geom_col(position=position_dodge(width=0.8), width=0.7)
+        + geom_hline(yintercept=0, linetype="dashed", color="gray")
+        + coord_flip()
+        + labs(
+            title="Bill Change vs Flat Tariff Baseline (Precalc Runs)",
+            subtitle="Positive = higher bills than flat; negative = lower bills",
+            x="Tariff design (cost scope)",
+            y="Bill delta ($/customer-year)",
+            fill="Group",
+        )
+        + theme_minimal()
+        + theme(figure_size=(12, 6), legend_position="bottom")
+    )
+```
+
+## Revenue Neutrality Check
+
+Total weighted bills should approximately equal the revenue requirement.
+Compare total bills across runs.
+
+```{python}
+#| label: revenue-neutrality
+rev_check = (
+    bill_df.groupby(["run", "tariff", "cost_scope", "run_type", "elasticity"])
+    .agg(total_bills_musd=("total_weighted_bills_musd", "sum"))
+    .reset_index()
+    .sort_values("run")
+)
+
+print("Total weighted bills by run ($M):")
+rev_check
+```
+
+# Section 5: Delivery vs Delivery+Supply Validation
+
+For each tariff tier, compare delivery-only (odd) vs delivery+supply
+(even) runs to validate that differences are consistent.
+
+```{python}
+#| label: delivery-vs-supply
+del_sup_pairs = [
+    (1, 2, "flat"),
+    (3, 4, "flat_cal"),
+    (5, 6, "seasonal"),
+    (7, 8, "seasonal_cal"),
+    (9, 10, "TOU"),
+    (11, 12, "TOU_cal"),
+    (13, 14, "TOU_flex"),
+    (15, 16, "TOU_flex_cal"),
+]
+
+ds_rows = []
+for del_run, sup_run, tariff_label in del_sup_pairs:
+    del_bills = bill_df[bill_df["run"] == del_run]
+    sup_bills = bill_df[bill_df["run"] == sup_run]
+    if del_bills.empty or sup_bills.empty:
+        continue
+
+    del_bat = cross_summary_all[cross_summary_all["run"] == del_run]
+    sup_bat = cross_summary_all[cross_summary_all["run"] == sup_run]
+
+    for group_name in ["HP", "Non-HP"]:
+        del_bill_val = del_bills.loc[
+            del_bills["group"] == group_name, "annual_bill_weighted_mean"
+        ]
+        sup_bill_val = sup_bills.loc[
+            sup_bills["group"] == group_name, "annual_bill_weighted_mean"
+        ]
+        del_bat_val = del_bat.loc[
+            del_bat["group"] == group_name, "BAT_percustomer_weighted_avg"
+        ]
+        sup_bat_val = sup_bat.loc[
+            sup_bat["group"] == group_name, "BAT_percustomer_weighted_avg"
+        ]
+
+        if del_bill_val.empty or sup_bill_val.empty:
+            continue
+
+        ds_rows.append(
+            {
+                "tariff": tariff_label,
+                "group": group_name,
+                "del_run": del_run,
+                "sup_run": sup_run,
+                "del_bill": del_bill_val.iloc[0],
+                "sup_bill": sup_bill_val.iloc[0],
+                "bill_delta": sup_bill_val.iloc[0] - del_bill_val.iloc[0],
+                "del_bat": del_bat_val.iloc[0] if not del_bat_val.empty else None,
+                "sup_bat": sup_bat_val.iloc[0] if not sup_bat_val.empty else None,
+                "bat_delta": (
+                    sup_bat_val.iloc[0] - del_bat_val.iloc[0]
+                    if not sup_bat_val.empty and not del_bat_val.empty
+                    else None
+                ),
+            }
+        )
+
+ds_df = pd.DataFrame(ds_rows)
+print("Delivery vs delivery+supply comparison:")
+print("  bill_delta > 0 means supply run has higher bills (expected: supply adds MC to RR)")
+print("  bat_delta shows how adding supply MCs shifts cross-subsidization")
+ds_df
+```
+
+```{python}
+#| label: fig-delivery-vs-supply-bills
+#| fig-cap: "Bill delta (supply - delivery) by tariff tier and group. Positive values confirm supply runs have higher bills."
+if not ds_df.empty:
+    (
+        ggplot(
+            ds_df,
+            aes(x="tariff", y="bill_delta", fill="group"),
+        )
+        + geom_col(position=position_dodge(width=0.8), width=0.7)
+        + geom_hline(yintercept=0, linetype="dashed", color="gray")
+        + coord_flip()
+        + labs(
+            title="Bill Delta: Delivery+Supply minus Delivery-Only",
+            subtitle="Positive = supply run bills are higher (expected)",
+            x="Tariff tier",
+            y="Bill delta ($/customer-year)",
+            fill="Group",
+        )
+        + theme_minimal()
+        + theme(figure_size=(10, 6), legend_position="bottom")
+    )
+```
+
+```{python}
+#| label: fig-delivery-vs-supply-bat
+#| fig-cap: "BAT delta (supply - delivery) by tariff tier and group. Shows how adding supply MCs changes cross-subsidization."
+if not ds_df.empty and ds_df["bat_delta"].notna().any():
+    (
+        ggplot(
+            ds_df.dropna(subset=["bat_delta"]),
+            aes(x="tariff", y="bat_delta", fill="group"),
+        )
+        + geom_col(position=position_dodge(width=0.8), width=0.7)
+        + geom_hline(yintercept=0, linetype="dashed", color="gray")
+        + coord_flip()
+        + labs(
+            title="BAT Delta: Delivery+Supply minus Delivery-Only",
+            subtitle="How adding supply MCs shifts cross-subsidization (per-customer benchmark)",
+            x="Tariff tier",
+            y="BAT delta ($/customer-year)",
+            fill="Group",
+        )
+        + theme_minimal()
+        + theme(figure_size=(10, 6), legend_position="bottom")
+    )
+```
+
+# Section 6: Demand Flex Effects (Runs 9-12 vs 13-16)
+
+Compare TOU runs (no flex, elasticity=0) vs TOU+flex runs
+(elasticity=-0.1) to assess the impact of demand-response load shifting.
+
+## BAT Improvement from Demand Flex
+
+```{python}
+#| label: flex-bat-comparison
+flex_pairs = [
+    (9, 13, "precalc", "delivery"),
+    (10, 14, "precalc", "delivery+supply"),
+    (11, 15, "default", "delivery"),
+    (12, 16, "default", "delivery+supply"),
+]
+
+flex_bat_rows = []
+for noflex, flex, run_type, cost_scope in flex_pairs:
+    nf_bat = cross_summary_all[cross_summary_all["run"] == noflex]
+    f_bat = cross_summary_all[cross_summary_all["run"] == flex]
+    if nf_bat.empty or f_bat.empty:
+        continue
+
+    for group_name in ["HP", "Non-HP"]:
+        nf_val = nf_bat.loc[
+            nf_bat["group"] == group_name, "BAT_percustomer_weighted_avg"
+        ]
+        f_val = f_bat.loc[
+            f_bat["group"] == group_name, "BAT_percustomer_weighted_avg"
+        ]
+        nf_bill = bill_df.loc[
+            (bill_df["run"] == noflex) & (bill_df["group"] == group_name),
+            "annual_bill_weighted_mean",
+        ]
+        f_bill = bill_df.loc[
+            (bill_df["run"] == flex) & (bill_df["group"] == group_name),
+            "annual_bill_weighted_mean",
+        ]
+
+        if nf_val.empty or f_val.empty:
+            continue
+
+        flex_bat_rows.append(
+            {
+                "noflex_run": noflex,
+                "flex_run": flex,
+                "run_type": run_type,
+                "cost_scope": cost_scope,
+                "group": group_name,
+                "bat_noflex": nf_val.iloc[0],
+                "bat_flex": f_val.iloc[0],
+                "bat_delta": f_val.iloc[0] - nf_val.iloc[0],
+                "bill_noflex": nf_bill.iloc[0] if not nf_bill.empty else None,
+                "bill_flex": f_bill.iloc[0] if not f_bill.empty else None,
+                "bill_delta": (
+                    f_bill.iloc[0] - nf_bill.iloc[0]
+                    if not f_bill.empty and not nf_bill.empty
+                    else None
+                ),
+            }
+        )
+
+flex_df = pd.DataFrame(flex_bat_rows)
+if not flex_df.empty:
+    print("Demand flex comparison (TOU vs TOU+flex):")
+    print("  bat_delta < 0 for HP = flex reduces HP cross-subsidy (good)")
+    print("  bill_delta shows bill change from demand shifting")
+    print(flex_df.to_string(index=False))
+else:
+    print("No flex comparison data available (runs 9-16 may be missing).")
+```
+
+```{python}
+#| label: fig-flex-bat-delta
+#| fig-cap: "BAT change from demand flex (TOU+flex minus TOU). Negative for HP means flex reduces HP cross-subsidy."
+if not flex_df.empty:
+    flex_df["pair_label"] = (
+        "R"
+        + flex_df["noflex_run"].astype(str)
+        + " vs R"
+        + flex_df["flex_run"].astype(str)
+        + "\n("
+        + flex_df["cost_scope"]
+        + ", "
+        + flex_df["run_type"]
+        + ")"
+    )
+
+    (
+        ggplot(
+            flex_df,
+            aes(x="pair_label", y="bat_delta", fill="group"),
+        )
+        + geom_col(position=position_dodge(width=0.8), width=0.7)
+        + geom_hline(yintercept=0, linetype="dashed", color="gray")
+        + coord_flip()
+        + labs(
+            title="BAT Change from Demand Flexibility",
+            subtitle="TOU+flex (e=-0.1) minus TOU (e=0), per-customer benchmark",
+            x="Run pair",
+            y="BAT delta ($/customer-year)",
+            fill="Group",
+        )
+        + theme_minimal()
+        + theme(figure_size=(10, 6), legend_position="bottom")
+    )
+```
+
+## Bill Change from Demand Flex
+
+```{python}
+#| label: fig-flex-bill-delta
+#| fig-cap: "Bill change from demand flex. Shows how demand shifting affects bills for HP and Non-HP customers."
+if not flex_df.empty and flex_df["bill_delta"].notna().any():
+    (
+        ggplot(
+            flex_df.dropna(subset=["bill_delta"]),
+            aes(x="pair_label", y="bill_delta", fill="group"),
+        )
+        + geom_col(position=position_dodge(width=0.8), width=0.7)
+        + geom_hline(yintercept=0, linetype="dashed", color="gray")
+        + coord_flip()
+        + labs(
+            title="Bill Change from Demand Flexibility",
+            subtitle="TOU+flex (e=-0.1) minus TOU (e=0)",
+            x="Run pair",
+            y="Bill delta ($/customer-year)",
+            fill="Group",
+        )
+        + theme_minimal()
+        + theme(figure_size=(10, 6), legend_position="bottom")
+    )
+```
+
+## Revenue Requirement: TOU vs TOU+Flex
+
+```{python}
+#| label: flex-rr-comparison
+flex_rr = rev_check[rev_check["run"].isin([9, 10, 11, 12, 13, 14, 15, 16])].copy()
+flex_rr["flex"] = flex_rr["elasticity"].apply(
+    lambda e: "TOU+flex (e=-0.1)" if e != 0 else "TOU (e=0)"
+)
+if not flex_rr.empty:
+    print(
+        "Revenue requirement comparison (TOU vs TOU+flex):"
+    )
+    print(
+        "  Flex runs should have slightly different RR due to MC change from load shifting."
+    )
+    print(flex_rr[["run", "tariff", "cost_scope", "flex", "total_bills_musd"]].to_string(index=False))
+```
+
+# Summary
+
+```{python}
+#| label: summary
+print("=" * 70)
+print("VALIDATION SUMMARY")
+print("=" * 70)
+print(f"\nRuns found: {len(available_runs)}/16")
+if missing_runs:
+    print(f"Missing runs: {missing_runs}")
+print()
+
+# Delivery vs supply check
+if not ds_df.empty:
+    all_positive = (ds_df["bill_delta"] > 0).all()
+    print(
+        f"Delivery vs supply bill delta: "
+        f"{'PASS - all supply bills higher' if all_positive else 'CHECK - some supply bills not higher'}"
+    )
+
+# Flex effect check
+if not flex_df.empty:
+    hp_flex = flex_df[flex_df["group"] == "HP"]
+    if not hp_flex.empty:
+        hp_bat_improved = (hp_flex["bat_delta"] < 0).all()
+        print(
+            f"Demand flex BAT for HP: "
+            f"{'PASS - flex reduces HP cross-subsidy' if hp_bat_improved else 'CHECK - flex does not consistently reduce HP BAT'}"
+        )
+
+print("\nDone.")
+```

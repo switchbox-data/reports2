@@ -1,0 +1,505 @@
+---
+title: "RI HP Cross-Subsidy Diagnostics (Analysis Outputs)"
+format:
+  html:
+    page-layout: full
+toc: true
+execute:
+  warning: false
+  message: false
+---
+
+This notebook analyzes RI CAIRO run outputs from `s3://data.sb/switchbox/cairo/ri_hp_rates/analysis_outputs/`, comparing two specified analysis-output runs and then doing detailed diagnostics on one selected run.
+
+```{python}
+from __future__ import annotations
+
+from pathlib import Path
+
+import pandas as pd
+from plotnine import (
+    aes,
+    coord_flip,
+    facet_grid,
+    facet_wrap,
+    geom_area,
+    geom_col,
+    geom_line,
+    geom_ribbon,
+    ggplot,
+    labs,
+    position_dodge,
+    scale_fill_manual,
+    theme,
+    theme_minimal,
+)
+
+import sys
+
+for _root in (Path.cwd(), *Path.cwd().parents):
+    _rate_utils = _root / "rate-utils"
+    if (_rate_utils / "plotting_utils.py").is_file():
+        sys.path.insert(0, str(_rate_utils))
+        break
+else:
+    raise FileNotFoundError("Could not locate rate-utils/plotting_utils.py from current working directory.")
+
+from plotting_utils import (
+    build_bldg_id_to_load_filepath,
+    build_cost_mix,
+    build_cross_components,
+    build_hourly_group_loads,
+    build_hourly_heating_type_loads,
+    build_tariff_components,
+    find_latest_run_dir,
+    load_cambium_from_parquet_s3,
+    load_dist_mc_from_run,
+    read_s3_csv,
+    read_s3_json,
+    summarize_cross_subsidy,
+    summarize_cross_subsidy_by_heating_type,
+    summarize_positive_distribution_hours,
+)
+
+try:
+    from cairo.rates_tool.loads import _return_load
+except ModuleNotFoundError as exc:
+    raise ModuleNotFoundError(
+        "CAIRO is not installed in this reports2 environment. "
+        "Run `uv sync` in reports2 after adding cairo to dependencies."
+    ) from exc
+
+
+pd.set_option("display.max_columns", 100)
+
+RUN_BASE = "s3://data.sb/switchbox/cairo/ri_hp_rates/analysis_outputs"
+
+# Both runs use the same Cambium MidCase P133 data; delivery_only_rev_req_passed in
+# run_scenario.py controls whether supply costs are included in the revenue requirement.
+_CAMBIUM_S3 = "s3://data.sb/nrel/cambium/2024/scenario=MidCase/t=2025/gea=ISONE/r=p133/data.parquet"
+
+RUN_CONFIG = {
+    "precalc_delivery": {
+        "run_name": "ri_rie_run_01_precalc_delivery_up00_y2025",
+        "cambium_costs": _CAMBIUM_S3,
+        "target_year": 2025,
+        "precalc_tariff_key": "rie_a16",
+        "label_display": "Delivery (full rev-req)",
+    },
+    "precalc_delivery_supply": {
+        "run_name": "ri_rie_run_02_precalc_delivery_supply_up00_y2025",
+        "cambium_costs": _CAMBIUM_S3,
+        "target_year": 2025,
+        "precalc_tariff_key": "rie_a16_supply_adj",
+        "label_display": "Delivery+supply (delivery-only rev-req)",
+    },
+}
+ACTIVE_RUN_LABEL = "precalc_delivery"
+
+# ResStock loads accessed via local S3 mount (needed for Path.glob in build_bldg_id_to_load_filepath)
+RESSTOCK_LOADS = Path(
+    "/data.sb/nrel/resstock/res_2024_amy2018_2/load_curve_hourly/state=RI/upgrade=00"
+)
+
+# Resolve the most recent output directory for each run (directories are named
+# {YYYYMMDD_HHMMSS}_{run_name}; find_latest_run_dir picks the lexicographically latest).
+run_dirs = {
+    label: find_latest_run_dir(RUN_BASE, cfg["run_name"])
+    for label, cfg in RUN_CONFIG.items()
+}
+
+if ACTIVE_RUN_LABEL not in run_dirs:
+    raise ValueError(
+        f"ACTIVE_RUN_LABEL={ACTIVE_RUN_LABEL!r} is not in configured run labels: {list(run_dirs)}"
+    )
+
+run_dir = run_dirs[ACTIVE_RUN_LABEL]
+
+print("Configured runs:")
+for run_label, run_path in run_dirs.items():
+    print(f"  - {run_label} [{RUN_CONFIG[run_label]['label_display']}]: {run_path}")
+print(f"Using detailed diagnostics run: {ACTIVE_RUN_LABEL} -> {run_dir}")
+```
+
+## Load Cross-Subsidy Outputs
+
+```{python}
+run_payload = {}
+
+for run_label, run_path in run_dirs.items():
+    run_metadata = read_s3_csv(f"{run_path}/customer_metadata.csv")
+    run_cross = read_s3_csv(f"{run_path}/cross_subsidization/cross_subsidization_BAT_values.csv")
+    run_cross_summary = summarize_cross_subsidy(cross=run_cross, metadata=run_metadata)
+    run_cross_summary["run_label"] = run_label
+
+    run_cross_components = build_cross_components(run_cross_summary)
+    run_cross_components["run_label"] = run_label
+
+    run_ht_summary = summarize_cross_subsidy_by_heating_type(cross=run_cross, metadata=run_metadata)
+    run_ht_summary["run_label"] = run_label
+
+    run_payload[run_label] = {
+        "metadata": run_metadata,
+        "cross": run_cross,
+        "cross_summary": run_cross_summary,
+        "cross_components": run_cross_components,
+        "ht_summary": run_ht_summary,
+    }
+
+cross_summary_all = pd.concat(
+    [payload["cross_summary"] for payload in run_payload.values()],
+    ignore_index=True,
+)
+cross_components_all = pd.concat(
+    [payload["cross_components"] for payload in run_payload.values()],
+    ignore_index=True,
+)
+ht_summary_all = pd.concat(
+    [payload["ht_summary"] for payload in run_payload.values()],
+    ignore_index=True,
+)
+
+metadata = run_payload[ACTIVE_RUN_LABEL]["metadata"]
+cross = run_payload[ACTIVE_RUN_LABEL]["cross"]
+cross_summary = run_payload[ACTIVE_RUN_LABEL]["cross_summary"]
+cross_components = run_payload[ACTIVE_RUN_LABEL]["cross_components"]
+ht_summary = run_payload[ACTIVE_RUN_LABEL]["ht_summary"]
+
+cross_summary_all.sort_values(["run_label", "group"])
+```
+
+```{python}
+# Customer counts by group (weighted)
+cross_summary_all[["run_label", "group", "customers_weighted"]].sort_values(
+    ["run_label", "group"]
+).reset_index(drop=True)
+```
+
+## Marginal vs Residual Cost Composition (HP vs Non-HP)
+
+```{python}
+_residual_cols = {
+    "residual_vol_weighted_avg": "Volumetric",
+    "residual_peak_weighted_avg": "Peak",
+    "residual_percustomer_weighted_avg": "Per-customer",
+}
+
+per_customer_long = (
+    cross_summary_all
+    .melt(
+        id_vars=["run_label", "group", "Economic_burden_weighted_avg"],
+        value_vars=list(_residual_cols.keys()),
+        var_name="residual_key",
+        value_name="residual_usd_per_customer",
+    )
+    .assign(benchmark=lambda d: d["residual_key"].map(_residual_cols))
+    .melt(
+        id_vars=["run_label", "group", "benchmark"],
+        value_vars=["Economic_burden_weighted_avg", "residual_usd_per_customer"],
+        var_name="cost_source_key",
+        value_name="usd_per_customer",
+    )
+    .assign(
+        cost_source=lambda d: d["cost_source_key"].map({
+            "Economic_burden_weighted_avg": "Marginal (economic burden)",
+            "residual_usd_per_customer": "Residual allocation",
+        })
+    )
+)
+per_customer_long["cost_source"] = pd.Categorical(
+    per_customer_long["cost_source"],
+    categories=["Residual allocation", "Marginal (economic burden)"],
+    ordered=True,
+)
+
+(
+    ggplot(per_customer_long, aes(x="group", y="usd_per_customer", fill="cost_source"))
+    + geom_col(position="stack", width=0.65)
+    + scale_fill_manual(
+        values={
+            "Marginal (economic burden)": "#00BFC4",
+            "Residual allocation": "#F8766D",
+        },
+        breaks=["Marginal (economic burden)", "Residual allocation"],
+    )
+    + facet_grid("run_label ~ benchmark")
+    + labs(
+        title="Cost Composition per Customer: Marginal vs Residual ($/customer/year)",
+        x="Customer group",
+        y="$/customer/year",
+        fill="Cost source",
+    )
+    + theme_minimal()
+    + theme(figure_size=(10, 5), legend_position="bottom")
+)
+```
+
+## Build Hourly Loads and Marginal Costs with CAIRO
+
+```{python}
+# Loads are the same for both runs (same ResStock inputs); build once using active-run metadata.
+building_ids = metadata["bldg_id"].astype(int).tolist()
+load_map = build_bldg_id_to_load_filepath(RESSTOCK_LOADS, building_ids)
+
+raw_load_elec = _return_load(
+    load_type="electricity",
+    target_year=RUN_CONFIG[ACTIVE_RUN_LABEL]["target_year"],
+    load_filepath_key=load_map,
+    force_tz="EST",
+)
+
+hourly_by_group = build_hourly_group_loads(raw_load_elec=raw_load_elec, metadata=metadata)
+hourly_by_heating_type = build_hourly_heating_type_loads(raw_load_elec=raw_load_elec, metadata=metadata)
+
+# Build per-run hourly DataFrames: each run has its own distribution MC (from the saved CSV)
+# and its own Cambium supply costs (delivery-only run uses dummy zeros; supply-adj uses real costs).
+hourly_runs: dict[str, pd.DataFrame] = {}
+
+for run_label, run_cfg in RUN_CONFIG.items():
+    run_path = run_dirs[run_label]
+
+    # Distribution: load actual CSV written by run_scenario.py into the run output dir
+    dist_costs = load_dist_mc_from_run(run_path)
+
+    # Supply (Cambium): load directly from S3 parquet via polars
+    supply_costs = load_cambium_from_parquet_s3(run_cfg["cambium_costs"], run_cfg["target_year"])
+    supply_costs["Marginal Supply Costs ($/kWh)"] = (
+        supply_costs["Marginal Energy Costs ($/kWh)"] + supply_costs["Marginal Capacity Costs ($/kWh)"]
+    )
+
+    costs = supply_costs.join(dist_costs, how="left")
+
+    hrly = hourly_by_group.join(costs, how="left").reset_index()
+    hrly["mdc_positive"] = hrly["Marginal Distribution Costs ($/kWh)"] > 0
+    hrly["run_label"] = run_label
+    hrly["label_display"] = run_cfg["label_display"]
+    hourly_runs[run_label] = hrly
+
+# Active-run hourly kept as `hourly` for single-run sections below
+hourly = hourly_runs[ACTIVE_RUN_LABEL]
+
+for run_label, hrly in hourly_runs.items():
+    hours_positive = int(hrly["mdc_positive"].sum())
+    hp_annual_share = hrly["hp_load_kwh"].sum() / hrly["total_load_kwh"].sum()
+    hp_peakdist_share = (
+        hrly.loc[hrly["mdc_positive"], "hp_load_kwh"].sum()
+        / hrly.loc[hrly["mdc_positive"], "total_load_kwh"].sum()
+    )
+    print(
+        f"[{run_label}] mdc > 0 hours: {hours_positive}, "
+        f"HP annual share: {hp_annual_share:.2%}, "
+        f"HP peak-dist share: {hp_peakdist_share:.2%}"
+    )
+```
+
+## Stacked Aggregated Load Curves by Heating Type
+
+```{python}
+(
+    ggplot(hourly_by_heating_type, aes(x="time", y="load_kwh", fill="heating_type"))
+    + geom_area(position="stack", alpha=0.85)
+    + labs(
+        title="Stacked Weighted Aggregated Load Curves by Heating Type",
+        x="Time",
+        y="Load (kWh)",
+        fill="Heating type",
+    )
+    + theme_minimal()
+    + theme(figure_size=(12, 4), legend_position="bottom")
+)
+```
+
+## Hourly Load Line Plot by Heating Type
+
+```{python}
+(
+    ggplot(hourly_by_heating_type, aes(x="time", y="load_kwh", color="heating_type"))
+    + geom_line(size=0.55, alpha=0.9)
+    + labs(
+        title="Hourly Weighted Load Curves by Heating Type",
+        x="Time",
+        y="Load (kWh)",
+        color="Heating type",
+    )
+    + theme_minimal()
+    + theme(figure_size=(12, 4), legend_position="bottom")
+)
+```
+
+## Marginal Costs: Distribution vs Supply
+
+```{python}
+# Marginal costs are run-independent (same network model, same Cambium parquet);
+# plot once using the active run.
+cost_plot = hourly[
+    ["time", "Marginal Distribution Costs ($/kWh)", "Marginal Supply Costs ($/kWh)"]
+].melt(
+    id_vars=["time"],
+    var_name="cost_type",
+    value_name="cost",
+)
+
+(
+    ggplot(cost_plot, aes(x="time", y="cost", color="cost_type"))
+    + geom_line(size=0.5)
+    + labs(
+        title="Marginal Cost Time Series",
+        x="Time",
+        y="Marginal cost ($/kWh)",
+        color="Cost type",
+    )
+    + theme_minimal()
+    + theme(figure_size=(12, 4), legend_position="bottom")
+)
+```
+
+## Cross-Subsidy Components by Group
+
+```{python}
+(
+    ggplot(
+        cross_components_all,
+        aes(x="component_label", y="component_transfer_total_musd_per_year", fill="group"),
+    )
+    + geom_col(position=position_dodge(width=0.8), width=0.7)
+    + facet_wrap("~run_label")
+    + coord_flip()
+    + labs(
+        title="Cross-Subsidy BAT Components by Run (Total Transfer, $M/year)",
+        x="Benchmark component",
+        y="Transfer ($ million per year)",
+        fill="Group",
+    )
+    + theme_minimal()
+    + theme(figure_size=(9, 4), legend_position="bottom")
+)
+```
+
+## BAT Results by Heating Type
+
+```{python}
+ht_summary
+```
+
+```{python}
+ht_bat_long = ht_summary_all.melt(
+    id_vars=["group", "run_label"],
+    value_vars=["BAT_vol_weighted_avg", "BAT_peak_weighted_avg", "BAT_percustomer_weighted_avg"],
+    var_name="bat_key",
+    value_name="bat_usd_per_customer_year",
+).assign(
+    bat_label=lambda d: d["bat_key"].map(
+        {
+            "BAT_vol_weighted_avg": "Volumetric",
+            "BAT_peak_weighted_avg": "Peak",
+            "BAT_percustomer_weighted_avg": "Per-customer",
+        }
+    )
+)
+
+(
+    ggplot(
+        ht_bat_long,
+        aes(x="group", y="bat_usd_per_customer_year", fill="bat_label"),
+    )
+    + geom_col(position=position_dodge(width=0.8), width=0.7)
+    + facet_wrap("~run_label", ncol=1)
+    + coord_flip()
+    + labs(
+        title="BAT by Heating Type and Run ($/customer-year)",
+        x="Heating type",
+        y="BAT ($/customer-year)",
+        fill="Benchmark",
+    )
+    + theme_minimal()
+    + theme(figure_size=(10, 6), legend_position="bottom")
+)
+```
+
+## Consumption During Hours Where `marginal_distribution_cost > 0`
+
+```{python}
+customer_count_map = cross_summary.set_index("group")["customers_weighted"].to_dict()
+positive_hours_summary = summarize_positive_distribution_hours(hourly, customer_count_map)
+positive_hours_summary
+```
+
+```{python}
+(
+    ggplot(
+        positive_hours_summary,
+        aes(x="group", y="positive_dist_cost_hours_load_mwh_per_customer", fill="group"),
+    )
+    + geom_col(width=0.6)
+    + labs(
+        title="Per-Customer Load in Hours with Positive Marginal Distribution Cost",
+        x="Customer group",
+        y="MWh/customer-year in mdc > 0 hours",
+        fill="Group",
+    )
+    + theme_minimal()
+    + theme(figure_size=(7, 4), legend_position="none")
+)
+```
+
+## Tariff Components and Residual Allocation Drivers
+
+```{python}
+tariff_cfg = read_s3_json(f"{run_dir}/tariff_final_config.json")
+
+active_tariff_key = RUN_CONFIG[ACTIVE_RUN_LABEL]["precalc_tariff_key"]
+tariff = tariff_cfg[active_tariff_key]
+fixed_monthly = float(tariff["ur_monthly_fixed_charge"])
+vol_rate = float(tariff["ur_ec_tou_mat"][0][4])
+
+tariff_components = build_tariff_components(
+    hourly=hourly,
+    cross_summary=cross_summary,
+    fixed_monthly=fixed_monthly,
+    vol_rate=vol_rate,
+)
+
+tariff_components[[
+    "group",
+    "weighted_customers",
+    "annual_load_kwh",
+    "annual_fixed_charge_collected_usd",
+    "annual_volumetric_charge_collected_usd",
+]]
+```
+
+```{python}
+tariff_components_plot = tariff_components.melt(
+    id_vars=["group"],
+    value_vars=["annual_fixed_charge_collected_usd", "annual_volumetric_charge_collected_usd"],
+    var_name="component",
+    value_name="collected_usd",
+)
+tariff_components_plot["component"] = tariff_components_plot["component"].map(
+    {
+        "annual_fixed_charge_collected_usd": "Fixed charge",
+        "annual_volumetric_charge_collected_usd": "Volumetric charge",
+    }
+)
+
+(
+    ggplot(tariff_components_plot, aes(x="group", y="collected_usd", fill="component"))
+    + geom_col(position="fill", width=0.65)
+    + labs(
+        title="Proportion of Fixed vs Volumetric Collected Charges by Group",
+        x="Customer group",
+        y="Share of annual collected charge",
+        fill="Charge component",
+    )
+    + theme_minimal()
+    + theme(figure_size=(8, 4), legend_position="bottom")
+)
+```
+
+### Interpretation Checklist
+
+1. Compare each group's share of annual load vs share of load in `marginal_distribution_cost > 0` hours.
+2. Compare tariff collection mechanics (flat customer + flat volumetric) against benchmark residual allocation policies (volumetric, peak, per-customer).
+3. Both runs use the same Cambium P133 supply costs. The difference is `delivery_only_rev_req_passed`: run 1 (full rev-req) passes the total revenue requirement; run 2 (delivery-only rev-req) passes only the delivery portion.
+4. Both runs use the same distribution marginal costs loaded from each run's `distribution_marginal_costs.csv` output (written by `run_scenario.py`).
+5. To change `ACTIVE_RUN_LABEL` for the single-run diagnostics sections, update the variable at the top of the config cell.

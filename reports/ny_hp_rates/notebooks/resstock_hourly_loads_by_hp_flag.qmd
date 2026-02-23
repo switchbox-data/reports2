@@ -1,0 +1,368 @@
+---
+title: NY ResStock Hourly Loads by HP Flag (2024 AMY2018 Release 2)
+format:
+  html:
+    page-layout: full
+toc: true
+execute:
+  warning: false
+  message: false
+---
+
+This notebook plots NY ResStock hourly loads split by heat-pump status using a Polars lazy/streaming workflow.
+
+```{python}
+from pathlib import Path
+
+import polars as pl
+from plotnine import (
+    aes,
+    coord_flip,
+    geom_area,
+    geom_col,
+    geom_line,
+    geom_ribbon,
+    ggplot,
+    labs,
+    scale_color_manual,
+    scale_fill_manual,
+    theme,
+    theme_minimal,
+)
+import sys
+
+for _root in (Path.cwd(), *Path.cwd().parents):
+    _rate_utils = _root / "rate-utils"
+    if (_rate_utils / "plotting_utils.py").is_file():
+        sys.path.insert(0, str(_rate_utils))
+        break
+else:
+    raise FileNotFoundError("Could not locate rate-utils/plotting_utils.py from current working directory.")
+
+from plotting_utils import force_timezone_est_polars
+```
+
+# Parameters
+```{python}
+STATE = "NY"
+RELEASE = "res_2024_amy2018_2"
+UPGRADE = "00"
+CUSTOMER_COUNT = 7_500_000
+SAMPLE_BUILDINGS = 2_000
+
+DATA_ROOT_CANDIDATES = [
+    Path("/metadata.sb/nrel/resstock"),
+    Path("/data.sb/nrel/resstock"),
+]
+
+GROUP_COLORS = {
+    "HP": "#FC9706",
+    "Electric (non-HP heating)": "#2A9D8F",
+    "Non-HP": "#023047",
+}
+
+
+def choose_data_root(candidates: list[Path]) -> Path:
+    for root in candidates:
+        if root.exists():
+            return root
+    raise FileNotFoundError(
+        "No data root found. Checked: " + ", ".join(str(p) for p in candidates)
+    )
+
+
+def resolve_metadata_file(base: Path) -> Path:
+    candidates = [
+        base / "metadata-sb.parquet",
+        base / "metadata-sb-with-utilities.parquet",
+        base / "metadata.parquet",
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+    raise FileNotFoundError(
+        "No metadata parquet found. Checked: " + ", ".join(str(p) for p in candidates)
+    )
+
+
+def build_hp_flag_expr(schema_cols: list[str]) -> pl.Expr:
+    if "postprocess_group.has_hp" in schema_cols:
+        return pl.col("postprocess_group.has_hp")
+
+    if "in.hvac_heating_and_fuel_type" in schema_cols:
+        return (
+            pl.col("in.hvac_heating_and_fuel_type")
+            .str.to_lowercase()
+            .str.contains("hp")
+            .fill_null(False)
+        )
+
+    if "in.hvac_heating_type_and_fuel" in schema_cols:
+        return (
+            pl.col("in.hvac_heating_type_and_fuel")
+            .str.to_lowercase()
+            .str.contains("hp")
+            .fill_null(False)
+        )
+
+    raise ValueError(
+        "Could not determine HP flag from metadata columns. "
+        "Expected `postprocess_group.has_hp`, `in.hvac_heating_and_fuel_type`, "
+        "or `in.hvac_heating_type_and_fuel`."
+    )
+
+
+data_root = choose_data_root(DATA_ROOT_CANDIDATES)
+resstock_root = data_root / RELEASE
+metadata_dir = resstock_root / "metadata" / f"state={STATE}" / f"upgrade={UPGRADE}"
+loads_dir = (
+    resstock_root
+    / "load_curve_hourly"
+    # / f"state={STATE}"
+    # / f"upgrade={UPGRADE}"
+)
+loads_glob = str(
+    loads_dir
+    / "*.parquet"
+)
+```
+
+# Metadata Processing
+```{python}
+metadata_path = resolve_metadata_file(metadata_dir)
+meta_schema = pl.scan_parquet(str(metadata_path)).collect_schema().names()
+
+if "bldg_id" not in meta_schema:
+    raise ValueError(f"metadata is missing bldg_id: {metadata_path}")
+
+if "in.hvac_heating_and_fuel_type" in meta_schema:
+    heating_type_col = "in.hvac_heating_and_fuel_type"
+elif "in.hvac_heating_type_and_fuel" in meta_schema:
+    heating_type_col = "in.hvac_heating_type_and_fuel"
+else:
+    raise ValueError(
+        "Could not determine heating-type column from metadata. "
+        "Expected `in.hvac_heating_and_fuel_type` or `in.hvac_heating_type_and_fuel`."
+    )
+
+weight_expr = (
+    pl.col("weight")
+    if "weight" in meta_schema
+    else pl.lit(1.0)
+)
+
+metadata_base_lf = (
+    pl.scan_parquet(str(metadata_path))
+    .select(
+        pl.col("bldg_id"),
+        pl.col(heating_type_col).fill_null("Unknown").alias("heating_type"),
+        build_hp_flag_expr(meta_schema).alias("hp_flag"),
+        weight_expr.alias("raw_weight"),
+    )
+    .with_columns(pl.col("raw_weight").fill_null(1.0))
+)
+
+metadata_df = metadata_base_lf.collect(engine="streaming")
+if SAMPLE_BUILDINGS and metadata_df.height > SAMPLE_BUILDINGS:
+    metadata_df = metadata_df.sample(n=SAMPLE_BUILDINGS, seed=42)
+sample_bldg_ids = metadata_df["bldg_id"].to_list()
+raw_weight_sum = metadata_df["raw_weight"].sum()
+if raw_weight_sum is None or raw_weight_sum <= 0:
+    raise ValueError("raw_weight_sum must be positive before scaling to CUSTOMER_COUNT.")
+
+weight_scale = CUSTOMER_COUNT / raw_weight_sum
+
+metadata_scaled = metadata_df.with_columns(
+    (pl.col("raw_weight") * pl.lit(weight_scale)).alias("weight")
+)
+metadata_lf = (
+    metadata_scaled
+    .lazy()
+    .with_columns(
+        pl.when(pl.col("hp_flag"))
+        .then(pl.lit("HP"))
+        .when(pl.col("heating_type").str.to_lowercase().str.contains("electric"))
+        .then(pl.lit("Electric (non-HP heating)"))
+        .otherwise(pl.lit("Non-HP"))
+        .alias("hp_group")
+    )
+    .select("bldg_id", "hp_group", "weight")
+)
+
+heating_type_summary = (
+    metadata_scaled
+    .lazy()
+    .group_by("heating_type")
+    .agg(pl.col("weight").sum().alias("weighted_homes"))
+    .with_columns(
+        (pl.col("weighted_homes") / pl.col("weighted_homes").sum()).alias("share_of_homes")
+    )
+    .sort("weighted_homes", descending=True)
+    .collect(engine="streaming")
+)
+```
+
+# Load Processing
+```{python}
+
+# load_schema = pl.scan_parquet(loads_dir).collect_schema().names()
+# load_col_preference = [
+#     # "out.electricity.net.energy_consumption",
+#     # "out.site_energy.net.energy_consumption",
+#     "out.electricity.total.energy_consumption",
+#     # "out.site_energy.total.energy_consumption",
+# ]
+# load_col = next((c for c in load_col_preference if c in load_schema), None)
+# if load_col is None:
+#     raise ValueError(
+#         "Expected one of load columns not found: " + ", ".join(load_col_preference)
+#     )
+load_col = "out.electricity.net.energy_consumption"
+```
+# Load Processing
+```{python}
+UPGRADE = int(UPGRADE)
+base_loads_lf = (
+    pl.scan_parquet(loads_dir)
+    .filter((pl.col("state") == STATE ) & (pl.col("upgrade") == UPGRADE))
+    .filter(pl.col("bldg_id").is_in(sample_bldg_ids))
+    .select(
+        pl.col("bldg_id"),
+        pl.col("timestamp"),
+        pl.col(load_col).alias("load_kwh"),
+    )
+    .join(metadata_lf, on="bldg_id", how="inner")
+)
+```
+# collect loads
+```{python}
+hourly_timeseries = (
+    base_loads_lf
+    .with_columns((pl.col("load_kwh") * pl.col("weight")).alias("weighted_load_kwh"))
+    .group_by(["timestamp", "hp_group"])
+    .agg(pl.col("weighted_load_kwh").sum().alias("weighted_hourly_load_kwh"))
+    .sort(["timestamp", "hp_group"])
+    .collect(engine="streaming")
+)
+
+hourly_timeseries = force_timezone_est_polars(hourly_timeseries, timestamp_col="timestamp")
+
+print(f"Data root: {data_root}")
+print(f"Metadata: {metadata_path}")
+print(f"Heating type column: {heating_type_col}")
+print(f"Load column: {load_col}")
+print(f"Sample buildings: {metadata_df.height:,}")
+print(f"Raw weight sum: {raw_weight_sum:,.3f}")
+print(f"Scaled weight sum target: {CUSTOMER_COUNT:,.0f}")
+print(f"Rows in hourly_timeseries: {hourly_timeseries.height:,}")
+```
+
+## Heating Type Distribution Across Houses
+
+```{python}
+heating_type_summary
+```
+
+```{python}
+heating_type_plot_pd = heating_type_summary.to_pandas()
+
+(
+    ggplot(
+        heating_type_plot_pd,
+        aes(x="reorder(heating_type, weighted_homes)", y="weighted_homes"),
+    )
+    + geom_col(fill="#457b9d")
+    + coord_flip()
+    + theme_minimal()
+    + theme(figure_size=(11, 6))
+    + labs(
+        title=f"{STATE} Distribution of `{heating_type_col}`",
+        subtitle=f"Release: {RELEASE}, upgrade={UPGRADE}",
+        x="Heating type",
+        y="Weighted homes",
+    )
+)
+```
+
+## Annual Hourly Timeseries (Weighted)
+
+```{python}
+hourly_ts_pd = hourly_timeseries.to_pandas()
+plot_ts = (
+    ggplot(hourly_ts_pd, aes(x="timestamp", y="weighted_hourly_load_kwh", color="hp_group"))
+    + geom_line(alpha=0.75, size=0.35)
+    + scale_color_manual(values=GROUP_COLORS)
+    + theme_minimal()
+    + labs(
+        title=f"{STATE} ResStock Hourly Load by HP Flag",
+        subtitle=f"Release: {RELEASE}, upgrade={UPGRADE}",
+        x="Timestamp",
+        y="Weighted hourly load (kWh)",
+        color="Group",
+    )
+)
+plot_ts
+```
+
+## Stacked Aggregated Load Curves (Non-HP + Electric Non-HP + HP)
+
+```{python}
+stacked = (
+    hourly_timeseries
+    .with_columns(pl.col("timestamp").dt.truncate("1d").alias("timestamp"))
+    .group_by(["timestamp", "hp_group"])
+    .agg(pl.col("weighted_hourly_load_kwh").mean().alias("weighted_hourly_load_kwh"))
+    .pivot(
+        index="timestamp",
+        on="hp_group",
+        values="weighted_hourly_load_kwh",
+        aggregate_function="sum",
+    )
+    .sort("timestamp")
+)
+required_groups = ["HP", "Electric (non-HP heating)", "Non-HP"]
+for group_name in required_groups:
+    if group_name not in stacked.columns:
+        stacked = stacked.with_columns(pl.lit(0.0).alias(group_name))
+
+stacked = (
+    stacked
+    .with_columns(
+        pl.col("HP").fill_null(0.0),
+        pl.col("Electric (non-HP heating)").fill_null(0.0),
+        pl.col("Non-HP").fill_null(0.0),
+    )
+    .with_columns(
+        (pl.col("Non-HP") + pl.col("Electric (non-HP heating)")).alias("non_hp_plus_electric_kwh")
+    )
+    .with_columns((pl.col("non_hp_plus_electric_kwh") + pl.col("HP")).alias("hp_top_kwh"))
+)
+stacked_pd = stacked.to_pandas()
+
+(
+    ggplot(stacked_pd, aes(x="timestamp"))
+    + geom_area(aes(y="Non-HP", fill='"Non-HP"'), alpha=0.85)
+    + geom_ribbon(
+        aes(
+            ymin="Non-HP",
+            ymax="non_hp_plus_electric_kwh",
+            fill='"Electric (non-HP heating)"',
+        ),
+        alpha=0.95,
+    )
+    + geom_ribbon(aes(ymin="non_hp_plus_electric_kwh", ymax="hp_top_kwh", fill='"HP"'), alpha=0.95)
+    + geom_line(aes(y="Non-HP"), color="#1f4e79", size=0.35)
+    + geom_line(aes(y="non_hp_plus_electric_kwh"), color="#2A9D8F", size=0.35)
+    + geom_line(aes(y="hp_top_kwh"), color="#8a3f00", size=0.45)
+    + scale_fill_manual(values={"Non-HP": "#6baed6", "Electric (non-HP heating)": "#2A9D8F", "HP": "#fdae6b"})
+    + theme_minimal()
+    + theme(figure_size=(12, 4), legend_position="bottom")
+    + labs(
+        title=f"{STATE} Stacked Daily-Average Weighted Load Curves",
+        subtitle=f"Release: {RELEASE}, upgrade={UPGRADE}",
+        x="Time",
+        y="Daily average hourly weighted load (kWh)",
+        fill="Series",
+    )
+)
+```

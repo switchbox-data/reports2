@@ -59,6 +59,7 @@ else:
 
 from plotting_utils import (
     build_cross_components,
+    extract_tariff_rates_from_config,
     find_latest_run_dir,
     read_s3_csv,
     read_s3_json,
@@ -183,12 +184,13 @@ print(f"Proceeding with {len(active_runs)} available runs: {active_run_nums}")
 # Section 2: Tariff Calibration Sanity Checks
 
 Extract calibrated tariff parameters from `tariff_final_config.json` for
-each run. For precalc runs, compare fixed charges and volumetric rates.
-For TOU runs, verify peak/off-peak structure.
+each run. The CAIRO internal format is converted to URDB form so we can
+inspect `energyratestructure` (period/tier/rate) and `fixedchargefirstmeter`
+in a readable way.
 
 ```{python}
 #| label: load-tariff-configs
-tariff_rows = []
+tariff_dfs = []
 
 for run_num in active_run_nums:
     cfg = RUN_CONFIG[run_num]
@@ -199,33 +201,33 @@ for run_num in active_run_nums:
         print(f"  Run {run_num}: could not read tariff config: {e}")
         continue
 
-    for tariff_key, tariff_data in tariff_cfg.items():
-        fixed_charge = tariff_data.get("ur_monthly_fixed_charge")
-        tou_mat = tariff_data.get("ur_ec_tou_mat", [])
+    rates_df = extract_tariff_rates_from_config(tariff_cfg)
+    rates_df["run"] = run_num
+    rates_df["label"] = cfg["label"]
+    rates_df["cost_scope"] = cfg["cost_scope"]
+    rates_df["run_type"] = cfg["run_type"]
+    rates_df["elasticity"] = cfg["elasticity"]
+    tariff_dfs.append(rates_df)
 
-        # Extract rates from TOU matrix
-        rates = [row[4] for row in tou_mat if len(row) > 4]
-        min_rate = min(rates) if rates else None
-        max_rate = max(rates) if rates else None
-        n_periods = len(set((row[0], row[1]) for row in tou_mat)) if tou_mat else 0
-
-        tariff_rows.append(
-            {
-                "run": run_num,
-                "label": cfg["label"],
-                "cost_scope": cfg["cost_scope"],
-                "run_type": cfg["run_type"],
-                "tariff_key": tariff_key,
-                "fixed_charge_usd_mo": fixed_charge,
-                "min_rate_usd_kwh": min_rate,
-                "max_rate_usd_kwh": max_rate,
-                "n_tou_periods": n_periods,
-                "is_tou": max_rate != min_rate if (max_rate and min_rate) else False,
-            }
-        )
-
-tariff_df = pd.DataFrame(tariff_rows)
+tariff_df = pd.concat(tariff_dfs, ignore_index=True) if tariff_dfs else pd.DataFrame()
 tariff_df
+```
+
+```{python}
+#| label: tariff-summary
+# Summarize: one row per run with fixed charge, number of periods, and rate range
+tariff_summary = (
+    tariff_df.groupby(["run", "label", "cost_scope", "run_type", "tariff_key"])
+    .agg(
+        fixed_charge_usd_mo=("fixed_charge_usd_mo", "first"),
+        n_periods=("energy_period", "nunique"),
+        min_rate_usd_kwh=("total_rate_usd_kwh", "min"),
+        max_rate_usd_kwh=("total_rate_usd_kwh", "max"),
+    )
+    .reset_index()
+)
+tariff_summary["is_tou"] = tariff_summary["n_periods"] > 1
+tariff_summary
 ```
 
 ```{python}
@@ -234,20 +236,25 @@ tariff_df
 pairs = [(1, 2), (5, 6), (9, 10), (13, 14)]
 comparison_rows = []
 for del_run, sup_run in pairs:
-    del_tariffs = tariff_df[tariff_df["run"] == del_run]
-    sup_tariffs = tariff_df[tariff_df["run"] == sup_run]
+    del_tariffs = tariff_summary[tariff_summary["run"] == del_run]
+    sup_tariffs = tariff_summary[tariff_summary["run"] == sup_run]
     if del_tariffs.empty or sup_tariffs.empty:
         continue
+    # Compare the maximum rate across all periods (peak rate for TOU)
     del_max = del_tariffs["max_rate_usd_kwh"].max()
     sup_max = sup_tariffs["max_rate_usd_kwh"].max()
+    del_fixed = del_tariffs["fixed_charge_usd_mo"].iloc[0]
+    sup_fixed = sup_tariffs["fixed_charge_usd_mo"].iloc[0]
     comparison_rows.append(
         {
             "delivery_run": del_run,
             "supply_run": sup_run,
             "tariff": RUN_CONFIG[del_run]["tariff"],
-            "delivery_max_rate": del_max,
-            "supply_max_rate": sup_max,
-            "supply_higher": sup_max > del_max if pd.notna(sup_max) and pd.notna(del_max) else None,
+            "del_fixed_usd_mo": del_fixed,
+            "sup_fixed_usd_mo": sup_fixed,
+            "del_max_rate_usd_kwh": del_max,
+            "sup_max_rate_usd_kwh": sup_max,
+            "supply_rate_higher": sup_max > del_max if pd.notna(sup_max) and pd.notna(del_max) else None,
         }
     )
 
@@ -255,6 +262,32 @@ tariff_comparison = pd.DataFrame(comparison_rows)
 print("Delivery vs supply rate comparison (precalc runs):")
 print("  Supply rates should be >= delivery rates (supply adds Cambium MCs to RR).")
 tariff_comparison
+```
+
+```{python}
+#| label: fig-tariff-rates-by-period
+#| fig-cap: "Calibrated energy rates by period for each precalc run. Flat tariffs have 1 period; seasonal have 2; TOU have multiple."
+precalc_rates = tariff_df[tariff_df["run_type"] == "precalc"].copy()
+precalc_rates["period_label"] = "P" + precalc_rates["energy_period"].astype(str)
+precalc_rates["run_label"] = "R" + precalc_rates["run"].astype(str) + " " + precalc_rates["cost_scope"]
+
+if not precalc_rates.empty:
+    (
+        ggplot(
+            precalc_rates,
+            aes(x="period_label", y="total_rate_usd_kwh", fill="cost_scope"),
+        )
+        + geom_col(position=position_dodge(width=0.8), width=0.7)
+        + facet_wrap("~label", scales="free_x", ncol=4)
+        + labs(
+            title="Calibrated Energy Rates by Period (Precalc Runs)",
+            x="Energy period",
+            y="Rate ($/kWh)",
+            fill="Cost scope",
+        )
+        + theme_minimal()
+        + theme(figure_size=(14, 8), legend_position="bottom")
+    )
 ```
 
 # Section 3: Cross-Subsidization / BAT Diagnostics

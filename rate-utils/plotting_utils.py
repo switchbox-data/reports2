@@ -433,6 +433,94 @@ def summarize_positive_distribution_hours(
     return pd.DataFrame(rows)
 
 
+def cairo_tariff_to_urdb(cairo_tariff: dict) -> dict:
+    """Convert a single CAIRO tariff dict to URDB ``{"items": [...]}`` format.
+
+    The CAIRO internal format stores rates in ``ur_ec_tou_mat`` (a list of
+    ``[period, tier, max_usage, units, rate, adj, sell]`` rows) and schedules in
+    ``ur_ec_sched_weekday`` / ``ur_ec_sched_weekend`` (12×24 matrices of
+    1-based period indices).
+
+    The URDB format stores rates in ``energyratestructure`` (a list-of-lists of
+    ``{"rate": ..., "adj": ..., "unit": ...}`` dicts), schedules in
+    ``energyweekdayschedule`` / ``energyweekendschedule`` (12×24, 0-based), and
+    fixed charges in ``fixedchargefirstmeter``.
+    """
+    # --- schedules (12×24): CAIRO uses 1-based periods, URDB uses 0-based ---
+    def _schedule(raw: list[list[int]] | None) -> list[list[int]]:
+        if raw is None:
+            return [[0] * 24 for _ in range(12)]
+        return [[int(v) - 1 for v in row] for row in raw]
+
+    weekday = _schedule(cairo_tariff.get("ur_ec_sched_weekday"))
+    weekend = _schedule(cairo_tariff.get("ur_ec_sched_weekend"))
+
+    # --- rate structure from ur_ec_tou_mat ---
+    tou_mat = cairo_tariff.get("ur_ec_tou_mat", [])
+    rates_by_period: dict[int, list[dict]] = {}
+    for row in tou_mat:
+        period_0 = int(row[0]) - 1
+        rate = float(row[4])
+        adj = float(row[5]) if len(row) > 5 else 0.0
+        entry = {"rate": rate, "adj": adj, "unit": "kWh"}
+        rates_by_period.setdefault(period_0, []).append(entry)
+
+    max_period = max(rates_by_period) if rates_by_period else 0
+    rate_structure = [rates_by_period.get(p, [{"rate": 0.0, "adj": 0.0, "unit": "kWh"}])
+                      for p in range(max_period + 1)]
+
+    item: dict = {
+        "energyweekdayschedule": weekday,
+        "energyweekendschedule": weekend,
+        "energyratestructure": rate_structure,
+    }
+    if "ur_monthly_fixed_charge" in cairo_tariff:
+        item["fixedchargefirstmeter"] = float(cairo_tariff["ur_monthly_fixed_charge"])
+        item["fixedchargeunits"] = "$/month"
+    return {"items": [item]}
+
+
+def extract_tariff_rates_from_config(tariff_cfg: dict) -> pd.DataFrame:
+    """Extract a tidy DataFrame of tariff rates from ``tariff_final_config.json``.
+
+    Handles the CAIRO internal format (top-level keys are tariff keys, values
+    are CAIRO dicts) by converting to URDB first.
+
+    Returns a DataFrame with columns:
+      ``tariff_key``, ``fixed_charge_usd_mo``, ``energy_period``, ``tier``,
+      ``rate_usd_kwh``, ``adj_usd_kwh``, ``total_rate_usd_kwh``.
+    """
+    rows = []
+    for tariff_key, tariff_data in tariff_cfg.items():
+        # Convert CAIRO → URDB if needed
+        if "ur_ec_tou_mat" in tariff_data:
+            urdb = cairo_tariff_to_urdb(tariff_data)
+        elif "items" in tariff_data:
+            urdb = tariff_data
+        else:
+            continue
+
+        item = urdb["items"][0]
+        fixed = item.get("fixedchargefirstmeter")
+        rate_structure = item.get("energyratestructure", [])
+
+        for period_idx, tiers in enumerate(rate_structure):
+            for tier_idx, tier_data in enumerate(tiers):
+                rate = float(tier_data.get("rate", 0.0))
+                adj = float(tier_data.get("adj", 0.0))
+                rows.append({
+                    "tariff_key": tariff_key,
+                    "fixed_charge_usd_mo": fixed,
+                    "energy_period": period_idx,
+                    "tier": tier_idx + 1,
+                    "rate_usd_kwh": rate,
+                    "adj_usd_kwh": adj,
+                    "total_rate_usd_kwh": rate + adj,
+                })
+
+    return pd.DataFrame(rows)
+
+
 def build_tariff_components(
     hourly: pd.DataFrame,
     cross_summary: pd.DataFrame,

@@ -480,19 +480,49 @@ def cairo_tariff_to_urdb(cairo_tariff: dict) -> dict:
     return {"items": [item]}
 
 
-def extract_tariff_rates_from_config(tariff_cfg: dict) -> pd.DataFrame:
-    """Extract a tidy DataFrame of tariff rates from ``tariff_final_config.json``.
+_MONTH_ABBR = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+]
 
-    Handles the CAIRO internal format (top-level keys are tariff keys, values
-    are CAIRO dicts) by converting to URDB first.
 
-    Returns a DataFrame with columns:
-      ``tariff_key``, ``fixed_charge_usd_mo``, ``energy_period``, ``tier``,
-      ``rate_usd_kwh``, ``adj_usd_kwh``, ``total_rate_usd_kwh``.
+def _months_for_period(schedule: list[list[int]], period: int) -> list[int]:
+    """Return 1-indexed months whose entire row maps to ``period``."""
+    return [m + 1 for m, row in enumerate(schedule) if all(h == period for h in row)]
+
+
+def _hours_for_period_in_month(schedule: list[list[int]], period: int, month_0: int) -> list[int]:
+    """Return 0-indexed hours assigned to ``period`` in a given month row."""
+    return [h for h, p in enumerate(schedule[month_0]) if p == period]
+
+
+def _format_month_list(months: list[int]) -> str:
+    return ", ".join(_MONTH_ABBR[m - 1] for m in sorted(months))
+
+
+def _format_hour_window(hours: list[int]) -> str:
+    if not hours:
+        return ""
+    hrs = sorted(hours)
+    return f"{hrs[0]:02d}:00–{hrs[-1] + 1:02d}:00"
+
+
+def summarize_tariff_for_display(tariff_cfg: dict) -> list[dict]:
+    """Produce a human-readable summary of each tariff in ``tariff_final_config.json``.
+
+    For each tariff key the result includes:
+
+    - ``tariff_key``, ``fixed_charge_usd_mo``
+    - **flat**: ``flat_rate``
+    - **seasonal**: ``summer_rate``, ``winter_rate``, ``summer_months``, ``winter_months``
+    - **seasonal+TOU**: ``summer_offpeak``, ``summer_peak``, ``winter_offpeak``,
+      ``winter_peak``, ``summer_months``, ``winter_months``, ``summer_peak_hours``,
+      ``winter_peak_hours``
+
+    Handles both CAIRO internal format and URDB format.
     """
-    rows = []
+    summaries: list[dict] = []
     for tariff_key, tariff_data in tariff_cfg.items():
-        # Convert CAIRO → URDB if needed
         if "ur_ec_tou_mat" in tariff_data:
             urdb = cairo_tariff_to_urdb(tariff_data)
         elif "items" in tariff_data:
@@ -503,22 +533,66 @@ def extract_tariff_rates_from_config(tariff_cfg: dict) -> pd.DataFrame:
         item = urdb["items"][0]
         fixed = item.get("fixedchargefirstmeter")
         rate_structure = item.get("energyratestructure", [])
+        schedule = item.get("energyweekdayschedule", [[0] * 24] * 12)
 
-        for period_idx, tiers in enumerate(rate_structure):
-            for tier_idx, tier_data in enumerate(tiers):
-                rate = float(tier_data.get("rate", 0.0))
-                adj = float(tier_data.get("adj", 0.0))
-                rows.append({
-                    "tariff_key": tariff_key,
-                    "fixed_charge_usd_mo": fixed,
-                    "energy_period": period_idx,
-                    "tier": tier_idx + 1,
-                    "rate_usd_kwh": rate,
-                    "adj_usd_kwh": adj,
-                    "total_rate_usd_kwh": rate + adj,
-                })
+        n_periods = len(rate_structure)
 
-    return pd.DataFrame(rows)
+        # Extract rate for period p (first tier, rate + adj)
+        def _rate(p: int) -> float:
+            tier = rate_structure[p][0]
+            return float(tier.get("rate", 0.0)) + float(tier.get("adj", 0.0))
+
+        row: dict = {"tariff_key": tariff_key, "fixed_charge_usd_mo": fixed}
+
+        if n_periods == 1:
+            # Flat
+            row["tariff_type"] = "flat"
+            row["flat_rate"] = _rate(0)
+
+        elif n_periods == 2:
+            # Seasonal (period 0 = summer, period 1 = winter)
+            summer_months = _months_for_period(schedule, 0)
+            winter_months = _months_for_period(schedule, 1)
+            row["tariff_type"] = "seasonal"
+            row["summer_rate"] = _rate(0)
+            row["winter_rate"] = _rate(1)
+            row["summer_months"] = _format_month_list(summer_months)
+            row["winter_months"] = _format_month_list(winter_months)
+
+        elif n_periods >= 4:
+            # Seasonal+TOU: period 0 = summer off-peak, 1 = summer peak,
+            #                period 2 = winter off-peak, 3 = winter peak
+            # Derive months from schedule: months with period 0 or 1 → summer
+            summer_months: list[int] = []
+            winter_months: list[int] = []
+            for m in range(12):
+                periods_in_month = set(schedule[m])
+                if 0 in periods_in_month or 1 in periods_in_month:
+                    summer_months.append(m + 1)
+                else:
+                    winter_months.append(m + 1)
+
+            # Peak hours: hours in a representative summer month assigned to period 1
+            summer_month_0 = summer_months[0] - 1 if summer_months else 0
+            winter_month_0 = winter_months[0] - 1 if winter_months else 0
+            summer_peak_hrs = _hours_for_period_in_month(schedule, 1, summer_month_0)
+            winter_peak_hrs = _hours_for_period_in_month(schedule, 3, winter_month_0)
+
+            row["tariff_type"] = "seasonal_tou"
+            row["summer_offpeak"] = _rate(0)
+            row["summer_peak"] = _rate(1)
+            row["winter_offpeak"] = _rate(2)
+            row["winter_peak"] = _rate(3)
+            row["summer_months"] = _format_month_list(summer_months)
+            row["winter_months"] = _format_month_list(winter_months)
+            row["summer_peak_hours"] = _format_hour_window(summer_peak_hrs)
+            row["winter_peak_hours"] = _format_hour_window(winter_peak_hrs)
+        else:
+            row["tariff_type"] = f"other ({n_periods} periods)"
+
+        summaries.append(row)
+
+    return summaries
 
 
 def build_tariff_components(

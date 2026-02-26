@@ -76,6 +76,256 @@ If we consider 1.5 times the cost of PRP as the threshold for electrification, t
 
 ## Data and Methods
 
-## Assumptions
+### Overview
+
+To identify opportunities for cost-effective targeted electrification in Chicago's Peoples Gas service territory, we compared the **upfront capital costs** of two approaches to managing aging natural gas infrastructure:
+
+- **Pipeline Replacement Program (PRP)**: Replacing deteriorating gas mains with new gas pipes, the traditional utility approach to infrastructure management.
+- **Non-Pipe Alternative (NPA)**: Electrifying buildings (eliminating their gas service), upgrading the electric distribution grid to handle increased demand, and decommissioning the gas infrastructure.
+
+We conducted a **census block-level geospatial analysis** of Peoples Gas's planned construction projects in Chicago, focusing on fully residential blocks where electrification costs are well-established and building participation is more feasible. For each block, we calculated both PRP and NPA costs, then identified blocks where electrification would cost the same or less than pipeline replacement.
+
+Our measurement of **cost-effectiveness** is the ratio of NPA cost to PRP cost. We analyze upfront capital costs only, excluding ongoing operational costs, utility rate impacts, and financing mechanisms. This conservative approach focuses on infrastructure investment decisions facing the utility and ratepayers.
+
+::: {.callout-note}
+The cost assumptions underlying our analysis are open-source and viewable in [this Google Sheet](https://docs.google.com/spreadsheets/d/1xxa47dClvp0rosZhUP1R7790CNXMLSD_0ExrPccR3p0/edit), along with all data inputs and calculations. The geospatial data processing code is available in the `notebooks/` directory of this report.
+:::
+
+### Assumptions
+
+Our analysis assumes:
+
+- **Fully residential blocks only**, due to the variability and uncertainty in commercial and industrial electrification costs. We exclude blocks with commercial or industrial properties. A complete non-pipe alternative assessment would require detailed commercial building analysis.
+- **Street centerlines as a proxy for gas pipeline routes**. We use publicly available street centerline data from the Chicago Data Portal to estimate pipeline miles, as detailed gas infrastructure maps are not publicly available. Actual gas pipeline routes may deviate from street centerlines in some locations, but this provides a reasonable approximation at the block level.
+- **Upfront capital costs only**. We compare only the initial infrastructure investment costs, not ongoing operational expenses (utility bills, maintenance), carbon emissions, or ratepayer cost allocation mechanisms. A full lifecycle analysis would include these operational factors.
+- **Average electrification costs** for residential buildings: air-source heat pumps for space heating and cooling, heat pump water heaters, and induction stoves. Actual costs vary significantly by building characteristics (age, size, existing electrical service, heating system configuration), but we use averages that may over- or under-estimate costs for specific buildings.
+- **Grid upgrade costs** based on the Long Run Marginal Cost (LRMC) of electric distribution capacity, calculated from the incremental peak demand increase from electrification. This captures long-term costs of expanding distribution infrastructure.
+- **Pipeline decommissioning costs** for retiring gas mains in place, estimated per mile of main retired. Excavation and removal costs would be higher if required by local regulations.
+- **Census block as the unit of analysis**. Blocks are the smallest geographic unit that allows us to aggregate parcel-level data while maintaining spatial relationships with pipeline infrastructure.
+- **All residents would participate** in a coordinated electrification program. In practice, participation rates would depend on program design, incentive levels, and customer preferences, requiring careful program design and potentially phased implementation.
+- **Programmatic filtering with manual verification** to identify fully residential blocks. Our method uses automated parcel classification with manual verification using satellite imagery for edge cases. This approach is replicable but could be refined with additional building data.
+- **Current cost estimates** for all equipment and infrastructure, without adjusting for potential future cost changes from technology improvements, inflation, or economies of scale.
+
+### Data Sources
+
+This analysis integrates multiple geospatial and administrative datasets:
+
+**Peoples Gas Construction Polygons**
+Planned pipeline replacement project areas provided by Peoples Gas, with construction timelines and project status. We analyze only projects with "planned" status.
+
+**Census Block Boundaries**
+Chicago census block boundaries from the 2010 Census (GEOID10), the finest-grain geographic unit published by the Census Bureau. Blocks serve as our primary unit of analysis for aggregating parcel and infrastructure data.
+
+**Cook County Parcel Data**
+Property parcel boundaries and assessor classifications for all parcels in Cook County.[^parcels] We use assessor classification codes to categorize parcels as residential (single-family or multi-family), commercial, industrial, mixed-use, or vacant.
+
+[^parcels]: Cook County Assessor's Office, accessed via Cook County Data Portal
+
+**Chicago Building Footprints**
+Building polygon geometries from the Chicago Data Portal, with unit counts where available from building permit records.[^buildings] We match buildings to parcels to estimate residential unit counts, particularly for multi-family buildings.
+
+[^buildings]: [Chicago Building Footprints](https://data.cityofchicago.org/Buildings/Building-Footprints-current-/hz9b-7nh8)
+
+**Chicago Street Centerlines**
+Street centerline geometries from the Chicago Data Portal, representing the center of street rights-of-way where gas mains typically run.[^streets] We use street lengths as a proxy for gas pipeline miles.
+
+[^streets]: [Chicago Street Center Lines](https://data.cityofchicago.org/Transportation/Street-Center-Lines/6imu-meau)
+
+**Cost Estimates**
+Cost assumptions for pipeline replacement, electrification equipment, grid upgrades, and pipeline decommissioning, compiled from utility rate cases and prior studies.[^costs] All cost parameters are documented in a public spreadsheet.
+
+[^costs]: [Cost Assumptions Spreadsheet](https://docs.google.com/spreadsheets/d/1xxa47dClvp0rosZhUP1R7790CNXMLSD_0ExrPccR3p0/edit)
+
+### Geospatial Processing Methodology
+
+Our geospatial analysis assigns parcels and street infrastructure to census blocks within construction project areas.
+
+#### Identifying Blocks in Construction Areas
+
+We intersected Peoples Gas construction polygons with Chicago census block boundaries to identify all blocks that would be affected by planned pipeline replacement projects. Since construction polygons are irregular and may cover only portions of blocks, we created both:
+
+- **Clipped block segments**: The portion of each block that falls within a construction polygon, used for calculating street mile allocation.
+- **Full block geometries**: Complete census block boundaries, used for assigning parcels and reporting results.
+
+Some blocks intersect multiple construction polygons. In these cases, we aggregated construction dates and infrastructure data across all relevant projects.
+
+#### Parcel Identification and Assignment
+
+To identify parcels affected by pipeline replacement projects, we applied an **8-meter buffer** around construction polygons. This buffer captures parcels adjacent to streets where pipeline work will occur, even when the construction polygon only covers the street right-of-way. The buffer is used exclusively for parcel identification; all other spatial calculations use unbuffered construction polygons.
+
+We assigned each parcel to exactly one census block using a **largest-overlap method**: for each parcel, we calculated its area of overlap with all intersecting blocks (using full, unclipped block boundaries) and assigned the parcel to the block with which it had the greatest overlap. This one-to-one assignment ensures each parcel is counted only once in our analysis.
+
+#### Parcel Classification and Unit Counting
+
+We classified each parcel using Cook County assessor property class codes:
+
+- **Single-family residential**: Detached homes, townhomes, and other single-unit dwellings
+- **Multi-family residential**: Buildings with 2+ dwelling units, including small apartment buildings and large complexes
+- **Mixed-use**: Properties with both residential and commercial uses
+- **Commercial**: Retail, office, and service properties
+- **Industrial**: Manufacturing, warehousing, and industrial facilities
+- **Vacant**: Unimproved land
+
+For residential parcels, we estimated unit counts by spatially matching parcels to building footprints and using unit counts from building permit records where available. For parcels without building matches, we used assessor records to estimate unit counts based on property classification.
+
+Mixed-use parcels were treated as multi-family residential in our unit counts, as they contain dwelling units and would need to be addressed in any targeted electrification program.
+
+#### Street Miles Allocation
+
+Gas pipelines typically run along street centerlines. To estimate pipeline miles for each block, we:
+
+1. **Clipped street centerlines** to construction polygon boundaries, retaining only street segments within planned construction areas
+2. **Calculated total street miles** within each construction polygon (using the unbuffered polygons)
+3. **Allocated street miles to blocks proportionally** by each block's perimeter within the construction polygon
+
+The proportional allocation uses each clipped block segment's perimeter as a fraction of the total block perimeter across all blocks in that construction polygon. This approach ensures that all street miles within a construction polygon are allocated to adjacent blocks, and that blocks with more street frontage receive proportionally more pipeline miles.
+
+**Example:** Imagine a construction zone with **10 miles of gas pipeline** to allocate across 5 city blocks. We measure each block's perimeter (the boundary) that falls within the construction zone:
+
+- **Block A**: 2 miles of perimeter (completely inside the zone)
+- **Block B**: 2 miles of perimeter (completely inside the zone)
+- **Block C**: 2 miles of perimeter (completely inside the zone)
+- **Block D**: 2 miles of perimeter (completely inside the zone)
+- **Block E**: 1 mile of perimeter (only half the block is in the zone)
+
+**Total perimeter across all blocks** = 9 miles
+
+Now we divide up the 10 miles of pipeline based on each block's share of the total perimeter:
+
+- Block A: (2 ÷ 9) × 10 = **2.2 miles** of pipeline allocated
+- Block B: (2 ÷ 9) × 10 = **2.2 miles** of pipeline allocated
+- Block C: (2 ÷ 9) × 10 = **2.2 miles** of pipeline allocated
+- Block D: (2 ÷ 9) × 10 = **2.2 miles** of pipeline allocated
+- Block E: (1 ÷ 9) × 10 = **1.1 miles** of pipeline allocated
+
+Total: 10.0 miles ✓
+
+Block E gets half as much pipeline because its perimeter in the zone is half that of the other blocks—we're dividing up the pipeline proportionally based on how much block boundary is in the construction area.
+
+#### Residential Block Filtering
+
+We filtered to **fully residential blocks** using several criteria:
+
+- Blocks where residential parcels comprise >90% of non-vacant parcels
+- Manual exclusion of blocks with institutional uses (schools, churches) that don't appear in commercial/industrial classifications
+- Exclusion of blocks with ≤2 parcels, which are typically not residential.
+- Exclusion of blocks where all parcels have railroad ("RR") assessor classification
+- Manual verification of edge cases using satellite imagery
+
+This filtering process identified `r comma(n_res_blocks)` fully residential blocks out of `r comma(n_blocks_total)` total blocks in construction areas. The conservative filtering ensures that our analysis focuses on blocks where coordinated residential electrification would be most feasible.
+
+### Cost Calculations
+
+For each residential block, we calculated both PRP and NPA costs using the following methods:
+
+#### Pipeline Replacement Program (PRP) Costs
+
+PRP cost represents the capital investment to replace gas mains:
+
+$$\text{PRP Cost} = \text{Street Miles} \times \text{Cost per Mile of Pipeline}$$
+
+We use a cost per mile of `r dollar(cost_lpp_mile, accuracy = 1, scale = 1e-6, suffix = " million")`, based on Peoples Gas's TK REFERENCE This includes materials, labor, street restoration, and contractor overhead, but excludes utility administrative costs and return on equity.
+
+
+
+#### Non-Pipe Alternative (NPA) Costs
+
+NPA cost represents the total capital investment to electrify all residential units on a block and decommission the gas infrastructure:
+
+$$\text{NPA Cost} = \text{SF Electrification} + \text{MF Electrification} + \text{Grid Upgrades} + \text{Decommissioning}$$
+
+**Single-family electrification cost:**
+$$\text{SF Electrification} = \text{Number of SF Parcels} \times \text{Cost per SF Home}$$
+
+We use `r dollar(cost_elec_sf, accuracy = 1)` per single-family home, which includes:
+
+- Air-source heat pump for space heating and cooling (typically 2-4 tons capacity)
+- Heat pump water heater (50-80 gallon capacity)
+- Induction cooktop or range
+- Installation labor and soft costs
+- Clothes dryer
+
+**Multi-family electrification cost:**
+$$\text{MF Electrification} = \text{Number of MF Units} \times \text{Cost per MF Unit}$$
+
+We use $`r dollar(cost_elec_mf, accuracy = 1, scale = 1, suffix = "")` per multi-family unit, which reflects lower per-unit costs in larger buildings due to shared infrastructure and economies of scale in multi-unit installations.
+
+**Grid upgrade cost:**
+$$\text{Grid Upgrades} = \text{Total Residential Units} \times \text{LRMC per Household}$$
+
+Electrification increases peak electricity demand, particularly during cold winter days when heat pumps draw maximum power. We calculate grid upgrade costs using the **Long Run Marginal Cost (LRMC)** of electric distribution capacity:
+
+$$\text{LRMC per Household} = \Delta \text{Peak Demand (kW)} \times \text{LRMC per kW}$$
+
+Where:
+
+- Peak demand increase = `r peak_kw_winter` kW (winter) - `r peak_kw_summer` kW (summer) = `r peak_kw_delta` kW
+- LRMC = `r dollar(lrmc_peak_kw, accuracy = 1, scale = 1, suffix = "")` per kW, based on historical ComEd distribution capacity costs
+- Grid upgrade cost per household = $`r dollar(grid_upgrade_cost_hh, accuracy = 1, scale = 1, suffix = "")`
+
+This LRMC approach captures the long-term cost of expanding distribution infrastructure to serve increased electric loads.
+
+**Pipeline decommissioning cost:**
+$$\text{Decommissioning} = \text{Street Miles} \times \text{Cost per Mile to Retire}$$
+
+We use $`r dollar(cost_decomm_mile, accuracy = 1, scale = 1, suffix = "")` per mile to retire gas mains in place. TK REFERENCE
+
+#### Cost-Effectiveness Ratio
+
+For each residential block, we calculate:
+
+$$\text{Cost-Effectiveness Ratio} = \frac{\text{NPA Cost}}{\text{PRP Cost}}$$
+
+- **Ratio < 1.0**: Electrification is cheaper than pipeline replacement
+- **Ratio = 1.0**: Costs are equal
+- **Ratio > 1.0**: Pipeline replacement is cheaper than electrification
+
+#### Scattershot Electrification Modeling
+
+To create a more realistic counterfactual for the pipeline replacement scenario, we model **scattershot electrification**: the gradual, uncoordinated transition to electric heating that would occur even if pipelines are replaced. Whether driven by increasing gas costs, equipment failures, climate policies, or consumer preference, a portion of homes will electrify over time regardless of gas infrastructure investments.
+
+This creates an **unmanaged gas transition** where ratepayer capital is spent on both the gas system (pipeline replacement) and electrification, with no cost optimization or coordination. Modeling scattershot electrification provides a more accurate representation of the true cost of continuing to invest in gas infrastructure.
+
+We base our scattershot assumptions on Chicago's Climate Action Plan, TK REFERENCE which targets significant residential electrification by 2035. For each block, we assume that **`r percent(PCT_ELEC)` of residential units** will electrify over a **`r TIME_PERIOD`-year period**, distributed evenly across years.
+
+**Annual scattershot electrification cost:**
+$$\text{Scattershot Annual Cost} = \frac{\text{PCT\_ELEC} \times \text{NPA Cost}}{\text{TIME\_PERIOD}}$$
+
+This represents the annual cost of electrifying `r percent(PCT_ELEC / TIME_PERIOD)` of homes each year, including equipment installation and grid upgrades (but not decommissioning, since the gas infrastructure remains in operation).
+
+**Net present value of scattershot costs:**
+$$\text{Scattershot NPV} = \sum_{t=0}^{TIME\_PERIOD-1} \frac{\text{Scattershot Annual Cost}}{(1 + \text{DISCOUNT\_RATE})^t}$$
+
+Where t starts at 0 to match the timing of PRP costs (years 0-9). We use a **`r percent(DISCOUNT_RATE)` discount rate** to calculate the present value of future electrification expenditures, reflecting the time value of money and opportunity cost of capital.
+
+**PRP cost with scattershot electrification:**
+$$\text{PRP Cost (with scattershot)} = \text{PRP Cost} + \text{Scattershot NPV}$$
+
+This combined cost represents the total infrastructure investment under a "business as usual" scenario: replacing pipelines upfront while paying for gradual electrification over the next decade.
+
+**Cost-effectiveness ratio with scattershot:**
+$$\text{Cost-Effectiveness Ratio (scattershot)} = \frac{\text{NPA Cost}}{\text{PRP Cost (with scattershot)}}$$
+
+Comparing NPA to PRP-with-scattershot shows whether coordinated upfront electrification is more cost-effective than an unmanaged transition with duplicative infrastructure investments.
+
+### Cost-Effectiveness Evaluation Scenarios
+
+We evaluate the economic case for targeted electrification under three different scenarios:
+
+**Scenario 1: Strict Block-Level Cost-Effectiveness (Ratio ≤ 1.0)**
+Electrify only blocks where NPA cost is less than or equal to PRP cost. This conservative approach ensures immediate cost savings on every block and avoids any subsidization across blocks. However, it may miss opportunities to maximize overall system cost savings by using savings from low-cost blocks to enable electrification of moderate-cost blocks.
+
+**Scenario 2: Portfolio Cost-Neutral Approach (Cumulative Savings ≥ 0)**
+Maximize the number of electrified blocks while maintaining overall cost neutrality across the portfolio. We rank blocks by cost-effectiveness ratio and electrify them in order of increasing ratio, stopping when cumulative net savings reach zero. This approach allows low-cost blocks to "subsidize" higher-cost blocks, maximizing electrification within a fixed budget constraint equal to total PRP spending.
+
+**Scenario 3: Avoiding Future Scattershot Electrification**
+Use the PRP-with-scattershot cost TK SECTION as the comparison baseline. This scenario recognizes that pipeline replacement does not prevent future electrification—it merely makes it uncoordinated and more expensive. By comparing NPA to PRP-with-scattershot, we identify blocks where coordinated electrification avoids duplicative infrastructure investments.
+
+Under this scenario, the comparison is:
+
+- **With NPA**: Coordinated upfront electrification + grid upgrades + decommissioning
+- **Without NPA (PRP-with-scattershot)**: Pipeline replacement + NPV of `r percent(PCT_ELEC)` gradual electrification over `r TIME_PERIOD` years + ongoing grid upgrades
+
+This approach accounts for Chicago's Climate Action Plan electrification goals and provides a more realistic assessment of the true cost of continued gas infrastructure investment in a decarbonizing economy.
 
 ## References

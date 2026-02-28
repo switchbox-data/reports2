@@ -823,28 +823,56 @@ just publish   # Copy rendered HTML to root docs/ for GitHub Pages
 
 Data is on S3 in `us-west-2`. Refresh credentials with `just aws`.
 
-## Issue and PR conventions
+## Commits, branches, and PRs
 
-All work is tracked via Linear issues (which sync to GitHub Issues). When creating or updating tickets, use the Linear MCP tools.
+### Commits
+
+- **Atomic**: One logical change per commit.
+- **Message format**: Imperative verb, <50 char summary (e.g., "Add winter peak analysis").
+- **WIP commits**: Prefix with `WIP:` for work-in-progress snapshots.
+
+### Branches and PRs
+
+- **PR title** MUST start with `[project_code]` (e.g., `[ny_aeba] Add peak analysis`) — this becomes the squash-merge commit message on `main`.
+- **Create PRs early** (draft is fine). This gives the team visibility into in-flight work.
+- PRs should **merge within the sprint**; break large work into smaller PRs if needed.
+- **Delete branches** after merging.
+- **Description**: Don't duplicate the issue. Write: high-level overview, reviewer focus, non-obvious implementation details.
+- **Close the GitHub issue**: Include `Closes #<github_issue_number>` (not the Linear identifier).
+- Do not add "Made with Cursor" or LLM attribution.
+
+## Issue conventions
+
+All work is tracked via Linear issues (which sync to GitHub Issues). When creating or updating tickets, use the Linear MCP tools. Every new issue MUST satisfy the following before it is created:
 
 ### Issue fields
 
+- **Type**: One of **Code** (delivered via commits/PRs), **Research** (starts with a question, findings documented in issue comments), or **Other** (proposals, graphics, coordination — deliverables vary).
 - **Title**: `[project_code] Brief description` starting with a verb (e.g., `[ny_aeba] Add winter peak analysis`).
 - **What**: High-level description. Anyone can understand scope at a glance.
 - **Why**: Context, importance, value.
-- **How** (optional when trivial): Implementation steps or discussion context.
-- **Deliverables**: Concrete, verifiable outputs. Never vague.
+- **How** (skip only when the What is self-explanatory and implementation is trivial):
+  - For Code issues: numbered implementation steps, trade-offs, dependencies.
+  - For Research issues: background context, options to consider, evaluation criteria.
+- **Deliverables**: Concrete, verifiable outputs that define "done":
+  - Code: "PR that adds ...", "Tests for ...", "Updated `data/` directory with ..."
+  - Research: "Comment in this issue documenting ... with rationale and sources"
+  - Other: "Google Doc at ...", "Slide deck for ...", link to external deliverable
+  - Never vague ("Finish the analysis") or unmeasurable ("Make it better").
 - **Project**: Must be set. Should match `reports/<project_code>/`.
 - **Status**: Default to Backlog. Options: Backlog, To Do, In Progress, Under Review, Done.
 - **Milestone**: Set when applicable (strongly encouraged).
 - **Assignee**: Set if known.
+- **Priority**: Set when urgency/importance is clear.
 
-### Pull requests
+### Status transitions
 
-- **Title**: Must start with `[project_code]`.
-- **Description**: Don't duplicate the issue. Write: high-level overview, reviewer focus, non-obvious implementation details.
-- **Close the GitHub issue**: Include `Closes #<github_issue_number>` (not the Linear identifier).
-- Do not add "Made with Cursor" or LLM attribution.
+Keep status updated as work progresses — this is critical for team visibility:
+
+- **Backlog** -> **To Do**: Picked for the current sprint
+- **To Do** -> **In Progress**: Work has started (branch created for code issues)
+- **In Progress** -> **Under Review**: PR ready for review, or findings documented
+- **Under Review** -> **Done**: PR merged (auto-closes), or reviewer approves and closes
 
 ## Conventions agents should follow
 

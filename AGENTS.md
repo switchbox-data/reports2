@@ -341,6 +341,7 @@ Never "will save" for simulation results. "Would" maintains appropriate epistemi
 - **Footnotes** (`[^label]`) are used for tangential context, secondary sources, and technical qualifications. They carry substantive information but never essential arguments.
 - **DocumentCloud links** are used for primary source documents (regulatory filings, letters, reports). Link to the specific page with an annotation: `[p. 4](https://www.documentcloud.org/documents/XXX#document/p4/a1234)`.
 - **Margin definitions** (using `:::{.column-margin}`) are used for key term definitions that would interrupt the prose.
+- Do not use `{.aside}` for source citations or notes. Use footnotes (`[^label]`) — they render in the margin automatically via `reference-location: margin`.
 
 ### Explaining technical concepts
 

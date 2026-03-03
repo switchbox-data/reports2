@@ -338,7 +338,7 @@ Never "will save" for simulation results. "Would" maintains appropriate epistemi
 - Use BibTeX via `@citation_key` inline. The shared bibliography is at `reports/references.bib`.
 - Citation key format: `{author_short_title_year}`, e.g., `@nyiso_GoldBook2025_2025`.
 - Citations appear in the margin (`reference-location: margin`), keeping the main text clean.
-- **Footnotes** (`[^label]`) are used for tangential context, secondary sources, and technical qualifications. They carry substantive information but never essential arguments.
+- **Footnotes** (`[^label]`) are used for tangential context, secondary sources, and technical qualifications. They carry substantive information but never essential arguments. **Place the footnote definition (`[^label]: ...`) immediately after the paragraph where it is first invoked** — not grouped at the end of the section. This keeps the definition visible near its reference when editing the source.
 - **DocumentCloud links** are used for primary source documents (regulatory filings, letters, reports). Link to the specific page with an annotation: `[p. 4](https://www.documentcloud.org/documents/XXX#document/p4/a1234)`.
 - **Margin definitions** (using `:::{.column-margin}`) are used for key term definitions that would interrupt the prose.
 - Do not use `{.aside}` for source citations or notes. Use footnotes (`[^label]`) — they render in the margin automatically via `reference-location: margin`.

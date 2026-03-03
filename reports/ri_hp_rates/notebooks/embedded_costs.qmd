@@ -12,98 +12,31 @@ https://drive.google.com/drive/u/0/folders/16nlFAL_RwGl_INAJrhR5irgnNC-gj9zF
     from buildstock_fetch.scenarios import uniform_adoption
     from buildstock_fetch.mixed_upgrade import MixedUpgradeScenario
     from buildstock_fetch.read import BuildStockRead
-
+    from cloudpathlib import S3Path
     import polars as pl
-```
 
-### CHECK HOW MANY HOMES ARE HEATED WITH HPs
-```{python}
-    sbmeta = pl.scan_parquet("s3://data.sb/nrel/resstock/res_2024_amy2018_2/metadata/state=RI/upgrade=00/metadata-sb.parquet")
+    from typing import Literal
 
-    current_heating_type_distribution = sbmeta.collect().group_by("postprocess_group.heating_type").agg(pl.col("weight").sum().alias("total_homes")).with_columns((pl.col("total_homes") / pl.col("total_homes").sum()).alias("pct_of_total"))
-
-    print(current_heating_type_distribution)
-```
-
-### COMPUTE LOAD FACTOR BY HP vs NON-HP
-```{python}
-    bsr = BuildStockRead(
-        data_path="s3://data.sb/nrel/resstock/",
-        release="res_2024_amy2018_2",
-        states="RI",
-    )
-
-    load_curves = bsr.read_load_curve_hourly(upgrades="0")
-```
-```{python}
-    # Join load_curves with metadata to get heating_type for each home
-    load_curves_with_meta = load_curves.join(sbmeta.select(["bldg_id", "postprocess_group.heating_type", "weight"]), on="bldg_id", how="left")
-
-    # Aggregate load curves by heating type and timestamp
-    aggregate_curves = (
-        load_curves_with_meta.group_by(["timestamp", "postprocess_group.heating_type"])
-        .agg([
-            (pl.col("out.electricity.net.energy_consumption") * pl.col("weight")).sum().alias("electricity_kwh"),
-            pl.col("weight").sum().alias("num_homes"),
-        ])
-    )
-
-    # Now, for each heating_type, calculate the load factor:
-    # For each group, get the sum of electricity_kwh over all timestamps, and also the max for that group
-    load_factor_df = (
-        aggregate_curves.group_by(pl.col("postprocess_group.heating_type") == "heat_pump")
-        .agg([
-            pl.col("num_homes").max().alias("num_homes"), # should be one unique value for each group
-            pl.col("electricity_kwh").sum().alias("annual_electricity_kwh"),
-            pl.col("electricity_kwh").max().alias("ncp_kw"),
-        ])
-        .with_columns(
-            (pl.col("annual_electricity_kwh") / (pl.col("ncp_kw") * 8760)).alias("load_factor")
-        )
-    ).collect()
-
-    print(load_factor_df)
-```
-
-## DEBUGGING
-
-```{python}
-    df_agg = aggregate_curves.collect()
-    print(df_agg.head())
+    ScenarioType = Literal["existing", "mixed_upgrade"]
 ```
 
 ```{python}
-    from plotnine import ggplot, aes, geom_line, labs, theme_minimal, scale_color_brewer
+    state = "RI"
+    release = "res_2024_amy2018_2"
+    data_path = S3Path("s3://data.sb/nrel/resstock/")
 
-    df_per_home = df_agg.with_columns(
-        (pl.col("electricity_kwh") / pl.col("num_homes")).alias("electricity_kwh"),
-    )
+    random_seed=67
+    additional_hp_adoption_pct = 0.1 # 0.0 = current; specify only as integer, for single-year analysis
+    upgrade_id = 2
+    start_year = 2028
 
-    # Convert to pandas DataFrame for plotnine
-    pdf = df_per_home.to_pandas()
-
-    p = (
-        ggplot(pdf, aes(x="timestamp", y="electricity_kwh", color="postprocess_group.heating_type"))
-        + geom_line()
-        + labs(
-            x="Timestamp",
-            y="Electricity Consumption (kWh)",
-            color="Heating Type",
-            title="Hourly Electricity Consumption by Heating Type"
-        )
-        + scale_color_brewer(type="qual", palette="Set1")
-        + theme_minimal()
-    )
-    p.show()
+    # sample_n = 50 # for debugging only
 ```
 
-
-
-
-### TRY AGAIN WITH A MIXED UPGRADE SCENARIO
+## HELPER FUNCTIONS
 ## TODO: MOVE THIS INTO A HELPER FILE
 ```{python}
-    def adjust_timestamp(lazy_df, start_year, handle_leap_years=True):
+    def adjust_timestamp(lazy_df: pl.LazyFrame, start_year: int, handle_leap_years: bool = False) -> pl.LazyFrame:
         """
         Adjusts the timestamp column in a lazy Polars DataFrame so that each 'year' value corresponds
         to the specified start_year plus its offset.
@@ -156,16 +89,213 @@ https://drive.google.com/drive/u/0/folders/16nlFAL_RwGl_INAJrhR5irgnNC-gj9zF
             updated_df = pl.concat([updated_df, feb_29]).sort("timestamp")
 
         return updated_df
+
+    def _get_heating_type_distribution(sbmeta: pl.DataFrame) -> pl.DataFrame:
+        return sbmeta.collect().group_by("postprocess_group.heating_type").agg(pl.col("weight").sum().alias("total_homes")).with_columns((pl.col("total_homes") / pl.col("total_homes").sum()).alias("pct_of_total"))
+
+    def _merge_weights(ldf: pl.LazyFrame, metadata: pl.DataFrame = pl.DataFrame()) -> pl.LazyFrame:
+        return ldf.join(metadata.select(["bldg_id", "weight", "postprocess_group.heating_type"]), on="bldg_id", how="left")
+
+    def _read_mus(scenario: dict[int, list[float]], scenario_name: str, baseline_metadata: pl.LazyFrame, data_path : S3Path, release: str, state: str | None, random_seed: int | None = None, sample_n: int | None = None, start_year: int | None = None):
+        mus = MixedUpgradeScenario(
+            scenario_name=scenario_name,
+            data_path=data_path,
+            release=release,
+            states=state,
+            # NOTE:
+            # this is maybe weird, in that the set
+            # of adopting households in BAU isn't a subset of the set
+            # of adopting households in HP
+            random=random_seed,
+            sample_n=sample_n,
+            scenario=scenario,
+        )
+        mus_metadata = mus.read_metadata()
+        sbmeta = (
+            baseline_metadata
+            .join(
+                mus_metadata.rename({"upgrade_id": "upgrade_mus"}),
+                on="bldg_id",
+                how="left"
+            )
+            .with_columns(
+                pl.col("upgrade_mus").fill_null(pl.col("upgrade")).alias("upgrade")
+            )
+            .drop("upgrade_mus")
+            .with_columns(
+                pl.when(pl.col("upgrade") > 0).then(pl.lit("heat_pump")).otherwise(pl.col("postprocess_group.heating_type")).alias("postprocess_group.heating_type")
+            )
+        )
+        # NOTE: should this be piped for something something efficiency
+        ldf = mus.read_load_curve_hourly().pipe(
+            lambda ldf: adjust_timestamp(ldf, start_year=start_year)
+        ).pipe(lambda ldf: _merge_weights(ldf, metadata=sbmeta))
+        return mus, sbmeta, ldf
+```
+
+## LOAD METADATA
+```{python}
+    metadata_path = data_path / release / "metadata" / f"state={state}" / "upgrade=00" / "metadata-sb.parquet"
+    if  metadata_path.exists():
+        baseline_sbmeta = pl.scan_parquet(str(metadata_path))
+    else:
+        metadata_path = data_path / release / "metadata" / f"state={state}" / "upgrade=00" / "metadata.parquet"
+        baseline_metadata = pl.scan_parquet(str(metadata_path))
+        baseline_sbmeta = baseline_metadata.with_columns(
+           pl.when(pl.any_horizontal(
+            [pl.col("in.hvac_heating_type_and_fuel").str.contains(s, literal=True) for s in ("MSHP", "ASHP", "GSHP")]
+        )).then(pl.lit("heat_pump")).otherwise(pl.lit("non-heat_pump")).alias("postprocess_group.heating_type")
+        )
+
+    # Compute percent heat_pump for postprocess_group.heating_type, using weights
+    heating_type_distribution = _get_heating_type_distribution(baseline_sbmeta)
+    current_hp_pct = heating_type_distribution.filter(pl.col("postprocess_group.heating_type") == "heat_pump").select("pct_of_total").item()
+    print(f"Current hp percent: {current_hp_pct:0.2f}")
+
+    scenario = uniform_adoption(
+        upgrade_ids=[upgrade_id],
+        weights={upgrade_id: 1.0},
+        # scale up the additional hp adoption percentage to account for the fact that
+        # some of the homes randomly selected for upgrades will have already had heat pumps
+        adoption_trajectory=[additional_hp_adoption_pct  / (1 - current_hp_pct)],
+    )
+
+    # Read 15-minute load curves as lazy dataframe
+    # bau_mus, ldf_bau_loads = _get_load_curves(bau_scenario, "bau")
+    mus, sbmeta, ldf_load_curves = _read_mus(scenario, "default", baseline_sbmeta, data_path, release, state, random_seed, sample_n, start_year)
+
+    if additional_hp_adoption_pct > 0:
+        heating_type_distribution = _get_heating_type_distribution(sbmeta)
+
+        hp_pct = heating_type_distribution.filter(pl.col("postprocess_group.heating_type") == "heat_pump").select("pct_of_total").item()
+        print(f"Total hp percent: {hp_pct:0.2f}")
+```
+
+### COMPUTE LOAD FACTOR BY HP vs NON-HP
+```{python}
+    # Join load_curves with metadata to get heating_type for each home
+    load_curves_with_meta = ldf_load_curves.join(sbmeta.select(["bldg_id", "postprocess_group.heating_type", "weight"]), on="bldg_id", how="left")
+
+    # Aggregate load curves by heating type and timestamp
+    aggregate_curves = (
+        load_curves_with_meta.group_by(["timestamp", "postprocess_group.heating_type"])
+        .agg([
+            (pl.col("out.electricity.net.energy_consumption") * pl.col("weight")).sum().alias("electricity_kwh"),
+            pl.col("weight").sum().alias("num_homes"),
+        ])
+    )
+
+    # Now, for each heating_type, calculate the load factor:
+    # For each group, get the sum of electricity_kwh over all timestamps, and also the max for that group
+    load_factor_df = (
+        aggregate_curves.group_by(pl.col("postprocess_group.heating_type") == "heat_pump")
+        .agg([
+            pl.col("num_homes").max().alias("num_homes"), # should be one unique value for each group
+            pl.col("electricity_kwh").sum().alias("annual_electricity_kwh"),
+            pl.col("electricity_kwh").max().alias("ncp_kw"),
+        ])
+        .with_columns(
+            (pl.col("annual_electricity_kwh") / (pl.col("ncp_kw") * 8760)).alias("load_factor")
+        )
+    ).collect()
+
+    print(f"Data for state: {state}")
+    print(load_factor_df)
+```
+
+## Compute NCPs
+```{python}
+    # Find the peak load hour (max electricity_kwh) for each heating_type,
+    # also include the number of homes in each group
+    peak_loads = (
+        aggregate_curves
+        .group_by("postprocess_group.heating_type")
+        .agg([
+            pl.col("electricity_kwh").max().alias("peak_load_kw"),
+            pl.col("num_homes").max().alias("num_homes"),  # max since num_homes per group should be constant
+        ])
+        .collect()
+    )
+
+    # Sum of peak loads (NCP) for all heating types
+    total_ncp = peak_loads["peak_load_kw"].sum()
+
+    print(f"Total system NCP (sum of heating type peak loads): {total_ncp:.2f} kW")
+
+    # Add percent of total NCP for each heating_type,
+    # and calculate pct_of_total_ncp per home (divide by num_homes)
+    peak_loads_pct = peak_loads.with_columns([
+        (pl.col("peak_load_kw") / total_ncp * 100).alias("pct_of_total_ncp"),
+        ((pl.col("peak_load_kw") / total_ncp * 100) / pl.col("num_homes")).alias("pct_of_total_ncp_per_home"),
+    ])
+
+    print(f"Data for state: {state}")
+    print("Peak load (NCP) by heating type:")
+    print(peak_loads_pct.select([
+        "postprocess_group.heating_type",
+        "peak_load_kw",
+        "num_homes",
+        "pct_of_total_ncp",
+        "pct_of_total_ncp_per_home"
+    ]))
+
+
 ```
 
 
+
+
+## ############################################################################################################
+## ############################################################################################################
+## ############################################################################################################
+## ############################################################################################################
+## ############################################################################################################
+## DEBUGGING
+
 ```{python}
-    data_path="s3://data.sb/nrel/resstock/"
-    release="res_2024_amy2018_2"
-    states="RI"
+    df_agg = aggregate_curves.collect()
+    print(df_agg.head())
+```
+
+```{python}
+    from plotnine import ggplot, aes, geom_line, labs, theme_minimal, scale_color_brewer
+
+    df_per_home = df_agg.with_columns(
+        (pl.col("electricity_kwh") / pl.col("num_homes")).alias("electricity_kwh"),
+    )
+
+    # Convert to pandas DataFrame for plotnine
+    pdf = df_per_home.to_pandas()
+
+    p = (
+        ggplot(pdf, aes(x="timestamp", y="electricity_kwh", color="postprocess_group.heating_type"))
+        + geom_line()
+        + labs(
+            x="Timestamp",
+            y="Electricity Consumption (kWh)",
+            color="Heating Type",
+            title="Hourly Electricity Consumption by Heating Type"
+        )
+        + scale_color_brewer(type="qual", palette="Set1")
+        + labs(
+            title=f"Hourly Electricity Consumption by Heating Type - {state}"
+        )
+        + theme_minimal()
+    )
+    p.show()
+```
+
+
+
+
+### TRY AGAIN WITH A MIXED UPGRADE SCENARIO
+
+
+
+```{python}
     random_seed=67
     upgrade_id = 2
-    sample_n=20 # do not downsample
+    sample_n=200     # NOTE: DEBUGGING ONLY # downsample for debugging
 
     start_year = 2028
 
@@ -190,7 +320,7 @@ https://drive.google.com/drive/u/0/folders/16nlFAL_RwGl_INAJrhR5irgnNC-gj9zF
             scenario_name=scenario_name,
             data_path=data_path,
             release=release,
-            states=states,
+            states=state,
             # NOTE:
             # this is maybe weird, in that the set
             # of adopting households in BAU isn't a subset of the set
@@ -222,11 +352,13 @@ https://drive.google.com/drive/u/0/folders/16nlFAL_RwGl_INAJrhR5irgnNC-gj9zF
     aggregate_curves = (
         ldf_hp_loads.group_by(["timestamp", "postprocess_group.heating_type"])
         .agg([
-            (pl.col("out.electricity.net.energy_consumption") * pl.col("weight")).sum().alias("electricity_kwh"),
+            (pl.col("out.electricity.total.energy_consumption") * pl.col("weight")).sum().alias("electricity_kwh"),
             pl.col("weight").sum().alias("num_homes"),
         ])
     )
+```
 
+```{python}
     # Now, for each heating_type, calculate the load factor:
     # For each group, get the sum of electricity_kwh over all timestamps, and also the max for that group
     load_factor_df = (
@@ -267,11 +399,8 @@ https://drive.google.com/drive/u/0/folders/16nlFAL_RwGl_INAJrhR5irgnNC-gj9zF
         (pl.col("electricity_kwh") / pl.col("num_homes")).alias("electricity_kwh"),
     )
 
-    # Convert to pandas DataFrame for plotnine
-    pdf = df_per_home.to_pandas()
-
     p = (
-        ggplot(pdf, aes(x="timestamp", y="electricity_kwh", color="postprocess_group.heating_type"))
+        ggplot(df_per_home, aes(x="timestamp", y="electricity_kwh", color="postprocess_group.heating_type"))
         + geom_line()
         + labs(
             x="Timestamp",
@@ -283,4 +412,36 @@ https://drive.google.com/drive/u/0/folders/16nlFAL_RwGl_INAJrhR5irgnNC-gj9zF
         + theme_minimal()
     )
     p.show()
+```
+
+```{python}
+    from plotnine import ggplot, aes, geom_line, labs, theme_minimal, scale_color_brewer
+
+    df_per_home = df_agg.with_columns(
+        (pl.col("electricity_kwh") / pl.col("num_homes")).alias("electricity_kwh"),
+        (pl.col("timestamp").dt.date()).alias("date"),
+    )
+
+    pdf_daily = (
+        df_per_home.group_by(["date", "postprocess_group.heating_type"])
+        .agg(pl.col("electricity_kwh").sum().alias("electricity_kwh"))
+    )
+
+    p = (
+        ggplot(pdf_daily, aes(x="date", y="electricity_kwh", color="postprocess_group.heating_type"))
+        + geom_line()
+        + labs(
+            x="Date",
+            y="Total Electricity Consumption (kWh)",
+            color="Heating Type",
+            title="Daily Electricity Consumption by Heating Type"
+        )
+        + scale_color_brewer(type="qual", palette="Set1")
+        + theme_minimal()
+    )
+    p.show()
+```
+
+```{python}
+    df_per_home.group_by(["postprocess_group.heating_type"]).agg(pl.col("electricity_kwh").sum().alias("electricity_kwh"))
 ```

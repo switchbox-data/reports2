@@ -16,6 +16,7 @@ from buildstock_fetch.scenarios import uniform_adoption
 from buildstock_fetch.mixed_upgrade import MixedUpgradeScenario
 from cloudpathlib import S3Path
 import polars as pl
+from pathlib import Path
 ```
 
 ### PARAMETERS
@@ -28,8 +29,28 @@ random_seed = 67
 upgrade_id = 2
 start_year = 2028
 
+embedded_cost_total_dollars = 124_000_000
+
+
+force_recrunch = False
+DEBUG_MODE = True
+
+if DEBUG_MODE:
+    sample_n = 20 # NOTE: DEBUG MODE: sample only 5 homes
+    step_size = 0.25
+    num_steps = 2
+    embedded_cost_total_dollars *= sample_n / 1910 # downscale so dollar estimtes are reasonable
+else:
+    sample_n = None
+    step_size = 0.01
+    num_steps = 10
+
 # Additional HP adoption: 0 = current stock only; sweep from 0 to 10% in 1% steps
-adoption_pct_values = [round(x * 0.01, 2) for x in range(11)]  # 0.00, 0.01, ..., 0.10
+additional_adoption_pct_values = [round(x * step_size, 2) for x in range(num_steps + 1)]  # 0.00, 0.01, ..., 0.10
+
+# Total embedded transmission + primary distribution costs (dollars)
+
+# If True, ignore any cached aggregate_curves parquet files and recompute from scratch
 ```
 
 ### HELPER FUNCTIONS
@@ -147,10 +168,12 @@ aggregate load by subclass (heating type), compute non-coincident peak (NCP) per
 total NCP, coincident peak, and each subclass’s share of total NCP.
 
 ```{python}
-def compute_ncp_and_shares(aggregate_curves: pl.DataFrame) -> tuple[pl.DataFrame, float, float]:
+def compute_ncp_and_shares(
+    aggregate_curves: pl.DataFrame,
+) -> tuple[pl.DataFrame, float, float, pl.Series]:
     """
     From timestamp x heating_type aggregated load (electricity_kwh, num_homes),
-    return (ncp_by_subclass, total_ncp, coincident_peak_kw).
+    return (ncp_by_subclass, total_residential_ncp, coincident_peak_kw, coincident_peak_timestamp).
     """
     # NCP per subclass = max load over time for that subclass
     ncp_by_subclass = (
@@ -160,90 +183,219 @@ def compute_ncp_and_shares(aggregate_curves: pl.DataFrame) -> tuple[pl.DataFrame
             pl.col("num_homes").max().alias("num_homes"),
         )
     )
-    total_ncp = ncp_by_subclass["ncp_kw"].sum()
+    total_residential_ncp = ncp_by_subclass["ncp_kw"].sum()
     ncp_by_subclass = ncp_by_subclass.with_columns(
-        (pl.col("ncp_kw") / total_ncp * 100).alias("pct_of_total_ncp")
+        # Subclass share of the residential class NCP (percent)
+        (pl.col("ncp_kw") / total_residential_ncp * 100).alias("subclass_pct_of_class_share"),
+        # Each home's share of total residential NCP (sums to 1 across all homes)
+        (pl.col("ncp_kw") / total_residential_ncp / pl.col("num_homes")).alias(
+            "share_of_residential_ncp_per_home"
+        ),
     )
 
     # Coincident peak = max over time of total system load
     total_load_by_time = aggregate_curves.group_by("timestamp").agg(
         pl.col("electricity_kwh").sum().alias("total_kw")
     )
-    coincident_peak_kw = total_load_by_time["total_kw"].max()
+    idx_max = total_load_by_time["total_kw"].arg_max()
+    peak_row = total_load_by_time.row(idx_max, named=True)
+    coincident_peak_kw = peak_row["total_kw"]
+    coincident_peak_timestamp = peak_row["timestamp"]
 
-    return ncp_by_subclass, total_ncp, coincident_peak_kw
+    return ncp_by_subclass, total_residential_ncp, coincident_peak_kw, coincident_peak_timestamp
 ```
 
 ```{python}
 # Collect results for all adoption levels
 rows_ncp = []
 rows_system = []
+aggregate_curves_cache_dir = Path("cache") / "embedded_curves"
+aggregate_curves_cache_dir.mkdir(parents=True, exist_ok=True)
 
-for adoption_pct in adoption_pct_values:
-    # Scale adoption so that *additional* HP adoption (on top of current) equals adoption_pct
-    pct_in_trajectory = adoption_pct / (1 - current_hp_pct) if current_hp_pct < 1.0 else 0.0
-    scenario = uniform_adoption(
-        upgrade_ids=[upgrade_id],
-        weights={upgrade_id: 1.0},
-        adoption_trajectory=[pct_in_trajectory],
-    )
-    mus, sbmeta, ldf_load_curves = read_mixed_upgrade_scenario(
-        scenario,
-        f"adoption_{adoption_pct:.2f}",
-        baseline_sbmeta,
-        data_path,
-        release,
-        state,
-        random_seed=random_seed,
-        start_year=start_year,
+for additional_adoption_pct in additional_adoption_pct_values:
+    # Scale adoption so that *additional* HP adoption (on top of current) equals additional_adoption_pct
+    pct_in_trajectory = (
+        additional_adoption_pct / (1 - current_hp_pct) if current_hp_pct < 1.0 else 0.0
     )
 
-    # Aggregate load by timestamp and heating type (subclass)
-    load_with_meta = ldf_load_curves.join(
-        sbmeta.select(["bldg_id", "postprocess_group.heating_type", "weight"]),
-        on="bldg_id",
+    cache_file = aggregate_curves_cache_dir / f"aggregate_curves_{additional_adoption_pct:.2f}.parquet"
+
+    if cache_file.exists() and not force_recrunch:
+        aggregate_curves = pl.read_parquet(cache_file)
+    else:
+        scenario = uniform_adoption(
+            upgrade_ids=[upgrade_id],
+            weights={upgrade_id: 1.0},
+            adoption_trajectory=[pct_in_trajectory],
+        )
+        mus, sbmeta, ldf_load_curves = read_mixed_upgrade_scenario(
+            scenario,
+            f"additional_adoption_{additional_adoption_pct:.2f}",
+            baseline_sbmeta,
+            data_path,
+            release,
+            state,
+            random_seed=random_seed,
+            start_year=start_year,
+            sample_n=sample_n,
+        )
+
+        # Aggregate load by timestamp and heating type (subclass)
+        load_with_meta = ldf_load_curves.join(
+            sbmeta.select(["bldg_id", "postprocess_group.heating_type", "weight"]),
+            on="bldg_id",
+            how="left",
+        )
+        aggregate_curves = (
+            load_with_meta.group_by(["timestamp", "postprocess_group.heating_type"])
+            .agg(
+                (pl.col("out.electricity.net.energy_consumption") * pl.col("weight"))
+                .sum()
+                .alias("electricity_kwh"),
+                pl.col("weight").sum().alias("num_homes"),
+            )
+            .collect()
+        )
+        aggregate_curves.write_parquet(cache_file)
+
+    # Annual kWh by subclass and total kWh across all subclasses
+    annual_kwh_by_subclass = aggregate_curves.group_by(
+        "postprocess_group.heating_type"
+    ).agg(pl.col("electricity_kwh").sum().alias("annual_kwh"))
+    total_annual_kwh = annual_kwh_by_subclass["annual_kwh"].sum()
+
+    ncp_by_subclass, total_residential_ncp, coincident_peak_kw, coincident_peak_timestamp = (
+        compute_ncp_and_shares(aggregate_curves)
+    )
+
+    # Attach annual kWh to NCP table
+    ncp_by_subclass = ncp_by_subclass.join(
+        annual_kwh_by_subclass,
+        on="postprocess_group.heating_type",
         how="left",
     )
-    aggregate_curves = (
-        load_with_meta.group_by(["timestamp", "postprocess_group.heating_type"])
-        .agg(
-            (pl.col("out.electricity.net.energy_consumption") * pl.col("weight"))
-            .sum()
-            .alias("electricity_kwh"),
-            pl.col("weight").sum().alias("num_homes"),
-        )
-        .collect()
-    )
 
-    ncp_by_subclass, total_ncp, coincident_peak_kw = compute_ncp_and_shares(aggregate_curves)
+    # Total HP adoption (fraction of homes) at this additional adoption level
+    total_num_homes = ncp_by_subclass["num_homes"].sum()
+    hp_num_homes = (
+        ncp_by_subclass.filter(
+            pl.col("postprocess_group.heating_type") == "heat_pump"
+        )["num_homes"].sum()
+        if "heat_pump" in ncp_by_subclass["postprocess_group.heating_type"].to_list()
+        else 0.0
+    )
+    total_hp_adoption_pct = hp_num_homes / total_num_homes if total_num_homes > 0 else 0.0
 
     for r in ncp_by_subclass.iter_rows(named=True):
         rows_ncp.append(
             {
-                "adoption_pct": adoption_pct,
+                "additional_adoption_pct": additional_adoption_pct,
                 "postprocess_group.heating_type": r["postprocess_group.heating_type"],
                 "ncp_kw": r["ncp_kw"],
                 "num_homes": r["num_homes"],
-                "pct_of_total_ncp": r["pct_of_total_ncp"],
+                "subclass_pct_of_class_share": r["subclass_pct_of_class_share"],
+                "share_of_residential_ncp_per_home": r["share_of_residential_ncp_per_home"],
+                "annual_kwh": r["annual_kwh"],
+                "total_hp_adoption_pct": total_hp_adoption_pct,
             }
         )
     rows_system.append(
         {
-            "adoption_pct": adoption_pct,
-            "total_ncp_kw": total_ncp,
+            "additional_adoption_pct": additional_adoption_pct,
+            "total_residential_ncp_kw": total_residential_ncp,
             "coincident_peak_kw": coincident_peak_kw,
+            "coincident_peak_timestamp": coincident_peak_timestamp,
+            "total_annual_kwh": total_annual_kwh,
+            "total_hp_adoption_pct": total_hp_adoption_pct,
         }
     )
 
 df_ncp = pl.DataFrame(rows_ncp)
 df_system = pl.DataFrame(rows_system)
+
+# Embedded-cost reallocation based on coincident peak.
+# Baseline coincident peak corresponds to residential class paying 49% of embedded costs.
+baseline_row = df_system.filter(
+    pl.col("additional_adoption_pct") == 0.0
+).select("coincident_peak_kw")
+baseline_coincident_peak_kw = baseline_row["coincident_peak_kw"][0]
+
+df_system = df_system.with_columns(
+    (
+        pl.col("coincident_peak_kw")
+        / (
+            baseline_coincident_peak_kw / 0.49
+            + pl.col("coincident_peak_kw")
+            - baseline_coincident_peak_kw
+        )
+        * 100
+    ).alias("residential_embedded_cost_share_pct"),
+    (
+        pl.col("coincident_peak_kw")
+        / (
+            baseline_coincident_peak_kw / 0.49
+            + pl.col("coincident_peak_kw")
+            - baseline_coincident_peak_kw
+        )
+        / pl.col("total_annual_kwh")
+        * embedded_cost_total_dollars
+    ).alias(
+        "volumetric_charge_for_transmission_and_primary_distribution_per_kwh"
+    ),
+)
+
+# Join system-level residential embedded-cost share into subclass table and
+# compute each subclass's share and per-kWh charge.
+df_ncp = df_ncp.join(
+    df_system.select(
+        [
+            "additional_adoption_pct",
+            "total_residential_ncp_kw",
+            "residential_embedded_cost_share_pct",
+        ]
+    ),
+    on="additional_adoption_pct",
+    how="left",
+)
+
+df_ncp = df_ncp.with_columns(
+    # Subclass share of total embedded costs (fraction of systemwide embedded costs)
+    (
+        (pl.col("subclass_pct_of_class_share") / 100.0)
+        * pl.col("residential_embedded_cost_share_pct")
+    ).alias("subclass_pct_of_total_embedded_cost"),
+    # Per-home share of total embedded costs
+    (
+        (pl.col("subclass_pct_of_class_share") / 100.0)
+        * pl.col("residential_embedded_cost_share_pct")
+        / 100.0
+        / pl.col("num_homes")
+    ).alias("subclass_embedded_cost_share_per_home"),
+    # Dollar share of embedded costs for each subclass
+    (
+        (pl.col("subclass_pct_of_class_share") / 100.0)
+        * pl.col("residential_embedded_cost_share_pct")
+        / 100.0
+        * embedded_cost_total_dollars
+    ).alias("subclass_embedded_cost_dollars"),
+    # Per-kWh charge for each subclass
+    (
+        (pl.col("subclass_pct_of_class_share") / 100.0)
+        * pl.col("residential_embedded_cost_share_pct")
+        / 100.0
+        * embedded_cost_total_dollars
+        / pl.col("annual_kwh")
+    ).alias("subclass_per_kwh_charge"),
+)
 ```
 
 ### NCP AND EMBEDDED-COST SHARE AT ZERO ADDITIONAL ADOPTION
 
 ```{python}
 # Subclass NCP and share of total NCP when additional HP adoption = 0%
-at_zero = df_ncp.filter(pl.col("adoption_pct") == 0.0).sort("ncp_kw", descending=True)
+at_zero = df_ncp.filter(pl.col("additional_adoption_pct") == 0.0).sort(
+    "ncp_kw", descending=True
+)
 print("At 0% additional HP adoption:")
 print(at_zero)
 ```
@@ -260,7 +412,7 @@ print(df_system)
 ```{python}
 hp_only = df_ncp.filter(pl.col("postprocess_group.heating_type") == "heat_pump")
 print("Heat pump subclass NCP and share of total NCP:")
-print(hp_only)
+print(hp_only.to_pandas().transpose())
 ```
 
 ### PLOTS
@@ -282,24 +434,27 @@ from plotnine import (
 ```{python}
 # Long form for ggplot: one row per (adoption_pct, series, value)
 df_system_long = df_system.melt(
-    id_vars="adoption_pct",
-    value_vars=["total_ncp_kw", "coincident_peak_kw"],
+    id_vars="total_hp_adoption_pct",
+    value_vars=["total_residential_ncp_kw", "coincident_peak_kw"],
     variable_name="series",
     value_name="peak_kw",
 ).with_columns(
-    pl.when(pl.col("series") == "total_ncp_kw")
-    .then(pl.lit("Sum of NCPs"))
+    pl.when(pl.col("series") == "total_residential_ncp_kw")
+    .then(pl.lit("Sum of residential NCPs"))
     .otherwise(pl.lit("Coincident peak"))
     .alias("series"),
 )
 
 (
-    ggplot(df_system_long.to_pandas(), aes(x="adoption_pct", y="peak_kw", color="series"))
+    ggplot(
+        df_system_long,
+        aes(x="total_hp_adoption_pct", y="peak_kw", color="series"),
+    )
     + geom_line(size=1)
     + geom_point(size=2)
     + labs(
         title="Total system peak vs additional HP adoption",
-        x="Additional HP adoption (fraction)",
+        x="Total HP adoption (fraction of homes)",
         y="Peak load (kW)",
         color="",
     )
@@ -307,15 +462,26 @@ df_system_long = df_system.melt(
 ).draw()
 ```
 
+```{python}
+print(df_system_long.to_pandas())
+```
+
 **NCP by subclass (stacked area) vs additional HP adoption**
 
 ```{python}
 (
-    ggplot(df_ncp.to_pandas(), aes(x="adoption_pct", y="ncp_kw", fill="postprocess_group.heating_type"))
+    ggplot(
+        df_ncp.to_pandas(),
+        aes(
+            x="total_hp_adoption_pct",
+            y="ncp_kw",
+            fill="postprocess_group.heating_type",
+        ),
+    )
     + geom_area(position="stack")
     + labs(
         title="NCP by subclass vs additional HP adoption",
-        x="Additional HP adoption (fraction)",
+        x="Total HP adoption (fraction of homes)",
         y="NCP (kW)",
         fill="Subclass",
     )
@@ -327,12 +493,15 @@ df_system_long = df_system.melt(
 
 ```{python}
 (
-    ggplot(hp_only.to_pandas(), aes(x="adoption_pct", y="pct_of_total_ncp"))
+    ggplot(
+        hp_only.to_pandas(),
+        aes(x="total_hp_adoption_pct", y="subclass_pct_of_class_share"),
+    )
     + geom_line(size=1)
     + geom_point(size=2)
     + labs(
         title="Heat pump share of total NCP vs additional HP adoption",
-        x="Additional HP adoption (fraction)",
+        x="Total HP adoption (fraction of homes)",
         y="HP share of total NCP (%)",
     )
     + theme_minimal()
@@ -343,13 +512,99 @@ df_system_long = df_system.melt(
 
 ```{python}
 (
-    ggplot(df_ncp.to_pandas(), aes(x="adoption_pct", y="pct_of_total_ncp", color="postprocess_group.heating_type"))
+    ggplot(
+        df_ncp.to_pandas(),
+        aes(
+            x="total_hp_adoption_pct",
+            y="subclass_pct_of_class_share",
+            color="postprocess_group.heating_type",
+        ),
+    )
     + geom_line(size=1)
     + geom_point(size=2)
     + labs(
         title="Subclass share of total NCP vs additional HP adoption",
         x="Additional HP adoption (fraction)",
         y="Share of total NCP (%)",
+        color="Subclass",
+    )
+    + theme_minimal()
+).draw()
+```
+
+### Embedded-cost reallocation plots
+
+**Total residential embedded costs vs total HP adoption (stacked by subclass)**
+
+```{python}
+(
+    ggplot(
+        df_ncp.to_pandas(),
+        aes(
+            x="total_hp_adoption_pct",
+            y="subclass_embedded_cost_dollars",
+            fill="postprocess_group.heating_type",
+        ),
+    )
+    + geom_area(position="stack")
+    + labs(
+        title="Total residential embedded costs vs total HP adoption",
+        x="Total HP adoption (fraction of homes)",
+        y="Embedded transmission + primary distribution costs (dollars)",
+        fill="Subclass",
+    )
+    + theme_minimal()
+).draw()
+```
+
+**Embedded-cost per kWh vs total HP adoption (by subclass)**
+
+```{python}
+(
+    ggplot(
+        df_ncp.to_pandas(),
+        aes(
+            x="total_hp_adoption_pct",
+            y="subclass_per_kwh_charge",
+            color="postprocess_group.heating_type",
+        ),
+    )
+    + geom_line(size=1)
+    + geom_point(size=2)
+    + labs(
+        title="Embedded transmission + primary distribution cost per kWh vs total HP adoption",
+        x="Total HP adoption (fraction of homes)",
+        y="Embedded cost per kWh (dollars)",
+        color="Subclass",
+    )
+    + theme_minimal()
+).draw()
+```
+
+**Embedded-cost per home vs total HP adoption (by subclass)**
+
+```{python}
+df_ncp_with_per_home = df_ncp.with_columns(
+    (
+        pl.col("subclass_embedded_cost_dollars") / pl.col("num_homes")
+    ).alias("subclass_embedded_cost_dollars_per_home")
+)
+
+(
+    ggplot(
+        df_ncp_with_per_home.to_pandas(),
+        aes(
+            x="total_hp_adoption_pct",
+            y="subclass_embedded_cost_dollars_per_home",
+            color="postprocess_group.heating_type",
+        ),
+    )
+    + geom_line(size=1)
+    + geom_point(size=2)
+    + labs(
+        title="Embedded transmission + primary distribution cost per home vs total HP adoption",
+        x="Total HP adoption (fraction of homes)",
+        y="Embedded cost per home (dollars)",
         color="Subclass",
     )
     + theme_minimal()

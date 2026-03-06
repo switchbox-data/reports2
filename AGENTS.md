@@ -875,6 +875,97 @@ Keep status updated as work progresses — this is critical for team visibility:
 - **In Progress** -> **Under Review**: PR ready for review, or findings documented
 - **Under Review** -> **Done**: PR merged (auto-closes), or reviewer approves and closes
 
+## Plotting and visualization (critical agent guidance)
+
+This section exists because LLMs are systematically bad at writing plotting code — especially with plotnine (Python's ggplot2 port). The failure mode is always the same: guessing at API signatures and parameter types from training data, making changes without testing them, and then spiraling through multiple broken iterations. **Do not be that agent.** Follow these rules strictly.
+
+### The cardinal rule: look it up, then test it
+
+1. **Never guess at a plotting API.** Before writing or modifying any plot code, look up the exact function signatures using Context7 MCP (for plotnine, ggplot2, matplotlib, etc.) or web fetch. This is not optional. Training data for plotting libraries is unreliable — parameter names, types, and defaults change across versions.
+2. **Always test plot changes in isolation before editing the notebook.** Write a minimal standalone Python script that exercises the exact plotting code you're about to use, run it via the Shell tool, save the output to a PNG, and read the image to verify it looks correct. Only after the test passes should you edit the `.qmd` file.
+3. **Never make multiple untested changes at once.** If you need to change the title position AND the label positions AND the axis limits, test each change individually or test them together in a standalone script first. Do not edit the notebook and hope it works.
+
+### The test-plot workflow
+
+Every time you create or modify a plot, follow this workflow:
+
+```
+1. Look up docs for any API you're not 100% certain about
+2. Write a standalone test script (/tmp/test_plot.py) with synthetic data
+3. Run it: `uv run python3 /tmp/test_plot.py`
+4. Save output: p.save("/tmp/test_plot.png", dpi=100)
+5. Read the image to verify it looks right
+6. ONLY THEN edit the notebook cell
+```
+
+This applies even for "small" changes like adjusting a font size or moving a label. Plotting libraries have non-obvious interactions between parameters, and the only way to know if something works is to see the rendered output.
+
+### plotnine-specific pitfalls
+
+These are real mistakes that waste time. Memorize them or look them up every time.
+
+**`theme()` vs `theme_minimal()`**: `figure_size` belongs in `theme()`, not in `theme_minimal()`. `theme_minimal()` accepts no custom arguments beyond what its parent `theme` class defines. Always do:
+
+```python
++ theme_minimal()
++ theme(figure_size=(14, 6))
+```
+
+Never:
+
+```python
++ theme_minimal(figure_size=(14, 6))  # TypeError
+```
+
+**`element_text()` margin format**: The `margin` parameter in `element_text()` takes a dict with a `"units"` key, not a tuple. Correct:
+
+```python
+plot_title=element_text(margin={"b": -10, "units": "pt"})
+```
+
+Incorrect:
+
+```python
+plot_title=element_text(margin=(0, 0, -10, 0))  # AttributeError
+```
+
+**`coord_flip()` swaps everything**: When using `coord_flip()`, the x aesthetic becomes the vertical axis and y becomes horizontal. This means:
+
+- `annotate("text", x=..., y=...)` — `x` controls vertical position, `y` controls horizontal position
+- The first level of a categorical x-axis (Enum) appears at the **bottom** of the flipped chart, the last level at the **top**
+- To put "All non-HP" at the top of a multi-bar chart, it must be the **last** level in the Enum order (reverse your input list)
+- `scale_x_discrete(expand=...)` controls the vertical padding (top/bottom), `scale_y_continuous(expand=...)` controls horizontal padding (left/right)
+
+**Annotation positioning with categorical axes**: After `coord_flip()`, categorical axis positions are integers starting at 1. For `n` categories, position 1 is the bottom bar, position `n` is the top bar. To place annotations above the top bar, use `x = n + offset`. To place labels at the left edge of bars, use `y = 0` with `ha="left"`.
+
+**`scale_y_continuous(limits=...)` clips data and hardcodes range**: If you set fixed limits and a label or annotation falls outside them, it will be silently clipped. Hardcoded limits also create brittle layouts — a value that works for one dataset may leave too much whitespace or clip labels on another. **Prefer `expand=` over `limits=`** whenever possible. For example, `scale_y_continuous(expand=(0, 0, 0.15, 0))` adds 15% padding on the high end proportionally, so labels placed just past 100% always have room regardless of content. Reserve `limits=` for cases where you truly need to fix the axis range (e.g., `coord_cartesian(xlim=...)` for histograms).
+
+**`position_stack()` and label filtering**: When using `geom_text()` with `position_stack(vjust=0.5)` for in-bar labels, filter out small segments first (e.g., `df.filter(pl.col("pct") >= 3)`) — otherwise labels from tiny segments overlap and become unreadable. Pass the filtered DataFrame directly to `geom_text()`:
+
+```python
++ geom_text(
+    df.filter(pl.col("pct") >= 3),
+    aes(label="pct"),
+    position=position_stack(vjust=0.5),
+    ...
+)
+```
+
+### ggplot2 (R) pitfalls
+
+R's ggplot2 is more familiar to LLMs but still has traps:
+
+- **`coord_flip()` follows the same axis-swapping rules** as plotnine. The same confusion about x/y in annotations applies.
+- **Look up `theme()` element types.** `element_text()`, `element_blank()`, `element_rect()`, and `element_line()` each have specific parameters. Do not guess — check the docs.
+- **Always source `switchbox_theme.R`** before plotting. Do not create custom themes.
+
+### General plotting principles
+
+- **Labels above bars, not beside them**, for NYT-style horizontal bar charts. Row labels go above each bar at `y=0` with `ha="left"` so bars span the full width.
+- **Test with synthetic data first** when building a new chart type. Real data adds complexity (missing values, extreme outliers, edge cases) that makes debugging layout issues harder.
+- **When something doesn't render as expected**, do NOT keep tweaking numbers blindly. Instead: (1) re-read the docs for the specific function, (2) write a minimal test isolating the issue, (3) form a hypothesis, (4) test it, (5) apply the fix.
+- **Weighted histograms** need special care: compute weighted percentiles for axis limits (1st–99th), use `coord_cartesian(xlim=...)` (not `scale_x_continuous(limits=...)`) to avoid dropping data, and position quadrant labels at the midpoint of each segment.
+
 ## Conventions agents should follow
 
 1. **Never hardcode computed values in prose.** Always use inline R code (`` `r var |> scales::dollar()` ``).

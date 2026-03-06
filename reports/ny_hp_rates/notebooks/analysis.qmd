@@ -37,18 +37,27 @@ from __future__ import annotations
 
 from typing import cast
 
+import math
+
 import polars as pl
 from plotnine import (
     aes,
     annotate,
+    coord_cartesian,
+    coord_flip,
+    element_blank,
+    element_text,
     geom_col,
     geom_text,
     geom_vline,
     ggplot,
+    guides,
     labs,
     position_stack,
     scale_fill_manual,
     scale_x_discrete,
+    scale_y_continuous,
+    theme,
     theme_minimal,
 )
 
@@ -76,6 +85,7 @@ PRICE_YEAR = 2024
 
 S3_BUCKET = "s3://data.sb"
 PATH_RESSTOCK_BASE = f"{S3_BUCKET}/nrel/resstock/res_2024_amy2018_2"
+PATH_RESSTOCK_LOCAL = "/workspaces/reports2/data/nrel/resstock/res_2024_amy2018_2"
 PATH_RESSTOCK_RELEASE = f"{PATH_RESSTOCK_BASE}_sb"
 PATH_METADATA = f"{PATH_RESSTOCK_RELEASE}/metadata/state={STATE}/upgrade=00/metadata-sb.parquet"
 PATH_HEATING_FUEL_PRICES = f"{S3_BUCKET}/eia/heating_fuel_prices/"
@@ -137,12 +147,19 @@ fuel (oil/propane) costs using monthly ResStock consumption and EIA prices.
 comb_before = pl.scan_csv(f"{PATH_RUN_SUPPLY}/{COMB_BILLS_CSV}")
 comb_after = pl.scan_csv(f"{PATH_RUN_SUPPLY_HP}/{COMB_BILLS_CSV}")
 
+_LC_COLS = [
+    "bldg_id",
+    "month",
+    "out.fuel_oil.total.energy_consumption",
+    "out.propane.total.energy_consumption",
+]
+
 lc_monthly_u00 = scan_load_curves_for_utility(
-    PATH_RESSTOCK_BASE, STATE, "00", UTILITY, "monthly"
-)
+    PATH_RESSTOCK_LOCAL, STATE, "00", UTILITY, "monthly"
+).select(_LC_COLS)
 lc_monthly_u02 = scan_load_curves_for_utility(
-    PATH_RESSTOCK_BASE, STATE, "02", UTILITY, "monthly"
-)
+    PATH_RESSTOCK_LOCAL, STATE, "02", UTILITY, "monthly"
+).select(_LC_COLS)
 
 topped_before = add_delivered_fuel_bills(comb_before, lc_monthly_u00, monthly_prices)
 topped_after = add_delivered_fuel_bills(comb_after, lc_monthly_u02, monthly_prices)
@@ -176,13 +193,6 @@ delta_with_meta = delta_df.join(metadata.select(META_COLS), on=BLDG_ID, how="inn
 ```{python}
 #| label: histogram-helpers
 
-POPULATION_FILTERS: dict[str, pl.Expr] = {
-    "non_hp": pl.col("postprocess_group.has_hp") == False,
-    "natgas": pl.col("heats_with_natgas") == True,
-    "oil_propane": (pl.col("heats_with_oil") == True) | (pl.col("heats_with_propane") == True),
-    "electric_resistance": pl.col("postprocess_group.heating_type") == "electrical_resistance",
-}
-
 BIN_WIDTH = 100
 QUADRANT_COLORS = {
     "savings > $1k": "#1b5e20",
@@ -191,10 +201,37 @@ QUADRANT_COLORS = {
     "losses > $1k": "#b71c1c",
 }
 QUADRANT_ORDER = list(QUADRANT_COLORS.keys())
+QUADRANT_LABELS = {
+    "losses > $1k": "LOSE > $1K",
+    "losses $0-1k": "LOSE $0-1K",
+    "savings $0-1k": "SAVE $0-1K",
+    "savings > $1k": "SAVE > $1K",
+}
+
+
+def _weighted_percentile(df: pl.DataFrame, col: str, w_col: str, q: float) -> float:
+    """Weighted percentile via cumulative weight."""
+    s = df.sort(col)
+    cum = s[w_col].cum_sum() / s[w_col].sum()
+    return float(s.filter(cum >= q)[col][0])
+
+
+def quadrant_pcts(df: pl.DataFrame) -> dict[str, float]:
+    """Weighted percentage of homes in each bill-change quadrant."""
+    total = df["weight"].sum()
+    return {
+        "savings > $1k": df.filter(pl.col("delta") < -1000)["weight"].sum() / total * 100,
+        "savings $0-1k": df.filter((pl.col("delta") >= -1000) & (pl.col("delta") < 0))["weight"].sum() / total * 100,
+        "losses $0-1k": df.filter((pl.col("delta") >= 0) & (pl.col("delta") < 1000))["weight"].sum() / total * 100,
+        "losses > $1k": df.filter(pl.col("delta") >= 1000)["weight"].sum() / total * 100,
+    }
 
 
 def plot_bill_change_histogram(df: pl.DataFrame) -> ggplot:
     """Weighted histogram of annual bill change."""
+    x_lo = math.floor(_weighted_percentile(df, "delta", "weight", 0.01) / 500) * 500
+    x_hi = math.ceil(_weighted_percentile(df, "delta", "weight", 0.99) / 500) * 500
+
     binned = (
         df.with_columns(
             (
@@ -215,23 +252,7 @@ def plot_bill_change_histogram(df: pl.DataFrame) -> ggplot:
         .agg(pl.col("weight").sum().alias("weight_sum"))
     )
 
-    total_weight = df["weight"].sum()
-    pct = {
-        "savings > $1k": (
-            df.filter(pl.col("delta") < -1000)["weight"].sum() / total_weight * 100
-        ),
-        "savings $0-1k": (
-            df.filter((pl.col("delta") >= -1000) & (pl.col("delta") < 0))["weight"].sum()
-            / total_weight * 100
-        ),
-        "losses $0-1k": (
-            df.filter((pl.col("delta") >= 0) & (pl.col("delta") < 1000))["weight"].sum()
-            / total_weight * 100
-        ),
-        "losses > $1k": (
-            df.filter(pl.col("delta") >= 1000)["weight"].sum() / total_weight * 100
-        ),
-    }
+    pct = quadrant_pcts(df)
 
     quadrant_dtype = pl.Enum(QUADRANT_ORDER)
     plot_df = binned.with_columns(pl.col("quadrant").cast(quadrant_dtype))
@@ -240,38 +261,141 @@ def plot_bill_change_histogram(df: pl.DataFrame) -> ggplot:
     )
     y_annot = max_weight * 1.05
 
-    return (
+    quadrant_bounds = [
+        (x_lo, -1000),
+        (-1000, 0),
+        (0, 1000),
+        (1000, x_hi),
+    ]
+    label_xs = [
+        (max(lo, x_lo) + min(hi, x_hi)) / 2 for lo, hi in quadrant_bounds
+    ]
+
+    annotations = []
+    for label, x_pos in zip(QUADRANT_ORDER, label_xs):
+        if pct[label] < 0.05:
+            continue
+        annotations.append(
+            annotate(
+                "text", x=x_pos, y=y_annot,
+                label=f"{label}\n{pct[label]:.1f}%",
+                ha="center", size=11, color=QUADRANT_COLORS[label],
+            )
+        )
+
+    p = (
         ggplot(plot_df, aes(x="bin_center", y="weight_sum", fill="quadrant"))
         + geom_col(width=BIN_WIDTH * 0.9)
         + geom_vline(xintercept=[-1000, 0, 1000], linetype="dotted", color="gray")
         + scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
-        + annotate(
-            "text", x=-2500, y=y_annot,
-            label=f"savings > $1k\n{pct['savings > $1k']:.1f}%",
-            ha="center", size=9,
-        )
-        + annotate(
-            "text", x=-500, y=y_annot,
-            label=f"savings $0-1k\n{pct['savings $0-1k']:.1f}%",
-            ha="center", size=9,
-        )
-        + annotate(
-            "text", x=500, y=y_annot,
-            label=f"losses $0-1k\n{pct['losses $0-1k']:.1f}%",
-            ha="center", size=9,
-        )
-        + annotate(
-            "text", x=2500, y=y_annot,
-            label=f"losses > $1k\n{pct['losses > $1k']:.1f}%",
-            ha="center", size=9,
-        )
+        + coord_cartesian(xlim=(x_lo, x_hi))
         + labs(
             x="Annual Bill Change ($)",
             y="# of Homes",
             title="Change in Total Energy Bills after Switching to Heat Pumps",
         )
+        + guides(fill=False)
         + theme_minimal()
+        + theme(figure_size=(14, 6))
     )
+    for a in annotations:
+        p = p + a
+    return p
+
+
+def plot_quadrant_bar(
+    rows: list[tuple[str, pl.DataFrame]],
+    title: str = "How bills would change after switching to heat pumps:",
+) -> ggplot:
+    """Horizontal stacked bar(s) showing quadrant proportions.
+
+    *rows* is a list of ``(label, df)`` pairs where each *df* has ``delta``
+    and ``weight`` columns. Each pair becomes one bar. Pass a single pair for
+    one bar; pass multiple pairs for side-by-side comparison (e.g. different
+    rate scenarios).
+    """
+    records: list[dict] = []
+    all_pcts: list[dict[str, float]] = []
+    for row_label, df in rows:
+        pct = quadrant_pcts(df)
+        all_pcts.append(pct)
+        for q in QUADRANT_ORDER:
+            records.append({"scenario": row_label, "quadrant": q, "pct": pct[q]})
+
+    scenario_order = [r[0] for r in reversed(rows)]
+    plot_df = pl.DataFrame(records).with_columns(
+        pl.col("quadrant").cast(pl.Enum(QUADRANT_ORDER)),
+        pl.col("scenario").cast(pl.Enum(scenario_order)),
+    )
+
+    n_scenarios = len(rows)
+    first_pct = all_pcts[0]
+    stacking_order = list(reversed(QUADRANT_ORDER))
+    extra_annotations: list = []
+
+    cum = 0.0
+    for q in stacking_order:
+        mid = cum + first_pct[q] / 2
+        cum += first_pct[q]
+        if first_pct[q] < 2:
+            continue
+        extra_annotations.append(
+            annotate(
+                "text",
+                x=n_scenarios + 0.45,
+                y=mid,
+                label=QUADRANT_LABELS[q],
+                ha="center", va="bottom",
+                size=8, color=QUADRANT_COLORS[q], fontweight="bold",
+            )
+        )
+
+    for i, (row_label, _) in enumerate(rows):
+        bar_pos = n_scenarios - i
+        extra_annotations.append(
+            annotate(
+                "text",
+                x=bar_pos,
+                y=101,
+                label=row_label,
+                ha="left", va="center",
+                size=9, fontweight="bold",
+            )
+        )
+
+    top_expand = 0.55 if n_scenarios > 1 else 1.2
+
+    p = (
+        ggplot(plot_df, aes(x="scenario", y="pct", fill="quadrant"))
+        + geom_col(position="stack", width=0.55)
+        + geom_text(
+            plot_df.filter(pl.col("pct") >= 3),
+            aes(label="pct"),
+            position=position_stack(vjust=0.5),
+            format_string="{:.0f}%",
+            color="white",
+            size=10,
+            fontweight="bold",
+        )
+        + scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
+        + scale_y_continuous(expand=(0, 0, 0.15, 0))
+        + scale_x_discrete(expand=(0, 0.35, 0, top_expand))
+        + coord_flip()
+        + guides(fill=False)
+        + labs(x="", y="", title=title)
+        + theme_minimal()
+        + theme(
+            figure_size=(14, max(2.2, 0.8 + 1.0 * n_scenarios)),
+            axis_text_y=element_blank(),
+            axis_text_x=element_blank(),
+            plot_title=element_text(size=11, ha="left", margin={"b": -8, "units": "pt"}),
+            panel_grid=element_blank(),
+            axis_ticks_major=element_blank(),
+        )
+    )
+    for a in extra_annotations:
+        p = p + a
+    return p
 ```
 
 ### Non-HP households
@@ -280,9 +404,12 @@ def plot_bill_change_histogram(df: pl.DataFrame) -> ggplot:
 #| label: fig-bill-change-non-hp
 #| fig-cap: "Annual bill change distribution — non-heat-pump households"
 
-filtered = delta_with_meta.filter(POPULATION_FILTERS["non_hp"]).select("delta", "weight")
-assert not filtered.is_empty(), "No rows after non_hp filter"
-plot_bill_change_histogram(filtered)
+non_hp = (
+    delta_with_meta
+    .filter(pl.col("postprocess_group.has_hp") == False)
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(non_hp)
 ```
 
 ### Natural gas heated
@@ -291,9 +418,12 @@ plot_bill_change_histogram(filtered)
 #| label: fig-bill-change-natgas
 #| fig-cap: "Annual bill change distribution — natural gas-heated households"
 
-filtered = delta_with_meta.filter(POPULATION_FILTERS["natgas"]).select("delta", "weight")
-assert not filtered.is_empty(), "No rows after natgas filter"
-plot_bill_change_histogram(filtered)
+natgas = (
+    delta_with_meta
+    .filter(pl.col("heats_with_natgas"))
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(natgas)
 ```
 
 ### Oil / propane heated
@@ -302,9 +432,12 @@ plot_bill_change_histogram(filtered)
 #| label: fig-bill-change-oil-propane
 #| fig-cap: "Annual bill change distribution — oil/propane-heated households"
 
-filtered = delta_with_meta.filter(POPULATION_FILTERS["oil_propane"]).select("delta", "weight")
-assert not filtered.is_empty(), "No rows after oil_propane filter"
-plot_bill_change_histogram(filtered)
+oil_propane = (
+    delta_with_meta
+    .filter(pl.col("heats_with_oil") | pl.col("heats_with_propane"))
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(oil_propane)
 ```
 
 ### Electric resistance heated
@@ -313,9 +446,54 @@ plot_bill_change_histogram(filtered)
 #| label: fig-bill-change-elec-resistance
 #| fig-cap: "Annual bill change distribution — electric resistance-heated households"
 
-filtered = delta_with_meta.filter(POPULATION_FILTERS["electric_resistance"]).select("delta", "weight")
-assert not filtered.is_empty(), "No rows after electric_resistance filter"
-plot_bill_change_histogram(filtered)
+elec_resistance = (
+    delta_with_meta
+    .filter(pl.col("postprocess_group.heating_type") == "electrical_resistance")
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(elec_resistance)
+```
+
+### Quadrant summary bars
+
+```{python}
+#| label: fig-quadrant-bar-non-hp
+#| fig-cap: "Bill change summary — non-heat-pump households"
+
+plot_quadrant_bar([("Non-HP households", non_hp)])
+```
+
+```{python}
+#| label: fig-quadrant-bar-natgas
+#| fig-cap: "Bill change summary — natural gas-heated households"
+
+plot_quadrant_bar([("Natural gas", natgas)])
+```
+
+```{python}
+#| label: fig-quadrant-bar-oil-propane
+#| fig-cap: "Bill change summary — oil/propane-heated households"
+
+plot_quadrant_bar([("Oil / propane", oil_propane)])
+```
+
+```{python}
+#| label: fig-quadrant-bar-elec-resistance
+#| fig-cap: "Bill change summary — electric resistance-heated households"
+
+plot_quadrant_bar([("Electric resistance", elec_resistance)])
+```
+
+```{python}
+#| label: fig-quadrant-bar-all
+#| fig-cap: "Bill change summary by heating fuel — default rates"
+
+plot_quadrant_bar([
+    ("All non-HP", non_hp),
+    ("Natural gas", natgas),
+    ("Oil / propane", oil_propane),
+    ("Electric resistance", elec_resistance),
+])
 ```
 
 

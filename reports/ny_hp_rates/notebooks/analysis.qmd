@@ -47,6 +47,7 @@ from plotnine import (
     coord_flip,
     element_blank,
     element_text,
+    facet_wrap,
     geom_col,
     geom_text,
     geom_vline,
@@ -60,55 +61,21 @@ from plotnine import (
     theme,
     theme_minimal,
 )
-
-from lib.cairo import add_delivered_fuel_bills
-from lib.data.eia.heating_fuel_prices import load_monthly_fuel_prices
-from lib.data.nrel.resstock import scan_load_curves_for_utility
-from lib.data.s3 import list_s3_subdirs, run_dir
-from lib.rdp import fetch_rdp_file, parse_urdb_json
 ```
 
 ## Parameters
 
 ```{python}
-#| label: params-top
+#| label: params
 
 UTILITY = "coned"
-OUTPUT_BATCH = "20260305T211404Z"
+BATCH = "ny_20260305c_r1-8"
 STATE = "NY"
-```
 
-```{python}
-#| label: params
-state_lower = STATE.lower()
-PRICE_YEAR = 2024
-
-S3_BUCKET = "s3://data.sb"
-PATH_RESSTOCK_BASE = f"{S3_BUCKET}/nrel/resstock/res_2024_amy2018_2"
-PATH_RESSTOCK_LOCAL = "/workspaces/reports2/data/nrel/resstock/res_2024_amy2018_2"
-PATH_RESSTOCK_RELEASE = f"{PATH_RESSTOCK_BASE}_sb"
-PATH_METADATA = f"{PATH_RESSTOCK_RELEASE}/metadata/state={STATE}/upgrade=00/metadata-sb.parquet"
-PATH_HEATING_FUEL_PRICES = f"{S3_BUCKET}/eia/heating_fuel_prices/"
-
-PATH_OUTPUT_BASE = (
-    f"{S3_BUCKET}/switchbox/cairo/outputs/hp_rates/{state_lower}/{UTILITY}/{OUTPUT_BATCH}"
-)
-
-_run_dirs = list_s3_subdirs(PATH_OUTPUT_BASE)
-_suffix = f"{state_lower}_{UTILITY}_run"
-PATH_RUN_DELIVERY = run_dir(_run_dirs, f"{_suffix}1_up00_precalc__flat")
-PATH_RUN_SUPPLY = run_dir(_run_dirs, f"{_suffix}2_up00_precalc_supply__flat")
-PATH_RUN_DELIVERY_HP = run_dir(_run_dirs, f"{_suffix}3_up02_default__flat")
-PATH_RUN_SUPPLY_HP = run_dir(_run_dirs, f"{_suffix}4_up02_default_supply__flat")
-
-RDP_REF = "main"  # pin to a commit SHA or tag for reproducible runs
-_tariff_flat = parse_urdb_json(
-    fetch_rdp_file(
-        f"rate_design/hp_rates/{state_lower}/config/tariffs/electric/{UTILITY}_flat.json",
-        RDP_REF,
-    )
-)
-FIXED_CHARGE_PER_MONTH = float(_tariff_flat["items"][0]["fixedchargefirstmeter"])
+S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
+PATH_MASTER_BILLS_12 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_1+2/comb_bills_year_target/"
+PATH_MASTER_BILLS_34 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_3+4/comb_bills_year_target/"
+PATH_MASTER_BAT_12 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_1+2/cross_subsidization_BAT_values/"
 ```
 
 ## Constants
@@ -118,76 +85,74 @@ FIXED_CHARGE_PER_MONTH = float(_tariff_flat["items"][0]["fixedchargefirstmeter"]
 
 ANNUAL_MONTH = "Annual"
 BLDG_ID = "bldg_id"
-BILL_LEVEL = "bill_level"
-COMB_BILLS_CSV = "bills/comb_bills_year_target.csv"
-ELEC_BILLS_CSV = "bills/elec_bills_year_run.csv"
 HEATING_TYPE_COL = "postprocess_group.heating_type"
 FOSSIL_FUEL = "fossil_fuel"
 ```
 
 ## Data ingest
 
+The master bills tables are pre-built, Hive-partitioned parquet datasets that
+contain per-building monthly and annual bills with fully decomposed electric
+components (fixed, delivery volumetric, supply), gas, oil, and propane — plus
+ResStock metadata columns — across all NY utilities.
+
 ```{python}
 #| label: ingest
 
-metadata = pl.scan_parquet(PATH_METADATA).collect()
-monthly_prices = load_monthly_fuel_prices(PATH_HEATING_FUEL_PRICES, STATE, PRICE_YEAR)
+bills_current = pl.scan_parquet(PATH_MASTER_BILLS_12, hive_partitioning=True)
+bills_hp = pl.scan_parquet(PATH_MASTER_BILLS_34, hive_partitioning=True)
 ```
-
 
 ## Bill change distributions
 
 Weighted histograms of annual total energy bill change (before vs after switching
-to heat pumps) under default rates. Combined bills are topped up with delivered
-fuel (oil/propane) costs using monthly ResStock consumption and EIA prices.
+to heat pumps) under default rates. The master bills `energy_total_bill` already
+includes electric, gas, oil, and propane costs.
 
 ```{python}
 #| label: compute-bill-deltas
 
-comb_before = pl.scan_csv(f"{PATH_RUN_SUPPLY}/{COMB_BILLS_CSV}")
-comb_after = pl.scan_csv(f"{PATH_RUN_SUPPLY_HP}/{COMB_BILLS_CSV}")
-
-_LC_COLS = [
-    "bldg_id",
-    "month",
-    "out.fuel_oil.total.energy_consumption",
-    "out.propane.total.energy_consumption",
-]
-
-lc_monthly_u00 = scan_load_curves_for_utility(
-    PATH_RESSTOCK_LOCAL, STATE, "00", UTILITY, "monthly"
-).select(_LC_COLS)
-lc_monthly_u02 = scan_load_curves_for_utility(
-    PATH_RESSTOCK_LOCAL, STATE, "02", UTILITY, "monthly"
-).select(_LC_COLS)
-
-topped_before = add_delivered_fuel_bills(comb_before, lc_monthly_u00, monthly_prices)
-topped_after = add_delivered_fuel_bills(comb_after, lc_monthly_u02, monthly_prices)
-
-annual_before = (
-    topped_before.filter(pl.col("month") == ANNUAL_MONTH)
-    .select(pl.col(BLDG_ID), pl.col("weight"), pl.col(BILL_LEVEL).alias("bill_before"))
-    .collect()
-)
-annual_after = (
-    topped_after.filter(pl.col("month") == ANNUAL_MONTH)
-    .select(pl.col(BLDG_ID), pl.col(BILL_LEVEL).alias("bill_after"))
-    .collect()
-)
-
-delta_df = annual_before.join(annual_after, on=BLDG_ID, how="inner").with_columns(
-    (pl.col("bill_after") - pl.col("bill_before")).alias("delta")
-)
-
-META_COLS = [
-    BLDG_ID,
+DELTA_SELECT = [
+    BLDG_ID, "weight",
+    pl.col("energy_total_bill").alias("bill_before"),
     "postprocess_group.has_hp",
-    "postprocess_group.heating_type",
+    HEATING_TYPE_COL,
     "heats_with_natgas",
     "heats_with_oil",
     "heats_with_propane",
 ]
-delta_with_meta = delta_df.join(metadata.select(META_COLS), on=BLDG_ID, how="inner")
+
+annual_current = (
+    bills_current
+    .filter((pl.col("month") == ANNUAL_MONTH) & (pl.col("sb.electric_utility") == UTILITY))
+    .select(DELTA_SELECT)
+    .collect()
+)
+annual_hp = (
+    bills_hp
+    .filter((pl.col("month") == ANNUAL_MONTH) & (pl.col("sb.electric_utility") == UTILITY))
+    .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after"))
+    .collect()
+)
+delta_with_meta = annual_current.join(annual_hp, on=BLDG_ID, how="inner").with_columns(
+    (pl.col("bill_after") - pl.col("bill_before")).alias("delta")
+)
+
+annual_current_state = (
+    bills_current
+    .filter(pl.col("month") == ANNUAL_MONTH)
+    .select(DELTA_SELECT)
+    .collect()
+)
+annual_hp_state = (
+    bills_hp
+    .filter(pl.col("month") == ANNUAL_MONTH)
+    .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after"))
+    .collect()
+)
+delta_state = annual_current_state.join(annual_hp_state, on=BLDG_ID, how="inner").with_columns(
+    (pl.col("bill_after") - pl.col("bill_before")).alias("delta")
+)
 ```
 
 ```{python}
@@ -398,7 +363,9 @@ def plot_quadrant_bar(
     return p
 ```
 
-### Non-HP households
+### ConEd
+
+#### Non-HP households
 
 ```{python}
 #| label: fig-bill-change-non-hp
@@ -412,7 +379,7 @@ non_hp = (
 plot_bill_change_histogram(non_hp)
 ```
 
-### Natural gas heated
+#### Natural gas heated
 
 ```{python}
 #| label: fig-bill-change-natgas
@@ -426,7 +393,7 @@ natgas = (
 plot_bill_change_histogram(natgas)
 ```
 
-### Oil / propane heated
+#### Oil / propane heated
 
 ```{python}
 #| label: fig-bill-change-oil-propane
@@ -440,7 +407,7 @@ oil_propane = (
 plot_bill_change_histogram(oil_propane)
 ```
 
-### Electric resistance heated
+#### Electric resistance heated
 
 ```{python}
 #| label: fig-bill-change-elec-resistance
@@ -448,13 +415,13 @@ plot_bill_change_histogram(oil_propane)
 
 elec_resistance = (
     delta_with_meta
-    .filter(pl.col("postprocess_group.heating_type") == "electrical_resistance")
+    .filter(pl.col(HEATING_TYPE_COL) == "electrical_resistance")
     .select("delta", "weight")
 )
 plot_bill_change_histogram(elec_resistance)
 ```
 
-### Quadrant summary bars
+#### Quadrant summary bars
 
 ```{python}
 #| label: fig-quadrant-bar-non-hp
@@ -496,6 +463,68 @@ plot_quadrant_bar([
 ])
 ```
 
+### Statewide
+
+```{python}
+#| label: fig-bill-change-non-hp-state
+#| fig-cap: "Annual bill change distribution — non-heat-pump households (Statewide)"
+
+non_hp_state = (
+    delta_state
+    .filter(pl.col("postprocess_group.has_hp") == False)
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(non_hp_state)
+```
+
+```{python}
+#| label: fig-bill-change-natgas-state
+#| fig-cap: "Annual bill change distribution — natural gas-heated households (Statewide)"
+
+natgas_state = (
+    delta_state
+    .filter(pl.col("heats_with_natgas"))
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(natgas_state)
+```
+
+```{python}
+#| label: fig-bill-change-oil-propane-state
+#| fig-cap: "Annual bill change distribution — oil/propane-heated households (Statewide)"
+
+oil_propane_state = (
+    delta_state
+    .filter(pl.col("heats_with_oil") | pl.col("heats_with_propane"))
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(oil_propane_state)
+```
+
+```{python}
+#| label: fig-bill-change-elec-resistance-state
+#| fig-cap: "Annual bill change distribution — electric resistance-heated households (Statewide)"
+
+elec_resistance_state = (
+    delta_state
+    .filter(pl.col(HEATING_TYPE_COL) == "electrical_resistance")
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(elec_resistance_state)
+```
+
+```{python}
+#| label: fig-quadrant-bar-all-state
+#| fig-cap: "Bill change summary by heating fuel — Statewide"
+
+plot_quadrant_bar([
+    ("All non-HP", non_hp_state),
+    ("Natural gas", natgas_state),
+    ("Oil / propane", oil_propane_state),
+    ("Electric resistance", elec_resistance_state),
+])
+```
+
 
 ## Median electric bill components
 
@@ -504,38 +533,27 @@ volumetric / delivery fixed) for the weighted-median fossil-fuel-heated customer
 under current HVAC vs heat pump scenarios.
 
 ```{python}
-#| label: compute-bill-components
+#| label: bill-component-helpers
 
-def join_bills_and_compute_components(
-    delivery_bills: pl.LazyFrame,
-    supply_bills: pl.LazyFrame,
-    annual_fixed_delivery: float,
+def bill_components_for_scenario(
+    bills_lf: pl.LazyFrame,
+    utility: str | None = None,
 ) -> pl.DataFrame:
-    """Join delivery + supply bills and decompose into supply / delivery vol / delivery fixed."""
-    delivery_df = delivery_bills.collect()
-    supply_df = (
-        supply_bills.select(
-            pl.col(BLDG_ID),
-            pl.col("month"),
-            pl.col(BILL_LEVEL).alias("bill_supply"),
-            pl.col("weight").alias("weight_supply"),
-        ).collect()
-    )
-    joined = delivery_df.join(supply_df, on=[BLDG_ID, "month"], how="inner")
-
-    n_left = delivery_df.select(BLDG_ID, "month").unique().height
-    n_joined = joined.height
-    assert n_left == n_joined, (
-        f"Join dropped rows: left had {n_left}, joined has {n_joined}"
-    )
-    weight_diff = (joined["weight"] - joined["weight_supply"]).abs()
-    assert (weight_diff > 1e-9).sum() == 0, "Weight mismatch between delivery and supply"
-
-    return joined.with_columns(
-        (pl.col("bill_supply") - pl.col(BILL_LEVEL)).alias("supply"),
-        pl.lit(annual_fixed_delivery).alias("delivery_fixed"),
-        (pl.col(BILL_LEVEL) - annual_fixed_delivery).alias("delivery_volumetric"),
-        pl.col("bill_supply").alias("total"),
+    """Extract annual electric bill components from master bills."""
+    filtered = bills_lf.filter(pl.col("month") == ANNUAL_MONTH)
+    if utility is not None:
+        filtered = filtered.filter(pl.col("sb.electric_utility") == utility)
+    return (
+        filtered
+        .select(
+            BLDG_ID, "weight",
+            pl.col("elec_supply_bill").alias("supply"),
+            pl.col("elec_delivery_bill").alias("delivery_volumetric"),
+            pl.col("elec_fixed_charge").alias("delivery_fixed"),
+            pl.col("elec_total_bill").alias("total"),
+            HEATING_TYPE_COL,
+        )
+        .collect()
     )
 
 
@@ -553,42 +571,11 @@ def weighted_median_row(
     return sorted_df.slice(idx, 1)
 
 
-annual_fixed = FIXED_CHARGE_PER_MONTH * 12
-
 SELECT_COLS = [BLDG_ID, "weight", "supply", "delivery_volumetric", "delivery_fixed", "total"]
-
-# Current HVAC (u00): median fossil-fuel customer
-components_current = join_bills_and_compute_components(
-    pl.scan_csv(f"{PATH_RUN_DELIVERY}/{ELEC_BILLS_CSV}"),
-    pl.scan_csv(f"{PATH_RUN_SUPPLY}/{ELEC_BILLS_CSV}"),
-    annual_fixed,
-)
-fossil_current = (
-    components_current.filter(pl.col("month") == ANNUAL_MONTH)
-    .join(metadata.select(BLDG_ID, HEATING_TYPE_COL), on=BLDG_ID, how="inner")
-    .filter(pl.col(HEATING_TYPE_COL) == FOSSIL_FUEL)
-)
-assert not fossil_current.is_empty(), "No fossil-fuel buildings in current-HVAC scenario"
-median_current = weighted_median_row(fossil_current.select(SELECT_COLS))
-
-# Heat pump (u02): median fossil-fuel customer
-components_hp = join_bills_and_compute_components(
-    pl.scan_csv(f"{PATH_RUN_DELIVERY_HP}/{ELEC_BILLS_CSV}"),
-    pl.scan_csv(f"{PATH_RUN_SUPPLY_HP}/{ELEC_BILLS_CSV}"),
-    annual_fixed,
-)
-fossil_hp = (
-    components_hp.filter(pl.col("month") == ANNUAL_MONTH)
-    .join(metadata.select(BLDG_ID, HEATING_TYPE_COL), on=BLDG_ID, how="inner")
-    .filter(pl.col(HEATING_TYPE_COL) == FOSSIL_FUEL)
-)
-assert not fossil_hp.is_empty(), "No fossil-fuel buildings in HP scenario"
-median_hp = weighted_median_row(fossil_hp.select(SELECT_COLS))
 ```
 
 ```{python}
-#| label: fig-bill-components-stacked
-#| fig-cap: "Median electric bill components: current HVAC vs mid-efficiency heat pump"
+#| label: bill-component-plot-helpers
 
 COMPONENT_NAMES: dict[str, str] = {
     "supply": "Supply Charge",
@@ -617,59 +604,451 @@ def unpivot_median(median_df: pl.DataFrame, scenario: str) -> pl.DataFrame:
     )
 
 
-long = pl.concat([
-    unpivot_median(median_current, SCENARIO_ORDER[0]),
-    unpivot_median(median_hp, SCENARIO_ORDER[1]),
-])
+def plot_bill_components_stacked(
+    med_current: pl.DataFrame,
+    med_hp: pl.DataFrame,
+    title: str = "Median electric bill components: current HVAC vs mid-efficiency heat pump",
+) -> ggplot:
+    """Stacked bar chart of median electric bill components."""
+    long = pl.concat([
+        unpivot_median(med_current, SCENARIO_ORDER[0]),
+        unpivot_median(med_hp, SCENARIO_ORDER[1]),
+    ])
 
-scenario_dtype = pl.Enum(SCENARIO_ORDER)
-component_dtype = pl.Enum(COMPONENT_ORDER)
+    scenario_dtype = pl.Enum(SCENARIO_ORDER)
+    component_dtype = pl.Enum(COMPONENT_ORDER)
 
-plot_df = long.with_columns(
-    pl.col("scenario").cast(scenario_dtype),
-    pl.col("component").cast(component_dtype),
-    pl.col("value")
-    .map_elements(lambda v: f"${v:,.0f}", return_dtype=pl.String)
-    .alias("label"),
-)
-
-totals = (
-    plot_df.group_by("scenario")
-    .agg(pl.col("value").sum())
-    .with_columns(
+    plot_df = long.with_columns(
+        pl.col("scenario").cast(scenario_dtype),
+        pl.col("component").cast(component_dtype),
         pl.col("value")
         .map_elements(lambda v: f"${v:,.0f}", return_dtype=pl.String)
         .alias("label"),
     )
+
+    totals = (
+        plot_df.group_by("scenario")
+        .agg(pl.col("value").sum())
+        .with_columns(
+            pl.col("value")
+            .map_elements(lambda v: f"${v:,.0f}", return_dtype=pl.String)
+            .alias("label"),
+        )
+    )
+
+    return (
+        ggplot(plot_df, aes(x="scenario", y="value", fill="component"))
+        + geom_col(position=position_stack(reverse=True), width=0.6)
+        + geom_text(
+            aes(label="label"),
+            position=position_stack(vjust=0.5, reverse=True),
+            color="white", fontweight="bold", size=11,
+        )
+        + geom_text(
+            aes(x="scenario", y="value", label="label"),
+            data=totals,
+            va="bottom", color="#333333", fontweight="bold",
+            size=11, nudge_y=30, inherit_aes=False,
+        )
+        + scale_fill_manual(
+            values={
+                "Supply Charge": "#E69F00",
+                "Delivery Charge (Fixed)": "#01796F",
+                "Delivery Charge (Volumetric)": "#56B4E9",
+            },
+        )
+        + scale_x_discrete(limits=SCENARIO_ORDER)
+        + labs(x="", y="Annual electric bill ($)", title=title)
+        + theme_minimal()
+    )
+```
+
+### ConEd
+
+```{python}
+#| label: compute-bill-components
+
+fossil_current = (
+    bill_components_for_scenario(bills_current, UTILITY)
+    .filter(pl.col(HEATING_TYPE_COL) == FOSSIL_FUEL)
+)
+assert not fossil_current.is_empty(), "No fossil-fuel buildings in current-HVAC scenario"
+median_current = weighted_median_row(fossil_current.select(SELECT_COLS))
+
+fossil_hp = (
+    bill_components_for_scenario(bills_hp, UTILITY)
+    .filter(pl.col(HEATING_TYPE_COL) == FOSSIL_FUEL)
+)
+assert not fossil_hp.is_empty(), "No fossil-fuel buildings in HP scenario"
+median_hp = weighted_median_row(fossil_hp.select(SELECT_COLS))
+```
+
+```{python}
+#| label: fig-bill-components-stacked
+#| fig-cap: "Median electric bill components — ConEd"
+
+plot_bill_components_stacked(median_current, median_hp, "Median electric bill components — ConEd")
+```
+
+### Statewide
+
+```{python}
+#| label: compute-bill-components-state
+
+fossil_current_state = (
+    bill_components_for_scenario(bills_current)
+    .filter(pl.col(HEATING_TYPE_COL) == FOSSIL_FUEL)
+)
+assert not fossil_current_state.is_empty(), "No fossil-fuel buildings statewide (current)"
+median_current_state = weighted_median_row(fossil_current_state.select(SELECT_COLS))
+
+fossil_hp_state = (
+    bill_components_for_scenario(bills_hp)
+    .filter(pl.col(HEATING_TYPE_COL) == FOSSIL_FUEL)
+)
+assert not fossil_hp_state.is_empty(), "No fossil-fuel buildings statewide (HP)"
+median_hp_state = weighted_median_row(fossil_hp_state.select(SELECT_COLS))
+```
+
+```{python}
+#| label: fig-bill-components-stacked-state
+#| fig-cap: "Median electric bill components — Statewide"
+
+plot_bill_components_stacked(median_current_state, median_hp_state, "Median electric bill components — Statewide")
+```
+
+## Bill Alignment Test (BAT) results
+
+The master BAT table contains per-building annual bill alignment values
+decomposed into delivery, supply, and total components. A positive
+`BAT_percustomer` value means the customer's bill exceeds their marginal cost
+of service — they cross-subsidize other customers. A negative value means they
+pay less than their cost — others cross-subsidize them.
+
+We look at all customers under current rates (upgrade 0 / run 1+2) to quantify
+how current rate structures misalign bills with cost of service.
+`BAT_percustomer_total` is the sum of delivery and supply components. The
+unified histograms show the full population; the faceted versions break the
+distribution down by heating type (fossil fuel, electric resistance, heat pump).
+
+```{python}
+#| label: bat-ingest
+
+bat_12 = pl.scan_parquet(PATH_MASTER_BAT_12, hive_partitioning=True)
+
+bat_all = (
+    bat_12
+    .select(
+        BLDG_ID, "weight",
+        "BAT_percustomer_total",
+        HEATING_TYPE_COL,
+        "sb.electric_utility",
+    )
+    .collect()
+)
+```
+
+```{python}
+#| label: bat-histogram-helpers
+
+from plotnine import facet_wrap
+
+BAT_BIN_WIDTH = 50
+BAT_COLORS = {"overpaying": "#b71c1c", "underpaying": "#1b5e20"}
+
+
+def plot_bat_histogram(
+    df: pl.DataFrame,
+    col: str = "BAT_percustomer_total",
+    title: str = "BAT per-customer (total): HP households under current rates",
+) -> ggplot:
+    """Weighted histogram of BAT per-customer values."""
+    x_lo = math.floor(_weighted_percentile(df, col, "weight", 0.01) / 500) * 500
+    x_hi = math.ceil(_weighted_percentile(df, col, "weight", 0.99) / 500) * 500
+
+    binned = (
+        df.with_columns(
+            ((pl.col(col) / BAT_BIN_WIDTH).floor() * BAT_BIN_WIDTH + BAT_BIN_WIDTH / 2)
+            .alias("bin_center"),
+        )
+        .with_columns(
+            pl.when(pl.col("bin_center") < 0)
+            .then(pl.lit("underpaying"))
+            .otherwise(pl.lit("overpaying"))
+            .alias("sign"),
+        )
+        .group_by("bin_center", "sign")
+        .agg(pl.col("weight").sum().alias("weight_sum"))
+    )
+
+    sign_dtype = pl.Enum(["underpaying", "overpaying"])
+    plot_df = binned.with_columns(pl.col("sign").cast(sign_dtype))
+
+    total_weight = df["weight"].sum()
+    pct_over = df.filter(pl.col(col) >= 0)["weight"].sum() / total_weight * 100
+    pct_under = 100 - pct_over
+    w_median = _weighted_percentile(df, col, "weight", 0.5)
+
+    max_weight = cast(float, plot_df["weight_sum"].max()) if not plot_df.is_empty() else 0.0
+    y_annot = max_weight * 1.08
+
+    p = (
+        ggplot(plot_df, aes(x="bin_center", y="weight_sum", fill="sign"))
+        + geom_col(width=BAT_BIN_WIDTH * 0.9)
+        + geom_vline(xintercept=0, linetype="solid", color="gray", size=0.8)
+        + geom_vline(xintercept=w_median, linetype="dashed", color="#333333", size=0.7)
+        + annotate(
+            "text", x=w_median, y=y_annot,
+            label=f"median: ${w_median:,.0f}",
+            ha="left" if w_median >= 0 else "right",
+            size=9, color="#333333",
+        )
+        + scale_fill_manual(values=BAT_COLORS)
+        + coord_cartesian(xlim=(x_lo, x_hi))
+        + labs(x="BAT per-customer ($/year)", y="# of Homes (weighted)", title=title)
+        + guides(fill=False)
+        + theme_minimal()
+        + theme(figure_size=(14, 6))
+    )
+
+    if pct_under >= 1:
+        p = p + annotate(
+            "text", x=(x_lo + min(0, x_hi)) / 2, y=y_annot,
+            label=f"Underpaying\n{pct_under:.0f}%",
+            ha="center", size=10, color="#1b5e20",
+        )
+    if pct_over >= 1:
+        p = p + annotate(
+            "text", x=(max(0, x_lo) + x_hi) / 2, y=y_annot,
+            label=f"Overpaying\n{pct_over:.0f}%",
+            ha="center", size=10, color="#b71c1c",
+        )
+
+    return p
+
+
+HEATING_TYPE_LABELS: dict[str, str] = {
+    "fossil_fuel": "Fossil fuel",
+    "electrical_resistance": "Electric resistance",
+    "heat_pump": "Heat pump",
+}
+FACET_ORDER = ["Electric resistance", "Heat pump", "Fossil fuel", "Other"]
+
+
+def plot_bat_histogram_faceted(
+    df: pl.DataFrame,
+    col: str = "BAT_percustomer_total",
+    title: str = "BAT per-customer (total) by heating type",
+) -> ggplot:
+    """Weighted histogram of BAT per-customer, vertically faceted by heating type."""
+    facet_dtype = pl.Enum(FACET_ORDER)
+    labeled = df.with_columns(
+        pl.col(HEATING_TYPE_COL)
+        .replace_strict(HEATING_TYPE_LABELS, default=pl.col(HEATING_TYPE_COL))
+        .fill_null("Other")
+        .cast(facet_dtype)
+        .alias("heating_label"),
+    )
+
+    x_lo = math.floor(_weighted_percentile(labeled, col, "weight", 0.01) / 500) * 500
+    x_hi = math.ceil(_weighted_percentile(labeled, col, "weight", 0.99) / 500) * 500
+
+    binned = (
+        labeled.with_columns(
+            ((pl.col(col) / BAT_BIN_WIDTH).floor() * BAT_BIN_WIDTH + BAT_BIN_WIDTH / 2)
+            .alias("bin_center"),
+        )
+        .with_columns(
+            pl.when(pl.col("bin_center") < 0)
+            .then(pl.lit("underpaying"))
+            .otherwise(pl.lit("overpaying"))
+            .alias("sign"),
+        )
+        .group_by("bin_center", "sign", "heating_label")
+        .agg(pl.col("weight").sum().alias("weight_sum"))
+    )
+
+    sign_dtype = pl.Enum(["underpaying", "overpaying"])
+    plot_df = binned.with_columns(pl.col("sign").cast(sign_dtype))
+
+    stat_rows = []
+    median_rows = []
+    for ht in [f for f in FACET_ORDER if f in labeled["heating_label"].unique().to_list()]:
+        sub = labeled.filter(pl.col("heating_label") == ht)
+        tw = sub["weight"].sum()
+        pct_over = sub.filter(pl.col(col) >= 0)["weight"].sum() / tw * 100
+        w_med = _weighted_percentile(sub, col, "weight", 0.5)
+        facet_bins = plot_df.filter(pl.col("heating_label") == ht)
+        y_max = cast(float, facet_bins["weight_sum"].max()) if not facet_bins.is_empty() else 0.0
+        stat_rows.append({
+            "heating_label": ht,
+            "x": x_hi,
+            "y": y_max * 0.92,
+            "label": f"median: ${w_med:,.0f}  ·  {pct_over:.0f}% overpaying",
+        })
+        median_rows.append({"heating_label": ht, "med_x": w_med})
+
+    stats_df = pl.DataFrame(stat_rows).with_columns(pl.col("heating_label").cast(facet_dtype))
+    medians_df = pl.DataFrame(median_rows).with_columns(pl.col("heating_label").cast(facet_dtype))
+    n_facets = labeled["heating_label"].n_unique()
+
+    return (
+        ggplot(plot_df, aes(x="bin_center", y="weight_sum", fill="sign"))
+        + geom_col(width=BAT_BIN_WIDTH * 0.9)
+        + geom_vline(xintercept=0, linetype="solid", color="gray", size=0.8)
+        + geom_vline(
+            data=medians_df, mapping=aes(xintercept="med_x"),
+            linetype="dashed", color="#333333", size=0.7,
+        )
+        + geom_text(
+            stats_df, aes(x="x", y="y", label="label"),
+            ha="right", size=8, color="#333333",
+            inherit_aes=False,
+        )
+        + scale_fill_manual(values=BAT_COLORS)
+        + scale_y_continuous(expand=(0, 0, 0.15, 0))
+        + coord_cartesian(xlim=(x_lo, x_hi))
+        + facet_wrap("heating_label", ncol=1, scales="free_y")
+        + labs(x="BAT per-customer ($/year)", y="# of Homes (weighted)", title=title)
+        + guides(fill=False)
+        + theme_minimal()
+        + theme(figure_size=(14, 3 + 3 * n_facets))
+    )
+```
+
+### ConEd
+
+```{python}
+#| label: fig-bat-histogram-coned
+#| fig-cap: "BAT per-customer (total) — all households, ConEd"
+
+bat_coned = bat_all.filter(pl.col("sb.electric_utility") == UTILITY)
+plot_bat_histogram(bat_coned, title="BAT per-customer (total) — ConEd")
+```
+
+```{python}
+#| label: fig-bat-histogram-coned-faceted
+#| fig-cap: "BAT per-customer (total) by heating type — ConEd"
+
+plot_bat_histogram_faceted(bat_coned, title="BAT per-customer (total) by heating type — ConEd")
+```
+
+### Statewide
+
+```{python}
+#| label: fig-bat-histogram-state
+#| fig-cap: "BAT per-customer (total) — all households, Statewide"
+
+plot_bat_histogram(bat_all, title="BAT per-customer (total) — Statewide")
+```
+
+```{python}
+#| label: fig-bat-histogram-state-faceted
+#| fig-cap: "BAT per-customer (total) by heating type — Statewide"
+
+plot_bat_histogram_faceted(bat_all, title="BAT per-customer (total) by heating type — Statewide")
+```
+
+### Summary statistics
+
+```{python}
+#| label: bat-summary-stats
+
+col = "BAT_percustomer_total"
+facet_dtype = pl.Enum(FACET_ORDER)
+
+labeled_all = bat_all.with_columns(
+    pl.col(HEATING_TYPE_COL)
+    .replace_strict(HEATING_TYPE_LABELS, default=pl.col(HEATING_TYPE_COL))
+    .fill_null("Other")
+    .cast(facet_dtype)
+    .alias("heating_label"),
 )
 
-(
-    ggplot(plot_df, aes(x="scenario", y="value", fill="component"))
-    + geom_col(position=position_stack(reverse=True), width=0.6)
-    + geom_text(
-        aes(label="label"),
-        position=position_stack(vjust=0.5, reverse=True),
-        color="white", fontweight="bold", size=11,
-    )
-    + geom_text(
-        aes(x="scenario", y="value", label="label"),
-        data=totals,
-        va="bottom", color="#333333", fontweight="bold",
-        size=11, nudge_y=30, inherit_aes=False,
-    )
-    + scale_fill_manual(
-        values={
-            "Supply Charge": "#E69F00",
-            "Delivery Charge (Fixed)": "#01796F",
-            "Delivery Charge (Volumetric)": "#56B4E9",
-        },
-    )
-    + scale_x_discrete(limits=SCENARIO_ORDER)
-    + labs(
-        x="",
-        y="Annual electric bill ($)",
-        title="Median electric bill components: current HVAC vs mid-efficiency heat pump",
-    )
-    + theme_minimal()
-)
+total_weight = labeled_all["weight"].sum()
+
+summary_rows = []
+for ht in FACET_ORDER:
+    sub = labeled_all.filter(pl.col("heating_label") == ht)
+    if sub.is_empty():
+        continue
+    w = sub["weight"].sum()
+    median_bat = _weighted_percentile(sub, col, "weight", 0.5)
+    pct_over = sub.filter(pl.col(col) >= 0)["weight"].sum() / w * 100
+    summary_rows.append({
+        "Heating type": ht,
+        "Weighted median BAT ($/yr)": f"${median_bat:,.0f}",
+        "% overpaying": f"{pct_over:.0f}%",
+        "% of households": f"{w / total_weight * 100:.1f}%",
+    })
+
+pl.DataFrame(summary_rows)
+```
+
+```{python}
+#| label: bat-dollar-totals
+
+dollar_rows = []
+for ht in FACET_ORDER:
+    sub = labeled_all.filter(pl.col("heating_label") == ht)
+    if sub.is_empty():
+        continue
+    weighted_bat = sub[col] * sub["weight"]
+    total_over = weighted_bat.filter(weighted_bat >= 0).sum()
+    total_under = weighted_bat.filter(weighted_bat < 0).sum()
+    dollar_rows.append({
+        "Heating type": ht,
+        "Total overpayment": f"${total_over:,.0f}",
+        "Total underpayment": f"${total_under:,.0f}",
+        "Net": f"${total_over + total_under:,.0f}",
+    })
+
+pl.DataFrame(dollar_rows)
+```
+
+### Impact of tech-specific rates on fossil fuel cross-subsidization
+
+What happens to fossil fuel customers' cross-subsidization if tech-specific rates
+zero out the net overpayment of HP customers, ER customers, or both? We spread the
+released overpayment uniformly across fossil fuel households and report the shift
+in their net, median annual BAT, and median monthly BAT (over a 6-month heating
+season).
+
+```{python}
+#| label: bat-scenario-table
+
+HEATING_MONTHS = 6
+
+ff = labeled_all.filter(pl.col("heating_label") == "Fossil fuel")
+ff_weight = ff["weight"].sum()
+ff_median_before = _weighted_percentile(ff, col, "weight", 0.5)
+ff_net_before = (ff[col] * ff["weight"]).sum()
+
+er = labeled_all.filter(pl.col("heating_label") == "Electric resistance")
+er_net = (er[col] * er["weight"]).sum()
+
+hp = labeled_all.filter(pl.col("heating_label") == "Heat pump")
+hp_net = (hp[col] * hp["weight"]).sum()
+
+scenarios = [
+    ("HP rate only", hp_net),
+    ("ER rate only", er_net),
+    ("HP + ER rates", hp_net + er_net),
+]
+
+scenario_rows = []
+for name, released in scenarios:
+    shift = released / ff_weight
+    new_net = ff_net_before + released
+    new_median = ff_median_before + shift
+    scenario_rows.append({
+        "Scenario": name,
+        "Cross-subsidy removed": f"${released / 1e6:,.0f}M",
+        "FF net after": f"${new_net / 1e6:,.0f}M",
+        "FF median BAT before": f"${ff_median_before:,.0f}/yr",
+        "FF median BAT after": f"${new_median:,.0f}/yr",
+        "Monthly (heating)": f"${shift / HEATING_MONTHS:,.0f}/mo",
+    })
+
+pl.DataFrame(scenario_rows)
 ```

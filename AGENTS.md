@@ -14,21 +14,22 @@ The companion repo [rate-design-platform](https://github.com/switchbox-data/rate
 
 ## Layout
 
-| Path                           | Purpose                                                                                                           |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| `reports/`                     | Source code for all report projects. Each subdirectory is a self-contained Quarto Manuscript project.             |
-| `reports/.style/`              | Shared SCSS theme (`switchbox.scss`) and HTML includes (`switchbox.html`) used by all reports.                    |
-| `reports/references.bib`       | Shared BibTeX bibliography used by all reports.                                                                   |
-| `lib/`                         | Shared R and Python libraries used across reports.                                                                |
-| `lib/ggplot/switchbox_theme.R` | Custom ggplot2 theme (IBM Plex Sans, white background, Switchbox colors). Source this in every analysis notebook. |
-| `lib/rates_analysis/`          | Shared R functions for heat pump rate analysis (bill calculation, tariff assignment, plotting).                   |
-| `lib/eia/`                     | Python scripts for fetching EIA data (fuel prices, state profiles).                                               |
-| `docs/`                        | Published HTML reports served via GitHub Pages at `switchbox-data.github.io/reports2`.                            |
-| `tests/`                       | Pytest test suite.                                                                                                |
-| `.devcontainer/`               | Dev container configuration (Dockerfile, devcontainer.json).                                                      |
-| `Justfile`                     | Root task runner: `install`, `check`, `test`, `new_report`, `aws`, `clean`.                                       |
-| `pyproject.toml`               | Python dependencies (managed by uv).                                                                              |
-| `DESCRIPTION`                  | R dependencies (managed by pak).                                                                                  |
+| Path                           | Purpose                                                                                                                  |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `reports/`                     | Source code for all report projects. Each subdirectory is a self-contained Quarto Manuscript project.                    |
+| `reports/.style/`              | Shared SCSS theme (`switchbox.scss`), HTML includes (`switchbox.html`), and brand fonts (`fonts/`) used by all reports.  |
+| `reports/references.bib`       | Shared BibTeX bibliography used by all reports.                                                                          |
+| `lib/`                         | Shared R and Python libraries used across reports. Python side is an installable package (see "Shared libraries" below). |
+| `lib/ggplot/switchbox_theme.R` | Custom ggplot2 theme (IBM Plex Sans, white background, Switchbox colors). Source this in every R analysis notebook.      |
+| `lib/plotnine/`                | Custom plotnine theme (`theme_switchbox`) and `SB_COLORS` dict. Import in every Python analysis notebook.                |
+| `lib/rates_analysis/`          | Shared R functions for heat pump rate analysis (bill calculation, tariff assignment, plotting).                          |
+| `lib/eia/`                     | Python scripts for fetching EIA data (fuel prices, state profiles).                                                      |
+| `docs/`                        | Published HTML reports served via GitHub Pages at `switchbox-data.github.io/reports2`.                                   |
+| `tests/`                       | Pytest test suite.                                                                                                       |
+| `.devcontainer/`               | Dev container configuration (Dockerfile, devcontainer.json).                                                             |
+| `Justfile`                     | Root task runner: `install`, `check`, `test`, `new_report`, `aws`, `clean`.                                              |
+| `pyproject.toml`               | Python dependencies (managed by uv).                                                                                     |
+| `DESCRIPTION`                  | R dependencies (managed by pak).                                                                                         |
 
 ## Report architecture
 
@@ -669,8 +670,9 @@ Group figures by the story they tell, not by chart type. Use markdown headers an
 
 - `reports/.style/switchbox.scss`: Custom Quarto theme. Switchbox brand colors: sky (`#68bed8`), carrot (`#fc9706`), midnight (`#023047`), saffron (`#ffc729`), pistachio (`#a0af12`). Fonts: Farnham (body text), GT Planar (headings), IBM Plex Sans (tables/charts), SF Mono (code). Do not override these in individual reports.
 - `reports/.style/switchbox.html`: Shared HTML include for figure caption formatting.
+- `reports/.style/fonts/`: IBM Plex Sans OTF files (Regular + Bold) used by both the R (`lib/ggplot/switchbox_theme.R`) and Python (`lib/plotnine/`) chart themes. These are committed to the repo so chart rendering doesn't require network access.
 
-### ggplot2 theme
+### ggplot2 theme (R)
 
 Source `lib/ggplot/switchbox_theme.R` at the top of every R-based analysis notebook:
 
@@ -680,9 +682,28 @@ source("/workspaces/reports2/lib/ggplot/switchbox_theme.R")
 
 This sets `theme_minimal()` as the base, uses IBM Plex Sans at 12pt, white panel background, and axis lines/ticks. Do not create custom themes or override these defaults.
 
+### plotnine theme (Python)
+
+Import `theme_switchbox` from `lib.plotnine` at the top of every Python-based analysis notebook:
+
+```python
+from lib.plotnine import theme_switchbox, SB_COLORS
+```
+
+Apply it to every plot with `+ theme_switchbox()`. This is a `theme_minimal` subclass that mirrors the R theme: IBM Plex Sans at 12pt, white panel background, visible axis lines/ticks. Per-plot overrides layer on top with `+ theme(...)`:
+
+```python
+(
+    ggplot(df, aes("x", "y"))
+    + geom_col(fill=SB_COLORS["sky"])
+    + theme_switchbox()
+    + theme(figure_size=(14, 6))
+)
+```
+
 ### Switchbox color palette for charts
 
-When using Switchbox colors in ggplot code, define them explicitly:
+Both R and Python themes define the same brand colors. In R, define them explicitly:
 
 ```r
 sb_sky <- "#68bed8"
@@ -692,11 +713,43 @@ sb_saffron <- "#ffc729"
 sb_pistachio <- "#a0af12"
 ```
 
-### Shared R libraries
+In Python, import `SB_COLORS` from `lib.plotnine` (a dict with keys `"sky"`, `"midnight"`, `"carrot"`, `"saffron"`, `"pistachio"`, `"black"`, `"white"`, `"midnight_text"`, `"pistachio_text"`).
 
-- `lib/rates_analysis/heat_pump_rate_funcs.R`: Bill calculation, tariff assignment, monthly/annual bill aggregation, LMI discount application, ResStock data processing.
-- `lib/rates_analysis/heat_pump_rate_plots.R`: Plotting functions for rate analysis (histograms, supply rate plots).
-- `lib/rates_analysis/create_sb_housing_units.R`: Creates standardized housing unit datasets from ResStock.
+### Shared libraries (`lib/`)
+
+`lib/` is a **Python-installable package** (configured via `packages = ["lib"]` in `pyproject.toml`). After `just install`, Python modules in `lib/` are importable directly — no `sys.path` hacking needed:
+
+```python
+from lib.rdp import fetch_rdp_file
+from lib.cairo import add_delivered_fuel_bills
+from lib.data.s3 import list_s3_subdirs, run_dir
+```
+
+R libraries under `lib/` are sourced the traditional way (e.g. `source("lib/ggplot/switchbox_theme.R")`).
+
+#### Python modules
+
+| Module                             | When to use                                                                                                                            |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib.rdp`                          | Fetching files from the `rate-design-platform` GitHub repo (tariff maps, configs). Also has `parse_urdb_json` for URDB tariff JSON.    |
+| `lib.cairo`                        | CAIRO post-processing: `add_delivered_fuel_bills` tops up combined bills with oil/propane costs from monthly consumption x EIA prices. |
+| `lib.data.s3`                      | S3 directory listing (`list_s3_subdirs`) and run directory resolution (`run_dir`) for navigating CAIRO output paths.                   |
+| `lib.data.eia.heating_fuel_prices` | Load monthly residential oil + propane prices from EIA data on S3 (`load_monthly_fuel_prices`).                                        |
+| `lib.data.nrel.resstock`           | Load ResStock load curves for a specific utility (`scan_load_curves_for_utility`), reading metadata to construct per-building paths.   |
+| `lib.eia`                          | Standalone EIA fetch scripts (petroleum prices, state heating profiles). Use `lib.data.eia` for the cleaner S3-based API.              |
+| `lib.plotnine`                     | Switchbox plotnine theme (`theme_switchbox`) and brand color palette (`SB_COLORS`). Use in every Python analysis notebook.             |
+
+#### R libraries
+
+| File                                           | When to use                                                                                                               |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `lib/ggplot/switchbox_theme.R`                 | Source in every R-based analysis notebook. Sets theme, fonts, axis styling.                                               |
+| `lib/rates_analysis/heat_pump_rate_funcs.R`    | Bill calculation, tariff assignment, monthly/annual bill aggregation, LMI discount application, ResStock data processing. |
+| `lib/rates_analysis/heat_pump_rate_plots.R`    | Plotting functions for rate analysis (histograms, supply rate plots).                                                     |
+| `lib/rates_analysis/create_sb_housing_units.R` | Creates standardized housing unit datasets from ResStock.                                                                 |
+| `lib/inflation.R`                              | CPI-based inflation adjustment.                                                                                           |
+| `lib/utility_mapping.R`                        | Utility name/code mapping.                                                                                                |
+| `lib/nyserda_cef_utils.R`                      | NYSERDA Clean Energy Fund data utilities.                                                                                 |
 
 ### Bibliography
 
@@ -957,7 +1010,7 @@ R's ggplot2 is more familiar to LLMs but still has traps:
 
 - **`coord_flip()` follows the same axis-swapping rules** as plotnine. The same confusion about x/y in annotations applies.
 - **Look up `theme()` element types.** `element_text()`, `element_blank()`, `element_rect()`, and `element_line()` each have specific parameters. Do not guess — check the docs.
-- **Always source `switchbox_theme.R`** before plotting. Do not create custom themes.
+- **Always source `switchbox_theme.R`** (R) or use `+ theme_switchbox()` (Python) before plotting. Do not create custom themes.
 
 ### General plotting principles
 
@@ -970,7 +1023,7 @@ R's ggplot2 is more familiar to LLMs but still has traps:
 
 1. **Never hardcode computed values in prose.** Always use inline R code (`` `r var |> scales::dollar()` ``).
 2. **Keep analysis in `notebooks/analysis.qmd`, narrative in `index.qmd`.** This separation is non-negotiable.
-3. **Source `switchbox_theme.R`** in every analysis notebook. Use the Switchbox color palette.
+3. **Source `switchbox_theme.R`** (R) or **use `theme_switchbox()`** (Python) in every analysis notebook. Use the Switchbox color palette.
 4. **Add new citations** to `reports/references.bib` with `{author_short_title_year}` keys.
 5. **Use `{{< embed >}}`** for figures. Never copy-paste chart code into `index.qmd`.
 6. **Don't commit** `data/`, `cache/`, or report `docs/` directories.
@@ -982,6 +1035,7 @@ R's ggplot2 is more familiar to LLMs but still has traps:
 12. **Use the conditional "would"** for modeled outcomes, never "will."
 13. **When adding or removing files under `reports/`**, verify `_quarto.yml` render lists are updated.
 14. **Respect data boundaries.** Don't assume large data is in git. Follow S3 paths documented in existing notebooks.
+15. **When adding or modifying modules under `lib/`**, update the "Shared libraries (`lib/`)" section in this file so the module tables stay accurate.
 
 ## Quarto reference
 

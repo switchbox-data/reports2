@@ -9,82 +9,352 @@ execute:
   warning: false
 ---
 
-This notebook checks the quality of gas bill data in the NY HP rates master tables. It compares gas bills before
-(upgrade 0) and after (upgrade 2) heat pump installation, broken down by gas tariff transition, to verify that the gas
-calc fix (`ny_20260307_r1-8_gascalcfix` batch) is producing sensible results.
+This notebook checks the quality of gas bill data in the NY HP rates master tables.
+It compares gas bills before (upgrade 0) and after (upgrade 2) heat pump installation,
+broken down by gas tariff transition, to verify that the gas calc fix
+(`ny_20260307_r1-8_gascalcfix` batch) is producing sensible results.
 
 ## Setup
 
 ```{python}
-27 files left unchanged
+import io
+from pathlib import Path
+
+import polars as pl
+from lib.rdp import fetch_rdp_file
 ```
 
 ## Parameters
 
 ```{python}
-27 files left unchanged
+BATCH = "ny_20260307_r1-8_gascalcfix"
+S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
+
+PATH_MASTER_BILLS_12 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_1+2/comb_bills_year_target/"
+PATH_MASTER_BILLS_34 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_3+4/comb_bills_year_target/"
+
+RDP_REF = "d0353e1"
+UTILITIES = ["cenhud", "coned", "nimo", "nyseg", "or", "psegli", "rge"]
+TARIFF_MAP_DIR = "rate_design/hp_rates/ny/config/tariff_maps/gas"
+
+PATH_RDP_ROOT = Path("~/repos/rate-design-platform").expanduser()
+PATH_LOAD_CURVES = PATH_RDP_ROOT / "data/nrel/resstock/res_2024_amy2018_2/load_curve_monthly/state=NY"
+GAS_COL = "out.natural_gas.total.energy_consumption"
 ```
 
 ## Load data
 
-We load the master bills for both upgrade scenarios (annual rows only) and the gas tariff maps that tell us which gas
-tariff each building is assigned to.
+We load the master bills for both upgrade scenarios (annual rows only) and the gas tariff
+maps that tell us which gas tariff each building is assigned to.
 
 ```{python}
-27 files left unchanged
+bills_u0 = pl.read_parquet(PATH_MASTER_BILLS_12).filter(pl.col("month") == "Annual")
+bills_u2 = pl.read_parquet(PATH_MASTER_BILLS_34).filter(pl.col("month") == "Annual")
+print(f"u0: {bills_u0.height} buildings, u2: {bills_u2.height} buildings")
 ```
 
 ```{python}
-27 files left unchanged
+u00_frames = []
+u02_frames = []
+for util in UTILITIES:
+    for suffix, dest in [("_u00.csv", u00_frames), ("_u02.csv", u02_frames)]:
+        csv_text = fetch_rdp_file(f"{TARIFF_MAP_DIR}/{util}{suffix}", ref=RDP_REF)
+        dest.append(pl.read_csv(io.StringIO(csv_text)))
+
+tariff_u0 = pl.concat(u00_frames).rename({"tariff_key": "tariff_u0"})
+tariff_u2 = pl.concat(u02_frames).rename({"tariff_key": "tariff_u2"})
+print(f"Tariff maps: u0={tariff_u0.height} rows, u2={tariff_u2.height} rows")
 ```
 
-We also load the monthly ResStock load curves (local) to compute annual gas consumption per building for each upgrade,
-so we can show the median consumption decline alongside the bill change.
+We also load the monthly ResStock load curves (local) to compute annual gas consumption per
+building for each upgrade, so we can show the median consumption decline alongside the bill
+change.
 
 ```{python}
-27 files left unchanged
+gas_u0 = (
+    pl.scan_parquet(f"{PATH_LOAD_CURVES}/upgrade=00/")
+    .select("bldg_id", GAS_COL)
+    .group_by("bldg_id")
+    .agg(pl.col(GAS_COL).sum().alias("gas_kwh_u0"))
+    .collect()
+)
+gas_u2 = (
+    pl.scan_parquet(f"{PATH_LOAD_CURVES}/upgrade=02/")
+    .select("bldg_id", GAS_COL)
+    .group_by("bldg_id")
+    .agg(pl.col(GAS_COL).sum().alias("gas_kwh_u2"))
+    .collect()
+)
+print(f"Gas consumption: u0={gas_u0.height} buildings, u2={gas_u2.height} buildings")
 ```
 
 ## Build comparison table
 
-We join the two upgrade scenarios on `bldg_id`, restrict to natgas-heated buildings with nonzero gas bills in u0, and
-attach the gas tariff keys from both upgrade maps.
+We join the two upgrade scenarios on `bldg_id`, restrict to natgas-heated buildings with
+nonzero gas bills in u0, and attach the gas tariff keys from both upgrade maps.
 
 ```{python}
-27 files left unchanged
+merged = (
+    bills_u0.filter(pl.col("heats_with_natgas"))
+    .select("bldg_id", "sb.electric_utility", pl.col("gas_total_bill").alias("gas_u0"))
+    .join(
+        bills_u2.select("bldg_id", pl.col("gas_total_bill").alias("gas_u2")),
+        on="bldg_id",
+    )
+    .filter(pl.col("gas_u0") > 0)
+    .with_columns(
+        (pl.col("gas_u2") - pl.col("gas_u0")).alias("gas_diff"),
+        ((pl.col("gas_u2") - pl.col("gas_u0")) / pl.col("gas_u0") * 100).alias("gas_pct"),
+    )
+    .join(tariff_u0, on="bldg_id", how="left")
+    .join(tariff_u2, on="bldg_id", how="left")
+    .join(gas_u0, on="bldg_id", how="left")
+    .join(gas_u2, on="bldg_id", how="left")
+    .with_columns(
+        ((pl.col("gas_kwh_u2") - pl.col("gas_kwh_u0")) / pl.col("gas_kwh_u0") * 100)
+        .alias("cons_pct"),
+    )
+)
+print(f"{merged.height} natgas-heated buildings with nonzero gas in u0")
 ```
 
 ## Gas bill change by tariff transition
 
-Each row shows how a group of buildings — defined by their gas tariff in u0 and u2 — fares after the heat pump upgrade.
-We expect gas bills to decrease for most transitions since gas consumption drops \~89% after switching to a heat pump.
+Each row shows how a group of buildings — defined by their gas tariff in u0 and u2 —
+fares after the heat pump upgrade. We expect gas bills to decrease for most transitions
+since gas consumption drops ~89% after switching to a heat pump.
 
 ```{python}
-27 files left unchanged
+transitions = (
+    merged
+    .group_by("sb.electric_utility", "tariff_u0", "tariff_u2")
+    .agg(
+        pl.len().alias("n"),
+        pl.col("gas_u0").median().alias("median_gas_u0"),
+        pl.col("gas_u2").median().alias("median_gas_u2"),
+        pl.col("gas_diff").median().alias("median_diff"),
+        pl.col("gas_pct").median().alias("median_pct"),
+        pl.col("cons_pct").median().alias("median_cons_pct"),
+        (pl.col("gas_diff") > 0).sum().alias("n_increase"),
+        (pl.col("gas_diff") < 0).sum().alias("n_decrease"),
+    )
+    .sort("median_pct", descending=True)
+)
+
+header = (
+    f"{'electric_utility':>16s}  {'gas tariff in u0':>30s} → {'u2':<30s}  "
+    f"{'n':>5s}  {'med_u0':>8s}  {'med_u2':>8s}  {'med_chg':>8s}  "
+    f"{'med_%':>7s}  {'med_cons%':>9s}  {'#up':>5s}  {'#down':>5s}"
+)
+print(header)
+print("-" * len(header))
+for row in transitions.iter_rows(named=True):
+    print(
+        f"{row['sb.electric_utility']:>16s}  "
+        f"{row['tariff_u0']:>30s} → {row['tariff_u2']:<30s}  "
+        f"{row['n']:>5d}  "
+        f"${row['median_gas_u0']:>7.2f}  "
+        f"${row['median_gas_u2']:>7.2f}  "
+        f"${row['median_diff']:>+7.2f}  "
+        f"{row['median_pct']:>+6.1f}%  "
+        f"{row['median_cons_pct']:>+8.1f}%  "
+        f"{row['n_increase']:>5d}  "
+        f"{row['n_decrease']:>5d}"
+    )
 ```
 
 ## Summary by utility
 
 ```{python}
-27 files left unchanged
+by_util = (
+    merged
+    .group_by("sb.electric_utility")
+    .agg(
+        pl.len().alias("n"),
+        pl.col("gas_u0").median().alias("median_gas_u0"),
+        pl.col("gas_u2").median().alias("median_gas_u2"),
+        pl.col("gas_diff").median().alias("median_diff"),
+        pl.col("gas_pct").median().alias("median_pct"),
+        pl.col("cons_pct").median().alias("median_cons_pct"),
+        (pl.col("gas_diff") > 0).sum().alias("n_increase"),
+        (pl.col("gas_diff") < 0).sum().alias("n_decrease"),
+    )
+    .sort("sb.electric_utility")
+)
+
+header = (
+    f"{'electric_utility':>16s}  {'n':>5s}  {'med_u0':>8s}  {'med_u2':>8s}  "
+    f"{'med_chg':>8s}  {'med_%':>7s}  {'med_cons%':>9s}  {'#up':>5s}  {'#down':>5s}"
+)
+print(header)
+print("-" * len(header))
+for row in by_util.iter_rows(named=True):
+    print(
+        f"{row['sb.electric_utility']:>16s}  "
+        f"{row['n']:>5d}  "
+        f"${row['median_gas_u0']:>7.2f}  "
+        f"${row['median_gas_u2']:>7.2f}  "
+        f"${row['median_diff']:>+7.2f}  "
+        f"{row['median_pct']:>+6.1f}%  "
+        f"{row['median_cons_pct']:>+8.1f}%  "
+        f"{row['n_increase']:>5d}  "
+        f"{row['n_decrease']:>5d}"
+    )
+
+total = merged.height
+total_inc = merged.filter(pl.col("gas_diff") > 0).height
+total_dec = merged.filter(pl.col("gas_diff") < 0).height
+print(
+    f"\n  STATEWIDE: {total} natgas bldgs, "
+    f"{total_inc} increase ({total_inc / total * 100:.1f}%), "
+    f"{total_dec} decrease ({total_dec / total * 100:.1f}%)"
+)
+print(
+    f"  Median: u0=${merged['gas_u0'].median():,.2f}  "
+    f"u2=${merged['gas_u2'].median():,.2f}  "
+    f"change=${merged['gas_diff'].median():+,.2f} "
+    f"({merged['gas_pct'].median():+.1f}%)"
+)
 ```
 
 ## Consumption vs. bill change scatterplot
 
-Each point is a gas tariff transition group. The diagonal line shows where points would fall if bills were purely
-volumetric (no fixed charge) and the volumetric rate didn't change between u0 and u2. The gap between the data and that
-line is the effect of fixed charges absorbing most of the consumption decline.
+Each point is a gas tariff transition group. The diagonal line shows where points would
+fall if bills were purely volumetric (no fixed charge) and the volumetric rate didn't
+change between u0 and u2. The gap between the data and that line is the effect of fixed
+charges absorbing most of the consumption decline.
 
 ```{python}
-27 files left unchanged
+#| label: fig-cons-vs-bill
+#| fig-cap: "Median gas consumption change vs. median gas bill change by tariff transition"
+from plotnine import (
+    aes,
+    annotate,
+    geom_abline,
+    geom_hline,
+    geom_point,
+    geom_text,
+    ggplot,
+    labs,
+    scale_x_reverse,
+    scale_y_reverse,
+    theme,
+    theme_minimal,
+)
+
+scatter_df = (
+    merged
+    .group_by("sb.electric_utility", "tariff_u0", "tariff_u2")
+    .agg(
+        pl.len().alias("n"),
+        pl.col("gas_pct").median().alias("median_bill_pct"),
+        pl.col("cons_pct").median().alias("median_cons_pct"),
+    )
+    .with_columns(
+        (pl.col("sb.electric_utility") + ": " + pl.col("tariff_u0") + " -> " + pl.col("tariff_u2"))
+        .alias("label"),
+    )
+    .to_pandas()
+)
+
+label_df = scatter_df[scatter_df["median_bill_pct"] > 0].copy()
+label_df = label_df.sort_values("median_bill_pct", ascending=False).reset_index(drop=True)
+label_df["label_y"] = -0.5 - label_df.index * 2.0
+
+(
+    ggplot(scatter_df, aes(x="median_cons_pct", y="median_bill_pct", size="n"))
+    + geom_abline(intercept=0, slope=1, color="#023047", alpha=0.35, size=0.8)
+    + annotate(
+        "text", x=-15, y=-17,
+        label="Purely volumetric,\nsame rate",
+        size=7, color="#023047", alpha=0.6, ha="right", va="bottom",
+    )
+    + geom_hline(yintercept=0, color="grey", alpha=0.4, linetype="dotted")
+    + geom_point(aes(color="sb.electric_utility"), alpha=0.7)
+    + geom_text(
+        label_df,
+        aes(x="median_cons_pct", y="label_y", label="label"),
+        size=7,
+        va="top",
+        inherit_aes=False,
+    )
+    + labs(
+        x="Median gas consumption change (%)",
+        y="Median gas bill change (%)",
+        size="Buildings",
+        color="Electric utility",
+    )
+    + scale_x_reverse()
+    + scale_y_reverse()
+    + coord_cartesian(xlim=(0, -100), ylim=(15, -75))
+    + theme_minimal()
+    + theme(figure_size=(14, 16))
+)
 ```
 
 ## Building-level consumption vs. bill change
 
-Same axes as above, but each point is an individual building rather than a tariff-transition group, faceted by electric
-utility and colored by gas tariff transition. Low opacity reveals where buildings cluster — the horizontal banding
-within each panel shows how different gas tariff structures compress bill changes relative to consumption changes.
+Same axes as above, but each point is an individual building rather than a tariff-transition
+group, faceted by electric utility and colored by gas tariff transition. Low opacity reveals
+where buildings cluster — the horizontal banding within each panel shows how different gas
+tariff structures compress bill changes relative to consumption changes.
 
 ```{python}
-27 files left unchanged
+#| label: fig-bldg-cons-vs-bill
+#| fig-cap: "Gas consumption change vs. gas bill change per building, faceted by utility and colored by gas tariff transition"
+import pandas as pd
+
+from plotnine import (
+    coord_cartesian,
+    facet_wrap,
+    geom_text,
+)
+
+bldg_scatter = (
+    merged
+    .filter(pl.col("gas_kwh_u0") > 0)
+    .select("cons_pct", "gas_pct", "sb.electric_utility", "tariff_u0", "tariff_u2")
+    .with_columns(
+        (pl.col("tariff_u0") + " -> " + pl.col("tariff_u2")).alias("gas_transition"),
+    )
+    .rename({"gas_pct": "bill_pct"})
+    .to_pandas()
+)
+
+legend_rows = []
+for util, grp in bldg_scatter.groupby("sb.electric_utility"):
+    transitions = sorted(grp["gas_transition"].unique())
+    for i, t in enumerate(transitions):
+        legend_rows.append({
+            "sb.electric_utility": util,
+            "gas_transition": t,
+            "cons_pct": -1,
+            "bill_pct": -35 - i * 5,
+        })
+legend_df = pd.DataFrame(legend_rows)
+
+n_utils = bldg_scatter["sb.electric_utility"].nunique()
+
+(
+    ggplot(bldg_scatter, aes(x="cons_pct", y="bill_pct", color="gas_transition"))
+    + geom_abline(intercept=0, slope=1, color="#023047", alpha=0.25, size=0.6)
+    + geom_hline(yintercept=0, color="grey", alpha=0.4, linetype="dotted")
+    + geom_point(alpha=0.25, size=2.0, stroke=0)
+    + geom_text(
+        legend_df,
+        aes(x="cons_pct", y="bill_pct", label="gas_transition", color="gas_transition"),
+        size=9, ha="left", nudge_x=-1,
+        inherit_aes=False,
+    )
+    + labs(
+        x="Gas consumption change (%)",
+        y="Gas bill change (%)",
+    )
+    + facet_wrap("sb.electric_utility", ncol=1)
+    + scale_x_reverse()
+    + scale_y_reverse()
+    + coord_cartesian(xlim=(0, -100), ylim=(15, -60))
+    + theme_minimal()
+    + theme(figure_size=(11.2, min(25, 5 * n_utils)), legend_position="none")
+)
 ```

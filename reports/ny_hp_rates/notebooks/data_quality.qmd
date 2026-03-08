@@ -230,6 +230,7 @@ charges absorbing most of the consumption decline.
 from plotnine import (
     aes,
     annotate,
+    coord_cartesian,
     geom_abline,
     geom_hline,
     geom_point,
@@ -356,5 +357,168 @@ n_utils = bldg_scatter["sb.electric_utility"].nunique()
     + coord_cartesian(xlim=(0, -100), ylim=(15, -60))
     + theme_minimal()
     + theme(figure_size=(11.2, min(25, 5 * n_utils)), legend_position="none")
+)
+```
+
+## Gas bill: fixed charge share
+
+For each gas-heated building in u0, what fraction of its annual gas bill is the
+fixed charge? The fixed charge comes from the URDB gas tariff JSON
+(`fixedchargefirstmeter` × 12 months); the annual gas bill comes from the
+master bills table.
+
+```{python}
+import json
+
+GAS_TARIFF_DIR = "rate_design/hp_rates/ny/config/tariffs/gas"
+
+gas_tariff_keys = tariff_u0["tariff_u0"].unique().to_list()
+
+fixed_rows: list[dict] = []
+for key in gas_tariff_keys:
+    if key == "null_gas_tariff":
+        fixed_rows.append({"tariff_u0": key, "monthly_fixed": 0.0})
+        continue
+    content = fetch_rdp_file(f"{GAS_TARIFF_DIR}/{key}.json", ref=RDP_REF)
+    tariff = json.loads(content)
+    item = tariff["items"][0] if "items" in tariff else tariff
+    fixed_rows.append({
+        "tariff_u0": key,
+        "monthly_fixed": item.get("fixedchargefirstmeter", 0.0),
+    })
+
+gas_fixed = pl.DataFrame(fixed_rows).with_columns(
+    (pl.col("monthly_fixed") * 12).alias("annual_fixed"),
+)
+print(gas_fixed.sort("tariff_u0"))
+```
+
+```{python}
+gas_with_fixed = (
+    merged
+    .join(gas_fixed, on="tariff_u0", how="left")
+    .with_columns(
+        (pl.col("annual_fixed") / pl.col("gas_u0") * 100).alias("fixed_pct"),
+    )
+    .filter(pl.col("fixed_pct").is_finite())
+)
+
+print(f"{gas_with_fixed.height} buildings with computable fixed %")
+print(f"Median fixed %: {gas_with_fixed['fixed_pct'].median():.1f}%")
+print(f"Mean fixed %: {gas_with_fixed['fixed_pct'].mean():.1f}%")
+```
+
+```{python}
+#| label: fig-gas-fixed-pct
+#| fig-cap: "Fraction of annual gas bill from fixed charges, by utility"
+from plotnine import (
+    aes,
+    coord_cartesian,
+    element_text,
+    facet_wrap,
+    geom_histogram,
+    geom_text,
+    geom_vline,
+    ggplot,
+    labs,
+    scale_x_continuous,
+    theme,
+    theme_minimal,
+)
+
+gas_fixed_pd = gas_with_fixed.select(
+    "fixed_pct", "sb.electric_utility",
+).to_pandas()
+
+medians_by_util = (
+    gas_with_fixed
+    .group_by("sb.electric_utility")
+    .agg(pl.col("fixed_pct").median().alias("med_fixed"))
+)
+
+annot_pd = medians_by_util.with_columns(
+    (
+        pl.lit("median: ")
+        + pl.col("med_fixed").round(0).cast(pl.Int32).cast(pl.Utf8)
+        + pl.lit("%")
+    ).alias("label"),
+).to_pandas()
+
+(
+    ggplot(gas_fixed_pd, aes(x="fixed_pct"))
+    + geom_histogram(binwidth=2, fill="#68bed8", color="white", alpha=0.85)
+    + geom_vline(
+        data=medians_by_util.to_pandas(),
+        mapping=aes(xintercept="med_fixed"),
+        linetype="dashed", color="#023047", size=0.7,
+    )
+    + geom_text(
+        annot_pd,
+        aes(x="med_fixed", y=float("inf"), label="label"),
+        va="top", ha="left", nudge_x=1, size=8, color="#023047",
+        inherit_aes=False,
+    )
+    + facet_wrap("sb.electric_utility", ncol=2, scales="free_y")
+    + scale_x_continuous(breaks=range(0, 101, 20))
+    + labs(
+        x="Fixed charge as % of annual gas bill",
+        y="# Buildings",
+        title="Gas bill fixed charge share — natgas-heated buildings (u0)",
+    )
+    + theme_minimal()
+    + theme(
+        figure_size=(12, 14),
+        strip_text=element_text(size=10, fontweight="bold"),
+    )
+)
+```
+
+## Annual gas bill distribution
+
+How much do gas-heated buildings actually pay per year in gas bills? Faceted by
+electric utility, with median annotated.
+
+```{python}
+#| label: fig-gas-bill-distribution
+#| fig-cap: "Annual gas bills for natgas-heated buildings (u0), by utility"
+gas_bills_pd = merged.select(
+    pl.col("gas_u0").alias("annual_gas_bill"),
+    "sb.electric_utility",
+).to_pandas()
+
+med_bills = (
+    merged.group_by("sb.electric_utility")
+    .agg(pl.col("gas_u0").median().alias("med_bill"))
+)
+
+med_labels = med_bills.with_columns(
+    (pl.lit("median: $") + pl.col("med_bill").round(0).cast(pl.Int32).cast(pl.Utf8)).alias("label"),
+).to_pandas()
+
+(
+    ggplot(gas_bills_pd, aes(x="annual_gas_bill"))
+    + geom_histogram(binwidth=50, fill="#68bed8", color="white", alpha=0.85)
+    + geom_vline(
+        data=med_bills.to_pandas(),
+        mapping=aes(xintercept="med_bill"),
+        linetype="dashed", color="#023047", size=0.7,
+    )
+    + geom_text(
+        med_labels,
+        aes(x="med_bill", y=float("inf"), label="label"),
+        va="top", ha="left", nudge_x=20, size=8, color="#023047",
+        inherit_aes=False,
+    )
+    + facet_wrap("sb.electric_utility", ncol=2, scales="free_y")
+    + labs(
+        x="Annual Gas Bill ($)",
+        y="# Buildings",
+        title="Annual gas bill distribution — natgas-heated buildings (u0)",
+    )
+    + theme_minimal()
+    + theme(
+        figure_size=(12, 14),
+        strip_text=element_text(size=10, fontweight="bold"),
+    )
 )
 ```

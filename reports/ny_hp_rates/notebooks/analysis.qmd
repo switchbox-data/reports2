@@ -573,6 +573,11 @@ def _weighted_percentile(df: pl.DataFrame, col: str, w_col: str, q: float) -> fl
     return float(s.filter(cum >= q)[col][0])
 
 
+def _weighted_mean(df: pl.DataFrame, col: str, w_col: str) -> float:
+    """Weighted arithmetic mean."""
+    return float((df[col] * df[w_col]).sum() / df[w_col].sum())
+
+
 def quadrant_pcts(df: pl.DataFrame) -> dict[str, float]:
     """Weighted percentage of homes in each bill-change quadrant."""
     total = df["weight"].sum()
@@ -1320,7 +1325,7 @@ def plot_bat_histogram(
     total_weight = df["weight"].sum()
     pct_over = df.filter(pl.col(col) >= 0)["weight"].sum() / total_weight * 100
     pct_under = 100 - pct_over
-    w_median = _weighted_percentile(df, col, "weight", 0.5)
+    w_mean = _weighted_mean(df, col, "weight")
 
     max_weight = cast(float, plot_df["weight_sum"].max()) if not plot_df.is_empty() else 0.0
     y_annot = max_weight * 1.08
@@ -1329,11 +1334,11 @@ def plot_bat_histogram(
         ggplot(plot_df, aes(x="bin_center", y="weight_sum", fill="sign"))
         + geom_col(width=BAT_BIN_WIDTH * 0.9)
         + geom_vline(xintercept=0, linetype="solid", color="gray", size=0.8)
-        + geom_vline(xintercept=w_median, linetype="dashed", color="#333333", size=0.7)
+        + geom_vline(xintercept=w_mean, linetype="dashed", color="#333333", size=0.7)
         + annotate(
-            "text", x=w_median, y=y_annot,
-            label=f"median: ${w_median:,.0f}",
-            ha="left" if w_median >= 0 else "right",
+            "text", x=w_mean, y=y_annot,
+            label=f"mean: ${w_mean:,.0f}",
+            ha="left" if w_mean >= 0 else "right",
             size=9, color="#333333",
         )
         + scale_fill_manual(values=BAT_COLORS)
@@ -1405,24 +1410,24 @@ def plot_bat_histogram_faceted(
     plot_df = binned.with_columns(pl.col("sign").cast(sign_dtype))
 
     stat_rows = []
-    median_rows = []
+    mean_rows = []
     for ht in [f for f in FACET_ORDER if f in labeled["heating_label"].unique().to_list()]:
         sub = labeled.filter(pl.col("heating_label") == ht)
         tw = sub["weight"].sum()
         pct_over = sub.filter(pl.col(col) >= 0)["weight"].sum() / tw * 100
-        w_med = _weighted_percentile(sub, col, "weight", 0.5)
+        w_mean = _weighted_mean(sub, col, "weight")
         facet_bins = plot_df.filter(pl.col("heating_label") == ht)
         y_max = cast(float, facet_bins["weight_sum"].max()) if not facet_bins.is_empty() else 0.0
         stat_rows.append({
             "heating_label": ht,
             "x": x_hi,
             "y": y_max * 0.92,
-            "label": f"median: ${w_med:,.0f}  ·  {pct_over:.0f}% overpaying",
+            "label": f"mean: ${w_mean:,.0f}  ·  {pct_over:.0f}% overpaying",
         })
-        median_rows.append({"heating_label": ht, "med_x": w_med})
+        mean_rows.append({"heating_label": ht, "mean_x": w_mean})
 
     stats_df = pl.DataFrame(stat_rows).with_columns(pl.col("heating_label").cast(facet_dtype))
-    medians_df = pl.DataFrame(median_rows).with_columns(pl.col("heating_label").cast(facet_dtype))
+    means_df = pl.DataFrame(mean_rows).with_columns(pl.col("heating_label").cast(facet_dtype))
     n_facets = labeled["heating_label"].n_unique()
 
     return (
@@ -1430,7 +1435,7 @@ def plot_bat_histogram_faceted(
         + geom_col(width=BAT_BIN_WIDTH * 0.9)
         + geom_vline(xintercept=0, linetype="solid", color="gray", size=0.8)
         + geom_vline(
-            data=medians_df, mapping=aes(xintercept="med_x"),
+            data=means_df, mapping=aes(xintercept="mean_x"),
             linetype="dashed", color="#333333", size=0.7,
         )
         + geom_text(
@@ -1506,22 +1511,22 @@ for ht in FACET_ORDER:
     if sub.is_empty():
         continue
     w = sub["weight"].sum()
-    median_bat = _weighted_percentile(sub, col, "weight", 0.5)
+    mean_bat = _weighted_mean(sub, col, "weight")
     pct_over = sub.filter(pl.col(col) >= 0)["weight"].sum() / w * 100
     summary_rows.append({
         "heating_type": ht,
-        "median_bat": median_bat,
+        "mean_bat": mean_bat,
         "pct_overpaying": pct_over / 100,
         "pct_of_households": w / total_weight,
     })
 
 (
     GT(pl.DataFrame(summary_rows))
-    .fmt_currency(columns="median_bat", decimals=0)
+    .fmt_currency(columns="mean_bat", decimals=0)
     .fmt_percent(columns=["pct_overpaying", "pct_of_households"], decimals=0)
     .cols_label(
         heating_type="Heating Type",
-        median_bat="Median BAT ($/yr)",
+        mean_bat="Mean BAT ($/yr)",
         pct_overpaying="% Overpaying",
         pct_of_households="% of Households",
     )
@@ -1563,7 +1568,7 @@ for ht in FACET_ORDER:
 What happens to fossil fuel customers' cross-subsidization if tech-specific rates
 zero out the net overpayment of HP customers, ER customers, or both? We spread the
 released overpayment uniformly across fossil fuel households and report the shift
-in their net, median annual BAT, and median monthly BAT (over a 6-month heating
+in their net, mean annual BAT, and mean monthly BAT (over a 6-month heating
 season).
 
 ```{python}
@@ -1573,7 +1578,7 @@ HEATING_MONTHS = 6
 
 ff = labeled_all.filter(pl.col("heating_label") == "Fossil fuel")
 ff_weight = ff["weight"].sum()
-ff_median_before = _weighted_percentile(ff, col, "weight", 0.5)
+ff_mean_before = _weighted_mean(ff, col, "weight")
 ff_net_before = (ff[col] * ff["weight"]).sum()
 
 er = labeled_all.filter(pl.col("heating_label") == "Electric resistance")
@@ -1592,13 +1597,13 @@ scenario_rows = []
 for name, released in scenarios:
     shift = released / ff_weight
     new_net = ff_net_before + released
-    new_median = ff_median_before + shift
+    new_mean = ff_mean_before + shift
     scenario_rows.append({
         "scenario": name,
         "cross_subsidy_removed": released / 1e6,
         "ff_net_after": new_net / 1e6,
-        "ff_median_bat_before": ff_median_before,
-        "ff_median_bat_after": new_median,
+        "ff_mean_bat_before": ff_mean_before,
+        "ff_mean_bat_after": new_mean,
         "monthly_heating": shift / HEATING_MONTHS,
     })
 
@@ -1606,14 +1611,14 @@ for name, released in scenarios:
     GT(pl.DataFrame(scenario_rows))
     .fmt_currency(columns="cross_subsidy_removed", decimals=0, pattern="{x}M")
     .fmt_currency(columns="ff_net_after", decimals=0, pattern="{x}M")
-    .fmt_currency(columns=["ff_median_bat_before", "ff_median_bat_after"], decimals=0, pattern="{x}/yr")
+    .fmt_currency(columns=["ff_mean_bat_before", "ff_mean_bat_after"], decimals=0, pattern="{x}/yr")
     .fmt_currency(columns="monthly_heating", decimals=0, pattern="{x}/mo")
     .cols_label(
         scenario="Scenario",
         cross_subsidy_removed="Cross-Subsidy Removed",
         ff_net_after="FF Net After",
-        ff_median_bat_before="FF Median BAT Before",
-        ff_median_bat_after="FF Median BAT After",
+        ff_mean_bat_before="FF Mean BAT Before",
+        ff_mean_bat_after="FF Mean BAT After",
         monthly_heating="Monthly (Heating)",
     )
 )
@@ -2359,11 +2364,11 @@ for label, bat_df in [("Flat rate (status quo)", bat_all), ("HP seasonal rate", 
             continue
         tw = sub["weight"].sum()
         pct_over = sub.filter(pl.col(col) >= 0)["weight"].sum() / tw * 100
-        w_med = _weighted_percentile(sub, col, "weight", 0.5)
+        w_mean = _weighted_mean(sub, col, "weight")
         comparison_rows.append({
             "rate": label,
             "heating_type": ht,
-            "median_bat": w_med,
+            "mean_bat": w_mean,
             "pct_overpaying": pct_over / 100,
         })
 
@@ -2371,10 +2376,10 @@ bat_comp = pl.DataFrame(comparison_rows)
 
 (
     GT(bat_comp, rowname_col="heating_type", groupname_col="rate")
-    .fmt_currency(columns="median_bat", decimals=0)
+    .fmt_currency(columns="mean_bat", decimals=0)
     .fmt_percent(columns="pct_overpaying", decimals=0)
     .cols_label(
-        median_bat="Median BAT ($/yr)",
+        mean_bat="Mean BAT ($/yr)",
         pct_overpaying="% Overpaying",
     )
 )

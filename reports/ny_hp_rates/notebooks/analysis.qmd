@@ -1,18 +1,8 @@
 ---
 title: NY HP Rate Design Analysis
 
-toc: true
 reference-location: margin
 fig-cap-location: bottom
-
-appendix-style: default
-citation-location: document
-citation:
-  container-title: Switchbox
-
-format:
-  html:
-    page-layout: full
 
 execute:
   warning: false
@@ -43,6 +33,7 @@ import yaml
 
 import polars as pl
 from lib.rdp import fetch_rdp_file
+from lib.plotnine import theme_switchbox
 from plotnine import (
     aes,
     annotate,
@@ -62,7 +53,6 @@ from plotnine import (
     scale_x_discrete,
     scale_y_continuous,
     theme,
-    theme_minimal,
 )
 ```
 
@@ -307,7 +297,7 @@ def plot_bill_components_simple(
         + scale_y_continuous(expand=(0, 0, 0.08, 0))
         + guides(fill=False)
         + labs(x="", y="Annual energy bill ($)", title=title)
-        + theme_minimal()
+        + theme_switchbox()
     )
     for sl in side_labels:
         p = p + sl
@@ -393,7 +383,7 @@ def plot_bill_components_decomposed(
         + scale_y_continuous(expand=(0, 0, 0.08, 0))
         + guides(fill=False)
         + labs(x="", y="Annual energy bill ($)", title=title)
-        + theme_minimal()
+        + theme_switchbox()
     )
     for sl in side_labels:
         p = p + sl
@@ -655,7 +645,7 @@ def plot_bill_change_histogram(df: pl.DataFrame) -> ggplot:
             title="Change in Total Energy Bills after Switching to Heat Pumps",
         )
         + guides(fill=False)
-        + theme_minimal()
+        + theme_switchbox()
         + theme(figure_size=(14, 6))
     )
     for a in annotations:
@@ -743,7 +733,7 @@ def plot_quadrant_bar(
         + coord_flip()
         + guides(fill=False)
         + labs(x="", y="", title=title)
-        + theme_minimal()
+        + theme_switchbox()
         + theme(
             figure_size=(14, max(2.2, 0.8 + 1.0 * n_scenarios)),
             axis_text_y=element_blank(),
@@ -920,6 +910,107 @@ plot_quadrant_bar([
 ])
 ```
 
+## Households by heating fuel type
+
+Weighted distribution of New York households by primary heating fuel,
+computed from the statewide ResStock sample (upgrade 0 — current HVAC).
+
+```{python}
+#| label: fig-households-by-fuel
+#| fig-cap: "New York households by primary heating fuel"
+
+FUEL_CATEGORIES = [
+    "Natural Gas", "Fuel Oil", "Resistance", "Propane", "Heat Pump", "Other/None",
+]
+FUEL_COLORS_BAR = {
+    "Natural Gas": "#8dc9db",
+    "Fuel Oil": "#023047",
+    "Resistance": "#fc9706",
+    "Propane": "#68bed8",
+    "Heat Pump": "#345a6e",
+    "Other/None": "#ffc729",
+}
+FUEL_LABEL_COLORS = {
+    "Natural Gas": "#3a7a8c",
+    "Fuel Oil": "#023047",
+    "Resistance": "#c47600",
+    "Propane": "#3a7a8c",
+    "Heat Pump": "#023047",
+    "Other/None": "#b08e00",
+}
+
+src = annual_current_state
+
+total_w = src["weight"].sum()
+fuel_weights = {
+    "Natural Gas": float(src.filter(pl.col("heats_with_natgas"))["weight"].sum()),
+    "Fuel Oil": float(src.filter(pl.col("heats_with_oil"))["weight"].sum()),
+    "Propane": float(src.filter(pl.col("heats_with_propane"))["weight"].sum()),
+    "Resistance": float(
+        src.filter(pl.col(HEATING_TYPE_COL) == "electrical_resistance")["weight"].sum()
+    ),
+    "Heat Pump": float(
+        src.filter(pl.col("postprocess_group.has_hp"))["weight"].sum()
+    ),
+}
+fuel_weights["Other/None"] = float(total_w - sum(fuel_weights.values()))
+
+fuel_pcts = {k: round(v / total_w * 100) for k, v in fuel_weights.items()}
+
+fuel_df = pl.DataFrame({
+    "fuel": FUEL_CATEGORIES,
+    "pct": [fuel_pcts[c] for c in FUEL_CATEGORIES],
+}).with_columns(pl.col("fuel").cast(pl.Enum(FUEL_CATEGORIES)))
+
+cum = 0.0
+midpoints: list[float] = []
+for row_pct in fuel_df["pct"].to_list():
+    midpoints.append(cum + row_pct / 2)
+    cum += row_pct
+
+label_specs = [
+    {"cat": c, "mid": m, "h": h, "text": t, "sz": sz}
+    for c, m, h, t, sz in [
+        ("Natural Gas", midpoints[0], 1.35, f"{fuel_pcts['Natural Gas']}%\nNatural Gas", 9),
+        ("Fuel Oil",    midpoints[1], 1.38, f"{fuel_pcts['Fuel Oil']}%\nFuel Oil",       9),
+        ("Resistance",  midpoints[2], 1.35, f"{fuel_pcts['Resistance']}%\nResistance",   9),
+        ("Propane",     midpoints[3], 1.60, f"{fuel_pcts['Propane']}% Propane",           7),
+        ("Heat Pump",   midpoints[4], 1.38, f"{fuel_pcts['Heat Pump']}% Heat Pump",      7),
+        ("Other/None",  midpoints[5], 1.60, f"{fuel_pcts['Other/None']}% Other",          7),
+    ]
+]
+
+fuel_annotations = [
+    annotate(
+        "text", x=s["h"], y=s["mid"], label=s["text"],
+        color=FUEL_LABEL_COLORS[s["cat"]], fontweight="bold",
+        size=s["sz"], ha="center", va="bottom",
+    )
+    for s in label_specs
+]
+
+p_fuel = (
+    ggplot(fuel_df, aes(x="'Households'", y="pct", fill="fuel"))
+    + geom_col(position=position_stack(reverse=True), width=0.45)
+    + coord_flip()
+    + scale_fill_manual(values=FUEL_COLORS_BAR, breaks=FUEL_CATEGORIES)
+    + scale_y_continuous(expand=(0, 0, 0, 0))
+    + scale_x_discrete(expand=(0, 0.5, 0, 2.5))
+    + labs(x="", y="", fill="")
+    + theme_switchbox()
+    + theme(
+        figure_size=(14, 3.5),
+        axis_text=element_blank(),
+        axis_ticks=element_blank(),
+        panel_grid=element_blank(),
+        legend_position="none",
+    )
+)
+for a in fuel_annotations:
+    p_fuel = p_fuel + a
+p_fuel
+```
+
 
 ## Bill Alignment Test (BAT) results
 
@@ -1011,7 +1102,7 @@ def plot_bat_histogram(
         + coord_cartesian(xlim=(x_lo, x_hi))
         + labs(x="BAT per-customer ($/year)", y="# of Homes (weighted)", title=title)
         + guides(fill=False)
-        + theme_minimal()
+        + theme_switchbox()
         + theme(figure_size=(14, 6))
     )
 
@@ -1115,7 +1206,7 @@ def plot_bat_histogram_faceted(
         + facet_wrap("heating_label", ncol=1, scales="free_y")
         + labs(x="BAT per-customer ($/year)", y="# of Homes (weighted)", title=title)
         + guides(fill=False)
-        + theme_minimal()
+        + theme_switchbox()
         + theme(figure_size=(14, 3 + 3 * n_facets))
     )
 ```
@@ -1370,7 +1461,7 @@ rr_totals = rr_data.with_columns(
     + scale_fill_manual(values=RR_COLORS, breaks=RR_COMPONENT_ORDER)
     + scale_y_continuous(expand=(0, 0, 0.08, 0))
     + labs(x="", y="Billions ($)", title="Residential revenue requirement by utility", fill="")
-    + theme_minimal()
+    + theme_switchbox()
     + theme(figure_size=(12, 6))
 )
 ```
@@ -1401,7 +1492,7 @@ pct_labels = rr_long.filter(pl.col("pct") >= 3).with_columns(
         title="Revenue requirement composition by utility",
         fill="",
     )
-    + theme_minimal()
+    + theme_switchbox()
     + theme(figure_size=(12, 6))
 )
 ```
@@ -1425,10 +1516,11 @@ rr_table
 
 The BAT decomposes each customer's cost of service into **marginal cost**
 (economic burden: Σ load × MC) and **residual cost** (revenue requirement minus
-total marginal costs, allocated per customer). Aggregating across all customers
-in a utility gives the utility-level split. This chart compares the revenue
-requirement composition (from rate-case configs) against the MC / residual split
-(from the BAT).
+total marginal costs, allocated per customer). Because we run paired CAIRO
+simulations — delivery-only (run 1) and delivery+supply (run 2) — we can
+decompose both marginal cost and residual cost into delivery and supply
+components. This lets us compare the revenue requirement breakdown against the
+BAT's cost allocation at a finer grain.
 
 ```{python}
 #| label: bat-mc-residual-data
@@ -1441,7 +1533,9 @@ bat_enriched = (
     pl.scan_parquet(PATH_MASTER_BAT_12, hive_partitioning=True)
     .select(
         "sb.electric_utility", "weight",
-        "economic_burden_total", "residual_share_total", "annual_bill_total",
+        "economic_burden_delivery", "economic_burden_supply",
+        "residual_share_delivery", "residual_share_supply",
+        "annual_bill_delivery", "annual_bill_supply",
     )
     .collect()
 )
@@ -1450,11 +1544,17 @@ mc_residual = (
     bat_enriched
     .group_by("sb.electric_utility")
     .agg(
-        (pl.col("economic_burden_total") * pl.col("weight")).sum().alias("total_mc"),
-        (pl.col("residual_share_total") * pl.col("weight")).sum().alias("total_residual"),
-        (pl.col("annual_bill_total") * pl.col("weight")).sum().alias("total_bill"),
+        (pl.col("economic_burden_delivery") * pl.col("weight")).sum().alias("mc_delivery"),
+        (pl.col("economic_burden_supply") * pl.col("weight")).sum().alias("mc_supply"),
+        (pl.col("residual_share_delivery") * pl.col("weight")).sum().alias("rs_delivery"),
+        (pl.col("residual_share_supply") * pl.col("weight")).sum().alias("rs_supply"),
+        (pl.col("annual_bill_delivery") * pl.col("weight")).sum().alias("bill_delivery"),
+        (pl.col("annual_bill_supply") * pl.col("weight")).sum().alias("bill_supply"),
     )
     .with_columns(
+        (pl.col("mc_delivery") + pl.col("mc_supply")).alias("mc_total"),
+        (pl.col("rs_delivery") + pl.col("rs_supply")).alias("rs_total"),
+        (pl.col("bill_delivery") + pl.col("bill_supply")).alias("bill_total"),
         pl.col("sb.electric_utility")
         .replace_strict(UTILITY_CODE_TO_DISPLAY)
         .alias("utility"),
@@ -1467,25 +1567,30 @@ mc_residual = (
 #| label: fig-rr-vs-mc-residual
 #| fig-cap: "Revenue requirement vs. marginal / residual cost allocation by utility"
 
-MC_COMPONENTS: dict[str, str] = {
-    "total_mc": "Marginal Cost",
-    "total_residual": "Residual Cost",
-}
-MC_COMPONENT_ORDER = list(MC_COMPONENTS.values())
-MC_COLORS = {
-    "Marginal Cost": "#2ca02c",
-    "Residual Cost": "#d62728",
-}
-
 BAR_LABELS: dict[str, str] = {
     "rr": "Revenue\nRequirement",
     "mc": "Cost\nAllocation",
 }
 BAR_ORDER = list(BAR_LABELS.values())
 
+CA_COMPONENTS = [
+    "MC (Delivery)", "Residual (Delivery)",
+    "MC (Supply)", "Residual (Supply)",
+]
+CA_COLORS = {
+    "MC (Delivery)": "#1b7837",
+    "Residual (Delivery)": "#a6dba0",
+    "MC (Supply)": "#c51b7d",
+    "Residual (Supply)": "#f1b6da",
+}
+
+ALL_COMPONENTS = ["Delivery (Rate Case)", "Delivery Top-Ups", "Supply"] + CA_COMPONENTS
+ALL_COLORS = {**RR_COLORS, **CA_COLORS}
+
 rr_for_join = rr_data.select(
     "utility",
-    (pl.col("delivery_rr") + pl.col("delivery_topups")).alias("delivery_total"),
+    pl.col("delivery_rr"),
+    pl.col("delivery_topups"),
     pl.col("supply_rr"),
     pl.col("total").alias("rr_total"),
 )
@@ -1495,14 +1600,13 @@ combined = rr_for_join.join(mc_residual, on="utility")
 records: list[dict] = []
 for row in combined.iter_rows(named=True):
     u = row["utility"]
-    rr_tot = row["rr_total"]
-    records.append({"utility": u, "bar": BAR_LABELS["rr"], "component": "Delivery (Rate Case)", "dollars": row["delivery_total"]})
+    records.append({"utility": u, "bar": BAR_LABELS["rr"], "component": "Delivery (Rate Case)", "dollars": row["delivery_rr"]})
+    records.append({"utility": u, "bar": BAR_LABELS["rr"], "component": "Delivery Top-Ups", "dollars": row["delivery_topups"]})
     records.append({"utility": u, "bar": BAR_LABELS["rr"], "component": "Supply", "dollars": row["supply_rr"]})
-    records.append({"utility": u, "bar": BAR_LABELS["mc"], "component": "Marginal Cost", "dollars": row["total_mc"]})
-    records.append({"utility": u, "bar": BAR_LABELS["mc"], "component": "Residual Cost", "dollars": row["total_residual"]})
-
-ALL_COMPONENTS = ["Delivery (Rate Case)", "Supply", "Marginal Cost", "Residual Cost"]
-ALL_COLORS = {**RR_COLORS, **MC_COLORS}
+    records.append({"utility": u, "bar": BAR_LABELS["mc"], "component": "MC (Delivery)", "dollars": row["mc_delivery"]})
+    records.append({"utility": u, "bar": BAR_LABELS["mc"], "component": "Residual (Delivery)", "dollars": row["rs_delivery"]})
+    records.append({"utility": u, "bar": BAR_LABELS["mc"], "component": "MC (Supply)", "dollars": row["mc_supply"]})
+    records.append({"utility": u, "bar": BAR_LABELS["mc"], "component": "Residual (Supply)", "dollars": row["rs_supply"]})
 
 plot_df = (
     pl.DataFrame(records)
@@ -1521,7 +1625,7 @@ plot_df = (
     + scale_y_continuous(expand=(0, 0, 0.08, 0))
     + facet_wrap("utility", ncol=4, scales="free_y")
     + labs(x="", y="Billions ($)", title="Revenue requirement vs. cost allocation", fill="")
-    + theme_minimal()
+    + theme_switchbox()
     + theme(
         figure_size=(16, 8),
         axis_text_x=element_text(size=8),
@@ -1546,7 +1650,7 @@ plot_df_pct = (
     .drop("bar_total")
 )
 
-pct_labels_mc = plot_df_pct.filter(pl.col("pct") >= 3).with_columns(
+pct_labels_mc = plot_df_pct.filter(pl.col("pct").abs() >= 3).with_columns(
     pl.col("pct")
     .map_elements(lambda v: f"{v:.0f}%", return_dtype=pl.String)
     .alias("pct_label"),
@@ -1565,7 +1669,7 @@ pct_labels_mc = plot_df_pct.filter(pl.col("pct") >= 3).with_columns(
     + scale_y_continuous(expand=(0, 0, 0.02, 0))
     + facet_wrap("utility", ncol=4)
     + labs(x="", y="% of total", title="Revenue requirement vs. cost allocation (% of total)", fill="")
-    + theme_minimal()
+    + theme_switchbox()
     + theme(
         figure_size=(16, 8),
         axis_text_x=element_text(size=8),
@@ -1579,16 +1683,19 @@ pct_labels_mc = plot_df_pct.filter(pl.col("pct") >= 3).with_columns(
 
 mc_table = (
     mc_residual
-    .with_columns(
-        pl.col("utility").cast(pl.Enum(utility_order)),
-    )
+    .with_columns(pl.col("utility").cast(pl.Enum(utility_order)))
     .sort("utility")
     .select(
         "utility",
-        (pl.col("total_mc") / 1e6).round(0).cast(pl.Int64).alias("Marginal Cost ($M)"),
-        (pl.col("total_residual") / 1e6).round(0).cast(pl.Int64).alias("Residual Cost ($M)"),
-        (pl.col("total_bill") / 1e6).round(0).cast(pl.Int64).alias("Total Bill ($M)"),
-        (pl.col("total_mc") / pl.col("total_bill") * 100).round(1).alias("MC % of Total"),
+        (pl.col("mc_delivery") / 1e6).round(0).cast(pl.Int64).alias("MC Deliv ($M)"),
+        (pl.col("rs_delivery") / 1e6).round(0).cast(pl.Int64).alias("Resid Deliv ($M)"),
+        (pl.col("mc_delivery") / pl.col("bill_delivery") * 100).round(0).cast(pl.Int64).alias("MC % Deliv"),
+        (pl.col("mc_supply") / 1e6).round(0).cast(pl.Int64).alias("MC Supply ($M)"),
+        (pl.col("rs_supply") / 1e6).round(0).cast(pl.Int64).alias("Resid Supply ($M)"),
+        (pl.col("mc_supply") / pl.col("bill_supply") * 100).round(0).cast(pl.Int64).alias("MC % Supply"),
+        (pl.col("mc_total") / 1e6).round(0).cast(pl.Int64).alias("MC Total ($M)"),
+        (pl.col("rs_total") / 1e6).round(0).cast(pl.Int64).alias("Resid Total ($M)"),
+        (pl.col("mc_total") / pl.col("bill_total") * 100).round(0).cast(pl.Int64).alias("MC % Total"),
     )
 )
 

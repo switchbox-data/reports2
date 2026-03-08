@@ -32,6 +32,8 @@ import math
 import yaml
 
 import polars as pl
+from great_tables import GT
+from matplotlib.figure import Figure
 from lib.rdp import fetch_rdp_file
 from lib.plotnine import theme_switchbox
 from plotnine import (
@@ -69,7 +71,10 @@ RDP_REF = "d0353e1"
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
 PATH_MASTER_BILLS_12 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_1+2/comb_bills_year_target/"
 PATH_MASTER_BILLS_34 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_3+4/comb_bills_year_target/"
+PATH_MASTER_BILLS_56 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_5+6/comb_bills_year_target/"
+PATH_MASTER_BILLS_78 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_7+8/comb_bills_year_target/"
 PATH_MASTER_BAT_12 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_1+2/cross_subsidization_BAT_values/"
+PATH_MASTER_BAT_56 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_5+6/cross_subsidization_BAT_values/"
 ```
 
 ## Constants
@@ -94,6 +99,8 @@ ResStock metadata columns — across all NY utilities.
 
 bills_current = pl.scan_parquet(PATH_MASTER_BILLS_12, hive_partitioning=True)
 bills_hp = pl.scan_parquet(PATH_MASTER_BILLS_34, hive_partitioning=True)
+bills_hprate_current = pl.scan_parquet(PATH_MASTER_BILLS_56, hive_partitioning=True)
+bills_hprate_hp = pl.scan_parquet(PATH_MASTER_BILLS_78, hive_partitioning=True)
 ```
 
 ## Median energy bill components
@@ -577,15 +584,20 @@ def quadrant_pcts(df: pl.DataFrame) -> dict[str, float]:
     }
 
 
-def plot_bill_change_histogram(df: pl.DataFrame) -> ggplot:
+def plot_bill_change_histogram(
+    df: pl.DataFrame,
+    bin_width: int = BIN_WIDTH,
+    title: str = "Change in Total Energy Bills after Switching to Heat Pumps",
+) -> ggplot:
     """Weighted histogram of annual bill change."""
-    x_lo = math.floor(_weighted_percentile(df, "delta", "weight", 0.01) / 500) * 500
-    x_hi = math.ceil(_weighted_percentile(df, "delta", "weight", 0.99) / 500) * 500
+    snap = max(bin_width, 50)
+    x_lo = math.floor(_weighted_percentile(df, "delta", "weight", 0.01) / snap) * snap
+    x_hi = math.ceil(_weighted_percentile(df, "delta", "weight", 0.99) / snap) * snap
 
     binned = (
         df.with_columns(
             (
-                (pl.col("delta") / BIN_WIDTH).floor() * BIN_WIDTH + BIN_WIDTH / 2
+                (pl.col("delta") / bin_width).floor() * bin_width + bin_width / 2
             ).alias("bin_center"),
         )
         .with_columns(
@@ -635,14 +647,14 @@ def plot_bill_change_histogram(df: pl.DataFrame) -> ggplot:
 
     p = (
         ggplot(plot_df, aes(x="bin_center", y="weight_sum", fill="quadrant"))
-        + geom_col(width=BIN_WIDTH * 0.9)
+        + geom_col(width=bin_width * 0.9)
         + geom_vline(xintercept=[-1000, 0, 1000], linetype="dotted", color="gray")
         + scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
         + coord_cartesian(xlim=(x_lo, x_hi))
         + labs(
             x="Annual Bill Change ($)",
             y="# of Homes",
-            title="Change in Total Energy Bills after Switching to Heat Pumps",
+            title=title,
         )
         + guides(fill=False)
         + theme_switchbox()
@@ -656,13 +668,18 @@ def plot_bill_change_histogram(df: pl.DataFrame) -> ggplot:
 def plot_quadrant_bar(
     rows: list[tuple[str, pl.DataFrame]],
     title: str = "How bills would change after switching to heat pumps:",
-) -> ggplot:
+    title_parts: list[tuple[str, str]] | None = None,
+) -> ggplot | Figure:
     """Horizontal stacked bar(s) showing quadrant proportions.
 
     *rows* is a list of ``(label, df)`` pairs where each *df* has ``delta``
     and ``weight`` columns. Each pair becomes one bar. Pass a single pair for
     one bar; pass multiple pairs for side-by-side comparison (e.g. different
     rate scenarios).
+
+    When *title_parts* is given (a list of ``(text, color)`` tuples), the
+    plotnine title is replaced by a matplotlib multi-color title and the
+    function returns a ``Figure`` instead of a ``ggplot``.
     """
     records: list[dict] = []
     all_pcts: list[dict[str, float]] = []
@@ -700,20 +717,22 @@ def plot_quadrant_bar(
             )
         )
 
-    for i, (row_label, _) in enumerate(rows):
-        bar_pos = n_scenarios - i
-        extra_annotations.append(
-            annotate(
-                "text",
-                x=bar_pos,
-                y=101,
-                label=row_label,
-                ha="left", va="center",
-                size=9, fontweight="bold",
+    if n_scenarios > 1:
+        for i, (row_label, _) in enumerate(rows):
+            bar_pos = n_scenarios - i
+            extra_annotations.append(
+                annotate(
+                    "text",
+                    x=bar_pos,
+                    y=101,
+                    label=row_label,
+                    ha="left", va="center",
+                    size=9, fontweight="bold",
+                )
             )
-        )
 
     top_expand = 0.55 if n_scenarios > 1 else 1.2
+    plotnine_title = "" if title_parts else title
 
     p = (
         ggplot(plot_df, aes(x="scenario", y="pct", fill="quadrant"))
@@ -732,19 +751,38 @@ def plot_quadrant_bar(
         + scale_x_discrete(expand=(0, 0.35, 0, top_expand))
         + coord_flip()
         + guides(fill=False)
-        + labs(x="", y="", title=title)
+        + labs(x="", y="", title=plotnine_title)
         + theme_switchbox()
         + theme(
-            figure_size=(14, max(2.2, 0.8 + 1.0 * n_scenarios)),
-            axis_text_y=element_blank(),
-            axis_text_x=element_blank(),
-            plot_title=element_text(size=11, ha="left", margin={"b": -8, "units": "pt"}),
+            figure_size=(17.5, max(4.4, 1.6 + 2.0 * n_scenarios)),
+            axis_text=element_blank(),
+            axis_ticks=element_blank(),
+            axis_line=element_blank(),
             panel_grid=element_blank(),
-            axis_ticks_major=element_blank(),
+            plot_title=(
+                element_blank()
+                if title_parts
+                else element_text(size=11, ha="left", margin={"b": -8, "units": "pt"})
+            ),
         )
     )
     for a in extra_annotations:
         p = p + a
+
+    if title_parts:
+        fig = p.draw()
+        renderer = fig.canvas.get_renderer()
+        x_pos = fig.axes[0].get_position().x0
+        for text_str, color in title_parts:
+            t = fig.text(
+                x_pos, 0.92, text_str,
+                color=color, fontsize=12, fontweight="bold",
+                fontfamily="GT Planar", va="bottom",
+            )
+            bb = t.get_window_extent(renderer=renderer)
+            x_pos = bb.transformed(fig.transFigure.inverted()).x1
+        return fig
+
     return p
 ```
 
@@ -899,6 +937,38 @@ plot_bill_change_histogram(elec_resistance_state)
 ```
 
 ```{python}
+#| label: fig-quadrant-bar-natgas-state
+#| fig-cap: "Bill change summary — natural gas-heated households (Statewide)"
+
+plot_quadrant_bar(
+    [("Natural gas", natgas_state)],
+    title_parts=[
+        ("How bills would change for ", "#000000"),
+        ("natural gas", "#68bed8"),
+        (" heated homes after switching to ", "#000000"),
+        ("heat pumps", "#fc9706"),
+    ],
+)
+```
+
+```{python}
+#| label: fig-quadrant-bar-oil-propane-state
+#| fig-cap: "Bill change summary — oil/propane-heated households (Statewide)"
+
+plot_quadrant_bar(
+    [("Oil / propane", oil_propane_state)],
+    title_parts=[
+        ("How bills would change for ", "#000000"),
+        ("fuel oil", "#023047"),
+        (" or ", "#000000"),
+        ("propane", "#4a8fa0"),
+        (" heated homes after switching to ", "#000000"),
+        ("heat pumps", "#fc9706"),
+    ],
+)
+```
+
+```{python}
 #| label: fig-quadrant-bar-all-state
 #| fig-cap: "Bill change summary by heating fuel — Statewide"
 
@@ -920,23 +990,23 @@ computed from the statewide ResStock sample (upgrade 0 — current HVAC).
 #| fig-cap: "New York households by primary heating fuel"
 
 FUEL_CATEGORIES = [
-    "Natural Gas", "Fuel Oil", "Resistance", "Propane", "Heat Pump", "Other/None",
+    "Natural Gas", "Propane", "Fuel Oil", "Heat Pump", "Resistance", "Other/None",
 ]
 FUEL_COLORS_BAR = {
-    "Natural Gas": "#8dc9db",
+    "Natural Gas": "#68bed8",
     "Fuel Oil": "#023047",
-    "Resistance": "#fc9706",
-    "Propane": "#68bed8",
-    "Heat Pump": "#345a6e",
-    "Other/None": "#ffc729",
+    "Resistance": "#ffc729",
+    "Propane": "#4a8fa0",
+    "Heat Pump": "#fc9706",
+    "Other/None": "#b0b0b0",
 }
 FUEL_LABEL_COLORS = {
-    "Natural Gas": "#3a7a8c",
+    "Natural Gas": "#3a8fa0",
     "Fuel Oil": "#023047",
-    "Resistance": "#c47600",
-    "Propane": "#3a7a8c",
-    "Heat Pump": "#023047",
-    "Other/None": "#b08e00",
+    "Resistance": "#b08e00",
+    "Propane": "#2d6070",
+    "Heat Pump": "#c47600",
+    "Other/None": "#666666",
 }
 
 src = annual_current_state
@@ -972,10 +1042,10 @@ label_specs = [
     {"cat": c, "mid": m, "h": h, "text": t, "sz": sz}
     for c, m, h, t, sz in [
         ("Natural Gas", midpoints[0], 1.35, f"{fuel_pcts['Natural Gas']}%\nNatural Gas", 9),
-        ("Fuel Oil",    midpoints[1], 1.38, f"{fuel_pcts['Fuel Oil']}%\nFuel Oil",       9),
-        ("Resistance",  midpoints[2], 1.35, f"{fuel_pcts['Resistance']}%\nResistance",   9),
-        ("Propane",     midpoints[3], 1.60, f"{fuel_pcts['Propane']}% Propane",           7),
-        ("Heat Pump",   midpoints[4], 1.38, f"{fuel_pcts['Heat Pump']}% Heat Pump",      7),
+        ("Propane",     midpoints[1], 1.60, f"{fuel_pcts['Propane']}% Propane",           7),
+        ("Fuel Oil",    midpoints[2], 1.38, f"{fuel_pcts['Fuel Oil']}%\nFuel Oil",       9),
+        ("Heat Pump",   midpoints[3], 1.38, f"{fuel_pcts['Heat Pump']}% Heat Pump",      7),
+        ("Resistance",  midpoints[4], 1.35, f"{fuel_pcts['Resistance']}%\nResistance",   9),
         ("Other/None",  midpoints[5], 1.60, f"{fuel_pcts['Other/None']}% Other",          7),
     ]
 ]
@@ -999,9 +1069,10 @@ p_fuel = (
     + labs(x="", y="", fill="")
     + theme_switchbox()
     + theme(
-        figure_size=(14, 3.5),
+        figure_size=(17.5, 4.4),
         axis_text=element_blank(),
         axis_ticks=element_blank(),
+        axis_line=element_blank(),
         panel_grid=element_blank(),
         legend_position="none",
     )
@@ -1040,6 +1111,173 @@ bat_all = (
         "sb.electric_utility",
     )
     .collect()
+)
+```
+
+### Cross-subsidy example: two typical households
+
+To make the concept of bill alignment concrete before diving into the full
+distribution, we pick two individual ConEd buildings — one gas-heated, one
+heat-pump-heated — whose BAT values fall near the weighted median for their
+group. For each, we compare what they pay (their annual electric bill) against
+what it costs to serve them (marginal cost + residual allocation).
+
+```{python}
+#| label: cross-subsidy-example-data
+
+from plotnine import geom_segment, scale_color_identity
+
+bldg_bat_detail = (
+    bat_12
+    .filter(pl.col("sb.electric_utility") == UTILITY)
+    .select(
+        BLDG_ID, "weight",
+        HEATING_TYPE_COL,
+        "economic_burden_delivery", "economic_burden_supply",
+        "residual_share_delivery", "residual_share_supply",
+        "annual_bill_delivery", "annual_bill_supply",
+        "BAT_percustomer_total",
+    )
+    .collect()
+    .with_columns(
+        (pl.col("economic_burden_delivery") + pl.col("economic_burden_supply")).alias("mc_total"),
+        (pl.col("residual_share_delivery") + pl.col("residual_share_supply")).alias("residual_total"),
+        (pl.col("annual_bill_delivery") + pl.col("annual_bill_supply")).alias("revenue_total"),
+    )
+)
+
+natgas = bldg_bat_detail.filter(pl.col(HEATING_TYPE_COL) == "fossil_fuel")
+natgas_med = _weighted_percentile(natgas, "BAT_percustomer_total", "weight", 0.5)
+natgas_pick = (
+    natgas.with_columns((pl.col("BAT_percustomer_total") - natgas_med).abs().alias("_d"))
+    .sort("_d").head(1)
+)
+
+hp = bldg_bat_detail.filter(pl.col(HEATING_TYPE_COL) == "heat_pump")
+hp_med = _weighted_percentile(hp, "BAT_percustomer_total", "weight", 0.5)
+hp_pick = (
+    hp.with_columns((pl.col("BAT_percustomer_total") - hp_med).abs().alias("_d"))
+    .sort("_d").head(1)
+)
+
+natgas_row = natgas_pick.row(0, named=True)
+hp_row = hp_pick.row(0, named=True)
+
+print(
+    f"Gas home (bldg {natgas_row[BLDG_ID]}): "
+    f"bill=${natgas_row['revenue_total']:,.0f}, "
+    f"MC=${natgas_row['mc_total']:,.0f}, "
+    f"residual=${natgas_row['residual_total']:,.0f}, "
+    f"BAT=${natgas_row['BAT_percustomer_total']:,.0f}"
+)
+print(
+    f"HP home  (bldg {hp_row[BLDG_ID]}): "
+    f"bill=${hp_row['revenue_total']:,.0f}, "
+    f"MC=${hp_row['mc_total']:,.0f}, "
+    f"residual=${hp_row['residual_total']:,.0f}, "
+    f"BAT=${hp_row['BAT_percustomer_total']:,.0f}"
+)
+```
+
+```{python}
+#| label: fig-cross-subsidy-example
+#| fig-cap: "Annual bill vs. cost of service for two typical ConEd households. The gap between bars is the cross-subsidy."
+
+CS_COMP_ORDER = ["Annual Bill", "Marginal Cost", "Residual Cost"]
+CS_COMP_COLORS = {
+    "Annual Bill": "#56B4E9",
+    "Marginal Cost": "#1b7837",
+    "Residual Cost": "#a6dba0",
+}
+CS_BAR_ORDER = ["Annual\nBill", "Cost of\nService"]
+CS_HH_ORDER = ["Gas-heated home", "Heat pump home"]
+
+
+def _bldg_records(row: dict, label: str) -> list[dict]:
+    return [
+        {"household": label, "bar": "Annual\nBill", "component": "Annual Bill",
+         "dollars": row["revenue_total"]},
+        {"household": label, "bar": "Cost of\nService", "component": "Marginal Cost",
+         "dollars": row["mc_total"]},
+        {"household": label, "bar": "Cost of\nService", "component": "Residual Cost",
+         "dollars": row["residual_total"]},
+    ]
+
+
+cs_records: list[dict] = []
+cs_records.extend(_bldg_records(natgas_row, "Gas-heated home"))
+cs_records.extend(_bldg_records(hp_row, "Heat pump home"))
+
+cs_plot_df = pl.DataFrame(cs_records).with_columns(
+    pl.col("household").cast(pl.Enum(CS_HH_ORDER)),
+    pl.col("bar").cast(pl.Enum(CS_BAR_ORDER)),
+    pl.col("component").cast(pl.Enum(CS_COMP_ORDER)),
+)
+
+cs_bar_totals = (
+    cs_plot_df.group_by("household", "bar")
+    .agg(pl.col("dollars").sum().alias("total"))
+    .with_columns(
+        pl.col("household").cast(pl.Enum(CS_HH_ORDER)),
+        pl.col("bar").cast(pl.Enum(CS_BAR_ORDER)),
+        pl.col("total")
+        .map_elements(lambda v: f"${v:,.0f}", return_dtype=pl.String)
+        .alias("total_label"),
+    )
+)
+
+natgas_bill = natgas_row["revenue_total"]
+natgas_cost = natgas_row["mc_total"] + natgas_row["residual_total"]
+natgas_bat = natgas_row["BAT_percustomer_total"]
+
+hp_bill = hp_row["revenue_total"]
+hp_cost = hp_row["mc_total"] + hp_row["residual_total"]
+hp_bat = hp_row["BAT_percustomer_total"]
+
+bracket_df = pl.DataFrame([
+    {"household": "Gas-heated home", "x": 1.0, "xend": 2.0,
+     "y": natgas_bill, "yend": natgas_cost, "clr": "#1b5e20"},
+    {"household": "Heat pump home", "x": 1.0, "xend": 2.0,
+     "y": hp_bill, "yend": hp_cost, "clr": "#b71c1c"},
+]).with_columns(pl.col("household").cast(pl.Enum(CS_HH_ORDER)))
+
+bat_labels = pl.DataFrame([
+    {"household": "Gas-heated home", "x": 1.5,
+     "y": max(natgas_bill, natgas_cost) + 80,
+     "label": f"Underpays\n${abs(natgas_bat):,.0f}/yr", "clr": "#1b5e20"},
+    {"household": "Heat pump home", "x": 1.5,
+     "y": max(hp_bill, hp_cost) + 80,
+     "label": f"Overpays\n${abs(hp_bat):,.0f}/yr", "clr": "#b71c1c"},
+]).with_columns(pl.col("household").cast(pl.Enum(CS_HH_ORDER)))
+
+(
+    ggplot(cs_plot_df, aes(x="bar", y="dollars", fill="component"))
+    + geom_col(position=position_stack(reverse=True), width=0.55)
+    + geom_text(
+        cs_bar_totals, aes(x="bar", y="total", label="total_label"),
+        va="bottom", color="#333333", fontweight="bold",
+        size=9, nudge_y=40, inherit_aes=False,
+    )
+    + geom_segment(
+        bracket_df,
+        aes(x="x", xend="xend", y="y", yend="yend", color="clr"),
+        size=1.2, inherit_aes=False,
+    )
+    + geom_text(
+        bat_labels, aes(x="x", y="y", label="label", color="clr"),
+        size=9, fontweight="bold", inherit_aes=False,
+    )
+    + scale_fill_manual(values=CS_COMP_COLORS, breaks=CS_COMP_ORDER)
+    + scale_color_identity()
+    + scale_y_continuous(expand=(0, 0, 0.15, 0))
+    + facet_wrap("household", ncol=2)
+    + labs(
+        x="", y="$ / year",
+        title="Annual bill vs. cost of service — two typical ConEd households",
+        fill="",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(12, 6))
 )
 ```
 
@@ -1271,13 +1509,23 @@ for ht in FACET_ORDER:
     median_bat = _weighted_percentile(sub, col, "weight", 0.5)
     pct_over = sub.filter(pl.col(col) >= 0)["weight"].sum() / w * 100
     summary_rows.append({
-        "Heating type": ht,
-        "Weighted median BAT ($/yr)": f"${median_bat:,.0f}",
-        "% overpaying": f"{pct_over:.0f}%",
-        "% of households": f"{w / total_weight * 100:.1f}%",
+        "heating_type": ht,
+        "median_bat": median_bat,
+        "pct_overpaying": pct_over / 100,
+        "pct_of_households": w / total_weight,
     })
 
-pl.DataFrame(summary_rows)
+(
+    GT(pl.DataFrame(summary_rows))
+    .fmt_currency(columns="median_bat", decimals=0)
+    .fmt_percent(columns=["pct_overpaying", "pct_of_households"], decimals=0)
+    .cols_label(
+        heating_type="Heating Type",
+        median_bat="Median BAT ($/yr)",
+        pct_overpaying="% Overpaying",
+        pct_of_households="% of Households",
+    )
+)
 ```
 
 ```{python}
@@ -1292,13 +1540,22 @@ for ht in FACET_ORDER:
     total_over = weighted_bat.filter(weighted_bat >= 0).sum()
     total_under = weighted_bat.filter(weighted_bat < 0).sum()
     dollar_rows.append({
-        "Heating type": ht,
-        "Total overpayment": f"${total_over:,.0f}",
-        "Total underpayment": f"${total_under:,.0f}",
-        "Net": f"${total_over + total_under:,.0f}",
+        "heating_type": ht,
+        "total_overpayment": total_over,
+        "total_underpayment": total_under,
+        "net": total_over + total_under,
     })
 
-pl.DataFrame(dollar_rows)
+(
+    GT(pl.DataFrame(dollar_rows))
+    .fmt_currency(columns=["total_overpayment", "total_underpayment", "net"], decimals=0)
+    .cols_label(
+        heating_type="Heating Type",
+        total_overpayment="Total Overpayment",
+        total_underpayment="Total Underpayment",
+        net="Net",
+    )
+)
 ```
 
 ### Impact of tech-specific rates on fossil fuel cross-subsidization
@@ -1337,15 +1594,202 @@ for name, released in scenarios:
     new_net = ff_net_before + released
     new_median = ff_median_before + shift
     scenario_rows.append({
-        "Scenario": name,
-        "Cross-subsidy removed": f"${released / 1e6:,.0f}M",
-        "FF net after": f"${new_net / 1e6:,.0f}M",
-        "FF median BAT before": f"${ff_median_before:,.0f}/yr",
-        "FF median BAT after": f"${new_median:,.0f}/yr",
-        "Monthly (heating)": f"${shift / HEATING_MONTHS:,.0f}/mo",
+        "scenario": name,
+        "cross_subsidy_removed": released / 1e6,
+        "ff_net_after": new_net / 1e6,
+        "ff_median_bat_before": ff_median_before,
+        "ff_median_bat_after": new_median,
+        "monthly_heating": shift / HEATING_MONTHS,
     })
 
-pl.DataFrame(scenario_rows)
+(
+    GT(pl.DataFrame(scenario_rows))
+    .fmt_currency(columns="cross_subsidy_removed", decimals=0, pattern="{x}M")
+    .fmt_currency(columns="ff_net_after", decimals=0, pattern="{x}M")
+    .fmt_currency(columns=["ff_median_bat_before", "ff_median_bat_after"], decimals=0, pattern="{x}/yr")
+    .fmt_currency(columns="monthly_heating", decimals=0, pattern="{x}/mo")
+    .cols_label(
+        scenario="Scenario",
+        cross_subsidy_removed="Cross-Subsidy Removed",
+        ff_net_after="FF Net After",
+        ff_median_bat_before="FF Median BAT Before",
+        ff_median_bat_after="FF Median BAT After",
+        monthly_heating="Monthly (Heating)",
+    )
+)
+```
+
+### Typical HP customer: bill vs. cost of service by utility
+
+The ConEd example above is illustrative, but does the pattern hold statewide?
+For each utility we pick the HP building nearest the weighted-median BAT and
+compare its annual electric bill against its cost of service (marginal cost +
+residual allocation). The overpayment gap is consistent across all seven
+service territories.
+
+```{python}
+#| label: cross-subsidy-by-utility-data
+
+UTIL_DISPLAY: dict[str, str] = {
+    "coned": "ConEd",
+    "nimo": "NiMo",
+    "nyseg": "NYSEG",
+    "cenhud": "CenHud",
+    "rge": "RG&E",
+    "or": "O&R",
+    "psegli": "PSEG-LI",
+}
+
+hp_all_utils = (
+    bat_12
+    .filter(pl.col(HEATING_TYPE_COL) == "heat_pump")
+    .select(
+        BLDG_ID, "weight", "sb.electric_utility",
+        "economic_burden_delivery", "economic_burden_supply",
+        "residual_share_delivery", "residual_share_supply",
+        "annual_bill_delivery", "annual_bill_supply",
+        "BAT_percustomer_total",
+    )
+    .collect()
+    .with_columns(
+        (pl.col("economic_burden_delivery") + pl.col("economic_burden_supply")).alias("mc_total"),
+        (pl.col("residual_share_delivery") + pl.col("residual_share_supply")).alias("residual_total"),
+        (pl.col("annual_bill_delivery") + pl.col("annual_bill_supply")).alias("revenue_total"),
+    )
+)
+
+utility_picks: list[pl.DataFrame] = []
+for util_code in sorted(hp_all_utils["sb.electric_utility"].unique().to_list()):
+    sub = hp_all_utils.filter(pl.col("sb.electric_utility") == util_code)
+    if sub.is_empty():
+        continue
+    med = _weighted_percentile(sub, "BAT_percustomer_total", "weight", 0.5)
+    pick = (
+        sub.with_columns((pl.col("BAT_percustomer_total") - med).abs().alias("_d"))
+        .sort("_d").head(1)
+    )
+    utility_picks.append(pick)
+
+median_hp_bldgs = pl.concat(utility_picks)
+
+(
+    GT(median_hp_bldgs.select(
+        pl.col("sb.electric_utility").replace_strict(UTIL_DISPLAY).alias("utility"),
+        "revenue_total", "mc_total", "residual_total", "BAT_percustomer_total",
+    ))
+    .fmt_currency(
+        columns=["revenue_total", "mc_total", "residual_total", "BAT_percustomer_total"],
+        decimals=0,
+    )
+    .cols_label(
+        utility="Utility",
+        revenue_total="Annual Bill",
+        mc_total="Marginal Cost",
+        residual_total="Residual Cost",
+        BAT_percustomer_total="BAT ($/yr)",
+    )
+)
+```
+
+```{python}
+#| label: fig-cross-subsidy-by-utility
+#| fig-cap: "Annual bill vs. cost of service for the median HP customer in each utility. The gap between bars shows how much typical HP customers overpay."
+
+util_order = (
+    median_hp_bldgs
+    .with_columns(pl.col("sb.electric_utility").replace_strict(UTIL_DISPLAY).alias("utility"))
+    .sort("BAT_percustomer_total", descending=True)["utility"]
+    .to_list()
+)
+
+cs_util_records: list[dict] = []
+for row in median_hp_bldgs.iter_rows(named=True):
+    u = UTIL_DISPLAY.get(row["sb.electric_utility"], row["sb.electric_utility"])
+    cs_util_records.extend([
+        {"utility": u, "bar": "Annual\nBill", "component": "Annual Bill",
+         "dollars": row["revenue_total"]},
+        {"utility": u, "bar": "Cost of\nService", "component": "Marginal Cost",
+         "dollars": row["mc_total"]},
+        {"utility": u, "bar": "Cost of\nService", "component": "Residual Cost",
+         "dollars": row["residual_total"]},
+    ])
+
+cs_util_df = pl.DataFrame(cs_util_records).with_columns(
+    pl.col("utility").cast(pl.Enum(util_order)),
+    pl.col("bar").cast(pl.Enum(CS_BAR_ORDER)),
+    pl.col("component").cast(pl.Enum(CS_COMP_ORDER)),
+)
+
+cs_util_totals = (
+    cs_util_df.group_by("utility", "bar")
+    .agg(pl.col("dollars").sum().alias("total"))
+    .with_columns(
+        pl.col("utility").cast(pl.Enum(util_order)),
+        pl.col("bar").cast(pl.Enum(CS_BAR_ORDER)),
+        pl.col("total")
+        .map_elements(lambda v: f"${v:,.0f}", return_dtype=pl.String)
+        .alias("total_label"),
+    )
+)
+
+cs_bracket_rows: list[dict] = []
+cs_bat_rows: list[dict] = []
+for row in median_hp_bldgs.iter_rows(named=True):
+    u = UTIL_DISPLAY.get(row["sb.electric_utility"], row["sb.electric_utility"])
+    bill = row["revenue_total"]
+    cost = row["mc_total"] + row["residual_total"]
+    bat = row["BAT_percustomer_total"]
+    cs_bracket_rows.append({
+        "utility": u, "x": 1.0, "xend": 2.0,
+        "y": bill, "yend": cost, "clr": "#b71c1c",
+    })
+    cs_bat_rows.append({
+        "utility": u, "x": 1.5,
+        "y": max(bill, cost) + 100,
+        "label": f"+${abs(bat):,.0f}/yr",
+        "clr": "#b71c1c",
+    })
+
+cs_bracket_df = pl.DataFrame(cs_bracket_rows).with_columns(
+    pl.col("utility").cast(pl.Enum(util_order))
+)
+cs_bat_df = pl.DataFrame(cs_bat_rows).with_columns(
+    pl.col("utility").cast(pl.Enum(util_order))
+)
+
+(
+    ggplot(cs_util_df, aes(x="bar", y="dollars", fill="component"))
+    + geom_col(position=position_stack(reverse=True), width=0.55)
+    + geom_text(
+        cs_util_totals, aes(x="bar", y="total", label="total_label"),
+        va="bottom", color="#333333", fontweight="bold",
+        size=7, nudge_y=30, inherit_aes=False,
+    )
+    + geom_segment(
+        cs_bracket_df,
+        aes(x="x", xend="xend", y="y", yend="yend", color="clr"),
+        size=1.0, inherit_aes=False,
+    )
+    + geom_text(
+        cs_bat_df, aes(x="x", y="y", label="label", color="clr"),
+        size=8, fontweight="bold", inherit_aes=False,
+    )
+    + scale_fill_manual(values=CS_COMP_COLORS, breaks=CS_COMP_ORDER)
+    + scale_color_identity()
+    + scale_y_continuous(expand=(0, 0, 0.18, 0))
+    + facet_wrap("utility", ncol=4, scales="free_y")
+    + labs(
+        x="", y="$ / year",
+        title="Typical HP customer: annual bill vs. cost of service by utility",
+        fill="",
+    )
+    + theme_switchbox()
+    + theme(
+        figure_size=(16, 8),
+        axis_text_x=element_text(size=8),
+        strip_text=element_text(size=10, fontweight="bold"),
+    )
+)
 ```
 
 
@@ -1502,14 +1946,27 @@ pct_labels = rr_long.filter(pl.col("pct") >= 3).with_columns(
 
 rr_table = rr_data.select(
     "utility",
-    (pl.col("delivery_rr") / 1e6).round(0).cast(pl.Int64).alias("Delivery RR ($M)"),
-    (pl.col("delivery_topups") / 1e6).round(1).alias("Delivery Top-Ups ($M)"),
-    (pl.col("supply_rr") / 1e6).round(0).cast(pl.Int64).alias("Supply RR ($M)"),
-    (pl.col("total") / 1e6).round(0).cast(pl.Int64).alias("Total ($M)"),
-    (pl.col("delivery_topups") / pl.col("total") * 100).round(1).alias("Top-Ups % of Total"),
-).sort("Total ($M)", descending=True)
+    (pl.col("delivery_rr") / 1e6).alias("delivery_rr_m"),
+    (pl.col("delivery_topups") / 1e6).alias("delivery_topups_m"),
+    (pl.col("supply_rr") / 1e6).alias("supply_rr_m"),
+    (pl.col("total") / 1e6).alias("total_m"),
+    (pl.col("delivery_topups") / pl.col("total")).alias("topups_pct"),
+).sort("total_m", descending=True)
 
-rr_table
+(
+    GT(rr_table)
+    .fmt_number(columns=["delivery_rr_m", "supply_rr_m", "total_m"], decimals=0)
+    .fmt_number(columns="delivery_topups_m", decimals=1)
+    .fmt_percent(columns="topups_pct", decimals=1)
+    .cols_label(
+        utility="Utility",
+        delivery_rr_m="Delivery RR ($M)",
+        delivery_topups_m="Delivery Top-Ups ($M)",
+        supply_rr_m="Supply RR ($M)",
+        total_m="Total ($M)",
+        topups_pct="Top-Ups % of Total",
+    )
+)
 ```
 
 ### Revenue requirement vs. marginal cost allocation
@@ -1687,17 +2144,625 @@ mc_table = (
     .sort("utility")
     .select(
         "utility",
-        (pl.col("mc_delivery") / 1e6).round(0).cast(pl.Int64).alias("MC Deliv ($M)"),
-        (pl.col("rs_delivery") / 1e6).round(0).cast(pl.Int64).alias("Resid Deliv ($M)"),
-        (pl.col("mc_delivery") / pl.col("bill_delivery") * 100).round(0).cast(pl.Int64).alias("MC % Deliv"),
-        (pl.col("mc_supply") / 1e6).round(0).cast(pl.Int64).alias("MC Supply ($M)"),
-        (pl.col("rs_supply") / 1e6).round(0).cast(pl.Int64).alias("Resid Supply ($M)"),
-        (pl.col("mc_supply") / pl.col("bill_supply") * 100).round(0).cast(pl.Int64).alias("MC % Supply"),
-        (pl.col("mc_total") / 1e6).round(0).cast(pl.Int64).alias("MC Total ($M)"),
-        (pl.col("rs_total") / 1e6).round(0).cast(pl.Int64).alias("Resid Total ($M)"),
-        (pl.col("mc_total") / pl.col("bill_total") * 100).round(0).cast(pl.Int64).alias("MC % Total"),
+        (pl.col("mc_delivery") / 1e6).alias("mc_deliv"),
+        (pl.col("rs_delivery") / 1e6).alias("resid_deliv"),
+        (pl.col("mc_delivery") / pl.col("bill_delivery")).alias("mc_pct_deliv"),
+        (pl.col("mc_supply") / 1e6).alias("mc_supply"),
+        (pl.col("rs_supply") / 1e6).alias("resid_supply"),
+        (pl.col("mc_supply") / pl.col("bill_supply")).alias("mc_pct_supply"),
+        (pl.col("mc_total") / 1e6).alias("mc_total"),
+        (pl.col("rs_total") / 1e6).alias("resid_total"),
+        (pl.col("mc_total") / pl.col("bill_total")).alias("mc_pct_total"),
     )
 )
 
-mc_table
+(
+    GT(mc_table)
+    .fmt_number(
+        columns=["mc_deliv", "resid_deliv", "mc_supply", "resid_supply", "mc_total", "resid_total"],
+        decimals=0,
+    )
+    .fmt_percent(columns=["mc_pct_deliv", "mc_pct_supply", "mc_pct_total"], decimals=0)
+    .cols_label(
+        utility="Utility",
+        mc_deliv="MC Deliv ($M)",
+        resid_deliv="Resid Deliv ($M)",
+        mc_pct_deliv="MC % Deliv",
+        mc_supply="MC Supply ($M)",
+        resid_supply="Resid Supply ($M)",
+        mc_pct_supply="MC % Supply",
+        mc_total="MC Total ($M)",
+        resid_total="Resid Total ($M)",
+        mc_pct_total="MC % Total",
+    )
+    .tab_spanner(label="Delivery", columns=["mc_deliv", "resid_deliv", "mc_pct_deliv"])
+    .tab_spanner(label="Supply", columns=["mc_supply", "resid_supply", "mc_pct_supply"])
+    .tab_spanner(label="Total", columns=["mc_total", "resid_total", "mc_pct_total"])
+)
+```
+
+
+## Heat pump seasonal rate
+
+For each utility, we compare the current default flat rate against the proposed
+HP seasonal rate. Both tariffs are calibrated URDB JSONs stored in
+`rate_design/hp_rates/ny/config/tariffs/electric/`. The delivery component
+comes from the delivery-only file (`*_calibrated.json`), and supply is the
+difference between the bundled file (`*_supply_calibrated.json`) and delivery.
+
+```{python}
+#| label: rate-table-data
+
+import json
+
+TARIFF_DIR = "rate_design/hp_rates/ny/config/tariffs/electric"
+
+TARIFF_UTILS: dict[str, str] = {
+    "ConEd": "coned",
+    "NiMo": "nimo",
+    "NYSEG": "nyseg",
+    "CenHud": "cenhud",
+    "RG&E": "rge",
+    "O&R": "or",
+    "PSEG-LI": "psegli",
+}
+
+
+def _load_rate(filename: str) -> dict:
+    content = fetch_rdp_file(f"{TARIFF_DIR}/{filename}", ref=RDP_REF)
+    return json.loads(content)["items"][0]
+
+
+def _get_rates(tariff: dict) -> list[float]:
+    return [tier[0]["rate"] for tier in tariff["energyratestructure"]]
+
+
+rate_rows: list[dict] = []
+for display, code in TARIFF_UTILS.items():
+    flat_d = _load_rate(f"{code}_flat_calibrated.json")
+    flat_b = _load_rate(f"{code}_flat_supply_calibrated.json")
+    seas_d = _load_rate(f"{code}_hp_seasonal_calibrated.json")
+    seas_b = _load_rate(f"{code}_hp_seasonal_supply_calibrated.json")
+
+    fd = _get_rates(flat_d)[0]
+    fb = _get_rates(flat_b)[0]
+    fs = fb - fd
+
+    sd = _get_rates(seas_d)
+    sb = _get_rates(seas_b)
+
+    fixed = flat_d.get("fixedchargefirstmeter", 0)
+
+    rate_rows.append({
+        "utility": display,
+        "rate": "Default",
+        "delivery": fd * 100,
+        "supply": fs * 100,
+        "total": fb * 100,
+        "discount": None,
+    })
+    rate_rows.append({
+        "utility": display,
+        "rate": "HP Summer",
+        "delivery": sd[0] * 100,
+        "supply": (sb[0] - sd[0]) * 100,
+        "total": sb[0] * 100,
+        "discount": (1 - sb[0] / fb),
+    })
+    rate_rows.append({
+        "utility": display,
+        "rate": "HP Winter",
+        "delivery": sd[1] * 100,
+        "supply": (sb[1] - sd[1]) * 100,
+        "total": sb[1] * 100,
+        "discount": (1 - sb[1] / fb),
+    })
+
+rate_table = pl.DataFrame(rate_rows)
+
+_rate_gt = (
+    GT(rate_table, rowname_col="rate", groupname_col="utility")
+    .fmt_number(columns=["delivery", "supply", "total"], decimals=2)
+    .fmt_percent(columns="discount", decimals=1)
+    .sub_missing(columns="discount", missing_text="—")
+    .cols_label(
+        delivery="Delivery (¢/kWh)",
+        supply="Supply (¢/kWh)",
+        total="Total (¢/kWh)",
+        discount="Discount",
+    )
+)
+
+from pathlib import Path
+Path("../cache").mkdir(exist_ok=True)
+Path("../cache/rate_table.html").write_text(_rate_gt.as_raw_html())
+
+_rate_gt
+```
+
+## BAT under HP seasonal rate
+
+Does the HP seasonal rate actually fix the cross-subsidy? We compare the BAT
+distributions under flat rates (run 1+2) and HP seasonal rates (run 5+6) — same
+buildings, same upgrade 0, only the rate structure changes. If the seasonal rate
+is well-designed, the HP overpayment should collapse to near zero.
+
+```{python}
+#| label: bat-56-ingest
+
+bat_56 = pl.scan_parquet(PATH_MASTER_BAT_56, hive_partitioning=True)
+
+bat_all_56 = (
+    bat_56
+    .select(
+        BLDG_ID, "weight",
+        "BAT_percustomer_total",
+        HEATING_TYPE_COL,
+        "sb.electric_utility",
+    )
+    .collect()
+)
+```
+
+### ConEd
+
+```{python}
+#| label: fig-bat-histogram-coned-hprate
+#| fig-cap: "BAT per-customer (total) — all households, ConEd (HP seasonal rate)"
+
+bat_coned_56 = bat_all_56.filter(pl.col("sb.electric_utility") == UTILITY)
+plot_bat_histogram(bat_coned_56, title="BAT per-customer (total) — ConEd (HP seasonal rate)")
+```
+
+```{python}
+#| label: fig-bat-histogram-coned-faceted-hprate
+#| fig-cap: "BAT per-customer (total) by heating type — ConEd (HP seasonal rate)"
+
+plot_bat_histogram_faceted(bat_coned_56, title="BAT per-customer (total) by heating type — ConEd (HP seasonal rate)")
+```
+
+### Statewide
+
+```{python}
+#| label: fig-bat-histogram-state-hprate
+#| fig-cap: "BAT per-customer (total) — all households, Statewide (HP seasonal rate)"
+
+plot_bat_histogram(bat_all_56, title="BAT per-customer (total) — Statewide (HP seasonal rate)")
+```
+
+```{python}
+#| label: fig-bat-histogram-state-faceted-hprate
+#| fig-cap: "BAT per-customer (total) by heating type — Statewide (HP seasonal rate)"
+
+plot_bat_histogram_faceted(bat_all_56, title="BAT per-customer (total) by heating type — Statewide (HP seasonal rate)")
+```
+
+### Summary: HP overpayment before vs. after
+
+```{python}
+#| label: bat-comparison-table
+
+col = "BAT_percustomer_total"
+facet_dtype = pl.Enum(FACET_ORDER)
+
+comparison_rows: list[dict] = []
+for label, bat_df in [("Flat rate (status quo)", bat_all), ("HP seasonal rate", bat_all_56)]:
+    labeled = bat_df.with_columns(
+        pl.col(HEATING_TYPE_COL)
+        .replace_strict(HEATING_TYPE_LABELS, default=pl.col(HEATING_TYPE_COL))
+        .fill_null("Other")
+        .alias("heating_label"),
+    )
+    for ht in FACET_ORDER:
+        sub = labeled.filter(pl.col("heating_label") == ht)
+        if len(sub) == 0:
+            continue
+        tw = sub["weight"].sum()
+        pct_over = sub.filter(pl.col(col) >= 0)["weight"].sum() / tw * 100
+        w_med = _weighted_percentile(sub, col, "weight", 0.5)
+        comparison_rows.append({
+            "rate": label,
+            "heating_type": ht,
+            "median_bat": w_med,
+            "pct_overpaying": pct_over / 100,
+        })
+
+bat_comp = pl.DataFrame(comparison_rows)
+
+(
+    GT(bat_comp, rowname_col="heating_type", groupname_col="rate")
+    .fmt_currency(columns="median_bat", decimals=0)
+    .fmt_percent(columns="pct_overpaying", decimals=0)
+    .cols_label(
+        median_bat="Median BAT ($/yr)",
+        pct_overpaying="% Overpaying",
+    )
+)
+```
+
+## Bill impact of HP seasonal rate on HP customers
+
+What happens to a fossil-fuel customer's total energy bill if they switch to a
+heat pump **and** get the proposed HP seasonal electric rate? The "before" is
+their current bill under today's flat rates (run 1+2, upgrade 0) and the
+"after" is their bill as an HP customer on the seasonal rate (run 7+8,
+upgrade 2). The delta captures both the fuel switch and the rate change.
+
+```{python}
+#| label: compute-deltas-switch-with-hprate
+
+annual_before_switch = (
+    bills_current
+    .filter((pl.col("month") == ANNUAL_MONTH) & (pl.col("sb.electric_utility") == UTILITY))
+    .select(DELTA_SELECT)
+    .collect()
+)
+annual_after_switch = (
+    bills_hprate_hp
+    .filter((pl.col("month") == ANNUAL_MONTH) & (pl.col("sb.electric_utility") == UTILITY))
+    .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after"))
+    .collect()
+)
+delta_switch = annual_before_switch.join(annual_after_switch, on=BLDG_ID, how="inner").with_columns(
+    (pl.col("bill_after") - pl.col("bill_before")).alias("delta")
+)
+
+annual_before_switch_state = (
+    bills_current
+    .filter(pl.col("month") == ANNUAL_MONTH)
+    .select(DELTA_SELECT)
+    .collect()
+)
+annual_after_switch_state = (
+    bills_hprate_hp
+    .filter(pl.col("month") == ANNUAL_MONTH)
+    .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after"))
+    .collect()
+)
+delta_switch_state = annual_before_switch_state.join(annual_after_switch_state, on=BLDG_ID, how="inner").with_columns(
+    (pl.col("bill_after") - pl.col("bill_before")).alias("delta")
+)
+```
+
+### ConEd — switching to HP with seasonal rate
+
+```{python}
+#| label: fig-bill-change-natgas-switch-hprate
+#| fig-cap: "Annual bill change — natural gas homes switching to HP with seasonal rate"
+
+natgas_switch = (
+    delta_switch
+    .filter(pl.col("heats_with_natgas"))
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(natgas_switch)
+```
+
+```{python}
+#| label: fig-bill-change-oil-propane-switch-hprate
+#| fig-cap: "Annual bill change — oil/propane homes switching to HP with seasonal rate"
+
+oil_propane_switch = (
+    delta_switch
+    .filter(pl.col("heats_with_oil") | pl.col("heats_with_propane"))
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(oil_propane_switch)
+```
+
+```{python}
+#| label: fig-bill-change-elec-resistance-switch-hprate
+#| fig-cap: "Annual bill change — electric resistance homes switching to HP with seasonal rate"
+
+elec_resistance_switch = (
+    delta_switch
+    .filter(pl.col(HEATING_TYPE_COL) == "electrical_resistance")
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(elec_resistance_switch)
+```
+
+```{python}
+#| label: fig-quadrant-bar-all-switch-hprate
+#| fig-cap: "Bill change summary by heating fuel — switching to HP with seasonal rate (ConEd)"
+
+non_hp_switch = (
+    delta_switch
+    .filter(pl.col("postprocess_group.has_hp") == False)
+    .select("delta", "weight")
+)
+plot_quadrant_bar([
+    ("All non-HP", non_hp_switch),
+    ("Natural gas", natgas_switch),
+    ("Oil / propane", oil_propane_switch),
+    ("Electric resistance", elec_resistance_switch),
+])
+```
+
+### Statewide — switching to HP with seasonal rate
+
+```{python}
+#| label: fig-bill-change-natgas-switch-hprate-state
+#| fig-cap: "Annual bill change — natural gas homes switching to HP with seasonal rate (Statewide)"
+
+natgas_switch_state = (
+    delta_switch_state
+    .filter(pl.col("heats_with_natgas"))
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(natgas_switch_state)
+```
+
+```{python}
+#| label: fig-bill-change-natgas-default-vs-hprate-state
+#| fig-cap: "Annual bill change comparison — natural gas homes switching to HP: default vs. seasonal rate (Statewide)"
+
+_comparison_rows = [("Default rate", natgas_state), ("HP seasonal rate", natgas_switch_state)]
+
+_all_deltas = pl.concat([r[1] for r in _comparison_rows])
+_snap = max(BIN_WIDTH, 50)
+_x_lo = math.floor(_weighted_percentile(_all_deltas, "delta", "weight", 0.01) / _snap) * _snap
+_x_hi = math.ceil(_weighted_percentile(_all_deltas, "delta", "weight", 0.99) / _snap) * _snap
+
+_parts = []
+_label_records: list[dict] = []
+for _label, _df in _comparison_rows:
+    _binned = (
+        _df.with_columns(
+            ((pl.col("delta") / BIN_WIDTH).floor() * BIN_WIDTH + BIN_WIDTH / 2).alias("bin_center"),
+        )
+        .with_columns(
+            pl.when(pl.col("bin_center") <= -1000).then(pl.lit("savings > $1k"))
+            .when((pl.col("bin_center") > -1000) & (pl.col("bin_center") < 0)).then(pl.lit("savings $0-1k"))
+            .when((pl.col("bin_center") >= 0) & (pl.col("bin_center") < 1000)).then(pl.lit("losses $0-1k"))
+            .otherwise(pl.lit("losses > $1k"))
+            .alias("quadrant"),
+        )
+        .group_by("bin_center", "quadrant")
+        .agg(pl.col("weight").sum().alias("weight_sum"))
+        .with_columns(pl.lit(_label).alias("rate"))
+    )
+    _parts.append(_binned)
+
+_global_max_w = max(
+    float(p["weight_sum"].max()) for p in _parts if not p.is_empty()
+)
+_y_annot = _global_max_w * 1.05
+
+for _label, _df in _comparison_rows:
+    _pct = quadrant_pcts(_df)
+    _q_bounds = [(_x_lo, -1000), (-1000, 0), (0, 1000), (1000, _x_hi)]
+    _label_xs = [(max(lo, _x_lo) + min(hi, _x_hi)) / 2 for lo, hi in _q_bounds]
+    for _q, _xp in zip(QUADRANT_ORDER, _label_xs):
+        if _pct[_q] < 0.05:
+            continue
+        _label_records.append({
+            "rate": _label, "x": _xp, "y": _y_annot,
+            "text": f"{_q}\n{_pct[_q]:.1f}%", "color": QUADRANT_COLORS[_q],
+        })
+
+_rate_dtype = pl.Enum([r[0] for r in _comparison_rows])
+_plot_df = pl.concat(_parts).with_columns(
+    pl.col("quadrant").cast(pl.Enum(QUADRANT_ORDER)),
+    pl.col("rate").cast(_rate_dtype),
+)
+_label_df = pl.DataFrame(_label_records).with_columns(pl.col("rate").cast(_rate_dtype))
+
+(
+    ggplot(_plot_df, aes(x="bin_center", y="weight_sum", fill="quadrant"))
+    + geom_col(width=BIN_WIDTH * 0.9)
+    + geom_vline(xintercept=[-1000, 0, 1000], linetype="dotted", color="gray")
+    + geom_text(
+        _label_df, aes(x="x", y="y", label="text", color="color"),
+        inherit_aes=False, ha="center", size=9,
+    )
+    + scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
+    + scale_color_identity()
+    + coord_cartesian(xlim=(_x_lo, _x_hi))
+    + facet_wrap("rate", ncol=1)
+    + labs(x="Annual Bill Change ($)", y="# of Homes (weighted)")
+    + guides(fill=False)
+    + theme_switchbox()
+    + theme(
+        figure_size=(14, 8),
+        strip_text=element_text(size=11, ha="left", weight="bold"),
+    )
+)
+```
+
+```{python}
+#| label: fig-bill-change-oil-propane-switch-hprate-state
+#| fig-cap: "Annual bill change — oil/propane homes switching to HP with seasonal rate (Statewide)"
+
+oil_propane_switch_state = (
+    delta_switch_state
+    .filter(pl.col("heats_with_oil") | pl.col("heats_with_propane"))
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(oil_propane_switch_state)
+```
+
+```{python}
+#| label: fig-bill-change-elec-resistance-switch-hprate-state
+#| fig-cap: "Annual bill change — electric resistance homes switching to HP with seasonal rate (Statewide)"
+
+elec_resistance_switch_state = (
+    delta_switch_state
+    .filter(pl.col(HEATING_TYPE_COL) == "electrical_resistance")
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(elec_resistance_switch_state)
+```
+
+```{python}
+#| label: fig-quadrant-bar-natgas-switch-hprate-state
+#| fig-cap: "Bill change summary — natural gas homes switching to HP: default vs. seasonal rate (Statewide)"
+
+plot_quadrant_bar(
+    [
+        ("Default rate", natgas_state),
+        ("HP seasonal rate", natgas_switch_state),
+    ],
+)
+```
+
+```{python}
+#| label: fig-quadrant-bar-oil-propane-switch-hprate-state
+#| fig-cap: "Bill change summary — oil/propane homes switching to HP with seasonal rate (Statewide)"
+
+plot_quadrant_bar(
+    [("Oil / propane", oil_propane_switch_state)],
+    title_parts=[
+        ("How bills would change for ", "#000000"),
+        ("fuel oil", "#023047"),
+        (" or ", "#000000"),
+        ("propane", "#4a8fa0"),
+        (" homes switching to ", "#000000"),
+        ("heat pumps with seasonal rate", "#fc9706"),
+    ],
+)
+```
+
+```{python}
+#| label: fig-quadrant-bar-all-switch-hprate-state
+#| fig-cap: "Bill change summary by heating fuel — switching to HP with seasonal rate (Statewide)"
+
+non_hp_switch_state = (
+    delta_switch_state
+    .filter(pl.col("postprocess_group.has_hp") == False)
+    .select("delta", "weight")
+)
+plot_quadrant_bar([
+    ("All non-HP", non_hp_switch_state),
+    ("Natural gas", natgas_switch_state),
+    ("Oil / propane", oil_propane_switch_state),
+    ("Electric resistance", elec_resistance_switch_state),
+])
+```
+
+## Bill impact of HP seasonal rate on non-HP customers
+
+What happens to fossil-fuel customers' bills if all existing HP customers opt
+in to the seasonal rate — but the non-HP customers themselves stay on their
+current heating system (upgrade 0) and on the recalibrated flat rate?
+
+In run 5+6, the HP seasonal rate is applied to HP customers and the flat rate
+is recalibrated for everyone else. Non-HP customers keep the same heating
+system; what changes is a slight adjustment to the flat rate once the HP
+cross-subsidy is removed. Comparing run 1+2 vs 5+6 for fossil-fuel buildings
+shows this (expected to be very small) impact.
+
+```{python}
+#| label: compute-deltas-nonhp-rebal
+
+annual_before_rebal = (
+    bills_current
+    .filter((pl.col("month") == ANNUAL_MONTH) & (pl.col("sb.electric_utility") == UTILITY))
+    .select(DELTA_SELECT)
+    .collect()
+)
+annual_after_rebal = (
+    bills_hprate_current
+    .filter((pl.col("month") == ANNUAL_MONTH) & (pl.col("sb.electric_utility") == UTILITY))
+    .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after"))
+    .collect()
+)
+delta_rebal = annual_before_rebal.join(annual_after_rebal, on=BLDG_ID, how="inner").with_columns(
+    (pl.col("bill_after") - pl.col("bill_before")).alias("delta")
+)
+
+annual_before_rebal_state = (
+    bills_current
+    .filter(pl.col("month") == ANNUAL_MONTH)
+    .select(DELTA_SELECT)
+    .collect()
+)
+annual_after_rebal_state = (
+    bills_hprate_current
+    .filter(pl.col("month") == ANNUAL_MONTH)
+    .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after"))
+    .collect()
+)
+delta_rebal_state = annual_before_rebal_state.join(annual_after_rebal_state, on=BLDG_ID, how="inner").with_columns(
+    (pl.col("bill_after") - pl.col("bill_before")).alias("delta")
+)
+```
+
+### ConEd — non-HP bill impact of cross-subsidy removal
+
+```{python}
+#| label: fig-bill-change-natgas-rebal
+#| fig-cap: "Annual bill change — natural gas homes after cross-subsidy removal"
+
+REBAL_BIN = 5
+REBAL_TITLE = "Change in Non-HP Customer Bills after Cross-Subsidy Removal"
+
+natgas_rebal = (
+    delta_rebal
+    .filter(pl.col("heats_with_natgas"))
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(natgas_rebal, bin_width=REBAL_BIN, title=REBAL_TITLE)
+```
+
+```{python}
+#| label: fig-bill-change-oil-propane-rebal
+#| fig-cap: "Annual bill change — oil/propane homes after cross-subsidy removal"
+
+oil_propane_rebal = (
+    delta_rebal
+    .filter(pl.col("heats_with_oil") | pl.col("heats_with_propane"))
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(oil_propane_rebal, bin_width=REBAL_BIN, title=REBAL_TITLE)
+```
+
+```{python}
+#| label: fig-bill-change-non-hp-rebal
+#| fig-cap: "Annual bill change — all non-HP homes after cross-subsidy removal"
+
+non_hp_rebal = (
+    delta_rebal
+    .filter(pl.col("postprocess_group.has_hp") == False)
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(non_hp_rebal, bin_width=REBAL_BIN, title=REBAL_TITLE)
+```
+
+### Statewide — non-HP bill impact of cross-subsidy removal
+
+```{python}
+#| label: fig-bill-change-natgas-rebal-state
+#| fig-cap: "Annual bill change — natural gas homes after cross-subsidy removal (Statewide)"
+
+natgas_rebal_state = (
+    delta_rebal_state
+    .filter(pl.col("heats_with_natgas"))
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(natgas_rebal_state, bin_width=REBAL_BIN, title=REBAL_TITLE)
+```
+
+```{python}
+#| label: fig-bill-change-oil-propane-rebal-state
+#| fig-cap: "Annual bill change — oil/propane homes after cross-subsidy removal (Statewide)"
+
+oil_propane_rebal_state = (
+    delta_rebal_state
+    .filter(pl.col("heats_with_oil") | pl.col("heats_with_propane"))
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(oil_propane_rebal_state, bin_width=REBAL_BIN, title=REBAL_TITLE)
+```
+
+```{python}
+#| label: fig-bill-change-non-hp-rebal-state
+#| fig-cap: "Annual bill change — all non-HP homes after cross-subsidy removal (Statewide)"
+
+non_hp_rebal_state = (
+    delta_rebal_state
+    .filter(pl.col("postprocess_group.has_hp") == False)
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(non_hp_rebal_state, bin_width=REBAL_BIN, title=REBAL_TITLE)
 ```

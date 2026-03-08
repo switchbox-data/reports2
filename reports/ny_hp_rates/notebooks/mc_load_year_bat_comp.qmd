@@ -1,0 +1,441 @@
+---
+title: "NY HP Rates: Load-Year BAT & Cross-Subsidy Comparison"
+format:
+  html:
+    page-layout: full
+toc: true
+execute:
+  warning: false
+  message: false
+---
+
+Compare BAT and cross-subsidy results between 2018 and 2025 load years for
+CENHUD and NYSEG. Each run uses the standard CAIRO output schema.
+
+## Setup
+
+```{python}
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import pandas as pd
+from plotnine import (
+    aes,
+    coord_flip,
+    element_text,
+    facet_grid,
+    facet_wrap,
+    geom_col,
+    geom_hline,
+    geom_text,
+    geom_tile,
+    ggplot,
+    labs,
+    position_dodge,
+    scale_fill_manual,
+    theme,
+    theme_minimal,
+)
+
+for _root in (Path.cwd(), *Path.cwd().parents):
+    _rate_utils = _root / "rate-utils"
+    if (_rate_utils / "plotting_utils.py").is_file():
+        sys.path.insert(0, str(_rate_utils))
+        break
+else:
+    raise FileNotFoundError("Could not locate rate-utils/plotting_utils.py")
+
+from plotting_utils import (
+    build_cross_components,
+    find_latest_run_dir,
+    read_s3_csv,
+    summarize_cross_subsidy,
+)
+
+pd.set_option("display.max_columns", 100)
+```
+
+## Run Configuration
+
+```{python}
+UTILITY_BASES = {
+    ("CENHUD", "2025"): "s3://data.sb/switchbox/cairo/outputs/hp_rates/ny/cenhud/20260305T170623Z/",
+    ("CENHUD", "2018"): "s3://data.sb/switchbox/cairo/outputs/hp_rates/ny/cenhud/20260305T173709Z/",
+    ("NYSEG", "2025"): "s3://data.sb/switchbox/cairo/outputs/hp_rates/ny/nyseg/20260305T170242Z/",
+    ("NYSEG", "2018"): "s3://data.sb/switchbox/cairo/outputs/hp_rates/ny/nyseg/20260305T173330Z/",
+}
+
+RUN_DEFS = {
+    1: {
+        "run_suffix": "run1_up00_precalc__flat",
+        "cost_scope": "delivery",
+        "label": "R1 flat delivery",
+    },
+    2: {
+        "run_suffix": "run2_up00_precalc_supply__flat",
+        "cost_scope": "delivery+supply",
+        "label": "R2 flat delivery+supply",
+    },
+}
+```
+
+```{python}
+run_dirs: dict[tuple[str, str, int], str] = {}
+
+for (utility, load_year), base in UTILITY_BASES.items():
+    slug = f"ny_{utility.lower()}"
+    for run_num, rdef in RUN_DEFS.items():
+        run_name = f"{slug}_{rdef['run_suffix']}"
+        s3_dir = find_latest_run_dir(base, run_name)
+        run_dirs[(utility, load_year, run_num)] = s3_dir
+        print(f"  {utility} {load_year} R{run_num}: {s3_dir}")
+```
+
+## Load BAT & Cross-Subsidy Data
+
+```{python}
+payloads: dict[tuple[str, str, int], dict] = {}
+
+for (utility, load_year, run_num), s3_dir in run_dirs.items():
+    rdef = RUN_DEFS[run_num]
+    metadata = read_s3_csv(f"{s3_dir}/customer_metadata.csv")
+    cross = read_s3_csv(
+        f"{s3_dir}/cross_subsidization/cross_subsidization_BAT_values.csv"
+    )
+
+    cross_summary = summarize_cross_subsidy(cross=cross, metadata=metadata)
+    cross_summary["utility"] = utility
+    cross_summary["load_year"] = load_year
+    cross_summary["run"] = run_num
+    cross_summary["cost_scope"] = rdef["cost_scope"]
+    cross_summary["run_label"] = f"{utility} {load_year} R{run_num}"
+
+    cross_components = build_cross_components(cross_summary)
+    cross_components["utility"] = utility
+    cross_components["load_year"] = load_year
+    cross_components["run"] = run_num
+    cross_components["cost_scope"] = rdef["cost_scope"]
+    cross_components["run_label"] = f"{utility} {load_year} R{run_num}"
+
+    payloads[(utility, load_year, run_num)] = {
+        "metadata": metadata,
+        "cross": cross,
+        "cross_summary": cross_summary,
+        "cross_components": cross_components,
+    }
+
+cross_all = pd.concat(
+    [p["cross_summary"] for p in payloads.values()], ignore_index=True
+)
+components_all = pd.concat(
+    [p["cross_components"] for p in payloads.values()], ignore_index=True
+)
+
+_label_order = (
+    cross_all.sort_values(["utility", "run", "load_year"])["run_label"]
+    .unique()
+    .tolist()
+)
+cross_all["run_label"] = pd.Categorical(
+    cross_all["run_label"], categories=_label_order, ordered=True
+)
+components_all["run_label"] = pd.Categorical(
+    components_all["run_label"], categories=_label_order, ordered=True
+)
+
+print(f"Loaded {len(payloads)} runs ({len(UTILITY_BASES)} utility×load-year combos × {len(RUN_DEFS)} runs each).")
+print(f"Label order: {_label_order}")
+
+print("\nAvailable benchmarks per run (NaN = not in output):")
+for (util, ly, rn), p in payloads.items():
+    cols = [c for c in ["BAT_vol_weighted_avg", "BAT_peak_weighted_avg", "BAT_percustomer_weighted_avg"]
+            if c in p["cross_summary"].columns and p["cross_summary"][c].notna().all()]
+    scope = RUN_DEFS[rn]["cost_scope"]
+    print(f"  {util} {ly} R{rn} ({scope}): {', '.join(c.split('_weighted')[0] for c in cols)}")
+```
+
+## BAT Summary Table
+
+```{python}
+_ALL_BAT_COLS = [
+    "BAT_vol_weighted_avg",
+    "BAT_peak_weighted_avg",
+    "BAT_percustomer_weighted_avg",
+]
+_ALL_RESIDUAL_COLS = {
+    "residual_vol_weighted_avg": "Volumetric",
+    "residual_peak_weighted_avg": "Peak",
+    "residual_percustomer_weighted_avg": "Per-customer",
+}
+BAT_COLS = [c for c in _ALL_BAT_COLS if c in cross_all.columns]
+RESIDUAL_COLS = {k: v for k, v in _ALL_RESIDUAL_COLS.items() if k in cross_all.columns}
+
+_BAT_KEY_MAP = {c: c.replace("BAT_", "").replace("_weighted_avg", "").capitalize()
+                for c in BAT_COLS}
+
+bat_display = [
+    "utility", "load_year", "run", "cost_scope", "group", "customers_weighted",
+    *BAT_COLS,
+    *[c for c in ["Annual_bill_weighted_avg", "Economic_burden_weighted_avg"]
+      if c in cross_all.columns],
+]
+cross_all[bat_display].sort_values(
+    ["utility", "load_year", "run", "group"]
+).reset_index(drop=True)
+```
+
+## BAT Per-Customer by Utility & Load Year
+
+Positive BAT means the group is overpaying relative to cost causation (i.e.
+cross-subsidizing the other group).
+
+```{python}
+# | fig-cap: "BAT per-customer ($/customer-year). Positive = cross-subsidizing others."
+(
+    ggplot(
+        cross_all,
+        aes(x="run_label", y="BAT_percustomer_weighted_avg", fill="group"),
+    )
+    + geom_col(position=position_dodge(width=0.8), width=0.7)
+    + geom_hline(yintercept=0, linetype="dashed", color="gray")
+    + coord_flip()
+    + labs(
+        title="BAT Per-Customer by Utility & Load Year",
+        subtitle="Per-customer benchmark weighted avg ($/customer-year)",
+        x="",
+        y="BAT ($/customer-year)",
+        fill="Group",
+    )
+    + theme_minimal()
+    + theme(figure_size=(10, 5), legend_position="bottom")
+)
+```
+
+## BAT Heatmap: All Benchmarks
+
+```{python}
+#| fig-cap: "Heatmap of BAT across utilities, load years, runs, benchmarks, and groups."
+bat_long = cross_all.melt(
+    id_vars=["utility", "load_year", "run", "cost_scope", "run_label", "group"],
+    value_vars=BAT_COLS,
+    var_name="benchmark_key",
+    value_name="bat_usd",
+)
+bat_long["benchmark"] = bat_long["benchmark_key"].map(_BAT_KEY_MAP)
+bat_long = bat_long.dropna(subset=["bat_usd"])
+bat_long["run_label"] = pd.Categorical(
+    bat_long["run_label"], categories=_label_order, ordered=True
+)
+
+(
+    ggplot(bat_long, aes(x="benchmark", y="run_label", fill="bat_usd"))
+    + geom_tile(color="white", size=0.5)
+    + geom_text(aes(label="bat_usd"), format_string="${:.0f}", size=7)
+    + facet_wrap("~group")
+    + labs(
+        title="BAT Heatmap by Utility, Load Year, Cost Scope, Benchmark",
+        x="Benchmark",
+        y="",
+        fill="BAT ($/cust-yr)",
+    )
+    + theme_minimal()
+    + theme(figure_size=(14, 7), legend_position="right")
+)
+```
+
+## Cross-Subsidy Components ($M/year)
+
+```{python}
+#| fig-cap: "Total cross-subsidy transfer by benchmark component."
+_components_plot = components_all.dropna(subset=["component_transfer_total_musd_per_year"]).copy()
+_components_plot["run_label"] = pd.Categorical(
+    _components_plot["run_label"], categories=_label_order, ordered=True
+)
+
+(
+    ggplot(
+        _components_plot,
+        aes(
+            x="component_label",
+            y="component_transfer_total_musd_per_year",
+            fill="group",
+        ),
+    )
+    + geom_col(position=position_dodge(width=0.8), width=0.7)
+    + facet_wrap("~run_label", ncol=2)
+    + coord_flip()
+    + labs(
+        title="Cross-Subsidy BAT Components ($M/year)",
+        x="Benchmark component",
+        y="Transfer ($M/year)",
+        fill="Group",
+    )
+    + theme_minimal()
+    + theme(figure_size=(14, 12), legend_position="bottom")
+)
+```
+
+## Delta Analysis: 2025 vs 2018
+
+How does switching the load year from 2018 to 2025 change BAT results?
+Computed separately for each run (R1 delivery, R2 delivery+supply).
+
+```{python}
+_delta_metrics = [
+    *BAT_COLS,
+    *[c for c in ["Annual_bill_weighted_avg", "Economic_burden_weighted_avg"]
+      if c in cross_all.columns],
+]
+
+delta_rows = []
+for utility in ["CENHUD", "NYSEG"]:
+    for run_num, rdef in RUN_DEFS.items():
+        for group_name in ["HP", "Non-HP"]:
+            row_2025 = cross_all.query(
+                "utility == @utility and load_year == '2025' "
+                "and run == @run_num and group == @group_name"
+            ).iloc[0]
+            row_2018 = cross_all.query(
+                "utility == @utility and load_year == '2018' "
+                "and run == @run_num and group == @group_name"
+            ).iloc[0]
+            row = {
+                "utility": utility,
+                "run": run_num,
+                "cost_scope": rdef["cost_scope"],
+                "group": group_name,
+            }
+            for col in _delta_metrics:
+                row[f"{col}_delta"] = row_2025[col] - row_2018[col]
+            delta_rows.append(row)
+
+deltas = pd.DataFrame(delta_rows)
+deltas["facet_label"] = deltas["utility"] + " R" + deltas["run"].astype(str)
+_facet_order = (
+    deltas.sort_values(["utility", "run"])["facet_label"].unique().tolist()
+)
+deltas["facet_label"] = pd.Categorical(
+    deltas["facet_label"], categories=_facet_order, ordered=True
+)
+print("Positive delta = higher in 2025 than 2018.")
+deltas
+```
+
+```{python}
+#| fig-cap: "Change in BAT per-customer when switching from 2018 to 2025 load year."
+_bat_delta_cols = [f"{c}_delta" for c in BAT_COLS]
+_bat_delta_map = {f"{c}_delta": _BAT_KEY_MAP[c] for c in BAT_COLS}
+
+delta_long = deltas.melt(
+    id_vars=["utility", "run", "cost_scope", "group", "facet_label"],
+    value_vars=_bat_delta_cols,
+    var_name="benchmark_key",
+    value_name="delta_usd",
+)
+delta_long["benchmark"] = delta_long["benchmark_key"].map(_bat_delta_map)
+delta_long = delta_long.dropna(subset=["delta_usd"])
+delta_long["facet_label"] = pd.Categorical(
+    delta_long["facet_label"], categories=_facet_order, ordered=True
+)
+
+(
+    ggplot(
+        delta_long,
+        aes(x="benchmark", y="delta_usd", fill="group"),
+    )
+    + geom_col(position=position_dodge(width=0.8), width=0.7)
+    + geom_hline(yintercept=0, linetype="dashed", color="gray")
+    + facet_wrap("~facet_label", ncol=2)
+    + coord_flip()
+    + labs(
+        title="BAT Delta: 2025 minus 2018 ($/customer-year)",
+        subtitle="Positive = 2025 load year increases BAT",
+        x="Benchmark",
+        y="Δ BAT ($/customer-year)",
+        fill="Group",
+    )
+    + theme_minimal()
+    + theme(figure_size=(12, 6), legend_position="bottom")
+)
+```
+
+## Marginal vs Residual Cost Composition
+
+```{python}
+#| fig-cap: "Per-customer cost split between marginal (economic burden) and residual allocation."
+per_customer_long = (
+    cross_all.melt(
+        id_vars=["run_label", "group", "Economic_burden_weighted_avg"],
+        value_vars=list(RESIDUAL_COLS.keys()),
+        var_name="residual_key",
+        value_name="residual_usd_per_customer",
+    )
+    .assign(benchmark=lambda d: d["residual_key"].map(RESIDUAL_COLS))
+    .melt(
+        id_vars=["run_label", "group", "benchmark"],
+        value_vars=[
+            "Economic_burden_weighted_avg",
+            "residual_usd_per_customer",
+        ],
+        var_name="cost_source_key",
+        value_name="usd_per_customer",
+    )
+    .assign(
+        cost_source=lambda d: d["cost_source_key"].map(
+            {
+                "Economic_burden_weighted_avg": "Marginal (economic burden)",
+                "residual_usd_per_customer": "Residual allocation",
+            }
+        )
+    )
+)
+per_customer_long["cost_source"] = pd.Categorical(
+    per_customer_long["cost_source"],
+    categories=["Residual allocation", "Marginal (economic burden)"],
+    ordered=True,
+)
+per_customer_long = per_customer_long.dropna(subset=["usd_per_customer"])
+per_customer_long["run_label"] = pd.Categorical(
+    per_customer_long["run_label"], categories=_label_order, ordered=True
+)
+
+(
+    ggplot(
+        per_customer_long,
+        aes(x="group", y="usd_per_customer", fill="cost_source"),
+    )
+    + geom_col(position="stack", width=0.65)
+    + scale_fill_manual(
+        values={
+            "Marginal (economic burden)": "#00BFC4",
+            "Residual allocation": "#F8766D",
+        },
+        breaks=["Marginal (economic burden)", "Residual allocation"],
+    )
+    + facet_grid("run_label ~ benchmark")
+    + labs(
+        title="Cost Composition: Marginal vs Residual ($/customer/year)",
+        x="Customer group",
+        y="$/customer/year",
+        fill="Cost source",
+    )
+    + theme_minimal()
+    + theme(figure_size=(12, 10), legend_position="bottom")
+)
+```
+
+## Customer-Count Comparison
+
+```{python}
+customer_counts = (
+    cross_all[["utility", "load_year", "run", "cost_scope", "group", "customers_weighted"]]
+    .sort_values(["utility", "load_year", "run", "group"])
+    .reset_index(drop=True)
+)
+customer_counts["customers_weighted"] = customer_counts[
+    "customers_weighted"
+].map("{:,.0f}".format)
+customer_counts
+```

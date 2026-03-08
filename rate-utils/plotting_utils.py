@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 def _parse_s3_uri(uri: str) -> tuple[str, str]:
     """Split an ``s3://bucket/key`` URI into ``(bucket, key)``."""
-    without_prefix = uri[len("s3://"):]
+    without_prefix = uri[len("s3://") :]
     bucket, _, key = without_prefix.partition("/")
     return bucket, key
 
@@ -59,14 +59,13 @@ def find_latest_run_dir(run_base: str, run_name: str) -> str:
 
     bucket, prefix = _parse_s3_uri(run_base)
     prefix = prefix.rstrip("/") + "/"
-    suffix = f"_{run_name}/"
 
     paginator = boto3.client("s3").get_paginator("list_objects_v2")
     matching: list[str] = []
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix, Delimiter="/"):
         for entry in page.get("CommonPrefixes", []):
             dir_prefix = entry["Prefix"]
-            dir_name = dir_prefix[len(prefix):].rstrip("/")
+            dir_name = dir_prefix[len(prefix) :].rstrip("/")
             if dir_name.endswith(f"_{run_name}"):
                 matching.append(dir_name)
 
@@ -231,6 +230,8 @@ def summarize_cross_subsidy(cross: pd.DataFrame, metadata: pd.DataFrame) -> pd.D
         how="left",
     )
 
+    available = {src: dst for src, dst in _CROSS_SUBSIDY_WEIGHTED_COLS.items() if src in cross.columns}
+
     rows = []
     for has_hp, group in merged.groupby("postprocess_group.has_hp"):
         weight_sum = group["weight"].sum()
@@ -239,16 +240,14 @@ def summarize_cross_subsidy(cross: pd.DataFrame, metadata: pd.DataFrame) -> pd.D
             "customers_weighted": weight_sum,
             "group": "HP" if has_hp else "Non-HP",
         }
-        for source_col, output_col in _CROSS_SUBSIDY_WEIGHTED_COLS.items():
+        for source_col, output_col in available.items():
             row[output_col] = (group[source_col] * group["weight"]).sum() / weight_sum
         rows.append(row)
 
     return pd.DataFrame(rows)
 
 
-def summarize_cross_subsidy_by_heating_type(
-    cross: pd.DataFrame, metadata: pd.DataFrame
-) -> pd.DataFrame:
+def summarize_cross_subsidy_by_heating_type(cross: pd.DataFrame, metadata: pd.DataFrame) -> pd.DataFrame:
     """Compute weighted cross-subsidy metrics grouped by ``postprocess_group.heating_type``.
 
     Returns one row per heating type with the same weighted-average columns as
@@ -260,6 +259,8 @@ def summarize_cross_subsidy_by_heating_type(
         how="left",
     )
 
+    available = {src: dst for src, dst in _CROSS_SUBSIDY_WEIGHTED_COLS.items() if src in cross.columns}
+
     rows = []
     for heating_type, group in merged.groupby("postprocess_group.heating_type"):
         weight_sum = group["weight"].sum()
@@ -268,7 +269,7 @@ def summarize_cross_subsidy_by_heating_type(
             "customers_weighted": weight_sum,
             "group": str(heating_type),
         }
-        for source_col, output_col in _CROSS_SUBSIDY_WEIGHTED_COLS.items():
+        for source_col, output_col in available.items():
             row[output_col] = (group[source_col] * group["weight"]).sum() / weight_sum
         rows.append(row)
 
@@ -309,9 +310,16 @@ def build_cost_mix(cross_summary: pd.DataFrame) -> pd.DataFrame:
             benchmark=lambda d: d["benchmark_key"].map(residual_labels),
             marginal_usd_per_customer_year=lambda d: d["Economic_burden_weighted_avg"],
             weighted_customers=lambda d: d["customers_weighted"],
-        )
-        [[*extra_ids, "group", "benchmark", "weighted_customers",
-          "marginal_usd_per_customer_year", "residual_usd_per_customer_year"]]
+        )[
+            [
+                *extra_ids,
+                "group",
+                "benchmark",
+                "weighted_customers",
+                "marginal_usd_per_customer_year",
+                "residual_usd_per_customer_year",
+            ]
+        ]
     )
 
     totals = cost_mix.assign(
@@ -319,32 +327,32 @@ def build_cost_mix(cross_summary: pd.DataFrame) -> pd.DataFrame:
         residual_total_usd_per_year=lambda d: d["residual_usd_per_customer_year"] * d["weighted_customers"],
     )
 
-    return (
-        totals.melt(
-            id_vars=[*extra_ids, "group", "benchmark"],
-            value_vars=["marginal_total_usd_per_year", "residual_total_usd_per_year"],
-            var_name="cost_source_key",
-            value_name="usd_total_per_year",
-        )
-        .assign(
-            cost_source=lambda d: d["cost_source_key"].map(
-                {
-                    "marginal_total_usd_per_year": "Marginal (economic burden)",
-                    "residual_total_usd_per_year": "Residual allocation",
-                }
-            ),
-            musd_total_per_year=lambda d: d["usd_total_per_year"] / 1e6,
-        )
-        [[*extra_ids, "group", "benchmark", "cost_source", "musd_total_per_year"]]
-    )
+    return totals.melt(
+        id_vars=[*extra_ids, "group", "benchmark"],
+        value_vars=["marginal_total_usd_per_year", "residual_total_usd_per_year"],
+        var_name="cost_source_key",
+        value_name="usd_total_per_year",
+    ).assign(
+        cost_source=lambda d: d["cost_source_key"].map(
+            {
+                "marginal_total_usd_per_year": "Marginal (economic burden)",
+                "residual_total_usd_per_year": "Residual allocation",
+            }
+        ),
+        musd_total_per_year=lambda d: d["usd_total_per_year"] / 1e6,
+    )[[*extra_ids, "group", "benchmark", "cost_source", "musd_total_per_year"]]
 
 
 def build_hourly_group_loads(raw_load_elec: pd.DataFrame, metadata: pd.DataFrame) -> pd.DataFrame:
     """Aggregate weighted hourly electricity load by HP flag and total."""
-    weighted = raw_load_elec[["electricity_net"]].reset_index().merge(
-        metadata[["bldg_id", "postprocess_group.has_hp", "weight"]],
-        on="bldg_id",
-        how="left",
+    weighted = (
+        raw_load_elec[["electricity_net"]]
+        .reset_index()
+        .merge(
+            metadata[["bldg_id", "postprocess_group.has_hp", "weight"]],
+            on="bldg_id",
+            how="left",
+        )
     )
     weighted["weighted_load_kwh"] = weighted["electricity_net"] * weighted["weight"]
 
@@ -366,10 +374,14 @@ def build_hourly_heating_type_loads(raw_load_elec: pd.DataFrame, metadata: pd.Da
     Returns a long-form DataFrame with columns ``time``, ``heating_type``, and
     ``load_kwh`` — one row per (hour, heating type) combination.
     """
-    weighted = raw_load_elec[["electricity_net"]].reset_index().merge(
-        metadata[["bldg_id", "postprocess_group.heating_type", "weight"]],
-        on="bldg_id",
-        how="left",
+    weighted = (
+        raw_load_elec[["electricity_net"]]
+        .reset_index()
+        .merge(
+            metadata[["bldg_id", "postprocess_group.heating_type", "weight"]],
+            on="bldg_id",
+            how="left",
+        )
     )
     weighted["weighted_load_kwh"] = weighted["electricity_net"] * weighted["weight"]
 
@@ -384,24 +396,22 @@ def build_hourly_heating_type_loads(raw_load_elec: pd.DataFrame, metadata: pd.Da
 
 def build_cross_components(cross_summary: pd.DataFrame) -> pd.DataFrame:
     """Build benchmark component contributions for charting cross-subsidy impacts."""
-    component_labels = {
+    _all_component_labels = {
         "BAT_vol_weighted_avg": "Volumetric benchmark",
         "BAT_peak_weighted_avg": "Peak benchmark",
         "BAT_percustomer_weighted_avg": "Per-customer benchmark",
     }
-    return (
-        cross_summary.melt(
-            id_vars=["group", "customers_weighted"],
-            value_vars=list(component_labels.keys()),
-            var_name="component",
-            value_name="weighted_avg_bat_usd_per_customer_year",
-        )
-        .assign(
-            component_label=lambda d: d["component"].map(component_labels),
-            component_transfer_total_musd_per_year=lambda d: (
-                d["weighted_avg_bat_usd_per_customer_year"] * d["customers_weighted"] / 1e6
-            ),
-        )
+    component_labels = {k: v for k, v in _all_component_labels.items() if k in cross_summary.columns}
+    return cross_summary.melt(
+        id_vars=["group", "customers_weighted"],
+        value_vars=list(component_labels.keys()),
+        var_name="component",
+        value_name="weighted_avg_bat_usd_per_customer_year",
+    ).assign(
+        component_label=lambda d: d["component"].map(component_labels),
+        component_transfer_total_musd_per_year=lambda d: (
+            d["weighted_avg_bat_usd_per_customer_year"] * d["customers_weighted"] / 1e6
+        ),
     )
 
 
@@ -438,15 +448,16 @@ def cairo_tariff_to_urdb(cairo_tariff: dict) -> dict:
 
     The CAIRO internal format stores rates in ``ur_ec_tou_mat`` (a list of
     ``[period, tier, max_usage, units, rate, adj, sell]`` rows) and schedules in
-    ``ur_ec_sched_weekday`` / ``ur_ec_sched_weekend`` (12×24 matrices of
+    ``ur_ec_sched_weekday`` / ``ur_ec_sched_weekend`` (12x24 matrices of
     1-based period indices).
 
     The URDB format stores rates in ``energyratestructure`` (a list-of-lists of
     ``{"rate": ..., "adj": ..., "unit": ...}`` dicts), schedules in
-    ``energyweekdayschedule`` / ``energyweekendschedule`` (12×24, 0-based), and
+    ``energyweekdayschedule`` / ``energyweekendschedule`` (12x24, 0-based), and
     fixed charges in ``fixedchargefirstmeter``.
     """
-    # --- schedules (12×24): CAIRO uses 1-based periods, URDB uses 0-based ---
+
+    # --- schedules (12x24): CAIRO uses 1-based periods, URDB uses 0-based ---
     def _schedule(raw: list[list[int]] | None) -> list[list[int]]:
         if raw is None:
             return [[0] * 24 for _ in range(12)]
@@ -466,8 +477,7 @@ def cairo_tariff_to_urdb(cairo_tariff: dict) -> dict:
         rates_by_period.setdefault(period_0, []).append(entry)
 
     max_period = max(rates_by_period) if rates_by_period else 0
-    rate_structure = [rates_by_period.get(p, [{"rate": 0.0, "adj": 0.0, "unit": "kWh"}])
-                      for p in range(max_period + 1)]
+    rate_structure = [rates_by_period.get(p, [{"rate": 0.0, "adj": 0.0, "unit": "kWh"}]) for p in range(max_period + 1)]
 
     item: dict = {
         "energyweekdayschedule": weekday,
@@ -481,8 +491,18 @@ def cairo_tariff_to_urdb(cairo_tariff: dict) -> dict:
 
 
 _MONTH_ABBR = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
 ]
 
 
@@ -504,7 +524,7 @@ def _format_hour_window(hours: list[int]) -> str:
     if not hours:
         return ""
     hrs = sorted(hours)
-    return f"{hrs[0]:02d}:00–{hrs[-1] + 1:02d}:00"
+    return f"{hrs[0]:02d}:00-{hrs[-1] + 1:02d}:00"
 
 
 def summarize_tariff_for_display(tariff_cfg: dict) -> list[dict]:
@@ -537,9 +557,8 @@ def summarize_tariff_for_display(tariff_cfg: dict) -> list[dict]:
 
         n_periods = len(rate_structure)
 
-        # Extract rate for period p (first tier, rate + adj)
-        def _rate(p: int) -> float:
-            tier = rate_structure[p][0]
+        def _rate(p: int, _rs: list = rate_structure) -> float:
+            tier = _rs[p][0]
             return float(tier.get("rate", 0.0)) + float(tier.get("adj", 0.0))
 
         row: dict = {"tariff_key": tariff_key, "fixed_charge_usd_mo": fixed}
@@ -630,16 +649,12 @@ def build_tariff_components(
     )
 
     tariff_components = group_load.merge(
-        cross_summary[["group", "customers_weighted"]].rename(
-            columns={"customers_weighted": "weighted_customers"}
-        ),
+        cross_summary[["group", "customers_weighted"]].rename(columns={"customers_weighted": "weighted_customers"}),
         on="group",
         how="left",
     )
     tariff_components["annual_fixed_charge_collected_usd"] = (
         fixed_monthly * 12 * tariff_components["weighted_customers"]
     )
-    tariff_components["annual_volumetric_charge_collected_usd"] = (
-        vol_rate * tariff_components["annual_load_kwh"]
-    )
+    tariff_components["annual_volumetric_charge_collected_usd"] = vol_rate * tariff_components["annual_load_kwh"]
     return tariff_components

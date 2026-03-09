@@ -137,6 +137,35 @@ In `index.qmd`, embed it:
 
 Use `:::{.column-page-inset-right}` or `:::{.column-page-inset}` for full-width layout (the standard for all charts).
 
+### Great Tables (GT) in manuscript projects — critical workaround
+
+**Never use `{{< embed >}}` to include Great Tables output in `index.qmd`.** Quarto's manuscript mode truncates `text/html` MIME outputs from Python notebook cells to just `\n\n</div>`. This rogue `</div>` gets injected into `index.html`, prematurely closes a parent container, and cascades — breaking the page structure and pushing all subsequent content into or after the appendix.
+
+The workaround is file-based inclusion:
+
+1. In `analysis.qmd`, save the GT HTML to a cache file and also display it (for notebook preview):
+
+```python
+from pathlib import Path
+Path("../cache").mkdir(exist_ok=True)
+
+_my_gt = GT(df).fmt_currency(...)
+Path("../cache/my_table.html").write_text(_my_gt.as_raw_html())
+_my_gt
+```
+
+2. In `index.qmd`, include the cached HTML via an R code block:
+
+```markdown
+:::{.column-page-inset-right}
+`{r}
+#| echo: false
+htmltools::includeHTML("cache/my_table.html")`
+:::
+```
+
+This applies to **every** GT table that needs to appear in `index.qmd`. Plotnine figures (`fig-` labels) are images and embed safely — the bug only affects `text/html` outputs.
+
 For inline values, always use R inline code. Never hardcode statistics in prose:
 
 ```markdown
@@ -392,6 +421,7 @@ These phrases recur across the corpus and represent Switchbox's analytical vocab
 - Do not hardcode any number in narrative text. All computed values must come from inline R code pulling from the analysis.
 - Do not put analysis code in `index.qmd` (beyond loading `.RData` and sourcing themes).
 - Do not put narrative prose in `analysis.qmd`.
+- Do not use `{{< embed >}}` for Great Tables (GT) output — it will break the page. Use the file-based `htmltools::includeHTML()` workaround (see "Great Tables in manuscript projects" above).
 
 ## Analysis notebook conventions
 
@@ -663,6 +693,7 @@ Group figures by the story they tell, not by chart type. Use markdown headers an
 - Do not put narrative conclusions in the analysis notebook. State what the _code_ is doing and what the _data_ shows; save the policy interpretation for `index.qmd`.
 - Do not hardcode file paths that only work in one environment. Use relative paths or environment variables.
 - Do not skip the report variables section. If `index.qmd` uses computed values, they must be exported from `analysis.qmd`.
+- Do not create a GT table cell intended for embedding in `index.qmd` without using the file-based workaround. Every GT cell whose output appears in `index.qmd` must save its HTML to `cache/` via `as_raw_html()` and be included via `htmltools::includeHTML()` — never via `{{< embed >}}`. See "Great Tables in manuscript projects" in the report architecture section.
 
 ## Shared resources and branding
 

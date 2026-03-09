@@ -87,11 +87,16 @@ class theme_switchbox(theme_minimal):
     def __init__(self, base_size: int = 12):
         _register_fonts()
         super().__init__(base_size=base_size, base_family=_FONT_IBM_PLEX)
-        margin_x: dict[_MarginKey, Any] = {"t": 3, "unit": "pt"}
-        margin_y: dict[_MarginKey, Any] = {"r": 3, "unit": "pt"}
+        margin_title: dict[_MarginKey, Any] = {"b": 10, "unit": "pt"}
+        margin_x: dict[_MarginKey, Any] = {"t": 8, "unit": "pt"}
+        margin_y: dict[_MarginKey, Any] = {"r": 8, "unit": "pt"}
         self += theme(
             panel_background=element_rect(fill="white", color="white"),
-            plot_title=element_text(family=_FONT_GT_PLANAR, fontweight="bold"),
+            plot_title=element_text(
+                family=_FONT_GT_PLANAR,
+                fontweight="bold",
+                margin=margin_title,
+            ),
             plot_subtitle=element_text(family=_FONT_FARNHAM),
             legend_title=element_text(family=_FONT_FARNHAM, ha="center"),
             strip_text=element_text(family=_FONT_FARNHAM),

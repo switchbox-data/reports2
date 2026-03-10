@@ -27,13 +27,13 @@ release = "res_2024_amy2018_2"
 data_path = S3Path("s3://data.sb/nrel/resstock/")
 random_seed = 67
 upgrade_id = 2
-start_year = 2028
 
-embedded_cost_total_dollars = 124_000_000
+force_recrunch = True
+DEBUG_MODE = False
 
-
-force_recrunch = False
-DEBUG_MODE = True
+# for lining up with prior RIE data
+normalize_secondary_to_rie = True
+use_rie_primary_to_secondary_adjustment_factor = True
 
 if DEBUG_MODE:
     sample_n = 20 # NOTE: DEBUG MODE: sample only 5 homes
@@ -45,12 +45,76 @@ else:
     step_size = 0.01
     num_steps = 10
 
+
+
 # Additional HP adoption: 0 = current stock only; sweep from 0 to 10% in 1% steps
 additional_adoption_pct_values = [round(x * step_size, 2) for x in range(num_steps + 1)]  # 0.00, 0.01, ..., 0.10
 
 # Total embedded transmission + primary distribution costs (dollars)
 
 # If True, ignore any cached aggregate_curves parquet files and recompute from scratch
+```
+
+### READ DATA FROM GOOGLE SHEET
+
+```{python}
+import os
+import gspread
+from dotenv import load_dotenv
+
+# Load variables from .env
+load_dotenv()
+
+# Reconstruct the credential dictionary
+app_creds = {
+    "installed": {
+        "client_id": os.getenv("G_CLIENT_ID"),
+        "client_secret": os.getenv("G_CLIENT_SECRET"),
+        "project_id": os.getenv("G_PROJECT_ID"),
+        "auth_uri": os.getenv("G_AUTH_URI"),
+        "token_uri": os.getenv("G_TOKEN_URI"),
+        "redirect_uris": ["http://localhost"],
+    }
+}
+
+# This will trigger the browser login for the user
+gc, authorized_user = gspread.oauth_from_dict(credentials=app_creds)
+```
+
+```{python}
+spreadsheet_url = "https://docs.google.com/spreadsheets/d/1JtoKPimoyP88TIZGIKP9vYuPfaY5-Ds14GF9lTWmIt8/edit?gid=0#gid=0"
+sh = gc.open_by_url(spreadsheet_url)
+
+
+def worksheet_to_polars_df(ws):
+    # Get all rows, drop fully empty rows, and use the first remaining row as header
+    values = ws.get_all_values()
+    values = [row for row in values if any(cell.strip() for cell in row)]
+    if not values:
+        return pl.DataFrame()
+
+    header, *data_rows = values
+    n_cols = len(header)
+
+    # Ensure each data row has the same number of columns as the header
+    cleaned_rows = [
+        (row[:n_cols] + [""] * (n_cols - len(row))) if len(row) < n_cols else row[:n_cols]
+        for row in data_rows
+    ]
+
+    return pl.DataFrame(cleaned_rows, schema=header)
+
+
+allocators_ws = sh.worksheet("allocators")
+revenue_requirement_ws = sh.worksheet("revenue_requirement")
+
+allocators_df = worksheet_to_polars_df(allocators_ws)
+revenue_requirement_df = worksheet_to_polars_df(revenue_requirement_ws)
+
+print("Allocators sheet:")
+print(allocators_df)
+print("\nRevenue requirement sheet:")
+print(revenue_requirement_df)
 ```
 
 ### HELPER FUNCTIONS
@@ -85,7 +149,6 @@ def read_mixed_upgrade_scenario(
     state: str,
     random_seed: int | None = None,
     sample_n: int | None = None,
-    start_year: int | None = None,
 ):
     """Run mixed-upgrade scenario and return metadata and weighted load curves."""
     mus = MixedUpgradeScenario(
@@ -236,7 +299,6 @@ for additional_adoption_pct in additional_adoption_pct_values:
             release,
             state,
             random_seed=random_seed,
-            start_year=start_year,
             sample_n=sample_n,
         )
 
@@ -609,4 +671,99 @@ df_ncp_with_per_home = df_ncp.with_columns(
     )
     + theme_minimal()
 ).draw()
+```
+
+# Debugging: Plot total electric load over time for aggregate curve with additional_hp_pct = 0https://accounts.google.com/SignOutOptions?hl=en&continue=https://drive.google.com/file/d/1qrhdnzkRx503QVnHciothIABWZbMhIJt/view&service=writely&ec=GBRAGQ
+```{python}
+# Read from the cache: aggregate curve with additional_hp_pct = 0
+import polars as pl
+import matplotlib.pyplot as plt
+
+additional_adoption_pct = 0.0
+
+aggregate_curves_cache_dir = Path("cache") / "embedded_curves"
+cache_path = aggregate_curves_cache_dir / f"aggregate_curves_{additional_adoption_pct:.2f}.parquet"
+
+agg_curve_0 = pl.read_parquet(cache_path)
+
+# Group by timestamp and sum electricity_kwh
+total_load_by_time = (
+    agg_curve_0.group_by("timestamp")
+    .agg(pl.col("electricity_kwh").sum().alias("total_kw"))
+    .sort("timestamp")
+)
+
+# Plot the total load over time
+plt.figure(figsize=(12, 5))
+plt.plot(
+    total_load_by_time["timestamp"].to_pandas(),
+    total_load_by_time["total_kw"].to_pandas()
+)
+plt.title("Total load over time (additional_hp_pct = 0)")
+plt.xlabel("Timestamp")
+plt.ylabel("Total kWh")
+plt.tight_layout()
+plt.grid(True)
+plt.show()
+```
+
+```{python}
+from buildstock_fetch.read import BuildStockRead
+
+# Load hourly curves for upgrade 0 for state=RI
+bsr = BuildStockRead(data_path=data_path, release=release, states=state)
+df = bsr.read_load_curve_hourly(upgrades=[0])
+
+if "weight" not in df.collect_schema().names():
+    df = df.with_columns(pl.lit(252.301639).alias("weight"))
+
+# Group by timestamp and sum the relevant columns
+hourly_sum = (
+    df
+    .group_by("timestamp")
+    .agg([
+        pl.col("weight") * pl.col("out.electricity.net.energy_consumption").sum(),
+        pl.col("weight") * pl.col("out.electricity.total.energy_consumption").sum()
+    ])
+    .collect()
+)
+```
+
+```{python}
+from plotnine import ggplot, aes, geom_line, labs, theme, element_text, scale_color_manual
+
+# Prepare data for plotnine (long format)
+# Melt Polars DataFrame to long format, map names, and keep all in Polars
+plot_df = hourly_sum.rename({
+    "out.electricity.net.energy_consumption": "Net Electricity Consumption",
+    "out.electricity.total.energy_consumption": "Total Electricity Consumption"
+}).melt(
+    id_vars=["timestamp"],
+    variable_name="Consumption Type",
+    value_name="Electricity Consumption (kWh)"
+)
+
+# Plot using ggplot (plotnine)
+(
+    ggplot(plot_df, aes(x="timestamp", y="Electricity Consumption (kWh)", color="Consumption Type"))
+    + geom_line()
+    + labs(
+        title="Net and Total Electricity Consumption Over Time (Upgrade 0, RI)",
+        x="Timestamp",
+        y="Electricity Consumption (kWh)",
+        color=""
+    )
+    + theme(
+        figure_size=(14, 5),
+        axis_text_x=element_text(rotation=30, ha='right')
+    )
+    + scale_color_manual(
+        values=["#1f77b4", "#ff7f0e"]
+    )
+).draw()
+
+```
+
+```{python}
+print(df.limit(20).collect())
 ```

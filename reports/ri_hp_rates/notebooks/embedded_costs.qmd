@@ -32,7 +32,7 @@ normalize_secondary_to_rie = True
 
 force_recrunch = True
 
-DEBUG_MODE = True
+DEBUG_MODE = False
 
 if DEBUG_MODE:
     sample_n = 20
@@ -252,6 +252,65 @@ def read_mixed_upgrade_scenario(
     return mus, sbmeta, ldf
 ```
 
+### FORMATTING UTILITIES
+
+```{python}
+def pretty_print(df: pl.DataFrame) -> None:
+    """Format and print a polars DataFrame with readable number formatting.
+
+    - Columns ending in _pct: shown as "12.34%" (2 decimal places)
+    - Columns ending in _usd: shown as "$1,234.56"
+    - Other numeric columns: shown with commas, 2 decimal places
+    """
+    fmt = df.clone()
+    for name in fmt.columns:
+        if not fmt[name].dtype.is_numeric():
+            continue
+        if name.endswith("_pct"):
+            fmt = fmt.with_columns(
+                pl.col(name).map_elements(
+                    lambda v: f"{v:.2f}%" if v is not None else "",
+                    return_dtype=pl.String,
+                ).alias(name)
+            )
+        elif name.endswith("_usd"):
+            fmt = fmt.with_columns(
+                pl.col(name).map_elements(
+                    lambda v: f"${v:,.2f}" if v is not None else "",
+                    return_dtype=pl.String,
+                ).alias(name)
+            )
+        else:
+            fmt = fmt.with_columns(
+                pl.col(name).map_elements(
+                    lambda v: f"{v:,.2f}" if v is not None else "",
+                    return_dtype=pl.String,
+                ).alias(name)
+            )
+    with pl.Config(tbl_cols=100):
+        print(fmt)
+
+
+def label_pct(values):
+    """Plot axis label formatter: 12.3%"""
+    return [f"{v:.1f}%" for v in values]
+
+
+def label_dollar(values):
+    """Plot axis label formatter: $1,234"""
+    return [f"${v:,.0f}" for v in values]
+
+
+def label_comma(values):
+    """Plot axis label formatter: 1,234"""
+    return [f"{v:,.0f}" for v in values]
+
+
+def label_dollar_precise(values):
+    """Plot axis label formatter for small $/unit values: $0.0123"""
+    return [f"${v:,.4f}" for v in values]
+```
+
 ### LOAD BASELINE METADATA
 
 ```{python}
@@ -395,21 +454,21 @@ for additional_adoption_pct in additional_adoption_pct_values:
     for r in ncp_by_subclass.iter_rows(named=True):
         rows_ncp.append(
             {
-                "additional_adoption_pct": additional_adoption_pct,
+                "additional_adoption_pct": additional_adoption_pct * 100,
                 "postprocess_group.heating_type": r["postprocess_group.heating_type"],
                 "secondary_ncp_raw": r["secondary_ncp_raw"],
                 "num_homes": r["num_homes"],
                 "subclass_pct_of_class_share": r["subclass_pct_of_class_share"],
                 "annual_kwh": r["annual_kwh"],
-                "total_hp_adoption_pct": total_hp_adoption_pct,
+                "total_hp_adoption_pct": total_hp_adoption_pct * 100,
             }
         )
     rows_system.append(
         {
-            "additional_adoption_pct": additional_adoption_pct,
+            "additional_adoption_pct": additional_adoption_pct * 100,
             "total_residential_secondary_ncp_raw": total_residential_secondary_ncp_raw,
             "total_annual_kwh": total_annual_kwh,
-            "total_hp_adoption_pct": total_hp_adoption_pct,
+            "total_hp_adoption_pct": total_hp_adoption_pct * 100,
         }
     )
 
@@ -492,13 +551,13 @@ for level in LEVELS:
     total_dollars = revenue_requirement_totals[level]
     df_system = df_system.with_columns(
         (pl.col(f"{level}_residential_class_share_pct") / 100.0 * total_dollars).alias(
-            f"{level}_residential_dollars"
+            f"{level}_residential_usd"
         ),
     )
 
 df_system = df_system.with_columns(
-    pl.sum_horizontal(pl.col(f"{level}_residential_dollars") for level in LEVELS).alias(
-        "total_residential_dollars"
+    pl.sum_horizontal(pl.col(f"{level}_residential_usd") for level in LEVELS).alias(
+        "total_residential_usd"
     ),
 )
 ```
@@ -512,8 +571,8 @@ and flow the dollar allocations through to each subclass.
 ```{python}
 join_cols = (
     ["additional_adoption_pct"]
-    + [f"{level}_residential_dollars" for level in LEVELS]
-    + ["total_residential_dollars"]
+    + [f"{level}_residential_usd" for level in LEVELS]
+    + ["total_residential_usd"]
 )
 df_ncp = df_ncp.join(
     df_system.select(join_cols),
@@ -525,27 +584,27 @@ for level in LEVELS:
     df_ncp = df_ncp.with_columns(
         (
             pl.col("subclass_pct_of_class_share") / 100.0
-            * pl.col(f"{level}_residential_dollars")
-        ).alias(f"subclass_{level}_dollars"),
+            * pl.col(f"{level}_residential_usd")
+        ).alias(f"subclass_{level}_usd"),
     )
 
 df_ncp = df_ncp.with_columns(
     (
         pl.col("subclass_pct_of_class_share") / 100.0
-        * pl.col("total_residential_dollars")
-    ).alias("subclass_total_dollars"),
+        * pl.col("total_residential_usd")
+    ).alias("subclass_total_usd"),
     (
         pl.col("subclass_pct_of_class_share")
         / 100.0
-        * pl.col("total_residential_dollars")
+        * pl.col("total_residential_usd")
         / pl.col("annual_kwh")
-    ).alias("subclass_per_kwh_charge"),
+    ).alias("subclass_per_kwh_usd"),
     (
         pl.col("subclass_pct_of_class_share")
         / 100.0
-        * pl.col("total_residential_dollars")
+        * pl.col("total_residential_usd")
         / pl.col("num_homes")
-    ).alias("subclass_per_home_charge"),
+    ).alias("subclass_per_home_usd"),
 )
 ```
 
@@ -564,8 +623,8 @@ def make_level_summary(row: dict) -> pl.DataFrame:
                 "level": level,
                 "residential_ncp_kw": row[f"total_residential_{level}_ncp_adjusted"],
                 "class_share_pct": row[f"{level}_residential_class_share_pct"],
-                "revenue_req_total": revenue_requirement_totals[level],
-                "residential_dollars": row[f"{level}_residential_dollars"],
+                "revenue_req_total_usd": revenue_requirement_totals[level],
+                "residential_usd": row[f"{level}_residential_usd"],
             }
         )
     df = pl.DataFrame(rows)
@@ -576,8 +635,8 @@ def make_level_summary(row: dict) -> pl.DataFrame:
                 "level": "TOTAL",
                 "residential_ncp_kw": None,
                 "class_share_pct": None,
-                "revenue_req_total": total_rev_req,
-                "residential_dollars": row["total_residential_dollars"],
+                "revenue_req_total_usd": total_rev_req,
+                "residential_usd": row["total_residential_usd"],
             }
         ]
     )
@@ -588,10 +647,10 @@ for sys_row in df_system.iter_rows(named=True):
     pct = sys_row["additional_adoption_pct"]
     hp_pct = sys_row["total_hp_adoption_pct"]
     print(f"\n{'='*70}")
-    print(f"Additional HP adoption: {pct:.0%}  (Total HP: {hp_pct:.1%})")
+    print(f"Additional HP adoption: {pct:.0f}%  (Total HP: {hp_pct:.1f}%)")
     print(f"{'='*70}")
     summary = make_level_summary(sys_row)
-    print(summary)
+    pretty_print(summary)
 ```
 
 ```{python}
@@ -600,18 +659,18 @@ at_zero = df_ncp.filter(pl.col("additional_adoption_pct") == 0.0).sort(
     "secondary_ncp_raw", descending=True
 )
 print("Subclass breakdown at 0% additional HP adoption:")
-print(at_zero)
+pretty_print(at_zero)
 ```
 
 ```{python}
 print("System-level data across all adoption scenarios:")
-print(df_system)
+pretty_print(df_system)
 ```
 
 ```{python}
 hp_only = df_ncp.filter(pl.col("postprocess_group.heating_type") == "heat_pump")
 print("Heat pump subclass across all adoption scenarios:")
-print(hp_only.to_pandas().transpose())
+pretty_print(hp_only)
 ```
 
 ### PLOTS
@@ -625,18 +684,32 @@ from plotnine import (
     geom_area,
     labs,
     theme_minimal,
+    scale_x_continuous,
+    scale_y_continuous,
 )
 ```
 
-**Residential secondary NCP (raw and adjusted) vs additional HP adoption**
+### NCP plots
+
+The first set of plots shows how **non-coincident peak (NCP)** — the maximum hourly
+load for the residential class — changes as heat pump adoption increases. NCP is the
+key demand allocator in the cost-of-service study: a higher residential NCP means a
+larger share of infrastructure costs assigned to residential customers.
+
+#### Raw vs adjusted secondary NCP
+
+The raw secondary NCP comes directly from the ResStock simulation. The adjusted value
+normalizes it to RIE's filed secondary NCP at baseline, so that subsequent cost
+allocations are anchored to the utility's actual data rather than the simulation's
+absolute scale.
 
 ```{python}
 df_system_ncp_long = df_system.select(
     "total_hp_adoption_pct",
     pl.col("total_residential_secondary_ncp_raw").alias("Raw (simulated)"),
     pl.col("total_residential_secondary_ncp_adjusted").alias("Adjusted (normalized to RIE)"),
-).melt(
-    id_vars="total_hp_adoption_pct",
+).unpivot(
+    index="total_hp_adoption_pct",
     variable_name="series",
     value_name="ncp_kw",
 )
@@ -648,9 +721,11 @@ df_system_ncp_long = df_system.select(
     )
     + geom_line(size=1)
     + geom_point(size=2)
+    + scale_x_continuous(labels=label_pct)
+    + scale_y_continuous(labels=label_comma)
     + labs(
         title="Total residential secondary NCP vs HP adoption",
-        x="Total HP adoption (fraction of homes)",
+        x="Total HP adoption",
         y="Secondary NCP (kW)",
         color="",
     )
@@ -658,7 +733,12 @@ df_system_ncp_long = df_system.select(
 ).draw()
 ```
 
-**Adjusted NCP at all 4 infrastructure levels vs HP adoption**
+#### Adjusted NCP at all four infrastructure levels
+
+Each infrastructure level (secondary, substation, primary, subtransmission) has a
+different NCP, derived by scaling the adjusted secondary NCP by the ratio of RIE's
+filed NCP at that level to its secondary NCP. Higher-level infrastructure serves a
+broader set of loads, so NCPs generally decrease moving up.
 
 ```{python}
 level_ncp_cols = {
@@ -668,8 +748,8 @@ level_ncp_cols = {
 df_level_ncp_long = df_system.select(
     "total_hp_adoption_pct",
     *[pl.col(col).alias(label) for col, label in level_ncp_cols.items()],
-).melt(
-    id_vars="total_hp_adoption_pct",
+).unpivot(
+    index="total_hp_adoption_pct",
     variable_name="level",
     value_name="ncp_kw",
 )
@@ -681,9 +761,11 @@ df_level_ncp_long = df_system.select(
     )
     + geom_line(size=1)
     + geom_point(size=2)
+    + scale_x_continuous(labels=label_pct)
+    + scale_y_continuous(labels=label_comma)
     + labs(
         title="Residential NCP at each infrastructure level vs HP adoption",
-        x="Total HP adoption (fraction of homes)",
+        x="Total HP adoption",
         y="Adjusted NCP (kW)",
         color="Level",
     )
@@ -691,7 +773,11 @@ df_level_ncp_long = df_system.select(
 ).draw()
 ```
 
-**Residential class share at each level vs HP adoption**
+#### Residential class share at each infrastructure level
+
+The residential class share is the fraction of total system NCP at each level
+attributable to residential customers. As heat pump adoption grows, residential
+winter peaks rise, increasing the residential share of demand at every level.
 
 ```{python}
 share_cols = {
@@ -701,8 +787,8 @@ share_cols = {
 df_share_long = df_system.select(
     "total_hp_adoption_pct",
     *[pl.col(col).alias(label) for col, label in share_cols.items()],
-).melt(
-    id_vars="total_hp_adoption_pct",
+).unpivot(
+    index="total_hp_adoption_pct",
     variable_name="level",
     value_name="class_share_pct",
 )
@@ -714,22 +800,35 @@ df_share_long = df_system.select(
     )
     + geom_line(size=1)
     + geom_point(size=2)
+    + scale_x_continuous(labels=label_pct)
+    + scale_y_continuous(labels=label_pct)
     + labs(
         title="Residential class share at each infrastructure level vs HP adoption",
-        x="Total HP adoption (fraction of homes)",
-        y="Residential class share (%)",
+        x="Total HP adoption",
+        y="Residential class share",
         color="Level",
     )
     + theme_minimal()
 ).draw()
 ```
 
-**Secondary NCP by subclass (stacked area) vs HP adoption**
+### Subclass NCP plots
+
+These plots decompose the residential class NCP into **subclasses** defined by heating
+type (heat pump vs non-heat-pump). This decomposition drives the subclass cost
+allocation — the mechanism through which cross-subsidization between heating types
+is measured.
+
+#### Secondary NCP by subclass (stacked area)
+
+Each band shows a heating-type subclass's contribution to total residential secondary
+NCP. As HP adoption grows, the heat pump band expands — reflecting higher winter peak
+demand from electrified heating.
 
 ```{python}
 (
     ggplot(
-        df_ncp.to_pandas(),
+        df_ncp,
         aes(
             x="total_hp_adoption_pct",
             y="secondary_ncp_adjusted",
@@ -737,9 +836,11 @@ df_share_long = df_system.select(
         ),
     )
     + geom_area(position="stack")
+    + scale_x_continuous(labels=label_pct)
+    + scale_y_continuous(labels=label_comma)
     + labs(
         title="Secondary NCP by subclass vs HP adoption",
-        x="Total HP adoption (fraction of homes)",
+        x="Total HP adoption",
         y="Secondary NCP (kW)",
         fill="Subclass",
     )
@@ -747,31 +848,42 @@ df_share_long = df_system.select(
 ).draw()
 ```
 
-**Heat pump share of residential NCP (%) vs HP adoption**
+#### Heat pump share of residential NCP
+
+The heat pump subclass's share of total residential NCP. This percentage determines
+what fraction of embedded costs are allocated to heat pump customers. Even modest
+increases in adoption can substantially shift the NCP share because heat pumps
+concentrate demand in winter peak hours.
 
 ```{python}
 (
     ggplot(
-        hp_only.to_pandas(),
+        hp_only,
         aes(x="total_hp_adoption_pct", y="subclass_pct_of_class_share"),
     )
     + geom_line(size=1)
     + geom_point(size=2)
+    + scale_x_continuous(labels=label_pct)
+    + scale_y_continuous(labels=label_pct)
     + labs(
         title="Heat pump share of residential NCP vs HP adoption",
-        x="Total HP adoption (fraction of homes)",
-        y="HP share of residential NCP (%)",
+        x="Total HP adoption",
+        y="HP share of residential NCP",
     )
     + theme_minimal()
 ).draw()
 ```
 
-**All subclasses: share of residential NCP vs HP adoption**
+#### All subclasses: share of residential NCP
+
+The complement of the previous plot — showing how every subclass's share evolves
+simultaneously. Non-HP shares decline as HP adoption rises, since heat pumps drive
+disproportionate peak growth.
 
 ```{python}
 (
     ggplot(
-        df_ncp.to_pandas(),
+        df_ncp,
         aes(
             x="total_hp_adoption_pct",
             y="subclass_pct_of_class_share",
@@ -780,10 +892,12 @@ df_share_long = df_system.select(
     )
     + geom_line(size=1)
     + geom_point(size=2)
+    + scale_x_continuous(labels=label_pct)
+    + scale_y_continuous(labels=label_pct)
     + labs(
         title="Subclass share of residential NCP vs HP adoption",
-        x="Total HP adoption (fraction of homes)",
-        y="Share of residential NCP (%)",
+        x="Total HP adoption",
+        y="Share of residential NCP",
         color="Subclass",
     )
     + theme_minimal()
@@ -792,187 +906,121 @@ df_share_long = df_system.select(
 
 ### Embedded-cost allocation plots
 
-**Total residential embedded costs vs HP adoption (stacked by subclass)**
+These plots translate the NCP shares above into **dollar amounts** — the actual
+embedded costs each subclass is responsible for. The total embedded-cost pool is
+set by the revenue requirement at each infrastructure level; the subclass split
+divides the residential portion according to each subclass's NCP share.
+
+#### Total residential embedded costs (stacked by subclass)
+
+Shows how the total residential embedded-cost dollars are split between subclasses
+at each adoption level. The total grows with adoption because the residential class
+share of system NCP increases.
 
 ```{python}
 (
     ggplot(
-        df_ncp.to_pandas(),
+        df_ncp,
         aes(
             x="total_hp_adoption_pct",
-            y="subclass_total_dollars",
+            y="subclass_total_usd",
             fill="postprocess_group.heating_type",
         ),
     )
     + geom_area(position="stack")
+    + scale_x_continuous(labels=label_pct)
+    + scale_y_continuous(labels=label_dollar)
     + labs(
         title="Total residential embedded costs vs HP adoption",
-        x="Total HP adoption (fraction of homes)",
-        y="Embedded costs (dollars)",
+        x="Total HP adoption",
+        y="Embedded costs",
         fill="Subclass",
     )
     + theme_minimal()
 ).draw()
 ```
 
-**Embedded-cost per kWh vs HP adoption (by subclass)**
+#### Embedded cost per kWh by subclass
+
+The per-kWh embedded cost rate for each subclass — derived by dividing the subclass's
+total dollar allocation by its annual energy consumption. This is the rate a
+cost-reflective tariff would charge for demand-related infrastructure recovery.
 
 ```{python}
 (
     ggplot(
-        df_ncp.to_pandas(),
+        df_ncp,
         aes(
             x="total_hp_adoption_pct",
-            y="subclass_per_kwh_charge",
+            y="subclass_per_kwh_usd",
             color="postprocess_group.heating_type",
         ),
     )
     + geom_line(size=1)
     + geom_point(size=2)
+    + scale_x_continuous(labels=label_pct)
+    + scale_y_continuous(labels=label_dollar_precise)
     + labs(
         title="Embedded cost per kWh vs HP adoption",
-        x="Total HP adoption (fraction of homes)",
-        y="Embedded cost per kWh (dollars)",
+        x="Total HP adoption",
+        y="Embedded cost per kWh",
         color="Subclass",
     )
     + theme_minimal()
 ).draw()
 ```
 
-**Embedded-cost per home vs HP adoption (by subclass)**
+#### Embedded cost per home by subclass
+
+The per-home annual embedded cost for each subclass — derived by dividing the
+subclass's total dollar allocation by its number of homes. This metric captures
+the average infrastructure cost burden per household in each heating-type group.
 
 ```{python}
 (
     ggplot(
-        df_ncp.to_pandas(),
+        df_ncp,
         aes(
             x="total_hp_adoption_pct",
-            y="subclass_per_home_charge",
+            y="subclass_per_home_usd",
             color="postprocess_group.heating_type",
         ),
     )
     + geom_line(size=1)
     + geom_point(size=2)
+    + scale_x_continuous(labels=label_pct)
+    + scale_y_continuous(labels=label_dollar)
     + labs(
         title="Embedded cost per home vs HP adoption",
-        x="Total HP adoption (fraction of homes)",
-        y="Embedded cost per home (dollars)",
+        x="Total HP adoption",
+        y="Embedded cost per home",
         color="Subclass",
     )
     + theme_minimal()
 ).draw()
 ```
 
-**Total residential dollars vs HP adoption**
+#### Total residential dollars across all levels
+
+The aggregate residential embedded-cost allocation (summed across all four
+infrastructure levels). This rises with HP adoption as the residential class claims
+a growing share of the system's demand-related revenue requirement.
 
 ```{python}
 (
     ggplot(
-        df_system.to_pandas(),
-        aes(x="total_hp_adoption_pct", y="total_residential_dollars"),
+        df_system,
+        aes(x="total_hp_adoption_pct", y="total_residential_usd"),
     )
     + geom_line(size=1)
     + geom_point(size=2)
+    + scale_x_continuous(labels=label_pct)
+    + scale_y_continuous(labels=label_dollar)
     + labs(
         title="Total residential embedded cost dollars vs HP adoption",
-        x="Total HP adoption (fraction of homes)",
+        x="Total HP adoption",
         y="Total residential dollars",
     )
     + theme_minimal()
 ).draw()
-```
-
-# Debugging: Plot total electric load over time for aggregate curve with additional_hp_pct = 0https://accounts.google.com/SignOutOptions?hl=en&continue=https://drive.google.com/file/d/1qrhdnzkRx503QVnHciothIABWZbMhIJt/view&service=writely&ec=GBRAGQ
-```{python}
-# Read from the cache: aggregate curve with additional_hp_pct = 0
-import polars as pl
-import matplotlib.pyplot as plt
-
-additional_adoption_pct = 0.0
-
-aggregate_curves_cache_dir = Path("cache") / "embedded_curves"
-cache_path = aggregate_curves_cache_dir / f"aggregate_curves_{additional_adoption_pct:.2f}.parquet"
-
-agg_curve_0 = pl.read_parquet(cache_path)
-
-# Group by timestamp and sum electricity_kwh
-total_load_by_time = (
-    agg_curve_0.group_by("timestamp")
-    .agg(pl.col("electricity_kwh").sum().alias("total_kw"))
-    .sort("timestamp")
-)
-
-# Plot the total load over time
-plt.figure(figsize=(12, 5))
-plt.plot(
-    total_load_by_time["timestamp"].to_pandas(),
-    total_load_by_time["total_kw"].to_pandas()
-)
-plt.title("Total load over time (additional_hp_pct = 0)")
-plt.xlabel("Timestamp")
-plt.ylabel("Total kWh")
-plt.tight_layout()
-plt.grid(True)
-plt.show()
-```
-
-```{python}
-from buildstock_fetch.read import BuildStockRead
-
-# Load hourly curves for upgrade 0 for state=RI
-bsr = BuildStockRead(data_path=data_path, release=release, states=state)
-df = bsr.read_load_curve_hourly(upgrades=[0])
-
-if "weight" not in df.collect_schema().names():
-    df = df.with_columns(pl.lit(252.301639).alias("weight"))
-
-# Group by timestamp and sum the relevant columns
-hourly_sum = (
-    df
-    .group_by("timestamp")
-    .agg([
-        pl.col("weight") * pl.col("out.electricity.net.energy_consumption").sum(),
-        pl.col("weight") * pl.col("out.electricity.total.energy_consumption").sum()
-    ])
-    .collect()
-)
-```
-
-```{python}
-from plotnine import ggplot, aes, geom_line, labs, theme, element_text, scale_color_manual
-
-# Prepare data for plotnine (long format)
-# Melt Polars DataFrame to long format, map names, and keep all in Polars
-plot_df = hourly_sum.rename({
-    "out.electricity.net.energy_consumption": "Net Electricity Consumption",
-    "out.electricity.total.energy_consumption": "Total Electricity Consumption"
-}).melt(
-    id_vars=["timestamp"],
-    variable_name="Consumption Type",
-    value_name="Electricity Consumption (kWh)"
-)
-
-# Plot using ggplot (plotnine)
-(
-    ggplot(plot_df, aes(x="timestamp", y="Electricity Consumption (kWh)", color="Consumption Type"))
-    + geom_line()
-    + labs(
-        title="Net and Total Electricity Consumption Over Time (Upgrade 0, RI)",
-        x="Timestamp",
-        y="Electricity Consumption (kWh)",
-        color=""
-    )
-    + theme(
-        figure_size=(14, 5),
-        axis_text_x=element_text(rotation=30, ha='right')
-    )
-    + scale_color_manual(
-        values=["#1f77b4", "#ff7f0e"]
-    )
-).draw()
-
-```
-
-```{python}
-print(df.limit(20).collect())
 ```

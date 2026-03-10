@@ -29,12 +29,34 @@ google-scholar: false
 #    href: docs/switchbox_report.pdf
 ---
 
+```{python}
+#| echo: false
+
+import pickle
+from pathlib import Path
+from types import SimpleNamespace
+
+v = SimpleNamespace(**pickle.loads(Path("cache/report_variables.pkl").read_bytes()))
+
+
+def dollar(x, accuracy=0):
+    return f"${x:,.{accuracy}f}"
+
+
+def pct(x, accuracy=0):
+    return f"{x * 100:,.{accuracy}f}%"
+
+
+def comma(x, accuracy=0):
+    return f"{x:,.{accuracy}f}"
+```
+
 # Introduction
 
 # Executive Summary
 
 # Background
-
+<!--
 ## Rate 101 - supply vs. delivery rates
 
 ## The fairness problem
@@ -52,68 +74,168 @@ google-scholar: false
   so, because they're not cost-reflective.
 - The problem occurs on both the supply and delivery sides of the bill.
 - Wholesale electricity prices are volatile, reflecting that the underlying cost of generating electricity changes based
-
   on the demand level and the availability of different types of generators.
 - However, supply rates are flat, so customers have no incentive shift their load to take advantage of lower prices, and
   reduce the need for costly and polluting peaker generators.
 - Similarly, the need for new grid capacity is largely driven by demand during peak periods.
 - But delivery rates are also flat, so customers have no incentive to load shift away from these periods, and thus
-  right-size the infrastructure needed to serve them.
+  right-size the infrastructure needed to serve them. -->
 
 # Findings
 
 ## What happens to heating bills when households change the heat pumps?
 
-- When households who heat with natural gas switch to heat pumps, their bills mostly go up.
+In New York State, when a household that heats with natural gas switches to an air-source heat pump,[^heatpump_efficiency] its annual energy use plummets (@fig-consumption-only-state):
 
-:::{.column-body}
-{{< embed notebooks/analysis.qmd#fig-bill-components-simple-state >}}
+:::{.column-body-outset-right}
+{{< embed notebooks/analysis.qmd#fig-consumption-only-state >}}
 :::
 
-- But there's a range
+[^heatpump_efficiency]:
+    TODO add model specs here.
+
+Heat pumps are 2 to 3 times more efficient than furnaces, so they only require a fraction as much energy input to heat a home to the same temperature.
+
+However, while switching to heat pumps cuts energy _use_, it often increases energy _costs_ (@fig-consumption-vs-bills-state).
+
+:::{.column-body-outset-right}
+{{< embed notebooks/analysis.qmd#fig-consumption-vs-bills-state >}}
+:::
+
+This is because electricity is more expensive than natural gas in New York State: while it makes up only `{python} pct(v.elec_share_of_energy_use)` of the median gas-heated household's annual energy use, it accounts for `{python} pct(v.elec_share_of_energy_bill)` of its annual energy bill.
+
+After the home replaces its gas furnace with a heat pump, its annual [gas bill]{style="color: #a0af12; font-weight: bold"} drops by `{python} dollar(v.median_gas_drop)`.[^using_gas_for_cooking_and_hot_water] But its annual [electric bill]{style="color: #e6b400; font-weight: bold"} jumps by `{python} dollar(v.median_elec_jump)`.
+
+The result: despite the heat pump's lower energy use, switching a home's heating fuel from natural gas to electricity causes the median annual energy bills to jump by `{python} dollar(v.median_net_increase)`.
+
+[^using_gas_for_cooking_and_hot_water]:
+    The home in this example still uses some gas for cooking and hot water, which is why the gas bill doesn't drop to zero after the switch.
+
+This is the experience of the _median_ gas-heated household today. But New York State's building stock is diverse, so the full range of bill impacts varies widely (@fig-quadrant-bar-natgas-state).
 
 :::{.column-page-inset-right}
 {{< embed notebooks/analysis.qmd#fig-quadrant-bar-natgas-state >}}
 :::
 
-- The range depends on xyz factors, see the appendix.
+While most natural gas-heated households that switch to heat pumps do see their bills go up, approximately `{python} pct(v.pct_natgas_save_default)` actually enjoy lower bills after the switch.
 
-- But only X% of NY households are heated with natural gas, the rest are heated with electricity (mostly resistance) or
-  delivered fuels
+---
+
+:::{.callout-note}
+The chart above assumes that no LMI households receive the LMI discounts they're eligible for, either before or after switching to heat pumps. The charts below show bill impacts under two LMI discount scenarios.
+:::
+
+The chart below shows what the bill impact would look like under current LMI enrollment rates—40% of eligible LMI customers across the state start out receiving electric and gas discounts before switching, and retain these discounts after switching to heat pumps.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-quadrant-bar-natgas-state-state-lmi-current >}}
+:::
+
+Adding LMI discounts changes our original bill impact chart only slightly: households saving more $1,000 per year would grow by 3 percentage points, and households losing more than $1,000 per year would grow by 4 percentage points.
+
+LMI electrification programs present an opportunity to enroll low-income households in LMI discounts, however.
+
+So the following chart shows what happens to the bills of natural gas households after switching to heat pumps—if all eligible LMI customers are enrolled in LMI discounts when heat pumps are installed, assuming around 40% of these customers are already receiving these discounts (in line with the current enrollment rate).
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-quadrant-bar-natgas-state-state-lmi-full >}}
+:::
+
+Enrolling eligible LMI customers when they install heat pumps would incrementally improve outcomes, but it would not be transformative: the number of households who save would grow by 6 percentage points, and the number of households who lose more than $1,000 per year would shrink by 5 percentage points.
+
+---
+
+Only `{python} pct(v.pct_natgas_households)` of NY households are heated with natural gas, however. The rest are heated with delivered fuels or electric resistance—both of which have more potential for bill savings than natural gas (@fig-households-by-fuel).
 
 :::{.column-page-inset-right}
 {{< embed notebooks/analysis.qmd#fig-households-by-fuel >}}
 :::
 
-- When households who heat with delivered fuels switch to heat pumps, their bills tend to go down.
+Indeed, when households who heat with delivered fuels switch to heat pumps, their bills tend to go down (@fig-quadrant-bar-oil-propane-state).
 
 :::{.column-page-inset-right}
 {{< embed notebooks/analysis.qmd#fig-quadrant-bar-oil-propane-state >}}
 :::
 
-- Is this due to commodity prices?
+Today, over `{python} pct(v.pct_oil_propane_save_default)` of oil and propane households lower their bills after switching, and `{python} pct(v.pct_oil_propane_save_1k_default)` save more than $1,000 per year.
 
-- No, it's primarily due to the distortionary effect of volumetric delivery rates, as we'll see in the next section.
+The story is similar for electric resistance-heated households (@fig-quadrant-bar-elec-resistance-state).
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-quadrant-bar-elec-resistance-state >}}
+:::
+
+For households that heat with electric resistance, `{python} pct(v.pct_elec_resistance_save_default)` would see bill decreases after switching to heat pumps, and `{python} pct(v.pct_elec_resistance_save_1k_default)` would save more than $1,000 per year.
+
+---
+
+So why do heat pumps struggle to compete against natural gas in New York State?
+
+Low natural gas prices are a factor, but it's not the only one. As we'll see in the next section, the main culprit is (artificially) high electricity prices: outdated volumetric rates are causing heat pump customers to pay more than their fair share for the poles and wires that deliver electricity to their homes.
 
 ## HP customers are cross-subsidizing non-HP customers
 
-- When a household switches to a heat pump, their electricity consumption goes up \~2x in the winter.
+### Why electric bills go up when heat pumps are installed
+When a household switches to a heat pump, its annual electricity consumption goes up ~`{python} f"{v.elec_kwh_multiplier:.1f}"`×, and its annual electric bill goes up by approximately the same amount (@fig-consumption-elec-focus-state).
 
-- This means that they pay for 2x for supply, which makes sense: they are consuming twice as much electricity, after
-  all.
+:::{.column-body-outset-right}
+{{< embed notebooks/analysis.qmd#fig-consumption-elec-focus-state >}}
+:::
 
-- But it also means they pay 2x for delivery, because most delivery costs are recovered through volumetric charges, not
-  fixed charges.
+To understand how this happens, we need to drill down into the bill's components (@fig-bill-components-decomposed-state).
 
 :::{.column-body}
 {{< embed notebooks/analysis.qmd#fig-bill-components-decomposed-state >}}
 :::
 
-(- One of the principles of ratemaking is that customers pay for the (delivery) costs they impose on the system.
-Systematically charging HP customers 2x more than other customers implies that these customers cost twice as much to
-serve as other customers. But is this true? Likely not:)
+The home pays `{python} f"{v.supply_multiplier:.1f}"`× as much for [supply]{style="color: #E69F00; font-weight: bold"}, which makes sense: the home is consuming `{python} f"{v.elec_kwh_multiplier:.1f}"`× as much electricity after installing the heat pump.
 
-- This would make sense if this additional load was triggering the need for grid upgrades.
+But the home also pays `{python} f"{v.delivery_multiplier:.1f}"`× as much as before for the same poles and wires that bring that electricity to their home.
+
+This is because delivery costs are largely recovered through [volumetric charges]{style="color: #56B4E9; font-weight: bold"}, rather than [fixed charges]{style="color: #023047; font-weight: bold"}. The result: when a customer consumes more electricity, not only do they pay more for that electricity, but they also pay more for the grid itself.
+
+Is this fair?
+
+
+### Heat pump customers are overpaying for delivery
+To be fair, a customer's **bill** should match the **costs** the customer imposes on the system.
+
+When a customer doubles their electricity use after installing a heat pump, they double their **energy costs**—power plants have to burn more fuel to generate that electricity, and so on. So it is fair that their [supply bill]{style="color: #E69F00; font-weight: bold"} also doubles.
+
+But they do not double their **network costs**, so they [delivery bill]{style="color: #56B4E9; font-weight: bold"} should not double either (@fig-cross-subsidy-example).
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-cross-subsidy-example >}}
+:::
+
+
+We find that today, households with heat pumps are systematically paying more than their cost-of-service for delivery statewide.
+
+Their average cost-of-service is $X per year, compared to $Y per year for non-heat pump customers, but they pay an average of $Z.
+
+
+
+- This violates Bonbright's principle of fairness: customers pay for the costs they impose on the system.
+
+- And, we'll see, it also is the primary reason that heat pumps cost more to operate than natural gas.
+
+- How this varies by NYC utility
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-cross-subsidy-by-utility >}}
+:::
+
+
+### Overpayments = cross-subsidy
+
+- This creates a cross-subsidy to non-HP customers of $X per year, on average.
+
+### Grid can handle the additional load
+This would make sense if this additional load was triggering the need for grid upgrades.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-consumption-before-after-state >}}
+:::
 
 - But it's not, because there's plenty of spare capacity in the grid during the winter:
 
@@ -135,7 +257,7 @@ electrification.
 While the picture varies by utility, the distribution grid as a whole appears to have even more winter headroom than the
 bulk power grid:
 
-::: {.column-body}
+::: {.column-page-inset-right}
 | Utility           | Distribution winter peak (MW) | Total estimated winter headroom (MW) | Available winter capacity |
 | ----------------- | ----------------------------- | ------------------------------------ | ------------------------- |
 | National Grid     | 4,276                         | 4,477                                | 51%                       |
@@ -181,23 +303,6 @@ Simply put: at present, New York's grid has significant spare winter capacity to
 
 - For full details on how we calculate the cost of service for delivery, see the appendix.
 
-### Findings
-
-- We find that at present, HP customers are systematically paying more than their cost-of-service for delivery: their average cost-of-service is $X per year, compared to $Y per year for non-HP customers, but they pay an average of $Z.
-
-
-- This creates a cross-subsidy to non-HP customers of $X per year, on average.
-
-- This violates Bonbright's principle of fairness: customers pay for the costs they impose on the system.
-
-- And, we'll see, it also is the primary reason that heat pumps cost more to operate than natural gas.
-
-- How this varies by NYC utility
-
-:::{.column-page-inset-right}
-{{< embed notebooks/analysis.qmd#fig-cross-subsidy-by-utility >}}
-:::
-
 ## Proposal: fair rate for heat pump customers
 
 - We propose a new rate for heat pump customers that would fix this fairness problem.
@@ -207,9 +312,10 @@ Simply put: at present, New York's grid has significant spare winter capacity to
 - This seasonal rate would need to reflect the cost of service in each utility territory.
 
 :::{.column-page-inset-right}
-```{r}
+```{python}
 #| echo: false
-htmltools::includeHTML("cache/rate_table.html")
+#| output: asis
+print(Path("cache/rate_table.html").read_text())
 ```
 :::
 
@@ -238,7 +344,11 @@ htmltools::includeHTML("cache/rate_table.html")
 :::
 
 :::{.column-page-inset-right}
-{{< embed notebooks/analysis.qmd#bat-comparison-table >}}
+```{python}
+#| echo: false
+#| output: asis
+print(Path("cache/bat_comparison_table.html").read_text())
+```
 :::
 
 - So we know these rates would fix the fairness problem by making delivery rates more cost-reflective.
@@ -250,6 +360,23 @@ htmltools::includeHTML("cache/rate_table.html")
 :::{.column-page-inset-right}
 {{< embed notebooks/analysis.qmd#fig-quadrant-bar-natgas-switch-hprate-state >}}
 :::
+
+:::{.callout-note}
+The chart above assumes that no LMI households receive the LMI discounts they're eligible for, either before or after switching to heat pumps. The charts below show bill impacts under two LMI discount scenarios.
+:::
+
+The chart below shows the bill impact with current LMI enrollment rates (~40%).
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-quadrant-bar-natgas-switch-hprate-state-lmi-current >}}
+:::
+
+LMI electrification programs present an opportunity to enroll low-income households in LMI discounts, however. So the following chart shows what happens to post-heat pump bills if all eligible LMI customers are enrolled in LMI discounts when heat pumps are installed, assuming around 40% of these customers are already receiving these discounts (in line with the current enrollment rate).
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-quadrant-bar-natgas-switch-hprate-state-lmi-full >}}
+:::
+
 
 :::{.column-page-inset-right}
 {{< embed notebooks/analysis.qmd#fig-quadrant-bar-oil-propane-switch-hprate-state >}}
@@ -266,6 +393,33 @@ htmltools::includeHTML("cache/rate_table.html")
 
 - All those heat pump customers are currently overpaying, and these overpayments are lowering the bill of non-HP
   customers.
+
+## Equity impact of heat pump rate on HP customers
+
+- Before heat pumps, `{python} pct(v.pct_burdened_current)` of natural gas-heated households making less than $50,000 a year in New York pay more than 6% of their annual income on energy bills.
+- After installing heat pumps under default rates, `{python} pct(v.pct_burdened_hp_default)` of these households pay more than 6% of their annual income.
+- After installing heat pumps under heat pump-only seasonal rates, `{python} pct(v.pct_burdened_hp_seasonal)` of these households pay more than 6% of their annual income.
+
+Here is what the burdens would look like if no LMI households received discounts, before and after switching to heat pumps.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-burden-bar >}}
+:::
+
+In reality, an estimated 40% of LMI households receive LMI discounts. The following chart show what burdens currently look like after those discounts are applied, and what burdens would look like after switching to heat pumps—under default and fair rates—if the same households stayed on those discounts.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-burden-bar-lmi-current >}}
+:::
+
+LMI electrification if an opportunity for enrolling low-income households in LMI discounts, however. So the following chart shows the what post-electrification burdens would look like—under default and fair rates—if all LMI households were enrolled in LMI discounts when heat pump pumps are installed.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-burden-bar-lmi-full >}}
+:::
+
+<!--
+## Bill impact of heat pump rate on non-HP customers
 
 - It's like there's an invisible credit on their bills.
 
@@ -288,7 +442,6 @@ htmltools::includeHTML("cache/rate_table.html")
 
 - CHART: winter peak as a function of heat pump adoption, or a series of yearly
 
-## Bill impact of heat pump rate on non-HP customers
 
 - As we saw earlier, non-HP customers are currently being subsidized by heat pump customers, because heat pump customers
   are paying more than their cost-of-service for delivery. In other words, rates for all customers are currently too
@@ -498,11 +651,11 @@ htmltools::includeHTML("cache/rate_table.html")
 
 - OPEN QUESTION: how do we translate the effect on peak growth into a dollar benefit? (For instance, if we can reduce
   the need for capacity investments by 10%, how much money can we save, and how much of that comes from energy vs.
-  generation capacity vs. transmission capacity vs. distribution capacity?)
+  generation capacity vs. transmission capacity vs. distribution capacity?) -->
 
 # Appendix
 
-## What causes people to save (or lose) when they switch to heat pumps
+## What causes people to save (or lose) when they switch to heat pumps {#sec-savings}
 
 ## Marginal cost heat maps for each zone-utility combination
 

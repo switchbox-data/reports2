@@ -17,17 +17,41 @@ broken down by gas tariff transition, to verify that the gas calc fix
 ## Setup
 
 ```{python}
+from __future__ import annotations
+
 import io
+import math
 from pathlib import Path
+from typing import cast
 
 import polars as pl
 from lib.rdp import fetch_rdp_file
+from lib.plotnine import SB_COLORS, theme_switchbox
+from plotnine import (
+    aes,
+    annotate,
+    coord_cartesian,
+    element_text,
+    facet_wrap,
+    geom_col,
+    geom_text,
+    geom_vline,
+    ggplot,
+    guides,
+    labs,
+    scale_color_identity,
+    scale_fill_manual,
+    scale_x_continuous,
+    scale_y_continuous,
+    theme,
+)
 ```
 
 ## Parameters
 
 ```{python}
 BATCH = "ny_20260307_r1-8_gascalcfix"
+STATE = "NY"
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
 
 PATH_MASTER_BILLS_12 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_1+2/comb_bills_year_target/"
@@ -39,7 +63,22 @@ TARIFF_MAP_DIR = "rate_design/hp_rates/ny/config/tariff_maps/gas"
 
 PATH_RDP_ROOT = Path("~/repos/rate-design-platform").expanduser()
 PATH_LOAD_CURVES = PATH_RDP_ROOT / "data/nrel/resstock/res_2024_amy2018_2/load_curve_monthly/state=NY"
+PATH_METADATA_SB = "s3://data.sb/nrel/resstock/res_2024_amy2018_2_sb/metadata_utility/state=NY/utility_assignment.parquet"
 GAS_COL = "out.natural_gas.total.energy_consumption"
+
+BLDG_ID = "bldg_id"
+ANNUAL_MONTH = "Annual"
+COOLING_COL = "in.hvac_cooling_partial_space_conditioning"
+COOLING_GROUPS = ["Full cooling", "Partial cooling", "No cooling"]
+UTIL_NAMES = {
+    "cenhud": "Central Hudson",
+    "coned": "Con Edison",
+    "nimo": "National Grid",
+    "nyseg": "NYSEG",
+    "or": "O&R",
+    "psegli": "PSEG-LI",
+    "rge": "RG&E",
+}
 ```
 
 ## Load data
@@ -289,7 +328,7 @@ label_df["label_y"] = -0.5 - label_df.index * 2.0
     + scale_y_reverse()
     + coord_cartesian(xlim=(0, -100), ylim=(15, -75))
     + theme_minimal()
-    + theme(figure_size=(14, 16))
+    + theme(figure_size=(10, 10))
 )
 ```
 
@@ -358,7 +397,7 @@ n_utils = bldg_scatter["sb.electric_utility"].nunique()
     + scale_x_reverse()
     + scale_y_reverse()
     + theme_minimal()
-    + theme(figure_size=(11.2, min(25, 5 * n_utils)), legend_position="none")
+    + theme(figure_size=(10, min(18, 3.5 * n_utils)), legend_position="none")
 )
 ```
 
@@ -469,7 +508,7 @@ annot_pd = medians_by_util.with_columns(
     )
     + theme_minimal()
     + theme(
-        figure_size=(12, 14),
+        figure_size=(10, 10),
         strip_text=element_text(size=10, fontweight="bold"),
     )
 )
@@ -519,8 +558,385 @@ med_labels = med_bills.with_columns(
     )
     + theme_minimal()
     + theme(
-        figure_size=(12, 14),
+        figure_size=(10, 10),
         strip_text=element_text(size=10, fontweight="bold"),
     )
+)
+```
+
+## Bill change by cooling type — natgas-heated households
+
+How does the annual bill change distribution for natural gas-heated households
+differ by baseline cooling coverage? Homes with no cooling gain air conditioning
+from the heat pump (gain of function), which increases their post-HP electricity
+consumption and offsets some of the gas savings.
+
+```{python}
+#| label: load-metadata-and-deltas
+
+metadata_sb = pl.read_parquet(PATH_METADATA_SB)
+
+delta_state = (
+    bills_u0.filter(pl.col("month") == ANNUAL_MONTH)
+    .select(BLDG_ID, "weight", pl.col("energy_total_bill").alias("bill_before"), "heats_with_natgas")
+    .join(
+        bills_u2.filter(pl.col("month") == ANNUAL_MONTH)
+        .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after")),
+        on=BLDG_ID,
+    )
+    .with_columns((pl.col("bill_after") - pl.col("bill_before")).alias("delta"))
+)
+```
+
+```{python}
+#| label: histogram-helpers
+
+BIN_WIDTH = 100
+QUADRANT_COLORS = {
+    "savings > $1k": "#1b5e20",
+    "savings $0-1k": "#81c784",
+    "losses $0-1k": "#ef9a9a",
+    "losses > $1k": "#b71c1c",
+}
+QUADRANT_ORDER = list(QUADRANT_COLORS.keys())
+
+
+def _weighted_percentile(df: pl.DataFrame, col: str, w_col: str, q: float) -> float:
+    """Weighted percentile via cumulative weight."""
+    s = df.sort(col)
+    cum = s[w_col].cum_sum() / s[w_col].sum()
+    return float(s.filter(cum >= q)[col][0])
+
+
+def quadrant_pcts(df: pl.DataFrame) -> dict[str, float]:
+    """Weighted percentage of homes in each bill-change quadrant."""
+    total = df["weight"].sum()
+    return {
+        "savings > $1k": df.filter(pl.col("delta") < -1000)["weight"].sum() / total * 100,
+        "savings $0-1k": df.filter((pl.col("delta") >= -1000) & (pl.col("delta") < 0))["weight"].sum() / total * 100,
+        "losses $0-1k": df.filter((pl.col("delta") >= 0) & (pl.col("delta") < 1000))["weight"].sum() / total * 100,
+        "losses > $1k": df.filter(pl.col("delta") >= 1000)["weight"].sum() / total * 100,
+    }
+
+
+def plot_bill_change_histogram_faceted(
+    df: pl.DataFrame,
+    facet_col: str,
+    facet_order: list[str],
+    bin_width: int = BIN_WIDTH,
+) -> ggplot:
+    """Weighted histogram of annual bill change, faceted by a categorical column."""
+    snap = max(bin_width, 50)
+    x_lo = math.floor(_weighted_percentile(df, "delta", "weight", 0.01) / snap) * snap
+    x_hi = math.ceil(_weighted_percentile(df, "delta", "weight", 0.99) / snap) * snap
+
+    facet_dtype = pl.Enum(facet_order)
+    quadrant_dtype = pl.Enum(QUADRANT_ORDER)
+
+    binned = (
+        df.with_columns(
+            ((pl.col("delta") / bin_width).floor() * bin_width + bin_width / 2).alias("bin_center"),
+        )
+        .with_columns(
+            pl.when(pl.col("bin_center") <= -1000)
+            .then(pl.lit("savings > $1k"))
+            .when((pl.col("bin_center") > -1000) & (pl.col("bin_center") < 0))
+            .then(pl.lit("savings $0-1k"))
+            .when((pl.col("bin_center") >= 0) & (pl.col("bin_center") < 1000))
+            .then(pl.lit("losses $0-1k"))
+            .otherwise(pl.lit("losses > $1k"))
+            .alias("quadrant"),
+        )
+        .group_by("bin_center", "quadrant", facet_col)
+        .agg(pl.col("weight").sum().alias("weight_sum"))
+        .with_columns(
+            pl.col("quadrant").cast(quadrant_dtype),
+            pl.col(facet_col).cast(facet_dtype),
+        )
+    )
+
+    annot_rows: list[dict] = []
+    quadrant_bounds = [(x_lo, -1000), (-1000, 0), (0, 1000), (1000, x_hi)]
+    label_xs = [(max(lo, x_lo) + min(hi, x_hi)) / 2 for lo, hi in quadrant_bounds]
+
+    for fv in facet_order:
+        facet_df = df.filter(pl.col(facet_col) == fv)
+        if facet_df.is_empty():
+            continue
+        pct = quadrant_pcts(facet_df)
+        facet_binned = binned.filter(pl.col(facet_col) == fv)
+        max_w = float(facet_binned["weight_sum"].max()) if not facet_binned.is_empty() else 0.0
+        y_val = max_w * 1.08
+        for label, x_pos in zip(QUADRANT_ORDER, label_xs):
+            if pct[label] < 0.5:
+                continue
+            annot_rows.append({
+                facet_col: fv,
+                "x": x_pos,
+                "y": y_val,
+                "label_text": f"{label}\n{pct[label]:.0f}%",
+                "color_hex": QUADRANT_COLORS[label],
+            })
+
+    annot_df = pl.DataFrame(annot_rows).with_columns(
+        pl.col(facet_col).cast(facet_dtype),
+    )
+
+    p = (
+        ggplot(binned, aes(x="bin_center", y="weight_sum", fill="quadrant"))
+        + geom_col(width=bin_width * 0.9)
+        + geom_vline(xintercept=[-1000, 0, 1000], linetype="dotted", color="gray")
+        + scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
+        + coord_cartesian(xlim=(x_lo, x_hi))
+        + facet_wrap(facet_col, ncol=1, scales="free_y")
+        + labs(x="Annual Bill Change ($)", y="# of Homes")
+        + guides(fill=False)
+        + theme_switchbox()
+        + theme(
+            figure_size=(10, 8),
+            strip_text=element_text(size=11, weight="bold"),
+        )
+    )
+
+    if not annot_df.is_empty():
+        p = (
+            p
+            + geom_text(
+                annot_df,
+                aes(x="x", y="y", label="label_text", color="color_hex"),
+                inherit_aes=False,
+                ha="center", size=9,
+            )
+            + scale_color_identity()
+        )
+
+    return p
+```
+
+```{python}
+#| label: fig-bill-change-natgas-by-cooling
+#| fig-cap: "Annual bill change distribution for natural gas-heated households by baseline cooling coverage (Statewide)"
+
+cooling_lookup = metadata_sb.select(BLDG_ID, COOLING_COL)
+
+natgas_by_cooling = (
+    delta_state
+    .filter(pl.col("heats_with_natgas"))
+    .join(cooling_lookup, on=BLDG_ID, how="left")
+    .with_columns(
+        pl.when(pl.col(COOLING_COL) == "100% Conditioned").then(pl.lit("Full cooling"))
+        .when(pl.col(COOLING_COL) == "None").then(pl.lit("No cooling"))
+        .otherwise(pl.lit("Partial cooling"))
+        .alias("cooling_group")
+    )
+    .select("delta", "weight", "cooling_group")
+)
+
+plot_bill_change_histogram_faceted(natgas_by_cooling, "cooling_group", COOLING_GROUPS)
+```
+
+## Electricity consumption percent change by cooling type and utility
+
+How much does a gas-heated home's electricity use change after switching to a
+heat pump? The answer depends heavily on whether the home already had cooling.
+Homes with no cooling gain air conditioning from the heat pump (gain of
+function), inflating their summer electricity use on top of the heating
+electrification. The histograms below show the percent change in annual
+electricity consumption for gas-heated homes, grouped by baseline cooling
+coverage and faceted by electric utility.
+
+```{python}
+#| label: compute-elec-pct-change
+
+_cache_path = Path("../cache/annual_elec_kwh.parquet")
+
+if _cache_path.exists():
+    _annual_elec = pl.read_parquet(_cache_path)
+else:
+    _elec_col = "out.electricity.total.energy_consumption"
+    _load_base = PATH_LOAD_CURVES
+
+    _before = (
+        pl.scan_parquet(str(_load_base / "upgrade=00" / "*.parquet"))
+        .select("bldg_id", _elec_col)
+        .group_by("bldg_id")
+        .agg(pl.col(_elec_col).sum().alias("elec_kwh_before"))
+        .collect()
+    )
+    _after = (
+        pl.scan_parquet(str(_load_base / "upgrade=02" / "*.parquet"))
+        .select("bldg_id", _elec_col)
+        .group_by("bldg_id")
+        .agg(pl.col(_elec_col).sum().alias("elec_kwh_after"))
+        .collect()
+    )
+    _annual_elec = _before.join(_after, on="bldg_id", how="inner")
+    Path("../cache").mkdir(exist_ok=True)
+    _annual_elec.write_parquet(_cache_path)
+
+elec_pct_change = (
+    _annual_elec
+    .join(
+        metadata_sb.select(BLDG_ID, "heats_with_natgas", "sb.electric_utility", COOLING_COL, "weight"),
+        on=BLDG_ID,
+        how="inner",
+    )
+    .filter(pl.col("heats_with_natgas"))
+    .filter(pl.col("elec_kwh_before").abs() > 10)
+    .with_columns(
+        ((pl.col("elec_kwh_after") - pl.col("elec_kwh_before")) / pl.col("elec_kwh_before") * 100)
+        .alias("pct_change"),
+        pl.when(pl.col(COOLING_COL) == "100% Conditioned").then(pl.lit("Full cooling"))
+        .when(pl.col(COOLING_COL) == "None").then(pl.lit("No cooling"))
+        .otherwise(pl.lit("Partial cooling"))
+        .alias("cooling_group"),
+        pl.col("sb.electric_utility").replace_strict(UTIL_NAMES).alias("utility_label"),
+    )
+)
+
+for cg in COOLING_GROUPS:
+    _sub = elec_pct_change.filter(pl.col("cooling_group") == cg)
+    _med = _weighted_percentile(_sub, "pct_change", "weight", 0.50)
+    print(f"{cg}: n={len(_sub)}, weighted median pct change = {_med:.0f}%")
+```
+
+```{python}
+#| label: fig-elec-pct-change-full-cooling
+#| fig-cap: "Percent change in annual electricity consumption after switching to a heat pump — gas-heated homes with full baseline cooling, by utility"
+
+_ELEC_BIN = 10
+
+def _plot_elec_pct_change(df: pl.DataFrame, title: str) -> ggplot:
+    snap = max(_ELEC_BIN, 10)
+    _lo = math.floor(_weighted_percentile(df, "pct_change", "weight", 0.01) / snap) * snap
+    _hi = math.ceil(_weighted_percentile(df, "pct_change", "weight", 0.99) / snap) * snap
+
+    binned = (
+        df.with_columns(
+            ((pl.col("pct_change") / _ELEC_BIN).floor() * _ELEC_BIN + _ELEC_BIN / 2)
+            .alias("bin_center"),
+        )
+        .group_by("utility_label", "bin_center")
+        .agg(pl.col("weight").sum().alias("weight_sum"))
+        .with_columns(
+            pl.when(pl.col("bin_center") >= 0)
+            .then(pl.lit("increase"))
+            .otherwise(pl.lit("decrease"))
+            .alias("direction"),
+        )
+    )
+
+    return (
+        ggplot(binned, aes(x="bin_center", y="weight_sum", fill="direction"))
+        + geom_col(width=_ELEC_BIN * 0.9)
+        + geom_vline(xintercept=0, linetype="dotted", color="gray")
+        + facet_wrap("utility_label", scales="free_y", ncol=4)
+        + scale_fill_manual(values={"increase": SB_COLORS["carrot"], "decrease": SB_COLORS["sky"]})
+        + scale_x_continuous(labels=lambda xs: [f"{x:,.0f}%" for x in xs])
+        + scale_y_continuous(expand=(0, 0, 0.1, 0))
+        + coord_cartesian(xlim=(_lo, _hi))
+        + labs(x="Percent change in annual electricity consumption", y="Weighted households", title=title)
+        + theme_switchbox()
+        + theme(figure_size=(10, 5), legend_position="none")
+    )
+
+_plot_elec_pct_change(
+    elec_pct_change.filter(pl.col("cooling_group") == "Full cooling"),
+    "Full cooling — electricity change after switching to heat pump",
+)
+```
+
+```{python}
+#| label: fig-elec-pct-change-partial-cooling
+#| fig-cap: "Percent change in annual electricity consumption after switching to a heat pump — gas-heated homes with partial baseline cooling, by utility"
+
+_plot_elec_pct_change(
+    elec_pct_change.filter(pl.col("cooling_group") == "Partial cooling"),
+    "Partial cooling — electricity change after switching to heat pump",
+)
+```
+
+```{python}
+#| label: fig-elec-pct-change-no-cooling
+#| fig-cap: "Percent change in annual electricity consumption after switching to a heat pump — gas-heated homes with no baseline cooling, by utility"
+
+_plot_elec_pct_change(
+    elec_pct_change.filter(pl.col("cooling_group") == "No cooling"),
+    "No cooling — electricity change after switching to heat pump",
+)
+```
+
+## Delivery bill percent change by cooling type and utility
+
+The delivery bill (volumetric delivery + fixed charge) is the component most
+directly affected by the cross-subsidy problem. How much does it increase after
+switching to a heat pump? Homes with no baseline cooling see the largest
+delivery bill increases because they gain air conditioning on top of heating
+electrification.
+
+```{python}
+#| label: compute-delivery-pct-change
+
+delivery_pct_change = (
+    bills_u0
+    .select(
+        BLDG_ID,
+        (pl.col("elec_delivery_bill") + pl.col("elec_fixed_charge")).alias("delivery_before"),
+        "heats_with_natgas", "sb.electric_utility", "weight",
+    )
+    .join(
+        bills_u2.select(
+            BLDG_ID,
+            (pl.col("elec_delivery_bill") + pl.col("elec_fixed_charge")).alias("delivery_after"),
+        ),
+        on=BLDG_ID,
+    )
+    .filter(pl.col("heats_with_natgas"))
+    .filter(pl.col("delivery_before").abs() > 1)
+    .join(metadata_sb.select(BLDG_ID, COOLING_COL), on=BLDG_ID, how="left")
+    .with_columns(
+        ((pl.col("delivery_after") - pl.col("delivery_before")) / pl.col("delivery_before") * 100)
+        .alias("pct_change"),
+        pl.when(pl.col(COOLING_COL) == "100% Conditioned").then(pl.lit("Full cooling"))
+        .when(pl.col(COOLING_COL) == "None").then(pl.lit("No cooling"))
+        .otherwise(pl.lit("Partial cooling"))
+        .alias("cooling_group"),
+        pl.col("sb.electric_utility").replace_strict(UTIL_NAMES).alias("utility_label"),
+    )
+)
+
+for cg in COOLING_GROUPS:
+    _sub = delivery_pct_change.filter(pl.col("cooling_group") == cg)
+    _med = _weighted_percentile(_sub, "pct_change", "weight", 0.50)
+    print(f"{cg}: n={len(_sub)}, weighted median delivery bill pct change = {_med:.0f}%")
+```
+
+```{python}
+#| label: fig-delivery-pct-change-full-cooling
+#| fig-cap: "Percent change in annual delivery bill after switching to a heat pump — gas-heated homes with full baseline cooling, by utility"
+
+_plot_elec_pct_change(
+    delivery_pct_change.filter(pl.col("cooling_group") == "Full cooling"),
+    "Full cooling — delivery bill change after switching to heat pump",
+)
+```
+
+```{python}
+#| label: fig-delivery-pct-change-partial-cooling
+#| fig-cap: "Percent change in annual delivery bill after switching to a heat pump — gas-heated homes with partial baseline cooling, by utility"
+
+_plot_elec_pct_change(
+    delivery_pct_change.filter(pl.col("cooling_group") == "Partial cooling"),
+    "Partial cooling — delivery bill change after switching to heat pump",
+)
+```
+
+```{python}
+#| label: fig-delivery-pct-change-no-cooling
+#| fig-cap: "Percent change in annual delivery bill after switching to a heat pump — gas-heated homes with no baseline cooling, by utility"
+
+_plot_elec_pct_change(
+    delivery_pct_change.filter(pl.col("cooling_group") == "No cooling"),
+    "No cooling — delivery bill change after switching to heat pump",
 )
 ```

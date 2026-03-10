@@ -81,6 +81,123 @@ UTIL_NAMES = {
 }
 ```
 
+## Median bill, cost-of-service, and bill alignment by customer group
+
+A high-level sanity check: for each customer group in the baseline scenario
+(run 1+2), what is the weighted median annual bill, cost-of-service
+(marginal cost + residual), and bill alignment (BAT)?
+
+Cost-of-service = `economic_burden` + `residual_share` from the BAT table.
+BAT = bill − cost-of-service. A positive BAT means the customer overpays
+relative to their cost of service; a negative BAT means they underpay.
+
+```{python}
+PATH_BAT_12 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_1+2/cross_subsidization_BAT_values/"
+
+bat = pl.read_parquet(PATH_BAT_12, hive_partitioning=True).with_columns(
+    (pl.col("economic_burden_delivery") + pl.col("residual_share_delivery")).alias("cos_delivery"),
+    (pl.col("economic_burden_total") + pl.col("residual_share_total")).alias("cos_total"),
+)
+print(f"BAT table: {bat.height} rows")
+```
+
+```{python}
+def _weighted_median(df: pl.DataFrame, col: str, w_col: str = "weight") -> float:
+    s = df.sort(col)
+    cum = s[w_col].cum_sum() / s[w_col].sum()
+    return float(s.filter(cum >= 0.5)[col][0])
+
+
+GROUPS = {
+    "HP customers": bat.filter(pl.col("postprocess_group.has_hp")),
+    "Non-HP customers": bat.filter(~pl.col("postprocess_group.has_hp")),
+    "Fossil fuel customers": bat.filter(
+        pl.col("heats_with_natgas") | pl.col("heats_with_oil") | pl.col("heats_with_propane")
+    ),
+    "Natural gas customers": bat.filter(pl.col("heats_with_natgas")),
+    "Oil/propane customers": bat.filter(pl.col("heats_with_oil") | pl.col("heats_with_propane")),
+    "Electric resistance customers": bat.filter(pl.col("postprocess_group.heating_type") == "electrical_resistance"),
+}
+
+summary_rows = []
+for name, g in GROUPS.items():
+    def _wmean(col: str) -> float:
+        return (g[col] * g["weight"]).sum() / g["weight"].sum()
+
+    summary_rows.append({
+        "Group": name,
+        "N (weighted)": round(g["weight"].sum()),
+        "Med. Bill (delivery)": round(_weighted_median(g, "annual_bill_delivery")),
+        "Med. CoS (delivery)": round(_weighted_median(g, "cos_delivery")),
+        "Med. BAT (delivery)": round(_weighted_median(g, "BAT_percustomer_delivery")),
+        "Mean BAT (delivery)": round(_wmean("BAT_percustomer_delivery")),
+        "Med. Bill (total)": round(_weighted_median(g, "annual_bill_total")),
+        "Med. CoS (total)": round(_weighted_median(g, "cos_total")),
+        "Med. BAT (total)": round(_weighted_median(g, "BAT_percustomer_total")),
+        "Mean BAT (total)": round(_wmean("BAT_percustomer_total")),
+    })
+
+summary = pl.DataFrame(summary_rows)
+summary
+```
+
+HP customers overpay (positive BAT) because current volumetric delivery rates
+charge them more than their marginal cost of service. Non-HP and natural gas
+customers underpay (negative BAT) — they are cross-subsidized under current
+rates.
+
+### Same table under HP seasonal rate (run 5+6)
+
+Same groups and columns, but now under the HP seasonal rate scenario where HP
+customers get cost-reflective delivery rates and non-HP customers stay on the
+default flat rate.
+
+```{python}
+PATH_BAT_56 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_5+6/cross_subsidization_BAT_values/"
+
+bat_56 = pl.read_parquet(PATH_BAT_56, hive_partitioning=True).with_columns(
+    (pl.col("economic_burden_delivery") + pl.col("residual_share_delivery")).alias("cos_delivery"),
+    (pl.col("economic_burden_total") + pl.col("residual_share_total")).alias("cos_total"),
+)
+print(f"BAT table (run 5+6): {bat_56.height} rows")
+```
+
+```{python}
+GROUPS_56 = {
+    "HP customers": bat_56.filter(pl.col("postprocess_group.has_hp")),
+    "Non-HP customers": bat_56.filter(~pl.col("postprocess_group.has_hp")),
+    "Fossil fuel customers": bat_56.filter(
+        pl.col("heats_with_natgas") | pl.col("heats_with_oil") | pl.col("heats_with_propane")
+    ),
+    "Natural gas customers": bat_56.filter(pl.col("heats_with_natgas")),
+    "Oil/propane customers": bat_56.filter(pl.col("heats_with_oil") | pl.col("heats_with_propane")),
+    "Electric resistance customers": bat_56.filter(
+        pl.col("postprocess_group.heating_type") == "electrical_resistance"
+    ),
+}
+
+summary_rows_56 = []
+for name, g in GROUPS_56.items():
+    def _wmean(col: str) -> float:
+        return (g[col] * g["weight"]).sum() / g["weight"].sum()
+
+    summary_rows_56.append({
+        "Group": name,
+        "N (weighted)": round(g["weight"].sum()),
+        "Med. Bill (delivery)": round(_weighted_median(g, "annual_bill_delivery")),
+        "Med. CoS (delivery)": round(_weighted_median(g, "cos_delivery")),
+        "Med. BAT (delivery)": round(_weighted_median(g, "BAT_percustomer_delivery")),
+        "Mean BAT (delivery)": round(_wmean("BAT_percustomer_delivery")),
+        "Med. Bill (total)": round(_weighted_median(g, "annual_bill_total")),
+        "Med. CoS (total)": round(_weighted_median(g, "cos_total")),
+        "Med. BAT (total)": round(_weighted_median(g, "BAT_percustomer_total")),
+        "Mean BAT (total)": round(_wmean("BAT_percustomer_total")),
+    })
+
+summary_56 = pl.DataFrame(summary_rows_56)
+summary_56
+```
+
 ## Load data
 
 We load the master bills for both upgrade scenarios (annual rows only) and the gas tariff

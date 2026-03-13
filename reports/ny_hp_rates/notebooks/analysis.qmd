@@ -89,22 +89,25 @@ def _weighted_mean(df: pl.DataFrame, col: str, w_col: str) -> float:
 ```{python}
 #| label: params
 
-UTILITY = "coned"
+# --- To switch states, change these 4 values and the 3 utility dicts below
+# (UTIL_NAMES in the constants cell, UTIL_DISPLAY and TARIFF_UTILS further down). ---
+UTILITY = "coned"  # any utility code from UTIL_NAMES, used for the representative-building example
 BATCH = "ny_20260307_r1-8_gascalcfix"
 STATE = "NY"
-RDP_REF = "d0353e1"
+RDP_REF = "d0353e1"  # rate-design-platform git ref for fetch_rdp_file
 
+# Everything below derives from STATE + BATCH
+_state_lower = STATE.lower()
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
-PATH_MASTER_BILLS_12 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_1+2/comb_bills_year_target/"
-PATH_MASTER_BILLS_34 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_3+4/comb_bills_year_target/"
-PATH_MASTER_BILLS_56 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_5+6/comb_bills_year_target/"
-PATH_MASTER_BILLS_78 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_7+8/comb_bills_year_target/"
-PATH_MASTER_BAT_12 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_1+2/cross_subsidization_BAT_values/"
-PATH_MASTER_BAT_34 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_3+4/cross_subsidization_BAT_values/"
-PATH_MASTER_BAT_56 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_5+6/cross_subsidization_BAT_values/"
+PATH_MASTER_BILLS_12 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_1+2/comb_bills_year_target/"
+PATH_MASTER_BILLS_34 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_3+4/comb_bills_year_target/"
+PATH_MASTER_BILLS_56 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_5+6/comb_bills_year_target/"
+PATH_MASTER_BILLS_78 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_7+8/comb_bills_year_target/"
+PATH_MASTER_BAT_12 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_1+2/cross_subsidization_BAT_values/"
+PATH_MASTER_BAT_34 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_3+4/cross_subsidization_BAT_values/"
+PATH_MASTER_BAT_56 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_5+6/cross_subsidization_BAT_values/"
 
 PATH_RESSTOCK = "s3://data.sb/nrel/resstock/res_2024_amy2018_2"
-PATH_METADATA_SB = "s3://data.sb/nrel/resstock/res_2024_amy2018_2_sb/metadata_utility/state=NY/utility_assignment.parquet"
 ```
 
 ## Constants
@@ -120,7 +123,7 @@ BURDEN_THRESHOLD = 0.06
 LMI_BILL_COLS = ["elec_total_bill", "gas_total_bill", "oil_total_bill", "propane_total_bill"]
 LMI_40_BILL_COLS = ["elec_total_bill_lmi_40", "gas_total_bill_lmi_40", "oil_total_bill", "propane_total_bill"]
 LMI_100_BILL_COLS = ["elec_total_bill_lmi_100", "gas_total_bill_lmi_100", "oil_total_bill", "propane_total_bill"]
-UTIL_NAMES = {
+UTIL_NAMES = {  # state-dependent: swap when switching states
     "cenhud": "Central Hudson",
     "coned": "Con Edison",
     "nimo": "National Grid",
@@ -145,8 +148,6 @@ bills_current = pl.scan_parquet(PATH_MASTER_BILLS_12, hive_partitioning=True)
 bills_hp = pl.scan_parquet(PATH_MASTER_BILLS_34, hive_partitioning=True)
 bills_hprate_current = pl.scan_parquet(PATH_MASTER_BILLS_56, hive_partitioning=True)
 bills_hprate_hp = pl.scan_parquet(PATH_MASTER_BILLS_78, hive_partitioning=True)
-
-metadata_sb = pl.read_parquet(PATH_METADATA_SB)
 ```
 
 ## Bill components: how energy bills change after switching
@@ -180,6 +181,7 @@ def bill_components_for_scenario(
             pl.col("oil_total_bill").alias("oil"),
             pl.col("energy_total_bill").alias("energy_total"),
             "heats_with_natgas",
+            "in.hvac_cooling_partial_space_conditioning",
         )
         .collect()
     )
@@ -389,17 +391,9 @@ hp_same_bldgs_state = (
 )
 assert not hp_same_bldgs_state.is_empty(), "No matching buildings statewide (HP)"
 
-meta_path = f"{PATH_RESSTOCK}/metadata/state={STATE}/upgrade=00/"
-resstock_meta = (
-    pl.scan_parquet(meta_path, hive_partitioning=True)
-    .select("bldg_id", "in.hvac_cooling_partial_space_conditioning")
-    .collect()
-    .unique(subset=["bldg_id"])
-)
 natgas_full_cooling = (                                                          # <3>
     natgas_current_state                                                         # <3>
-    .select(SELECT_COLS)                                                         # <3>
-    .join(resstock_meta, on="bldg_id")                                           # <3>
+    .select([*SELECT_COLS, "in.hvac_cooling_partial_space_conditioning"])         # <3>
     .filter(                                                                     # <3>
         pl.col("in.hvac_cooling_partial_space_conditioning") == "100% Conditioned"  # <3>
     )                                                                            # <3>
@@ -442,7 +436,7 @@ report_vars["median_elec_jump"] = _elec_after - _elec_before
 report_vars["median_net_increase"] = report_vars["median_elec_jump"] - report_vars["median_gas_drop"]
 ```
 
-1. Same natgas-only filter as the ConEd cell. Statewide, ~2.7% of natgas buildings are dropped.
+1. Same natgas-only filter as the representative-building cell. Statewide, ~2.7% of natgas buildings are dropped.
 2. Pre-filter the HP scenario to the same natgas-only building IDs so we can look up individual buildings.
 3. Restrict to buildings with 100% baseline cooling before selecting the median. This avoids the "gain of function" confound where homes with partial or no cooling gain full air conditioning from the heat pump, inflating summer electricity. The same building is reused for the monthly consumption chart below.
 
@@ -1117,7 +1111,7 @@ def plot_quadrant_bar(
 _cache_path = Path("../cache/annual_elec_kwh.parquet")
 if not _cache_path.exists():
     _elec_col = "out.electricity.total.energy_consumption"
-    _load_base = Path("~/repos/rate-design-platform/data/nrel/resstock/res_2024_amy2018_2/load_curve_monthly/state=NY").expanduser()
+    _load_base = Path(f"~/repos/rate-design-platform/data/nrel/resstock/res_2024_amy2018_2/load_curve_monthly/state={STATE}").expanduser()
     _before = (
         pl.scan_parquet(_load_base / "upgrade=00")
         .select("bldg_id", _elec_col)
@@ -1140,15 +1134,17 @@ else:
 
 _COOLING_COL = "in.hvac_cooling_partial_space_conditioning"
 
+_bill_meta = (
+    bills_current
+    .filter(pl.col("month") == ANNUAL_MONTH)
+    .select(BLDG_ID, "heats_with_natgas", "heats_with_oil", "heats_with_propane",
+            "sb.electric_utility", _COOLING_COL, "weight")
+    .collect()
+)
+
 _fossil_elec_pct = (
     _annual_elec
-    .join(
-        metadata_sb.select(
-            BLDG_ID, "heats_with_natgas", "heats_with_oil", "heats_with_propane",
-            "sb.electric_utility", _COOLING_COL, "weight",
-        ),
-        on=BLDG_ID, how="inner",
-    )
+    .join(_bill_meta, on=BLDG_ID, how="inner")
     .filter(
         pl.col("heats_with_natgas") | pl.col("heats_with_oil") | pl.col("heats_with_propane")
     )
@@ -1255,7 +1251,7 @@ report_vars["pct_elec_resistance_lose_1k_default"] = _er_lose_1k_w / _er_total_w
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-state
-#| fig-cap: "Bill impact of switching to heat pumps for natural gas-heated households in New York State"
+#| fig-cap: "Bill impact of switching to heat pumps for natural gas-heated households (Statewide)"
 
 plot_quadrant_bar(
     [("Natural gas", natgas_state)],
@@ -1367,7 +1363,7 @@ plot_quadrant_bar(
 
 ```{python}
 #| label: fig-quadrant-bar-oil-propane-state
-#| fig-cap: "Bill impact of switching to heat pumps for oil/propane-heated households in New York State"
+#| fig-cap: "Bill impact of switching to heat pumps for oil/propane-heated households (Statewide)"
 
 plot_quadrant_bar(
     [("Oil / propane", oil_propane_state)],
@@ -1384,7 +1380,7 @@ plot_quadrant_bar(
 
 ```{python}
 #| label: fig-quadrant-bar-elec-resistance-state
-#| fig-cap: "Bill impact of switching to heat pumps for electric resistance-heated households in New York State"
+#| fig-cap: "Bill impact of switching to heat pumps for electric resistance-heated households (Statewide)"
 
 plot_quadrant_bar(
     [("Electric resistance", elec_resistance_state)],
@@ -1399,12 +1395,12 @@ plot_quadrant_bar(
 
 ## Households by heating fuel type
 
-Weighted distribution of New York households by primary heating fuel,
+Weighted distribution of households by primary heating fuel,
 computed from the statewide ResStock sample (upgrade 0 — current HVAC).
 
 ```{python}
 #| label: fig-households-by-fuel
-#| fig-cap: "Percentage of New York households by primary heating fuel"
+#| fig-cap: "Percentage of households by primary heating fuel"
 
 FUEL_CATEGORIES = [
     "Natural Gas", "Propane", "Fuel Oil", "Heat Pump", "Resistance", "Other/None",
@@ -1788,7 +1784,7 @@ _bat_simple_gt
 
 ### Typical HP customer: bill vs. cost of service by utility
 
-The ConEd example above is illustrative, but does the pattern hold statewide?
+The single-utility example above is illustrative, but does the pattern hold statewide?
 For each utility we pick the HP building nearest the weighted-median BAT and
 compare its annual electric bill against its cost of service (marginal cost +
 residual allocation). The overpayment gap is consistent across all seven
@@ -1797,7 +1793,7 @@ service territories.
 ```{python}
 #| label: cross-subsidy-by-utility-data
 
-UTIL_DISPLAY: dict[str, str] = {
+UTIL_DISPLAY: dict[str, str] = {  # state-dependent: swap when switching states
     "coned": "ConEd",
     "nimo": "NiMo",
     "nyseg": "NYSEG",
@@ -1909,8 +1905,7 @@ where HP customers' annual delivery bills equal their cost-of-service, on
 average. Each utility gets a unique winter rate reflecting its territory's
 costs.
 
-Both tariffs are calibrated URDB JSONs from `rate_design/hp_rates/ny/config/
-tariffs/electric/`. The delivery component comes from the delivery-only file
+Both tariffs are calibrated URDB JSONs from the state's tariff config directory. The delivery component comes from the delivery-only file
 (`*_calibrated.json`), and supply is the difference between the bundled file
 (`*_supply_calibrated.json`) and delivery.
 
@@ -1919,9 +1914,9 @@ tariffs/electric/`. The delivery component comes from the delivery-only file
 
 import json
 
-TARIFF_DIR = "rate_design/hp_rates/ny/config/tariffs/electric"
+TARIFF_DIR = f"rate_design/hp_rates/{_state_lower}/config/tariffs/electric"
 
-TARIFF_UTILS: dict[str, str] = {
+TARIFF_UTILS: dict[str, str] = {  # state-dependent: swap when switching states
     "ConEd": "coned",
     "NiMo": "nimo",
     "NYSEG": "nyseg",
@@ -2123,7 +2118,7 @@ report_vars["pct_elec_resistance_save_hprate"] = _er_sw_save / _er_sw_total
 report_vars["pct_elec_resistance_lose_1k_hprate"] = _er_sw_lose_1k / _er_sw_total
 ```
 
-### Buffalo home bill decomposition: default vs. fair rates
+### Representative home bill decomposition: default vs. fair rates
 
 ```{python}
 #| label: save-bill-decomposed-fair-rate
@@ -2354,26 +2349,16 @@ three scenarios:
 ```{python}
 #| label: burden-cohort
 
-lmi_current = (
+low_income_gas_bldgs = (
     bills_current
     .filter(
         (pl.col("month") == ANNUAL_MONTH)
         & pl.col("heats_with_natgas")
         & pl.col("is_lmi")
+        & (pl.col(INCOME_COL) > 0)
     )
-    .select(BLDG_ID, "weight", "energy_total_bill")
+    .select(BLDG_ID, "weight", "energy_total_bill", INCOME_COL)
     .collect()
-)
-
-income_lookup = (
-    metadata_sb
-    .select(BLDG_ID, pl.col(INCOME_COL))
-    .filter(pl.col(INCOME_COL) > 0)
-)
-
-low_income_gas_bldgs = (
-    lmi_current
-    .join(income_lookup, on=BLDG_ID, how="inner")
 )
 
 cohort_bldg_ids = low_income_gas_bldgs[BLDG_ID].to_list()

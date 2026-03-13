@@ -1,0 +1,641 @@
+---
+title: "Why does delivery overpayment vary so much by utility?"
+subtitle: "Decomposing the Bill Alignment Test across NY's seven electric utilities"
+
+reference-location: margin
+fig-cap-location: bottom
+
+execute:
+  warning: false
+  echo: true
+---
+
+```{python}
+#| label: setup
+#| code-fold: false
+
+from __future__ import annotations
+
+import json
+import subprocess
+
+import polars as pl
+from great_tables import GT
+from lib.plotnine import SB_COLORS, theme_switchbox
+from plotnine import (
+    aes,
+    element_text,
+    geom_col,
+    geom_point,
+    geom_text,
+    ggplot,
+    labs,
+    position_dodge,
+    scale_fill_manual,
+    scale_x_continuous,
+    scale_y_continuous,
+    theme,
+)
+
+BATCH = "ny_20260307_r1-8_gascalcfix"
+S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
+PATH_BAT_12 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_1+2/cross_subsidization_BAT_values/"
+HEATING_TYPE_COL = "postprocess_group.heating_type"
+
+UTIL_DISPLAY: dict[str, str] = {
+    "coned": "ConEd",
+    "nimo": "NiMo",
+    "nyseg": "NYSEG",
+    "cenhud": "CenHud",
+    "rge": "RG&E",
+    "or": "O&R",
+    "psegli": "PSEG-LI",
+}
+
+
+def _wmean(df: pl.DataFrame, col: str, w: str = "weight") -> float:
+    return float((df[col] * df[w]).sum() / df[w].sum())
+
+
+def _wmedian(df: pl.DataFrame, col: str, w: str, q: float = 0.5) -> float:
+    s = df.sort(col)
+    cum = s[w].cum_sum() / s[w].sum()
+    return float(s.filter(cum >= q)[col][0])
+```
+
+## The finding
+
+The NY HP Rates report shows that HP customers systematically overpay on delivery — the
+Bill Alignment Test (BAT) is positive for nearly every HP household. But the *size* of
+the overpayment varies dramatically across utility territories.
+
+```{python}
+#| label: load-bat
+
+bat = pl.read_parquet(PATH_BAT_12, hive_partitioning=True)
+hp = bat.filter(pl.col(HEATING_TYPE_COL) == "heat_pump")
+
+print(f"Total buildings: {bat.height:,}")
+print(f"HP buildings: {hp.height:,}")
+```
+
+:::{.column-page-inset-right}
+```{python}
+#| label: bat-summary-table
+
+rows = []
+for util in sorted(hp["sb.electric_utility"].unique().to_list()):
+    sub = hp.filter(pl.col("sb.electric_utility") == util)
+    rows.append({
+        "Utility": UTIL_DISPLAY.get(util, util),
+        "N (buildings)": sub.height,
+        "Mean BAT": round(_wmean(sub, "BAT_percustomer_delivery")),
+        "Median BAT": round(_wmedian(sub, "BAT_percustomer_delivery", "weight")),
+    })
+
+summary = pl.DataFrame(rows)
+
+(
+    GT(summary)
+    .fmt_number(columns=["N (buildings)"], decimals=0, use_seps=True)
+    .fmt_currency(columns=["Mean BAT", "Median BAT"], decimals=0)
+    .tab_header(title="Delivery BAT for HP customers by utility")
+)
+```
+:::
+
+CenHud's mean HP overpayment is \$1,737/yr while ConEd's is only \$556/yr — a **3x
+ratio**. What's driving this?
+
+## Bills vs. cost of service: where the gap comes from
+
+The BAT is simply the gap between what an HP customer *pays* (their delivery bill) and
+what they *cost* (their cost of service). Cost of service has two pieces: the customer's
+**marginal cost** (their share of delivery infrastructure costs, based on when and how
+much they consume) and a **residual share** (an equal per-customer allocation of the
+remaining delivery revenue).
+
+Let's visualize the bill and cost side by side for the mean HP customer in each utility.
+
+```{python}
+#| label: compute-bill-vs-cost
+
+bill_cost_rows = []
+for util in sorted(hp["sb.electric_utility"].unique().to_list()):
+    sub = hp.filter(pl.col("sb.electric_utility") == util)
+    bill = _wmean(sub, "annual_bill_delivery")
+    mc = _wmean(sub, "economic_burden_delivery")
+    resid = _wmean(sub, "residual_share_delivery")
+    bat_val = _wmean(sub, "BAT_percustomer_delivery")
+    bill_cost_rows.append({
+        "util": util,
+        "Utility": UTIL_DISPLAY.get(util, util),
+        "Delivery Bill": round(bill),
+        "Marginal Cost": round(mc),
+        "Residual": round(resid),
+        "Cost of Service": round(mc + resid),
+        "BAT": round(bat_val),
+    })
+
+bill_cost_df = pl.DataFrame(bill_cost_rows)
+```
+
+:::{.column-page-inset-right}
+```{python}
+#| label: bill-cost-table
+
+(
+    GT(bill_cost_df.drop("util"))
+    .fmt_currency(
+        columns=["Delivery Bill", "Marginal Cost", "Residual", "Cost of Service", "BAT"],
+        decimals=0,
+    )
+    .tab_header(title="HP delivery: what they pay vs. what they cost (weighted mean)")
+    .tab_spanner(label="Cost of Service", columns=["Marginal Cost", "Residual"])
+)
+```
+:::
+
+Two things jump out from this table. First, **marginal cost is small everywhere** — less
+than \$211/yr even for ConEd. The residual dominates cost of service, accounting for
+85--98% of it. Second, the gap between bill and cost (the BAT) is driven almost entirely
+by how far the bill overshoots, not by how low the cost is.
+
+Let's see this visually. The chart below decomposes each HP customer's delivery bill into
+three slices: marginal cost, residual, and the BAT overpayment (the part they shouldn't
+be paying).
+
+:::{.column-page-inset-right}
+```{python}
+#| label: fig-bill-decomposition
+#| fig-cap: "Each bar represents the mean HP delivery bill, decomposed into marginal cost (what they actually cost the grid), residual share (their equal share of remaining revenue), and BAT overpayment (the cross-subsidy). Marginal cost is barely visible."
+
+bar_rows = []
+for row in bill_cost_rows:
+    bar_rows.append({"Utility": row["Utility"], "Component": "Marginal Cost", "Value": row["Marginal Cost"]})
+    bar_rows.append({"Utility": row["Utility"], "Component": "Residual", "Value": row["Residual"]})
+    bar_rows.append({"Utility": row["Utility"], "Component": "BAT (overpayment)", "Value": row["BAT"]})
+
+bar_df = pl.DataFrame(bar_rows)
+
+util_order = (
+    bill_cost_df.sort("BAT", descending=True)["Utility"].to_list()
+)
+comp_order = ["Marginal Cost", "Residual", "BAT (overpayment)"]
+comp_colors = {
+    "Marginal Cost": SB_COLORS["pistachio"],
+    "Residual": SB_COLORS["sky"],
+    "BAT (overpayment)": SB_COLORS["carrot"],
+}
+
+bar_df = bar_df.with_columns(
+    pl.col("Utility").cast(pl.Enum(util_order)),
+    pl.col("Component").cast(pl.Enum(comp_order)),
+)
+
+(
+    ggplot(bar_df, aes(x="Utility", y="Value", fill="Component"))
+    + geom_col(width=0.7)
+    + scale_fill_manual(values=comp_colors)
+    + scale_y_continuous(labels=lambda xs: [f"${x:,.0f}" for x in xs])
+    + labs(
+        x="",
+        y="$/year",
+        title="Mean HP delivery bill = marginal cost + residual + overpayment",
+    )
+    + theme_switchbox()
+    + theme(
+        figure_size=(12, 6),
+        plot_title=element_text(size=13, fontweight="bold"),
+        legend_position="top",
+    )
+)
+```
+:::
+
+CenHud's bar towers over ConEd's. The carrot slice (BAT) is almost half of CenHud's
+bill — \$1,737 out of \$3,319. ConEd's BAT is a much smaller share: \$556 out of
+\$1,675.
+
+This tells us the question isn't really "why do marginal costs differ?" — they're tiny
+everywhere. The question is: **why is the delivery bill so much higher than cost of
+service for some utilities and not others?**
+
+## The formula: BAT ≈ rate × excess consumption
+
+Since per-customer residual allocation gives every customer the same residual amount
+(HP or not), the residual for utility $u$ works out to:
+
+$$\text{Residual}_u = \overline{\text{Bill}}_u - \overline{\text{MC}}_u$$
+
+where $\overline{\text{Bill}}_u$ and $\overline{\text{MC}}_u$ are the weighted average
+delivery bill and marginal cost across *all* customers in utility $u$. Substituting into
+the BAT formula:
+
+$$\text{BAT}_u = \text{Bill}^{HP}_u - \text{MC}^{HP}_u - (\overline{\text{Bill}}_u - \overline{\text{MC}}_u)$$
+
+$$= \underbrace{(\text{Bill}^{HP}_u - \overline{\text{Bill}}_u)}_{\text{excess bill}} - \underbrace{(\text{MC}^{HP}_u - \overline{\text{MC}}_u)}_{\text{excess MC}}$$
+
+Since delivery bills are roughly $\text{Rate} \times \text{kWh}$ (fixed charges are
+small), the excess bill term is approximately:
+
+$$\text{Rate}_u \times (\text{kWh}^{HP}_u - \overline{\text{kWh}}_u)$$
+
+And since marginal costs are small (< \$211/yr), the excess MC term is tiny. So:
+
+$$\boxed{\text{BAT}_u \approx \text{Rate}_u \times \Delta\text{kWh}_u}$$
+
+where $\Delta\text{kWh}_u$ is how much more electricity HP customers consume than the
+average residential customer in that utility. The BAT is almost entirely determined by
+two things: the **delivery rate** and the **excess consumption** of HP customers over
+the average.
+
+Let's verify this. We need each utility's delivery rate, HP consumption, and average
+residential consumption.
+
+## The bill side: rates and consumption
+
+```{python}
+#| label: get-delivery-rates
+
+RUN1_DIRS = {
+    "cenhud": "20260307_011951_ny_cenhud_run1_up00_precalc__flat/",
+    "coned": "20260307_023214_ny_coned_run1_up00_precalc__flat/",
+    "nimo": "20260307_020136_ny_nimo_run1_up00_precalc__flat/",
+    "nyseg": "20260307_013207_ny_nyseg_run1_up00_precalc__flat/",
+    "or": "20260307_011333_ny_or_run1_up00_precalc__flat/",
+    "psegli": "20260307_014502_ny_psegli_run1_up00_precalc__flat/",
+    "rge": "20260307_012508_ny_rge_run1_up00_precalc__flat/",
+}
+
+S3_RUNS = "s3://data.sb/switchbox/cairo/outputs/hp_rates/ny"
+
+tariff_info: dict[str, dict] = {}
+for util, run_dir in RUN1_DIRS.items():
+    path = f"{S3_RUNS}/{util}/{BATCH}/{run_dir}tariff_final_config.json"
+    result = subprocess.run(["aws", "s3", "cp", path, "-"], capture_output=True, text=True)
+    if result.returncode == 0 and result.stdout.strip():
+        config = json.loads(result.stdout)
+        tariff = config[list(config.keys())[0]]
+        fixed = tariff.get("ur_monthly_fixed_charge", 0)
+        mat = tariff.get("ur_ec_tou_mat", [[]])
+        rate = mat[0][4] if mat and len(mat[0]) > 4 else 0
+        tariff_info[util] = {"fixed_monthly": fixed, "rate_per_kwh": rate}
+```
+
+Now let's pull real-world average residential consumption from EIA-861, and compare it
+to HP consumption backed out from the BAT data.
+
+```{python}
+#| label: compute-consumption
+
+eia = pl.read_parquet("s3://data.sb/eia/861/electric_utility_stats/")
+eia_ny = (
+    eia.filter((pl.col("state") == "NY") & (pl.col("year") == 2023))
+    .filter(pl.col("utility_code").is_in(list(UTIL_DISPLAY.keys())))
+)
+
+eia_kwh: dict[str, float] = {}
+eia_customers: dict[str, int] = {}
+for row in eia_ny.iter_rows(named=True):
+    code = row["utility_code"]
+    eia_kwh[code] = row["residential_sales_mwh"] * 1000 / row["residential_customers"]
+    eia_customers[code] = int(row["residential_customers"])
+```
+
+```{python}
+#| label: build-driver-table
+
+driver_rows = []
+for row in bill_cost_rows:
+    util = row["util"]
+    rate = tariff_info[util]["rate_per_kwh"]
+    fixed = tariff_info[util]["fixed_monthly"]
+    hp_bill = row["Delivery Bill"]
+
+    hp_kwh = (hp_bill - fixed * 12) / rate if rate > 0 else 0
+    avg_kwh_eia = eia_kwh.get(util, 0)
+    delta_kwh = hp_kwh - avg_kwh_eia
+    predicted_bat = rate * delta_kwh
+
+    driver_rows.append({
+        "Utility": row["Utility"],
+        "util": util,
+        "Del. Rate (¢/kWh)": round(rate * 100, 2),
+        "HP kWh/yr": round(hp_kwh),
+        "Avg kWh/yr (EIA)": round(avg_kwh_eia),
+        "Δ kWh": round(delta_kwh),
+        "Rate × Δ kWh": round(predicted_bat),
+        "Actual BAT": row["BAT"],
+        "Residual customers": eia_customers.get(util, 0),
+    })
+
+driver_df = pl.DataFrame(driver_rows)
+```
+
+:::{.column-page-inset-right}
+```{python}
+#| label: driver-table
+
+(
+    GT(driver_df.drop("util", "Residual customers"))
+    .fmt_number(columns=["Del. Rate (¢/kWh)"], decimals=2)
+    .fmt_number(columns=["HP kWh/yr", "Avg kWh/yr (EIA)", "Δ kWh"], decimals=0, use_seps=True)
+    .fmt_currency(columns=["Rate × Δ kWh", "Actual BAT"], decimals=0)
+    .tab_header(title="The two drivers of BAT: delivery rate and excess consumption")
+    .tab_source_note("Avg kWh/yr from EIA-861 (2023). HP kWh backed out from delivery bill ÷ rate.")
+)
+```
+:::
+
+The **Rate × Δ kWh** column tracks the actual BAT closely — usually within \$100. The
+small gap is the excess-MC term we dropped from the approximation.
+
+Two patterns stand out:
+
+1. **ConEd's HP customers barely consume more than its average residential customer.**
+   The EIA average is 4,478 kWh/yr (NYC apartments on tiny AC loads), and the typical
+   HP customer uses ~9,200 kWh/yr — a Δ of about 4,700 kWh. In every other utility, the
+   Δ is 8,000--13,000 kWh.
+
+2. **CenHud and PSEG-LI have the worst combination** — both a high delivery rate *and*
+   a large Δ kWh.
+
+:::{.column-page-inset-right}
+```{python}
+#| label: fig-rate-vs-delta
+#| fig-cap: "The BAT is the product of delivery rate and excess consumption. ConEd's low Δ kWh is the main reason its BAT is low despite having the highest rate."
+
+plot_df = driver_df.with_columns(
+    pl.col("Actual BAT").abs().alias("bat_abs"),
+    pl.col("Actual BAT")
+    .map_elements(lambda v: f"BAT = ${v:,.0f}", return_dtype=pl.String)
+    .alias("bat_label"),
+)
+
+(
+    ggplot(plot_df, aes(x="Δ kWh", y="Del. Rate (¢/kWh)"))
+    + geom_point(aes(size="bat_abs"), color=SB_COLORS["midnight"], alpha=0.7)
+    + geom_text(aes(label="Utility"), nudge_y=0.5, size=8)
+    + labs(
+        x="Excess HP consumption over residential avg (kWh/yr)",
+        y="Delivery rate (¢/kWh)",
+        title="BAT = rate × excess consumption",
+    )
+    + scale_x_continuous(labels=lambda xs: [f"{x:,.0f}" for x in xs])
+    + theme_switchbox()
+    + theme(figure_size=(10, 6), legend_position="none")
+)
+```
+:::
+
+ConEd sits in the bottom-left: its HP customers don't consume much more than its (already
+low-consuming) average customer. CenHud is in the upper-right: high rate, high excess.
+The bubble size (proportional to BAT) tracks the product of the two axes.
+
+## Why consumption differs: apartments vs. houses
+
+The excess consumption gap is driven by building stock composition. ConEd's territory is
+overwhelmingly New York City — small apartments with modest heating loads. Even after
+installing a heat pump, a ConEd apartment doesn't consume that much electricity. And
+ConEd's *average* customer also uses very little (4,478 kWh/yr), so the HP premium
+over the average is small.
+
+Upstate utilities (NiMo, NYSEG, CenHud, RG&E) serve predominantly single-family homes.
+These homes have much larger heating loads, so switching to a heat pump adds a lot of
+electricity consumption — and the gap over the residential average (7,000--8,600 kWh/yr)
+is large.
+
+:::{.column-page-inset-right}
+```{python}
+#| label: fig-consumption-comparison
+#| fig-cap: "HP customers consume 2--3x the residential average in most utilities. ConEd's HP customers are the exception — they consume only 2x because the building stock is smaller."
+
+cons_plot_rows = []
+for row in driver_rows:
+    cons_plot_rows.append({"Utility": row["Utility"], "Type": "Residential avg (EIA)", "kWh": row["Avg kWh/yr (EIA)"]})
+    cons_plot_rows.append({"Utility": row["Utility"], "Type": "HP customer", "kWh": row["HP kWh/yr"]})
+
+cons_plot = pl.DataFrame(cons_plot_rows)
+
+util_order = [r["Utility"] for r in sorted(driver_rows, key=lambda r: r["HP kWh/yr"], reverse=True)]
+type_order = ["Residential avg (EIA)", "HP customer"]
+type_colors = {"Residential avg (EIA)": SB_COLORS["sky"], "HP customer": SB_COLORS["midnight"]}
+
+cons_plot = cons_plot.with_columns(
+    pl.col("Utility").cast(pl.Enum(util_order)),
+    pl.col("Type").cast(pl.Enum(type_order)),
+)
+
+(
+    ggplot(cons_plot, aes(x="Utility", y="kWh", fill="Type"))
+    + geom_col(position=position_dodge(width=0.7), width=0.6)
+    + scale_fill_manual(values=type_colors)
+    + scale_y_continuous(labels=lambda xs: [f"{x:,.0f}" for x in xs])
+    + labs(x="", y="kWh / year", title="HP consumption vs. residential average")
+    + theme_switchbox()
+    + theme(figure_size=(12, 5), legend_position="top")
+)
+```
+:::
+
+## Sensitivity: would full HP adoption change the picture?
+
+The u0 HP sample for some utilities is small (O&R has 26 buildings, CenHud 46). Are the
+high kWh figures for those utilities just noise from a thin sample? We can check by
+looking at run 3+4, which gives *every* building a heat pump under the same calibrated
+tariff. This tells us what average HP consumption would look like for the full residential
+population, not just the handful of existing HP owners.
+
+```{python}
+#| label: load-u2-bills
+
+PATH_BILLS_34 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_3+4/comb_bills_year_target/"
+bills_u2 = pl.read_parquet(PATH_BILLS_34, hive_partitioning=True)
+annual_u2 = (
+    bills_u2
+    .group_by("bldg_id", "sb.electric_utility")
+    .agg(
+        pl.col("elec_delivery_bill").sum().alias("annual_delivery"),
+        pl.col("weight").first(),
+    )
+)
+```
+
+```{python}
+#| label: build-sensitivity-table
+
+sensitivity_rows = []
+for row in driver_rows:
+    util = row["util"]
+    rate = tariff_info[util]["rate_per_kwh"]
+    fixed = tariff_info[util]["fixed_monthly"]
+
+    a = annual_u2.filter(pl.col("sb.electric_utility") == util)
+    bill_u2 = float((a["annual_delivery"] * a["weight"]).sum() / a["weight"].sum())
+    kwh_u2 = (bill_u2 - fixed * 12) / rate if rate > 0 else 0
+
+    avg_eia = eia_kwh.get(util, 0)
+    delta_u0 = row["HP kWh/yr"] - avg_eia
+    delta_u2 = kwh_u2 - avg_eia
+    pred_bat_u0 = rate * delta_u0
+    pred_bat_u2 = rate * delta_u2
+
+    sensitivity_rows.append({
+        "Utility": row["Utility"],
+        "N (u0 HP)": driver_df.filter(pl.col("Utility") == row["Utility"])["HP kWh/yr"].len(),
+        "kWh (u0 HP)": round(row["HP kWh/yr"]),
+        "N (full pop, u2)": a.height,
+        "kWh (full pop)": round(kwh_u2),
+        "Avg kWh (EIA)": round(avg_eia),
+        "Δ kWh (u0)": round(delta_u0),
+        "Δ kWh (full pop)": round(delta_u2),
+        "Predicted BAT (u0)": round(pred_bat_u0),
+        "Predicted BAT (full pop)": round(pred_bat_u2),
+    })
+
+sensitivity_df = pl.DataFrame(sensitivity_rows)
+```
+
+:::{.column-page-inset-right}
+```{python}
+#| label: sensitivity-table
+
+n_u0 = {r["Utility"]: r["N (buildings)"] for r in rows}
+sensitivity_display = sensitivity_df.with_columns(
+    pl.Series("N (u0 HP)", [n_u0[r["Utility"]] for r in sensitivity_rows]),
+)
+
+(
+    GT(sensitivity_display.drop("N (full pop, u2)"))
+    .fmt_number(columns=["N (u0 HP)"], decimals=0, use_seps=True)
+    .fmt_number(columns=["kWh (u0 HP)", "kWh (full pop)", "Avg kWh (EIA)", "Δ kWh (u0)", "Δ kWh (full pop)"], decimals=0, use_seps=True)
+    .fmt_currency(columns=["Predicted BAT (u0)", "Predicted BAT (full pop)"], decimals=0)
+    .tab_header(title="Sensitivity: existing HP sample vs. full-population HP kWh")
+    .tab_source_note("u0 = existing HP owners (run 1+2). Full pop = all buildings given HPs (run 3+4, same tariff).")
+)
+```
+:::
+
+The full-population HP kWh is **higher** than the u0 sample in every utility — often by
+20--50%. The high kWh figures for small-sample utilities like O&R and CenHud are not
+sampling noise; if anything, the existing HP owners *understate* what average HP
+consumption would be under widespread adoption. This makes sense: early adopters tend to
+be in smaller, more efficient homes. The broader population includes larger, less
+efficient buildings whose heating loads would drive up average HP electricity consumption.
+
+The implication is that the BATs we compute from the u0 sample are **conservative**. As
+HP adoption scales, the average HP customer will consume more, pushing Δ kWh — and
+therefore the cross-subsidy — even higher. The structural mismatch between volumetric
+delivery rates and actual cost-of-service would get worse, not better, without rate
+reform.
+
+## Why rates differ: revenue requirements and customer counts
+
+The delivery rate is determined by the revenue requirement divided by total residential
+kWh. Utilities with high revenue requirements per kWh of sales will have high rates.
+
+CenHud and ConEd both have high delivery rates (~14--15 ¢/kWh), but for different
+reasons. ConEd's revenue requirement is enormous in absolute terms — it serves 3 million
+customers in the most expensive infrastructure environment in the state — but spread over
+those 3 million customers, the *per-customer* delivery cost is modest. CenHud is much
+smaller (270,000 customers) and its per-customer infrastructure costs are high.
+
+RG&E has the lowest delivery rate (7.2 ¢/kWh), which means its excess-consumption
+penalty is smaller per kWh. But its Δ kWh is large enough that the BAT still comes out
+to \$912/yr.
+
+## The cost side: why marginal costs barely matter
+
+Given the formula $\text{BAT} = \text{Rate} \times \Delta\text{kWh} - \Delta\text{MC}$,
+one might expect the marginal cost difference to provide a meaningful offset. It doesn't.
+
+:::{.column-page-inset-right}
+```{python}
+#| label: mc-comparison
+
+mc_rows = []
+for util in sorted(hp["sb.electric_utility"].unique().to_list()):
+    hp_sub = hp.filter(pl.col("sb.electric_utility") == util)
+    all_sub = bat.filter(pl.col("sb.electric_utility") == util)
+    mc_hp = _wmean(hp_sub, "economic_burden_delivery")
+    mc_all = _wmean(all_sub, "economic_burden_delivery")
+    mc_rows.append({
+        "Utility": UTIL_DISPLAY.get(util, util),
+        "MC (HP)": round(mc_hp),
+        "MC (all)": round(mc_all),
+        "Δ MC": round(mc_hp - mc_all),
+    })
+
+(
+    GT(pl.DataFrame(mc_rows))
+    .fmt_currency(columns=["MC (HP)", "MC (all)", "Δ MC"], decimals=0)
+    .tab_header(title="Marginal delivery cost: HP vs. all customers")
+)
+```
+:::
+
+The excess MC (Δ MC) ranges from \$14 to \$55 across utilities. Compare this to the
+excess bill (Rate × Δ kWh), which ranges from \$500 to \$1,800. **Marginal cost
+differences explain less than 5% of the BAT variation.** Delivery marginal costs in 2025
+are simply too small — relative to delivery bills — to meaningfully offset the
+cross-subsidy.
+
+The geographic pattern in MC is real (NYC-area utilities face higher bulk transmission
+costs from Cambium than upstate utilities) but it barely registers in the BAT arithmetic.
+
+## Supply-side cross-subsidy: a secondary effect
+
+The analysis above focuses on delivery, which is where the cross-subsidy is largest. But
+HP customers also experience a supply-side BAT. Let's check whether supply compounds or
+offsets the delivery effect.
+
+:::{.column-page-inset-right}
+```{python}
+#| label: supply-vs-delivery
+
+sd_rows = []
+for util in sorted(hp["sb.electric_utility"].unique().to_list()):
+    sub = hp.filter(pl.col("sb.electric_utility") == util)
+    sd_rows.append({
+        "Utility": UTIL_DISPLAY.get(util, util),
+        "Delivery BAT": round(_wmean(sub, "BAT_percustomer_delivery")),
+        "Supply BAT": round(_wmean(sub, "BAT_percustomer_supply")),
+        "Total BAT": round(_wmean(sub, "BAT_percustomer_total")),
+    })
+
+(
+    GT(pl.DataFrame(sd_rows))
+    .fmt_currency(columns=["Delivery BAT", "Supply BAT", "Total BAT"], decimals=0)
+    .tab_header(title="Delivery vs. supply BAT for HP customers")
+)
+```
+:::
+
+Supply adds \$148--\$331/yr for most utilities. ConEd is the exception: its supply BAT
+is essentially zero, meaning ConEd's supply bill almost exactly matches supply
+cost-of-service. The delivery cross-subsidy is the dominant effect.
+
+## Summary
+
+The 3x variation in delivery overpayment across utilities is structural, not an artifact.
+It follows directly from a simple formula:
+
+$$\text{BAT} \approx \text{Delivery Rate} \times (\text{kWh}_{HP} - \overline{\text{kWh}})$$
+
+- **ConEd** has the highest delivery rate but the **lowest BAT**, because its HP
+  customers are NYC apartments that don't consume much more than the average ConEd
+  customer ($\Delta$kWh ≈ 4,700). The denominator of the cross-subsidy is small.
+
+- **CenHud** has the **highest BAT** because it combines a high delivery rate
+  (14.5 ¢/kWh) with a large excess consumption ($\Delta$kWh ≈ 13,300). Single-family
+  homes with heat pumps consume far more than CenHud's residential average.
+
+- **Marginal costs don't meaningfully differentiate utilities.** The MC offset is less
+  than 5% of the BAT in every utility. The cross-subsidy is almost entirely a
+  rate-times-volume story.
+
+This has a direct policy implication: **a fair seasonal rate must be calibrated per
+utility**, because the magnitude of the cross-subsidy depends on utility-specific rate
+levels and building stock composition. A single statewide correction would overcorrect
+for ConEd and undercorrect for CenHud.

@@ -63,7 +63,6 @@ TARIFF_MAP_DIR = "rate_design/hp_rates/ny/config/tariff_maps/gas"
 
 PATH_RDP_ROOT = Path("~/repos/rate-design-platform").expanduser()
 PATH_LOAD_CURVES = PATH_RDP_ROOT / "data/nrel/resstock/res_2024_amy2018_2/load_curve_monthly/state=NY"
-PATH_METADATA_SB = "s3://data.sb/nrel/resstock/res_2024_amy2018_2_sb/metadata_utility/state=NY/utility_assignment.parquet"
 GAS_COL = "out.natural_gas.total.energy_consumption"
 
 BLDG_ID = "bldg_id"
@@ -691,11 +690,9 @@ consumption and offsets some of the gas savings.
 ```{python}
 #| label: load-metadata-and-deltas
 
-metadata_sb = pl.read_parquet(PATH_METADATA_SB)
-
 delta_state = (
     bills_u0.filter(pl.col("month") == ANNUAL_MONTH)
-    .select(BLDG_ID, "weight", pl.col("energy_total_bill").alias("bill_before"), "heats_with_natgas")
+    .select(BLDG_ID, "weight", pl.col("energy_total_bill").alias("bill_before"), "heats_with_natgas", COOLING_COL)
     .join(
         bills_u2.filter(pl.col("month") == ANNUAL_MONTH)
         .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after")),
@@ -834,12 +831,9 @@ def plot_bill_change_histogram_faceted(
 #| label: fig-bill-change-natgas-by-cooling
 #| fig-cap: "Annual bill change distribution for natural gas-heated households by baseline cooling coverage (Statewide)"
 
-cooling_lookup = metadata_sb.select(BLDG_ID, COOLING_COL)
-
 natgas_by_cooling = (
     delta_state
     .filter(pl.col("heats_with_natgas"))
-    .join(cooling_lookup, on=BLDG_ID, how="left")
     .with_columns(
         pl.when(pl.col(COOLING_COL) == "100% Conditioned").then(pl.lit("Full cooling"))
         .when(pl.col(COOLING_COL) == "None").then(pl.lit("No cooling"))
@@ -891,13 +885,11 @@ else:
     Path("../cache").mkdir(exist_ok=True)
     _annual_elec.write_parquet(_cache_path)
 
+_bill_meta = bills_u0.select(BLDG_ID, "heats_with_natgas", "sb.electric_utility", COOLING_COL, "weight")
+
 elec_pct_change = (
     _annual_elec
-    .join(
-        metadata_sb.select(BLDG_ID, "heats_with_natgas", "sb.electric_utility", COOLING_COL, "weight"),
-        on=BLDG_ID,
-        how="inner",
-    )
+    .join(_bill_meta, on=BLDG_ID, how="inner")
     .filter(pl.col("heats_with_natgas"))
     .filter(pl.col("elec_kwh_before").abs() > 10)
     .with_columns(
@@ -999,7 +991,7 @@ delivery_pct_change = (
     .select(
         BLDG_ID,
         (pl.col("elec_delivery_bill") + pl.col("elec_fixed_charge")).alias("delivery_before"),
-        "heats_with_natgas", "sb.electric_utility", "weight",
+        "heats_with_natgas", "sb.electric_utility", "weight", COOLING_COL,
     )
     .join(
         bills_u2.select(
@@ -1010,7 +1002,6 @@ delivery_pct_change = (
     )
     .filter(pl.col("heats_with_natgas"))
     .filter(pl.col("delivery_before").abs() > 1)
-    .join(metadata_sb.select(BLDG_ID, COOLING_COL), on=BLDG_ID, how="left")
     .with_columns(
         ((pl.col("delivery_after") - pl.col("delivery_before")) / pl.col("delivery_before") * 100)
         .alias("pct_change"),
@@ -1055,5 +1046,453 @@ _plot_elec_pct_change(
 _plot_elec_pct_change(
     delivery_pct_change.filter(pl.col("cooling_group") == "No cooling"),
     "No cooling — delivery bill change after switching to heat pump",
+)
+```
+
+## Bill change histograms by fuel type (diagnostic)
+
+Weighted histograms of annual bill change after switching from current HVAC to
+heat pumps, under default rates. These were removed from the main analysis
+notebook during streamlining and are preserved here for diagnostic reference.
+
+```{python}
+#| label: dq-bill-change-helpers
+
+HEATING_TYPE_COL = "postprocess_group.heating_type"
+
+HEATING_TYPE_LABELS: dict[str, str] = {
+    "fossil_fuel": "Fossil fuel",
+    "electrical_resistance": "Electric resistance",
+    "heat_pump": "Heat pump",
+}
+BAT_FACET_ORDER = ["Electric resistance", "Heat pump", "Fossil fuel", "Other"]
+BAT_BIN_WIDTH = 50
+BAT_COLORS = {"overpaying": "#b71c1c", "underpaying": "#1b5e20"}
+
+
+def _weighted_mean(df: pl.DataFrame, col: str, w_col: str) -> float:
+    """Weighted arithmetic mean."""
+    return float((df[col] * df[w_col]).sum() / df[w_col].sum())
+
+
+def plot_bill_change_histogram(
+    df: pl.DataFrame,
+    bin_width: int = BIN_WIDTH,
+    title: str = "Change in Total Energy Bills after Switching to Heat Pumps",
+) -> ggplot:
+    """Weighted histogram of annual bill change."""
+    snap = max(bin_width, 50)
+    x_lo = math.floor(_weighted_percentile(df, "delta", "weight", 0.01) / snap) * snap
+    x_hi = math.ceil(_weighted_percentile(df, "delta", "weight", 0.99) / snap) * snap
+
+    binned = (
+        df.with_columns(
+            ((pl.col("delta") / bin_width).floor() * bin_width + bin_width / 2).alias("bin_center"),
+        )
+        .with_columns(
+            pl.when(pl.col("bin_center") <= -1000).then(pl.lit("savings > $1k"))
+            .when((pl.col("bin_center") > -1000) & (pl.col("bin_center") < 0)).then(pl.lit("savings $0-1k"))
+            .when((pl.col("bin_center") >= 0) & (pl.col("bin_center") < 1000)).then(pl.lit("losses $0-1k"))
+            .otherwise(pl.lit("losses > $1k"))
+            .alias("quadrant"),
+        )
+        .group_by("bin_center", "quadrant")
+        .agg(pl.col("weight").sum().alias("weight_sum"))
+    )
+
+    pct = quadrant_pcts(df)
+    quadrant_dtype = pl.Enum(QUADRANT_ORDER)
+    plot_df = binned.with_columns(pl.col("quadrant").cast(quadrant_dtype))
+    max_weight = cast(float, plot_df["weight_sum"].max()) if not plot_df.is_empty() else 0.0
+    y_annot = max_weight * 1.05
+
+    quadrant_bounds = [(x_lo, -1000), (-1000, 0), (0, 1000), (1000, x_hi)]
+    label_xs = [(max(lo, x_lo) + min(hi, x_hi)) / 2 for lo, hi in quadrant_bounds]
+
+    annotations = []
+    for label, x_pos in zip(QUADRANT_ORDER, label_xs):
+        if pct[label] < 0.05:
+            continue
+        annotations.append(
+            annotate(
+                "text", x=x_pos, y=y_annot,
+                label=f"{label}\n{pct[label]:.1f}%",
+                ha="center", size=11, color=QUADRANT_COLORS[label],
+            )
+        )
+
+    p = (
+        ggplot(plot_df, aes(x="bin_center", y="weight_sum", fill="quadrant"))
+        + geom_col(width=bin_width * 0.9)
+        + geom_vline(xintercept=[-1000, 0, 1000], linetype="dotted", color="gray")
+        + scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
+        + coord_cartesian(xlim=(x_lo, x_hi))
+        + labs(x="Annual Bill Change ($)", y="# of Homes", title=title)
+        + guides(fill=False)
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 4.5))
+    )
+    for a in annotations:
+        p = p + a
+    return p
+
+
+def plot_bat_histogram(
+    df: pl.DataFrame,
+    col: str = "BAT_percustomer_total",
+    title: str = "BAT per-customer (total): HP households under current rates",
+) -> ggplot:
+    """Weighted histogram of BAT per-customer values."""
+    x_lo = math.floor(_weighted_percentile(df, col, "weight", 0.01) / 500) * 500
+    x_hi = math.ceil(_weighted_percentile(df, col, "weight", 0.99) / 500) * 500
+
+    binned = (
+        df.with_columns(
+            ((pl.col(col) / BAT_BIN_WIDTH).floor() * BAT_BIN_WIDTH + BAT_BIN_WIDTH / 2).alias("bin_center"),
+        )
+        .with_columns(
+            pl.when(pl.col("bin_center") < 0).then(pl.lit("underpaying"))
+            .otherwise(pl.lit("overpaying"))
+            .alias("sign"),
+        )
+        .group_by("bin_center", "sign")
+        .agg(pl.col("weight").sum().alias("weight_sum"))
+    )
+
+    sign_dtype = pl.Enum(["underpaying", "overpaying"])
+    plot_df = binned.with_columns(pl.col("sign").cast(sign_dtype))
+
+    total_weight = df["weight"].sum()
+    pct_over = df.filter(pl.col(col) >= 0)["weight"].sum() / total_weight * 100
+    pct_under = 100 - pct_over
+    w_mean = _weighted_mean(df, col, "weight")
+
+    max_weight = cast(float, plot_df["weight_sum"].max()) if not plot_df.is_empty() else 0.0
+    y_annot = max_weight * 1.08
+
+    p = (
+        ggplot(plot_df, aes(x="bin_center", y="weight_sum", fill="sign"))
+        + geom_col(width=BAT_BIN_WIDTH * 0.9)
+        + geom_vline(xintercept=0, linetype="solid", color="gray", size=0.8)
+        + geom_vline(xintercept=w_mean, linetype="dashed", color="#333333", size=0.7)
+        + annotate(
+            "text", x=w_mean, y=y_annot,
+            label=f"mean: ${w_mean:,.0f}",
+            ha="left" if w_mean >= 0 else "right",
+            size=9, color="#333333",
+        )
+        + scale_fill_manual(values=BAT_COLORS)
+        + coord_cartesian(xlim=(x_lo, x_hi))
+        + labs(x="BAT per-customer ($/year)", y="# of Homes (weighted)", title=title)
+        + guides(fill=False)
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 4.5))
+    )
+
+    if pct_under >= 1:
+        p = p + annotate(
+            "text", x=(x_lo + min(0, x_hi)) / 2, y=y_annot,
+            label=f"Underpaying\n{pct_under:.0f}%",
+            ha="center", size=10, color="#1b5e20",
+        )
+    if pct_over >= 1:
+        p = p + annotate(
+            "text", x=(max(0, x_lo) + x_hi) / 2, y=y_annot,
+            label=f"Overpaying\n{pct_over:.0f}%",
+            ha="center", size=10, color="#b71c1c",
+        )
+
+    return p
+
+
+def plot_bat_histogram_faceted(
+    df: pl.DataFrame,
+    col: str = "BAT_percustomer_total",
+    title: str = "BAT per-customer (total) by heating type",
+) -> ggplot:
+    """Weighted histogram of BAT per-customer, vertically faceted by heating type."""
+    facet_dtype = pl.Enum(BAT_FACET_ORDER)
+    labeled = df.with_columns(
+        pl.col(HEATING_TYPE_COL)
+        .replace_strict(HEATING_TYPE_LABELS, default=pl.col(HEATING_TYPE_COL))
+        .fill_null("Other")
+        .cast(facet_dtype)
+        .alias("heating_label"),
+    )
+
+    x_lo = math.floor(_weighted_percentile(labeled, col, "weight", 0.01) / 500) * 500
+    x_hi = math.ceil(_weighted_percentile(labeled, col, "weight", 0.99) / 500) * 500
+
+    binned = (
+        labeled.with_columns(
+            ((pl.col(col) / BAT_BIN_WIDTH).floor() * BAT_BIN_WIDTH + BAT_BIN_WIDTH / 2).alias("bin_center"),
+        )
+        .with_columns(
+            pl.when(pl.col("bin_center") < 0).then(pl.lit("underpaying"))
+            .otherwise(pl.lit("overpaying"))
+            .alias("sign"),
+        )
+        .group_by("bin_center", "sign", "heating_label")
+        .agg(pl.col("weight").sum().alias("weight_sum"))
+    )
+
+    sign_dtype = pl.Enum(["underpaying", "overpaying"])
+    plot_df = binned.with_columns(pl.col("sign").cast(sign_dtype))
+
+    stat_rows = []
+    mean_rows = []
+    for ht in [f for f in BAT_FACET_ORDER if f in labeled["heating_label"].unique().to_list()]:
+        sub = labeled.filter(pl.col("heating_label") == ht)
+        tw = sub["weight"].sum()
+        pct_over = sub.filter(pl.col(col) >= 0)["weight"].sum() / tw * 100
+        w_mean = _weighted_mean(sub, col, "weight")
+        facet_bins = plot_df.filter(pl.col("heating_label") == ht)
+        y_max = cast(float, facet_bins["weight_sum"].max()) if not facet_bins.is_empty() else 0.0
+        stat_rows.append({
+            "heating_label": ht,
+            "x": x_hi,
+            "y": y_max * 0.92,
+            "label": f"mean: ${w_mean:,.0f}  ·  {pct_over:.0f}% overpaying",
+        })
+        mean_rows.append({"heating_label": ht, "mean_x": w_mean})
+
+    stats_df = pl.DataFrame(stat_rows).with_columns(pl.col("heating_label").cast(facet_dtype))
+    means_df = pl.DataFrame(mean_rows).with_columns(pl.col("heating_label").cast(facet_dtype))
+    n_facets = labeled["heating_label"].n_unique()
+
+    return (
+        ggplot(plot_df, aes(x="bin_center", y="weight_sum", fill="sign"))
+        + geom_col(width=BAT_BIN_WIDTH * 0.9)
+        + geom_vline(xintercept=0, linetype="solid", color="gray", size=0.8)
+        + geom_vline(
+            data=means_df, mapping=aes(xintercept="mean_x"),
+            linetype="dashed", color="#333333", size=0.7,
+        )
+        + geom_text(
+            stats_df, aes(x="x", y="y", label="label"),
+            ha="right", size=8, color="#333333",
+            inherit_aes=False,
+        )
+        + scale_fill_manual(values=BAT_COLORS)
+        + scale_y_continuous(expand=(0, 0, 0.15, 0))
+        + coord_cartesian(xlim=(x_lo, x_hi))
+        + facet_wrap("heating_label", ncol=1, scales="free_y")
+        + labs(x="BAT per-customer ($/year)", y="# of Homes (weighted)", title=title)
+        + guides(fill=False)
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 2.25 * (1 + n_facets)))
+    )
+```
+
+We need a version of `delta_state` with all fuel-type flags so we can slice bill
+change histograms by heating fuel.
+
+```{python}
+#| label: dq-compute-bill-deltas-enriched
+
+delta_enriched = (
+    bills_u0
+    .select(
+        BLDG_ID, "weight", "sb.electric_utility",
+        pl.col("energy_total_bill").alias("bill_before"),
+        "heats_with_natgas", "heats_with_oil", "heats_with_propane",
+        "postprocess_group.has_hp", HEATING_TYPE_COL,
+    )
+    .join(
+        bills_u2.select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after")),
+        on=BLDG_ID,
+    )
+    .with_columns((pl.col("bill_after") - pl.col("bill_before")).alias("delta"))
+)
+```
+
+### Statewide
+
+```{python}
+#| label: fig-dq-bill-change-non-hp-state
+#| fig-cap: "Annual bill change distribution — non-heat-pump households (Statewide)"
+
+non_hp_state = delta_enriched.filter(~pl.col("postprocess_group.has_hp")).select("delta", "weight")
+plot_bill_change_histogram(non_hp_state)
+```
+
+```{python}
+#| label: fig-dq-bill-change-natgas-state
+#| fig-cap: "Annual bill change distribution — natural gas-heated households (Statewide)"
+
+natgas_state = delta_enriched.filter(pl.col("heats_with_natgas")).select("delta", "weight")
+plot_bill_change_histogram(natgas_state)
+```
+
+```{python}
+#| label: fig-dq-bill-change-oil-propane-state
+#| fig-cap: "Annual bill change distribution — oil/propane-heated households (Statewide)"
+
+oil_propane_state = (
+    delta_enriched
+    .filter(pl.col("heats_with_oil") | pl.col("heats_with_propane"))
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(oil_propane_state)
+```
+
+```{python}
+#| label: fig-dq-bill-change-elec-resistance-state
+#| fig-cap: "Annual bill change distribution — electric resistance-heated households (Statewide)"
+
+elec_resistance_state = (
+    delta_enriched
+    .filter(pl.col(HEATING_TYPE_COL) == "electrical_resistance")
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(elec_resistance_state)
+```
+
+### ConEd
+
+```{python}
+#| label: fig-dq-bill-change-natgas-coned
+#| fig-cap: "Annual bill change distribution — natural gas-heated households (ConEd)"
+
+delta_coned = delta_enriched.filter(pl.col("sb.electric_utility") == "coned")
+natgas_coned = delta_coned.filter(pl.col("heats_with_natgas")).select("delta", "weight")
+plot_bill_change_histogram(natgas_coned, title="Bill change — natural gas, ConEd")
+```
+
+```{python}
+#| label: fig-dq-bill-change-oil-propane-coned
+#| fig-cap: "Annual bill change distribution — oil/propane-heated households (ConEd)"
+
+oil_propane_coned = (
+    delta_coned
+    .filter(pl.col("heats_with_oil") | pl.col("heats_with_propane"))
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(oil_propane_coned, title="Bill change — oil/propane, ConEd")
+```
+
+```{python}
+#| label: fig-dq-bill-change-elec-resistance-coned
+#| fig-cap: "Annual bill change distribution — electric resistance-heated households (ConEd)"
+
+elec_resistance_coned = (
+    delta_coned
+    .filter(pl.col(HEATING_TYPE_COL) == "electrical_resistance")
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(elec_resistance_coned, title="Bill change — elec resistance, ConEd")
+```
+
+## BAT histograms (diagnostic)
+
+Weighted histograms of the Bill Alignment Test (BAT) per-customer metric. Positive
+values indicate overpayment relative to cost of service; negative values indicate
+underpayment. These were removed from the main analysis notebook during streamlining.
+
+```{python}
+#| label: fig-dq-bat-histogram-state
+#| fig-cap: "BAT per-customer (total) — all households, Statewide"
+
+plot_bat_histogram(bat, title="BAT per-customer (total) — Statewide")
+```
+
+```{python}
+#| label: fig-dq-bat-histogram-state-faceted
+#| fig-cap: "BAT per-customer (total) by heating type — Statewide"
+
+plot_bat_histogram_faceted(bat, title="BAT per-customer (total) by heating type — Statewide")
+```
+
+```{python}
+#| label: fig-dq-bat-histogram-coned
+#| fig-cap: "BAT per-customer (total) — all households, ConEd"
+
+bat_coned = bat.filter(pl.col("sb.electric_utility") == "coned")
+plot_bat_histogram(bat_coned, title="BAT per-customer (total) — ConEd")
+```
+
+```{python}
+#| label: fig-dq-bat-histogram-coned-faceted
+#| fig-cap: "BAT per-customer (total) by heating type — ConEd"
+
+plot_bat_histogram_faceted(bat_coned, title="BAT per-customer (total) by heating type — ConEd")
+```
+
+### BAT under HP seasonal rate
+
+```{python}
+#| label: dq-load-bat-56
+
+PATH_BAT_56 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_5+6/cross_subsidization_BAT_values/"
+bat_56_dq = pl.read_parquet(PATH_BAT_56, hive_partitioning=True)
+print(f"BAT table (run 5+6): {bat_56_dq.height} rows")
+```
+
+```{python}
+#| label: fig-dq-bat-histogram-state-hprate
+#| fig-cap: "BAT per-customer (total) — all households, Statewide (HP seasonal rate)"
+
+plot_bat_histogram(bat_56_dq, title="BAT per-customer (total) — Statewide (HP seasonal rate)")
+```
+
+```{python}
+#| label: fig-dq-bat-histogram-state-faceted-hprate
+#| fig-cap: "BAT per-customer (total) by heating type — Statewide (HP seasonal rate)"
+
+plot_bat_histogram_faceted(bat_56_dq, title="BAT per-customer (total) by heating type — Statewide (HP seasonal rate)")
+```
+
+```{python}
+#| label: fig-dq-bat-histogram-coned-hprate
+#| fig-cap: "BAT per-customer (total) — all households, ConEd (HP seasonal rate)"
+
+bat_coned_56 = bat_56_dq.filter(pl.col("sb.electric_utility") == "coned")
+plot_bat_histogram(bat_coned_56, title="BAT per-customer (total) — ConEd (HP seasonal rate)")
+```
+
+```{python}
+#| label: fig-dq-bat-histogram-coned-faceted-hprate
+#| fig-cap: "BAT per-customer (total) by heating type — ConEd (HP seasonal rate)"
+
+plot_bat_histogram_faceted(bat_coned_56, title="BAT per-customer (total) by heating type — ConEd (HP seasonal rate)")
+```
+
+## Non-HP customer bill impact of cross-subsidy removal
+
+If the cross-subsidy were removed — delivery rates realigned so HP customers no
+longer overpay — what happens to non-HP customers' bills? Because HP customers
+are still a small share of the population, the per-household impact is
+negligible.
+
+```{python}
+#| label: dq-compute-delta-rebal-state
+
+PATH_MASTER_BILLS_56 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_5+6/comb_bills_year_target/"
+bills_hprate_current = pl.read_parquet(PATH_MASTER_BILLS_56).filter(pl.col("month") == ANNUAL_MONTH)
+
+delta_rebal_state = (
+    bills_u0
+    .select(BLDG_ID, "weight", pl.col("energy_total_bill").alias("bill_before"), "postprocess_group.has_hp")
+    .join(
+        bills_hprate_current.select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after")),
+        on=BLDG_ID,
+    )
+    .with_columns((pl.col("bill_after") - pl.col("bill_before")).alias("delta"))
+)
+print(f"Rebalancing delta: {delta_rebal_state.height} rows")
+```
+
+```{python}
+#| label: fig-dq-bill-change-non-hp-rebal-state
+#| fig-cap: "Annual bill change — all non-HP homes after cross-subsidy removal (Statewide)"
+
+non_hp_rebal_state = (
+    delta_rebal_state
+    .filter(pl.col("postprocess_group.has_hp") == False)
+    .select("delta", "weight")
+)
+plot_bill_change_histogram(
+    non_hp_rebal_state, bin_width=5,
+    title="Change in Non-HP Customer Bills after Cross-Subsidy Removal",
 )
 ```

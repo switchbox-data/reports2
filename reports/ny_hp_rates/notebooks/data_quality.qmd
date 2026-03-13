@@ -63,7 +63,6 @@ TARIFF_MAP_DIR = "rate_design/hp_rates/ny/config/tariff_maps/gas"
 
 PATH_RDP_ROOT = Path("~/repos/rate-design-platform").expanduser()
 PATH_LOAD_CURVES = PATH_RDP_ROOT / "data/nrel/resstock/res_2024_amy2018_2/load_curve_monthly/state=NY"
-PATH_METADATA_SB = "s3://data.sb/nrel/resstock/res_2024_amy2018_2_sb/metadata_utility/state=NY/utility_assignment.parquet"
 GAS_COL = "out.natural_gas.total.energy_consumption"
 
 BLDG_ID = "bldg_id"
@@ -691,11 +690,9 @@ consumption and offsets some of the gas savings.
 ```{python}
 #| label: load-metadata-and-deltas
 
-metadata_sb = pl.read_parquet(PATH_METADATA_SB)
-
 delta_state = (
     bills_u0.filter(pl.col("month") == ANNUAL_MONTH)
-    .select(BLDG_ID, "weight", pl.col("energy_total_bill").alias("bill_before"), "heats_with_natgas")
+    .select(BLDG_ID, "weight", pl.col("energy_total_bill").alias("bill_before"), "heats_with_natgas", COOLING_COL)
     .join(
         bills_u2.filter(pl.col("month") == ANNUAL_MONTH)
         .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after")),
@@ -834,12 +831,9 @@ def plot_bill_change_histogram_faceted(
 #| label: fig-bill-change-natgas-by-cooling
 #| fig-cap: "Annual bill change distribution for natural gas-heated households by baseline cooling coverage (Statewide)"
 
-cooling_lookup = metadata_sb.select(BLDG_ID, COOLING_COL)
-
 natgas_by_cooling = (
     delta_state
     .filter(pl.col("heats_with_natgas"))
-    .join(cooling_lookup, on=BLDG_ID, how="left")
     .with_columns(
         pl.when(pl.col(COOLING_COL) == "100% Conditioned").then(pl.lit("Full cooling"))
         .when(pl.col(COOLING_COL) == "None").then(pl.lit("No cooling"))
@@ -891,13 +885,11 @@ else:
     Path("../cache").mkdir(exist_ok=True)
     _annual_elec.write_parquet(_cache_path)
 
+_bill_meta = bills_u0.select(BLDG_ID, "heats_with_natgas", "sb.electric_utility", COOLING_COL, "weight")
+
 elec_pct_change = (
     _annual_elec
-    .join(
-        metadata_sb.select(BLDG_ID, "heats_with_natgas", "sb.electric_utility", COOLING_COL, "weight"),
-        on=BLDG_ID,
-        how="inner",
-    )
+    .join(_bill_meta, on=BLDG_ID, how="inner")
     .filter(pl.col("heats_with_natgas"))
     .filter(pl.col("elec_kwh_before").abs() > 10)
     .with_columns(
@@ -999,7 +991,7 @@ delivery_pct_change = (
     .select(
         BLDG_ID,
         (pl.col("elec_delivery_bill") + pl.col("elec_fixed_charge")).alias("delivery_before"),
-        "heats_with_natgas", "sb.electric_utility", "weight",
+        "heats_with_natgas", "sb.electric_utility", "weight", COOLING_COL,
     )
     .join(
         bills_u2.select(
@@ -1010,7 +1002,6 @@ delivery_pct_change = (
     )
     .filter(pl.col("heats_with_natgas"))
     .filter(pl.col("delivery_before").abs() > 1)
-    .join(metadata_sb.select(BLDG_ID, COOLING_COL), on=BLDG_ID, how="left")
     .with_columns(
         ((pl.col("delivery_after") - pl.col("delivery_before")) / pl.col("delivery_before") * 100)
         .alias("pct_change"),

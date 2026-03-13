@@ -1,0 +1,1015 @@
+---
+title: "Feeder & Transformer Peak Capacity Analysis"
+---
+
+This notebook analyzes how heat pump adoption affects whether distribution feeders
+and transformers across Rhode Island will approach or exceed their rated capacity
+in either winter or summer, and when this is projected to occur.
+
+We combine RIE's feeder- and transformer-level summer peak projections with
+system-wide winter growth rates from the RI Peak Report 2024 to derive winter
+demand estimates. Three HP adoption scenarios (No HP, Base, High HP) are modeled
+by adjusting the EH (electric heating) forecast impact proportionally.
+
+### Imports
+
+```{python}
+import polars as pl
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from pathlib import Path
+import boto3
+```
+
+### Parameters
+
+```{python}
+WINTER_DEMAND_FRAC_OF_SUMMER = 0.70
+WINTER_CAPACITY_FRAC_OF_SUMMER = 0.80
+QUADRANT_THRESHOLD = 0.80
+
+STUDY_YEARS = list(range(2024, 2036))
+ALL_YEARS = list(range(2021, 2036))
+
+S3_BUCKET = "data.sb"
+S3_PREFIX = "ri_hp_rates/rie_data"
+```
+
+### Helpers
+
+```{python}
+CACHE_DIR = Path("cache")
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def s3_download(filename: str) -> Path:
+    """Download a file from S3 to the local cache if it doesn't already exist."""
+    local_path = CACHE_DIR / filename
+    if not local_path.exists():
+        s3 = boto3.client("s3")
+        s3.download_file(S3_BUCKET, f"{S3_PREFIX}/{filename}", str(local_path))
+    return local_path
+```
+
+### Constants from RI Peak Report 2024
+
+All values below are extracted from *RI_PEAK_REPORT_2024.pdf* (Rhode Island
+Energy, December 2024). Page numbers are noted for each source. These are
+system-wide MW values; we only use them as unitless ratios to scale feeder-level
+demand, so no unit conversion is needed.
+
+```{python}
+# Winter net peaks under the 95/5 (extreme) weather scenario, in MW.
+# Source: page 31, "Extreme 05-95" column (labeled "Extreme 05-95" for winter).
+WINTER_NET_95_5 = {
+    2024: 1343, 2025: 1349, 2026: 1355, 2027: 1364, 2028: 1376,
+    2029: 1394, 2030: 1417, 2031: 1442, 2032: 1468, 2033: 1497,
+    2034: 1524, 2035: 1557,
+}
+
+# Summer net peaks under the 95/5 (extreme) weather scenario, in MW.
+# Source: page 29, "Extreme 95-5" column.
+SUMMER_NET_95_5 = {
+    2024: 1895, 2025: 1884, 2026: 1870, 2027: 1861, 2028: 1853,
+    2029: 1848, 2030: 1846, 2031: 1848, 2032: 1854, 2033: 1862,
+    2034: 1874, 2035: 1886,
+}
+
+# EH (Electric Heating/Cooling) forecast impact on winter peak, in MW.
+# Positive = HPs add to winter peak. Source: page 32, "EH Forecast" column.
+EH_WINTER_MW = {
+    2024: 29,  2025: 37,  2026: 45,  2027: 54,  2028: 66,
+    2029: 79,  2030: 95,  2031: 111, 2032: 126, 2033: 140,
+    2034: 153, 2035: 166,
+}
+
+# EH forecast impact on summer peak, in MW.
+# Negative = HPs reduce summer peak (more efficient cooling).
+# Source: page 30, "EH Forecast" column (last forecast column before Total Impact).
+EH_SUMMER_MW = {
+    2024: -2, 2025: -2, 2026: -3, 2027: -3, 2028: -4,
+    2029: -4, 2030: -5, 2031: -6, 2032: -7, 2033: -8,
+    2034: -9, 2035: -10,
+}
+
+# Cumulative heat pump adoption counts under base and high scenarios.
+# Source: page 54, "Number of Electric Heat Pumps" table.
+HP_CUMULATIVE_BASE = {
+    2024: 11730, 2025: 14751, 2026: 17902, 2027: 21683, 2028: 26221,
+    2029: 31666, 2030: 38199, 2031: 44407, 2032: 50304, 2033: 55906,
+    2034: 61227, 2035: 66283,
+}
+
+HP_CUMULATIVE_HIGH = {
+    2024: 13607, 2025: 17111, 2026: 20766, 2027: 25153, 2028: 30416,
+    2029: 36732, 2030: 44311, 2031: 51512, 2032: 58352, 2033: 64850,
+    2034: 71024, 2035: 76889,
+}
+```
+
+### Import feeder data
+
+The feeder CSV has two header rows: the first contains year numbers, the second
+contains column names and unit labels. We skip both and assign names manually.
+
+```{python}
+_feeder_csv = s3_download("rie_loads_feeders.csv")
+
+_feeder_year_cols = {f"column_{i + 6}": str(y) for i, y in enumerate(ALL_YEARS)}
+_feeder_meta_cols = {
+    "column_1": "study_area",
+    "column_2": "substation",
+    "column_3": "voltage_kv",
+    "column_4": "_feeder_short",
+    "column_5": "sn_rating_amps",
+}
+
+df_feeders_wide = (
+    pl.read_csv(
+        _feeder_csv,
+        has_header=False,
+        skip_rows=2,
+        truncate_ragged_lines=True,
+        infer_schema_length=0,
+    )
+    .select(list(_feeder_meta_cols.keys()) + list(_feeder_year_cols.keys()))
+    .rename({**_feeder_meta_cols, **_feeder_year_cols})
+    .with_columns(
+        (pl.col("substation") + " " + pl.col("_feeder_short")).alias("feeder_id"),
+        pl.col("sn_rating_amps").cast(pl.Float64),
+        pl.col("voltage_kv").cast(pl.Float64),
+        *(pl.col(str(y)).cast(pl.Float64) for y in ALL_YEARS),
+    )
+)
+
+print(f"Feeders wide: {df_feeders_wide.shape[0]} feeders × {df_feeders_wide.shape[1]} columns")
+df_feeders_wide.head(5)
+```
+
+Now reshape to long format: one row per feeder per year.
+
+```{python}
+df_feeders = (
+    df_feeders_wide.unpivot(
+        index=["study_area", "substation", "voltage_kv", "_feeder_short", "feeder_id", "sn_rating_amps"],
+        on=[str(y) for y in ALL_YEARS],
+        variable_name="year",
+        value_name="summer_demand_amps",
+    )
+    .drop("_feeder_short")
+    .with_columns(pl.col("year").cast(pl.Int32))
+    .sort(["feeder_id", "year"])
+)
+
+print(f"Feeders long: {df_feeders.shape[0]} rows ({df_feeders.n_unique('feeder_id')} feeders × {len(ALL_YEARS)} years)")
+df_feeders.head(10)
+```
+
+### Import transformer data
+
+```{python}
+_xfmr_csv = s3_download("rie_loads_transformers.csv")
+
+_xfmr_year_cols = {f"column_{i + 6}": str(y) for i, y in enumerate(ALL_YEARS)}
+_xfmr_meta_cols = {
+    "column_1": "study_area",
+    "column_2": "substation",
+    "column_3": "tranf_id",
+    "column_4": "concatenate",
+    "column_5": "sn_rating_mva",
+}
+
+df_transformers_wide = (
+    pl.read_csv(
+        _xfmr_csv,
+        has_header=False,
+        skip_rows=2,
+        truncate_ragged_lines=True,
+        infer_schema_length=0,
+    )
+    .select(list(_xfmr_meta_cols.keys()) + list(_xfmr_year_cols.keys()))
+    .rename({**_xfmr_meta_cols, **_xfmr_year_cols})
+    .with_columns(
+        pl.col("concatenate").alias("transformer_id"),
+        pl.col("sn_rating_mva").cast(pl.Float64),
+        *(pl.col(str(y)).cast(pl.Float64) for y in ALL_YEARS),
+    )
+)
+
+print(f"Transformers wide: {df_transformers_wide.shape[0]} transformers × {df_transformers_wide.shape[1]} columns")
+df_transformers_wide.head(5)
+```
+
+```{python}
+df_transformers = (
+    df_transformers_wide.unpivot(
+        index=["study_area", "substation", "tranf_id", "concatenate", "transformer_id", "sn_rating_mva"],
+        on=[str(y) for y in ALL_YEARS],
+        variable_name="year",
+        value_name="summer_demand_mva",
+    )
+    .with_columns(pl.col("year").cast(pl.Int32))
+    .sort(["transformer_id", "year"])
+)
+
+print(f"Transformers long: {df_transformers.shape[0]} rows ({df_transformers.n_unique('transformer_id')} transformers × {len(ALL_YEARS)} years)")
+df_transformers.head(10)
+```
+
+### Derive winter values
+
+We derive winter demand and capacity from summer values using our assumptions.
+These columns are added directly to the dataframes so that in the future, if we
+get actual winter data, it can simply be joined in to replace these estimates.
+
+The key extensibility point is `project_winter_demand`: it receives the full
+asset dataframe and returns a copy with a `winter_demand_*` column added. The
+default implementation applies a uniform system-wide growth rate from the RI
+Peak Report, but it can be replaced with a version that uses feeder-specific
+growth rates or other asset-level information.
+
+```{python}
+def project_winter_demand(
+    df: pl.DataFrame,
+    demand_col: str,
+    id_col: str,
+) -> pl.DataFrame:
+    """Project winter demand for each asset across all study years.
+
+    Default strategy: derive 2024 winter demand from summer demand, then grow
+    each asset's winter demand forward using the system-wide winter net 95/5
+    peak trajectory. All assets share the same growth curve.
+
+    To use feeder-specific growth rates, replace this function with one that
+    reads asset-level attributes from `df` to determine per-asset growth.
+
+    Returns a copy of `df` with a new winter demand column added (named by
+    replacing 'summer_demand' with 'winter_demand' in `demand_col`).
+    """
+    winter_demand_col = demand_col.replace("summer_demand", "winter_demand")
+    base_year = 2024
+
+    df_base = (
+        df.filter(pl.col("year") == base_year)
+        .select(
+            id_col,
+            (pl.col(demand_col) * WINTER_DEMAND_FRAC_OF_SUMMER).alias("_winter_base"),
+        )
+    )
+
+    growth_map = pl.DataFrame({
+        "year": list(WINTER_NET_95_5.keys()),
+        "_growth": [
+            WINTER_NET_95_5[y] / WINTER_NET_95_5[base_year]
+            for y in WINTER_NET_95_5
+        ],
+    }).with_columns(pl.col("year").cast(pl.Int32))
+
+    return (
+        df.join(df_base, on=id_col, how="left")
+        .join(growth_map, on="year", how="left")
+        .with_columns(
+            pl.when(pl.col("year") <= base_year)
+            .then(pl.col(demand_col) * WINTER_DEMAND_FRAC_OF_SUMMER)
+            .otherwise(pl.col("_winter_base") * pl.col("_growth"))
+            .alias(winter_demand_col),
+        )
+        .drop(["_winter_base", "_growth"])
+    )
+
+
+def add_winter_capacity(
+    df: pl.DataFrame,
+    capacity_col: str,
+) -> pl.DataFrame:
+    """Add a winter capacity column derived from summer (nameplate) capacity."""
+    winter_capacity_col = capacity_col.replace("sn_rating", "winter_capacity")
+    return df.with_columns(
+        (pl.col(capacity_col) * WINTER_CAPACITY_FRAC_OF_SUMMER).alias(winter_capacity_col),
+    )
+```
+
+```{python}
+df_feeders = project_winter_demand(df_feeders, "summer_demand_amps", "feeder_id")
+df_feeders = add_winter_capacity(df_feeders, "sn_rating_amps")
+print("Feeders with winter columns:")
+df_feeders.filter(pl.col("year") >= 2024).head(10)
+```
+
+```{python}
+df_transformers = project_winter_demand(df_transformers, "summer_demand_mva", "transformer_id")
+df_transformers = add_winter_capacity(df_transformers, "sn_rating_mva")
+print("Transformers with winter columns:")
+df_transformers.filter(pl.col("year") >= 2024).head(10)
+```
+
+### Scenario modeling
+
+We model three HP adoption scenarios by applying unitless adjustment factors
+derived from the RI Peak Report's system-wide EH forecast and HP adoption counts.
+The factors scale each feeder's demand proportionally.
+
+```{python}
+def build_scenario_adjustment_factors() -> pl.DataFrame:
+    """Build a dataframe of per-year, per-scenario unitless adjustment factors.
+
+    Returns a dataframe with columns: year, scenario, summer_adj, winter_adj.
+    Multiply a feeder's base demand by these factors to get scenario demand.
+    """
+    rows = []
+    for year in STUDY_YEARS:
+        summer_net = SUMMER_NET_95_5[year]
+        winter_net = WINTER_NET_95_5[year]
+        eh_summer = EH_SUMMER_MW[year]
+        eh_winter = EH_WINTER_MW[year]
+        hp_base = HP_CUMULATIVE_BASE[year]
+        hp_high = HP_CUMULATIVE_HIGH[year]
+
+        # Base: no adjustment
+        rows.append({"year": year, "scenario": "Base", "summer_adj": 1.0, "winter_adj": 1.0})
+
+        # No HP: remove EH impact
+        rows.append({
+            "year": year,
+            "scenario": "No HP",
+            "summer_adj": (summer_net - eh_summer) / summer_net,
+            "winter_adj": (winter_net - eh_winter) / winter_net,
+        })
+
+        # High HP: scale up EH impact by high/base adoption ratio
+        hp_scale = hp_high / hp_base
+        eh_summer_additional = eh_summer * (hp_scale - 1)
+        eh_winter_additional = eh_winter * (hp_scale - 1)
+        rows.append({
+            "year": year,
+            "scenario": "High HP",
+            "summer_adj": (summer_net + eh_summer_additional) / summer_net,
+            "winter_adj": (winter_net + eh_winter_additional) / winter_net,
+        })
+
+    return pl.DataFrame(rows).with_columns(pl.col("year").cast(pl.Int32))
+
+
+df_scenario_adj = build_scenario_adjustment_factors()
+```
+
+Let's inspect the adjustment factors to make sure they look reasonable.
+
+```{python}
+print("Scenario adjustment factors (selected years):")
+df_scenario_adj.filter(pl.col("year").is_in([2024, 2028, 2032, 2035]))
+```
+
+### Compute utilization
+
+We join each feeder/transformer with the per-year, per-scenario adjustment
+factors, apply them to get scenario-specific demand, then compute utilization.
+
+```{python}
+def compute_utilization(
+    df: pl.DataFrame,
+    summer_demand_col: str,
+    winter_demand_col: str,
+    summer_capacity_col: str,
+    winter_capacity_col: str,
+) -> pl.DataFrame:
+    """Join scenarios onto base data, apply adjustment to demand, and derive utilization."""
+    return (
+        df.filter(pl.col("year").is_in(STUDY_YEARS))
+        .join(df_scenario_adj, on="year", how="left")
+        .with_columns(
+            (pl.col(summer_demand_col) * pl.col("summer_adj")).alias(summer_demand_col),
+            (pl.col(winter_demand_col) * pl.col("winter_adj")).alias(winter_demand_col),
+        )
+        .with_columns(
+            (pl.col(summer_demand_col) / pl.col(summer_capacity_col)).alias("summer_utilization"),
+            (pl.col(winter_demand_col) / pl.col(winter_capacity_col)).alias("winter_utilization"),
+        )
+        .drop(["summer_adj", "winter_adj"])
+    )
+```
+
+```{python}
+df_feeders_util = compute_utilization(
+    df_feeders,
+    "summer_demand_amps", "winter_demand_amps",
+    "sn_rating_amps", "winter_capacity_amps",
+)
+print(f"Feeder utilization: {df_feeders_util.shape[0]} rows")
+df_feeders_util.select(
+    "feeder_id", "year", "scenario",
+    "summer_demand_amps", "summer_utilization",
+    "winter_demand_amps", "winter_utilization",
+).head(9)
+```
+
+```{python}
+df_transformers_util = compute_utilization(
+    df_transformers,
+    "summer_demand_mva", "winter_demand_mva",
+    "sn_rating_mva", "winter_capacity_mva",
+)
+print(f"Transformer utilization: {df_transformers_util.shape[0]} rows")
+df_transformers_util.select(
+    "transformer_id", "year", "scenario",
+    "summer_demand_mva", "summer_utilization",
+    "winter_demand_mva", "winter_utilization",
+).head(9)
+```
+
+### Interactive histograms
+
+```{python}
+SCENARIO_ORDER = ["No HP", "Base", "High HP"]
+UTIL_BIN_SIZE = 0.05
+UTIL_RANGE = [0.0, 1.8]
+
+
+def make_utilization_histogram(
+    df_util: pl.DataFrame,
+    id_col: str,
+    asset_type: str,
+) -> go.Figure:
+    """Build an interactive histogram of utilization across years and scenarios.
+
+    Uses a Plotly slider to select the year and buttons to switch scenarios.
+    The slider restyles trace *data* while the buttons toggle trace *visibility*,
+    so changing scenario preserves the current year position.
+    """
+
+    fig = make_subplots(
+        rows=2, cols=1,
+        subplot_titles=["Summer Utilization", "Winter Utilization"],
+        vertical_spacing=0.12,
+    )
+
+    # Pre-compute utilization lists for all (year, scenario) combinations
+    util_data: dict[int, dict[str, dict[str, list]]] = {}
+    for year in STUDY_YEARS:
+        util_data[year] = {}
+        for scenario in SCENARIO_ORDER:
+            df_sc = df_util.filter(
+                (pl.col("year") == year) & (pl.col("scenario") == scenario)
+            )
+            util_data[year][scenario] = {
+                "summer": df_sc["summer_utilization"].to_list(),
+                "winter": df_sc["winter_utilization"].to_list(),
+            }
+
+    # 6 traces: one per (scenario, season). Trace order matters for restyle.
+    trace_info = []
+    initial_year = STUDY_YEARS[0]
+    hist_kwargs = dict(
+        xbins=dict(start=UTIL_RANGE[0], end=UTIL_RANGE[1], size=UTIL_BIN_SIZE),
+        opacity=0.85,
+        hovertemplate="Utilization: %{x:.0%}<br>Count: %{y}<extra></extra>",
+    )
+
+    for scenario in SCENARIO_ORDER:
+        visible = scenario == "Base"
+        fig.add_trace(
+            go.Histogram(
+                x=util_data[initial_year][scenario]["summer"],
+                marker_color="#fc9706",
+                visible=visible,
+                **hist_kwargs,
+            ),
+            row=1, col=1,
+        )
+        trace_info.append(("summer", scenario))
+        fig.add_trace(
+            go.Histogram(
+                x=util_data[initial_year][scenario]["winter"],
+                marker_color="#68bed8",
+                visible=visible,
+                **hist_kwargs,
+            ),
+            row=2, col=1,
+        )
+        trace_info.append(("winter", scenario))
+
+    # Slider: restyle x data for all 6 traces (doesn't touch visibility)
+    slider_steps = [
+        dict(
+            method="restyle",
+            args=[{"x": [util_data[y][sc][season] for season, sc in trace_info]}],
+            label=str(y),
+        )
+        for y in STUDY_YEARS
+    ]
+
+    # Scenario buttons: toggle visibility (doesn't touch data or slider position)
+    buttons = [
+        dict(
+            method="restyle",
+            args=[{"visible": [sc == target for _, sc in trace_info]}],
+            label=target,
+        )
+        for target in SCENARIO_ORDER
+    ]
+
+    fig.update_layout(
+        title=f"{asset_type} Utilization",
+        showlegend=False,
+        height=700,
+        width=900,
+        sliders=[dict(
+            active=0,
+            steps=slider_steps,
+            currentvalue={"prefix": "Year: "},
+            pad={"t": 50},
+        )],
+        updatemenus=[dict(
+            type="buttons",
+            direction="right",
+            active=1,
+            x=0.0,
+            y=1.18,
+            buttons=buttons,
+        )],
+    )
+
+    fig.update_xaxes(
+        range=UTIL_RANGE,
+        tickformat=".0%",
+        title_text="Utilization",
+    )
+    fig.update_yaxes(title_text="Number of assets")
+
+    for row in [1, 2]:
+        fig.add_vline(x=1.0, line_dash="dash", line_color="red", line_width=2, row=row, col=1)
+
+    return fig
+```
+
+#### Feeder utilization
+
+```{python}
+#| label: fig-feeder-utilization
+#| fig-cap: "Distribution of feeder utilization across years and HP adoption scenarios. Red dashed line marks 100% rated capacity."
+
+fig_feeders = make_utilization_histogram(df_feeders_util, "feeder_id", "Feeder")
+fig_feeders.show()
+```
+
+#### Transformer utilization
+
+```{python}
+#| label: fig-transformer-utilization
+#| fig-cap: "Distribution of transformer utilization across years and HP adoption scenarios. Red dashed line marks 100% rated capacity."
+
+fig_transformers = make_utilization_histogram(df_transformers_util, "transformer_id", "Transformer")
+fig_transformers.show()
+```
+
+### Capacity quadrant grids
+
+For each year, we classify every asset into one of four quadrants based on
+whether its summer and winter utilization are strictly over 100% or at/under 100%.
+This makes it easy to see at a glance how many
+assets are over capacity in summer, winter, both, or neither.
+
+```{python}
+def make_quadrant_grid(
+    df_util: pl.DataFrame,
+    id_col: str,
+    asset_type: str,
+    threshold: float = 1.0,
+) -> go.Figure:
+    """Build a grid of 2x2 quadrant tables, one per year, with scenario toggle.
+
+    Quadrants use strict 'over' (utilization > threshold) and 'at or under' (<= threshold).
+    Default threshold is 100% (1.0).
+    """
+
+    grid_cols = 3
+    grid_rows = (len(STUDY_YEARS) + grid_cols - 1) // grid_cols
+
+    pct = f"{threshold:.0%}"
+    x_labels = [f"Winter ≤ {pct}", f"Winter > {pct}"]
+    y_labels = [f"Summer > {pct}", f"Summer ≤ {pct}"]
+
+    # Fixed z maps quadrant position to color.
+    # z[0]=bottom row (summer > threshold), z[1]=top row (summer ≤ threshold).
+    # z[*][0]=left col (winter ≤ threshold), z[*][1]=right col (winter > threshold).
+    # 0=neither→green, 1=summer only→yellow, 2=winter only→yellow, 3=both→red
+    z_fixed = [[1, 3], [0, 2]]
+    colorscale = [
+        [0.0, "#d4edda"],
+        [0.333, "#fff3cd"],
+        [0.667, "#fff3cd"],
+        [1.0, "#f8d7da"],
+    ]
+
+    fig = make_subplots(
+        rows=grid_rows,
+        cols=grid_cols,
+        subplot_titles=[str(y) for y in STUDY_YEARS],
+        vertical_spacing=0.10,
+        horizontal_spacing=0.08,
+    )
+
+    def _quad_text(df_yr, threshold):
+        n = df_yr.height
+        s_mask = df_yr["summer_utilization"] > threshold
+        w_mask = df_yr["winter_utilization"] > threshold
+        neither = int((~s_mask & ~w_mask).sum())
+        summer_only = int((s_mask & ~w_mask).sum())
+        winter_only = int((~s_mask & w_mask).sum())
+        both_over = int((s_mask & w_mask).sum())
+        counts = [[summer_only, both_over], [neither, winter_only]]
+        return [
+            [
+                f"{counts[i][j] / n:.1%}<br>{counts[i][j]} of {n}"
+                if n > 0
+                else "N/A"
+                for j in range(2)
+            ]
+            for i in range(2)
+        ]
+
+    # Pre-compute text matrices for all (year, scenario) combinations
+    quad_text: dict[int, dict[str, list]] = {}
+    for year in STUDY_YEARS:
+        quad_text[year] = {}
+        for scenario in SCENARIO_ORDER:
+            df_yr = df_util.filter(
+                (pl.col("year") == year) & (pl.col("scenario") == scenario)
+            )
+            quad_text[year][scenario] = _quad_text(df_yr, threshold)
+
+    # One trace per year (always visible). Scenario buttons restyle the text.
+    for year in STUDY_YEARS:
+        gi = STUDY_YEARS.index(year)
+        r = gi // grid_cols + 1
+        c = gi % grid_cols + 1
+
+        fig.add_trace(
+            go.Heatmap(
+                z=z_fixed,
+                x=x_labels,
+                y=y_labels,
+                text=quad_text[year]["Base"],
+                texttemplate="%{text}",
+                textfont=dict(size=12),
+                colorscale=colorscale,
+                showscale=False,
+                zmin=0,
+                zmax=3,
+                hoverinfo="skip",
+            ),
+            row=r,
+            col=c,
+        )
+
+    # Scenario buttons: restyle text data on all 12 traces
+    buttons = [
+        dict(
+            method="restyle",
+            args=[{"text": [quad_text[y][sc] for y in STUDY_YEARS]}],
+            label=sc,
+        )
+        for sc in SCENARIO_ORDER
+    ]
+
+    fig.update_layout(
+        title=f"{asset_type} Capacity Quadrants — Base",
+        height=250 * grid_rows,
+        width=900,
+        updatemenus=[
+            dict(
+                type="buttons",
+                direction="right",
+                active=1,
+                x=0.0,
+                y=1.04,
+                buttons=buttons,
+            )
+        ],
+    )
+
+    fig.update_xaxes(tickfont=dict(size=8))
+    fig.update_yaxes(tickfont=dict(size=8), tickangle=-90)
+
+    return fig
+```
+
+#### Feeder capacity quadrants
+
+```{python}
+#| label: fig-feeder-quadrants
+#| fig-cap: "Feeder classification by summer and winter capacity (>100% vs ≤100%)."
+
+fig_feeder_quads = make_quadrant_grid(df_feeders_util, "feeder_id", "Feeder")
+fig_feeder_quads.show()
+```
+
+#### Transformer capacity quadrants
+
+```{python}
+#| label: fig-transformer-quadrants
+#| fig-cap: "Transformer classification by summer and winter capacity (>100% vs ≤100%)."
+
+fig_xfmr_quads = make_quadrant_grid(df_transformers_util, "transformer_id", "Transformer")
+fig_xfmr_quads.show()
+```
+
+### Summary statistics
+
+```{python}
+def summarize_over_capacity(df_util: pl.DataFrame, id_col: str, asset_type: str) -> pl.DataFrame:
+    """Count assets exceeding 100% utilization by year, scenario, and season."""
+    n_assets = df_util.filter(pl.col("year") == STUDY_YEARS[0], pl.col("scenario") == "Base").n_unique(id_col)
+
+    summer = (
+        df_util.filter(pl.col("summer_utilization") > 1.0)
+        .group_by(["year", "scenario"])
+        .agg(pl.col(id_col).n_unique().alias("n_over_summer"))
+    )
+    winter = (
+        df_util.filter(pl.col("winter_utilization") > 1.0)
+        .group_by(["year", "scenario"])
+        .agg(pl.col(id_col).n_unique().alias("n_over_winter"))
+    )
+
+    df_summary = (
+        pl.DataFrame({"year": STUDY_YEARS})
+        .with_columns(pl.col("year").cast(pl.Int32))
+        .join(
+            pl.DataFrame({"scenario": SCENARIO_ORDER}),
+            how="cross",
+        )
+        .join(summer, on=["year", "scenario"], how="left")
+        .join(winter, on=["year", "scenario"], how="left")
+        .with_columns(
+            pl.col("n_over_summer").fill_null(0),
+            pl.col("n_over_winter").fill_null(0),
+            pl.lit(n_assets).alias("n_total"),
+            pl.lit(asset_type).alias("asset_type"),
+        )
+        .sort(["year", "scenario"])
+    )
+    return df_summary
+
+
+df_feeders_summary = summarize_over_capacity(df_feeders_util, "feeder_id", "Feeder")
+df_transformers_summary = summarize_over_capacity(df_transformers_util, "transformer_id", "Transformer")
+
+print("Feeders exceeding 100% capacity:")
+df_feeders_summary.filter(pl.col("n_over_summer") > 0, pl.col("n_over_winter") > 0)
+```
+
+```{python}
+print("Transformers exceeding 100% capacity:")
+df_transformers_summary.filter(pl.col("n_over_summer") > 0, pl.col("n_over_winter") > 0)
+```
+
+---
+
+## Very speculative long-run overload projections
+
+The section below is **exploratory and not part of the main report**. It extrapolates utilization
+from the last two years of data (2034→2035) using a constant linear (additive) growth assumption
+out to the year 2100, then plots the share of feeders and transformers that exceed rated capacity.
+These projections are highly speculative and are intended only as a rough view of long-run overload
+risk under simplistic assumptions.
+
+### Parameters and extrapolation
+
+```{python}
+LONG_RUN_MAX_YEAR = 2100
+```
+
+We extend utilization from 2035 to `LONG_RUN_MAX_YEAR` by applying the same additive change
+observed between 2034 and 2035 separately for summer and winter.
+
+```{python}
+def extrapolate_utilization_linear(
+    df: pl.DataFrame,
+    id_col: str,
+    max_year: int,
+) -> pl.DataFrame:
+    """Extend summer and winter utilization from 2035 to max_year using 2034→2035 additive deltas.
+
+    Assumes df has columns: id_col, year, scenario, summer_utilization, winter_utilization.
+    Returns a DataFrame with the same schema including both original years and extrapolated years.
+    """
+    last_base_year = 2035
+    if max_year <= last_base_year:
+        return df.filter(pl.col("year") <= max_year)
+
+    # Deltas per (id_col, scenario): change from 2034 to 2035
+    y_2034 = df.filter(pl.col("year") == 2034).select(
+        id_col, "scenario",
+        pl.col("summer_utilization").alias("summer_2034"),
+        pl.col("winter_utilization").alias("winter_2034"),
+    )
+    y_2035 = df.filter(pl.col("year") == 2035).select(
+        id_col, "scenario",
+        pl.col("summer_utilization").alias("summer_2035"),
+        pl.col("winter_utilization").alias("winter_2035"),
+    )
+    deltas = (
+        y_2034.join(y_2035, on=[id_col, "scenario"], how="inner")
+        .with_columns(
+            (pl.col("summer_2035") - pl.col("summer_2034")).alias("delta_summer"),
+            (pl.col("winter_2035") - pl.col("winter_2034")).alias("delta_winter"),
+        )
+        .select(id_col, "scenario", "delta_summer", "delta_winter")
+    )
+
+    # Base: all rows through 2035
+    base = df.filter(pl.col("year") <= last_base_year)
+
+    # Build extrapolated years: for each year y in 2036..max_year, utilization = prev + delta
+    extrapolated = []
+    prev_year = (
+        df.filter(pl.col("year") == last_base_year)
+        .select(id_col, "scenario", "summer_utilization", "winter_utilization")
+    )
+    for y in range(2036, max_year + 1):
+        next_df = (
+            prev_year.join(deltas, on=[id_col, "scenario"], how="left")
+            .with_columns(
+                pl.col("delta_summer").fill_null(0),
+                pl.col("delta_winter").fill_null(0),
+            )
+            .with_columns(
+                (pl.col("summer_utilization") + pl.col("delta_summer")).alias("summer_utilization"),
+                (pl.col("winter_utilization") + pl.col("delta_winter")).alias("winter_utilization"),
+            )
+            .with_columns(pl.lit(y).cast(pl.Int32).alias("year"))
+            .select(id_col, "year", "scenario", "summer_utilization", "winter_utilization")
+        )
+        extrapolated.append(next_df)
+        prev_year = next_df.select(id_col, "scenario", "summer_utilization", "winter_utilization")
+
+    extrap = pl.concat(extrapolated) if extrapolated else pl.DataFrame()
+    cols = [id_col, "year", "scenario", "summer_utilization", "winter_utilization"]
+    base_slim = base.select(cols)
+    return pl.concat([base_slim, extrap]).sort([id_col, "scenario", "year"])
+```
+
+```{python}
+df_feeders_long_run = extrapolate_utilization_linear(df_feeders_util, "feeder_id", LONG_RUN_MAX_YEAR)
+df_transformers_long_run = extrapolate_utilization_linear(df_transformers_util, "transformer_id", LONG_RUN_MAX_YEAR)
+print(f"Feeders long-run: {df_feeders_long_run.shape[0]} rows (through {LONG_RUN_MAX_YEAR})")
+print(f"Transformers long-run: {df_transformers_long_run.shape[0]} rows (through {LONG_RUN_MAX_YEAR})")
+```
+
+### Overload classification and aggregation
+
+We classify each asset in each year as over limit in summer and/or winter (utilization **strictly greater than** 1.0),
+then compute mutually exclusive categories and the total over capacity (over in at least one season).
+The total-over-capacity share should be monotonically increasing over time; the three exclusive curves need not be.
+
+```{python}
+def add_overload_flags(df: pl.DataFrame) -> pl.DataFrame:
+    """Add boolean overload columns: is_over_summer, is_over_winter, and exclusive categories."""
+    return df.with_columns(
+        (pl.col("summer_utilization") > 1.0).alias("is_over_summer"),
+        (pl.col("winter_utilization") > 1.0).alias("is_over_winter"),
+    ).with_columns(
+        (pl.col("is_over_summer") & ~pl.col("is_over_winter")).alias("over_summer_only"),
+        (~pl.col("is_over_summer") & pl.col("is_over_winter")).alias("over_winter_only"),
+        (pl.col("is_over_summer") & pl.col("is_over_winter")).alias("over_both"),
+        (pl.col("is_over_summer") | pl.col("is_over_winter")).alias("over_total"),
+    )
+
+
+def aggregate_overload_pct(
+    df: pl.DataFrame,
+    id_col: str,
+) -> pl.DataFrame:
+    """Aggregate to yearly percentages by scenario for the four overload series."""
+    return (
+        df.group_by(["year", "scenario"])
+        .agg(
+            pl.col(id_col).n_unique().alias("n_assets"),
+            pl.col("over_summer_only").sum().cast(pl.UInt32).alias("n_summer_only"),
+            pl.col("over_winter_only").sum().cast(pl.UInt32).alias("n_winter_only"),
+            pl.col("over_both").sum().cast(pl.UInt32).alias("n_both"),
+            pl.col("over_total").sum().cast(pl.UInt32).alias("n_total_over"),
+        )
+        .with_columns(
+            (100 * pl.col("n_summer_only") / pl.col("n_assets")).alias("pct_over_summer_only"),
+            (100 * pl.col("n_winter_only") / pl.col("n_assets")).alias("pct_over_winter_only"),
+            (100 * pl.col("n_both") / pl.col("n_assets")).alias("pct_over_both"),
+            (100 * pl.col("n_total_over") / pl.col("n_assets")).alias("pct_over_total"),
+        )
+        .sort(["year", "scenario"])
+    )
+```
+
+```{python}
+df_feeders_long_run = add_overload_flags(df_feeders_long_run)
+df_transformers_long_run = add_overload_flags(df_transformers_long_run)
+
+df_feeders_overload_long_run = aggregate_overload_pct(df_feeders_long_run, "feeder_id")
+df_transformers_overload_long_run = aggregate_overload_pct(df_transformers_long_run, "transformer_id")
+
+# Sanity: total over capacity should be monotonically increasing per scenario
+print("Feeder long-run summary (Base scenario, selected years):")
+df_feeders_overload_long_run.filter(pl.col("scenario") == "Base").select(
+    "year", "pct_over_summer_only", "pct_over_winter_only", "pct_over_both", "pct_over_total"
+).filter(pl.col("year").is_in([2035, 2050, 2075, 2100]))
+```
+
+### Long-run overload plot
+
+One figure per asset type: year on the x-axis (2024–2100), percent of assets over limit on the y-axis,
+with four lines (summer only, winter only, both, total over capacity). The total-over-capacity line is
+monotonically increasing and serves as a sanity check. A scenario selector switches between Base, No HP, and High HP.
+
+```{python}
+def make_long_run_overload_plot(df_summary: pl.DataFrame, asset_label: str) -> go.Figure:
+    """Line chart of percent of assets over limit by year, with four series and scenario selector."""
+    years = df_summary["year"].unique().sort().to_list()
+    series = [
+        ("pct_over_summer_only", "Over limit summer only", "#68bed8"),
+        ("pct_over_winter_only", "Over limit winter only", "#fc9706"),
+        ("pct_over_both", "Over limit summer and winter", "#023047"),
+        ("pct_over_total", "Total over capacity (any season)", "#a0af12"),
+    ]
+    # 12 traces: 4 series × 3 scenarios. Order: for each scenario, then the 4 series.
+    traces = []
+    for scenario in SCENARIO_ORDER:
+        df_sc = df_summary.filter(pl.col("scenario") == scenario)
+        for col, label, color in series:
+            y_vals = df_sc.sort("year")[col].to_list()
+            visible = scenario == "Base"
+            traces.append(
+                go.Scatter(
+                    x=years,
+                    y=y_vals,
+                    name=label,
+                    line=dict(color=color, width=2),
+                    visible=visible,
+                    legendgroup=scenario,
+                )
+            )
+    fig = go.Figure(data=traces)
+    # Scenario buttons: show the 4 traces for the selected scenario
+    n_series = len(series)
+    buttons = []
+    for i, target in enumerate(SCENARIO_ORDER):
+        visible = [False] * (n_series * 3)
+        for j in range(n_series):
+            visible[i * n_series + j] = True
+        buttons.append(
+            dict(
+                method="restyle",
+                args=[{"visible": visible}],
+                label=target,
+            )
+        )
+    fig.update_layout(
+        title=f"{asset_label}s over 100% capacity (speculative, linear extrapolation to {LONG_RUN_MAX_YEAR})",
+        xaxis_title="Year",
+        yaxis_title="Percent of assets over limit",
+        height=500,
+        width=900,
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        updatemenus=[
+            dict(
+                type="buttons",
+                direction="right",
+                active=1,
+                x=0.0,
+                y=1.12,
+                buttons=buttons,
+            )
+        ],
+    )
+    fig.update_yaxes(rangemode="tozero")
+    return fig
+```
+
+#### Feeders
+
+```{python}
+#| label: fig-feeder-long-run-overload
+#| fig-cap: "Speculative share of feeders over 100% capacity by year (linear extrapolation from 2034–2035). Total over capacity is monotonically increasing."
+
+fig_feeders_long_run = make_long_run_overload_plot(df_feeders_overload_long_run, "Feeder")
+fig_feeders_long_run.show()
+```
+
+#### Transformers
+
+```{python}
+#| label: fig-transformer-long-run-overload
+#| fig-cap: "Speculative share of transformers over 100% capacity by year (linear extrapolation from 2034–2035). Total over capacity is monotonically increasing."
+
+fig_transformers_long_run = make_long_run_overload_plot(df_transformers_overload_long_run, "Transformer")
+fig_transformers_long_run.show()
+```
+
+### Assumptions and limitations
+
+- **Extrapolation**: Utilization from 2036 through 2100 is obtained by applying the same **additive** change (2035 minus 2034) every year, separately for summer and winter. No change in rated capacity is assumed; growth is linear and constant.
+- **Over limit**: An asset is counted as over limit when utilization is **strictly greater than** 1.0 (100%).
+- **Scenarios**: Curves are produced separately for Base, No HP, and High HP heat-pump adoption; the scenario selector toggles between them.
+- **Monotonicity**: For each asset, once it exceeds 100% in a given season it is assumed to remain over in that season. The **total over capacity** series (over in at least one season) is therefore monotonically increasing and can be used as a sanity check. The three exclusive series (summer only, winter only, both) need not be monotonic because assets can move from e.g. “summer only” into “both” when they later exceed winter capacity.
+- **Use**: These projections are not used in the main report and are for exploratory discussion only. They could be replaced later with feeder-specific or scenario-dependent growth assumptions.

@@ -2497,6 +2497,7 @@ for label, filt in [
     ("Heat pump", pl.col("heating_label") == "Heat pump"),
     ("Natural gas", pl.col("heats_with_natgas")),
     ("Oil / propane", pl.col("heats_with_oil") | pl.col("heats_with_propane")),
+    ("Electric resistance", pl.col("heating_label") == "Electric resistance"),
 ]:
     sub = labeled_all.filter(filt)
     if sub.is_empty():
@@ -2508,9 +2509,11 @@ for label, filt in [
 
 _natgas_sub = labeled_all.filter(pl.col("heats_with_natgas"))
 _op_sub = labeled_all.filter(pl.col("heats_with_oil") | pl.col("heats_with_propane"))
+_er_sub = labeled_all.filter(pl.col("heating_label") == "Electric resistance")
 report_vars["ff_mean_delivery_bat"] = _weighted_mean(_ff_sub, _bat_col, "weight")
 report_vars["natgas_mean_delivery_bat"] = _weighted_mean(_natgas_sub, _bat_col, "weight")
 report_vars["oil_propane_mean_delivery_bat"] = _weighted_mean(_op_sub, _bat_col, "weight")
+report_vars["elec_resistance_mean_delivery_bat"] = _weighted_mean(_er_sub, _bat_col, "weight")
 
 _bat_simple_gt = (
     GT(pl.DataFrame(_bat_simple_rows), rowname_col="heating_type")
@@ -2519,6 +2522,102 @@ _bat_simple_gt = (
 )
 Path("../cache/bat_simple_table.html").write_text(_bat_simple_gt.as_raw_html())
 _bat_simple_gt
+```
+
+```{python}
+#| label: fig-delivery-bat-by-heating-type
+#| fig-cap: "Delivery bill alignment by heating type (Statewide)"
+
+_DELIVERY_FACET_ORDER = ["Heat pump", "Electric resistance", "Natural gas", "Oil / propane"]
+_delivery_facet_dtype = pl.Enum(_DELIVERY_FACET_ORDER)
+
+_delivery_labeled = (
+    labeled_all.with_columns(
+        pl.when(pl.col("heats_with_natgas")).then(pl.lit("Natural gas"))
+        .when(pl.col("heats_with_oil") | pl.col("heats_with_propane")).then(pl.lit("Oil / propane"))
+        .otherwise(pl.col("heating_label").cast(pl.String))
+        .alias("delivery_facet"),
+    )
+    .filter(pl.col("delivery_facet").is_in(_DELIVERY_FACET_ORDER))
+    .with_columns(pl.col("delivery_facet").cast(_delivery_facet_dtype))
+)
+
+_d_col = "BAT_percustomer_delivery"
+_d_x_lo = math.floor(_weighted_percentile(_delivery_labeled, _d_col, "weight", 0.01) / 500) * 500
+_d_x_hi = math.ceil(_weighted_percentile(_delivery_labeled, _d_col, "weight", 0.99) / 500) * 500
+
+_d_binned = (
+    _delivery_labeled.with_columns(
+        ((pl.col(_d_col) / BAT_BIN_WIDTH).floor() * BAT_BIN_WIDTH + BAT_BIN_WIDTH / 2)
+        .alias("bin_center"),
+    )
+    .with_columns(
+        pl.when(pl.col("bin_center") < 0)
+        .then(pl.lit("underpaying"))
+        .otherwise(pl.lit("overpaying"))
+        .alias("sign"),
+    )
+    .group_by("bin_center", "sign", "delivery_facet")
+    .agg(pl.col("weight").sum().alias("weight_sum"))
+)
+_d_sign_dtype = pl.Enum(["underpaying", "overpaying"])
+_d_plot_df = _d_binned.with_columns(pl.col("sign").cast(_d_sign_dtype))
+
+_d_stat_rows: list[dict] = []
+_d_median_rows: list[dict] = []
+_d_mean_rows: list[dict] = []
+for _ht in _DELIVERY_FACET_ORDER:
+    _sub = _delivery_labeled.filter(pl.col("delivery_facet") == _ht)
+    if _sub.is_empty():
+        continue
+    _tw = _sub["weight"].sum()
+    _pct_over = _sub.filter(pl.col(_d_col) >= 0)["weight"].sum() / _tw * 100
+    _w_mean = _weighted_mean(_sub, _d_col, "weight")
+    _w_median = _weighted_percentile(_sub, _d_col, "weight", 0.5)
+    _facet_bins = _d_plot_df.filter(pl.col("delivery_facet") == _ht)
+    _y_max = float(_facet_bins["weight_sum"].max()) if not _facet_bins.is_empty() else 0.0
+    _d_stat_rows.append({
+        "delivery_facet": _ht,
+        "x": _d_x_hi,
+        "y": _y_max * 0.92,
+        "label": f"median: ${_w_median:,.0f}  ·  mean: ${_w_mean:,.0f}\n{_pct_over:.0f}% overpaying",
+    })
+    _d_median_rows.append({"delivery_facet": _ht, "median_x": _w_median})
+    _d_mean_rows.append({"delivery_facet": _ht, "mean_x": _w_mean})
+
+_d_stats_df = pl.DataFrame(_d_stat_rows).with_columns(pl.col("delivery_facet").cast(_delivery_facet_dtype))
+_d_medians_df = pl.DataFrame(_d_median_rows).with_columns(pl.col("delivery_facet").cast(_delivery_facet_dtype))
+_d_means_df = pl.DataFrame(_d_mean_rows).with_columns(pl.col("delivery_facet").cast(_delivery_facet_dtype))
+
+(
+    ggplot(_d_plot_df, aes(x="bin_center", y="weight_sum", fill="sign"))
+    + geom_col(width=BAT_BIN_WIDTH * 0.9)
+    + geom_vline(xintercept=0, linetype="solid", color="gray", size=0.8)
+    + geom_vline(
+        data=_d_means_df, mapping=aes(xintercept="mean_x"),
+        linetype="dashed", color="#333333", size=0.7,
+    )
+    + geom_vline(
+        data=_d_medians_df, mapping=aes(xintercept="median_x"),
+        linetype="solid", color="#333333", size=0.7,
+    )
+    + geom_text(
+        _d_stats_df, aes(x="x", y="y", label="label"),
+        ha="right", size=8, color="#333333",
+        inherit_aes=False,
+    )
+    + scale_fill_manual(values=BAT_COLORS)
+    + scale_y_continuous(expand=(0, 0, 0.15, 0))
+    + coord_cartesian(xlim=(_d_x_lo, _d_x_hi))
+    + facet_wrap("delivery_facet", ncol=1, scales="free_y")
+    + labs(
+        x="Delivery BAT per-customer ($/year)",
+        y="# of Homes (weighted)",
+    )
+    + guides(fill=False)
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 2.25 * 5))
+)
 ```
 
 ```{python}
@@ -3254,6 +3353,7 @@ for label, filt in [
     ("Heat pump", pl.col("heating_label") == "Heat pump"),
     ("Natural gas", pl.col("heats_with_natgas")),
     ("Oil / propane", pl.col("heats_with_oil") | pl.col("heats_with_propane")),
+    ("Electric resistance", pl.col("heating_label") == "Electric resistance"),
 ]:
     sub_before = labeled_all.filter(filt)
     sub_after = bat_56_for_comp.with_columns(

@@ -69,6 +69,7 @@ cache_dir.mkdir(parents=True, exist_ok=True)
 allocators_cache = cache_dir / "allocators_df.parquet"
 revenue_requirement_cache = cache_dir / "revenue_requirement_df.parquet"
 
+# Only use cached sheets in DEBUG mode, do not change this
 use_cached_sheets = DEBUG_MODE and allocators_cache.exists() and revenue_requirement_cache.exists()
 
 if use_cached_sheets:
@@ -388,16 +389,38 @@ rows_system = []
 aggregate_curves_cache_dir = Path("cache") / "embedded_curves"
 aggregate_curves_cache_dir.mkdir(parents=True, exist_ok=True)
 
+import sys
+
+print(
+    f"Starting HP adoption sweep over {len(additional_adoption_pct_values)} steps: "
+    f"{additional_adoption_pct_values}"
+)
+sys.stdout.flush()
+
 for additional_adoption_pct in additional_adoption_pct_values:
     pct_in_trajectory = (
         additional_adoption_pct / (1 - current_hp_pct) if current_hp_pct < 1.0 else 0.0
     )
 
+    print(
+        f"\n[embedded_costs] additional_adoption_pct={additional_adoption_pct * 100:.2f}% "
+        f"(trajectory share={pct_in_trajectory:.4f} of remaining potential)"
+    )
+    sys.stdout.flush()
+
     cache_file = aggregate_curves_cache_dir / f"aggregate_curves_{additional_adoption_pct:.2f}.parquet"
 
     if cache_file.exists() and not force_recrunch:
+        print(
+            f"  Using cached aggregate curves from {cache_file} "
+            f"(force_recrunch={force_recrunch})"
+        )
         aggregate_curves = pl.read_parquet(cache_file)
     else:
+        print(
+            "  Computing aggregate curves via MixedUpgradeScenario "
+            f"for additional_adoption_pct={additional_adoption_pct * 100:.2f}%..."
+        )
         scenario = uniform_adoption(
             upgrade_ids=[upgrade_id],
             weights={upgrade_id: 1.0},
@@ -423,6 +446,10 @@ for additional_adoption_pct in additional_adoption_pct_values:
                 pl.col("weight").sum().alias("num_homes"),
             )
             .collect()
+        )
+        print(
+            f"  Computed aggregate curves with {aggregate_curves.height} rows, "
+            f"{aggregate_curves.width} columns. Writing cache to {cache_file}."
         )
         aggregate_curves.write_parquet(cache_file)
 
@@ -471,6 +498,15 @@ for additional_adoption_pct in additional_adoption_pct_values:
             "total_hp_adoption_pct": total_hp_adoption_pct * 100,
         }
     )
+
+    print(
+        "  Finished sweep step: "
+        f"additional_adoption_pct={additional_adoption_pct * 100:.2f}%, "
+        f"total_hp_adoption_pct={total_hp_adoption_pct * 100:.2f}%, "
+        f"total_residential_secondary_ncp_raw={total_residential_secondary_ncp_raw:,.2f} kW, "
+        f"total_annual_kwh={total_annual_kwh:,.0f} kWh"
+    )
+    sys.stdout.flush()
 
 df_ncp = pl.DataFrame(rows_ncp)
 df_system = pl.DataFrame(rows_system)

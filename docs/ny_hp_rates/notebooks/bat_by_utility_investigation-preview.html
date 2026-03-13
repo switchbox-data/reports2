@@ -280,7 +280,9 @@ import json
 import subprocess
 
 import polars as pl
+import yaml
 from great_tables import GT
+from lib.rdp import fetch_rdp_file
 from lib.plotnine import SB_COLORS, theme_switchbox
 from plotnine import (
     aes,
@@ -298,6 +300,7 @@ from plotnine import (
 )
 
 BATCH = "ny_20260307_r1-8_gascalcfix"
+RDP_REF = "d0353e1"
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
 PATH_BAT_12 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_1+2/cross_subsidization_BAT_values/"
 HEATING_TYPE_COL = "postprocess_group.heating_type"
@@ -322,7 +325,7 @@ def _wmedian(df: pl.DataFrame, col: str, w: str, q: float = 0.5) -&gt; float:
     cum = s[w].cum_sum() / s[w].sum()
     return float(s.filter(cum &gt;= q)[col][0])</code></pre>
 </div></div>
-<div id="acb4dfde" class="cell markdown">
+<div id="1a264cb5" class="cell markdown">
 <section id="the-finding" class="level2">
 <h2 class="anchored" data-anchor-id="the-finding">The finding</h2>
 <p>The NY HP Rates report shows that HP customers systematically overpay on delivery — the Bill Alignment Test (BAT) is positive for nearly every HP household. But the <em>size</em> of the overpayment varies dramatically across utility territories.</p>
@@ -333,6 +336,16 @@ def _wmedian(df: pl.DataFrame, col: str, w: str, q: float = 0.5) -&gt; float:
 bat = pl.read_parquet(PATH_BAT_12, hive_partitioning=True)
 hp = bat.filter(pl.col(HEATING_TYPE_COL) == "heat_pump")
 
+UTIL_ORDER_BY_BAT = (
+    hp.group_by("sb.electric_utility")
+    .agg(
+        (pl.col("BAT_percustomer_delivery") * pl.col("weight")).sum()
+        / pl.col("weight").sum()
+    )
+    .sort("BAT_percustomer_delivery", descending=True)["sb.electric_utility"]
+    .to_list()
+)
+
 print(f"Total buildings: {bat.height:,}")
 print(f"HP buildings: {hp.height:,}")</code></pre>
 <div class="cell-output cell-output-stdout">
@@ -340,14 +353,14 @@ print(f"HP buildings: {hp.height:,}")</code></pre>
 HP buildings: 918</code></pre>
 </div>
 </div></div>
-<div id="ad467d2b" class="cell markdown">
+<div id="8bcfe056" class="cell markdown">
 <div class="">
 
 </div>
 <div class="cell-container"><div class="cell-decorator"><pre>In [3]:</pre></div><div id="cell-bat-summary-table" class="cell" data-execution_count="3">
 <pre><code>#| label: bat-summary-table
 rows = []
-for util in sorted(hp["sb.electric_utility"].unique().to_list()):
+for util in UTIL_ORDER_BY_BAT:
     sub = hp.filter(pl.col("sb.electric_utility") == util)
     rows.append({
         "Utility": UTIL_DISPLAY.get(util, util),
@@ -365,55 +378,55 @@ summary = pl.DataFrame(rows)
     .tab_header(title="Delivery BAT for HP customers by utility")
 )</code></pre>
 <div id="bat-summary-table" class="cell-output cell-output-display" data-execution_count="3">
-<div id="ovzhakwnqs" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="gaxkdesabf" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 <style>
-#ovzhakwnqs table {
+#gaxkdesabf table {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', 'Fira Sans', 'Droid Sans', Arial, sans-serif;
           -webkit-font-smoothing: antialiased;
           -moz-osx-font-smoothing: grayscale;
         }
 
-#ovzhakwnqs thead, tbody, tfoot, tr, td, th { border-style: none; }
+#gaxkdesabf thead, tbody, tfoot, tr, td, th { border-style: none; }
  tr { background-color: transparent; }
-#ovzhakwnqs p { margin: 0; padding: 0; }
- #ovzhakwnqs .gt_table { display: table; border-collapse: collapse; line-height: normal; margin-left: auto; margin-right: auto; color: #333333; font-size: 16px; font-weight: normal; font-style: normal; background-color: #FFFFFF; width: auto; border-top-style: solid; border-top-width: 2px; border-top-color: #A8A8A8; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #A8A8A8; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; }
- #ovzhakwnqs .gt_caption { padding-top: 4px; padding-bottom: 4px; }
- #ovzhakwnqs .gt_title { color: #333333; font-size: 125%; font-weight: initial; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; border-bottom-color: #FFFFFF; border-bottom-width: 0; }
- #ovzhakwnqs .gt_subtitle { color: #333333; font-size: 85%; font-weight: initial; padding-top: 3px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; border-top-color: #FFFFFF; border-top-width: 0; }
- #ovzhakwnqs .gt_heading { background-color: #FFFFFF; text-align: center; border-bottom-color: #FFFFFF; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
- #ovzhakwnqs .gt_bottom_border { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
- #ovzhakwnqs .gt_col_headings { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
- #ovzhakwnqs .gt_col_heading { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; }
- #ovzhakwnqs .gt_column_spanner_outer { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; padding-top: 0; padding-bottom: 0; padding-left: 4px; padding-right: 4px; }
- #ovzhakwnqs .gt_column_spanner_outer:first-child { padding-left: 0; }
- #ovzhakwnqs .gt_column_spanner_outer:last-child { padding-right: 0; }
- #ovzhakwnqs .gt_column_spanner { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; overflow-x: hidden; display: inline-block; width: 100%; }
- #ovzhakwnqs .gt_spanner_row { border-bottom-style: hidden; }
- #ovzhakwnqs .gt_group_heading { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; text-align: left; }
- #ovzhakwnqs .gt_empty_group_heading { padding: 0.5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: middle; }
- #ovzhakwnqs .gt_from_md> :first-child { margin-top: 0; }
- #ovzhakwnqs .gt_from_md> :last-child { margin-bottom: 0; }
- #ovzhakwnqs .gt_row { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; }
- #ovzhakwnqs .gt_stub { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; }
- #ovzhakwnqs .gt_stub_row_group { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; vertical-align: top; }
- #ovzhakwnqs .gt_row_group_first td { border-top-width: 2px; }
- #ovzhakwnqs .gt_row_group_first th { border-top-width: 2px; }
- #ovzhakwnqs .gt_striped { color: #333333; background-color: #F4F4F4; }
- #ovzhakwnqs .gt_table_body { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
- #ovzhakwnqs .gt_grand_summary_row { color: #333333; background-color: #FFFFFF; text-transform: inherit; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; }
- #ovzhakwnqs .gt_first_grand_summary_row_bottom { border-top-style: double; border-top-width: 6px; border-top-color: #D3D3D3; }
- #ovzhakwnqs .gt_last_grand_summary_row_top { border-bottom-style: double; border-bottom-width: 6px; border-bottom-color: #D3D3D3; }
- #ovzhakwnqs .gt_sourcenotes { color: #333333; background-color: #FFFFFF; border-bottom-style: none; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; }
- #ovzhakwnqs .gt_sourcenote { font-size: 90%; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; text-align: left; }
- #ovzhakwnqs .gt_left { text-align: left; }
- #ovzhakwnqs .gt_center { text-align: center; }
- #ovzhakwnqs .gt_right { text-align: right; font-variant-numeric: tabular-nums; }
- #ovzhakwnqs .gt_font_normal { font-weight: normal; }
- #ovzhakwnqs .gt_font_bold { font-weight: bold; }
- #ovzhakwnqs .gt_font_italic { font-style: italic; }
- #ovzhakwnqs .gt_super { font-size: 65%; }
- #ovzhakwnqs .gt_footnote_marks { font-size: 75%; vertical-align: 0.4em; position: initial; }
- #ovzhakwnqs .gt_asterisk { font-size: 100%; vertical-align: 0; }
+#gaxkdesabf p { margin: 0; padding: 0; }
+ #gaxkdesabf .gt_table { display: table; border-collapse: collapse; line-height: normal; margin-left: auto; margin-right: auto; color: #333333; font-size: 16px; font-weight: normal; font-style: normal; background-color: #FFFFFF; width: auto; border-top-style: solid; border-top-width: 2px; border-top-color: #A8A8A8; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #A8A8A8; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; }
+ #gaxkdesabf .gt_caption { padding-top: 4px; padding-bottom: 4px; }
+ #gaxkdesabf .gt_title { color: #333333; font-size: 125%; font-weight: initial; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; border-bottom-color: #FFFFFF; border-bottom-width: 0; }
+ #gaxkdesabf .gt_subtitle { color: #333333; font-size: 85%; font-weight: initial; padding-top: 3px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; border-top-color: #FFFFFF; border-top-width: 0; }
+ #gaxkdesabf .gt_heading { background-color: #FFFFFF; text-align: center; border-bottom-color: #FFFFFF; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
+ #gaxkdesabf .gt_bottom_border { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
+ #gaxkdesabf .gt_col_headings { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
+ #gaxkdesabf .gt_col_heading { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; }
+ #gaxkdesabf .gt_column_spanner_outer { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; padding-top: 0; padding-bottom: 0; padding-left: 4px; padding-right: 4px; }
+ #gaxkdesabf .gt_column_spanner_outer:first-child { padding-left: 0; }
+ #gaxkdesabf .gt_column_spanner_outer:last-child { padding-right: 0; }
+ #gaxkdesabf .gt_column_spanner { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; overflow-x: hidden; display: inline-block; width: 100%; }
+ #gaxkdesabf .gt_spanner_row { border-bottom-style: hidden; }
+ #gaxkdesabf .gt_group_heading { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; text-align: left; }
+ #gaxkdesabf .gt_empty_group_heading { padding: 0.5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: middle; }
+ #gaxkdesabf .gt_from_md> :first-child { margin-top: 0; }
+ #gaxkdesabf .gt_from_md> :last-child { margin-bottom: 0; }
+ #gaxkdesabf .gt_row { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; }
+ #gaxkdesabf .gt_stub { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; }
+ #gaxkdesabf .gt_stub_row_group { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; vertical-align: top; }
+ #gaxkdesabf .gt_row_group_first td { border-top-width: 2px; }
+ #gaxkdesabf .gt_row_group_first th { border-top-width: 2px; }
+ #gaxkdesabf .gt_striped { color: #333333; background-color: #F4F4F4; }
+ #gaxkdesabf .gt_table_body { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
+ #gaxkdesabf .gt_grand_summary_row { color: #333333; background-color: #FFFFFF; text-transform: inherit; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; }
+ #gaxkdesabf .gt_first_grand_summary_row_bottom { border-top-style: double; border-top-width: 6px; border-top-color: #D3D3D3; }
+ #gaxkdesabf .gt_last_grand_summary_row_top { border-bottom-style: double; border-bottom-width: 6px; border-bottom-color: #D3D3D3; }
+ #gaxkdesabf .gt_sourcenotes { color: #333333; background-color: #FFFFFF; border-bottom-style: none; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; }
+ #gaxkdesabf .gt_sourcenote { font-size: 90%; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; text-align: left; }
+ #gaxkdesabf .gt_left { text-align: left; }
+ #gaxkdesabf .gt_center { text-align: center; }
+ #gaxkdesabf .gt_right { text-align: right; font-variant-numeric: tabular-nums; }
+ #gaxkdesabf .gt_font_normal { font-weight: normal; }
+ #gaxkdesabf .gt_font_bold { font-weight: bold; }
+ #gaxkdesabf .gt_font_italic { font-style: italic; }
+ #gaxkdesabf .gt_super { font-size: 65%; }
+ #gaxkdesabf .gt_footnote_marks { font-size: 75%; vertical-align: 0.4em; position: initial; }
+ #gaxkdesabf .gt_asterisk { font-size: 100%; vertical-align: 0; }
 
 </style>
 
@@ -437,40 +450,40 @@ summary = pl.DataFrame(rows)
 <td class="gt_row gt_right">$1,176</td>
 </tr>
 <tr class="even">
-<td class="gt_row gt_left">ConEd</td>
-<td class="gt_row gt_right">366</td>
-<td class="gt_row gt_right">$556</td>
-<td class="gt_row gt_right">$256</td>
-</tr>
-<tr class="odd">
-<td class="gt_row gt_left">NiMo</td>
-<td class="gt_row gt_right">229</td>
-<td class="gt_row gt_right">$839</td>
-<td class="gt_row gt_right">$531</td>
-</tr>
-<tr class="even">
-<td class="gt_row gt_left">NYSEG</td>
-<td class="gt_row gt_right">126</td>
-<td class="gt_row gt_right">$1,042</td>
-<td class="gt_row gt_right">$526</td>
-</tr>
-<tr class="odd">
-<td class="gt_row gt_left">O&amp;R</td>
-<td class="gt_row gt_right">26</td>
-<td class="gt_row gt_right">$913</td>
-<td class="gt_row gt_right">$629</td>
-</tr>
-<tr class="even">
 <td class="gt_row gt_left">PSEG-LI</td>
 <td class="gt_row gt_right">61</td>
 <td class="gt_row gt_right">$1,082</td>
 <td class="gt_row gt_right">$963</td>
 </tr>
 <tr class="odd">
+<td class="gt_row gt_left">NYSEG</td>
+<td class="gt_row gt_right">126</td>
+<td class="gt_row gt_right">$1,042</td>
+<td class="gt_row gt_right">$526</td>
+</tr>
+<tr class="even">
+<td class="gt_row gt_left">O&amp;R</td>
+<td class="gt_row gt_right">26</td>
+<td class="gt_row gt_right">$913</td>
+<td class="gt_row gt_right">$629</td>
+</tr>
+<tr class="odd">
 <td class="gt_row gt_left">RG&amp;E</td>
 <td class="gt_row gt_right">64</td>
 <td class="gt_row gt_right">$912</td>
 <td class="gt_row gt_right">$805</td>
+</tr>
+<tr class="even">
+<td class="gt_row gt_left">NiMo</td>
+<td class="gt_row gt_right">229</td>
+<td class="gt_row gt_right">$839</td>
+<td class="gt_row gt_right">$531</td>
+</tr>
+<tr class="odd">
+<td class="gt_row gt_left">ConEd</td>
+<td class="gt_row gt_right">366</td>
+<td class="gt_row gt_right">$556</td>
+<td class="gt_row gt_right">$256</td>
 </tr>
 </tbody>
 </table>
@@ -479,7 +492,7 @@ summary = pl.DataFrame(rows)
 </div>
 </div>
 </div></div>
-<div id="ff55e437" class="cell markdown">
+<div id="f2e58fe7" class="cell markdown">
 
 </div>
 <p>CenHud’s mean HP overpayment is $1,737/yr while ConEd’s is only $556/yr — a <strong>3x ratio</strong>. What’s driving this?</p>
@@ -492,25 +505,27 @@ summary = pl.DataFrame(rows)
 <div class="cell-container"><div class="cell-decorator"><pre>In [4]:</pre></div><div id="compute-bill-vs-cost" class="cell" data-execution_count="4">
 <pre><code>#| label: compute-bill-vs-cost
 bill_cost_rows = []
-for util in sorted(hp["sb.electric_utility"].unique().to_list()):
+for util in UTIL_ORDER_BY_BAT:
     sub = hp.filter(pl.col("sb.electric_utility") == util)
     bill = _wmean(sub, "annual_bill_delivery")
     mc = _wmean(sub, "economic_burden_delivery")
     resid = _wmean(sub, "residual_share_delivery")
     bat_val = _wmean(sub, "BAT_percustomer_delivery")
+    cos = mc + resid
     bill_cost_rows.append({
         "util": util,
         "Utility": UTIL_DISPLAY.get(util, util),
-        "Delivery Bill": round(bill),
         "Marginal Cost": round(mc),
+        "MC %": mc / cos if cos else 0,
         "Residual": round(resid),
-        "Cost of Service": round(mc + resid),
+        "Cost of Service": round(cos),
+        "Delivery Bill": round(bill),
         "BAT": round(bat_val),
     })
 
 bill_cost_df = pl.DataFrame(bill_cost_rows)</code></pre>
 </div></div>
-<div id="d1503bbc" class="cell markdown">
+<div id="0d2cce6d" class="cell markdown">
 <div class="">
 
 </div>
@@ -519,138 +534,147 @@ bill_cost_df = pl.DataFrame(bill_cost_rows)</code></pre>
 (
     GT(bill_cost_df.drop("util"))
     .fmt_currency(
-        columns=["Delivery Bill", "Marginal Cost", "Residual", "Cost of Service", "BAT"],
+        columns=["Marginal Cost", "Residual", "Cost of Service", "Delivery Bill", "BAT"],
         decimals=0,
     )
+    .fmt_percent(columns=["MC %"], decimals=0)
     .tab_header(title="HP delivery: what they pay vs. what they cost (weighted mean)")
-    .tab_spanner(label="Cost of Service", columns=["Marginal Cost", "Residual"])
+    .tab_spanner(label="Cost of Service", columns=["Marginal Cost", "MC %", "Residual"])
 )</code></pre>
 <div id="bill-cost-table" class="cell-output cell-output-display" data-execution_count="5">
-<div id="rvekltdhih" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="tkdwbyhvyo" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 <style>
-#rvekltdhih table {
+#tkdwbyhvyo table {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', 'Fira Sans', 'Droid Sans', Arial, sans-serif;
           -webkit-font-smoothing: antialiased;
           -moz-osx-font-smoothing: grayscale;
         }
 
-#rvekltdhih thead, tbody, tfoot, tr, td, th { border-style: none; }
+#tkdwbyhvyo thead, tbody, tfoot, tr, td, th { border-style: none; }
  tr { background-color: transparent; }
-#rvekltdhih p { margin: 0; padding: 0; }
- #rvekltdhih .gt_table { display: table; border-collapse: collapse; line-height: normal; margin-left: auto; margin-right: auto; color: #333333; font-size: 16px; font-weight: normal; font-style: normal; background-color: #FFFFFF; width: auto; border-top-style: solid; border-top-width: 2px; border-top-color: #A8A8A8; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #A8A8A8; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; }
- #rvekltdhih .gt_caption { padding-top: 4px; padding-bottom: 4px; }
- #rvekltdhih .gt_title { color: #333333; font-size: 125%; font-weight: initial; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; border-bottom-color: #FFFFFF; border-bottom-width: 0; }
- #rvekltdhih .gt_subtitle { color: #333333; font-size: 85%; font-weight: initial; padding-top: 3px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; border-top-color: #FFFFFF; border-top-width: 0; }
- #rvekltdhih .gt_heading { background-color: #FFFFFF; text-align: center; border-bottom-color: #FFFFFF; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
- #rvekltdhih .gt_bottom_border { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
- #rvekltdhih .gt_col_headings { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
- #rvekltdhih .gt_col_heading { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; }
- #rvekltdhih .gt_column_spanner_outer { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; padding-top: 0; padding-bottom: 0; padding-left: 4px; padding-right: 4px; }
- #rvekltdhih .gt_column_spanner_outer:first-child { padding-left: 0; }
- #rvekltdhih .gt_column_spanner_outer:last-child { padding-right: 0; }
- #rvekltdhih .gt_column_spanner { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; overflow-x: hidden; display: inline-block; width: 100%; }
- #rvekltdhih .gt_spanner_row { border-bottom-style: hidden; }
- #rvekltdhih .gt_group_heading { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; text-align: left; }
- #rvekltdhih .gt_empty_group_heading { padding: 0.5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: middle; }
- #rvekltdhih .gt_from_md> :first-child { margin-top: 0; }
- #rvekltdhih .gt_from_md> :last-child { margin-bottom: 0; }
- #rvekltdhih .gt_row { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; }
- #rvekltdhih .gt_stub { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; }
- #rvekltdhih .gt_stub_row_group { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; vertical-align: top; }
- #rvekltdhih .gt_row_group_first td { border-top-width: 2px; }
- #rvekltdhih .gt_row_group_first th { border-top-width: 2px; }
- #rvekltdhih .gt_striped { color: #333333; background-color: #F4F4F4; }
- #rvekltdhih .gt_table_body { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
- #rvekltdhih .gt_grand_summary_row { color: #333333; background-color: #FFFFFF; text-transform: inherit; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; }
- #rvekltdhih .gt_first_grand_summary_row_bottom { border-top-style: double; border-top-width: 6px; border-top-color: #D3D3D3; }
- #rvekltdhih .gt_last_grand_summary_row_top { border-bottom-style: double; border-bottom-width: 6px; border-bottom-color: #D3D3D3; }
- #rvekltdhih .gt_sourcenotes { color: #333333; background-color: #FFFFFF; border-bottom-style: none; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; }
- #rvekltdhih .gt_sourcenote { font-size: 90%; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; text-align: left; }
- #rvekltdhih .gt_left { text-align: left; }
- #rvekltdhih .gt_center { text-align: center; }
- #rvekltdhih .gt_right { text-align: right; font-variant-numeric: tabular-nums; }
- #rvekltdhih .gt_font_normal { font-weight: normal; }
- #rvekltdhih .gt_font_bold { font-weight: bold; }
- #rvekltdhih .gt_font_italic { font-style: italic; }
- #rvekltdhih .gt_super { font-size: 65%; }
- #rvekltdhih .gt_footnote_marks { font-size: 75%; vertical-align: 0.4em; position: initial; }
- #rvekltdhih .gt_asterisk { font-size: 100%; vertical-align: 0; }
+#tkdwbyhvyo p { margin: 0; padding: 0; }
+ #tkdwbyhvyo .gt_table { display: table; border-collapse: collapse; line-height: normal; margin-left: auto; margin-right: auto; color: #333333; font-size: 16px; font-weight: normal; font-style: normal; background-color: #FFFFFF; width: auto; border-top-style: solid; border-top-width: 2px; border-top-color: #A8A8A8; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #A8A8A8; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; }
+ #tkdwbyhvyo .gt_caption { padding-top: 4px; padding-bottom: 4px; }
+ #tkdwbyhvyo .gt_title { color: #333333; font-size: 125%; font-weight: initial; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; border-bottom-color: #FFFFFF; border-bottom-width: 0; }
+ #tkdwbyhvyo .gt_subtitle { color: #333333; font-size: 85%; font-weight: initial; padding-top: 3px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; border-top-color: #FFFFFF; border-top-width: 0; }
+ #tkdwbyhvyo .gt_heading { background-color: #FFFFFF; text-align: center; border-bottom-color: #FFFFFF; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
+ #tkdwbyhvyo .gt_bottom_border { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
+ #tkdwbyhvyo .gt_col_headings { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
+ #tkdwbyhvyo .gt_col_heading { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; }
+ #tkdwbyhvyo .gt_column_spanner_outer { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; padding-top: 0; padding-bottom: 0; padding-left: 4px; padding-right: 4px; }
+ #tkdwbyhvyo .gt_column_spanner_outer:first-child { padding-left: 0; }
+ #tkdwbyhvyo .gt_column_spanner_outer:last-child { padding-right: 0; }
+ #tkdwbyhvyo .gt_column_spanner { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; overflow-x: hidden; display: inline-block; width: 100%; }
+ #tkdwbyhvyo .gt_spanner_row { border-bottom-style: hidden; }
+ #tkdwbyhvyo .gt_group_heading { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; text-align: left; }
+ #tkdwbyhvyo .gt_empty_group_heading { padding: 0.5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: middle; }
+ #tkdwbyhvyo .gt_from_md> :first-child { margin-top: 0; }
+ #tkdwbyhvyo .gt_from_md> :last-child { margin-bottom: 0; }
+ #tkdwbyhvyo .gt_row { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; }
+ #tkdwbyhvyo .gt_stub { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; }
+ #tkdwbyhvyo .gt_stub_row_group { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; vertical-align: top; }
+ #tkdwbyhvyo .gt_row_group_first td { border-top-width: 2px; }
+ #tkdwbyhvyo .gt_row_group_first th { border-top-width: 2px; }
+ #tkdwbyhvyo .gt_striped { color: #333333; background-color: #F4F4F4; }
+ #tkdwbyhvyo .gt_table_body { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
+ #tkdwbyhvyo .gt_grand_summary_row { color: #333333; background-color: #FFFFFF; text-transform: inherit; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; }
+ #tkdwbyhvyo .gt_first_grand_summary_row_bottom { border-top-style: double; border-top-width: 6px; border-top-color: #D3D3D3; }
+ #tkdwbyhvyo .gt_last_grand_summary_row_top { border-bottom-style: double; border-bottom-width: 6px; border-bottom-color: #D3D3D3; }
+ #tkdwbyhvyo .gt_sourcenotes { color: #333333; background-color: #FFFFFF; border-bottom-style: none; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; }
+ #tkdwbyhvyo .gt_sourcenote { font-size: 90%; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; text-align: left; }
+ #tkdwbyhvyo .gt_left { text-align: left; }
+ #tkdwbyhvyo .gt_center { text-align: center; }
+ #tkdwbyhvyo .gt_right { text-align: right; font-variant-numeric: tabular-nums; }
+ #tkdwbyhvyo .gt_font_normal { font-weight: normal; }
+ #tkdwbyhvyo .gt_font_bold { font-weight: bold; }
+ #tkdwbyhvyo .gt_font_italic { font-style: italic; }
+ #tkdwbyhvyo .gt_super { font-size: 65%; }
+ #tkdwbyhvyo .gt_footnote_marks { font-size: 75%; vertical-align: 0.4em; position: initial; }
+ #tkdwbyhvyo .gt_asterisk { font-size: 100%; vertical-align: 0; }
 
 </style>
 
 <table class="gt_table caption-top table table-sm table-striped small" data-quarto-bootstrap="false">
 <thead>
 <tr class="gt_heading header">
-<td colspan="6" class="gt_heading gt_title gt_font_normal">HP delivery: what they pay vs. what they cost (weighted mean)</td>
+<td colspan="7" class="gt_heading gt_title gt_font_normal">HP delivery: what they pay vs. what they cost (weighted mean)</td>
 </tr>
 <tr class="gt_col_headings gt_spanner_row even">
 <th rowspan="2" id="Utility" class="gt_col_heading gt_columns_bottom_border gt_left" data-quarto-table-cell-role="th" scope="col">Utility</th>
-<th rowspan="2" id="Delivery-Bill" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">Delivery Bill</th>
-<th colspan="2" id="Cost-of-Service" class="gt_center gt_columns_top_border gt_column_spanner_outer" data-quarto-table-cell-role="th" scope="colgroup"><span class="gt_column_spanner">Cost of Service</span></th>
+<th colspan="3" id="Cost-of-Service" class="gt_center gt_columns_top_border gt_column_spanner_outer" data-quarto-table-cell-role="th" scope="colgroup"><span class="gt_column_spanner">Cost of Service</span></th>
 <th rowspan="2" id="Cost-of-Service" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">Cost of Service</th>
+<th rowspan="2" id="Delivery-Bill" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">Delivery Bill</th>
 <th rowspan="2" id="BAT" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">BAT</th>
 </tr>
 <tr class="gt_col_headings header">
 <th id="Marginal-Cost" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">Marginal Cost</th>
+<th id="MC-%" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">MC %</th>
 <th id="Residual" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">Residual</th>
 </tr>
 </thead>
 <tbody class="gt_table_body">
 <tr class="odd">
 <td class="gt_row gt_left">CenHud</td>
-<td class="gt_row gt_right">$3,319</td>
 <td class="gt_row gt_right">$108</td>
+<td class="gt_row gt_right">7%</td>
 <td class="gt_row gt_right">$1,475</td>
 <td class="gt_row gt_right">$1,583</td>
+<td class="gt_row gt_right">$3,319</td>
 <td class="gt_row gt_right">$1,737</td>
 </tr>
 <tr class="even">
-<td class="gt_row gt_left">ConEd</td>
-<td class="gt_row gt_right">$1,675</td>
-<td class="gt_row gt_right">$211</td>
-<td class="gt_row gt_right">$908</td>
-<td class="gt_row gt_right">$1,119</td>
-<td class="gt_row gt_right">$556</td>
-</tr>
-<tr class="odd">
-<td class="gt_row gt_left">NiMo</td>
-<td class="gt_row gt_right">$1,814</td>
-<td class="gt_row gt_right">$135</td>
-<td class="gt_row gt_right">$841</td>
-<td class="gt_row gt_right">$975</td>
-<td class="gt_row gt_right">$839</td>
-</tr>
-<tr class="even">
-<td class="gt_row gt_left">NYSEG</td>
-<td class="gt_row gt_right">$2,246</td>
-<td class="gt_row gt_right">$135</td>
-<td class="gt_row gt_right">$1,069</td>
-<td class="gt_row gt_right">$1,204</td>
-<td class="gt_row gt_right">$1,042</td>
-</tr>
-<tr class="odd">
-<td class="gt_row gt_left">O&amp;R</td>
-<td class="gt_row gt_right">$2,183</td>
-<td class="gt_row gt_right">$78</td>
-<td class="gt_row gt_right">$1,192</td>
-<td class="gt_row gt_right">$1,270</td>
-<td class="gt_row gt_right">$913</td>
-</tr>
-<tr class="even">
 <td class="gt_row gt_left">PSEG-LI</td>
-<td class="gt_row gt_right">$2,243</td>
 <td class="gt_row gt_right">$104</td>
+<td class="gt_row gt_right">9%</td>
 <td class="gt_row gt_right">$1,057</td>
 <td class="gt_row gt_right">$1,161</td>
+<td class="gt_row gt_right">$2,243</td>
 <td class="gt_row gt_right">$1,082</td>
 </tr>
 <tr class="odd">
+<td class="gt_row gt_left">NYSEG</td>
+<td class="gt_row gt_right">$135</td>
+<td class="gt_row gt_right">11%</td>
+<td class="gt_row gt_right">$1,069</td>
+<td class="gt_row gt_right">$1,204</td>
+<td class="gt_row gt_right">$2,246</td>
+<td class="gt_row gt_right">$1,042</td>
+</tr>
+<tr class="even">
+<td class="gt_row gt_left">O&amp;R</td>
+<td class="gt_row gt_right">$78</td>
+<td class="gt_row gt_right">6%</td>
+<td class="gt_row gt_right">$1,192</td>
+<td class="gt_row gt_right">$1,270</td>
+<td class="gt_row gt_right">$2,183</td>
+<td class="gt_row gt_right">$913</td>
+</tr>
+<tr class="odd">
 <td class="gt_row gt_left">RG&amp;E</td>
-<td class="gt_row gt_right">$1,857</td>
 <td class="gt_row gt_right">$33</td>
+<td class="gt_row gt_right">3%</td>
 <td class="gt_row gt_right">$912</td>
 <td class="gt_row gt_right">$945</td>
+<td class="gt_row gt_right">$1,857</td>
 <td class="gt_row gt_right">$912</td>
+</tr>
+<tr class="even">
+<td class="gt_row gt_left">NiMo</td>
+<td class="gt_row gt_right">$135</td>
+<td class="gt_row gt_right">14%</td>
+<td class="gt_row gt_right">$841</td>
+<td class="gt_row gt_right">$975</td>
+<td class="gt_row gt_right">$1,814</td>
+<td class="gt_row gt_right">$839</td>
+</tr>
+<tr class="odd">
+<td class="gt_row gt_left">ConEd</td>
+<td class="gt_row gt_right">$211</td>
+<td class="gt_row gt_right">19%</td>
+<td class="gt_row gt_right">$908</td>
+<td class="gt_row gt_right">$1,119</td>
+<td class="gt_row gt_right">$1,675</td>
+<td class="gt_row gt_right">$556</td>
 </tr>
 </tbody>
 </table>
@@ -659,7 +683,7 @@ bill_cost_df = pl.DataFrame(bill_cost_rows)</code></pre>
 </div>
 </div>
 </div></div>
-<div id="522c3c85" class="cell markdown">
+<div id="a692f9b2" class="cell markdown">
 
 </div>
 <p>Two things jump out from this table. First, <strong>marginal cost is small everywhere</strong> — less than $211/yr even for ConEd. The residual dominates cost of service, accounting for 85–98% of it. Second, the gap between bill and cost (the BAT) is driven almost entirely by how far the bill overshoots, not by how low the cost is.</p>
@@ -705,7 +729,7 @@ bar_df = bar_df.with_columns(
     )
     + theme_switchbox()
     + theme(
-        figure_size=(12, 6),
+        figure_size=(8, 4),
         plot_title=element_text(size=13, fontweight="bold"),
         legend_position="top",
     )
@@ -714,7 +738,7 @@ bar_df = bar_df.with_columns(
 <div id="fig-bill-decomposition" class="quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-fig figure">
 <div aria-describedby="fig-bill-decomposition-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca" class="">
-<a href="bat_by_utility_investigation_files/figure-html/fig-bill-decomposition-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="Each bar represents the mean HP delivery bill, decomposed into marginal cost (what they actually cost the grid), residual share (their equal share of remaining revenue), and BAT overpayment (the cross-subsidy). Marginal cost is barely visible."><img src="bat_by_utility_investigation_files/figure-html/fig-bill-decomposition-output-1.png" width="1800" height="900" class="figure-img"></a>
+<a href="bat_by_utility_investigation_files/figure-html/fig-bill-decomposition-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="Each bar represents the mean HP delivery bill, decomposed into marginal cost (what they actually cost the grid), residual share (their equal share of remaining revenue), and BAT overpayment (the cross-subsidy). Marginal cost is barely visible."><img src="bat_by_utility_investigation_files/figure-html/fig-bill-decomposition-output-1.png" width="1200" height="600" class="figure-img"></a>
 </div>
 <figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-bill-decomposition-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 Each bar represents the mean HP delivery bill, decomposed into marginal cost (what they actually cost the grid), residual share (their equal share of remaining revenue), and BAT overpayment (the cross-subsidy). Marginal cost is barely visible.
@@ -723,15 +747,17 @@ Each bar represents the mean HP delivery bill, decomposed into marginal cost (wh
 </div>
 </div>
 </div></div>
-<div id="28ed6ad8" class="cell markdown">
+<div id="c25a5674" class="cell markdown">
 
 </div>
 <p>CenHud’s bar towers over ConEd’s. The carrot slice (BAT) is almost half of CenHud’s bill — $1,737 out of $3,319. ConEd’s BAT is a much smaller share: $556 out of $1,675.</p>
 <p>This tells us the question isn’t really “why do marginal costs differ?” — they’re tiny everywhere. The question is: <strong>why is the delivery bill so much higher than cost of service for some utilities and not others?</strong></p>
 <section id="the-formula-bat-rate-excess-consumption" class="level2">
 <h2 class="anchored" data-anchor-id="the-formula-bat-rate-excess-consumption">The formula: BAT ≈ rate × excess consumption</h2>
-<p>Since per-customer residual allocation gives every customer the same residual amount (HP or not), the residual for utility <span class="math inline">\(u\)</span> works out to:</p>
-<p><span class="math display">\[\text{Residual}_u = \overline{\text{Bill}}_u - \overline{\text{MC}}_u\]</span></p>
+<p>Per-customer residual allocation gives every customer the same residual amount (HP or not). That amount turns out to be the average bill minus the average marginal cost. Here’s why. The total residual is whatever delivery revenue isn’t explained by marginal costs:</p>
+<p><span class="math display">\[\text{Total Residual} = \text{Total Revenue} - \text{Total MC}\]</span></p>
+<p>Splitting it equally across <span class="math inline">\(N\)</span> customers:</p>
+<p><span class="math display">\[\text{Residual per customer} = \frac{\text{Total Revenue} - \text{Total MC}}{N} = \frac{\sum_i w_i \cdot \text{Bill}_i}{N} - \frac{\sum_i w_i \cdot MC_i}{N} = \overline{\text{Bill}}_u - \overline{\text{MC}}_u\]</span></p>
 <p>where <span class="math inline">\(\overline{\text{Bill}}_u\)</span> and <span class="math inline">\(\overline{\text{MC}}_u\)</span> are the weighted average delivery bill and marginal cost across <em>all</em> customers in utility <span class="math inline">\(u\)</span>. Substituting into the BAT formula:</p>
 <p><span class="math display">\[\text{BAT}_u = \text{Bill}^{HP}_u - \text{MC}^{HP}_u - (\overline{\text{Bill}}_u - \overline{\text{MC}}_u)\]</span></p>
 <p><span class="math display">\[= \underbrace{(\text{Bill}^{HP}_u - \overline{\text{Bill}}_u)}_{\text{excess bill}} - \underbrace{(\text{MC}^{HP}_u - \overline{\text{MC}}_u)}_{\text{excess MC}}\]</span></p>
@@ -772,8 +798,21 @@ for util, run_dir in RUN1_DIRS.items():
         rate = mat[0][4] if mat and len(mat[0]) &gt; 4 else 0
         tariff_info[util] = {"fixed_monthly": fixed, "rate_per_kwh": rate}</code></pre>
 </div></div>
-<div id="d67434ad" class="cell markdown">
-<p>Now let’s pull real-world average residential consumption from EIA-861, and compare it to HP consumption backed out from the BAT data.</p>
+<div id="081f36f4" class="cell markdown">
+<p>Now let’s pull average residential consumption from two sources — EIA-861 (real-world utility-reported sales) and ResStock (the same building simulation we use for BAT) — and compare them to HP consumption backed out from the BAT data.</p>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Note
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>The ResStock average kWh/yr here uses the <strong>original</strong> ResStock 2024.2 load curves (<code>res_2024_amy2018_2</code>), not the Switchbox-corrected loads (<code>res_2024_amy2018_2_sb</code>) that reduce miscellaneous appliance consumption. The corrected release only has hourly load curves on S3 (no pre-aggregated monthly), so we use the uncorrected loads as a proxy. The corrected loads would be lower — narrowing the gap between ResStock and EIA.</p>
+</div>
+</div>
 </div>
 <div class="cell-container"><div class="cell-decorator"><pre>In [8]:</pre></div><div id="compute-consumption" class="cell" data-execution_count="8">
 <pre><code>#| label: compute-consumption
@@ -788,7 +827,26 @@ eia_customers: dict[str, int] = {}
 for row in eia_ny.iter_rows(named=True):
     code = row["utility_code"]
     eia_kwh[code] = row["residential_sales_mwh"] * 1000 / row["residential_customers"]
-    eia_customers[code] = int(row["residential_customers"])</code></pre>
+    eia_customers[code] = int(row["residential_customers"])
+
+RDP_LOCAL = "../../../../rate-design-platform"
+PATH_LOAD_CURVES = f"{RDP_LOCAL}/data/nrel/resstock/res_2024_amy2018_2/load_curve_monthly/state=NY/upgrade=00/"
+PATH_UTIL_ASSIGN = f"{RDP_LOCAL}/data/nrel/resstock/res_2024_amy2018_2/metadata_utility/state=NY/utility_assignment.parquet"
+
+annual_kwh = (
+    pl.scan_parquet(PATH_LOAD_CURVES + "*.parquet")
+    .group_by("bldg_id")
+    .agg(pl.col("out.electricity.total.energy_consumption").sum().alias("annual_kwh"))
+    .collect()
+)
+
+util_assign = pl.read_parquet(PATH_UTIL_ASSIGN).select("bldg_id", "sb.electric_utility", "weight")
+
+resstock_kwh_df = annual_kwh.join(util_assign, on="bldg_id")
+resstock_kwh: dict[str, float] = {}
+for util in UTIL_ORDER_BY_BAT:
+    sub = resstock_kwh_df.filter(pl.col("sb.electric_utility") == util)
+    resstock_kwh[util] = float((sub["annual_kwh"] * sub["weight"]).sum() / sub["weight"].sum())</code></pre>
 </div></div>
 <div class="cell-container"><div class="cell-decorator"><pre>In [9]:</pre></div><div id="build-driver-table" class="cell" data-execution_count="9">
 <pre><code>#| label: build-driver-table
@@ -801,16 +859,20 @@ for row in bill_cost_rows:
 
     hp_kwh = (hp_bill - fixed * 12) / rate if rate &gt; 0 else 0
     avg_kwh_eia = eia_kwh.get(util, 0)
-    delta_kwh = hp_kwh - avg_kwh_eia
-    predicted_bat = rate * delta_kwh
+    avg_kwh_rs = resstock_kwh.get(util, 0)
+    delta_eia = hp_kwh - avg_kwh_eia
+    delta_rs = hp_kwh - avg_kwh_rs
+    predicted_bat = rate * delta_eia
 
     driver_rows.append({
         "Utility": row["Utility"],
         "util": util,
         "Del. Rate (¢/kWh)": round(rate * 100, 2),
         "HP kWh/yr": round(hp_kwh),
-        "Avg kWh/yr (EIA)": round(avg_kwh_eia),
-        "Δ kWh": round(delta_kwh),
+        "Avg (EIA)": round(avg_kwh_eia),
+        "Avg (ResStock)": round(avg_kwh_rs),
+        "Δ kWh (EIA)": round(delta_eia),
+        "Δ kWh (RS)": round(delta_rs),
         "Rate × Δ kWh": round(predicted_bat),
         "Actual BAT": row["BAT"],
         "Residual customers": eia_customers.get(util, 0),
@@ -818,7 +880,7 @@ for row in bill_cost_rows:
 
 driver_df = pl.DataFrame(driver_rows)</code></pre>
 </div></div>
-<div id="5e0e4c9b" class="cell markdown">
+<div id="bfd7ef55" class="cell markdown">
 <div class="">
 
 </div>
@@ -827,77 +889,85 @@ driver_df = pl.DataFrame(driver_rows)</code></pre>
 (
     GT(driver_df.drop("util", "Residual customers"))
     .fmt_number(columns=["Del. Rate (¢/kWh)"], decimals=2)
-    .fmt_number(columns=["HP kWh/yr", "Avg kWh/yr (EIA)", "Δ kWh"], decimals=0, use_seps=True)
+    .fmt_number(columns=["HP kWh/yr", "Avg (EIA)", "Avg (ResStock)", "Δ kWh (EIA)", "Δ kWh (RS)"], decimals=0, use_seps=True)
     .fmt_currency(columns=["Rate × Δ kWh", "Actual BAT"], decimals=0)
     .tab_header(title="The two drivers of BAT: delivery rate and excess consumption")
-    .tab_source_note("Avg kWh/yr from EIA-861 (2023). HP kWh backed out from delivery bill ÷ rate.")
+    .tab_spanner(label="Avg kWh/yr", columns=["Avg (EIA)", "Avg (ResStock)"])
+    .tab_spanner(label="Excess consumption", columns=["Δ kWh (EIA)", "Δ kWh (RS)"])
+    .tab_source_note("EIA = EIA-861 (2023) reported sales ÷ customers. ResStock = weighted mean of u0 simulated load curves.")
 )</code></pre>
 <div id="driver-table" class="cell-output cell-output-display" data-execution_count="10">
-<div id="ftaivcrgsv" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="ezdjjulgul" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 <style>
-#ftaivcrgsv table {
+#ezdjjulgul table {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', 'Fira Sans', 'Droid Sans', Arial, sans-serif;
           -webkit-font-smoothing: antialiased;
           -moz-osx-font-smoothing: grayscale;
         }
 
-#ftaivcrgsv thead, tbody, tfoot, tr, td, th { border-style: none; }
+#ezdjjulgul thead, tbody, tfoot, tr, td, th { border-style: none; }
  tr { background-color: transparent; }
-#ftaivcrgsv p { margin: 0; padding: 0; }
- #ftaivcrgsv .gt_table { display: table; border-collapse: collapse; line-height: normal; margin-left: auto; margin-right: auto; color: #333333; font-size: 16px; font-weight: normal; font-style: normal; background-color: #FFFFFF; width: auto; border-top-style: solid; border-top-width: 2px; border-top-color: #A8A8A8; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #A8A8A8; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; }
- #ftaivcrgsv .gt_caption { padding-top: 4px; padding-bottom: 4px; }
- #ftaivcrgsv .gt_title { color: #333333; font-size: 125%; font-weight: initial; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; border-bottom-color: #FFFFFF; border-bottom-width: 0; }
- #ftaivcrgsv .gt_subtitle { color: #333333; font-size: 85%; font-weight: initial; padding-top: 3px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; border-top-color: #FFFFFF; border-top-width: 0; }
- #ftaivcrgsv .gt_heading { background-color: #FFFFFF; text-align: center; border-bottom-color: #FFFFFF; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
- #ftaivcrgsv .gt_bottom_border { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
- #ftaivcrgsv .gt_col_headings { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
- #ftaivcrgsv .gt_col_heading { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; }
- #ftaivcrgsv .gt_column_spanner_outer { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; padding-top: 0; padding-bottom: 0; padding-left: 4px; padding-right: 4px; }
- #ftaivcrgsv .gt_column_spanner_outer:first-child { padding-left: 0; }
- #ftaivcrgsv .gt_column_spanner_outer:last-child { padding-right: 0; }
- #ftaivcrgsv .gt_column_spanner { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; overflow-x: hidden; display: inline-block; width: 100%; }
- #ftaivcrgsv .gt_spanner_row { border-bottom-style: hidden; }
- #ftaivcrgsv .gt_group_heading { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; text-align: left; }
- #ftaivcrgsv .gt_empty_group_heading { padding: 0.5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: middle; }
- #ftaivcrgsv .gt_from_md> :first-child { margin-top: 0; }
- #ftaivcrgsv .gt_from_md> :last-child { margin-bottom: 0; }
- #ftaivcrgsv .gt_row { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; }
- #ftaivcrgsv .gt_stub { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; }
- #ftaivcrgsv .gt_stub_row_group { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; vertical-align: top; }
- #ftaivcrgsv .gt_row_group_first td { border-top-width: 2px; }
- #ftaivcrgsv .gt_row_group_first th { border-top-width: 2px; }
- #ftaivcrgsv .gt_striped { color: #333333; background-color: #F4F4F4; }
- #ftaivcrgsv .gt_table_body { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
- #ftaivcrgsv .gt_grand_summary_row { color: #333333; background-color: #FFFFFF; text-transform: inherit; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; }
- #ftaivcrgsv .gt_first_grand_summary_row_bottom { border-top-style: double; border-top-width: 6px; border-top-color: #D3D3D3; }
- #ftaivcrgsv .gt_last_grand_summary_row_top { border-bottom-style: double; border-bottom-width: 6px; border-bottom-color: #D3D3D3; }
- #ftaivcrgsv .gt_sourcenotes { color: #333333; background-color: #FFFFFF; border-bottom-style: none; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; }
- #ftaivcrgsv .gt_sourcenote { font-size: 90%; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; text-align: left; }
- #ftaivcrgsv .gt_left { text-align: left; }
- #ftaivcrgsv .gt_center { text-align: center; }
- #ftaivcrgsv .gt_right { text-align: right; font-variant-numeric: tabular-nums; }
- #ftaivcrgsv .gt_font_normal { font-weight: normal; }
- #ftaivcrgsv .gt_font_bold { font-weight: bold; }
- #ftaivcrgsv .gt_font_italic { font-style: italic; }
- #ftaivcrgsv .gt_super { font-size: 65%; }
- #ftaivcrgsv .gt_footnote_marks { font-size: 75%; vertical-align: 0.4em; position: initial; }
- #ftaivcrgsv .gt_asterisk { font-size: 100%; vertical-align: 0; }
+#ezdjjulgul p { margin: 0; padding: 0; }
+ #ezdjjulgul .gt_table { display: table; border-collapse: collapse; line-height: normal; margin-left: auto; margin-right: auto; color: #333333; font-size: 16px; font-weight: normal; font-style: normal; background-color: #FFFFFF; width: auto; border-top-style: solid; border-top-width: 2px; border-top-color: #A8A8A8; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #A8A8A8; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; }
+ #ezdjjulgul .gt_caption { padding-top: 4px; padding-bottom: 4px; }
+ #ezdjjulgul .gt_title { color: #333333; font-size: 125%; font-weight: initial; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; border-bottom-color: #FFFFFF; border-bottom-width: 0; }
+ #ezdjjulgul .gt_subtitle { color: #333333; font-size: 85%; font-weight: initial; padding-top: 3px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; border-top-color: #FFFFFF; border-top-width: 0; }
+ #ezdjjulgul .gt_heading { background-color: #FFFFFF; text-align: center; border-bottom-color: #FFFFFF; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
+ #ezdjjulgul .gt_bottom_border { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
+ #ezdjjulgul .gt_col_headings { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
+ #ezdjjulgul .gt_col_heading { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; }
+ #ezdjjulgul .gt_column_spanner_outer { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; padding-top: 0; padding-bottom: 0; padding-left: 4px; padding-right: 4px; }
+ #ezdjjulgul .gt_column_spanner_outer:first-child { padding-left: 0; }
+ #ezdjjulgul .gt_column_spanner_outer:last-child { padding-right: 0; }
+ #ezdjjulgul .gt_column_spanner { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; overflow-x: hidden; display: inline-block; width: 100%; }
+ #ezdjjulgul .gt_spanner_row { border-bottom-style: hidden; }
+ #ezdjjulgul .gt_group_heading { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; text-align: left; }
+ #ezdjjulgul .gt_empty_group_heading { padding: 0.5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: middle; }
+ #ezdjjulgul .gt_from_md> :first-child { margin-top: 0; }
+ #ezdjjulgul .gt_from_md> :last-child { margin-bottom: 0; }
+ #ezdjjulgul .gt_row { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; }
+ #ezdjjulgul .gt_stub { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; }
+ #ezdjjulgul .gt_stub_row_group { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; vertical-align: top; }
+ #ezdjjulgul .gt_row_group_first td { border-top-width: 2px; }
+ #ezdjjulgul .gt_row_group_first th { border-top-width: 2px; }
+ #ezdjjulgul .gt_striped { color: #333333; background-color: #F4F4F4; }
+ #ezdjjulgul .gt_table_body { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
+ #ezdjjulgul .gt_grand_summary_row { color: #333333; background-color: #FFFFFF; text-transform: inherit; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; }
+ #ezdjjulgul .gt_first_grand_summary_row_bottom { border-top-style: double; border-top-width: 6px; border-top-color: #D3D3D3; }
+ #ezdjjulgul .gt_last_grand_summary_row_top { border-bottom-style: double; border-bottom-width: 6px; border-bottom-color: #D3D3D3; }
+ #ezdjjulgul .gt_sourcenotes { color: #333333; background-color: #FFFFFF; border-bottom-style: none; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; }
+ #ezdjjulgul .gt_sourcenote { font-size: 90%; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; text-align: left; }
+ #ezdjjulgul .gt_left { text-align: left; }
+ #ezdjjulgul .gt_center { text-align: center; }
+ #ezdjjulgul .gt_right { text-align: right; font-variant-numeric: tabular-nums; }
+ #ezdjjulgul .gt_font_normal { font-weight: normal; }
+ #ezdjjulgul .gt_font_bold { font-weight: bold; }
+ #ezdjjulgul .gt_font_italic { font-style: italic; }
+ #ezdjjulgul .gt_super { font-size: 65%; }
+ #ezdjjulgul .gt_footnote_marks { font-size: 75%; vertical-align: 0.4em; position: initial; }
+ #ezdjjulgul .gt_asterisk { font-size: 100%; vertical-align: 0; }
 
 </style>
 
 <table class="gt_table caption-top table table-sm table-striped small" data-quarto-bootstrap="false">
 <thead>
 <tr class="gt_heading header">
-<td colspan="7" class="gt_heading gt_title gt_font_normal">The two drivers of BAT: delivery rate and excess consumption</td>
+<td colspan="9" class="gt_heading gt_title gt_font_normal">The two drivers of BAT: delivery rate and excess consumption</td>
 </tr>
-<tr class="gt_col_headings even">
-<th id="Utility" class="gt_col_heading gt_columns_bottom_border gt_left" data-quarto-table-cell-role="th" scope="col">Utility</th>
-<th id="Del.-Rate-(¢/kWh)" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">Del. Rate (¢/kWh)</th>
-<th id="HP-kWh/yr" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">HP kWh/yr</th>
-<th id="Avg-kWh/yr-(EIA)" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">Avg kWh/yr (EIA)</th>
-<th id="Δ-kWh" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">Δ kWh</th>
-<th id="Rate-×-Δ-kWh" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">Rate × Δ kWh</th>
-<th id="Actual-BAT" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">Actual BAT</th>
+<tr class="gt_col_headings gt_spanner_row even">
+<th rowspan="2" id="Utility" class="gt_col_heading gt_columns_bottom_border gt_left" data-quarto-table-cell-role="th" scope="col">Utility</th>
+<th rowspan="2" id="Del.-Rate-(¢/kWh)" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">Del. Rate (¢/kWh)</th>
+<th rowspan="2" id="HP-kWh/yr" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">HP kWh/yr</th>
+<th colspan="2" id="Avg-kWh/yr" class="gt_center gt_columns_top_border gt_column_spanner_outer" data-quarto-table-cell-role="th" scope="colgroup"><span class="gt_column_spanner">Avg kWh/yr</span></th>
+<th colspan="2" id="Excess-consumption" class="gt_center gt_columns_top_border gt_column_spanner_outer" data-quarto-table-cell-role="th" scope="colgroup"><span class="gt_column_spanner">Excess consumption</span></th>
+<th rowspan="2" id="Rate-×-Δ-kWh" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">Rate × Δ kWh</th>
+<th rowspan="2" id="Actual-BAT" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">Actual BAT</th>
+</tr>
+<tr class="gt_col_headings header">
+<th id="Avg-(EIA)" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">Avg (EIA)</th>
+<th id="Avg-(ResStock)" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">Avg (ResStock)</th>
+<th id="Δ-kWh-(EIA)" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">Δ kWh (EIA)</th>
+<th id="Δ-kWh-(RS)" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">Δ kWh (RS)</th>
 </tr>
 </thead>
 <tbody class="gt_table_body">
@@ -906,67 +976,81 @@ driver_df = pl.DataFrame(driver_rows)</code></pre>
 <td class="gt_row gt_right">14.52</td>
 <td class="gt_row gt_right">21,047</td>
 <td class="gt_row gt_right">7,762</td>
+<td class="gt_row gt_right">9,192</td>
 <td class="gt_row gt_right">13,285</td>
+<td class="gt_row gt_right">11,855</td>
 <td class="gt_row gt_right">$1,928</td>
 <td class="gt_row gt_right">$1,737</td>
-</tr>
-<tr class="even">
-<td class="gt_row gt_left">ConEd</td>
-<td class="gt_row gt_right">15.47</td>
-<td class="gt_row gt_right">9,174</td>
-<td class="gt_row gt_right">4,478</td>
-<td class="gt_row gt_right">4,697</td>
-<td class="gt_row gt_right">$727</td>
-<td class="gt_row gt_right">$556</td>
-</tr>
-<tr class="odd">
-<td class="gt_row gt_left">NiMo</td>
-<td class="gt_row gt_right">8.47</td>
-<td class="gt_row gt_right">18,871</td>
-<td class="gt_row gt_right">7,676</td>
-<td class="gt_row gt_right">11,196</td>
-<td class="gt_row gt_right">$949</td>
-<td class="gt_row gt_right">$839</td>
-</tr>
-<tr class="even">
-<td class="gt_row gt_left">NYSEG</td>
-<td class="gt_row gt_right">10.41</td>
-<td class="gt_row gt_right">19,279</td>
-<td class="gt_row gt_right">8,585</td>
-<td class="gt_row gt_right">10,694</td>
-<td class="gt_row gt_right">$1,113</td>
-<td class="gt_row gt_right">$1,042</td>
-</tr>
-<tr class="odd">
-<td class="gt_row gt_left">O&amp;R</td>
-<td class="gt_row gt_right">12.03</td>
-<td class="gt_row gt_right">15,740</td>
-<td class="gt_row gt_right">7,695</td>
-<td class="gt_row gt_right">8,045</td>
-<td class="gt_row gt_right">$968</td>
-<td class="gt_row gt_right">$913</td>
 </tr>
 <tr class="even">
 <td class="gt_row gt_left">PSEG-LI</td>
 <td class="gt_row gt_right">10.68</td>
 <td class="gt_row gt_right">19,156</td>
 <td class="gt_row gt_right">8,637</td>
+<td class="gt_row gt_right">9,095</td>
 <td class="gt_row gt_right">10,519</td>
+<td class="gt_row gt_right">10,061</td>
 <td class="gt_row gt_right">$1,123</td>
 <td class="gt_row gt_right">$1,082</td>
+</tr>
+<tr class="odd">
+<td class="gt_row gt_left">NYSEG</td>
+<td class="gt_row gt_right">10.41</td>
+<td class="gt_row gt_right">19,279</td>
+<td class="gt_row gt_right">8,585</td>
+<td class="gt_row gt_right">9,081</td>
+<td class="gt_row gt_right">10,694</td>
+<td class="gt_row gt_right">10,199</td>
+<td class="gt_row gt_right">$1,113</td>
+<td class="gt_row gt_right">$1,042</td>
+</tr>
+<tr class="even">
+<td class="gt_row gt_left">O&amp;R</td>
+<td class="gt_row gt_right">12.03</td>
+<td class="gt_row gt_right">15,740</td>
+<td class="gt_row gt_right">7,695</td>
+<td class="gt_row gt_right">8,451</td>
+<td class="gt_row gt_right">8,045</td>
+<td class="gt_row gt_right">7,289</td>
+<td class="gt_row gt_right">$968</td>
+<td class="gt_row gt_right">$913</td>
 </tr>
 <tr class="odd">
 <td class="gt_row gt_left">RG&amp;E</td>
 <td class="gt_row gt_right">7.23</td>
 <td class="gt_row gt_right">21,703</td>
 <td class="gt_row gt_right">7,986</td>
+<td class="gt_row gt_right">9,259</td>
 <td class="gt_row gt_right">13,717</td>
+<td class="gt_row gt_right">12,443</td>
 <td class="gt_row gt_right">$992</td>
 <td class="gt_row gt_right">$912</td>
 </tr>
+<tr class="even">
+<td class="gt_row gt_left">NiMo</td>
+<td class="gt_row gt_right">8.47</td>
+<td class="gt_row gt_right">18,871</td>
+<td class="gt_row gt_right">7,676</td>
+<td class="gt_row gt_right">8,742</td>
+<td class="gt_row gt_right">11,196</td>
+<td class="gt_row gt_right">10,129</td>
+<td class="gt_row gt_right">$949</td>
+<td class="gt_row gt_right">$839</td>
+</tr>
+<tr class="odd">
+<td class="gt_row gt_left">ConEd</td>
+<td class="gt_row gt_right">15.47</td>
+<td class="gt_row gt_right">9,174</td>
+<td class="gt_row gt_right">4,478</td>
+<td class="gt_row gt_right">6,279</td>
+<td class="gt_row gt_right">4,697</td>
+<td class="gt_row gt_right">2,896</td>
+<td class="gt_row gt_right">$727</td>
+<td class="gt_row gt_right">$556</td>
+</tr>
 </tbody><tfoot class="gt_sourcenotes">
 <tr class="odd">
-<td colspan="7" class="gt_sourcenote">Avg kWh/yr from EIA-861 (2023). HP kWh backed out from delivery bill ÷ rate.</td>
+<td colspan="9" class="gt_sourcenote">EIA = EIA-861 (2023) reported sales ÷ customers. ResStock = weighted mean of u0 simulated load curves.</td>
 </tr>
 </tfoot>
 
@@ -976,7 +1060,7 @@ driver_df = pl.DataFrame(driver_rows)</code></pre>
 </div>
 </div>
 </div></div>
-<div id="97caab88" class="cell markdown">
+<div id="f6a63a6d" class="cell markdown">
 
 </div>
 <p>The <strong>Rate × Δ kWh</strong> column tracks the actual BAT closely — usually within $100. The small gap is the excess-MC term we dropped from the approximation.</p>
@@ -991,7 +1075,7 @@ driver_df = pl.DataFrame(driver_rows)</code></pre>
 <div class="cell-container"><div class="cell-decorator"><pre>In [11]:</pre></div><div id="cell-fig-rate-vs-delta" class="cell" data-execution_count="11">
 <pre><code>#| label: fig-rate-vs-delta
 #| fig-cap: The BAT is the product of delivery rate and excess consumption. ConEd's low Δ kWh is the main reason its BAT is low despite having the highest rate.
-plot_df = driver_df.with_columns(
+plot_df = driver_df.rename({"Δ kWh (EIA)": "delta_kwh", "Del. Rate (¢/kWh)": "del_rate"}).with_columns(
     pl.col("Actual BAT").abs().alias("bat_abs"),
     pl.col("Actual BAT")
     .map_elements(lambda v: f"BAT = ${v:,.0f}", return_dtype=pl.String)
@@ -999,7 +1083,7 @@ plot_df = driver_df.with_columns(
 )
 
 (
-    ggplot(plot_df, aes(x="Δ kWh", y="Del. Rate (¢/kWh)"))
+    ggplot(plot_df, aes(x="delta_kwh", y="del_rate"))
     + geom_point(aes(size="bat_abs"), color=SB_COLORS["midnight"], alpha=0.7)
     + geom_text(aes(label="Utility"), nudge_y=0.5, size=8)
     + labs(
@@ -1009,13 +1093,13 @@ plot_df = driver_df.with_columns(
     )
     + scale_x_continuous(labels=lambda xs: [f"{x:,.0f}" for x in xs])
     + theme_switchbox()
-    + theme(figure_size=(10, 6), legend_position="none")
+    + theme(figure_size=(7, 4), legend_position="none")
 )</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="11">
 <div id="fig-rate-vs-delta" class="quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-fig figure">
 <div aria-describedby="fig-rate-vs-delta-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca" class="">
-<a href="bat_by_utility_investigation_files/figure-html/fig-rate-vs-delta-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2" title="The BAT is the product of delivery rate and excess consumption. ConEd’s low Δ kWh is the main reason its BAT is low despite having the highest rate."><img src="bat_by_utility_investigation_files/figure-html/fig-rate-vs-delta-output-1.png" width="1500" height="900" class="figure-img"></a>
+<a href="bat_by_utility_investigation_files/figure-html/fig-rate-vs-delta-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2" title="The BAT is the product of delivery rate and excess consumption. ConEd’s low Δ kWh is the main reason its BAT is low despite having the highest rate."><img src="bat_by_utility_investigation_files/figure-html/fig-rate-vs-delta-output-1.png" width="1050" height="600" class="figure-img"></a>
 </div>
 <figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-rate-vs-delta-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 The BAT is the product of delivery rate and excess consumption. ConEd’s low Δ kWh is the main reason its BAT is low despite having the highest rate.
@@ -1024,14 +1108,10 @@ The BAT is the product of delivery rate and excess consumption. ConEd’s low Δ
 </div>
 </div>
 </div></div>
-<div id="2b9cfd91" class="cell markdown">
+<div id="9f5e3799" class="cell markdown">
 
 </div>
 <p>ConEd sits in the bottom-left: its HP customers don’t consume much more than its (already low-consuming) average customer. CenHud is in the upper-right: high rate, high excess. The bubble size (proportional to BAT) tracks the product of the two axes.</p>
-<section id="why-consumption-differs-apartments-vs.-houses" class="level2">
-<h2 class="anchored" data-anchor-id="why-consumption-differs-apartments-vs.-houses">Why consumption differs: apartments vs.&nbsp;houses</h2>
-<p>The excess consumption gap is driven by building stock composition. ConEd’s territory is overwhelmingly New York City — small apartments with modest heating loads. Even after installing a heat pump, a ConEd apartment doesn’t consume that much electricity. And ConEd’s <em>average</em> customer also uses very little (4,478 kWh/yr), so the HP premium over the average is small.</p>
-<p>Upstate utilities (NiMo, NYSEG, CenHud, RG&amp;E) serve predominantly single-family homes. These homes have much larger heating loads, so switching to a heat pump adds a lot of electricity consumption — and the gap over the residential average (7,000–8,600 kWh/yr) is large.</p>
 <div class="">
 
 </div>
@@ -1040,14 +1120,15 @@ The BAT is the product of delivery rate and excess consumption. ConEd’s low Δ
 #| fig-cap: HP customers consume 2--3x the residential average in most utilities. ConEd's HP customers are the exception — they consume only 2x because the building stock is smaller.
 cons_plot_rows = []
 for row in driver_rows:
-    cons_plot_rows.append({"Utility": row["Utility"], "Type": "Residential avg (EIA)", "kWh": row["Avg kWh/yr (EIA)"]})
+    cons_plot_rows.append({"Utility": row["Utility"], "Type": "Avg (EIA)", "kWh": row["Avg (EIA)"]})
+    cons_plot_rows.append({"Utility": row["Utility"], "Type": "Avg (ResStock)", "kWh": row["Avg (ResStock)"]})
     cons_plot_rows.append({"Utility": row["Utility"], "Type": "HP customer", "kWh": row["HP kWh/yr"]})
 
 cons_plot = pl.DataFrame(cons_plot_rows)
 
 util_order = [r["Utility"] for r in sorted(driver_rows, key=lambda r: r["HP kWh/yr"], reverse=True)]
-type_order = ["Residential avg (EIA)", "HP customer"]
-type_colors = {"Residential avg (EIA)": SB_COLORS["sky"], "HP customer": SB_COLORS["midnight"]}
+type_order = ["Avg (EIA)", "Avg (ResStock)", "HP customer"]
+type_colors = {"Avg (EIA)": SB_COLORS["sky"], "Avg (ResStock)": SB_COLORS["saffron"], "HP customer": SB_COLORS["midnight"]}
 
 cons_plot = cons_plot.with_columns(
     pl.col("Utility").cast(pl.Enum(util_order)),
@@ -1061,13 +1142,13 @@ cons_plot = cons_plot.with_columns(
     + scale_y_continuous(labels=lambda xs: [f"{x:,.0f}" for x in xs])
     + labs(x="", y="kWh / year", title="HP consumption vs. residential average")
     + theme_switchbox()
-    + theme(figure_size=(12, 5), legend_position="top")
+    + theme(figure_size=(6, 3.5), legend_position="top")
 )</code></pre>
 <div class="cell-output cell-output-display" data-execution_count="12">
 <div id="fig-consumption-comparison" class="quarto-float quarto-figure quarto-figure-center anchored">
 <figure class="quarto-float quarto-float-fig figure">
 <div aria-describedby="fig-consumption-comparison-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca" class="">
-<a href="bat_by_utility_investigation_files/figure-html/fig-consumption-comparison-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-3" title="HP customers consume 2–3x the residential average in most utilities. ConEd’s HP customers are the exception — they consume only 2x because the building stock is smaller."><img src="bat_by_utility_investigation_files/figure-html/fig-consumption-comparison-output-1.png" width="1800" height="750" class="figure-img"></a>
+<a href="bat_by_utility_investigation_files/figure-html/fig-consumption-comparison-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-3" title="HP customers consume 2–3x the residential average in most utilities. ConEd’s HP customers are the exception — they consume only 2x because the building stock is smaller."><img src="bat_by_utility_investigation_files/figure-html/fig-consumption-comparison-output-1.png" width="900" height="525" class="figure-img"></a>
 </div>
 <figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-consumption-comparison-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
 HP customers consume 2–3x the residential average in most utilities. ConEd’s HP customers are the exception — they consume only 2x because the building stock is smaller.
@@ -1076,16 +1157,217 @@ HP customers consume 2–3x the residential average in most utilities. ConEd’s
 </div>
 </div>
 </div></div>
-<div id="74663cc0" class="cell markdown">
+<div id="a537a1c2" class="cell markdown">
 
 </div>
+<section id="why-consumption-differs-apartments-vs.-houses" class="level2">
+<h2 class="anchored" data-anchor-id="why-consumption-differs-apartments-vs.-houses">Why consumption differs: apartments vs.&nbsp;houses</h2>
+<p>The excess consumption gap is driven by building stock composition. Let’s quantify this by looking at what fraction of each utility’s customers live in single-family detached homes vs.&nbsp;multifamily buildings (from the ResStock metadata), and how that correlates with average electricity consumption.</p>
 </section>
+</div>
+<div class="cell-container"><div class="cell-decorator"><pre>In [13]:</pre></div><div id="building-stock-analysis" class="cell" data-execution_count="13">
+<pre><code>#| label: building-stock-analysis
+import numpy as np
+
+util_assign = pl.read_parquet(PATH_UTIL_ASSIGN).select(
+    "bldg_id", "sb.electric_utility", "weight", "in.sqft",
+    "in.geometry_building_type_recs",
+)
+
+bldg_df = resstock_kwh_df.join(
+    util_assign.select("bldg_id", "in.sqft", "in.geometry_building_type_recs"),
+    on="bldg_id",
+)
+
+stock_rows = []
+for util in UTIL_ORDER_BY_BAT:
+    sub = bldg_df.filter(pl.col("sb.electric_utility") == util)
+    w = sub["weight"]
+    total_w = w.sum()
+    sfd_w = sub.filter(
+        pl.col("in.geometry_building_type_recs") == "Single-Family Detached"
+    )["weight"].sum()
+    mf5_w = sub.filter(
+        pl.col("in.geometry_building_type_recs") == "Multi-Family with 5+ Units"
+    )["weight"].sum()
+    avg_sqft = float((sub["in.sqft"] * w).sum() / total_w)
+    avg_kwh = float((sub["annual_kwh"] * w).sum() / total_w)
+    stock_rows.append({
+        "Utility": UTIL_DISPLAY.get(util, util),
+        "% SFD": sfd_w / total_w,
+        "% MF 5+": mf5_w / total_w,
+        "Avg sqft": round(avg_sqft),
+        "Avg kWh/yr": round(avg_kwh),
+    })
+
+stock_df = pl.DataFrame(stock_rows)</code></pre>
+</div></div>
+<div id="394c3386" class="cell markdown">
+<div class="">
+
+</div>
+<div class="cell-container"><div class="cell-decorator"><pre>In [14]:</pre></div><div id="cell-building-stock-table" class="cell" data-execution_count="14">
+<pre><code>#| label: building-stock-table
+(
+    GT(stock_df)
+    .fmt_percent(columns=["% SFD", "% MF 5+"], decimals=0)
+    .fmt_number(columns=["Avg sqft", "Avg kWh/yr"], decimals=0, use_seps=True)
+    .tab_header(title="Building stock composition by utility (ResStock, upgrade 0)")
+)</code></pre>
+<div id="building-stock-table" class="cell-output cell-output-display" data-execution_count="14">
+<div id="osufhmleyn" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<style>
+#osufhmleyn table {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', 'Fira Sans', 'Droid Sans', Arial, sans-serif;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+        }
+
+#osufhmleyn thead, tbody, tfoot, tr, td, th { border-style: none; }
+ tr { background-color: transparent; }
+#osufhmleyn p { margin: 0; padding: 0; }
+ #osufhmleyn .gt_table { display: table; border-collapse: collapse; line-height: normal; margin-left: auto; margin-right: auto; color: #333333; font-size: 16px; font-weight: normal; font-style: normal; background-color: #FFFFFF; width: auto; border-top-style: solid; border-top-width: 2px; border-top-color: #A8A8A8; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #A8A8A8; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; }
+ #osufhmleyn .gt_caption { padding-top: 4px; padding-bottom: 4px; }
+ #osufhmleyn .gt_title { color: #333333; font-size: 125%; font-weight: initial; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; border-bottom-color: #FFFFFF; border-bottom-width: 0; }
+ #osufhmleyn .gt_subtitle { color: #333333; font-size: 85%; font-weight: initial; padding-top: 3px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; border-top-color: #FFFFFF; border-top-width: 0; }
+ #osufhmleyn .gt_heading { background-color: #FFFFFF; text-align: center; border-bottom-color: #FFFFFF; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
+ #osufhmleyn .gt_bottom_border { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
+ #osufhmleyn .gt_col_headings { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
+ #osufhmleyn .gt_col_heading { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; }
+ #osufhmleyn .gt_column_spanner_outer { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; padding-top: 0; padding-bottom: 0; padding-left: 4px; padding-right: 4px; }
+ #osufhmleyn .gt_column_spanner_outer:first-child { padding-left: 0; }
+ #osufhmleyn .gt_column_spanner_outer:last-child { padding-right: 0; }
+ #osufhmleyn .gt_column_spanner { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; overflow-x: hidden; display: inline-block; width: 100%; }
+ #osufhmleyn .gt_spanner_row { border-bottom-style: hidden; }
+ #osufhmleyn .gt_group_heading { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; text-align: left; }
+ #osufhmleyn .gt_empty_group_heading { padding: 0.5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: middle; }
+ #osufhmleyn .gt_from_md> :first-child { margin-top: 0; }
+ #osufhmleyn .gt_from_md> :last-child { margin-bottom: 0; }
+ #osufhmleyn .gt_row { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; }
+ #osufhmleyn .gt_stub { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; }
+ #osufhmleyn .gt_stub_row_group { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; vertical-align: top; }
+ #osufhmleyn .gt_row_group_first td { border-top-width: 2px; }
+ #osufhmleyn .gt_row_group_first th { border-top-width: 2px; }
+ #osufhmleyn .gt_striped { color: #333333; background-color: #F4F4F4; }
+ #osufhmleyn .gt_table_body { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
+ #osufhmleyn .gt_grand_summary_row { color: #333333; background-color: #FFFFFF; text-transform: inherit; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; }
+ #osufhmleyn .gt_first_grand_summary_row_bottom { border-top-style: double; border-top-width: 6px; border-top-color: #D3D3D3; }
+ #osufhmleyn .gt_last_grand_summary_row_top { border-bottom-style: double; border-bottom-width: 6px; border-bottom-color: #D3D3D3; }
+ #osufhmleyn .gt_sourcenotes { color: #333333; background-color: #FFFFFF; border-bottom-style: none; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; }
+ #osufhmleyn .gt_sourcenote { font-size: 90%; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; text-align: left; }
+ #osufhmleyn .gt_left { text-align: left; }
+ #osufhmleyn .gt_center { text-align: center; }
+ #osufhmleyn .gt_right { text-align: right; font-variant-numeric: tabular-nums; }
+ #osufhmleyn .gt_font_normal { font-weight: normal; }
+ #osufhmleyn .gt_font_bold { font-weight: bold; }
+ #osufhmleyn .gt_font_italic { font-style: italic; }
+ #osufhmleyn .gt_super { font-size: 65%; }
+ #osufhmleyn .gt_footnote_marks { font-size: 75%; vertical-align: 0.4em; position: initial; }
+ #osufhmleyn .gt_asterisk { font-size: 100%; vertical-align: 0; }
+
+</style>
+
+<table class="gt_table caption-top table table-sm table-striped small" data-quarto-bootstrap="false">
+<thead>
+<tr class="gt_heading header">
+<td colspan="5" class="gt_heading gt_title gt_font_normal">Building stock composition by utility (ResStock, upgrade 0)</td>
+</tr>
+<tr class="gt_col_headings even">
+<th id="Utility" class="gt_col_heading gt_columns_bottom_border gt_left" data-quarto-table-cell-role="th" scope="col">Utility</th>
+<th id="%-SFD" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">% SFD</th>
+<th id="%-MF-5+" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">% MF 5+</th>
+<th id="Avg-sqft" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">Avg sqft</th>
+<th id="Avg-kWh/yr" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">Avg kWh/yr</th>
+</tr>
+</thead>
+<tbody class="gt_table_body">
+<tr class="odd">
+<td class="gt_row gt_left">CenHud</td>
+<td class="gt_row gt_right">65%</td>
+<td class="gt_row gt_right">12%</td>
+<td class="gt_row gt_right">1,662</td>
+<td class="gt_row gt_right">9,192</td>
+</tr>
+<tr class="even">
+<td class="gt_row gt_left">PSEG-LI</td>
+<td class="gt_row gt_right">76%</td>
+<td class="gt_row gt_right">12%</td>
+<td class="gt_row gt_right">1,827</td>
+<td class="gt_row gt_right">9,095</td>
+</tr>
+<tr class="odd">
+<td class="gt_row gt_left">NYSEG</td>
+<td class="gt_row gt_right">68%</td>
+<td class="gt_row gt_right">9%</td>
+<td class="gt_row gt_right">1,614</td>
+<td class="gt_row gt_right">9,081</td>
+</tr>
+<tr class="even">
+<td class="gt_row gt_left">O&amp;R</td>
+<td class="gt_row gt_right">60%</td>
+<td class="gt_row gt_right">18%</td>
+<td class="gt_row gt_right">1,674</td>
+<td class="gt_row gt_right">8,451</td>
+</tr>
+<tr class="odd">
+<td class="gt_row gt_left">RG&amp;E</td>
+<td class="gt_row gt_right">64%</td>
+<td class="gt_row gt_right">16%</td>
+<td class="gt_row gt_right">1,627</td>
+<td class="gt_row gt_right">9,259</td>
+</tr>
+<tr class="even">
+<td class="gt_row gt_left">NiMo</td>
+<td class="gt_row gt_right">62%</td>
+<td class="gt_row gt_right">13%</td>
+<td class="gt_row gt_right">1,571</td>
+<td class="gt_row gt_right">8,742</td>
+</tr>
+<tr class="odd">
+<td class="gt_row gt_left">ConEd</td>
+<td class="gt_row gt_right">12%</td>
+<td class="gt_row gt_right">59%</td>
+<td class="gt_row gt_right">1,178</td>
+<td class="gt_row gt_right">6,279</td>
+</tr>
+</tbody>
+</table>
+
+
+</div>
+</div>
+</div></div>
+<div id="a984bf76" class="cell markdown">
+
+</div>
+<p>ConEd is the outlier: only <strong>12%</strong> single-family detached and <strong>59%</strong> multifamily 5+ units. Every other utility is 60–76% single-family detached. The average ConEd dwelling is 1,178 sqft; upstate dwellings average 1,570–1,830 sqft.</p>
+<p>The correlation between % single-family detached and average kWh across the seven utilities is near-perfect:</p>
+</div>
+<div class="cell-container"><div class="cell-decorator"><pre>In [15]:</pre></div><div id="building-stock-correlations" class="cell" data-execution_count="15">
+<pre><code>#| label: building-stock-correlations
+pct_sfd = np.array([r["% SFD"] for r in stock_rows])
+avg_kwh_arr = np.array([r["Avg kWh/yr"] for r in stock_rows])
+avg_sqft_arr = np.array([r["Avg sqft"] for r in stock_rows])
+
+r_sfd = np.corrcoef(pct_sfd, avg_kwh_arr)[0, 1]
+r_sqft = np.corrcoef(avg_sqft_arr, avg_kwh_arr)[0, 1]
+
+print(f"Corr(% SFD, avg kWh) across utilities: r = {r_sfd:.2f}")
+print(f"Corr(avg sqft, avg kWh) across utilities: r = {r_sqft:.2f}")</code></pre>
+<div class="cell-output cell-output-stdout">
+<pre><code>Corr(% SFD, avg kWh) across utilities: r = 0.97
+Corr(avg sqft, avg kWh) across utilities: r = 0.90</code></pre>
+</div>
+</div></div>
+<div id="27fda65f" class="cell markdown">
+<p>At the utility level, % single-family detached explains <strong>94%</strong> of the variance in average consumption (r² = 0.94). Building stock composition is almost the entire story.</p>
+<p>At the <em>building</em> level, the picture is more diffuse — sqft alone explains R² ≈ 0.15 of individual kWh variation, and adding building type gets to R² ≈ 0.16. There’s a lot of within-type variation (insulation quality, occupant behavior, appliance mix). But the BAT formula operates on <em>averages</em>, and at the average level, building stock is deterministic.</p>
 <section id="sensitivity-would-full-hp-adoption-change-the-picture" class="level2">
 <h2 class="anchored" data-anchor-id="sensitivity-would-full-hp-adoption-change-the-picture">Sensitivity: would full HP adoption change the picture?</h2>
 <p>The u0 HP sample for some utilities is small (O&amp;R has 26 buildings, CenHud 46). Are the high kWh figures for those utilities just noise from a thin sample? We can check by looking at run 3+4, which gives <em>every</em> building a heat pump under the same calibrated tariff. This tells us what average HP consumption would look like for the full residential population, not just the handful of existing HP owners.</p>
 </section>
 </div>
-<div class="cell-container"><div class="cell-decorator"><pre>In [13]:</pre></div><div id="load-u2-bills" class="cell" data-execution_count="13">
+<div class="cell-container"><div class="cell-decorator"><pre>In [16]:</pre></div><div id="load-u2-bills" class="cell" data-execution_count="16">
 <pre><code>#| label: load-u2-bills
 PATH_BILLS_34 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_3+4/comb_bills_year_target/"
 bills_u2 = pl.read_parquet(PATH_BILLS_34, hive_partitioning=True)
@@ -1098,7 +1380,7 @@ annual_u2 = (
     )
 )</code></pre>
 </div></div>
-<div class="cell-container"><div class="cell-decorator"><pre>In [14]:</pre></div><div id="build-sensitivity-table" class="cell" data-execution_count="14">
+<div class="cell-container"><div class="cell-decorator"><pre>In [17]:</pre></div><div id="build-sensitivity-table" class="cell" data-execution_count="17">
 <pre><code>#| label: build-sensitivity-table
 sensitivity_rows = []
 for row in driver_rows:
@@ -1131,11 +1413,11 @@ for row in driver_rows:
 
 sensitivity_df = pl.DataFrame(sensitivity_rows)</code></pre>
 </div></div>
-<div id="62c5aba8" class="cell markdown">
+<div id="c3ff7b47" class="cell markdown">
 <div class="">
 
 </div>
-<div class="cell-container"><div class="cell-decorator"><pre>In [15]:</pre></div><div id="cell-sensitivity-table" class="cell" data-execution_count="15">
+<div class="cell-container"><div class="cell-decorator"><pre>In [18]:</pre></div><div id="cell-sensitivity-table" class="cell" data-execution_count="18">
 <pre><code>#| label: sensitivity-table
 n_u0 = {r["Utility"]: r["N (buildings)"] for r in rows}
 sensitivity_display = sensitivity_df.with_columns(
@@ -1150,56 +1432,56 @@ sensitivity_display = sensitivity_df.with_columns(
     .tab_header(title="Sensitivity: existing HP sample vs. full-population HP kWh")
     .tab_source_note("u0 = existing HP owners (run 1+2). Full pop = all buildings given HPs (run 3+4, same tariff).")
 )</code></pre>
-<div id="sensitivity-table" class="cell-output cell-output-display" data-execution_count="15">
-<div id="oqxgmmibao" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="sensitivity-table" class="cell-output cell-output-display" data-execution_count="18">
+<div id="qdcdtapvol" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 <style>
-#oqxgmmibao table {
+#qdcdtapvol table {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', 'Fira Sans', 'Droid Sans', Arial, sans-serif;
           -webkit-font-smoothing: antialiased;
           -moz-osx-font-smoothing: grayscale;
         }
 
-#oqxgmmibao thead, tbody, tfoot, tr, td, th { border-style: none; }
+#qdcdtapvol thead, tbody, tfoot, tr, td, th { border-style: none; }
  tr { background-color: transparent; }
-#oqxgmmibao p { margin: 0; padding: 0; }
- #oqxgmmibao .gt_table { display: table; border-collapse: collapse; line-height: normal; margin-left: auto; margin-right: auto; color: #333333; font-size: 16px; font-weight: normal; font-style: normal; background-color: #FFFFFF; width: auto; border-top-style: solid; border-top-width: 2px; border-top-color: #A8A8A8; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #A8A8A8; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; }
- #oqxgmmibao .gt_caption { padding-top: 4px; padding-bottom: 4px; }
- #oqxgmmibao .gt_title { color: #333333; font-size: 125%; font-weight: initial; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; border-bottom-color: #FFFFFF; border-bottom-width: 0; }
- #oqxgmmibao .gt_subtitle { color: #333333; font-size: 85%; font-weight: initial; padding-top: 3px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; border-top-color: #FFFFFF; border-top-width: 0; }
- #oqxgmmibao .gt_heading { background-color: #FFFFFF; text-align: center; border-bottom-color: #FFFFFF; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
- #oqxgmmibao .gt_bottom_border { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
- #oqxgmmibao .gt_col_headings { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
- #oqxgmmibao .gt_col_heading { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; }
- #oqxgmmibao .gt_column_spanner_outer { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; padding-top: 0; padding-bottom: 0; padding-left: 4px; padding-right: 4px; }
- #oqxgmmibao .gt_column_spanner_outer:first-child { padding-left: 0; }
- #oqxgmmibao .gt_column_spanner_outer:last-child { padding-right: 0; }
- #oqxgmmibao .gt_column_spanner { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; overflow-x: hidden; display: inline-block; width: 100%; }
- #oqxgmmibao .gt_spanner_row { border-bottom-style: hidden; }
- #oqxgmmibao .gt_group_heading { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; text-align: left; }
- #oqxgmmibao .gt_empty_group_heading { padding: 0.5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: middle; }
- #oqxgmmibao .gt_from_md> :first-child { margin-top: 0; }
- #oqxgmmibao .gt_from_md> :last-child { margin-bottom: 0; }
- #oqxgmmibao .gt_row { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; }
- #oqxgmmibao .gt_stub { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; }
- #oqxgmmibao .gt_stub_row_group { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; vertical-align: top; }
- #oqxgmmibao .gt_row_group_first td { border-top-width: 2px; }
- #oqxgmmibao .gt_row_group_first th { border-top-width: 2px; }
- #oqxgmmibao .gt_striped { color: #333333; background-color: #F4F4F4; }
- #oqxgmmibao .gt_table_body { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
- #oqxgmmibao .gt_grand_summary_row { color: #333333; background-color: #FFFFFF; text-transform: inherit; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; }
- #oqxgmmibao .gt_first_grand_summary_row_bottom { border-top-style: double; border-top-width: 6px; border-top-color: #D3D3D3; }
- #oqxgmmibao .gt_last_grand_summary_row_top { border-bottom-style: double; border-bottom-width: 6px; border-bottom-color: #D3D3D3; }
- #oqxgmmibao .gt_sourcenotes { color: #333333; background-color: #FFFFFF; border-bottom-style: none; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; }
- #oqxgmmibao .gt_sourcenote { font-size: 90%; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; text-align: left; }
- #oqxgmmibao .gt_left { text-align: left; }
- #oqxgmmibao .gt_center { text-align: center; }
- #oqxgmmibao .gt_right { text-align: right; font-variant-numeric: tabular-nums; }
- #oqxgmmibao .gt_font_normal { font-weight: normal; }
- #oqxgmmibao .gt_font_bold { font-weight: bold; }
- #oqxgmmibao .gt_font_italic { font-style: italic; }
- #oqxgmmibao .gt_super { font-size: 65%; }
- #oqxgmmibao .gt_footnote_marks { font-size: 75%; vertical-align: 0.4em; position: initial; }
- #oqxgmmibao .gt_asterisk { font-size: 100%; vertical-align: 0; }
+#qdcdtapvol p { margin: 0; padding: 0; }
+ #qdcdtapvol .gt_table { display: table; border-collapse: collapse; line-height: normal; margin-left: auto; margin-right: auto; color: #333333; font-size: 16px; font-weight: normal; font-style: normal; background-color: #FFFFFF; width: auto; border-top-style: solid; border-top-width: 2px; border-top-color: #A8A8A8; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #A8A8A8; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; }
+ #qdcdtapvol .gt_caption { padding-top: 4px; padding-bottom: 4px; }
+ #qdcdtapvol .gt_title { color: #333333; font-size: 125%; font-weight: initial; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; border-bottom-color: #FFFFFF; border-bottom-width: 0; }
+ #qdcdtapvol .gt_subtitle { color: #333333; font-size: 85%; font-weight: initial; padding-top: 3px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; border-top-color: #FFFFFF; border-top-width: 0; }
+ #qdcdtapvol .gt_heading { background-color: #FFFFFF; text-align: center; border-bottom-color: #FFFFFF; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
+ #qdcdtapvol .gt_bottom_border { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
+ #qdcdtapvol .gt_col_headings { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
+ #qdcdtapvol .gt_col_heading { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; }
+ #qdcdtapvol .gt_column_spanner_outer { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; padding-top: 0; padding-bottom: 0; padding-left: 4px; padding-right: 4px; }
+ #qdcdtapvol .gt_column_spanner_outer:first-child { padding-left: 0; }
+ #qdcdtapvol .gt_column_spanner_outer:last-child { padding-right: 0; }
+ #qdcdtapvol .gt_column_spanner { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; overflow-x: hidden; display: inline-block; width: 100%; }
+ #qdcdtapvol .gt_spanner_row { border-bottom-style: hidden; }
+ #qdcdtapvol .gt_group_heading { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; text-align: left; }
+ #qdcdtapvol .gt_empty_group_heading { padding: 0.5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: middle; }
+ #qdcdtapvol .gt_from_md> :first-child { margin-top: 0; }
+ #qdcdtapvol .gt_from_md> :last-child { margin-bottom: 0; }
+ #qdcdtapvol .gt_row { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; }
+ #qdcdtapvol .gt_stub { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; }
+ #qdcdtapvol .gt_stub_row_group { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; vertical-align: top; }
+ #qdcdtapvol .gt_row_group_first td { border-top-width: 2px; }
+ #qdcdtapvol .gt_row_group_first th { border-top-width: 2px; }
+ #qdcdtapvol .gt_striped { color: #333333; background-color: #F4F4F4; }
+ #qdcdtapvol .gt_table_body { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
+ #qdcdtapvol .gt_grand_summary_row { color: #333333; background-color: #FFFFFF; text-transform: inherit; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; }
+ #qdcdtapvol .gt_first_grand_summary_row_bottom { border-top-style: double; border-top-width: 6px; border-top-color: #D3D3D3; }
+ #qdcdtapvol .gt_last_grand_summary_row_top { border-bottom-style: double; border-bottom-width: 6px; border-bottom-color: #D3D3D3; }
+ #qdcdtapvol .gt_sourcenotes { color: #333333; background-color: #FFFFFF; border-bottom-style: none; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; }
+ #qdcdtapvol .gt_sourcenote { font-size: 90%; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; text-align: left; }
+ #qdcdtapvol .gt_left { text-align: left; }
+ #qdcdtapvol .gt_center { text-align: center; }
+ #qdcdtapvol .gt_right { text-align: right; font-variant-numeric: tabular-nums; }
+ #qdcdtapvol .gt_font_normal { font-weight: normal; }
+ #qdcdtapvol .gt_font_bold { font-weight: bold; }
+ #qdcdtapvol .gt_font_italic { font-style: italic; }
+ #qdcdtapvol .gt_super { font-size: 65%; }
+ #qdcdtapvol .gt_footnote_marks { font-size: 75%; vertical-align: 0.4em; position: initial; }
+ #qdcdtapvol .gt_asterisk { font-size: 100%; vertical-align: 0; }
 
 </style>
 
@@ -1233,50 +1515,6 @@ sensitivity_display = sensitivity_df.with_columns(
 <td class="gt_row gt_right">$2,500</td>
 </tr>
 <tr class="even">
-<td class="gt_row gt_left">ConEd</td>
-<td class="gt_row gt_right">366</td>
-<td class="gt_row gt_right">9,174</td>
-<td class="gt_row gt_right">14,487</td>
-<td class="gt_row gt_right">4,478</td>
-<td class="gt_row gt_right">4,696</td>
-<td class="gt_row gt_right">10,009</td>
-<td class="gt_row gt_right">$727</td>
-<td class="gt_row gt_right">$1,549</td>
-</tr>
-<tr class="odd">
-<td class="gt_row gt_left">NiMo</td>
-<td class="gt_row gt_right">229</td>
-<td class="gt_row gt_right">18,871</td>
-<td class="gt_row gt_right">26,389</td>
-<td class="gt_row gt_right">7,676</td>
-<td class="gt_row gt_right">11,195</td>
-<td class="gt_row gt_right">18,713</td>
-<td class="gt_row gt_right">$949</td>
-<td class="gt_row gt_right">$1,586</td>
-</tr>
-<tr class="even">
-<td class="gt_row gt_left">NYSEG</td>
-<td class="gt_row gt_right">126</td>
-<td class="gt_row gt_right">19,279</td>
-<td class="gt_row gt_right">26,667</td>
-<td class="gt_row gt_right">8,585</td>
-<td class="gt_row gt_right">10,694</td>
-<td class="gt_row gt_right">18,082</td>
-<td class="gt_row gt_right">$1,113</td>
-<td class="gt_row gt_right">$1,883</td>
-</tr>
-<tr class="odd">
-<td class="gt_row gt_left">O&amp;R</td>
-<td class="gt_row gt_right">26</td>
-<td class="gt_row gt_right">15,740</td>
-<td class="gt_row gt_right">23,888</td>
-<td class="gt_row gt_right">7,695</td>
-<td class="gt_row gt_right">8,045</td>
-<td class="gt_row gt_right">16,193</td>
-<td class="gt_row gt_right">$968</td>
-<td class="gt_row gt_right">$1,948</td>
-</tr>
-<tr class="even">
 <td class="gt_row gt_left">PSEG-LI</td>
 <td class="gt_row gt_right">61</td>
 <td class="gt_row gt_right">19,156</td>
@@ -1288,6 +1526,28 @@ sensitivity_display = sensitivity_df.with_columns(
 <td class="gt_row gt_right">$2,105</td>
 </tr>
 <tr class="odd">
+<td class="gt_row gt_left">NYSEG</td>
+<td class="gt_row gt_right">126</td>
+<td class="gt_row gt_right">19,279</td>
+<td class="gt_row gt_right">26,667</td>
+<td class="gt_row gt_right">8,585</td>
+<td class="gt_row gt_right">10,694</td>
+<td class="gt_row gt_right">18,082</td>
+<td class="gt_row gt_right">$1,113</td>
+<td class="gt_row gt_right">$1,883</td>
+</tr>
+<tr class="even">
+<td class="gt_row gt_left">O&amp;R</td>
+<td class="gt_row gt_right">26</td>
+<td class="gt_row gt_right">15,740</td>
+<td class="gt_row gt_right">23,888</td>
+<td class="gt_row gt_right">7,695</td>
+<td class="gt_row gt_right">8,045</td>
+<td class="gt_row gt_right">16,193</td>
+<td class="gt_row gt_right">$968</td>
+<td class="gt_row gt_right">$1,948</td>
+</tr>
+<tr class="odd">
 <td class="gt_row gt_left">RG&amp;E</td>
 <td class="gt_row gt_right">64</td>
 <td class="gt_row gt_right">21,703</td>
@@ -1297,6 +1557,28 @@ sensitivity_display = sensitivity_df.with_columns(
 <td class="gt_row gt_right">17,489</td>
 <td class="gt_row gt_right">$992</td>
 <td class="gt_row gt_right">$1,264</td>
+</tr>
+<tr class="even">
+<td class="gt_row gt_left">NiMo</td>
+<td class="gt_row gt_right">229</td>
+<td class="gt_row gt_right">18,871</td>
+<td class="gt_row gt_right">26,389</td>
+<td class="gt_row gt_right">7,676</td>
+<td class="gt_row gt_right">11,195</td>
+<td class="gt_row gt_right">18,713</td>
+<td class="gt_row gt_right">$949</td>
+<td class="gt_row gt_right">$1,586</td>
+</tr>
+<tr class="odd">
+<td class="gt_row gt_left">ConEd</td>
+<td class="gt_row gt_right">366</td>
+<td class="gt_row gt_right">9,174</td>
+<td class="gt_row gt_right">14,487</td>
+<td class="gt_row gt_right">4,478</td>
+<td class="gt_row gt_right">4,696</td>
+<td class="gt_row gt_right">10,009</td>
+<td class="gt_row gt_right">$727</td>
+<td class="gt_row gt_right">$1,549</td>
 </tr>
 </tbody><tfoot class="gt_sourcenotes">
 <tr class="odd">
@@ -1310,7 +1592,7 @@ sensitivity_display = sensitivity_df.with_columns(
 </div>
 </div>
 </div></div>
-<div id="cc898c55" class="cell markdown">
+<div id="d14548cf" class="cell markdown">
 
 </div>
 <p>The full-population HP kWh is <strong>higher</strong> than the u0 sample in every utility — often by 20–50%. The high kWh figures for small-sample utilities like O&amp;R and CenHud are not sampling noise; if anything, the existing HP owners <em>understate</em> what average HP consumption would be under widespread adoption. This makes sense: early adopters tend to be in smaller, more efficient homes. The broader population includes larger, less efficient buildings whose heating loads would drive up average HP electricity consumption.</p>
@@ -1318,19 +1600,218 @@ sensitivity_display = sensitivity_df.with_columns(
 <section id="why-rates-differ-revenue-requirements-and-customer-counts" class="level2">
 <h2 class="anchored" data-anchor-id="why-rates-differ-revenue-requirements-and-customer-counts">Why rates differ: revenue requirements and customer counts</h2>
 <p>The delivery rate is determined by the revenue requirement divided by total residential kWh. Utilities with high revenue requirements per kWh of sales will have high rates.</p>
-<p>CenHud and ConEd both have high delivery rates (~14–15 ¢/kWh), but for different reasons. ConEd’s revenue requirement is enormous in absolute terms — it serves 3 million customers in the most expensive infrastructure environment in the state — but spread over those 3 million customers, the <em>per-customer</em> delivery cost is modest. CenHud is much smaller (270,000 customers) and its per-customer infrastructure costs are high.</p>
-<p>RG&amp;E has the lowest delivery rate (7.2 ¢/kWh), which means its excess-consumption penalty is smaller per kWh. But its Δ kWh is large enough that the BAT still comes out to $912/yr.</p>
 </section>
+</div>
+<div class="cell-container"><div class="cell-decorator"><pre>In [19]:</pre></div><div id="compute-rev-req" class="cell" data-execution_count="19">
+<pre><code>#| label: compute-rev-req
+RR_DIR = "rate_design/hp_rates/ny/config/rev_requirement"
+
+rr_rows = []
+for util in UTIL_ORDER_BY_BAT:
+    content = fetch_rdp_file(f"{RR_DIR}/{util}.yaml", ref=RDP_REF)
+    cfg = yaml.safe_load(content)
+    del_rr = cfg["total_delivery_revenue_requirement"]
+    n_cust = eia_customers.get(util, 1)
+    rr_rows.append({
+        "Utility": UTIL_DISPLAY.get(util, util),
+        "Del. Rev Req ($M)": del_rr / 1e6,
+        "Customers": n_cust,
+        "Per-customer ($/yr)": del_rr / n_cust,
+        "Del. Rate (¢/kWh)": tariff_info[util]["rate_per_kwh"] * 100,
+    })
+
+rr_df = pl.DataFrame(rr_rows)</code></pre>
+</div></div>
+<div id="63196f45" class="cell markdown">
+<div class="">
+
+</div>
+<div class="cell-container"><div class="cell-decorator"><pre>In [20]:</pre></div><div id="cell-rev-req-table" class="cell" data-execution_count="20">
+<pre><code>#| label: rev-req-table
+(
+    GT(rr_df)
+    .fmt_currency(columns=["Del. Rev Req ($M)"], decimals=0)
+    .fmt_number(columns=["Customers"], decimals=0, use_seps=True)
+    .fmt_currency(columns=["Per-customer ($/yr)"], decimals=0)
+    .fmt_number(columns=["Del. Rate (¢/kWh)"], decimals=2)
+    .tab_header(title="Delivery revenue requirement per customer")
+)</code></pre>
+<div id="rev-req-table" class="cell-output cell-output-display" data-execution_count="20">
+<div id="moxcrjuzay" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<style>
+#moxcrjuzay table {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', 'Fira Sans', 'Droid Sans', Arial, sans-serif;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+        }
+
+#moxcrjuzay thead, tbody, tfoot, tr, td, th { border-style: none; }
+ tr { background-color: transparent; }
+#moxcrjuzay p { margin: 0; padding: 0; }
+ #moxcrjuzay .gt_table { display: table; border-collapse: collapse; line-height: normal; margin-left: auto; margin-right: auto; color: #333333; font-size: 16px; font-weight: normal; font-style: normal; background-color: #FFFFFF; width: auto; border-top-style: solid; border-top-width: 2px; border-top-color: #A8A8A8; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #A8A8A8; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; }
+ #moxcrjuzay .gt_caption { padding-top: 4px; padding-bottom: 4px; }
+ #moxcrjuzay .gt_title { color: #333333; font-size: 125%; font-weight: initial; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; border-bottom-color: #FFFFFF; border-bottom-width: 0; }
+ #moxcrjuzay .gt_subtitle { color: #333333; font-size: 85%; font-weight: initial; padding-top: 3px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; border-top-color: #FFFFFF; border-top-width: 0; }
+ #moxcrjuzay .gt_heading { background-color: #FFFFFF; text-align: center; border-bottom-color: #FFFFFF; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
+ #moxcrjuzay .gt_bottom_border { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
+ #moxcrjuzay .gt_col_headings { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
+ #moxcrjuzay .gt_col_heading { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; }
+ #moxcrjuzay .gt_column_spanner_outer { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; padding-top: 0; padding-bottom: 0; padding-left: 4px; padding-right: 4px; }
+ #moxcrjuzay .gt_column_spanner_outer:first-child { padding-left: 0; }
+ #moxcrjuzay .gt_column_spanner_outer:last-child { padding-right: 0; }
+ #moxcrjuzay .gt_column_spanner { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; overflow-x: hidden; display: inline-block; width: 100%; }
+ #moxcrjuzay .gt_spanner_row { border-bottom-style: hidden; }
+ #moxcrjuzay .gt_group_heading { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; text-align: left; }
+ #moxcrjuzay .gt_empty_group_heading { padding: 0.5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: middle; }
+ #moxcrjuzay .gt_from_md> :first-child { margin-top: 0; }
+ #moxcrjuzay .gt_from_md> :last-child { margin-bottom: 0; }
+ #moxcrjuzay .gt_row { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; }
+ #moxcrjuzay .gt_stub { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; }
+ #moxcrjuzay .gt_stub_row_group { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; vertical-align: top; }
+ #moxcrjuzay .gt_row_group_first td { border-top-width: 2px; }
+ #moxcrjuzay .gt_row_group_first th { border-top-width: 2px; }
+ #moxcrjuzay .gt_striped { color: #333333; background-color: #F4F4F4; }
+ #moxcrjuzay .gt_table_body { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
+ #moxcrjuzay .gt_grand_summary_row { color: #333333; background-color: #FFFFFF; text-transform: inherit; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; }
+ #moxcrjuzay .gt_first_grand_summary_row_bottom { border-top-style: double; border-top-width: 6px; border-top-color: #D3D3D3; }
+ #moxcrjuzay .gt_last_grand_summary_row_top { border-bottom-style: double; border-bottom-width: 6px; border-bottom-color: #D3D3D3; }
+ #moxcrjuzay .gt_sourcenotes { color: #333333; background-color: #FFFFFF; border-bottom-style: none; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; }
+ #moxcrjuzay .gt_sourcenote { font-size: 90%; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; text-align: left; }
+ #moxcrjuzay .gt_left { text-align: left; }
+ #moxcrjuzay .gt_center { text-align: center; }
+ #moxcrjuzay .gt_right { text-align: right; font-variant-numeric: tabular-nums; }
+ #moxcrjuzay .gt_font_normal { font-weight: normal; }
+ #moxcrjuzay .gt_font_bold { font-weight: bold; }
+ #moxcrjuzay .gt_font_italic { font-style: italic; }
+ #moxcrjuzay .gt_super { font-size: 65%; }
+ #moxcrjuzay .gt_footnote_marks { font-size: 75%; vertical-align: 0.4em; position: initial; }
+ #moxcrjuzay .gt_asterisk { font-size: 100%; vertical-align: 0; }
+
+</style>
+
+<table class="gt_table caption-top table table-sm table-striped small" data-quarto-bootstrap="false">
+<thead>
+<tr class="gt_heading header">
+<td colspan="5" class="gt_heading gt_title gt_font_normal">Delivery revenue requirement per customer</td>
+</tr>
+<tr class="gt_col_headings even">
+<th id="Utility" class="gt_col_heading gt_columns_bottom_border gt_left" data-quarto-table-cell-role="th" scope="col">Utility</th>
+<th id="Del.-Rev-Req-($M)" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">Del. Rev Req ($M)</th>
+<th id="Customers" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">Customers</th>
+<th id="Per-customer-($/yr)" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">Per-customer ($/yr)</th>
+<th id="Del.-Rate-(¢/kWh)" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">Del. Rate (¢/kWh)</th>
+</tr>
+</thead>
+<tbody class="gt_table_body">
+<tr class="odd">
+<td class="gt_row gt_left">CenHud</td>
+<td class="gt_row gt_right">$416</td>
+<td class="gt_row gt_right">270,041</td>
+<td class="gt_row gt_right">$1,541</td>
+<td class="gt_row gt_right">14.52</td>
+</tr>
+<tr class="even">
+<td class="gt_row gt_left">PSEG-LI</td>
+<td class="gt_row gt_right">$1,167</td>
+<td class="gt_row gt_right">1,028,015</td>
+<td class="gt_row gt_right">$1,135</td>
+<td class="gt_row gt_right">10.68</td>
+</tr>
+<tr class="odd">
+<td class="gt_row gt_left">NYSEG</td>
+<td class="gt_row gt_right">$912</td>
+<td class="gt_row gt_right">791,764</td>
+<td class="gt_row gt_right">$1,152</td>
+<td class="gt_row gt_right">10.41</td>
+</tr>
+<tr class="even">
+<td class="gt_row gt_left">O&amp;R</td>
+<td class="gt_row gt_right">$264</td>
+<td class="gt_row gt_right">208,819</td>
+<td class="gt_row gt_right">$1,264</td>
+<td class="gt_row gt_right">12.03</td>
+</tr>
+<tr class="odd">
+<td class="gt_row gt_left">RG&amp;E</td>
+<td class="gt_row gt_right">$327</td>
+<td class="gt_row gt_right">350,548</td>
+<td class="gt_row gt_right">$933</td>
+<td class="gt_row gt_right">7.23</td>
+</tr>
+<tr class="even">
+<td class="gt_row gt_left">NiMo</td>
+<td class="gt_row gt_right">$1,411</td>
+<td class="gt_row gt_right">1,526,730</td>
+<td class="gt_row gt_right">$924</td>
+<td class="gt_row gt_right">8.47</td>
+</tr>
+<tr class="odd">
+<td class="gt_row gt_left">ConEd</td>
+<td class="gt_row gt_right">$3,263</td>
+<td class="gt_row gt_right">3,040,543</td>
+<td class="gt_row gt_right">$1,073</td>
+<td class="gt_row gt_right">15.47</td>
+</tr>
+</tbody>
+</table>
+
+
+</div>
+</div>
+</div></div>
+<div id="ef43d8a1" class="cell markdown">
+
+</div>
+<div class="">
+
+</div>
+<div class="cell-container"><div class="cell-decorator"><pre>In [21]:</pre></div><div id="cell-fig-rev-req-per-customer" class="cell" data-execution_count="21">
+<pre><code>#| label: fig-rev-req-per-customer
+#| fig-cap: Per-customer delivery revenue requirement varies modestly across utilities — less than the 3x variation in BAT. The rate difference is driven more by how much each customer consumes than by how much infrastructure each customer costs.
+rr_plot = rr_df.rename({"Per-customer ($/yr)": "per_cust"}).with_columns(
+    pl.col("Utility").cast(pl.Enum([r["Utility"] for r in rr_rows])),
+    pl.col("per_cust")
+    .map_elements(lambda v: f"${v:,.0f}", return_dtype=pl.String)
+    .alias("label"),
+)
+
+(
+    ggplot(rr_plot, aes(x="Utility", y="per_cust"))
+    + geom_col(width=0.6, fill=SB_COLORS["sky"])
+    + geom_text(aes(label="label"), nudge_y=30, size=8)
+    + scale_y_continuous(labels=lambda xs: [f"${x:,.0f}" for x in xs])
+    + labs(x="", y="$/customer/year", title="Delivery revenue requirement per customer")
+    + theme_switchbox()
+    + theme(figure_size=(8, 4))
+)</code></pre>
+<div class="cell-output cell-output-display" data-execution_count="21">
+<div id="fig-rev-req-per-customer" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-rev-req-per-customer-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca" class="">
+<a href="bat_by_utility_investigation_files/figure-html/fig-rev-req-per-customer-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-4" title="Per-customer delivery revenue requirement varies modestly across utilities — less than the 3x variation in BAT. The rate difference is driven more by how much each customer consumes than by how much infrastructure each customer costs."><img src="bat_by_utility_investigation_files/figure-html/fig-rev-req-per-customer-output-1.png" width="1200" height="600" class="figure-img"></a>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-rev-req-per-customer-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Per-customer delivery revenue requirement varies modestly across utilities — less than the 3x variation in BAT. The rate difference is driven more by how much each customer consumes than by how much infrastructure each customer costs.
+</figcaption>
+</figure>
+</div>
+</div>
+</div></div>
+<div id="c30c9e68" class="cell markdown">
+
+</div>
+<p>CenHud and ConEd both have high delivery rates (~14–15 ¢/kWh), but for different reasons. ConEd’s revenue requirement is enormous in absolute terms — it serves millions of customers in the most expensive infrastructure environment in the state — but spread over those customers, the <em>per-customer</em> delivery cost is modest. CenHud is much smaller and its per-customer infrastructure costs are high.</p>
+<p>RG&amp;E has the lowest delivery rate (7.2 ¢/kWh), which means its excess-consumption penalty is smaller per kWh. But its Δ kWh is large enough that the BAT still comes out to $912/yr.</p>
 <section id="the-cost-side-why-marginal-costs-barely-matter" class="level2">
 <h2 class="anchored" data-anchor-id="the-cost-side-why-marginal-costs-barely-matter">The cost side: why marginal costs barely matter</h2>
 <p>Given the formula <span class="math inline">\(\text{BAT} = \text{Rate} \times \Delta\text{kWh} - \Delta\text{MC}\)</span>, one might expect the marginal cost difference to provide a meaningful offset. It doesn’t.</p>
 <div class="">
 
 </div>
-<div class="cell-container"><div class="cell-decorator"><pre>In [16]:</pre></div><div id="cell-mc-comparison" class="cell" data-execution_count="16">
+<div class="cell-container"><div class="cell-decorator"><pre>In [22]:</pre></div><div id="cell-mc-comparison" class="cell" data-execution_count="22">
 <pre><code>#| label: mc-comparison
 mc_rows = []
-for util in sorted(hp["sb.electric_utility"].unique().to_list()):
+for util in UTIL_ORDER_BY_BAT:
     hp_sub = hp.filter(pl.col("sb.electric_utility") == util)
     all_sub = bat.filter(pl.col("sb.electric_utility") == util)
     mc_hp = _wmean(hp_sub, "economic_burden_delivery")
@@ -1347,56 +1828,56 @@ for util in sorted(hp["sb.electric_utility"].unique().to_list()):
     .fmt_currency(columns=["MC (HP)", "MC (all)", "Δ MC"], decimals=0)
     .tab_header(title="Marginal delivery cost: HP vs. all customers")
 )</code></pre>
-<div id="mc-comparison" class="cell-output cell-output-display" data-execution_count="16">
-<div id="vkbuolcifs" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="mc-comparison" class="cell-output cell-output-display" data-execution_count="22">
+<div id="flqcosbbgx" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 <style>
-#vkbuolcifs table {
+#flqcosbbgx table {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', 'Fira Sans', 'Droid Sans', Arial, sans-serif;
           -webkit-font-smoothing: antialiased;
           -moz-osx-font-smoothing: grayscale;
         }
 
-#vkbuolcifs thead, tbody, tfoot, tr, td, th { border-style: none; }
+#flqcosbbgx thead, tbody, tfoot, tr, td, th { border-style: none; }
  tr { background-color: transparent; }
-#vkbuolcifs p { margin: 0; padding: 0; }
- #vkbuolcifs .gt_table { display: table; border-collapse: collapse; line-height: normal; margin-left: auto; margin-right: auto; color: #333333; font-size: 16px; font-weight: normal; font-style: normal; background-color: #FFFFFF; width: auto; border-top-style: solid; border-top-width: 2px; border-top-color: #A8A8A8; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #A8A8A8; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; }
- #vkbuolcifs .gt_caption { padding-top: 4px; padding-bottom: 4px; }
- #vkbuolcifs .gt_title { color: #333333; font-size: 125%; font-weight: initial; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; border-bottom-color: #FFFFFF; border-bottom-width: 0; }
- #vkbuolcifs .gt_subtitle { color: #333333; font-size: 85%; font-weight: initial; padding-top: 3px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; border-top-color: #FFFFFF; border-top-width: 0; }
- #vkbuolcifs .gt_heading { background-color: #FFFFFF; text-align: center; border-bottom-color: #FFFFFF; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
- #vkbuolcifs .gt_bottom_border { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
- #vkbuolcifs .gt_col_headings { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
- #vkbuolcifs .gt_col_heading { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; }
- #vkbuolcifs .gt_column_spanner_outer { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; padding-top: 0; padding-bottom: 0; padding-left: 4px; padding-right: 4px; }
- #vkbuolcifs .gt_column_spanner_outer:first-child { padding-left: 0; }
- #vkbuolcifs .gt_column_spanner_outer:last-child { padding-right: 0; }
- #vkbuolcifs .gt_column_spanner { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; overflow-x: hidden; display: inline-block; width: 100%; }
- #vkbuolcifs .gt_spanner_row { border-bottom-style: hidden; }
- #vkbuolcifs .gt_group_heading { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; text-align: left; }
- #vkbuolcifs .gt_empty_group_heading { padding: 0.5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: middle; }
- #vkbuolcifs .gt_from_md> :first-child { margin-top: 0; }
- #vkbuolcifs .gt_from_md> :last-child { margin-bottom: 0; }
- #vkbuolcifs .gt_row { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; }
- #vkbuolcifs .gt_stub { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; }
- #vkbuolcifs .gt_stub_row_group { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; vertical-align: top; }
- #vkbuolcifs .gt_row_group_first td { border-top-width: 2px; }
- #vkbuolcifs .gt_row_group_first th { border-top-width: 2px; }
- #vkbuolcifs .gt_striped { color: #333333; background-color: #F4F4F4; }
- #vkbuolcifs .gt_table_body { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
- #vkbuolcifs .gt_grand_summary_row { color: #333333; background-color: #FFFFFF; text-transform: inherit; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; }
- #vkbuolcifs .gt_first_grand_summary_row_bottom { border-top-style: double; border-top-width: 6px; border-top-color: #D3D3D3; }
- #vkbuolcifs .gt_last_grand_summary_row_top { border-bottom-style: double; border-bottom-width: 6px; border-bottom-color: #D3D3D3; }
- #vkbuolcifs .gt_sourcenotes { color: #333333; background-color: #FFFFFF; border-bottom-style: none; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; }
- #vkbuolcifs .gt_sourcenote { font-size: 90%; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; text-align: left; }
- #vkbuolcifs .gt_left { text-align: left; }
- #vkbuolcifs .gt_center { text-align: center; }
- #vkbuolcifs .gt_right { text-align: right; font-variant-numeric: tabular-nums; }
- #vkbuolcifs .gt_font_normal { font-weight: normal; }
- #vkbuolcifs .gt_font_bold { font-weight: bold; }
- #vkbuolcifs .gt_font_italic { font-style: italic; }
- #vkbuolcifs .gt_super { font-size: 65%; }
- #vkbuolcifs .gt_footnote_marks { font-size: 75%; vertical-align: 0.4em; position: initial; }
- #vkbuolcifs .gt_asterisk { font-size: 100%; vertical-align: 0; }
+#flqcosbbgx p { margin: 0; padding: 0; }
+ #flqcosbbgx .gt_table { display: table; border-collapse: collapse; line-height: normal; margin-left: auto; margin-right: auto; color: #333333; font-size: 16px; font-weight: normal; font-style: normal; background-color: #FFFFFF; width: auto; border-top-style: solid; border-top-width: 2px; border-top-color: #A8A8A8; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #A8A8A8; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; }
+ #flqcosbbgx .gt_caption { padding-top: 4px; padding-bottom: 4px; }
+ #flqcosbbgx .gt_title { color: #333333; font-size: 125%; font-weight: initial; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; border-bottom-color: #FFFFFF; border-bottom-width: 0; }
+ #flqcosbbgx .gt_subtitle { color: #333333; font-size: 85%; font-weight: initial; padding-top: 3px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; border-top-color: #FFFFFF; border-top-width: 0; }
+ #flqcosbbgx .gt_heading { background-color: #FFFFFF; text-align: center; border-bottom-color: #FFFFFF; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
+ #flqcosbbgx .gt_bottom_border { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
+ #flqcosbbgx .gt_col_headings { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
+ #flqcosbbgx .gt_col_heading { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; }
+ #flqcosbbgx .gt_column_spanner_outer { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; padding-top: 0; padding-bottom: 0; padding-left: 4px; padding-right: 4px; }
+ #flqcosbbgx .gt_column_spanner_outer:first-child { padding-left: 0; }
+ #flqcosbbgx .gt_column_spanner_outer:last-child { padding-right: 0; }
+ #flqcosbbgx .gt_column_spanner { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; overflow-x: hidden; display: inline-block; width: 100%; }
+ #flqcosbbgx .gt_spanner_row { border-bottom-style: hidden; }
+ #flqcosbbgx .gt_group_heading { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; text-align: left; }
+ #flqcosbbgx .gt_empty_group_heading { padding: 0.5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: middle; }
+ #flqcosbbgx .gt_from_md> :first-child { margin-top: 0; }
+ #flqcosbbgx .gt_from_md> :last-child { margin-bottom: 0; }
+ #flqcosbbgx .gt_row { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; }
+ #flqcosbbgx .gt_stub { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; }
+ #flqcosbbgx .gt_stub_row_group { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; vertical-align: top; }
+ #flqcosbbgx .gt_row_group_first td { border-top-width: 2px; }
+ #flqcosbbgx .gt_row_group_first th { border-top-width: 2px; }
+ #flqcosbbgx .gt_striped { color: #333333; background-color: #F4F4F4; }
+ #flqcosbbgx .gt_table_body { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
+ #flqcosbbgx .gt_grand_summary_row { color: #333333; background-color: #FFFFFF; text-transform: inherit; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; }
+ #flqcosbbgx .gt_first_grand_summary_row_bottom { border-top-style: double; border-top-width: 6px; border-top-color: #D3D3D3; }
+ #flqcosbbgx .gt_last_grand_summary_row_top { border-bottom-style: double; border-bottom-width: 6px; border-bottom-color: #D3D3D3; }
+ #flqcosbbgx .gt_sourcenotes { color: #333333; background-color: #FFFFFF; border-bottom-style: none; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; }
+ #flqcosbbgx .gt_sourcenote { font-size: 90%; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; text-align: left; }
+ #flqcosbbgx .gt_left { text-align: left; }
+ #flqcosbbgx .gt_center { text-align: center; }
+ #flqcosbbgx .gt_right { text-align: right; font-variant-numeric: tabular-nums; }
+ #flqcosbbgx .gt_font_normal { font-weight: normal; }
+ #flqcosbbgx .gt_font_bold { font-weight: bold; }
+ #flqcosbbgx .gt_font_italic { font-style: italic; }
+ #flqcosbbgx .gt_super { font-size: 65%; }
+ #flqcosbbgx .gt_footnote_marks { font-size: 75%; vertical-align: 0.4em; position: initial; }
+ #flqcosbbgx .gt_asterisk { font-size: 100%; vertical-align: 0; }
 
 </style>
 
@@ -1420,40 +1901,40 @@ for util in sorted(hp["sb.electric_utility"].unique().to_list()):
 <td class="gt_row gt_right">$46</td>
 </tr>
 <tr class="even">
-<td class="gt_row gt_left">ConEd</td>
-<td class="gt_row gt_right">$211</td>
-<td class="gt_row gt_right">$157</td>
-<td class="gt_row gt_right">$54</td>
-</tr>
-<tr class="odd">
-<td class="gt_row gt_left">NiMo</td>
-<td class="gt_row gt_right">$135</td>
-<td class="gt_row gt_right">$80</td>
-<td class="gt_row gt_right">$55</td>
-</tr>
-<tr class="even">
-<td class="gt_row gt_left">NYSEG</td>
-<td class="gt_row gt_right">$135</td>
-<td class="gt_row gt_right">$83</td>
-<td class="gt_row gt_right">$52</td>
-</tr>
-<tr class="odd">
-<td class="gt_row gt_left">O&amp;R</td>
-<td class="gt_row gt_right">$78</td>
-<td class="gt_row gt_right">$59</td>
-<td class="gt_row gt_right">$19</td>
-</tr>
-<tr class="even">
 <td class="gt_row gt_left">PSEG-LI</td>
 <td class="gt_row gt_right">$104</td>
 <td class="gt_row gt_right">$77</td>
 <td class="gt_row gt_right">$28</td>
 </tr>
 <tr class="odd">
+<td class="gt_row gt_left">NYSEG</td>
+<td class="gt_row gt_right">$135</td>
+<td class="gt_row gt_right">$83</td>
+<td class="gt_row gt_right">$52</td>
+</tr>
+<tr class="even">
+<td class="gt_row gt_left">O&amp;R</td>
+<td class="gt_row gt_right">$78</td>
+<td class="gt_row gt_right">$59</td>
+<td class="gt_row gt_right">$19</td>
+</tr>
+<tr class="odd">
 <td class="gt_row gt_left">RG&amp;E</td>
 <td class="gt_row gt_right">$33</td>
 <td class="gt_row gt_right">$19</td>
 <td class="gt_row gt_right">$14</td>
+</tr>
+<tr class="even">
+<td class="gt_row gt_left">NiMo</td>
+<td class="gt_row gt_right">$135</td>
+<td class="gt_row gt_right">$80</td>
+<td class="gt_row gt_right">$55</td>
+</tr>
+<tr class="odd">
+<td class="gt_row gt_left">ConEd</td>
+<td class="gt_row gt_right">$211</td>
+<td class="gt_row gt_right">$157</td>
+<td class="gt_row gt_right">$54</td>
 </tr>
 </tbody>
 </table>
@@ -1462,7 +1943,7 @@ for util in sorted(hp["sb.electric_utility"].unique().to_list()):
 </div>
 </div>
 </div></div>
-<div id="e58f0d9b" class="cell markdown">
+<div id="2165677a" class="cell markdown">
 
 </div>
 <p>The excess MC (Δ MC) ranges from $14 to $55 across utilities. Compare this to the excess bill (Rate × Δ kWh), which ranges from $500 to $1,800. <strong>Marginal cost differences explain less than 5% of the BAT variation.</strong> Delivery marginal costs in 2025 are simply too small — relative to delivery bills — to meaningfully offset the cross-subsidy.</p>
@@ -1474,10 +1955,10 @@ for util in sorted(hp["sb.electric_utility"].unique().to_list()):
 <div class="">
 
 </div>
-<div class="cell-container"><div class="cell-decorator"><pre>In [17]:</pre></div><div id="cell-supply-vs-delivery" class="cell" data-execution_count="17">
+<div class="cell-container"><div class="cell-decorator"><pre>In [23]:</pre></div><div id="cell-supply-vs-delivery" class="cell" data-execution_count="23">
 <pre><code>#| label: supply-vs-delivery
 sd_rows = []
-for util in sorted(hp["sb.electric_utility"].unique().to_list()):
+for util in UTIL_ORDER_BY_BAT:
     sub = hp.filter(pl.col("sb.electric_utility") == util)
     sd_rows.append({
         "Utility": UTIL_DISPLAY.get(util, util),
@@ -1491,56 +1972,56 @@ for util in sorted(hp["sb.electric_utility"].unique().to_list()):
     .fmt_currency(columns=["Delivery BAT", "Supply BAT", "Total BAT"], decimals=0)
     .tab_header(title="Delivery vs. supply BAT for HP customers")
 )</code></pre>
-<div id="supply-vs-delivery" class="cell-output cell-output-display" data-execution_count="17">
-<div id="jtxvtvmaqf" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="supply-vs-delivery" class="cell-output cell-output-display" data-execution_count="23">
+<div id="hanucmolxf" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 <style>
-#jtxvtvmaqf table {
+#hanucmolxf table {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', 'Fira Sans', 'Droid Sans', Arial, sans-serif;
           -webkit-font-smoothing: antialiased;
           -moz-osx-font-smoothing: grayscale;
         }
 
-#jtxvtvmaqf thead, tbody, tfoot, tr, td, th { border-style: none; }
+#hanucmolxf thead, tbody, tfoot, tr, td, th { border-style: none; }
  tr { background-color: transparent; }
-#jtxvtvmaqf p { margin: 0; padding: 0; }
- #jtxvtvmaqf .gt_table { display: table; border-collapse: collapse; line-height: normal; margin-left: auto; margin-right: auto; color: #333333; font-size: 16px; font-weight: normal; font-style: normal; background-color: #FFFFFF; width: auto; border-top-style: solid; border-top-width: 2px; border-top-color: #A8A8A8; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #A8A8A8; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; }
- #jtxvtvmaqf .gt_caption { padding-top: 4px; padding-bottom: 4px; }
- #jtxvtvmaqf .gt_title { color: #333333; font-size: 125%; font-weight: initial; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; border-bottom-color: #FFFFFF; border-bottom-width: 0; }
- #jtxvtvmaqf .gt_subtitle { color: #333333; font-size: 85%; font-weight: initial; padding-top: 3px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; border-top-color: #FFFFFF; border-top-width: 0; }
- #jtxvtvmaqf .gt_heading { background-color: #FFFFFF; text-align: center; border-bottom-color: #FFFFFF; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
- #jtxvtvmaqf .gt_bottom_border { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
- #jtxvtvmaqf .gt_col_headings { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
- #jtxvtvmaqf .gt_col_heading { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; }
- #jtxvtvmaqf .gt_column_spanner_outer { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; padding-top: 0; padding-bottom: 0; padding-left: 4px; padding-right: 4px; }
- #jtxvtvmaqf .gt_column_spanner_outer:first-child { padding-left: 0; }
- #jtxvtvmaqf .gt_column_spanner_outer:last-child { padding-right: 0; }
- #jtxvtvmaqf .gt_column_spanner { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; overflow-x: hidden; display: inline-block; width: 100%; }
- #jtxvtvmaqf .gt_spanner_row { border-bottom-style: hidden; }
- #jtxvtvmaqf .gt_group_heading { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; text-align: left; }
- #jtxvtvmaqf .gt_empty_group_heading { padding: 0.5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: middle; }
- #jtxvtvmaqf .gt_from_md> :first-child { margin-top: 0; }
- #jtxvtvmaqf .gt_from_md> :last-child { margin-bottom: 0; }
- #jtxvtvmaqf .gt_row { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; }
- #jtxvtvmaqf .gt_stub { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; }
- #jtxvtvmaqf .gt_stub_row_group { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; vertical-align: top; }
- #jtxvtvmaqf .gt_row_group_first td { border-top-width: 2px; }
- #jtxvtvmaqf .gt_row_group_first th { border-top-width: 2px; }
- #jtxvtvmaqf .gt_striped { color: #333333; background-color: #F4F4F4; }
- #jtxvtvmaqf .gt_table_body { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
- #jtxvtvmaqf .gt_grand_summary_row { color: #333333; background-color: #FFFFFF; text-transform: inherit; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; }
- #jtxvtvmaqf .gt_first_grand_summary_row_bottom { border-top-style: double; border-top-width: 6px; border-top-color: #D3D3D3; }
- #jtxvtvmaqf .gt_last_grand_summary_row_top { border-bottom-style: double; border-bottom-width: 6px; border-bottom-color: #D3D3D3; }
- #jtxvtvmaqf .gt_sourcenotes { color: #333333; background-color: #FFFFFF; border-bottom-style: none; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; }
- #jtxvtvmaqf .gt_sourcenote { font-size: 90%; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; text-align: left; }
- #jtxvtvmaqf .gt_left { text-align: left; }
- #jtxvtvmaqf .gt_center { text-align: center; }
- #jtxvtvmaqf .gt_right { text-align: right; font-variant-numeric: tabular-nums; }
- #jtxvtvmaqf .gt_font_normal { font-weight: normal; }
- #jtxvtvmaqf .gt_font_bold { font-weight: bold; }
- #jtxvtvmaqf .gt_font_italic { font-style: italic; }
- #jtxvtvmaqf .gt_super { font-size: 65%; }
- #jtxvtvmaqf .gt_footnote_marks { font-size: 75%; vertical-align: 0.4em; position: initial; }
- #jtxvtvmaqf .gt_asterisk { font-size: 100%; vertical-align: 0; }
+#hanucmolxf p { margin: 0; padding: 0; }
+ #hanucmolxf .gt_table { display: table; border-collapse: collapse; line-height: normal; margin-left: auto; margin-right: auto; color: #333333; font-size: 16px; font-weight: normal; font-style: normal; background-color: #FFFFFF; width: auto; border-top-style: solid; border-top-width: 2px; border-top-color: #A8A8A8; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #A8A8A8; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; }
+ #hanucmolxf .gt_caption { padding-top: 4px; padding-bottom: 4px; }
+ #hanucmolxf .gt_title { color: #333333; font-size: 125%; font-weight: initial; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; border-bottom-color: #FFFFFF; border-bottom-width: 0; }
+ #hanucmolxf .gt_subtitle { color: #333333; font-size: 85%; font-weight: initial; padding-top: 3px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; border-top-color: #FFFFFF; border-top-width: 0; }
+ #hanucmolxf .gt_heading { background-color: #FFFFFF; text-align: center; border-bottom-color: #FFFFFF; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
+ #hanucmolxf .gt_bottom_border { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
+ #hanucmolxf .gt_col_headings { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; }
+ #hanucmolxf .gt_col_heading { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; padding-left: 5px; padding-right: 5px; overflow-x: hidden; }
+ #hanucmolxf .gt_column_spanner_outer { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: normal; text-transform: inherit; padding-top: 0; padding-bottom: 0; padding-left: 4px; padding-right: 4px; }
+ #hanucmolxf .gt_column_spanner_outer:first-child { padding-left: 0; }
+ #hanucmolxf .gt_column_spanner_outer:last-child { padding-right: 0; }
+ #hanucmolxf .gt_column_spanner { border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: bottom; padding-top: 5px; padding-bottom: 5px; overflow-x: hidden; display: inline-block; width: 100%; }
+ #hanucmolxf .gt_spanner_row { border-bottom-style: hidden; }
+ #hanucmolxf .gt_group_heading { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; text-align: left; }
+ #hanucmolxf .gt_empty_group_heading { padding: 0.5px; color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; vertical-align: middle; }
+ #hanucmolxf .gt_from_md> :first-child { margin-top: 0; }
+ #hanucmolxf .gt_from_md> :last-child { margin-bottom: 0; }
+ #hanucmolxf .gt_row { padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; margin: 10px; border-top-style: solid; border-top-width: 1px; border-top-color: #D3D3D3; border-left-style: none; border-left-width: 1px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 1px; border-right-color: #D3D3D3; vertical-align: middle; overflow-x: hidden; }
+ #hanucmolxf .gt_stub { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; }
+ #hanucmolxf .gt_stub_row_group { color: #333333; background-color: #FFFFFF; font-size: 100%; font-weight: initial; text-transform: inherit; border-right-style: solid; border-right-width: 2px; border-right-color: #D3D3D3; padding-left: 5px; padding-right: 5px; vertical-align: top; }
+ #hanucmolxf .gt_row_group_first td { border-top-width: 2px; }
+ #hanucmolxf .gt_row_group_first th { border-top-width: 2px; }
+ #hanucmolxf .gt_striped { color: #333333; background-color: #F4F4F4; }
+ #hanucmolxf .gt_table_body { border-top-style: solid; border-top-width: 2px; border-top-color: #D3D3D3; border-bottom-style: solid; border-bottom-width: 2px; border-bottom-color: #D3D3D3; }
+ #hanucmolxf .gt_grand_summary_row { color: #333333; background-color: #FFFFFF; text-transform: inherit; padding-top: 8px; padding-bottom: 8px; padding-left: 5px; padding-right: 5px; }
+ #hanucmolxf .gt_first_grand_summary_row_bottom { border-top-style: double; border-top-width: 6px; border-top-color: #D3D3D3; }
+ #hanucmolxf .gt_last_grand_summary_row_top { border-bottom-style: double; border-bottom-width: 6px; border-bottom-color: #D3D3D3; }
+ #hanucmolxf .gt_sourcenotes { color: #333333; background-color: #FFFFFF; border-bottom-style: none; border-bottom-width: 2px; border-bottom-color: #D3D3D3; border-left-style: none; border-left-width: 2px; border-left-color: #D3D3D3; border-right-style: none; border-right-width: 2px; border-right-color: #D3D3D3; }
+ #hanucmolxf .gt_sourcenote { font-size: 90%; padding-top: 4px; padding-bottom: 4px; padding-left: 5px; padding-right: 5px; text-align: left; }
+ #hanucmolxf .gt_left { text-align: left; }
+ #hanucmolxf .gt_center { text-align: center; }
+ #hanucmolxf .gt_right { text-align: right; font-variant-numeric: tabular-nums; }
+ #hanucmolxf .gt_font_normal { font-weight: normal; }
+ #hanucmolxf .gt_font_bold { font-weight: bold; }
+ #hanucmolxf .gt_font_italic { font-style: italic; }
+ #hanucmolxf .gt_super { font-size: 65%; }
+ #hanucmolxf .gt_footnote_marks { font-size: 75%; vertical-align: 0.4em; position: initial; }
+ #hanucmolxf .gt_asterisk { font-size: 100%; vertical-align: 0; }
 
 </style>
 
@@ -1564,40 +2045,40 @@ for util in sorted(hp["sb.electric_utility"].unique().to_list()):
 <td class="gt_row gt_right">$1,885</td>
 </tr>
 <tr class="even">
-<td class="gt_row gt_left">ConEd</td>
-<td class="gt_row gt_right">$556</td>
-<td class="gt_row gt_right">$0</td>
-<td class="gt_row gt_right">$556</td>
-</tr>
-<tr class="odd">
-<td class="gt_row gt_left">NiMo</td>
-<td class="gt_row gt_right">$839</td>
-<td class="gt_row gt_right">$162</td>
-<td class="gt_row gt_right">$1,001</td>
-</tr>
-<tr class="even">
-<td class="gt_row gt_left">NYSEG</td>
-<td class="gt_row gt_right">$1,042</td>
-<td class="gt_row gt_right">$331</td>
-<td class="gt_row gt_right">$1,373</td>
-</tr>
-<tr class="odd">
-<td class="gt_row gt_left">O&amp;R</td>
-<td class="gt_row gt_right">$913</td>
-<td class="gt_row gt_right">$190</td>
-<td class="gt_row gt_right">$1,103</td>
-</tr>
-<tr class="even">
 <td class="gt_row gt_left">PSEG-LI</td>
 <td class="gt_row gt_right">$1,082</td>
 <td class="gt_row gt_right">$273</td>
 <td class="gt_row gt_right">$1,355</td>
 </tr>
 <tr class="odd">
+<td class="gt_row gt_left">NYSEG</td>
+<td class="gt_row gt_right">$1,042</td>
+<td class="gt_row gt_right">$331</td>
+<td class="gt_row gt_right">$1,373</td>
+</tr>
+<tr class="even">
+<td class="gt_row gt_left">O&amp;R</td>
+<td class="gt_row gt_right">$913</td>
+<td class="gt_row gt_right">$190</td>
+<td class="gt_row gt_right">$1,103</td>
+</tr>
+<tr class="odd">
 <td class="gt_row gt_left">RG&amp;E</td>
 <td class="gt_row gt_right">$912</td>
 <td class="gt_row gt_right">$206</td>
 <td class="gt_row gt_right">$1,118</td>
+</tr>
+<tr class="even">
+<td class="gt_row gt_left">NiMo</td>
+<td class="gt_row gt_right">$839</td>
+<td class="gt_row gt_right">$162</td>
+<td class="gt_row gt_right">$1,001</td>
+</tr>
+<tr class="odd">
+<td class="gt_row gt_left">ConEd</td>
+<td class="gt_row gt_right">$556</td>
+<td class="gt_row gt_right">$0</td>
+<td class="gt_row gt_right">$556</td>
 </tr>
 </tbody>
 </table>
@@ -1606,7 +2087,7 @@ for util in sorted(hp["sb.electric_utility"].unique().to_list()):
 </div>
 </div>
 </div></div>
-<div id="e1cb652c" class="cell markdown">
+<div id="11e9eb24" class="cell markdown">
 
 </div>
 <p>Supply adds $148–$331/yr for most utilities. ConEd is the exception: its supply BAT is essentially zero, meaning ConEd’s supply bill almost exactly matches supply cost-of-service. The delivery cross-subsidy is the dominant effect.</p>

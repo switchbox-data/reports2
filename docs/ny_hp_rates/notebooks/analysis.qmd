@@ -1,22 +1,19 @@
 ---
 title: NY HP Rate Design Analysis
-
 reference-location: margin
 fig-cap-location: bottom
-
 execute:
   warning: false
   message: false
 ---
 
-This notebook analyzes CAIRO simulation outputs for New York heat pump rate
-design. It produces two families of visualization:
+This notebook analyzes CAIRO simulation outputs for New York heat pump rate design. It produces two families of
+visualization:
 
-1. **Bill change histograms** — weighted distributions of annual total energy
-   bill changes after switching to heat pumps, by population subgroup.
-2. **Median electric bill component breakdown** — stacked bar chart decomposing
-   the weighted-median electric bill into supply, delivery volumetric, and
-   delivery fixed charges for current HVAC vs heat pump scenarios.
+1. **Bill change histograms** — weighted distributions of annual total energy bill changes after switching to heat
+   pumps, by population subgroup.
+2. **Median electric bill component breakdown** — stacked bar chart decomposing the weighted-median electric bill into
+   supply, delivery volumetric, and delivery fixed charges for current HVAC vs heat pump scenarios.
 
 ## Setup
 
@@ -71,9 +68,9 @@ report_vars: dict = {}
 #| label: params
 
 UTILITY = "coned"
-BATCH = "ny_20260307_r1-8_gascalcfix"
+BATCH = "ny_20260311b_r1-12_lmi_fix"
 STATE = "NY"
-RDP_REF = "d0353e1"
+RDP_REF = "8bf03e6"
 
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
 PATH_MASTER_BILLS_12 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_1+2/comb_bills_year_target/"
@@ -114,9 +111,8 @@ UTIL_NAMES = {
 
 ## Data ingest
 
-The master bills tables are pre-built, Hive-partitioned parquet datasets that
-contain per-building monthly and annual bills with fully decomposed electric
-components (fixed, delivery volumetric, supply), gas, oil, and propane — plus
+The master bills tables are pre-built, Hive-partitioned parquet datasets that contain per-building monthly and annual
+bills with fully decomposed electric components (fixed, delivery volumetric, supply), gas, oil, and propane — plus
 ResStock metadata columns — across all NY utilities.
 
 ```{python}
@@ -132,11 +128,9 @@ metadata_sb = pl.read_parquet(PATH_METADATA_SB)
 
 ## Median energy bill components
 
-Stacked bar chart of energy bill components (electric delivery fixed /
-delivery volumetric / supply + gas) for the weighted-median natgas-heated
-customer under current HVAC, and that same building after switching to a heat
-pump. Both bars show the same building so the reader can see gas costs shrink
-and electric costs grow for one household.
+Stacked bar chart of energy bill components (electric delivery fixed / delivery volumetric / supply + gas) for the
+weighted-median natgas-heated customer under current HVAC, and that same building after switching to a heat pump. Both
+bars show the same building so the reader can see gas costs shrink and electric costs grow for one household.
 
 ```{python}
 #| label: bill-component-helpers
@@ -457,9 +451,12 @@ median_hp_utility = (                                                           
 assert len(median_hp_utility) == 1, f"Expected 1 row for bldg {median_bldg_id} in HP, got {len(median_hp_utility)}"
 ```
 
-1. Keep only natgas-heated buildings with zero propane and zero oil bills (~3.3% of ConEd natgas buildings are dropped). This ensures the visible bar components (electric + gas) equal the full energy total with nothing hidden.
+1. Keep only natgas-heated buildings with zero propane and zero oil bills (\~3.3% of ConEd natgas buildings are
+   dropped). This ensures the visible bar components (electric + gas) equal the full energy total with nothing hidden.
 2. Pre-filter the HP scenario to the same natgas-only building IDs so we can look up individual buildings.
-3. Reuse the same building (not a new median) for the HP bar. Two different buildings at the median would have different gas baselines, making it impossible to see gas costs shrink after electrification. Showing the same household keeps the comparison apples-to-apples.
+3. Reuse the same building (not a new median) for the HP bar. Two different buildings at the median would have different
+   gas baselines, making it impossible to see gas costs shrink after electrification. Showing the same household keeps
+   the comparison apples-to-apples.
 
 ```{python}
 #| label: fig-bill-components-simple
@@ -515,6 +512,8 @@ natgas_full_cooling = (                                                         
 
 median_current_state = weighted_median_row(natgas_full_cooling)
 median_bldg_id_state = median_current_state[BLDG_ID][0]
+# Previously: bldg 168982 (Buffalo, SF detached, 3-bed 1-story, NiMo elec + NFG gas, 1228 sqft, pre-1940 wood stud)
+# As of 2026-03-13: bldg 411608 (Utica, MF 2-unit, NiMo elec+gas, 2648 sqft, pre-1940 brick)
 
 # Alternative: Building 305979 (Queens MF, ConEd, renter) — near-median on BAT,
 # elec kWh % change, and delivery bill % change simultaneously. To switch,
@@ -549,12 +548,14 @@ report_vars["median_elec_jump"] = _elec_after - _elec_before
 report_vars["median_net_increase"] = report_vars["median_elec_jump"] - report_vars["median_gas_drop"]
 ```
 
-1. Same natgas-only filter as the ConEd cell. Statewide, ~2.7% of natgas buildings are dropped.
+1. Same natgas-only filter as the ConEd cell. Statewide, \~2.7% of natgas buildings are dropped.
 2. Pre-filter the HP scenario to the same natgas-only building IDs so we can look up individual buildings.
-3. Restrict to buildings with 100% baseline cooling before selecting the median. This avoids the "gain of function" confound where homes with partial or no cooling gain full air conditioning from the heat pump, inflating summer electricity. The same building is reused for the monthly consumption chart below.
+3. Restrict to buildings with 100% baseline cooling before selecting the median. This avoids the "gain of function"
+   confound where homes with partial or no cooling gain full air conditioning from the heat pump, inflating summer
+   electricity. The same building is reused for the monthly consumption chart below.
 
-We also load monthly load curves for this building from ResStock to show energy
-consumption (in kWh) alongside the bill charts.
+We also load monthly load curves for this building from ResStock to show energy consumption (in kWh) alongside the bill
+charts.
 
 ```{python}
 #| label: load-representative-bldg-curves
@@ -1106,9 +1107,8 @@ _lx = _n + 0.6
 
 ## Bill change distributions
 
-Weighted histograms of annual total energy bill change (before vs after switching
-to heat pumps) under default rates. The master bills `energy_total_bill` already
-includes electric, gas, oil, and propane costs.
+Weighted histograms of annual total energy bill change (before vs after switching to heat pumps) under default rates.
+The master bills `energy_total_bill` already includes electric, gas, oil, and propane costs.
 
 ```{python}
 #| label: compute-bill-deltas
@@ -1682,9 +1682,8 @@ plot_quadrant_bar(
 
 ### LMI bill deltas (natgas, statewide)
 
-We recompute the bill delta for natural gas households using the LMI-discounted
-bill columns. For non-LMI households these columns equal the undiscounted values,
-so only LMI households' deltas shift.
+We recompute the bill delta for natural gas households using the LMI-discounted bill columns. For non-LMI households
+these columns equal the undiscounted values, so only LMI households' deltas shift.
 
 ```{python}
 #| label: compute-lmi-bill-deltas-state
@@ -1823,8 +1822,8 @@ plot_quadrant_bar([
 
 ## Households by heating fuel type
 
-Weighted distribution of New York households by primary heating fuel,
-computed from the statewide ResStock sample (upgrade 0 — current HVAC).
+Weighted distribution of New York households by primary heating fuel, computed from the statewide ResStock sample
+(upgrade 0 — current HVAC).
 
 ```{python}
 #| label: fig-households-by-fuel
@@ -1927,20 +1926,16 @@ for a in fuel_annotations:
 p_fuel
 ```
 
-
 ## Bill Alignment Test (BAT) results
 
-The master BAT table contains per-building annual bill alignment values
-decomposed into delivery, supply, and total components. A positive
-`BAT_percustomer` value means the customer's bill exceeds their marginal cost
-of service — they cross-subsidize other customers. A negative value means they
-pay less than their cost — others cross-subsidize them.
+The master BAT table contains per-building annual bill alignment values decomposed into delivery, supply, and total
+components. A positive `BAT_percustomer` value means the customer's bill exceeds their marginal cost of service — they
+cross-subsidize other customers. A negative value means they pay less than their cost — others cross-subsidize them.
 
-We look at all customers under current rates (upgrade 0 / run 1+2) to quantify
-how current rate structures misalign bills with cost of service.
-`BAT_percustomer_total` is the sum of delivery and supply components. The
-unified histograms show the full population; the faceted versions break the
-distribution down by heating type (fossil fuel, electric resistance, heat pump).
+We look at all customers under current rates (upgrade 0 / run 1+2) to quantify how current rate structures misalign
+bills with cost of service. `BAT_percustomer_total` is the sum of delivery and supply components. The unified histograms
+show the full population; the faceted versions break the distribution down by heating type (fossil fuel, electric
+resistance, heat pump).
 
 ```{python}
 #| label: bat-ingest
@@ -1966,10 +1961,9 @@ bat_all = (
 
 ### Delivery bill changes by utility
 
-Before examining cross-subsidies, we look at how delivery bills change when
-buildings switch from gas furnaces to heat pumps. We compare each building's
-annual delivery bill (volumetric + fixed charge) in run 1+2 (current HVAC)
-against run 3+4 (heat pump upgrade), both under current rates.
+Before examining cross-subsidies, we look at how delivery bills change when buildings switch from gas furnaces to heat
+pumps. We compare each building's annual delivery bill (volumetric + fixed charge) in run 1+2 (current HVAC) against run
+3+4 (heat pump upgrade), both under current rates.
 
 ```{python}
 #| label: fig-delivery-bill-delta-by-utility
@@ -2053,11 +2047,10 @@ _del_plot_df = _del_binned.with_columns(
 
 ### Cross-subsidy example: same home, before and after
 
-To make the concept of bill alignment concrete before diving into the full
-distribution, we track the same median gas-heated building we have been
-following throughout the report — before and after switching to a heat pump.
-For each scenario, we compare what the home pays in delivery revenue against
-the delivery cost of serving it (marginal cost + residual allocation).
+To make the concept of bill alignment concrete before diving into the full distribution, we track the same median
+gas-heated building we have been following throughout the report — before and after switching to a heat pump. For each
+scenario, we compare what the home pays in delivery revenue against the delivery cost of serving it (marginal cost +
+residual allocation).
 
 ```{python}
 #| label: cross-subsidy-example-data
@@ -2652,11 +2645,9 @@ for ht in FACET_ORDER:
 
 ### Impact of tech-specific rates on fossil fuel cross-subsidization
 
-What happens to fossil fuel customers' cross-subsidization if tech-specific rates
-zero out the net overpayment of HP customers, ER customers, or both? We spread the
-released overpayment uniformly across fossil fuel households and report the shift
-in their net, mean annual BAT, and mean monthly BAT (over a 6-month heating
-season).
+What happens to fossil fuel customers' cross-subsidization if tech-specific rates zero out the net overpayment of HP
+customers, ER customers, or both? We spread the released overpayment uniformly across fossil fuel households and report
+the shift in their net, mean annual BAT, and mean monthly BAT (over a 6-month heating season).
 
 ```{python}
 #| label: bat-scenario-table
@@ -2713,11 +2704,9 @@ for name, released in scenarios:
 
 ### Typical HP customer: bill vs. cost of service by utility
 
-The ConEd example above is illustrative, but does the pattern hold statewide?
-For each utility we pick the HP building nearest the weighted-median BAT and
-compare its annual electric bill against its cost of service (marginal cost +
-residual allocation). The overpayment gap is consistent across all seven
-service territories.
+The ConEd example above is illustrative, but does the pattern hold statewide? For each utility we pick the HP building
+nearest the weighted-median BAT and compare its annual electric bill against its cost of service (marginal cost +
+residual allocation). The overpayment gap is consistent across all seven service territories.
 
 ```{python}
 #| label: cross-subsidy-by-utility-data
@@ -2825,22 +2814,17 @@ overpay_df = overpay_df.with_columns(
 )
 ```
 
-
 ## Revenue requirement composition
 
-Each utility's total residential revenue requirement — the amount it must
-recover from residential ratepayers — breaks into three pieces:
+Each utility's total residential revenue requirement — the amount it must recover from residential ratepayers — breaks
+into three pieces:
 
-1. **Delivery (Rate Case)** — the base T&D revenue requirement set in the
-   utility's most recent rate case.
-2. **Delivery Top-Ups** — additional delivery-side charges for policy programs
-   (SBC, CES delivery, EV make-ready, DLM), DER credit recovery (VDER),
-   and sunk-cost recovery (COVID arrears, late-payment waivers).
-3. **Supply** — energy commodity, merchant function charge, and CES supply
-   surcharge.
+1. **Delivery (Rate Case)** — the base T&D revenue requirement set in the utility's most recent rate case.
+2. **Delivery Top-Ups** — additional delivery-side charges for policy programs (SBC, CES delivery, EV make-ready, DLM),
+   DER credit recovery (VDER), and sunk-cost recovery (COVID arrears, late-payment waivers).
+3. **Supply** — energy commodity, merchant function charge, and CES supply surcharge.
 
-Data comes from the computed revenue requirement YAMLs in
-`rate_design/hp_rates/ny/config/rev_requirement/`.
+Data comes from the computed revenue requirement YAMLs in `rate_design/hp_rates/ny/config/rev_requirement/`.
 
 ```{python}
 #| label: rev-req-data
@@ -3004,13 +2988,11 @@ rr_table = rr_data.select(
 
 ### Revenue requirement vs. marginal cost allocation
 
-The BAT decomposes each customer's cost of service into **marginal cost**
-(economic burden: Σ load × MC) and **residual cost** (revenue requirement minus
-total marginal costs, allocated per customer). Because we run paired CAIRO
-simulations — delivery-only (run 1) and delivery+supply (run 2) — we can
-decompose both marginal cost and residual cost into delivery and supply
-components. This lets us compare the revenue requirement breakdown against the
-BAT's cost allocation at a finer grain.
+The BAT decomposes each customer's cost of service into **marginal cost** (economic burden: Σ load × MC) and **residual
+cost** (revenue requirement minus total marginal costs, allocated per customer). Because we run paired CAIRO simulations
+— delivery-only (run 1) and delivery+supply (run 2) — we can decompose both marginal cost and residual cost into
+delivery and supply components. This lets us compare the revenue requirement breakdown against the BAT's cost allocation
+at a finer grain.
 
 ```{python}
 #| label: bat-mc-residual-data
@@ -3214,14 +3196,12 @@ mc_table = (
 )
 ```
 
-
 ## Heat pump seasonal rate
 
-For each utility, we compare the current default flat rate against the proposed
-HP seasonal rate. Both tariffs are calibrated URDB JSONs stored in
-`rate_design/hp_rates/ny/config/tariffs/electric/`. The delivery component
-comes from the delivery-only file (`*_calibrated.json`), and supply is the
-difference between the bundled file (`*_supply_calibrated.json`) and delivery.
+For each utility, we compare the current default flat rate against the proposed HP seasonal rate. Both tariffs
+are calibrated URDB JSONs stored in `rate_design/hp_rates/ny/config/tariffs/electric/`. The delivery component
+comes from the delivery-only file (`*_calibrated.json`), and supply is the difference between the bundled file
+(`*_supply_calibrated.json`) and delivery.
 
 ```{python}
 #| label: rate-table-data
@@ -3281,9 +3261,8 @@ _rate_gt
 
 ## BAT under HP seasonal rate
 
-Does the HP seasonal rate actually fix the cross-subsidy? We compare the BAT
-distributions under flat rates (run 1+2) and HP seasonal rates (run 5+6) — same
-buildings, same upgrade 0, only the rate structure changes. If the seasonal rate
+Does the HP seasonal rate actually fix the cross-subsidy? We compare the BAT distributions under flat rates (run 1+2)
+and HP seasonal rates (run 5+6) — same buildings, same upgrade 0, only the rate structure changes. If the seasonal rate
 is well-designed, the HP overpayment should collapse to near zero.
 
 ```{python}
@@ -3383,11 +3362,10 @@ _bat_comp_gt
 
 ## Bill impact of HP seasonal rate on HP customers
 
-What happens to a fossil-fuel customer's total energy bill if they switch to a
-heat pump **and** get the proposed HP seasonal electric rate? The "before" is
-their current bill under today's flat rates (run 1+2, upgrade 0) and the
-"after" is their bill as an HP customer on the seasonal rate (run 7+8,
-upgrade 2). The delta captures both the fuel switch and the rate change.
+What happens to a fossil-fuel customer's total energy bill if they switch to a heat pump **and** get the proposed HP
+seasonal electric rate? The "before" is their current bill under today's flat rates (run 1+2, upgrade 0) and the "after"
+is their bill as an HP customer on the seasonal rate (run 7+8, upgrade 2). The delta captures both the fuel switch and
+the rate change.
 
 ```{python}
 #| label: compute-deltas-switch-with-hprate
@@ -3747,9 +3725,8 @@ plot_quadrant_bar(
 
 ### LMI bill deltas — default vs. seasonal rate (natgas, statewide)
 
-We recompute the two-bar comparison (default rate vs. seasonal rate) using
-LMI-discounted bill columns. The seasonal-rate "after" comes from
-`bills_hprate_hp` (runs 7+8) instead of `bills_hp` (runs 3+4).
+We recompute the two-bar comparison (default rate vs. seasonal rate) using LMI-discounted bill columns. The
+seasonal-rate "after" comes from `bills_hprate_hp` (runs 7+8) instead of `bills_hp` (runs 3+4).
 
 ```{python}
 #| label: compute-lmi-switch-deltas-state
@@ -3849,15 +3826,12 @@ plot_quadrant_bar([
 
 ## Bill impact of HP seasonal rate on non-HP customers
 
-What happens to fossil-fuel customers' bills if all existing HP customers opt
-in to the seasonal rate — but the non-HP customers themselves stay on their
-current heating system (upgrade 0) and on the recalibrated flat rate?
+What happens to fossil-fuel customers' bills if all existing HP customers opt in to the seasonal rate — but the non-HP
+customers themselves stay on their current heating system (upgrade 0) and on the recalibrated flat rate?
 
-In run 5+6, the HP seasonal rate is applied to HP customers and the flat rate
-is recalibrated for everyone else. Non-HP customers keep the same heating
-system; what changes is a slight adjustment to the flat rate once the HP
-cross-subsidy is removed. Comparing run 1+2 vs 5+6 for fossil-fuel buildings
-shows this (expected to be very small) impact.
+In run 5+6, the HP seasonal rate is applied to HP customers and the flat rate is recalibrated for everyone else. Non-HP
+customers keep the same heating system; what changes is a slight adjustment to the flat rate once the HP cross-subsidy
+is removed. Comparing run 1+2 vs 5+6 for fossil-fuel buildings shows this (expected to be very small) impact.
 
 ```{python}
 #| label: compute-deltas-nonhp-rebal
@@ -3976,19 +3950,16 @@ plot_bill_change_histogram(non_hp_rebal_state, bin_width=REBAL_BIN, title=REBAL_
 
 ## Energy burden for low-income gas-heated households
 
-What share of low-income, gas-heated households face a high energy burden —
-defined as spending more than 6% of annual income on energy — and how does that
-share change when they switch to heat pumps under different rate designs?
+What share of low-income, gas-heated households face a high energy burden — defined as spending more than 6% of annual
+income on energy — and how does that share change when they switch to heat pumps under different rate designs?
 
-We focus on low-and-moderate-income (LMI) households — identified by the
-`is_lmi` flag in the master bill tables — who heat with natural gas in the
-baseline scenario (upgrade 0). We track the same cohort of buildings across
-three scenarios:
+We focus on low-and-moderate-income (LMI) households — identified by the `is_lmi` flag in the master bill tables —
+who heat with natural gas in the baseline scenario (upgrade 0). We track the same cohort of buildings across three
+scenarios:
 
 1. **Current HVAC, default rates** (runs 1+2) — the status quo
 2. **Heat pump, default rates** (runs 3+4) — electrified but on flat rates
-3. **Heat pump, HP seasonal rates** (runs 7+8) — electrified on the proposed
-   seasonal rate
+3. **Heat pump, HP seasonal rates** (runs 7+8) — electrified on the proposed seasonal rate
 
 ```{python}
 #| label: burden-cohort
@@ -4159,9 +4130,8 @@ plot_burden_bar(
 
 ### With current LMI discount enrollment (~40%)
 
-An estimated 40% of LMI households currently receive LMI discounts on their
-utility bills. We recompute energy burdens using the `_lmi_40` bill columns,
-which apply the discount to those households who are currently enrolled.
+An estimated 40% of LMI households currently receive LMI discounts on their utility bills. We recompute energy burdens
+using the `_lmi_40` bill columns, which apply the discount to those households who are currently enrolled.
 
 ```{python}
 #| label: burden-compute-lmi-current
@@ -4193,9 +4163,8 @@ plot_burden_bar(
 
 ### With full LMI discount enrollment at electrification
 
-If heat pump installation is used as an opportunity to enroll all LMI
-households in LMI discounts, what do post-electrification burdens look like?
-The "Current HVAC" bar still reflects today's ~40% enrollment; the two
+If heat pump installation is used as an opportunity to enroll all LMI households in LMI discounts, what do
+post-electrification burdens look like? The "Current HVAC" bar still reflects today's \~40% enrollment; the two
 heat-pump bars use the `_lmi_100` columns (100% enrollment).
 
 ```{python}

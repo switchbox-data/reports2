@@ -20,6 +20,23 @@ BASELINE = Path(".diff/baseline")
 INLINE_SVGS = Path("../.style/inline_svgs.py")
 
 
+def _clean_quarto_artifacts(docs: Path) -> None:
+    """Remove Quarto-generated intermediates from the source and docs trees."""
+    removed = 0
+
+    for pattern in ("**/*.out.ipynb", "**/*.embed.ipynb"):
+        for f in Path(".").glob(pattern):
+            f.unlink()
+            removed += 1
+
+    for f in docs.rglob("*.ipynb"):
+        f.unlink()
+        removed += 1
+
+    if removed:
+        print(f"🗑️  Removed {removed} .ipynb artifact(s)")
+
+
 def main() -> None:
     docs = Path("docs")
 
@@ -30,28 +47,30 @@ def main() -> None:
         BASELINE.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(docs, BASELINE)
 
+    render_failed = False
     print("📖 Rendering Quarto project...")
-    result = subprocess.run(["quarto", "render", "."])
-    if result.returncode != 0:
-        print("💥 Quarto render failed!", file=sys.stderr)
-        sys.exit(result.returncode)
-
-    if INLINE_SVGS.exists():
-        print("🖼️  Inlining SVGs into HTML...")
-        result = subprocess.run([sys.executable, str(INLINE_SVGS), "docs"])
+    try:
+        result = subprocess.run(["quarto", "render", "."])
         if result.returncode != 0:
-            sys.exit(result.returncode)
-        svgs = list(docs.rglob("*.svg"))
-        if svgs:
-            for f in svgs:
-                f.unlink()
-            print(f"🗑️  Removed {len(svgs)} standalone SVG file(s)")
+            render_failed = True
+            print("💥 Quarto render failed!", file=sys.stderr)
 
-    ipynbs = list(docs.rglob("*.ipynb"))
-    if ipynbs:
-        for f in ipynbs:
-            f.unlink()
-        print(f"🗑️  Removed {len(ipynbs)} .ipynb artifact(s)")
+        if not render_failed and INLINE_SVGS.exists():
+            print("🖼️  Inlining SVGs into HTML...")
+            result = subprocess.run([sys.executable, str(INLINE_SVGS), "docs"])
+            if result.returncode != 0:
+                render_failed = True
+
+            svgs = list(docs.rglob("*.svg"))
+            if svgs:
+                for f in svgs:
+                    f.unlink()
+                print(f"🗑️  Removed {len(svgs)} standalone SVG file(s)")
+    finally:
+        _clean_quarto_artifacts(docs)
+
+    if render_failed:
+        sys.exit(1)
 
     print("✅ Render complete!")
 

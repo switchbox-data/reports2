@@ -57,17 +57,48 @@ reports/<project_code>/
 ```mermaid
 flowchart LR
     S3["S3 data\n(parquet)"] --> Analysis["analysis.qmd\n(R/Python)"]
-    Analysis -->|"save(vars, file='cache/report_variables.RData')"| RData["cache/\nreport_variables.RData"]
+    Analysis -->|"save / pickle"| Cache["cache/\nreport_variables"]
     Analysis -->|"#| label: fig-xxx"| Figures["Labeled figures"]
-    RData -->|"load('cache/report_variables.RData')"| Index["index.qmd\n(narrative)"]
+    Cache -->|"load / SimpleNamespace"| Index["index.qmd\n(narrative)"]
     Figures -->|"{{< embed notebooks/analysis.qmd#fig-xxx >}}"| Index
     Index --> HTML["Rendered report"]
 ```
 
-1. `analysis.qmd` loads data from S3, computes, and `save()`s variables to a `.RData` file in `cache/`.
+1. `analysis.qmd` loads data from S3, computes statistics, and exports report variables to `cache/`.
 2. `analysis.qmd` creates labeled figures using chunk options like `#| label: fig-energy-savings`.
-3. `index.qmd` loads variables via `load(file = "cache/report_variables.RData")` and uses them inline: `` `r total_savings |> scales::dollar()` ``.
+3. `index.qmd` loads report variables and uses them inline (never hardcoded).
 4. `index.qmd` embeds figures from the analysis notebook: `{{< embed notebooks/analysis.qmd#fig-energy-savings >}}`.
+
+**R reports** export via `save()`/`save.image()` to `cache/report_variables.RData`; `index.qmd` loads with `load()` and uses inline R: `` `r total_savings |> scales::dollar()` ``.
+
+**Python reports** accumulate stats into a `report_vars: dict` and pickle it to `cache/report_variables.pkl`; `index.qmd` loads it as a `SimpleNamespace` and uses inline Python:
+
+```python
+# analysis.qmd — top of notebook
+report_vars: dict = {}
+
+# analysis.qmd — wherever a stat is computed
+report_vars["pct_natgas_save_default"] = save_w / total_w
+
+# analysis.qmd — final cell
+import pickle
+Path("../cache/report_variables.pkl").write_bytes(pickle.dumps(report_vars))
+```
+
+```python
+# index.qmd — setup cell
+import pickle
+from types import SimpleNamespace
+v = SimpleNamespace(**pickle.loads(Path("cache/report_variables.pkl").read_bytes()))
+
+def dollar(x, accuracy=0):
+    return f"${x:,.{accuracy}f}"
+
+def pct(x, accuracy=0):
+    return f"{x * 100:,.{accuracy}f}%"
+```
+
+Inline usage in `index.qmd`: `` `{python} dollar(v.some_stat)` `` or `` `{python} pct(v.some_pct)` ``.
 
 Never put raw data loading or heavy computation in `index.qmd`. Never put narrative prose in `analysis.qmd`.
 
@@ -664,12 +695,24 @@ This progressive shortening respects the reader's time. They learned the pattern
 
 ### The report variables section
 
-Every analysis notebook ends with a clearly labeled section that computes summary metrics for `index.qmd`. This section should:
+Report variables are statistics used in `index.qmd` prose (inline computed values, not hardcoded numbers). Two principles govern how they are managed:
 
-1. Be explicitly labeled (e.g., `# Report variables`).
-2. Include a prose note explaining its purpose: "Each variable calculated here corresponds to a metric in the report. You can see where they are used by searching for the variable name in Index.qmd."
-3. Compute formatted values using `scales::dollar()`, `scales::percent()`, etc.
-4. Export everything via `save.image(file = "cache/report_variables.RData")` or a targeted `save()`.
+**Capture stats close to where they are produced.** Do not defer all `report_vars["..."] = ...` assignments to a single block at the end of the notebook. Instead, assign each stat immediately after the code that computes it — in the same cell or the next cell. This keeps the variable definition next to its derivation, making it easy to audit and update. If a stat depends on a filtered DataFrame or an intermediate result, capture it right there rather than re-deriving it later.
+
+**Export once at the end.** The final cell of the notebook serializes the accumulated variables to `cache/`. This is the only cell that writes to disk — the assignments throughout the notebook just populate the in-memory dict (Python) or environment (R).
+
+For **R reports**:
+
+1. Assign variables to the R environment throughout the notebook: `total_savings <- ...`
+2. End with `save.image(file = "cache/report_variables.RData")` or a targeted `save()`.
+3. In `index.qmd`, load with `load()` and use inline R: `` `r total_savings |> scales::dollar()` ``.
+
+For **Python reports**:
+
+1. Initialize `report_vars: dict = {}` at the top of the notebook.
+2. Assign throughout: `report_vars["total_savings"] = ...` right after the computation.
+3. End with `pickle.dumps(report_vars)` written to `cache/report_variables.pkl`.
+4. In `index.qmd`, load as `SimpleNamespace` and use inline Python: `` `{python} dollar(v.total_savings)` ``.
 
 ### Figure cells
 

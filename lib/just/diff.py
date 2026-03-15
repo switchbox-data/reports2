@@ -6,8 +6,8 @@ website_diff's crawler discovers all pages — not just those reachable
 from index.html. Past diffs are archived under .diff/diffs/.
 
 Usage (from a report directory):
-    uv run python -m lib.diff_report              # timestamped diff
-    uv run python -m lib.diff_report my-label      # timestamped + label
+    uv run python -m lib.just.diff              # timestamped diff
+    uv run python -m lib.just.diff my-label      # timestamped + label
 """
 
 from __future__ import annotations
@@ -32,14 +32,15 @@ def main() -> None:
     label = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else None
 
     if not BASELINE.is_dir():
-        print(f"No baseline at {BASELINE}. Run 'just render' first to create one.", file=sys.stderr)
+        print(f"❌ No baseline at {BASELINE}. Run 'just render' first to create one.", file=sys.stderr)
         sys.exit(1)
 
     docs = Path("docs")
     if not docs.is_dir():
-        print("No rendered docs at docs/.", file=sys.stderr)
+        print("❌ No rendered docs at docs/.", file=sys.stderr)
         sys.exit(1)
 
+    print("🔍 Comparing baseline and current render...")
     old_files = _find_html(BASELINE)
     new_files = _find_html(docs)
     added = sorted(new_files - old_files)
@@ -47,12 +48,14 @@ def main() -> None:
     common = sorted(old_files & new_files)
 
     if added:
-        print(f"New pages (not in baseline): {', '.join(added)}")
+        print(f"🆕 New pages (not in baseline): {', '.join(added)}")
     if removed:
-        print(f"Removed pages (not in new render): {', '.join(removed)}")
+        print(f"🗑️  Removed pages (not in new render): {', '.join(removed)}")
     if not common:
-        print("No common HTML files to diff.")
+        print("❌ No common HTML files to diff.")
         sys.exit(1)
+
+    print(f"📄 Diffing {len(common)} page(s)...")
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     diff_name = f"{timestamp}_{label}" if label else timestamp
@@ -82,10 +85,11 @@ def main() -> None:
                 shutil.rmtree(d)
 
     index = diff_dir / "index.html"
+    print(f"✅ Diff saved to {diff_dir}")
     if platform.system() == "Darwin":
         os.execlp("open", "open", str(index))
     else:
-        print(f"Diff ready at {index}")
+        print(f"👉 Open {index} to view")
 
 
 if __name__ == "__main__":

@@ -3,10 +3,11 @@
 
 Creates a temporary hub page linking to every common HTML file so that
 website_diff's crawler discovers all pages — not just those reachable
-from index.html.
+from index.html. Past diffs are archived under .diff/diffs/.
 
 Usage (from a report directory):
-    uv run python -m lib.diff_report docs-baseline docs .diff
+    uv run python -m lib.diff_report              # timestamped diff
+    uv run python -m lib.diff_report my-label      # timestamped + label
 """
 
 from __future__ import annotations
@@ -16,7 +17,11 @@ import platform
 import shutil
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
+
+BASELINE = Path(".diff/baseline")
+DIFFS = Path(".diff/diffs")
 
 
 def _find_html(directory: Path) -> set[str]:
@@ -24,23 +29,19 @@ def _find_html(directory: Path) -> set[str]:
 
 
 def main() -> None:
-    if len(sys.argv) != 4:
-        print(f"Usage: {sys.argv[0]} <old_dir> <new_dir> <diff_dir>", file=sys.stderr)
+    label = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else None
+
+    if not BASELINE.is_dir():
+        print(f"No baseline at {BASELINE}. Run 'just render' first to create one.", file=sys.stderr)
         sys.exit(1)
 
-    old_dir = Path(sys.argv[1])
-    new_dir = Path(sys.argv[2])
-    diff_dir = Path(sys.argv[3])
-
-    if not old_dir.is_dir():
-        print(f"No baseline at {old_dir}. Run 'just render' first to create one.", file=sys.stderr)
-        sys.exit(1)
-    if not new_dir.is_dir():
-        print(f"No rendered docs at {new_dir}.", file=sys.stderr)
+    docs = Path("docs")
+    if not docs.is_dir():
+        print("No rendered docs at docs/.", file=sys.stderr)
         sys.exit(1)
 
-    old_files = _find_html(old_dir)
-    new_files = _find_html(new_dir)
+    old_files = _find_html(BASELINE)
+    new_files = _find_html(docs)
     added = sorted(new_files - old_files)
     removed = sorted(old_files - new_files)
     common = sorted(old_files & new_files)
@@ -53,25 +54,28 @@ def main() -> None:
         print("No common HTML files to diff.")
         sys.exit(1)
 
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    diff_name = f"{timestamp}_{label}" if label else timestamp
+    diff_dir = DIFFS / diff_name
+
     hub = "_diff_hub.html"
     links = "\n".join(f'<a href="{f}">{f}</a><br>' for f in common)
     hub_html = f"<html><head><title>diff hub</title></head><body>\n{links}\n</body></html>\n"
-    (old_dir / hub).write_text(hub_html)
-    (new_dir / hub).write_text(hub_html)
+    (BASELINE / hub).write_text(hub_html)
+    (docs / hub).write_text(hub_html)
 
-    if diff_dir.exists():
-        shutil.rmtree(diff_dir)
+    DIFFS.mkdir(parents=True, exist_ok=True)
 
     prerendered = [Path(f"prerendered_{name}") for name in ("old", "new")]
 
     try:
         subprocess.run(
-            ["website_diff", "-o", str(old_dir), "-n", str(new_dir), "-d", str(diff_dir), "-i", hub],
+            ["website_diff", "-o", str(BASELINE), "-n", str(docs), "-d", str(diff_dir), "-i", hub],
             check=True,
         )
     finally:
-        (old_dir / hub).unlink(missing_ok=True)
-        (new_dir / hub).unlink(missing_ok=True)
+        (BASELINE / hub).unlink(missing_ok=True)
+        (docs / hub).unlink(missing_ok=True)
         (diff_dir / hub).unlink(missing_ok=True)
         for d in prerendered:
             if d.exists():

@@ -1,8 +1,15 @@
 """Switchbox brand theme for plotnine.
 
-Applies Switchbox brand fonts (GT Planar for titles, Farnham Text for
-subtitles/legend/strip text, IBM Plex Sans for axes), white panel
-background, visible axis lines/ticks, and Switchbox brand colors.
+Applies Switchbox brand fonts, colors, and sizes to all chart text
+elements, producing a consistent visual hierarchy across reports.
+
+Typography guide
+----------------
+- **Title** (GT Planar Bold 15pt black): chart headline, echoes H3 headings.
+- **Labeling layer** (GT Planar 13pt #333333): subtitle, axis titles, strip
+  (facet) labels, legend title.  All share the same font/size/color.
+- **Data-reference layer** (IBM Plex Sans 11pt #4D4D4D): axis tick labels,
+  legend text — smallest text, for reading values off axes.
 
 Usage::
 
@@ -20,6 +27,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal
 
+import matplotlib as mpl
 from matplotlib import font_manager
 from plotnine import element_line, element_rect, element_text, theme
 from plotnine.themes.theme_minimal import theme_minimal
@@ -54,6 +62,7 @@ def _register_fonts() -> None:
         if path.exists():
             font_manager.fontManager.addfont(str(path))
 
+    mpl.rcParams["svg.fonttype"] = "none"
     _FONTS_REGISTERED = True
 
 
@@ -70,38 +79,93 @@ SB_COLORS: dict[str, str] = {
 }
 
 
+_COLOR_LABEL = "#333333"
+_COLOR_DATA = "#4D4D4D"
+
+
 class theme_switchbox(theme_minimal):
     """Switchbox brand theme for plotnine.
 
-    Font assignment:
-    - **GT Planar Bold**: plot title
-    - **Farnham Text**: plot subtitle, legend title, strip (facet) text
-    - **IBM Plex Sans**: axis text, axis titles, legend text (base family)
+    Three-tier text hierarchy:
 
-    Parameters
-    ----------
-    base_size
-        Base font size in points. All text sizes scale from this.
+    ====  ====================  ===========================
+    Tier  Elements              Spec
+    ====  ====================  ===========================
+    1     plot_title            GT Planar Bold · 15pt · black
+    2     subtitle, axis        GT Planar · 13pt · #333333
+          titles, strip text,
+          legend title
+    3     axis tick labels,     IBM Plex Sans · 11pt · #4D4D4D
+          legend text
+    ====  ====================  ===========================
     """
 
-    def __init__(self, base_size: int = 12):
+    def __init__(self, base_size: int = 11):
         _register_fonts()
         super().__init__(base_size=base_size, base_family=_FONT_IBM_PLEX)
-        margin_title: dict[_MarginKey, Any] = {"b": 10, "unit": "pt"}
+        margin_title: dict[_MarginKey, Any] = {"b": 8, "unit": "pt"}
         margin_x: dict[_MarginKey, Any] = {"t": 8, "unit": "pt"}
         margin_y: dict[_MarginKey, Any] = {"r": 8, "unit": "pt"}
         self += theme(
             panel_background=element_rect(fill="white", color="white"),
+            # Tier 1 — title
             plot_title=element_text(
                 family=_FONT_GT_PLANAR,
                 fontweight="bold",
+                size=15,
+                color="black",
                 margin=margin_title,
             ),
-            plot_subtitle=element_text(family=_FONT_FARNHAM),
-            legend_title=element_text(family=_FONT_FARNHAM, ha="center"),
-            strip_text=element_text(family=_FONT_FARNHAM),
+            # Tier 2 — labeling layer
+            plot_subtitle=element_text(
+                family=_FONT_GT_PLANAR,
+                size=13,
+                color=_COLOR_LABEL,
+            ),
+            axis_title_x=element_text(
+                family=_FONT_GT_PLANAR,
+                size=13,
+                color=_COLOR_LABEL,
+                margin=margin_x,
+            ),
+            axis_title_y=element_text(
+                family=_FONT_GT_PLANAR,
+                size=13,
+                color=_COLOR_LABEL,
+                margin=margin_y,
+            ),
+            strip_text=element_text(
+                family=_FONT_GT_PLANAR,
+                size=13,
+                color=_COLOR_LABEL,
+            ),
+            legend_title=element_text(
+                family=_FONT_GT_PLANAR,
+                size=13,
+                color=_COLOR_LABEL,
+            ),
+            # Tier 3 — data-reference layer (explicit x/y so all axis tick labels match)
+            axis_text=element_text(
+                family=_FONT_IBM_PLEX,
+                size=11,
+                color=_COLOR_DATA,
+            ),
+            axis_text_x=element_text(
+                family=_FONT_IBM_PLEX,
+                size=11,
+                color=_COLOR_DATA,
+            ),
+            axis_text_y=element_text(
+                family=_FONT_IBM_PLEX,
+                size=11,
+                color=_COLOR_DATA,
+            ),
+            legend_text=element_text(
+                family=_FONT_IBM_PLEX,
+                size=11,
+                color=_COLOR_DATA,
+            ),
+            # Structure
             axis_line=element_line(size=0.5),
             axis_ticks=element_line(color="black"),
-            axis_title_x=element_text(margin=margin_x),
-            axis_title_y=element_text(margin=margin_y),
         )

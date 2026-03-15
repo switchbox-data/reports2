@@ -701,7 +701,7 @@ Group figures by the story they tell, not by chart type. Use markdown headers an
 
 - `reports/.style/switchbox.scss`: Custom Quarto theme. Switchbox brand colors: sky (`#68bed8`), carrot (`#fc9706`), midnight (`#023047`), saffron (`#ffc729`), pistachio (`#a0af12`). Fonts: Farnham (body text), GT Planar (headings), IBM Plex Sans (tables/charts), SF Mono (code). Do not override these in individual reports.
 - `reports/.style/switchbox.html`: Shared HTML include for figure caption formatting.
-- `reports/.style/fonts/`: IBM Plex Sans OTF files (Regular + Bold) used by both the R (`lib/ggplot/switchbox_theme.R`) and Python (`lib/plotnine/`) chart themes. These are committed to the repo so chart rendering doesn't require network access.
+- `reports/.style/fonts/`: Brand font OTF files (IBM Plex Sans, GT Planar, Farnham Text) used by both the R (`lib/ggplot/switchbox_theme.R`) and Python (`lib/plotnine/`) chart themes. Committed to the repo so chart rendering doesn't require network access.
 
 ### ggplot2 theme (R)
 
@@ -721,16 +721,28 @@ Import `theme_switchbox` from `lib.plotnine` at the top of every Python-based an
 from lib.plotnine import theme_switchbox, SB_COLORS
 ```
 
-Apply it to every plot with `+ theme_switchbox()`. This is a `theme_minimal` subclass that mirrors the R theme: IBM Plex Sans at 12pt, white panel background, visible axis lines/ticks. Per-plot overrides layer on top with `+ theme(...)`:
+Importing `theme_switchbox` automatically configures matplotlib for SVG text-as-text output (`svg.fonttype = "none"`) and registers brand fonts. No per-notebook `rcParams` setup is needed.
+
+Apply `+ theme_switchbox()` to every plot. The theme implements a **three-tier text hierarchy** — do not override font sizes, families, or colors with ad-hoc `+ theme(element_text(size=...))`. The only per-plot `+ theme(...)` you should set is `figure_size`:
 
 ```python
 (
     ggplot(df, aes("x", "y"))
     + geom_col(fill=SB_COLORS["sky"])
     + theme_switchbox()
-    + theme(figure_size=(14, 6))
+    + theme(figure_size=(10.5, 4.5))
 )
 ```
+
+**Chart typography guide** (baked into `theme_switchbox`):
+
+| Tier               | Elements                                        | Font           | Size | Color   |
+| ------------------ | ----------------------------------------------- | -------------- | ---- | ------- |
+| 1 — Title          | `plot_title`                                    | GT Planar Bold | 15pt | black   |
+| 2 — Labeling       | subtitle, axis titles, strip text, legend title | GT Planar      | 13pt | #333333 |
+| 3 — Data reference | axis tick labels, legend text                   | IBM Plex Sans  | 11pt | #4D4D4D |
+
+For data-layer text (`geom_text`, `annotate("text")`), use 11pt IBM Plex Sans to match the data-reference tier. In-bar labels: 11pt white bold. Side annotations: 11pt bold. Totals above bars: 11pt #333333 bold.
 
 ### Switchbox color palette for charts
 
@@ -760,15 +772,15 @@ R libraries under `lib/` are sourced the traditional way (e.g. `source("lib/ggpl
 
 #### Python modules
 
-| Module                             | When to use                                                                                                                            |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `lib.rdp`                          | Fetching files from the `rate-design-platform` GitHub repo (tariff maps, configs). Also has `parse_urdb_json` for URDB tariff JSON.    |
-| `lib.cairo`                        | CAIRO post-processing: `add_delivered_fuel_bills` tops up combined bills with oil/propane costs from monthly consumption x EIA prices. |
-| `lib.data.s3`                      | S3 directory listing (`list_s3_subdirs`) and run directory resolution (`run_dir`) for navigating CAIRO output paths.                   |
-| `lib.data.eia.heating_fuel_prices` | Load monthly residential oil + propane prices from EIA data on S3 (`load_monthly_fuel_prices`).                                        |
-| `lib.data.nrel.resstock`           | Load ResStock load curves for a specific utility (`scan_load_curves_for_utility`), reading metadata to construct per-building paths.   |
-| `lib.eia`                          | Standalone EIA fetch scripts (petroleum prices, state heating profiles). Use `lib.data.eia` for the cleaner S3-based API.              |
-| `lib.plotnine`                     | Switchbox plotnine theme (`theme_switchbox`) and brand color palette (`SB_COLORS`). Use in every Python analysis notebook.             |
+| Module                             | When to use                                                                                                                                                         |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib.rdp`                          | Fetching files from the `rate-design-platform` GitHub repo (tariff maps, configs). Also has `parse_urdb_json` for URDB tariff JSON.                                 |
+| `lib.cairo`                        | CAIRO post-processing: `add_delivered_fuel_bills` tops up combined bills with oil/propane costs from monthly consumption x EIA prices.                              |
+| `lib.data.s3`                      | S3 directory listing (`list_s3_subdirs`) and run directory resolution (`run_dir`) for navigating CAIRO output paths.                                                |
+| `lib.data.eia.heating_fuel_prices` | Load monthly residential oil + propane prices from EIA data on S3 (`load_monthly_fuel_prices`).                                                                     |
+| `lib.data.nrel.resstock`           | Load ResStock load curves for a specific utility (`scan_load_curves_for_utility`), reading metadata to construct per-building paths.                                |
+| `lib.eia`                          | Standalone EIA fetch scripts (petroleum prices, state heating profiles). Use `lib.data.eia` for the cleaner S3-based API.                                           |
+| `lib.plotnine`                     | Switchbox plotnine theme (`theme_switchbox`) with three-tier typography, brand colors (`SB_COLORS`), and auto SVG config. Import in every Python analysis notebook. |
 
 #### R libraries
 
@@ -855,7 +867,7 @@ Before considering any change done:
 
 - **`just check`**: Runs lock validation (`uv lock --locked`) and pre-commit hooks (ruff-check, ruff-format, ty-check, trailing whitespace, end-of-file newline, YAML/JSON/TOML validation, no large files >600KB, no merge conflict markers).
 - **`just test`**: Runs pytest suite. Add or extend tests for new or changed behavior.
-- **`just render`** (from report directory): Verifies the report renders without errors. This is the reproducibility check — unique to a reports repo. Run it after any change to a report.
+- **`just render`** (from report directory): Snapshots the current `docs/` as a baseline for diffing, runs `quarto render`, inlines SVGs (if the report uses them), and removes `.ipynb` / `.svg` artifacts. Run it after any change to a report.
 
 R formatting: Use the [air](https://github.com/posit-dev/air) formatter via the Posit.air-vscode editor extension (pre-installed in devcontainer). Not yet integrated with pre-commit hooks.
 
@@ -885,10 +897,12 @@ Naming convention: `state_topic` (e.g., `ny_aeba_grid`, `ri_hp_rates`). Reuse to
 From the report directory:
 
 ```bash
-just render    # HTML for web publishing
-just draft     # DOCX for content review
-just typeset   # ICML for InDesign
-just publish   # Copy rendered HTML to root docs/ for GitHub Pages
+just render           # Render HTML (snapshots baseline, inlines SVGs, cleans artifacts)
+just draft            # Render DOCX for content review
+just typeset          # Render ICML for InDesign
+just publish          # Copy rendered HTML to root docs/ for GitHub Pages
+just diff             # Diff current render against baseline
+just diff my-label    # Diff with a label (archived under .diff/diffs/)
 ```
 
 ### Publishing
@@ -1043,6 +1057,54 @@ R's ggplot2 is more familiar to LLMs but still has traps:
 - **Look up `theme()` element types.** `element_text()`, `element_blank()`, `element_rect()`, and `element_line()` each have specific parameters. Do not guess — check the docs.
 - **Always source `switchbox_theme.R`** (R) or use `+ theme_switchbox()` (Python) before plotting. Do not create custom themes.
 
+### SVG output pipeline
+
+Python reports render plotnine charts as **inline SVGs** with text-as-text (not paths). This gives sharp rendering at any zoom, enables CSS font styling, and keeps repo size small. The pipeline is:
+
+1. **`_quarto.yml`** sets `fig-format: svg` (no `fig-dpi` needed).
+2. **`theme_switchbox`** auto-sets `mpl.rcParams["svg.fonttype"] = "none"` on import, so matplotlib emits `<text>` elements.
+3. **`just render`** (via `lib/just/render.py`) calls `inline_svgs.py` after Quarto, which inlines SVGs into the HTML, sets fixed display widths, and removes standalone `.svg` files.
+
+No per-notebook configuration is needed beyond `from lib.plotnine import theme_switchbox`.
+
+### SVG sizing and font consistency
+
+Matplotlib lays out a figure in abstract inches (72 points per inch). The SVG's `viewBox` encodes these dimensions. The post-processing script sets the SVG's display width to the viewBox width, which maps **1 matplotlib point = 1 CSS pixel** at the designed size. `max-width: 100%` prevents overflow on narrow viewports; Quarto column classes provide room but don't stretch the chart.
+
+**The key formula:**
+
+```
+figure_width_inches = desired_display_width_px / 72
+```
+
+For example, `figure_size=(10.5, 4.5)` → 756px wide. A 13pt axis title renders at exactly 13px on screen.
+
+**`figure_size` is the only knob agents should use** for chart dimensions. It controls:
+
+1. **Display width** — `width_inches × 72` = pixels on screen
+2. **Aspect ratio** — width-to-height proportion
+3. **Visual density** — how much space labels and padding occupy relative to the chart area
+
+Do not set font sizes per-chart. The theme handles all typography (see the chart typography guide above). The only `+ theme(...)` override you need is `figure_size` (and occasionally `legend_position`).
+
+**Agent workflow for choosing `figure_size`:**
+
+1. Default to `figure_size=(10.5, 4.5)` — this is 756px wide and fits comfortably in `column-page-inset-right`
+2. Adjust height for the content (e.g., taller for multi-facet charts: `(10.5, 2.25 * n_facets)`)
+3. Only go wider than 10.5" if the chart truly needs it — wider charts may scale down in the container, shrinking fonts below their designed sizes
+4. Wrap every chart in `column-page-inset-right` in `index.qmd` unless there's a reason not to
+
+**Approximate Quarto column widths** (at ~1440px desktop viewport):
+
+| Column class               | Approx. width |
+| -------------------------- | ------------- |
+| `column-body`              | ~700px        |
+| `column-body-outset-right` | ~830px        |
+| `column-page-inset-right`  | ~900px        |
+| `column-page-inset`        | ~900px        |
+
+If the chart's designed width is narrower than the container, it centers automatically. If it's wider, `max-width: 100%` scales it down (fonts scale proportionally). A 10.5" chart (756px) renders at native size in `column-page-inset-right` (~900px) with room to spare.
+
 ### General plotting principles
 
 - **Labels above bars, not beside them**, for NYT-style horizontal bar charts. Row labels go above each bar at `y=0` with `ha="left"` so bars span the full width.
@@ -1054,7 +1116,7 @@ R's ggplot2 is more familiar to LLMs but still has traps:
 
 1. **Never hardcode computed values in prose.** Always use inline R code (`` `r var |> scales::dollar()` ``).
 2. **Keep analysis in `notebooks/analysis.qmd`, narrative in `index.qmd`.** This separation is non-negotiable.
-3. **Source `switchbox_theme.R`** (R) or **use `theme_switchbox()`** (Python) in every analysis notebook. Use the Switchbox color palette.
+3. **Source `switchbox_theme.R`** (R) or **use `theme_switchbox()`** (Python) in every analysis notebook. Use the Switchbox color palette. **Do not override font sizes, families, or colors** with ad-hoc `element_text(size=...)` in `+ theme(...)` — the theme's three-tier typography handles all text styling. The only per-plot theme overrides should be `figure_size` and `legend_position`.
 4. **Add new citations** to `reports/references.bib` with `{author_short_title_year}` keys.
 5. **Use `{{< embed >}}`** for figures. Never copy-paste chart code into `index.qmd`.
 6. **Don't commit** `data/`, `cache/`, or report `docs/` directories.
@@ -1112,8 +1174,9 @@ When a task involves creating, updating, or referencing issues, use the Linear M
 | `just new_report` | Root       | Create report from template           |
 | `just aws`        | Root       | Refresh AWS SSO credentials           |
 | `just clean`      | Root       | Remove generated files and caches     |
-| `just render`     | Report dir | Render HTML                           |
+| `just render`     | Report dir | Render HTML (snapshot + SVG inline)   |
 | `just draft`      | Report dir | Render DOCX                           |
 | `just typeset`    | Report dir | Render ICML for InDesign              |
 | `just publish`    | Report dir | Copy HTML to `docs/` for GitHub Pages |
+| `just diff`       | Report dir | Diff current render against baseline  |
 | `just clean`      | Report dir | Remove report caches                  |

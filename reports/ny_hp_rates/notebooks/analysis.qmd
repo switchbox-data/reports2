@@ -77,6 +77,7 @@ PATH_MASTER_BILLS_12 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_1+2/comb_bills_y
 PATH_MASTER_BILLS_34 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_3+4/comb_bills_year_target/"
 PATH_MASTER_BILLS_56 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_5+6/comb_bills_year_target/"
 PATH_MASTER_BILLS_78 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_7+8/comb_bills_year_target/"
+PATH_MASTER_BILLS_1112 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_11+12/comb_bills_year_target/"
 PATH_MASTER_BAT_12 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_1+2/cross_subsidization_BAT_values/"
 PATH_MASTER_BAT_34 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_3+4/cross_subsidization_BAT_values/"
 PATH_MASTER_BAT_56 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_5+6/cross_subsidization_BAT_values/"
@@ -122,6 +123,7 @@ bills_current = pl.scan_parquet(PATH_MASTER_BILLS_12, hive_partitioning=True)
 bills_hp = pl.scan_parquet(PATH_MASTER_BILLS_34, hive_partitioning=True)
 bills_hprate_current = pl.scan_parquet(PATH_MASTER_BILLS_56, hive_partitioning=True)
 bills_hprate_hp = pl.scan_parquet(PATH_MASTER_BILLS_78, hive_partitioning=True)
+bills_tou_hp = pl.scan_parquet(PATH_MASTER_BILLS_1112, hive_partitioning=True)
 
 metadata_sb = pl.read_parquet(PATH_METADATA_SB)
 ```
@@ -2470,6 +2472,11 @@ for ht in FACET_ORDER:
 _hp_sub = labeled_all.filter(pl.col("heating_label") == "Heat pump")
 _ff_sub = labeled_all.filter(pl.col("heating_label") == "Fossil fuel")
 
+report_vars["hp_share_of_households"] = _hp_sub["weight"].sum() / total_weight
+report_vars["hp_total_cross_subsidy_delivery_millions"] = (
+    (_hp_sub["BAT_percustomer_delivery"] * _hp_sub["weight"]).sum() / 1e6
+)
+report_vars["nonhp_households_millions"] = (total_weight - _hp_sub["weight"].sum()) / 1e6
 report_vars["hp_mean_delivery_cost"] = (
     _weighted_mean(_hp_sub, "economic_burden_delivery", "weight")
     + _weighted_mean(_hp_sub, "residual_share_delivery", "weight")
@@ -3252,6 +3259,195 @@ Path("../cache/rate_table.html").write_text(_rate_gt.as_raw_html())
 _rate_gt
 ```
 
+## Heat pump TOU rate structure
+
+Beyond the flat seasonal rates above, we've also designed time-of-use (TOU) variants that align more closely with hourly
+marginal costs. Each utility has a "paired" TOU tariff: a delivery-only file (`*_hp_seasonalTOU_calibrated.json`) and a
+delivery+supply file (`*_hp_seasonalTOU_supply_calibrated.json`). We difference them to isolate the supply component.
+
+All TOU tariffs use two seasons (winter: Oct–Mar, summer: Apr–Sep) with distinct on-peak and off-peak periods within
+each season. Peak hours vary by utility, reflecting each utility's marginal cost profile.
+
+```{python}
+#| label: tou-rate-table-data
+
+def _extract_peak_hours(schedule: list[list[int]], month_idx: int) -> str:
+    """Return human-readable peak hours string for a given month in a URDB schedule."""
+    row = schedule[month_idx]
+    off_peak_period = row[0]
+    peak_hours = [h for h, p in enumerate(row) if p != off_peak_period]
+    if not peak_hours:
+        return "None"
+    start, end = peak_hours[0], peak_hours[-1] + 1
+
+    def _fmt(h: int) -> str:
+        if h in (0, 24):
+            return "12am"
+        if h == 12:
+            return "12pm"
+        return f"{h}am" if h < 12 else f"{h - 12}pm"
+
+    return f"{_fmt(start)}–{_fmt(end)}"
+
+
+rows: list[dict] = []
+for display, code in TARIFF_UTILS.items():
+    d = _load_rate(f"{code}_hp_seasonalTOU_calibrated.json")
+    b = _load_rate(f"{code}_hp_seasonalTOU_supply_calibrated.json")
+
+    dr = [tier[0]["rate"] for tier in d["energyratestructure"]]
+    br = [tier[0]["rate"] for tier in b["energyratestructure"]]
+    sr = [br[i] - dr[i] for i in range(4)]
+
+    winter_peak = _extract_peak_hours(d["energyweekdayschedule"], 0)
+    summer_peak = _extract_peak_hours(d["energyweekdayschedule"], 6)
+
+    fixed = d["fixedchargefirstmeter"]
+
+    rows.append({"utility": display, "season": "Winter", "peak_hours": winter_peak,
+                 "delivery_off": dr[0] * 100, "delivery_on": dr[1] * 100,
+                 "supply_off": sr[0] * 100, "supply_on": sr[1] * 100,
+                 "total_off": br[0] * 100, "total_on": br[1] * 100,
+                 "fixed_charge": fixed})
+    rows.append({"utility": display, "season": "Summer", "peak_hours": summer_peak,
+                 "delivery_off": dr[2] * 100, "delivery_on": dr[3] * 100,
+                 "supply_off": sr[2] * 100, "supply_on": sr[3] * 100,
+                 "total_off": br[2] * 100, "total_on": br[3] * 100,
+                 "fixed_charge": fixed})
+
+tou_df = pl.DataFrame(rows)
+tou_df
+```
+
+```{python}
+#| label: tou-rate-gt
+
+rate_cols = ["delivery_off", "delivery_on", "supply_off", "supply_on", "total_off", "total_on"]
+
+_tou_gt = (
+    GT(tou_df, rowname_col="season", groupname_col="utility")
+    .cols_label(
+        peak_hours="Peak hours",
+        delivery_off="Off-peak",
+        delivery_on="On-peak",
+        supply_off="Off-peak",
+        supply_on="On-peak",
+        total_off="Off-peak",
+        total_on="On-peak",
+        fixed_charge="Fixed charge",
+    )
+    .tab_spanner(label="Delivery (¢/kWh)", columns=["delivery_off", "delivery_on"])
+    .tab_spanner(label="Supply (¢/kWh)", columns=["supply_off", "supply_on"])
+    .tab_spanner(label="Total (¢/kWh)", columns=["total_off", "total_on"])
+    .fmt_number(columns=rate_cols, decimals=1)
+    .fmt_currency(columns="fixed_charge", decimals=2)
+    .cols_align(align="center", columns=["peak_hours", *rate_cols, "fixed_charge"])
+)
+
+Path("../cache").mkdir(exist_ok=True)
+Path("../cache/tou_rate_table.html").write_text(_tou_gt.as_raw_html())
+
+_tou_gt
+```
+
+The charts below visualize these TOU schedules across the 24-hour day, with delivery and supply stacked so the reader
+can see each component's contribution. Each utility gets its own chart with Summer and Winter panels (shared y-axis so
+seasonal differences are visually apparent); the height of each block represents the total volumetric rate during that
+period.
+
+```{python}
+#| label: tou-schedule-charts
+
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+
+_HOUR_TICKS = list(range(0, 25, 3))
+_HOUR_LABELS = ["12am", "3am", "6am", "9am", "12pm", "3pm", "6pm", "9pm", "12am"]
+_C_DELIVERY = SB_COLORS["midnight"]
+_C_SUPPLY = SB_COLORS["sky"]
+
+
+def _extract_season_data(d, b, month_idx, off_idx, on_idx):
+    """Extract peak hours and rates (in ¢/kWh) for one season."""
+    dr = [t[0]["rate"] for t in d["energyratestructure"]]
+    br = [t[0]["rate"] for t in b["energyratestructure"]]
+    sr = [br[i] - dr[i] for i in range(len(dr))]
+
+    row = d["energyweekdayschedule"][month_idx]
+    off_p = row[0]
+    pks = [h for h, p in enumerate(row) if p != off_p]
+    ps, pe = pks[0], pks[-1] + 1
+
+    do, dn = dr[off_idx] * 100, dr[on_idx] * 100
+    so, sn = sr[off_idx] * 100, sr[on_idx] * 100
+    return ps, pe, do, so, dn, sn
+
+
+def _draw_tou_season(ax, season_title, ps, pe, do, so, dn, sn, ymax):
+    """Draw stacked delivery+supply rectangles for one season on a matplotlib Axes."""
+    to, tn = do + so, dn + sn
+
+    segments = [
+        (0, ps, do, so, to, True),
+        (ps, pe, dn, sn, tn, True),
+        (pe, 24, do, so, to, False),  # trailing off-peak: no redundant labels
+    ]
+    for xmin, xmax, dv, sv, tv, show_label in segments:
+        ax.add_patch(plt.Rectangle((xmin, 0), xmax - xmin, dv,
+                                    facecolor=_C_DELIVERY, edgecolor="white", linewidth=0.8))
+        ax.add_patch(plt.Rectangle((xmin, dv), xmax - xmin, sv,
+                                    facecolor=_C_SUPPLY, edgecolor="white", linewidth=0.8))
+        if show_label:
+            cx = (xmin + xmax) / 2
+            ax.text(cx, tv + 0.3, f"{tv:.0f}¢",
+                    ha="center", va="bottom", fontsize=9, fontweight="bold", color="#333333")
+            if dv >= 1.5:
+                ax.text(cx, dv / 2, f"{dv:.0f}¢",
+                        ha="center", va="center", fontsize=8, fontweight="bold", color="white")
+            if sv >= 1.5:
+                ax.text(cx, dv + sv / 2, f"{sv:.0f}¢",
+                        ha="center", va="center", fontsize=8, fontweight="bold", color="white")
+
+    ax.set_xlim(0, 24)
+    ax.set_ylim(0, ymax * 1.15)
+    ax.set_xticks(_HOUR_TICKS)
+    ax.set_xticklabels(_HOUR_LABELS, fontsize=8)
+    ax.set_ylabel("¢/kWh", fontsize=9)
+    ax.set_title(season_title, fontsize=11, fontweight="bold", loc="left")
+    ax.grid(axis="y", alpha=0.3)
+    ax.set_axisbelow(True)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+
+def _make_tou_chart(display_name, tariff_code):
+    """Create a 2-panel (Summer on top, Winter on bottom) TOU schedule chart."""
+    d = _load_rate(f"{tariff_code}_hp_seasonalTOU_calibrated.json")
+    b = _load_rate(f"{tariff_code}_hp_seasonalTOU_supply_calibrated.json")
+
+    w_ps, w_pe, w_do, w_so, w_dn, w_sn = _extract_season_data(d, b, 0, 0, 1)
+    s_ps, s_pe, s_do, s_so, s_dn, s_sn = _extract_season_data(d, b, 6, 2, 3)
+    ymax = max(w_do + w_so, w_dn + w_sn, s_do + s_so, s_dn + s_sn)
+
+    fig, (ax_top, ax_bot) = plt.subplots(2, 1, figsize=(7, 3.5), constrained_layout=True)
+    fig.suptitle(display_name, fontsize=13, fontweight="bold")
+    _draw_tou_season(ax_top, "Summer", s_ps, s_pe, s_do, s_so, s_dn, s_sn, ymax)
+    _draw_tou_season(ax_bot, "Winter", w_ps, w_pe, w_do, w_so, w_dn, w_sn, ymax)
+
+    delivery_patch = mpatches.Patch(facecolor=_C_DELIVERY, label="Delivery")
+    supply_patch = mpatches.Patch(facecolor=_C_SUPPLY, label="Supply")
+    fig.legend(handles=[delivery_patch, supply_patch], loc="upper center",
+               ncol=2, fontsize=10, frameon=False, bbox_to_anchor=(0.5, 0.97))
+    return fig
+
+
+Path("../cache").mkdir(exist_ok=True)
+for _name, _code in TARIFF_UTILS.items():
+    _fig = _make_tou_chart(_name, _code)
+    _fig.savefig(f"../cache/tou_schedule_{_code}.svg", format="svg", bbox_inches="tight")
+    plt.close(_fig)
+```
+
 ## BAT under HP seasonal rate
 
 Does the HP seasonal rate actually fix the cross-subsidy? We compare the BAT distributions under flat rates (run 1+2)
@@ -3716,6 +3912,38 @@ plot_quadrant_bar(
 )
 ```
 
+### Adding TOU to the comparison
+
+What happens if HP customers get the TOU rate instead of the flat seasonal rate, assuming no load flexibility? The
+"before" is their current bill under today's flat rates (run 1+2, upgrade 0) and the "after" is their bill as an HP
+customer on the calibrated TOU rate (run 11+12, upgrade 2).
+
+```{python}
+#| label: compute-deltas-tou
+
+annual_after_tou_state = (
+    bills_tou_hp
+    .filter(pl.col("month") == ANNUAL_MONTH)
+    .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after"))
+    .collect()
+)
+delta_tou_state = annual_current_state.join(annual_after_tou_state, on=BLDG_ID, how="inner").with_columns(
+    (pl.col("bill_after") - pl.col("bill_before")).alias("delta")
+)
+natgas_tou_state = delta_tou_state.filter(pl.col("heats_with_natgas")).select("delta", "weight")
+```
+
+```{python}
+#| label: fig-quadrant-bar-natgas-tou-state
+#| fig-cap: "Bill change summary — natural gas homes switching to HP: default vs. fair vs. TOU + fair rate (Statewide)"
+
+plot_quadrant_bar([
+    ("Default rate", natgas_state),
+    ("Fair rate", natgas_switch_state),
+    ("TOU + fair rate (no flex)", natgas_tou_state),
+])
+```
+
 ### LMI bill deltas — default vs. seasonal rate (natgas, statewide)
 
 We recompute the two-bar comparison (default rate vs. seasonal rate) using LMI-discounted bill columns. The
@@ -3931,14 +4159,103 @@ plot_bill_change_histogram(oil_propane_rebal_state, bin_width=REBAL_BIN, title=R
 
 ```{python}
 #| label: fig-bill-change-non-hp-rebal-state
-#| fig-cap: "Annual bill change — all non-HP homes after cross-subsidy removal (Statewide)"
+#| fig-cap: "Average monthly bill change — all non-HP homes after cross-subsidy removal (Statewide)"
 
-non_hp_rebal_state = (
+REBAL_3_COLORS = {
+    "bill decrease": "#81c784",
+    "increase < $5/mo": "#ef9a9a",
+    "increase ≥ $5/mo": "#b71c1c",
+}
+REBAL_3_ORDER = list(REBAL_3_COLORS.keys())
+REBAL_3_LABELS = {
+    "bill decrease": "DECREASE",
+    "increase < $5/mo": "< $5/MO",
+    "increase ≥ $5/mo": "≥ $5/MO",
+}
+
+monthly_rebal = (
     delta_rebal_state
     .filter(pl.col("postprocess_group.has_hp") == False)
-    .select("delta", "weight")
+    .with_columns((pl.col("delta") / 12).alias("delta_monthly"))
 )
-plot_bill_change_histogram(non_hp_rebal_state, bin_width=REBAL_BIN, title=REBAL_TITLE)
+
+total_w = monthly_rebal["weight"].sum()
+_pct_rebal = {
+    "bill decrease": monthly_rebal.filter(pl.col("delta_monthly") < 0)["weight"].sum() / total_w * 100,
+    "increase < $5/mo": monthly_rebal.filter((pl.col("delta_monthly") >= 0) & (pl.col("delta_monthly") < 5))["weight"].sum() / total_w * 100,
+    "increase ≥ $5/mo": monthly_rebal.filter(pl.col("delta_monthly") >= 5)["weight"].sum() / total_w * 100,
+}
+
+_records = [{"scenario": "All non-HP", "category": k, "pct": v} for k, v in _pct_rebal.items()]
+_plot_df = pl.DataFrame(_records).with_columns(
+    pl.col("category").cast(pl.Enum(REBAL_3_ORDER)),
+    pl.col("scenario").cast(pl.Enum(["All non-HP"])),
+)
+
+_stacking_order = list(reversed(REBAL_3_ORDER))
+_annotations: list = []
+_cum = 0.0
+for _q in _stacking_order:
+    _mid = _cum + _pct_rebal[_q] / 2
+    _cum += _pct_rebal[_q]
+    if _pct_rebal[_q] < 2:
+        continue
+    _annotations.append(
+        annotate(
+            "text",
+            x=1.45,
+            y=_mid,
+            label=REBAL_3_LABELS[_q],
+            ha="center", va="bottom",
+            size=8, color=REBAL_3_COLORS[_q], fontweight="bold",
+        )
+    )
+
+p = (
+    ggplot(_plot_df, aes(x="scenario", y="pct", fill="category"))
+    + geom_col(position="stack", width=0.55)
+    + geom_text(
+        _plot_df.filter(pl.col("pct") >= 3),
+        aes(label="pct"),
+        position=position_stack(vjust=0.5),
+        format_string="{:.0f}%",
+        color="white",
+        size=10,
+        fontweight="bold",
+    )
+    + scale_fill_manual(values=REBAL_3_COLORS, breaks=REBAL_3_ORDER)
+    + scale_y_continuous(expand=(0, 0, 0.15, 0))
+    + scale_x_discrete(expand=(0, 0.35, 0, 1.2))
+    + coord_flip()
+    + guides(fill=False)
+    + labs(x="", y="", title="Monthly bill change for non-HP homes after cross-subsidy removal")
+    + theme_switchbox()
+    + theme(
+        figure_size=(12.5, 2.6),
+        axis_text=element_blank(),
+        axis_ticks=element_blank(),
+        axis_line=element_blank(),
+        panel_grid=element_blank(),
+        plot_title=element_text(ha="left", margin={"b": -8, "units": "pt"}),
+    )
+)
+for _a in _annotations:
+    p = p + _a
+p
+```
+
+```{python}
+#| label: rebal-report-vars
+
+report_vars["rebal_nonhp_mean_monthly_delta"] = _weighted_mean(
+    monthly_rebal, "delta_monthly", "weight"
+)
+report_vars["rebal_nonhp_median_monthly_delta"] = _weighted_percentile(
+    monthly_rebal, "delta_monthly", "weight", 0.50
+)
+report_vars["rebal_nonhp_pct_decrease"] = _pct_rebal["bill decrease"] / 100
+report_vars["rebal_nonhp_pct_increase_under_5"] = _pct_rebal["increase < $5/mo"] / 100
+report_vars["rebal_nonhp_pct_increase_over_5"] = _pct_rebal["increase ≥ $5/mo"] / 100
 ```
 
 ## Energy burden for low-income gas-heated households

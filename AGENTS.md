@@ -14,22 +14,35 @@ The companion repo [rate-design-platform](https://github.com/switchbox-data/rate
 
 ## Layout
 
-| Path                           | Purpose                                                                                                                  |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `reports/`                     | Source code for all report projects. Each subdirectory is a self-contained Quarto Manuscript project.                    |
-| `reports/.style/`              | Shared SCSS theme (`switchbox.scss`), HTML includes (`switchbox.html`), and brand fonts (`fonts/`) used by all reports.  |
-| `reports/references.bib`       | Shared BibTeX bibliography used by all reports.                                                                          |
-| `lib/`                         | Shared R and Python libraries used across reports. Python side is an installable package (see "Shared libraries" below). |
-| `lib/ggplot/switchbox_theme.R` | Custom ggplot2 theme (IBM Plex Sans, white background, Switchbox colors). Source this in every R analysis notebook.      |
-| `lib/plotnine/`                | Custom plotnine theme (`theme_switchbox`) and `SB_COLORS` dict. Import in every Python analysis notebook.                |
-| `lib/rates_analysis/`          | Shared R functions for heat pump rate analysis (bill calculation, tariff assignment, plotting).                          |
-| `lib/eia/`                     | Python scripts for fetching EIA data (fuel prices, state profiles).                                                      |
-| `docs/`                        | Published HTML reports served via GitHub Pages at `switchbox-data.github.io/reports2`.                                   |
-| `tests/`                       | Pytest test suite.                                                                                                       |
-| `.devcontainer/`               | Dev container configuration (Dockerfile, devcontainer.json).                                                             |
-| `Justfile`                     | Root task runner: `install`, `check`, `test`, `new_report`, `aws`, `clean`.                                              |
-| `pyproject.toml`               | Python dependencies (managed by uv).                                                                                     |
-| `DESCRIPTION`                  | R dependencies (managed by pak).                                                                                         |
+| Path                           | Purpose                                                                                                                        |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `reports/`                     | Source code for all report projects. Each subdirectory is a self-contained Quarto Manuscript project.                          |
+| `reports/.style/`              | Shared SCSS theme (`switchbox.scss`), HTML includes (`switchbox.html`), and brand fonts (`fonts/`) used by all reports.        |
+| `reports/references.bib`       | Shared BibTeX bibliography used by all reports.                                                                                |
+| `lib/`                         | Shared R and Python libraries used across reports. Python side is an installable package (see "Shared libraries" below).       |
+| `lib/ggplot/switchbox_theme.R` | Custom ggplot2 theme (IBM Plex Sans, white background, Switchbox colors). Source this in every R analysis notebook.            |
+| `lib/plotnine/`                | Custom plotnine theme (`theme_switchbox`) and `SB_COLORS` dict. Import in every Python analysis notebook.                      |
+| `lib/rates_analysis/`          | Shared R functions for heat pump rate analysis (bill calculation, tariff assignment, plotting).                                |
+| `lib/eia/`                     | Python scripts for fetching EIA data (fuel prices, state profiles).                                                            |
+| `context/`                     | Reference docs and working notes for agents; see **Reference context** below and **`context/README.md`** for what lives where. |
+| `docs/`                        | Published HTML reports served via GitHub Pages at `switchbox-data.github.io/reports2`.                                         |
+| `tests/`                       | Pytest test suite.                                                                                                             |
+| `.devcontainer/`               | Dev container configuration (Dockerfile, devcontainer.json).                                                                   |
+| `Justfile`                     | Root task runner: `install`, `check`, `test`, `new_report`, `aws`, `clean`.                                                    |
+| `pyproject.toml`               | Python dependencies (managed by uv).                                                                                           |
+| `DESCRIPTION`                  | R dependencies (managed by pak).                                                                                               |
+
+## Reference context
+
+Working knowledge lives in `context/` so agents can use it without hunting through the repo or re-discovering known bugs. Treat these paths as first-class context.
+
+**Conventions:**
+
+- **`context/tools/`** — Quarto/plotting/tooling knowledge and known bugs: rendering pipelines, sizing mechanics, Quarto Manuscript embed workarounds, report-specific design decisions. Documents that answer "how does this tool work, and what are its pitfalls?"
+
+**When working on Quarto rendering, figure embedding, plotnine sizing, or report-specific design choices, read the relevant file(s) in `context/`.** In particular, read `context/tools/quarto_manuscript_embed_bug.md` before using `{{< embed >}}` with non-plotnine outputs (GT tables, matplotlib figures) — the workarounds are mandatory.
+
+For the current list of files and when to use each, see **`context/README.md`**.
 
 ## Report architecture
 
@@ -1045,6 +1058,8 @@ This applies even for "small" changes like adjusting a font size or moving a lab
 
 These are real mistakes that waste time. Memorize them or look them up every time.
 
+**`ggplot()` accepts Polars DataFrames directly**: Do not convert to pandas with `.to_pandas()` before passing data to `ggplot()` or `geom_*()`. plotnine handles Polars natively. For categorical ordering, use `pl.Enum` dtype instead of `pd.Categorical`.
+
 **`theme()` vs `theme_minimal()`**: `figure_size` belongs in `theme()`, not in `theme_minimal()`. `theme_minimal()` accepts no custom arguments beyond what its parent `theme` class defines. Always do:
 
 ```python
@@ -1091,6 +1106,8 @@ plot_title=element_text(margin=(0, 0, -10, 0))  # AttributeError
     ...
 )
 ```
+
+**`geom_col()` stacking order is reversed from factor level order**: In plotnine, `geom_col()` (stacked) draws the **first** factor/Enum level on **top** and the **last** level at the **bottom**. This is the opposite of what you might expect. If you want category A at the bottom and D at the top, define the Enum as `pl.Enum(["D", "C", "B", "A"])` — reversed from the desired bottom-to-top visual order. The same applies to `scale_fill_manual`: the color mapping is by name, so reversing the Enum order does not affect color assignments.
 
 ### ggplot2 (R) pitfalls
 
@@ -1172,6 +1189,7 @@ If the chart's designed width is narrower than the container, it centers automat
 13. **When adding or removing files under `reports/`**, verify `_quarto.yml` render lists are updated.
 14. **Respect data boundaries.** Don't assume large data is in git. Follow S3 paths documented in existing notebooks.
 15. **When adding or modifying modules under `lib/`**, update the "Shared libraries (`lib/`)" section in this file so the module tables stay accurate.
+16. **Update the context index**: When adding or removing files under `context/`, update `context/README.md` so the index stays accurate.
 
 ## Quarto reference
 

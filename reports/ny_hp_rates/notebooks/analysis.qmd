@@ -959,6 +959,8 @@ delta_state = annual_current_state.join(annual_hp_state, on=BLDG_ID, how="inner"
 ```{python}
 #| label: histogram-helpers
 
+BIN_WIDTH = 100
+
 QUADRANT_COLORS = {
     "savings > $1k": "#1b5e20",
     "savings $0-1k": "#81c784",
@@ -1536,92 +1538,6 @@ bat_all = (
 )
 ```
 
-### Delivery bill changes by utility
-
-Before examining cross-subsidies, we look at how delivery bills change when buildings switch from gas furnaces to heat
-pumps. We compare each building's annual delivery bill (volumetric + fixed charge) in run 1+2 (current HVAC) against run
-3+4 (heat pump upgrade), both under current rates.
-
-```{python}
-#| label: fig-delivery-bill-delta-by-utility
-#| fig-cap: "Distribution of delivery bill percent changes after switching to a heat pump, by utility. Orange bars indicate increases, blue bars indicate decreases."
-
-import math
-_del_select = [BLDG_ID, "weight", "sb.electric_utility", "elec_delivery_bill", "elec_fixed_charge"]
-
-_del_12 = (
-    bills_current
-    .filter(pl.col("month") == ANNUAL_MONTH)
-    .select(_del_select)
-    .collect()
-    .with_columns(
-        (pl.col("elec_delivery_bill") + pl.col("elec_fixed_charge")).alias("delivery_before")
-    )
-    .select(BLDG_ID, "weight", "sb.electric_utility", "delivery_before")
-)
-
-_del_34 = (
-    bills_hp
-    .filter(pl.col("month") == ANNUAL_MONTH)
-    .select([BLDG_ID, "elec_delivery_bill", "elec_fixed_charge"])
-    .collect()
-    .with_columns(
-        (pl.col("elec_delivery_bill") + pl.col("elec_fixed_charge")).alias("delivery_after")
-    )
-    .select(BLDG_ID, "delivery_after")
-)
-
-delivery_delta = (
-    _del_12.join(_del_34, on=BLDG_ID, how="inner")
-    .filter(pl.col("delivery_before").abs() > 1)  # avoid division by near-zero
-    .with_columns(
-        ((pl.col("delivery_after") - pl.col("delivery_before")) / pl.col("delivery_before") * 100)
-        .alias("pct_change")
-    )
-)
-
-_DEL_BIN_WIDTH = 10
-_del_binned = (
-    delivery_delta
-    .with_columns(
-        ((pl.col("pct_change") / _DEL_BIN_WIDTH).floor() * _DEL_BIN_WIDTH + _DEL_BIN_WIDTH / 2)
-        .alias("bin_center"),
-    )
-    .group_by("sb.electric_utility", "bin_center")
-    .agg(pl.col("weight").sum().alias("weight_sum"))
-)
-
-_x_lo = _weighted_percentile(delivery_delta, "pct_change", "weight", 0.01)
-_x_hi = _weighted_percentile(delivery_delta, "pct_change", "weight", 0.99)
-_x_lo_round = math.floor(_x_lo / 50) * 50
-_x_hi_round = math.ceil(_x_hi / 50) * 50
-
-_del_plot_df = _del_binned.with_columns(
-    pl.col("sb.electric_utility").replace_strict(UTIL_NAMES).alias("utility_label"),
-    pl.when(pl.col("bin_center") >= 0)
-    .then(pl.lit("increase"))
-    .otherwise(pl.lit("decrease"))
-    .alias("direction"),
-)
-
-(
-    ggplot(_del_plot_df, aes(x="bin_center", y="weight_sum", fill="direction"))
-    + geom_col(width=_DEL_BIN_WIDTH * 0.9)
-    + facet_wrap("utility_label", scales="free_y", ncol=4)
-    + scale_fill_manual(values={"increase": SB_COLORS["carrot"], "decrease": SB_COLORS["sky"]})
-    + scale_x_continuous(labels=lambda xs: [f"{x:,.0f}%" for x in xs])
-    + scale_y_continuous(expand=(0, 0, 0.1, 0))
-    + coord_cartesian(xlim=(_x_lo_round, _x_hi_round))
-    + labs(
-        x="Percent change in annual delivery bill (current → heat pump)",
-        y="Weighted households",
-        title="Distribution of delivery bill percent changes by utility",
-    )
-    + theme_switchbox()
-    + theme(figure_size=(14, 7), legend_position="none")
-)
-```
-
 ### Cross-subsidy example: same home, before and after
 
 To make the concept of bill alignment concrete before diving into the full distribution, we track the same median
@@ -1803,6 +1719,9 @@ underpay.
 ```{python}
 #| label: bat-delivery-report-vars
 
+BAT_BIN_WIDTH = 50
+BAT_COLORS = {"overpaying": "#b71c1c", "underpaying": "#1b5e20"}
+
 HEATING_TYPE_LABELS: dict[str, str] = {
     "fossil_fuel": "Fossil fuel",
     "electrical_resistance": "Electric resistance",
@@ -1820,6 +1739,7 @@ labeled_all = bat_all.with_columns(
     .cast(facet_dtype)
     .alias("heating_label"),
 )
+total_weight = labeled_all["weight"].sum()
 
 _hp_sub = labeled_all.filter(pl.col("heating_label") == "Heat pump")
 _ff_sub = labeled_all.filter(pl.col("heating_label") == "Fossil fuel")
@@ -2548,8 +2468,6 @@ _sw_save_1k_w = natgas_switch_state.filter(pl.col("delta") < -1000)["weight"].su
 report_vars["pct_natgas_save_hprate"] = _sw_save_w / _sw_total_w
 report_vars["pct_natgas_lose_1k_hprate"] = _sw_lose_1k_w / _sw_total_w
 report_vars["pct_natgas_save_1k_hprate"] = _sw_save_1k_w / _sw_total_w
-
-plot_bill_change_histogram(natgas_switch_state)
 ```
 
 ```{python}
@@ -2906,23 +2824,6 @@ plot_quadrant_bar(
 )
 ```
 
-```{python}
-#| label: fig-quadrant-bar-all-switch-hprate-state
-#| fig-cap: "Bill change summary by heating fuel — switching to HP with seasonal rate (Statewide)"
-
-non_hp_switch_state = (
-    delta_switch_state
-    .filter(pl.col("postprocess_group.has_hp") == False)
-    .select("delta", "weight")
-)
-plot_quadrant_bar([
-    ("All non-HP", non_hp_switch_state),
-    ("Natural gas", natgas_switch_state),
-    ("Oil / propane", oil_propane_switch_state),
-    ("Electric resistance", elec_resistance_switch_state),
-])
-```
-
 ## Bill impact of HP seasonal rate on non-HP customers
 
 What happens to fossil-fuel customers' bills if all existing HP customers opt in to the seasonal rate — but the non-HP
@@ -2934,22 +2835,6 @@ is removed. Comparing run 1+2 vs 5+6 for fossil-fuel buildings shows this (expec
 
 ```{python}
 #| label: compute-deltas-nonhp-rebal
-
-annual_before_rebal = (
-    bills_current
-    .filter((pl.col("month") == ANNUAL_MONTH) & (pl.col("sb.electric_utility") == UTILITY))
-    .select(DELTA_SELECT)
-    .collect()
-)
-annual_after_rebal = (
-    bills_hprate_current
-    .filter((pl.col("month") == ANNUAL_MONTH) & (pl.col("sb.electric_utility") == UTILITY))
-    .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after"))
-    .collect()
-)
-delta_rebal = annual_before_rebal.join(annual_after_rebal, on=BLDG_ID, how="inner").with_columns(
-    (pl.col("bill_after") - pl.col("bill_before")).alias("delta")
-)
 
 annual_before_rebal_state = (
     bills_current
@@ -2968,72 +2853,7 @@ delta_rebal_state = annual_before_rebal_state.join(annual_after_rebal_state, on=
 )
 ```
 
-### ConEd — non-HP bill impact of cross-subsidy removal
-
-```{python}
-#| label: fig-bill-change-natgas-rebal
-#| fig-cap: "Annual bill change — natural gas homes after cross-subsidy removal"
-
-REBAL_BIN = 5
-REBAL_TITLE = "Change in Non-HP Customer Bills after Cross-Subsidy Removal"
-
-natgas_rebal = (
-    delta_rebal
-    .filter(pl.col("heats_with_natgas"))
-    .select("delta", "weight")
-)
-plot_bill_change_histogram(natgas_rebal, bin_width=REBAL_BIN, title=REBAL_TITLE)
-```
-
-```{python}
-#| label: fig-bill-change-oil-propane-rebal
-#| fig-cap: "Annual bill change — oil/propane homes after cross-subsidy removal"
-
-oil_propane_rebal = (
-    delta_rebal
-    .filter(pl.col("heats_with_oil") | pl.col("heats_with_propane"))
-    .select("delta", "weight")
-)
-plot_bill_change_histogram(oil_propane_rebal, bin_width=REBAL_BIN, title=REBAL_TITLE)
-```
-
-```{python}
-#| label: fig-bill-change-non-hp-rebal
-#| fig-cap: "Annual bill change — all non-HP homes after cross-subsidy removal"
-
-non_hp_rebal = (
-    delta_rebal
-    .filter(pl.col("postprocess_group.has_hp") == False)
-    .select("delta", "weight")
-)
-plot_bill_change_histogram(non_hp_rebal, bin_width=REBAL_BIN, title=REBAL_TITLE)
-```
-
 ### Statewide — non-HP bill impact of cross-subsidy removal
-
-```{python}
-#| label: fig-bill-change-natgas-rebal-state
-#| fig-cap: "Annual bill change — natural gas homes after cross-subsidy removal (Statewide)"
-
-natgas_rebal_state = (
-    delta_rebal_state
-    .filter(pl.col("heats_with_natgas"))
-    .select("delta", "weight")
-)
-plot_bill_change_histogram(natgas_rebal_state, bin_width=REBAL_BIN, title=REBAL_TITLE)
-```
-
-```{python}
-#| label: fig-bill-change-oil-propane-rebal-state
-#| fig-cap: "Annual bill change — oil/propane homes after cross-subsidy removal (Statewide)"
-
-oil_propane_rebal_state = (
-    delta_rebal_state
-    .filter(pl.col("heats_with_oil") | pl.col("heats_with_propane"))
-    .select("delta", "weight")
-)
-plot_bill_change_histogram(oil_propane_rebal_state, bin_width=REBAL_BIN, title=REBAL_TITLE)
-```
 
 ```{python}
 #| label: fig-bill-change-non-hp-rebal-state

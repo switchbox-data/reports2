@@ -51,8 +51,11 @@ BATCH = "ny_20260311b_r1-12_lmi_fix"
 
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
 PATH_MASTER_BILLS_12 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_1+2/comb_bills_year_target/"
+PATH_MASTER_BILLS_56 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_5+6/comb_bills_year_target/"
 PATH_MASTER_BILLS_78 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_7+8/comb_bills_year_target/"
+PATH_MASTER_BILLS_910 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_9+10/comb_bills_year_target/"
 PATH_MASTER_BILLS_1112 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_11+12/comb_bills_year_target/"
+PATH_METADATA_SB = "s3://data.sb/nrel/resstock/res_2024_amy2018_2_sb/metadata_utility/state=NY/utility_assignment.parquet"
 ```
 
 ## Constants
@@ -63,7 +66,18 @@ PATH_MASTER_BILLS_1112 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_11+12/comb_bil
 ANNUAL_MONTH = "Annual"
 BLDG_ID = "bldg_id"
 HEATING_TYPE_COL = "postprocess_group.heating_type"
+COOLING_COL = "in.hvac_cooling_partial_space_conditioning"
 REPRESENTATIVE_BLDG = 411608  # the "Buffalo home" used in analysis.qmd
+
+UTIL_NAMES = {
+    "cenhud": "Central Hudson",
+    "coned": "Con Edison",
+    "nimo": "National Grid",
+    "nyseg": "NYSEG",
+    "or": "O&R",
+    "psegli": "PSEG-LI",
+    "rge": "RG&E",
+}
 ```
 
 ## Data ingest
@@ -365,8 +379,11 @@ Reproduce the delta computation for both scenarios and compare their distributio
 ```{python}
 #| label: compute-deltas
 
+# Load metadata to get weight column (master bills may not include it)
+metadata = pl.read_parquet(PATH_METADATA_SB, columns=[BLDG_ID, "weight"])
+
 DELTA_SELECT = [
-    BLDG_ID, "weight",
+    BLDG_ID,
     pl.col("energy_total_bill").alias("bill_before"),
     "postprocess_group.has_hp",
     HEATING_TYPE_COL,
@@ -381,6 +398,7 @@ annual_current_state = (
     .filter(pl.col("month") == ANNUAL_MONTH)
     .select(DELTA_SELECT)
     .collect()
+    .join(metadata, on=BLDG_ID, how="left")
 )
 
 # After (seasonal): run 7+8
@@ -638,3 +656,936 @@ GT(pl.DataFrame(records)).fmt_number(
 If `seasonal − tou` is zero for all quadrants, the two runs produced bitwise-identical `energy_total_bill` values
 and the problem lies upstream (either the master-bills build used the same source data for both, or CAIRO run 11
 produced the same output as run 7 due to a configuration issue).
+
+## Step 7: Building characteristic drivers
+
+The histogram in Step 2 showed that TOU's effect vs. seasonal has a spread of roughly ±$300/yr across natgas
+buildings. Here we investigate *which* building characteristics predict whether TOU helps or hurts a customer.
+
+TOU peak hours cluster in the late afternoon/early evening (3–8 PM). Summer peak/off-peak ratios (3–4×) are
+much higher than winter (1.6–2×). Buildings that consume more electricity during those summer afternoon
+peak windows pay more under TOU; buildings that are heating-dominated and use electricity mostly off-peak
+save under TOU.
+
+### 7a — Load ResStock metadata
+
+All metadata needed for this analysis — floor area (`in.sqft`), building type
+(`in.geometry_building_type_recs`), climate zone (`in.ashrae_iecc_climate_zone_2004`), vintage
+(`in.vintage_acs`), county (`in.county`), and cooling presence (`in.hvac_cooling_partial_space_conditioning`)
+— are available directly from the utility-assignment parquet (`PATH_METADATA_SB`). We join them to
+`natgas_diff` on `bldg_id`.
+
+```{python}
+#| label: load-resstock-metadata
+
+_META_COLS = [
+    BLDG_ID,
+    "in.sqft",
+    "in.geometry_building_type_recs",
+    "in.ashrae_iecc_climate_zone_2004",
+    "in.vintage_acs",
+    "in.county",
+    COOLING_COL,
+]
+
+metadata_raw = pl.read_parquet(PATH_METADATA_SB, columns=_META_COLS)
+print(f"Loaded metadata: {metadata_raw.shape[0]:,} buildings × {len(_META_COLS)} columns")
+
+# natgas_diff (from Step 2) has bill-diff columns but no weight.  Attach weights
+# from natgas_switch (Step 5) so that utility-level summaries in 7b can be weighted.
+natgas_meta = (
+    natgas_diff
+    .join(metadata_raw, on=BLDG_ID, how="left")
+    .join(natgas_switch.select(BLDG_ID, "weight"), on=BLDG_ID, how="left")
+)
+n_matched = natgas_meta.filter(pl.col("in.sqft").is_not_null()).height
+print(f"natgas buildings matched to metadata: {n_matched:,} / {natgas_meta.height:,}")
+```
+
+Let's confirm the enriched table looks right:
+
+```{python}
+#| label: metadata-preview
+
+natgas_meta.select([
+    BLDG_ID,
+    "sb.electric_utility",
+    "diff_energy_total",
+    "in.sqft",
+    "in.geometry_building_type_recs",
+    "in.ashrae_iecc_climate_zone_2004",
+    "in.vintage_acs",
+    COOLING_COL,
+]).head(5)
+```
+
+### 7b — Utility-level summary with rate context
+
+Before diving into building-level drivers (Step 7c onward), we establish the utility-level baseline:
+which service territories show the largest TOU vs. seasonal spread, and does the TOU window design
+explain it?
+
+The table below shows, for each utility:
+
+- **Weighted mean delta** (TOU − seasonal), in $/yr — positive means TOU is more expensive on average
+- **% saving under TOU** (weighted share of buildings where TOU is cheaper)
+- **Peak window hours** (N) and start–end range for winter and summer (from the March 2026 HP-only
+  sweep documented in `context/tools/tou_window_optimization.md`)
+- **Peak/off-peak ratio** for winter and summer — higher ratios create larger TOU spread
+
+```{python}
+#| label: tou-rate-specs
+
+# TOU window specs from context/tools/tou_window_optimization.md (NY HP-only sweep, March 2026).
+# Peak hours are 0-indexed (hour 15 = 3 PM, hour 20 = 8 PM).
+_TOU_SPECS = pl.DataFrame({
+    "utility": ["cenhud", "coned", "nimo", "nyseg", "or", "psegli", "rge"],
+    "peak_hours_n": [5, 3, 3, 3, 5, 5, 3],
+    "winter_peak_window": ["16–20", "16–18", "17–19", "17–19", "16–20", "16–20", "17–19"],
+    "summer_peak_window": ["15–19", "15–17", "17–19", "17–19", "15–19", "15–19", "17–19"],
+    "winter_ratio": [1.57, 1.99, 1.75, 1.75, 1.57, 1.67, 1.75],
+    "summer_ratio": [3.04, 4.28, 2.91, 2.93, 3.12, 3.80, 2.87],
+})
+```
+
+```{python}
+#| label: utility-summary-table
+
+_util_labels = pl.DataFrame({
+    "utility": list(UTIL_NAMES.keys()),
+    "utility_label": list(UTIL_NAMES.values()),
+})
+
+_util_summary = (
+    natgas_meta
+    .group_by("sb.electric_utility")
+    .agg(
+        pl.len().alias("n_bldgs"),
+        pl.col("weight").sum().alias("n_weighted"),
+        (
+            (pl.col("diff_energy_total") * pl.col("weight")).sum()
+            / pl.col("weight").sum()
+        ).alias("mean_delta_wtd"),
+        (
+            pl.when(pl.col("diff_energy_total") < 0)
+            .then(pl.col("weight"))
+            .otherwise(0)
+            .sum()
+            / pl.col("weight").sum()
+            * 100
+        ).alias("pct_saving_wtd"),
+    )
+    .rename({"sb.electric_utility": "utility"})
+    .join(_TOU_SPECS, on="utility", how="left")
+    .join(_util_labels, on="utility", how="left")
+    .sort("mean_delta_wtd")
+    .select([
+        "utility_label",
+        "n_bldgs",
+        "mean_delta_wtd",
+        "pct_saving_wtd",
+        "peak_hours_n",
+        "winter_peak_window",
+        "summer_peak_window",
+        "winter_ratio",
+        "summer_ratio",
+    ])
+)
+
+(
+    GT(_util_summary)
+    .tab_header(
+        title="TOU vs. Seasonal — utility-level summary with rate design context",
+        subtitle="Natgas buildings; weighted statistics; TOU specs from HP-only window sweep (March 2026)",
+    )
+    .cols_label(
+        utility_label="Utility",
+        n_bldgs="# Bldgs",
+        mean_delta_wtd="Wtd mean Δ ($/yr)",
+        pct_saving_wtd="% saving (wtd)",
+        peak_hours_n="N peak hrs",
+        winter_peak_window="Winter window",
+        summer_peak_window="Summer window",
+        winter_ratio="Winter ratio",
+        summer_ratio="Summer ratio",
+    )
+    .fmt_number(columns=["mean_delta_wtd"], decimals=2)
+    .fmt_number(columns=["pct_saving_wtd", "winter_ratio", "summer_ratio"], decimals=2)
+    .fmt_integer(columns=["n_bldgs", "peak_hours_n"])
+)
+```
+
+### 7c — Segmented box plots
+
+For each of six building-characteristic dimensions, we produce a horizontal box plot of `diff_energy_total`
+(TOU − seasonal). Box statistics are **unweighted** (each sampled building has equal weight in the IQR
+calculation); weighted building counts are annotated at the right edge of each row. A red dashed zero-line
+separates buildings that save under TOU (negative delta) from those that pay more. Groups are sorted by
+weighted mean delta, so the TOU-friendliest segment appears at the top.
+
+```{python}
+#| label: boxplot-imports
+
+from plotnine import (
+    coord_flip,
+    geom_boxplot,
+    geom_hline,
+    geom_point,
+    geom_text,
+    scale_color_manual,
+)
+```
+
+We attach CAIRO sample weights (from `natgas_switch`, which carries them from `annual_current_state`) and
+derive a floor-area bin column. We use `drop("weight", strict=False)` first so the join is safe whether or
+not `natgas_meta` already has a `weight` column.
+
+```{python}
+#| label: enrich-natgas-meta
+
+SQFT_ORDER = ["<1,000 sq ft", "1,000–2,000 sq ft", "2,000–3,000 sq ft", ">3,000 sq ft"]
+
+natgas_meta_w = (
+    natgas_meta.drop("weight", strict=False)
+    .join(natgas_switch.select(BLDG_ID, "weight"), on=BLDG_ID, how="left")
+    .with_columns(
+        pl.when(pl.col("in.sqft") < 1000)
+        .then(pl.lit("<1,000 sq ft"))
+        .when(pl.col("in.sqft") < 2000)
+        .then(pl.lit("1,000–2,000 sq ft"))
+        .when(pl.col("in.sqft") < 3000)
+        .then(pl.lit("2,000–3,000 sq ft"))
+        .otherwise(pl.lit(">3,000 sq ft"))
+        .alias("sqft_bin")
+    )
+)
+
+n_w = natgas_meta_w.filter(pl.col("weight").is_not_null()).height
+print(f"natgas_meta_w: {natgas_meta_w.height:,} buildings, {n_w:,} with weights")
+```
+
+The helper function below is reused for all six dimensions. Groups are sorted by weighted mean delta by
+default; pass an explicit `order` list to override (e.g., for a natural size or time ordering).
+
+```{python}
+#| label: boxplot-helper
+
+
+def make_segment_boxplot(
+    df: pl.DataFrame,
+    group_col: str,
+    x_label: str,
+    title: str,
+    order: list[str] | None = None,
+    label_map: dict[str, str] | None = None,
+    fig_height: float | None = None,
+) -> ggplot:
+    """Horizontal box plot of diff_energy_total grouped by group_col.
+
+    Parameters
+    ----------
+    df:
+        DataFrame with columns ``group_col``, ``diff_energy_total``, and ``weight``.
+    group_col:
+        Column name to group by (original name in *df*).
+    x_label:
+        Axis label for the category dimension (y-axis label after coord_flip).
+    title:
+        Plot title.
+    order:
+        Category order (values in *df* before label mapping), bottom-to-top after
+        coord_flip.  When ``None`` groups are sorted ascending by weighted mean delta
+        (TOU-friendliest at top).
+    label_map:
+        Optional mapping from raw group values to display labels.
+    fig_height:
+        Figure height in inches; defaults to ``max(3.5, n_groups * 0.7 + 1.5)``.
+    """
+    plot_df = (
+        df.select([group_col, "diff_energy_total", "weight"])
+        .rename({group_col: "group"})
+        .drop_nulls(subset=["group", "diff_energy_total"])
+    )
+    if label_map:
+        plot_df = plot_df.with_columns(pl.col("group").replace(label_map))
+
+    # Determine display order
+    if order is None:
+        order_vals = (
+            plot_df.group_by("group")
+            .agg(
+                (
+                    (pl.col("diff_energy_total") * pl.col("weight")).sum()
+                    / pl.col("weight").sum()
+                ).alias("wtd_mean")
+            )
+            .sort("wtd_mean")
+            ["group"]
+            .to_list()
+        )
+    else:
+        order_vals = [label_map.get(o, o) for o in order] if label_map else list(order)
+
+    plot_df = plot_df.with_columns(pl.col("group").cast(pl.Enum(order_vals)))
+
+    # Weighted counts per group for annotations
+    wt_counts = (
+        plot_df.group_by("group")
+        .agg(pl.col("weight").sum().round(0).cast(pl.Int64).alias("wtd_n"))
+        .with_columns(
+            pl.col("wtd_n")
+            .map_elements(lambda n: f"n={n:,}", return_dtype=pl.String)
+            .alias("label"),
+            pl.col("group").cast(pl.Enum(order_vals)),
+        )
+    )
+
+    # Axis limits (1st–99th percentile of the raw distribution, with headroom for labels)
+    p01 = float(df["diff_energy_total"].drop_nulls().quantile(0.01))
+    p99 = float(df["diff_energy_total"].drop_nulls().quantile(0.99))
+    span = abs(p99 - p01)
+    y_hi = p99 + span * 0.22  # headroom for count labels
+    wt_counts = wt_counts.with_columns(pl.lit(y_hi * 0.97).alias("y_pos"))
+
+    n_groups = plot_df["group"].n_unique()
+    height = fig_height or max(3.5, n_groups * 0.7 + 1.5)
+
+    return (
+        ggplot(plot_df, aes(x="group", y="diff_energy_total"))
+        + geom_boxplot(
+            fill=SB_COLORS["sky"],
+            alpha=0.65,
+            outlier_size=0.4,
+            outlier_alpha=0.2,
+        )
+        + geom_hline(yintercept=0, linetype="dashed", color="#cc3333", size=0.8)
+        + geom_text(
+            wt_counts,
+            aes(x="group", y="y_pos", label="label"),
+            ha="right",
+            size=8,
+            color="#555555",
+        )
+        + coord_flip(ylim=(p01, y_hi))
+        + labs(title=title, x=x_label, y="TOU − Seasonal ($/yr)")
+        + theme_switchbox()
+        + theme(figure_size=(10.5, height))
+    )
+```
+
+#### Utility
+
+ConEd's 3-hour peak window with its 4.3× summer ratio produces the largest per-building TOU swings; CenHud
+and O&R's 5-hour windows with softer ratios should show a different profile.
+
+```{python}
+#| label: fig-boxplot-utility
+#| fig-cap: "TOU vs. seasonal annual bill delta by electric utility (natgas HP buildings, sorted by weighted mean delta)"
+
+make_segment_boxplot(
+    natgas_meta_w,
+    "sb.electric_utility",
+    x_label="Utility",
+    title="TOU vs. seasonal delta by utility",
+    label_map=UTIL_NAMES,
+)
+```
+
+#### Building type
+
+Multi-family buildings have less total heating/cooling load per unit, which may compress the TOU impact;
+large single-family detached homes have more.
+
+```{python}
+#| label: fig-boxplot-bldg-type
+#| fig-cap: "TOU vs. seasonal annual bill delta by building type (natgas HP buildings, sorted by weighted mean delta)"
+
+make_segment_boxplot(
+    natgas_meta_w,
+    "in.geometry_building_type_recs",
+    x_label="Building type",
+    title="TOU vs. seasonal delta by building type",
+)
+```
+
+#### Climate zone
+
+Zone 4A (NYC metro area) has more summer cooling load concentrated in the afternoon peak window; zones 5A
+and 6A (upstate) are more heating-dominated with less summer AC exposure.
+
+```{python}
+#| label: fig-boxplot-climate-zone
+#| fig-cap: "TOU vs. seasonal annual bill delta by ASHRAE climate zone (natgas HP buildings, sorted by weighted mean delta)"
+
+make_segment_boxplot(
+    natgas_meta_w,
+    "in.ashrae_iecc_climate_zone_2004",
+    x_label="ASHRAE climate zone",
+    title="TOU vs. seasonal delta by climate zone",
+    fig_height=4.5,
+)
+```
+
+#### Cooling presence
+
+Buildings with central AC or room AC run compressors heavily during summer afternoon peak hours (3–8 PM) —
+exactly the TOU peak window. Buildings with no cooling have only their HP heating load, which is mostly
+off-peak overnight.
+
+```{python}
+#| label: fig-boxplot-cooling
+#| fig-cap: "TOU vs. seasonal annual bill delta by cooling system presence (natgas HP buildings, sorted by weighted mean delta)"
+
+make_segment_boxplot(
+    natgas_meta_w,
+    COOLING_COL,
+    x_label="Cooling system",
+    title="TOU vs. seasonal delta by cooling presence",
+)
+```
+
+#### Floor area
+
+Larger homes have more total heating and cooling load, which amplifies the TOU impact in either direction.
+A <1,000 sq ft apartment and a >3,000 sq ft suburban home both face the same rate structure, but the larger
+home's bigger electricity bill means more dollars at stake when peak/off-peak pricing applies.
+
+```{python}
+#| label: fig-boxplot-sqft
+#| fig-cap: "TOU vs. seasonal annual bill delta by floor area bin (natgas HP buildings, ordered small to large)"
+
+make_segment_boxplot(
+    natgas_meta_w,
+    "sqft_bin",
+    x_label="Floor area",
+    title="TOU vs. seasonal delta by floor area",
+    order=SQFT_ORDER,
+    fig_height=4.5,
+)
+```
+
+#### Vintage
+
+Older buildings tend to have worse envelope insulation, leading to higher heating and cooling loads per
+square foot. More load means a larger absolute TOU impact (positive or negative); the direction depends on
+whether cooling or heating dominates.
+
+```{python}
+#| label: fig-boxplot-vintage
+#| fig-cap: "TOU vs. seasonal annual bill delta by building vintage (natgas HP buildings, sorted by weighted mean delta)"
+
+_vin_order = sorted(natgas_meta_w["in.vintage_acs"].drop_nulls().unique().to_list())
+
+make_segment_boxplot(
+    natgas_meta_w,
+    "in.vintage_acs",
+    x_label="Building vintage",
+    title="TOU vs. seasonal delta by vintage",
+    order=_vin_order,
+)
+```
+
+### 7d — Electricity consumption scatter
+
+Higher annual electricity use amplifies the absolute TOU impact — but whether TOU helps or hurts depends on
+*when* that electricity is consumed. Buildings in summer-cooling-heavy climate zone 4A (NYC metro) are
+expected to cluster in the upper half (positive delta: TOU is more expensive); heating-dominated zones 5A
+and 6A (upstate) should appear in the lower half (negative delta: TOU saves money). Within each zone, the
+horizontal spread reflects load volume: buildings with higher electric delivery bills have more kWh at stake.
+
+`elec_delivery_78` (electric delivery bill under the seasonal HP rate, run 7+8) is a proxy for total annual
+HP electricity consumption since delivery charges are volumetric.
+
+```{python}
+#| label: fig-scatter-elec-tou
+#| fig-cap: "Annual electric delivery bill (seasonal HP rate) vs. TOU–seasonal annual bill delta, colored by ASHRAE climate zone (natgas HP buildings)"
+
+_CZ_COLORS = {
+    "4A": SB_COLORS["carrot"],
+    "5A": SB_COLORS["sky"],
+    "6A": SB_COLORS["pistachio"],
+}
+
+_scatter_df = (
+    natgas_meta_w
+    .select(["elec_delivery_78", "diff_energy_total", "in.ashrae_iecc_climate_zone_2004"])
+    .drop_nulls()
+    .rename({"in.ashrae_iecc_climate_zone_2004": "climate_zone"})
+)
+
+_cz_vals = sorted(_scatter_df["climate_zone"].unique().to_list())
+_cz_color_vals = {cz: _CZ_COLORS.get(cz, SB_COLORS["midnight"]) for cz in _cz_vals}
+
+(
+    ggplot(_scatter_df, aes(x="elec_delivery_78", y="diff_energy_total", color="climate_zone"))
+    + geom_point(alpha=0.15, size=0.7)
+    + geom_hline(yintercept=0, linetype="dashed", color="#cc3333", size=0.8)
+    + scale_color_manual(values=_cz_color_vals)
+    + labs(
+        title="Electricity use vs. TOU–seasonal delta, by climate zone",
+        x="Annual electric delivery bill — seasonal HP rate ($/yr)",
+        y="TOU − Seasonal ($/yr)",
+        color="Climate zone",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 5.5))
+)
+```
+
+### 7e — Winners/losers summary table
+
+A single consolidated table spanning all six dimensions. For each segment we show the weighted-mean delta,
+weighted-median delta, the share of buildings that save under TOU, and the weighted customer count.
+Rows within each dimension are sorted by weighted-mean delta ascending so the most TOU-friendly segments
+appear first.
+
+```{python}
+#| label: winners-losers-helper
+
+
+def _segment_stats(
+    df: pl.DataFrame,
+    col: str,
+    dimension_label: str,
+    label_map: dict[str, str] | None = None,
+) -> pl.DataFrame:
+    """Compute weighted summary stats for diff_energy_total grouped by *col*.
+
+    Returns one row per unique non-null value in *col* with columns:
+    dimension, segment, wtd_mean, wtd_median, pct_saving, wtd_n.
+    """
+    s = (
+        df.select([col, "diff_energy_total", "weight"])
+        .drop_nulls(subset=[col, "diff_energy_total", "weight"])
+    )
+    if label_map:
+        s = s.with_columns(pl.col(col).replace(label_map))
+
+    rows: list[dict] = []
+    for grp_val in s[col].unique().to_list():
+        g = s.filter(pl.col(col) == grp_val)
+        total_w = float(g["weight"].sum())
+        wtd_mean = float((g["diff_energy_total"] * g["weight"]).sum() / total_w)
+        g_sorted = g.sort("diff_energy_total")
+        cum_w = g_sorted["weight"].cum_sum() / total_w
+        wtd_med = float(g_sorted.filter(cum_w >= 0.5)["diff_energy_total"][0])
+        pct_save = float(
+            g.filter(pl.col("diff_energy_total") < 0)["weight"].sum() / total_w * 100
+        )
+        rows.append({
+            "dimension": dimension_label,
+            "segment": str(grp_val),
+            "wtd_mean": round(wtd_mean, 2),
+            "wtd_median": round(wtd_med, 2),
+            "pct_saving": round(pct_save, 1),
+            "wtd_n": int(round(total_w)),
+        })
+    return pl.DataFrame(rows).sort("wtd_mean")
+```
+
+```{python}
+#| label: winners-losers-table
+
+_DIMS: list[tuple[str, str, dict[str, str] | None]] = [
+    ("sb.electric_utility",             "Utility",        UTIL_NAMES),
+    ("in.geometry_building_type_recs",  "Building type",  None),
+    ("in.ashrae_iecc_climate_zone_2004","Climate zone",   None),
+    (COOLING_COL,                       "Cooling",        None),
+    ("sqft_bin",                        "Floor area",     None),
+    ("in.vintage_acs",                  "Vintage",        None),
+]
+
+_all_stats = pl.concat([
+    _segment_stats(natgas_meta_w, col, dim, lmap)
+    for col, dim, lmap in _DIMS
+])
+
+# Sort: by dimension (preserving _DIMS order), then by wtd_mean ascending within each.
+_dim_order = [d for _, d, _ in _DIMS]
+_all_stats = (
+    _all_stats
+    .with_columns(
+        pl.col("dimension")
+        .cast(pl.Enum(_dim_order))
+        .alias("_dim_sort")
+    )
+    .sort(["_dim_sort", "wtd_mean"])
+    .drop("_dim_sort")
+)
+
+(
+    GT(_all_stats)
+    .tab_header(
+        title="Who saves under TOU vs. seasonal? Winners and losers by building characteristic",
+        subtitle=(
+            "Natgas HP buildings; weighted statistics. "
+            "Positive Δ = TOU more expensive than seasonal. "
+            "Sorted by weighted mean delta within each dimension (most TOU-friendly first)."
+        ),
+    )
+    .cols_label(
+        dimension="Dimension",
+        segment="Segment",
+        wtd_mean="Wtd mean Δ ($/yr)",
+        wtd_median="Wtd median Δ ($/yr)",
+        pct_saving="% saving (wtd)",
+        wtd_n="Wtd customers",
+    )
+    .fmt_number(columns=["wtd_mean", "wtd_median"], decimals=2)
+    .fmt_number(columns=["pct_saving"], decimals=1)
+    .fmt_integer(columns=["wtd_n"])
+    .tab_source_note(
+        "Δ = TOU (run 11+12) minus seasonal (run 7+8) annual energy bill. "
+        "% saving = share of buildings (by weight) where TOU is cheaper."
+    )
+)
+```
+
+## Step 8: In-sample HP household analysis (upgrade 0)
+
+All preceding steps compared runs 7+8 (seasonal, upgrade 2) and 11+12 (TOU, upgrade 2), which are
+**out-of-sample**: the loads come from buildings that have already converted to heat pumps. The TOU rate
+windows and peak/off-peak ratios, however, were **fit** to the **in-sample** population: HP customers in
+upgrade 0 (current HVAC, but with existing HPs in the baseline stock). That fitting happened in:
+
+- **Run 5+6** — HP seasonal rate, upgrade 0 precalc
+- **Run 9+10** — HP TOU rate, upgrade 0 precalc
+
+This section verifies that TOU is indeed better than seasonal for those in-sample HP households in all
+utilities, and characterizes who those households are.
+
+### 8a — Load in-sample bill data
+
+```{python}
+#| label: ingest-insample
+
+bills_default_u0 = pl.scan_parquet(PATH_MASTER_BILLS_12, hive_partitioning=True)
+bills_seasonal_u0 = pl.scan_parquet(PATH_MASTER_BILLS_56, hive_partitioning=True)
+bills_tou_u0 = pl.scan_parquet(PATH_MASTER_BILLS_910, hive_partitioning=True)
+
+for label, path in [
+    ("run 1+2 (default, u0)",  PATH_MASTER_BILLS_12),
+    ("run 5+6 (seasonal, u0)", PATH_MASTER_BILLS_56),
+    ("run 9+10 (TOU, u0)",     PATH_MASTER_BILLS_910),
+]:
+    lf = pl.scan_parquet(path, hive_partitioning=True)
+    n = lf.filter(pl.col("month") == ANNUAL_MONTH).select(pl.len()).collect().item()
+    print(f"{label}: {n:,} annual rows")
+```
+
+### 8b — Filter to in-sample HP households
+
+The in-sample HP population is defined as buildings with `postprocess_group.has_hp == True` in upgrade 0.
+These are buildings that already had heat pumps in the ResStock baseline (before any retrofit). CAIRO fit
+the TOU windows and peak/off-peak ratios to minimize cross-subsidization for exactly this group.
+
+```{python}
+#| label: filter-insample-hp
+
+# Metadata carries has_hp, weight, and ResStock building characteristics.
+_META_INSAMPLE_COLS = [
+    BLDG_ID,
+    "weight",
+    "postprocess_group.has_hp",
+    HEATING_TYPE_COL,
+    "in.sqft",
+    "in.geometry_building_type_recs",
+    "in.ashrae_iecc_climate_zone_2004",
+    "in.vintage_acs",
+    COOLING_COL,
+    "sb.electric_utility",
+]
+metadata_insample = pl.read_parquet(PATH_METADATA_SB, columns=_META_INSAMPLE_COLS)
+
+hp_bldg_ids = (
+    metadata_insample
+    .filter(pl.col("postprocess_group.has_hp"))
+    [BLDG_ID]
+    .to_list()
+)
+print(f"In-sample HP buildings (upgrade 0): {len(hp_bldg_ids):,}")
+print(
+    f"Weighted HP customer count: "
+    f"{metadata_insample.filter(pl.col('postprocess_group.has_hp'))['weight'].sum():,.0f}"
+)
+
+# Annual bills for the three runs, filtered to HP buildings only.
+def _annual_hp(lf: pl.LazyFrame, bill_alias: str) -> pl.DataFrame:
+    return (
+        lf
+        .filter(
+            (pl.col("month") == ANNUAL_MONTH) &
+            (pl.col(BLDG_ID).is_in(hp_bldg_ids))
+        )
+        .select(BLDG_ID, "sb.electric_utility", pl.col("energy_total_bill").alias(bill_alias))
+        .collect()
+    )
+
+
+annual_default_hp  = _annual_hp(bills_default_u0,  "bill_default")
+annual_seasonal_hp = _annual_hp(bills_seasonal_u0, "bill_seasonal")
+annual_tou_hp      = _annual_hp(bills_tou_u0,      "bill_tou")
+
+print(f"\nAnnual HP rows — default:  {annual_default_hp.height:,}")
+print(f"Annual HP rows — seasonal: {annual_seasonal_hp.height:,}")
+print(f"Annual HP rows — TOU:      {annual_tou_hp.height:,}")
+```
+
+### 8c — Compute bill deltas
+
+```{python}
+#| label: compute-insample-deltas
+
+# Join all three scenarios on bldg_id, compute three delta measures.
+insample_joined = (
+    annual_default_hp
+    .join(annual_seasonal_hp.drop("sb.electric_utility"), on=BLDG_ID, how="inner")
+    .join(annual_tou_hp.drop("sb.electric_utility"),      on=BLDG_ID, how="inner")
+    .join(
+        metadata_insample.select([BLDG_ID, "weight", "postprocess_group.has_hp",
+                                  HEATING_TYPE_COL, "in.sqft",
+                                  "in.geometry_building_type_recs",
+                                  "in.ashrae_iecc_climate_zone_2004",
+                                  "in.vintage_acs", COOLING_COL]),
+        on=BLDG_ID, how="left",
+    )
+    .with_columns(
+        (pl.col("bill_seasonal") - pl.col("bill_default")).alias("delta_seasonal_vs_default"),
+        (pl.col("bill_tou")      - pl.col("bill_default")).alias("delta_tou_vs_default"),
+        (pl.col("bill_tou")      - pl.col("bill_seasonal")).alias("delta_tou_vs_seasonal"),
+    )
+)
+
+print(f"Joined in-sample HP buildings: {insample_joined.height:,}")
+print("\nDelta summary (TOU − seasonal, in-sample HP households):")
+s = insample_joined["delta_tou_vs_seasonal"]
+print(
+    f"  mean={s.mean():+.2f}  median={s.median():+.2f}  "
+    f"min={s.min():+.2f}  max={s.max():+.2f}"
+)
+```
+
+### 8d — Verify TOU outperforms seasonal in all utilities
+
+TOU was fit to minimize cross-subsidization for in-sample HP households. We expect TOU to be cheaper
+than seasonal for the majority of this group in every utility. The table below shows the weighted-mean
+delta (TOU − seasonal), weighted-median delta, and the share of HP households that save under TOU vs.
+seasonal, by utility. A negative mean delta and >50% saving confirm TOU performs better in-sample.
+
+```{python}
+#| label: verify-tou-better-insample
+
+_util_verify = (
+    insample_joined
+    .group_by("sb.electric_utility")
+    .agg(
+        pl.col("weight").sum().alias("wtd_customers"),
+        pl.len().alias("n_bldgs"),
+        (
+            (pl.col("delta_tou_vs_seasonal") * pl.col("weight")).sum()
+            / pl.col("weight").sum()
+        ).alias("wtd_mean_tou_vs_seasonal"),
+        (
+            pl.when(pl.col("delta_tou_vs_seasonal") < 0)
+            .then(pl.col("weight"))
+            .otherwise(0)
+            .sum()
+            / pl.col("weight").sum()
+            * 100
+        ).alias("pct_saving_wtd"),
+        (
+            (pl.col("delta_seasonal_vs_default") * pl.col("weight")).sum()
+            / pl.col("weight").sum()
+        ).alias("wtd_mean_seasonal_vs_default"),
+        (
+            (pl.col("delta_tou_vs_default") * pl.col("weight")).sum()
+            / pl.col("weight").sum()
+        ).alias("wtd_mean_tou_vs_default"),
+    )
+    .rename({"sb.electric_utility": "utility"})
+    .join(
+        pl.DataFrame({
+            "utility": list(UTIL_NAMES.keys()),
+            "utility_label": list(UTIL_NAMES.values()),
+        }),
+        on="utility", how="left",
+    )
+    .sort("wtd_mean_tou_vs_seasonal")
+    .select([
+        "utility_label", "n_bldgs", "wtd_customers",
+        "wtd_mean_seasonal_vs_default",
+        "wtd_mean_tou_vs_default",
+        "wtd_mean_tou_vs_seasonal",
+        "pct_saving_wtd",
+    ])
+)
+
+# Sanity check: print which utilities have positive mean delta (TOU worse than seasonal)
+_bad = _util_verify.filter(pl.col("wtd_mean_tou_vs_seasonal") > 0)
+if _bad.height > 0:
+    print(f"WARNING: {_bad.height} utilities where TOU is worse than seasonal on average:")
+    print(_bad.select(["utility_label", "wtd_mean_tou_vs_seasonal"]))
+else:
+    print("✓ TOU outperforms seasonal (negative weighted mean delta) in all utilities.")
+
+_bad_pct = _util_verify.filter(pl.col("pct_saving_wtd") < 50)
+if _bad_pct.height > 0:
+    print(f"WARNING: {_bad_pct.height} utilities where <50% of HP households save under TOU:")
+    print(_bad_pct.select(["utility_label", "pct_saving_wtd"]))
+else:
+    print("✓ Majority of HP households save under TOU vs. seasonal in all utilities.")
+
+(
+    GT(_util_verify)
+    .tab_header(
+        title="TOU vs. Seasonal — in-sample HP households (upgrade 0)",
+        subtitle=(
+            "Runs 5+6 (seasonal) and 9+10 (TOU) vs. run 1+2 (default). "
+            "Negative Δ = TOU cheaper than seasonal. Weighted statistics."
+        ),
+    )
+    .cols_label(
+        utility_label="Utility",
+        n_bldgs="# Bldgs",
+        wtd_customers="Wtd customers",
+        wtd_mean_seasonal_vs_default="Seasonal − Default ($/yr)",
+        wtd_mean_tou_vs_default="TOU − Default ($/yr)",
+        wtd_mean_tou_vs_seasonal="TOU − Seasonal ($/yr)",
+        pct_saving_wtd="% saving TOU vs seasonal (wtd)",
+    )
+    .fmt_number(
+        columns=["wtd_mean_seasonal_vs_default", "wtd_mean_tou_vs_default", "wtd_mean_tou_vs_seasonal"],
+        decimals=2,
+    )
+    .fmt_number(columns=["pct_saving_wtd"], decimals=1)
+    .fmt_integer(columns=["n_bldgs", "wtd_customers"])
+    .tab_source_note(
+        "In-sample HP households = buildings with postprocess_group.has_hp == True in upgrade 0. "
+        "TOU − Seasonal < 0 means TOU is cheaper."
+    )
+)
+```
+
+### 8e — Delta distribution: TOU vs. seasonal (in-sample HP)
+
+```{python}
+#| label: fig-insample-delta-hist
+#| fig-cap: "Distribution of annual bill delta (TOU − seasonal) for in-sample HP households (upgrade 0), weighted"
+
+_BIN_W = 50  # smaller bins since in-sample deltas are tighter than out-of-sample
+
+_bins_insample = (
+    insample_joined.select("delta_tou_vs_seasonal", "weight")
+    .with_columns(
+        ((pl.col("delta_tou_vs_seasonal") / _BIN_W).floor() * _BIN_W + _BIN_W / 2).alias("bin_center"),
+    )
+    .group_by("bin_center")
+    .agg(pl.col("weight").sum().alias("weight_sum"))
+    .sort("bin_center")
+)
+
+_p01 = float(insample_joined["delta_tou_vs_seasonal"].quantile(0.01))
+_p99 = float(insample_joined["delta_tou_vs_seasonal"].quantile(0.99))
+
+(
+    ggplot(_bins_insample, aes(x="bin_center", y="weight_sum"))
+    + geom_col(width=_BIN_W * 0.85, fill=SB_COLORS["sky"], color="white", alpha=0.8)
+    + geom_vline(xintercept=0, color="red", linetype="dashed", size=1)
+    + coord_cartesian(xlim=(_p01, _p99))
+    + labs(
+        title="TOU − seasonal bill delta: in-sample HP households (upgrade 0)",
+        x="Annual bill change: TOU vs. seasonal ($/yr)",
+        y="Weighted # of Homes",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4.5))
+)
+```
+
+### 8f — Metadata characteristics of in-sample HP households
+
+Who are the HP households in upgrade 0? These are the buildings whose loads the TOU windows were
+optimized for. Understanding their characteristics clarifies which types of buildings the rate
+was designed to serve.
+
+```{python}
+#| label: insample-metadata-setup
+
+insample_hp_meta = metadata_insample.filter(pl.col("postprocess_group.has_hp")).with_columns(
+    pl.when(pl.col("in.sqft") < 1000)
+    .then(pl.lit("<1,000 sq ft"))
+    .when(pl.col("in.sqft") < 2000)
+    .then(pl.lit("1,000–2,000 sq ft"))
+    .when(pl.col("in.sqft") < 3000)
+    .then(pl.lit("2,000–3,000 sq ft"))
+    .otherwise(pl.lit(">3,000 sq ft"))
+    .alias("sqft_bin")
+)
+
+total_hp_weight = insample_hp_meta["weight"].sum()
+print(f"In-sample HP buildings: {insample_hp_meta.height:,}")
+print(f"Weighted HP customers:  {total_hp_weight:,.0f}")
+```
+
+The table below summarizes in-sample HP households across six dimensions, with weighted customer
+counts and shares.
+
+```{python}
+#| label: insample-metadata-table
+
+_META_DIMS: list[tuple[str, str, dict[str, str] | None]] = [
+    ("sb.electric_utility",             "Utility",        UTIL_NAMES),
+    ("in.geometry_building_type_recs",  "Building type",  None),
+    ("in.ashrae_iecc_climate_zone_2004","Climate zone",   None),
+    (COOLING_COL,                       "Cooling",        None),
+    ("sqft_bin",                        "Floor area",     None),
+    ("in.vintage_acs",                  "Vintage",        None),
+]
+
+_meta_rows: list[dict] = []
+for col, dimension, label_map in _META_DIMS:
+    for val in insample_hp_meta[col].drop_nulls().unique().to_list():
+        grp = insample_hp_meta.filter(pl.col(col) == val)
+        wtd_n = float(grp["weight"].sum())
+        display_val = label_map.get(val, val) if label_map else val
+        _meta_rows.append({
+            "dimension": dimension,
+            "segment": str(display_val),
+            "n_bldgs": grp.height,
+            "wtd_customers": int(round(wtd_n)),
+            "pct_of_hp_customers": round(wtd_n / total_hp_weight * 100, 1),
+        })
+
+_meta_summary = (
+    pl.DataFrame(_meta_rows)
+    .with_columns(
+        pl.col("dimension").cast(pl.Enum([d for _, d, _ in _META_DIMS])).alias("_dim_sort"),
+    )
+    .sort(["_dim_sort", "pct_of_hp_customers"], descending=[False, True])
+    .drop("_dim_sort")
+)
+
+(
+    GT(_meta_summary)
+    .tab_header(
+        title="In-sample HP household characteristics (upgrade 0)",
+        subtitle=(
+            "Buildings with postprocess_group.has_hp == True in upgrade 0. "
+            "These are the households the TOU rate windows were fit to."
+        ),
+    )
+    .cols_label(
+        dimension="Dimension",
+        segment="Segment",
+        n_bldgs="# Bldgs (unweighted)",
+        wtd_customers="Wtd customers",
+        pct_of_hp_customers="% of HP customers",
+    )
+    .fmt_integer(columns=["n_bldgs", "wtd_customers"])
+    .fmt_number(columns=["pct_of_hp_customers"], decimals=1)
+    .tab_source_note(
+        "% of HP customers = weighted share within the in-sample HP population. "
+        "Weights rescaled to EIA residential customer count before HP filtering."
+    )
+)
+```

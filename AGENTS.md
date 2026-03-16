@@ -14,22 +14,35 @@ The companion repo [rate-design-platform](https://github.com/switchbox-data/rate
 
 ## Layout
 
-| Path                           | Purpose                                                                                                                  |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `reports/`                     | Source code for all report projects. Each subdirectory is a self-contained Quarto Manuscript project.                    |
-| `reports/.style/`              | Shared SCSS theme (`switchbox.scss`), HTML includes (`switchbox.html`), and brand fonts (`fonts/`) used by all reports.  |
-| `reports/references.bib`       | Shared BibTeX bibliography used by all reports.                                                                          |
-| `lib/`                         | Shared R and Python libraries used across reports. Python side is an installable package (see "Shared libraries" below). |
-| `lib/ggplot/switchbox_theme.R` | Custom ggplot2 theme (IBM Plex Sans, white background, Switchbox colors). Source this in every R analysis notebook.      |
-| `lib/plotnine/`                | Custom plotnine theme (`theme_switchbox`) and `SB_COLORS` dict. Import in every Python analysis notebook.                |
-| `lib/rates_analysis/`          | Shared R functions for heat pump rate analysis (bill calculation, tariff assignment, plotting).                          |
-| `lib/eia/`                     | Python scripts for fetching EIA data (fuel prices, state profiles).                                                      |
-| `docs/`                        | Published HTML reports served via GitHub Pages at `switchbox-data.github.io/reports2`.                                   |
-| `tests/`                       | Pytest test suite.                                                                                                       |
-| `.devcontainer/`               | Dev container configuration (Dockerfile, devcontainer.json).                                                             |
-| `Justfile`                     | Root task runner: `install`, `check`, `test`, `new_report`, `aws`, `clean`.                                              |
-| `pyproject.toml`               | Python dependencies (managed by uv).                                                                                     |
-| `DESCRIPTION`                  | R dependencies (managed by pak).                                                                                         |
+| Path                           | Purpose                                                                                                                        |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `reports/`                     | Source code for all report projects. Each subdirectory is a self-contained Quarto Manuscript project.                          |
+| `reports/.style/`              | Shared SCSS theme (`switchbox.scss`), HTML includes (`switchbox.html`), and brand fonts (`fonts/`) used by all reports.        |
+| `reports/references.bib`       | Shared BibTeX bibliography used by all reports.                                                                                |
+| `lib/`                         | Shared R and Python libraries used across reports. Python side is an installable package (see "Shared libraries" below).       |
+| `lib/ggplot/switchbox_theme.R` | Custom ggplot2 theme (IBM Plex Sans, white background, Switchbox colors). Source this in every R analysis notebook.            |
+| `lib/plotnine/`                | Custom plotnine theme (`theme_switchbox`) and `SB_COLORS` dict. Import in every Python analysis notebook.                      |
+| `lib/rates_analysis/`          | Shared R functions for heat pump rate analysis (bill calculation, tariff assignment, plotting).                                |
+| `lib/eia/`                     | Python scripts for fetching EIA data (fuel prices, state profiles).                                                            |
+| `context/`                     | Reference docs and working notes for agents; see **Reference context** below and **`context/README.md`** for what lives where. |
+| `docs/`                        | Published HTML reports served via GitHub Pages at `switchbox-data.github.io/reports2`.                                         |
+| `tests/`                       | Pytest test suite.                                                                                                             |
+| `.devcontainer/`               | Dev container configuration (Dockerfile, devcontainer.json).                                                                   |
+| `Justfile`                     | Root task runner: `install`, `check`, `test`, `new_report`, `aws`, `clean`.                                                    |
+| `pyproject.toml`               | Python dependencies (managed by uv).                                                                                           |
+| `DESCRIPTION`                  | R dependencies (managed by pak).                                                                                               |
+
+## Reference context
+
+Working knowledge lives in `context/` so agents can use it without hunting through the repo or re-discovering known bugs. Treat these paths as first-class context.
+
+**Conventions:**
+
+- **`context/tools/`** — Quarto/plotting/tooling knowledge and known bugs: rendering pipelines, sizing mechanics, Quarto Manuscript embed workarounds, report-specific design decisions. Documents that answer "how does this tool work, and what are its pitfalls?"
+
+**When working on Quarto rendering, figure embedding, plotnine sizing, or report-specific design choices, read the relevant file(s) in `context/`.** In particular, read `context/tools/quarto_manuscript_embed_bug.md` before using `{{< embed >}}` with non-plotnine outputs (GT tables, matplotlib figures) — the workarounds are mandatory.
+
+For the current list of files and when to use each, see **`context/README.md`**.
 
 ## Report architecture
 
@@ -57,17 +70,48 @@ reports/<project_code>/
 ```mermaid
 flowchart LR
     S3["S3 data\n(parquet)"] --> Analysis["analysis.qmd\n(R/Python)"]
-    Analysis -->|"save(vars, file='cache/report_variables.RData')"| RData["cache/\nreport_variables.RData"]
+    Analysis -->|"save / pickle"| Cache["cache/\nreport_variables"]
     Analysis -->|"#| label: fig-xxx"| Figures["Labeled figures"]
-    RData -->|"load('cache/report_variables.RData')"| Index["index.qmd\n(narrative)"]
+    Cache -->|"load / SimpleNamespace"| Index["index.qmd\n(narrative)"]
     Figures -->|"{{< embed notebooks/analysis.qmd#fig-xxx >}}"| Index
     Index --> HTML["Rendered report"]
 ```
 
-1. `analysis.qmd` loads data from S3, computes, and `save()`s variables to a `.RData` file in `cache/`.
+1. `analysis.qmd` loads data from S3, computes statistics, and exports report variables to `cache/`.
 2. `analysis.qmd` creates labeled figures using chunk options like `#| label: fig-energy-savings`.
-3. `index.qmd` loads variables via `load(file = "cache/report_variables.RData")` and uses them inline: `` `r total_savings |> scales::dollar()` ``.
+3. `index.qmd` loads report variables and uses them inline (never hardcoded).
 4. `index.qmd` embeds figures from the analysis notebook: `{{< embed notebooks/analysis.qmd#fig-energy-savings >}}`.
+
+**R reports** export via `save()`/`save.image()` to `cache/report_variables.RData`; `index.qmd` loads with `load()` and uses inline R: `` `r total_savings |> scales::dollar()` ``.
+
+**Python reports** accumulate stats into a `report_vars: dict` and pickle it to `cache/report_variables.pkl`; `index.qmd` loads it as a `SimpleNamespace` and uses inline Python:
+
+```python
+# analysis.qmd — top of notebook
+report_vars: dict = {}
+
+# analysis.qmd — wherever a stat is computed
+report_vars["pct_natgas_save_default"] = save_w / total_w
+
+# analysis.qmd — final cell
+import pickle
+Path("../cache/report_variables.pkl").write_bytes(pickle.dumps(report_vars))
+```
+
+```python
+# index.qmd — setup cell
+import pickle
+from types import SimpleNamespace
+v = SimpleNamespace(**pickle.loads(Path("cache/report_variables.pkl").read_bytes()))
+
+def dollar(x, accuracy=0):
+    return f"${x:,.{accuracy}f}"
+
+def pct(x, accuracy=0):
+    return f"{x * 100:,.{accuracy}f}%"
+```
+
+Inline usage in `index.qmd`: `` `{python} dollar(v.some_stat)` `` or `` `{python} pct(v.some_pct)` ``.
 
 Never put raw data loading or heavy computation in `index.qmd`. Never put narrative prose in `analysis.qmd`.
 
@@ -664,12 +708,24 @@ This progressive shortening respects the reader's time. They learned the pattern
 
 ### The report variables section
 
-Every analysis notebook ends with a clearly labeled section that computes summary metrics for `index.qmd`. This section should:
+Report variables are statistics used in `index.qmd` prose (inline computed values, not hardcoded numbers). Two principles govern how they are managed:
 
-1. Be explicitly labeled (e.g., `# Report variables`).
-2. Include a prose note explaining its purpose: "Each variable calculated here corresponds to a metric in the report. You can see where they are used by searching for the variable name in Index.qmd."
-3. Compute formatted values using `scales::dollar()`, `scales::percent()`, etc.
-4. Export everything via `save.image(file = "cache/report_variables.RData")` or a targeted `save()`.
+**Capture stats close to where they are produced.** Do not defer all `report_vars["..."] = ...` assignments to a single block at the end of the notebook. Instead, assign each stat immediately after the code that computes it — in the same cell or the next cell. This keeps the variable definition next to its derivation, making it easy to audit and update. If a stat depends on a filtered DataFrame or an intermediate result, capture it right there rather than re-deriving it later.
+
+**Export once at the end.** The final cell of the notebook serializes the accumulated variables to `cache/`. This is the only cell that writes to disk — the assignments throughout the notebook just populate the in-memory dict (Python) or environment (R).
+
+For **R reports**:
+
+1. Assign variables to the R environment throughout the notebook: `total_savings <- ...`
+2. End with `save.image(file = "cache/report_variables.RData")` or a targeted `save()`.
+3. In `index.qmd`, load with `load()` and use inline R: `` `r total_savings |> scales::dollar()` ``.
+
+For **Python reports**:
+
+1. Initialize `report_vars: dict = {}` at the top of the notebook.
+2. Assign throughout: `report_vars["total_savings"] = ...` right after the computation.
+3. End with `pickle.dumps(report_vars)` written to `cache/report_variables.pkl`.
+4. In `index.qmd`, load as `SimpleNamespace` and use inline Python: `` `{python} dollar(v.total_savings)` ``.
 
 ### Figure cells
 
@@ -701,7 +757,7 @@ Group figures by the story they tell, not by chart type. Use markdown headers an
 
 - `reports/.style/switchbox.scss`: Custom Quarto theme. Switchbox brand colors: sky (`#68bed8`), carrot (`#fc9706`), midnight (`#023047`), saffron (`#ffc729`), pistachio (`#a0af12`). Fonts: Farnham (body text), GT Planar (headings), IBM Plex Sans (tables/charts), SF Mono (code). Do not override these in individual reports.
 - `reports/.style/switchbox.html`: Shared HTML include for figure caption formatting.
-- `reports/.style/fonts/`: IBM Plex Sans OTF files (Regular + Bold) used by both the R (`lib/ggplot/switchbox_theme.R`) and Python (`lib/plotnine/`) chart themes. These are committed to the repo so chart rendering doesn't require network access.
+- `reports/.style/fonts/`: Brand font OTF files (IBM Plex Sans, GT Planar, Farnham Text) used by both the R (`lib/ggplot/switchbox_theme.R`) and Python (`lib/plotnine/`) chart themes. Committed to the repo so chart rendering doesn't require network access.
 
 ### ggplot2 theme (R)
 
@@ -721,16 +777,28 @@ Import `theme_switchbox` from `lib.plotnine` at the top of every Python-based an
 from lib.plotnine import theme_switchbox, SB_COLORS
 ```
 
-Apply it to every plot with `+ theme_switchbox()`. This is a `theme_minimal` subclass that mirrors the R theme: IBM Plex Sans at 12pt, white panel background, visible axis lines/ticks. Per-plot overrides layer on top with `+ theme(...)`:
+Importing `theme_switchbox` automatically configures matplotlib for SVG text-as-text output (`svg.fonttype = "none"`) and registers brand fonts. No per-notebook `rcParams` setup is needed.
+
+Apply `+ theme_switchbox()` to every plot. The theme implements a **three-tier text hierarchy** — do not override font sizes, families, or colors with ad-hoc `+ theme(element_text(size=...))`. The only per-plot `+ theme(...)` you should set is `figure_size`:
 
 ```python
 (
     ggplot(df, aes("x", "y"))
     + geom_col(fill=SB_COLORS["sky"])
     + theme_switchbox()
-    + theme(figure_size=(14, 6))
+    + theme(figure_size=(10.5, 4.5))
 )
 ```
+
+**Chart typography guide** (baked into `theme_switchbox`):
+
+| Tier               | Elements                                        | Font           | Size | Color   |
+| ------------------ | ----------------------------------------------- | -------------- | ---- | ------- |
+| 1 — Title          | `plot_title`                                    | GT Planar Bold | 15pt | black   |
+| 2 — Labeling       | subtitle, axis titles, strip text, legend title | GT Planar      | 13pt | #333333 |
+| 3 — Data reference | axis tick labels, legend text                   | IBM Plex Sans  | 11pt | #4D4D4D |
+
+For data-layer text (`geom_text`, `annotate("text")`), use 11pt IBM Plex Sans to match the data-reference tier. In-bar labels: 11pt white bold. Side annotations: 11pt bold. Totals above bars: 11pt #333333 bold.
 
 ### Switchbox color palette for charts
 
@@ -760,15 +828,15 @@ R libraries under `lib/` are sourced the traditional way (e.g. `source("lib/ggpl
 
 #### Python modules
 
-| Module                             | When to use                                                                                                                            |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `lib.rdp`                          | Fetching files from the `rate-design-platform` GitHub repo (tariff maps, configs). Also has `parse_urdb_json` for URDB tariff JSON.    |
-| `lib.cairo`                        | CAIRO post-processing: `add_delivered_fuel_bills` tops up combined bills with oil/propane costs from monthly consumption x EIA prices. |
-| `lib.data.s3`                      | S3 directory listing (`list_s3_subdirs`) and run directory resolution (`run_dir`) for navigating CAIRO output paths.                   |
-| `lib.data.eia.heating_fuel_prices` | Load monthly residential oil + propane prices from EIA data on S3 (`load_monthly_fuel_prices`).                                        |
-| `lib.data.nrel.resstock`           | Load ResStock load curves for a specific utility (`scan_load_curves_for_utility`), reading metadata to construct per-building paths.   |
-| `lib.eia`                          | Standalone EIA fetch scripts (petroleum prices, state heating profiles). Use `lib.data.eia` for the cleaner S3-based API.              |
-| `lib.plotnine`                     | Switchbox plotnine theme (`theme_switchbox`) and brand color palette (`SB_COLORS`). Use in every Python analysis notebook.             |
+| Module                             | When to use                                                                                                                                                         |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib.rdp`                          | Fetching files from the `rate-design-platform` GitHub repo (tariff maps, configs). Also has `parse_urdb_json` for URDB tariff JSON.                                 |
+| `lib.cairo`                        | CAIRO post-processing: `add_delivered_fuel_bills` tops up combined bills with oil/propane costs from monthly consumption x EIA prices.                              |
+| `lib.data.s3`                      | S3 directory listing (`list_s3_subdirs`) and run directory resolution (`run_dir`) for navigating CAIRO output paths.                                                |
+| `lib.data.eia.heating_fuel_prices` | Load monthly residential oil + propane prices from EIA data on S3 (`load_monthly_fuel_prices`).                                                                     |
+| `lib.data.nrel.resstock`           | Load ResStock load curves for a specific utility (`scan_load_curves_for_utility`), reading metadata to construct per-building paths.                                |
+| `lib.eia`                          | Standalone EIA fetch scripts (petroleum prices, state heating profiles). Use `lib.data.eia` for the cleaner S3-based API.                                           |
+| `lib.plotnine`                     | Switchbox plotnine theme (`theme_switchbox`) with three-tier typography, brand colors (`SB_COLORS`), and auto SVG config. Import in every Python analysis notebook. |
 
 #### R libraries
 
@@ -855,7 +923,7 @@ Before considering any change done:
 
 - **`just check`**: Runs lock validation (`uv lock --locked`) and pre-commit hooks (ruff-check, ruff-format, ty-check, trailing whitespace, end-of-file newline, YAML/JSON/TOML validation, no large files >600KB, no merge conflict markers).
 - **`just test`**: Runs pytest suite. Add or extend tests for new or changed behavior.
-- **`just render`** (from report directory): Verifies the report renders without errors. This is the reproducibility check — unique to a reports repo. Run it after any change to a report.
+- **`just render`** (from report directory): Snapshots the current `docs/` as a baseline for diffing, runs `quarto render`, inlines SVGs (if the report uses them), and removes `.ipynb` / `.svg` artifacts. Run it after any change to a report.
 
 R formatting: Use the [air](https://github.com/posit-dev/air) formatter via the Posit.air-vscode editor extension (pre-installed in devcontainer). Not yet integrated with pre-commit hooks.
 
@@ -885,10 +953,12 @@ Naming convention: `state_topic` (e.g., `ny_aeba_grid`, `ri_hp_rates`). Reuse to
 From the report directory:
 
 ```bash
-just render    # HTML for web publishing
-just draft     # DOCX for content review
-just typeset   # ICML for InDesign
-just publish   # Copy rendered HTML to root docs/ for GitHub Pages
+just render           # Render HTML (snapshots baseline, inlines SVGs, cleans artifacts)
+just draft            # Render DOCX for content review
+just typeset          # Render ICML for InDesign
+just publish          # Copy rendered HTML to root docs/ for GitHub Pages
+just diff             # Diff current render against baseline
+just diff my-label    # Diff with a label (archived under .diff/diffs/)
 ```
 
 ### Publishing
@@ -988,6 +1058,8 @@ This applies even for "small" changes like adjusting a font size or moving a lab
 
 These are real mistakes that waste time. Memorize them or look them up every time.
 
+**`ggplot()` accepts Polars DataFrames directly**: Do not convert to pandas with `.to_pandas()` before passing data to `ggplot()` or `geom_*()`. plotnine handles Polars natively. For categorical ordering, use `pl.Enum` dtype instead of `pd.Categorical`.
+
 **`theme()` vs `theme_minimal()`**: `figure_size` belongs in `theme()`, not in `theme_minimal()`. `theme_minimal()` accepts no custom arguments beyond what its parent `theme` class defines. Always do:
 
 ```python
@@ -1035,6 +1107,8 @@ plot_title=element_text(margin=(0, 0, -10, 0))  # AttributeError
 )
 ```
 
+**`geom_col()` stacking order is reversed from factor level order**: In plotnine, `geom_col()` (stacked) draws the **first** factor/Enum level on **top** and the **last** level at the **bottom**. This is the opposite of what you might expect. If you want category A at the bottom and D at the top, define the Enum as `pl.Enum(["D", "C", "B", "A"])` — reversed from the desired bottom-to-top visual order. The same applies to `scale_fill_manual`: the color mapping is by name, so reversing the Enum order does not affect color assignments.
+
 ### ggplot2 (R) pitfalls
 
 R's ggplot2 is more familiar to LLMs but still has traps:
@@ -1042,6 +1116,54 @@ R's ggplot2 is more familiar to LLMs but still has traps:
 - **`coord_flip()` follows the same axis-swapping rules** as plotnine. The same confusion about x/y in annotations applies.
 - **Look up `theme()` element types.** `element_text()`, `element_blank()`, `element_rect()`, and `element_line()` each have specific parameters. Do not guess — check the docs.
 - **Always source `switchbox_theme.R`** (R) or use `+ theme_switchbox()` (Python) before plotting. Do not create custom themes.
+
+### SVG output pipeline
+
+Python reports render plotnine charts as **inline SVGs** with text-as-text (not paths). This gives sharp rendering at any zoom, enables CSS font styling, and keeps repo size small. The pipeline is:
+
+1. **`_quarto.yml`** sets `fig-format: svg` (no `fig-dpi` needed).
+2. **`theme_switchbox`** auto-sets `mpl.rcParams["svg.fonttype"] = "none"` on import, so matplotlib emits `<text>` elements.
+3. **`just render`** (via `lib/just/render.py`) calls `inline_svgs.py` after Quarto, which inlines SVGs into the HTML, sets fixed display widths, and removes standalone `.svg` files.
+
+No per-notebook configuration is needed beyond `from lib.plotnine import theme_switchbox`.
+
+### SVG sizing and font consistency
+
+Matplotlib lays out a figure in abstract inches (72 points per inch). The SVG's `viewBox` encodes these dimensions. The post-processing script sets the SVG's display width to the viewBox width, which maps **1 matplotlib point = 1 CSS pixel** at the designed size. `max-width: 100%` prevents overflow on narrow viewports; Quarto column classes provide room but don't stretch the chart.
+
+**The key formula:**
+
+```
+figure_width_inches = desired_display_width_px / 72
+```
+
+For example, `figure_size=(10.5, 4.5)` → 756px wide. A 13pt axis title renders at exactly 13px on screen.
+
+**`figure_size` is the only knob agents should use** for chart dimensions. It controls:
+
+1. **Display width** — `width_inches × 72` = pixels on screen
+2. **Aspect ratio** — width-to-height proportion
+3. **Visual density** — how much space labels and padding occupy relative to the chart area
+
+Do not set font sizes per-chart. The theme handles all typography (see the chart typography guide above). The only `+ theme(...)` override you need is `figure_size` (and occasionally `legend_position`).
+
+**Agent workflow for choosing `figure_size`:**
+
+1. Default to `figure_size=(10.5, 4.5)` — this is 756px wide and fits comfortably in `column-page-inset-right`
+2. Adjust height for the content (e.g., taller for multi-facet charts: `(10.5, 2.25 * n_facets)`)
+3. Only go wider than 10.5" if the chart truly needs it — wider charts may scale down in the container, shrinking fonts below their designed sizes
+4. Wrap every chart in `column-page-inset-right` in `index.qmd` unless there's a reason not to
+
+**Approximate Quarto column widths** (at ~1440px desktop viewport):
+
+| Column class               | Approx. width |
+| -------------------------- | ------------- |
+| `column-body`              | ~700px        |
+| `column-body-outset-right` | ~830px        |
+| `column-page-inset-right`  | ~900px        |
+| `column-page-inset`        | ~900px        |
+
+If the chart's designed width is narrower than the container, it centers automatically. If it's wider, `max-width: 100%` scales it down (fonts scale proportionally). A 10.5" chart (756px) renders at native size in `column-page-inset-right` (~900px) with room to spare.
 
 ### General plotting principles
 
@@ -1054,7 +1176,7 @@ R's ggplot2 is more familiar to LLMs but still has traps:
 
 1. **Never hardcode computed values in prose.** Always use inline R code (`` `r var |> scales::dollar()` ``).
 2. **Keep analysis in `notebooks/analysis.qmd`, narrative in `index.qmd`.** This separation is non-negotiable.
-3. **Source `switchbox_theme.R`** (R) or **use `theme_switchbox()`** (Python) in every analysis notebook. Use the Switchbox color palette.
+3. **Source `switchbox_theme.R`** (R) or **use `theme_switchbox()`** (Python) in every analysis notebook. Use the Switchbox color palette. **Do not override font sizes, families, or colors** with ad-hoc `element_text(size=...)` in `+ theme(...)` — the theme's three-tier typography handles all text styling. The only per-plot theme overrides should be `figure_size` and `legend_position`.
 4. **Add new citations** to `reports/references.bib` with `{author_short_title_year}` keys.
 5. **Use `{{< embed >}}`** for figures. Never copy-paste chart code into `index.qmd`.
 6. **Don't commit** `data/`, `cache/`, or report `docs/` directories.
@@ -1067,6 +1189,7 @@ R's ggplot2 is more familiar to LLMs but still has traps:
 13. **When adding or removing files under `reports/`**, verify `_quarto.yml` render lists are updated.
 14. **Respect data boundaries.** Don't assume large data is in git. Follow S3 paths documented in existing notebooks.
 15. **When adding or modifying modules under `lib/`**, update the "Shared libraries (`lib/`)" section in this file so the module tables stay accurate.
+16. **Update the context index**: When adding or removing files under `context/`, update `context/README.md` so the index stays accurate.
 
 ## Quarto reference
 
@@ -1112,8 +1235,9 @@ When a task involves creating, updating, or referencing issues, use the Linear M
 | `just new_report` | Root       | Create report from template           |
 | `just aws`        | Root       | Refresh AWS SSO credentials           |
 | `just clean`      | Root       | Remove generated files and caches     |
-| `just render`     | Report dir | Render HTML                           |
+| `just render`     | Report dir | Render HTML (snapshot + SVG inline)   |
 | `just draft`      | Report dir | Render DOCX                           |
 | `just typeset`    | Report dir | Render ICML for InDesign              |
 | `just publish`    | Report dir | Copy HTML to `docs/` for GitHub Pages |
+| `just diff`       | Report dir | Diff current render against baseline  |
 | `just clean`      | Report dir | Remove report caches                  |

@@ -1,0 +1,1059 @@
+---
+title: "NY HP Rates: Data Quality Checks"
+format:
+  html:
+    code-fold: false
+    toc: true
+execute:
+  echo: true
+  warning: false
+---
+
+This notebook checks the quality of gas bill data in the NY HP rates master tables.
+It compares gas bills before (upgrade 0) and after (upgrade 2) heat pump installation,
+broken down by gas tariff transition, to verify that the gas calc fix
+(`ny_20260307_r1-8_gascalcfix` batch) is producing sensible results.
+
+## Setup
+
+```{python}
+from __future__ import annotations
+
+import io
+import math
+from pathlib import Path
+from typing import cast
+
+import polars as pl
+from lib.rdp import fetch_rdp_file
+from lib.plotnine import SB_COLORS, theme_switchbox
+from plotnine import (
+    aes,
+    annotate,
+    coord_cartesian,
+    element_text,
+    facet_wrap,
+    geom_col,
+    geom_text,
+    geom_vline,
+    ggplot,
+    guides,
+    labs,
+    scale_color_identity,
+    scale_fill_manual,
+    scale_x_continuous,
+    scale_y_continuous,
+    theme,
+)
+```
+
+## Parameters
+
+```{python}
+BATCH = "ny_20260307_r1-8_gascalcfix"
+STATE = "NY"
+S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
+
+PATH_MASTER_BILLS_12 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_1+2/comb_bills_year_target/"
+PATH_MASTER_BILLS_34 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_3+4/comb_bills_year_target/"
+
+RDP_REF = "d0353e1"
+UTILITIES = ["cenhud", "coned", "nimo", "nyseg", "or", "psegli", "rge"]
+TARIFF_MAP_DIR = "rate_design/hp_rates/ny/config/tariff_maps/gas"
+
+PATH_RDP_ROOT = Path("~/repos/rate-design-platform").expanduser()
+PATH_LOAD_CURVES = PATH_RDP_ROOT / "data/nrel/resstock/res_2024_amy2018_2/load_curve_monthly/state=NY"
+PATH_METADATA_SB = "s3://data.sb/nrel/resstock/res_2024_amy2018_2_sb/metadata_utility/state=NY/utility_assignment.parquet"
+GAS_COL = "out.natural_gas.total.energy_consumption"
+
+BLDG_ID = "bldg_id"
+ANNUAL_MONTH = "Annual"
+COOLING_COL = "in.hvac_cooling_partial_space_conditioning"
+COOLING_GROUPS = ["Full cooling", "Partial cooling", "No cooling"]
+UTIL_NAMES = {
+    "cenhud": "Central Hudson",
+    "coned": "Con Edison",
+    "nimo": "National Grid",
+    "nyseg": "NYSEG",
+    "or": "O&R",
+    "psegli": "PSEG-LI",
+    "rge": "RG&E",
+}
+```
+
+## Median bill, cost-of-service, and bill alignment by customer group
+
+A high-level sanity check: for each customer group in the baseline scenario
+(run 1+2), what is the weighted median annual bill, cost-of-service
+(marginal cost + residual), and bill alignment (BAT)?
+
+Cost-of-service = `economic_burden` + `residual_share` from the BAT table.
+BAT = bill − cost-of-service. A positive BAT means the customer overpays
+relative to their cost of service; a negative BAT means they underpay.
+
+```{python}
+PATH_BAT_12 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_1+2/cross_subsidization_BAT_values/"
+
+bat = pl.read_parquet(PATH_BAT_12, hive_partitioning=True).with_columns(
+    (pl.col("economic_burden_delivery") + pl.col("residual_share_delivery")).alias("cos_delivery"),
+    (pl.col("economic_burden_total") + pl.col("residual_share_total")).alias("cos_total"),
+)
+print(f"BAT table: {bat.height} rows")
+```
+
+```{python}
+def _weighted_median(df: pl.DataFrame, col: str, w_col: str = "weight") -> float:
+    s = df.sort(col)
+    cum = s[w_col].cum_sum() / s[w_col].sum()
+    return float(s.filter(cum >= 0.5)[col][0])
+
+
+GROUPS = {
+    "HP customers": bat.filter(pl.col("postprocess_group.has_hp")),
+    "Non-HP customers": bat.filter(~pl.col("postprocess_group.has_hp")),
+    "Fossil fuel customers": bat.filter(
+        pl.col("heats_with_natgas") | pl.col("heats_with_oil") | pl.col("heats_with_propane")
+    ),
+    "Natural gas customers": bat.filter(pl.col("heats_with_natgas")),
+    "Oil/propane customers": bat.filter(pl.col("heats_with_oil") | pl.col("heats_with_propane")),
+    "Electric resistance customers": bat.filter(pl.col("postprocess_group.heating_type") == "electrical_resistance"),
+}
+
+summary_rows = []
+for name, g in GROUPS.items():
+    def _wmean(col: str) -> float:
+        return (g[col] * g["weight"]).sum() / g["weight"].sum()
+
+    summary_rows.append({
+        "Group": name,
+        "N (weighted)": round(g["weight"].sum()),
+        "Med. Bill (delivery)": round(_weighted_median(g, "annual_bill_delivery")),
+        "Med. CoS (delivery)": round(_weighted_median(g, "cos_delivery")),
+        "Med. BAT (delivery)": round(_weighted_median(g, "BAT_percustomer_delivery")),
+        "Mean BAT (delivery)": round(_wmean("BAT_percustomer_delivery")),
+        "Med. Bill (total)": round(_weighted_median(g, "annual_bill_total")),
+        "Med. CoS (total)": round(_weighted_median(g, "cos_total")),
+        "Med. BAT (total)": round(_weighted_median(g, "BAT_percustomer_total")),
+        "Mean BAT (total)": round(_wmean("BAT_percustomer_total")),
+    })
+
+summary = pl.DataFrame(summary_rows)
+summary
+```
+
+HP customers overpay (positive BAT) because current volumetric delivery rates
+charge them more than their marginal cost of service. Non-HP and natural gas
+customers underpay (negative BAT) — they are cross-subsidized under current
+rates.
+
+### Same table under HP seasonal rate (run 5+6)
+
+Same groups and columns, but now under the HP seasonal rate scenario where HP
+customers get cost-reflective delivery rates and non-HP customers stay on the
+default flat rate.
+
+```{python}
+PATH_BAT_56 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_5+6/cross_subsidization_BAT_values/"
+
+bat_56 = pl.read_parquet(PATH_BAT_56, hive_partitioning=True).with_columns(
+    (pl.col("economic_burden_delivery") + pl.col("residual_share_delivery")).alias("cos_delivery"),
+    (pl.col("economic_burden_total") + pl.col("residual_share_total")).alias("cos_total"),
+)
+print(f"BAT table (run 5+6): {bat_56.height} rows")
+```
+
+```{python}
+GROUPS_56 = {
+    "HP customers": bat_56.filter(pl.col("postprocess_group.has_hp")),
+    "Non-HP customers": bat_56.filter(~pl.col("postprocess_group.has_hp")),
+    "Fossil fuel customers": bat_56.filter(
+        pl.col("heats_with_natgas") | pl.col("heats_with_oil") | pl.col("heats_with_propane")
+    ),
+    "Natural gas customers": bat_56.filter(pl.col("heats_with_natgas")),
+    "Oil/propane customers": bat_56.filter(pl.col("heats_with_oil") | pl.col("heats_with_propane")),
+    "Electric resistance customers": bat_56.filter(
+        pl.col("postprocess_group.heating_type") == "electrical_resistance"
+    ),
+}
+
+summary_rows_56 = []
+for name, g in GROUPS_56.items():
+    def _wmean(col: str) -> float:
+        return (g[col] * g["weight"]).sum() / g["weight"].sum()
+
+    summary_rows_56.append({
+        "Group": name,
+        "N (weighted)": round(g["weight"].sum()),
+        "Med. Bill (delivery)": round(_weighted_median(g, "annual_bill_delivery")),
+        "Med. CoS (delivery)": round(_weighted_median(g, "cos_delivery")),
+        "Med. BAT (delivery)": round(_weighted_median(g, "BAT_percustomer_delivery")),
+        "Mean BAT (delivery)": round(_wmean("BAT_percustomer_delivery")),
+        "Med. Bill (total)": round(_weighted_median(g, "annual_bill_total")),
+        "Med. CoS (total)": round(_weighted_median(g, "cos_total")),
+        "Med. BAT (total)": round(_weighted_median(g, "BAT_percustomer_total")),
+        "Mean BAT (total)": round(_wmean("BAT_percustomer_total")),
+    })
+
+summary_56 = pl.DataFrame(summary_rows_56)
+summary_56
+```
+
+## Load data
+
+We load the master bills for both upgrade scenarios (annual rows only) and the gas tariff
+maps that tell us which gas tariff each building is assigned to.
+
+```{python}
+bills_u0 = pl.read_parquet(PATH_MASTER_BILLS_12).filter(pl.col("month") == "Annual")
+bills_u2 = pl.read_parquet(PATH_MASTER_BILLS_34).filter(pl.col("month") == "Annual")
+print(f"u0: {bills_u0.height} buildings, u2: {bills_u2.height} buildings")
+```
+
+```{python}
+u00_frames = []
+u02_frames = []
+for util in UTILITIES:
+    for suffix, dest in [("_u00.csv", u00_frames), ("_u02.csv", u02_frames)]:
+        csv_text = fetch_rdp_file(f"{TARIFF_MAP_DIR}/{util}{suffix}", ref=RDP_REF)
+        dest.append(pl.read_csv(io.StringIO(csv_text)))
+
+tariff_u0 = pl.concat(u00_frames).rename({"tariff_key": "tariff_u0"})
+tariff_u2 = pl.concat(u02_frames).rename({"tariff_key": "tariff_u2"})
+print(f"Tariff maps: u0={tariff_u0.height} rows, u2={tariff_u2.height} rows")
+```
+
+We also load the monthly ResStock load curves (local) to compute annual gas consumption per
+building for each upgrade, so we can show the median consumption decline alongside the bill
+change.
+
+```{python}
+gas_u0 = (
+    pl.scan_parquet(f"{PATH_LOAD_CURVES}/upgrade=00/")
+    .select("bldg_id", GAS_COL)
+    .group_by("bldg_id")
+    .agg(pl.col(GAS_COL).sum().alias("gas_kwh_u0"))
+    .collect()
+)
+gas_u2 = (
+    pl.scan_parquet(f"{PATH_LOAD_CURVES}/upgrade=02/")
+    .select("bldg_id", GAS_COL)
+    .group_by("bldg_id")
+    .agg(pl.col(GAS_COL).sum().alias("gas_kwh_u2"))
+    .collect()
+)
+print(f"Gas consumption: u0={gas_u0.height} buildings, u2={gas_u2.height} buildings")
+```
+
+## Build comparison table
+
+We join the two upgrade scenarios on `bldg_id`, restrict to natgas-heated buildings with
+nonzero gas bills in u0, and attach the gas tariff keys from both upgrade maps.
+
+```{python}
+merged = (
+    bills_u0.filter(pl.col("heats_with_natgas"))
+    .select("bldg_id", "sb.electric_utility", pl.col("gas_total_bill").alias("gas_u0"))
+    .join(
+        bills_u2.select("bldg_id", pl.col("gas_total_bill").alias("gas_u2")),
+        on="bldg_id",
+    )
+    .filter(pl.col("gas_u0") > 0)
+    .with_columns(
+        (pl.col("gas_u2") - pl.col("gas_u0")).alias("gas_diff"),
+        ((pl.col("gas_u2") - pl.col("gas_u0")) / pl.col("gas_u0") * 100).alias("gas_pct"),
+    )
+    .join(tariff_u0, on="bldg_id", how="left")
+    .join(tariff_u2, on="bldg_id", how="left")
+    .join(gas_u0, on="bldg_id", how="left")
+    .join(gas_u2, on="bldg_id", how="left")
+    .with_columns(
+        ((pl.col("gas_kwh_u2") - pl.col("gas_kwh_u0")) / pl.col("gas_kwh_u0") * 100)
+        .alias("cons_pct"),
+    )
+)
+print(f"{merged.height} natgas-heated buildings with nonzero gas in u0")
+```
+
+## Gas bill change by tariff transition
+
+Each row shows how a group of buildings — defined by their gas tariff in u0 and u2 —
+fares after the heat pump upgrade. We expect gas bills to decrease for most transitions
+since gas consumption drops ~89% after switching to a heat pump.
+
+```{python}
+transitions = (
+    merged
+    .group_by("sb.electric_utility", "tariff_u0", "tariff_u2")
+    .agg(
+        pl.len().alias("n"),
+        pl.col("gas_u0").median().alias("median_gas_u0"),
+        pl.col("gas_u2").median().alias("median_gas_u2"),
+        pl.col("gas_diff").median().alias("median_diff"),
+        pl.col("gas_pct").median().alias("median_pct"),
+        pl.col("cons_pct").median().alias("median_cons_pct"),
+        (pl.col("gas_diff") > 0).sum().alias("n_increase"),
+        (pl.col("gas_diff") < 0).sum().alias("n_decrease"),
+    )
+    .sort("median_pct", descending=True)
+)
+
+header = (
+    f"{'electric_utility':>16s}  {'gas tariff in u0':>30s} → {'u2':<30s}  "
+    f"{'n':>5s}  {'med_u0':>8s}  {'med_u2':>8s}  {'med_chg':>8s}  "
+    f"{'med_%':>7s}  {'med_cons%':>9s}  {'#up':>5s}  {'#down':>5s}"
+)
+print(header)
+print("-" * len(header))
+for row in transitions.iter_rows(named=True):
+    print(
+        f"{row['sb.electric_utility']:>16s}  "
+        f"{row['tariff_u0']:>30s} → {row['tariff_u2']:<30s}  "
+        f"{row['n']:>5d}  "
+        f"${row['median_gas_u0']:>7.2f}  "
+        f"${row['median_gas_u2']:>7.2f}  "
+        f"${row['median_diff']:>+7.2f}  "
+        f"{row['median_pct']:>+6.1f}%  "
+        f"{row['median_cons_pct']:>+8.1f}%  "
+        f"{row['n_increase']:>5d}  "
+        f"{row['n_decrease']:>5d}"
+    )
+```
+
+## Summary by utility
+
+```{python}
+by_util = (
+    merged
+    .group_by("sb.electric_utility")
+    .agg(
+        pl.len().alias("n"),
+        pl.col("gas_u0").median().alias("median_gas_u0"),
+        pl.col("gas_u2").median().alias("median_gas_u2"),
+        pl.col("gas_diff").median().alias("median_diff"),
+        pl.col("gas_pct").median().alias("median_pct"),
+        pl.col("cons_pct").median().alias("median_cons_pct"),
+        (pl.col("gas_diff") > 0).sum().alias("n_increase"),
+        (pl.col("gas_diff") < 0).sum().alias("n_decrease"),
+    )
+    .sort("sb.electric_utility")
+)
+
+header = (
+    f"{'electric_utility':>16s}  {'n':>5s}  {'med_u0':>8s}  {'med_u2':>8s}  "
+    f"{'med_chg':>8s}  {'med_%':>7s}  {'med_cons%':>9s}  {'#up':>5s}  {'#down':>5s}"
+)
+print(header)
+print("-" * len(header))
+for row in by_util.iter_rows(named=True):
+    print(
+        f"{row['sb.electric_utility']:>16s}  "
+        f"{row['n']:>5d}  "
+        f"${row['median_gas_u0']:>7.2f}  "
+        f"${row['median_gas_u2']:>7.2f}  "
+        f"${row['median_diff']:>+7.2f}  "
+        f"{row['median_pct']:>+6.1f}%  "
+        f"{row['median_cons_pct']:>+8.1f}%  "
+        f"{row['n_increase']:>5d}  "
+        f"{row['n_decrease']:>5d}"
+    )
+
+total = merged.height
+total_inc = merged.filter(pl.col("gas_diff") > 0).height
+total_dec = merged.filter(pl.col("gas_diff") < 0).height
+print(
+    f"\n  STATEWIDE: {total} natgas bldgs, "
+    f"{total_inc} increase ({total_inc / total * 100:.1f}%), "
+    f"{total_dec} decrease ({total_dec / total * 100:.1f}%)"
+)
+print(
+    f"  Median: u0=${merged['gas_u0'].median():,.2f}  "
+    f"u2=${merged['gas_u2'].median():,.2f}  "
+    f"change=${merged['gas_diff'].median():+,.2f} "
+    f"({merged['gas_pct'].median():+.1f}%)"
+)
+```
+
+## Consumption vs. bill change scatterplot
+
+Each point is a gas tariff transition group. The diagonal line shows where points would
+fall if bills were purely volumetric (no fixed charge) and the volumetric rate didn't
+change between u0 and u2. The gap between the data and that line is the effect of fixed
+charges absorbing most of the consumption decline.
+
+```{python}
+#| label: fig-cons-vs-bill
+#| fig-cap: "Median gas consumption change vs. median gas bill change by tariff transition"
+from plotnine import (
+    aes,
+    annotate,
+    coord_cartesian,
+    geom_abline,
+    geom_hline,
+    geom_point,
+    geom_text,
+    ggplot,
+    labs,
+    scale_x_reverse,
+    scale_y_reverse,
+    theme,
+    theme_minimal,
+)
+
+scatter_df = (
+    merged
+    .group_by("sb.electric_utility", "tariff_u0", "tariff_u2")
+    .agg(
+        pl.len().alias("n"),
+        pl.col("gas_pct").median().alias("median_bill_pct"),
+        pl.col("cons_pct").median().alias("median_cons_pct"),
+    )
+    .with_columns(
+        (pl.col("sb.electric_utility") + ": " + pl.col("tariff_u0") + " -> " + pl.col("tariff_u2"))
+        .alias("label"),
+    )
+    .to_pandas()
+)
+
+label_df = scatter_df[scatter_df["median_bill_pct"] > 0].copy()
+label_df = label_df.sort_values("median_bill_pct", ascending=False).reset_index(drop=True)
+label_df["label_y"] = -0.5 - label_df.index * 2.0
+
+(
+    ggplot(scatter_df, aes(x="median_cons_pct", y="median_bill_pct", size="n"))
+    + geom_abline(intercept=0, slope=1, color="#023047", alpha=0.35, size=0.8)
+    + annotate(
+        "text", x=-15, y=-17,
+        label="Purely volumetric,\nsame rate",
+        size=7, color="#023047", alpha=0.6, ha="right", va="bottom",
+    )
+    + geom_hline(yintercept=0, color="grey", alpha=0.4, linetype="dotted")
+    + geom_point(aes(color="sb.electric_utility"), alpha=0.7)
+    + geom_text(
+        label_df,
+        aes(x="median_cons_pct", y="label_y", label="label"),
+        size=7,
+        va="top",
+        inherit_aes=False,
+    )
+    + labs(
+        x="Median gas consumption change (%)",
+        y="Median gas bill change (%)",
+        size="Buildings",
+        color="Electric utility",
+    )
+    + scale_x_reverse()
+    + scale_y_reverse()
+    + coord_cartesian(xlim=(0, -100), ylim=(15, -75))
+    + theme_minimal()
+    + theme(figure_size=(10, 10))
+)
+```
+
+## Building-level consumption vs. bill change
+
+Same axes as above, but each point is an individual building rather than a tariff-transition
+group, faceted by electric utility and colored by gas tariff transition. Low opacity reveals
+where buildings cluster — the horizontal banding within each panel shows how different gas
+tariff structures compress bill changes relative to consumption changes.
+
+```{python}
+#| label: fig-bldg-cons-vs-bill
+#| fig-cap: "Gas consumption change vs. gas bill change per building, faceted by utility and colored by gas tariff transition"
+import pandas as pd
+
+from plotnine import (
+    coord_cartesian,
+    facet_wrap,
+    geom_text,
+)
+
+bldg_scatter = (
+    merged
+    .filter(pl.col("gas_kwh_u0") > 0)
+    .select("cons_pct", "gas_pct", "sb.electric_utility", "tariff_u0", "tariff_u2")
+    .with_columns(
+        (pl.col("tariff_u0") + " -> " + pl.col("tariff_u2")).alias("gas_transition"),
+    )
+    .rename({"gas_pct": "bill_pct"})
+    .to_pandas()
+)
+
+y_min = bldg_scatter["bill_pct"].min()
+legend_start = y_min - 5
+
+legend_rows = []
+for util, grp in bldg_scatter.groupby("sb.electric_utility"):
+    transitions = sorted(grp["gas_transition"].unique())
+    for i, t in enumerate(transitions):
+        legend_rows.append({
+            "sb.electric_utility": util,
+            "gas_transition": t,
+            "cons_pct": -1,
+            "bill_pct": legend_start - i * 5,
+        })
+legend_df = pd.DataFrame(legend_rows)
+
+n_utils = bldg_scatter["sb.electric_utility"].nunique()
+
+(
+    ggplot(bldg_scatter, aes(x="cons_pct", y="bill_pct", color="gas_transition"))
+    + geom_abline(intercept=0, slope=1, color="#023047", alpha=0.25, size=0.6)
+    + geom_hline(yintercept=0, color="grey", alpha=0.4, linetype="dotted")
+    + geom_point(alpha=0.25, size=2.0, stroke=0)
+    + geom_text(
+        legend_df,
+        aes(x="cons_pct", y="bill_pct", label="gas_transition", color="gas_transition"),
+        size=9, ha="left", nudge_x=-1,
+        inherit_aes=False,
+    )
+    + labs(
+        x="Gas consumption change (%)",
+        y="Gas bill change (%)",
+    )
+    + facet_wrap("sb.electric_utility", ncol=1)
+    + scale_x_reverse()
+    + scale_y_reverse()
+    + theme_minimal()
+    + theme(figure_size=(10, min(18, 3.5 * n_utils)), legend_position="none")
+)
+```
+
+## Gas bill: fixed charge share
+
+For each gas-heated building in u0, what fraction of its annual gas bill is the
+fixed charge? The fixed charge comes from the URDB gas tariff JSON
+(`fixedchargefirstmeter` × 12 months); the annual gas bill comes from the
+master bills table.
+
+```{python}
+import json
+
+GAS_TARIFF_DIR = "rate_design/hp_rates/ny/config/tariffs/gas"
+
+gas_tariff_keys = tariff_u0["tariff_u0"].unique().to_list()
+
+fixed_rows: list[dict] = []
+for key in gas_tariff_keys:
+    if key == "null_gas_tariff":
+        fixed_rows.append({"tariff_u0": key, "monthly_fixed": 0.0})
+        continue
+    content = fetch_rdp_file(f"{GAS_TARIFF_DIR}/{key}.json", ref=RDP_REF)
+    tariff = json.loads(content)
+    item = tariff["items"][0] if "items" in tariff else tariff
+    fixed_rows.append({
+        "tariff_u0": key,
+        "monthly_fixed": item.get("fixedchargefirstmeter", 0.0),
+    })
+
+gas_fixed = pl.DataFrame(fixed_rows).with_columns(
+    (pl.col("monthly_fixed") * 12).alias("annual_fixed"),
+)
+print(gas_fixed.sort("tariff_u0"))
+```
+
+```{python}
+gas_with_fixed = (
+    merged
+    .join(gas_fixed, on="tariff_u0", how="left")
+    .with_columns(
+        (pl.col("annual_fixed") / pl.col("gas_u0") * 100).alias("fixed_pct"),
+    )
+    .filter(pl.col("fixed_pct").is_finite())
+)
+
+print(f"{gas_with_fixed.height} buildings with computable fixed %")
+print(f"Median fixed %: {gas_with_fixed['fixed_pct'].median():.1f}%")
+print(f"Mean fixed %: {gas_with_fixed['fixed_pct'].mean():.1f}%")
+```
+
+```{python}
+#| label: fig-gas-fixed-pct
+#| fig-cap: "Fraction of annual gas bill from fixed charges, by utility"
+from plotnine import (
+    aes,
+    coord_cartesian,
+    element_text,
+    facet_wrap,
+    geom_histogram,
+    geom_text,
+    geom_vline,
+    ggplot,
+    labs,
+    scale_x_continuous,
+    theme,
+    theme_minimal,
+)
+
+gas_fixed_pd = gas_with_fixed.select(
+    "fixed_pct", "sb.electric_utility",
+).to_pandas()
+
+medians_by_util = (
+    gas_with_fixed
+    .group_by("sb.electric_utility")
+    .agg(pl.col("fixed_pct").median().alias("med_fixed"))
+)
+
+annot_pd = medians_by_util.with_columns(
+    (
+        pl.lit("median: ")
+        + pl.col("med_fixed").round(0).cast(pl.Int32).cast(pl.Utf8)
+        + pl.lit("%")
+    ).alias("label"),
+).to_pandas()
+
+(
+    ggplot(gas_fixed_pd, aes(x="fixed_pct"))
+    + geom_histogram(binwidth=2, fill="#68bed8", color="white", alpha=0.85)
+    + geom_vline(
+        data=medians_by_util.to_pandas(),
+        mapping=aes(xintercept="med_fixed"),
+        linetype="dashed", color="#023047", size=0.7,
+    )
+    + geom_text(
+        annot_pd,
+        aes(x="med_fixed", y=float("inf"), label="label"),
+        va="top", ha="left", nudge_x=1, size=8, color="#023047",
+        inherit_aes=False,
+    )
+    + facet_wrap("sb.electric_utility", ncol=2, scales="free_y")
+    + scale_x_continuous(breaks=range(0, 101, 20))
+    + labs(
+        x="Fixed charge as % of annual gas bill",
+        y="# Buildings",
+        title="Gas bill fixed charge share — natgas-heated buildings (u0)",
+    )
+    + theme_minimal()
+    + theme(
+        figure_size=(10, 10),
+        strip_text=element_text(size=10, fontweight="bold"),
+    )
+)
+```
+
+## Annual gas bill distribution
+
+How much do gas-heated buildings actually pay per year in gas bills? Faceted by
+electric utility, with median annotated.
+
+```{python}
+#| label: fig-gas-bill-distribution
+#| fig-cap: "Annual gas bills for natgas-heated buildings (u0), by utility"
+gas_bills_pd = merged.select(
+    pl.col("gas_u0").alias("annual_gas_bill"),
+    "sb.electric_utility",
+).to_pandas()
+
+med_bills = (
+    merged.group_by("sb.electric_utility")
+    .agg(pl.col("gas_u0").median().alias("med_bill"))
+)
+
+med_labels = med_bills.with_columns(
+    (pl.lit("median: $") + pl.col("med_bill").round(0).cast(pl.Int32).cast(pl.Utf8)).alias("label"),
+).to_pandas()
+
+(
+    ggplot(gas_bills_pd, aes(x="annual_gas_bill"))
+    + geom_histogram(binwidth=50, fill="#68bed8", color="white", alpha=0.85)
+    + geom_vline(
+        data=med_bills.to_pandas(),
+        mapping=aes(xintercept="med_bill"),
+        linetype="dashed", color="#023047", size=0.7,
+    )
+    + geom_text(
+        med_labels,
+        aes(x="med_bill", y=float("inf"), label="label"),
+        va="top", ha="left", nudge_x=20, size=8, color="#023047",
+        inherit_aes=False,
+    )
+    + facet_wrap("sb.electric_utility", ncol=2, scales="free_y")
+    + labs(
+        x="Annual Gas Bill ($)",
+        y="# Buildings",
+        title="Annual gas bill distribution — natgas-heated buildings (u0)",
+    )
+    + theme_minimal()
+    + theme(
+        figure_size=(10, 10),
+        strip_text=element_text(size=10, fontweight="bold"),
+    )
+)
+```
+
+## Bill change by cooling type — natgas-heated households
+
+How does the annual bill change distribution for natural gas-heated households
+differ by baseline cooling coverage? Homes with no cooling gain air conditioning
+from the heat pump (gain of function), which increases their post-HP electricity
+consumption and offsets some of the gas savings.
+
+```{python}
+#| label: load-metadata-and-deltas
+
+metadata_sb = pl.read_parquet(PATH_METADATA_SB)
+
+delta_state = (
+    bills_u0.filter(pl.col("month") == ANNUAL_MONTH)
+    .select(BLDG_ID, "weight", pl.col("energy_total_bill").alias("bill_before"), "heats_with_natgas")
+    .join(
+        bills_u2.filter(pl.col("month") == ANNUAL_MONTH)
+        .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after")),
+        on=BLDG_ID,
+    )
+    .with_columns((pl.col("bill_after") - pl.col("bill_before")).alias("delta"))
+)
+```
+
+```{python}
+#| label: histogram-helpers
+
+BIN_WIDTH = 100
+QUADRANT_COLORS = {
+    "savings > $1k": "#1b5e20",
+    "savings $0-1k": "#81c784",
+    "losses $0-1k": "#ef9a9a",
+    "losses > $1k": "#b71c1c",
+}
+QUADRANT_ORDER = list(QUADRANT_COLORS.keys())
+
+
+def _weighted_percentile(df: pl.DataFrame, col: str, w_col: str, q: float) -> float:
+    """Weighted percentile via cumulative weight."""
+    s = df.sort(col)
+    cum = s[w_col].cum_sum() / s[w_col].sum()
+    return float(s.filter(cum >= q)[col][0])
+
+
+def quadrant_pcts(df: pl.DataFrame) -> dict[str, float]:
+    """Weighted percentage of homes in each bill-change quadrant."""
+    total = df["weight"].sum()
+    return {
+        "savings > $1k": df.filter(pl.col("delta") < -1000)["weight"].sum() / total * 100,
+        "savings $0-1k": df.filter((pl.col("delta") >= -1000) & (pl.col("delta") < 0))["weight"].sum() / total * 100,
+        "losses $0-1k": df.filter((pl.col("delta") >= 0) & (pl.col("delta") < 1000))["weight"].sum() / total * 100,
+        "losses > $1k": df.filter(pl.col("delta") >= 1000)["weight"].sum() / total * 100,
+    }
+
+
+def plot_bill_change_histogram_faceted(
+    df: pl.DataFrame,
+    facet_col: str,
+    facet_order: list[str],
+    bin_width: int = BIN_WIDTH,
+) -> ggplot:
+    """Weighted histogram of annual bill change, faceted by a categorical column."""
+    snap = max(bin_width, 50)
+    x_lo = math.floor(_weighted_percentile(df, "delta", "weight", 0.01) / snap) * snap
+    x_hi = math.ceil(_weighted_percentile(df, "delta", "weight", 0.99) / snap) * snap
+
+    facet_dtype = pl.Enum(facet_order)
+    quadrant_dtype = pl.Enum(QUADRANT_ORDER)
+
+    binned = (
+        df.with_columns(
+            ((pl.col("delta") / bin_width).floor() * bin_width + bin_width / 2).alias("bin_center"),
+        )
+        .with_columns(
+            pl.when(pl.col("bin_center") <= -1000)
+            .then(pl.lit("savings > $1k"))
+            .when((pl.col("bin_center") > -1000) & (pl.col("bin_center") < 0))
+            .then(pl.lit("savings $0-1k"))
+            .when((pl.col("bin_center") >= 0) & (pl.col("bin_center") < 1000))
+            .then(pl.lit("losses $0-1k"))
+            .otherwise(pl.lit("losses > $1k"))
+            .alias("quadrant"),
+        )
+        .group_by("bin_center", "quadrant", facet_col)
+        .agg(pl.col("weight").sum().alias("weight_sum"))
+        .with_columns(
+            pl.col("quadrant").cast(quadrant_dtype),
+            pl.col(facet_col).cast(facet_dtype),
+        )
+    )
+
+    annot_rows: list[dict] = []
+    quadrant_bounds = [(x_lo, -1000), (-1000, 0), (0, 1000), (1000, x_hi)]
+    label_xs = [(max(lo, x_lo) + min(hi, x_hi)) / 2 for lo, hi in quadrant_bounds]
+
+    for fv in facet_order:
+        facet_df = df.filter(pl.col(facet_col) == fv)
+        if facet_df.is_empty():
+            continue
+        pct = quadrant_pcts(facet_df)
+        facet_binned = binned.filter(pl.col(facet_col) == fv)
+        max_w = float(facet_binned["weight_sum"].max()) if not facet_binned.is_empty() else 0.0
+        y_val = max_w * 1.08
+        for label, x_pos in zip(QUADRANT_ORDER, label_xs):
+            if pct[label] < 0.5:
+                continue
+            annot_rows.append({
+                facet_col: fv,
+                "x": x_pos,
+                "y": y_val,
+                "label_text": f"{label}\n{pct[label]:.0f}%",
+                "color_hex": QUADRANT_COLORS[label],
+            })
+
+    annot_df = pl.DataFrame(annot_rows).with_columns(
+        pl.col(facet_col).cast(facet_dtype),
+    )
+
+    p = (
+        ggplot(binned, aes(x="bin_center", y="weight_sum", fill="quadrant"))
+        + geom_col(width=bin_width * 0.9)
+        + geom_vline(xintercept=[-1000, 0, 1000], linetype="dotted", color="gray")
+        + scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
+        + coord_cartesian(xlim=(x_lo, x_hi))
+        + facet_wrap(facet_col, ncol=1, scales="free_y")
+        + labs(x="Annual Bill Change ($)", y="# of Homes")
+        + guides(fill=False)
+        + theme_switchbox()
+        + theme(
+            figure_size=(10, 8),
+            strip_text=element_text(size=11, weight="bold"),
+        )
+    )
+
+    if not annot_df.is_empty():
+        p = (
+            p
+            + geom_text(
+                annot_df,
+                aes(x="x", y="y", label="label_text", color="color_hex"),
+                inherit_aes=False,
+                ha="center", size=9,
+            )
+            + scale_color_identity()
+        )
+
+    return p
+```
+
+```{python}
+#| label: fig-bill-change-natgas-by-cooling
+#| fig-cap: "Annual bill change distribution for natural gas-heated households by baseline cooling coverage (Statewide)"
+
+cooling_lookup = metadata_sb.select(BLDG_ID, COOLING_COL)
+
+natgas_by_cooling = (
+    delta_state
+    .filter(pl.col("heats_with_natgas"))
+    .join(cooling_lookup, on=BLDG_ID, how="left")
+    .with_columns(
+        pl.when(pl.col(COOLING_COL) == "100% Conditioned").then(pl.lit("Full cooling"))
+        .when(pl.col(COOLING_COL) == "None").then(pl.lit("No cooling"))
+        .otherwise(pl.lit("Partial cooling"))
+        .alias("cooling_group")
+    )
+    .select("delta", "weight", "cooling_group")
+)
+
+plot_bill_change_histogram_faceted(natgas_by_cooling, "cooling_group", COOLING_GROUPS)
+```
+
+## Electricity consumption percent change by cooling type and utility
+
+How much does a gas-heated home's electricity use change after switching to a
+heat pump? The answer depends heavily on whether the home already had cooling.
+Homes with no cooling gain air conditioning from the heat pump (gain of
+function), inflating their summer electricity use on top of the heating
+electrification. The histograms below show the percent change in annual
+electricity consumption for gas-heated homes, grouped by baseline cooling
+coverage and faceted by electric utility.
+
+```{python}
+#| label: compute-elec-pct-change
+
+_cache_path = Path("../cache/annual_elec_kwh.parquet")
+
+if _cache_path.exists():
+    _annual_elec = pl.read_parquet(_cache_path)
+else:
+    _elec_col = "out.electricity.total.energy_consumption"
+    _load_base = PATH_LOAD_CURVES
+
+    _before = (
+        pl.scan_parquet(str(_load_base / "upgrade=00" / "*.parquet"))
+        .select("bldg_id", _elec_col)
+        .group_by("bldg_id")
+        .agg(pl.col(_elec_col).sum().alias("elec_kwh_before"))
+        .collect()
+    )
+    _after = (
+        pl.scan_parquet(str(_load_base / "upgrade=02" / "*.parquet"))
+        .select("bldg_id", _elec_col)
+        .group_by("bldg_id")
+        .agg(pl.col(_elec_col).sum().alias("elec_kwh_after"))
+        .collect()
+    )
+    _annual_elec = _before.join(_after, on="bldg_id", how="inner")
+    Path("../cache").mkdir(exist_ok=True)
+    _annual_elec.write_parquet(_cache_path)
+
+elec_pct_change = (
+    _annual_elec
+    .join(
+        metadata_sb.select(BLDG_ID, "heats_with_natgas", "sb.electric_utility", COOLING_COL, "weight"),
+        on=BLDG_ID,
+        how="inner",
+    )
+    .filter(pl.col("heats_with_natgas"))
+    .filter(pl.col("elec_kwh_before").abs() > 10)
+    .with_columns(
+        ((pl.col("elec_kwh_after") - pl.col("elec_kwh_before")) / pl.col("elec_kwh_before") * 100)
+        .alias("pct_change"),
+        pl.when(pl.col(COOLING_COL) == "100% Conditioned").then(pl.lit("Full cooling"))
+        .when(pl.col(COOLING_COL) == "None").then(pl.lit("No cooling"))
+        .otherwise(pl.lit("Partial cooling"))
+        .alias("cooling_group"),
+        pl.col("sb.electric_utility").replace_strict(UTIL_NAMES).alias("utility_label"),
+    )
+)
+
+for cg in COOLING_GROUPS:
+    _sub = elec_pct_change.filter(pl.col("cooling_group") == cg)
+    _med = _weighted_percentile(_sub, "pct_change", "weight", 0.50)
+    print(f"{cg}: n={len(_sub)}, weighted median pct change = {_med:.0f}%")
+```
+
+```{python}
+#| label: fig-elec-pct-change-full-cooling
+#| fig-cap: "Percent change in annual electricity consumption after switching to a heat pump — gas-heated homes with full baseline cooling, by utility"
+
+_ELEC_BIN = 10
+
+def _plot_elec_pct_change(df: pl.DataFrame, title: str) -> ggplot:
+    snap = max(_ELEC_BIN, 10)
+    _lo = math.floor(_weighted_percentile(df, "pct_change", "weight", 0.01) / snap) * snap
+    _hi = math.ceil(_weighted_percentile(df, "pct_change", "weight", 0.99) / snap) * snap
+
+    binned = (
+        df.with_columns(
+            ((pl.col("pct_change") / _ELEC_BIN).floor() * _ELEC_BIN + _ELEC_BIN / 2)
+            .alias("bin_center"),
+        )
+        .group_by("utility_label", "bin_center")
+        .agg(pl.col("weight").sum().alias("weight_sum"))
+        .with_columns(
+            pl.when(pl.col("bin_center") >= 0)
+            .then(pl.lit("increase"))
+            .otherwise(pl.lit("decrease"))
+            .alias("direction"),
+        )
+    )
+
+    return (
+        ggplot(binned, aes(x="bin_center", y="weight_sum", fill="direction"))
+        + geom_col(width=_ELEC_BIN * 0.9)
+        + geom_vline(xintercept=0, linetype="dotted", color="gray")
+        + facet_wrap("utility_label", scales="free_y", ncol=4)
+        + scale_fill_manual(values={"increase": SB_COLORS["carrot"], "decrease": SB_COLORS["sky"]})
+        + scale_x_continuous(labels=lambda xs: [f"{x:,.0f}%" for x in xs])
+        + scale_y_continuous(expand=(0, 0, 0.1, 0))
+        + coord_cartesian(xlim=(_lo, _hi))
+        + labs(x="Percent change in annual electricity consumption", y="Weighted households", title=title)
+        + theme_switchbox()
+        + theme(figure_size=(10, 5), legend_position="none")
+    )
+
+_plot_elec_pct_change(
+    elec_pct_change.filter(pl.col("cooling_group") == "Full cooling"),
+    "Full cooling — electricity change after switching to heat pump",
+)
+```
+
+```{python}
+#| label: fig-elec-pct-change-partial-cooling
+#| fig-cap: "Percent change in annual electricity consumption after switching to a heat pump — gas-heated homes with partial baseline cooling, by utility"
+
+_plot_elec_pct_change(
+    elec_pct_change.filter(pl.col("cooling_group") == "Partial cooling"),
+    "Partial cooling — electricity change after switching to heat pump",
+)
+```
+
+```{python}
+#| label: fig-elec-pct-change-no-cooling
+#| fig-cap: "Percent change in annual electricity consumption after switching to a heat pump — gas-heated homes with no baseline cooling, by utility"
+
+_plot_elec_pct_change(
+    elec_pct_change.filter(pl.col("cooling_group") == "No cooling"),
+    "No cooling — electricity change after switching to heat pump",
+)
+```
+
+## Delivery bill percent change by cooling type and utility
+
+The delivery bill (volumetric delivery + fixed charge) is the component most
+directly affected by the cross-subsidy problem. How much does it increase after
+switching to a heat pump? Homes with no baseline cooling see the largest
+delivery bill increases because they gain air conditioning on top of heating
+electrification.
+
+```{python}
+#| label: compute-delivery-pct-change
+
+delivery_pct_change = (
+    bills_u0
+    .select(
+        BLDG_ID,
+        (pl.col("elec_delivery_bill") + pl.col("elec_fixed_charge")).alias("delivery_before"),
+        "heats_with_natgas", "sb.electric_utility", "weight",
+    )
+    .join(
+        bills_u2.select(
+            BLDG_ID,
+            (pl.col("elec_delivery_bill") + pl.col("elec_fixed_charge")).alias("delivery_after"),
+        ),
+        on=BLDG_ID,
+    )
+    .filter(pl.col("heats_with_natgas"))
+    .filter(pl.col("delivery_before").abs() > 1)
+    .join(metadata_sb.select(BLDG_ID, COOLING_COL), on=BLDG_ID, how="left")
+    .with_columns(
+        ((pl.col("delivery_after") - pl.col("delivery_before")) / pl.col("delivery_before") * 100)
+        .alias("pct_change"),
+        pl.when(pl.col(COOLING_COL) == "100% Conditioned").then(pl.lit("Full cooling"))
+        .when(pl.col(COOLING_COL) == "None").then(pl.lit("No cooling"))
+        .otherwise(pl.lit("Partial cooling"))
+        .alias("cooling_group"),
+        pl.col("sb.electric_utility").replace_strict(UTIL_NAMES).alias("utility_label"),
+    )
+)
+
+for cg in COOLING_GROUPS:
+    _sub = delivery_pct_change.filter(pl.col("cooling_group") == cg)
+    _med = _weighted_percentile(_sub, "pct_change", "weight", 0.50)
+    print(f"{cg}: n={len(_sub)}, weighted median delivery bill pct change = {_med:.0f}%")
+```
+
+```{python}
+#| label: fig-delivery-pct-change-full-cooling
+#| fig-cap: "Percent change in annual delivery bill after switching to a heat pump — gas-heated homes with full baseline cooling, by utility"
+
+_plot_elec_pct_change(
+    delivery_pct_change.filter(pl.col("cooling_group") == "Full cooling"),
+    "Full cooling — delivery bill change after switching to heat pump",
+)
+```
+
+```{python}
+#| label: fig-delivery-pct-change-partial-cooling
+#| fig-cap: "Percent change in annual delivery bill after switching to a heat pump — gas-heated homes with partial baseline cooling, by utility"
+
+_plot_elec_pct_change(
+    delivery_pct_change.filter(pl.col("cooling_group") == "Partial cooling"),
+    "Partial cooling — delivery bill change after switching to heat pump",
+)
+```
+
+```{python}
+#| label: fig-delivery-pct-change-no-cooling
+#| fig-cap: "Percent change in annual delivery bill after switching to a heat pump — gas-heated homes with no baseline cooling, by utility"
+
+_plot_elec_pct_change(
+    delivery_pct_change.filter(pl.col("cooling_group") == "No cooling"),
+    "No cooling — delivery bill change after switching to heat pump",
+)
+```

@@ -90,7 +90,7 @@ def _weighted_mean(df: pl.DataFrame, col: str, w_col: str) -> float:
 # --- To switch states, change these 4 values and the 3 utility dicts below
 # (UTIL_NAMES in the constants cell, UTIL_DISPLAY and TARIFF_UTILS further down). ---
 UTILITY = "coned"  # any utility code from UTIL_NAMES, used for the representative-building example
-BATCH = "ny_20260311b_r1-12_lmi_fix"
+BATCH = "ny_20260311b_r1-12_lmi_gen"
 STATE = "NY"
 RDP_REF = "8bf03e6"  # rate-design-platform git ref for fetch_rdp_file
 
@@ -456,7 +456,7 @@ LOAD_COLS = [
     "out.natural_gas.total.energy_consumption",
 ]
 
-load_base = str(Path("~/repos/rate-design-platform/data/nrel/resstock/res_2024_amy2018_2_sb/load_curve_monthly").expanduser() / f"state={STATE}")
+load_base = f"s3://data.sb/nrel/resstock/res_2024_amy2018_2_sb/load_curve_monthly/state={STATE}"
 df_before_load = pl.read_parquet(f"{load_base}/upgrade=00/{median_bldg_id_state}-0.parquet", columns=LOAD_COLS)
 df_after_load = pl.read_parquet(f"{load_base}/upgrade=02/{median_bldg_id_state}-2.parquet", columns=LOAD_COLS)
 
@@ -1114,16 +1114,20 @@ def plot_quadrant_bar(
 _cache_path = Path("../cache/annual_elec_kwh.parquet")
 if not _cache_path.exists():
     _elec_col = "out.electricity.total.energy_consumption"
-    _load_base = Path(f"~/repos/rate-design-platform/data/nrel/resstock/res_2024_amy2018_2_sb/load_curve_monthly/state={STATE}").expanduser()
+    _load_base = f"s3://data.sb/nrel/resstock/res_2024_amy2018_2_sb/load_curve_monthly/state={STATE}"
+    _bldg_ids = pl.read_parquet(
+        f"s3://data.sb/nrel/resstock/res_2024_amy2018_2_sb/metadata/state={STATE}/upgrade=00/metadata-sb.parquet",
+        columns=["bldg_id"],
+    )["bldg_id"].to_list()
     _before = (
-        pl.scan_parquet(_load_base / "upgrade=00")
+        pl.scan_parquet([f"{_load_base}/upgrade=00/{bid}-0.parquet" for bid in _bldg_ids])
         .select("bldg_id", _elec_col)
         .group_by("bldg_id")
         .agg(pl.col(_elec_col).sum().alias("elec_kwh_before"))
         .collect()
     )
     _after = (
-        pl.scan_parquet(_load_base / "upgrade=02")
+        pl.scan_parquet([f"{_load_base}/upgrade=02/{bid}-2.parquet" for bid in _bldg_ids])
         .select("bldg_id", _elec_col)
         .group_by("bldg_id")
         .agg(pl.col(_elec_col).sum().alias("elec_kwh_after"))
@@ -2977,7 +2981,7 @@ low_income_gas_bldgs = (
     .filter(
         (pl.col("month") == ANNUAL_MONTH)
         & pl.col("heats_with_natgas")
-        & pl.col("is_lmi")
+        & pl.col("is_lmi_any")
         & (pl.col(INCOME_COL) > 0)
     )
     .select(BLDG_ID, "weight", "energy_total_bill", INCOME_COL)

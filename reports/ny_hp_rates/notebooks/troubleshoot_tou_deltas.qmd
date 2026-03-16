@@ -1,0 +1,471 @@
+---
+title: "Troubleshoot TOU vs Seasonal Bill Delta Identity"
+execute:
+  warning: false
+  message: false
+---
+
+In `fig-quadrant-bar-natgas-tou-state` (line 3936 of `analysis.qmd`), the "Fair rate" and "TOU + fair rate (no flex)"
+bars show identical quadrant percentages (14% / 72% / 13%). These bars come from different CAIRO runs:
+
+- **Fair rate** (`natgas_switch_state`): `bill_after` from `bills_hprate_hp` = run **7+8** (seasonal rate, upgrade 2)
+- **TOU + fair rate** (`natgas_tou_state`): `bill_after` from `bills_tou_hp` = run **11+12** (seasonal TOU rate, upgrade 2)
+
+Both share the same `bill_before` (run 1+2, upgrade 0). If the runs produced different bills, the quadrant bars would
+differ. This notebook walks through each layer of the computation to find where seasonal and TOU diverge (or fail to).
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import polars as pl
+from great_tables import GT
+```
+
+## Parameters
+
+Same parameters as `analysis.qmd`.
+
+```{python}
+#| label: params
+
+BATCH = "ny_20260311b_r1-12_lmi_fix"
+STATE = "NY"
+
+S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
+PATH_MASTER_BILLS_12 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_1+2/comb_bills_year_target/"
+PATH_MASTER_BILLS_78 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_7+8/comb_bills_year_target/"
+PATH_MASTER_BILLS_1112 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_11+12/comb_bills_year_target/"
+
+PATH_METADATA_SB = "s3://data.sb/nrel/resstock/res_2024_amy2018_2_sb/metadata_utility/state=NY/utility_assignment.parquet"
+```
+
+## Constants
+
+```{python}
+#| label: constants
+
+ANNUAL_MONTH = "Annual"
+BLDG_ID = "bldg_id"
+HEATING_TYPE_COL = "postprocess_group.heating_type"
+REPRESENTATIVE_BLDG = 411608  # the "Buffalo home" used in analysis.qmd
+```
+
+## Data ingest
+
+We load the three master-bills datasets relevant to this investigation:
+
+- **Run 1+2** — current rates, current HVAC (upgrade 0). This is the "before" for all scenarios.
+- **Run 7+8** — seasonal HP rate, heat pump upgrade (upgrade 2). The "after" for the **fair rate** scenario.
+- **Run 11+12** — TOU HP rate, heat pump upgrade (upgrade 2). The "after" for the **TOU + fair rate** scenario.
+
+```{python}
+#| label: ingest
+
+bills_current = pl.scan_parquet(PATH_MASTER_BILLS_12, hive_partitioning=True)
+bills_hprate_hp = pl.scan_parquet(PATH_MASTER_BILLS_78, hive_partitioning=True)
+bills_tou_hp = pl.scan_parquet(PATH_MASTER_BILLS_1112, hive_partitioning=True)
+
+metadata_sb = pl.read_parquet(PATH_METADATA_SB)
+```
+
+Let's confirm the schemas:
+
+```{python}
+#| label: schemas
+
+print("=== Run 1+2 schema ===")
+print(bills_current.collect_schema())
+print(f"\nRow count: {bills_current.select(pl.len()).collect().item()}")
+
+print("\n=== Run 7+8 schema ===")
+print(bills_hprate_hp.collect_schema())
+print(f"\nRow count: {bills_hprate_hp.select(pl.len()).collect().item()}")
+
+print("\n=== Run 11+12 schema ===")
+print(bills_tou_hp.collect_schema())
+print(f"\nRow count: {bills_tou_hp.select(pl.len()).collect().item()}")
+```
+
+## Step 1: Spot-check the S3 data
+
+First, confirm that the paths point to distinct directories and have expected row counts.
+
+```{python}
+#| label: spot-check-paths
+
+print("PATH_MASTER_BILLS_12:", PATH_MASTER_BILLS_12)
+print("PATH_MASTER_BILLS_78:", PATH_MASTER_BILLS_78)
+print("PATH_MASTER_BILLS_1112:", PATH_MASTER_BILLS_1112)
+print()
+
+for label, path in [("1+2", PATH_MASTER_BILLS_12), ("7+8", PATH_MASTER_BILLS_78), ("11+12", PATH_MASTER_BILLS_1112)]:
+    lf = pl.scan_parquet(path, hive_partitioning=True)
+    annual = lf.filter(pl.col("month") == ANNUAL_MONTH)
+    n_total = lf.select(pl.len()).collect().item()
+    n_annual = annual.select(pl.len()).collect().item()
+    n_utilities = annual.select(pl.col("sb.electric_utility").n_unique()).collect().item()
+    print(f"Run {label}: {n_total:,} total rows, {n_annual:,} annual rows, {n_utilities} utilities")
+```
+
+## Step 2: Are the `energy_total_bill` values actually different?
+
+We join the annual rows from runs 7+8 and 11+12 on `bldg_id` and compare `energy_total_bill`.
+
+```{python}
+#| label: compare-energy-total-bill
+
+annual_78 = (
+    bills_hprate_hp
+    .filter(pl.col("month") == ANNUAL_MONTH)
+    .select(
+        BLDG_ID,
+        pl.col("energy_total_bill").alias("energy_total_78"),
+        pl.col("elec_total_bill").alias("elec_total_78"),
+        pl.col("elec_fixed_charge").alias("elec_fixed_78"),
+        pl.col("elec_delivery_bill").alias("elec_delivery_78"),
+        pl.col("elec_supply_bill").alias("elec_supply_78"),
+        pl.col("gas_total_bill").alias("gas_total_78"),
+        pl.col("oil_total_bill").alias("oil_total_78"),
+        pl.col("propane_total_bill").alias("propane_total_78"),
+        "heats_with_natgas",
+        "sb.electric_utility",
+    )
+    .collect()
+)
+
+annual_1112 = (
+    bills_tou_hp
+    .filter(pl.col("month") == ANNUAL_MONTH)
+    .select(
+        BLDG_ID,
+        pl.col("energy_total_bill").alias("energy_total_1112"),
+        pl.col("elec_total_bill").alias("elec_total_1112"),
+        pl.col("elec_fixed_charge").alias("elec_fixed_1112"),
+        pl.col("elec_delivery_bill").alias("elec_delivery_1112"),
+        pl.col("elec_supply_bill").alias("elec_supply_1112"),
+        pl.col("gas_total_bill").alias("gas_total_1112"),
+        pl.col("oil_total_bill").alias("oil_total_1112"),
+        pl.col("propane_total_bill").alias("propane_total_1112"),
+    )
+    .collect()
+)
+
+joined = annual_78.join(annual_1112, on=BLDG_ID, how="inner")
+print(f"Joined rows: {len(joined):,}")
+```
+
+```{python}
+#| label: energy-total-diff-summary
+
+diff = joined.with_columns(
+    (pl.col("energy_total_1112") - pl.col("energy_total_78")).alias("diff_energy_total"),
+    (pl.col("elec_total_1112") - pl.col("elec_total_78")).alias("diff_elec_total"),
+    (pl.col("elec_fixed_1112") - pl.col("elec_fixed_78")).alias("diff_elec_fixed"),
+    (pl.col("elec_delivery_1112") - pl.col("elec_delivery_78")).alias("diff_elec_delivery"),
+    (pl.col("elec_supply_1112") - pl.col("elec_supply_78")).alias("diff_elec_supply"),
+    (pl.col("gas_total_1112") - pl.col("gas_total_78")).alias("diff_gas_total"),
+    (pl.col("oil_total_1112") - pl.col("oil_total_78")).alias("diff_oil_total"),
+    (pl.col("propane_total_1112") - pl.col("propane_total_78")).alias("diff_propane_total"),
+)
+
+# Overall: how many buildings have any difference in energy_total_bill?
+n_differ = diff.filter(pl.col("diff_energy_total").abs() > 0.01).height
+n_total = diff.height
+print(f"Buildings with energy_total_bill difference > $0.01: {n_differ:,} / {n_total:,}")
+print()
+
+# Summary stats for the energy_total difference
+for col in [c for c in diff.columns if c.startswith("diff_")]:
+    s = diff[col]
+    print(
+        f"{col:30s}  "
+        f"mean={s.mean():+.4f}  median={s.median():+.4f}  "
+        f"min={s.min():+.4f}  max={s.max():+.4f}  "
+        f"std={s.std():.4f}  "
+        f"nonzero={diff.filter(pl.col(col).abs() > 0.01).height}"
+    )
+```
+
+If all differences are zero, the problem is upstream: the master bills (or the CAIRO runs themselves) produced
+identical output for runs 7+8 and 11+12.
+
+```{python}
+#| label: energy-total-diff-natgas-only
+
+natgas_diff = diff.filter(pl.col("heats_with_natgas"))
+n_ng_differ = natgas_diff.filter(pl.col("diff_energy_total").abs() > 0.01).height
+print(f"Natgas buildings with energy_total difference: {n_ng_differ:,} / {natgas_diff.height:,}")
+
+if n_ng_differ > 0:
+    print("\nNatgas diff summary:")
+    s = natgas_diff["diff_energy_total"]
+    print(f"  mean={s.mean():+.2f}  median={s.median():+.2f}  min={s.min():+.2f}  max={s.max():+.2f}")
+```
+
+## Step 3: Bill component breakdown — seasonal vs. TOU
+
+For natgas buildings, we compare each bill component between runs 7+8 and 11+12 to isolate which components
+are identical and which differ.
+
+```{python}
+#| label: component-breakdown-by-utility
+
+component_cols = [
+    ("elec_fixed", "Electric Fixed Charge"),
+    ("elec_delivery", "Electric Delivery (Volumetric)"),
+    ("elec_supply", "Electric Supply"),
+    ("gas_total", "Gas Total"),
+    ("oil_total", "Oil Total"),
+    ("propane_total", "Propane Total"),
+    ("elec_total", "Electric Total"),
+    ("energy_total", "Energy Total"),
+]
+
+records = []
+for util in sorted(natgas_diff["sb.electric_utility"].unique().to_list()):
+    util_df = natgas_diff.filter(pl.col("sb.electric_utility") == util)
+    for short, label in component_cols:
+        col = f"diff_{short}"
+        s = util_df[col]
+        records.append({
+            "utility": util,
+            "component": label,
+            "n_nonzero": util_df.filter(pl.col(col).abs() > 0.01).height,
+            "n_bldgs": util_df.height,
+            "mean_diff": round(float(s.mean()), 4),
+            "max_abs_diff": round(float(s.abs().max()), 4),
+        })
+
+breakdown = pl.DataFrame(records)
+GT(breakdown).fmt_number(columns=["mean_diff", "max_abs_diff"], decimals=4)
+```
+
+## Step 4: Representative building deep-dive
+
+Show all bill components for building `411608` (the "Buffalo home") under all three scenarios side by side.
+
+```{python}
+#| label: representative-building
+
+BILL_COLS = [
+    BLDG_ID, "month",
+    "elec_fixed_charge", "elec_delivery_bill", "elec_supply_bill", "elec_total_bill",
+    "gas_total_bill", "oil_total_bill", "propane_total_bill", "energy_total_bill",
+]
+
+rep_12 = (
+    bills_current
+    .filter((pl.col(BLDG_ID) == REPRESENTATIVE_BLDG) & (pl.col("month") == ANNUAL_MONTH))
+    .select(BILL_COLS)
+    .collect()
+    .with_columns(pl.lit("Run 1+2 (current, u0)").alias("scenario"))
+)
+
+rep_78 = (
+    bills_hprate_hp
+    .filter((pl.col(BLDG_ID) == REPRESENTATIVE_BLDG) & (pl.col("month") == ANNUAL_MONTH))
+    .select(BILL_COLS)
+    .collect()
+    .with_columns(pl.lit("Run 7+8 (seasonal, u2)").alias("scenario"))
+)
+
+rep_1112 = (
+    bills_tou_hp
+    .filter((pl.col(BLDG_ID) == REPRESENTATIVE_BLDG) & (pl.col("month") == ANNUAL_MONTH))
+    .select(BILL_COLS)
+    .collect()
+    .with_columns(pl.lit("Run 11+12 (TOU, u2)").alias("scenario"))
+)
+
+rep_all = pl.concat([rep_12, rep_78, rep_1112])
+
+# Unpivot for a clean side-by-side comparison
+value_cols = [c for c in BILL_COLS if c not in [BLDG_ID, "month"]]
+rep_long = (
+    rep_all
+    .select(["scenario"] + value_cols)
+    .unpivot(on=value_cols, index="scenario", variable_name="component", value_name="amount")
+    .pivot(on="scenario", index="component", values="amount")
+)
+
+GT(rep_long).fmt_currency(
+    columns=[c for c in rep_long.columns if c != "component"],
+    decimals=2,
+)
+```
+
+## Step 5: Delta distributions with quantile cutoffs
+
+Reproduce the delta computation for both scenarios and compare their distributions for natgas buildings.
+
+```{python}
+#| label: compute-deltas
+
+DELTA_SELECT = [
+    BLDG_ID, "weight",
+    pl.col("energy_total_bill").alias("bill_before"),
+    "postprocess_group.has_hp",
+    HEATING_TYPE_COL,
+    "heats_with_natgas",
+    "heats_with_oil",
+    "heats_with_propane",
+]
+
+# Before: run 1+2 statewide
+annual_current_state = (
+    bills_current
+    .filter(pl.col("month") == ANNUAL_MONTH)
+    .select(DELTA_SELECT)
+    .collect()
+)
+
+# After (seasonal): run 7+8
+annual_after_switch_state = (
+    bills_hprate_hp
+    .filter(pl.col("month") == ANNUAL_MONTH)
+    .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after"))
+    .collect()
+)
+delta_switch_state = annual_current_state.join(annual_after_switch_state, on=BLDG_ID, how="inner").with_columns(
+    (pl.col("bill_after") - pl.col("bill_before")).alias("delta")
+)
+
+# After (TOU): run 11+12
+annual_after_tou_state = (
+    bills_tou_hp
+    .filter(pl.col("month") == ANNUAL_MONTH)
+    .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after"))
+    .collect()
+)
+delta_tou_state = annual_current_state.join(annual_after_tou_state, on=BLDG_ID, how="inner").with_columns(
+    (pl.col("bill_after") - pl.col("bill_before")).alias("delta")
+)
+
+# Filter to natgas
+natgas_switch = delta_switch_state.filter(pl.col("heats_with_natgas"))
+natgas_tou = delta_tou_state.filter(pl.col("heats_with_natgas"))
+
+print(f"Natgas buildings (seasonal): {natgas_switch.height:,}")
+print(f"Natgas buildings (TOU):      {natgas_tou.height:,}")
+```
+
+```{python}
+#| label: delta-distribution-comparison
+
+def _weighted_percentile(df: pl.DataFrame, col: str, w_col: str, q: float) -> float:
+    """Weighted percentile via cumulative weight."""
+    s = df.sort(col)
+    cum = s[w_col].cum_sum() / s[w_col].sum()
+    return float(s.filter(cum >= q)[col][0])
+
+
+quantiles = [0.01, 0.25, 0.50, 0.75, 0.99]
+records = []
+for q in quantiles:
+    records.append({
+        "quantile": f"p{int(q * 100):02d}",
+        "seasonal_delta": round(_weighted_percentile(natgas_switch, "delta", "weight", q), 2),
+        "tou_delta": round(_weighted_percentile(natgas_tou, "delta", "weight", q), 2),
+    })
+
+qtable = pl.DataFrame(records).with_columns(
+    (pl.col("tou_delta") - pl.col("seasonal_delta")).alias("difference"),
+)
+GT(qtable).fmt_currency(columns=["seasonal_delta", "tou_delta", "difference"], decimals=2)
+```
+
+Representative building delta:
+
+```{python}
+#| label: representative-bldg-delta
+
+rep_seasonal = natgas_switch.filter(pl.col(BLDG_ID) == REPRESENTATIVE_BLDG)
+rep_tou = natgas_tou.filter(pl.col(BLDG_ID) == REPRESENTATIVE_BLDG)
+
+if rep_seasonal.height > 0 and rep_tou.height > 0:
+    print(f"Bldg {REPRESENTATIVE_BLDG} seasonal delta: ${rep_seasonal['delta'][0]:,.2f}")
+    print(f"Bldg {REPRESENTATIVE_BLDG} TOU delta:      ${rep_tou['delta'][0]:,.2f}")
+    print(f"Difference:                   ${rep_tou['delta'][0] - rep_seasonal['delta'][0]:,.2f}")
+else:
+    print(f"Bldg {REPRESENTATIVE_BLDG} not found in natgas subset")
+```
+
+## Step 6: Quadrant percentages table
+
+Print the exact quadrant percentages for all three scenarios side by side so rounding can be checked.
+
+```{python}
+#| label: quadrant-table
+
+def quadrant_pcts(df: pl.DataFrame) -> dict[str, float]:
+    """Weighted percentage of homes in each bill-change quadrant."""
+    total = df["weight"].sum()
+    return {
+        "savings > $1k": df.filter(pl.col("delta") < -1000)["weight"].sum() / total * 100,
+        "savings $0-1k": df.filter((pl.col("delta") >= -1000) & (pl.col("delta") < 0))["weight"].sum() / total * 100,
+        "losses $0-1k": df.filter((pl.col("delta") >= 0) & (pl.col("delta") < 1000))["weight"].sum() / total * 100,
+        "losses > $1k": df.filter(pl.col("delta") >= 1000)["weight"].sum() / total * 100,
+    }
+
+
+# Default rate
+natgas_state = (
+    annual_current_state
+    .join(
+        bills_current
+        .filter(pl.col("month") == ANNUAL_MONTH)
+        .select(BLDG_ID)
+        .collect()
+        .join(
+            annual_current_state.select(BLDG_ID, "bill_before", "weight", "heats_with_natgas"),
+            on=BLDG_ID,
+        )
+        .select(BLDG_ID),
+        on=BLDG_ID,
+    )
+)
+
+# Actually, let's just recompute default delta properly
+from lib.rdp import fetch_rdp_file  # noqa: E402
+
+PATH_MASTER_BILLS_34 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_3+4/comb_bills_year_target/"
+bills_hp = pl.scan_parquet(PATH_MASTER_BILLS_34, hive_partitioning=True)
+
+annual_hp_state = (
+    bills_hp
+    .filter(pl.col("month") == ANNUAL_MONTH)
+    .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after"))
+    .collect()
+)
+delta_default_state = annual_current_state.join(annual_hp_state, on=BLDG_ID, how="inner").with_columns(
+    (pl.col("bill_after") - pl.col("bill_before")).alias("delta")
+)
+natgas_default = delta_default_state.filter(pl.col("heats_with_natgas")).select("delta", "weight")
+natgas_switch_sel = natgas_switch.select("delta", "weight")
+natgas_tou_sel = natgas_tou.select("delta", "weight")
+
+pct_default = quadrant_pcts(natgas_default)
+pct_seasonal = quadrant_pcts(natgas_switch_sel)
+pct_tou = quadrant_pcts(natgas_tou_sel)
+
+records = []
+for q in ["savings > $1k", "savings $0-1k", "losses $0-1k", "losses > $1k"]:
+    records.append({
+        "quadrant": q,
+        "default_rate": round(pct_default[q], 4),
+        "fair_rate (seasonal)": round(pct_seasonal[q], 4),
+        "tou + fair (no flex)": round(pct_tou[q], 4),
+        "seasonal_minus_tou": round(pct_seasonal[q] - pct_tou[q], 4),
+    })
+
+GT(pl.DataFrame(records)).fmt_number(
+    columns=["default_rate", "fair_rate (seasonal)", "tou + fair (no flex)", "seasonal_minus_tou"],
+    decimals=4,
+)
+```

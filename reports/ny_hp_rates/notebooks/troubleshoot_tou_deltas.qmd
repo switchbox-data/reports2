@@ -21,10 +21,23 @@ differ. This notebook walks through each layer of the computation to find where 
 
 from __future__ import annotations
 
-from pathlib import Path
+import math
 
 import polars as pl
 from great_tables import GT
+from lib.plotnine import SB_COLORS, theme_switchbox
+from plotnine import (
+    aes,
+    annotate,
+    coord_cartesian,
+    geom_col,
+    geom_histogram,
+    geom_vline,
+    ggplot,
+    labs,
+    scale_fill_manual,
+    theme,
+)
 ```
 
 ## Parameters
@@ -35,14 +48,11 @@ Same parameters as `analysis.qmd`.
 #| label: params
 
 BATCH = "ny_20260311b_r1-12_lmi_fix"
-STATE = "NY"
 
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
 PATH_MASTER_BILLS_12 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_1+2/comb_bills_year_target/"
 PATH_MASTER_BILLS_78 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_7+8/comb_bills_year_target/"
 PATH_MASTER_BILLS_1112 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_11+12/comb_bills_year_target/"
-
-PATH_METADATA_SB = "s3://data.sb/nrel/resstock/res_2024_amy2018_2_sb/metadata_utility/state=NY/utility_assignment.parquet"
 ```
 
 ## Constants
@@ -70,8 +80,6 @@ We load the three master-bills datasets relevant to this investigation:
 bills_current = pl.scan_parquet(PATH_MASTER_BILLS_12, hive_partitioning=True)
 bills_hprate_hp = pl.scan_parquet(PATH_MASTER_BILLS_78, hive_partitioning=True)
 bills_tou_hp = pl.scan_parquet(PATH_MASTER_BILLS_1112, hive_partitioning=True)
-
-metadata_sb = pl.read_parquet(PATH_METADATA_SB)
 ```
 
 Let's confirm the schemas:
@@ -208,13 +216,34 @@ if n_ng_differ > 0:
     print(f"  mean={s.mean():+.2f}  median={s.median():+.2f}  min={s.min():+.2f}  max={s.max():+.2f}")
 ```
 
+If the histogram below is a spike at zero, the TOU and seasonal runs produced identical bills and the
+problem is upstream of the analysis (in the CAIRO runs or the master-bills build).
+
+```{python}
+#| label: histogram-energy-total-diff
+
+(
+    ggplot(natgas_diff, aes("diff_energy_total"))
+    + geom_histogram(binwidth=5, fill=SB_COLORS["sky"], color="white")
+    + geom_vline(xintercept=0, color="red", linetype="dashed", size=1)
+    + labs(
+        title="Distribution of energy_total_bill difference (TOU − seasonal) for natgas buildings",
+        x="TOU bill − seasonal bill ($/yr)",
+        y="Building count",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4.5))
+)
+```
+
 ## Step 3: Bill component breakdown — seasonal vs. TOU
 
 For natgas buildings, we compare each bill component between runs 7+8 and 11+12 to isolate which components
-are identical and which differ.
+are identical and which differ. We start with a global summary across all natgas buildings, then break it down
+by utility to see whether any discrepancy is concentrated in a particular service territory.
 
 ```{python}
-#| label: component-breakdown-by-utility
+#| label: component-summary-overall
 
 component_cols = [
     ("elec_fixed", "Electric Fixed Charge"),
@@ -226,6 +255,35 @@ component_cols = [
     ("elec_total", "Electric Total"),
     ("energy_total", "Energy Total"),
 ]
+
+# Overall per-component summary across all natgas buildings — not broken down by utility.
+# A component with n_differ = 0 is identical across both runs.
+records_overall = []
+for short, label in component_cols:
+    col = f"diff_{short}"
+    s = natgas_diff[col]
+    n_nonzero = natgas_diff.filter(pl.col(col).abs() > 0.01).height
+    records_overall.append({
+        "component": label,
+        "n_differ": n_nonzero,
+        "n_total": natgas_diff.height,
+        "pct_differ": round(n_nonzero / natgas_diff.height * 100, 1),
+        "mean_diff": round(float(s.mean()), 4),
+        "median_diff": round(float(s.median()), 4),
+        "max_abs_diff": round(float(s.abs().max()), 4),
+    })
+
+summary_overall = pl.DataFrame(records_overall)
+print("Component comparison — all natgas buildings (TOU run 11+12 minus seasonal run 7+8):")
+GT(summary_overall).fmt_number(columns=["mean_diff", "median_diff", "max_abs_diff"], decimals=4)
+```
+
+Components with `n_differ = 0` are bitwise-identical between the two runs. Any component that differs
+isolates where TOU changes take effect (e.g., only `elec_delivery_bill` would differ if TOU only affects
+the volumetric delivery piece). Now by utility:
+
+```{python}
+#| label: component-breakdown-by-utility
 
 records = []
 for util in sorted(natgas_diff["sb.electric_utility"].unique().to_list()):
@@ -396,43 +454,150 @@ else:
     print(f"Bldg {REPRESENTATIVE_BLDG} not found in natgas subset")
 ```
 
-## Step 6: Quadrant percentages table
-
-Print the exact quadrant percentages for all three scenarios side by side so rounding can be checked.
+Now we visualize the two delta distributions overlaid on a single histogram. Dashed vertical lines mark the
+1st, 25th, 50th, 75th, and 99th weighted percentiles for each scenario (sky = seasonal, carrot = TOU). A
+text annotation marks where the representative building falls. If the two distributions are identical, the
+bars and vlines will stack exactly.
 
 ```{python}
-#| label: quadrant-table
+#| label: delta-overlaid-histogram
+
+_BIN_WIDTH = 100  # $100 bins
+
+
+def _bin_for_overlay(df: pl.DataFrame, scenario: str, bin_width: int = _BIN_WIDTH) -> pl.DataFrame:
+    """Bin delta values into a weighted histogram DataFrame tagged with *scenario*."""
+    return (
+        df.select("delta", "weight")
+        .with_columns(
+            ((pl.col("delta") / bin_width).floor() * bin_width + bin_width / 2).alias("bin_center"),
+        )
+        .group_by("bin_center")
+        .agg(pl.col("weight").sum().alias("weight_sum"))
+        .with_columns(pl.lit(scenario).alias("scenario"))
+    )
+
+
+_seasonal_bins = _bin_for_overlay(natgas_switch, "Seasonal (run 7+8)")
+_tou_bins = _bin_for_overlay(natgas_tou, "TOU (run 11+12)")
+_all_bins = pl.concat([_seasonal_bins, _tou_bins])
+
+# Axis limits from 1st/99th percentile of the combined distribution so both tails are visible.
+_combined_deltas = pl.concat([
+    natgas_switch.select("delta", "weight"),
+    natgas_tou.select("delta", "weight"),
+])
+_snap = max(_BIN_WIDTH, 50)
+_x_lo = math.floor(_weighted_percentile(_combined_deltas, "delta", "weight", 0.01) / _snap) * _snap
+_x_hi = math.ceil(_weighted_percentile(_combined_deltas, "delta", "weight", 0.99) / _snap) * _snap
+
+# Weighted quantiles (p01, p25, p50, p75, p99) for each scenario.
+_q_levels = [0.01, 0.25, 0.50, 0.75, 0.99]
+_q_labels = ["p01", "p25", "p50", "p75", "p99"]
+_seasonal_qs = {lbl: _weighted_percentile(natgas_switch, "delta", "weight", q)
+                for lbl, q in zip(_q_labels, _q_levels)}
+_tou_qs = {lbl: _weighted_percentile(natgas_tou, "delta", "weight", q)
+           for lbl, q in zip(_q_labels, _q_levels)}
+
+print("Seasonal quantiles:", {k: f"${v:,.0f}" for k, v in _seasonal_qs.items()})
+print("TOU quantiles:     ", {k: f"${v:,.0f}" for k, v in _tou_qs.items()})
+
+# Representative building's delta in each scenario.
+_rep_row_s = natgas_switch.filter(pl.col(BLDG_ID) == REPRESENTATIVE_BLDG)
+_rep_row_t = natgas_tou.filter(pl.col(BLDG_ID) == REPRESENTATIVE_BLDG)
+_rep_delta_s = float(_rep_row_s["delta"][0]) if _rep_row_s.height > 0 else None
+_rep_delta_t = float(_rep_row_t["delta"][0]) if _rep_row_t.height > 0 else None
+
+# Max bar height (within axis window) for annotation y-placement.
+_max_w = float(
+    _all_bins
+    .filter((pl.col("bin_center") >= _x_lo) & (pl.col("bin_center") <= _x_hi))
+    ["weight_sum"].max()
+)
+_y_annot_top = _max_w * 1.15
+_y_annot_mid = _max_w * 0.85
+
+_scenario_colors = {
+    "Seasonal (run 7+8)": SB_COLORS["sky"],
+    "TOU (run 11+12)": SB_COLORS["carrot"],
+}
+_scenario_dtype = pl.Enum(["Seasonal (run 7+8)", "TOU (run 11+12)"])
+_plot_df = _all_bins.with_columns(pl.col("scenario").cast(_scenario_dtype))
+
+p = (
+    ggplot(_plot_df, aes(x="bin_center", y="weight_sum", fill="scenario"))
+    + geom_col(width=_BIN_WIDTH * 0.85, position="identity", alpha=0.55)
+    + geom_vline(xintercept=0, linetype="solid", color="#888888", size=0.8)
+    + scale_fill_manual(values=_scenario_colors)
+    + coord_cartesian(xlim=(_x_lo, _x_hi))
+    + labs(
+        title="Delta distribution: seasonal vs. TOU — natgas buildings (weighted)",
+        x="Annual Bill Change ($/yr)",
+        y="Weighted # of Homes",
+        fill="Scenario",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 5.0))
+)
+
+# Seasonal quantile vlines — dashed, sky blue.
+for _lbl, _val in _seasonal_qs.items():
+    if _x_lo <= _val <= _x_hi:
+        p = p + geom_vline(xintercept=_val, linetype="dashed", color=SB_COLORS["sky"], size=0.7, alpha=0.9)
+
+# TOU quantile vlines — dotted, carrot.
+for _lbl, _val in _tou_qs.items():
+    if _x_lo <= _val <= _x_hi:
+        p = p + geom_vline(xintercept=_val, linetype="dotted", color=SB_COLORS["carrot"], size=0.7, alpha=0.9)
+
+# Representative building annotation(s).
+if _rep_delta_s is not None and _rep_delta_t is not None:
+    _same = abs(_rep_delta_s - _rep_delta_t) < 0.01
+    if _same:
+        # Identical — one combined label.
+        p = p + annotate(
+            "text", x=_rep_delta_s, y=_y_annot_top,
+            label=f"Rep bldg (both)\n${_rep_delta_s:,.0f}",
+            ha="center", va="top", size=9, color="#333333",
+        )
+    else:
+        p = p + annotate(
+            "text", x=_rep_delta_s, y=_y_annot_top,
+            label=f"Rep bldg\n(seasonal)\n${_rep_delta_s:,.0f}",
+            ha="center", va="top", size=9, color=SB_COLORS["sky"],
+        )
+        p = p + annotate(
+            "text", x=_rep_delta_t, y=_y_annot_mid,
+            label=f"Rep bldg\n(TOU)\n${_rep_delta_t:,.0f}",
+            ha="center", va="top", size=9, color=SB_COLORS["carrot"],
+        )
+
+p
+```
+
+## Step 6: Quadrant percentages table
+
+Print the exact quadrant percentages for all three scenarios side by side so rounding can be verified and any
+differences smaller than 1% (which would appear identical in the chart labels) can be spotted.
+
+```{python}
+#| label: quadrant-pcts-helper
 
 def quadrant_pcts(df: pl.DataFrame) -> dict[str, float]:
     """Weighted percentage of homes in each bill-change quadrant."""
     total = df["weight"].sum()
     return {
-        "savings > $1k": df.filter(pl.col("delta") < -1000)["weight"].sum() / total * 100,
-        "savings $0-1k": df.filter((pl.col("delta") >= -1000) & (pl.col("delta") < 0))["weight"].sum() / total * 100,
-        "losses $0-1k": df.filter((pl.col("delta") >= 0) & (pl.col("delta") < 1000))["weight"].sum() / total * 100,
-        "losses > $1k": df.filter(pl.col("delta") >= 1000)["weight"].sum() / total * 100,
+        "savings > $1k":  df.filter(pl.col("delta") < -1000)["weight"].sum() / total * 100,
+        "savings $0-1k":  df.filter((pl.col("delta") >= -1000) & (pl.col("delta") < 0))["weight"].sum() / total * 100,
+        "losses $0-1k":   df.filter((pl.col("delta") >= 0) & (pl.col("delta") < 1000))["weight"].sum() / total * 100,
+        "losses > $1k":   df.filter(pl.col("delta") >= 1000)["weight"].sum() / total * 100,
     }
+```
 
+For the default-rate bar we need run 3+4 (HP on flat rate), which isn't loaded above. We load it here.
 
-# Default rate
-natgas_state = (
-    annual_current_state
-    .join(
-        bills_current
-        .filter(pl.col("month") == ANNUAL_MONTH)
-        .select(BLDG_ID)
-        .collect()
-        .join(
-            annual_current_state.select(BLDG_ID, "bill_before", "weight", "heats_with_natgas"),
-            on=BLDG_ID,
-        )
-        .select(BLDG_ID),
-        on=BLDG_ID,
-    )
-)
-
-# Actually, let's just recompute default delta properly
-from lib.rdp import fetch_rdp_file  # noqa: E402
+```{python}
+#| label: quadrant-table
 
 PATH_MASTER_BILLS_34 = f"{S3_BASE}/ny/all_utilities/{BATCH}/run_3+4/comb_bills_year_target/"
 bills_hp = pl.scan_parquet(PATH_MASTER_BILLS_34, hive_partitioning=True)
@@ -443,29 +608,33 @@ annual_hp_state = (
     .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after"))
     .collect()
 )
-delta_default_state = annual_current_state.join(annual_hp_state, on=BLDG_ID, how="inner").with_columns(
-    (pl.col("bill_after") - pl.col("bill_before")).alias("delta")
+delta_default_state = (
+    annual_current_state
+    .join(annual_hp_state, on=BLDG_ID, how="inner")
+    .with_columns((pl.col("bill_after") - pl.col("bill_before")).alias("delta"))
 )
 natgas_default = delta_default_state.filter(pl.col("heats_with_natgas")).select("delta", "weight")
-natgas_switch_sel = natgas_switch.select("delta", "weight")
-natgas_tou_sel = natgas_tou.select("delta", "weight")
 
-pct_default = quadrant_pcts(natgas_default)
-pct_seasonal = quadrant_pcts(natgas_switch_sel)
-pct_tou = quadrant_pcts(natgas_tou_sel)
+pct_default   = quadrant_pcts(natgas_default)
+pct_seasonal  = quadrant_pcts(natgas_switch.select("delta", "weight"))
+pct_tou       = quadrant_pcts(natgas_tou.select("delta", "weight"))
 
 records = []
 for q in ["savings > $1k", "savings $0-1k", "losses $0-1k", "losses > $1k"]:
     records.append({
         "quadrant": q,
-        "default_rate": round(pct_default[q], 4),
-        "fair_rate (seasonal)": round(pct_seasonal[q], 4),
-        "tou + fair (no flex)": round(pct_tou[q], 4),
-        "seasonal_minus_tou": round(pct_seasonal[q] - pct_tou[q], 4),
+        "default_rate (run 3+4)":    round(pct_default[q],  4),
+        "fair_rate (run 7+8)":       round(pct_seasonal[q], 4),
+        "tou_fair (run 11+12)":      round(pct_tou[q],      4),
+        "seasonal − tou":            round(pct_seasonal[q] - pct_tou[q], 4),
     })
 
 GT(pl.DataFrame(records)).fmt_number(
-    columns=["default_rate", "fair_rate (seasonal)", "tou + fair (no flex)", "seasonal_minus_tou"],
+    columns=["default_rate (run 3+4)", "fair_rate (run 7+8)", "tou_fair (run 11+12)", "seasonal − tou"],
     decimals=4,
 )
 ```
+
+If `seasonal − tou` is zero for all quadrants, the two runs produced bitwise-identical `energy_total_bill` values
+and the problem lies upstream (either the master-bills build used the same source data for both, or CAIRO run 11
+produced the same output as run 7 due to a configuration issue).

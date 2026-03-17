@@ -1,10 +1,10 @@
 # =============================================================================
 # ⭐ DEFAULT
 # =============================================================================
+
 # If you run `just`, you see all available commands
 default:
     @just --list
-
 
 # =============================================================================
 # 🔍 CODE QUALITY & TESTING
@@ -34,11 +34,10 @@ test:
 
 # Create a new Quarto report from the switchbox-data/report_template
 new-report:
-  @read -p "Enter the name of the directory to create for the project: " dir_name && \
-  mkdir -p reports/$dir_name && \
-  cd reports/$dir_name && \
-  QUARTO_TEMPLATE_TRUST=true quarto use template switchbox-data/report_template --no-prompt
-
+    @read -p "Enter the name of the directory to create for the project: " dir_name && \
+    mkdir -p reports/$dir_name && \
+    cd reports/$dir_name && \
+    QUARTO_TEMPLATE_TRUST=true quarto use template switchbox-data/report_template --no-prompt
 
 # =============================================================================
 # 🏗️  DEVELOPMENT ENVIRONMENT SETUP
@@ -61,11 +60,12 @@ clean:
 # =============================================================================
 # 🔍 AWS
 # =============================================================================
-
 # Authenticate with AWS via SSO (for manual AWS CLI usage like S3 access)
+
 # Automatically configures SSO if not already configured
 aws:
     .devcontainer/devpod/aws.sh
+
 # Your workspace files persist between sessions; container state resets each time.
 
 # Launch devcontainer locally with Docker

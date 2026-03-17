@@ -7,8 +7,9 @@ import io
 import json
 import os
 import urllib.request
+from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable, Sequence
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -34,9 +35,7 @@ def _choose_existing_path(candidates: Iterable[Path], description: str) -> Path:
         checked.append(candidate)
         if candidate.exists():
             return candidate
-    raise FileNotFoundError(
-        f"No {description} found. Checked: " + ", ".join(str(path) for path in checked)
-    )
+    raise FileNotFoundError(f"No {description} found. Checked: " + ", ".join(str(path) for path in checked))
 
 
 def _normalize_upgrade(upgrade: str | int) -> str:
@@ -139,20 +138,10 @@ def build_hp_flag_expr(schema_cols: list[str]) -> pl.Expr:
         return pl.col("postprocess_group.has_hp")
 
     if "in.hvac_heating_and_fuel_type" in schema_cols:
-        return (
-            pl.col("in.hvac_heating_and_fuel_type")
-            .str.to_lowercase()
-            .str.contains("hp")
-            .fill_null(False)
-        )
+        return pl.col("in.hvac_heating_and_fuel_type").str.to_lowercase().str.contains("hp").fill_null(False)
 
     if "in.hvac_heating_type_and_fuel" in schema_cols:
-        return (
-            pl.col("in.hvac_heating_type_and_fuel")
-            .str.to_lowercase()
-            .str.contains("hp")
-            .fill_null(False)
-        )
+        return pl.col("in.hvac_heating_type_and_fuel").str.to_lowercase().str.contains("hp").fill_null(False)
 
     raise ValueError(
         "Could not determine HP flag from metadata columns. "
@@ -191,7 +180,7 @@ def build_hp_group_expr(
 
 def _parse_s3_uri(uri: str) -> tuple[str, str]:
     """Split an ``s3://bucket/key`` URI into ``(bucket, key)``."""
-    without_prefix = uri[len("s3://"):]
+    without_prefix = uri[len("s3://") :]
     bucket, _, key = without_prefix.partition("/")
     return bucket, key
 
@@ -216,6 +205,14 @@ def _to_polars_frame(frame) -> pl.DataFrame:
         return pl.from_pandas(frame)
 
     raise TypeError(f"Unsupported frame type: {type(frame)!r}")
+
+
+def _reset_index_if_needed(frame: pd.DataFrame | pl.DataFrame) -> pd.DataFrame | pl.DataFrame:
+    """Reset index for pandas-like frames that expose ``reset_index``."""
+    reset_index = getattr(frame, "reset_index", None)
+    if callable(reset_index):
+        return reset_index()
+    return frame
 
 
 def read_s3_csv(s3_uri: str, **kwargs) -> pl.DataFrame:
@@ -246,7 +243,7 @@ def find_latest_run_dir(run_base: str, run_name: str) -> str:
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix, Delimiter="/"):
         for entry in page.get("CommonPrefixes", []):
             dir_prefix = entry["Prefix"]
-            dir_name = dir_prefix[len(prefix):].rstrip("/")
+            dir_name = dir_prefix[len(prefix) :].rstrip("/")
             if dir_name.endswith(f"_{run_name}"):
                 matching.append(dir_name)
 
@@ -304,7 +301,8 @@ def load_cambium_from_parquet_s3(s3_uri: str, target_year: int) -> pl.DataFrame:
     """Load Cambium marginal costs from an S3 parquet file into Polars."""
     import polars as pl
 
-    return force_timezone_est_polars(
+    frame = cast(
+        pl.DataFrame,
         pl.scan_parquet(s3_uri)
         .filter(pl.col("t") == target_year)
         .select(["timestamp_local", "energy_cost_enduse", "capacity_cost_enduse"])
@@ -320,8 +318,8 @@ def load_cambium_from_parquet_s3(s3_uri: str, target_year: int) -> pl.DataFrame:
             (pl.col("Marginal Capacity Costs ($/kWh)") / 1000.0).alias("Marginal Capacity Costs ($/kWh)"),
         )
         .collect(),
-        timestamp_col="time",
     )
+    return force_timezone_est_polars(frame, timestamp_col="time")
 
 
 def force_timezone_est_polars(
@@ -338,11 +336,7 @@ def force_timezone_est_polars(
     if isinstance(dtype, pl.Datetime) and dtype.time_zone is not None:
         expr = pl.col(timestamp_col).dt.convert_time_zone("EST")
     else:
-        expr = (
-            pl.col(timestamp_col)
-            .cast(pl.Datetime, strict=False)
-            .dt.replace_time_zone("EST")
-        )
+        expr = pl.col(timestamp_col).cast(pl.Datetime, strict=False).dt.replace_time_zone("EST")
     return frame.with_columns(expr.alias(timestamp_col))
 
 
@@ -393,21 +387,15 @@ def summarize_cross_subsidy(cross: pd.DataFrame | pl.DataFrame, metadata: pd.Dat
 
     agg_exprs = [pl.col("weight").sum().alias("customers_weighted")]
     agg_exprs.extend(
-        (
-            (pl.col(source_col) * pl.col("weight")).sum() / pl.col("weight").sum()
-        ).alias(output_col)
+        ((pl.col(source_col) * pl.col("weight")).sum() / pl.col("weight").sum()).alias(output_col)
         for source_col, output_col in _CROSS_SUBSIDY_WEIGHTED_COLS.items()
     )
 
     return (
-        merged
-        .group_by("postprocess_group.has_hp")
+        merged.group_by("postprocess_group.has_hp")
         .agg(agg_exprs)
         .with_columns(
-            pl.when(pl.col("postprocess_group.has_hp"))
-            .then(pl.lit("HP"))
-            .otherwise(pl.lit("Non-HP"))
-            .alias("group")
+            pl.when(pl.col("postprocess_group.has_hp")).then(pl.lit("HP")).otherwise(pl.lit("Non-HP")).alias("group")
         )
         .select("postprocess_group.has_hp", "customers_weighted", "group", *_CROSS_SUBSIDY_WEIGHTED_COLS.values())
         .sort("postprocess_group.has_hp", descending=True)
@@ -426,15 +414,12 @@ def summarize_cross_subsidy_by_heating_type(
 
     agg_exprs = [pl.col("weight").sum().alias("customers_weighted")]
     agg_exprs.extend(
-        (
-            (pl.col(source_col) * pl.col("weight")).sum() / pl.col("weight").sum()
-        ).alias(output_col)
+        ((pl.col(source_col) * pl.col("weight")).sum() / pl.col("weight").sum()).alias(output_col)
         for source_col, output_col in _CROSS_SUBSIDY_WEIGHTED_COLS.items()
     )
 
     return (
-        cross_pl
-        .join(
+        cross_pl.join(
             metadata_pl.select(["bldg_id", "postprocess_group.heating_type", "weight"]),
             on=["bldg_id", "weight"],
             how="left",
@@ -454,31 +439,28 @@ def build_hourly_group_loads(
     """Aggregate weighted hourly electricity load by HP flag and total."""
     import polars as pl
 
-    raw_prepared = raw_load_elec.reset_index() if hasattr(raw_load_elec, "reset_index") else raw_load_elec
+    raw_prepared = _reset_index_if_needed(raw_load_elec)
     raw_pl = _to_polars_frame(raw_prepared).select("time", "bldg_id", "electricity_net")
     metadata_pl = _to_polars_frame(metadata).select("bldg_id", "postprocess_group.has_hp", "weight")
 
     return (
-        raw_pl
-        .join(metadata_pl, on="bldg_id", how="left")
+        raw_pl.join(metadata_pl, on="bldg_id", how="left")
         .with_columns((pl.col("electricity_net") * pl.col("weight")).alias("weighted_load_kwh"))
         .group_by("time")
         .agg(
-            pl.when(pl.col("postprocess_group.has_hp") == True)
+            pl.when(pl.col("postprocess_group.has_hp"))
             .then(pl.col("weighted_load_kwh"))
             .otherwise(0.0)
             .sum()
             .alias("hp_load_kwh"),
-            pl.when(pl.col("postprocess_group.has_hp") == False)
+            pl.when(~pl.col("postprocess_group.has_hp").fill_null(False))
             .then(pl.col("weighted_load_kwh"))
             .otherwise(0.0)
             .sum()
             .alias("non_hp_load_kwh"),
         )
         .sort("time")
-        .with_columns(
-            (pl.col("non_hp_load_kwh") + pl.col("hp_load_kwh")).alias("total_load_kwh")
-        )
+        .with_columns((pl.col("non_hp_load_kwh") + pl.col("hp_load_kwh")).alias("total_load_kwh"))
     )
 
 
@@ -489,13 +471,12 @@ def build_hourly_heating_type_loads(
     """Aggregate weighted hourly electricity load by heating type."""
     import polars as pl
 
-    raw_prepared = raw_load_elec.reset_index() if hasattr(raw_load_elec, "reset_index") else raw_load_elec
+    raw_prepared = _reset_index_if_needed(raw_load_elec)
     raw_pl = _to_polars_frame(raw_prepared).select("time", "bldg_id", "electricity_net")
     metadata_pl = _to_polars_frame(metadata).select("bldg_id", "postprocess_group.heating_type", "weight")
 
     return (
-        raw_pl
-        .join(metadata_pl, on="bldg_id", how="left")
+        raw_pl.join(metadata_pl, on="bldg_id", how="left")
         .with_columns((pl.col("electricity_net") * pl.col("weight")).alias("weighted_load_kwh"))
         .group_by(["time", "postprocess_group.heating_type"])
         .agg(pl.col("weighted_load_kwh").sum().alias("load_kwh"))
@@ -524,11 +505,9 @@ def build_cross_components(cross_summary: pd.DataFrame | pl.DataFrame) -> pl.Dat
                 pl.col(component).alias("weighted_avg_bat_usd_per_customer_year"),
             ).with_columns(
                 pl.lit(label).alias("component_label"),
-                (
-                    pl.col("weighted_avg_bat_usd_per_customer_year")
-                    * pl.col("customers_weighted")
-                    / 1e6
-                ).alias("component_transfer_total_musd_per_year"),
+                (pl.col("weighted_avg_bat_usd_per_customer_year") * pl.col("customers_weighted") / 1e6).alias(
+                    "component_transfer_total_musd_per_year"
+                ),
             )
             for component, label in component_labels.items()
         ],
@@ -562,12 +541,8 @@ def summarize_positive_distribution_hours(
                 "annual_load_mwh_per_customer": (annual / customer_count) / 1000,
                 "positive_dist_cost_hours_load_mwh_per_customer": (positive / customer_count) / 1000,
                 "share_of_annual_load_in_positive_dist_cost_hours": positive / annual,
-                "avg_hourly_load_kwh_during_positive_dist_hours": (
-                    float(stats["positive_mean"]) / customer_count
-                ),
-                "avg_hourly_load_kwh_during_zero_dist_hours": (
-                    float(stats["zero_mean"]) / customer_count
-                ),
+                "avg_hourly_load_kwh_during_positive_dist_hours": (float(stats["positive_mean"]) / customer_count),
+                "avg_hourly_load_kwh_during_zero_dist_hours": (float(stats["zero_mean"]) / customer_count),
             }
         )
     return pl.DataFrame(rows)
@@ -595,24 +570,16 @@ def build_tariff_components(
         }
     )
 
-    return (
-        group_load
-        .join(
-            cross_summary_pl.select(
-                "group",
-                pl.col("customers_weighted").alias("weighted_customers"),
-            ),
-            on="group",
-            how="left",
-        )
-        .with_columns(
-            (pl.lit(fixed_monthly * 12) * pl.col("weighted_customers")).alias(
-                "annual_fixed_charge_collected_usd"
-            ),
-            (pl.lit(vol_rate) * pl.col("annual_load_kwh")).alias(
-                "annual_volumetric_charge_collected_usd"
-            ),
-        )
+    return group_load.join(
+        cross_summary_pl.select(
+            "group",
+            pl.col("customers_weighted").alias("weighted_customers"),
+        ),
+        on="group",
+        how="left",
+    ).with_columns(
+        (pl.lit(fixed_monthly * 12) * pl.col("weighted_customers")).alias("annual_fixed_charge_collected_usd"),
+        (pl.lit(vol_rate) * pl.col("annual_load_kwh")).alias("annual_volumetric_charge_collected_usd"),
     )
 
 

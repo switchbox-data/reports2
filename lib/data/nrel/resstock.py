@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import polars as pl
 
 
@@ -19,14 +21,11 @@ def scan_load_curves_for_utility(
     """
     base = path_resstock_release.rstrip("/")
     meta_path = f"{base}/metadata_utility/state={state}/utility_assignment.parquet"
-    bldg_ids: list[int] = (
-        pl.scan_parquet(meta_path)
-        .filter(pl.col("sb.electric_utility") == utility)
-        .select("bldg_id")
-        .collect()
-        .to_series()
-        .to_list()
+    meta_df = cast(
+        pl.DataFrame,
+        pl.scan_parquet(meta_path).filter(pl.col("sb.electric_utility") == utility).select(pl.col("bldg_id")).collect(),
     )
+    bldg_ids: list[int] = meta_df.get_column("bldg_id").to_list()
     if not bldg_ids:
         raise ValueError(f"No buildings for utility '{utility}' in {meta_path}")
     load_dir = f"{base}/load_curve_{load_curve_type}/state={state}/upgrade={upgrade}"

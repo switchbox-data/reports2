@@ -29,6 +29,7 @@ from plotnine import (
     facet_wrap,
     geom_col,
     geom_step,
+    geom_text,
     geom_tile,
     ggplot,
     labs,
@@ -53,6 +54,9 @@ YEAR = 2025
 
 TARIFF_DIR = "rate_design/hp_rates/ny/config/tariffs/electric"
 RDP_REF = "8bf03e6"
+
+SEASON_ENUM = pl.Enum(["Summer", "Winter"])
+CAP_ENUM = pl.Enum(["Low-cost Day", "High-cost Day"])
 
 MC_SOURCES: dict[str, dict] = {
     "mc_energy": {
@@ -323,8 +327,6 @@ MC_DISPLAY_LABELS = {
 # plotnine stacks first enum level on top, so reverse for bottom-to-top visual order
 MC_ORDER = list(reversed(MC_DISPLAY_LABELS.values()))
 MC_ENUM = pl.Enum(MC_ORDER)
-SEASON_ENUM = pl.Enum(["Summer", "Winter"])
-CAP_ENUM = pl.Enum(["Energy Only", "High Capacity"])
 
 MC_DISPLAY_COLORS = {
     "Energy": SB_COLORS["carrot"],
@@ -359,7 +361,7 @@ def select_representative_days(df: pl.DataFrame) -> pl.DataFrame:
         low_dates = season_days.filter(pl.col("daily_cap_cost") <= median_cap)["date"]
         high_dates = season_days.filter(pl.col("daily_cap_cost") > median_cap)["date"]
 
-        for level_name, dates in [("Energy Only", low_dates), ("High Capacity", high_dates)]:
+        for level_name, dates in [("Low-cost Day", low_dates), ("High-cost Day", high_dates)]:
             group = enriched.filter(pl.col("date").is_in(dates))
 
             hourly_mean = (
@@ -413,8 +415,11 @@ def plot_representative_days(
     tou_rates: pl.DataFrame | None = None,
     tou_rates_supply: pl.DataFrame | None = None,
     tou_rates_precal: pl.DataFrame | None = None,
+    season: str = "both",
 ) -> None:
-    """Plot a 2x2 faceted stacked bar chart of representative day MCs for one utility.
+    """Plot faceted stacked bar chart of representative day MCs for one utility.
+
+    *season*: ``"both"`` (2×2 grid), ``"Summer"``, or ``"Winter"`` (1×2 strip).
 
     Optional TOU overlays (each a season × hour DataFrame with a ``tou_rate`` column):
 
@@ -424,24 +429,30 @@ def plot_representative_days(
     """
     name = UTILITY_DISPLAY_NAMES.get(utility, utility)
     rep = select_representative_days(mc_all.filter(pl.col("utility") == utility))
+    rep = rep.with_columns((pl.col("hour") + 0.5).alias("hour"))
+
+    if season != "both":
+        rep = rep.filter(pl.col("season") == season)
 
     has_tou = any(t is not None for t in [tou_rates, tou_rates_supply, tou_rates_precal])
     title_suffix = " vs. TOU Rates" if has_tou else ""
+    season_label = f" — {season}" if season != "both" else ""
+    fig_height = 7 if season == "both" else 4
     p = (
         ggplot(rep, aes(x="hour", y="value", fill="mc_type"))
-        + geom_col(width=0.85)
+        + geom_col(width=1.0)
         + facet_grid("season", "cap_level")
         + scale_fill_manual(values=MC_DISPLAY_COLORS)
         + scale_x_continuous(breaks=[1, 6, 12, 18, 24])
         + scale_y_continuous(expand=(0, 0, 0.05, 0))
         + labs(
-            title=f"{name}: Representative Day Marginal Costs{title_suffix} ($/kWh, {YEAR})",
+            title=f"{name}: {season_label} Time-of-use Prices vs. Marginal Costs ($/kWh, {YEAR})",
             x="Hour of Day",
             y="$/kWh",
             fill="",
         )
         + theme_switchbox()
-        + theme(figure_size=(10.5, 7))
+        + theme(figure_size=(10.5, fig_height))
     )
 
     tou_lines: list[tuple[pl.DataFrame | None, str]] = [
@@ -451,8 +462,9 @@ def plot_representative_days(
     ]
     for tou, lt in tou_lines:
         if tou is not None:
+            tou_data = tou if season == "both" else tou.filter(pl.col("season") == season)
             p = p + geom_step(
-                _expand_tou_to_facets(tou),
+                _expand_tou_to_facets(tou_data),
                 aes(x="hour", y="tou_rate"),
                 inherit_aes=False,
                 direction="hv",
@@ -460,6 +472,26 @@ def plot_representative_days(
                 size=0.7,
                 linetype=lt,
             )
+
+    if tou_rates is not None:
+        tou_lbl = tou_rates if season == "both" else tou_rates.filter(pl.col("season") == season)
+        label_rows: list[dict] = []
+        for s in tou_lbl["season"].unique().to_list():
+            s_data = tou_lbl.filter(pl.col("season") == s).sort("hour")
+            rates_sorted = s_data["tou_rate"].unique().sort().to_list()
+            off_rate, on_rate = rates_sorted[0], rates_sorted[-1]
+            off_hours = s_data.filter(pl.col("tou_rate") == off_rate)["hour"].to_list()
+            on_hours = s_data.filter(pl.col("tou_rate") == on_rate)["hour"].to_list()
+            label_rows.append({"season": s, "hour": float(off_hours[len(off_hours) // 4]), "y": off_rate, "label": f"Off-peak: ${off_rate:.3f}"})
+            label_rows.append({"season": s, "hour": float(on_hours[len(on_hours) // 2]), "y": on_rate, "label": f"On-peak: ${on_rate:.3f}"})
+        labels_df = pl.DataFrame(label_rows).with_columns(
+            pl.col("season").cast(SEASON_ENUM),
+            pl.lit("Low-cost Day").cast(CAP_ENUM).alias("cap_level"),
+        )
+        p = p + geom_text(
+            labels_df, aes(x="hour", y="y", label="label"),
+            inherit_aes=False, va="bottom", nudge_y=0.002, size=9, color="black",
+        )
 
     p.show()
 ```
@@ -475,9 +507,21 @@ plot_representative_days("coned", tou_rates=_bundled, tou_rates_supply=_supply, 
 ### Central Hudson
 
 ```{python}
+#| label: fig-rep-days-cenhud-summer
+_bundled, _supply, _precal = load_tou_rates("cenhud")
+plot_representative_days("cenhud", tou_rates=_bundled, season="Summer")
+```
+
+```{python}
+#| label: fig-rep-days-cenhud-winter
+_bundled, _supply, _precal = load_tou_rates("cenhud")
+plot_representative_days("cenhud", tou_rates=_bundled, season="Winter")
+```
+
+```{python}
 #| label: fig-rep-days-cenhud
 _bundled, _supply, _precal = load_tou_rates("cenhud")
-plot_representative_days("cenhud", tou_rates=_bundled, tou_rates_supply=_supply, tou_rates_precal=_precal)
+plot_representative_days("cenhud", tou_rates=_bundled, season="both")
 ```
 
 ### National Grid
@@ -518,4 +562,78 @@ plot_representative_days("psegli", tou_rates=_bundled, tou_rates_supply=_supply,
 #| label: fig-rep-days-rge
 _bundled, _supply, _precal = load_tou_rates("rge")
 plot_representative_days("rge", tou_rates=_bundled, tou_rates_supply=_supply, tou_rates_precal=_precal)
+```
+
+## Report variables
+
+```{python}
+#| label: report-variables
+import pickle
+from pathlib import Path
+
+
+def _tou_season_stats(tou: pl.DataFrame, season: str) -> dict:
+    """Extract on/off-peak hours and rates for one season of a TOU profile."""
+    s = tou.filter(pl.col("season") == season).sort("hour")
+    rates = s["tou_rate"].unique().sort().to_list()
+    off_rate, on_rate = rates[0], rates[-1]
+    off_hours = s.filter(pl.col("tou_rate") == off_rate)["hour"].to_list()
+    on_hours = s.filter(pl.col("tou_rate") == on_rate)["hour"].to_list()
+    return {
+        "off_rate": off_rate,
+        "on_rate": on_rate,
+        "off_hours": off_hours,
+        "on_hours": on_hours,
+        "on_duration": len(on_hours),
+        "on_start": on_hours[0],
+        "ratio": on_rate / off_rate,
+    }
+
+
+def _rep_day_mc_stats(utility: str) -> dict:
+    """Compute average hourly MC stats for each representative day type."""
+    rep = select_representative_days(mc_all.filter(pl.col("utility") == utility))
+    stats: dict = {}
+    for season in ["Summer", "Winter"]:
+        for cap_level in ["Low-cost Day", "High-cost Day"]:
+            subset = rep.filter(
+                (pl.col("season") == season) & (pl.col("cap_level") == cap_level)
+            )
+            tag = f"{season.lower()}_{cap_level.split('-')[0].lower()}"
+            energy = subset.filter(pl.col("mc_type") == "Energy")["value"]
+            cap_types = ["Gen Capacity", "Bulk Tx", "Dist+Sub-Tx"]
+            cap = subset.filter(pl.col("mc_type").is_in(cap_types))
+            cap_hourly = cap.group_by("hour").agg(pl.col("value").sum())["value"]
+            stats[f"{tag}_energy_avg"] = energy.mean()
+            stats[f"{tag}_energy_max"] = energy.max()
+            stats[f"{tag}_cap_avg"] = cap_hourly.mean()
+            stats[f"{tag}_cap_min"] = cap_hourly.min()
+            stats[f"{tag}_cap_max"] = cap_hourly.max()
+    return stats
+
+
+report_vars: dict = {}
+_cenhud_bundled, _, _ = load_tou_rates("cenhud")
+for season in ["Summer", "Winter"]:
+    stats = _tou_season_stats(_cenhud_bundled, season)
+    prefix = f"cenhud_{season.lower()}"
+    for k, val in stats.items():
+        report_vars[f"{prefix}_{k}"] = val
+
+cenhud_mc = _rep_day_mc_stats("cenhud")
+for k, val in cenhud_mc.items():
+    report_vars[f"cenhud_{k}"] = val
+
+report_vars["cenhud_winter_start_later"] = (
+    report_vars["cenhud_winter_on_start"] - report_vars["cenhud_summer_on_start"]
+)
+report_vars["cenhud_offpeak_winter_minus_summer"] = (
+    report_vars["cenhud_winter_off_rate"] - report_vars["cenhud_summer_off_rate"]
+)
+report_vars["cenhud_onpeak_winter_minus_summer"] = (
+    report_vars["cenhud_winter_on_rate"] - report_vars["cenhud_summer_on_rate"]
+)
+
+Path("../cache").mkdir(exist_ok=True)
+Path("../cache/tou_report_variables.pkl").write_bytes(pickle.dumps(report_vars))
 ```

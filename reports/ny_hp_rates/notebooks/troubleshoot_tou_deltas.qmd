@@ -36,6 +36,7 @@ from plotnine import (
     ggplot,
     labs,
     scale_fill_manual,
+    scale_y_continuous,
     theme,
 )
 ```
@@ -248,6 +249,56 @@ problem is upstream of the analysis (in the CAIRO runs or the master-bills build
     + theme_switchbox()
     + theme(figure_size=(10.5, 4.5))
 )
+```
+
+```{python}
+#| label: fig-histogram-tou-delta-weighted
+
+_weights = pl.read_parquet(PATH_METADATA_SB, columns=[BLDG_ID, "weight"])
+_natgas_w = natgas_diff.join(_weights, on=BLDG_ID, how="left")
+
+_BW = 10
+_binned = (
+    _natgas_w
+    .with_columns(
+        ((pl.col("diff_energy_total") / _BW).floor() * _BW + _BW / 2).alias("bin_center"),
+    )
+    .group_by("bin_center")
+    .agg(pl.col("weight").sum().alias("weighted_count"))
+    .filter((pl.col("bin_center") >= -200) & (pl.col("bin_center") <= 200))
+    .sort("bin_center")
+)
+
+(
+    ggplot(_binned, aes(x="bin_center", y="weighted_count"))
+    + geom_col(width=_BW * 0.9, fill=SB_COLORS["sky"])
+    + geom_vline(xintercept=0, color="red", linetype="dashed", size=0.8)
+    + coord_cartesian(xlim=(-200, 200))
+    + scale_y_continuous(expand=(0, 0, 0.05, 0))
+    + labs(
+        title="Annual bill change, TOU − seasonal HP rate",
+        x="Annual bill change ($/yr)",
+        y="Number of homes",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4.5))
+)
+```
+
+```{python}
+#| label: tou-delta-report-vars
+import pickle
+from pathlib import Path
+
+_total_w = _natgas_w["weight"].sum()
+_within_50 = _natgas_w.filter(pl.col("diff_energy_total").abs() <= 50)["weight"].sum()
+
+tou_delta_vars = {
+    "pct_within_50": _within_50 / _total_w,
+}
+
+Path("../cache").mkdir(exist_ok=True)
+Path("../cache/tou_delta_report_variables.pkl").write_bytes(pickle.dumps(tou_delta_vars))
 ```
 
 ## Step 3: Bill component breakdown — seasonal vs. TOU

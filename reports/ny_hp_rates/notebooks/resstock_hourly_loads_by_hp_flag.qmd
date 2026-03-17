@@ -13,6 +13,7 @@ This notebook plots NY ResStock hourly loads split by heat-pump status using a P
 
 ```{python}
 from pathlib import Path
+import sys
 
 import polars as pl
 from plotnine import (
@@ -29,17 +30,24 @@ from plotnine import (
     theme,
     theme_minimal,
 )
-import sys
 
 for _root in (Path.cwd(), *Path.cwd().parents):
-    _rate_utils = _root / "rate-utils"
-    if (_rate_utils / "plotting_utils.py").is_file():
-        sys.path.insert(0, str(_rate_utils))
+    if (_root / "lib" / "rdp.py").is_file():
+        sys.path.insert(0, str(_root))
         break
 else:
-    raise FileNotFoundError("Could not locate rate-utils/plotting_utils.py from current working directory.")
+    raise FileNotFoundError("Could not locate lib/rdp.py from current working directory.")
 
-from plotting_utils import force_timezone_est_polars
+from lib.rdp import (
+    build_hp_flag_expr,
+    build_hp_group_expr,
+    force_timezone_est_polars,
+    resolve_heating_type_column,
+    resolve_resstock_data_root,
+    resolve_resstock_hourly_loads_dir,
+    resolve_resstock_metadata_dir,
+    resolve_resstock_metadata_file,
+)
 ```
 
 # Parameters
@@ -50,100 +58,37 @@ UPGRADE = "00"
 CUSTOMER_COUNT = 7_500_000
 SAMPLE_BUILDINGS = 2_000
 
-DATA_ROOT_CANDIDATES = [
-    Path("/metadata.sb/nrel/resstock"),
-    Path("/data.sb/nrel/resstock"),
-]
-
 GROUP_COLORS = {
     "HP": "#FC9706",
     "Electric (non-HP heating)": "#2A9D8F",
     "Non-HP": "#023047",
 }
 
-
-def choose_data_root(candidates: list[Path]) -> Path:
-    for root in candidates:
-        if root.exists():
-            return root
-    raise FileNotFoundError(
-        "No data root found. Checked: " + ", ".join(str(p) for p in candidates)
-    )
-
-
-def resolve_metadata_file(base: Path) -> Path:
-    candidates = [
-        base / "metadata-sb.parquet",
-        base / "metadata-sb-with-utilities.parquet",
-        base / "metadata.parquet",
-    ]
-    for path in candidates:
-        if path.exists():
-            return path
-    raise FileNotFoundError(
-        "No metadata parquet found. Checked: " + ", ".join(str(p) for p in candidates)
-    )
-
-
-def build_hp_flag_expr(schema_cols: list[str]) -> pl.Expr:
-    if "postprocess_group.has_hp" in schema_cols:
-        return pl.col("postprocess_group.has_hp")
-
-    if "in.hvac_heating_and_fuel_type" in schema_cols:
-        return (
-            pl.col("in.hvac_heating_and_fuel_type")
-            .str.to_lowercase()
-            .str.contains("hp")
-            .fill_null(False)
-        )
-
-    if "in.hvac_heating_type_and_fuel" in schema_cols:
-        return (
-            pl.col("in.hvac_heating_type_and_fuel")
-            .str.to_lowercase()
-            .str.contains("hp")
-            .fill_null(False)
-        )
-
-    raise ValueError(
-        "Could not determine HP flag from metadata columns. "
-        "Expected `postprocess_group.has_hp`, `in.hvac_heating_and_fuel_type`, "
-        "or `in.hvac_heating_type_and_fuel`."
-    )
-
-
-data_root = choose_data_root(DATA_ROOT_CANDIDATES)
-resstock_root = data_root / RELEASE
-metadata_dir = resstock_root / "metadata" / f"state={STATE}" / f"upgrade={UPGRADE}"
-loads_dir = (
-    resstock_root
-    / "load_curve_hourly"
-    # / f"state={STATE}"
-    # / f"upgrade={UPGRADE}"
+data_root = resolve_resstock_data_root()
+metadata_dir = resolve_resstock_metadata_dir(
+    RELEASE,
+    STATE,
+    UPGRADE,
+    data_root=data_root,
 )
-loads_glob = str(
-    loads_dir
-    / "*.parquet"
+loads_dir = resolve_resstock_hourly_loads_dir(
+    RELEASE,
+    STATE,
+    UPGRADE,
+    data_root=data_root,
 )
+loads_glob = str(loads_dir / "**" / "*.parquet")
 ```
 
 # Metadata Processing
 ```{python}
-metadata_path = resolve_metadata_file(metadata_dir)
+metadata_path = resolve_resstock_metadata_file(metadata_dir)
 meta_schema = pl.scan_parquet(str(metadata_path)).collect_schema().names()
 
 if "bldg_id" not in meta_schema:
     raise ValueError(f"metadata is missing bldg_id: {metadata_path}")
 
-if "in.hvac_heating_and_fuel_type" in meta_schema:
-    heating_type_col = "in.hvac_heating_and_fuel_type"
-elif "in.hvac_heating_type_and_fuel" in meta_schema:
-    heating_type_col = "in.hvac_heating_type_and_fuel"
-else:
-    raise ValueError(
-        "Could not determine heating-type column from metadata. "
-        "Expected `in.hvac_heating_and_fuel_type` or `in.hvac_heating_type_and_fuel`."
-    )
+heating_type_col = resolve_heating_type_column(meta_schema)
 
 weight_expr = (
     pl.col("weight")
@@ -178,14 +123,7 @@ metadata_scaled = metadata_df.with_columns(
 metadata_lf = (
     metadata_scaled
     .lazy()
-    .with_columns(
-        pl.when(pl.col("hp_flag"))
-        .then(pl.lit("HP"))
-        .when(pl.col("heating_type").str.to_lowercase().str.contains("electric"))
-        .then(pl.lit("Electric (non-HP heating)"))
-        .otherwise(pl.lit("Non-HP"))
-        .alias("hp_group")
-    )
+    .with_columns(build_hp_group_expr().alias("hp_group"))
     .select("bldg_id", "hp_group", "weight")
 )
 
@@ -204,33 +142,32 @@ heating_type_summary = (
 
 # Load Processing
 ```{python}
-
-# load_schema = pl.scan_parquet(loads_dir).collect_schema().names()
-# load_col_preference = [
-#     # "out.electricity.net.energy_consumption",
-#     # "out.site_energy.net.energy_consumption",
-#     "out.electricity.total.energy_consumption",
-#     # "out.site_energy.total.energy_consumption",
-# ]
-# load_col = next((c for c in load_col_preference if c in load_schema), None)
-# if load_col is None:
-#     raise ValueError(
-#         "Expected one of load columns not found: " + ", ".join(load_col_preference)
-#     )
 load_col = "out.electricity.net.energy_consumption"
-```
-# Load Processing
-```{python}
-UPGRADE = int(UPGRADE)
+load_schema = pl.scan_parquet(loads_glob).collect_schema().names()
+upgrade_int = int(UPGRADE)
+
 base_loads_lf = (
-    pl.scan_parquet(loads_dir)
-    .filter((pl.col("state") == STATE ) & (pl.col("upgrade") == UPGRADE))
-    .filter(pl.col("bldg_id").is_in(sample_bldg_ids))
+    pl.scan_parquet(loads_glob)
     .select(
         pl.col("bldg_id"),
         pl.col("timestamp"),
         pl.col(load_col).alias("load_kwh"),
+        *[
+            pl.col(col_name)
+            for col_name in ("state", "upgrade")
+            if col_name in load_schema
+        ],
     )
+)
+
+if "state" in load_schema:
+    base_loads_lf = base_loads_lf.filter(pl.col("state") == STATE)
+if "upgrade" in load_schema:
+    base_loads_lf = base_loads_lf.filter(pl.col("upgrade") == upgrade_int)
+
+base_loads_lf = (
+    base_loads_lf
+    .filter(pl.col("bldg_id").is_in(sample_bldg_ids))
     .join(metadata_lf, on="bldg_id", how="inner")
 )
 ```

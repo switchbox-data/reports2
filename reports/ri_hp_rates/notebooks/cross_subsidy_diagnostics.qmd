@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pandas as pd
+import polars as pl
 from plotnine import (
     aes,
     coord_flip,
@@ -33,20 +33,17 @@ from plotnine import (
     theme,
     theme_minimal,
 )
-
 import sys
 
 for _root in (Path.cwd(), *Path.cwd().parents):
-    _rate_utils = _root / "rate-utils"
-    if (_rate_utils / "plotting_utils.py").is_file():
-        sys.path.insert(0, str(_rate_utils))
+    if (_root / "lib" / "rdp.py").is_file():
+        sys.path.insert(0, str(_root))
         break
 else:
-    raise FileNotFoundError("Could not locate rate-utils/plotting_utils.py from current working directory.")
+    raise FileNotFoundError("Could not locate lib/rdp.py from current working directory.")
 
-from plotting_utils import (
+from lib.rdp import (
     build_bldg_id_to_load_filepath,
-    build_cost_mix,
     build_cross_components,
     build_hourly_group_loads,
     build_hourly_heating_type_loads,
@@ -56,6 +53,7 @@ from plotting_utils import (
     load_dist_mc_from_run,
     read_s3_csv,
     read_s3_json,
+    resolve_resstock_hourly_loads_dir,
     summarize_cross_subsidy,
     summarize_cross_subsidy_by_heating_type,
     summarize_positive_distribution_hours,
@@ -70,7 +68,7 @@ except ModuleNotFoundError as exc:
     ) from exc
 
 
-pd.set_option("display.max_columns", 100)
+pl.Config.set_tbl_cols(-1)
 
 RUN_BASE = "s3://data.sb/switchbox/cairo/ri_hp_rates/analysis_outputs"
 
@@ -96,9 +94,10 @@ RUN_CONFIG = {
 }
 ACTIVE_RUN_LABEL = "precalc_delivery"
 
-# ResStock loads accessed via local S3 mount (needed for Path.glob in build_bldg_id_to_load_filepath)
-RESSTOCK_LOADS = Path(
-    "/data.sb/nrel/resstock/res_2024_amy2018_2/load_curve_hourly/state=RI/upgrade=00"
+RESSTOCK_LOADS = resolve_resstock_hourly_loads_dir(
+    release="res_2024_amy2018_2",
+    state="RI",
+    upgrade="00",
 )
 
 # Resolve the most recent output directory for each run (directories are named
@@ -130,13 +129,13 @@ for run_label, run_path in run_dirs.items():
     run_metadata = read_s3_csv(f"{run_path}/customer_metadata.csv")
     run_cross = read_s3_csv(f"{run_path}/cross_subsidization/cross_subsidization_BAT_values.csv")
     run_cross_summary = summarize_cross_subsidy(cross=run_cross, metadata=run_metadata)
-    run_cross_summary["run_label"] = run_label
+    run_cross_summary = run_cross_summary.with_columns(pl.lit(run_label).alias("run_label"))
 
     run_cross_components = build_cross_components(run_cross_summary)
-    run_cross_components["run_label"] = run_label
+    run_cross_components = run_cross_components.with_columns(pl.lit(run_label).alias("run_label"))
 
     run_ht_summary = summarize_cross_subsidy_by_heating_type(cross=run_cross, metadata=run_metadata)
-    run_ht_summary["run_label"] = run_label
+    run_ht_summary = run_ht_summary.with_columns(pl.lit(run_label).alias("run_label"))
 
     run_payload[run_label] = {
         "metadata": run_metadata,
@@ -146,17 +145,17 @@ for run_label, run_path in run_dirs.items():
         "ht_summary": run_ht_summary,
     }
 
-cross_summary_all = pd.concat(
+cross_summary_all = pl.concat(
     [payload["cross_summary"] for payload in run_payload.values()],
-    ignore_index=True,
+    how="vertical",
 )
-cross_components_all = pd.concat(
+cross_components_all = pl.concat(
     [payload["cross_components"] for payload in run_payload.values()],
-    ignore_index=True,
+    how="vertical",
 )
-ht_summary_all = pd.concat(
+ht_summary_all = pl.concat(
     [payload["ht_summary"] for payload in run_payload.values()],
-    ignore_index=True,
+    how="vertical",
 )
 
 metadata = run_payload[ACTIVE_RUN_LABEL]["metadata"]
@@ -165,14 +164,14 @@ cross_summary = run_payload[ACTIVE_RUN_LABEL]["cross_summary"]
 cross_components = run_payload[ACTIVE_RUN_LABEL]["cross_components"]
 ht_summary = run_payload[ACTIVE_RUN_LABEL]["ht_summary"]
 
-cross_summary_all.sort_values(["run_label", "group"])
+cross_summary_all.sort(["run_label", "group"])
 ```
 
 ```{python}
 # Customer counts by group (weighted)
-cross_summary_all[["run_label", "group", "customers_weighted"]].sort_values(
+cross_summary_all.select("run_label", "group", "customers_weighted").sort(
     ["run_label", "group"]
-).reset_index(drop=True)
+)
 ```
 
 ## Marginal vs Residual Cost Composition (HP vs Non-HP)
@@ -185,35 +184,35 @@ _residual_cols = {
 }
 
 per_customer_long = (
-    cross_summary_all
-    .melt(
-        id_vars=["run_label", "group", "Economic_burden_weighted_avg"],
-        value_vars=list(_residual_cols.keys()),
-        var_name="residual_key",
-        value_name="residual_usd_per_customer",
+    pl.concat(
+        [
+            pl.concat(
+                [
+                    cross_summary_all.select(
+                        "run_label",
+                        "group",
+                        pl.lit(benchmark).alias("benchmark"),
+                        pl.lit("Marginal (economic burden)").alias("cost_source"),
+                        pl.col("Economic_burden_weighted_avg").alias("usd_per_customer"),
+                    ),
+                    cross_summary_all.select(
+                        "run_label",
+                        "group",
+                        pl.lit(benchmark).alias("benchmark"),
+                        pl.lit("Residual allocation").alias("cost_source"),
+                        pl.col(residual_key).alias("usd_per_customer"),
+                    ),
+                ],
+                how="vertical",
+            )
+            for residual_key, benchmark in _residual_cols.items()
+        ],
+        how="vertical",
     )
-    .assign(benchmark=lambda d: d["residual_key"].map(_residual_cols))
-    .melt(
-        id_vars=["run_label", "group", "benchmark"],
-        value_vars=["Economic_burden_weighted_avg", "residual_usd_per_customer"],
-        var_name="cost_source_key",
-        value_name="usd_per_customer",
-    )
-    .assign(
-        cost_source=lambda d: d["cost_source_key"].map({
-            "Economic_burden_weighted_avg": "Marginal (economic burden)",
-            "residual_usd_per_customer": "Residual allocation",
-        })
-    )
-)
-per_customer_long["cost_source"] = pd.Categorical(
-    per_customer_long["cost_source"],
-    categories=["Residual allocation", "Marginal (economic burden)"],
-    ordered=True,
 )
 
 (
-    ggplot(per_customer_long, aes(x="group", y="usd_per_customer", fill="cost_source"))
+    ggplot(per_customer_long.to_pandas(), aes(x="group", y="usd_per_customer", fill="cost_source"))
     + geom_col(position="stack", width=0.65)
     + scale_fill_manual(
         values={
@@ -238,7 +237,7 @@ per_customer_long["cost_source"] = pd.Categorical(
 
 ```{python}
 # Loads are the same for both runs (same ResStock inputs); build once using active-run metadata.
-building_ids = metadata["bldg_id"].astype(int).tolist()
+building_ids = metadata["bldg_id"].cast(pl.Int64).to_list()
 load_map = build_bldg_id_to_load_filepath(RESSTOCK_LOADS, building_ids)
 
 raw_load_elec = _return_load(
@@ -253,7 +252,7 @@ hourly_by_heating_type = build_hourly_heating_type_loads(raw_load_elec=raw_load_
 
 # Build per-run hourly DataFrames: each run has its own distribution MC (from the saved CSV)
 # and its own Cambium supply costs (delivery-only run uses dummy zeros; supply-adj uses real costs).
-hourly_runs: dict[str, pd.DataFrame] = {}
+hourly_runs: dict[str, pl.DataFrame] = {}
 
 for run_label, run_cfg in RUN_CONFIG.items():
     run_path = run_dirs[run_label]
@@ -263,32 +262,48 @@ for run_label, run_cfg in RUN_CONFIG.items():
 
     # Supply (Cambium): load directly from S3 parquet via polars
     supply_costs = load_cambium_from_parquet_s3(run_cfg["cambium_costs"], run_cfg["target_year"])
-    supply_costs["Marginal Supply Costs ($/kWh)"] = (
-        supply_costs["Marginal Energy Costs ($/kWh)"] + supply_costs["Marginal Capacity Costs ($/kWh)"]
+    supply_costs = supply_costs.with_columns(
+        (
+            pl.col("Marginal Energy Costs ($/kWh)")
+            + pl.col("Marginal Capacity Costs ($/kWh)")
+        ).alias("Marginal Supply Costs ($/kWh)")
     )
 
-    costs = supply_costs.join(dist_costs, how="left")
+    costs = supply_costs.join(dist_costs, on="time", how="left")
 
-    hrly = hourly_by_group.join(costs, how="left").reset_index()
-    hrly["mdc_positive"] = hrly["Marginal Distribution Costs ($/kWh)"] > 0
-    hrly["run_label"] = run_label
-    hrly["label_display"] = run_cfg["label_display"]
+    hrly = (
+        hourly_by_group
+        .join(costs, on="time", how="left")
+        .with_columns(
+            (pl.col("Marginal Distribution Costs ($/kWh)") > 0).alias("mdc_positive"),
+            pl.lit(run_label).alias("run_label"),
+            pl.lit(run_cfg["label_display"]).alias("label_display"),
+        )
+    )
     hourly_runs[run_label] = hrly
 
 # Active-run hourly kept as `hourly` for single-run sections below
 hourly = hourly_runs[ACTIVE_RUN_LABEL]
 
 for run_label, hrly in hourly_runs.items():
-    hours_positive = int(hrly["mdc_positive"].sum())
-    hp_annual_share = hrly["hp_load_kwh"].sum() / hrly["total_load_kwh"].sum()
-    hp_peakdist_share = (
-        hrly.loc[hrly["mdc_positive"], "hp_load_kwh"].sum()
-        / hrly.loc[hrly["mdc_positive"], "total_load_kwh"].sum()
-    )
+    stats = hrly.select(
+        pl.col("mdc_positive").sum().alias("hours_positive"),
+        (pl.col("hp_load_kwh").sum() / pl.col("total_load_kwh").sum()).alias("hp_annual_share"),
+        (
+            pl.when(pl.col("mdc_positive"))
+            .then(pl.col("hp_load_kwh"))
+            .otherwise(0.0)
+            .sum()
+            / pl.when(pl.col("mdc_positive"))
+            .then(pl.col("total_load_kwh"))
+            .otherwise(0.0)
+            .sum()
+        ).alias("hp_peakdist_share"),
+    ).row(0, named=True)
     print(
-        f"[{run_label}] mdc > 0 hours: {hours_positive}, "
-        f"HP annual share: {hp_annual_share:.2%}, "
-        f"HP peak-dist share: {hp_peakdist_share:.2%}"
+        f"[{run_label}] mdc > 0 hours: {int(stats['hours_positive'])}, "
+        f"HP annual share: {float(stats['hp_annual_share']):.2%}, "
+        f"HP peak-dist share: {float(stats['hp_peakdist_share']):.2%}"
     )
 ```
 
@@ -296,7 +311,7 @@ for run_label, hrly in hourly_runs.items():
 
 ```{python}
 (
-    ggplot(hourly_by_heating_type, aes(x="time", y="load_kwh", fill="heating_type"))
+    ggplot(hourly_by_heating_type.to_pandas(), aes(x="time", y="load_kwh", fill="heating_type"))
     + geom_area(position="stack", alpha=0.85)
     + labs(
         title="Stacked Weighted Aggregated Load Curves by Heating Type",
@@ -313,7 +328,7 @@ for run_label, hrly in hourly_runs.items():
 
 ```{python}
 (
-    ggplot(hourly_by_heating_type, aes(x="time", y="load_kwh", color="heating_type"))
+    ggplot(hourly_by_heating_type.to_pandas(), aes(x="time", y="load_kwh", color="heating_type"))
     + geom_line(size=0.55, alpha=0.9)
     + labs(
         title="Hourly Weighted Load Curves by Heating Type",
@@ -333,14 +348,25 @@ for run_label, hrly in hourly_runs.items():
 # plot once using the active run.
 cost_plot = hourly[
     ["time", "Marginal Distribution Costs ($/kWh)", "Marginal Supply Costs ($/kWh)"]
-].melt(
-    id_vars=["time"],
-    var_name="cost_type",
-    value_name="cost",
+]
+cost_plot = pl.concat(
+    [
+        cost_plot.select(
+            "time",
+            pl.lit("Marginal Distribution Costs ($/kWh)").alias("cost_type"),
+            pl.col("Marginal Distribution Costs ($/kWh)").alias("cost"),
+        ),
+        cost_plot.select(
+            "time",
+            pl.lit("Marginal Supply Costs ($/kWh)").alias("cost_type"),
+            pl.col("Marginal Supply Costs ($/kWh)").alias("cost"),
+        ),
+    ],
+    how="vertical",
 )
 
 (
-    ggplot(cost_plot, aes(x="time", y="cost", color="cost_type"))
+    ggplot(cost_plot.to_pandas(), aes(x="time", y="cost", color="cost_type"))
     + geom_line(size=0.5)
     + labs(
         title="Marginal Cost Time Series",
@@ -358,7 +384,7 @@ cost_plot = hourly[
 ```{python}
 (
     ggplot(
-        cross_components_all,
+        cross_components_all.to_pandas(),
         aes(x="component_label", y="component_transfer_total_musd_per_year", fill="group"),
     )
     + geom_col(position=position_dodge(width=0.8), width=0.7)
@@ -382,24 +408,27 @@ ht_summary
 ```
 
 ```{python}
-ht_bat_long = ht_summary_all.melt(
-    id_vars=["group", "run_label"],
-    value_vars=["BAT_vol_weighted_avg", "BAT_peak_weighted_avg", "BAT_percustomer_weighted_avg"],
-    var_name="bat_key",
-    value_name="bat_usd_per_customer_year",
-).assign(
-    bat_label=lambda d: d["bat_key"].map(
-        {
+ht_bat_long = pl.concat(
+    [
+        ht_summary_all.select(
+            "group",
+            "run_label",
+            pl.lit(bat_key).alias("bat_key"),
+            pl.lit(bat_label).alias("bat_label"),
+            pl.col(bat_key).alias("bat_usd_per_customer_year"),
+        )
+        for bat_key, bat_label in {
             "BAT_vol_weighted_avg": "Volumetric",
             "BAT_peak_weighted_avg": "Peak",
             "BAT_percustomer_weighted_avg": "Per-customer",
-        }
-    )
+        }.items()
+    ],
+    how="vertical",
 )
 
 (
     ggplot(
-        ht_bat_long,
+        ht_bat_long.to_pandas(),
         aes(x="group", y="bat_usd_per_customer_year", fill="bat_label"),
     )
     + geom_col(position=position_dodge(width=0.8), width=0.7)
@@ -419,7 +448,7 @@ ht_bat_long = ht_summary_all.melt(
 ## Consumption During Hours Where `marginal_distribution_cost > 0`
 
 ```{python}
-customer_count_map = cross_summary.set_index("group")["customers_weighted"].to_dict()
+customer_count_map = dict(zip(cross_summary["group"].to_list(), cross_summary["customers_weighted"].to_list()))
 positive_hours_summary = summarize_positive_distribution_hours(hourly, customer_count_map)
 positive_hours_summary
 ```
@@ -427,7 +456,7 @@ positive_hours_summary
 ```{python}
 (
     ggplot(
-        positive_hours_summary,
+        positive_hours_summary.to_pandas(),
         aes(x="group", y="positive_dist_cost_hours_load_mwh_per_customer", fill="group"),
     )
     + geom_col(width=0.6)
@@ -459,31 +488,34 @@ tariff_components = build_tariff_components(
     vol_rate=vol_rate,
 )
 
-tariff_components[[
+tariff_components.select(
     "group",
     "weighted_customers",
     "annual_load_kwh",
     "annual_fixed_charge_collected_usd",
     "annual_volumetric_charge_collected_usd",
-]]
+)
 ```
 
 ```{python}
-tariff_components_plot = tariff_components.melt(
-    id_vars=["group"],
-    value_vars=["annual_fixed_charge_collected_usd", "annual_volumetric_charge_collected_usd"],
-    var_name="component",
-    value_name="collected_usd",
-)
-tariff_components_plot["component"] = tariff_components_plot["component"].map(
-    {
-        "annual_fixed_charge_collected_usd": "Fixed charge",
-        "annual_volumetric_charge_collected_usd": "Volumetric charge",
-    }
+tariff_components_plot = pl.concat(
+    [
+        tariff_components.select(
+            "group",
+            pl.lit("Fixed charge").alias("component"),
+            pl.col("annual_fixed_charge_collected_usd").alias("collected_usd"),
+        ),
+        tariff_components.select(
+            "group",
+            pl.lit("Volumetric charge").alias("component"),
+            pl.col("annual_volumetric_charge_collected_usd").alias("collected_usd"),
+        ),
+    ],
+    how="vertical",
 )
 
 (
-    ggplot(tariff_components_plot, aes(x="group", y="collected_usd", fill="component"))
+    ggplot(tariff_components_plot.to_pandas(), aes(x="group", y="collected_usd", fill="component"))
     + geom_col(position="fill", width=0.65)
     + labs(
         title="Proportion of Fixed vs Volumetric Collected Charges by Group",

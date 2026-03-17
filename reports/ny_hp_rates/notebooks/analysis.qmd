@@ -135,6 +135,7 @@ UTIL_NAMES = {  # state-dependent: swap when switching states
     "psegli": "PSEG-LI",
     "rge": "RG&E",
 }
+UTIL_ORDER_CODES = ["psegli", "coned", "or", "cenhud", "nyseg", "rge", "nimo"]
 ```
 
 ## Data ingest
@@ -941,6 +942,7 @@ DELTA_SELECT = [
     "heats_with_natgas",
     "heats_with_oil",
     "heats_with_propane",
+    "sb.electric_utility",
 ]
 
 annual_current_state = (
@@ -1098,18 +1100,178 @@ def plot_quadrant_bar(
     if title_parts:
         fig = p.draw()
         renderer = fig.canvas.get_renderer()
+        fig_w_px = fig.get_window_extent().width
+
+        _t1 = fig.text(0, -1, "xx", fontsize=12, fontweight="bold", fontfamily="GT Planar")
+        _t2 = fig.text(0, -1, "x x", fontsize=12, fontweight="bold", fontfamily="GT Planar")
+        space_fig = (
+            _t2.get_window_extent(renderer).width
+            - _t1.get_window_extent(renderer).width
+        ) / fig_w_px
+        _t1.remove()
+        _t2.remove()
+
         x_pos = fig.axes[0].get_position().x0
-        for text_str, color in title_parts:
+        for i, (text_str, color) in enumerate(title_parts):
             t = fig.text(
-                x_pos, 0.92, text_str,
+                x_pos, 0.92, text_str.strip(),
                 color=color, fontsize=12, fontweight="bold",
                 fontfamily="GT Planar", va="bottom",
             )
             bb = t.get_window_extent(renderer=renderer)
             x_pos = bb.transformed(fig.transFigure.inverted()).x1
+            if i < len(title_parts) - 1:
+                x_pos += space_fig
         return fig
 
     return p
+
+
+_QBU_BAR_HEIGHT = 0.45
+_QBU_GROUP_GAP = 1.0
+_QBU_INTRA_GAP = 0.12
+_QBU_HEADER_SPACE = 0.55
+_QBU_LABEL_SPACE = 0.35
+
+
+def plot_quadrant_bar_by_utility(
+    default_delta: pl.DataFrame,
+    hprate_delta: pl.DataFrame,
+    utility_names: dict[str, str],
+    fuel_filter: pl.Expr,
+    title_parts: list[tuple[str, str]],
+    scenario_labels: tuple[str, str] = ("Default rate", "HP seasonal rate"),
+) -> None:
+    """Grouped quadrant bars for each utility in a single tall figure.
+
+    *default_delta* and *hprate_delta* must have ``delta``, ``weight``, and
+    ``sb.electric_utility`` columns. *fuel_filter* is applied to both.
+
+    Displays as inline SVG via IPython so Quarto's ``embed`` shortcode can
+    reference the cell output without hitting the raw-matplotlib Figure bug.
+    """
+    import io
+    import matplotlib.pyplot as plt
+    from IPython.display import display, SVG
+
+    ordered_codes = list(reversed(UTIL_ORDER_CODES))
+
+    util_data: dict[str, list[tuple[str, dict[str, float]]]] = {}
+    for code in ordered_codes:
+        name = utility_names[code]
+        dd = default_delta.filter(fuel_filter & (pl.col("sb.electric_utility") == code))
+        hd = hprate_delta.filter(fuel_filter & (pl.col("sb.electric_utility") == code))
+        if dd.is_empty() or hd.is_empty():
+            continue
+        util_data[name] = [
+            (scenario_labels[0], quadrant_pcts(dd)),
+            (scenario_labels[1], quadrant_pcts(hd)),
+        ]
+
+    n_utils = len(util_data)
+    n_scenarios = 2
+
+    bar_positions: list[float] = []
+    bar_scenario_labels: list[str] = []
+    bar_pcts: list[dict[str, float]] = []
+    utility_header_ys: list[tuple[float, str]] = []
+    label_rows: list[tuple[float, dict[str, float]]] = []
+
+    y = 0.0
+    for u_idx, (util_name, scenarios) in enumerate(util_data.items()):
+        utility_header_ys.append((y, util_name))
+        y += _QBU_HEADER_SPACE
+
+        first_pct = scenarios[0][1]
+        label_rows.append((y, first_pct))
+        y += _QBU_LABEL_SPACE
+
+        for s_idx, (s_label, pct) in enumerate(scenarios):
+            bar_positions.append(y)
+            bar_scenario_labels.append(s_label)
+            bar_pcts.append(pct)
+            y += _QBU_BAR_HEIGHT + (_QBU_INTRA_GAP if s_idx < n_scenarios - 1 else 0)
+        if u_idx < n_utils - 1:
+            y += _QBU_GROUP_GAP
+
+    y_max = y + 0.1
+    fig_height = 1.5 + n_utils * 2.3
+
+    fig, ax = plt.subplots(figsize=(12.5, fig_height))
+    ax.set_xlim(0, 100)
+    ax.set_ylim(-0.1, y_max)
+    ax.invert_yaxis()
+    ax.set_xticks([])
+    ax.set_yticks([])
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    stacking_order = list(reversed(QUADRANT_ORDER))
+
+    for bp, pct in zip(bar_positions, bar_pcts):
+        left = 0.0
+        for q in stacking_order:
+            width = pct[q]
+            ax.barh(bp, width, left=left, height=_QBU_BAR_HEIGHT,
+                    color=QUADRANT_COLORS[q], edgecolor="none", align="edge")
+            if width >= 3:
+                ax.text(left + width / 2, bp + _QBU_BAR_HEIGHT / 2, f"{width:.1f}%",
+                        ha="center", va="center", color="white",
+                        fontsize=10, fontweight="bold", fontfamily="IBM Plex Sans")
+            left += width
+
+    for bp, label in zip(bar_positions, bar_scenario_labels):
+        ax.text(101, bp + _QBU_BAR_HEIGHT / 2, label,
+                ha="left", va="center", fontsize=9, fontweight="bold",
+                fontfamily="IBM Plex Sans")
+
+    for header_y, util_name in utility_header_ys:
+        ax.text(0, header_y, util_name,
+                ha="left", va="top", fontsize=11, fontweight="bold",
+                fontfamily="GT Planar", color="#333333")
+
+    for label_y, first_pct in label_rows:
+        cum = 0.0
+        for q in stacking_order:
+            mid = cum + first_pct[q] / 2
+            cum += first_pct[q]
+            if first_pct[q] < 2:
+                continue
+            ax.text(mid, label_y, QUADRANT_LABELS[q],
+                    ha="center", va="bottom", fontsize=8,
+                    fontweight="bold", color=QUADRANT_COLORS[q],
+                    fontfamily="IBM Plex Sans")
+
+    fig.subplots_adjust(left=0.02, right=0.85, top=0.95, bottom=0.01)
+
+    # Multi-color title
+    renderer = fig.canvas.get_renderer()
+    fig_w_px = fig.get_window_extent().width
+    _t1 = fig.text(0, -1, "xx", fontsize=12, fontweight="bold", fontfamily="GT Planar")
+    _t2 = fig.text(0, -1, "x x", fontsize=12, fontweight="bold", fontfamily="GT Planar")
+    space_fig = (
+        _t2.get_window_extent(renderer).width
+        - _t1.get_window_extent(renderer).width
+    ) / fig_w_px
+    _t1.remove()
+    _t2.remove()
+
+    x_pos = fig.axes[0].get_position().x0
+    for i, (text_str, color) in enumerate(title_parts):
+        t = fig.text(
+            x_pos, 0.97, text_str.strip(),
+            color=color, fontsize=12, fontweight="bold",
+            fontfamily="GT Planar", va="top",
+        )
+        bb = t.get_window_extent(renderer=renderer)
+        x_pos = bb.transformed(fig.transFigure.inverted()).x1
+        if i < len(title_parts) - 1:
+            x_pos += space_fig
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="svg", bbox_inches="tight")
+    plt.close(fig)
+    display(SVG(data=buf.getvalue()))
 ```
 
 ```{python}
@@ -1399,6 +1561,73 @@ plot_quadrant_bar(
 )
 ```
 
+## Household counts by utility
+
+Weighted number of households served by each NY electric utility,
+from the statewide ResStock sample (upgrade 0 — current HVAC).
+
+```{python}
+#| label: fig-households-count-utility
+#| fig-cap: "Number of households by electric utility"
+
+_util_order_hh = [UTIL_NAMES[c] for c in UTIL_ORDER_CODES]
+_n_hh = len(_util_order_hh)
+
+_hh_rows: list[dict] = []
+for _uc in UTIL_ORDER_CODES:
+    _w = float(annual_current_state.filter(pl.col("sb.electric_utility") == _uc)["weight"].sum())
+    _hh_rows.append({"utility": UTIL_NAMES[_uc], "households": _w})
+
+_hh_df = pl.DataFrame(_hh_rows).with_columns(
+    pl.col("utility").cast(pl.Enum(_util_order_hh)),
+    (pl.col("households") / 1000).round(0).cast(pl.Int64).alias("households_k"),
+)
+
+_max_hh = _hh_df["households"].max()
+
+_hh_annot: list = []
+for _i, _label in enumerate(_util_order_hh):
+    _row = _hh_df.filter(pl.col("utility") == _label)
+    _count = _row["households"][0]
+    _count_k = _row["households_k"][0]
+    _hh_annot.append(
+        annotate(
+            "text", x=_i + 1, y=_count + _max_hh * 0.01, label=_label,
+            ha="left", va="center",
+            size=9, fontweight="bold",
+        )
+    )
+    _hh_annot.append(
+        annotate(
+            "text", x=_i + 1, y=_max_hh * 0.02,
+            label=f"{_count_k:,}k",
+            ha="left", va="center",
+            color="white", size=10, fontweight="bold",
+        )
+    )
+
+_p_hh = (
+    ggplot(_hh_df, aes(x="utility", y="households"))
+    + geom_col(width=0.7, fill=SB_COLORS["sky"])
+    + coord_flip()
+    + scale_y_continuous(expand=(0, 0, 0.15, 0))
+    + scale_x_discrete(expand=(0, 0.35, 0, 1.0))
+    + labs(x="", y="")
+    + theme_switchbox()
+    + theme(
+        figure_size=(13, max(3.0, 0.8 + 0.9 * _n_hh)),
+        axis_text=element_blank(),
+        axis_ticks=element_blank(),
+        axis_line=element_blank(),
+        panel_grid=element_blank(),
+        legend_position="none",
+    )
+)
+for _a in _hh_annot:
+    _p_hh = _p_hh + _a
+_p_hh
+```
+
 ## Households by heating fuel type
 
 Weighted distribution of households by primary heating fuel,
@@ -1503,6 +1732,104 @@ p_fuel = (
 for a in fuel_annotations:
     p_fuel = p_fuel + a
 p_fuel
+```
+
+### By utility
+
+Same breakdown, one bar per utility.
+
+```{python}
+#| label: fig-households-by-fuel-utility
+#| fig-cap: "Percentage of households by primary heating fuel, by utility"
+
+_util_order = [UTIL_NAMES[c] for c in UTIL_ORDER_CODES]
+_n_utils = len(_util_order)
+
+_rows: list[dict] = []
+_top_pcts: dict[str, float] = {}
+for _uc in UTIL_ORDER_CODES:
+    _sub = src.filter(pl.col("sb.electric_utility") == _uc)
+    _tw = _sub["weight"].sum()
+    _fw = {
+        "Natural Gas": float(_sub.filter(pl.col("heats_with_natgas"))["weight"].sum()),
+        "Fuel Oil": float(_sub.filter(pl.col("heats_with_oil"))["weight"].sum()),
+        "Propane": float(_sub.filter(pl.col("heats_with_propane"))["weight"].sum()),
+        "Resistance": float(
+            _sub.filter(pl.col(HEATING_TYPE_COL) == "electrical_resistance")["weight"].sum()
+        ),
+        "Heat Pump": float(
+            _sub.filter(pl.col("postprocess_group.has_hp"))["weight"].sum()
+        ),
+    }
+    _fw["Other/None"] = float(_tw - sum(_fw.values()))
+    _pcts = {k: round(v / _tw * 100) for k, v in _fw.items()}
+    _label = UTIL_NAMES[_uc]
+    for cat in FUEL_CATEGORIES:
+        _rows.append({"utility": _label, "fuel": cat, "pct": _pcts[cat]})
+    if _label == _util_order[-1]:
+        _top_pcts = _pcts
+
+_fuel_util_df = pl.DataFrame(_rows).with_columns(
+    pl.col("fuel").cast(pl.Enum(FUEL_CATEGORIES)),
+    pl.col("utility").cast(pl.Enum(_util_order)),
+)
+
+_in_bar_util = _fuel_util_df.filter(pl.col("pct") >= 3)
+
+_extra: list = []
+_cum = 0.0
+for cat in FUEL_CATEGORIES:
+    _pv = _top_pcts[cat]
+    _mid = _cum + _pv / 2
+    _cum += _pv
+    if _pv < 2:
+        continue
+    _extra.append(
+        annotate(
+            "text", x=_n_utils + 0.45, y=_mid,
+            label=FUEL_DISPLAY_NAMES[cat],
+            ha="center", va="bottom",
+            size=8, color=FUEL_LABEL_COLORS[cat], fontweight="bold",
+        )
+    )
+
+for _i, _label in enumerate(_util_order):
+    _extra.append(
+        annotate(
+            "text", x=_i + 1, y=101, label=_label,
+            ha="left", va="center",
+            size=9, fontweight="bold",
+        )
+    )
+
+_p = (
+    ggplot(_fuel_util_df, aes(x="utility", y="pct", fill="fuel"))
+    + geom_col(position=position_stack(reverse=True), width=0.7)
+    + geom_text(
+        _in_bar_util,
+        aes(label="pct"),
+        position=position_stack(vjust=0.5, reverse=True),
+        format_string="{:.0f}%",
+        color="white", size=10, fontweight="bold",
+    )
+    + coord_flip()
+    + scale_fill_manual(values=FUEL_COLORS_BAR, breaks=FUEL_CATEGORIES)
+    + scale_y_continuous(expand=(0, 0, 0.15, 0))
+    + scale_x_discrete(expand=(0, 0.35, 0, 1.0))
+    + labs(x="", y="")
+    + theme_switchbox()
+    + theme(
+        figure_size=(13, max(3.0, 0.8 + 0.9 * _n_utils)),
+        axis_text=element_blank(),
+        axis_ticks=element_blank(),
+        axis_line=element_blank(),
+        panel_grid=element_blank(),
+        legend_position="none",
+    )
+)
+for _a in _extra:
+    _p = _p + _a
+_p
 ```
 
 ## Cross-subsidization under default rates
@@ -1798,6 +2125,51 @@ _bat_simple_gt = (
 )
 Path("../cache/bat_simple_table.html").write_text(_bat_simple_gt.as_raw_html())
 _bat_simple_gt
+```
+
+```{python}
+#| label: bat-by-utility-table
+
+_util_short: dict[str, str] = {
+    "cenhud": "CenHud",
+    "coned": "ConEd",
+    "nimo": "NiMo",
+    "nyseg": "NYSEG",
+    "or": "O&R",
+    "psegli": "PSEG-LI",
+    "rge": "RG&E",
+}
+_util_col_order = list(reversed(UTIL_ORDER_CODES))
+
+_bat_by_util_rows = []
+for label, filt in [
+    ("Heat pump", pl.col("heating_label") == "Heat pump"),
+    ("Natural gas", pl.col("heats_with_natgas")),
+    ("Oil / propane", pl.col("heats_with_oil") | pl.col("heats_with_propane")),
+    ("Electric resistance", pl.col("heating_label") == "Electric resistance"),
+]:
+    sub = labeled_all.filter(filt)
+    if sub.is_empty():
+        continue
+    row: dict[str, object] = {"heating_type": label}
+    for code in _util_col_order:
+        util_sub = sub.filter(pl.col("sb.electric_utility") == code)
+        if util_sub.is_empty():
+            row[_util_short[code]] = None
+        else:
+            row[_util_short[code]] = _weighted_mean(util_sub, _bat_col, "weight")
+    _bat_by_util_rows.append(row)
+
+_util_cols = [_util_short[c] for c in _util_col_order]
+_bat_by_util_gt = (
+    GT(pl.DataFrame(_bat_by_util_rows), rowname_col="heating_type")
+    .fmt_currency(columns=_util_cols, decimals=0)
+    .sub_missing(missing_text="—")
+    .tab_header(title="Mean delivery over/underpayment by utility ($/yr)")
+    .tab_source_note("Positive = overpaying; Negative = underpaying")
+)
+Path("../cache/bat_by_utility_table.html").write_text(_bat_by_util_gt.as_raw_html())
+_bat_by_util_gt
 ```
 
 ```{python}
@@ -3072,6 +3444,29 @@ plot_quadrant_bar(
         ("Default rate", natgas_state),
         ("HP seasonal rate", natgas_switch_state),
     ],
+    title_parts=[
+        ("How bills would change for ", "#000000"),
+        ("natural gas", "#7A8A10"),
+        (" heated homes after switching to ", "#000000"),
+        ("heat pumps", "#c47600"),
+    ],
+)
+```
+
+```{python}
+#| label: fig-quadrant-bar-natgas-switch-hprate-by-utility
+#| fig-cap: "Bill change summary — natural gas homes switching to HP: default vs. seasonal rate, by utility"
+
+plot_quadrant_bar_by_utility(
+    delta_state, delta_switch_state,
+    utility_names=UTIL_NAMES,
+    fuel_filter=pl.col("heats_with_natgas"),
+    title_parts=[
+        ("How bills would change for ", "#000000"),
+        ("natural gas", "#7A8A10"),
+        (" heated homes after switching to ", "#000000"),
+        ("heat pumps", "#c47600"),
+    ],
 )
 ```
 
@@ -3100,11 +3495,19 @@ natgas_tou_state = delta_tou_state.filter(pl.col("heats_with_natgas")).select("d
 #| label: fig-quadrant-bar-natgas-tou-state
 #| fig-cap: "Bill change summary — natural gas homes switching to HP: default vs. fair vs. TOU + fair rate (Statewide)"
 
-plot_quadrant_bar([
-    ("Default rate", natgas_state),
-    ("Fair rate", natgas_switch_state),
-    ("TOU + fair rate (no flex)", natgas_tou_state),
-])
+plot_quadrant_bar(
+    [
+        ("Default rate", natgas_state),
+        ("Fair rate", natgas_switch_state),
+        ("TOU + fair rate (no flex)", natgas_tou_state),
+    ],
+    title_parts=[
+        ("How bills would change for ", "#000000"),
+        ("natural gas", "#7A8A10"),
+        (" heated homes after switching to ", "#000000"),
+        ("heat pumps", "#c47600"),
+    ],
+)
 ```
 
 The quadrant picture barely moves between the fair rate and the TOU variant. To see why, we compare each
@@ -3217,6 +3620,12 @@ plot_quadrant_bar(
         ("Default rate", natgas_state_lmi40),
         ("HP seasonal rate", natgas_switch_state_lmi40),
     ],
+    title_parts=[
+        ("How bills would change for ", "#000000"),
+        ("natural gas", "#7A8A10"),
+        (" heated homes after switching to ", "#000000"),
+        ("heat pumps", "#c47600"),
+    ],
 )
 ```
 
@@ -3226,8 +3635,14 @@ plot_quadrant_bar(
 
 plot_quadrant_bar(
     [
-        ("Default rate", natgas_state_lmi_full),
+        ("Default rate", natgas_state_lmi40),
         ("HP seasonal rate", natgas_switch_state_lmi_full),
+    ],
+    title_parts=[
+        ("How bills would change for ", "#000000"),
+        ("natural gas", "#7A8A10"),
+        (" heated homes after switching to ", "#000000"),
+        ("heat pumps", "#c47600"),
     ],
 )
 ```
@@ -3241,6 +3656,33 @@ plot_quadrant_bar(
         ("Default rate", oil_propane_state),
         ("HP seasonal rate", oil_propane_switch_state),
     ],
+    title_parts=[
+        ("How bills would change for ", "#000000"),
+        ("fuel oil", "#4a8fa0"),
+        (" or ", "#000000"),
+        ("propane", "#3a8fa0"),
+        (" heated homes after switching to ", "#000000"),
+        ("heat pumps", "#c47600"),
+    ],
+)
+```
+
+```{python}
+#| label: fig-quadrant-bar-oil-propane-switch-hprate-by-utility
+#| fig-cap: "Bill change summary — oil/propane homes switching to HP: default vs. seasonal rate, by utility"
+
+plot_quadrant_bar_by_utility(
+    delta_state, delta_switch_state,
+    utility_names=UTIL_NAMES,
+    fuel_filter=pl.col("heats_with_oil") | pl.col("heats_with_propane"),
+    title_parts=[
+        ("How bills would change for ", "#000000"),
+        ("fuel oil", "#4a8fa0"),
+        (" or ", "#000000"),
+        ("propane", "#3a8fa0"),
+        (" heated homes after switching to ", "#000000"),
+        ("heat pumps", "#c47600"),
+    ],
 )
 ```
 
@@ -3252,6 +3694,29 @@ plot_quadrant_bar(
     [
         ("Default rate", elec_resistance_state),
         ("HP seasonal rate", elec_resistance_switch_state),
+    ],
+    title_parts=[
+        ("How bills would change for ", "#000000"),
+        ("electric resistance", "#b08e00"),
+        (" heated homes after switching to ", "#000000"),
+        ("heat pumps", "#c47600"),
+    ],
+)
+```
+
+```{python}
+#| label: fig-quadrant-bar-elec-resistance-switch-hprate-by-utility
+#| fig-cap: "Bill change summary — electric resistance homes switching to HP: default vs. seasonal rate, by utility"
+
+plot_quadrant_bar_by_utility(
+    delta_state, delta_switch_state,
+    utility_names=UTIL_NAMES,
+    fuel_filter=pl.col(HEATING_TYPE_COL) == "electrical_resistance",
+    title_parts=[
+        ("How bills would change for ", "#000000"),
+        ("electric resistance", "#b08e00"),
+        (" heated homes after switching to ", "#000000"),
+        ("heat pumps", "#c47600"),
     ],
 )
 ```
@@ -3412,7 +3877,7 @@ low_income_gas_bldgs = (
         & pl.col("is_lmi_any")
         & (pl.col(INCOME_COL) > 0)
     )
-    .select(BLDG_ID, "weight", "energy_total_bill", INCOME_COL)
+    .select(BLDG_ID, "weight", "energy_total_bill", INCOME_COL, "sb.electric_utility")
     .collect()
 )
 
@@ -3587,6 +4052,170 @@ print(f"HP + seasonal rates (40% enrolled): {above_hp_seasonal_lmi40:.1f}% above
 plot_burden_bar(
     [below_current_lmi40, below_hp_default_lmi40, below_hp_seasonal_lmi40],
     [above_current_lmi40, above_hp_default_lmi40, above_hp_seasonal_lmi40],
+)
+```
+
+#### By utility
+
+```{python}
+#| label: burden-compute-lmi-current-by-utility
+
+burden_by_utility: dict[str, dict[str, tuple[float, float]]] = {}
+for code in UTIL_ORDER_CODES:
+    util_bldg_ids = low_income_gas_bldgs.filter(
+        pl.col("sb.electric_utility") == code
+    )[BLDG_ID].to_list()
+    if len(util_bldg_ids) < 10:
+        continue
+    util_income = income_df.filter(pl.col(BLDG_ID).is_in(util_bldg_ids))
+    burden_by_utility[code] = {
+        "current": burden_shares(bills_current, util_bldg_ids, util_income, bill_cols=LMI_40_BILL_COLS),
+        "hp_default": burden_shares(bills_hp, util_bldg_ids, util_income, bill_cols=LMI_40_BILL_COLS),
+        "hp_seasonal": burden_shares(bills_hprate_hp, util_bldg_ids, util_income, bill_cols=LMI_40_BILL_COLS),
+        "hp_seasonal_lmi100": burden_shares(bills_hprate_hp, util_bldg_ids, util_income, bill_cols=LMI_100_BILL_COLS),
+    }
+
+for code, data in burden_by_utility.items():
+    print(f"{UTIL_NAMES[code]:20s}  Current: {data['current'][1]:5.1f}%  HP default: {data['hp_default'][1]:5.1f}%  HP seasonal: {data['hp_seasonal'][1]:5.1f}%  HP seasonal+100%LMI: {data['hp_seasonal_lmi100'][1]:5.1f}%")
+```
+
+```{python}
+#| label: burden-bar-by-utility-helper
+
+_BBU_BAR_HEIGHT = 0.55
+_BBU_GROUP_GAP = 0.7
+_BBU_INTRA_GAP = 0.15
+_BBU_HEADER_SPACE = 0.55
+_BBU_LABEL_SPACE = 0.35
+
+_BURDEN_LABEL_ABOVE = "ENERGY BURDEN ABOVE 6%"
+_BURDEN_LABEL_BELOW = "ENERGY BURDEN BELOW 6%"
+
+_BURDEN_UTIL_SCENARIO_KEYS = ["current", "hp_default", "hp_seasonal", "hp_seasonal_lmi100"]
+_BURDEN_UTIL_SCENARIO_LABELS = [
+    "Current HVAC\nDefault Rates\n~40% LMI Discounts",
+    "Heat Pump\nDefault Rates\n~40% LMI Discounts",
+    "Heat Pump\nHP Seasonal Rates\n~40% LMI Discounts",
+    "Heat Pump\nHP Seasonal Rates\n100% LMI Discounts",
+]
+
+
+def plot_burden_bar_by_utility(
+    burden_data: dict[str, dict[str, tuple[float, float]]],
+    utility_names: dict[str, str],
+    scenario_keys: list[str] = _BURDEN_UTIL_SCENARIO_KEYS,
+    scenario_labels: list[str] = _BURDEN_UTIL_SCENARIO_LABELS,
+    title: str = "",
+) -> None:
+    """Diverging burden bars (above/below 6%) for each utility.
+
+    Displays as inline SVG via IPython so Quarto's ``embed`` shortcode works.
+    """
+    import io
+    import matplotlib.pyplot as plt
+    from IPython.display import display, SVG
+
+    ordered_codes = list(reversed(UTIL_ORDER_CODES))
+    active_codes = [c for c in ordered_codes if c in burden_data]
+    n_utils = len(active_codes)
+    n_scenarios = len(scenario_keys)
+
+    bar_positions: list[float] = []
+    bar_labels: list[str] = []
+    bar_above: list[float] = []
+    bar_below: list[float] = []
+    utility_header_ys: list[tuple[float, str]] = []
+    label_rows: list[tuple[float, float, float]] = []
+
+    y = 0.0
+    for u_idx, code in enumerate(active_codes):
+        utility_header_ys.append((y, utility_names[code]))
+        y += _BBU_HEADER_SPACE
+
+        first_below, first_above = burden_data[code][scenario_keys[0]]
+        label_rows.append((y, first_above, first_below))
+        y += _BBU_LABEL_SPACE
+
+        for s_idx, key in enumerate(scenario_keys):
+            below, above = burden_data[code][key]
+            bar_positions.append(y)
+            bar_labels.append(scenario_labels[s_idx])
+            bar_above.append(above)
+            bar_below.append(below)
+            y += _BBU_BAR_HEIGHT + (_BBU_INTRA_GAP if s_idx < n_scenarios - 1 else 0)
+        if u_idx < n_utils - 1:
+            y += _BBU_GROUP_GAP
+
+    y_max = y + 0.1
+    fig_height = 1.5 + n_utils * 3.6
+
+    fig, ax = plt.subplots(figsize=(12.5, fig_height))
+    ax.set_xlim(-100, 100)
+    ax.set_ylim(-0.1, y_max)
+    ax.invert_yaxis()
+    ax.set_xticks([])
+    ax.set_yticks([])
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    carrot = BURDEN_COLORS["Above 6%"]
+    sky = BURDEN_COLORS["Below 6%"]
+
+    for bp, above, below in zip(bar_positions, bar_above, bar_below):
+        ax.barh(bp, above, left=0, height=_BBU_BAR_HEIGHT,
+                color=carrot, edgecolor="none", align="edge")
+        ax.barh(bp, -below, left=0, height=_BBU_BAR_HEIGHT,
+                color=sky, edgecolor="none", align="edge")
+        if above >= 3:
+            ax.text(above / 2, bp + _BBU_BAR_HEIGHT / 2, f"{round(above)}%",
+                    ha="center", va="center", color="white",
+                    fontsize=10, fontweight="bold", fontfamily="IBM Plex Sans")
+        if below >= 3:
+            ax.text(-below / 2, bp + _BBU_BAR_HEIGHT / 2, f"{round(below)}%",
+                    ha="center", va="center", color="white",
+                    fontsize=10, fontweight="bold", fontfamily="IBM Plex Sans")
+
+    for bp, label in zip(bar_positions, bar_labels):
+        ax.text(101, bp + _BBU_BAR_HEIGHT / 2, label,
+                ha="left", va="center", fontsize=8, fontweight="bold",
+                fontfamily="IBM Plex Sans")
+
+    for header_y, util_name in utility_header_ys:
+        ax.text(-100, header_y, util_name,
+                ha="left", va="top", fontsize=11, fontweight="bold",
+                fontfamily="GT Planar", color="#333333")
+
+    ax.axvline(x=0, color="#333333", linewidth=1.5)
+
+    for label_y, first_above, first_below in label_rows:
+        ax.text(first_above / 2, label_y, _BURDEN_LABEL_ABOVE,
+                ha="center", va="bottom", fontsize=8,
+                fontweight="bold", color=carrot, fontfamily="IBM Plex Sans")
+        ax.text(-first_below / 2, label_y, _BURDEN_LABEL_BELOW,
+                ha="center", va="bottom", fontsize=8,
+                fontweight="bold", color=sky, fontfamily="IBM Plex Sans")
+
+    fig.subplots_adjust(left=0.02, right=0.82, top=0.95, bottom=0.01)
+
+    if title:
+        ax_pos = ax.get_position()
+        fig.text(ax_pos.x0, 0.97, title,
+                 fontsize=12, fontweight="bold",
+                 fontfamily="GT Planar", color="black", va="top")
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="svg", bbox_inches="tight")
+    plt.close(fig)
+    display(SVG(data=buf.getvalue()))
+```
+
+```{python}
+#| label: fig-burden-bar-lmi-current-by-utility
+#| fig-cap: "Share of low-income gas-heated households above the 6% energy burden threshold by utility, with current LMI discount enrollment (~40%)"
+
+plot_burden_bar_by_utility(
+    burden_by_utility, UTIL_NAMES,
+    title="Energy burdens for LMI customers, by utility",
 )
 ```
 

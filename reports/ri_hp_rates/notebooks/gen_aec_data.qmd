@@ -148,12 +148,12 @@ Script to read ResStock data from S3 and generate datasets required by AEC
     weight_scale = total_num_homes / _sum_weight
     sbmeta = sbmeta.with_columns((pl.col("weight") * pl.lit(weight_scale)).alias("weight_scaled"))
 
-    current_adoption_rate = sbmeta.group_by("postprocess_group.heating_type").agg(pl.col("weight").sum().alias("total_homes")).pipe(lambda df: df.filter(pl.col("postprocess_group.heating_type") == "heat_pump")["total_homes"] / df["total_homes"].sum()).item()
+    current_adoption_rate = sbmeta.group_by("postprocess_group.heating_type").agg(pl.col("weight_scaled").sum().alias("total_homes")).pipe(lambda df: df.filter(pl.col("postprocess_group.heating_type") == "heat_pump")["total_homes"] / df["total_homes"].sum()).item()
 
     if DEBUG_MODE:
         print(current_adoption_rate) # NOTE: DEBUGGING ONLY
         scaled_total = sbmeta["weight_scaled"].sum()
-        if abs(scaled_total - total_num_homes) > 1e-6 * total_num_homes:
+        if not np.isclose(scaled_total, total_num_homes, rtol=1e-6):
             raise ValueError(
                 f"Expected sum(weight_scaled) ~= total_num_homes; got {scaled_total} vs {total_num_homes}"
             )
@@ -207,8 +207,7 @@ Script to read ResStock data from S3 and generate datasets required by AEC
     def _draw_year_built(rng: np.random.Generator, vintage: str | None) -> int:
         lo_hi = _VINTAGE_RANGES.get(vintage or "", None)
         if lo_hi is None:
-            # Fallback: put unknowns in a reasonable mid-century bucket.
-            lo_hi = (1950, 2000)
+            lo_hi = (1900, 1940)  # matches fill_null("<1940") default upstream
         lo, hi = lo_hi
         return int(rng.integers(lo, hi, endpoint=False))
 
@@ -393,7 +392,7 @@ Script to read ResStock data from S3 and generate datasets required by AEC
             print(f"  {scenario_name} year {yr} ({projection_years[yr]})...", flush=True)
             # Collect early with minimal columns to avoid Polars optimizer panic.
             df = mus.read_load_curve_hourly(years=[yr]).select(_load_cols).collect()
-            df = adjust_timestamp(df.lazy(), start_year=start_year).collect()
+            df = adjust_timestamp(df, start_year=start_year)
             df = df.join(weight_lookup, on="bldg_id", how="left")
             year_dfs.append(_aggregate_year(df))
             del df

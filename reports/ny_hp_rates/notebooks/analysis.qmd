@@ -1464,6 +1464,42 @@ plot_quadrant_bar(
 )
 ```
 
+```{python}
+#| label: fig-histogram-natgas-state
+#| fig-cap: "Distribution of annual bill change for natural gas-heated households switching to heat pumps (Statewide)"
+
+_hist_df = natgas_state
+_hist_snap = max(BIN_WIDTH, 50)
+_hist_x_lo = math.floor(_weighted_percentile(_hist_df, "delta", "weight", 0.01) / _hist_snap) * _hist_snap
+_hist_x_hi = math.ceil(_weighted_percentile(_hist_df, "delta", "weight", 0.99) / _hist_snap) * _hist_snap
+_hist_binned = (
+    _hist_df.with_columns(
+        ((pl.col("delta") / BIN_WIDTH).floor() * BIN_WIDTH + BIN_WIDTH / 2).alias("bin_center"),
+    )
+    .with_columns(
+        pl.when(pl.col("bin_center") <= -1000).then(pl.lit("savings > $1k"))
+        .when((pl.col("bin_center") > -1000) & (pl.col("bin_center") < 0)).then(pl.lit("savings $0-1k"))
+        .when((pl.col("bin_center") >= 0) & (pl.col("bin_center") < 1000)).then(pl.lit("losses $0-1k"))
+        .otherwise(pl.lit("losses > $1k"))
+        .alias("quadrant"),
+    )
+    .group_by("bin_center", "quadrant")
+    .agg(pl.col("weight").sum().alias("weight_sum"))
+    .with_columns(pl.col("quadrant").cast(pl.Enum(QUADRANT_ORDER)))
+)
+(
+    ggplot(_hist_binned, aes(x="bin_center", y="weight_sum", fill="quadrant"))
+    + geom_col(width=BIN_WIDTH * 0.9)
+    + geom_vline(xintercept=[-1000, 0, 1000], linetype="dotted", color="gray")
+    + scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
+    + coord_cartesian(xlim=(_hist_x_lo, _hist_x_hi))
+    + labs(x="Annual Bill Change ($)", y="# of Homes (weighted)")
+    + guides(fill=False)
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4.5))
+)
+```
+
 ### LMI scenarios (natgas, statewide)
 
 We recompute the bill delta for natural gas households using the LMI-discounted bill columns. For non-LMI households

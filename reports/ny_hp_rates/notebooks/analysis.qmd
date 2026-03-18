@@ -90,8 +90,8 @@ def _weighted_mean(df: pl.DataFrame, col: str, w_col: str) -> float:
 ```{python}
 #| label: params
 
-# --- To switch states, change these 4 values and the 3 utility dicts below
-# (UTIL_NAMES in the constants cell, UTIL_DISPLAY and TARIFF_UTILS further down). ---
+# --- To switch states, change these 5 values and the 4 utility dicts in the constants cell below. ---
+INCLUDE_TOU = True  # set False to skip TOU rate cells (e.g. when run_11+12 is not available)
 UTILITY = "coned"  # any utility code from UTIL_NAMES, used for the representative-building example
 BATCH = "ny_20260311b_r1-12_lmi_gen"
 STATE = "NY"
@@ -136,6 +136,33 @@ UTIL_NAMES = {  # state-dependent: swap when switching states
     "rge": "RG&E",
 }
 UTIL_ORDER_CODES = ["psegli", "coned", "or", "cenhud", "nyseg", "rge", "nimo"]
+UTIL_DISPLAY: dict[str, str] = {  # short names for figures / by-utility tables
+    "coned": "ConEd",
+    "nimo": "NiMo",
+    "nyseg": "NYSEG",
+    "cenhud": "CenHud",
+    "rge": "RG&E",
+    "or": "O&R",
+    "psegli": "PSEG-LI",
+}
+TARIFF_UTILS: dict[str, str] = {  # display name -> tariff code for rate_design/hp_rates/{state}/config/tariffs/electric
+    "ConEd": "coned",
+    "NiMo": "nimo",
+    "NYSEG": "nyseg",
+    "CenHud": "cenhud",
+    "RG&E": "rge",
+    "O&R": "or",
+    "PSEG-LI": "psegli",
+}
+UTIL_SHORT: dict[str, str] = {  # tariff code -> short label for BAT-by-utility table columns
+    "cenhud": "CenHud",
+    "coned": "ConEd",
+    "nimo": "NiMo",
+    "nyseg": "NYSEG",
+    "or": "O&R",
+    "psegli": "PSEG-LI",
+    "rge": "RG&E",
+}
 ```
 
 ## Data ingest
@@ -151,7 +178,11 @@ bills_current = pl.scan_parquet(PATH_MASTER_BILLS_12, hive_partitioning=True)
 bills_hp = pl.scan_parquet(PATH_MASTER_BILLS_34, hive_partitioning=True)
 bills_hprate_current = pl.scan_parquet(PATH_MASTER_BILLS_56, hive_partitioning=True)
 bills_hprate_hp = pl.scan_parquet(PATH_MASTER_BILLS_78, hive_partitioning=True)
-bills_tou_hp = pl.scan_parquet(PATH_MASTER_BILLS_1112, hive_partitioning=True)
+bills_tou_hp = (
+    pl.scan_parquet(PATH_MASTER_BILLS_1112, hive_partitioning=True)
+    if INCLUDE_TOU
+    else None
+)
 ```
 
 ## Bill components: how energy bills change after switching
@@ -2130,15 +2161,6 @@ _bat_simple_gt
 ```{python}
 #| label: bat-by-utility-table
 
-_util_short: dict[str, str] = {
-    "cenhud": "CenHud",
-    "coned": "ConEd",
-    "nimo": "NiMo",
-    "nyseg": "NYSEG",
-    "or": "O&R",
-    "psegli": "PSEG-LI",
-    "rge": "RG&E",
-}
 _util_col_order = list(reversed(UTIL_ORDER_CODES))
 
 _bat_by_util_rows = []
@@ -2155,12 +2177,12 @@ for label, filt in [
     for code in _util_col_order:
         util_sub = sub.filter(pl.col("sb.electric_utility") == code)
         if util_sub.is_empty():
-            row[_util_short[code]] = None
+            row[UTIL_SHORT[code]] = None
         else:
-            row[_util_short[code]] = _weighted_mean(util_sub, _bat_col, "weight")
+            row[UTIL_SHORT[code]] = _weighted_mean(util_sub, _bat_col, "weight")
     _bat_by_util_rows.append(row)
 
-_util_cols = [_util_short[c] for c in _util_col_order]
+_util_cols = [UTIL_SHORT[c] for c in _util_col_order]
 _bat_by_util_gt = (
     GT(pl.DataFrame(_bat_by_util_rows), rowname_col="heating_type")
     .fmt_currency(columns=_util_cols, decimals=0)
@@ -2368,16 +2390,6 @@ service territories.
 ```{python}
 #| label: cross-subsidy-by-utility-data
 
-UTIL_DISPLAY: dict[str, str] = {  # state-dependent: swap when switching states
-    "coned": "ConEd",
-    "nimo": "NiMo",
-    "nyseg": "NYSEG",
-    "cenhud": "CenHud",
-    "rge": "RG&E",
-    "or": "O&R",
-    "psegli": "PSEG-LI",
-}
-
 hp_all_utils = (
     bat_12
     .filter(pl.col(HEATING_TYPE_COL) == "heat_pump")
@@ -2489,16 +2501,6 @@ Both tariffs are calibrated URDB JSONs from the state's tariff config directory.
 import json
 
 TARIFF_DIR = f"rate_design/hp_rates/{_state_lower}/config/tariffs/electric"
-
-TARIFF_UTILS: dict[str, str] = {  # state-dependent: swap when switching states
-    "ConEd": "coned",
-    "NiMo": "nimo",
-    "NYSEG": "nyseg",
-    "CenHud": "cenhud",
-    "RG&E": "rge",
-    "O&R": "or",
-    "PSEG-LI": "psegli",
-}
 
 
 def _load_rate(filename: str) -> dict:
@@ -3479,35 +3481,40 @@ customer on the calibrated TOU rate (run 11+12, upgrade 2).
 ```{python}
 #| label: compute-deltas-tou
 
-annual_after_tou_state = (
-    bills_tou_hp
-    .filter(pl.col("month") == ANNUAL_MONTH)
-    .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after"))
-    .collect()
-)
-delta_tou_state = annual_current_state.join(annual_after_tou_state, on=BLDG_ID, how="inner").with_columns(
-    (pl.col("bill_after") - pl.col("bill_before")).alias("delta")
-)
-natgas_tou_state = delta_tou_state.filter(pl.col("heats_with_natgas")).select("delta", "weight")
+if INCLUDE_TOU:
+    annual_after_tou_state = (
+        bills_tou_hp
+        .filter(pl.col("month") == ANNUAL_MONTH)
+        .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after"))
+        .collect()
+    )
+    delta_tou_state = annual_current_state.join(annual_after_tou_state, on=BLDG_ID, how="inner").with_columns(
+        (pl.col("bill_after") - pl.col("bill_before")).alias("delta")
+    )
+    natgas_tou_state = delta_tou_state.filter(pl.col("heats_with_natgas")).select("delta", "weight")
 ```
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-tou-state
 #| fig-cap: "Bill change summary — natural gas homes switching to HP: default vs. fair vs. TOU + fair rate (Statewide)"
 
-plot_quadrant_bar(
-    [
-        ("Default rate", natgas_state),
-        ("Fair rate", natgas_switch_state),
-        ("TOU + fair rate (no flex)", natgas_tou_state),
-    ],
-    title_parts=[
-        ("How bills would change for ", "#000000"),
-        ("natural gas", "#7A8A10"),
-        (" heated homes after switching to ", "#000000"),
-        ("heat pumps", "#c47600"),
-    ],
-)
+if INCLUDE_TOU:
+    _tou_quadrant_fig = plot_quadrant_bar(
+        [
+            ("Default rate", natgas_state),
+            ("Fair rate", natgas_switch_state),
+            ("TOU + fair rate (no flex)", natgas_tou_state),
+        ],
+        title_parts=[
+            ("How bills would change for ", "#000000"),
+            ("natural gas", "#7A8A10"),
+            (" heated homes after switching to ", "#000000"),
+            ("heat pumps", "#c47600"),
+        ],
+    )
+else:
+    _tou_quadrant_fig = None
+_tou_quadrant_fig
 ```
 
 The quadrant picture barely moves between the fair rate and the TOU variant. To see why, we compare each
@@ -3517,62 +3524,67 @@ rate-design effect without the fuel-switching effect.
 ```{python}
 #| label: compute-tou-vs-seasonal-delta
 
-_annual_seasonal_hp = (
-    bills_hprate_hp
-    .filter(pl.col("month") == ANNUAL_MONTH)
-    .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_seasonal"),
-            "heats_with_natgas", "weight")
-    .collect()
-)
-_annual_tou_hp = (
-    bills_tou_hp
-    .filter(pl.col("month") == ANNUAL_MONTH)
-    .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_tou"))
-    .collect()
-)
-_tou_vs_seasonal = (
-    _annual_seasonal_hp
-    .join(_annual_tou_hp, on=BLDG_ID, how="inner")
-    .with_columns((pl.col("bill_tou") - pl.col("bill_seasonal")).alias("diff_energy_total"))
-)
+if INCLUDE_TOU:
+    _annual_seasonal_hp = (
+        bills_hprate_hp
+        .filter(pl.col("month") == ANNUAL_MONTH)
+        .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_seasonal"),
+                "heats_with_natgas", "weight")
+        .collect()
+    )
+    _annual_tou_hp = (
+        bills_tou_hp
+        .filter(pl.col("month") == ANNUAL_MONTH)
+        .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_tou"))
+        .collect()
+    )
+    _tou_vs_seasonal = (
+        _annual_seasonal_hp
+        .join(_annual_tou_hp, on=BLDG_ID, how="inner")
+        .with_columns((pl.col("bill_tou") - pl.col("bill_seasonal")).alias("diff_energy_total"))
+    )
 
-_natgas_w = _tou_vs_seasonal.filter(pl.col("heats_with_natgas"))
+    _natgas_w = _tou_vs_seasonal.filter(pl.col("heats_with_natgas"))
 
-_total_w = _natgas_w["weight"].sum()
-_within_50 = _natgas_w.filter(pl.col("diff_energy_total").abs() <= 50)["weight"].sum()
-report_vars["pct_within_50"] = _within_50 / _total_w
+    _total_w = _natgas_w["weight"].sum()
+    _within_50 = _natgas_w.filter(pl.col("diff_energy_total").abs() <= 50)["weight"].sum()
+    report_vars["pct_within_50"] = _within_50 / _total_w
 ```
 
 ```{python}
 #| label: fig-histogram-tou-delta-weighted
 #| fig-cap: "Distribution of annual bill change when switching from the seasonal HP rate to the TOU HP rate (natural gas homes)"
 
-_BW = 10
-_binned = (
-    _natgas_w
-    .with_columns(
-        ((pl.col("diff_energy_total") / _BW).floor() * _BW + _BW / 2).alias("bin_center"),
+if INCLUDE_TOU:
+    _BW = 10
+    _binned = (
+        _natgas_w
+        .with_columns(
+            ((pl.col("diff_energy_total") / _BW).floor() * _BW + _BW / 2).alias("bin_center"),
+        )
+        .group_by("bin_center")
+        .agg(pl.col("weight").sum().alias("weighted_count"))
+        .filter((pl.col("bin_center") >= -200) & (pl.col("bin_center") <= 200))
+        .sort("bin_center")
     )
-    .group_by("bin_center")
-    .agg(pl.col("weight").sum().alias("weighted_count"))
-    .filter((pl.col("bin_center") >= -200) & (pl.col("bin_center") <= 200))
-    .sort("bin_center")
-)
 
-(
-    ggplot(_binned, aes(x="bin_center", y="weighted_count"))
-    + geom_col(width=_BW * 0.9, fill=SB_COLORS["sky"])
-    + geom_vline(xintercept=0, color="red", linetype="dashed", size=0.8)
-    + coord_cartesian(xlim=(-200, 200))
-    + scale_y_continuous(expand=(0, 0, 0.05, 0))
-    + labs(
-        title="Annual bill change, TOU − seasonal HP rate",
-        x="Annual bill change ($/yr)",
-        y="Number of homes",
+    _tou_hist_fig = (
+        ggplot(_binned, aes(x="bin_center", y="weighted_count"))
+        + geom_col(width=_BW * 0.9, fill=SB_COLORS["sky"])
+        + geom_vline(xintercept=0, color="red", linetype="dashed", size=0.8)
+        + coord_cartesian(xlim=(-200, 200))
+        + scale_y_continuous(expand=(0, 0, 0.05, 0))
+        + labs(
+            title="Annual bill change, TOU − seasonal HP rate",
+            x="Annual bill change ($/yr)",
+            y="Number of homes",
+        )
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 4.5))
     )
-    + theme_switchbox()
-    + theme(figure_size=(10.5, 4.5))
-)
+else:
+    _tou_hist_fig = None
+_tou_hist_fig
 ```
 
 ### LMI scenarios — default vs. fair rate (natgas, statewide)
@@ -4208,6 +4220,7 @@ def plot_burden_bar_by_utility(
     plt.close(fig)
     display(SVG(data=buf.getvalue()))
 ```
+pe
 
 ```{python}
 #| label: fig-burden-bar-lmi-current-by-utility

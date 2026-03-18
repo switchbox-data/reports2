@@ -14,13 +14,21 @@ Script to read ResStock data from S3 and generate datasets required by AEC
 
     import polars as pl
     import numpy as np
+    import os
+    from pathlib import Path
 ```
 
 ### INPUT PARAMS AND CONSTANTS
 ```{python}
     DEBUG_MODE = False
 
-    data_path="s3://data.sb/nrel/resstock/"
+    _resstock_local = Path(
+        os.environ.get(
+            "RDP_RESSTOCK_DATA",
+            Path.home() / "rate-design-platform" / "data" / "nrel" / "resstock",
+        )
+    )
+    data_path = str(_resstock_local) if _resstock_local.exists() else "s3://data.sb/nrel/resstock/"
     release="res_2024_amy2018_2"
     states="RI"
     random_seed=67
@@ -133,18 +141,18 @@ Script to read ResStock data from S3 and generate datasets required by AEC
 ```
 
 ```{python}
-    sbmeta = pl.scan_parquet("s3://data.sb/nrel/resstock/res_2024_amy2018_2/metadata/state=RI/upgrade=00/metadata-sb.parquet")
+    sbmeta = pl.read_parquet("s3://data.sb/nrel/resstock/res_2024_amy2018_2/metadata/state=RI/upgrade=00/metadata-sb.parquet")
 
     # Scale ResStock weights so they sum to total_num_homes (for weighted counts).
-    _sum_weight = sbmeta.select(pl.col("weight").sum()).collect().item()
+    _sum_weight = sbmeta["weight"].sum()
     weight_scale = total_num_homes / _sum_weight
     sbmeta = sbmeta.with_columns((pl.col("weight") * pl.lit(weight_scale)).alias("weight_scaled"))
 
-    current_adoption_rate = sbmeta.collect().group_by("postprocess_group.heating_type").agg(pl.col("weight").sum().alias("total_homes")).pipe(lambda df: df.filter(pl.col("postprocess_group.heating_type") == "heat_pump")["total_homes"] / df["total_homes"].sum()).item()
+    current_adoption_rate = sbmeta.group_by("postprocess_group.heating_type").agg(pl.col("weight").sum().alias("total_homes")).pipe(lambda df: df.filter(pl.col("postprocess_group.heating_type") == "heat_pump")["total_homes"] / df["total_homes"].sum()).item()
 
     if DEBUG_MODE:
         print(current_adoption_rate) # NOTE: DEBUGGING ONLY
-        scaled_total = sbmeta.select(pl.col("weight_scaled").sum()).collect().item()
+        scaled_total = sbmeta["weight_scaled"].sum()
         if abs(scaled_total - total_num_homes) > 1e-6 * total_num_homes:
             raise ValueError(
                 f"Expected sum(weight_scaled) ~= total_num_homes; got {scaled_total} vs {total_num_homes}"
@@ -162,9 +170,9 @@ Script to read ResStock data from S3 and generate datasets required by AEC
 
 
 ```{python}
-bau_hp_count_lag = np.array(get_adoption_forecast_num_homes([2028, 2029, 2030, 2031]))- np.array(get_adoption_forecast_num_homes([2027, 2028, 2029, 2030]))
+    bau_hp_count_lag = np.array(get_adoption_forecast_num_homes([2028, 2029, 2030, 2031]))- np.array(get_adoption_forecast_num_homes([2027, 2028, 2029, 2030]))
 
-hp_hp_count_lag = bau_hp_count_lag*heat_pump_adoption_factor
+    hp_hp_count_lag = bau_hp_count_lag*heat_pump_adoption_factor
 ```
 
 #### HP MARKET SHARE
@@ -173,7 +181,6 @@ hp_hp_count_lag = bau_hp_count_lag*heat_pump_adoption_factor
     import numpy as np
 
     DEVICE_LIFETIME_PARAMS = {
-        # TODO: confirm / update these params + names
         "fossil_fuel": {"scale": 23.9, "shape": 3.7, "delay": 1.0},
         "electrical_resistance": {"scale": 27.0, "shape": 2.4, "delay": 1.0},
         "heat_pump": {"scale": 15.88, "shape": 2.0, "delay": 1.0},
@@ -228,22 +235,20 @@ hp_hp_count_lag = bau_hp_count_lag*heat_pump_adoption_factor
         return int(index_year + hvac_lifetime)
 
     def append_hvac_failure_year(
-        sbmeta: pl.LazyFrame,
+        meta: pl.DataFrame,
         *,
         current_year: int,
         seed: int = 0,
         col_heating_type: str = "postprocess_group.heating_type",
         col_vintage: str = "in.vintage",
         col_out: str = "failure_year",
-    ) -> pl.LazyFrame:
+    ) -> pl.DataFrame:
         """Append a deterministic simulated HVAC failure year per building."""
         df = (
-            sbmeta.select(["bldg_id", col_heating_type, col_vintage])
-            .collect()
+            meta.select(["bldg_id", col_heating_type, col_vintage])
             .rename({col_heating_type: "heating_type", col_vintage: "vintage"})
         )
 
-        # Fill null/unknown heating types to "other"
         df = df.with_columns(
             pl.col("heating_type").fill_null("other").cast(pl.Utf8),
             pl.col("vintage").fill_null("<1940").cast(pl.Utf8),
@@ -270,13 +275,13 @@ hp_hp_count_lag = bau_hp_count_lag*heat_pump_adoption_factor
             )
 
         failure_df = pl.DataFrame({"bldg_id": bldg_ids, col_out: failure_years})
-        return sbmeta.join(failure_df.lazy(), on="bldg_id", how="left")
+        return meta.join(failure_df, on="bldg_id", how="left")
 
-    # Attach the column to sbmeta for downstream use
-    sbmeta = append_hvac_failure_year(sbmeta, current_year=2025, seed=0)
+    # Attach the column to a separate DataFrame for downstream use
+    sbmeta_with_failure_year = append_hvac_failure_year(sbmeta, current_year=2025, seed=0)
 
     replacement_df = (
-        sbmeta.select(
+        sbmeta_with_failure_year.select(
             [
                 "bldg_id",
                 "postprocess_group.heating_type",
@@ -286,7 +291,6 @@ hp_hp_count_lag = bau_hp_count_lag*heat_pump_adoption_factor
             ]
         )
         .filter(pl.col("failure_year").is_in([2028, 2029, 2030, 2031]), pl.col("postprocess_group.heating_type") != "heat_pump")
-        .collect()
         .group_by("failure_year")
         .agg(pl.col("weight_scaled").sum().cast(pl.Int64).alias("replacement_count"))
         .sort("failure_year")
@@ -307,22 +311,69 @@ hp_hp_count_lag = bau_hp_count_lag*heat_pump_adoption_factor
 ### GET LOAD CURVES FROM RESSTOCK USING BSF
 ```{python}
     bau_scenario = uniform_adoption(
-        upgrade_ids=[1],
-        weights={1: 1.0},
+        upgrade_ids=[2],
+        weights={2: 1.0},
         adoption_trajectory=bau_pct_upgrade_1, # see above
     )
 
     hp_scenario = uniform_adoption(
-        upgrade_ids=[1],
-        weights={1: 1.0},
+        upgrade_ids=[2],
+        weights={2: 1.0},
         adoption_trajectory=hp_pct_upgrade_1, # see above
     )
 
-    def _merge_weights(ldf, metadata = pl.DataFrame()):
-        return ldf.join(metadata.select(["bldg_id", "weight"]), on="bldg_id", how="left")
+    weight_lookup = sbmeta.select(["bldg_id", "weight_scaled"])
 
-    # NOTE: add typehint
-    def _get_load_curves(scenario, scenario_name):
+    # Columns needed from load curves (select early to minimize memory).
+    _load_cols = [
+        "bldg_id", "timestamp", "year", "upgrade",
+        "out.electricity.net.energy_consumption",
+        "out.fuel_oil.total.energy_consumption",
+        "out.natural_gas.total.energy_consumption",
+        "out.propane.total.energy_consumption",
+    ]
+
+    def _aggregate_year(df: pl.DataFrame) -> pl.DataFrame:
+        """Aggregate weighted energy by timestamp for one year's collected data."""
+        return (
+            df
+            .with_columns([
+                (
+                    pl.col("weight_scaled").cast(pl.Float64)
+                    * pl.col("out.electricity.net.energy_consumption").cast(pl.Float64)
+                ).alias("electricity_kwh_w"),
+                (
+                    pl.lit(MMBTU_PER_KWH)
+                    * pl.col("weight_scaled").cast(pl.Float64)
+                    * pl.col("out.fuel_oil.total.energy_consumption").cast(pl.Float64)
+                ).alias("fuel_oil_mmbtu_w"),
+                (
+                    pl.lit(MMBTU_PER_KWH)
+                    * pl.col("weight_scaled").cast(pl.Float64)
+                    * pl.col("out.natural_gas.total.energy_consumption").cast(pl.Float64)
+                ).alias("natural_gas_mmbtu_w"),
+                (
+                    pl.lit(MMBTU_PER_KWH)
+                    * pl.col("weight_scaled").cast(pl.Float64)
+                    * pl.col("out.propane.total.energy_consumption").cast(pl.Float64)
+                ).alias("propane_mmbtu_w"),
+            ])
+            .group_by("timestamp")
+            .agg([
+                pl.col("electricity_kwh_w").sum().alias("electricity_kwh"),
+                pl.col("fuel_oil_mmbtu_w").sum().alias("fuel_oil_mmbtu"),
+                pl.col("natural_gas_mmbtu_w").sum().alias("natural_gas_mmbtu"),
+                pl.col("propane_mmbtu_w").sum().alias("propane_mmbtu"),
+            ])
+            .sort("timestamp")
+        )
+
+    def _get_load_curves_aggregated(scenario, scenario_name):
+        """Load and aggregate hourly load curves one year at a time to limit memory.
+
+        Collects raw load curves (few columns only) before timestamp adjustment
+        and weight join to avoid a complex lazy plan that triggers Polars panics.
+        """
         mus = MixedUpgradeScenario(
             scenario_name=scenario_name,
             data_path=data_path,
@@ -336,60 +387,26 @@ hp_hp_count_lag = bau_hp_count_lag*heat_pump_adoption_factor
             sample_n=sample_n,
             scenario=scenario,
         )
-        # NOTE: should this be piped for something something efficiency
-        ldf = mus.read_load_curve_hourly().pipe(
-            lambda ldf: adjust_timestamp(ldf, start_year=start_year)
-        ).pipe(lambda ldf: _merge_weights(ldf, metadata=sbmeta))
-        return mus, ldf
+        n_years = len(projection_years)
+        year_dfs = []
+        for yr in range(n_years):
+            print(f"  {scenario_name} year {yr} ({projection_years[yr]})...", flush=True)
+            # Collect early with minimal columns to avoid Polars optimizer panic.
+            df = mus.read_load_curve_hourly(years=[yr]).select(_load_cols).collect()
+            df = adjust_timestamp(df.lazy(), start_year=start_year).collect()
+            df = df.join(weight_lookup, on="bldg_id", how="left")
+            year_dfs.append(_aggregate_year(df))
+            del df
+        return mus, pl.concat(year_dfs)
 
-    # Read 15-minute load curves as lazy dataframe
-    bau_mus, ldf_bau_loads = _get_load_curves(bau_scenario, "bau")
-    hp_mus, ldf_hp_loads = _get_load_curves(hp_scenario, "hp")
+    bau_mus, df_bau_loads = _get_load_curves_aggregated(bau_scenario, "bau")
+    hp_mus, df_hp_loads = _get_load_curves_aggregated(hp_scenario, "hp")
 ```
 
-```{python}
-    def sum_energy_by_timestamp(lazy_df):
-        """
-        For each timestamp, sums up various energy consumption values across all bldg_id.
-
-        Args:
-            lazy_df: A polars lazy dataframe
-
-        Returns:
-            A polars dataframe (not lazy) with summed columns per timestamp.
-        """
-        selected_cols = [
-            "timestamp",
-            "out.electricity.net.energy_consumption",
-            "out.fuel_oil.total.energy_consumption",
-            "out.natural_gas.total.energy_consumption",
-            "out.propane.total.energy_consumption",
-            "weight",
-        ]
-        return (
-            lazy_df
-            .select(selected_cols)
-            .group_by("timestamp")
-            .agg([
-                (pl.col("weight") * pl.col("out.electricity.net.energy_consumption")).sum().alias("electricity_kwh"),
-                (MMBTU_PER_KWH * pl.col("weight") * pl.col("out.fuel_oil.total.energy_consumption")).sum().alias("fuel_oil_mmbtu"),
-                (MMBTU_PER_KWH * pl.col("weight") * pl.col("out.natural_gas.total.energy_consumption")).sum().alias("natural_gas_mmbtu"),
-                (MMBTU_PER_KWH * pl.col("weight") * pl.col("out.propane.total.energy_consumption")).sum().alias("propane_mmbtu"),
-            ])
-            .sort("timestamp")
-            .collect()
-        )
-```
 
 ```{python}
-    %%time
-    df_bau_loads = sum_energy_by_timestamp(ldf_bau_loads)
-    df_hp_loads = sum_energy_by_timestamp(ldf_hp_loads)
-
-    # print(len(df_bau_loads))
-    # print(len(df_hp_loads))
-    # print(df_bau_loads.head())
-    # print(df_hp_loads.head())
+    print(f"BAU loads: {df_bau_loads.shape}")
+    print(f"HP loads:  {df_hp_loads.shape}")
 ```
 
 ```{python}

@@ -64,9 +64,7 @@ def get_gspread_client():
     }
     saved_token = load_cached_token()
     if saved_token is not None:
-        gc, authorized_user = gspread.oauth_from_dict(
-            credentials=app_creds, authorized_user_info=saved_token
-        )
+        gc, authorized_user = gspread.oauth_from_dict(credentials=app_creds, authorized_user_info=saved_token)
     else:
         gc, authorized_user = gspread.oauth_from_dict(credentials=app_creds)
     if authorized_user:

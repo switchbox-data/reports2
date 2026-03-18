@@ -1460,6 +1460,70 @@ their costs are local delivery costs, not NYISO bulk system costs, and load grow
 
 #### Hourly allocation method
 
+### Supply Marginal Costs
+
+The marginal cost of supply is broken down into two components: energy and capacity. Energy marginal cost is the cost of the marginal kilowatt-hour of electricity consumed. @sec-energy-mc Capacity marginal cost is the cost of the marginal kilowatt of generation capacity added @sec-capacity-mc.
+The energy and capacity components are computed separately, but together they represent the full marginal cost of supplying one additional kilowatt-hour from the wholesale grid. For each utility and year, the total hourly supply marginal cost is simply their sum:
+$$\text{MC}^{\text{supply}}{h} = \text{MC}^{\text{energy}}{h} + \text{MC}^{\text{capacity}}{h,m}$$
+
+In practice, most hours carry only an energy cost. Capacity cost is non-zero only for the eight highest-load hours in each month — the remaining hours receive a capacity cost of zero. This means the supply marginal cost signal is relatively flat across most of the year, with sharp spikes concentrated at the times of highest demand. It is this combined signal that feeds into the Bill Alignment Test and drives the structure of the rates we design.
+
+
+#### Energy Marginal Costs {#sec-energy-mc}
+
+**Electricity pricing zones in New York.**The marginal cost of energy answers a specific question: if one more kilowatt-hour of electricity were consumed during a given hour, what would it cost to supply it? In competitive wholesale markets, this is revealed by the market-clearing price — the price at which supply and demand balance each hour. New York's power grid is divided into eleven pricing zones, labeled A through K, each representing a geographic region of the state within NYISO's grid.
+Prices differ across zones because the physical capacity of transmission lines limits how much power can flow from one area to another. When the grid is congested — meaning there is more demand for power than the lines can carry — generators in the constrained area must be dispatched even if they are more expensive, driving prices higher in that zone relative to others. As a result, a customer in New York City (Zone J) can face a very different electricity price in a given hour than a customer in upstate New York (Zone A), even if they are served by generators of similar cost. Utilities do not always serve customers within a single zone; some utilities have service territories that span multiple zones, which complicates the question of which zone's price should apply.
+To answer this question, we use the day-ahead LBMPs produced by NYISO's energy market as our measure of marginal energy cost. [@TK_NYISO_LBMP_2025] These prices reflect the short-run cost of the marginal generator dispatched to serve load in each zone, inclusive of fuel costs, congestion, and transmission losses, and represent the best available market signal for the true hourly cost of energy.
+
+**Single-zone utilities.** For utilities whose service territory falls entirely within one pricing zone — Orange & Rockland (Zone G), Central Hudson (Zone G), RG&E (Zone B), and PSEG Long Island (Zone K) — the calculation is direct. We assign that zone's hourly day-ahead LBMP as the utility's marginal energy cost for each hour of the year. This is appropriate because all customers served by the utility face the same locational price signal; there is no ambiguity about which zone's price to use.
+
+**Multi-zone utilities.** Three utilities serve customers across multiple pricing zones: NYSEG and NIMO each span zones A through F (the western and upstate regions), while Con Edison spans zones G, H, and J (the Lower Hudson Valley and New York City). In any given hour, these zones can carry meaningfully different LBMPs. Selecting a single zone's price would misrepresent the cost faced by the utility as a whole, while a simple average across zones would treat a zone with 1,000 MW of load identically to one with 10 MW — giving each equal influence regardless of its actual share of the utility's demand.
+Instead, we assign each zone a weight equal to its share of the utility's total load in that hour — so a zone consuming 8,000 MW out of 10,000 MW total receives a weight of 0.8, and a zone consuming 2,000 MW receives a weight of 0.2. We then multiply each zone's LBMP by its weight and sum the results to produce a single hourly price for the utility:
+Step 1 — compute zone $z$'s weight in hour $h$:
+$$w_{z,h} = \frac{L_{z,h}}{\displaystyle\sum_{z'} L_{z',h}}$$
+Step 2 — multiply each zone's weight by its price and sum:
+$$\text{MC}^{\text{energy}}{h} = \sum{z}\ w_{z,h} \times \text{LBMP}{z,h}$$
+
+where
+
+- $L_{z,h}$ is hourly load in MW from EIA's hourly demand data
+- $\text{LBMP}{z,h}$ is the day-ahead zonal price in $/MWh
+
+The weights are recalculated for every hour, so they naturally reflect how load shifts across zones between peak and off-peak periods and across seasons.
+
+Concretely, for an hour when Con Edison's Westchester zones (G, H) are consuming 2,000 MW and its NYC zone (J) is consuming 8,000 MW, the NYC price receives four times the weight of the Westchester price. This weighting is recalculated independently for every hour, so it naturally reflects how the distribution of load across zones shifts between peak and off-peak periods, between seasons, and across years.
+
+#### Capacity Marginal Costs {#sec-capacity-mc}
+**Marginal cost of capacity.** Beyond the cost of the energy itself, electricity customers also pay for the infrastructure needed to keep the lights on during the highest-demand hours of the year — the power plants, transmission lines, and other resources that must be available even when they are rarely used. This is called the cost of capacity. Unlike energy, which is priced continuously every hour, capacity in New York is procured through a separate monthly auction run by NYISO called the Installed Capacity (ICAP) market. Generators are paid a monthly rate — in dollars per kilowatt of capacity — simply to be available to serve peak demand. The ICAP Spot price is the market-clearing rate from these auctions, and it is our source for the marginal cost of capacity. [@TK_NYISO_ICAP_2025]
+
+**Allocating a monthly price to individual hours.** The ICAP Spot price is a single number for each month, but for our analysis we need to know how much capacity cost was caused by each individual hour. The key insight is that capacity costs are not caused equally by every hour — they are caused almost entirely by the hours when demand is highest, since those are the hours that determine how much capacity the grid must have available. We therefore concentrate the monthly capacity cost on the hours of highest demand within that month, and assign zero capacity cost to all other hours.
+
+For each month we identify the eight highest-load hours — using the utility's aggregate load profile, constructed by summing hourly NYISO zone loads across all zones in the utility's service territory — and set a threshold equal to the load of the ninth-highest hour.[^nyiso_mapping] Every hour whose load exceeds this threshold receives a weight proportional to how far it exceeds it; all other hours receive a weight of zero.
+
+[^nyiso_mapping]: We use the same zone-to-utility mapping for both the energy MC weighting and the capacity peak identification, which keeps the two calculations internally consistent.
+
+The threshold-exceedance weight for hour $h$ in month $m$ is:
+$$e_{h,m} = \max(L_{h,m} - L^{\text{thresh}}m,\ 0)$$
+$$w_{h,m} = \frac{e_{h,m}}{\displaystyle\sum_{h'} e_{h',m}}$$
+
+where
+
+- $L_{h,m}$ is the utility's load in MW during hour $h$
+- $L^{\text{thresh}}m$ is the load of the ninth-highest hour in month $m$
+
+The hourly capacity cost is then:
+
+$$\text{MC}^{\text{capacity}}{h,m} = w{h,m} \times P^{\text{ICAP}}m$$
+where $P^{\text{ICAP}}m$ is the ICAP Spot price in $/kW-month.
+
+Because the weights sum to one within each month by construction, the total capacity cost allocated across all hours of a month equals exactly the monthly ICAP price. This allocation is performed independently for each of the twelve months, so the threshold and weights adapt to each month's own demand pattern rather than being set once for the year.
+
+**Con Edison special case.** Con Edison's service territory straddles two ICAP pricing localities — 87% of its capacity obligation falls under the New York City locality and 13% under the Lower Hudson Valley locality, each of which clears at a different ICAP Spot price. Before performing the hourly allocation, we compute a blended monthly price as a weighted average of the two locality prices:
+
+$$P^{\text{ICAP,ConEd}}m = 0.87 \times P^{\text{NYC}}_m + 0.13 \times P^{\text{LHV}}_m$$
+This blended price is then used in the allocation formula above in place of a single locality price.
+
+
 ### Residential Delivery Revenue Requirement
 
 Residential delivery revenue requirements were found from the most recent rate cases for each utility. The exception is

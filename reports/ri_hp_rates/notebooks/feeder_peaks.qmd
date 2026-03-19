@@ -19,6 +19,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from pathlib import Path
 import boto3
+import openpyxl
 ```
 
 ### Parameters
@@ -106,38 +107,211 @@ HP_CUMULATIVE_HIGH = {
 }
 ```
 
-### Import feeder data
+### Import feeder and transformer data
 
-The feeder CSV has two header rows: the first contains year numbers, the second
-contains column names and unit labels. We skip both and assign names manually.
+The workbook `CLF_2-2_Feeder_Transformer Loading_v2.xlsx` has two tabs (feeder
+and transformer). Each tab includes two header rows: the first contains year
+labels, and the second contains column names/units. We use the first row to
+detect year columns, then slice away both header rows.
 
 ```{python}
-_feeder_csv = s3_download("rie_loads_feeders.csv")
+_loading_xlsx = s3_download("CLF_2-2_Feeder_Transformer Loading_v2.xlsx")
 
-_feeder_year_cols = {f"column_{i + 6}": str(y) for i, y in enumerate(ALL_YEARS)}
-_feeder_meta_cols = {
-    "column_1": "study_area",
-    "column_2": "substation",
-    "column_3": "voltage_kv",
-    "column_4": "_feeder_short",
-    "column_5": "sn_rating_amps",
-}
+
+def get_loading_sheet_names(xlsx_path: Path) -> tuple[str, str]:
+    """Return (feeder_sheet, transformer_sheet), using keyword match fallback."""
+    wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
+    sheet_names = wb.sheetnames
+    feeder_sheet = next((s for s in sheet_names if "feeder" in s.lower()), sheet_names[0])
+    transformer_sheet = next((s for s in sheet_names if "transformer" in s.lower()), sheet_names[1])
+    wb.close()
+    return feeder_sheet, transformer_sheet
+
+
+def get_year_columns_and_map(df_raw: pl.DataFrame) -> tuple[list[str], dict[str, str]]:
+    """Detect year columns from row 1 values and return column names + rename map."""
+    header_row = df_raw.row(0)
+    year_cols: list[str] = []
+    year_rename: dict[str, str] = {}
+    for idx, val in enumerate(header_row):
+        try:
+            year = int(float(str(val)))
+        except (TypeError, ValueError):
+            continue
+        if year in ALL_YEARS:
+            col_name = f"column_{idx + 1}"
+            year_cols.append(col_name)
+            year_rename[col_name] = str(year)
+    return year_cols, year_rename
+
+
+def find_column_by_tokens(
+    df_raw: pl.DataFrame,
+    must_have: list[str],
+    must_not_have: list[str] | None = None,
+) -> str:
+    """Find a source column (column_N) from row-2 header text by token match."""
+    must_not_have = must_not_have or []
+    header_names = df_raw.row(1)
+    for idx, name_val in enumerate(header_names, start=1):
+        txt = "" if name_val is None else str(name_val).strip().lower()
+        if all(tok in txt for tok in must_have) and all(tok not in txt for tok in must_not_have):
+            return f"column_{idx}"
+    raise ValueError(f"Could not find column with tokens {must_have} excluding {must_not_have}")
+
+
+def detect_feeder_meta_cols(df_raw: pl.DataFrame) -> dict[str, str]:
+    """Detect feeder metadata columns from row-2 headers (robust to inserted columns)."""
+    return {
+        find_column_by_tokens(df_raw, ["study", "area"]): "study_area",
+        find_column_by_tokens(df_raw, ["substation"]): "substation",
+        find_column_by_tokens(df_raw, ["voltage"]): "voltage_kv",
+        find_column_by_tokens(df_raw, ["feeder"], must_not_have=["contingency", "load", "risk"]): "_feeder_short",
+        find_column_by_tokens(df_raw, ["sn", "rating"]): "sn_rating_amps",
+    }
+
+
+def detect_transformer_meta_cols(df_raw: pl.DataFrame) -> dict[str, str]:
+    """Detect transformer metadata columns from row-2 headers."""
+    return {
+        find_column_by_tokens(df_raw, ["study", "area"]): "study_area",
+        find_column_by_tokens(df_raw, ["substation"]): "substation",
+        # note: excel sheet has typo, "Tranf. ID" instead of "Transf. ID"
+        find_column_by_tokens(df_raw, ["tran"], must_not_have=["concatenate"]): "tranf_id",
+        find_column_by_tokens(df_raw, ["concatenate"]): "concatenate",
+        find_column_by_tokens(df_raw, ["sn", "rating"]): "sn_rating_mva",
+    }
+
+
+def get_contingency_columns_and_map(df_raw: pl.DataFrame) -> tuple[list[str], dict[str, str]]:
+    """Detect contingency-load-at-risk columns from header rows.
+
+    Uses row 2 names as base labels and row 1 year labels (when present) to
+    disambiguate versions like 2034/2039.
+    """
+    row_year = df_raw.row(0)
+    row_name = df_raw.row(1)
+    cols: list[str] = []
+    rename_map: dict[str, str] = {}
+
+    for idx, (year_val, name_val) in enumerate(zip(row_year, row_name), start=1):
+        name_txt = "" if name_val is None else str(name_val).strip()
+        year_txt = "" if year_val is None else str(year_val).strip()
+        combined = f"{name_txt} {year_txt}".strip().lower()
+        if not pl.select(pl.lit(name_txt.lower()).str.contains(r"contingency.*load.at.risk", literal=False)).item():
+            continue
+
+        # Build stable snake-case output name.
+        year_suffix = ""
+        try:
+            year_suffix = str(int(float(year_txt)))
+        except (TypeError, ValueError):
+            year_suffix = STUDY_YEARS[0]
+
+        base = "contingency_load_at_risk"
+        out_name = f"{base}_{year_suffix}" if year_suffix else base
+        src = f"column_{idx}"
+        # Avoid accidental collisions.
+        if out_name in rename_map.values():
+            out_name = f"{out_name}_{idx}"
+
+        cols.append(src)
+        rename_map[src] = out_name
+
+    return cols, rename_map
+
+
+def normalize_contingency_level_expr(col_name: str) -> pl.Expr:
+    """Normalize contingency labels to: '', 'borderline', 'yes'."""
+    norm = pl.col(col_name).cast(pl.String, strict=False).fill_null("").str.strip_chars().str.to_lowercase()
+    return (
+        pl.when((norm == "") | norm.is_in(["na", "n/a", "none", "null"]))
+        .then(pl.lit(""))
+        .when(norm.str.contains("border", literal=False))
+        .then(pl.lit("borderline"))
+        .when(norm.str.contains("yes", literal=False))
+        .then(pl.lit("yes"))
+        .otherwise(norm)
+        .alias(col_name)
+    )
+
+
+def contingency_column_year(col_name: str) -> int:
+    """Extract effective year from contingency column name; fallback to first study year."""
+    parts = col_name.split("_")
+    for part in parts:
+        if len(part) == 4 and part.isdigit():
+            y = int(part)
+            if y in ALL_YEARS:
+                return y
+    return STUDY_YEARS[0]
+
+
+def add_contingency_long_column(
+    df_long: pl.DataFrame,
+    contingency_cols: list[str],
+) -> pl.DataFrame:
+    """Collapse year-indexed contingency columns into one long-format timeline column.
+
+    For each source column contingency_load_at_risk_<year>, non-empty values apply
+    from that year forward. Later-year columns override earlier-year columns.
+    """
+    if not contingency_cols:
+        return df_long.with_columns(pl.lit("").alias("contingency_load_at_risk"))
+
+    # Apply older columns first, then newer columns override via coalesce ordering.
+    cols_sorted = sorted(contingency_cols, key=contingency_column_year)
+    eff_cols = [f"__eff_{c}" for c in cols_sorted]
+
+    out = df_long.with_columns(
+        *[
+            pl.when(pl.col("year") >= contingency_column_year(c))
+            .then(
+                pl.when(pl.col(c).cast(pl.String, strict=False).fill_null("").str.strip_chars() != "")
+                .then(pl.col(c).cast(pl.String, strict=False).fill_null("").str.strip_chars())
+                .otherwise(None)
+            )
+            .otherwise(None)
+            .alias(f"__eff_{c}")
+            for c in cols_sorted
+        ]
+    ).with_columns(
+        pl.coalesce([pl.col(c) for c in eff_cols[::-1]]).fill_null("").alias("contingency_load_at_risk")
+    )
+
+    return out.drop(cols_sorted + eff_cols)
+
+
+_feeder_sheet, _transformer_sheet = get_loading_sheet_names(_loading_xlsx)
+print(f"Reading feeder sheet: {_feeder_sheet}")
+print(f"Reading transformer sheet: {_transformer_sheet}")
+
+df_feeders_raw = pl.read_excel(
+    _loading_xlsx,
+    sheet_name=_feeder_sheet,
+    engine="openpyxl",
+    has_header=False,
+)
+_feeder_year_cols, _feeder_year_rename = get_year_columns_and_map(df_feeders_raw)
+_feeder_cont_cols, _feeder_cont_rename = get_contingency_columns_and_map(df_feeders_raw)
+_missing_feeder_years = [y for y in ALL_YEARS if str(y) not in _feeder_year_rename.values()]
+if _missing_feeder_years:
+    raise ValueError(f"Feeder sheet is missing expected year columns: {_missing_feeder_years}")
+print(f"Detected feeder contingency columns: {list(_feeder_cont_rename.values())}")
+_feeder_meta_cols = detect_feeder_meta_cols(df_feeders_raw)
+print(f"Detected feeder meta columns: {_feeder_meta_cols}")
 
 df_feeders_wide = (
-    pl.read_csv(
-        _feeder_csv,
-        has_header=False,
-        skip_rows=2,
-        truncate_ragged_lines=True,
-        infer_schema_length=0,
-    )
-    .select(list(_feeder_meta_cols.keys()) + list(_feeder_year_cols.keys()))
-    .rename({**_feeder_meta_cols, **_feeder_year_cols})
+    df_feeders_raw
+    .slice(2)  # drop two header rows
+    .select(list(_feeder_meta_cols.keys()) + _feeder_year_cols + _feeder_cont_cols)
+    .rename({**_feeder_meta_cols, **_feeder_year_rename, **_feeder_cont_rename})
     .with_columns(
         (pl.col("substation") + " " + pl.col("_feeder_short")).alias("feeder_id"),
         pl.col("sn_rating_amps").cast(pl.Float64),
         pl.col("voltage_kv").cast(pl.Float64),
         *(pl.col(str(y)).cast(pl.Float64) for y in ALL_YEARS),
+        *(normalize_contingency_level_expr(c) for c in _feeder_cont_rename.values()),
     )
 )
 
@@ -150,13 +324,22 @@ Now reshape to long format: one row per feeder per year.
 ```{python}
 df_feeders = (
     df_feeders_wide.unpivot(
-        index=["study_area", "substation", "voltage_kv", "_feeder_short", "feeder_id", "sn_rating_amps"],
+        index=[
+            "study_area",
+            "substation",
+            "voltage_kv",
+            "_feeder_short",
+            "feeder_id",
+            "sn_rating_amps",
+            *_feeder_cont_rename.values(),
+        ],
         on=[str(y) for y in ALL_YEARS],
         variable_name="year",
         value_name="summer_demand_amps",
     )
     .drop("_feeder_short")
     .with_columns(pl.col("year").cast(pl.Int32))
+    .pipe(add_contingency_long_column, list(_feeder_cont_rename.values()))
     .sort(["feeder_id", "year"])
 )
 
@@ -164,34 +347,32 @@ print(f"Feeders long: {df_feeders.shape[0]} rows ({df_feeders.n_unique('feeder_i
 df_feeders.head(10)
 ```
 
-### Import transformer data
-
 ```{python}
-_xfmr_csv = s3_download("rie_loads_transformers.csv")
-
-_xfmr_year_cols = {f"column_{i + 6}": str(y) for i, y in enumerate(ALL_YEARS)}
-_xfmr_meta_cols = {
-    "column_1": "study_area",
-    "column_2": "substation",
-    "column_3": "tranf_id",
-    "column_4": "concatenate",
-    "column_5": "sn_rating_mva",
-}
+df_transformers_raw = pl.read_excel(
+    _loading_xlsx,
+    sheet_name=_transformer_sheet,
+    engine="openpyxl",
+    has_header=False,
+)
+_xfmr_year_cols, _xfmr_year_rename = get_year_columns_and_map(df_transformers_raw)
+_xfmr_cont_cols, _xfmr_cont_rename = get_contingency_columns_and_map(df_transformers_raw)
+_missing_xfmr_years = [y for y in ALL_YEARS if str(y) not in _xfmr_year_rename.values()]
+if _missing_xfmr_years:
+    raise ValueError(f"Transformer sheet is missing expected year columns: {_missing_xfmr_years}")
+print(f"Detected transformer contingency columns: {list(_xfmr_cont_rename.values())}")
+_xfmr_meta_cols = detect_transformer_meta_cols(df_transformers_raw)
+print(f"Detected transformer meta columns: {_xfmr_meta_cols}")
 
 df_transformers_wide = (
-    pl.read_csv(
-        _xfmr_csv,
-        has_header=False,
-        skip_rows=2,
-        truncate_ragged_lines=True,
-        infer_schema_length=0,
-    )
-    .select(list(_xfmr_meta_cols.keys()) + list(_xfmr_year_cols.keys()))
-    .rename({**_xfmr_meta_cols, **_xfmr_year_cols})
+    df_transformers_raw
+    .slice(2)  # drop two header rows
+    .select(list(_xfmr_meta_cols.keys()) + _xfmr_year_cols + _xfmr_cont_cols)
+    .rename({**_xfmr_meta_cols, **_xfmr_year_rename, **_xfmr_cont_rename})
     .with_columns(
         pl.col("concatenate").alias("transformer_id"),
         pl.col("sn_rating_mva").cast(pl.Float64),
         *(pl.col(str(y)).cast(pl.Float64) for y in ALL_YEARS),
+        *(normalize_contingency_level_expr(c) for c in _xfmr_cont_rename.values()),
     )
 )
 
@@ -202,12 +383,21 @@ df_transformers_wide.head(5)
 ```{python}
 df_transformers = (
     df_transformers_wide.unpivot(
-        index=["study_area", "substation", "tranf_id", "concatenate", "transformer_id", "sn_rating_mva"],
+        index=[
+            "study_area",
+            "substation",
+            "tranf_id",
+            "concatenate",
+            "transformer_id",
+            "sn_rating_mva",
+            *_xfmr_cont_rename.values(),
+        ],
         on=[str(y) for y in ALL_YEARS],
         variable_name="year",
         value_name="summer_demand_mva",
     )
     .with_columns(pl.col("year").cast(pl.Int32))
+    .pipe(add_contingency_long_column, list(_xfmr_cont_rename.values()))
     .sort(["transformer_id", "year"])
 )
 
@@ -223,9 +413,10 @@ get actual winter data, it can simply be joined in to replace these estimates.
 
 The key extensibility point is `project_winter_demand`: it receives the full
 asset dataframe and returns a copy with a `winter_demand_*` column added. The
-default implementation applies a uniform system-wide growth rate from the RI
-Peak Report, but it can be replaced with a version that uses feeder-specific
-growth rates or other asset-level information.
+default implementation uses an evolving *winter fraction of summer* derived from
+system-wide relative winter vs summer net 95/5 peak growth from the RI Peak
+Report. This can be replaced later with feeder- or asset-specific growth rates,
+if/when those are available.
 
 ```{python}
 def project_winter_demand(
@@ -235,9 +426,18 @@ def project_winter_demand(
 ) -> pl.DataFrame:
     """Project winter demand for each asset across all study years.
 
-    Default strategy: derive 2024 winter demand from summer demand, then grow
-    each asset's winter demand forward using the system-wide winter net 95/5
-    peak trajectory. All assets share the same growth curve.
+    Default strategy:
+    - Set each asset's 2024 winter fraction of summer demand to
+      `WINTER_DEMAND_FRAC_OF_SUMMER` (per your modeling assumption).
+    - Project the *winter fraction of summer* forward using system-wide relative
+      growth in winter and summer peak net loads from the RI Peak Report.
+
+    Concretely, for each year y:
+      winter_factor(y) = WINTER_NET_95_5[y] / WINTER_NET_95_5[2024]
+      summer_factor(y) = SUMMER_NET_95_5[y] / SUMMER_NET_95_5[2024]
+      winter_frac(y) = WINTER_DEMAND_FRAC_OF_SUMMER * winter_factor(y) / summer_factor(y)
+
+    Then for each asset, winter_demand_y = summer_demand_y * winter_frac(y).
 
     To use feeder-specific growth rates, replace this function with one that
     reads asset-level attributes from `df` to determine per-asset growth.
@@ -248,32 +448,29 @@ def project_winter_demand(
     winter_demand_col = demand_col.replace("summer_demand", "winter_demand")
     base_year = 2024
 
-    df_base = (
-        df.filter(pl.col("year") == base_year)
-        .select(
-            id_col,
-            (pl.col(demand_col) * WINTER_DEMAND_FRAC_OF_SUMMER).alias("_winter_base"),
-        )
+    # Compute evolving winter demand fraction of summer using relative
+    # system-wide winter vs summer growth.
+    winter_base = WINTER_NET_95_5[base_year]
+    summer_base = SUMMER_NET_95_5[base_year]
+
+    winter_frac_rows = [
+        (y, WINTER_DEMAND_FRAC_OF_SUMMER * (WINTER_NET_95_5[y] / winter_base) / (SUMMER_NET_95_5[y] / summer_base))
+        for y in WINTER_NET_95_5
+    ]
+    winter_frac_map = (
+        pl.DataFrame(winter_frac_rows, schema=["year", "_winter_frac_of_summer"])
+        .with_columns(pl.col("year").cast(pl.Int32))
     )
 
-    growth_map = pl.DataFrame({
-        "year": list(WINTER_NET_95_5.keys()),
-        "_growth": [
-            WINTER_NET_95_5[y] / WINTER_NET_95_5[base_year]
-            for y in WINTER_NET_95_5
-        ],
-    }).with_columns(pl.col("year").cast(pl.Int32))
-
     return (
-        df.join(df_base, on=id_col, how="left")
-        .join(growth_map, on="year", how="left")
+        df.join(winter_frac_map, on="year", how="left")
         .with_columns(
             pl.when(pl.col("year") <= base_year)
             .then(pl.col(demand_col) * WINTER_DEMAND_FRAC_OF_SUMMER)
-            .otherwise(pl.col("_winter_base") * pl.col("_growth"))
+            .otherwise(pl.col(demand_col) * pl.col("_winter_frac_of_summer"))
             .alias(winter_demand_col),
         )
-        .drop(["_winter_base", "_growth"])
+        .drop(["_winter_frac_of_summer"])
     )
 
 
@@ -401,7 +598,6 @@ df_feeders_util.select(
     "winter_demand_amps", "winter_utilization",
 ).head(9)
 ```
-
 ```{python}
 df_transformers_util = compute_utilization(
     df_transformers,
@@ -415,6 +611,7 @@ df_transformers_util.select(
     "winter_demand_mva", "winter_utilization",
 ).head(9)
 ```
+
 
 ### Interactive histograms
 
@@ -431,9 +628,8 @@ def make_utilization_histogram(
 ) -> go.Figure:
     """Build an interactive histogram of utilization across years and scenarios.
 
-    Uses a Plotly slider to select the year and buttons to switch scenarios.
-    The slider restyles trace *data* while the buttons toggle trace *visibility*,
-    so changing scenario preserves the current year position.
+    Uses a Plotly slider to select year plus two radio-button rows:
+    one for scenario and one for contingency status.
     """
 
     fig = make_subplots(
@@ -442,22 +638,31 @@ def make_utilization_histogram(
         vertical_spacing=0.12,
     )
 
-    # Pre-compute utilization lists for all (year, scenario) combinations
-    util_data: dict[int, dict[str, dict[str, list]]] = {}
+    contingency_col = "contingency_load_at_risk" if "contingency_load_at_risk" in df_util.columns else None
+    contingency_level_options = [("all", "All"), ("", "No"), ("borderline", "Borderline"), ("yes", "Yes")]
+    default_cont_level = "all"
+
+    # Pre-compute utilization lists for all (year, scenario, contingency-level).
+    util_data: dict[int, dict[str, dict[str, dict[str, list]]]] = {}
     for year in STUDY_YEARS:
         util_data[year] = {}
         for scenario in SCENARIO_ORDER:
-            df_sc = df_util.filter(
+            df_sc_all = df_util.filter(
                 (pl.col("year") == year) & (pl.col("scenario") == scenario)
             )
-            util_data[year][scenario] = {
-                "summer": df_sc["summer_utilization"].to_list(),
-                "winter": df_sc["winter_utilization"].to_list(),
-            }
+            util_data[year][scenario] = {}
+            for cont_level, _ in contingency_level_options:
+                if contingency_col is None or cont_level == "all":
+                    df_sc = df_sc_all
+                else:
+                    df_sc = df_sc_all.filter(pl.col(contingency_col) == cont_level)
+                util_data[year][scenario][cont_level] = {
+                    "summer": df_sc["summer_utilization"].to_list(),
+                    "winter": df_sc["winter_utilization"].to_list(),
+                }
 
-    # 6 traces: one per (scenario, season). Trace order matters for restyle.
-    trace_info = []
     initial_year = STUDY_YEARS[0]
+    trace_info = []
     hist_kwargs = dict(
         xbins=dict(start=UTIL_RANGE[0], end=UTIL_RANGE[1], size=UTIL_BIN_SIZE),
         opacity=0.85,
@@ -468,7 +673,7 @@ def make_utilization_histogram(
         visible = scenario == "Base"
         fig.add_trace(
             go.Histogram(
-                x=util_data[initial_year][scenario]["summer"],
+                x=util_data[initial_year][scenario][default_cont_level]["summer"],
                 marker_color="#fc9706",
                 visible=visible,
                 **hist_kwargs,
@@ -478,7 +683,7 @@ def make_utilization_histogram(
         trace_info.append(("summer", scenario))
         fig.add_trace(
             go.Histogram(
-                x=util_data[initial_year][scenario]["winter"],
+                x=util_data[initial_year][scenario][default_cont_level]["winter"],
                 marker_color="#68bed8",
                 visible=visible,
                 **hist_kwargs,
@@ -487,18 +692,23 @@ def make_utilization_histogram(
         )
         trace_info.append(("winter", scenario))
 
-    # Slider: restyle x data for all 6 traces (doesn't touch visibility)
+    # Slider updates x for all traces at selected year (using current default contingency status).
     slider_steps = [
         dict(
             method="restyle",
-            args=[{"x": [util_data[y][sc][season] for season, sc in trace_info]}],
+            args=[{
+                "x": [
+                    util_data[y][sc][default_cont_level][season]
+                    for season, sc in trace_info
+                ]
+            }],
             label=str(y),
         )
         for y in STUDY_YEARS
     ]
 
-    # Scenario buttons: toggle visibility (doesn't touch data or slider position)
-    buttons = [
+    # Scenario buttons toggle visibility only.
+    scenario_buttons = [
         dict(
             method="restyle",
             args=[{"visible": [sc == target for _, sc in trace_info]}],
@@ -507,25 +717,108 @@ def make_utilization_histogram(
         for target in SCENARIO_ORDER
     ]
 
+    # Contingency-status buttons restyle x arrays for currently displayed year baseline.
+    contingency_buttons = [
+        dict(
+            method="restyle",
+            args=[{
+                "x": [
+                    util_data[initial_year][sc][level][season]
+                    for season, sc in trace_info
+                ]
+            }],
+            label=label,
+        )
+        for level, label in contingency_level_options
+    ]
+
+    # Title + row labels. Do NOT pass annotations=[...] alone: make_subplots already
+    # stores subplot titles in layout.annotations; replacing that list drops them and can
+    # leave only the last custom annotation depending on merge behavior. Append ours.
+    _title_txt = f"{asset_type} Utilization"
+    # Labels sit to the left of buttons on the same row (right-aligned into a label column).
+    _label_col_right = 0.28
+    _btn_x = 0.30
+    _y_scenario_btns = 1.26
+    _y_cont_btns = 1.11
+    _annotations_merged = [
+        *fig.layout.annotations,
+        go.layout.Annotation(
+            text=f"<b>{_title_txt}</b>",
+            xref="paper",
+            yref="paper",
+            x=0.5,
+            y=1.42,
+            xanchor="center",
+            yanchor="bottom",
+            showarrow=False,
+            font=dict(size=17),
+        ),
+        go.layout.Annotation(
+            text="<b>Scenario</b>",
+            xref="paper",
+            yref="paper",
+            x=_label_col_right,
+            y=_y_scenario_btns,
+            xanchor="right",
+            yanchor="middle",
+            showarrow=False,
+            font=dict(size=12, color="#023047"),
+        ),
+        go.layout.Annotation(
+            text="<b>Contingency load-at-risk</b>",
+            xref="paper",
+            yref="paper",
+            x=_label_col_right,
+            y=_y_cont_btns,
+            xanchor="right",
+            yanchor="middle",
+            showarrow=False,
+            font=dict(size=12, color="#023047"),
+        ),
+    ]
     fig.update_layout(
-        title=f"{asset_type} Utilization",
+        title=None,
         showlegend=False,
-        height=700,
-        width=900,
+        height=860,
+        width=920,
+        margin=dict(t=260, l=72, r=40, b=80),
+        annotations=_annotations_merged,
         sliders=[dict(
             active=0,
             steps=slider_steps,
             currentvalue={"prefix": "Year: "},
             pad={"t": 50},
         )],
-        updatemenus=[dict(
-            type="buttons",
-            direction="right",
-            active=1,
-            x=0.0,
-            y=1.18,
-            buttons=buttons,
-        )],
+        # Contingency menu first: reduces odd overlay interaction with the scenario row.
+        updatemenus=[
+            dict(
+                type="buttons",
+                direction="right",
+                active=0,
+                x=_btn_x,
+                y=_y_cont_btns,
+                xanchor="left",
+                yanchor="middle",
+                bgcolor="rgba(255,255,255,0)",
+                bordercolor="rgba(0,0,0,0)",
+                borderwidth=0,
+                buttons=contingency_buttons,
+            ),
+            dict(
+                type="buttons",
+                direction="right",
+                active=1,
+                x=_btn_x,
+                y=_y_scenario_btns,
+                xanchor="left",
+                yanchor="middle",
+                bgcolor="rgba(255,255,255,0)",
+                bordercolor="rgba(0,0,0,0)",
+                borderwidth=0,
+                buttons=scenario_buttons,
+            ),
+        ],
     )
 
     fig.update_xaxes(
@@ -545,7 +838,7 @@ def make_utilization_histogram(
 
 ```{python}
 #| label: fig-feeder-utilization
-#| fig-cap: "Distribution of feeder utilization across years and HP adoption scenarios. Red dashed line marks 100% rated capacity."
+#| fig-cap: "Distribution of feeder utilization across years and HP adoption scenarios. Use the radio-button rows to choose scenario and contingency status. Red dashed line marks 100% rated capacity."
 
 fig_feeders = make_utilization_histogram(df_feeders_util, "feeder_id", "Feeder")
 fig_feeders.show()

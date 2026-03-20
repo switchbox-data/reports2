@@ -69,19 +69,32 @@ def main() -> None:
 
     DIFFS.mkdir(parents=True, exist_ok=True)
 
-    prerendered = [Path(f"prerendered_{name}") for name in ("old", "new")]
+    # Symlink docs/ into .diff/ so website_diff creates both prerendered
+    # working directories inside .diff/ (it places them next to -o and -n).
+    docs_link = BASELINE.parent / "current"
+    if docs_link.is_symlink() or docs_link.exists():
+        docs_link.unlink()
+    docs_link.symlink_to(docs.resolve())
+
+    temp_paths = [
+        BASELINE.parent / "prerendered_old",
+        BASELINE.parent / "prerendered_new",
+        docs_link,
+    ]
 
     try:
         subprocess.run(
-            ["website_diff", "-o", str(BASELINE), "-n", str(docs), "-d", str(diff_dir), "-i", hub],
+            ["website_diff", "-o", str(BASELINE), "-n", str(docs_link), "-d", str(diff_dir), "-i", hub],
             check=True,
         )
     finally:
         (BASELINE / hub).unlink(missing_ok=True)
         (docs / hub).unlink(missing_ok=True)
         (diff_dir / hub).unlink(missing_ok=True)
-        for d in prerendered:
-            if d.exists():
+        for d in temp_paths:
+            if d.is_symlink():
+                d.unlink()
+            elif d.exists():
                 shutil.rmtree(d)
 
     index = diff_dir / "index.html"

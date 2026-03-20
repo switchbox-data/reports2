@@ -115,7 +115,7 @@ labels, and the second contains column names/units. We use the first row to
 detect year columns, then slice away both header rows.
 
 ```{python}
-_loading_xlsx = s3_download("CLF_2-2_Feeder_Transformer Loading_v2.xlsx")
+_loading_xlsx = s3_download("CLF_2-2_Feeder_Transformer Loading_v3.xlsx")
 
 
 def get_loading_sheet_names(xlsx_path: Path) -> tuple[str, str]:
@@ -184,34 +184,32 @@ def detect_transformer_meta_cols(df_raw: pl.DataFrame) -> dict[str, str]:
 
 
 def get_contingency_columns_and_map(df_raw: pl.DataFrame) -> tuple[list[str], dict[str, str]]:
-    """Detect contingency-load-at-risk columns from header rows.
+    """Detect contingency-load-at-risk columns from *row 1* headers of the form '2035 Contingency Load-At-Risk'.
 
-    Uses row 2 names as base labels and row 1 year labels (when present) to
-    disambiguate versions like 2034/2039.
+    Extract the year from the start of the header, otherwise use first study year.
     """
-    row_year = df_raw.row(0)
     row_name = df_raw.row(1)
     cols: list[str] = []
     rename_map: dict[str, str] = {}
 
-    for idx, (year_val, name_val) in enumerate(zip(row_year, row_name), start=1):
+    for idx, name_val in enumerate(row_name, start=1):
         name_txt = "" if name_val is None else str(name_val).strip()
-        year_txt = "" if year_val is None else str(year_val).strip()
-        combined = f"{name_txt} {year_txt}".strip().lower()
-        if not pl.select(pl.lit(name_txt.lower()).str.contains(r"contingency.*load.at.risk", literal=False)).item():
+        name_txt_lower = name_txt.lower()
+        # Only match if 'contingency' and 'load-at-risk' both appear in the header
+        if "contingency" not in name_txt_lower:
             continue
 
-        # Build stable snake-case output name.
-        year_suffix = ""
-        try:
-            year_suffix = str(int(float(year_txt)))
-        except (TypeError, ValueError):
-            year_suffix = STUDY_YEARS[0]
+        # Try to extract the first four-digit year at the front of string
+        import re
+        m = re.match(r"^\s*(\d{4})\s+", name_txt)
+        if m:
+            year_suffix = m.group(1)
+        else:
+            year_suffix = str(STUDY_YEARS[0])
 
         base = "contingency_load_at_risk"
         out_name = f"{base}_{year_suffix}" if year_suffix else base
         src = f"column_{idx}"
-        # Avoid accidental collisions.
         if out_name in rename_map.values():
             out_name = f"{out_name}_{idx}"
 
@@ -222,11 +220,11 @@ def get_contingency_columns_and_map(df_raw: pl.DataFrame) -> tuple[list[str], di
 
 
 def normalize_contingency_level_expr(col_name: str) -> pl.Expr:
-    """Normalize contingency labels to: '', 'borderline', 'yes'."""
+    """Normalize contingency labels to: 'no', 'borderline', 'yes'."""
     norm = pl.col(col_name).cast(pl.String, strict=False).fill_null("").str.strip_chars().str.to_lowercase()
     return (
         pl.when((norm == "") | norm.is_in(["na", "n/a", "none", "null"]))
-        .then(pl.lit(""))
+        .then(pl.lit("no"))
         .when(norm.str.contains("border", literal=False))
         .then(pl.lit("borderline"))
         .when(norm.str.contains("yes", literal=False))
@@ -253,33 +251,40 @@ def add_contingency_long_column(
 ) -> pl.DataFrame:
     """Collapse year-indexed contingency columns into one long-format timeline column.
 
-    For each source column contingency_load_at_risk_<year>, non-empty values apply
+    For each source column contingency_load_at_risk_<year>, values apply
     from that year forward. Later-year columns override earlier-year columns.
+    Empty values are filled with "no" and treated as values to propagate.
     """
     if not contingency_cols:
-        return df_long.with_columns(pl.lit("").alias("contingency_load_at_risk"))
+        return df_long.with_columns(pl.lit("no").alias("contingency_load_at_risk"))
 
-    # Apply older columns first, then newer columns override via coalesce ordering.
+    # Apply older columns first, newer columns override via coalesce ordering.
     cols_sorted = sorted(contingency_cols, key=contingency_column_year)
-    eff_cols = [f"__eff_{c}" for c in cols_sorted]
+    # eff_cols = [f"__eff_{c}" for c in cols_sorted]
+    # print(cols_sorted)
+    # display(df_long.with_columns(
+    #     *[
+    #         pl.when(pl.col("year") >= contingency_column_year(c))
+    #         .then(pl.col(c).cast(pl.String, strict=False).fill_null("").str.strip_chars())
+    #         .otherwise(pl.lit('no'))
+    #         .alias(f"__eff_{c}")
+    #         for c in cols_sorted
+    #     ]
+    # ).filter(pl.col("feeder_id").str.contains("48F4")).tail(10))
 
-    out = df_long.with_columns(
-        *[
-            pl.when(pl.col("year") >= contingency_column_year(c))
-            .then(
-                pl.when(pl.col(c).cast(pl.String, strict=False).fill_null("").str.strip_chars() != "")
-                .then(pl.col(c).cast(pl.String, strict=False).fill_null("").str.strip_chars())
-                .otherwise(None)
-            )
-            .otherwise(None)
-            .alias(f"__eff_{c}")
-            for c in cols_sorted
-        ]
-    ).with_columns(
-        pl.coalesce([pl.col(c) for c in eff_cols[::-1]]).fill_null("").alias("contingency_load_at_risk")
+    df_long = df_long.with_columns(
+        pl.lit('no').alias("contingency_load_at_risk")
     )
 
-    return out.drop(cols_sorted + eff_cols)
+    for col in cols_sorted:
+        df_long = df_long.with_columns(
+            pl.when(pl.col("year") >= contingency_column_year(col))
+            .then(pl.col(col).cast(pl.String, strict=False).fill_null("").str.strip_chars())
+            .otherwise(pl.col("contingency_load_at_risk"))
+            .alias("contingency_load_at_risk")
+        )
+
+    return df_long.drop(cols_sorted)
 
 
 _feeder_sheet, _transformer_sheet = get_loading_sheet_names(_loading_xlsx)
@@ -639,7 +644,7 @@ def make_utilization_histogram(
     )
 
     contingency_col = "contingency_load_at_risk" if "contingency_load_at_risk" in df_util.columns else None
-    contingency_level_options = [("all", "All"), ("", "No"), ("borderline", "Borderline"), ("yes", "Yes")]
+    contingency_level_options = [("all", "All"), ("no", "No"), ("borderline", "Borderline"), ("yes", "Yes")]
     default_cont_level = "all"
 
     # Pre-compute utilization lists for all (year, scenario, contingency-level).

@@ -123,6 +123,8 @@ BLDG_ID = "bldg_id"
 HEATING_TYPE_COL = "postprocess_group.heating_type"
 INCOME_COL = "in.representative_income"
 BURDEN_THRESHOLD = 0.06
+LMI_CURRENT_ENROLLMENT_PCT = 40
+report_vars["lmi_current_enrollment_pct"] = LMI_CURRENT_ENROLLMENT_PCT
 LMI_BILL_COLS = ["elec_total_bill", "gas_total_bill", "oil_total_bill", "propane_total_bill"]
 LMI_40_BILL_COLS = ["elec_total_bill_lmi_40", "gas_total_bill_lmi_40", "oil_total_bill", "propane_total_bill"]
 LMI_100_BILL_COLS = ["elec_total_bill_lmi_100", "gas_total_bill_lmi_100", "oil_total_bill", "propane_total_bill"]
@@ -402,10 +404,11 @@ def plot_bill_components_decomposed(
     return p
 ```
 
-### Representative home: statewide median
+### Representative home
 
-We find the weighted-median natgas-heated building with full baseline cooling
-across all utilities, then look up that same building in the heat pump scenario.
+We hardcode a specific building chosen for its narrative qualities: near-median
+baseline bill, meaningful bill increase after switching, and clear delivery
+underpayment before switching. See the selection criteria in the agent transcript.
 
 ```{python}
 #| label: compute-bill-components-state
@@ -426,26 +429,13 @@ hp_same_bldgs_state = (
 )
 assert not hp_same_bldgs_state.is_empty(), "No matching buildings statewide (HP)"
 
-natgas_full_cooling = (                                                          # <3>
+median_bldg_id_state = 497234                                                    # <3>
+median_current_state = (                                                         # <3>
     natgas_current_state                                                         # <3>
-    .select([*SELECT_COLS, "in.hvac_cooling_partial_space_conditioning"])         # <3>
-    .filter(                                                                     # <3>
-        pl.col("in.hvac_cooling_partial_space_conditioning") == "100% Conditioned"  # <3>
-    )                                                                            # <3>
-    .drop("in.hvac_cooling_partial_space_conditioning")                          # <3>
+    .filter(pl.col(BLDG_ID) == median_bldg_id_state)                            # <3>
+    .select(SELECT_COLS)                                                         # <3>
 )                                                                                # <3>
-
-median_current_state = weighted_median_row(natgas_full_cooling)
-median_bldg_id_state = median_current_state[BLDG_ID][0]
-# Previously: bldg 168982 (Buffalo, SF detached, 3-bed 1-story, NiMo elec + NFG gas, 1228 sqft, pre-1940 wood stud)
-# As of 2026-03-13: bldg 411608 (Utica, MF 2-unit, NiMo elec+gas, 2648 sqft, pre-1940 brick)
-
-# Alternative: Building 305979 (Queens MF, ConEd, renter) — near-median on BAT,
-# elec kWh % change, and delivery bill % change simultaneously. To switch,
-# uncomment and replace the two lines above.
-# See context/tools/ny_hp_rates_story_building_selection.md for full comparison.
-# median_bldg_id_state = 305979
-# median_current_state = natgas_full_cooling.filter(pl.col(BLDG_ID) == median_bldg_id_state).row(0, named=True)
+assert len(median_current_state) == 1, f"Hardcoded bldg {median_bldg_id_state} not found in natgas pool"
 median_hp_state = (
     hp_same_bldgs_state
     .filter(pl.col(BLDG_ID) == median_bldg_id_state)
@@ -475,9 +465,9 @@ report_vars["median_net_increase"] = report_vars["median_elec_jump"] - report_va
 
 1. Same natgas-only filter as the representative-building cell. Statewide, ~2.7% of natgas buildings are dropped.
 2. Pre-filter the HP scenario to the same natgas-only building IDs so we can look up individual buildings.
-3. Restrict to buildings with 100% baseline cooling before selecting the median. This avoids the "gain of function"
-   confound where homes with partial or no cooling gain full air conditioning from the heat pump, inflating summer
-   electricity. The same building is reused for the monthly consumption chart below.
+3. Hardcoded building: 1,698 sqft, 1990s, 3-bed, 2-story SFD in Erie County (NYSEG). Baseline bill near
+   the statewide median for natgas-only homes, bill increases by ~$800 after HP switch, and underpays
+   ~$216/yr on per-customer delivery BAT before switching.
 
 We also load monthly load curves for this building from ResStock to show energy consumption (in kWh) alongside the bill
 charts.
@@ -1378,19 +1368,13 @@ for cg in _cooling_order:
             })
 
 _elec_change_table = pl.DataFrame(_table_rows).pivot(
-    on="utility", index="cooling", values="median_pct_change",
-).with_columns(
-    pl.col("cooling").cast(pl.Enum(_cooling_order))
-).sort("cooling")
+    on="cooling", index="utility", values="median_pct_change",
+).sort("utility")
 
 _elec_change_gt = (
-    GT(_elec_change_table, rowname_col="cooling")
-    .tab_header(
-        title="Median electricity consumption increase after switching to heat pumps",
-        subtitle="Weighted median % change, by utility and baseline cooling type",
-    )
-    .fmt_number(columns=[c for c in _elec_change_table.columns if c != "cooling"], decimals=0, pattern="{x}%")
-    .tab_source_note("Population: all fossil-fueled homes statewide (gas, oil, and propane).")
+    GT(_elec_change_table, rowname_col="utility")
+    .fmt_number(columns=_cooling_order, decimals=0, pattern="{x}%")
+    .tab_spanner(label="Baseline cooling", columns=_cooling_order)
 )
 Path("../cache").mkdir(exist_ok=True)
 Path("../cache/elec_pct_change_table.html").write_text(_elec_change_gt.as_raw_html())
@@ -1447,21 +1431,6 @@ _er_lose_1k_w = elec_resistance_state.filter(pl.col("delta") > 1000)["weight"].s
 report_vars["pct_elec_resistance_save_default"] = _er_save_w / _er_total_w
 report_vars["pct_elec_resistance_save_1k_default"] = _er_save_1k_w / _er_total_w
 report_vars["pct_elec_resistance_lose_1k_default"] = _er_lose_1k_w / _er_total_w
-```
-
-```{python}
-#| label: fig-quadrant-bar-natgas-state
-#| fig-cap: "Bill impact of switching to heat pumps for natural gas-heated households (Statewide)"
-
-plot_quadrant_bar(
-    [("Natural gas", natgas_state)],
-    title_parts=[
-        ("How bills would change for ", "#000000"),
-        ("natural gas", "#7A8A10"),
-        (" heated homes after switching to ", "#000000"),
-        ("heat pumps", "#c47600"),
-    ],
-)
 ```
 
 ```{python}
@@ -1557,6 +1526,12 @@ natgas_state_lmi40 = (
     .filter(pl.col("heats_with_natgas"))
     .select("delta", "weight")
 )
+_lmi40_def_total = natgas_state_lmi40["weight"].sum()
+_lmi40_def_save = natgas_state_lmi40.filter(pl.col("delta") < 0)["weight"].sum()
+_lmi40_def_lose_1k = natgas_state_lmi40.filter(pl.col("delta") > 1000)["weight"].sum()
+report_vars["pct_natgas_save_default_lmi40"] = _lmi40_def_save / _lmi40_def_total
+report_vars["pct_natgas_lose_1k_default_lmi40"] = _lmi40_def_lose_1k / _lmi40_def_total
+
 natgas_state_lmi_full = (
     delta_state_lmi_full
     .filter(pl.col("heats_with_natgas"))
@@ -1566,7 +1541,7 @@ natgas_state_lmi_full = (
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-state-state-lmi-current
-#| fig-cap: "Bill impact of switching to heat pumps for natural gas-heated households, with current LMI discount enrollment (~40%)"
+#| fig-cap: "Bill impact of switching to heat pumps for natural gas-heated households (Statewide)"
 
 plot_quadrant_bar(
     [("Natural gas", natgas_state_lmi40)],
@@ -1576,22 +1551,6 @@ plot_quadrant_bar(
         (" heated homes after switching to ", "#000000"),
         ("heat pumps", "#c47600"),
         ("\n(with current LMI discounts)", "#000000"),
-    ],
-)
-```
-
-```{python}
-#| label: fig-quadrant-bar-natgas-state-state-lmi-full
-#| fig-cap: "Bill impact of switching to heat pumps for natural gas-heated households, with full LMI discount enrollment at electrification"
-
-plot_quadrant_bar(
-    [("Natural gas", natgas_state_lmi_full)],
-    title_parts=[
-        ("How bills would change for ", "#000000"),
-        ("natural gas", "#7A8A10"),
-        (" heated homes after switching to ", "#000000"),
-        ("heat pumps", "#c47600"),
-        ("\n(with full LMI enrollment at electrification)", "#000000"),
     ],
 )
 ```
@@ -2072,9 +2031,11 @@ bat_labels = pl.DataFrame([
 
 report_vars["cs_gas_bill"] = gas_bill
 report_vars["cs_gas_cost"] = gas_cost
+report_vars["cs_gas_underpay"] = gas_cost - gas_bill
 report_vars["cs_gas_bat"] = gas_bat
 report_vars["cs_hp_bill"] = hp_bill_cs
 report_vars["cs_hp_cost"] = hp_cost_cs
+report_vars["cs_hp_overpay"] = hp_bill_cs - hp_cost_cs
 report_vars["cs_hp_bat"] = hp_bat_cs
 
 (
@@ -3035,10 +2996,13 @@ seasonal differences are visually apparent); the height of each block represents
 period.
 
 ```{python}
-#| label: tou-schedule-charts
+#| label: tou-schedule-charts-setup
+
+import io
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+from IPython.display import SVG, display
 
 _HOUR_TICKS = list(range(0, 25, 3))
 _HOUR_LABELS = ["12am", "3am", "6am", "9am", "12pm", "3pm", "6pm", "9pm", "12am"]
@@ -3120,11 +3084,62 @@ def _make_tou_chart(display_name, tariff_code):
     return fig
 
 
-Path("../cache").mkdir(exist_ok=True)
-for _name, _code in TARIFF_UTILS.items():
-    _fig = _make_tou_chart(_name, _code)
-    _fig.savefig(f"../cache/tou_schedule_{_code}.svg", format="svg", bbox_inches="tight")
+def _tou_schedule_svg(display_name: str, tariff_code: str) -> None:
+    """Emit a single SVG output so Quarto ``{{< embed >}}`` works (see quarto_manuscript_embed_bug.md)."""
+    _fig = _make_tou_chart(display_name, tariff_code)
+    _buf = io.BytesIO()
+    _fig.savefig(_buf, format="svg", bbox_inches="tight")
     plt.close(_fig)
+    display(SVG(data=_buf.getvalue()))
+```
+
+```{python}
+#| label: fig-tou-schedule-coned
+#| fig-cap: "TOU rate schedule — ConEd"
+
+_tou_schedule_svg("ConEd", "coned")
+```
+
+```{python}
+#| label: fig-tou-schedule-nimo
+#| fig-cap: "TOU rate schedule — National Grid"
+
+_tou_schedule_svg("NiMo", "nimo")
+```
+
+```{python}
+#| label: fig-tou-schedule-nyseg
+#| fig-cap: "TOU rate schedule — NYSEG"
+
+_tou_schedule_svg("NYSEG", "nyseg")
+```
+
+```{python}
+#| label: fig-tou-schedule-cenhud
+#| fig-cap: "TOU rate schedule — Central Hudson"
+
+_tou_schedule_svg("CenHud", "cenhud")
+```
+
+```{python}
+#| label: fig-tou-schedule-rge
+#| fig-cap: "TOU rate schedule — RG&E"
+
+_tou_schedule_svg("RG&E", "rge")
+```
+
+```{python}
+#| label: fig-tou-schedule-or
+#| fig-cap: "TOU rate schedule — O&R"
+
+_tou_schedule_svg("O&R", "or")
+```
+
+```{python}
+#| label: fig-tou-schedule-psegli
+#| fig-cap: "TOU rate schedule — PSEG-LI"
+
+_tou_schedule_svg("PSEG-LI", "psegli")
 ```
 
 ## Cross-subsidization under fair rate
@@ -3361,11 +3376,15 @@ report_vars["pct_elec_resistance_lose_1k_hprate"] = _er_sw_lose_1k / _er_sw_tota
 ### Representative home bill decomposition: default vs. fair rates
 
 ```{python}
-#| label: save-bill-decomposed-fair-rate
+#| label: fig-bill-decomposed-fair-rate-state
+#| fig-cap: "Annual energy bill for the representative gas-heated Buffalo home: before heat pumps, after heat pumps at default rates, and after heat pumps at fair rates."
+
+import io
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import numpy as np
+from IPython.display import SVG, display
 
 _GOLD = "#D4A800"
 _scenarios = ["Natural gas\nfurnace", "Heat pump\n(default rates)", "Heat pump\n(fair rates)"]
@@ -3469,26 +3488,10 @@ report_vars["fair_rate_savings_pct"] = _pct_savings / 100
 report_vars["fair_rate_total_bill"] = _totals[2]
 
 fig_3bar.tight_layout()
-fig_3bar.savefig("../cache/fig_bill_decomposed_fair_rate.png", dpi=200, bbox_inches="tight")
+_buf = io.BytesIO()
+fig_3bar.savefig(_buf, format="svg", bbox_inches="tight")
 plt.close(fig_3bar)
-```
-
-```{python}
-#| label: fig-quadrant-bar-natgas-switch-hprate-state
-#| fig-cap: "Bill change summary — natural gas homes switching to HP: default vs. seasonal rate (Statewide)"
-
-plot_quadrant_bar(
-    [
-        ("Default rate", natgas_state),
-        ("HP seasonal rate", natgas_switch_state),
-    ],
-    title_parts=[
-        ("How bills would change for ", "#000000"),
-        ("natural gas", "#7A8A10"),
-        (" heated homes after switching to ", "#000000"),
-        ("heat pumps", "#c47600"),
-    ],
-)
+display(SVG(data=_buf.getvalue()))
 ```
 
 ```{python}
@@ -3645,7 +3648,9 @@ natgas_switch_state_lmi40 = (
 )
 _lmi40_total = natgas_switch_state_lmi40["weight"].sum()
 _lmi40_save = natgas_switch_state_lmi40.filter(pl.col("delta") < 0)["weight"].sum()
+_lmi40_lose_1k = natgas_switch_state_lmi40.filter(pl.col("delta") > 1000)["weight"].sum()
 report_vars["pct_natgas_save_hprate_lmi40"] = _lmi40_save / _lmi40_total
+report_vars["pct_natgas_lose_1k_hprate_lmi40"] = _lmi40_lose_1k / _lmi40_total
 
 natgas_switch_state_lmi_full = (
     delta_switch_state_lmi_full
@@ -3661,30 +3666,12 @@ report_vars["pct_natgas_save_1k_hprate_lmi_full"] = _lmif_save_1k / _lmif_total
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-switch-hprate-state-lmi-current
-#| fig-cap: "Bill change summary — natural gas homes switching to HP: default vs. seasonal rate, with current LMI discounts (Statewide)"
+#| fig-cap: "Bill change summary — natural gas homes switching to HP: default vs. seasonal rate (Statewide)"
 
 plot_quadrant_bar(
     [
         ("Default rate", natgas_state_lmi40),
         ("HP seasonal rate", natgas_switch_state_lmi40),
-    ],
-    title_parts=[
-        ("How bills would change for ", "#000000"),
-        ("natural gas", "#7A8A10"),
-        (" heated homes after switching to ", "#000000"),
-        ("heat pumps", "#c47600"),
-    ],
-)
-```
-
-```{python}
-#| label: fig-quadrant-bar-natgas-switch-hprate-state-lmi-full
-#| fig-cap: "Bill change summary — natural gas homes switching to HP: default vs. seasonal rate, with full LMI enrollment (Statewide)"
-
-plot_quadrant_bar(
-    [
-        ("Default rate", natgas_state_lmi40),
-        ("HP seasonal rate", natgas_switch_state_lmi_full),
     ],
     title_parts=[
         ("How bills would change for ", "#000000"),
@@ -3988,9 +3975,10 @@ print(f"HP + seasonal rates: {above_hp_seasonal:.1f}% above 6% | {below_hp_seaso
 #| label: burden-bar-helper
 
 BURDEN_SCENARIO_LABELS = [
-    "Current HVAC\nDefault Rates",
-    "Heat Pump\nDefault Rates",
-    "Heat Pump\nHP Seasonal Rates",
+    f"Current HVAC\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+    f"Heat Pump\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+    f"Heat Pump\nHP Seasonal Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+    "Heat Pump\nHP Seasonal Rates\n100% LMI Discounts",
 ]
 BURDEN_SEGMENT_ORDER = ["Above 6%", "Below 6%"]
 BURDEN_COLORS = {
@@ -4060,16 +4048,6 @@ def plot_burden_bar(
     )
 ```
 
-```{python}
-#| label: fig-burden-bar
-#| fig-cap: "Share of low-income gas-heated households above the 6% energy burden threshold, before any LMI discounts"
-
-plot_burden_bar(
-    [below_current, below_hp_default, below_hp_seasonal],
-    [above_current, above_hp_default, above_hp_seasonal],
-)
-```
-
 ### With current LMI discount enrollment (~40%)
 
 An estimated 40% of LMI households currently receive LMI discounts on their utility bills. We recompute energy burdens
@@ -4087,19 +4065,25 @@ below_hp_default_lmi40, above_hp_default_lmi40 = burden_shares(
 below_hp_seasonal_lmi40, above_hp_seasonal_lmi40 = burden_shares(
     bills_hprate_hp, cohort_bldg_ids, income_df, bill_cols=LMI_40_BILL_COLS,
 )
+below_hp_seasonal_lmi100, above_hp_seasonal_lmi100 = burden_shares(
+    bills_hprate_hp, cohort_bldg_ids, income_df, bill_cols=LMI_100_BILL_COLS,
+)
 
-print(f"Current HVAC (40% enrolled):        {above_current_lmi40:.1f}% above 6%")
-print(f"HP + default rates (40% enrolled):  {above_hp_default_lmi40:.1f}% above 6%")
-print(f"HP + seasonal rates (40% enrolled): {above_hp_seasonal_lmi40:.1f}% above 6%")
+print(f"Current HVAC (40% enrolled):         {above_current_lmi40:.1f}% above 6%")
+print(f"HP + default rates (40% enrolled):   {above_hp_default_lmi40:.1f}% above 6%")
+print(f"HP + seasonal rates (40% enrolled):  {above_hp_seasonal_lmi40:.1f}% above 6%")
+print(f"HP + seasonal rates (100% enrolled): {above_hp_seasonal_lmi100:.1f}% above 6%")
+
+report_vars["pct_burdened_hp_seasonal_lmi100"] = above_hp_seasonal_lmi100 / 100
 ```
 
 ```{python}
 #| label: fig-burden-bar-lmi-current
-#| fig-cap: "Share of low-income gas-heated households above the 6% energy burden threshold, with current LMI discount enrollment (~40%)"
+#| fig-cap: "Share of low-income gas-heated households above the 6% energy burden threshold"
 
 plot_burden_bar(
-    [below_current_lmi40, below_hp_default_lmi40, below_hp_seasonal_lmi40],
-    [above_current_lmi40, above_hp_default_lmi40, above_hp_seasonal_lmi40],
+    [below_current_lmi40, below_hp_default_lmi40, below_hp_seasonal_lmi40, below_hp_seasonal_lmi100],
+    [above_current_lmi40, above_hp_default_lmi40, above_hp_seasonal_lmi40, above_hp_seasonal_lmi100],
 )
 ```
 
@@ -4141,9 +4125,9 @@ _BURDEN_LABEL_BELOW = "ENERGY BURDEN BELOW 6%"
 
 _BURDEN_UTIL_SCENARIO_KEYS = ["current", "hp_default", "hp_seasonal", "hp_seasonal_lmi100"]
 _BURDEN_UTIL_SCENARIO_LABELS = [
-    "Current HVAC\nDefault Rates\n~40% LMI Discounts",
-    "Heat Pump\nDefault Rates\n~40% LMI Discounts",
-    "Heat Pump\nHP Seasonal Rates\n~40% LMI Discounts",
+    f"Current HVAC\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+    f"Heat Pump\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+    f"Heat Pump\nHP Seasonal Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
     "Heat Pump\nHP Seasonal Rates\n100% LMI Discounts",
 ]
 
@@ -4268,47 +4252,6 @@ plot_burden_bar_by_utility(
 )
 ```
 
-### With full LMI discount enrollment at electrification
-
-If heat pump installation is used as an opportunity to enroll all LMI households in LMI discounts, what do
-post-electrification burdens look like? The "Current HVAC" bar still reflects today's \~40% enrollment; the two
-heat-pump bars use the `_lmi_100` columns (100% enrollment).
-
-```{python}
-#| label: burden-compute-lmi-full
-
-below_current_lmi_full, above_current_lmi_full = burden_shares(
-    bills_current, cohort_bldg_ids, income_df, bill_cols=LMI_40_BILL_COLS,
-)
-below_hp_default_lmi_full, above_hp_default_lmi_full = burden_shares(
-    bills_hp, cohort_bldg_ids, income_df, bill_cols=LMI_100_BILL_COLS,
-)
-below_hp_seasonal_lmi_full, above_hp_seasonal_lmi_full = burden_shares(
-    bills_hprate_hp, cohort_bldg_ids, income_df, bill_cols=LMI_100_BILL_COLS,
-)
-
-print(f"Current HVAC (40% enrolled):         {above_current_lmi_full:.1f}% above 6%")
-print(f"HP + default rates (100% enrolled):  {above_hp_default_lmi_full:.1f}% above 6%")
-print(f"HP + seasonal rates (100% enrolled): {above_hp_seasonal_lmi_full:.1f}% above 6%")
-```
-
-```{python}
-#| label: fig-burden-bar-lmi-full
-#| fig-cap: "Share of low-income gas-heated households above the 6% energy burden threshold, with full LMI discount enrollment at electrification"
-
-LMI_FULL_LABELS = [
-    "Current HVAC\nCurrent Discounts",
-    "Heat Pump\nDefault Rates\n+ Full Discounts",
-    "Heat Pump\nHP Seasonal Rates\n+ Full Discounts",
-]
-
-plot_burden_bar(
-    [below_current_lmi_full, below_hp_default_lmi_full, below_hp_seasonal_lmi_full],
-    [above_current_lmi_full, above_hp_default_lmi_full, above_hp_seasonal_lmi_full],
-    scenario_labels=LMI_FULL_LABELS,
-)
-```
-
 ```{python}
 #| label: burden-report-vars
 
@@ -4318,9 +4261,6 @@ report_vars["pct_burdened_hp_seasonal"] = above_hp_seasonal / 100
 report_vars["pct_burdened_current_lmi40"] = above_current_lmi40 / 100
 report_vars["pct_burdened_hp_default_lmi40"] = above_hp_default_lmi40 / 100
 report_vars["pct_burdened_hp_seasonal_lmi40"] = above_hp_seasonal_lmi40 / 100
-report_vars["pct_burdened_current_lmi_full"] = above_current_lmi_full / 100
-report_vars["pct_burdened_hp_default_lmi_full"] = above_hp_default_lmi_full / 100
-report_vars["pct_burdened_hp_seasonal_lmi_full"] = above_hp_seasonal_lmi_full / 100
 ```
 
 ## Export report variables

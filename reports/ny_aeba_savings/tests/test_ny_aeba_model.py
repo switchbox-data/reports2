@@ -22,10 +22,7 @@ import subprocess
 from typing import Any
 
 import pytest
-
-# model.py is added to sys.path at runtime by conftest.py, so ty cannot
-# resolve it statically.  The ignore directive silences the false positive.
-from model import (  # ty: ignore[unresolved-import]
+from model import (
     compute_baseline_costs,
     compute_building_geometry,
     compute_heat_loss_rates,
@@ -1744,7 +1741,7 @@ class TestGSHPScenarios:
 
     def test_tidy_results_row_count(self):
         """Tidy results should have 24 rows: 12 per technology."""
-        from model import build_tidy_results  # ty: ignore[unresolved-import]
+        from model import build_tidy_results
 
         tidy = build_tidy_results(compute_savings())
         assert len(tidy) == 24, f"Expected 24 tidy rows, got {len(tidy)}"
@@ -1752,7 +1749,7 @@ class TestGSHPScenarios:
     def test_tidy_results_has_gshp(self):
         """Tidy results should include GSHP rows."""
         import polars as pl
-        from model import build_tidy_results  # ty: ignore[unresolved-import]
+        from model import build_tidy_results
 
         tidy = build_tidy_results(compute_savings())
         gshp_rows = tidy.filter(pl.col("hp_tech") == "GSHP")

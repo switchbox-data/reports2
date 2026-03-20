@@ -839,6 +839,7 @@ In Python, import `SB_COLORS` from `lib.plotnine` (a dict with keys `"sky"`, `"m
 from lib.rdp import fetch_rdp_file
 from lib.cairo import add_delivered_fuel_bills
 from lib.data.s3 import list_s3_subdirs, run_dir
+from lib.data.gsheets import get_gspread_client
 ```
 
 R libraries under `lib/` are sourced the traditional way (e.g. `source("lib/ggplot/switchbox_theme.R")`).
@@ -850,6 +851,7 @@ R libraries under `lib/` are sourced the traditional way (e.g. `source("lib/ggpl
 | `lib.rdp`                          | Fetching files from the `rate-design-platform` GitHub repo (tariff maps, configs). Also has `parse_urdb_json` for URDB tariff JSON.                                 |
 | `lib.cairo`                        | CAIRO post-processing: `add_delivered_fuel_bills` tops up combined bills with oil/propane costs from monthly consumption x EIA prices.                              |
 | `lib.data.s3`                      | S3 directory listing (`list_s3_subdirs`) and run directory resolution (`run_dir`) for navigating CAIRO output paths.                                                |
+| `lib.data.gsheets`                 | Google Sheets client with cached OAuth (`get_gspread_client`); uses G_* env vars and caches token to avoid browser on every run.                                    |
 | `lib.data.eia.heating_fuel_prices` | Load monthly residential oil + propane prices from EIA data on S3 (`load_monthly_fuel_prices`).                                                                     |
 | `lib.data.nrel.resstock`           | Load ResStock load curves for a specific utility (`scan_load_curves_for_utility`), reading metadata to construct per-building paths.                                |
 | `lib.eia`                          | Standalone EIA fetch scripts (petroleum prices, state heating profiles). Use `lib.data.eia` for the cleaner S3-based API.                                           |

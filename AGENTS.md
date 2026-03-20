@@ -208,7 +208,24 @@ htmltools::includeHTML("cache/my_table.html")`
 :::
 ```
 
-This applies to **every** GT table that needs to appear in `index.qmd`. Plotnine figures (`fig-` labels) are images and embed safely — the bug only affects `text/html` outputs.
+This applies to **every** GT table that needs to appear in `index.qmd`. Plotnine figures (`fig-` labels) produce a single image MIME type and embed safely.
+
+### Raw matplotlib and `{{< embed >}}`
+
+**Prefer plotnine** for Python visualization. Use raw matplotlib only when plotnine cannot express what you need.
+
+If the chart is shown in `index.qmd` via `{{< embed notebooks/analysis.qmd#fig-… >}}`, a notebook cell that **displays** a raw matplotlib `Figure` (cell ends with `fig` or `plt.show()`) breaks the Manuscript render (multi-MIME output). **Always** finish the figure cell with **one** SVG output using `IPython.display.SVG`, then `index.qmd` can embed it like any other labeled figure. Full rationale: `context/tools/quarto_manuscript_embed_bug.md`.
+
+```python
+import io
+from IPython.display import SVG, display
+
+fig.savefig(buf := io.BytesIO(), format="svg", bbox_inches="tight")
+plt.close(fig)
+display(SVG(data=buf.getvalue()))
+```
+
+Use `#| label: fig-my-chart` and `#| fig-cap: "..."` on that chunk. Still `from lib.plotnine import theme_switchbox` if you want matplotlib's SVG text-as-text settings; keep colors aligned with `SB_COLORS` when practical.
 
 For inline values, always use R inline code. Never hardcode statistics in prose:
 

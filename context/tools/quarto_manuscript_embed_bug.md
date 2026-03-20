@@ -13,7 +13,7 @@ Quarto's manuscript mode truncates `text/html` MIME outputs from Python cells to
 
 ### Matplotlib failure mode
 
-Embedding a cell that displays a raw matplotlib `Figure` causes a Lua filter crash during rendering:
+Embedding a cell that **displays** a raw matplotlib `Figure` (e.g. the cell ends with `fig` or `plt.show()` so Jupyter emits the figure repr) causes a Lua filter crash during rendering:
 
 ```
 Error running filter /Applications/quarto/share/filters/main.lua:
@@ -31,7 +31,24 @@ Plotnine figures work because plotnine's `ggplot` object has a clean `_repr_svg_
 
 ## The workaround
 
-For both cases, the workaround is **file-based inclusion** — save the output to `cache/` in the analysis notebook, then reference the file directly in `index.qmd`.
+### Matplotlib: single-SVG output (preferred for `{{< embed >}}`)
+
+Save the figure to a buffer and display **`IPython.display.SVG`** so the cell has **one** primary `image/svg+xml` output (same pattern as `plot_quadrant_bar` in the HP rates `analysis.qmd` notebooks):
+
+```python
+import io
+from IPython.display import SVG, display
+
+fig.savefig(buf := io.BytesIO(), format="svg", bbox_inches="tight")
+plt.close(fig)
+display(SVG(data=buf.getvalue()))
+```
+
+Give the cell `#| label: fig-my-chart` and `#| fig-cap: "..."`, then use `{{< embed notebooks/analysis.qmd#fig-my-chart >}}` in `index.qmd`. `just render` still runs `inline_svgs.py` on the built HTML.
+
+### Great Tables and other HTML
+
+For GT and similar, use **file-based inclusion** — save the output to `cache/` in the analysis notebook, then reference the file directly in `index.qmd`.
 
 ### GT tables
 
@@ -55,30 +72,13 @@ In `index.qmd`:
 #| echo: false
 htmltools::includeHTML("cache/my_table.html")
 ```
-````
 
 :::
-
-````
-### Matplotlib figures
-
-In `analysis.qmd`:
-
-```python
-fig = make_my_chart(...)
-fig.savefig("../cache/my_chart.svg", format="svg", bbox_inches="tight")
-plt.close(fig)
 ````
 
-In `index.qmd`:
+### Matplotlib figures (fallback: static file + markdown image)
 
-```markdown
-:::{.column-page-inset-right}
-![Caption text](cache/my_chart.svg)
-:::
-```
-
-SVG files referenced this way are inlined into the HTML by the `just render` post-processing script (`lib/just/inline_svgs.py`), so the final output is identical to what the Quarto pipeline would produce.
+If you cannot use `display(SVG(...))` (e.g. a one-off script), save under `cache/` and use a markdown image in `index.qmd`; `inline_svgs.py` will still inline `.svg` assets when you run `just render`.
 
 ## Will switching away from Manuscripts fix this?
 
@@ -90,8 +90,9 @@ Key questions for the migration:
 - Does it preserve the analysis-narrative separation (keeping heavy computation out of `index.qmd`)?
 - Do GT `text/html` outputs render correctly in the alternative project type?
 
-Until the migration happens, use the file-based workarounds above.
+Until the migration happens, use **`display(SVG(...))` + `{{< embed >}}`** for matplotlib charts where possible, and file-based workarounds for GT and other HTML.
 
 ## Affected reports
 
-- `ny_hp_rates`: TOU schedule charts (matplotlib), TOU rate table (GT)
+- `ny_hp_rates`: TOU rate table (GT) still uses file-based HTML; TOU schedule matplotlib charts and the bill-decomposition bar chart use `display(SVG)` + `{{< embed >}}`.
+- `ri_hp_rates`: bill-decomposition bar chart uses the same embed pattern; optional TOU matplotlib cells exist behind `INCLUDE_TOU` for parity with NY (not embedded in `index.qmd` today).

@@ -26,7 +26,7 @@ import openpyxl
 
 ```{python}
 WINTER_DEMAND_FRAC_OF_SUMMER = 0.70
-WINTER_CAPACITY_FRAC_OF_SUMMER = 0.80
+WINTER_CAPACITY_FRAC_OF_SUMMER = 1.00
 
 STUDY_YEARS = list(range(2024, 2036))
 ALL_YEARS = list(range(2021, 2036))
@@ -64,7 +64,7 @@ demand, so no unit conversion is needed.
 WINTER_NET_95_5 = {
     2024: 1343, 2025: 1349, 2026: 1355, 2027: 1364, 2028: 1376,
     2029: 1394, 2030: 1417, 2031: 1442, 2032: 1468, 2033: 1497,
-    2034: 1524, 2035: 1557,
+    2034: 1524, 2035: 1557, 2036: 1588, 2037: 1623, 2038: 1656, 2039: 1684,
 }
 
 # Summer net peaks under the 95/5 (extreme) weather scenario, in MW.
@@ -72,7 +72,7 @@ WINTER_NET_95_5 = {
 SUMMER_NET_95_5 = {
     2024: 1895, 2025: 1884, 2026: 1870, 2027: 1861, 2028: 1853,
     2029: 1848, 2030: 1846, 2031: 1848, 2032: 1854, 2033: 1862,
-    2034: 1874, 2035: 1886,
+    2034: 1874, 2035: 1886, 2036: 1901, 2037: 1918, 2038: 1934, 2039: 1953,
 }
 
 # EH (Electric Heating/Cooling) forecast impact on winter peak, in MW.
@@ -80,7 +80,7 @@ SUMMER_NET_95_5 = {
 EH_WINTER_MW = {
     2024: 29,  2025: 37,  2026: 45,  2027: 54,  2028: 66,
     2029: 79,  2030: 95,  2031: 111, 2032: 126, 2033: 140,
-    2034: 153, 2035: 166,
+    2034: 153, 2035: 166, 2036: 178, 2037: 189, 2038: 200, 2039: 210,
 }
 
 # EH forecast impact on summer peak, in MW.
@@ -89,7 +89,7 @@ EH_WINTER_MW = {
 EH_SUMMER_MW = {
     2024: -2, 2025: -2, 2026: -3, 2027: -3, 2028: -4,
     2029: -4, 2030: -5, 2031: -6, 2032: -7, 2033: -8,
-    2034: -9, 2035: -10,
+    2034: -9, 2035: -10, 2036: -10, 2037: -11, 2038: -12, 2039: -12,
 }
 
 # Cumulative heat pump adoption counts under base and high scenarios.
@@ -97,13 +97,13 @@ EH_SUMMER_MW = {
 HP_CUMULATIVE_BASE = {
     2024: 11730, 2025: 14751, 2026: 17902, 2027: 21683, 2028: 26221,
     2029: 31666, 2030: 38199, 2031: 44407, 2032: 50304, 2033: 55906,
-    2034: 61227, 2035: 66283,
+    2034: 61227, 2035: 66283, 2036: 71086, 2037: 75649, 2038: 79984, 2039: 84102,
 }
 
 HP_CUMULATIVE_HIGH = {
     2024: 13607, 2025: 17111, 2026: 20766, 2027: 25153, 2028: 30416,
     2029: 36732, 2030: 44311, 2031: 51512, 2032: 58352, 2033: 64850,
-    2034: 71024, 2035: 76889,
+    2034: 71024, 2035: 76889, 2036: 82460, 2037: 87753, 2038: 92781, 2039: 97558,
 }
 ```
 
@@ -1354,6 +1354,798 @@ fig_feeders_long_run.show()
 
 fig_transformers_long_run = make_long_run_overload_plot(df_transformers_overload_long_run, "Transformer")
 fig_transformers_long_run.show()
+```
+
+### Summer and winter peak forecast plots
+
+The system-wide net peak values from the RI Peak Report drive both the winter
+fraction evolution and the scenario adjustment factors. The divergence between
+summer (flat/declining) and winter (rising) is the core dynamic behind the
+growing winter capacity risk.
+
+```{python}
+from plotnine import (
+    ggplot, aes, annotate, geom_hline, geom_line, geom_point, geom_ribbon, geom_text, labs,
+    scale_color_manual, scale_fill_manual, scale_x_continuous, scale_y_continuous,
+    theme,
+)
+from lib.plotnine import theme_switchbox, SB_COLORS
+import io
+import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
+from IPython.display import SVG, display
+
+
+def _cleanup_right_margin(ax, cutoff_x: float) -> None:
+    """Mask gridlines past cutoff_x and clip the bottom spine."""
+    ax.add_patch(mpatches.Rectangle(
+        (cutoff_x + 0.15, -500), 6, 3500,
+        facecolor="white", edgecolor="none", zorder=2.5,
+    ))
+    ax.spines["bottom"].set_bounds(ax.get_xlim()[0], cutoff_x)
+    for tick in ax.xaxis.get_major_ticks():
+        if tick.get_loc() > cutoff_x:
+            tick.set_visible(False)
+
+
+def _display_svg(fig) -> None:
+    """Render a matplotlib figure as SVG for safe Quarto Manuscript embedding."""
+    fig.savefig(buf := io.BytesIO(), format="svg", bbox_inches="tight")
+    plt.close(fig)
+    display(SVG(data=buf.getvalue()))
+
+_peak_rows = []
+for _y in WINTER_NET_95_5:
+    _peak_rows.append({
+        "year": _y,
+        "season": "Summer peak",
+        "net_peak_mw": SUMMER_NET_95_5[_y],
+        "no_hp_peak_mw": SUMMER_NET_95_5[_y] - EH_SUMMER_MW[_y],
+    })
+    _peak_rows.append({
+        "year": _y,
+        "season": "Winter peak",
+        "net_peak_mw": WINTER_NET_95_5[_y],
+        "no_hp_peak_mw": WINTER_NET_95_5[_y] - EH_WINTER_MW[_y],
+    })
+
+_PEAK_LAST_YEAR = max(WINTER_NET_95_5.keys())
+_pct_2024 = WINTER_NET_95_5[2024] / SUMMER_NET_95_5[2024]
+_pct_last = WINTER_NET_95_5[_PEAK_LAST_YEAR] / SUMMER_NET_95_5[_PEAK_LAST_YEAR]
+_mid_2024 = (SUMMER_NET_95_5[2024] + WINTER_NET_95_5[2024]) / 2
+_mid_last = (SUMMER_NET_95_5[_PEAK_LAST_YEAR] + WINTER_NET_95_5[_PEAK_LAST_YEAR]) / 2
+_summer_no_hp_last = SUMMER_NET_95_5[_PEAK_LAST_YEAR] - EH_SUMMER_MW[_PEAK_LAST_YEAR]
+_summer_ribbon_mid_last = (SUMMER_NET_95_5[_PEAK_LAST_YEAR] + _summer_no_hp_last) / 2
+_winter_no_hp_last = WINTER_NET_95_5[_PEAK_LAST_YEAR] - EH_WINTER_MW[_PEAK_LAST_YEAR]
+_winter_ribbon_mid_last = (WINTER_NET_95_5[_PEAK_LAST_YEAR] + _winter_no_hp_last) / 2
+
+df_system_peaks = pl.DataFrame(_peak_rows).with_columns(
+    pl.col("season").cast(pl.Enum(["Summer peak", "Winter peak"])),
+    pl.min_horizontal("net_peak_mw", "no_hp_peak_mw").alias("ribbon_lo"),
+    pl.max_horizontal("net_peak_mw", "no_hp_peak_mw").alias("ribbon_hi"),
+)
+```
+
+```{python}
+#| label: fig-system-peak-forecast
+#| fig-cap: "Rhode Island system-wide net peak forecast under 95/5 extreme weather. Solid lines show the base forecast (with heat pumps); dashed lines show the counterfactual without heat pumps. Shaded ribbons show the HP contribution: HPs add 210 MW to the winter peak by 2039 while slightly reducing summer peak. Source: RI Peak Report 2024, pages 29–32."
+
+_peak_plot = (
+    ggplot(df_system_peaks, aes("year", color="season", fill="season"))
+    + geom_ribbon(aes(ymin="ribbon_lo", ymax="ribbon_hi"), alpha=0.25, color="none", show_legend=False)
+    + geom_line(aes(y="no_hp_peak_mw"), linetype="dashed", size=0.8, show_legend=False)
+    # Vertical connectors drawn before solid lines so dots sit on top
+    + annotate("segment", x=2024, xend=2024, y=WINTER_NET_95_5[2024], yend=SUMMER_NET_95_5[2024], color="#555555", size=0.5)
+    + annotate("segment", x=_PEAK_LAST_YEAR, xend=_PEAK_LAST_YEAR, y=WINTER_NET_95_5[_PEAK_LAST_YEAR], yend=SUMMER_NET_95_5[_PEAK_LAST_YEAR], color="#555555", size=0.5)
+    + geom_line(aes(y="net_peak_mw"), size=1.2, show_legend=False)
+    + geom_point(aes(y="net_peak_mw"), size=2.5, show_legend=False)
+    + scale_color_manual(values={"Summer peak": SB_COLORS["carrot"], "Winter peak": SB_COLORS["sky"]})
+    + scale_fill_manual(values={"Summer peak": SB_COLORS["carrot"], "Winter peak": SB_COLORS["sky"]})
+    + scale_x_continuous(breaks=list(range(2024, _PEAK_LAST_YEAR + 1)), minor_breaks=[], limits=(2023.5, _PEAK_LAST_YEAR + 4))
+    + scale_y_continuous(limits=(0, 2200))
+    # HP impact labels in the right margin, next to the ribbons
+    + annotate(
+        "text", x=_PEAK_LAST_YEAR + 0.5, y=_summer_ribbon_mid_last + 60,
+        label=f"HPs reduce summer\npeak ({-EH_SUMMER_MW[_PEAK_LAST_YEAR]} MW by {_PEAK_LAST_YEAR})",
+        color=SB_COLORS["carrot"], ha="left", va="center",
+        size=9, fontstyle="italic",
+    )
+    + annotate(
+        "text", x=_PEAK_LAST_YEAR + 0.5, y=_winter_ribbon_mid_last - 70,
+        label=f"HPs add +{EH_WINTER_MW[_PEAK_LAST_YEAR]} MW to\nwinter peak by {_PEAK_LAST_YEAR}",
+        color=SB_COLORS["sky"], ha="left", va="center",
+        size=9, fontstyle="italic",
+    )
+    # Winter as % of summer: text labels for the vertical connectors
+    + annotate("text", x=2023.8, y=_mid_2024, label=f"{_pct_2024:.0%}", color="#333333", ha="right", va="center", size=9)
+    + annotate("text", x=_PEAK_LAST_YEAR + 0.5, y=_mid_last, label=f"{_pct_last:.0%}", color="#333333", ha="left", va="center", size=9)
+    + labs(title="", x="Year", y="Net peak (MW)")
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 6.5), legend_position="none")
+)
+
+_fig = _peak_plot.draw()
+_ax = _fig.axes[0]
+_ax.set_title("")
+
+_title_parts = [
+    ("Winter peak", SB_COLORS["sky"]),
+    (" doesn't catch ", "black"),
+    ("summer peak", SB_COLORS["carrot"]),
+    (" by 2039 in RIE load forecast", "black"),
+]
+_tx = 0.0
+_ty = 1.07
+for _text, _color in _title_parts:
+    _t = _ax.text(
+        _tx, _ty, _text, color=_color,
+        fontfamily="GT Planar", fontweight="bold", fontsize=15,
+        transform=_ax.transAxes, va="bottom",
+    )
+    _fig.canvas.draw()
+    _bb = _t.get_window_extent(renderer=_fig.canvas.get_renderer())
+    _tx += _bb.transformed(_ax.transAxes.inverted()).width
+_cleanup_right_margin(_ax, _PEAK_LAST_YEAR)
+_display_svg(_fig)
+```
+
+### Feeder utilization rank curve (2024)
+
+Each feeder is ranked by its utilization (demand / rated capacity), with the
+most stressed feeders on the left. Summer and winter curves are ranked
+independently. Feeders flagged as contingency load-at-risk on the winter curve
+are highlighted in dark blue.
+
+```{python}
+_rank_year = 2026
+_rank_scenario = "Base"
+
+_df_rank_base = df_feeders_util.filter(
+    (pl.col("year") == _rank_year)
+    & (pl.col("scenario") == _rank_scenario)
+    & (pl.col("summer_utilization") > 0)
+    & (pl.col("summer_utilization") < 1.5)
+)
+
+_summer_ranked = (
+    _df_rank_base
+    .select("feeder_id", "summer_utilization", "contingency_load_at_risk")
+    .sort("summer_utilization", descending=True)
+    .with_row_index("rank", offset=1)
+    .with_columns(pl.lit("Summer").alias("season"))
+    .rename({"summer_utilization": "utilization", "contingency_load_at_risk": "contingency"})
+)
+
+_winter_ranked = (
+    _df_rank_base
+    .select("feeder_id", "winter_utilization", "contingency_load_at_risk")
+    .sort("winter_utilization", descending=True)
+    .with_row_index("rank", offset=1)
+    .with_columns(pl.lit("Winter").alias("season"))
+    .rename({"winter_utilization": "utilization", "contingency_load_at_risk": "contingency"})
+)
+
+_n_feeders = _df_rank_base.n_unique("feeder_id")
+
+df_rank_curve = pl.concat([
+    _summer_ranked.select("rank", "utilization", "season", "contingency"),
+    _winter_ranked.select("rank", "utilization", "season", "contingency"),
+]).with_columns(
+    pl.col("rank").cast(pl.Int32),
+    pl.col("season").cast(pl.Enum(["Summer", "Winter"])),
+)
+
+df_rank_cont_winter = df_rank_curve.filter(
+    (pl.col("season") == "Winter") & (pl.col("contingency") == "yes")
+)
+df_rank_cont_summer = df_rank_curve.filter(
+    (pl.col("season") == "Summer") & (pl.col("contingency") == "yes")
+)
+
+print(f"Ranked {_n_feeders} feeders for {_rank_year} {_rank_scenario}")
+print(f"Summer contingency-at-risk: {df_rank_cont_summer.height}")
+print(f"Winter contingency-at-risk: {df_rank_cont_winter.height}")
+```
+
+```{python}
+#| label: fig-feeder-rank-curve
+#| fig-cap: "Feeder utilization ranked from most to least stressed (2024, Base scenario). Orange = summer, blue = winter. Dark dots mark feeders flagged as contingency load-at-risk. Dashed line = 85% utilization threshold."
+
+_rank_plot = (
+    ggplot(df_rank_curve, aes("rank", "utilization", color="season"))
+    + geom_point(size=1.2, show_legend=False)
+    + geom_point(
+        df_rank_cont_summer,
+        aes("rank", "utilization"),
+        color=SB_COLORS["pistachio"], size=1.8, inherit_aes=False, show_legend=False,
+    )
+    + geom_hline(yintercept=1.0, linetype="solid", color="#999999", size=0.5)
+    + geom_hline(yintercept=0.85, linetype="dashed", color="#999999", size=0.5)
+    + scale_color_manual(values={"Summer": SB_COLORS["carrot"], "Winter": SB_COLORS["sky"]})
+    + scale_x_continuous(expand=(0.02, 0))
+    + scale_y_continuous(
+        breaks=[0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2],
+        labels=lambda l: [f"{v:.0%}" for v in l],
+    )
+    + annotate(
+        "text", x=_n_feeders * 0.98, y=0.87,
+        label="85% utilization",
+        color="#999999", ha="right", va="bottom",
+        size=8, fontstyle="italic",
+    )
+    + labs(x="Feeders (ranked by utilization)", y="Utilization (% of rated capacity)")
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 6.5), legend_position="none")
+)
+
+_fig_rank = _rank_plot.draw()
+_ax_rank = _fig_rank.axes[0]
+
+_rank_title_parts = [
+    ("Summer", SB_COLORS["carrot"]),
+    (" and ", "black"),
+    ("winter", SB_COLORS["sky"]),
+    (f" feeder utilization, {_rank_year}", "black"),
+]
+_rtx = 0.0
+_rty = 1.04
+for _text, _color in _rank_title_parts:
+    _t = _ax_rank.text(
+        _rtx, _rty, _text, color=_color,
+        fontfamily="GT Planar", fontweight="bold", fontsize=15,
+        transform=_ax_rank.transAxes, va="bottom",
+    )
+    _fig_rank.canvas.draw()
+    _bb = _t.get_window_extent(renderer=_fig_rank.canvas.get_renderer())
+    _rtx += _bb.transformed(_ax_rank.transAxes.inverted()).width
+
+_display_svg(_fig_rank)
+```
+
+#### 2039 projection with 2026 reference
+
+```{python}
+_cont_feeder_ids_2026 = (
+    _df_rank_base.filter(pl.col("contingency_load_at_risk") == "yes")
+    .get_column("feeder_id").to_list()
+)
+```
+
+#### Winter utilization growth: 2026 to 2039 (same feeder, same rank)
+
+This chart keeps each feeder at its 2026 rank position and shows where its
+winter utilization moves by 2039. Feeders present in 2026 but absent in 2039
+(filtered out) simply have no 2039 dot.
+
+```{python}
+_winter_growth_factor = WINTER_NET_95_5[2039] / WINTER_NET_95_5[2035]
+_summer_growth_factor = SUMMER_NET_95_5[2039] / SUMMER_NET_95_5[2035]
+
+_df_2035_base = df_feeders_util.filter(
+    (pl.col("year") == 2035) & (pl.col("scenario") == _rank_scenario)
+)
+
+# 2039 winter utilization: scale each feeder's 2035 value, then filter independently
+_winter_2039_all = (
+    _df_2035_base
+    .select("feeder_id", "winter_utilization", "contingency_load_at_risk")
+    .with_columns(
+        (pl.col("winter_utilization") * _winter_growth_factor).alias("utilization"),
+    )
+    .filter((pl.col("utilization") > 0) & (pl.col("utilization") < 1.5))
+    .sort("utilization", descending=True)
+    .with_row_index("rank", offset=1)
+    .with_columns(pl.col("rank").cast(pl.Int32))
+    .rename({"contingency_load_at_risk": "contingency"})
+)
+
+# 2039 summer utilization: same treatment
+_summer_2039_all = (
+    _df_2035_base
+    .select("feeder_id", "summer_utilization", "contingency_load_at_risk")
+    .with_columns(
+        (pl.col("summer_utilization") * _summer_growth_factor).alias("utilization"),
+    )
+    .filter((pl.col("utilization") > 0) & (pl.col("utilization") < 1.5))
+    .sort("utilization", descending=True)
+    .with_row_index("rank", offset=1)
+    .with_columns(pl.col("rank").cast(pl.Int32))
+    .rename({"contingency_load_at_risk": "contingency"})
+)
+
+_n_winter_2026 = _winter_ranked.height
+_n_winter_2039 = _winter_2039_all.height
+_n_summer_2026 = _summer_ranked.height
+_n_summer_2039 = _summer_2039_all.height
+print(f"Winter 2026: {_n_winter_2026}, Winter 2039: {_n_winter_2039}, gap: {_n_winter_2026 - _n_winter_2039}")
+print(f"Summer 2026: {_n_summer_2026}, Summer 2039: {_n_summer_2039}, gap: {_n_summer_2026 - _n_summer_2039}")
+```
+
+```{python}
+#| label: fig-feeder-winter-shift
+#| fig-cap: "Winter feeder utilization: 2026 vs 2039 projection. Each year's feeders are independently ranked (excluding zero-utilization and extreme outliers). Faded blue = 2026, solid blue = 2039 projection."
+
+import numpy as np
+
+
+def _build_gapped_ranks(n_2026: int, n_2039: int, seed: int = 42) -> list[int]:
+    """Build rank positions for the 2039 series with gaps matching the 2026 count."""
+    n_gap = n_2026 - n_2039
+    if n_gap <= 0:
+        return list(range(1, n_2039 + 1))
+    gap_positions = sorted(np.random.default_rng(seed).choice(
+        range(1, n_2026 + 1), size=n_gap, replace=False,
+    ))
+    rank_map = []
+    skip_idx = 0
+    for r in range(1, n_2026 + 1):
+        if skip_idx < len(gap_positions) and gap_positions[skip_idx] == r:
+            skip_idx += 1
+        else:
+            rank_map.append(r)
+    return rank_map[:n_2039]
+
+
+_gap_ranks = _build_gapped_ranks(_n_winter_2026, _n_winter_2039)
+
+_df_winter_2026_plot = _winter_ranked.select(
+    pl.col("rank"), pl.col("utilization"),
+).with_columns(pl.lit("Winter 2026").alias("layer"))
+
+_df_winter_2039_plot = (
+    _winter_2039_all
+    .select(pl.col("utilization"))
+    .sort("utilization", descending=True)
+    .with_columns(
+        pl.Series("rank", _gap_ranks).cast(pl.Int32),
+        pl.lit("Winter 2039").alias("layer"),
+    )
+    .select("rank", "utilization", "layer")
+)
+
+_df_summer_2026_plot = _summer_ranked.select(
+    pl.col("rank"), pl.col("utilization"), pl.lit("Summer 2026").alias("layer"),
+)
+
+_df_summer_2039_full = (
+    _summer_2039_all
+    .select("feeder_id", "utilization", "contingency")
+    .sort("utilization", descending=True)
+    .with_columns(
+        pl.Series("rank", _build_gapped_ranks(_n_summer_2026, _n_summer_2039)).cast(pl.Int32),
+        pl.lit("Summer 2039").alias("layer"),
+    )
+)
+_df_summer_2039_plot = _df_summer_2039_full.select("rank", "utilization", "layer")
+
+_df_summer_2039_new_cont = (
+    _df_summer_2039_full
+    .filter(
+        (pl.col("contingency") == "yes")
+        & ~pl.col("feeder_id").is_in(_cont_feeder_ids_2026)
+    )
+    .select("rank", "utilization")
+)
+
+_layer_order = ["Summer 2026", "Summer 2039", "Winter 2026", "Winter 2039"]
+_df_shift_plot = pl.concat([
+    _df_summer_2026_plot.with_columns(pl.col("rank").cast(pl.Int32)),
+    _df_summer_2039_plot.with_columns(pl.col("rank").cast(pl.Int32)),
+    _df_winter_2026_plot.with_columns(pl.col("rank").cast(pl.Int32)),
+    _df_winter_2039_plot.with_columns(pl.col("rank").cast(pl.Int32)),
+]).with_columns(
+    pl.col("layer").cast(pl.Enum(_layer_order)),
+)
+
+_shift_plot = (
+    ggplot()
+    + geom_point(
+        _df_shift_plot.filter(pl.col("layer") == "Summer 2026"),
+        aes("rank", "utilization"),
+        color=SB_COLORS["carrot"], size=1.2, alpha=0.15,
+    )
+    + geom_point(
+        _df_shift_plot.filter(pl.col("layer") == "Winter 2026"),
+        aes("rank", "utilization"),
+        color=SB_COLORS["sky"], size=1.2, alpha=0.15,
+    )
+    + geom_point(
+        _df_shift_plot.filter(pl.col("layer") == "Summer 2039"),
+        aes("rank", "utilization"),
+        color=SB_COLORS["carrot"], size=1.2,
+    )
+    + geom_point(
+        _df_summer_2039_new_cont,
+        aes("rank", "utilization"),
+        color=SB_COLORS["pistachio"], size=1.8, inherit_aes=False,
+    )
+    + geom_point(
+        _df_shift_plot.filter(pl.col("layer") == "Winter 2039"),
+        aes("rank", "utilization"),
+        color=SB_COLORS["sky"], size=1.2,
+    )
+    + geom_hline(yintercept=1.0, linetype="solid", color="#999999", size=0.5)
+    + geom_hline(yintercept=0.85, linetype="dashed", color="#999999", size=0.5)
+    + scale_x_continuous(expand=(0.02, 0))
+    + scale_y_continuous(
+        breaks=[0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2],
+        labels=lambda l: [f"{v:.0%}" for v in l],
+    )
+    + annotate(
+        "text", x=_n_feeders * 0.98, y=0.87,
+        label="85% utilization",
+        color="#999999", ha="right", va="bottom",
+        size=8, fontstyle="italic",
+    )
+    + labs(x="Feeders (ranked by 2026 winter utilization)", y="Utilization (% of rated capacity)")
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 6.5), legend_position="none")
+)
+
+_fig_shift = _shift_plot.draw()
+_ax_shift = _fig_shift.axes[0]
+
+_shift_title_parts = [
+    ("Summer", SB_COLORS["carrot"]),
+    (" and ", "black"),
+    ("winter", SB_COLORS["sky"]),
+    (" feeder utilization: 2026 vs 2039", "black"),
+]
+_stx = 0.0
+_sty = 1.04
+for _text, _color in _shift_title_parts:
+    _t = _ax_shift.text(
+        _stx, _sty, _text, color=_color,
+        fontfamily="GT Planar", fontweight="bold", fontsize=15,
+        transform=_ax_shift.transAxes, va="bottom",
+    )
+    _fig_shift.canvas.draw()
+    _bb = _t.get_window_extent(renderer=_fig_shift.canvas.get_renderer())
+    _stx += _bb.transformed(_ax_shift.transAxes.inverted()).width
+
+_display_svg(_fig_shift)
+```
+
+### Transformer utilization rank curves
+
+```{python}
+_xfmr_rank_year = 2026
+_xfmr_rank_scenario = "Base"
+
+_df_xfmr_rank_base = df_transformers_util.filter(
+    (pl.col("year") == _xfmr_rank_year)
+    & (pl.col("scenario") == _xfmr_rank_scenario)
+    & (pl.col("summer_utilization") > 0)
+    & (pl.col("summer_utilization") < 1.5)
+)
+
+_xfmr_summer_ranked = (
+    _df_xfmr_rank_base
+    .select("transformer_id", "summer_utilization", "contingency_load_at_risk")
+    .sort("summer_utilization", descending=True)
+    .with_row_index("rank", offset=1)
+    .with_columns(pl.lit("Summer").alias("season"))
+    .rename({"summer_utilization": "utilization", "contingency_load_at_risk": "contingency"})
+)
+
+_xfmr_winter_ranked = (
+    _df_xfmr_rank_base
+    .select("transformer_id", "winter_utilization", "contingency_load_at_risk")
+    .sort("winter_utilization", descending=True)
+    .with_row_index("rank", offset=1)
+    .with_columns(pl.lit("Winter").alias("season"))
+    .rename({"winter_utilization": "utilization", "contingency_load_at_risk": "contingency"})
+)
+
+_n_xfmr = _df_xfmr_rank_base.n_unique("transformer_id")
+
+df_xfmr_rank_curve = pl.concat([
+    _xfmr_summer_ranked.select("rank", "utilization", "season", "contingency"),
+    _xfmr_winter_ranked.select("rank", "utilization", "season", "contingency"),
+]).with_columns(
+    pl.col("rank").cast(pl.Int32),
+    pl.col("season").cast(pl.Enum(["Summer", "Winter"])),
+)
+
+df_xfmr_cont_summer = df_xfmr_rank_curve.filter(
+    (pl.col("season") == "Summer") & (pl.col("contingency") == "yes")
+)
+
+print(f"Ranked {_n_xfmr} transformers for {_xfmr_rank_year} {_xfmr_rank_scenario}")
+print(f"Summer contingency-at-risk: {df_xfmr_cont_summer.height}")
+```
+
+```{python}
+#| label: fig-transformer-rank-curve
+#| fig-cap: "Transformer utilization ranked from most to least stressed (2026, Base scenario). Orange = summer, blue = winter. Green dots mark transformers flagged as contingency load-at-risk. Dashed line = 85% utilization threshold."
+
+_xfmr_rank_plot = (
+    ggplot(df_xfmr_rank_curve, aes("rank", "utilization", color="season"))
+    + geom_point(size=1.2, show_legend=False)
+    + geom_point(
+        df_xfmr_cont_summer,
+        aes("rank", "utilization"),
+        color=SB_COLORS["pistachio"], size=1.8, inherit_aes=False, show_legend=False,
+    )
+    + geom_hline(yintercept=1.0, linetype="solid", color="#999999", size=0.5)
+    + geom_hline(yintercept=0.85, linetype="dashed", color="#999999", size=0.5)
+    + scale_color_manual(values={"Summer": SB_COLORS["carrot"], "Winter": SB_COLORS["sky"]})
+    + scale_x_continuous(expand=(0.02, 0))
+    + scale_y_continuous(
+        breaks=[0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2],
+        labels=lambda l: [f"{v:.0%}" for v in l],
+    )
+    + annotate(
+        "text", x=_n_xfmr * 0.98, y=0.87,
+        label="85% utilization",
+        color="#999999", ha="right", va="bottom",
+        size=8, fontstyle="italic",
+    )
+    + labs(x="Transformers (ranked by utilization)", y="Utilization (% of rated capacity)")
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 6.5), legend_position="none")
+)
+
+_fig_xfmr_rank = _xfmr_rank_plot.draw()
+_ax_xfmr_rank = _fig_xfmr_rank.axes[0]
+
+_xfmr_rank_title_parts = [
+    ("Summer", SB_COLORS["carrot"]),
+    (" and ", "black"),
+    ("winter", SB_COLORS["sky"]),
+    (f" transformer utilization, {_xfmr_rank_year}", "black"),
+]
+_xrtx = 0.0
+_xrty = 1.04
+for _text, _color in _xfmr_rank_title_parts:
+    _t = _ax_xfmr_rank.text(
+        _xrtx, _xrty, _text, color=_color,
+        fontfamily="GT Planar", fontweight="bold", fontsize=15,
+        transform=_ax_xfmr_rank.transAxes, va="bottom",
+    )
+    _fig_xfmr_rank.canvas.draw()
+    _bb = _t.get_window_extent(renderer=_fig_xfmr_rank.canvas.get_renderer())
+    _xrtx += _bb.transformed(_ax_xfmr_rank.transAxes.inverted()).width
+
+_display_svg(_fig_xfmr_rank)
+```
+
+#### Transformer 2039 projection with 2026 reference
+
+```{python}
+_xfmr_cont_ids_2026 = (
+    _df_xfmr_rank_base.filter(pl.col("contingency_load_at_risk") == "yes")
+    .get_column("transformer_id").to_list()
+)
+
+_xfmr_winter_growth = WINTER_NET_95_5[2039] / WINTER_NET_95_5[2035]
+_xfmr_summer_growth = SUMMER_NET_95_5[2039] / SUMMER_NET_95_5[2035]
+
+_df_xfmr_2035 = df_transformers_util.filter(
+    (pl.col("year") == 2035) & (pl.col("scenario") == _xfmr_rank_scenario)
+)
+
+_xfmr_winter_2039 = (
+    _df_xfmr_2035
+    .select("transformer_id", "winter_utilization", "contingency_load_at_risk")
+    .with_columns((pl.col("winter_utilization") * _xfmr_winter_growth).alias("utilization"))
+    .filter((pl.col("utilization") > 0) & (pl.col("utilization") < 1.5))
+    .sort("utilization", descending=True)
+    .with_row_index("rank", offset=1)
+    .with_columns(pl.col("rank").cast(pl.Int32))
+    .rename({"contingency_load_at_risk": "contingency"})
+)
+
+_xfmr_summer_2039 = (
+    _df_xfmr_2035
+    .select("transformer_id", "summer_utilization", "contingency_load_at_risk")
+    .with_columns((pl.col("summer_utilization") * _xfmr_summer_growth).alias("utilization"))
+    .filter((pl.col("utilization") > 0) & (pl.col("utilization") < 1.5))
+    .sort("utilization", descending=True)
+    .with_row_index("rank", offset=1)
+    .with_columns(pl.col("rank").cast(pl.Int32))
+    .rename({"contingency_load_at_risk": "contingency"})
+)
+
+_n_xfmr_w26 = _xfmr_winter_ranked.height
+_n_xfmr_w39 = _xfmr_winter_2039.height
+_n_xfmr_s26 = _xfmr_summer_ranked.height
+_n_xfmr_s39 = _xfmr_summer_2039.height
+print(f"Winter 2026: {_n_xfmr_w26}, Winter 2039: {_n_xfmr_w39}, gap: {_n_xfmr_w26 - _n_xfmr_w39}")
+print(f"Summer 2026: {_n_xfmr_s26}, Summer 2039: {_n_xfmr_s39}, gap: {_n_xfmr_s26 - _n_xfmr_s39}")
+```
+
+```{python}
+#| label: fig-transformer-shift
+#| fig-cap: "Transformer utilization: 2026 vs 2039 projection. Faded dots = 2026, solid dots = 2039. Green dots mark transformers newly flagged as contingency load-at-risk by 2039."
+
+_xfmr_gap_ranks_w = _build_gapped_ranks(_n_xfmr_w26, _n_xfmr_w39)
+_xfmr_gap_ranks_s = _build_gapped_ranks(_n_xfmr_s26, _n_xfmr_s39)
+
+_xdf_winter_2026 = _xfmr_winter_ranked.select(
+    pl.col("rank"), pl.col("utilization"),
+).with_columns(pl.lit("Winter 2026").alias("layer"))
+
+_xdf_winter_2039 = (
+    _xfmr_winter_2039
+    .select(pl.col("utilization"))
+    .sort("utilization", descending=True)
+    .with_columns(
+        pl.Series("rank", _xfmr_gap_ranks_w).cast(pl.Int32),
+        pl.lit("Winter 2039").alias("layer"),
+    )
+    .select("rank", "utilization", "layer")
+)
+
+_xdf_summer_2026 = _xfmr_summer_ranked.select(
+    pl.col("rank"), pl.col("utilization"), pl.lit("Summer 2026").alias("layer"),
+)
+
+_xdf_summer_2039_full = (
+    _xfmr_summer_2039
+    .select("transformer_id", "utilization", "contingency")
+    .sort("utilization", descending=True)
+    .with_columns(
+        pl.Series("rank", _xfmr_gap_ranks_s).cast(pl.Int32),
+        pl.lit("Summer 2039").alias("layer"),
+    )
+)
+_xdf_summer_2039 = _xdf_summer_2039_full.select("rank", "utilization", "layer")
+
+_xdf_summer_2039_new_cont = (
+    _xdf_summer_2039_full
+    .filter(
+        (pl.col("contingency") == "yes")
+        & ~pl.col("transformer_id").is_in(_xfmr_cont_ids_2026)
+    )
+    .select("rank", "utilization")
+)
+
+_xdf_shift = pl.concat([
+    _xdf_summer_2026.with_columns(pl.col("rank").cast(pl.Int32)),
+    _xdf_summer_2039.with_columns(pl.col("rank").cast(pl.Int32)),
+    _xdf_winter_2026.with_columns(pl.col("rank").cast(pl.Int32)),
+    _xdf_winter_2039.with_columns(pl.col("rank").cast(pl.Int32)),
+]).with_columns(
+    pl.col("layer").cast(pl.Enum(["Summer 2026", "Summer 2039", "Winter 2026", "Winter 2039"])),
+)
+
+_xfmr_shift_plot = (
+    ggplot()
+    + geom_point(
+        _xdf_shift.filter(pl.col("layer") == "Summer 2026"),
+        aes("rank", "utilization"),
+        color=SB_COLORS["carrot"], size=1.2, alpha=0.15,
+    )
+    + geom_point(
+        _xdf_shift.filter(pl.col("layer") == "Winter 2026"),
+        aes("rank", "utilization"),
+        color=SB_COLORS["sky"], size=1.2, alpha=0.15,
+    )
+    + geom_point(
+        _xdf_shift.filter(pl.col("layer") == "Summer 2039"),
+        aes("rank", "utilization"),
+        color=SB_COLORS["carrot"], size=1.2,
+    )
+    + geom_point(
+        _xdf_summer_2039_new_cont,
+        aes("rank", "utilization"),
+        color=SB_COLORS["pistachio"], size=1.8, inherit_aes=False,
+    )
+    + geom_point(
+        _xdf_shift.filter(pl.col("layer") == "Winter 2039"),
+        aes("rank", "utilization"),
+        color=SB_COLORS["sky"], size=1.2,
+    )
+    + geom_hline(yintercept=1.0, linetype="solid", color="#999999", size=0.5)
+    + geom_hline(yintercept=0.85, linetype="dashed", color="#999999", size=0.5)
+    + scale_x_continuous(expand=(0.02, 0))
+    + scale_y_continuous(
+        breaks=[0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2],
+        labels=lambda l: [f"{v:.0%}" for v in l],
+    )
+    + annotate(
+        "text", x=_n_xfmr * 0.98, y=0.87,
+        label="85% utilization",
+        color="#999999", ha="right", va="bottom",
+        size=8, fontstyle="italic",
+    )
+    + labs(x="Transformers (ranked by utilization)", y="Utilization (% of rated capacity)")
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 6.5), legend_position="none")
+)
+
+_fig_xfmr_shift = _xfmr_shift_plot.draw()
+_ax_xfmr_shift = _fig_xfmr_shift.axes[0]
+
+_xfmr_shift_title = [
+    ("Summer", SB_COLORS["carrot"]),
+    (" and ", "black"),
+    ("winter", SB_COLORS["sky"]),
+    (" transformer utilization: 2026 vs 2039", "black"),
+]
+_xstx = 0.0
+_xsty = 1.04
+for _text, _color in _xfmr_shift_title:
+    _t = _ax_xfmr_shift.text(
+        _xstx, _xsty, _text, color=_color,
+        fontfamily="GT Planar", fontweight="bold", fontsize=15,
+        transform=_ax_xfmr_shift.transAxes, va="bottom",
+    )
+    _fig_xfmr_shift.canvas.draw()
+    _bb = _t.get_window_extent(renderer=_fig_xfmr_shift.canvas.get_renderer())
+    _xstx += _bb.transformed(_ax_xfmr_shift.transAxes.inverted()).width
+
+_display_svg(_fig_xfmr_shift)
+```
+
+### Heat pump adoption projections
+
+```{python}
+#| label: fig-hp-adoption
+#| fig-cap: "Cumulative heat pump adoption as a share of RIE residential customers under base and high scenarios. Selected points labeled with raw HP counts. Source: RI Peak Report 2024, page 54; EIA-861 for customer count."
+
+# RIE residential customers (EIA-861, The Narragansett Electric Co, 2024)
+_RIE_RESIDENTIAL_CUSTOMERS = 451_381
+
+_hp_rows = []
+for _y in HP_CUMULATIVE_BASE:
+    _hp_rows.append({"year": _y, "scenario": "Base", "cumulative_hps": HP_CUMULATIVE_BASE[_y]})
+    _hp_rows.append({"year": _y, "scenario": "High", "cumulative_hps": HP_CUMULATIVE_HIGH[_y]})
+
+_df_hp = pl.DataFrame(_hp_rows).with_columns(
+    pl.col("scenario").cast(pl.Enum(["Base", "High"])),
+    (pl.col("cumulative_hps") / _RIE_RESIDENTIAL_CUSTOMERS).alias("pct_customers"),
+)
+
+# Label a few key points with raw counts
+_label_years = [2024, 2032, 2039]
+_df_hp_labels = _df_hp.filter(pl.col("year").is_in(_label_years)).with_columns(
+    ((pl.col("cumulative_hps") / 1000).round(1).cast(pl.String).str.replace(r"\.0$", "") + "k").alias("count_label"),
+)
+
+_hp_plot = (
+    ggplot(_df_hp, aes("year", "pct_customers", color="scenario"))
+    + geom_line(size=1.2, show_legend=False)
+    + geom_point(size=2.5, show_legend=False)
+    + geom_text(
+        _df_hp_labels.filter(pl.col("scenario") == "Base"),
+        aes("year", "pct_customers", label="count_label"),
+        color=SB_COLORS["pistachio"], va="top", nudge_y=-0.008,
+        size=8, inherit_aes=False,
+    )
+    + geom_text(
+        _df_hp_labels.filter(pl.col("scenario") == "High"),
+        aes("year", "pct_customers", label="count_label"),
+        color="#2d6a2e", va="bottom", nudge_y=0.008,
+        size=8, inherit_aes=False,
+    )
+    + scale_color_manual(values={"Base": SB_COLORS["pistachio"], "High": "#2d6a2e"})
+    + scale_x_continuous(breaks=list(range(2024, 2040)), minor_breaks=[])
+    + scale_y_continuous(limits=(0, 0.30), labels=lambda l: [f"{v:.0%}" for v in l])
+    + annotate(
+        "text", x=2039.4, y=HP_CUMULATIVE_BASE[2039] / _RIE_RESIDENTIAL_CUSTOMERS,
+        label="Base", color=SB_COLORS["pistachio"],
+        ha="left", va="center", size=10, fontweight="bold",
+    )
+    + annotate(
+        "text", x=2039.4, y=HP_CUMULATIVE_HIGH[2039] / _RIE_RESIDENTIAL_CUSTOMERS,
+        label="High", color="#2d6a2e",
+        ha="left", va="center", size=10, fontweight="bold",
+    )
+    + labs(
+        title="Cumulative heat pump adoption as % of RIE residential customers",
+        x="Year",
+        y="% of residential customers",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 5.5), legend_position="none")
+)
+
+_fig_hp = _hp_plot.draw()
+_ax_hp = _fig_hp.axes[0]
+_cleanup_right_margin(_ax_hp, 2039)
+_display_svg(_fig_hp)
 ```
 
 ### Assumptions and limitations

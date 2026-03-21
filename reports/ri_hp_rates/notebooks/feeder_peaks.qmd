@@ -1356,6 +1356,8 @@ fig_transformers_long_run = make_long_run_overload_plot(df_transformers_overload
 fig_transformers_long_run.show()
 ```
 
+## Additional charts
+
 ### Summer and winter peak forecast plots
 
 The system-wide net peak values from the RI Peak Report drive both the winter
@@ -1372,6 +1374,25 @@ from plotnine import (
 from lib.plotnine import theme_switchbox, SB_COLORS
 from lib.quarto import display_svg
 import matplotlib.patches as mpatches
+
+
+def _colored_title(ax, fig, parts: list[tuple[str, str]], y: float = 1.07) -> None:
+    """Render a multi-colored title above the axes.
+
+    Each element of *parts* is (text, color).  Segments are placed
+    left-to-right at *y* in axes-relative coordinates.
+    """
+    ax.set_title("")
+    x = 0.0
+    for text, color in parts:
+        t = ax.text(
+            x, y, text, color=color,
+            fontfamily="GT Planar", fontweight="bold", fontsize=15,
+            transform=ax.transAxes, va="bottom",
+        )
+        fig.canvas.draw()
+        bb = t.get_window_extent(renderer=fig.canvas.get_renderer())
+        x += bb.transformed(ax.transAxes.inverted()).width
 
 
 def _cleanup_right_margin(ax, cutoff_x: float) -> None:
@@ -1428,12 +1449,12 @@ _peak_plot = (
     # Vertical connectors drawn before solid lines so dots sit on top
     + annotate("segment", x=2024, xend=2024, y=WINTER_NET_95_5[2024], yend=SUMMER_NET_95_5[2024], color="#555555", size=0.5)
     + annotate("segment", x=_PEAK_LAST_YEAR, xend=_PEAK_LAST_YEAR, y=WINTER_NET_95_5[_PEAK_LAST_YEAR], yend=SUMMER_NET_95_5[_PEAK_LAST_YEAR], color="#555555", size=0.5)
-    + geom_line(aes(y="net_peak_mw"), size=1.2, show_legend=False)
-    + geom_point(aes(y="net_peak_mw"), size=2.5, show_legend=False)
+    + geom_line(aes(y="net_peak_mw"), size=1.0, show_legend=False)
+    + geom_point(aes(y="net_peak_mw"), size=2.0, show_legend=False)
     + scale_color_manual(values={"Summer peak": SB_COLORS["carrot"], "Winter peak": SB_COLORS["sky"]})
     + scale_fill_manual(values={"Summer peak": SB_COLORS["carrot"], "Winter peak": SB_COLORS["sky"]})
     + scale_x_continuous(breaks=list(range(2024, _PEAK_LAST_YEAR + 1)), minor_breaks=[], limits=(2023.5, _PEAK_LAST_YEAR + 4))
-    + scale_y_continuous(limits=(0, 2200))
+    + scale_y_continuous(limits=(0, 2500), expand=(0, 0, 0, 0))
     # HP impact labels in the right margin, next to the ribbons
     + annotate(
         "text", x=_PEAK_LAST_YEAR + 0.5, y=_summer_ribbon_mid_last + 60,
@@ -1450,35 +1471,101 @@ _peak_plot = (
     # Winter as % of summer: text labels for the vertical connectors
     + annotate("text", x=2023.8, y=_mid_2024, label=f"{_pct_2024:.0%}", color="#333333", ha="right", va="center", size=9)
     + annotate("text", x=_PEAK_LAST_YEAR + 0.5, y=_mid_last, label=f"{_pct_last:.0%}", color="#333333", ha="left", va="center", size=9)
-    + labs(title="", x="Year", y="Net peak (MW)")
+    + labs(title="", x="", y="Net peak (MW)")
     + theme_switchbox()
     + theme(figure_size=(10.5, 6.5), legend_position="none")
 )
 
 _fig = _peak_plot.draw()
 _ax = _fig.axes[0]
-_ax.set_title("")
-
-_title_parts = [
-    ("Winter peak", SB_COLORS["sky"]),
-    (" doesn't catch ", "black"),
-    ("summer peak", SB_COLORS["carrot"]),
-    (" by 2039 in RIE load forecast", "black"),
-]
-_tx = 0.0
-_ty = 1.07
-for _text, _color in _title_parts:
-    _t = _ax.text(
-        _tx, _ty, _text, color=_color,
-        fontfamily="GT Planar", fontweight="bold", fontsize=15,
-        transform=_ax.transAxes, va="bottom",
-    )
-    _fig.canvas.draw()
-    _bb = _t.get_window_extent(renderer=_fig.canvas.get_renderer())
-    _tx += _bb.transformed(_ax.transAxes.inverted()).width
+_colored_title(_ax, _fig, [
+    ("RIE's ", "black"),
+    ("winter peak ", SB_COLORS["sky"]),
+    (" doesn't catch the", "black"),
+    ("summer peak ", SB_COLORS["carrot"]),
+    (" by 2039", "black"),
+])
 _cleanup_right_margin(_ax, _PEAK_LAST_YEAR)
 display_svg(_fig)
 ```
+
+### Heat pump adoption projections
+
+```{python}
+#| label: fig-hp-adoption
+#| fig-cap: "Cumulative heat pump adoption as a share of RIE residential customers under base and high scenarios. Selected points labeled with raw HP counts. Source: RI Peak Report 2024, page 54; EIA-861 for customer count."
+
+# RIE residential customers (EIA-861, The Narragansett Electric Co, 2024)
+_RIE_RESIDENTIAL_CUSTOMERS = 451_381
+
+_hp_rows = []
+for _y in HP_CUMULATIVE_BASE:
+    _hp_rows.append({"year": _y, "scenario": "Base", "cumulative_hps": HP_CUMULATIVE_BASE[_y]})
+    _hp_rows.append({"year": _y, "scenario": "High", "cumulative_hps": HP_CUMULATIVE_HIGH[_y]})
+
+_df_hp = pl.DataFrame(_hp_rows).with_columns(
+    pl.col("scenario").cast(pl.Enum(["Base", "High"])),
+    (pl.col("cumulative_hps") / _RIE_RESIDENTIAL_CUSTOMERS).alias("pct_customers"),
+)
+
+# Label a few key points with raw counts
+_label_years = [2024, 2032, 2039]
+_df_hp_labels = _df_hp.filter(pl.col("year").is_in(_label_years)).with_columns(
+    ((pl.col("cumulative_hps") / 1000).round(1).cast(pl.String).str.replace(r"\.0$", "") + "k").alias("count_label"),
+)
+
+base_color = "#2d6a2e" # pistachio_text is kind of dark
+high_color = SB_COLORS["pistachio"]
+
+_hp_plot = (
+    ggplot(_df_hp, aes("year", "pct_customers", color="scenario"))
+    + geom_line(size=1.0, show_legend=False)
+    + geom_point(size=2.0, show_legend=False)
+    + geom_text(
+        _df_hp_labels.filter(pl.col("scenario") == "Base"),
+        aes("year", "pct_customers", label="count_label"),
+        color=base_color, va="top", nudge_y=-0.008,
+        size=9, inherit_aes=False,
+    )
+    + geom_text(
+        _df_hp_labels.filter(pl.col("scenario") == "High"),
+        aes("year", "pct_customers", label="count_label"),
+        color=high_color, va="bottom", nudge_y=0.008,
+        size=9, inherit_aes=False,
+    )
+    + scale_color_manual(values={"Base": base_color, "High": high_color})
+    + scale_x_continuous(breaks=list(range(2024, 2040)), minor_breaks=[], limits=(2023.5, _PEAK_LAST_YEAR + 4))
+    + scale_y_continuous(limits=(0, 0.25), breaks=[i / 100 for i in range(0, 30, 5)], labels=lambda l: [f"{v:.0%}" for v in l], expand=(0, 0, 0, 0))
+    + annotate(
+        "text", x=2039.4, y=HP_CUMULATIVE_BASE[2039] / _RIE_RESIDENTIAL_CUSTOMERS,
+        label="Base", color=base_color,
+        ha="left", va="center", size=10, fontweight="bold",
+    )
+    + annotate(
+        "text", x=2039.4, y=HP_CUMULATIVE_HIGH[2039] / _RIE_RESIDENTIAL_CUSTOMERS,
+        label="High", color=high_color,
+        ha="left", va="center", size=10, fontweight="bold",
+    )
+    + labs(
+        title="",
+        x="",
+        y="Share of residential customers",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 5.5), legend_position="none")
+)
+
+_fig_hp = _hp_plot.draw()
+_ax_hp = _fig_hp.axes[0]
+_colored_title(_ax_hp, _fig_hp, [
+    ("RIE forecasts 20% of customers will ", "black"),
+    ("adopt heat pumps ", base_color),
+    (" by 2039", "black"),
+])
+_cleanup_right_margin(_ax_hp, 2039)
+display_svg(_fig_hp)
+```
+
 
 ### Feeder utilization rank curve (2024)
 
@@ -1571,25 +1658,12 @@ _rank_plot = (
 
 _fig_rank = _rank_plot.draw()
 _ax_rank = _fig_rank.axes[0]
-
-_rank_title_parts = [
-    ("Summer", SB_COLORS["carrot"]),
-    (" and ", "black"),
-    ("winter", SB_COLORS["sky"]),
+_colored_title(_ax_rank, _fig_rank, [
+    ("Summer ", SB_COLORS["carrot"]),
+    (" and", "black"),
+    ("winter ", SB_COLORS["sky"]),
     (f" feeder utilization, {_rank_year}", "black"),
-]
-_rtx = 0.0
-_rty = 1.04
-for _text, _color in _rank_title_parts:
-    _t = _ax_rank.text(
-        _rtx, _rty, _text, color=_color,
-        fontfamily="GT Planar", fontweight="bold", fontsize=15,
-        transform=_ax_rank.transAxes, va="bottom",
-    )
-    _fig_rank.canvas.draw()
-    _bb = _t.get_window_extent(renderer=_fig_rank.canvas.get_renderer())
-    _rtx += _bb.transformed(_ax_rank.transAxes.inverted()).width
-
+])
 display_svg(_fig_rank)
 ```
 
@@ -1775,25 +1849,12 @@ _shift_plot = (
 
 _fig_shift = _shift_plot.draw()
 _ax_shift = _fig_shift.axes[0]
-
-_shift_title_parts = [
-    ("Summer", SB_COLORS["carrot"]),
-    (" and ", "black"),
-    ("winter", SB_COLORS["sky"]),
+_colored_title(_ax_shift, _fig_shift, [
+    ("Summer ", SB_COLORS["carrot"]),
+    (" and", "black"),
+    ("winter ", SB_COLORS["sky"]),
     (" feeder utilization: 2026 vs 2039", "black"),
-]
-_stx = 0.0
-_sty = 1.04
-for _text, _color in _shift_title_parts:
-    _t = _ax_shift.text(
-        _stx, _sty, _text, color=_color,
-        fontfamily="GT Planar", fontweight="bold", fontsize=15,
-        transform=_ax_shift.transAxes, va="bottom",
-    )
-    _fig_shift.canvas.draw()
-    _bb = _t.get_window_extent(renderer=_fig_shift.canvas.get_renderer())
-    _stx += _bb.transformed(_ax_shift.transAxes.inverted()).width
-
+])
 display_svg(_fig_shift)
 ```
 
@@ -1879,25 +1940,12 @@ _xfmr_rank_plot = (
 
 _fig_xfmr_rank = _xfmr_rank_plot.draw()
 _ax_xfmr_rank = _fig_xfmr_rank.axes[0]
-
-_xfmr_rank_title_parts = [
-    ("Summer", SB_COLORS["carrot"]),
-    (" and ", "black"),
-    ("winter", SB_COLORS["sky"]),
+_colored_title(_ax_xfmr_rank, _fig_xfmr_rank, [
+    ("Summer ", SB_COLORS["carrot"]),
+    (" and", "black"),
+    ("winter ", SB_COLORS["sky"]),
     (f" transformer utilization, {_xfmr_rank_year}", "black"),
-]
-_xrtx = 0.0
-_xrty = 1.04
-for _text, _color in _xfmr_rank_title_parts:
-    _t = _ax_xfmr_rank.text(
-        _xrtx, _xrty, _text, color=_color,
-        fontfamily="GT Planar", fontweight="bold", fontsize=15,
-        transform=_ax_xfmr_rank.transAxes, va="bottom",
-    )
-    _fig_xfmr_rank.canvas.draw()
-    _bb = _t.get_window_extent(renderer=_fig_xfmr_rank.canvas.get_renderer())
-    _xrtx += _bb.transformed(_ax_xfmr_rank.transAxes.inverted()).width
-
+])
 display_svg(_fig_xfmr_rank)
 ```
 
@@ -2048,95 +2096,13 @@ _xfmr_shift_plot = (
 
 _fig_xfmr_shift = _xfmr_shift_plot.draw()
 _ax_xfmr_shift = _fig_xfmr_shift.axes[0]
-
-_xfmr_shift_title = [
-    ("Summer", SB_COLORS["carrot"]),
-    (" and ", "black"),
-    ("winter", SB_COLORS["sky"]),
+_colored_title(_ax_xfmr_shift, _fig_xfmr_shift, [
+    ("Summer ", SB_COLORS["carrot"]),
+    (" and", "black"),
+    ("winter ", SB_COLORS["sky"]),
     (" transformer utilization: 2026 vs 2039", "black"),
-]
-_xstx = 0.0
-_xsty = 1.04
-for _text, _color in _xfmr_shift_title:
-    _t = _ax_xfmr_shift.text(
-        _xstx, _xsty, _text, color=_color,
-        fontfamily="GT Planar", fontweight="bold", fontsize=15,
-        transform=_ax_xfmr_shift.transAxes, va="bottom",
-    )
-    _fig_xfmr_shift.canvas.draw()
-    _bb = _t.get_window_extent(renderer=_fig_xfmr_shift.canvas.get_renderer())
-    _xstx += _bb.transformed(_ax_xfmr_shift.transAxes.inverted()).width
-
+])
 display_svg(_fig_xfmr_shift)
-```
-
-### Heat pump adoption projections
-
-```{python}
-#| label: fig-hp-adoption
-#| fig-cap: "Cumulative heat pump adoption as a share of RIE residential customers under base and high scenarios. Selected points labeled with raw HP counts. Source: RI Peak Report 2024, page 54; EIA-861 for customer count."
-
-# RIE residential customers (EIA-861, The Narragansett Electric Co, 2024)
-_RIE_RESIDENTIAL_CUSTOMERS = 451_381
-
-_hp_rows = []
-for _y in HP_CUMULATIVE_BASE:
-    _hp_rows.append({"year": _y, "scenario": "Base", "cumulative_hps": HP_CUMULATIVE_BASE[_y]})
-    _hp_rows.append({"year": _y, "scenario": "High", "cumulative_hps": HP_CUMULATIVE_HIGH[_y]})
-
-_df_hp = pl.DataFrame(_hp_rows).with_columns(
-    pl.col("scenario").cast(pl.Enum(["Base", "High"])),
-    (pl.col("cumulative_hps") / _RIE_RESIDENTIAL_CUSTOMERS).alias("pct_customers"),
-)
-
-# Label a few key points with raw counts
-_label_years = [2024, 2032, 2039]
-_df_hp_labels = _df_hp.filter(pl.col("year").is_in(_label_years)).with_columns(
-    ((pl.col("cumulative_hps") / 1000).round(1).cast(pl.String).str.replace(r"\.0$", "") + "k").alias("count_label"),
-)
-
-_hp_plot = (
-    ggplot(_df_hp, aes("year", "pct_customers", color="scenario"))
-    + geom_line(size=1.2, show_legend=False)
-    + geom_point(size=2.5, show_legend=False)
-    + geom_text(
-        _df_hp_labels.filter(pl.col("scenario") == "Base"),
-        aes("year", "pct_customers", label="count_label"),
-        color=SB_COLORS["pistachio"], va="top", nudge_y=-0.008,
-        size=8, inherit_aes=False,
-    )
-    + geom_text(
-        _df_hp_labels.filter(pl.col("scenario") == "High"),
-        aes("year", "pct_customers", label="count_label"),
-        color="#2d6a2e", va="bottom", nudge_y=0.008,
-        size=8, inherit_aes=False,
-    )
-    + scale_color_manual(values={"Base": SB_COLORS["pistachio"], "High": "#2d6a2e"})
-    + scale_x_continuous(breaks=list(range(2024, 2040)), minor_breaks=[])
-    + scale_y_continuous(limits=(0, 0.30), labels=lambda l: [f"{v:.0%}" for v in l])
-    + annotate(
-        "text", x=2039.4, y=HP_CUMULATIVE_BASE[2039] / _RIE_RESIDENTIAL_CUSTOMERS,
-        label="Base", color=SB_COLORS["pistachio"],
-        ha="left", va="center", size=10, fontweight="bold",
-    )
-    + annotate(
-        "text", x=2039.4, y=HP_CUMULATIVE_HIGH[2039] / _RIE_RESIDENTIAL_CUSTOMERS,
-        label="High", color="#2d6a2e",
-        ha="left", va="center", size=10, fontweight="bold",
-    )
-    + labs(
-        title="Cumulative heat pump adoption as % of RIE residential customers",
-        x="Year",
-        y="% of residential customers",
-    )
-    + theme_switchbox()
-    + theme(figure_size=(10.5, 5.5), legend_position="none")
-)
-
-_fig_hp = _hp_plot.draw()
-_ax_hp = _fig_hp.axes[0]
-_cleanup_right_margin(_ax_hp, 2039)
-display_svg(_fig_hp)
 ```
 
 ### Assumptions and limitations

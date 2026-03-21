@@ -33,16 +33,17 @@ Plotnine figures work because plotnine's `ggplot` object has a clean `_repr_svg_
 
 ### Matplotlib: single-SVG output (preferred for `{{< embed >}}`)
 
-Save the figure to a buffer and display **`IPython.display.SVG`** so the cell has **one** primary `image/svg+xml` output (same pattern as `plot_quadrant_bar` in the HP rates `analysis.qmd` notebooks):
+Use **`lib.quarto.display_svg`** so the cell has **one** primary `image/svg+xml` output. This helper saves the figure as SVG, closes it, and displays it via `IPython.display.SVG`:
 
 ```python
-import io
-from IPython.display import SVG, display
+from lib.quarto import display_svg
 
-fig.savefig(buf := io.BytesIO(), format="svg", bbox_inches="tight")
-plt.close(fig)
-display(SVG(data=buf.getvalue()))
+fig = my_plot.draw()  # or plt.subplots(...)
+# ... any matplotlib post-processing ...
+display_svg(fig)
 ```
+
+This replaces the older inline three-liner (`savefig` / `plt.close` / `display(SVG(...))`) that was previously copy-pasted into each cell.
 
 Give the cell `#| label: fig-my-chart` and `#| fig-cap: "..."`, then use `{{< embed notebooks/analysis.qmd#fig-my-chart >}}` in `index.qmd`. `just render` still runs `inline_svgs.py` on the built HTML.
 
@@ -78,7 +79,7 @@ htmltools::includeHTML("cache/my_table.html")
 
 ### Matplotlib figures (fallback: static file + markdown image)
 
-If you cannot use `display(SVG(...))` (e.g. a one-off script), save under `cache/` and use a markdown image in `index.qmd`; `inline_svgs.py` will still inline `.svg` assets when you run `just render`.
+If you cannot use `display_svg` (e.g. a one-off script), save under `cache/` and use a markdown image in `index.qmd`; `inline_svgs.py` will still inline `.svg` assets when you run `just render`.
 
 ## Will switching away from Manuscripts fix this?
 
@@ -90,9 +91,9 @@ Key questions for the migration:
 - Does it preserve the analysis-narrative separation (keeping heavy computation out of `index.qmd`)?
 - Do GT `text/html` outputs render correctly in the alternative project type?
 
-Until the migration happens, use **`display(SVG(...))` + `{{< embed >}}`** for matplotlib charts where possible, and file-based workarounds for GT and other HTML.
+Until the migration happens, use **`display_svg(fig)` + `{{< embed >}}`** for matplotlib charts where possible, and file-based workarounds for GT and other HTML.
 
 ## Affected reports
 
-- `ny_hp_rates`: TOU rate table (GT) still uses file-based HTML; TOU schedule matplotlib charts and the bill-decomposition bar chart use `display(SVG)` + `{{< embed >}}`.
-- `ri_hp_rates`: bill-decomposition bar chart uses the same embed pattern; optional TOU matplotlib cells exist behind `INCLUDE_TOU` for parity with NY (not embedded in `index.qmd` today).
+- `ny_hp_rates`: TOU rate table (GT) still uses file-based HTML; TOU schedule matplotlib charts and the bill-decomposition bar chart use `display_svg` + `{{< embed >}}`.
+- `ri_hp_rates`: bill-decomposition bar chart and feeder/transformer peak analysis charts use `display_svg` + `{{< embed >}}`; optional TOU matplotlib cells exist behind `INCLUDE_TOU` for parity with NY (not embedded in `index.qmd` today).

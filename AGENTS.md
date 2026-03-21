@@ -214,16 +214,17 @@ This applies to **every** GT table that needs to appear in `index.qmd`. Plotnine
 
 **Prefer plotnine** for Python visualization. Use raw matplotlib only when plotnine cannot express what you need.
 
-If the chart is shown in `index.qmd` via `{{< embed notebooks/analysis.qmd#fig-… >}}`, a notebook cell that **displays** a raw matplotlib `Figure` (cell ends with `fig` or `plt.show()`) breaks the Manuscript render (multi-MIME output). **Always** finish the figure cell with **one** SVG output using `IPython.display.SVG`, then `index.qmd` can embed it like any other labeled figure. Full rationale: `context/tools/quarto_manuscript_embed_bug.md`.
+If the chart is shown in `index.qmd` via `{{< embed notebooks/analysis.qmd#fig-… >}}`, a notebook cell that **displays** a raw matplotlib `Figure` (cell ends with `fig` or `plt.show()`) breaks the Manuscript render (multi-MIME output). **Always** finish the figure cell with **one** SVG output using `lib.quarto.display_svg`, then `index.qmd` can embed it like any other labeled figure. Full rationale: `context/tools/quarto_manuscript_embed_bug.md`.
 
 ```python
-import io
-from IPython.display import SVG, display
+from lib.quarto import display_svg
 
-fig.savefig(buf := io.BytesIO(), format="svg", bbox_inches="tight")
-plt.close(fig)
-display(SVG(data=buf.getvalue()))
+fig = my_plotnine_plot.draw()
+# ... any matplotlib post-processing (colored titles, axis cleanup, etc.) ...
+display_svg(fig)
 ```
+
+`display_svg` saves the figure as SVG, closes it to free memory, and displays it via `IPython.display.SVG` — producing a single `image/svg+xml` MIME type that embeds safely. **Always use this helper** instead of inlining the `savefig`/`plt.close`/`display(SVG(...))` three-liner.
 
 Use `#| label: fig-my-chart` and `#| fig-cap: "..."` on that chunk. Still `from lib.plotnine import theme_switchbox` if you want matplotlib's SVG text-as-text settings; keep colors aligned with `SB_COLORS` when practical.
 
@@ -846,16 +847,17 @@ R libraries under `lib/` are sourced the traditional way (e.g. `source("lib/ggpl
 
 #### Python modules
 
-| Module                             | When to use                                                                                                                                                         |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `lib.rdp`                          | Fetching files from the `rate-design-platform` GitHub repo (tariff maps, configs). Also has `parse_urdb_json` for URDB tariff JSON.                                 |
-| `lib.cairo`                        | CAIRO post-processing: `add_delivered_fuel_bills` tops up combined bills with oil/propane costs from monthly consumption x EIA prices.                              |
-| `lib.data.s3`                      | S3 directory listing (`list_s3_subdirs`) and run directory resolution (`run_dir`) for navigating CAIRO output paths.                                                |
-| `lib.data.gsheets`                 | Google Sheets client with cached OAuth (`get_gspread_client`); uses G_* env vars and caches token to avoid browser on every run.                                    |
-| `lib.data.eia.heating_fuel_prices` | Load monthly residential oil + propane prices from EIA data on S3 (`load_monthly_fuel_prices`).                                                                     |
-| `lib.data.nrel.resstock`           | Load ResStock load curves for a specific utility (`scan_load_curves_for_utility`), reading metadata to construct per-building paths.                                |
-| `lib.eia`                          | Standalone EIA fetch scripts (petroleum prices, state heating profiles). Use `lib.data.eia` for the cleaner S3-based API.                                           |
-| `lib.plotnine`                     | Switchbox plotnine theme (`theme_switchbox`) with three-tier typography, brand colors (`SB_COLORS`), and auto SVG config. Import in every Python analysis notebook. |
+| Module                             | When to use                                                                                                                                                                                            |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `lib.rdp`                          | Fetching files from the `rate-design-platform` GitHub repo (tariff maps, configs). Also has `parse_urdb_json` for URDB tariff JSON.                                                                    |
+| `lib.cairo`                        | CAIRO post-processing: `add_delivered_fuel_bills` tops up combined bills with oil/propane costs from monthly consumption x EIA prices.                                                                 |
+| `lib.data.s3`                      | S3 directory listing (`list_s3_subdirs`) and run directory resolution (`run_dir`) for navigating CAIRO output paths.                                                                                   |
+| `lib.data.gsheets`                 | Google Sheets client with cached OAuth (`get_gspread_client`); uses G_* env vars and caches token to avoid browser on every run.                                                                       |
+| `lib.data.eia.heating_fuel_prices` | Load monthly residential oil + propane prices from EIA data on S3 (`load_monthly_fuel_prices`).                                                                                                        |
+| `lib.data.nrel.resstock`           | Load ResStock load curves for a specific utility (`scan_load_curves_for_utility`), reading metadata to construct per-building paths.                                                                   |
+| `lib.eia`                          | Standalone EIA fetch scripts (petroleum prices, state heating profiles). Use `lib.data.eia` for the cleaner S3-based API.                                                                              |
+| `lib.plotnine`                     | Switchbox plotnine theme (`theme_switchbox`) with three-tier typography, brand colors (`SB_COLORS`), and auto SVG config. Import in every Python analysis notebook.                                    |
+| `lib.quarto`                       | Quarto Manuscript helpers. `display_svg(fig)` renders a matplotlib figure as SVG for safe `{{< embed >}}` embedding (avoids multi-MIME bug). Use for all raw matplotlib or plotnine `.draw()` figures. |
 
 #### R libraries
 

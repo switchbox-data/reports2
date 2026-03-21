@@ -8,6 +8,10 @@ See **AGENTS.md → Reference context** for conventions. Top-level dirs: **tools
 
 Documents that answer **"How does this work in the real world?"** — policy explainers, program guides, regulatory and institutional background. Subdirs group by theme.
 
+| File                                               | Use when working on …                                                                                                                                                                |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| rie_distribution_planning_and_thermal_screening.md | RIE feeder/transformer capacity analysis: how the annual thermal screening works (normal rating + N-1 contingency load at risk), what triggers an area study, and what happens next. |
+
 ## methods/
 
 Documents that answer **"How do we justify and operationalize this?"** — conceptual framing, formulas, literature, design choices that feed our methodology writeup. Will be implemented in code.
@@ -29,3 +33,9 @@ Documents that answer **"How does this tool work? What are its pitfalls and work
 ## sources/
 
 Primary sources like academic articles and documents, mostly extracted from PDFs via the **extract-pdf-to-markdown** slash command.
+
+| File                                       | Use when working on …                                                                                                                                                                          |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| rie_2024_peak_forecast_2025-2039.md        | Rhode Island Energy's 15-year electric peak (MW) forecast (2025–2039). Peak demand projections, key uncertainty scenarios (EE, PV, EV, DR, ES, heat pumps), weather assumptions.               |
+| rie_distribution_planning_guide.md         | Rhode Island Energy distribution planning criteria: N-1 contingency limits, equipment ratings (Normal/LTE/STE), load at risk thresholds, feeder/transformer/sub-tx planning.                   |
+| rie_distribution_planning_study_process.md | Rhode Island Energy integrated planning study process: milestones (scoping → sanctioning), annual planning screening, study team composition, report template, DER/EV/HE forecast integration. |

@@ -21,6 +21,9 @@ author:
     affiliations:
       - Switchbox
 bibliography: ../references.bib
+glossary:
+  path: glossary.yml
+  popup: hover
 license: "CC BY-NC"
 toc: true
 notebook-links: false
@@ -45,10 +48,12 @@ google-scholar: false
 #| echo: false
 
 import pickle
+from math import ceil
 from pathlib import Path
 from types import SimpleNamespace
 
 v = SimpleNamespace(**pickle.loads(Path("cache/report_variables.pkl").read_bytes()))
+f = SimpleNamespace(**pickle.loads(Path("cache/feeder_report_variables.pkl").read_bytes()))
 
 
 def dollar(x, accuracy=0):
@@ -426,34 +431,111 @@ And this "no capacity upgrade" scenario is the one that prevails across most of 
 
 ### Why the grid can handle the additional load {#sec-headroom}
 
+How much {{< glossary headroom >}} is currently available in Rhode Island Energy's distribution grid to accommodate heat pump adoption?
+
+::: {.column-margin}
+{{< glossary-def headroom >}}
+:::
+
+As of `{python} f.feeder_rank_year`, only `{python} pct(f.pct_feeders_any_violation_summer)` of RIE's feeders are constrained during the summer peak (@fig-feeder-rank-curve-summer).
+
+:::{.column-page-inset-right}
+{{< embed notebooks/feeder_peaks.qmd#fig-feeder-rank-curve-summer >}}
+:::
+
+The utility is already planning to upgrade the capacity of these feeders in the coming years.
+
+Nearly `{python} f"{ceil(f.pct_feeders_headroom_gt_20_summer * 100):.0f}%"` of the unconstrained feeders have _at least_ 20% {{< glossary headroom >}}, and many have much more: the median headroom is `{python} f"{f.median_headroom_summer:.0f}"`%.
+
+::: {.callout-note}
+## What is a constrained feeder?
+
+Rhode Island Energy considers a feeder to be **constrained** when...
+
+- [Peak > normal capacity]{style="color: #2d6a2e; font-weight: bold"}: its highest annual load (or peak) exceeds its **normal capacity**, and the equipment risks overheating.[^normal-capacity] At present, this only occurs when the _summer_ peak exceeds the _summer_ normal capacity.[^summer-normal-capacity]
+- [Peak > neighbor's emergency capacity]{style="color: #a0af12; font-weight: bold"}: the feeder goes down during the summer peak, and the neighbors it is connected to don't have enough **emergency capacity**[^emergency-capacity] to pick up and reroute 100% of its peak load, causing some customers on the downed feeder to lose power until crews complete the repair. Also known as an *N-1 contingency*.[^load-at-risk]
+:::
+
+[^normal-capacity]:
+    An electrical component's normal capacity rating is the load it can carry continuously without damage.
+
+[^summer-normal-capacity]:
+    A feeder's normal capacity depends on the temperature, and therefore the time of year, because cold wires can carry more current than hot wires.
+
+[^emergency-capacity]:
+    An electrical component's emergency capacity rating is the maximum load it can safely carry for 24 hours — enough time to restore normal conditions. During a contingency, neighboring feeders run (up to) this elevated rating while crews fix the problem.
+
+[^load-at-risk]:
+    Technically, RIE flags a feeder when the downed feeder's unservable load exceeds 16 MWh — equivalent to 4 MW's worth of customer load dropped for an entire 4-hour repair window. In this scenario, enough customers would be without power for long enough that the utility must evaluate infrastructure upgrades to reduce the load-at-risk. See @rie_DistributionPlanningGuide_2011 for more details.
+
+In other words, most of RIE's distribution network has plenty of spare capacity in the summer. What about in winter?
+
+At present, RIE's distribution grid is so summer-dominated that the utility's planning engineers don't even measure the feeders' winter peaks.[^summer-dominated]
+
+[^summer-dominated]: According to interviews with RIE's distribution planning engineers, they do not expect winter peaks to drive constraints until the early 2040s, given current heat pump adoption forecasts.
+
+Instead, the utility's distribution planners estimate them, by assuming each feeder's current winter peak is equal to 70% of its current summer peak.[^winter-peak-estimation]
+
+[^winter-peak-estimation]:
+  System-wide, RIE's winter peak is currently 70% of the summer peak, so this assumption is correct on average, but will tend to underestimate above-average winter peaks.
+
+Using this same assumption, we can provide an estimate of the current winter headroom for each feeder on RIE's distribution grid. (@fig-feeder-rank-curve-summer-and-winter)
+
+:::{.column-page-inset-right}
+{{< embed notebooks/feeder_peaks.qmd#fig-feeder-rank-curve-summer-and-winter >}}
+:::
+
+None of the feeders are constrained in winter. Far from it: `{python} f"{ceil(f.pct_feeders_headroom_gt_30_winter * 100):.0f}%"` of feeders have more than 30% {{< glossary headroom >}}. The median headroom is `{python} f"{f.median_headroom_winter:.0f}"`%.
+
+**At present, then, a household that installs a heat pump in Rhode Island imposes virtually zero costs on the grid**:
+
+- During the winter, every distribution line in the state has ample capacity to accommodate the additional load.
+-During the summer, the only households that would impose costs by installing heat pumps are those that lack central air conditioning _and_ are served by one of the `{python} int(f.n_feeders * f.pct_feeders_any_violation_summer)` feeders in Rhode Island that are currently constrained during the summer peak—all of which are already scheduled for capacity upgrades in the next few years.[^cooling-impact]
+
+[^cooling-impact]:
+    RIE's own load forecasts actually assume that heat pumps [lower the summer peak](https://www.documentcloud.org/documents/26877315-rhode-island-energy-2024-electric-peak-mw-forecast-15-year-long-term-2025-to-2039/#document/p6/a2808841), due to their increased efficiency over traditional air conditioning [@rie_2024ElectricPeak_2024].
+
+But how long will this zero-cost period last, given that RIE's load forecasts show that heat pump adoption will grow rapidly in the coming years?[^heat-pump-adoption-forecast]
+
+[^heat-pump-adoption-forecast]: See the [heat pump adoption forecast](https://www.documentcloud.org/documents/26877315-rhode-island-energy-2024-electric-peak-mw-forecast-15-year-long-term-2025-to-2039/#document/p54/a2790161) in RIE's 2024 Peak Forecast report [@rie_2024ElectricPeak_2024].
+
 :::{.column-page-inset-right}
 {{< embed notebooks/feeder_peaks.qmd#fig-hp-adoption >}}
 :::
+
+RIE anticipates that between `{python} pct(f.pct_hp_base_2039)` and `{python} pct(f.pct_hp_high_2039)` of its customers will have heat pumps by 2039 (@fig-hp-adoption). Each customer that electrifies their heat will bump up their feeder's winter peak.
+
+Will this pace of heat pump adoption cause winter peaks to catch up with summer peaks, creating winter-constrained feeders and thereby imposing significant new costs on the system? (@fig-system-peak-forecast)
 
 :::{.column-page-inset-right}
 {{< embed notebooks/feeder_peaks.qmd#fig-system-peak-forecast >}}
 :::
 
-:::{.column-page-inset-right}
-{{< embed notebooks/feeder_peaks.qmd#fig-feeder-rank-curve >}}
-:::
+While RIE's winter peak is expected to grow faster than its summer peak, the utility is not currently forecasted to become winter-peaking by 2039, when the system-wide winter peak is still only expected to be around `{python} pct(f.winter_pct_of_summer_2039)` of the summer peak.[^winter-peak-forecast]
+
+[^winter-peak-forecast]: See the winter peak forecast on [p. 31](https://www.documentcloud.org/documents/26877315-rhode-island-energy-2024-electric-peak-mw-forecast-15-year-long-term-2025-to-2039/#document/p31/a2788506) of [@rie_2024ElectricPeak_2024].
+
+Here is what the feeder headroom is expected to look like in 2039, according to RIE's own peak growth forecasts (@fig-feeder-winter-shift):
 
 :::{.column-page-inset-right}
 {{< embed notebooks/feeder_peaks.qmd#fig-feeder-winter-shift >}}
 :::
 
-:::{.column-page-inset-right}
-{{< embed notebooks/feeder_peaks.qmd#fig-transformer-rank-curve >}}
-:::
+An additional `{python} f.n_new_constrained_summer_2039` feeders are expected to become constrained due to _summer_ peak growth by then, but none by winter peak growth—despite `{python} pct(f.pct_hp_base_2039)` of Rhode Island Energy customers installing heat pumps by then.
+
+Moreover, `{python} pct(f.pct_feeders_headroom_gt_20_winter_2039)` of feeders are expected to have more than 20% winter {{< glossary headroom >}} in 2039—a testament to the RIE distribution grid's significant spare winter capacity.
+
+Indeed, RIE's substations have even more headroom than its feeders, both now and in 2039 (@fig-transformer-shift).
 
 :::{.column-page-inset-right}
 {{< embed notebooks/feeder_peaks.qmd#fig-transformer-shift >}}
 :::
 
-<!-- Simply put: at present, Rhode Island's grid has significant spare winter capacity to accommodate
-heat pumps. And this is the main reason why their delivery cost-of-service is only
-`{python} f"{(v.hp_mean_delivery_cost / v.ff_mean_delivery_cost - 1) * 100:.0f}"`% higher than that of fossil fuel
-customers. -->
+In fact, RIE's grid modernization study notes that heat pumps are not expected to strain the company's distribution grid until the 2040s.[^rie-heat-pump-study]
+
+[^rie-heat-pump-study]: TK cite study
+
+Without rate reform, therefore, Rhode Island's heat pump customers will be forced to pay more than their fair share of historical grid costs for the next two decades.
 
 ## Proposal: fair rate for heat pump customers
 

@@ -11,6 +11,7 @@ Usage (from a report directory):
 
 from __future__ import annotations
 
+import platform
 import shutil
 import subprocess
 import sys
@@ -73,6 +74,13 @@ def main() -> None:
         sys.exit(1)
 
     print("✅ Render complete!")
+
+    index = docs / "index.html"
+    if index.exists():
+        if platform.system() == "Darwin":
+            subprocess.Popen(["open", str(index)])
+        else:
+            print(f"👉 Open {index} to view")
 
 
 if __name__ == "__main__":

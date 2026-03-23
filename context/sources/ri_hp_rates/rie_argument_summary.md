@@ -1,0 +1,89 @@
+### Rhode Island Energy Objections to Seasonal Heat Pump Rate (Detailed)
+
+- Revenue neutrality and rate design principles
+  - Objection: Any seasonal discount must be revenue neutral within the rate class; simply lowering winter volumetric delivery charges without offsetting increases (e.g., higher summer delivery rate or higher customer charge) conflicts with cost-based ratemaking principles.
+  - Evidence/precedent: Central Maine Power (CMP) pilot designed to be revenue neutral (customer charge increased ~$29 → $40; delivery set to ~$0.27/kWh summer and ~$0.01/kWh winter).
+  - Quotes:
+    - "their pilot was revenue neutral. Right. So they didn't just give a discount on the delivery side, they increased the customer charge relative to the non heat pump or non electric technology rate. They decreased the delivery charge in the winter, but then they increased the delivery charge in the summer. Right. So it's $0.27 per kilowatt hour in the summer, $0.01 per kilowatt hour in the winter for delivery, and the customer charge went from $29 to $40 a month."
+    - "that revenue neutrality, I think, is a key component that is important to us from a rate making principles perspective."
+  - Implication: RIE is unlikely to endorse a unilateral winter discount absent offsets; they framed this as a core ratemaking principle rather than a policy choice.
+- Cost causation/marginal cost alignment not demonstrated
+  - Objection: Your analysis relies on changes in revenue collection and ISO-NE seasonal peak ratios, not a distribution marginal cost-of-service (MCOS) study; claims of “over-collection” and “cross-subsidy” are unproven without feeder/local marginal O&M, depreciation, and investment impacts.
+  - Specific concerns: Non-coincident vs coincident peak relevance for distribution; winter usage may still drive marginal O&M and depreciation; need to reflect actual distribution cost drivers rather than ISO-NE coincident peak.
+  - Quotes:
+    - "I'm just wondering about the assumption again. It just has to do with what you said over collecting subsidization. Is that. I'm curious to know if you think that there are no marginal om or depreciation costs associated with winter usage."
+    - "generally when we look at the distribution system, we're looking at more localized peaks, which is why we use a non coincident peak instead of a coincident peak. If that ratio. Were wholly explicative of the distribution system, we would probably use coincident peak when we're doing class calls to service studies, right?"
+    - "maybe more cost analysis would be necessary... you'd want to look at it at that point. The actual. Right. So maybe, yes, more. Maybe more cost analysis would be necessary."
+  - Implication: RIE and Concentric view a cost study as prerequisite to justifying discounts as cost-based.
+- Customer enrollment, awareness, and administrative burden
+  - Objection: Low expected take-up undermines cost-effectiveness of implementing and marketing a seasonal rate; adds systems, billing, and outreach costs recovered from all customers.
+  - Evidence: CMP reported <1% enrollment of eligible households despite high heat pump penetration.
+  - Quotes:
+    - "They have less than 1% of eligible households. Enrolled for this heat pump rate. So that was fairly shocking to us."
+    - "Deploying rates... require resources, time and money. And so the calculus from our point of view is. Is it worth it? Right. Are we going to get sufficient enrollment and sufficient customer satisfaction from this?... adds systems, billing, and outreach costs recovered from all customers."
+  - Implication: Without strong enrollment mechanisms, benefits will be minimal while admin costs and complexity are real.
+- Customer experience and political/regulatory risk (“rate whiplash”)
+  - Objection: Customers could adopt heat pumps based on a discounted winter rate, then face higher charges within the equipment’s lifetime when the system becomes winter peaking; this creates backlash to the utility, regulators, and legislators.
+  - Timing: Discussion referenced ~8-year horizon to winter peaking at ISO-NE level; CMP reported 25% of circuits already winter peaking and system-wide by ~2030 in Maine.
+  - Quotes:
+    - "These customers will say, hey, we invested in heat pumps. We thought it was going to be cheaper. Offered us this rate. And now you're pulling the rug out from under us."
+    - "within the lifetime of that heat pump, They are going to see first a very low rate, and then, when we account for the winter peaking of the system, a very high rate. And that is extremely concerning to us today."
+    - "they are saying? 25% of their circuits are already winter peaking. And they're expected to be winter peaking by 2030."
+  - Implication: RIE is wary of promoting a rate it may need to reverse or materially change mid-lifecycle.
+- Interaction with summer peaks and public health/comfort
+  - Objection: In RI, significant summer air conditioning load means higher summer delivery rates (as used by CMP for revenue neutrality) could be problematic; AC is increasingly a health/safety need during heat waves.
+  - Quotes:
+    - "Down here. Obviously, we're having record heat stretches. And really odd weather and air conditioning is actually public health concern. Right? To be able to shelter in place to avoid heat related illness. And so we fully expect customers to use their heat pumps in the summer."
+  - Implication: A seasonal design that raises summer delivery rates could exacerbate peak and affordability issues for AC usage.
+- Prefer time-varying rates (TOU/CPP) as a unifying solution
+  - Objection: Seasonal-only discounts don’t target peak-period costs or incent load shifting; TOU better aligns policy and cost causation across seasons (both heating and cooling impacts).
+  - Evidence: CMP plans to sunset seasonal/electric technology pilots in 2026 as TOU proves more popular/effective; many seasonal-rate customers reportedly migrated to TOU.
+  - Quotes:
+    - "the commission is just having a sunset. Both of these pilots in 2026 because time of use rates are more popular and just as effective."
+    - "a lot of the customers who were on the seasonal rates... have practically discontinued those and are solely enrolled in the time of use rates. And they are reporting that they are finding that they're getting the incentive and the economic benefit... with the time of use rate."
+    - "the nice thing about the time of use rate... is it kind of marries the two. In a way that maybe this heat pump rate would not."
+  - Implication: RIE favors sequencing around AMI/TOU rollout rather than standalone seasonal discounts.
+- Gas-electric system interplay and broader system effects not analyzed
+  - Objection: Your analysis does not assess secondary impacts of accelerated adoption (e.g., gas revenue requirements/rates, distribution investment timing, hastened transition to winter peaks) and thus understates follow-on costs.
+  - Quotes:
+    - "Does your analysis consider sort of the cascading effect of if the rate goes into effect. And there has increased air, accelerated adoption. How that... cascades into increased cost. Acceleration of transition to winter peak. And the sort of, you know. Follow on Effects from success."
+  - Implication: Policy should consider cross-utility and temporal impacts, not just immediate bill effects.
+- Practical implementation/verification concerns
+  - Objection: Verification and enrollment logistics (post-2022 Mass Save auto-enrollment vs pre-2022 attestation) are unsettled locally; risk of errors/fraud, customer confusion, and IT/billing changes.
+  - Quotes:
+    - "how does the utility verify that? Is it through attestation of the customer or do they actually go out and check?"
+    - "That operation is still. I think they're still working on it. That's helpful. Thank you for clarifying that. Answer to that question very soon, because we're going to be going through that latter process to verify that we have heat pumps that we're about."
+  - Implication: Implementation complexity weighs against launching a seasonal rate ahead of AMI/TOU.
+
+  # RIE Questions About the Presentation
+
+  - Time window used
+  - "my understanding was that this data from Reading the port is actually the heating season. It's not the entire year. Can I. Can you clarify on that? It's just. It's just the designated heating seasons. Like November through April or I can't remember. There were different periods at play at sometimes on the board. Is that. That's true. This is just a heating season, correct?"
+- Full displacement requirement
+  - "Can I ask you to clarify whether this proposal requires full displacement? Of the natural gas system or oil propane with a heat pump or just having heat pump. And allowing for a secondary alternative fuel system."
+- Which load gets discounted
+  - "So you say for heat pumps. Your electricity use doubles because of the heat pump, so your delivery charge doubles. But this rate doesn't apply to just the heat pump load, right?... It applies to all electric consumption in the house, is that right?"
+- Verification and program integrity
+  - "I know that this isn't about rate design, but how does the utility verify that? Is it through attestation of the customer or do they actually go out and check?"
+- TOU intersection
+  - "And then the second question is, how does this intersect with time of use Rhodes pretty sure Mass is rolling that out the big IOUs, but I don't know, maybe more than I do."
+
+  Push-back questions (with exact quotes)
+
+- Cost causation and “over-collection”/subsidization claims
+  - "A couple of things were said like a couple of words over collecting and subsidization. And I just want to make sure we understand the assumptions behind those."
+  - "I'm just wondering about the assumption again... I'm curious to know if you think that there are no marginal om or depreciation costs associated with winter usage."
+  - "generally when we look at the distribution system, we're looking at more localized peaks, which is why we use a non coincident peak instead of a coincident peak. If that ratio. Were wholly explicative of the distribution system, we would probably use coincident peak when we're doing class calls to service studies, right?"
+- Temporal risk and reversals (“rate whiplash”) and winter-peaking transition
+  - "In the report, you mentioned that... in 2034. I don't know. England is going to hit winter, peaking instead of summer... Do you think it's a problem if we drop the rates by 50%, knowing that, like, eight years from now that reverses?"
+  - "we would drop a rate so much. Knowing that we're going to have a problem in eight years... where suddenly the key metric for distribution system investment reverses."
+- Secondary effects of success and broader system impacts
+  - "Does your analysis consider sort of the cascading effect of if the rate goes into effect. And there has increased air, accelerated adoption. How that which is, I think, the desired goal. How that sort of cascades into increased cost. Acceleration of transition to winter peak. And the sort of, you know. Follow on Effects from success."
+- Equity/affordability of summer rate increases and AC usage
+  - "They said it wasn't a big deal because their customers tend to not use air conditioning in the summer just because of the climate. Down here. Obviously, we're having record heat stretches... And so we fully expect customers to use their heat pumps in the summer."
+- Enrollment efficacy and practicality; administrative burden
+  - "What's your rate of enrollment? Right. They have an incredibly high penetration of heat pumps throughout Maine... They have less than 1% of eligible households. Enrolled for this heat pump rate."
+  - "Deploying rates... require resources, time and money. And so the calculus from our point of view is. Is it worth it?"
+- Policy vs cost basis; TOU as preferred framework
+  - "if there's a policy argument that's much different from the underlying cost analysis. And so you could justify certain things on the basis of the policy as opposed to necessarily the cost."
+  - "I think the nice thing about the time of use rate that Carrie was getting at is it kind of marries the two. In a way that maybe this heat pump rate would not."

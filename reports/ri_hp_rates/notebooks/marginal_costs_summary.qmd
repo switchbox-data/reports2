@@ -1,0 +1,242 @@
+---
+title: "Marginal costs summary by subclass"
+format:
+  html:
+    page-layout: full
+toc: true
+execute:
+  warning: false
+  message: false
+---
+
+This notebook provides a summary of bill components by subclass.
+
+After ingest, the diagnostic cell prints the S3 path, column count, full schema, and `head(3)` — enough to confirm paths and hive reads without a full-table row count (which would scan every row).
+
+**Scope:** CAIRO outputs for **run 1+2** only (`comb_bills_year_target` and `cross_subsidization_BAT_values`).
+
+## Parameters and paths
+
+```{python}
+#| label: params-paths
+
+from __future__ import annotations
+
+import polars as pl
+from great_tables import GT
+
+# Match `notebooks/analysis.qmd` — change these when you switch runs.
+STATE = "RI"
+BATCH = "ri_20260323_r1-16"
+
+_state_lower = STATE.lower()
+S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
+PATH_MASTER_BILLS_12 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_1+2/comb_bills_year_target/"
+PATH_MASTER_BAT_12 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_1+2/cross_subsidization_BAT_values/"
+
+S3_OPTS: dict[str, str] = {"aws_region": "us-west-2"}
+```
+
+
+
+## BAT values — run 1+2 (lazy)
+
+```{python}
+#| label: ingest-bat-12
+
+bat_12 = pl.scan_parquet(PATH_MASTER_BAT_12, hive_partitioning=True, storage_options=S3_OPTS)
+```
+
+```{python}
+#| label: diagnostic-bat-12
+
+HEATING_TYPE_COL = "postprocess_group.heating_type"
+
+# Materialize once: .collect() returns a DataFrame; the lazy frame is unchanged if you don't assign.
+bat_12_df = bat_12.collect()
+print(bat_12_df.head(3))
+
+# BAT tables use heating_type + fuel flags (see `bat-ingest` in analysis.qmd) — there is no `heats_with_electricity`.
+hp_bldgs = bat_12_df.filter(pl.col(HEATING_TYPE_COL) == "heat_pump")
+electric_resistance_bldgs = bat_12_df.filter(pl.col(HEATING_TYPE_COL) == "electrical_resistance")
+natgas_bldgs = bat_12_df.filter(pl.col("heats_with_natgas"))
+oil_propane_bldgs = bat_12_df.filter(pl.col("heats_with_oil") | pl.col("heats_with_propane"))
+
+print(f"Total buildings: {bat_12_df.height}")
+print(f"Heat pump buildings: {hp_bldgs.height}")
+print(f"Electric resistance buildings: {electric_resistance_bldgs.height}")
+print(f"Natural gas buildings: {natgas_bldgs.height}")
+print(f"Oil/propane buildings: {oil_propane_bldgs.height}")
+```
+
+```{python}
+#| label: delivery-cos-summary-table
+
+def _weighted_sum(df: pl.DataFrame, col: str, w_col: str = "weight") -> float:
+    """Sum of (value × survey weight) — population-scaled total for the sample."""
+    if df.is_empty():
+        return float("nan")
+    return float((df[col] * df[w_col]).sum())
+
+
+def delivery_cos_weighted_sum(df: pl.DataFrame) -> float:
+    """Total (economic_burden_delivery + residual_share_delivery) × weight."""
+    x = df.with_columns(
+        (pl.col("economic_burden_delivery") + pl.col("residual_share_delivery")).alias("delivery_cos"),
+    )
+    return _weighted_sum(x, "delivery_cos")
+
+
+_rows: list[dict] = []
+for group_label, d in [
+    ("Heat pump", hp_bldgs),
+    ("Electric resistance", electric_resistance_bldgs),
+    ("Natural gas", natgas_bldgs),
+    ("Oil / propane", oil_propane_bldgs),
+]:
+    total = delivery_cos_weighted_sum(d)
+    _rows.append({
+        "group": group_label,
+        "total_delivery_cos": round(total, 2),
+    })
+
+_delivery_cos_tbl = pl.DataFrame(_rows)
+print(
+    "\n economic_burden_delivery + residual_share_delivery — Σ (value × weight) ($/yr)\n"
+)
+print(_delivery_cos_tbl)
+```
+
+```{python}
+#| label: annual-bill-delivery-summary-table
+
+_rows_bill: list[dict] = []
+for group_label, d in [
+    ("Heat pump", hp_bldgs),
+    ("Electric resistance", electric_resistance_bldgs),
+    ("Natural gas", natgas_bldgs),
+    ("Oil / propane", oil_propane_bldgs),
+]:
+    total = _weighted_sum(d, "annual_bill_delivery")
+    _rows_bill.append({
+        "group": group_label,
+        "total_annual_bill_delivery": round(total, 2),
+    })
+
+_annual_bill_tbl = pl.DataFrame(_rows_bill)
+print("\n annual_bill_delivery — Σ (value × weight) ($/yr)\n")
+print(_annual_bill_tbl)
+```
+
+```{python}
+#| label: bill-minus-cos-diff-table
+
+# Second table minus first: annual_bill_delivery total − delivery COS total (same groups, same order).
+_diff_rows: list[dict] = []
+for cos_row, bill_row in zip(_rows, _rows_bill, strict=True):
+    assert cos_row["group"] == bill_row["group"]
+    _diff_rows.append({
+        "group": cos_row["group"],
+        "diff_annual_bill_minus_delivery_cos": round(
+            bill_row["total_annual_bill_delivery"] - cos_row["total_delivery_cos"],
+            2,
+        ),
+    })
+
+_diff_tbl = pl.DataFrame(_diff_rows)
+print(
+    "\n annual_bill_delivery − (economic_burden_delivery + residual_share_delivery) — Σ (value × weight) ($/yr)\n"
+)
+print(_diff_tbl)
+```
+
+```{python}
+#| label: diff-over-cos-ratio-table
+
+# Fourth table: (third ÷ first) × 100 = (diff ÷ total_delivery_cos) as a percent.
+_ratio_rows: list[dict] = []
+for diff_row, cos_row in zip(_diff_rows, _rows, strict=True):
+    assert diff_row["group"] == cos_row["group"]
+    denom = cos_row["total_delivery_cos"]
+    num = diff_row["diff_annual_bill_minus_delivery_cos"]
+    if denom == 0:
+        pct = float("nan")
+    else:
+        pct = round(num / denom * 100, 2)
+    _ratio_rows.append({
+        "group": diff_row["group"],
+        "pct_diff_div_delivery_cos": pct,
+    })
+
+_ratio_tbl = pl.DataFrame(_ratio_rows)
+print(
+    "\n (table 3) ÷ (table 1) = diff ÷ total_delivery_cos — percent (%)\n"
+)
+print(_ratio_tbl)
+```
+
+## Combined summary (Great Tables)
+
+```{python}
+#| label: delivery-summary-gt
+
+_merged = (
+    pl.DataFrame(_rows)
+    .join(pl.DataFrame(_rows_bill), on="group")
+    .join(pl.DataFrame(_diff_rows), on="group")
+    .join(pl.DataFrame(_ratio_rows), on="group")
+    .with_columns(pl.col("pct_diff_div_delivery_cos").fill_nan(None))
+)
+
+_delivery_summary_gt = (
+    GT(_merged, rowname_col="group")
+    .tab_header(
+        title="Delivery bill vs. delivery cost of service — weighted totals by subgroup",
+        subtitle="Run 1+2 BAT outputs; Σ denotes sum of (value × ResStock weight).",
+    )
+    .tab_spanner(
+        label="Σ (value × weight), $/yr",
+        columns=[
+            "total_delivery_cos",
+            "total_annual_bill_delivery",
+            "diff_annual_bill_minus_delivery_cos",
+        ],
+    )
+    .tab_spanner(
+        label="Ratio",
+        columns=["pct_diff_div_delivery_cos"],
+    )
+    .cols_label(
+        total_delivery_cos="Delivery COS",
+        total_annual_bill_delivery="Annual delivery bill",
+        diff_annual_bill_minus_delivery_cos="Bill − COS",
+        pct_diff_div_delivery_cos="(Bill − COS) ÷ COS",
+    )
+    .fmt_currency(
+        columns=[
+            "total_delivery_cos",
+            "total_annual_bill_delivery",
+            "diff_annual_bill_minus_delivery_cos",
+        ],
+        decimals=0,
+    )
+    .fmt_number(columns="pct_diff_div_delivery_cos", decimals=1, pattern="{x}%")
+    .sub_missing(missing_text="—")
+    .cols_align(
+        align="right",
+        columns=[
+            "total_delivery_cos",
+            "total_annual_bill_delivery",
+            "diff_annual_bill_minus_delivery_cos",
+            "pct_diff_div_delivery_cos",
+        ],
+    )
+    .tab_source_note(
+        "Delivery COS = economic_burden_delivery + residual_share_delivery. "
+        "Annual delivery bill = annual_bill_delivery. "
+        "Ratio = (Bill − COS) ÷ delivery COS (×100 as %).",
+    )
+)
+
+_delivery_summary_gt
+```

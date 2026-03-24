@@ -33,8 +33,16 @@ _state_lower = STATE.lower()
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
 PATH_MASTER_BILLS_12 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_1+2/comb_bills_year_target/"
 PATH_MASTER_BAT_12 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_1+2/cross_subsidization_BAT_values/"
+PATH_MASTER_BILLS_34 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_3+4/comb_bills_year_target/"
+PATH_MASTER_BAT_34 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_3+4/cross_subsidization_BAT_values/"
+
+PATH_METADATA_UP_02 = f"s3://data.sb/nrel/resstock/res_2024_amy2018_2_sb/metadata/state=RI/upgrade=02/metadata-sb.parquet"
 
 S3_OPTS: dict[str, str] = {"aws_region": "us-west-2"}
+
+metadata_up_02 = pl.scan_parquet(PATH_METADATA_UP_02, storage_options=S3_OPTS)
+metadata_up_02_df = metadata_up_02.collect()
+metadata_up_02_hp_df = metadata_up_02_df.filter(pl.col("postprocess_group.has_hp"))
 ```
 
 
@@ -45,12 +53,14 @@ S3_OPTS: dict[str, str] = {"aws_region": "us-west-2"}
 #| label: ingest-bat-12
 
 bat_12 = pl.scan_parquet(PATH_MASTER_BAT_12, hive_partitioning=True, storage_options=S3_OPTS)
+bat_34 = pl.scan_parquet(PATH_MASTER_BAT_34, hive_partitioning=True, storage_options=S3_OPTS)
 ```
 
 ```{python}
 #| label: diagnostic-bat-12
 
 HEATING_TYPE_COL = "postprocess_group.heating_type"
+POSTPROCESS_GROUP_HAS_HP = "postprocess_group.has_hp"
 
 # Materialize once: .collect() returns a DataFrame; the lazy frame is unchanged if you don't assign.
 bat_12_df = bat_12.collect()
@@ -239,4 +249,294 @@ _delivery_summary_gt = (
 )
 
 _delivery_summary_gt
+```
+
+## Economic burden delivery — mean and median by subgroup
+
+Weighted mean and weighted median (p50) of **`economic_burden_delivery`** ($/yr per building), using ResStock **`weight`**. Same four groups as above.
+
+```{python}
+#| label: economic-burden-delivery-mean-median-gt
+
+_EBD_COL = "economic_burden_delivery"
+
+
+def _w_mean_ebd(df: pl.DataFrame, col: str, w_col: str = "weight") -> float:
+    if df.is_empty() or df[w_col].sum() == 0:
+        return float("nan")
+    return float((df[col] * df[w_col]).sum() / df[w_col].sum())
+
+
+def _w_median_ebd(df: pl.DataFrame, col: str, w_col: str = "weight") -> float:
+    """Weighted median via cumulative survey weight (same approach as `analysis.qmd`)."""
+    if df.is_empty() or df[w_col].sum() == 0:
+        return float("nan")
+    s = df.sort(col)
+    cum = s[w_col].cum_sum() / s[w_col].sum()
+    return float(s.filter(cum >= 0.5)[col][0])
+
+
+_ebd_stat_rows: list[dict] = []
+for group_label, d in [
+    ("Heat pump", hp_bldgs),
+    ("Electric resistance", electric_resistance_bldgs),
+    ("Natural gas", natgas_bldgs),
+    ("Oil / propane", oil_propane_bldgs),
+]:
+    _ebd_stat_rows.append({
+        "group": group_label,
+        "mean_economic_burden_delivery": _w_mean_ebd(d, _EBD_COL),
+        "median_economic_burden_delivery": _w_median_ebd(d, _EBD_COL),
+    })
+
+_ebd_stats_df = (
+    pl.DataFrame(_ebd_stat_rows)
+    .with_columns(
+        pl.col("mean_economic_burden_delivery").fill_nan(None),
+        pl.col("median_economic_burden_delivery").fill_nan(None),
+    )
+)
+
+_economic_burden_delivery_gt = (
+    GT(_ebd_stats_df, rowname_col="group")
+    .tab_header(
+        title="Economic burden (delivery) — mean and median by subgroup",
+        subtitle="Weighted with ResStock weights; BAT column economic_burden_delivery ($/yr).",
+    )
+    .cols_label(
+        mean_economic_burden_delivery="Mean",
+        median_economic_burden_delivery="Median",
+    )
+    .fmt_currency(
+        columns=["mean_economic_burden_delivery", "median_economic_burden_delivery"],
+        decimals=0,
+    )
+    .sub_missing(missing_text="—")
+    .cols_align(
+        align="right",
+        columns=["mean_economic_burden_delivery", "median_economic_burden_delivery"],
+    )
+    .tab_source_note(
+        "Mean = Σ(value × weight) ÷ Σ(weight). Median = first value at or above 50% cumulative weight.",
+    )
+)
+
+_economic_burden_delivery_gt
+```
+
+```{python}
+#| label: change in marginal cost before vs after HP adoption
+
+bat_12_df = bat_12.collect()
+bat_34_df = bat_34.collect()
+
+up00_no_hp = bat_12_df.filter(~pl.col(POSTPROCESS_GROUP_HAS_HP))
+up02_hp = bat_34_df.filter(pl.col("bldg_id").is_in(metadata_up_02_hp_df["bldg_id"]))
+
+up00_no_hp_up02_hp = up00_no_hp.join(up02_hp, on="bldg_id", how="inner")
+
+```
+
+```{python}
+#| label: economic-burden-delivery-matched-cohort-gt
+
+_cohort_matched = up00_no_hp_up02_hp
+_EBD_BASELINE = "economic_burden_delivery"  # run 1+2; right-side duplicate is economic_burden_delivery_right
+
+_matched_ebd_stats_df = pl.DataFrame([{
+    "group": "bldg_id with no HP in up00, but with HP in up02",
+    "mean_economic_burden_delivery": _w_mean_ebd(_cohort_matched, _EBD_BASELINE),
+    "median_economic_burden_delivery": _w_median_ebd(_cohort_matched, _EBD_BASELINE),
+}]).with_columns(
+    pl.col("mean_economic_burden_delivery").fill_nan(None),
+    pl.col("median_economic_burden_delivery").fill_nan(None),
+)
+
+_economic_burden_delivery_matched_gt = (
+    GT(_matched_ebd_stats_df, rowname_col="group")
+    .tab_header(
+        title="Economic burden (delivery) — mean and median (matched cohort)",
+        subtitle=(
+            "Single row: all bldg_id in the inner join of baseline (run 1+2, no HP) and HP run (3+4). "
+            "BAT economic_burden_delivery from run 1+2; weighted with ResStock weight."
+        ),
+    )
+    .cols_label(
+        mean_economic_burden_delivery="Mean",
+        median_economic_burden_delivery="Median",
+    )
+    .fmt_currency(
+        columns=["mean_economic_burden_delivery", "median_economic_burden_delivery"],
+        decimals=0,
+    )
+    .sub_missing(missing_text="—")
+    .cols_align(
+        align="right",
+        columns=["mean_economic_burden_delivery", "median_economic_burden_delivery"],
+    )
+    .tab_source_note(
+        "Mean = Σ(value × weight) ÷ Σ(weight). Median = first value at or above 50% cumulative weight.",
+    )
+)
+
+_economic_burden_delivery_matched_gt
+```
+
+```{python}
+#| label: ebd-residual-totals-and-group-pct-gt
+
+# Union of the four heating subgroups (same OR as belonging to HP, ER, natgas, or oil/propane).
+# Statewide totals and % of bldg_id use only this cohort — not other rows in bat_12_df.
+_in_any_of_four_groups = (
+    (pl.col(HEATING_TYPE_COL) == "heat_pump")
+    | (pl.col(HEATING_TYPE_COL) == "electrical_resistance")
+    | pl.col("heats_with_natgas")
+    | pl.col("heats_with_oil")
+    | pl.col("heats_with_propane")
+)
+_bat_12_four_groups_union = bat_12_df.filter(_in_any_of_four_groups)
+
+_total_delivery_cos_statewide = delivery_cos_weighted_sum(_bat_12_four_groups_union)
+
+_delivery_cos_statewide_df = pl.DataFrame([{
+    "cohort": "Union of four heating groups (run 1+2 BAT)",
+    "sum_ebd_plus_residual": _total_delivery_cos_statewide,
+}]).with_columns(pl.col("sum_ebd_plus_residual").fill_nan(None))
+
+_delivery_cos_statewide_gt = (
+    GT(_delivery_cos_statewide_df, rowname_col="cohort")
+    .tab_header(
+        title="Σ marginal + residual — four-group union cohort",
+        subtitle=(
+            "Per building: economic_burden_delivery + residual_share_delivery; "
+            "Σ (combined × weight) only over bldg_id in at least one of: "
+            "heat pump, electric resistance, natgas, oil/propane — not full bat_12_df."
+        ),
+    )
+    .cols_label(
+        sum_ebd_plus_residual="Σ (marginal cost + residual)",
+    )
+    .fmt_currency(columns=["sum_ebd_plus_residual"], decimals=0)
+    .cols_align(align="right", columns=["sum_ebd_plus_residual"])
+    .tab_source_note(
+        "Cohort = OR of the four subgroup filters on bat_12_df. Same delivery COS definition as elsewhere. BAT run 1+2."
+    )
+)
+
+_n_bat_rows = _bat_12_four_groups_union.height
+
+_group_delivery_cos_share_rows: list[dict] = []
+for group_label, d in [
+    ("Heat pump", hp_bldgs),
+    ("Electric resistance", electric_resistance_bldgs),
+    ("Natural gas", natgas_bldgs),
+    ("Oil / propane", oil_propane_bldgs),
+]:
+    s = delivery_cos_weighted_sum(d)
+    pct = (s / _total_delivery_cos_statewide * 100) if _total_delivery_cos_statewide else float("nan")
+    pct_times_total = (
+        (pct / 100) * _total_delivery_cos_statewide
+        if _total_delivery_cos_statewide
+        else float("nan")
+    )
+    pct_bldg_rows = (d.height / _n_bat_rows * 100) if _n_bat_rows else float("nan")
+    total_delivery_revenue = _weighted_sum(d, "annual_bill_delivery")
+    _group_delivery_cos_share_rows.append({
+        "group": group_label,
+        "sum_ebd_plus_residual": s,
+        "pct_of_statewide": pct,
+        "pct_times_statewide_sum": pct_times_total,
+        "pct_bldg_id_rows": pct_bldg_rows,
+        "total_delivery_revenue": total_delivery_revenue,
+    })
+
+_group_delivery_cos_share_df = (
+    pl.DataFrame(_group_delivery_cos_share_rows)
+    .select("group", "sum_ebd_plus_residual", "pct_of_statewide")
+    .with_columns(
+        pl.col("sum_ebd_plus_residual").fill_nan(None),
+        pl.col("pct_of_statewide").fill_nan(None),
+    )
+)
+
+_pct_x_statewide_df = (
+    pl.DataFrame(_group_delivery_cos_share_rows)
+    .select(
+        "group",
+        "pct_bldg_id_rows",
+        "total_delivery_revenue",
+        "pct_of_statewide",
+        "pct_times_statewide_sum",
+    )
+    .with_columns(
+        pl.col("pct_bldg_id_rows").fill_nan(None),
+        pl.col("total_delivery_revenue").fill_nan(None),
+        pl.col("pct_of_statewide").fill_nan(None),
+        pl.col("pct_times_statewide_sum").fill_nan(None),
+    )
+)
+
+_group_delivery_cos_share_gt = (
+    GT(_group_delivery_cos_share_df, rowname_col="group")
+    .tab_header(
+        title="Σ (EBD + residual) by subgroup — $ and % of statewide total",
+        subtitle=(
+            "Numerator: subgroup Σ ((economic_burden_delivery + residual_share_delivery) × weight). "
+            "Denominator: statewide combined Σ above. Subgroups can overlap; shares need not sum to 100%."
+        ),
+    )
+    .cols_label(
+        sum_ebd_plus_residual="Σ (EBD + residual)",
+        pct_of_statewide="% of statewide Σ",
+    )
+    .fmt_currency(columns="sum_ebd_plus_residual", decimals=0)
+    .fmt_number(columns="pct_of_statewide", decimals=1, pattern="{x}%")
+    .sub_missing(missing_text="—")
+    .cols_align(align="right", columns=["sum_ebd_plus_residual", "pct_of_statewide"])
+    .tab_source_note(
+        f"Denominator Σ (EBD + residual): {_total_delivery_cos_statewide:,.0f} $/yr over four-group union only (weighted).",
+    )
+)
+
+_pct_x_statewide_gt = (
+    GT(_pct_x_statewide_df, rowname_col="group")
+    .tab_header(
+        title="Subgroup sample share, delivery revenue, and equiproportional check",
+        subtitle=(
+            f"% of bldg_id: group row count ÷ four-group union row count ({_n_bat_rows:,}). "
+            f"Revenue: Σ (annual_bill_delivery × weight) per group. "
+            f"Right columns: COS % of union-cohort Σ ({_total_delivery_cos_statewide:,.0f} $/yr) and (%÷100)×that Σ."
+        ),
+    )
+    .cols_label(
+        pct_bldg_id_rows="percent of population",
+        total_delivery_revenue="current total delivery revenue",
+        pct_of_statewide="percent of statewide marginal cost",
+        pct_times_statewide_sum="equiproportional revenue requirement",
+    )
+    .fmt_number(columns=["pct_bldg_id_rows", "pct_of_statewide"], decimals=1, pattern="{x}%")
+    .fmt_currency(columns=["total_delivery_revenue", "pct_times_statewide_sum"], decimals=0)
+    .sub_missing(missing_text="—")
+    .cols_align(
+        align="right",
+        columns=[
+            "pct_bldg_id_rows",
+            "total_delivery_revenue",
+            "pct_of_statewide",
+            "pct_times_statewide_sum",
+        ],
+    )
+    .tab_source_note(
+        f"Union-cohort Σ (marginal+residual) used as statewide denominator: {_total_delivery_cos_statewide:,.0f} $/yr "
+        f"(only bldg_id in one of the four heating groups; n={_n_bat_rows:,} rows). "
+        "Delivery revenue = annual_bill_delivery (BAT), weighted.",
+    )
+)
+
+print("\nSubgroup: % of sample bldg_id, Σ delivery revenue, COS % and equiproportional $\n")
+print(_pct_x_statewide_df)
+
+_delivery_cos_statewide_gt
+_group_delivery_cos_share_gt
+_pct_x_statewide_gt
 ```

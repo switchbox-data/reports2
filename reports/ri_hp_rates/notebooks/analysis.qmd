@@ -19,7 +19,7 @@ The analysis follows the report's arc:
    default rates, sliced by heating fuel type and LMI status.
 3. **Cross-subsidization** — the Bill Alignment Test (BAT), showing that heat
    pump customers systematically overpay for delivery under current rates.
-4. **Fair rate proposal** — a seasonal delivery rate that eliminates the
+4. **Fair rate proposal** — a flat delivery rate that eliminates the
    cross-subsidy, and its impact on HP and non-HP customers.
 5. **Energy burden** — how switching to heat pumps affects low-income
    households' energy burden under different LMI discount scenarios.
@@ -94,22 +94,22 @@ def _weighted_mean(df: pl.DataFrame, col: str, w_col: str) -> float:
 # --- To switch states, change these 5 values and the 4 utility dicts in the constants cell below. ---
 INCLUDE_TOU = False  # set False to skip TOU rate cells (e.g. when run_11+12 is not available)
 UTILITY = "rie"  # any utility code from UTIL_NAMES, used for the representative-building example
-BATCH = "ri_20260318f_r1-12"
+BATCH = "ri_20260324_r1-20_fixedcharges_hpflat"
 STATE = "RI"
 YEAR = 2025
-RDP_REF = "713936d"  # rate-design-platform git ref for fetch_rdp_file
+RDP_REF = "4d3d9e1"  # rate-design-platform git ref for fetch_rdp_file
 
 # Everything below derives from STATE + BATCH
 _state_lower = STATE.lower()
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
 PATH_MASTER_BILLS_12 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_1+2/comb_bills_year_target/"
 PATH_MASTER_BILLS_34 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_3+4/comb_bills_year_target/"
-PATH_MASTER_BILLS_56 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_5+6/comb_bills_year_target/"
-PATH_MASTER_BILLS_78 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_7+8/comb_bills_year_target/"
+PATH_MASTER_BILLS_1718 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_17+18/comb_bills_year_target/"
+PATH_MASTER_BILLS_1920 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_19+20/comb_bills_year_target/"
 PATH_MASTER_BILLS_1112 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_11+12/comb_bills_year_target/"
 PATH_MASTER_BAT_12 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_1+2/cross_subsidization_BAT_values/"
 PATH_MASTER_BAT_34 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_3+4/cross_subsidization_BAT_values/"
-PATH_MASTER_BAT_56 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_5+6/cross_subsidization_BAT_values/"
+PATH_MASTER_BAT_1718 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_17+18/cross_subsidization_BAT_values/"
 
 PATH_RESSTOCK = "s3://data.sb/nrel/resstock/res_2024_amy2018_2"
 ```
@@ -156,8 +156,8 @@ ResStock metadata columns — across all NY utilities.
 
 bills_current = pl.scan_parquet(PATH_MASTER_BILLS_12, hive_partitioning=True)
 bills_hp = pl.scan_parquet(PATH_MASTER_BILLS_34, hive_partitioning=True)
-bills_hprate_current = pl.scan_parquet(PATH_MASTER_BILLS_56, hive_partitioning=True)
-bills_hprate_hp = pl.scan_parquet(PATH_MASTER_BILLS_78, hive_partitioning=True)
+bills_hprate_current = pl.scan_parquet(PATH_MASTER_BILLS_1718, hive_partitioning=True)
+bills_hprate_hp = pl.scan_parquet(PATH_MASTER_BILLS_1920, hive_partitioning=True)
 bills_tou_hp = (
     pl.scan_parquet(PATH_MASTER_BILLS_1112, hive_partitioning=True)
     if INCLUDE_TOU
@@ -1162,7 +1162,7 @@ def plot_quadrant_bar_by_utility(
     utility_names: dict[str, str],
     fuel_filter: pl.Expr,
     title_parts: list[tuple[str, str]],
-    scenario_labels: tuple[str, str] = ("Default rate", "HP seasonal rate"),
+    scenario_labels: tuple[str, str] = ("Default rate", "HP flat rate"),
 ) -> None:
     """Grouped quadrant bars for each utility in a single tall figure.
 
@@ -2456,17 +2456,17 @@ overpay_df = overpay_df.with_columns(
 ```
 
 
-## Proposed fair rate: seasonal delivery pricing
+## Proposed fair rate: flat delivery pricing
 
-We propose a simple seasonal delivery rate for heat pump customers: summer
-rates match the current default, while winter rates are reduced to the level
-where HP customers' annual delivery bills equal their cost-of-service, on
-average. Each utility gets a unique winter rate reflecting its territory's
-costs.
+We propose a simple flat delivery rate for heat pump customers: a single
+volumetric rate, lower than the current default, calibrated so that HP
+customers' annual delivery bills equal their cost-of-service on average.
+Each utility gets a unique HP rate reflecting its territory's costs.
 
-Both tariffs are calibrated URDB JSONs from the state's tariff config directory. The delivery component comes from the delivery-only file
-(`*_calibrated.json`), and supply is the difference between the bundled file
-(`*_supply_calibrated.json`) and delivery.
+Tariffs are calibrated URDB JSONs from the state's tariff config directory.
+The default rate (`*_default_calibrated.json`) has multiple quarterly periods;
+we average them for the table. The HP flat rate (`*_hp_flat_calibrated.json`)
+is a single-period tariff.
 
 ```{python}
 #| label: rate-table-data
@@ -2485,27 +2485,30 @@ def _get_rates(tariff: dict) -> list[float]:
     return [tier[0]["rate"] for tier in tariff["energyratestructure"]]
 
 
-summer_row: dict = {"metric": "Summer delivery rate (¢/kWh)"}
-winter_row: dict = {"metric": "Winter delivery rate (¢/kWh)"}
-discount_row: dict = {"metric": "Winter discount"}
+default_row: dict = {"metric": "Default delivery rate (¢/kWh)"}
+hp_flat_row: dict = {"metric": "HP delivery rate (¢/kWh)"}
+discount_row: dict = {"metric": "HP discount"}
 for display, code in TARIFF_UTILS.items():
-    seas_d = _load_rate(f"{code}_hp_seasonal_calibrated.json")
-    seas_b = _load_rate(f"{code}_hp_seasonal_supply_calibrated.json")
+    default_d = _load_rate(f"{code}_default_calibrated.json")
+    hp_flat_d = _load_rate(f"{code}_hp_flat_calibrated.json")
 
-    sd = _get_rates(seas_d)
-    sb = _get_rates(seas_b)
+    default_rates = _get_rates(default_d)
+    hp_flat_rates = _get_rates(hp_flat_d)
 
-    summer_row[display] = sd[0] * 100
-    winter_row[display] = sd[1] * 100
-    discount_row[display] = (1 - sb[1] / sb[0]) * 100
+    default_avg = sum(default_rates) / len(default_rates)
+    hp_rate = hp_flat_rates[0]
 
-rate_wide = pl.DataFrame([summer_row, winter_row, discount_row])
+    default_row[display] = default_avg * 100
+    hp_flat_row[display] = hp_rate * 100
+    discount_row[display] = (1 - hp_rate / default_avg) * 100
+
+rate_wide = pl.DataFrame([default_row, hp_flat_row, discount_row])
 util_cols = [c for c in rate_wide.columns if c != "metric"]
 
 _rate_gt = (
     GT(rate_wide, rowname_col="metric")
-    .fmt_number(columns=util_cols, rows=pl.col("metric").is_in(["Summer delivery rate (¢/kWh)", "Winter delivery rate (¢/kWh)"]), decimals=2)
-    .fmt(columns=util_cols, rows=pl.col("metric") == "Winter discount", fns=lambda x: f"{x:.1f}%")
+    .fmt_number(columns=util_cols, rows=pl.col("metric").is_in(["Default delivery rate (¢/kWh)", "HP delivery rate (¢/kWh)"]), decimals=2)
+    .fmt(columns=util_cols, rows=pl.col("metric") == "HP discount", fns=lambda x: f"{x:.1f}%")
 )
 
 Path("../cache").mkdir(exist_ok=True)
@@ -2516,9 +2519,9 @@ _rate_gt
 
 ## Heat pump TOU rate structure
 
-Beyond the flat seasonal rates above, we've also designed time-of-use (TOU) variants that align more closely with hourly
-marginal costs. Each utility has a "paired" TOU tariff: a delivery-only file (`*_hp_seasonalTOU_calibrated.json`) and a
-delivery+supply file (`*_hp_seasonalTOU_supply_calibrated.json`). We difference them to isolate the supply component.
+Beyond the flat HP rates above, we've also designed time-of-use (TOU) variants that align more closely with hourly
+marginal costs. Each utility has a "paired" TOU tariff: a delivery-only file (`*_hp_flatTOU_calibrated.json`) and a
+delivery+supply file (`*_hp_flatTOU_supply_calibrated.json`). We difference them to isolate the supply component.
 
 All TOU tariffs use two seasons (winter: Oct–Mar, summer: Apr–Sep) with distinct on-peak and off-peak periods within
 each season. Peak hours vary by utility, reflecting each utility's marginal cost profile.
@@ -2547,8 +2550,8 @@ if INCLUDE_TOU:
 
     rows_tou: list[dict] = []
     for display, code in TARIFF_UTILS.items():
-        d = _load_rate(f"{code}_hp_seasonalTOU_calibrated.json")
-        b = _load_rate(f"{code}_hp_seasonalTOU_supply_calibrated.json")
+        d = _load_rate(f"{code}_hp_flatTOU_calibrated.json")
+        b = _load_rate(f"{code}_hp_flatTOU_supply_calibrated.json")
 
         dr = [tier[0]["rate"] for tier in d["energyratestructure"]]
         br = [tier[0]["rate"] for tier in b["energyratestructure"]]
@@ -2795,9 +2798,9 @@ if INCLUDE_TOU:
         utility_code: str,
     ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
         """Load TOU rate profiles for a utility: (bundled_cal, supply_cal, supply_precal)."""
-        d = _load_rate(f"{utility_code}_hp_seasonalTOU_calibrated.json")
-        b = _load_rate(f"{utility_code}_hp_seasonalTOU_supply_calibrated.json")
-        pre = _load_rate(f"{utility_code}_hp_seasonalTOU_supply.json")
+        d = _load_rate(f"{utility_code}_hp_flatTOU_calibrated.json")
+        b = _load_rate(f"{utility_code}_hp_flatTOU_supply_calibrated.json")
+        pre = _load_rate(f"{utility_code}_hp_flatTOU_supply.json")
 
         schedule = d["energyweekdayschedule"]
         bundled_cal = _hourly_tou_profile(b, schedule)
@@ -3052,8 +3055,8 @@ if INCLUDE_TOU:
 
     def _make_tou_chart(display_name, tariff_code):
         """Create a 2-panel (Summer on top, Winter on bottom) TOU schedule chart."""
-        d = _load_rate(f"{tariff_code}_hp_seasonalTOU_calibrated.json")
-        b = _load_rate(f"{tariff_code}_hp_seasonalTOU_supply_calibrated.json")
+        d = _load_rate(f"{tariff_code}_hp_flatTOU_calibrated.json")
+        b = _load_rate(f"{tariff_code}_hp_flatTOU_supply_calibrated.json")
 
         w_ps, w_pe, w_do, w_so, w_dn, w_sn = _extract_season_data(d, b, 0, 0, 1)
         s_ps, s_pe, s_do, s_so, s_dn, s_sn = _extract_season_data(d, b, 6, 2, 3)
@@ -3134,18 +3137,18 @@ if INCLUDE_TOU:
 
 ## Cross-subsidization under fair rate
 
-Does the seasonal rate actually fix the cross-subsidy? We compare the BAT
-distributions under flat rates (run 1+2) and HP seasonal rates (run 5+6) — same
-buildings, same upgrade 0, only the rate structure changes. If the seasonal rate
+Does the HP flat rate actually fix the cross-subsidy? We compare the BAT
+distributions under default rates (run 1+2) and HP flat rates (run 17+18) — same
+buildings, same upgrade 0, only the rate structure changes. If the HP flat rate
 is well-designed, the HP overpayment should collapse to near zero.
 
 ```{python}
 #| label: bat-56-ingest
 
-bat_56 = pl.scan_parquet(PATH_MASTER_BAT_56, hive_partitioning=True)
+bat_1718 = pl.scan_parquet(PATH_MASTER_BAT_1718, hive_partitioning=True)
 
 bat_all_56 = (
-    bat_56
+    bat_1718
     .select(
         BLDG_ID, "weight",
         "BAT_percustomer_total",
@@ -3159,13 +3162,13 @@ bat_all_56 = (
 ### Summary: HP overpayment before vs. after
 
 The comparison table shows how the mean delivery BAT changes for each heating
-type when HP customers move from the default flat rate to the seasonal rate.
+type when HP customers move from the default rate to the HP flat rate.
 
 ```{python}
 #| label: bat-comparison-table
 
-bat_56_for_comp = (
-    bat_56
+bat_1718_for_comp = (
+    bat_1718
     .select(BLDG_ID, "weight", "BAT_percustomer_delivery", HEATING_TYPE_COL,
             "heats_with_natgas", "heats_with_oil", "heats_with_propane")
     .collect()
@@ -3179,7 +3182,7 @@ for label, filt in [
     ("Electric resistance", pl.col("heating_label") == "Electric resistance"),
 ]:
     sub_before = labeled_all.filter(filt)
-    sub_after = bat_56_for_comp.with_columns(
+    sub_after = bat_1718_for_comp.with_columns(
         pl.col(HEATING_TYPE_COL)
         .replace_strict(HEATING_TYPE_LABELS, default=pl.col(HEATING_TYPE_COL))
         .fill_null("Other")
@@ -3196,7 +3199,7 @@ _bat_comp_gt = (
     .fmt_currency(columns=["current", "seasonal"], decimals=0)
     .cols_label(
         current="Current flat rates",
-        seasonal="HP seasonal rate",
+        seasonal="HP flat rate",
     )
 )
 
@@ -3207,9 +3210,9 @@ _bat_comp_gt
 ## Bill impact of fair rate on HP customers
 
 What happens to a fossil-fuel customer's total energy bill if they switch to a
-heat pump **and** get the proposed HP seasonal delivery rate? The "before" is
-their current bill under today's flat rates (run 1+2, upgrade 0) and the
-"after" is their bill as an HP customer on the seasonal rate (run 7+8,
+heat pump **and** get the proposed HP flat delivery rate? The "before" is
+their current bill under today's default rates (run 1+2, upgrade 0) and the
+"after" is their bill as an HP customer on the HP flat rate (run 19+20,
 upgrade 2). The delta captures both the fuel switch and the rate change.
 
 ```{python}
@@ -3254,9 +3257,9 @@ report_vars["pct_natgas_save_1k_hprate"] = _sw_save_1k_w / _sw_total_w
 
 ```{python}
 #| label: fig-bill-change-natgas-default-vs-hprate-state
-#| fig-cap: "Annual bill change comparison — natural gas homes switching to HP: default vs. seasonal rate (Statewide)"
+#| fig-cap: "Annual bill change comparison — natural gas homes switching to HP: default vs. HP flat rate (Statewide)"
 
-_comparison_rows = [("Default rate", natgas_state), ("HP seasonal rate", natgas_switch_state)]
+_comparison_rows = [("Default rate", natgas_state), ("HP flat rate", natgas_switch_state)]
 
 _all_deltas = pl.concat([r[1] for r in _comparison_rows])
 _snap = max(BIN_WIDTH, 50)
@@ -3331,7 +3334,7 @@ _label_df = pl.DataFrame(_label_records).with_columns(pl.col("rate").cast(_rate_
 
 ```{python}
 #| label: fig-bill-change-oil-propane-switch-hprate-state
-#| fig-cap: "Annual bill change — oil/propane homes switching to HP with seasonal rate (Statewide)"
+#| fig-cap: "Annual bill change — oil/propane homes switching to HP with HP flat rate (Statewide)"
 
 oil_propane_switch_state = (
     delta_switch_state
@@ -3348,7 +3351,7 @@ report_vars["pct_oil_propane_lose_1k_hprate"] = _op_sw_lose_1k / _op_sw_total
 
 ```{python}
 #| label: fig-bill-change-elec-resistance-switch-hprate-state
-#| fig-cap: "Annual bill change — electric resistance homes switching to HP with seasonal rate (Statewide)"
+#| fig-cap: "Annual bill change — electric resistance homes switching to HP with HP flat rate (Statewide)"
 
 elec_resistance_switch_state = (
     delta_switch_state
@@ -3482,7 +3485,7 @@ display_svg(fig_3bar)
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-switch-hprate-by-utility
-#| fig-cap: "Bill change summary — natural gas homes switching to HP: default vs. seasonal rate, by utility"
+#| fig-cap: "Bill change summary — natural gas homes switching to HP: default vs. HP flat rate, by utility"
 
 plot_quadrant_bar_by_utility(
     delta_state, delta_switch_state,
@@ -3499,8 +3502,8 @@ plot_quadrant_bar_by_utility(
 
 ### Adding TOU to the comparison
 
-What happens if HP customers get the TOU rate instead of the flat seasonal rate, assuming no load flexibility? The
-"before" is their current bill under today's flat rates (run 1+2, upgrade 0) and the "after" is their bill as an HP
+What happens if HP customers get the TOU rate instead of the HP flat rate, assuming no load flexibility? The
+"before" is their current bill under today's default rates (run 1+2, upgrade 0) and the "after" is their bill as an HP
 customer on the calibrated TOU rate (run 11+12, upgrade 2).
 
 ```{python}
@@ -3543,17 +3546,17 @@ _tou_quadrant_fig
 ```
 
 The quadrant picture barely moves between the fair rate and the TOU variant. To see why, we compare each
-building's annual bill under TOU (run 11+12) vs. seasonal (run 7+8) directly — the difference isolates the
+building's annual bill under TOU (run 11+12) vs. HP flat (run 19+20) directly — the difference isolates the
 rate-design effect without the fuel-switching effect.
 
 ```{python}
-#| label: compute-tou-vs-seasonal-delta
+#| label: compute-tou-vs-hpflat-delta
 
 if INCLUDE_TOU:
-    _annual_seasonal_hp = (
+    _annual_hpflat_hp = (
         bills_hprate_hp
         .filter(pl.col("month") == ANNUAL_MONTH)
-        .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_seasonal"),
+        .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_hpflat"),
                 "heats_with_natgas", "weight")
         .collect()
     )
@@ -3563,13 +3566,13 @@ if INCLUDE_TOU:
         .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_tou"))
         .collect()
     )
-    _tou_vs_seasonal = (
-        _annual_seasonal_hp
+    _tou_vs_hpflat = (
+        _annual_hpflat_hp
         .join(_annual_tou_hp, on=BLDG_ID, how="inner")
-        .with_columns((pl.col("bill_tou") - pl.col("bill_seasonal")).alias("diff_energy_total"))
+        .with_columns((pl.col("bill_tou") - pl.col("bill_hpflat")).alias("diff_energy_total"))
     )
 
-    _natgas_w = _tou_vs_seasonal.filter(pl.col("heats_with_natgas"))
+    _natgas_w = _tou_vs_hpflat.filter(pl.col("heats_with_natgas"))
 
     _total_w = _natgas_w["weight"].sum()
     _within_50 = _natgas_w.filter(pl.col("diff_energy_total").abs() <= 50)["weight"].sum()
@@ -3578,7 +3581,7 @@ if INCLUDE_TOU:
 
 ```{python}
 #| label: fig-histogram-tou-delta-weighted
-#| fig-cap: "Distribution of annual bill change when switching from the seasonal HP rate to the TOU HP rate (natural gas homes)"
+#| fig-cap: "Distribution of annual bill change when switching from the HP flat rate to the TOU HP rate (natural gas homes)"
 
 if INCLUDE_TOU:
     _BW = 10
@@ -3600,7 +3603,7 @@ if INCLUDE_TOU:
         + coord_cartesian(xlim=(-200, 200))
         + scale_y_continuous(expand=(0, 0, 0.05, 0))
         + labs(
-            title="Annual bill change, TOU − seasonal HP rate",
+            title="Annual bill change, TOU − HP flat rate",
             x="Annual bill change ($/yr)",
             y="Number of homes",
         )
@@ -3614,8 +3617,8 @@ _tou_hist_fig
 
 ### LMI scenarios — default vs. fair rate (natgas, statewide)
 
-We recompute the two-bar comparison (default rate vs. seasonal rate) using LMI-discounted bill columns. The
-seasonal-rate "after" comes from `bills_hprate_hp` (runs 7+8) instead of `bills_hp` (runs 3+4).
+We recompute the two-bar comparison (default rate vs. HP flat rate) using LMI-discounted bill columns. The
+HP-flat-rate "after" comes from `bills_hprate_hp` (runs 19+20) instead of `bills_hp` (runs 3+4).
 
 ```{python}
 #| label: compute-lmi-switch-deltas-state
@@ -3652,12 +3655,12 @@ report_vars["pct_natgas_save_1k_hprate_lmi_full"] = _lmif_save_1k / _lmif_total
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-switch-hprate-state-lmi-current
-#| fig-cap: "Bill change summary — natural gas homes switching to HP: default vs. seasonal rate (Statewide)"
+#| fig-cap: "Bill change summary — natural gas homes switching to HP: default vs. HP flat rate (Statewide)"
 
 plot_quadrant_bar(
     [
         ("Default rate", natgas_state_lmi40),
-        ("HP seasonal rate", natgas_switch_state_lmi40),
+        ("HP flat rate", natgas_switch_state_lmi40),
     ],
     title_parts=[
         ("How bills would change for ", "#000000"),
@@ -3670,12 +3673,12 @@ plot_quadrant_bar(
 
 ```{python}
 #| label: fig-quadrant-bar-oil-propane-switch-hprate-state
-#| fig-cap: "Bill change summary — oil/propane homes switching to HP: default vs. seasonal rate (Statewide)"
+#| fig-cap: "Bill change summary — oil/propane homes switching to HP: default vs. HP flat rate (Statewide)"
 
 plot_quadrant_bar(
     [
         ("Default rate", oil_propane_state),
-        ("HP seasonal rate", oil_propane_switch_state),
+        ("HP flat rate", oil_propane_switch_state),
     ],
     title_parts=[
         ("How bills would change for ", "#000000"),
@@ -3690,7 +3693,7 @@ plot_quadrant_bar(
 
 ```{python}
 #| label: fig-quadrant-bar-oil-propane-switch-hprate-by-utility
-#| fig-cap: "Bill change summary — oil/propane homes switching to HP: default vs. seasonal rate, by utility"
+#| fig-cap: "Bill change summary — oil/propane homes switching to HP: default vs. HP flat rate, by utility"
 
 plot_quadrant_bar_by_utility(
     delta_state, delta_switch_state,
@@ -3709,12 +3712,12 @@ plot_quadrant_bar_by_utility(
 
 ```{python}
 #| label: fig-quadrant-bar-elec-resistance-switch-hprate-state
-#| fig-cap: "Bill change summary — electric resistance homes switching to HP: default vs. seasonal rate (Statewide)"
+#| fig-cap: "Bill change summary — electric resistance homes switching to HP: default vs. HP flat rate (Statewide)"
 
 plot_quadrant_bar(
     [
         ("Default rate", elec_resistance_state),
-        ("HP seasonal rate", elec_resistance_switch_state),
+        ("HP flat rate", elec_resistance_switch_state),
     ],
     title_parts=[
         ("How bills would change for ", "#000000"),
@@ -3727,7 +3730,7 @@ plot_quadrant_bar(
 
 ```{python}
 #| label: fig-quadrant-bar-elec-resistance-switch-hprate-by-utility
-#| fig-cap: "Bill change summary — electric resistance homes switching to HP: default vs. seasonal rate, by utility"
+#| fig-cap: "Bill change summary — electric resistance homes switching to HP: default vs. HP flat rate, by utility"
 
 plot_quadrant_bar_by_utility(
     delta_state, delta_switch_state,
@@ -3742,14 +3745,14 @@ plot_quadrant_bar_by_utility(
 )
 ```
 
-## Bill impact of HP seasonal rate on non-HP customers
+## Bill impact of HP flat rate on non-HP customers
 
-What happens to fossil-fuel customers' bills if all existing HP customers opt in to the seasonal rate — but the non-HP
-customers themselves stay on their current heating system (upgrade 0) and on the recalibrated flat rate?
+What happens to fossil-fuel customers' bills if all existing HP customers opt in to the HP flat rate — but the non-HP
+customers themselves stay on their current heating system (upgrade 0) and on the recalibrated default rate?
 
-In run 5+6, the HP seasonal rate is applied to HP customers and the flat rate is recalibrated for everyone else. Non-HP
-customers keep the same heating system; what changes is a slight adjustment to the flat rate once the HP cross-subsidy
-is removed. Comparing run 1+2 vs 5+6 for fossil-fuel buildings shows this (expected to be very small) impact.
+In run 17+18, the HP flat rate is applied to HP customers and the default rate is recalibrated for everyone else. Non-HP
+customers keep the same heating system; what changes is a slight adjustment to the default rate once the HP cross-subsidy
+is removed. Comparing run 1+2 vs 17+18 for fossil-fuel buildings shows this (expected to be very small) impact.
 
 ```{python}
 #| label: compute-deltas-nonhp-rebal
@@ -3885,7 +3888,7 @@ scenarios:
 
 1. **Current HVAC, default rates** (runs 1+2) — the status quo
 2. **Heat pump, default rates** (runs 3+4) — electrified but on flat rates
-3. **Heat pump, HP seasonal rates** (runs 7+8) — electrified on the proposed seasonal rate
+3. **Heat pump, HP flat rates** (runs 19+20) — electrified on the proposed HP flat rate
 
 ```{python}
 #| label: burden-cohort
@@ -3950,11 +3953,11 @@ income_df = low_income_gas_bldgs.select(BLDG_ID, INCOME_COL)
 
 below_current, above_current = burden_shares(bills_current, cohort_bldg_ids, income_df)
 below_hp_default, above_hp_default = burden_shares(bills_hp, cohort_bldg_ids, income_df)
-below_hp_seasonal, above_hp_seasonal = burden_shares(bills_hprate_hp, cohort_bldg_ids, income_df)
+below_hp_flat, above_hp_flat = burden_shares(bills_hprate_hp, cohort_bldg_ids, income_df)
 
 print(f"Current HVAC:        {above_current:.1f}% above 6% | {below_current:.1f}% below")
 print(f"HP + default rates:  {above_hp_default:.1f}% above 6% | {below_hp_default:.1f}% below")
-print(f"HP + seasonal rates: {above_hp_seasonal:.1f}% above 6% | {below_hp_seasonal:.1f}% below")
+print(f"HP + flat rates: {above_hp_flat:.1f}% above 6% | {below_hp_flat:.1f}% below")
 ```
 
 ```{python}
@@ -3963,8 +3966,8 @@ print(f"HP + seasonal rates: {above_hp_seasonal:.1f}% above 6% | {below_hp_seaso
 BURDEN_SCENARIO_LABELS = [
     f"Current HVAC\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
     f"Heat Pump\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
-    f"Heat Pump\nHP Seasonal Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
-    "Heat Pump\nHP Seasonal Rates\n100% LMI Discounts",
+    f"Heat Pump\nHP Flat Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+    "Heat Pump\nHP Flat Rates\n100% LMI Discounts",
 ]
 BURDEN_SEGMENT_ORDER = ["Above 6%", "Below 6%"]
 BURDEN_COLORS = {
@@ -4048,19 +4051,19 @@ below_current_lmi40, above_current_lmi40 = burden_shares(
 below_hp_default_lmi40, above_hp_default_lmi40 = burden_shares(
     bills_hp, cohort_bldg_ids, income_df, bill_cols=LMI_40_BILL_COLS,
 )
-below_hp_seasonal_lmi40, above_hp_seasonal_lmi40 = burden_shares(
+below_hp_flat_lmi40, above_hp_flat_lmi40 = burden_shares(
     bills_hprate_hp, cohort_bldg_ids, income_df, bill_cols=LMI_40_BILL_COLS,
 )
-below_hp_seasonal_lmi100, above_hp_seasonal_lmi100 = burden_shares(
+below_hp_flat_lmi100, above_hp_flat_lmi100 = burden_shares(
     bills_hprate_hp, cohort_bldg_ids, income_df, bill_cols=LMI_100_BILL_COLS,
 )
 
 print(f"Current HVAC (40% enrolled):         {above_current_lmi40:.1f}% above 6%")
 print(f"HP + default rates (40% enrolled):   {above_hp_default_lmi40:.1f}% above 6%")
-print(f"HP + seasonal rates (40% enrolled):  {above_hp_seasonal_lmi40:.1f}% above 6%")
-print(f"HP + seasonal rates (100% enrolled): {above_hp_seasonal_lmi100:.1f}% above 6%")
+print(f"HP + flat rates (40% enrolled):  {above_hp_flat_lmi40:.1f}% above 6%")
+print(f"HP + flat rates (100% enrolled): {above_hp_flat_lmi100:.1f}% above 6%")
 
-report_vars["pct_burdened_hp_seasonal_lmi100"] = above_hp_seasonal_lmi100 / 100
+report_vars["pct_burdened_hp_flat_lmi100"] = above_hp_flat_lmi100 / 100
 ```
 
 ```{python}
@@ -4068,8 +4071,8 @@ report_vars["pct_burdened_hp_seasonal_lmi100"] = above_hp_seasonal_lmi100 / 100
 #| fig-cap: "Share of low-income gas-heated households above the 6% energy burden threshold"
 
 plot_burden_bar(
-    [below_current_lmi40, below_hp_default_lmi40, below_hp_seasonal_lmi40, below_hp_seasonal_lmi100],
-    [above_current_lmi40, above_hp_default_lmi40, above_hp_seasonal_lmi40, above_hp_seasonal_lmi100],
+    [below_current_lmi40, below_hp_default_lmi40, below_hp_flat_lmi40, below_hp_flat_lmi100],
+    [above_current_lmi40, above_hp_default_lmi40, above_hp_flat_lmi40, above_hp_flat_lmi100],
 )
 ```
 
@@ -4089,12 +4092,12 @@ for code in UTIL_ORDER_CODES:
     burden_by_utility[code] = {
         "current": burden_shares(bills_current, util_bldg_ids, util_income, bill_cols=LMI_40_BILL_COLS),
         "hp_default": burden_shares(bills_hp, util_bldg_ids, util_income, bill_cols=LMI_40_BILL_COLS),
-        "hp_seasonal": burden_shares(bills_hprate_hp, util_bldg_ids, util_income, bill_cols=LMI_40_BILL_COLS),
-        "hp_seasonal_lmi100": burden_shares(bills_hprate_hp, util_bldg_ids, util_income, bill_cols=LMI_100_BILL_COLS),
+        "hp_flat": burden_shares(bills_hprate_hp, util_bldg_ids, util_income, bill_cols=LMI_40_BILL_COLS),
+        "hp_flat_lmi100": burden_shares(bills_hprate_hp, util_bldg_ids, util_income, bill_cols=LMI_100_BILL_COLS),
     }
 
 for code, data in burden_by_utility.items():
-    print(f"{UTIL_NAMES[code]:20s}  Current: {data['current'][1]:5.1f}%  HP default: {data['hp_default'][1]:5.1f}%  HP seasonal: {data['hp_seasonal'][1]:5.1f}%  HP seasonal+100%LMI: {data['hp_seasonal_lmi100'][1]:5.1f}%")
+    print(f"{UTIL_NAMES[code]:20s}  Current: {data['current'][1]:5.1f}%  HP default: {data['hp_default'][1]:5.1f}%  HP flat: {data['hp_flat'][1]:5.1f}%  HP flat+100%LMI: {data['hp_flat_lmi100'][1]:5.1f}%")
 ```
 
 ```{python}
@@ -4109,12 +4112,12 @@ _BBU_LABEL_SPACE = 0.35
 _BURDEN_LABEL_ABOVE = "ENERGY BURDEN ABOVE 6%"
 _BURDEN_LABEL_BELOW = "ENERGY BURDEN BELOW 6%"
 
-_BURDEN_UTIL_SCENARIO_KEYS = ["current", "hp_default", "hp_seasonal", "hp_seasonal_lmi100"]
+_BURDEN_UTIL_SCENARIO_KEYS = ["current", "hp_default", "hp_flat", "hp_flat_lmi100"]
 _BURDEN_UTIL_SCENARIO_LABELS = [
     f"Current HVAC\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
     f"Heat Pump\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
-    f"Heat Pump\nHP Seasonal Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
-    "Heat Pump\nHP Seasonal Rates\n100% LMI Discounts",
+    f"Heat Pump\nHP Flat Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+    "Heat Pump\nHP Flat Rates\n100% LMI Discounts",
 ]
 
 
@@ -4237,10 +4240,10 @@ plot_burden_bar_by_utility(
 
 report_vars["pct_burdened_current"] = above_current / 100
 report_vars["pct_burdened_hp_default"] = above_hp_default / 100
-report_vars["pct_burdened_hp_seasonal"] = above_hp_seasonal / 100
+report_vars["pct_burdened_hp_flat"] = above_hp_flat / 100
 report_vars["pct_burdened_current_lmi40"] = above_current_lmi40 / 100
 report_vars["pct_burdened_hp_default_lmi40"] = above_hp_default_lmi40 / 100
-report_vars["pct_burdened_hp_seasonal_lmi40"] = above_hp_seasonal_lmi40 / 100
+report_vars["pct_burdened_hp_flat_lmi40"] = above_hp_flat_lmi40 / 100
 ```
 
 ## Export report variables

@@ -1,21 +1,18 @@
 ---
-title: "Marginal costs summary by subclass"
+title: "Marginal cost analysis for RI HP rates"
 format:
   html:
     page-layout: full
 toc: true
 execute:
+  echo: false
   warning: false
   message: false
 ---
 
-This notebook provides a summary of bill components by subclass.
+This notebook provides a summary of the marginal costs of service for different subclasses in RI. The subclass is defined as the heating type of the building, which can be heat pump, electrical resistance, natural gas, or delivered fuel (oil/propane).
 
-After ingest, the diagnostic cell prints the S3 path, column count, full schema, and `head(3)` — enough to confirm paths and hive reads without a full-table row count (which would scan every row).
-
-**Scope:** CAIRO outputs for **run 1+2** only (`comb_bills_year_target` and `cross_subsidization_BAT_values`).
-
-## Parameters and paths
+**Scope:** Master bill BAT values.
 
 ```{python}
 #| label: params-paths
@@ -25,62 +22,105 @@ from __future__ import annotations
 import polars as pl
 from great_tables import GT
 
-# Match `notebooks/analysis.qmd` — change these when you switch runs.
+# Load in relevant files from S3.
 STATE = "RI"
 BATCH = "ri_20260323_r1-16"
 
 _state_lower = STATE.lower()
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
-PATH_MASTER_BILLS_12 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_1+2/comb_bills_year_target/"
 PATH_MASTER_BAT_12 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_1+2/cross_subsidization_BAT_values/"
-PATH_MASTER_BILLS_34 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_3+4/comb_bills_year_target/"
 PATH_MASTER_BAT_34 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_3+4/cross_subsidization_BAT_values/"
 
 PATH_METADATA_UP_02 = f"s3://data.sb/nrel/resstock/res_2024_amy2018_2_sb/metadata/state=RI/upgrade=02/metadata-sb.parquet"
 
 S3_OPTS: dict[str, str] = {"aws_region": "us-west-2"}
 
-metadata_up_02 = pl.scan_parquet(PATH_METADATA_UP_02, storage_options=S3_OPTS)
-metadata_up_02_df = metadata_up_02.collect()
-metadata_up_02_hp_df = metadata_up_02_df.filter(pl.col("postprocess_group.has_hp"))
-```
-
-
-
-## BAT values — run 1+2 (lazy)
-
-```{python}
-#| label: ingest-bat-12
-
-bat_12 = pl.scan_parquet(PATH_MASTER_BAT_12, hive_partitioning=True, storage_options=S3_OPTS)
-bat_34 = pl.scan_parquet(PATH_MASTER_BAT_34, hive_partitioning=True, storage_options=S3_OPTS)
-```
-
-```{python}
-#| label: diagnostic-bat-12
-
 HEATING_TYPE_COL = "postprocess_group.heating_type"
 POSTPROCESS_GROUP_HAS_HP = "postprocess_group.has_hp"
+HEATS_WITH_ELECTRICITY = "heats_with_electricity"
+HEATS_WITH_NATGAS = "heats_with_natgas"
+HEATS_WITH_OIL = "heats_with_oil"
+HEATS_WITH_PROPANE = "heats_with_propane"
+MARGINAL_COST_DELIVERY_COL = "economic_burden_delivery"
+MARGINAL_COST_RESIDUAL_COL = "residual_share_delivery"
 
-# Materialize once: .collect() returns a DataFrame; the lazy frame is unchanged if you don't assign.
+metadata_up_02 = pl.scan_parquet(PATH_METADATA_UP_02, storage_options=S3_OPTS)
+metadata_up_02_df = metadata_up_02.collect()
+metadata_up_02_hp_df = metadata_up_02_df.filter(pl.col(POSTPROCESS_GROUP_HAS_HP))
+metadata_up_02_no_hp_df = metadata_up_02_df.filter(~pl.col(POSTPROCESS_GROUP_HAS_HP))
+bat_12 = pl.scan_parquet(PATH_MASTER_BAT_12, hive_partitioning=True, storage_options=S3_OPTS)
 bat_12_df = bat_12.collect()
-print(bat_12_df.head(3))
+bat_34 = pl.scan_parquet(PATH_MASTER_BAT_34, hive_partitioning=True, storage_options=S3_OPTS)
+bat_34_df = bat_34.collect()
 
-# BAT tables use heating_type + fuel flags (see `bat-ingest` in analysis.qmd) — there is no `heats_with_electricity`.
-hp_bldgs = bat_12_df.filter(pl.col(HEATING_TYPE_COL) == "heat_pump")
-electric_resistance_bldgs = bat_12_df.filter(pl.col(HEATING_TYPE_COL) == "electrical_resistance")
-natgas_bldgs = bat_12_df.filter(pl.col("heats_with_natgas"))
-oil_propane_bldgs = bat_12_df.filter(pl.col("heats_with_oil") | pl.col("heats_with_propane"))
+# Categorize subclasses.
+bat_12_hp_bldgs = bat_12_df.filter(pl.col(HEATING_TYPE_COL) == "heat_pump")
+bat_12_electric_resistance_bldgs = bat_12_df.filter(pl.col(HEATING_TYPE_COL) == "electrical_resistance")
+bat_12_natgas_bldgs = bat_12_df.filter(pl.col(HEATS_WITH_NATGAS))
+bat_12_oil_propane_bldgs = bat_12_df.filter(pl.col(HEATS_WITH_OIL) | pl.col(HEATS_WITH_PROPANE))
 
-print(f"Total buildings: {bat_12_df.height}")
-print(f"Heat pump buildings: {hp_bldgs.height}")
-print(f"Electric resistance buildings: {electric_resistance_bldgs.height}")
-print(f"Natural gas buildings: {natgas_bldgs.height}")
-print(f"Oil/propane buildings: {oil_propane_bldgs.height}")
+bat_34_hp_bldgs = metadata_up_02_df.filter(pl.col(HEATING_TYPE_COL) == "heat_pump")
+bat_34_electric_resistance_bldgs = metadata_up_02_df.filter(pl.col(HEATING_TYPE_COL) == "electrical_resistance")
+bat_34_natgas_bldgs = metadata_up_02_df.filter(pl.col(HEATS_WITH_NATGAS))
+bat_34_oil_propane_bldgs = metadata_up_02_df.filter(pl.col(HEATS_WITH_OIL) | pl.col(HEATS_WITH_PROPANE))
+```
+
+
+
+## Short summary of subclass counts
+
+```{python}
+#| label: summary-of-bat-12
+
+def _count_with_pct(count: int, total: int) -> str:
+    """Row count plus share of total (row counts, not weighted)."""
+    if total <= 0:
+        return f"{count} (—)"
+    return f"{count} ({100 * count / total:.1f}%)"
+
+
+_n_bat_12 = bat_12_df.height
+_n_bat_34 = bat_34_df.height
+_other_bat_12 = (
+    _n_bat_12
+    - bat_12_hp_bldgs.height
+    - bat_12_electric_resistance_bldgs.height
+    - bat_12_natgas_bldgs.height
+    - bat_12_oil_propane_bldgs.height
+)
+_other_bat_34 = (
+    _n_bat_34
+    - bat_34_hp_bldgs.height
+    - bat_34_electric_resistance_bldgs.height
+    - bat_34_natgas_bldgs.height
+    - bat_34_oil_propane_bldgs.height
+)
+
+print("BAT run 1+2 summary (upgrade 00):")
+print(f"Total buildings: {_n_bat_12}")
+print(f"Heat pump buildings: {_count_with_pct(bat_12_hp_bldgs.height, _n_bat_12)}")
+print(
+    f"Electric resistance buildings: {_count_with_pct(bat_12_electric_resistance_bldgs.height, _n_bat_12)}",
+)
+print(f"Natural gas buildings: {_count_with_pct(bat_12_natgas_bldgs.height, _n_bat_12)}")
+print(f"Oil/propane buildings: {_count_with_pct(bat_12_oil_propane_bldgs.height, _n_bat_12)}")
+print(f"Other fuel types: {_count_with_pct(_other_bat_12, _n_bat_12)}")
+
+print("\n")
+
+print("BAT run 3+4 summary (upgrade 02):")
+print(f"Total buildings: {_n_bat_34}")
+print(f"Heat pump buildings: {_count_with_pct(bat_34_hp_bldgs.height, _n_bat_34)}")
+print(
+    f"Electric resistance buildings: {_count_with_pct(bat_34_electric_resistance_bldgs.height, _n_bat_34)}",
+)
+print(f"Natural gas buildings: {_count_with_pct(bat_34_natgas_bldgs.height, _n_bat_34)}")
+print(f"Oil/propane buildings: {_count_with_pct(bat_34_oil_propane_bldgs.height, _n_bat_34)}")
+print(f"Other fuel types: {_count_with_pct(_other_bat_34, _n_bat_34)}")
 ```
 
 ```{python}
-#| label: delivery-cos-summary-table
+#| label: helper functions
 
 def _weighted_sum(df: pl.DataFrame, col: str, w_col: str = "weight") -> float:
     """Sum of (value × survey weight) — population-scaled total for the sample."""
@@ -92,123 +132,109 @@ def _weighted_sum(df: pl.DataFrame, col: str, w_col: str = "weight") -> float:
 def delivery_cos_weighted_sum(df: pl.DataFrame) -> float:
     """Total (economic_burden_delivery + residual_share_delivery) × weight."""
     x = df.with_columns(
-        (pl.col("economic_burden_delivery") + pl.col("residual_share_delivery")).alias("delivery_cos"),
+        (pl.col(MARGINAL_COST_DELIVERY_COL) + pl.col(MARGINAL_COST_RESIDUAL_COL)).alias("delivery_cos"),
     )
     return _weighted_sum(x, "delivery_cos")
 
+def _w_mean_ebd(df: pl.DataFrame, col: str, w_col: str = "weight") -> float:
+    if df.is_empty() or df[w_col].sum() == 0:
+        return float("nan")
+    return float((df[col] * df[w_col]).sum() / df[w_col].sum())
+
+def _w_median_ebd(df: pl.DataFrame, col: str, w_col: str = "weight") -> float:
+    """Weighted median via cumulative survey weight."""
+    if df.is_empty() or df[w_col].sum() == 0:
+        return float("nan")
+    s = df.sort(col)
+    cum = s[w_col].cum_sum() / s[w_col].sum()
+    return float(s.filter(cum >= 0.5)[col][0])
+```
+
+
+## Annual delivery bill, delivery COS, and difference — run 1+2
+
+```{python}
+#| label: bill-cos-diff-combined-run12-gt
+
+_subclass_groups = [
+    ("Heat pump", bat_12_hp_bldgs),
+    ("Electric resistance", bat_12_electric_resistance_bldgs),
+    ("Natural gas", bat_12_natgas_bldgs),
+    ("Oil / propane", bat_12_oil_propane_bldgs),
+]
 
 _rows: list[dict] = []
-for group_label, d in [
-    ("Heat pump", hp_bldgs),
-    ("Electric resistance", electric_resistance_bldgs),
-    ("Natural gas", natgas_bldgs),
-    ("Oil / propane", oil_propane_bldgs),
-]:
-    total = delivery_cos_weighted_sum(d)
+for group_label, d in _subclass_groups:
     _rows.append({
         "group": group_label,
-        "total_delivery_cos": round(total, 2),
+        "total_delivery_cos": delivery_cos_weighted_sum(d),
     })
-
-_delivery_cos_tbl = pl.DataFrame(_rows)
-print(
-    "\n economic_burden_delivery + residual_share_delivery — Σ (value × weight) ($/yr)\n"
+_delivery_cos_tbl = pl.DataFrame(_rows).with_columns(
+    pl.col("total_delivery_cos").fill_nan(None),
 )
-print(_delivery_cos_tbl)
-```
-
-```{python}
-#| label: annual-bill-delivery-summary-table
 
 _rows_bill: list[dict] = []
-for group_label, d in [
-    ("Heat pump", hp_bldgs),
-    ("Electric resistance", electric_resistance_bldgs),
-    ("Natural gas", natgas_bldgs),
-    ("Oil / propane", oil_propane_bldgs),
-]:
-    total = _weighted_sum(d, "annual_bill_delivery")
+for group_label, d in _subclass_groups:
     _rows_bill.append({
         "group": group_label,
-        "total_annual_bill_delivery": round(total, 2),
+        "total_annual_bill_delivery": _weighted_sum(d, "annual_bill_delivery"),
     })
+_annual_bill_tbl = pl.DataFrame(_rows_bill).with_columns(
+    pl.col("total_annual_bill_delivery").fill_nan(None),
+)
 
-_annual_bill_tbl = pl.DataFrame(_rows_bill)
-print("\n annual_bill_delivery — Σ (value × weight) ($/yr)\n")
-print(_annual_bill_tbl)
-```
-
-```{python}
-#| label: bill-minus-cos-diff-table
-
-# Second table minus first: annual_bill_delivery total − delivery COS total (same groups, same order).
 _diff_rows: list[dict] = []
 for cos_row, bill_row in zip(_rows, _rows_bill, strict=True):
     assert cos_row["group"] == bill_row["group"]
     _diff_rows.append({
         "group": cos_row["group"],
-        "diff_annual_bill_minus_delivery_cos": round(
-            bill_row["total_annual_bill_delivery"] - cos_row["total_delivery_cos"],
-            2,
+        "diff_annual_bill_minus_delivery_cos": (
+            bill_row["total_annual_bill_delivery"] - cos_row["total_delivery_cos"]
         ),
     })
-
-_diff_tbl = pl.DataFrame(_diff_rows)
-print(
-    "\n annual_bill_delivery − (economic_burden_delivery + residual_share_delivery) — Σ (value × weight) ($/yr)\n"
+_diff_tbl = pl.DataFrame(_diff_rows).with_columns(
+    pl.col("diff_annual_bill_minus_delivery_cos").fill_nan(None),
 )
-print(_diff_tbl)
-```
 
-```{python}
-#| label: diff-over-cos-ratio-table
-
-# Fourth table: (third ÷ first) × 100 = (diff ÷ total_delivery_cos) as a percent.
-_ratio_rows: list[dict] = []
-for diff_row, cos_row in zip(_diff_rows, _rows, strict=True):
-    assert diff_row["group"] == cos_row["group"]
-    denom = cos_row["total_delivery_cos"]
-    num = diff_row["diff_annual_bill_minus_delivery_cos"]
-    if denom == 0:
-        pct = float("nan")
-    else:
-        pct = round(num / denom * 100, 2)
-    _ratio_rows.append({
-        "group": diff_row["group"],
-        "pct_diff_div_delivery_cos": pct,
-    })
-
-_ratio_tbl = pl.DataFrame(_ratio_rows)
-print(
-    "\n (table 3) ÷ (table 1) = diff ÷ total_delivery_cos — percent (%)\n"
-)
-print(_ratio_tbl)
-```
-
-## Combined summary (Great Tables)
-
-```{python}
-#| label: delivery-summary-gt
-
-_merged = (
-    pl.DataFrame(_rows)
-    .join(pl.DataFrame(_rows_bill), on="group")
-    .join(pl.DataFrame(_diff_rows), on="group")
-    .join(pl.DataFrame(_ratio_rows), on="group")
+# Column order: annual bill, delivery COS, difference, then (diff ÷ COS) as %.
+_run12_bill_cos_diff_df = (
+    _annual_bill_tbl.join(_delivery_cos_tbl, on="group", how="inner")
+    .join(_diff_tbl, on="group", how="inner")
+    .with_columns(
+        pl.when(
+            pl.col("total_delivery_cos").is_not_null()
+            & (pl.col("total_delivery_cos").cast(pl.Float64) != 0.0),
+        )
+        .then(
+            pl.col("diff_annual_bill_minus_delivery_cos")
+            / pl.col("total_delivery_cos")
+            * 100,
+        )
+        .otherwise(None)
+        .alias("pct_diff_div_delivery_cos"),
+    )
     .with_columns(pl.col("pct_diff_div_delivery_cos").fill_nan(None))
 )
 
-_delivery_summary_gt = (
-    GT(_merged, rowname_col="group")
+_ratio_tbl = _run12_bill_cos_diff_df.select("group", "pct_diff_div_delivery_cos")
+_ratio_rows = _ratio_tbl.to_dicts()
+
+_bill_cos_diff_run12_gt = (
+    GT(_run12_bill_cos_diff_df, rowname_col="group")
     .tab_header(
-        title="Delivery bill vs. delivery cost of service — weighted totals by subgroup",
-        subtitle="Run 1+2 BAT outputs; Σ denotes sum of (value × ResStock weight).",
+        title="Delivery bill, delivery COS, and difference — by subclass, run 1+2",
+        subtitle=(
+            "Σ (value × weight), $/yr from cross_subsidization_BAT_values (upgrade 00). "
+            f"Delivery COS = {MARGINAL_COST_DELIVERY_COL} + {MARGINAL_COST_RESIDUAL_COL}. "
+            "Bill − COS = annual_bill_delivery minus that sum. "
+            "Last column: (Bill − COS) ÷ Σ delivery COS × 100 per subclass."
+        ),
     )
     .tab_spanner(
         label="Σ (value × weight), $/yr",
         columns=[
-            "total_delivery_cos",
             "total_annual_bill_delivery",
+            "total_delivery_cos",
             "diff_annual_bill_minus_delivery_cos",
         ],
     )
@@ -217,76 +243,56 @@ _delivery_summary_gt = (
         columns=["pct_diff_div_delivery_cos"],
     )
     .cols_label(
-        total_delivery_cos="Delivery COS",
-        total_annual_bill_delivery="Annual delivery bill",
+        total_annual_bill_delivery="Σ annual delivery bill",
+        total_delivery_cos="Σ delivery COS",
         diff_annual_bill_minus_delivery_cos="Bill − COS",
         pct_diff_div_delivery_cos="(Bill − COS) ÷ COS",
     )
     .fmt_currency(
         columns=[
-            "total_delivery_cos",
             "total_annual_bill_delivery",
+            "total_delivery_cos",
             "diff_annual_bill_minus_delivery_cos",
         ],
         decimals=0,
     )
-    .fmt_number(columns="pct_diff_div_delivery_cos", decimals=1, pattern="{x}%")
+    .fmt_number(columns=["pct_diff_div_delivery_cos"], decimals=1, pattern="{x}%")
     .sub_missing(missing_text="—")
     .cols_align(
         align="right",
         columns=[
-            "total_delivery_cos",
             "total_annual_bill_delivery",
+            "total_delivery_cos",
             "diff_annual_bill_minus_delivery_cos",
             "pct_diff_div_delivery_cos",
         ],
     )
     .tab_source_note(
-        "Delivery COS = economic_burden_delivery + residual_share_delivery. "
-        "Annual delivery bill = annual_bill_delivery. "
-        "Ratio = (Bill − COS) ÷ delivery COS (×100 as %).",
+        "Each $/yr column is a weighted total over buildings in that group. "
+        "Positive Bill − COS means the weighted delivery bill exceeds weighted delivery COS. "
+        "Ratio is undefined when Σ delivery COS is zero."
     )
 )
 
-_delivery_summary_gt
+_bill_cos_diff_run12_gt
 ```
 
-## Economic burden delivery — mean and median by subgroup
-
-Weighted mean and weighted median (p50) of **`economic_burden_delivery`** ($/yr per building), using ResStock **`weight`**. Same four groups as above.
-
+## Mean and median of marginal cost of delivery by subclass - run 1+2
 ```{python}
 #| label: economic-burden-delivery-mean-median-gt
-
-_EBD_COL = "economic_burden_delivery"
-
-
-def _w_mean_ebd(df: pl.DataFrame, col: str, w_col: str = "weight") -> float:
-    if df.is_empty() or df[w_col].sum() == 0:
-        return float("nan")
-    return float((df[col] * df[w_col]).sum() / df[w_col].sum())
-
-
-def _w_median_ebd(df: pl.DataFrame, col: str, w_col: str = "weight") -> float:
-    """Weighted median via cumulative survey weight (same approach as `analysis.qmd`)."""
-    if df.is_empty() or df[w_col].sum() == 0:
-        return float("nan")
-    s = df.sort(col)
-    cum = s[w_col].cum_sum() / s[w_col].sum()
-    return float(s.filter(cum >= 0.5)[col][0])
 
 
 _ebd_stat_rows: list[dict] = []
 for group_label, d in [
-    ("Heat pump", hp_bldgs),
-    ("Electric resistance", electric_resistance_bldgs),
-    ("Natural gas", natgas_bldgs),
-    ("Oil / propane", oil_propane_bldgs),
+    ("Heat pump", bat_12_hp_bldgs),
+    ("Electric resistance", bat_12_electric_resistance_bldgs),
+    ("Natural gas", bat_12_natgas_bldgs),
+    ("Oil / propane", bat_12_oil_propane_bldgs),
 ]:
     _ebd_stat_rows.append({
         "group": group_label,
-        "mean_economic_burden_delivery": _w_mean_ebd(d, _EBD_COL),
-        "median_economic_burden_delivery": _w_median_ebd(d, _EBD_COL),
+        "mean_economic_burden_delivery": _w_mean_ebd(d, MARGINAL_COST_DELIVERY_COL),
+        "median_economic_burden_delivery": _w_median_ebd(d, MARGINAL_COST_DELIVERY_COL),
     })
 
 _ebd_stats_df = (
@@ -300,7 +306,7 @@ _ebd_stats_df = (
 _economic_burden_delivery_gt = (
     GT(_ebd_stats_df, rowname_col="group")
     .tab_header(
-        title="Economic burden (delivery) — mean and median by subgroup",
+        title="Marginal cost of delivery (economic_burden_delivery) — mean and median by subclass",
         subtitle="Weighted with ResStock weights; BAT column economic_burden_delivery ($/yr).",
     )
     .cols_label(
@@ -324,30 +330,47 @@ _economic_burden_delivery_gt = (
 _economic_burden_delivery_gt
 ```
 
-```{python}
-#| label: change in marginal cost before vs after HP adoption
-
-bat_12_df = bat_12.collect()
-bat_34_df = bat_34.collect()
-
-up00_no_hp = bat_12_df.filter(~pl.col(POSTPROCESS_GROUP_HAS_HP))
-up02_hp = bat_34_df.filter(pl.col("bldg_id").is_in(metadata_up_02_hp_df["bldg_id"]))
-
-up00_no_hp_up02_hp = up00_no_hp.join(up02_hp, on="bldg_id", how="inner")
-
-```
-
+## Marginal cost of delivery for bldg_id with HP in run 3+4 (HP adopters vs pre-existing HP)
 ```{python}
 #| label: economic-burden-delivery-matched-cohort-gt
 
-_cohort_matched = up00_no_hp_up02_hp
-_EBD_BASELINE = "economic_burden_delivery"  # run 1+2; right-side duplicate is economic_burden_delivery_right
+up00_hp_bldg_ids = bat_12_df.filter(pl.col(POSTPROCESS_GROUP_HAS_HP))["bldg_id"]
+up00_no_hp_bldg_ids = bat_12_df.filter(~pl.col(POSTPROCESS_GROUP_HAS_HP))["bldg_id"]
+up02_hp_bldg_ids = metadata_up_02_hp_df["bldg_id"]
 
-_matched_ebd_stats_df = pl.DataFrame([{
-    "group": "bldg_id with no HP in up00, but with HP in up02",
-    "mean_economic_burden_delivery": _w_mean_ebd(_cohort_matched, _EBD_BASELINE),
-    "median_economic_burden_delivery": _w_median_ebd(_cohort_matched, _EBD_BASELINE),
-}]).with_columns(
+
+def _inner_bldg_id_list(left: pl.Series, right: pl.Series) -> list:
+    """Inner join on bldg_id (join is a DataFrame API, not Series)."""
+    return (
+        pl.DataFrame({"bldg_id": left})
+        .join(pl.DataFrame({"bldg_id": right}), on="bldg_id", how="inner")
+        .select("bldg_id")
+        .unique()
+    )["bldg_id"].to_list()
+
+
+up00_no_hp_up02_hp_bldg_ids = _inner_bldg_id_list(up00_no_hp_bldg_ids, up02_hp_bldg_ids)
+up00_hp_up02_hp_bldg_ids = _inner_bldg_id_list(up00_hp_bldg_ids, up02_hp_bldg_ids)
+
+up00_no_hp_up02_hp = bat_34_df.filter(pl.col("bldg_id").is_in(up00_no_hp_up02_hp_bldg_ids))
+up00_hp_up02_hp = bat_34_df.filter(pl.col("bldg_id").is_in(up00_hp_up02_hp_bldg_ids))
+
+print(f"Total number of bldg_id with HP in up02: {len(up02_hp_bldg_ids)}")
+print(f"Total number of bldg_id with no HP in up00, but with HP in up02: {len(up00_no_hp_up02_hp_bldg_ids)}")
+print(f"Total number of bldg_id with HP in up00, and with HP in up02: {len(up00_hp_up02_hp_bldg_ids)}")
+
+_matched_ebd_stats_df = pl.DataFrame([
+    {
+        "group": "No HP in up00, but HP in up02",
+        "mean_economic_burden_delivery": _w_mean_ebd(up00_no_hp_up02_hp, MARGINAL_COST_DELIVERY_COL),
+        "median_economic_burden_delivery": _w_median_ebd(up00_no_hp_up02_hp, MARGINAL_COST_DELIVERY_COL),
+    },
+    {
+        "group": "HP in up00, and HP in up02",
+        "mean_economic_burden_delivery": _w_mean_ebd(up00_hp_up02_hp, MARGINAL_COST_DELIVERY_COL),
+        "median_economic_burden_delivery": _w_median_ebd(up00_hp_up02_hp, MARGINAL_COST_DELIVERY_COL),
+    },
+]).with_columns(
     pl.col("mean_economic_burden_delivery").fill_nan(None),
     pl.col("median_economic_burden_delivery").fill_nan(None),
 )
@@ -355,10 +378,11 @@ _matched_ebd_stats_df = pl.DataFrame([{
 _economic_burden_delivery_matched_gt = (
     GT(_matched_ebd_stats_df, rowname_col="group")
     .tab_header(
-        title="Economic burden (delivery) — mean and median (matched cohort)",
+        title="Economic burden (delivery) — mean and median by HP adoption status",
         subtitle=(
-            "Single row: all bldg_id in the inner join of baseline (run 1+2, no HP) and HP run (3+4). "
-            "BAT economic_burden_delivery from run 1+2; weighted with ResStock weight."
+            "Rows are disjoint sets of bldg_id from BAT run 3+4 (upgrade 02), filtered to metadata HP in up02. "
+            "Adopters: no HP in run 1+2 (up00) but in this set; already HP: HP in run 1+2 and in this set. "
+            f"Column: {MARGINAL_COST_DELIVERY_COL} ($/yr); weighted with ResStock weight."
         ),
     )
     .cols_label(
@@ -382,161 +406,110 @@ _economic_burden_delivery_matched_gt = (
 _economic_burden_delivery_matched_gt
 ```
 
+## Share of customers, annual delivery bill, and marginal cost of delivery by subclass - run 1+2
+
 ```{python}
-#| label: ebd-residual-totals-and-group-pct-gt
+#| label: annual-bill-subclass-pct-of-statewide-gt
+_subclass_groups = [
+    ("Heat pump", bat_12_hp_bldgs),
+    ("Electric resistance", bat_12_electric_resistance_bldgs),
+    ("Natural gas", bat_12_natgas_bldgs),
+    ("Oil / propane", bat_12_oil_propane_bldgs),
+]
 
-# Union of the four heating subgroups (same OR as belonging to HP, ER, natgas, or oil/propane).
-# Statewide totals and % of bldg_id use only this cohort — not other rows in bat_12_df.
-_in_any_of_four_groups = (
-    (pl.col(HEATING_TYPE_COL) == "heat_pump")
-    | (pl.col(HEATING_TYPE_COL) == "electrical_resistance")
-    | pl.col("heats_with_natgas")
-    | pl.col("heats_with_oil")
-    | pl.col("heats_with_propane")
+_total_annual_bill_delivery_statewide = _weighted_sum(bat_12_df, "annual_bill_delivery")
+_total_weight_statewide = float(bat_12_df["weight"].sum())
+_total_economic_burden_delivery_statewide = _weighted_sum(
+    bat_12_df,
+    MARGINAL_COST_DELIVERY_COL,
 )
-_bat_12_four_groups_union = bat_12_df.filter(_in_any_of_four_groups)
+_total_delivery_cos_statewide = delivery_cos_weighted_sum(bat_12_df)
 
-_total_delivery_cos_statewide = delivery_cos_weighted_sum(_bat_12_four_groups_union)
-
-_delivery_cos_statewide_df = pl.DataFrame([{
-    "cohort": "Union of four heating groups (run 1+2 BAT)",
-    "sum_ebd_plus_residual": _total_delivery_cos_statewide,
-}]).with_columns(pl.col("sum_ebd_plus_residual").fill_nan(None))
-
-_delivery_cos_statewide_gt = (
-    GT(_delivery_cos_statewide_df, rowname_col="cohort")
-    .tab_header(
-        title="Σ marginal + residual — four-group union cohort",
-        subtitle=(
-            "Per building: economic_burden_delivery + residual_share_delivery; "
-            "Σ (combined × weight) only over bldg_id in at least one of: "
-            "heat pump, electric resistance, natgas, oil/propane — not full bat_12_df."
-        ),
+_annual_bill_subclass_pct_rows: list[dict] = []
+for group_label, d in _subclass_groups:
+    subtotal_bill = _weighted_sum(d, "annual_bill_delivery")
+    pct_bill = (
+        (subtotal_bill / _total_annual_bill_delivery_statewide * 100)
+        if _total_annual_bill_delivery_statewide
+        else float("nan")
     )
-    .cols_label(
-        sum_ebd_plus_residual="Σ (marginal cost + residual)",
+    sum_w = float(d["weight"].sum()) if not d.is_empty() else float("nan")
+    pct_customers = (
+        (sum_w / _total_weight_statewide * 100) if _total_weight_statewide else float("nan")
     )
-    .fmt_currency(columns=["sum_ebd_plus_residual"], decimals=0)
-    .cols_align(align="right", columns=["sum_ebd_plus_residual"])
-    .tab_source_note(
-        "Cohort = OR of the four subgroup filters on bat_12_df. Same delivery COS definition as elsewhere. BAT run 1+2."
-    )
-)
-
-_n_bat_rows = _bat_12_four_groups_union.height
-
-_group_delivery_cos_share_rows: list[dict] = []
-for group_label, d in [
-    ("Heat pump", hp_bldgs),
-    ("Electric resistance", electric_resistance_bldgs),
-    ("Natural gas", natgas_bldgs),
-    ("Oil / propane", oil_propane_bldgs),
-]:
-    s = delivery_cos_weighted_sum(d)
-    pct = (s / _total_delivery_cos_statewide * 100) if _total_delivery_cos_statewide else float("nan")
-    pct_times_total = (
-        (pct / 100) * _total_delivery_cos_statewide
+    subtotal_delivery_cos = delivery_cos_weighted_sum(d)
+    pct_delivery_cos = (
+        (subtotal_delivery_cos / _total_delivery_cos_statewide * 100)
         if _total_delivery_cos_statewide
         else float("nan")
     )
-    pct_bldg_rows = (d.height / _n_bat_rows * 100) if _n_bat_rows else float("nan")
-    total_delivery_revenue = _weighted_sum(d, "annual_bill_delivery")
-    _group_delivery_cos_share_rows.append({
+    subtotal_ebd = _weighted_sum(d, MARGINAL_COST_DELIVERY_COL)
+    pct_ebd = (
+        (subtotal_ebd / _total_economic_burden_delivery_statewide * 100)
+        if _total_economic_burden_delivery_statewide
+        else float("nan")
+    )
+    _annual_bill_subclass_pct_rows.append({
         "group": group_label,
-        "sum_ebd_plus_residual": s,
-        "pct_of_statewide": pct,
-        "pct_times_statewide_sum": pct_times_total,
-        "pct_bldg_id_rows": pct_bldg_rows,
-        "total_delivery_revenue": total_delivery_revenue,
+        "pct_of_customers_weight": pct_customers,
+        "pct_of_statewide_bill": pct_bill,
+        "pct_of_statewide_delivery_cos": pct_delivery_cos,
+        "pct_of_statewide_economic_burden_delivery": pct_ebd,
     })
 
-_group_delivery_cos_share_df = (
-    pl.DataFrame(_group_delivery_cos_share_rows)
-    .select("group", "sum_ebd_plus_residual", "pct_of_statewide")
-    .with_columns(
-        pl.col("sum_ebd_plus_residual").fill_nan(None),
-        pl.col("pct_of_statewide").fill_nan(None),
-    )
+_annual_bill_subclass_pct_df = pl.DataFrame(_annual_bill_subclass_pct_rows).with_columns(
+    pl.col("pct_of_customers_weight").fill_nan(None),
+    pl.col("pct_of_statewide_bill").fill_nan(None),
+    pl.col("pct_of_statewide_delivery_cos").fill_nan(None),
+    pl.col("pct_of_statewide_economic_burden_delivery").fill_nan(None),
 )
 
-_pct_x_statewide_df = (
-    pl.DataFrame(_group_delivery_cos_share_rows)
-    .select(
-        "group",
-        "pct_bldg_id_rows",
-        "total_delivery_revenue",
-        "pct_of_statewide",
-        "pct_times_statewide_sum",
-    )
-    .with_columns(
-        pl.col("pct_bldg_id_rows").fill_nan(None),
-        pl.col("total_delivery_revenue").fill_nan(None),
-        pl.col("pct_of_statewide").fill_nan(None),
-        pl.col("pct_times_statewide_sum").fill_nan(None),
-    )
-)
-
-_group_delivery_cos_share_gt = (
-    GT(_group_delivery_cos_share_df, rowname_col="group")
+_annual_bill_subclass_pct_gt = (
+    GT(_annual_bill_subclass_pct_df, rowname_col="group")
     .tab_header(
-        title="Σ (EBD + residual) by subgroup — $ and % of statewide total",
+        title="Subclass shares — customers, bill, delivery COS, and marginal cost",
         subtitle=(
-            "Numerator: subgroup Σ ((economic_burden_delivery + residual_share_delivery) × weight). "
-            "Denominator: statewide combined Σ above. Subgroups can overlap; shares need not sum to 100%."
+            "Run 1+2 BAT. % of customers: Σ weight in subclass ÷ Σ weight in bat_12_df × 100. "
+            "% of annual delivery bill: Σ (annual_bill_delivery × weight) ÷ statewide × 100. "
+            "% of delivery COS: Σ ((economic_burden_delivery + residual_share_delivery) × weight) ÷ statewide × 100. "
+            f"Last column: Σ ({MARGINAL_COST_DELIVERY_COL} × weight) only ÷ statewide × 100. "
+            "Subclasses overlap; column percents need not sum to 100%."
         ),
     )
     .cols_label(
-        sum_ebd_plus_residual="Σ (EBD + residual)",
-        pct_of_statewide="% of statewide Σ",
+        pct_of_customers_weight="% of customers",
+        pct_of_statewide_bill="% of annual delivery bill",
+        pct_of_statewide_delivery_cos="% of delivery COS",
+        pct_of_statewide_economic_burden_delivery="% of marginal cost",
     )
-    .fmt_currency(columns="sum_ebd_plus_residual", decimals=0)
-    .fmt_number(columns="pct_of_statewide", decimals=1, pattern="{x}%")
-    .sub_missing(missing_text="—")
-    .cols_align(align="right", columns=["sum_ebd_plus_residual", "pct_of_statewide"])
-    .tab_source_note(
-        f"Denominator Σ (EBD + residual): {_total_delivery_cos_statewide:,.0f} $/yr over four-group union only (weighted).",
+    .fmt_number(
+        columns=[
+            "pct_of_customers_weight",
+            "pct_of_statewide_bill",
+            "pct_of_statewide_delivery_cos",
+            "pct_of_statewide_economic_burden_delivery",
+        ],
+        decimals=1,
+        pattern="{x}%",
     )
-)
-
-_pct_x_statewide_gt = (
-    GT(_pct_x_statewide_df, rowname_col="group")
-    .tab_header(
-        title="Subgroup sample share, delivery revenue, and equiproportional check",
-        subtitle=(
-            f"% of bldg_id: group row count ÷ four-group union row count ({_n_bat_rows:,}). "
-            f"Revenue: Σ (annual_bill_delivery × weight) per group. "
-            f"Right columns: COS % of union-cohort Σ ({_total_delivery_cos_statewide:,.0f} $/yr) and (%÷100)×that Σ."
-        ),
-    )
-    .cols_label(
-        pct_bldg_id_rows="percent of population",
-        total_delivery_revenue="current total delivery revenue",
-        pct_of_statewide="percent of statewide marginal cost",
-        pct_times_statewide_sum="equiproportional revenue requirement",
-    )
-    .fmt_number(columns=["pct_bldg_id_rows", "pct_of_statewide"], decimals=1, pattern="{x}%")
-    .fmt_currency(columns=["total_delivery_revenue", "pct_times_statewide_sum"], decimals=0)
     .sub_missing(missing_text="—")
     .cols_align(
         align="right",
         columns=[
-            "pct_bldg_id_rows",
-            "total_delivery_revenue",
-            "pct_of_statewide",
-            "pct_times_statewide_sum",
+            "pct_of_customers_weight",
+            "pct_of_statewide_bill",
+            "pct_of_statewide_delivery_cos",
+            "pct_of_statewide_economic_burden_delivery",
         ],
     )
     .tab_source_note(
-        f"Union-cohort Σ (marginal+residual) used as statewide denominator: {_total_delivery_cos_statewide:,.0f} $/yr "
-        f"(only bldg_id in one of the four heating groups; n={_n_bat_rows:,} rows). "
-        "Delivery revenue = annual_bill_delivery (BAT), weighted.",
+        f"Statewide Σ weight: {_total_weight_statewide:,.0f}. "
+        f"Statewide Σ annual_bill_delivery (weighted): ${_total_annual_bill_delivery_statewide:,.0f}/yr. "
+        f"Statewide delivery COS (weighted): ${_total_delivery_cos_statewide:,.0f}/yr "
+        f"({MARGINAL_COST_DELIVERY_COL} + {MARGINAL_COST_RESIDUAL_COL}). "
+        f"Statewide Σ {MARGINAL_COST_DELIVERY_COL} (weighted): ${_total_economic_burden_delivery_statewide:,.0f}/yr."
     )
 )
 
-print("\nSubgroup: % of sample bldg_id, Σ delivery revenue, COS % and equiproportional $\n")
-print(_pct_x_statewide_df)
-
-_delivery_cos_statewide_gt
-_group_delivery_cos_share_gt
-_pct_x_statewide_gt
+_annual_bill_subclass_pct_gt
 ```

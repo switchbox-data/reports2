@@ -1,0 +1,1013 @@
+---
+title: NYISO Gold Book — Peak Demand & Building Electrification
+reference-location: margin
+fig-cap-location: bottom
+execute:
+  warning: false
+  message: false
+---
+
+This notebook loads the 2025 NYISO Gold Book forecast data from S3 and produces
+figures used in the ny_hp_rates report:
+
+1. **NYCA building electrification incremental load growth** — baseline and lower
+   demand scenarios, 2025–2055 (Table I-13c / I-13c-L).
+2. **NYCA households converted to electric heating** — cumulative band edges digitized
+   from the NYISO chart image
+   `img/nyiso_nyca_residential_electric_heating_by_technology_reference.jpg`; each
+   layer’s thickness (housing units) at those knots is fit with a **logistic (sigmoid)**
+   in % of NY residential electric customers (EIA-861 on S3). Points = digitized
+   readings; ribbons = fitted S-curves.
+3. **NYCA coincident peak demand forecast** — summer and winter peaks with a
+   highlighted ribbon showing the building electrification contribution and a
+   dashed "without electrification" counterfactual line (Tables I-3a, I-3b,
+   I-13b, I-13c).
+4. **Per-utility demand component breakdown** — stacked area chart of all winter
+   coincident peak demand components (building electrification, EV, large loads,
+   EE, non-solar DG, storage) as % of the 2023-24 coincident winter peak, with
+   total CP growth overlaid and headroom exhaustion years marked (NYISO Gold Book
+   I-series tables; Synapse July 2024 headroom assessment).
+
+The headroom table from the Synapse Energy Economics distribution headroom
+analysis (Takahashi et al., July 2024) is read from S3 as a reference for
+the per-utility headroom thresholds.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+import pickle
+import subprocess
+from pathlib import Path
+
+import numpy as np
+import openpyxl
+import polars as pl
+from lib.plotnine import SB_COLORS, theme_switchbox
+from plotnine import (
+    aes,
+    annotate,
+    coord_cartesian,
+    element_blank,
+    element_text,
+    facet_wrap,
+    geom_hline,
+    geom_line,
+    geom_point,
+    geom_ribbon,
+    geom_text,
+    geom_vline,
+    ggplot,
+    labs,
+    scale_fill_manual,
+    scale_x_continuous,
+    scale_y_continuous,
+    theme,
+)
+from scipy.optimize import curve_fit
+
+report_vars: dict = {}
+
+CACHE_DIR = Path("../cache")
+CACHE_DIR.mkdir(exist_ok=True)
+```
+
+## Parameters
+
+```{python}
+#| label: params
+
+S3_BASELINE = "s3://data.sb/nyiso/gold_book/2025_baseline_forecast_tables.xlsx"
+S3_LOWER = "s3://data.sb/nyiso/gold_book/2025_lower_demand_forecast_tables.xlsx"
+S3_HEADROOM = "s3://data.sb/nyiso/gold_book/synapse_headroom_table.csv"
+
+PATH_BASELINE = CACHE_DIR / "gb_2025_baseline.xlsx"
+PATH_LOWER = CACHE_DIR / "gb_2025_lower.xlsx"
+PATH_HEADROOM = CACHE_DIR / "synapse_headroom_table.csv"
+
+# NYISO load zones A-K
+ZONES = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"]
+
+# Zone assignments — same lists as rate-design-platform
+# `compute_headroom_exhaustion_year.py` (UTILITY_ZONES). National Grid and
+# NYSEG & RGE both sum zones A–F; Con Edison includes G+H+I+J; CH and O&R each
+# use zone G only (zone G is triple-counted across those three — matches RDP).
+UTILITY_ZONES: dict[str, list[str]] = {
+    "National Grid":     ["A", "B", "C", "D", "E", "F"],
+    "NYSEG & RGE":       ["A", "B", "C", "D", "E", "F"],
+    "Central Hudson":    ["G"],
+    "Con Edison":        ["G", "H", "I", "J"],
+    "Orange & Rockland": ["G"],
+}
+
+# Synapse headroom as % of each utility's baseline winter NCP (Takahashi et al. 2024).
+HEADROOM_PCT: dict[str, float] = {
+    "National Grid":     1.05,
+    "NYSEG & RGE":       0.85,
+    "Central Hudson":    0.35,
+    "Con Edison":        0.29,
+    "Orange & Rockland": 0.95,
+}
+
+# Headroom: absolute I-4b NCP ≥ (1 + HEADROOM_PCT) × zone-sum NCP at this season.
+HEADROOM_BASELINE_YEAR = "2023-24"
+
+# Normalization year for stacked ribbons and CP growth line (% of that year’s CP, I-3b).
+# Matches rate-design-platform `plot_demand_components_by_utility(..., norm_year="2023-24")`.
+NORM_YEAR = "2023-24"
+
+# Forecast horizon (winter season starting year)
+FORECAST_START = 2025
+FORECAST_END = 2055
+```
+
+## Download Gold Book files from S3
+
+We cache the Excel files locally to avoid re-downloading on every render.
+
+```{python}
+#| label: download-s3
+
+def _s3_cp(src: str, dst: Path) -> None:
+    """Download a file from S3 to a local path if not already cached."""
+    if dst.exists():
+        return
+    result = subprocess.run(
+        ["aws", "s3", "cp", src, str(dst)],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"aws s3 cp failed: {result.stderr}")
+
+_s3_cp(S3_BASELINE, PATH_BASELINE)
+_s3_cp(S3_LOWER, PATH_LOWER)
+_s3_cp(S3_HEADROOM, PATH_HEADROOM)
+
+print(f"Baseline:  {PATH_BASELINE} ({PATH_BASELINE.stat().st_size:,} bytes)")
+print(f"Lower:     {PATH_LOWER} ({PATH_LOWER.stat().st_size:,} bytes)")
+print(f"Headroom:  {PATH_HEADROOM} ({PATH_HEADROOM.stat().st_size:,} bytes)")
+```
+
+## Parse Gold Book data
+
+The Gold Book uses two year-column formats depending on the table:
+
+- **Winter season strings** like `"2024-25"` — used by peak demand tables (I-3b,
+  I-4b, I-13c, I-11d, I-8c).
+- **Calendar year integers** like `2024` — used by energy/storage tables (I-3a,
+  I-13a, I-13b, I-10c, I-12c). These are normalised to `"YYYY-YY"` keys.
+
+Both parsers return `{year_str: {zone_letter: MW}}` dicts.
+
+```{python}
+#| label: parsers
+
+def _parse_winter_str(path: Path, sheet: str) -> dict[str, dict[str, int]]:
+    """Parse a Gold Book table with 'YYYY-YY' year column (e.g. I-3b, I-13c)."""
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    ws = wb[sheet]
+    data: dict[str, dict[str, int]] = {}
+    for row in ws.iter_rows(min_row=7, values_only=True):
+        year = row[2]
+        if not isinstance(year, str) or "-" not in year:
+            continue
+        vals = row[3:14]
+        if any(v is None for v in vals):
+            continue
+        data[year] = {z: int(v) for z, v in zip(ZONES, vals)}
+    wb.close()
+    return data
+
+
+def _parse_calendar_int(path: Path, sheet: str) -> dict[str, dict[str, int]]:
+    """Parse a Gold Book table with integer calendar year (e.g. I-3a, I-13b).
+
+    Keys are normalised to 'YYYY-YY' winter season strings so all tables share
+    the same key format (calendar year N maps to winter 'N-(N+1)').
+    """
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    ws = wb[sheet]
+    data: dict[str, dict[str, int]] = {}
+    for row in ws.iter_rows(min_row=7, values_only=True):
+        year = row[2]
+        if not isinstance(year, int):
+            continue
+        vals = row[3:14]
+        if any(v is None for v in vals):
+            continue
+        key = f"{year}-{(year + 1) % 100:02d}"
+        data[key] = {z: int(v) for z, v in zip(ZONES, vals)}
+    wb.close()
+    return data
+
+
+def _parse_large_loads(path: Path, sheet: str = "I-14") -> dict[str, dict[str, int]]:
+    """Parse Table I-14 / I-14-L (Large Loads winter peak, rows start at row 41).
+
+    The Gold Book only forecasts through ~2035-36; values are forward-filled
+    through 2056-57 per the Gold Book's own note.
+    """
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    ws = wb[sheet]
+    data: dict[str, dict[str, int]] = {}
+    for row in ws.iter_rows(min_row=41, values_only=True):
+        year = row[2]
+        if not isinstance(year, str) or "-" not in year:
+            continue
+        vals = row[3:14]
+        if any(v is None for v in vals):
+            continue
+        data[year] = {z: int(v) for z, v in zip(ZONES, vals)}
+    wb.close()
+    # Forward-fill from the last available row through the forecast horizon
+    if data:
+        last_year = max(data.keys())
+        last_vals = data[last_year]
+        for yr in range(int(last_year.split("-")[0]) + 1, FORECAST_END + 2):
+            key = f"{yr}-{(yr + 1) % 100:02d}"
+            data[key] = last_vals
+    return data
+
+
+def _nyca(zone_data: dict[str, dict[str, int]], year: str) -> int:
+    """Sum all 11 zones to get the NYCA total for a given year."""
+    return sum(zone_data.get(year, {}).get(z, 0) for z in ZONES)
+
+
+def _util_sum(zone_data: dict[str, dict[str, int]], year: str, zones: list[str]) -> int:
+    return sum(zone_data.get(year, {}).get(z, 0) for z in zones)
+```
+
+```{python}
+#| label: load-data
+
+# Baseline tables
+i3b_base = _parse_winter_str(PATH_BASELINE, "I-3b")   # Winter CP (total)
+i3a_base = _parse_calendar_int(PATH_BASELINE, "I-3a")  # Summer CP (total)
+i4b_base = _parse_winter_str(PATH_BASELINE, "I-4b")   # Winter NCP (non-coincident)
+i13c_base = _parse_winter_str(PATH_BASELINE, "I-13c")  # Elec winter CP increment
+i13b_base = _parse_calendar_int(PATH_BASELINE, "I-13b")  # Elec summer CP increment
+i11d_base = _parse_winter_str(PATH_BASELINE, "I-11d")  # EV winter CP
+i8c = _parse_winter_str(PATH_BASELINE, "I-8c")          # EE reductions (same both scenarios)
+i10c = _parse_calendar_int(PATH_BASELINE, "I-10c")      # Non-solar DG reductions
+i12c = _parse_calendar_int(PATH_BASELINE, "I-12c")      # Storage reductions
+i14 = _parse_large_loads(PATH_BASELINE)                  # Large loads
+
+# Lower scenario (only EV and electrification differ; shared reductions same as baseline)
+i13c_low = _parse_winter_str(PATH_LOWER, "I-13c-L")    # Elec winter CP lower
+i11d_low = _parse_winter_str(PATH_LOWER, "I-11d-L")    # EV winter CP lower
+i3b_low = _parse_winter_str(PATH_LOWER, "I-3b-L")      # Winter CP lower (total)
+i4b_low = _parse_winter_str(PATH_LOWER, "I-4b-L")      # Winter NCP lower
+i14_low = _parse_large_loads(PATH_LOWER, sheet="I-14-L")  # Large loads lower
+
+# Headroom table from Synapse Energy Economics (Takahashi et al. 2024)
+headroom = pl.read_csv(PATH_HEADROOM)
+
+print("Headroom table:")
+headroom
+```
+
+```{python}
+#| label: forecast-years
+
+all_years = sorted(
+    yr for yr in i13c_base
+    if FORECAST_START <= int(yr.split("-")[0]) <= FORECAST_END
+)
+
+print(f"Forecast years: {all_years[0]} → {all_years[-1]}  ({len(all_years)} years)")
+```
+
+## Figure 1: NYCA Building Electrification Incremental Winter Peak Load
+
+Building electrification is the largest driver of winter peak growth in the NYISO
+forecast. Table I-13c shows cumulative incremental additions to winter coincident
+peak demand from building electrification by zone. We sum across all 11 zones to
+get the NYCA-wide total.
+
+The baseline scenario reflects NYISO's central case for heat pump adoption. The
+lower demand scenario (I-13c-L) models slower adoption due to energy efficiency,
+non-solar DG, storage, and lower EV uptake.
+
+```{python}
+#| label: fig-elec-load-growth
+#| fig-cap: >
+#|   NYCA building electrification cumulative winter coincident peak demand additions,
+#|   2025–2055. Baseline scenario (blue) reflects NYISO's central case; lower scenario
+#|   (orange) models slower adoption. Source: NYISO Gold Book 2025, Table I-13c.
+#| fig-cap-location: margin
+
+elec_rows = []
+for yr_str in all_years:
+    yr = int(yr_str.split("-")[0])
+    elec_rows.append({
+        "year": yr,
+        "mw": _nyca(i13c_base, yr_str),
+        "scenario": "Baseline",
+    })
+    elec_rows.append({
+        "year": yr,
+        "mw": _nyca(i13c_low, yr_str),
+        "scenario": "Lower",
+    })
+
+df_elec = pl.DataFrame(elec_rows).sort(["scenario", "year"])
+
+(
+    ggplot(df_elec, aes("year", "mw", color="scenario"))
+    + geom_line(size=1.3)
+    + scale_x_continuous(breaks=list(range(2025, 2056, 5)))
+    + scale_y_continuous(labels=lambda lst: [f"{int(v):,}" for v in lst])
+    + labs(
+        title="NYCA Building Electrification Winter Coincident Peak Demand",
+        subtitle=(
+            "Cumulative incremental load additions by scenario\n"
+            "NYISO Gold Book 2025, Table I-13c / I-13c-L"
+        ),
+        x="Winter season starting year",
+        y="MW",
+        color="Scenario",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 5.0))
+)
+```
+
+```{python}
+#| label: elec-report-vars
+
+last_yr = all_years[-1]
+report_vars["elec_winter_mw_baseline_2055"] = _nyca(i13c_base, last_yr)
+report_vars["elec_winter_mw_lower_2055"] = _nyca(i13c_low, last_yr)
+
+print(
+    f"By {last_yr}, building electrification adds:\n"
+    f"  Baseline: {report_vars['elec_winter_mw_baseline_2055']:,} MW\n"
+    f"  Lower:    {report_vars['elec_winter_mw_lower_2055']:,} MW"
+)
+```
+
+## Figure 2: NYCA households converted to electric heating (image + logistic fit)
+
+The NYISO Gold Book NYCA figure **Number of Residential Households Converted to
+Electric Heating By Technology** is anchored to a **raster of that chart**
+(`../img/nyiso_nyca_residential_electric_heating_by_technology_reference.jpg`, JPEG).
+We record **cumulative band tops** (housing units) at each knot year on the graphic,
+convert to **layer thicknesses**, and fit one **three-parameter logistic**
+\(L/(1+e^{-k(t-t_0)})\) per layer to the **fraction of statewide residential
+electric customers** at those knots (`scipy.optimize.curve_fit`, same structure as
+rate-design-platform `fit_adoption_config.py`). **Ribbons** plot the fitted sigmoids
+(stacked); **points** mark the digitized cumulative tops from the image (they need
+not sit exactly on the smooth curves). Denominator: EIA-861 on S3.
+
+```{python}
+#| label: fig-nyca-electrified-housing-image
+#| fig-cap: >
+#|   NYCA residential households converted to electric heating by technology.
+#|   Cumulative band edges digitized from the NYISO chart image; one logistic fit
+#|   per layer to fraction of NY residential electric customers; stacked ribbons =
+#|   fitted sigmoids. Points = digitized readings from the reference image.
+#|   EIA-861: s3://data.sb/eia/861/electric_utility_stats/.
+#| fig-cap-location: margin
+
+S3_EIA861_BASE = "s3://data.sb/eia/861/electric_utility_stats/"
+_AWS_S3_OPTS = {"aws_region": "us-west-2"}
+
+_PATH_CHART_IMAGE = Path("../img/nyiso_nyca_residential_electric_heating_by_technology_reference.jpg")
+if not _PATH_CHART_IMAGE.is_file():
+    msg = f"Missing reference chart image: {_PATH_CHART_IMAGE.resolve()}"
+    raise FileNotFoundError(msg)
+
+# Load raster (JPEG) so the notebook is anchored to this file; re-digitize if replaced.
+from matplotlib import image as _mpimg
+
+_ref_img = _mpimg.imread(_PATH_CHART_IMAGE, format="jpeg")
+if _ref_img.shape[:2] != (729, 1024):
+    msg = (
+        "Reference chart image dimensions changed; update cumulative tables above "
+        "after re-digitizing the new raster."
+    )
+    raise ValueError(msg)
+
+# Bottom → top stack order (matches legend / NYISO chart).
+_TECH_ORDER: list[str] = [
+    "ASHP full capacity",
+    "ASHP dual fuel",
+    "Electric resistance",
+    "Ground source heat pump",
+    "Supplemental heat",
+]
+
+_TECH_COLORS: dict[str, str] = {
+    "ASHP full capacity": "#D55E00",
+    "ASHP dual fuel": "#999999",
+    "Electric resistance": "#F0E442",
+    "Ground source heat pump": "#0072B2",
+    "Supplemental heat": "#009E73",
+}
+
+# Cumulative stack tops (housing units) read from the reference image at each knot year.
+# Row i = year _DIG_YEARS[i]; columns = upper bound of each band (same definitions as the chart).
+_DIG_YEARS = np.array([2024, 2030, 2035, 2040, 2045, 2050, 2055, 2057], dtype=float)
+_CUM_TOP_ASHP_FULL = np.array(
+    [5_000, 100_000, 250_000, 580_000, 980_000, 1_400_000, 1_650_000, 1_750_000],
+    dtype=float,
+)
+_CUM_TOP_DUAL = np.array(
+    [7_000, 140_000, 350_000, 800_000, 1_380_000, 2_000_000, 2_350_000, 2_500_000],
+    dtype=float,
+)
+_CUM_TOP_ER = np.array(
+    [8_000, 160_000, 400_000, 900_000, 1_550_000, 2_250_000, 2_600_000, 2_750_000],
+    dtype=float,
+)
+_CUM_TOP_GSHP = np.array(
+    [9_000, 180_000, 450_000, 1_000_000, 1_720_000, 2_480_000, 2_850_000, 3_000_000],
+    dtype=float,
+)
+_CUM_TOP_TOTAL = np.array(
+    [10_000, 220_000, 550_000, 1_180_000, 2_050_000, 3_000_000, 3_450_000, 3_750_000],
+    dtype=float,
+)
+
+
+def _latest_eia861_partition_year() -> int:
+    import boto3
+
+    client = boto3.client("s3", region_name=_AWS_S3_OPTS["aws_region"])
+    prefix = "eia/861/electric_utility_stats/"
+    years: list[int] = []
+    paginator = client.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket="data.sb", Prefix=prefix, Delimiter="/"):
+        for cp in page.get("CommonPrefixes", []):
+            name = cp["Prefix"].rstrip("/").split("/")[-1]
+            if name.startswith("year="):
+                years.append(int(name.split("=", 1)[1]))
+    if not years:
+        msg = f"No year= partitions under s3://data.sb/{prefix}"
+        raise FileNotFoundError(msg)
+    return max(years)
+
+
+def load_ny_residential_electric_customers() -> tuple[float, int]:
+    """Statewide sum of residential_customers from EIA-861 parquet on S3."""
+    year = _latest_eia861_partition_year()
+    path = f"{S3_EIA861_BASE}year={year}/state=NY/data.parquet"
+    df = pl.read_parquet(path, storage_options=_AWS_S3_OPTS)
+    total = float(df["residential_customers"].sum())
+    return total, year
+
+
+_eia_total, _eia_year = load_ny_residential_electric_customers()
+
+_cum_series = [
+    _CUM_TOP_ASHP_FULL,
+    _CUM_TOP_DUAL,
+    _CUM_TOP_ER,
+    _CUM_TOP_GSHP,
+    _CUM_TOP_TOTAL,
+]
+_cum_mat = np.stack(_cum_series, axis=0)  # (5, n_knot): cumulative tops per band
+_layer_bottoms = np.vstack([np.zeros((1, _cum_mat.shape[1])), _cum_mat[:-1]])
+_layer_thickness_hu = _cum_mat - _layer_bottoms  # housing units per layer at each knot
+
+
+def _logistic(t: np.ndarray, L: float, k: float, t0: float) -> np.ndarray:
+    return L / (1.0 + np.exp(-k * (t - t0)))
+
+
+def _fit_logistic_layer(years: np.ndarray, fracs: np.ndarray) -> tuple[float, float, float]:
+    """Fit logistic to (years, fracs); bounds match `fit_adoption_config._fit_logistic`."""
+    L_min = float(fracs.max()) * 1.01
+    p0 = [float(fracs.max()) * 1.5, 0.10, 2045.0]
+    bounds = ([L_min, 0.001, 2020.0], [1.0, 1.0, 2080.0])
+    popt, _ = curve_fit(
+        _logistic, years, fracs, p0=p0, bounds=bounds, maxfev=50_000
+    )
+    return float(popt[0]), float(popt[1]), float(popt[2])
+
+
+_fit_params: list[tuple[float, float, float]] = []
+for j, lab in enumerate(_TECH_ORDER):
+    fr = _layer_thickness_hu[j] / _eia_total
+    par = _fit_logistic_layer(_DIG_YEARS, fr)
+    _fit_params.append(par)
+    pred = _logistic(_DIG_YEARS, *par)
+    rmse = float(np.sqrt(np.mean((pred - fr) ** 2)))
+    print(f"{lab}: L,k,t0 = {par}  RMSE(frac)={rmse:.5f}")
+
+_t_fine = np.linspace(2024.0, 2057.0, 400)
+_layer_pct: list[np.ndarray] = [
+    100.0 * _logistic(_t_fine, *_fit_params[j]) for j in range(len(_TECH_ORDER))
+]
+
+_stack_rows: list[dict] = []
+for i, yr in enumerate(_t_fine):
+    cum_pct = 0.0
+    for j, lab in enumerate(_TECH_ORDER):
+        top = _layer_pct[j][i]
+        lo, hi = cum_pct, cum_pct + top
+        _stack_rows.append({
+            "year": yr,
+            "technology": lab,
+            "ymin": lo,
+            "ymax": hi,
+        })
+        cum_pct = hi
+
+_df_stack = pl.DataFrame(_stack_rows).with_columns(
+    pl.col("technology").cast(pl.Enum(_TECH_ORDER)),
+)
+
+_pt_rows: list[dict] = []
+for i, y in enumerate(_DIG_YEARS):
+    for j, lab in enumerate(_TECH_ORDER):
+        hi_hu = float(_cum_mat[j, i])
+        _pt_rows.append({
+            "year": y,
+            "technology": lab,
+            "y_top": 100.0 * hi_hu / _eia_total,
+        })
+
+_df_pts = pl.DataFrame(_pt_rows).with_columns(
+    pl.col("technology").cast(pl.Enum(_TECH_ORDER)),
+)
+
+print(
+    f"Reference image: {_PATH_CHART_IMAGE.resolve()}\n"
+    f"EIA-861 NY residential electric customers: {_eia_total:,.0f} ({_eia_year} data year)"
+)
+
+report_vars["eia_ny_residential_customers"] = _eia_total
+report_vars["eia_ny_residential_data_year"] = float(_eia_year)
+report_vars["nyca_electrified_pct_2057_image_stack"] = float(
+    100.0 * _CUM_TOP_TOTAL[-1] / _eia_total
+)
+report_vars["nyca_electrified_pct_2057_logistic_stack"] = float(
+    sum(
+        _logistic(np.array([2057.0]), *_fit_params[j])[0] * 100.0
+        for j in range(len(_TECH_ORDER))
+    )
+)
+
+(
+    ggplot()
+    + geom_ribbon(
+        _df_stack,
+        aes(x="year", ymin="ymin", ymax="ymax", fill="technology"),
+        alpha=0.88,
+    )
+    + geom_point(
+        _df_pts,
+        aes(x="year", y="y_top", fill="technology"),
+        color="#333333",
+        size=2.2,
+        stroke=0.25,
+    )
+    + scale_fill_manual(values=_TECH_COLORS, name="Technology")
+    + scale_x_continuous(breaks=list(range(2024, 2058, 2)))
+    + scale_y_continuous(
+        labels=lambda xs: [f"{v:.0f}%" for v in xs],
+        expand=(0, 0, 0.05, 0),
+    )
+    + labs(
+        title="Number of residential households converted to electric heating by technology — NYCA",
+        subtitle=(
+            "Digitized cumulative tops from reference image; one logistic (sigmoid) fit per layer; "
+            f"y-axis = % of {_eia_total:,.0f} NY residential electric customers (EIA-861 {_eia_year})."
+        ),
+        x="Year",
+        y="% of NY residential electric customers (EIA-861)",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(11.0, 5.5), legend_position="bottom")
+)
+```
+
+## Figure 3: NYCA Coincident Peak Demand — Summer and Winter Forecast
+
+This figure mirrors the structure of Figure 17 from the RI Peak Report. The summer
+peak (orange) consistently exceeds the winter peak (blue) — but building
+electrification is dramatically narrowing that gap.
+
+Solid lines show the baseline forecast including all demand growth. Dashed lines
+show the counterfactual without building electrification (I-3b minus I-13c for
+winter; I-3a minus I-13b for summer). The shaded ribbon between them shows the
+electrification contribution.
+
+```{python}
+#| label: fig-peak-forecast
+#| fig-cap: >
+#|   NYCA coincident peak demand forecast, 2025–2055. Solid lines include building
+#|   electrification; dashed lines show the counterfactual without it. Shaded ribbons
+#|   show the electrification contribution. Building electrification nearly closes
+#|   the gap between summer and winter peaks by mid-century. Source: NYISO Gold Book
+#|   2025, Tables I-3a, I-3b, I-13b, I-13c.
+#| fig-cap-location: margin
+
+peak_rows = []
+for yr_str in all_years:
+    yr = int(yr_str.split("-")[0])
+    winter_with = _nyca(i3b_base, yr_str)
+    summer_with = _nyca(i3a_base, yr_str)
+    winter_without = winter_with - _nyca(i13c_base, yr_str)
+    summer_without = summer_with - _nyca(i13b_base, yr_str)
+    peak_rows.append({
+        "year": yr,
+        "winter_with": winter_with,
+        "winter_without": winter_without,
+        "summer_with": summer_with,
+        "summer_without": summer_without,
+    })
+
+df_peak = pl.DataFrame(peak_rows)
+
+# Initial winter-to-summer ratio annotation
+first = df_peak.row(0, named=True)
+ratio_pct = f"{first['winter_with'] / first['summer_with']:.0%}"
+mid_y = (first["winter_with"] + first["summer_with"]) / 2
+
+# Y-axis: zoom to data range. Bottom is rounded down to nearest 5,000 MW below
+# the minimum without-electrification value; top is padded 5% above the maximum.
+_y_min = min(df_peak["winter_without"].min(), df_peak["summer_without"].min())
+_y_max = max(df_peak["winter_with"].max(), df_peak["summer_with"].max())
+_y_lo = max(0, (_y_min // 5000) * 5000)
+_y_hi = _y_max * 1.05
+
+(
+    ggplot()
+    # Winter ribbon (electrification contribution)
+    + geom_ribbon(
+        df_peak,
+        aes(x="year", ymin="winter_without", ymax="winter_with"),
+        fill=SB_COLORS["sky"],
+        alpha=0.25,
+    )
+    # Summer ribbon
+    + geom_ribbon(
+        df_peak,
+        aes(x="year", ymin="summer_without", ymax="summer_with"),
+        fill=SB_COLORS["carrot"],
+        alpha=0.25,
+    )
+    # Solid lines — with electrification
+    + geom_line(
+        df_peak, aes(x="year", y="winter_with"),
+        color=SB_COLORS["sky"], size=1.3,
+    )
+    + geom_line(
+        df_peak, aes(x="year", y="summer_with"),
+        color=SB_COLORS["carrot"], size=1.3,
+    )
+    # Dashed lines — without electrification
+    + geom_line(
+        df_peak, aes(x="year", y="winter_without"),
+        color=SB_COLORS["sky"], size=1.0, linetype="dashed",
+    )
+    + geom_line(
+        df_peak, aes(x="year", y="summer_without"),
+        color=SB_COLORS["carrot"], size=1.0, linetype="dashed",
+    )
+    # Bracket and ratio annotation
+    + annotate(
+        "segment",
+        x=2025, xend=2025,
+        y=first["winter_with"], yend=first["summer_with"],
+        color="#555555", size=0.7,
+    )
+    + annotate(
+        "text",
+        x=2025.6, y=mid_y,
+        label=ratio_pct,
+        size=11, ha="left", color="#333333",
+    )
+    + scale_x_continuous(breaks=list(range(2025, 2056, 5)))
+    + scale_y_continuous(labels=lambda lst: [f"{int(v):,}" for v in lst])
+    + coord_cartesian(ylim=(_y_lo, _y_hi))
+    + labs(
+        title="NYCA Coincident Peak Demand Forecast — Baseline Scenario",
+        subtitle=(
+            "Solid = with building electrification; dashed = without; ribbon = electrification contribution\n"
+            "Source: NYISO Gold Book 2025, Tables I-3a, I-3b, I-13b, I-13c"
+        ),
+        x="Year",
+        y="Net peak (MW)",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 5.5))
+)
+```
+
+```{python}
+#| label: peak-report-vars
+
+last_yr = all_years[-1]
+report_vars["winter_peak_baseline_2055"] = _nyca(i3b_base, last_yr)
+report_vars["summer_peak_baseline_2055"] = _nyca(i3a_base, last_yr)
+report_vars["elec_contribution_winter_2055"] = _nyca(i13c_base, last_yr)
+report_vars["winter_summer_ratio_2025"] = (
+    _nyca(i3b_base, all_years[0]) / _nyca(i3a_base, all_years[0])
+)
+
+print(
+    f"By {last_yr}:\n"
+    f"  Winter peak (baseline):           {report_vars['winter_peak_baseline_2055']:,} MW\n"
+    f"  Summer peak (baseline):           {report_vars['summer_peak_baseline_2055']:,} MW\n"
+    f"  Electrification contribution:     {report_vars['elec_contribution_winter_2055']:,} MW\n"
+    f"  Initial winter/summer ratio:      {report_vars['winter_summer_ratio_2025']:.0%}"
+)
+```
+
+## Figure 4: Per-Utility Demand Components
+
+This replicates the demand decomposition from the rate-design-platform's
+`compute_headroom_exhaustion_year.py`, rebuilt in the Switchbox plotnine style,
+now showing **both the baseline and lower demand scenarios** side by side.
+
+Each panel pair shows one investor-owned distribution utility's winter coincident
+peak demand components as a percentage of its 2023-24 coincident winter peak.
+Additions (building electrification, EV load, large loads) stack above zero;
+reductions (energy efficiency, non-solar DG, BTM storage) stack below.
+
+A **solid black line** shows total CP growth vs. 2023-24 (I-3b). A **dashed red
+vertical line** marks the year NCP (I-4b) exceeds the Synapse headroom threshold,
+with the exhaustion year labeled. Utilities where headroom is not exhausted within
+the forecast window show a "Not exhausted" label in the top-right corner.
+
+**Headroom logic.** Exhaustion is the first season (from 2024-25 onward in each
+scenario’s I-4b table) where **absolute** winter **non-coincident** peak (I-4b zone
+sum) is at least **(1 + Synapse headroom %) ×** the same zone-sum at
+`HEADROOM_BASELINE_YEAR` (**2023-24**), always read from the **baseline** workbook so
+the anchor exists even when lower-demand I-4b-L omits historical rows. The stacked
+ribbons use **coincident** peak (I-3b) normalized to `NORM_YEAR` (**2023-24**);
+headroom uses the **same winter season** for the I-4b NCP anchor (`HEADROOM_BASELINE_YEAR`).
+
+**Gold Book vintage.** This notebook uses the **2025** Gold Book from S3; RDP’s
+defaults used **2024** files, so forecast levels can differ.
+
+**Zone lists** match `compute_headroom_exhaustion_year.py`: National Grid and NYSEG &
+RGE both sum **A–F**; Con Edison sums **G, H, I, J**; Central Hudson and Orange &
+Rockland each sum **G** only. Zone **K** (LIPA) is excluded.
+
+```{python}
+#| label: build-component-data
+
+COMPONENT_COLORS: dict[str, str] = {
+    "Building electrification": SB_COLORS["sky"],
+    "EV load": SB_COLORS["saffron"],
+    "Large loads": SB_COLORS["carrot"],
+    "EE & codes/standards": SB_COLORS["pistachio"],
+    "Non-solar DG": "#7b6ea0",
+    "BTM storage": "#b0722a",
+}
+
+
+# Per-scenario CP tables and component tables
+SCENARIOS: dict[str, dict] = {
+    "Baseline": {
+        "i3b": i3b_base,
+        "i4b": i4b_base,
+        "pos": [
+            ("Building electrification", i13c_base),
+            ("EV load", i11d_base),
+            ("Large loads", i14),
+        ],
+        "neg": [
+            ("EE & codes/standards", i8c),
+            ("Non-solar DG", i10c),
+            ("BTM storage", i12c),
+        ],
+    },
+    "Lower demand": {
+        "i3b": i3b_low,
+        "i4b": i4b_low,
+        "pos": [
+            ("Building electrification", i13c_low),
+            ("EV load", i11d_low),
+            ("Large loads", i14_low),
+        ],
+        "neg": [
+            # EE, DG, storage not separately published for lower scenario;
+            # reuse baseline (conservative — lower scenario reductions likely larger)
+            ("EE & codes/standards", i8c),
+            ("Non-solar DG", i10c),
+            ("BTM storage", i12c),
+        ],
+    },
+}
+
+component_order = (
+    [c for c, _ in SCENARIOS["Baseline"]["pos"]]
+    + [c for c, _ in SCENARIOS["Baseline"]["neg"]]
+)
+
+# Build stacked ribbon data and CP growth lines for both scenarios
+stack_rows = []
+growth_rows = []
+headroom_rows = []
+
+for scenario, sc in SCENARIOS.items():
+    # Same horizon logic as RDP: scan I-4b rows from 2024-25 onward (keys present in
+    # this scenario’s file — lower-demand I-4b-L may omit 2024-25).
+    headroom_years = sorted(
+        yr for yr in sc["i4b"]
+        if int(yr.split("-")[0]) >= 2024 and int(yr.split("-")[0]) <= FORECAST_END
+    )
+
+    for utility, zones in UTILITY_ZONES.items():
+        base_cp = _util_sum(i3b_base, NORM_YEAR, zones)
+        if base_cp == 0:
+            continue
+
+        # Absolute NCP level vs threshold (I-4b zone sum, same zones as RDP).
+        ncp_base = _util_sum(i4b_base, HEADROOM_BASELINE_YEAR, zones)
+        threshold = ncp_base * (1 + HEADROOM_PCT[utility])
+        ex_yr: int | None = None
+        for yr_str in headroom_years:
+            if _util_sum(sc["i4b"], yr_str, zones) >= threshold:
+                ex_yr = int(yr_str.split("-")[0])
+                break
+
+        label = (
+            f"Headroom\nexhausted\n{ex_yr}–{ex_yr - 1999:02d}"
+            if ex_yr is not None
+            else "Not exhausted\nwithin forecast"
+        )
+
+        headroom_rows.append({
+            "scenario": scenario,
+            "utility": utility,
+            "ex_year": ex_yr if ex_yr is not None else -1,
+            "exhausted": ex_yr is not None,
+            "label": label,
+        })
+
+        for yr_str in all_years:
+            yr = int(yr_str.split("-")[0])
+
+            pos_bottom = 0.0
+            for comp_label, data in sc["pos"]:
+                raw = _util_sum(data, yr_str, zones)
+                pct = 100.0 * raw / base_cp
+                stack_rows.append({
+                    "scenario": scenario, "utility": utility, "year": yr,
+                    "component": comp_label, "ymin": pos_bottom, "ymax": pos_bottom + pct,
+                })
+                pos_bottom += pct
+            neg_bottom = 0.0
+            for comp_label, data in sc["neg"]:
+                raw = _util_sum(data, yr_str, zones)
+                pct = 100.0 * raw / base_cp
+                stack_rows.append({
+                    "scenario": scenario, "utility": utility, "year": yr,
+                    "component": comp_label, "ymin": neg_bottom - pct, "ymax": neg_bottom,
+                })
+                neg_bottom -= pct
+
+            cp_val = _util_sum(sc["i3b"], yr_str, zones)
+            growth_rows.append({
+                "scenario": scenario, "utility": utility, "year": yr,
+                "cp_growth_pct": 100.0 * (cp_val - base_cp) / base_cp,
+            })
+
+df_stack = pl.DataFrame(stack_rows).with_columns(
+    pl.col("component").cast(pl.Enum(component_order)),
+    pl.col("scenario").cast(pl.Enum(["Baseline", "Lower demand"])),
+)
+df_growth = pl.DataFrame(growth_rows).with_columns(
+    pl.col("scenario").cast(pl.Enum(["Baseline", "Lower demand"])),
+)
+df_headroom = pl.DataFrame(headroom_rows)
+
+# Facet label: "Utility — Scenario"
+df_stack = df_stack.with_columns(
+    (pl.col("utility") + " — " + pl.col("scenario")).alias("facet")
+)
+df_growth = df_growth.with_columns(
+    (pl.col("utility") + " — " + pl.col("scenario")).alias("facet")
+)
+df_headroom = df_headroom.with_columns(
+    (pl.col("utility") + " — " + pl.col("scenario")).alias("facet")
+)
+
+# Natural facet order: utility order × scenario order
+facet_order = [
+    f"{u} — {s}"
+    for u in UTILITY_ZONES
+    for s in ["Baseline", "Lower demand"]
+]
+df_stack = df_stack.with_columns(pl.col("facet").cast(pl.Enum(facet_order)))
+df_growth = df_growth.with_columns(pl.col("facet").cast(pl.Enum(facet_order)))
+df_headroom = df_headroom.with_columns(pl.col("facet").cast(pl.Enum(facet_order)))
+
+print("Headroom exhaustion summary:")
+print(df_headroom.select(["facet", "ex_year", "exhausted"]))
+```
+
+```{python}
+#| label: fig-demand-components
+#| fig-cap: >
+#|   Winter coincident peak demand components by utility, baseline vs. lower demand
+#|   scenario, as % of each utility's 2023-24 coincident winter peak (I-3b). Stacked
+#|   ribbons show additions (building electrification, EV, large loads) above zero and
+#|   reductions (EE, non-solar DG, storage) below. Solid black line = total CP growth
+#|   vs. 2023-24. Red dashed line = first year absolute winter NCP (I-4b, RDP zone
+#|   lists) reaches (1 + Synapse %) × 2023-24 NCP from the baseline workbook.
+#|   NYISO Gold Book 2025; Synapse Energy Economics July 2024.
+#| fig-cap-location: margin
+#| fig-height: 34
+#| fig-width: 24
+
+# Plotnine refuses saves > 25 in by default; this figure is 24×34 in.
+from plotnine.options import set_option
+
+set_option("limitsize", False)
+
+# Vlines for exhausted utilities
+df_vline = df_headroom.filter(pl.col("exhausted"))
+
+# For the "not exhausted" text label, we need a y position near the top of each
+# panel. Use a fixed high percentage since panels have free_y scales.
+# We'll annotate using geom_text at x=2055 (right edge), placed per-facet.
+df_not_exhausted = df_headroom.filter(~pl.col("exhausted"))
+
+# y position for exhaustion label: place just below the max ymax of the ribbon
+# for each facet. Compute per-facet max of positive stack top.
+_pos_tops = (
+    df_stack.filter(pl.col("ymax") > 0)
+    .group_by("facet")
+    .agg(pl.col("ymax").max().alias("top"))
+)
+df_vline = df_vline.join(_pos_tops, on="facet", how="left")
+df_not_exhausted = df_not_exhausted.join(_pos_tops, on="facet", how="left")
+
+(
+    ggplot()
+    + geom_ribbon(
+        df_stack,
+        aes(x="year", ymin="ymin", ymax="ymax", fill="component"),
+        alpha=0.85,
+    )
+    + geom_hline(yintercept=0, color="black", size=0.6)
+    + geom_line(
+        df_growth,
+        aes(x="year", y="cp_growth_pct"),
+        color="black", size=1.2, linetype="solid",
+    )
+    + geom_vline(
+        df_vline,
+        aes(xintercept="ex_year"),
+        color="#cc2222", size=1.0, linetype="dashed",
+    )
+    + geom_text(
+        df_vline,
+        aes(x="ex_year", y="top", label="label"),
+        color="#cc2222", size=8, ha="left", va="top", nudge_x=0.4,
+    )
+    + geom_text(
+        df_not_exhausted,
+        aes(x=2055, y="top", label="label"),
+        color="#cc2222", size=8, ha="right", va="top",
+    )
+    + facet_wrap("facet", ncol=2, scales="free_y")
+    + scale_fill_manual(
+        values=COMPONENT_COLORS,
+        name="Component",
+        breaks=component_order,
+    )
+    + scale_x_continuous(breaks=list(range(2025, 2056, 5)))
+    + scale_y_continuous(
+        labels=lambda lst: [f"{v:.0f}%" for v in lst],
+    )
+    + labs(
+        title="Winter Coincident Peak Demand Components by Utility — Baseline vs. Lower Demand",
+        subtitle=(
+            "As % of 2023-24 coincident winter peak (I-3b) — NYISO Gold Book 2025\n"
+            "Black line = total CP growth; red dashed = headroom exhaustion (Synapse 2024)"
+        ),
+        x="Winter season starting year",
+        y="% of 2023–24 peak",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(24, 34))
+)
+```
+
+## Report variables
+
+```{python}
+#| label: export-report-vars
+
+from plotnine.options import set_option
+
+set_option("limitsize", True)
+
+Path("../cache/gold_book_report_vars.pkl").write_bytes(pickle.dumps(report_vars))
+print("Exported report vars:")
+for k, v in report_vars.items():
+    print(f"  {k}: {v:,.0f}" if isinstance(v, float) and v > 1 else f"  {k}: {v:.1%}" if isinstance(v, float) else f"  {k}: {v:,}")
+```

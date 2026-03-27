@@ -28,10 +28,10 @@ data_path = S3Path("s3://data.sb/nrel/resstock/")
 random_seed = 67
 upgrade_id = 2
 
+only_consider_summer_peaks = True
 normalize_secondary_to_rie = True
 
 force_recrunch = True
-
 DEBUG_MODE = False
 
 if DEBUG_MODE:
@@ -361,6 +361,7 @@ peak (NCP) per subclass. Normalization and multi-level scaling happen in the nex
 ```{python}
 def compute_secondary_ncp_raw(
     aggregate_curves: pl.DataFrame,
+    only_consider_summer_peaks: bool = True,
 ) -> tuple[pl.DataFrame, float]:
     """
     From timestamp x heating_type aggregated load (electricity_kwh, num_homes),
@@ -369,6 +370,8 @@ def compute_secondary_ncp_raw(
     The NCP computed here is the *secondary* non-coincident peak — the maximum
     hourly load for each subclass across the year.
     """
+    if only_consider_summer_peaks:
+        aggregate_curves = aggregate_curves.filter(pl.col("timestamp").dt.month().is_in(range(5,10)))
     ncp_by_subclass = (
         aggregate_curves.group_by("postprocess_group.heating_type")
         .agg(
@@ -459,7 +462,8 @@ for additional_adoption_pct in additional_adoption_pct_values:
     total_annual_kwh = annual_kwh_by_subclass["annual_kwh"].sum()
 
     ncp_by_subclass, total_residential_secondary_ncp_raw = compute_secondary_ncp_raw(
-        aggregate_curves
+        aggregate_curves,
+        only_consider_summer_peaks=only_consider_summer_peaks,
     )
 
     ncp_by_subclass = ncp_by_subclass.join(

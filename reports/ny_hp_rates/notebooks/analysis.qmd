@@ -92,12 +92,12 @@ def _weighted_mean(df: pl.DataFrame, col: str, w_col: str) -> float:
 #| label: params
 
 # --- To switch states, change these 5 values and the 4 utility dicts in the constants cell below. ---
-INCLUDE_TOU = True  # set False to skip TOU rate cells (e.g. when run_11+12 is not available)
+INCLUDE_TOU = True  # set False to skip TOU rate cells (e.g. when run_15+16 is not available)
 UTILITY = "coned"  # any utility code from UTIL_NAMES, used for the representative-building example
-BATCH = "ny_20260311b_r1-12_lmi_gen"
+BATCH = "ny_20260326_flex_r1-16"
 STATE = "NY"
 YEAR = 2025
-RDP_REF = "8bf03e6"  # rate-design-platform git ref for fetch_rdp_file
+RDP_REF = "2c00f80"    # rate-design-platform git ref for fetch_rdp_file
 
 # Everything below derives from STATE + BATCH
 _state_lower = STATE.lower()
@@ -106,7 +106,7 @@ PATH_MASTER_BILLS_12 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_1+2/
 PATH_MASTER_BILLS_34 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_3+4/comb_bills_year_target/"
 PATH_MASTER_BILLS_56 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_5+6/comb_bills_year_target/"
 PATH_MASTER_BILLS_78 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_7+8/comb_bills_year_target/"
-PATH_MASTER_BILLS_1112 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_11+12/comb_bills_year_target/"
+PATH_MASTER_BILLS_1516 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_15+16/comb_bills_year_target/"
 PATH_MASTER_BAT_12 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_1+2/cross_subsidization_BAT_values/"
 PATH_MASTER_BAT_34 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_3+4/cross_subsidization_BAT_values/"
 PATH_MASTER_BAT_56 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_5+6/cross_subsidization_BAT_values/"
@@ -182,7 +182,7 @@ bills_hp = pl.scan_parquet(PATH_MASTER_BILLS_34, hive_partitioning=True)
 bills_hprate_current = pl.scan_parquet(PATH_MASTER_BILLS_56, hive_partitioning=True)
 bills_hprate_hp = pl.scan_parquet(PATH_MASTER_BILLS_78, hive_partitioning=True)
 bills_tou_hp = (
-    pl.scan_parquet(PATH_MASTER_BILLS_1112, hive_partitioning=True)
+    pl.scan_parquet(PATH_MASTER_BILLS_1516, hive_partitioning=True)
     if INCLUDE_TOU
     else None
 )
@@ -483,7 +483,7 @@ LOAD_COLS = [
     "out.natural_gas.total.energy_consumption",
 ]
 
-load_base = str(Path("~/repos/rate-design-platform/data/nrel/resstock/res_2024_amy2018_2_sb/load_curve_monthly").expanduser() / f"state={STATE}")
+load_base = str(Path("/ebs/data/nrel/resstock/res_2024_amy2018_2_sb/load_curve_monthly") / f"state={STATE}")
 df_before_load = pl.read_parquet(f"{load_base}/upgrade=00/{median_bldg_id_state}-0.parquet", columns=LOAD_COLS)
 df_after_load = pl.read_parquet(f"{load_base}/upgrade=02/{median_bldg_id_state}-2.parquet", columns=LOAD_COLS)
 
@@ -1297,7 +1297,7 @@ def plot_quadrant_bar_by_utility(
 _cache_path = Path("../cache/annual_elec_kwh.parquet")
 if not _cache_path.exists():
     _elec_col = "out.electricity.total.energy_consumption"
-    _load_base = Path(f"~/repos/rate-design-platform/data/nrel/resstock/res_2024_amy2018_2_sb/load_curve_monthly/state={STATE}").expanduser()
+    _load_base = Path(f"/ebs/data/nrel/resstock/res_2024_amy2018_2_sb/load_curve_monthly/state={STATE}")
     _before = (
         pl.scan_parquet(_load_base / "upgrade=00")
         .select("bldg_id", _elec_col)
@@ -2537,8 +2537,8 @@ _rate_gt
 ## Heat pump TOU rate structure
 
 Beyond the flat seasonal rates above, we've also designed time-of-use (TOU) variants that align more closely with hourly
-marginal costs. Each utility has a "paired" TOU tariff: a delivery-only file (`*_hp_seasonalTOU_calibrated.json`) and a
-delivery+supply file (`*_hp_seasonalTOU_supply_calibrated.json`). We difference them to isolate the supply component.
+marginal costs. Each utility has a "paired" TOU tariff: a delivery-only file (`*_hp_seasonalTOU_flex_calibrated.json`) and a
+delivery+supply file (`*_hp_seasonalTOU_flex_supply_calibrated.json`). We difference them to isolate the supply component.
 
 All TOU tariffs use two seasons (winter: Oct–Mar, summer: Apr–Sep) with distinct on-peak and off-peak periods within
 each season. Peak hours vary by utility, reflecting each utility's marginal cost profile.
@@ -2567,8 +2567,8 @@ def _extract_peak_hours(schedule: list[list[int]], month_idx: int) -> str:
 
 rows: list[dict] = []
 for display, code in TARIFF_UTILS.items():
-    d = _load_rate(f"{code}_hp_seasonalTOU_calibrated.json")
-    b = _load_rate(f"{code}_hp_seasonalTOU_supply_calibrated.json")
+    d = _load_rate(f"{code}_hp_seasonalTOU_flex_calibrated.json")
+    b = _load_rate(f"{code}_hp_seasonalTOU_flex_supply_calibrated.json")
 
     dr = [tier[0]["rate"] for tier in d["energyratestructure"]]
     br = [tier[0]["rate"] for tier in b["energyratestructure"]]
@@ -2804,9 +2804,9 @@ def _load_tou_profiles(
     utility_code: str,
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """Load TOU rate profiles for a utility: (bundled_cal, supply_cal, supply_precal)."""
-    d = _load_rate(f"{utility_code}_hp_seasonalTOU_calibrated.json")
-    b = _load_rate(f"{utility_code}_hp_seasonalTOU_supply_calibrated.json")
-    pre = _load_rate(f"{utility_code}_hp_seasonalTOU_supply.json")
+    d = _load_rate(f"{utility_code}_hp_seasonalTOU_flex_calibrated.json")
+    b = _load_rate(f"{utility_code}_hp_seasonalTOU_flex_supply_calibrated.json")
+    pre = _load_rate(f"{utility_code}_hp_seasonalTOU_flex_supply.json")
 
     schedule = d["energyweekdayschedule"]
     bundled_cal = _hourly_tou_profile(b, schedule)
@@ -3060,8 +3060,8 @@ def _draw_tou_season(ax, season_title, ps, pe, do, so, dn, sn, ymax):
 
 def _make_tou_chart(display_name, tariff_code):
     """Create a 2-panel (Summer on top, Winter on bottom) TOU schedule chart."""
-    d = _load_rate(f"{tariff_code}_hp_seasonalTOU_calibrated.json")
-    b = _load_rate(f"{tariff_code}_hp_seasonalTOU_supply_calibrated.json")
+    d = _load_rate(f"{tariff_code}_hp_seasonalTOU_flex_calibrated.json")
+    b = _load_rate(f"{tariff_code}_hp_seasonalTOU_flex_supply_calibrated.json")
 
     w_ps, w_pe, w_do, w_so, w_dn, w_sn = _extract_season_data(d, b, 0, 0, 1)
     s_ps, s_pe, s_do, s_so, s_dn, s_sn = _extract_season_data(d, b, 6, 2, 3)
@@ -3132,6 +3132,377 @@ _tou_schedule_svg("O&R", "or")
 #| fig-cap: "TOU rate schedule — PSEG-LI"
 
 _tou_schedule_svg("PSEG-LI", "psegli")
+```
+
+### Demand-flex: load shifting for a representative building
+
+Under the TOU flex rate, customers have an incentive to shift electricity consumption from expensive peak hours to
+cheaper off-peak hours. We model this response using a constant-elasticity demand model calibrated to empirical
+evidence from the Arcturus 2.0 meta-analysis of TOU pricing pilots. The charts below illustrate this for a single
+representative HP building in the `UTILITY` service territory: how much load shifts from peak to off-peak, and what
+that means in dollar terms.
+
+```{python}
+#| label: tou-flex-shift-setup
+
+if INCLUDE_TOU:
+    _S3_FLEX_DIAG = "s3://data.sb/switchbox/demand_flex_calibration/ny/demand_flex_diagnostic.parquet"
+    _flex_diag = pl.read_parquet(_S3_FLEX_DIAG)
+
+    _flex_rec = (
+        _flex_diag
+        .filter(pl.col("utility") == UTILITY)
+        .filter(pl.col("elasticity") == pl.col("seasonal_recommended_elasticity_with_tech"))
+        .select("season", "seasonal_recommended_elasticity_with_tech", "price_ratio")
+    )
+    _flex_eps = {
+        row["season"]: row["seasonal_recommended_elasticity_with_tech"]
+        for row in _flex_rec.to_dicts()
+    }
+
+    _flex_meta = pl.read_parquet(
+        "/ebs/data/nrel/resstock/res_2024_amy2018_2_sb/metadata/state=NY/upgrade=00/metadata-sb.parquet"
+    ).select("bldg_id", "postprocess_group.has_hp", "weight")
+    _flex_util = pl.read_parquet(
+        "/ebs/data/nrel/resstock/res_2024_amy2018_2_sb/metadata_utility/state=NY/utility_assignment.parquet"
+    ).select("bldg_id", "sb.electric_utility")
+    _flex_hp = (
+        _flex_meta.join(_flex_util, on="bldg_id", how="inner")
+        .filter(
+            (pl.col("sb.electric_utility") == UTILITY)
+            & (pl.col("postprocess_group.has_hp") == True)  # noqa: E712
+        )
+    )
+
+    _flex_bldg_id = int(_flex_hp["bldg_id"][0])
+
+    _flex_hourly_path = Path(
+        f"/ebs/data/nrel/resstock/res_2024_amy2018_2_sb/load_curve_hourly/state={STATE}/upgrade=00/{_flex_bldg_id}-0.parquet"
+    )
+    _flex_hourly = pl.read_parquet(
+        _flex_hourly_path,
+        columns=["timestamp", "out.electricity.net.energy_consumption"],
+    ).rename({"out.electricity.net.energy_consumption": "kwh"})
+
+    _flex_tariff = _load_rate(f"{UTILITY}_hp_seasonalTOU_flex_supply_calibrated.json")
+    _flex_rates_all = [tier[0]["rate"] for tier in _flex_tariff["energyratestructure"]]
+
+    _WINTER_MONTHS = {1, 2, 3, 10, 11, 12}
+    _SUMMER_MONTHS = {4, 5, 6, 7, 8, 9}
+
+    def _get_peak_hours_from_schedule(schedule: list[list[int]], month_idx: int) -> set[int]:
+        row = schedule[month_idx]
+        off_p = row[0]
+        return {h for h, p in enumerate(row) if p != off_p}
+
+    _winter_peak_hrs = _get_peak_hours_from_schedule(_flex_tariff["energyweekdayschedule"], 0)
+    _summer_peak_hrs = _get_peak_hours_from_schedule(_flex_tariff["energyweekdayschedule"], 6)
+
+    _season_cfg = {
+        "winter": {
+            "months": _WINTER_MONTHS, "peak_hours": _winter_peak_hrs,
+            "off_rate": _flex_rates_all[0], "on_rate": _flex_rates_all[1],
+            "epsilon": _flex_eps["winter"],
+        },
+        "summer": {
+            "months": _SUMMER_MONTHS, "peak_hours": _summer_peak_hrs,
+            "off_rate": _flex_rates_all[2], "on_rate": _flex_rates_all[3],
+            "epsilon": _flex_eps["summer"],
+        },
+    }
+
+    _flex_hourly = _flex_hourly.with_columns(
+        pl.col("timestamp").dt.month().alias("month"),
+        pl.col("timestamp").dt.hour().alias("hour"),
+    )
+
+    _flex_season_stats: dict[str, dict] = {}
+
+    for _sn, _sc in _season_cfg.items():
+        _sh = _flex_hourly.filter(pl.col("month").is_in(_sc["months"]))
+        _is_peak = _sh["hour"].is_in(list(_sc["peak_hours"]))
+        _peak_kwh = float(_sh.filter(_is_peak)["kwh"].sum())
+        _offpeak_kwh = float(_sh.filter(~_is_peak)["kwh"].sum())
+        _total_kwh = _peak_kwh + _offpeak_kwh
+        _on_r = _sc["on_rate"]
+        _off_r = _sc["off_rate"]
+        _eps = _sc["epsilon"]
+
+        _p_flat = (_peak_kwh * _on_r + _offpeak_kwh * _off_r) / _total_kwh
+        _remaining_peak = _peak_kwh * (_on_r / _p_flat) ** _eps
+        _shifted = _peak_kwh - _remaining_peak
+
+        _flex_season_stats[_sn] = {
+            "peak_kwh": _peak_kwh, "offpeak_kwh": _offpeak_kwh,
+            "shifted_kwh": _shifted, "remaining_peak_kwh": _remaining_peak,
+            "on_rate": _on_r, "off_rate": _off_r, "epsilon": _eps,
+            "savings": _shifted * (_on_r - _off_r),
+        }
+
+    _FLEX_COLORS = {
+        "Off-peak": SB_COLORS["sky"],
+        "On-peak": SB_COLORS["saffron"],
+        "Will shift": SB_COLORS["carrot"],
+        "Shifted": SB_COLORS["midnight_text"],
+    }
+
+    _FLEX_BAR_HEIGHT = 0.35
+    _FLEX_INTRA_GAP = 0.55
+    _FLEX_GROUP_GAP = 0.6
+    _FLEX_HEADER_SPACE = 0.45
+
+    def _flex_bar_chart(
+        groups: list[dict],
+        colors: dict[str, str],
+        value_fmt: str,
+        fig_width: float = 12.5,
+    ) -> "plt.Figure":
+        """Horizontal stacked bar chart for demand-flex visualization.
+
+        groups: list of dicts with "season" (str) and "bars" (list of dicts
+        with "segments" list of (name, value) tuples, optional "label" str,
+        optional "fmt" str to override value_fmt for that bar).
+        value_fmt: "kwh" or "dollar" (default for all bars).
+        """
+        import matplotlib.pyplot as plt
+
+        y = 0.0
+        bar_specs: list[dict] = []
+        season_headers: list[tuple[float, str]] = []
+
+        for g_idx, g in enumerate(groups):
+            season_headers.append((y, g["season"]))
+            y += _FLEX_HEADER_SPACE
+
+            for b_idx, bar in enumerate(g["bars"]):
+                bar_specs.append({
+                    "y": y, "segments": bar["segments"],
+                    "label": bar.get("label", ""), "fmt": bar.get("fmt", value_fmt),
+                })
+                y += _FLEX_BAR_HEIGHT
+                if b_idx < len(g["bars"]) - 1:
+                    y += _FLEX_INTRA_GAP
+            if g_idx < len(groups) - 1:
+                y += _FLEX_GROUP_GAP
+
+        y_max = y + 0.15
+        fig_height = max(1.5, 0.4 + y_max * 0.9)
+
+        fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+        ax.set_xlim(0, 105)
+        ax.set_ylim(-0.1, y_max)
+        ax.invert_yaxis()
+        ax.set_xticks([])
+        ax.set_yticks([])
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+
+        _MIN_INLINE = 8
+        _max_by_fmt: dict[str, float] = {}
+        for bs in bar_specs:
+            fmt = bs["fmt"]
+            t = sum(v for _, v in bs["segments"])
+            if t > _max_by_fmt.get(fmt, 0):
+                _max_by_fmt[fmt] = t
+
+        for bs in bar_specs:
+            total = sum(v for _, v in bs["segments"])
+            if total == 0:
+                continue
+            scale = _max_by_fmt[bs["fmt"]]
+            left = 0.0
+            for seg_name, value in bs["segments"]:
+                width = (value / scale) * 100
+                ax.barh(bs["y"], width, left=left, height=_FLEX_BAR_HEIGHT,
+                        color=colors[seg_name], edgecolor="none", align="edge")
+                bar_fmt = bs["fmt"]
+                val_str = f"{value:,.0f} kWh" if bar_fmt == "kwh" else f"${value:,.0f}"
+                lbl = f"{val_str}\n({seg_name})"
+                seg_mid_x = left + width / 2
+
+                if width >= _MIN_INLINE:
+                    ax.text(seg_mid_x, bs["y"] + _FLEX_BAR_HEIGHT / 2, lbl,
+                            ha="center", va="center", color="white",
+                            fontsize=9, fontweight="bold", fontfamily="IBM Plex Sans",
+                            linespacing=1.1)
+                elif value > 0:
+                    offset_y = bs["y"] + _FLEX_BAR_HEIGHT + 0.12
+                    ax.annotate(
+                        lbl, xy=(seg_mid_x, bs["y"] + _FLEX_BAR_HEIGHT),
+                        xytext=(seg_mid_x, offset_y),
+                        ha="center", va="top", fontsize=8, fontweight="bold",
+                        color=colors[seg_name], fontfamily="IBM Plex Sans",
+                        linespacing=1.1,
+                        arrowprops=dict(arrowstyle="-", color=colors[seg_name], lw=0.8),
+                    )
+                left += width
+
+            if bs["label"]:
+                ax.text(left + 1, bs["y"] + _FLEX_BAR_HEIGHT / 2, bs["label"],
+                        ha="left", va="center", fontsize=9, fontweight="bold",
+                        fontfamily="IBM Plex Sans")
+
+        for header_y, season_name in season_headers:
+            ax.text(0, header_y, season_name,
+                    ha="left", va="top", fontsize=11, fontweight="bold",
+                    fontfamily="GT Planar", color="#333333")
+
+        fig.subplots_adjust(left=0.02, right=0.90, top=0.92, bottom=0.02)
+        return fig
+```
+
+We pick one HP building in the `UTILITY` territory and load its 8,760-hour load profile, assign each hour to
+peak or off-peak based on the TOU flex tariff schedule, and compute the constant-elasticity demand shift:
+$Q_\text{remaining} = Q_\text{peak} \times (P_\text{on} / P_\text{flat})^\varepsilon$.
+
+```{python}
+#| label: fig-tou-flex-kwh-before
+#| fig-cap: "Seasonal electricity consumption by TOU period for a representative HP building, showing the kWh that would shift under demand-flex"
+
+if INCLUDE_TOU:
+    _fig = _flex_bar_chart(
+        groups=[
+            {"season": f"{s.title()} (on:off = {_flex_season_stats[s]['on_rate'] / _flex_season_stats[s]['off_rate']:.1f}x)", "bars": [{"segments": [
+                ("On-peak", _flex_season_stats[s]["remaining_peak_kwh"]),
+                ("Will shift", _flex_season_stats[s]["shifted_kwh"]),
+                ("Off-peak", _flex_season_stats[s]["offpeak_kwh"]),
+            ]}]}
+            for s in ["winter", "summer"]
+        ],
+        colors=_FLEX_COLORS,
+        value_fmt="kwh",
+    )
+    display_svg(_fig)
+```
+
+Under the TOU flex rate with enabling technology, the demand-flex model predicts that this building would shift
+a small fraction of its peak kWh to off-peak hours. The "Will shift" segment is the load that moves.
+Energy is conserved — total seasonal kWh stays the same.
+
+```{python}
+#| label: fig-tou-flex-kwh-shift
+#| fig-cap: "Before and after demand-flex: seasonal kWh by TOU period for a representative HP building"
+
+if INCLUDE_TOU:
+    _fig = _flex_bar_chart(
+        groups=[
+            {"season": f"{s.title()} (on:off = {_flex_season_stats[s]['on_rate'] / _flex_season_stats[s]['off_rate']:.1f}x)", "bars": [
+                {"segments": [
+                    ("On-peak", _flex_season_stats[s]["remaining_peak_kwh"]),
+                    ("Will shift", _flex_season_stats[s]["shifted_kwh"]),
+                    ("Off-peak", _flex_season_stats[s]["offpeak_kwh"]),
+                ], "label": "kWh before"},
+                {"segments": [
+                    ("On-peak", _flex_season_stats[s]["remaining_peak_kwh"]),
+                    ("Shifted", _flex_season_stats[s]["shifted_kwh"]),
+                    ("Off-peak", _flex_season_stats[s]["offpeak_kwh"]),
+                ], "label": "kWh after"},
+            ]}
+            for s in ["winter", "summer"]
+        ],
+        colors=_FLEX_COLORS,
+        value_fmt="kwh",
+    )
+    display_svg(_fig)
+```
+
+Both bars are the same width — total kWh is conserved. The "Will shift" chunk (before) becomes "Shifted"
+(after), indicating the same kWh is now consumed during off-peak hours.
+
+```{python}
+#| label: fig-tou-flex-bill-before
+#| fig-cap: "Seasonal bill by TOU period for a representative HP building, showing the bill component that would change under demand-flex"
+
+if INCLUDE_TOU:
+    _s = _flex_season_stats
+    _fig = _flex_bar_chart(
+        groups=[
+            {"season": f"{s.title()} (on:off = {_s[s]['on_rate'] / _s[s]['off_rate']:.1f}x)", "bars": [{"segments": [
+                ("On-peak", _s[s]["remaining_peak_kwh"] * _s[s]["on_rate"]),
+                ("Will shift", _s[s]["shifted_kwh"] * _s[s]["on_rate"]),
+                ("Off-peak", _s[s]["offpeak_kwh"] * _s[s]["off_rate"]),
+            ]}]}
+            for s in ["winter", "summer"]
+        ],
+        colors=_FLEX_COLORS,
+        value_fmt="dollar",
+    )
+    display_svg(_fig)
+```
+
+The "Will shift" segment here represents the dollar cost of the load that will move — priced at the expensive on-peak
+rate. When this load moves to off-peak, it will be priced at the cheaper off-peak rate instead.
+
+```{python}
+#| label: fig-tou-flex-bill-shift
+#| fig-cap: "Before and after demand-flex: seasonal bill by TOU period for a representative HP building"
+
+if INCLUDE_TOU:
+    _s = _flex_season_stats
+    _fig = _flex_bar_chart(
+        groups=[
+            {"season": f"{s.title()} (on:off = {_s[s]['on_rate'] / _s[s]['off_rate']:.1f}x)", "bars": [
+                {"segments": [
+                    ("On-peak", _s[s]["remaining_peak_kwh"] * _s[s]["on_rate"]),
+                    ("Will shift", _s[s]["shifted_kwh"] * _s[s]["on_rate"]),
+                    ("Off-peak", _s[s]["offpeak_kwh"] * _s[s]["off_rate"]),
+                ], "label": "Bill before"},
+                {"segments": [
+                    ("On-peak", _s[s]["remaining_peak_kwh"] * _s[s]["on_rate"]),
+                    ("Shifted", _s[s]["shifted_kwh"] * _s[s]["off_rate"]),
+                    ("Off-peak", _s[s]["offpeak_kwh"] * _s[s]["off_rate"]),
+                ], "label": "Bill after"},
+            ]}
+            for s in ["winter", "summer"]
+        ],
+        colors=_FLEX_COLORS,
+        value_fmt="dollar",
+    )
+    display_svg(_fig)
+```
+
+The After bar is shorter than Before — the shifted kWh are now priced at the off-peak rate instead of the on-peak rate.
+The width difference is the demand-flex savings.
+
+Combining before/after for both kWh and bills into a single figure shows what moves and what it costs,
+season by season.
+
+```{python}
+#| label: fig-tou-flex-combined-after
+#| fig-cap: "Before and after demand-flex: seasonal kWh and bill for a representative HP building"
+
+if INCLUDE_TOU:
+    _s = _flex_season_stats
+    _fig = _flex_bar_chart(
+        groups=[
+            {"season": f"{s.title()} (on:off = {_s[s]['on_rate'] / _s[s]['off_rate']:.1f}x)", "bars": [
+                {"segments": [
+                    ("On-peak", _s[s]["remaining_peak_kwh"]),
+                    ("Will shift", _s[s]["shifted_kwh"]),
+                    ("Off-peak", _s[s]["offpeak_kwh"]),
+                ], "label": "kWh before", "fmt": "kwh"},
+                {"segments": [
+                    ("On-peak", _s[s]["remaining_peak_kwh"]),
+                    ("Shifted", _s[s]["shifted_kwh"]),
+                    ("Off-peak", _s[s]["offpeak_kwh"]),
+                ], "label": "kWh after", "fmt": "kwh"},
+                {"segments": [
+                    ("On-peak", _s[s]["remaining_peak_kwh"] * _s[s]["on_rate"]),
+                    ("Will shift", _s[s]["shifted_kwh"] * _s[s]["on_rate"]),
+                    ("Off-peak", _s[s]["offpeak_kwh"] * _s[s]["off_rate"]),
+                ], "label": "Bill before", "fmt": "dollar"},
+                {"segments": [
+                    ("On-peak", _s[s]["remaining_peak_kwh"] * _s[s]["on_rate"]),
+                    ("Shifted", _s[s]["shifted_kwh"] * _s[s]["off_rate"]),
+                    ("Off-peak", _s[s]["offpeak_kwh"] * _s[s]["off_rate"]),
+                ], "label": "Bill after", "fmt": "dollar"},
+            ]}
+            for s in ["winter", "summer"]
+        ],
+        colors=_FLEX_COLORS,
+        value_fmt="kwh",
+    )
+    display_svg(_fig)
 ```
 
 ## Cross-subsidization under fair rate
@@ -3501,9 +3872,9 @@ plot_quadrant_bar_by_utility(
 
 ### Adding TOU to the comparison
 
-What happens if HP customers get the TOU rate instead of the flat seasonal rate, assuming no load flexibility? The
+What happens if HP customers get the TOU flex rate instead of the flat seasonal rate? The
 "before" is their current bill under today's flat rates (run 1+2, upgrade 0) and the "after" is their bill as an HP
-customer on the calibrated TOU rate (run 11+12, upgrade 2).
+customer on the calibrated TOU flex rate (run 15+16, upgrade 2).
 
 ```{python}
 #| label: compute-deltas-tou
@@ -3530,7 +3901,7 @@ if INCLUDE_TOU:
         [
             ("Default rate", natgas_state),
             ("Fair rate", natgas_switch_state),
-            ("TOU + fair rate (no flex)", natgas_tou_state),
+            ("TOU flex + fair rate", natgas_tou_state),
         ],
         title_parts=[
             ("How bills would change for ", "#000000"),
@@ -3545,7 +3916,7 @@ _tou_quadrant_fig
 ```
 
 The quadrant picture barely moves between the fair rate and the TOU variant. To see why, we compare each
-building's annual bill under TOU (run 11+12) vs. seasonal (run 7+8) directly — the difference isolates the
+building's annual bill under TOU flex (run 15+16) vs. seasonal (run 7+8) directly — the difference isolates the
 rate-design effect without the fuel-switching effect.
 
 ```{python}
@@ -4244,6 +4615,62 @@ report_vars["pct_burdened_hp_seasonal"] = above_hp_seasonal / 100
 report_vars["pct_burdened_current_lmi40"] = above_current_lmi40 / 100
 report_vars["pct_burdened_hp_default_lmi40"] = above_hp_default_lmi40 / 100
 report_vars["pct_burdened_hp_seasonal_lmi40"] = above_hp_seasonal_lmi40 / 100
+```
+
+## Appendix: demand-flex elasticity calibration
+
+```{python}
+#| label: tbl-seasonal-elasticities
+
+if INCLUDE_TOU:
+    from great_tables import GT, loc, style, md
+
+    _flex_diag_all = pl.read_parquet(
+        "s3://data.sb/switchbox/demand_flex_calibration/ny/demand_flex_diagnostic.parquet"
+    ) if "_flex_diag" not in dir() else _flex_diag
+
+    _elast_tbl = (
+        _flex_diag_all
+        .filter(pl.col("elasticity") == pl.col("seasonal_recommended_elasticity"))
+        .select(
+            "utility", "season", "price_ratio",
+            "seasonal_recommended_elasticity",
+            "seasonal_arcturus_target_pct",
+            "seasonal_recommended_savings",
+            "seasonal_recommended_elasticity_with_tech",
+            "seasonal_arcturus_target_pct_with_tech",
+            "seasonal_recommended_savings_with_tech",
+        )
+        .with_columns(pl.col("utility").replace(UTIL_NAMES).alias("utility_name"))
+        .sort(["utility_name", "season"])
+        .to_pandas()
+    )
+
+    _gt_elast = (
+        GT(_elast_tbl, rowname_col="season", groupname_col="utility_name")
+        .cols_hide("utility")
+        .cols_label(
+            price_ratio=md("Price<br>ratio"),
+            seasonal_recommended_elasticity=md("Elasticity<br>(no tech)"),
+            seasonal_arcturus_target_pct=md("Arcturus target<br>(no tech, %)"),
+            seasonal_recommended_savings=md("Savings/HP<br>(no tech, $)"),
+            seasonal_recommended_elasticity_with_tech=md("Elasticity<br>(with tech)"),
+            seasonal_arcturus_target_pct_with_tech=md("Arcturus target<br>(with tech, %)"),
+            seasonal_recommended_savings_with_tech=md("Savings/HP<br>(with tech, $)"),
+        )
+        .fmt_number("price_ratio", decimals=2)
+        .fmt_number(["seasonal_recommended_elasticity", "seasonal_recommended_elasticity_with_tech"], decimals=2)
+        .fmt_number(["seasonal_arcturus_target_pct", "seasonal_arcturus_target_pct_with_tech"], decimals=1)
+        .fmt_currency(["seasonal_recommended_savings", "seasonal_recommended_savings_with_tech"], decimals=0)
+        .tab_header(
+            title="Demand-flex elasticity calibration by utility and season",
+            subtitle="Calibrated to Arcturus 2.0 meta-analysis; savings are annual rate arbitrage per HP building",
+        )
+    )
+
+    Path("../cache").mkdir(exist_ok=True)
+    Path("../cache/tbl_seasonal_elasticities.html").write_text(_gt_elast.as_raw_html())
+    _gt_elast
 ```
 
 ## Export report variables

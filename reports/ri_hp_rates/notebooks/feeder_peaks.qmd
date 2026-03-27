@@ -14,12 +14,13 @@ by adjusting the EH (electric heating) forecast impact proportionally.
 ### Imports
 
 ```{python}
+import io
 import polars as pl
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from pathlib import Path
 import boto3
-import openpyxl
+import fastexcel
 ```
 
 ### Parameters
@@ -31,24 +32,17 @@ WINTER_CAPACITY_FRAC_OF_SUMMER = 1.00
 STUDY_YEARS = list(range(2024, 2036))
 ALL_YEARS = list(range(2021, 2036))
 
-S3_BUCKET = "data.sb"
-S3_PREFIX = "ri_hp_rates/rie_data"
+FEEDER_LOADS_S3_BUCKET = "data.sb"
+FEEDER_LOADS_S3_KEY = "rie/feeder_transformer_loads_20260326.xlsx"
 ```
 
 ### Helpers
 
 ```{python}
-CACHE_DIR = Path("cache")
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def s3_download(filename: str) -> Path:
-    """Download a file from S3 to the local cache if it doesn't already exist."""
-    local_path = CACHE_DIR / filename
-    if not local_path.exists():
-        s3 = boto3.client("s3")
-        s3.download_file(S3_BUCKET, f"{S3_PREFIX}/{filename}", str(local_path))
-    return local_path
+def load_feeder_transformer_xlsx_bytes() -> bytes:
+    """Load the workbook from S3 (no on-disk cache; one GET per notebook run)."""
+    s3 = boto3.client("s3")
+    return s3.get_object(Bucket=FEEDER_LOADS_S3_BUCKET, Key=FEEDER_LOADS_S3_KEY)["Body"].read()
 ```
 
 ### Constants from RI Peak Report 2024
@@ -109,22 +103,21 @@ HP_CUMULATIVE_HIGH = {
 
 ### Import feeder and transformer data
 
-The workbook `CLF_2-2_Feeder_Transformer Loading_v2.xlsx` has two tabs (feeder
-and transformer). Each tab includes two header rows: the first contains year
-labels, and the second contains column names/units. We use the first row to
-detect year columns, then slice away both header rows.
+The workbook `feeder_transformer_loads_20260326.xlsx` on `s3://data.sb/rie/` has
+two tabs (feeder and transformer). Each tab includes two header rows: the first
+contains year labels, and the second contains column names/units. We use the
+first row to detect year columns, then slice away both header rows.
 
 ```{python}
-_loading_xlsx = s3_download("CLF_2-2_Feeder_Transformer Loading_v3.xlsx")
+_loading_xlsx_bytes = load_feeder_transformer_xlsx_bytes()
 
 
-def get_loading_sheet_names(xlsx_path: Path) -> tuple[str, str]:
+def get_loading_sheet_names(xlsx_bytes: bytes) -> tuple[str, str]:
     """Return (feeder_sheet, transformer_sheet), using keyword match fallback."""
-    wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
-    sheet_names = wb.sheetnames
+    reader = fastexcel.read_excel(xlsx_bytes)
+    sheet_names = reader.sheet_names
     feeder_sheet = next((s for s in sheet_names if "feeder" in s.lower()), sheet_names[0])
     transformer_sheet = next((s for s in sheet_names if "transformer" in s.lower()), sheet_names[1])
-    wb.close()
     return feeder_sheet, transformer_sheet
 
 
@@ -288,14 +281,14 @@ def add_contingency_long_column(
     return df_long.drop(cols_sorted)
 
 
-_feeder_sheet, _transformer_sheet = get_loading_sheet_names(_loading_xlsx)
+_feeder_sheet, _transformer_sheet = get_loading_sheet_names(_loading_xlsx_bytes)
 print(f"Reading feeder sheet: {_feeder_sheet}")
 print(f"Reading transformer sheet: {_transformer_sheet}")
 
 df_feeders_raw = pl.read_excel(
-    _loading_xlsx,
+    io.BytesIO(_loading_xlsx_bytes),
     sheet_name=_feeder_sheet,
-    engine="openpyxl",
+    engine="calamine",
     has_header=False,
 )
 _feeder_year_cols, _feeder_year_rename = get_year_columns_and_map(df_feeders_raw)
@@ -357,9 +350,9 @@ df_feeders.head(10)
 
 ```{python}
 df_transformers_raw = pl.read_excel(
-    _loading_xlsx,
+    io.BytesIO(_loading_xlsx_bytes),
     sheet_name=_transformer_sheet,
-    engine="openpyxl",
+    engine="calamine",
     has_header=False,
 )
 _xfmr_year_cols, _xfmr_year_rename = get_year_columns_and_map(df_transformers_raw)

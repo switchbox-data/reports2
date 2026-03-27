@@ -39,8 +39,79 @@ RATE DESIGN PROPOSAL AND JUSTIFICATION
 - language: we measured what heat pump customers actually cost to serve, and compared it to what they're paying. this is a direct comparison of what heat pump customers pay versus what they cost to serve.
 - but there's also policy: because of this overpayment, operating costs suck. that hurts policy—right at the time that accelerator is picking up, and act on climate is a thing. but when you fix the cost allocation, operating costs flip—now we're helping rather than helping. BILL CHANGE FROM NATGAS TO HP UNDER DEFAULT RATES vs. HP RATES HERE.
 
-- how does this affect the other principles?
-- positive, negative, neutral
+"The fact that fairness and climate goals align is not a coincidence — it's what happens when rates actually reflect costs.
+
+RIE's framing is a false dichotomy. Cost-based ratemaking and policy objectives are not in tension here. The cost analysis shows the current rates are unfair / not cost-ba. Fixing them happens to advance state climate goals. Both arguments point in the same direction."
+
+### Assessment against Docket 4600 rate design principles and goals
+
+Order 22815 (Section IV.B.1.a) directs: "a party proposing a specific rate design will need to include accompanying evidence that addresses how the proposal advances, detracts from, or is neutral as to each of the stated rate design principles." And (Section IV.B.1.c): "The PUC's expectation is that all parties to a National Grid rate matter will include a discussion in any testimony of how a proposal advances, detracts from, or is neutral to each of the stated goals of the electric system." Source: ripuc_4600_order_22815.pdf, pp. 19-21. Principles from Stakeholder Report Section 3.1 (adopted by Order 22851, paragraph 2). Goals from Section 1.3 (same).
+
+#### 12 Rate Design Principles (Stakeholder Report §3.1)
+
+1. **Ensure safe, reliable, affordable, and environmentally responsible electricity service today and in the future.**
+   ADVANCES. The HP rate improves affordability for heat pump customers by eliminating $1,301/yr in overpayment. It advances environmental responsibility by removing the operating cost barrier to heat pump adoption, reducing fossil fuel consumption. No impact on safety or reliability—this is a billing change, not a grid change.
+
+2. **Promote economic efficiency over the short and long term.**
+   ADVANCES. The current rate sends an inefficient signal: it tells HP customers they cost ~2.4× more to serve on delivery than non-HP customers, when the actual ratio is ~1.04×. Correcting this promotes efficient investment decisions (heat pump adoption when net-beneficial) and reduces deadweight loss from the cross-subsidy.
+
+3. **Provide efficient price signals that reflect long-run marginal cost.**
+   ADVANCES. The HP rate aligns delivery bills with marginal cost-of-service as measured by the BAT. The current flat volumetric rate fails this principle—it signals that winter delivery is expensive when marginal distribution capacity costs are near zero in winter (zero feeders are winter-constrained).
+
+4. **Future rates and rate structures should appropriately address "externalities" that are not adequately counted in current rate structures.**
+   ADVANCES. By removing the operating cost barrier to heat pumps, the HP rate enables customers to switch away from fossil fuels, reducing carbon emissions and local air pollution—externalities not currently counted in rates. The rate doesn't internalize externalities directly, but it removes a rate-design barrier to the technologies that reduce them.
+
+5. **Empower consumers to manage their costs.**
+   ADVANCES. Under default rates, the operating cost signal is distorted—consumers see artificially high electric heating costs that don't reflect actual grid costs. With accurate pricing, consumers can evaluate the true economics of electrification and make informed heating decisions.
+
+6. **Enable a fair opportunity for utility cost recovery of prudently incurred costs and revenue stability.**
+   NEUTRAL. The HP rate recovers the same total revenue from the residential class. It redistributes revenue collection between HP and non-HP customers to align with cost-of-service, but total class revenue is unchanged. Revenue stability is maintained through RI's existing decoupling mechanism.
+
+7. **All parties should provide fair compensation for value and services received and should receive fair compensation for value and benefits delivered.**
+   ADVANCES. This is the core principle the HP rate addresses. HP customers currently pay $1,301/yr more than the delivery services they receive. Fossil fuel customers pay less than theirs. The HP rate corrects this so each group's compensation matches the services they receive.
+
+8. **Be transparent and understandable to all customers.**
+   NEUTRAL. The HP rate is a simple flat rate—straightforward for customers to understand. Adding a separate rate class adds some structural complexity, but the rate itself is simpler than TOU alternatives. The rationale ("your delivery bill should match your delivery cost") is intuitive.
+
+9. **Any changes in rate structures should be implemented with due consideration to the principle of gradualism.**
+   ADVANCES. The non-HP bill impact is ~$2.37/month—well within the bounds of gradualism. Fixing the cross-subsidy now, while HP penetration is ~2–3% of residential customers, IS the gradual approach. Waiting until penetration is 15–20% would require a larger, less gradual correction later. The cross-subsidy grows with every new HP installation; delay is the enemy of gradualism here.
+
+10. **Provide opportunities to reduce energy burden, and address low income and vulnerable customers' needs.**
+    ADVANCES. LMI households with heat pumps are disproportionately burdened by the cross-subsidy. The HP rate reduces energy burden for all HP customers, including LMI. When paired with full LMI discount enrollment, the share of highly energy-burdened LMI households actually drops below today's level post-electrification.
+
+11. **Be consistent with policy goals (e.g. environmental, climate (Resilient Rhode Island Act), energy diversity, competition, innovation, power/data security, least cost procurement, etc.).**
+    ADVANCES. The Resilient Rhode Island Act and Act on Climate set emissions reduction targets that require widespread electrification. The current volumetric rate structure is the single largest operating cost barrier to heat pump adoption. Under default rates, only ~26% of gas-heated homes save by switching; under the HP rate, ~97% would save. Removing the barrier directly advances these statutory goals. (This is not in tension with cost-causation: the cost analysis and policy goals point in the same direction.)
+
+12. **Rate structures should be evaluated on whether they encourage or discourage appropriate investments that enable the evolution of the future energy system.**
+    ADVANCES. The current rate discourages heat pump investment by inflating operating costs. The HP rate removes that barrier and enables the customer investment in electrification that the future energy system requires. The 4600 Working Group—including National Grid—agreed that "lower volumetric charges (kWh) appear to provide higher incentives for electrification strategies" (§3.5). The HP rate delivers exactly this.
+
+#### 8 Goals of the Future Electric System (Stakeholder Report §1.3)
+
+1. **Provide reliable, safe, clean and affordable energy to Rhode Island customers over the long term (applies to all energy use, not just regulated fuels).**
+   ADVANCES. Improves affordability for HP customers by eliminating overpayment. Advances clean energy by removing operating cost barrier to electrification. No impact on reliability or safety.
+
+2. **Strengthen the RI economy, support economic competitiveness, retain and create jobs by optimizing the benefits of a modern grid and attaining appropriate rate design structures.**
+   ADVANCES. Heat pump installations create local jobs (HVAC contractors, electricians). Removing the operating cost barrier accelerates adoption, supporting the clean energy workforce that Clean Heat RI and the Accelerator are building. Also: "attaining appropriate rate design structures" is literally what we're doing.
+
+3. **Address the challenge of climate change and other forms of pollution.**
+   ADVANCES. By making heat pump operating costs competitive, the rate accelerates the transition from fossil fuel heating to electric heating, directly reducing GHG emissions and local air pollution.
+
+4. **Prioritize and facilitate increasing customer investment in their facilities (efficiency, distributed generation, storage, responsive demand, and the electrification of vehicles and heating) where that investment provides recognizable net benefits.**
+   ADVANCES. The rate directly facilitates customer investment in "electrification of … heating"—the exact language of this goal. The BAT shows heat pumps provide net benefits to the grid (they cost roughly the same to serve). The operating cost barrier is the main obstacle; the HP rate removes it.
+
+5. **Appropriately compensate distributed energy resources for the value they provide to the electricity system, customers, and society.**
+   NEUTRAL. This goal is primarily about DER compensation (solar, storage, demand response). The HP rate doesn't directly address DER compensation, though heat pumps could be managed as demand-side resources in the future.
+
+6. **Appropriately charge customers for the cost they impose on the grid.**
+   ADVANCES. This is the core goal. HP customers' delivery cost-of-service is only ~4% higher than fossil fuel customers', but their delivery bills are ~142% higher. The HP rate corrects this to align charges with costs imposed.
+
+7. **Appropriately compensate the distribution utility for the services it provides.**
+   NEUTRAL. Total residential class revenue is unchanged. The utility continues to be fully compensated; only the distribution of revenue between HP and non-HP customers changes to match cost-of-service.
+
+8. **Align distribution utility, customer, and policy objectives and interests through the regulatory framework, including rate design, cost recovery, and incentives.**
+   ADVANCES. The current rate creates misalignment: the state wants to accelerate electrification (Act on Climate, Clean Heat RI, Accelerator), but the rate structure penalizes customers who electrify. The HP rate realigns the rate structure with both cost-of-service and state policy, removing a contradiction between the regulatory framework and its objectives.
+
+#### Summary: 10 advance, 0 detract, 2 neutral (principles). 6 advance, 0 detract, 2 neutral (goals).
 
 there's also a CBA
 
@@ -117,6 +188,8 @@ RATE DESIGN AND COST-REFLECTIVENESS
 - not true: just doing cost-reflectiveness, which is a rate design thing, doesn't fix cost allocation. so it introduces efficiency without fixing fairness.
 - here's the proof from the TOU rate. we designed one for you, and it doesn't fix the cross-subsidy.
 - why? because it's still volumetric, which means it still overcollects when applied to the entire class.
+  "But the argument conflates two problems. TOU addresses within-day peak management: shifting load from expensive peak hours to cheaper off-peak hours. The seasonal HP rate addresses a fundamentally different problem: the structural overcollection from HP customers due to volumetric delivery pricing. These are orthogonal."
+  "Moreover, TOU requires AMI, which is years from full deployment in Rhode Island. The cross-subsidy exists today — HP customers are overpaying by $1,301/year right now. Waiting for AMI and TOU design proceedings means accepting years of continued unfairness." <- TOU won't fix it, you need fairness. and while fairness plays well with TOU, don't delay by waiting to implement fair-TOU. fix this now and add cost-reflectiveness later. "Finally, the two are not _mutually exclusive_. You can have a seasonal HP rate now and layer TOU on top later. Massachusetts is doing exactly this."
 
 - that's just how volumetric rates work. that leaves you with two options. you either do a separate rate class, which is what we're doing. if you don't want to do that, the only way to fix the cross-subsidy is to move a lot to the fixed charge (which we're not saying you should do!), because that's the thing about volumetric.
 
@@ -126,11 +199,19 @@ RATE DESIGN AND COST-REFLECTIVENESS
 - or if you wanted to go the fixed charge route, you could just make the remaining volumetric charge time-varying.
 - the rate is only flat to begin with because 1. no smart meters yet, and 2. you can auto-enroll everyone and fix the problem for real. then slowly move them over to time-varying—but time-varying based on their actual revenue requirement, not overcollecting.
 
+IF WE DO PROPOSE SEASONAL, NOTE THAT WERE NOT RAISING SUMMER. for implementability but also: it would penalize customers for using their heat pumps as AC during heat waves, create affordability problems in summer, and potentially increase summer peak stress. for real harm reasons RIE brought up.
+
 IMPLEMENTATION ISSUES
 
 - implementation problem: is it worth the cost if nobody adopts it?
 - solution: do what MA is doing and opt existing customers into it, and then make enrollment part of going throgh the accelerator / program. automatic.
 - you can totally do this because _everyone saves_. that's why we recovered the new HP cost allocation
+- bring up RIE's CMP rate comparison?
+  "CMP requires customers to know about the rate and opt in. If customers don't know it exists, they can't enroll. Massachusetts solved this by auto-enrolling heat pump customers through Mass Save. The question isn't whether CMP got low enrollment — it's whether RI can design a better enrollment mechanism."
+
+"_Our proposal is designed to be retroactively applicable to all known heat pump customers_. Combined with enrollment through Clean Heat Rhode Island (RI's heat pump incentive program), this addresses the CMP problem directly. Every customer who receives a heat pump rebate should be automatically enrolled.
+
+The report also shows why enrollment matters: the average HP customer is overpaying by $1,301/year. Even with low HP penetration (~2% of residential customers), _the per-household stakes are enormous_. CMP's low enrollment hurt customers who could have saved, but it didn't create a macro revenue problem — which is exactly Carrie's point that "the changes in collections are relatively small in aggregate."
 
 - will this cause rate whiplash because it'll flip in 8 years?
 - no, because 1. costs will rise gradually as feeders fill up, and 2. this won't start happenign for 20 years.
@@ -140,6 +221,7 @@ IMPLEMENTATION ISSUES
 - how do you adjust it?
 - have it be aligned with cost-causation. that means the flat rate for HP will over the decades eventually rise to meet the flat rate for others.
 - this is medium-term on purpose.
+  "the correct response is not to keep overcharging HP customers for 15+ years. It's to design the rate with a transparent glide path. The report's framework already addresses this — the rate is designed for the current period, while the system has ample headroom, and should evolve as cost-of-service changes. _Regulators revisit rates every few years anyway_. The alternative — doing nothing — means forcing HP customers to overpay by $1,301/year for the next two decades."
 
 - is this a one time fix?
 - if we opt in existing people, it removes the cross-subsidy, which causes a one time ajdustment of 20 a year.

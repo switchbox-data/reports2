@@ -4,7 +4,7 @@ This document catalogs the objections and questions Rhode Island Energy raised d
 
 Context: at the time of the call, we only had Massachusetts results to show. RIE's team included Carrie Gill (electric regulatory strategy), Lance Schaefer and Peter Blazuna (Concentric Energy Advisors, rate design and CCOS), Stephanie Briggs (rates and revenue requirements), Tim Jones and Jared Long (sales analysis/forecasting), Adam Ramos and Jennifer Brooks Hutchinson (outside counsel), and several others. Their pushback was substantive and well-coordinated — it came from rate design consultants, planners, and regulatory strategists.
 
-## 1. "You haven't demonstrated cost causation"
+## 1. "You haven't demonstrated cost causation" -> now we have, via a method that does the same thing as yours, assign subclass cost responsibility based on historical cost-causation, but is not broken because it looks at time
 
 ### What they said
 
@@ -45,7 +45,7 @@ This is no longer a revenue analysis with hand-waving about grid capacity. It is
 
 On Lance's specific point about O&M and depreciation: our BAT allocates all marginal costs — capacity, energy, O&M — hour by hour. Winter consumption does impose some marginal costs (energy and O&M). But the capacity cost — which is by far the largest driver of delivery cost-of-service — is near zero in winter because no feeders are winter-constrained (see objection #3).
 
-## 2. "Any rate must be revenue-neutral"
+## 2. "Any rate must be revenue-neutral" -> it is, at the customer class level. it can't be at the subclass-level, or you don't fix the cost allocation problem.
 
 ### What they said
 
@@ -73,7 +73,7 @@ This is modest and proportionate. The CMP model (raising summer rates to $0.27/k
 
 The real question: why should HP customers continue to subsidize everyone else by $1,301/year each, so that fossil fuel customers can enjoy a $2.37/month discount? That's the tradeoff RIE is implicitly defending.
 
-## 3. "Eight years from now, the system flips to winter-peaking — then what?"
+## 3. "Eight years from now, the system flips to winter-peaking — then what?" -> your own data says it will take 2 decades.
 
 ### What they said
 
@@ -111,7 +111,7 @@ CMP's experience in Maine is not transferable. Maine has minimal AC load, so its
 
 On the "rate whiplash" concern: the correct response is not to keep overcharging HP customers for 15+ years. It's to design the rate with a transparent glide path. The report's framework already addresses this — the rate is designed for the current period, while the system has ample headroom, and should evolve as cost-of-service changes. Regulators revisit rates every few years anyway. The alternative — doing nothing — means forcing HP customers to overpay by $1,301/year for the next two decades.
 
-## 4. "TOU rates solve this better"
+## 4. "TOU rates solve this better" -> sure, if you solve the underlying cost allocation first. if not, then no, actually.
 
 ### What they said
 
@@ -142,7 +142,7 @@ The CMP comparison is misleading. Maine customers don't use much AC, so CMP's hi
 
 Finally, the two are not mutually exclusive. You can have a seasonal HP rate now and layer TOU on top later. Massachusetts is doing exactly this.
 
-## 5. "Enrollment will be too low to matter"
+## 5. "Enrollment will be too low to matter" -> not if you retroactively opt exiting HP customers people in, which our design lets you do. and pair accelerator and utility HP programs with enrollment.
 
 ### What they said
 
@@ -188,7 +188,7 @@ The revenue impact is absorbed across the full customer base: non-HP customers s
 
 Moreover, RIE's own load forecasts assume that heat pumps _lower_ the summer peak due to their increased efficiency over traditional air conditioning. So HP customers are arguably making summer peaks better, not worse.
 
-## 7. "You didn't model the cascading effects"
+## 7. "You didn't model the cascading effects" -> yes, in a simple way (your own forecast)
 
 ### What they said
 
@@ -212,7 +212,7 @@ The grid has so much winter headroom that even aggressive adoption scenarios don
 
 The report also includes adoption scenarios that project grid impact from accelerated HP adoption under fair rates. The additional load from fair-rate-induced adoption is modest relative to the grid's available winter capacity.
 
-## 8. The meta-argument: "policy vs. cost"
+## 8. The meta-argument: "policy vs. cost"—this is cost-based. and 4600 principles say policy also matters.
 
 ### What they said
 

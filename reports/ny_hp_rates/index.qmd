@@ -949,16 +949,6 @@ print(Path("cache/bat_by_utility_table.html").read_text())
 
 ## Capacity investment deferral benefit for each utility
 
-## Demand-flex elasticity 
-
-::: {.column-page-inset-right}
-```{python}
-#| echo: false
-#| output: asis
-print(Path("cache/tbl_seasonal_elasticities.html").read_text())
-```
-:::
-
 ## Acknowledgments
 
 ## Data and Methods
@@ -1413,6 +1403,117 @@ Table: Residential delivery revenue requirements ($000s)
 | Rochester Gas & Electric      | May 1, 2025     | April 30, 2026    |                    $325,583 | [Docket 25-E-01376](https://www.documentcloud.org/documents/27422850-exhibits-09-26-2025-revenue-allocation-and-rate-design-panel-supplemental-candu-exhibits-61117988/#document/p2/a2804672) @nysegrg&e_Docket25E01376Exhibits_2025             |
 | New York State Electric & Gas | May 1, 2025     | April 30, 2026    |                    $834,674 | [Docket 25-E-01376](https://www.documentcloud.org/documents/27422850-exhibits-09-26-2025-revenue-allocation-and-rate-design-panel-supplemental-candu-exhibits-61117988/#document/p1/a2804616) @nysegrg&e_Docket25E01376Exhibits_2025             |
 | Con Edison                    | January 1, 2025 | December 31, 2026 |                  $3,116,197 | [Docket 25-E-00241](https://www.documentcloud.org/documents/27687458-correspondence-01-31-2025-2025-filing-letter-and-attachments-11531948/#document/p104/a2804859) @coned_Docket25E00241Correspondence_2025                                     |
+
+
+
+## Demand-flex
+
+TOU rates create a financial incentive to shift electricity use away from peak hours — running the heat pump
+harder before the peak period, for instance, or letting the house cool slightly during peak hours and
+recovering afterward. This is demand flexibility: customers responding to price signals by changing _when_
+they consume electricity, without reducing how much they consume overall.
+
+The demand flexibility analysis models how heat pump customers shift electricity consumption from peak to
+off-peak hours in response to TOU price signals. The key parameter is the elasticity of substitution
+($\varepsilon$), which controls how much load shifts for a given peak-to-off-peak price ratio.[^elast_def] We calibrate
+this parameter separately for each utility and season, anchored to empirical evidence from real TOU pricing
+pilots.
+
+[^elast_def]: **Elasticity**: How much customers change their behavior when prices change. A more negative
+elasticity means more load shifts away from peak hours for a given peak-to-off-peak price ratio. The bigger the difference between the peak and off-peak rates, the more customers will shift their demand. 
+
+
+
+### How much do loads shift
+
+We ground our elasticity in the Arcturus 2.0 meta-analysis [@faruqui_Arcturus20Metaanalysis_2017], which
+synthesized results from 62 residential time-varying pricing pilots across North America, Europe, and
+Australia. The study's central finding is that peak demand reduction is strongly predicted by the
+peak-to-off-peak price ratio — the higher the ratio, the more customers shift. The relationship is
+log-linear:
+
+$$\text{peak reduction} = -0.011 + (-0.065) \times \ln(\text{price ratio})$$
+
+This is the conservative "no enabling technology" baseline — customers responding to price signals alone,
+without smart thermostats or automation. At a 2:1 price ratio, it predicts ~5.6% peak reduction; at 4:1,
+~10.1%. Returns diminish as the ratio increases. Arcturus also estimates a higher-response model for
+customers with enabling technology, which we use for our results given that most modern heat pumps are
+programmable.[^arcturus-tech]
+
+[^arcturus-tech]: Arcturus also estimates a "with enabling technology" model — customers with smart
+thermostats or in-home displays. At the same price ratios, it predicts ~8.8% peak reduction at 2:1 and
+~16.5% at 4:1, roughly 1.5–1.6x the no-tech response. We use the no-tech model as our conservative
+baseline.
+
+$$\text{peak reduction} = -0.011 + (-0.111) \times \ln(\text{price ratio})$$
+
+At the same price ratios, it predicts ~8.8% peak reduction at 2:1 and ~16.5% at 4:1. Since most modern
+heat pumps are programmable and can respond to price signals automatically, we use the with-tech model for
+our presented results. That said, the resulting bill savings from demand shifting are modest either way —
+on the order of $15–$35 per HP customer per year — compared to the much larger savings from simply being
+on a TOU rate.
+
+### Why calibration is needed
+
+Our simulation uses a constant-elasticity model
+($Q_{\text{shifted}} = Q \times (P_{\text{period}} / P_{\text{flat}})^\varepsilon$), which differs from
+Arcturus's log-linear regression. We cannot directly equate the two functional forms. Instead, we calibrate
+by:
+
+1. Taking each utility's actual seasonal TOU price ratios (derived from marginal costs)
+2. Computing the Arcturus-predicted peak reduction at those ratios
+3. Running our constant-elasticity model across a sweep of $\varepsilon$ values (-0.04 to -0.50)
+4. Selecting the $\varepsilon$ that reproduces the same peak reduction Arcturus predicts
+
+This yields an empirically grounded elasticity — one that matches the aggregate demand response observed in
+real pricing pilots at a comparable price ratio.
+
+### Per-utility, per-season calibration
+
+Each NY utility has different TOU price ratios derived from its marginal cost profile. Summer ratios range
+from 2.87 (RG&E) to 4.33 (Con Edison); winter ratios are lower, ranging from 1.57 (Central Hudson, O&R) to
+1.98 (Con Edison). Because Arcturus predicts different peak reductions at different ratios, a single
+statewide elasticity would overshoot some utilities and undershoot others.
+
+We calibrate each season independently. Summer's higher price ratios call for a mean there is a greateer incentive to shift emand (more negative elasticity), while winter's lower ratios mean slightly less load shifting. The calibration runs on actual ResStock HP building loads — the same hourly
+consumption data used in the bill analysis — ensuring the elasticity reflects the load profile of the
+buildings we are modeling.
+
+The resulting seasonal elasticities fall into two natural groups:
+
+- Utilities with **3-hour peak windows** (Con Edison, National Grid, NYSEG, RG&E): $\varepsilon$ = -0.16 to -0.18
+- Utilities with **5-hour peak windows** (Central Hudson, O&R, PSEG-LI): $\varepsilon$ = -0.18 to -0.24
+
+Wider peak windows shift more kWh per unit of elasticity, so less elasticity is needed to reach the same
+Arcturus target.
+
+::: {.column-page-inset-right}
+```{python}
+#| echo: false
+#| output: asis
+print(Path("cache/tbl_seasonal_elasticities.html").read_text())
+```
+:::
+
+### What the calibration captures and what it does not
+
+The calibrated elasticities reproduce the *average* response observed across real TOU pilots. They do not
+capture the distribution of individual customer responses — in reality, some customers shift aggressively
+while others do not shift at all. Our model applies the same $\varepsilon$ uniformly to every HP building,
+producing identical percentage peak reductions across all buildings. This is a known simplification.
+
+The bill savings from demand flexibility come almost entirely from **rate arbitrage**: consuming less
+electricity at the peak rate and more at the off-peak rate. The system-level savings channel (lower marginal
+costs reducing the revenue requirement) is negligible because delivery marginal costs are nonzero in only
+40–113 hours per year, leaving very little cost to shift away from.
+
+### Validation
+
+We validated the shifting mechanics against CAIRO's own outputs for all seven NY utilities. The validation
+confirms energy conservation (total kWh is preserved within machine precision), correct direction (peak kWh
+decreases, off-peak increases), and consistency with CAIRO's internal demand response tracker (mean
+$|\Delta\varepsilon|$ < 0.003 across all utilities).
+
 
 ## Assumptions
 

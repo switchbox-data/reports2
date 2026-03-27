@@ -92,12 +92,12 @@ def _weighted_mean(df: pl.DataFrame, col: str, w_col: str) -> float:
 #| label: params
 
 # --- To switch states, change these 5 values and the 4 utility dicts in the constants cell below. ---
-INCLUDE_TOU = True  # set False to skip TOU rate cells (e.g. when run_11+12 is not available)
+INCLUDE_TOU = True  # set False to skip TOU rate cells (e.g. when run_15+16 is not available)
 UTILITY = "coned"  # any utility code from UTIL_NAMES, used for the representative-building example
-BATCH = "ny_20260311b_r1-12_lmi_gen"
+BATCH = "ny_20260326_flex_r1-16"
 STATE = "NY"
 YEAR = 2025
-RDP_REF = "8bf03e6"  # rate-design-platform git ref for fetch_rdp_file
+RDP_REF = "2c00f80"    # rate-design-platform git ref for fetch_rdp_file
 
 # Everything below derives from STATE + BATCH
 _state_lower = STATE.lower()
@@ -106,7 +106,7 @@ PATH_MASTER_BILLS_12 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_1+2/
 PATH_MASTER_BILLS_34 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_3+4/comb_bills_year_target/"
 PATH_MASTER_BILLS_56 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_5+6/comb_bills_year_target/"
 PATH_MASTER_BILLS_78 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_7+8/comb_bills_year_target/"
-PATH_MASTER_BILLS_1112 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_11+12/comb_bills_year_target/"
+PATH_MASTER_BILLS_1516 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_15+16/comb_bills_year_target/"
 PATH_MASTER_BAT_12 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_1+2/cross_subsidization_BAT_values/"
 PATH_MASTER_BAT_34 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_3+4/cross_subsidization_BAT_values/"
 PATH_MASTER_BAT_56 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_5+6/cross_subsidization_BAT_values/"
@@ -182,7 +182,7 @@ bills_hp = pl.scan_parquet(PATH_MASTER_BILLS_34, hive_partitioning=True)
 bills_hprate_current = pl.scan_parquet(PATH_MASTER_BILLS_56, hive_partitioning=True)
 bills_hprate_hp = pl.scan_parquet(PATH_MASTER_BILLS_78, hive_partitioning=True)
 bills_tou_hp = (
-    pl.scan_parquet(PATH_MASTER_BILLS_1112, hive_partitioning=True)
+    pl.scan_parquet(PATH_MASTER_BILLS_1516, hive_partitioning=True)
     if INCLUDE_TOU
     else None
 )
@@ -483,7 +483,7 @@ LOAD_COLS = [
     "out.natural_gas.total.energy_consumption",
 ]
 
-load_base = str(Path("~/repos/rate-design-platform/data/nrel/resstock/res_2024_amy2018_2_sb/load_curve_monthly").expanduser() / f"state={STATE}")
+load_base = str(Path("/ebs/data/nrel/resstock/res_2024_amy2018_2_sb/load_curve_monthly") / f"state={STATE}")
 df_before_load = pl.read_parquet(f"{load_base}/upgrade=00/{median_bldg_id_state}-0.parquet", columns=LOAD_COLS)
 df_after_load = pl.read_parquet(f"{load_base}/upgrade=02/{median_bldg_id_state}-2.parquet", columns=LOAD_COLS)
 
@@ -1297,7 +1297,7 @@ def plot_quadrant_bar_by_utility(
 _cache_path = Path("../cache/annual_elec_kwh.parquet")
 if not _cache_path.exists():
     _elec_col = "out.electricity.total.energy_consumption"
-    _load_base = Path(f"~/repos/rate-design-platform/data/nrel/resstock/res_2024_amy2018_2_sb/load_curve_monthly/state={STATE}").expanduser()
+    _load_base = Path(f"/ebs/data/nrel/resstock/res_2024_amy2018_2_sb/load_curve_monthly/state={STATE}")
     _before = (
         pl.scan_parquet(_load_base / "upgrade=00")
         .select("bldg_id", _elec_col)
@@ -2537,8 +2537,8 @@ _rate_gt
 ## Heat pump TOU rate structure
 
 Beyond the flat seasonal rates above, we've also designed time-of-use (TOU) variants that align more closely with hourly
-marginal costs. Each utility has a "paired" TOU tariff: a delivery-only file (`*_hp_seasonalTOU_calibrated.json`) and a
-delivery+supply file (`*_hp_seasonalTOU_supply_calibrated.json`). We difference them to isolate the supply component.
+marginal costs. Each utility has a "paired" TOU tariff: a delivery-only file (`*_hp_seasonalTOU_flex_calibrated.json`) and a
+delivery+supply file (`*_hp_seasonalTOU_flex_supply_calibrated.json`). We difference them to isolate the supply component.
 
 All TOU tariffs use two seasons (winter: Oct–Mar, summer: Apr–Sep) with distinct on-peak and off-peak periods within
 each season. Peak hours vary by utility, reflecting each utility's marginal cost profile.
@@ -2567,8 +2567,8 @@ def _extract_peak_hours(schedule: list[list[int]], month_idx: int) -> str:
 
 rows: list[dict] = []
 for display, code in TARIFF_UTILS.items():
-    d = _load_rate(f"{code}_hp_seasonalTOU_calibrated.json")
-    b = _load_rate(f"{code}_hp_seasonalTOU_supply_calibrated.json")
+    d = _load_rate(f"{code}_hp_seasonalTOU_flex_calibrated.json")
+    b = _load_rate(f"{code}_hp_seasonalTOU_flex_supply_calibrated.json")
 
     dr = [tier[0]["rate"] for tier in d["energyratestructure"]]
     br = [tier[0]["rate"] for tier in b["energyratestructure"]]
@@ -2804,9 +2804,9 @@ def _load_tou_profiles(
     utility_code: str,
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """Load TOU rate profiles for a utility: (bundled_cal, supply_cal, supply_precal)."""
-    d = _load_rate(f"{utility_code}_hp_seasonalTOU_calibrated.json")
-    b = _load_rate(f"{utility_code}_hp_seasonalTOU_supply_calibrated.json")
-    pre = _load_rate(f"{utility_code}_hp_seasonalTOU_supply.json")
+    d = _load_rate(f"{utility_code}_hp_seasonalTOU_flex_calibrated.json")
+    b = _load_rate(f"{utility_code}_hp_seasonalTOU_flex_supply_calibrated.json")
+    pre = _load_rate(f"{utility_code}_hp_seasonalTOU_flex_supply.json")
 
     schedule = d["energyweekdayschedule"]
     bundled_cal = _hourly_tou_profile(b, schedule)
@@ -3060,8 +3060,8 @@ def _draw_tou_season(ax, season_title, ps, pe, do, so, dn, sn, ymax):
 
 def _make_tou_chart(display_name, tariff_code):
     """Create a 2-panel (Summer on top, Winter on bottom) TOU schedule chart."""
-    d = _load_rate(f"{tariff_code}_hp_seasonalTOU_calibrated.json")
-    b = _load_rate(f"{tariff_code}_hp_seasonalTOU_supply_calibrated.json")
+    d = _load_rate(f"{tariff_code}_hp_seasonalTOU_flex_calibrated.json")
+    b = _load_rate(f"{tariff_code}_hp_seasonalTOU_flex_supply_calibrated.json")
 
     w_ps, w_pe, w_do, w_so, w_dn, w_sn = _extract_season_data(d, b, 0, 0, 1)
     s_ps, s_pe, s_do, s_so, s_dn, s_sn = _extract_season_data(d, b, 6, 2, 3)
@@ -3501,9 +3501,9 @@ plot_quadrant_bar_by_utility(
 
 ### Adding TOU to the comparison
 
-What happens if HP customers get the TOU rate instead of the flat seasonal rate, assuming no load flexibility? The
+What happens if HP customers get the TOU flex rate instead of the flat seasonal rate? The
 "before" is their current bill under today's flat rates (run 1+2, upgrade 0) and the "after" is their bill as an HP
-customer on the calibrated TOU rate (run 11+12, upgrade 2).
+customer on the calibrated TOU flex rate (run 15+16, upgrade 2).
 
 ```{python}
 #| label: compute-deltas-tou
@@ -3530,7 +3530,7 @@ if INCLUDE_TOU:
         [
             ("Default rate", natgas_state),
             ("Fair rate", natgas_switch_state),
-            ("TOU + fair rate (no flex)", natgas_tou_state),
+            ("TOU flex + fair rate", natgas_tou_state),
         ],
         title_parts=[
             ("How bills would change for ", "#000000"),
@@ -3545,7 +3545,7 @@ _tou_quadrant_fig
 ```
 
 The quadrant picture barely moves between the fair rate and the TOU variant. To see why, we compare each
-building's annual bill under TOU (run 11+12) vs. seasonal (run 7+8) directly — the difference isolates the
+building's annual bill under TOU flex (run 15+16) vs. seasonal (run 7+8) directly — the difference isolates the
 rate-design effect without the fuel-switching effect.
 
 ```{python}

@@ -1527,6 +1527,25 @@ print(df_dist_crossover)
 
 from IPython.display import display
 
+# For Central Hudson, compute year that SUMMER NCP (excl. large loads) exceeds
+# distribution capacity, since summer headroom is only ~24 MW.
+_ch_summer_hr: dict[str, float | None] = {}
+for scenario in ["Baseline"]:
+    _sc_i4a = i4a_base
+    _sc_ll_s = i14_summer
+    _zones = UTILITY_ZONES["Central Hudson"]
+    _ncp_base_s = _util_sum(_sc_i4a, HEADROOM_BASELINE_YEAR, _zones)
+    _ll_base_s = _util_sum(_sc_ll_s, HEADROOM_BASELINE_YEAR, _zones)
+    _thresh_s = (_ncp_base_s - _ll_base_s) + HEADROOM_MW["Central Hudson"]
+    _ch_ex: int | None = None
+    for _yr_str in all_years:
+        _ncp_s = _util_sum(_sc_i4a, _yr_str, _zones)
+        _ll_s = _util_sum(_sc_ll_s, _yr_str, _zones)
+        if (_ncp_s - _ll_s) >= _thresh_s:
+            _ch_ex = int(_yr_str.split("-")[0])
+            break
+    _ch_summer_hr[scenario] = _ch_ex
+
 for utility in UTILITY_ZONES:
     _df = df_w_slices.filter(pl.col("utility") == utility)
     _sl = df_summer_line.filter(pl.col("utility") == utility)
@@ -1547,6 +1566,7 @@ for utility in UTILITY_ZONES:
         )
     )
 
+    # Green crossover line
     if not _cross.is_empty():
         _cx = float(_cross["cross_year"][0])
         _p = (
@@ -1562,9 +1582,36 @@ for utility in UTILITY_ZONES:
             )
         )
 
+    # Red headroom exhaustion line — skip Con Edison (unreliable headroom data)
+    if utility == "Central Hudson":
+        _ex = _ch_summer_hr.get("Baseline")
+        if _ex is not None:
+            _p = _p + geom_vline(
+                xintercept=_ex, color="#cc2222", size=1.0, linetype="dashed",
+            ) + annotate(
+                "text", x=_ex, y=_y_hi_u * 0.92,
+                label=f"Summer headroom\nexhausted ~{_ex}",
+                color="#cc2222", size=9, ha="left", nudge_x=0.5,
+            )
+    elif utility != "Con Edison":
+        _hr = df_headroom.filter(
+            (pl.col("utility") == utility)
+            & (pl.col("scenario") == "Baseline")
+            & pl.col("exhausted")
+        )
+        if not _hr.is_empty():
+            _ex = int(_hr["ex_year"][0])
+            _p = _p + geom_vline(
+                xintercept=_ex, color="#cc2222", size=1.0, linetype="dashed",
+            ) + annotate(
+                "text", x=_ex, y=_y_hi_u * 0.92,
+                label=f"Headroom\nexhausted\n{_ex}–{_ex - 1999:02d}",
+                color="#cc2222", size=9, ha="left", nudge_x=0.5,
+            )
+
     _p = (
         _p
-        + scale_fill_manual(values=SLICE_COLORS, name="Component", breaks=slice_order)
+        + scale_fill_manual(values=COMPONENT_COLORS, name="")
         + scale_x_continuous(
             breaks=list(range(2025, 2056, 5)),
             expand=(0, 0),
@@ -1575,7 +1622,7 @@ for utility in UTILITY_ZONES:
         )
         + coord_cartesian(xlim=(2025, 2055), ylim=(0, _y_hi_u))
         + labs(
-            title=f"{utility} — Winter Peak Decomposition",
+            title=f"{utility} — Winter Peak Decomposition vs. Summer Peak",
             subtitle=(
                 "Stacked = winter components; dashed orange = summer total\n"
                 "NYISO Gold Book 2025"

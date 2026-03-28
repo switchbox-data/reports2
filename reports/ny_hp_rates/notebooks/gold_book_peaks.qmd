@@ -53,7 +53,9 @@ from plotnine import (
     coord_cartesian,
     element_blank,
     element_text,
+    facet_grid,
     facet_wrap,
+    geom_col,
     geom_hline,
     geom_line,
     geom_point,
@@ -105,16 +107,17 @@ UTILITY_ZONES: dict[str, list[str]] = {
     "Orange & Rockland": ["G"],
 }
 
-# Synapse headroom as % of each utility's baseline winter NCP (Takahashi et al. 2024).
-HEADROOM_PCT: dict[str, float] = {
-    "National Grid":     1.05,
-    "NYSEG & RGE":       0.85,
-    "Central Hudson":    0.35,
-    "Con Edison":        0.29,
-    "Orange & Rockland": 0.95,
+# Synapse adjusted total distribution headroom in MW (Takahashi et al. 2024, Table).
+# NYSEG (2,248) + RGE (969) combined for the NYSEG & RGE zone group.
+HEADROOM_MW: dict[str, float] = {
+    "National Grid":     5892,
+    "NYSEG & RGE":       3217,
+    "Central Hudson":    258,
+    "Con Edison":        2378,
+    "Orange & Rockland": 742,
 }
 
-# Headroom: absolute I-4b NCP ≥ (1 + HEADROOM_PCT) × zone-sum NCP at this season.
+# Headroom: absolute I-4b NCP ≥ NCP_base + HEADROOM_MW.
 HEADROOM_BASELINE_YEAR = "2023-24"
 
 # Normalization year for stacked ribbons and CP growth line (% of that year’s CP, I-3b).
@@ -639,27 +642,43 @@ peak (orange) consistently exceeds the winter peak (blue) — but building
 electrification is dramatically narrowing that gap.
 
 Solid lines show the baseline forecast including all demand growth. Dashed lines
-show the counterfactual without building electrification (I-3b minus I-13c for
-winter; I-3a minus I-13b for summer). The shaded ribbon between them shows the
-electrification contribution.
+show the counterfactual without building electrification. The shaded ribbon shows
+electrification's net contribution: we shrink the gross BE increment by the same
+fraction that negative drivers (energy efficiency, non-solar DG, BTM storage)
+reduce the overall peak relative to what it would be without them. This distributes
+the negative sources proportionally across all growth — organic, EVs, large loads,
+and BE alike — rather than leaving BE unscathed while negatives eat into everything
+else.
 
 ```{python}
 #| label: fig-peak-forecast
 #| fig-cap: >
 #|   NYCA coincident peak demand forecast, 2025–2055. Solid lines include building
 #|   electrification; dashed lines show the counterfactual without it. Shaded ribbons
-#|   show the electrification contribution. Building electrification nearly closes
-#|   the gap between summer and winter peaks by mid-century. Source: NYISO Gold Book
-#|   2025, Tables I-3a, I-3b, I-13b, I-13c.
+#|   show electrification's net contribution — the gross BE increment scaled down by
+#|   the fraction that negative drivers reduce the overall peak. Source: NYISO Gold
+#|   Book 2025.
 #| fig-cap-location: margin
-#TODO-start at 0 add labels for colors
 peak_rows = []
 for yr_str in all_years:
     yr = int(yr_str.split("-")[0])
     winter_with = _nyca(i3b_base, yr_str)
     summer_with = _nyca(i3a_base, yr_str)
-    winter_without = winter_with - _nyca(i13c_base, yr_str)
-    summer_without = summer_with - _nyca(i13b_base, yr_str)
+    be_w = _nyca(i13c_base, yr_str)
+    be_s = _nyca(i13b_base, yr_str)
+
+    # Scale BE's gross increment by the fraction that negative sources reduce
+    # the overall peak: scale = Peak / (Peak + negatives). This distributes
+    # negatives proportionally across all contributors to the peak level
+    # (organic load, EVs, large loads, and BE alike).
+    neg_w = _nyca(i8c, yr_str) + _nyca(i10c, yr_str) + _nyca(i12c, yr_str)
+    scale_w = winter_with / (winter_with + neg_w) if (winter_with + neg_w) > 0 else 1.0
+
+    neg_s = _nyca(i8b, yr_str) + _nyca(i10b, yr_str) + _nyca(i12b, yr_str)
+    scale_s = summer_with / (summer_with + neg_s) if (summer_with + neg_s) > 0 else 1.0
+
+    winter_without = winter_with - be_w * scale_w
+    summer_without = summer_with - be_s * scale_s
     peak_rows.append({
         "year": yr,
         "winter_with": winter_with,
@@ -675,12 +694,7 @@ first = df_peak.row(0, named=True)
 ratio_pct = f"{first['winter_with'] / first['summer_with']:.0%}"
 mid_y = (first["winter_with"] + first["summer_with"]) / 2
 
-# Y-axis: zoom to data range. Bottom is rounded down to nearest 5,000 MW below
-# the minimum without-electrification value; top is padded 5% above the maximum.
-_y_min = min(df_peak["winter_without"].min(), df_peak["summer_without"].min())
-_y_max = max(df_peak["winter_with"].max(), df_peak["summer_with"].max())
-_y_lo = max(0, (_y_min // 5000) * 5000)
-_y_hi = _y_max * 1.05
+_y_hi = max(df_peak["winter_with"].max(), df_peak["summer_with"].max()) * 1.05
 
 (
     ggplot()
@@ -729,9 +743,15 @@ _y_hi = _y_max * 1.05
         label=ratio_pct,
         size=11, ha="left", color="#333333",
     )
-    + scale_x_continuous(breaks=list(range(2025, 2056, 5)))
-    + scale_y_continuous(labels=lambda lst: [f"{int(v):,}" for v in lst])
-    + coord_cartesian(ylim=(_y_lo, _y_hi))
+    + scale_x_continuous(
+        breaks=list(range(2025, 2056, 5)),
+        expand=(0, 0),
+    )
+    + scale_y_continuous(
+        labels=lambda lst: [f"{int(v):,}" if v > 0 else "" for v in lst],
+        expand=(0, 0),
+    )
+    + coord_cartesian(xlim=(2025, 2055), ylim=(0, _y_hi))
     + labs(
         title="NYCA Coincident Peak Demand Forecast — Baseline Scenario",
         subtitle=(
@@ -764,6 +784,385 @@ print(
     f"  Electrification contribution:     {report_vars['elec_contribution_winter_2055']:,} MW\n"
     f"  Initial winter/summer ratio:      {report_vars['winter_summer_ratio_2025']:.0%}"
 )
+```
+
+## Figure 3b: Summer Peak — Growth Decomposition
+
+The previous chart showed the total summer and winter peaks with a ribbon for
+building electrification. This companion chart decomposes the summer peak into its
+growth sources — building electrification, EV load, large loads, and organic growth
+(everything else: population, economic activity, weather normalization) — with each
+slice scaled down by the same negative-distribution factor used in Figure 3.
+
+```{python}
+#| label: fig-summer-growth-slices
+#| fig-cap: >
+#|   NYCA summer coincident peak decomposed into growth components, 2025–2055.
+#|   Each positive growth driver (BE, EVs, large loads, organic) is scaled down
+#|   proportionally by the negative sources (EE, DG, storage) so the slices sum
+#|   to the actual forecast. Source: NYISO Gold Book 2025.
+#| fig-cap-location: margin
+
+SLICE_COLORS: dict[str, str] = {
+    "Base (2025 level)": "#e0e0e0",
+    "Organic growth": "#999999",
+    "EV load": SB_COLORS["carrot"],
+    "Building electrification": SB_COLORS["saffron"],
+    "Large loads": "#e8f4f8",
+}
+slice_order = [
+    "Large loads", "Building electrification", "EV load",
+    "Organic growth", "Base (2025 level)",
+]
+
+summer_base_peak = _nyca(i3a_base, all_years[0])
+
+summer_slice_rows: list[dict] = []
+for yr_str in all_years:
+    yr = int(yr_str.split("-")[0])
+    total = _nyca(i3a_base, yr_str)
+    be_raw = _nyca(i13b_base, yr_str)
+    ev_raw = _nyca(i11c_base, yr_str)
+    ll_raw = _nyca(i14_summer, yr_str)
+    neg = _nyca(i8b, yr_str) + _nyca(i10b, yr_str) + _nyca(i12b, yr_str)
+    scale = total / (total + neg) if (total + neg) > 0 else 1.0
+
+    be_sc = be_raw * scale
+    ev_sc = ev_raw * scale
+    ll_sc = ll_raw * scale
+    organic = total - summer_base_peak - be_sc - ev_sc - ll_sc
+
+    cum = 0.0
+    for label, val in [
+        ("Base (2025 level)", float(summer_base_peak)),
+        ("Organic growth", organic),
+        ("EV load", ev_sc),
+        ("Building electrification", be_sc),
+        ("Large loads", ll_sc),
+    ]:
+        summer_slice_rows.append({
+            "year": yr, "component": label,
+            "ymin": cum, "ymax": cum + val,
+        })
+        cum += val
+
+df_s_slices = pl.DataFrame(summer_slice_rows).with_columns(
+    pl.col("component").cast(pl.Enum(slice_order))
+)
+
+_y_hi_s = float(df_s_slices["ymax"].max()) * 1.05
+
+(
+    ggplot()
+    + geom_ribbon(
+        df_s_slices,
+        aes(x="year", ymin="ymin", ymax="ymax", fill="component"),
+        alpha=0.85,
+    )
+    + scale_fill_manual(values=SLICE_COLORS, name="Component", breaks=slice_order)
+    + scale_x_continuous(
+        breaks=list(range(2025, 2056, 5)),
+        expand=(0, 0),
+    )
+    + scale_y_continuous(
+        labels=lambda lst: [f"{int(v):,}" if v > 0 else "" for v in lst],
+        expand=(0, 0),
+    )
+    + coord_cartesian(xlim=(2025, 2055), ylim=(0, _y_hi_s))
+    + labs(
+        title="NYCA Summer Coincident Peak — Growth Decomposition",
+        subtitle="Each growth driver scaled down by negative sources; NYISO Gold Book 2025",
+        x="Year",
+        y="MW",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 5.5))
+)
+```
+
+## Figure 3c: Summer + Winter Peak — Overlaid Growth Decomposition
+
+Both seasons start from zero. Summer is drawn first (behind); winter is drawn on
+top, covering it. In early years summer is taller, so its upper slices peek above
+the winter stack. As winter surpasses summer, the winter slices completely cover
+the summer ones — visually showing the season flip.
+
+```{python}
+#| label: fig-combined-growth-slices
+#| fig-cap: >
+#|   NYCA summer (warm tones, behind) and winter (cool tones, in front) coincident
+#|   peak decomposed into growth components, 2025–2055. Both start from zero.
+#|   Where winter exceeds summer, it becomes the binding system peak.
+#|   Source: NYISO Gold Book 2025.
+#| fig-cap-location: margin
+
+winter_base_peak = _nyca(i3b_base, all_years[0])
+
+WINTER_SLICE_COLORS: dict[str, str] = {
+    "W: Base": "#b8d4e8",
+    "W: Organic": "#7faec4",
+    "W: EV": SB_COLORS["sky"],
+    "W: BE": SB_COLORS["midnight"],
+    "W: Large loads": "#d4e8f0",
+}
+SUMMER_SLICE_COLORS: dict[str, str] = {
+    "S: Base": "#f5e0c0",
+    "S: Organic": "#d4a060",
+    "S: EV": SB_COLORS["carrot"],
+    "S: BE": SB_COLORS["saffron"],
+    "S: Large loads": "#fff2cc",
+}
+
+combined_order_summer = ["S: Large loads", "S: BE", "S: EV", "S: Organic", "S: Base"]
+combined_order_winter = ["W: Large loads", "W: BE", "W: EV", "W: Organic", "W: Base"]
+combined_order = combined_order_summer + combined_order_winter
+combined_colors = {**SUMMER_SLICE_COLORS, **WINTER_SLICE_COLORS}
+
+combined_rows: list[dict] = []
+for yr_str in all_years:
+    yr = int(yr_str.split("-")[0])
+
+    # Summer slices
+    s_total = _nyca(i3a_base, yr_str)
+    s_neg = _nyca(i8b, yr_str) + _nyca(i10b, yr_str) + _nyca(i12b, yr_str)
+    s_scale = s_total / (s_total + s_neg) if (s_total + s_neg) > 0 else 1.0
+    s_be = _nyca(i13b_base, yr_str) * s_scale
+    s_ev = _nyca(i11c_base, yr_str) * s_scale
+    s_ll = _nyca(i14_summer, yr_str) * s_scale
+    s_organic = s_total - summer_base_peak - s_be - s_ev - s_ll
+
+    cum = 0.0
+    for label, val in [
+        ("S: Base", float(summer_base_peak)),
+        ("S: Organic", s_organic),
+        ("S: EV", s_ev),
+        ("S: BE", s_be),
+        ("S: Large loads", s_ll),
+    ]:
+        combined_rows.append({
+            "year": yr, "component": label, "ymin": cum, "ymax": cum + val,
+        })
+        cum += val
+
+    # Winter slices
+    w_total = _nyca(i3b_base, yr_str)
+    w_neg = _nyca(i8c, yr_str) + _nyca(i10c, yr_str) + _nyca(i12c, yr_str)
+    w_scale = w_total / (w_total + w_neg) if (w_total + w_neg) > 0 else 1.0
+    w_be = _nyca(i13c_base, yr_str) * w_scale
+    w_ev = _nyca(i11d_base, yr_str) * w_scale
+    w_ll = _nyca(i14, yr_str) * w_scale
+    w_organic = w_total - winter_base_peak - w_be - w_ev - w_ll
+
+    cum = 0.0
+    for label, val in [
+        ("W: Base", float(winter_base_peak)),
+        ("W: Organic", w_organic),
+        ("W: EV", w_ev),
+        ("W: BE", w_be),
+        ("W: Large loads", w_ll),
+    ]:
+        combined_rows.append({
+            "year": yr, "component": label, "ymin": cum, "ymax": cum + val,
+        })
+        cum += val
+
+df_combined = pl.DataFrame(combined_rows).with_columns(
+    pl.col("component").cast(pl.Enum(combined_order))
+)
+
+# Find crossover year (interpolated)
+_cross_year: float | None = None
+_prev_diff: float | None = None
+_prev_yr: int | None = None
+for yr_str in all_years:
+    yr = int(yr_str.split("-")[0])
+    w = _nyca(i3b_base, yr_str)
+    s = _nyca(i3a_base, yr_str)
+    diff = float(w - s)
+    if diff >= 0:
+        if _prev_diff is not None and _prev_yr is not None and _prev_diff < 0:
+            frac = -_prev_diff / (diff - _prev_diff)
+            _cross_year = _prev_yr + frac
+        else:
+            _cross_year = float(yr)
+        break
+    _prev_diff = diff
+    _prev_yr = yr
+
+# Summer total outline (visible where summer pokes above winter)
+_summer_line_df = (
+    df_combined.filter(pl.col("component").is_in(combined_order_summer))
+    .group_by("year")
+    .agg(pl.col("ymax").max().alias("summer_top"))
+    .sort("year")
+)
+
+_y_hi_c = float(df_combined["ymax"].max()) * 1.05
+
+_p = (
+    ggplot()
+    + geom_ribbon(
+        df_combined.filter(pl.col("component").is_in(combined_order_summer)),
+        aes(x="year", ymin="ymin", ymax="ymax", fill="component"),
+        alpha=0.85,
+    )
+    + geom_ribbon(
+        df_combined.filter(pl.col("component").is_in(combined_order_winter)),
+        aes(x="year", ymin="ymin", ymax="ymax", fill="component"),
+        alpha=0.85,
+    )
+    + geom_line(
+        _summer_line_df,
+        aes(x="year", y="summer_top"),
+        color=SB_COLORS["carrot"], size=0.8, linetype="dashed",
+    )
+)
+
+if _cross_year is not None:
+    _p = (
+        _p
+        + geom_vline(
+            xintercept=_cross_year,
+            color=SB_COLORS["pistachio"], size=1.0, linetype="dashed",
+        )
+        + annotate(
+            "text",
+            x=_cross_year, y=_y_hi_c * 0.95,
+            label=f"Winter ≥ summer\n~{round(_cross_year)}",
+            color=SB_COLORS["pistachio"], size=9, ha="right", nudge_x=-0.5,
+        )
+    )
+
+(
+    _p
+    + scale_fill_manual(values=combined_colors, name="Component", breaks=combined_order)
+    + scale_x_continuous(
+        breaks=list(range(2025, 2056, 5)),
+        expand=(0, 0),
+    )
+    + scale_y_continuous(
+        labels=lambda lst: [f"{int(v):,}" if v > 0 else "" for v in lst],
+        expand=(0, 0),
+    )
+    + coord_cartesian(xlim=(2025, 2055), ylim=(0, _y_hi_c))
+    + labs(
+        title="NYCA Summer + Winter Peak — Overlaid Growth Decomposition",
+        subtitle="Summer (warm) behind, winter (cool) in front; NYISO Gold Book 2025",
+        x="Year",
+        y="MW",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 5.5))
+)
+```
+
+## Figure 3d: Annual Increase in Binding Peak
+
+Generation capacity is sized to the binding (highest) peak. This chart shows the
+year-over-year increase in the binding peak, decomposed by driver. Before the
+crossover, the bars reflect summer growth (BE is a thin slice). After, they reflect
+winter growth (BE dominates). The crossover year shows a large bar as the binding
+constraint jumps from summer to winter — years of accumulated winter growth arrive
+as a capacity cost all at once.
+
+```{python}
+#| label: fig-binding-peak-yoy
+#| fig-cap: >
+#|   Year-over-year change in the binding (highest) peak, decomposed by driver.
+#|   Before the system becomes winter-peaking, bars show summer growth; after, winter.
+#|   The crossover year captures the regime shift. Source: NYISO Gold Book 2025.
+#| fig-cap-location: margin
+
+binding_bar_rows: list[dict] = []
+prev_binding: float | None = None
+prev_be: float = 0.0
+prev_ev: float = 0.0
+prev_ll: float = 0.0
+
+for i, yr_str in enumerate(all_years):
+    yr = int(yr_str.split("-")[0])
+    w_total = _nyca(i3b_base, yr_str)
+    s_total = _nyca(i3a_base, yr_str)
+
+    if w_total >= s_total:
+        total = w_total
+        be_raw = _nyca(i13c_base, yr_str)
+        ev_raw = _nyca(i11d_base, yr_str)
+        ll_raw = _nyca(i14, yr_str)
+        neg = _nyca(i8c, yr_str) + _nyca(i10c, yr_str) + _nyca(i12c, yr_str)
+    else:
+        total = s_total
+        be_raw = _nyca(i13b_base, yr_str)
+        ev_raw = _nyca(i11c_base, yr_str)
+        ll_raw = _nyca(i14_summer, yr_str)
+        neg = _nyca(i8b, yr_str) + _nyca(i10b, yr_str) + _nyca(i12b, yr_str)
+
+    scale = total / (total + neg) if (total + neg) > 0 else 1.0
+    be_sc = be_raw * scale
+    ev_sc = ev_raw * scale
+    ll_sc = ll_raw * scale
+
+    if prev_binding is not None:
+        delta = float(total - prev_binding)
+        d_be = be_sc - prev_be
+        d_ev = ev_sc - prev_ev
+        d_ll = ll_sc - prev_ll
+        d_organic = delta - d_be - d_ev - d_ll
+
+        for label, val in [
+            ("Organic growth", d_organic),
+            ("EV load", d_ev),
+            ("Building electrification", d_be),
+            ("Large loads", d_ll),
+        ]:
+            binding_bar_rows.append({"year": yr, "component": label, "value": val})
+
+    prev_binding = float(total)
+    prev_be = be_sc
+    prev_ev = ev_sc
+    prev_ll = ll_sc
+
+bar_order = ["Large loads", "Building electrification", "EV load", "Organic growth"]
+df_binding_yoy = pl.DataFrame(binding_bar_rows).with_columns(
+    pl.col("component").cast(pl.Enum(bar_order))
+)
+
+(
+    ggplot(df_binding_yoy, aes(x="year", y="value", fill="component"))
+    + geom_col(alpha=0.85)
+    + geom_hline(yintercept=0, color="black", size=0.5)
+    + scale_fill_manual(
+        values=SLICE_COLORS,
+        name="Component",
+        breaks=bar_order,
+    )
+    + scale_x_continuous(
+        breaks=list(range(2025, 2056, 5)),
+        expand=(0, 0),
+    )
+    + scale_y_continuous(
+        labels=lambda lst: [f"{int(v):,}" if v != 0 else "" for v in lst],
+    )
+    + coord_cartesian(xlim=(2025, 2055))
+    + labs(
+        title="Annual Increase in Binding Peak — Growth Decomposition",
+        subtitle="Before crossover = summer drivers; after = winter drivers; NYISO Gold Book 2025",
+        x="Year",
+        y="MW (year-over-year change)",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 5.5))
+)
+```
+
+```{python}
+#| label: binding-peak-yoy-report-vars
+
+if _cross_year is not None:
+    report_vars["nyca_crossover_year"] = round(_cross_year)
+    print(f"NYCA crossover year (winter ≥ summer): ~{round(_cross_year)}")
+else:
+    print("Winter never exceeds summer within the forecast window")
 ```
 
 ## Figure 4: Per-Utility Demand Components
@@ -801,62 +1200,42 @@ Rockland each sum **G** only. Zone **K** (LIPA) is excluded.
 #| label: build-component-data
 
 COMPONENT_COLORS: dict[str, str] = {
-    "Building electrification": SB_COLORS["sky"],
-    "EV load": SB_COLORS["saffron"],
-    "Large loads": SB_COLORS["carrot"],
-    "EE & codes/standards": SB_COLORS["pistachio"],
-    "Non-solar DG": "#7b6ea0",
-    "BTM storage": "#b0722a",
+    "Base (2025 level)": "#e0e0e0",
+    "Organic growth": "#999999",
+    "EV load": SB_COLORS["carrot"],
+    "Building electrification": SB_COLORS["saffron"],
+    "Large loads": "#e8f4f8",
 }
 
+component_order = [
+    "Large loads", "Building electrification", "EV load",
+    "Organic growth", "Base (2025 level)",
+]
 
-# Per-scenario CP tables and component tables
 SCENARIOS: dict[str, dict] = {
     "Baseline": {
         "i3b": i3b_base,
         "i4b": i4b_base,
-        "pos": [
-            ("Building electrification", i13c_base),
-            ("EV load", i11d_base),
-            ("Large loads", i14),
-        ],
-        "neg": [
-            ("EE & codes/standards", i8c),
-            ("Non-solar DG", i10c),
-            ("BTM storage", i12c),
-        ],
+        "be": i13c_base,
+        "ev": i11d_base,
+        "ll": i14,
+        "neg_tables": [i8c, i10c, i12c],
     },
     "Lower demand": {
         "i3b": i3b_low,
         "i4b": i4b_low,
-        "pos": [
-            ("Building electrification", i13c_low),
-            ("EV load", i11d_low),
-            ("Large loads", i14_low),
-        ],
-        "neg": [
-            # EE, DG, storage not separately published for lower scenario;
-            # reuse baseline (conservative — lower scenario reductions likely larger)
-            ("EE & codes/standards", i8c),
-            ("Non-solar DG", i10c),
-            ("BTM storage", i12c),
-        ],
+        "be": i13c_low,
+        "ev": i11d_low,
+        "ll": i14_low,
+        "neg_tables": [i8c, i10c, i12c],
     },
 }
 
-component_order = (
-    [c for c, _ in SCENARIOS["Baseline"]["pos"]]
-    + [c for c, _ in SCENARIOS["Baseline"]["neg"]]
-)
-
-# Build stacked ribbon data and CP growth lines for both scenarios
-stack_rows = []
-growth_rows = []
-headroom_rows = []
+stack_rows: list[dict] = []
+growth_rows: list[dict] = []
+headroom_rows: list[dict] = []
 
 for scenario, sc in SCENARIOS.items():
-    # Same horizon logic as RDP: scan I-4b rows from 2024-25 onward (keys present in
-    # this scenario’s file — lower-demand I-4b-L may omit 2024-25).
     headroom_years = sorted(
         yr for yr in sc["i4b"]
         if int(yr.split("-")[0]) >= 2024 and int(yr.split("-")[0]) <= FORECAST_END
@@ -867,12 +1246,15 @@ for scenario, sc in SCENARIOS.items():
         if base_cp == 0:
             continue
 
-        # Absolute NCP level vs threshold (I-4b zone sum, same zones as RDP).
+        # Headroom: NCP (excluding large loads) vs base NCP + HEADROOM_MW
         ncp_base = _util_sum(i4b_base, HEADROOM_BASELINE_YEAR, zones)
-        threshold = ncp_base * (1 + HEADROOM_PCT[utility])
+        ll_base_hr = _util_sum(i14, HEADROOM_BASELINE_YEAR, zones)
+        threshold = (ncp_base - ll_base_hr) + HEADROOM_MW[utility]
         ex_yr: int | None = None
         for yr_str in headroom_years:
-            if _util_sum(sc["i4b"], yr_str, zones) >= threshold:
+            ncp_yr = _util_sum(sc["i4b"], yr_str, zones)
+            ll_yr = _util_sum(sc["ll"], yr_str, zones)
+            if (ncp_yr - ll_yr) >= threshold:
                 ex_yr = int(yr_str.split("-")[0])
                 break
 
@@ -892,30 +1274,37 @@ for scenario, sc in SCENARIOS.items():
 
         for yr_str in all_years:
             yr = int(yr_str.split("-")[0])
+            total = _util_sum(sc["i3b"], yr_str, zones)
 
-            pos_bottom = 0.0
-            for comp_label, data in sc["pos"]:
-                raw = _util_sum(data, yr_str, zones)
-                pct = 100.0 * raw / base_cp
+            be_raw = _util_sum(sc["be"], yr_str, zones)
+            ev_raw = _util_sum(sc["ev"], yr_str, zones)
+            ll_raw = _util_sum(sc["ll"], yr_str, zones)
+            neg = sum(_util_sum(t, yr_str, zones) for t in sc["neg_tables"])
+            scale = total / (total + neg) if (total + neg) > 0 else 1.0
+
+            be_sc = be_raw * scale
+            ev_sc = ev_raw * scale
+            ll_sc = ll_raw * scale
+            organic = (total - base_cp) - be_sc - ev_sc - ll_sc
+
+            cum = 0.0
+            for comp_label, val_mw in [
+                ("Base (2025 level)", float(base_cp)),
+                ("Organic growth", organic),
+                ("EV load", ev_sc),
+                ("Building electrification", be_sc),
+                ("Large loads", ll_sc),
+            ]:
+                pct = 100.0 * val_mw / base_cp
                 stack_rows.append({
                     "scenario": scenario, "utility": utility, "year": yr,
-                    "component": comp_label, "ymin": pos_bottom, "ymax": pos_bottom + pct,
+                    "component": comp_label, "ymin": cum, "ymax": cum + pct,
                 })
-                pos_bottom += pct
-            neg_bottom = 0.0
-            for comp_label, data in sc["neg"]:
-                raw = _util_sum(data, yr_str, zones)
-                pct = 100.0 * raw / base_cp
-                stack_rows.append({
-                    "scenario": scenario, "utility": utility, "year": yr,
-                    "component": comp_label, "ymin": neg_bottom - pct, "ymax": neg_bottom,
-                })
-                neg_bottom -= pct
+                cum += pct
 
-            cp_val = _util_sum(sc["i3b"], yr_str, zones)
             growth_rows.append({
                 "scenario": scenario, "utility": utility, "year": yr,
-                "cp_growth_pct": 100.0 * (cp_val - base_cp) / base_cp,
+                "cp_growth_pct": 100.0 * (total - base_cp) / base_cp,
             })
 
 df_stack = pl.DataFrame(stack_rows).with_columns(
@@ -1017,7 +1406,7 @@ df_not_exhausted = df_not_exhausted.join(_pos_tops, on="facet", how="left")
         aes(x=2055, y="top", label="label"),
         color="#cc2222", size=8, ha="right", va="top",
     )
-    + facet_wrap("facet", ncol=2, scales="free_y")
+    + facet_grid("utility ~ scenario", scales="free_y")
     + scale_fill_manual(
         values=COMPONENT_COLORS,
         name="Component",
@@ -1041,179 +1430,163 @@ df_not_exhausted = df_not_exhausted.join(_pos_tops, on="facet", how="left")
 )
 ```
 
-## Figure 5: Per-Utility Winter vs. Summer Coincident Peak Growth
+## Figure 5: Per-Utility Winter Peak Decomposition
 
-The previous figure decomposed winter peak growth into its components. Here we step
-back and compare **total** coincident peak growth for winter (I-3b) and summer (I-3a)
-side by side, using the same per-utility facet layout. This reveals how quickly
-winter peak growth is closing the gap with — or overtaking — summer.
+This figure breaks down each utility's winter coincident peak into the same
+growth components used at the NYCA level (Figures 3b–3d): building
+electrification, EV load, large loads, and organic growth — each scaled by the
+negative-distribution factor. A dashed orange line shows the summer total for
+comparison, and a green dashed line marks the season crossover.
 
 ```{python}
-#| label: build-season-growth-data
+#| label: build-winter-slices-by-utility
 
-season_growth_rows: list[dict] = []
+w_slice_rows: list[dict] = []
+summer_line_rows: list[dict] = []
+dist_crossover_rows: list[dict] = []
 
-SEASON_TABLES: dict[str, dict[str, dict]] = {
-    "Baseline": {"winter": i3b_base, "summer": i3a_base},
-    "Lower demand": {"winter": i3b_low, "summer": i3a_low},
-}
+for utility, zones in UTILITY_ZONES.items():
+    base_w = _util_sum(i3b_base, all_years[0], zones)
 
-for scenario, tables in SEASON_TABLES.items():
-    for utility, zones in UTILITY_ZONES.items():
-        base_cp = _util_sum(i3a_base, NORM_YEAR, zones)
-        if base_cp == 0:
-            continue
+    _pv_diff: float | None = None
+    _pv_yr: int | None = None
 
-        for yr_str in all_years:
-            yr = int(yr_str.split("-")[0])
-            for season_name, cp_table in tables.items():
-                cp_val = _util_sum(cp_table, yr_str, zones)
-                season_growth_rows.append({
-                    "scenario": scenario,
-                    "utility": utility,
-                    "year": yr,
-                    "season": season_name.capitalize(),
-                    "cp_growth_pct": 100.0 * (cp_val - base_cp) / base_cp,
-                })
+    for yr_str in all_years:
+        yr = int(yr_str.split("-")[0])
+        w_total = _util_sum(i3b_base, yr_str, zones)
+        s_total = _util_sum(i3a_base, yr_str, zones)
 
-df_season_growth = pl.DataFrame(season_growth_rows).with_columns(
-    pl.col("season").cast(pl.Enum(["Winter", "Summer"])),
-    pl.col("scenario").cast(pl.Enum(["Baseline", "Lower demand"])),
+        be = _util_sum(i13c_base, yr_str, zones)
+        ev = _util_sum(i11d_base, yr_str, zones)
+        ll = _util_sum(i14, yr_str, zones)
+        neg = (
+            _util_sum(i8c, yr_str, zones)
+            + _util_sum(i10c, yr_str, zones)
+            + _util_sum(i12c, yr_str, zones)
+        )
+        scale = w_total / (w_total + neg) if (w_total + neg) > 0 else 1.0
+
+        be_sc = be * scale
+        ev_sc = ev * scale
+        ll_sc = ll * scale
+        organic = w_total - base_w - be_sc - ev_sc - ll_sc
+
+        cum = 0.0
+        for label, val in [
+            ("Base (2025 level)", float(base_w)),
+            ("Organic growth", organic),
+            ("EV load", ev_sc),
+            ("Building electrification", be_sc),
+            ("Large loads", ll_sc),
+        ]:
+            w_slice_rows.append({
+                "utility": utility, "year": yr, "component": label,
+                "ymin": cum, "ymax": cum + val,
+            })
+            cum += val
+
+        summer_line_rows.append({
+            "utility": utility, "year": yr, "summer_total": float(s_total),
+        })
+
+        diff = float(w_total - s_total)
+        if diff >= 0 and _pv_diff is not None and _pv_diff < 0 and _pv_yr is not None:
+            frac = -_pv_diff / (diff - _pv_diff)
+            cross_x = _pv_yr + frac
+            dist_crossover_rows.append({
+                "utility": utility,
+                "cross_year": cross_x,
+                "label": f"Winter ≥ summer\n~{round(cross_x)}",
+            })
+        _pv_diff = diff
+        _pv_yr = yr
+
+df_w_slices = pl.DataFrame(w_slice_rows).with_columns(
+    pl.col("component").cast(pl.Enum(slice_order))
 )
-df_season_growth = df_season_growth.with_columns(
-    (pl.col("utility") + " — " + pl.col("scenario")).alias("facet")
+df_summer_line = pl.DataFrame(summer_line_rows)
+df_dist_crossover = (
+    pl.DataFrame(dist_crossover_rows)
+    if dist_crossover_rows
+    else pl.DataFrame({"utility": [], "cross_year": [], "label": []})
 )
-df_season_growth = df_season_growth.with_columns(
-    pl.col("facet").cast(pl.Enum(facet_order))
-)
 
-# Find the crossover year where winter CP first exceeds summer CP (in absolute MW).
-# Both are normalized to the same summer base, so winter > summer iff
-# winter_growth_pct > summer_growth_pct.
-crossover_rows: list[dict] = []
-for scenario, tables in SEASON_TABLES.items():
-    for utility, zones in UTILITY_ZONES.items():
-        facet_label = f"{utility} — {scenario}"
-        prev_diff: float | None = None
-        prev_yr: int | None = None
-        for yr_str in all_years:
-            yr = int(yr_str.split("-")[0])
-            w_val = _util_sum(tables["winter"], yr_str, zones)
-            s_val = _util_sum(tables["summer"], yr_str, zones)
-            diff = float(w_val - s_val)
-            if diff >= 0:
-                # Interpolate between previous year (winter < summer) and this year
-                if prev_diff is not None and prev_yr is not None and prev_diff < 0:
-                    frac = -prev_diff / (diff - prev_diff)
-                    cross_x = prev_yr + frac
-                else:
-                    cross_x = float(yr)
-                cross_yr_int = round(cross_x)
-                crossover_rows.append({
-                    "facet": facet_label,
-                    "cross_year": cross_x,
-                    "label": f"Winter ≥ summer\n~{cross_yr_int}–{cross_yr_int - 1999:02d}",
-                })
-                break
-            prev_diff = diff
-            prev_yr = yr
-
-df_crossover = pl.DataFrame(crossover_rows)
-if not df_crossover.is_empty():
-    df_crossover = df_crossover.with_columns(
-        pl.col("facet").cast(pl.Enum(facet_order))
-    )
-
-print("Season growth data shape:", df_season_growth.shape)
-print(df_season_growth.head(6))
-print("\nCrossover years:")
-print(df_crossover)
+print("Winter slice data:", df_w_slices.shape)
+print("Crossover years by utility:")
+print(df_dist_crossover)
 ```
 
 ```{python}
 #| label: fig-season-growth
 #| fig-cap: >
-#|   Winter vs. summer coincident peak demand growth by utility and scenario,
-#|   both as % of the 2023-24 summer coincident peak (I-3a). Winter (blue)
-#|   starts below zero (since winter < summer in 2023-24) and grows rapidly —
-#|   building electrification is a winter-peaking phenomenon. Green dashed line
-#|   marks the year winter CP first exceeds summer CP. Red dashed line marks
-#|   headroom exhaustion (Synapse 2024). NYISO Gold Book 2025, Tables I-3a, I-3b.
+#|   Per-utility winter coincident peak decomposed into growth components (stacked
+#|   ribbons) with summer total overlay (dashed orange line), 2025–2055. Green
+#|   dashed line marks the year winter CP first exceeds summer. Source: NYISO Gold
+#|   Book 2025.
 #| fig-cap-location: margin
-#| fig-height: 17
-#| fig-width: 24
 
-from plotnine.options import set_option
+from IPython.display import display
 
-set_option("limitsize", False)
+for utility in UTILITY_ZONES:
+    _df = df_w_slices.filter(pl.col("utility") == utility)
+    _sl = df_summer_line.filter(pl.col("utility") == utility)
+    _cross = df_dist_crossover.filter(pl.col("utility") == utility)
 
-# Reuse headroom data from Figure 4 (winter NCP-based)
-_df_hr_vline = df_headroom.filter(pl.col("exhausted"))
-_df_hr_no = df_headroom.filter(~pl.col("exhausted"))
+    _y_hi_u = float(max(_df["ymax"].max(), _sl["summer_total"].max())) * 1.05
 
-# y positions for labels: use per-facet max of the growth lines
-_season_tops = (
-    df_season_growth
-    .group_by("facet")
-    .agg(pl.col("cp_growth_pct").max().alias("top"))
-)
-_df_hr_vline = _df_hr_vline.join(_season_tops, on="facet", how="left")
-_df_hr_no = _df_hr_no.join(_season_tops, on="facet", how="left")
+    _p = (
+        ggplot()
+        + geom_ribbon(
+            _df,
+            aes(x="year", ymin="ymin", ymax="ymax", fill="component"),
+            alpha=0.85,
+        )
+        + geom_line(
+            _sl, aes(x="year", y="summer_total"),
+            color=SB_COLORS["carrot"], size=1.0, linetype="dashed",
+        )
+    )
 
-_df_cross_labeled = df_crossover.join(_season_tops, on="facet", how="left") if not df_crossover.is_empty() else df_crossover
+    if not _cross.is_empty():
+        _cx = float(_cross["cross_year"][0])
+        _p = (
+            _p
+            + geom_vline(
+                xintercept=_cx,
+                color=SB_COLORS["pistachio"], size=1.0, linetype="dashed",
+            )
+            + annotate(
+                "text", x=_cx, y=_y_hi_u * 0.92,
+                label=_cross["label"][0],
+                color=SB_COLORS["pistachio"], size=9, ha="right", nudge_x=-0.5,
+            )
+        )
 
-(
-    ggplot(df_season_growth, aes(x="year", y="cp_growth_pct", color="season"))
-    + geom_hline(yintercept=0, color="black", size=0.5)
-    + geom_line(size=1.2)
-    # Headroom exhaustion vlines (from Figure 4, winter NCP)
-    + geom_vline(
-        _df_hr_vline,
-        aes(xintercept="ex_year"),
-        color="#cc2222", size=1.0, linetype="dashed",
+    _p = (
+        _p
+        + scale_fill_manual(values=SLICE_COLORS, name="Component", breaks=slice_order)
+        + scale_x_continuous(
+            breaks=list(range(2025, 2056, 5)),
+            expand=(0, 0),
+        )
+        + scale_y_continuous(
+            labels=lambda lst: [f"{int(v):,}" if v > 0 else "" for v in lst],
+            expand=(0, 0),
+        )
+        + coord_cartesian(xlim=(2025, 2055), ylim=(0, _y_hi_u))
+        + labs(
+            title=f"{utility} — Winter Peak Decomposition",
+            subtitle=(
+                "Stacked = winter components; dashed orange = summer total\n"
+                "NYISO Gold Book 2025"
+            ),
+            x="Year",
+            y="MW",
+        )
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 5.5))
     )
-    + geom_text(
-        _df_hr_vline,
-        aes(x="ex_year", y="top", label="label"),
-        color="#cc2222", size=8, ha="left", va="top", nudge_x=0.4,
-    )
-    + geom_text(
-        _df_hr_no,
-        aes(x=2055, y="top", label="label"),
-        color="#cc2222", size=8, ha="right", va="top",
-    )
-    # Crossover vlines (winter ≥ summer)
-    + (geom_vline(
-        _df_cross_labeled,
-        aes(xintercept="cross_year"),
-        color=SB_COLORS["pistachio"], size=1.0, linetype="dashed",
-    ) if not df_crossover.is_empty() else geom_hline(yintercept=-9999, alpha=0))
-    + (geom_text(
-        _df_cross_labeled,
-        aes(x="cross_year", y="top", label="label"),
-        color=SB_COLORS["pistachio"], size=8, ha="right", va="top", nudge_x=-0.4,
-    ) if not df_crossover.is_empty() else geom_hline(yintercept=-9999, alpha=0))
-    + facet_wrap("facet", ncol=2, scales="free_y")
-    + scale_color_manual(
-        values={"Winter": SB_COLORS["sky"], "Summer": SB_COLORS["carrot"]},
-        name="Season",
-    )
-    + scale_x_continuous(breaks=list(range(2025, 2056, 5)))
-    + scale_y_continuous(
-        labels=lambda lst: [f"{v:.0f}%" for v in lst],
-    )
-    + labs(
-        title="Winter vs. Summer Coincident Peak Growth by Utility — Baseline vs. Lower Demand",
-        subtitle=(
-            "Both seasons as % of 2023-24 summer coincident peak (I-3a) — NYISO Gold Book 2025\n"
-            "Red dashed = headroom exhaustion (Synapse 2024); green dashed = winter ≥ summer crossover"
-        ),
-        x="Year",
-        y="% of 2023–24 summer peak",
-    )
-    + theme_switchbox()
-    + theme(figure_size=(24, 17))
-)
+    display(_p)
 ```
 
 ## Figure 6: Per-Utility Summer Demand Components
@@ -1235,30 +1608,18 @@ SCENARIOS_SUMMER: dict[str, dict] = {
     "Baseline": {
         "i3a": i3a_base,
         "i4a": i4a_base,
-        "pos": [
-            ("Building electrification", i13b_base),
-            ("EV load", i11c_base),
-            ("Large loads", i14_summer),
-        ],
-        "neg": [
-            ("EE & codes/standards", i8b),
-            ("Non-solar DG", i10b),
-            ("BTM storage", i12b),
-        ],
+        "be": i13b_base,
+        "ev": i11c_base,
+        "ll": i14_summer,
+        "neg_tables": [i8b, i10b, i12b],
     },
     "Lower demand": {
         "i3a": i3a_low,
         "i4a": i4a_low,
-        "pos": [
-            ("Building electrification", i13b_low),
-            ("EV load", i11c_low),
-            ("Large loads", i14_summer_low),
-        ],
-        "neg": [
-            ("EE & codes/standards", i8b),
-            ("Non-solar DG", i10b),
-            ("BTM storage", i12b),
-        ],
+        "be": i13b_low,
+        "ev": i11c_low,
+        "ll": i14_summer_low,
+        "neg_tables": [i8b, i10b, i12b],
     },
 }
 
@@ -1277,12 +1638,15 @@ for scenario, sc in SCENARIOS_SUMMER.items():
         if base_cp_s == 0:
             continue
 
-        # Summer headroom: NCP (I-4a) vs threshold (winter Synapse % as proxy)
+        # Summer headroom: NCP (excluding large loads) vs base NCP + HEADROOM_MW
         ncp_base_s = _util_sum(i4a_base, HEADROOM_BASELINE_YEAR, zones)
-        threshold_s = ncp_base_s * (1 + HEADROOM_PCT[utility])
+        ll_base_s_hr = _util_sum(i14_summer, HEADROOM_BASELINE_YEAR, zones)
+        threshold_s = (ncp_base_s - ll_base_s_hr) + HEADROOM_MW[utility]
         ex_yr_s: int | None = None
         for yr_str in headroom_years_s:
-            if _util_sum(sc["i4a"], yr_str, zones) >= threshold_s:
+            ncp_yr_s = _util_sum(sc["i4a"], yr_str, zones)
+            ll_yr_s = _util_sum(sc["ll"], yr_str, zones)
+            if (ncp_yr_s - ll_yr_s) >= threshold_s:
                 ex_yr_s = int(yr_str.split("-")[0])
                 break
 
@@ -1302,30 +1666,37 @@ for scenario, sc in SCENARIOS_SUMMER.items():
 
         for yr_str in all_years:
             yr = int(yr_str.split("-")[0])
+            total_s = _util_sum(sc["i3a"], yr_str, zones)
 
-            pos_bottom = 0.0
-            for comp_label, data in sc["pos"]:
-                raw = _util_sum(data, yr_str, zones)
-                pct = 100.0 * raw / base_cp_s
+            be_raw_s = _util_sum(sc["be"], yr_str, zones)
+            ev_raw_s = _util_sum(sc["ev"], yr_str, zones)
+            ll_raw_s = _util_sum(sc["ll"], yr_str, zones)
+            neg_s = sum(_util_sum(t, yr_str, zones) for t in sc["neg_tables"])
+            scale_s = total_s / (total_s + neg_s) if (total_s + neg_s) > 0 else 1.0
+
+            be_sc_s = be_raw_s * scale_s
+            ev_sc_s = ev_raw_s * scale_s
+            ll_sc_s = ll_raw_s * scale_s
+            organic_s = (total_s - base_cp_s) - be_sc_s - ev_sc_s - ll_sc_s
+
+            cum_s = 0.0
+            for comp_label, val_mw in [
+                ("Base (2025 level)", float(base_cp_s)),
+                ("Organic growth", organic_s),
+                ("EV load", ev_sc_s),
+                ("Building electrification", be_sc_s),
+                ("Large loads", ll_sc_s),
+            ]:
+                pct = 100.0 * val_mw / base_cp_s
                 stack_rows_s.append({
                     "scenario": scenario, "utility": utility, "year": yr,
-                    "component": comp_label, "ymin": pos_bottom, "ymax": pos_bottom + pct,
+                    "component": comp_label, "ymin": cum_s, "ymax": cum_s + pct,
                 })
-                pos_bottom += pct
-            neg_bottom = 0.0
-            for comp_label, data in sc["neg"]:
-                raw = _util_sum(data, yr_str, zones)
-                pct = 100.0 * raw / base_cp_s
-                stack_rows_s.append({
-                    "scenario": scenario, "utility": utility, "year": yr,
-                    "component": comp_label, "ymin": neg_bottom - pct, "ymax": neg_bottom,
-                })
-                neg_bottom -= pct
+                cum_s += pct
 
-            cp_val_s = _util_sum(sc["i3a"], yr_str, zones)
             growth_rows_s.append({
                 "scenario": scenario, "utility": utility, "year": yr,
-                "cp_growth_pct": 100.0 * (cp_val_s - base_cp_s) / base_cp_s,
+                "cp_growth_pct": 100.0 * (total_s - base_cp_s) / base_cp_s,
             })
 
 df_stack_s = pl.DataFrame(stack_rows_s).with_columns(
@@ -1411,7 +1782,7 @@ df_not_exhausted_s = df_not_exhausted_s.join(_pos_tops_s, on="facet", how="left"
         aes(x=2055, y="top", label="label"),
         color="#cc2222", size=8, ha="right", va="top",
     )
-    + facet_wrap("facet", ncol=2, scales="free_y")
+    + facet_grid("utility ~ scenario", scales="free_y")
     + scale_fill_manual(
         values=COMPONENT_COLORS,
         name="Component",

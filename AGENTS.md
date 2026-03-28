@@ -938,6 +938,10 @@ s3://data.sb/<org>/<dataset>/<filename_YYYYMMDD.parquet>
 
 `data/` and `cache/` directories are gitignored. Use them for caching downloads and intermediate results, but the analysis must be reproducible from S3 alone. Never reference local-only files in committed code without a clear download/generation step.
 
+## LaTeX in Cursor chat
+
+When running inside Cursor, use `$$...$$` for display math and `$...$` for inline math. Cursor's chat renderer does not support `\[...\]` or `\(...\)` — the backslashes are consumed by the markdown parser, leaving bare brackets that the math renderer ignores. This applies only to chat responses; `.qmd` files should use whatever delimiters Quarto/Pandoc expects.
+
 ## Code quality
 
 Before considering any change done:

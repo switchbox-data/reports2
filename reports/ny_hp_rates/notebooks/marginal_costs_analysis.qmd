@@ -1,0 +1,2742 @@
+---
+title: "Marginal cost analysis for NY HP rates"
+format:
+  html:
+    page-layout: full
+toc: true
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+This notebook provides a summary of the marginal costs of service for different subclasses in New York. The subclass is defined as the heating type of the building, which can be heat pump, electrical resistance, natural gas, or delivered fuel (oil/propane).
+
+**Scope:** Master bill BAT values.
+
+```{python}
+#| label: params-paths
+
+from __future__ import annotations
+
+import polars as pl
+from great_tables import GT
+
+# Load in relevant files from S3.
+STATE = "NY"
+BATCH = "ny_20260327_r1-16_epmc"
+
+_state_lower = STATE.lower()
+S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
+PATH_MASTER_BAT_12 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_1+2/cross_subsidization_BAT_values/"
+PATH_MASTER_BAT_34 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_3+4/cross_subsidization_BAT_values/"
+PATH_METADATA_UP_00 = f"s3://data.sb/nrel/resstock/res_2024_amy2018_2_sb/metadata/state=NY/upgrade=00/metadata-sb.parquet"
+PATH_METADATA_UP_02 = f"s3://data.sb/nrel/resstock/res_2024_amy2018_2_sb/metadata/state=NY/upgrade=02/metadata-sb.parquet"
+PATH_ANNUAL_LOAD_CURVE_UP00 = f"s3://data.sb/nrel/resstock/res_2024_amy2018_2/load_curve_annual/state=NY/upgrade=00/NY_upgrade00_metadata_and_annual_results.parquet"
+
+S3_OPTS: dict[str, str] = {"aws_region": "us-west-2"}
+
+HEATING_TYPE_COL = "postprocess_group.heating_type"
+POSTPROCESS_GROUP_HAS_HP = "postprocess_group.has_hp"
+HEATS_WITH_ELECTRICITY = "heats_with_electricity"
+HEATS_WITH_NATGAS = "heats_with_natgas"
+HEATS_WITH_OIL = "heats_with_oil"
+HEATS_WITH_PROPANE = "heats_with_propane"
+MARGINAL_COST_DELIVERY_COL = "economic_burden_delivery"
+MARGINAL_COST_RESIDUAL_COL = "residual_share_delivery"
+MARGINAL_COST_SUPPLY_COL = "economic_burden_supply"
+MARGINAL_COST_RESIDUAL_SUPPLY_COL = "residual_share_supply"
+ANNUAL_BILL_DELIVERY_COL = "annual_bill_delivery"
+ANNUAL_BILL_SUPPLY_COL = "annual_bill_supply"
+METADATA_PARTIAL_COOLING_COL = "in.hvac_cooling_partial_space_conditioning"
+METADATA_COOLING_SETPOINT_COL = "in.cooling_setpoint"
+LOAD_CURVE_ANNUAL_NET_ELECTRICITY_CONSUMPTION_COL = "out.electricity.net.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_FLOOR_AREA_COL = "out.params.floor_area_foundation_ft_2"
+LOAD_CURVE_ANNUAL_COOLING_CAPACITY_COL = "out.params.size_cooling_system_primary_k_btu_h"
+LOAD_CURVE_ANNUAL_COOLING_PEAK_COL = "out.load.cooling.peak.kbtu_hr"
+LOAD_CURVE_ANNUAL_COOLING_DELIVERED_COL = "out.load.cooling.energy_delivered.kbtu"
+LOAD_CURVE_ANNUAL_COOLING_CONSUMED_COL = "out.electricity.cooling.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_COOLING_FAN_CONSUMED_COL = "out.electricity.cooling_fans_pumps.energy_consumption.kwh"
+# Derived in-notebook alias for cooling kWh + cooling fans/pumps kWh (not a parquet column).
+COOLING_KWH_SUM_COL = "_cooling_plus_fan_kwh"
+LOAD_CURVE_ANNUAL_HEATING_CONSUMED_COL = "out.electricity.heating.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_HEATING_FAN_CONSUMED_COL = "out.electricity.heating_fans_pumps.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_BKUP_HEATING_CONSUMED_COL = "out.electricity.heating_hp_bkup.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_BKUP_HEATING_FAN_CONSUMED_COL = "out.electricity.heating_hp_bkup_fa.energy_consumption.kwh"
+# Derived: heating + heating fans/pumps + HP backup + HP backup fans/pumps kWh (not a parquet column).
+HEATING_KWH_SUM_COL = "_heating_fourway_kwh_sum"
+HEATING_KWH_SUM_SOURCE_COLS = (
+    LOAD_CURVE_ANNUAL_HEATING_CONSUMED_COL,
+    LOAD_CURVE_ANNUAL_HEATING_FAN_CONSUMED_COL,
+    LOAD_CURVE_ANNUAL_BKUP_HEATING_CONSUMED_COL,
+    LOAD_CURVE_ANNUAL_BKUP_HEATING_FAN_CONSUMED_COL,
+)
+
+LOAD_CURVE_ANNUAL_CEILING_FAN_COL = "out.electricity.ceiling_fan.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_CLOTHES_DRYER_COL = "out.electricity.clothes_dryer.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_CLOTHES_WASHER_COL = "out.electricity.clothes_washer.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_DISHWASHER_COL = "out.electricity.dishwasher.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_FREEZER_COL = "out.electricity.freezer.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_HOT_WATER_COL = "out.electricity.hot_water.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_EXTERIOR_LIGHT_COL = "out.electricity.lighting_exterior.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_GARAGE_LIGHT_COL = "out.electricity.lighting_garage.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_INTERIOR_LIGHT_COL = "out.electricity.lighting_interior.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_VENT_COL = "out.electricity.mech_vent.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_SPA_COL = "out.electricity.permanent_spa_heat.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_SPA_PUMP_COL = "out.electricity.permanent_spa_pump.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_PLUG_LOAD_COL = "out.electricity.plug_loads.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_PV_COL = "out.electricity.pv.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_OVEN_COL = "out.electricity.range_oven.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_FRIDGE_COL = "out.electricity.refrigerator.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_WELL_PUMP_COL = "out.electricity.well_pump.energy_consumption.kwh"
+
+# Appliance annual kWh columns split into three groups (partition of the former bundle).
+LOAD_CURVE_ANNUAL_APPLIANCES_PV_COLS = (LOAD_CURVE_ANNUAL_PV_COL,)
+LOAD_CURVE_ANNUAL_APPLIANCES_LAUNDRY_DHW_PLUG_COLS = (
+    LOAD_CURVE_ANNUAL_CLOTHES_DRYER_COL,
+    LOAD_CURVE_ANNUAL_CLOTHES_WASHER_COL,
+    LOAD_CURVE_ANNUAL_DISHWASHER_COL,
+    LOAD_CURVE_ANNUAL_HOT_WATER_COL,
+    LOAD_CURVE_ANNUAL_PLUG_LOAD_COL,
+)
+LOAD_CURVE_ANNUAL_APPLIANCES_OTHER_COLS = (
+    LOAD_CURVE_ANNUAL_CEILING_FAN_COL,
+    LOAD_CURVE_ANNUAL_FREEZER_COL,
+    LOAD_CURVE_ANNUAL_EXTERIOR_LIGHT_COL,
+    LOAD_CURVE_ANNUAL_GARAGE_LIGHT_COL,
+    LOAD_CURVE_ANNUAL_INTERIOR_LIGHT_COL,
+    LOAD_CURVE_ANNUAL_VENT_COL,
+    LOAD_CURVE_ANNUAL_SPA_COL,
+    LOAD_CURVE_ANNUAL_SPA_PUMP_COL,
+    LOAD_CURVE_ANNUAL_OVEN_COL,
+    LOAD_CURVE_ANNUAL_FRIDGE_COL,
+    LOAD_CURVE_ANNUAL_WELL_PUMP_COL,
+)
+LOAD_CURVE_ANNUAL_APPLIANCES_COLS = (
+    *LOAD_CURVE_ANNUAL_APPLIANCES_PV_COLS,
+    *LOAD_CURVE_ANNUAL_APPLIANCES_LAUNDRY_DHW_PLUG_COLS,
+    *LOAD_CURVE_ANNUAL_APPLIANCES_OTHER_COLS,
+)
+# Derived category sums and total (not parquet columns).
+APPLIANCES_PV_KWH_SUM_COL = "_appliances_pv_kwh_sum"
+APPLIANCES_LAUNDRY_DHW_PLUG_KWH_SUM_COL = "_appliances_laundry_dhw_plug_kwh_sum"
+APPLIANCES_OTHER_KWH_SUM_COL = "_appliances_other_kwh_sum"
+APPLIANCES_KWH_SUM_COL = "_appliances_bundle_kwh_sum"
+
+PARTIAL_COOLING_MAP = {
+    "100% Conditioned": 1.0,
+    "80% Conditioned": 0.8,
+    "60% Conditioned": 0.6,
+    "40% Conditioned": 0.4,
+    "20% Conditioned": 0.2,
+    None: 0.0,
+}
+
+annual_load_curve_up_00 = pl.scan_parquet(PATH_ANNUAL_LOAD_CURVE_UP00, storage_options=S3_OPTS)
+annual_load_curve_up_00_df = annual_load_curve_up_00.collect()
+metadata_up_00 = pl.scan_parquet(PATH_METADATA_UP_00, storage_options=S3_OPTS)
+metadata_up_00_df = metadata_up_00.collect()
+metadata_up_02 = pl.scan_parquet(PATH_METADATA_UP_02, storage_options=S3_OPTS)
+metadata_up_02_df = metadata_up_02.collect()
+metadata_up_02_hp_df = metadata_up_02_df.filter(pl.col(POSTPROCESS_GROUP_HAS_HP))
+metadata_up_02_no_hp_df = metadata_up_02_df.filter(~pl.col(POSTPROCESS_GROUP_HAS_HP))
+bat_12 = pl.scan_parquet(PATH_MASTER_BAT_12, hive_partitioning=True, storage_options=S3_OPTS)
+bat_12_df = bat_12.collect()
+bat_34 = pl.scan_parquet(PATH_MASTER_BAT_34, hive_partitioning=True, storage_options=S3_OPTS)
+bat_34_df = bat_34.collect()
+
+UTIL_ELECTRIC_COL = "sb.electric_utility"
+_ny_electric_utils: list[str] = (
+    bat_12_df.select(UTIL_ELECTRIC_COL)
+    .drop_nulls()
+    .unique()
+    .sort(UTIL_ELECTRIC_COL)[UTIL_ELECTRIC_COL]
+    .to_list()
+)
+
+# Categorize subclasses.
+bat_12_hp_bldgs = bat_12_df.filter(pl.col(HEATING_TYPE_COL) == "heat_pump")
+bat_12_electric_resistance_bldgs = bat_12_df.filter(pl.col(HEATING_TYPE_COL) == "electrical_resistance")
+bat_12_natgas_bldgs = bat_12_df.filter(pl.col(HEATS_WITH_NATGAS))
+bat_12_oil_propane_bldgs = bat_12_df.filter(pl.col(HEATS_WITH_OIL) | pl.col(HEATS_WITH_PROPANE))
+
+bat_34_hp_bldgs = metadata_up_02_df.filter(pl.col(HEATING_TYPE_COL) == "heat_pump")
+bat_34_electric_resistance_bldgs = metadata_up_02_df.filter(pl.col(HEATING_TYPE_COL) == "electrical_resistance")
+bat_34_natgas_bldgs = metadata_up_02_df.filter(pl.col(HEATS_WITH_NATGAS))
+bat_34_oil_propane_bldgs = metadata_up_02_df.filter(pl.col(HEATS_WITH_OIL) | pl.col(HEATS_WITH_PROPANE))
+```
+
+
+
+## Short summary of subclass counts
+
+```{python}
+#| label: summary-of-bat-12
+
+def _count_with_pct(count: int, total: int) -> str:
+    """Row count plus share of total (row counts, not weighted)."""
+    if total <= 0:
+        return f"{count} (—)"
+    return f"{count} ({100 * count / total:.1f}%)"
+
+
+_n_bat_12 = bat_12_df.height
+_n_bat_34 = bat_34_df.height
+_other_bat_12 = (
+    _n_bat_12
+    - bat_12_hp_bldgs.height
+    - bat_12_electric_resistance_bldgs.height
+    - bat_12_natgas_bldgs.height
+    - bat_12_oil_propane_bldgs.height
+)
+_other_bat_34 = (
+    _n_bat_34
+    - bat_34_hp_bldgs.height
+    - bat_34_electric_resistance_bldgs.height
+    - bat_34_natgas_bldgs.height
+    - bat_34_oil_propane_bldgs.height
+)
+
+print("BAT run 1+2 summary (upgrade 00):")
+print(f"Total buildings: {_n_bat_12}")
+print(f"Heat pump buildings: {_count_with_pct(bat_12_hp_bldgs.height, _n_bat_12)}")
+print(
+    f"Electric resistance buildings: {_count_with_pct(bat_12_electric_resistance_bldgs.height, _n_bat_12)}",
+)
+print(f"Natural gas buildings: {_count_with_pct(bat_12_natgas_bldgs.height, _n_bat_12)}")
+print(f"Oil/propane buildings: {_count_with_pct(bat_12_oil_propane_bldgs.height, _n_bat_12)}")
+print(f"Other fuel types: {_count_with_pct(_other_bat_12, _n_bat_12)}")
+
+print("\n")
+
+print("BAT run 3+4 summary (upgrade 02):")
+print(f"Total buildings: {_n_bat_34}")
+print(f"Heat pump buildings: {_count_with_pct(bat_34_hp_bldgs.height, _n_bat_34)}")
+print(
+    f"Electric resistance buildings: {_count_with_pct(bat_34_electric_resistance_bldgs.height, _n_bat_34)}",
+)
+print(f"Natural gas buildings: {_count_with_pct(bat_34_natgas_bldgs.height, _n_bat_34)}")
+print(f"Oil/propane buildings: {_count_with_pct(bat_34_oil_propane_bldgs.height, _n_bat_34)}")
+print(f"Other fuel types: {_count_with_pct(_other_bat_34, _n_bat_34)}")
+```
+
+```{python}
+#| label: helper functions
+
+def _weighted_sum(df: pl.DataFrame, col: str, w_col: str = "weight") -> float:
+    """Sum of (value × survey weight) — population-scaled total for the sample."""
+    if df.is_empty():
+        return float("nan")
+    return float((df[col] * df[w_col]).sum())
+
+
+def delivery_cos_weighted_sum(df: pl.DataFrame) -> float:
+    """Total (economic_burden_delivery + residual_share_delivery) × weight."""
+    x = df.with_columns(
+        (pl.col(MARGINAL_COST_DELIVERY_COL) + pl.col(MARGINAL_COST_RESIDUAL_COL)).alias("delivery_cos"),
+    )
+    return _weighted_sum(x, "delivery_cos")
+
+
+def delivery_supply_cos_weighted_sum(df: pl.DataFrame) -> float:
+    """Σ ((delivery EBD + delivery residual) + (supply EBD + supply residual)) × weight."""
+    x = df.with_columns(
+        (
+            pl.col(MARGINAL_COST_DELIVERY_COL)
+            + pl.col(MARGINAL_COST_RESIDUAL_COL)
+            + pl.col(MARGINAL_COST_SUPPLY_COL)
+            + pl.col(MARGINAL_COST_RESIDUAL_SUPPLY_COL)
+        ).alias("delivery_supply_cos"),
+    )
+    return _weighted_sum(x, "delivery_supply_cos")
+
+
+def delivery_supply_bill_weighted_sum(df: pl.DataFrame) -> float:
+    """Σ ((annual_bill_delivery + annual_bill_supply) × weight)."""
+    x = df.with_columns(
+        (pl.col(ANNUAL_BILL_DELIVERY_COL) + pl.col(ANNUAL_BILL_SUPPLY_COL)).alias("_bill_delivery_supply"),
+    )
+    return _weighted_sum(x, "_bill_delivery_supply")
+
+
+def economic_burden_delivery_supply_weighted_sum(df: pl.DataFrame) -> float:
+    """Σ ((economic_burden_delivery + economic_burden_supply) × weight) — for equiproportional EBD shares."""
+    x = df.with_columns(
+        (pl.col(MARGINAL_COST_DELIVERY_COL) + pl.col(MARGINAL_COST_SUPPLY_COL)).alias("_ebd_delivery_supply"),
+    )
+    return _weighted_sum(x, "_ebd_delivery_supply")
+
+
+def _w_mean_ebd(df: pl.DataFrame, col: str, w_col: str = "weight") -> float:
+    if df.is_empty() or df[w_col].sum() == 0:
+        return float("nan")
+    return float((df[col] * df[w_col]).sum() / df[w_col].sum())
+
+def _w_median_ebd(df: pl.DataFrame, col: str, w_col: str = "weight") -> float:
+    """Weighted median via cumulative survey weight."""
+    if df.is_empty() or df[w_col].sum() == 0:
+        return float("nan")
+    s = df.sort(col)
+    cum = s[w_col].cum_sum() / s[w_col].sum()
+    return float(s.filter(cum >= 0.5)[col][0])
+```
+
+
+## Delivery COS - per customer method
+Uses existing marginal cost and per customer residual allocation to calculate delivery COS. Then, calculates the difference between the annual delivery bill and the delivery COS.
+
+```{python}
+#| label: bill-cos-diff-combined-run12-gt
+
+_subclass_groups = [
+    ("Heat pump", bat_12_hp_bldgs),
+    ("Electric resistance", bat_12_electric_resistance_bldgs),
+    ("Natural gas", bat_12_natgas_bldgs),
+    ("Oil / propane", bat_12_oil_propane_bldgs),
+]
+
+_rows: list[dict] = []
+for group_label, d in _subclass_groups:
+    _rows.append({
+        "group": group_label,
+        "total_delivery_cos": delivery_cos_weighted_sum(d),
+    })
+_delivery_cos_tbl = pl.DataFrame(_rows).with_columns(
+    pl.col("total_delivery_cos").fill_nan(None),
+)
+
+_rows_bill: list[dict] = []
+for group_label, d in _subclass_groups:
+    _rows_bill.append({
+        "group": group_label,
+        "total_annual_bill_delivery": _weighted_sum(d, "annual_bill_delivery"),
+    })
+_annual_bill_tbl = pl.DataFrame(_rows_bill).with_columns(
+    pl.col("total_annual_bill_delivery").fill_nan(None),
+)
+
+_diff_rows: list[dict] = []
+for cos_row, bill_row in zip(_rows, _rows_bill, strict=True):
+    assert cos_row["group"] == bill_row["group"]
+    _diff_rows.append({
+        "group": cos_row["group"],
+        "diff_annual_bill_minus_delivery_cos": (
+            bill_row["total_annual_bill_delivery"] - cos_row["total_delivery_cos"]
+        ),
+    })
+_diff_tbl = pl.DataFrame(_diff_rows).with_columns(
+    pl.col("diff_annual_bill_minus_delivery_cos").fill_nan(None),
+)
+
+# Column order: annual bill, delivery COS, difference, then (diff ÷ COS) as %.
+_run12_bill_cos_diff_df = (
+    _annual_bill_tbl.join(_delivery_cos_tbl, on="group", how="inner")
+    .join(_diff_tbl, on="group", how="inner")
+    .with_columns(
+        pl.when(
+            pl.col("total_delivery_cos").is_not_null()
+            & (pl.col("total_delivery_cos").cast(pl.Float64) != 0.0),
+        )
+        .then(
+            pl.col("diff_annual_bill_minus_delivery_cos")
+            / pl.col("total_delivery_cos")
+            * 100,
+        )
+        .otherwise(None)
+        .alias("pct_diff_div_delivery_cos"),
+    )
+    .with_columns(pl.col("pct_diff_div_delivery_cos").fill_nan(None))
+)
+
+_ratio_tbl = _run12_bill_cos_diff_df.select("group", "pct_diff_div_delivery_cos")
+_ratio_rows = _ratio_tbl.to_dicts()
+
+_bill_cos_diff_run12_gt = (
+    GT(_run12_bill_cos_diff_df, rowname_col="group")
+    .tab_header(
+        title="Delivery bill, delivery COS, and difference — by subclass, run 1+2",
+        subtitle=(
+            "Σ (value × weight), $/yr from cross_subsidization_BAT_values (upgrade 00). "
+            f"Delivery COS = {MARGINAL_COST_DELIVERY_COL} + {MARGINAL_COST_RESIDUAL_COL}. "
+            "Bill − COS = annual_bill_delivery minus that sum. "
+            "Last column: (Bill − COS) ÷ Σ delivery COS × 100 per subclass."
+        ),
+    )
+    .tab_spanner(
+        label="Σ (value × weight), $/yr",
+        columns=[
+            "total_annual_bill_delivery",
+            "total_delivery_cos",
+            "diff_annual_bill_minus_delivery_cos",
+        ],
+    )
+    .tab_spanner(
+        label="Ratio",
+        columns=["pct_diff_div_delivery_cos"],
+    )
+    .cols_label(
+        total_annual_bill_delivery="Σ annual delivery bill",
+        total_delivery_cos="Σ delivery COS",
+        diff_annual_bill_minus_delivery_cos="Bill − COS",
+        pct_diff_div_delivery_cos="(Bill − COS) ÷ COS",
+    )
+    .fmt_currency(
+        columns=[
+            "total_annual_bill_delivery",
+            "total_delivery_cos",
+            "diff_annual_bill_minus_delivery_cos",
+        ],
+        decimals=0,
+    )
+    .fmt_number(columns=["pct_diff_div_delivery_cos"], decimals=1, pattern="{x}%")
+    .sub_missing(missing_text="—")
+    .cols_align(
+        align="right",
+        columns=[
+            "total_annual_bill_delivery",
+            "total_delivery_cos",
+            "diff_annual_bill_minus_delivery_cos",
+            "pct_diff_div_delivery_cos",
+        ],
+    )
+    .tab_source_note(
+        "Each $/yr column is a weighted total over buildings in that group. "
+        "Positive Bill − COS means the weighted delivery bill exceeds weighted delivery COS. "
+        "Ratio is undefined when Σ delivery COS is zero."
+    )
+)
+
+_bill_cos_diff_run12_gt
+```
+
+## Rate design - per customer method
+
+```{python}
+#| label: rate-design-per-customer-cos-fixed-gt
+
+from math import isnan
+
+_RATE_DESIGN_FIXED_USD = 11.48
+
+# Per-building annual net kWh (upgrade 00); subclass totals use Σ(weight × kWh) with BAT `weight`.
+_lc_net_kwh_by_bldg = (
+    annual_load_curve_up_00_df.group_by("bldg_id")
+    .agg(pl.col(LOAD_CURVE_ANNUAL_NET_ELECTRICITY_CONSUMPTION_COL).sum().alias("_net_kwh_row"))
+)
+
+_subclass_groups_rd = [
+    ("Heat pump", bat_12_hp_bldgs),
+    ("Electric resistance", bat_12_electric_resistance_bldgs),
+    ("Natural gas", bat_12_natgas_bldgs),
+    ("Oil / propane", bat_12_oil_propane_bldgs),
+]
+
+_rd_rows: list[dict] = []
+for _grp, _d in _subclass_groups_rd:
+    _fixed_col = (
+        float(_d["weight"].sum()) * _RATE_DESIGN_FIXED_USD
+        if not _d.is_empty()
+        else float("nan")
+    )
+    _cos = delivery_cos_weighted_sum(_d)
+    if _d.is_empty():
+        _sum_weighted_net_kwh = float("nan")
+    else:
+        _rd_net_join = _d.select("bldg_id", "weight").join(_lc_net_kwh_by_bldg, on="bldg_id", how="left")
+        _sum_weighted_net_kwh = float(
+            _rd_net_join.with_columns(
+                (pl.col("weight") * pl.col("_net_kwh_row")).alias("_weight_times_net_kwh"),
+            )["_weight_times_net_kwh"].sum(),
+        )
+    _num = _cos - _fixed_col
+    if isnan(_num) or isnan(_sum_weighted_net_kwh) or _sum_weighted_net_kwh == 0.0:
+        _usd_per_kwh = float("nan")
+    else:
+        _usd_per_kwh = _num / _sum_weighted_net_kwh
+    _rd_rows.append({
+        "group": _grp,
+        "total_delivery_cos": _cos,
+        "weight_sum_times_fixed_rate": _fixed_col,
+        "sum_weighted_net_electricity_kwh": _sum_weighted_net_kwh,
+        "usd_per_kwh_cos_minus_fixed": _usd_per_kwh,
+    })
+
+_rate_design_per_customer_df = pl.DataFrame(_rd_rows).with_columns(
+    pl.col("total_delivery_cos").fill_nan(None),
+    pl.col("weight_sum_times_fixed_rate").fill_nan(None),
+    pl.col("sum_weighted_net_electricity_kwh").fill_nan(None),
+    pl.col("usd_per_kwh_cos_minus_fixed").fill_nan(None),
+)
+
+_rate_design_per_customer_gt = (
+    GT(_rate_design_per_customer_df, rowname_col="group")
+    .tab_header(
+        title="Delivery COS, fixed charge, net kWh, and implied volumetric rate — by subclass, run 1+2",
+        subtitle=(
+            "Σ (value × weight), $/yr from cross_subsidization_BAT_values (upgrade 00). "
+            f"Delivery COS = {MARGINAL_COST_DELIVERY_COL} + {MARGINAL_COST_RESIDUAL_COL}. "
+            f"Fixed cost = Σ weight in subclass × ${_RATE_DESIGN_FIXED_USD:.2f}. "
+            f"Weighted net kWh = Σ (`weight` × `{LOAD_CURVE_ANNUAL_NET_ELECTRICITY_CONSUMPTION_COL}`) "
+            "for subclass `bldg_id`s: net kWh summed per building on `annual_load_curve_up_00_df`, "
+            "then multiplied by ResStock `weight` from BAT and summed. "
+            "Last column: (Σ delivery COS − fixed cost) ÷ weighted net kWh ($/kWh)."
+        ),
+    )
+    .tab_spanner(
+        label="$/yr",
+        columns=["total_delivery_cos", "weight_sum_times_fixed_rate"],
+    )
+    .tab_spanner(
+        label="Net electricity consumption",
+        columns=["sum_weighted_net_electricity_kwh"],
+    )
+    .tab_spanner(
+        label="Implied rate",
+        columns=["usd_per_kwh_cos_minus_fixed"],
+    )
+    .cols_label(
+        total_delivery_cos="Σ delivery COS",
+        weight_sum_times_fixed_rate="Fixed cost",
+        sum_weighted_net_electricity_kwh="Σ (weight × net kWh)",
+        usd_per_kwh_cos_minus_fixed="($/kWh)",
+    )
+    .fmt_currency(
+        columns=["total_delivery_cos", "weight_sum_times_fixed_rate"],
+        decimals=0,
+    )
+    .fmt_number(columns=["sum_weighted_net_electricity_kwh"], decimals=0)
+    .fmt_number(columns=["usd_per_kwh_cos_minus_fixed"], decimals=4)
+    .sub_missing(missing_text="—")
+    .cols_align(
+        align="right",
+        columns=[
+            "total_delivery_cos",
+            "weight_sum_times_fixed_rate",
+            "sum_weighted_net_electricity_kwh",
+            "usd_per_kwh_cos_minus_fixed",
+        ],
+    )
+    .tab_source_note(
+        "Σ delivery COS matches the per-customer bill–COS table. "
+        "Fixed column is Σ survey weights in the subclass times the stated rate. "
+        "Subclass `bldg_id`s come from BAT 1+2; net kWh comes from the annual load curve table × BAT weight. "
+        "$/kWh is undefined when weighted net kWh is zero or missing."
+    )
+)
+
+_rate_design_per_customer_gt
+```
+
+## Delivery COS - equiproportional method
+Delivery COS is determined by ratio of marginal cost for each subclass, multiplied by the total delivery COS across all customers. Then, calculate the difference between the annual delivery bill and the delivery COS.
+
+```{python}
+#| label: bill-cos-diff-equiproportional-gt
+
+_subclass_groups = [
+    ("Heat pump", bat_12_hp_bldgs),
+    ("Electric resistance", bat_12_electric_resistance_bldgs),
+    ("Natural gas", bat_12_natgas_bldgs),
+    ("Oil / propane", bat_12_oil_propane_bldgs),
+]
+
+_total_delivery_cos_statewide_eq = delivery_cos_weighted_sum(bat_12_df)
+_total_economic_burden_delivery_statewide_eq = _weighted_sum(
+    bat_12_df,
+    MARGINAL_COST_DELIVERY_COL,
+)
+
+_rows: list[dict] = []
+for group_label, d in _subclass_groups:
+    _subtotal_ebd = _weighted_sum(d, MARGINAL_COST_DELIVERY_COL)
+    _pct_ebd = (
+        (_subtotal_ebd / _total_economic_burden_delivery_statewide_eq * 100)
+        if _total_economic_burden_delivery_statewide_eq
+        else float("nan")
+    )
+    _allocated_cos = (
+        _total_delivery_cos_statewide_eq * (_pct_ebd / 100.0)
+        if _total_economic_burden_delivery_statewide_eq
+        else float("nan")
+    )
+    _rows.append({
+        "group": group_label,
+        "total_delivery_cos": _allocated_cos,
+    })
+_eq_delivery_cos_tbl = pl.DataFrame(_rows).with_columns(
+    pl.col("total_delivery_cos").fill_nan(None),
+)
+
+_eq_rows_bill: list[dict] = []
+for group_label, d in _subclass_groups:
+    _eq_rows_bill.append({
+        "group": group_label,
+        "total_annual_bill_delivery": _weighted_sum(d, "annual_bill_delivery"),
+    })
+_eq_annual_bill_tbl = pl.DataFrame(_eq_rows_bill).with_columns(
+    pl.col("total_annual_bill_delivery").fill_nan(None),
+)
+
+_eq_diff_rows: list[dict] = []
+for cos_row, bill_row in zip(_rows, _eq_rows_bill, strict=True):
+    assert cos_row["group"] == bill_row["group"]
+    _eq_diff_rows.append({
+        "group": cos_row["group"],
+        "diff_annual_bill_minus_delivery_cos": (
+            bill_row["total_annual_bill_delivery"] - cos_row["total_delivery_cos"]
+        ),
+    })
+_eq_diff_tbl = pl.DataFrame(_eq_diff_rows).with_columns(
+    pl.col("diff_annual_bill_minus_delivery_cos").fill_nan(None),
+)
+
+# Column order: annual bill, allocated delivery COS, difference, then (diff ÷ COS) as %.
+_run12_bill_cos_diff_equiprop_df = (
+    _eq_annual_bill_tbl.join(_eq_delivery_cos_tbl, on="group", how="inner")
+    .join(_eq_diff_tbl, on="group", how="inner")
+    .with_columns(
+        pl.when(
+            pl.col("total_delivery_cos").is_not_null()
+            & (pl.col("total_delivery_cos").cast(pl.Float64) != 0.0),
+        )
+        .then(
+            pl.col("diff_annual_bill_minus_delivery_cos")
+            / pl.col("total_delivery_cos")
+            * 100,
+        )
+        .otherwise(None)
+        .alias("pct_diff_div_delivery_cos"),
+    )
+    .with_columns(pl.col("pct_diff_div_delivery_cos").fill_nan(None))
+)
+
+_bill_cos_diff_equiprop_gt = (
+    GT(_run12_bill_cos_diff_equiprop_df, rowname_col="group")
+    .tab_header(
+        title="Delivery bill, equiproportional delivery COS, and difference — by subclass, run 1+2",
+        subtitle=(
+            "Σ (value × weight), $/yr from cross_subsidization_BAT_values (upgrade 00). "
+            f"Statewide Σ delivery COS = Σ(({MARGINAL_COST_DELIVERY_COL} + {MARGINAL_COST_RESIDUAL_COL}) × weight). "
+            "Per subclass: COS column = statewide Σ delivery COS × "
+            f"(subclass Σ ({MARGINAL_COST_DELIVERY_COL} × weight) ÷ statewide Σ ({MARGINAL_COST_DELIVERY_COL} × weight)), "
+            "i.e. same EBD share as `% of marginal cost` in the subclass-shares table. "
+            "Bill − COS uses subclass Σ annual_bill_delivery minus that equiproportional COS. "
+            "Last column: (Bill − COS) ÷ equiproportional COS × 100."
+        ),
+    )
+    .tab_spanner(
+        label="Σ (value × weight), $/yr",
+        columns=[
+            "total_annual_bill_delivery",
+            "total_delivery_cos",
+            "diff_annual_bill_minus_delivery_cos",
+        ],
+    )
+    .tab_spanner(
+        label="Ratio",
+        columns=["pct_diff_div_delivery_cos"],
+    )
+    .cols_label(
+        total_annual_bill_delivery="Σ annual delivery bill",
+        total_delivery_cos="Equiproportional Σ delivery COS",
+        diff_annual_bill_minus_delivery_cos="Bill − COS",
+        pct_diff_div_delivery_cos="(Bill − COS) ÷ COS",
+    )
+    .fmt_currency(
+        columns=[
+            "total_annual_bill_delivery",
+            "total_delivery_cos",
+            "diff_annual_bill_minus_delivery_cos",
+        ],
+        decimals=0,
+    )
+    .fmt_number(columns=["pct_diff_div_delivery_cos"], decimals=1, pattern="{x}%")
+    .sub_missing(missing_text="—")
+    .cols_align(
+        align="right",
+        columns=[
+            "total_annual_bill_delivery",
+            "total_delivery_cos",
+            "diff_annual_bill_minus_delivery_cos",
+            "pct_diff_div_delivery_cos",
+        ],
+    )
+    .tab_source_note(
+        "First column: weighted annual delivery bill total in the subclass. "
+        "Second column: statewide delivery COS reallocated by each subclass’s share of statewide "
+        f"Σ ({MARGINAL_COST_DELIVERY_COL} × weight). "
+        "Positive Bill − COS means the subclass bill total exceeds its equiproportional COS. "
+        "Ratio is undefined when equiproportional COS is zero or statewide EBD total is zero."
+    )
+)
+
+_bill_cos_diff_equiprop_gt
+```
+
+## Rate design - equiproportional delivery COS method
+
+```{python}
+#| label: rate-design-equiproportional-cos-fixed-gt
+
+from math import isnan
+
+# Same fixed rate and weighted net kWh construction as `rate-design-per-customer-cos-fixed-gt`;
+# delivery COS column = equiproportional allocation from `bill-cos-diff-equiproportional-gt`.
+_eq_alloc_cos_by_group: dict[str, float | None] = {
+    r["group"]: r["total_delivery_cos"] for r in _run12_bill_cos_diff_equiprop_df.to_dicts()
+}
+
+_eq_rd_rows: list[dict] = []
+for _grp, _d in _subclass_groups_rd:
+    _raw_alloc = _eq_alloc_cos_by_group.get(_grp)
+    _alloc_cos = float(_raw_alloc) if _raw_alloc is not None else float("nan")
+    _fixed_col = (
+        float(_d["weight"].sum()) * _RATE_DESIGN_FIXED_USD
+        if not _d.is_empty()
+        else float("nan")
+    )
+    if _d.is_empty():
+        _sum_weighted_net_kwh_eq = float("nan")
+    else:
+        _rd_net_join_eq = _d.select("bldg_id", "weight").join(_lc_net_kwh_by_bldg, on="bldg_id", how="left")
+        _sum_weighted_net_kwh_eq = float(
+            _rd_net_join_eq.with_columns(
+                (pl.col("weight") * pl.col("_net_kwh_row")).alias("_weight_times_net_kwh"),
+            )["_weight_times_net_kwh"].sum(),
+        )
+    _num_eq = _alloc_cos - _fixed_col
+    if isnan(_num_eq) or isnan(_sum_weighted_net_kwh_eq) or _sum_weighted_net_kwh_eq == 0.0:
+        _usd_per_kwh_eq = float("nan")
+    else:
+        _usd_per_kwh_eq = _num_eq / _sum_weighted_net_kwh_eq
+    _eq_rd_rows.append({
+        "group": _grp,
+        "equiproportional_total_delivery_cos": _alloc_cos,
+        "weight_sum_times_fixed_rate": _fixed_col,
+        "sum_weighted_net_electricity_kwh": _sum_weighted_net_kwh_eq,
+        "usd_per_kwh_cos_minus_fixed": _usd_per_kwh_eq,
+    })
+
+_rate_design_equiprop_df = pl.DataFrame(_eq_rd_rows).with_columns(
+    pl.col("equiproportional_total_delivery_cos").fill_nan(None),
+    pl.col("weight_sum_times_fixed_rate").fill_nan(None),
+    pl.col("sum_weighted_net_electricity_kwh").fill_nan(None),
+    pl.col("usd_per_kwh_cos_minus_fixed").fill_nan(None),
+)
+
+_rate_design_equiprop_gt = (
+    GT(_rate_design_equiprop_df, rowname_col="group")
+    .tab_header(
+        title="Equiproportional delivery COS, fixed charge, net kWh, and implied volumetric rate — run 1+2",
+        subtitle=(
+            "Second column of `bill-cos-diff-equiproportional-gt`: statewide Σ delivery COS × subclass share of "
+            f"Σ ({MARGINAL_COST_DELIVERY_COL} × weight). "
+            f"Fixed cost = Σ weight in subclass × ${_RATE_DESIGN_FIXED_USD:.2f} (same as per-customer rate table). "
+            f"Weighted net kWh = Σ (`weight` × `{LOAD_CURVE_ANNUAL_NET_ELECTRICITY_CONSUMPTION_COL}`) "
+            "per subclass (load curve upgrade 00 × BAT weight). "
+            "Last column: (equiproportional Σ delivery COS − fixed cost) ÷ weighted net kWh ($/kWh)."
+        ),
+    )
+    .tab_spanner(
+        label="$/yr",
+        columns=["equiproportional_total_delivery_cos", "weight_sum_times_fixed_rate"],
+    )
+    .tab_spanner(
+        label="Net electricity consumption",
+        columns=["sum_weighted_net_electricity_kwh"],
+    )
+    .tab_spanner(
+        label="Implied rate",
+        columns=["usd_per_kwh_cos_minus_fixed"],
+    )
+    .cols_label(
+        equiproportional_total_delivery_cos="Equiproportional Σ delivery COS",
+        weight_sum_times_fixed_rate="Fixed cost",
+        sum_weighted_net_electricity_kwh="Σ (weight × net kWh)",
+        usd_per_kwh_cos_minus_fixed="($/kWh)",
+    )
+    .fmt_currency(
+        columns=["equiproportional_total_delivery_cos", "weight_sum_times_fixed_rate"],
+        decimals=0,
+    )
+    .fmt_number(columns=["sum_weighted_net_electricity_kwh"], decimals=0)
+    .fmt_number(columns=["usd_per_kwh_cos_minus_fixed"], decimals=4)
+    .sub_missing(missing_text="—")
+    .cols_align(
+        align="right",
+        columns=[
+            "equiproportional_total_delivery_cos",
+            "weight_sum_times_fixed_rate",
+            "sum_weighted_net_electricity_kwh",
+            "usd_per_kwh_cos_minus_fixed",
+        ],
+    )
+    .tab_source_note(
+        "Equiproportional COS matches the bill–COS equiproportional table. "
+        "Fixed and weighted net kWh columns match the per-customer rate-design table logic. "
+        "$/kWh is undefined when weighted net kWh is zero or missing."
+    )
+)
+
+_rate_design_equiprop_gt
+```
+
+## Delivery + supply COS — per customer method
+
+Same structure as the delivery-only table above: per-building COS is delivery components plus supply components; bill is `annual_bill_delivery` + `annual_bill_supply`.
+
+```{python}
+#| label: bill-cos-diff-combined-run12-delivery-supply-gt
+
+_subclass_groups_ds = [
+    ("Heat pump", bat_12_hp_bldgs),
+    ("Electric resistance", bat_12_electric_resistance_bldgs),
+    ("Natural gas", bat_12_natgas_bldgs),
+    ("Oil / propane", bat_12_oil_propane_bldgs),
+]
+
+_rows_ds: list[dict] = []
+for group_label, d in _subclass_groups_ds:
+    _rows_ds.append({
+        "group": group_label,
+        "total_delivery_supply_cos": delivery_supply_cos_weighted_sum(d),
+    })
+_ds_cos_tbl = pl.DataFrame(_rows_ds).with_columns(
+    pl.col("total_delivery_supply_cos").fill_nan(None),
+)
+
+_rows_bill_ds: list[dict] = []
+for group_label, d in _subclass_groups_ds:
+    _rows_bill_ds.append({
+        "group": group_label,
+        "total_annual_bill_delivery_supply": delivery_supply_bill_weighted_sum(d),
+    })
+_annual_bill_ds_tbl = pl.DataFrame(_rows_bill_ds).with_columns(
+    pl.col("total_annual_bill_delivery_supply").fill_nan(None),
+)
+
+_diff_rows_ds: list[dict] = []
+for cos_row, bill_row in zip(_rows_ds, _rows_bill_ds, strict=True):
+    assert cos_row["group"] == bill_row["group"]
+    _diff_rows_ds.append({
+        "group": cos_row["group"],
+        "diff_bill_minus_delivery_supply_cos": (
+            bill_row["total_annual_bill_delivery_supply"] - cos_row["total_delivery_supply_cos"]
+        ),
+    })
+_diff_tbl_ds = pl.DataFrame(_diff_rows_ds).with_columns(
+    pl.col("diff_bill_minus_delivery_supply_cos").fill_nan(None),
+)
+
+_run12_bill_cos_diff_ds_df = (
+    _annual_bill_ds_tbl.join(_ds_cos_tbl, on="group", how="inner")
+    .join(_diff_tbl_ds, on="group", how="inner")
+    .with_columns(
+        pl.when(
+            pl.col("total_delivery_supply_cos").is_not_null()
+            & (pl.col("total_delivery_supply_cos").cast(pl.Float64) != 0.0),
+        )
+        .then(
+            pl.col("diff_bill_minus_delivery_supply_cos")
+            / pl.col("total_delivery_supply_cos")
+            * 100,
+        )
+        .otherwise(None)
+        .alias("pct_diff_div_delivery_supply_cos"),
+    )
+    .with_columns(pl.col("pct_diff_div_delivery_supply_cos").fill_nan(None))
+)
+
+_bill_cos_diff_run12_ds_gt = (
+    GT(_run12_bill_cos_diff_ds_df, rowname_col="group")
+    .tab_header(
+        title="Delivery + supply bill, delivery + supply COS, and difference — by subclass, run 1+2",
+        subtitle=(
+            "Σ (value × weight), $/yr from cross_subsidization_BAT_values (upgrade 00). "
+            f"COS = ({MARGINAL_COST_DELIVERY_COL} + {MARGINAL_COST_RESIDUAL_COL}) + "
+            f"({MARGINAL_COST_SUPPLY_COL} + {MARGINAL_COST_RESIDUAL_SUPPLY_COL}). "
+            f"Bill = {ANNUAL_BILL_DELIVERY_COL} + {ANNUAL_BILL_SUPPLY_COL}. "
+            "Last column: (Bill − COS) ÷ Σ COS × 100 per subclass."
+        ),
+    )
+    .tab_spanner(
+        label="Σ (value × weight), $/yr",
+        columns=[
+            "total_annual_bill_delivery_supply",
+            "total_delivery_supply_cos",
+            "diff_bill_minus_delivery_supply_cos",
+        ],
+    )
+    .tab_spanner(
+        label="Ratio",
+        columns=["pct_diff_div_delivery_supply_cos"],
+    )
+    .cols_label(
+        total_annual_bill_delivery_supply="Σ delivery + supply bill",
+        total_delivery_supply_cos="Σ delivery + supply COS",
+        diff_bill_minus_delivery_supply_cos="Bill − COS",
+        pct_diff_div_delivery_supply_cos="(Bill − COS) ÷ COS",
+    )
+    .fmt_currency(
+        columns=[
+            "total_annual_bill_delivery_supply",
+            "total_delivery_supply_cos",
+            "diff_bill_minus_delivery_supply_cos",
+        ],
+        decimals=0,
+    )
+    .fmt_number(columns=["pct_diff_div_delivery_supply_cos"], decimals=1, pattern="{x}%")
+    .sub_missing(missing_text="—")
+    .cols_align(
+        align="right",
+        columns=[
+            "total_annual_bill_delivery_supply",
+            "total_delivery_supply_cos",
+            "diff_bill_minus_delivery_supply_cos",
+            "pct_diff_div_delivery_supply_cos",
+        ],
+    )
+    .tab_source_note(
+        "Each $/yr column is a weighted total over buildings in that group. "
+        "Positive Bill − COS means the weighted delivery+supply bill exceeds weighted delivery+supply COS. "
+        "Ratio is undefined when Σ COS is zero."
+    )
+)
+
+_bill_cos_diff_run12_ds_gt
+```
+
+## Rate design — per customer (delivery + supply COS)
+
+```{python}
+#| label: rate-design-per-customer-cos-fixed-delivery-supply-gt
+
+from math import isnan
+
+_rd_rows_ds: list[dict] = []
+for _grp, _d in _subclass_groups_rd:
+    _fixed_col_ds = (
+        float(_d["weight"].sum()) * _RATE_DESIGN_FIXED_USD
+        if not _d.is_empty()
+        else float("nan")
+    )
+    _cos_ds = delivery_supply_cos_weighted_sum(_d)
+    if _d.is_empty():
+        _sum_weighted_net_kwh_ds = float("nan")
+    else:
+        _rd_net_join_ds = _d.select("bldg_id", "weight").join(_lc_net_kwh_by_bldg, on="bldg_id", how="left")
+        _sum_weighted_net_kwh_ds = float(
+            _rd_net_join_ds.with_columns(
+                (pl.col("weight") * pl.col("_net_kwh_row")).alias("_weight_times_net_kwh"),
+            )["_weight_times_net_kwh"].sum(),
+        )
+    _num_ds = _cos_ds - _fixed_col_ds
+    if isnan(_num_ds) or isnan(_sum_weighted_net_kwh_ds) or _sum_weighted_net_kwh_ds == 0.0:
+        _usd_per_kwh_ds = float("nan")
+    else:
+        _usd_per_kwh_ds = _num_ds / _sum_weighted_net_kwh_ds
+    _rd_rows_ds.append({
+        "group": _grp,
+        "total_delivery_supply_cos": _cos_ds,
+        "weight_sum_times_fixed_rate": _fixed_col_ds,
+        "sum_weighted_net_electricity_kwh": _sum_weighted_net_kwh_ds,
+        "usd_per_kwh_cos_minus_fixed": _usd_per_kwh_ds,
+    })
+
+_rate_design_per_customer_ds_df = pl.DataFrame(_rd_rows_ds).with_columns(
+    pl.col("total_delivery_supply_cos").fill_nan(None),
+    pl.col("weight_sum_times_fixed_rate").fill_nan(None),
+    pl.col("sum_weighted_net_electricity_kwh").fill_nan(None),
+    pl.col("usd_per_kwh_cos_minus_fixed").fill_nan(None),
+)
+
+_rate_design_per_customer_ds_gt = (
+    GT(_rate_design_per_customer_ds_df, rowname_col="group")
+    .tab_header(
+        title="Delivery + supply COS, fixed charge, net kWh, and implied volumetric rate — by subclass, run 1+2",
+        subtitle=(
+            "Σ (value × weight), $/yr from cross_subsidization_BAT_values (upgrade 00). "
+            f"COS = ({MARGINAL_COST_DELIVERY_COL} + {MARGINAL_COST_RESIDUAL_COL}) + "
+            f"({MARGINAL_COST_SUPPLY_COL} + {MARGINAL_COST_RESIDUAL_SUPPLY_COL}). "
+            f"Fixed cost = Σ weight in subclass × ${_RATE_DESIGN_FIXED_USD:.2f}. "
+            f"Weighted net kWh = Σ (`weight` × `{LOAD_CURVE_ANNUAL_NET_ELECTRICITY_CONSUMPTION_COL}`) "
+            "as in the delivery-only rate table. "
+            "Last column: (Σ delivery+supply COS − fixed cost) ÷ weighted net kWh ($/kWh)."
+        ),
+    )
+    .tab_spanner(
+        label="$/yr",
+        columns=["total_delivery_supply_cos", "weight_sum_times_fixed_rate"],
+    )
+    .tab_spanner(
+        label="Net electricity consumption",
+        columns=["sum_weighted_net_electricity_kwh"],
+    )
+    .tab_spanner(
+        label="Implied rate",
+        columns=["usd_per_kwh_cos_minus_fixed"],
+    )
+    .cols_label(
+        total_delivery_supply_cos="Σ delivery + supply COS",
+        weight_sum_times_fixed_rate="Fixed cost",
+        sum_weighted_net_electricity_kwh="Σ (weight × net kWh)",
+        usd_per_kwh_cos_minus_fixed="($/kWh)",
+    )
+    .fmt_currency(
+        columns=["total_delivery_supply_cos", "weight_sum_times_fixed_rate"],
+        decimals=0,
+    )
+    .fmt_number(columns=["sum_weighted_net_electricity_kwh"], decimals=0)
+    .fmt_number(columns=["usd_per_kwh_cos_minus_fixed"], decimals=4)
+    .sub_missing(missing_text="—")
+    .cols_align(
+        align="right",
+        columns=[
+            "total_delivery_supply_cos",
+            "weight_sum_times_fixed_rate",
+            "sum_weighted_net_electricity_kwh",
+            "usd_per_kwh_cos_minus_fixed",
+        ],
+    )
+    .tab_source_note(
+        "Σ delivery+supply COS matches the per-customer delivery+supply bill–COS table. "
+        "Fixed and net kWh logic matches the delivery-only rate-design table."
+    )
+)
+
+_rate_design_per_customer_ds_gt
+```
+
+## Delivery + supply COS — equiproportional method
+
+Statewide Σ (delivery+supply COS) is split across subclasses in proportion to each subclass’s Σ (`economic_burden_delivery` + `economic_burden_supply`) × weight — parallel to the delivery-only table’s use of delivery EBD only.
+
+```{python}
+#| label: bill-cos-diff-equiproportional-delivery-supply-gt
+
+_total_ds_cos_statewide_eq = delivery_supply_cos_weighted_sum(bat_12_df)
+_total_ebd_delivery_supply_statewide_eq = economic_burden_delivery_supply_weighted_sum(bat_12_df)
+
+_rows_ds_eq: list[dict] = []
+for group_label, d in _subclass_groups_ds:
+    _subtotal_ebd_ds = economic_burden_delivery_supply_weighted_sum(d)
+    _pct_ebd_ds = (
+        (_subtotal_ebd_ds / _total_ebd_delivery_supply_statewide_eq * 100)
+        if _total_ebd_delivery_supply_statewide_eq
+        else float("nan")
+    )
+    _allocated_cos_ds = (
+        _total_ds_cos_statewide_eq * (_pct_ebd_ds / 100.0)
+        if _total_ebd_delivery_supply_statewide_eq
+        else float("nan")
+    )
+    _rows_ds_eq.append({
+        "group": group_label,
+        "total_delivery_supply_cos": _allocated_cos_ds,
+    })
+_eq_ds_cos_tbl = pl.DataFrame(_rows_ds_eq).with_columns(
+    pl.col("total_delivery_supply_cos").fill_nan(None),
+)
+
+_eq_rows_bill_ds: list[dict] = []
+for group_label, d in _subclass_groups_ds:
+    _eq_rows_bill_ds.append({
+        "group": group_label,
+        "total_annual_bill_delivery_supply": delivery_supply_bill_weighted_sum(d),
+    })
+_eq_annual_bill_ds_tbl = pl.DataFrame(_eq_rows_bill_ds).with_columns(
+    pl.col("total_annual_bill_delivery_supply").fill_nan(None),
+)
+
+_eq_diff_rows_ds: list[dict] = []
+for cos_row, bill_row in zip(_rows_ds_eq, _eq_rows_bill_ds, strict=True):
+    assert cos_row["group"] == bill_row["group"]
+    _eq_diff_rows_ds.append({
+        "group": cos_row["group"],
+        "diff_bill_minus_delivery_supply_cos": (
+            bill_row["total_annual_bill_delivery_supply"] - cos_row["total_delivery_supply_cos"]
+        ),
+    })
+_eq_diff_tbl_ds = pl.DataFrame(_eq_diff_rows_ds).with_columns(
+    pl.col("diff_bill_minus_delivery_supply_cos").fill_nan(None),
+)
+
+_run12_bill_cos_diff_equiprop_ds_df = (
+    _eq_annual_bill_ds_tbl.join(_eq_ds_cos_tbl, on="group", how="inner")
+    .join(_eq_diff_tbl_ds, on="group", how="inner")
+    .with_columns(
+        pl.when(
+            pl.col("total_delivery_supply_cos").is_not_null()
+            & (pl.col("total_delivery_supply_cos").cast(pl.Float64) != 0.0),
+        )
+        .then(
+            pl.col("diff_bill_minus_delivery_supply_cos")
+            / pl.col("total_delivery_supply_cos")
+            * 100,
+        )
+        .otherwise(None)
+        .alias("pct_diff_div_delivery_supply_cos"),
+    )
+    .with_columns(pl.col("pct_diff_div_delivery_supply_cos").fill_nan(None))
+)
+
+_bill_cos_diff_equiprop_ds_gt = (
+    GT(_run12_bill_cos_diff_equiprop_ds_df, rowname_col="group")
+    .tab_header(
+        title="Delivery + supply bill, equiproportional delivery+supply COS, and difference — run 1+2",
+        subtitle=(
+            "Σ (value × weight), $/yr from cross_subsidization_BAT_values (upgrade 00). "
+            f"Statewide Σ COS = Σ(({MARGINAL_COST_DELIVERY_COL}+{MARGINAL_COST_RESIDUAL_COL})+"
+            f"({MARGINAL_COST_SUPPLY_COL}+{MARGINAL_COST_RESIDUAL_SUPPLY_COL})) × weight. "
+            "Per subclass: COS = statewide Σ × "
+            f"(subclass Σ(({MARGINAL_COST_DELIVERY_COL}+{MARGINAL_COST_SUPPLY_COL})×weight) ÷ "
+            f"statewide Σ(({MARGINAL_COST_DELIVERY_COL}+{MARGINAL_COST_SUPPLY_COL})× weight)). "
+            f"Bill − COS uses subclass Σ({ANNUAL_BILL_DELIVERY_COL}+{ANNUAL_BILL_SUPPLY_COL})× weight. "
+            "Last column: (Bill − COS) ÷ equiproportional COS × 100."
+        ),
+    )
+    .tab_spanner(
+        label="Σ (value × weight), $/yr",
+        columns=[
+            "total_annual_bill_delivery_supply",
+            "total_delivery_supply_cos",
+            "diff_bill_minus_delivery_supply_cos",
+        ],
+    )
+    .tab_spanner(
+        label="Ratio",
+        columns=["pct_diff_div_delivery_supply_cos"],
+    )
+    .cols_label(
+        total_annual_bill_delivery_supply="Σ delivery + supply bill",
+        total_delivery_supply_cos="Equiproportional Σ COS",
+        diff_bill_minus_delivery_supply_cos="Bill − COS",
+        pct_diff_div_delivery_supply_cos="(Bill − COS) ÷ COS",
+    )
+    .fmt_currency(
+        columns=[
+            "total_annual_bill_delivery_supply",
+            "total_delivery_supply_cos",
+            "diff_bill_minus_delivery_supply_cos",
+        ],
+        decimals=0,
+    )
+    .fmt_number(columns=["pct_diff_div_delivery_supply_cos"], decimals=1, pattern="{x}%")
+    .sub_missing(missing_text="—")
+    .cols_align(
+        align="right",
+        columns=[
+            "total_annual_bill_delivery_supply",
+            "total_delivery_supply_cos",
+            "diff_bill_minus_delivery_supply_cos",
+            "pct_diff_div_delivery_supply_cos",
+        ],
+    )
+    .tab_source_note(
+        "Equiproportional COS reallocates statewide delivery+supply COS by each subclass’s share of "
+        f"Σ (({MARGINAL_COST_DELIVERY_COL} + {MARGINAL_COST_SUPPLY_COL}) × weight). "
+        "Ratio is undefined when that statewide EBD sum or equiproportional COS is zero."
+    )
+)
+
+_bill_cos_diff_equiprop_ds_gt
+```
+
+## Rate design — equiproportional delivery + supply COS
+
+```{python}
+#| label: rate-design-equiproportional-cos-fixed-delivery-supply-gt
+
+from math import isnan
+
+_eq_alloc_ds_cos_by_group: dict[str, float | None] = {
+    r["group"]: r["total_delivery_supply_cos"]
+    for r in _run12_bill_cos_diff_equiprop_ds_df.to_dicts()
+}
+
+_eq_rd_rows_ds: list[dict] = []
+for _grp, _d in _subclass_groups_rd:
+    _raw_alloc_ds = _eq_alloc_ds_cos_by_group.get(_grp)
+    _alloc_cos_ds = float(_raw_alloc_ds) if _raw_alloc_ds is not None else float("nan")
+    _fixed_col_eq_ds = (
+        float(_d["weight"].sum()) * _RATE_DESIGN_FIXED_USD
+        if not _d.is_empty()
+        else float("nan")
+    )
+    if _d.is_empty():
+        _sum_weighted_net_kwh_eq_ds = float("nan")
+    else:
+        _rd_net_join_eq_ds = _d.select("bldg_id", "weight").join(_lc_net_kwh_by_bldg, on="bldg_id", how="left")
+        _sum_weighted_net_kwh_eq_ds = float(
+            _rd_net_join_eq_ds.with_columns(
+                (pl.col("weight") * pl.col("_net_kwh_row")).alias("_weight_times_net_kwh"),
+            )["_weight_times_net_kwh"].sum(),
+        )
+    _num_eq_ds = _alloc_cos_ds - _fixed_col_eq_ds
+    if isnan(_num_eq_ds) or isnan(_sum_weighted_net_kwh_eq_ds) or _sum_weighted_net_kwh_eq_ds == 0.0:
+        _usd_per_kwh_eq_ds = float("nan")
+    else:
+        _usd_per_kwh_eq_ds = _num_eq_ds / _sum_weighted_net_kwh_eq_ds
+    _eq_rd_rows_ds.append({
+        "group": _grp,
+        "equiproportional_total_delivery_supply_cos": _alloc_cos_ds,
+        "weight_sum_times_fixed_rate": _fixed_col_eq_ds,
+        "sum_weighted_net_electricity_kwh": _sum_weighted_net_kwh_eq_ds,
+        "usd_per_kwh_cos_minus_fixed": _usd_per_kwh_eq_ds,
+    })
+
+_rate_design_equiprop_ds_df = pl.DataFrame(_eq_rd_rows_ds).with_columns(
+    pl.col("equiproportional_total_delivery_supply_cos").fill_nan(None),
+    pl.col("weight_sum_times_fixed_rate").fill_nan(None),
+    pl.col("sum_weighted_net_electricity_kwh").fill_nan(None),
+    pl.col("usd_per_kwh_cos_minus_fixed").fill_nan(None),
+)
+
+_rate_design_equiprop_ds_gt = (
+    GT(_rate_design_equiprop_ds_df, rowname_col="group")
+    .tab_header(
+        title="Equiproportional delivery+supply COS, fixed charge, net kWh, and implied volumetric rate — run 1+2",
+        subtitle=(
+            "COS column = equiproportional allocation from `bill-cos-diff-equiproportional-delivery-supply-gt`. "
+            f"Fixed cost = Σ weight × ${_RATE_DESIGN_FIXED_USD:.2f}. "
+            f"Weighted net kWh as in the delivery-only equiproportional rate table. "
+            "Last column: (equiproportional Σ COS − fixed) ÷ weighted net kWh ($/kWh)."
+        ),
+    )
+    .tab_spanner(
+        label="$/yr",
+        columns=["equiproportional_total_delivery_supply_cos", "weight_sum_times_fixed_rate"],
+    )
+    .tab_spanner(
+        label="Net electricity consumption",
+        columns=["sum_weighted_net_electricity_kwh"],
+    )
+    .tab_spanner(
+        label="Implied rate",
+        columns=["usd_per_kwh_cos_minus_fixed"],
+    )
+    .cols_label(
+        equiproportional_total_delivery_supply_cos="Equiproportional Σ COS",
+        weight_sum_times_fixed_rate="Fixed cost",
+        sum_weighted_net_electricity_kwh="Σ (weight × net kWh)",
+        usd_per_kwh_cos_minus_fixed="($/kWh)",
+    )
+    .fmt_currency(
+        columns=["equiproportional_total_delivery_supply_cos", "weight_sum_times_fixed_rate"],
+        decimals=0,
+    )
+    .fmt_number(columns=["sum_weighted_net_electricity_kwh"], decimals=0)
+    .fmt_number(columns=["usd_per_kwh_cos_minus_fixed"], decimals=4)
+    .sub_missing(missing_text="—")
+    .cols_align(
+        align="right",
+        columns=[
+            "equiproportional_total_delivery_supply_cos",
+            "weight_sum_times_fixed_rate",
+            "sum_weighted_net_electricity_kwh",
+            "usd_per_kwh_cos_minus_fixed",
+        ],
+    )
+    .tab_source_note(
+        "Equiproportional COS matches the delivery+supply bill–COS equiproportional table. "
+        "Fixed and net kWh match the delivery-only equiproportional rate table logic."
+    )
+)
+
+_rate_design_equiprop_ds_gt
+```
+
+## Mean and median of marginal cost of delivery by subclass - run 1+2
+```{python}
+#| label: economic-burden-delivery-mean-median-gt
+
+
+_ebd_stat_rows: list[dict] = []
+for group_label, d in [
+    ("Heat pump", bat_12_hp_bldgs),
+    ("Electric resistance", bat_12_electric_resistance_bldgs),
+    ("Natural gas", bat_12_natgas_bldgs),
+    ("Oil / propane", bat_12_oil_propane_bldgs),
+]:
+    _ebd_stat_rows.append({
+        "group": group_label,
+        "mean_economic_burden_delivery": _w_mean_ebd(d, MARGINAL_COST_DELIVERY_COL),
+        "median_economic_burden_delivery": _w_median_ebd(d, MARGINAL_COST_DELIVERY_COL),
+    })
+
+_ebd_stats_df = (
+    pl.DataFrame(_ebd_stat_rows)
+    .with_columns(
+        pl.col("mean_economic_burden_delivery").fill_nan(None),
+        pl.col("median_economic_burden_delivery").fill_nan(None),
+    )
+)
+
+_economic_burden_delivery_gt = (
+    GT(_ebd_stats_df, rowname_col="group")
+    .tab_header(
+        title="Marginal cost of delivery (economic_burden_delivery) — mean and median by subclass",
+        subtitle="Weighted with ResStock weights; BAT column economic_burden_delivery ($/yr).",
+    )
+    .cols_label(
+        mean_economic_burden_delivery="Mean",
+        median_economic_burden_delivery="Median",
+    )
+    .fmt_currency(
+        columns=["mean_economic_burden_delivery", "median_economic_burden_delivery"],
+        decimals=0,
+    )
+    .sub_missing(missing_text="—")
+    .cols_align(
+        align="right",
+        columns=["mean_economic_burden_delivery", "median_economic_burden_delivery"],
+    )
+    .tab_source_note(
+        "Mean = Σ(value × weight) ÷ Σ(weight). Median = first value at or above 50% cumulative weight.",
+    )
+)
+
+_economic_burden_delivery_gt
+```
+
+## Marginal cost of delivery for bldg_id with HP in run 3+4 (HP adopters vs pre-existing HP)
+```{python}
+#| label: economic-burden-delivery-matched-cohort-gt
+
+up00_hp_bldg_ids = bat_12_df.filter(pl.col(POSTPROCESS_GROUP_HAS_HP))["bldg_id"]
+up00_no_hp_bldg_ids = bat_12_df.filter(~pl.col(POSTPROCESS_GROUP_HAS_HP))["bldg_id"]
+up02_hp_bldg_ids = metadata_up_02_hp_df["bldg_id"]
+
+
+def _inner_bldg_id_list(left: pl.Series, right: pl.Series) -> list:
+    """Inner join on bldg_id (join is a DataFrame API, not Series)."""
+    return (
+        pl.DataFrame({"bldg_id": left})
+        .join(pl.DataFrame({"bldg_id": right}), on="bldg_id", how="inner")
+        .select("bldg_id")
+        .unique()
+    )["bldg_id"].to_list()
+
+
+up00_no_hp_up02_hp_bldg_ids = _inner_bldg_id_list(up00_no_hp_bldg_ids, up02_hp_bldg_ids)
+up00_hp_up02_hp_bldg_ids = _inner_bldg_id_list(up00_hp_bldg_ids, up02_hp_bldg_ids)
+
+up00_no_hp_up02_hp = bat_34_df.filter(pl.col("bldg_id").is_in(up00_no_hp_up02_hp_bldg_ids))
+up00_hp_up02_hp = bat_34_df.filter(pl.col("bldg_id").is_in(up00_hp_up02_hp_bldg_ids))
+
+print(f"Total number of bldg_id with HP in up02: {len(up02_hp_bldg_ids)}")
+print(f"Total number of bldg_id with no HP in up00, but with HP in up02: {len(up00_no_hp_up02_hp_bldg_ids)}")
+print(f"Total number of bldg_id with HP in up00, and with HP in up02: {len(up00_hp_up02_hp_bldg_ids)}")
+
+_matched_ebd_stats_df = pl.DataFrame([
+    {
+        "group": "No HP in up00, but HP in up02",
+        "mean_economic_burden_delivery": _w_mean_ebd(up00_no_hp_up02_hp, MARGINAL_COST_DELIVERY_COL),
+        "median_economic_burden_delivery": _w_median_ebd(up00_no_hp_up02_hp, MARGINAL_COST_DELIVERY_COL),
+    },
+    {
+        "group": "HP in up00, and HP in up02",
+        "mean_economic_burden_delivery": _w_mean_ebd(up00_hp_up02_hp, MARGINAL_COST_DELIVERY_COL),
+        "median_economic_burden_delivery": _w_median_ebd(up00_hp_up02_hp, MARGINAL_COST_DELIVERY_COL),
+    },
+]).with_columns(
+    pl.col("mean_economic_burden_delivery").fill_nan(None),
+    pl.col("median_economic_burden_delivery").fill_nan(None),
+)
+
+_economic_burden_delivery_matched_gt = (
+    GT(_matched_ebd_stats_df, rowname_col="group")
+    .tab_header(
+        title="Economic burden (delivery) — mean and median by HP adoption status",
+        subtitle=(
+            "Rows are disjoint sets of bldg_id from BAT run 3+4 (upgrade 02), filtered to metadata HP in up02. "
+            "Adopters: no HP in run 1+2 (up00) but in this set; already HP: HP in run 1+2 and in this set. "
+            f"Column: {MARGINAL_COST_DELIVERY_COL} ($/yr); weighted with ResStock weight."
+        ),
+    )
+    .cols_label(
+        mean_economic_burden_delivery="Mean",
+        median_economic_burden_delivery="Median",
+    )
+    .fmt_currency(
+        columns=["mean_economic_burden_delivery", "median_economic_burden_delivery"],
+        decimals=0,
+    )
+    .sub_missing(missing_text="—")
+    .cols_align(
+        align="right",
+        columns=["mean_economic_burden_delivery", "median_economic_burden_delivery"],
+    )
+    .tab_source_note(
+        "Mean = Σ(value × weight) ÷ Σ(weight). Median = first value at or above 50% cumulative weight.",
+    )
+)
+
+_economic_burden_delivery_matched_gt
+```
+
+## Share of customers, annual delivery bill, and marginal cost of delivery by subclass - run 1+2
+
+```{python}
+#| label: annual-bill-subclass-pct-of-statewide-gt
+_subclass_groups = [
+    ("Heat pump", bat_12_hp_bldgs),
+    ("Electric resistance", bat_12_electric_resistance_bldgs),
+    ("Natural gas", bat_12_natgas_bldgs),
+    ("Oil / propane", bat_12_oil_propane_bldgs),
+]
+
+_total_annual_bill_delivery_statewide = _weighted_sum(bat_12_df, "annual_bill_delivery")
+_total_weight_statewide = float(bat_12_df["weight"].sum())
+_total_economic_burden_delivery_statewide = _weighted_sum(
+    bat_12_df,
+    MARGINAL_COST_DELIVERY_COL,
+)
+_total_delivery_cos_statewide = delivery_cos_weighted_sum(bat_12_df)
+
+_annual_bill_subclass_pct_rows: list[dict] = []
+for group_label, d in _subclass_groups:
+    subtotal_bill = _weighted_sum(d, "annual_bill_delivery")
+    pct_bill = (
+        (subtotal_bill / _total_annual_bill_delivery_statewide * 100)
+        if _total_annual_bill_delivery_statewide
+        else float("nan")
+    )
+    sum_w = float(d["weight"].sum()) if not d.is_empty() else float("nan")
+    pct_customers = (
+        (sum_w / _total_weight_statewide * 100) if _total_weight_statewide else float("nan")
+    )
+    subtotal_delivery_cos = delivery_cos_weighted_sum(d)
+    pct_delivery_cos = (
+        (subtotal_delivery_cos / _total_delivery_cos_statewide * 100)
+        if _total_delivery_cos_statewide
+        else float("nan")
+    )
+    subtotal_ebd = _weighted_sum(d, MARGINAL_COST_DELIVERY_COL)
+    pct_ebd = (
+        (subtotal_ebd / _total_economic_burden_delivery_statewide * 100)
+        if _total_economic_burden_delivery_statewide
+        else float("nan")
+    )
+    _annual_bill_subclass_pct_rows.append({
+        "group": group_label,
+        "pct_of_customers_weight": pct_customers,
+        "pct_of_statewide_bill": pct_bill,
+        "pct_of_statewide_delivery_cos": pct_delivery_cos,
+        "pct_of_statewide_economic_burden_delivery": pct_ebd,
+    })
+
+_annual_bill_subclass_pct_df = pl.DataFrame(_annual_bill_subclass_pct_rows).with_columns(
+    pl.col("pct_of_customers_weight").fill_nan(None),
+    pl.col("pct_of_statewide_bill").fill_nan(None),
+    pl.col("pct_of_statewide_delivery_cos").fill_nan(None),
+    pl.col("pct_of_statewide_economic_burden_delivery").fill_nan(None),
+)
+
+_annual_bill_subclass_pct_gt = (
+    GT(_annual_bill_subclass_pct_df, rowname_col="group")
+    .tab_header(
+        title="Subclass shares — customers, bill, delivery COS, and marginal cost",
+        subtitle=(
+            "Run 1+2 BAT. % of customers: Σ weight in subclass ÷ Σ weight in bat_12_df × 100. "
+            "% of annual delivery bill: Σ (annual_bill_delivery × weight) ÷ statewide × 100. "
+            "% of delivery COS: Σ ((economic_burden_delivery + residual_share_delivery) × weight) ÷ statewide × 100. "
+            f"Last column: Σ ({MARGINAL_COST_DELIVERY_COL} × weight) only ÷ statewide × 100. "
+            "Subclasses overlap; column percents need not sum to 100%."
+        ),
+    )
+    .cols_label(
+        pct_of_customers_weight="% of customers",
+        pct_of_statewide_bill="% of annual delivery bill",
+        pct_of_statewide_delivery_cos="% of delivery COS",
+        pct_of_statewide_economic_burden_delivery="% of marginal cost",
+    )
+    .fmt_number(
+        columns=[
+            "pct_of_customers_weight",
+            "pct_of_statewide_bill",
+            "pct_of_statewide_delivery_cos",
+            "pct_of_statewide_economic_burden_delivery",
+        ],
+        decimals=1,
+        pattern="{x}%",
+    )
+    .sub_missing(missing_text="—")
+    .cols_align(
+        align="right",
+        columns=[
+            "pct_of_customers_weight",
+            "pct_of_statewide_bill",
+            "pct_of_statewide_delivery_cos",
+            "pct_of_statewide_economic_burden_delivery",
+        ],
+    )
+    .tab_source_note(
+        f"Statewide Σ weight: {_total_weight_statewide:,.0f}. "
+        f"Statewide Σ annual_bill_delivery (weighted): ${_total_annual_bill_delivery_statewide:,.0f}/yr. "
+        f"Statewide delivery COS (weighted): ${_total_delivery_cos_statewide:,.0f}/yr "
+        f"({MARGINAL_COST_DELIVERY_COL} + {MARGINAL_COST_RESIDUAL_COL}). "
+        f"Statewide Σ {MARGINAL_COST_DELIVERY_COL} (weighted): ${_total_economic_burden_delivery_statewide:,.0f}/yr."
+    )
+)
+
+_annual_bill_subclass_pct_gt
+```
+
+```{python}
+#| label: partial-cooling-gt
+
+# Partial-space cooling labels from metadata (upgrade 00); join to BAT run 1+2 for weighted mean EBD.
+_partial_cooling_labels: list[str | None] = [
+    "100% Conditioned",
+    "80% Conditioned",
+    "60% Conditioned",
+    "40% Conditioned",
+    "20% Conditioned",
+    None,
+]
+
+_partial_cooling_rows: list[dict] = []
+for lab in _partial_cooling_labels:
+    if lab is None:
+        meta_sub = metadata_up_00_df.filter(pl.col(METADATA_PARTIAL_COOLING_COL) == "None")
+        display_lab = "None"
+    else:
+        meta_sub = metadata_up_00_df.filter(pl.col(METADATA_PARTIAL_COOLING_COL) == lab)
+        display_lab = lab
+    bldg_ids = meta_sub["bldg_id"]
+    bat_sub = bat_12_df.filter(pl.col("bldg_id").is_in(bldg_ids))
+    mean_ebd = _w_mean_ebd(bat_sub, MARGINAL_COST_DELIVERY_COL)
+    map_frac = PARTIAL_COOLING_MAP[lab]
+    load_sub = annual_load_curve_up_00_df.filter(pl.col("bldg_id").is_in(bldg_ids))
+    if map_frac == 0.0:
+        mean_cooling_cap_times_map = 0.0
+    elif load_sub.is_empty():
+        mean_cooling_cap_times_map = float("nan")
+    else:
+        load_adj = load_sub.with_columns(
+            (pl.col(LOAD_CURVE_ANNUAL_COOLING_CAPACITY_COL) * map_frac).alias("_cooling_kbtuh_x_map"),
+        )
+        if "weight" in load_adj.columns and float(load_adj["weight"].sum()) != 0.0:
+            mean_cooling_cap_times_map = _w_mean_ebd(load_adj, "_cooling_kbtuh_x_map")
+        else:
+            mean_cooling_cap_times_map = float(load_adj["_cooling_kbtuh_x_map"].mean())
+    _partial_cooling_rows.append({
+        "partial_cooling": display_lab,
+        "metadata_n": meta_sub.height,
+        "mapped_fraction": map_frac,
+        "mean_economic_burden_delivery": mean_ebd,
+        "mean_primary_cooling_kbtuh_x_map": mean_cooling_cap_times_map,
+    })
+
+_partial_cooling_df = (
+    pl.DataFrame(_partial_cooling_rows)
+    .with_columns(
+        (pl.col("mapped_fraction") * 100).alias("partial_cooling_pct"),
+        pl.col("mean_economic_burden_delivery").fill_nan(None),
+        pl.col("mean_primary_cooling_kbtuh_x_map").fill_nan(None),
+    )
+    .drop("mapped_fraction")
+    .select(
+        "partial_cooling",
+        "metadata_n",
+        "partial_cooling_pct",
+        "mean_economic_burden_delivery",
+        "mean_primary_cooling_kbtuh_x_map",
+    )
+)
+
+_partial_cooling_gt = (
+    GT(_partial_cooling_df, rowname_col="partial_cooling")
+    .tab_header(
+        title="Marginal cost of delivery — mean by partial-space cooling",
+        subtitle=(
+            f"Rows group `metadata_up_00_df` on `{METADATA_PARTIAL_COOLING_COL}`; "
+            f"BAT: `bat_12_df` by `bldg_id`. Mean EBD = Σ({MARGINAL_COST_DELIVERY_COL} × weight) ÷ Σ(weight). "
+            f"Load curve: `annual_load_curve_up_00_df`, w-mean of "
+            f"({LOAD_CURVE_ANNUAL_COOLING_CAPACITY_COL} × PARTIAL_COOLING_MAP fraction) per row."
+        ),
+    )
+    .cols_label(
+        metadata_n="n (metadata)",
+        partial_cooling_pct="partial cooling %",
+        mean_economic_burden_delivery="Mean EBD (delivery)",
+        mean_primary_cooling_kbtuh_x_map="W-mean cooling kBtu/h × map",
+    )
+    .fmt_number(columns=["partial_cooling_pct"], decimals=0, pattern="{x}%")
+    .fmt_number(columns=["mean_primary_cooling_kbtuh_x_map"], decimals=1)
+    .fmt_integer(columns=["metadata_n"])
+    .fmt_currency(columns=["mean_economic_burden_delivery"], decimals=0)
+    .sub_missing(missing_text="—")
+    .cols_align(
+        align="right",
+        columns=[
+            "metadata_n",
+            "partial_cooling_pct",
+            "mean_economic_burden_delivery",
+            "mean_primary_cooling_kbtuh_x_map",
+        ],
+    )
+    .tab_source_note(
+        "Scaled cooling uses PARTIAL_COOLING_MAP (not parquet). "
+        "Rows with map fraction 0.0 show 0 for that column without requiring load rows. "
+        f"Load column: {LOAD_CURVE_ANNUAL_COOLING_CAPACITY_COL}.",
+    )
+)
+
+_partial_cooling_gt
+```
+
+```{python}
+#| label: cooling-delivered-bins-ebd-gt
+
+# Bin annual cooling delivered (kBtu) by 10000 on load curve upgrade 00; match bldg_id to bat_12_df;
+# weighted mean economic_burden_delivery per bin.
+
+_BIN_KBTU = 10000
+
+_lcd = annual_load_curve_up_00_df.filter(
+    pl.col(LOAD_CURVE_ANNUAL_COOLING_DELIVERED_COL).is_not_null(),
+)
+_lcd_binned = _lcd.with_columns(
+    pl.col(LOAD_CURVE_ANNUAL_COOLING_DELIVERED_COL)
+    .cast(pl.Int64, strict=False)
+    .floordiv(_BIN_KBTU)
+    .alias("_bin10k"),
+)
+
+_cooling_delivered_bin_rows: list[dict] = []
+for _eu in _ny_electric_utils:
+    _bat_eu = bat_12_df.filter(pl.col(UTIL_ELECTRIC_COL) == _eu)
+    for bk in _lcd_binned.select("_bin10k").unique().sort("_bin10k")["_bin10k"].to_list():
+        _bids = _lcd_binned.filter(pl.col("_bin10k") == bk).get_column("bldg_id").to_list()
+        bat_sub = _bat_eu.filter(pl.col("bldg_id").is_in(_bids))
+        if bat_sub.is_empty():
+            mean_ebd = float("nan")
+        elif "weight" in bat_sub.columns and float(bat_sub["weight"].sum()) != 0.0:
+            mean_ebd = _w_mean_ebd(bat_sub, MARGINAL_COST_DELIVERY_COL)
+        else:
+            mean_ebd = float(bat_sub[MARGINAL_COST_DELIVERY_COL].mean())
+
+        _cooling_delivered_bin_rows.append({
+            "electric_utility": _eu,
+            "_bin_key": int(bk),
+            "cooling_delivered_kbtu_bin": (
+                f"[{int(bk) * _BIN_KBTU}, {int(bk) * _BIN_KBTU + _BIN_KBTU - 1}]"
+            ),
+            "n_bldg_ids": int(bat_sub.height),
+            "mean_economic_burden_delivery": mean_ebd,
+        })
+
+_cooling_delivered_bin_df = (
+    pl.DataFrame(_cooling_delivered_bin_rows)
+    .sort("electric_utility", "_bin_key")
+    .drop("_bin_key")
+    .with_columns(pl.col("mean_economic_burden_delivery").fill_nan(None))
+)
+
+_cooling_delivered_bin_gt = (
+    GT(_cooling_delivered_bin_df, rowname_col="cooling_delivered_kbtu_bin", groupname_col="electric_utility")
+    .tab_header(
+        title="Mean delivery marginal cost (EBD) by annual cooling delivered bin — by electric utility",
+        subtitle=(
+            f"Rows grouped by `{UTIL_ELECTRIC_COL}`. Bins: floor({LOAD_CURVE_ANNUAL_COOLING_DELIVERED_COL} ÷ {_BIN_KBTU}) from "
+            f"`annual_load_curve_up_00_df`; interval [{_BIN_KBTU}×k, {_BIN_KBTU}×k+{_BIN_KBTU - 1}] kBtu. "
+            f"Mean = Σ({MARGINAL_COST_DELIVERY_COL} × weight) ÷ Σ(weight) on BAT run 1+2 rows in that utility "
+            "whose `bldg_id` appears in that bin. `n bldg_id's` counts BAT rows in the bin (subset of statewide load-curve n)."
+        ),
+    )
+    .cols_label(
+        n_bldg_ids="n bldg_id's",
+        mean_economic_burden_delivery="Mean EBD (delivery)",
+    )
+    .fmt_integer(columns=["n_bldg_ids"])
+    .fmt_currency(columns=["mean_economic_burden_delivery"], decimals=0)
+    .sub_missing(missing_text="—")
+    .cols_align(
+        align="right",
+        columns=["n_bldg_ids", "mean_economic_burden_delivery"],
+    )
+    .tab_source_note(
+        "BAT = cross_subsidization_BAT_values run 1+2. Unweighted column mean if weight missing or sums to zero."
+    )
+)
+
+_cooling_delivered_bin_gt
+```
+
+```{python}
+#| label: cooling-delivered-vs-ebd-linreg
+
+import numpy as np
+
+print(
+    "\nOLS (unweighted): economic_burden_delivery ~ out.load.cooling.energy_delivered.kbtu\n"
+    f"  By `{UTIL_ELECTRIC_COL}` (BAT run 1+2).\n",
+)
+for _eu in _ny_electric_utils:
+    _bat_eu = bat_12_df.filter(pl.col(UTIL_ELECTRIC_COL) == _eu).select(
+        "bldg_id",
+        MARGINAL_COST_DELIVERY_COL,
+    )
+    _cooling_ebd_reg = (
+        annual_load_curve_up_00_df.select("bldg_id", LOAD_CURVE_ANNUAL_COOLING_DELIVERED_COL)
+        .join(_bat_eu, on="bldg_id", how="inner")
+        .filter(
+            pl.col(LOAD_CURVE_ANNUAL_COOLING_DELIVERED_COL).is_not_null(),
+            pl.col(MARGINAL_COST_DELIVERY_COL).is_not_null(),
+        )
+    )
+    _nh = _cooling_ebd_reg.height
+    if _nh < 2:
+        print(f"  {_eu}: skipped (n={_nh}, need ≥2 for OLS).\n")
+        continue
+    _x_cooling_kbtu = _cooling_ebd_reg[LOAD_CURVE_ANNUAL_COOLING_DELIVERED_COL].to_numpy().astype(np.float64)
+    _y_ebd = _cooling_ebd_reg[MARGINAL_COST_DELIVERY_COL].to_numpy().astype(np.float64)
+    _slope, _intercept = np.polyfit(_x_cooling_kbtu, _y_ebd, 1)
+    _r = np.corrcoef(_x_cooling_kbtu, _y_ebd)[0, 1]
+    _r_squared = float(_r**2) if not np.isnan(_r) else float("nan")
+    print(
+        f"  {_eu}: n={_nh:,}\n"
+        f"    intercept: {_intercept:,.4f} ($/yr)\n"
+        f"    slope: {_slope:.8f} ($/yr per kBtu delivered)\n"
+        f"    R²: {_r_squared:.6f}\n",
+    )
+```
+
+```{python}
+#| label: cooling-kwh-sum-bins-ebd-gt
+
+# Bin annual cooling + cooling fans/pumps electricity (kWh sum) by 1000 on load curve upgrade 00.
+
+_BIN_KWH = 1000
+
+_lcd_kwh = (
+    annual_load_curve_up_00_df.filter(
+        pl.col(LOAD_CURVE_ANNUAL_COOLING_CONSUMED_COL).is_not_null(),
+        pl.col(LOAD_CURVE_ANNUAL_COOLING_FAN_CONSUMED_COL).is_not_null(),
+    )
+    .with_columns(
+        (
+            pl.col(LOAD_CURVE_ANNUAL_COOLING_CONSUMED_COL)
+            + pl.col(LOAD_CURVE_ANNUAL_COOLING_FAN_CONSUMED_COL)
+        ).alias(COOLING_KWH_SUM_COL),
+    )
+)
+_lcd_kwh_binned = _lcd_kwh.with_columns(
+    pl.col(COOLING_KWH_SUM_COL)
+    .cast(pl.Int64, strict=False)
+    .floordiv(_BIN_KWH)
+    .alias("_bin1k_kwh"),
+)
+
+_cooling_kwh_bin_rows: list[dict] = []
+for _eu in _ny_electric_utils:
+    _bat_eu = bat_12_df.filter(pl.col(UTIL_ELECTRIC_COL) == _eu)
+    for bk in _lcd_kwh_binned.select("_bin1k_kwh").unique().sort("_bin1k_kwh")["_bin1k_kwh"].to_list():
+        _bids = _lcd_kwh_binned.filter(pl.col("_bin1k_kwh") == bk).get_column("bldg_id").to_list()
+        bat_sub = _bat_eu.filter(pl.col("bldg_id").is_in(_bids))
+        if bat_sub.is_empty():
+            mean_ebd = float("nan")
+        elif "weight" in bat_sub.columns and float(bat_sub["weight"].sum()) != 0.0:
+            mean_ebd = _w_mean_ebd(bat_sub, MARGINAL_COST_DELIVERY_COL)
+        else:
+            mean_ebd = float(bat_sub[MARGINAL_COST_DELIVERY_COL].mean())
+
+        _cooling_kwh_bin_rows.append({
+            "electric_utility": _eu,
+            "_bin_key": int(bk),
+            "cooling_total_elec_kwh_bin": (
+                f"[{int(bk) * _BIN_KWH}, {int(bk) * _BIN_KWH + _BIN_KWH - 1}]"
+            ),
+            "n_bldg_ids": int(bat_sub.height),
+            "mean_economic_burden_delivery": mean_ebd,
+        })
+
+_cooling_kwh_bin_df = (
+    pl.DataFrame(_cooling_kwh_bin_rows)
+    .sort("electric_utility", "_bin_key")
+    .drop("_bin_key")
+    .with_columns(pl.col("mean_economic_burden_delivery").fill_nan(None))
+)
+
+_cooling_kwh_bin_gt = (
+    GT(_cooling_kwh_bin_df, rowname_col="cooling_total_elec_kwh_bin", groupname_col="electric_utility")
+    .tab_header(
+        title="Mean delivery marginal cost (EBD) by annual cooling electricity (kWh) bin — by electric utility",
+        subtitle=(
+            f"Rows grouped by `{UTIL_ELECTRIC_COL}`. x = {LOAD_CURVE_ANNUAL_COOLING_CONSUMED_COL} + "
+            f"{LOAD_CURVE_ANNUAL_COOLING_FAN_CONSUMED_COL} (kWh); bins: floor(x ÷ {_BIN_KWH}) from "
+            f"`annual_load_curve_up_00_df`; interval [{_BIN_KWH}×k, {_BIN_KWH}×k+{_BIN_KWH - 1}] kWh. "
+            f"Mean = Σ({MARGINAL_COST_DELIVERY_COL} × weight) ÷ Σ(weight) on BAT rows in that utility "
+            "whose `bldg_id` appears in that bin."
+        ),
+    )
+    .cols_label(
+        n_bldg_ids="n bldg_id's",
+        mean_economic_burden_delivery="Mean EBD (delivery)",
+    )
+    .fmt_integer(columns=["n_bldg_ids"])
+    .fmt_currency(columns=["mean_economic_burden_delivery"], decimals=0)
+    .sub_missing(missing_text="—")
+    .cols_align(
+        align="right",
+        columns=["n_bldg_ids", "mean_economic_burden_delivery"],
+    )
+    .tab_source_note(
+        "BAT = cross_subsidization_BAT_values run 1+2. Unweighted column mean if weight missing or sums to zero."
+    )
+)
+
+_cooling_kwh_bin_gt
+```
+
+```{python}
+#| label: cooling-kwh-sum-vs-ebd-linreg
+
+import numpy as np
+
+print(
+    "\nOLS (unweighted): economic_burden_delivery ~ (cooling kWh + cooling_fans_pumps kWh)\n"
+    f"  By `{UTIL_ELECTRIC_COL}` (BAT run 1+2).\n",
+)
+for _eu in _ny_electric_utils:
+    _bat_eu = bat_12_df.filter(pl.col(UTIL_ELECTRIC_COL) == _eu).select(
+        "bldg_id",
+        MARGINAL_COST_DELIVERY_COL,
+    )
+    _kwh_ebd_reg = (
+        annual_load_curve_up_00_df.select(
+            "bldg_id",
+            LOAD_CURVE_ANNUAL_COOLING_CONSUMED_COL,
+            LOAD_CURVE_ANNUAL_COOLING_FAN_CONSUMED_COL,
+        )
+        .filter(
+            pl.col(LOAD_CURVE_ANNUAL_COOLING_CONSUMED_COL).is_not_null(),
+            pl.col(LOAD_CURVE_ANNUAL_COOLING_FAN_CONSUMED_COL).is_not_null(),
+        )
+        .with_columns(
+            (
+                pl.col(LOAD_CURVE_ANNUAL_COOLING_CONSUMED_COL)
+                + pl.col(LOAD_CURVE_ANNUAL_COOLING_FAN_CONSUMED_COL)
+            ).alias(COOLING_KWH_SUM_COL),
+        )
+        .select("bldg_id", COOLING_KWH_SUM_COL)
+        .join(_bat_eu, on="bldg_id", how="inner")
+        .filter(
+            pl.col(COOLING_KWH_SUM_COL).is_not_null(),
+            pl.col(MARGINAL_COST_DELIVERY_COL).is_not_null(),
+        )
+    )
+    _nh = _kwh_ebd_reg.height
+    if _nh < 2:
+        print(f"  {_eu}: skipped (n={_nh}, need ≥2 for OLS).\n")
+        continue
+    _x_kwh_sum = _kwh_ebd_reg[COOLING_KWH_SUM_COL].to_numpy().astype(np.float64)
+    _y_kwh_ebd = _kwh_ebd_reg[MARGINAL_COST_DELIVERY_COL].to_numpy().astype(np.float64)
+    _slope_kwh, _intercept_kwh = np.polyfit(_x_kwh_sum, _y_kwh_ebd, 1)
+    _r_kwh = np.corrcoef(_x_kwh_sum, _y_kwh_ebd)[0, 1]
+    _r_squared_kwh = float(_r_kwh**2) if not np.isnan(_r_kwh) else float("nan")
+    print(
+        f"  {_eu}: n={_nh:,}\n"
+        f"    intercept: {_intercept_kwh:,.4f} ($/yr)\n"
+        f"    slope: {_slope_kwh:.8f} ($/yr per kWh)\n"
+        f"    R²: {_r_squared_kwh:.6f}\n",
+    )
+```
+
+```{python}
+#| label: cooling-peak-bins-ebd-gt
+
+# Bin annual cooling peak (kBtu/hr) by 10 on load curve upgrade 00; weighted mean EBD per bin.
+
+_BIN_PEAK_KBTU_HR = 10
+
+_lcd_peak = annual_load_curve_up_00_df.filter(
+    pl.col(LOAD_CURVE_ANNUAL_COOLING_PEAK_COL).is_not_null(),
+)
+_lcd_peak_binned = _lcd_peak.with_columns(
+    pl.col(LOAD_CURVE_ANNUAL_COOLING_PEAK_COL)
+    .cast(pl.Int64, strict=False)
+    .floordiv(_BIN_PEAK_KBTU_HR)
+    .alias("_peak_bin"),
+)
+
+_cooling_peak_bin_rows: list[dict] = []
+for _eu in _ny_electric_utils:
+    _bat_eu = bat_12_df.filter(pl.col(UTIL_ELECTRIC_COL) == _eu)
+    for bk in _lcd_peak_binned.select("_peak_bin").unique().sort("_peak_bin")["_peak_bin"].to_list():
+        _bids = _lcd_peak_binned.filter(pl.col("_peak_bin") == bk).get_column("bldg_id").to_list()
+        bat_sub = _bat_eu.filter(pl.col("bldg_id").is_in(_bids))
+        if bat_sub.is_empty():
+            mean_ebd = float("nan")
+        elif "weight" in bat_sub.columns and float(bat_sub["weight"].sum()) != 0.0:
+            mean_ebd = _w_mean_ebd(bat_sub, MARGINAL_COST_DELIVERY_COL)
+        else:
+            mean_ebd = float(bat_sub[MARGINAL_COST_DELIVERY_COL].mean())
+
+        _cooling_peak_bin_rows.append({
+            "electric_utility": _eu,
+            "_bin_key": int(bk),
+            "cooling_peak_kbtu_hr_bin": (
+                f"[{int(bk) * _BIN_PEAK_KBTU_HR}, "
+                f"{int(bk) * _BIN_PEAK_KBTU_HR + _BIN_PEAK_KBTU_HR - 1}]"
+            ),
+            "n_bldg_ids": int(bat_sub.height),
+            "mean_economic_burden_delivery": mean_ebd,
+        })
+
+_cooling_peak_bin_df = (
+    pl.DataFrame(_cooling_peak_bin_rows)
+    .sort("electric_utility", "_bin_key")
+    .drop("_bin_key")
+    .with_columns(pl.col("mean_economic_burden_delivery").fill_nan(None))
+)
+
+_cooling_peak_bin_gt = (
+    GT(_cooling_peak_bin_df, rowname_col="cooling_peak_kbtu_hr_bin", groupname_col="electric_utility")
+    .tab_header(
+        title="Mean delivery marginal cost (EBD) by annual cooling peak bin — by electric utility",
+        subtitle=(
+            f"Rows grouped by `{UTIL_ELECTRIC_COL}`. Bins: floor({LOAD_CURVE_ANNUAL_COOLING_PEAK_COL} ÷ {_BIN_PEAK_KBTU_HR}) from "
+            f"`annual_load_curve_up_00_df`; interval "
+            f"[{_BIN_PEAK_KBTU_HR}×k, {_BIN_PEAK_KBTU_HR}×k+{_BIN_PEAK_KBTU_HR - 1}] kBtu/hr. "
+            f"Mean = Σ({MARGINAL_COST_DELIVERY_COL} × weight) ÷ Σ(weight) on BAT rows in that utility "
+            "whose `bldg_id` appears in that bin."
+        ),
+    )
+    .cols_label(
+        n_bldg_ids="n bldg_id's",
+        mean_economic_burden_delivery="Mean EBD (delivery)",
+    )
+    .fmt_integer(columns=["n_bldg_ids"])
+    .fmt_currency(columns=["mean_economic_burden_delivery"], decimals=0)
+    .sub_missing(missing_text="—")
+    .cols_align(
+        align="right",
+        columns=["n_bldg_ids", "mean_economic_burden_delivery"],
+    )
+    .tab_source_note(
+        "BAT = cross_subsidization_BAT_values run 1+2. Unweighted column mean if weight missing or sums to zero."
+    )
+)
+
+_cooling_peak_bin_gt
+```
+
+```{python}
+#| label: cooling-peak-vs-ebd-linreg
+
+import numpy as np
+
+print(
+    "\nOLS (unweighted): economic_burden_delivery ~ out.load.cooling.peak.kbtu_hr\n"
+    f"  By `{UTIL_ELECTRIC_COL}` (BAT run 1+2).\n",
+)
+for _eu in _ny_electric_utils:
+    _bat_eu = bat_12_df.filter(pl.col(UTIL_ELECTRIC_COL) == _eu).select(
+        "bldg_id",
+        MARGINAL_COST_DELIVERY_COL,
+    )
+    _peak_ebd_reg = (
+        annual_load_curve_up_00_df.select("bldg_id", LOAD_CURVE_ANNUAL_COOLING_PEAK_COL)
+        .join(_bat_eu, on="bldg_id", how="inner")
+        .filter(
+            pl.col(LOAD_CURVE_ANNUAL_COOLING_PEAK_COL).is_not_null(),
+            pl.col(MARGINAL_COST_DELIVERY_COL).is_not_null(),
+        )
+    )
+    _nh = _peak_ebd_reg.height
+    if _nh < 2:
+        print(f"  {_eu}: skipped (n={_nh}, need ≥2 for OLS).\n")
+        continue
+    _x_peak_kbtu_hr = _peak_ebd_reg[LOAD_CURVE_ANNUAL_COOLING_PEAK_COL].to_numpy().astype(np.float64)
+    _y_peak_ebd = _peak_ebd_reg[MARGINAL_COST_DELIVERY_COL].to_numpy().astype(np.float64)
+    _slope_peak, _intercept_peak = np.polyfit(_x_peak_kbtu_hr, _y_peak_ebd, 1)
+    _r_peak = np.corrcoef(_x_peak_kbtu_hr, _y_peak_ebd)[0, 1]
+    _r_squared_peak = float(_r_peak**2) if not np.isnan(_r_peak) else float("nan")
+    print(
+        f"  {_eu}: n={_nh:,}\n"
+        f"    intercept: {_intercept_peak:,.4f} ($/yr)\n"
+        f"    slope: {_slope_peak:.8f} ($/yr per kBtu/hr peak)\n"
+        f"    R²: {_r_squared_peak:.6f}\n",
+    )
+```
+
+```{python}
+#| label: heating-kwh-sum-bins-ebd-gt
+
+# Bin sum of four heating-related annual kWh columns by 5000 on load curve upgrade 00.
+
+_BIN_HEAT_KWH = 5000
+
+_lcd_heat_kwh = annual_load_curve_up_00_df.filter(
+    pl.all_horizontal(*[pl.col(c).is_not_null() for c in HEATING_KWH_SUM_SOURCE_COLS]),
+).with_columns(
+    pl.sum_horizontal(*[pl.col(c) for c in HEATING_KWH_SUM_SOURCE_COLS]).alias(HEATING_KWH_SUM_COL),
+)
+_lcd_heat_kwh_binned = _lcd_heat_kwh.with_columns(
+    pl.col(HEATING_KWH_SUM_COL)
+    .cast(pl.Int64, strict=False)
+    .floordiv(_BIN_HEAT_KWH)
+    .alias("_bin1k_heating_kwh"),
+)
+
+_heating_kwh_bin_rows: list[dict] = []
+for _eu in _ny_electric_utils:
+    _bat_eu = bat_12_df.filter(pl.col(UTIL_ELECTRIC_COL) == _eu)
+    for bk in _lcd_heat_kwh_binned.select("_bin1k_heating_kwh").unique().sort("_bin1k_heating_kwh")[
+        "_bin1k_heating_kwh"
+    ].to_list():
+        _bids = _lcd_heat_kwh_binned.filter(pl.col("_bin1k_heating_kwh") == bk).get_column("bldg_id").to_list()
+        bat_sub = _bat_eu.filter(pl.col("bldg_id").is_in(_bids))
+        if bat_sub.is_empty():
+            mean_ebd = float("nan")
+        elif "weight" in bat_sub.columns and float(bat_sub["weight"].sum()) != 0.0:
+            mean_ebd = _w_mean_ebd(bat_sub, MARGINAL_COST_DELIVERY_COL)
+        else:
+            mean_ebd = float(bat_sub[MARGINAL_COST_DELIVERY_COL].mean())
+
+        _heating_kwh_bin_rows.append({
+            "electric_utility": _eu,
+            "_bin_key": int(bk),
+            "heating_total_elec_kwh_bin": (
+                f"[{int(bk) * _BIN_HEAT_KWH}, {int(bk) * _BIN_HEAT_KWH + _BIN_HEAT_KWH - 1}]"
+            ),
+            "n_bldg_ids": int(bat_sub.height),
+            "mean_economic_burden_delivery": mean_ebd,
+        })
+
+_heating_kwh_bin_df = (
+    pl.DataFrame(_heating_kwh_bin_rows)
+    .sort("electric_utility", "_bin_key")
+    .drop("_bin_key")
+    .with_columns(pl.col("mean_economic_burden_delivery").fill_nan(None))
+)
+
+_heating_kwh_bin_gt = (
+    GT(_heating_kwh_bin_df, rowname_col="heating_total_elec_kwh_bin", groupname_col="electric_utility")
+    .tab_header(
+        title="Mean delivery marginal cost (EBD) by annual heating electricity (kWh) bin — by electric utility",
+        subtitle=(
+            f"Rows grouped by `{UTIL_ELECTRIC_COL}`. x = sum of four kWh columns: "
+            f"{LOAD_CURVE_ANNUAL_HEATING_CONSUMED_COL}, "
+            f"{LOAD_CURVE_ANNUAL_HEATING_FAN_CONSUMED_COL}, "
+            f"{LOAD_CURVE_ANNUAL_BKUP_HEATING_CONSUMED_COL}, "
+            f"{LOAD_CURVE_ANNUAL_BKUP_HEATING_FAN_CONSUMED_COL}. "
+            f"Bins: floor(x ÷ {_BIN_HEAT_KWH}) from `annual_load_curve_up_00_df`; "
+            f"interval [{_BIN_HEAT_KWH}×k, {_BIN_HEAT_KWH}×k+{_BIN_HEAT_KWH - 1}] kWh. "
+            f"Mean = Σ({MARGINAL_COST_DELIVERY_COL} × weight) ÷ Σ(weight) on BAT rows in that utility "
+            "whose `bldg_id` appears in that bin."
+        ),
+    )
+    .cols_label(
+        n_bldg_ids="n bldg_id's",
+        mean_economic_burden_delivery="Mean EBD (delivery)",
+    )
+    .fmt_integer(columns=["n_bldg_ids"])
+    .fmt_currency(columns=["mean_economic_burden_delivery"], decimals=0)
+    .sub_missing(missing_text="—")
+    .cols_align(
+        align="right",
+        columns=["n_bldg_ids", "mean_economic_burden_delivery"],
+    )
+    .tab_source_note(
+        "BAT = cross_subsidization_BAT_values run 1+2. Unweighted column mean if weight missing or sums to zero."
+    )
+)
+
+_heating_kwh_bin_gt
+```
+
+```{python}
+#| label: heating-kwh-sum-vs-ebd-linreg
+
+import numpy as np
+
+print(
+    "\nOLS (unweighted): economic_burden_delivery ~ (heating + heating_fans + hp_bkup + hp_bkup_fa kWh)\n"
+    f"  By `{UTIL_ELECTRIC_COL}` (BAT run 1+2).\n",
+)
+for _eu in _ny_electric_utils:
+    _bat_eu = bat_12_df.filter(pl.col(UTIL_ELECTRIC_COL) == _eu).select(
+        "bldg_id",
+        MARGINAL_COST_DELIVERY_COL,
+    )
+    _heat_kwh_ebd_reg = (
+        annual_load_curve_up_00_df.select("bldg_id", *HEATING_KWH_SUM_SOURCE_COLS)
+        .filter(pl.all_horizontal(*[pl.col(c).is_not_null() for c in HEATING_KWH_SUM_SOURCE_COLS]))
+        .with_columns(
+            pl.sum_horizontal(*[pl.col(c) for c in HEATING_KWH_SUM_SOURCE_COLS]).alias(HEATING_KWH_SUM_COL),
+        )
+        .select("bldg_id", HEATING_KWH_SUM_COL)
+        .join(_bat_eu, on="bldg_id", how="inner")
+        .filter(
+            pl.col(HEATING_KWH_SUM_COL).is_not_null(),
+            pl.col(MARGINAL_COST_DELIVERY_COL).is_not_null(),
+        )
+    )
+    _nh = _heat_kwh_ebd_reg.height
+    if _nh < 2:
+        print(f"  {_eu}: skipped (n={_nh}, need ≥2 for OLS).\n")
+        continue
+    _x_heat_kwh_sum = _heat_kwh_ebd_reg[HEATING_KWH_SUM_COL].to_numpy().astype(np.float64)
+    _y_heat_kwh_ebd = _heat_kwh_ebd_reg[MARGINAL_COST_DELIVERY_COL].to_numpy().astype(np.float64)
+    _slope_heat_kwh, _intercept_heat_kwh = np.polyfit(_x_heat_kwh_sum, _y_heat_kwh_ebd, 1)
+    _r_heat_kwh = np.corrcoef(_x_heat_kwh_sum, _y_heat_kwh_ebd)[0, 1]
+    _r_squared_heat_kwh = float(_r_heat_kwh**2) if not np.isnan(_r_heat_kwh) else float("nan")
+    print(
+        f"  {_eu}: n={_nh:,}\n"
+        f"    intercept: {_intercept_heat_kwh:,.4f} ($/yr)\n"
+        f"    slope: {_slope_heat_kwh:.8f} ($/yr per kWh)\n"
+        f"    R²: {_r_squared_heat_kwh:.6f}\n",
+    )
+```
+
+```{python}
+#| label: appliances-kwh-sum-bins-ebd-gt
+
+# Bin sum of bundled appliance / misc annual kWh columns by 5000 on load curve upgrade 00.
+
+_BIN_APP_KWH = 5000
+
+_lcd_app_kwh = annual_load_curve_up_00_df.filter(
+    pl.all_horizontal(*[pl.col(c).is_not_null() for c in LOAD_CURVE_ANNUAL_APPLIANCES_COLS]),
+).with_columns(
+    pl.sum_horizontal(*[pl.col(c) for c in LOAD_CURVE_ANNUAL_APPLIANCES_COLS]).alias(APPLIANCES_KWH_SUM_COL),
+)
+_lcd_app_kwh_binned = _lcd_app_kwh.with_columns(
+    pl.col(APPLIANCES_KWH_SUM_COL)
+    .cast(pl.Int64, strict=False)
+    .floordiv(_BIN_APP_KWH)
+    .alias("_bin1k_appliances_kwh"),
+)
+
+_appliances_kwh_bin_rows: list[dict] = []
+for _eu in _ny_electric_utils:
+    _bat_eu = bat_12_df.filter(pl.col(UTIL_ELECTRIC_COL) == _eu)
+    for bk in _lcd_app_kwh_binned.select("_bin1k_appliances_kwh").unique().sort("_bin1k_appliances_kwh")[
+        "_bin1k_appliances_kwh"
+    ].to_list():
+        _bids = _lcd_app_kwh_binned.filter(pl.col("_bin1k_appliances_kwh") == bk).get_column("bldg_id").to_list()
+        bat_sub = _bat_eu.filter(pl.col("bldg_id").is_in(_bids))
+        if bat_sub.is_empty():
+            mean_ebd = float("nan")
+        elif "weight" in bat_sub.columns and float(bat_sub["weight"].sum()) != 0.0:
+            mean_ebd = _w_mean_ebd(bat_sub, MARGINAL_COST_DELIVERY_COL)
+        else:
+            mean_ebd = float(bat_sub[MARGINAL_COST_DELIVERY_COL].mean())
+
+        _appliances_kwh_bin_rows.append({
+            "electric_utility": _eu,
+            "_bin_key": int(bk),
+            "appliances_total_elec_kwh_bin": (
+                f"[{int(bk) * _BIN_APP_KWH}, {int(bk) * _BIN_APP_KWH + _BIN_APP_KWH - 1}]"
+            ),
+            "n_bldg_ids": int(bat_sub.height),
+            "mean_economic_burden_delivery": mean_ebd,
+        })
+
+_appliances_kwh_bin_df = (
+    pl.DataFrame(_appliances_kwh_bin_rows)
+    .sort("electric_utility", "_bin_key")
+    .drop("_bin_key")
+    .with_columns(pl.col("mean_economic_burden_delivery").fill_nan(None))
+)
+
+_appliances_kwh_bin_gt = (
+    GT(_appliances_kwh_bin_df, rowname_col="appliances_total_elec_kwh_bin", groupname_col="electric_utility")
+    .tab_header(
+        title="Mean delivery marginal cost (EBD) by bundled appliance electricity (kWh) bin — by electric utility",
+        subtitle=(
+            f"Rows grouped by `{UTIL_ELECTRIC_COL}`. x = sum of {len(LOAD_CURVE_ANNUAL_APPLIANCES_COLS)} annual kWh columns in "
+            "`LOAD_CURVE_ANNUAL_APPLIANCES_COLS` (params cell). "
+            f"Bins: floor(x ÷ {_BIN_APP_KWH}) from `annual_load_curve_up_00_df`; "
+            f"interval [{_BIN_APP_KWH}×k, {_BIN_APP_KWH}×k+{_BIN_APP_KWH - 1}] kWh. "
+            f"Mean = Σ({MARGINAL_COST_DELIVERY_COL} × weight) ÷ Σ(weight) on BAT rows in that utility "
+            "whose `bldg_id` appears in that bin."
+        ),
+    )
+    .cols_label(
+        n_bldg_ids="n bldg_id's",
+        mean_economic_burden_delivery="Mean EBD (delivery)",
+    )
+    .fmt_integer(columns=["n_bldg_ids"])
+    .fmt_currency(columns=["mean_economic_burden_delivery"], decimals=0)
+    .sub_missing(missing_text="—")
+    .cols_align(
+        align="right",
+        columns=["n_bldg_ids", "mean_economic_burden_delivery"],
+    )
+    .tab_source_note(
+        "BAT = cross_subsidization_BAT_values run 1+2. Unweighted column mean if weight missing or sums to zero."
+    )
+)
+
+_appliances_kwh_bin_gt
+```
+
+```{python}
+#| label: appliances-kwh-sum-vs-ebd-linreg
+
+import numpy as np
+
+print(
+    "\nOLS (unweighted): economic_burden_delivery ~ total appliance kWh\n"
+    "  total = PV kWh + (dryer + washer + dishwasher + hot water + plug loads) + all other bundle cols\n"
+    f"  By `{UTIL_ELECTRIC_COL}` (BAT run 1+2).\n",
+)
+for _eu in _ny_electric_utils:
+    _bat_eu = bat_12_df.filter(pl.col(UTIL_ELECTRIC_COL) == _eu).select(
+        "bldg_id",
+        MARGINAL_COST_DELIVERY_COL,
+    )
+    _app_kwh_ebd_reg = (
+        annual_load_curve_up_00_df.select("bldg_id", *LOAD_CURVE_ANNUAL_APPLIANCES_COLS)
+        .filter(pl.all_horizontal(*[pl.col(c).is_not_null() for c in LOAD_CURVE_ANNUAL_APPLIANCES_COLS]))
+        .with_columns(
+            pl.sum_horizontal(*[pl.col(c) for c in LOAD_CURVE_ANNUAL_APPLIANCES_PV_COLS]).alias(
+                APPLIANCES_PV_KWH_SUM_COL
+            ),
+            pl.sum_horizontal(*[pl.col(c) for c in LOAD_CURVE_ANNUAL_APPLIANCES_LAUNDRY_DHW_PLUG_COLS]).alias(
+                APPLIANCES_LAUNDRY_DHW_PLUG_KWH_SUM_COL
+            ),
+            pl.sum_horizontal(*[pl.col(c) for c in LOAD_CURVE_ANNUAL_APPLIANCES_OTHER_COLS]).alias(
+                APPLIANCES_OTHER_KWH_SUM_COL
+            ),
+        )
+        .with_columns(
+            (
+                pl.col(APPLIANCES_PV_KWH_SUM_COL)
+                + pl.col(APPLIANCES_LAUNDRY_DHW_PLUG_KWH_SUM_COL)
+                + pl.col(APPLIANCES_OTHER_KWH_SUM_COL)
+            ).alias(APPLIANCES_KWH_SUM_COL),
+        )
+        .select("bldg_id", APPLIANCES_KWH_SUM_COL)
+        .join(_bat_eu, on="bldg_id", how="inner")
+        .filter(
+            pl.col(APPLIANCES_KWH_SUM_COL).is_not_null(),
+            pl.col(MARGINAL_COST_DELIVERY_COL).is_not_null(),
+        )
+    )
+    _nh = _app_kwh_ebd_reg.height
+    if _nh < 2:
+        print(f"  {_eu}: skipped (n={_nh}, need ≥2 for OLS).\n")
+        continue
+    _x_app_kwh_sum = _app_kwh_ebd_reg[APPLIANCES_KWH_SUM_COL].to_numpy().astype(np.float64)
+    _y_app_kwh_ebd = _app_kwh_ebd_reg[MARGINAL_COST_DELIVERY_COL].to_numpy().astype(np.float64)
+    _slope_app_kwh, _intercept_app_kwh = np.polyfit(_x_app_kwh_sum, _y_app_kwh_ebd, 1)
+    _r_app_kwh = np.corrcoef(_x_app_kwh_sum, _y_app_kwh_ebd)[0, 1]
+    _r_squared_app_kwh = float(_r_app_kwh**2) if not np.isnan(_r_app_kwh) else float("nan")
+    print(
+        f"  {_eu}: n={_nh:,}\n"
+        f"    intercept: {_intercept_app_kwh:,.4f} ($/yr)\n"
+        f"    slope: {_slope_app_kwh:.8f} ($/yr per kWh)\n"
+        f"    R²: {_r_squared_app_kwh:.6f}\n",
+    )
+```
+
+```{python}
+#| label: cooling-plus-appliances-kwh-vs-ebd-mlr
+
+import numpy as np
+
+_COOLING_SUM_COLS = (
+    LOAD_CURVE_ANNUAL_COOLING_CONSUMED_COL,
+    LOAD_CURVE_ANNUAL_COOLING_FAN_CONSUMED_COL,
+)
+
+print(
+    "\nOLS (unweighted, two predictors): economic_burden_delivery ~ cooling_kwh_sum + appliances_kwh_sum\n"
+    f"  cooling_kwh_sum = {LOAD_CURVE_ANNUAL_COOLING_CONSUMED_COL} + {LOAD_CURVE_ANNUAL_COOLING_FAN_CONSUMED_COL}\n"
+    "  appliances_kwh_sum = PV + laundry/DHW/plug + other appliance groups (see params cell)\n"
+    f"  By `{UTIL_ELECTRIC_COL}`; skipped if n < 3 (intercept + 2 predictors).\n",
+)
+for _eu in _ny_electric_utils:
+    _bat_eu = bat_12_df.filter(pl.col(UTIL_ELECTRIC_COL) == _eu).select(
+        "bldg_id",
+        MARGINAL_COST_DELIVERY_COL,
+    )
+    _cool_app_ebd_reg = (
+        annual_load_curve_up_00_df.select(
+            "bldg_id",
+            *_COOLING_SUM_COLS,
+            *LOAD_CURVE_ANNUAL_APPLIANCES_COLS,
+        )
+        .filter(
+            pl.all_horizontal(*[pl.col(c).is_not_null() for c in _COOLING_SUM_COLS]),
+            pl.all_horizontal(*[pl.col(c).is_not_null() for c in LOAD_CURVE_ANNUAL_APPLIANCES_COLS]),
+        )
+        .with_columns(
+            pl.sum_horizontal(*[pl.col(c) for c in _COOLING_SUM_COLS]).alias(COOLING_KWH_SUM_COL),
+            pl.sum_horizontal(*[pl.col(c) for c in LOAD_CURVE_ANNUAL_APPLIANCES_COLS]).alias(
+                APPLIANCES_KWH_SUM_COL
+            ),
+        )
+        .select("bldg_id", COOLING_KWH_SUM_COL, APPLIANCES_KWH_SUM_COL)
+        .join(_bat_eu, on="bldg_id", how="inner")
+        .filter(
+            pl.col(COOLING_KWH_SUM_COL).is_not_null(),
+            pl.col(APPLIANCES_KWH_SUM_COL).is_not_null(),
+            pl.col(MARGINAL_COST_DELIVERY_COL).is_not_null(),
+        )
+    )
+    _nh = _cool_app_ebd_reg.height
+    if _nh < 3:
+        print(f"  {_eu}: skipped (n={_nh}, need ≥3).\n")
+        continue
+    _x_cool = _cool_app_ebd_reg[COOLING_KWH_SUM_COL].to_numpy().astype(np.float64)
+    _x_app = _cool_app_ebd_reg[APPLIANCES_KWH_SUM_COL].to_numpy().astype(np.float64)
+    _y_mlr = _cool_app_ebd_reg[MARGINAL_COST_DELIVERY_COL].to_numpy().astype(np.float64)
+    _n_mlr = _y_mlr.shape[0]
+    _X_mlr = np.column_stack((np.ones(_n_mlr), _x_cool, _x_app))
+    _beta_mlr, *_ = np.linalg.lstsq(_X_mlr, _y_mlr, rcond=None)
+    _intercept_mlr = float(_beta_mlr[0])
+    _slope_cooling_mlr = float(_beta_mlr[1])
+    _slope_appliances_mlr = float(_beta_mlr[2])
+    _y_hat_mlr = _X_mlr @ _beta_mlr
+    _ss_res_mlr = float(np.sum((_y_mlr - _y_hat_mlr) ** 2))
+    _ss_tot_mlr = float(np.sum((_y_mlr - np.mean(_y_mlr)) ** 2))
+    _r_squared_mlr = (1.0 - _ss_res_mlr / _ss_tot_mlr) if _ss_tot_mlr > 0 else float("nan")
+    print(
+        f"  {_eu}: n={_nh:,}\n"
+        f"    intercept: {_intercept_mlr:,.4f} ($/yr)\n"
+        f"    slope (cooling kWh): {_slope_cooling_mlr:.8f} ($/yr per kWh)\n"
+        f"    slope (appliances kWh): {_slope_appliances_mlr:.8f} ($/yr per kWh)\n"
+        f"    R²: {_r_squared_mlr:.6f}\n",
+    )
+```
+
+```{python}
+#| label: cooling-three-appliance-groups-kwh-vs-ebd-mlr
+
+import numpy as np
+
+_COOLING_SUM_COLS_4P = (
+    LOAD_CURVE_ANNUAL_COOLING_CONSUMED_COL,
+    LOAD_CURVE_ANNUAL_COOLING_FAN_CONSUMED_COL,
+)
+_all_appliance_cols_4p = (
+    *_COOLING_SUM_COLS_4P,
+    *LOAD_CURVE_ANNUAL_APPLIANCES_COLS,
+)
+
+print(
+    "\nOLS (unweighted, four predictors): economic_burden_delivery ~ "
+    "cooling_kwh_sum + pv_kwh + laundry_dhw_plug_kwh + other_appliances_kwh\n"
+    f"  cooling_kwh_sum = {LOAD_CURVE_ANNUAL_COOLING_CONSUMED_COL} + {LOAD_CURVE_ANNUAL_COOLING_FAN_CONSUMED_COL}\n"
+    f"  pv_kwh = {LOAD_CURVE_ANNUAL_PV_COL}\n"
+    "  laundry_dhw_plug_kwh = clothes_dryer + clothes_washer + dishwasher + hot_water + plug_loads\n"
+    "  other_appliances_kwh = remaining `LOAD_CURVE_ANNUAL_APPLIANCES_OTHER_COLS`\n"
+    f"  By `{UTIL_ELECTRIC_COL}`; skipped if n < 5 (intercept + 4 predictors).\n",
+)
+for _eu in _ny_electric_utils:
+    _bat_eu = bat_12_df.filter(pl.col(UTIL_ELECTRIC_COL) == _eu).select(
+        "bldg_id",
+        MARGINAL_COST_DELIVERY_COL,
+    )
+    _cool_3app_ebd_reg = (
+        annual_load_curve_up_00_df.select("bldg_id", *_all_appliance_cols_4p)
+        .filter(pl.all_horizontal(*[pl.col(c).is_not_null() for c in _all_appliance_cols_4p]))
+        .with_columns(
+            pl.sum_horizontal(*[pl.col(c) for c in _COOLING_SUM_COLS_4P]).alias(COOLING_KWH_SUM_COL),
+            pl.sum_horizontal(*[pl.col(c) for c in LOAD_CURVE_ANNUAL_APPLIANCES_PV_COLS]).alias(
+                APPLIANCES_PV_KWH_SUM_COL
+            ),
+            pl.sum_horizontal(*[pl.col(c) for c in LOAD_CURVE_ANNUAL_APPLIANCES_LAUNDRY_DHW_PLUG_COLS]).alias(
+                APPLIANCES_LAUNDRY_DHW_PLUG_KWH_SUM_COL
+            ),
+            pl.sum_horizontal(*[pl.col(c) for c in LOAD_CURVE_ANNUAL_APPLIANCES_OTHER_COLS]).alias(
+                APPLIANCES_OTHER_KWH_SUM_COL
+            ),
+        )
+        .select(
+            "bldg_id",
+            COOLING_KWH_SUM_COL,
+            APPLIANCES_PV_KWH_SUM_COL,
+            APPLIANCES_LAUNDRY_DHW_PLUG_KWH_SUM_COL,
+            APPLIANCES_OTHER_KWH_SUM_COL,
+        )
+        .join(_bat_eu, on="bldg_id", how="inner")
+        .filter(
+            pl.col(COOLING_KWH_SUM_COL).is_not_null(),
+            pl.col(APPLIANCES_PV_KWH_SUM_COL).is_not_null(),
+            pl.col(APPLIANCES_LAUNDRY_DHW_PLUG_KWH_SUM_COL).is_not_null(),
+            pl.col(APPLIANCES_OTHER_KWH_SUM_COL).is_not_null(),
+            pl.col(MARGINAL_COST_DELIVERY_COL).is_not_null(),
+        )
+    )
+    _nh = _cool_3app_ebd_reg.height
+    if _nh < 5:
+        print(f"  {_eu}: skipped (n={_nh}, need ≥5).\n")
+        continue
+    _x_cool_4p = _cool_3app_ebd_reg[COOLING_KWH_SUM_COL].to_numpy().astype(np.float64)
+    _x_pv_4p = _cool_3app_ebd_reg[APPLIANCES_PV_KWH_SUM_COL].to_numpy().astype(np.float64)
+    _x_ldp_4p = _cool_3app_ebd_reg[APPLIANCES_LAUNDRY_DHW_PLUG_KWH_SUM_COL].to_numpy().astype(np.float64)
+    _x_other_4p = _cool_3app_ebd_reg[APPLIANCES_OTHER_KWH_SUM_COL].to_numpy().astype(np.float64)
+    _y_4p = _cool_3app_ebd_reg[MARGINAL_COST_DELIVERY_COL].to_numpy().astype(np.float64)
+    _n_4p = _y_4p.shape[0]
+    _X_4p = np.column_stack((np.ones(_n_4p), _x_cool_4p, _x_pv_4p, _x_ldp_4p, _x_other_4p))
+    _beta_4p, *_ = np.linalg.lstsq(_X_4p, _y_4p, rcond=None)
+    _intercept_4p = float(_beta_4p[0])
+    _slope_cool_4p = float(_beta_4p[1])
+    _slope_pv_4p = float(_beta_4p[2])
+    _slope_ldp_4p = float(_beta_4p[3])
+    _slope_other_4p = float(_beta_4p[4])
+    _y_hat_4p = _X_4p @ _beta_4p
+    _ss_res_4p = float(np.sum((_y_4p - _y_hat_4p) ** 2))
+    _ss_tot_4p = float(np.sum((_y_4p - np.mean(_y_4p)) ** 2))
+    _r_squared_4p = (1.0 - _ss_res_4p / _ss_tot_4p) if _ss_tot_4p > 0 else float("nan")
+    print(
+        f"  {_eu}: n={_nh:,}\n"
+        f"    intercept: {_intercept_4p:,.4f} ($/yr)\n"
+        f"    slope (cooling kWh): {_slope_cool_4p:.8f} ($/yr per kWh)\n"
+        f"    slope (PV kWh): {_slope_pv_4p:.8f} ($/yr per kWh)\n"
+        f"    slope (laundry/DHW/plug kWh): {_slope_ldp_4p:.8f} ($/yr per kWh)\n"
+        f"    slope (other appliances kWh): {_slope_other_4p:.8f} ($/yr per kWh)\n"
+        f"    R²: {_r_squared_4p:.6f}\n",
+    )
+```
+
+```{python}
+#| label: subclass-cool-appliances-kwh-summary-gt
+
+_COOLING_KWH_TWO = (
+    LOAD_CURVE_ANNUAL_COOLING_CONSUMED_COL,
+    LOAD_CURVE_ANNUAL_COOLING_FAN_CONSUMED_COL,
+)
+
+_lc_bat12_kwh_sums = (
+    annual_load_curve_up_00_df.select(
+        "bldg_id",
+        *_COOLING_KWH_TWO,
+        *LOAD_CURVE_ANNUAL_APPLIANCES_COLS,
+    )
+    .filter(
+        pl.all_horizontal(*[pl.col(c).is_not_null() for c in _COOLING_KWH_TWO]),
+        pl.all_horizontal(*[pl.col(c).is_not_null() for c in LOAD_CURVE_ANNUAL_APPLIANCES_COLS]),
+    )
+    .with_columns(
+        pl.sum_horizontal(*[pl.col(c) for c in _COOLING_KWH_TWO]).alias(COOLING_KWH_SUM_COL),
+        pl.sum_horizontal(*[pl.col(c) for c in LOAD_CURVE_ANNUAL_APPLIANCES_COLS]).alias(
+            APPLIANCES_KWH_SUM_COL
+        ),
+    )
+    .select("bldg_id", COOLING_KWH_SUM_COL, APPLIANCES_KWH_SUM_COL)
+)
+
+_subclass_kwh_specs: list[tuple[str, pl.DataFrame]] = (
+    ("Heat pump", bat_12_hp_bldgs),
+    ("Electric resistance", bat_12_electric_resistance_bldgs),
+    ("Natural gas", bat_12_natgas_bldgs),
+    ("Oil / propane", bat_12_oil_propane_bldgs),
+)
+
+_subclass_kwh_rows: list[dict] = []
+for _eu in _ny_electric_utils:
+    for _lab, _bat in _subclass_kwh_specs:
+        _bat_eu = _bat.filter(pl.col(UTIL_ELECTRIC_COL) == _eu)
+        _sub = _lc_bat12_kwh_sums.filter(pl.col("bldg_id").is_in(_bat_eu["bldg_id"]))
+        _nh = _sub.height
+        if _nh == 0:
+            _subclass_kwh_rows.append({
+                "electric_utility": _eu,
+                "heating_subclass_bat12": _lab,
+                "n_load_curve_match": 0,
+                "mean_cooling_kwh": None,
+                "median_cooling_kwh": None,
+                "mean_appliances_kwh": None,
+                "median_appliances_kwh": None,
+            })
+        else:
+            _subclass_kwh_rows.append({
+                "electric_utility": _eu,
+                "heating_subclass_bat12": _lab,
+                "n_load_curve_match": _nh,
+                "mean_cooling_kwh": float(_sub[COOLING_KWH_SUM_COL].mean()),
+                "median_cooling_kwh": float(_sub[COOLING_KWH_SUM_COL].median()),
+                "mean_appliances_kwh": float(_sub[APPLIANCES_KWH_SUM_COL].mean()),
+                "median_appliances_kwh": float(_sub[APPLIANCES_KWH_SUM_COL].median()),
+            })
+
+_subclass_kwh_df = pl.DataFrame(_subclass_kwh_rows).sort("electric_utility", "heating_subclass_bat12")
+
+_subclass_kwh_gt = (
+    GT(_subclass_kwh_df, rowname_col="heating_subclass_bat12", groupname_col="electric_utility")
+    .tab_header(
+        title="Cooling and bundled-appliance annual kWh by heating subclass — by electric utility (BAT 1+2)",
+        subtitle=(
+            f"Rows grouped by `{UTIL_ELECTRIC_COL}`. "
+            f"Cooling sum = {LOAD_CURVE_ANNUAL_COOLING_CONSUMED_COL} + "
+            f"{LOAD_CURVE_ANNUAL_COOLING_FAN_CONSUMED_COL}. "
+            "Appliances sum = sum of `LOAD_CURVE_ANNUAL_APPLIANCES_COLS`. "
+            "Only buildings with all underlying columns non-null in `annual_load_curve_up_00_df`; "
+            "`n_load_curve_match` counts those whose `bldg_id` is in the subclass for that utility."
+        ),
+    )
+    .cols_label(
+        n_load_curve_match="n",
+        mean_cooling_kwh="Mean cooling kWh",
+        median_cooling_kwh="Median cooling kWh",
+        mean_appliances_kwh="Mean appl. kWh",
+        median_appliances_kwh="Median appl. kWh",
+    )
+    .fmt_integer(columns=["n_load_curve_match"])
+    .fmt_number(
+        columns=[
+            "mean_cooling_kwh",
+            "median_cooling_kwh",
+            "mean_appliances_kwh",
+            "median_appliances_kwh",
+        ],
+        decimals=0,
+    )
+    .sub_missing(missing_text="—")
+    .cols_align(
+        align="right",
+        columns=[
+            "n_load_curve_match",
+            "mean_cooling_kwh",
+            "median_cooling_kwh",
+            "mean_appliances_kwh",
+            "median_appliances_kwh",
+        ],
+    )
+)
+
+_subclass_kwh_gt
+```
+
+```{python}
+#| label: subclass-mean-cooling-vs-mean-ebd-linreg
+
+import numpy as np
+
+# One point per heating subclass within each electric utility: x = mean cooling kWh, y = mean EBD.
+print(
+    "\nOLS (unweighted): mean EBD ~ mean cooling kWh, one point per BAT 1+2 heating subclass\n"
+    f"  Repeated for each `{UTIL_ELECTRIC_COL}`.\n"
+    "  x = mean(cooling + cooling_fans kWh) over buildings with full load-curve inputs in subclass.\n"
+    "  y = mean economic_burden_delivery on those same bldg_id rows in BAT (weighted if weight sums > 0).\n",
+)
+for _eu in _ny_electric_utils:
+    _x_sub_mean_cool: list[float] = []
+    _y_sub_mean_ebd: list[float] = []
+    _sub_regress_labels: list[str] = []
+    for _lab, _bat in _subclass_kwh_specs:
+        _bat_eu = _bat.filter(pl.col(UTIL_ELECTRIC_COL) == _eu)
+        _sub_lc = _lc_bat12_kwh_sums.filter(pl.col("bldg_id").is_in(_bat_eu["bldg_id"]))
+        if _sub_lc.is_empty():
+            continue
+        _bat_match = _bat_eu.filter(pl.col("bldg_id").is_in(_sub_lc["bldg_id"]))
+        if _bat_match.is_empty():
+            continue
+        _x_sub_mean_cool.append(float(_sub_lc[COOLING_KWH_SUM_COL].mean()))
+        if "weight" in _bat_match.columns and float(_bat_match["weight"].sum()) != 0.0:
+            _y_sub_mean_ebd.append(_w_mean_ebd(_bat_match, MARGINAL_COST_DELIVERY_COL))
+        else:
+            _y_sub_mean_ebd.append(float(_bat_match[MARGINAL_COST_DELIVERY_COL].mean()))
+        _sub_regress_labels.append(_lab)
+
+    _arr_x = np.array(_x_sub_mean_cool, dtype=np.float64)
+    _arr_y = np.array(_y_sub_mean_ebd, dtype=np.float64)
+    _n_pts = int(_arr_x.shape[0])
+
+    if _n_pts < 2:
+        print(f"  {_eu}: skipped (n subclass points={_n_pts}, need ≥2).\n")
+        continue
+    _slope_sub, _intercept_sub = np.polyfit(_arr_x, _arr_y, 1)
+    _r_sub = np.corrcoef(_arr_x, _arr_y)[0, 1]
+    _r2_sub = float(_r_sub**2) if not np.isnan(_r_sub) else float("nan")
+    print(f"  {_eu}:")
+    for _sl, _xv, _yv in zip(_sub_regress_labels, _x_sub_mean_cool, _y_sub_mean_ebd, strict=True):
+        print(f"    {_sl}: mean cooling kWh = {_xv:,.1f}, mean EBD = ${_yv:,.2f}/yr")
+    print(
+        f"    n subclass points: {_n_pts}\n"
+        f"    intercept: {_intercept_sub:,.4f} ($/yr)\n"
+        f"    slope: {_slope_sub:.8f} ($/yr per mean cooling kWh)\n"
+        f"    R²: {_r2_sub:.6f}\n",
+    )
+```
+
+```{python}
+#| label: full-partial-cooling-subclass-ebd-gt
+
+_bldg_ids_100pct_conditioned = (
+    metadata_up_00_df.filter(pl.col(METADATA_PARTIAL_COOLING_COL) == "100% Conditioned")
+    .select("bldg_id")
+    .unique()["bldg_id"]
+)
+
+_floor_area_lookup = (
+    annual_load_curve_up_00_df.select("bldg_id", LOAD_CURVE_ANNUAL_FLOOR_AREA_COL)
+    .unique(subset=["bldg_id"], keep="first")
+)
+_ebd_per_ft2_col = "_ebd_per_ft2"
+
+_ebd_100pct_partial_rows: list[dict] = []
+for _eu in _ny_electric_utils:
+    for _grp_lbl, _bat_sub_all in [
+        ("Heat pump", bat_12_hp_bldgs),
+        ("Electric resistance", bat_12_electric_resistance_bldgs),
+        ("Natural gas", bat_12_natgas_bldgs),
+        ("Oil / propane", bat_12_oil_propane_bldgs),
+    ]:
+        _bat_eu = _bat_sub_all.filter(pl.col(UTIL_ELECTRIC_COL) == _eu)
+        _d = _bat_eu.filter(pl.col("bldg_id").is_in(_bldg_ids_100pct_conditioned))
+        _d_floor = (
+            _d.join(_floor_area_lookup, on="bldg_id", how="left")
+            .filter(
+                pl.col(LOAD_CURVE_ANNUAL_FLOOR_AREA_COL).is_not_null(),
+                pl.col(LOAD_CURVE_ANNUAL_FLOOR_AREA_COL) > 0,
+            )
+            .with_columns(
+                (pl.col(MARGINAL_COST_DELIVERY_COL) / pl.col(LOAD_CURVE_ANNUAL_FLOOR_AREA_COL)).alias(
+                    _ebd_per_ft2_col
+                ),
+            )
+        )
+        _ebd_100pct_partial_rows.append({
+            "electric_utility": _eu,
+            "group": _grp_lbl,
+            "n_bat": _d.height,
+            "mean_economic_burden_delivery": _w_mean_ebd(_d, MARGINAL_COST_DELIVERY_COL),
+            "median_economic_burden_delivery": _w_median_ebd(_d, MARGINAL_COST_DELIVERY_COL),
+            "mean_ebd_per_ft2": _w_mean_ebd(_d_floor, _ebd_per_ft2_col),
+            "median_ebd_per_ft2": _w_median_ebd(_d_floor, _ebd_per_ft2_col),
+        })
+
+_ebd_100pct_partial_df = (
+    pl.DataFrame(_ebd_100pct_partial_rows)
+    .sort("electric_utility", "group")
+    .with_columns(
+        pl.col("mean_economic_burden_delivery").fill_nan(None),
+        pl.col("median_economic_burden_delivery").fill_nan(None),
+        pl.col("mean_ebd_per_ft2").fill_nan(None),
+        pl.col("median_ebd_per_ft2").fill_nan(None),
+    )
+)
+
+_ebd_100pct_partial_gt = (
+    GT(_ebd_100pct_partial_df, rowname_col="group", groupname_col="electric_utility")
+    .tab_header(
+        title="Economic burden of delivery (mean & median) by subclass — 100% conditioned cooling — by electric utility",
+        subtitle=(
+            f"Rows grouped by `{UTIL_ELECTRIC_COL}`. "
+            f"`metadata_up_00_df` rows with `{METADATA_PARTIAL_COOLING_COL}` == \"100% Conditioned\"; "
+            "intersected with BAT by `bldg_id`. Subclasses follow BAT 1+2 heating groups. "
+            f"Mean / median = weighted (`{MARGINAL_COST_DELIVERY_COL}`) using ResStock `weight` "
+            "(same helpers as the statewide EBD table)."
+        ),
+    )
+    .cols_label(
+        n_bat="n",
+        mean_economic_burden_delivery="Mean EBD",
+        median_economic_burden_delivery="Median EBD",
+        mean_ebd_per_ft2="Mean EBD / ft²",
+        median_ebd_per_ft2="Median EBD / ft²",
+    )
+    .fmt_integer(columns=["n_bat"])
+    .fmt_currency(
+        columns=["mean_economic_burden_delivery", "median_economic_burden_delivery"],
+        decimals=0,
+    )
+    .fmt_number(columns=["mean_ebd_per_ft2", "median_ebd_per_ft2"], decimals=3)
+    .sub_missing(missing_text="—")
+    .cols_align(
+        align="right",
+        columns=[
+            "n_bat",
+            "mean_economic_burden_delivery",
+            "median_economic_burden_delivery",
+            "mean_ebd_per_ft2",
+            "median_ebd_per_ft2",
+        ],
+    )
+)
+
+_ebd_100pct_partial_gt
+```
+
+## OLS: heating, total appliances, and cooling consumption (three predictors)
+
+```{python}
+#| label: heat-cool-appliances-total-kwh-vs-ebd-mlr
+
+import numpy as np
+
+_all_cols_heat_cool_app = (
+    *HEATING_KWH_SUM_SOURCE_COLS,
+    LOAD_CURVE_ANNUAL_COOLING_CONSUMED_COL,
+    *LOAD_CURVE_ANNUAL_APPLIANCES_COLS,
+)
+
+print(
+    "\nOLS (unweighted, three predictors): economic_burden_delivery ~ "
+    "heating_kwh_sum + total_appliances_kwh + cooling_energy_consumption_kwh\n"
+    f"  heating_kwh_sum = sum({', '.join(HEATING_KWH_SUM_SOURCE_COLS)})\n"
+    "  total_appliances_kwh = sum(`LOAD_CURVE_ANNUAL_APPLIANCES_COLS`) "
+    "(PV + laundry/DHW/plug + other)\n"
+    f"  cooling_energy_consumption_kwh = `{LOAD_CURVE_ANNUAL_COOLING_CONSUMED_COL}`\n"
+    f"  By `{UTIL_ELECTRIC_COL}`; skipped if n < 4 (intercept + 3 predictors).\n",
+)
+for _eu in _ny_electric_utils:
+    _bat_eu = bat_12_df.filter(pl.col(UTIL_ELECTRIC_COL) == _eu).select(
+        "bldg_id",
+        MARGINAL_COST_DELIVERY_COL,
+    )
+    _heat_cool_app_ebd_reg = (
+        annual_load_curve_up_00_df.select("bldg_id", *_all_cols_heat_cool_app)
+        .filter(
+            pl.all_horizontal(*[pl.col(c).is_not_null() for c in HEATING_KWH_SUM_SOURCE_COLS]),
+            pl.col(LOAD_CURVE_ANNUAL_COOLING_CONSUMED_COL).is_not_null(),
+            pl.all_horizontal(*[pl.col(c).is_not_null() for c in LOAD_CURVE_ANNUAL_APPLIANCES_COLS]),
+        )
+        .with_columns(
+            pl.sum_horizontal(*[pl.col(c) for c in HEATING_KWH_SUM_SOURCE_COLS]).alias(HEATING_KWH_SUM_COL),
+            pl.sum_horizontal(*[pl.col(c) for c in LOAD_CURVE_ANNUAL_APPLIANCES_COLS]).alias(
+                APPLIANCES_KWH_SUM_COL
+            ),
+        )
+        .select(
+            "bldg_id",
+            HEATING_KWH_SUM_COL,
+            APPLIANCES_KWH_SUM_COL,
+            LOAD_CURVE_ANNUAL_COOLING_CONSUMED_COL,
+        )
+        .join(_bat_eu, on="bldg_id", how="inner")
+        .filter(
+            pl.col(HEATING_KWH_SUM_COL).is_not_null(),
+            pl.col(APPLIANCES_KWH_SUM_COL).is_not_null(),
+            pl.col(LOAD_CURVE_ANNUAL_COOLING_CONSUMED_COL).is_not_null(),
+            pl.col(MARGINAL_COST_DELIVERY_COL).is_not_null(),
+        )
+    )
+    _nh = _heat_cool_app_ebd_reg.height
+    if _nh < 4:
+        print(f"  {_eu}: skipped (n={_nh}, need ≥4).\n")
+        continue
+    _x_heat_3p = _heat_cool_app_ebd_reg[HEATING_KWH_SUM_COL].to_numpy().astype(np.float64)
+    _x_app_3p = _heat_cool_app_ebd_reg[APPLIANCES_KWH_SUM_COL].to_numpy().astype(np.float64)
+    _x_cool_3p = _heat_cool_app_ebd_reg[LOAD_CURVE_ANNUAL_COOLING_CONSUMED_COL].to_numpy().astype(np.float64)
+    _y_3p = _heat_cool_app_ebd_reg[MARGINAL_COST_DELIVERY_COL].to_numpy().astype(np.float64)
+    _n_3p = _y_3p.shape[0]
+    _X_3p = np.column_stack((np.ones(_n_3p), _x_heat_3p, _x_app_3p, _x_cool_3p))
+    _beta_3p, *_ = np.linalg.lstsq(_X_3p, _y_3p, rcond=None)
+    _intercept_3p = float(_beta_3p[0])
+    _slope_heat_3p = float(_beta_3p[1])
+    _slope_app_3p = float(_beta_3p[2])
+    _slope_cool_3p = float(_beta_3p[3])
+    _y_hat_3p = _X_3p @ _beta_3p
+    _ss_res_3p = float(np.sum((_y_3p - _y_hat_3p) ** 2))
+    _ss_tot_3p = float(np.sum((_y_3p - np.mean(_y_3p)) ** 2))
+    _r_squared_3p = (1.0 - _ss_res_3p / _ss_tot_3p) if _ss_tot_3p > 0 else float("nan")
+    print(
+        f"  {_eu}: n={_nh:,}\n"
+        f"    intercept: {_intercept_3p:,.4f} ($/yr)\n"
+        f"    slope (heating kWh): {_slope_heat_3p:.8f} ($/yr per kWh)\n"
+        f"    slope (total appliances kWh): {_slope_app_3p:.8f} ($/yr per kWh)\n"
+        f"    slope (cooling kWh): {_slope_cool_3p:.8f} ($/yr per kWh)\n"
+        f"    R²: {_r_squared_3p:.6f}\n",
+    )
+```

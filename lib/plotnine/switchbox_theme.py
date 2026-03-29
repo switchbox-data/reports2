@@ -5,9 +5,10 @@ elements, producing a consistent visual hierarchy across reports.
 
 Typography guide
 ----------------
-- **Title** (GT Planar Bold 15pt black): chart headline, echoes H3 headings.
+- **Title** (GT Planar Bold 15pt black, **left-aligned**): chart headline, echoes H3 headings.
 - **Labeling layer** (GT Planar 13pt #333333): subtitle, axis titles, strip
-  (facet) labels, legend title.  All share the same font/size/color.
+  (facet) labels, legend title.  Title and subtitle are **left-aligned** (not centered);
+  other labeling elements keep theme defaults.
 - **Data-reference layer** (IBM Plex Sans 11pt #4D4D4D): axis tick labels,
   legend text — smallest text, for reading values off axes.
 
@@ -29,7 +30,7 @@ from typing import Any, Literal
 
 import matplotlib as mpl
 from matplotlib import font_manager
-from plotnine import element_line, element_rect, element_text, theme
+from plotnine import element_blank, element_line, element_rect, element_text, theme
 from plotnine.themes.theme_minimal import theme_minimal
 
 type _MarginKey = Literal["t", "b", "l", "r", "unit"]
@@ -67,6 +68,8 @@ def _register_fonts() -> None:
 
 
 SB_COLORS: dict[str, str] = {
+    "gray_light": "#E0E0E0",
+    "gray": "#999999",
     "sky": "#68BED8",
     "midnight": "#023047",
     "carrot": "#FC9706",
@@ -88,16 +91,17 @@ class theme_switchbox(theme_minimal):
 
     Three-tier text hierarchy:
 
-    ====  ====================  ===========================
+    ====  ====================  ==============================================
     Tier  Elements              Spec
-    ====  ====================  ===========================
-    1     plot_title            GT Planar Bold · 15pt · black
-    2     subtitle, axis        GT Planar · 13pt · #333333
-          titles, strip text,
+    ====  ====================  ==============================================
+    1     plot_title            GT Planar Bold · 15pt · black · left-aligned
+    2     plot_subtitle         GT Planar · 13pt · #333333 · left-aligned
+    2     axis titles,          GT Planar · 13pt · #333333
+          strip text,
           legend title
     3     axis tick labels,     IBM Plex Sans · 11pt · #4D4D4D
           legend text
-    ====  ====================  ===========================
+    ====  ====================  ==============================================
     """
 
     def __init__(self, base_size: int = 11):
@@ -114,6 +118,7 @@ class theme_switchbox(theme_minimal):
                 fontweight="bold",
                 size=15,
                 color="black",
+                ha="left",
                 margin=margin_title,
             ),
             # Tier 2 — labeling layer
@@ -121,6 +126,7 @@ class theme_switchbox(theme_minimal):
                 family=_FONT_GT_PLANAR,
                 size=13,
                 color=_COLOR_LABEL,
+                ha="left",
             ),
             axis_title_x=element_text(
                 family=_FONT_GT_PLANAR,
@@ -165,7 +171,13 @@ class theme_switchbox(theme_minimal):
                 size=11,
                 color=_COLOR_DATA,
             ),
-            # Structure
-            axis_line=element_line(size=0.5),
-            axis_ticks=element_line(color="black"),
+            # Structure: x-axis line and ticks visible; y-axis line and ticks hidden.
+            # Horizontal grid lines (from theme_minimal) remain for y-axis reference;
+            # vertical grid lines removed so the x-axis ticks are the only vertical cue.
+            axis_line_x=element_line(size=0.5),
+            axis_line_y=element_blank(),
+            axis_ticks_x=element_line(color="black"),
+            axis_ticks_y=element_blank(),
+            panel_grid_major_x=element_blank(),
+            panel_grid_minor_x=element_blank(),
         )

@@ -2591,6 +2591,13 @@ for display, code in TARIFF_UTILS.items():
                  "fixed_charge": fixed})
 
 tou_df = pl.DataFrame(rows)
+
+_coned_tou = tou_df.filter(pl.col("utility") == "ConEd")
+for _row in _coned_tou.to_dicts():
+    _sn = _row["season"].lower()
+    report_vars[f"tou_coned_{_sn}_on"] = _row["total_on"]
+    report_vars[f"tou_coned_{_sn}_off"] = _row["total_off"]
+
 tou_df
 ```
 
@@ -3003,6 +3010,7 @@ _HOUR_TICKS = list(range(0, 25, 3))
 _HOUR_LABELS = ["12am", "3am", "6am", "9am", "12pm", "3pm", "6pm", "9pm", "12am"]
 _C_DELIVERY = SB_COLORS["midnight"]
 _C_SUPPLY = SB_COLORS["sky"]
+_FLAT_DEFAULT_UTILS = {"nimo", "nyseg", "cenhud", "rge"}
 
 
 def _extract_season_data(d, b, month_idx, off_idx, on_idx):
@@ -3071,6 +3079,24 @@ def _make_tou_chart(display_name, tariff_code):
     fig.suptitle(display_name, fontsize=13, fontweight="bold")
     _draw_tou_season(ax_top, "Summer", s_ps, s_pe, s_do, s_so, s_dn, s_sn, ymax)
     _draw_tou_season(ax_bot, "Winter", w_ps, w_pe, w_do, w_so, w_dn, w_sn, ymax)
+
+    if tariff_code in _FLAT_DEFAULT_UTILS:
+        default_b = _load_rate(f"{tariff_code}_default_supply_calibrated.json")
+        default_rates = _get_rates(default_b)
+
+        w_period = default_b["energyweekdayschedule"][0][0]
+        w_default = default_rates[w_period] * 100
+
+        s_period = default_b["energyweekdayschedule"][6][0]
+        s_default = default_rates[s_period] * 100
+
+        for ax, rate in [(ax_top, s_default), (ax_bot, w_default)]:
+            ax.axhline(rate, color=SB_COLORS["saffron"], linestyle="--",
+                       linewidth=1.0, zorder=0)
+            ax.text(24, rate, f"  {rate:.0f}¢ default",
+                    va="center", ha="left", fontsize=8,
+                    color=SB_COLORS["saffron"], fontweight="bold",
+                    clip_on=False)
 
     delivery_patch = mpatches.Patch(facecolor=_C_DELIVERY, label="Delivery")
     supply_patch = mpatches.Patch(facecolor=_C_SUPPLY, label="Supply")
@@ -3238,6 +3264,15 @@ if INCLUDE_TOU:
             "on_rate": _on_r, "off_rate": _off_r, "epsilon": _eps,
             "savings": _shifted * (_on_r - _off_r),
         }
+
+    for _sn in ["winter", "summer"]:
+        _fs = _flex_season_stats[_sn]
+        _total = _fs["remaining_peak_kwh"] + _fs["shifted_kwh"] + _fs["offpeak_kwh"]
+        _onpeak_total = _fs["remaining_peak_kwh"] + _fs["shifted_kwh"]
+        report_vars[f"tou_flex_{_sn}_onpeak_share"] = _onpeak_total / _total
+        report_vars[f"tou_flex_{_sn}_shift_share"] = _fs["shifted_kwh"] / _onpeak_total
+        report_vars[f"tou_flex_{_sn}_savings"] = _fs["savings"]
+        report_vars[f"tou_flex_{_sn}_on_off_ratio"] = _fs["on_rate"] / _fs["off_rate"]
 
     _FLEX_COLORS = {
         "Off-peak": SB_COLORS["sky"],
@@ -3910,6 +3945,18 @@ if INCLUDE_TOU:
             ("heat pumps", "#c47600"),
         ],
     )
+    _q_fair = quadrant_pcts(natgas_switch_state)
+    _q_tou = quadrant_pcts(natgas_tou_state)
+    _fair_lose = _q_fair["losses $0-1k"] + _q_fair["losses > $1k"]
+    _tou_lose = _q_tou["losses $0-1k"] + _q_tou["losses > $1k"]
+    report_vars["tou_lose_drop_pp"] = (_fair_lose - _tou_lose) / 100
+    report_vars["tou_save_1k_rise_pp"] = (_q_tou["savings > $1k"] - _q_fair["savings > $1k"]) / 100
+
+    def _weighted_mean_savings(df: pl.DataFrame) -> float:
+        savers = df.filter(pl.col("delta") < 0)
+        return float((-savers["delta"] * savers["weight"]).sum() / savers["weight"].sum())
+
+    report_vars["tou_avg_savings_rise"] = _weighted_mean_savings(natgas_tou_state) - _weighted_mean_savings(natgas_switch_state)
 else:
     _tou_quadrant_fig = None
 _tou_quadrant_fig

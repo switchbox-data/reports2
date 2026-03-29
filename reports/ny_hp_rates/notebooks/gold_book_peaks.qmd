@@ -416,14 +416,6 @@ rate-design-platform `fit_adoption_config.py`). **Ribbons** plot the fitted sigm
 not sit exactly on the smooth curves). Denominator: EIA-861 on S3.
 
 ```{python}
-#| label: fig-nyca-electrified-housing-image
-#| fig-cap: >
-#|   NYCA residential households converted to electric heating by technology.
-#|   Cumulative band edges digitized from the NYISO chart image; one logistic fit
-#|   per layer to fraction of NY residential electric customers; stacked ribbons =
-#|   fitted sigmoids. Points = digitized readings from the reference image.
-#|   EIA-861: s3://data.sb/eia/861/electric_utility_stats/.
-#| fig-cap-location: margin
 
 S3_EIA861_BASE = "s3://data.sb/eia/861/electric_utility_stats/"
 _AWS_S3_OPTS = {"aws_region": "us-west-2"}
@@ -623,6 +615,18 @@ for j in range(len(_TECH_ORDER)):
     mid = _cum_y + _band_pcts_end[j] / 2
     _label_ys.append(mid)
     _cum_y += _band_pcts_end[j]
+
+```
+
+```{python}
+#| label: fig-nyca-electrified-housing-image
+#| fig-cap: >
+#|   NYCA residential households converted to electric heating by technology.
+#|   Cumulative band edges digitized from the NYISO chart image; one logistic fit
+#|   per layer to fraction of NY residential electric customers; stacked ribbons =
+#|   fitted sigmoids. Points = digitized readings from the reference image.
+#|   EIA-861: s3://data.sb/eia/861/electric_utility_stats/.
+#| fig-cap-location: margin
 
 from lib.quarto import display_svg
 
@@ -839,12 +843,15 @@ _y_hi = max(df_peak["winter_with"].max(), df_peak["summer_with"].max()) * 1.05
 #| label: peak-report-vars
 
 last_yr = all_years[-1]
+first_yr = all_years[0]
+report_vars["winter_peak_baseline_2025"] = _nyca(i3b_base, first_yr)
+report_vars["summer_peak_baseline_2025"] = _nyca(i3a_base, first_yr)
+report_vars["winter_summer_ratio_2025"] = (
+    report_vars["winter_peak_baseline_2025"] / report_vars["summer_peak_baseline_2025"]
+)
 report_vars["winter_peak_baseline_2055"] = _nyca(i3b_base, last_yr)
 report_vars["summer_peak_baseline_2055"] = _nyca(i3a_base, last_yr)
 report_vars["elec_contribution_winter_2055"] = _nyca(i13c_base, last_yr)
-report_vars["winter_summer_ratio_2025"] = (
-    _nyca(i3b_base, all_years[0]) / _nyca(i3a_base, all_years[0])
-)
 
 print(
     f"By {last_yr}:\n"
@@ -1094,7 +1101,7 @@ for _i_sub, (_txt_sub, _col_sub) in enumerate(_subtitle_parts):
 
 _fig_s.canvas.draw()
 display_svg(_fig_s)
- ```
+```
 
 ## Figure 3c: Summer + Winter Peak — Overlaid Growth Decomposition
 
@@ -1265,6 +1272,25 @@ for yr_str in all_years:
         break
     _prev_diff = diff
     _prev_yr = yr
+
+# Lower demand scenario: same crossover rule (winter CP ≥ summer CP), Tables I-3b-L / I-3a-L
+_cross_year_lower: float | None = None
+_prev_diff_l: float | None = None
+_prev_yr_l: int | None = None
+for yr_str in all_years:
+    yr = int(yr_str.split("-")[0])
+    w_l = _nyca(i3b_low, yr_str)
+    s_l = _nyca(i3a_low, yr_str)
+    diff_l = float(w_l - s_l)
+    if diff_l >= 0:
+        if _prev_diff_l is not None and _prev_yr_l is not None and _prev_diff_l < 0:
+            frac_l = -_prev_diff_l / (diff_l - _prev_diff_l)
+            _cross_year_lower = _prev_yr_l + frac_l
+        else:
+            _cross_year_lower = float(yr)
+        break
+    _prev_diff_l = diff_l
+    _prev_yr_l = yr
 
 
 def _winter_scaled_be_mw(yr_str: str) -> float:
@@ -1666,10 +1692,21 @@ df_binding_yoy = pl.DataFrame(binding_bar_rows).with_columns(
 #| label: binding-peak-yoy-report-vars
 
 if _cross_year is not None:
-    report_vars["nyca_crossover_year"] = round(_cross_year)
-    print(f"NYCA crossover year (winter ≥ summer): ~{round(_cross_year)}")
+    report_vars["nyca_crossover_year"] = int(round(_cross_year))
+    print(f"NYCA crossover year (winter ≥ summer): ~{report_vars['nyca_crossover_year']}")
 else:
+    report_vars["nyca_crossover_year"] = None
     print("Winter never exceeds summer within the forecast window")
+
+if _cross_year_lower is not None:
+    report_vars["nyca_crossover_year_lower"] = int(round(_cross_year_lower))
+    print(
+        f"NYCA crossover year, lower demand scenario (winter ≥ summer): "
+        f"~{report_vars['nyca_crossover_year_lower']}"
+    )
+else:
+    report_vars["nyca_crossover_year_lower"] = None
+    print("Lower scenario: winter never exceeds summer within the forecast window")
 ```
 
 ## Utility headroom and scenario stacks
@@ -1853,128 +1890,158 @@ _u_band_to_label: dict[str, str] = {
     "W: BE": "Building electrification",
 }
 
-_util_combined: dict[str, pl.DataFrame] = {}
-_util_summer_line: dict[str, pl.DataFrame] = {}
-_util_crossover: dict[str, float | None] = {}
+# ── Scenario table mapping ──
+_COMBINED_SCENARIOS: dict[str, dict] = {
+    "Baseline": {
+        "i3a": i3a_base, "i3b": i3b_base,
+        "be_s": i13b_base, "ev_s": i11c_base,
+        "be_w": i13c_base, "ev_w": i11d_base,
+        "ll_w": i14, "ll_s": i14_summer,
+    },
+    "Lower demand": {
+        "i3a": i3a_low, "i3b": i3b_low,
+        "be_s": i13b_low, "ev_s": i11c_low,
+        "be_w": i13c_low, "ev_w": i11d_low,
+        "ll_w": i14_low, "ll_s": i14_summer_low,
+    },
+}
+
+# Output dicts: [utility][scenario]
+_util_combined: dict[str, dict[str, pl.DataFrame]] = {}
+_util_summer_line: dict[str, dict[str, pl.DataFrame]] = {}
+_util_crossover: dict[str, dict[str, float | None]] = {}
 
 for _u, _zones in UTILITY_ZONES.items():
-    _rows_u: list[dict] = []
+    _util_combined[_u] = {}
+    _util_summer_line[_u] = {}
+    _util_crossover[_u] = {}
 
-    _s_base_no_ll = (
-        _util_sum(i3a_base, all_years[0], _zones)
-        - _util_sum(i14_summer, all_years[0], _zones)
-    )
-    _w_base_no_ll = (
-        _util_sum(i3b_base, all_years[0], _zones)
-        - _util_sum(i14, all_years[0], _zones)
-    )
+    for _sc_name, _sc in _COMBINED_SCENARIOS.items():
+        _rows_u: list[dict] = []
 
-    _pv_diff_u: float | None = None
-    _pv_yr_u: int | None = None
-    _cross_u: float | None = None
-
-    for _yr_str in all_years:
-        _yr = int(_yr_str.split("-")[0])
-
-        # Raw totals excluding large loads
-        _s_total = _util_sum(i3a_base, _yr_str, _zones) - _util_sum(i14_summer, _yr_str, _zones)
-        _w_total = _util_sum(i3b_base, _yr_str, _zones) - _util_sum(i14, _yr_str, _zones)
-
-        # ── Summer stack (same neg-scaling as NYCA Figure 3c) ──
-        _s_net = _s_total - _s_base_no_ll
-        _s_be_g = _util_sum(i13b_base, _yr_str, _zones)
-        _s_ev_g = _util_sum(i11c_base, _yr_str, _zones)
-        _s_neg = (
-            _util_sum(i8b, _yr_str, _zones)
-            + _util_sum(i10b, _yr_str, _zones)
-            + _util_sum(i12b, _yr_str, _zones)
+        _s_base_no_ll = (
+            _util_sum(_sc["i3a"], all_years[0], _zones)
+            - _util_sum(_sc["ll_s"], all_years[0], _zones)
         )
-        _s_organic_gross = _s_net - (_s_be_g + _s_ev_g) + _s_neg
-        _s_gross_pos = _s_net + _s_neg
-        _s_scale = _s_net / _s_gross_pos if _s_gross_pos > 0 else 0.0
-        _s_organic = max(_s_organic_gross * _s_scale, 0)
-        _s_ev = _s_ev_g * _s_scale
-        _s_be = _s_be_g * _s_scale
-
-        _cum = 0.0
-        for _lbl, _val in [
-            ("S: Base", float(_s_base_no_ll)),
-            ("S: Organic", _s_organic),
-            ("S: EV", _s_ev),
-            ("S: BE", _s_be),
-        ]:
-            _rows_u.append({
-                "year": _yr, "component": _lbl, "ymin": _cum, "ymax": _cum + _val,
-            })
-            _cum += _val
-
-        # ── Winter stack ──
-        _w_net = _w_total - _w_base_no_ll
-        _w_be_g = _util_sum(i13c_base, _yr_str, _zones)
-        _w_ev_g = _util_sum(i11d_base, _yr_str, _zones)
-        _w_neg = (
-            _util_sum(i8c, _yr_str, _zones)
-            + _util_sum(i10c, _yr_str, _zones)
-            + _util_sum(i12c, _yr_str, _zones)
+        _w_base_no_ll = (
+            _util_sum(_sc["i3b"], all_years[0], _zones)
+            - _util_sum(_sc["ll_w"], all_years[0], _zones)
         )
-        _w_organic_gross = _w_net - (_w_be_g + _w_ev_g) + _w_neg
-        _w_gross_pos = _w_net + _w_neg
-        _w_scale = _w_net / _w_gross_pos if _w_gross_pos > 0 else 0.0
-        _w_organic = max(_w_organic_gross * _w_scale, 0)
-        _w_ev = _w_ev_g * _w_scale
-        _w_be = _w_be_g * _w_scale
 
-        _cum = 0.0
-        for _lbl, _val in [
-            ("W: Base", float(_w_base_no_ll)),
-            ("W: Organic", _w_organic),
-            ("W: EV", _w_ev),
-            ("W: BE", _w_be),
-        ]:
-            _rows_u.append({
-                "year": _yr, "component": _lbl, "ymin": _cum, "ymax": _cum + _val,
-            })
-            _cum += _val
+        _pv_diff_u: float | None = None
+        _pv_yr_u: int | None = None
+        _cross_u: float | None = None
 
-        # Crossover: winter (no LL) >= summer (no LL)
-        _diff_u = float(_w_total - _s_total)
-        if _cross_u is None and _diff_u >= 0:
-            if _pv_diff_u is not None and _pv_yr_u is not None and _pv_diff_u < 0:
-                _frac = -_pv_diff_u / (_diff_u - _pv_diff_u)
-                _cross_u = _pv_yr_u + _frac
-            else:
-                _cross_u = float(_yr)
-        _pv_diff_u = _diff_u
-        _pv_yr_u = _yr
+        for _yr_str in all_years:
+            _yr = int(_yr_str.split("-")[0])
 
-    _df_u = pl.DataFrame(_rows_u).with_columns(
-        pl.col("component").cast(pl.Enum(_u_co_all))
-    )
-    _util_combined[_u] = _df_u
-    _util_summer_line[_u] = (
-        _df_u.filter(pl.col("component").is_in(_u_co_summer))
-        .group_by("year").agg(pl.col("ymax").max().alias("summer_top"))
-        .sort("year")
-    )
-    _util_crossover[_u] = _cross_u
+            _s_total = (
+                _util_sum(_sc["i3a"], _yr_str, _zones)
+                - _util_sum(_sc["ll_s"], _yr_str, _zones)
+            )
+            _w_total = (
+                _util_sum(_sc["i3b"], _yr_str, _zones)
+                - _util_sum(_sc["ll_w"], _yr_str, _zones)
+            )
 
-# Headroom: horizontal capacity line and CP-based exhaustion year.
-#
-# HEADROOM_MW is the delta between winter peak and distribution capacity.
-# All utilities are summer-peaking at baseline, so:
-#   capacity = winter_CP_base_no_LL@HEADROOM_BASELINE_YEAR + HEADROOM_MW
-# The exhaustion year is the first year *either* season's CP (excl LL)
-# reaches capacity. Using CP (not NCP) keeps the vertical line consistent
-# with the chart y-axis and the horizontal line.
+            # ── Summer stack (neg-scaling) ──
+            _s_net = _s_total - _s_base_no_ll
+            _s_be_g = _util_sum(_sc["be_s"], _yr_str, _zones)
+            _s_ev_g = _util_sum(_sc["ev_s"], _yr_str, _zones)
+            _s_neg = (
+                _util_sum(i8b, _yr_str, _zones)
+                + _util_sum(i10b, _yr_str, _zones)
+                + _util_sum(i12b, _yr_str, _zones)
+            )
+            _s_organic_gross = _s_net - (_s_be_g + _s_ev_g) + _s_neg
+            _s_gross_pos = _s_net + _s_neg
+            _s_scale = _s_net / _s_gross_pos if _s_gross_pos > 0 else 0.0
+            _s_organic = max(_s_organic_gross * _s_scale, 0)
+            _s_ev = _s_ev_g * _s_scale
+            _s_be = _s_be_g * _s_scale
+
+            _cum = 0.0
+            for _lbl, _val in [
+                ("S: Base", float(_s_base_no_ll)),
+                ("S: Organic", _s_organic),
+                ("S: EV", _s_ev),
+                ("S: BE", _s_be),
+            ]:
+                _rows_u.append({
+                    "year": _yr, "component": _lbl,
+                    "ymin": _cum, "ymax": _cum + _val,
+                })
+                _cum += _val
+
+            # ── Winter stack ──
+            _w_net = _w_total - _w_base_no_ll
+            _w_be_g = _util_sum(_sc["be_w"], _yr_str, _zones)
+            _w_ev_g = _util_sum(_sc["ev_w"], _yr_str, _zones)
+            _w_neg = (
+                _util_sum(i8c, _yr_str, _zones)
+                + _util_sum(i10c, _yr_str, _zones)
+                + _util_sum(i12c, _yr_str, _zones)
+            )
+            _w_organic_gross = _w_net - (_w_be_g + _w_ev_g) + _w_neg
+            _w_gross_pos = _w_net + _w_neg
+            _w_scale = _w_net / _w_gross_pos if _w_gross_pos > 0 else 0.0
+            _w_organic = max(_w_organic_gross * _w_scale, 0)
+            _w_ev = _w_ev_g * _w_scale
+            _w_be = _w_be_g * _w_scale
+
+            _cum = 0.0
+            for _lbl, _val in [
+                ("W: Base", float(_w_base_no_ll)),
+                ("W: Organic", _w_organic),
+                ("W: EV", _w_ev),
+                ("W: BE", _w_be),
+            ]:
+                _rows_u.append({
+                    "year": _yr, "component": _lbl,
+                    "ymin": _cum, "ymax": _cum + _val,
+                })
+                _cum += _val
+
+            # Crossover: winter (no LL) >= summer (no LL)
+            _diff_u = float(_w_total - _s_total)
+            if _cross_u is None and _diff_u >= 0:
+                if (
+                    _pv_diff_u is not None
+                    and _pv_yr_u is not None
+                    and _pv_diff_u < 0
+                ):
+                    _frac = -_pv_diff_u / (_diff_u - _pv_diff_u)
+                    _cross_u = _pv_yr_u + _frac
+                else:
+                    _cross_u = float(_yr)
+            _pv_diff_u = _diff_u
+            _pv_yr_u = _yr
+
+        _df_u = pl.DataFrame(_rows_u).with_columns(
+            pl.col("component").cast(pl.Enum(_u_co_all))
+        )
+        _util_combined[_u][_sc_name] = _df_u
+        _util_summer_line[_u][_sc_name] = (
+            _df_u.filter(pl.col("component").is_in(_u_co_summer))
+            .group_by("year").agg(pl.col("ymax").max().alias("summer_top"))
+            .sort("year")
+        )
+        _util_crossover[_u][_sc_name] = _cross_u
+
+# ── Headroom per scenario ──
+# capacity = winter_CP_base_no_LL@HEADROOM_BASELINE_YEAR + HEADROOM_MW
+# (physical infrastructure does not change across demand scenarios)
+# Exhaustion year: first year *either* season's CP (excl LL) reaches capacity.
 
 _util_headroom_y: dict[str, float | None] = {}
-_util_headroom_ex: dict[str, float | None] = {}
-_util_headroom_binding: dict[str, str] = {}
+_util_headroom_ex: dict[str, dict[str, float | None]] = {}
+_util_headroom_binding: dict[str, dict[str, str]] = {}
 
 for _u_hr, _zones_hr in UTILITY_ZONES.items():
     if _u_hr in ("Con Edison", "Central Hudson"):
         _util_headroom_y[_u_hr] = None
-        _util_headroom_ex[_u_hr] = None
+        _util_headroom_ex[_u_hr] = {s: None for s in _COMBINED_SCENARIOS}
+        _util_headroom_binding[_u_hr] = {s: "" for s in _COMBINED_SCENARIOS}
         continue
 
     _w_base_hr = (
@@ -1984,57 +2051,57 @@ for _u_hr, _zones_hr in UTILITY_ZONES.items():
     _capacity = _w_base_hr + HEADROOM_MW[_u_hr]
     _util_headroom_y[_u_hr] = _capacity
 
-    _ex: float | None = None
-    _binding_season = ""
-    _prev_s: float | None = None
-    _prev_w: float | None = None
-    _prev_yr: int | None = None
-    for _yr_str in all_years:
-        _yr_int = int(_yr_str.split("-")[0])
-        _s_cp = float(
-            _util_sum(i3a_base, _yr_str, _zones_hr)
-            - _util_sum(i14_summer, _yr_str, _zones_hr)
-        )
-        _w_cp = float(
-            _util_sum(i3b_base, _yr_str, _zones_hr)
-            - _util_sum(i14, _yr_str, _zones_hr)
-        )
-        _peak = max(_s_cp, _w_cp)
-        if _peak >= _capacity:
-            _binding_season = "Summer" if _s_cp >= _w_cp else "Winter"
-            _prev_peak = max(_prev_s or 0, _prev_w or 0)
-            if _prev_yr is not None and _prev_peak < _capacity:
-                _frac = (_capacity - _prev_peak) / (_peak - _prev_peak)
-                _ex = _prev_yr + _frac
-            else:
-                _ex = float(_yr_int)
-            break
-        _prev_s, _prev_w, _prev_yr = _s_cp, _w_cp, _yr_int
-    _util_headroom_ex[_u_hr] = _ex
-    _util_headroom_binding[_u_hr] = _binding_season
+    _util_headroom_ex[_u_hr] = {}
+    _util_headroom_binding[_u_hr] = {}
+
+    for _sc_name, _sc in _COMBINED_SCENARIOS.items():
+        _ex: float | None = None
+        _binding_season = ""
+        _prev_s: float | None = None
+        _prev_w: float | None = None
+        _prev_yr: int | None = None
+        for _yr_str in all_years:
+            _yr_int = int(_yr_str.split("-")[0])
+            _s_cp = float(
+                _util_sum(_sc["i3a"], _yr_str, _zones_hr)
+                - _util_sum(_sc["ll_s"], _yr_str, _zones_hr)
+            )
+            _w_cp = float(
+                _util_sum(_sc["i3b"], _yr_str, _zones_hr)
+                - _util_sum(_sc["ll_w"], _yr_str, _zones_hr)
+            )
+            _peak = max(_s_cp, _w_cp)
+            if _peak >= _capacity:
+                _binding_season = "Summer" if _s_cp >= _w_cp else "Winter"
+                _prev_peak = max(_prev_s or 0, _prev_w or 0)
+                if _prev_yr is not None and _prev_peak < _capacity:
+                    _frac = (_capacity - _prev_peak) / (_peak - _prev_peak)
+                    _ex = _prev_yr + _frac
+                else:
+                    _ex = float(_yr_int)
+                break
+            _prev_s, _prev_w, _prev_yr = _s_cp, _w_cp, _yr_int
+        _util_headroom_ex[_u_hr][_sc_name] = _ex
+        _util_headroom_binding[_u_hr][_sc_name] = _binding_season
 
 print("Crossover years by utility (excl. large loads):")
-for _u, _cx in _util_crossover.items():
-    print(f"  {_u}: ~{round(_cx) if _cx is not None else 'never'}")
+for _u in UTILITY_ZONES:
+    for _sc_name in _COMBINED_SCENARIOS:
+        _cx = _util_crossover[_u][_sc_name]
+        print(f"  {_u} [{_sc_name}]: ~{round(_cx) if _cx is not None else 'never'}")
 print("Headroom (CP-based, excl LL):")
 for _u_hr in UTILITY_ZONES:
     _y = _util_headroom_y.get(_u_hr)
-    _ex = _util_headroom_ex.get(_u_hr)
-    _b = _util_headroom_binding.get(_u_hr, "")
     _cap_s = f"{_y:.0f} MW" if _y is not None else "skipped"
-    _ex_s = f"{_ex} ({_b})" if _ex is not None else "never"
-    print(f"  {_u_hr}: capacity={_cap_s}  exhausted={_ex_s}")
+    for _sc_name in _COMBINED_SCENARIOS:
+        _ex = (_util_headroom_ex.get(_u_hr) or {}).get(_sc_name)
+        _b = (_util_headroom_binding.get(_u_hr) or {}).get(_sc_name, "")
+        _ex_s = f"{_ex:.1f} ({_b})" if _ex is not None else "never"
+        print(f"  {_u_hr} [{_sc_name}]: capacity={_cap_s}  exhausted={_ex_s}")
 ```
 
 ```{python}
-#| label: fig-season-growth
-#| fig-cap: >
-#|   Per-utility summer (behind, translucent) and winter (in front, solid)
-#|   coincident peak decomposed into growth components, excluding large loads
-#|   (which connect at substations). Crossover year recalculated without large
-#|   loads. Gray dotted line traces summer peak after winter eclipses it.
-#|   Source: NYISO Gold Book 2025.
-#| fig-cap-location: margin
+#| label: render-utility-season-helper
 
 from lib.quarto import display_svg
 
@@ -2042,83 +2109,69 @@ _SEASON_SUMMER_REF_LINESTYLE = (0, (0.35, 1.25))
 _SUMMER_ALPHA_U = 0.22
 _WINTER_ALPHA_U = 1.0
 
-# Group A: early crossover, ample headroom — show headroom exhaustion only
-# Group B: less headroom or unknown — show crossover only
-_GROUP_A = {"National Grid", "NYSEG & RG&E"}
+_GROUP_A = {"National Grid", "NYSEG & RGE"}
 _GROUP_B = {"Central Hudson", "Orange & Rockland", "Con Edison"}
+_SCENARIO_ENUM = pl.Enum(["Baseline", "Lower demand"])
 
-for _u in UTILITY_ZONES:
-    _df_u = _util_combined[_u]
-    _sl_u = _util_summer_line[_u]
-    _cx_u = _util_crossover[_u]
-    _is_a = _u in _GROUP_A
 
-    _y_hi_u = float(max(
-        _df_u["ymax"].max(),
-        _sl_u["summer_top"].max(),
+def _render_utility_season_chart(utility: str) -> None:
+    """Render a faceted (Baseline / Lower demand) season chart for one utility."""
+    _is_a = utility in _GROUP_A
+    _scenarios = list(_COMBINED_SCENARIOS.keys())
+
+    # Combine both scenarios into one DataFrame with a scenario column
+    _frames = []
+    for _sc_name in _scenarios:
+        _frames.append(
+            _util_combined[utility][_sc_name].with_columns(
+                pl.lit(_sc_name).alias("scenario")
+            )
+        )
+    _df_all = pl.concat(_frames).with_columns(
+        pl.col("scenario").cast(_SCENARIO_ENUM)
+    )
+
+    # y-limit: max across both scenarios
+    _y_hi = float(max(
+        max(
+            _util_combined[utility][s]["ymax"].max()
+            for s in _scenarios
+        ),
+        max(
+            _util_summer_line[utility][s]["summer_top"].max()
+            for s in _scenarios
+        ),
     )) * 1.05
 
-    # Build placeholder title (plotnine reserves layout space; we repaint below)
+    # Placeholder title (repainted via matplotlib below)
     if _is_a:
-        _ex_u = _util_headroom_ex.get(_u)
-        _yr_str_u = str(round(_ex_u)) if _ex_u is not None else "20XX"
-        _title_u = (
-            f"{_u}'s winter peak growth forecasted to exhaust"
-            f" headroom by {_yr_str_u}"
+        _ex_base = (_util_headroom_ex.get(utility) or {}).get("Baseline")
+        _yr_str = str(round(_ex_base)) if _ex_base is not None else "20XX"
+        _title = (
+            f"{utility}'s winter peak growth forecasted to exhaust"
+            f" headroom by {_yr_str}"
         )
     else:
-        _yr_str_u = str(round(_cx_u)) if _cx_u is not None else "20XX"
-        _title_u = (
-            f"{_u}: building electrification only starts causing"
-            f" upgrades after {_yr_str_u}"
+        _cx_base = _util_crossover[utility].get("Baseline")
+        _yr_str = str(round(_cx_base)) if _cx_base is not None else "20XX"
+        _title = (
+            f"{utility}: building electrification only starts causing"
+            f" upgrades after {_yr_str}"
         )
 
     _p = (
         ggplot()
         + geom_ribbon(
-            _df_u.filter(pl.col("component").is_in(_u_co_summer)),
+            _df_all.filter(pl.col("component").is_in(_u_co_summer)),
             aes(x="year", ymin="ymin", ymax="ymax", fill="component"),
             alpha=_SUMMER_ALPHA_U,
         )
         + geom_ribbon(
-            _df_u.filter(pl.col("component").is_in(_u_co_winter)),
+            _df_all.filter(pl.col("component").is_in(_u_co_winter)),
             aes(x="year", ymin="ymin", ymax="ymax", fill="component"),
             alpha=_WINTER_ALPHA_U,
         )
-    )
-
-    if _is_a:
-        # Group A: pistachio vertical line at headroom exhaustion year
-        if _ex_u is not None:
-            _hr_y_a = _util_headroom_y.get(_u, _y_hi_u * 0.7)
-            _p = _p + geom_vline(
-                xintercept=_ex_u,
-                color=SB_COLORS["pistachio"], size=0.5, linetype="dashed",
-            ) + annotate(
-                "text", x=_ex_u, y=(_hr_y_a or _y_hi_u * 0.7) * 0.92,
-                label=f"Capacity\nexhausted\n~{round(_ex_u)}",
-                color=SB_COLORS["pistachio"], size=9, ha="right",
-                nudge_x=-0.2,
-            )
-    else:
-        # Group B: pistachio crossover line
-        if _cx_u is not None:
-            _p = (
-                _p
-                + geom_vline(
-                    xintercept=_cx_u,
-                    color=SB_COLORS["pistachio"], size=0.5, linetype="dashed",
-                )
-                + annotate(
-                    "text", x=_cx_u, y=_y_hi_u * 0.98,
-                    label="Crossover",
-                    color=SB_COLORS["pistachio"], size=9, ha="right",
-                    nudge_x=-0.2,
-                )
-            )
-
-    _p = (
-        _p
+        + facet_wrap("scenario", ncol=1)
         + scale_fill_manual(values=_U_FILL, breaks=_u_co_all)
         + guides(fill=False)
         + scale_x_continuous(
@@ -2129,148 +2182,237 @@ for _u in UTILITY_ZONES:
             labels=lambda lst: [f"{int(v):,}" if v > 0 else "" for v in lst],
             expand=(0, 0),
         )
-        + coord_cartesian(xlim=(2025, 2055), ylim=(0, _y_hi_u))
-        + labs(title=_title_u, x="", y="MW")
+        + coord_cartesian(xlim=(2025, 2055), ylim=(0, _y_hi))
+        + labs(title=_title, x="", y="MW")
         + theme_switchbox()
         + theme(
-            figure_size=(10.5, 5.5),
+            figure_size=(10.5, 9.5),
             plot_subtitle=element_blank(),
             plot_title=element_text(
                 margin={"t": 4, "b": 22, "units": "pt"}, ha="left",
             ),
+            strip_text=element_text(size=12, ha="left"),
         )
     )
 
-    _fig_u = _p.draw()
-    _ax_u = _fig_u.axes[0]
+    _fig = _p.draw()
 
-    # Gray dotted summer reference from crossover
-    _sl_s = _sl_u.sort("year")
-    _syr = _sl_s["year"].to_numpy().astype(float)
-    _stp = _sl_s["summer_top"].to_numpy().astype(float)
-    if _cx_u is not None:
-        _y0_u = float(np.interp(_cx_u, _syr, _stp))
-        _post = _syr > _cx_u
-        _xs_u = np.concatenate((np.array([_cx_u]), _syr[_post]))
-        _ys_u = np.concatenate((np.array([_y0_u]), _stp[_post]))
-    else:
-        _xs_u, _ys_u = _syr, _stp
-    _ax_u.plot(
-        _xs_u, _ys_u,
-        color=SB_COLORS["gray"], linewidth=1.0,
-        linestyle=_SEASON_SUMMER_REF_LINESTYLE,
-        solid_capstyle="round", zorder=6, clip_on=True,
-    )
+    # axes: [top=Baseline, bottom=Lower demand]
+    _axes = _fig.axes
+    for _ax_idx, _sc_name in enumerate(_scenarios):
+        _ax = _axes[_ax_idx]
+        _cx = _util_crossover[utility][_sc_name]
+        _sl = _util_summer_line[utility][_sc_name].sort("year")
+        _syr = _sl["year"].to_numpy().astype(float)
+        _stp = _sl["summer_top"].to_numpy().astype(float)
 
-    # Group A: thin solid red horizontal capacity line, hidden behind winter stack
-    if _is_a:
-        _hr_y_u = _util_headroom_y.get(_u)
-        if _hr_y_u is not None and _hr_y_u < _y_hi_u:
-            _ax_u.axhline(
-                y=_hr_y_u, xmin=0, xmax=1,
-                color="#cc2222", linewidth=0.75, linestyle="solid",
-                zorder=0.9, clip_on=True,
+        # Gray dotted summer reference from crossover
+        if _cx is not None:
+            _y0 = float(np.interp(_cx, _syr, _stp))
+            _post = _syr > _cx
+            _xs = np.concatenate((np.array([_cx]), _syr[_post]))
+            _ys = np.concatenate((np.array([_y0]), _stp[_post]))
+        else:
+            _xs, _ys = _syr, _stp
+        _ax.plot(
+            _xs, _ys,
+            color=SB_COLORS["gray"], linewidth=1.0,
+            linestyle=_SEASON_SUMMER_REF_LINESTYLE,
+            solid_capstyle="round", zorder=6, clip_on=True,
+        )
+
+        if _is_a:
+            # Vertical pistachio dashed line at headroom exhaustion
+            _ex_sc = (_util_headroom_ex.get(utility) or {}).get(_sc_name)
+            if _ex_sc is not None:
+                _ax.axvline(
+                    x=_ex_sc, color=SB_COLORS["pistachio"],
+                    linewidth=0.75, linestyle="dashed", zorder=5,
+                )
+                _ax.text(
+                    _ex_sc - 0.3, _y_hi * 0.95,
+                    f"Capacity\nexhausted\n~{round(_ex_sc)}",
+                    color=SB_COLORS["pistachio"], fontsize=9, ha="right",
+                    fontfamily="IBM Plex Sans",
+                )
+            # Horizontal red capacity line
+            _hr_y = _util_headroom_y.get(utility)
+            if _hr_y is not None and _hr_y < _y_hi:
+                _ax.axhline(
+                    y=_hr_y, xmin=0, xmax=1,
+                    color="#cc2222", linewidth=0.75, linestyle="solid",
+                    zorder=0.9, clip_on=True,
+                )
+                if _ax_idx == 0:
+                    _ax.text(
+                        2025.5, _hr_y + _y_hi * 0.015,
+                        "Distribution capacity",
+                        color="#cc2222", fontsize=9, fontweight="bold",
+                        va="bottom", ha="left", clip_on=True,
+                        fontfamily="IBM Plex Sans",
+                    )
+        else:
+            # Group B: pistachio crossover line
+            if _cx is not None:
+                _ax.axvline(
+                    x=_cx, color=SB_COLORS["pistachio"],
+                    linewidth=0.75, linestyle="dashed", zorder=5,
+                )
+                _ax.text(
+                    _cx - 0.3, _y_hi * 0.95,
+                    "Crossover",
+                    color=SB_COLORS["pistachio"], fontsize=9, ha="right",
+                    fontfamily="IBM Plex Sans",
+                )
+
+        # Margin labels at 2055 — only on top (Baseline) axis
+        if _ax_idx == 0:
+            _df_lbl = _util_combined[utility][_sc_name].filter(
+                pl.col("year") == 2055
             )
-            _ax_u.text(
-                2025.5, _hr_y_u + _y_hi_u * 0.015,
-                "Distribution capacity",
-                color="#cc2222", fontsize=9, fontweight="bold",
-                va="bottom", ha="left", clip_on=True, fontfamily="IBM Plex Sans",
-            )
+            _lbl_rows: list[tuple[str, str, float]] = []
+            for _comp in _u_winter_lbl_order:
+                _row = _df_lbl.filter(pl.col("component") == _comp)
+                if _row.is_empty():
+                    continue
+                _ymin_l = float(_row["ymin"][0])
+                _ymax_l = float(_row["ymax"][0])
+                _role = _comp.split(": ", 1)[1]
+                _lbl_rows.append((
+                    _u_band_to_label[_comp], _U_ROLE_LINE_COLORS[_role],
+                    (_ymin_l + _ymax_l) / 2,
+                ))
+            _lbl_rows.sort(key=lambda t: t[2])
+            _min_gap = _y_hi * 0.028
+            _spread = [_lbl_rows[0][2]]
+            for _j in range(1, len(_lbl_rows)):
+                _spread.append(max(_lbl_rows[_j][2], _spread[-1] + _min_gap))
 
-    # Margin labels at 2055
-    _df_lbl = _df_u.filter(pl.col("year") == 2055)
-    _lbl_rows: list[tuple[str, str, float]] = []
-    for _comp in _u_winter_lbl_order:
-        _row = _df_lbl.filter(pl.col("component") == _comp)
-        if _row.is_empty():
-            continue
-        _ymin = float(_row["ymin"][0])
-        _ymax = float(_row["ymax"][0])
-        _role = _comp.split(": ", 1)[1]
-        _lbl_rows.append((
-            _u_band_to_label[_comp], _U_ROLE_LINE_COLORS[_role],
-            (_ymin + _ymax) / 2,
-        ))
-    _lbl_rows.sort(key=lambda t: t[2])
-    _min_gap_u = _y_hi_u * 0.028
-    _spread_u = [_lbl_rows[0][2]]
-    for _j in range(1, len(_lbl_rows)):
-        _spread_u.append(max(_lbl_rows[_j][2], _spread_u[-1] + _min_gap_u))
+            for _j, (_name, _col, _raw_mid) in enumerate(_lbl_rows):
+                _y_lbl = _spread[_j]
+                _ax.plot(
+                    [2055, 2055.8], [_raw_mid, _y_lbl],
+                    color=_col, linewidth=1.0, clip_on=False,
+                    solid_capstyle="round",
+                )
+                _ax.plot(
+                    [2055.8, 2056.2], [_y_lbl, _y_lbl],
+                    color=_col, linewidth=1.0, clip_on=False,
+                    solid_capstyle="round",
+                )
+                _ax.text(
+                    2056.5, _y_lbl, _name, color=_col, fontsize=9,
+                    fontweight="bold", va="center", ha="left", clip_on=False,
+                    fontfamily="IBM Plex Sans",
+                )
 
-    for _j, (_name_u, _col_u, _raw_mid_u) in enumerate(_lbl_rows):
-        _y_lbl_u = _spread_u[_j]
-        _ax_u.plot(
-            [2055, 2055.8], [_raw_mid_u, _y_lbl_u],
-            color=_col_u, linewidth=1.0, clip_on=False, solid_capstyle="round",
-        )
-        _ax_u.plot(
-            [2055.8, 2056.2], [_y_lbl_u, _y_lbl_u],
-            color=_col_u, linewidth=1.0, clip_on=False, solid_capstyle="round",
-        )
-        _ax_u.text(
-            2056.5, _y_lbl_u, _name_u, color=_col_u, fontsize=9,
-            fontweight="bold", va="center", ha="left", clip_on=False,
-            fontfamily="IBM Plex Sans",
-        )
+    # Multi-colored title
+    _fig.subplots_adjust(right=0.65, top=0.78)
+    _fig.canvas.draw()
+    _renderer = _fig.canvas.get_renderer()
 
-    # Multi-colored title: find plotnine title, hide, repaint with colored segments
-    _fig_u.subplots_adjust(right=0.65, top=0.72)
-    _fig_u.canvas.draw()
-    _renderer_u = _fig_u.canvas.get_renderer()
-
-    _pn_tit_u = None
-    for _ft in _fig_u.texts:
-        if _title_u in _ft.get_text():
-            _pn_tit_u = _ft
+    _pn_tit = None
+    for _ft in _fig.texts:
+        if _title in _ft.get_text():
+            _pn_tit = _ft
             break
 
     _has_colored_year = (
-        (_is_a and _ex_u is not None) or (not _is_a and _cx_u is not None)
+        (_is_a and (_util_headroom_ex.get(utility) or {}).get("Baseline") is not None)
+        or (not _is_a and _util_crossover[utility].get("Baseline") is not None)
     )
-    if _pn_tit_u is not None and _has_colored_year:
-        _bb_u = _pn_tit_u.get_window_extent(renderer=_renderer_u)
-        _inv_u = _fig_u.transFigure.inverted()
-        _x0_u, _yb_u = _inv_u.transform((_bb_u.x0, _bb_u.y0))
-        _, _yt_u = _inv_u.transform((_bb_u.x0, _bb_u.y1))
-        _ym_u = (_yt_u + _yb_u) / 2
-        _pn_tit_u.set_visible(False)
+    if _pn_tit is not None and _has_colored_year:
+        _bb = _pn_tit.get_window_extent(renderer=_renderer)
+        _inv = _fig.transFigure.inverted()
+        _x0, _yb = _inv.transform((_bb.x0, _bb.y0))
+        _, _yt = _inv.transform((_bb.x0, _bb.y1))
+        _ym = (_yt + _yb) / 2
+        _pn_tit.set_visible(False)
 
         if _is_a:
             _title_segments = [
-                (f"{_u}'s winter peak growth forecasted to exhaust"
-                 " headroom by ", "#000000"),
-                (_yr_str_u, SB_COLORS["pistachio"]),
+                (f"{utility}: ", "#000000"),
+                ("building electrification ", SB_COLORS["saffron"]),
+                (" starts causing distribution upgrades around ", "#000000"),
+                (_yr_str, SB_COLORS["pistachio"]),
             ]
         else:
             _title_segments = [
-                (f"{_u}: ", "#000000"),
+                (f"{utility}: ", "#000000"),
                 ("building electrification ", SB_COLORS["saffron"]),
-                (" only starts causing upgrades after", "#000000"),
-                (_yr_str_u, SB_COLORS["pistachio"]),
+                (" starts causing distribution upgrades only after ", "#000000"),
+                (_yr_str, SB_COLORS["pistachio"]),
             ]
 
-        _xt_u = _x0_u
-        for _txt_u, _col_tu in _title_segments:
-            _t_u = _fig_u.text(
-                _xt_u, _ym_u, _txt_u, transform=_fig_u.transFigure,
-                color=_col_tu, fontsize=15, fontweight="bold",
+        _xt = _x0
+        for _txt, _col_t in _title_segments:
+            _t = _fig.text(
+                _xt, _ym, _txt, transform=_fig.transFigure,
+                color=_col_t, fontsize=15, fontweight="bold",
                 fontfamily="GT Planar", va="center", ha="left",
             )
-            _fig_u.canvas.draw()
-            _renderer_u = _fig_u.canvas.get_renderer()
-            _bb_tu = _t_u.get_window_extent(renderer=_renderer_u)
-            _xt_u = _bb_tu.transformed(_fig_u.transFigure.inverted()).x1
+            _fig.canvas.draw()
+            _renderer = _fig.canvas.get_renderer()
+            _bb_t = _t.get_window_extent(renderer=_renderer)
+            _xt = _bb_t.transformed(_fig.transFigure.inverted()).x1
 
-        _y_sub_u = _yb_u - 0.012
-        _fig_u.text(
-            _x0_u, _y_sub_u, "TODO",
-            color="#333333", fontsize=13, fontfamily="GT Planar",
-            va="top", ha="left",
-        )
+    _fig.canvas.draw()
+    display_svg(_fig)
+```
 
-    _fig_u.canvas.draw()
-    display_svg(_fig_u)
+```{python}
+#| label: fig-season-natgrid
+#| fig-cap: >
+#|   National Grid summer (behind, translucent) and winter (in front, solid)
+#|   coincident peak decomposed into growth components, excluding large loads.
+#|   Top: baseline forecast. Bottom: lower demand forecast.
+#|   Source: NYISO Gold Book 2025.
+#| fig-cap-location: margin
+_render_utility_season_chart("National Grid")
+```
+
+```{python}
+#| label: fig-season-nyseg
+#| fig-cap: >
+#|   NYSEG & RGE summer (behind, translucent) and winter (in front, solid)
+#|   coincident peak decomposed into growth components, excluding large loads.
+#|   Top: baseline forecast. Bottom: lower demand forecast.
+#|   Source: NYISO Gold Book 2025.
+#| fig-cap-location: margin
+_render_utility_season_chart("NYSEG & RGE")
+```
+
+```{python}
+#| label: fig-season-cenhud
+#| fig-cap: >
+#|   Central Hudson summer (behind, translucent) and winter (in front, solid)
+#|   coincident peak decomposed into growth components, excluding large loads.
+#|   Top: baseline forecast. Bottom: lower demand forecast.
+#|   Source: NYISO Gold Book 2025.
+#| fig-cap-location: margin
+_render_utility_season_chart("Central Hudson")
+```
+
+```{python}
+#| label: fig-season-or
+#| fig-cap: >
+#|   Orange & Rockland summer (behind, translucent) and winter (in front, solid)
+#|   coincident peak decomposed into growth components, excluding large loads.
+#|   Top: baseline forecast. Bottom: lower demand forecast.
+#|   Source: NYISO Gold Book 2025.
+#| fig-cap-location: margin
+_render_utility_season_chart("Orange & Rockland")
+```
+
+```{python}
+#| label: fig-season-coned
+#| fig-cap: >
+#|   Con Edison summer (behind, translucent) and winter (in front, solid)
+#|   coincident peak decomposed into growth components, excluding large loads.
+#|   Top: baseline forecast. Bottom: lower demand forecast.
+#|   Source: NYISO Gold Book 2025.
+#| fig-cap-location: margin
+_render_utility_season_chart("Con Edison")
 ```
 
 ## Figure 5: Per-Utility Summer Demand Components
@@ -2499,8 +2641,38 @@ from plotnine.options import set_option
 
 set_option("limitsize", True)
 
+# National Grid upstate — matches fig-season-natgrid (utility-wide crossover excl. LL; Synapse headroom exhaustion)
+import math
+
+_ng = "National Grid"
+
+
+def _round_year_opt(x: float | None) -> int | None:
+    if x is None:
+        return None
+    xf = float(x)
+    if math.isnan(xf):
+        return None
+    return int(round(xf))
+
+
+report_vars["natgrid_crossover_baseline"] = _round_year_opt(_util_crossover[_ng]["Baseline"])
+report_vars["natgrid_headroom_baseline"] = _round_year_opt(
+    (_util_headroom_ex.get(_ng) or {}).get("Baseline")
+)
+report_vars["natgrid_headroom_lower"] = _round_year_opt(
+    (_util_headroom_ex.get(_ng) or {}).get("Lower demand")
+)
+
 Path("../cache/gold_book_report_vars.pkl").write_bytes(pickle.dumps(report_vars))
 print("Exported report vars:")
 for k, v in report_vars.items():
-    print(f"  {k}: {v:,.0f}" if isinstance(v, float) and v > 1 else f"  {k}: {v:.1%}" if isinstance(v, float) else f"  {k}: {v:,}")
+    if v is None:
+        print(f"  {k}: None")
+    elif isinstance(v, float) and v > 1:
+        print(f"  {k}: {v:,.0f}")
+    elif isinstance(v, float):
+        print(f"  {k}: {v:.1%}")
+    else:
+        print(f"  {k}: {v:,}")
 ```

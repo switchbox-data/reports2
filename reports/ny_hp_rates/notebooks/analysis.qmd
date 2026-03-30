@@ -166,6 +166,13 @@ UTIL_SHORT: dict[str, str] = {  # tariff code -> short label for BAT-by-utility 
     "psegli": "PSEG-LI",
     "rge": "RG&E",
 }
+
+RESIDUAL_ALLOC = "percustomer"  # "epmc" or "percustomer"
+BAT_TOTAL = f"BAT_{RESIDUAL_ALLOC}_total"
+BAT_DELIVERY = f"BAT_{RESIDUAL_ALLOC}_delivery"
+BAT_SUPPLY = f"BAT_{RESIDUAL_ALLOC}_supply"
+_res_infix = f"_{RESIDUAL_ALLOC}" if RESIDUAL_ALLOC != "percustomer" else ""
+RESIDUAL_DELIVERY = f"residual_share{_res_infix}_delivery"
 ```
 
 ## Data ingest
@@ -1865,7 +1872,7 @@ they underpay.
 We load the master BAT table (run 1+2, all buildings under current rates) and
 find that heat pump customers systematically overpay for delivery, while fossil
 fuel customers underpay — a cross-subsidy created by volumetric delivery rates.
-`BAT_percustomer_total` is the sum of delivery and supply components. The
+The total BAT is the sum of delivery and supply components. The
 unified histograms show the full population; the faceted versions break the
 distribution down by heating type (fossil fuel, electric resistance, heat pump).
 
@@ -1878,10 +1885,10 @@ bat_all = (
     bat_12
     .select(
         BLDG_ID, "weight",
-        "BAT_percustomer_total",
-        "BAT_percustomer_delivery",
+        BAT_TOTAL,
+        BAT_DELIVERY,
         "economic_burden_delivery",
-        "residual_share_delivery",
+        RESIDUAL_DELIVERY,
         "annual_bill_delivery",
         HEATING_TYPE_COL,
         "heats_with_natgas", "heats_with_oil", "heats_with_propane",
@@ -1904,13 +1911,13 @@ residual allocation).
 _bat_select = [
     BLDG_ID, "sb.electric_utility",
     "economic_burden_delivery",
-    "residual_share_delivery",
+    RESIDUAL_DELIVERY,
     "annual_bill_delivery",
-    "BAT_percustomer_delivery",
+    BAT_DELIVERY,
 ]
 _bat_rename = {
     "economic_burden_delivery": "mc",
-    "residual_share_delivery": "residual",
+    RESIDUAL_DELIVERY: "residual",
     "annual_bill_delivery": "revenue",
 }
 
@@ -1940,7 +1947,7 @@ _hp_bat = _hp_raw["revenue"] - _hp_raw["mc"] - _hp_residual
 median_hp_bat = {
     **_hp_raw,
     "residual": _hp_residual,
-    "BAT_percustomer_delivery": _hp_bat,
+    BAT_DELIVERY: _hp_bat,
 }
 
 print(
@@ -1951,7 +1958,7 @@ for label, row in [("Gas", median_gas_bat), ("HP", median_hp_bat)]:
     print(
         f"  {label}: bill=${row['revenue']:,.0f}, "
         f"MC=${row['mc']:,.0f}, residual=${row['residual']:,.0f}, "
-        f"BAT=${row['BAT_percustomer_delivery']:,.0f}"
+        f"BAT=${row[BAT_DELIVERY]:,.0f}"
     )
 ```
 
@@ -2003,11 +2010,11 @@ cs_bar_totals = (
 
 gas_bill = median_gas_bat["revenue"]
 gas_cost = median_gas_bat["mc"] + median_gas_bat["residual"]
-gas_bat = median_gas_bat["BAT_percustomer_delivery"]
+gas_bat = median_gas_bat[BAT_DELIVERY]
 
 hp_bill_cs = median_hp_bat["revenue"]
 hp_cost_cs = median_hp_bat["mc"] + median_hp_bat["residual"]
-hp_bat_cs = median_hp_bat["BAT_percustomer_delivery"]
+hp_bat_cs = median_hp_bat[BAT_DELIVERY]
 
 gas_underpays = gas_bill < gas_cost
 hp_overpays = hp_bill_cs > hp_cost_cs
@@ -2084,7 +2091,7 @@ HEATING_TYPE_LABELS: dict[str, str] = {
 }
 FACET_ORDER = ["Electric resistance", "Heat pump", "Fossil fuel", "Other"]
 
-col = "BAT_percustomer_total"
+col = BAT_TOTAL
 facet_dtype = pl.Enum(FACET_ORDER)
 
 labeled_all = bat_all.with_columns(
@@ -2101,24 +2108,24 @@ _ff_sub = labeled_all.filter(pl.col("heating_label") == "Fossil fuel")
 
 report_vars["hp_share_of_households"] = _hp_sub["weight"].sum() / total_weight
 report_vars["hp_total_cross_subsidy_delivery_millions"] = (
-    (_hp_sub["BAT_percustomer_delivery"] * _hp_sub["weight"]).sum() / 1e6
+    (_hp_sub[BAT_DELIVERY] * _hp_sub["weight"]).sum() / 1e6
 )
 report_vars["nonhp_households_millions"] = (total_weight - _hp_sub["weight"].sum()) / 1e6
 report_vars["hp_mean_delivery_cost"] = (
     _weighted_mean(_hp_sub, "economic_burden_delivery", "weight")
-    + _weighted_mean(_hp_sub, "residual_share_delivery", "weight")
+    + _weighted_mean(_hp_sub, RESIDUAL_DELIVERY, "weight")
 )
 report_vars["ff_mean_delivery_cost"] = (
     _weighted_mean(_ff_sub, "economic_burden_delivery", "weight")
-    + _weighted_mean(_ff_sub, "residual_share_delivery", "weight")
+    + _weighted_mean(_ff_sub, RESIDUAL_DELIVERY, "weight")
 )
 report_vars["hp_mean_monthly_delivery_cost"] = report_vars["hp_mean_delivery_cost"] / 12
 report_vars["ff_mean_monthly_delivery_cost"] = report_vars["ff_mean_delivery_cost"] / 12
 report_vars["hp_mean_delivery_bill"] = _weighted_mean(_hp_sub, "annual_bill_delivery", "weight")
 report_vars["ff_mean_delivery_bill"] = _weighted_mean(_ff_sub, "annual_bill_delivery", "weight")
-report_vars["hp_mean_delivery_bat"] = _weighted_mean(_hp_sub, "BAT_percustomer_delivery", "weight")
+report_vars["hp_mean_delivery_bat"] = _weighted_mean(_hp_sub, BAT_DELIVERY, "weight")
 
-_bat_col = "BAT_percustomer_delivery"
+_bat_col = BAT_DELIVERY
 _bat_simple_rows = []
 for label, filt in [
     ("Heat pump", pl.col("heating_label") == "Heat pump"),
@@ -2205,7 +2212,7 @@ _delivery_labeled = (
     .with_columns(pl.col("delivery_facet").cast(_delivery_facet_dtype))
 )
 
-_d_col = "BAT_percustomer_delivery"
+_d_col = BAT_DELIVERY
 _d_x_lo = math.floor(_weighted_percentile(_delivery_labeled, _d_col, "weight", 0.01) / 500) * 500
 _d_x_hi = math.ceil(_weighted_percentile(_delivery_labeled, _d_col, "weight", 0.99) / 500) * 500
 
@@ -2389,14 +2396,14 @@ hp_all_utils = (
     .select(
         BLDG_ID, "weight", "sb.electric_utility",
         "economic_burden_delivery",
-        "residual_share_delivery",
+        RESIDUAL_DELIVERY,
         "annual_bill_delivery",
-        "BAT_percustomer_delivery",
+        BAT_DELIVERY,
     )
     .collect()
     .rename({
         "economic_burden_delivery": "mc",
-        "residual_share_delivery": "residual",
+        RESIDUAL_DELIVERY: "residual",
         "annual_bill_delivery": "revenue",
     })
 )
@@ -2406,9 +2413,9 @@ for util_code in sorted(hp_all_utils["sb.electric_utility"].unique().to_list()):
     sub = hp_all_utils.filter(pl.col("sb.electric_utility") == util_code)
     if sub.is_empty():
         continue
-    med = _weighted_percentile(sub, "BAT_percustomer_delivery", "weight", 0.5)
+    med = _weighted_percentile(sub, BAT_DELIVERY, "weight", 0.5)
     pick = (
-        sub.with_columns((pl.col("BAT_percustomer_delivery") - med).abs().alias("_d"))
+        sub.with_columns((pl.col(BAT_DELIVERY) - med).abs().alias("_d"))
         .sort("_d").head(1)
     )
     utility_picks.append(pick)
@@ -2418,10 +2425,10 @@ median_hp_bldgs = pl.concat(utility_picks)
 (
     GT(median_hp_bldgs.select(
         pl.col("sb.electric_utility").replace_strict(UTIL_DISPLAY).alias("utility"),
-        "revenue", "mc", "residual", "BAT_percustomer_delivery",
+        "revenue", "mc", "residual", BAT_DELIVERY,
     ))
     .fmt_currency(
-        columns=["revenue", "mc", "residual", "BAT_percustomer_delivery"],
+        columns=["revenue", "mc", "residual", BAT_DELIVERY],
         decimals=0,
     )
     .cols_label(
@@ -2429,7 +2436,7 @@ median_hp_bldgs = pl.concat(utility_picks)
         revenue="Delivery Bill",
         mc="Marginal Cost",
         residual="Residual Cost",
-        BAT_percustomer_delivery="BAT ($/yr)",
+        **{BAT_DELIVERY: "BAT ($/yr)"},
     )
 )
 ```
@@ -3554,7 +3561,7 @@ bat_all_56 = (
     bat_56
     .select(
         BLDG_ID, "weight",
-        "BAT_percustomer_total",
+        BAT_TOTAL,
         HEATING_TYPE_COL,
         "sb.electric_utility",
     )
@@ -3572,7 +3579,7 @@ type when HP customers move from the default flat rate to the seasonal rate.
 
 bat_56_for_comp = (
     bat_56
-    .select(BLDG_ID, "weight", "BAT_percustomer_delivery", HEATING_TYPE_COL,
+    .select(BLDG_ID, "weight", BAT_DELIVERY, HEATING_TYPE_COL,
             "heats_with_natgas", "heats_with_oil", "heats_with_propane")
     .collect()
 )
@@ -3593,8 +3600,8 @@ for label, filt in [
     ).filter(filt)
     _comp_rows.append({
         "heating_type": label,
-        "current": _weighted_mean(sub_before, "BAT_percustomer_delivery", "weight"),
-        "seasonal": _weighted_mean(sub_after, "BAT_percustomer_delivery", "weight"),
+        "current": _weighted_mean(sub_before, BAT_DELIVERY, "weight"),
+        "seasonal": _weighted_mean(sub_after, BAT_DELIVERY, "weight"),
     })
 
 _bat_comp_gt = (

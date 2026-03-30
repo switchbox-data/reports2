@@ -51,6 +51,8 @@ Script to read ResStock data from S3 and generate datasets required by AEC
     # of homes for which HPs are bill-reducing will choose to adopt HPs in both the BAU and HP cases.
     heat_pump_adoption_factor = 1.43
 
+    ALTERNATIVE_SCENARIO = "rie_high"  # "hp_factor" or "rie_high"
+
 ```
 
 ### HELPER FUNCTIONS
@@ -120,7 +122,7 @@ Script to read ResStock data from S3 and generate datasets required by AEC
 
 ### ADOPTION RATE ESTIMATES
 ```{python}
-    def get_adoption_forecast_num_homes(projection_years: list) -> list[float]:
+    def get_adoption_forecast_num_homes(projection_years: list, col_name: str = "Cumulative_Base") -> list[float]:
         rie_proj_sheet = gc.open_by_url("https://docs.google.com/spreadsheets/d/1BX4rp256SB4vI72oUIbZT1BqD6gOO8UJr95578dDM-Q/    edit#gid=2027836829").worksheet("RIE_hp_adoption_forecast")
         # Get all data as list of lists
         rows = rie_proj_sheet.get_all_values()
@@ -137,7 +139,7 @@ Script to read ResStock data from S3 and generate datasets required by AEC
 
         df = pl.DataFrame([row[:num_cols] for row in rows[start_idx+1:]], schema=rows[start_idx][:num_cols], orient="row")
 
-        return df.filter(pl.col("Year").is_in([str(x) for x in projection_years])).select(pl.col("Cumulative_Base")).cast(pl.Float64).to_series().to_list()
+        return df.filter(pl.col("Year").is_in([str(x) for x in projection_years])).select(pl.col(col_name)).cast(pl.Float64).to_series().to_list()
 ```
 
 ```{python}
@@ -163,16 +165,86 @@ Script to read ResStock data from S3 and generate datasets required by AEC
     bau_pct_projections = [x / total_num_homes for x in bau_hp_counts]
 
     bau_pct_total = [x / total_num_homes for x in bau_hp_counts]
-    hp_pct_total = [heat_pump_adoption_factor * x / total_num_homes for x in bau_hp_counts]
+
+    if ALTERNATIVE_SCENARIO == "hp_factor":
+        alt_hp_counts = [heat_pump_adoption_factor * x for x in bau_hp_counts]
+    elif ALTERNATIVE_SCENARIO == "rie_high":
+        alt_hp_counts = get_adoption_forecast_num_homes([2028, 2029, 2030, 2031], col_name="Cumulative_High")
+    else:
+        raise ValueError(f"Unknown ALTERNATIVE_SCENARIO: {ALTERNATIVE_SCENARIO}")
+
+    hp_pct_total = [x / total_num_homes for x in alt_hp_counts]
     bau_pct_upgrade_1 = [(x - current_adoption_rate) / (1 - current_adoption_rate) for x in bau_pct_total]
     hp_pct_upgrade_1 = [(x - current_adoption_rate) / (1 - current_adoption_rate) for x in hp_pct_total]
 ```
 
 
 ```{python}
-    bau_hp_count_lag = np.array(get_adoption_forecast_num_homes([2028, 2029, 2030, 2031]))- np.array(get_adoption_forecast_num_homes([2027, 2028, 2029, 2030]))
+    bau_hp_count_lag = (
+        np.array(get_adoption_forecast_num_homes([2025, 2026, 2027, 2028, 2029, 2030, 2031]))
+        - np.array(get_adoption_forecast_num_homes([2024, 2025, 2026, 2027, 2028, 2029, 2030]))
+    )
 
-    hp_hp_count_lag = bau_hp_count_lag*heat_pump_adoption_factor
+    if ALTERNATIVE_SCENARIO == "hp_factor":
+        hp_hp_count_lag = bau_hp_count_lag * heat_pump_adoption_factor
+    elif ALTERNATIVE_SCENARIO == "rie_high":
+        hp_hp_count_lag = (
+            np.array(get_adoption_forecast_num_homes([2025, 2026, 2027, 2028, 2029, 2030, 2031], col_name="Cumulative_High"))
+            - np.array(get_adoption_forecast_num_homes([2024, 2025, 2026, 2027, 2028, 2029, 2030], col_name="Cumulative_High"))
+        )
+```
+
+```{python}
+    from plotnine import ggplot, aes, geom_line, labs, theme_minimal, scale_color_manual, theme, element_text, scale_x_continuous, scale_y_continuous
+
+    _all_years = list(range(2024, 2040))
+    _bau_cumulative = get_adoption_forecast_num_homes(_all_years, col_name="Cumulative_Base")
+    _high_cumulative = get_adoption_forecast_num_homes(_all_years, col_name="Cumulative_High")
+    _base_start = _bau_cumulative[0]
+
+    if ALTERNATIVE_SCENARIO == "hp_factor":
+        _hp_rates_cumulative = [
+            min(_base_start + heat_pump_adoption_factor * (x - _base_start), total_num_homes)
+            for x in _bau_cumulative
+        ]
+    elif ALTERNATIVE_SCENARIO == "rie_high":
+        _hp_rates_cumulative = _high_cumulative
+
+    _df_adoption = pl.DataFrame({
+        "year": _all_years,
+        "RIE Base": _bau_cumulative,
+        "RIE High": _high_cumulative,
+        "HP Rates": _hp_rates_cumulative,
+    })
+
+    _version_order = ["HP Rates", "RIE High", "RIE Base"]
+
+    (
+        ggplot(
+            _df_adoption.unpivot(index="year", on=_version_order, variable_name="Version", value_name="num_homes").to_pandas(),
+            aes(x="year", y="num_homes", color="Version"),
+        )
+        + geom_line(size=1.2)
+        + scale_color_manual(
+            values={"RIE Base": "#E74C3C", "RIE High": "#27AE60", "HP Rates": "#3498DB"},
+            breaks=_version_order,
+        )
+        + scale_x_continuous(breaks=_all_years)
+        + scale_y_continuous(
+            limits=(0, 160_000),
+            breaks=range(0, 160_001, 20_000),
+            labels=lambda xs: [f"{int(x):,}" for x in xs],
+        )
+        + labs(title="RI Cumulative Heat Pump Adoption", x="Year", y="Cumulative HP Homes")
+        + theme_minimal()
+        + theme(figure_size=(10, 5), axis_text_x=element_text(rotation=45, ha="right"))
+    )
+```
+
+#### HP Mix in upgrade 2
+
+```{python}
+    sbmeta2 = pl.read_parquet("s3://data.sb/nrel/resstock/res_2024_amy2018_2/metadata/state=RI/upgrade=02/metadata-sb.parquet")
 ```
 
 #### HP MARKET SHARE
@@ -454,6 +526,81 @@ Script to read ResStock data from S3 and generate datasets required by AEC
         p.show()
 ```
 
+### HP TYPE ADOPTION MIX
+```{python}
+    _hp_type_cols = [
+        "bldg_id", "year", "upgrade_id",
+        "upgrade.hvac_cooling_efficiency",
+        "upgrade.hvac_heating_efficiency",
+        "in.bedrooms",
+    ]
+
+    def _hp_type_counts(mus: MixedUpgradeScenario, scenario_name: str) -> pl.DataFrame:
+        """Weighted count of HP types adopted per year for one scenario."""
+        meta = (
+            mus.read_metadata()
+            .select(_hp_type_cols)
+            .filter(
+                pl.col("upgrade_id") == 2,
+                pl.col("upgrade.hvac_cooling_efficiency").is_not_null(),
+            )
+            .collect()
+        )
+        meta = (
+            meta
+            .join(weight_lookup, on="bldg_id", how="left")
+            .with_columns(
+                (pl.col("year") + start_year).alias("year"),
+                pl.lit(scenario_name).alias("scenario"),
+                pl.when(pl.col("upgrade.hvac_cooling_efficiency") == "Non-Ducted Heat Pump")
+                  .then(pl.col("in.bedrooms").cast(pl.Int32) + 1)
+                  .otherwise(None)
+                  .alias("est_minisplit_units"),
+            )
+        )
+        return (
+            meta
+            .group_by(["scenario", "year",
+                        "upgrade.hvac_cooling_efficiency",
+                        "upgrade.hvac_heating_efficiency"])
+            .agg(
+                pl.col("weight_scaled").sum().alias("weighted_count"),
+                pl.len().alias("unweighted_count"),
+                (
+                    (pl.col("est_minisplit_units").cast(pl.Float64) * pl.col("weight_scaled"))
+                    .sum() / pl.col("weight_scaled").sum()
+                ).alias("avg_no_of_units_per_minisplit_hh"),
+                (pl.col("est_minisplit_units").cast(pl.Float64) * pl.col("weight_scaled"))
+                .sum()
+                .alias("total_minisplit_units"),
+            )
+            .sort(["scenario", "year", "upgrade.hvac_cooling_efficiency"])
+        )
+
+    df_hp_types = pl.concat([
+        _hp_type_counts(bau_mus, "BAU"),
+        _hp_type_counts(hp_mus, "HP"),
+    ])
+```
+
+```{python}
+    # Validate: weighted count of actual HP adopters should approximate
+    # bau_pct_upgrade_1[yr] * total_num_homes * (1847/1910), where 1847/1910
+    # is the share of upgrade=02 buildings that actually receive an HP.
+    _null_adj = 1847 / 1910
+    print("BAU scenario validation (expected vs actual weighted HP adopters):")
+    for yr_idx, yr in enumerate(projection_years):
+        expected = bau_pct_upgrade_1[yr_idx] * total_num_homes * _null_adj
+        actual = df_hp_types.filter(
+            (pl.col("scenario") == "BAU") & (pl.col("year") == yr)
+        )["weighted_count"].sum()
+        print(f"  {yr}: expected ~{expected:,.0f}, actual {actual:,.0f}")
+```
+
+```{python}
+    df_hp_types
+```
+
 ### WRITE FINAL OUTPUT TO GSHEET
 ```{python}
     def write_to_gsheet(df, sheet_name, worksheet_name):
@@ -465,7 +612,8 @@ Script to read ResStock data from S3 and generate datasets required by AEC
         ref_sheet_idx = next((i for i, ws in enumerate(worksheets) if ws.title == "Relevant metrics"), None)
 
         if worksheet_name not in [worksheet.title for worksheet in worksheets]:
-            sh.add_worksheet(worksheet_name, rows=df.height + 1, cols=df.width, index=ref_sheet_idx+1)
+            insert_idx = ref_sheet_idx + 1 if ref_sheet_idx is not None else len(worksheets)
+            sh.add_worksheet(worksheet_name, rows=df.height + 1, cols=df.width, index=insert_idx)
         else:
             worksheet = sh.worksheet(worksheet_name)
             worksheet.clear()
@@ -474,7 +622,7 @@ Script to read ResStock data from S3 and generate datasets required by AEC
 ```
 
 ```{python}
-    go_live = "YES_GO_LIVE"
+    go_live = "nope"  # set to "YES_GO_LIVE" to write to the live sheet
 ```
 
 ```{python}
@@ -484,7 +632,10 @@ Script to read ResStock data from S3 and generate datasets required by AEC
         target_sheet_name = "Switchbox BCA overview"
         go_live = "nope"
     else:
-        target_sheet_name = "test_data_sheet"
+        if ALTERNATIVE_SCENARIO == "hp_factor":
+            target_sheet_name = "AEC 8760s — BAU vs HP Factor"
+        elif ALTERNATIVE_SCENARIO == "rie_high":
+            target_sheet_name = "AEC 8760s — BAU vs RIE High"
 
     # NOTE: remove the "reverse" once sheet sorting is fixed in write_to_gsheet
     for col in reversed(df_bau_loads.columns[1:]):
@@ -495,4 +646,6 @@ Script to read ResStock data from S3 and generate datasets required by AEC
             ]).select(["date", "time", f"delta_{col}", f"bau_{col}", f"hp_{col}"])
         print(merged_df.head())
         write_to_gsheet(merged_df, target_sheet_name, f"1_{col}")
+
+    write_to_gsheet(df_hp_types, target_sheet_name, "hp_type_adoption_mix")
 ```

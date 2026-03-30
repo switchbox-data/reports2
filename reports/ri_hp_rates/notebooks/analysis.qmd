@@ -112,6 +112,7 @@ PATH_MASTER_BAT_34 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_3+4/cr
 PATH_MASTER_BAT_1718 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_17+18/cross_subsidization_BAT_values/"
 
 PATH_RESSTOCK = "s3://data.sb/nrel/resstock/res_2024_amy2018_2"
+PATH_CPI = "s3://data.sb/fred/cpi/"
 ```
 
 ## Constants
@@ -123,6 +124,7 @@ ANNUAL_MONTH = "Annual"
 BLDG_ID = "bldg_id"
 HEATING_TYPE_COL = "postprocess_group.heating_type"
 INCOME_COL = "in.representative_income"
+RESSTOCK_INCOME_DOLLAR_YEAR = 2019
 BURDEN_THRESHOLD = 0.06
 LMI_CURRENT_ENROLLMENT_PCT = 32
 report_vars["lmi_current_enrollment_pct"] = LMI_CURRENT_ENROLLMENT_PCT
@@ -170,6 +172,20 @@ bills_tou_hp = (
     if INCLUDE_TOU
     else None
 )
+```
+
+ResStock's `in.representative_income` is denominated in 2019 dollars (ACS 2018 survey vintage). Since the bills
+are priced at current tariff rates (~2025 dollars), we inflate income to the same year using CPI before computing
+energy burden ratios. The CPI ratio is loaded from S3 — the same data the LMI tier-assignment code uses.
+
+```{python}
+#| label: ingest-cpi
+
+_cpi = pl.read_parquet(PATH_CPI)
+_cpi_from = float(_cpi.filter(pl.col("year") == RESSTOCK_INCOME_DOLLAR_YEAR)["value"][0])
+_cpi_to = float(_cpi.filter(pl.col("year") == YEAR)["value"][0])
+INCOME_CPI_RATIO = _cpi_to / _cpi_from
+print(f"CPI inflation ratio {RESSTOCK_INCOME_DOLLAR_YEAR}→{YEAR}: {INCOME_CPI_RATIO:.4f}")
 ```
 
 ## Bill components: how energy bills change after switching
@@ -3932,6 +3948,9 @@ def burden_shares(
     bill_cols controls which columns are summed to form the total energy bill.
     Default uses the undiscounted columns; pass LMI_40_BILL_COLS or
     LMI_100_BILL_COLS to use LMI-discounted bills.
+
+    Income is inflated from ResStock's 2019$ to the current year via
+    INCOME_CPI_RATIO so that burden = bill / income uses consistent dollars.
     """
     annual = (
         bills_lf
@@ -3944,7 +3963,7 @@ def burden_shares(
         )
         .join(income_df.select(BLDG_ID, INCOME_COL), on=BLDG_ID, how="inner")
         .with_columns(
-            (pl.col("total_bill") / pl.col(INCOME_COL)).alias("burden"),
+            (pl.col("total_bill") / (pl.col(INCOME_COL) * INCOME_CPI_RATIO)).alias("burden"),
         )
         .with_columns(
             (pl.col("burden") > burden_threshold).alias("is_burdened"),

@@ -245,6 +245,11 @@ Script to read ResStock data from S3 and generate datasets required by AEC
 
 ```{python}
     sbmeta2 = pl.read_parquet("s3://data.sb/nrel/resstock/res_2024_amy2018_2/metadata/state=RI/upgrade=02/metadata-sb.parquet")
+
+    # bldg_ids in upgrade 2 that didn't actually receive HPs (null HVAC cooling efficiency).
+    _null_hp_bldg_ids = sbmeta2.filter(
+        pl.col("upgrade.hvac_cooling_efficiency").is_null()
+    )["bldg_id"].to_list()
 ```
 
 #### HP MARKET SHARE
@@ -366,8 +371,8 @@ Script to read ResStock data from S3 and generate datasets required by AEC
         .agg(pl.col("weight_scaled").sum().cast(pl.Int64).alias("replacement_count"))
         .sort("failure_year")
         .with_columns(
-            pl.Series("bau_hp_count_lag", bau_hp_count_lag).cast(pl.Int64),
-            pl.Series("hp_hp_count_lag", hp_hp_count_lag).cast(pl.Int64),
+            pl.Series("bau_hp_count_lag", bau_hp_count_lag[-len(projection_years):]).cast(pl.Int64),
+            pl.Series("hp_hp_count_lag", hp_hp_count_lag[-len(projection_years):]).cast(pl.Int64),
         )
         .with_columns(
             (pl.col("bau_hp_count_lag") / pl.col("replacement_count")).alias("bau_pct"),
@@ -392,8 +397,6 @@ Script to read ResStock data from S3 and generate datasets required by AEC
         weights={2: 1.0},
         adoption_trajectory=hp_pct_upgrade_1, # see above
     )
-
-    weight_lookup = sbmeta.select(["bldg_id", "weight_scaled"])
 
     # Columns needed from load curves (select early to minimize memory).
     _load_cols = [
@@ -439,11 +442,15 @@ Script to read ResStock data from S3 and generate datasets required by AEC
             .sort("timestamp")
         )
 
-    def _get_load_curves_aggregated(scenario, scenario_name):
+    def _get_load_curves_aggregated(scenario, scenario_name, target_hp_homes):
         """Load and aggregate hourly load curves one year at a time to limit memory.
 
         Collects raw load curves (few columns only) before timestamp adjustment
-        and weight join to avoid a complex lazy plan that triggers Polars panics.
+        to avoid a complex lazy plan that triggers Polars panics.
+
+        Post-hoc two-tier weights ensure the weighted HP count exactly matches the
+        adoption trajectory: actual HP buildings (upgrade==2, not in _null_hp_bldg_ids)
+        get w_hp = target / n_hp; everyone else gets w_base = (pop - target) / n_other.
         """
         mus = MixedUpgradeScenario(
             scenario_name=scenario_name,
@@ -460,18 +467,31 @@ Script to read ResStock data from S3 and generate datasets required by AEC
         )
         n_years = len(projection_years)
         year_dfs = []
+        _is_hp = (pl.col("upgrade") == 2) & ~pl.col("bldg_id").is_in(_null_hp_bldg_ids)
         for yr in range(n_years):
             print(f"  {scenario_name} year {yr} ({projection_years[yr]})...", flush=True)
-            # Collect early with minimal columns to avoid Polars optimizer panic.
             df = mus.read_load_curve_hourly(years=[yr]).select(_load_cols).collect()
             df = adjust_timestamp(df, start_year=start_year)
-            df = df.join(weight_lookup, on="bldg_id", how="left")
+
+            bldg_info = df.select("bldg_id", "upgrade").unique()
+            n_hp = bldg_info.filter(_is_hp).height
+            n_other = len(bldg_info) - n_hp
+            w_hp = target_hp_homes[yr] / n_hp
+            w_base = (total_num_homes - target_hp_homes[yr]) / n_other
+
+            df = df.with_columns(
+                pl.when(_is_hp).then(w_hp).otherwise(w_base).alias("weight_scaled")
+            )
             year_dfs.append(_aggregate_year(df))
             del df
         return mus, pl.concat(year_dfs)
 
-    bau_mus, df_bau_loads = _get_load_curves_aggregated(bau_scenario, "bau")
-    hp_mus, df_hp_loads = _get_load_curves_aggregated(hp_scenario, "hp")
+    existing_hp_homes = current_adoption_rate * total_num_homes
+    bau_targets = [hp_count - existing_hp_homes for hp_count in bau_hp_counts]
+    hp_targets = [hp_count - existing_hp_homes for hp_count in alt_hp_counts]
+
+    bau_mus, df_bau_loads = _get_load_curves_aggregated(bau_scenario, "bau", bau_targets)
+    hp_mus, df_hp_loads = _get_load_curves_aggregated(hp_scenario, "hp", hp_targets)
 ```
 
 
@@ -535,31 +555,44 @@ Script to read ResStock data from S3 and generate datasets required by AEC
         "in.bedrooms",
     ]
 
-    def _hp_type_counts(mus: MixedUpgradeScenario, scenario_name: str) -> pl.DataFrame:
-        """Weighted count of HP types adopted per year for one scenario."""
+    def _hp_type_counts(
+        mus: MixedUpgradeScenario,
+        scenario_name: str,
+        target_hp_homes: list[float],
+    ) -> pl.DataFrame:
+        """Weighted count of HP types adopted per year for one scenario.
+
+        Post-hoc weight: each actual HP building gets w = target / n_hp so
+        the weighted HP count exactly matches the adoption trajectory.
+        """
         meta = (
             mus.read_metadata()
             .select(_hp_type_cols)
             .filter(
                 pl.col("upgrade_id") == 2,
-                pl.col("upgrade.hvac_cooling_efficiency").is_not_null(),
+                ~pl.col("bldg_id").is_in(_null_hp_bldg_ids),
             )
             .collect()
         )
-        meta = (
-            meta
-            .join(weight_lookup, on="bldg_id", how="left")
-            .with_columns(
-                (pl.col("year") + start_year).alias("year"),
-                pl.lit(scenario_name).alias("scenario"),
-                pl.when(pl.col("upgrade.hvac_cooling_efficiency") == "Non-Ducted Heat Pump")
-                  .then(pl.col("in.bedrooms").cast(pl.Int32) + 1)
-                  .otherwise(None)
-                  .alias("est_minisplit_units"),
+        rows = []
+        for yr_idx in range(len(target_hp_homes)):
+            yr_meta = meta.filter(pl.col("year") == yr_idx)
+            n_hp = len(yr_meta)
+            w_hp = target_hp_homes[yr_idx] / n_hp
+            rows.append(
+                yr_meta.with_columns(
+                    pl.lit(w_hp).alias("weight_scaled"),
+                    (pl.col("year") + start_year).alias("year"),
+                    pl.lit(scenario_name).alias("scenario"),
+                    pl.when(pl.col("upgrade.hvac_cooling_efficiency") == "Non-Ducted Heat Pump")
+                      .then(pl.col("in.bedrooms").cast(pl.Int32) + 1)
+                      .otherwise(None)
+                      .alias("est_minisplit_units"),
+                )
             )
-        )
+        combined = pl.concat(rows)
         return (
-            meta
+            combined
             .group_by(["scenario", "year",
                         "upgrade.hvac_cooling_efficiency",
                         "upgrade.hvac_heating_efficiency"])
@@ -577,28 +610,100 @@ Script to read ResStock data from S3 and generate datasets required by AEC
             .sort(["scenario", "year", "upgrade.hvac_cooling_efficiency"])
         )
 
-    df_hp_types = pl.concat([
-        _hp_type_counts(bau_mus, "BAU"),
-        _hp_type_counts(hp_mus, "HP"),
-    ])
+    _group_cols = ["scenario", "upgrade.hvac_cooling_efficiency", "upgrade.hvac_heating_efficiency"]
+    df_hp_types = (
+        pl.concat([
+            _hp_type_counts(bau_mus, "BAU", bau_targets),
+            _hp_type_counts(hp_mus, "HP", hp_targets),
+        ])
+        .sort(_group_cols + ["year"])
+        .with_columns(
+            (
+                pl.col("weighted_count")
+                - pl.col("weighted_count").shift(1).over(_group_cols).fill_null(0)
+            ).alias("weighted_count_added"),
+            (
+                pl.col("total_minisplit_units")
+                - pl.col("total_minisplit_units").shift(1).over(_group_cols).fill_null(0)
+            ).alias("total_minisplit_units_added"),
+        )
+    )
 ```
 
 ```{python}
-    # Validate: weighted count of actual HP adopters should approximate
-    # bau_pct_upgrade_1[yr] * total_num_homes * (1847/1910), where 1847/1910
-    # is the share of upgrade=02 buildings that actually receive an HP.
-    _null_adj = 1847 / 1910
-    print("BAU scenario validation (expected vs actual weighted HP adopters):")
-    for yr_idx, yr in enumerate(projection_years):
-        expected = bau_pct_upgrade_1[yr_idx] * total_num_homes * _null_adj
-        actual = df_hp_types.filter(
-            (pl.col("scenario") == "BAU") & (pl.col("year") == yr)
-        )["weighted_count"].sum()
-        print(f"  {yr}: expected ~{expected:,.0f}, actual {actual:,.0f}")
+    def _validate_scenario(scenario_name, trajectory_counts, calibration_targets):
+        print(f"{scenario_name} scenario — HP adoption validation")
+        print(f"  Existing HP homes (baseline): {existing_hp_homes:,.0f}")
+        prev_new = 0.0
+        for yr_idx, yr in enumerate(projection_years):
+            new_hp_weighted = df_hp_types.filter(
+                (pl.col("scenario") == scenario_name) & (pl.col("year") == yr)
+            )["weighted_count"].sum()
+            added_this_yr = new_hp_weighted - prev_new
+            total_hp = existing_hp_homes + new_hp_weighted
+            trajectory = trajectory_counts[yr_idx]
+            print(
+                f"  {yr}: trajectory {trajectory:,.0f}"
+                f" | existing {existing_hp_homes:,.0f} + new adopters {new_hp_weighted:,.0f} = {total_hp:,.0f}"
+                f" | added this year: {added_this_yr:,.0f}"
+                f" | calibration target (new): {calibration_targets[yr_idx]:,.0f}"
+            )
+            prev_new = new_hp_weighted
+
+    _validate_scenario("BAU", bau_hp_counts, bau_targets)
+    print()
+    _validate_scenario("HP", alt_hp_counts, hp_targets)
 ```
 
 ```{python}
     df_hp_types
+```
+
+### DIFF: REWEIGHTED vs ORIGINAL (UNIFORM WEIGHTS)
+```{python}
+    _orig_sheet_name = "AEC 8760s — BAU vs RIE High (out of date)"
+    _orig_sh = gc.open(_orig_sheet_name)
+
+    for fuel in ["electricity_kwh", "natural_gas_mmbtu", "fuel_oil_mmbtu", "propane_mmbtu"]:
+        ws = _orig_sh.worksheet(f"1_{fuel}")
+        rows = ws.get_all_values()
+        old = (
+            pl.DataFrame(rows[1:], schema=rows[0], orient="row")
+            .with_columns(
+                pl.col("date").str.slice(0, 4).alias("year"),
+                pl.col(f"bau_{fuel}").cast(pl.Float64),
+                pl.col(f"hp_{fuel}").cast(pl.Float64),
+            )
+            .group_by("year")
+            .agg(
+                pl.col(f"bau_{fuel}").sum().alias("old_bau"),
+                pl.col(f"hp_{fuel}").sum().alias("old_hp"),
+            )
+            .sort("year")
+        )
+
+        new_bau_col = {"electricity_kwh": "electricity_kwh", "natural_gas_mmbtu": "natural_gas_mmbtu",
+                       "fuel_oil_mmbtu": "fuel_oil_mmbtu", "propane_mmbtu": "propane_mmbtu"}[fuel]
+        new = (
+            df_bau_loads
+            .with_columns(pl.col("timestamp").dt.year().cast(pl.Utf8).alias("year"))
+            .group_by("year").agg(pl.col(new_bau_col).sum().alias("new_bau"))
+            .sort("year")
+            .join(
+                df_hp_loads
+                .with_columns(pl.col("timestamp").dt.year().cast(pl.Utf8).alias("year"))
+                .group_by("year").agg(pl.col(new_bau_col).sum().alias("new_hp"))
+                .sort("year"),
+                on="year",
+            )
+        )
+
+        diff = old.join(new, on="year").with_columns(
+            ((pl.col("new_bau") - pl.col("old_bau")) / pl.col("old_bau") * 100).round(2).alias("bau_pct_chg"),
+            ((pl.col("new_hp") - pl.col("old_hp")) / pl.col("old_hp") * 100).round(2).alias("hp_pct_chg"),
+        )
+        print(f"\n=== {fuel}: annual totals (old uniform vs new reweighted) ===")
+        print(diff)
 ```
 
 ### WRITE FINAL OUTPUT TO GSHEET
@@ -621,31 +726,28 @@ Script to read ResStock data from S3 and generate datasets required by AEC
         worksheet.update(data, "A1", value_input_option="USER_ENTERED")
 ```
 
+
 ```{python}
-    go_live = "nope"  # set to "YES_GO_LIVE" to write to the live sheet
+    WRITE_TO_GSHEET = True
+
 ```
 
 ```{python}
-    if go_live == "YES_GO_LIVE":
-        if DEBUG_MODE:
-            raise ValueError("DEBUG_MODE is True, are you sure you want to go live?")
-        target_sheet_name = "Switchbox BCA overview"
-        go_live = "nope"
-    else:
+    if WRITE_TO_GSHEET:
         if ALTERNATIVE_SCENARIO == "hp_factor":
             target_sheet_name = "AEC 8760s — BAU vs HP Factor"
         elif ALTERNATIVE_SCENARIO == "rie_high":
-            target_sheet_name = "AEC 8760s — BAU vs RIE High"
+            target_sheet_name = "AEC 8760s — BAU vs RIE High (Corrected)"
 
-    # NOTE: remove the "reverse" once sheet sorting is fixed in write_to_gsheet
-    for col in reversed(df_bau_loads.columns[1:]):
-        merged_df = df_bau_loads[["timestamp", col]].rename({col: f"bau_{col}"}).join(df_hp_loads[["timestamp",    col]].rename({col: f"hp_{col}"}), on="timestamp").with_columns([
-            (pl.col(f"hp_{col}") - pl.col(f"bau_{col}")).alias(f"delta_{col}"),
-            pl.col("timestamp").dt.strftime("%Y-%m-%d").cast(pl.Utf8).alias("date"),
-            pl.col("timestamp").dt.strftime("%H:%M:%S").cast(pl.Utf8).alias("time"),
-            ]).select(["date", "time", f"delta_{col}", f"bau_{col}", f"hp_{col}"])
-        print(merged_df.head())
-        write_to_gsheet(merged_df, target_sheet_name, f"1_{col}")
+        # NOTE: remove the "reverse" once sheet sorting is fixed in write_to_gsheet
+        for col in reversed(df_bau_loads.columns[1:]):
+            merged_df = df_bau_loads[["timestamp", col]].rename({col: f"bau_{col}"}).join(df_hp_loads[["timestamp",    col]].rename({col: f"hp_{col}"}), on="timestamp").with_columns([
+                (pl.col(f"hp_{col}") - pl.col(f"bau_{col}")).alias(f"delta_{col}"),
+                pl.col("timestamp").dt.strftime("%Y-%m-%d").cast(pl.Utf8).alias("date"),
+                pl.col("timestamp").dt.strftime("%H:%M:%S").cast(pl.Utf8).alias("time"),
+                ]).select(["date", "time", f"delta_{col}", f"bau_{col}", f"hp_{col}"])
+            print(merged_df.head())
+            write_to_gsheet(merged_df, target_sheet_name, f"1_{col}")
 
-    write_to_gsheet(df_hp_types, target_sheet_name, "hp_type_adoption_mix")
+        write_to_gsheet(df_hp_types, target_sheet_name, "hp_type_adoption_mix")
 ```

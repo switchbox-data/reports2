@@ -2145,6 +2145,11 @@ report_vars["natgas_mean_delivery_bat"] = _weighted_mean(_natgas_sub, _bat_col, 
 report_vars["oil_propane_mean_delivery_bat"] = _weighted_mean(_op_sub, _bat_col, "weight")
 report_vars["elec_resistance_mean_delivery_bat"] = _weighted_mean(_er_sub, _bat_col, "weight")
 
+# Delivery residual fraction: what share of total delivery revenue is residual (not MC)?
+_total_delivery_revenue = (bat_all["annual_bill_delivery"] * bat_all["weight"]).sum()
+_total_delivery_mc = (bat_all["economic_burden_delivery"] * bat_all["weight"]).sum()
+report_vars["delivery_residual_pct"] = (_total_delivery_revenue - _total_delivery_mc) / _total_delivery_revenue
+
 _bat_simple_gt = (
     GT(pl.DataFrame(_bat_simple_rows), rowname_col="heating_type")
     .fmt_currency(columns="mean_bat", decimals=0)
@@ -2536,6 +2541,17 @@ _rate_gt = (
 
 Path("../cache").mkdir(exist_ok=True)
 Path("../cache/rate_table.html").write_text(_rate_gt.as_raw_html())
+
+report_vars["elec_fixed_charge"] = default_d.get("fixedchargefirstmeter", 0)
+report_vars["elec_delivery_avg_cents"] = default_avg * 100
+
+GAS_TARIFF_DIR = f"rate_design/hp_rates/{_state_lower}/config/tariffs/gas"
+_gas_tariff = json.loads(
+    fetch_rdp_file(f"{GAS_TARIFF_DIR}/rie_heating.json", ref=RDP_REF)
+)["items"][0]
+report_vars["gas_fixed_charge"] = _gas_tariff.get("fixedchargefirstmeter", 0)
+_gas_rates_kwh = [t[0]["rate"] for t in _gas_tariff["energyratestructure"]]
+report_vars["gas_avg_per_therm"] = sum(_gas_rates_kwh) / len(_gas_rates_kwh) * 29.3
 
 _rate_gt
 ```
@@ -4100,6 +4116,31 @@ plot_burden_bar(
     [below_current_lmi40, below_hp_default_lmi40, below_hp_flat_lmi40, below_hp_flat_lmi100],
     [above_current_lmi40, above_hp_default_lmi40, above_hp_flat_lmi40, above_hp_flat_lmi100],
 )
+```
+
+#### Burden histogram
+
+```{python}
+#| label: burden-histogram-helper
+
+def plot_burden_histogram(
+    below_pcts: list[float],
+    above_pcts: list[float],
+    scenario_labels: list[str] = BURDEN_SCENARIO_LABELS,
+):
+    """Histogram of burden shares centered on the 6% threshold."""
+
+    rows.append({"scenario": scenario, "segment": "Above 6%",
+                     "value": above, "label": f"{round(above)}%",
+                     "label_y": above / 2})
+        rows.append({"scenario": scenario, "segment": "Below 6%",
+                     "value": -below, "label": f"{round(below)}%",
+                     "label_y": -below / 2})
+
+    df = pl.DataFrame(rows).with_columns(
+        pl.col("scenario").cast(pl.Enum(scenario_labels)),
+        pl.col("segment").cast(pl.Enum(BURDEN_SEGMENT_ORDER)),
+    )
 ```
 
 #### By utility

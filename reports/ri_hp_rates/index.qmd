@@ -768,6 +768,201 @@ will become politically harder. The time to fix the fairness problem is now, bef
 
 ## Data and Methods
 
+### How we estimate energy bill changes after switching to heat pumps {#sec-methods-bill-changes}
+
+#### Building stock simulations
+
+We use **NREL's ResStock 2024.2** dataset to model Rhode Island's residential building stock. ResStock uses EnergyPlus physics-based simulations to represent the existing U.S. housing stock as a statistical sample — not individual real buildings, but models that collectively match the state's diversity of building types, sizes, ages, envelope characteristics, and heating equipment.
+
+Each modeled dwelling represents approximately 252 real-world homes. The 2024.2 release uses **actual meteorological year 2018 (AMY 2018)** weather data, calibrated to the 2020 RECS survey. We use two scenarios from this dataset:
+
+- **Upgrade 0 (baseline)**: current HVAC equipment — natural gas furnaces, fuel oil boilers, propane heaters, electric resistance, or existing heat pumps, as distributed across the existing housing stock.
+- **Upgrade 2 (heat pump)**: cold-climate air-source heat pump (ccASHP) retrofit, applied to the same homes. The simulation models the heat pump's performance as a function of outdoor temperature using hourly AMY 2018 weather.
+
+The difference between a home's energy bills under Upgrade 0 and Upgrade 2 is the estimated bill change from switching to a heat pump.
+
+#### Energy prices and tariffs
+
+**Electricity.** We use Rhode Island Energy's **A-16** residential electric rate as of 2025 for standard residential customers. The tariff has two components: a **delivery** portion (a fixed monthly customer charge of `{python} f"${v.elec_fixed_charge:.2f}"` plus quarterly-varying volumetric rates averaging roughly `{python} f"{v.elec_delivery_avg_cents:.0f}"`¢/kWh) and a separate **supply** portion (seasonal volumetric rates reflecting Rhode Island Energy's Last Resort Service filings). Electric tariff data was sourced from Genability's utility rate database.
+
+**Natural gas.** Homes that heat with natural gas are assigned Rhode Island Energy's **Rate 12** (Residential Heating) tariff as of 2025: a `{python} f"${v.gas_fixed_charge:.2f}"`/month customer charge plus per-therm volumetric charges (averaging roughly `{python} f"${v.gas_avg_per_therm:.2f}"`/therm) covering distribution, gas cost recovery, and a LIHEAP enhancement. Natural gas tariff data was sourced from RateAcuity.
+
+**Delivered fuels.** For homes that heat with heating oil or propane, we use EIA's monthly residential fuel price series for Rhode Island, averaged over 2025. These prices are applied to each building's modeled annual fuel consumption.
+
+#### Assigning tariffs to buildings
+
+All homes in the Rhode Island ResStock sample is assigned to Rhode Island Energy for electric service.
+
+Gas tariff assignment distinguishes between heating and non-heating customers, mirroring Rhode Island Energy's tariff structure. Homes with gas heating loads are assigned **Rate 12** (Residential Heating); homes that use gas but not for heating are assigned **Rate 10** (Residential Non-Heating), which carries slightly higher volumetric charges. When a home installs a heat pump they are moved from the heating rate to the non-heating rate. Homes in areas not served by the natural gas distribution network, and homes that show no gas consumption in the ResStock data, receive no gas tariff and pay zero gas bills.
+
+#### Low-income discount program
+
+**The current program: LIDR.** Rhode Island Energy's existing **Low-Income Discount Rate (LIDR)** provides a 25% or 30% discount on the total monthly bill for qualifying customers — electric customers on the A-60 rate and gas customers on Rates 11 and 13. Discounts are tied to participation in categorical assistance programs: households enrolled in SNAP, LIHEAP, or SSI receive a **25%** discount; those on Medicaid, Rhode Island Works, or Public Assistance receive a **30%** discount.
+
+**The proposed redesign: LIDR+.** In November 2025, Rhode Island Energy filed a proposed **Low-Income Discount Rate Plus (LIDR+)** in its base distribution rate case (Docket 25-45-GE). LIDR+ applies to electric service only and replaces categorical program enrollment with income-based tiers. Three tiers are defined by household income as a share of the Federal Poverty Level (FPL):
+
+| Tier | Household income | Electric discount |
+|------|-----------------|-------------------|
+| Deepest | ≤ 75% FPL | 60% |
+| Middle | 76–150% FPL | 30% |
+| Smallest | 151–250% FPL | 10% |
+
+Gas service remains on the flat LIDR — unchanged from the current program.
+
+**How we model it.** Because ResStock does not include program enrollment data, we use FPL% to assign both current and proposed discounts. For electric bills we apply the LIDR+ tier structure (10%/30%/60% by FPL). For gas bills we apply the flat LIDR, proxied by FPL%: households at or below 138% FPL receive the 30% discount (likely Medicaid-enrolled), households between 138% and 185% FPL receive the 25% discount (SNAP/LIHEAP range), and households above 185% FPL receive no gas discount.
+
+**Participation.** As of July 2024, approximately 36,320 households — roughly **32%** of estimated eligible households — were enrolled in the A-60 electric discount rate.[^lidr-enrollment] We use this 32% figure as our baseline Low-and-Moderate Income (LMI) participation scenario and also model a **100% enrollment** scenario.
+
+[^lidr-enrollment]: RIE reported 36,320 A-60 enrollees as of July 2024 ([RIPUC filing, June 2024](https://ripuc.ri.gov/sites/g/files/xkgbur841/files/2024-06/2417-DIV-Memo_6-14-24.pdf)). The 32% participation rate is estimated against approximately 114,000 eligible households statewide ([ACEEE, November 2025](https://www.aceee.org/blog-post/2025/11/electric-costs-rise-more-states-should-cap-bills-low-income-families)).
+
+**Our definition of "LMI household."** Throughout the energy burden analysis, we define a **low-and-moderate-income (LMI) household** as any household at or below **250% FPL** — the outer eligibility limit of LIDR+. This is a broader definition than the current LIDR program, which in practice reaches households up to roughly 185% FPL (the SNAP/LIHEAP income ceiling). Including households between 185% and 250% FPL — who qualify for only the smallest (10%) electric discount under LIDR+ — means our LMI population contains some moderate-income households. We use the 250% FPL boundary because it reflects the full population that a reformed LMI program could serve, and because our discount scenarios (particularly the 100% enrollment scenario) are designed to show what full LIDR+ uptake would mean for this entire eligible population.
+
+#### Computing bill changes
+
+For each building, we apply the relevant tariffs to the building's hourly electricity load profile and annual fossil fuel consumption to calculate total annual energy bills. The **bill change from switching to a heat pump** is the difference between a building's total annual energy bill — electricity plus gas, oil, and propane — under its current heating equipment and after a heat pump retrofit, both on today's default rates. A negative change means the household would save; a positive change means bills would rise.
+
+We also compute bill changes under the proposed fair rate (see @sec-methods-fair-rate). These bill comparisons use undiscounted bills — LMI discounts are not applied. The energy burden analysis is a separate section that applies LMI discounts under two enrollment assumptions (current ~32% and full 100%) and computes the share of LMI gas-heated households whose energy costs exceed 6% of income.
+
+All bill comparisons are computed building-by-building and aggregated using ResStock sample weights to represent RIE's customer count. Results are broken out by baseline heating fuel type (natural gas, oil/propane, electric resistance)..
+
+### How we measure the cross-subsidy between heat pump and non-heat pump customers {#sec-methods-bat}
+
+The cross-subsidization analysis uses the **Bill Alignment Test (BAT)**, developed by Simeone et al. (2023) [@simeone_BillAlignmentTest_2023]. The BAT compares what each customer pays in electric delivery charges against their delivery **cost of service** — i.e., what they _should_ pay based on the cost they impose on the system. A customer whose bill exceeds their cost of service is overpaying (cross-subsidizing others); a customer whose bill falls short is underpaying (being cross-subsidized).
+
+We operate the BAT at the **subclass level**: heat pump customers as one subclass, non-heat pump customers (fossil fuel and electric resistance) as the other. This lets us measure the total dollars flowing from one group to the other under a given rate structure.
+
+#### Cost of service: marginal cost plus residual
+
+At the highest level of aggregation, each customer's cost of service has two parts:
+
+$$\text{Cost of Service}_i = \underbrace{\sum_{h=1}^{8760} L_{i,h} \times MC_h}_{\text{Marginal cost (economic burden)}} + \underbrace{f(i, R)}_{\text{Residual share}}$$
+
+The **marginal cost** (or economic burden) captures the cost that a customer's hourly load pattern _causes_ the system to incur. The **residual** captures everything else in the utility's revenue requirement that marginal cost pricing does not recover.
+
+#### Where the marginal costs come from
+
+Our hourly marginal cost signal has four components, each derived from publicly available regulatory and market data:
+
+| Component | What it captures | Data source |
+|-----------|-----------------|-------------|
+| Energy | Short-run cost of generation in each hour | ISO-NE locational marginal prices (LMP) |
+| Generation capacity | Cost of the next MW of generation adequacy | ISO-NE Forward Capacity Market (FCM) auction prices |
+| Bulk transmission | Cost of the next MW of regional transmission capacity | Avoided Energy Supply Components (AESC) 2024 study, the New England standard for avoided transmission costs |
+| Sub-transmission + distribution | Cost of the next MW of local delivery capacity | Rhode Island Energy's marginal cost-of-service (MCOS) study: project-level capital entering service, annualized and levelized over a multi-year window |
+
+#### How marginal costs are assigned to individual customers
+
+Each component produces a separate 8,760-hour signal. The signals differ fundamentally in which hours carry non-zero costs.
+
+**Energy.** Every hour receives a non-zero value: the ISO-NE real-time locational marginal price (LMP) for Rhode Island Energy's zone, averaged over the 5-minute intervals within that hour. The energy signal varies continuously throughout the year, reflecting the changing fuel cost and congestion of the marginal generator in each hour.
+
+**Generation capacity.** ISO-NE procures generation adequacy through its **Forward Capacity Market (FCM)**, an annual auction that secures commitments from generators and demand resources to be available during future peak periods. The FCM clearing price (in `$/kW-month`) represents the market-revealed cost of the next megawatt of generation capacity — the forward-looking cost that additional peak demand imposes on the system.
+
+Each month, the top $K = 8$ hours by ISO-NE system load are identified. The monthly FCM cost is allocated across those hours using exceedance weights — hours closer to the monthly peak carry more cost:
+
+$$MC^{\text{gen cap}}_h = \frac{\text{Load}_h - T}{\sum_{h' \in \text{top } K}(\text{Load}_{h'} - T)} \times P_m$$
+
+where $T$ is the load threshold below the $K$-th ranked hour and $P_m$ is the monthly FCM price. All other hours receive zero. The result is at most 96 non-zero hours per year (8 per month × 12 months), concentrated in periods when the ISO-NE system is near its reliability limit.
+
+**Bulk transmission.** New England's high-voltage transmission system is owned by the **Pool Transmission Facility (PTF)** owners and its costs are allocated to load-serving entities based on their contribution to regional peak demand. The **Avoided Energy Supply Components (AESC)** study, prepared by Synapse Energy Economics and updated every three years, provides the authoritative New England estimate of avoided PTF costs — the forward-looking cost that a marginal reduction in peak demand would save the regional transmission system. All six New England states use AESC values for energy efficiency program screening; Rhode Island's PUC benefit-cost framework (Docket 4600) draws directly from it.
+
+The AESC avoided PTF cost (in `$/kW-yr`) is allocated to hours using a **seasonal coincident peak (SCR)** method: the top 40 hours per season are identified, and costs are distributed via exceedance weights within each season. Non-zero hours are therefore concentrated around each season's peak — currently summer-dominated for ISO-NE.
+
+**Sub-transmission and distribution.** Rhode Island Energy's **Marginal Cost of Service (MCOS)** study, filed with the PUC as part of its rate case, provides project-level capital investment plans for the local distribution system. We extract only the capital entering service in each forward year (not the accumulated historical total), annualize it using the utility's composite carrying charge rate, and levelize over a 7-year window to smooth year-to-year variation. This produces a single `$/kW-yr` value representing the average annual forward-looking cost of local delivery infrastructure per kilowatt of system peak.
+
+That levelized cost is then allocated to hours using a **probability-of-peak (PoP)** method. The load curve used is EIA's hourly electric grid monitor data (Form 930) for the ISO-NE Rhode Island balancing area (subbalancing area 4005) — the EIA-reported aggregate load for Rhode Island, which effectively equals the Rhode Island Energy system load since RIE is the state's only major distribution utility. The top 100 hours by load are selected, and costs are distributed in proportion to each hour's load:
+
+$$MC^{\text{dist}}_h = \frac{\text{Load}_h}{\sum_{h' \in \text{top 100}} \text{Load}_{h'}} \times \overline{MC}^{\text{dist}}$$
+
+All other hours receive zero. Using the local balancing area load (rather than broader ISO-NE system load) captures the local peak conditions that drive distribution investment.
+
+The total marginal cost in each hour is the sum of all four components. Each customer's **economic burden** is computed by multiplying their hourly consumption by the marginal cost in that hour and summing across all hours of the year:
+
+$$EB_i = \sum_{h=1}^{8760} L_{i,h} \times MC_h$$
+
+Customers who consume more electricity during the hours when capacity costs are non-zero — primarily peak hours — bear a larger economic burden than customers whose load is concentrated in off-peak hours.
+
+#### Why there is a residual
+
+Marginal costs capture only the **forward-looking incremental cost** of new infrastructure — the specific projects in the utility's current capital plan and the next MW of generation and transmission capacity. They do not capture the embedded cost of existing infrastructure: carrying charges on past investments, operations and maintenance on sunk assets, regulatory return on historical rate base, customer-related costs, or policy costs. These are real costs that the utility must recover, but they are not caused by any individual customer's current consumption decisions.
+
+The gap between the utility's total revenue requirement and the revenue that marginal cost pricing would generate is the **residual**. For Rhode Island Energy, the delivery residual is `{python} pct(v.delivery_residual_pct)` of total delivery revenue — meaning only `{python} pct(1 - v.delivery_residual_pct)` of what customers pay for delivery reflects the forward-looking cost of new infrastructure. This is consistent with the broader literature: U.S. utilities have large embedded rate bases, and forward-looking marginal costs are a small fraction of total revenue requirements.
+
+#### How we allocate the residual
+
+Because the residual represents sunk costs that are not attributable to any customer's current behavior, the choice of how to split it is a normative decision, not an economic one. We use **EPMC (equi-proportional marginal cost) allocation**: each customer's residual share is proportional to their share of total system marginal costs. If a subclass causes 3% of total marginal costs, it bears 3% of the residual. This is equivalent to scaling all marginal-cost-based rates by a uniform constant so that total revenue equals the revenue requirement — the standard reconciliation method used in California and referenced in the BAT paper itself ([@simeone_BillAlignmentTest_2023], Appendix B).
+
+Under EPMC, the BAT reveals how the _structure_ of current rates — flat volumetric delivery charges applied equally to all kWh — redistributes costs between customer groups. Heat pump customers, who consume more electricity (especially in winter, when capacity marginal costs are low), pay a disproportionate share of the delivery revenue requirement relative to the cost they impose on the system.
+
+### How we designed the proposed fair rate {#sec-methods-fair-rate}
+
+The cross-subsidization analysis (@sec-methods-bat) identifies the problem: under today's flat delivery rates, heat pump customers systematically overpay for delivery. The fair rate is designed to eliminate this overpayment.
+
+#### The HP flat delivery rate
+
+The proposed rate is a **flat volumetric delivery rate for heat pump customers**, set lower than the current default rate. It is calibrated so that HP customers' total delivery revenue equals their cost of service on a subclass basis — i.e., the BAT for the HP subclass is zero. Rhode Island Energy gets a single HP delivery rate reflecting its territory's cost structure.
+
+The calibration works as follows. Under EPMC, the HP subclass's cost of service is its economic burden scaled by the EPMC factor $K = TRR / EB_{\text{total}}$, where $TRR$ is the total delivery revenue requirement and $EB_{\text{total}}$ is total system economic burden. The HP flat rate is the volumetric charge that recovers exactly this cost of service from the HP subclass's total consumption:
+
+$$r_{\text{HP}} = \frac{EB_{\text{HP}} \times K}{Q_{\text{HP}}} = K \times \frac{\sum_{i \in \text{HP}} \sum_{h=1}^{8760} L_{i,h} \times MC_h}{Q_{\text{HP}}}$$
+
+where $EB_{\text{HP}}$ is the total economic burden of all HP customers, $Q_{\text{HP}}$ is their total annual consumption, and $K$ equi-proportionally scales the marginal cost signal up to the revenue requirement. Non-HP customers remain on the recalibrated default rate, which adjusts slightly to absorb the revenue previously cross-subsidized by HP customers.
+
+#### Bill comparisons under the fair rate
+
+Once the fair rate is calibrated, we compute two additional sets of bill comparisons (using the same building-by-building, undiscounted methodology described above):
+
+- **HP customers switching under the fair rate.** We compare each building's total energy bill under current heating and default rates against its bill as an HP customer on the HP flat rate. This captures both the fuel switch and the rate change — the combined effect of electrification and rate reform.
+- **Non-HP customers after cross-subsidy removal.** If HP customers move to the fair rate, the default rate is recalibrated for remaining customers. We compare non-HP customers' bills before and after this recalibration — same homes, same heating equipment, only a slight rate adjustment.
+
+The **energy burden analysis** is separate: we track a cohort of LMI gas-heated households across three rate scenarios — current rates, default rates with HP, and fair rate with HP — and apply LMI discounts under both enrollment assumptions (current ~32% and full 100%) to show how rate reform interacts with income-based discounts.
+
+### How we assessed winter headroom on Rhode Island Energy's distribution system {#sec-methods-headroom}
+
+A key question for heat pump policy is whether the grid can physically handle increased winter electricity demand as more homes electrify. We assess this by examining Rhode Island Energy's distribution feeders and substation transformers against their rated capacity in winter, across three HP adoption scenarios and through 2039.
+
+#### Data sources
+
+**Feeder and transformer loading data.** Rhode Island Energy provided feeder- and transformer-level peak demand projections in a workbook covering 2021–2035 (`feeder_transformer_loads_20260326.xlsx`). Each row is a distribution feeder — a medium-voltage line carrying power from a substation to homes and businesses — or a substation transformer, which steps voltage down from the transmission level to distribution voltage. Columns contain forecasted summer peak load — in amps (a measure of current flow) for feeders, and MVA (megavolt-amperes, a measure of apparent power) for transformers — for each year, the asset's nameplate summer rating (the maximum load the asset is designed to carry continuously under normal conditions), and two years of N-1 contingency load-at-risk assessments (2026 and 2035). The N-1 contingency standard requires that the grid remain operable after any single component failure: a feeder with "contingency load-at-risk" is one whose neighbors could not absorb its customers' load if it went offline, meaning it is constrained even before its own peak reaches its rated capacity.[^n1-contingency]
+
+[^n1-contingency]: Utility engineers routinely screen distribution assets against both their own normal rating (N-0) and the N-1 contingency standard. An asset can fail the N-1 screen even at modest utilization if adjacent feeders are themselves heavily loaded.
+
+**System-wide peak forecasts.** We draw system-wide summer and winter net peak MW projections from Rhode Island Energy's *RI Peak Report 2024* (December 2024). The report provides year-by-year forecasts under an extreme weather scenario (95th/5th percentile) through 2039, along with the projected contribution of electric heating (EH) to the winter peak and heat pump adoption counts under base and high scenarios.
+
+#### Deriving winter utilization
+
+The RIE feeder data includes only summer peak loads. We derive winter loads using the system-wide ratio of winter-to-summer peak from the Peak Report, scaled to each future year:
+
+$$\text{winter\_demand}_h(y) = \text{summer\_demand}_h(y) \times \underbrace{\frac{\text{WINTER\_NET}_{95/5}(y) / \text{WINTER\_NET}_{95/5}(2024)}{\text{SUMMER\_NET}_{95/5}(y) / \text{SUMMER\_NET}_{95/5}(2024)}}_{\text{evolving winter/summer ratio}} \times W_0$$
+
+where $W_0 = 0.70$ is the assumed winter-to-summer demand ratio in the base year 2024, and the ratio term adjusts this fraction forward as winter and summer system peaks grow at different rates. Winter rated capacity is assumed equal to summer nameplate capacity ($W_{\text{cap}} = 1.0$), since thermal limits do not change with season.
+
+This approach uses system-wide growth rates as a proxy for feeder-level growth. Feeder-specific winter projections, if available, could replace this function directly.
+
+#### Scenario modeling
+
+We model three HP adoption scenarios by scaling each feeder's demand up or down proportionally, using unitless adjustment factors derived from the Peak Report's system-wide EH forecast and HP adoption counts:
+
+- **No HP**: EH contribution is removed from the system-wide peak; feeder demands are scaled down by $(1 - EH_y / \text{NET}_y)$.
+- **Base**: No adjustment; demand follows RIE's base forecast.
+- **High HP**: EH contribution is scaled up by the ratio of High to Base cumulative HP adoption counts for each year.
+
+#### Defining constrained assets
+
+We classify each feeder or transformer as **constrained** if it meets any of the following criteria in the base scenario:
+
+1. **Peak exceeds normal rating** — summer (or winter) utilization > 100%
+2. **N-1 contingency load-at-risk = "yes"** — the feeder cannot safely absorb its neighbors' load in an outage
+3. **Borderline in 2026, resolved to blank by 2035** — evidence that engineers are already planning an upgrade (this is treated as "constrained in 2026" and excluded from the 2039 projection)
+
+For the 2026 snapshot, criteria 1–3 are applied directly. For the 2039 projection, feeders constrained in 2026 are excluded (they will have been upgraded); the remaining feeders are assessed under criteria 1–2, with "borderline" also counting as constrained to capture assets approaching their limit.
+
+Utilization from 2036 to 2039 is obtained by applying the year-over-year growth rate from the RI Peak Report to each feeder's 2035 value.
+
+#### Headroom metric
+
+Headroom for a given feeder in a given year is $1 - \text{utilization}$, where utilization is the ratio of peak demand to rated capacity. A feeder with 30% headroom is running at 70% of its rated capacity. All headroom statistics are computed over the full population of feeders (or transformers) present in that year's dataset.
+
 ## Assumptions
 
 Gas utility assignment follows a similar process, with two key differences. First, some geographic areas are not served

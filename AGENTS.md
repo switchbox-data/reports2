@@ -22,6 +22,7 @@ The companion repo [rate-design-platform](https://github.com/switchbox-data/rate
 | `lib/`                         | Shared R and Python libraries used across reports. Python side is an installable package (see "Shared libraries" below).       |
 | `lib/ggplot/switchbox_theme.R` | Custom ggplot2 theme (IBM Plex Sans, white background, Switchbox colors). Source this in every R analysis notebook.            |
 | `lib/plotnine/`                | Custom plotnine theme (`theme_switchbox`) and `SB_COLORS` dict. Import in every Python analysis notebook.                      |
+| `lib/great_tables/`            | Switchbox Great Tables theme (`get_switchbox_gt_tab_options`) — table title aligned with plotnine (GT Planar Bold 15px left).  |
 | `lib/rates_analysis/`          | Shared R functions for heat pump rate analysis (bill calculation, tariff assignment, plotting).                                |
 | `lib/eia/`                     | Python scripts for fetching EIA data (fuel prices, state profiles).                                                            |
 | `context/`                     | Reference docs and working notes for agents; see **Reference context** below and **`context/README.md`** for what lives where. |
@@ -857,6 +858,7 @@ R libraries under `lib/` are sourced the traditional way (e.g. `source("lib/ggpl
 | `lib.data.nrel.resstock`           | Load ResStock load curves for a specific utility (`scan_load_curves_for_utility`), reading metadata to construct per-building paths.                                                                   |
 | `lib.eia`                          | Standalone EIA fetch scripts (petroleum prices, state heating profiles). Use `lib.data.eia` for the cleaner S3-based API.                                                                              |
 | `lib.plotnine`                     | Switchbox plotnine theme (`theme_switchbox`) with three-tier typography, brand colors (`SB_COLORS`), and auto SVG config. Import in every Python analysis notebook.                                    |
+| `lib.great_tables`                 | Switchbox Great Tables helpers (`get_switchbox_gt_tab_options`) for `GT.tab_options`: table title matches plotnine (GT Planar Bold 15px left); IBM Plex Sans on body/stub/source notes.                |
 | `lib.quarto`                       | Quarto Manuscript helpers. `display_svg(fig)` renders a matplotlib figure as SVG for safe `{{< embed >}}` embedding (avoids multi-MIME bug). Use for all raw matplotlib or plotnine `.draw()` figures. |
 
 #### R libraries

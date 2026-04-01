@@ -2,8 +2,9 @@
 """Render a Quarto report with baseline snapshot for diffing.
 
 Snapshots current docs/ to .diff/baseline/ before rendering, inlines
-any SVG figures into the HTML (removing the standalone .svg files),
-and cleans up .ipynb artifacts from docs/ after rendering.
+SVG figures into the HTML via inline_svgs.py, and cleans up .ipynb
+artifacts from docs/ after rendering. Standalone .svg files under
+docs/ are left in place for local preview; `just publish` prunes them.
 
 Usage (from a report directory):
     uv run python -m lib.just.render
@@ -61,12 +62,6 @@ def main() -> None:
             result = subprocess.run([sys.executable, str(INLINE_SVGS), "docs"])
             if result.returncode != 0:
                 render_failed = True
-
-            svgs = list(docs.rglob("*.svg"))
-            if svgs:
-                for f in svgs:
-                    f.unlink()
-                print(f"🗑️  Removed {len(svgs)} standalone SVG file(s)")
     finally:
         _clean_quarto_artifacts(docs)
 

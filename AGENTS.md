@@ -22,6 +22,7 @@ The companion repo [rate-design-platform](https://github.com/switchbox-data/rate
 | `lib/`                         | Shared R and Python libraries used across reports. Python side is an installable package (see "Shared libraries" below).       |
 | `lib/ggplot/switchbox_theme.R` | Custom ggplot2 theme (IBM Plex Sans, white background, Switchbox colors). Source this in every R analysis notebook.            |
 | `lib/plotnine/`                | Custom plotnine theme (`theme_switchbox`) and `SB_COLORS` dict. Import in every Python analysis notebook.                      |
+| `lib/great_tables/`            | Switchbox Great Tables theme (`get_switchbox_gt_tab_options`) — table title aligned with plotnine (GT Planar Bold 15px left).  |
 | `lib/rates_analysis/`          | Shared R functions for heat pump rate analysis (bill calculation, tariff assignment, plotting).                                |
 | `lib/eia/`                     | Python scripts for fetching EIA data (fuel prices, state profiles).                                                            |
 | `context/`                     | Reference docs and working notes for agents; see **Reference context** below and **`context/README.md`** for what lives where. |
@@ -857,6 +858,7 @@ R libraries under `lib/` are sourced the traditional way (e.g. `source("lib/ggpl
 | `lib.data.nrel.resstock`           | Load ResStock load curves for a specific utility (`scan_load_curves_for_utility`), reading metadata to construct per-building paths.                                                                   |
 | `lib.eia`                          | Standalone EIA fetch scripts (petroleum prices, state heating profiles). Use `lib.data.eia` for the cleaner S3-based API.                                                                              |
 | `lib.plotnine`                     | Switchbox plotnine theme (`theme_switchbox`) with three-tier typography, brand colors (`SB_COLORS`), and auto SVG config. Import in every Python analysis notebook.                                    |
+| `lib.great_tables`                 | Switchbox Great Tables helpers (`get_switchbox_gt_tab_options`) for `GT.tab_options`: table title matches plotnine (GT Planar Bold 15px left); IBM Plex Sans on body/stub/source notes.                |
 | `lib.quarto`                       | Quarto Manuscript helpers. `display_svg(fig)` renders a matplotlib figure as SVG for safe `{{< embed >}}` embedding (avoids multi-MIME bug). Use for all raw matplotlib or plotnine `.draw()` figures. |
 
 #### R libraries
@@ -950,7 +952,7 @@ Before considering any change done:
 
 - **`just check`**: Runs lock validation (`uv lock --locked`) and pre-commit hooks (ruff-check, ruff-format, ty-check, trailing whitespace, end-of-file newline, YAML/JSON/TOML validation, no large files >600KB, no merge conflict markers).
 - **`just test`**: Runs pytest suite. Add or extend tests for new or changed behavior.
-- **`just render`** (from report directory): Snapshots the current `docs/` as a baseline for diffing, runs `quarto render`, inlines SVGs (if the report uses them), and removes `.ipynb` / `.svg` artifacts. Run it after any change to a report.
+- **`just render`** (from report directory): Snapshots the current `docs/` as a baseline for diffing, runs `quarto render`, inlines SVGs (if the report uses them), and removes `.ipynb` artifacts from `docs/`. Standalone `.svg` files under `docs/` are kept for local preview. Run it after any change to a report.
 
 R formatting: Use the [air](https://github.com/posit-dev/air) formatter via the Posit.air-vscode editor extension (pre-installed in devcontainer). Not yet integrated with pre-commit hooks.
 
@@ -980,10 +982,10 @@ Naming convention: `state_topic` (e.g., `ny_aeba_grid`, `ri_hp_rates`). Reuse to
 From the report directory:
 
 ```bash
-just render           # Render HTML (snapshots baseline, inlines SVGs, cleans artifacts)
+just render           # Render HTML (snapshots baseline, inlines SVGs, cleans .ipynb)
 just draft            # Render DOCX for content review
 just typeset          # Render ICML for InDesign
-just publish          # Copy rendered HTML to root docs/ for GitHub Pages
+just publish          # Copy to root docs/, inline SVGs, prune index_files/previews/.qmd
 just diff             # Diff current render against baseline
 just diff my-label    # Diff with a label (archived under .diff/diffs/)
 ```
@@ -1150,7 +1152,7 @@ Python reports render plotnine charts as **inline SVGs** with text-as-text (not 
 
 1. **`_quarto.yml`** sets `fig-format: svg` (no `fig-dpi` needed).
 2. **`theme_switchbox`** auto-sets `mpl.rcParams["svg.fonttype"] = "none"` on import, so matplotlib emits `<text>` elements.
-3. **`just render`** (via `lib/just/render.py`) calls `inline_svgs.py` after Quarto, which inlines SVGs into the HTML, sets fixed display widths, and removes standalone `.svg` files.
+3. **`just render`** (via `lib/just/render.py`) calls `inline_svgs.py` after Quarto, which inlines SVGs into the HTML and sets fixed display widths. **`just publish`** (via `lib/just/publish.py`) runs `inline_svgs.py` again on the copy, then removes `index_files/`, `*-preview.html`, `.qmd`, and `.ipynb` from the published tree (keeping `site_libs/`, `img/`, and non-preview HTML).
 
 No per-notebook configuration is needed beyond `from lib.plotnine import theme_switchbox`.
 
@@ -1254,17 +1256,17 @@ When a task involves creating, updating, or referencing issues, use the Linear M
 
 ## Quick reference
 
-| Command           | Where      | What it does                          |
-| ----------------- | ---------- | ------------------------------------- |
-| `just install`    | Root       | Set up dev environment                |
-| `just check`      | Root       | Lint, format, typecheck               |
-| `just test`       | Root       | Run pytest suite                      |
-| `just new_report` | Root       | Create report from template           |
-| `just aws`        | Root       | Refresh AWS SSO credentials           |
-| `just clean`      | Root       | Remove generated files and caches     |
-| `just render`     | Report dir | Render HTML (snapshot + SVG inline)   |
-| `just draft`      | Report dir | Render DOCX                           |
-| `just typeset`    | Report dir | Render ICML for InDesign              |
-| `just publish`    | Report dir | Copy HTML to `docs/` for GitHub Pages |
-| `just diff`       | Report dir | Diff current render against baseline  |
-| `just clean`      | Report dir | Remove report caches                  |
+| Command           | Where      | What it does                                           |
+| ----------------- | ---------- | ------------------------------------------------------ |
+| `just install`    | Root       | Set up dev environment                                 |
+| `just check`      | Root       | Lint, format, typecheck                                |
+| `just test`       | Root       | Run pytest suite                                       |
+| `just new_report` | Root       | Create report from template                            |
+| `just aws`        | Root       | Refresh AWS SSO credentials                            |
+| `just clean`      | Root       | Remove generated files and caches                      |
+| `just render`     | Report dir | Render HTML (snapshot + SVG inline)                    |
+| `just draft`      | Report dir | Render DOCX                                            |
+| `just typeset`    | Report dir | Render ICML for InDesign                               |
+| `just publish`    | Report dir | Copy to root `docs/`, inline SVGs, prune intermediates |
+| `just diff`       | Report dir | Diff current render against baseline                   |
+| `just clean`      | Report dir | Remove report caches                                   |

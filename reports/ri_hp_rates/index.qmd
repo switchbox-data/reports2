@@ -772,16 +772,28 @@ will become politically harder. The time to fix the fairness problem is now, bef
 
 #### Building stock simulations
 
-- **ResStock 2024.2** — EnergyPlus physics-based simulations; each modeled dwelling ≈ 252 real-world homes; AMY 2018 weather; calibrated to 2020 RECS
-- **Upgrade 0** — current HVAC (gas furnace, oil boiler, propane, electric resistance, existing HP)
-- **Upgrade 2** — cold-climate ASHP retrofit on the same homes; HP performance modeled as a function of hourly outdoor temperature
+- **ResStock 2024.2** — NREL's EnergyPlus physics-based simulations of the U.S. residential building stock; AMY 2018 weather; calibrated to 2020 RECS. The RI sample contains `{python} comma(v.n_resstock_bldgs)` modeled dwellings, each reweighted so the sum of weights equals the `{python} comma(v.n_rie_customers)` residential customers in RIE's rate-case test year.[^resstock-reweight] [^cite-resstock]
+- ResStock outputs 15-minute end-use load profiles (electricity, gas, oil, propane); we aggregate to hourly for bill calculation
+- **Upgrade 0** (baseline) — current HVAC equipment as distributed across the existing housing stock (gas furnaces, oil boilers, propane heaters, electric resistance, existing HPs)
+- **Upgrade 2** (heat pump) — high-efficiency cold-climate air-source heat pump retrofit with electric backup: variable-speed ASHP rated SEER1 20 / HSPF1 11, sized to max load, 90% capacity retention at 5°F (ResStock Measure Package 2). Performance modeled hourly as a function of outdoor temperature via NEEP ccASHP performance curves.
 - Bill change = Upgrade 2 total energy bill minus Upgrade 0 total energy bill
+
+[^cite-resstock]: @nrel_EndUseLoadProfiles_2024.
+
+[^resstock-reweight]:
+    ResStock's default national sample weights represent ≈ 252 real-world homes each. We
+    rescale them so that the weighted sum equals the number of residential customers in
+    RIE's rate-case test year, as specified in the
+    [RDP revenue-requirement config](https://github.com/switchbox-data/rate-design-platform/blob/main/rate_design/hp_rates/ri/config/rev_requirement/rie_rate_case_test_year.yaml).
+    This ensures bill totals aggregate correctly when computing utility-wide revenue requirements.
 
 #### Energy prices and tariffs
 
-- **Electricity** — RIE A-16 (2025): delivery (fixed charge + quarterly volumetric) + supply (Last Resort Service seasonal rates); source: Genability
-- **Natural gas** — Rate 12 Residential Heating (2025): fixed charge + per-therm volumetric; source: RateAcuity
-- **Delivered fuels** — EIA 2025 monthly residential prices for RI (heating oil, propane), applied to each building's modeled consumption
+- **Electricity** — RIE A-16 residential rate (2025). Delivery charges use the flat volumetric rates from RIE's rate-case test year filing; supply uses seasonal Last Resort Service rates. Sourced from Genability; verified against RIE Tariff No. 2095 (delivery) and Last Resort Service filing (supply).
+- **Natural gas** — Rate 12 Residential Heating (2025) and Rate 10 Residential Non-Heating (2025): fixed charge + per-therm volumetric; source: RateAcuity
+- **Delivered fuels** — EIA Form EIA-877 monthly residential prices for RI (heating oil, propane), applied to each building's modeled consumption.[^cite-eia877]
+
+[^cite-eia877]: @eia_HeatingOilPropanePrices_2025.
 
 #### Assigning tariffs to buildings
 
@@ -791,11 +803,19 @@ will become politically harder. The time to fix the fairness problem is now, bef
 
 #### Low-income discount program
 
-- **Current LIDR** — 25% or 30% off total bill, tied to categorical program enrollment (SNAP, LIHEAP, SSI, Medicaid, etc.)
-- **Proposed LIDR+** (Docket 25-45-GE, electric only): income-based tiers — ≤75% FPL → 60%, 76–150% FPL → 30%, 151–250% FPL → 10%; gas LIDR unchanged
-- **Modeling** — FPL% used as proxy for enrollment (no enrollment data in ResStock); electric = LIDR+ tiers; gas = flat LIDR by FPL band
-- **Participation** — baseline = ~32% of eligible households enrolled (36,320 A-60 enrollees as of July 2024); also model 100% enrollment
+- **Current LIDR** — 25% or 30% off total bill, tied to categorical program enrollment (SNAP, LIHEAP, SSI, Medicaid, etc.)[^lidr-current]
+- **Proposed LIDR+** (Docket 25-45-GE, electric only): income-based tiers — ≤75% FPL → 60%, 76–150% FPL → 30%, 151–250% FPL → 10%; gas LIDR unchanged[^lidr-proposed]
+- **Modeling** — FPL% used as proxy for enrollment (no enrollment data in ResStock); electric = LIDR+ tiers; gas = flat LIDR by FPL band[^income-inflation]
+- **Participation** — baseline = ~32% of eligible households enrolled (36,320 A-60 enrollees as of July 2024)[^lidr-participation]; also model 100% enrollment
 - **LMI definition** — ≤250% FPL (LIDR+ outer limit); broader than current program reach (~185% FPL)
+
+[^lidr-current]: @ridpu_LowIncomeRatepayersDiscount_2024; see also the A-60 tariff schedule @ripuc_A60_RIPUC_2225_2020.
+
+[^lidr-proposed]: @rie_Docket2545GEApplication_2025b, pg. 95 (DeSousa et al. direct testimony); tier discounts from Table 7 of Blazunas testimony in the same docket.
+
+[^income-inflation]: ResStock's `in.representative_income` reflects ACS 2018-vintage income in 2019 dollars. Before computing FPL percentages and energy burden ratios, we inflate income to 2025 dollars using the BLS CPI-U (@fred_ConsumerPriceIndexAll_2025, series CUUR0000SA0). This ensures income and bill dollars are in the same year.
+
+[^lidr-participation]: 36,320 A-60 enrollees as of July 2024 per @rie_Docket2417ELRIEnergy_2024. Roughly 114,000 RI households estimated eligible per @johnson_ElectricCostsRise_2025; 32% ≈ 36,320 ÷ 114,000.
 
 #### Computing bill changes
 
@@ -819,30 +839,41 @@ will become politically harder. The time to fix the fairness problem is now, bef
 
 | Component | What it captures | Source |
 |-----------|-----------------|--------|
-| Energy | Short-run generation cost each hour | ISO-NE real-time LMP |
-| Generation capacity | Next MW of adequacy | ISO-NE FCM auction prices |
-| Bulk transmission | Next MW of regional TX capacity | AESC 2024 avoided PTF cost |
+| Energy | Short-run generation cost each hour | ISO-NE real-time LMP[^cite-lmp] |
+| Generation capacity | Next MW of adequacy | ISO-NE FCM auction prices[^cite-fcm] |
+| Bulk transmission | Next MW of regional TX capacity | AESC 2024 avoided PTF cost[^cite-aesc] |
 | Sub-TX + distribution | Next MW of local delivery capacity | RIE MCOS study capital |
+
+[^cite-lmp]: @iso-ne_ISONEWebServices_2025.
+
+[^cite-fcm]: Forward capacity auction clearing price $P_m$ from @isone_ForwardCapacityAuction_2024; system hourly loads used to identify peak hours from @isone_CeltReport_2025.
+
+[^cite-aesc]: @synapse_AvoidedEnergySupply_2024.
 
 #### How marginal costs are assigned to individual customers
 
-- **Energy** — all 8,760 hours non-zero; varies continuously with grid conditions
-- **Generation capacity** — top 8 hours/month by ISO-NE system load; exceedance weights; ≤96 non-zero hours/year
-- **Bulk transmission** — top 40 hours/season; exceedance weights; currently summer-dominated
-- **Sub-TX + distribution** — MCOS capital annualized + levelized over 7 years → `$/kW-yr`; allocated to top 100 hours of RI balancing area load (EIA Form 930) via probability-of-peak weights
-- **Economic burden** per customer: $EB_i = \sum_h L_{i,h} \times MC_h$
+Each component produces an **8,760-hour signal** — a value for every hour of the year. Hours where a component does not apply receive zero. The four signals are summed to produce a single hourly marginal cost vector $MC_h$.
+
+- **Energy** — all 8,760 hours non-zero; each hour's value is the ISO-NE real-time LMP for the RI zone, varying continuously with grid conditions
+- **Generation capacity** — top $K = 8$ hours per month by ISO-NE system load, with exceedance weights; remaining hours zero. At most 96 non-zero hours/year. Formula: $MC^{\text{gen}}_h = \frac{\text{Load}_h - T}{\sum_{h' \in \text{top } K}(\text{Load}_{h'} - T)} \times P_m$
+- **Bulk transmission** — top 40 hours per season by ISO-NE system load, with exceedance weights; remaining hours zero. Currently summer-dominated.
+- **Sub-TX + distribution** — MCOS capital annualized + levelized over 7 years → `$/kW-yr`; allocated to top 100 hours of RI balancing area load (EIA Form 930)[^cite-eia930] via probability-of-peak weights. Formula: $MC^{\text{dist}}_h = \frac{\text{Load}_h}{\sum_{h' \in \text{top 100}} \text{Load}_{h'}} \times \overline{MC}^{\text{dist}}$
+- **Economic burden** per customer: $EB_i = \sum_{h=1}^{8760} L_{i,h} \times MC_h$ — customers who consume more during peak hours bear a larger economic burden
+
+[^cite-eia930]: @eia_HourlyElectricGridMonitor_2025.
 
 #### Why there is a residual
 
-- Marginal costs capture only forward-looking incremental cost of new investment
-- Excluded: carrying charges on existing rate base, O&M on sunk assets, regulatory return, customer costs, policy costs
+- Marginal costs capture only the latest wave of investment entering the rate base — the forward-looking incremental cost of new infrastructure
+- The bulk of the revenue requirement comes from much older capital: depreciation on decades of prior investment, carrying charges on existing rate base, O&M on sunk assets, regulatory return, customer costs, policy costs
 - Residual = total revenue requirement minus revenue recoverable by MC pricing
-- For RIE: delivery residual is `{python} pct(v.delivery_residual_pct)` of total delivery revenue
+- For RIE: delivery residual is `{python} pct(v.delivery_residual_pct)` of total delivery revenue — marginal costs recover only `{python} pct(1 - v.delivery_residual_pct)` of delivery revenue
 
 #### How we allocate the residual
 
-- **EPMC** — each customer's residual share proportional to their share of total marginal costs
+- **EPMC (equi-proportional marginal cost)** — each customer's residual share is proportional to their share of total system marginal costs
 - Equivalent to multiplying all MC-based rates by a uniform scalar $K = TRR / EB_{\text{total}}$ until the revenue requirement is met
+- This mirrors the logic of RIE's own embedded cost-of-service study (ECOSS): use a metric that measures each subclass's current cost-causation, then divide the revenue requirement accordingly. We use hourly marginal costs rather than non-coincident peak (NCP) as the cost-causation metric — a more granular signal, but the same allocative principle.
 - Standard method used in CA; referenced in BAT paper (Simeone et al., Appendix B)
 
 ---
@@ -852,9 +883,8 @@ will become politically harder. The time to fix the fairness problem is now, bef
 #### The HP flat delivery rate
 
 - One flat volumetric delivery rate for HP customers, lower than the current default
-- Calibrated so HP subclass BAT = 0 (their delivery revenue equals their cost of service)
-- Formula: $r_{\text{HP}} = K \times EB_{\text{HP}} / Q_{\text{HP}}$
-- Non-HP customers remain on a slightly recalibrated default rate that absorbs the revenue no longer cross-subsidized by HP customers
+- Calibrated so HP subclass BAT = 0: their delivery revenue equals their allocated cost of service. Equivalently: $r_{\text{HP}} = (RR_{\text{HP}} - FC_{\text{HP}}) / Q_{\text{HP}}$, where $RR_{\text{HP}}$ is the HP subclass revenue requirement (= $K \times EB_{\text{HP}}$), $FC_{\text{HP}}$ is fixed-charge revenue already collected from HP customers, and $Q_{\text{HP}}$ is total HP kWh. By construction, this rate collects exactly the allocated cost of service of heat pump customers as a group.
+- Non-HP customers remain on a slightly recalibrated default rate that absorbs the revenue previously cross-subsidized by HP customers
 
 #### Bill comparisons under the fair rate
 
@@ -869,13 +899,15 @@ will become politically harder. The time to fix the fairness problem is now, bef
 #### Data sources
 
 - **Feeder/transformer workbook** — RIE-provided; 2021–2035 summer peak loads (amps for feeders, MVA for transformers), nameplate ratings, N-1 contingency assessments for 2026 and 2035
-- **RI Peak Report 2024** — system-wide summer and winter net peak MW under extreme weather (95/5 scenario) through 2039; EH contribution to winter peak; cumulative HP adoption counts (Base and High scenarios)
+- **RIE load forecast (RI Peak Report 2024)** — RIE's official 15-year load forecast: system-wide summer and winter net peak MW under extreme weather (95/5 scenario) through 2039; EH contribution to winter peak; cumulative HP adoption counts (Base and High scenarios).[^cite-rie-forecast]
+
+[^cite-rie-forecast]: @rie_2024ElectricPeak_2024b.
 
 #### Deriving winter utilization
 
-- Feeder data is summer-only — no feeder-level winter measurements available
-- Winter demand derived from summer demand using an evolving system-wide winter/summer ratio from the Peak Report, anchored at $W_0 = 0.70$ in 2024
-- Winter rated capacity = summer nameplate (thermal limits are season-independent)
+- Feeder data is summer-only — RIE does not currently measure feeder-level winter peaks and does not forecast how those winter peaks will evolve. TODO: quote RIE correspondence on why, and Ryan on the timeline to compile this data.
+- Winter demand derived from summer demand using an evolving system-wide winter/summer ratio from the load forecast, anchored at $W_0 = 0.70$ in 2024
+- Winter rated capacity assumed equal to summer nameplate rating — a conservative assumption, since thermal limits do not degrade in winter (cooler ambient temperatures, if anything, increase cable ampacity)
 
 #### Scenario modeling
 

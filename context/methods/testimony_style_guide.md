@@ -81,17 +81,6 @@ This is our situation — we're not reacting to an RIE proposal on HP rates, we'
 5. **Anticipate objections.** "Are there concerns that X?" → state the likely counterargument fairly, then dismantle it. This is critical when you're the one introducing a new concept. The Commission and the Company will have questions; address them before they're asked. You know what they'll say — your RIE call documented it.
 6. **Explain the methodology.** "How did you arrive at these findings?" → the technical backup. This comes _after_ the finding and the proposal, not before. Regulators want to know what you found and what to do about it before they decide whether to care how you measured it.
 
-Our testimony is a single-topic, own-proposal testimony. These 6 steps map to our outline sections:
-
-| Step                       | Outline section                                         |
-| -------------------------- | ------------------------------------------------------- |
-| 1. Establish the problem   | II. The Cross-Subsidy Problem                           |
-| 2. Explain why it matters  | III. Why the Grid Has Ample Winter Headroom             |
-| 3. Present the remedy      | IV. Proposed Remedy: A New Rate Subclass                |
-| 4. Show it works           | IV (bill impacts) + V (4600 principles assessment)      |
-| 5. Anticipate objections   | VI. Why TOU Alone Doesn't Fix This (+ parts of III, IV) |
-| 6. Explain the methodology | VII. Methodology                                        |
-
 ### The key differences between the two patterns
 
 When reacting to the Company, the Company's proposal organizes your testimony — you follow their structure and respond point by point. When advancing your own proposal, _you_ control the narrative. The sequencing matters more because you're building the case from scratch, and the Commission has no prior context for your issue.

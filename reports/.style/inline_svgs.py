@@ -13,6 +13,8 @@ Usage (from a report directory, after quarto render):
     uv run python ../.style/inline_svgs.py docs/
 
 The script processes every .html file under the given directory.
+External .svg files are not deleted here; `just publish` removes
+`index_files/` (including figure-html SVGs) after inlining.
 """
 
 from __future__ import annotations
@@ -230,14 +232,7 @@ def main() -> None:
             print(f"  {html_file.relative_to(docs_dir)}: inlined {n} SVG(s)")
             total += n
 
-    # Remove external SVG figure files — they're now redundant since the
-    # SVGs are inlined in the HTML and the lightbox modal clones from there.
-    removed = 0
-    for svg_file in sorted(docs_dir.rglob("figure-html/*.svg")):
-        svg_file.unlink()
-        removed += 1
-
-    print(f"Inlined {total} SVG(s), removed {removed} external SVG(s) in {docs_dir}")
+    print(f"Inlined {total} SVG(s) in {docs_dir}")
 
 
 if __name__ == "__main__":

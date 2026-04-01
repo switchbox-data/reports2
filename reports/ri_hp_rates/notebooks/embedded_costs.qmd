@@ -22,17 +22,21 @@ from pathlib import Path
 ### PARAMETERS
 
 ```{python}
+   pl.read_parquet("s3://data.sb/nrel/resstock/res_2024_amy2018_2/metadata/state=RI/upgrade=00/metadata.parquet")
+```
+
+```{python}
 state = "RI"
 release = "res_2024_amy2018_2"
 data_path = S3Path("s3://data.sb/nrel/resstock/")
 random_seed = 67
 upgrade_id = 2
 
-only_consider_summer_peaks = True
+only_consider_summer_peaks = False
 normalize_secondary_to_rie = True
 
 force_recrunch = True
-DEBUG_MODE = False
+DEBUG_MODE = True
 
 if DEBUG_MODE:
     sample_n = 20
@@ -70,7 +74,7 @@ allocators_cache = cache_dir / "allocators_df.parquet"
 revenue_requirement_cache = cache_dir / "revenue_requirement_df.parquet"
 
 # Only use cached sheets in DEBUG mode, do not change this
-use_cached_sheets = DEBUG_MODE and allocators_cache.exists() and revenue_requirement_cache.exists()
+use_cached_sheets = (not force_recrunch) and allocators_cache.exists() and revenue_requirement_cache.exists()
 
 if use_cached_sheets:
     allocators_df = pl.read_parquet(allocators_cache)
@@ -192,7 +196,7 @@ for level in LEVELS:
 def _get_heating_type_distribution(sbmeta: pl.LazyFrame) -> pl.DataFrame:
     """Heating type counts and percent of total (by weight). Collects only the aggregation."""
     return (
-        sbmeta.group_by("postprocess_group.heating_type")
+        sbmeta.group_by("postprocess_group.heating_type_v2")
         .agg(pl.col("weight").sum().alias("total_homes"))
         .collect()
         .with_columns((pl.col("total_homes") / pl.col("total_homes").sum()).alias("pct_of_total"))
@@ -203,7 +207,7 @@ def _merge_weights(
     ldf: pl.LazyFrame, metadata: pl.LazyFrame
 ) -> pl.LazyFrame:
     return ldf.join(
-        metadata.select(["bldg_id", "weight", "postprocess_group.heating_type"]),
+        metadata.select(["bldg_id", "weight", "postprocess_group.heating_type_v2"]),
         on="bldg_id",
         how="left",
     )
@@ -243,8 +247,8 @@ def read_mixed_upgrade_scenario(
         .with_columns(
             pl.when(pl.col("upgrade") > 0)
             .then(pl.lit("heat_pump"))
-            .otherwise(pl.col("postprocess_group.heating_type"))
-            .alias("postprocess_group.heating_type")
+            .otherwise(pl.col("postprocess_group.heating_type_v2"))
+            .alias("postprocess_group.heating_type_v2")
         )
     )
     ldf = mus.read_load_curve_hourly().pipe(
@@ -335,7 +339,7 @@ else:
         )
         .then(pl.lit("heat_pump"))
         .otherwise(pl.lit("non-heat_pump"))
-        .alias("postprocess_group.heating_type")
+        .alias("postprocess_group.heating_type_v2")
     )
 
 # Ensure weight column exists (hack until weight is in metadata). Keep baseline as LazyFrame.
@@ -345,7 +349,7 @@ if "weight" not in baseline_sbmeta.collect_schema().names():
 # Current HP share (for scaling adoption trajectory). Collect only the aggregation.
 heating_dist = _get_heating_type_distribution(baseline_sbmeta)
 current_hp_pct = (
-    heating_dist.filter(pl.col("postprocess_group.heating_type") == "heat_pump")
+    heating_dist.filter(pl.col("postprocess_group.heating_type_v2") == "heat_pump")
     .select("pct_of_total")
     .item()
 )
@@ -368,15 +372,20 @@ def compute_secondary_ncp_raw(
     return (ncp_by_subclass, total_residential_secondary_ncp_raw).
 
     The NCP computed here is the *secondary* non-coincident peak — the maximum
-    hourly load for each subclass across the year.
+    hourly load for each subclass across the year. `ncp_timestamp` is the hour at
+    which that maximum occurs (after any summer-only filter).
     """
     if only_consider_summer_peaks:
         aggregate_curves = aggregate_curves.filter(pl.col("timestamp").dt.month().is_in(range(5,10)))
     ncp_by_subclass = (
-        aggregate_curves.group_by("postprocess_group.heating_type")
+        aggregate_curves.group_by("postprocess_group.heating_type_v2")
         .agg(
             pl.col("electricity_kwh").max().alias("secondary_ncp_raw"),
             pl.col("num_homes").max().alias("num_homes"),
+            pl.col("timestamp")
+            .sort_by("electricity_kwh", descending=True)
+            .first()
+            .alias("ncp_timestamp"),
         )
     )
     total = ncp_by_subclass["secondary_ncp_raw"].sum()
@@ -385,267 +394,300 @@ def compute_secondary_ncp_raw(
     )
     return ncp_by_subclass, total
 ```
-
 ```{python}
-rows_ncp = []
-rows_system = []
-aggregate_curves_cache_dir = Path("cache") / "embedded_curves"
-aggregate_curves_cache_dir.mkdir(parents=True, exist_ok=True)
+from pathlib import Path
 
-import sys
+def run_embedded_costs_allocation(
+    additional_adoption_pct_values,
+    current_hp_pct,
+    force_recrunch,
+    uniform_adoption,
+    upgrade_id,
+    read_mixed_upgrade_scenario,
+    baseline_sbmeta,
+    data_path,
+    release,
+    state,
+    random_seed,
+    sample_n,
+    compute_secondary_ncp_raw,
+    only_consider_summer_peaks,
+    normalize_secondary_to_rie,
+    sec_res_ncp,
+    LEVELS,
+    level_ratios,
+    non_residential_ncp_sum,
+    revenue_requirement_totals,
+):
+    import polars as pl
+    import sys
 
-print(
-    f"Starting HP adoption sweep over {len(additional_adoption_pct_values)} steps: "
-    f"{additional_adoption_pct_values}"
-)
-sys.stdout.flush()
-
-for additional_adoption_pct in additional_adoption_pct_values:
-    pct_in_trajectory = (
-        additional_adoption_pct / (1 - current_hp_pct) if current_hp_pct < 1.0 else 0.0
-    )
+    rows_ncp = []
+    rows_system = []
+    aggregate_curves_cache_dir = Path("cache") / "embedded_curves"
+    aggregate_curves_cache_dir.mkdir(parents=True, exist_ok=True)
 
     print(
-        f"\n[embedded_costs] additional_adoption_pct={additional_adoption_pct * 100:.2f}% "
-        f"(trajectory share={pct_in_trajectory:.4f} of remaining potential)"
+        f"Starting HP adoption sweep over {len(additional_adoption_pct_values)} steps: "
+        f"{additional_adoption_pct_values}"
     )
     sys.stdout.flush()
 
-    cache_file = aggregate_curves_cache_dir / f"aggregate_curves_{additional_adoption_pct:.2f}.parquet"
-
-    if cache_file.exists() and not force_recrunch:
-        print(
-            f"  Using cached aggregate curves from {cache_file} "
-            f"(force_recrunch={force_recrunch})"
-        )
-        aggregate_curves = pl.read_parquet(cache_file)
-    else:
-        print(
-            "  Computing aggregate curves via MixedUpgradeScenario "
-            f"for additional_adoption_pct={additional_adoption_pct * 100:.2f}%..."
-        )
-        scenario = uniform_adoption(
-            upgrade_ids=[upgrade_id],
-            weights={upgrade_id: 1.0},
-            adoption_trajectory=[pct_in_trajectory],
-        )
-        mus, sbmeta, ldf_load_curves = read_mixed_upgrade_scenario(
-            scenario,
-            f"additional_adoption_{additional_adoption_pct:.2f}",
-            baseline_sbmeta,
-            data_path,
-            release,
-            state,
-            random_seed=random_seed,
-            sample_n=sample_n,
+    for additional_adoption_pct in additional_adoption_pct_values:
+        pct_in_trajectory = (
+            additional_adoption_pct / (1 - current_hp_pct) if current_hp_pct < 1.0 else 0.0
         )
 
-        aggregate_curves = (
-            ldf_load_curves.group_by(["timestamp", "postprocess_group.heating_type"])
-            .agg(
-                (pl.col("out.electricity.net.energy_consumption") * pl.col("weight"))
-                .sum()
-                .alias("electricity_kwh"),
-                pl.col("weight").sum().alias("num_homes"),
+        print(
+            f"\n[embedded_costs] additional_adoption_pct={additional_adoption_pct * 100:.2f}% "
+            f"(trajectory share={pct_in_trajectory:.4f} of remaining potential)"
+        )
+        sys.stdout.flush()
+
+        cache_file = aggregate_curves_cache_dir / f"aggregate_curves_{additional_adoption_pct:.2f}.parquet"
+
+        if cache_file.exists() and not force_recrunch:
+            print(
+                f"  Using cached aggregate curves from {cache_file} "
+                f"(force_recrunch={force_recrunch})"
             )
-            .collect()
+            aggregate_curves = pl.read_parquet(cache_file)
+        else:
+            print(
+                "  Computing aggregate curves via MixedUpgradeScenario "
+                f"for additional_adoption_pct={additional_adoption_pct * 100:.2f}%..."
+            )
+            scenario = uniform_adoption(
+                upgrade_ids=[upgrade_id],
+                weights={upgrade_id: 1.0},
+                adoption_trajectory=[pct_in_trajectory],
+            )
+            mus, sbmeta, ldf_load_curves = read_mixed_upgrade_scenario(
+                scenario,
+                f"additional_adoption_{additional_adoption_pct:.2f}",
+                baseline_sbmeta,
+                data_path,
+                release,
+                state,
+                random_seed=random_seed,
+                sample_n=sample_n,
+            )
+
+            aggregate_curves = (
+                ldf_load_curves.group_by(["timestamp", "postprocess_group.heating_type_v2"])
+                .agg(
+                    (pl.col("out.electricity.net.energy_consumption") * pl.col("weight"))
+                    .sum()
+                    .alias("electricity_kwh"),
+                    pl.col("weight").sum().alias("num_homes"),
+                )
+                .collect()
+            )
+            print(
+                f"  Computed aggregate curves with {aggregate_curves.height} rows, "
+                f"{aggregate_curves.width} columns. Writing cache to {cache_file}."
+            )
+            aggregate_curves.write_parquet(cache_file)
+
+        annual_kwh_by_subclass = aggregate_curves.group_by(
+            "postprocess_group.heating_type_v2"
+        ).agg(pl.col("electricity_kwh").sum().alias("annual_kwh"))
+        total_annual_kwh = annual_kwh_by_subclass["annual_kwh"].sum()
+
+        ncp_by_subclass, total_residential_secondary_ncp_raw = compute_secondary_ncp_raw(
+            aggregate_curves,
+            only_consider_summer_peaks=only_consider_summer_peaks,
         )
-        print(
-            f"  Computed aggregate curves with {aggregate_curves.height} rows, "
-            f"{aggregate_curves.width} columns. Writing cache to {cache_file}."
+
+        ncp_by_subclass = ncp_by_subclass.join(
+            annual_kwh_by_subclass,
+            on="postprocess_group.heating_type_v2",
+            how="left",
         )
-        aggregate_curves.write_parquet(cache_file)
 
-    annual_kwh_by_subclass = aggregate_curves.group_by(
-        "postprocess_group.heating_type"
-    ).agg(pl.col("electricity_kwh").sum().alias("annual_kwh"))
-    total_annual_kwh = annual_kwh_by_subclass["annual_kwh"].sum()
+        total_num_homes = ncp_by_subclass["num_homes"].sum()
+        hp_num_homes = (
+            ncp_by_subclass.filter(
+                pl.col("postprocess_group.heating_type_v2") == "heat_pump"
+            )["num_homes"].sum()
+            if "heat_pump" in ncp_by_subclass["postprocess_group.heating_type_v2"].to_list()
+            else 0.0
+        )
+        total_hp_adoption_pct = hp_num_homes / total_num_homes if total_num_homes > 0 else 0.0
 
-    ncp_by_subclass, total_residential_secondary_ncp_raw = compute_secondary_ncp_raw(
-        aggregate_curves,
-        only_consider_summer_peaks=only_consider_summer_peaks,
-    )
-
-    ncp_by_subclass = ncp_by_subclass.join(
-        annual_kwh_by_subclass,
-        on="postprocess_group.heating_type",
-        how="left",
-    )
-
-    total_num_homes = ncp_by_subclass["num_homes"].sum()
-    hp_num_homes = (
-        ncp_by_subclass.filter(
-            pl.col("postprocess_group.heating_type") == "heat_pump"
-        )["num_homes"].sum()
-        if "heat_pump" in ncp_by_subclass["postprocess_group.heating_type"].to_list()
-        else 0.0
-    )
-    total_hp_adoption_pct = hp_num_homes / total_num_homes if total_num_homes > 0 else 0.0
-
-    for r in ncp_by_subclass.iter_rows(named=True):
-        rows_ncp.append(
+        for r in ncp_by_subclass.iter_rows(named=True):
+            rows_ncp.append(
+                {
+                    "additional_adoption_pct": additional_adoption_pct * 100,
+                    "postprocess_group.heating_type_v2": r["postprocess_group.heating_type_v2"],
+                    "secondary_ncp_raw": r["secondary_ncp_raw"],
+                    "ncp_timestamp": r["ncp_timestamp"],
+                    "num_homes": r["num_homes"],
+                    "subclass_pct_of_class_share": r["subclass_pct_of_class_share"],
+                    "annual_kwh": r["annual_kwh"],
+                    "total_hp_adoption_pct": total_hp_adoption_pct * 100,
+                }
+            )
+        rows_system.append(
             {
                 "additional_adoption_pct": additional_adoption_pct * 100,
-                "postprocess_group.heating_type": r["postprocess_group.heating_type"],
-                "secondary_ncp_raw": r["secondary_ncp_raw"],
-                "num_homes": r["num_homes"],
-                "subclass_pct_of_class_share": r["subclass_pct_of_class_share"],
-                "annual_kwh": r["annual_kwh"],
+                "total_residential_secondary_ncp_raw": total_residential_secondary_ncp_raw,
+                "total_annual_kwh": total_annual_kwh,
                 "total_hp_adoption_pct": total_hp_adoption_pct * 100,
             }
         )
-    rows_system.append(
-        {
-            "additional_adoption_pct": additional_adoption_pct * 100,
-            "total_residential_secondary_ncp_raw": total_residential_secondary_ncp_raw,
-            "total_annual_kwh": total_annual_kwh,
-            "total_hp_adoption_pct": total_hp_adoption_pct * 100,
-        }
-    )
 
-    print(
-        "  Finished sweep step: "
-        f"additional_adoption_pct={additional_adoption_pct * 100:.2f}%, "
-        f"total_hp_adoption_pct={total_hp_adoption_pct * 100:.2f}%, "
-        f"total_residential_secondary_ncp_raw={total_residential_secondary_ncp_raw:,.2f} kW, "
-        f"total_annual_kwh={total_annual_kwh:,.0f} kWh"
-    )
-    sys.stdout.flush()
-
-df_ncp = pl.DataFrame(rows_ncp)
-df_system = pl.DataFrame(rows_system)
-```
-
-### NORMALIZE NCPs AND COMPUTE MULTI-LEVEL ALLOCATION
-
-We normalize the simulated secondary NCP to match RIE's filed values at baseline
-(0% additional adoption), then scale to the other infrastructure levels using the
-ratios from the allocators sheet.
-
-```{python}
-baseline_ncp_raw = df_system.filter(
-    pl.col("additional_adoption_pct") == 0.0
-)["total_residential_secondary_ncp_raw"][0]
-
-if normalize_secondary_to_rie:
-    secondary_scaling_factor = sec_res_ncp / baseline_ncp_raw
-else:
-    secondary_scaling_factor = 1.0
-
-print(f"Secondary NCP scaling factor: {secondary_scaling_factor:.4f}")
-print(f"  Simulated baseline: {baseline_ncp_raw:.1f} kW")
-print(f"  RIE target: {sec_res_ncp:.1f} kW")
-```
-
-Apply the scaling factor to get adjusted NCPs at all 4 infrastructure levels,
-for both subclass-level and system-level totals.
-
-```{python}
-# Subclass NCPs at all 4 levels
-df_ncp = df_ncp.with_columns(
-    (pl.col("secondary_ncp_raw") * secondary_scaling_factor).alias("secondary_ncp_adjusted"),
-)
-for level in LEVELS:
-    if level != "secondary":
-        df_ncp = df_ncp.with_columns(
-            (pl.col("secondary_ncp_adjusted") * level_ratios[level]).alias(
-                f"{level}_ncp_adjusted"
-            ),
+        print(
+            "  Finished sweep step: "
+            f"additional_adoption_pct={additional_adoption_pct * 100:.2f}%, "
+            f"total_hp_adoption_pct={total_hp_adoption_pct * 100:.2f}%, "
+            f"total_residential_secondary_ncp_raw={total_residential_secondary_ncp_raw:,.2f} kW, "
+            f"total_annual_kwh={total_annual_kwh:,.0f} kWh"
         )
+        sys.stdout.flush()
 
-# System-level residential totals at all 4 levels
-df_system = df_system.with_columns(
-    (pl.col("total_residential_secondary_ncp_raw") * secondary_scaling_factor).alias(
-        "total_residential_secondary_ncp_adjusted"
-    ),
-)
-for level in LEVELS:
-    if level != "secondary":
+    df_ncp = pl.DataFrame(rows_ncp)
+    df_system = pl.DataFrame(rows_system)
+
+    # --- Normalize NCPs and Multilevel Allocation ----
+
+    baseline_ncp_raw = df_system.filter(
+        pl.col("additional_adoption_pct") == 0.0
+    )["total_residential_secondary_ncp_raw"][0]
+
+    if normalize_secondary_to_rie:
+        secondary_scaling_factor = sec_res_ncp / baseline_ncp_raw
+    else:
+        secondary_scaling_factor = 1.0
+
+    print(f"Secondary NCP scaling factor: {secondary_scaling_factor:.4f}")
+    print(f"  Simulated baseline: {baseline_ncp_raw:.1f} kW")
+    print(f"  RIE target: {sec_res_ncp:.1f} kW")
+
+    # Subclass NCPs at all 4 levels
+    df_ncp = df_ncp.with_columns(
+        (pl.col("secondary_ncp_raw") * secondary_scaling_factor).alias("secondary_ncp_adjusted"),
+    )
+    for level in LEVELS:
+        if level != "secondary":
+            df_ncp = df_ncp.with_columns(
+                (pl.col("secondary_ncp_adjusted") * level_ratios[level]).alias(
+                    f"{level}_ncp_adjusted"
+                ),
+            )
+
+    # System-level residential totals at all 4 levels
+    df_system = df_system.with_columns(
+        (pl.col("total_residential_secondary_ncp_raw") * secondary_scaling_factor).alias(
+            "total_residential_secondary_ncp_adjusted"
+        ),
+    )
+    for level in LEVELS:
+        if level != "secondary":
+            df_system = df_system.with_columns(
+                (pl.col("total_residential_secondary_ncp_adjusted") * level_ratios[level]).alias(
+                    f"total_residential_{level}_ncp_adjusted"
+                ),
+            )
+
+    # Compute residential class share at each level.
+    for level in LEVELS:
+        res_col = f"total_residential_{level}_ncp_adjusted"
+        non_res = non_residential_ncp_sum[level]
         df_system = df_system.with_columns(
-            (pl.col("total_residential_secondary_ncp_adjusted") * level_ratios[level]).alias(
-                f"total_residential_{level}_ncp_adjusted"
+            (pl.col(res_col) / (pl.col(res_col) + non_res) * 100).alias(
+                f"{level}_residential_class_share_pct"
             ),
         )
-```
 
-Compute residential class share at each level. The denominator is the sum of all
-customer-class NCPs from the allocators sheet, with the residential column replaced
-by our simulated value for the given adoption scenario.
+    # Dollar allocations: at each level, multiply the total revenue requirement by the residential class share percentage.
+    for level in LEVELS:
+        total_dollars = revenue_requirement_totals[level]
+        df_system = df_system.with_columns(
+            (pl.col(f"{level}_residential_class_share_pct") / 100.0 * total_dollars).alias(
+                f"{level}_residential_usd"
+            ),
+        )
 
-```{python}
-for level in LEVELS:
-    res_col = f"total_residential_{level}_ncp_adjusted"
-    non_res = non_residential_ncp_sum[level]
     df_system = df_system.with_columns(
-        (pl.col(res_col) / (pl.col(res_col) + non_res) * 100).alias(
-            f"{level}_residential_class_share_pct"
-        ),
-    )
-```
-
-Dollar allocations: at each level, multiply the total revenue requirement by the
-residential class share percentage.
-
-```{python}
-for level in LEVELS:
-    total_dollars = revenue_requirement_totals[level]
-    df_system = df_system.with_columns(
-        (pl.col(f"{level}_residential_class_share_pct") / 100.0 * total_dollars).alias(
-            f"{level}_residential_usd"
+        pl.sum_horizontal(pl.col(f"{level}_residential_usd") for level in LEVELS).alias(
+            "total_residential_usd"
         ),
     )
 
-df_system = df_system.with_columns(
-    pl.sum_horizontal(pl.col(f"{level}_residential_usd") for level in LEVELS).alias(
-        "total_residential_usd"
-    ),
-)
-```
+    # ---- Subclass Allocation ----
 
-### SUBCLASS ALLOCATION
+    join_cols = (
+        ["additional_adoption_pct"]
+        + [f"{level}_residential_usd" for level in LEVELS]
+        + ["total_residential_usd"]
+    )
+    df_ncp = df_ncp.join(
+        df_system.select(join_cols),
+        on="additional_adoption_pct",
+        how="left",
+    )
 
-The subclass split (HP vs non-HP share of residential NCP) is the same at all
-infrastructure levels. We compute subclass NCPs at each level for future flexibility,
-and flow the dollar allocations through to each subclass.
+    for level in LEVELS:
+        df_ncp = df_ncp.with_columns(
+            (
+                pl.col("subclass_pct_of_class_share") / 100.0
+                * pl.col(f"{level}_residential_usd")
+            ).alias(f"subclass_{level}_usd"),
+        )
 
-```{python}
-join_cols = (
-    ["additional_adoption_pct"]
-    + [f"{level}_residential_usd" for level in LEVELS]
-    + ["total_residential_usd"]
-)
-df_ncp = df_ncp.join(
-    df_system.select(join_cols),
-    on="additional_adoption_pct",
-    how="left",
-)
-
-for level in LEVELS:
     df_ncp = df_ncp.with_columns(
         (
             pl.col("subclass_pct_of_class_share") / 100.0
-            * pl.col(f"{level}_residential_usd")
-        ).alias(f"subclass_{level}_usd"),
+            * pl.col("total_residential_usd")
+        ).alias("subclass_total_usd"),
+        (
+            pl.col("subclass_pct_of_class_share")
+            / 100.0
+            * pl.col("total_residential_usd")
+            / pl.col("annual_kwh")
+        ).alias("subclass_per_kwh_usd"),
+        (
+            pl.col("subclass_pct_of_class_share")
+            / 100.0
+            * pl.col("total_residential_usd")
+            / pl.col("num_homes")
+        ).alias("subclass_per_home_usd"),
     )
 
-df_ncp = df_ncp.with_columns(
-    (
-        pl.col("subclass_pct_of_class_share") / 100.0
-        * pl.col("total_residential_usd")
-    ).alias("subclass_total_usd"),
-    (
-        pl.col("subclass_pct_of_class_share")
-        / 100.0
-        * pl.col("total_residential_usd")
-        / pl.col("annual_kwh")
-    ).alias("subclass_per_kwh_usd"),
-    (
-        pl.col("subclass_pct_of_class_share")
-        / 100.0
-        * pl.col("total_residential_usd")
-        / pl.col("num_homes")
-    ).alias("subclass_per_home_usd"),
-)
+    return df_system, df_ncp
+```
+
+```{python}
+    alloc_kwargs_full_year = {
+        "additional_adoption_pct_values": additional_adoption_pct_values,
+        "current_hp_pct": current_hp_pct,
+        "force_recrunch": force_recrunch,
+        "uniform_adoption": uniform_adoption,
+        "upgrade_id": upgrade_id,
+        "read_mixed_upgrade_scenario": read_mixed_upgrade_scenario,
+        "baseline_sbmeta": baseline_sbmeta,
+        "data_path": data_path,
+        "release": release,
+        "state": state,
+        "random_seed": random_seed,
+        "sample_n": sample_n,
+        "compute_secondary_ncp_raw": compute_secondary_ncp_raw,
+        "only_consider_summer_peaks": False,
+        "normalize_secondary_to_rie": normalize_secondary_to_rie,
+        "sec_res_ncp": sec_res_ncp,
+        "LEVELS": LEVELS,
+        "level_ratios": level_ratios,
+        "non_residential_ncp_sum": non_residential_ncp_sum,
+        "revenue_requirement_totals": revenue_requirement_totals,
+    }
+    alloc_kwargs_summer_only = alloc_kwargs_full_year | {
+        "only_consider_summer_peaks":True,
+    }
+    df_system_full_year, df_ncp_full_year = run_embedded_costs_allocation(**alloc_kwargs_full_year)
+    df_system_summer_only, df_ncp_summer_only = run_embedded_costs_allocation(**alloc_kwargs_summer_only)
+    df_system = df_system_summer_only if only_consider_summer_peaks else df_system_full_year
+    df_ncp = df_ncp_summer_only if only_consider_summer_peaks else df_ncp_full_year
 ```
 
 ### MULTI-LEVEL SUMMARY TABLES
@@ -694,12 +736,45 @@ for sys_row in df_system.iter_rows(named=True):
 ```
 
 ```{python}
+    at_zero_full_year = df_ncp_full_year.filter(pl.col("additional_adoption_pct") == 0.0).sort(
+        "postprocess_group.heating_type_v2", descending=False
+    )
+    at_zero_summer_only = df_ncp_summer_only.filter(pl.col("additional_adoption_pct") == 0.0).sort(
+        "postprocess_group.heating_type_v2", descending=False
+    )
+    print("Summer-only vs Full-year breakdown at present")
+    total_homes = at_zero_full_year["num_homes"].sum()
+    total_kwh = at_zero_full_year["annual_kwh"].sum()
+    at_zero_full_year = at_zero_full_year.with_columns([
+        (pl.col("num_homes") / total_homes * 100).alias("num_homes_pct_of_total"),
+        (pl.col("annual_kwh") / total_kwh * 100).alias("annual_kwh_pct_of_total"),
+    ])
+    at_zero_summer_only = at_zero_summer_only.with_columns([
+        (pl.col("num_homes") / total_homes * 100).alias("num_homes_pct_of_total"),
+        (pl.col("annual_kwh") / total_kwh * 100).alias("annual_kwh_pct_of_total"),
+    ])
+
+    print("Full-year")
+    pretty_print(at_zero_full_year.select(["postprocess_group.heating_type_v2", "subclass_pct_of_class_share", "subclass_total_usd","subclass_per_home_usd","secondary_ncp_raw", "ncp_timestamp", "num_homes", "num_homes_pct_of_total", "annual_kwh", "annual_kwh_pct_of_total"]))
+    print("Summer-only")
+    pretty_print(at_zero_summer_only.select(["postprocess_group.heating_type_v2", "subclass_pct_of_class_share", "subclass_total_usd","subclass_per_home_usd","secondary_ncp_raw", "ncp_timestamp", "num_homes", "num_homes_pct_of_total", "annual_kwh", "annual_kwh_pct_of_total"]))
+```
+
+```{python}
 # Subclass breakdown at baseline (0% additional adoption)
 at_zero = df_ncp.filter(pl.col("additional_adoption_pct") == 0.0).sort(
-    "secondary_ncp_raw", descending=True
+    "postprocess_group.heating_type_v2", descending=False
 )
 print("Subclass breakdown at 0% additional HP adoption:")
 pretty_print(at_zero)
+total_homes = at_zero["num_homes"].sum()
+total_kwh = at_zero["annual_kwh"].sum()
+at_zero = at_zero.with_columns([
+    (pl.col("num_homes") / total_homes * 100).alias("num_homes_pct_of_total"),
+    (pl.col("annual_kwh") / total_kwh * 100).alias("annual_kwh_pct_of_total"),
+])
+
+pretty_print(at_zero.select(["postprocess_group.heating_type_v2", "subclass_pct_of_class_share", "subclass_total_usd","subclass_per_home_usd","secondary_ncp_raw", "ncp_timestamp", "num_homes", "num_homes_pct_of_total", "annual_kwh", "annual_kwh_pct_of_total"]))
 ```
 
 ```{python}
@@ -708,7 +783,7 @@ pretty_print(df_system)
 ```
 
 ```{python}
-hp_only = df_ncp.filter(pl.col("postprocess_group.heating_type") == "heat_pump")
+hp_only = df_ncp.filter(pl.col("postprocess_group.heating_type_v2") == "heat_pump")
 print("Heat pump subclass across all adoption scenarios:")
 pretty_print(hp_only)
 ```
@@ -872,7 +947,7 @@ demand from electrified heating.
         aes(
             x="total_hp_adoption_pct",
             y="secondary_ncp_adjusted",
-            fill="postprocess_group.heating_type",
+            fill="postprocess_group.heating_type_v2",
         ),
     )
     + geom_area(position="stack")
@@ -927,7 +1002,7 @@ disproportionate peak growth.
         aes(
             x="total_hp_adoption_pct",
             y="subclass_pct_of_class_share",
-            color="postprocess_group.heating_type",
+            color="postprocess_group.heating_type_v2",
         ),
     )
     + geom_line(size=1)
@@ -964,7 +1039,7 @@ share of system NCP increases.
         aes(
             x="total_hp_adoption_pct",
             y="subclass_total_usd",
-            fill="postprocess_group.heating_type",
+            fill="postprocess_group.heating_type_v2",
         ),
     )
     + geom_area(position="stack")
@@ -993,7 +1068,7 @@ cost-reflective tariff would charge for demand-related infrastructure recovery.
         aes(
             x="total_hp_adoption_pct",
             y="subclass_per_kwh_usd",
-            color="postprocess_group.heating_type",
+            color="postprocess_group.heating_type_v2",
         ),
     )
     + geom_line(size=1)
@@ -1023,7 +1098,7 @@ the average infrastructure cost burden per household in each heating-type group.
         aes(
             x="total_hp_adoption_pct",
             y="subclass_per_home_usd",
-            color="postprocess_group.heating_type",
+            color="postprocess_group.heating_type_v2",
         ),
     )
     + geom_line(size=1)

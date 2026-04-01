@@ -117,8 +117,9 @@ def _switchbox_gt_typography_rules() -> list[str]:
         # striping is toggled on elsewhere, and neutralize host page striping on tbody cells.
         ".gt_table tbody tr.gt_striped > th, .gt_table tbody tr.gt_striped > td { "
         f"background-color: {_COLOR_BG_WHITE} !important; color: {_COLOR_DATA} !important; }}",
+        # No !important here: body cells need to respect GT `tab_style` fills (e.g. area column colors).
         ".gt_table tbody tr:not(.gt_striped) > th, .gt_table tbody tr:not(.gt_striped) > td { "
-        f"background-color: {_COLOR_BG_WHITE} !important; }}",
+        f"background-color: {_COLOR_BG_WHITE}; }}",
     ]
 
 

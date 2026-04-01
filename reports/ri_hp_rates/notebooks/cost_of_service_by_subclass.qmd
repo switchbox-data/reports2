@@ -1,0 +1,1845 @@
+---
+title: "Cost of service by heating subclass (RIE)"
+execute:
+  warning: false
+  message: false
+---
+
+This notebook builds **two pairs** of tables (totals + per-customer averages): delivery revenue, cost of service (marginal + EPMC residual), and cross-subsidy by `postprocess_group.heating_type_v2`, for the rate-case test-year batch.
+
+**Data source:** After CAIRO runs finish, post-processing writes **master tables** under `s3://data.sb/switchbox/cairo/outputs/hp_rates/<state>/all_utilities/<batch>/run_<delivery>+<supply>/`. We read the **master BAT** dataset (`cross_subsidization_BAT_values`), which already decomposes each building’s annual electric bill into delivery vs supply and carries BAT metrics plus marginal-cost and residual components.
+
+- **Run 1+2** — status quo: **uniform default** delivery+supply for all customers (same upgrade-0 stock as `analysis.qmd`).
+- **Run 17+18** — **HP customers on the HP flat tariff; everyone else on the non-HP (recalibrated default) tariff** (same building stock as 1+2). See `analysis.qmd` (~3776–3778).
+
+## Setup
+
+First we import the libraries we use end-to-end: Polars for the S3 parquet work, Great Tables for the formatted table, and `Path` for writing cache files. We also start an empty `report_vars` dict so any statistics we want to reuse from the narrative can be pickled later.
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import polars as pl
+from great_tables import GT, loc, style
+
+report_vars: dict = {}
+```
+
+## Parameters
+
+Next we pin the **utility**, **batch name**, and **S3 prefixes** to master BAT for **run 1+2** (default) and **run 17+18** (HP flat / non-HP split), matching `PATH_MASTER_BAT_12` and `PATH_MASTER_BAT_1718` in `analysis.qmd`. Customer weights are already scaled in `run_scenario`; we still load **test-year customer count** and **total delivery revenue requirement** from the revenue-requirement YAML so sanity checks match the simulation config. `fetch_rdp_file` pulls that YAML at a fixed ref (update `RDP_REF` when you bump config). We define the canonical order and labels for the five `heating_type_v2` buckets.
+
+```{python}
+#| label: params
+
+import yaml
+
+from lib.rdp import fetch_rdp_file, parse_urdb_json
+
+UTILITY = "rie"
+BATCH = "ri_20260331_r1-20_rate_case_test_year"
+STATE_LOWER = "ri"
+S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
+PATH_MASTER_BAT_12 = (
+    f"{S3_BASE}/{STATE_LOWER}/all_utilities/{BATCH}/run_1+2/cross_subsidization_BAT_values/"
+)
+PATH_MASTER_BAT_1718 = (
+    f"{S3_BASE}/{STATE_LOWER}/all_utilities/{BATCH}/run_17+18/cross_subsidization_BAT_values/"
+)
+
+# rate-design-platform rev for revenue-requirement YAML (align with analysis.qmd when updating)
+RDP_REF = "e9e5088"
+_PATH_RIE_RATE_CASE_YAML = (
+    "rate_design/hp_rates/ri/config/rev_requirement/rie_rate_case_test_year.yaml"
+)
+_RAW_REV_YAML = fetch_rdp_file(_PATH_RIE_RATE_CASE_YAML, RDP_REF)
+_rev_yaml = yaml.safe_load(_RAW_REV_YAML)
+TEST_YEAR_CUSTOMER_COUNT = float(_rev_yaml["test_year_customer_count"])
+TOTAL_DELIVERY_REVENUE_REQUIREMENT = float(_rev_yaml["total_delivery_revenue_requirement"])
+# Integer customer total for table display (419,348 for current YAML); subclasses scale to this.
+DISPLAY_CUSTOMER_TOTAL = int(round(TEST_YEAR_CUSTOMER_COUNT))
+
+# Testimony / narrative: PRB-1 residential delivery totals from the same YAML (pickled with report_vars).
+_drr0 = _rev_yaml["delivery_revenue_requirement"]
+report_vars["rie_rev_req_total_delivery_rr"] = TOTAL_DELIVERY_REVENUE_REQUIREMENT
+report_vars["rie_rev_req_test_year_customer_count"] = TEST_YEAR_CUSTOMER_COUNT
+report_vars["rie_rev_req_customer_charge_total"] = float(_drr0["customer_charge"]["total_budget"])
+report_vars["rie_rev_req_core_delivery_total"] = float(_drr0["core_delivery_rate"]["total_budget"])
+report_vars["rie_rev_req_test_year_residential_kwh"] = _ty_kwh = float(
+    _rev_yaml["test_year_residential_kwh"],
+)
+report_vars["rie_rev_req_core_delivery_usd_per_kwh"] = (
+    report_vars["rie_rev_req_core_delivery_total"] / _ty_kwh
+)
+
+# Testimony: transmission vs all other top-ups (residual after customer, core distribution, transmission).
+_dtu0 = _rev_yaml["delivery_top_ups"]
+_trans_budget = float(_dtu0["transmission_charge"]["total_budget"]) + float(
+    _dtu0["transmission_uncollectible"]["total_budget"],
+)
+report_vars["rie_rev_req_transmission_total"] = _trans_budget
+report_vars["rie_rev_req_transmission_usd_per_kwh"] = _trans_budget / _ty_kwh
+_other_fixed = 0.0
+_other_vol = 0.0
+for _pk, _row in _dtu0.items():
+    if _pk in ("transmission_charge", "transmission_uncollectible"):
+        continue
+    if not isinstance(_row, dict) or "total_budget" not in _row:
+        continue
+    _tb = float(_row["total_budget"])
+    _cu = str(_row.get("charge_unit", "")).lower()
+    if "/month" in _cu:
+        _other_fixed += _tb
+    else:
+        _other_vol += _tb
+_other_total = _other_fixed + _other_vol
+report_vars["rie_rev_req_other_delivery_total"] = _other_total
+report_vars["rie_rev_req_other_delivery_usd_per_kwh"] = _other_vol / _ty_kwh
+report_vars["rie_rev_req_other_delivery_blended_c_per_kwh"] = (
+    100.0 * _other_vol / _ty_kwh
+)
+_n_ty = float(TEST_YEAR_CUSTOMER_COUNT)
+report_vars["rie_rev_req_other_delivery_avg_fixed_usd_per_mo"] = (
+    _other_fixed / 12.0 / _n_ty if _n_ty > 0 else float("nan")
+)
+
+_RDP_RIE_ELEC_TARIFF_DIR = "rate_design/hp_rates/ri/config/tariffs/electric"
+
+
+def _rie_calibrated_volumetric_c_per_kwh(*, rel_filename: str) -> str:
+    """First energy tier in URDB-shaped delivery JSON → ¢/kWh for table copy (matches CAIRO input)."""
+    path = f"{_RDP_RIE_ELEC_TARIFF_DIR}/{rel_filename}"
+    doc = parse_urdb_json(fetch_rdp_file(path, RDP_REF))
+    usd_kwh = float(doc["items"][0]["energyratestructure"][0][0]["rate"])
+    return f"{usd_kwh * 100:.2f}¢/kWh"
+
+
+_C_KWH_TODAY_UNIFORM = _rie_calibrated_volumetric_c_per_kwh(rel_filename="rie_default_calibrated.json")
+_C_KWH_PROP_HP = _rie_calibrated_volumetric_c_per_kwh(rel_filename="rie_hp_flat_calibrated.json")
+_C_KWH_PROP_OTHER = _rie_calibrated_volumetric_c_per_kwh(rel_filename="rie_nonhp_default_calibrated.json")
+
+# PRB-1 volumetric components (¢/kWh): core delivery vs transmission + uncollectible, from YAML budgets ÷ test-year kWh.
+_drr = _rev_yaml["delivery_revenue_requirement"]
+_dtu = _rev_yaml["delivery_top_ups"]
+_C_KWH_DIST_FILING = f"{100.0 * float(_drr['core_delivery_rate']['total_budget']) / _ty_kwh:.2f}¢/kWh"
+_C_KWH_TRANS_FILING = (
+    f"{100.0 * (float(_dtu['transmission_charge']['total_budget']) + float(_dtu['transmission_uncollectible']['total_budget'])) / _ty_kwh:.2f}¢/kWh"
+)
+
+_COS_SUBTITLE_VOL_DEFAULT = (
+    f"Total delivery rate {_C_KWH_TODAY_UNIFORM}, out of which distribution was {_C_KWH_DIST_FILING} "
+    f"and transmission was {_C_KWH_TRANS_FILING}."
+)
+
+_COS_HP_COMPARE_SPAN_TODAY = (
+    "All customers 2025 default rates " +
+    f"({_C_KWH_TODAY_UNIFORM})"
+)
+_COS_HP_COMPARE_SPAN_PROPOSED = (
+    f"HP customers on proposed rates ({_C_KWH_PROP_HP}); all others on adjusted default rates ({_C_KWH_PROP_OTHER})"
+)
+_COS_HP_COMPARE_SPAN_COS = "Cost of service and cross-subsidy under the proposal"
+
+_COS_HP_AVG_COMPARE_SPAN_DEFAULT = (
+    "All customers on 2025 default rates " +
+    f"({_C_KWH_TODAY_UNIFORM})"
+)
+_COS_HP_AVG_COMPARE_SPAN_PROPOSED = (
+    "Change in average delivery bill, then per-customer averages under proposed split rates — "
+    + _COS_HP_COMPARE_SPAN_PROPOSED
+)
+
+HT_V2_ORDER = (
+    "heat_pump",
+    "electrical_resistance",
+    "natgas",
+    "delivered_fuels",
+    "other",
+)
+
+HT_V2_LABELS: dict[str, str] = {
+    "heat_pump": "Heat pump",
+    "electrical_resistance": "Electric resistance",
+    "natgas": "Natural gas",
+    "delivered_fuels": "Delivered fuels",
+    "other": "Other",
+}
+```
+
+## RIE revenue requirement line items (PRB-1 / PRB-4 YAML)
+
+The rate-design-platform file `rie_rate_case_test_year.yaml` splits **delivery** revenue into the **rate-case** components (`delivery_revenue_requirement`) plus **delivery top-ups** (`delivery_top_ups`). YAML lines are **rolled up** into six **areas** for display: volumetric renewables and growth program → **Renewable Energy**; O&M, capex, storm fund, arrearage, low-income discounts, system reliability, LIHEAP, EE/SRP uncollectible, transition, pension adjustment, and performance incentive → **Other Delivery Charge**. The **program line-item table** lists every delivery line in the YAML, including **credits** (negative `total_budget`) and the **performance incentive** line (`total_budget` = 0). The **stacked bar** still uses only **positive** budgets and omits the performance incentive, so segment widths sum to 100% of those amounts. Where a rolled-up chart category combines multiple lines, its aggregated **charge unit** and **rate comment** show an em dash. In-bar rate lines use **blended ¢/kWh** for pooled volumetric budgets, **`$`/month from the YAML comment** (or `total_budget ÷ customer_count ÷ 12` when `customer_count` is on the line) for fixed charges — not aggregate utility `$/mo`.
+
+```{python}
+#| label: rie-rev-req-budget-dataset
+
+import re
+
+from lib.plotnine import SB_COLORS
+
+_RIE_RR_BUCKETS = (
+    "delivery_revenue_requirement",
+    "delivery_top_ups",
+)
+_RIE_RR_BUCKET_LABELS = {
+    "delivery_revenue_requirement": "Delivery (PRB-1 rate case)",
+    "delivery_top_ups": "Delivery top-ups",
+}
+
+
+def build_rie_rate_case_budget_line_items(
+    yd: dict,
+    raw_yaml: str,
+) -> pl.DataFrame:
+    rows: list[dict] = []
+    for bucket in _RIE_RR_BUCKETS:
+        sub = yd.get(bucket) or {}
+        if not isinstance(sub, dict):
+            continue
+        for pk, v in sub.items():
+            if not isinstance(v, dict) or "total_budget" not in v:
+                continue
+            m = re.search(
+                rf"(?m)^\s+{re.escape(pk)}:\s*\n(?:^[ \t].*\n)*?"
+                rf"^[ \t]+charge_unit:\s*[^\n#]+(?:#\s*(.+))?\s*$",
+                raw_yaml,
+            )
+            rate_comment = (m.group(1) or "").strip() if m else ""
+            _cc_raw = v.get("customer_count")
+            rows.append(
+                {
+                    "bucket": bucket,
+                    "bucket_label": _RIE_RR_BUCKET_LABELS[bucket],
+                    "program_key": pk,
+                    "program_label": pk.replace("_", " ").title(),
+                    "charge_unit": str(v.get("charge_unit", "")),
+                    "rate_comment": rate_comment,
+                    "total_budget": float(v["total_budget"]),
+                    "customer_count": float(_cc_raw) if _cc_raw is not None else None,
+                },
+            )
+    df = pl.DataFrame(rows)
+    return df.with_columns(
+        pl.when(
+            (pl.col("rate_comment") == "")
+            & (pl.col("program_key") == "supply_commodity_bundled"),
+        )
+        .then(pl.lit("Weighted bundled supply (monthly rates × scaled kWh)"))
+        .otherwise(pl.col("rate_comment"))
+        .alias("rate_comment"),
+    )
+
+
+def _rie_block_child_comments(lines: list[str], start_i: int) -> tuple[str | None, str | None, int]:
+    """Scan indented child lines of `  program_key:` until next sibling program or interstitial source header."""
+    cu_c = tb_c = None
+    j = start_i + 1
+    n = len(lines)
+    while j < n:
+        l2 = lines[j]
+        if l2.startswith("  ") and not l2.startswith("    "):
+            st2 = l2.strip()
+            if re.match(r"^  [a-z_][a-z0-9_]*:\s*$", l2):
+                break
+            if st2.startswith("# --- From ") or st2.startswith("# https://www.documentcloud.org"):
+                break
+        if re.match(r"^[a-z_][a-z0-9_]*:\s*$", l2) and not l2.startswith(" "):
+            break
+        if "charge_unit:" in l2:
+            m = re.search(r"#\s*(.+?)\s*$", l2)
+            if m:
+                cu_c = m.group(1).strip()
+        if "total_budget:" in l2:
+            m = re.search(r"#\s*(.+?)\s*$", l2)
+            if m:
+                tb_c = m.group(1).strip()
+        j += 1
+    return cu_c, tb_c, j
+
+
+def _rie_parse_delivery_program_sources(raw: str) -> dict[str, dict[str, str | None]]:
+    """Map each `delivery_revenue_requirement` / `delivery_top_ups` program_key → DocumentCloud cite, URL, YAML # notes."""
+    lines = raw.splitlines()
+    out: dict[str, dict[str, str | None]] = {}
+    ctx: str | None = None
+    cite: str | None = None
+    url: str | None = None
+    i = 0
+    n = len(lines)
+    while i < n:
+        s = lines[i].rstrip("\n")
+        st = s.strip()
+        if st.startswith("# --- From "):
+            inner = re.sub(r"^#\s*---\s*From\s+", "", st)
+            inner = re.sub(r"\s*---\s*$", "", inner).strip()
+            cite = f"RIE Book 21, {inner}"
+            url = None
+        elif st.startswith("# https://www.documentcloud.org"):
+            url = "https://" + st[2:].split("https://", 1)[1].split()[0]
+        elif re.match(r"^delivery_revenue_requirement:\s*$", s):
+            ctx = "dr"
+        elif re.match(r"^delivery_top_ups:\s*$", s):
+            ctx = "dt"
+        elif re.match(r"^supply_top_ups:\s*$", s):
+            ctx = None
+        elif ctx and re.match(r"^  ([a-z_][a-z0-9_]*):\s*$", s):
+            pk = re.match(r"^  ([a-z_][a-z0-9_]*):\s*$", s).group(1)
+            cu_c, tb_c, j = _rie_block_child_comments(lines, i)
+            out[pk] = {
+                "cite": cite,
+                "url": url,
+                "rate_formula": cu_c,
+                "budget_formula": tb_c,
+            }
+            i = j - 1
+        i += 1
+    return out
+
+
+def _rie_shorten_documentcloud_cite(cite: str) -> str:
+    """Drop line/column locators from exhibit cites; keep page and exhibit id."""
+    s = cite.strip()
+    s = re.sub(r",?\s*lines?\s+\d+(?:\s*[–-]\s*\d+)?", "", s, flags=re.I)
+    s = re.sub(r",?\s*columns?\s+[^,]+", "", s, flags=re.I)
+    s = re.sub(r"\s+,", ",", s)
+    s = re.sub(r",\s*,", ",", s)
+    return s.strip().strip(",").strip()
+
+
+def _rie_budget_derivation_is_trivial_sum(bf: str) -> bool:
+    """True if `#` budget note is only numeric sums (no names, no multipliers)."""
+    s = bf.strip()
+    if not s or re.search(r"[a-zA-Z_]", s):
+        return False
+    if re.search(r"[×*x]", s, flags=re.I):
+        return False
+    return bool(re.fullmatch(r"[\d\s,+\-()]+", s))
+
+
+def _rie_rate_note_redundant_vs_display(rate_display: str, rf: str) -> bool:
+    """True when YAML rate note duplicates what the Rate column already shows."""
+    rd = (rate_display or "").strip()
+    rf = (rf or "").strip()
+    if not rd or not rf or rd == "—":
+        return False
+    if rd.casefold() == rf.casefold():
+        return True
+    m_disp = re.search(r"(-?)([\d.]+)\s*¢/kwh", rd, re.I)
+    m_file = re.search(r"(\(?)\s*\$?\s*([\d.]+)\s*/\s*kwh", rf, re.I)
+    if m_disp and m_file:
+        sign_d = -1.0 if m_disp.group(1) else 1.0
+        c_disp = sign_d * float(m_disp.group(2))
+        neg_usd = bool(m_file.group(1))
+        usd = float(m_file.group(2))
+        if neg_usd:
+            usd = -abs(usd)
+        c_file = 100.0 * usd
+        return abs(c_disp - c_file) < 0.02
+    mo_d = re.search(r"\$\s*([\d.]+)/mo", rd)
+    mo_r = re.search(
+        r"\$\s*([\d,]+(?:\.\d+)?)\s*/\s*month",
+        rf,
+        flags=re.I,
+    )
+    if mo_d and mo_r:
+        return (
+            abs(
+                float(mo_d.group(1))
+                - float(mo_r.group(1).replace(",", "")),
+            )
+            < 0.02
+        )
+    return False
+
+
+def _rie_format_sources_md(
+    info: dict[str, str | None],
+    *,
+    rate_display: str | None = None,
+) -> str:
+    """Markdown for GT `fmt_markdown`: DocumentCloud links + YAML `#` notes when not redundant."""
+    cite = _rie_shorten_documentcloud_cite(info.get("cite") or "")
+    url = (info.get("url") or "").strip()
+    rf = info.get("rate_formula")
+    bf = info.get("budget_formula")
+    rd = (rate_display or "").strip()
+    parts: list[str] = []
+    if cite and url:
+        parts.append(f"**Rate:** [{cite}]({url})")
+        parts.append(f"**Revenue:** [{cite}]({url})")
+    elif cite:
+        parts.append(f"**Rate & revenue:** {cite}")
+    if rf and not _rie_rate_note_redundant_vs_display(rd, str(rf)):
+        parts.append(f"**Rate (filing / note):** `{rf}`")
+    if bf:
+        bf_s = str(bf).strip()
+        rf_s = str(rf or "").strip()
+        if (
+            not _rie_budget_derivation_is_trivial_sum(bf_s)
+            and bf_s != rf_s
+        ):
+            parts.append(f"**Revenue (derivation):** `{bf_s}`")
+    if not parts:
+        return "—"
+    return "  \n".join(parts)
+
+
+rie_rr_total = float(_rev_yaml["total_delivery_revenue_requirement"])
+_built_rr = build_rie_rate_case_budget_line_items(_rev_yaml, _RAW_REV_YAML)
+_other_delivery_keys = (
+    "o_m_charge",
+    "capex_revenue",
+    "storm_fund_replenishment_factor",
+    "arrears_arrearage_recovery",
+    "low_income_discounts",
+    "system_reliability_plan_charge",
+    "liheap_enhancement_charge",
+    "ee_and_srp_uncollectible_charge",
+    "transition_restructuring",
+    "pension_adjustment_factor",
+    "performance_incentive_factor",
+    "revenue_decoupling_rdm",
+)
+_renewable_energy_keys = (
+    "long_term_contracting_charge",
+    "net_metering_charge",
+    "renewables_charge",
+    "re_growth_charge",
+)
+_rie_pre_labeled = _built_rr.with_columns(
+    pl.when(pl.col("program_key") == "customer_charge")
+    .then(pl.lit("Customer Charge"))
+    .when(pl.col("program_key") == "core_delivery_rate")
+    .then(pl.lit("Distribution Charge"))
+    .when(
+        pl.col("program_key").is_in(
+            ["transmission_charge", "transmission_uncollectible"],
+        ),
+    )
+    .then(pl.lit("Transmission Charge"))
+    .when(pl.col("program_key").is_in(_other_delivery_keys))
+    .then(pl.lit("Other Delivery Charge"))
+    .when(pl.col("program_key").is_in(_renewable_energy_keys))
+    .then(pl.lit("Renewable Energy"))
+    .when(pl.col("program_key") == "energy_efficiency_programs_charge")
+    .then(pl.lit("Energy Efficiency"))
+    .otherwise(
+        pl.col("program_key").str.replace("_", " ").str.to_titlecase(),
+    )
+    .alias("program_label"),
+)
+_rie_pre = _rie_pre_labeled.filter(
+    (pl.col("program_key") != "performance_incentive_factor")
+    & (pl.col("total_budget") > 0),
+)
+rie_budget_df = (
+    _rie_pre.group_by("program_label")
+    .agg(
+        pl.col("total_budget").sum(),
+        pl.col("charge_unit").n_unique().alias("_nu_cu"),
+        pl.col("charge_unit").first().alias("_v_cu"),
+        pl.col("rate_comment").n_unique().alias("_nu_rc"),
+        pl.col("rate_comment").first().alias("_v_rc"),
+        pl.col("bucket_label").n_unique().alias("_nu_bl"),
+        pl.col("bucket_label").first().alias("_v_bl"),
+    )
+    .with_columns(
+        pl.when(pl.col("_nu_cu") == 1)
+        .then(pl.col("_v_cu"))
+        .otherwise(pl.lit("—"))
+        .alias("charge_unit"),
+        pl.when(pl.col("_nu_rc") == 1)
+        .then(pl.col("_v_rc"))
+        .otherwise(pl.lit("—"))
+        .alias("rate_comment"),
+        pl.when(pl.col("_nu_bl") == 1)
+        .then(pl.col("_v_bl"))
+        .otherwise(pl.lit("—"))
+        .alias("bucket_label"),
+    )
+    .drop("_nu_cu", "_v_cu", "_nu_rc", "_v_rc", "_nu_bl", "_v_bl")
+)
+_RIE_RR_CHART_LABEL_ORDER = (
+    "Customer Charge",
+    "Distribution Charge",
+    "Transmission Charge",
+    "Other Delivery Charge",
+    "Renewable Energy",
+    "Energy Efficiency",
+)
+# Stacked bar segments and first-row Area cells in the program table (same fills).
+# Bar order L→R: sky, midnight, pistachio, gray, saffron; EE uses carrot (6th bucket).
+_RIE_RR_FILL: dict[str, str] = {
+    "Customer Charge": SB_COLORS["sky"],
+    "Distribution Charge": SB_COLORS["midnight"],
+    "Transmission Charge": SB_COLORS["pistachio"],
+    "Other Delivery Charge": SB_COLORS["gray"],
+    "Renewable Energy": SB_COLORS["saffron"],
+    "Energy Efficiency": SB_COLORS["carrot"],
+}
+# Contrasting label text on those fills (matches in-bar label colors).
+_RIE_RR_BUCKET_TEXT: dict[str, str] = {
+    "Customer Charge": SB_COLORS["midnight"],
+    "Distribution Charge": SB_COLORS["white"],
+    "Transmission Charge": SB_COLORS["white"],
+    "Other Delivery Charge": SB_COLORS["white"],
+    "Renewable Energy": SB_COLORS["midnight"],
+    "Energy Efficiency": SB_COLORS["midnight"],
+}
+_present_rr = set(rie_budget_df["program_label"].to_list())
+rie_rr_chart_label_order = [x for x in _RIE_RR_CHART_LABEL_ORDER if x in _present_rr]
+_extras_rr = _present_rr - set(rie_rr_chart_label_order)
+if _extras_rr:
+    rie_rr_chart_label_order = rie_rr_chart_label_order + sorted(_extras_rr)
+rie_budget_df = rie_budget_df.join(
+    pl.DataFrame(
+        {
+            "program_label": rie_rr_chart_label_order,
+            "_rie_rr_sort": list(range(len(rie_rr_chart_label_order))),
+        },
+    ),
+    on="program_label",
+    how="left",
+).sort("_rie_rr_sort")
+rie_pos_sum = float(rie_budget_df["total_budget"].sum())
+rie_budget_df = rie_budget_df.with_columns(
+    (100.0 * pl.col("total_budget") / pl.lit(rie_pos_sum)).alias("pct_of_positive_line_items"),
+).drop("_rie_rr_sort")
+
+RIE_TEST_YEAR_KWH = float(_rev_yaml["test_year_residential_kwh"])
+
+
+def _rie_fmt_money_short(v: float) -> str:
+    av = abs(float(v))
+    if av >= 1_000_000:
+        s = f"{v / 1_000_000:.2f}".rstrip("0").rstrip(".")
+        return f"${s}M"
+    if av >= 1000:
+        s = f"{v / 1000:.2f}".rstrip("0").rstrip(".")
+        return f"${s}k"
+    return f"${v:,.0f}"
+
+
+def _rie_fmt_customer_mo(monthly_usd: float) -> str:
+    """Per-customer monthly charge for in-bar labels (e.g. $6/mo, $3.22/mo)."""
+    v = float(monthly_usd)
+    if abs(v - round(v)) < 1e-4 and abs(v) < 100:
+        return f"${int(round(v))}/mo"
+    return f"${v:.2f}/mo"
+
+
+def _rie_parse_fixed_mo_comment(comment: str) -> str | None:
+    """YAML `charge_unit` trailing comment like `# $6.00/month` → `$6/mo`."""
+    if not comment:
+        return None
+    m = re.search(
+        r"\$\s*([\d,]+(?:\.\d+)?)\s*/\s*month",
+        comment,
+        flags=re.IGNORECASE,
+    )
+    if not m:
+        return None
+    val = float(m.group(1).replace(",", ""))
+    return _rie_fmt_customer_mo(val)
+
+
+def _rie_rate_display_for_table(charge_unit: str, rate_comment: str) -> str:
+    """GT Rate column: volumetric → ¢/kWh; monthly → `$`/mo from comment; else raw comment."""
+    cu = (charge_unit or "").lower()
+    rc = (rate_comment or "").strip()
+    if not rc:
+        return "—"
+    if "month" in cu:
+        mo = _rie_parse_fixed_mo_comment(rc)
+        return mo if mo else rc
+    if "kwh" in cu:
+        m = re.search(r"(\(?)\s*\$?\s*([\d.]+)\s*/\s*kwh", rc, flags=re.IGNORECASE)
+        if not m:
+            return rc
+        neg = bool(m.group(1))
+        usd = float(m.group(2))
+        if neg:
+            usd = -abs(usd)
+        cents = 100.0 * abs(usd)
+        if usd < 0:
+            return f"-{cents:.2f}¢/kWh"
+        return f"{cents:.2f}¢/kWh"
+    return rc
+
+
+def _rie_bucket_rate_sublabel(g: pl.DataFrame, *, kwh: float, customers: float) -> str:
+    """Rate lines: blended ¢/kWh first when both vol and fixed exist; then per-customer $/mo (not utility-wide monthly pool)."""
+    fixed = g.filter(pl.col("charge_unit").str.contains("month"))
+    vol = g.filter(pl.col("charge_unit").str.contains("kWh"))
+    lines: list[str] = []
+    if vol.height > 0:
+        vs = float(vol["total_budget"].sum())
+        if vs > 0 and kwh > 0:
+            lines.append(f"{100.0 * vs / kwh:.2f}¢/kWh")
+    if fixed.height > 0:
+        n_fixed = fixed.height
+        for row in fixed.select(["total_budget", "rate_comment", "customer_count"]).iter_rows(named=True):
+            fs = float(row["total_budget"])
+            if fs <= 0:
+                continue
+            rc = str(row["rate_comment"] or "")
+            mo_lbl = _rie_parse_fixed_mo_comment(rc)
+            if mo_lbl is None:
+                cc_raw = row["customer_count"]
+                if cc_raw is not None and float(cc_raw) > 0:
+                    mo_lbl = _rie_fmt_customer_mo(fs / float(cc_raw) / 12.0)
+                elif n_fixed == 1 and customers > 0:
+                    mo_lbl = _rie_fmt_customer_mo(fs / customers / 12.0)
+            if mo_lbl is not None:
+                lines.append(mo_lbl)
+    return "\n".join(lines)
+
+
+_rie_rr_sublbl_rows: list[dict] = []
+for _b in _RIE_RR_CHART_LABEL_ORDER:
+    _g = _rie_pre.filter(pl.col("program_label") == _b)
+    if _g.height == 0:
+        continue
+    _rie_rr_sublbl_rows.append(
+        {
+            "program_label": _b,
+            "budget_rate_sublbl": _rie_bucket_rate_sublabel(
+                _g,
+                kwh=RIE_TEST_YEAR_KWH,
+                customers=TEST_YEAR_CUSTOMER_COUNT,
+            ),
+        },
+    )
+rie_budget_df = rie_budget_df.join(
+    pl.DataFrame(_rie_rr_sublbl_rows),
+    on="program_label",
+    how="left",
+).with_columns(pl.col("budget_rate_sublbl").fill_null(""))
+
+_RIE_PROGRAM_DISPLAY: dict[str, str] = {
+    "customer_charge": "Customer charge",
+    "core_delivery_rate": "Core delivery rate",
+    "transmission_charge": "Transmission charge",
+    "transmission_uncollectible": "Transmission uncollectible",
+    "long_term_contracting_charge": "Long-term contracting",
+    "net_metering_charge": "Net metering",
+    "energy_efficiency_programs_charge": "Energy efficiency programs",
+    "system_reliability_plan_charge": "System reliability plan",
+    "renewables_charge": "Renewables charge",
+    "ee_and_srp_uncollectible_charge": "EE & SRP uncollectible",
+    "transition_restructuring": "Transition / restructuring",
+    "o_m_charge": "O&M",
+    "storm_fund_replenishment_factor": "Storm fund replenishment",
+    "arrears_arrearage_recovery": "Arrears recovery",
+    "low_income_discounts": "Low-income discounts",
+    "re_growth_charge": "Renewable energy growth program",
+    "liheap_enhancement_charge": "LIHEAP enhancement",
+    "capex_revenue": "Capex revenue",
+    "pension_adjustment_factor": "Pension adjustment",
+    "performance_incentive_factor": "Performance incentive",
+}
+
+
+def _rie_program_display_name(program_key: str) -> str:
+    return _RIE_PROGRAM_DISPLAY.get(
+        program_key,
+        program_key.replace("_", " ").title(),
+    )
+
+
+_bucket_ord_detail = pl.DataFrame(
+    {
+        "area": list(_RIE_RR_CHART_LABEL_ORDER),
+        "_rie_detail_bo": list(range(len(_RIE_RR_CHART_LABEL_ORDER))),
+    },
+)
+_rie_rr_detail_sorted = (
+    _rie_pre_labeled.rename({"program_label": "area"})
+    .with_columns(
+        pl.col("program_key")
+        .map_elements(_rie_program_display_name, return_dtype=pl.Utf8)
+        .alias("charge"),
+    )
+    .join(_bucket_ord_detail, on="area", how="left")
+    .with_columns(pl.col("_rie_detail_bo").fill_null(99))
+    .sort(["_rie_detail_bo", "total_budget"], descending=[False, True])
+)
+_rie_rr_rate_display = [
+    _rie_rate_display_for_table(str(cu or ""), str(rc or ""))
+    for cu, rc in zip(
+        _rie_rr_detail_sorted["charge_unit"],
+        _rie_rr_detail_sorted["rate_comment"],
+        strict=True,
+    )
+]
+_rie_delivery_sources_by_pk = _rie_parse_delivery_program_sources(_RAW_REV_YAML)
+_rie_rr_sources_md = [
+    _rie_format_sources_md(
+        _rie_delivery_sources_by_pk.get(str(pk), {}),
+        rate_display=rd,
+    )
+    for pk, rd in zip(
+        _rie_rr_detail_sorted["program_key"],
+        _rie_rr_rate_display,
+        strict=True,
+    )
+]
+rie_rr_program_detail_df = _rie_rr_detail_sorted.with_columns(
+    pl.Series("rate_display", _rie_rr_rate_display),
+    pl.Series("sources_md", _rie_rr_sources_md),
+    pl.col("total_budget").alias("total_revenue"),
+).select("area", "charge", "rate_display", "total_revenue", "sources_md")
+# Area column: show label only on the first row of each contiguous block (`_area_key` keeps the bucket).
+rie_rr_program_detail_df = (
+    rie_rr_program_detail_df.with_columns(pl.col("area").alias("_area_key"))
+    .with_columns(
+        pl.when(
+            pl.col("_area_key").shift(1).is_not_null()
+            & (pl.col("_area_key").shift(1) == pl.col("_area_key")),
+        )
+        .then(pl.lit(""))
+        .otherwise(pl.col("_area_key"))
+        .alias("area"),
+    )
+)
+
+report_vars["rie_rev_req_n_program_rows"] = int(rie_rr_program_detail_df.height)
+report_vars["rie_rev_req_positive_line_items_sum"] = rie_pos_sum
+
+rie_budget_df.select(
+    "bucket_label",
+    "program_label",
+    "charge_unit",
+    "rate_comment",
+    "total_budget",
+    pl.col("pct_of_positive_line_items").round(2),
+)
+```
+
+```{python}
+#| label: fig-rie-rev-req-budgets
+#| fig-cap: "RIE test-year delivery revenue in six rolled-up buckets (positive budgets only; segment widths are shares of those amounts). Plot title gives total delivery revenue requirement from the YAML for the rate-case year (9/1/2024–8/31/2025). In-bar text: bucket total, blank line, then blended ¢/kWh when volumetric budgets exist, then per-customer fixed charges as $/mo from the filing (not utility-wide monthly totals). Credits and zero-budget performance incentive omitted."
+#| fig-cap-location: margin
+
+from plotnine import (
+    aes,
+    annotate,
+    coord_flip,
+    element_blank,
+    geom_col,
+    geom_text,
+    ggplot,
+    labs,
+    position_stack,
+    scale_fill_manual,
+    scale_x_discrete,
+    scale_y_continuous,
+    theme,
+)
+
+from lib.plotnine import SB_COLORS, theme_switchbox
+from lib.quarto import display_svg
+
+_prog_order = rie_rr_chart_label_order
+
+
+def _rie_usd_compact(v: float) -> str:
+    av = abs(float(v))
+    if av >= 1_000_000:
+        s = f"{v / 1_000_000:.2f}".rstrip("0").rstrip(".")
+        return f"${s}M"
+    return f"${v:,.0f}"
+
+
+def _rie_usd_total_annotation(v: float) -> str:
+    if v >= 1_000_000:
+        s = f"{v / 1_000_000:.2f}".rstrip("0").rstrip(".")
+        return f"${s}M"
+    return f"${v:,.0f}"
+
+
+_RIE_RR_BAR_SHORT = {
+    "Customer Charge": "Customer\nCharge",
+    "Distribution Charge": "Distribution",
+    "Transmission Charge": "Transmission",
+    "Other Delivery Charge": "Other delivery",
+    "Renewable Energy": "Renewable\nEnergy",
+    "Energy Efficiency": "Energy\nEfficiency",
+}
+
+_plot_df = (
+    rie_budget_df.with_columns(pl.col("program_label").cast(pl.Enum(_prog_order)))
+    .with_columns(
+        pl.col("total_budget")
+        .map_elements(_rie_usd_compact, return_dtype=pl.Utf8)
+        .alias("_budget_top"),
+    )
+    .with_columns(
+        pl.when(pl.col("budget_rate_sublbl") != "")
+        .then(pl.col("_budget_top") + pl.lit("\n\n") + pl.col("budget_rate_sublbl"))
+        .otherwise(pl.col("_budget_top"))
+        .alias("budget_lbl"),
+    )
+    .drop("_budget_top")
+)
+_fill_colors = {p: _RIE_RR_FILL[p] for p in _prog_order}
+
+_in_bar = _plot_df.filter(pl.col("pct_of_positive_line_items") >= 2.0)
+
+cum_pct = 0.0
+_rie_bar_annos: list = []
+for _lbl in _prog_order:
+    _row = _plot_df.filter(pl.col("program_label") == _lbl)
+    if _row.height == 0:
+        continue
+    _p = float(_row["pct_of_positive_line_items"][0])
+    _mid = cum_pct + _p / 2.0
+    cum_pct += _p
+    _rie_bar_annos.append(
+        annotate(
+            "text",
+            x=1.42,
+            y=_mid,
+            label=_RIE_RR_BAR_SHORT.get(_lbl, _lbl),
+            ha="center",
+            va="bottom",
+            size=8,
+            color=_RIE_RR_FILL[_lbl],
+            fontweight="normal",
+        ),
+    )
+
+_total_lbl = _rie_usd_total_annotation(rie_rr_total)
+_rie_rr_plot_title = (
+    f"Rhode Island Energy collected {_total_lbl} in revenue between 9/1/2024 and 8/31/2025"
+)
+
+p_rie_rr = (
+    ggplot(_plot_df, aes(x="'Delivery revenue'", y="pct_of_positive_line_items", fill="program_label"))
+    + geom_col(
+        position=position_stack(reverse=True),
+        width=0.8,
+        colour=None,
+        size=0,
+    )
+    + geom_text(
+        _in_bar,
+        aes(label="budget_lbl"),
+        position=position_stack(vjust=0.5, reverse=True),
+        size=5,
+        fontweight="bold",
+        color="white",
+        ha="center",
+        lineheight=1.08,
+    )
+    + coord_flip()
+    + scale_fill_manual(values=_fill_colors, breaks=_prog_order, guide=None)
+    + scale_x_discrete(expand=(0, 0.35, 0, 1.15))
+    + scale_y_continuous(expand=(0, 0, 0.08, 0))
+    + labs(title=_rie_rr_plot_title, x="", y="")
+    + theme_switchbox()
+    + theme(
+        figure_size=(10.5, 3.65),
+        axis_text=element_blank(),
+        axis_ticks=element_blank(),
+        axis_ticks_x=element_blank(),
+        axis_ticks_y=element_blank(),
+        axis_line=element_blank(),
+        axis_line_x=element_blank(),
+        panel_grid=element_blank(),
+        legend_position="none",
+    )
+)
+for _a in _rie_bar_annos:
+    p_rie_rr = p_rie_rr + _a
+
+
+def _rie_style_inbar_budget_labels(fig, *, top_pt: float = 6, sub_pt: float = 5, gap_pt: float = 9) -> None:
+    """Larger font for bucket $ total; rate lines stay smaller (plotnine has one size per geom_text)."""
+    import matplotlib.colors as mcolors
+
+    ax = fig.axes[0]
+
+    def _is_near_white(c) -> bool:
+        try:
+            r, g, b, *_ = mcolors.to_rgba(c)
+        except ValueError:
+            return False
+        return r > 0.9 and g > 0.9 and b > 0.9
+
+    for t in list(ax.texts):
+        s = t.get_text()
+        if not s:
+            continue
+        if not _is_near_white(t.get_color()):
+            continue
+        w = t.get_fontweight()
+        if w not in ("bold", "heavy") and not (isinstance(w, (int, float)) and w >= 600):
+            continue
+        if "\n\n" in s and ("/mo" in s or "/kWh" in s):
+            top, rest = s.split("\n\n", 1)
+            x, y = t.get_position()
+            col = t.get_color()
+            t.remove()
+            ax.annotate(
+                top,
+                xy=(x, y),
+                xytext=(0, gap_pt),
+                textcoords="offset points",
+                ha="center",
+                va="bottom",
+                fontsize=top_pt,
+                fontweight="bold",
+                color=col,
+            )
+            ax.annotate(
+                rest,
+                xy=(x, y),
+                xytext=(0, -gap_pt),
+                textcoords="offset points",
+                ha="center",
+                va="top",
+                fontsize=sub_pt,
+                fontweight="bold",
+                color=col,
+                linespacing=1.08,
+            )
+        elif "\n" not in s and s.startswith("$"):
+            t.set_fontsize(top_pt)
+
+
+fig = p_rie_rr.draw()
+_rie_style_inbar_budget_labels(fig)
+display_svg(fig)
+```
+
+### Program line items by area
+
+Each delivery line from the YAML appears below with the same six **areas** as the stacked bar. The **Area** label appears **once per section** (first program row in that bucket); additional rows leave Area blank. The labeled cell uses the **same fill and label colors** as the stacked-bar segment. **Rate** is **¢/kWh** or per-customer **`$/mo`** from filing comments. **Sources** lists **Rate** and **Revenue** links into RIE Book 21 on DocumentCloud (same exhibit when both apply), plus **YAML `#` notes** only when they add something beyond the Rate and Revenue columns (e.g. a non-trivial revenue derivation).
+
+```{python}
+#| label: tbl-rie-rev-req-programs
+
+from lib.great_tables import get_switchbox_gt_tab_options
+from lib.plotnine import SB_COLORS
+
+_rie_rr_program_gt_df = rie_rr_program_detail_df.drop("_area_key")
+
+_gt_rr_prog = (
+    GT(_rie_rr_program_gt_df)
+    .tab_header(
+        title="Delivery charges and revenue, by area",
+        subtitle=(
+            "Rates and revenue collected during the rate-case test year (9/1/24–8/31/25); "
+        ),
+    )
+    .cols_label(
+        area="Area",
+        charge="Charge",
+        rate_display="Rate",
+        total_revenue="Revenue",
+        sources_md="Sources",
+    )
+    .fmt_currency(columns="total_revenue", currency="USD", decimals=0)
+    .fmt_markdown(columns="sources_md")
+    .cols_align(align="left", columns=["area", "charge", "rate_display", "sources_md"])
+    .cols_align(align="right", columns="total_revenue")
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+for _i, _key in enumerate(rie_rr_program_detail_df["_area_key"]):
+    _key = str(_key)
+    _area_shown = str(rie_rr_program_detail_df["area"][_i])
+    if not _area_shown:
+        _gt_rr_prog = _gt_rr_prog.tab_style(
+            style=[
+                style.fill(color=SB_COLORS["white"]),
+                style.text(color="#4D4D4D", weight="normal"),
+            ],
+            locations=loc.body(columns="area", rows=[_i]),
+        )
+        continue
+    _bg = _RIE_RR_FILL.get(_key, SB_COLORS["gray_light"])
+    _fg = _RIE_RR_BUCKET_TEXT.get(_key, SB_COLORS["midnight"])
+    _gt_rr_prog = _gt_rr_prog.tab_style(
+        style=[
+            style.fill(color=_bg),
+            style.text(color=_fg, weight="bold"),
+        ],
+        locations=loc.body(columns="area", rows=[_i]),
+    )
+
+Path("../cache").mkdir(parents=True, exist_ok=True)
+Path("../cache/rie_rev_req_programs_by_bucket.html").write_text(_gt_rr_prog.as_raw_html(), encoding="utf-8")
+_gt_rr_prog
+```
+
+## Load, validate, and aggregate (both scenarios)
+
+We `scan_parquet` each master BAT root with `hive_partitioning=True` (same as `analysis.qmd`), filter to RIE, derive **cost of service (delivery)**, then **validate** weighted totals against the YAML and **aggregate** by `heating_type_v2` with the spine + integer display counts. The cell below defines small helpers and runs the pipeline twice: **`bat` / `cos_tbl`** for **run 1+2**, **`bat_hp_flat` / `cos_tbl_hp_flat`** for **run 17+18**.
+
+```{python}
+#| label: bat-pipeline
+
+import numpy as np
+
+from lib.great_tables import get_switchbox_gt_tab_options
+
+# Switchbox fonts / sizes for Great Tables (GT Planar headers, IBM Plex data); see lib/great_tables/.
+_COS_GT_TAB_OPTS = get_switchbox_gt_tab_options()
+
+
+def _cos_gt_center_cells(gt: GT, *, data_columns: list[str]) -> GT:
+    return (
+        gt.cols_align(align="center", columns=data_columns)
+        .tab_style(
+            style=style.text(align="center"),
+            locations=loc.stub(),
+        )
+        .tab_style(
+            style=style.text(align="center"),
+            locations=loc.column_labels(),
+        )
+    )
+
+
+def load_master_bat(path_master_bat: str) -> pl.DataFrame:
+    return (
+        pl.scan_parquet(path_master_bat, hive_partitioning=True)
+        .filter(pl.col("sb.electric_utility") == UTILITY)
+        .select(
+            "weight",
+            "postprocess_group.heating_type_v2",
+            "annual_bill_delivery",
+            "economic_burden_delivery",
+            "residual_share_epmc_delivery",
+            "BAT_epmc_delivery",
+        )
+        .with_columns(
+            (
+                pl.col("economic_burden_delivery")
+                + pl.col("residual_share_epmc_delivery")
+            ).alias("cost_of_service_delivery"),
+        )
+        .collect()
+    )
+
+
+def assert_bill_identity(bat: pl.DataFrame, scenario: str) -> None:
+    _check = bat.with_columns(
+        (
+            pl.col("economic_burden_delivery")
+            + pl.col("residual_share_epmc_delivery")
+            + pl.col("BAT_epmc_delivery")
+            - pl.col("annual_bill_delivery")
+        )
+        .abs()
+        .alias("bill_identity_abs_err"),
+    )
+    _mx = float(_check["bill_identity_abs_err"].max())
+    assert _mx < 1e-2, (
+        f"{scenario}: annual_bill_delivery should equal EB + EPMC residual + BAT_epmc "
+        f"(max err {_mx})"
+    )
+
+
+def validate_totals(bat: pl.DataFrame, scenario: str, *, hp_flat: bool) -> None:
+    total_w = float(bat["weight"].sum())
+    total_rev = float((bat["weight"] * bat["annual_bill_delivery"]).sum())
+    total_cos = float((bat["weight"] * bat["cost_of_service_delivery"]).sum())
+    total_xs = float((bat["weight"] * bat["BAT_epmc_delivery"]).sum())
+
+    assert abs(total_w - TEST_YEAR_CUSTOMER_COUNT) < 0.05, (
+        f"{scenario}: sum(weight)={total_w} vs test_year_customer_count="
+        f"{TEST_YEAR_CUSTOMER_COUNT}"
+    )
+    assert abs(total_rev - TOTAL_DELIVERY_REVENUE_REQUIREMENT) < 2000.0, (
+        f"{scenario}: sum(w×delivery)={total_rev} vs RR={TOTAL_DELIVERY_REVENUE_REQUIREMENT}"
+    )
+    assert abs(total_xs) < 5000.0, (
+        f"{scenario}: cross-subsidy total should net ~0, got {total_xs}"
+    )
+    assert abs(total_cos - TOTAL_DELIVERY_REVENUE_REQUIREMENT) < 5000.0, (
+        f"{scenario}: sum(w×COS)={total_cos} vs delivery RR="
+        f"{TOTAL_DELIVERY_REVENUE_REQUIREMENT}"
+    )
+
+    if hp_flat:
+        report_vars["cos_subclass_hp_flat_total_customers"] = total_w
+        report_vars["cos_subclass_hp_flat_total_delivery_rev"] = total_rev
+        report_vars["cos_subclass_hp_flat_total_cos"] = total_cos
+    else:
+        report_vars["cos_subclass_total_customers"] = total_w
+        report_vars["cos_subclass_total_delivery_rev"] = total_rev
+        report_vars["cos_subclass_total_cos"] = total_cos
+
+
+def build_cos_table(bat: pl.DataFrame) -> pl.DataFrame:
+    total_w = float(bat["weight"].sum())
+    total_rev = float((bat["weight"] * bat["annual_bill_delivery"]).sum())
+
+    _by_ht = bat.group_by("postprocess_group.heating_type_v2").agg(
+        pl.col("weight").sum().alias("n_customers"),
+        (pl.col("weight") * pl.col("annual_bill_delivery"))
+        .sum()
+        .alias("revenue_delivery"),
+        (pl.col("weight") * pl.col("cost_of_service_delivery"))
+        .sum()
+        .alias("cost_of_service"),
+        (pl.col("weight") * pl.col("BAT_epmc_delivery"))
+        .sum()
+        .alias("cross_subsidy"),
+    )
+
+    _spine = pl.DataFrame({"postprocess_group.heating_type_v2": list(HT_V2_ORDER)})
+    _agg_cols = [
+        "subclass",
+        "n_customers",
+        "revenue_delivery",
+        "cost_of_service",
+        "cross_subsidy",
+    ]
+    by_ht = (
+        _spine.join(_by_ht, on="postprocess_group.heating_type_v2", how="left")
+        .with_columns(
+            pl.col("n_customers").fill_null(0.0),
+            pl.col("revenue_delivery").fill_null(0.0),
+            pl.col("cost_of_service").fill_null(0.0),
+            pl.col("cross_subsidy").fill_null(0.0),
+        )
+        .with_columns(
+            pl.col("postprocess_group.heating_type_v2")
+            .replace(HT_V2_LABELS)
+            .alias("subclass"),
+        )
+        .drop("postprocess_group.heating_type_v2")
+        .select(_agg_cols)
+    )
+
+    _total = pl.DataFrame(
+        {
+            "subclass": ["All customers"],
+            "n_customers": [float(by_ht["n_customers"].sum())],
+            "revenue_delivery": [float(by_ht["revenue_delivery"].sum())],
+            "cost_of_service": [float(by_ht["cost_of_service"].sum())],
+            "cross_subsidy": [float(by_ht["cross_subsidy"].sum())],
+        }
+    ).select(_agg_cols)
+
+    cos_tbl = (
+        pl.concat([by_ht, _total], how="vertical")
+        .with_columns(
+            (pl.col("n_customers") / total_w).alias("pct_all_customers"),
+            (pl.col("revenue_delivery") / total_rev).alias("pct_all_revenue"),
+            (pl.col("cost_of_service") / TOTAL_DELIVERY_REVENUE_REQUIREMENT).alias(
+                "pct_revenue_requirement",
+            ),
+            pl.when(pl.col("cost_of_service") > 0)
+            .then(pl.col("cross_subsidy") / pl.col("cost_of_service"))
+            .otherwise(None)
+            .alias("pct_overpayment_vs_cos"),
+        )
+    )
+
+    _sub_rows = cos_tbl.filter(pl.col("subclass") != "All customers")
+    _w_sub = _sub_rows["n_customers"].to_numpy()
+    _raw = _w_sub * DISPLAY_CUSTOMER_TOTAL / total_w
+    _floors = np.floor(_raw).astype(np.int64)
+    _rem = DISPLAY_CUSTOMER_TOTAL - int(_floors.sum())
+    _order = np.argsort(-(_raw - _floors))
+    for _k in range(_rem):
+        _floors[_order[_k]] += 1
+    _lut_sub = pl.DataFrame(
+        {
+            "subclass": _sub_rows["subclass"],
+            "n_customers_display": _floors,
+        }
+    )
+    _lut_total = pl.DataFrame(
+        {
+            "subclass": ["All customers"],
+            "n_customers_display": np.array([DISPLAY_CUSTOMER_TOTAL], dtype=np.int64),
+        }
+    )
+    return (
+        cos_tbl.join(pl.concat([_lut_sub, _lut_total]), on="subclass", how="left")
+        .with_columns(
+            (
+                pl.col("n_customers_display").cast(pl.Float64)
+                / float(DISPLAY_CUSTOMER_TOTAL)
+            ).alias("pct_customers_display"),
+        )
+    )
+
+
+def build_gt_cos_totals(
+    cos_tbl: pl.DataFrame,
+    *,
+    title: str = "Delivery revenue and cost of service by residential customer subclass",
+    subtitle: str | None = None,
+) -> GT:
+    _gt_df = cos_tbl.select(
+        "subclass",
+        "n_customers_display",
+        "pct_customers_display",
+        "revenue_delivery",
+        "pct_all_revenue",
+        "cost_of_service",
+        "pct_revenue_requirement",
+        "cross_subsidy",
+        "pct_overpayment_vs_cos",
+    )
+    _gt = (
+        GT(_gt_df, rowname_col="subclass")
+        .tab_header(
+            title=title,
+            subtitle=subtitle,
+        )
+        .tab_options(**_COS_GT_TAB_OPTS)
+        .cols_label(
+            n_customers_display="Customers",
+            pct_customers_display="% of customers",
+            revenue_delivery="Delivery revenue",
+            pct_all_revenue="% of revenue",
+            cost_of_service="Cost of service",
+            pct_revenue_requirement="% of cost",
+            cross_subsidy="Cross-subsidy",
+            pct_overpayment_vs_cos="Cross-subsidy ÷ COS",
+        )
+        .fmt_number(columns=["n_customers_display"], decimals=0, use_seps=True)
+        .fmt_percent(columns=["pct_customers_display", "pct_all_revenue"], decimals=1)
+        .fmt_percent(
+            columns=["pct_revenue_requirement", "pct_overpayment_vs_cos"],
+            decimals=1,
+        )
+        .fmt_currency(
+            columns=["revenue_delivery", "cost_of_service", "cross_subsidy"],
+            decimals=0,
+        )
+        .sub_missing(missing_text="—")
+    )
+    return (
+        _cos_gt_center_cells(
+            _gt,
+            data_columns=[
+                "n_customers_display",
+                "pct_customers_display",
+                "revenue_delivery",
+                "pct_all_revenue",
+                "cost_of_service",
+                "pct_revenue_requirement",
+                "cross_subsidy",
+                "pct_overpayment_vs_cos",
+            ],
+        )
+    )
+
+
+def build_gt_cos_totals_hp_flat_vs_current(
+    cos_tbl_current: pl.DataFrame,
+    cos_tbl_hp_flat: pl.DataFrame,
+    *,
+    subtitle: str,
+    label_spanner_today: str,
+    label_spanner_proposed_delivery: str,
+    label_spanner_cos: str,
+    title: str = "Delivery revenue and cost of service by residential customer subclass",
+) -> GT:
+    """Totals: today's uniform delivery revenue vs proposed split rates; COS/BAT under proposal."""
+    _cur = cos_tbl_current.select(
+        "subclass",
+        pl.col("revenue_delivery").alias("rev_delivery_current"),
+        pl.col("pct_all_revenue").alias("pct_rev_delivery_current"),
+    )
+    _hp = cos_tbl_hp_flat.select(
+        "subclass",
+        pl.col("revenue_delivery").alias("rev_delivery_hp_flat"),
+        pl.col("pct_all_revenue").alias("pct_rev_delivery_hp_flat"),
+        "cost_of_service",
+        "pct_revenue_requirement",
+        "cross_subsidy",
+        "pct_overpayment_vs_cos",
+    )
+    _gt_df = (
+        _cur.join(_hp, on="subclass", how="inner")
+        .with_columns(
+            (pl.col("rev_delivery_hp_flat") - pl.col("rev_delivery_current")).alias(
+                "delta_rev_delivery",
+            ),
+        )
+        .select(
+            "subclass",
+            "rev_delivery_current",
+            "pct_rev_delivery_current",
+            "delta_rev_delivery",
+            "rev_delivery_hp_flat",
+            "pct_rev_delivery_hp_flat",
+            "cost_of_service",
+            "pct_revenue_requirement",
+            "cross_subsidy",
+            "pct_overpayment_vs_cos",
+        )
+    )
+    _gt_hp = (
+        GT(_gt_df, rowname_col="subclass")
+        .tab_header(
+            title=title,
+            subtitle=subtitle,
+        )
+        .tab_spanner(
+            label=label_spanner_today,
+            columns=[
+                "rev_delivery_current",
+                "pct_rev_delivery_current",
+            ],
+        )
+        .tab_spanner(
+            label=label_spanner_proposed_delivery,
+            columns=[
+              "delta_rev_delivery",
+              "rev_delivery_hp_flat",
+              "pct_rev_delivery_hp_flat",
+              "cost_of_service",
+              "pct_revenue_requirement",
+              "cross_subsidy",
+              "pct_overpayment_vs_cos",
+              ],
+        )
+        .cols_label(
+            rev_delivery_current="Delivery revenue",
+            pct_rev_delivery_current="% of total",
+            delta_rev_delivery="Change ($)",
+            rev_delivery_hp_flat="Delivery revenue",
+            pct_rev_delivery_hp_flat="% of total",
+            cost_of_service="Cost of service",
+            pct_revenue_requirement="% of rev. requirement",
+            cross_subsidy="Cross-subsidy",
+            pct_overpayment_vs_cos="Cross-subsidy ÷ COS",
+        )
+        .tab_options(
+            **get_switchbox_gt_tab_options(
+                table_layout="auto",
+                table_width="1360px",
+            ),
+        )
+        .cols_width(
+            subclass="132px",
+            rev_delivery_current="142px",
+            pct_rev_delivery_current="90px",
+            delta_rev_delivery="108px",
+            rev_delivery_hp_flat="142px",
+            pct_rev_delivery_hp_flat="90px",
+            cost_of_service="124px",
+            pct_revenue_requirement="102px",
+            cross_subsidy="118px",
+            pct_overpayment_vs_cos="104px",
+        )
+        .fmt_percent(
+            columns=[
+                "pct_rev_delivery_current",
+                "pct_rev_delivery_hp_flat",
+                "pct_revenue_requirement",
+                "pct_overpayment_vs_cos",
+            ],
+            decimals=1,
+        )
+        .fmt_currency(
+            columns=[
+                "rev_delivery_current",
+                "delta_rev_delivery",
+                "rev_delivery_hp_flat",
+                "cost_of_service",
+                "cross_subsidy",
+            ],
+            decimals=0,
+        )
+        .sub_missing(missing_text="—")
+    )
+    return (
+        _cos_gt_center_cells(
+            _gt_hp,
+            data_columns=[
+                "rev_delivery_current",
+                "pct_rev_delivery_current",
+                "delta_rev_delivery",
+                "rev_delivery_hp_flat",
+                "pct_rev_delivery_hp_flat",
+                "cost_of_service",
+                "pct_revenue_requirement",
+                "cross_subsidy",
+                "pct_overpayment_vs_cos",
+            ],
+        )
+    )
+
+
+def build_gt_cos_avg(
+    cos_tbl: pl.DataFrame,
+    *,
+    subtitle: str,
+    title: str = "Average delivery bill, COS, and BAT_epmc by subclass (per customer-year)",
+) -> GT:
+    _avg_tbl = (
+        cos_tbl.select(
+            "subclass",
+            "n_customers",
+            "n_customers_display",
+            "pct_customers_display",
+            "revenue_delivery",
+            "cost_of_service",
+            "cross_subsidy",
+        )
+        .with_columns(
+            pl.when(pl.col("n_customers") > 0)
+            .then(pl.col("revenue_delivery") / pl.col("n_customers"))
+            .otherwise(None)
+            .alias("avg_delivery_bill"),
+            pl.when(pl.col("n_customers") > 0)
+            .then(pl.col("cost_of_service") / pl.col("n_customers"))
+            .otherwise(None)
+            .alias("avg_cost_of_service"),
+            pl.when(pl.col("n_customers") > 0)
+            .then(pl.col("cross_subsidy") / pl.col("n_customers"))
+            .otherwise(None)
+            .alias("avg_BAT_epmc_delivery"),
+        )
+        .with_columns(
+            pl.when(
+                (pl.col("avg_cost_of_service").is_not_null())
+                & (pl.col("avg_cost_of_service") > 0)
+            )
+            .then(pl.col("avg_BAT_epmc_delivery") / pl.col("avg_cost_of_service"))
+            .otherwise(None)
+            .alias("avg_bat_div_avg_cos"),
+        )
+        .select(
+            "subclass",
+            "n_customers_display",
+            "pct_customers_display",
+            "avg_delivery_bill",
+            "avg_cost_of_service",
+            "avg_BAT_epmc_delivery",
+            "avg_bat_div_avg_cos",
+        )
+    )
+    _gt = (
+        GT(_avg_tbl, rowname_col="subclass")
+        .tab_header(
+            title=title,
+            subtitle=subtitle,
+        )
+        .tab_options(**_COS_GT_TAB_OPTS)
+        .cols_label(
+            n_customers_display="Customers",
+            pct_customers_display="% of customers",
+            avg_delivery_bill="Avg. delivery bill",
+            avg_cost_of_service="Avg. cost of service",
+            avg_BAT_epmc_delivery="Avg. cross-subsidy",
+            avg_bat_div_avg_cos="Avg. cross-subsidy ÷ Avg. COS",
+        )
+        .fmt_number(columns=["n_customers_display"], decimals=0, use_seps=True)
+        .fmt_percent(
+            columns=["pct_customers_display", "avg_bat_div_avg_cos"],
+            decimals=1,
+        )
+        .fmt_currency(
+            columns=["avg_delivery_bill", "avg_cost_of_service", "avg_BAT_epmc_delivery"],
+            decimals=0,
+        )
+        .sub_missing(missing_text="—")
+    )
+    return (
+        _cos_gt_center_cells(
+            _gt,
+            data_columns=[
+                "n_customers_display",
+                "pct_customers_display",
+                "avg_delivery_bill",
+                "avg_cost_of_service",
+                "avg_BAT_epmc_delivery",
+                "avg_bat_div_avg_cos",
+            ],
+        )
+    )
+
+
+def build_gt_cos_avg_hp_flat_vs_current(
+    cos_tbl_current: pl.DataFrame,
+    cos_tbl_hp_flat: pl.DataFrame,
+    *,
+    subtitle: str,
+    label_spanner_default: str,
+    label_spanner_proposed: str,
+    title: str = "Average delivery bill, COS, and BAT_epmc by subclass (per customer-year)",
+) -> GT:
+    """Per-customer averages: default delivery bill + cross-subsidy; then Δ bill and proposed averages."""
+
+    def _avg_side(df: pl.DataFrame) -> pl.DataFrame:
+        return (
+            df.select(
+                "subclass",
+                "n_customers",
+                "revenue_delivery",
+                "cost_of_service",
+                "cross_subsidy",
+            )
+            .with_columns(
+                pl.when(pl.col("n_customers") > 0)
+                .then(pl.col("revenue_delivery") / pl.col("n_customers"))
+                .otherwise(None)
+                .alias("avg_delivery_bill"),
+                pl.when(pl.col("n_customers") > 0)
+                .then(pl.col("cost_of_service") / pl.col("n_customers"))
+                .otherwise(None)
+                .alias("avg_cost_of_service"),
+                pl.when(pl.col("n_customers") > 0)
+                .then(pl.col("cross_subsidy") / pl.col("n_customers"))
+                .otherwise(None)
+                .alias("avg_cross_subsidy"),
+            )
+            .with_columns(
+                pl.when(
+                    (pl.col("avg_cost_of_service").is_not_null())
+                    & (pl.col("avg_cost_of_service") > 0)
+                )
+                .then(pl.col("avg_cross_subsidy") / pl.col("avg_cost_of_service"))
+                .otherwise(None)
+                .alias("avg_bat_div_avg_cos"),
+            )
+        )
+
+    _c = _avg_side(cos_tbl_current).select(
+        "subclass",
+        pl.col("avg_delivery_bill").alias("avg_del_default"),
+        pl.col("avg_cross_subsidy").alias("avg_xsub_default"),
+    )
+    _h = _avg_side(cos_tbl_hp_flat).select(
+        "subclass",
+        pl.col("avg_delivery_bill").alias("avg_del_proposed"),
+        pl.col("avg_cost_of_service").alias("avg_cos_proposed"),
+        pl.col("avg_cross_subsidy").alias("avg_xsub_proposed"),
+        pl.col("avg_bat_div_avg_cos").alias("avg_ratio_proposed"),
+    )
+    _gt_df = (
+        _c.join(_h, on="subclass", how="inner")
+        .with_columns(
+            (pl.col("avg_del_proposed") - pl.col("avg_del_default")).alias(
+                "delta_avg_delivery",
+            ),
+        )
+        .select(
+            "subclass",
+            "avg_del_default",
+            "avg_xsub_default",
+            "delta_avg_delivery",
+            "avg_del_proposed",
+            "avg_cos_proposed",
+            "avg_xsub_proposed",
+            "avg_ratio_proposed",
+        )
+    )
+    _gt = (
+        GT(_gt_df, rowname_col="subclass")
+        .tab_header(
+            title=title,
+            subtitle=subtitle,
+        )
+        .tab_spanner(
+            label=label_spanner_default,
+            columns=["avg_del_default", "avg_xsub_default"],
+        )
+        .tab_spanner(
+            label=label_spanner_proposed,
+            columns=[
+                "delta_avg_delivery",
+                "avg_del_proposed",
+                "avg_cos_proposed",
+                "avg_xsub_proposed",
+                "avg_ratio_proposed",
+            ],
+        )
+        .cols_label(
+            avg_del_default="Avg. delivery bill",
+            avg_xsub_default="Avg. cross-subsidy",
+            delta_avg_delivery="Change in avg. delivery bill",
+            avg_del_proposed="Avg. delivery bill",
+            avg_cos_proposed="Avg. cost of service",
+            avg_xsub_proposed="Avg. cross-subsidy",
+            avg_ratio_proposed="Avg. cross-subsidy ÷ Avg. COS",
+        )
+        .tab_options(
+            **get_switchbox_gt_tab_options(
+                table_layout="auto",
+                table_width="1280px",
+            ),
+        )
+        .cols_width(
+            subclass="132px",
+            avg_del_default="128px",
+            avg_xsub_default="128px",
+            delta_avg_delivery="148px",
+            avg_del_proposed="128px",
+            avg_cos_proposed="124px",
+            avg_xsub_proposed="118px",
+            avg_ratio_proposed="112px",
+        )
+        .fmt_percent(columns=["avg_ratio_proposed"], decimals=1)
+        .fmt_currency(
+            columns=[
+                "avg_del_default",
+                "avg_xsub_default",
+                "delta_avg_delivery",
+                "avg_del_proposed",
+                "avg_cos_proposed",
+                "avg_xsub_proposed",
+            ],
+            decimals=0,
+        )
+        .sub_missing(missing_text="—")
+    )
+    return (
+        _cos_gt_center_cells(
+            _gt,
+            data_columns=[
+                "avg_del_default",
+                "avg_xsub_default",
+                "delta_avg_delivery",
+                "avg_del_proposed",
+                "avg_cos_proposed",
+                "avg_xsub_proposed",
+                "avg_ratio_proposed",
+            ],
+        )
+    )
+
+
+def run_scenario(path: str, label: str, *, hp_flat: bool) -> pl.DataFrame:
+    _bat = load_master_bat(path)
+    assert_bill_identity(_bat, label)
+    validate_totals(_bat, label, hp_flat=hp_flat)
+    return _bat
+
+
+bat = run_scenario(PATH_MASTER_BAT_12, "run 1+2 (default)", hp_flat=False)
+cos_tbl = build_cos_table(bat)
+
+
+def _cos_tbl_group_row(df: pl.DataFrame, subclass_label: str) -> tuple[float, float, float]:
+    sub = df.filter(pl.col("subclass") == subclass_label)
+    assert sub.height == 1, subclass_label
+    return (
+        float(sub["cost_of_service"][0]),
+        float(sub["revenue_delivery"][0]),
+        float(sub["cross_subsidy"][0]),
+    )
+
+
+_hp_cos, _hp_rev, _hp_xs = _cos_tbl_group_row(cos_tbl, "Heat pump")
+_ng_cos, _ng_rev, _ng_xs = _cos_tbl_group_row(cos_tbl, "Natural gas")
+_df_cos, _df_rev, _df_xs = _cos_tbl_group_row(cos_tbl, "Delivered fuels")
+_er_cos, _er_rev, _er_xs = _cos_tbl_group_row(cos_tbl, "Electric resistance")
+
+report_vars["cos_default_hp_group_cos"] = _hp_cos
+report_vars["cos_default_hp_group_rev"] = _hp_rev
+report_vars["cos_default_hp_group_xs"] = _hp_xs
+report_vars["cos_default_ng_group_cos"] = _ng_cos
+report_vars["cos_default_ng_group_rev"] = _ng_rev
+report_vars["cos_default_ng_group_xs"] = _ng_xs
+report_vars["cos_default_df_group_cos"] = _df_cos
+report_vars["cos_default_df_group_rev"] = _df_rev
+report_vars["cos_default_df_group_xs"] = _df_xs
+report_vars["cos_default_er_group_cos"] = _er_cos
+report_vars["cos_default_er_group_rev"] = _er_rev
+report_vars["cos_default_er_group_xs"] = _er_xs
+
+# Subsidy dollars received by natural gas + delivered-fuel subclasses (underpayment = negative BAT).
+report_vars["cos_default_subsidy_to_natgas_and_delivered"] = -(_ng_xs + _df_xs)
+report_vars["cos_default_ng_subsidy_received"] = max(0.0, -_ng_xs)
+report_vars["cos_default_df_subsidy_received"] = max(0.0, -_df_xs)
+
+# Aggregate % over/under cost of service (Σ revenue vs Σ COS for the subclass).
+def _pct_rev_over_cos(rev: float, cos: float) -> float:
+    return (rev - cos) / cos * 100.0 if cos else float("nan")
+
+
+def _pct_rev_under_cos(cos: float, rev: float) -> float:
+    return (cos - rev) / cos * 100.0 if cos else float("nan")
+
+
+report_vars["cos_default_hp_pct_over_cos"] = _pct_rev_over_cos(_hp_rev, _hp_cos)
+report_vars["cos_default_er_pct_over_cos"] = _pct_rev_over_cos(_er_rev, _er_cos)
+report_vars["cos_default_ng_pct_under_cos"] = _pct_rev_under_cos(_ng_cos, _ng_rev)
+report_vars["cos_default_df_pct_under_cos"] = _pct_rev_under_cos(_df_cos, _df_rev)
+report_vars["cos_default_er_overpay_vs_cos"] = _er_rev - _er_cos
+
+bat_hp_flat = run_scenario(
+    PATH_MASTER_BAT_1718,
+    "run 17+18 (HP flat / non-HP recalibrated)",
+    hp_flat=True,
+)
+cos_tbl_hp_flat = build_cos_table(bat_hp_flat)
+
+bat
+```
+
+## Schema and bill identity (delivery)
+
+Printing the schema documents what we loaded. CAIRO’s delivery identity should tie out for **both** scenarios; we already asserted in the pipeline cell.
+
+```{python}
+#| label: show-schema
+
+print("run 1+2 schema:\n", bat.schema)
+print("max |bill identity| run 1+2:", end=" ")
+_check = bat.with_columns(
+    (
+        pl.col("economic_burden_delivery")
+        + pl.col("residual_share_epmc_delivery")
+        + pl.col("BAT_epmc_delivery")
+        - pl.col("annual_bill_delivery")
+    )
+    .abs()
+    .alias("e"),
+)
+print(float(_check["e"].max()))
+
+print("run 17+18 schema:\n", bat_hp_flat.schema)
+_check2 = bat_hp_flat.with_columns(
+    (
+        pl.col("economic_burden_delivery")
+        + pl.col("residual_share_epmc_delivery")
+        + pl.col("BAT_epmc_delivery")
+        - pl.col("annual_bill_delivery")
+    )
+    .abs()
+    .alias("e"),
+)
+print("max |bill identity| run 17+18:", float(_check2["e"].max()))
+```
+
+## Aggregate by subclass (reference)
+
+We aggregate each metric with **Σ (weight × value)**. A **spine** join keeps empty subclasses and row order. **`n_customers_display`** uses largest remainder so the five subclasses sum to **`DISPLAY_CUSTOMER_TOTAL`**; **`pct_customers_display`** matches those integers. (Logic lives in `build_cos_table` above.)
+
+```{python}
+#| label: aggregate-preview
+
+from IPython.display import display
+
+print("run 1+2 aggregated:")
+display(cos_tbl)
+print("run 17+18 aggregated:")
+display(cos_tbl_hp_flat)
+```
+
+## Great Tables — default rates (run 1+2)
+
+We format **`cos_tbl`** for publication: **Customers** uses **`n_customers_display`**; **% of customers** uses **`pct_customers_display`**. HTML goes to `cache/cost_of_service_by_subclass.html` for `htmltools::includeHTML()` in `index.qmd` (avoid `{{< embed >}}` for GT). **Titles** for every table in this notebook are set in the next cell (`_GT_TITLE_COS_TOTALS` and `_GT_TITLE_COS_AVG`). Default-rate subtitles use **`_COS_SUBTITLE_VOL_DEFAULT`**: all-in calibrated volumetric rate plus PRB-1 distribution vs transmission from **`rie_rate_case_test_year.yaml`** (budget ÷ `test_year_residential_kwh`). **`subtitle=`** is set per table in the cells below (omit it or pass `None` where the builder allows, to hide the subtitle).
+
+```{python}
+#| label: cos-subclass-gt-titles
+
+# Edit these two strings to change titles for all four Great Tables (totals vs averages).
+_GT_TITLE_COS_TOTALS = (
+    "Delivery revenue, cost of service, and cross-subsidy by residential subclass (9/1/24 to 8/31/25)"
+)
+_GT_TITLE_COS_AVG = (
+    "Average annual delivery bill, cost of service, and cross-subsidy by residential subclass (9/1/24 to 8/31/25)"
+)
+```
+
+```{python}
+#| label: tbl-cos-by-subclass
+
+_cos_gt = build_gt_cos_totals(
+    cos_tbl,
+    title=_GT_TITLE_COS_TOTALS,
+    subtitle=(
+        f"All customers on default residential rates (A-16 and A-60).\n"
+        f"{_COS_SUBTITLE_VOL_DEFAULT}"
+    ),
+)
+
+Path("../cache").mkdir(exist_ok=True)
+Path("../cache/cost_of_service_by_subclass.html").write_text(_cos_gt.as_raw_html())
+_cos_gt
+```
+
+## Per-customer averages — default rates (run 1+2)
+
+Same logic as before: averages divide by true Σ `weight` per subclass; **Avg bill alignment ÷ Avg COS** matches subclass total cross-subsidy ÷ subclass total COS.
+
+```{python}
+#| label: tbl-cos-by-subclass-avg
+
+_cos_avg_gt = build_gt_cos_avg(
+    cos_tbl,
+    title=_GT_TITLE_COS_AVG,
+    subtitle=(
+        f"All customers on default residential delivery rates (A-16 and A-60). "
+        f"{_COS_SUBTITLE_VOL_DEFAULT}"
+    ),
+)
+
+Path("../cache/cost_of_service_by_subclass_avg.html").write_text(_cos_avg_gt.as_raw_html())
+_cos_avg_gt
+```
+
+## Great Tables — today vs proposed delivery rates
+
+The **totals** table below compares **today's** uniform residential delivery pricing to a **proposed** split: a lower volumetric charge for heat-pump homes and a separately calibrated charge for everyone else. The **¢/kWh** figures in the column spanners match the volumetric delivery charges in the calibrated tariff inputs used for the bill model. The **per-customer averages** table in the next cell mirrors that layout: first spanner — **avg. delivery bill** and **avg. cross-subsidy** under default rates (no customer counts); second spanner — **change in avg. delivery bill**, then proposed **avg. delivery bill**, **avg. cost of service**, **avg. cross-subsidy**, and **avg. cross-subsidy ÷ avg. COS**. Cache: `cost_of_service_by_subclass_hp_flat.html` and `cost_of_service_by_subclass_avg_hp_flat.html`.
+
+```{python}
+#| label: tbl-cos-by-subclass-hp-flat
+
+_cos_gt_hp_flat = build_gt_cos_totals_hp_flat_vs_current(
+    cos_tbl,
+    cos_tbl_hp_flat,
+    subtitle="Proposed heat-pump delivery rate compared with today's uniform rates.",
+    label_spanner_today=_COS_HP_COMPARE_SPAN_TODAY,
+    label_spanner_proposed_delivery=_COS_HP_COMPARE_SPAN_PROPOSED,
+    label_spanner_cos=_COS_HP_COMPARE_SPAN_COS,
+    title=_GT_TITLE_COS_TOTALS,
+)
+
+Path("../cache/cost_of_service_by_subclass_hp_flat.html").write_text(
+    _cos_gt_hp_flat.as_raw_html(),
+)
+_cos_gt_hp_flat
+```
+
+```{python}
+#| label: tbl-cos-by-subclass-avg-hp-flat
+
+_cos_avg_gt_hp_flat = build_gt_cos_avg_hp_flat_vs_current(
+    cos_tbl,
+    cos_tbl_hp_flat,
+    subtitle="Per-customer averages: default uniform rates vs proposed split delivery rates.",
+    label_spanner_default=_COS_HP_AVG_COMPARE_SPAN_DEFAULT,
+    label_spanner_proposed=_COS_HP_AVG_COMPARE_SPAN_PROPOSED,
+    title=_GT_TITLE_COS_AVG,
+)
+
+Path("../cache/cost_of_service_by_subclass_avg_hp_flat.html").write_text(
+    _cos_avg_gt_hp_flat.as_raw_html(),
+)
+_cos_avg_gt_hp_flat
+```
+
+## Export report variables
+
+The main RI report may not need these yet, but we mirror the pattern from `analysis.qmd`: serialize `report_vars` so inline or narrative code can load a single pickle without re-running the heavy cells.
+
+```{python}
+#| label: export-report-vars
+
+import pickle
+
+Path("../cache/report_variables_cos_subclass.pkl").write_bytes(
+    pickle.dumps(report_vars),
+)
+
+```

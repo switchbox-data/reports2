@@ -39,10 +39,18 @@ from types import SimpleNamespace
 
 v = SimpleNamespace(**pickle.loads(Path("cache/report_variables.pkl").read_bytes()))
 f = SimpleNamespace(**pickle.loads(Path("cache/feeder_report_variables.pkl").read_bytes()))
+c = SimpleNamespace(
+    **pickle.loads(Path("cache/report_variables_cos_subclass.pkl").read_bytes()),
+)
 
 
 def dollar(x, accuracy=0):
     return f"${x:,.{accuracy}f}"
+
+
+def million(x, digits=1):
+    """Whole-dollar amounts as e.g. ``$1.4 million`` for narrative testimony."""
+    return f"${x / 1e6:.{digits}f} million"
 
 
 def pct(x, accuracy=0):
@@ -57,43 +65,6 @@ def cents(x, accuracy=1):
     return f"{abs(x) * 100:,.{accuracy}f}"
 ```
 
-
-During the test year, the 12-month period from September 1, 2024 to August 31, 2025, RIE collected $159,405,721 in residential delivery revenue from 419,347 customers (at $6.00/month), and from 2,821,237,490 kWh (at $0.0458/kWh). (source: https://www.documentcloud.org/documents/27926651-docket-25-45-ge-rie-book-21-blazunas-schedules-workpapers-11262025/?mode=annotating#document/p16/a2809947)
-
-$271,258,492 in on distribution, "other delivery" revenue, out of which $134,657,665 was for transmission. (source: https://www.documentcloud.org/documents/27926651-docket-25-45-ge-rie-book-21-blazunas-schedules-workpapers-11262025/#document/p9/a2809949)
-
-$159,405,721 + $271,258,492 = $430,664,213 in residential delivery revenue collected through rates.
-
-The revenue decoupling rate was $0.00272, so the budget was $0.00272 * 2,821,237,490 kWh = $7,673,765.97.
-
-0.00832+0.00094= 0.00926 (in PRB-4-ELEC)
-
-The capex charge was TK, so the budget was TK * 2,821,237,490 kWh = $23,472,696.
-
-ADD THE TKS ABOVE THEN RIGHT SIZE SUPPLY BUDGET IN RIE_RATE CASE.. SOMEHOW
-
-
-Proposed based customer charge of $6.00/month raises to $6.75/month, and base distribution charge of $0.04580/kWh raises to $0.06455/kWh in RY1.
-These would jointly collects residential share of net revenue requirement for RY1: $241,869,601
-via 5,438,491 bills and 3,177,884,705 kWh
-(source: https://www.documentcloud.org/documents/27924822-docket-25-45-ge-rie-book-21-blazunas-schedules-workpapers-11262025/#document/p36/a2809883)
-[@rie_Docket2545GEApplication_2025a]
-
-Reconciling mechanisms or adjustment factors.
-
-NEXT STEP: COLLECT THESE
-
-COLLECT ACTUAL RATE THAT WE USED FOR 2025
-
-DECOMPOSE DEFAULT AND HP FLAT RATES IN REPORT
-
-THEN FIGURE OUT HOW TO APPLY TO EFFECTIVE DEFAULT RATE IN RATE CASE... APPLY PERCENT OR RUN AGAIN WITH BIGGER REVE REQUIREMENT AND FIXED CHARGES AND EVERYTING ELSE FIXED? OR UPDATE ALL OF THE RIDERS? (BUT NOT THE SUPPLY? weird.)
-
-THEN ADD MC TABLES AND SUBCLASS RR TABLES TO TESTIMONY - IS IT JUST SPLITTING THE ENTIRE REV REQUIREMENT DOWN? OR ONLY A SUBSET ACTUALLY? (WHICH PART.. DEMAND RELATED?)
-
-THEN ADD SUBCLASS RR ACCORDING TO NCP
-
-THEN YOU HAVE EVERYTHING YOU NEED TO START WRITING
 
 language: "moves revenues toward cost-based levels", "magnitude of bill impacts do not violate gradualism", cost obligations, allocated cost of service, separate classes defined by usage characteristics
 
@@ -168,32 +139,72 @@ TODO: LIST EXHIBITS
 
 
 ## II. The Cross-Subsidy Problem
-
-**Q.** What is the central finding of your analysis?
+**Q.** How much revenue did RIE collect system-wide for delivery during the test year (9/1/2024–8/31/2025)?
 <br>
-**A.** Under default residential electric rates, heat pump customers in Rhode Island are dramatically overpaying for electric delivery — the poles and wires that bring electricity to their homes.
+**A.** RIE collected `{python} dollar(c.rie_rev_req_total_delivery_rr)` in residential delivery revenue from `{python} comma(int(round(c.rie_rev_req_test_year_customer_count)))` residential customers:
 
-TODO: present subclass-level analysis here.
+:::{.column-page-inset-right}
+{{< embed notebooks/cost_of_service_by_subclass.qmd#fig-rie-rev-req-budgets >}}
+:::
 
-  - The delivery **cost-of-service** for heat pump customers is `{python} dollar(v.hp_mean_delivery_cost)` per year, on average — only **`{python} f"{(v.hp_mean_delivery_cost / v.ff_mean_delivery_cost - 1) * 100:.0f}"`%** higher than the `{python} dollar(v.ff_mean_delivery_cost)` cost-of-service for fossil fuel customers.
-  - But heat pump customers' delivery **bills** are **`{python} f"{(v.hp_mean_delivery_bill / v.ff_mean_delivery_bill - 1) * 100:.0f}"`%** higher than fossil fuel customers' bills, on average.
-  - The result: heat pump customers overpay for delivery by **`{python} dollar(v.hp_mean_delivery_bat)` per year**, on average.
+This included `{python} dollar(c.rie_rev_req_customer_charge_total)` raised from customer charges (at $6.00/month), and `{python} dollar(c.rie_rev_req_core_delivery_total)` raised from volumetric distribution charges (from `{python} comma(c.rie_rev_req_test_year_residential_kwh)` kWh at `{python} dollar(c.rie_rev_req_core_delivery_usd_per_kwh, 4)`/kWh)—the charges that RIE is asking for rate hikes on in this rate case.
 
-```{python}
-#| echo: false
-#| output: asis
-print(Path("cache/bat_simple_table.html").read_text())
-```
+But it also included `{python} dollar(c.rie_rev_req_transmission_total)` raised from transmission charges (`{python} dollar(c.rie_rev_req_transmission_usd_per_kwh, 4)`/kWh) and `{python} dollar(c.rie_rev_req_other_delivery_total)` raised from all other residential delivery riders combined (via fixed charges that average `{python} dollar(c.rie_rev_req_other_delivery_avg_fixed_usd_per_mo, 2)` per customer per month and volumetric charges that blend to `{python} f"{c.rie_rev_req_other_delivery_blended_c_per_kwh:.2f}"`¢/kWh).
 
 <br><br>
 
-**Q.** How did you measure this?
+**Q.** What is the central finding of your analysis?
+<br>
+**A.** Under default residential electric rates (A-16 and A-60), heat pump customers in Rhode Island are paying `{python} f"{c.cos_default_hp_pct_over_cos:.0f}%"` more than their fair share of this electric delivery revenue.
+
+:::{.column-page-inset-right}
+```{python}
+#| echo: false
+#| output: asis
+print(Path("cache/cost_of_service_by_subclass.html").read_text())
+```
+:::
+
+While their cost-of-service was `{python} million(c.cos_default_hp_group_cos)` as a group during the test year, they paid `{python} million(c.cos_default_hp_group_rev)` through their bills.
+
+Mathematically, this additional payment of `{python} million(c.cos_default_hp_group_xs)` towards RIE's fixed revenue target of `{python} million(c.rie_rev_req_total_delivery_rr)` allows other groups to pay less than their cost-of-service.
+
+It therefore constitutes an **overpayment**, which creates a cross-subsidy that enables other groups to **underpay** relative to their cost-of-service.
+
+Electric resistance customers also paid `{python} million(c.cos_default_er_overpay_vs_cos)` more than their cost-of-service.
+
+These overpayments allowed customers heat with natural gas, which cost the system `{python} million(c.cos_default_ng_group_cos)`, to pay only `{python} million(c.cos_default_ng_group_rev)`, effectively receiving a `{python} million(c.cos_default_ng_subsidy_received)` in cross-subsidy from electric heat pump and electric resistance customers.
+
+Similarly, while those who heat with delivered fuels cost the system `{python} million(c.cos_default_df_group_cos)`, they  paid only `{python} million(c.cos_default_df_group_rev)` during the test year, thereby receiving a cross subsidy of `{python} million(c.cos_default_df_subsidy_received)`.
+
+<br><br>
+
+**Q.** How did you the cost-of-service for each residential customer subclass?
 <br>
 **A.** I conducted a marginal cost-of-service analysis — what I call the Bill Alignment Test — that directly compares what each customer pays for delivery versus what they cost to serve. I describe the methodology in detail in Section VII of this testimony. The key result is straightforward: for each residential customer subclass, I computed their delivery cost-of-service and compared it to the delivery revenue RIE collects from them under current rates. The gap between the two is the cross-subsidy.
 
 TODO: this is the brief forward-reference version. The full methodology Q&A (loads, hourly marginal costs, CAIRO, BAT, NREL) is in Section VII.
 
 <br><br>
+
+**Q.** Do heat pump customers have higher cost-of-service than other kinds of customers?
+<br>
+**A.** Yes, they do. The average cost-of-service for heat pump customers is `{python} million(c.cos_default_hp_group_cos)` per year, on average, whereas the average cost-of-service for customers that heat with natural gas is `{python} million(c.cos_default_ng_group_cos)` per year, and for customers that heat with delivered fuels is `{python} million(c.cos_default_df_group_cos)` per year.
+
+:::{.column-page-inset-right}
+```{python}
+#| echo: false
+#| output: asis
+print(Path("cache/cost_of_service_by_subclass_avg.html").read_text())
+```
+:::
+
+This means that heat pump customers should pay X% more than customers who heat with natural gas. However, in practice they pay Y% more.
+
+**Q.** Why do heat pump customers have a higher cost of service than other kinds of customers?
+
+
+
 
 **Q.** Can you illustrate this with a specific example?
 <br>
@@ -234,7 +245,7 @@ TODO: add mean marginal costs / cost of service here.
 
 <br><br>
 
-**Q.** How does the cross-subsidy affect the economics of switching from natural gas to heat pumps?
+f**Q.** How does the cross-subsidy affect the economics of switching from natural gas to heat pumps?
 <br>
 **A.** It single handedly makes it more expensive to heat with heat pumps than natural gas in Rhode Island.
 TODO: new default rates under rate year 1?

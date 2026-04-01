@@ -2562,8 +2562,11 @@ _rate_gt = (
 Path("../cache").mkdir(exist_ok=True)
 Path("../cache/rate_table.html").write_text(_rate_gt.as_raw_html())
 
-report_vars["elec_fixed_charge"] = default_d.get("fixedchargefirstmeter", 0)
-report_vars["elec_delivery_avg_cents"] = default_avg * 100
+# Use filed (uncalibrated) rates for reporting — calibrated rates are CAIRO artifacts
+_default_filed = _load_rate("rie_default.json")
+_filed_delivery_rates = _get_rates(_default_filed)
+report_vars["elec_fixed_charge"] = _default_filed.get("fixedchargefirstmeter", 0)
+report_vars["elec_delivery_avg_cents"] = sum(_filed_delivery_rates) / len(_filed_delivery_rates) * 100
 
 GAS_TARIFF_DIR = f"rate_design/hp_rates/{_state_lower}/config/tariffs/gas"
 _gas_tariff = json.loads(
@@ -2572,6 +2575,22 @@ _gas_tariff = json.loads(
 report_vars["gas_fixed_charge"] = _gas_tariff.get("fixedchargefirstmeter", 0)
 _gas_rates_kwh = [t[0]["rate"] for t in _gas_tariff["energyratestructure"]]
 report_vars["gas_avg_per_therm"] = sum(_gas_rates_kwh) / len(_gas_rates_kwh) * 29.3
+
+# Supply (LRS) — 3 seasonal periods
+_lrs_tariff = _load_rate("rie_default_supply.json")
+_lrs_rates = _get_rates(_lrs_tariff)
+report_vars["elec_lrs_min_cents"] = min(_lrs_rates) * 100
+report_vars["elec_lrs_max_cents"] = max(_lrs_rates) * 100
+
+# Gas Rate 10 (non-heating)
+_gas_nh_tariff = json.loads(
+    fetch_rdp_file(f"{GAS_TARIFF_DIR}/rie_nonheating.json", ref=RDP_REF)
+)["items"][0]
+report_vars["gas_nonheating_fixed_charge"] = _gas_nh_tariff.get("fixedchargefirstmeter", 0)
+_gas_nh_rates_kwh = [t[0]["rate"] for t in _gas_nh_tariff["energyratestructure"]]
+report_vars["gas_nonheating_avg_per_therm"] = (
+    sum(_gas_nh_rates_kwh) / len(_gas_nh_rates_kwh) * 29.3
+)
 
 _rate_gt
 ```

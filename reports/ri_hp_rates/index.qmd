@@ -827,7 +827,7 @@ We correct this by computing the mean non-HVAC electricity intensity (kWh/sqft, 
 | Heating oil (EIA) | — | $3.48–$4.10 /gal (monthly prices) |
 | Propane (EIA) | — | $3.44–$3.67 /gal (monthly prices) |
 
-[^cite-eia877]: EIA Form EIA-877, Petroleum Marketing Monthly — monthly residential heating oil and propane prices for Rhode Island. Available from the [EIA Petroleum Marketing Monthly](https://www.eia.gov/petroleum/heatingoil/). @eia_HeatingOilPropanePrices_2025.
+[^cite-eia877]: EIA Form EIA-877, Petroleum Marketing Monthly — 2024 monthly residential heating oil and propane prices for Rhode Island. Available from the [EIA Petroleum Marketing Monthly](https://www.eia.gov/petroleum/heatingoil/). [@eia_HeatingOilPropanePrices_2025].
 
 [^link-tariff-gas]: Filed [gas heating tariff](https://github.com/switchbox-data/rate-design-platform/blob/main/rate_design/hp_rates/ri/config/tariffs/gas/rie_heating.json) (Rate 12) and [non-heating tariff](https://github.com/switchbox-data/rate-design-platform/blob/main/rate_design/hp_rates/ri/config/tariffs/gas/rie_nonheating.json) (Rate 10) are committed in the RDP in standard URDB format.
 
@@ -883,7 +883,9 @@ At the highest level of aggregation, each customer's cost of service has two par
 
 $$\text{Cost of Service}_i = \underbrace{\sum_{h=1}^{8760} L_{i,h} \times MC_h}_{\text{Marginal cost (economic burden)}} + \underbrace{f(i, R)}_{\text{Residual share}}$$
 
-The {{< glossary "marginal cost" >}} (or {{< glossary "economic burden" >}}) captures the cost that a customer's hourly load pattern _causes_ the system to incur. The {{< glossary residual >}} captures everything else in the utility's {{< glossary "revenue requirement" >}} that marginal cost pricing does not recover.
+where $i \in \mathcal{C}$ indexes all customers, $h$ indexes hours of the year, $L_{i,h}$ is customer $i$'s load in hour $h$, and $MC_h$ is the system marginal cost in hour $h$.
+
+The {{< glossary "marginal cost" >}} (or {{< glossary "economic burden" >}}) captures the incremental cost that a customer's hourly load pattern _causes_ the system to incur. The {{< glossary residual >}} captures everything else in the utility's {{< glossary "revenue requirement" >}} that marginal cost pricing does not recover — sunk costs such as carrying charges on past capital investments, O&M on existing assets, and the regulated return on the rate base.
 
 ---
 
@@ -893,21 +895,23 @@ Our hourly marginal cost signal has five components, each derived from publicly 
 
 | Component | What it captures | Data source |
 |-----------|-----------------|-------------|
-| Energy | Short-run cost of generation in each hour. Contributes to the marginal cost of supply. | ISO-NE locational marginal prices (LMP) |
-| Generation capacity | Cost of the next MW of generation to meet demand. Contributes to the marginal cost of supply. | ISO-NE Forward Capacity Market (FCM) auction prices |
+| Energy | Short-run cost of generation, congestion, and transmission losses in each hour. Contributes to the marginal cost of supply. | ISO-NE locational marginal prices (LMP) |
+| Generation capacity | Cost of the next MW of generation to meet demand during scarcity/binding capacity hours. Contributes to the marginal cost of supply. | ISO-NE Forward Capacity Market (FCM) auction prices |
 | Bulk transmission | Cost of the next MW of regional transmission capacity. Contributes to the marginal cost of delivery. | Avoided Energy Supply Components (AESC) 2024 study |
 | Sub-TX + distribution | Cost of the next MW of local delivery capacity. Contributes to the marginal cost of delivery. | Avoided Energy Supply Components (AESC) 2024 study |
-| Ancillary services | Cost of frequency regulation. Contributes to the marginal cost of supply. | ISO-NE regulation clearing prices|
+| Ancillary services | Cost of two frequency regulation sub-markets: regulation service (energy dispatched by AGC in real time) and regulation capacity (capacity reserved for AGC response). Contributes to the marginal cost of supply. | ISO-NE regulation clearing prices |
 
 
 
 #### How marginal costs are assigned to individual customers
 
-Each component produces a separate 8,760-hour signal. The signals differ in which hours carry non-zero costs. The capacity and transmission components use **exceedance weighting** to concentrate costs in peak hours. Given the top $N$ hours by load, each hour's exceedance and weight are:
+Each component produces a separate 8,760-hour signal. The signals differ in which hours carry non-zero costs. The capacity and transmission components use **exceedance weighting** to concentrate costs in peak hours. Throughout, we use the top $N = 100$ hours — a conservative choice that concentrates costs in a relatively small number of hours; both exceedance weighting and the probability-of-peak method (used below for distribution) serve as proxies for the probability that a given hour is a capacity-binding peak, differing only in how sharply they concentrate costs.
+
+Given the top $N$ hours by load, each hour's exceedance and weight are:
 
 $$e_h = \max(L_h - T,\ 0), \qquad w_h = \frac{e_h}{\displaystyle\sum_{h'} e_{h'}}$$
 
-where $T$ is the load of the hour immediately below the $N$-th highest. Hours outside the top $N$ receive zero weight ($w_h = 0$). This pattern recurs below for generation capacity and bulk transmission, each applied to a different load profile and annual cost.
+where $T$ is the load threshold — the load of the hour immediately below the $N$-th highest. All hours in the top $N$ have $e_h > 0$ by construction; hours outside the top $N$ receive zero weight ($w_h = 0$). This pattern recurs below for generation capacity and bulk transmission, each applied to a different load profile and annual cost.
 
 **Energy.** Every hour receives a non-zero value equal to the ISO-NE real-time locational marginal price for Rhode Island Energy's zone:[^cite-lmp]
 
@@ -920,7 +924,7 @@ The signal varies continuously throughout the year, reflecting the changing fuel
 
 
 
-**Generation capacity.** ISO-NE runs an annual capacity auction — the Forward Capacity Market — that pays generators and demand resources to be available during peak periods. The clearing price sets the annualized cost of keeping one kW of capacity online; we convert that to a single $/kW-year value $C_{\text{FCA}}$ by blending the two overlapping auction periods that cover each calendar year. That cost is then spread across the top 100 hours of the year by aggregate load in the RI and southeastern Massachusetts capacity zone — the zone whose clearing prices apply to Rhode Island — using exceedance weights:[^cite-fcm]
+**Generation capacity.** ISO-NE holds annual Forward Capacity Market (FCM) auctions, each clearing capacity obligations roughly three delivery years in advance. The auction pays generators and demand resources to be available during peak periods. The clearing price sets the annualized cost of keeping one kW of capacity online; we convert that to a single $/kW-year value $C_{\text{FCA}}$ by blending the two overlapping auction periods that cover each calendar year. That cost is then spread across the top 100 hours of the year by aggregate load in the RI and southeastern Massachusetts capacity zone — the zone whose clearing prices apply to Rhode Island — using exceedance weights:[^cite-fcm]
 
 $$MC^{\text{gen\,cap}}_h = w_h \times C_{\text{FCA}}$$
 
@@ -989,7 +993,7 @@ Customers who consume more electricity during the hours when capacity costs are 
 {{< glossary-def "revenue requirement" >}}
 :::
 
-Marginal costs capture only the forward-looking incremental cost of new infrastructure — the specific projects in the utility's current capital plan and the next MW of generation and transmission capacity. They do not capture the embedded cost of existing infrastructure: carrying charges on past investments, operations and maintenance on sunk assets, regulatory return on the rate base, or customer-related costs. These are real costs that the utility must recover, but they are not caused by any individual customer's current consumption decisions.
+Marginal costs capture only the forward-looking incremental cost of new infrastructure — the specific projects in the utility's current capital plan and the next MW of generation and transmission capacity. In rate design, this is typically called the long-run marginal cost (LRMC): the cost of serving an additional unit of demand when the infrastructure stock can be fully adjusted over time. The capital plan serves as a practical proxy for LRMC; it captures near-term investment needs but may not fully reflect long-run equilibrium costs. Marginal costs do not capture the embedded cost of existing infrastructure: carrying charges on past investments, operations and maintenance on sunk assets, regulatory return on the rate base, or customer-related costs. These are real costs that the utility must recover, but they are not caused by any individual customer's current consumption decisions.
 
 The gap between the utility's total {{< glossary "revenue requirement" >}} and the revenue that marginal cost pricing generates is the {{< glossary residual >}}. For Rhode Island Energy, the delivery residual is `{python} pct(v.delivery_residual_pct)` of total delivery revenue — meaning only `{python} pct(1 - v.delivery_residual_pct)` of what customers pay for delivery reflects the forward-looking cost of new infrastructure.[^script-rr-pre] The table below shows the full breakdown of delivery charges and revenue during the rate-case test year.
 
@@ -1010,14 +1014,21 @@ print(Path("cache/rie_rev_req_programs_by_bucket.html").read_text())
 {{< glossary-def EPMC >}}
 :::
 
-Because the residual represents sunk costs that are not attributable to any customer's current behavior, the choice of how to split it is a normative decision, not a strictly economic one. There are many ways to assign historical costs to customers. This can be evenly distributed across all customers, allocated based on their consumption as a volumetric rate, or allocated to customers in proportion their economic burden. We use equi-proportional marginal cost ({{< glossary EPMC >}}) allocation: each customer's residual share is proportional to their share of total system marginal costs. If a subclass causes 3% of total marginal costs, it bears 3% of the residual. This is equivalent to scaling all marginal-cost-based rates by a uniform constant 
-$$K = TRR / EB_{\text{total}}$$
+Because the residual represents sunk costs that are not attributable to any customer's current behavior, the choice of how to split it is a normative decision, not a strictly economic one. There are many ways to assign historical costs to customers. This can be evenly distributed across all customers, allocated based on their consumption as a volumetric rate, or allocated to customers in proportion their economic burden. We use equi-proportional marginal cost ({{< glossary EPMC >}}) allocation: each customer's residual share is proportional to their share of total system marginal costs. If a subclass causes 3% of total marginal costs, it bears 3% of the residual. This is equivalent to scaling all marginal-cost-based rates by a uniform factor
 
-so that total revenue equals the {{< glossary "revenue requirement" >}} — the standard reconciliation method used in California @naruc_ElectricUtilityCost_1992).
+$$K = \frac{TRR}{EB_{\text{total}}}$$
+
+where:
+
+- $K$ — the EPMC scaling factor
+- $TRR$ — total delivery revenue requirement
+- $EB_{\text{total}}$ — total system economic burden (sum of all customers' economic burdens, $\sum_{i \in \mathcal{C}} EB_i$)
+
+so that total revenue equals the {{< glossary "revenue requirement" >}} — the standard reconciliation method used in California [@naruc_ElectricUtilityCost_1992].
 
 This mirrors the logic of RIE's own embedded cost-of-service study (ECOSS): use a metric that measures each subclass's current cost-causation, then divide the revenue requirement accordingly. We use hourly marginal costs rather than non-coincident peak (NCP) as the cost-causation metric — a more granular signal, but the same allocative principle.
 
-Under EPMC, the BAT reveals how the _structure_ of current rates — flat volumetric delivery charges applied equally to all kWh — redistributes costs between customer groups. Heat pump customers, who consume more electricity (especially in winter, when capacity marginal costs are low), pay a disproportionate share of the delivery revenue requirement relative to the cost they impose on the system.[^script-rr-mid]
+Under EPMC, the BAT reveals how the current delivery rate redistributes costs between customer groups. Heat pump customers, who consume more electricity (especially in winter, when capacity marginal costs are low), pay a disproportionate share of the delivery revenue requirement relative to the cost they impose on the system.[^script-rr-mid]
 
 [^script-rr-mid]: BAT values — per-customer economic burden and cross-subsidy — are computed by CAIRO during the run (via the RDP's [scenario runner](https://github.com/switchbox-data/rate-design-platform/blob/main/rate_design/hp_rates/run_scenario.py)). The RDP's [subclass revenue-requirement allocator](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/mid/compute_subclass_rr.py) then applies the EPMC split between HP and non-HP subclasses. BAT results are consolidated across utilities by the RDP's [master BAT builder](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/post/build_master_bat.py).
 
@@ -1032,7 +1043,7 @@ The cross-subsidy analysis (@sec-methods-bat) identifies the problem: under toda
 
 The proposed rate is a **flat volumetric delivery rate for heat pump customers**, set lower than the current default rate. It is calibrated so that HP customers' total delivery revenue equals their {{< glossary "cost of service" >}} on a subclass basis — i.e., cross-subsidy for the HP subclass is zero. Rhode Island Energy gets a single HP delivery rate reflecting its territory's cost structure.
 
-The calibration works as follows. Under {{< glossary EPMC >}}, the HP subclass's cost of service is its {{< glossary "economic burden" >}} scaled by the EPMC factor $K = TRR / EB_{\text{total}}$, where $TRR$ is the total delivery {{< glossary "revenue requirement" >}} and $EB_{\text{total}}$ is total system economic burden. The HP flat rate is the volumetric charge that recovers exactly this cost of service from the HP subclass's total consumption:
+The calibration works as follows. Under {{< glossary EPMC >}}, the HP subclass's cost of service is its {{< glossary "economic burden" >}} scaled by the EPMC factor $K$ defined above. The HP flat rate is the volumetric charge that recovers exactly this cost of service from the HP subclass's total consumption:
 
 $$r_{\text{HP}} = \frac{RR_{\text{HP}} - FC_{\text{HP}}}{Q_{\text{HP}}}$$
 
@@ -1052,8 +1063,8 @@ By construction, this rate collects exactly the HP subclass's allocated cost of 
 
 Once the fair rate is calibrated, we compute two additional sets of bill comparisons (using the same building-by-building, undiscounted methodology described above):
 
-- **HP customers switching under the fair rate.** We compare each building's total energy bill under current heating and default rates against its bill as an HP customer on the HP flat rate. This captures both the fuel switch and the rate change — the combined effect of electrification and rate reform.
-- **Non-HP customers after {{< glossary cross-subsidy >}} removal.** If HP customers move to the fair rate, the default rate is recalibrated for remaining customers. We compare non-HP customers' bills before and after this recalibration — same homes, same heating equipment, only a slight rate adjustment.
+- **HP customers switching under the fair rate.** We compare each building's total energy bill under its current heating equipment on default rates (upgrade 0, default rate) against its bill after a heat pump retrofit on the HP flat rate (upgrade 2, HP flat rate). This captures both the fuel switch and the rate change — the combined effect of electrification and rate reform.
+- **Non-HP customers after {{< glossary cross-subsidy >}} removal.** If HP customers move to the fair rate, the default rate is recalibrated for remaining customers. We compare non-HP customers' bills before and after this recalibration — same homes (upgrade 0), same heating equipment, only a slight rate adjustment.
 
 
 
@@ -1122,7 +1133,7 @@ A key question for heat pump policy is whether the grid can physically handle in
 
 [^n1-contingency]: The N-1 contingency standard requires that the grid remain operable after any single component failure. A feeder flagged as "contingency load-at-risk" is one whose neighbors could not safely absorb its customers' load if it went offline — meaning the feeder can fail the N-1 screen even at modest utilization if adjacent feeders are themselves heavily loaded.
 
-**Deriving winter loads.** The feeder data is summer-only — RIE does not currently measure feeder-level winter peaks and does not forecast how those peaks will evolve at the feeder level.[^cite-rie-winter-peaks] We estimated winter {{< glossary headroom >}} ourselves using RIE's recommended method. Current winter demand is estimated from summer demand using scaling ratio of 0.7 — the current system-wide winter/summer peak ratio, per RIE's distribution planners. Winter rated capacity is assumed equal to summer nameplate rating — a conservative assumption, since thermal limits do not degrade in winter.
+**Deriving winter loads.** The feeder data is summer-only — RIE does not currently measure feeder-level winter peaks and does not forecast how those peaks will evolve at the feeder level.[^cite-rie-winter-peaks] We estimated winter {{< glossary headroom >}} ourselves using RIE's recommended method. Current winter demand is estimated from summer demand using a scaling ratio of 0.70 — the system-wide winter/summer peak ratio as of 2024, per RIE's distribution planners. This ratio is held fixed for the 2026 current-state snapshot. Winter rated capacity is assumed equal to summer nameplate rating — a conservative assumption, since thermal limits do not degrade in winter.
 
 **Defining constrained assets.** A feeder or transformer is classified as **constrained** if its peak exceeds 100% of nameplate rating, or  N-1 contingency = "yes" — meaning the feeder's neighbors cannot safely absorb its load in an outage. {{< glossary Headroom >}} for a given asset is $1 - \text{utilization}$, where utilization is the ratio of peak demand to rated capacity.[^script-headroom]
 
@@ -1134,17 +1145,24 @@ A key question for heat pump policy is whether the grid can physically handle in
 
 **Data source.** We draw system-wide peak MW projections from Rhode Island Energy's *RI Peak Report 2024*.[^cite-rie-forecast] For both summer and winter we use the **extreme weather** columns — the 95th-percentile hot summer peak and the 5th-percentile cold winter peak. These are used only as ratios to capture how the *relative growth* of winter versus summer peaks evolves as heat pump adoption rises; the feeder-level demand in any given year is still anchored to RIE's actual base feeder data, not to the extreme weather system-wide totals. The report also provides year-by-year electric heating (EH) contribution forecasts for each peak, and cumulative heat pump adoption counts under base and high adoption scenarios.
 
-**Projecting feeder loads.** Summer demand for each feeder is projected forward by applying the system-wide summer peak growth rates from the Peak Report. Winter demand uses a separate method: since Rhode Island's summer and winter peaks grow at different rates as heat pump adoption rises, we apply an *evolving winter-to-summer ratio* derived from the relative growth of the two peaks:
+**Projecting feeder loads.** Summer demand for each feeder is projected forward by applying the system-wide summer peak growth rates from the Peak Report. Winter demand uses a separate method, because winter and summer system peaks grow at different rates as heat pump adoption rises. The RIE Peak Report projects both summer and winter system peaks through 2039. Rather than fixing the winter-to-summer ratio at 0.70 for the full forecast period, we let it change each year in proportion to how the two system-wide peaks evolve relative to their 2024 baselines. Concretely, if winter system load grows faster than summer system load in a given year (because more heat pumps are added), the feeder-level winter-to-summer ratio rises accordingly:
 
 $$\text{winter demand}_i(y) = \text{summer demand}_i(y) \times \frac{W_{\text{NET}}(y) / W_{\text{NET}}(2024)}{S_{\text{NET}}(y) / S_{\text{NET}}(2024)} \times W_0$$
 
-where $W_{\text{NET}}(y)$ and $S_{\text{NET}}(y)$ are the system-wide winter and summer net peaks in year $y$ under the extreme weather scenario, and $W_0 = 0.70$ is the current system-wide winter-to-summer demand ratio. Utilization for 2036–2039 is extrapolated from 2035 by applying the Peak Report's year-over-year growth rates.
+where $W_{\text{NET}}(y)$ and $S_{\text{NET}}(y)$ are the system-wide winter and summer net peaks in year $y$ under the extreme weather scenario, and $W_0 = 0.70$ is the 2024 baseline winter-to-summer ratio. Utilization for 2036–2039 is extrapolated from 2035 by applying the Peak Report's year-over-year growth rates.
 
 **Heat pump adoption scenarios.** We model three scenarios by scaling each feeder's demand using unitless adjustment factors derived from the Peak Report's EH forecasts and HP adoption counts:
 
-- **No heat pumps** — The EH contribution is removed: $\text{adj}_y = (N_y - EH_y) / N_y$, where $N_y$ is the system net peak and $EH_y$ is the electric heating contribution in year $y$.
+- **No heat pumps** — The EH contribution is removed: 
+
+$$\text{adj}_y = (N_y - EH_y) / N_y$$
+
+ where $N_y$ is the system net peak and $EH_y$ is the electric heating contribution in year $y$.
+ 
 - **Baseline** — No adjustment; demand follows RIE's base forecast.
-- **High heat pump adoption** — The EH contribution is scaled up by the ratio of High to Base cumulative HP adoption counts: $\text{adj}_y = (N_y + EH_y \times (r_y - 1)) / N_y$, where $r_y = \text{HP}_{\text{high}}(y) / \text{HP}_{\text{base}}(y)$.
+- **High heat pump adoption** — The EH contribution is scaled up by the ratio of High to Base cumulative HP adoption counts: 
+
+$$\text{adj}_y = (N_y + EH_y \times (r_y - 1)) / N_y$, where $r_y = \text{HP}_{\text{high}}(y) / \text{HP}_{\text{base}}(y)$$
 
 Feeders already constrained in 2026 are excluded from the 2039 assessment — they are assumed to be upgraded before heat pump adoption stress arrives. For the remaining feeders, the same two constraint criteria apply (peak exceeds normal capacity, or N-1 contingency flag), with feeders rated "borderline" in 2035 also counted as constrained to capture assets approaching their limit.
 
@@ -1154,7 +1172,7 @@ Feeders already constrained in 2026 are excluded from the 2039 assessment — th
 
 - **Actual meteorological year (AMY 2018) weather.** All load profiles use actual meteorological year 2018 weather data. While ResStock also provides a composite typical meteorological year (TMY) scenario, we use the AMY year to preserve weather-driven coincident peaks — TMY composites splice months from different years, which can smooth out the extreme weather events that drive the system peak hours central to our marginal cost allocation.
 
-- **Static tariffs and fuel prices.** Bills are computed at 2025 tariff rates. Natural gas and delivered fuel prices are held at 2025 levels; the model does not incorporate price escalation or fuel-switching dynamics.
+- **Static tariffs and fuel prices.** Bills are computed at 2025 tariff rates. Natural gas and delivered fuel prices use 2024 EIA data; the model does not incorporate price escalation or fuel-switching dynamics.
 
 - **No behavioral response to rate changes.** The model does not capture price elasticity — a household's hourly load profile is the same under the default rate and the proposed HP flat rate. In practice, time-varying price signals could shift load away from peak hours, which would reduce delivery cost-of-service for responsive customers.
 

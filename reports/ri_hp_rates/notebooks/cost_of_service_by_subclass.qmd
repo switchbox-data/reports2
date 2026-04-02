@@ -76,17 +76,36 @@ report_vars["rie_rev_req_core_delivery_usd_per_kwh"] = (
     report_vars["rie_rev_req_core_delivery_total"] / _ty_kwh
 )
 
-# Testimony: transmission vs all other top-ups (residual after customer, core distribution, transmission).
+# Testimony: transmission, renewable roll-up, EE programs charge, then remaining delivery top-ups (matches COS stacked bar).
 _dtu0 = _rev_yaml["delivery_top_ups"]
 _trans_budget = float(_dtu0["transmission_charge"]["total_budget"]) + float(
     _dtu0["transmission_uncollectible"]["total_budget"],
 )
 report_vars["rie_rev_req_transmission_total"] = _trans_budget
 report_vars["rie_rev_req_transmission_usd_per_kwh"] = _trans_budget / _ty_kwh
+_renewable_energy_keys_ty = (
+    "long_term_contracting_charge",
+    "net_metering_charge",
+    "renewables_charge",
+    "re_growth_charge",
+)
+report_vars["rie_rev_req_renewable_energy_total"] = sum(
+    float(_dtu0[k]["total_budget"])
+    for k in _renewable_energy_keys_ty
+    if k in _dtu0 and isinstance(_dtu0[k], dict) and "total_budget" in _dtu0[k]
+)
+_ee_prog_key = "energy_efficiency_programs_charge"
+report_vars["rie_rev_req_energy_efficiency_total"] = float(
+    _dtu0[_ee_prog_key]["total_budget"],
+)
 _other_fixed = 0.0
 _other_vol = 0.0
 for _pk, _row in _dtu0.items():
     if _pk in ("transmission_charge", "transmission_uncollectible"):
+        continue
+    if _pk in _renewable_energy_keys_ty:
+        continue
+    if _pk == _ee_prog_key:
         continue
     if not isinstance(_row, dict) or "total_budget" not in _row:
         continue
@@ -110,17 +129,30 @@ report_vars["rie_rev_req_other_delivery_avg_fixed_usd_per_mo"] = (
 _RDP_RIE_ELEC_TARIFF_DIR = "rate_design/hp_rates/ri/config/tariffs/electric"
 
 
-def _rie_calibrated_volumetric_c_per_kwh(*, rel_filename: str) -> str:
-    """First energy tier in URDB-shaped delivery JSON → ¢/kWh for table copy (matches CAIRO input)."""
+def _rie_calibrated_volumetric_usd_per_kwh(*, rel_filename: str) -> float:
+    """First energy tier in URDB-shaped delivery JSON → `$/kWh` (matches CAIRO calibrated tariff input)."""
     path = f"{_RDP_RIE_ELEC_TARIFF_DIR}/{rel_filename}"
     doc = parse_urdb_json(fetch_rdp_file(path, RDP_REF))
-    usd_kwh = float(doc["items"][0]["energyratestructure"][0][0]["rate"])
+    return float(doc["items"][0]["energyratestructure"][0][0]["rate"])
+
+
+def _rie_calibrated_volumetric_c_per_kwh(*, rel_filename: str) -> str:
+    """First energy tier in URDB-shaped delivery JSON → ¢/kWh for table copy (matches CAIRO input)."""
+    usd_kwh = _rie_calibrated_volumetric_usd_per_kwh(rel_filename=rel_filename)
     return f"{usd_kwh * 100:.2f}¢/kWh"
 
 
 _C_KWH_TODAY_UNIFORM = _rie_calibrated_volumetric_c_per_kwh(rel_filename="rie_default_calibrated.json")
 _C_KWH_PROP_HP = _rie_calibrated_volumetric_c_per_kwh(rel_filename="rie_hp_flat_calibrated.json")
 _C_KWH_PROP_OTHER = _rie_calibrated_volumetric_c_per_kwh(rel_filename="rie_nonhp_default_calibrated.json")
+
+_default_vol_usd_kwh = _rie_calibrated_volumetric_usd_per_kwh(rel_filename="rie_default_calibrated.json")
+_hp_flat_vol_usd_kwh = _rie_calibrated_volumetric_usd_per_kwh(rel_filename="rie_hp_flat_calibrated.json")
+report_vars["hp_flat_volumetric_delivery_pct_below_default"] = (
+    (_default_vol_usd_kwh - _hp_flat_vol_usd_kwh) / _default_vol_usd_kwh
+    if _default_vol_usd_kwh > 0
+    else float("nan")
+)
 
 # PRB-1 volumetric components (¢/kWh): core delivery vs transmission + uncollectible, from YAML budgets ÷ test-year kWh.
 _drr = _rev_yaml["delivery_revenue_requirement"]
@@ -722,7 +754,7 @@ rie_budget_df.select(
 
 ```{python}
 #| label: fig-rie-rev-req-budgets
-#| fig-cap: "RIE test-year delivery revenue in six rolled-up buckets (positive budgets only; segment widths are shares of those amounts). Plot title gives total delivery revenue requirement from the YAML for the rate-case year (9/1/2024–8/31/2025). In-bar text: bucket total, blank line, then blended ¢/kWh when volumetric budgets exist, then per-customer fixed charges as $/mo from the filing (not utility-wide monthly totals). Credits and zero-budget performance incentive omitted."
+#| fig-cap: "RIE delivery revenue collected during the test year (9/1/2024–8/31/2025), by program area. Bars show total revenue collected by area, as well as total volumetric and/or fixed charges used to collect it."
 #| fig-cap-location: margin
 
 from plotnine import (
@@ -1625,6 +1657,13 @@ def run_scenario(path: str, label: str, *, hp_flat: bool) -> pl.DataFrame:
 
 bat = run_scenario(PATH_MASTER_BAT_12, "run 1+2 (default)", hp_flat=False)
 cos_tbl = build_cos_table(bat)
+report_vars["testimony_subclass_delivery_rows"] = cos_tbl.select(
+    "subclass",
+    "n_customers_display",
+    "pct_customers_display",
+    "revenue_delivery",
+    "pct_all_revenue",
+).to_dicts()
 
 
 def _cos_tbl_group_row(df: pl.DataFrame, subclass_label: str) -> tuple[float, float, float]:

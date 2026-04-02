@@ -28,6 +28,10 @@ def _clean_quarto_artifacts(docs: Path) -> None:
 
     for pattern in ("**/*.out.ipynb", "**/*.embed.ipynb"):
         for f in Path(".").glob(pattern):
+            # Keep `.quarto/embed/**/*.embed.ipynb`: Quarto needs these to resolve
+            # `{{< embed >}}` when rendering standalone docs (e.g. testimony_outline.qmd).
+            if f.parts[0] == ".quarto":
+                continue
             f.unlink()
             removed += 1
 

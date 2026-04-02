@@ -7,8 +7,8 @@ author:
     email: jpv@switch.box
     affiliations:
       - Switchbox
-toc: true
-toc-depth: 2
+toc: false
+notebook-links: false
 execute:
   echo: false
 format:
@@ -33,7 +33,7 @@ This is a **bulleted Q&A outline** of proposed expert testimony for CLF in RIPUC
 #| echo: false
 
 import pickle
-from math import ceil
+from math import ceil, floor
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -42,6 +42,7 @@ f = SimpleNamespace(**pickle.loads(Path("cache/feeder_report_variables.pkl").rea
 c = SimpleNamespace(
     **pickle.loads(Path("cache/report_variables_cos_subclass.pkl").read_bytes()),
 )
+d = SimpleNamespace(**pickle.loads(Path("cache/delivery_cost_timing_vars.pkl").read_bytes()))
 
 
 def dollar(x, accuracy=0):
@@ -53,8 +54,61 @@ def million(x, digits=1):
     return f"${x / 1e6:.{digits}f} million"
 
 
+def dollar_m(x, digits=1):
+    """Large revenue totals as ``$159.4`` (millions of dollars, default one decimal)."""
+    return f"${x / 1e6:.{digits}f}"
+
+
 def pct(x, accuracy=0):
     return f"{x * 100:,.{accuracy}f}%"
+
+
+def _subclass_delivery_row(ns, label):
+    return next(r for r in ns.testimony_subclass_delivery_rows if r["subclass"] == label)
+
+
+def _hp_subclass_delivery_row(ns):
+    return _subclass_delivery_row(ns, "Heat pump")
+
+
+def subclass_pct_of_residential_customers(ns, label, *, accuracy=1):
+    return pct(_subclass_delivery_row(ns, label)["pct_customers_display"], accuracy)
+
+
+def hp_pct_of_residential_customers(ns, *, accuracy=1):
+    return pct(_hp_subclass_delivery_row(ns)["pct_customers_display"], accuracy)
+
+
+def hp_pct_of_residential_delivery_revenue(ns, *, accuracy=1):
+    return pct(_hp_subclass_delivery_row(ns)["pct_all_revenue"], accuracy)
+
+
+def hp_pct_of_total_delivery_cos(ns, *, accuracy=1):
+    t = float(ns.cos_subclass_total_cos)
+    if t <= 0:
+        return pct(0.0, accuracy)
+    return pct(float(ns.cos_default_hp_group_cos) / t, accuracy)
+
+
+def hp_pct_of_total_delivery_revenue(ns, *, accuracy=1):
+    t = float(ns.cos_subclass_total_delivery_rev)
+    if t <= 0:
+        return pct(0.0, accuracy)
+    return pct(float(ns.cos_default_hp_group_rev) / t, accuracy)
+
+
+def ng_delivery_rev_as_pct_of_subclass_cos(ns, *, accuracy=1):
+    cos = float(ns.cos_default_ng_group_cos)
+    if cos <= 0:
+        return pct(0.0, accuracy)
+    return pct(float(ns.cos_default_ng_group_rev) / cos, accuracy)
+
+
+def df_delivery_rev_as_pct_of_subclass_cos(ns, *, accuracy=1):
+    cos = float(ns.cos_default_df_group_cos)
+    if cos <= 0:
+        return pct(0.0, accuracy)
+    return pct(float(ns.cos_default_df_group_rev) / cos, accuracy)
 
 
 def comma(x, accuracy=0):
@@ -63,6 +117,39 @@ def comma(x, accuracy=0):
 
 def cents(x, accuracy=1):
     return f"{abs(x) * 100:,.{accuracy}f}"
+
+
+def testimony_subclass_delivery_table_html(ns) -> str:
+    """Narrow delivery-revenue-by-subclass table (customers, %, revenue, % of revenue)."""
+    import polars as pl
+    from great_tables import GT, loc, style
+
+    from lib.great_tables import get_switchbox_gt_tab_options
+
+    _tdf = pl.DataFrame(ns.testimony_subclass_delivery_rows)
+    _tcols = [
+        "n_customers_display",
+        "pct_customers_display",
+        "revenue_delivery",
+        "pct_all_revenue",
+    ]
+    _gt_sub = (
+        GT(_tdf, rowname_col="subclass")
+        .cols_label(
+            n_customers_display="Customers",
+            pct_customers_display="% of customers",
+            revenue_delivery="Delivery revenue",
+            pct_all_revenue="% of revenue",
+        )
+        .fmt_number(columns=["n_customers_display"], decimals=0, use_seps=True)
+        .fmt_percent(columns=["pct_customers_display", "pct_all_revenue"], decimals=1)
+        .fmt_currency(columns=["revenue_delivery"], decimals=0)
+        .cols_align(align="center", columns=_tcols)
+        .tab_style(style.text(align="center"), locations=loc.stub())
+        .tab_style(style.text(align="center"), locations=loc.column_labels())
+        .tab_options(**get_switchbox_gt_tab_options(table_layout="auto"))
+    )
+    return _gt_sub.as_raw_html()
 ```
 
 
@@ -79,26 +166,30 @@ language: "moves revenues toward cost-based levels", "magnitude of bill impacts 
 
 **Q.** Please summarize your education and work experience.
 <br>
-**A.** Bullet points:
+**A.** I have a BA in Sociology from the University of Chicago. I took post-graduate mathematics courses in probability theory, mathematical statistics, and vector calculus at NYU and Columbia University.
 
-  - Studied mathematics at [TK university]
-  - Former reporter at The New York Times
-  - Former staff AI engineer at Spotify
-  - Four years of energy policy research experience at Switchbox
-  - Authored [TK number] reports covering heat pump rates, building electrification, green hydrogen, grid impacts, LMI energy programs, and gas infrastructure
-  - Presented at the HEEP Conference and to the Illinois Commerce Commission on heat pump rate design
-  - Clients include: Environmental Defense Fund, NRDC, Earthjustice, Acadia Center, and others
+Before founding Switchbox, I was a staff machine learning engineer at Spotify, where I helped build some of the company's large-scale AI systems. Before that, I worked as data scientist for a boutique data science consultancy called Polynumeral.
+
+I founded and have led Switchbox for the past four years, where I have authored reports covering heat pump rates, building electrification and weatherization incentive programs, green hydrogen blending, non-pipeline alternatives, the economics and grid impacts of all-electric new construction mandates, and other topics. Our reports are based on software implementations of economics and engineering models.
+
+I have presented our work on heat pump rate design at NEEP's HEW2025 Heat Pump Summit and in front of the Illinois Commerce Commission. Our clients have included Environmental Defense Fund, NRDC, Earthjustice, Acadia Center, Green Energy Consumers Alliance, Rewiring America, and others. Our reports have been covered by numerous national and local press outlets.
 
 <br><br>
 
 **Q.** Have you previously testified before the Rhode Island Public Utilities Commission?
 <br>
-**A.** No. However, Switchbox's work has been submitted in regulatory proceedings in multiple states:
+**A.** No.
 
-  - Massachusetts heat pump rate case (DPU 24-71)
-  - New Jersey green hydrogen proceeding
-  - Presented to the Illinois Commerce Commission on three occasions regarding the Future of Gas
-  - [TK: AEBA, NY LPP, NENY, NY HEAT — confirm which were formal submissions]
+**Q.** Have you previously testified before other state Public Utilities Commissions?
+<br>
+**A.** No. However, Switchbox's work has been submitted to regulatory proceedings in multiple states, including:
+
+- Docket No. 25-08 docket before the Massachusetts Department of Public Utilities for the Massachusetts, on heat pump rates
+- Docket No. GR23030102 before the New Jersey Board of Public Utilities, on green hydrogen blending in gas distribution
+- The People's Gas Non-pipeline Alternatives workshop resulting from the Illinois Commerce Commission's order in Docket No. 24-0081
+- Docket No. 24-0158 before the Illinois Commerce Commission, the state's Future of Gas proceeding
+- Docket No. 18-M-0084 before the New York Public Service Commission, on the state's energy efficiency programs
+- Docket No. TK before the New York Public Service Commission, on the state's implementation of All-Electric Building Act
 
 <br><br>
 
@@ -110,11 +201,13 @@ language: "moves revenues toward cost-based levels", "magnitude of bill impacts 
 
 **Q.** What is the purpose of your testimony?
 <br>
-**A.** I demonstrate that Rhode Island Energy's current residential electric delivery rates (A-16 and A-60) create a substantial cross-subsidy from customers that heat with heat pumps to those that heat with fossil fuels within the residential customer class.
+**A.** I demonstrate that Rhode Island Energy's current residential electric delivery rates (A-16 and A-60) create a substantial cross-subsidy within the residential customer class: from customers that heat with heat pumps to those that heat with fossil fuels.
 
-To measure this intra-class cross-subsidy, I performed a cost-of-service study of residential customer subclasses, defined according to their heating technology and fuel (heat pump, natural gas, oil/propane, electric resistance), and compared each subclasses's allocated cost-of-service to the revenue RIE collected from them during the Test Year. I find that heat pump customers overpay relative to their cost of service by `{python} dollar(v.hp_mean_delivery_bat)` per year, on average, whereas customers that heat with natural gas and delivered fuels underpay relative to their cost of service by `{python} dollar(abs(v.natgas_mean_delivery_bat))`  and `{python} dollar(abs(v.oil_propane_mean_delivery_bat))` per year.
+To measure this _intra_-class cross-subsidy, I performed a cost-of-service study of residential customer subclasses. These subclasses were defined according to their heating technology and fuel—customers who heat with heat pumps, natural gas, oil/propane, electric resistance, and other. The study produced the cost-of-service for each subclass, which I then compared to the revenue RIE collected from them during the Test Year.
 
-I propose the creation of a new residential electric rate schedule for heat pump customers with a target revenue that reflects these customers' true cost-of-service. Moving from cost allocation to rate design, I propose a simple flat rate that would recover heat pump customers' allocated delivery cost responsibility. This rate would collect both distribution-related delivery revenue, and other non-distribution delivery revenue, such as transmission and renewable distribution revenue.
+I find that heat pump customers overpay relative to their cost of service by `{python} dollar(v.hp_mean_delivery_bat)` per year, on average, whereas customers that heat with natural gas and delivered fuels underpay relative to their cost of service by an average of `{python} dollar(abs(v.natgas_mean_delivery_bat))`  and `{python} dollar(abs(v.oil_propane_mean_delivery_bat))` per year, respectively.
+
+I propose the creation of a new residential electric rate schedule for heat pump customers. This schedule would set a target revenue that reflects these customers' true cost-of-service. Moving from cost allocation to rate design, I propose a simple flat rate that would recover heat pump customers' allocated cost responsibility. This rate would collect both distribution-related delivery revenue, as well as all other non-distribution delivery revenue, such as transmission and renewable energy surcharges.
 
 By aligning delivery rates with cost causality, this proposal would eliminate the significant cross-subsidy that exists between heat pump and fossil-heating electric residential customers, and it would make it cheaper to heat with heat pumps than natural gas for most Rhode Island households.
 
@@ -126,36 +219,62 @@ By aligning delivery rates with cost causality, this proposal would eliminate th
 
 1. **Create a new residential rate schedule** for heat pump customers, separate from the existing residential rate schedules (A-16 and A-60).
 2. **Set the new rate schedule's target revenue equal to heat pump customers' cost-of-service**, as determined by cost-of-service studies that accurately measure the hourly delivery costs that heat pump customers impose on the system.
-3. **Introduce flat volumetric delivery rates**, approximately 40% lower than the default delivery rates, that recovers the rate schedule's cost-based target revenue.
-4. **Auto-enroll existing heat pump customers** into the new rate—all customers save, so no opt-in barrier is needed—and **enroll new heat pump customers** at the point of installation through Clean Heat Rhode Island and the Rhode Island Clean Energy Accelerator.
-5. **Recalibrate the rate** in each subsequent rate case to reflect evolving cost-of-service as heat pump adoption grows and grid conditions change, providing a transparent and gradual glide path.
+3. **Introduce flat volumetric delivery rates**, specifically for heat pump customers in the schedule, approximately **`{python} pct(floor(c.hp_flat_volumetric_delivery_pct_below_default * 10) / 10)`** lower than the default volumetric delivery rates, that recover the rate schedule's cost-based target revenue.
+4. **Auto-enroll all known _existing_ heat pump customers** into this new rate. Since all customers would save from the switch, no opt-in barrier is needed.
+5. **Auto-enroll all _new_ heat pump customers** going through the Clean Heat Rhode Island and the Rhode Island Clean Energy Accelerator programs into this new rate, at the point of installation.
+6. **Recalibrate the rate** in each subsequent rate case to reflect evolving cost-of-service as heat pump adoption grows and grid conditions change, providing a transparent and gradual glide path.
 
 <br><br>
 
 **Q.** Are you sponsoring any exhibits with your testimony?
 <br>
-TODO: LIST EXHIBITS
-**A.** Yes. [TK: list exhibits — the Switchbox RI HP Rates report, the feeder analysis, supporting data tables, the Docket 4600 assessment.]
+**A.** Yes. I am sponsoring the following exhibits with my testimony:
+
+- **CLF-JPV-1:** Switchbox memo proposing and analyzing heat pump rate for RIE
+- **CLF-JPV-2:** Technical appendix to Switchbox memo describing the methodology and data used
+- **CLF-JPV-3:** List of workbooks used to produce the analysis
+- **CLF-JPV-4:** Correspondence with RIE's Ryan Constable on winter peaks and forecasts
+- **CLF-JPV-5:** RIE Test Year Rates and Revenue
 
 
 ## II. The Cross-Subsidy Problem
-**Q.** How much revenue did RIE collect system-wide for delivery during the test year (9/1/2024–8/31/2025)?
+**Q.** How much revenue did RIE collect for delivery from residential customersduring the test year, which lasted from September 1st, 2024 to August 31st, 2025?
 <br>
-**A.** RIE collected `{python} dollar(c.rie_rev_req_total_delivery_rr)` in residential delivery revenue from `{python} comma(int(round(c.rie_rev_req_test_year_customer_count)))` residential customers:
+**A.** RIE collected `{python} dollar(c.rie_rev_req_total_delivery_rr)` in residential delivery revenue from `{python} comma(int(round(c.rie_rev_req_test_year_customer_count)))` residential customers during the test year. Here is that revenue, broken down by program area:
 
 :::{.column-page-inset-right}
 {{< embed notebooks/cost_of_service_by_subclass.qmd#fig-rie-rev-req-budgets >}}
 :::
 
-This included `{python} dollar(c.rie_rev_req_customer_charge_total)` raised from customer charges (at $6.00/month), and `{python} dollar(c.rie_rev_req_core_delivery_total)` raised from volumetric distribution charges (from `{python} comma(c.rie_rev_req_test_year_residential_kwh)` kWh at `{python} dollar(c.rie_rev_req_core_delivery_usd_per_kwh, 4)`/kWh)—the charges that RIE is asking for rate hikes on in this rate case.
+RIE collected its residential distribution revenue requirement of `{python} dollar_m(c.rie_rev_req_customer_charge_total + c.rie_rev_req_core_delivery_total)` million, of which `{python} dollar_m(c.rie_rev_req_customer_charge_total)` million was raised through customer charges (at $6.00/month), and `{python} dollar_m(c.rie_rev_req_core_delivery_total)` million was raised through volumetric distribution charges (from `{python} comma(c.rie_rev_req_test_year_residential_kwh)` kWh at `{python} dollar(c.rie_rev_req_core_delivery_usd_per_kwh, 4)`/kWh). These are the rates that RIE is asking to increase in this rate case.
 
-But it also included `{python} dollar(c.rie_rev_req_transmission_total)` raised from transmission charges (`{python} dollar(c.rie_rev_req_transmission_usd_per_kwh, 4)`/kWh) and `{python} dollar(c.rie_rev_req_other_delivery_total)` raised from all other residential delivery riders combined (via fixed charges that average `{python} dollar(c.rie_rev_req_other_delivery_avg_fixed_usd_per_mo, 2)` per customer per month and volumetric charges that blend to `{python} f"{c.rie_rev_req_other_delivery_blended_c_per_kwh:.2f}"`¢/kWh).
+RIE also collected `{python} dollar_m(c.rie_rev_req_transmission_total)` million raised from transmission charges (`{python} dollar(c.rie_rev_req_transmission_usd_per_kwh, 4)`/kWh), `{python} dollar_m(c.rie_rev_req_renewable_energy_total)` million for renewable energy programs, `{python} dollar_m(c.rie_rev_req_energy_efficiency_total)` million for energy efficiency programs, and `{python} dollar_m(c.rie_rev_req_other_delivery_total)` million for other delivery programs.
+
+This figure aggregates the rates and revenues of every bill line item into six high-level program areas; to see the rates and revenues for every line item, consult Exhibit CLF-JPV-5.
 
 <br><br>
-
-**Q.** What is the central finding of your analysis?
+**Q.** How much of that revenue was collected from each residential customer subclass?
 <br>
-**A.** Under default residential electric rates (A-16 and A-60), heat pump customers in Rhode Island are paying `{python} f"{c.cos_default_hp_pct_over_cos:.0f}%"` more than their fair share of this electric delivery revenue.
+**A.** Here is a breakdown of how much revenue RIE collected from customers within each residential subclass:
+
+:::{.column-page-inset-right}
+```{python}
+#| echo: false
+#| output: asis
+print(testimony_subclass_delivery_table_html(c))
+```
+:::
+
+I estimate that heat pump customers make up `{python} hp_pct_of_residential_customers(c)` of RIE's residential customer base. During the test year, however, these customers accounted for `{python} hp_pct_of_residential_delivery_revenue(c)` of RIE's residential delivery revenue.
+
+Goal 6 of the future electric system, adopted by the Commission in Docket 4600, directs that rates should "appropriately charge customers for the cost they impose on the grid."
+
+Under this cost-causation principle, for default rates to be fair, if heat pump customers are contributing `{python} hp_pct_of_residential_delivery_revenue(c)` of RIE's residential delivery revenue, then they must be imposing approximately `{python} hp_pct_of_residential_delivery_revenue(c)` of delivery costs. They are not.
+
+<br><br>
+**Q.** What is each residential customer subclass's cost-of-service?
+<br>
+**A.** Here is a breakdown of each residential customer subclass's cost-of-service, juxtaposed with the revenue RIE collected from them during the test year:
 
 :::{.column-page-inset-right}
 ```{python}
@@ -165,31 +284,251 @@ print(Path("cache/cost_of_service_by_subclass.html").read_text())
 ```
 :::
 
-While their cost-of-service was `{python} million(c.cos_default_hp_group_cos)` as a group during the test year, they paid `{python} million(c.cos_default_hp_group_rev)` through their bills.
+As a group, heat pump customers' cost-of-service was `{python} million(c.cos_default_hp_group_cos)` during the test year, but they paid `{python} million(c.cos_default_hp_group_rev)` through their bills. In other words, while they only made up `{python} hp_pct_of_total_delivery_cos(c)` of total costs, they accounted for `{python} hp_pct_of_total_delivery_revenue(c)` of total revenue.
 
-Mathematically, this additional payment of `{python} million(c.cos_default_hp_group_xs)` towards RIE's fixed revenue target of `{python} million(c.rie_rev_req_total_delivery_rr)` allows other groups to pay less than their cost-of-service.
+Heat pump customers therefore paid  `{python} million(c.cos_default_hp_group_xs)` more than their cost of service.
 
-It therefore constitutes an **overpayment**, which creates a cross-subsidy that enables other groups to **underpay** relative to their cost-of-service.
+This **overpayment** caused heat pump customers as a group to cover a larger share of RIE's total fixed revenue target of `{python} million(c.rie_rev_req_total_delivery_rr)`, which in turn allowed other groups to pay less than the costs they imposed on the system.
 
 Electric resistance customers also paid `{python} million(c.cos_default_er_overpay_vs_cos)` more than their cost-of-service.
 
-These overpayments allowed customers heat with natural gas, which cost the system `{python} million(c.cos_default_ng_group_cos)`, to pay only `{python} million(c.cos_default_ng_group_rev)`, effectively receiving a `{python} million(c.cos_default_ng_subsidy_received)` in cross-subsidy from electric heat pump and electric resistance customers.
+**Q.** What effect do heat pump and electric resistance customers paying more than their cost of service have on the other residential customer subclasses?
+<br>
+**A.**
+Jointly, the overpayments from heat pump and electric resistance customers create a **cross-subsidy** that allows customers who heat with fossil fuels to **underpay** relative to their cost-of-service.
 
-Similarly, while those who heat with delivered fuels cost the system `{python} million(c.cos_default_df_group_cos)`, they  paid only `{python} million(c.cos_default_df_group_rev)` during the test year, thereby receiving a cross subsidy of `{python} million(c.cos_default_df_subsidy_received)`.
+During the test year, for instance, customers who heat with natural gas, which cost the system `{python} million(c.cos_default_ng_group_cos)`, paid only `{python} million(c.cos_default_ng_group_rev)`, or `{python} ng_delivery_rev_as_pct_of_subclass_cos(c)` of their cost-of-service.
+
+Those that heat with delivered fuels, which cost the system `{python} million(c.cos_default_df_group_cos)`, paid only `{python} million(c.cos_default_df_group_rev)`, or `{python} df_delivery_rev_as_pct_of_subclass_cos(c)` of their cost-of-service.
+
+**Q.** How did you measure the cost-of-service for each residential customer subclass?
+<br>
+**A.** The full methodology is described in Section VII, but I will preview it here.
+
+In brief, I applied the same general cost allocation philosophy that RIE uses in its Allocated Cost-of-Service Study — measure the present-day cost-causation of each customer class, and then use it to divide up the revenue requirement — but I applied it one level deeper, _within_ the residential class, to allocate costs among customer subclasses. I also used a more precise method to measure cost-causation.
+
+My goal was to divide the delivery revenue that RIE collected during the test year—both the distribution revenue requirement, and other delivery costs—into subclass cost-of-service allocations, based on each subclass's cost-causation.
+
+I measured which hours of the test year had the highest marginal delivery costs — for transmission and distribution separately — and then examined how much load each subclass had during those specific hours, using a statistically representative sample of residential load profiles for each subclass.[^nrel_resstock]
+
+[^nrel_resstock]: Using NREL's ResStock end-use load profiles, which are statistically representative energy simulations of Rhode Island's residential building stock.
+
+For each household in the sample, I multiplied its load in each hour by that hour's delivery cost, and summed across all 8,760 hours of the test year to get the total delivery costs that household caused. Summing the household-level costs across all households in a subclass produced the subclass's total delivery costs during the test year.
+
+Once I had each subclass's share of total residential cost-causation, I used those shares to divide up the residential delivery revenue that RIE collected during the test year to arrive at each subclass's cost-of-service. The gap between a subclass's cost-of-service and the revenue RIE actually collects from it under current rates is the cross-subsidy.
+
+By capturing _when_ delivery costs are caused, this hourly allocator measures cost-causation much more accurately than RIE's NCP allocator does, which essentially just measures each class's annual peak demand level—regardless of when it occurs.
+
+An hourly cost-of-service analysis is essential, because if a subclass makes up a small share of the residential customer base, and has its annual peak in winter when the grid may have spare capacity—as heat pump customers do—then the subclass may be causing far fewer costs than its annual peak demand would suggest. (More on this in Section III.)
+
 
 <br><br>
 
-**Q.** How did you the cost-of-service for each residential customer subclass?
+**Q.** What is the central finding of your cost-of-service study?
 <br>
-**A.** I conducted a marginal cost-of-service analysis — what I call the Bill Alignment Test — that directly compares what each customer pays for delivery versus what they cost to serve. I describe the methodology in detail in Section VII of this testimony. The key result is straightforward: for each residential customer subclass, I computed their delivery cost-of-service and compared it to the delivery revenue RIE collects from them under current rates. The gap between the two is the cross-subsidy.
-
-TODO: this is the brief forward-reference version. The full methodology Q&A (loads, hourly marginal costs, CAIRO, BAT, NREL) is in Section VII.
+**A.** Under current default residential electric rates (A-16 and A-60), heat pump customers in Rhode Island are paying `{python} f"{c.cos_default_hp_pct_over_cos:.0f}%"` more than their delivery cost-of-service.
 
 <br><br>
 
-**Q.** Do heat pump customers have higher cost-of-service than other kinds of customers?
+**Q.** Why do heat pump customers pay more than their cost-of-service?
 <br>
-**A.** Yes, they do. The average cost-of-service for heat pump customers is `{python} million(c.cos_default_hp_group_cos)` per year, on average, whereas the average cost-of-service for customers that heat with natural gas is `{python} million(c.cos_default_ng_group_cos)` per year, and for customers that heat with delivered fuels is `{python} million(c.cos_default_df_group_cos)` per year.
+**A.** Because delivery costs are recovered primarily through volumetric per-kWh charges. Volumetric rates assume, by design, that a customer's cost-causation scales with their total electricity consumption: the more kWh you use, the more you pay for delivery. But delivery costs are not caused by every kWh equally. They are driven by load during the hours when the grid is congested and additional demand would trigger the need for upgrades. A kWh consumed during a peak summer hour when a feeder is near capacity contributes to the need for new investment; a kWh consumed during an off-peak winter hour with ample spare capacity does not.
+
+Consider the implication: if a customer consumed a large amount of electricity, but all of it occurred during hours when the grid had spare capacity, that customer would cause essentially no new delivery costs. Yet under volumetric rates, they would pay delivery charges in full proportion to their consumption.
+
+Heat pump customers are close to this scenario. When a household installs a heat pump, its annual electricity consumption grows by roughly `{python} f"{v.elec_pct_change_full_cooling_p25:.0f}"`% to `{python} f"{v.elec_pct_change_full_cooling_p75:.0f}"`% — but the vast majority of that growth is in winter, when Rhode Island's distribution grid has massive spare capacity. As I will show in Section III, not a single one of RIE's feeders is winter-constrained, and the median feeder has `{python} f"{f.median_headroom_winter:.0f}"`% of winter headroom. The new winter load is absorbed by existing infrastructure without triggering upgrades.
+
+Yet under volumetric delivery rates, the customer's delivery bill grows in lockstep with consumption. For instance, if a customer's annual energy usage doubles after installing a heat pump, their delivery bill roughly doubles, but their cost-of-service would grow either modestly (if they are gaining cooling) or would stay the same (if they already have full cooling). The gap is the cross-subsidy.
+
+**Q.** Has this problem been identified before?
+<br>
+**A.** Yes. In Docket 4770, Walmart's expert witness Gregory Tillman identified the same structural problem for commercial and industrial customers on Rate G-32: when demand-related distribution costs are recovered through volumetric energy charges, high-usage customers systematically overpay and low-usage customers underpay, creating an intra-class subsidy invisible to the standard inter-class cost-of-service analysis. Mr. Tillman estimated a cross-subsidy of `$333` per year per large C&I customer.[^tillman] The dynamic I identify for residential heat pump customers is the same mechanism, operating on the residential side of the meter.
+
+[^tillman]: Direct Testimony of Gregory L. Tillman on behalf of Walmart, Inc., Docket 4770, at TK.
+
+<br><br>
+
+
+**Q.** Can you illustrate this with a specific example?
+<br>
+**A.** Yes. Consider a representative single-family home in Cranston — a three-bedroom house built in the 1980s, heated by a natural gas furnace with central air conditioning, with total annual energy bills near the statewide median. This is one of the simulated homes from our ResStock sample, and I use it as a running example in my accompanying report, Exhibit CLF-JPV-1.
+
+When heated by natural gas, this home has an annual electric delivery cost-of-service of `{python} dollar(v.cs_gas_cost)`. Its actual delivery bill is `{python} dollar(v.cs_gas_underpay)` *lower* than that — meaning it underpays for delivery. This is typical for gas-heated homes, as described above.
+
+::: {.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-cross-subsidy-before-example >}}
+:::
+
+Now suppose this home installs a heat pump. Its annual electricity consumption grows by `{python} f"{(v.elec_kwh_multiplier - 1) * 100:.0f}"`%. Because the home already has central air conditioning, all of that growth is in the shoulder seasons and winter — none of it during the summer peak hours that drive grid costs.
+
+::: {.column-body-outset}
+{{< embed notebooks/analysis.qmd#fig-consumption-before-after-state >}}
+:::
+
+Under volumetric delivery rates, the home's delivery bill jumps to `{python} dollar(v.cs_hp_bill)` per year. But its delivery cost-of-service barely changes, because none of the new load is during hours when the grid is constrained.
+
+::: {.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-cross-subsidy-example >}}
+:::
+
+The result is an overpayment of **`{python} dollar(v.cs_hp_bat)` per year**. This overpayment is entirely a consequence of the volumetric rate structure, not of any new costs this home is imposing on the grid.
+
+<br><br>
+
+**Q.** What is the practical consequence of this delivery overpayment for households considering heat pumps?
+<br>
+**A.** The delivery overpayment I have described is not an abstract accounting problem — it directly determines whether most households in Rhode Island save or lose money when switching to heat pumps.
+
+When a household switches from a gas furnace to a heat pump, its gas consumption drops, while its electric consumption increases. Take the Cranston home as an example:
+
+::: {.column-body-outset-right}
+{{< embed notebooks/analysis.qmd#fig-consumption-elec-focus-state >}}
+:::
+
+The home's energy bills follow its energy use: annual gas bills drop, annual electric bills rise—both the supply side of the electric bill, and the delivery side:
+
+::: {.column-body}
+{{< embed notebooks/analysis.qmd#fig-bill-components-decomposed-state >}}
+:::
+
+After getting a heat pump, the Cranston home consumes roughly twice as much electricity, so it makes sense that its annual supply bill doubles.
+
+However, as I described in the preceding question, none of the Cranston home's new electricity consumption causes new delivery costs — yet under volumetric delivery rates, its delivery bill nearly doubles as well.
+
+The result is a delivery overpayment of **`{python} dollar(v.cs_hp_bat)` per year**. (See previous question.)
+
+In this case, the overpayment is entirely a consequence of the volumetric rate structure, not of any new costs this home is imposing on the grid. And it is directly responsible for this home losing money after switching to heat pumps: its total energy bills increase by `{python} dollar(v.median_net_increase)` per year.
+
+If, on the other hand, the home's delivery bill reflected its cost-of-service, the Cranston home would actually save `{python} dollar(v.median_energy_total - v.fair_rate_total_bill)` annually after switching to heat pumps:
+
+::::: {.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-bill-decomposed-fair-rate-state >}}
+:::::
+
+While this is just one particular home, the example captures a general phenomenon that affects most heat pump customers. Under current default rates, **`{python} pct(1 - v.pct_natgas_save_default_lmi40)`** of gas-heated households in Rhode Island would lose money after switching to heat pumps.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-quadrant-bar-natgas-state-state-lmi-current >}}
+:::
+
+The cross-subsidy is directly responsible for why most gas-heated currently lose after switching. As I will demonstrate in Section V, eliminating the cross-subsidy by moving heat pump customers to a separate rate schedule reverses this picture: **`{python} pct(v.pct_natgas_save_hprate_lmi40)`** of gas-heated households would save money after switching to heat pumps.
+
+<br><br>
+
+**Q.** Does this problem extend beyond natural gas-heated households?
+<br>
+**A.** Yes. The delivery cross-subsidy affects any household that switches to a heat pump, regardless of their current heating fuel. The mechanism is the same: a large increase in electricity consumption — most of it in winter — triggers a proportional increase in delivery charges that does not reflect the actual cost of service for these customers.
+
+To put this in context, RIE's residential customer base breaks down roughly as follows: natural gas-heated households make up `{python} subclass_pct_of_residential_customers(c, "Natural gas")` of residential customers, delivered fuel households (oil and propane) make up `{python} subclass_pct_of_residential_customers(c, "Delivered fuels")`, electric resistance households make up `{python} subclass_pct_of_residential_customers(c, "Electric resistance")`, and heat pump households make up `{python} hp_pct_of_residential_customers(c)`.
+
+**Delivered fuel households**: because oil and propane are more expensive than natural gas, the economics of switching are more favorable — `{python} pct(v.pct_oil_propane_save_default)` of these households would save under current default rates, with average annual savings of `{python} dollar(-v.oil_propane_mean_delta_default)`. But those savings should be more than double: the delivery overpayment reduces the average oil/propane household's annual savings by an average of `{python} dollar(v.oil_propane_delivery_erosion)` per year, turning what should be a compelling economic case (`{python} dollar(-v.oil_propane_mean_delta_hprate / 6)` savings per heating month, on average) into a thinner one (`{python} dollar(-v.oil_propane_mean_delta_default / 6)` per heating month) that fewer households will act on.
+
+**Electric resistance households** already heat with electricity, and because heat pumps are two to three times more efficient than resistance heaters, switching will always reduce their heating bills. `{python} pct(v.pct_elec_resistance_save_default)` would save under current rates, with average annual savings of `{python} dollar(-v.elec_resistance_mean_delta_default)`. But the delivery overpayment still erodes those savings by `{python} dollar(v.elec_resistance_delivery_erosion)` per year — unnecessary charges that do not reflect any costs these households, which are disproportionately lower income,[^er_income] impose on the grid.
+
+[^er_income]: In our ResStock dataset, whose household income data is derived from the Census Bureau's 2019 5-year American Community Survey, the median income of electric resistance households is approximately $28,000, compared to $54,000 for natural gas households and $55,000 for RI's residential population overall.
+
+As I will show in Section V, eliminating the delivery cross-subsidy by moving heat pump customers to a separate rate schedule (with a cost-based revenue target) substantially improves the economics for all three groups.
+
+
+
+
+## III. When Delivery Costs Happen — and When They Don't
+
+**Q.** In Section II, you showed that heat pump customers overpay for delivery relative to their cost-of-service. To understand why, can you first explain what drives delivery costs on RIE's grid?
+<br>
+**A.** The residential delivery bill contains many line items — customer charges, energy efficiency charges, storm restoration charges, and so on — but the largest components are the demand-related costs of transmission and distribution infrastructure: the poles, wires, substations, and transmission lines that carry electricity to homes.
+
+Those demand-related costs are driven by capacity constraints. When load on a feeder, substation, or transmission line approaches its rated capacity — or reaches a level that would overload remaining equipment under a contingency — the utility must invest in upgrades. It is those upgrades that make up the bulk of what delivery rates recover.
+
+But equipment doesn't approach its limits at all hours equally — these constraints are concentrated in specific times of year, which means the *timing* of a customer's electricity use determines how much infrastructure cost they cause.
+
+<br><br>
+
+**Q.** When do those capacity constraints occur on RIE's system?
+<br>
+**A.** Exclusively in summer. RIE's own distribution planning engineers have confirmed that "there are no feeders or transformers constrained in the winter."[^clf_jpv_4_8] Using Rhode Island Energy's distribution planning data — feeder and transformer thermal screening, capacity ratings, and its 2024 Electric Peak Forecast — I examined every feeder and substation transformer on the system independently and reached the same conclusion.
+
+[^clf_jpv_4_8]: Exhibit CLF-JPV-4, Response 8.
+
+The chart below ranks each feeder on RIE's distribution grid by how close its forecasted 2026 summer peak comes to its rated normal capacity:
+
+:::{.column-page-inset-right}
+{{< embed notebooks/feeder_peaks.qmd#fig-feeder-rank-curve-summer >}}
+:::
+
+Dark green feeders are those whose summer peak are expected to exceed their summer normal rating; light green feeders are those that are below their normal rating but would overload neighboring equipment under a contingency. Every constrained feeder is summer-constrained.
+
+The key findings from this assessment, as of `{python} f.feeder_rank_year`:
+
+  - Only `{python} pct(f.pct_feeders_any_violation_summer)` of RIE's feeders are thermally constrained — whether under normal loading or under contingency conditions — and every constraint occurs in summer, not winter.
+  - **Zero feeders** are winter-constrained at present.
+  - Of RIE's `{python} f"{f.cust_total_2026:,.0f}"` customers on active feeders, `{python} pct(f.pct_cust_constrained_2026)` (`{python} f"{f.cust_constrained_2026:,.0f}"` customers) sit on these summer-constrained feeders.
+  - For most of these feeders, the utility is already planning capacity upgrades or system reconfigurations that will reduce their summer peak loads.
+  - As for substation transformers, only `{python} pct(f.pct_xfmr_any_violation_summer)` are constrained — again, all in summer.
+
+
+<br><br>
+
+**Q.** How did you incorporate these engineering findings into your cost-of-service analysis?
+<br>
+**A.** The feeder and transformer analysis establishes that all of RIE's capacity constraints are summer-driven. But RIE's planning data only reports each feeder's summer peak load level, not the hour at which that peak occurs or the feeder's hourly load profile for the year. RIE has confirmed that the hour of peak "is not tracked as it is not necessary to current distribution planning practices focused on peak level analysis."[^clf_jpv_4_4] Therefore, the data does not tell us *which specific summer hours* tend to drive the constraints.
+
+[^clf_jpv_4_4]: Exhibit CLF-JPV-4, Response 4.
+
+To allocate delivery costs to individual customers based on when their load falls, I needed to identify the highest-stress hours on Rhode Island's bulk transmission and RIE's distribution grid, and then spread marginal delivery cost across only those hours — reflecting the fact that load during hours near the system peak is what drives the need for new upgrades, while load during all other hours imposes no incremental capacity costs.
+
+For reasons detailed in the full methodology, Section VII, I used the top 100 hours of aggregate New England system load for bulk transmission and the top 100 hours of RIE's system load for distribution and sub-transmission.
+
+The heatmaps below show the resulting hourly cost profiles for every hour of the test year. Each tile is one hour; darker tiles indicate higher marginal cost.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/delivery_cost_timing.qmd#fig-heatmap-bulk-tx >}}
+:::
+
+:::{.column-page-inset-right}
+{{< embed notebooks/delivery_cost_timing.qmd#fig-heatmap-dist-sub-tx >}}
+:::
+
+The summer concentration that results is stark: delivery capacity costs are confined to a narrow band of summer afternoon and evening hours. Every winter hour is zero.
+
+<br><br>
+
+**Q.** How much spare capacity does the distribution grid have in winter?
+<br>
+**A.** The feeder analysis from RIE's own engineering data answers this directly. As before, the chart below plots every feeder's peak load as a percentage of its rated summer normal capacity, for both summer (orange) and winter (blue), ranked from most to least stressed.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/feeder_peaks.qmd#fig-feeder-rank-curve-summer-and-winter >}}
+:::
+
+Feeder winter peaks sit far below their summer peaks throughout RIE's distribution grid: no feeder is winter constrained, **`{python} f"{ceil(f.pct_feeders_headroom_gt_30_winter * 100):.0f}"`%** of feeders have more than 30% winter headroom, and the **median winter headroom is `{python} f"{f.median_headroom_winter:.0f}"`%**.
+
+It is worth noting that the winter peaks shown here are estimates. RIE's distribution planning group does not compile historical winter peaks for its feeders or substation transformers. When we requested this data through discovery, RIE explained that "the RI system is currently summer limited" and that "the Company concentrates on summer analysis for efficiency reasons," adding: "If the system is summer limited and it is planned sufficiently, it will be sufficient in the winter."[^clf_jpv_4_6]
+
+RIE does not forecast feeder-level winter peaks either, stating that "a winter analysis would provide no useful information to determine system sufficiency."[^clf_jpv_4_12]
+
+[^clf_jpv_4_6]: Exhibit CLF-JPV-4, Response 6.
+
+[^clf_jpv_4_12]: Exhibit CLF-JPV-4, Response 12.
+
+RIE's engineers recommended that we estimate each feeder's winter peak as 70% of its measured 2024 summer peak, consistent with the current ratio of system-wide winter to summer peak demand. This is the same ratio RIE's distribution planning team uses internally — for instance, when the Control Center requests loading guidance during a winter contingency event.[^clf_jpv_4_11] I followed that recommendation.
+
+[^clf_jpv_4_11]: Exhibit CLF-JPV-4, Responses 10–11.
+
+<br><br>
+
+**Q.** What does this winter headroom mean for heat pump customers' delivery costs?
+<br>
+**A.** It means that the vast majority of the new electricity a heat pump adds to the grid in winter causes no new delivery costs whatsoever.
+
+When a household installs a heat pump, its electricity consumption grows substantially — but almost all of that growth is in winter, when RIE's distribution grid has massive spare capacity. That load is absorbed by existing infrastructure without triggering upgrades, and therefore without causing delivery costs.
+
+<br><br>
+
+**Q.** Does this mean that heat pump customers have the same cost-of-service as other customers?
+<br>
+**A.** No — heat pump customers actually have a somewhat higher average delivery cost-of-service than other customers subclasses:
+
 
 :::{.column-page-inset-right}
 ```{python}
@@ -199,281 +538,220 @@ print(Path("cache/cost_of_service_by_subclass_avg.html").read_text())
 ```
 :::
 
+The average delivery cost-of-service for heat pump customers is `{python} dollar(v.hp_mean_delivery_cost)` per year, compared to `{python} dollar(v.natgas_mean_delivery_cost)` for natural gas, `{python} dollar(v.oil_propane_mean_delivery_cost)` for delivered fuel, and `{python} dollar(v.er_mean_delivery_cost)` for electric resistance.
 
-This means that heat pump customers should pay X% more than customers who heat with natural gas. However, in practice they pay Y% more.
+As I'll show, the main variable that explains this variation in cost-of-service between residential customer subclasses is the prevalence of summer cooling among their members — not winter heating load.
 
-**Q.** Why do heat pump customers have a higher cost of service than other kinds of customers?
+(In spite of heat pump customers' cooling-driven higher cost-of-service, the cross-subsidy still arises, because volumetric rates effectively charge for *all* of their winter load as if it were causing delivery costs, when it is not.)
+
+In our modeling, every home that installs a heat pump gains full cooling capability. In ducted dwellings, if the heat pump replaces an existing central air conditioner, it usually provides more efficient cooling. Dwellings without ducts typically have window units cooling some rooms but not others, or no cooling at all. Installing ductless mini-splits throughout the home to provide primary heating also means providing cooling to every conditioned room — a substantial increase in cooling coverage.
+
+Either way, we model `{python} pct(v.hp_share_of_households)` of Rhode Island households that currently have heat pumps are modeled as having full cooling capacity, and we assume they use it to maintain a comfortable setpoint all summer long.[^cooling_conservative]
+
+That is not the case for other customer subclasses: in Rhode Island, only `{python} pct(v.pct_natgas_full_cooling)` of natural gas-heated households, `{python} pct(v.pct_er_full_cooling)` of electric resistance-heated households, and `{python} pct(v.pct_oil_propane_full_cooling)` of delivered fuel-heated households have full cooling.[^cooling_source]
+
+[^cooling_conservative]: This is a conservative assumption that overstates heat pump customers' cost-of-service, since some of these households are likely cost-sensitive and would curtail their cooling during hot summer days — precisely the hours that drive delivery costs.
+
+[^cooling_source]: Based on cooling equipment distributions from EIA's 2020 Residential Energy Consumption Survey (RECS).
+
+This matters because cooling is what generates load during the high-cost summer hours that drive grid investment.
+
+<br><br>
+
+**Q.** Can you illustrate how a heat pump customer's summer cooling affects its delivery cost-of-service?
 <br>
-**A.** Because they all have cooling, so they have higher loads durign expensive summer houses that drive grids costs, on aerage, than other groups, which don't all have cooling.
+**A.** Consider a home that had zero air conditioning before installing a heat pump:
 
-The average heat pump customers is running their AC during high costs hours, whereas the average heat pump customer only have full cooling in TK% of customers.
-
-In other words, it is only the cooling hours that occur in summer that rack up costs.
-
-But the vast majority of incremental HP usage occurs in witner, and nearly none of that has costs.
-
-That's why there's a cross-subsidy: by charging heat pump customers for deliver according to their usage, you are charging them as though their usage is proprtional to their cost-causation and therefore their cost-of-service. But it isn't—only a small fraction of their additonal kwh are during high cost hours. Those are the ones that make their current cost of service a little higher than those of other customers. But only a little higher, and we're charing them like it's TK% higher, on average. But it's not because there's lots of headroom in winter, see that analysis.
-
-
-
-
-**Q.** Can you illustrate this with a specific example?
-<br>
-**A.** Yes. Consider a representative single-family home in Cranston — a three-bedroom house built in the 1980s, heated by a natural gas furnace with central air conditioning, near the statewide median energy bill.
-
-MAYBE: ADD FIGURE 2 and explain energy bills.
-
-  - **Before installing a heat pump:** The home's annual electric delivery cost-of-service is `{python} dollar(v.cs_gas_cost)`. Its delivery bill is `{python} dollar(v.cs_gas_underpay)` *lower* than that — a typical underpayment for gas-heated homes.
-  - **After installing a heat pump:** The home's delivery cost-of-service barely changes (it decreases slightly, by `{python} dollar(abs(v.cs_hp_cost - v.cs_gas_cost))`). But its delivery bill jumps to `{python} dollar(v.cs_hp_bill)`, creating an overpayment of **`{python} dollar(v.cs_hp_bat)` per year**.
-  - The home's electricity use grew by `{python} f"{(v.elec_kwh_multiplier - 1) * 100:.0f}"`%, but its cost-of-service barely moved. The delivery bill doubled anyway — because delivery rates are volumetric.
-
-:::{.column-page-inset-right}
-{{< embed notebooks/analysis.qmd#fig-cross-subsidy-example >}}
+:::{.column-body-outset}
+{{< embed notebooks/delivery_cost_timing.qmd#fig-consumption-cooling-gain >}}
 :::
 
-<br><br>
+Their new cooling load causes their electrical use in July and August to increase by roughly `{python} f"{d.cooling_gain_jul_aug_pct_change * 100:.0f}"`%.
 
-**Q.** Why does the overpayment arise?
-<br>
-**A.** Because delivery costs are overwhelmingly recovered through volumetric (per-kWh) charges.
-TODO: add mean marginal costs / cost of service here.
-  - When a customer installs a heat pump, their annual electricity use grows by roughly `{python} f"{v.elec_pct_change_full_cooling_p25:.0f}"`% to `{python} f"{v.elec_pct_change_full_cooling_p75:.0f}"`% — mostly in winter.
-  - Under volumetric delivery rates, the delivery bill grows in proportion to electricity use.
-  - But delivery **cost-of-service** only grows when the additional load triggers the need for grid upgrades — during the handful of peak hours when the grid is currently congested.
-  - However, most of the new load does not trigger new costs, because it is in winter.
-  - As I will show in Section III, Rhode Island's distribution grid has massive winter headroom: zero feeders are winter-constrained, and the median winter headroom is `{python} f"{f.median_headroom_winter:.0f}"`%. Heat pump winter load is absorbed by spare capacity and does not trigger upgrades.
-  - The bill doubles; the cost-of-service doesn't. The difference is the overpayment.
-  - This mechanism is not novel. In Docket 4770, Walmart's expert witness Gregory Tillman identified the same problem for Rate G-32: when demand-related distribution costs are recovered through volumetric energy charges, high-usage customers overpay and low-usage customers underpay — an intra-class subsidy invisible to the standard inter-class cost-of-service analysis. Tillman demonstrated a $333/year load-factor subsidy per large C&I customer. This is an analogous problem on the residential side.
+Some of this incremental demand occurs during the summer hours that drive delivery costs—the orange sliver represents the kWh the household consumed during this high-cost hours.
+
+This is the portion of new load that actually causes delivery costs, and it is why this home's cost-of-service increases.
+
+However, only `{python} f"{d.cooling_gain_jja_pct_of_new_load * 100:.0f}"`% of this home's new electricity consumption occurs between June and August, and only `{python} f"{d.cooling_gain_pct_new_cost_triggering * 100:.1f}"`% occurs during the specific hours that drive delivery costs.
+
+Despite the magnitude of their new winter load, it causes no new delivery costs, because Rhode Island's transmission and distribution grids have winter headroom at present.
 
 <br><br>
 
-**Q.** What impact does the overpayment have on other customers?
+**Q.** What about homes that already had full cooling before switching to a heat pump?
 <br>
-**A.** It subsidizes customers who heat with fossil fuels.
+**A.** Their delivery cost-of-service often *decreases*. Return to the Cranston home from Section II, which had central air conditioning before installing its heat pump:
 
-  - Natural gas customers underpay for delivery by **`{python} dollar(abs(v.natgas_mean_delivery_bat))`** per year, on average.
-  - Oil and propane customers underpay by **`{python} dollar(abs(v.oil_propane_mean_delivery_bat))`** per year, on average.
-  - These underpayments are the other side of the coin: part of what allows fossil fuel customers to pay less than their cost-of-service is precisely the fact that heat pump customers (and electric resistance customers) are overpaying.
-  - The total cross-subsidy from heat pump customers is approximately **$`{python} f"{v.hp_total_cross_subsidy_delivery_millions:,.0f}"` million per year**.
-
-<br><br>
-
-f**Q.** How does the cross-subsidy affect the economics of switching from natural gas to heat pumps?
-<br>
-**A.** It single handedly makes it more expensive to heat with heat pumps than natural gas in Rhode Island.
-TODO: new default rates under rate year 1?
-TODO: worksheet of bat calculation and bill change and headroom analysis.
-  - Under current default rates, only **`{python} pct(v.pct_natgas_save_default_lmi40)`** of gas-heated households would save money by switching to heat pumps.
-  - As I will show in Section V, under fair rates that eliminate the cross-subsidy, **`{python} pct(v.pct_natgas_save_hprate_lmi40)`** of gas-heated households would save — a transformation in the economics of electrification.
-
-:::{.column-page-inset-right}
-{{< embed notebooks/analysis.qmd#fig-quadrant-bar-natgas-state-state-lmi-current >}}
+:::{.column-body-outset}
+{{< embed notebooks/delivery_cost_timing.qmd#fig-consumption-cranston-enhanced >}}
 :::
 
-<br><br>
+After the switch, its summer demand in July and August decreased by `{python} f"{abs(d.cranston_jul_aug_pct_change) * 100:.0f}"`% — a load reduction visible as the faded segments in the summer months.
 
-**Q.** How does the cross-subsidy affect the economics of switching from delivered fuels to heat pumps?
-<br>
-**A.** No. The overpayment and underpayment pattern extends across all heating fuel types:
+More efficient cooling during the hottest hours of summer caused their usage during high-cost hours to decrease, as well, by `{python} f"{abs(d.cranston_cost_hour_pct_change) * 100:.0f}"`%.
 
-  - Today, `{python} pct(v.pct_oil_propane_save_default)` of oil/propane households save by switching to heat pumps under default rates. Despite having more favorable economics than natural gas, these customers are still overpaying by $TK after doing so, on average, which blunts their savings and deters adoption that would benefit them.
+Consequently, the home's delivery cost-of-service drops from `{python} dollar(v.cs_gas_cost)` to `{python} dollar(v.cs_hp_cost)`.
 
+In other words, this home would become marginally *cheaper* to serve, even as its delivery bill jumps from `{python} dollar(v.cs_gas_bill)` to `{python} dollar(v.cs_hp_bill)`.
 
-**Q.** How does the cross-subsidy affect the economics of switching from electric resistance to heat pumps?
-<br>
-**A.** No. The overpayment and underpayment pattern extends across all heating fuel types:
-
-  - Today, `{python} pct(v.pct_elec_resistance_save_default)` of electric resistance households save by switching to heat pumps under default rates. However, they are still overpaying by $TK after doing so, on average, which blunts their savings and deters adoption that would benefit them.
-
-## III. Why the Grid Has Ample Winter Headroom
-
-**Q.** You testified that heat pump winter load does not trigger grid upgrades. What is the basis for this claim?
-<br>
-**A.** A detailed analysis of every feeder and substation transformer on Rhode Island Energy's distribution grid, using the utility's own distribution planning data (feeder thermal screening, capacity ratings) and its published 2024 Electric Peak Forecast.
-
-<br><br>
-TODO: rework "significant costs" since they do impose some costs in summer.
-TODO: add plot of month by month electricity usage after heat pump, with and without cooling. Denote where high costs hours are.
-**Q.** Does heat pump adoption impose significant costs on RIE's distribution grid today?
-<br>
-**A.** No. As of `{python} f.feeder_rank_year`:
-
-  - Only `{python} pct(f.pct_feeders_any_violation_summer)` of RIE's feeders are constrained — and all constraints are in **summer**, not winter.
-  - **Zero feeders** are winter-constrained. Not one.
-  - Of RIE's `{python} f"{f.cust_total_2026:,.0f}"` customers on active feeders, `{python} pct(f.pct_cust_constrained_2026)` (`{python} f"{f.cust_constrained_2026:,.0f}"` customers) are on summer-constrained feeders.
-  - The utility is already planning to upgrade the capacity of these constrained feeders in the coming years.
-
-:::{.column-page-inset-right}
-{{< embed notebooks/feeder_peaks.qmd#fig-feeder-rank-curve-summer-and-winter >}}
-:::
-
-<br><br>
-TODO: move this up, talk about winter first, and summe second?
-**Q.** How much spare winter capacity does the distribution grid have?
-<br>
-**A.** A very large amount. RIE's distribution grid is so summer-dominated that the utility's planning engineers do not even measure winter peaks — they estimate them at 70% of the summer peak.
-
-  - **`{python} f"{ceil(f.pct_feeders_headroom_gt_30_winter * 100):.0f}"`%** of feeders have more than 30% winter headroom.
-  - The **median winter headroom is `{python} f"{f.median_headroom_winter:.0f}"`%**.
-  - At present, a household that installs a heat pump in Rhode Island imposes virtually zero marginal distribution capacity costs.
+In other words, the cost-of-service difference between heat pump customers and other customers is real, but modest — driven entirely by differences in summer cooling prevalence, not by the winter heating load that makes up the bulk of their electricity consumption.
 
 <br><br>
 
-TODO: define 95/5 extreme weather.
-**Q.** Will this change as heat pump adoption grows?
+**Q.** If heat pump customers' cost-of-service is only somewhat higher than other customers', why are their delivery bills so much higher?
 <br>
-**A.** Not for a long time. RIE forecasts that between `{python} pct(f.pct_hp_base_2039)` and `{python} pct(f.pct_hp_high_2039)` of its customers will have heat pumps by 2039. Even at that level of adoption:
+**A.** Because volumetric delivery rates treat every kilowatt-hour as if it causes costs equally. A kWh consumed during a winter hour with `{python} f"{f.median_headroom_winter:.0f}"`% spare feeder capacity is charged the same delivery rate as a kWh consumed during a summer afternoon when a feeder is at the edge of its thermal limit. But only the latter drives the need for grid upgrades.
 
-  - **Zero feeders** are expected to become winter-constrained due to winter peak growth.
-  - **`{python} pct(f.pct_feeders_headroom_gt_20_winter_2039)`** of feeders are expected to still have more than 20% winter headroom in 2039.
-  - The system-wide winter peak in 2039 is still only expected to be around **`{python} pct(f.winter_pct_of_summer_2039)`** of the summer peak.
-
-:::{.column-page-inset-right}
-{{< embed notebooks/feeder_peaks.qmd#fig-system-peak-forecast >}}
-:::
-
-:::{.column-page-inset-right}
-{{< embed notebooks/feeder_peaks.qmd#fig-feeder-winter-shift >}}
-:::
+Heat pump customers' annual electricity consumption grows by roughly `{python} f"{v.elec_pct_change_full_cooling_p25:.0f}"`% to `{python} f"{v.elec_pct_change_full_cooling_p75:.0f}"`%, and their delivery bills grow proportionally. But almost all of that growth is in winter — absorbed for free by existing infrastructure. Their cost-of-service is `{python} f"{(v.hp_mean_delivery_cost / v.ff_mean_delivery_cost - 1) * 100:.0f}"`% higher than that of fossil-fuel-heated customers, but their delivery bills are `{python} f"{(v.hp_mean_delivery_bill / v.ff_mean_delivery_bill - 1) * 100:.0f}"`% higher. That gap — the difference between a modest cost-of-service increase and a much larger bill increase — is the cross-subsidy.
 
 <br><br>
 
-
-
-<br><br>
-TODO: RIE thinks its only negative, but we know the truth.
-TODO: explain our findings. if you already have full cooling, now new costs. if not full cooling, new costs if you turn on during high cost hours.
-TODO: maybe an example a gas heated customers' cost of service that has full cooling and one that doesn't, and show that it's because of the bump in summer costs.
-**Q.** Do heat pumps affect summer peaks?
+**Q.** Will this dynamic change as heat pump adoption grows?
 <br>
-**A.** RIE's own 2024 Peak Forecast projects that heat pumps actually **lower** the summer peak, because heat pumps are more efficient than the traditional air conditioners they replace. Heat pump customers are making summer peaks better, not worse.
+**A.** Eventually, but not for at least 15 years, according to current forecasts.
+
+RIE's most recent heat pump adoption forecast projects that between `{python} pct(f.pct_hp_base_2039)` and `{python} pct(f.pct_hp_high_2039)` of its electric customers will have heat pumps by 2039:
 
 :::{.column-page-inset-right}
 {{< embed notebooks/feeder_peaks.qmd#fig-hp-adoption >}}
 :::
 
+What impact will this pace of adoption have on RIE's distribution grid?
+
+The chart below shows RIE's forecasted summer and winter net peak demand through 2039, with and without heat pump adoption.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/feeder_peaks.qmd#fig-system-peak-forecast >}}
+:::
+
+While heat pump adoption would cause the system-wide winter peak to rise significantly, it would reach only about **`{python} pct(f.winter_pct_of_summer_2039)`** of the summer peak by 2039. (RIE actually assumes that heat pumps would _reduce_ summer peaks as they become more widespread due to more efficient cooling.)
+
+What about the feeder level?
+
+:::{.column-page-inset-right}
+{{< embed notebooks/feeder_peaks.qmd#fig-feeder-winter-shift >}}
+:::
+
+**Zero feeders** are projected to become winter-constrained due to winter peak growth, and **`{python} pct(f.pct_feeders_headroom_gt_20_winter_2039)`** of feeders would still have more than 20% winter headroom in 2039.
+
+RIE's own distribution planning engineers corroborate this timeline, estimating in correspondence that "the system and underlying components will not become winter-limited until the mid to late 2030s".[^clf_jpv_4_14]
+
+[^clf_jpv_4_14]: Exhibit CLF-JPV-4, Response 14.
+
+It's important to note that RIE provided the feeder-level summer peak forecasts in the chart above, but not the winter peak forecasts. At present, the company does not compile historical winter peaks for individual feeders, and it does not forecast these peaks into the future.
+
+To produce such forecasts for 2039, I followed RIE's recommended method: I estimate each feeder's current winter peak as 70% of its measured summer peak. I then projected each feeder's winter peak forward using the system-wide winter peak growth rates from RIE's 2024 Electric Peak Forecast. This is the best available method to forecast feeder-level winter peaks, given RIE's data limitations.
+
+
 
 ## IV. Why the Commission Should Act: Docket 4600 Principles and Goals
 
-The cross-subsidy documented in Section II and the grid evidence in Section III establish the factual basis: heat pump customers overpay for delivery, and the grid data confirms that their winter load imposes virtually no distribution capacity costs. This section explains why these findings compel Commission action — by connecting them to the rate design principles and goals the Commission itself adopted in Docket 4600.
-
-**Q.** Is this cross-subsidy consistent with the rate design principles adopted by the Commission in Docket 4600?
+**Q.** Why should the Commission address this cross-subsidy in the current proceeding?
 <br>
-**A.** No. The cross-subsidy violates at least three adopted principles:
-TODO REVISIT
-  - **Principle 3** ("Provide efficient price signals that reflect long-run marginal cost"): Volumetric delivery rates signal that winter load is expensive to serve when marginal distribution capacity costs are near zero in winter.
-  - **Principle 7** ("All parties should provide fair compensation for value and services received"): Heat pump customers pay `{python} dollar(v.hp_mean_delivery_bat)` more per year than the delivery services they receive.
-  - **Goal 6** ("Appropriately charge customers for the cost they impose on the grid"): Heat pump customers' cost-of-service is only `{python} f"{(v.hp_mean_delivery_cost / v.ff_mean_delivery_cost - 1) * 100:.0f}"`% higher than fossil fuel customers', but their bills are `{python} f"{(v.hp_mean_delivery_bill / v.ff_mean_delivery_bill - 1) * 100:.0f}"`% higher.
+**A.** Because the cross-subsidy directly contradicts the rate design framework the Commission adopted in Docket 4600.
+
+In Docket 4600, the Commission established 12 rate design principles and 8 goals for the future electric system. The most directly relevant is Goal 6 — "Appropriately charge customers for the cost they impose on the grid."
+
+As I have shown, heat pump customers' delivery cost-of-service is only `{python} f"{(v.hp_mean_delivery_cost / v.ff_mean_delivery_cost - 1) * 100:.0f}"`% higher than that of fossil-fuel-heated customers, but their delivery bills are `{python} f"{(v.hp_mean_delivery_bill / v.ff_mean_delivery_bill - 1) * 100:.0f}"`% higher. That gap is not an appropriate charge for the cost they impose. It is an overcharge of `{python} dollar(v.hp_mean_delivery_bat)` per customer per year.
+
+The Docket 4600 framework was designed to guide exactly this kind of decision. Leaving the cross-subsidy in place while the Commission has the evidence to correct it would be inconsistent with the principles the Commission adopted to govern rate design in Rhode Island.
 
 <br><br>
 
-TODO: check this
-**Q.** Order 22851 directs that any party proposing a rate design must address how the proposal advances, detracts from, or is neutral as to each of the rate design principles and goals adopted in Docket 4600. How does your proposal perform against the 12 rate design principles?
+**Q.** Order 22851 directs that any party proposing a rate design must address how the proposal advances, detracts from, or is neutral as to each of the rate design principles and goals adopted in Docket 4600. How does the heat pump rate perform against the 12 rate design principles?
 <br>
-**A.** The proposal advances 10 of the 12 principles, detracts from none, and is neutral on 2:
+**A.** The proposal advances 10 of the 12 principles, detracts from none, and is neutral on 2. I will address each in turn.
 
-1. **Safe, reliable, affordable, environmentally responsible service.** ADVANCES. Improves affordability for HP customers by eliminating `{python} dollar(v.hp_mean_delivery_bat)`/yr overpayment. Advances environmental responsibility by removing the operating cost barrier to electrification. No impact on safety or reliability — this is a billing change, not a grid change.
+1. **Safe, reliable, affordable, environmentally responsible service.** Advances. The proposal improves affordability for heat pump customers by eliminating the `{python} dollar(v.hp_mean_delivery_bat)` annual delivery overpayment. It advances environmental responsibility by removing the operating cost barrier that discourages electrification of heating. Safety and reliability are unaffected — this is a billing change, not a grid change.
 
-2. **Economic efficiency.** ADVANCES. The current rate sends an inefficient signal: HP customers appear to cost ~`{python} f"{(v.hp_mean_delivery_bill / v.ff_mean_delivery_bill - 1) * 100:.0f}"`% more to serve when the actual figure is ~`{python} f"{(v.hp_mean_delivery_cost / v.ff_mean_delivery_cost - 1) * 100:.0f}"`%. Correcting this promotes efficient investment decisions.
+2. **Economic efficiency.** Advances. Under current rates, heat pump customers' delivery bills are `{python} f"{(v.hp_mean_delivery_bill / v.ff_mean_delivery_bill - 1) * 100:.0f}"`% higher than those of fossil-fuel-heated customers — but their actual delivery cost-of-service is only `{python} f"{(v.hp_mean_delivery_cost / v.ff_mean_delivery_cost - 1) * 100:.0f}"`% higher. The current rate overstates the cost of electric heating and understates the cost of fossil-fuel heating, distorting the investment decisions of every homeowner weighing whether to switch. Correcting this improves economic efficiency.
 
-3. **Price signals reflecting long-run marginal cost.** ADVANCES. The HP rate aligns delivery bills with marginal cost-of-service. The current rate signals that winter delivery is expensive when marginal distribution capacity costs are near zero in winter.
+3. **Price signals reflecting long-run marginal cost.** Advances. Volumetric delivery rates currently signal that winter electricity consumption is expensive to deliver. As I have shown, marginal distribution capacity costs are effectively zero in winter. The heat pump rate corrects this by aligning delivery charges with the actual temporal pattern of delivery costs.
 
-4. **Address externalities.** ADVANCES. Removes a rate-design barrier to heat pumps, enabling customers to switch away from fossil fuels and reduce carbon emissions and air pollution.
+4. **Address externalities.** Advances. The cross-subsidy functions as a financial penalty on electrification — an externality imposed by rate design, not by physics. Removing it allows the operating cost advantage of heat pumps to be realized, enabling households to reduce their combustion of fossil fuels.
 
-5. **Empower consumers to manage costs.** ADVANCES. Under default rates, the operating cost signal is distorted — consumers see artificially high electric heating costs. Accurate pricing enables informed decisions.
+5. **Empower consumers to manage costs.** Advances. Under current rates, a household considering a heat pump sees an inflated estimate of what electric heating would cost, because volumetric delivery rates charge for winter load as though it were causing grid costs. Accurate pricing enables informed decisions about heating investments.
 
-6. **Utility cost recovery and revenue stability.** NEUTRAL. Total residential class revenue is unchanged. Revenue stability is maintained through RI's existing decoupling mechanism.
+6. **Utility cost recovery and revenue stability.** Neutral. Total residential class revenue is unchanged — the proposal reallocates revenue responsibility within the class, it does not reduce it. Revenue stability is maintained through the existing decoupling mechanism.
 
-7. **Fair compensation for value and services.** ADVANCES. This is the core principle. HP customers currently pay `{python} dollar(v.hp_mean_delivery_bat)`/yr more than the delivery services they receive.
+7. **Fair compensation for value and services.** Advances. This principle is at the heart of the proposal. Heat pump customers currently pay `{python} dollar(v.hp_mean_delivery_bat)` per year more than the delivery services they receive. The heat pump rate corrects this by setting delivery charges in proportion to delivery cost-of-service.
 
-8. **Transparent and understandable.** NEUTRAL. A flat rate is simple. Adding a subclass adds structural complexity, but the rate itself and its rationale ("your delivery bill should match your delivery cost") are intuitive.
+8. **Transparent and understandable.** Neutral. The heat pump rate is a flat volumetric rate — simple to understand and straightforward to implement. Creating a new subclass adds structural complexity to the tariff, but the rationale is intuitive: customers should pay for the costs they cause, not more.
 
-9. **Gradualism.** ADVANCES. The non-HP impact is ~`{python} dollar(v.rebal_nonhp_mean_monthly_delta, 2)`/month. Fixing the cross-subsidy now, while HP penetration is ~`{python} pct(v.hp_share_of_households)`, IS the gradual approach. Delay makes the eventual correction larger and less gradual. Moreover, the HP rate would be gradually adjusted as cost-of-service changes over years.
+9. **Gradualism.** Advances. Acting now, while heat pump penetration is approximately `{python} pct(v.hp_share_of_households)` of residential customers, *is* the gradual approach. The average impact on non-heat pump customers would be approximately `{python} dollar(v.rebal_nonhp_mean_monthly_delta, 2)` per month — well within the range the Commission has historically considered reasonable. Delay would not avoid the correction; it would make the eventual correction larger and less gradual, as the number of overpaying customers grows. The heat pump rate itself would be recalibrated in future rate cases as cost-of-service evolves, ensuring continued gradualism.
 
-10. **Energy burden and low-income needs.** ADVANCES. heat pump + LMI discount + HP rate = lower energy burden for LMI customers.
+10. **Energy burden and low-income needs.** Advances. Low-income households that install heat pumps face both the delivery overpayment and high energy burdens. Eliminating the overpayment directly reduces their energy costs. Combined with the LMI discount I propose in Section VI, the heat pump rate would meaningfully improve the economics of electrification for the households that need affordability most.
 
-11. **Consistent with policy goals (climate, Resilient Rhode Island Act).** ADVANCES. Under default rates, only `{python} pct(v.pct_natgas_save_default_lmi40)` of gas-heated homes save by switching. Under HP rates, `{python} pct(v.pct_natgas_save_hprate_lmi40)` would save. The operating cost barrier is the single largest obstacle to the electrification targets set by the Act on Climate and Resilient Rhode Island Act.
+11. **Consistent with policy goals.** Advances. Rhode Island's Act on Climate and Resilient Rhode Island Act set binding targets for greenhouse gas emissions reductions that require widespread electrification of heating. Under current default rates, only `{python} pct(v.pct_natgas_save_default_lmi40)` of low-income gas-heated households would save money by switching to heat pumps. Under the heat pump rate, `{python} pct(v.pct_natgas_save_hprate_lmi40)` would save. The delivery overpayment is one of the largest obstacles to the electrification these laws require.
 
-12. **Encourage investments enabling the future energy system.** ADVANCES. The Docket 4600 Working Group — including Narragansett Electric Co — agreed that "lower volumetric charges (kWh) appear to provide higher incentives for electrification strategies" (§3.5). The HP rate delivers exactly this.
+12. **Encourage investments enabling the future energy system.** Advances. The Docket 4600 Stakeholder Report — produced by a working group that included Narragansett Electric Company — observed that "lower volumetric charges (kWh) appear to provide higher incentives for electrification strategies" (Section 3.5). That is precisely what the heat pump rate does: it lowers the volumetric delivery charge for the customers whose winter load does not cause delivery costs, aligning the price signal with the grid reality.
 
 <br><br>
 
-**Q.** How does your proposal perform against the 8 goals of the future electric system?
+**Q.** How does the proposal perform against the 8 goals of the future electric system?
 <br>
-TODO: check this
-**A.** The proposal advances 6, detracts from none, and is neutral on 2:
+**A.** It advances 6 of the 8 goals, detracts from none, and is neutral on 2.
 
-1. **Reliable, safe, clean, affordable energy.** ADVANCES — affordability and clean energy.
-2. **Strengthen RI economy, create jobs.** ADVANCES — accelerated HP adoption supports HVAC contractors and clean energy workforce.
-3. **Address climate change.** ADVANCES — removes the operating cost barrier to electrification.
-4. **Facilitate customer investment in electrification of heating.** ADVANCES — uses the exact language of this goal ("electrification of vehicles and heating").
-5. **Appropriately compensate DERs.** NEUTRAL — primarily about solar/storage compensation.
-6. **Charge customers for cost they impose on the grid.** ADVANCES — this is the core goal. The HP rate aligns charges with costs.
-7. **Compensate the utility for services it provides.** NEUTRAL — total revenue unchanged.
-8. **Align utility, customer, and policy objectives.** ADVANCES — removes the contradiction between state electrification goals and a rate structure that penalizes electrification.
+1. **Reliable, safe, clean, affordable energy.** Advances — the proposal improves affordability and removes a barrier to clean energy adoption.
+
+2. **Strengthen the Rhode Island economy and create jobs.** Advances — removing the operating cost barrier to heat pumps supports the growth of the HVAC workforce and the state's clean energy economy.
+
+3. **Address the challenges of climate change.** Advances — the proposal directly addresses the rate-design barrier to building electrification, which is essential to meeting the state's emissions targets.
+
+4. **Facilitate customer investment in electrification of heating and vehicles.** Advances — this goal uses the exact phrase "electrification of heating." A rate that penalizes electric heating is inconsistent with a goal that seeks to facilitate it.
+
+5. **Appropriately compensate DERs for the value they provide.** Neutral — this goal primarily concerns compensation for distributed generation and storage. The heat pump rate does not affect DER compensation.
+
+6. **Appropriately charge customers for the cost they impose on the grid.** Advances — this is the core goal, and the core of this testimony. The heat pump rate aligns delivery charges with delivery cost-of-service.
+
+7. **Appropriately compensate the utility for the services it provides.** Neutral — total revenue is unchanged. The utility collects the same amount; the proposal changes how that amount is allocated among customers.
+
+8. **Align utility, customer, and policy objectives.** Advances — the current rate structure creates a contradiction: the state's policy objectives require electrification of heating, while the rate structure penalizes customers who electrify. The heat pump rate resolves this contradiction.
 
 <br><br>
 
-**Q.** Did the Docket 4600 Working Group anticipate this type of cost-shifting problem?
+**Q.** Did the Docket 4600 Working Group anticipate the kind of cost-shifting problem documented in this testimony?
 <br>
-**A.** Yes. The Stakeholder Report specifically flagged the need to investigate cost-shifting:
+**A.** It did. The Stakeholder Report explicitly called for investigation into cost-shifting between customer groups:
 
-  - Section 3.5: "The Commission should investigate potential cost shifting and equity concerns over time as distributed generation and other types of DERs become more widespread."
-  - Section 3.6: "What is the appropriate way to measure any cost-shift between DER and non-DER customers and at what level does it become unreasonable?"
-  - Our Bill Alignment Test is a direct answer to these questions. We measured the cost-shift. It is `{python} dollar(v.hp_mean_delivery_bat)` per year per HP customer. We leave it to the Commission to determine whether this level is unreasonable.
+> "The Commission should investigate potential cost shifting and equity concerns over time as distributed generation and other types of DERs become more widespread." (Section 3.5)
+
+And it posed a direct question that this testimony answers:
+
+> "What is the appropriate way to measure any cost-shift between DER and non-DER customers and at what level does it become unreasonable?" (Section 3.6)
+
+Our analysis provides one answer to that question. We measured the cost-shift using the methodology described in Section VII: it is `{python} dollar(v.hp_mean_delivery_bat)` per heat pump customer per year, totaling millions of dollars in aggregate.
 
 
 ## V. Proposed Remedy and Impact
 
-Sections II through IV established the problem, its grid-level basis, and its conflict with the Commission's adopted principles. This section presents the remedy and demonstrates its impact — on heat pump customers, on non-heat pump customers, and on low-income households.
-
 **Q.** What do you recommend the Commission do to address the cross-subsidy?
 <br>
-**A.** Create a new residential rate schedule for heat pump customers, with a target revenue based on their actual delivery cost-of-service. This is fundamentally a **cost allocation** correction. The rate design to recover this allocated cost responsibility flows naturally from the cost allocation step.
+**A.** I recommend that the Commission create a new residential delivery rate subclass for heat pump customers, with a target revenue based on their actual delivery cost-of-service. T
+
+his is fundamentally a **cost allocation** correction — the same kind of correction the Commission makes when it finds that one customer class is paying more or less than its cost-of-service, except applied one level down, within the residential class.
 
 <br><br>
 
-**Q.** Why is a new schedule with a new rate design necessary? Could the existing default rate be modified instead?
-TODO: rework the language here a bit.
+**Q.** Why is a new subclass necessary? Could the existing rate be adjusted instead?
 <br>
-**A.** The cross-subsidy is structural. Volumetric rates overcollect from high-use customers regardless of when they use electricity. Within a single rate class, there are only two ways to eliminate an intra-class cross-subsidy of this kind:
+**A.** The cross-subsidy is structural: it arises from the interaction between volumetric delivery rates and the fact that heat pump customers consume substantially more electricity than other residential customers, predominantly in winter. As long as heat pump customers remain on the same rate schedule as everyone else, volumetric rates will overcollect from them — regardless of how the rate level is set.
 
-  **(a) Create a separate subclass** with a revenue requirement that reflects the subgroup's actual cost-of-service. This is targeted and corrects the allocation directly.
+Broadly speaking, there are two ways to eliminate this kind of intra-class cross-subsidy.
 
-  **(b) Shift most cost recovery from the volumetric charge to the fixed charge** for the entire class. This would reduce the overcollection from high-use customers, but it is blunt and regressive — it raises bills for low-use customers (who are disproportionately low-income) and weakens incentives for energy efficiency and distributed generation. Would violate gradualism to do it too quickly. In Docket 4770, nearly every intervenor opposed National Grid's proposal to increase the residential customer charge from $5 to $8.50 for exactly these reasons.
+The first is through cost allocation: creating a separate subclass with a revenue requirement that reflects the subgroup's actual cost-of-service.
 
-  Alternatively, moving to a seasonal rate that lowers the winter rate and raises the summer rate could also eliminate the cross-subsidy. But it would be equally disruptive.
+The second is through rate design: dramatically overhauling the default rate, such as significantly increasing the fixed customer charge for the entire residential class, shifting cost recovery away from volumetric charges. This approach would reduce the overcollection from high-use customers, but it is highly disruptive, regressive — it raises bills for low-use customers, who are disproportionately low-income — and it would weaken incentives for energy efficiency and distributed generation. In Docket 4770, nearly every intervenor opposed National Grid's proposal to increase the residential customer charge from $5 to $8.50 for exactly these reasons.
 
-  I recommend option (a). Instead of affecting everyone with a dramatic rate change, we just move over 2% of customers to a new schedule and slightly adjust rates on the others. You completely fix the cross-subsidy, but with minimal disruption.
+I recommend the first approach. A new subclass corrects the cost allocation directly and simply, without fundamentally redesigning the rate structure for RIE's `{python} comma(int(round(c.rie_rev_req_test_year_customer_count)))` residential customers. It moves approximately `{python} pct(v.hp_share_of_households)` of residential customers to a new schedule and slightly adjusts volumetric delivery rates for the rest. The cross-subsidy is eliminated with minimal disruption.
 
 <br><br>
 
-**Q.** What should the new heat pump rate schedule's target revenue be?
-TODO: move to subclass level metrics.
+**Q.** What rate design do you propose for the heat pump subclass?
 <br>
-**A.** The delivery cost-of-service for heat pump customers is **`{python} dollar(v.hp_mean_delivery_cost)`** per customer per year, on average. Under current default rates, the utility collects **`{python} dollar(v.hp_mean_delivery_bill)`** per customer per year from these same customers. The difference — `{python} dollar(v.hp_mean_delivery_bat)` per year — is the overpayment that the new subclass rate would eliminate.
+**A.** A flat volumetric delivery rate, lower than the current default, calibrated so that heat pump customers' average annual delivery revenue equals their delivery cost-of-service. The delivery cost-of-service for heat pump customers is `{python} dollar(v.hp_mean_delivery_cost)` per customer per year, on average. Under the current default rate, the utility collects `{python} dollar(v.hp_mean_delivery_bill)` per customer per year from these same customers. The difference — `{python} dollar(v.hp_mean_delivery_bat)` per year — is the overpayment that the new rate would eliminate.
 
-<br><br>
-**Q.** What rate design are possible to recover this allocated cost responsibility?
-<br>
-**A.** The simplest is just a flat rate, but it would be lowered from A-16 so as to bring revenue down to cost-based levels.
-From there, there two directions you can go in: making the volumetric charge more cost-reflective, or moving a bunch of cost recovery out of the volumetric charge and into the fixed charge. Each of these is independent.
-- Then, you can add increasing amounts of cost-reflectiveness, to shape the price according to when the underlying (marginal) costs are high.
-- First, seasonal.
-- Then, time-of-use.
-- Those options would all keep HP customers' delivery costs in volumetric rates. You could also move a bunch of cost recovery out of the volumetric charge and into the fixed charge (or a demand charge, but that would have to wait until AMI). Even though it would only apply to heat pump customers, this would reduce incentives for energy efficiency, including more efficient heat pumps, and distributed generation. On the plus side, this would remove cross-subsidies within heat pump customers. It would help economic efficiency by bringing the price heat pump customers pay closer to their marginal cost of service.
-- From a fairness perspective, the choice between rate designs is secondary to the cost allocation question. All of these rate designs would fix the cross-subsidy, and dramatically lower average heat pump customers' bills. They actually affect a different dimension, which is economic efficiency. The important thing is the cost allocation correction.
-
-<br><br>
-**Q.** What rate design do you propose to recover this allocated cost responsibility?
-<br>
-TODO: explain how it would apply to core volumetric delivery revenue and other non-distribution delivery revenue. Table example.
-TODO: explain how we measured the cross-subsidy with the test year, but can also show rate year 1.
-TODO: show how the c/kwh delivery rate applied to HP kwh + fixed charges equals the target revenue.
-TODO: explain this would lower everyone's volumetric delivery bill by TK%, but would not touch their fixed charges or their supply bill.
-TODO: show the graphic of how it would affect the Cranston home.
-- Explain that same dynamic occurs for transmission cost-of-service, their p > mc, and for everythign else fixed budgets still create overpayments.
-**A.** A flat volumetric delivery rate, lower than the current default, calibrated so that heat pump customers' average annual delivery bills equal their delivery cost-of-service.
+The table below shows the proposed rate alongside the current default:
 
 ```{python}
 #| echo: false
@@ -485,95 +763,98 @@ print(Path("cache/rate_table.html").read_text())
 
 **Q.** Why a flat rate rather than a seasonal or time-varying rate?
 <br>
-**A.** Three reasons:
+**A.** Four reasons.
 
-1. **Transparency.** A flat rate makes the cost allocation correction maximally clear: the rate is simply the heat pump class's allocated cost responsibility, minus revenue from fixed charges, divided by HP kWh. It avoids debates about seasonal or hourly rate design that are secondary to the cost allocation question.
-2. **Simplicity.** A flat rate is simple and easy to understand. It is a single rate that is applied to all heat pump customers, and it is easy to calculate and apply.
-3. **Universal benefit.** Under the flat rate, every heat pump customer saves compared to the default rate A-16. This means all known heat pump customers could be auto-enrolled in the new rate, similar to how MA auto-enrolled heat pump customers that went through Mass Save, without requiring any customer to opt in.
-4. **No AMI required.** A flat rate works with today's metering infrastructure. A seasonal or TOU rate can be layered on top later, once AMI is deployed — but the cost allocation correction should not wait.
+First, a flat rate makes the cost allocation correction maximally transparent. The rate is simply the heat pump subclass's allocated delivery cost responsibility, minus revenue from fixed charges, divided by the subclass's total kilowatt-hours. The correction is visible and verifiable.
 
-  I want to emphasize: the flat rate is a starting point, not a permanent design. Once AMI is in place, the Commission should transition heat pump customers to cost-reflective time-varying rates that recover the same, correctly sized revenue requirement. This adds efficiency to fairness.
+Second, a flat rate is simple. It is a single volumetric charge applied to all heat pump customers in all hours. Customers and stakeholders can understand what it does and why.
+
+Third, a flat rate guarantees that every heat pump customer saves relative to the default. This is important because it means that all known heat pump customers can be auto-enrolled in the new rate without risk of harm to any individual customer. I discuss enrollment further below.
+
+Fourth, a flat rate works with today's metering infrastructure. A time-varying rate (beyond a simple seasonal rate) would require interval metering that most residential customers do not yet have. The cost allocation correction should not wait for AMI deployment.
+
+I want to be clear: the flat rate is a starting point, not a permanent design. Once AMI is deployed, the Commission should consider transitioning heat pump customers to cost-reflective time-varying rates that recover the same correctly sized revenue requirement. A seasonal time-of-use rate would add economic efficiency to the fairness that the flat rate establishes.
 
 <br><br>
 
-**Q.** Is this rate revenue-neutral?
+**Q.** Is the heat pump rate revenue-neutral?
 <br>
-TODO: show that the sum of revenue collected from all residential customers before and after would be the same.
-**A.** Yes, at the residential class level. If all heat pump customers were auto-enrolled in the new rate, the delivery revenue collected from these customers would be reduced to equal their cost-of-service. This would not create a revenue shortfall, as the rates of non-heat pump customers (remaining in A-16 and A-60) would be slightly adjusted to make up the difference. The cross-subsidy would be corrected, while the total residential class revenue would be unchanged.
+**A.** Yes, at the residential class level. The proposal reallocates delivery revenue responsibility within the residential class — it does not reduce total residential revenue.
+
+Heat pump customers' delivery revenue would decrease to match their cost-of-service, and the volumetric delivery rates for non-heat pump customers remaining on the default schedule would be adjusted upward slightly to recover the difference. The total delivery revenue collected from all residential customers would be unchanged.
 
 <br><br>
 
 **Q.** How much would non-heat pump customers' bills increase?
 <br>
-TODO: give example of bills moving around from normal rate adjustments, or remove that part.
-**A.** By **`{python} dollar(v.rebal_nonhp_mean_monthly_delta, 2)` per month** on average. **`{python} pct(v.rebal_nonhp_pct_decrease + v.rebal_nonhp_pct_increase_under_5)`** of non-HP households would see their monthly bill rise by less than $5.
-
-  - Heat pump customers make up only `{python} pct(v.hp_share_of_households)` of residential customers. The total cross-subsidy (~$`{python} f"{v.hp_total_cross_subsidy_delivery_millions:,.0f}"` million/year) gets spread across `{python} f"{v.nonhp_households_millions:,.1f}"` million non-HP households.
-  - This is well within the bounds of the gradualism principle: non-HP bills vary by far more than this from year to year under normal rate adjustments.
+**A.** By approximately **`{python} dollar(v.rebal_nonhp_mean_monthly_delta, 2)` per month** on average. Heat pump customers make up only `{python} pct(v.hp_share_of_households)` of residential customers, so the total rebalanced amount — approximately `{python} f"${v.hp_total_cross_subsidy_delivery_millions:,.1f}"` million per year — is spread across `{python} comma(int(round(v.nonhp_households_millions * 1_000_000, -3)))` non-heat pump households.
 
 :::{.column-page-inset-right}
 {{< embed notebooks/analysis.qmd#fig-bill-change-non-hp-rebal-state >}}
 :::
 
+The result is a modest adjustment: **`{python} pct(v.rebal_nonhp_pct_decrease + v.rebal_nonhp_pct_increase_under_5)`** of non-heat pump households would see their monthly delivery bill change by less than `{python} dollar(5)`.
+
+
 <br><br>
 
-**Q.** What would happen to heat pump customers' bills under fair rates?
+**Q.** What would happen to heat pump customers' energy bills under the proposed rate?
 <br>
-**A.** Fair rates would transform the economics of heat pumps in Rhode Island.
+**A.** The heat pump rate would transform the economics of switching to heat pumps in Rhode Island.
 
-  - Under default rates, only **`{python} pct(v.pct_natgas_save_default_lmi40)`** of gas-heated households would save by switching to heat pumps.
-  - Under rates that accurately reflect their cost-of-service, **`{python} pct(v.pct_natgas_save_hprate_lmi40)`** would save.
-  - The share losing over $1,000 per year would drop from `{python} pct(v.pct_natgas_lose_1k_default_lmi40)` to `{python} pct(v.pct_natgas_lose_1k_hprate_lmi40)`.
+Under the current default rate, only **`{python} pct(v.pct_natgas_save_default_lmi40)`** of gas-heated households would save money on their total energy bills after switching to a heat pump.
 
 :::{.column-page-inset-right}
 {{< embed notebooks/analysis.qmd#fig-quadrant-bar-natgas-switch-hprate-state-lmi-current >}}
 :::
+ Under the heat pump rate, **`{python} pct(v.pct_natgas_save_hprate_lmi40)`** would save. The share that would lose more than $1,000 per year would drop from `{python} pct(v.pct_natgas_lose_1k_default_lmi40)` to `{python} pct(v.pct_natgas_lose_1k_hprate_lmi40)`.
 
-  - For oil and propane households: `{python} pct(v.pct_oil_propane_save_default)` save under default rates; **`{python} pct(v.pct_oil_propane_save_hprate)`** would save under fair rates.
-  - For electric resistance households: `{python} pct(v.pct_elec_resistance_save_default)` save under default rates; **`{python} pct(v.pct_elec_resistance_save_hprate)`** would save under fair rates. 2% would see their bills rise because they gain cooling.
+The improvement is equally striking for other heating types. Oil and propane households would see their average annual savings grow from `{python} dollar(abs(v.oil_propane_mean_delta_default))` under the default rate to **`{python} dollar(abs(v.oil_propane_mean_delta_hprate))`** under the heat pump rate, and the share that saves would rise from `{python} pct(v.pct_oil_propane_save_default)` to **`{python} pct(v.pct_oil_propane_save_hprate)`**.
+
+For electric resistance households — who already heat with electricity but use it inefficiently — average annual savings would grow from `{python} dollar(abs(v.elec_resistance_mean_delta_default))` to **`{python} dollar(abs(v.elec_resistance_mean_delta_hprate))`**, and the share saving would rise from `{python} pct(v.pct_elec_resistance_save_default)` to **`{python} pct(v.pct_elec_resistance_save_hprate)`**.
 
 <br><br>
 
-**Q.** How does the cross-subsidy affect low-and-moderate income households?
+**Q.** How does the cross-subsidy affect low-and-moderate income households specifically?
 <br>
-TODO: latest burden results
-TODO: check that its not just "LMI gas-heated households"
-TODO: explain that LMI electrification should be paired with not just rate enrollment (as with everyon), but also LMI discount enrollment.
-**A.** LMI heat pump customers bear the same per-household overpayment as non-LMI heat pump customers.
+**A.** LMI heat pump customers suffer from the same per-household delivery overpayment as non-LMI heat pump customers — but the overpayment hits them harder, because it represents a larger share of their income.
 
-  - Under default rates, **`{python} pct(v.pct_burdened_hp_default_lmi40)`** of LMI gas-heated households would be highly energy burdened (paying more than 6% of income on energy) after switching to heat pumps, assuming current LMI discount enrollment levels (~`{python} f"{v.lmi_current_enrollment_pct:.0f}"`%).
-  - Under HP flat rates paired with full LMI discount enrollment, that share drops to **`{python} pct(v.pct_burdened_hp_flat_lmi100)`** — actually **below** today's rate of `{python} pct(v.pct_burdened_current_lmi40)`.
+At present, `{python} pct(v.pct_burdened_current_lmi40)` of LMI households are highly energy burdened, meaning they pay more than 6% of their annual income on energy bill (assuming current LMI discount enrollment levels of approximately `{python} f"{v.lmi_current_enrollment_pct:.0f}"`%.)
+
+If they switched to heat pumps under the default electric rates, the share of highly burdened LMI households would rise to **`{python} pct(v.pct_burdened_hp_default_lmi40)`**.
+
 
 :::{.column-page-inset-right}
 {{< embed notebooks/analysis.qmd#fig-burden-bar-lmi-current >}}
 :::
 
+However, if LMI households that install heat pumps had access to the heat pump rate paired and were fully enrolled in the LMI discount program, that share would drop to **`{python} pct(v.pct_burdened_hp_flat_lmi100)`** — well *below* the current high-burden rate of `{python} pct(v.pct_burdened_current_lmi40)`.
 
-<br><br>
+In other words, electrification combined with the heat pump rate and LMI discount enrollment would not just avoid worsening energy burdens — it would significantly reduce them.
 
-**Q.** Should the HP rate be paired with LMI programs?
-<br>
-**A.** Yes. Auto-enrollment into the HP rate should be coordinated with LMI program enrollment to ensure that LMI heat pump customers receive both the HP rate and their LMI discount. Currently, only ~`{python} f"{v.lmi_current_enrollment_pct:.0f}"`% of eligible LMI households are enrolled in discount programs. In fact, LMI electrification could become a significant driver of lower energy burdens if paired with both HP rate and LMI discount enrollment.
+The implication is clear: LMI electrification should always be paired with both the heat pump rate and LMI discount enrollment. Any program that installs heat pumps in low-income homes without also enrolling those households in the HP rate and the applicable LMI discount is potentially making energy burdens worse. Conversely, pairing electrification with both rate and discount enrollment would make heat pumps a vehicle for *reducing* energy burdens, not increasing them.
 
 <br><br>
 
 **Q.** How should heat pump customers be enrolled in the new rate?
 <br>
-**A.** Auto-enrollment, building on Massachusetts's approach:
+**A.** Through automatic enrollment, building on the approach Massachusetts has adopted for its heat pump rate.
 
-  - **Existing HP customers:** Auto-enroll all known heat pump customers. Because every customer saves under the HP rate, there is no adverse selection concern — every enrolled customer benefits.
-  - **New HP customers:** Enroll at the point of installation through Clean Heat Rhode Island and the RI Clean Energy Accelerator. Every customer receiving a heat pump rebate should be automatically enrolled. What about those not receiving a rebate?
+For existing heat pump customers, the utility should auto-enroll all customers it can identify as having heat pumps. Because every customer saves under the heat pump rate compared to the default, there is no adverse selection concern — every enrolled customer benefits.
+
+For new heat pump customers, enrollment should occur at the point of installation through Clean Heat Rhode Island and the Rhode Island Clean Energy Accelerator. Every customer receiving a heat pump incentive should be automatically placed on the heat pump rate.
 
 <br><br>
 
-**Q.** How would the rate evolve over time?
+**Q.** How would the heat pump rate evolve over time?
 <br>
-**A.** The rate should be recalibrated in each rate case to reflect the current delivery cost-of-service for heat pump customers.
+**A.** The rate should be recalibrated in each rate case to reflect the evolving delivery cost-of-service for heat pump customers.
 
-  - The current rate already reflects heat pump customers' cost-of-service, including their contribution feeders constrained in summer.
-  - As heat pump adoption grows, and feeders and other distribution assets will eventually start to become constrained in winter, HP customers' cost-of-service will gradually rise. The flat rate would rise accordingly — a natural glide path, not a cliff.
-  - As I showed in Section III, this transition is not expected to begin for approximately two decades. Until then, the rate would remain substantially below the default.
-  - Regulators revisit rates every few years. The alternative — keeping overcharging HP customers for 15+ years while waiting for the grid to change — is not gradualism. It is entrenchment of an unjust cross-subsidy.
+he rate I propose already reflects the fact that heat pump customers contribute to summer distribution capacity costs through their cooling load. As heat pump adoption grows and winter peaks eventually approach summer peaks, heat pump customers' winter load will begin to trigger distribution investments, and their cost-of-service will rise. The rate would rise accordingly — a natural glide path, not a cliff.
+
+However, as I showed in Section III, RIE engineering data and peak forecasts project that nearly all feeders will remain unconstrained in winter until the early 2040s. Until that point in time, the flat heat pump rate would remain substantially below the RIE's default flat rate.
+
+The Commission revisits rates regularly. Each rate case provides an opportunity to update the cost-of-service analysis and recalibrate the rate. This is a far more prudent approach than maintaining an overcharge for years while waiting for grid conditions to change.
 
 
 ## VI. Anticipated Objections
@@ -622,6 +903,8 @@ However, waiting years until AMI deployment is complete and TOU rates are develo
 
 ## VII. Methodology: How We Measured the Cross-Subsidy
 
+In RIE's ACOSS, the utility measures cost-causation at the class level using a Non-Coincident Peak (NCP) allocator: it looks at each class's annual peak demand, it sums up these class-level demands into a "total NCP demand", and uses each class's _share_ of this total NCP demand to divide the system-wide delivery revenue requirement among classes.
+
 **Q.** What methodology did you use to measure the delivery cost-of-service for heat pump and non-heat pump customers?
 <br>
 TODO: give the number and cite where we got it from and that engineers told us to use it.
@@ -641,24 +924,42 @@ TODO: the full "How did you measure this?" detail from the original Section II i
 <br>
 **A.**
 
-  | Component | Source | Allocation |
+  | Component | Source of annualized cost | Hourly allocation |
   |---|---|---|
   | Marginal energy | NREL Cambium (hourly, BA-specific) | Every hour |
   | Generation capacity | NREL Cambium (annual capacity cost) | Top ~100 system load hours |
-  | Bulk transmission | RIE's OATT filings | Monthly CP hours |
-  | Distribution capacity | RIE feeder thermal screening + EE demand reduction cost | Top ~100 territory load hours (summer only) |
+  | Bulk transmission | AESC 2024 avoided PTF cost ($69/kW-year)[^aesc_cite] | Top 100 aggregate New England system load hours |
+  | Distribution capacity | AESC 2024 avoided distribution capacity cost ($80.24/kW-year)[^aesc_cite] | Top 100 RIE system load hours (summer only) |
+
+[^aesc_cite]: Synapse Energy Economics et al., *Avoided Energy Supply Components of New England: 2024 Report* (AESC 2024), February 2024, amended May 2024. Available at https://www.synapse-energy.com/aesc-2024-materials.
 
 <br><br>
 
-**Q.** How did you estimate marginal distribution capacity costs?
+**Q.** How did you allocate delivery capacity costs to specific hours?
 <br>
-**A.** This is the most critical component, so I will describe it in detail.
+**A.** Using a standard peak-responsibility approach from marginal cost-of-service analysis: the annualized cost of new capacity investment is spread across only the hours most likely to drive that investment, and all other hours receive zero cost.
+
+For both bulk transmission and distribution, the annualized capacity costs come from the AESC 2024 study — the standard avoided cost input used by all New England states, including Rhode Island, for energy efficiency cost-effectiveness screening under Docket 4600.[^aesc_cite]
+
+  - For **bulk transmission**, I allocated the AESC's avoided Pool Transmission Facility cost of \$69/kW-year across the top 100 hours of aggregate New England system load — the hours when regional transmission facilities are most stressed.
+  - For **distribution and sub-transmission**, I allocated the AESC's avoided distribution capacity cost of \$80.24/kW-year across the top 100 hours of RIE's system load, which serves as a proxy for when local feeders and substations are most stressed.
+
+Ideally, the distribution allocation would use hourly load profiles for each individual feeder, identifying the specific hours when each constrained feeder approaches its limit. RIE does not publish feeder-level 8760 load data,[^rie_correspondence] so the aggregate system load approach is a reasonable first approximation.[^feeder_8760]
+
+[^rie_correspondence]: [TK: cite correspondence with RIE engineers confirming this limitation.]
+
+[^feeder_8760]: If feeder-level hourly data were available, the high-cost hours would likely be spread across more hours — since different feeders peak at somewhat different times — with lower per-hour costs. The aggregate approach concentrates costs in fewer hours, which if anything overstates the cost assigned to any individual peak hour.
+
+<br><br>
+
+**Q.** How did you estimate the annualized marginal cost of distribution capacity?
+<br>
+**A.** This is a critical input, so I will describe it in detail.
 
   - We obtained RIE's feeder-level thermal screening data, which contains each feeder's summer peak load and normal/emergency capacity ratings. This is the same data RIE uses for distribution planning.
   - We identified which feeders are constrained (peak exceeds normal capacity or creates N-1 contingency risk). Only `{python} pct(f.pct_feeders_any_violation_summer)` of feeders are constrained, all in summer. Zero feeders are winter-constrained.
-  - For the marginal cost of capacity additions, we used the same $/kW cost-of-demand-reduction figure that RIE uses for energy efficiency program cost-effectiveness testing. RIE's planning engineers advised us that per-project upgrade costs vary widely depending on local conditions, and that this demand reduction cost — which is already "diluted" to reflect the fact that most feeders are not constrained — is the best available proxy for average marginal distribution capacity cost.
-  - We allocated this cost to the top ~100 hours of system load, which are our proxy for the hours when constrained feeders are most stressed.
-  - The result: marginal distribution capacity costs are concentrated in summer afternoons and are near zero in winter — consistent with the feeder headroom analysis.
+  - For the annualized marginal cost of capacity additions, we used the AESC 2024 avoided distribution capacity cost of \$80.24/kW-year.[^aesc_cite] This figure reflects the system-wide cost of reducing peak demand by one kW — effectively the avoided cost of a capacity upgrade, diluted to account for the fact that most feeders are not constrained. RIE's planning engineers confirmed that per-project upgrade costs vary widely depending on local conditions, and that this avoided cost figure is the best available proxy for average marginal distribution capacity cost.
+  - The result: marginal distribution capacity costs are concentrated in summer afternoons and are zero in winter — consistent with the feeder headroom analysis in Section III.
 
 <br><br>
 

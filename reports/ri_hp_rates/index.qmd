@@ -657,7 +657,7 @@ Today, `{python} pct(v.pct_burdened_current_lmi40)` of Rhode Island's low-and-mo
 gas pay more than 6% of their annual income on energy bills, and are therefore considered to be **highly energy
 burdened**. This figure reflects current LMI discounts for electricity and gas; only ~`{python} f"{v.lmi_current_enrollment_pct:.0f}"`% of eligible LMI households are currently enrolled.[^lmi-def]
 
-[^lmi-def]: TODO add a note on how LMI is defined.
+[^lmi-def]: LMI is defined using the upper bound of the LIDR+ program, which is 250% of FPL. See @sec-lmi-discounts for more details.
 
 ::::: {.column-page-inset-right}
 {{< embed notebooks/analysis.qmd#fig-burden-bar-lmi-current >}}
@@ -1129,37 +1129,24 @@ Feeders already constrained in 2026 are excluded from the 2039 assessment — th
 
 [^cite-rie-forecast]: Rhode Island Energy, *2024 Electric Peak Report* — system-wide summer and winter net peak MW forecasts through 2039, including electric heating contributions and HP adoption scenarios (Base and High). @rie_2024ElectricPeak_2024b.
 
-## Assumptions
+## Assumptions and limitations
 
-Gas utility assignment follows a similar process, with two key differences. First, some geographic areas are not served
-by the natural gas distribution network at all, so homes in these PUMAs are not assigned a gas utility. Second, homes
-that show no gas heating loads in the ResStock data are also not assigned a gas utility, regardless of their location.
+- **Actual meteorological year (AMY 2018) weather.** All load profiles use actual meteorological year 2018 weather data. While ResStock also provides a composite typical meteorological year (TMY) scenario, we use the AMY year to preserve weather-driven coincident peaks — TMY composites splice months from different years, which can smooth out the extreme weather events that drive the system peak hours central to our marginal cost allocation.
 
+- **Static tariffs and fuel prices.** Bills are computed at 2025 tariff rates. Natural gas and delivered fuel prices are held at 2025 levels; the model does not incorporate price escalation or fuel-switching dynamics.
 
-### Heat Pump Adoption Scenarios {#sec-heat-pump-adoption-scenarios}
+- **No behavioral response to rate changes.** The model does not capture price elasticity — a household's hourly load profile is the same under the default rate and the proposed HP flat rate. In practice, time-varying price signals could shift load away from peak hours, which would reduce delivery cost-of-service for responsive customers.
 
-To estimate how heat pump adoption affects Rhode Island's electricity grid, we model two scenarios and project
-statewide residential electricity and fossil fuel consumption from 2028 to 2031: a **business-as-usual (BAU)** scenario
-under today's rates, and a **heat pump rates** scenario in which better rates accelerate adoption.
+- **EPMC residual allocation.** The {{< glossary residual >}} — the gap between the total delivery {{< glossary "revenue requirement" >}} and total system marginal cost — is allocated to subclasses via equi-proportional marginal cost (EPMC) scaling. This is the standard approach in marginal cost-of-service studies but is ultimately a normative choice; per-customer equal allocation is an alternative. The residual represents embedded costs of existing infrastructure that are not attributable to any customer's current load pattern.
 
-#### Adoption Counts
+- **Winter feeder peaks estimated from summer.** RIE does not compile or forecast feeder-level winter peaks.[^assumption-winter] Winter demand for each feeder is derived from its summer peak using the system-wide winter-to-summer ratio of 0.70, per RIE's recommended method. This is correct on average but may underestimate above-average winter feeders.
 
-For the BAU scenario, we use Rhode Island Energy's own published forecast of annual heat pump installations —
-for example, how many homes are projected to install a heat pump in 2028, 2029, and so on.
+- **Aggregate system load as proxy for feeder stress.** RIE does not publish feeder-level 8,760-hour load profiles, and confirms that the hour of each feeder's peak "is not tracked as it is not necessary to current distribution planning practices."[^assumption-feeder-hours] We therefore allocate distribution marginal costs using the top 100 hours of aggregate RIE system load. If feeder-level hourly data were available, costs would spread across more hours (since different feeders peak at somewhat different times) with lower per-hour values; the aggregate approach concentrates costs in fewer hours, which if anything overstates the cost assigned to any individual peak hour.
 
-For the heat pump rates scenario, we scale those counts up by TK%. That figure comes from our analysis earlier
-in this report: Rhode Island's proposed heat pump rates would increase the share of homes for which switching
-to heat pumps lowers bills from TK% to TK%, a TK% relative increase in the pool of homes with a financial
-incentive to switch.
+- **ResStock as building stock proxy.** Load profiles come from NREL's ResStock physics-based simulations, not metered household data. Each simulated building represents approximately 252 real homes. Results are statistically representative in aggregate but should not be interpreted as describing any individual household.
 
-#### Projecting Grid Impact
+- **HP adoption scenarios from RIE's Peak Report.** The forward-looking headroom analysis (see @sec-methods-headroom) uses RIE's own Base and High adoption scenarios from the 2024 Electric Peak Report,[^cite-rie-forecast] rather than a Switchbox-derived adoption scaling.
 
-Once we have an adoption count for each year and scenario, we calculate the resulting change in statewide residential energy consumption. Each new heat pump adopter reduces their gas, fuel oil, or propane use and increases their
-electricity use. We use the same ResStock load profiles from the bill analysis above to model this fuel switch:
-for example, a gas-heated home in Providence that installs a heat pump contributes its full before-and-after
-load profile to the statewide total.
+[^assumption-winter]: RIE stated in discovery that "the RI system is currently summer limited" and that "the Company concentrates on summer analysis for efficiency reasons," adding that "a winter analysis would provide no useful information to determine system sufficiency."
 
-We aggregate those individual changes across all projected adopters, hour by hour over the full year. The result
-is a projected hourly electricity and fossil fuel consumption profile for each scenario. The difference between
-the two — HP rates minus BAU — is the additional grid load, and fossil fuel reduction, that heat pump rates
-would produce.
+[^assumption-feeder-hours]: RIE confirmed in discovery that "the hour of peak is not tracked as it is not necessary to current distribution planning practices focused on peak level analysis."

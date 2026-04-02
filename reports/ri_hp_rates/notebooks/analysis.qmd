@@ -1389,6 +1389,36 @@ _full_cooling = _fossil_elec_pct.filter(pl.col("cooling_group") == "Full cooling
 report_vars["elec_pct_change_full_cooling_p25"] = _weighted_percentile(_full_cooling, "pct_change", "weight", 0.25)
 report_vars["elec_pct_change_full_cooling_p75"] = _weighted_percentile(_full_cooling, "pct_change", "weight", 0.75)
 
+_cooling_meta = (
+    bills_current
+    .filter(pl.col("month") == ANNUAL_MONTH)
+    .select(
+        BLDG_ID,
+        "heats_with_natgas",
+        "heats_with_oil",
+        "heats_with_propane",
+        HEATING_TYPE_COL,
+        _COOLING_COL,
+        "weight",
+    )
+    .collect()
+)
+_natgas_cm = _cooling_meta.filter(pl.col("heats_with_natgas"))
+report_vars["pct_natgas_full_cooling"] = (
+    _natgas_cm.filter(pl.col(_COOLING_COL) == "100% Conditioned")["weight"].sum()
+    / _natgas_cm["weight"].sum()
+)
+_er_cm = _cooling_meta.filter(pl.col(HEATING_TYPE_COL) == "electrical_resistance")
+report_vars["pct_er_full_cooling"] = (
+    _er_cm.filter(pl.col(_COOLING_COL) == "100% Conditioned")["weight"].sum()
+    / _er_cm["weight"].sum()
+)
+_op_cm = _cooling_meta.filter(pl.col("heats_with_oil") | pl.col("heats_with_propane"))
+report_vars["pct_oil_propane_full_cooling"] = (
+    _op_cm.filter(pl.col(_COOLING_COL) == "100% Conditioned")["weight"].sum()
+    / _op_cm["weight"].sum()
+)
+
 _cooling_order = ["Full cooling", "Partial cooling", "No cooling"]
 _table_rows = []
 for cg in _cooling_order:
@@ -1466,6 +1496,9 @@ _er_lose_1k_w = elec_resistance_state.filter(pl.col("delta") > 1000)["weight"].s
 report_vars["pct_elec_resistance_save_default"] = _er_save_w / _er_total_w
 report_vars["pct_elec_resistance_save_1k_default"] = _er_save_1k_w / _er_total_w
 report_vars["pct_elec_resistance_lose_1k_default"] = _er_lose_1k_w / _er_total_w
+
+report_vars["oil_propane_mean_delta_default"] = _weighted_mean(oil_propane_state, "delta", "weight")
+report_vars["elec_resistance_mean_delta_default"] = _weighted_mean(elec_resistance_state, "delta", "weight")
 ```
 
 ### LMI scenarios (natgas, statewide)
@@ -2068,6 +2101,53 @@ report_vars["cs_hp_bat"] = hp_bat_cs
 )
 ```
 
+```{python}
+#| label: fig-cross-subsidy-before-example
+#| fig-cap: "Annual delivery bill vs. delivery cost of service for the median gas-heated home before switching to a heat pump (natural gas furnace scenario only)."
+
+# Same y-range as the left facet of @fig-cross-subsidy-example (facets share one scale; gas-only plot
+# would otherwise auto-zoom). Ceiling mirrors stack tops, bar-label nudge_y=40, and HP BAT annotation.
+_cs_stack_top = max(
+    float(gas_bill),
+    float(gas_cost),
+    float(hp_bill_cs),
+    float(hp_cost_cs),
+)
+_cs_extent = _cs_stack_top + 55  # bar totals + nudge_y≈40
+_cs_extent = max(_cs_extent, float(bat_labels["y"].max()) + 50)
+_CS_EXAMPLE_Y_MAX = _cs_extent * 1.12
+
+_cs_gas = SCENARIO_ORDER[0]
+cs_plot_df_gas = cs_plot_df.filter(pl.col("scenario") == _cs_gas)
+cs_bar_totals_gas = cs_bar_totals.filter(pl.col("scenario") == _cs_gas)
+
+(
+    ggplot(cs_plot_df_gas, aes(x="bar", y="dollars", fill="component"))
+    + geom_col(position=position_stack(reverse=True), width=0.55)
+    + geom_text(
+        cs_bar_totals_gas,
+        aes(x="bar", y="total", label="total_label"),
+        va="bottom",
+        color="#333333",
+        fontweight="bold",
+        size=9,
+        nudge_y=40,
+        inherit_aes=False,
+    )
+    + scale_fill_manual(values=CS_COMP_COLORS, breaks=CS_COMP_ORDER)
+    + scale_y_continuous(limits=(0, _CS_EXAMPLE_Y_MAX), expand=(0, 0, 0, 0))
+    + labs(
+        x="",
+        y="$ / year",
+        title="Delivery bill vs. cost of service —",
+        subtitle=_cs_gas,
+        fill="",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(5.25, 5.25))
+)
+```
+
 ### Statewide summary and report statistics
 
 We compute the mean delivery BAT by heating type — the key numbers that
@@ -2144,6 +2224,18 @@ report_vars["ff_mean_delivery_bat"] = _weighted_mean(_ff_sub, _bat_col, "weight"
 report_vars["natgas_mean_delivery_bat"] = _weighted_mean(_natgas_sub, _bat_col, "weight")
 report_vars["oil_propane_mean_delivery_bat"] = _weighted_mean(_op_sub, _bat_col, "weight")
 report_vars["elec_resistance_mean_delivery_bat"] = _weighted_mean(_er_sub, _bat_col, "weight")
+report_vars["natgas_mean_delivery_cost"] = (
+    _weighted_mean(_natgas_sub, "economic_burden_delivery", "weight")
+    + _weighted_mean(_natgas_sub, RESIDUAL_DELIVERY, "weight")
+)
+report_vars["oil_propane_mean_delivery_cost"] = (
+    _weighted_mean(_op_sub, "economic_burden_delivery", "weight")
+    + _weighted_mean(_op_sub, RESIDUAL_DELIVERY, "weight")
+)
+report_vars["er_mean_delivery_cost"] = (
+    _weighted_mean(_er_sub, "economic_burden_delivery", "weight")
+    + _weighted_mean(_er_sub, RESIDUAL_DELIVERY, "weight")
+)
 
 _bat_simple_gt = (
     GT(pl.DataFrame(_bat_simple_rows), rowname_col="heating_type")
@@ -3370,6 +3462,10 @@ _op_sw_save = oil_propane_switch_state.filter(pl.col("delta") < 0)["weight"].sum
 _op_sw_lose_1k = oil_propane_switch_state.filter(pl.col("delta") > 1000)["weight"].sum()
 report_vars["pct_oil_propane_save_hprate"] = _op_sw_save / _op_sw_total
 report_vars["pct_oil_propane_lose_1k_hprate"] = _op_sw_lose_1k / _op_sw_total
+report_vars["oil_propane_mean_delta_hprate"] = _weighted_mean(oil_propane_switch_state, "delta", "weight")
+report_vars["oil_propane_delivery_erosion"] = (
+    report_vars["oil_propane_mean_delta_default"] - report_vars["oil_propane_mean_delta_hprate"]
+)
 ```
 
 ```{python}
@@ -3387,6 +3483,10 @@ _er_sw_save = elec_resistance_switch_state.filter(pl.col("delta") < 0)["weight"]
 _er_sw_lose_1k = elec_resistance_switch_state.filter(pl.col("delta") > 1000)["weight"].sum()
 report_vars["pct_elec_resistance_save_hprate"] = _er_sw_save / _er_sw_total
 report_vars["pct_elec_resistance_lose_1k_hprate"] = _er_sw_lose_1k / _er_sw_total
+report_vars["elec_resistance_mean_delta_hprate"] = _weighted_mean(elec_resistance_switch_state, "delta", "weight")
+report_vars["elec_resistance_delivery_erosion"] = (
+    report_vars["elec_resistance_mean_delta_default"] - report_vars["elec_resistance_mean_delta_hprate"]
+)
 ```
 
 ### Representative home bill decomposition: default vs. fair rates

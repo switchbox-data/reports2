@@ -1,0 +1,239 @@
+---
+title: "Test Cambium 2024 Data on S3"
+format: html
+---
+
+Quick test to verify we can read the Cambium 2024 data from S3 and query it with Polars.
+
+**Question**: What are the average CO2 emission rates for New York balancing areas in 2030 vs 2050?
+
+```{python}
+import polars as pl
+from plotnine import *
+import time
+
+# Read Cambium data for New York (NYISO region) for 2030 and 2050
+# Using lazy mode for efficient execution
+df_lazy = (
+    pl.scan_parquet(
+        "s3://data.sb/nrel/cambium/2024/scenario=MidCase/t=*/gea=NYISO/r=*/data.parquet"
+    )
+    .filter(pl.col("t").is_in([2030, 2050]))
+)
+
+# Collect basic stats
+df = df_lazy.collect()
+
+print(f"Loaded {len(df):,} rows")
+print(f"\nBalancing areas: {df['r'].unique().sort()}")
+print(f"Years: {df['t'].unique().sort()}")
+```
+
+## Average Emission Rates by Year
+
+Calculate average CO2e emission rates (combustion + precombustion) for generation:
+
+```{python}
+# Calculate average emission rates by year (using lazy execution)
+avg_emissions = (
+    df_lazy
+    .group_by("t")
+    .agg([
+        pl.col("aer_gen_co2e").mean().alias("avg_co2e_gen"),
+        pl.col("aer_load_co2e").mean().alias("avg_co2e_load"),
+        pl.col("lrmer_co2e").mean().alias("lrmer_co2e"),
+        pl.col("srmer_co2e").mean().alias("srmer_co2e"),
+    ])
+    .sort("t")
+    .collect()  # Execute query
+)
+
+print(avg_emissions)
+```
+
+## Interpretation
+
+- **aer_gen_co2e**: Average emission rate for generation (kg CO2e/MWh)
+- **aer_load_co2e**: Average emission rate for load (includes transmission losses)
+- **lrmer_co2e**: Long-run marginal emission rate (kg CO2e/MWh)
+- **srmer_co2e**: Short-run marginal emission rate (kg CO2e/MWh)
+
+```{python}
+# Prepare data for plotting
+plot_data = avg_emissions.unpivot(
+    index="t",
+    on=["avg_co2e_gen", "avg_co2e_load", "lrmer_co2e", "srmer_co2e"],
+    variable_name="metric",
+    value_name="co2e"
+).with_columns([
+    pl.col("metric").replace({
+        "avg_co2e_gen": "Avg Gen",
+        "avg_co2e_load": "Avg Load",
+        "lrmer_co2e": "LRMER",
+        "srmer_co2e": "SRMER"
+    }),
+    pl.col("t").cast(pl.Utf8)  # Convert year to string for better x-axis labels
+])
+
+# Create plotnine visualization
+(
+    ggplot(plot_data, aes(x="t", y="co2e", color="metric", group="metric"))
+    + geom_line(size=1.5)
+    + geom_point(size=3)
+    + labs(
+        x="Year",
+        y="CO2e Emission Rate (kg/MWh)",
+        color="Metric",
+        title="New York CO2e Emission Rates: 2030 vs 2050"
+    )
+    + theme_minimal()
+    + theme(
+        figure_size=(10, 6),
+        plot_title=element_text(size=14, weight="bold")
+    )
+)
+```
+
+## Hourly Pattern Analysis
+
+Look at typical daily emission patterns:
+
+```{python}
+# Calculate average emission rate by hour of day for each year (lazy execution)
+hourly_pattern = (
+    df_lazy
+    .with_columns([
+        pl.col("timestamp").dt.hour().alias("hour")
+    ])
+    .group_by(["t", "hour"])
+    .agg([
+        pl.col("aer_load_co2e").mean().alias("avg_co2e")
+    ])
+    .sort(["t", "hour"])
+    .collect()  # Execute query
+)
+
+# Pivot to compare years side by side
+hourly_pivot = (
+    hourly_pattern
+    .pivot(values="avg_co2e", index="hour", columns="t")
+)
+
+print("\nAverage CO2e Load Emissions by Hour:")
+print(hourly_pivot)
+```
+
+```{python}
+# Prepare data for plotting - convert categorical to string
+hourly_plot_data = hourly_pattern.with_columns([
+    pl.col("t").cast(pl.Utf8)
+])
+
+# Create plotnine visualization
+(
+    ggplot(hourly_plot_data, aes(x="hour", y="avg_co2e", color="t", group="t"))
+    + geom_line(size=1.5)
+    + geom_point(size=2)
+    + scale_x_continuous(breaks=range(0, 24, 2))
+    + labs(
+        x="Hour of Day",
+        y="Average CO2e Load Rate (kg/MWh)",
+        color="Year",
+        title="Daily CO2e Emission Pattern in New York"
+    )
+    + theme_minimal()
+    + theme(
+        figure_size=(12, 6),
+        plot_title=element_text(size=14, weight="bold")
+    )
+)
+```
+
+## Data Quality Check
+
+Verify we have complete hourly data:
+
+```{python}
+# Check data completeness (using lazy execution)
+data_check = (
+    df_lazy
+    .group_by(["t", "r"])
+    .agg([
+        pl.len().alias("n_hours")
+    ])
+    .sort(["t", "r"])
+    .collect()  # Execute query
+)
+
+print("\nHours of data per BA-year combination:")
+print(data_check)
+print(f"\nExpected: 8,760 hours per year")
+print(f"All complete: {(data_check['n_hours'] == 8760).all()}")
+```
+
+## ✅ Success!
+
+The Cambium 2024 data is successfully accessible on S3 and queryable with Polars!
+
+## Performance Test: Full Dataset Query
+
+Let's compute something across the **entire** dataset to test performance:
+
+```{python}
+import time
+
+# Query the full dataset: calculate average emissions by state across all years
+print("Computing average CO2e emissions by state across all 798 files...")
+print("(133 balancing areas × 6 years × 8,760 hours = 6.98M rows)")
+
+start_time = time.time()
+
+state_emissions = (
+    pl.scan_parquet(
+        "s3://data.sb/nrel/cambium/2024/scenario=MidCase/t=*/gea=*/r=*/data.parquet"
+    )
+    .group_by("state")
+    .agg([
+        pl.col("aer_gen_co2e").mean().alias("avg_gen_co2e"),
+        pl.col("aer_load_co2e").mean().alias("avg_load_co2e"),
+        pl.col("generation").sum().alias("total_generation_mwh"),
+        pl.len().alias("n_hours")
+    ])
+    .sort("avg_load_co2e", descending=True)
+    .collect()
+)
+
+elapsed = time.time() - start_time
+
+print(f"\n✅ Query completed in {elapsed:.2f} seconds")
+print(f"\nTop 10 states by average load CO2e emissions:")
+print(state_emissions.head(10))
+print(f"\nTotal hours processed: {state_emissions['n_hours'].sum():,}")
+```
+
+```{python}
+# Prepare data for plotting - take top 15 and reverse order for coord_flip
+bar_plot_data = (
+    state_emissions
+    .head(15)
+    .reverse()  # Reverse so highest is at top after coord_flip
+)
+
+# Create plotnine horizontal bar chart
+(
+    ggplot(bar_plot_data, aes(x="state", y="avg_load_co2e"))
+    + geom_col(fill="#d73027")
+    + coord_flip()
+    + scale_x_discrete(limits=bar_plot_data["state"].to_list())  # Preserve order
+    + labs(
+        x="State",
+        y="Average Load CO2e Emission Rate (kg/MWh)",
+        title="Top 15 States by CO2e Emissions (2025-2050 Average)"
+    )
+    + theme_minimal()
+    + theme(
+        figure_size=(12, 8),
+        plot_title=element_text(size=14, weight="bold")
+    )
+)
+```

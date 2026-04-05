@@ -154,6 +154,11 @@ report_vars["hp_flat_volumetric_delivery_pct_below_default"] = (
     else float("nan")
 )
 
+# Annual fixed delivery charges per customer (customer charge + fixed delivery top-ups).
+_annual_fixed_per_customer = (
+    TOTAL_DELIVERY_REVENUE_REQUIREMENT - _default_vol_usd_kwh * _ty_kwh
+) / TEST_YEAR_CUSTOMER_COUNT
+
 # PRB-1 volumetric components (¢/kWh): core delivery vs transmission + uncollectible, from YAML budgets ÷ test-year kWh.
 _drr = _rev_yaml["delivery_revenue_requirement"]
 _dtu = _rev_yaml["delivery_top_ups"]
@@ -1213,17 +1218,42 @@ def build_gt_cos_totals(
     title: str = "Delivery revenue and cost of service by residential customer subclass",
     subtitle: str | None = None,
 ) -> GT:
-    _gt_df = cos_tbl.select(
+    _has_kwh = "consumption_gwh" in cos_tbl.columns
+    _select_cols = [
         "subclass",
         "n_customers_display",
         "pct_customers_display",
+    ]
+    if _has_kwh:
+        _select_cols.extend(["consumption_gwh", "pct_all_consumption"])
+    _select_cols.extend([
         "revenue_delivery",
         "pct_all_revenue",
         "cost_of_service",
         "pct_revenue_requirement",
         "cross_subsidy",
         "pct_overpayment_vs_cos",
-    )
+    ])
+    _gt_df = cos_tbl.select(_select_cols)
+    if _has_kwh:
+        _gt_df = _gt_df.with_columns(
+            pl.col("consumption_gwh")
+            .map_elements(lambda v: f"{v:,.1f} GWh", return_dtype=pl.String)
+            .alias("consumption_gwh"),
+        )
+    _labels: dict[str, str] = {
+        "n_customers_display": "Customers",
+        "pct_customers_display": "% of customers",
+        "revenue_delivery": "Delivery revenue",
+        "pct_all_revenue": "% of revenue",
+        "cost_of_service": "Cost of service",
+        "pct_revenue_requirement": "% of cost",
+        "cross_subsidy": "Cross-subsidy",
+        "pct_overpayment_vs_cos": "Cross-subsidy ÷ COS",
+    }
+    if _has_kwh:
+        _labels["consumption_gwh"] = "Consumption"
+        _labels["pct_all_consumption"] = "% of consumption"
     _gt = (
         GT(_gt_df, rowname_col="subclass")
         .tab_header(
@@ -1231,16 +1261,7 @@ def build_gt_cos_totals(
             subtitle=subtitle,
         )
         .tab_options(**_COS_GT_TAB_OPTS)
-        .cols_label(
-            n_customers_display="Customers",
-            pct_customers_display="% of customers",
-            revenue_delivery="Delivery revenue",
-            pct_all_revenue="% of revenue",
-            cost_of_service="Cost of service",
-            pct_revenue_requirement="% of cost",
-            cross_subsidy="Cross-subsidy",
-            pct_overpayment_vs_cos="Cross-subsidy ÷ COS",
-        )
+        .cols_label(**_labels)
         .fmt_number(columns=["n_customers_display"], decimals=0, use_seps=True)
         .fmt_percent(columns=["pct_customers_display", "pct_all_revenue"], decimals=1)
         .fmt_percent(
@@ -1253,21 +1274,23 @@ def build_gt_cos_totals(
         )
         .sub_missing(missing_text="—")
     )
-    return (
-        _cos_gt_center_cells(
-            _gt,
-            data_columns=[
-                "n_customers_display",
-                "pct_customers_display",
-                "revenue_delivery",
-                "pct_all_revenue",
-                "cost_of_service",
-                "pct_revenue_requirement",
-                "cross_subsidy",
-                "pct_overpayment_vs_cos",
-            ],
-        )
-    )
+    if _has_kwh:
+        _gt = _gt.fmt_percent(columns=["pct_all_consumption"], decimals=1)
+    _data_cols = [
+        "n_customers_display",
+        "pct_customers_display",
+    ]
+    if _has_kwh:
+        _data_cols.extend(["consumption_gwh", "pct_all_consumption"])
+    _data_cols.extend([
+        "revenue_delivery",
+        "pct_all_revenue",
+        "cost_of_service",
+        "pct_revenue_requirement",
+        "cross_subsidy",
+        "pct_overpayment_vs_cos",
+    ])
+    return _cos_gt_center_cells(_gt, data_columns=_data_cols)
 
 
 def build_gt_cos_totals_hp_flat_vs_current(
@@ -1656,11 +1679,45 @@ def run_scenario(path: str, label: str, *, hp_flat: bool) -> pl.DataFrame:
 
 
 bat = run_scenario(PATH_MASTER_BAT_12, "run 1+2 (default)", hp_flat=False)
+
+# Derive per-building annual kWh from the delivery bill and known tariff structure.
+bat = bat.with_columns(
+    ((pl.col("annual_bill_delivery") - _annual_fixed_per_customer) / _default_vol_usd_kwh)
+    .alias("annual_kwh"),
+)
+_derived_total_kwh = float((bat["weight"] * bat["annual_kwh"]).sum())
+assert abs(_derived_total_kwh - _ty_kwh) / _ty_kwh < 1e-6, (
+    f"derived total kWh {_derived_total_kwh:,.0f} vs YAML {_ty_kwh:,.0f}"
+)
+
 cos_tbl = build_cos_table(bat)
+
+# Aggregate kWh by subclass and join onto cos_tbl.
+_kwh_by_ht = (
+    bat.group_by("postprocess_group.heating_type_v2")
+    .agg((pl.col("weight") * pl.col("annual_kwh")).sum().alias("total_kwh"))
+    .with_columns(
+        pl.col("postprocess_group.heating_type_v2").replace(HT_V2_LABELS).alias("subclass"),
+    )
+    .select("subclass", "total_kwh")
+)
+_total_kwh_agg = float(_kwh_by_ht["total_kwh"].sum())
+_kwh_total_row = pl.DataFrame({"subclass": ["All customers"], "total_kwh": [_total_kwh_agg]})
+_kwh_all = pl.concat([_kwh_by_ht, _kwh_total_row])
+cos_tbl = (
+    cos_tbl.join(_kwh_all, on="subclass", how="left")
+    .with_columns(
+        (pl.col("total_kwh") / _total_kwh_agg).alias("pct_all_consumption"),
+        (pl.col("total_kwh") / 1_000_000.0).alias("consumption_gwh"),
+    )
+)
+
 report_vars["testimony_subclass_delivery_rows"] = cos_tbl.select(
     "subclass",
     "n_customers_display",
     "pct_customers_display",
+    "consumption_gwh",
+    "pct_all_consumption",
     "revenue_delivery",
     "pct_all_revenue",
 ).to_dicts()
@@ -1713,6 +1770,76 @@ report_vars["cos_default_er_pct_over_cos"] = _pct_rev_over_cos(_er_rev, _er_cos)
 report_vars["cos_default_ng_pct_under_cos"] = _pct_rev_under_cos(_ng_cos, _ng_rev)
 report_vars["cos_default_df_pct_under_cos"] = _pct_rev_under_cos(_df_cos, _df_rev)
 report_vars["cos_default_er_overpay_vs_cos"] = _er_rev - _er_cos
+
+
+def find_fixed_charge_to_zero_hp_cross_subsidy(
+    cos_tbl: pl.DataFrame,
+    *,
+    current_customer_charge_monthly: float,
+    total_revenue: float,
+) -> dict[str, float]:
+    """Find the customer charge that makes HP cross-subsidy = 0 under a uniform rate.
+
+    Returns the new monthly customer charge, the increase, and the new volumetric rate.
+    Assumes: only the customer charge and volumetric rate change; other fixed charges stay constant.
+    """
+    _all = cos_tbl.filter(pl.col("subclass") == "All customers")
+    _hp = cos_tbl.filter(pl.col("subclass") == "Heat pump")
+    n_total = float(_all["n_customers"][0])
+    n_hp = float(_hp["n_customers"][0])
+    hp_cos = float(_hp["cost_of_service"][0])
+    hp_kwh = float(_hp["total_kwh"][0])
+    total_kwh = float(_all["total_kwh"][0])
+    hp_xs = float(_hp["cross_subsidy"][0])
+
+    # HP_rev_change = ΔF × 12 × (n_hp − n_total × hp_kwh / total_kwh)
+    # Set HP_rev_change = −hp_xs (eliminate current overpayment)
+    _kwh_share = hp_kwh / total_kwh
+    _denom = 12.0 * (n_hp - n_total * _kwh_share)
+    delta_f = -hp_xs / _denom
+    new_customer_charge = current_customer_charge_monthly + delta_f
+    new_vol_rate = (total_revenue - new_customer_charge * 12.0 * n_total
+                    - (_annual_fixed_per_customer - current_customer_charge_monthly * 12.0) * n_total
+                    ) / total_kwh
+    return {
+        "new_customer_charge_monthly": new_customer_charge,
+        "customer_charge_increase_monthly": delta_f,
+        "new_volumetric_delivery_rate": new_vol_rate,
+        "current_volumetric_delivery_rate": _default_vol_usd_kwh,
+        "current_customer_charge_monthly": current_customer_charge_monthly,
+    }
+
+
+_CURRENT_CUSTOMER_CHARGE_MONTHLY = 6.0
+_fc_result = find_fixed_charge_to_zero_hp_cross_subsidy(
+    cos_tbl,
+    current_customer_charge_monthly=_CURRENT_CUSTOMER_CHARGE_MONTHLY,
+    total_revenue=TOTAL_DELIVERY_REVENUE_REQUIREMENT,
+)
+for _k, _v in _fc_result.items():
+    report_vars[f"fc_{_k}"] = _v
+
+# Per-subclass data for the fixed-charge exhibit (CLF-JPV-6).
+report_vars["fc_exhibit_rows"] = cos_tbl.select(
+    "subclass",
+    "n_customers",
+    "consumption_gwh",
+    "cost_of_service",
+    "cross_subsidy",
+).to_dicts()
+
+_hp_row = cos_tbl.filter(pl.col("subclass") == "Heat pump")
+_all_row = cos_tbl.filter(pl.col("subclass") == "All customers")
+report_vars["fc_hp_kwh"] = float(_hp_row["total_kwh"][0])
+report_vars["fc_total_kwh"] = float(_all_row["total_kwh"][0])
+report_vars["fc_hp_n_customers"] = float(_hp_row["n_customers"][0])
+report_vars["fc_total_n_customers"] = float(_all_row["n_customers"][0])
+report_vars["fc_hp_cos"] = float(_hp_row["cost_of_service"][0])
+report_vars["fc_hp_cross_subsidy"] = float(_hp_row["cross_subsidy"][0])
+report_vars["fc_other_fixed_annual_per_customer"] = (
+    _annual_fixed_per_customer - _CURRENT_CUSTOMER_CHARGE_MONTHLY * 12.0
+)
+report_vars["fc_total_delivery_revenue"] = TOTAL_DELIVERY_REVENUE_REQUIREMENT
 
 bat_hp_flat = run_scenario(
     PATH_MASTER_BAT_1718,

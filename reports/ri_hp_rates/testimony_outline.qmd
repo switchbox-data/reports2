@@ -120,16 +120,23 @@ def cents(x, accuracy=1):
 
 
 def testimony_subclass_delivery_table_html(ns) -> str:
-    """Narrow delivery-revenue-by-subclass table (customers, %, revenue, % of revenue)."""
+    """Narrow delivery-revenue-by-subclass table (customers, %, consumption, %, revenue, % of revenue)."""
     import polars as pl
     from great_tables import GT, loc, style
 
     from lib.great_tables import get_switchbox_gt_tab_options
 
     _tdf = pl.DataFrame(ns.testimony_subclass_delivery_rows)
+    _tdf = _tdf.with_columns(
+        pl.col("consumption_gwh")
+        .map_elements(lambda v: f"{v:,.1f} GWh", return_dtype=pl.String)
+        .alias("consumption_gwh"),
+    )
     _tcols = [
         "n_customers_display",
         "pct_customers_display",
+        "consumption_gwh",
+        "pct_all_consumption",
         "revenue_delivery",
         "pct_all_revenue",
     ]
@@ -138,11 +145,13 @@ def testimony_subclass_delivery_table_html(ns) -> str:
         .cols_label(
             n_customers_display="Customers",
             pct_customers_display="% of customers",
+            consumption_gwh="Consumption",
+            pct_all_consumption="% of consumption",
             revenue_delivery="Delivery revenue",
             pct_all_revenue="% of revenue",
         )
         .fmt_number(columns=["n_customers_display"], decimals=0, use_seps=True)
-        .fmt_percent(columns=["pct_customers_display", "pct_all_revenue"], decimals=1)
+        .fmt_percent(columns=["pct_customers_display", "pct_all_consumption", "pct_all_revenue"], decimals=1)
         .fmt_currency(columns=["revenue_delivery"], decimals=0)
         .cols_align(align="center", columns=_tcols)
         .tab_style(style.text(align="center"), locations=loc.stub())
@@ -235,6 +244,7 @@ By aligning delivery rates with cost causality, this proposal would eliminate th
 - **CLF-JPV-3:** List of workbooks used to produce the analysis
 - **CLF-JPV-4:** Correspondence with RIE's Ryan Constable on winter peaks and forecasts
 - **CLF-JPV-5:** RIE Test Year Rates and Revenue
+- **CLF-JPV-6:** Derivation of customer charge required to eliminate heat pump cross-subsidy through rate design alone
 
 
 ## II. The Cross-Subsidy Problem
@@ -646,104 +656,152 @@ To produce such forecasts for 2039, I followed RIE's recommended method: I estim
 
 ## IV. Why the Commission Should Act: Docket 4600 Principles and Goals
 
-**Q.** Why should the Commission address this cross-subsidy in the current proceeding?
+**Q.** You've made the case that default rates create a cross-subsidy from heat pump to fossil-fuel-heated customers. Why should the Commission address this issue in the current proceeding?
 <br>
-**A.** Because the cross-subsidy directly contradicts the rate design framework the Commission adopted in Docket 4600.
+**A.** In Order 22851 of the Docket 4600, the Commission adopted twelve principles that should govern rate design in Rhode Island, and eight goals for the future of its electric system.[^docket_4600_principles_and_goals] Default rates, and the cross-subsidy they create, contradict eight of these principles and undermine five of these goals.
 
-In Docket 4600, the Commission established 12 rate design principles and 8 goals for the future electric system. The most directly relevant is Goal 6 — "Appropriately charge customers for the cost they impose on the grid."
+Principles:
 
-As I have shown, heat pump customers' delivery cost-of-service is only `{python} f"{(v.hp_mean_delivery_cost / v.ff_mean_delivery_cost - 1) * 100:.0f}"`% higher than that of fossil-fuel-heated customers, but their delivery bills are `{python} f"{(v.hp_mean_delivery_bill / v.ff_mean_delivery_bill - 1) * 100:.0f}"`% higher. That gap is not an appropriate charge for the cost they impose. It is an overcharge of `{python} dollar(v.hp_mean_delivery_bat)` per customer per year.
+- Fair compensation (Principle 7)
+- Long-run marginal cost (Principle 3)
+- Economic efficiency (Principle 2)
+- Investments in the future energy system (Principle 12)
+- Policy goals (Principle 11)
+- Affordability and environmental responsibility (Principle 1)
+- Energy burden (Principle 10)
+- Externalities (Principle 4)
 
-The Docket 4600 framework was designed to guide exactly this kind of decision. Leaving the cross-subsidy in place while the Commission has the evidence to correct it would be inconsistent with the principles the Commission adopted to govern rate design in Rhode Island.
+Goals:
+
+- Appropriately charge customers for the cost they impose on the grid (Goal 6)
+- Facilitate customer investment in electrification of heating (Goal 4)
+- Align utility, customer, and policy objectives (Goal 8)
+- Address the challenge of climate change (Goal 3)
+- Reliable, safe, clean and affordable energy (Goal 1)
+
+[^docket_4600_principles_and_goals]: See order 22851 in RIPUC Docket No. 4600 [@ripuc_Docket4600Order_2017].
+
+In the next two questions, I address each of the 12 principles and 8 goals in turn, showing how the cross-subsidy created by default rates detracts from, and how our proposed heat pump rate advances, 8 of the principles and 5 of the goals.
 
 <br><br>
 
-**Q.** Order 22851 directs that any party proposing a rate design must address how the proposal advances, detracts from, or is neutral as to each of the rate design principles and goals adopted in Docket 4600. How does the heat pump rate perform against the 12 rate design principles?
+**Q.** Order 22851 in RIPUC Docket No. 4600 directs that any party proposing a rate design must address how the proposal advances, detracts from, or is neutral as to each of the 12 rate design principles adopted in Docket 4600 in that order. How does your heat pump cost allocation and rate design proposal perform against these principles?
 <br>
-**A.** The proposal advances 10 of the 12 principles, detracts from none, and is neutral on 2. I will address each in turn.
+**A.** The proposal advances 10 of the 12 principles, detracts from none, and is neutral on 2. I will address each in turn, in order of salience.
 
-1. **Safe, reliable, affordable, environmentally responsible service.** Advances. The proposal improves affordability for heat pump customers by eliminating the `{python} dollar(v.hp_mean_delivery_bat)` annual delivery overpayment. It advances environmental responsibility by removing the operating cost barrier that discourages electrification of heating. Safety and reliability are unaffected — this is a billing change, not a grid change.
+1. **All parties should provide fair compensation for value and services received and should receive fair compensation for value and benefits delivered.** _Advances._ This principle is at the heart of the proposal. Heat pump customers unfairly pay `{python} dollar(v.hp_mean_delivery_bat)` per year more than the delivery services they receive. Our heat pump rate corrects this by setting volumetric delivery rates at a level that ensures that heat pump customers are not providing compensation in excess of their delivery cost-of-service.
 
-2. **Economic efficiency.** Advances. Under current rates, heat pump customers' delivery bills are `{python} f"{(v.hp_mean_delivery_bill / v.ff_mean_delivery_bill - 1) * 100:.0f}"`% higher than those of fossil-fuel-heated customers — but their actual delivery cost-of-service is only `{python} f"{(v.hp_mean_delivery_cost / v.ff_mean_delivery_cost - 1) * 100:.0f}"`% higher. The current rate overstates the cost of electric heating and understates the cost of fossil-fuel heating, distorting the investment decisions of every homeowner weighing whether to switch. Correcting this improves economic efficiency.
+2. **Be consistent with policy goals (e.g. environmental, climate (Resilient Rhode Island Act), energy diversity, competition, innovation, power/data security, least cost procurement, etc.).** _Advances._ Rhode Island's Act on Climate and Resilient Rhode Island Act set binding targets for greenhouse gas emissions reductions that require widespread electrification of heating. RIE's default electric rates directly (and artificially) create an operating cost barrier to heat pump adoption, and this barrier is decisive: under current default rates, only `{python} pct(v.pct_natgas_save_default)` of gas-heated households would save money by switching to heat pumps. Under the heat pump rate, `{python} pct(v.pct_natgas_save_hprate)` would save. (See Section V.) The delivery overpayment is one of the largest obstacles to the electrification these laws require.
 
-3. **Price signals reflecting long-run marginal cost.** Advances. Volumetric delivery rates currently signal that winter electricity consumption is expensive to deliver. As I have shown, marginal distribution capacity costs are effectively zero in winter. The heat pump rate corrects this by aligning delivery charges with the actual temporal pattern of delivery costs.
+3. **Provide efficient price signals that reflect long-run marginal cost.** _Advances._ Our heat pump rate is a price that more accurately signals the delivery portion of the long-run marginal cost of serving heat pump customers.
 
-4. **Address externalities.** Advances. The cross-subsidy functions as a financial penalty on electrification — an externality imposed by rate design, not by physics. Removing it allows the operating cost advantage of heat pumps to be realized, enabling households to reduce their combustion of fossil fuels.
+   - Long-run marginal costs (LRMC) include a. short-run marginal costs (energy, congestion, losses, ancillary services), b. marginal generation capacity costs, c. marginal transmission and distribution capacity costs.
+   - Our proposal only covers _delivery_ cost allocation and rate design.
+   - Therefore, it does not affect the prices on the _supply_ side of the bill that collect a or b.
+   - Our proposal does, however, make _delivery_ prices better reflect the long-run marginal delivery cost (LRMDC) of serving heat pump customers: marginal transmission and distribution capacity costs.
+   - Specifically, it makes the delivery price _proportional_ to the LRDMC of heat pump customers. Our proposal lowers the delivery price (volumetric delivery rate) in order to collect true cost of service—a cost of service that is, by definition, proportional to their LRMDC: our cost-of-sevice study allocates costs to subclasses in proportion to their cost-causality, and cost-causality is defined as the total marginal T&D capacity costs incurred by the subclass over the course of the year due to its load profile.
+   - By contrast, under current delivery prices (default rates), delivery costs are allocated in proportion to total kilowatt-hours consumed. Because heat pump customers consume more kilowatt-hours — predominantly in winter, when marginal delivery costs are near zero — this allocation overshoots their actual LRMDC by an average of `{python} dollar(v.hp_mean_delivery_bat)` per year. (See Section II.)
+   - Our proposal does not make delivery prices better reflect LRMDC in the _temporal_ sense: the proposed rate is flat, and does get more expensive when the underlying marginal delivery costs increase, or less expensive when they decrease. It does so in the more fundamental sense of charging heat pump customers in line with their LRMDC.
+   - These two objectives can be combined, however: instead of using a flat rate to collect the "right-sized" cost obligation for heat pump customers determined by our cost allocation proposal, the same total target revenue could be collected by delivery rates that vary seasonally or (eventually) hourly, in proportion to underlying marginal delivery costs.
 
-5. **Empower consumers to manage costs.** Advances. Under current rates, a household considering a heat pump sees an inflated estimate of what electric heating would cost, because volumetric delivery rates charge for winter load as though it were causing grid costs. Accurate pricing enables informed decisions about heating investments.
+4. **Promote economic efficiency over the short and long term.** _Advances._
+   Our proposal lowers the total volumetric price for heat pump customers, which promotes efficiency over both short and long terms.
 
-6. **Utility cost recovery and revenue stability.** Neutral. Total residential class revenue is unchanged — the proposal reallocates revenue responsibility within the class, it does not reduce it. Revenue stability is maintained through the existing decoupling mechanism.
+   - **Short-term economic efficiency**
+     - Short-run marginal cost (SRMC) includes the cost of energy, congestion, losses, and ancillary services.
+     - Short-term economic efficiency is maximized when the prices consumers pay equal the short-run marginal cost of serving them, or when p = SRMC.
+     - When prices are closer to SRMC, consumers' moment-to-moment _consumption_ decisions — whether to run the dishwasher now or later, whether or not to turn up their air conditioner — better reflect the actual cost of producing and delivering that electricity at that time, holding infrastructure constant.
+     - Our proposal lowers the total price per kilowatt-hour for heat pump customers, bringing p closer to SRMC.
+     - The impact on short-run efficiency: a lower total price means that heat pump customers who would otherwise have curtailed consumption — because the price exceeded the value of the electricity to them — will consume closer to the efficient quantity of electricity.
+   - **Long-term economic efficiency**
+     - Long-run marginal cost (LRMC) includes SRMC, marginal generation capacity costs, and marginal transmission and distribution capacity costs.
+     - Long-term economic efficiency is maximized when the prices consumers pay reflect the long-run marginal cost of serving them, or when p = LRMC.
+     - When prices are closer to LRMC, consumers' _investment_ decisions — whether to electrify their heating by installing a heat pump — better reflect the actual long-run cost of the infrastructure needed to serve them.
+     - Our proposal lowers the total price per kilowatt-hour for heat pump customers, bringing p closer to LRMC.
+     - The impact on long-run efficiency: a lower total price means that homeowners who would otherwise have foregone a heat pump — because the projected operating cost exceeded the value of electrification to them — will invest closer to the efficient quantity of heat pump installations.
+     - Our data quantifies this directly: under current rates, a homeowner considering a heat pump sees a delivery bill that overstates their actual delivery cost-of-service by an average of `{python} dollar(v.hp_mean_delivery_bat)` per year, making electric heating appear more expensive than it is. (See Section II.) As a result, only `{python} pct(v.pct_natgas_save_default)` of gas-heated households would save money by switching to heat pumps. Under our proposed rate, `{python} pct(v.pct_natgas_save_hprate)` would save — the difference representing homeowners whose investment decisions are currently distorted by the mispricing. (See Section V)
 
-7. **Fair compensation for value and services.** Advances. This principle is at the heart of the proposal. Heat pump customers currently pay `{python} dollar(v.hp_mean_delivery_bat)` per year more than the delivery services they receive. The heat pump rate corrects this by setting delivery charges in proportion to delivery cost-of-service.
+5. **Rate structures should be evaluated on whether they encourage or discourage appropriate investments that enable the evolution of the future energy system.** _Advances._ As I showed in the preceding point, the current default rate discourages heat pump investment by overstating the delivery cost of electric heating. By lowering the volumetric delivery charge for heat pump customers—not as a subsidy, but because the cost-of-service analysis shows it is warranted—the proposal encourages investments in the efficient electrification of heating via heat pumps, which is a key step in the evolution of Rhode Island's energy system.  The Docket 4600 Stakeholder Report — produced by a working group that included Narrangansett Electric Company — anticipated this, observing that "lower volumetric charges (kWh) appear to provide higher incentives for electrification strategies" (Section 3.5).
 
-8. **Transparent and understandable.** Neutral. The heat pump rate is a flat volumetric rate — simple to understand and straightforward to implement. Creating a new subclass adds structural complexity to the tariff, but the rationale is intuitive: customers should pay for the costs they cause, not more.
+6. **Ensure safe, reliable, affordable, and environmentally responsible electricity service today and in the future.** _Advances._ The proposal improves affordability for heat pump customers by eliminating the `{python} dollar(v.hp_mean_delivery_bat)` annual delivery overpayment, and it does so without seriously affecting affordability for other customers—removing the cross-subsidy from their bills would only increase them by `{python} dollar(v.rebal_nonhp_mean_monthly_delta, 2)` per month, on average. (See Section IV.) It advances environmental responsibility by removing the operating cost barrier that discourages electrification of heating. Safety and reliability are unaffected — this is a billing change, not a grid change.
 
-9. **Gradualism.** Advances. Acting now, while heat pump penetration is approximately `{python} pct(v.hp_share_of_households)` of residential customers, *is* the gradual approach. The average impact on non-heat pump customers would be approximately `{python} dollar(v.rebal_nonhp_mean_monthly_delta, 2)` per month — well within the range the Commission has historically considered reasonable. Delay would not avoid the correction; it would make the eventual correction larger and less gradual, as the number of overpaying customers grows. The heat pump rate itself would be recalibrated in future rate cases as cost-of-service evolves, ensuring continued gradualism.
+7. **Provide opportunities to reduce energy burden, and address low income and vulnerable customers' needs.** _Advances._ Combined with 100% enrollment in RIE's proposed LMI discount program, the heat pump rate would enable low-income customers to meaningfully reduce their energy burdens by replacing their existing heating system with heat pumps (see Section VI)—while in many cases gaining cooling to meet their comfort and safety needs for the first time.
 
-10. **Energy burden and low-income needs.** Advances. Low-income households that install heat pumps face both the delivery overpayment and high energy burdens. Eliminating the overpayment directly reduces their energy costs. Combined with the LMI discount I propose in Section VI, the heat pump rate would meaningfully improve the economics of electrification for the households that need affordability most.
+8. **Future rates and rate structures should appropriately address "externalities" that are not adequately counted in current rate structures.** _Advances._ If "externalities" is meant in the traditional economics sense — costs imposed on third parties not reflected in market prices, such as the health and climate damages from fossil fuel combustion — then this proposal does not _directly_ internalize those costs into rates. That would require a carbon adder or similar mechanism. However, the cross-subsidy paid for by heat pump customers discourages the electrification of heating, which perpetuates fossil fuel combustion and the pollution externalities that accompany it. Removing the cross-subsidy would _indirectly_ reduce the emissions that this principle calls on rate design to address.
 
-11. **Consistent with policy goals.** Advances. Rhode Island's Act on Climate and Resilient Rhode Island Act set binding targets for greenhouse gas emissions reductions that require widespread electrification of heating. Under current default rates, only `{python} pct(v.pct_natgas_save_default_lmi40)` of low-income gas-heated households would save money by switching to heat pumps. Under the heat pump rate, `{python} pct(v.pct_natgas_save_hprate_lmi40)` would save. The delivery overpayment is one of the largest obstacles to the electrification these laws require.
 
-12. **Encourage investments enabling the future energy system.** Advances. The Docket 4600 Stakeholder Report — produced by a working group that included Narragansett Electric Company — observed that "lower volumetric charges (kWh) appear to provide higher incentives for electrification strategies" (Section 3.5). That is precisely what the heat pump rate does: it lowers the volumetric delivery charge for the customers whose winter load does not cause delivery costs, aligning the price signal with the grid reality.
+9. **Any changes in rate structures should be implemented with due consideration to the principle of gradualism in order to allow ample time for customers (including DER customers) to understand new rates and to lessen immediate bill impacts.** _Advances._ Acting now, while heat pump penetration is approximately `{python} pct(v.hp_share_of_households)` of residential customers, *is* the gradual approach. The average impact on non-heat pump customers would be approximately `{python} dollar(v.rebal_nonhp_mean_monthly_delta, 2)` per month — well within the range the Commission has historically considered reasonable. Delay would not avoid the correction; it would make the eventual correction larger and less gradual, as the number of overpaying heat pump customers grows. The heat pump rate itself would be recalibrated in future rate cases as cost-of-service evolves (which is expected to happen gradually, see Section II), ensuring continued gradualism.
+
+10. **Enable a fair opportunity for utility cost recovery of prudently incurred costs and revenue stability.** _Neutral._ Total residential class revenue is unchanged — the proposal reallocates revenue responsibility within the class, it does not reduce it.
+
+11. **Be transparent and understandable to all customers.** _Advances._ The heat pump rate itself is a flat volumetric rate — simple to understand and straightforward to implement. Creating a new rate schedule does mean one more thing for customers and the utility to keep track of, but the eligibility criteria—being a heat pump customer—is straightforward, and the rationale is intuitive: customers should pay for the costs they cause, not more.
+
+12. **Empower consumers to manage their costs.** _Neutral._ I interpret this principle as referring to tools and price signals that enable consumers to actively manage their consumption in real time — time-varying rates, demand response, distributed energy resources, and similar mechanisms. The heat pump rate does not provide such tools; it is a flat volumetric rate. However, it does not detract from this principle either, and as noted in Principle 3, it is compatible with future time-varying delivery rates that would both eliminate the cross-subsidy and further empower cost management.
 
 <br><br>
 
-**Q.** How does the proposal perform against the 8 goals of the future electric system?
+**Q.** Order 22851 in RIPUC Docket No. 4600 directs that any party proposing a rate design must address how the proposal advances, detracts from, or is neutral as to each of the eight goals of the future electric system adopted in Docket 4600. How does your heat pump cost allocation and rate design proposal perform against these goals?
 <br>
-**A.** It advances 6 of the 8 goals, detracts from none, and is neutral on 2.
+**A.** It advances 5 of the 8 goals, detracts from none, and is neutral on 3. I will address each in turn.
 
-1. **Reliable, safe, clean, affordable energy.** Advances — the proposal improves affordability and removes a barrier to clean energy adoption.
+1. **Appropriately charge customers for the cost they impose on the grid.** _Advances._ This is the core goal, and the core of this testimony. The heat pump rate aligns delivery charges with delivery cost-of-service.
 
-2. **Strengthen the Rhode Island economy and create jobs.** Advances — removing the operating cost barrier to heat pumps supports the growth of the HVAC workforce and the state's clean energy economy.
+2. **Address the challenge of climate change and other forms of pollution.** _Advances._ The proposal directly addresses the artificial operating cost barrier to building electrification, which is essential to meeting the state's emissions targets.
 
-3. **Address the challenges of climate change.** Advances — the proposal directly addresses the rate-design barrier to building electrification, which is essential to meeting the state's emissions targets.
+3. **Provide reliable, safe, clean and affordable energy to Rhode Island customers over the long term.** _Advances._ the proposal improves affordability for heat pump customers and removes a barrier to clean electric heating.
 
-4. **Facilitate customer investment in electrification of heating and vehicles.** Advances — this goal uses the exact phrase "electrification of heating." A rate that penalizes electric heating is inconsistent with a goal that seeks to facilitate it.
+4. **Prioritize and facilitate increasing customer investment in their facilities (efficiency, distributed generation, storage, responsive demand, and the electrification of vehicles and heating) where that investment provides recognizable net benefits.** _Advances._ This goal calls for facilitating "the electrification of vehicles and heating" where it provides net benefits. The delivery overpayment by heat pump customers obscures these net benefits in two ways. First, for some households it turns what would be net savings into a net loss — under current rates, only `{python} pct(v.pct_natgas_save_default)` of gas-heated households would save money after switching, compared to `{python} pct(v.pct_natgas_save_hprate)` under the heat pump rate. Second, for households that already save by switching under the default rates — such as those heating with oil and propane (`{python} pct(v.pct_oil_propane_save_default)` save under default rates) or electric resistance (`{python} pct(v.pct_elec_resistance_save_default)`) — the overpayment erodes `{python} dollar(v.oil_propane_delivery_erosion)` per year in average savings for oil and propane households and `{python} dollar(v.elec_resistance_delivery_erosion)` for electric resistance households, making electrification appear less attractive than it is.
 
-5. **Appropriately compensate DERs for the value they provide.** Neutral — this goal primarily concerns compensation for distributed generation and storage. The heat pump rate does not affect DER compensation.
+5. **Align distribution utility, customer, and policy objectives and interests through the regulatory framework, including rate design, cost recovery, and incentives.** _Advances._ The current rate structure creates a contradiction: the state's policy objectives require electrification of heating, while the rate structure penalizes customers who electrify—in order to lower the bills of fossil-heated customers. The heat pump rate we propose, designed to collect the correct cost obligation for heat pump customers, resolves this contradiction.
 
-6. **Appropriately charge customers for the cost they impose on the grid.** Advances — this is the core goal, and the core of this testimony. The heat pump rate aligns delivery charges with delivery cost-of-service.
+6. **Appropriately compensate distributed energy resources for the value they provide to the electricity system, customers, and society.** _Neutral._ This goal primarily concerns compensation for distributed generation and storage. The heat pump rate does not affect DER compensation.
 
-7. **Appropriately compensate the utility for the services it provides.** Neutral — total revenue is unchanged. The utility collects the same amount; the proposal changes how that amount is allocated among customers.
+7. **Appropriately compensate the distribution utility for the services it provides.** _Neutral._ Total revenue is unchanged. The utility collects the same amount; the proposal changes how that amount is allocated among customers.
 
-8. **Align utility, customer, and policy objectives.** Advances — the current rate structure creates a contradiction: the state's policy objectives require electrification of heating, while the rate structure penalizes customers who electrify. The heat pump rate resolves this contradiction.
+8. **Strengthen the RI economy, support economic competitiveness, retain and create jobs by optimizing the benefits of a modern grid and attaining appropriate rate design structures.** _Neutral._ While the proposal corrects for allocation within the residential class, and uses it to attain a more appropriate rate design structure, the structure itself does not meaningfully affect the state's economy, competitiveness, or employment.
 
 <br><br>
 
-**Q.** Did the Docket 4600 Working Group anticipate the kind of cost-shifting problem documented in this testimony?
+**Q.** Beyond the principles and goals, did the Docket 4600 Working Group address the kind of cost-shifting problem documented in this Section II of this testimony?
 <br>
 **A.** It did. The Stakeholder Report explicitly called for investigation into cost-shifting between customer groups:
 
 > "The Commission should investigate potential cost shifting and equity concerns over time as distributed generation and other types of DERs become more widespread." (Section 3.5)
 
-And it posed a direct question that this testimony answers:
+And it posed two questions that such an investigation would need to answer:
 
 > "What is the appropriate way to measure any cost-shift between DER and non-DER customers and at what level does it become unreasonable?" (Section 3.6)
 
-Our analysis provides one answer to that question. We measured the cost-shift using the methodology described in Section VII: it is `{python} dollar(v.hp_mean_delivery_bat)` per heat pump customer per year, totaling millions of dollars in aggregate.
+My analysis provides answers to both of these questions:
+
+**Methodology**: I measured the cost-shift using the cost-of-service methodology described in Section VII: it is `{python} dollar(v.hp_mean_delivery_bat)` per heat pump customer per year, totaling approximately `{python} f"${v.hp_total_cross_subsidy_delivery_millions:,.1f}"` million per year in aggregate as of the Test Year, a sum that will only grow as heat pump adoption increases.
+
+**Threshold for "unreasonable"**
+   - Regardless of the current magnitude of the cost-shift between heat pump and fossil-heated customers, I contend that it is already at an unreasonable level, because it turns net savings from switching to heat pumps into net losses for the majority of RIE's electric customers, thereby handicapping the state's strategic goal of widespread heating electrification from the very start.
+   - Put another way, unlike the more familiar cost-shift under net metering—where the impact on non-solar customers grows as solar adoption increases—the heat pump cost-shift hurts heat pump customers from the very beginning, regardless of penetration. (This is due to the fact that in the solar cost-shift case, a larger majority of non-adoptees subsidize a small minority adoptees, whereas in the heat pump cost-shift case, a small minority of adoptees subsidize a large majority of non-adoptees.)
 
 
 ## V. Proposed Remedy and Impact
 
 **Q.** What do you recommend the Commission do to address the cross-subsidy?
 <br>
-**A.** I recommend that the Commission create a new residential delivery rate subclass for heat pump customers, with a target revenue based on their actual delivery cost-of-service. T
+**A.** I recommend that the Commission create a new residential delivery rate subclass for heat pump customers, with a target revenue equal to their true delivery cost-of-service. This is fundamentally a **cost allocation** correction — the same kind of correction the Commission makes when it finds that one customer class is paying more or less than its cost-of-service, except applied one level down, within the residential class.
 
-his is fundamentally a **cost allocation** correction — the same kind of correction the Commission makes when it finds that one customer class is paying more or less than its cost-of-service, except applied one level down, within the residential class.
+It further recommend that the Commission create a new flat volumetric delivery rate to collect this target revenue, and auto-enroll all existing and new heat pump customers into this rate, steps that I will describe in more detail below.
 
 <br><br>
 
-**Q.** Why is a new subclass necessary? Could the existing rate be adjusted instead?
+**Q.** Why is a new rate schedule for heat pump customers necessary? Could the cross-subsidy be eliminated by adjusting the existing default rate instead?
 <br>
-**A.** The cross-subsidy is structural: it arises from the interaction between volumetric delivery rates and the fact that heat pump customers consume substantially more electricity than other residential customers, predominantly in winter. As long as heat pump customers remain on the same rate schedule as everyone else, volumetric rates will overcollect from them — regardless of how the rate level is set.
+**A.** The cross-subsidy is structural: it arises from the interaction between volumetric delivery rates and the fact that heat pump customers consume substantially more electricity than other residential customers, but without having proportionally higher cost-of-service (See Section III).
 
 Broadly speaking, there are two ways to eliminate this kind of intra-class cross-subsidy.
 
-The first is through cost allocation: creating a separate subclass with a revenue requirement that reflects the subgroup's actual cost-of-service.
+The first is through cost allocation: creating a separate subclass with a target revenue equal to the subgroup's actual cost-of-service, and designing a rate specifically for that subclass. This is what we propose.
 
-The second is through rate design: dramatically overhauling the default rate, such as significantly increasing the fixed customer charge for the entire residential class, shifting cost recovery away from volumetric charges. This approach would reduce the overcollection from high-use customers, but it is highly disruptive, regressive — it raises bills for low-use customers, who are disproportionately low-income — and it would weaken incentives for energy efficiency and distributed generation. In Docket 4770, nearly every intervenor opposed National Grid's proposal to increase the residential customer charge from $5 to $8.50 for exactly these reasons.
+The second is through default rate design alone: removing the cross-subsidy by redesigning the default rate would require a dramatic overhaul, such as significantly increasing the fixed customer charge for the entire residential class, in order to shift cost recovery away from volumetric charges. This approach would reduce the overcollection from high-use customers (including heat pump customers), but it would a. change every customer's bill significantly, b. be regressive, raising bills for low-use customers, who are disproportionately low-income, and c. weaken incentives for energy efficiency and distributed generation. In Docket 4770, nearly every intervenor opposed National Grid's proposal to increase the residential customer charge from $5 to $8.50 for exactly these reasons. But in order to fix the cross-subsidy through the customer charge alone, the customer charge would need to increase more than tenfold — from the current `{python} dollar(c.fc_current_customer_charge_monthly)`/month to approximately `{python} dollar(c.fc_new_customer_charge_monthly)`/month — while the total volumetric delivery rate would fall from `{python} cents(c.fc_current_volumetric_delivery_rate)`¢/kWh to roughly `{python} cents(c.fc_new_volumetric_delivery_rate)`¢/kWh. The full derivation is in Exhibit CLF-JPV-6.
 
-I recommend the first approach. A new subclass corrects the cost allocation directly and simply, without fundamentally redesigning the rate structure for RIE's `{python} comma(int(round(c.rie_rev_req_test_year_customer_count)))` residential customers. It moves approximately `{python} pct(v.hp_share_of_households)` of residential customers to a new schedule and slightly adjusts volumetric delivery rates for the rest. The cross-subsidy is eliminated with minimal disruption.
+I recommend the first approach, because it eliminates the cross-subsidy directly, simply, and with minimal disruption: the `{python} pct(v.hp_share_of_households)` of residential customers with heat pumps (or as many as can be identified) would be auto-enrolled into a new schedule, while delivery rates for non-heat pump customers remaining on the A-16 and A-60 schedules would be adjusted upward slightly—(see bill impact calculations below). By contrast, eliminating the cross-subsidy by redesigning the default rate would require a dramatic and controversial overhaul of the rate structure for all of RIE's `{python} comma(int(round(c.rie_rev_req_test_year_customer_count)))` residential customers.
 
 <br><br>
 
@@ -1020,3 +1078,176 @@ TODO: ADD OUR NCP-SUMMER RESULTS HERE.
 **Q.** Does this conclude your direct testimony?
 <br>
 **A.** Yes, it does. And I reserve the right to amend or supplement the testimony as may be needed.
+
+<br><br>
+
+## Exhibit CLF-JPV-6: Fixed Charge Calculation {.unnumbered}
+
+This exhibit derives the customer charge that would be required to eliminate the heat pump cross-subsidy through default rate design alone — that is, without creating a separate rate schedule and rate for heat pump customers.
+
+### Question
+
+If RIE kept the A-16 and A-60 residential rate classes and adjusted only their monthly customer charge and their total volumetric delivery rate, what customer charge would make the heat pump subclass's delivery revenue equal to its delivery cost-of-service?
+
+### Assumptions
+
+- **Total delivery revenue** is held fixed at `{python} million(c.fc_total_delivery_revenue)`. This is the total delivery revenue that RIE collected from residential customers during the test year.[^fc_total_delivery_revenue_note]
+- **Total residential consumption** is held fixed at `{python} comma(c.fc_total_kwh, 0)` kWh. This is the total residential consumption that RIE measured during the test year.[^fc_total_kwh_note]
+- Only two rate components change: the **monthly customer charge** $F$ and the **uniform volumetric delivery rate** $r$.
+- The two other per-customer fixed delivery charges — the RE Growth charge ($3.22/month) and the LIHEAP Enhancement charge ($0.79/month) — remain unchanged at `{python} dollar(c.fc_other_fixed_annual_per_customer / 12, 2)`/month per customer.
+- The number of customers in each subclass does not change.
+
+[^fc_total_delivery_revenue_note]: TODO cite
+[^fc_total_kwh_note]: TODO cite
+
+### Input data
+
+The following table summarizes the residential subclass data used in this calculation. All values are from RIE's test year.
+
+```{python}
+#| echo: false
+import polars as pl
+from great_tables import GT, loc, style
+from lib.great_tables import get_switchbox_gt_tab_options
+
+_fc_df = pl.DataFrame(c.fc_exhibit_rows)
+_fc_df = _fc_df.with_columns(
+    pl.col("consumption_gwh")
+    .map_elements(lambda v: f"{v:,.1f} GWh", return_dtype=pl.String)
+    .alias("consumption_gwh"),
+)
+_fc_cols = ["n_customers", "consumption_gwh", "cost_of_service", "cross_subsidy"]
+_fc_gt = (
+    GT(_fc_df, rowname_col="subclass")
+    .cols_label(
+        n_customers="Customers",
+        consumption_gwh="Consumption",
+        cost_of_service="Cost of service",
+        cross_subsidy="Cross-subsidy",
+    )
+    .fmt_number(columns=["n_customers"], decimals=0, use_seps=True)
+    .fmt_currency(columns=["cost_of_service", "cross_subsidy"], decimals=0)
+    .sub_missing(missing_text="—")
+    .cols_align(align="center", columns=_fc_cols)
+    .tab_style(style.text(align="center"), locations=loc.stub())
+    .tab_style(style.text(align="center"), locations=loc.column_labels())
+    .tab_options(**get_switchbox_gt_tab_options(
+        table_layout="auto",
+        extra_table_additional_css=[
+            ".table-striped > tbody > tr:nth-of-type(odd) > * { --bs-table-striped-bg: transparent !important; }",
+        ],
+    ))
+)
+_fc_gt
+```
+
+A positive cross-subsidy means the subclass pays more in delivery revenue than its cost-of-service; a negative cross-subsidy means it pays less.
+
+The goal is to find the customer charge $F$ that sets the heat pump cross-subsidy to zero.
+
+### Derivation
+
+**Revenue identity.** Total delivery revenue $R$ is the sum of fixed revenue and volumetric revenue:
+
+$$R = (F \times 12 \times N) + (G \times N) + (r \times Q)$$
+
+where:
+
+- $F$ is the monthly customer charge
+- $N$ = `{python} comma(c.fc_total_n_customers, 0)` is the **total number of residential customers**
+- $G$ = `{python} dollar(c.fc_other_fixed_annual_per_customer, 2)` is the **annual per-customer revenue** from all other fixed delivery charges
+- $r$ is the **volumetric delivery rate** ($/kWh)
+- $Q$ = `{python} comma(c.fc_total_kwh, 0)` kWh is **total residential consumption**
+
+<br>
+
+**Solving for $r$.** Because $R$ is fixed, increasing $F$ lowers $r$:
+
+$$r = \frac{R - (F \times 12 \times N) - (G \times N)}{Q}$$
+
+<br>
+
+**HP subclass revenue.** Under the new rate, heat pump customers' delivery revenue is:
+
+$$\text{Rev}_{\text{HP}} = (F \times 12 \times N_{\text{HP}}) + (G \times N_{\text{HP}}) + (r \times Q_{\text{HP}})$$
+
+where:
+
+- $N_{\text{HP}}$ = `{python} comma(c.fc_hp_n_customers, 0)` is the **number of heat pump customers**
+- $Q_{\text{HP}}$ = `{python} comma(c.fc_hp_kwh, 0)` kWh is **heat pump consumption**
+
+<br>
+
+**Setting cross-subsidy to zero.** We want
+
+$$\begin{aligned}
+\text{Rev}_{\text{HP}} - \text{COS}_{\text{HP}} &= 0 \\
+\text{Rev}_{\text{HP}} &= \text{COS}_{\text{HP}}
+\end{aligned}$$
+
+where:
+
+- $\text{Rev}_{\text{HP}}$ is the **heat pump delivery revenue**
+- $\text{COS}_{\text{HP}}$ = `{python} dollar(c.fc_hp_cos, 0)` is the **heat pump cost-of-service**
+
+<br>
+
+Substituting $r$ from above and letting $s = Q_{\text{HP}} / Q$ denote the HP share of total consumption:
+
+$$\begin{aligned}
+\text{Rev}_{\text{HP}} &= (F \times 12 \times N_{\text{HP}}) + (G \times N_{\text{HP}}) + \frac{R - (F \times 12 \times N) - (G \times N)}{Q} \times Q_{\text{HP}} \\
+&= (F \times 12 \times N_{\text{HP}}) + (G \times N_{\text{HP}}) + s \times \bigl(R - (F \times 12 \times N) - (G \times N)\bigr) \\
+&= (F \times 12) \times (N_{\text{HP}} - s \times N) + G \times (N_{\text{HP}} - s \times N) + (s \times R)
+\end{aligned}$$
+
+Setting $\text{Rev}_{\text{HP}} = \text{COS}_{\text{HP}}$ and solving for $F$:
+
+$$F = \frac{\text{COS}_{\text{HP}} - s \times R - G \times (N_{\text{HP}} - s \times N)}{12 \times (N_{\text{HP}} - s \times N)}$$
+
+<br>
+
+The key term is $(N_{\text{HP}} - s \times N)$: heat pump customers are `{python} pct(c.fc_hp_n_customers / c.fc_total_n_customers, 1)` of customers but consume `{python} pct(c.fc_hp_kwh / c.fc_total_kwh, 1)` of total kWh, so $s > N_{\text{HP}} / N$ and $(N_{\text{HP}} - s \times N)$ is **negative**.
+
+In other words: a higher customer charge shifts revenue from volumetric to fixed collection; because HP customers consume disproportionately more kWh, they lose more volumetric revenue than they gain in fixed revenue, reducing their cross-subsidy.
+
+### Calculation
+
+```{python}
+#| echo: false
+#| output: asis
+_R = c.fc_total_delivery_revenue
+_N = c.fc_total_n_customers
+_N_hp = c.fc_hp_n_customers
+_Q = c.fc_total_kwh
+_Q_hp = c.fc_hp_kwh
+_G = c.fc_other_fixed_annual_per_customer
+_COS_hp = c.fc_hp_cos
+_s = _Q_hp / _Q
+_denom_term = _N_hp - _s * _N
+_F = (_COS_hp - _s * _R - _G * _denom_term) / (12.0 * _denom_term)
+_r_new = (_R - _F * 12.0 * _N - _G * _N) / _Q
+
+print(f"""**Step 1: HP share of consumption.**
+
+$$s = \\frac{{Q_{{\\text{{HP}}}}}}{{Q}} = \\frac{{{comma(c.fc_hp_kwh, 0)}\\text{{ kWh}}}}{{{comma(c.fc_total_kwh, 0)}\\text{{ kWh}}}} = {_s:.4f}$$
+
+**Step 2: Denominator term.**
+
+$$N_{{\\text{{HP}}}} - s \\times N = {comma(c.fc_hp_n_customers, 0)} - {_s:.4f} \\times {comma(c.fc_total_n_customers, 0)} = {_denom_term:,.1f}$$
+
+**Step 3: Solve for $F$.**
+
+$$F = \\frac{{\\${c.fc_hp_cos:,.0f} - {_s:.4f} \\times \\${c.fc_total_delivery_revenue:,.0f} - \\${c.fc_other_fixed_annual_per_customer:,.2f} \\times ({_denom_term:,.1f})}}{{12 \\times ({_denom_term:,.1f})}}$$
+
+$$F = \\${_F:,.2f}\\text{{/month}}$$
+
+**Step 4: New volumetric rate.**
+
+$$r = \\frac{{\\${c.fc_total_delivery_revenue:,.0f} - \\${_F:,.2f} \\times 12 \\times {comma(c.fc_total_n_customers, 0)} - \\${c.fc_other_fixed_annual_per_customer:,.2f} \\times {comma(c.fc_total_n_customers, 0)}}}{{{comma(c.fc_total_kwh, 0)}\\text{{ kWh}}}}$$
+
+$$r = {cents(_r_new, 2)}\\text{{¢/kWh}}$$""")
+```
+
+### Result
+
+To eliminate the heat pump cross-subsidy through the customer charge alone, the monthly customer charge would need to increase from `{python} dollar(c.fc_current_customer_charge_monthly)`/month to approximately **`{python} dollar(_F, 2)`/month** — more than a tenfold increase — while the total volumetric delivery rate would fall from `{python} cents(c.fc_current_volumetric_delivery_rate, 2)`¢/kWh to approximately **`{python} cents(_r_new, 2)`¢/kWh**.

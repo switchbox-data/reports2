@@ -944,6 +944,8 @@ s3://data.sb/<org>/<dataset>/<filename_YYYYMMDD.parquet>
 
 When running inside Cursor, use `$$...$$` for display math and `$...$` for inline math. Cursor's chat renderer does not support `\[...\]` or `\(...\)` — the backslashes are consumed by the markdown parser, leaving bare brackets that the math renderer ignores. This applies only to chat responses; `.qmd` files should use whatever delimiters Quarto/Pandoc expects.
 
+**Currency dollar signs in chat:** Cursor's chat renderer treats `$...$` as LaTeX math delimiters. A bare `$` used for currency (e.g. `$1.4M`) will pair with the next `$` on the same or a later line, and everything in between renders as garbled math. **In chat output, always wrap currency amounts in backticks** (e.g. `` `$1.4M` ``, `` `$6/month` ``) so the `$` is treated as literal text. This only applies to Cursor chat responses — `.md` and `.qmd` files committed to the repo should use bare `$` for currency as usual.
+
 ## Code quality
 
 Before considering any change done:

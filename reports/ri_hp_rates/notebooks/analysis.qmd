@@ -174,6 +174,26 @@ bills_tou_hp = (
 )
 ```
 
+Let's take a look at the sample size and how the ResStock weights map to actual RIE customers.
+
+```{python}
+#| label: sample-size
+
+# Collect only what we need: one row per building, for the annual summary
+_sample = (
+    bills_current
+    .filter(pl.col("month") == ANNUAL_MONTH)
+    .select(BLDG_ID, "weight")
+    .collect()
+)
+
+n_resstock_bldgs = _sample[BLDG_ID].n_unique()
+n_rie_customers = int(round(_sample["weight"].sum()))
+
+print(f"Unique ResStock buildings in RI sample: {n_resstock_bldgs:,}")
+print(f"Total RIE residential customers (sum of weights): {n_rie_customers:,}")
+```
+
 ResStock's `in.representative_income` is denominated in 2019 dollars (ACS 2018 survey vintage). Since the bills
 are priced at current tariff rates (~2025 dollars), we inflate income to the same year using CPI before computing
 energy burden ratios. The CPI ratio is loaded from S3 — the same data the LMI tier-assignment code uses.
@@ -2237,6 +2257,11 @@ report_vars["er_mean_delivery_cost"] = (
     + _weighted_mean(_er_sub, RESIDUAL_DELIVERY, "weight")
 )
 
+# Delivery residual fraction: what share of total delivery revenue is residual (not MC)?
+_total_delivery_revenue = (bat_all["annual_bill_delivery"] * bat_all["weight"]).sum()
+_total_delivery_mc = (bat_all["economic_burden_delivery"] * bat_all["weight"]).sum()
+report_vars["delivery_residual_pct"] = (_total_delivery_revenue - _total_delivery_mc) / _total_delivery_revenue
+
 _bat_simple_gt = (
     GT(pl.DataFrame(_bat_simple_rows), rowname_col="heating_type")
     .fmt_currency(columns="mean_bat", decimals=0)
@@ -2628,6 +2653,39 @@ _rate_gt = (
 
 Path("../cache").mkdir(exist_ok=True)
 Path("../cache/rate_table.html").write_text(_rate_gt.as_raw_html())
+
+# Use filed (uncalibrated) rates for reporting — calibrated rates are CAIRO artifacts
+_default_filed = _load_rate("rie_default.json")
+_filed_delivery_rates = _get_rates(_default_filed)
+report_vars["elec_fixed_charge"] = _default_filed.get("fixedchargefirstmeter", 0)
+report_vars["elec_delivery_avg_cents"] = sum(_filed_delivery_rates) / len(_filed_delivery_rates) * 100
+
+GAS_TARIFF_DIR = f"rate_design/hp_rates/{_state_lower}/config/tariffs/gas"
+_gas_tariff = json.loads(
+    fetch_rdp_file(f"{GAS_TARIFF_DIR}/rie_heating.json", ref=RDP_REF)
+)["items"][0]
+report_vars["gas_fixed_charge"] = _gas_tariff.get("fixedchargefirstmeter", 0)
+_gas_rates_kwh = [t[0]["rate"] for t in _gas_tariff["energyratestructure"]]
+report_vars["gas_avg_per_therm"] = sum(_gas_rates_kwh) / len(_gas_rates_kwh) * 29.3
+
+# Supply (LRS) — 3 seasonal periods; the supply tariff file is delivery+supply
+# combined (CAIRO convention), so subtract the delivery rate to isolate supply.
+_lrs_tariff = _load_rate("rie_default_supply.json")
+_lrs_rates = _get_rates(_lrs_tariff)
+_delivery_avg_rate = sum(_filed_delivery_rates) / len(_filed_delivery_rates)
+_supply_only_rates = [r - _delivery_avg_rate for r in _lrs_rates]
+report_vars["elec_lrs_min_cents"] = min(_supply_only_rates) * 100
+report_vars["elec_lrs_max_cents"] = max(_supply_only_rates) * 100
+
+# Gas Rate 10 (non-heating)
+_gas_nh_tariff = json.loads(
+    fetch_rdp_file(f"{GAS_TARIFF_DIR}/rie_nonheating.json", ref=RDP_REF)
+)["items"][0]
+report_vars["gas_nonheating_fixed_charge"] = _gas_nh_tariff.get("fixedchargefirstmeter", 0)
+_gas_nh_rates_kwh = [t[0]["rate"] for t in _gas_nh_tariff["energyratestructure"]]
+report_vars["gas_nonheating_avg_per_therm"] = (
+    sum(_gas_nh_rates_kwh) / len(_gas_nh_rates_kwh) * 29.3
+)
 
 _rate_gt
 ```
@@ -4202,6 +4260,7 @@ plot_burden_bar(
 )
 ```
 
+
 #### By utility
 
 ```{python}
@@ -4370,6 +4429,8 @@ report_vars["pct_burdened_hp_flat"] = above_hp_flat / 100
 report_vars["pct_burdened_current_lmi40"] = above_current_lmi40 / 100
 report_vars["pct_burdened_hp_default_lmi40"] = above_hp_default_lmi40 / 100
 report_vars["pct_burdened_hp_flat_lmi40"] = above_hp_flat_lmi40 / 100
+report_vars["n_resstock_bldgs"] = n_resstock_bldgs
+report_vars["n_rie_customers"] = n_rie_customers
 ```
 
 ## Export report variables

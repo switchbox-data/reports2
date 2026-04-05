@@ -1014,6 +1014,280 @@ Path("../cache/rie_rev_req_programs_by_bucket.html").write_text(_gt_rr_prog.as_r
 _gt_rr_prog
 ```
 
+### HP rate comparison tables (by area and by line item)
+
+The HP flat rate applies a **uniform volumetric discount** to all delivery components. We compute the discount ratio from the calibrated tariffs and apply it to every volumetric line item. Per-customer charges are unchanged.
+
+```{python}
+#| label: hp-rate-comparison-tables
+
+_hp_discount_ratio = _hp_flat_vol_usd_kwh / _default_vol_usd_kwh
+_hp_pct_reduction = 1.0 - _hp_discount_ratio
+
+_nonhp_default_vol_usd_kwh = _rie_calibrated_volumetric_usd_per_kwh(
+    rel_filename="rie_nonhp_default_calibrated.json",
+)
+_adj_default_ratio = _nonhp_default_vol_usd_kwh / _default_vol_usd_kwh
+_adj_default_pct_increase = _adj_default_ratio - 1.0
+
+# --- Shared: area-level volumetric budgets ---
+
+_vol_areas = (
+    _rie_rr_detail_sorted
+    .filter(pl.col("charge_unit").str.to_lowercase().str.contains("kwh"))
+    .group_by("area")
+    .agg(pl.col("total_budget").sum())
+)
+_area_order_names = [a for a in _RIE_RR_CHART_LABEL_ORDER if a != "Customer Charge"]
+_area_order_df = pl.DataFrame(
+    {"area": _area_order_names, "_ao": list(range(len(_area_order_names)))},
+)
+_vol_areas = (
+    _vol_areas.join(_area_order_df, on="area", how="left")
+    .with_columns(pl.col("_ao").fill_null(99))
+    .sort("_ao")
+    .drop("_ao")
+)
+
+
+def _build_area_gt(
+    ratio: float,
+    pct_change: float,
+    new_total_c: float,
+    *,
+    col_label: str,
+    change_label: str,
+    change_fmt: str,
+    cache_filename: str,
+) -> GT:
+    """Build an area-level rate comparison GT (HP or adjusted default)."""
+    rows: list[dict] = []
+    for row in _vol_areas.iter_rows(named=True):
+        default_c = 100.0 * row["total_budget"] / _ty_kwh
+        new_c = default_c * ratio
+        rows.append({
+            "area": row["area"],
+            "default_rate": default_c,
+            "new_rate": new_c,
+            "pct_change": pct_change * 100.0,
+        })
+    rows.append({
+        "area": "Total",
+        "default_rate": _default_vol_usd_kwh * 100.0,
+        "new_rate": new_total_c * 100.0,
+        "pct_change": pct_change * 100.0,
+    })
+    df = pl.DataFrame(rows)
+
+    gt = (
+        GT(df)
+        .cols_label(
+            area="Area",
+            default_rate="Default rate",
+            new_rate=col_label,
+            pct_change=change_label,
+        )
+        .fmt_number(columns=["default_rate", "new_rate"], decimals=2, pattern="{x}¢/kWh")
+        .fmt_number(columns="pct_change", decimals=1, pattern=change_fmt)
+        .cols_align(align="left", columns="area")
+        .cols_align(align="right", columns=["default_rate", "new_rate", "pct_change"])
+        .tab_options(**get_switchbox_gt_tab_options(
+            table_layout="auto",
+            extra_table_additional_css=[
+                ".table-striped > tbody > tr:nth-of-type(odd) > * { --bs-table-striped-bg: transparent !important; }",
+            ],
+        ))
+    )
+    for i, a in enumerate(df["area"].to_list()):
+        a = str(a)
+        if a == "Total":
+            gt = gt.tab_style(
+                style=[style.text(weight="bold")],
+                locations=loc.body(rows=[i]),
+            )
+            continue
+        bg = _RIE_RR_FILL.get(a, SB_COLORS["gray_light"])
+        fg = _RIE_RR_BUCKET_TEXT.get(a, SB_COLORS["midnight"])
+        gt = gt.tab_style(
+            style=[style.fill(color=bg), style.text(color=fg, weight="bold")],
+            locations=loc.body(columns="area", rows=[i]),
+        )
+
+    Path(f"../cache/{cache_filename}").write_text(gt.as_raw_html(), encoding="utf-8")
+    return gt
+
+
+# --- Table 1a: HP rate by area ---
+_gt_area_hp = _build_area_gt(
+    _hp_discount_ratio, _hp_pct_reduction, _hp_flat_vol_usd_kwh,
+    col_label="HP rate",
+    change_label="Change",
+    change_fmt="-{x}%",
+    cache_filename="rate_comparison_by_area.html",
+)
+_gt_area_hp
+```
+
+```{python}
+#| label: adj-default-rate-comparison-by-area
+
+# --- Table 1b: adjusted default rate by area ---
+_gt_area_adj = _build_area_gt(
+    _adj_default_ratio, _adj_default_pct_increase, _nonhp_default_vol_usd_kwh,
+    col_label="Adj. default rate",
+    change_label="Change",
+    change_fmt="+{x}%",
+    cache_filename="rate_comparison_adj_default_by_area.html",
+)
+_gt_area_adj
+```
+
+```{python}
+#| label: hp-rate-comparison-line-items
+
+# --- Table 2: full line-item detail (for exhibit) ---
+
+_detail_with_rates = _rie_rr_detail_sorted.with_columns(
+    pl.Series("rate_display", _rie_rr_rate_display),
+)
+_is_vol = _detail_with_rates["charge_unit"].str.to_lowercase().str.contains("kwh")
+
+_hp_rate_display: list[str] = []
+_reduction_display: list[str] = []
+_adj_default_display: list[str] = []
+_adj_change_display: list[str] = []
+for _idx in range(_detail_with_rates.height):
+    _rd = str(_detail_with_rates["rate_display"][_idx])
+    if _is_vol[_idx]:
+        _budget = float(_detail_with_rates["total_budget"][_idx])
+        _default_c = 100.0 * _budget / _ty_kwh
+        _hp_c = _default_c * _hp_discount_ratio
+        _adj_c = _default_c * _adj_default_ratio
+        if _default_c < 0:
+            _hp_rate_display.append(f"-{abs(_hp_c):.2f}¢/kWh")
+            _adj_default_display.append(f"-{abs(_adj_c):.2f}¢/kWh")
+        else:
+            _hp_rate_display.append(f"{_hp_c:.2f}¢/kWh")
+            _adj_default_display.append(f"{_adj_c:.2f}¢/kWh")
+        _reduction_display.append(f"-{_hp_pct_reduction * 100.0:.1f}%")
+        _adj_change_display.append(f"+{_adj_default_pct_increase * 100.0:.1f}%")
+    else:
+        _hp_rate_display.append(_rd)
+        _reduction_display.append("—")
+        _adj_default_display.append(_rd)
+        _adj_change_display.append("—")
+
+_detail_for_gt = (
+    _detail_with_rates.select("area", "charge", "rate_display")
+    .with_columns(
+        pl.Series("hp_rate_display", _hp_rate_display),
+        pl.Series("reduction_display", _reduction_display),
+        pl.Series("adj_default_display", _adj_default_display),
+        pl.Series("adj_change_display", _adj_change_display),
+    )
+)
+
+# Area column: show label only on first row of each contiguous block.
+_detail_for_gt = _detail_for_gt.with_columns(
+    pl.col("area").alias("_area_key"),
+).with_columns(
+    pl.when(
+        pl.col("_area_key").shift(1).is_not_null()
+        & (pl.col("_area_key").shift(1) == pl.col("_area_key")),
+    )
+    .then(pl.lit(""))
+    .otherwise(pl.col("area"))
+    .alias("area"),
+)
+
+# Add a Total row.
+_total_row = pl.DataFrame([{
+    "area": "Total",
+    "charge": "",
+    "rate_display": f"{_default_vol_usd_kwh * 100.0:.2f}¢/kWh",
+    "hp_rate_display": f"{_hp_flat_vol_usd_kwh * 100.0:.2f}¢/kWh",
+    "reduction_display": f"-{_hp_pct_reduction * 100.0:.1f}%",
+    "adj_default_display": f"{_nonhp_default_vol_usd_kwh * 100.0:.2f}¢/kWh",
+    "adj_change_display": f"+{_adj_default_pct_increase * 100.0:.1f}%",
+    "_area_key": "Total",
+}])
+_detail_for_gt = pl.concat([_detail_for_gt, _total_row], how="diagonal")
+
+_gt_detail_df = _detail_for_gt.drop("_area_key")
+_gt_detail_comp = (
+    GT(_gt_detail_df)
+    .tab_header(
+        title="Delivery rates: default, proposed HP, and adjusted default schedules",
+        subtitle="Per-customer charges are unchanged. HP volumetric charges are reduced; non-HP volumetric charges are increased to maintain revenue neutrality.",
+    )
+    .cols_label(
+        area="Area",
+        charge="Charge",
+        rate_display="Default rate",
+        hp_rate_display="HP rate",
+        reduction_display="HP change",
+        adj_default_display="Adj. default rate",
+        adj_change_display="Adj. change",
+    )
+    .cols_align(align="left", columns=["area", "charge"])
+    .cols_align(align="right", columns=["rate_display", "hp_rate_display", "reduction_display", "adj_default_display", "adj_change_display"])
+    .tab_options(**get_switchbox_gt_tab_options(
+        extra_table_additional_css=[
+            ".table-striped > tbody > tr:nth-of-type(odd) > * { --bs-table-striped-bg: transparent !important; }",
+        ],
+    ))
+)
+
+# Color area cells (same logic as the programs-by-bucket table).
+for _i in range(_detail_for_gt.height):
+    _key = str(_detail_for_gt["_area_key"][_i])
+    _area_shown = str(_detail_for_gt["area"][_i])
+    if _key == "Total":
+        _gt_detail_comp = _gt_detail_comp.tab_style(
+            style=[style.text(weight="bold")],
+            locations=loc.body(rows=[_i]),
+        )
+        continue
+    if not _area_shown:
+        _gt_detail_comp = _gt_detail_comp.tab_style(
+            style=[
+                style.fill(color=SB_COLORS["white"]),
+                style.text(color="#4D4D4D", weight="normal"),
+            ],
+            locations=loc.body(columns="area", rows=[_i]),
+        )
+        continue
+    _bg = _RIE_RR_FILL.get(_key, SB_COLORS["gray_light"])
+    _fg = _RIE_RR_BUCKET_TEXT.get(_key, SB_COLORS["midnight"])
+    _gt_detail_comp = _gt_detail_comp.tab_style(
+        style=[style.fill(color=_bg), style.text(color=_fg, weight="bold")],
+        locations=loc.body(columns="area", rows=[_i]),
+    )
+
+Path("../cache/rate_comparison_line_items.html").write_text(
+    _gt_detail_comp.as_raw_html(), encoding="utf-8",
+)
+
+report_vars["hp_discount_ratio"] = _hp_discount_ratio
+report_vars["hp_pct_reduction"] = _hp_pct_reduction
+report_vars["default_vol_usd_kwh"] = _default_vol_usd_kwh
+report_vars["nonhp_adj_default_vol_usd_kwh"] = _nonhp_default_vol_usd_kwh
+report_vars["adj_default_pct_increase"] = _adj_default_pct_increase
+
+_fixed_charges = (
+    _detail_with_rates
+    .filter(~_is_vol)
+    .select("charge", "rate_display")
+)
+_fc_parts = [
+    f"{row['rate_display']} for the {row['charge'].lower()}"
+    for row in _fixed_charges.iter_rows(named=True)
+]
+report_vars["fixed_charges_description"] = ", ".join(_fc_parts)
+
+_gt_detail_comp
+```
+
 ## Load, validate, and aggregate (both scenarios)
 
 We `scan_parquet` each master BAT root with `hive_partitioning=True` (same as `analysis.qmd`), filter to RIE, derive **cost of service (delivery)**, then **validate** weighted totals against the YAML and **aggregate** by `heating_type_v2` with the spine + integer display counts. The cell below defines small helpers and runs the pipeline twice: **`bat` / `cos_tbl`** for **run 1+2**, **`bat_hp_flat` / `cos_tbl_hp_flat`** for **run 17+18**.
@@ -1048,6 +1322,7 @@ def load_master_bat(path_master_bat: str) -> pl.DataFrame:
         pl.scan_parquet(path_master_bat, hive_partitioning=True)
         .filter(pl.col("sb.electric_utility") == UTILITY)
         .select(
+            "bldg_id",
             "weight",
             "postprocess_group.heating_type_v2",
             "annual_bill_delivery",
@@ -1840,6 +2115,206 @@ report_vars["fc_other_fixed_annual_per_customer"] = (
     _annual_fixed_per_customer - _CURRENT_CUSTOMER_CHARGE_MONTHLY * 12.0
 )
 report_vars["fc_total_delivery_revenue"] = TOTAL_DELIVERY_REVENUE_REQUIREMENT
+```
+
+## Seasonal rate to eliminate HP cross-subsidy
+
+The fixed-charge exhibit above asks: *what customer charge eliminates the HP cross-subsidy?* Here we ask the complementary question: *can seasonal volumetric rates eliminate the HP cross-subsidy while holding fixed charges constant?*
+
+We define winter as October–March and summer as April–September, matching the seasonal HP tariff definition in `ri/config/periods/rie.yaml`. We load monthly electricity consumption from `load_curve_monthly` (upgrade=00, since run 1+2 is the status-quo stock), split each building's annual kWh into winter and summer, and then solve the 2×2 linear system:
+
+1. **Revenue neutrality:** $r_w \cdot W_\text{all} + r_s \cdot S_\text{all} = R - F_\text{all}$
+2. **HP cross-subsidy = 0:** $r_w \cdot W_\text{hp} + r_s \cdot S_\text{hp} = C_\text{hp} - F_\text{hp}$
+
+where $r_w, r_s$ are winter/summer volumetric rates, $W, S$ are weighted seasonal kWh, $R$ is total delivery revenue, $F$ is total fixed delivery revenue, and $C_\text{hp}$ is HP cost-of-service.
+
+```{python}
+#| label: seasonal-rate-solve
+
+from pathlib import Path as _Path
+
+WINTER_MONTHS = [10, 11, 12, 1, 2, 3]
+_ELEC_COL = "out.electricity.total.energy_consumption"
+_LOAD_BASE = _Path("/ebs/data/nrel/resstock/res_2024_amy2018_2_sb/load_curve_monthly/state=RI/upgrade=00")
+
+_seasonal_kwh = (
+    pl.scan_parquet(_LOAD_BASE)
+    .select("bldg_id", "month", _ELEC_COL)
+    .with_columns(pl.col("month").is_in(WINTER_MONTHS).alias("is_winter"))
+    .group_by("bldg_id", "is_winter")
+    .agg(pl.col(_ELEC_COL).sum().alias("season_kwh"))
+    .collect()
+)
+_winter = _seasonal_kwh.filter(pl.col("is_winter")).select("bldg_id", pl.col("season_kwh").alias("winter_kwh"))
+_summer = _seasonal_kwh.filter(~pl.col("is_winter")).select("bldg_id", pl.col("season_kwh").alias("summer_kwh"))
+_bldg_seasonal = (
+    _winter.join(_summer, on="bldg_id", how="outer_coalesce")
+    .with_columns(pl.col("winter_kwh").fill_null(0.0), pl.col("summer_kwh").fill_null(0.0))
+)
+
+bat_seasonal = bat.with_columns(pl.col("bldg_id").cast(pl.Int64)).join(_bldg_seasonal, on="bldg_id", how="left")
+_n_missing = bat_seasonal.filter(pl.col("winter_kwh").is_null()).height
+assert _n_missing == 0, f"{_n_missing} buildings in BAT missing from monthly loads"
+
+_annual_from_seasonal = bat_seasonal["winter_kwh"] + bat_seasonal["summer_kwh"]
+_annual_from_bills = bat_seasonal["annual_kwh"]
+_max_pct_diff = float((((_annual_from_seasonal - _annual_from_bills).abs() / _annual_from_bills.abs().clip(lower_bound=1.0)).max()))
+print(f"Max % diff between seasonal sum and bill-derived annual kWh: {_max_pct_diff:.4%}")
+
+_ht_col = "postprocess_group.heating_type_v2"
+_hp_mask = bat_seasonal[_ht_col].is_in([k for k, v in HT_V2_LABELS.items() if v == "Heat pump"])
+
+_w = bat_seasonal["weight"]
+W_all = float((_w * bat_seasonal["winter_kwh"]).sum())
+S_all = float((_w * bat_seasonal["summer_kwh"]).sum())
+W_hp = float((_w.filter(_hp_mask) * bat_seasonal.filter(_hp_mask)["winter_kwh"]).sum())
+S_hp = float((_w.filter(_hp_mask) * bat_seasonal.filter(_hp_mask)["summer_kwh"]).sum())
+
+print(f"\nWeighted seasonal kWh (all customers): winter {W_all/1e6:,.1f} GWh, summer {S_all/1e6:,.1f} GWh")
+print(f"Weighted seasonal kWh (HP customers):  winter {W_hp/1e6:,.1f} GWh, summer {S_hp/1e6:,.1f} GWh")
+print(f"HP winter share: {W_hp/W_all:.1%}, HP summer share: {S_hp/S_all:.1%}")
+
+_all_row = cos_tbl.filter(pl.col("subclass") == "All customers")
+_hp_row = cos_tbl.filter(pl.col("subclass") == "Heat pump")
+n_all = float(_all_row["n_customers"][0])
+n_hp = float(_hp_row["n_customers"][0])
+C_hp = float(_hp_row["cost_of_service"][0])
+
+F_all = _annual_fixed_per_customer * n_all
+F_hp = _annual_fixed_per_customer * n_hp
+R = TOTAL_DELIVERY_REVENUE_REQUIREMENT
+
+A = np.array([[W_all, S_all], [W_hp, S_hp]])
+b = np.array([R - F_all, C_hp - F_hp])
+r_w, r_s = np.linalg.solve(A, b)
+
+_sc_feasible = r_w > 0 and r_s > 0
+print(f"\n--- Unconstrained solution ---")
+print(f"Winter rate: {r_w * 100:.2f} ¢/kWh")
+print(f"Summer rate: {r_s * 100:.2f} ¢/kWh")
+print(f"Feasible (both positive): {_sc_feasible}")
+
+if _sc_feasible:
+    _sc_hp_xs_remaining = 0.0
+    _sc_r_w_final = r_w
+    _sc_r_s_final = r_s
+    print(f"\nHP cross-subsidy eliminated exactly.")
+else:
+    from scipy.optimize import minimize_scalar
+
+    def _hp_xs_at_rw(rw: float) -> float:
+        rs = (R - F_all - rw * W_all) / S_all
+        if rs < 0:
+            return float("inf")
+        hp_rev = rw * W_hp + rs * S_hp + F_hp
+        return abs(hp_rev - C_hp)
+
+    _rw_max = (R - F_all) / W_all
+    _res = minimize_scalar(_hp_xs_at_rw, bounds=(0.0, _rw_max), method="bounded")
+    _sc_r_w_final = _res.x
+    _sc_r_s_final = (R - F_all - _sc_r_w_final * W_all) / S_all
+    _hp_rev_constrained = _sc_r_w_final * W_hp + _sc_r_s_final * S_hp + F_hp
+    _sc_hp_xs_remaining = _hp_rev_constrained - C_hp
+    print(f"\n--- Constrained solution (both rates >= 0, revenue-neutral) ---")
+    print(f"Winter rate: {_sc_r_w_final * 100:.2f} ¢/kWh")
+    print(f"Summer rate: {_sc_r_s_final * 100:.2f} ¢/kWh")
+    print(f"Remaining HP cross-subsidy: ${_sc_hp_xs_remaining:,.0f}/year")
+    print(f"  (vs current HP cross-subsidy: ${float(_hp_row['cross_subsidy'][0]):,.0f}/year)")
+
+_winter_summer_ratio = _sc_r_w_final / _sc_r_s_final if _sc_r_s_final > 0 else float("inf")
+print(f"\nWinter/summer rate ratio: {_winter_summer_ratio:.2f}")
+
+report_vars["sc_winter_rate"] = _sc_r_w_final
+report_vars["sc_summer_rate"] = _sc_r_s_final
+report_vars["sc_hp_cross_subsidy_remaining"] = _sc_hp_xs_remaining
+report_vars["sc_feasible"] = _sc_feasible
+report_vars["sc_W_all_gwh"] = W_all / 1e6
+report_vars["sc_S_all_gwh"] = S_all / 1e6
+report_vars["sc_W_hp_gwh"] = W_hp / 1e6
+report_vars["sc_S_hp_gwh"] = S_hp / 1e6
+report_vars["sc_winter_summer_ratio"] = _winter_summer_ratio
+```
+
+### When does a feasible seasonal solution exist?
+
+The 2×2 system has a closed-form solution via Cramer's rule. Defining three HP consumption shares:
+
+- $s^{\text{hp}} = K_{\text{hp}} / K_{\text{all}}$ — HP's share of **annual** kWh
+- $s_w^{\text{hp}} = W_{\text{hp}} / W_{\text{all}}$ — HP's share of **winter** kWh
+- $s_s^{\text{hp}} = S_{\text{hp}} / S_{\text{all}}$ — HP's share of **summer** kWh
+
+and an HP volumetric cost-of-service share:
+
+- $c^{\text{hp}} = v_{\text{hp}} / V$ where $v_{\text{hp}} = C_{\text{hp}} - F_{\text{hp}}$ and $V = R - F_{\text{all}}$
+
+The flat-rate cross-subsidy is positive (HP overpays) iff $s^{\text{hp}} > c^{\text{hp}}$: HP consumes a larger share of total kWh than their share of volumetric cost-of-service.
+
+A feasible seasonal solution (both rates non-negative) exists iff HP's cost share falls *between* their seasonal consumption shares:
+
+$$s_s^{\text{hp}} \;\leq\; c^{\text{hp}} \;\leq\; s_w^{\text{hp}}$$
+
+Since HP customers are winter-heavy ($s_w^{\text{hp}} > s_s^{\text{hp}}$), the binding constraint is the **summer** side: the solution fails when $s_s^{\text{hp}} > c^{\text{hp}}$ — when HP customers' share of summer consumption alone already exceeds their share of volumetric cost-of-service. In that case, even setting the winter rate to zero can't make HP customers break even, because they still overpay through their summer consumption.
+
+When the solution is infeasible and we set $r_w = 0$ (the constrained optimum), the remaining cross-subsidy as a fraction of the flat-rate cross-subsidy has a clean expression:
+
+$$\frac{XS_{\text{seasonal}}}{XS_{\text{flat}}} = \frac{s_s^{\text{hp}} - c^{\text{hp}}}{s^{\text{hp}} - c^{\text{hp}}}$$
+
+**Why does this fail in RI?** The binding constraint is that HP buildings consume too much electricity in summer relative to their cost-of-service — even though heat pumps aren't heating. Per-customer summer consumption tells the story: HP buildings average ~4,600 kWh in summer vs. ~3,300 kWh for non-HP buildings — about 40% more. The most likely explanation is that heat pumps *are* air conditioners: an HP building is guaranteed to have cooling capability and is probably using it, whereas not all non-HP buildings have AC. So even in the off-peak season, HP buildings punch above their weight in consumption.
+
+Seasonal pricing can only redistribute revenue *between* seasons. It cannot fix a within-season consumption imbalance. In RI, the seasonal approach gets 95% of the way there — the last 5% is baked into HP buildings' non-heating consumption profile.
+
+**Generalizability across states:** Whether a seasonal rate can eliminate the HP cross-subsidy depends on the gap between $s_s^{\text{hp}}$ and $c^{\text{hp}}$: HP's share of summer kWh vs. their share of volumetric cost-of-service. In RI, the gap is tiny (0.1 pp), so a jurisdiction where HP buildings' summer consumption share is slightly lower — or HP cost-of-service share is slightly higher — would cross the feasibility threshold. But the relationship depends on building stock characteristics (AC penetration, home size) and the utility's cost allocation, not just climate. We would need to run the same calculation with each state's data to know.
+
+```{python}
+#| label: seasonal-feasibility-condition
+
+V = R - F_all
+v_hp = C_hp - F_hp
+K_hp = W_hp + S_hp
+K_all = W_all + S_all
+
+s_hp_annual = K_hp / K_all
+s_hp_winter = W_hp / W_all
+s_hp_summer = S_hp / S_all
+c_hp = v_hp / V
+
+print("=== HP consumption shares and cost share ===")
+print(f"HP share of annual kWh:  {s_hp_annual:.3%}")
+print(f"HP share of winter kWh:  {s_hp_winter:.3%}")
+print(f"HP share of summer kWh:  {s_hp_summer:.3%}")
+print(f"HP volumetric COS share: {c_hp:.3%}")
+print()
+
+_feasibility_gap = s_hp_summer - c_hp
+print(f"Feasibility gap (s_summer - c_hp): {_feasibility_gap:.3%}")
+if _feasibility_gap <= 0:
+    print("  → Feasible: HP summer share ≤ HP cost share")
+else:
+    print("  → Infeasible: HP summer share exceeds HP cost share")
+    _xs_frac = _feasibility_gap / (s_hp_annual - c_hp)
+    print(f"  → Remaining cross-subsidy = {_xs_frac:.1%} of flat-rate cross-subsidy")
+    _xs_remaining_formula = V * s_hp_summer - v_hp
+    print(f"  → Analytical remaining XS: ${_xs_remaining_formula:,.0f} "
+          f"(vs numerical: ${_sc_hp_xs_remaining:,.0f})")
+
+_n_nonhp = n_all - n_hp
+_hp_summer_per_cust = S_hp / n_hp
+_nonhp_summer_per_cust = (S_all - S_hp) / _n_nonhp
+print(f"\n=== Per-customer summer consumption ===")
+print(f"HP buildings:     {_hp_summer_per_cust:,.0f} kWh/customer")
+print(f"Non-HP buildings: {_nonhp_summer_per_cust:,.0f} kWh/customer")
+print(f"HP premium:       {_hp_summer_per_cust / _nonhp_summer_per_cust - 1:.0%}")
+
+report_vars["sc_s_hp_annual"] = s_hp_annual
+report_vars["sc_s_hp_winter"] = s_hp_winter
+report_vars["sc_s_hp_summer"] = s_hp_summer
+report_vars["sc_c_hp"] = c_hp
+report_vars["sc_feasibility_gap"] = _feasibility_gap
+report_vars["sc_xs_frac_of_flat"] = _sc_hp_xs_remaining / float(_hp_row["cross_subsidy"][0])
+```
+
+```{python}
+#| label: bat-pipeline-hp-flat
 
 bat_hp_flat = run_scenario(
     PATH_MASTER_BAT_1718,

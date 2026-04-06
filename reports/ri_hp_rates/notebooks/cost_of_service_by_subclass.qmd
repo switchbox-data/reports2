@@ -1061,12 +1061,13 @@ def _build_area_gt(
     cache_filename: str,
 ) -> GT:
     """Build an area-level rate comparison GT (HP or adjusted default)."""
+    _area_display = {"Transmission Charge": "Transmission", "Other Delivery Charge": "Other Delivery"}
     rows: list[dict] = []
     for row in _vol_areas.iter_rows(named=True):
         default_c = 100.0 * row["total_budget"] / _ty_kwh
         new_c = default_c * ratio
         rows.append({
-            "area": row["area"],
+            "area": _area_display.get(row["area"], row["area"]),
             "default_rate": default_c,
             "new_rate": new_c,
             "pct_change": pct_change * 100.0,
@@ -1098,6 +1099,7 @@ def _build_area_gt(
             ],
         ))
     )
+    _area_display_rev = {v: k for k, v in _area_display.items()}
     for i, a in enumerate(df["area"].to_list()):
         a = str(a)
         if a == "Total":
@@ -1106,8 +1108,9 @@ def _build_area_gt(
                 locations=loc.body(rows=[i]),
             )
             continue
-        bg = _RIE_RR_FILL.get(a, SB_COLORS["gray_light"])
-        fg = _RIE_RR_BUCKET_TEXT.get(a, SB_COLORS["midnight"])
+        _orig = _area_display_rev.get(a, a)
+        bg = _RIE_RR_FILL.get(_orig, SB_COLORS["gray_light"])
+        fg = _RIE_RR_BUCKET_TEXT.get(_orig, SB_COLORS["midnight"])
         gt = gt.tab_style(
             style=[style.fill(color=bg), style.text(color=fg, weight="bold")],
             locations=loc.body(columns="area", rows=[i]),
@@ -1284,6 +1287,14 @@ _fc_parts = [
     for row in _fixed_charges.iter_rows(named=True)
 ]
 report_vars["fixed_charges_description"] = ", ".join(_fc_parts)
+
+_n_vol_line_items = int(_is_vol.sum())
+_n_dist_vol = int(
+    _detail_with_rates.filter(_is_vol)
+    .filter(pl.col("area") == "Distribution Charge")
+    .height
+)
+report_vars["n_other_vol_line_items"] = _n_vol_line_items - _n_dist_vol
 
 _gt_detail_comp
 ```

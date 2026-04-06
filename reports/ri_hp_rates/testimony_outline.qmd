@@ -115,6 +115,21 @@ def comma(x, accuracy=0):
     return f"{x:,.{accuracy}f}"
 
 
+def billion(x, digits=1):
+    return f"{x / 1e9:.{digits}f} billion"
+
+
+# ResStock calibration stats (from rie_rate_case_test_year.yaml)
+_resstock_raw_kwh = 3_388_382_407.0
+_resstock_raw_customer_count = 481_896.13
+_resstock_customer_scaled_kwh = _resstock_raw_kwh * (
+    c.rie_rev_req_test_year_customer_count / _resstock_raw_customer_count
+)
+resstock_kwh_gap_pct = (
+    _resstock_customer_scaled_kwh - c.rie_rev_req_test_year_residential_kwh
+) / c.rie_rev_req_test_year_residential_kwh
+
+
 def cents(x, accuracy=1):
     return f"{abs(x) * 100:,.{accuracy}f}"
 
@@ -1084,101 +1099,117 @@ That said, if the Commission is interested in tech-specific seasonal rates in or
 
 In RIE's ACOSS, the utility measures cost-causation at the class level using a Non-Coincident Peak (NCP) allocator: it looks at each class's annual peak demand, it sums up these class-level demands into a "total NCP demand", and uses each class's _share_ of this total NCP demand to divide the system-wide delivery revenue requirement among classes.
 
+**Q.** How did you measure the customer count of each residential customer subclass?
+<br>
+**A.** We estimated the share of the Company's electric customers in each heating-system subclass — heat pump, natural gas, electric resistance, oil, and propane — using the 2020 release of the U.S. Energy Information Administration's Residential Energy Consumption Survey (RECS). RECS is the federal government's most comprehensive survey of how American households use energy. It has been conducted periodically since 1978, surveying thousands of homes nationwide on their physical characteristics, installed heating and cooling equipment, fuel types, and energy consumption patterns. The most recent edition, RECS 2020, surveyed over 18,000 households and is the standard data source used by utilities, state energy offices, and federal laboratories for characterizing the residential building stock. We applied the RECS heating-system shares for households in Rhode Island to the Company's Test Year residential customer count of `{python} f"{c.rie_rev_req_test_year_customer_count:,.0f}"` to arrive at the number of customers in each subclass.
+
+**Q.** How did you measure the annual kWh consumption for each customer subclass?
+<br>
+**A.** We used hourly electricity consumption profiles from the 2024.2 release of the ResStock End-Use Load Profiles, a dataset produced and maintained by the National Renewable Energy Laboratory (NREL), the U.S. Department of Energy's (DOE) primary laboratory for energy efficiency and renewable energy research. ResStock models 550,000 dwelling units that are statistically representative of the entire U.S. housing stock, of which `{python} f"{v.n_resstock_bldgs:,}"` fall within the Company's service territory. Each of these modeled dwellings have physical characteristics — square footage, insulation levels, window types, heating and cooling equipment, appliances, and local climate — that reflect the statistical distribution of these attributes across Rhode Island's building stock. These building characteristics drawn from federal survey data including RECS and the U.S. Census. 
+
+The energy consumption of each home is then simulated hour-by-hour using EnergyPlus, the DOE's flagship building energy simulation engine. The resulting dataset provides a complete 8,760-hour profile of energy use (including electricity, natural gas, heating oil, and propane) for every modeled dwelling in Rhode Island, broken down by end use — space heating, space cooling, water heating, lighting, and so on. ResStock also specifies each modeled dwelling's HVAC system, allowing us to compute the total annual kWh consumption for each customer subclass. 
+
+Each of the `{python} f"{v.n_resstock_bldgs:,}"` modeled Rhode Island dwellings in ResStock represents approximately `{python} f"{c.rie_rev_req_test_year_customer_count / v.n_resstock_bldgs:,.0f}"` of the `{python} f"{c.rie_rev_req_test_year_customer_count:,.0f}"` residential customers the Company assumed in its Test Year.
+
+
+**Q.** Why is ResStock an accurate source of hourly electricity consumption profiles for the Company's residential customers?
+
+NREL's researchers calibrated and validated ResStock's End-Use Load Profiles against EIA Form 861 utility sales data, utility load research data, and smart meter data from utilities across the country. 
+
+The DOE recommends using ResStock load profiles for utility load forecasting, distribution planning, and electrification planning.[^doe_resstock_cite] In fact, ISO-NE's heat pump adoption and winter peak forecasts are built on ResStock.[^iso_ne_resstock_cite]
+
+[^doe_resstock_cite]: See the [p. 5](https://www.documentcloud.org/documents/28021041-doe-end-use-load-profiles-for-the-us-building-stock-practical-guidance-on-accessing-and-using-the-data-2022/#document/p14/a2810710) of DOE's practical guidance on using ResStock [@doe_EndUseLoadProfiles_2022]. 
+
+[^iso_ne_resstock_cite]: See [p. 65](https://www.documentcloud.org/documents/28021043-iso-ne-final-2025-heat-pump-adoption-forecast-2025/#document/p65/a2810714) of ISO-NE's 2025 Heat Pump Adoption Forecast [@isone_Final2025Heat_2025].
+
+In addition, we performed a weighted sum of the annual kWh consumption of all Rhode Island dwellings in ResStock, which came within `{python} pct(resstock_kwh_gap_pct, 1)` of the Company's Test Year total of `{python} billion(c.rie_rev_req_test_year_residential_kwh)` kWh. We applied a small additional scaling factor to the load profiles to bring the ResStock totals into exact alignment with the Company's Test Year residential kWh, so that our cost allocation is performed on the same total consumption that underlies the Company's revenue requirement.
+
+<br><br>
+
+**Q.** How did you calculate the revenue paid by each subclass during the test year?
+<br>
+**A.** We applied the Test Year fixed and volumetric delivery rates — as detailed in my Exhibit CLF-JPV-7 — to each modeled dwellings's hourly electricity load profile to get its total electric delivery bill during the test year. We summed these bills for all households in each subclass to arrive at the total delivery revenue collected from each subclass during the test year. 
+
+We performed the same calculation using the proposed flat rates for heat pump customers and adjusted default rates for non-heat pump customers.
+
+<br><br>
+
 **Q.** What methodology did you use to measure the delivery cost-of-service for heat pump and non-heat pump customers?
 <br>
-TODO: give the number and cite where we got it from and that engineers told us to use it.
-**A.** A marginal cost-of-service (MCOS) analysis, implemented through what we call the Bill Alignment Test. The methodology is described in detail in my attached exhibit [TK]. In summary:
+**A.** We performed a cost-of-service study at the subclass level — the same kind of exercise the Company performs at the class level in its Allocated Cost of Service Study (ACOSS), but applied one level deeper, within the residential class. The goal was to measure what share of the residential delivery revenue each subclass is responsible for, and compare that to the revenue each subclass actually pays under today's rates. The difference is the cross-subsidy.
 
-  - We assign hourly marginal costs to each simulated household's hourly load profile over a full year (8,760 hours).
-  - The hourly marginal costs include four components: marginal energy costs, marginal generation capacity costs, marginal bulk transmission capacity costs, and marginal distribution capacity costs.
-  - The sum of hourly marginal costs for a household is its marginal cost-of-service, or the new costs that it caused in 2025.
-  - We then sum the marginal cost-of-service for all households in each subclass. We look at what share of all the new cost each subclass caused, and we then apply this share to the (portion of) the revenue requirement to arrive at their subclass cost allocation. (This is similar to the NCP allocator used by RIE, which is an attempt to measure a class's cost-of-service compared to other classes, and then use that to allocat the revenue requirement.)
-  - We sum up all the bills for the households in each subclass, and compare it to the subclass cost allocation. The difference is the cross-subsidy.
+The steps were analogous to those used in the Company's ACOSS:
 
-TODO: the full "How did you measure this?" detail from the original Section II is preserved here. The brief version in Section II is a forward reference to Section IX.
+  1. **Measure cost-causation.** We need a metric that tells us how much of the system's delivery costs each subclass causes. The Company's ACOSS uses Non-Coincident Peak (NCP) demand as its cost-causation metric at the class level. We use hourly marginal costs as our cost-causation metric at the subclass level — a more granular signal, but serving the same purpose. We multiply each ResStock household's hourly load profile by the marginal cost of delivery in that hour (see subsequent questions for how these hourly costs were constructed) and sum across all 8,760 hours of the year. This annual marginal cost total represents each household's delivery cost-causation "score": the new delivery costs its consumption pattern drove in the test year.
+  2. **Compute subclass shares.** We sum these cost-causation scores across all households within each subclass — heat pump, natural gas heating, and so on — to get the subclass-level marginal cost totals. Each subclass's share of the total marginal costs caused by all residentual customers in the Test Year represents that subclass's share of cost-causation.
+  3. **Allocate residential delivery revenue.** We apply each subclass's share of cost-causation to the total residential delivery revenue to arrive at each subclass's allocated cost-of-service. On a technical-level, this is the equi-proportional marginal cost (EPMC) method, the standard reconciliation approach recommended by NARUC for bridging marginal cost analysis and revenue requirement recovery. On a conceptual level, it is the same logic the Company's ACOSS uses to allocate costs across customer classes: measure cost-causation, then divide the revenue requirement proportionally.
+  4. **Measure the cross-subsidy.** We sum the delivery bills actually paid by each subclass under today's default rates, and compare that to the subclass's allocated cost of service. A subclass that pays more than its cost of service is being overcharged — it is cross-subsidizing the other subclass. This comparison is known in the academic literature as the Bill Alignment Test.[^bill_alignment_test_cite] 
+
+[^bill_alignment_test_cite]: See NREL's Bill Alignment Test paper  [@simeone_BillAlignmentTest_2023], published in _Utilities Policy_ in July 2023.
+
+The methodology is described in full detail in my exhibit CLF-JPV-2.
 
 <br><br>
 
-**Q.** What marginal cost components did you include, and what are their sources?
+**Q.** What cost-causation metric did you use, and where do the inputs come from?
 <br>
-**A.**
+**A.** We used hourly marginal delivery costs — the forward-looking cost of new delivery infrastructure that each hour of consumption drives. 
 
-  | Component | Source of annualized cost | Hourly allocation |
+These costs are denominated in $/kW-year, and had two components, both sourced from the Avoided Energy Supply Components (AESC) study:[^aesc_cite]
+
+  | Component | Source of annualized cost | Which hours carry cost |
   |---|---|---|
-  | Marginal energy | NREL Cambium (hourly, BA-specific) | Every hour |
-  | Generation capacity | NREL Cambium (annual capacity cost) | Top ~100 system load hours |
-  | Bulk transmission | AESC 2024 avoided PTF cost ($69/kW-year)[^aesc_cite] | Top 100 aggregate New England system load hours |
-  | Distribution capacity | AESC 2024 avoided distribution capacity cost ($80.24/kW-year)[^aesc_cite] | Top 100 RIE system load hours (summer only) |
+  | Bulk transmission | AESC 2024 avoided Pool Transmission Facility cost (\$69/kW-year) | Top 100 hours of aggregate New England system load |
+  | Sub-transmission and distribution | AESC 2024 avoided distribution capacity cost (\$80.24/kW-year) | Top 100 hours of RIE system load (summer only) |
 
-[^aesc_cite]: Synapse Energy Economics et al., *Avoided Energy Supply Components of New England: 2024 Report* (AESC 2024), February 2024, amended May 2024. Available at https://www.synapse-energy.com/aesc-2024-materials.
+[^aesc_cite]: See Synapse Energy Economics's *Avoided Energy Supply Components of New England: 2024 Report* [@synapse_AvoidedEnergySupply_2024].
+
+The AESC 2024 study is the standard avoided cost input used by all New England states for energy efficiency cost-effectiveness screening. Rhode Island's PUC benefit-cost framework under Docket 4600 draws directly from the AESC study.
 
 <br><br>
 
-**Q.** How did you allocate delivery capacity costs to specific hours?
+**Q.** How did you assign these delivery capacity costs to specific hours of the year?
 <br>
-**A.** Using a standard peak-responsibility approach from marginal cost-of-service analysis: the annualized cost of new capacity investment is spread across only the hours most likely to drive that investment, and all other hours receive zero cost.
-
-For both bulk transmission and distribution, the annualized capacity costs come from the AESC 2024 study — the standard avoided cost input used by all New England states, including Rhode Island, for energy efficiency cost-effectiveness screening under Docket 4600.[^aesc_cite]
+**A.** Using a probability-of-peak approach: the annualized cost of new capacity investment is spread across only the hours most likely to drive that investment. All other hours receive zero delivery capacity cost.
 
   - For **bulk transmission**, I allocated the AESC's avoided Pool Transmission Facility cost of \$69/kW-year across the top 100 hours of aggregate New England system load — the hours when regional transmission facilities are most stressed.
-  - For **distribution and sub-transmission**, I allocated the AESC's avoided distribution capacity cost of \$80.24/kW-year across the top 100 hours of RIE's system load, which serves as a proxy for when local feeders and substations are most stressed.
+  - For **sub-transmission and distribution**, I allocated the AESC's avoided distribution capacity cost of \$80.24/kW-year across the top 100 hours of RIE's system load, which serves as a proxy for when local feeders and substations are most stressed.
 
-Ideally, the distribution allocation would use hourly load profiles for each individual feeder, identifying the specific hours when each constrained feeder approaches its limit. RIE does not publish feeder-level 8760 load data,[^rie_correspondence] so the aggregate system load approach is a reasonable first approximation.[^feeder_8760]
+Ideally, the distribution allocation would have use hourly load profiles for each individual feeder, identifying the specific hours when each _constrained_ feeder approaches its limit. The Company does not compile 760-hour load data for all of its feeders, however. [^rie_correspondence] Given these data limitations, the aggregate RIE system load approach served as a reasonable approximation.[^feeder_8760]
 
-[^rie_correspondence]: [TK: cite correspondence with RIE engineers confirming this limitation.]
+[^rie_correspondence]: See my correspondence with Ryan Constable, in exhibit CLF-JPV-4.
 
-[^feeder_8760]: If feeder-level hourly data were available, the high-cost hours would likely be spread across more hours — since different feeders peak at somewhat different times — with lower per-hour costs. The aggregate approach concentrates costs in fewer hours, which if anything overstates the cost assigned to any individual peak hour.
+[^feeder_8760]: If feeder-level hourly data were available, the high-cost periods would likely be spread across more hours — since different feeders peak at somewhat different times — with lower per-hour costs. The aggregate approach concentrates costs in fewer hours, which likely overstates the cost assigned to any individual peak hour.
 
-<br><br>
-
-**Q.** How did you estimate the annualized marginal cost of distribution capacity?
-<br>
-**A.** This is a critical input, so I will describe it in detail.
-
-  - We obtained RIE's feeder-level thermal screening data, which contains each feeder's summer peak load and normal/emergency capacity ratings. This is the same data RIE uses for distribution planning.
-  - We identified which feeders are constrained (peak exceeds normal capacity or creates N-1 contingency risk). Only `{python} pct(f.pct_feeders_any_violation_summer)` of feeders are constrained, all in summer. Zero feeders are winter-constrained.
-  - For the annualized marginal cost of capacity additions, we used the AESC 2024 avoided distribution capacity cost of \$80.24/kW-year.[^aesc_cite] This figure reflects the system-wide cost of reducing peak demand by one kW — effectively the avoided cost of a capacity upgrade, diluted to account for the fact that most feeders are not constrained. RIE's planning engineers confirmed that per-project upgrade costs vary widely depending on local conditions, and that this avoided cost figure is the best available proxy for average marginal distribution capacity cost.
-  - The result: marginal distribution capacity costs are concentrated in summer afternoons and are zero in winter — consistent with the feeder headroom analysis in Section III.
+Importantly, not every peak hour receives equal weight. Hour outside the top 100 receive zero cost. Within the top 100, hours closer to the peak carry more cost, because they are more likely to be the capacity-binding hour that triggers the need for a new investment. The full technical details of the weighting method are in my Exhibit CLF-JPV-2.
 
 <br><br>
 
-**Q.** Why did you not use the Non-Coincident Peak (NCP) method that RIE uses for class-level cost allocation to do your subclass cost allocation?
+**Q.** Why did you choose hourly marginal costs as your cost-causation metric rather than the Non-Coincident Peak (NCP) demand metric the Company uses for class-level cost allocation?
 <br>
-TODO: ADD OUR NCP-SUMMER RESULTS HERE.
 **A.** Because the NCP method produces misleading results when applied at the subclass level.
 
-  - The ACOSS NCP allocator assigns distribution costs to each class in proportion to its share of total non-coincident peak demand. This is a reasonable proxy at the class level, where it captures the intuition that classes with higher peaks impose more costs.
-  - But at the subclass level — e.g., HP customers vs. non-HP customers within the residential class — NCP looks at each subgroup's peak demand magnitude without regard to **when** or **where** that peak occurs.
-  - Heat pump customers peak in winter. But the grid has `{python} f"{f.median_headroom_winter:.0f}"`% median winter headroom and zero winter-constrained feeders. The NCP method would say HP customers are causing substantial winter costs; the actual grid data says they are not.
-  - This sensitivity of NCP to how subgroups are defined was demonstrated in the Commission's own Docket 4770. Walmart's expert witness Tillman showed that when National Grid ran the COSS with Rate G-32 and G-62 as separate classes and then combined the results, the NCP allocator produced a different (and incorrect) allocation than if the classes had been consolidated first — because NCP doesn't account for load diversity between subgroups whose peaks occur at different hours. The same principle applies here: NCP at the subclass level assigns cost responsibility to HP customers for their winter peaks, even though those peaks occur at a time when the distribution system has abundant spare capacity. It confuses the magnitude of a peak with the cost it causes, which is dependent on _when_ it occurs.
-  - Our MCOS approach captures both **when** load occurs (hourly allocation) and **where** constraints exist (feeder-level data). It reaches a very different conclusion than NCP would: HP customers' cost-of-service is only ~`{python} f"{(v.hp_mean_delivery_cost / v.ff_mean_delivery_cost - 1) * 100:.0f}"`% higher than fossil fuel customers', not the much larger figure NCP would imply.
+The Company's ACOSS NCP allocator assigns distribution costs to each class in proportion to its share of total non-coincident peak demand. This is a reasonable proxy at the class level, where it captures the intuition that classes with higher peaks impose more costs. But at the subclass level — heat pump customers versus non-heat-pump customers within the residential class — NCP looks at each subgroup's peak demand magnitude without regard to **when** or **where** that peak occurs.
+
+Heat pump customers peak in winter. But the distribution grid has `{python} f"{f.median_headroom_winter:.0f}"`% median winter headroom and zero winter-constrained feeders. The NCP method would say heat pump customers are causing substantial winter distribution costs; the actual grid data proves they are not.
+
+This sensitivity of NCP to how subgroups are defined was demonstrated in the Commission's own Docket 4770. Walmart's expert witness Tillman showed that when National Grid ran the COSS with Rate G-32 and G-62 as separate classes and then combined the results, the NCP allocator produced a different — and incorrect — allocation than if the classes had been consolidated first. The reason is that NCP does not account for load diversity between subgroups whose peaks occur at different hours. The same principle applies here: NCP at the subclass level assigns cost responsibility to heat pump customers for their winter peaks, even though those peaks occur when the distribution system has abundant spare capacity. It confuses the _magnitude_ of a peak with the _cost_ it causes, which depends on when it occurs.
+
+Our hourly marginal cost approach captures both **when** load occurs and **where** constraints exist. It reaches a very different conclusion than NCP would: heat pump customers' delivery cost-of-service is only approximately `{python} f"{(v.hp_mean_delivery_cost / v.ff_mean_delivery_cost - 1) * 100:.0f}"`% higher than fossil fuel customers', not the much larger figure NCP would imply.
 
 <br><br>
 
-**Q.** How does your approach relate to the ACOSS?
-<br>
-**A.** Same spirit, better data.
+<br><br>
 
-  - The ACOSS allocates historical revenue requirements based on cost-causation, using NCP demand shares as the proxy for "who caused these costs."
-  - We do the same thing — allocate the residential revenue requirement to subclasses based on cost-causation — but we use hourly marginal costs derived from actual grid conditions (feeder constraints, hourly system loads) instead of NCP shares.
-  - We then use the resulting cost-causation shares to split the existing residential revenue requirement between the HP and non-HP subclasses. This is conceptually identical to how the ACOSS splits total revenue among rate classes — we are just doing it one level deeper, within the class, and with more precision.
+**Q.** How did you calculate the total annual energy bills paid by natural gas, delivered fuel, and electric resistance customers before and after switching to heat pumps?
+<br>
+**A.** ResStock provides hourly energy consumption profiles for every fuel — electricity, natural gas, heating oil, and propane — not just electricity. It also provides a counterfactual scenario in which every household is retrofitted with a cold-climate air-source heat pump, with its own set of hourly consumption profiles reflecting the changed fuel mix (more electricity, less or no fossil fuel). We obtained the Company's current residential gas tariffs — Rate 12 for heating customers, Rate 10 for non-heating customers — and monthly residential heating oil and propane prices from the EIA. For each modeled household, we applied these rates to the household's consumption under both its current heating system and after the heat pump retrofit, summed across all fuels, and took the difference as the estimated annual bill change from switching. Full details are in my Exhibit CLF-JPV-2.
 
 <br><br>
 
-**Q.** What load profiles did you use?
+**Q.** How did you calculate the energy burdens of LMI households under their current HVAC systems and default rates, after adopting heat pumps under default rates, and after adopting heat pumps under the proposed HP Rate?
 <br>
-**A.** NREL ResStock end-use load profiles, which are statistically representative of Rhode Island's residential building stock.
-
-  - The same dataset is used by ISO-NE for heat pump adoption forecasts underlying its winter load forecasts.
-  - DOE recommends ResStock data for load forecasting, distribution planning, and electrification planning.
-  - Each building in the dataset has a unique hourly load profile reflecting its building envelope, heating system, appliances, and local climate.
-
-<br><br>
-
-**Q.** How did you calculate delivery bills?
-<br>
-**A.** We applied RIE's current default delivery rates — including volumetric charges, fixed customer charges, and other applicable charges — to each building's hourly load profile to compute annual delivery bills. We then aggregated bills by subclass (HP, natural gas, oil/propane, electric resistance) and compared subclass totals to subclass cost-of-service totals. The difference is the cross-subsidy.
-
+**A.** We divided each household's total annual energy bill by its assigned annual income, using ResStock's income assignments calibrated to Census data for Rhode Island. We computed this ratio under each of the three scenarios — current system on default rates, heat pump on default rates, and heat pump on the proposed HP rate — to show how energy burden changes at each step. Full details are in my Exhibit CLF-JPV-2.
 
 ## X. Conclusion
 

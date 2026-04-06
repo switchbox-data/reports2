@@ -952,7 +952,7 @@ Before considering any change done:
 
 - **`just check`**: Runs lock validation (`uv lock --locked`) and pre-commit hooks (ruff-check, ruff-format, ty-check, trailing whitespace, end-of-file newline, YAML/JSON/TOML validation, no large files >600KB, no merge conflict markers).
 - **`just test`**: Runs pytest suite. Add or extend tests for new or changed behavior.
-- **`just render`** (from report directory): Snapshots the current `docs/` as a baseline for diffing, runs `quarto render`, inlines SVGs (if the report uses them), and removes `.ipynb` artifacts from `docs/`. Standalone `.svg` files under `docs/` are kept for local preview. Run it after any change to a report.
+- **`just render`** (from report directory): Snapshots the current `docs/` as a baseline for diffing, runs `quarto render`, and inlines SVGs (if the report uses them). Quarto intermediates (`.embed.ipynb`, `.out.ipynb`) are left in place so standalone preview of files with `{{< embed >}}` works; they are gitignored. Run it after any change to a report.
 
 R formatting: Use the [air](https://github.com/posit-dev/air) formatter via the Posit.air-vscode editor extension (pre-installed in devcontainer). Not yet integrated with pre-commit hooks.
 
@@ -982,7 +982,7 @@ Naming convention: `state_topic` (e.g., `ny_aeba_grid`, `ri_hp_rates`). Reuse to
 From the report directory:
 
 ```bash
-just render           # Render HTML (snapshots baseline, inlines SVGs, cleans .ipynb)
+just render           # Render HTML (snapshots baseline, inlines SVGs)
 just draft            # Render DOCX for content review
 just typeset          # Render ICML for InDesign
 just publish          # Copy to root docs/, inline SVGs, prune index_files/previews/.qmd
@@ -1152,7 +1152,7 @@ Python reports render plotnine charts as **inline SVGs** with text-as-text (not 
 
 1. **`_quarto.yml`** sets `fig-format: svg` (no `fig-dpi` needed).
 2. **`theme_switchbox`** auto-sets `mpl.rcParams["svg.fonttype"] = "none"` on import, so matplotlib emits `<text>` elements.
-3. **`just render`** (via `lib/just/render.py`) calls `inline_svgs.py` after Quarto, which inlines SVGs into the HTML and sets fixed display widths. **`just publish`** (via `lib/just/publish.py`) runs `inline_svgs.py` again on the copy, then removes `index_files/`, `*-preview.html`, `.qmd`, and `.ipynb` from the published tree (keeping `site_libs/`, `img/`, and non-preview HTML).
+3. **`just render`** (via `lib/just/render.py`) calls `inline_svgs.py` after Quarto, which inlines SVGs into the HTML and sets fixed display widths. **`just publish`** (via `lib/just/publish.py`) runs `inline_svgs.py` again on the copy, then prunes `index_files/`, `*-preview.html`, `.qmd`, and `.ipynb` from the published tree (keeping `site_libs/`, `img/`, and non-preview HTML).
 
 No per-notebook configuration is needed beyond `from lib.plotnine import theme_switchbox`.
 

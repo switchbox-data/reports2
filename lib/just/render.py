@@ -3,14 +3,13 @@
 
 Full-project mode (no arguments):
     Snapshots current docs/ to .diff/baseline/ before rendering, runs
-    ``quarto render .``, inlines SVG figures into the HTML, and cleans
-    up .ipynb artifacts.
+    ``quarto render .``, and inlines SVG figures into the HTML.
 
 Single-file mode (one argument):
     Runs ``quarto render <file>``, forwards fig-format from _quarto.yml
     via ``-M`` (Quarto does not inherit project-level format settings for
-    single-file renders), moves the output into docs/, inlines SVGs, and
-    cleans up artifacts.  No baseline snapshot is taken.
+    single-file renders), moves the output into docs/, and inlines SVGs.
+    No baseline snapshot is taken.
 
     Note on ``{{< embed >}}``: Quarto's embed pipeline re-executes the
     embedded notebook with its own format (ipynb, hardcoded to PNG) and
@@ -36,27 +35,6 @@ import yaml
 
 BASELINE = Path(".diff/baseline")
 INLINE_SVGS = Path("../.style/inline_svgs.py")
-
-
-def _clean_quarto_artifacts(docs: Path) -> None:
-    """Remove Quarto-generated intermediates from the source and docs trees."""
-    removed = 0
-
-    for pattern in ("**/*.out.ipynb", "**/*.embed.ipynb"):
-        for f in Path(".").glob(pattern):
-            # Keep `.quarto/embed/**/*.embed.ipynb`: Quarto needs these to resolve
-            # `{{< embed >}}` when rendering standalone docs (e.g. testimony_outline.qmd).
-            if f.parts[0] == ".quarto":
-                continue
-            f.unlink()
-            removed += 1
-
-    for f in docs.rglob("*.ipynb"):
-        f.unlink()
-        removed += 1
-
-    if removed:
-        print(f"🗑️  Removed {removed} .ipynb artifact(s)")
 
 
 def _get_project_fig_format() -> str | None:
@@ -127,20 +105,13 @@ def _render_project() -> None:
         BASELINE.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(docs, BASELINE)
 
-    render_failed = False
     print("📖 Rendering Quarto project...")
-    try:
-        result = subprocess.run(["quarto", "render", "."])
-        if result.returncode != 0:
-            render_failed = True
-            print("💥 Quarto render failed!", file=sys.stderr)
+    result = subprocess.run(["quarto", "render", "."])
+    if result.returncode != 0:
+        print("💥 Quarto render failed!", file=sys.stderr)
+        sys.exit(1)
 
-        if not render_failed and not _inline_svgs():
-            render_failed = True
-    finally:
-        _clean_quarto_artifacts(docs)
-
-    if render_failed:
+    if not _inline_svgs():
         sys.exit(1)
 
     print("✅ Render complete!")
@@ -172,24 +143,16 @@ def _render_single(qmd_path: Path) -> None:
     if fig_format:
         cmd.extend(["-M", f"fig-format:{fig_format}"])
 
-    render_failed = False
     print(f"📖 Rendering {qmd_path}...")
-    try:
-        result = subprocess.run(cmd)
-        if result.returncode != 0:
-            render_failed = True
-            print("💥 Quarto render failed!", file=sys.stderr)
+    result = subprocess.run(cmd)
+    if result.returncode != 0:
+        print("💥 Quarto render failed!", file=sys.stderr)
+        sys.exit(1)
 
-        if not render_failed:
-            dest_html = _move_to_docs(qmd_path, docs)
-            print(f"📦 Moved output to {dest_html}")
+    dest_html = _move_to_docs(qmd_path, docs)
+    print(f"📦 Moved output to {dest_html}")
 
-            if not _inline_svgs():
-                render_failed = True
-    finally:
-        _clean_quarto_artifacts(docs)
-
-    if render_failed:
+    if not _inline_svgs():
         sys.exit(1)
 
     print("✅ Render complete!")

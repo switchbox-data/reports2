@@ -26,14 +26,16 @@ bold_path <- file.path(theme_dir, "IBMPlexSans-Bold.otf")
 if (!file.exists(regular_path)) {
   download.file(
     "https://switchbox-data.github.io/reports/fonts/ibm_plex_sans/IBMPlexSans-Regular.otf",
-    regular_path
+    regular_path,
+    mode = "wb"
   )
 }
 
 if (!file.exists(bold_path)) {
   download.file(
     "https://switchbox-data.github.io/reports/fonts/ibm_plex_sans/IBMPlexSans-Bold.otf",
-    bold_path
+    bold_path,
+    mode = "wb"
   )
 }
 

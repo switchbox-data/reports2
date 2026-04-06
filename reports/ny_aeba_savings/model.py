@@ -15,7 +15,7 @@ from __future__ import annotations
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import polars as pl
 import yaml
@@ -1148,8 +1148,10 @@ def _compute_survey_weights() -> pl.DataFrame:
     rows = []
     for zone in ["4", "5", "6"]:
         count_col = f"zone_{zone}_count"
-        gas_count = survey.filter(pl.col("system_type").is_in(gas_types))[count_col].sum()
-        propane_count = survey.filter(pl.col("system_type").is_in(propane_types))[count_col].sum()
+        gas_count = float(survey.select(pl.col(count_col).filter(pl.col("system_type").is_in(gas_types)).sum()).item())
+        propane_count = float(
+            survey.select(pl.col(count_col).filter(pl.col("system_type").is_in(propane_types)).sum()).item()
+        )
         total_ff = gas_count + propane_count
 
         rows.append(
@@ -1358,8 +1360,19 @@ def build_tidy_results(savings: pl.DataFrame) -> pl.DataFrame:
 
     # -- Helpers ---------------------------------------------------------------
     def _wmean(df: pl.DataFrame, weight_col: str) -> dict[str, float]:
-        total = df[weight_col].sum()
-        return {c: float((df[c] * df[weight_col]).sum() / total) for c in val_cols}
+        total = float(df.select(pl.col(weight_col).sum()).item())
+        return {c: float((float((df[c] * df[weight_col]).sum())) / total) for c in val_cols}
+
+    def _round2(value: float) -> float:
+        return round(float(value), 2)
+
+    def _src_value(src: dict[str, float] | pl.DataFrame, col: str, idx: int | None) -> float:
+        if isinstance(src, dict):
+            mapping = cast(dict[str, float], src)
+            return float(mapping[col])
+        if idx is None:
+            raise ValueError("idx is required when extracting values from a DataFrame")
+        return float(src.get_column(col)[idx])
 
     def _make_row(
         bt: str,
@@ -1372,16 +1385,16 @@ def build_tidy_results(savings: pl.DataFrame) -> pl.DataFrame:
         # Delta-only (headline) measures first
         for name, col, unit in delta_only:
             sfx = _unit_suffix(unit)
-            val = src[col] if isinstance(src, dict) else float(src[col][idx])
-            row[f"delta-{name}-{sfx}"] = round(val, 2)
+            val = _src_value(src, col, idx)
+            row[f"delta-{name}-{sfx}"] = _round2(val)
         # Then paired cost breakdowns (baseline / hp / delta)
         for name, bl_col, hp_col, unit in paired:
             sfx = _unit_suffix(unit)
-            bl = src[bl_col] if isinstance(src, dict) else float(src[bl_col][idx])
-            hp = src[hp_col] if isinstance(src, dict) else float(src[hp_col][idx])
-            row[f"baseline-{name}-{sfx}"] = round(bl, 2)
-            row[f"hp-{name}-{sfx}"] = round(hp, 2)
-            row[f"delta-{name}-{sfx}"] = round(bl - hp, 2)
+            bl = _src_value(src, bl_col, idx)
+            hp = _src_value(src, hp_col, idx)
+            row[f"baseline-{name}-{sfx}"] = _round2(bl)
+            row[f"hp-{name}-{sfx}"] = _round2(hp)
+            row[f"delta-{name}-{sfx}"] = _round2(bl - hp)
         return row
 
     # -- Build rows per technology --------------------------------------------

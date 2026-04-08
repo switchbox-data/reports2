@@ -1,0 +1,1107 @@
+---
+title: "Cost of service by heating subclass (NY statewide and per-utility)"
+execute:
+  warning: false
+  message: false
+---
+
+This notebook builds delivery **cost of service**, **revenue**, and **cross-subsidy** tables by `heating_type_v2` subclass for each of the seven New York utilities and for the state as a whole.
+
+**Data source:** master BAT datasets on S3 under `s3://data.sb/switchbox/cairo/outputs/hp_rates/ny/all_utilities/<batch>/run_<delivery>+<supply>/cross_subsidization_BAT_values/`. These decompose each building's annual electric bill into delivery vs supply and carry BAT metrics, marginal-cost burdens, and residual components.
+
+The notebook is **multi-scenario**: a `SCENARIOS` registry at the top defines each proposed-run variant (rate design, residual allocation method). The baseline comparison is always **run 1+2** (default uniform rates). Each scenario gets its own section with the full set of statewide + per-utility comparison tables.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import numpy as np
+import polars as pl
+import yaml
+from great_tables import GT, loc, style
+
+from lib.great_tables import get_switchbox_gt_tab_options
+from lib.rdp import fetch_rdp_file, parse_urdb_json
+
+report_vars: dict = {}
+```
+
+## Parameters
+
+```{python}
+#| label: params
+
+BATCH = "ny_20260326_flex_r1-16"
+STATE_LOWER = "ny"
+RDP_REF = "d4d5555"  # 388-verify-ny-cairo-batch-after-epmc-deliverysupply-residual-split
+S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
+
+RUN_DEFAULT = "1+2"
+PATH_MASTER_BAT_DEFAULT = (
+    f"{S3_BASE}/{STATE_LOWER}/all_utilities/{BATCH}/run_{RUN_DEFAULT}"
+    "/cross_subsidization_BAT_values/"
+)
+
+UTILITIES = ["cenhud", "coned", "nimo", "nyseg", "or", "psegli", "rge"]
+UTIL_DISPLAY: dict[str, str] = {
+    "cenhud": "Central Hudson",
+    "coned": "Con Edison",
+    "nimo": "National Grid",
+    "nyseg": "NYSEG",
+    "or": "O&R",
+    "psegli": "PSEG-LI",
+    "rge": "RG&E",
+}
+
+HT_V2_ORDER = (
+    "heat_pump",
+    "electrical_resistance",
+    "natgas",
+    "delivered_fuels",
+    "other",
+)
+HT_V2_LABELS: dict[str, str] = {
+    "heat_pump": "Heat pump",
+    "electrical_resistance": "Electric resistance",
+    "natgas": "Natural gas",
+    "delivered_fuels": "Delivered fuels",
+    "other": "Other",
+}
+```
+
+## Scenario registry
+
+Each entry defines a proposed-run variant: the CAIRO run pair, the residual allocation method used in BAT column selection, the tariff name fragments (for extracting volumetric rates into table subtitles), and a human-readable label. Every scenario is rendered as its own section of comparison tables below.
+
+```{python}
+#| label: scenarios
+
+SCENARIOS: list[dict] = [
+    {
+        "id": "hp_seasonal_percustomer",
+        "run": "5+6",
+        "residual_alloc": "percustomer",
+        "hp_tariff": "hp_seasonal",
+        "nonhp_tariff": "nonhp_default",
+        "label": "HP seasonal rate, per-customer residual",
+        "description": (
+            "HP customers on seasonal delivery rate; non-HP on recalibrated "
+            "flat. Residual allocated per customer."
+        ),
+    },
+    # Future entries — uncomment when runs exist:
+    # {
+    #     "id": "hp_seasonal_epmc",
+    #     "run": "N+N+1",
+    #     "residual_alloc": "epmc",
+    #     "hp_tariff": "hp_seasonal",
+    #     "nonhp_tariff": "nonhp_default",
+    #     "label": "HP seasonal rate, EPMC residual",
+    #     "description": "...",
+    # },
+    # {
+    #     "id": "hp_flat_epmc",
+    #     "run": "K+K+1",
+    #     "residual_alloc": "epmc",
+    #     "hp_tariff": "hp_flat",
+    #     "nonhp_tariff": "nonhp_flat",
+    #     "label": "HP flat rate, EPMC residual",
+    #     "description": "...",
+    # },
+]
+```
+
+## Shared functions
+
+All reusable logic lives here so per-scenario sections stay small.
+
+```{python}
+#| label: shared-functions
+
+_COS_GT_TAB_OPTS = get_switchbox_gt_tab_options()
+_RDP_TARIFF_DIR = f"rate_design/hp_rates/{STATE_LOWER}/config/tariffs/electric"
+
+
+def _cos_gt_center_cells(gt: GT, *, data_columns: list[str]) -> GT:
+    return (
+        gt.cols_align(align="center", columns=data_columns)
+        .tab_style(
+            style=style.text(align="center"),
+            locations=loc.stub(),
+        )
+        .tab_style(
+            style=style.text(align="center"),
+            locations=loc.column_labels(),
+        )
+    )
+
+
+def _bat_col_name(base: str, residual_alloc: str) -> str:
+    """Build the actual parquet column name for a given allocation method.
+
+    Pattern: ``BAT_{alloc}_delivery``, ``residual_share_{alloc}_delivery``.
+    """
+    if base == "BAT":
+        return f"BAT_{residual_alloc}_delivery"
+    if base == "residual_share":
+        return f"residual_share_{residual_alloc}_delivery"
+    msg = f"Unknown base column: {base}"
+    raise ValueError(msg)
+
+
+def load_master_bat(
+    path: str,
+    residual_alloc: str,
+    *,
+    utility: str | None = None,
+) -> pl.DataFrame:
+    """Load master BAT, select the right columns for the allocation method, and rename to generic names.
+
+    When ``utility`` is None, returns all utilities (for statewide tables).
+    """
+    bat_col = _bat_col_name("BAT", residual_alloc)
+    res_col = _bat_col_name("residual_share", residual_alloc)
+
+    lf = pl.scan_parquet(path, hive_partitioning=True)
+    if utility is not None:
+        lf = lf.filter(pl.col("sb.electric_utility") == utility)
+
+    return (
+        lf.select(
+            "bldg_id",
+            "weight",
+            "sb.electric_utility",
+            "postprocess_group.heating_type_v2",
+            "annual_bill_delivery",
+            "economic_burden_delivery",
+            pl.col(res_col).alias("residual_delivery"),
+            pl.col(bat_col).alias("bat_delivery"),
+        )
+        .with_columns(
+            (pl.col("economic_burden_delivery") + pl.col("residual_delivery")).alias(
+                "cost_of_service_delivery"
+            ),
+        )
+        .collect()
+    )
+
+
+def assert_bill_identity(bat: pl.DataFrame, scenario: str) -> None:
+    _check = bat.with_columns(
+        (
+            pl.col("economic_burden_delivery")
+            + pl.col("residual_delivery")
+            + pl.col("bat_delivery")
+            - pl.col("annual_bill_delivery")
+        )
+        .abs()
+        .alias("bill_identity_abs_err"),
+    )
+    _mx = float(_check["bill_identity_abs_err"].max())  # type: ignore[arg-type]
+    assert _mx < 1e-2, (
+        f"{scenario}: annual_bill_delivery should equal EB + residual + BAT "
+        f"(max err {_mx})"
+    )
+
+
+def build_cos_table(
+    bat: pl.DataFrame,
+    *,
+    rev_req: float,
+    utility_filter: str | None = None,
+) -> pl.DataFrame:
+    """Aggregate BAT data into a COS table by heating_type_v2.
+
+    ``rev_req`` is the total delivery revenue requirement for the scope (utility or statewide).
+    When ``utility_filter`` is not None, filters to that utility first.
+    """
+    df = bat
+    if utility_filter is not None:
+        df = bat.filter(pl.col("sb.electric_utility") == utility_filter)
+
+    total_w = float(df["weight"].sum())
+    total_rev = float((df["weight"] * df["annual_bill_delivery"]).sum())
+    display_customer_total = int(round(total_w))
+
+    _by_ht = df.group_by("postprocess_group.heating_type_v2").agg(
+        pl.col("weight").sum().alias("n_customers"),
+        (pl.col("weight") * pl.col("annual_bill_delivery"))
+        .sum()
+        .alias("revenue_delivery"),
+        (pl.col("weight") * pl.col("cost_of_service_delivery"))
+        .sum()
+        .alias("cost_of_service"),
+        (pl.col("weight") * pl.col("bat_delivery")).sum().alias("cross_subsidy"),
+    )
+
+    _spine = pl.DataFrame({"postprocess_group.heating_type_v2": list(HT_V2_ORDER)})
+    _agg_cols = [
+        "subclass",
+        "n_customers",
+        "revenue_delivery",
+        "cost_of_service",
+        "cross_subsidy",
+    ]
+    by_ht = (
+        _spine.join(_by_ht, on="postprocess_group.heating_type_v2", how="left")
+        .with_columns(
+            pl.col("n_customers").fill_null(0.0),
+            pl.col("revenue_delivery").fill_null(0.0),
+            pl.col("cost_of_service").fill_null(0.0),
+            pl.col("cross_subsidy").fill_null(0.0),
+        )
+        .with_columns(
+            pl.col("postprocess_group.heating_type_v2")
+            .replace(HT_V2_LABELS)
+            .alias("subclass"),
+        )
+        .drop("postprocess_group.heating_type_v2")
+        .select(_agg_cols)
+    )
+
+    _total = pl.DataFrame(
+        {
+            "subclass": ["All customers"],
+            "n_customers": [float(by_ht["n_customers"].sum())],
+            "revenue_delivery": [float(by_ht["revenue_delivery"].sum())],
+            "cost_of_service": [float(by_ht["cost_of_service"].sum())],
+            "cross_subsidy": [float(by_ht["cross_subsidy"].sum())],
+        }
+    ).select(_agg_cols)
+
+    cos_tbl = (
+        pl.concat([by_ht, _total], how="vertical")
+        .with_columns(
+            (pl.col("n_customers") / total_w).alias("pct_all_customers"),
+            (pl.col("revenue_delivery") / total_rev).alias("pct_all_revenue"),
+            (pl.col("cost_of_service") / rev_req).alias("pct_revenue_requirement"),
+            pl.when(pl.col("cost_of_service") > 0)
+            .then(pl.col("cross_subsidy") / pl.col("cost_of_service"))
+            .otherwise(None)
+            .alias("pct_overpayment_vs_cos"),
+        )
+    )
+
+    _sub_rows = cos_tbl.filter(pl.col("subclass") != "All customers")
+    _w_sub = _sub_rows["n_customers"].to_numpy()
+    _raw = _w_sub * display_customer_total / total_w if total_w > 0 else _w_sub
+    _floors = np.floor(_raw).astype(np.int64)
+    _rem = display_customer_total - int(_floors.sum())
+    _order = np.argsort(-(_raw - _floors))
+    for _k in range(max(0, _rem)):
+        _floors[_order[_k]] += 1
+    _lut_sub = pl.DataFrame(
+        {"subclass": _sub_rows["subclass"], "n_customers_display": _floors}
+    )
+    _lut_total = pl.DataFrame(
+        {
+            "subclass": ["All customers"],
+            "n_customers_display": np.array([display_customer_total], dtype=np.int64),
+        }
+    )
+    return cos_tbl.join(
+        pl.concat([_lut_sub, _lut_total]), on="subclass", how="left"
+    ).with_columns(
+        (pl.col("n_customers_display").cast(pl.Float64) / float(display_customer_total)).alias(
+            "pct_customers_display"
+        ),
+    )
+
+
+def build_gt_cos_totals(
+    cos_tbl: pl.DataFrame,
+    *,
+    title: str = "Delivery revenue and cost of service by residential customer subclass",
+    subtitle: str | None = None,
+) -> GT:
+    _select_cols = [
+        "subclass",
+        "n_customers_display",
+        "pct_customers_display",
+        "revenue_delivery",
+        "pct_all_revenue",
+        "cost_of_service",
+        "pct_revenue_requirement",
+        "cross_subsidy",
+        "pct_overpayment_vs_cos",
+    ]
+    _gt_df = cos_tbl.select(_select_cols)
+    _gt = (
+        GT(_gt_df, rowname_col="subclass")
+        .tab_header(title=title, subtitle=subtitle)
+        .tab_options(**_COS_GT_TAB_OPTS)
+        .cols_label(
+            n_customers_display="Customers",
+            pct_customers_display="% of customers",
+            revenue_delivery="Delivery revenue",
+            pct_all_revenue="% of revenue",
+            cost_of_service="Cost of service",
+            pct_revenue_requirement="% of cost",
+            cross_subsidy="Cross-subsidy",
+            pct_overpayment_vs_cos="Cross-subsidy ÷ COS",
+        )
+        .fmt_number(columns=["n_customers_display"], decimals=0, use_seps=True)
+        .fmt_percent(
+            columns=[
+                "pct_customers_display",
+                "pct_all_revenue",
+                "pct_revenue_requirement",
+                "pct_overpayment_vs_cos",
+            ],
+            decimals=1,
+        )
+        .fmt_currency(
+            columns=["revenue_delivery", "cost_of_service", "cross_subsidy"],
+            decimals=0,
+        )
+        .sub_missing(missing_text="—")
+    )
+    return _cos_gt_center_cells(
+        _gt,
+        data_columns=[
+            "n_customers_display",
+            "pct_customers_display",
+            "revenue_delivery",
+            "pct_all_revenue",
+            "cost_of_service",
+            "pct_revenue_requirement",
+            "cross_subsidy",
+            "pct_overpayment_vs_cos",
+        ],
+    )
+
+
+def build_gt_cos_comparison_totals(
+    cos_default: pl.DataFrame,
+    cos_proposed: pl.DataFrame,
+    *,
+    title: str,
+    subtitle: str,
+    label_spanner_today: str,
+    label_spanner_proposed: str,
+) -> GT:
+    _cur = cos_default.select(
+        "subclass",
+        pl.col("revenue_delivery").alias("rev_delivery_current"),
+        pl.col("pct_all_revenue").alias("pct_rev_delivery_current"),
+    )
+    _hp = cos_proposed.select(
+        "subclass",
+        pl.col("revenue_delivery").alias("rev_delivery_proposed"),
+        pl.col("pct_all_revenue").alias("pct_rev_delivery_proposed"),
+        "cost_of_service",
+        "pct_revenue_requirement",
+        "cross_subsidy",
+        "pct_overpayment_vs_cos",
+    )
+    _gt_df = (
+        _cur.join(_hp, on="subclass", how="inner")
+        .with_columns(
+            (pl.col("rev_delivery_proposed") - pl.col("rev_delivery_current")).alias(
+                "delta_rev_delivery"
+            ),
+        )
+        .select(
+            "subclass",
+            "rev_delivery_current",
+            "pct_rev_delivery_current",
+            "delta_rev_delivery",
+            "rev_delivery_proposed",
+            "pct_rev_delivery_proposed",
+            "cost_of_service",
+            "pct_revenue_requirement",
+            "cross_subsidy",
+            "pct_overpayment_vs_cos",
+        )
+    )
+    _gt = (
+        GT(_gt_df, rowname_col="subclass")
+        .tab_header(title=title, subtitle=subtitle)
+        .tab_spanner(
+            label=label_spanner_today,
+            columns=["rev_delivery_current", "pct_rev_delivery_current"],
+        )
+        .tab_spanner(
+            label=label_spanner_proposed,
+            columns=[
+                "delta_rev_delivery",
+                "rev_delivery_proposed",
+                "pct_rev_delivery_proposed",
+                "cost_of_service",
+                "pct_revenue_requirement",
+                "cross_subsidy",
+                "pct_overpayment_vs_cos",
+            ],
+        )
+        .cols_label(
+            rev_delivery_current="Delivery revenue",
+            pct_rev_delivery_current="% of total",
+            delta_rev_delivery="Change ($)",
+            rev_delivery_proposed="Delivery revenue",
+            pct_rev_delivery_proposed="% of total",
+            cost_of_service="Cost of service",
+            pct_revenue_requirement="% of rev. requirement",
+            cross_subsidy="Cross-subsidy",
+            pct_overpayment_vs_cos="Cross-subsidy ÷ COS",
+        )
+        .tab_options(
+            **get_switchbox_gt_tab_options(
+                table_layout="auto",
+                table_width="1360px",
+            ),
+        )
+        .cols_width(
+            subclass="132px",
+            rev_delivery_current="142px",
+            pct_rev_delivery_current="90px",
+            delta_rev_delivery="108px",
+            rev_delivery_proposed="142px",
+            pct_rev_delivery_proposed="90px",
+            cost_of_service="124px",
+            pct_revenue_requirement="102px",
+            cross_subsidy="118px",
+            pct_overpayment_vs_cos="104px",
+        )
+        .fmt_percent(
+            columns=[
+                "pct_rev_delivery_current",
+                "pct_rev_delivery_proposed",
+                "pct_revenue_requirement",
+                "pct_overpayment_vs_cos",
+            ],
+            decimals=1,
+        )
+        .fmt_currency(
+            columns=[
+                "rev_delivery_current",
+                "delta_rev_delivery",
+                "rev_delivery_proposed",
+                "cost_of_service",
+                "cross_subsidy",
+            ],
+            decimals=0,
+        )
+        .sub_missing(missing_text="—")
+    )
+    return _cos_gt_center_cells(
+        _gt,
+        data_columns=[
+            "rev_delivery_current",
+            "pct_rev_delivery_current",
+            "delta_rev_delivery",
+            "rev_delivery_proposed",
+            "pct_rev_delivery_proposed",
+            "cost_of_service",
+            "pct_revenue_requirement",
+            "cross_subsidy",
+            "pct_overpayment_vs_cos",
+        ],
+    )
+
+
+def build_gt_cos_avg(
+    cos_tbl: pl.DataFrame,
+    *,
+    title: str = "Average delivery bill, COS, and cross-subsidy by subclass (per customer-year)",
+    subtitle: str | None = None,
+) -> GT:
+    _avg_tbl = (
+        cos_tbl.select(
+            "subclass",
+            "n_customers",
+            "n_customers_display",
+            "pct_customers_display",
+            "revenue_delivery",
+            "cost_of_service",
+            "cross_subsidy",
+        )
+        .with_columns(
+            pl.when(pl.col("n_customers") > 0)
+            .then(pl.col("revenue_delivery") / pl.col("n_customers"))
+            .otherwise(None)
+            .alias("avg_delivery_bill"),
+            pl.when(pl.col("n_customers") > 0)
+            .then(pl.col("cost_of_service") / pl.col("n_customers"))
+            .otherwise(None)
+            .alias("avg_cost_of_service"),
+            pl.when(pl.col("n_customers") > 0)
+            .then(pl.col("cross_subsidy") / pl.col("n_customers"))
+            .otherwise(None)
+            .alias("avg_cross_subsidy"),
+        )
+        .with_columns(
+            pl.when(
+                (pl.col("avg_cost_of_service").is_not_null())
+                & (pl.col("avg_cost_of_service") > 0)
+            )
+            .then(pl.col("avg_cross_subsidy") / pl.col("avg_cost_of_service"))
+            .otherwise(None)
+            .alias("avg_bat_div_avg_cos"),
+        )
+        .select(
+            "subclass",
+            "n_customers_display",
+            "pct_customers_display",
+            "avg_delivery_bill",
+            "avg_cost_of_service",
+            "avg_cross_subsidy",
+            "avg_bat_div_avg_cos",
+        )
+    )
+    _gt = (
+        GT(_avg_tbl, rowname_col="subclass")
+        .tab_header(title=title, subtitle=subtitle)
+        .tab_options(**_COS_GT_TAB_OPTS)
+        .cols_label(
+            n_customers_display="Customers",
+            pct_customers_display="% of customers",
+            avg_delivery_bill="Avg. delivery bill",
+            avg_cost_of_service="Avg. cost of service",
+            avg_cross_subsidy="Avg. cross-subsidy",
+            avg_bat_div_avg_cos="Avg. cross-subsidy ÷ Avg. COS",
+        )
+        .fmt_number(columns=["n_customers_display"], decimals=0, use_seps=True)
+        .fmt_percent(
+            columns=["pct_customers_display", "avg_bat_div_avg_cos"],
+            decimals=1,
+        )
+        .fmt_currency(
+            columns=["avg_delivery_bill", "avg_cost_of_service", "avg_cross_subsidy"],
+            decimals=0,
+        )
+        .sub_missing(missing_text="—")
+    )
+    return _cos_gt_center_cells(
+        _gt,
+        data_columns=[
+            "n_customers_display",
+            "pct_customers_display",
+            "avg_delivery_bill",
+            "avg_cost_of_service",
+            "avg_cross_subsidy",
+            "avg_bat_div_avg_cos",
+        ],
+    )
+
+
+def build_gt_cos_comparison_avg(
+    cos_default: pl.DataFrame,
+    cos_proposed: pl.DataFrame,
+    *,
+    title: str,
+    subtitle: str,
+    label_spanner_default: str,
+    label_spanner_proposed: str,
+) -> GT:
+    def _avg_side(df: pl.DataFrame) -> pl.DataFrame:
+        return (
+            df.select(
+                "subclass",
+                "n_customers",
+                "revenue_delivery",
+                "cost_of_service",
+                "cross_subsidy",
+            )
+            .with_columns(
+                pl.when(pl.col("n_customers") > 0)
+                .then(pl.col("revenue_delivery") / pl.col("n_customers"))
+                .otherwise(None)
+                .alias("avg_delivery_bill"),
+                pl.when(pl.col("n_customers") > 0)
+                .then(pl.col("cost_of_service") / pl.col("n_customers"))
+                .otherwise(None)
+                .alias("avg_cost_of_service"),
+                pl.when(pl.col("n_customers") > 0)
+                .then(pl.col("cross_subsidy") / pl.col("n_customers"))
+                .otherwise(None)
+                .alias("avg_cross_subsidy"),
+            )
+            .with_columns(
+                pl.when(
+                    (pl.col("avg_cost_of_service").is_not_null())
+                    & (pl.col("avg_cost_of_service") > 0)
+                )
+                .then(pl.col("avg_cross_subsidy") / pl.col("avg_cost_of_service"))
+                .otherwise(None)
+                .alias("avg_bat_div_avg_cos"),
+            )
+        )
+
+    _c = _avg_side(cos_default).select(
+        "subclass",
+        pl.col("avg_delivery_bill").alias("avg_del_default"),
+        pl.col("avg_cross_subsidy").alias("avg_xsub_default"),
+    )
+    _h = _avg_side(cos_proposed).select(
+        "subclass",
+        pl.col("avg_delivery_bill").alias("avg_del_proposed"),
+        pl.col("avg_cost_of_service").alias("avg_cos_proposed"),
+        pl.col("avg_cross_subsidy").alias("avg_xsub_proposed"),
+        pl.col("avg_bat_div_avg_cos").alias("avg_ratio_proposed"),
+    )
+    _gt_df = (
+        _c.join(_h, on="subclass", how="inner")
+        .with_columns(
+            (pl.col("avg_del_proposed") - pl.col("avg_del_default")).alias(
+                "delta_avg_delivery"
+            ),
+        )
+        .select(
+            "subclass",
+            "avg_del_default",
+            "avg_xsub_default",
+            "delta_avg_delivery",
+            "avg_del_proposed",
+            "avg_cos_proposed",
+            "avg_xsub_proposed",
+            "avg_ratio_proposed",
+        )
+    )
+    _gt = (
+        GT(_gt_df, rowname_col="subclass")
+        .tab_header(title=title, subtitle=subtitle)
+        .tab_spanner(
+            label=label_spanner_default,
+            columns=["avg_del_default", "avg_xsub_default"],
+        )
+        .tab_spanner(
+            label=label_spanner_proposed,
+            columns=[
+                "delta_avg_delivery",
+                "avg_del_proposed",
+                "avg_cos_proposed",
+                "avg_xsub_proposed",
+                "avg_ratio_proposed",
+            ],
+        )
+        .cols_label(
+            avg_del_default="Avg. delivery bill",
+            avg_xsub_default="Avg. cross-subsidy",
+            delta_avg_delivery="Change in avg. delivery bill",
+            avg_del_proposed="Avg. delivery bill",
+            avg_cos_proposed="Avg. cost of service",
+            avg_xsub_proposed="Avg. cross-subsidy",
+            avg_ratio_proposed="Avg. cross-subsidy ÷ Avg. COS",
+        )
+        .tab_options(
+            **get_switchbox_gt_tab_options(
+                table_layout="auto",
+                table_width="1280px",
+            ),
+        )
+        .cols_width(
+            subclass="132px",
+            avg_del_default="128px",
+            avg_xsub_default="128px",
+            delta_avg_delivery="148px",
+            avg_del_proposed="128px",
+            avg_cos_proposed="124px",
+            avg_xsub_proposed="118px",
+            avg_ratio_proposed="112px",
+        )
+        .fmt_percent(columns=["avg_ratio_proposed"], decimals=1)
+        .fmt_currency(
+            columns=[
+                "avg_del_default",
+                "avg_xsub_default",
+                "delta_avg_delivery",
+                "avg_del_proposed",
+                "avg_cos_proposed",
+                "avg_xsub_proposed",
+            ],
+            decimals=0,
+        )
+        .sub_missing(missing_text="—")
+    )
+    return _cos_gt_center_cells(
+        _gt,
+        data_columns=[
+            "avg_del_default",
+            "avg_xsub_default",
+            "delta_avg_delivery",
+            "avg_del_proposed",
+            "avg_cos_proposed",
+            "avg_xsub_proposed",
+            "avg_ratio_proposed",
+        ],
+    )
+
+
+def calibrated_volumetric_c_per_kwh(
+    utility: str, tariff_fragment: str
+) -> str:
+    """Extract first energy tier from a calibrated tariff JSON → ¢/kWh string."""
+    path = f"{_RDP_TARIFF_DIR}/{utility}_{tariff_fragment}_calibrated.json"
+    doc = parse_urdb_json(fetch_rdp_file(path, RDP_REF))
+    rate = float(doc["items"][0]["energyratestructure"][0][0]["rate"])
+    return f"{rate * 100:.2f}¢/kWh"
+```
+
+## Load revenue requirements
+
+We fetch each utility's base YAML and HP-vs-non-HP YAML from the rate-design-platform repo. The base YAML provides `total_delivery_revenue_requirement` and `total_residential_kwh`. The subclass YAML uses the **nested format**: `subclass_revenue_requirements.delivery.{alloc}` gives HP vs non-HP delivery splits for each allocation method, and `heating_type_breakdown.{alloc}` gives per-heating-type COS (for validation against BAT-derived values).
+
+```{python}
+#| label: load-rev-req
+
+_RDP_RR_DIR = f"rate_design/hp_rates/{STATE_LOWER}/config/rev_requirement"
+
+rev_req: dict[str, dict] = {}
+
+for util in UTILITIES:
+    _base_raw = fetch_rdp_file(f"{_RDP_RR_DIR}/{util}.yaml", RDP_REF)
+    _base = yaml.safe_load(_base_raw)
+
+    _hp_raw = fetch_rdp_file(f"{_RDP_RR_DIR}/{util}_hp_vs_nonhp.yaml", RDP_REF)
+    _hp = yaml.safe_load(_hp_raw)
+
+    _sub_rr = _hp["subclass_revenue_requirements"]
+    _ht_bk = _hp["heating_type_breakdown"]
+
+    rev_req[util] = {
+        "total_delivery_rr": float(_base["total_delivery_revenue_requirement"]),
+        "total_residential_kwh": float(_base["total_residential_kwh"]),
+        "subclass_rr": _sub_rr,
+        "heating_type_breakdown": _ht_bk,
+    }
+
+statewide_delivery_rr = sum(v["total_delivery_rr"] for v in rev_req.values())
+statewide_residential_kwh = sum(v["total_residential_kwh"] for v in rev_req.values())
+
+print(f"Statewide delivery RR: ${statewide_delivery_rr:,.0f}")
+print(f"Statewide residential kWh: {statewide_residential_kwh:,.0f}")
+for util in UTILITIES:
+    rr = rev_req[util]
+    _sub = rr["subclass_rr"]["delivery"]
+    _alloc_methods = [k for k in _sub if k != "passthrough"]
+    print(
+        f"  {UTIL_DISPLAY[util]:20s}  "
+        f"delivery RR ${rr['total_delivery_rr']:>16,.0f}   "
+        f"alloc methods: {_alloc_methods}"
+    )
+    for alloc in _alloc_methods:
+        _hp_d = float(_sub[alloc]["hp"])
+        _nonhp_d = float(_sub[alloc]["non-hp"])
+        print(f"    {alloc:14s}  HP ${_hp_d:>14,.0f}   non-HP ${_nonhp_d:>16,.0f}")
+```
+
+## Load baseline (run 1+2) and build default COS tables
+
+We load master BAT for run 1+2 once. This gives us the default-rate COS tables that appear in every scenario comparison. We produce statewide and per-utility totals and averages tables here.
+
+```{python}
+#| label: load-default
+
+bat_default = load_master_bat(
+    PATH_MASTER_BAT_DEFAULT, residual_alloc="percustomer"
+)
+assert_bill_identity(bat_default, "run 1+2 (default)")
+
+print(f"Default BAT loaded: {bat_default.height:,} buildings")
+print(f"  Weighted customer count: {bat_default['weight'].sum():,.0f}")
+print(f"  Weighted delivery revenue: ${(bat_default['weight'] * bat_default['annual_bill_delivery']).sum():,.0f}")
+```
+
+```{python}
+#| label: default-cos-statewide
+
+cos_default_statewide = build_cos_table(
+    bat_default, rev_req=statewide_delivery_rr
+)
+cos_default_statewide
+```
+
+```{python}
+#| label: default-cos-by-utility
+
+cos_default_by_utility: dict[str, pl.DataFrame] = {}
+for util in UTILITIES:
+    cos_default_by_utility[util] = build_cos_table(
+        bat_default, rev_req=rev_req[util]["total_delivery_rr"], utility_filter=util
+    )
+    print(f"{UTIL_DISPLAY[util]}: {cos_default_by_utility[util].height} rows")
+```
+
+### Default rates — statewide tables
+
+```{python}
+#| label: tbl-cos-statewide-default
+
+_gt_default_sw = build_gt_cos_totals(
+    cos_default_statewide,
+    title="Delivery revenue, cost of service, and cross-subsidy by residential subclass — NY statewide",
+    subtitle="All customers on default residential delivery rates (run 1+2).",
+)
+
+Path("../cache").mkdir(exist_ok=True)
+Path("../cache/cos_statewide_default.html").write_text(
+    _gt_default_sw.as_raw_html(), encoding="utf-8"
+)
+_gt_default_sw
+```
+
+```{python}
+#| label: tbl-cos-avg-statewide-default
+
+_gt_avg_default_sw = build_gt_cos_avg(
+    cos_default_statewide,
+    title="Average annual delivery bill, COS, and cross-subsidy by subclass — NY statewide",
+    subtitle="All customers on default residential delivery rates (run 1+2).",
+)
+
+Path("../cache/cos_avg_statewide_default.html").write_text(
+    _gt_avg_default_sw.as_raw_html(), encoding="utf-8"
+)
+_gt_avg_default_sw
+```
+
+### Default rates — per-utility tables
+
+```{python}
+#| label: default-per-utility-tables
+
+for util in UTILITIES:
+    _label = UTIL_DISPLAY[util]
+    _cos = cos_default_by_utility[util]
+
+    _gt_tot = build_gt_cos_totals(
+        _cos,
+        title=f"Delivery revenue, COS, and cross-subsidy — {_label}",
+        subtitle="Default residential delivery rates (run 1+2).",
+    )
+    Path(f"../cache/cos_{util}_default.html").write_text(
+        _gt_tot.as_raw_html(), encoding="utf-8"
+    )
+
+    _gt_avg = build_gt_cos_avg(
+        _cos,
+        title=f"Average delivery bill, COS, and cross-subsidy — {_label}",
+        subtitle="Default residential delivery rates (run 1+2).",
+    )
+    Path(f"../cache/cos_avg_{util}_default.html").write_text(
+        _gt_avg.as_raw_html(), encoding="utf-8"
+    )
+
+    print(f"  {_label}: wrote cos_{util}_default.html, cos_avg_{util}_default.html")
+```
+
+## Scenario comparisons
+
+Each scenario below loads its proposed-run master BAT, builds COS tables, and produces side-by-side comparison tables (default vs proposed) for statewide and every utility.
+
+```{python}
+#| label: scenario-loop
+
+from IPython.display import Markdown, display
+
+for scenario in SCENARIOS:
+    sid = scenario["id"]
+    run = scenario["run"]
+    alloc = scenario["residual_alloc"]
+    label = scenario["label"]
+    description = scenario["description"]
+    hp_tariff = scenario["hp_tariff"]
+    nonhp_tariff = scenario["nonhp_tariff"]
+
+    display(Markdown(f"### {label}"))
+    display(Markdown(f"*{description}*"))
+    display(Markdown(f"**Run pair:** {run} | **Residual allocation:** {alloc}"))
+
+    # --- Load proposed BAT ---
+    path_proposed = (
+        f"{S3_BASE}/{STATE_LOWER}/all_utilities/{BATCH}/run_{run}"
+        "/cross_subsidization_BAT_values/"
+    )
+    bat_proposed = load_master_bat(path_proposed, residual_alloc=alloc)
+    assert_bill_identity(bat_proposed, f"run {run} ({label})")
+
+    print(
+        f"Proposed BAT loaded: {bat_proposed.height:,} buildings, "
+        f"weighted customers: {bat_proposed['weight'].sum():,.0f}"
+    )
+
+    # --- Build proposed COS tables ---
+    cos_proposed_sw = build_cos_table(bat_proposed, rev_req=statewide_delivery_rr)
+    cos_proposed_by_util: dict[str, pl.DataFrame] = {}
+    for util in UTILITIES:
+        cos_proposed_by_util[util] = build_cos_table(
+            bat_proposed,
+            rev_req=rev_req[util]["total_delivery_rr"],
+            utility_filter=util,
+        )
+
+    # --- Build spanner labels from calibrated tariff volumetric rates ---
+    # Use the first utility's rates for the statewide subtitle (they vary by utility,
+    # so the subtitle notes this is an example).
+    _example_util = "coned"
+    _c_kwh_default = calibrated_volumetric_c_per_kwh(_example_util, "default")
+    _c_kwh_hp = calibrated_volumetric_c_per_kwh(_example_util, hp_tariff)
+    _c_kwh_nonhp = calibrated_volumetric_c_per_kwh(_example_util, nonhp_tariff)
+
+    _spanner_today = f"All customers on default rates (run {RUN_DEFAULT})"
+    _spanner_proposed = (
+        f"HP on {hp_tariff.replace('_', ' ')} rate; "
+        f"non-HP on {nonhp_tariff.replace('_', ' ')} rate (run {run})"
+    )
+    _title_totals = (
+        "Delivery revenue, cost of service, and cross-subsidy by residential subclass"
+    )
+    _title_avg = (
+        "Average delivery bill, COS, and cross-subsidy by subclass (per customer-year)"
+    )
+
+    # --- Statewide comparison tables ---
+    display(Markdown("#### Statewide"))
+
+    _gt_comp_sw = build_gt_cos_comparison_totals(
+        cos_default_statewide,
+        cos_proposed_sw,
+        title=f"{_title_totals} — NY statewide",
+        subtitle=f"{label}. Volumetric rates vary by utility.",
+        label_spanner_today=_spanner_today,
+        label_spanner_proposed=_spanner_proposed,
+    )
+    Path(f"../cache/cos_statewide_{sid}.html").write_text(
+        _gt_comp_sw.as_raw_html(), encoding="utf-8"
+    )
+    display(_gt_comp_sw)
+
+    _gt_comp_avg_sw = build_gt_cos_comparison_avg(
+        cos_default_statewide,
+        cos_proposed_sw,
+        title=f"{_title_avg} — NY statewide",
+        subtitle=f"{label}. Per-customer averages across all NY utilities.",
+        label_spanner_default=_spanner_today,
+        label_spanner_proposed=_spanner_proposed,
+    )
+    Path(f"../cache/cos_avg_statewide_{sid}.html").write_text(
+        _gt_comp_avg_sw.as_raw_html(), encoding="utf-8"
+    )
+    display(_gt_comp_avg_sw)
+
+    # --- Per-utility comparison tables ---
+    display(Markdown("#### By utility"))
+
+    for util in UTILITIES:
+        _label_u = UTIL_DISPLAY[util]
+        _cos_def_u = cos_default_by_utility[util]
+        _cos_prop_u = cos_proposed_by_util[util]
+
+        _c_hp_u = calibrated_volumetric_c_per_kwh(util, hp_tariff)
+        _c_nonhp_u = calibrated_volumetric_c_per_kwh(util, nonhp_tariff)
+        _c_def_u = calibrated_volumetric_c_per_kwh(util, "default")
+
+        _span_today_u = f"Default rates ({_c_def_u})"
+        _span_prop_u = f"HP {hp_tariff.replace('_', ' ')} ({_c_hp_u}); non-HP {nonhp_tariff.replace('_', ' ')} ({_c_nonhp_u})"
+
+        _gt_u = build_gt_cos_comparison_totals(
+            _cos_def_u,
+            _cos_prop_u,
+            title=f"{_title_totals} — {_label_u}",
+            subtitle=f"{label}.",
+            label_spanner_today=_span_today_u,
+            label_spanner_proposed=_span_prop_u,
+        )
+        Path(f"../cache/cos_{util}_{sid}.html").write_text(
+            _gt_u.as_raw_html(), encoding="utf-8"
+        )
+
+        _gt_avg_u = build_gt_cos_comparison_avg(
+            _cos_def_u,
+            _cos_prop_u,
+            title=f"{_title_avg} — {_label_u}",
+            subtitle=f"{label}.",
+            label_spanner_default=_span_today_u,
+            label_spanner_proposed=_span_prop_u,
+        )
+        Path(f"../cache/cos_avg_{util}_{sid}.html").write_text(
+            _gt_avg_u.as_raw_html(), encoding="utf-8"
+        )
+
+        print(f"  {_label_u}: wrote cos_{util}_{sid}.html, cos_avg_{util}_{sid}.html")
+
+    # --- Populate report_vars for this scenario ---
+    report_vars[sid] = {"statewide": {}, "by_utility": {}}
+
+    _hp_row_sw = cos_proposed_sw.filter(pl.col("subclass") == "Heat pump")
+    _all_row_sw = cos_proposed_sw.filter(pl.col("subclass") == "All customers")
+    report_vars[sid]["statewide"] = {
+        "total_customers": float(_all_row_sw["n_customers"][0]),
+        "total_delivery_rev": float(_all_row_sw["revenue_delivery"][0]),
+        "hp_cross_subsidy": float(_hp_row_sw["cross_subsidy"][0]),
+        "hp_pct_overpayment": float(_hp_row_sw["pct_overpayment_vs_cos"][0])
+        if _hp_row_sw["pct_overpayment_vs_cos"][0] is not None
+        else None,
+    }
+
+    for util in UTILITIES:
+        _cos_p = cos_proposed_by_util[util]
+        _hp_u = _cos_p.filter(pl.col("subclass") == "Heat pump")
+        report_vars[sid]["by_utility"][util] = {
+            "hp_cross_subsidy": float(_hp_u["cross_subsidy"][0]),
+            "hp_pct_overpayment": float(_hp_u["pct_overpayment_vs_cos"][0])
+            if _hp_u["pct_overpayment_vs_cos"][0] is not None
+            else None,
+        }
+
+    display(Markdown("---"))
+```
+
+## Default-rate report variables
+
+```{python}
+#| label: default-report-vars
+
+_hp_default_sw = cos_default_statewide.filter(pl.col("subclass") == "Heat pump")
+_all_default_sw = cos_default_statewide.filter(pl.col("subclass") == "All customers")
+
+report_vars["default"] = {
+    "statewide": {
+        "total_customers": float(_all_default_sw["n_customers"][0]),
+        "total_delivery_rev": float(_all_default_sw["revenue_delivery"][0]),
+        "hp_cross_subsidy": float(_hp_default_sw["cross_subsidy"][0]),
+        "hp_pct_overpayment": float(_hp_default_sw["pct_overpayment_vs_cos"][0])
+        if _hp_default_sw["pct_overpayment_vs_cos"][0] is not None
+        else None,
+    },
+    "by_utility": {},
+}
+
+for util in UTILITIES:
+    _cos_d = cos_default_by_utility[util]
+    _hp_d = _cos_d.filter(pl.col("subclass") == "Heat pump")
+    report_vars["default"]["by_utility"][util] = {
+        "hp_cross_subsidy": float(_hp_d["cross_subsidy"][0]),
+        "hp_pct_overpayment": float(_hp_d["pct_overpayment_vs_cos"][0])
+        if _hp_d["pct_overpayment_vs_cos"][0] is not None
+        else None,
+    }
+
+report_vars["statewide_delivery_rr"] = statewide_delivery_rr
+report_vars["statewide_residential_kwh"] = statewide_residential_kwh
+report_vars["rev_req_by_utility"] = rev_req
+
+print("Default statewide HP cross-subsidy:", f"${report_vars['default']['statewide']['hp_cross_subsidy']:,.0f}")
+for util in UTILITIES:
+    _xs = report_vars["default"]["by_utility"][util]["hp_cross_subsidy"]
+    print(f"  {UTIL_DISPLAY[util]:20s} HP cross-subsidy: ${_xs:,.0f}")
+```
+
+## Export report variables
+
+```{python}
+#| label: export-report-vars
+
+import pickle
+
+Path("../cache").mkdir(exist_ok=True)
+Path("../cache/report_variables_cos_subclass.pkl").write_bytes(
+    pickle.dumps(report_vars),
+)
+print(f"Exported {len(report_vars)} top-level keys to cache/report_variables_cos_subclass.pkl")
+```

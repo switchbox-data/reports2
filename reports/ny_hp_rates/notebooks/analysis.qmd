@@ -1966,24 +1966,42 @@ for label, row in [("Gas", median_gas_bat), ("HP", median_hp_bat)]:
 #| label: fig-cross-subsidy-example
 #| fig-cap: "Annual delivery bill vs. delivery cost of service for the median gas-heated home, before and after switching to a heat pump."
 
-CS_COMP_ORDER = ["Delivery Bill", "Marginal Cost", "Residual Cost"]
-CS_COMP_COLORS = {
-    "Delivery Bill": "#56B4E9",
-    "Marginal Cost": "#1b7837",
-    "Residual Cost": "#a6dba0",
-}
+DECOMPOSE_COS = True
+
+if DECOMPOSE_COS:
+    CS_COMP_ORDER = ["Delivery Bill", "Marginal Cost", "Residual Cost"]
+    CS_COMP_COLORS = {
+        "Delivery Bill": "#56B4E9",
+        "Marginal Cost": "#1b7837",
+        "Residual Cost": "#a6dba0",
+    }
+else:
+    CS_COMP_ORDER = ["Delivery Bill", "Cost of Service"]
+    CS_COMP_COLORS = {
+        "Delivery Bill": "#56B4E9",
+        "Cost of Service": "#1b7837",
+    }
 CS_BAR_ORDER = ["Cost of\nService", "Delivery\nBill"]
 
 
 def _bldg_records(row: dict, scenario: str) -> list[dict]:
-    return [
+    records = [
         {"scenario": scenario, "bar": "Delivery\nBill", "component": "Delivery Bill",
          "dollars": row["revenue"]},
-        {"scenario": scenario, "bar": "Cost of\nService", "component": "Marginal Cost",
-         "dollars": row["mc"]},
-        {"scenario": scenario, "bar": "Cost of\nService", "component": "Residual Cost",
-         "dollars": row["residual"]},
     ]
+    if DECOMPOSE_COS:
+        records.extend([
+            {"scenario": scenario, "bar": "Cost of\nService", "component": "Marginal Cost",
+             "dollars": row["mc"]},
+            {"scenario": scenario, "bar": "Cost of\nService", "component": "Residual Cost",
+             "dollars": row["residual"]},
+        ])
+    else:
+        records.append(
+            {"scenario": scenario, "bar": "Cost of\nService", "component": "Cost of Service",
+             "dollars": row["mc"] + row["residual"]},
+        )
+    return records
 
 
 cs_records: list[dict] = []
@@ -2068,7 +2086,7 @@ report_vars["cs_hp_bat"] = hp_bat_cs
         fill="",
     )
     + theme_switchbox()
-    + theme(figure_size=(10.5, 5.25))
+    + theme(figure_size=(10.5, 5.25), **({"legend_position": "none"} if not DECOMPOSE_COS else {}))
 )
 ```
 

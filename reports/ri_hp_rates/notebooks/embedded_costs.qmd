@@ -14,23 +14,25 @@ Embedded-cost share for a subclass = subclass NCP / sum of all subclass NCPs.
 ```{python}
 from buildstock_fetch.scenarios import uniform_adoption
 from buildstock_fetch.mixed_upgrade import MixedUpgradeScenario
-from cloudpathlib import S3Path
 import polars as pl
 from pathlib import Path
 ```
 
 ### PARAMETERS
 ```{python}
+report_vars: dict = {}
+
 state = "RI"
 release = "res_2024_amy2018_2"
-data_path = S3Path("s3://data.sb/nrel/resstock/")
+release_sb = "res_2024_amy2018_2_sb"
+data_path = Path("/ebs/data/nrel/resstock/")
 random_seed = 67
 upgrade_id = 2
 
 only_consider_summer_peaks = False
 normalize_secondary_to_rie = True
 
-force_recrunch = True
+force_recrunch = False
 DEBUG_MODE = False
 
 if DEBUG_MODE:
@@ -42,7 +44,9 @@ else:
     step_size = 0.01
     num_steps = 10
 
-additional_adoption_pct_values = [round(x * step_size, 2) for x in range(num_steps + 1)]
+#additional_adoption_pct_values = [round(x * step_size, 2) for x in range(num_steps + 1)]
+
+additional_adoption_pct_values = [0.0]
 
 # Infrastructure levels and their corresponding allocator row names
 LEVELS = ["secondary", "substation", "primary", "subtransmission"]
@@ -212,7 +216,7 @@ def read_mixed_upgrade_scenario(
     scenario: dict[int, list[float]],
     scenario_name: str,
     baseline_metadata: pl.LazyFrame,
-    data_path: S3Path,
+    data_path: Path,
     release: str,
     state: str,
     random_seed: int | None = None,
@@ -315,13 +319,13 @@ def label_dollar_precise(values):
 
 ```{python}
 metadata_path = (
-    data_path / release / "metadata" / f"state={state}" / "upgrade=00" / "metadata-sb.parquet"
+    data_path / release_sb / "metadata" / f"state={state}" / "upgrade=00" / "metadata-sb.parquet"
 )
 if metadata_path.exists():
     baseline_sbmeta = pl.scan_parquet(str(metadata_path))
 else:
     path_plain = (
-        data_path / release / "metadata" / f"state={state}" / "upgrade=00" / "metadata.parquet"
+        data_path / release_sb / "metadata" / f"state={state}" / "upgrade=00" / "metadata.parquet"
     )
     baseline_sbmeta = pl.scan_parquet(str(path_plain)).with_columns(
         pl.when(
@@ -756,6 +760,29 @@ for sys_row in df_system.iter_rows(named=True):
 ```
 
 ```{python}
+def _subclass_row(df: pl.DataFrame, heating_type: str) -> dict:
+    row = df.filter(pl.col("postprocess_group.heating_type_v2") == heating_type)
+    assert row.height == 1, f"Expected 1 row for {heating_type}, got {row.height}"
+    return row.to_dicts()[0]
+
+
+total_homes_fy = at_zero_full_year["num_homes"].sum()
+at_zero_fy_pct = at_zero_full_year.with_columns(
+    (pl.col("num_homes") / total_homes_fy * 100).alias("num_homes_pct_of_total"),
+)
+
+hp_fy = _subclass_row(at_zero_fy_pct, "heat_pump")
+natgas_fy = _subclass_row(at_zero_fy_pct, "natgas")
+
+report_vars["hp_pct_of_customers"] = hp_fy["num_homes_pct_of_total"]
+report_vars["hp_ncp_share_pct"] = hp_fy["subclass_pct_of_class_share"]
+report_vars["hp_ncp_timestamp"] = hp_fy["ncp_timestamp"]
+report_vars["natgas_pct_of_customers"] = natgas_fy["num_homes_pct_of_total"]
+report_vars["natgas_ncp_share_pct"] = natgas_fy["subclass_pct_of_class_share"]
+report_vars["natgas_ncp_timestamp"] = natgas_fy["ncp_timestamp"]
+```
+
+```{python}
 # Subclass breakdown at baseline (0% additional adoption)
 at_zero = df_ncp.filter(pl.col("additional_adoption_pct") == 0.0).sort(
     "postprocess_group.heating_type_v2", descending=False
@@ -1133,4 +1160,16 @@ a growing share of the system's demand-related revenue requirement.
     )
     + theme_minimal()
 ).draw()
+```
+
+### EXPORT REPORT VARIABLES
+
+```{python}
+import pickle
+
+Path("../cache").mkdir(exist_ok=True)
+Path("../cache/embedded_costs_report_vars.pkl").write_bytes(pickle.dumps(report_vars))
+print(f"Exported {len(report_vars)} report variables to cache/embedded_costs_report_vars.pkl")
+for k, val in report_vars.items():
+    print(f"  {k}: {val}")
 ```

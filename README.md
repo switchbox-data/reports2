@@ -104,7 +104,7 @@ just --list
 - `just render` - Render HTML version of report using Quarto
 - `just draft` - Render Word document for content reviews using Quarto
 - `just typeset` - Render ICML for InDesign typesetting using Quarto
-- `just publish` - Copy rendered HTML version of report from project `docs/` to root `docs/` for web publishing
+- `just publish` - Copy project `docs/` to root `docs/`, inline SVGs, and drop `index_files/`, previews, and source `.qmd` for GitHub Pages
 - `just clean` - Remove generated files and caches
 
 ## 🚀 Quick Start
@@ -550,7 +550,7 @@ This creates fresh output in `reports/<project_code>/docs/`.
 just publish
 ```
 
-**What this does**: Copies all files from `reports/<project_code>/docs/` to `docs/<project_code>/`. If files already exist at `docs/<project_code>/`, they're deleted first to ensure a clean publish.
+**What this does**: Copies all files from `reports/<project_code>/docs/` to `docs/<project_code>/` (replacing any existing tree), runs SVG inlining on the copy, then removes `index_files/`, `*-preview.html`, `.qmd`, and `.ipynb` from the published folder while keeping `site_libs/`, `img/`, and shipped HTML.
 
 #### 6. Return to Repository Root
 
@@ -978,6 +978,7 @@ Pre-commit hooks are managed by [prek](https://github.com/j178/prek) and configu
 - **trailing-whitespace**: Removes trailing whitespace
 - **end-of-file-fixer**: Ensures files end with a newline
 - **check-yaml/json/toml**: Validates config file syntax
+- **yamlfmt**: Formats YAML via a `language: system` hook — install the [`yamlfmt` release binary](https://github.com/google/yamlfmt/releases) for your platform and put it on your `PATH` (for example `~/.local/bin/yamlfmt`). Go is not required.
 - **check-added-large-files**: Prevents commits of files >600KB
 - **check-merge-conflict**: Detects merge conflict markers
 - **check-case-conflict**: Prevents case-sensitivity issues

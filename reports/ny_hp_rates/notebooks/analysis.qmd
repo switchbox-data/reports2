@@ -401,7 +401,7 @@ def plot_bill_components_decomposed(
             size=11, nudge_y=30, inherit_aes=False,
         )
         + scale_fill_manual(values=DECOMPOSED_COLORS)
-        + scale_x_discrete(limits=SCENARIO_ORDER, expand=(0, 0.6, 0, 1.8))
+        + scale_x_discrete(limits=SCENARIO_ORDER, expand=(0, 0.6, 0, 0.9))
         + scale_y_continuous(expand=(0, 0, 0.08, 0))
         + guides(fill=False)
         + labs(x="", y="Annual energy bill ($)", title=title)
@@ -878,6 +878,18 @@ _ax.text(_x_label, _del_label_y, f"×{_del_mult:.1f}",
 report_vars["delivery_multiplier"] = _del_mult
 report_vars["supply_multiplier"] = _sup_mult
 
+_bar_edge = 2 + _bar_hw
+_ax.spines["bottom"].set_bounds(_ax.get_xlim()[0], _bar_edge)
+_g0 = _ax.get_ygridlines()[0]
+_gc, _gw = _g0.get_color(), _g0.get_linewidth()
+_ax.yaxis.grid(False)
+for _yt in _ax.get_yticks():
+    if 0 < _yt < _ax.get_ylim()[1]:
+        _ax.hlines(_yt, _ax.get_xlim()[0], _bar_edge, colors=_gc, linewidths=_gw, zorder=0)
+for _t in _ax.texts:
+    if _t.get_position()[0] >= _bar_edge:
+        _t.set_clip_on(False)
+
 fig_decomposed
 ```
 
@@ -1113,8 +1125,10 @@ def plot_quadrant_bar(
         + theme(
             figure_size=(12.5, max(2.6, 1.0 + 1.2 * n_scenarios)),
             axis_text=element_blank(),
-            axis_ticks=element_blank(),
-            axis_line=element_blank(),
+            axis_ticks_x=element_blank(),
+            axis_ticks_y=element_blank(),
+            axis_line_x=element_blank(),
+            axis_line_y=element_blank(),
             panel_grid=element_blank(),
             plot_title=(
                 element_blank()
@@ -1374,14 +1388,21 @@ _elec_change_table = pl.DataFrame(_table_rows).pivot(
     on="cooling", index="utility", values="median_pct_change",
 ).sort("utility")
 
+```
+
+```{python}
+#| label: tbl-elec-pct-change
+
+from lib.great_tables import get_switchbox_gt_tab_options
+from lib.quarto import display_gt
+
 _elec_change_gt = (
     GT(_elec_change_table, rowname_col="utility")
     .fmt_number(columns=_cooling_order, decimals=0, pattern="{x}%")
     .tab_spanner(label="Baseline cooling", columns=_cooling_order)
+    .tab_options(**get_switchbox_gt_tab_options())
 )
-Path("../cache").mkdir(exist_ok=True)
-Path("../cache/elec_pct_change_table.html").write_text(_elec_change_gt.as_raw_html())
-_elec_change_gt
+display_gt(_elec_change_gt)
 ```
 
 ### Statewide bill changes by fuel type
@@ -1646,8 +1667,10 @@ _p_hh = (
     + theme(
         figure_size=(13, max(3.0, 0.8 + 0.9 * _n_hh)),
         axis_text=element_blank(),
-        axis_ticks=element_blank(),
-        axis_line=element_blank(),
+        axis_ticks_x=element_blank(),
+        axis_ticks_y=element_blank(),
+        axis_line_x=element_blank(),
+        axis_line_y=element_blank(),
         panel_grid=element_blank(),
         legend_position="none",
     )
@@ -1752,8 +1775,10 @@ p_fuel = (
     + theme(
         figure_size=(10.5, 2.6),
         axis_text=element_blank(),
-        axis_ticks=element_blank(),
-        axis_line=element_blank(),
+        axis_ticks_x=element_blank(),
+        axis_ticks_y=element_blank(),
+        axis_line_x=element_blank(),
+        axis_line_y=element_blank(),
         panel_grid=element_blank(),
         legend_position="none",
     )
@@ -1850,8 +1875,10 @@ _p = (
     + theme(
         figure_size=(13, max(3.0, 0.8 + 0.9 * _n_utils)),
         axis_text=element_blank(),
-        axis_ticks=element_blank(),
-        axis_line=element_blank(),
+        axis_ticks_x=element_blank(),
+        axis_ticks_y=element_blank(),
+        axis_line_x=element_blank(),
+        axis_line_y=element_blank(),
         panel_grid=element_blank(),
         legend_position="none",
     )
@@ -1964,49 +1991,76 @@ for label, row in [("Gas", median_gas_bat), ("HP", median_hp_bat)]:
 
 ```{python}
 #| label: fig-cross-subsidy-example
-#| fig-cap: "Annual delivery bill vs. delivery cost of service for the median gas-heated home, before and after switching to a heat pump."
+#| fig-cap: "Annual electric delivery bill vs. electric delivery cost of service for the median gas-heated home, before and after switching to a heat pump."
 
-DECOMPOSE_COS = True
+DECOMPOSE_COS = False
 
 if DECOMPOSE_COS:
-    CS_COMP_ORDER = ["Delivery Bill", "Marginal Cost", "Residual Cost"]
+    CS_COMP_ORDER = [
+        "Delivery Bill (Fixed)", "Delivery Bill (Volumetric)",
+        "Marginal Cost", "Residual Cost",
+    ]
     CS_COMP_COLORS = {
-        "Delivery Bill": "#56B4E9",
+        "Delivery Bill (Fixed)": "#023047",
+        "Delivery Bill (Volumetric)": "#56B4E9",
         "Marginal Cost": "#1b7837",
         "Residual Cost": "#a6dba0",
     }
+    CS_LABEL_COLORS = {
+        "Delivery Bill (Fixed)": "white",
+        "Delivery Bill (Volumetric)": "white",
+        "Marginal Cost": "white",
+        "Residual Cost": "#333333",
+    }
 else:
-    CS_COMP_ORDER = ["Delivery Bill", "Cost of Service"]
+    CS_COMP_ORDER = [
+        "Delivery Bill (Fixed)", "Delivery Bill (Volumetric)",
+        "Cost of Service",
+    ]
     CS_COMP_COLORS = {
-        "Delivery Bill": "#56B4E9",
-        "Cost of Service": "#1b7837",
+        "Delivery Bill (Fixed)": "#023047",
+        "Delivery Bill (Volumetric)": "#56B4E9",
+        "Cost of Service": "#a6dba0",
+    }
+    CS_LABEL_COLORS = {
+        "Delivery Bill (Fixed)": "white",
+        "Delivery Bill (Volumetric)": "white",
+        "Cost of Service": "#333333",
     }
 CS_BAR_ORDER = ["Cost of\nService", "Delivery\nBill"]
 
+_SIDE_LINE_X = 2.35
+_SIDE_TEXT_X = 2.45
 
-def _bldg_records(row: dict, scenario: str) -> list[dict]:
+
+def _bldg_records(bat_row: dict, bills_df: pl.DataFrame, scenario: str) -> list[dict]:
+    fixed = float(bills_df["delivery_fixed"][0])
+    vol = float(bills_df["delivery_volumetric"][0])
     records = [
-        {"scenario": scenario, "bar": "Delivery\nBill", "component": "Delivery Bill",
-         "dollars": row["revenue"]},
+        {"scenario": scenario, "bar": "Delivery\nBill",
+         "component": "Delivery Bill (Fixed)", "dollars": fixed},
+        {"scenario": scenario, "bar": "Delivery\nBill",
+         "component": "Delivery Bill (Volumetric)", "dollars": vol},
     ]
     if DECOMPOSE_COS:
         records.extend([
-            {"scenario": scenario, "bar": "Cost of\nService", "component": "Marginal Cost",
-             "dollars": row["mc"]},
-            {"scenario": scenario, "bar": "Cost of\nService", "component": "Residual Cost",
-             "dollars": row["residual"]},
+            {"scenario": scenario, "bar": "Cost of\nService",
+             "component": "Marginal Cost", "dollars": bat_row["mc"]},
+            {"scenario": scenario, "bar": "Cost of\nService",
+             "component": "Residual Cost", "dollars": bat_row["residual"]},
         ])
     else:
         records.append(
-            {"scenario": scenario, "bar": "Cost of\nService", "component": "Cost of Service",
-             "dollars": row["mc"] + row["residual"]},
+            {"scenario": scenario, "bar": "Cost of\nService",
+             "component": "Cost of Service",
+             "dollars": bat_row["mc"] + bat_row["residual"]},
         )
     return records
 
 
 cs_records: list[dict] = []
-cs_records.extend(_bldg_records(median_gas_bat, SCENARIO_ORDER[0]))
-cs_records.extend(_bldg_records(median_hp_bat, SCENARIO_ORDER[1]))
+cs_records.extend(_bldg_records(median_gas_bat, median_current_state, SCENARIO_ORDER[0]))
+cs_records.extend(_bldg_records(median_hp_bat, median_hp_state, SCENARIO_ORDER[1]))
 
 cs_plot_df = pl.DataFrame(cs_records).with_columns(
     pl.col("scenario").cast(pl.Enum(SCENARIO_ORDER)),
@@ -2026,6 +2080,27 @@ cs_bar_totals = (
     )
 )
 
+cs_label_df = (
+    cs_plot_df
+    .sort("scenario", "bar", "component")
+    .with_columns(
+        pl.col("dollars").cum_sum().over("scenario", "bar").alias("_cum"),
+    )
+    .with_columns(
+        (pl.col("_cum") - pl.col("dollars") / 2).alias("y_mid"),
+        pl.col("dollars")
+        .map_elements(lambda v: f"${v:,.0f}", return_dtype=pl.String)
+        .alias("dollar_label"),
+        pl.col("component").cast(pl.String)
+        .replace_strict(CS_LABEL_COLORS)
+        .alias("label_color"),
+    )
+    .filter(pl.col("dollars") >= 50)
+    .with_columns(pl.len().over("scenario", "bar").alias("_n"))
+    .filter(pl.col("_n") > 1)
+    .drop("_cum", "_n")
+)
+
 gas_bill = median_gas_bat["revenue"]
 gas_cost = median_gas_bat["mc"] + median_gas_bat["residual"]
 gas_bat = median_gas_bat[BAT_DELIVERY]
@@ -2038,14 +2113,21 @@ gas_underpays = gas_bill < gas_cost
 hp_overpays = hp_bill_cs > hp_cost_cs
 
 bracket_df = pl.DataFrame([
+    {"scenario": SCENARIO_ORDER[0], "x": 1.0, "xend": 2.0,
+     "y": gas_cost, "yend": gas_bill,
+     "clr": "#ffc729"},
     {"scenario": SCENARIO_ORDER[1], "x": 1.0, "xend": 2.0,
      "y": hp_cost_cs, "yend": hp_bill_cs,
      "clr": "#b71c1c" if hp_overpays else "#1b5e20"},
 ]).with_columns(pl.col("scenario").cast(pl.Enum(SCENARIO_ORDER)))
 
 bat_labels = pl.DataFrame([
+    {"scenario": SCENARIO_ORDER[0], "x": 1.5,
+     "y": (gas_cost + gas_bill) / 2,
+     "label": f"Underpays\n${abs(gas_cost - gas_bill):,.0f}/yr",
+     "clr": "#ffc729"},
     {"scenario": SCENARIO_ORDER[1], "x": 1.5,
-     "y": max(hp_bill_cs, hp_cost_cs) + 80,
+     "y": (hp_cost_cs + hp_bill_cs) / 2,
      "label": f"{'Overpays' if hp_overpays else 'Underpays'}\n${abs(hp_bat_cs):,.0f}/yr",
      "clr": "#b71c1c" if hp_overpays else "#1b5e20"},
 ]).with_columns(pl.col("scenario").cast(pl.Enum(SCENARIO_ORDER)))
@@ -2059,9 +2141,32 @@ report_vars["cs_hp_cost"] = hp_cost_cs
 report_vars["cs_hp_overpay"] = hp_bill_cs - hp_cost_cs
 report_vars["cs_hp_bat"] = hp_bat_cs
 
+_hp_fixed = float(median_hp_state["delivery_fixed"][0])
+_hp_vol = float(median_hp_state["delivery_volumetric"][0])
+
+side_lines_df = pl.DataFrame([
+    {"scenario": SCENARIO_ORDER[1], "x": _SIDE_LINE_X, "xend": _SIDE_TEXT_X - 0.03,
+     "y": _hp_fixed / 2, "yend": _hp_fixed / 2},
+    {"scenario": SCENARIO_ORDER[1], "x": _SIDE_LINE_X, "xend": _SIDE_TEXT_X - 0.03,
+     "y": _hp_fixed + _hp_vol / 2, "yend": _hp_fixed + _hp_vol / 2},
+]).with_columns(pl.col("scenario").cast(pl.Enum(SCENARIO_ORDER)))
+
+side_text_df = pl.DataFrame([
+    {"scenario": SCENARIO_ORDER[1], "x": _SIDE_TEXT_X,
+     "y": _hp_fixed / 2, "label": "Electric Delivery\nBill (Fixed)",
+     "clr": "#023047"},
+    {"scenario": SCENARIO_ORDER[1], "x": _SIDE_TEXT_X,
+     "y": _hp_fixed + _hp_vol / 2, "label": "Electric Delivery\nBill (Volumetric)",
+     "clr": "#56B4E9"},
+]).with_columns(pl.col("scenario").cast(pl.Enum(SCENARIO_ORDER)))
+
 (
     ggplot(cs_plot_df, aes(x="bar", y="dollars", fill="component"))
     + geom_col(position=position_stack(reverse=True), width=0.55)
+    + geom_text(
+        cs_label_df, aes(x="bar", y="y_mid", label="dollar_label", color="label_color"),
+        fontweight="bold", size=9, inherit_aes=False,
+    )
     + geom_text(
         cs_bar_totals, aes(x="bar", y="total", label="total_label"),
         va="bottom", color="#333333", fontweight="bold",
@@ -2074,19 +2179,28 @@ report_vars["cs_hp_bat"] = hp_bat_cs
     )
     + geom_text(
         bat_labels, aes(x="x", y="y", label="label", color="clr"),
-        size=9, fontweight="bold", inherit_aes=False,
+        size=9, fontweight="bold", va="bottom", inherit_aes=False,
+    )
+    + geom_segment(
+        side_lines_df, aes(x="x", xend="xend", y="y", yend="yend"),
+        color="#999999", size=0.5, inherit_aes=False,
+    )
+    + geom_text(
+        side_text_df, aes(x="x", y="y", label="label", color="clr"),
+        ha="left", va="center", size=8, fontweight="bold", inherit_aes=False,
     )
     + scale_fill_manual(values=CS_COMP_COLORS, breaks=CS_COMP_ORDER)
     + scale_color_identity()
     + scale_y_continuous(expand=(0, 0, 0.15, 0))
+    + scale_x_discrete(expand=(0, 0.5, 0, 0.9))
     + facet_wrap("scenario", ncol=2)
     + labs(
         x="", y="$ / year",
-        title="Delivery bill vs. cost of service — same home, before and after heat pump",
+        title="Electric delivery bill vs. delivery cost of service — same home, before and after heat pump",
         fill="",
     )
     + theme_switchbox()
-    + theme(figure_size=(10.5, 5.25), **({"legend_position": "none"} if not DECOMPOSE_COS else {}))
+    + theme(figure_size=(10.5, 5.25), legend_position="none")
 )
 ```
 
@@ -2167,13 +2281,22 @@ report_vars["natgas_mean_delivery_bat"] = _weighted_mean(_natgas_sub, _bat_col, 
 report_vars["oil_propane_mean_delivery_bat"] = _weighted_mean(_op_sub, _bat_col, "weight")
 report_vars["elec_resistance_mean_delivery_bat"] = _weighted_mean(_er_sub, _bat_col, "weight")
 
+```
+
+```{python}
+#| label: tbl-bat-simple
+#| tbl-cap: "The average delivery over- or underpayment of different residential customer subclasses, relative to their delivery cost-of-service."
+from lib.great_tables import get_switchbox_gt_tab_options
+from lib.quarto import display_gt
+
 _bat_simple_gt = (
     GT(pl.DataFrame(_bat_simple_rows), rowname_col="heating_type")
-    .fmt_currency(columns="mean_bat", decimals=0)
-    .cols_label(mean_bat="Mean Delivery BAT ($/yr)")
+    .fmt_currency(columns="mean_bat", decimals=0, pattern="{x} / year")
+    .cols_label(mean_bat="Average over- or underpayment")
+    .tab_stubhead(label="Residential customer subclass")
+    .tab_options(**get_switchbox_gt_tab_options())
 )
-Path("../cache/bat_simple_table.html").write_text(_bat_simple_gt.as_raw_html())
-_bat_simple_gt
+display_gt(_bat_simple_gt)
 ```
 
 ```{python}
@@ -2201,15 +2324,20 @@ for label, filt in [
     _bat_by_util_rows.append(row)
 
 _util_cols = [UTIL_SHORT[c] for c in _util_col_order]
+```
+
+```{python}
+#| label: tbl-bat-by-utility
+
 _bat_by_util_gt = (
     GT(pl.DataFrame(_bat_by_util_rows), rowname_col="heating_type")
     .fmt_currency(columns=_util_cols, decimals=0)
     .sub_missing(missing_text="—")
     .tab_header(title="Mean delivery over/underpayment by utility ($/yr)")
     .tab_source_note("Positive = overpaying; Negative = underpaying")
+    .tab_options(**get_switchbox_gt_tab_options())
 )
-Path("../cache/bat_by_utility_table.html").write_text(_bat_by_util_gt.as_raw_html())
-_bat_by_util_gt
+display_gt(_bat_by_util_gt)
 ```
 
 ```{python}
@@ -2545,16 +2673,18 @@ for display, code in TARIFF_UTILS.items():
 rate_wide = pl.DataFrame([summer_row, winter_row, discount_row])
 util_cols = [c for c in rate_wide.columns if c != "metric"]
 
+```
+
+```{python}
+#| label: tbl-rate-table
+
 _rate_gt = (
     GT(rate_wide, rowname_col="metric")
     .fmt_number(columns=util_cols, rows=pl.col("metric").is_in(["Summer delivery rate (¢/kWh)", "Winter delivery rate (¢/kWh)"]), decimals=2)
     .fmt(columns=util_cols, rows=pl.col("metric") == "Winter discount", fns=lambda x: f"{x:.1f}%")
+    .tab_options(**get_switchbox_gt_tab_options())
 )
-
-Path("../cache").mkdir(exist_ok=True)
-Path("../cache/rate_table.html").write_text(_rate_gt.as_raw_html())
-
-_rate_gt
+display_gt(_rate_gt)
 ```
 
 ## Heat pump TOU rate structure
@@ -2625,7 +2755,7 @@ tou_df
 ```
 
 ```{python}
-#| label: tou-rate-gt
+#| label: tbl-tou-rate-table
 
 rate_cols = ["delivery_off", "delivery_on", "supply_off", "supply_on", "total_off", "total_on"]
 
@@ -2647,12 +2777,9 @@ _tou_gt = (
     .fmt_number(columns=rate_cols, decimals=1)
     .fmt_currency(columns="fixed_charge", decimals=2)
     .cols_align(align="center", columns=["peak_hours", *rate_cols, "fixed_charge"])
+    .tab_options(**get_switchbox_gt_tab_options())
 )
-
-Path("../cache").mkdir(exist_ok=True)
-Path("../cache/tou_rate_table.html").write_text(_tou_gt.as_raw_html())
-
-_tou_gt
+display_gt(_tou_gt)
 ```
 
 ### Marginal cost structure
@@ -3622,6 +3749,11 @@ for label, filt in [
         "seasonal": _weighted_mean(sub_after, BAT_DELIVERY, "weight"),
     })
 
+```
+
+```{python}
+#| label: tbl-bat-comparison
+
 _bat_comp_gt = (
     GT(pl.DataFrame(_comp_rows), rowname_col="heating_type")
     .fmt_currency(columns=["current", "seasonal"], decimals=0)
@@ -3629,10 +3761,9 @@ _bat_comp_gt = (
         current="Current flat rates",
         seasonal="HP seasonal rate",
     )
+    .tab_options(**get_switchbox_gt_tab_options())
 )
-
-Path("../cache/bat_comparison_table.html").write_text(_bat_comp_gt.as_raw_html())
-_bat_comp_gt
+display_gt(_bat_comp_gt)
 ```
 
 ## Bill impact of fair rate on HP customers
@@ -3806,7 +3937,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import numpy as np
 
-_GOLD = "#D4A800"
+_SAFFRON = "#ffc729"
 _scenarios = ["Natural gas\nfurnace", "Heat pump\n(default rates)", "Heat pump\n(fair rates)"]
 _x = np.arange(len(_scenarios))
 _w = 0.55
@@ -3843,7 +3974,7 @@ for _ck in _comp_keys:
     for _i, (_v, _b) in enumerate(zip(_vals, _bottoms)):
         if _v > 80:
             ax_3bar.text(_x[_i], _b + _v / 2, _format_dollar(_v), ha="center", va="center",
-                         color="white", fontweight="bold", fontsize=11)
+                         color="white", fontweight="bold", fontsize=11, zorder=11)
     _bottoms = [_b + _v for _b, _v in zip(_bottoms, _vals)]
 
 _totals = [sum(_bars_data[i][k] for k in _comp_keys) for i in range(3)]
@@ -3853,7 +3984,10 @@ for _i in (0, 1):
                  ha="center", va="bottom", color="#333333", fontweight="bold", fontsize=12)
 
 _delivery_before = _bars_data[0]["fixed"] + _bars_data[0]["vol"]
-ax_3bar.axhline(y=_delivery_before, color=_GOLD, linewidth=1.8, linestyle=(0, (6, 4)), zorder=5, alpha=0.65)
+ax_3bar.hlines(
+    y=_delivery_before, xmin=-0.5, xmax=_x[2] + _w / 2,
+    color=_SAFFRON, linewidth=1.8, linestyle=(0, (6, 4)), zorder=10,
+)
 
 _savings = _totals[1] - _totals[2]
 _pct_savings = _savings / _totals[1] * 100
@@ -3862,24 +3996,25 @@ _rect = mpatches.FancyBboxPatch(
     (_x[2] - _w / 2, _totals[2]), _w, _savings,
     boxstyle="square,pad=0",
     facecolor="#FFC729", alpha=0.12,
-    edgecolor=_GOLD, linewidth=1.5, linestyle=(0, (5, 3)),
+    edgecolor="#B8960A", linewidth=2.0, linestyle=(0, (5, 3)),
     hatch="////", zorder=3,
 )
 ax_3bar.add_patch(_rect)
 
+ax_3bar.text(_x[2], _totals[2] + 50, _format_dollar(_totals[2]),
+             ha="center", va="bottom", color="#333333", fontweight="bold", fontsize=12,
+             zorder=8)
+
 ax_3bar.annotate(
-    "", xy=(_x[2], _totals[2] + 30), xytext=(_x[2], _totals[1] - 30),
-    arrowprops=dict(arrowstyle="->,head_length=0.4,head_width=0.25", color=_GOLD, lw=2.2),
+    "", xy=(_x[2], _totals[2] + 180), xytext=(_x[2], _totals[1] - 60),
+    arrowprops=dict(arrowstyle="->,head_length=0.4,head_width=0.25", color=_SAFFRON, lw=2.2),
     zorder=6,
 )
 
-ax_3bar.text(_x[2], _totals[1] + 120, f"-{_pct_savings:.0f}%",
-             ha="center", va="bottom", color=_GOLD, fontweight="bold", fontsize=18)
-ax_3bar.text(_x[2], _totals[1] + 50, f"({_format_dollar(_savings)})",
-             ha="center", va="bottom", color=_GOLD, fontsize=12, alpha=0.85)
-
-ax_3bar.text(_x[2] + _w / 2 + 0.05, _totals[2], _format_dollar(_totals[2]),
-             ha="left", va="center", color="#333333", fontweight="bold", fontsize=12)
+ax_3bar.text(_x[2], _totals[1] + 180, f"-{_pct_savings:.0f}%",
+             ha="center", va="bottom", color=_SAFFRON, fontweight="bold", fontsize=14)
+ax_3bar.text(_x[2], _totals[1] + 50, f"-{_format_dollar(_savings)}",
+             ha="center", va="bottom", color=_SAFFRON, fontsize=11, alpha=0.8)
 
 _side_x = _x[2] + _w / 2 + 0.15
 _d3 = _bars_data[2]
@@ -3898,10 +4033,11 @@ for _lbl, _ym, _clr in _side_specs:
 ax_3bar.set_xticks(_x)
 ax_3bar.set_xticklabels(_scenarios, fontsize=11)
 ax_3bar.set_ylabel("Annual energy bill ($)", fontsize=12)
-ax_3bar.set_ylim(0, max(_totals) * 1.18)
-ax_3bar.set_xlim(-0.5, _x[2] + _w / 2 + 1.2)
+ax_3bar.set_ylim(0, max(_totals) * 1.22)
+ax_3bar.set_xlim(-0.5, _x[2] + _w / 2 + 0.7)
 ax_3bar.spines["top"].set_visible(False)
 ax_3bar.spines["right"].set_visible(False)
+ax_3bar.spines["bottom"].set_bounds(-0.5, _x[2] + _w / 2)
 
 report_vars["fair_rate_savings_dollar"] = _savings
 report_vars["fair_rate_savings_pct"] = _pct_savings / 100
@@ -3913,7 +4049,7 @@ display_svg(fig_3bar)
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-switch-hprate-by-utility
-#| fig-cap: "Bill change summary — natural gas homes switching to HP: default vs. seasonal rate, by utility"
+#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. seasonal rate, by utility"
 
 plot_quadrant_bar_by_utility(
     delta_state, delta_switch_state,
@@ -3952,7 +4088,7 @@ if INCLUDE_TOU:
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-tou-state
-#| fig-cap: "Bill change summary — natural gas homes switching to HP: default vs. fair vs. TOU + fair rate (Statewide)"
+#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. fair vs. TOU + fair rate (Statewide)"
 
 if INCLUDE_TOU:
     _tou_quadrant_fig = plot_quadrant_bar(
@@ -4095,7 +4231,7 @@ report_vars["pct_natgas_save_1k_hprate_lmi_full"] = _lmif_save_1k / _lmif_total
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-switch-hprate-state-lmi-current
-#| fig-cap: "Bill change summary — natural gas homes switching to HP: default vs. seasonal rate (Statewide)"
+#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. seasonal rate (Statewide)"
 
 plot_quadrant_bar(
     [
@@ -4113,7 +4249,7 @@ plot_quadrant_bar(
 
 ```{python}
 #| label: fig-quadrant-bar-oil-propane-switch-hprate-state
-#| fig-cap: "Bill change summary — oil/propane homes switching to HP: default vs. seasonal rate (Statewide)"
+#| fig-cap: "Change in total annual energy bills — oil/propane homes switching to HP: default vs. seasonal rate (Statewide)"
 
 plot_quadrant_bar(
     [
@@ -4133,7 +4269,7 @@ plot_quadrant_bar(
 
 ```{python}
 #| label: fig-quadrant-bar-oil-propane-switch-hprate-by-utility
-#| fig-cap: "Bill change summary — oil/propane homes switching to HP: default vs. seasonal rate, by utility"
+#| fig-cap: "Change in total annual energy bills — oil/propane homes switching to HP: default vs. seasonal rate, by utility"
 
 plot_quadrant_bar_by_utility(
     delta_state, delta_switch_state,
@@ -4152,7 +4288,7 @@ plot_quadrant_bar_by_utility(
 
 ```{python}
 #| label: fig-quadrant-bar-elec-resistance-switch-hprate-state
-#| fig-cap: "Bill change summary — electric resistance homes switching to HP: default vs. seasonal rate (Statewide)"
+#| fig-cap: "Change in total annual energy bills — electric resistance homes switching to HP: default vs. seasonal rate (Statewide)"
 
 plot_quadrant_bar(
     [
@@ -4170,7 +4306,7 @@ plot_quadrant_bar(
 
 ```{python}
 #| label: fig-quadrant-bar-elec-resistance-switch-hprate-by-utility
-#| fig-cap: "Bill change summary — electric resistance homes switching to HP: default vs. seasonal rate, by utility"
+#| fig-cap: "Change in total annual energy bills — electric resistance homes switching to HP: default vs. seasonal rate, by utility"
 
 plot_quadrant_bar_by_utility(
     delta_state, delta_switch_state,
@@ -4292,8 +4428,10 @@ p = (
     + theme(
         figure_size=(12.5, 2.6),
         axis_text=element_blank(),
-        axis_ticks=element_blank(),
-        axis_line=element_blank(),
+        axis_ticks_x=element_blank(),
+        axis_ticks_y=element_blank(),
+        axis_line_x=element_blank(),
+        axis_line_y=element_blank(),
         panel_grid=element_blank(),
         plot_title=element_text(ha="left", margin={"b": -8, "units": "pt"}),
     )
@@ -4736,11 +4874,9 @@ if INCLUDE_TOU:
             title="Demand-flex elasticity calibration by utility and season",
             subtitle="Calibrated to Arcturus 2.0 meta-analysis; savings are annual rate arbitrage per HP building",
         )
+        .tab_options(**get_switchbox_gt_tab_options())
     )
-
-    Path("../cache").mkdir(exist_ok=True)
-    Path("../cache/tbl_seasonal_elasticities.html").write_text(_gt_elast.as_raw_html())
-    _gt_elast
+    display_gt(_gt_elast)
 ```
 
 ## Export report variables

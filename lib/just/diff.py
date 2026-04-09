@@ -87,6 +87,14 @@ def main() -> None:
             ["website_diff", "-o", str(BASELINE), "-n", str(docs_link), "-d", str(diff_dir), "-i", hub],
             check=True,
         )
+        index = diff_dir / "index.html"
+        if not index.is_file():
+            # website_diff catches failures, removes diff_dir, and still exits 0 — treat as error.
+            print(
+                f"❌ website_diff did not produce {index} (it may have failed and cleaned up).",
+                file=sys.stderr,
+            )
+            sys.exit(1)
     finally:
         (BASELINE / hub).unlink(missing_ok=True)
         (docs / hub).unlink(missing_ok=True)
@@ -97,7 +105,6 @@ def main() -> None:
             elif d.exists():
                 shutil.rmtree(d)
 
-    index = diff_dir / "index.html"
     print(f"✅ Diff saved to {diff_dir}")
     if platform.system() == "Darwin":
         os.execlp("open", "open", str(index))

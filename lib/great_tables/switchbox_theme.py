@@ -8,10 +8,10 @@ Parallels ``lib/plotnine/switchbox_theme.py`` for charts:
   left-aligned; extra bottom padding before the column-header rule.
 - **Column spanners** — GT Planar **Bold**, 12px, ``#333333`` (slightly smaller than plotnine axis titles).
 - **Column labels** (leaf headers under spanners) — GT Planar Regular, 12px, ``#333333``.
-- **Stub (row labels)** — IBM Plex Sans **Bold**, 11px, ``#4D4D4D``.
+- **Stub (row labels)** — IBM Plex Sans Regular, 11px, ``#4D4D4D``.
 - **Body cells, source notes** — IBM Plex Sans Regular, 11px, ``#4D4D4D``.
 
-**Rules** (Switchbox report tables): thick black rule directly above the column-header block; thin black rule under headers; light gray horizontal rules between body rows; **no** vertical grid lines, **no** outer side borders or bottom table border, **no** row striping. Align per-cell formatting (e.g. ``cols_align``) is left to each table.
+**Rules** (Switchbox report tables): thick black rule directly above the column-header block; medium (2px) black rule under headers; light gray horizontal rules between body rows; **no** vertical grid lines, **no** outer side borders or bottom table border, **no** row striping. Align per-cell formatting (e.g. ``cols_align``) is left to each table.
 
 Font families match ``reports/.style/switchbox.scss`` (``GT-Planar``, ``GT-Planar-Bold``,
 ``IBM Plex Sans``). When tables are embedded in Quarto HTML, those ``@font-face`` rules
@@ -108,7 +108,7 @@ def _switchbox_gt_typography_rules() -> list[str]:
         f"color: {_COLOR_HEADER} !important; }}",
         ".gt_table .gt_stub, .gt_table .gt_stub_row_group { "
         "font-family: 'IBM Plex Sans', 'IBM-Plex-Sans', sans-serif !important; "
-        f"font-size: 11px !important; line-height: 1.4 !important; font-weight: bold !important; "
+        f"font-size: 11px !important; line-height: 1.4 !important; font-weight: normal !important; "
         f"color: {_COLOR_DATA} !important; }}",
         ".gt_table .gt_sourcenote { "
         "font-family: 'IBM Plex Sans', 'IBM-Plex-Sans', sans-serif !important; "
@@ -181,7 +181,7 @@ def get_switchbox_gt_tab_options(
         "column_labels_border_top_width": "3px",
         "column_labels_border_top_color": _COLOR_RULE_BLACK,
         "column_labels_border_bottom_style": "solid",
-        "column_labels_border_bottom_width": "1px",
+        "column_labels_border_bottom_width": "2px",
         "column_labels_border_bottom_color": _COLOR_RULE_BLACK,
         "column_labels_border_lr_style": "none",
         "column_labels_border_lr_width": "0px",
@@ -195,7 +195,7 @@ def get_switchbox_gt_tab_options(
         "table_body_border_bottom_style": "none",
         "table_body_border_bottom_width": "0px",
         "stub_font_size": "11px",
-        "stub_font_weight": "bold",
+        "stub_font_weight": "normal",
         "stub_border_style": "none",
         "stub_border_width": "0px",
         "data_row_padding": "10px",

@@ -47,53 +47,32 @@ This replaces the older inline three-liner (`savefig` / `plt.close` / `display(S
 
 Give the cell `#| label: fig-my-chart` and `#| fig-cap: "..."`, then use `{{< embed notebooks/analysis.qmd#fig-my-chart >}}` in `index.qmd`. `just render` still runs `inline_svgs.py` on the built HTML.
 
-### Great Tables and other HTML
+### Great Tables: `display_gt` (preferred for `{{< embed >}}`)
 
-For GT and similar, use **file-based inclusion** — save the output to `cache/` in the analysis notebook, then reference the file directly in `index.qmd`.
-
-### GT tables
-
-In `analysis.qmd`:
+Use **`lib.quarto.display_gt`** so the cell has a single `text/html` output whose GT markup is base64-encoded inside a `<script>` tag. Pandoc cannot parse opaque base64, so the full table survives the `--to ipynb` round-trip. At page load, JavaScript decodes and injects the HTML into the DOM — no iframe, so the table participates in the host page's CSS cascade (Switchbox fonts, colors).
 
 ```python
-from pathlib import Path
-Path("../cache").mkdir(exist_ok=True)
+from lib.quarto import display_gt
 
-_my_gt = GT(df).fmt_currency(...)
-Path("../cache/my_table.html").write_text(_my_gt.as_raw_html())
-_my_gt  # still display in notebook for preview
+my_table = GT(df).fmt_currency(...)
+display_gt(my_table)
 ```
 
-In `index.qmd`:
+Give the cell `#| label: tbl-my-table` and `#| tbl-cap: "..."`, then use `{{< embed notebooks/analysis.qmd#tbl-my-table >}}` in `index.qmd`. Captions, cross-references, and column classes all work normally.
 
-````markdown
-:::{.column-page-inset-right}
+#### Why this works
 
-```{r}
-#| echo: false
-htmltools::includeHTML("cache/my_table.html")
-```
+Pandoc's `--to ipynb` parses raw `text/html` cell outputs and only retains the outermost closing tag (`</div>`). By encoding the GT HTML as a base64 string inside a `<script>`, the markup is opaque to Pandoc's HTML parser — the `<div>` and `<script>` elements are simple enough to survive, and the encoded payload passes through as an attribute value.
 
-:::
-````
+#### Legacy workaround: file-based inclusion
+
+The older pattern — saving to `cache/` and including via `htmltools::includeHTML()` — still works but has drawbacks: no Quarto cross-referencing, no `tbl-cap` captions, requires R in Python reports, and the `cache/` file must be kept in sync manually. Prefer `display_gt` for new tables.
 
 ### Matplotlib figures (fallback: static file + markdown image)
 
 If you cannot use `display_svg` (e.g. a one-off script), save under `cache/` and use a markdown image in `index.qmd`; `inline_svgs.py` will still inline `.svg` assets when you run `just render`.
 
-## Will switching away from Manuscripts fix this?
-
-Possibly. The bug is in the Manuscript project type's embed filter (`main.lua`), which processes `{{< embed >}}` shortcodes. If we move to a non-Manuscript project type (e.g., a standard Quarto website or book), we would no longer use `{{< embed >}}` at all — notebooks would either be rendered inline or their outputs consumed via a different mechanism.
-
-Key questions for the migration:
-
-- Does the replacement approach handle multi-MIME notebook cell outputs gracefully?
-- Does it preserve the analysis-narrative separation (keeping heavy computation out of `index.qmd`)?
-- Do GT `text/html` outputs render correctly in the alternative project type?
-
-Until the migration happens, use **`display_svg(fig)` + `{{< embed >}}`** for matplotlib charts where possible, and file-based workarounds for GT and other HTML.
-
 ## Affected reports
 
-- `ny_hp_rates`: TOU rate table (GT) still uses file-based HTML; TOU schedule matplotlib charts and the bill-decomposition bar chart use `display_svg` + `{{< embed >}}`.
+- `ny_hp_rates`: TOU rate table (GT) and BAT summary tables use `display_gt` + `{{< embed >}}`; TOU schedule matplotlib charts and the bill-decomposition bar chart use `display_svg` + `{{< embed >}}`.
 - `ri_hp_rates`: bill-decomposition bar chart and feeder/transformer peak analysis charts use `display_svg` + `{{< embed >}}`; optional TOU matplotlib cells exist behind `INCLUDE_TOU` for parity with NY (not embedded in `index.qmd` today).

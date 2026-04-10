@@ -94,19 +94,39 @@ def _weighted_mean(df: pl.DataFrame, col: str, w_col: str) -> float:
 # --- To switch states, change these values and the 4 utility dicts in the constants cell below. ---
 INCLUDE_TOU = True  # set False to skip TOU rate cells (e.g. when TOU run is not available)
 UTILITY = "coned"  # any utility code from UTIL_NAMES, used for the representative-building example
-BATCH = "ny_20260408_all_epmc_r1-24"
 STATE = "NY"
 YEAR = 2025
-RDP_REF = "553997e"    # rate-design-platform git ref for fetch_rdp_file
 
-# --- Switchable run pairs (change these + RESIDUAL_ALLOC_* to swap rate scenarios) ---
-RUN_HPRATE = "5+6"      # HP seasonal precalc (u0) — "21+22" for EPMC delivery
-RUN_HPRATE_HP = "7+8"   # HP seasonal default (u2) — "23+24" for EPMC delivery
-RUN_TOU_HP = "15+16"    # TOU flex default (u2)    — "27+28" for EPMC delivery
+### UPDATE WITH NEW RUNS
+BATCH = "ny_20260408_all_epmc_r1-24"
+RDP_REF = "530564d"  # rate-design-platform git ref for fetch_rdp_file
+###
 
-# --- Tariff filename slugs (must match tariff JSONs in rate-design-platform) ---
-TARIFF_SEASONAL = "hp_seasonal"         # "hp_seasonal_epmc" for EPMC delivery runs
-TARIFF_TOU = "hp_seasonalTOU_flex"      # "hp_seasonalTOU_flex_epmc" for EPMC delivery runs
+
+### UPDATE TO SWITCH RESIDUAL ALLOCATION METHODS
+# Delivery residual allocation: sets BAT column stubs, run pairs, and tariff filename slugs together.
+RESIDUAL_ALLOC_DELIVERY = "epmc"  # "percustomer" | "epmc"
+
+if RESIDUAL_ALLOC_DELIVERY == "percustomer":
+    # HP seasonal precalc (u0), HP seasonal default (u2), TOU flex default (u2)
+    RUN_HPRATE = "5+6"
+    RUN_HPRATE_HP = "7+8"
+    RUN_TOU_HP = "15+16"
+    TARIFF_SEASONAL = "hp_seasonal"
+    TARIFF_TOU = "hp_seasonalTOU_flex"
+elif RESIDUAL_ALLOC_DELIVERY == "epmc":
+    RUN_HPRATE = "21+22"
+    RUN_HPRATE_HP = "23+24"
+    RUN_TOU_HP = "27+28"
+    TARIFF_SEASONAL = "hp_seasonal_epmc"
+    TARIFF_TOU = "hp_seasonalTOU_flex_epmc"
+else:
+    msg = f"Unknown RESIDUAL_ALLOC_DELIVERY {RESIDUAL_ALLOC_DELIVERY!r}; use 'percustomer' or 'epmc'"
+    raise ValueError(msg)
+
+RESIDUAL_ALLOC_SUPPLY = "percustomer"  # "percustomer" | "passthrough" — supply BAT / residual column stubs only
+###
+
 
 # Everything below derives from the params above
 _state_lower = STATE.lower()
@@ -179,8 +199,6 @@ UTIL_SHORT: dict[str, str] = {  # tariff code -> short label for BAT-by-utility 
     "rge": "RG&E",
 }
 
-RESIDUAL_ALLOC_DELIVERY = "percustomer"  # "epmc" when using EPMC delivery runs; "passthrough" later
-RESIDUAL_ALLOC_SUPPLY = "percustomer"    # independent of delivery; "passthrough" later
 BAT_DELIVERY = f"BAT_{RESIDUAL_ALLOC_DELIVERY}_delivery"
 BAT_SUPPLY = f"BAT_{RESIDUAL_ALLOC_SUPPLY}_supply"
 BAT_TOTAL = "bat_total"  # derived as BAT_DELIVERY + BAT_SUPPLY in each BAT ingest cell

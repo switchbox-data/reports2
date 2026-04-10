@@ -1242,6 +1242,20 @@ Reports are built with [Quarto](https://quarto.org/) using the Manuscript projec
 
 The Article Layout page is especially important -- it documents the column classes (`column-page-inset-right`, `column-margin`, etc.) that we use for figure placement and margin content throughout our reports.
 
+## Quarto extensions
+
+Quarto extensions (shortcodes, filters, etc.) are shared across all reports via `lib/quarto_extensions/`. Each extension has its own subdirectory containing the Lua and CSS/JS files. Reports reference these directly in `_quarto.yml` using the `shortcodes:` or `filters:` key with a relative path — they do **not** use per-project `_extensions/` directories.
+
+```yaml
+# Example: reports/<project>/_quarto.yml
+shortcodes:
+  - ../../lib/quarto_extensions/glossary/glossary.lua
+```
+
+**Do not** run `quarto add` or create `_extensions/` directories in report projects. To add an extension to a report, reference its Lua file from `lib/quarto_extensions/` in `_quarto.yml`. To add a new extension to the repo, create a directory under `lib/quarto_extensions/<name>/`.
+
+For the full explanation of why this works (and why Quarto's default `_extensions/` mechanism doesn't suit a monorepo), see `context/code/quarto_extensions.md`.
+
 ## MCP Tools
 
 ### Context7

@@ -26,6 +26,7 @@ import yaml
 from great_tables import GT, loc, style
 
 from lib.great_tables import get_switchbox_gt_tab_options
+from lib.quarto import display_gt
 from lib.rdp import fetch_rdp_file, parse_urdb_json
 
 report_vars: dict = {}
@@ -36,9 +37,9 @@ report_vars: dict = {}
 ```{python}
 #| label: params
 
-BATCH = "ny_20260326_flex_r1-16"
+BATCH = "ny_20260408_all_epmc_r1-24"
 STATE_LOWER = "ny"
-RDP_REF = "d4d5555"  # 388-verify-ny-cairo-batch-after-epmc-deliverysupply-residual-split
+RDP_REF = "530564d"  # includes EPMC TOU flex calibrated tariffs
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
 
 RUN_DEFAULT = "1+2"
@@ -94,25 +95,42 @@ SCENARIOS: list[dict] = [
             "flat. Residual allocated per customer."
         ),
     },
-    # Future entries — uncomment when runs exist:
-    # {
-    #     "id": "hp_seasonal_epmc",
-    #     "run": "N+N+1",
-    #     "residual_alloc": "epmc",
-    #     "hp_tariff": "hp_seasonal",
-    #     "nonhp_tariff": "nonhp_default",
-    #     "label": "HP seasonal rate, EPMC residual",
-    #     "description": "...",
-    # },
-    # {
-    #     "id": "hp_flat_epmc",
-    #     "run": "K+K+1",
-    #     "residual_alloc": "epmc",
-    #     "hp_tariff": "hp_flat",
-    #     "nonhp_tariff": "nonhp_flat",
-    #     "label": "HP flat rate, EPMC residual",
-    #     "description": "...",
-    # },
+    {
+        "id": "hp_seasonal_epmc",
+        "run": "21+22",
+        "residual_alloc": "epmc",
+        "hp_tariff": "hp_seasonal_epmc",
+        "nonhp_tariff": "nonhp_default",
+        "label": "HP seasonal rate, EPMC residual",
+        "description": (
+            "HP customers on seasonal delivery rate; non-HP on recalibrated "
+            "flat. Residual allocated via EPMC."
+        ),
+    },
+    {
+        "id": "hp_seasonalTOU_flex_percustomer",
+        "run": "13+14",
+        "residual_alloc": "percustomer",
+        "hp_tariff": "hp_seasonalTOU_flex",
+        "nonhp_tariff": "nonhp_default",
+        "label": "HP seasonal TOU flex rate, per-customer residual",
+        "description": (
+            "HP customers on seasonal TOU flex delivery rate; non-HP on "
+            "recalibrated flat. Residual allocated per customer."
+        ),
+    },
+    {
+        "id": "hp_seasonalTOU_flex_epmc",
+        "run": "25+26",
+        "residual_alloc": "epmc",
+        "hp_tariff": "hp_seasonalTOU_flex_epmc",
+        "nonhp_tariff": "nonhp_default",
+        "label": "HP seasonal TOU flex rate, EPMC residual",
+        "description": (
+            "HP customers on seasonal TOU flex delivery rate; non-HP on "
+            "recalibrated flat. Residual allocated via EPMC."
+        ),
+    },
 ]
 ```
 
@@ -144,11 +162,16 @@ def _cos_gt_center_cells(gt: GT, *, data_columns: list[str]) -> GT:
 def _bat_col_name(base: str, residual_alloc: str) -> str:
     """Build the actual parquet column name for a given allocation method.
 
-    Pattern: ``BAT_{alloc}_delivery``, ``residual_share_{alloc}_delivery``.
+    BAT columns are always qualified: ``BAT_{alloc}_delivery``.
+    Residual share columns use the unqualified ``residual_share_delivery``
+    for per-customer (the default) and ``residual_share_epmc_delivery``
+    for EPMC.
     """
     if base == "BAT":
         return f"BAT_{residual_alloc}_delivery"
     if base == "residual_share":
+        if residual_alloc == "percustomer":
+            return "residual_share_delivery"
         return f"residual_share_{residual_alloc}_delivery"
     msg = f"Unknown base column: {base}"
     raise ValueError(msg)
@@ -374,6 +397,103 @@ def build_gt_cos_totals(
             "pct_overpayment_vs_cos",
         ],
     )
+
+
+def build_gt_mc_diagnostic(
+    bat: pl.DataFrame,
+    *,
+    title: str,
+    subtitle: str | None = None,
+) -> GT:
+    """Build a diagnostic table showing MC (economic burden), residual, and COS by subclass.
+
+    Takes the raw bat DataFrame (which has economic_burden_delivery and residual_delivery)
+    and aggregates by heating_type_v2.
+    """
+    total_w = float(bat["weight"].sum())
+
+    _by_ht = bat.group_by("postprocess_group.heating_type_v2").agg(
+        pl.col("weight").sum().alias("n_customers"),
+        (pl.col("weight") * pl.col("economic_burden_delivery")).sum().alias("total_mc"),
+        (pl.col("weight") * pl.col("residual_delivery")).sum().alias("total_residual"),
+        (pl.col("weight") * pl.col("cost_of_service_delivery")).sum().alias("total_cos"),
+    )
+    _spine = pl.DataFrame({"postprocess_group.heating_type_v2": list(HT_V2_ORDER)})
+    _agg_cols_mc = ["subclass", "n_customers", "total_mc", "total_residual", "total_cos"]
+    by_ht = (
+        _spine.join(_by_ht, on="postprocess_group.heating_type_v2", how="left")
+        .with_columns(
+            pl.col("n_customers").fill_null(0.0),
+            pl.col("total_mc").fill_null(0.0),
+            pl.col("total_residual").fill_null(0.0),
+            pl.col("total_cos").fill_null(0.0),
+        )
+        .with_columns(
+            pl.col("postprocess_group.heating_type_v2")
+            .replace(HT_V2_LABELS)
+            .alias("subclass"),
+        )
+        .drop("postprocess_group.heating_type_v2")
+        .select(_agg_cols_mc)
+    )
+    _total = pl.DataFrame({
+        "subclass": ["All customers"],
+        "n_customers": [total_w],
+        "total_mc": [float(by_ht["total_mc"].sum())],
+        "total_residual": [float(by_ht["total_residual"].sum())],
+        "total_cos": [float(by_ht["total_cos"].sum())],
+    }).select(_agg_cols_mc)
+    tbl = (
+        pl.concat([by_ht, _total], how="vertical")
+        .with_columns(
+            pl.when(pl.col("n_customers") > 0)
+            .then(pl.col("total_mc") / pl.col("n_customers"))
+            .otherwise(None)
+            .alias("avg_mc"),
+            pl.when(pl.col("n_customers") > 0)
+            .then(pl.col("total_residual") / pl.col("n_customers"))
+            .otherwise(None)
+            .alias("avg_residual"),
+            pl.when(pl.col("n_customers") > 0)
+            .then(pl.col("total_cos") / pl.col("n_customers"))
+            .otherwise(None)
+            .alias("avg_cos"),
+        )
+        .select(
+            "subclass", "n_customers",
+            "total_mc", "avg_mc",
+            "total_residual", "avg_residual",
+            "total_cos", "avg_cos",
+        )
+    )
+    _data_cols = [
+        "n_customers", "total_mc", "avg_mc",
+        "total_residual", "avg_residual", "total_cos", "avg_cos",
+    ]
+    _gt = (
+        GT(tbl, rowname_col="subclass")
+        .tab_header(title=title, subtitle=subtitle)
+        .tab_options(**_COS_GT_TAB_OPTS)
+        .tab_spanner(label="Marginal cost (economic burden)", columns=["total_mc", "avg_mc"])
+        .tab_spanner(label="Residual allocation", columns=["total_residual", "avg_residual"])
+        .tab_spanner(label="Cost of service (MC + residual)", columns=["total_cos", "avg_cos"])
+        .cols_label(
+            n_customers="Customers",
+            total_mc="Total",
+            avg_mc="Avg. per customer",
+            total_residual="Total",
+            avg_residual="Avg. per customer",
+            total_cos="Total",
+            avg_cos="Avg. per customer",
+        )
+        .fmt_number(columns=["n_customers"], decimals=0, use_seps=True)
+        .fmt_currency(
+            columns=["total_mc", "avg_mc", "total_residual", "avg_residual", "total_cos", "avg_cos"],
+            decimals=0,
+        )
+        .sub_missing(missing_text="—")
+    )
+    return _cos_gt_center_cells(_gt, data_columns=_data_cols)
 
 
 def build_gt_cos_comparison_totals(
@@ -732,6 +852,60 @@ def build_gt_cos_comparison_avg(
     )
 
 
+def load_scenario_proposed_cos(
+    scenario: dict,
+) -> tuple[pl.DataFrame, pl.DataFrame, dict[str, pl.DataFrame]]:
+    """Load proposed-run master BAT and build statewide + per-utility COS tables."""
+    run = scenario["run"]
+    alloc = scenario["residual_alloc"]
+    label = scenario["label"]
+    path_proposed = (
+        f"{S3_BASE}/{STATE_LOWER}/all_utilities/{BATCH}/run_{run}"
+        "/cross_subsidization_BAT_values/"
+    )
+    bat_proposed = load_master_bat(path_proposed, residual_alloc=alloc)
+    assert_bill_identity(bat_proposed, f"run {run} ({label})")
+    cos_proposed_sw = build_cos_table(bat_proposed, rev_req=statewide_delivery_rr)
+    cos_proposed_by_util: dict[str, pl.DataFrame] = {}
+    for util in UTILITIES:
+        cos_proposed_by_util[util] = build_cos_table(
+            bat_proposed,
+            rev_req=rev_req[util]["total_delivery_rr"],
+            utility_filter=util,
+        )
+    return bat_proposed, cos_proposed_sw, cos_proposed_by_util
+
+
+def fill_report_vars_for_scenario(
+    sid: str,
+    cos_proposed_sw: pl.DataFrame,
+    cos_proposed_by_util: dict[str, pl.DataFrame],
+) -> None:
+    """Populate ``report_vars[sid]`` with statewide and per-utility HP stats."""
+    report_vars[sid] = {"statewide": {}, "by_utility": {}}
+
+    _hp_row_sw = cos_proposed_sw.filter(pl.col("subclass") == "Heat pump")
+    _all_row_sw = cos_proposed_sw.filter(pl.col("subclass") == "All customers")
+    report_vars[sid]["statewide"] = {
+        "total_customers": float(_all_row_sw["n_customers"][0]),
+        "total_delivery_rev": float(_all_row_sw["revenue_delivery"][0]),
+        "hp_cross_subsidy": float(_hp_row_sw["cross_subsidy"][0]),
+        "hp_pct_overpayment": float(_hp_row_sw["pct_overpayment_vs_cos"][0])
+        if _hp_row_sw["pct_overpayment_vs_cos"][0] is not None
+        else None,
+    }
+
+    for util in UTILITIES:
+        _cos_p = cos_proposed_by_util[util]
+        _hp_u = _cos_p.filter(pl.col("subclass") == "Heat pump")
+        report_vars[sid]["by_utility"][util] = {
+            "hp_cross_subsidy": float(_hp_u["cross_subsidy"][0]),
+            "hp_pct_overpayment": float(_hp_u["pct_overpayment_vs_cos"][0])
+            if _hp_u["pct_overpayment_vs_cos"][0] is not None
+            else None,
+        }
+
+
 def calibrated_volumetric_c_per_kwh(
     utility: str, tariff_fragment: str
 ) -> str:
@@ -790,275 +964,637 @@ for util in UTILITIES:
         print(f"    {alloc:14s}  HP ${_hp_d:>14,.0f}   non-HP ${_nonhp_d:>16,.0f}")
 ```
 
-## Load baseline (run 1+2) and build default COS tables
+---
 
-We load master BAT for run 1+2 once. This gives us the default-rate COS tables that appear in every scenario comparison. We produce statewide and per-utility totals and averages tables here.
+# PER-CUSTOMER DELIVERY RESIDUAL, PER-CUSTOMER SUPPLY RESIDUAL {#sec-percustomer}
+
+All tables in this section use **per-customer residual allocation** for both delivery and supply. The baseline is run 1+2 (default uniform rates); the proposed scenarios are HP seasonal (run 5+6) and HP seasonal TOU flex (run 13+14).
+
+## Load baseline data (per-customer residual)
 
 ```{python}
-#| label: load-default
+#| label: load-default-pc
 
-bat_default = load_master_bat(
+bat_default_pc = load_master_bat(
     PATH_MASTER_BAT_DEFAULT, residual_alloc="percustomer"
 )
-assert_bill_identity(bat_default, "run 1+2 (default)")
+assert_bill_identity(bat_default_pc, "run 1+2 (default, percustomer)")
 
-print(f"Default BAT loaded: {bat_default.height:,} buildings")
-print(f"  Weighted customer count: {bat_default['weight'].sum():,.0f}")
-print(f"  Weighted delivery revenue: ${(bat_default['weight'] * bat_default['annual_bill_delivery']).sum():,.0f}")
-```
+cos_default_sw_pc = build_cos_table(bat_default_pc, rev_req=statewide_delivery_rr)
 
-```{python}
-#| label: default-cos-statewide
-
-cos_default_statewide = build_cos_table(
-    bat_default, rev_req=statewide_delivery_rr
-)
-cos_default_statewide
-```
-
-```{python}
-#| label: default-cos-by-utility
-
-cos_default_by_utility: dict[str, pl.DataFrame] = {}
+cos_default_by_util_pc: dict[str, pl.DataFrame] = {}
 for util in UTILITIES:
-    cos_default_by_utility[util] = build_cos_table(
-        bat_default, rev_req=rev_req[util]["total_delivery_rr"], utility_filter=util
+    cos_default_by_util_pc[util] = build_cos_table(
+        bat_default_pc, rev_req=rev_req[util]["total_delivery_rr"], utility_filter=util
     )
-    print(f"{UTIL_DISPLAY[util]}: {cos_default_by_utility[util].height} rows")
+
+print(f"Default BAT (percustomer) loaded: {bat_default_pc.height:,} buildings")
+print(f"  Weighted customer count: {bat_default_pc['weight'].sum():,.0f}")
+print(f"  Weighted delivery revenue: ${(bat_default_pc['weight'] * bat_default_pc['annual_bill_delivery']).sum():,.0f}")
 ```
 
-### Default rates — statewide tables
+## Baseline statewide — totals (per-customer residual)
 
 ```{python}
-#| label: tbl-cos-statewide-default
+#| label: tbl-baseline-sw-totals-pc
+#| tbl-cap: "Delivery revenue, cost of service, and cross-subsidy by residential subclass — NY statewide, default rates (per-customer residual)"
 
-_gt_default_sw = build_gt_cos_totals(
-    cos_default_statewide,
-    title="Delivery revenue, cost of service, and cross-subsidy by residential subclass — NY statewide",
-    subtitle="All customers on default residential delivery rates (run 1+2).",
+display_gt(
+    build_gt_cos_totals(
+        cos_default_sw_pc,
+        title="Delivery revenue, cost of service, and cross-subsidy — NY statewide",
+        subtitle="Default residential delivery rates (run 1+2). Residual allocated per customer.",
+    )
 )
+```
 
-Path("../cache").mkdir(exist_ok=True)
-Path("../cache/cos_statewide_default.html").write_text(
-    _gt_default_sw.as_raw_html(), encoding="utf-8"
+## Baseline statewide — averages (per-customer residual)
+
+```{python}
+#| label: tbl-baseline-sw-avg-pc
+#| tbl-cap: "Average annual delivery bill, COS, and cross-subsidy by subclass — NY statewide, default rates (per-customer residual)"
+
+display_gt(
+    build_gt_cos_avg(
+        cos_default_sw_pc,
+        title="Average annual delivery bill, COS, and cross-subsidy — NY statewide",
+        subtitle="Default residential delivery rates (run 1+2). Residual allocated per customer.",
+    )
 )
-_gt_default_sw
+```
+
+## Baseline statewide — marginal cost diagnostic (per-customer residual)
+
+This table decomposes cost of service into its two components: **marginal cost** (economic burden) and **residual allocation**. The MC column should be identical regardless of allocation method — only the residual changes.
+
+```{python}
+#| label: tbl-mc-diagnostic-sw-pc
+#| tbl-cap: "Marginal cost, residual, and COS decomposition by subclass — NY statewide (per-customer residual)"
+
+display_gt(
+    build_gt_mc_diagnostic(
+        bat_default_pc,
+        title="Marginal cost, residual, and COS decomposition — NY statewide",
+        subtitle="Default rates (run 1+2). Residual allocated per customer.",
+    )
+)
+```
+
+## HP seasonal vs. baseline statewide — totals (per-customer residual)
+
+```{python}
+#| label: load-hp-seasonal-pc
+
+bat_hp_seasonal_pc, cos_hp_seasonal_sw_pc, cos_hp_seasonal_by_util_pc = (
+    load_scenario_proposed_cos(SCENARIOS[0])
+)
+print(
+    f"HP seasonal (percustomer) loaded: {bat_hp_seasonal_pc.height:,} buildings, "
+    f"weighted customers: {bat_hp_seasonal_pc['weight'].sum():,.0f}"
+)
 ```
 
 ```{python}
-#| label: tbl-cos-avg-statewide-default
+#| label: tbl-hp-seasonal-sw-totals-pc
+#| tbl-cap: "Default vs HP seasonal delivery revenue, COS, and cross-subsidy — NY statewide (per-customer residual)"
 
-_gt_avg_default_sw = build_gt_cos_avg(
-    cos_default_statewide,
-    title="Average annual delivery bill, COS, and cross-subsidy by subclass — NY statewide",
-    subtitle="All customers on default residential delivery rates (run 1+2).",
+_sc = SCENARIOS[0]
+_spanner_today = f"All customers on default rates (run {RUN_DEFAULT})"
+_spanner_proposed = (
+    f"HP on {_sc['hp_tariff'].replace('_', ' ')} rate; "
+    f"non-HP on {_sc['nonhp_tariff'].replace('_', ' ')} rate (run {_sc['run']})"
 )
-
-Path("../cache/cos_avg_statewide_default.html").write_text(
-    _gt_avg_default_sw.as_raw_html(), encoding="utf-8"
-)
-_gt_avg_default_sw
-```
-
-### Default rates — per-utility tables
-
-```{python}
-#| label: default-per-utility-tables
-
-for util in UTILITIES:
-    _label = UTIL_DISPLAY[util]
-    _cos = cos_default_by_utility[util]
-
-    _gt_tot = build_gt_cos_totals(
-        _cos,
-        title=f"Delivery revenue, COS, and cross-subsidy — {_label}",
-        subtitle="Default residential delivery rates (run 1+2).",
-    )
-    Path(f"../cache/cos_{util}_default.html").write_text(
-        _gt_tot.as_raw_html(), encoding="utf-8"
-    )
-
-    _gt_avg = build_gt_cos_avg(
-        _cos,
-        title=f"Average delivery bill, COS, and cross-subsidy — {_label}",
-        subtitle="Default residential delivery rates (run 1+2).",
-    )
-    Path(f"../cache/cos_avg_{util}_default.html").write_text(
-        _gt_avg.as_raw_html(), encoding="utf-8"
-    )
-
-    print(f"  {_label}: wrote cos_{util}_default.html, cos_avg_{util}_default.html")
-```
-
-## Scenario comparisons
-
-Each scenario below loads its proposed-run master BAT, builds COS tables, and produces side-by-side comparison tables (default vs proposed) for statewide and every utility.
-
-```{python}
-#| label: scenario-loop
-
-from IPython.display import Markdown, display
-
-for scenario in SCENARIOS:
-    sid = scenario["id"]
-    run = scenario["run"]
-    alloc = scenario["residual_alloc"]
-    label = scenario["label"]
-    description = scenario["description"]
-    hp_tariff = scenario["hp_tariff"]
-    nonhp_tariff = scenario["nonhp_tariff"]
-
-    display(Markdown(f"### {label}"))
-    display(Markdown(f"*{description}*"))
-    display(Markdown(f"**Run pair:** {run} | **Residual allocation:** {alloc}"))
-
-    # --- Load proposed BAT ---
-    path_proposed = (
-        f"{S3_BASE}/{STATE_LOWER}/all_utilities/{BATCH}/run_{run}"
-        "/cross_subsidization_BAT_values/"
-    )
-    bat_proposed = load_master_bat(path_proposed, residual_alloc=alloc)
-    assert_bill_identity(bat_proposed, f"run {run} ({label})")
-
-    print(
-        f"Proposed BAT loaded: {bat_proposed.height:,} buildings, "
-        f"weighted customers: {bat_proposed['weight'].sum():,.0f}"
-    )
-
-    # --- Build proposed COS tables ---
-    cos_proposed_sw = build_cos_table(bat_proposed, rev_req=statewide_delivery_rr)
-    cos_proposed_by_util: dict[str, pl.DataFrame] = {}
-    for util in UTILITIES:
-        cos_proposed_by_util[util] = build_cos_table(
-            bat_proposed,
-            rev_req=rev_req[util]["total_delivery_rr"],
-            utility_filter=util,
-        )
-
-    # --- Build spanner labels from calibrated tariff volumetric rates ---
-    # Use the first utility's rates for the statewide subtitle (they vary by utility,
-    # so the subtitle notes this is an example).
-    _example_util = "coned"
-    _c_kwh_default = calibrated_volumetric_c_per_kwh(_example_util, "default")
-    _c_kwh_hp = calibrated_volumetric_c_per_kwh(_example_util, hp_tariff)
-    _c_kwh_nonhp = calibrated_volumetric_c_per_kwh(_example_util, nonhp_tariff)
-
-    _spanner_today = f"All customers on default rates (run {RUN_DEFAULT})"
-    _spanner_proposed = (
-        f"HP on {hp_tariff.replace('_', ' ')} rate; "
-        f"non-HP on {nonhp_tariff.replace('_', ' ')} rate (run {run})"
-    )
-    _title_totals = (
-        "Delivery revenue, cost of service, and cross-subsidy by residential subclass"
-    )
-    _title_avg = (
-        "Average delivery bill, COS, and cross-subsidy by subclass (per customer-year)"
-    )
-
-    # --- Statewide comparison tables ---
-    display(Markdown("#### Statewide"))
-
-    _gt_comp_sw = build_gt_cos_comparison_totals(
-        cos_default_statewide,
-        cos_proposed_sw,
-        title=f"{_title_totals} — NY statewide",
-        subtitle=f"{label}. Volumetric rates vary by utility.",
+display_gt(
+    build_gt_cos_comparison_totals(
+        cos_default_sw_pc,
+        cos_hp_seasonal_sw_pc,
+        title="Delivery revenue, COS, and cross-subsidy — NY statewide",
+        subtitle=f"{_sc['label']}. Volumetric rates vary by utility.",
         label_spanner_today=_spanner_today,
         label_spanner_proposed=_spanner_proposed,
     )
-    Path(f"../cache/cos_statewide_{sid}.html").write_text(
-        _gt_comp_sw.as_raw_html(), encoding="utf-8"
-    )
-    display(_gt_comp_sw)
+)
+```
 
-    _gt_comp_avg_sw = build_gt_cos_comparison_avg(
-        cos_default_statewide,
-        cos_proposed_sw,
-        title=f"{_title_avg} — NY statewide",
-        subtitle=f"{label}. Per-customer averages across all NY utilities.",
+## HP seasonal vs. baseline statewide — averages (per-customer residual)
+
+```{python}
+#| label: tbl-hp-seasonal-sw-avg-pc
+#| tbl-cap: "Default vs HP seasonal average delivery bill and cross-subsidy — NY statewide (per-customer residual)"
+
+display_gt(
+    build_gt_cos_comparison_avg(
+        cos_default_sw_pc,
+        cos_hp_seasonal_sw_pc,
+        title="Average delivery bill, COS, and cross-subsidy — NY statewide",
+        subtitle=f"{_sc['label']}. Per-customer averages across all NY utilities.",
         label_spanner_default=_spanner_today,
         label_spanner_proposed=_spanner_proposed,
     )
-    Path(f"../cache/cos_avg_statewide_{sid}.html").write_text(
-        _gt_comp_avg_sw.as_raw_html(), encoding="utf-8"
-    )
-    display(_gt_comp_avg_sw)
-
-    # --- Per-utility comparison tables ---
-    display(Markdown("#### By utility"))
-
-    for util in UTILITIES:
-        _label_u = UTIL_DISPLAY[util]
-        _cos_def_u = cos_default_by_utility[util]
-        _cos_prop_u = cos_proposed_by_util[util]
-
-        _c_hp_u = calibrated_volumetric_c_per_kwh(util, hp_tariff)
-        _c_nonhp_u = calibrated_volumetric_c_per_kwh(util, nonhp_tariff)
-        _c_def_u = calibrated_volumetric_c_per_kwh(util, "default")
-
-        _span_today_u = f"Default rates ({_c_def_u})"
-        _span_prop_u = f"HP {hp_tariff.replace('_', ' ')} ({_c_hp_u}); non-HP {nonhp_tariff.replace('_', ' ')} ({_c_nonhp_u})"
-
-        _gt_u = build_gt_cos_comparison_totals(
-            _cos_def_u,
-            _cos_prop_u,
-            title=f"{_title_totals} — {_label_u}",
-            subtitle=f"{label}.",
-            label_spanner_today=_span_today_u,
-            label_spanner_proposed=_span_prop_u,
-        )
-        Path(f"../cache/cos_{util}_{sid}.html").write_text(
-            _gt_u.as_raw_html(), encoding="utf-8"
-        )
-
-        _gt_avg_u = build_gt_cos_comparison_avg(
-            _cos_def_u,
-            _cos_prop_u,
-            title=f"{_title_avg} — {_label_u}",
-            subtitle=f"{label}.",
-            label_spanner_default=_span_today_u,
-            label_spanner_proposed=_span_prop_u,
-        )
-        Path(f"../cache/cos_avg_{util}_{sid}.html").write_text(
-            _gt_avg_u.as_raw_html(), encoding="utf-8"
-        )
-
-        print(f"  {_label_u}: wrote cos_{util}_{sid}.html, cos_avg_{util}_{sid}.html")
-
-    # --- Populate report_vars for this scenario ---
-    report_vars[sid] = {"statewide": {}, "by_utility": {}}
-
-    _hp_row_sw = cos_proposed_sw.filter(pl.col("subclass") == "Heat pump")
-    _all_row_sw = cos_proposed_sw.filter(pl.col("subclass") == "All customers")
-    report_vars[sid]["statewide"] = {
-        "total_customers": float(_all_row_sw["n_customers"][0]),
-        "total_delivery_rev": float(_all_row_sw["revenue_delivery"][0]),
-        "hp_cross_subsidy": float(_hp_row_sw["cross_subsidy"][0]),
-        "hp_pct_overpayment": float(_hp_row_sw["pct_overpayment_vs_cos"][0])
-        if _hp_row_sw["pct_overpayment_vs_cos"][0] is not None
-        else None,
-    }
-
-    for util in UTILITIES:
-        _cos_p = cos_proposed_by_util[util]
-        _hp_u = _cos_p.filter(pl.col("subclass") == "Heat pump")
-        report_vars[sid]["by_utility"][util] = {
-            "hp_cross_subsidy": float(_hp_u["cross_subsidy"][0]),
-            "hp_pct_overpayment": float(_hp_u["pct_overpayment_vs_cos"][0])
-            if _hp_u["pct_overpayment_vs_cos"][0] is not None
-            else None,
-        }
-
-    display(Markdown("---"))
+)
 ```
 
-## Default-rate report variables
+## HP TOU flex vs. baseline statewide — totals (per-customer residual)
+
+```{python}
+#| label: load-hp-tou-flex-pc
+
+bat_tou_flex_pc, cos_tou_flex_sw_pc, cos_tou_flex_by_util_pc = (
+    load_scenario_proposed_cos(SCENARIOS[2])
+)
+print(
+    f"HP TOU flex (percustomer) loaded: {bat_tou_flex_pc.height:,} buildings, "
+    f"weighted customers: {bat_tou_flex_pc['weight'].sum():,.0f}"
+)
+```
+
+```{python}
+#| label: tbl-hp-tou-flex-sw-totals-pc
+#| tbl-cap: "Default vs HP TOU flex delivery revenue, COS, and cross-subsidy — NY statewide (per-customer residual)"
+
+_sc = SCENARIOS[2]
+_spanner_today = f"All customers on default rates (run {RUN_DEFAULT})"
+_spanner_proposed = (
+    f"HP on {_sc['hp_tariff'].replace('_', ' ')} rate; "
+    f"non-HP on {_sc['nonhp_tariff'].replace('_', ' ')} rate (run {_sc['run']})"
+)
+display_gt(
+    build_gt_cos_comparison_totals(
+        cos_default_sw_pc,
+        cos_tou_flex_sw_pc,
+        title="Delivery revenue, COS, and cross-subsidy — NY statewide",
+        subtitle=f"{_sc['label']}. Volumetric rates vary by utility.",
+        label_spanner_today=_spanner_today,
+        label_spanner_proposed=_spanner_proposed,
+    )
+)
+```
+
+## HP TOU flex vs. baseline statewide — averages (per-customer residual)
+
+```{python}
+#| label: tbl-hp-tou-flex-sw-avg-pc
+#| tbl-cap: "Default vs HP TOU flex average delivery bill and cross-subsidy — NY statewide (per-customer residual)"
+
+display_gt(
+    build_gt_cos_comparison_avg(
+        cos_default_sw_pc,
+        cos_tou_flex_sw_pc,
+        title="Average delivery bill, COS, and cross-subsidy — NY statewide",
+        subtitle=f"{_sc['label']}. Per-customer averages across all NY utilities.",
+        label_spanner_default=_spanner_today,
+        label_spanner_proposed=_spanner_proposed,
+    )
+)
+```
+
+## Baseline per-utility — totals and averages (per-customer residual)
+
+Default-rate tables for each of the seven NY utilities, using per-customer residual allocation. Each utility shows a totals table followed by an averages table.
+
+```{python}
+#| label: baseline-per-util-pc
+
+for util in UTILITIES:
+    _label_u = UTIL_DISPLAY[util]
+    display_gt(
+        build_gt_cos_totals(
+            cos_default_by_util_pc[util],
+            title=f"Delivery revenue, COS, and cross-subsidy — {_label_u}",
+            subtitle="Default residential delivery rates (run 1+2). Residual allocated per customer.",
+        )
+    )
+    display_gt(
+        build_gt_cos_avg(
+            cos_default_by_util_pc[util],
+            title=f"Average delivery bill, COS, and cross-subsidy — {_label_u}",
+            subtitle="Default residential delivery rates (run 1+2). Residual allocated per customer.",
+        )
+    )
+print("Displayed baseline per-utility tables (percustomer)")
+```
+
+## HP seasonal vs. baseline per-utility — totals and averages (per-customer residual)
+
+Comparison tables for each utility: default rates vs. HP seasonal rate (run 5+6), with per-customer residual allocation.
+
+```{python}
+#| label: hp-seasonal-per-util-pc
+
+_sc = SCENARIOS[0]
+for util in UTILITIES:
+    _label_u = UTIL_DISPLAY[util]
+    _c_hp = calibrated_volumetric_c_per_kwh(util, _sc["hp_tariff"])
+    _c_nonhp = calibrated_volumetric_c_per_kwh(util, _sc["nonhp_tariff"])
+    _c_def = calibrated_volumetric_c_per_kwh(util, "default")
+    _span_today = f"Default rates ({_c_def})"
+    _span_prop = (
+        f"HP {_sc['hp_tariff'].replace('_', ' ')} ({_c_hp}); "
+        f"non-HP {_sc['nonhp_tariff'].replace('_', ' ')} ({_c_nonhp})"
+    )
+    display_gt(
+        build_gt_cos_comparison_totals(
+            cos_default_by_util_pc[util],
+            cos_hp_seasonal_by_util_pc[util],
+            title=f"Delivery revenue, COS, and cross-subsidy — {_label_u}",
+            subtitle=f"{_sc['label']}.",
+            label_spanner_today=_span_today,
+            label_spanner_proposed=_span_prop,
+        )
+    )
+    display_gt(
+        build_gt_cos_comparison_avg(
+            cos_default_by_util_pc[util],
+            cos_hp_seasonal_by_util_pc[util],
+            title=f"Average delivery bill, COS, and cross-subsidy — {_label_u}",
+            subtitle=f"{_sc['label']}.",
+            label_spanner_default=_span_today,
+            label_spanner_proposed=_span_prop,
+        )
+    )
+print("Displayed HP seasonal per-utility comparison tables (percustomer)")
+```
+
+## HP TOU flex vs. baseline per-utility — totals and averages (per-customer residual)
+
+Comparison tables for each utility: default rates vs. HP seasonal TOU flex rate (run 13+14), with per-customer residual allocation.
+
+```{python}
+#| label: hp-tou-flex-per-util-pc
+
+_sc = SCENARIOS[2]
+for util in UTILITIES:
+    _label_u = UTIL_DISPLAY[util]
+    _c_hp = calibrated_volumetric_c_per_kwh(util, _sc["hp_tariff"])
+    _c_nonhp = calibrated_volumetric_c_per_kwh(util, _sc["nonhp_tariff"])
+    _c_def = calibrated_volumetric_c_per_kwh(util, "default")
+    _span_today = f"Default rates ({_c_def})"
+    _span_prop = (
+        f"HP {_sc['hp_tariff'].replace('_', ' ')} ({_c_hp}); "
+        f"non-HP {_sc['nonhp_tariff'].replace('_', ' ')} ({_c_nonhp})"
+    )
+    display_gt(
+        build_gt_cos_comparison_totals(
+            cos_default_by_util_pc[util],
+            cos_tou_flex_by_util_pc[util],
+            title=f"Delivery revenue, COS, and cross-subsidy — {_label_u}",
+            subtitle=f"{_sc['label']}.",
+            label_spanner_today=_span_today,
+            label_spanner_proposed=_span_prop,
+        )
+    )
+    display_gt(
+        build_gt_cos_comparison_avg(
+            cos_default_by_util_pc[util],
+            cos_tou_flex_by_util_pc[util],
+            title=f"Average delivery bill, COS, and cross-subsidy — {_label_u}",
+            subtitle=f"{_sc['label']}.",
+            label_spanner_default=_span_today,
+            label_spanner_proposed=_span_prop,
+        )
+    )
+print("Displayed HP TOU flex per-utility comparison tables (percustomer)")
+```
+
+## Report variables (per-customer residual)
+
+```{python}
+#| label: report-vars-pc
+
+fill_report_vars_for_scenario(
+    SCENARIOS[0]["id"],
+    cos_hp_seasonal_sw_pc,
+    cos_hp_seasonal_by_util_pc,
+)
+fill_report_vars_for_scenario(
+    SCENARIOS[2]["id"],
+    cos_tou_flex_sw_pc,
+    cos_tou_flex_by_util_pc,
+)
+print("Per-customer report vars saved for HP seasonal and HP TOU flex")
+```
+
+---
+
+# EPMC DELIVERY RESIDUAL, PER-CUSTOMER SUPPLY RESIDUAL {#sec-epmc}
+
+All tables in this section use **EPMC residual allocation** for delivery and **per-customer** for supply. The baseline is run 1+2 (default uniform rates) with EPMC-allocated COS columns; the proposed scenarios are HP seasonal EPMC (run 21+22) and HP seasonal TOU flex EPMC (run 25+26).
+
+## Load baseline data (EPMC residual)
+
+The baseline _revenue_ is the same as above (run 1+2, same bills), but the COS decomposition uses the EPMC residual allocation columns instead of per-customer.
+
+```{python}
+#| label: load-default-epmc
+
+bat_default_epmc = load_master_bat(
+    PATH_MASTER_BAT_DEFAULT, residual_alloc="epmc"
+)
+assert_bill_identity(bat_default_epmc, "run 1+2 (default, epmc)")
+
+cos_default_sw_epmc = build_cos_table(bat_default_epmc, rev_req=statewide_delivery_rr)
+
+cos_default_by_util_epmc: dict[str, pl.DataFrame] = {}
+for util in UTILITIES:
+    cos_default_by_util_epmc[util] = build_cos_table(
+        bat_default_epmc, rev_req=rev_req[util]["total_delivery_rr"], utility_filter=util
+    )
+
+print(f"Default BAT (EPMC) loaded: {bat_default_epmc.height:,} buildings")
+print(f"  Weighted customer count: {bat_default_epmc['weight'].sum():,.0f}")
+print(f"  Weighted delivery revenue: ${(bat_default_epmc['weight'] * bat_default_epmc['annual_bill_delivery']).sum():,.0f}")
+```
+
+## Baseline statewide — totals (EPMC residual)
+
+```{python}
+#| label: tbl-baseline-sw-totals-epmc
+#| tbl-cap: "Delivery revenue, cost of service, and cross-subsidy by residential subclass — NY statewide, default rates (EPMC residual)"
+
+display_gt(
+    build_gt_cos_totals(
+        cos_default_sw_epmc,
+        title="Delivery revenue, cost of service, and cross-subsidy — NY statewide",
+        subtitle="Default residential delivery rates (run 1+2). Residual allocated via EPMC.",
+    )
+)
+```
+
+## Baseline statewide — averages (EPMC residual)
+
+```{python}
+#| label: tbl-baseline-sw-avg-epmc
+#| tbl-cap: "Average annual delivery bill, COS, and cross-subsidy by subclass — NY statewide, default rates (EPMC residual)"
+
+display_gt(
+    build_gt_cos_avg(
+        cos_default_sw_epmc,
+        title="Average annual delivery bill, COS, and cross-subsidy — NY statewide",
+        subtitle="Default residential delivery rates (run 1+2). Residual allocated via EPMC.",
+    )
+)
+```
+
+## Baseline statewide — marginal cost diagnostic (EPMC residual)
+
+Same decomposition as the per-customer diagnostic above. The **marginal cost** column should be identical to the per-customer table (MC does not depend on residual allocation). The **residual** column reflects EPMC allocation, which distributes the residual in proportion to each subclass's marginal cost share rather than uniformly per customer.
+
+```{python}
+#| label: tbl-mc-diagnostic-sw-epmc
+#| tbl-cap: "Marginal cost, residual, and COS decomposition by subclass — NY statewide (EPMC residual)"
+
+display_gt(
+    build_gt_mc_diagnostic(
+        bat_default_epmc,
+        title="Marginal cost, residual, and COS decomposition — NY statewide",
+        subtitle="Default rates (run 1+2). Residual allocated via EPMC.",
+    )
+)
+```
+
+## HP seasonal vs. baseline statewide — totals (EPMC residual)
+
+```{python}
+#| label: load-hp-seasonal-epmc
+
+bat_hp_seasonal_epmc, cos_hp_seasonal_sw_epmc, cos_hp_seasonal_by_util_epmc = (
+    load_scenario_proposed_cos(SCENARIOS[1])
+)
+print(
+    f"HP seasonal (EPMC) loaded: {bat_hp_seasonal_epmc.height:,} buildings, "
+    f"weighted customers: {bat_hp_seasonal_epmc['weight'].sum():,.0f}"
+)
+```
+
+```{python}
+#| label: tbl-hp-seasonal-sw-totals-epmc
+#| tbl-cap: "Default vs HP seasonal delivery revenue, COS, and cross-subsidy — NY statewide (EPMC residual)"
+
+_sc = SCENARIOS[1]
+_spanner_today = f"All customers on default rates (run {RUN_DEFAULT})"
+_spanner_proposed = (
+    f"HP on {_sc['hp_tariff'].replace('_', ' ')} rate; "
+    f"non-HP on {_sc['nonhp_tariff'].replace('_', ' ')} rate (run {_sc['run']})"
+)
+display_gt(
+    build_gt_cos_comparison_totals(
+        cos_default_sw_epmc,
+        cos_hp_seasonal_sw_epmc,
+        title="Delivery revenue, COS, and cross-subsidy — NY statewide",
+        subtitle=f"{_sc['label']}. Volumetric rates vary by utility.",
+        label_spanner_today=_spanner_today,
+        label_spanner_proposed=_spanner_proposed,
+    )
+)
+```
+
+## HP seasonal vs. baseline statewide — averages (EPMC residual)
+
+```{python}
+#| label: tbl-hp-seasonal-sw-avg-epmc
+#| tbl-cap: "Default vs HP seasonal average delivery bill and cross-subsidy — NY statewide (EPMC residual)"
+
+display_gt(
+    build_gt_cos_comparison_avg(
+        cos_default_sw_epmc,
+        cos_hp_seasonal_sw_epmc,
+        title="Average delivery bill, COS, and cross-subsidy — NY statewide",
+        subtitle=f"{_sc['label']}. Per-customer averages across all NY utilities.",
+        label_spanner_default=_spanner_today,
+        label_spanner_proposed=_spanner_proposed,
+    )
+)
+```
+
+## HP TOU flex vs. baseline statewide — totals (EPMC residual)
+
+```{python}
+#| label: load-hp-tou-flex-epmc
+
+bat_tou_flex_epmc, cos_tou_flex_sw_epmc, cos_tou_flex_by_util_epmc = (
+    load_scenario_proposed_cos(SCENARIOS[3])
+)
+print(
+    f"HP TOU flex (EPMC) loaded: {bat_tou_flex_epmc.height:,} buildings, "
+    f"weighted customers: {bat_tou_flex_epmc['weight'].sum():,.0f}"
+)
+```
+
+```{python}
+#| label: tbl-hp-tou-flex-sw-totals-epmc
+#| tbl-cap: "Default vs HP TOU flex delivery revenue, COS, and cross-subsidy — NY statewide (EPMC residual)"
+
+_sc = SCENARIOS[3]
+_spanner_today = f"All customers on default rates (run {RUN_DEFAULT})"
+_spanner_proposed = (
+    f"HP on {_sc['hp_tariff'].replace('_', ' ')} rate; "
+    f"non-HP on {_sc['nonhp_tariff'].replace('_', ' ')} rate (run {_sc['run']})"
+)
+display_gt(
+    build_gt_cos_comparison_totals(
+        cos_default_sw_epmc,
+        cos_tou_flex_sw_epmc,
+        title="Delivery revenue, COS, and cross-subsidy — NY statewide",
+        subtitle=f"{_sc['label']}. Volumetric rates vary by utility.",
+        label_spanner_today=_spanner_today,
+        label_spanner_proposed=_spanner_proposed,
+    )
+)
+```
+
+## HP TOU flex vs. baseline statewide — averages (EPMC residual)
+
+```{python}
+#| label: tbl-hp-tou-flex-sw-avg-epmc
+#| tbl-cap: "Default vs HP TOU flex average delivery bill and cross-subsidy — NY statewide (EPMC residual)"
+
+display_gt(
+    build_gt_cos_comparison_avg(
+        cos_default_sw_epmc,
+        cos_tou_flex_sw_epmc,
+        title="Average delivery bill, COS, and cross-subsidy — NY statewide",
+        subtitle=f"{_sc['label']}. Per-customer averages across all NY utilities.",
+        label_spanner_default=_spanner_today,
+        label_spanner_proposed=_spanner_proposed,
+    )
+)
+```
+
+## Baseline per-utility — totals and averages (EPMC residual)
+
+Default-rate tables for each of the seven NY utilities, using EPMC residual allocation. Each utility shows a totals table followed by an averages table.
+
+```{python}
+#| label: baseline-per-util-epmc
+
+for util in UTILITIES:
+    _label_u = UTIL_DISPLAY[util]
+    display_gt(
+        build_gt_cos_totals(
+            cos_default_by_util_epmc[util],
+            title=f"Delivery revenue, COS, and cross-subsidy — {_label_u}",
+            subtitle="Default residential delivery rates (run 1+2). Residual allocated via EPMC.",
+        )
+    )
+    display_gt(
+        build_gt_cos_avg(
+            cos_default_by_util_epmc[util],
+            title=f"Average delivery bill, COS, and cross-subsidy — {_label_u}",
+            subtitle="Default residential delivery rates (run 1+2). Residual allocated via EPMC.",
+        )
+    )
+print("Displayed baseline per-utility tables (EPMC)")
+```
+
+## HP seasonal vs. baseline per-utility — totals and averages (EPMC residual)
+
+Comparison tables for each utility: default rates vs. HP seasonal rate (run 21+22), with EPMC residual allocation.
+
+```{python}
+#| label: hp-seasonal-per-util-epmc
+
+_sc = SCENARIOS[1]
+for util in UTILITIES:
+    _label_u = UTIL_DISPLAY[util]
+    _c_hp = calibrated_volumetric_c_per_kwh(util, _sc["hp_tariff"])
+    _c_nonhp = calibrated_volumetric_c_per_kwh(util, _sc["nonhp_tariff"])
+    _c_def = calibrated_volumetric_c_per_kwh(util, "default")
+    _span_today = f"Default rates ({_c_def})"
+    _span_prop = (
+        f"HP {_sc['hp_tariff'].replace('_', ' ')} ({_c_hp}); "
+        f"non-HP {_sc['nonhp_tariff'].replace('_', ' ')} ({_c_nonhp})"
+    )
+    display_gt(
+        build_gt_cos_comparison_totals(
+            cos_default_by_util_epmc[util],
+            cos_hp_seasonal_by_util_epmc[util],
+            title=f"Delivery revenue, COS, and cross-subsidy — {_label_u}",
+            subtitle=f"{_sc['label']}.",
+            label_spanner_today=_span_today,
+            label_spanner_proposed=_span_prop,
+        )
+    )
+    display_gt(
+        build_gt_cos_comparison_avg(
+            cos_default_by_util_epmc[util],
+            cos_hp_seasonal_by_util_epmc[util],
+            title=f"Average delivery bill, COS, and cross-subsidy — {_label_u}",
+            subtitle=f"{_sc['label']}.",
+            label_spanner_default=_span_today,
+            label_spanner_proposed=_span_prop,
+        )
+    )
+print("Displayed HP seasonal per-utility comparison tables (EPMC)")
+```
+
+## HP TOU flex vs. baseline per-utility — totals and averages (EPMC residual)
+
+Comparison tables for each utility: default rates vs. HP seasonal TOU flex rate (run 25+26), with EPMC residual allocation.
+
+```{python}
+#| label: hp-tou-flex-per-util-epmc
+
+_sc = SCENARIOS[3]
+for util in UTILITIES:
+    _label_u = UTIL_DISPLAY[util]
+    _c_hp = calibrated_volumetric_c_per_kwh(util, _sc["hp_tariff"])
+    _c_nonhp = calibrated_volumetric_c_per_kwh(util, _sc["nonhp_tariff"])
+    _c_def = calibrated_volumetric_c_per_kwh(util, "default")
+    _span_today = f"Default rates ({_c_def})"
+    _span_prop = (
+        f"HP {_sc['hp_tariff'].replace('_', ' ')} ({_c_hp}); "
+        f"non-HP {_sc['nonhp_tariff'].replace('_', ' ')} ({_c_nonhp})"
+    )
+    display_gt(
+        build_gt_cos_comparison_totals(
+            cos_default_by_util_epmc[util],
+            cos_tou_flex_by_util_epmc[util],
+            title=f"Delivery revenue, COS, and cross-subsidy — {_label_u}",
+            subtitle=f"{_sc['label']}.",
+            label_spanner_today=_span_today,
+            label_spanner_proposed=_span_prop,
+        )
+    )
+    display_gt(
+        build_gt_cos_comparison_avg(
+            cos_default_by_util_epmc[util],
+            cos_tou_flex_by_util_epmc[util],
+            title=f"Average delivery bill, COS, and cross-subsidy — {_label_u}",
+            subtitle=f"{_sc['label']}.",
+            label_spanner_default=_span_today,
+            label_spanner_proposed=_span_prop,
+        )
+    )
+print("Displayed HP TOU flex per-utility comparison tables (EPMC)")
+```
+
+## Report variables (EPMC residual)
+
+```{python}
+#| label: report-vars-epmc
+
+fill_report_vars_for_scenario(
+    SCENARIOS[1]["id"],
+    cos_hp_seasonal_sw_epmc,
+    cos_hp_seasonal_by_util_epmc,
+)
+fill_report_vars_for_scenario(
+    SCENARIOS[3]["id"],
+    cos_tou_flex_sw_epmc,
+    cos_tou_flex_by_util_epmc,
+)
+print("EPMC report vars saved for HP seasonal and HP TOU flex")
+```
+
+---
+
+# Default-rate report variables
 
 ```{python}
 #| label: default-report-vars
 
-_hp_default_sw = cos_default_statewide.filter(pl.col("subclass") == "Heat pump")
-_all_default_sw = cos_default_statewide.filter(pl.col("subclass") == "All customers")
+_hp_default_sw = cos_default_sw_pc.filter(pl.col("subclass") == "Heat pump")
+_all_default_sw = cos_default_sw_pc.filter(pl.col("subclass") == "All customers")
 
 report_vars["default"] = {
     "statewide": {
@@ -1073,7 +1609,7 @@ report_vars["default"] = {
 }
 
 for util in UTILITIES:
-    _cos_d = cos_default_by_utility[util]
+    _cos_d = cos_default_by_util_pc[util]
     _hp_d = _cos_d.filter(pl.col("subclass") == "Heat pump")
     report_vars["default"]["by_utility"][util] = {
         "hp_cross_subsidy": float(_hp_d["cross_subsidy"][0]),
@@ -1092,7 +1628,7 @@ for util in UTILITIES:
     print(f"  {UTIL_DISPLAY[util]:20s} HP cross-subsidy: ${_xs:,.0f}")
 ```
 
-## Export report variables
+# Export report variables
 
 ```{python}
 #| label: export-report-vars

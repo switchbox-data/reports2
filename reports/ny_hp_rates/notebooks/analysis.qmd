@@ -273,6 +273,95 @@ def apply_supply_passthrough(
         )
         .drop("_baseline_supply", "_credit_40", "_credit_100")
     )
+
+
+def apply_supply_passthrough_tou(
+    tou_lf: pl.LazyFrame,
+    seasonal_lf: pl.LazyFrame,
+    baseline_lf: pl.LazyFrame,
+) -> pl.LazyFrame:
+    """Scale TOU supply bills to passthrough revenue while preserving load-shifting structure.
+
+    CAIRO TOU-flex lowers total supply revenue relative to the seasonal target
+    because load shifting moves kWh from high-MC peak to low-MC off-peak hours.
+    Under passthrough, we want the same MC savings applied to the passthrough
+    revenue level — not the per-customer residual level the runs were built with.
+
+    Per utility u (weighted sums on Annual rows):
+        RR_pass[u]     = baseline supply revenue  (run 3+4, flat rates)
+        RR_percust[u]  = seasonal HP supply revenue (run 7+8, no shifting)
+        RR_tou[u]      = TOU HP supply revenue (run 15+16, with shifting)
+        savings[u]     = RR_percust[u] - RR_tou[u]
+        adjusted_RR[u] = RR_pass[u] - savings[u]
+        scale[u]       = adjusted_RR[u] / RR_tou[u]
+
+    Each building's TOU supply bill is multiplied by its utility's scale factor.
+    The result preserves the relative TOU benefits across buildings (who shifted
+    more still pays less) while targeting the passthrough revenue level minus
+    the load-shifting MC savings.
+    """
+    _UTIL = "sb.electric_utility"
+    _ANNUAL = "Annual"
+
+    def _weighted_supply_rr(lf: pl.LazyFrame, alias: str) -> pl.LazyFrame:
+        return (
+            lf.filter(pl.col("month") == _ANNUAL)
+            .group_by(_UTIL)
+            .agg((pl.col("elec_supply_bill") * pl.col("weight")).sum().alias(alias))
+        )
+
+    rr_pass = _weighted_supply_rr(baseline_lf, "_rr_pass")
+    rr_percust = _weighted_supply_rr(seasonal_lf, "_rr_percust")
+    rr_tou = _weighted_supply_rr(tou_lf, "_rr_tou")
+
+    scale_factors = (
+        rr_pass
+        .join(rr_percust, on=_UTIL)
+        .join(rr_tou, on=_UTIL)
+        .with_columns(
+            ((pl.col("_rr_pass") - (pl.col("_rr_percust") - pl.col("_rr_tou")))
+             / pl.col("_rr_tou")).alias("_scale")
+        )
+        .select(_UTIL, "_scale")
+    )
+
+    return (
+        tou_lf
+        .with_columns(
+            (pl.col("elec_total_bill") - pl.col("elec_total_bill_lmi_40")).alias(
+                "_credit_40"
+            ),
+            (pl.col("elec_total_bill") - pl.col("elec_total_bill_lmi_100")).alias(
+                "_credit_100"
+            ),
+        )
+        .join(scale_factors, on=_UTIL, how="left")
+        .with_columns(
+            (pl.col("elec_supply_bill") * pl.col("_scale")).alias("elec_supply_bill"),
+        )
+        .with_columns(
+            (
+                pl.col("elec_fixed_charge")
+                + pl.col("elec_delivery_bill")
+                + pl.col("elec_supply_bill")
+            ).alias("elec_total_bill"),
+        )
+        .with_columns(
+            (
+                pl.col("elec_total_bill")
+                + pl.col("gas_total_bill")
+                + pl.col("oil_total_bill")
+                + pl.col("propane_total_bill")
+            ).alias("energy_total_bill"),
+            (pl.col("elec_total_bill") - pl.col("_credit_40"))
+            .clip(lower_bound=0.0)
+            .alias("elec_total_bill_lmi_40"),
+            (pl.col("elec_total_bill") - pl.col("_credit_100"))
+            .clip(lower_bound=0.0)
+            .alias("elec_total_bill_lmi_100"),
+        )
+        .drop("_scale", "_credit_40", "_credit_100")
+    )
 ```
 
 ```{python}
@@ -289,23 +378,31 @@ def apply_supply_passthrough(
 # The correct fix is to define CAIRO runs with residual_allocation_supply =
 # "passthrough" in the scenario YAMLs and rebuild the master bills.  We did
 # not have time to set up and run those CAIRO batches before the deadline, so
-# instead we apply the fix here: for each proposed-scenario LazyFrame, we
-# replace its supply columns with the corresponding default-rate baseline's
-# supply (upgrade-matched: u0 → run 1+2, u2 → run 3+4).  This is
-# semantically equivalent to passthrough because the baseline runs already
-# use the utility's existing supply tariff.
+# instead we apply the fix here in two ways:
+#
+# (1) SEASONAL scenarios (5+6, 7+8): flat replacement — each building's
+#     supply bill is replaced with its baseline supply (u0 → run 1+2,
+#     u2 → run 3+4).  Under flat/seasonal rates with no load shifting,
+#     passthrough supply = baseline supply exactly.
+#
+# (2) TOU scenario (15+16): multiplicative scaling.  CAIRO TOU-flex lowers
+#     total supply revenue relative to the seasonal target because load
+#     shifting moves kWh from high-MC peak to low-MC off-peak hours.
+#     Flat replacement would kill these load-shifting benefits.  Instead,
+#     we keep the TOU bill *shape* (who shifted more pays less) and scale
+#     the level per utility so the weighted sum equals:
+#
+#         adjusted_RR = RR_pass - (RR_percust - RR_tou)
+#
+#     where RR_pass = baseline supply revenue (run 3+4), RR_percust =
+#     seasonal HP supply revenue (run 7+8, no shifting), and RR_tou =
+#     TOU HP supply revenue (run 15+16, with shifting).  The difference
+#     RR_percust - RR_tou is the MC savings from load shifting, which
+#     is preserved under passthrough.
 #
 # LMI electric columns are recomputed by recovering the fixed monthly credit
-# from the baseline and reapplying it to the new total.  Gas/oil/propane and
-# delivery columns are untouched.
-#
-# A standalone validation script (/tmp/validate_supply_passthrough.py) verified
-# across all 3 proposed-scenario pairs (5+6, 7+8, 15+16):
-#   - supply correctness: patched supply == baseline supply (max diff = 0)
-#   - bill identities: elec_total = fixed + delivery + supply (residual < 1e-12)
-#   - delivery/gas/metadata columns bit-identical before and after
-#   - LMI credit preservation exact for all buildings with lmi > 0
-#   - LMI non-negative, annual lmi <= elec_total (max excess < 4e-12)
+# from the proposed data and reapplying it to the new total.  Gas/oil/propane
+# and delivery columns are untouched.
 #
 # TODO: Once CAIRO runs with passthrough supply exist, remove this workaround
 # and point the paths at the new master bills.
@@ -323,9 +420,9 @@ bills_tou_hp = (
 
 if SUPPLY_PASSTHROUGH:
     bills_hprate_current = apply_supply_passthrough(bills_hprate_current, bills_current)
-    bills_hprate_hp = apply_supply_passthrough(bills_hprate_hp, bills_hp)
     if bills_tou_hp is not None:
-        bills_tou_hp = apply_supply_passthrough(bills_tou_hp, bills_hp)
+        bills_tou_hp = apply_supply_passthrough_tou(bills_tou_hp, bills_hprate_hp, bills_hp)
+    bills_hprate_hp = apply_supply_passthrough(bills_hprate_hp, bills_hp)
 ```
 
 ## Bill components: how energy bills change after switching

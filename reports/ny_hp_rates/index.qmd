@@ -96,11 +96,31 @@ def cents(x, accuracy=1):
 
 # Introduction
 
-Something about the cost shift.
+New York faces two intertwined challenges: rising electricity bills that strain household budgets across the state, and statutory climate targets that require a rapid shift away from fossil fuels. The Climate Leadership and Community Protection Act (CLCPA) mandates an 85% reduction in greenhouse gas emissions by 2050,[^clcpa] and the state's Scoping Plan identifies building electrification — replacing gas furnaces and boilers with electric heat pumps — as one of the largest sources of those reductions.[^scoping-plan] These goals are not in tension. As this report shows, modernizing rate design can advance both affordability and climate at once.
+
+[^clcpa]: NYS Climate Leadership and Community Protection Act (CLCPA), S6599/A8429 (2019).
+
+[^scoping-plan]: NYS Climate Action Council, *Scoping Plan* (Dec. 2022). The accompanying Integration Analysis, prepared by E3 for NYSERDA, models pathways requiring millions of heat pump installations statewide.
+
+But under today's electric rates, switching from a gas furnace to a heat pump often _increases_ a household's energy bills — despite heat pumps being two to three times more efficient.[^nyserda-18-44] This operating cost penalty is one of the most significant barriers to heat pump adoption, discouraging homeowners from making the switch even when incentives cover the upfront cost of the equipment.[^neep-modern-rate]
+
+[^nyserda-18-44]: NYSERDA, *New Efficiency: New York: Analysis of Residential Heat Pump Potential and Economics*, Report No. 18-44, at 5-3 and 58–59 (Jan. 2019).
+
+[^neep-modern-rate]: Northeast Energy Efficiency Partnerships (NEEP), *Modern Rate Design in the Northeast: Unlocking Efficiency, Affordability, and Electrification*, at 15 (Dec. 2025).
+
+The bill increase is not inherent to the technology. It is largely an artifact of how utilities charge for the poles and wires that deliver electricity to homes. Most delivery costs are recovered through volumetric rates — per-kWh charges that grow with a customer's electricity consumption.[^costello-defective] When a home installs a heat pump and begins using more electricity for heating, its delivery bill jumps proportionally — even though most of that new consumption falls in winter, when the grid has ample spare capacity and the cost of delivering electricity is low.[^chhabra-aceee] The result is a cross-subsidy: heat pump customers systematically overpay for delivery, and the excess effectively subsidizes electric customers who heat with fossil fuels — penalizing the very customers New York most needs to encourage.
+
+[^costello-defective]: Kenneth W. Costello, "Today's rate designs are defective: How can utilities better recover their fixed costs, and from whom?", *Utility Dive* (Nov. 22, 2022).
+
+[^chhabra-aceee]: Mohit Chhabra et al., "Doing the Right Things Now Will Eventually Pay Off: Cost-Effective & Equitable Building Decarbonization Requires (More) Proactive Planning and (Completely) Rethinking Rate Design," ACEEE (2024).
+
+This dynamic is not new. In 2019, the New York State Energy Research and Development Authority (NYSERDA) published the first study to estimate the magnitude of the operating cost problem for the state's heat pump customers.[^nyserda-18-44] But no study has rigorously measured the cross-subsidy for each utility in the state, proposed concrete rate designs to eliminate it, or evaluated what those rates would mean for household bills and energy equity. And existing alternative rates — such as the time-of-use tariffs available in some service territories — were not designed to address this structural problem.
+
+This report fills that gap. Using NREL's ResStock building energy simulations and hourly marginal cost data, we measure the delivery cross-subsidy for every major electric utility in New York and find that heat pump customers overpay by **`{python} dollar(v.hp_mean_delivery_bat)`** per year on average — approximately **`{python} f"${v.hp_total_cross_subsidy_delivery_millions:,.0f}"` million** statewide. We then design seasonal delivery rates calibrated to each utility's actual cost of service and show that they would transform the economics of heat pumps: under these rates, **`{python} f"{v.pct_natgas_save_hprate_lmi40 * 100:.0f}"`%** of gas-heated households would save by switching, up from just **`{python} f"{v.pct_natgas_save_default_lmi40 * 100:.0f}"`%** under default rates. We evaluate the impact on non-heat-pump customers, on energy burdens for low-income households, and on rates with added time-of-use price signals.
 
 # Executive Summary
 
-This report analyzes the cost of serving heat pump customers in New York State and finds that:
+This report analyzes the electric bills of heat pump customers in New York State and finds that:
 
 - **Under today's rates, most gas-heated homes would pay more after switching to heat pumps.** Only **`{python} f"{v.pct_natgas_save_default_lmi40 * 100:.0f}"`%** of natural gas-heated households would save on their annual energy bills after installing a heat pump — not because heat pumps are expensive to run, but because electricity rates are inflated by outdated delivery charges.
 - **Heat pump customers are overpaying for the poles and wires by `{python} dollar(v.hp_mean_delivery_bat)` per year**, on average. Their delivery cost of service is only **`{python} f"{(v.hp_mean_delivery_cost / v.natgas_mean_delivery_cost - 1) * 100:.0f}"`%** higher than that of gas-heated customers, but their delivery bills are **`{python} f"{(v.hp_mean_delivery_bill / v.natgas_mean_delivery_bill - 1) * 100:.0f}"`%** higher — a direct consequence of volumetric delivery rates applied to customers who use more electricity.
@@ -440,7 +460,7 @@ the full range of bill impacts varies widely (@fig-quadrant-bar-natgas-state-sta
 While most natural gas-heated households that switch to heat pumps do see their bills go up, approximately
 `{python} pct(v.pct_natgas_save_default_lmi40)` actually enjoy lower bills after the switch.[^why_save]
 
-[^why_save]: TODO add a note on why some gas-heated homes actually save by switching to heat pumps.
+[^why_save]: Two building characteristics explain most of the variation: furnace/boiler efficiency and existing cooling coverage. See @sec-savings.
 
 Only `{python} pct(v.pct_natgas_households)` of NY households are heated with natural gas, however. The rest are
 heated with delivered fuels or electric resistance—both of which have more potential for bill savings than natural gas
@@ -1124,6 +1144,14 @@ Nearly all of improvement in bill impact, compared to the default rate, comes fr
 # Appendix
 
 ## What causes people to save (or lose) when they switch to heat pumps {#sec-savings}
+
+Under default rates, `{python} pct(v.pct_natgas_save_default_lmi40)` of gas-heated households would save on their annual energy bills after switching to a heat pump. What distinguishes these households from the rest? Two building characteristics stand out: the efficiency of the existing furnace or boiler, and whether the home already has air conditioning.
+
+Homes with less efficient fossil heating systems — older furnaces and boilers with lower AFUE ratings — spend more on gas, giving the heat pump a larger bill to offset. And homes that already have cooling equipment gain less new electricity load when they install a heat pump (since the heat pump doubles as an air conditioner, but the home was already paying for cooling). Together, these two factors explain much of the variation in bill outcomes: among gas-heated homes with the least efficient furnaces (60% AFUE) and full air conditioning, roughly two-thirds would save even under today's rates. Among homes with the most efficient condensing furnaces (92.5% AFUE) and no existing cooling, almost none would (@fig-natgas-afue-cooling-pct-save-heatmap).
+
+:::{.column-page-inset-right}
+{{< embed notebooks/investigate_household_savings.qmd#fig-natgas-afue-cooling-pct-save-heatmap >}}
+:::
 
 ## Results by utility
 

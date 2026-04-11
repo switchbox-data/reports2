@@ -51,13 +51,34 @@ import pickle
 from pathlib import Path
 from types import SimpleNamespace
 
-v = SimpleNamespace(**pickle.loads(Path("cache/report_variables.pkl").read_bytes()))
+_report_vars_raw = pickle.loads(Path("cache/report_variables.pkl").read_bytes())
+_path_cos_rv = Path("cache/report_variables_cos_subclass.pkl")
+if _path_cos_rv.exists():
+    _cos_rv = pickle.loads(_path_cos_rv.read_bytes())
+    for _k in (
+        "natgas_avg_xsub_default_pc",
+        "natgas_avg_xsub_hp_seasonal_pc",
+        "delivered_fuels_avg_xsub_default_pc",
+        "delivered_fuels_avg_xsub_hp_seasonal_pc",
+        "hp_share_of_delivery_revenue",
+        "hp_avg_kwh_over_natgas_avg_kwh",
+    ):
+        if _k in _cos_rv:
+            _report_vars_raw[_k] = _cos_rv[_k]
+v = SimpleNamespace(**_report_vars_raw)
 gb = SimpleNamespace(
     **pickle.loads(Path("cache/gold_book_report_vars.pkl").read_bytes()),
 )
 
 
 def dollar(x, accuracy=0):
+    return f"${x:,.{accuracy}f}"
+
+
+def dollar_signed(x, accuracy=0):
+    """Currency with a leading minus for negative amounts (e.g. ``-$131`` not ``$-131``)."""
+    if x < 0:
+        return f"-${abs(x):,.{accuracy}f}"
     return f"${x:,.{accuracy}f}"
 
 
@@ -81,11 +102,12 @@ Something about the cost shift.
 
 # Background
 
-To follow along with this report, the reader needs to understand the electric utility {{< glossary "Utility costs" display=cCosts" >}}, {{< glossary "Utility bills" display="bills" >}}, and {{< glossary "Utility rates" display="rates" >}}. These concepts are introduced and explained in this section.
+To follow along with this report, the reader needs to understand the electric utility {{< glossary "Utility costs" display="costs" >}}, {{< glossary "Utility bills" display="bills" >}}, and {{< glossary "Utility rates" display="rates" >}}. These concepts are introduced and explained in this section.
 
-Utility customers pay {{< glossary "Utility bills" display="bills" >}} in order to cover the Utility's {{< glossary "Utility costs" display="costs" >}}, and these bills are calculated using {{< glossary "Utility rates" display="rates" >}}.
+Utility customers pay {{< glossary "Utility bills" display="bills" >}} in order to cover the utility's {{< glossary "Utility costs" display="costs" >}}, and these bills are calculated using {{< glossary "Utility rates" display="rates" >}}.
 
 Rates are simply the _prices_ charged by the utility, and they come in two flavors:[^demand-charges]
+
 - Fixed, where customers pay a certain number of dollars per month of being connected to the grid
 - Volumetric, where customers pay a certain number of dollars for every kWh of energy they consume from the grid
 
@@ -101,11 +123,15 @@ Companies build power plants, transmission lines, and distribution lines to prod
 
 In addition to these costs they incur when building this infrastructure, these companies also incur {{< glossary "Operating costs" display="operating costs" >}} to operate and maintain their infrastructure, and run their business. Examples of these capital and operating costs are shown in the table below.
 
+::: {.column-page-right}
+
 |                    | Capital costs                                                        | Operating costs                                                          |
-| ------------------ | -------------------------------------------------------------------: | -----------------------------------------------------------------------: |
-| **Generation**     | Capacity costs: Power plants, turbines, solar arrays, battery storage                | Variable (with output): Fuel, water, consumables<br>Fixed: Staff, inspections, insurance                |
-| **Transmission**   | Capacity costs: High-voltage lines, bulk substations, switching stations             | Fixed: Infrastructure maintenance, vegetation management, property taxes, admin     |
-| **Distribution**   | Capacity costs: Feeders, transformers, secondary lines<br>Connection costs: Meters, service drops        | Variable (with customers): Billing, customer service, meter reading<br>Fixed: Infrastructure maintenance, vegetation management, storm restoration, property taxes, admin |
+| ------------------ | :------------------------------------------------------------------ | :----------------------------------------------------------------------- |
+| **Generation**     | **Capacity costs**: Power plants, turbines, solar arrays, battery storage                | **Fixed**: Staff, inspections, insurance<br>**Variable (with output)**: Fuel, water, consumables              |
+| **Transmission**   | **Capacity costs**: High-voltage lines, bulk substations, switching stations             | **Fixed**: Infrastructure maintenance, vegetation management, property taxes, admin     |
+| **Distribution**   | **Capacity costs**: Feeders, transformers, secondary lines<br>**Connection costs**: Meters, service drops        | **Fixed**: Infrastructure maintenance, vegetation management, storm restoration, property taxes, admin<br>**Variable (with customers)**: Billing, customer service, meter reading |
+
+:::
 
 The operating costs of traditional fossil-fueled power plants go by a special name: **energy costs**, or how much it costs each power plant to generate an additional kWh of electricity at any given moment. This is largely the cost of the fuel they burn to produce it, and a few other consummables.[^renewables]
 
@@ -116,7 +142,7 @@ The operating costs of traditional fossil-fueled power plants go by a special na
 Formerly, all three kinds of infrastructure were owned and operated by electrical utilities. Today, they only own the distribution lines. Transmissions lines are owned by separate companies called transmission owners, and generation is owned by still other companies called power producers. Regardless of ownership, all of these entities ultimately recoup their customers by charging customers through their electric bills.
 :::
 
-Ultimately, power sector companies incur these {{< glossary "Capital costs" display="capital" >}} and {{< glossary "Operating costs" display="operating" >}} in order to serve customers, be they tiny studio apartments or massive data centers. So they turn around and recoup these {{< glossary "Utility costs" display="costs" >}} from customers through their {{< glossary "Utility bills" display="electric bills" >}}.
+Ultimately, power sector companies incur these {{< glossary "Capital costs" display="capital" >}} and {{< glossary "Operating costs" display="operating costs" >}} in order to serve customers, be they tiny studio apartments or massive data centers. So they turn around and recoup these {{< glossary "Utility costs" display="costs" >}} from customers through their {{< glossary "Utility bills" display="electric bills" >}}.
 
 But how much should they charge each customer? What is each customer's "fair share" of all of these costs?
 
@@ -128,7 +154,7 @@ The standard answer is that customers should be allocated the costs that they _c
 
 To see how this might work, let's follow a single customer through their lifecycle, and see which costs they cause at each stage.
 
-1. Let's say a family moves into a newly built home. When they first sign up for electricity service, they utility installs a meter, and connect their home to the local power line a service line. In other words, they cause some distribution capital costs (connection costs).
+1. Let's say a family moves into a newly built home. When they first sign up for electricity service, the utility installs a meter, and connect their home to the local power line a service line. In other words, they cause some distribution capital costs (connection costs).
 2. The utility starts reading their meter, and sending them bills. The family has therefore caused new distribution operating costs (ones that vary with the number of customers the utility serves).
 3. As the family uses electricity, hour by hour, they cause generator operating costs (energy costs) — the generators have to burn a little more fuel.
 4. During the summer, they run their air conditioner during a heat wave, at the same time as many other customers. Most generators are running at full tilt—including many that sit idle for much of the year. By consuming electricity during these peak hours, the family is "causing" generation capital costs (capacity costs), because they are contributing to the need to pay many of these "peaker" plants just to stay in business, so they'll be around to serve this peak demand.
@@ -155,12 +181,14 @@ The latest wave of T&D capacity upgrades that will be triggered by the forthcomi
 :::
 
 Marginal costs are those that are directly driven by customer behavior. These include:
+
 - Generation operating (energy) costs
 - Generation capacity costs
 - Distribution capital and variable operating costs that vary with number of customers: connection costs, customer service
 - New transmission and distribution capacity costs
 
 Embedded costs are those that are already incurred, and are not directly driven by customer behavior. These include:
+
 - Transmission and distribution capacity costs that still have to be paid off
 - Fixed transmission and distribution operating costs
 
@@ -178,7 +206,7 @@ So in order to figure out a customer's cost-of-service, you don't just need to m
 In this report, we choose cost-causation, because it's what the utility's use. We assume that a customer's current infrastructure cost-causation (their marginal costs) is a good proxy for how they cause previous waves of infrastructure upgrades.
 
 ::: {.callout-note}
-What about power pants? Don't customer just benefit from this pre-existing infrastructure, just like transmission and distribution—and need to help pay for it?
+What about power plants? Don't customer just benefit from this pre-existing infrastructure, just like transmission and distribution—and need to help pay for it?
 
 Actually, no: Generation works differently. Power plants compete in a market — if revenues don't cover a plant's costs, it can shut down. Customers pay the market clearing price for energy and capacity, not any individual plant's embedded costs. So unlike with poles and wires, customers aren't on the hook for keeping specific generators in business. Technically, they "cause" all generation capacity costs as they consume electricity, unlike transmission and distribution capacity costs, which are (mostly) sunk—they have to be paid for regardless of what they do.
 :::
@@ -489,15 +517,15 @@ We find that households with heat pumps are systematically paying more than thei
 New York State.
 
 Statewide, the electric [delivery cost-of-service]{style="color: #1b7837; font-weight: bold"} for
-electric customers that heat with natural gas is `{python} dollar(v.ff_mean_delivery_cost)` per year, on average,
+electric customers that heat with natural gas is `{python} dollar(v.natgas_mean_delivery_cost)` per year, on average,
 compared to `{python} dollar(v.hp_mean_delivery_cost)` per year for heat pump customers, just
-**`{python} f"{(v.hp_mean_delivery_cost / v.ff_mean_delivery_cost - 1) * 100:.0f}"`%** higher.
+**`{python} f"{(v.hp_mean_delivery_cost / v.natgas_mean_delivery_cost - 1) * 100:.0f}"`%** higher.
 
 But the electric [delivery bills]{style="color: #56B4E9; font-weight: bold"} that heat pump customers currently pay are
-**`{python} f"{(v.hp_mean_delivery_bill / v.ff_mean_delivery_bill - 1) * 100:.0f}"`%** higher than those of electric customers that heat with fossil fuels, on average.
+**`{python} f"{(v.hp_mean_delivery_bill / v.natgas_mean_delivery_bill - 1) * 100:.0f}"`%** higher than those of electric customers that heat with natural gas, on average.
 
 ::: {.column-page-inset-right}
-{{< embed notebooks/analysis.qmd#tbl-bat-simple >}}
+{{< embed notebooks/cost_of_service_by_subclass.qmd#tbl-baseline-sw-avg-pc >}}
 :::
 
 We find that heat pump customers are overpaying for delivery by
@@ -629,53 +657,99 @@ percent."[^nyiso_distribution_grid_headroom]
 
 Simply put: at present, New York's grid has significant spare winter capacity to accommodate
 heat pumps. And this is the main reason why their delivery cost-of-service is only
-`{python} f"{(v.hp_mean_delivery_cost / v.ff_mean_delivery_cost - 1) * 100:.0f}"`% higher than that of electric customers that heat with fossil fuels.
+`{python} f"{(v.hp_mean_delivery_cost / v.natgas_mean_delivery_cost - 1) * 100:.0f}"`% higher than that of electric customers that heat with natural gas.
 
-In this report, we propose two options for a new rate for heat pump customers that would reduce their overpayments for delivery, eliminate their cross-subsidy to fossil fuel customers, and reintroduce fairness to delivery rates.
+## Fixing the cross-subsidy: the cost allocation step {#sec-cost-allocation}
 
-## Option 1: fair seasonal rate for heat pump customers
+So far, we have examined the cross-subsidy problem one household at a time: the average heat pump customer overpays for delivery by **`{python} dollar(v.hp_mean_delivery_bat)`** per year. But what does this add up to across the state?
 
-A **fair rate** for heat pump customers is one that reduces their average
-[delivery bill]{style="color: #56B4E9; font-weight: bold"} to match their average
-[delivery cost-of-service]{style="color: #1b7837; font-weight: bold"}, thereby eliminating the average overpayment.
-
-There are many ways to design a rate for heat pump customers that would achieve this goal. We deliberately propose a
-simple seasonal rate that would lower heat pump customer bills in every instance, and could therefore be retroactively
-applied to all known heat pump customers in the state. This rate would only be available to heat pump customers, and
-would only apply to the delivery side of the bill.
-
-In summer, the volumetric delivery rate would equal each utility's current default rate. In winter, the volumetric
-rate would be reduced to the level at which the utility's heat pump customers pay the same *annual* delivery bills, on
-average, as their delivery cost-of-service.
-
-Each electric utility would have a unique winter delivery rate, reflecting the cost of service in that territory.
+Heat pump customers currently make up just `{python} pct(v.hp_share_of_households, accuracy=1)` of New York's residential electricity customers, but they contribute `{python} pct(v.hp_share_of_delivery_revenue, accuracy=1)` of total delivery revenue. Despite their small numbers, they consume considerably more electricity per household than other residential customers—and under volumetric delivery rates, they pay accordingly (@tbl-baseline-sw-summary-pc).
 
 ::::: {.column-page-inset-right}
+{{< embed notebooks/cost_of_service_by_subclass.qmd#tbl-baseline-sw-summary-pc >}}
+:::::
+
+They consume approximately `{python} f"{v.hp_avg_kwh_over_natgas_avg_kwh:.1f}x"` more electricity per household, on average, than customers that heat with natural gas.
+
+But how much of this revenue is justified by the actual cost of serving these customers? @tbl-baseline-sw-totals-pc adds the key comparison: the total delivery cost-of-service for each of these residential customer groups, alongside the revenue utilities currently collect from them.
+
+::::: {.column-page-inset-right}
+{{< embed notebooks/cost_of_service_by_subclass.qmd#tbl-baseline-sw-totals-pc >}}
+:::::
+
+Across the state, heat pump customers are overpaying for delivery by a total of approximately **`{python} f"${v.hp_total_cross_subsidy_delivery_millions:,.0f}"` million per year**—the gap between what utilities collect from them and what it actually costs to serve them.
+
+---
+
+This gap points to a fix that is more fundamental than designing a new rate.
+
+Utilities already perform {{< glossary "Cost allocation" display="**cost allocation**" >}} between customer classes—residential, commercial, industrial, and so on. For each class, the utility measures the cost of serving that group and assigns a {{< glossary "Revenue requirement" display="**revenue requirement**" >}}: a target amount to collect that matches the group's cost-of-service. This is how every rate case begins.
+
+But utilities do not currently perform cost allocation at the level of customer _subclasses_ within the residential class. All residential customers—whether they heat with gas, oil, or a heat pump—are lumped into a single group and charged the same default rate. Whatever revenue that rate happens to collect from each subclass is whatever it collects; the utility doesn't track whether it overshoots or undershoots any subclass's cost-of-service, because it has no reason to. Which is exactly what happens to heat pump customers: the default volumetric rate collects far more from them than it costs to serve them, and the utility has no visibility into the mismatch.
+
+The fix is for each utility to create a **dedicated {{< glossary "Rate class" display="rate class" >}} for heat pump customers**. This would require the utility to determine these customers' actual delivery cost-of-service and set a revenue requirement that reflects it—rather than the inflated revenue total it happens to collect when the default volumetric rate is applied to customers who use more electricity.[^cost-allocation-appendix]
+
+[^cost-allocation-appendix]:
+    For our estimate of each utility's heat pump customer cost allocation—including the number of heat pump customers, their collective delivery cost-of-service, and the revenue the utility should aim to collect—see @sec-cost-allocation-by-utility.
+
+To eliminate the cross-subsidy, we follow a two-step process:
+
+1. {{< glossary "Cost allocation" >}}: determine the correct revenue to collect from heat pump customers.
+2. {{< glossary "Rate design" >}}: choose among the many rates that could collect this revenue. A lower flat rate, a higher fixed charge, a seasonal rate, a time-of-use rate—any rate calibrated to collect the revenue dictated by the cost allocation will, by definition, have eliminated the cross-subsidy and solved the fairness problem.
+
+This is how ratemaking works: rate design is always based on cost allocation. First, the utility determines how much revenue to collect from a group of customers, based on their cost-of-service. Then, it chooses among rate structures that all collect this amount but may have different secondary effects—on equity across income levels, on economic efficiency, on incentives for conservation or distributed generation, on simplicity, on ease of implementation, and so on.
+
+Cost allocation determines _how much_ to collect. Rate design simply determines _how_ to collect it. **Getting the cost allocation right is what eliminates the cross-subsidy.** The choice among rate designs, while important, is secondary.[^note]
+
+[^note:] In other words, under tech-specific rates, fairness is not an intrinsic property of a rate's structure—it comes from the subclass-specific revenue target the rate is calibrated to hit. A seasonal rate calibrated to the wrong revenue requirement wouldn't be fair at all.
+
+We propose two rate designs that implement this cost allocation: a simple seasonal heat pump rate that could be deployed immediately, and a more cost-reflective seasonal time-of-use rate that would additionally help heat pump customers lower their bills by shifting electricity use away from peak hours.
+
+
+## Option 1: seasonal delivery rate for heat pump customers
+
+Having determined the correct delivery revenue requirement for heat pump customers at each utility, the next question is how to collect it.
+
+We propose simple seasonal heat pump rates for every utility in New York state. By design, these rates would lower heat pump customer delivery bills in every month, and could therefore be retroactively applied to all known heat pump customers in the state. This rate would only be available to heat pump customers, and would only apply to the delivery side of the bill.
+
+This rate is calibrated to each utility's heat pump revenue requirement.
+In summer, the volumetric delivery rate equals the utility's current
+default rate — so no heat pump customer pays more in summer than they
+do today. That means the entire reduction needed to bring annual
+delivery revenue in line with the cost allocation must come from
+winter, when volumetric rates are lowered accordingly. The result: heat
+pump customers pay the same in every summer month, and less in every winter month,
+and the utility collects the correct annual revenue from them as a group.
+
+The exact winter rate would be unique to each electric utility, reflecting the cost of service of heat pump customers in that territory.
+
+::::: {.column-body-outset-right}
 {{< embed notebooks/analysis.qmd#tbl-rate-table >}}
 :::::
 
 If all existing heat pump customers opted in to these rates, what would happen to the overpayments and underpayments we
 saw earlier?
 
-::::: {.column-page-inset-right}
-{{< embed notebooks/analysis.qmd#tbl-bat-comparison >}}
+::::: {.column-screen-inset-right}
+{{< embed notebooks/cost_of_service_by_subclass.qmd#tbl-hp-seasonal-sw-avg-pc >}}
 :::::
 
-These rates would eliminate the overpayment of heat pump customers, on average, bringing their delivery bills in line
-with their delivery cost-of-service statewide.
+Because the seasonal rate is calibrated to each utility's heat pump revenue requirement,
+it collects the correct annual delivery revenue from heat pump customers as a group —
+`{python} dollar(v.hp_mean_delivery_cost)` per year, on average, statewide — eliminating
+their overpayment by design.
 
 By eliminating the cross-subsidy from heat pump customers to customers that heat with fossil fuels, the underpayments of
-natural gas, propane, and heating oil customers would decrease, on average.[^elimination]
+natural gas, propane, and heating oil customers would decrease, on average — from `{python} dollar_signed(v.natgas_avg_xsub_default_pc)` to `{python} dollar_signed(v.natgas_avg_xsub_hp_seasonal_pc)` per year for natural gas, and from `{python} dollar_signed(v.delivered_fuels_avg_xsub_default_pc)` to `{python} dollar_signed(v.delivered_fuels_avg_xsub_hp_seasonal_pc)` for heating oil and propane, respectively.[^elimination]
 
 [^elimination]:
     They would not be eliminated, however, without also removing overpayments by electric resistance customers.
 
-In other words, our proposed seasonal rates would fix the fairness problem. But would that move the needle on operating
-costs?
+The seasonal heat pump rate eliminates the cross-subsidy — that's what cost allocation guarantees. But does charging heat pump customers fairly move the needle on their operating costs?
 
 ## Bill impact of heat pump rate on HP customers
 
-If our fair rate were available, how would it affect what happens to annual energy bills when natural gas heated
+If our seasonal heat pump rate were available, how would it affect what happens to annual energy bills when natural gas heated
 households switch to heat pumps? Let's revisit our earlier analysis.
 
 First, let's revisit the post-heat pump bills for the Buffalo home.
@@ -684,17 +758,17 @@ First, let's revisit the post-heat pump bills for the Buffalo home.
 {{< embed notebooks/analysis.qmd#fig-bill-decomposed-fair-rate-state >}}
 :::::
 
-Under fair rates, the Buffalo home's post-heat pump annual electric bill
+Under the seasonal heat pump rate, the Buffalo home's post-heat pump annual electric bill
 would drop by **`{python} f"{v.fair_rate_savings_pct * 100:.0f}"`%** — from
 `{python} dollar(v.fair_rate_total_bill + v.fair_rate_savings_dollar)` under default rates to
 **`{python} dollar(v.fair_rate_total_bill)`**.
 
 The savings come entirely from the electric [delivery (volumetric)]{style="color: #56B4E9; font-weight: bold"} component, which shrinks thanks to the lower winter rate. Electric supply and gas bills are unchanged.
 
-The dashed line marks the home's pre-heat-pump delivery bill. Under fair rates, the post-heat-pump delivery bill falls
-close to it — meaning the overpayment for delivery has been largely eliminated.
+The dashed line marks the home's pre-heat-pump delivery bill. Under the seasonal rate, the post-heat-pump delivery bill falls
+close to it — meaning the overpayment for delivery has been largely eliminated for this home.
 
-Bottom line: fair rates would allow this home to save `{python} dollar(v.median_energy_total - v.fair_rate_total_bill)`
+Bottom line: the seasonal heat pump rate would allow this home to save `{python} dollar(v.median_energy_total - v.fair_rate_total_bill)`
 per year by switching from gas heating to heat pumps.
 
 ---
@@ -705,10 +779,10 @@ Would we see similar outcomes statewide? Let's zoom out and see.
 {{< embed notebooks/analysis.qmd#fig-quadrant-bar-natgas-switch-hprate-state-lmi-current >}}
 :::::
 
-Fair rates would transform the economics of heat pumps in New York State.
+Seasonal heat pump rates (based on fair cost allocation) would transform the economics of heat pumps in New York State.
 
 Under default rates, only **`{python} f"{v.pct_natgas_save_default_lmi40 * 100:.0f}"`%** of gas-heated households would
-save by switching to heat pumps. But under fair rates, **`{python} f"{v.pct_natgas_save_hprate_lmi40 * 100:.0f}"`%**
+save by switching to heat pumps. But under the seasonal heat pump rate, **`{python} f"{v.pct_natgas_save_hprate_lmi40 * 100:.0f}"`%**
 of gas-heated households would save. And the share of households losing over $1,000 per year would drop from
 `{python} f"{v.pct_natgas_lose_1k_default_lmi40 * 100:.0f}"`% to just `{python} f"{v.pct_natgas_lose_1k_hprate_lmi40 * 100:.0f}"`%.
 
@@ -718,7 +792,7 @@ rates—not cheap gas supply.
 
 The pattern holds for oil and propane-heated homes. Under default rates,
 `{python} f"{v.pct_oil_propane_save_default * 100:.0f}"`% of oil/propane households would save by switching to
-heat pumps. Under fair rates, **`{python} f"{v.pct_oil_propane_save_hprate * 100:.0f}"`%** would save, and the
+heat pumps. Under seasonal heat pump rates, **`{python} f"{v.pct_oil_propane_save_hprate * 100:.0f}"`%** would save, and the
 share losing over $1,000 per year would drop from `{python} f"{v.pct_oil_propane_lose_1k_default * 100:.0f}"`% to
 `{python} f"{v.pct_oil_propane_lose_1k_hprate * 100:.0f}"`%.
 
@@ -727,7 +801,7 @@ share losing over $1,000 per year would drop from `{python} f"{v.pct_oil_propane
 :::::
 
 Electric resistance homes see a similar improvement. Under default rates,
-`{python} f"{v.pct_elec_resistance_save_default * 100:.0f}"`% would save by upgrading to heat pumps. Under fair rates,
+`{python} f"{v.pct_elec_resistance_save_default * 100:.0f}"`% would save by upgrading to heat pumps. Under seasonal heat pump rates,
 **`{python} f"{v.pct_elec_resistance_save_hprate * 100:.0f}"`%** would save.
 
 ::::: {.column-page-inset-right}
@@ -736,7 +810,7 @@ Electric resistance homes see a similar improvement. Under default rates,
 
 ## Equity impact of heat pump rate on HP customers
 
-While the bill impacts shown above reveal how the population at large would be affected by fair rates, they don't
+While the bill impacts shown above reveal how the population at large would be affected by seasonal heat pump rates, they don't
 illuminate the equity impact on low-and-moderate income households. For that, we must zoom in on this population, and
 look at energy burdens.[^energy-burden]
 
@@ -773,7 +847,7 @@ Part of why this happens is that heat pump customers are overpaying for delivery
 **`{python} dollar(v.hp_mean_delivery_bat)`** per year, on average—which allows utilities to lower the volumetric
 delivery rate on everyone.
 
-If all heat pump customers opted in to fair rates, this cross-subsidy would be removed. The volumetric delivery rate
+If all heat pump customers opted in to seasonal heat pump rates rates, this cross-subsidy would be removed. The volumetric delivery rate
 used by non-heat pump customers would need to rise slightly to compensate. How would this affect their bills?
 (@fig-bill-change-non-hp-rebal-state).
 
@@ -786,7 +860,7 @@ By **`{python} dollar(v.rebal_nonhp_mean_monthly_delta, 2)` per month**, on aver
 In fact, **`{python} pct(v.rebal_nonhp_pct_decrease + v.rebal_nonhp_pct_increase_under_5)`** of non-HP households would
 see their monthly electric bill rise by less than $5 a month.
 
-Importantly, this is **not a "rate hike"** on customers without heat pumps.svg It is the removal of an unfair
+Importantly, this is **not a "rate hike"** on customers without heat pumps. It is the removal of an unfair
 cross-subsidy, and a step toward better aligning delivery rates with each customer's actual cost-of-service.
 
 Why so little?
@@ -805,53 +879,9 @@ negligible savings to everyone else.
 This asymmetry won't last forever. As heat pump adoption grows, the cross-subsidy will grow with it, and removing it
 will become harder. The time to fix the fairness problem is now, before it becomes entrenched.
 
-<!--
-## How would the rate need to evolve over time?
+## How should the seasonal heat pump rate evolve as the winter peak grows?
 
-- The idea of making rates fair for heat pump customers by offering them a special rate that avoids overcollecting
-  delivery costs from them assumes that heat pump adoption is not a driver of grid investment. As we have shown, this is
-  true at present, when heat pump adoption is using spare winter capacity.
-
-- However, heat pump adoption is still the main driver of winter peak growth. And once the winter peak starts growing
-  faster than the summer peak, at some point it will catch up. Once this happens, heat pump adoption will become the
-  main driver of grid investment.
-
-- And keeping rates fair will mean continuing to align revenue from heat pump customers with their cost-of-service for
-  delivery, which will now be higher than not heat pump customers.
-
-- This means that this rate is a short-term fix. It needs a glide path to evolve as the underlying cost-of-service of
-  heat pump customers changes, and will need to be sunset as the grid becomes winter-peaking.
-
-- How quickly heat pump adoption will tip the various zones of NY's grid into winter-peaking is unclear—it depends on
-  the pace of heat pump adoption, and the performance of the equipment being adopted.
-
-- Rather than trying to forecast *when* the grid will become winter-peaking, estimate *at what level of heat pump
-  adoption* this change will occur, for different heat pump technologies.
-
-- And we show how the rate would need to evolve as heat pump adoption increases, to keep rates fair.
-
-- CHART: winter peak growth (vs summer peak) for low-performance ASHP, high-performance ASHP, and GSHP.
-
-- CHART: how HP customer cost-of-service and rate would need to evolve as heat pump adoption increases (for each
-  technology), to keep rates fair.
-
-- APPENDIX: How this varies by NYISO zone and utility.
-
-- Discussion of how cost-of-service and rates would need to evolve over time, and how things flip after the winter peak
-  becomes larger than the summer peak.
-
-- OPEN QUESTION: do the adoption scenarios assume everything but heat pump adoption is static, or do we try to align
-  with NYISO load forecasts to include other sources of peak growth for both the summer and winter peaks? (If so, which
-  forecast is really reasonable?)
-
-- OPEN QUESTION: how do we estimate the distribution cost-of-service change over time, as these marginal costs would
-  likely kick in first?
-
--->
-
-## How should the heat pump rate evolve as the winter peak grows?
-
-The heat pump rate proposed above has planned obsolescence built in: it is intended to be medium-term solution, to be gradually adjusted over time, and eventually replaced if the grid become fully winter-peaking.
+The seasonal heat pump rate proposed above has planned obsolescence built in: it is intended to be medium-term solution, to be gradually adjusted over time, and eventually replaced if the grid become fully winter-peaking.
 
 The rates we have designed for each utility reflects today's reality: in the summer, some customers installing heat pumps are triggering modest grid capacity upgrades, in cases where they gain more cooling than before.
 
@@ -939,7 +969,7 @@ Thereafter, the transition would follow a glide path. As building electrificatio
 
 ## Time-varying Rates: from fairness to efficiency
 
-The heat pump rate outlined above is fundamentally about solving the **fairness** problem: making sure we don't overcharge heat pump customers.
+The seasonal heat pump rate outlined above is fundamentally about solving the **fairness** problem: making sure we don't overcharge heat pump customers.
 
 Time-varying rates, such as time-of-use and critical peak pricing, solve an altogether different problem: **economic efficiency**. Boiled down, economic efficiency is about making sure energy and infrastructure are not wasted.
 
@@ -989,7 +1019,7 @@ In fact, meeting the state's building electrificaitons goals in time hinges on m
 
 For each utility in NYS, we've designed time-of-use rates specifically for heat pump customers that are **cost-reflective**, aligned with underlying marginal energy and capacity costs. Unlike most time-of-use rates currently available, in New York State, we've designed these rates to be **cost-based**, so that they also remove the cross-subsidy from HP customers to non-HP customers that exists today.
 
-In other words, these rates would collect the same amount of total revenue from heat pump customers as the fair rates we proposed earlier, but it would do so by charging different prices at different times of the day, not just at different times of the year.
+In other words, these rates would collect the same total revenue from heat pump customers as the seasonal rate we proposed earlier—both implement the same cost allocation—but would do so by charging different prices at different times of the day, not just at different times of the year.
 
 A well-designed time-of-use rate needs to find the peak-period start hour, duration, and price level that most closely matches the marginal energy and capacity costs for that utility, over the entire season, and do the same for the off-peak period  (@fig-rep-days-cenhud-summer).
 
@@ -1050,7 +1080,7 @@ Depending on the utility, we assumed that heat pump customers would be shift bet
 
 [^load-shifts]: The larger a utility's on-to-off peak differential in a given season, the larger the load shift assumed. We calibrated these assumptions based on the empirical evidence on "technology-enabled" load reductions from the Arcturus 2.0 meta-analysis of time-varying pricing pilots [@faruqui_Arcturus20Metaanalysis_2017].
 
-Adding cost-reflectiveness to our fair rate improves gas-to-heat-pump bill outcomes modestly (@fig-quadrant-bar-natgas-tou-state).
+Adding cost-reflectiveness to the seasonal rate improves gas-to-heat-pump bill outcomes modestly (@fig-quadrant-bar-natgas-tou-state).
 
 ::::: {.column-page-inset-right}
 {{< embed notebooks/analysis.qmd#fig-quadrant-bar-natgas-tou-state >}}
@@ -1079,7 +1109,7 @@ Nearly all of improvement in bill impact, compared to the default rate, comes fr
 
 <!--
 ## Flexibliity
-- Discussion of time-of-use rates with no flexibility: compared to the standard fair rates, adding a time-of-use
+- Discussion of time-of-use rates with no flexibility: compared to the seasonal rate, adding a time-of-use
   component and assuming no behavioral change lowers / raises bill slightly, due to the fact that electricity
   consumption is highest when electrons are cheapest / most expensive.
 
@@ -1136,11 +1166,16 @@ The percent increase in annual electricity consumption after switching to a heat
 {{< embed notebooks/analysis.qmd#tbl-elec-pct-change >}}
 :::
 
-### Over/underpayment by utility
+### Average cross-subsidy by utility
 
 ::: {.column-page-inset-right}
-{{< embed notebooks/analysis.qmd#tbl-bat-by-utility >}}
+{{< embed notebooks/cost_of_service_by_subclass.qmd#baseline-per-util-pc-avg >}}
 :::
+
+### Total cross-subsidy by utility {#sec-cost-allocation-by-utility}
+::::: {.column-page-inset-right}
+{{< embed notebooks/cost_of_service_by_subclass.qmd#baseline-per-util-pc-totals >}}
+:::::
 
 ### Bill changes by utility
 TODO: ADD THE FLEX
@@ -1207,6 +1242,21 @@ TODO ADD
 ## Acknowledgments
 
 ## Data and Methods
+
+
+### Customer counts, kWh, and revenue requirement assembly
+
+Our simulation uses NREL's ResStock 2024.2 building stock model to generate hourly electricity loads for a representative sample of New York residential buildings. Each ResStock building carries a sampling weight; we rescale these weights so that the weighted customer count for each utility matches the EIA-861 reported residential customer count as of 2024. This ensures the simulation represents the right number of customers per utility.
+
+However, the total electricity consumption (kWh) implied by these reweighted ResStock loads does not match EIA-861 reported residential sales. After customer reweighting, ResStock kWh is systematically higher than EIA kWh for most utilities — by as much as 18% for Con Edison, and 8% statewide.[^kwh-mismatch] We do not rescale the kWh to match EIA; the loads that enter the simulation are the raw ResStock hourly profiles, reweighted only for customer count.
+
+[^kwh-mismatch]: The discrepancy varies by utility: +10% for Central Hudson, +18% for Con Edison, +8% for Niagara Mohawk, +1% for NYSEG, −3% for O&R, −0.3% for PSEG-LI, and +10% for RG&E. It likely reflects differences between ResStock's modeled kWh per customer (driven by building characteristics and the 2018 AMY weather year) and EIA's reported sales per customer.
+
+The total revenue requirement we simulate against is assembled from two sources with different underlying assumptions. The **delivery revenue requirement** comes directly from each utility's most recent rate case (the table above) — a fixed dollar amount derived from the utility's own cost-of-service study, which uses its own projections of residential customer counts and kWh. The **top-up charges** (surcharges, supply commodity, and other volumetric charges not included in the rate-case delivery amount) are estimated separately: we take the actual filed $/kWh rates for each charge from 2025 tariff schedules and multiply them by the EIA customer counts and the ResStock kWh to produce annual dollar budgets.
+
+This means the assumptions behind the rate-case delivery revenue requirement — the utility's own customer count and kWh projections from its cost-of-service study — are not necessarily the same as the customer counts and kWh we use for the top-up budgets. The rate-case delivery amount was designed to be recovered from a specific volume of kWh; we recover it from a different (typically larger) volume, which means the simulation's calibrated delivery rates are somewhat lower than the rates the utility actually filed. This does not affect relative comparisons between rate designs (the same kWh enters all scenarios), but it means the absolute $/kWh rates and dollar bill amounts in the simulation are approximate rather than exact reproductions of filed rates.
+
+
 
 ### Sub-Transmission and Distribution Marginal Costs
 

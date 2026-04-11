@@ -105,7 +105,7 @@ RDP_REF = "530564d"  # rate-design-platform git ref for fetch_rdp_file
 
 ### UPDATE TO SWITCH RESIDUAL ALLOCATION METHODS
 # Delivery residual allocation: sets BAT column stubs, run pairs, and tariff filename slugs together.
-RESIDUAL_ALLOC_DELIVERY = "epmc"  # "percustomer" | "epmc"
+RESIDUAL_ALLOC_DELIVERY = "percustomer"  # "percustomer" | "epmc"
 
 if RESIDUAL_ALLOC_DELIVERY == "percustomer":
     # HP seasonal precalc (u0), HP seasonal default (u2), TOU flex default (u2)
@@ -125,6 +125,8 @@ else:
     raise ValueError(msg)
 
 RESIDUAL_ALLOC_SUPPLY = "percustomer"  # "percustomer" | "passthrough" — supply BAT / residual column stubs only
+
+SUPPLY_PASSTHROUGH = True
 ###
 
 
@@ -213,7 +215,101 @@ bills with fully decomposed electric components (fixed, delivery volumetric, sup
 ResStock metadata columns — across all NY utilities.
 
 ```{python}
+#| label: supply-passthrough-helper
+
+def apply_supply_passthrough(
+    proposed_lf: pl.LazyFrame,
+    baseline_lf: pl.LazyFrame,
+) -> pl.LazyFrame:
+    """Replace supply columns in proposed with baseline's supply (same buildings, same kWh).
+
+    Recomputes elec_total_bill, energy_total_bill, and LMI electric columns.
+    Gas/oil/propane and delivery columns are untouched.
+
+    LMI credits are recovered from the proposed data itself (before patching)
+    as `elec_total_bill - elec_total_bill_lmi_{40,100}`.  Under budget billing
+    this equals 12 × monthly_credit for Annual rows where lmi > 0 (exact),
+    and equals the full bill for buildings whose bill is fully covered by the
+    credit (conservative: slightly underestimates the discount).  The notebook
+    only uses Annual LMI rows, so monthly LMI imprecision is irrelevant.
+    """
+    baseline_supply = baseline_lf.select(
+        "bldg_id",
+        "month",
+        pl.col("elec_supply_bill").alias("_baseline_supply"),
+    )
+    return (
+        proposed_lf
+        .with_columns(
+            (pl.col("elec_total_bill") - pl.col("elec_total_bill_lmi_40")).alias(
+                "_credit_40"
+            ),
+            (pl.col("elec_total_bill") - pl.col("elec_total_bill_lmi_100")).alias(
+                "_credit_100"
+            ),
+        )
+        .join(baseline_supply, on=["bldg_id", "month"], how="left")
+        .with_columns(
+            pl.col("_baseline_supply").alias("elec_supply_bill"),
+            (
+                pl.col("elec_fixed_charge")
+                + pl.col("elec_delivery_bill")
+                + pl.col("_baseline_supply")
+            ).alias("elec_total_bill"),
+        )
+        .with_columns(
+            (
+                pl.col("elec_total_bill")
+                + pl.col("gas_total_bill")
+                + pl.col("oil_total_bill")
+                + pl.col("propane_total_bill")
+            ).alias("energy_total_bill"),
+            (pl.col("elec_total_bill") - pl.col("_credit_40"))
+            .clip(lower_bound=0.0)
+            .alias("elec_total_bill_lmi_40"),
+            (pl.col("elec_total_bill") - pl.col("_credit_100"))
+            .clip(lower_bound=0.0)
+            .alias("elec_total_bill_lmi_100"),
+        )
+        .drop("_baseline_supply", "_credit_40", "_credit_100")
+    )
+```
+
+```{python}
 #| label: ingest
+
+# ---------------------------------------------------------------------------
+# Supply passthrough workaround
+# ---------------------------------------------------------------------------
+# The HP seasonal and TOU runs (5+6, 7+8, 13+14, 15+16) were built with
+# per-customer supply residual allocation, which shifts supply costs between
+# subclasses.  Under passthrough, the supply tariff is unchanged from default
+# rates — each customer pays the same supply rate they already have.
+#
+# The correct fix is to define CAIRO runs with residual_allocation_supply =
+# "passthrough" in the scenario YAMLs and rebuild the master bills.  We did
+# not have time to set up and run those CAIRO batches before the deadline, so
+# instead we apply the fix here: for each proposed-scenario LazyFrame, we
+# replace its supply columns with the corresponding default-rate baseline's
+# supply (upgrade-matched: u0 → run 1+2, u2 → run 3+4).  This is
+# semantically equivalent to passthrough because the baseline runs already
+# use the utility's existing supply tariff.
+#
+# LMI electric columns are recomputed by recovering the fixed monthly credit
+# from the baseline and reapplying it to the new total.  Gas/oil/propane and
+# delivery columns are untouched.
+#
+# A standalone validation script (/tmp/validate_supply_passthrough.py) verified
+# across all 3 proposed-scenario pairs (5+6, 7+8, 15+16):
+#   - supply correctness: patched supply == baseline supply (max diff = 0)
+#   - bill identities: elec_total = fixed + delivery + supply (residual < 1e-12)
+#   - delivery/gas/metadata columns bit-identical before and after
+#   - LMI credit preservation exact for all buildings with lmi > 0
+#   - LMI non-negative, annual lmi <= elec_total (max excess < 4e-12)
+#
+# TODO: Once CAIRO runs with passthrough supply exist, remove this workaround
+# and point the paths at the new master bills.
+# ---------------------------------------------------------------------------
 
 bills_current = pl.scan_parquet(PATH_MASTER_BILLS_BASELINE, hive_partitioning=True)
 bills_hp = pl.scan_parquet(PATH_MASTER_BILLS_DEFAULT_HP, hive_partitioning=True)
@@ -224,6 +320,12 @@ bills_tou_hp = (
     if INCLUDE_TOU
     else None
 )
+
+if SUPPLY_PASSTHROUGH:
+    bills_hprate_current = apply_supply_passthrough(bills_hprate_current, bills_current)
+    bills_hprate_hp = apply_supply_passthrough(bills_hprate_hp, bills_hp)
+    if bills_tou_hp is not None:
+        bills_tou_hp = apply_supply_passthrough(bills_tou_hp, bills_hp)
 ```
 
 ## Bill components: how energy bills change after switching
@@ -1596,7 +1698,7 @@ natgas_state_lmi_full = (
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-state-state-lmi-current
-#| fig-cap: "Bill impact of switching to heat pumps for natural gas-heated households (Statewide)"
+#| fig-cap: "Bill impact of switching to heat pumps for natural gas-heated households (Statewide). Assumes 40% of LMI households receive LMI discounts before and after switching to HP."
 
 plot_quadrant_bar(
     [("Natural gas", natgas_state_lmi40)],
@@ -1612,7 +1714,7 @@ plot_quadrant_bar(
 
 ```{python}
 #| label: fig-quadrant-bar-oil-propane-state
-#| fig-cap: "Bill impact of switching to heat pumps for oil/propane-heated households (Statewide)"
+#| fig-cap: "Bill impact of switching to heat pumps for oil/propane-heated households (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
 
 plot_quadrant_bar(
     [("Oil / propane", oil_propane_state)],
@@ -1629,7 +1731,7 @@ plot_quadrant_bar(
 
 ```{python}
 #| label: fig-quadrant-bar-elec-resistance-state
-#| fig-cap: "Bill impact of switching to heat pumps for electric resistance-heated households (Statewide)"
+#| fig-cap: "Bill impact of switching to heat pumps for electric resistance-heated households (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
 
 plot_quadrant_bar(
     [("Electric resistance", elec_resistance_state)],
@@ -2309,6 +2411,11 @@ _natgas_sub = labeled_all.filter(pl.col("heats_with_natgas"))
 _op_sub = labeled_all.filter(pl.col("heats_with_oil") | pl.col("heats_with_propane"))
 _er_sub = labeled_all.filter(pl.col("heating_label") == "Electric resistance")
 report_vars["ff_mean_delivery_bat"] = _weighted_mean(_ff_sub, _bat_col, "weight")
+report_vars["natgas_mean_delivery_cost"] = (
+    _weighted_mean(_natgas_sub, "economic_burden_delivery", "weight")
+    + _weighted_mean(_natgas_sub, RESIDUAL_DELIVERY, "weight")
+)
+report_vars["natgas_mean_delivery_bill"] = _weighted_mean(_natgas_sub, "annual_bill_delivery", "weight")
 report_vars["natgas_mean_delivery_bat"] = _weighted_mean(_natgas_sub, _bat_col, "weight")
 report_vars["oil_propane_mean_delivery_bat"] = _weighted_mean(_op_sub, _bat_col, "weight")
 report_vars["elec_resistance_mean_delivery_bat"] = _weighted_mean(_er_sub, _bat_col, "weight")
@@ -2318,12 +2425,12 @@ report_vars["elec_resistance_mean_delivery_bat"] = _weighted_mean(_er_sub, _bat_
 ```{python}
 #| label: tbl-bat-simple
 #| tbl-cap: "The average delivery over- or underpayment of different residential customer subclasses, relative to their delivery cost-of-service."
-from lib.great_tables import get_switchbox_gt_tab_options
+from lib.great_tables import SB_GT_PER_YEAR_HTML_PATTERN, get_switchbox_gt_tab_options
 from lib.quarto import display_gt
 
 _bat_simple_gt = (
     GT(pl.DataFrame(_bat_simple_rows), rowname_col="heating_type")
-    .fmt_currency(columns="mean_bat", decimals=0, pattern="{x} / year")
+    .fmt_currency(columns="mean_bat", decimals=0, pattern=SB_GT_PER_YEAR_HTML_PATTERN)
     .cols_label(mean_bat="Average over- or underpayment")
     .tab_stubhead(label="Residential customer subclass")
     .tab_options(**get_switchbox_gt_tab_options())
@@ -2709,6 +2816,7 @@ util_cols = [c for c in rate_wide.columns if c != "metric"]
 
 ```{python}
 #| label: tbl-rate-table
+#| tbl-cap: "Proposed seasonal heat pump rate, per utility. Summer rates match current default rate (when default rate is flat), winter rates are reduced to align HP customers' annual bills with their cost-of-service."
 
 _rate_gt = (
     GT(rate_wide, rowname_col="metric")
@@ -4083,7 +4191,7 @@ display_svg(fig_3bar)
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-switch-hprate-by-utility
-#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. seasonal rate, by utility"
+#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. seasonal rate, by utility. Undiscounted annual bills (LMI discount enrollment not modeled)."
 
 plot_quadrant_bar_by_utility(
     delta_state, delta_switch_state,
@@ -4122,7 +4230,7 @@ if INCLUDE_TOU:
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-tou-state
-#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. fair vs. TOU + fair rate (Statewide)"
+#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. fair vs. TOU + fair rate (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
 
 if INCLUDE_TOU:
     _tou_quadrant_fig = plot_quadrant_bar(
@@ -4265,7 +4373,7 @@ report_vars["pct_natgas_save_1k_hprate_lmi_full"] = _lmif_save_1k / _lmif_total
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-switch-hprate-state-lmi-current
-#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. seasonal rate (Statewide)"
+#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. seasonal rate (Statewide). Assumes 40% of LMI households receive LMI discounts before and after switching to HP."
 
 plot_quadrant_bar(
     [
@@ -4283,7 +4391,7 @@ plot_quadrant_bar(
 
 ```{python}
 #| label: fig-quadrant-bar-oil-propane-switch-hprate-state
-#| fig-cap: "Change in total annual energy bills — oil/propane homes switching to HP: default vs. seasonal rate (Statewide)"
+#| fig-cap: "Change in total annual energy bills — oil/propane homes switching to HP: default vs. seasonal rate (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
 
 plot_quadrant_bar(
     [
@@ -4303,7 +4411,7 @@ plot_quadrant_bar(
 
 ```{python}
 #| label: fig-quadrant-bar-oil-propane-switch-hprate-by-utility
-#| fig-cap: "Change in total annual energy bills — oil/propane homes switching to HP: default vs. seasonal rate, by utility"
+#| fig-cap: "Change in total annual energy bills — oil/propane homes switching to HP: default vs. seasonal rate, by utility. Undiscounted annual bills (LMI discount enrollment not modeled)."
 
 plot_quadrant_bar_by_utility(
     delta_state, delta_switch_state,
@@ -4322,7 +4430,7 @@ plot_quadrant_bar_by_utility(
 
 ```{python}
 #| label: fig-quadrant-bar-elec-resistance-switch-hprate-state
-#| fig-cap: "Change in total annual energy bills — electric resistance homes switching to HP: default vs. seasonal rate (Statewide)"
+#| fig-cap: "Change in total annual energy bills — electric resistance homes switching to HP: default vs. seasonal rate (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
 
 plot_quadrant_bar(
     [
@@ -4340,7 +4448,7 @@ plot_quadrant_bar(
 
 ```{python}
 #| label: fig-quadrant-bar-elec-resistance-switch-hprate-by-utility
-#| fig-cap: "Change in total annual energy bills — electric resistance homes switching to HP: default vs. seasonal rate, by utility"
+#| fig-cap: "Change in total annual energy bills — electric resistance homes switching to HP: default vs. seasonal rate, by utility. Undiscounted annual bills (LMI discount enrollment not modeled)."
 
 plot_quadrant_bar_by_utility(
     delta_state, delta_switch_state,

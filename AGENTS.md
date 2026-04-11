@@ -182,34 +182,32 @@ In `index.qmd`, embed it:
 
 Use `:::{.column-page-inset-right}` or `:::{.column-page-inset}` for full-width layout (the standard for all charts).
 
-### Great Tables (GT) in manuscript projects — critical workaround
+### Great Tables (GT) in manuscript projects
 
-**Never use `{{< embed >}}` to include Great Tables output in `index.qmd`.** Quarto's manuscript mode truncates `text/html` MIME outputs from Python notebook cells to just `\n\n</div>`. This rogue `</div>` gets injected into `index.html`, prematurely closes a parent container, and cascades — breaking the page structure and pushing all subsequent content into or after the appendix.
+Quarto's manuscript mode truncates raw `text/html` MIME outputs during the Pandoc `--to ipynb` conversion, so GT tables displayed normally would be reduced to a stray `</div>`. Use **`lib.quarto.display_gt`** to base64-encode the HTML so it survives the embed pipeline:
 
-The workaround is file-based inclusion:
-
-1. In `analysis.qmd`, save the GT HTML to a cache file and also display it (for notebook preview):
+1. In `analysis.qmd`, use `display_gt` instead of displaying the GT object directly:
 
 ```python
-from pathlib import Path
-Path("../cache").mkdir(exist_ok=True)
+from lib.quarto import display_gt
 
 _my_gt = GT(df).fmt_currency(...)
-Path("../cache/my_table.html").write_text(_my_gt.as_raw_html())
-_my_gt
+display_gt(_my_gt)
 ```
 
-2. In `index.qmd`, include the cached HTML via an R code block:
+Give the cell `#| label: tbl-my-table` and `#| tbl-cap: "..."`.
+
+2. In `index.qmd`, embed normally:
 
 ```markdown
 :::{.column-page-inset-right}
-`{r}
-#| echo: false
-htmltools::includeHTML("cache/my_table.html")`
+{{< embed notebooks/analysis.qmd#tbl-my-table >}}
 :::
 ```
 
-This applies to **every** GT table that needs to appear in `index.qmd`. Plotnine figures (`fig-` labels) produce a single image MIME type and embed safely.
+Captions, cross-references (`@tbl-my-table`), and column classes all work. The decoded HTML includes GT's scoped `<style>` block, so all formatting is preserved. The table participates in the host page's CSS cascade (Switchbox fonts, colors).
+
+Plotnine figures (`fig-` labels) produce a single image MIME type and embed safely without a helper.
 
 ### Raw matplotlib and `{{< embed >}}`
 
@@ -484,7 +482,7 @@ These phrases recur across the corpus and represent Switchbox's analytical vocab
 - Do not hardcode any number in narrative text. All computed values must come from inline R code pulling from the analysis.
 - Do not put analysis code in `index.qmd` (beyond loading `.RData` and sourcing themes).
 - Do not put narrative prose in `analysis.qmd`.
-- Do not use `{{< embed >}}` for Great Tables (GT) output — it will break the page. Use the file-based `htmltools::includeHTML()` workaround (see "Great Tables in manuscript projects" above).
+- Do not display GT tables directly in cells intended for `{{< embed >}}` — use `display_gt()` from `lib.quarto` (see "Great Tables in manuscript projects" above).
 
 ## Analysis notebook conventions
 
@@ -768,7 +766,7 @@ Group figures by the story they tell, not by chart type. Use markdown headers an
 - Do not put narrative conclusions in the analysis notebook. State what the _code_ is doing and what the _data_ shows; save the policy interpretation for `index.qmd`.
 - Do not hardcode file paths that only work in one environment. Use relative paths or environment variables.
 - Do not skip the report variables section. If `index.qmd` uses computed values, they must be exported from `analysis.qmd`.
-- Do not create a GT table cell intended for embedding in `index.qmd` without using the file-based workaround. Every GT cell whose output appears in `index.qmd` must save its HTML to `cache/` via `as_raw_html()` and be included via `htmltools::includeHTML()` — never via `{{< embed >}}`. See "Great Tables in manuscript projects" in the report architecture section.
+- Do not display GT tables directly in cells intended for `{{< embed >}}` — always use `display_gt()` from `lib.quarto`. See "Great Tables in manuscript projects" in the report architecture section.
 
 ## Shared resources and branding
 
@@ -848,18 +846,18 @@ R libraries under `lib/` are sourced the traditional way (e.g. `source("lib/ggpl
 
 #### Python modules
 
-| Module                             | When to use                                                                                                                                                                                            |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `lib.rdp`                          | Fetching files from the `rate-design-platform` GitHub repo (tariff maps, configs). Also has `parse_urdb_json` for URDB tariff JSON.                                                                    |
-| `lib.cairo`                        | CAIRO post-processing: `add_delivered_fuel_bills` tops up combined bills with oil/propane costs from monthly consumption x EIA prices.                                                                 |
-| `lib.data.s3`                      | S3 directory listing (`list_s3_subdirs`) and run directory resolution (`run_dir`) for navigating CAIRO output paths.                                                                                   |
-| `lib.data.gsheets`                 | Google Sheets client with cached OAuth (`get_gspread_client`); uses G_* env vars and caches token to avoid browser on every run.                                                                       |
-| `lib.data.eia.heating_fuel_prices` | Load monthly residential oil + propane prices from EIA data on S3 (`load_monthly_fuel_prices`).                                                                                                        |
-| `lib.data.nrel.resstock`           | Load ResStock load curves for a specific utility (`scan_load_curves_for_utility`), reading metadata to construct per-building paths.                                                                   |
-| `lib.eia`                          | Standalone EIA fetch scripts (petroleum prices, state heating profiles). Use `lib.data.eia` for the cleaner S3-based API.                                                                              |
-| `lib.plotnine`                     | Switchbox plotnine theme (`theme_switchbox`) with three-tier typography, brand colors (`SB_COLORS`), and auto SVG config. Import in every Python analysis notebook.                                    |
-| `lib.great_tables`                 | Switchbox Great Tables helpers (`get_switchbox_gt_tab_options`) for `GT.tab_options`: table title matches plotnine (GT Planar Bold 15px left); IBM Plex Sans on body/stub/source notes.                |
-| `lib.quarto`                       | Quarto Manuscript helpers. `display_svg(fig)` renders a matplotlib figure as SVG for safe `{{< embed >}}` embedding (avoids multi-MIME bug). Use for all raw matplotlib or plotnine `.draw()` figures. |
+| Module                             | When to use                                                                                                                                                                                                                                                                                                              |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `lib.rdp`                          | Fetching files from the `rate-design-platform` GitHub repo (tariff maps, configs). Also has `parse_urdb_json` for URDB tariff JSON.                                                                                                                                                                                      |
+| `lib.cairo`                        | CAIRO post-processing: `add_delivered_fuel_bills` tops up combined bills with oil/propane costs from monthly consumption x EIA prices.                                                                                                                                                                                   |
+| `lib.data.s3`                      | S3 directory listing (`list_s3_subdirs`) and run directory resolution (`run_dir`) for navigating CAIRO output paths.                                                                                                                                                                                                     |
+| `lib.data.gsheets`                 | Google Sheets client with cached OAuth (`get_gspread_client`); uses G_* env vars and caches token to avoid browser on every run.                                                                                                                                                                                         |
+| `lib.data.eia.heating_fuel_prices` | Load monthly residential oil + propane prices from EIA data on S3 (`load_monthly_fuel_prices`).                                                                                                                                                                                                                          |
+| `lib.data.nrel.resstock`           | Load ResStock load curves for a specific utility (`scan_load_curves_for_utility`), reading metadata to construct per-building paths.                                                                                                                                                                                     |
+| `lib.eia`                          | Standalone EIA fetch scripts (petroleum prices, state heating profiles). Use `lib.data.eia` for the cleaner S3-based API.                                                                                                                                                                                                |
+| `lib.plotnine`                     | Switchbox plotnine theme (`theme_switchbox`) with three-tier typography, brand colors (`SB_COLORS`), and auto SVG config. Import in every Python analysis notebook.                                                                                                                                                      |
+| `lib.great_tables`                 | Switchbox Great Tables helpers (`get_switchbox_gt_tab_options`) for `GT.tab_options`: table title matches plotnine (GT Planar Bold 15px left); IBM Plex Sans on body/stub/source notes.                                                                                                                                  |
+| `lib.quarto`                       | Quarto Manuscript helpers. `display_svg(fig)` renders a matplotlib figure as SVG for safe embedding (avoids multi-MIME bug). `display_gt(table)` base64-encodes a GT table so it survives the embed pipeline. Use `display_svg` for raw matplotlib figures; `display_gt` for all GT tables embedded via `{{< embed >}}`. |
 
 #### R libraries
 
@@ -1243,6 +1241,20 @@ Reports are built with [Quarto](https://quarto.org/) using the Manuscript projec
 | Configure HTML format options                              | [HTML Options](https://quarto.org/docs/reference/formats/html.html)                           |
 
 The Article Layout page is especially important -- it documents the column classes (`column-page-inset-right`, `column-margin`, etc.) that we use for figure placement and margin content throughout our reports.
+
+## Quarto extensions
+
+Quarto extensions (shortcodes, filters, etc.) are shared across all reports via `lib/quarto_extensions/`. Each extension has its own subdirectory containing the Lua and CSS/JS files. Reports reference these directly in `_quarto.yml` using the `shortcodes:` or `filters:` key with a relative path — they do **not** use per-project `_extensions/` directories.
+
+```yaml
+# Example: reports/<project>/_quarto.yml
+shortcodes:
+  - ../../lib/quarto_extensions/glossary/glossary.lua
+```
+
+**Do not** run `quarto add` or create `_extensions/` directories in report projects. To add an extension to a report, reference its Lua file from `lib/quarto_extensions/` in `_quarto.yml`. To add a new extension to the repo, create a directory under `lib/quarto_extensions/<name>/`.
+
+For the full explanation of why this works (and why Quarto's default `_extensions/` mechanism doesn't suit a monorepo), see `context/code/quarto_extensions.md`.
 
 ## MCP Tools
 

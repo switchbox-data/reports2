@@ -14,7 +14,7 @@ This notebook builds **two pairs** of tables (totals + per-customer averages): d
 
 ## Setup
 
-First we import the libraries we use end-to-end: Polars for the S3 parquet work, Great Tables for the formatted table, and `Path` for writing cache files. We also start an empty `report_vars` dict so any statistics we want to reuse from the narrative can be pickled later.
+First we import the libraries we use end-to-end: Polars for the S3 parquet work, Great Tables for the formatted table, and `Path` for exporting report variables. We also start an empty `report_vars` dict so any statistics we want to reuse from the narrative can be pickled later.
 
 ```{python}
 #| label: setup
@@ -759,7 +759,7 @@ rie_budget_df.select(
 
 ```{python}
 #| label: fig-rie-rev-req-budgets
-#| fig-cap: "RIE delivery revenue collected during the test year (9/1/2024–8/31/2025), by program area. Bars show total revenue collected by area, as well as total volumetric and/or fixed charges used to collect it."
+#| fig-cap: "RIE delivery revenue collected during the test year (9/1/2024–8/31/2025), by delivery charge. Bars show total revenue collected by charge, as well as total volumetric and/or fixed charges used to collect it."
 #| fig-cap-location: margin
 
 from plotnine import (
@@ -963,6 +963,7 @@ Each delivery line from the YAML appears below with the same six **areas** as th
 
 from lib.great_tables import get_switchbox_gt_tab_options
 from lib.plotnine import SB_COLORS
+from lib.quarto import display_gt
 
 _rie_rr_program_gt_df = rie_rr_program_detail_df.drop("_area_key")
 
@@ -1009,9 +1010,7 @@ for _i, _key in enumerate(rie_rr_program_detail_df["_area_key"]):
         locations=loc.body(columns="area", rows=[_i]),
     )
 
-Path("../cache").mkdir(parents=True, exist_ok=True)
-Path("../cache/rie_rev_req_programs_by_bucket.html").write_text(_gt_rr_prog.as_raw_html(), encoding="utf-8")
-_gt_rr_prog
+display_gt(_gt_rr_prog)
 ```
 
 ### HP rate comparison tables (by area and by line item)
@@ -1019,7 +1018,7 @@ _gt_rr_prog
 The HP flat rate applies a **uniform volumetric discount** to all delivery components. We compute the discount ratio from the calibrated tariffs and apply it to every volumetric line item. Per-customer charges are unchanged.
 
 ```{python}
-#| label: hp-rate-comparison-tables
+#| label: tbl-rate-comparison-by-area
 
 _hp_discount_ratio = _hp_flat_vol_usd_kwh / _default_vol_usd_kwh
 _hp_pct_reduction = 1.0 - _hp_discount_ratio
@@ -1058,7 +1057,6 @@ def _build_area_gt(
     col_label: str,
     change_label: str,
     change_fmt: str,
-    cache_filename: str,
 ) -> GT:
     """Build an area-level rate comparison GT (HP or adjusted default)."""
     _area_display = {"Transmission Charge": "Transmission", "Other Delivery Charge": "Other Delivery"}
@@ -1116,7 +1114,6 @@ def _build_area_gt(
             locations=loc.body(columns="area", rows=[i]),
         )
 
-    Path(f"../cache/{cache_filename}").write_text(gt.as_raw_html(), encoding="utf-8")
     return gt
 
 
@@ -1126,13 +1123,12 @@ _gt_area_hp = _build_area_gt(
     col_label="HP rate",
     change_label="Change",
     change_fmt="-{x}%",
-    cache_filename="rate_comparison_by_area.html",
 )
-_gt_area_hp
+display_gt(_gt_area_hp)
 ```
 
 ```{python}
-#| label: adj-default-rate-comparison-by-area
+#| label: tbl-rate-comparison-adj-default-by-area
 
 # --- Table 1b: adjusted default rate by area ---
 _gt_area_adj = _build_area_gt(
@@ -1140,13 +1136,12 @@ _gt_area_adj = _build_area_gt(
     col_label="Adj. default rate",
     change_label="Change",
     change_fmt="+{x}%",
-    cache_filename="rate_comparison_adj_default_by_area.html",
 )
-_gt_area_adj
+display_gt(_gt_area_adj)
 ```
 
 ```{python}
-#| label: hp-rate-comparison-line-items
+#| label: tbl-rate-comparison-line-items
 
 # --- Table 2: full line-item detail (for exhibit) ---
 
@@ -1267,10 +1262,6 @@ for _i in range(_detail_for_gt.height):
         locations=loc.body(columns="area", rows=[_i]),
     )
 
-Path("../cache/rate_comparison_line_items.html").write_text(
-    _gt_detail_comp.as_raw_html(), encoding="utf-8",
-)
-
 report_vars["hp_discount_ratio"] = _hp_discount_ratio
 report_vars["hp_pct_reduction"] = _hp_pct_reduction
 report_vars["default_vol_usd_kwh"] = _default_vol_usd_kwh
@@ -1296,7 +1287,7 @@ _n_dist_vol = int(
 )
 report_vars["n_other_vol_line_items"] = _n_vol_line_items - _n_dist_vol
 
-_gt_detail_comp
+display_gt(_gt_detail_comp)
 ```
 
 ## Load, validate, and aggregate (both scenarios)
@@ -2389,7 +2380,7 @@ display(cos_tbl_hp_flat)
 
 ## Great Tables — default rates (run 1+2)
 
-We format **`cos_tbl`** for publication: **Customers** uses **`n_customers_display`**; **% of customers** uses **`pct_customers_display`**. HTML goes to `cache/cost_of_service_by_subclass.html` for `htmltools::includeHTML()` in `index.qmd` (avoid `{{< embed >}}` for GT). **Titles** for every table in this notebook are set in the next cell (`_GT_TITLE_COS_TOTALS` and `_GT_TITLE_COS_AVG`). Default-rate subtitles use **`_COS_SUBTITLE_VOL_DEFAULT`**: all-in calibrated volumetric rate plus PRB-1 distribution vs transmission from **`rie_rate_case_test_year.yaml`** (budget ÷ `test_year_residential_kwh`). **`subtitle=`** is set per table in the cells below (omit it or pass `None` where the builder allows, to hide the subtitle).
+We format **`cos_tbl`** for publication: **Customers** uses **`n_customers_display`**; **% of customers** uses **`pct_customers_display`**. Tables are displayed via `display_gt()` so they can be embedded in `index.qmd` with `{{< embed >}}`. **Titles** for every table in this notebook are set in the next cell (`_GT_TITLE_COS_TOTALS` and `_GT_TITLE_COS_AVG`). Default-rate subtitles use **`_COS_SUBTITLE_VOL_DEFAULT`**: all-in calibrated volumetric rate plus PRB-1 distribution vs transmission from **`rie_rate_case_test_year.yaml`** (budget ÷ `test_year_residential_kwh`). **`subtitle=`** is set per table in the cells below (omit it or pass `None` where the builder allows, to hide the subtitle).
 
 ```{python}
 #| label: cos-subclass-gt-titles
@@ -2415,9 +2406,7 @@ _cos_gt = build_gt_cos_totals(
     ),
 )
 
-Path("../cache").mkdir(exist_ok=True)
-Path("../cache/cost_of_service_by_subclass.html").write_text(_cos_gt.as_raw_html())
-_cos_gt
+display_gt(_cos_gt)
 ```
 
 ## Per-customer averages — default rates (run 1+2)
@@ -2436,13 +2425,12 @@ _cos_avg_gt = build_gt_cos_avg(
     ),
 )
 
-Path("../cache/cost_of_service_by_subclass_avg.html").write_text(_cos_avg_gt.as_raw_html())
-_cos_avg_gt
+display_gt(_cos_avg_gt)
 ```
 
 ## Great Tables — today vs proposed delivery rates
 
-The **totals** table below compares **today's** uniform residential delivery pricing to a **proposed** split: a lower volumetric charge for heat-pump homes and a separately calibrated charge for everyone else. The **¢/kWh** figures in the column spanners match the volumetric delivery charges in the calibrated tariff inputs used for the bill model. The **per-customer averages** table in the next cell mirrors that layout: first spanner — **avg. delivery bill** and **avg. cross-subsidy** under default rates (no customer counts); second spanner — **change in avg. delivery bill**, then proposed **avg. delivery bill**, **avg. cost of service**, **avg. cross-subsidy**, and **avg. cross-subsidy ÷ avg. COS**. Cache: `cost_of_service_by_subclass_hp_flat.html` and `cost_of_service_by_subclass_avg_hp_flat.html`.
+The **totals** table below compares **today's** uniform residential delivery pricing to a **proposed** split: a lower volumetric charge for heat-pump homes and a separately calibrated charge for everyone else. The **¢/kWh** figures in the column spanners match the volumetric delivery charges in the calibrated tariff inputs used for the bill model. The **per-customer averages** table in the next cell mirrors that layout: first spanner — **avg. delivery bill** and **avg. cross-subsidy** under default rates (no customer counts); second spanner — **change in avg. delivery bill**, then proposed **avg. delivery bill**, **avg. cost of service**, **avg. cross-subsidy**, and **avg. cross-subsidy ÷ avg. COS**.
 
 ```{python}
 #| label: tbl-cos-by-subclass-hp-flat
@@ -2457,10 +2445,7 @@ _cos_gt_hp_flat = build_gt_cos_totals_hp_flat_vs_current(
     title=_GT_TITLE_COS_TOTALS,
 )
 
-Path("../cache/cost_of_service_by_subclass_hp_flat.html").write_text(
-    _cos_gt_hp_flat.as_raw_html(),
-)
-_cos_gt_hp_flat
+display_gt(_cos_gt_hp_flat)
 ```
 
 ```{python}
@@ -2475,10 +2460,7 @@ _cos_avg_gt_hp_flat = build_gt_cos_avg_hp_flat_vs_current(
     title=_GT_TITLE_COS_AVG,
 )
 
-Path("../cache/cost_of_service_by_subclass_avg_hp_flat.html").write_text(
-    _cos_avg_gt_hp_flat.as_raw_html(),
-)
-_cos_avg_gt_hp_flat
+display_gt(_cos_avg_gt_hp_flat)
 ```
 
 ## Export report variables

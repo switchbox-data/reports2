@@ -91,25 +91,59 @@ def _weighted_mean(df: pl.DataFrame, col: str, w_col: str) -> float:
 ```{python}
 #| label: params
 
-# --- To switch states, change these 5 values and the 4 utility dicts in the constants cell below. ---
-INCLUDE_TOU = True  # set False to skip TOU rate cells (e.g. when run_15+16 is not available)
+# --- To switch states, change these values and the 4 utility dicts in the constants cell below. ---
+INCLUDE_TOU = True  # set False to skip TOU rate cells (e.g. when TOU run is not available)
 UTILITY = "coned"  # any utility code from UTIL_NAMES, used for the representative-building example
-BATCH = "ny_20260326_flex_r1-16"
 STATE = "NY"
 YEAR = 2025
-RDP_REF = "2c00f80"    # rate-design-platform git ref for fetch_rdp_file
 
-# Everything below derives from STATE + BATCH
+### UPDATE WITH NEW RUNS
+BATCH = "ny_20260408_all_epmc_r1-24"
+RDP_REF = "530564d"  # rate-design-platform git ref for fetch_rdp_file
+###
+
+
+### UPDATE TO SWITCH RESIDUAL ALLOCATION METHODS
+# Delivery residual allocation: sets BAT column stubs, run pairs, and tariff filename slugs together.
+RESIDUAL_ALLOC_DELIVERY = "percustomer"  # "percustomer" | "epmc"
+
+if RESIDUAL_ALLOC_DELIVERY == "percustomer":
+    # HP seasonal precalc (u0), HP seasonal default (u2), TOU flex default (u2)
+    RUN_HPRATE = "5+6"
+    RUN_HPRATE_HP = "7+8"
+    RUN_TOU_HP = "15+16"
+    TARIFF_SEASONAL = "hp_seasonal"
+    TARIFF_TOU = "hp_seasonalTOU_flex"
+elif RESIDUAL_ALLOC_DELIVERY == "epmc":
+    RUN_HPRATE = "21+22"
+    RUN_HPRATE_HP = "23+24"
+    RUN_TOU_HP = "27+28"
+    TARIFF_SEASONAL = "hp_seasonal_epmc"
+    TARIFF_TOU = "hp_seasonalTOU_flex_epmc"
+else:
+    msg = f"Unknown RESIDUAL_ALLOC_DELIVERY {RESIDUAL_ALLOC_DELIVERY!r}; use 'percustomer' or 'epmc'"
+    raise ValueError(msg)
+
+RESIDUAL_ALLOC_SUPPLY = "percustomer"  # "percustomer" | "passthrough" — supply BAT / residual column stubs only
+
+SUPPLY_PASSTHROUGH = True
+###
+
+
+# Everything below derives from the params above
 _state_lower = STATE.lower()
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
-PATH_MASTER_BILLS_12 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_1+2/comb_bills_year_target/"
-PATH_MASTER_BILLS_34 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_3+4/comb_bills_year_target/"
-PATH_MASTER_BILLS_56 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_5+6/comb_bills_year_target/"
-PATH_MASTER_BILLS_78 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_7+8/comb_bills_year_target/"
-PATH_MASTER_BILLS_1516 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_15+16/comb_bills_year_target/"
-PATH_MASTER_BAT_12 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_1+2/cross_subsidization_BAT_values/"
-PATH_MASTER_BAT_34 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_3+4/cross_subsidization_BAT_values/"
-PATH_MASTER_BAT_56 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_5+6/cross_subsidization_BAT_values/"
+_BILLS = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}"
+_BAT = _BILLS
+
+PATH_MASTER_BILLS_BASELINE = f"{_BILLS}/run_1+2/comb_bills_year_target/"
+PATH_MASTER_BILLS_DEFAULT_HP = f"{_BILLS}/run_3+4/comb_bills_year_target/"
+PATH_MASTER_BILLS_HPRATE = f"{_BILLS}/run_{RUN_HPRATE}/comb_bills_year_target/"
+PATH_MASTER_BILLS_HPRATE_HP = f"{_BILLS}/run_{RUN_HPRATE_HP}/comb_bills_year_target/"
+PATH_MASTER_BILLS_TOU_HP = f"{_BILLS}/run_{RUN_TOU_HP}/comb_bills_year_target/"
+PATH_MASTER_BAT_BASELINE = f"{_BAT}/run_1+2/cross_subsidization_BAT_values/"
+PATH_MASTER_BAT_DEFAULT_HP = f"{_BAT}/run_3+4/cross_subsidization_BAT_values/"
+PATH_MASTER_BAT_HPRATE = f"{_BAT}/run_{RUN_HPRATE}/cross_subsidization_BAT_values/"
 
 PATH_RESSTOCK = "s3://data.sb/nrel/resstock/res_2024_amy2018_2"
 ```
@@ -167,11 +201,10 @@ UTIL_SHORT: dict[str, str] = {  # tariff code -> short label for BAT-by-utility 
     "rge": "RG&E",
 }
 
-RESIDUAL_ALLOC = "percustomer"  # "epmc" or "percustomer"
-BAT_TOTAL = f"BAT_{RESIDUAL_ALLOC}_total"
-BAT_DELIVERY = f"BAT_{RESIDUAL_ALLOC}_delivery"
-BAT_SUPPLY = f"BAT_{RESIDUAL_ALLOC}_supply"
-_res_infix = f"_{RESIDUAL_ALLOC}" if RESIDUAL_ALLOC != "percustomer" else ""
+BAT_DELIVERY = f"BAT_{RESIDUAL_ALLOC_DELIVERY}_delivery"
+BAT_SUPPLY = f"BAT_{RESIDUAL_ALLOC_SUPPLY}_supply"
+BAT_TOTAL = "bat_total"  # derived as BAT_DELIVERY + BAT_SUPPLY in each BAT ingest cell
+_res_infix = f"_{RESIDUAL_ALLOC_DELIVERY}" if RESIDUAL_ALLOC_DELIVERY != "percustomer" else ""
 RESIDUAL_DELIVERY = f"residual_share{_res_infix}_delivery"
 ```
 
@@ -182,17 +215,214 @@ bills with fully decomposed electric components (fixed, delivery volumetric, sup
 ResStock metadata columns — across all NY utilities.
 
 ```{python}
+#| label: supply-passthrough-helper
+
+def apply_supply_passthrough(
+    proposed_lf: pl.LazyFrame,
+    baseline_lf: pl.LazyFrame,
+) -> pl.LazyFrame:
+    """Replace supply columns in proposed with baseline's supply (same buildings, same kWh).
+
+    Recomputes elec_total_bill, energy_total_bill, and LMI electric columns.
+    Gas/oil/propane and delivery columns are untouched.
+
+    LMI credits are recovered from the proposed data itself (before patching)
+    as `elec_total_bill - elec_total_bill_lmi_{40,100}`.  Under budget billing
+    this equals 12 × monthly_credit for Annual rows where lmi > 0 (exact),
+    and equals the full bill for buildings whose bill is fully covered by the
+    credit (conservative: slightly underestimates the discount).  The notebook
+    only uses Annual LMI rows, so monthly LMI imprecision is irrelevant.
+    """
+    baseline_supply = baseline_lf.select(
+        "bldg_id",
+        "month",
+        pl.col("elec_supply_bill").alias("_baseline_supply"),
+    )
+    return (
+        proposed_lf
+        .with_columns(
+            (pl.col("elec_total_bill") - pl.col("elec_total_bill_lmi_40")).alias(
+                "_credit_40"
+            ),
+            (pl.col("elec_total_bill") - pl.col("elec_total_bill_lmi_100")).alias(
+                "_credit_100"
+            ),
+        )
+        .join(baseline_supply, on=["bldg_id", "month"], how="left")
+        .with_columns(
+            pl.col("_baseline_supply").alias("elec_supply_bill"),
+            (
+                pl.col("elec_fixed_charge")
+                + pl.col("elec_delivery_bill")
+                + pl.col("_baseline_supply")
+            ).alias("elec_total_bill"),
+        )
+        .with_columns(
+            (
+                pl.col("elec_total_bill")
+                + pl.col("gas_total_bill")
+                + pl.col("oil_total_bill")
+                + pl.col("propane_total_bill")
+            ).alias("energy_total_bill"),
+            (pl.col("elec_total_bill") - pl.col("_credit_40"))
+            .clip(lower_bound=0.0)
+            .alias("elec_total_bill_lmi_40"),
+            (pl.col("elec_total_bill") - pl.col("_credit_100"))
+            .clip(lower_bound=0.0)
+            .alias("elec_total_bill_lmi_100"),
+        )
+        .drop("_baseline_supply", "_credit_40", "_credit_100")
+    )
+
+
+def apply_supply_passthrough_tou(
+    tou_lf: pl.LazyFrame,
+    seasonal_lf: pl.LazyFrame,
+    baseline_lf: pl.LazyFrame,
+) -> pl.LazyFrame:
+    """Scale TOU supply bills to passthrough revenue while preserving load-shifting structure.
+
+    CAIRO TOU-flex lowers total supply revenue relative to the seasonal target
+    because load shifting moves kWh from high-MC peak to low-MC off-peak hours.
+    Under passthrough, we want the same MC savings applied to the passthrough
+    revenue level — not the per-customer residual level the runs were built with.
+
+    Per utility u (weighted sums on Annual rows):
+        RR_pass[u]     = baseline supply revenue  (run 3+4, flat rates)
+        RR_percust[u]  = seasonal HP supply revenue (run 7+8, no shifting)
+        RR_tou[u]      = TOU HP supply revenue (run 15+16, with shifting)
+        savings[u]     = RR_percust[u] - RR_tou[u]
+        adjusted_RR[u] = RR_pass[u] - savings[u]
+        scale[u]       = adjusted_RR[u] / RR_tou[u]
+
+    Each building's TOU supply bill is multiplied by its utility's scale factor.
+    The result preserves the relative TOU benefits across buildings (who shifted
+    more still pays less) while targeting the passthrough revenue level minus
+    the load-shifting MC savings.
+    """
+    _UTIL = "sb.electric_utility"
+    _ANNUAL = "Annual"
+
+    def _weighted_supply_rr(lf: pl.LazyFrame, alias: str) -> pl.LazyFrame:
+        return (
+            lf.filter(pl.col("month") == _ANNUAL)
+            .group_by(_UTIL)
+            .agg((pl.col("elec_supply_bill") * pl.col("weight")).sum().alias(alias))
+        )
+
+    rr_pass = _weighted_supply_rr(baseline_lf, "_rr_pass")
+    rr_percust = _weighted_supply_rr(seasonal_lf, "_rr_percust")
+    rr_tou = _weighted_supply_rr(tou_lf, "_rr_tou")
+
+    scale_factors = (
+        rr_pass
+        .join(rr_percust, on=_UTIL)
+        .join(rr_tou, on=_UTIL)
+        .with_columns(
+            ((pl.col("_rr_pass") - (pl.col("_rr_percust") - pl.col("_rr_tou")))
+             / pl.col("_rr_tou")).alias("_scale")
+        )
+        .select(_UTIL, "_scale")
+    )
+
+    return (
+        tou_lf
+        .with_columns(
+            (pl.col("elec_total_bill") - pl.col("elec_total_bill_lmi_40")).alias(
+                "_credit_40"
+            ),
+            (pl.col("elec_total_bill") - pl.col("elec_total_bill_lmi_100")).alias(
+                "_credit_100"
+            ),
+        )
+        .join(scale_factors, on=_UTIL, how="left")
+        .with_columns(
+            (pl.col("elec_supply_bill") * pl.col("_scale")).alias("elec_supply_bill"),
+        )
+        .with_columns(
+            (
+                pl.col("elec_fixed_charge")
+                + pl.col("elec_delivery_bill")
+                + pl.col("elec_supply_bill")
+            ).alias("elec_total_bill"),
+        )
+        .with_columns(
+            (
+                pl.col("elec_total_bill")
+                + pl.col("gas_total_bill")
+                + pl.col("oil_total_bill")
+                + pl.col("propane_total_bill")
+            ).alias("energy_total_bill"),
+            (pl.col("elec_total_bill") - pl.col("_credit_40"))
+            .clip(lower_bound=0.0)
+            .alias("elec_total_bill_lmi_40"),
+            (pl.col("elec_total_bill") - pl.col("_credit_100"))
+            .clip(lower_bound=0.0)
+            .alias("elec_total_bill_lmi_100"),
+        )
+        .drop("_scale", "_credit_40", "_credit_100")
+    )
+```
+
+```{python}
 #| label: ingest
 
-bills_current = pl.scan_parquet(PATH_MASTER_BILLS_12, hive_partitioning=True)
-bills_hp = pl.scan_parquet(PATH_MASTER_BILLS_34, hive_partitioning=True)
-bills_hprate_current = pl.scan_parquet(PATH_MASTER_BILLS_56, hive_partitioning=True)
-bills_hprate_hp = pl.scan_parquet(PATH_MASTER_BILLS_78, hive_partitioning=True)
+# ---------------------------------------------------------------------------
+# Supply passthrough workaround
+# ---------------------------------------------------------------------------
+# The HP seasonal and TOU runs (5+6, 7+8, 13+14, 15+16) were built with
+# per-customer supply residual allocation, which shifts supply costs between
+# subclasses.  Under passthrough, the supply tariff is unchanged from default
+# rates — each customer pays the same supply rate they already have.
+#
+# The correct fix is to define CAIRO runs with residual_allocation_supply =
+# "passthrough" in the scenario YAMLs and rebuild the master bills.  We did
+# not have time to set up and run those CAIRO batches before the deadline, so
+# instead we apply the fix here in two ways:
+#
+# (1) SEASONAL scenarios (5+6, 7+8): flat replacement — each building's
+#     supply bill is replaced with its baseline supply (u0 → run 1+2,
+#     u2 → run 3+4).  Under flat/seasonal rates with no load shifting,
+#     passthrough supply = baseline supply exactly.
+#
+# (2) TOU scenario (15+16): multiplicative scaling.  CAIRO TOU-flex lowers
+#     total supply revenue relative to the seasonal target because load
+#     shifting moves kWh from high-MC peak to low-MC off-peak hours.
+#     Flat replacement would kill these load-shifting benefits.  Instead,
+#     we keep the TOU bill *shape* (who shifted more pays less) and scale
+#     the level per utility so the weighted sum equals:
+#
+#         adjusted_RR = RR_pass - (RR_percust - RR_tou)
+#
+#     where RR_pass = baseline supply revenue (run 3+4), RR_percust =
+#     seasonal HP supply revenue (run 7+8, no shifting), and RR_tou =
+#     TOU HP supply revenue (run 15+16, with shifting).  The difference
+#     RR_percust - RR_tou is the MC savings from load shifting, which
+#     is preserved under passthrough.
+#
+# LMI electric columns are recomputed by recovering the fixed monthly credit
+# from the proposed data and reapplying it to the new total.  Gas/oil/propane
+# and delivery columns are untouched.
+#
+# TODO: Once CAIRO runs with passthrough supply exist, remove this workaround
+# and point the paths at the new master bills.
+# ---------------------------------------------------------------------------
+
+bills_current = pl.scan_parquet(PATH_MASTER_BILLS_BASELINE, hive_partitioning=True)
+bills_hp = pl.scan_parquet(PATH_MASTER_BILLS_DEFAULT_HP, hive_partitioning=True)
+bills_hprate_current = pl.scan_parquet(PATH_MASTER_BILLS_HPRATE, hive_partitioning=True)
+bills_hprate_hp = pl.scan_parquet(PATH_MASTER_BILLS_HPRATE_HP, hive_partitioning=True)
 bills_tou_hp = (
-    pl.scan_parquet(PATH_MASTER_BILLS_1516, hive_partitioning=True)
+    pl.scan_parquet(PATH_MASTER_BILLS_TOU_HP, hive_partitioning=True)
     if INCLUDE_TOU
     else None
 )
+
+if SUPPLY_PASSTHROUGH:
+    bills_hprate_current = apply_supply_passthrough(bills_hprate_current, bills_current)
+    if bills_tou_hp is not None:
+        bills_tou_hp = apply_supply_passthrough_tou(bills_tou_hp, bills_hprate_hp, bills_hp)
+    bills_hprate_hp = apply_supply_passthrough(bills_hprate_hp, bills_hp)
 ```
 
 ## Bill components: how energy bills change after switching
@@ -401,7 +631,7 @@ def plot_bill_components_decomposed(
             size=11, nudge_y=30, inherit_aes=False,
         )
         + scale_fill_manual(values=DECOMPOSED_COLORS)
-        + scale_x_discrete(limits=SCENARIO_ORDER, expand=(0, 0.6, 0, 1.8))
+        + scale_x_discrete(limits=SCENARIO_ORDER, expand=(0, 0.6, 0, 0.9))
         + scale_y_continuous(expand=(0, 0, 0.08, 0))
         + guides(fill=False)
         + labs(x="", y="Annual energy bill ($)", title=title)
@@ -414,9 +644,9 @@ def plot_bill_components_decomposed(
 
 ### Representative home
 
-We hardcode a specific building chosen for its narrative qualities: near-median
-baseline bill, meaningful bill increase after switching, and clear delivery
-underpayment before switching. See the selection criteria in the agent transcript.
+We hardcode a specific building chosen for its narrative qualities: bills increase
+after HP switch under default rates, but decrease below baseline under fair rates,
+with a delivery overpayment close to the statewide average for HP owners.
 
 ```{python}
 #| label: compute-bill-components-state
@@ -437,7 +667,7 @@ hp_same_bldgs_state = (
 )
 assert not hp_same_bldgs_state.is_empty(), "No matching buildings statewide (HP)"
 
-median_bldg_id_state = 497234                                                    # <3>
+median_bldg_id_state = 328510                                                    # <3>
 median_current_state = (                                                         # <3>
     natgas_current_state                                                         # <3>
     .filter(pl.col(BLDG_ID) == median_bldg_id_state)                            # <3>
@@ -473,9 +703,9 @@ report_vars["median_net_increase"] = report_vars["median_elec_jump"] - report_va
 
 1. Same natgas-only filter as the representative-building cell. Statewide, ~2.7% of natgas buildings are dropped.
 2. Pre-filter the HP scenario to the same natgas-only building IDs so we can look up individual buildings.
-3. Hardcoded building: 1,698 sqft, 1990s, 3-bed, 2-story SFD in Erie County (NYSEG). Baseline bill near
-   the statewide median for natgas-only homes, bill increases by ~$800 after HP switch, and underpays
-   ~$216/yr on per-customer delivery BAT before switching.
+3. Hardcoded building: 1,698 sqft, 1940s, 3-bed, 1-story SFD in Syracuse, Onondaga County (NiMo).
+   Bills increase after HP switch under default rates but decrease below baseline under fair rates,
+   with delivery overpayment close to the statewide average for HP owners (~$855/yr).
 
 We also load monthly load curves for this building from ResStock to show energy consumption (in kWh) alongside the bill
 charts.
@@ -878,6 +1108,18 @@ _ax.text(_x_label, _del_label_y, f"×{_del_mult:.1f}",
 report_vars["delivery_multiplier"] = _del_mult
 report_vars["supply_multiplier"] = _sup_mult
 
+_bar_edge = 2 + _bar_hw
+_ax.spines["bottom"].set_bounds(_ax.get_xlim()[0], _bar_edge)
+_g0 = _ax.get_ygridlines()[0]
+_gc, _gw = _g0.get_color(), _g0.get_linewidth()
+_ax.yaxis.grid(False)
+for _yt in _ax.get_yticks():
+    if 0 < _yt < _ax.get_ylim()[1]:
+        _ax.hlines(_yt, _ax.get_xlim()[0], _bar_edge, colors=_gc, linewidths=_gw, zorder=0)
+for _t in _ax.texts:
+    if _t.get_position()[0] >= _bar_edge:
+        _t.set_clip_on(False)
+
 fig_decomposed
 ```
 
@@ -1113,8 +1355,10 @@ def plot_quadrant_bar(
         + theme(
             figure_size=(12.5, max(2.6, 1.0 + 1.2 * n_scenarios)),
             axis_text=element_blank(),
-            axis_ticks=element_blank(),
-            axis_line=element_blank(),
+            axis_ticks_x=element_blank(),
+            axis_ticks_y=element_blank(),
+            axis_line_x=element_blank(),
+            axis_line_y=element_blank(),
             panel_grid=element_blank(),
             plot_title=(
                 element_blank()
@@ -1374,14 +1618,21 @@ _elec_change_table = pl.DataFrame(_table_rows).pivot(
     on="cooling", index="utility", values="median_pct_change",
 ).sort("utility")
 
+```
+
+```{python}
+#| label: tbl-elec-pct-change
+
+from lib.great_tables import get_switchbox_gt_tab_options
+from lib.quarto import display_gt
+
 _elec_change_gt = (
     GT(_elec_change_table, rowname_col="utility")
     .fmt_number(columns=_cooling_order, decimals=0, pattern="{x}%")
     .tab_spanner(label="Baseline cooling", columns=_cooling_order)
+    .tab_options(**get_switchbox_gt_tab_options())
 )
-Path("../cache").mkdir(exist_ok=True)
-Path("../cache/elec_pct_change_table.html").write_text(_elec_change_gt.as_raw_html())
-_elec_change_gt
+display_gt(_elec_change_gt)
 ```
 
 ### Statewide bill changes by fuel type
@@ -1544,7 +1795,7 @@ natgas_state_lmi_full = (
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-state-state-lmi-current
-#| fig-cap: "Bill impact of switching to heat pumps for natural gas-heated households (Statewide)"
+#| fig-cap: "Bill impact of switching to heat pumps for natural gas-heated households (Statewide). Assumes 40% of LMI households receive LMI discounts before and after switching to HP."
 
 plot_quadrant_bar(
     [("Natural gas", natgas_state_lmi40)],
@@ -1560,7 +1811,7 @@ plot_quadrant_bar(
 
 ```{python}
 #| label: fig-quadrant-bar-oil-propane-state
-#| fig-cap: "Bill impact of switching to heat pumps for oil/propane-heated households (Statewide)"
+#| fig-cap: "Bill impact of switching to heat pumps for oil/propane-heated households (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
 
 plot_quadrant_bar(
     [("Oil / propane", oil_propane_state)],
@@ -1577,7 +1828,7 @@ plot_quadrant_bar(
 
 ```{python}
 #| label: fig-quadrant-bar-elec-resistance-state
-#| fig-cap: "Bill impact of switching to heat pumps for electric resistance-heated households (Statewide)"
+#| fig-cap: "Bill impact of switching to heat pumps for electric resistance-heated households (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
 
 plot_quadrant_bar(
     [("Electric resistance", elec_resistance_state)],
@@ -1646,8 +1897,10 @@ _p_hh = (
     + theme(
         figure_size=(13, max(3.0, 0.8 + 0.9 * _n_hh)),
         axis_text=element_blank(),
-        axis_ticks=element_blank(),
-        axis_line=element_blank(),
+        axis_ticks_x=element_blank(),
+        axis_ticks_y=element_blank(),
+        axis_line_x=element_blank(),
+        axis_line_y=element_blank(),
         panel_grid=element_blank(),
         legend_position="none",
     )
@@ -1752,8 +2005,10 @@ p_fuel = (
     + theme(
         figure_size=(10.5, 2.6),
         axis_text=element_blank(),
-        axis_ticks=element_blank(),
-        axis_line=element_blank(),
+        axis_ticks_x=element_blank(),
+        axis_ticks_y=element_blank(),
+        axis_line_x=element_blank(),
+        axis_line_y=element_blank(),
         panel_grid=element_blank(),
         legend_position="none",
     )
@@ -1850,8 +2105,10 @@ _p = (
     + theme(
         figure_size=(13, max(3.0, 0.8 + 0.9 * _n_utils)),
         axis_text=element_blank(),
-        axis_ticks=element_blank(),
-        axis_line=element_blank(),
+        axis_ticks_x=element_blank(),
+        axis_ticks_y=element_blank(),
+        axis_line_x=element_blank(),
+        axis_line_y=element_blank(),
         panel_grid=element_blank(),
         legend_position="none",
     )
@@ -1879,14 +2136,14 @@ distribution down by heating type (fossil fuel, electric resistance, heat pump).
 ```{python}
 #| label: bat-ingest
 
-bat_12 = pl.scan_parquet(PATH_MASTER_BAT_12, hive_partitioning=True)
+bat_baseline = pl.scan_parquet(PATH_MASTER_BAT_BASELINE, hive_partitioning=True)
 
 bat_all = (
-    bat_12
+    bat_baseline
     .select(
         BLDG_ID, "weight",
-        BAT_TOTAL,
         BAT_DELIVERY,
+        BAT_SUPPLY,
         "economic_burden_delivery",
         RESIDUAL_DELIVERY,
         "annual_bill_delivery",
@@ -1894,6 +2151,7 @@ bat_all = (
         "heats_with_natgas", "heats_with_oil", "heats_with_propane",
         "sb.electric_utility",
     )
+    .with_columns((pl.col(BAT_DELIVERY) + pl.col(BAT_SUPPLY)).alias(BAT_TOTAL))
     .collect()
 )
 ```
@@ -1922,7 +2180,7 @@ _bat_rename = {
 }
 
 median_gas_bat = (
-    bat_12
+    bat_baseline
     .filter(pl.col(BLDG_ID) == median_bldg_id_state)
     .select(_bat_select)
     .collect()
@@ -1930,9 +2188,9 @@ median_gas_bat = (
     .row(0, named=True)
 )
 
-bat_34 = pl.scan_parquet(PATH_MASTER_BAT_34, hive_partitioning=True)
+bat_default_hp = pl.scan_parquet(PATH_MASTER_BAT_DEFAULT_HP, hive_partitioning=True)
 _hp_raw = (
-    bat_34
+    bat_default_hp
     .filter(pl.col(BLDG_ID) == median_bldg_id_state)
     .select(_bat_select)
     .collect()
@@ -1964,49 +2222,76 @@ for label, row in [("Gas", median_gas_bat), ("HP", median_hp_bat)]:
 
 ```{python}
 #| label: fig-cross-subsidy-example
-#| fig-cap: "Annual delivery bill vs. delivery cost of service for the median gas-heated home, before and after switching to a heat pump."
+#| fig-cap: "Annual electric delivery bill vs. electric delivery cost of service for the median gas-heated home, before and after switching to a heat pump."
 
-DECOMPOSE_COS = True
+DECOMPOSE_COS = False
 
 if DECOMPOSE_COS:
-    CS_COMP_ORDER = ["Delivery Bill", "Marginal Cost", "Residual Cost"]
+    CS_COMP_ORDER = [
+        "Delivery Bill (Fixed)", "Delivery Bill (Volumetric)",
+        "Marginal Cost", "Residual Cost",
+    ]
     CS_COMP_COLORS = {
-        "Delivery Bill": "#56B4E9",
+        "Delivery Bill (Fixed)": "#023047",
+        "Delivery Bill (Volumetric)": "#56B4E9",
         "Marginal Cost": "#1b7837",
         "Residual Cost": "#a6dba0",
     }
+    CS_LABEL_COLORS = {
+        "Delivery Bill (Fixed)": "white",
+        "Delivery Bill (Volumetric)": "white",
+        "Marginal Cost": "white",
+        "Residual Cost": "#333333",
+    }
 else:
-    CS_COMP_ORDER = ["Delivery Bill", "Cost of Service"]
+    CS_COMP_ORDER = [
+        "Delivery Bill (Fixed)", "Delivery Bill (Volumetric)",
+        "Cost of Service",
+    ]
     CS_COMP_COLORS = {
-        "Delivery Bill": "#56B4E9",
-        "Cost of Service": "#1b7837",
+        "Delivery Bill (Fixed)": "#023047",
+        "Delivery Bill (Volumetric)": "#56B4E9",
+        "Cost of Service": "#a6dba0",
+    }
+    CS_LABEL_COLORS = {
+        "Delivery Bill (Fixed)": "white",
+        "Delivery Bill (Volumetric)": "white",
+        "Cost of Service": "#333333",
     }
 CS_BAR_ORDER = ["Cost of\nService", "Delivery\nBill"]
 
+_SIDE_LINE_X = 2.35
+_SIDE_TEXT_X = 2.45
 
-def _bldg_records(row: dict, scenario: str) -> list[dict]:
+
+def _bldg_records(bat_row: dict, bills_df: pl.DataFrame, scenario: str) -> list[dict]:
+    fixed = float(bills_df["delivery_fixed"][0])
+    vol = float(bills_df["delivery_volumetric"][0])
     records = [
-        {"scenario": scenario, "bar": "Delivery\nBill", "component": "Delivery Bill",
-         "dollars": row["revenue"]},
+        {"scenario": scenario, "bar": "Delivery\nBill",
+         "component": "Delivery Bill (Fixed)", "dollars": fixed},
+        {"scenario": scenario, "bar": "Delivery\nBill",
+         "component": "Delivery Bill (Volumetric)", "dollars": vol},
     ]
     if DECOMPOSE_COS:
         records.extend([
-            {"scenario": scenario, "bar": "Cost of\nService", "component": "Marginal Cost",
-             "dollars": row["mc"]},
-            {"scenario": scenario, "bar": "Cost of\nService", "component": "Residual Cost",
-             "dollars": row["residual"]},
+            {"scenario": scenario, "bar": "Cost of\nService",
+             "component": "Marginal Cost", "dollars": bat_row["mc"]},
+            {"scenario": scenario, "bar": "Cost of\nService",
+             "component": "Residual Cost", "dollars": bat_row["residual"]},
         ])
     else:
         records.append(
-            {"scenario": scenario, "bar": "Cost of\nService", "component": "Cost of Service",
-             "dollars": row["mc"] + row["residual"]},
+            {"scenario": scenario, "bar": "Cost of\nService",
+             "component": "Cost of Service",
+             "dollars": bat_row["mc"] + bat_row["residual"]},
         )
     return records
 
 
 cs_records: list[dict] = []
-cs_records.extend(_bldg_records(median_gas_bat, SCENARIO_ORDER[0]))
-cs_records.extend(_bldg_records(median_hp_bat, SCENARIO_ORDER[1]))
+cs_records.extend(_bldg_records(median_gas_bat, median_current_state, SCENARIO_ORDER[0]))
+cs_records.extend(_bldg_records(median_hp_bat, median_hp_state, SCENARIO_ORDER[1]))
 
 cs_plot_df = pl.DataFrame(cs_records).with_columns(
     pl.col("scenario").cast(pl.Enum(SCENARIO_ORDER)),
@@ -2026,6 +2311,27 @@ cs_bar_totals = (
     )
 )
 
+cs_label_df = (
+    cs_plot_df
+    .sort("scenario", "bar", "component")
+    .with_columns(
+        pl.col("dollars").cum_sum().over("scenario", "bar").alias("_cum"),
+    )
+    .with_columns(
+        (pl.col("_cum") - pl.col("dollars") / 2).alias("y_mid"),
+        pl.col("dollars")
+        .map_elements(lambda v: f"${v:,.0f}", return_dtype=pl.String)
+        .alias("dollar_label"),
+        pl.col("component").cast(pl.String)
+        .replace_strict(CS_LABEL_COLORS)
+        .alias("label_color"),
+    )
+    .filter(pl.col("dollars") >= 50)
+    .with_columns(pl.len().over("scenario", "bar").alias("_n"))
+    .filter(pl.col("_n") > 1)
+    .drop("_cum", "_n")
+)
+
 gas_bill = median_gas_bat["revenue"]
 gas_cost = median_gas_bat["mc"] + median_gas_bat["residual"]
 gas_bat = median_gas_bat[BAT_DELIVERY]
@@ -2038,14 +2344,21 @@ gas_underpays = gas_bill < gas_cost
 hp_overpays = hp_bill_cs > hp_cost_cs
 
 bracket_df = pl.DataFrame([
+    {"scenario": SCENARIO_ORDER[0], "x": 1.0, "xend": 2.0,
+     "y": gas_cost, "yend": gas_bill,
+     "clr": "#ffc729"},
     {"scenario": SCENARIO_ORDER[1], "x": 1.0, "xend": 2.0,
      "y": hp_cost_cs, "yend": hp_bill_cs,
      "clr": "#b71c1c" if hp_overpays else "#1b5e20"},
 ]).with_columns(pl.col("scenario").cast(pl.Enum(SCENARIO_ORDER)))
 
 bat_labels = pl.DataFrame([
+    {"scenario": SCENARIO_ORDER[0], "x": 1.5,
+     "y": (gas_cost + gas_bill) / 2,
+     "label": f"Underpays\n${abs(gas_cost - gas_bill):,.0f}/yr",
+     "clr": "#ffc729"},
     {"scenario": SCENARIO_ORDER[1], "x": 1.5,
-     "y": max(hp_bill_cs, hp_cost_cs) + 80,
+     "y": (hp_cost_cs + hp_bill_cs) / 2,
      "label": f"{'Overpays' if hp_overpays else 'Underpays'}\n${abs(hp_bat_cs):,.0f}/yr",
      "clr": "#b71c1c" if hp_overpays else "#1b5e20"},
 ]).with_columns(pl.col("scenario").cast(pl.Enum(SCENARIO_ORDER)))
@@ -2059,9 +2372,32 @@ report_vars["cs_hp_cost"] = hp_cost_cs
 report_vars["cs_hp_overpay"] = hp_bill_cs - hp_cost_cs
 report_vars["cs_hp_bat"] = hp_bat_cs
 
+_hp_fixed = float(median_hp_state["delivery_fixed"][0])
+_hp_vol = float(median_hp_state["delivery_volumetric"][0])
+
+side_lines_df = pl.DataFrame([
+    {"scenario": SCENARIO_ORDER[1], "x": _SIDE_LINE_X, "xend": _SIDE_TEXT_X - 0.03,
+     "y": _hp_fixed / 2, "yend": _hp_fixed / 2},
+    {"scenario": SCENARIO_ORDER[1], "x": _SIDE_LINE_X, "xend": _SIDE_TEXT_X - 0.03,
+     "y": _hp_fixed + _hp_vol / 2, "yend": _hp_fixed + _hp_vol / 2},
+]).with_columns(pl.col("scenario").cast(pl.Enum(SCENARIO_ORDER)))
+
+side_text_df = pl.DataFrame([
+    {"scenario": SCENARIO_ORDER[1], "x": _SIDE_TEXT_X,
+     "y": _hp_fixed / 2, "label": "Electric Delivery\nBill (Fixed)",
+     "clr": "#023047"},
+    {"scenario": SCENARIO_ORDER[1], "x": _SIDE_TEXT_X,
+     "y": _hp_fixed + _hp_vol / 2, "label": "Electric Delivery\nBill (Volumetric)",
+     "clr": "#56B4E9"},
+]).with_columns(pl.col("scenario").cast(pl.Enum(SCENARIO_ORDER)))
+
 (
     ggplot(cs_plot_df, aes(x="bar", y="dollars", fill="component"))
     + geom_col(position=position_stack(reverse=True), width=0.55)
+    + geom_text(
+        cs_label_df, aes(x="bar", y="y_mid", label="dollar_label", color="label_color"),
+        fontweight="bold", size=9, inherit_aes=False,
+    )
     + geom_text(
         cs_bar_totals, aes(x="bar", y="total", label="total_label"),
         va="bottom", color="#333333", fontweight="bold",
@@ -2074,19 +2410,28 @@ report_vars["cs_hp_bat"] = hp_bat_cs
     )
     + geom_text(
         bat_labels, aes(x="x", y="y", label="label", color="clr"),
-        size=9, fontweight="bold", inherit_aes=False,
+        size=9, fontweight="bold", va="bottom", inherit_aes=False,
+    )
+    + geom_segment(
+        side_lines_df, aes(x="x", xend="xend", y="y", yend="yend"),
+        color="#999999", size=0.5, inherit_aes=False,
+    )
+    + geom_text(
+        side_text_df, aes(x="x", y="y", label="label", color="clr"),
+        ha="left", va="center", size=8, fontweight="bold", inherit_aes=False,
     )
     + scale_fill_manual(values=CS_COMP_COLORS, breaks=CS_COMP_ORDER)
     + scale_color_identity()
     + scale_y_continuous(expand=(0, 0, 0.15, 0))
+    + scale_x_discrete(expand=(0, 0.5, 0, 0.9))
     + facet_wrap("scenario", ncol=2)
     + labs(
         x="", y="$ / year",
-        title="Delivery bill vs. cost of service — same home, before and after heat pump",
+        title="Electric delivery bill vs. delivery cost of service — same home, before and after heat pump",
         fill="",
     )
     + theme_switchbox()
-    + theme(figure_size=(10.5, 5.25), **({"legend_position": "none"} if not DECOMPOSE_COS else {}))
+    + theme(figure_size=(10.5, 5.25), legend_position="none")
 )
 ```
 
@@ -2163,17 +2508,31 @@ _natgas_sub = labeled_all.filter(pl.col("heats_with_natgas"))
 _op_sub = labeled_all.filter(pl.col("heats_with_oil") | pl.col("heats_with_propane"))
 _er_sub = labeled_all.filter(pl.col("heating_label") == "Electric resistance")
 report_vars["ff_mean_delivery_bat"] = _weighted_mean(_ff_sub, _bat_col, "weight")
+report_vars["natgas_mean_delivery_cost"] = (
+    _weighted_mean(_natgas_sub, "economic_burden_delivery", "weight")
+    + _weighted_mean(_natgas_sub, RESIDUAL_DELIVERY, "weight")
+)
+report_vars["natgas_mean_delivery_bill"] = _weighted_mean(_natgas_sub, "annual_bill_delivery", "weight")
 report_vars["natgas_mean_delivery_bat"] = _weighted_mean(_natgas_sub, _bat_col, "weight")
 report_vars["oil_propane_mean_delivery_bat"] = _weighted_mean(_op_sub, _bat_col, "weight")
 report_vars["elec_resistance_mean_delivery_bat"] = _weighted_mean(_er_sub, _bat_col, "weight")
 
+```
+
+```{python}
+#| label: tbl-bat-simple
+#| tbl-cap: "The average delivery over- or underpayment of different residential customer subclasses, relative to their delivery cost-of-service."
+from lib.great_tables import SB_GT_PER_YEAR_HTML_PATTERN, get_switchbox_gt_tab_options
+from lib.quarto import display_gt
+
 _bat_simple_gt = (
     GT(pl.DataFrame(_bat_simple_rows), rowname_col="heating_type")
-    .fmt_currency(columns="mean_bat", decimals=0)
-    .cols_label(mean_bat="Mean Delivery BAT ($/yr)")
+    .fmt_currency(columns="mean_bat", decimals=0, pattern=SB_GT_PER_YEAR_HTML_PATTERN)
+    .cols_label(mean_bat="Average over- or underpayment")
+    .tab_stubhead(label="Residential customer subclass")
+    .tab_options(**get_switchbox_gt_tab_options())
 )
-Path("../cache/bat_simple_table.html").write_text(_bat_simple_gt.as_raw_html())
-_bat_simple_gt
+display_gt(_bat_simple_gt)
 ```
 
 ```{python}
@@ -2201,15 +2560,20 @@ for label, filt in [
     _bat_by_util_rows.append(row)
 
 _util_cols = [UTIL_SHORT[c] for c in _util_col_order]
+```
+
+```{python}
+#| label: tbl-bat-by-utility
+
 _bat_by_util_gt = (
     GT(pl.DataFrame(_bat_by_util_rows), rowname_col="heating_type")
     .fmt_currency(columns=_util_cols, decimals=0)
     .sub_missing(missing_text="—")
     .tab_header(title="Mean delivery over/underpayment by utility ($/yr)")
     .tab_source_note("Positive = overpaying; Negative = underpaying")
+    .tab_options(**get_switchbox_gt_tab_options())
 )
-Path("../cache/bat_by_utility_table.html").write_text(_bat_by_util_gt.as_raw_html())
-_bat_by_util_gt
+display_gt(_bat_by_util_gt)
 ```
 
 ```{python}
@@ -2409,7 +2773,7 @@ service territories.
 #| label: cross-subsidy-by-utility-data
 
 hp_all_utils = (
-    bat_12
+    bat_baseline
     .filter(pl.col(HEATING_TYPE_COL) == "heat_pump")
     .select(
         BLDG_ID, "weight", "sb.electric_utility",
@@ -2534,7 +2898,7 @@ summer_row: dict = {"metric": "Summer delivery rate (¢/kWh)"}
 winter_row: dict = {"metric": "Winter delivery rate (¢/kWh)"}
 discount_row: dict = {"metric": "Winter discount"}
 for display, code in TARIFF_UTILS.items():
-    seas_d = _load_rate(f"{code}_hp_seasonal_calibrated.json")
+    seas_d = _load_rate(f"{code}_{TARIFF_SEASONAL}_calibrated.json")
     sd = _get_rates(seas_d)
 
     summer_row[display] = sd[0] * 100
@@ -2545,23 +2909,26 @@ for display, code in TARIFF_UTILS.items():
 rate_wide = pl.DataFrame([summer_row, winter_row, discount_row])
 util_cols = [c for c in rate_wide.columns if c != "metric"]
 
+```
+
+```{python}
+#| label: tbl-rate-table
+#| tbl-cap: "Proposed seasonal heat pump rate, per utility. Summer rates match current default rate (when default rate is flat), winter rates are reduced to align HP customers' annual bills with their cost-of-service."
+
 _rate_gt = (
     GT(rate_wide, rowname_col="metric")
     .fmt_number(columns=util_cols, rows=pl.col("metric").is_in(["Summer delivery rate (¢/kWh)", "Winter delivery rate (¢/kWh)"]), decimals=2)
     .fmt(columns=util_cols, rows=pl.col("metric") == "Winter discount", fns=lambda x: f"{x:.1f}%")
+    .tab_options(**get_switchbox_gt_tab_options())
 )
-
-Path("../cache").mkdir(exist_ok=True)
-Path("../cache/rate_table.html").write_text(_rate_gt.as_raw_html())
-
-_rate_gt
+display_gt(_rate_gt)
 ```
 
 ## Heat pump TOU rate structure
 
 Beyond the flat seasonal rates above, we've also designed time-of-use (TOU) variants that align more closely with hourly
-marginal costs. Each utility has a "paired" TOU tariff: a delivery-only file (`*_hp_seasonalTOU_flex_calibrated.json`) and a
-delivery+supply file (`*_hp_seasonalTOU_flex_supply_calibrated.json`). We difference them to isolate the supply component.
+marginal costs. Each utility has a "paired" TOU tariff: a delivery-only file (`*_{TARIFF_TOU}_calibrated.json`) and a
+delivery+supply file (`*_{TARIFF_TOU}_supply_calibrated.json`). We difference them to isolate the supply component.
 
 All TOU tariffs use two seasons (winter: Oct–Mar, summer: Apr–Sep) with distinct on-peak and off-peak periods within
 each season. Peak hours vary by utility, reflecting each utility's marginal cost profile.
@@ -2590,8 +2957,8 @@ def _extract_peak_hours(schedule: list[list[int]], month_idx: int) -> str:
 
 rows: list[dict] = []
 for display, code in TARIFF_UTILS.items():
-    d = _load_rate(f"{code}_hp_seasonalTOU_flex_calibrated.json")
-    b = _load_rate(f"{code}_hp_seasonalTOU_flex_supply_calibrated.json")
+    d = _load_rate(f"{code}_{TARIFF_TOU}_calibrated.json")
+    b = _load_rate(f"{code}_{TARIFF_TOU}_supply_calibrated.json")
 
     dr = [tier[0]["rate"] for tier in d["energyratestructure"]]
     br = [tier[0]["rate"] for tier in b["energyratestructure"]]
@@ -2625,7 +2992,7 @@ tou_df
 ```
 
 ```{python}
-#| label: tou-rate-gt
+#| label: tbl-tou-rate-table
 
 rate_cols = ["delivery_off", "delivery_on", "supply_off", "supply_on", "total_off", "total_on"]
 
@@ -2647,12 +3014,9 @@ _tou_gt = (
     .fmt_number(columns=rate_cols, decimals=1)
     .fmt_currency(columns="fixed_charge", decimals=2)
     .cols_align(align="center", columns=["peak_hours", *rate_cols, "fixed_charge"])
+    .tab_options(**get_switchbox_gt_tab_options())
 )
-
-Path("../cache").mkdir(exist_ok=True)
-Path("../cache/tou_rate_table.html").write_text(_tou_gt.as_raw_html())
-
-_tou_gt
+display_gt(_tou_gt)
 ```
 
 ### Marginal cost structure
@@ -2834,9 +3198,9 @@ def _load_tou_profiles(
     utility_code: str,
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """Load TOU rate profiles for a utility: (bundled_cal, supply_cal, supply_precal)."""
-    d = _load_rate(f"{utility_code}_hp_seasonalTOU_flex_calibrated.json")
-    b = _load_rate(f"{utility_code}_hp_seasonalTOU_flex_supply_calibrated.json")
-    pre = _load_rate(f"{utility_code}_hp_seasonalTOU_flex_supply.json")
+    d = _load_rate(f"{utility_code}_{TARIFF_TOU}_calibrated.json")
+    b = _load_rate(f"{utility_code}_{TARIFF_TOU}_supply_calibrated.json")
+    pre = _load_rate(f"{utility_code}_{TARIFF_TOU}_supply.json")
 
     schedule = d["energyweekdayschedule"]
     bundled_cal = _hourly_tou_profile(b, schedule)
@@ -3091,8 +3455,8 @@ def _draw_tou_season(ax, season_title, ps, pe, do, so, dn, sn, ymax):
 
 def _make_tou_chart(display_name, tariff_code):
     """Create a 2-panel (Summer on top, Winter on bottom) TOU schedule chart."""
-    d = _load_rate(f"{tariff_code}_hp_seasonalTOU_flex_calibrated.json")
-    b = _load_rate(f"{tariff_code}_hp_seasonalTOU_flex_supply_calibrated.json")
+    d = _load_rate(f"{tariff_code}_{TARIFF_TOU}_calibrated.json")
+    b = _load_rate(f"{tariff_code}_{TARIFF_TOU}_supply_calibrated.json")
 
     w_ps, w_pe, w_do, w_so, w_dn, w_sn = _extract_season_data(d, b, 0, 0, 1)
     s_ps, s_pe, s_do, s_so, s_dn, s_sn = _extract_season_data(d, b, 6, 2, 3)
@@ -3233,7 +3597,7 @@ if INCLUDE_TOU:
         columns=["timestamp", "out.electricity.net.energy_consumption"],
     ).rename({"out.electricity.net.energy_consumption": "kwh"})
 
-    _flex_tariff = _load_rate(f"{UTILITY}_hp_seasonalTOU_flex_supply_calibrated.json")
+    _flex_tariff = _load_rate(f"{UTILITY}_{TARIFF_TOU}_supply_calibrated.json")
     _flex_rates_all = [tier[0]["rate"] for tier in _flex_tariff["energyratestructure"]]
 
     _WINTER_MONTHS = {1, 2, 3, 10, 11, 12}
@@ -3566,23 +3930,25 @@ if INCLUDE_TOU:
 ## Cross-subsidization under fair rate
 
 Does the seasonal rate actually fix the cross-subsidy? We compare the BAT
-distributions under flat rates (run 1+2) and HP seasonal rates (run 5+6) — same
+distributions under flat rates (run 1+2) and HP seasonal rates (`RUN_HPRATE`) — same
 buildings, same upgrade 0, only the rate structure changes. If the seasonal rate
 is well-designed, the HP overpayment should collapse to near zero.
 
 ```{python}
 #| label: bat-56-ingest
 
-bat_56 = pl.scan_parquet(PATH_MASTER_BAT_56, hive_partitioning=True)
+bat_hprate = pl.scan_parquet(PATH_MASTER_BAT_HPRATE, hive_partitioning=True)
 
 bat_all_56 = (
-    bat_56
+    bat_hprate
     .select(
         BLDG_ID, "weight",
-        BAT_TOTAL,
+        BAT_DELIVERY,
+        BAT_SUPPLY,
         HEATING_TYPE_COL,
         "sb.electric_utility",
     )
+    .with_columns((pl.col(BAT_DELIVERY) + pl.col(BAT_SUPPLY)).alias(BAT_TOTAL))
     .collect()
 )
 ```
@@ -3595,8 +3961,8 @@ type when HP customers move from the default flat rate to the seasonal rate.
 ```{python}
 #| label: bat-comparison-table
 
-bat_56_for_comp = (
-    bat_56
+bat_hprate_for_comp = (
+    bat_hprate
     .select(BLDG_ID, "weight", BAT_DELIVERY, HEATING_TYPE_COL,
             "heats_with_natgas", "heats_with_oil", "heats_with_propane")
     .collect()
@@ -3610,7 +3976,7 @@ for label, filt in [
     ("Electric resistance", pl.col("heating_label") == "Electric resistance"),
 ]:
     sub_before = labeled_all.filter(filt)
-    sub_after = bat_56_for_comp.with_columns(
+    sub_after = bat_hprate_for_comp.with_columns(
         pl.col(HEATING_TYPE_COL)
         .replace_strict(HEATING_TYPE_LABELS, default=pl.col(HEATING_TYPE_COL))
         .fill_null("Other")
@@ -3622,6 +3988,11 @@ for label, filt in [
         "seasonal": _weighted_mean(sub_after, BAT_DELIVERY, "weight"),
     })
 
+```
+
+```{python}
+#| label: tbl-bat-comparison
+
 _bat_comp_gt = (
     GT(pl.DataFrame(_comp_rows), rowname_col="heating_type")
     .fmt_currency(columns=["current", "seasonal"], decimals=0)
@@ -3629,10 +4000,9 @@ _bat_comp_gt = (
         current="Current flat rates",
         seasonal="HP seasonal rate",
     )
+    .tab_options(**get_switchbox_gt_tab_options())
 )
-
-Path("../cache/bat_comparison_table.html").write_text(_bat_comp_gt.as_raw_html())
-_bat_comp_gt
+display_gt(_bat_comp_gt)
 ```
 
 ## Bill impact of fair rate on HP customers
@@ -3640,7 +4010,7 @@ _bat_comp_gt
 What happens to a fossil-fuel customer's total energy bill if they switch to a
 heat pump **and** get the proposed HP seasonal delivery rate? The "before" is
 their current bill under today's flat rates (run 1+2, upgrade 0) and the
-"after" is their bill as an HP customer on the seasonal rate (run 7+8,
+"after" is their bill as an HP customer on the seasonal rate (`RUN_HPRATE_HP`,
 upgrade 2). The delta captures both the fuel switch and the rate change.
 
 ```{python}
@@ -3798,7 +4168,7 @@ report_vars["pct_elec_resistance_lose_1k_hprate"] = _er_sw_lose_1k / _er_sw_tota
 
 ```{python}
 #| label: fig-bill-decomposed-fair-rate-state
-#| fig-cap: "Annual energy bill for the representative gas-heated Buffalo home: before heat pumps, after heat pumps at default rates, and after heat pumps at fair rates."
+#| fig-cap: "Annual energy bill for the representative gas-heated home in Syracuse: before heat pumps, after heat pumps at default rates, and after heat pumps at fair rates."
 
 import io
 
@@ -3806,7 +4176,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import numpy as np
 
-_GOLD = "#D4A800"
+_SAFFRON = "#ffc729"
 _scenarios = ["Natural gas\nfurnace", "Heat pump\n(default rates)", "Heat pump\n(fair rates)"]
 _x = np.arange(len(_scenarios))
 _w = 0.55
@@ -3843,7 +4213,7 @@ for _ck in _comp_keys:
     for _i, (_v, _b) in enumerate(zip(_vals, _bottoms)):
         if _v > 80:
             ax_3bar.text(_x[_i], _b + _v / 2, _format_dollar(_v), ha="center", va="center",
-                         color="white", fontweight="bold", fontsize=11)
+                         color="white", fontweight="bold", fontsize=11, zorder=11)
     _bottoms = [_b + _v for _b, _v in zip(_bottoms, _vals)]
 
 _totals = [sum(_bars_data[i][k] for k in _comp_keys) for i in range(3)]
@@ -3853,7 +4223,10 @@ for _i in (0, 1):
                  ha="center", va="bottom", color="#333333", fontweight="bold", fontsize=12)
 
 _delivery_before = _bars_data[0]["fixed"] + _bars_data[0]["vol"]
-ax_3bar.axhline(y=_delivery_before, color=_GOLD, linewidth=1.8, linestyle=(0, (6, 4)), zorder=5, alpha=0.65)
+ax_3bar.hlines(
+    y=_delivery_before, xmin=-0.5, xmax=_x[2] + _w / 2,
+    color=_SAFFRON, linewidth=1.8, linestyle=(0, (6, 4)), zorder=10,
+)
 
 _savings = _totals[1] - _totals[2]
 _pct_savings = _savings / _totals[1] * 100
@@ -3862,24 +4235,25 @@ _rect = mpatches.FancyBboxPatch(
     (_x[2] - _w / 2, _totals[2]), _w, _savings,
     boxstyle="square,pad=0",
     facecolor="#FFC729", alpha=0.12,
-    edgecolor=_GOLD, linewidth=1.5, linestyle=(0, (5, 3)),
+    edgecolor="#B8960A", linewidth=2.0, linestyle=(0, (5, 3)),
     hatch="////", zorder=3,
 )
 ax_3bar.add_patch(_rect)
 
+ax_3bar.text(_x[2], _totals[2] + 50, _format_dollar(_totals[2]),
+             ha="center", va="bottom", color="#333333", fontweight="bold", fontsize=12,
+             zorder=8)
+
 ax_3bar.annotate(
-    "", xy=(_x[2], _totals[2] + 30), xytext=(_x[2], _totals[1] - 30),
-    arrowprops=dict(arrowstyle="->,head_length=0.4,head_width=0.25", color=_GOLD, lw=2.2),
+    "", xy=(_x[2], _totals[2] + 180), xytext=(_x[2], _totals[1] - 60),
+    arrowprops=dict(arrowstyle="->,head_length=0.4,head_width=0.25", color=_SAFFRON, lw=2.2),
     zorder=6,
 )
 
-ax_3bar.text(_x[2], _totals[1] + 120, f"-{_pct_savings:.0f}%",
-             ha="center", va="bottom", color=_GOLD, fontweight="bold", fontsize=18)
-ax_3bar.text(_x[2], _totals[1] + 50, f"({_format_dollar(_savings)})",
-             ha="center", va="bottom", color=_GOLD, fontsize=12, alpha=0.85)
-
-ax_3bar.text(_x[2] + _w / 2 + 0.05, _totals[2], _format_dollar(_totals[2]),
-             ha="left", va="center", color="#333333", fontweight="bold", fontsize=12)
+ax_3bar.text(_x[2], _totals[1] + 180, f"-{_pct_savings:.0f}%",
+             ha="center", va="bottom", color=_SAFFRON, fontweight="bold", fontsize=14)
+ax_3bar.text(_x[2], _totals[1] + 50, f"-{_format_dollar(_savings)}",
+             ha="center", va="bottom", color=_SAFFRON, fontsize=11, alpha=0.8)
 
 _side_x = _x[2] + _w / 2 + 0.15
 _d3 = _bars_data[2]
@@ -3898,10 +4272,11 @@ for _lbl, _ym, _clr in _side_specs:
 ax_3bar.set_xticks(_x)
 ax_3bar.set_xticklabels(_scenarios, fontsize=11)
 ax_3bar.set_ylabel("Annual energy bill ($)", fontsize=12)
-ax_3bar.set_ylim(0, max(_totals) * 1.18)
-ax_3bar.set_xlim(-0.5, _x[2] + _w / 2 + 1.2)
+ax_3bar.set_ylim(0, max(_totals) * 1.22)
+ax_3bar.set_xlim(-0.5, _x[2] + _w / 2 + 0.7)
 ax_3bar.spines["top"].set_visible(False)
 ax_3bar.spines["right"].set_visible(False)
+ax_3bar.spines["bottom"].set_bounds(-0.5, _x[2] + _w / 2)
 
 report_vars["fair_rate_savings_dollar"] = _savings
 report_vars["fair_rate_savings_pct"] = _pct_savings / 100
@@ -3913,7 +4288,7 @@ display_svg(fig_3bar)
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-switch-hprate-by-utility
-#| fig-cap: "Bill change summary — natural gas homes switching to HP: default vs. seasonal rate, by utility"
+#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. seasonal rate, by utility. Undiscounted annual bills (LMI discount enrollment not modeled)."
 
 plot_quadrant_bar_by_utility(
     delta_state, delta_switch_state,
@@ -3932,7 +4307,7 @@ plot_quadrant_bar_by_utility(
 
 What happens if HP customers get the TOU flex rate instead of the flat seasonal rate? The
 "before" is their current bill under today's flat rates (run 1+2, upgrade 0) and the "after" is their bill as an HP
-customer on the calibrated TOU flex rate (run 15+16, upgrade 2).
+customer on the calibrated TOU flex rate (`RUN_TOU_HP`, upgrade 2).
 
 ```{python}
 #| label: compute-deltas-tou
@@ -3952,7 +4327,7 @@ if INCLUDE_TOU:
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-tou-state
-#| fig-cap: "Bill change summary — natural gas homes switching to HP: default vs. fair vs. TOU + fair rate (Statewide)"
+#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. fair vs. TOU + fair rate (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
 
 if INCLUDE_TOU:
     _tou_quadrant_fig = plot_quadrant_bar(
@@ -3986,7 +4361,7 @@ _tou_quadrant_fig
 ```
 
 The quadrant picture barely moves between the fair rate and the TOU variant. To see why, we compare each
-building's annual bill under TOU flex (run 15+16) vs. seasonal (run 7+8) directly — the difference isolates the
+building's annual bill under TOU flex (`RUN_TOU_HP`) vs. seasonal (`RUN_HPRATE_HP`) directly — the difference isolates the
 rate-design effect without the fuel-switching effect.
 
 ```{python}
@@ -4058,7 +4433,7 @@ _tou_hist_fig
 ### LMI scenarios — default vs. fair rate (natgas, statewide)
 
 We recompute the two-bar comparison (default rate vs. seasonal rate) using LMI-discounted bill columns. The
-seasonal-rate "after" comes from `bills_hprate_hp` (runs 7+8) instead of `bills_hp` (runs 3+4).
+seasonal-rate "after" comes from `bills_hprate_hp` (`RUN_HPRATE_HP`) instead of `bills_hp` (runs 3+4).
 
 ```{python}
 #| label: compute-lmi-switch-deltas-state
@@ -4095,7 +4470,7 @@ report_vars["pct_natgas_save_1k_hprate_lmi_full"] = _lmif_save_1k / _lmif_total
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-switch-hprate-state-lmi-current
-#| fig-cap: "Bill change summary — natural gas homes switching to HP: default vs. seasonal rate (Statewide)"
+#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. seasonal rate (Statewide). Assumes 40% of LMI households receive LMI discounts before and after switching to HP."
 
 plot_quadrant_bar(
     [
@@ -4113,7 +4488,7 @@ plot_quadrant_bar(
 
 ```{python}
 #| label: fig-quadrant-bar-oil-propane-switch-hprate-state
-#| fig-cap: "Bill change summary — oil/propane homes switching to HP: default vs. seasonal rate (Statewide)"
+#| fig-cap: "Change in total annual energy bills — oil/propane homes switching to HP: default vs. seasonal rate (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
 
 plot_quadrant_bar(
     [
@@ -4133,7 +4508,7 @@ plot_quadrant_bar(
 
 ```{python}
 #| label: fig-quadrant-bar-oil-propane-switch-hprate-by-utility
-#| fig-cap: "Bill change summary — oil/propane homes switching to HP: default vs. seasonal rate, by utility"
+#| fig-cap: "Change in total annual energy bills — oil/propane homes switching to HP: default vs. seasonal rate, by utility. Undiscounted annual bills (LMI discount enrollment not modeled)."
 
 plot_quadrant_bar_by_utility(
     delta_state, delta_switch_state,
@@ -4152,7 +4527,7 @@ plot_quadrant_bar_by_utility(
 
 ```{python}
 #| label: fig-quadrant-bar-elec-resistance-switch-hprate-state
-#| fig-cap: "Bill change summary — electric resistance homes switching to HP: default vs. seasonal rate (Statewide)"
+#| fig-cap: "Change in total annual energy bills — electric resistance homes switching to HP: default vs. seasonal rate (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
 
 plot_quadrant_bar(
     [
@@ -4170,7 +4545,7 @@ plot_quadrant_bar(
 
 ```{python}
 #| label: fig-quadrant-bar-elec-resistance-switch-hprate-by-utility
-#| fig-cap: "Bill change summary — electric resistance homes switching to HP: default vs. seasonal rate, by utility"
+#| fig-cap: "Change in total annual energy bills — electric resistance homes switching to HP: default vs. seasonal rate, by utility. Undiscounted annual bills (LMI discount enrollment not modeled)."
 
 plot_quadrant_bar_by_utility(
     delta_state, delta_switch_state,
@@ -4190,9 +4565,9 @@ plot_quadrant_bar_by_utility(
 What happens to fossil-fuel customers' bills if all existing HP customers opt in to the seasonal rate — but the non-HP
 customers themselves stay on their current heating system (upgrade 0) and on the recalibrated flat rate?
 
-In run 5+6, the HP seasonal rate is applied to HP customers and the flat rate is recalibrated for everyone else. Non-HP
+In the HP seasonal precalc run (`RUN_HPRATE`), the HP seasonal rate is applied to HP customers and the flat rate is recalibrated for everyone else. Non-HP
 customers keep the same heating system; what changes is a slight adjustment to the flat rate once the HP cross-subsidy
-is removed. Comparing run 1+2 vs 5+6 for fossil-fuel buildings shows this (expected to be very small) impact.
+is removed. Comparing run 1+2 vs `RUN_HPRATE` for fossil-fuel buildings shows this (expected to be very small) impact.
 
 ```{python}
 #| label: compute-deltas-nonhp-rebal
@@ -4292,8 +4667,10 @@ p = (
     + theme(
         figure_size=(12.5, 2.6),
         axis_text=element_blank(),
-        axis_ticks=element_blank(),
-        axis_line=element_blank(),
+        axis_ticks_x=element_blank(),
+        axis_ticks_y=element_blank(),
+        axis_line_x=element_blank(),
+        axis_line_y=element_blank(),
         panel_grid=element_blank(),
         plot_title=element_text(ha="left", margin={"b": -8, "units": "pt"}),
     )
@@ -4328,7 +4705,7 @@ scenarios:
 
 1. **Current HVAC, default rates** (runs 1+2) — the status quo
 2. **Heat pump, default rates** (runs 3+4) — electrified but on flat rates
-3. **Heat pump, HP seasonal rates** (runs 7+8) — electrified on the proposed seasonal rate
+3. **Heat pump, HP seasonal rates** (`RUN_HPRATE_HP`) — electrified on the proposed seasonal rate
 
 ```{python}
 #| label: burden-cohort
@@ -4736,11 +5113,9 @@ if INCLUDE_TOU:
             title="Demand-flex elasticity calibration by utility and season",
             subtitle="Calibrated to Arcturus 2.0 meta-analysis; savings are annual rate arbitrage per HP building",
         )
+        .tab_options(**get_switchbox_gt_tab_options())
     )
-
-    Path("../cache").mkdir(exist_ok=True)
-    Path("../cache/tbl_seasonal_elasticities.html").write_text(_gt_elast.as_raw_html())
-    _gt_elast
+    display_gt(_gt_elast)
 ```
 
 ## Export report variables

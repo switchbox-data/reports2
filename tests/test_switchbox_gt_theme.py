@@ -13,7 +13,7 @@ def test_get_switchbox_gt_tab_options_has_typography_and_css() -> None:
     assert opts["table_body_vlines_width"] == "0px"
     assert opts["row_striping_include_table_body"] is False
     assert opts["row_striping_background_color"] == "#FFFFFF"
-    assert opts["stub_font_weight"] == "bold"
+    assert opts["stub_font_weight"] == "normal"
     css = opts["table_additional_css"]
     assert isinstance(css, list)
     assert any("GT-Planar-Bold" in rule for rule in css)
@@ -21,6 +21,7 @@ def test_get_switchbox_gt_tab_options_has_typography_and_css() -> None:
     assert any(":has(tr.gt_col_headings ~ tr.gt_col_headings)" in rule for rule in css)
     assert any("tbody tr.gt_striped" in rule for rule in css)
     assert any("gt_subtitle" in rule and "padding-bottom: 20px" in rule for rule in css)
+    assert any("gt_sourcenote" in rule and "padding-top: 14px" in rule for rule in css)
 
 
 def test_get_switchbox_gt_tab_options_merges_extra_css() -> None:

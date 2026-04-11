@@ -111,8 +111,16 @@ end
 return {
 
 ["glossary"] = function(args, kwargs, meta)
+  local options = mergeOptions(kwargs, meta)
+  local display = pandoc.utils.stringify(args[1])
+  local term = string.lower(display)
+
+  if kwExists(kwargs, "display") then
+    display = pandoc.utils.stringify(kwargs.display)
+  end
+
   if not quarto.doc.isFormat("html:js") then
-    return pandoc.Null()
+    return pandoc.Strong(pandoc.Str(display))
   end
 
   addHTMLDeps()
@@ -128,14 +136,6 @@ return {
     end
     gt = gt .. "</table>"
     return pandoc.RawBlock('html', gt)
-  end
-
-  local options = mergeOptions(kwargs, meta)
-  local display = pandoc.utils.stringify(args[1])
-  local term = string.lower(display)
-
-  if kwExists(kwargs, "display") then
-    display = pandoc.utils.stringify(kwargs.display)
   end
 
   local def = ""
@@ -166,12 +166,6 @@ return {
 end,
 
 ["glossary-def"] = function(args, kwargs, meta)
-  if not quarto.doc.isFormat("html:js") then
-    return pandoc.Null()
-  end
-
-  addHTMLDeps()
-
   local options = mergeOptions(kwargs, meta)
   local display = pandoc.utils.stringify(args[1])
   local term = string.lower(display)
@@ -182,6 +176,19 @@ end,
   else
     def = lookupDef(term, options)
   end
+
+  if not quarto.doc.isFormat("html:js") then
+    local defDoc = pandoc.read(def, "html")
+    local blocks = pandoc.Blocks({
+      pandoc.Para({ pandoc.Strong(pandoc.Str(display)) })
+    })
+    for _, block in ipairs(defDoc.blocks) do
+      blocks:insert(block)
+    end
+    return pandoc.Div(blocks)
+  end
+
+  addHTMLDeps()
 
   if options.add_to_table == nil or options.add_to_table then
     globalGlossaryTable[term] = def

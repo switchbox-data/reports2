@@ -1,0 +1,1596 @@
+---
+title: "Investigate which households save when they upgrade to HP"
+format: html
+execute:
+  echo: false
+---
+
+This notebook investigates which households save when they upgrade to HP. We will use the NY HP Rates report to identify the households that save when they upgrade to HP and then analyze the characteristics of these households.
+
+```{python}
+import polars as pl
+import seaborn as sns
+from cloudpathlib import S3Path
+
+# Read the NY metadata for Upgrade 02 with postprocess_group.has_hp column
+sb_path = "s3://data.sb"
+release = "res_2024_amy2018_2"
+upgrade_00 = "00"
+upgrade_02 = "02"
+state = "NY"
+STORAGE_OPTIONS = {"aws_region": "us-west-2"}
+metadata_path_00 = S3Path(f"{sb_path}/nrel/resstock/{release}/metadata/state={state}/upgrade={upgrade_00}/metadata-sb.parquet")
+metadata_path_02 = S3Path(f"{sb_path}/nrel/resstock/{release}/metadata/state={state}/upgrade={upgrade_02}/metadata-sb.parquet")
+
+# Exclude the cases where the customers had other fuel type or no heating to begin with.
+exclude_other_heating_fuel = False
+
+metadata_00 = pl.scan_parquet(str(metadata_path_00), storage_options=STORAGE_OPTIONS)
+metadata_02 = pl.scan_parquet(str(metadata_path_02), storage_options=STORAGE_OPTIONS)
+upgrade_00_no_hp = metadata_00.filter(pl.col("postprocess_group.has_hp") == False)
+upgrade_02_hp = metadata_02.filter(pl.col("postprocess_group.has_hp") == True)
+upgrade_00_no_hp_02_hp = upgrade_00_no_hp.join(upgrade_02_hp, on="bldg_id", how="inner")
+
+# metadata column names
+
+HEATS_WITH_NATGAS = "heats_with_natgas"
+HEATS_WITH_OIL = "heats_with_oil"
+HEATS_WITH_PROPANE = "heats_with_propane"
+HEATING_TYPE_COL = "postprocess_group.heating_type"
+ELECTRICAL_RESISTANCE = "electrical_resistance"
+HVAC_HEATING_EFFICIENCY_COL = "in.hvac_heating_efficiency"
+COOLING_PARTIAL_SPACE_COL = "in.hvac_cooling_partial_space_conditioning"
+COOLING_100_PCT_CONDITIONED = "100% Conditioned"
+ELECTRIC_UTILITY_COL = "sb.electric_utility"
+
+# Load Master/BAT bills
+
+BAT_bill_path_r1_2 = S3Path(f"{sb_path}/switchbox/cairo/outputs/hp_rates/ny/all_utilities/ny_20260408_all_epmc_r1-24/run_1+2/cross_subsidization_BAT_values/")
+BAT_bill_path_r3_4 = S3Path(f"{sb_path}/switchbox/cairo/outputs/hp_rates/ny/all_utilities/ny_20260408_all_epmc_r1-24/run_3+4/cross_subsidization_BAT_values/")
+
+Master_bill_path_r1_2 = S3Path(f"{sb_path}/switchbox/cairo/outputs/hp_rates/ny/all_utilities/ny_20260408_all_epmc_r1-24/run_1+2/comb_bills_year_target/")
+Master_bill_path_r3_4 = S3Path(f"{sb_path}/switchbox/cairo/outputs/hp_rates/ny/all_utilities/ny_20260408_all_epmc_r1-24/run_3+4/comb_bills_year_target/")
+
+```
+
+```{python}
+# BAT outputs are hive-partitioned by `sb.electric_utility` (one `data.parquet` per utility folder).
+# Restrict to buildings that appear in both metadata upgrades: baseline no-HP (u00) and HP (u02).
+cohort_bldg_ids = upgrade_00_no_hp_02_hp.select("bldg_id").unique().collect()["bldg_id"]
+
+
+def load_bat_partitioned(base: S3Path) -> pl.DataFrame:
+    return pl.read_parquet(str(base), hive_partitioning=True, storage_options=STORAGE_OPTIONS)
+
+
+bat_r12 = load_bat_partitioned(BAT_bill_path_r1_2)
+bat_r34 = load_bat_partitioned(BAT_bill_path_r3_4)
+
+def bat_summary(df: pl.DataFrame, label: str) -> dict:
+    n_rows = df.height
+    n_bldg = df["bldg_id"].n_unique()
+    in_cohort = df.filter(pl.col("bldg_id").is_in(cohort_bldg_ids))
+    n_bldg_cohort = in_cohort["bldg_id"].n_unique()
+    bill = in_cohort["annual_bill_total"]
+    return {
+        "dataset": label,
+        "n_rows": n_rows,
+        "n_unique_bldg_id": n_bldg,
+        "n_bldg_id_in_upgrade_00_no_hp_02_hp": n_bldg_cohort,
+        "cohort_mean_annual_bill_total": bill.mean(),
+        "cohort_median_annual_bill_total": bill.median(),
+    }
+
+
+sum_r12 = bat_summary(bat_r12, "run_1+2")
+sum_r34 = bat_summary(bat_r34, "run_3+4")
+for row in (sum_r12, sum_r34):
+    print(f"\n=== {row['dataset']} (cross_subsidization BAT) ===")
+    print(f"  Rows in parquet (all utilities): {row['n_rows']:,}")
+    print(f"  Unique bldg_id (all utilities): {row['n_unique_bldg_id']:,}")
+    print(f"  Unique bldg_id also in upgrade_00_no_hp_02_hp: {row['n_bldg_id_in_upgrade_00_no_hp_02_hp']:,}")
+    print(f"  Cohort mean annual_bill_total:   {row['cohort_mean_annual_bill_total']:,.2f}")
+    print(f"  Cohort median annual_bill_total: {row['cohort_median_annual_bill_total']:,.2f}")
+
+# Full-sample (all BAT rows) mean/median for comparison
+for df, label in ((bat_r12, "run_1+2"), (bat_r34, "run_3+4")):
+    b = df["annual_bill_total"]
+    print(f"\n--- {label}: all BAT rows (not cohort-restricted) ---")
+    print(f"  Mean annual_bill_total:   {b.mean():,.2f}")
+    print(f"  Median annual_bill_total: {b.median():,.2f}")
+
+# Paired differences for buildings in cohort and present in both runs
+paired = (
+    bat_r12.select("bldg_id", pl.col("annual_bill_total").alias("bill_r12"))
+    .join(
+        bat_r34.select("bldg_id", pl.col("annual_bill_total").alias("bill_r34")),
+        on="bldg_id",
+        how="inner",
+    )
+    .filter(pl.col("bldg_id").is_in(cohort_bldg_ids))
+)
+paired = paired.with_columns((pl.col("bill_r34") - pl.col("bill_r12")).alias("delta_bill"))
+print("\n=== Cohort buildings in both runs (inner join on bldg_id) ===")
+print(f"  N paired rows: {paired.height:,}")
+print(f"  Mean (bill_r34 - bill_r12):   {paired['delta_bill'].mean():,.2f}")
+print(f"  Median (bill_r34 - bill_r12): {paired['delta_bill'].median():,.2f}")
+diff_of_means = sum_r34["cohort_mean_annual_bill_total"] - sum_r12["cohort_mean_annual_bill_total"]
+print(f"  Difference of cohort means (mean_r34 - mean_r12): {diff_of_means:,.2f}")
+```
+
+```{python}
+# Natural gas households analysis
+
+natgas_bldg_ids = upgrade_00_no_hp_02_hp.filter(pl.col(HEATS_WITH_NATGAS)).select("bldg_id").unique().collect()["bldg_id"]
+natgas_bldg_ids_r12 = bat_r12.filter(pl.col("bldg_id").is_in(natgas_bldg_ids)).select("bldg_id").unique()["bldg_id"]
+natgas_bldg_ids_r34 = bat_r34.filter(pl.col("bldg_id").is_in(natgas_bldg_ids)).select("bldg_id").unique()["bldg_id"]
+
+print(f"Number of natural gas households in upgrade 00 no HP: {len(natgas_bldg_ids):,}")
+print(f"Number of natural gas households in run 1+2: {len(natgas_bldg_ids_r12):,}")
+print(f"Number of natural gas households in run 3+4: {len(natgas_bldg_ids_r34):,}")
+
+# Natgas ∩ {in.hvac_cooling_partial_space_conditioning == "100% Conditioned"} ∩ cohort (u00 no-HP, u02 HP).
+# Cooling flag is read from upgrade 00 only so we avoid duplicate column names after the u00/u02 join.
+natgas_full_cool_bldg_ids = (
+    upgrade_00_no_hp.filter(pl.col(HEATS_WITH_NATGAS))
+    .filter(pl.col(COOLING_PARTIAL_SPACE_COL) == COOLING_100_PCT_CONDITIONED)
+    .select("bldg_id")
+    .unique()
+    .join(upgrade_00_no_hp_02_hp.select("bldg_id").unique(), on="bldg_id", how="inner")
+    .collect()
+)["bldg_id"]
+print(
+    f"Natgas cohort with {COOLING_PARTIAL_SPACE_COL} == {COOLING_100_PCT_CONDITIONED!r}: "
+    f"{len(natgas_full_cool_bldg_ids):,} bldg_id (intersection with upgrade_00_no_hp_02_hp)."
+)
+
+# e.g. "Fuel Furnace, 80% AFUE" -> 80.0; "…, 82.5% AFUE" -> 82.5 (first percent in the string)
+_afue_parsed_expr = (
+    pl.col(HVAC_HEATING_EFFICIENCY_COL)
+    .str.extract(r"(\d+(?:\.\d+)?)\s*%", 1)
+    .cast(pl.Float64, strict=False)
+    .alias("_afue_parsed")
+)
+
+bldg_afue = (
+    upgrade_00_no_hp_02_hp.filter(pl.col("bldg_id").is_in(natgas_full_cool_bldg_ids))
+    .with_columns(_afue_parsed_expr)
+    .select("bldg_id", HVAC_HEATING_EFFICIENCY_COL, "_afue_parsed")
+    .unique(subset=["bldg_id"], keep="first")
+    .collect()
+)
+
+_afue_labeled = bldg_afue.select(HVAC_HEATING_EFFICIENCY_COL, "_afue_parsed").unique()
+AFUE_values = _afue_labeled["_afue_parsed"].drop_nulls().unique().sort()
+print(f"Natgas + 100% conditioned — unique AFUE values: {AFUE_values.to_list()}")
+
+_n_subset_afue_100 = bldg_afue.filter(pl.col("_afue_parsed") == 100.0).height
+print(f"Natgas + 100% conditioned subset — buildings with parsed AFUE 100: {_n_subset_afue_100:,}")
+
+_labels_afue_5_or_100 = _afue_labeled.filter(pl.col("_afue_parsed").is_in([5.0, 100.0])).sort(
+    "_afue_parsed", HVAC_HEATING_EFFICIENCY_COL
+)
+print("Natgas + 100% conditioned — full hvac_heating_efficiency labels with parsed AFUE 5 or 100:")
+if _labels_afue_5_or_100.is_empty():
+    print("  (none)")
+else:
+    for row in _labels_afue_5_or_100.iter_rows(named=True):
+        print(f"  AFUE={row['_afue_parsed']}: {row[HVAC_HEATING_EFFICIENCY_COL]}")
+
+# Drop AFUE 5 / 100 (and null parse) before grouping bill deltas by AFUE
+EXCLUDE_AFUE = [5.0, 100.0]
+n_excluded_afue = bldg_afue.filter(pl.col("_afue_parsed").is_in(EXCLUDE_AFUE)).height
+bldg_afue_for_bills = bldg_afue.filter(
+    pl.col("_afue_parsed").is_not_null() & ~pl.col("_afue_parsed").is_in(EXCLUDE_AFUE)
+)
+print(
+    f"Bill comparison by AFUE (natgas + 100% conditioned subset): excluded {n_excluded_afue:,} buildings "
+    f"(parsed AFUE in {EXCLUDE_AFUE}); {bldg_afue_for_bills.height:,} retained (non-null AFUE, not 5 or 100)."
+)
+
+bills_triple = (
+    bat_r12.select(
+        "bldg_id",
+        ELECTRIC_UTILITY_COL,
+        pl.col("annual_bill_total").alias("bill_r12"),
+    )
+    .join(
+        bat_r34.select("bldg_id", pl.col("annual_bill_total").alias("bill_r34")),
+        on="bldg_id",
+        how="inner",
+    )
+    .filter(pl.col("bldg_id").is_in(natgas_full_cool_bldg_ids))
+    .with_columns((pl.col("bill_r34") - pl.col("bill_r12")).alias("delta_bill_r34_vs_r12"))
+)
+
+bill_deltas_by_afue = (
+    bills_triple.join(
+        bldg_afue_for_bills.select("bldg_id", "_afue_parsed"),
+        on="bldg_id",
+        how="inner",
+    )
+    .group_by("_afue_parsed")
+    .agg(
+        pl.len().alias("n_bldg"),
+        pl.mean("delta_bill_r34_vs_r12").alias("mean_r34_minus_r12"),
+        pl.median("delta_bill_r34_vs_r12").alias("median_r34_minus_r12"),
+    )
+    .sort("_afue_parsed")
+)
+
+print(
+    f"\nMean / median annual_bill_total deltas by parsed AFUE, all buildings combined "
+    f"(natgas + {COOLING_100_PCT_CONDITIONED!r} cooling; BAT runs; $/yr):"
+)
+print("  delta = annual_bill_total(run B) - annual_bill_total(run 1+2)")
+print(bill_deltas_by_afue)
+
+```
+
+```{python}
+# Fuel oil households analysis (same structure as natural gas: oil ∩ 100% conditioned cooling ∩ cohort).
+
+oil_bldg_ids = upgrade_00_no_hp_02_hp.filter(pl.col(HEATS_WITH_OIL)).select("bldg_id").unique().collect()["bldg_id"]
+oil_bldg_ids_r12 = bat_r12.filter(pl.col("bldg_id").is_in(oil_bldg_ids)).select("bldg_id").unique()["bldg_id"]
+oil_bldg_ids_r34 = bat_r34.filter(pl.col("bldg_id").is_in(oil_bldg_ids)).select("bldg_id").unique()["bldg_id"]
+
+print(f"Number of fuel-oil households in upgrade 00 no HP: {len(oil_bldg_ids):,}")
+print(f"Number of fuel-oil households in run 1+2: {len(oil_bldg_ids_r12):,}")
+print(f"Number of fuel-oil households in run 3+4: {len(oil_bldg_ids_r34):,}")
+
+_unique_raw_hvac_fuel_oil = (
+    upgrade_00_no_hp_02_hp.filter(pl.col(HEATS_WITH_OIL))
+    .select("in.hvac_heating_type_and_fuel")
+    .unique()
+    .collect()
+)["in.hvac_heating_type_and_fuel"].sort()
+print(
+    f"Fuel-oil buildings (upgrade_00_no_hp_02_hp) — unique raw {"in.hvac_heating_type_and_fuel"} "
+    f"({len(_unique_raw_hvac_fuel_oil)} distinct):"
+)
+for _raw in _unique_raw_hvac_fuel_oil.to_list():
+    print(f"  {_raw!r}")
+
+oil_full_cool_bldg_ids = (
+    upgrade_00_no_hp.filter(pl.col(HEATS_WITH_OIL))
+    .filter(pl.col(COOLING_PARTIAL_SPACE_COL) == COOLING_100_PCT_CONDITIONED)
+    .select("bldg_id")
+    .unique()
+    .join(upgrade_00_no_hp_02_hp.select("bldg_id").unique(), on="bldg_id", how="inner")
+    .collect()
+)["bldg_id"]
+print(
+    f"Fuel-oil cohort with {COOLING_PARTIAL_SPACE_COL} == {COOLING_100_PCT_CONDITIONED!r}: "
+    f"{len(oil_full_cool_bldg_ids):,} bldg_id (intersection with upgrade_00_no_hp_02_hp)."
+)
+
+bldg_afue_oil = (
+    upgrade_00_no_hp_02_hp.filter(pl.col("bldg_id").is_in(oil_full_cool_bldg_ids))
+    .with_columns(_afue_parsed_expr)
+    .select("bldg_id", HVAC_HEATING_EFFICIENCY_COL, "_afue_parsed")
+    .unique(subset=["bldg_id"], keep="first")
+    .collect()
+)
+
+_afue_labeled_oil = bldg_afue_oil.select(HVAC_HEATING_EFFICIENCY_COL, "_afue_parsed").unique()
+AFUE_values_oil = _afue_labeled_oil["_afue_parsed"].drop_nulls().unique().sort()
+print(f"Fuel oil + 100% conditioned — unique AFUE values: {AFUE_values_oil.to_list()}")
+
+_n_subset_afue_100_oil = bldg_afue_oil.filter(pl.col("_afue_parsed") == 100.0).height
+print(f"Fuel oil + 100% conditioned — buildings with parsed AFUE 100: {_n_subset_afue_100_oil:,}")
+
+_labels_afue_5_or_100_oil = _afue_labeled_oil.filter(pl.col("_afue_parsed").is_in([5.0, 100.0])).sort(
+    "_afue_parsed", HVAC_HEATING_EFFICIENCY_COL
+)
+print("Fuel oil + 100% conditioned — full hvac_heating_efficiency labels with parsed AFUE 5 or 100:")
+if _labels_afue_5_or_100_oil.is_empty():
+    print("  (none)")
+else:
+    for row in _labels_afue_5_or_100_oil.iter_rows(named=True):
+        print(f"  AFUE={row['_afue_parsed']}: {row[HVAC_HEATING_EFFICIENCY_COL]}")
+
+n_excluded_afue_oil = bldg_afue_oil.filter(pl.col("_afue_parsed").is_in(EXCLUDE_AFUE)).height
+bldg_afue_for_bills_oil = bldg_afue_oil.filter(
+    pl.col("_afue_parsed").is_not_null() & ~pl.col("_afue_parsed").is_in(EXCLUDE_AFUE)
+)
+# Lump 90% and 92.5% AFUE into one group for fuel-oil bill deltas and master-bill time series.
+_OIL_AFUE_LUMP_FROM = [90.0, 92.5]
+_OIL_AFUE_LUMP_TO = 91.25
+_OIL_AFUE_LUMP_LEGEND = "90–92.5%"
+bldg_afue_for_bills_oil = bldg_afue_for_bills_oil.with_columns(
+    pl.when(pl.col("_afue_parsed").is_in(_OIL_AFUE_LUMP_FROM))
+    .then(pl.lit(_OIL_AFUE_LUMP_TO))
+    .otherwise(pl.col("_afue_parsed"))
+    .alias("_afue_parsed")
+)
+print(
+    f"Bill comparison by AFUE (fuel oil + 100% conditioned subset): excluded {n_excluded_afue_oil:,} buildings "
+    f"(parsed AFUE in {EXCLUDE_AFUE}); {bldg_afue_for_bills_oil.height:,} retained (non-null AFUE, not 5 or 100)."
+)
+print(
+    f"Fuel oil: parsed AFUE {_OIL_AFUE_LUMP_FROM} lumped to {_OIL_AFUE_LUMP_TO} for analysis "
+    f"(legend {_OIL_AFUE_LUMP_LEGEND!r})."
+)
+
+bills_triple_oil = (
+    bat_r12.select(
+        "bldg_id",
+        ELECTRIC_UTILITY_COL,
+        pl.col("annual_bill_total").alias("bill_r12"),
+    )
+    .join(
+        bat_r34.select("bldg_id", pl.col("annual_bill_total").alias("bill_r34")),
+        on="bldg_id",
+        how="inner",
+    )
+    .filter(pl.col("bldg_id").is_in(oil_full_cool_bldg_ids))
+    .with_columns((pl.col("bill_r34") - pl.col("bill_r12")).alias("delta_bill_r34_vs_r12"))
+)
+
+bill_deltas_by_afue_oil = (
+    bills_triple_oil.join(
+        bldg_afue_for_bills_oil.select("bldg_id", "_afue_parsed"),
+        on="bldg_id",
+        how="inner",
+    )
+    .group_by("_afue_parsed")
+    .agg(
+        pl.len().alias("n_bldg"),
+        pl.mean("delta_bill_r34_vs_r12").alias("mean_r34_minus_r12"),
+        pl.median("delta_bill_r34_vs_r12").alias("median_r34_minus_r12"),
+    )
+    .sort("_afue_parsed")
+)
+
+print(
+    f"\nMean / median annual_bill_total deltas by parsed AFUE, all buildings combined "
+    f"(fuel oil + {COOLING_100_PCT_CONDITIONED!r} cooling; BAT runs; $/yr):"
+)
+print("  delta = annual_bill_total(run B) - annual_bill_total(run 1+2)")
+print(bill_deltas_by_afue_oil)
+
+```
+
+```{python}
+# Propane households analysis (same structure as fuel oil: propane ∩ 100% conditioned cooling ∩ cohort).
+
+propane_bldg_ids = (
+    upgrade_00_no_hp_02_hp.filter(pl.col(HEATS_WITH_PROPANE)).select("bldg_id").unique().collect()["bldg_id"]
+)
+propane_bldg_ids_r12 = bat_r12.filter(pl.col("bldg_id").is_in(propane_bldg_ids)).select("bldg_id").unique()["bldg_id"]
+propane_bldg_ids_r34 = bat_r34.filter(pl.col("bldg_id").is_in(propane_bldg_ids)).select("bldg_id").unique()["bldg_id"]
+
+print(f"Number of propane households in upgrade 00 no HP: {len(propane_bldg_ids):,}")
+print(f"Number of propane households in run 1+2: {len(propane_bldg_ids_r12):,}")
+print(f"Number of propane households in run 3+4: {len(propane_bldg_ids_r34):,}")
+
+propane_full_cool_bldg_ids = (
+    upgrade_00_no_hp.filter(pl.col(HEATS_WITH_PROPANE))
+    .filter(pl.col(COOLING_PARTIAL_SPACE_COL) == COOLING_100_PCT_CONDITIONED)
+    .select("bldg_id")
+    .unique()
+    .join(upgrade_00_no_hp_02_hp.select("bldg_id").unique(), on="bldg_id", how="inner")
+    .collect()
+)["bldg_id"]
+print(
+    f"Propane cohort with {COOLING_PARTIAL_SPACE_COL} == {COOLING_100_PCT_CONDITIONED!r}: "
+    f"{len(propane_full_cool_bldg_ids):,} bldg_id (intersection with upgrade_00_no_hp_02_hp)."
+)
+
+bldg_afue_propane = (
+    upgrade_00_no_hp_02_hp.filter(pl.col("bldg_id").is_in(propane_full_cool_bldg_ids))
+    .with_columns(_afue_parsed_expr)
+    .select("bldg_id", HVAC_HEATING_EFFICIENCY_COL, "_afue_parsed")
+    .unique(subset=["bldg_id"], keep="first")
+    .collect()
+)
+
+_afue_labeled_propane = bldg_afue_propane.select(HVAC_HEATING_EFFICIENCY_COL, "_afue_parsed").unique()
+AFUE_values_propane = _afue_labeled_propane["_afue_parsed"].drop_nulls().unique().sort()
+print(f"Propane + 100% conditioned — unique AFUE values: {AFUE_values_propane.to_list()}")
+
+_n_subset_afue_100_propane = bldg_afue_propane.filter(pl.col("_afue_parsed") == 100.0).height
+print(f"Propane + 100% conditioned — buildings with parsed AFUE 100: {_n_subset_afue_100_propane:,}")
+
+_labels_afue_5_or_100_propane = _afue_labeled_propane.filter(
+    pl.col("_afue_parsed").is_in([5.0, 100.0])
+).sort("_afue_parsed", HVAC_HEATING_EFFICIENCY_COL)
+print("Propane + 100% conditioned — full hvac_heating_efficiency labels with parsed AFUE 5 or 100:")
+if _labels_afue_5_or_100_propane.is_empty():
+    print("  (none)")
+else:
+    for row in _labels_afue_5_or_100_propane.iter_rows(named=True):
+        print(f"  AFUE={row['_afue_parsed']}: {row[HVAC_HEATING_EFFICIENCY_COL]}")
+
+n_excluded_afue_propane = bldg_afue_propane.filter(pl.col("_afue_parsed").is_in(EXCLUDE_AFUE)).height
+bldg_afue_for_bills_propane = bldg_afue_propane.filter(
+    pl.col("_afue_parsed").is_not_null() & ~pl.col("_afue_parsed").is_in(EXCLUDE_AFUE)
+)
+print(
+    f"Bill comparison by AFUE (propane + 100% conditioned subset): excluded {n_excluded_afue_propane:,} buildings "
+    f"(parsed AFUE in {EXCLUDE_AFUE}); {bldg_afue_for_bills_propane.height:,} retained (non-null AFUE, not 5 or 100)."
+)
+
+bills_triple_propane = (
+    bat_r12.select(
+        "bldg_id",
+        ELECTRIC_UTILITY_COL,
+        pl.col("annual_bill_total").alias("bill_r12"),
+    )
+    .join(
+        bat_r34.select("bldg_id", pl.col("annual_bill_total").alias("bill_r34")),
+        on="bldg_id",
+        how="inner",
+    )
+    .filter(pl.col("bldg_id").is_in(propane_full_cool_bldg_ids))
+    .with_columns((pl.col("bill_r34") - pl.col("bill_r12")).alias("delta_bill_r34_vs_r12"))
+)
+
+bill_deltas_by_afue_propane = (
+    bills_triple_propane.join(
+        bldg_afue_for_bills_propane.select("bldg_id", "_afue_parsed"),
+        on="bldg_id",
+        how="inner",
+    )
+    .group_by("_afue_parsed")
+    .agg(
+        pl.len().alias("n_bldg"),
+        pl.mean("delta_bill_r34_vs_r12").alias("mean_r34_minus_r12"),
+        pl.median("delta_bill_r34_vs_r12").alias("median_r34_minus_r12"),
+    )
+    .sort("_afue_parsed")
+)
+
+print(
+    f"\nMean / median annual_bill_total deltas by parsed AFUE, all buildings combined "
+    f"(propane + {COOLING_100_PCT_CONDITIONED!r} cooling; BAT runs; $/yr):"
+)
+print("  delta = annual_bill_total(run B) - annual_bill_total(run 1+2)")
+print(bill_deltas_by_afue_propane)
+
+```
+
+```{python}
+# Electric resistance: HEATING_TYPE_COL == ELECTRICAL_RESISTANCE ∩ 100% conditioned cooling ∩ cohort.
+# Parsed "AFUE" 100% is meaningful for resistance (unlike fossil mislabels), so we only exclude 5.0 — not 100.0.
+_EXCLUDE_AFUE_ELEC_RESISTANCE = [5.0]
+
+er_bldg_ids = (
+    upgrade_00_no_hp_02_hp.filter(pl.col(HEATING_TYPE_COL) == ELECTRICAL_RESISTANCE)
+    .select("bldg_id")
+    .unique()
+    .collect()["bldg_id"]
+)
+er_bldg_ids_r12 = bat_r12.filter(pl.col("bldg_id").is_in(er_bldg_ids)).select("bldg_id").unique()["bldg_id"]
+er_bldg_ids_r34 = bat_r34.filter(pl.col("bldg_id").is_in(er_bldg_ids)).select("bldg_id").unique()["bldg_id"]
+
+print(f"Number of electric-resistance households in upgrade 00 no HP: {len(er_bldg_ids):,}")
+print(f"Number of electric-resistance households in run 1+2: {len(er_bldg_ids_r12):,}")
+print(f"Number of electric-resistance households in run 3+4: {len(er_bldg_ids_r34):,}")
+
+er_full_cool_bldg_ids = (
+    upgrade_00_no_hp.filter(pl.col(HEATING_TYPE_COL) == ELECTRICAL_RESISTANCE)
+    .filter(pl.col(COOLING_PARTIAL_SPACE_COL) == COOLING_100_PCT_CONDITIONED)
+    .select("bldg_id")
+    .unique()
+    .join(upgrade_00_no_hp_02_hp.select("bldg_id").unique(), on="bldg_id", how="inner")
+    .collect()
+)["bldg_id"]
+print(
+    f"Electric-resistance cohort with {COOLING_PARTIAL_SPACE_COL} == {COOLING_100_PCT_CONDITIONED!r}: "
+    f"{len(er_full_cool_bldg_ids):,} bldg_id (intersection with upgrade_00_no_hp_02_hp)."
+)
+
+bldg_afue_er = (
+    upgrade_00_no_hp_02_hp.filter(pl.col("bldg_id").is_in(er_full_cool_bldg_ids))
+    .with_columns(_afue_parsed_expr)
+    .select("bldg_id", HVAC_HEATING_EFFICIENCY_COL, "_afue_parsed")
+    .unique(subset=["bldg_id"], keep="first")
+    .collect()
+)
+
+_afue_labeled_er = bldg_afue_er.select(HVAC_HEATING_EFFICIENCY_COL, "_afue_parsed").unique()
+AFUE_values_er = _afue_labeled_er["_afue_parsed"].drop_nulls().unique().sort()
+print(f"Electric resistance + 100% conditioned — unique parsed equipment % values: {AFUE_values_er.to_list()}")
+
+_n_subset_afue_100_er = bldg_afue_er.filter(pl.col("_afue_parsed") == 100.0).height
+print(f"Electric resistance + 100% conditioned — buildings with parsed value 100: {_n_subset_afue_100_er:,}")
+
+_labels_afue_5_er = _afue_labeled_er.filter(pl.col("_afue_parsed") == 5.0).sort(
+    "_afue_parsed", HVAC_HEATING_EFFICIENCY_COL
+)
+print(
+    "Electric resistance + 100% conditioned — full hvac_heating_efficiency labels with parsed value 5 "
+    f"(excluded cohort-wide via {_EXCLUDE_AFUE_ELEC_RESISTANCE}):"
+)
+if _labels_afue_5_er.is_empty():
+    print("  (none)")
+else:
+    for row in _labels_afue_5_er.iter_rows(named=True):
+        print(f"  parsed={row['_afue_parsed']}: {row[HVAC_HEATING_EFFICIENCY_COL]}")
+
+n_excluded_afue_er = (
+    bldg_afue_er.filter(pl.col("_afue_parsed").is_null() | pl.col("_afue_parsed").is_in(_EXCLUDE_AFUE_ELEC_RESISTANCE))
+).height
+bldg_afue_for_bills_er = bldg_afue_er.filter(
+    pl.col("_afue_parsed").is_not_null() & ~pl.col("_afue_parsed").is_in(_EXCLUDE_AFUE_ELEC_RESISTANCE)
+)
+print(
+    f"Bill comparison by parsed equipment % (electric resistance + 100% conditioned): excluded {n_excluded_afue_er:,} "
+    f"buildings (null parse or parsed value in {_EXCLUDE_AFUE_ELEC_RESISTANCE}; 100% not excluded). "
+    f"{bldg_afue_for_bills_er.height:,} retained."
+)
+
+bills_triple_er = (
+    bat_r12.select(
+        "bldg_id",
+        ELECTRIC_UTILITY_COL,
+        pl.col("annual_bill_total").alias("bill_r12"),
+    )
+    .join(
+        bat_r34.select("bldg_id", pl.col("annual_bill_total").alias("bill_r34")),
+        on="bldg_id",
+        how="inner",
+    )
+    .filter(pl.col("bldg_id").is_in(er_full_cool_bldg_ids))
+    .with_columns((pl.col("bill_r34") - pl.col("bill_r12")).alias("delta_bill_r34_vs_r12"))
+)
+
+bill_deltas_by_afue_er = (
+    bills_triple_er.join(
+        bldg_afue_for_bills_er.select("bldg_id", "_afue_parsed"),
+        on="bldg_id",
+        how="inner",
+    )
+    .group_by("_afue_parsed")
+    .agg(
+        pl.len().alias("n_bldg"),
+        pl.mean("delta_bill_r34_vs_r12").alias("mean_r34_minus_r12"),
+        pl.median("delta_bill_r34_vs_r12").alias("median_r34_minus_r12"),
+    )
+    .sort("_afue_parsed")
+)
+
+print(
+    f"\nMean / median annual_bill_total deltas by parsed equipment %, all buildings combined "
+    f"(electric resistance + {COOLING_100_PCT_CONDITIONED!r} cooling; BAT runs; $/yr):"
+)
+print("  delta = annual_bill_total(run B) - annual_bill_total(run 1+2)")
+print(bill_deltas_by_afue_er)
+
+```
+
+```{python}
+# Master bills (`comb_bills_year_target`): same cohort filters as above, but monthly `energy_total_bill` (not BAT).
+_ANNUAL_MONTH = "Annual"
+_MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+_MONTH_COL = "month"
+_ENERGY_TOTAL_BILL = "energy_total_bill"
+
+_master_r12 = pl.read_parquet(
+    str(Master_bill_path_r1_2), hive_partitioning=True, storage_options=STORAGE_OPTIONS
+).filter(pl.col(_MONTH_COL) != _ANNUAL_MONTH)
+_master_r34 = pl.read_parquet(
+    str(Master_bill_path_r3_4), hive_partitioning=True, storage_options=STORAGE_OPTIONS
+).filter(pl.col(_MONTH_COL) != _ANNUAL_MONTH)
+
+_months_present = sorted(
+    [m for m in _master_r12[_MONTH_COL].unique().to_list() if m != _ANNUAL_MONTH],
+    key=lambda m: _MONTH_LABELS.index(m) if m in _MONTH_LABELS else 999,
+)
+
+print(
+    f"\n=== Master bills (comb_bills_year_target), by calendar month ===\n"
+    f"Cohorts: **natural gas**, **fuel oil**, **propane**, and **electric resistance** "
+    f"(each: {COOLING_100_PCT_CONDITIONED!r} cooling). Fossil fuels exclude parsed AFUE {EXCLUDE_AFUE}; "
+    f"electric resistance excludes parsed {_EXCLUDE_AFUE_ELEC_RESISTANCE} only (100% retained). "
+    f"Bill = {_ENERGY_TOTAL_BILL} for that month ($, not annualized).\n"
+    f"Months found: {_months_present}"
+)
+
+_MASTER_COHORTS = [
+    ("natgas", "Natural gas", natgas_full_cool_bldg_ids, bldg_afue_for_bills),
+    ("fuel_oil", "Fuel oil", oil_full_cool_bldg_ids, bldg_afue_for_bills_oil),
+    ("propane", "Propane", propane_full_cool_bldg_ids, bldg_afue_for_bills_propane),
+    ("elec_resistance", "Electric resistance", er_full_cool_bldg_ids, bldg_afue_for_bills_er),
+]
+
+_afue_r34_ts_by_cohort: dict[str, list[pl.DataFrame]] = {
+    "natgas": [],
+    "fuel_oil": [],
+    "propane": [],
+    "elec_resistance": [],
+}
+_afue_save_pct_by_cohort: dict[str, list[pl.DataFrame]] = {
+    "natgas": [],
+    "fuel_oil": [],
+    "propane": [],
+    "elec_resistance": [],
+}
+# Cohort-wide (not stratified by parsed AFUE): month × share of bldg_id with lower r34 than r12 bill.
+_cohort_month_save_table_rows: dict[str, list[dict]] = {t[0]: [] for t in _MASTER_COHORTS}
+
+for _cohort_key, _fuel_title, _full_cool_bldg, _bldg_afue_fb in _MASTER_COHORTS:
+    print(f"\n{'#' * 20} {_fuel_title} — master bills by month {'#' * 20}")
+
+    for _mon in _months_present:
+        _bills_triple_m = (
+            _master_r12.filter(pl.col(_MONTH_COL) == _mon)
+            .select(
+                "bldg_id",
+                ELECTRIC_UTILITY_COL,
+                pl.col(_ENERGY_TOTAL_BILL).alias("bill_r12"),
+            )
+            .join(
+                _master_r34.filter(pl.col(_MONTH_COL) == _mon).select(
+                    "bldg_id", pl.col(_ENERGY_TOTAL_BILL).alias("bill_r34")
+                ),
+                on="bldg_id",
+                how="inner",
+            )
+            .filter(pl.col("bldg_id").is_in(_full_cool_bldg))
+            .with_columns((pl.col("bill_r34") - pl.col("bill_r12")).alias("delta_bill_r34_vs_r12"))
+        )
+
+        _n_bldg_month = _bills_triple_m.height
+        _n_save_month = _bills_triple_m.filter(pl.col("delta_bill_r34_vs_r12") < 0).height
+        _pct_save_month = (100.0 * _n_save_month / _n_bldg_month) if _n_bldg_month else float("nan")
+        _cohort_month_save_table_rows[_cohort_key].append(
+            {
+                "month": _mon,
+                "n_bldg": _n_bldg_month,
+                "n_save": _n_save_month,
+                "pct_save": _pct_save_month,
+            }
+        )
+
+        _bill_deltas_afue_m = (
+            _bills_triple_m.join(
+                _bldg_afue_fb.select("bldg_id", "_afue_parsed"),
+                on="bldg_id",
+                how="inner",
+            )
+            .group_by("_afue_parsed")
+            .agg(
+                pl.len().alias("n_bldg"),
+                pl.mean("delta_bill_r34_vs_r12").alias("mean_r34_minus_r12"),
+                pl.median("delta_bill_r34_vs_r12").alias("median_r34_minus_r12"),
+            )
+            .sort("_afue_parsed")
+        )
+
+        print(
+            f"\n{'='*60}\n{_fuel_title} — month {_mon!r} — mean / median {_ENERGY_TOTAL_BILL} deltas by AFUE\n{'='*60}"
+        )
+        print("  delta = bill(run 3+4) − bill(run 1+2) for this month.")
+        print(_bill_deltas_afue_m)
+
+        _afue_r34_ts_by_cohort[_cohort_key].append(
+            _bill_deltas_afue_m.select(
+                "_afue_parsed",
+                pl.col("mean_r34_minus_r12").alias("mean_delta_r34_minus_r12"),
+            ).with_columns(pl.lit(_mon).alias("month"))
+        )
+
+        _afue_save_pct_by_cohort[_cohort_key].append(
+            _bills_triple_m.join(
+                _bldg_afue_fb.select("bldg_id", "_afue_parsed"),
+                on="bldg_id",
+                how="inner",
+            )
+            .group_by("_afue_parsed")
+            .agg(
+                ((pl.col("delta_bill_r34_vs_r12") < 0).cast(pl.Float64)).mean().alias("frac_save"),
+            )
+            .with_columns((pl.col("frac_save") * 100).alias("pct_households_save"))
+            .select("_afue_parsed", "pct_households_save")
+            .with_columns(pl.lit(_mon).alias("month"))
+        )
+
+print(
+    "\n=== Cohort month-by-month share of bldg_id saving on master bill (run 3+4 < run 1+2) ===\n"
+    f"Among bldg_id in each fuel cohort ({COOLING_100_PCT_CONDITIONED!r} cooling) with paired monthly "
+    f"`{_ENERGY_TOTAL_BILL}` in runs 1+2 and 3+4: count and percentage with strictly lower bill "
+    "under run 3+4 than run 1+2 that month. (Entire cohort; not filtered to AFUE / equipment-parse subsets.)\n"
+)
+
+for _cohort_key, _fuel_title, _, _ in _MASTER_COHORTS:
+    _save_rows = _cohort_month_save_table_rows[_cohort_key]
+    print(f"\n--- {_fuel_title} ---")
+    if not _save_rows:
+        print("  (no rows)")
+        continue
+    _save_month_tbl = (
+        pl.DataFrame(_save_rows)
+        .with_columns(pl.col("month").cast(pl.Enum(_MONTH_LABELS)))
+        .sort("month")
+        .with_columns(pl.col("pct_save").round(2))
+    )
+    print(_save_month_tbl)
+
+def _finalize_monthly_afue_ts(
+    parts: list[pl.DataFrame],
+    afue_label_overrides: dict[float, str] | None = None,
+) -> pl.DataFrame:
+    if not parts:
+        return pl.DataFrame()
+    out = pl.concat(parts).with_columns(pl.col("month").cast(pl.Enum(_MONTH_LABELS)))
+    label_expr: pl.Expr = pl.col("_afue_parsed").cast(pl.Utf8) + pl.lit("%")
+    if afue_label_overrides:
+        for _afue_val, _lbl in afue_label_overrides.items():
+            label_expr = pl.when(pl.col("_afue_parsed") == _afue_val).then(pl.lit(_lbl)).otherwise(label_expr)
+    return out.with_columns(label_expr.alias("afue_label"))
+
+
+_afue_ts_r34 = _finalize_monthly_afue_ts(_afue_r34_ts_by_cohort["natgas"])
+_afue_ts_save_pct = _finalize_monthly_afue_ts(_afue_save_pct_by_cohort["natgas"])
+_oil_afue_legend = {_OIL_AFUE_LUMP_TO: _OIL_AFUE_LUMP_LEGEND}
+_afue_ts_r34_oil = _finalize_monthly_afue_ts(_afue_r34_ts_by_cohort["fuel_oil"], _oil_afue_legend)
+_afue_ts_save_pct_oil = _finalize_monthly_afue_ts(_afue_save_pct_by_cohort["fuel_oil"], _oil_afue_legend)
+_afue_ts_r34_propane = _finalize_monthly_afue_ts(_afue_r34_ts_by_cohort["propane"])
+_afue_ts_save_pct_propane = _finalize_monthly_afue_ts(_afue_save_pct_by_cohort["propane"])
+_afue_ts_r34_er = _finalize_monthly_afue_ts(_afue_r34_ts_by_cohort["elec_resistance"])
+_afue_ts_save_pct_er = _finalize_monthly_afue_ts(_afue_save_pct_by_cohort["elec_resistance"])
+
+```
+
+```{python}
+#| label: fig-afue-master-r34-monthly-timeseries-natgas
+#| fig-cap: "Natural gas: mean master-bill delta (run 3+4 minus run 1+2) by calendar month, one series per parsed AFUE (100% conditioned cooling; AFUE 5/100 excluded)."
+#| fig-cap-location: margin
+
+from lib.plotnine import theme_switchbox
+from lib.quarto import display_svg
+from plotnine import aes, geom_line, geom_point, ggplot, labs, scale_x_discrete, theme
+
+if _afue_ts_r34.is_empty():
+    print("Skipping AFUE time-series figure: no rows in _afue_ts_r34.")
+else:
+    _p_afue_ts = (
+        ggplot(
+            _afue_ts_r34,
+            aes(
+                "month",
+                "mean_delta_r34_minus_r12",
+                color="afue_label",
+                group="afue_label",
+            ),
+        )
+        + geom_line()
+        + geom_point(size=1.8)
+        + scale_x_discrete(limits=_MONTH_LABELS)
+        + labs(
+            x="Month",
+            y="Mean $ delta (energy_total_bill)\nrun 3+4 − run 1+2",
+            color="AFUE",
+            title="Natural gas: monthly bill change vs default rates, by AFUE",
+        )
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 5.5), legend_position="right")
+    )
+    display_svg(_p_afue_ts.draw())
+
+```
+
+```{python}
+#| label: fig-afue-master-r34-save-pct-timeseries-natgas
+#| fig-cap: "Natural gas: share of households with a lower master energy bill under run 3+4 than run 1+2 (monthly energy_total_bill), by calendar month and parsed AFUE."
+#| fig-cap-location: margin
+
+from lib.plotnine import theme_switchbox
+from lib.quarto import display_svg
+from plotnine import aes, geom_line, geom_point, ggplot, labs, scale_x_discrete, scale_y_continuous, theme
+
+if _afue_ts_save_pct.is_empty():
+    print("Skipping AFUE save-% time-series figure: no rows in _afue_ts_save_pct.")
+else:
+    _p_afue_save = (
+        ggplot(
+            _afue_ts_save_pct,
+            aes(
+                "month",
+                "pct_households_save",
+                color="afue_label",
+                group="afue_label",
+            ),
+        )
+        + geom_line()
+        + geom_point(size=1.8)
+        + scale_x_discrete(limits=_MONTH_LABELS)
+        + scale_y_continuous(labels=lambda breaks: [f"{b:.0f}%" for b in breaks])
+        + labs(
+            x="Month",
+            y="% of households with lower bill\n(run 3+4 < run 1+2, that month)",
+            color="AFUE",
+            title="Natural gas: share saving on monthly bills vs default rates, by AFUE",
+        )
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 5.5), legend_position="right")
+    )
+    display_svg(_p_afue_save.draw())
+
+```
+
+```{python}
+#| label: fig-afue-master-r34-monthly-timeseries-fuel-oil
+#| fig-cap: "Fuel oil: mean master-bill delta (run 3+4 minus run 1+2) by calendar month, one series per parsed AFUE (100% conditioned cooling; AFUE 5/100 excluded). Buildings with 90% or 92.5% AFUE are grouped as one series (90–92.5%)."
+#| fig-cap-location: margin
+
+from lib.plotnine import theme_switchbox
+from lib.quarto import display_svg
+from plotnine import aes, geom_line, geom_point, ggplot, labs, scale_x_discrete, theme
+
+if _afue_ts_r34_oil.is_empty():
+    print("Skipping fuel-oil AFUE time-series figure: no rows in _afue_ts_r34_oil.")
+else:
+    _p_afue_ts_oil = (
+        ggplot(
+            _afue_ts_r34_oil,
+            aes(
+                "month",
+                "mean_delta_r34_minus_r12",
+                color="afue_label",
+                group="afue_label",
+            ),
+        )
+        + geom_line()
+        + geom_point(size=1.8)
+        + scale_x_discrete(limits=_MONTH_LABELS)
+        + labs(
+            x="Month",
+            y="Mean $ delta (energy_total_bill)\nrun 3+4 − run 1+2",
+            color="AFUE",
+            title="Fuel oil: monthly bill change vs default rates, by AFUE",
+        )
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 5.5), legend_position="right")
+    )
+    display_svg(_p_afue_ts_oil.draw())
+
+```
+
+```{python}
+#| label: fig-afue-master-r34-save-pct-timeseries-fuel-oil
+#| fig-cap: "Fuel oil: share of households with a lower master energy bill under run 3+4 than run 1+2 (monthly energy_total_bill), by calendar month and parsed AFUE. Buildings with 90% or 92.5% AFUE are grouped as one series (90–92.5%)."
+#| fig-cap-location: margin
+
+from lib.plotnine import theme_switchbox
+from lib.quarto import display_svg
+from plotnine import aes, geom_line, geom_point, ggplot, labs, scale_x_discrete, scale_y_continuous, theme
+
+if _afue_ts_save_pct_oil.is_empty():
+    print("Skipping fuel-oil AFUE save-% time-series figure: no rows in _afue_ts_save_pct_oil.")
+else:
+    _p_afue_save_oil = (
+        ggplot(
+            _afue_ts_save_pct_oil,
+            aes(
+                "month",
+                "pct_households_save",
+                color="afue_label",
+                group="afue_label",
+            ),
+        )
+        + geom_line()
+        + geom_point(size=1.8)
+        + scale_x_discrete(limits=_MONTH_LABELS)
+        + scale_y_continuous(labels=lambda breaks: [f"{b:.0f}%" for b in breaks])
+        + labs(
+            x="Month",
+            y="% of households with lower bill\n(run 3+4 < run 1+2, that month)",
+            color="AFUE",
+            title="Fuel oil: share saving on monthly bills vs default rates, by AFUE",
+        )
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 5.5), legend_position="right")
+    )
+    display_svg(_p_afue_save_oil.draw())
+
+```
+
+```{python}
+#| label: fig-afue-master-r34-monthly-timeseries-propane
+#| fig-cap: "Propane: mean master-bill delta (run 3+4 minus run 1+2) by calendar month, one series per parsed AFUE (100% conditioned cooling; AFUE 5/100 excluded)."
+#| fig-cap-location: margin
+
+from lib.plotnine import theme_switchbox
+from lib.quarto import display_svg
+from plotnine import aes, geom_line, geom_point, ggplot, labs, scale_x_discrete, theme
+
+if _afue_ts_r34_propane.is_empty():
+    print("Skipping propane AFUE time-series figure: no rows in _afue_ts_r34_propane.")
+else:
+    _p_afue_ts_propane = (
+        ggplot(
+            _afue_ts_r34_propane,
+            aes(
+                "month",
+                "mean_delta_r34_minus_r12",
+                color="afue_label",
+                group="afue_label",
+            ),
+        )
+        + geom_line()
+        + geom_point(size=1.8)
+        + scale_x_discrete(limits=_MONTH_LABELS)
+        + labs(
+            x="Month",
+            y="Mean $ delta (energy_total_bill)\nrun 3+4 − run 1+2",
+            color="AFUE",
+            title="Propane: monthly bill change vs default rates, by AFUE",
+        )
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 5.5), legend_position="right")
+    )
+    display_svg(_p_afue_ts_propane.draw())
+
+```
+
+```{python}
+#| label: fig-afue-master-r34-save-pct-timeseries-propane
+#| fig-cap: "Propane: share of households with a lower master energy bill under run 3+4 than run 1+2 (monthly energy_total_bill), by calendar month and parsed AFUE."
+#| fig-cap-location: margin
+
+from lib.plotnine import theme_switchbox
+from lib.quarto import display_svg
+from plotnine import aes, geom_line, geom_point, ggplot, labs, scale_x_discrete, scale_y_continuous, theme
+
+if _afue_ts_save_pct_propane.is_empty():
+    print("Skipping propane AFUE save-% time-series figure: no rows in _afue_ts_save_pct_propane.")
+else:
+    _p_afue_save_propane = (
+        ggplot(
+            _afue_ts_save_pct_propane,
+            aes(
+                "month",
+                "pct_households_save",
+                color="afue_label",
+                group="afue_label",
+            ),
+        )
+        + geom_line()
+        + geom_point(size=1.8)
+        + scale_x_discrete(limits=_MONTH_LABELS)
+        + scale_y_continuous(labels=lambda breaks: [f"{b:.0f}%" for b in breaks])
+        + labs(
+            x="Month",
+            y="% of households with lower bill\n(run 3+4 < run 1+2, that month)",
+            color="AFUE",
+            title="Propane: share saving on monthly bills vs default rates, by AFUE",
+        )
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 5.5), legend_position="right")
+    )
+    display_svg(_p_afue_save_propane.draw())
+
+```
+
+```{python}
+#| label: fig-afue-master-r34-monthly-timeseries-elec-resistance
+#| fig-cap: "Electric resistance: mean master-bill delta (run 3+4 minus run 1+2) by calendar month, one series per parsed equipment % (100% conditioned cooling; parsed AFUE 5 excluded, 100% retained)."
+#| fig-cap-location: margin
+
+from lib.plotnine import theme_switchbox
+from lib.quarto import display_svg
+from plotnine import aes, geom_line, geom_point, ggplot, labs, scale_x_discrete, theme
+
+if _afue_ts_r34_er.is_empty():
+    print("Skipping electric-resistance time-series figure: no rows in _afue_ts_r34_er.")
+else:
+    _p_afue_ts_er = (
+        ggplot(
+            _afue_ts_r34_er,
+            aes(
+                "month",
+                "mean_delta_r34_minus_r12",
+                color="afue_label",
+                group="afue_label",
+            ),
+        )
+        + geom_line()
+        + geom_point(size=1.8)
+        + scale_x_discrete(limits=_MONTH_LABELS)
+        + labs(
+            x="Month",
+            y="Mean $ delta (energy_total_bill)\nrun 3+4 − run 1+2",
+            color="Parsed %",
+            title="Electric resistance: monthly bill change vs default rates, by parsed equipment %",
+        )
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 5.5), legend_position="right")
+    )
+    display_svg(_p_afue_ts_er.draw())
+
+```
+
+```{python}
+#| label: fig-afue-master-r34-save-pct-timeseries-elec-resistance
+#| fig-cap: "Electric resistance: share of households with a lower master energy bill under run 3+4 than run 1+2 (monthly energy_total_bill), by calendar month and parsed equipment % (parsed AFUE 5 excluded, 100% retained)."
+#| fig-cap-location: margin
+
+from lib.plotnine import theme_switchbox
+from lib.quarto import display_svg
+from plotnine import aes, geom_line, geom_point, ggplot, labs, scale_x_discrete, scale_y_continuous, theme
+
+if _afue_ts_save_pct_er.is_empty():
+    print("Skipping electric-resistance save-% time-series figure: no rows in _afue_ts_save_pct_er.")
+else:
+    _p_afue_save_er = (
+        ggplot(
+            _afue_ts_save_pct_er,
+            aes(
+                "month",
+                "pct_households_save",
+                color="afue_label",
+                group="afue_label",
+            ),
+        )
+        + geom_line()
+        + geom_point(size=1.8)
+        + scale_x_discrete(limits=_MONTH_LABELS)
+        + scale_y_continuous(labels=lambda breaks: [f"{b:.0f}%" for b in breaks])
+        + labs(
+            x="Month",
+            y="% of households with lower bill\n(run 3+4 < run 1+2, that month)",
+            color="Parsed %",
+            title="Electric resistance: share saving on monthly bills vs default rates, by parsed equipment %",
+        )
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 5.5), legend_position="right")
+    )
+    display_svg(_p_afue_save_er.draw())
+
+```
+
+## Share saving by partial-space cooling (master bills)
+
+Among all `bldg_id` in the u00 no-HP ∩ u02 HP cohort, stratify by `in.hvac_cooling_partial_space_conditioning` from upgrade 00. **None** (missing) and the literal string **`None`** are grouped as 0% conditioned. The label `<10% Conditioned` is treated as **0.05** for ordering and pooled metrics (between 0% and 20%). ResStock labels such as **`20% Conditioned`** map to **0.2**, … **`100% Conditioned`** to **1.0**. For each bucket and calendar month: among homes with paired `energy_total_bill` in runs 1+2 and 3+4, the percentage with a strictly lower bill under run 3+4 than run 1+2. The time series and wide table use the same definition as the fuel cohort month tables above. The mean bill-change figure plots the **average** per-building monthly delta run 3+4 minus run 1+2, matching the AFUE fuel charts.
+
+```{python}
+import re
+
+# ResStock labels -> conditioned fraction (None / null -> 0).
+_COOLING_LABEL_TO_FRAC: dict[str, float] = {
+    "None": 0.0,
+    "<10% Conditioned": 0.05,
+    "20% Conditioned": 0.2,
+    "40% Conditioned": 0.4,
+    "60% Conditioned": 0.6,
+    "80% Conditioned": 0.8,
+    "100% Conditioned": 1.0,
+}
+
+
+def _cooling_frac_from_bucket_repr(bucket: str) -> float:
+    if bucket == "__NONE__":
+        return 0.0
+    if bucket in _COOLING_LABEL_TO_FRAC:
+        return _COOLING_LABEL_TO_FRAC[bucket]
+    m = re.match(r"(\d+(?:\.\d+)?)\s*%", str(bucket))
+    return float(m.group(1)) / 100.0 if m else 999.0
+
+
+_bldg_cooling_df = (
+    upgrade_00_no_hp.join(upgrade_00_no_hp_02_hp.select("bldg_id").unique(), on="bldg_id", how="inner")
+    .select("bldg_id", pl.col(COOLING_PARTIAL_SPACE_COL))
+    .unique(subset=["bldg_id"], keep="first")
+    .collect()
+)
+
+_by_cooling_bucket = (
+    _bldg_cooling_df.with_columns(
+        pl.when(pl.col(COOLING_PARTIAL_SPACE_COL).is_null())
+        .then(pl.lit("__NONE__"))
+        .when(pl.col(COOLING_PARTIAL_SPACE_COL).cast(pl.Utf8) == "None")
+        .then(pl.lit("__NONE__"))
+        .otherwise(pl.col(COOLING_PARTIAL_SPACE_COL).cast(pl.Utf8))
+        .alias("_bucket")
+    )
+    .group_by("_bucket")
+    .agg(pl.col("bldg_id").implode().alias("bldg_ids"))
+)
+
+_cooling_specs: list[dict] = []
+for _row in _by_cooling_bucket.iter_rows(named=True):
+    _bk = _row["_bucket"]
+    _bids = _row["bldg_ids"]
+    _frac = _cooling_frac_from_bucket_repr(_bk)
+    if _bk == "__NONE__":
+        _table_lbl = "None"
+        _plot_lbl = "0% (None)"
+    else:
+        _table_lbl = _bk
+        _plot_lbl = f"{int(round(_frac * 100))}% ({_table_lbl})" if _frac <= 1.0 else _table_lbl
+    _cooling_specs.append(
+        {
+            "bucket": _bk,
+            "table_label": _table_lbl,
+            "plot_label": _plot_lbl,
+            "frac": _frac,
+            "bldg_ids": _bids,
+            "n_bldg": len(_bids),
+        }
+    )
+_cooling_specs.sort(key=lambda d: (d["frac"], d["table_label"]))
+
+print("\n=== Partial-space cooling cohort sizes (u00 ∩ u02; cooling from upgrade 00) ===\n")
+for _s in _cooling_specs:
+    print(f"  {_s['table_label']!r} (fraction {_s['frac']:.2f}): {_s['n_bldg']:,} bldg_id")
+
+_cooling_month_save_table_rows: dict[str, list[dict]] = {_s["table_label"]: [] for _s in _cooling_specs}
+_cooling_save_pct_ts_parts: list[pl.DataFrame] = []
+_cooling_delta_r34_ts_parts: list[pl.DataFrame] = []
+
+for _s in _cooling_specs:
+    _tl = _s["table_label"]
+    _bids = _s["bldg_ids"]
+    print(f"\n{'#' * 20} Partial cooling {_tl!r} — month-by-month save % (master bills) {'#' * 20}")
+
+    for _mon in _months_present:
+        _bills_triple_c = (
+            _master_r12.filter(pl.col(_MONTH_COL) == _mon)
+            .select(
+                "bldg_id",
+                ELECTRIC_UTILITY_COL,
+                pl.col(_ENERGY_TOTAL_BILL).alias("bill_r12"),
+            )
+            .join(
+                _master_r34.filter(pl.col(_MONTH_COL) == _mon).select(
+                    "bldg_id", pl.col(_ENERGY_TOTAL_BILL).alias("bill_r34")
+                ),
+                on="bldg_id",
+                how="inner",
+            )
+            .filter(pl.col("bldg_id").is_in(_bids))
+            .with_columns((pl.col("bill_r34") - pl.col("bill_r12")).alias("delta_bill_r34_vs_r12"))
+        )
+
+        _n_b = _bills_triple_c.height
+        _n_sv = _bills_triple_c.filter(pl.col("delta_bill_r34_vs_r12") < 0).height
+        _pct = (100.0 * _n_sv / _n_b) if _n_b else float("nan")
+        _cooling_month_save_table_rows[_tl].append(
+            {"month": _mon, "n_bldg": _n_b, "n_save": _n_sv, "pct_save": _pct}
+        )
+        _cooling_save_pct_ts_parts.append(
+            pl.DataFrame(
+                {
+                    "month": [_mon],
+                    "pct_households_save": [_pct],
+                    "cooling_label": [_s["plot_label"]],
+                }
+            )
+        )
+        _mean_r34 = (
+            float(_bills_triple_c["delta_bill_r34_vs_r12"].mean())
+            if _n_b
+            else float("nan")
+        )
+        _cooling_delta_r34_ts_parts.append(
+            pl.DataFrame(
+                {
+                    "month": [_mon],
+                    "mean_delta_r34_minus_r12": [_mean_r34],
+                    "cooling_label": [_s["plot_label"]],
+                }
+            )
+        )
+
+    _mo_tbl = (
+        pl.DataFrame(_cooling_month_save_table_rows[_tl])
+        .with_columns(pl.col("month").cast(pl.Enum(_MONTH_LABELS)))
+        .sort("month")
+        .with_columns(pl.col("pct_save").round(2))
+    )
+    print(_mo_tbl)
+
+_COOLING_PLOT_LABEL_ORDER = [_s["plot_label"] for _s in _cooling_specs]
+if _cooling_save_pct_ts_parts:
+    _cooling_ts_save_pct = (
+        pl.concat(_cooling_save_pct_ts_parts)
+        .with_columns(
+            pl.col("month").cast(pl.Enum(_MONTH_LABELS)),
+            pl.col("cooling_label").cast(pl.Enum(_COOLING_PLOT_LABEL_ORDER)),
+        )
+    )
+else:
+    _cooling_ts_save_pct = pl.DataFrame()
+
+if _cooling_delta_r34_ts_parts:
+    _cooling_ts_mean_delta_r34 = (
+        pl.concat(_cooling_delta_r34_ts_parts)
+        .with_columns(
+            pl.col("month").cast(pl.Enum(_MONTH_LABELS)),
+            pl.col("cooling_label").cast(pl.Enum(_COOLING_PLOT_LABEL_ORDER)),
+        )
+    )
+else:
+    _cooling_ts_mean_delta_r34 = pl.DataFrame()
+
+```
+
+### Natural gas: AFUE × partial-space cooling (annual master bills)
+
+Among **natural gas** `bldg_id` in the u00 no-HP ∩ u02 HP cohort, with **parsed equipment efficiency** in the same retained set as the natgas AFUE bill tables (exclude parsed **5%** and **100%**), and **partial-space cooling** from upgrade 00 (same buckets as above). **Save** uses the same bill source as the fuel cohort master-bill tables: for each `bldg_id`, we sum **`energy_total_bill`** over every calendar month in the master extracts that has paired data in **both** run 1+2 and run 3+4 (`comb_bills_year_target`), then mark a save if **annual total run 3+4 &lt; annual total run 1+2**. (This replaces BAT `annual_bill_total`, which can disagree sharply with combined master bills.) Each cell is **% of buildings that save** in that (AFUE, cooling bucket), with **n** in parentheses. The heatmap colors use the same percentages. **Note:** The fuel wide table at the end pools **building–month** pairs for its year total, and it includes **all** parsed AFUE values; this grid excludes equipment parsed as 5% or 100%, so column aggregates will not match that table exactly.
+
+```{python}
+from great_tables import GT
+
+from lib.great_tables import get_switchbox_gt_tab_options
+
+_STUB_AFUE_NT = "AFUE (parsed %)"
+_lookup_cool_nt = pl.DataFrame(
+    {
+        "_cool_bucket": [s["bucket"] for s in _cooling_specs],
+        "cooling_col": [s["table_label"] for s in _cooling_specs],
+    }
+)
+
+_natgas_cool_u00 = (
+    upgrade_00_no_hp.filter(pl.col(HEATS_WITH_NATGAS))
+    .select("bldg_id", pl.col(COOLING_PARTIAL_SPACE_COL))
+    .unique(subset=["bldg_id"], keep="first")
+    .join(upgrade_00_no_hp_02_hp.select("bldg_id").unique(), on="bldg_id", how="inner")
+    .collect()
+)
+_natgas_afue_cool = (
+    upgrade_00_no_hp_02_hp.filter(pl.col(HEATS_WITH_NATGAS))
+    .with_columns(_afue_parsed_expr)
+    .select("bldg_id", "_afue_parsed")
+    .unique(subset=["bldg_id"], keep="first")
+    .collect()
+    .join(_natgas_cool_u00, on="bldg_id", how="inner")
+    .with_columns(
+        pl.when(pl.col(COOLING_PARTIAL_SPACE_COL).is_null())
+        .then(pl.lit("__NONE__"))
+        .when(pl.col(COOLING_PARTIAL_SPACE_COL).cast(pl.Utf8) == "None")
+        .then(pl.lit("__NONE__"))
+        .otherwise(pl.col(COOLING_PARTIAL_SPACE_COL).cast(pl.Utf8))
+        .alias("_cool_bucket")
+    )
+    .join(_lookup_cool_nt, on="_cool_bucket", how="inner")
+    .filter(pl.col("_afue_parsed").is_not_null() & ~pl.col("_afue_parsed").is_in(EXCLUDE_AFUE))
+    .select("bldg_id", "_afue_parsed", "cooling_col")
+)
+
+# Per-building "annual" total = sum of monthly energy_total_bill over months with paired r12 & r34 (same months as cohort master analysis).
+_m12_by_mon = (
+    _master_r12.filter(pl.col(_MONTH_COL).is_in(_months_present))
+    .group_by("bldg_id", _MONTH_COL)
+    .agg(pl.col(_ENERGY_TOTAL_BILL).sum().alias("bill_r12"))
+)
+_m34_by_mon = (
+    _master_r34.filter(pl.col(_MONTH_COL).is_in(_months_present))
+    .group_by("bldg_id", _MONTH_COL)
+    .agg(pl.col(_ENERGY_TOTAL_BILL).sum().alias("bill_r34"))
+)
+_master_month_paired_nt = _m12_by_mon.join(
+    _m34_by_mon,
+    on=["bldg_id", _MONTH_COL],
+    how="inner",
+)
+_master_annual_paired_nt = _master_month_paired_nt.group_by("bldg_id").agg(
+    pl.sum("bill_r12").alias("annual_r12"),
+    pl.sum("bill_r34").alias("annual_r34"),
+)
+
+_cross_nt = (
+    _master_annual_paired_nt.join(_natgas_afue_cool, on="bldg_id", how="inner")
+    .with_columns((pl.col("annual_r34") < pl.col("annual_r12")).alias("_saves"))
+)
+
+_cross_nt_summ = (
+    _cross_nt.group_by("_afue_parsed", "cooling_col")
+    .agg(
+        pl.len().alias("n_bldg"),
+        pl.col("_saves").cast(pl.Int64).sum().alias("n_save"),
+    )
+    .with_columns((100.0 * pl.col("n_save") / pl.col("n_bldg")).alias("pct_save"))
+    .sort("_afue_parsed", "cooling_col")
+)
+
+_cool_cols_nt = [s["table_label"] for s in _cooling_specs]
+_afue_rows_nt = sorted(_cross_nt_summ["_afue_parsed"].unique().to_list())
+
+_rows_nt_cross: list[dict[str, object]] = []
+for _af in _afue_rows_nt:
+    _af_str = f"{_af:g}%"
+    _rec: dict[str, object] = {_STUB_AFUE_NT: _af_str}
+    _sub = _cross_nt_summ.filter(pl.col("_afue_parsed") == _af)
+    _cell_map = {
+        row["cooling_col"]: (row["pct_save"], int(row["n_bldg"]))
+        for row in _sub.iter_rows(named=True)
+    }
+    for _cl in _cool_cols_nt:
+        if _cl in _cell_map:
+            _p, _n = _cell_map[_cl]
+            _rec[_cl] = f"{float(_p):.1f}% (n={_n:,})"
+        else:
+            _rec[_cl] = "—"
+    _rows_nt_cross.append(_rec)
+
+if not _rows_nt_cross:
+    print("Skipping natgas AFUE × cooling save-% table: no rows after filters.")
+    _gt_natgas_afue_cooling_save = None
+else:
+    _natgas_afue_cooling_wide = pl.DataFrame(_rows_nt_cross).select([_STUB_AFUE_NT, *_cool_cols_nt])
+
+    _cols_w_nt = {_STUB_AFUE_NT: "88px"}
+    for _cl in _cool_cols_nt:
+        _cols_w_nt[_cl] = "120px"
+
+    _gt_natgas_afue_cooling_save = (
+        GT(_natgas_afue_cooling_wide.to_pandas())
+        .tab_options(**get_switchbox_gt_tab_options())
+        .cols_width(cases=_cols_w_nt)
+        .tab_header(
+            title="Natural gas: share saving on summed master bills (run 3+4 < run 1+2)",
+            subtitle="Rows = parsed AFUE (excl. 5% & 100%). Columns = partial-space cooling (upgrade 00). "
+            "Annual total = sum of monthly energy_total_bill over paired months; save = lower total under 3+4. n = group size.",
+        )
+    )
+    print("\n=== Natgas: long-form counts by (AFUE, partial cooling) ===\n")
+    print(_cross_nt_summ)
+    _gt_natgas_afue_cooling_save
+
+```
+
+```{python}
+#| label: fig-natgas-afue-cooling-save-pct-heatmap-master-annual-sum
+#| fig-cap: "Natural gas cohort: % of bldg_id with lower summed annual master energy_total_bill (paired months) under run 3+4 than run 1+2, by parsed AFUE (rows) and partial-space cooling (columns). Grey tiles = no buildings in that cell."
+#| fig-cap-location: margin
+
+from lib.plotnine import SB_COLORS, theme_switchbox
+from lib.quarto import display_svg
+from plotnine import (
+    aes,
+    coord_cartesian,
+    element_text,
+    geom_text,
+    geom_tile,
+    ggplot,
+    labs,
+    scale_fill_gradient,
+    scale_x_discrete,
+    scale_y_discrete,
+    theme,
+)
+
+if _cross_nt_summ.is_empty():
+    print("Skipping natgas AFUE × cooling heatmap: no aggregate rows.")
+else:
+    _afue_lbl_list_nt = [f"{a:g}%" for a in _afue_rows_nt]
+    _afue_lbl_df_nt = pl.DataFrame({"_afue_parsed": _afue_rows_nt, "afue_label": _afue_lbl_list_nt})
+    _full_grid_nt = pl.DataFrame({"_afue_parsed": _afue_rows_nt}).join(
+        pl.DataFrame({"cooling_col": _cool_cols_nt}),
+        how="cross",
+    )
+    _heatmap_nt_df = (
+        _full_grid_nt.join(
+            _cross_nt_summ.select("_afue_parsed", "cooling_col", "pct_save"),
+            on=["_afue_parsed", "cooling_col"],
+            how="left",
+        )
+        .join(_afue_lbl_df_nt, on="_afue_parsed", how="left")
+        .with_columns(pl.col("cooling_col").cast(pl.Enum(_cool_cols_nt)))
+        .with_columns(pl.col("afue_label").cast(pl.Enum(list(reversed(_afue_lbl_list_nt)))))
+        .with_columns(
+            pl.when(pl.col("pct_save").is_not_null())
+            .then(pl.col("pct_save").round(0).cast(pl.Int64).cast(pl.Utf8) + pl.lit("%"))
+            .otherwise(pl.lit(""))
+            .alias("pct_label")
+        )
+    )
+
+    _p_nt_hm = (
+        ggplot(_heatmap_nt_df, aes(x="cooling_col", y="afue_label", fill="pct_save"))
+        + geom_tile(color="white", size=0.35)
+        + geom_text(aes(label="pct_label"), color=SB_COLORS["midnight_text"], size=8)
+        + scale_fill_gradient(
+            low="#FFFFFF",
+            high=SB_COLORS["sky"],
+            limits=(0, 100),
+            na_value="#E5E5E5",
+            name="% saving",
+        )
+        + scale_x_discrete(limits=_cool_cols_nt)
+        + scale_y_discrete(limits=list(reversed(_afue_lbl_list_nt)))
+        + coord_cartesian(expand=False)
+        + labs(
+            x="Partial-space cooling (upgrade 00)",
+            y="Parsed AFUE (%)",
+            title="Natural gas: share saving on summed master bills (heatmap)",
+        )
+        + theme_switchbox()
+        + theme(
+            figure_size=(max(10.5, 0.55 * len(_cool_cols_nt) + 4), max(4.5, 0.35 * len(_afue_rows_nt) + 3)),
+            axis_text_x=element_text(rotation=40, ha="right"),
+        )
+    )
+    display_svg(_p_nt_hm.draw())
+
+```
+
+```{python}
+#| label: fig-cooling-save-pct-master-monthly-timeseries
+#| fig-cap: "All u00→u02 cohort homes: share with lower master energy_total_bill under run 3+4 than run 1+2 by calendar month, one series per in.hvac_cooling_partial_space_conditioning bucket (upgrade 00)."
+#| fig-cap-location: margin
+
+from lib.plotnine import theme_switchbox
+from lib.quarto import display_svg
+from plotnine import aes, geom_line, geom_point, ggplot, labs, scale_x_discrete, scale_y_continuous, theme
+
+if _cooling_ts_save_pct.is_empty():
+    print("Skipping partial-cooling save-% time series: no rows in _cooling_ts_save_pct.")
+else:
+    _p_cooling_save = (
+        ggplot(
+            _cooling_ts_save_pct,
+            aes(
+                "month",
+                "pct_households_save",
+                color="cooling_label",
+                group="cooling_label",
+            ),
+        )
+        + geom_line()
+        + geom_point(size=1.8)
+        + scale_x_discrete(limits=_MONTH_LABELS)
+        + scale_y_continuous(labels=lambda breaks: [f"{b:.0f}%" for b in breaks])
+        + labs(
+            x="Month",
+            y="% of households with lower bill\n(run 3+4 < run 1+2, that month)",
+            color="Partial cooling",
+            title="Master bills: share saving by partial-space cooling level",
+        )
+        + theme_switchbox()
+        + theme(figure_size=(11, 5.5), legend_position="right")
+    )
+    display_svg(_p_cooling_save.draw())
+
+```
+
+```{python}
+#| label: fig-cooling-mean-delta-r34-master-monthly-timeseries
+#| fig-cap: "All u00→u02 cohort homes: mean master energy_total_bill delta (run 3+4 minus run 1+2) by calendar month, one series per partial-space cooling bucket (upgrade 00)."
+#| fig-cap-location: margin
+
+from lib.plotnine import theme_switchbox
+from lib.quarto import display_svg
+from plotnine import aes, geom_line, geom_point, ggplot, labs, scale_x_discrete, theme
+
+if _cooling_ts_mean_delta_r34.is_empty():
+    print("Skipping partial-cooling mean delta (r34−r12) time series: no rows.")
+else:
+    _p_cooling_d34 = (
+        ggplot(
+            _cooling_ts_mean_delta_r34,
+            aes(
+                "month",
+                "mean_delta_r34_minus_r12",
+                color="cooling_label",
+                group="cooling_label",
+            ),
+        )
+        + geom_line()
+        + geom_point(size=1.8)
+        + scale_x_discrete(limits=_MONTH_LABELS)
+        + labs(
+            x="Month",
+            y="Mean $ delta (energy_total_bill)\nrun 3+4 − run 1+2",
+            color="Partial cooling",
+            title="Master bills: mean monthly bill change by partial-space cooling (3+4 vs 1+2)",
+        )
+        + theme_switchbox()
+        + theme(figure_size=(11, 5.5), legend_position="right")
+    )
+    display_svg(_p_cooling_d34.draw())
+
+```
+
+```{python}
+# Wide table: rows = cooling buckets (sorted by conditioned fraction), columns = Jan–Dec + year total.
+from great_tables import GT
+
+from lib.great_tables import get_switchbox_gt_tab_options
+
+_COOL_WIDE_FIRST_COL = "Partial cooling (u00)"
+_YEAR_TOTAL_COL_COOL = "Year total (%)"
+
+_save_pct_cooling_wide_rows: list[dict] = []
+for _s in _cooling_specs:
+    _tl = _s["table_label"]
+    _rows_ck = _cooling_month_save_table_rows[_tl]
+    _mmap = {r["month"]: r["pct_save"] for r in _rows_ck}
+    _n_save_yr = sum(int(r["n_save"]) for r in _rows_ck)
+    _n_bldg_yr = sum(int(r["n_bldg"]) for r in _rows_ck)
+    _year_pct = round(100.0 * _n_save_yr / _n_bldg_yr, 1) if _n_bldg_yr else None
+
+    _rec_c: dict = {_COOL_WIDE_FIRST_COL: _tl}
+    for _m in _MONTH_LABELS:
+        _v = _mmap.get(_m)
+        if _v is not None and _v == _v:
+            _rec_c[_m] = round(float(_v), 1)
+        else:
+            _rec_c[_m] = None
+    _rec_c[_YEAR_TOTAL_COL_COOL] = _year_pct
+    _save_pct_cooling_wide_rows.append(_rec_c)
+
+if not _save_pct_cooling_wide_rows:
+    print("Skipping partial-cooling wide GT table: no cooling buckets.")
+else:
+    _save_pct_cooling_wide = pl.DataFrame(_save_pct_cooling_wide_rows).select(
+        [_COOL_WIDE_FIRST_COL, *_MONTH_LABELS, _YEAR_TOTAL_COL_COOL]
+    )
+
+    _cols_w_cool = {_COOL_WIDE_FIRST_COL: "280px", _YEAR_TOTAL_COL_COOL: "96px"}
+    for _m in _MONTH_LABELS:
+        _cols_w_cool[_m] = "52px"
+
+    _save_pct_cooling_wide_gt = (
+        GT(_save_pct_cooling_wide.to_pandas())
+        .tab_options(**get_switchbox_gt_tab_options())
+        .cols_width(cases=_cols_w_cool)
+        .tab_header(
+            title="Share saving by partial-space cooling (master bills)",
+            subtitle="Rows sorted by conditioned fraction (0% None → 100%). Year total = pooled building–month % (Jan–Dec).",
+        )
+    )
+    _save_pct_cooling_wide_gt
+
+```
+
+## Cohort share saving by calendar month (master bills)
+
+Among `bldg_id` in each fuel cohort with 100% conditioned cooling and paired monthly `energy_total_bill` in runs 1+2 and 3+4: **percentage with a strictly lower bill under run 3+4 than run 1+2** that month (same definition as the cohort-wide month tables above). Rows follow your fuel order; columns are January–December, then **Year total** — the pooled share across all building–month observations in the table (same `bldg_id` can appear in multiple months). Empty month cells mean no paired data for that month in the master extracts.
+
+```{python}
+# Wide table: rows = heating fuels, columns = Jan–Dec + year total; values = % saving (r34 < r12).
+from great_tables import GT
+
+from lib.great_tables import get_switchbox_gt_tab_options
+
+_SAVE_PCT_WIDE_FUEL_ORDER = [
+    ("natgas", "Natural gas"),
+    ("propane", "Propane"),
+    ("fuel_oil", "Fuel oil"),
+    ("elec_resistance", "Electric resistance"),
+]
+
+_YEAR_TOTAL_COL = "Year total (%)"
+
+_save_pct_wide_rows: list[dict] = []
+for _ck, _fuel_label in _SAVE_PCT_WIDE_FUEL_ORDER:
+    _rows_ck = _cohort_month_save_table_rows.get(_ck, [])
+    _mmap = {r["month"]: r["pct_save"] for r in _rows_ck}
+    _n_save_yr = sum(int(r["n_save"]) for r in _rows_ck)
+    _n_bldg_yr = sum(int(r["n_bldg"]) for r in _rows_ck)
+    _year_pct = round(100.0 * _n_save_yr / _n_bldg_yr, 1) if _n_bldg_yr else None
+
+    _rec: dict = {"Heating fuel": _fuel_label}
+    for _m in _MONTH_LABELS:
+        _v = _mmap.get(_m)
+        if _v is not None and _v == _v:
+            _rec[_m] = round(float(_v), 1)
+        else:
+            _rec[_m] = None
+    _rec[_YEAR_TOTAL_COL] = _year_pct
+    _save_pct_wide_rows.append(_rec)
+
+_save_pct_wide = pl.DataFrame(_save_pct_wide_rows).select(["Heating fuel", *_MONTH_LABELS, _YEAR_TOTAL_COL])
+
+_cols_width = {"Heating fuel": "260px", _YEAR_TOTAL_COL: "96px"}
+for _m in _MONTH_LABELS:
+    _cols_width[_m] = "52px"
+
+_save_pct_wide_gt = (
+    GT(_save_pct_wide.to_pandas())
+    .tab_options(**get_switchbox_gt_tab_options())
+    .cols_width(cases=_cols_width)
+    .tab_header(
+        title="Share of cohort with lower master bill (run 3+4 < run 1+2)",
+        subtitle="Percent by calendar month; Year total = all building–month pairs pooled (Jan–Dec).",
+    )
+)
+_save_pct_wide_gt
+
+```

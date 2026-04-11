@@ -11,7 +11,7 @@ Parallels ``lib/plotnine/switchbox_theme.py`` for charts:
 - **Stub (row labels)** — IBM Plex Sans Regular, 11px, ``#4D4D4D``.
 - **Body cells, source notes** — IBM Plex Sans Regular, 11px, ``#4D4D4D``.
 
-**Rules** (Switchbox report tables): thick black rule directly above the column-header block; medium (2px) black rule under headers; light gray horizontal rules between body rows; **no** vertical grid lines, **no** outer side borders or bottom table border, **no** row striping. Align per-cell formatting (e.g. ``cols_align``) is left to each table.
+**Rules** (Switchbox report tables): thick black rule directly above the column-header block; medium (2px) black rule under headers; light gray horizontal rules between body rows; **no** vertical grid lines, **no** outer side borders or bottom table border, **no** row striping; source notes have **no** rules above/below the note block—padding separates them from the grid. Align per-cell formatting (e.g. ``cols_align``) is left to each table.
 
 Font families match ``reports/.style/switchbox.scss`` (``GT-Planar``, ``GT-Planar-Bold``,
 ``IBM Plex Sans``). When tables are embedded in Quarto HTML, those ``@font-face`` rules
@@ -48,10 +48,20 @@ _COLOR_DATA = "#4D4D4D"
 _COLOR_RULE_BLACK = "#000000"
 _COLOR_RULE_LIGHT = "#D8D8D8"
 _COLOR_BG_WHITE = "#FFFFFF"
+# Muted “ / year” (and similar) suffixes in table body cells — subordinate to ``_COLOR_DATA`` text.
+_COLOR_GT_SUFFIX_MUTED = "#ABABAB"
+
+# Use with :meth:`great_tables.GT.fmt_currency` ``pattern=`` so the per-year unit is visible but quiet.
+# Example: ``GT(df).fmt_currency(columns="x", decimals=0, pattern=SB_GT_PER_YEAR_HTML_PATTERN)``.
+SB_GT_PER_YEAR_HTML_PATTERN = '{x}<span class="sb-gt-per-year-suffix"> / year</span>'
 # Column headers: smaller than the former 13px default; still above 11px body.
 _COLUMN_LABEL_PX = "12px"
 # Space below subtitle before the column-label block (thick rule); GT default ~5px is tight.
 _HEADING_SUBTITLE_PADDING_BOTTOM = "20px"
+# Space around source notes: no horizontal rule before/after the note block; padding separates it from
+# data rows so it reads as caption text, not another grid row.
+_SOURCE_NOTE_PADDING_TOP = "14px"
+_SOURCE_NOTE_PADDING_BOTTOM = "14px"
 
 
 def _switchbox_gt_font_face_rules() -> list[str]:
@@ -112,7 +122,14 @@ def _switchbox_gt_typography_rules() -> list[str]:
         f"color: {_COLOR_DATA} !important; }}",
         ".gt_table .gt_sourcenote { "
         "font-family: 'IBM Plex Sans', 'IBM-Plex-Sans', sans-serif !important; "
-        f"font-size: 11px !important; line-height: 1.4 !important; color: {_COLOR_DATA} !important; }}",
+        f"font-size: 11px !important; line-height: 1.4 !important; color: {_COLOR_DATA} !important; "
+        f"padding-top: {_SOURCE_NOTE_PADDING_TOP} !important; "
+        f"padding-bottom: {_SOURCE_NOTE_PADDING_BOTTOM} !important; }}",
+        # No rule above or below the source-note row (caption is set off by padding only).
+        ".gt_table tr.gt_sourcenotes, .gt_table tfoot.gt_sourcenotes { "
+        "border-top-style: none !important; border-top-width: 0 !important; "
+        "border-bottom-style: none !important; border-bottom-width: 0 !important; "
+        "border-bottom-color: transparent !important; }",
         # No alternating row fill: SCSS uses #F4F4F4 for .gt_striped — force flat white even if
         # striping is toggled on elsewhere, and neutralize host page striping on tbody cells.
         ".gt_table tbody tr.gt_striped > th, .gt_table tbody tr.gt_striped > td { "
@@ -120,6 +137,10 @@ def _switchbox_gt_typography_rules() -> list[str]:
         # No !important here: body cells need to respect GT `tab_style` fills (e.g. area column colors).
         ".gt_table tbody tr:not(.gt_striped) > th, .gt_table tbody tr:not(.gt_striped) > td { "
         f"background-color: {_COLOR_BG_WHITE}; }}",
+        # Per-year unit suffix (``SB_GT_PER_YEAR_HTML_PATTERN``); same class in custom ``.fmt()`` kWh cells.
+        ".gt_table .sb-gt-per-year-suffix { "
+        f"color: {_COLOR_GT_SUFFIX_MUTED} !important; "
+        "font-weight: normal !important; }",
     ]
 
 

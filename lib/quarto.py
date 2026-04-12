@@ -7,19 +7,33 @@ embed pipeline so ``{{< embed >}}`` can be used instead of file-based
 workarounds.
 
 * **``display_svg``** — for matplotlib figures (multi-MIME → single SVG).
-* **``display_gt``** — for Great Tables (``text/html`` → base64-decoded HTML).
+* **``display_gt``** — for Great Tables (``text/html`` → base64-decoded HTML
+  for HTML output; high-res PNG for ICML/non-HTML output).
 """
 
 from __future__ import annotations
 
 import base64
 import io
+import os
+import tempfile
 import uuid
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from great_tables import GT
     from matplotlib.figure import Figure
+
+
+def _render_gt_as_image() -> bool:
+    """Return True if GT tables should be rendered as images (for ICML).
+
+    Checks for ``SWITCHBOX_TYPESET=1``, set by ``lib.just.typeset`` before
+    running Quarto.  This is more reliable than ``QUARTO_EXECUTE_INFO``
+    because embedded notebooks may not receive the ICML format info — they
+    get re-executed generically when their cached ``.out.ipynb`` is removed.
+    """
+    return os.environ.get("SWITCHBOX_TYPESET") == "1"
 
 
 def display_svg(fig: Figure) -> None:
@@ -41,18 +55,19 @@ def display_svg(fig: Figure) -> None:
 
 
 def display_gt(table: GT) -> None:
-    """Display a Great Tables object so it survives ``{{< embed >}}``.
+    """Display a Great Tables object so it works in both HTML and ICML.
 
-    Pandoc's ``--to ipynb`` conversion truncates raw ``text/html`` cell
-    outputs, reducing GT tables to a stray ``</div>``.  This helper
-    base64-encodes the HTML and wraps it in a ``<div>`` + ``<script>``
-    that decodes at page load.  Because the GT markup is opaque to Pandoc
-    (hidden inside a base64 string attribute), it passes through the
-    embed pipeline intact.
+    **HTML output** (default): base64-encodes the GT HTML and wraps it in a
+    ``<div>`` + ``<script>`` that decodes at page load.  This survives the
+    Quarto Manuscript ``{{< embed >}}`` pipeline (which truncates raw
+    ``text/html``).
 
-    The decoded HTML includes GT's scoped ``<style>`` block, so all
-    formatting is preserved.  Unlike an iframe approach, the table
-    participates in the host page's CSS cascade (fonts, colors).
+    **ICML output** (detected via ``QUARTO_EXECUTE_INFO``): renders the table
+    to a high-res PNG (3x scale, ~300 DPI at full width) using GT's headless
+    Chrome screenshot and displays it via ``IPython.display.Image``.  Quarto
+    treats this like any other figure — saving it to
+    ``docs/index_files/figure-icml/`` and wiring up the ICML ``<Link>``
+    reference automatically.
 
     Usage in ``analysis.qmd``::
 
@@ -65,6 +80,14 @@ def display_gt(table: GT) -> None:
 
         {{< embed notebooks/analysis.qmd#tbl-my-table >}}
     """
+    if _render_gt_as_image():
+        _display_gt_as_image(table)
+    else:
+        _display_gt_as_html(table)
+
+
+def _display_gt_as_html(table: GT) -> None:
+    """Base64-encode GT HTML for the browser-based embed pipeline."""
     from IPython.display import HTML, display
 
     html = table.as_raw_html()
@@ -78,3 +101,18 @@ def display_gt(table: GT) -> None:
             f" c => c.charCodeAt(0)));</script>"
         )
     )
+
+
+def _display_gt_as_image(table: GT, *, scale: float = 3.0) -> None:
+    """Render GT to a high-res PNG and display as an IPython Image."""
+    from IPython.display import Image, display
+
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+        tmp_path = f.name
+    try:
+        table.save(tmp_path, scale=scale)
+        with open(tmp_path, "rb") as f:
+            png_bytes = f.read()
+        display(Image(data=png_bytes, format="png"))
+    finally:
+        os.unlink(tmp_path)

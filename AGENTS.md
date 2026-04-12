@@ -991,6 +991,25 @@ just diff my-label                  # Diff with a label (archived under .diff/di
 
 `just typeset` is implemented by `lib/just/typeset.py` (centralized logic — Justfiles just call `uv run python -m lib.just.typeset`). It renders to ICML, moves math SVGs to `docs/math/`, and converts footnotes to sidenotes. Requires TinyTeX (for LaTeX math → SVG rendering via the `icml_math` filter) and `ghostscript` (system package). Both are pre-installed in the devcontainer and on EC2. See `context/code/icml_filters.md` for details.
 
+### Quarto execution caching (freeze)
+
+Quarto Manuscript projects default to `freeze: auto` for notebooks. This means notebooks are only re-executed when their **source files change**. Execution results are cached in two places:
+
+1. **Freeze cache**: `.quarto/_freeze/notebooks/<name>/execute-results/html.json` — stores the full cell outputs from the last execution. This is the primary cache that prevents re-execution.
+2. **Rendered notebooks**: `docs/notebooks/<name>.out.ipynb` — the rendered notebook outputs used by `{{< embed >}}`.
+
+**The `--execute` flag does NOT override the freeze cache.** Even with `quarto render --execute`, if the freeze cache exists and the notebook source hasn't changed, Quarto will skip execution and reuse cached results. This is a common source of stale-output bugs.
+
+**To force notebook re-execution**, delete the freeze cache:
+
+```bash
+rm -rf .quarto/_freeze/notebooks
+```
+
+This matters whenever notebook behavior depends on runtime context (environment variables, updated data on S3, changed library code in `lib/`) rather than changes to the `.qmd` source itself. The freeze mechanism only tracks source file hashes — it is blind to environment changes.
+
+**Single-file vs. project render**: `quarto render index.qmd --to icml` only renders `index.qmd`. It does **not** re-execute the analysis notebooks, even with `--execute`. The `{{< embed >}}` content comes from pre-rendered `.out.ipynb` files. To re-execute the notebooks, you must either (a) do a project-level render (`quarto render --to icml`) or (b) render each notebook individually first.
+
 ### Publishing
 
 1. `just render` and `just publish` from the report directory.

@@ -13,6 +13,7 @@ Usage (from a report directory):
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -45,6 +46,25 @@ def _move_math_svgs(docs: Path) -> int:
     return len(svgs)
 
 
+def _clear_notebook_cache() -> None:
+    """Delete Quarto's freeze cache and .out.ipynb files so notebooks re-execute.
+
+    GT tables use ``display_gt`` which checks ``SWITCHBOX_TYPESET`` to decide
+    whether to emit HTML (for web) or PNG (for ICML).  The cached outputs
+    from the HTML render contain HTML, so the freeze cache must be removed
+    to force re-execution with the env var set.
+    """
+    freeze_dir = Path(".quarto/_freeze/notebooks")
+    if freeze_dir.is_dir():
+        shutil.rmtree(freeze_dir)
+        print(f"📐 Cleared freeze cache: {freeze_dir}")
+
+    for out_nb in Path("docs").rglob("*.out.ipynb"):
+        out_nb.unlink()
+    for out_nb in Path(".").glob("*.out.ipynb"):
+        out_nb.unlink()
+
+
 def typeset(qmd_path: Path) -> None:
     docs = Path("docs")
     output_name = _output_name(qmd_path)
@@ -52,11 +72,25 @@ def typeset(qmd_path: Path) -> None:
 
     print(f"📐 Typesetting {qmd_path} → {output_path}")
 
-    cmd = ["quarto", "render", str(qmd_path), "--to", "icml", "--output", output_name]
-    result = subprocess.run(cmd)
+    _clear_notebook_cache()
+
+    env = {**os.environ, "SWITCHBOX_TYPESET": "1"}
+    cmd = [
+        "quarto",
+        "render",
+        "--to",
+        "icml",
+        "--execute",
+    ]
+    result = subprocess.run(cmd, env=env)
     if result.returncode != 0:
         print("💥 Quarto render failed!", file=sys.stderr)
         sys.exit(1)
+
+    # Project-level render outputs index.icml; rename to date-stamped name.
+    default_icml = docs / "index.icml"
+    if default_icml.exists() and default_icml != output_path:
+        default_icml.rename(output_path)
 
     n_svgs = _move_math_svgs(docs)
     if n_svgs:

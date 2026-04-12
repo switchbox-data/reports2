@@ -77,6 +77,12 @@ RUN quarto install tinytex --no-prompt && \
     ln -sf /root/.TinyTeX/bin/x86_64-linux/latex /usr/local/bin/latex && \
     ln -sf /root/.TinyTeX/bin/x86_64-linux/dvisvgm /usr/local/bin/dvisvgm
 
+# Install yamlfmt (YAML formatter, used by pre-commit hooks)
+# Precompiled binary from GitHub releases — no Go toolchain needed.
+ARG YAMLFMT_VERSION=0.21.0
+RUN curl -fsSL "https://github.com/google/yamlfmt/releases/download/v${YAMLFMT_VERSION}/yamlfmt_${YAMLFMT_VERSION}_Linux_x86_64.tar.gz" \
+    | tar -xz -C /usr/local/bin yamlfmt
+
 # Install zsh with plugins and custom plugin repositories
 # The zsh feature installs oh-my-zsh for root user and enables plugins in .zshrc.
 # Built-in plugins (git, colored-man-pages, colorize, history) are included with oh-my-zsh.

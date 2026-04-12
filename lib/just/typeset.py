@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Render a Quarto report to ICML for InDesign typesetting.
 
-Runs ``quarto render`` with ``--to icml``, then handles post-processing:
+Outputs to ``icml/`` (not ``docs/``) so the designer gets a standalone folder
+that can be dropped onto Google Drive.  Post-processing steps:
+
 - Moves math SVGs (rendered by the icml_math Lua filter) from the temp
-  ``math/`` directory to ``docs/math/`` alongside the ICML.
+  ``math/`` directory to ``icml/math/`` alongside the ICML.
 - Runs icml_sidenotes conversion if the ICML contains footnotes.
 
-Usage (from a report directory):
+Usage (from a report directory)::
+
     uv run python -m lib.just.typeset                       # index.qmd
     uv run python -m lib.just.typeset expert_testimony.qmd  # specific file
 """
@@ -29,13 +32,13 @@ def _output_name(qmd_path: Path) -> str:
     return f"{stem}_{date.today():%Y%m%d}.icml"
 
 
-def _move_math_svgs(docs: Path) -> int:
-    """Move math SVGs from temp math/ to docs/math/. Returns count moved."""
+def _move_math_svgs(out_dir: Path) -> int:
+    """Move math SVGs from temp math/ into the output directory. Returns count moved."""
     src = Path("math")
     if not src.is_dir():
         return 0
 
-    dest = docs / "math"
+    dest = out_dir / "math"
     dest.mkdir(parents=True, exist_ok=True)
 
     svgs = list(src.glob("*.svg"))
@@ -65,10 +68,17 @@ def _clear_notebook_cache() -> None:
         out_nb.unlink()
 
 
+def _prune_quarto_intermediates(out_dir: Path) -> None:
+    """Remove Quarto intermediates the designer doesn't need."""
+    for pattern in ("*.out.ipynb", "*.embed.ipynb", "*.qmd"):
+        for f in out_dir.rglob(pattern):
+            f.unlink()
+
+
 def typeset(qmd_path: Path) -> None:
-    docs = Path("docs")
+    out = Path("icml")
     output_name = _output_name(qmd_path)
-    output_path = docs / output_name
+    output_path = out / output_name
 
     print(f"📐 Typesetting {qmd_path} → {output_path}")
 
@@ -81,6 +91,8 @@ def typeset(qmd_path: Path) -> None:
         "--to",
         "icml",
         "--execute",
+        "--output-dir",
+        "icml",
     ]
     result = subprocess.run(cmd, env=env)
     if result.returncode != 0:
@@ -88,13 +100,15 @@ def typeset(qmd_path: Path) -> None:
         sys.exit(1)
 
     # Project-level render outputs index.icml; rename to date-stamped name.
-    default_icml = docs / "index.icml"
+    default_icml = out / "index.icml"
     if default_icml.exists() and default_icml != output_path:
         default_icml.rename(output_path)
 
-    n_svgs = _move_math_svgs(docs)
+    n_svgs = _move_math_svgs(out)
     if n_svgs:
-        print(f"📐 Moved {n_svgs} math SVGs to {docs / 'math'}/")
+        print(f"📐 Moved {n_svgs} math SVGs to {out / 'math'}/")
+
+    _prune_quarto_intermediates(out)
 
     if output_path.exists():
         icml_text = output_path.read_text(encoding="utf-8")

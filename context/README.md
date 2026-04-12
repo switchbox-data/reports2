@@ -36,6 +36,7 @@ Documents that answer **"How does this tool work? What are its pitfalls and work
 | quarto_manuscript_embed_bug.md     | Embedding GT tables or matplotlib figures in `index.qmd` via `{{< embed >}}`. Documents the `text/html` truncation bug; `display_gt()` fix for GT tables; `display_svg()` fix for matplotlib.                               |
 | quarto_extensions.md               | Adding, modifying, or sharing Quarto extensions (shortcodes, filters) across reports. Documents why `_extensions/` doesn't work in a monorepo and the `shortcodes:`/`filters:` workaround.                                  |
 | plotnine_sizing_in_quarto.md       | Plotnine figure sizing, font consistency, or SVG rendering pipeline. Explains the full chain from `figure_size` to browser pixels.                                                                                          |
+| icml_filters.md                    | ICML (InDesign) export pipeline: `icml_floats` filter (FloatRefTarget rendering), `icml_math` filter (LaTeX math → SVG pre-rendering). Prerequisites (TinyTeX, ghostscript), how `just typeset` works, troubleshooting.     |
 | illustrator_svg_infographics.md    | Illustrator SVGs (`infographic_*.svg`): CSS class scoping (color collisions), font-family names, nested `<tspan>` WebKit bug, white background rect.                                                                        |
 
 ## sources/

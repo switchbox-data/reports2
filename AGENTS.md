@@ -980,13 +980,16 @@ Naming convention: `state_topic` (e.g., `ny_aeba_grid`, `ri_hp_rates`). Reuse to
 From the report directory:
 
 ```bash
-just render           # Render HTML (snapshots baseline, inlines SVGs)
-just draft            # Render DOCX for content review
-just typeset          # Render ICML for InDesign
-just publish          # Copy to root docs/, inline SVGs, prune index_files/previews/.qmd
-just diff             # Diff current render against baseline
-just diff my-label    # Diff with a label (archived under .diff/diffs/)
+just render                         # Render HTML (snapshots baseline, inlines SVGs)
+just draft                          # Render DOCX for content review
+just typeset                        # Render ICML for InDesign (requires TinyTeX + ghostscript)
+just typeset expert_testimony.qmd   # Typeset a specific .qmd file
+just publish                        # Copy to root docs/, inline SVGs, prune index_files/previews/.qmd
+just diff                           # Diff current render against baseline
+just diff my-label                  # Diff with a label (archived under .diff/diffs/)
 ```
+
+`just typeset` is implemented by `lib/just/typeset.py` (centralized logic — Justfiles just call `uv run python -m lib.just.typeset`). It renders to ICML, moves math SVGs to `docs/math/`, and converts footnotes to sidenotes. Requires TinyTeX (for LaTeX math → SVG rendering via the `icml_math` filter) and `ghostscript` (system package). Both are pre-installed in the devcontainer and on EC2. See `context/code/icml_filters.md` for details.
 
 ### Publishing
 
@@ -1250,11 +1253,23 @@ Quarto extensions (shortcodes, filters, etc.) are shared across all reports via 
 # Example: reports/<project>/_quarto.yml
 shortcodes:
   - ../../lib/quarto_extensions/glossary/glossary.lua
+filters:
+  - at: pre-quarto
+    path: ../../lib/quarto_extensions/icml_floats/icml_floats.lua
+  - path: ../../lib/quarto_extensions/icml_math/icml_math.lua
 ```
+
+Available extensions:
+
+| Extension      | Purpose                                                                                                                       |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `glossary/`    | Glossary shortcode with hover popups.                                                                                         |
+| `icml_floats/` | ICML-only: renders FloatRefTarget nodes (figures, tables with cross-refs) that Pandoc's ICML writer doesn't support natively. |
+| `icml_math/`   | ICML-only: pre-renders LaTeX math to SVG via TinyTeX (`latex` + `dvisvgm`). Requires TinyTeX and ghostscript.                 |
 
 **Do not** run `quarto add` or create `_extensions/` directories in report projects. To add an extension to a report, reference its Lua file from `lib/quarto_extensions/` in `_quarto.yml`. To add a new extension to the repo, create a directory under `lib/quarto_extensions/<name>/`.
 
-For the full explanation of why this works (and why Quarto's default `_extensions/` mechanism doesn't suit a monorepo), see `context/code/quarto_extensions.md`.
+For the full explanation of why this works (and why Quarto's default `_extensions/` mechanism doesn't suit a monorepo), see `context/code/quarto_extensions.md`. For ICML filter details (prerequisites, troubleshooting), see `context/code/icml_filters.md`.
 
 ## MCP Tools
 

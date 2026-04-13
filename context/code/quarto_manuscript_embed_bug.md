@@ -31,16 +31,22 @@ Plotnine figures work because plotnine's `ggplot` object has a clean `_repr_svg_
 
 ## The workaround
 
-### Matplotlib: single-SVG output (preferred for `{{< embed >}}`)
+### Matplotlib: `display_figure` (preferred for `{{< embed >}}`)
 
-Use **`lib.quarto.display_svg`** so the cell has **one** primary `image/svg+xml` output. This helper saves the figure as SVG, closes it, and displays it via `IPython.display.SVG`:
+Use **`lib.quarto.display_figure`** (or its alias **`display_svg`**) so the cell has **one** primary image output. The helper is format-aware:
+
+- **HTML** (`just render`): emits `image/svg+xml` — sharp at any zoom, inlined by post-processing.
+- **DOCX** (`just draft`): emits `image/png` at 300 DPI — avoids the fuzzy rasterization that happens when Pandoc converts SVG via `rsvg-convert` at 96 DPI.
+- **ICML** (`just typeset`): same PNG path as DOCX.
+
+Format detection uses env vars `SWITCHBOX_GT_AS_IMAGE` / `SWITCHBOX_TYPESET`, set by the respective Justfile recipes.
 
 ```python
-from lib.quarto import display_svg
+from lib.quarto import display_figure  # or display_svg (alias)
 
 fig = my_plot.draw()  # or plt.subplots(...)
 # ... any matplotlib post-processing ...
-display_svg(fig)
+display_figure(fig)
 ```
 
 This replaces the older inline three-liner (`savefig` / `plt.close` / `display(SVG(...))`) that was previously copy-pasted into each cell.
@@ -70,9 +76,9 @@ The older pattern — saving to `cache/` and including via `htmltools::includeHT
 
 ### Matplotlib figures (fallback: static file + markdown image)
 
-If you cannot use `display_svg` (e.g. a one-off script), save under `cache/` and use a markdown image in `index.qmd`; `inline_svgs.py` will still inline `.svg` assets when you run `just render`.
+If you cannot use `display_figure` (e.g. a one-off script), save under `cache/` and use a markdown image in `index.qmd`; `inline_svgs.py` will still inline `.svg` assets when you run `just render`.
 
 ## Affected reports
 
-- `ny_hp_rates`: TOU rate table (GT) and BAT summary tables use `display_gt` + `{{< embed >}}`; TOU schedule matplotlib charts and the bill-decomposition bar chart use `display_svg` + `{{< embed >}}`.
-- `ri_hp_rates`: bill-decomposition bar chart and feeder/transformer peak analysis charts use `display_svg` + `{{< embed >}}`; optional TOU matplotlib cells exist behind `INCLUDE_TOU` for parity with NY (not embedded in `index.qmd` today).
+- `ny_hp_rates`: TOU rate table (GT) and BAT summary tables use `display_gt` + `{{< embed >}}`; TOU schedule matplotlib charts and the bill-decomposition bar chart use `display_figure` + `{{< embed >}}`.
+- `ri_hp_rates`: bill-decomposition bar chart and feeder/transformer peak analysis charts use `display_figure` + `{{< embed >}}`; optional TOU matplotlib cells exist behind `INCLUDE_TOU` for parity with NY (not embedded in `index.qmd` today).

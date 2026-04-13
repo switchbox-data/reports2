@@ -6,7 +6,8 @@ them faithfully.  The helpers here produce outputs that survive the
 embed pipeline so ``{{< embed >}}`` can be used instead of file-based
 workarounds.
 
-* **``display_svg``** — for matplotlib figures (multi-MIME → single SVG).
+* **``display_figure``** — for matplotlib figures: SVG for HTML, high-res
+  PNG for DOCX/ICML.  ``display_svg`` is a backwards-compatible alias.
 * **``display_gt``** — for Great Tables (``text/html`` → base64-decoded HTML
   for HTML output; high-res PNG for ICML/non-HTML output).
 """
@@ -25,33 +26,56 @@ if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
 
-def _render_gt_as_image() -> bool:
-    """Return True if GT tables should be rendered as images (for ICML).
+def _render_as_raster() -> bool:
+    """Return True when targeting a non-HTML format (DOCX, ICML).
 
-    Checks for ``SWITCHBOX_TYPESET=1``, set by ``lib.just.typeset`` before
-    running Quarto.  This is more reliable than ``QUARTO_EXECUTE_INFO``
-    because embedded notebooks may not receive the ICML format info — they
-    get re-executed generically when their cached ``.out.ipynb`` is removed.
+    Checks for ``SWITCHBOX_GT_AS_IMAGE=1`` or ``SWITCHBOX_TYPESET=1``.
+    Set by ``lib.just.typeset`` (ICML) and by the ``just draft`` recipe
+    (DOCX).  Used by both ``display_figure`` (SVG → PNG) and
+    ``display_gt`` (HTML → PNG) to produce raster output that embeds
+    cleanly in Word and InDesign.
     """
-    return os.environ.get("SWITCHBOX_TYPESET") == "1"
+    return os.environ.get("SWITCHBOX_GT_AS_IMAGE") == "1" or os.environ.get("SWITCHBOX_TYPESET") == "1"
 
 
-def display_svg(fig: Figure) -> None:
-    """Render a matplotlib figure as SVG and display it via IPython.
+def display_figure(fig: Figure, *, dpi: int = 300) -> None:
+    """Render a matplotlib figure as SVG (HTML) or high-res PNG (DOCX/ICML).
 
     Quarto Manuscript's ``{{< embed >}}`` breaks on cells that produce
     multi-MIME output (e.g. a raw matplotlib Figure emits both PNG and
-    text/plain).  Finishing the cell with a single ``IPython.display.SVG``
-    object avoids this by producing only an ``image/svg+xml`` MIME type.
+    text/plain).  This helper produces a single MIME output that survives
+    the embed pipeline.
 
-    After saving to SVG the figure is closed to free memory.
+    The output format depends on the target:
+
+    * **HTML** (default): ``image/svg+xml`` — sharp at any zoom, styled by
+      CSS, inlined by ``just render``'s post-processing.
+    * **DOCX / ICML**: ``image/png`` at *dpi* (default 300) — avoids the
+      fuzzy rasterization that happens when Pandoc converts SVG via
+      ``rsvg-convert`` at its default 96 DPI.
+
+    Format detection reuses ``_render_as_raster()`` (env vars
+    ``SWITCHBOX_GT_AS_IMAGE`` / ``SWITCHBOX_TYPESET``).
+
+    After saving, the figure is closed to free memory.
     """
     import matplotlib.pyplot as plt
-    from IPython.display import SVG, display
 
-    fig.savefig(buf := io.BytesIO(), format="svg", bbox_inches="tight")
-    plt.close(fig)
-    display(SVG(data=buf.getvalue()))
+    if _render_as_raster():
+        from IPython.display import Image, display
+
+        fig.savefig(buf := io.BytesIO(), format="png", dpi=dpi, bbox_inches="tight")
+        plt.close(fig)
+        display(Image(data=buf.getvalue(), format="png"))
+    else:
+        from IPython.display import SVG, display
+
+        fig.savefig(buf := io.BytesIO(), format="svg", bbox_inches="tight")
+        plt.close(fig)
+        display(SVG(data=buf.getvalue()))
+
+
+display_svg = display_figure
 
 
 def display_gt(table: GT) -> None:
@@ -80,7 +104,7 @@ def display_gt(table: GT) -> None:
 
         {{< embed notebooks/analysis.qmd#tbl-my-table >}}
     """
-    if _render_gt_as_image():
+    if _render_as_raster():
         _display_gt_as_image(table)
     else:
         _display_gt_as_html(table)

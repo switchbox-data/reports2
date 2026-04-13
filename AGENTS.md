@@ -213,17 +213,17 @@ Plotnine figures (`fig-` labels) produce a single image MIME type and embed safe
 
 **Prefer plotnine** for Python visualization. Use raw matplotlib only when plotnine cannot express what you need.
 
-If the chart is shown in `index.qmd` via `{{< embed notebooks/analysis.qmd#fig-… >}}`, a notebook cell that **displays** a raw matplotlib `Figure` (cell ends with `fig` or `plt.show()`) breaks the Manuscript render (multi-MIME output). **Always** finish the figure cell with **one** SVG output using `lib.quarto.display_svg`, then `index.qmd` can embed it like any other labeled figure. Full rationale: `context/tools/quarto_manuscript_embed_bug.md`.
+If the chart is shown in `index.qmd` via `{{< embed notebooks/analysis.qmd#fig-… >}}`, a notebook cell that **displays** a raw matplotlib `Figure` (cell ends with `fig` or `plt.show()`) breaks the Manuscript render (multi-MIME output). **Always** finish the figure cell with `lib.quarto.display_figure` (or its alias `display_svg`), then `index.qmd` can embed it like any other labeled figure. Full rationale: `context/code/quarto_manuscript_embed_bug.md`.
 
 ```python
-from lib.quarto import display_svg
+from lib.quarto import display_figure  # or display_svg (alias)
 
 fig = my_plotnine_plot.draw()
 # ... any matplotlib post-processing (colored titles, axis cleanup, etc.) ...
-display_svg(fig)
+display_figure(fig)
 ```
 
-`display_svg` saves the figure as SVG, closes it to free memory, and displays it via `IPython.display.SVG` — producing a single `image/svg+xml` MIME type that embeds safely. **Always use this helper** instead of inlining the `savefig`/`plt.close`/`display(SVG(...))` three-liner.
+`display_figure` is format-aware: it emits SVG for HTML output and high-res PNG (300 DPI) for DOCX/ICML, so charts are sharp in all output formats. It closes the figure to free memory. **Always use this helper** instead of inlining the `savefig`/`plt.close`/`display(SVG(...))` three-liner.
 
 Use `#| label: fig-my-chart` and `#| fig-cap: "..."` on that chunk. Still `from lib.plotnine import theme_switchbox` if you want matplotlib's SVG text-as-text settings; keep colors aligned with `SB_COLORS` when practical.
 
@@ -846,18 +846,18 @@ R libraries under `lib/` are sourced the traditional way (e.g. `source("lib/ggpl
 
 #### Python modules
 
-| Module                             | When to use                                                                                                                                                                                                                                                                                                              |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `lib.rdp`                          | Fetching files from the `rate-design-platform` GitHub repo (tariff maps, configs). Also has `parse_urdb_json` for URDB tariff JSON.                                                                                                                                                                                      |
-| `lib.cairo`                        | CAIRO post-processing: `add_delivered_fuel_bills` tops up combined bills with oil/propane costs from monthly consumption x EIA prices.                                                                                                                                                                                   |
-| `lib.data.s3`                      | S3 directory listing (`list_s3_subdirs`) and run directory resolution (`run_dir`) for navigating CAIRO output paths.                                                                                                                                                                                                     |
-| `lib.data.gsheets`                 | Google Sheets client with cached OAuth (`get_gspread_client`); uses G_* env vars and caches token to avoid browser on every run.                                                                                                                                                                                         |
-| `lib.data.eia.heating_fuel_prices` | Load monthly residential oil + propane prices from EIA data on S3 (`load_monthly_fuel_prices`).                                                                                                                                                                                                                          |
-| `lib.data.nrel.resstock`           | Load ResStock load curves for a specific utility (`scan_load_curves_for_utility`), reading metadata to construct per-building paths.                                                                                                                                                                                     |
-| `lib.eia`                          | Standalone EIA fetch scripts (petroleum prices, state heating profiles). Use `lib.data.eia` for the cleaner S3-based API.                                                                                                                                                                                                |
-| `lib.plotnine`                     | Switchbox plotnine theme (`theme_switchbox`) with three-tier typography, brand colors (`SB_COLORS`), and auto SVG config. Import in every Python analysis notebook.                                                                                                                                                      |
-| `lib.great_tables`                 | Switchbox Great Tables helpers (`get_switchbox_gt_tab_options`) for `GT.tab_options`: table title matches plotnine (GT Planar Bold 15px left); IBM Plex Sans on body/stub/source notes.                                                                                                                                  |
-| `lib.quarto`                       | Quarto Manuscript helpers. `display_svg(fig)` renders a matplotlib figure as SVG for safe embedding (avoids multi-MIME bug). `display_gt(table)` base64-encodes a GT table so it survives the embed pipeline. Use `display_svg` for raw matplotlib figures; `display_gt` for all GT tables embedded via `{{< embed >}}`. |
+| Module                             | When to use                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib.rdp`                          | Fetching files from the `rate-design-platform` GitHub repo (tariff maps, configs). Also has `parse_urdb_json` for URDB tariff JSON.                                                                                                                                                                                                                                                             |
+| `lib.cairo`                        | CAIRO post-processing: `add_delivered_fuel_bills` tops up combined bills with oil/propane costs from monthly consumption x EIA prices.                                                                                                                                                                                                                                                          |
+| `lib.data.s3`                      | S3 directory listing (`list_s3_subdirs`) and run directory resolution (`run_dir`) for navigating CAIRO output paths.                                                                                                                                                                                                                                                                            |
+| `lib.data.gsheets`                 | Google Sheets client with cached OAuth (`get_gspread_client`); uses G_* env vars and caches token to avoid browser on every run.                                                                                                                                                                                                                                                                |
+| `lib.data.eia.heating_fuel_prices` | Load monthly residential oil + propane prices from EIA data on S3 (`load_monthly_fuel_prices`).                                                                                                                                                                                                                                                                                                 |
+| `lib.data.nrel.resstock`           | Load ResStock load curves for a specific utility (`scan_load_curves_for_utility`), reading metadata to construct per-building paths.                                                                                                                                                                                                                                                            |
+| `lib.eia`                          | Standalone EIA fetch scripts (petroleum prices, state heating profiles). Use `lib.data.eia` for the cleaner S3-based API.                                                                                                                                                                                                                                                                       |
+| `lib.plotnine`                     | Switchbox plotnine theme (`theme_switchbox`) with three-tier typography, brand colors (`SB_COLORS`), and auto SVG config. Import in every Python analysis notebook.                                                                                                                                                                                                                             |
+| `lib.great_tables`                 | Switchbox Great Tables helpers (`get_switchbox_gt_tab_options`) for `GT.tab_options`: table title matches plotnine (GT Planar Bold 15px left); IBM Plex Sans on body/stub/source notes.                                                                                                                                                                                                         |
+| `lib.quarto`                       | Quarto Manuscript helpers. `display_figure(fig)` renders a matplotlib figure as SVG (HTML) or high-res PNG (DOCX/ICML) for safe embedding (avoids multi-MIME bug); `display_svg` is an alias. `display_gt(table)` base64-encodes a GT table (HTML) or renders as PNG (DOCX/ICML). Use `display_figure` for raw matplotlib figures; `display_gt` for all GT tables embedded via `{{< embed >}}`. |
 
 #### R libraries
 
@@ -873,17 +873,11 @@ R libraries under `lib/` are sourced the traditional way (e.g. `source("lib/ggpl
 
 ### Bibliography
 
-`reports/references.bib` is the **single shared bibliography** used by every report (each report's YAML front matter points to it via `bibliography: ../references.bib`). It is auto-exported by Zotero from the "Reports" subcollection on JP's laptop — adding a reference to that Zotero collection automatically updates the `.bib` file in the local repo, but it only becomes available to others once committed and pushed to `main`. If you need to add a citation and don't have Zotero access, add the entry manually to `references.bib` following the key format below, and it will be reconciled on the next Zotero export.
+`reports/references.bib` is the **single shared bibliography** used by every report (each report's YAML front matter points to it via `bibliography: ../references.bib`). It is auto-exported by Zotero from the "Reports" subcollection on JP's laptop — adding a reference to that Zotero collection automatically updates the `.bib` file in the local repo, but it only becomes available to others once committed and pushed to `main`.
 
-Citation key format: `{author_short_title_year}`. When adding citations, follow this pattern:
+**NEVER edit `reports/references.bib` directly.** It is generated by Zotero and any manual edits will be overwritten on the next export. If a citation key referenced in a `.qmd` file is missing from the bib, tell the user so they can add it via Zotero. Do not add, remove, or modify entries yourself.
 
-```bibtex
-@article{adams_BeingRebuffedRegulators_2024,
-  title = {Being Rebuffed by Regulators...},
-  author = {Adams, John},
-  ...
-}
-```
+Citation key format: `{author_short_title_year}` (e.g., `adams_BeingRebuffedRegulators_2024`).
 
 ## When to use R vs Python
 
@@ -982,12 +976,15 @@ From the report directory:
 ```bash
 just render                         # Render HTML (snapshots baseline, inlines SVGs)
 just draft                          # Render DOCX for content review
+just draft expert_testimony.qmd     # Draft a specific .qmd file
 just typeset                        # Render ICML for InDesign (requires TinyTeX + ghostscript)
 just typeset expert_testimony.qmd   # Typeset a specific .qmd file
 just publish                        # Copy to root docs/, inline SVGs, prune index_files/previews/.qmd
 just diff                           # Diff current render against baseline
 just diff my-label                  # Diff with a label (archived under .diff/diffs/)
 ```
+
+`just draft` is implemented by `lib/just/draft.py` (centralized logic — Justfiles just call `uv run python -m lib.just.draft`). It clears the freeze cache so embedded notebooks re-execute with raster settings, sets `SWITCHBOX_GT_AS_IMAGE=1` for high-res GT tables and plotnine figures, and renders to DOCX at 300 DPI. For non-article files in Manuscript projects (e.g. `expert_testimony.qmd`), it temporarily hides `_quarto.yml` so Quarto renders standalone.
 
 `just typeset` is implemented by `lib/just/typeset.py` (centralized logic — Justfiles just call `uv run python -m lib.just.typeset`). It renders to ICML, moves math SVGs to `docs/math/`, and converts footnotes to sidenotes. Requires TinyTeX (for LaTeX math → SVG rendering via the `icml_math` filter) and `ghostscript` (system package). Both are pre-installed in the devcontainer and on EC2. See `context/code/icml_filters.md` for details.
 

@@ -855,11 +855,11 @@ fig_focus
 
 ```{python}
 #| label: fig-bill-components-decomposed-state
-#| fig-cap: "Median energy bill components (decomposed) — Statewide"
+#| fig-cap: "Median energy bill components for representative home"
 
 p_decomposed = plot_bill_components_decomposed(
     median_current_state, median_hp_state,
-    "Median energy bill components — Statewide",
+    "Both sides of representative home's electric bill roughly double after switching to a heat pump",
 )
 
 fig_decomposed = p_decomposed.draw()
@@ -2039,7 +2039,7 @@ for label, row in [("Gas", median_gas_bat), ("HP", median_hp_bat)]:
 
 ```{python}
 #| label: fig-cross-subsidy-example
-#| fig-cap: "Annual electricity delivery bill vs. delivery cost of service for the median gas-heated home, before and after switching to a heat pump."
+#| fig-cap: "Annual electricity delivery bill vs. delivery cost of service for the representative gas-heated home, before and after switching to a heat pump."
 
 DECOMPOSE_COS = False
 
@@ -2254,7 +2254,7 @@ side_text_df = pl.DataFrame([
 
 ```{python}
 #| label: fig-cross-subsidy-before-example
-#| fig-cap: "Annual electric delivery bill vs. delivery cost of service for the median gas-heated home before switching to a heat pump (natural gas furnace scenario only)."
+#| fig-cap: "Annual electric delivery bill vs. delivery cost of service for the median gas-heated home before switching to a heat pump."
 
 # Same y-range as the left facet of @fig-cross-subsidy-example (facets share one scale; gas-only plot
 # would otherwise auto-zoom). Ceiling mirrors stack tops, bar-label nudge_y=40, and HP BAT annotation.
@@ -3709,7 +3709,7 @@ report_vars["elec_resistance_delivery_erosion"] = (
 
 ```{python}
 #| label: fig-bill-decomposed-fair-rate-state
-#| fig-cap: "Annual energy bill for the representative gas-heated Cranston home: before heat pumps, after heat pumps at default rates, and after heat pumps at fair rates."
+#| fig-cap: "Annual energy bill for the representative gas-heated Cranston home: before heat pumps, after heat pumps at default rates, and after heat pumps at proposed HP flat rate."
 
 import io
 
@@ -3746,6 +3746,9 @@ _comp_label_colors = {
 }
 
 fig_3bar, ax_3bar = plt.subplots(figsize=(12, 7))
+
+ax_3bar.set_title("Under flat HP rate, representative home saves with heat pumps",
+                   fontfamily="GT Planar", fontweight="bold", fontsize=15, loc="left", pad=12)
 
 _bottoms = [0.0] * 3
 for _ck in _comp_keys:
@@ -4597,6 +4600,181 @@ report_vars["pct_burdened_hp_default_lmi40"] = above_hp_default_lmi40 / 100
 report_vars["pct_burdened_hp_flat_lmi40"] = above_hp_flat_lmi40 / 100
 report_vars["n_resstock_bldgs"] = n_resstock_bldgs
 report_vars["n_rie_customers"] = n_rie_customers
+```
+
+## Great Tables — `index.qmd` and `expert_testimony.qmd` embeds
+
+Formatted tables for the report methods appendix and direct testimony (MA IOU rate comparison). Display via `display_gt()` so they embed safely in manuscript HTML and typeset ICML.
+
+```{python}
+#| label: tbl-ma-hp-delivery-rates
+#| tbl-cap: "Today's default electric delivery rates, along with the 1.0 and 2.0 heat pump delivery rates proposed for each Massachusetts investor-owned utility (July 2025)."
+
+from great_tables import GT, loc, style
+
+from lib.great_tables import get_switchbox_gt_tab_options
+
+_ma_df = pl.DataFrame(
+    {
+        "rate_type": ["Default rate", "1.0 rate", "2.0 rate"],
+        "unitil_kwh": ["$0.26493", "$0.20307", "$0.09652"],
+        "unitil_discount": ["—", "23.3%", "63.6%"],
+        "national_grid_kwh": ["$0.18091", "$0.12669", "$0.06652"],
+        "national_grid_discount": ["—", "30.0%", "63.2%"],
+        "eversource_kwh": ["$0.19122", "$0.12094", "$0.0702"],
+        "eversource_discount": ["—", "36.8%", "63.3%"],
+    }
+)
+_ma_gt = (
+    GT(_ma_df, rowname_col="rate_type")
+    .tab_spanner(label="Unitil", columns=["unitil_kwh", "unitil_discount"])
+    .tab_spanner(label="National Grid", columns=["national_grid_kwh", "national_grid_discount"])
+    .tab_spanner(label="Eversource", columns=["eversource_kwh", "eversource_discount"])
+    .cols_label(
+        unitil_kwh="$/kWh",
+        unitil_discount="Discount",
+        national_grid_kwh="$/kWh",
+        national_grid_discount="Discount",
+        eversource_kwh="$/kWh",
+        eversource_discount="Discount",
+    )
+    .cols_align(
+        align="center",
+        columns=[
+            "unitil_kwh",
+            "unitil_discount",
+            "national_grid_kwh",
+            "national_grid_discount",
+            "eversource_kwh",
+            "eversource_discount",
+        ],
+    )
+    .tab_style(style.text(align="center"), locations=loc.stub())
+    .tab_style(style.text(align="center"), locations=loc.column_labels())
+    .tab_options(**get_switchbox_gt_tab_options(table_layout="auto"))
+)
+
+display_gt(_ma_gt)
+```
+
+```{python}
+#| label: tbl-rie-energy-tariffs
+#| tbl-cap: "Energy tariffs used for bill calculations (Rhode Island Energy, 2025)."
+
+from great_tables import GT, loc, style
+
+from lib.great_tables import get_switchbox_gt_tab_options
+
+_rv = report_vars
+
+
+def _fmt_dollar(x: float, *, accuracy: int = 0) -> str:
+    return f"${x:,.{accuracy}f}"
+
+
+_tariff_df = pl.DataFrame(
+    {
+        "tariff": [
+            "Electricity — delivery (A-16)",
+            "Electricity — supply (LRS)",
+            "Natural gas — Rate 12 (heating)",
+            "Natural gas — Rate 10 (non-heating)",
+            "Heating oil (EIA)",
+            "Propane (EIA)",
+        ],
+        "fixed_charge": [
+            f"{_fmt_dollar(_rv['elec_fixed_charge'], accuracy=2)} /mo",
+            "—",
+            f"{_fmt_dollar(_rv['gas_fixed_charge'], accuracy=2)} /mo",
+            f"{_fmt_dollar(_rv['gas_nonheating_fixed_charge'], accuracy=2)} /mo",
+            "—",
+            "—",
+        ],
+        "volumetric_rate": [
+            f"{_rv['elec_delivery_avg_cents']:.2f} ¢/kWh",
+            f"{_rv['elec_lrs_min_cents']:.1f}–{_rv['elec_lrs_max_cents']:.1f} ¢/kWh (seasonal)",
+            f"{_fmt_dollar(_rv['gas_avg_per_therm'], accuracy=3)} /therm",
+            f"{_fmt_dollar(_rv['gas_nonheating_avg_per_therm'], accuracy=3)} /therm",
+            "$3.48–$4.10 /gal (monthly prices)",
+            "$3.44–$3.67 /gal (monthly prices)",
+        ],
+    }
+)
+_tariff_gt = (
+    GT(_tariff_df, rowname_col="tariff")
+    .cols_label(fixed_charge="Fixed charge", volumetric_rate="Volumetric rate")
+    .cols_align(align="left", columns=["fixed_charge", "volumetric_rate"])
+    .tab_style(style.text(align="left"), locations=loc.stub())
+    .tab_options(**get_switchbox_gt_tab_options(table_layout="auto"))
+)
+
+display_gt(_tariff_gt)
+```
+
+```{python}
+#| label: tbl-marginal-cost-components
+#| tbl-cap: "Components of the hourly marginal cost signal used in the Bill Alignment Test."
+
+from great_tables import GT
+
+from lib.great_tables import get_switchbox_gt_tab_options
+
+_mc_df = pl.DataFrame(
+    {
+        "component": [
+            "Energy",
+            "Generation capacity",
+            "Bulk transmission",
+            "Sub-TX + distribution",
+            "Ancillary services",
+        ],
+        "what": [
+            "Short-run cost of generation, congestion, and transmission losses in each hour. Contributes to the marginal cost of supply.",
+            "Cost of the next MW of generation to meet demand during scarcity/binding capacity hours. Contributes to the marginal cost of supply.",
+            "Cost of the next MW of regional transmission capacity. Contributes to the marginal cost of delivery.",
+            "Cost of the next MW of local delivery capacity. Contributes to the marginal cost of delivery.",
+            "Cost of two frequency regulation sub-markets: regulation service (energy dispatched by AGC in real time) and regulation capacity (capacity reserved for AGC response). Contributes to the marginal cost of supply.",
+        ],
+        "data_source": [
+            "ISO-NE locational marginal prices (LMP)",
+            "ISO-NE Forward Capacity Market (FCM) auction prices",
+            "Avoided Energy Supply Components (AESC) 2024 study",
+            "Avoided Energy Supply Components (AESC) 2024 study",
+            "ISO-NE regulation clearing prices",
+        ],
+    }
+)
+_mc_gt = (
+    GT(_mc_df, rowname_col="component")
+    .cols_label(what="What it captures", data_source="Data source")
+    .tab_options(**get_switchbox_gt_tab_options(table_layout="auto"))
+)
+
+display_gt(_mc_gt)
+```
+
+```{python}
+#| label: tbl-lidr-plus-tiers
+#| tbl-cap: "Proposed LIDR+ electric discount tiers by household income (Federal Poverty Level), filed in RIE Docket 25-45-GE."
+
+from great_tables import GT
+
+from lib.great_tables import get_switchbox_gt_tab_options
+
+_lidr_df = pl.DataFrame(
+    {
+        "tier": ["Deepest", "Middle", "Smallest"],
+        "household_income": ["≤ 75% FPL", "76–150% FPL", "151–250% FPL"],
+        "electric_discount": ["60%", "30%", "10%"],
+    }
+)
+_lidr_gt = (
+    GT(_lidr_df, rowname_col="tier")
+    .cols_label(household_income="Household income", electric_discount="Electric discount")
+    .tab_options(**get_switchbox_gt_tab_options(table_layout="auto"))
+)
+
+display_gt(_lidr_gt)
 ```
 
 ## Export report variables

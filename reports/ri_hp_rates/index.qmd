@@ -834,28 +834,15 @@ We correct this by computing the mean non-HVAC electricity intensity (kWh/sqft, 
 
 **Electricity.** We use Rhode Island Energy's **A-16** residential electric rate as of 2025. The tariff has two components: a **delivery** portion (a fixed monthly customer charge, other fixed surcharges, and a volumetric rate) and a separate **supply** portion (seasonal volumetric rates reflecting Rhode Island Energy's Last Resort Service filings). Electric tariff data was sourced from Genability's utility rate database and verified against RIE Tariff No. 2095 (delivery) and the Last Resort Service filing (supply).[^cite-tariff-elec]
 
-| Component | Rate |
-|-----------|------|
-| Customer charge | `{python} dollar(v.elec_customer_charge, 2)` /mo |
-| RE Growth + LIHEAP charges | `{python} dollar(v.elec_other_fixed_charges, 2)` /mo |
-| Delivery rate | `{python} f"{v.elec_delivery_avg_cents:.2f}"` ¢/kWh |
-| Supply — winter (Jan–Mar) | `{python} f"{v.elec_lrs_winter_cents:.2f}"` ¢/kWh |
-| Supply — summer (Apr–Sep) | `{python} f"{v.elec_lrs_summer_cents:.2f}"` ¢/kWh |
-| Supply — fall (Oct–Dec) | `{python} f"{v.elec_lrs_fall_cents:.2f}"` ¢/kWh |
-
-[^cite-tariff-elec]: Supply rates validated against RIE's Last Resort Service filing [@rie_LastResortService_2026]. Filed [delivery tariff](https://github.com/switchbox-data/rate-design-platform/blob/main/rate_design/hp_rates/ri/config/tariffs/electric/rie_default.json) and [supply tariff](https://github.com/switchbox-data/rate-design-platform/blob/main/rate_design/hp_rates/ri/config/tariffs/electric/rie_default_supply.json) are committed in the RDP in standard [URDB JSON format](https://switchbox-data.github.io/tariff_fetch/providers/nrel/urdb-json-structure/). Rather than include the A-60 electric tariff we apply LIDR+ discounts after bills are calculated. 
-
+[^cite-tariff-elec]: Supply rates validated against RIE's Last Resort Service filing [@rie_LastResortService_2026]. Filed [delivery tariff](https://github.com/switchbox-data/rate-design-platform/blob/main/rate_design/hp_rates/ri/config/tariffs/electric/rie_default.json) and [supply tariff](https://github.com/switchbox-data/rate-design-platform/blob/main/rate_design/hp_rates/ri/config/tariffs/electric/rie_default_supply.json) are committed in the RDP in standard [URDB JSON format](https://switchbox-data.github.io/tariff_fetch/providers/nrel/urdb-json-structure/). Rather than include the A-60 electric tariff we apply LIDR+ discounts after bills are calculated.
 
 **Natural gas.** Homes that heat with natural gas are assigned Rhode Island Energy's **Rate 12** (Residential Heating) tariff as of 2025. The tariff has two components: a fixed monthly customer charge plus per-therm volumetric charges covering distribution, gas cost recovery, and a LIHEAP enhancement. Homes that use gas but not for space heating are assigned **Rate 10** (Residential Non-Heating), which carries a lower volumetric rate. Natural gas tariff data was sourced from RateAcuity.[^link-tariff-gas]
 
 **Delivered fuels.** For homes that heat with heating oil or propane, we use EIA's monthly residential fuel price series for Rhode Island, applied to each building's modeled annual consumption.[^cite-eia877]
 
-| Tariff | Fixed charge | Volumetric rate |
-|--------|-------------|-----------------|
-| Natural gas — Rate 12 (heating) | `{python} dollar(v.gas_fixed_charge, 2)` /mo | `{python} dollar(v.gas_avg_per_therm, 3)` /therm |
-| Natural gas — Rate 10 (non-heating) | `{python} dollar(v.gas_nonheating_fixed_charge, 2)` /mo | `{python} dollar(v.gas_nonheating_avg_per_therm, 3)` /therm |
-| Heating oil (EIA) | — | $3.48–$4.10 /gal (monthly prices) |
-| Propane (EIA) | — | $3.44–$3.67 /gal (monthly prices) |
+::: {.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#tbl-rie-energy-tariffs >}}
+:::
 
 [^cite-eia877]: EIA Form EIA-877, Petroleum Marketing Monthly — 2024 monthly residential heating oil and propane prices for Rhode Island. Available from the [EIA Petroleum Marketing Monthly](https://www.eia.gov/petroleum/heatingoil/). [@eia_HeatingOilPropanePrices_2024].
 
@@ -955,13 +942,9 @@ But utilities don't only charge customers for costs they are triggering now. The
 
 Our hourly marginal cost signal has five components, each derived from publicly available regulatory and market data:
 
-| Component | What it captures | Data source |
-|-----------|-----------------|-------------|
-| Energy | Short-run cost of generation, congestion, and transmission losses in each hour. Contributes to supply MC. | ISO-NE real-time LMPs for the RI zone (hourly, 2025) |
-| Generation capacity | Cost of keeping the next MW of generation available during scarcity hours. Contributes to supply MC. | ISO-NE FCA clearing prices for the SENE capacity zone (RI + southeastern MA), blended across FCA 15 and FCA 16 for calendar year 2025; peak hours from SENE aggregate load (2025) |
-| Ancillary services | Cost of two frequency regulation services: regulation service and regulation capacity. Contributes to supply MC. | ISO-NE regulation clearing prices for the RI zone (hourly, 2025) |
-| Bulk transmission | Cost of the next MW of regional transmission capacity. Contributes to delivery MC. | AESC 2024 avoided PTF cost ($69/kW-yr); peak hours from all-New-England system load (8 zones summed, 2025) |
-| Sub-TX + distribution | Cost of the next MW of local delivery capacity. Contributes to delivery MC. | AESC 2024 avoided distribution cost ($80.24/kW-yr in 2019$, CPI-adjusted to $101.05/kW-yr in 2025$); peak hours from RIE utility load (EIA hourly demand, 2025) |
+::: {.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#tbl-marginal-cost-components >}}
+:::
 
 
 
@@ -1086,11 +1069,7 @@ where:
 The gap between the utility's total {{< glossary "revenue requirement" >}} and the revenue that marginal cost pricing alone would generate is the {{< glossary residual >}}. For Rhode Island Energy, the delivery residual is `{python} pct(v.delivery_residual_pct)` of total delivery revenue. Only `{python} pct(1 - v.delivery_residual_pct)` of what customers pay for delivery reflects the forward-looking cost of new infrastructure.[^script-rr-pre] The table below shows the full breakdown of delivery charges and revenue during the rate-case test year.
 
 ::::: {.column-body-outset-right}
-```{python}
-#| echo: false
-#| output: asis
-print(Path("cache/rie_rev_req_programs_by_bucket.html").read_text())
-```
+{{< embed notebooks/cost_of_service_by_subclass.qmd#tbl-rie-rev-req-programs >}}
 :::::
 
 
@@ -1184,11 +1163,9 @@ Once the fair rate is calibrated, we compute two additional sets of bill compari
 
 **The proposed redesign: LIDR+.** In November 2025, Rhode Island Energy filed a proposed Low-Income Discount Rate Plus (LIDR+) in its base distribution rate case (Docket 25-45-GE).[^lidr-proposed] LIDR+ applies to electric service only and replaces categorical program enrollment with income-based tiers. Three tiers are defined by household income as a share of the Federal Poverty Level (FPL):
 
-| Tier | Household income | Electric discount |
-|------|-----------------|-------------------|
-| Deepest | ≤ 75% FPL | 60% |
-| Middle | 76–150% FPL | 30% |
-| Smallest | 151–250% FPL | 10% |
+::: {.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#tbl-lidr-plus-tiers >}}
+:::
 
 Gas service remains on the flat LIDR unchanged from the current program.
 

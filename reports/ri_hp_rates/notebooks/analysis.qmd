@@ -42,7 +42,7 @@ from great_tables import GT
 from matplotlib.figure import Figure
 from lib.rdp import fetch_rdp_file
 from lib.plotnine import SB_COLORS, theme_switchbox
-from lib.quarto import display_svg
+from lib.quarto import display_gt, display_svg
 from plotnine import (
     aes,
     annotate,
@@ -4437,6 +4437,142 @@ report_vars["pct_burdened_hp_default_lmi40"] = above_hp_default_lmi40 / 100
 report_vars["pct_burdened_hp_flat_lmi40"] = above_hp_flat_lmi40 / 100
 report_vars["n_resstock_bldgs"] = n_resstock_bldgs
 report_vars["n_rie_customers"] = n_rie_customers
+```
+
+## Great Tables — `index.qmd` embeds
+
+Formatted tables for the report methods appendix. Display via `display_gt()` so they embed safely in manuscript HTML and typeset ICML.
+
+```{python}
+#| label: tbl-rie-energy-tariffs
+#| tbl-cap: "Energy tariffs used for bill calculations (Rhode Island Energy, 2025)."
+
+from great_tables import GT, loc, style
+
+from lib.great_tables import get_switchbox_gt_tab_options
+
+_rv = report_vars
+
+
+def _fmt_dollar(x: float, *, accuracy: int = 0) -> str:
+    return f"${x:,.{accuracy}f}"
+
+
+_tariff_df = pl.DataFrame(
+    {
+        "tariff": [
+            "Electricity — customer charge (A-16)",
+            "Electricity — RE Growth + LIHEAP (A-16)",
+            "Electricity — delivery (A-16)",
+            "Electricity — supply, winter (LRS, Jan–Mar)",
+            "Electricity — supply, summer (LRS, Apr–Sep)",
+            "Electricity — supply, fall (LRS, Oct–Dec)",
+            "Natural gas — Rate 12 (heating)",
+            "Natural gas — Rate 10 (non-heating)",
+            "Heating oil (EIA)",
+            "Propane (EIA)",
+        ],
+        "fixed_charge": [
+            f"{_fmt_dollar(_rv['elec_customer_charge'], accuracy=2)} /mo",
+            f"{_fmt_dollar(_rv['elec_other_fixed_charges'], accuracy=2)} /mo",
+            "—",
+            "—",
+            "—",
+            "—",
+            f"{_fmt_dollar(_rv['gas_fixed_charge'], accuracy=2)} /mo",
+            f"{_fmt_dollar(_rv['gas_nonheating_fixed_charge'], accuracy=2)} /mo",
+            "—",
+            "—",
+        ],
+        "volumetric_rate": [
+            "—",
+            "—",
+            f"{_rv['elec_delivery_avg_cents']:.2f} ¢/kWh",
+            f"{_rv['elec_lrs_winter_cents']:.2f} ¢/kWh",
+            f"{_rv['elec_lrs_summer_cents']:.2f} ¢/kWh",
+            f"{_rv['elec_lrs_fall_cents']:.2f} ¢/kWh",
+            f"{_fmt_dollar(_rv['gas_avg_per_therm'], accuracy=3)} /therm",
+            f"{_fmt_dollar(_rv['gas_nonheating_avg_per_therm'], accuracy=3)} /therm",
+            "$3.48–$4.10 /gal (monthly prices)",
+            "$3.44–$3.67 /gal (monthly prices)",
+        ],
+    }
+)
+_tariff_gt = (
+    GT(_tariff_df, rowname_col="tariff")
+    .cols_label(fixed_charge="Fixed charge", volumetric_rate="Volumetric rate")
+    .cols_align(align="left", columns=["fixed_charge", "volumetric_rate"])
+    .tab_style(style.text(align="left"), locations=loc.stub())
+    .tab_options(**get_switchbox_gt_tab_options(table_layout="auto"))
+)
+
+display_gt(_tariff_gt)
+```
+
+```{python}
+#| label: tbl-marginal-cost-components
+#| tbl-cap: "Components of the hourly marginal cost signal used in the Bill Alignment Test."
+
+from great_tables import GT
+
+from lib.great_tables import get_switchbox_gt_tab_options
+
+_mc_df = pl.DataFrame(
+    {
+        "component": [
+            "Energy",
+            "Generation capacity",
+            "Ancillary services",
+            "Bulk transmission",
+            "Sub-TX + distribution",
+        ],
+        "what": [
+            "Short-run cost of generation, congestion, and transmission losses in each hour. Contributes to the marginal cost of supply.",
+            "Cost of the next MW of generation to meet demand during scarcity/binding capacity hours. Contributes to the marginal cost of supply.",
+            "Cost of two frequency regulation sub-markets: regulation service (energy dispatched by AGC in real time) and regulation capacity (capacity reserved for AGC response). Contributes to the marginal cost of supply.",
+            "Cost of the next MW of regional transmission capacity. Contributes to the marginal cost of delivery.",
+            "Cost of the next MW of local delivery capacity. Contributes to the marginal cost of delivery.",
+        ],
+        "data_source": [
+            "ISO-NE real-time LMPs for the RI zone (hourly, 2025)",
+            "ISO-NE FCA clearing prices for the SENE capacity zone (RI + southeastern MA), blended across FCA 15 and FCA 16 for calendar year 2025; peak hours from SENE aggregate load (2025)",
+            "ISO-NE regulation clearing prices for the RI zone (hourly, 2025)",
+            "AESC 2024 avoided PTF cost ($69/kW-yr); peak hours from all-New-England system load (8 zones summed, 2025)",
+            "AESC 2024 avoided distribution cost ($80.24/kW-yr in 2019$, CPI-adjusted to $101.05/kW-yr in 2025$); peak hours from RIE utility load (EIA hourly demand, 2025)",
+        ],
+    }
+)
+_mc_gt = (
+    GT(_mc_df, rowname_col="component")
+    .cols_label(what="What it captures", data_source="Data source")
+    .tab_options(**get_switchbox_gt_tab_options(table_layout="auto"))
+)
+
+display_gt(_mc_gt)
+```
+
+```{python}
+#| label: tbl-lidr-plus-tiers
+#| tbl-cap: "Proposed LIDR+ electric discount tiers by household income (Federal Poverty Level), filed in RIE Docket 25-45-GE."
+
+from great_tables import GT
+
+from lib.great_tables import get_switchbox_gt_tab_options
+
+_lidr_df = pl.DataFrame(
+    {
+        "tier": ["Deepest", "Middle", "Smallest"],
+        "household_income": ["≤ 75% FPL", "76–150% FPL", "151–250% FPL"],
+        "electric_discount": ["60%", "30%", "10%"],
+    }
+)
+_lidr_gt = (
+    GT(_lidr_df, rowname_col="tier")
+    .cols_label(household_income="Household income", electric_discount="Electric discount")
+    .tab_options(**get_switchbox_gt_tab_options(table_layout="auto"))
+)
+
+display_gt(_lidr_gt)
 ```
 
 ## Export report variables

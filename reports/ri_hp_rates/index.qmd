@@ -802,11 +802,27 @@ The load data (fuel consumption and end-use electricity, gas, oil, propane) from
 
 **Load curve adjustments.** We apply two corrections to ResStock load curves before running the bill analysis.
 
-**Multifamily non-HVAC electricity correction.** An analysis comparing ResStock residential loads to EIA-861 electricity comparisons across New York and Rhode Island utilities revealed a systematic pattern. Utilities with a higher share of multifamily buildings showed larger discrepancy between EIA reported residential electric sales and the sum of the load curves in Resstock, scaled to match the utilities' customer count. 
+**Multifamily non-HVAC electricity correction.** We compared ResStock's weighted residential electricity totals to EIA-861 residential sales for each electric utility across New York and Rhode Island. The comparison revealed a systematic bias: **ResStock overstated electricity consumption, and the overstatement grew with the utility's share of multifamily buildings.** For Con Edison (81% multifamily), the gap was +29%; for RIE (41% multifamily), +8%. Utilities with mostly single-family housing showed little or no bias.
 
-We traced the discrepancy to non-HVAC end uses (plug loads, lighting, appliances, and miscellaneous loads). Multifamily buildings in ResStock had non-HVAC electricity intensity (kWh per square foot) roughly 1.5--2.0 times higher than single-family buildings, while HVAC intensity was actually about 40% lower for multifamily. This is directionally sensible since multifamily buildings have less exposed exterior surface area per dwelling unit.
+::: {.column-margin}
 
-We correct this by computing the mean non-HVAC electricity intensity (kWh/sqft, among buildings with non-zero consumption) for single-family and multifamily buildings separately, then dividing each multifamily building's non-HVAC end-use consumption by the multifamily-to-single-family ratio for that end use. Each end use gets its own ratio. **HVAC loads are left unchanged.** The same scaling factors are applied to both annual totals and hourly load curves, preserving each building's hourly shape while reducing the non-HVAC magnitude. This adjustment affects 780 of 1,910 RI buildings (all multifamily). Post-adjustment, weighted ResStock electricity totals are within 6% of EIA-861 residential sales for RIE.[^mf-adjustment]
+| Utility | State | % MF | Before | After |
+|---------|-------|-----:|-------:|------:|
+| rie     | RI    | 41%  |  +8%   |  −1%  |
+| psegli  | NY    | 19%  |  −4%   |  −6%  |
+| nyseg   | NY    | 22%  |  +1%   |  −2%  |
+| cenhud  | NY    | 26%  | +10%   |  +6%  |
+| rge     | NY    | 29%  | +12%   |  +7%  |
+| nimo    | NY    | 30%  |  +9%   |  +4%  |
+| or      | NY    | 30%  |  +2%   |  −3%  |
+| coned   | NY    | 81%  | +29%   |  +8%  |
+
+: ResStock − EIA % difference, before and after multifamily non-HVAC correction. The adjustment is a portfolio-level correction targeting the dominant source of bias. It dramatically improves the worst cases — Con Edison drops from +29% to +8%, RIE from +8% to −1% — while modestly worsening a few low-multifamily utilities that were already near the benchmark. The maximum absolute error across all eight utilities falls from 29% to 8%. {.sm}
+:::
+
+We traced the source to **non-HVAC end uses** — plug loads, lighting, appliances, and miscellaneous loads. In ResStock, multifamily buildings had non-HVAC electricity intensity (kWh per square foot) roughly 1.5–2.0× higher than single-family buildings. That is the problem: ResStock's simulated appliance and plug loads for multifamily units were implausibly high relative to single-family homes, and since multifamily buildings make up a large share of some utilities' housing stock, the overstatement propagated to utility-level totals. HVAC intensity, by contrast, was roughly half that of single-family buildings — directionally sensible, since multifamily buildings have less exposed exterior surface area per dwelling unit.
+
+We correct this by computing the mean non-HVAC electricity intensity (kWh/sqft, among buildings with non-zero consumption) for single-family and multifamily buildings separately, then dividing each multifamily building's non-HVAC end-use consumption by the multifamily-to-single-family ratio for that end use. Each end use gets its own ratio. **HVAC loads are left unchanged.** The same scaling factors are applied to both annual totals and hourly load curves, preserving each building's hourly shape while reducing the non-HVAC magnitude. This adjustment affects 780 of 1,910 RI buildings (all multifamily). Post-adjustment, weighted ResStock electricity totals are within 1% of EIA-861 residential sales for RIE.[^mf-adjustment]
 
 **Non-HP multifamily HVAC approximation (upgrade 2 only).** ResStock's upgrade 2 scenario converts most buildings to heat pumps, but a subset of large multifamily buildings (primarily 5+ unit, 8+ story) are left unconverted, their upgrade 2 load curves are identical to upgrade 0. To ensure these buildings are represented as HP customers in the upgrade 2 analysis, we approximate their HP load profiles using a $k$-nearest-neighbor method: for each unconverted multifamily building, we find the 15 buildings at the same weather station whose heating load curves are closest by root mean squared error (RMSE), then replace the target building's HVAC electricity, natural gas, fuel oil, and propane columns with the average of those neighbors' profiles. Metadata is updated to mark these buildings as heat pump customers. This affects 27 buildings in RI (26 large multifamily, 1 small multifamily).[^approx-hp]
 
@@ -910,7 +926,7 @@ where:
 - $R$ — total residual (`$`/yr); the gap between the revenue requirement and total marginal cost revenue
 - $f(i, R)$ — customer $i$'s allocated share of the residual (`$`/yr)
 
-The {{< glossary "marginal cost" >}} (or {{< glossary "economic burden" >}}) captures the incremental cost that a customer's hourly load pattern _causes_ the system to incur. [^econ_burden_ex] The cost of service reflects present and short-term future costs but utilities also have long-run historical costs for existing infrastructure. The {{< glossary residual >}} captures everything else in the utility's {{< glossary "revenue requirement" >}} that marginal cost pricing does not recover — sunk costs such as carrying charges on past capital investments, O&M on existing assets, and the regulated return on the rate base.
+The {{< glossary "marginal cost" >}} (or {{< glossary "economic burden" >}}) captures the incremental cost that a customer's hourly load pattern _causes_ the system to incur. [^econ_burden_ex] The cost of service reflects present and short-term future costs but utilities also have long-run historical costs for existing infrastructure. The {{< glossary residual >}} captures everything else in the utility's {{< glossary "revenue requirement" >}} that marginal cost pricing does not recover — sunk costs such as carrying charges on past capital investments, O&M on existing assets, and the regulated return on the rate base. See @sec-methods-residual for more details.
 
 [^econ_burden_ex]:A home that uses 10 kWh during a summer peak hour when the marginal cost is $0.25/kWh contributes $2.50 to its economic burden in that hour. A home that uses the same 10 kWh at 2 a.m. when marginal cost is $0.03/kWh contributes only $0.30. Repeat that calculation for every hour of the year — multiplying each hour's consumption by that hour's marginal cost — and sum the results: that total is the customer's annual economic burden.
 
@@ -922,21 +938,22 @@ Our hourly marginal cost signal has five components, each derived from publicly 
 
 | Component | What it captures | Data source |
 |-----------|-----------------|-------------|
-| Energy | Short-run cost of generation, congestion, and transmission losses in each hour. Contributes to the marginal cost of supply. | ISO-NE locational marginal prices (LMP) |
-| Generation capacity | Cost of the next MW of generation to meet demand during scarcity/binding capacity hours. Contributes to the marginal cost of supply. | ISO-NE Forward Capacity Market (FCM) auction prices |
-| Bulk transmission | Cost of the next MW of regional transmission capacity. Contributes to the marginal cost of delivery. | Avoided Energy Supply Components (AESC) 2024 study |
-| Sub-TX + distribution | Cost of the next MW of local delivery capacity. Contributes to the marginal cost of delivery. | Avoided Energy Supply Components (AESC) 2024 study |
-| Ancillary services | Cost of two frequency regulation sub-markets: regulation service (energy dispatched by AGC in real time) and regulation capacity (capacity reserved for AGC response). Contributes to the marginal cost of supply. | ISO-NE regulation clearing prices |
+| Energy | Short-run cost of generation, congestion, and transmission losses in each hour. Contributes to supply MC. | ISO-NE real-time LMPs for the RI zone (hourly, 2025) |
+| Generation capacity | Cost of keeping the next MW of generation available during scarcity hours. Contributes to supply MC. | ISO-NE FCA clearing prices for the SENE capacity zone (RI + southeastern MA), blended across FCA 15 and FCA 16 for calendar year 2025; peak hours from SENE aggregate load (2025) |
+| Ancillary services | Cost of two frequency regulation services: regulation service and regulation capacity. Contributes to supply MC. | ISO-NE regulation clearing prices for the RI zone (hourly, 2025) |
+| Bulk transmission | Cost of the next MW of regional transmission capacity. Contributes to delivery MC. | AESC 2024 avoided PTF cost ($69/kW-yr); peak hours from all-New-England system load (8 zones summed, 2025) |
+| Sub-TX + distribution | Cost of the next MW of local delivery capacity. Contributes to delivery MC. | AESC 2024 avoided distribution cost ($80.24/kW-yr in 2019$, CPI-adjusted to $101.05/kW-yr in 2025$); peak hours from RIE utility load (EIA hourly demand, 2025) |
 
 
 
-#### How marginal costs are assigned to individual customers
 
-Each component produces a separate 8,760-hour signal. The signals differ in which hours carry non-zero costs. The capacity and transmission components use **exceedance weighting** to concentrate costs in peak hours. Throughout, we use the top $N = 100$ hours. Both exceedance weighting and the probability-of-peak method (used below for distribution) serve as proxies for the probability that a given hour is a capacity-binding peak, differing only in how sharply they concentrate costs.
+#### How marginal costs are allocated throughout the year
+
+In order to calculate the marginal cost for each customer, we need to know the total system marginal cost for each hour of the year. Each component produces a separate 8,760-hour signal. The signals differ in which hours carry non-zero costs. The capacity and transmission components use **exceedance weighting** to concentrate costs in peak hours. Throughout, we use the top $N = 100$ hours. Both exceedance weighting and the probability-of-peak method (used below for distribution) serve as proxies for the probability that a given hour is a capacity-binding peak, differing only in how sharply they concentrate costs.
 
 Given the top $N$ hours by load, each hour's exceedance and weight are:
 
-$$e_h = \max(L_h - T,\ 0), \qquad w_h = \frac{e_h}{\displaystyle\sum_{h'} e_{h'}}$$
+$$e_h = \max(L_h - T,\ 0), \qquad w_h = \frac{e_h}{\displaystyle\sum_{h'} e_{h'}}$$ {#eq-exceedance}
 
 where:
 
@@ -945,7 +962,7 @@ where:
 - $e_h$ — exceedance of hour $h$ above the threshold (zero for hours outside the top $N$)
 - $w_h$ — normalized weight assigned to hour $h$ (zero outside the top $N$)
 
-This pattern recurs below for generation capacity and bulk transmission, each applied to a different load profile and annual cost.
+This formula is used for generation capacity and bulk transmission, each applied to a different load profile and annual cost.
 
 **Energy.** Every hour receives a non-zero value equal to the ISO-NE real-time locational marginal price for Rhode Island Energy's zone:[^cite-lmp]
 
@@ -964,14 +981,27 @@ $$MC^{\text{gen\,cap}}_h = w_h \times C_{\text{FCA}}$$
 
 where:
 
-- $w_h$ — exceedance weight from the formula above
-- $L_h = L^{\text{SENE}}_h$ — aggregate load for the Southern New England (RI + southeastern MA) capacity zone
+- $w_h$ — exceedance weight (@eq-exceedance), computed from aggregate load in the Southern New England (RI + southeastern MA) capacity zone
 - $C_{\text{FCA}}$ — annualized FCM clearing price ($/kW-yr), blended across the two overlapping auction periods covering the calendar year
 
 The result is exactly 100 non-zero hours per year, concentrated in the hours when the regional grid is under the most stress.
 
 
 [^cite-fcm]: Forward capacity auction clearing price $P_m$ from @isone_ForwardCapacityAuction_2024; system hourly loads used to identify peak hours from @isone_CeltReport_2025. Hourly capacity MC signals are built by the RDP's [supply capacity MC generator](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/marginal_costs/generate_supply_capacity_mc.py).
+
+**Ancillary services.** ISO-NE procures frequency regulation through a real-time market that clears every five minutes. We aggregate the regulation service clearing price and regulation capacity clearing price to hourly resolution: [^cite-ancillary]
+
+$$MC^{\text{anc}}_h = P^{\text{reg\,svc}}_h + P^{\text{reg\,cap}}_h$$
+
+where:
+
+- $P^{\text{reg\,svc}}_h$ — ISO-NE regulation service clearing price in hour $h$ ($/MWh)
+- $P^{\text{reg\,cap}}_h$ — ISO-NE regulation capacity clearing price in hour $h$ ($/MWh)
+
+[^cite-ancillary]: Hourly regulation service and regulation capacity clearing prices from the ISO-NE Web Services API [@iso-ne_RegulationClearingPrices_2025], summed to produce an ancillary cost signal ($/MWh). Hourly ancillary MC signals are built by the RDP's [supply ancillary MC generator](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/marginal_costs/generate_supply_ancillary_mc.py).
+
+
+Ancillary costs are non-zero in every hour. They represent the continuous cost of maintaining grid frequency balance.
 
 
 **Bulk transmission.** The AESC 2024 study provides the avoided Pool Transmission Facility (PTF) cost $C_{\text{PTF}}$ ($/kW-yr). We allocate it to the top $N = 100$ hours by all-New-England system load (the sum of all eight ISO-NE load zones) using exceedance weights: [^cite-aesc]
@@ -980,8 +1010,7 @@ $$MC^{\text{bulk\,tx}}_h = w_h \times C_{\text{PTF}}$$
 
 where:
 
-- $w_h$ — exceedance weight from the formula above
-- $L_h = L^{\text{NE}}_h$ — aggregate all-New-England system load (sum of all eight ISO-NE load zones)
+- $w_h$ — exceedance weight (@eq-exceedance), computed from aggregate all-New-England system load (sum of all eight ISO-NE load zones)
 - $C_{\text{PTF}}$ — avoided Pool Transmission Facility cost ($/kW-yr) from the AESC 2024 study
 
 Non-zero hours are concentrated around the annual system peak, currently summer-dominated for ISO-NE.
@@ -998,22 +1027,8 @@ where:
 - $L_h$ — RIE's hourly system load in hour $h$ (from EIA Form 930)
 - $\overline{MC}^{\text{dist}}$ — avoided distribution capacity cost ($/kW-yr) from the AESC 2024 study
 
-[^cite-mcos]: Sub-transmission and distribution marginal cost drawn from the AESC 2024 avoided distribution capacity cost (@synapse_AvoidedEnergySupply_2024). The $/kW-yr input value is [committed in the RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/rate_design/hp_rates/ri/config/marginal_costs/ri_marginal_costs_2025.csv); the hourly PoP allocation is performed by the RDP's [utility TX/DX MC generator](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/marginal_costs/generate_utility_tx_dx_mc.py).
+[^cite-mcos]: Sub-transmission and distribution marginal cost drawn from the AESC 2024 avoided distribution capacity cost [@synapse_AvoidedEnergySupply_2024]. The AESC value of $80.24/kW-yr (2019 dollars) is adjusted to 2025 dollars using the CPI-U All Items index [@fred_ConsumerPriceIndexAll_2025], yielding $101.05/kW-yr. The $/kW-yr input value is [committed in the RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/rate_design/hp_rates/ri/config/marginal_costs/ri_marginal_costs_2025.csv); the hourly PoP allocation is performed by the RDP's [utility TX/DX MC generator](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/marginal_costs/generate_utility_tx_dx_mc.py).
 
-
-**Ancillary services.** ISO-NE procures frequency regulation through a real-time market that clears every five minutes. We aggregate the regulation service clearing price and regulation capacity clearing price to hourly resolution: [^cite-ancillary]
-
-$$MC^{\text{anc}}_h = P^{\text{reg\,svc}}_h + P^{\text{reg\,cap}}_h$$
-
-where:
-
-- $P^{\text{reg\,svc}}_h$ — ISO-NE regulation service clearing price in hour $h$ ($/MWh)
-- $P^{\text{reg\,cap}}_h$ — ISO-NE regulation capacity clearing price in hour $h$ ($/MWh)
-
-[^cite-ancillary]: Hourly regulation service and regulation capacity clearing prices from the ISO-NE Web Services API [@iso-ne_RegulationClearingPrices_2025], summed to produce an ancillary cost signal ($/MWh). Hourly ancillary MC signals are built by the RDP's [supply ancillary MC generator](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/marginal_costs/generate_supply_ancillary_mc.py).
-
-
-Unlike the capacity components, ancillary costs are non-zero in every hour. They represent the continuous cost of maintaining grid frequency balance.
 
 ---
 
@@ -1031,11 +1046,17 @@ Each customer's {{< glossary "economic burden" >}} is computed by multiplying th
 
 $$EB_i = \sum_{h=1}^{8760} L_{i,h} \times MC_h$$
 
-Customers who consume more electricity during peak hours, the hours when capacity costs are non-zero, bear a larger economic burden than customers whose load is concentrated in off-peak hours.
+where:
+
+- $EB_i$ — customer $i$'s annual economic burden (`$`/yr)
+- $L_{i,h}$ — customer $i$'s electricity load in hour $h$ (kWh)
+- $MC_h$ — system marginal cost in hour $h$ (`$/kWh`), the sum of all five components above
+
+Customers who consume more electricity during peak hours — the hours when energy or capacity costs are non-zero — bear a larger economic burden than customers whose load is concentrated in off-peak hours.
 
 [^cite-eia930]: RIE system load from the EIA Hourly Electric Grid Monitor (Form 930) [@eia_HourlyElectricGridMonitor_2025] — hourly demand by balancing authority, used to identify the top 100 peak hours for allocating sub-transmission and distribution marginal costs.
 
-#### Why there is a residual
+#### Why there is a residual {#sec-methods-residual}
 
 ::: {.column-margin}
 {{< glossary-def residual >}}
@@ -1045,9 +1066,11 @@ Customers who consume more electricity during peak hours, the hours when capacit
 {{< glossary-def "revenue requirement" >}}
 :::
 
-Marginal costs capture only the forward-looking incremental cost of new infrastructure — the specific projects in the utility's current capital plan and the next MW of generation and transmission capacity. In rate design, this is typically called the long-run marginal cost (LRMC): the cost of serving an additional unit of demand when the infrastructure stock can be fully adjusted over time. The capital plan serves as a practical proxy for LRMC; it captures near-term investment needs but may not fully reflect long-run equilibrium costs. Marginal costs do not capture the embedded cost of existing infrastructure: carrying charges on past investments, operations and maintenance on sunk assets, regulatory return on the rate base, or customer-related costs. These are real costs that the utility must recover, but they are not caused by any individual customer's current consumption decisions.
+When a utility builds a new substation, transformer, or power line, the cost of that investment gets spread over its useful life and added to the revenue requirement. Marginal cost pricing captures only the _new_ investment that an additional kilowatt of demand would trigger — specifically, the first year's depreciation on the infrastructure called into existence by that load. We call this **marginal capacity** to distinguish it from the short-run energy and ancillary costs already defined above. In practice, we measure this long-run marginal capacity cost (LRMC) using the **First-Year Levelized Investment Cost (FLIC)** approach: the near-term projects in the utility's capital plan serve as a proxy for what it costs to expand the system at the margin. Interpreted this way, the total marginal cost signal roughly represents the _newest tranche_ of capital on the revenue requirement — the costs that marginal load is currently triggering. (FLIC is not the only way to estimate LRMC; replacement cost and avoided cost methods are alternatives, but FLIC is grounded in actual planned investment.)
 
-The gap between the utility's total {{< glossary "revenue requirement" >}} and the revenue that marginal cost pricing generates is the {{< glossary residual >}}. For Rhode Island Energy, the delivery residual is `{python} pct(v.delivery_residual_pct)` of total delivery revenue. Only `{python} pct(1 - v.delivery_residual_pct)` of what customers pay for delivery reflects the forward-looking cost of new infrastructure.[^script-rr-pre] The table below shows the full breakdown of delivery charges and revenue during the rate-case test year.
+But utilities don't only charge customers for costs they are triggering now. They also need to recover the cost of everything already built: carrying charges on past capital investments, operations and maintenance on sunk assets, the regulated return on the rate base, and customer-related administrative costs. These are real costs that customers must pay, but they were caused by past consumption decisions — not by any individual customer's choices today.
+
+The gap between the utility's total {{< glossary "revenue requirement" >}} and the revenue that marginal cost pricing alone would generate is the {{< glossary residual >}}. For Rhode Island Energy, the delivery residual is `{python} pct(v.delivery_residual_pct)` of total delivery revenue. Only `{python} pct(1 - v.delivery_residual_pct)` of what customers pay for delivery reflects the forward-looking cost of new infrastructure.[^script-rr-pre] The table below shows the full breakdown of delivery charges and revenue during the rate-case test year.
 
 ::::: {.column-body-outset-right}
 ```{python}
@@ -1088,14 +1111,26 @@ Under EPMC, the BAT reveals how the current delivery rate redistributes costs be
 
 ### How we designed the proposed fair rate {#sec-methods-fair-rate}
 
+The cross-subsidy analysis (@sec-methods-bat) identifies the problem: under today's flat delivery rates, heat pump customers systematically overpay for delivery. The fair rate is designed to eliminate this overpayment. The process has two steps: **first**, allocate costs to the HP subclass to determine its {{< glossary "revenue requirement" >}}; **then**, design a rate that recovers that amount.
 
-The cross-subsidy analysis (@sec-methods-bat) identifies the problem: under today's flat delivery rates, heat pump customers systematically overpay for delivery. The fair rate is designed to eliminate this overpayment.
+#### Step 1: Cost allocation
 
-#### The HP flat delivery rate
+Under {{< glossary EPMC >}}, each subclass's share of the total delivery {{< glossary "revenue requirement" >}} is proportional to its share of total system {{< glossary "economic burden" >}}. The HP subclass revenue requirement is:
 
-The proposed rate is a **flat volumetric delivery rate for heat pump customers**, set lower than the current default rate. It is calibrated so that HP customers' total delivery revenue equals their {{< glossary "cost of service" >}} on a subclass basis, eliminating cross-subsidy for the HP subclass. Rhode Island Energy gets a single HP delivery rate reflecting its territory's cost structure.
+$$RR_{\text{HP}} = K \times EB_{\text{HP}} = \frac{TRR}{EB_{\text{total}}} \times EB_{\text{HP}}$$
 
-The calibration works as follows. Under {{< glossary EPMC >}}, the HP subclass's cost of service is its {{< glossary "economic burden" >}} scaled by the EPMC factor $K$ defined above. The HP flat rate is the volumetric charge that recovers exactly this cost of service from the HP subclass's total consumption:
+where:
+
+- $TRR$ — total delivery revenue requirement
+- $EB_{\text{HP}}$ — sum of economic burdens for all HP customers ($\sum_{i \in \text{HP}} EB_i$)
+- $EB_{\text{total}}$ — sum of economic burdens for all customers ($\sum_{i \in \mathcal{C}} EB_i$)
+- $K = TRR / EB_{\text{total}}$ — the EPMC scaling factor (defined in @sec-methods-bat)
+
+This is the HP subclass's fair share of total delivery costs. The same formula applies to the non-HP subclass, and $RR_{\text{HP}} + RR_{\text{non-HP}} = TRR$ by construction.
+
+#### Step 2: Rate design
+
+Given the HP subclass's revenue requirement, many rate structures could recover it — a flat volumetric rate, a time-of-use rate, a demand charge, or some combination. We use the simplest: a **flat volumetric delivery rate for heat pump customers**, set lower than the current default rate. Rhode Island Energy gets a single HP delivery rate reflecting its territory's cost structure.
 
 $$r_{\text{HP}} = \frac{RR_{\text{HP}} - FC_{\text{HP}}}{Q_{\text{HP}}}$$
 
@@ -1105,7 +1140,7 @@ where:
 - $FC_{\text{HP}}$ — fixed-charge revenue already collected from HP customers
 - $Q_{\text{HP}}$ — total HP kWh delivered
 
-By construction, this rate collects exactly the HP subclass's allocated cost of service.[^script-fair-rate] Non-HP customers remain on a slightly recalibrated default rate that absorbs the revenue previously cross-subsidized by HP customers.
+By construction, this rate collects exactly the HP subclass's allocated {{< glossary "cost of service" >}}.[^script-fair-rate] Non-HP customers remain on a slightly recalibrated default rate that absorbs the revenue previously cross-subsidized by HP customers.
 
 [^script-fair-rate]: The fair flat delivery rate is derived by the RDP's [subclass revenue-requirement allocator](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/mid/compute_subclass_rr.py).
 

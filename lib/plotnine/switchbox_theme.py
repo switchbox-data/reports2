@@ -25,6 +25,7 @@ Usage::
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any, Literal
 
@@ -34,6 +35,12 @@ from plotnine import element_blank, element_line, element_rect, element_text, th
 from plotnine.themes.theme_minimal import theme_minimal
 
 type _MarginKey = Literal["t", "b", "l", "r", "unit"]
+
+
+def _render_as_raster() -> bool:
+    """True when targeting DOCX/ICML (non-HTML) output."""
+    return os.environ.get("SWITCHBOX_GT_AS_IMAGE") == "1" or os.environ.get("SWITCHBOX_TYPESET") == "1"
+
 
 _FONT_DIR = Path(__file__).resolve().parent.parent.parent / "reports" / ".style" / "fonts"
 _FONT_IBM_PLEX = "IBM Plex Sans"
@@ -104,9 +111,13 @@ class theme_switchbox(theme_minimal):
     ====  ====================  ==============================================
     """
 
+    _RASTER_DPI = 300
+
     def __init__(self, base_size: int = 11):
         _register_fonts()
         super().__init__(base_size=base_size, base_family=_FONT_IBM_PLEX)
+        if _render_as_raster():
+            self += theme(dpi=self._RASTER_DPI)
         margin_title: dict[_MarginKey, Any] = {"b": 8, "unit": "pt"}
         margin_x: dict[_MarginKey, Any] = {"t": 8, "unit": "pt"}
         margin_y: dict[_MarginKey, Any] = {"r": 8, "unit": "pt"}

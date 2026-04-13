@@ -62,11 +62,26 @@ RUN /tmp/install-feature.sh "ghcr.io/rocker-org/devcontainer-features/quarto-cli
     version=1.8.26 \
     installChromium=true
 
-# Install additional apt packages (needed by quarto)
+# Install additional apt packages (needed by quarto and icml_math filter)
 # python3-tk: Required for matplotlib to work with quarto
 # chromium-browser: Shared library dependencies for Chromium, required for Mermaid diagrams in quarto (must be combined with installChromium=true above)
+# ghostscript: Required by dvisvgm for PostScript special processing (LaTeX math → SVG)
 RUN /tmp/install-feature.sh "ghcr.io/rocker-org/devcontainer-features/apt-packages:1" \
-    packages="python3-tk, chromium-browser"
+    packages="python3-tk, chromium-browser, ghostscript"
+
+# Install TinyTeX for LaTeX math rendering in ICML output (just typeset)
+# The icml_math Lua filter calls latex + dvisvgm to pre-render math to SVG.
+# dvisvgm is not included in TinyTeX by default and must be installed separately.
+RUN quarto install tinytex --no-prompt && \
+    /root/.TinyTeX/bin/*/tlmgr install dvisvgm standalone mathtools amsfonts && \
+    ln -sf /root/.TinyTeX/bin/x86_64-linux/latex /usr/local/bin/latex && \
+    ln -sf /root/.TinyTeX/bin/x86_64-linux/dvisvgm /usr/local/bin/dvisvgm
+
+# Install yamlfmt (YAML formatter, used by pre-commit hooks)
+# Precompiled binary from GitHub releases — no Go toolchain needed.
+ARG YAMLFMT_VERSION=0.21.0
+RUN curl -fsSL "https://github.com/google/yamlfmt/releases/download/v${YAMLFMT_VERSION}/yamlfmt_${YAMLFMT_VERSION}_Linux_x86_64.tar.gz" \
+    | tar -xz -C /usr/local/bin yamlfmt
 
 # Install zsh with plugins and custom plugin repositories
 # The zsh feature installs oh-my-zsh for root user and enables plugins in .zshrc.

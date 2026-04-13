@@ -182,50 +182,48 @@ In `index.qmd`, embed it:
 
 Use `:::{.column-page-inset-right}` or `:::{.column-page-inset}` for full-width layout (the standard for all charts).
 
-### Great Tables (GT) in manuscript projects — critical workaround
+### Great Tables (GT) in manuscript projects
 
-**Never use `{{< embed >}}` to include Great Tables output in `index.qmd`.** Quarto's manuscript mode truncates `text/html` MIME outputs from Python notebook cells to just `\n\n</div>`. This rogue `</div>` gets injected into `index.html`, prematurely closes a parent container, and cascades — breaking the page structure and pushing all subsequent content into or after the appendix.
+Quarto's manuscript mode truncates raw `text/html` MIME outputs during the Pandoc `--to ipynb` conversion, so GT tables displayed normally would be reduced to a stray `</div>`. Use **`lib.quarto.display_gt`** to base64-encode the HTML so it survives the embed pipeline:
 
-The workaround is file-based inclusion:
-
-1. In `analysis.qmd`, save the GT HTML to a cache file and also display it (for notebook preview):
+1. In `analysis.qmd`, use `display_gt` instead of displaying the GT object directly:
 
 ```python
-from pathlib import Path
-Path("../cache").mkdir(exist_ok=True)
+from lib.quarto import display_gt
 
 _my_gt = GT(df).fmt_currency(...)
-Path("../cache/my_table.html").write_text(_my_gt.as_raw_html())
-_my_gt
+display_gt(_my_gt)
 ```
 
-2. In `index.qmd`, include the cached HTML via an R code block:
+Give the cell `#| label: tbl-my-table` and `#| tbl-cap: "..."`.
+
+2. In `index.qmd`, embed normally:
 
 ```markdown
 :::{.column-page-inset-right}
-`{r}
-#| echo: false
-htmltools::includeHTML("cache/my_table.html")`
+{{< embed notebooks/analysis.qmd#tbl-my-table >}}
 :::
 ```
 
-This applies to **every** GT table that needs to appear in `index.qmd`. Plotnine figures (`fig-` labels) produce a single image MIME type and embed safely.
+Captions, cross-references (`@tbl-my-table`), and column classes all work. The decoded HTML includes GT's scoped `<style>` block, so all formatting is preserved. The table participates in the host page's CSS cascade (Switchbox fonts, colors).
+
+Plotnine figures (`fig-` labels) produce a single image MIME type and embed safely without a helper.
 
 ### Raw matplotlib and `{{< embed >}}`
 
 **Prefer plotnine** for Python visualization. Use raw matplotlib only when plotnine cannot express what you need.
 
-If the chart is shown in `index.qmd` via `{{< embed notebooks/analysis.qmd#fig-… >}}`, a notebook cell that **displays** a raw matplotlib `Figure` (cell ends with `fig` or `plt.show()`) breaks the Manuscript render (multi-MIME output). **Always** finish the figure cell with **one** SVG output using `lib.quarto.display_svg`, then `index.qmd` can embed it like any other labeled figure. Full rationale: `context/tools/quarto_manuscript_embed_bug.md`.
+If the chart is shown in `index.qmd` via `{{< embed notebooks/analysis.qmd#fig-… >}}`, a notebook cell that **displays** a raw matplotlib `Figure` (cell ends with `fig` or `plt.show()`) breaks the Manuscript render (multi-MIME output). **Always** finish the figure cell with `lib.quarto.display_figure` (or its alias `display_svg`), then `index.qmd` can embed it like any other labeled figure. Full rationale: `context/code/quarto_manuscript_embed_bug.md`.
 
 ```python
-from lib.quarto import display_svg
+from lib.quarto import display_figure  # or display_svg (alias)
 
 fig = my_plotnine_plot.draw()
 # ... any matplotlib post-processing (colored titles, axis cleanup, etc.) ...
-display_svg(fig)
+display_figure(fig)
 ```
 
-`display_svg` saves the figure as SVG, closes it to free memory, and displays it via `IPython.display.SVG` — producing a single `image/svg+xml` MIME type that embeds safely. **Always use this helper** instead of inlining the `savefig`/`plt.close`/`display(SVG(...))` three-liner.
+`display_figure` is format-aware: it emits SVG for HTML output and high-res PNG (300 DPI) for DOCX/ICML, so charts are sharp in all output formats. It closes the figure to free memory. **Always use this helper** instead of inlining the `savefig`/`plt.close`/`display(SVG(...))` three-liner.
 
 Use `#| label: fig-my-chart` and `#| fig-cap: "..."` on that chunk. Still `from lib.plotnine import theme_switchbox` if you want matplotlib's SVG text-as-text settings; keep colors aligned with `SB_COLORS` when practical.
 
@@ -484,7 +482,7 @@ These phrases recur across the corpus and represent Switchbox's analytical vocab
 - Do not hardcode any number in narrative text. All computed values must come from inline R code pulling from the analysis.
 - Do not put analysis code in `index.qmd` (beyond loading `.RData` and sourcing themes).
 - Do not put narrative prose in `analysis.qmd`.
-- Do not use `{{< embed >}}` for Great Tables (GT) output — it will break the page. Use the file-based `htmltools::includeHTML()` workaround (see "Great Tables in manuscript projects" above).
+- Do not display GT tables directly in cells intended for `{{< embed >}}` — use `display_gt()` from `lib.quarto` (see "Great Tables in manuscript projects" above).
 
 ## Analysis notebook conventions
 
@@ -768,7 +766,7 @@ Group figures by the story they tell, not by chart type. Use markdown headers an
 - Do not put narrative conclusions in the analysis notebook. State what the _code_ is doing and what the _data_ shows; save the policy interpretation for `index.qmd`.
 - Do not hardcode file paths that only work in one environment. Use relative paths or environment variables.
 - Do not skip the report variables section. If `index.qmd` uses computed values, they must be exported from `analysis.qmd`.
-- Do not create a GT table cell intended for embedding in `index.qmd` without using the file-based workaround. Every GT cell whose output appears in `index.qmd` must save its HTML to `cache/` via `as_raw_html()` and be included via `htmltools::includeHTML()` — never via `{{< embed >}}`. See "Great Tables in manuscript projects" in the report architecture section.
+- Do not display GT tables directly in cells intended for `{{< embed >}}` — always use `display_gt()` from `lib.quarto`. See "Great Tables in manuscript projects" in the report architecture section.
 
 ## Shared resources and branding
 
@@ -848,18 +846,18 @@ R libraries under `lib/` are sourced the traditional way (e.g. `source("lib/ggpl
 
 #### Python modules
 
-| Module                             | When to use                                                                                                                                                                                            |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `lib.rdp`                          | Fetching files from the `rate-design-platform` GitHub repo (tariff maps, configs). Also has `parse_urdb_json` for URDB tariff JSON.                                                                    |
-| `lib.cairo`                        | CAIRO post-processing: `add_delivered_fuel_bills` tops up combined bills with oil/propane costs from monthly consumption x EIA prices.                                                                 |
-| `lib.data.s3`                      | S3 directory listing (`list_s3_subdirs`) and run directory resolution (`run_dir`) for navigating CAIRO output paths.                                                                                   |
-| `lib.data.gsheets`                 | Google Sheets client with cached OAuth (`get_gspread_client`); uses G_* env vars and caches token to avoid browser on every run.                                                                       |
-| `lib.data.eia.heating_fuel_prices` | Load monthly residential oil + propane prices from EIA data on S3 (`load_monthly_fuel_prices`).                                                                                                        |
-| `lib.data.nrel.resstock`           | Load ResStock load curves for a specific utility (`scan_load_curves_for_utility`), reading metadata to construct per-building paths.                                                                   |
-| `lib.eia`                          | Standalone EIA fetch scripts (petroleum prices, state heating profiles). Use `lib.data.eia` for the cleaner S3-based API.                                                                              |
-| `lib.plotnine`                     | Switchbox plotnine theme (`theme_switchbox`) with three-tier typography, brand colors (`SB_COLORS`), and auto SVG config. Import in every Python analysis notebook.                                    |
-| `lib.great_tables`                 | Switchbox Great Tables helpers (`get_switchbox_gt_tab_options`) for `GT.tab_options`: table title matches plotnine (GT Planar Bold 15px left); IBM Plex Sans on body/stub/source notes.                |
-| `lib.quarto`                       | Quarto Manuscript helpers. `display_svg(fig)` renders a matplotlib figure as SVG for safe `{{< embed >}}` embedding (avoids multi-MIME bug). Use for all raw matplotlib or plotnine `.draw()` figures. |
+| Module                             | When to use                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib.rdp`                          | Fetching files from the `rate-design-platform` GitHub repo (tariff maps, configs). Also has `parse_urdb_json` for URDB tariff JSON.                                                                                                                                                                                                                                                             |
+| `lib.cairo`                        | CAIRO post-processing: `add_delivered_fuel_bills` tops up combined bills with oil/propane costs from monthly consumption x EIA prices.                                                                                                                                                                                                                                                          |
+| `lib.data.s3`                      | S3 directory listing (`list_s3_subdirs`) and run directory resolution (`run_dir`) for navigating CAIRO output paths.                                                                                                                                                                                                                                                                            |
+| `lib.data.gsheets`                 | Google Sheets client with cached OAuth (`get_gspread_client`); uses G_* env vars and caches token to avoid browser on every run.                                                                                                                                                                                                                                                                |
+| `lib.data.eia.heating_fuel_prices` | Load monthly residential oil + propane prices from EIA data on S3 (`load_monthly_fuel_prices`).                                                                                                                                                                                                                                                                                                 |
+| `lib.data.nrel.resstock`           | Load ResStock load curves for a specific utility (`scan_load_curves_for_utility`), reading metadata to construct per-building paths.                                                                                                                                                                                                                                                            |
+| `lib.eia`                          | Standalone EIA fetch scripts (petroleum prices, state heating profiles). Use `lib.data.eia` for the cleaner S3-based API.                                                                                                                                                                                                                                                                       |
+| `lib.plotnine`                     | Switchbox plotnine theme (`theme_switchbox`) with three-tier typography, brand colors (`SB_COLORS`), and auto SVG config. Import in every Python analysis notebook.                                                                                                                                                                                                                             |
+| `lib.great_tables`                 | Switchbox Great Tables helpers (`get_switchbox_gt_tab_options`) for `GT.tab_options`: table title matches plotnine (GT Planar Bold 15px left); IBM Plex Sans on body/stub/source notes.                                                                                                                                                                                                         |
+| `lib.quarto`                       | Quarto Manuscript helpers. `display_figure(fig)` renders a matplotlib figure as SVG (HTML) or high-res PNG (DOCX/ICML) for safe embedding (avoids multi-MIME bug); `display_svg` is an alias. `display_gt(table)` base64-encodes a GT table (HTML) or renders as PNG (DOCX/ICML). Use `display_figure` for raw matplotlib figures; `display_gt` for all GT tables embedded via `{{< embed >}}`. |
 
 #### R libraries
 
@@ -875,17 +873,11 @@ R libraries under `lib/` are sourced the traditional way (e.g. `source("lib/ggpl
 
 ### Bibliography
 
-`reports/references.bib` is the **single shared bibliography** used by every report (each report's YAML front matter points to it via `bibliography: ../references.bib`). It is auto-exported by Zotero from the "Reports" subcollection on JP's laptop — adding a reference to that Zotero collection automatically updates the `.bib` file in the local repo, but it only becomes available to others once committed and pushed to `main`. If you need to add a citation and don't have Zotero access, add the entry manually to `references.bib` following the key format below, and it will be reconciled on the next Zotero export.
+`reports/references.bib` is the **single shared bibliography** used by every report (each report's YAML front matter points to it via `bibliography: ../references.bib`). It is auto-exported by Zotero from the "Reports" subcollection on JP's laptop — adding a reference to that Zotero collection automatically updates the `.bib` file in the local repo, but it only becomes available to others once committed and pushed to `main`.
 
-Citation key format: `{author_short_title_year}`. When adding citations, follow this pattern:
+**NEVER edit `reports/references.bib` directly.** It is generated by Zotero and any manual edits will be overwritten on the next export. If a citation key referenced in a `.qmd` file is missing from the bib, tell the user so they can add it via Zotero. Do not add, remove, or modify entries yourself.
 
-```bibtex
-@article{adams_BeingRebuffedRegulators_2024,
-  title = {Being Rebuffed by Regulators...},
-  author = {Adams, John},
-  ...
-}
-```
+Citation key format: `{author_short_title_year}` (e.g., `adams_BeingRebuffedRegulators_2024`).
 
 ## When to use R vs Python
 
@@ -952,7 +944,7 @@ Before considering any change done:
 
 - **`just check`**: Runs lock validation (`uv lock --locked`) and pre-commit hooks (ruff-check, ruff-format, ty-check, trailing whitespace, end-of-file newline, YAML/JSON/TOML validation, no large files >600KB, no merge conflict markers).
 - **`just test`**: Runs pytest suite. Add or extend tests for new or changed behavior.
-- **`just render`** (from report directory): Snapshots the current `docs/` as a baseline for diffing, runs `quarto render`, inlines SVGs (if the report uses them), and removes `.ipynb` artifacts from `docs/`. Standalone `.svg` files under `docs/` are kept for local preview. Run it after any change to a report.
+- **`just render`** (from report directory): Snapshots the current `docs/` as a baseline for diffing, runs `quarto render`, and inlines SVGs (if the report uses them). Quarto intermediates (`.embed.ipynb`, `.out.ipynb`) are left in place so standalone preview of files with `{{< embed >}}` works; they are gitignored. Run it after any change to a report.
 
 R formatting: Use the [air](https://github.com/posit-dev/air) formatter via the Posit.air-vscode editor extension (pre-installed in devcontainer). Not yet integrated with pre-commit hooks.
 
@@ -982,13 +974,38 @@ Naming convention: `state_topic` (e.g., `ny_aeba_grid`, `ri_hp_rates`). Reuse to
 From the report directory:
 
 ```bash
-just render           # Render HTML (snapshots baseline, inlines SVGs, cleans .ipynb)
-just draft            # Render DOCX for content review
-just typeset          # Render ICML for InDesign
-just publish          # Copy to root docs/, inline SVGs, prune index_files/previews/.qmd
-just diff             # Diff current render against baseline
-just diff my-label    # Diff with a label (archived under .diff/diffs/)
+just render                         # Render HTML (snapshots baseline, inlines SVGs)
+just draft                          # Render DOCX for content review
+just draft expert_testimony.qmd     # Draft a specific .qmd file
+just typeset                        # Render ICML for InDesign (requires TinyTeX + ghostscript)
+just typeset expert_testimony.qmd   # Typeset a specific .qmd file
+just publish                        # Copy to root docs/, inline SVGs, prune index_files/previews/.qmd
+just diff                           # Diff current render against baseline
+just diff my-label                  # Diff with a label (archived under .diff/diffs/)
 ```
+
+`just draft` is implemented by `lib/just/draft.py` (centralized logic — Justfiles just call `uv run python -m lib.just.draft`). It clears the freeze cache so embedded notebooks re-execute with raster settings, sets `SWITCHBOX_GT_AS_IMAGE=1` for high-res GT tables and plotnine figures, and renders to DOCX at 300 DPI. For non-article files in Manuscript projects (e.g. `expert_testimony.qmd`), it temporarily hides `_quarto.yml` so Quarto renders standalone.
+
+`just typeset` is implemented by `lib/just/typeset.py` (centralized logic — Justfiles just call `uv run python -m lib.just.typeset`). It renders to ICML, moves math SVGs to `docs/math/`, and converts footnotes to sidenotes. Requires TinyTeX (for LaTeX math → SVG rendering via the `icml_math` filter) and `ghostscript` (system package). Both are pre-installed in the devcontainer and on EC2. See `context/code/icml_filters.md` for details.
+
+### Quarto execution caching (freeze)
+
+Quarto Manuscript projects default to `freeze: auto` for notebooks. This means notebooks are only re-executed when their **source files change**. Execution results are cached in two places:
+
+1. **Freeze cache**: `.quarto/_freeze/notebooks/<name>/execute-results/html.json` — stores the full cell outputs from the last execution. This is the primary cache that prevents re-execution.
+2. **Rendered notebooks**: `docs/notebooks/<name>.out.ipynb` — the rendered notebook outputs used by `{{< embed >}}`.
+
+**The `--execute` flag does NOT override the freeze cache.** Even with `quarto render --execute`, if the freeze cache exists and the notebook source hasn't changed, Quarto will skip execution and reuse cached results. This is a common source of stale-output bugs.
+
+**To force notebook re-execution**, delete the freeze cache:
+
+```bash
+rm -rf .quarto/_freeze/notebooks
+```
+
+This matters whenever notebook behavior depends on runtime context (environment variables, updated data on S3, changed library code in `lib/`) rather than changes to the `.qmd` source itself. The freeze mechanism only tracks source file hashes — it is blind to environment changes.
+
+**Single-file vs. project render**: `quarto render index.qmd --to icml` only renders `index.qmd`. It does **not** re-execute the analysis notebooks, even with `--execute`. The `{{< embed >}}` content comes from pre-rendered `.out.ipynb` files. To re-execute the notebooks, you must either (a) do a project-level render (`quarto render --to icml`) or (b) render each notebook individually first.
 
 ### Publishing
 
@@ -1152,7 +1169,7 @@ Python reports render plotnine charts as **inline SVGs** with text-as-text (not 
 
 1. **`_quarto.yml`** sets `fig-format: svg` (no `fig-dpi` needed).
 2. **`theme_switchbox`** auto-sets `mpl.rcParams["svg.fonttype"] = "none"` on import, so matplotlib emits `<text>` elements.
-3. **`just render`** (via `lib/just/render.py`) calls `inline_svgs.py` after Quarto, which inlines SVGs into the HTML and sets fixed display widths. **`just publish`** (via `lib/just/publish.py`) runs `inline_svgs.py` again on the copy, then removes `index_files/`, `*-preview.html`, `.qmd`, and `.ipynb` from the published tree (keeping `site_libs/`, `img/`, and non-preview HTML).
+3. **`just render`** (via `lib/just/render.py`) calls `inline_svgs.py` after Quarto, which inlines SVGs into the HTML and sets fixed display widths. **`just publish`** (via `lib/just/publish.py`) runs `inline_svgs.py` again on the copy, then prunes `index_files/`, `*-preview.html`, `.qmd`, and `.ipynb` from the published tree (keeping `site_libs/`, `img/`, and non-preview HTML).
 
 No per-notebook configuration is needed beyond `from lib.plotnine import theme_switchbox`.
 
@@ -1243,6 +1260,32 @@ Reports are built with [Quarto](https://quarto.org/) using the Manuscript projec
 | Configure HTML format options                              | [HTML Options](https://quarto.org/docs/reference/formats/html.html)                           |
 
 The Article Layout page is especially important -- it documents the column classes (`column-page-inset-right`, `column-margin`, etc.) that we use for figure placement and margin content throughout our reports.
+
+## Quarto extensions
+
+Quarto extensions (shortcodes, filters, etc.) are shared across all reports via `lib/quarto_extensions/`. Each extension has its own subdirectory containing the Lua and CSS/JS files. Reports reference these directly in `_quarto.yml` using the `shortcodes:` or `filters:` key with a relative path — they do **not** use per-project `_extensions/` directories.
+
+```yaml
+# Example: reports/<project>/_quarto.yml
+shortcodes:
+  - ../../lib/quarto_extensions/glossary/glossary.lua
+filters:
+  - at: pre-quarto
+    path: ../../lib/quarto_extensions/icml_floats/icml_floats.lua
+  - path: ../../lib/quarto_extensions/icml_math/icml_math.lua
+```
+
+Available extensions:
+
+| Extension      | Purpose                                                                                                                       |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `glossary/`    | Glossary shortcode with hover popups.                                                                                         |
+| `icml_floats/` | ICML-only: renders FloatRefTarget nodes (figures, tables with cross-refs) that Pandoc's ICML writer doesn't support natively. |
+| `icml_math/`   | ICML-only: pre-renders LaTeX math to SVG via TinyTeX (`latex` + `dvisvgm`). Requires TinyTeX and ghostscript.                 |
+
+**Do not** run `quarto add` or create `_extensions/` directories in report projects. To add an extension to a report, reference its Lua file from `lib/quarto_extensions/` in `_quarto.yml`. To add a new extension to the repo, create a directory under `lib/quarto_extensions/<name>/`.
+
+For the full explanation of why this works (and why Quarto's default `_extensions/` mechanism doesn't suit a monorepo), see `context/code/quarto_extensions.md`. For ICML filter details (prerequisites, troubleshooting), see `context/code/icml_filters.md`.
 
 ## MCP Tools
 

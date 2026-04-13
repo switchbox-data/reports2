@@ -976,12 +976,15 @@ From the report directory:
 ```bash
 just render                         # Render HTML (snapshots baseline, inlines SVGs)
 just draft                          # Render DOCX for content review
+just draft expert_testimony.qmd     # Draft a specific .qmd file
 just typeset                        # Render ICML for InDesign (requires TinyTeX + ghostscript)
 just typeset expert_testimony.qmd   # Typeset a specific .qmd file
 just publish                        # Copy to root docs/, inline SVGs, prune index_files/previews/.qmd
 just diff                           # Diff current render against baseline
 just diff my-label                  # Diff with a label (archived under .diff/diffs/)
 ```
+
+`just draft` is implemented by `lib/just/draft.py` (centralized logic — Justfiles just call `uv run python -m lib.just.draft`). It clears the freeze cache so embedded notebooks re-execute with raster settings, sets `SWITCHBOX_GT_AS_IMAGE=1` for high-res GT tables and plotnine figures, and renders to DOCX at 300 DPI. For non-article files in Manuscript projects (e.g. `expert_testimony.qmd`), it temporarily hides `_quarto.yml` so Quarto renders standalone.
 
 `just typeset` is implemented by `lib/just/typeset.py` (centralized logic — Justfiles just call `uv run python -m lib.just.typeset`). It renders to ICML, moves math SVGs to `docs/math/`, and converts footnotes to sidenotes. Requires TinyTeX (for LaTeX math → SVG rendering via the `icml_math` filter) and `ghostscript` (system package). Both are pre-installed in the devcontainer and on EC2. See `context/code/icml_filters.md` for details.
 

@@ -867,7 +867,7 @@ The load data (fuel consumption and end-use electricity, gas, oil, propane) from
 : ResStock − EIA % difference, before and after multifamily non-HVAC correction. {.sm}
 :::
 
-We traced the source to **non-HVAC end uses** — plug loads, lighting, appliances, and miscellaneous loads. In ResStock, multifamily buildings had non-HVAC electricity intensity (kWh per square foot) roughly 1.5–2.0× higher than single-family buildings. That is the problem: ResStock's simulated appliance and plug loads for multifamily units were implausibly high relative to single-family homes, and since multifamily buildings make up a large share of some utilities' housing stock, the overstatement propagated to utility-level totals. HVAC intensity, by contrast, was roughly half that of single-family buildings — directionally sensible, since multifamily buildings have less exposed exterior surface area per dwelling unit.
+We traced the source to **non-HVAC end uses** — plug loads, lighting, appliances, and miscellaneous loads. In ResStock, multifamily buildings had non-HVAC electricity intensity (kWh per square foot) roughly 1.5–2.0× higher than single-family buildings. ResStock's simulated appliance and plug loads for multifamily units were too high relative to single-family homes, and since multifamily buildings make up a large share of some utilities' housing stock, the overstatement propagated to utility-level totals. HVAC intensity, by contrast, was roughly half that of single-family buildings — directionally sensible, since multifamily buildings have less exposed exterior surface area per dwelling unit.
 
 We correct this by computing the mean non-HVAC electricity intensity (kWh/sqft, among buildings with non-zero consumption) for single-family and multifamily buildings separately, then dividing each multifamily building's non-HVAC end-use consumption by the multifamily-to-single-family ratio for that end use. Each end use gets its own ratio. **HVAC loads are left unchanged.** The same scaling factors are applied to both annual totals and hourly load curves, preserving each building's hourly shape while reducing the non-HVAC magnitude. This adjustment affects 780 of 1,910 RI buildings (all multifamily). Post-adjustment, weighted ResStock electricity totals are within 1% of EIA-861 residential sales for RIE.[^mf-adjustment]
 
@@ -905,7 +905,7 @@ All homes in the Rhode Island ResStock sample are assigned to Rhode Island Energ
 
 #### Computing bill changes under default rates
 
-For each building, we apply the relevant tariffs to the building's hourly electricity load profile and annual fossil fuel consumption to calculate total annual energy bills.[^link_cairo]  We apply 12 months of electric fixed charges, and 12 months of gas fixed charges if they are a gas-heated building. Then, we apply the volumetric electricity, gas, heating oil, and propane rates to the amount of these fuels they consumed in each hour (few buildings consume all of them at once.) The sum of these is the building's total annual energy bill.
+For each building, we apply the relevant tariffs to the building's hourly electricity load profile and annual fossil fuel consumption to calculate total annual energy bills.[^link_cairo]  We apply 12 months of electric fixed charges, and 12 months of gas fixed charges if they are a gas-heated building. Then, we apply the volumetric electricity, gas, heating oil, and propane rates to the amount of these fuels they consumed in each hour (few buildings consume all of them at once). The sum of these is the building's total annual energy bill.
 
 We do this for all buildings under upgrade scenario 0, where their load profiles reflect their current HVAC system, and again for all buildings under upgrade scenario 2, where their load profiles reflect the removal of a furnace, boiler, or electric resistance heater for either a centralized heat pump, or mini-splits. 
 
@@ -1092,6 +1092,9 @@ where:
 
 Non-zero hours are concentrated around the annual system peak, currently summer-dominated for ISO-NE.
 
+:::{.column-page-inset-right}
+{{< embed notebooks/delivery_cost_timing.qmd#fig-heatmap-bulk-tx >}}
+:::
 
 [^cite-aesc]: The AESC study [@synapse_AvoidedEnergySupply_2024] is the New England standard for [avoided transmission costs](https://www.documentcloud.org/documents/28039756-synapse-2024-avoided-energy-supply-components-in-new-england-2024-repor/#document/p288/a2811325); all six New England states use AESC values for energy efficiency program screening, and Rhode Island's PUC benefit-cost framework (Docket 4600) draws directly from it. Hourly bulk-TX MC signals are built by the RDP's [bulk transmission MC generator](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/marginal_costs/generate_bulk_tx_mc.py).
 
@@ -1103,6 +1106,10 @@ where:
 
 - $L_h$ — RIE's hourly system load in hour $h$ (from EIA Form 930)
 - $\overline{MC}^{\text{dist}}$ — avoided distribution capacity cost ($/kW-yr) from the AESC 2024 study
+
+:::{.column-page-inset-right}
+{{< embed notebooks/delivery_cost_timing.qmd#fig-heatmap-dist-sub-tx >}}
+:::
 
 [^cite-mcos]: Sub-transmission and distribution marginal cost drawn from the AESC 2024 avoided distribution capacity cost [@synapse_AvoidedEnergySupply_2024]. [The AESC value](https://www.documentcloud.org/documents/28039756-synapse-2024-avoided-energy-supply-components-in-new-england-2024-repor/#document/p306/a2811327) of $80.24/kW-yr (2019 dollars) is adjusted to 2025 dollars using the CPI-U All Items index [@fred_ConsumerPriceIndexAll_2025], yielding $101.05/kW-yr. The $/kW-yr input value is [committed in the RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/rate_design/hp_rates/ri/config/marginal_costs/ri_marginal_costs_2025.csv); the hourly PoP allocation is performed by the RDP's [utility TX/DX MC generator](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/marginal_costs/generate_utility_tx_dx_mc.py).
 
@@ -1130,7 +1137,7 @@ Because the residual represents sunk costs that are not attributable to any cust
 
 - **Volumetric markup** — add a uniform $/kWh surcharge; each customer's share is proportional to their consumption. This is the dominant practice in U.S. rates. It is simple and feels equitable, but it distorts consumption decisions because customers face a price above marginal cost.
 - **Flat fixed charge** — divide the residual equally across all customers ($/customer/month). This is the most economically efficient option — it creates no incentive to change consumption — but can be regressive, since the same dollar charge weighs more heavily on low-usage households.
-- **Proportional to marginal cost causation (EPMC)** — each customer's share is proportional to their share of total system marginal costs. This uses current cost-causation as a proxy for historical cost-causation, and is the approach the BAT framework recommends [@simeone_BillAlignmentTest_2023].
+- **Proportional to marginal cost causation (EPMC)** — each customer's share is proportional to their share of total system marginal costs. 
 
 We use equi-proportional marginal cost ({{< glossary EPMC >}}) allocation: each customer's residual share is proportional to their share of total system marginal costs. If a subclass causes 3% of total marginal costs, it bears 3% of the residual. This is equivalent to scaling all marginal-cost-based rates by a uniform factor
 

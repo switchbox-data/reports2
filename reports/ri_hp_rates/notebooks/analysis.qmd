@@ -2807,6 +2807,8 @@ _rate_gt = (
 _default_filed = _load_rate("rie_default.json")
 _filed_delivery_rates = _get_rates(_default_filed)
 report_vars["elec_fixed_charge"] = _default_filed.get("fixedchargefirstmeter", 0)
+report_vars["elec_customer_charge"] = 6.00  # RIE A-16 customer charge (PUC-filed, constant)
+report_vars["elec_other_fixed_charges"] = report_vars["elec_fixed_charge"] - 6.00  # RE Growth + LIHEAP
 report_vars["elec_delivery_avg_cents"] = sum(_filed_delivery_rates) / len(_filed_delivery_rates) * 100
 
 GAS_TARIFF_DIR = f"rate_design/hp_rates/{_state_lower}/config/tariffs/gas"
@@ -2825,6 +2827,9 @@ _delivery_avg_rate = sum(_filed_delivery_rates) / len(_filed_delivery_rates)
 _supply_only_rates = [r - _delivery_avg_rate for r in _lrs_rates]
 report_vars["elec_lrs_min_cents"] = min(_supply_only_rates) * 100
 report_vars["elec_lrs_max_cents"] = max(_supply_only_rates) * 100
+report_vars["elec_lrs_winter_cents"] = _supply_only_rates[0] * 100
+report_vars["elec_lrs_summer_cents"] = _supply_only_rates[1] * 100
+report_vars["elec_lrs_fall_cents"] = _supply_only_rates[2] * 100
 
 # Gas Rate 10 (non-heating)
 _gas_nh_tariff = json.loads(
@@ -4674,15 +4679,23 @@ def _fmt_dollar(x: float, *, accuracy: int = 0) -> str:
 _tariff_df = pl.DataFrame(
     {
         "tariff": [
+            "Electricity — customer charge (A-16)",
+            "Electricity — RE Growth + LIHEAP (A-16)",
             "Electricity — delivery (A-16)",
-            "Electricity — supply (LRS)",
+            "Electricity — supply, winter (LRS, Jan–Mar)",
+            "Electricity — supply, summer (LRS, Apr–Sep)",
+            "Electricity — supply, fall (LRS, Oct–Dec)",
             "Natural gas — Rate 12 (heating)",
             "Natural gas — Rate 10 (non-heating)",
             "Heating oil (EIA)",
             "Propane (EIA)",
         ],
         "fixed_charge": [
-            f"{_fmt_dollar(_rv['elec_fixed_charge'], accuracy=2)} /mo",
+            f"{_fmt_dollar(_rv['elec_customer_charge'], accuracy=2)} /mo",
+            f"{_fmt_dollar(_rv['elec_other_fixed_charges'], accuracy=2)} /mo",
+            "—",
+            "—",
+            "—",
             "—",
             f"{_fmt_dollar(_rv['gas_fixed_charge'], accuracy=2)} /mo",
             f"{_fmt_dollar(_rv['gas_nonheating_fixed_charge'], accuracy=2)} /mo",
@@ -4690,8 +4703,12 @@ _tariff_df = pl.DataFrame(
             "—",
         ],
         "volumetric_rate": [
+            "—",
+            "—",
             f"{_rv['elec_delivery_avg_cents']:.2f} ¢/kWh",
-            f"{_rv['elec_lrs_min_cents']:.1f}–{_rv['elec_lrs_max_cents']:.1f} ¢/kWh (seasonal)",
+            f"{_rv['elec_lrs_winter_cents']:.2f} ¢/kWh",
+            f"{_rv['elec_lrs_summer_cents']:.2f} ¢/kWh",
+            f"{_rv['elec_lrs_fall_cents']:.2f} ¢/kWh",
             f"{_fmt_dollar(_rv['gas_avg_per_therm'], accuracy=3)} /therm",
             f"{_fmt_dollar(_rv['gas_nonheating_avg_per_therm'], accuracy=3)} /therm",
             "$3.48–$4.10 /gal (monthly prices)",
@@ -4723,23 +4740,23 @@ _mc_df = pl.DataFrame(
         "component": [
             "Energy",
             "Generation capacity",
+            "Ancillary services",
             "Bulk transmission",
             "Sub-TX + distribution",
-            "Ancillary services",
         ],
         "what": [
             "Short-run cost of generation, congestion, and transmission losses in each hour. Contributes to the marginal cost of supply.",
             "Cost of the next MW of generation to meet demand during scarcity/binding capacity hours. Contributes to the marginal cost of supply.",
+            "Cost of two frequency regulation sub-markets: regulation service (energy dispatched by AGC in real time) and regulation capacity (capacity reserved for AGC response). Contributes to the marginal cost of supply.",
             "Cost of the next MW of regional transmission capacity. Contributes to the marginal cost of delivery.",
             "Cost of the next MW of local delivery capacity. Contributes to the marginal cost of delivery.",
-            "Cost of two frequency regulation sub-markets: regulation service (energy dispatched by AGC in real time) and regulation capacity (capacity reserved for AGC response). Contributes to the marginal cost of supply.",
         ],
         "data_source": [
-            "ISO-NE locational marginal prices (LMP)",
-            "ISO-NE Forward Capacity Market (FCM) auction prices",
-            "Avoided Energy Supply Components (AESC) 2024 study",
-            "Avoided Energy Supply Components (AESC) 2024 study",
-            "ISO-NE regulation clearing prices",
+            "ISO-NE real-time LMPs for the RI zone (hourly, 2025)",
+            "ISO-NE FCA clearing prices for the SENE capacity zone (RI + southeastern MA), blended across FCA 15 and FCA 16 for calendar year 2025; peak hours from SENE aggregate load (2025)",
+            "ISO-NE regulation clearing prices for the RI zone (hourly, 2025)",
+            "AESC 2024 avoided PTF cost ($69/kW-yr); peak hours from all-New-England system load (8 zones summed, 2025)",
+            "AESC 2024 avoided distribution cost ($80.24/kW-yr in 2019$, CPI-adjusted to $101.05/kW-yr in 2025$); peak hours from RIE utility load (EIA hourly demand, 2025)",
         ],
     }
 )

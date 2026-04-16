@@ -112,12 +112,15 @@ if RESIDUAL_ALLOC_DELIVERY == "percustomer":
     RUN_HPRATE = "5+6"
     RUN_HPRATE_HP = "7+8"
     RUN_TOU_HP = "15+16"
+    RUN_EHRATE = "33+34"
+    RUN_EHRATE_HP = "35+36"
     TARIFF_SEASONAL = "hp_seasonal"
     TARIFF_TOU = "hp_seasonalTOU_flex"
 elif RESIDUAL_ALLOC_DELIVERY == "epmc":
     RUN_HPRATE = "21+22"
     RUN_HPRATE_HP = "23+24"
     RUN_TOU_HP = "27+28"
+
     TARIFF_SEASONAL = "hp_seasonal_epmc"
     TARIFF_TOU = "hp_seasonalTOU_flex_epmc"
 else:
@@ -144,6 +147,8 @@ PATH_MASTER_BILLS_TOU_HP = f"{_BILLS}/run_{RUN_TOU_HP}/comb_bills_year_target/"
 PATH_MASTER_BAT_BASELINE = f"{_BAT}/run_1+2/cross_subsidization_BAT_values/"
 PATH_MASTER_BAT_DEFAULT_HP = f"{_BAT}/run_3+4/cross_subsidization_BAT_values/"
 PATH_MASTER_BAT_HPRATE = f"{_BAT}/run_{RUN_HPRATE}/cross_subsidization_BAT_values/"
+PATH_MASTER_BILLS_EHRATE = f"{_BILLS}/run_{RUN_EHRATE}/comb_bills_year_target/"
+PATH_MASTER_BILLS_EHRATE_HP = f"{_BILLS}/run_{RUN_EHRATE_HP}/comb_bills_year_target/"
 
 PATH_RESSTOCK = "s3://data.sb/nrel/resstock/res_2024_amy2018_2"
 ```
@@ -412,6 +417,8 @@ bills_current = pl.scan_parquet(PATH_MASTER_BILLS_BASELINE, hive_partitioning=Tr
 bills_hp = pl.scan_parquet(PATH_MASTER_BILLS_DEFAULT_HP, hive_partitioning=True)
 bills_hprate_current = pl.scan_parquet(PATH_MASTER_BILLS_HPRATE, hive_partitioning=True)
 bills_hprate_hp = pl.scan_parquet(PATH_MASTER_BILLS_HPRATE_HP, hive_partitioning=True)
+bills_ehrate_current = pl.scan_parquet(PATH_MASTER_BILLS_EHRATE, hive_partitioning=True)
+bills_ehrate_hp = pl.scan_parquet(PATH_MASTER_BILLS_EHRATE_HP, hive_partitioning=True)
 bills_tou_hp = (
     pl.scan_parquet(PATH_MASTER_BILLS_TOU_HP, hive_partitioning=True)
     if INCLUDE_TOU
@@ -423,6 +430,8 @@ if SUPPLY_PASSTHROUGH:
     if bills_tou_hp is not None:
         bills_tou_hp = apply_supply_passthrough_tou(bills_tou_hp, bills_hprate_hp, bills_hp)
     bills_hprate_hp = apply_supply_passthrough(bills_hprate_hp, bills_hp)
+    bills_ehrate_current = apply_supply_passthrough(bills_ehrate_current, bills_current)
+    bills_ehrate_hp = apply_supply_passthrough(bills_ehrate_hp, bills_hp)
 ```
 
 ## Bill components: how energy bills change after switching
@@ -4551,6 +4560,239 @@ plot_quadrant_bar_by_utility(
     delta_state, delta_switch_state,
     utility_names=UTIL_NAMES,
     fuel_filter=pl.col(HEATING_TYPE_COL) == "electrical_resistance",
+    title_parts=[
+        ("How bills would change for ", "#000000"),
+        ("electric resistance", "#b08e00"),
+        (" heated homes after switching to ", "#000000"),
+        ("heat pumps", "#c47600"),
+    ],
+)
+```
+
+## Bill impact of electric heating rate
+
+The electric heating rate (EH rate) is a distinct rate design from the HP seasonal
+rate. It applies to all winter-heavy electric customers — both heat pumps **and**
+electric resistance — and is funded by a recalibrated flat rate on non-electric-
+heating customers. This section compares four views of the EH rate's distributional
+impact: gas-to-HP switching economics under the EH rate, the rate-change benefit
+for ER customers who stay on ER, the cost shift to fossil-heated customers, and a
+side-by-side of ER→HP savings under the seasonal HP rate vs. the EH rate.
+
+The EH-rate master bills come from runs `RUN_EHRATE` (u0, all homes keep current
+HVAC; electric heaters on EH rate, others on recalibrated flat rate) and
+`RUN_EHRATE_HP` (u2, all homes on heat pumps, all on EH rate).
+
+### Gas → HP under the electric heating rate (LMI-40)
+
+Mirrors the seasonal-rate gas switch comparison above: Bar 1 is the gas customer
+switching to HP under today's default rate, Bar 2 is the same customer switching
+to HP under the EH rate. The "before" state is identical in both bars (baseline
+HVAC on default rate), so differences come entirely from the "after" rate regime.
+We use LMI-40 bill columns to match the primary reference chart.
+
+```{python}
+#| label: compute-deltas-natgas-switch-ehrate-lmi40
+
+delta_switch_state_ehrate_lmi40 = _lmi_delta_state(
+    bills_current, bills_ehrate_hp, LMI_40_BILL_COLS, LMI_40_BILL_COLS,
+)
+natgas_switch_ehrate_state_lmi40 = (
+    delta_switch_state_ehrate_lmi40
+    .filter(pl.col("heats_with_natgas"))
+    .select("delta", "weight")
+)
+
+_lmi40_eh_total = natgas_switch_ehrate_state_lmi40["weight"].sum()
+_lmi40_eh_save = natgas_switch_ehrate_state_lmi40.filter(pl.col("delta") < 0)["weight"].sum()
+_lmi40_eh_lose_1k = natgas_switch_ehrate_state_lmi40.filter(pl.col("delta") > 1000)["weight"].sum()
+report_vars["pct_natgas_save_ehrate_lmi40"] = _lmi40_eh_save / _lmi40_eh_total
+report_vars["pct_natgas_lose_1k_ehrate_lmi40"] = _lmi40_eh_lose_1k / _lmi40_eh_total
+```
+
+```{python}
+#| label: fig-quadrant-bar-natgas-switch-ehrate-state-lmi-current
+#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default rate vs. electric heating rate (Statewide). Assumes 40% of LMI households receive LMI discounts before and after switching to HP."
+
+plot_quadrant_bar(
+    [
+        ("Default rate", natgas_state_lmi40),
+        ("Electric heating rate", natgas_switch_ehrate_state_lmi40),
+    ],
+    title_parts=[
+        ("How bills would change for ", "#000000"),
+        ("natural gas", "#7A8A10"),
+        (" heated homes after switching to ", "#000000"),
+        ("heat pumps", "#c47600"),
+    ],
+)
+```
+
+### ER customers staying on electric resistance under the EH rate
+
+The EH rate's primary benefit to the ER population is a cheaper winter bill for
+customers who keep their existing heating system. Here we hold equipment constant
+at baseline ER and compare the bill under today's default rate against the bill
+under the EH rate — a pure rate-change delta. We also reuse this joined frame
+(same u0 before, u0 under EH rate) for the fossil cost-shift chart below.
+
+```{python}
+#| label: compute-deltas-ehrate-stay
+
+annual_before_ehrate_stay = (
+    bills_current
+    .filter(pl.col("month") == ANNUAL_MONTH)
+    .select(DELTA_SELECT)
+    .collect()
+)
+annual_after_ehrate_stay = (
+    bills_ehrate_current
+    .filter(pl.col("month") == ANNUAL_MONTH)
+    .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after"))
+    .collect()
+)
+delta_ehrate_stay_state = annual_before_ehrate_stay.join(
+    annual_after_ehrate_stay, on=BLDG_ID, how="inner",
+).with_columns(
+    (pl.col("bill_after") - pl.col("bill_before")).alias("delta"),
+)
+
+elec_resistance_stay_ehrate_state = (
+    delta_ehrate_stay_state
+    .filter(pl.col(HEATING_TYPE_COL) == "electrical_resistance")
+    .select("delta", "weight")
+)
+
+_er_stay_total = elec_resistance_stay_ehrate_state["weight"].sum()
+_er_stay_save = elec_resistance_stay_ehrate_state.filter(pl.col("delta") < 0)["weight"].sum()
+report_vars["pct_er_stay_save_ehrate"] = _er_stay_save / _er_stay_total
+report_vars["mean_er_stay_delta_ehrate"] = _weighted_mean(
+    elec_resistance_stay_ehrate_state, "delta", "weight",
+)
+```
+
+```{python}
+#| label: fig-quadrant-bar-elec-resistance-stay-ehrate-state
+#| fig-cap: "Change in total annual energy bills — electric resistance homes staying on ER: default rate vs. electric heating rate (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
+
+plot_quadrant_bar(
+    [("Electric heating rate", elec_resistance_stay_ehrate_state)],
+    title_parts=[
+        ("How bills would change for ", "#000000"),
+        ("electric resistance", "#b08e00"),
+        (" heated homes under the ", "#000000"),
+        ("electric heating rate", "#c47600"),
+    ],
+)
+```
+
+### Cost shift to fossil-heated (non-electric-heating) customers
+
+Funding the EH rate discount for electric heaters requires a small upward
+recalibration of the flat rate paid by fossil-heated customers (natural gas, fuel
+oil, propane, and other non-electric heating types). This chart isolates that
+cost shift for the non-ER, non-HP population — holding equipment constant at
+baseline. We explicitly exclude electric-resistance customers (covered in the
+previous chart, which shows them benefiting from the rate) to keep the cost-shift
+story clean.
+
+```{python}
+#| label: compute-deltas-fossil-ehrate
+
+fossil_ehrate_state = (
+    delta_ehrate_stay_state
+    .filter(~pl.col(HEATING_TYPE_COL).is_in(["electrical_resistance", "heat_pump"]))
+    .select("delta", "weight")
+)
+
+_fossil_total = fossil_ehrate_state["weight"].sum()
+_fossil_save = fossil_ehrate_state.filter(pl.col("delta") < 0)["weight"].sum()
+_fossil_lose = fossil_ehrate_state.filter(pl.col("delta") > 0)["weight"].sum()
+report_vars["pct_fossil_save_ehrate"] = _fossil_save / _fossil_total
+report_vars["pct_fossil_lose_ehrate"] = _fossil_lose / _fossil_total
+report_vars["mean_fossil_delta_ehrate"] = _weighted_mean(
+    fossil_ehrate_state, "delta", "weight",
+)
+```
+
+```{python}
+#| label: fig-quadrant-bar-fossil-ehrate-state
+#| fig-cap: "Change in total annual energy bills — non-electric-heating homes (natural gas, fuel oil, propane, other) under the electric heating rate (Statewide). Equipment held constant at baseline; delta reflects the recalibrated flat rate only. Undiscounted annual bills."
+
+plot_quadrant_bar(
+    [("Electric heating rate", fossil_ehrate_state)],
+    title_parts=[
+        ("How bills would change for ", "#000000"),
+        ("natural gas", "#7A8A10"),
+        (", ", "#000000"),
+        ("fuel oil", "#4a8fa0"),
+        (", and ", "#000000"),
+        ("propane", "#3a8fa0"),
+        (" heated homes under the ", "#000000"),
+        ("electric heating rate", "#c47600"),
+    ],
+)
+```
+
+### ER → HP savings: seasonal HP rate vs. electric heating rate
+
+The narrative pivot chart. Bar 1 shows the status-quo operating-cost incentive
+for an ER customer to switch to HP: they start under today's default rate and end
+up on the HP seasonal rate. Bar 2 shows the analogous switch once the EH rate is
+in place: the ER customer is already paying less under the EH rate (Bar 2's
+"before" captures that), and after switching to HP they remain on the EH rate.
+The two bars are asymmetric by design — Bar 1 is a mixed default-to-seasonal
+delta, Bar 2 is a within-regime EH-to-EH delta — because each bar answers a
+different policy question. The comparison tests whether the EH rate erodes the
+bill-savings incentive to switch from ER to HP.
+
+```{python}
+#| label: compute-deltas-er-switch-ehrate
+
+annual_before_ehrate_switch = (
+    bills_ehrate_current
+    .filter(pl.col("month") == ANNUAL_MONTH)
+    .select(DELTA_SELECT)
+    .collect()
+)
+annual_after_ehrate_switch = (
+    bills_ehrate_hp
+    .filter(pl.col("month") == ANNUAL_MONTH)
+    .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after"))
+    .collect()
+)
+delta_ehrate_switch_state = annual_before_ehrate_switch.join(
+    annual_after_ehrate_switch, on=BLDG_ID, how="inner",
+).with_columns(
+    (pl.col("bill_after") - pl.col("bill_before")).alias("delta"),
+)
+
+elec_resistance_switch_ehrate_state = (
+    delta_ehrate_switch_state
+    .filter(pl.col(HEATING_TYPE_COL) == "electrical_resistance")
+    .select("delta", "weight")
+)
+
+_er_sw_eh_total = elec_resistance_switch_ehrate_state["weight"].sum()
+_er_sw_eh_save = elec_resistance_switch_ehrate_state.filter(pl.col("delta") < 0)["weight"].sum()
+report_vars["pct_er_switch_save_ehrate"] = _er_sw_eh_save / _er_sw_eh_total
+report_vars["mean_er_switch_delta_ehrate"] = _weighted_mean(
+    elec_resistance_switch_ehrate_state, "delta", "weight",
+)
+report_vars["mean_er_switch_delta_hprate"] = _weighted_mean(
+    elec_resistance_switch_state, "delta", "weight",
+)
+```
+
+```{python}
+#| label: fig-quadrant-bar-elec-resistance-switch-ehrate-vs-hprate-state
+#| fig-cap: "Change in total annual energy bills — electric resistance homes switching to HP under two rate regimes (Statewide). Bar 1 captures the status-quo incentive (default rate baseline, HP seasonal rate after). Bar 2 captures the incentive under the new EH rate (EH rate both before and after). Undiscounted annual bills."
+
+plot_quadrant_bar(
+    [
+        ("ER default → HP seasonal rate", elec_resistance_switch_state),
+        ("ER electric heating rate → HP electric heating rate", elec_resistance_switch_ehrate_state),
+    ],
     title_parts=[
         ("How bills would change for ", "#000000"),
         ("electric resistance", "#b08e00"),

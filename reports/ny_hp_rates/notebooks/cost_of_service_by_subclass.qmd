@@ -37,7 +37,7 @@ report_vars: dict = {}
 ```{python}
 #| label: params
 
-BATCH = "ny_20260408_all_epmc_r1-24"
+BATCH = "ny_20260416a_r1-36"
 STATE_LOWER = "ny"
 RDP_REF = "530564d"  # includes EPMC TOU flex calibrated tariffs
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
@@ -135,6 +135,24 @@ SCENARIOS: list[dict] = [
         "description": (
             "HP customers on seasonal TOU flex delivery rate; non-HP on "
             "recalibrated flat. Residual allocated via EPMC."
+        ),
+    },
+    # EH seasonal applies to HP *and* ER customers jointly; the
+    # ``hp_tariff``/``nonhp_tariff`` keys are inherited from the HP-focused
+    # scenarios above and repurposed here (``hp_tariff`` holds the tariff
+    # applied to all electric-heating customers; ``nonhp_tariff`` holds the
+    # tariff applied to everyone else).
+    {
+        "id": "eh_seasonal_percustomer",
+        "run": "33+34",
+        "residual_alloc": "percustomer",
+        "hp_tariff": "elec_heat_seasonal_percustomer",
+        "nonhp_tariff": "non_electric_heating",
+        "label": "EH seasonal rate, per-customer residual",
+        "description": (
+            "HP + ER customers on electric-heating seasonal delivery rate; "
+            "fossil-fuel customers on recalibrated flat. Residual allocated "
+            "per customer."
         ),
     },
 ]
@@ -428,8 +446,9 @@ def cos_baseline_avg_title(util_label: str | None, cos_tbl: pl.DataFrame) -> str
 
 # Keep in sync with ``utils/post/build_master_bat.py`` (UPGRADE_00_RUNS / UPGRADE_02_RUNS).
 # Includes 25 for ``25+26`` EPMC TOU flex runs (same ResStock upgrade as 21/22).
-_RESSTOCK_UPGRADE_00_RUNS = frozenset({1, 2, 5, 6, 9, 10, 13, 14, 17, 18, 21, 22, 25})
-_RESSTOCK_UPGRADE_02_RUNS = frozenset({3, 4, 7, 8, 11, 12, 15, 16, 19, 20, 23, 24})
+# Includes 29, 30, 33, 34 for EH seasonal runs (upgrade 00, pre-HP); 31, 32, 35, 36 post-HP.
+_RESSTOCK_UPGRADE_00_RUNS = frozenset({1, 2, 5, 6, 9, 10, 13, 14, 17, 18, 21, 22, 25, 29, 30, 33, 34})
+_RESSTOCK_UPGRADE_02_RUNS = frozenset({3, 4, 7, 8, 11, 12, 15, 16, 19, 20, 23, 24, 31, 32, 35, 36})
 
 RESSTOCK_ELEC_TOTAL_KWH_COL = "out.electricity.total.energy_consumption"
 RESSTOCK_ELEC_NET_KWH_COL = "out.electricity.net.energy_consumption"
@@ -2198,6 +2217,59 @@ display_gt(
 )
 ```
 
+## EH seasonal vs. baseline statewide — totals (per-customer residual)
+
+```{python}
+#| label: load-eh-seasonal-pc
+
+bat_eh_seasonal_pc, cos_eh_seasonal_sw_pc, cos_eh_seasonal_by_util_pc = (
+    load_scenario_proposed_cos(SCENARIOS[4])
+)
+print(
+    f"EH seasonal (percustomer) loaded: {bat_eh_seasonal_pc.height:,} buildings, "
+    f"weighted customers: {bat_eh_seasonal_pc['weight'].sum():,.0f}"
+)
+```
+
+```{python}
+#| label: tbl-eh-seasonal-sw-totals-pc
+#| tbl-cap: "Default vs EH seasonal delivery revenue, COS, and cross-subsidy — NY statewide (per-customer residual). The EH seasonal rate applies to HP and ER customers jointly."
+
+_spanner_today_eh = "All customers on utility's default rates"
+_spanner_proposed_eh = (
+    "Electric-heating customers (HP + ER) on EH seasonal rate; "
+    "fossil-fuel customers on adjusted flat rate"
+)
+display_gt(
+    build_gt_cos_comparison_totals(
+        cos_default_sw_pc,
+        cos_eh_seasonal_sw_pc,
+        title="EH seasonal rate eliminates cross-subsidy from electric-heating customers to those who heat with fossil fuels",
+        subtitle="Total cross-subsidy by subclass, before and after electric-heating customers (HP + ER) move to the EH seasonal rate",
+        label_spanner_today=_spanner_today_eh,
+        label_spanner_proposed=_spanner_proposed_eh,
+    )
+)
+```
+
+## EH seasonal vs. baseline statewide — averages (per-customer residual)
+
+```{python}
+#| label: tbl-eh-seasonal-sw-avg-pc
+#| tbl-cap: "Average delivery bill, delivery cost of service, and cross-subsidy by subclass, under two sections: 1. all customers under each utility's current default rates and 2. all electric-heating customers (HP + ER) on utility's EH seasonal rate and all other customers on utility's adjusted flat rate. Assumes lump-sum residual allocation (equal residual share for all customers)."
+
+display_gt(
+    build_gt_cos_comparison_avg(
+        cos_default_sw_pc,
+        cos_eh_seasonal_sw_pc,
+        title="EH seasonal rate eliminates cross-subsidy from electric-heating customers to those who heat with fossil fuels",
+        subtitle="Average cross-subsidy by subclass, before and after electric-heating customers (HP + ER) move to the EH seasonal rate",
+        label_spanner_default=_spanner_today_eh,
+        label_spanner_proposed=_spanner_proposed_eh,
+    )
+)
+```
+
 ## HP TOU flex vs. baseline statewide — totals (per-customer residual)
 
 ```{python}
@@ -2385,7 +2457,12 @@ fill_report_vars_for_scenario(
     cos_tou_flex_sw_pc,
     cos_tou_flex_by_util_pc,
 )
-print("Per-customer report vars saved for HP seasonal and HP TOU flex")
+fill_report_vars_for_scenario(
+    SCENARIOS[4]["id"],
+    cos_eh_seasonal_sw_pc,
+    cos_eh_seasonal_by_util_pc,
+)
+print("Per-customer report vars saved for HP seasonal, HP TOU flex, and EH seasonal")
 ```
 
 ---
@@ -2545,8 +2622,12 @@ display_gt(
 
 ## HP TOU flex vs. baseline statewide — totals (EPMC residual)
 
+Disabled: the current batch (`ny_20260416a_r1-36`) does not include run pair
+25+26 (HP TOU flex EPMC). Re-enable when a batch with those runs is wired up.
+
 ```{python}
 #| label: load-hp-tou-flex-epmc
+#| eval: false
 
 bat_tou_flex_epmc, cos_tou_flex_sw_epmc, cos_tou_flex_by_util_epmc = (
     load_scenario_proposed_cos(SCENARIOS[3])
@@ -2560,6 +2641,7 @@ print(
 ```{python}
 #| label: tbl-hp-tou-flex-sw-totals-epmc
 #| tbl-cap: "Default vs HP TOU flex delivery revenue, COS, and cross-subsidy — NY statewide (EPMC residual)"
+#| eval: false
 
 _sc = SCENARIOS[3]
 _spanner_proposed = (
@@ -2583,6 +2665,7 @@ display_gt(
 ```{python}
 #| label: tbl-hp-tou-flex-sw-avg-epmc
 #| tbl-cap: "Default vs HP TOU flex average delivery bill and cross-subsidy — NY statewide (EPMC residual)"
+#| eval: false
 
 display_gt(
     build_gt_cos_comparison_avg(
@@ -2670,8 +2753,12 @@ print("Displayed HP seasonal per-utility comparison tables (EPMC)")
 
 Comparison tables for each utility: default rates vs. HP seasonal TOU flex rate (run 25+26), with EPMC residual allocation.
 
+Disabled: the current batch (`ny_20260416a_r1-36`) does not include run pair
+25+26. Re-enable when a batch with those runs is wired up.
+
 ```{python}
 #| label: hp-tou-flex-per-util-epmc
+#| eval: false
 
 _sc = SCENARIOS[3]
 for util in UTILITIES:
@@ -2717,12 +2804,16 @@ fill_report_vars_for_scenario(
     cos_hp_seasonal_sw_epmc,
     cos_hp_seasonal_by_util_epmc,
 )
-fill_report_vars_for_scenario(
-    SCENARIOS[3]["id"],
-    cos_tou_flex_sw_epmc,
-    cos_tou_flex_by_util_epmc,
-)
-print("EPMC report vars saved for HP seasonal and HP TOU flex")
+# SCENARIOS[3] (HP TOU flex EPMC, run 25+26) disabled — batch
+# ``ny_20260416a_r1-36`` does not include those runs. Re-enable alongside
+# the disabled TOU flex EPMC table cells above when a batch with 25+26 is
+# wired up.
+# fill_report_vars_for_scenario(
+#     SCENARIOS[3]["id"],
+#     cos_tou_flex_sw_epmc,
+#     cos_tou_flex_by_util_epmc,
+# )
+print("EPMC report vars saved for HP seasonal (HP TOU flex disabled)")
 ```
 
 ---

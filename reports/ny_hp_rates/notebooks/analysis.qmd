@@ -116,6 +116,7 @@ if RESIDUAL_ALLOC_DELIVERY == "percustomer":
     RUN_EHRATE_HP = "35+36"
     TARIFF_SEASONAL = "hp_seasonal"
     TARIFF_TOU = "hp_seasonalTOU_flex"
+    TARIFF_EH_SEASONAL = "elec_heat_seasonal_percustomer"
 elif RESIDUAL_ALLOC_DELIVERY == "epmc":
     RUN_HPRATE = "21+22"
     RUN_HPRATE_HP = "23+24"
@@ -123,6 +124,7 @@ elif RESIDUAL_ALLOC_DELIVERY == "epmc":
 
     TARIFF_SEASONAL = "hp_seasonal_epmc"
     TARIFF_TOU = "hp_seasonalTOU_flex_epmc"
+    TARIFF_EH_SEASONAL = "elec_heat_seasonal_percustomer"
 else:
     msg = f"Unknown RESIDUAL_ALLOC_DELIVERY {RESIDUAL_ALLOC_DELIVERY!r}; use 'percustomer' or 'epmc'"
     raise ValueError(msg)
@@ -147,6 +149,7 @@ PATH_MASTER_BILLS_TOU_HP = f"{_BILLS}/run_{RUN_TOU_HP}/comb_bills_year_target/"
 PATH_MASTER_BAT_BASELINE = f"{_BAT}/run_1+2/cross_subsidization_BAT_values/"
 PATH_MASTER_BAT_DEFAULT_HP = f"{_BAT}/run_3+4/cross_subsidization_BAT_values/"
 PATH_MASTER_BAT_HPRATE = f"{_BAT}/run_{RUN_HPRATE}/cross_subsidization_BAT_values/"
+PATH_MASTER_BAT_EHRATE = f"{_BAT}/run_{RUN_EHRATE}/cross_subsidization_BAT_values/"
 PATH_MASTER_BILLS_EHRATE = f"{_BILLS}/run_{RUN_EHRATE}/comb_bills_year_target/"
 PATH_MASTER_BILLS_EHRATE_HP = f"{_BILLS}/run_{RUN_EHRATE_HP}/comb_bills_year_target/"
 
@@ -2951,6 +2954,45 @@ _rate_gt = (
     .tab_options(**get_switchbox_gt_tab_options())
 )
 display_gt(_rate_gt)
+```
+
+## Proposed electric-heating rate: a seasonal rate for HP + ER customers
+
+The electric-heating (EH) seasonal rate extends the seasonal structure to
+both heat-pump and electric-resistance customers. Summer delivery rates
+match the default rate; winter delivery rates are reduced to align the
+combined HP + ER customers' annual delivery bills with their combined
+cost-of-service, on average.
+
+```{python}
+#| label: rate-table-data-eh
+
+summer_row_eh: dict = {"metric": "Summer delivery rate (¢/kWh)"}
+winter_row_eh: dict = {"metric": "Winter delivery rate (¢/kWh)"}
+discount_row_eh: dict = {"metric": "Winter discount"}
+for display, code in TARIFF_UTILS.items():
+    seas_d = _load_rate(f"{code}_{TARIFF_EH_SEASONAL}_calibrated.json")
+    sd = _get_rates(seas_d)
+
+    summer_row_eh[display] = sd[0] * 100
+    winter_row_eh[display] = sd[1] * 100
+    discount_row_eh[display] = (1 - sd[1] / sd[0]) * 100
+
+rate_wide_eh = pl.DataFrame([summer_row_eh, winter_row_eh, discount_row_eh])
+util_cols_eh = [c for c in rate_wide_eh.columns if c != "metric"]
+```
+
+```{python}
+#| label: tbl-rate-table-eh
+#| tbl-cap: "Proposed electric-heating seasonal rate, per utility. Applies to combined HP + ER customers. Summer rates match the current default rate (when default rate is flat); winter rates are reduced to align HP + ER customers' annual bills with their combined cost-of-service."
+
+_rate_gt_eh = (
+    GT(rate_wide_eh, rowname_col="metric")
+    .fmt_number(columns=util_cols_eh, rows=pl.col("metric").is_in(["Summer delivery rate (¢/kWh)", "Winter delivery rate (¢/kWh)"]), decimals=2)
+    .fmt(columns=util_cols_eh, rows=pl.col("metric") == "Winter discount", fns=lambda x: f"{x:.1f}%")
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+display_gt(_rate_gt_eh)
 ```
 
 ## Heat pump TOU rate structure

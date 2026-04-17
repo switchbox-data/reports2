@@ -98,8 +98,8 @@ STATE = "NY"
 YEAR = 2025
 
 ### UPDATE WITH NEW RUNS
-BATCH = "ny_20260408_all_epmc_r1-24"
-RDP_REF = "530564d"  # rate-design-platform git ref for fetch_rdp_file
+BATCH = "ny_20260416a_r1-36"
+RDP_REF = "837a2ce"  # rate-design-platform git ref for fetch_rdp_file
 ###
 
 
@@ -4728,82 +4728,174 @@ report_vars["mean_monthly_fossil_delta_ehrate"] = (
 ```
 
 ```{python}
-#| label: fig-quadrant-bar-fossil-ehrate-state
-#| fig-cap: "Change in total annual energy bills — non-electric-heating homes (natural gas, fuel oil, propane, other) under the electric heating rate (Statewide). Equipment held constant at baseline; delta reflects the recalibrated flat rate only. Undiscounted annual bills."
+#| label: fig-bill-change-fossil-ehrate-state
+#| fig-cap: "Monthly bill change — non-electric-heating homes (natural gas, fuel oil, propane, other) under the electric heating rate (Statewide). Equipment held constant at baseline; delta reflects the recalibrated flat rate only. Undiscounted bills."
 
-plot_quadrant_bar(
-    [("Electric heating rate", fossil_ehrate_state)],
-    title_parts=[
-        ("How bills would change for ", "#000000"),
-        ("natural gas", "#7A8A10"),
-        (", ", "#000000"),
-        ("fuel oil", "#4a8fa0"),
-        (", and ", "#000000"),
-        ("propane", "#3a8fa0"),
-        (" heated homes under the ", "#000000"),
-        ("electric heating rate", "#c47600"),
-    ],
+REBAL_3_COLORS = {
+    "bill decrease": "#81c784",
+    "increase < $5/mo": "#ef9a9a",
+    "increase ≥ $5/mo": "#b71c1c",
+}
+REBAL_3_ORDER = list(REBAL_3_COLORS.keys())
+REBAL_3_LABELS = {
+    "bill decrease": "DECREASE",
+    "increase < $5/mo": "< $5/MO",
+    "increase ≥ $5/mo": "≥ $5/MO",
+}
+
+monthly_fossil_ehrate = fossil_ehrate_state.with_columns(
+    (pl.col("delta") / 12).alias("delta_monthly")
 )
+
+_total_w = monthly_fossil_ehrate["weight"].sum()
+_pct_fossil = {
+    "bill decrease": monthly_fossil_ehrate.filter(pl.col("delta_monthly") < 0)["weight"].sum() / _total_w * 100,
+    "increase < $5/mo": monthly_fossil_ehrate.filter((pl.col("delta_monthly") >= 0) & (pl.col("delta_monthly") < 5))["weight"].sum() / _total_w * 100,
+    "increase ≥ $5/mo": monthly_fossil_ehrate.filter(pl.col("delta_monthly") >= 5)["weight"].sum() / _total_w * 100,
+}
+
+_records = [{"scenario": "Fossil-fuel homes", "category": k, "pct": v} for k, v in _pct_fossil.items()]
+_plot_df = pl.DataFrame(_records).with_columns(
+    pl.col("category").cast(pl.Enum(REBAL_3_ORDER)),
+    pl.col("scenario").cast(pl.Enum(["Fossil-fuel homes"])),
+)
+
+_stacking_order = list(reversed(REBAL_3_ORDER))
+_annotations: list = []
+_cum = 0.0
+for _q in _stacking_order:
+    _mid = _cum + _pct_fossil[_q] / 2
+    _cum += _pct_fossil[_q]
+    if _pct_fossil[_q] < 2:
+        continue
+    _annotations.append(
+        annotate(
+            "text",
+            x=1.45,
+            y=_mid,
+            label=REBAL_3_LABELS[_q],
+            ha="center", va="bottom",
+            size=8, color=REBAL_3_COLORS[_q], fontweight="bold",
+        )
+    )
+
+p = (
+    ggplot(_plot_df, aes(x="scenario", y="pct", fill="category"))
+    + geom_col(position="stack", width=0.55)
+    + geom_text(
+        _plot_df.filter(pl.col("pct") >= 3),
+        aes(label="pct"),
+        position=position_stack(vjust=0.5),
+        format_string="{:.0f}%",
+        color="white",
+        size=10,
+        fontweight="bold",
+    )
+    + scale_fill_manual(values=REBAL_3_COLORS, breaks=REBAL_3_ORDER)
+    + scale_y_continuous(expand=(0, 0, 0.15, 0))
+    + scale_x_discrete(expand=(0, 0.35, 0, 1.2))
+    + coord_flip()
+    + guides(fill=False)
+    + labs(x="", y="", title="Monthly bill change for fossil-fuel homes under the electric heating rate")
+    + theme_switchbox()
+    + theme(
+        figure_size=(12.5, 2.6),
+        axis_text=element_blank(),
+        axis_ticks_x=element_blank(),
+        axis_ticks_y=element_blank(),
+        axis_line_x=element_blank(),
+        axis_line_y=element_blank(),
+        panel_grid=element_blank(),
+        plot_title=element_text(ha="left", margin={"b": -8, "units": "pt"}),
+    )
+)
+for _a in _annotations:
+    p = p + _a
+p
 ```
 
-### ER → HP savings: seasonal HP rate vs. electric heating rate
+### ER → HP savings: default rate vs. electric heating rate
 
-The narrative pivot chart. Bar 1 shows the status-quo operating-cost incentive
-for an ER customer to switch to HP: they start under today's default rate and end
-up on the HP seasonal rate. Bar 2 shows the analogous switch once the EH rate is
-in place: the ER customer is already paying less under the EH rate (Bar 2's
-"before" captures that), and after switching to HP they remain on the EH rate.
-The two bars are asymmetric by design — Bar 1 is a mixed default-to-seasonal
-delta, Bar 2 is a within-regime EH-to-EH delta — because each bar answers a
-different policy question. The comparison tests whether the EH rate erodes the
-bill-savings incentive to switch from ER to HP.
+The narrative pivot chart. Both bars measure annual bill savings for an
+electric-resistance customer who upgrades to a heat pump, holding the baseline
+comparison point fixed (today's equipment on today's default rate). The two bars
+differ only in which rate the post-switch HP customer pays:
+
+- **Bar 1 — default rate:** baseline (ER, default rate) → HP on default rate.
+  The status-quo operating-cost incentive to switch.
+- **Bar 2 — electric heating rate:** baseline (ER, default rate) → HP on the new
+  EH rate. The switching incentive if the EH rate is adopted.
+
+The comparison tests whether introducing the EH rate strengthens or erodes the
+bill-savings incentive for ER customers to switch to HP.
 
 ```{python}
-#| label: compute-deltas-er-switch-ehrate
+#| label: compute-deltas-er-switch-default-vs-ehrate
 
-annual_before_ehrate_switch = (
-    bills_ehrate_current
+annual_before_default_switch = (
+    bills_current
     .filter(pl.col("month") == ANNUAL_MONTH)
     .select(DELTA_SELECT)
     .collect()
 )
-annual_after_ehrate_switch = (
+annual_after_hp_default = (
+    bills_hp
+    .filter(pl.col("month") == ANNUAL_MONTH)
+    .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after"))
+    .collect()
+)
+annual_after_hp_ehrate = (
     bills_ehrate_hp
     .filter(pl.col("month") == ANNUAL_MONTH)
     .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after"))
     .collect()
 )
-delta_ehrate_switch_state = annual_before_ehrate_switch.join(
-    annual_after_ehrate_switch, on=BLDG_ID, how="inner",
+
+delta_switch_default_state = annual_before_default_switch.join(
+    annual_after_hp_default, on=BLDG_ID, how="inner",
+).with_columns(
+    (pl.col("bill_after") - pl.col("bill_before")).alias("delta"),
+)
+delta_switch_ehrate_state = annual_before_default_switch.join(
+    annual_after_hp_ehrate, on=BLDG_ID, how="inner",
 ).with_columns(
     (pl.col("bill_after") - pl.col("bill_before")).alias("delta"),
 )
 
+elec_resistance_switch_default_state = (
+    delta_switch_default_state
+    .filter(pl.col(HEATING_TYPE_COL) == "electrical_resistance")
+    .select("delta", "weight")
+)
 elec_resistance_switch_ehrate_state = (
-    delta_ehrate_switch_state
+    delta_switch_ehrate_state
     .filter(pl.col(HEATING_TYPE_COL) == "electrical_resistance")
     .select("delta", "weight")
 )
 
-_er_sw_eh_total = elec_resistance_switch_ehrate_state["weight"].sum()
-_er_sw_eh_save = elec_resistance_switch_ehrate_state.filter(pl.col("delta") < 0)["weight"].sum()
-report_vars["pct_er_switch_save_ehrate"] = _er_sw_eh_save / _er_sw_eh_total
+_er_def_total = elec_resistance_switch_default_state["weight"].sum()
+_er_def_save = elec_resistance_switch_default_state.filter(pl.col("delta") < 0)["weight"].sum()
+report_vars["pct_er_switch_save_default"] = _er_def_save / _er_def_total
+report_vars["mean_er_switch_delta_default"] = _weighted_mean(
+    elec_resistance_switch_default_state, "delta", "weight",
+)
+
+_er_eh_total = elec_resistance_switch_ehrate_state["weight"].sum()
+_er_eh_save = elec_resistance_switch_ehrate_state.filter(pl.col("delta") < 0)["weight"].sum()
+report_vars["pct_er_switch_save_ehrate"] = _er_eh_save / _er_eh_total
 report_vars["mean_er_switch_delta_ehrate"] = _weighted_mean(
     elec_resistance_switch_ehrate_state, "delta", "weight",
-)
-report_vars["mean_er_switch_delta_hprate"] = _weighted_mean(
-    elec_resistance_switch_state, "delta", "weight",
 )
 ```
 
 ```{python}
-#| label: fig-quadrant-bar-elec-resistance-switch-ehrate-vs-hprate-state
-#| fig-cap: "Change in total annual energy bills — electric resistance homes switching to HP under two rate regimes (Statewide). Bar 1 captures the status-quo incentive (default rate baseline, HP seasonal rate after). Bar 2 captures the incentive under the new EH rate (EH rate both before and after). Undiscounted annual bills."
+#| label: fig-quadrant-bar-elec-resistance-switch-default-vs-ehrate-state
+#| fig-cap: "Change in total annual energy bills — electric resistance homes switching to HP under two rate regimes (Statewide). Both bars use the same baseline (ER equipment on today's default rate); Bar 1 applies the default rate post-switch, Bar 2 applies the new electric heating rate post-switch. Undiscounted annual bills."
 
 plot_quadrant_bar(
     [
-        ("ER default → HP seasonal rate", elec_resistance_switch_state),
-        ("ER electric heating rate → HP electric heating rate", elec_resistance_switch_ehrate_state),
+        ("ER → HP (default rate)", elec_resistance_switch_default_state),
+        ("ER → HP (electric heating rate)", elec_resistance_switch_ehrate_state),
     ],
     title_parts=[
         ("How bills would change for ", "#000000"),

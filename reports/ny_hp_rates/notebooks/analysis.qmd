@@ -1305,8 +1305,9 @@ def plot_quadrant_bar(
 
     n_scenarios = len(rows)
     stacking_order = list(reversed(QUADRANT_ORDER))
-    extra_annotations: list = []
 
+    seg_label_records: list[dict] = []
+    seg_label_offset = 0.33
     for i, pct in enumerate(all_pcts):
         bar_x = n_scenarios - i
         cum = 0.0
@@ -1320,30 +1321,25 @@ def plot_quadrant_bar(
                 label_y, label_ha = seg_start, "left"
             else:
                 label_y, label_ha = mid, "center"
-            extra_annotations.append(
-                annotate(
-                    "text",
-                    x=bar_x + 0.45,
-                    y=label_y,
-                    label=QUADRANT_LABELS[q],
-                    ha=label_ha, va="bottom",
-                    size=8, color=QUADRANT_COLORS[q], fontweight="bold",
-                )
-            )
+            seg_label_records.append({
+                "x": bar_x + seg_label_offset,
+                "y": label_y,
+                "label": QUADRANT_LABELS[q],
+                "color": QUADRANT_COLORS[q],
+                "ha": label_ha,
+            })
+    seg_label_df = pl.DataFrame(seg_label_records) if seg_label_records else None
 
+    row_label_records: list[dict] = []
     if n_scenarios > 1:
         for i, (row_label, _) in enumerate(rows):
             bar_pos = n_scenarios - i
-            extra_annotations.append(
-                annotate(
-                    "text",
-                    x=bar_pos,
-                    y=101,
-                    label=row_label,
-                    ha="left", va="center",
-                    size=9, fontweight="bold",
-                )
-            )
+            row_label_records.append({
+                "x": bar_pos,
+                "y": 101,
+                "label": row_label,
+            })
+    row_label_df = pl.DataFrame(row_label_records) if row_label_records else None
 
     top_expand = 0.55 if n_scenarios > 1 else 1.2
     plotnine_title = "" if title_parts else title
@@ -1382,8 +1378,26 @@ def plot_quadrant_bar(
             ),
         )
     )
-    for a in extra_annotations:
-        p = p + a
+    if seg_label_df is not None:
+        for ha_val in seg_label_df["ha"].unique().to_list():
+            sub = seg_label_df.filter(pl.col("ha") == ha_val)
+            p = p + geom_text(
+                sub,
+                aes(x="x", y="y", label="label", color="color"),
+                ha=ha_val, va="bottom",
+                size=8, fontweight="bold",
+                inherit_aes=False,
+                show_legend=False,
+            )
+        p = p + scale_color_identity()
+    if row_label_df is not None:
+        p = p + geom_text(
+            row_label_df,
+            aes(x="x", y="y", label="label"),
+            ha="left", va="center",
+            size=9, fontweight="bold",
+            inherit_aes=False,
+        )
 
     if title_parts:
         fig = p.draw()
@@ -4896,9 +4910,8 @@ computed under three rate combinations:
 - **Bar 2 — HP seasonal rate after:** default rate before, HP seasonal rate
   after. The incentive added by putting the new HP customer on the HP seasonal
   rate.
-- **Bar 3 — EH rate before, HP seasonal rate after:** the incentive for an ER
-  customer who is already paying the EH rate to upgrade to HP and move onto the
-  HP seasonal rate.
+- **Bar 3 — EH rate before and after:** for an ER customer already on the EH
+  rate, the bill change from upgrading to HP while staying on the EH rate.
 
 ```{python}
 #| label: compute-deltas-er-switch-three-regimes
@@ -4927,6 +4940,12 @@ annual_after_hp_hprate = (
     .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after"))
     .collect()
 )
+annual_after_hp_ehrate = (
+    bills_ehrate_hp
+    .filter(pl.col("month") == ANNUAL_MONTH)
+    .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after"))
+    .collect()
+)
 
 delta_switch_default_state = annual_baseline_default_state.join(
     annual_after_hp_default, on=BLDG_ID, how="inner",
@@ -4938,8 +4957,8 @@ delta_switch_default_to_hprate_state = annual_baseline_default_state.join(
 ).with_columns(
     (pl.col("bill_after") - pl.col("bill_before")).alias("delta"),
 )
-delta_switch_ehrate_to_hprate_state = annual_baseline_ehrate_state.join(
-    annual_after_hp_hprate, on=BLDG_ID, how="inner",
+delta_switch_ehrate_state = annual_baseline_ehrate_state.join(
+    annual_after_hp_ehrate, on=BLDG_ID, how="inner",
 ).with_columns(
     (pl.col("bill_after") - pl.col("bill_before")).alias("delta"),
 )
@@ -4954,8 +4973,8 @@ elec_resistance_switch_default_to_hprate_state = (
     .filter(pl.col(HEATING_TYPE_COL) == "electrical_resistance")
     .select("delta", "weight")
 )
-elec_resistance_switch_ehrate_to_hprate_state = (
-    delta_switch_ehrate_to_hprate_state
+elec_resistance_switch_ehrate_state = (
+    delta_switch_ehrate_state
     .filter(pl.col(HEATING_TYPE_COL) == "electrical_resistance")
     .select("delta", "weight")
 )
@@ -4974,23 +4993,23 @@ report_vars["mean_er_switch_delta_default_to_hprate"] = _weighted_mean(
     elec_resistance_switch_default_to_hprate_state, "delta", "weight",
 )
 
-_er_e2h_total = elec_resistance_switch_ehrate_to_hprate_state["weight"].sum()
-_er_e2h_save = elec_resistance_switch_ehrate_to_hprate_state.filter(pl.col("delta") < 0)["weight"].sum()
-report_vars["pct_er_switch_save_ehrate_to_hprate"] = _er_e2h_save / _er_e2h_total
-report_vars["mean_er_switch_delta_ehrate_to_hprate"] = _weighted_mean(
-    elec_resistance_switch_ehrate_to_hprate_state, "delta", "weight",
+_er_eh_total = elec_resistance_switch_ehrate_state["weight"].sum()
+_er_eh_save = elec_resistance_switch_ehrate_state.filter(pl.col("delta") < 0)["weight"].sum()
+report_vars["pct_er_switch_save_ehrate"] = _er_eh_save / _er_eh_total
+report_vars["mean_er_switch_delta_ehrate"] = _weighted_mean(
+    elec_resistance_switch_ehrate_state, "delta", "weight",
 )
 ```
 
 ```{python}
 #| label: fig-quadrant-bar-elec-resistance-switch-three-regimes-state
-#| fig-cap: "Annual bill change for electric resistance homes switching to HP under three rate regimes (Statewide). Bar 1: default rate before and after. Bar 2: default rate before, HP seasonal rate after. Bar 3: EH rate before, HP seasonal rate after. Undiscounted annual bills."
+#| fig-cap: "Annual bill change for electric resistance homes switching to HP under three rate regimes (Statewide). Bar 1: default rate before and after. Bar 2: default rate before, HP seasonal rate after. Bar 3: EH rate before and after. Undiscounted annual bills."
 
 plot_quadrant_bar(
     [
-        ("default rate →\ndefault rate", elec_resistance_switch_default_state),
-        ("default rate →\nHP seasonal rate", elec_resistance_switch_default_to_hprate_state),
-        ("EH rate →\nHP seasonal rate", elec_resistance_switch_ehrate_to_hprate_state),
+        (" ER → HP\n (default rate)", elec_resistance_switch_default_state),
+        ("ER (default rate)  →\nHP (seasonal rate)", elec_resistance_switch_default_to_hprate_state),
+        ("ER (EH seasonal rate)  →\nHP (EH seasonal rate)", elec_resistance_switch_ehrate_state),
     ],
     title_parts=[
         ("How bills would change for ", "#000000"),

@@ -1,87 +1,84 @@
 all: prep-data clean render
 
-
 # Fetch and create raw geo data files - you should not need to run this unless the files are missing from S3
+
 # Fetch People's Gas project data from ArcGIS (downloads to utils/)
 fetch-data:
-  uv run python utils/download_peoplesgas_data.py
+    uv run python utils/download_peoplesgas_data.py
 
 # Fetch Cook County parcels (Chicago only, downloads to data/geo_data/)
 fetch-parcels:
-  uv run python utils/download_cookcounty_parcels.py
+    uv run python utils/download_cookcounty_parcels.py
 
 # Fetch Chicago building footprints (downloads to data/geo_data/)
 fetch-buildings:
-  uv run python utils/download_chicago_buildings.py
+    uv run python utils/download_chicago_buildings.py
 
 # Fetch Chicago street centerlines (downloads to data/geo_data/)
 fetch-streets:
-  uv run python utils/download_chicago_streets.py
-
+    uv run python utils/download_chicago_streets.py
 
 fetch-city-blocks:
-  mkdir -p data/geo_data/city_blocks
-  aws s3 cp s3://data.sb/il_npa/gis/pgl/pgp_blocks.geojson \
-    data/geo_data/city_blocks/pgp_blocks.geojson
-
+    mkdir -p data/geo_data/city_blocks
+    aws s3 cp s3://data.sb.east/gis/pgl/pgp_blocks.geojson \
+      data/geo_data/city_blocks/pgp_blocks.geojson
 
 # Fetch all geospatial data (Peoples Gas, parcels, buildings, streets, city blocks)
 fetch-all-data:
-  uv run python utils/download_peoplesgas_data.py
-  uv run python utils/download_cookcounty_parcels.py
-  uv run python utils/download_chicago_buildings.py
-  uv run python utils/download_chicago_streets.py
-  just fetch-city-blocks
+    uv run python utils/download_peoplesgas_data.py
+    uv run python utils/download_cookcounty_parcels.py
+    uv run python utils/download_chicago_buildings.py
+    uv run python utils/download_chicago_streets.py
+    just fetch-city-blocks
 
+# Explore available feature categories and statistics
+explore-data:
+    uv run python utils/explore_features.py
 
 # Upload raw GeoJSON to public S3 bucket (s3://data.sb/il_npa/gis/pgl/)
 upload-data:
-  uv run python utils/upload_to_s3.py
-
+    uv run python utils/upload_to_s3.py
 
 # Run preprocessing scripts only if output files don't exist. These files are read in by geo_data_cleaning.qmd
 prep-data:
-  #!/usr/bin/env bash
-  set -euo pipefail
+    #!/usr/bin/env bash
+    set -euo pipefail
 
-  # Step 1: Clean polygons
-  if [ ! -f data/outputs/peoples_polygons_unioned.geojson ]; then
-    echo "🔄 Running clean_peoples_construction_polygons.py..."
-    uv run python notebooks/clean_peoples_construction_polygons.py
+    # Step 1: Clean polygons
     if [ ! -f data/outputs/peoples_polygons_unioned.geojson ]; then
-      echo "❌ clean_peoples_construction_polygons.py finished but did not produce data/outputs/peoples_polygons_unioned.geojson" >&2
-      exit 1
+      echo "🔄 Running clean_peoples_construction_polygons.py..."
+      uv run python notebooks/clean_peoples_construction_polygons.py
+      if [ ! -f data/outputs/peoples_polygons_unioned.geojson ]; then
+        echo "❌ clean_peoples_construction_polygons.py finished but did not produce data/outputs/peoples_polygons_unioned.geojson" >&2
+        exit 1
+      fi
+    else
+      echo "✓ peoples_polygons_unioned.geojson exists, skipping"
     fi
-  else
-    echo "✓ peoples_polygons_unioned.geojson exists, skipping"
-  fi
 
-  # Step 2: Match parcels with buildings
-  if ! ls data/outputs/parcels_with_units_*.geojson 1> /dev/null 2>&1; then
-    echo "🔄 Running match_parcels_buildings.py..."
-    uv run python notebooks/match_parcels_buildings.py
-  else
-    echo "✓ parcels_with_units file exists, skipping"
-  fi
+    # Step 2: Match parcels with buildings
+    if ! ls data/outputs/parcels_with_units_*.geojson 1> /dev/null 2>&1; then
+      echo "🔄 Running match_parcels_buildings.py..."
+      uv run python notebooks/match_parcels_buildings.py
+    else
+      echo "✓ parcels_with_units file exists, skipping"
+    fi
 
 # Delete all caches
 clean:
-  rm -rf .quarto docs/*_files/ notebooks/*_files/ notebooks/*.html \
-         notebooks/*.ipynb notebooks/*.rmarkdown
+    uv run python -m lib.just.clean
 
-# Render quarto project
 render:
-  quarto render .
+    uv run python -m lib.just.render
 
-today := `date +%Y%m%d`
-draft_name := "report_draft_" + today + ".docx"
-draft:
-  quarto render index.qmd --to docx --output {{draft_name}}
+draft path_qmd="index.qmd":
+    uv run python -m lib.just.draft {{ path_qmd }}
 
-typeset_name := "report_" + today + ".icml"
-typeset:
-  quarto render index.qmd --to icml --output {{typeset_name}}
+typeset path_qmd="":
+    uv run python -m lib.just.typeset {{ path_qmd }}
 
 publish:
-  bash -c 'parent_folder=$(basename $(pwd)); pub_path="../../docs/$parent_folder"; \
-  rm -rf "$pub_path" && mkdir -p "$pub_path" && cp -r docs/* "$pub_path"'
+    uv run python -m lib.just.publish
+
+diff label="":
+    uv run python -m lib.just.diff {{ label }}

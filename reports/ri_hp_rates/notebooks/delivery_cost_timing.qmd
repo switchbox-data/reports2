@@ -1,0 +1,476 @@
+---
+title: "Delivery Cost Timing: When Grid Costs Happen"
+reference-location: margin
+fig-cap-location: bottom
+execute:
+  warning: false
+  message: false
+---
+
+This notebook produces the 8760 marginal cost heatmaps and enhanced monthly
+consumption charts used in the testimony's Section III. It shows *when*
+delivery costs are triggered on RIE's grid and how that timing relates to
+heat pump electricity consumption.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+from pathlib import Path
+import math
+
+import polars as pl
+from lib.plotnine import SB_COLORS, theme_switchbox
+from lib.quarto import display_svg
+from plotnine import (
+    aes,
+    annotate,
+    coord_cartesian,
+    element_blank,
+    element_text,
+    geom_col,
+    geom_tile,
+    geom_text,
+    ggplot,
+    labs,
+    scale_fill_gradient,
+    scale_fill_manual,
+    scale_x_continuous,
+    scale_x_discrete,
+    scale_y_continuous,
+    theme,
+)
+
+report_vars: dict = {}
+```
+
+## Parameters
+
+```{python}
+#| label: params
+
+STATE = "RI"
+YEAR = 2025
+CRANSTON_BLDG_ID = 446516
+COOLING_GAIN_BLDG_ID = 168907
+
+LOAD_BASE = Path("/ebs/data/nrel/resstock/res_2024_amy2018_2_sb/load_curve_hourly") / f"state={STATE}"
+ELEC_COL = "out.electricity.total.energy_consumption"
+MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+S3_OPTS = {"aws_region": "us-west-2"}
+PATH_BULK_TX = f"s3://data.sb/switchbox/marginal_costs/ri/bulk_tx/utility=rie/year={YEAR}/data.parquet"
+PATH_DIST_SUB_TX = f"s3://data.sb/switchbox/marginal_costs/ri/dist_and_sub_tx/utility=rie/year={YEAR}/data.parquet"
+```
+
+## Load marginal costs
+
+We load the two delivery-side marginal cost series — bulk transmission and
+distribution + sub-transmission — and join them on timestamp. These are the
+same marginal costs used in the cost-of-service analysis (Section II).
+
+```{python}
+#| label: load-mcs
+
+bulk_tx = pl.read_parquet(PATH_BULK_TX, storage_options=S3_OPTS)
+dist_sub_tx = pl.read_parquet(PATH_DIST_SUB_TX, storage_options=S3_OPTS)
+
+mc = bulk_tx.join(
+    dist_sub_tx.select("timestamp", "mc_total_per_kwh"),
+    on="timestamp",
+).rename({
+    "bulk_tx_cost_enduse": "mc_bulk_tx",
+    "mc_total_per_kwh": "mc_dist_sub_tx",
+}).with_columns(
+    (pl.col("mc_bulk_tx") + pl.col("mc_dist_sub_tx")).alias("mc_delivery_total"),
+)
+
+assert mc.height == 8760
+n_nonzero = mc.filter(pl.col("mc_delivery_total") > 0).height
+print(f"Non-zero delivery MC hours: {n_nonzero} / 8,760")
+```
+
+```{python}
+#| label: show-mc-summary
+
+mc.filter(pl.col("mc_delivery_total") > 0).with_columns(
+    pl.col("timestamp").dt.month().alias("month"),
+).group_by("month").len().sort("month")
+```
+
+All non-zero delivery marginal cost hours fall in June, July, and August.
+The remaining 8,660 hours — including every hour from October through May — have
+zero marginal delivery cost.
+
+## 8760 heatmaps
+
+Each tile is one hour of the year; darker tiles indicate higher marginal cost.
+These heatmaps make the seasonal concentration of delivery costs viscerally clear.
+
+```{python}
+#| label: prepare-heatmap
+
+heatmap_df = mc.with_columns(
+    pl.col("timestamp").dt.ordinal_day().alias("day_of_year"),
+    pl.col("timestamp").dt.hour().alias("hour"),
+)
+```
+
+```{python}
+#| label: fig-heatmap-bulk-tx
+#| fig-cap: "Hourly marginal bulk transmission capacity costs, 2025. Costs are concentrated in ~100 summer afternoon hours; every winter hour is zero."
+
+nz_bulk = heatmap_df.filter(pl.col("mc_bulk_tx") > 0)
+p = (
+    ggplot(nz_bulk, aes(x="day_of_year", y="hour", fill="mc_bulk_tx"))
+    + geom_tile()
+    + scale_fill_gradient(low="#FFFFFF", high=SB_COLORS["midnight"])
+    + scale_x_continuous(
+        breaks=[1, 91, 182, 274, 365],
+        labels=["Jan", "Apr", "Jul", "Oct", "Dec"],
+        limits=(1, 365),
+    )
+    + scale_y_continuous(breaks=[0, 6, 12, 18, 23], limits=(0, 23))
+    + coord_cartesian(expand=False)
+    + labs(
+        title="Bulk Transmission — Marginal Capacity Cost by Hour",
+        x="",
+        y="Hour of day",
+        fill="$/kWh",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4), legend_position="right")
+)
+fig = p.draw()
+for ax in fig.get_axes():
+    for img in ax.get_images():
+        img.set_rasterized(True)
+display_svg(fig)
+```
+
+```{python}
+#| label: fig-heatmap-dist-sub-tx
+#| fig-cap: "Hourly marginal distribution and sub-transmission capacity costs, 2025. Same summer-only pattern as bulk transmission."
+
+nz_dist = heatmap_df.filter(pl.col("mc_dist_sub_tx") > 0)
+p = (
+    ggplot(nz_dist, aes(x="day_of_year", y="hour", fill="mc_dist_sub_tx"))
+    + geom_tile()
+    + scale_fill_gradient(low="#FFFFFF", high=SB_COLORS["carrot"])
+    + scale_x_continuous(
+        breaks=[1, 91, 182, 274, 365],
+        labels=["Jan", "Apr", "Jul", "Oct", "Dec"],
+        limits=(1, 365),
+    )
+    + scale_y_continuous(breaks=[0, 6, 12, 18, 23], limits=(0, 23))
+    + coord_cartesian(expand=False)
+    + labs(
+        title="Distribution + Sub-Transmission — Marginal Capacity Cost by Hour",
+        x="",
+        y="Hour of day",
+        fill="$/kWh",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4), legend_position="right")
+)
+fig = p.draw()
+for ax in fig.get_axes():
+    for img in ax.get_images():
+        img.set_rasterized(True)
+display_svg(fig)
+```
+
+## Household load analysis
+
+We now load hourly electricity consumption for two specific households — one
+that already had full cooling before switching to a heat pump (the Cranston home
+from Section II), and one that gains cooling for the first time.
+
+```{python}
+#| label: load-hourly-loads
+
+def load_hourly(bldg_id: int, upgrade: int) -> pl.DataFrame:
+    tag = f"{bldg_id}-{upgrade}"
+    path = LOAD_BASE / f"upgrade={upgrade:02d}" / f"{tag}.parquet"
+    return pl.read_parquet(str(path)).select("timestamp", pl.col(ELEC_COL).alias("elec_kwh"))
+
+
+mc_with_hour_idx = mc.with_row_index("hour_idx").select(
+    "hour_idx",
+    pl.col("mc_delivery_total").alias("mc_delivery"),
+    pl.col("timestamp").dt.month().alias("mc_month"),
+)
+
+
+def monthly_with_cost_split(bldg_id: int) -> pl.DataFrame:
+    """Monthly consumption split by cost-triggering hours, before and after HP.
+
+    MC data uses 2025 timestamps; ResStock loads use 2018 (AMY weather year).
+    Both are 8,760-hour non-leap years, so we join by row position (hour index).
+    """
+    before = load_hourly(bldg_id, 0).with_row_index("hour_idx")
+    after = load_hourly(bldg_id, 2).with_row_index("hour_idx")
+
+    hourly = (
+        before.rename({"elec_kwh": "before"})
+        .join(after.drop("timestamp").rename({"elec_kwh": "after"}), on="hour_idx")
+        .join(mc_with_hour_idx, on="hour_idx")
+        .with_columns(
+            (pl.col("after") - pl.col("before")).alias("delta"),
+            (pl.col("mc_delivery") > 0).alias("is_cost_hour"),
+            pl.col("mc_month").alias("month"),
+        )
+    )
+
+    monthly = hourly.group_by("month").agg(
+        pl.col("before").sum().alias("before_kwh"),
+        pl.col("after").sum().alias("after_kwh"),
+        pl.col("delta").filter(pl.col("is_cost_hour")).clip(lower_bound=0).sum().alias("new_cost_triggering"),
+        pl.col("delta").filter(~pl.col("is_cost_hour")).clip(lower_bound=0).sum().alias("new_non_cost"),
+    ).sort("month").with_columns(
+        pl.Series("month_label", [MONTH_LABELS[m - 1] for m in pl.Series("m", list(range(1, 13)))]),
+    )
+
+    return monthly
+
+
+cranston = monthly_with_cost_split(CRANSTON_BLDG_ID)
+cooling_gain = monthly_with_cost_split(COOLING_GAIN_BLDG_ID)
+```
+
+```{python}
+#| label: show-cranston-monthly
+
+cranston
+```
+
+```{python}
+#| label: show-cooling-gain-monthly
+
+cooling_gain
+```
+
+## Cranston home — enhanced monthly chart
+
+The Cranston home already had central air conditioning. After installing a heat
+pump, its summer electricity use *decreases* (the HP is a more efficient
+cooler), and winter consumption grows substantially. Because all the growth is
+in months when delivery marginal costs are zero, the new load triggers no
+delivery costs.
+
+```{python}
+#| label: build-cranston-chart-data
+
+SAVINGS_COLOR = (0.784, 0.635, 0.0, 0.35)  # #C8A200 at 35% opacity
+SAVINGS_LABEL_COLOR = "#C8A200"
+
+SEGMENT_ORDER_CRANSTON = [
+    "New electricity use from heat pump",
+    "More efficient cooling",
+    "Electricity use before heat pump",
+]
+COLORS_CRANSTON = {
+    "Electricity use before heat pump": "#C8A200",
+    "More efficient cooling": SAVINGS_COLOR,
+    "New electricity use from heat pump": SB_COLORS["saffron"],
+}
+
+cranston_chart = pl.concat([
+    cranston.select(
+        "month_label",
+        pl.min_horizontal("before_kwh", "after_kwh").alias("kwh"),
+    ).with_columns(pl.lit("Electricity use before heat pump").alias("segment")),
+    cranston.select(
+        "month_label",
+        (pl.col("before_kwh") - pl.col("after_kwh")).clip(lower_bound=0).alias("kwh"),
+    ).with_columns(pl.lit("More efficient cooling").alias("segment")),
+    cranston.select(
+        "month_label",
+        (pl.col("after_kwh") - pl.col("before_kwh")).clip(lower_bound=0).alias("kwh"),
+    ).with_columns(pl.lit("New electricity use from heat pump").alias("segment")),
+]).with_columns(
+    pl.col("month_label").cast(pl.Enum(MONTH_LABELS)),
+    pl.col("segment").cast(pl.Enum(SEGMENT_ORDER_CRANSTON)),
+)
+```
+
+```{python}
+#| label: fig-consumption-cranston-enhanced
+#| fig-cap: "Monthly electricity for median residential gas customer with summer central air cooling."
+
+_dec = cranston.filter(pl.col("month_label") == "Dec")
+_dec_base = float(min(_dec["before_kwh"][0], _dec["after_kwh"][0]))
+_dec_new = float(max(0, _dec["after_kwh"][0] - _dec["before_kwh"][0]))
+_n = len(MONTH_LABELS)
+_lx = _n + 0.6
+
+_aug = cranston.filter(pl.col("month_label") == "Aug")
+_aug_base = float(min(_aug["before_kwh"][0], _aug["after_kwh"][0]))
+_aug_savings = float(max(0, _aug["before_kwh"][0] - _aug["after_kwh"][0]))
+
+p = (
+    ggplot(cranston_chart, aes(x="month_label", y="kwh", fill="segment"))
+    + geom_col(width=0.7)
+    + scale_fill_manual(values=COLORS_CRANSTON)
+    + scale_y_continuous(expand=(0, 0, 0.05, 0))
+    + scale_x_discrete(expand=(0.02, 0, 0.15, 0))
+    + annotate("text", x=_lx, y=_dec_base / 2,
+               label="Electricity use\nbefore heat pump",
+               ha="left", va="center", size=9, color="#C8A200", fontweight="bold")
+    + annotate("segment", x=_n + 0.15, xend=_lx - 0.05,
+               y=_dec_base / 2, yend=_dec_base / 2, color="#C8A200", size=0.5)
+    + annotate("text", x=_lx, y=_dec_base + _dec_new / 2,
+               label="New electricity use\nfrom heat pump",
+               ha="left", va="center", size=9, color=SB_COLORS["saffron"], fontweight="bold")
+    + annotate("segment", x=_n + 0.15, xend=_lx - 0.05,
+               y=_dec_base + _dec_new / 2, yend=_dec_base + _dec_new / 2,
+               color=SB_COLORS["saffron"], size=0.5)
+    + annotate("text", x=8, y=_aug_base + _aug_savings + 30,
+               label="More efficient cooling\nlowers use",
+               ha="center", va="bottom", size=9, color="#D4BA46", fontweight="bold")
+    + labs(x="", y="Electricity consumption (kWh)")
+    + theme_switchbox()
+    + theme(figure_size=(14, 5), legend_position="none")
+)
+fig = p.draw()
+display_svg(fig)
+```
+
+## Cooling-gain home — enhanced monthly chart
+
+This home heated with natural gas and had **no air conditioning** before
+switching to a heat pump. After the switch, the home gains full summer cooling
+for the first time — generating some new electricity consumption during the
+high-cost summer hours that trigger delivery costs (shown in orange).
+
+```{python}
+#| label: build-cooling-gain-chart-data
+
+SEGMENT_ORDER_GAIN = [
+    "New electricity (cost-triggering hours)",
+    "New electricity (non-cost hours)",
+    "Electricity before heat pump",
+]
+COLORS_GAIN = {
+    "Electricity before heat pump": "#C8A200",
+    "New electricity (non-cost hours)": SB_COLORS["saffron"],
+    "New electricity (cost-triggering hours)": SB_COLORS["carrot"],
+}
+
+gain_chart = pl.concat([
+    cooling_gain.select("month_label", pl.col("before_kwh").alias("kwh"))
+    .with_columns(pl.lit("Electricity before heat pump").alias("segment")),
+    cooling_gain.select("month_label", pl.col("new_non_cost").alias("kwh"))
+    .with_columns(pl.lit("New electricity (non-cost hours)").alias("segment")),
+    cooling_gain.select("month_label", pl.col("new_cost_triggering").alias("kwh"))
+    .with_columns(pl.lit("New electricity (cost-triggering hours)").alias("segment")),
+]).with_columns(
+    pl.col("month_label").cast(pl.Enum(MONTH_LABELS)),
+    pl.col("segment").cast(pl.Enum(SEGMENT_ORDER_GAIN)),
+)
+```
+
+```{python}
+#| label: fig-consumption-cooling-gain
+#| fig-cap: "Monthly electricity for a natural gas home that gains cooling after switching to a heat pump."
+
+_dec_g = cooling_gain.filter(pl.col("month_label") == "Dec")
+_dec_before_g = float(_dec_g["before_kwh"][0])
+_dec_incr_g = float(_dec_g["new_cost_triggering"][0]) + float(_dec_g["new_non_cost"][0])
+_n = len(MONTH_LABELS)
+_lx = _n + 0.6
+
+_jul = cooling_gain.filter(pl.col("month_label") == "Jul")
+_jul_before = float(_jul["before_kwh"][0])
+_jul_nocost = float(_jul["new_non_cost"][0])
+_jul_cost = float(_jul["new_cost_triggering"][0])
+
+p = (
+    ggplot(gain_chart, aes(x="month_label", y="kwh", fill="segment"))
+    + geom_col(width=0.7)
+    + scale_fill_manual(values=COLORS_GAIN)
+    + scale_y_continuous(expand=(0, 0, 0.05, 0))
+    + scale_x_discrete(expand=(0.02, 0, 0.15, 0))
+    + annotate("text", x=_lx, y=_dec_before_g / 2,
+               label="Electricity use\nbefore heat pump",
+               ha="left", va="center", size=9, color="#C8A200", fontweight="bold")
+    + annotate("segment", x=_n + 0.15, xend=_lx - 0.05,
+               y=_dec_before_g / 2, yend=_dec_before_g / 2, color="#C8A200", size=0.5)
+    + annotate("text", x=_lx, y=_dec_before_g + _dec_incr_g / 2,
+               label="New electricity use\nfrom heat pump",
+               ha="left", va="center", size=9, color=SB_COLORS["saffron"], fontweight="bold")
+    + annotate("segment", x=_n + 0.15, xend=_lx - 0.05,
+               y=_dec_before_g + _dec_incr_g / 2, yend=_dec_before_g + _dec_incr_g / 2,
+               color=SB_COLORS["saffron"], size=0.5)
+    + annotate("text", x=7, y=_jul_before + _jul_nocost + _jul_cost + 30,
+               label="Cost-triggering\nhours",
+               ha="center", va="bottom", size=9, color=SB_COLORS["carrot"], fontweight="bold")
+    + labs(title="Representative home gaining cooling and heating through heat pumps",
+           x="", y="Electricity consumption (kWh)")
+    + theme_switchbox()
+    + theme(figure_size=(14, 5), legend_position="none")
+)
+fig = p.draw()
+display_svg(fig)
+```
+
+## Export report variables
+
+```{python}
+#| label: export-vars
+
+import pickle
+
+cranston_cost_trigger_total = cranston["new_cost_triggering"].sum()
+cranston_total_new = (cranston["new_cost_triggering"] + cranston["new_non_cost"]).sum()
+report_vars["cranston_pct_new_cost_triggering"] = (
+    cranston_cost_trigger_total / cranston_total_new if cranston_total_new > 0 else 0
+)
+
+gain_cost_trigger_total = cooling_gain["new_cost_triggering"].sum()
+gain_total_new = (cooling_gain["new_cost_triggering"] + cooling_gain["new_non_cost"]).sum()
+report_vars["cooling_gain_pct_new_cost_triggering"] = (
+    gain_cost_trigger_total / gain_total_new if gain_total_new > 0 else 0
+)
+
+report_vars["n_nonzero_delivery_mc_hours"] = n_nonzero
+
+_cg_ja = cooling_gain.filter(pl.col("month").is_in([7, 8]))
+_cg_ja_before = _cg_ja["before_kwh"].sum()
+_cg_ja_after = _cg_ja["after_kwh"].sum()
+report_vars["cooling_gain_jul_aug_pct_change"] = (_cg_ja_after - _cg_ja_before) / _cg_ja_before
+
+_cg_jja = cooling_gain.filter(pl.col("month").is_in([6, 7, 8]))
+_cg_jja_new = (_cg_jja["new_cost_triggering"] + _cg_jja["new_non_cost"]).sum()
+report_vars["cooling_gain_jja_pct_of_new_load"] = _cg_jja_new / gain_total_new
+
+_cr_ja = cranston.filter(pl.col("month").is_in([7, 8]))
+_cr_ja_before = _cr_ja["before_kwh"].sum()
+_cr_ja_after = _cr_ja["after_kwh"].sum()
+report_vars["cranston_jul_aug_pct_change"] = (_cr_ja_after - _cr_ja_before) / _cr_ja_before
+
+def _cost_hour_change(bldg_id: int) -> float:
+    """Pct change in total load during cost-triggering hours, before vs after HP."""
+    before = load_hourly(bldg_id, 0).with_row_index("hour_idx")
+    after = load_hourly(bldg_id, 2).with_row_index("hour_idx")
+    hourly = (
+        before.rename({"elec_kwh": "before"})
+        .join(after.drop("timestamp").rename({"elec_kwh": "after"}), on="hour_idx")
+        .join(mc_with_hour_idx, on="hour_idx")
+        .filter(pl.col("mc_delivery") > 0)
+    )
+    b = hourly["before"].sum()
+    a = hourly["after"].sum()
+    return (a - b) / b
+
+report_vars["cranston_cost_hour_pct_change"] = _cost_hour_change(CRANSTON_BLDG_ID)
+
+Path("../cache").mkdir(exist_ok=True)
+Path("../cache/delivery_cost_timing_vars.pkl").write_bytes(pickle.dumps(report_vars))
+print(f"Exported {len(report_vars)} report variables")
+for k, val in report_vars.items():
+    print(f"  {k}: {val}")
+```

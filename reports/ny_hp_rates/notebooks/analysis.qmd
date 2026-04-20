@@ -99,7 +99,7 @@ YEAR = 2025
 
 ### UPDATE WITH NEW RUNS
 BATCH = "ny_20260416a_r1-36"
-RDP_REF = "837a2ce"  # rate-design-platform git ref for fetch_rdp_file
+RDP_REF = "205041d"  # rate-design-platform git ref for fetch_rdp_file
 ###
 
 
@@ -2548,6 +2548,13 @@ report_vars["natgas_mean_delivery_bill"] = _weighted_mean(_natgas_sub, "annual_b
 report_vars["natgas_mean_delivery_bat"] = _weighted_mean(_natgas_sub, _bat_col, "weight")
 report_vars["oil_propane_mean_delivery_bat"] = _weighted_mean(_op_sub, _bat_col, "weight")
 report_vars["elec_resistance_mean_delivery_bat"] = _weighted_mean(_er_sub, _bat_col, "weight")
+report_vars["elec_resistance_total_cross_subsidy_delivery_millions"] = (
+    (_er_sub[BAT_DELIVERY] * _er_sub["weight"]).sum() / 1e6
+)
+report_vars["eh_total_cross_subsidy_delivery_millions"] = (
+    report_vars["hp_total_cross_subsidy_delivery_millions"]
+    + report_vars["elec_resistance_total_cross_subsidy_delivery_millions"]
+)
 
 ```
 
@@ -4800,10 +4807,14 @@ _fossil_lose = fossil_ehrate_state.filter(pl.col("delta") > 0)["weight"].sum()
 _fossil_monthly_under_5 = (
     fossil_ehrate_state.filter((pl.col("delta") / 12) < 5)["weight"].sum()
 )
+_fossil_monthly_under_15 = (
+    fossil_ehrate_state.filter((pl.col("delta") / 12) < 15)["weight"].sum()
+)
 _fossil_lose_1k = fossil_ehrate_state.filter(pl.col("delta") > 1000)["weight"].sum()
 report_vars["pct_fossil_save_ehrate"] = _fossil_save / _fossil_total
 report_vars["pct_fossil_lose_ehrate"] = _fossil_lose / _fossil_total
 report_vars["pct_fossil_monthly_under_5_ehrate"] = _fossil_monthly_under_5 / _fossil_total
+report_vars["pct_fossil_monthly_under_15_ehrate"] = _fossil_monthly_under_15 / _fossil_total
 report_vars["pct_fossil_lose_1k_ehrate"] = _fossil_lose_1k / _fossil_total
 report_vars["mean_fossil_delta_ehrate"] = _weighted_mean(
     fossil_ehrate_state, "delta", "weight",
@@ -4908,6 +4919,12 @@ for _i, (_scen, _) in enumerate(_scenarios):
             )
         )
 
+_row_label_records = [
+    {"x": _n - _i, "y": 101, "label": _scen}
+    for _i, (_scen, _) in enumerate(_scenarios)
+]
+_row_label_df = pl.DataFrame(_row_label_records)
+
 p = (
     ggplot(_plot_df, aes(x="scenario", y="pct", fill="category"))
     + geom_col(position="stack", width=0.55)
@@ -4920,6 +4937,13 @@ p = (
         size=10,
         fontweight="bold",
     )
+    + geom_text(
+        _row_label_df,
+        aes(x="x", y="y", label="label"),
+        ha="left", va="center",
+        size=9, fontweight="bold",
+        inherit_aes=False,
+    )
     + scale_fill_manual(values=REBAL_3_COLORS, breaks=REBAL_3_ORDER)
     + scale_y_continuous(expand=(0, 0, 0.15, 0))
     + scale_x_discrete(expand=(0, 0.35, 0, 0.55))
@@ -4929,7 +4953,7 @@ p = (
     + theme_switchbox()
     + theme(
         figure_size=(12.5, max(2.6, 1.0 + 1.2 * _n)),
-        axis_text=element_text(),
+        axis_text=element_blank(),
         axis_ticks_x=element_blank(),
         axis_ticks_y=element_blank(),
         axis_line_x=element_blank(),

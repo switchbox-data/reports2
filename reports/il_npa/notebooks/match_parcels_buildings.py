@@ -41,8 +41,16 @@ import geopandas as gpd
 import pandas as pd
 from botocore.exceptions import ClientError, NoCredentialsError
 
-# Set paths (explicit container paths for consistent execution)
-data_dir = Path("/workspaces/reports2/reports/il_npa/data")
+
+def _repo_root() -> Path:
+    for parent in (Path.cwd().resolve(), *Path.cwd().resolve().parents):
+        if (parent / ".git").exists() or (parent / ".here").exists():
+            return parent
+    raise RuntimeError("could not find reports2 repo root")
+
+
+REPO = _repo_root()
+data_dir = REPO / "reports" / "il_npa" / "data"
 geo_data_dir = data_dir / "geo_data"
 outputs_dir = data_dir / "outputs"
 outputs_dir.mkdir(parents=True, exist_ok=True)

@@ -1450,7 +1450,7 @@ Our hourly marginal cost signal has four components, each derived from publicly 
 |-----------|-----------------|-------------|
 | Energy | Short-run cost of generation, congestion, and transmission losses in each hour. Contributes to the marginal cost of supply. | NYISO real-time locational marginal prices (LBMP) |
 | Generation capacity | Cost of the next MW of generation to meet demand during scarcity hours. Contributes to the marginal cost of supply. | NYISO Installed Capacity (ICAP) market auction prices |
-| Bulk transmission | Cost of the next MW of regional transmission capacity. Contributes to the marginal cost of delivery. | NYISO OATT Attachment H annual transmission revenue requirements |
+| Bulk transmission | Cost of the next MW of regional transmission capacity. Contributes to the marginal cost of delivery. | NYISO project-level transmission benefit studies (AC Primary, Addendum Optimizer variants, Addendum MMU, LI Export, NiMo MCOS bulk-TX entry) aggregated via constraint-group cumulative-secant derivation |
 | Sub-TX + distribution | Cost of the next MW of local delivery capacity. Contributes to the marginal cost of delivery. | Utility-specific 2025 Marginal Cost of Service (MCOS) studies (PSC Docket 19-E-0283) |
 
 #### How marginal costs are assigned to individual customers {#sec-methods-mc-allocation}
@@ -1494,16 +1494,19 @@ For the NYCA-priced (Rest-of-State) component, the nested-locality load used to 
 
 [^cite-icap]: NYISO ICAP monthly Spot auction clearing prices by locality. Auction-locality-to-nested-footprint mappings and utility capacity-obligation weights are sourced from the NYISO ICAP Manual (Table 7-5) via [`generate_zone_mapping_csv.py`](https://github.com/switchbox-data/rate-design-platform/blob/main/data/nyiso/zone_mapping/generate_zone_mapping_csv.py). Hourly capacity MC signals are built by the RDP's [supply capacity MC generator](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/marginal_costs/generate_supply_capacity_mc.py).
 
-**Bulk transmission.** Each NYISO transmission owner files an Annual Transmission Revenue Requirement (ATRR) under OATT Attachment H. This represents the annualized cost of the bulk transmission network (≥115 kV) operated by that utility. We divide each utility's ATRR by its coincident system peak to obtain a $/kW-yr cost, then allocate it to the top $N = 100$ hours of NYISO zonal load using exceedance weights:[^cite-bulk-tx]
+**Bulk transmission.** Bulk-TX marginal costs capture the incremental cost of regional transmission infrastructure (roughly 115 kV and above). Rather than levelizing a single utility-filed revenue requirement, the RDP derives a per-locality `$/kW-yr` cost from NYISO's own project-level public-policy and competitive-solicitation transmission studies, then allocates it to hourly peaks using an 80-hour seasonal window.[^cite-bulk-tx] The pipeline has five stages:
 
-$$MC^{\text{bulk tx}}_h = w_h \times C_{\text{ATRR}}$$
+1. **Inputs.** Project-level NYISO Public Policy Transmission Planning and Competitive System Planning Process (CSPP) benefit studies, together with the NiMo MCOS bulk-TX entry, are recorded in `ny_bulk_tx_projects.csv`. Seven input scenarios — AC Primary, the two Addendum Optimizer variants (Existing Localities and G-J Elimination), the two Addendum MMU variants (Baseline and CES+Ret, merged), LI Export (Policy), and NiMo MCOS (Bulk TX) — map to six distinct constraint groups.
+2. **Derivation.** For each constraint group, `derive_tx_values.py` computes a `$/kW-yr` value via a cumulative-secant aggregation over its member projects (output: `ny_bulk_tx_constraint_groups.csv`).
+3. **Paying-locality aggregation.** Each constraint group is mapped to a disjoint set of paying localities (ROS, LHV, NYC, LI) via the nested-locality scheme in `derive_tx_values.py`; per-paying-locality costs are averaged within group.
+4. **Hourly allocation.** For each utility, `bulk_tx_nyiso.py` identifies System Capability Resource (SCR) hours as the top 40 load hours in each of summer and winter (80 total) within the utility's nested-locality load. Each constraint-group annual value is spread across those 80 hours using a two-level weight:
 
-where:
+    $$w_h = \phi_s \cdot \frac{\max(L_h - T_s,\ 0)}{\sum_{h' \in \text{season } s} \max(L_{h'} - T_{s'},\ 0)}$$
 
-- $w_h$ — exceedance weight from the formula above, applied to the utility's NYISO zonal load
-- $C_{\text{ATRR}}$ — annualized bulk transmission cost ($/kW-yr) from OATT Attachment H
+    where $T_s$ is season $s$'s 41st-highest load and $\phi_s = (\text{peak}_s - \tau_{\min}) / \sum_{s'} (\text{peak}_{s'} - \tau_{\min})$ with $\tau_{\min} = \min_s T_s$. Weights sum to 1.0 globally (validated to 1e-4).
+5. **Utility blend.** `generate_bulk_tx_mc.py` combines each utility's paying-locality streams using the utility's capacity-obligation shares from the zone mapping, yielding the utility's hourly bulk-TX `$/kW-hr`.
 
-Non-zero hours are concentrated around the annual system peak, currently summer-dominated for most NY utilities.
+The seasonal SCR window (40 + 40) — rather than a single monthly top-$N$ — reflects that bulk-transmission constraints can bind in either season, and the two-level weight lets winter-peaking localities receive proportionate cost recovery.
 
 [^cite-bulk-tx]: FERC OATT Attachment H filings; coincident peak from NYISO Gold Book. Hourly bulk-TX MC signals are built by the RDP's [bulk transmission MC generator](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/marginal_costs/generate_bulk_tx_mc.py).
 

@@ -1,4 +1,6 @@
-all: clean render
+all: prep-data clean render
+
+# Fetch and create raw geo data files - you should not need to run this unless the files are missing from S3
 
 # Fetch People's Gas project data from ArcGIS (downloads to utils/)
 fetch-data:
@@ -33,10 +35,36 @@ fetch-all-data:
 explore-data:
     uv run python utils/explore_features.py
 
-# Upload GeoJSON to public S3 bucket (s3://data.sb.east/gis/pgl/)
+# Upload raw GeoJSON to public S3 bucket (s3://data.sb/il_npa/gis/pgl/)
 upload-data:
     uv run python utils/upload_to_s3.py
 
+# Run preprocessing scripts only if output files don't exist. These files are read in by geo_data_cleaning.qmd
+prep-data:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Step 1: Clean polygons
+    if [ ! -f data/outputs/peoples_polygons_unioned.geojson ]; then
+      echo "🔄 Running clean_peoples_construction_polygons.py..."
+      uv run python notebooks/clean_peoples_construction_polygons.py
+      if [ ! -f data/outputs/peoples_polygons_unioned.geojson ]; then
+        echo "❌ clean_peoples_construction_polygons.py finished but did not produce data/outputs/peoples_polygons_unioned.geojson" >&2
+        exit 1
+      fi
+    else
+      echo "✓ peoples_polygons_unioned.geojson exists, skipping"
+    fi
+
+    # Step 2: Match parcels with buildings
+    if ! ls data/outputs/parcels_with_units_*.geojson 1> /dev/null 2>&1; then
+      echo "🔄 Running match_parcels_buildings.py..."
+      uv run python notebooks/match_parcels_buildings.py
+    else
+      echo "✓ parcels_with_units file exists, skipping"
+    fi
+
+# Delete all caches
 clean:
     uv run python -m lib.just.clean
 

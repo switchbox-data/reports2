@@ -1468,7 +1468,7 @@ where:
 - $e_h$ — exceedance of hour $h$ above the threshold (zero for hours outside the top $N$)
 - $w_h$ — normalized weight assigned to hour $h$ (zero outside the top $N$)
 
-This pattern recurs below for generation capacity and bulk transmission, each applied to a different load profile and annual cost.
+This pattern recurs below for generation capacity, applied to locality-specific load profiles and monthly ICAP prices. Bulk transmission uses a related but distinct allocation scheme based on seasonal System Capability Resource (SCR) windows; see below.
 
 **Energy.** Every hour receives a numeric value equal to the NYISO real-time locational marginal price for the utility's zone(s) — real-time LBMPs can be zero or negative, and the pipeline applies no filtering or flooring:[^cite-lbmp]
 
@@ -1478,21 +1478,21 @@ For single-zone utilities (RG&E, CenHud, O&R, PSEG-LI), we use that zone's hourl
 
 [^cite-lbmp]: NYISO real-time 5-minute LBMPs aggregated to hourly arithmetic means per zone; multi-zone utilities are blended via the load-weighted formula above. Output is normalized to the Cairo 8,760-hour calendar (February 29 dropped in leap years) with small gaps linearly interpolated. No transmission-loss gross-up and no inflation adjustment are applied. The pipeline supports a load year distinct from the price year; in the current NY runs both are 2025 (per `state.env`), so no cross-year remap occurs. Hourly energy MC signals are built by the RDP's [supply energy MC generator](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/marginal_costs/generate_supply_energy_mc.py).
 
-**Generation capacity.** NYISO operates an Installed Capacity (ICAP) market with monthly spot auctions. Unlike ISO-NE's single forward auction, NYISO prices capacity by **locality** — geographic zones with different levels of transmission constraint. Four localities clear at different prices: Rest of State (NYCA, zones A–F), Lower Hudson Valley (LHV, zones G–I), New York City (NYC, zone J), and Long Island (LI, zone K). Downstate utilities pay higher capacity prices because their constrained transmission paths require local generation.
+**Generation capacity.** NYISO operates an Installed Capacity (ICAP) market with monthly spot auctions. Unlike ISO-NE's single forward auction, NYISO prices capacity by **locality** — geographic zones with different levels of transmission constraint. Four auction localities clear at different prices: Rest of State (NYCA-priced; the NYCA partition covers zones A–F), Lower Hudson Valley (auction locality GHIJ, zones G–J inclusive of NYC; labeled "LHV" internally), New York City (NYC, zone J), and Long Island (LI, zone K). Downstate utilities pay higher capacity prices because their constrained transmission paths require local generation. Only Spot auction clearances are ingested; Strip and Monthly auctions are excluded. Published ICAP `$/kW-month` clearing prices are used directly, with no UCAP derating applied.
 
-For each locality, we identify the top 8 hours per month by aggregate load within that locality's zone footprint, then allocate the monthly ICAP auction price across those hours using exceedance weights:[^cite-icap]
+For each auction locality, the pipeline identifies the top 8 hours per month by aggregate load across that locality's _nested_ zone footprint, then allocates the monthly ICAP auction price across those hours using exceedance weights:[^cite-icap]
 
 $$MC^{\text{gen cap}}_h = \sum_{m} w_{h,m} \times P^{\text{ICAP}}_{m} \times c_w$$
 
 where:
 
-- $w_{h,m}$ — exceedance weight for hour $h$ in month $m$ (from the formula above, applied to the locality's aggregate load, top 8 hours per month)
+- $w_{h,m}$ — exceedance weight for hour $h$ in month $m$ (from the formula above, applied to the nested locality's aggregate load, top 8 hours per month)
 - $P^{\text{ICAP}}_{m}$ — ICAP auction clearing price for month $m$ in the applicable locality ($/kW-month)
-- $c_w$ — capacity weight (for utilities spanning multiple localities, e.g. Con Edison: 0.87 NYC + 0.13 LHV)
+- $c_w$ — capacity weight: the utility's share of its capacity obligation in each locality (e.g. Con Edison: 0.87 NYC + 0.13 LHV, from Table 7-5 of the NYISO ICAP Manual, surfaced by `generate_zone_mapping_csv.py` as `capacity_weight`)
 
-Multi-locality utilities (Con Edison) sum separate component signals: one using NYC zone load to identify peak hours with NYC ICAP prices, another using LHV zone load with LHV prices, weighted by each locality's share of the utility's capacity obligation. The result is up to 192 non-zero hours per year (8 per month × 12 months × number of locality components), concentrated in the hours when the regional grid is under the most stress.
+For the NYCA-priced (Rest-of-State) component, the nested-locality load used to identify peak hours is the full NYISO statewide aggregate (all 11 zones, A–K); the NYCA ICAP partition itself, however, represents A–F capacity. For the GHIJ-priced component, the nested footprint is zones G–J. Multi-locality utilities (Con Edison) sum separate component signals: each component's monthly price is scaled by the utility's locality capacity weight, then allocated to that nested locality's top-8 peak hours. At most $8 \times 12 = 96$ component-hour allocations are assigned per locality; a two-locality utility such as Con Edison has up to 192 allocations, but fewer distinct clock hours if its two localities' top-8 hours overlap.
 
-[^cite-icap]: NYISO ICAP monthly spot auction clearing prices by locality. Hourly capacity MC signals are built by the RDP's [supply capacity MC generator](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/marginal_costs/generate_supply_capacity_mc.py).
+[^cite-icap]: NYISO ICAP monthly Spot auction clearing prices by locality. Auction-locality-to-nested-footprint mappings and utility capacity-obligation weights are sourced from the NYISO ICAP Manual (Table 7-5) via [`generate_zone_mapping_csv.py`](https://github.com/switchbox-data/rate-design-platform/blob/main/data/nyiso/zone_mapping/generate_zone_mapping_csv.py). Hourly capacity MC signals are built by the RDP's [supply capacity MC generator](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/marginal_costs/generate_supply_capacity_mc.py).
 
 **Bulk transmission.** Each NYISO transmission owner files an Annual Transmission Revenue Requirement (ATRR) under OATT Attachment H. This represents the annualized cost of the bulk transmission network (≥115 kV) operated by that utility. We divide each utility's ATRR by its coincident system peak to obtain a $/kW-yr cost, then allocate it to the top $N = 100$ hours of NYISO zonal load using exceedance weights:[^cite-bulk-tx]
 

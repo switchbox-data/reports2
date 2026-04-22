@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import math
+import textwrap
 
 import polars as pl
 from great_tables import GT
@@ -84,6 +85,23 @@ def _weighted_percentile(df: pl.DataFrame, col: str, w_col: str, q: float) -> fl
 def _weighted_mean(df: pl.DataFrame, col: str, w_col: str) -> float:
     """Weighted arithmetic mean."""
     return float((df[col] * df[w_col]).sum() / df[w_col].sum())
+
+
+def add_matplotlib_footnote(
+    fig: Figure,
+    note: str | None,
+    *,
+    width: int = 88,
+    fontsize: int = 7,
+) -> None:
+    """Append wrapped *note* below the figure (matplotlib only)."""
+    if not note:
+        return
+    lines = textwrap.wrap(note, width=width) or [""]
+    wrapped = "\n".join(lines)
+    extra = 0.022 * max(0, len(lines) - 1)
+    fig.subplots_adjust(bottom=min(0.32, 0.11 + extra))
+    fig.text(0.5, 0.01, wrapped, fontsize=fontsize, ha="center", va="bottom")
 ```
 
 ## Parameters
@@ -166,11 +184,37 @@ BLDG_ID = "bldg_id"
 HEATING_TYPE_COL = "postprocess_group.heating_type"
 INCOME_COL = "in.representative_income"
 BURDEN_THRESHOLD = 0.06
+# 40 or 100 only — selects ``_lmi_40`` vs ``_lmi_100`` electric+gas bill columns when LMI is modeled.
 LMI_CURRENT_ENROLLMENT_PCT = 40
 report_vars["lmi_current_enrollment_pct"] = LMI_CURRENT_ENROLLMENT_PCT
 LMI_BILL_COLS = ["elec_total_bill", "gas_total_bill", "oil_total_bill", "propane_total_bill"]
 LMI_40_BILL_COLS = ["elec_total_bill_lmi_40", "gas_total_bill_lmi_40", "oil_total_bill", "propane_total_bill"]
 LMI_100_BILL_COLS = ["elec_total_bill_lmi_100", "gas_total_bill_lmi_100", "oil_total_bill", "propane_total_bill"]
+_LMI_ENROLLMENT_ALLOWED = (40, 100)
+
+
+def lmi_enrolled_bill_cols(pct: int) -> list[str]:
+    """Map modeled LMI enrollment rate to parquet bill columns (electric + gas tiers)."""
+    if pct == 40:
+        return LMI_40_BILL_COLS
+    if pct == 100:
+        return LMI_100_BILL_COLS
+    msg = f"LMI_CURRENT_ENROLLMENT_PCT must be one of {_LMI_ENROLLMENT_ALLOWED}, got {pct!r}"
+    raise ValueError(msg)
+
+
+LMI_ENROLLED_BILL_COLS = lmi_enrolled_bill_cols(LMI_CURRENT_ENROLLMENT_PCT)
+INCLUDE_LMI_DISCOUNT = True  # False = undiscounted (legacy)
+ACTIVE_BILL_COLS = LMI_ENROLLED_BILL_COLS if INCLUDE_LMI_DISCOUNT else LMI_BILL_COLS
+LMI_ENROLLED_CAPTION = (
+    f"Assumes ~{LMI_CURRENT_ENROLLMENT_PCT}% of LMI households receive discounts before and after HP switch."
+)
+LMI_CAPTION_SUFFIX = (
+    LMI_ENROLLED_CAPTION if INCLUDE_LMI_DISCOUNT else
+    "Undiscounted annual bills (LMI discount enrollment not modeled)."
+)
+report_vars["lmi_caption_suffix"] = LMI_CAPTION_SUFFIX
+report_vars["lmi_enrolled_caption"] = LMI_ENROLLED_CAPTION
 UTIL_NAMES = {  # state-dependent: swap when switching states
     "cenhud": "Central Hudson",
     "coned": "Con Edison",
@@ -225,13 +269,25 @@ ResStock metadata columns — across all NY utilities.
 ```{python}
 #| label: supply-passthrough-helper
 
+
+def apply_energy_total_bill(lf: pl.LazyFrame) -> pl.LazyFrame:
+    """Rewrite energy_total_bill using ACTIVE_BILL_COLS.
+
+    Applied symmetrically to all bills frames so that bill-change deltas
+    use matching discount semantics on both sides of the join.
+    """
+    return lf.with_columns(
+        pl.sum_horizontal([pl.col(c) for c in ACTIVE_BILL_COLS]).alias("energy_total_bill")
+    )
+
+
 def apply_supply_passthrough(
     proposed_lf: pl.LazyFrame,
     baseline_lf: pl.LazyFrame,
 ) -> pl.LazyFrame:
     """Replace supply columns in proposed with baseline's supply (same buildings, same kWh).
 
-    Recomputes elec_total_bill, energy_total_bill, and LMI electric columns.
+    Recomputes elec_total_bill and LMI electric columns.
     Gas/oil/propane and delivery columns are untouched.
 
     LMI credits are recovered from the proposed data itself (before patching)
@@ -266,12 +322,6 @@ def apply_supply_passthrough(
             ).alias("elec_total_bill"),
         )
         .with_columns(
-            (
-                pl.col("elec_total_bill")
-                + pl.col("gas_total_bill")
-                + pl.col("oil_total_bill")
-                + pl.col("propane_total_bill")
-            ).alias("energy_total_bill"),
             (pl.col("elec_total_bill") - pl.col("_credit_40"))
             .clip(lower_bound=0.0)
             .alias("elec_total_bill_lmi_40"),
@@ -355,12 +405,6 @@ def apply_supply_passthrough_tou(
             ).alias("elec_total_bill"),
         )
         .with_columns(
-            (
-                pl.col("elec_total_bill")
-                + pl.col("gas_total_bill")
-                + pl.col("oil_total_bill")
-                + pl.col("propane_total_bill")
-            ).alias("energy_total_bill"),
             (pl.col("elec_total_bill") - pl.col("_credit_40"))
             .clip(lower_bound=0.0)
             .alias("elec_total_bill_lmi_40"),
@@ -435,6 +479,15 @@ if SUPPLY_PASSTHROUGH:
     bills_hprate_hp = apply_supply_passthrough(bills_hprate_hp, bills_hp)
     bills_ehrate_current = apply_supply_passthrough(bills_ehrate_current, bills_current)
     bills_ehrate_hp = apply_supply_passthrough(bills_ehrate_hp, bills_hp)
+
+bills_current = apply_energy_total_bill(bills_current)
+bills_hp = apply_energy_total_bill(bills_hp)
+bills_hprate_current = apply_energy_total_bill(bills_hprate_current)
+bills_hprate_hp = apply_energy_total_bill(bills_hprate_hp)
+if bills_tou_hp is not None:
+    bills_tou_hp = apply_energy_total_bill(bills_tou_hp)
+bills_ehrate_current = apply_energy_total_bill(bills_ehrate_current)
+bills_ehrate_hp = apply_energy_total_bill(bills_ehrate_hp)
 ```
 
 ## Bill components: how energy bills change after switching
@@ -466,7 +519,14 @@ def bill_components_for_scenario(
             pl.col("gas_total_bill").alias("gas"),
             pl.col("propane_total_bill").alias("propane"),
             pl.col("oil_total_bill").alias("oil"),
-            pl.col("energy_total_bill").alias("energy_total"),
+            (
+                pl.col("elec_fixed_charge")
+                + pl.col("elec_delivery_bill")
+                + pl.col("elec_supply_bill")
+                + pl.col("gas_total_bill")
+                + pl.col("oil_total_bill")
+                + pl.col("propane_total_bill")
+            ).alias("energy_total"),
             "heats_with_natgas",
             "in.hvac_cooling_partial_space_conditioning",
         )
@@ -1211,8 +1271,10 @@ _lx = _n + 0.6
 
 How do total energy bills change when homes switch to heat pumps under today's
 default flat rates? We compute the delta between each building's annual bill
-before (run 1+2, current HVAC) and after (run 3+4, heat pump upgrade). The
-`energy_total_bill` field includes electric, gas, oil, and propane costs.
+before (run 1+2, current HVAC) and after (run 3+4, heat pump upgrade). After
+ingest, `energy_total_bill` is rewritten as the sum of ``ACTIVE_BILL_COLS``
+(electric + gas + oil + propane), so bill-change deltas follow
+``INCLUDE_LMI_DISCOUNT`` symmetrically on both sides of the join.
 
 ```{python}
 #| label: compute-bill-deltas
@@ -1280,6 +1342,7 @@ def plot_quadrant_bar(
     rows: list[tuple[str, pl.DataFrame]],
     title: str = "How bills would change after switching to heat pumps:",
     title_parts: list[tuple[str, str]] | None = None,
+    footnote: str | None = None,
 ) -> ggplot | Figure:
     """Horizontal stacked bar(s) showing quadrant proportions.
 
@@ -1427,6 +1490,8 @@ def plot_quadrant_bar(
             x_pos = bb.transformed(fig.transFigure.inverted()).x1
             if i < len(title_parts) - 1:
                 x_pos += space_fig
+        if footnote:
+            add_matplotlib_footnote(fig, footnote)
         return fig
 
     return p
@@ -1446,6 +1511,7 @@ def plot_quadrant_bar_by_utility(
     fuel_filter: pl.Expr,
     title_parts: list[tuple[str, str]],
     scenario_labels: tuple[str, str] = ("Default rate", "HP seasonal rate"),
+    footnote: str | None = None,
 ) -> None:
     """Grouped quadrant bars for each utility in a single tall figure.
 
@@ -1571,6 +1637,8 @@ def plot_quadrant_bar_by_utility(
         if i < len(title_parts) - 1:
             x_pos += space_fig
 
+    if footnote:
+        add_matplotlib_footnote(fig, footnote)
     display_svg(fig)
 ```
 
@@ -1757,8 +1825,10 @@ _hist_binned = (
 
 ### LMI scenarios (natgas, statewide)
 
-We recompute the bill delta for natural gas households using the LMI-discounted bill columns. For non-LMI households
-these columns equal the undiscounted values, so only LMI households' deltas shift.
+We recompute the bill delta for natural gas households using the LMI bill columns
+for the enrollment rate set by ``LMI_CURRENT_ENROLLMENT_PCT`` (40 or 100). For
+non-LMI households these columns equal the undiscounted values, so only LMI
+households' deltas shift.
 
 ```{python}
 #| label: compute-lmi-bill-deltas-state
@@ -1800,50 +1870,42 @@ def _lmi_delta_state(
     )
 
 
-delta_state_lmi40 = _lmi_delta_state(
-    bills_current, bills_hp, LMI_40_BILL_COLS, LMI_40_BILL_COLS,
-)
-delta_state_lmi_full = _lmi_delta_state(
-    bills_current, bills_hp, LMI_40_BILL_COLS, LMI_100_BILL_COLS,
+delta_state_lmi_enrolled = _lmi_delta_state(
+    bills_current, bills_hp, LMI_ENROLLED_BILL_COLS, LMI_ENROLLED_BILL_COLS,
 )
 
-natgas_state_lmi40 = (
-    delta_state_lmi40
+natgas_state_lmi_enrolled = (
+    delta_state_lmi_enrolled
     .filter(pl.col("heats_with_natgas"))
     .select("delta", "weight")
 )
-_lmi40_def_total = natgas_state_lmi40["weight"].sum()
-_lmi40_def_save = natgas_state_lmi40.filter(pl.col("delta") < 0)["weight"].sum()
-_lmi40_def_lose_1k = natgas_state_lmi40.filter(pl.col("delta") > 1000)["weight"].sum()
+_lmi40_def_total = natgas_state_lmi_enrolled["weight"].sum()
+_lmi40_def_save = natgas_state_lmi_enrolled.filter(pl.col("delta") < 0)["weight"].sum()
+_lmi40_def_lose_1k = natgas_state_lmi_enrolled.filter(pl.col("delta") > 1000)["weight"].sum()
 report_vars["pct_natgas_save_default_lmi40"] = _lmi40_def_save / _lmi40_def_total
 report_vars["pct_natgas_lose_1k_default_lmi40"] = _lmi40_def_lose_1k / _lmi40_def_total
-
-natgas_state_lmi_full = (
-    delta_state_lmi_full
-    .filter(pl.col("heats_with_natgas"))
-    .select("delta", "weight")
-)
 ```
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-state-state-lmi-current
-#| fig-cap: "Bill impact of switching to heat pumps for natural gas-heated households (Statewide). Assumes 40% of LMI households receive LMI discounts before and after switching to HP."
+#| fig-cap: "Bill impact of switching to heat pumps for natural gas-heated households (Statewide)."
 
 plot_quadrant_bar(
-    [("Natural gas", natgas_state_lmi40)],
+    [("Natural gas", natgas_state_lmi_enrolled)],
     title_parts=[
         ("How bills would change for ", "#000000"),
         ("natural gas", "#7A8A10"),
         (" heated homes after switching to ", "#000000"),
         ("heat pumps", "#c47600"),
-        ("\n(with current LMI discounts)", "#000000"),
+        (f"\n(~{LMI_CURRENT_ENROLLMENT_PCT}% LMI discounts)", "#000000"),
     ],
+    footnote=LMI_ENROLLED_CAPTION,
 )
 ```
 
 ```{python}
 #| label: fig-quadrant-bar-oil-propane-state
-#| fig-cap: "Bill impact of switching to heat pumps for oil/propane-heated households (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
+#| fig-cap: "Bill impact of switching to heat pumps for oil/propane-heated households (Statewide)."
 
 plot_quadrant_bar(
     [("Oil / propane", oil_propane_state)],
@@ -1855,12 +1917,13 @@ plot_quadrant_bar(
         (" heated homes after switching to ", "#000000"),
         ("heat pumps", "#c47600"),
     ],
+    footnote=LMI_CAPTION_SUFFIX,
 )
 ```
 
 ```{python}
 #| label: fig-quadrant-bar-elec-resistance-state
-#| fig-cap: "Bill impact of switching to heat pumps for electric resistance-heated households (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
+#| fig-cap: "Bill impact of switching to heat pumps for electric resistance-heated households (Statewide)."
 
 plot_quadrant_bar(
     [("Electric resistance", elec_resistance_state)],
@@ -1870,6 +1933,7 @@ plot_quadrant_bar(
         (" heated homes after switching to ", "#000000"),
         ("heat pumps", "#c47600"),
     ],
+    footnote=LMI_CAPTION_SUFFIX,
 )
 ```
 
@@ -4366,7 +4430,7 @@ display_svg(fig_3bar)
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-switch-hprate-by-utility
-#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. seasonal rate, by utility. Undiscounted annual bills (LMI discount enrollment not modeled)."
+#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. seasonal rate, by utility."
 
 plot_quadrant_bar_by_utility(
     delta_state, delta_switch_state,
@@ -4378,6 +4442,7 @@ plot_quadrant_bar_by_utility(
         (" heated homes after switching to ", "#000000"),
         ("heat pumps", "#c47600"),
     ],
+    footnote=LMI_CAPTION_SUFFIX,
 )
 ```
 
@@ -4405,7 +4470,7 @@ if INCLUDE_TOU:
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-tou-state
-#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. fair vs. TOU + fair rate (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
+#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. fair vs. TOU + fair rate (Statewide)."
 
 if INCLUDE_TOU:
     _tou_quadrant_fig = plot_quadrant_bar(
@@ -4420,6 +4485,7 @@ if INCLUDE_TOU:
             (" heated homes after switching to ", "#000000"),
             ("heat pumps", "#c47600"),
         ],
+        footnote=LMI_CAPTION_SUFFIX,
     )
     _q_fair = quadrant_pcts(natgas_switch_state)
     _q_tou = quadrant_pcts(natgas_tou_state)
@@ -4510,27 +4576,28 @@ _tou_hist_fig
 
 ### LMI scenarios — default vs. fair rate (natgas, statewide)
 
-We recompute the two-bar comparison (default rate vs. seasonal rate) using LMI-discounted bill columns. The
-seasonal-rate "after" comes from `bills_hprate_hp` (`RUN_HPRATE_HP`) instead of `bills_hp` (runs 3+4).
+We recompute the two-bar comparison (default rate vs. seasonal rate) using the
+LMI bill columns for ``LMI_CURRENT_ENROLLMENT_PCT``. The seasonal-rate "after"
+comes from `bills_hprate_hp` (`RUN_HPRATE_HP`) instead of `bills_hp` (runs 3+4).
 
 ```{python}
 #| label: compute-lmi-switch-deltas-state
 
-delta_switch_state_lmi40 = _lmi_delta_state(
-    bills_current, bills_hprate_hp, LMI_40_BILL_COLS, LMI_40_BILL_COLS,
+delta_switch_state_lmi_enrolled = _lmi_delta_state(
+    bills_current, bills_hprate_hp, LMI_ENROLLED_BILL_COLS, LMI_ENROLLED_BILL_COLS,
 )
 delta_switch_state_lmi_full = _lmi_delta_state(
     bills_current, bills_hprate_hp, LMI_40_BILL_COLS, LMI_100_BILL_COLS,
 )
 
-natgas_switch_state_lmi40 = (
-    delta_switch_state_lmi40
+natgas_switch_state_lmi_enrolled = (
+    delta_switch_state_lmi_enrolled
     .filter(pl.col("heats_with_natgas"))
     .select("delta", "weight")
 )
-_lmi40_total = natgas_switch_state_lmi40["weight"].sum()
-_lmi40_save = natgas_switch_state_lmi40.filter(pl.col("delta") < 0)["weight"].sum()
-_lmi40_lose_1k = natgas_switch_state_lmi40.filter(pl.col("delta") > 1000)["weight"].sum()
+_lmi40_total = natgas_switch_state_lmi_enrolled["weight"].sum()
+_lmi40_save = natgas_switch_state_lmi_enrolled.filter(pl.col("delta") < 0)["weight"].sum()
+_lmi40_lose_1k = natgas_switch_state_lmi_enrolled.filter(pl.col("delta") > 1000)["weight"].sum()
 report_vars["pct_natgas_save_hprate_lmi40"] = _lmi40_save / _lmi40_total
 report_vars["pct_natgas_lose_1k_hprate_lmi40"] = _lmi40_lose_1k / _lmi40_total
 
@@ -4548,12 +4615,12 @@ report_vars["pct_natgas_save_1k_hprate_lmi_full"] = _lmif_save_1k / _lmif_total
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-switch-hprate-state-lmi-current
-#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. seasonal rate (Statewide). Assumes 40% of LMI households receive LMI discounts before and after switching to HP."
+#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. seasonal rate (Statewide)."
 
 plot_quadrant_bar(
     [
-        ("Default rate", natgas_state_lmi40),
-        ("HP seasonal rate", natgas_switch_state_lmi40),
+        ("Default rate", natgas_state_lmi_enrolled),
+        ("HP seasonal rate", natgas_switch_state_lmi_enrolled),
     ],
     title_parts=[
         ("How bills would change for ", "#000000"),
@@ -4561,12 +4628,13 @@ plot_quadrant_bar(
         (" heated homes after switching to ", "#000000"),
         ("heat pumps", "#c47600"),
     ],
+    footnote=LMI_ENROLLED_CAPTION,
 )
 ```
 
 ```{python}
 #| label: fig-quadrant-bar-oil-propane-switch-hprate-state
-#| fig-cap: "Change in total annual energy bills — oil/propane homes switching to HP: default vs. seasonal rate (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
+#| fig-cap: "Change in total annual energy bills — oil/propane homes switching to HP: default vs. seasonal rate (Statewide)."
 
 plot_quadrant_bar(
     [
@@ -4581,12 +4649,13 @@ plot_quadrant_bar(
         (" heated homes after switching to ", "#000000"),
         ("heat pumps", "#c47600"),
     ],
+    footnote=LMI_CAPTION_SUFFIX,
 )
 ```
 
 ```{python}
 #| label: fig-quadrant-bar-oil-propane-switch-hprate-by-utility
-#| fig-cap: "Change in total annual energy bills — oil/propane homes switching to HP: default vs. seasonal rate, by utility. Undiscounted annual bills (LMI discount enrollment not modeled)."
+#| fig-cap: "Change in total annual energy bills — oil/propane homes switching to HP: default vs. seasonal rate, by utility."
 
 plot_quadrant_bar_by_utility(
     delta_state, delta_switch_state,
@@ -4600,12 +4669,13 @@ plot_quadrant_bar_by_utility(
         (" heated homes after switching to ", "#000000"),
         ("heat pumps", "#c47600"),
     ],
+    footnote=LMI_CAPTION_SUFFIX,
 )
 ```
 
 ```{python}
 #| label: fig-quadrant-bar-elec-resistance-switch-hprate-state
-#| fig-cap: "Change in total annual energy bills — electric resistance homes switching to HP: default vs. seasonal rate (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
+#| fig-cap: "Change in total annual energy bills — electric resistance homes switching to HP: default vs. seasonal rate (Statewide)."
 
 plot_quadrant_bar(
     [
@@ -4618,12 +4688,13 @@ plot_quadrant_bar(
         (" heated homes after switching to ", "#000000"),
         ("heat pumps", "#c47600"),
     ],
+    footnote=LMI_CAPTION_SUFFIX,
 )
 ```
 
 ```{python}
 #| label: fig-quadrant-bar-elec-resistance-switch-hprate-by-utility
-#| fig-cap: "Change in total annual energy bills — electric resistance homes switching to HP: default vs. seasonal rate, by utility. Undiscounted annual bills (LMI discount enrollment not modeled)."
+#| fig-cap: "Change in total annual energy bills — electric resistance homes switching to HP: default vs. seasonal rate, by utility."
 
 plot_quadrant_bar_by_utility(
     delta_state, delta_switch_state,
@@ -4635,6 +4706,7 @@ plot_quadrant_bar_by_utility(
         (" heated homes after switching to ", "#000000"),
         ("heat pumps", "#c47600"),
     ],
+    footnote=LMI_CAPTION_SUFFIX,
 )
 ```
 
@@ -4652,42 +4724,43 @@ The EH-rate master bills come from runs `RUN_EHRATE` (u0, all homes keep current
 HVAC; electric heaters on EH rate, others on recalibrated flat rate) and
 `RUN_EHRATE_HP` (u2, all homes on heat pumps, all on EH rate).
 
-### Gas → HP under the electric heating rate (LMI-40)
+### Gas → HP under the electric heating rate (LMI-enrolled bills)
 
 Mirrors the seasonal-rate gas switch comparison above: Bar 1 is the gas customer
 switching to HP under today's default rate, Bar 2 is the same customer switching
 to HP under the EH rate. The "before" state is identical in both bars (baseline
 HVAC on default rate), so differences come entirely from the "after" rate regime.
-We use LMI-40 bill columns to match the primary reference chart.
+We use the bill columns matching ``LMI_CURRENT_ENROLLMENT_PCT`` (40 or 100 in
+parquet) to align with the primary reference chart.
 
 ```{python}
-#| label: compute-deltas-natgas-switch-ehrate-lmi40
+#| label: compute-deltas-natgas-switch-ehrate-lmi-enrolled
 
-delta_switch_state_ehrate_lmi40 = _lmi_delta_state(
-    bills_current, bills_ehrate_hp, LMI_40_BILL_COLS, LMI_40_BILL_COLS,
+delta_switch_state_ehrate_lmi_enrolled = _lmi_delta_state(
+    bills_current, bills_ehrate_hp, LMI_ENROLLED_BILL_COLS, LMI_ENROLLED_BILL_COLS,
 )
-natgas_switch_ehrate_state_lmi40 = (
-    delta_switch_state_ehrate_lmi40
+natgas_switch_ehrate_state_lmi_enrolled = (
+    delta_switch_state_ehrate_lmi_enrolled
     .filter(pl.col("heats_with_natgas"))
     .select("delta", "weight")
 )
 
-_lmi40_eh_total = natgas_switch_ehrate_state_lmi40["weight"].sum()
-_lmi40_eh_save = natgas_switch_ehrate_state_lmi40.filter(pl.col("delta") < 0)["weight"].sum()
-_lmi40_eh_lose_1k = natgas_switch_ehrate_state_lmi40.filter(pl.col("delta") > 1000)["weight"].sum()
+_lmi40_eh_total = natgas_switch_ehrate_state_lmi_enrolled["weight"].sum()
+_lmi40_eh_save = natgas_switch_ehrate_state_lmi_enrolled.filter(pl.col("delta") < 0)["weight"].sum()
+_lmi40_eh_lose_1k = natgas_switch_ehrate_state_lmi_enrolled.filter(pl.col("delta") > 1000)["weight"].sum()
 report_vars["pct_natgas_save_ehrate_lmi40"] = _lmi40_eh_save / _lmi40_eh_total
 report_vars["pct_natgas_lose_1k_ehrate_lmi40"] = _lmi40_eh_lose_1k / _lmi40_eh_total
 ```
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-switch-ehrate-state-lmi-current
-#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default rate vs. electric heating rate (Statewide). Assumes 40% of LMI households receive LMI discounts before and after switching to HP."
+#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default rate vs. electric heating rate (Statewide)."
 
 plot_quadrant_bar(
     [
-        ("Default rate", natgas_state_lmi40),
-        ("HP seasonal rate", natgas_switch_state_lmi40),
-        ("Electric heating rate", natgas_switch_ehrate_state_lmi40),
+        ("Default rate", natgas_state_lmi_enrolled),
+        ("HP seasonal rate", natgas_switch_state_lmi_enrolled),
+        ("Electric heating rate", natgas_switch_ehrate_state_lmi_enrolled),
     ],
     title_parts=[
         ("How bills would change for ", "#000000"),
@@ -4695,6 +4768,7 @@ plot_quadrant_bar(
         (" heated homes after switching to ", "#000000"),
         ("heat pumps", "#c47600"),
     ],
+    footnote=LMI_ENROLLED_CAPTION,
 )
 ```
 
@@ -4746,7 +4820,7 @@ report_vars["mean_monthly_er_stay_delta_ehrate"] = (
 
 ```{python}
 #| label: fig-hist-elec-resistance-stay-ehrate-state
-#| fig-cap: "Distribution of annual bill savings for electric resistance homes staying on ER equipment under the electric heating rate vs. the default rate (Statewide). Bins are $50/yr wide. Undiscounted bills (LMI discount enrollment not modeled)."
+#| fig-cap: "Distribution of annual bill savings for electric resistance homes staying on ER equipment under the electric heating rate vs. the default rate (Statewide). Bins are $50/yr wide."
 
 _annual_er_stay = (
     elec_resistance_stay_ehrate_state
@@ -4765,7 +4839,7 @@ _pct = _counts / _counts.sum() * 100
 
 _hist_df = pl.DataFrame({"bin_center": _centers, "pct": _pct})
 
-(
+_p_er_hist = (
     ggplot(_hist_df, aes(x="bin_center", y="pct"))
     + geom_col(fill="#4caf50", width=_bin_w * 0.95)
     + scale_x_continuous(labels=lambda xs: [f"${x:.0f}" for x in xs])
@@ -4780,6 +4854,9 @@ _hist_df = pl.DataFrame({"bin_center": _centers, "pct": _pct})
         plot_title=element_text(ha="left", margin={"b": 4, "units": "pt"}),
     )
 )
+_fig_er_hist = _p_er_hist.draw()
+add_matplotlib_footnote(_fig_er_hist, LMI_CAPTION_SUFFIX)
+display_svg(_fig_er_hist)
 ```
 
 ### Cost shift to fossil-heated (non-electric-heating) customers
@@ -4849,7 +4926,7 @@ fossil_hprate_state = (
 
 ```{python}
 #| label: fig-bill-change-fossil-ehrate-state
-#| fig-cap: "Monthly bill change — non-electric-heating homes (natural gas, fuel oil, propane, other) under the HP seasonal rate vs. the electric heating rate (Statewide). Equipment held constant at baseline; delta reflects the recalibrated flat rate only. Undiscounted bills."
+#| fig-cap: "Monthly bill change — non-electric-heating homes (natural gas, fuel oil, propane, other) under the HP seasonal rate vs. the electric heating rate (Statewide). Equipment held constant at baseline; delta reflects the recalibrated flat rate only."
 
 REBAL_3_COLORS = {
     "increase < $5/mo": "#ef9a9a",
@@ -4964,7 +5041,9 @@ p = (
 )
 for _a in _annotations:
     p = p + _a
-p
+_fig_fossil_eh = p.draw()
+add_matplotlib_footnote(_fig_fossil_eh, LMI_CAPTION_SUFFIX)
+display_svg(_fig_fossil_eh)
 ```
 
 ### ER → HP savings under three rate regimes
@@ -5069,7 +5148,7 @@ report_vars["mean_er_switch_delta_ehrate"] = _weighted_mean(
 
 ```{python}
 #| label: fig-quadrant-bar-elec-resistance-switch-three-regimes-state
-#| fig-cap: "Annual bill change for electric resistance homes switching to HP under three rate regimes (Statewide). Bar 1: default rate before and after. Bar 2: default rate before, HP seasonal rate after. Bar 3: EH rate before and after. Undiscounted annual bills."
+#| fig-cap: "Annual bill change for electric resistance homes switching to HP under three rate regimes (Statewide). Bar 1: default rate before and after. Bar 2: default rate before, HP seasonal rate after. Bar 3: EH rate before and after."
 
 plot_quadrant_bar(
     [
@@ -5083,6 +5162,7 @@ plot_quadrant_bar(
         (" heated homes after switching to ", "#000000"),
         ("heat pumps", "#c47600"),
     ],
+    footnote=LMI_CAPTION_SUFFIX,
 )
 ```
 
@@ -5119,7 +5199,7 @@ delta_rebal_state = annual_before_rebal_state.join(annual_after_rebal_state, on=
 
 ```{python}
 #| label: fig-bill-change-non-hp-rebal-state
-#| fig-cap: "Average monthly bill change — all non-HP homes after cross-subsidy removal (Statewide)"
+#| fig-cap: "Average monthly bill change — all non-HP homes after cross-subsidy removal (Statewide)."
 
 REBAL_3_COLORS = {
     "bill decrease": "#81c784",
@@ -5203,7 +5283,9 @@ p = (
 )
 for _a in _annotations:
     p = p + _a
-p
+_fig_rebal = p.draw()
+add_matplotlib_footnote(_fig_rebal, LMI_CAPTION_SUFFIX)
+display_svg(_fig_rebal)
 ```
 
 ```{python}
@@ -5266,8 +5348,8 @@ def burden_shares(
     """Return (weighted_pct_below, weighted_pct_above) the burden threshold.
 
     bill_cols controls which columns are summed to form the total energy bill.
-    Default uses the undiscounted columns; pass LMI_40_BILL_COLS or
-    LMI_100_BILL_COLS to use LMI-discounted bills.
+    Default uses the undiscounted columns; pass ``LMI_ENROLLED_BILL_COLS``,
+    ``LMI_40_BILL_COLS``, or ``LMI_100_BILL_COLS`` for LMI-tiered bills.
     """
     annual = (
         bills_lf
@@ -5380,30 +5462,32 @@ def plot_burden_bar(
     )
 ```
 
-### With current LMI discount enrollment (~40%)
+### With modeled LMI discount enrollment
 
-An estimated 40% of LMI households currently receive LMI discounts on their utility bills. We recompute energy burdens
-using the `_lmi_40` bill columns, which apply the discount to those households who are currently enrolled.
+Energy burdens in the first three scenarios use the bill columns for
+``LMI_CURRENT_ENROLLMENT_PCT`` (40 or 100). The fourth scenario contrasts universal
+100% enrollment (``_lmi_100`` columns) against that modeled tier.
 
 ```{python}
 #| label: burden-compute-lmi-current
 
 below_current_lmi40, above_current_lmi40 = burden_shares(
-    bills_current, cohort_bldg_ids, income_df, bill_cols=LMI_40_BILL_COLS,
+    bills_current, cohort_bldg_ids, income_df, bill_cols=LMI_ENROLLED_BILL_COLS,
 )
 below_hp_default_lmi40, above_hp_default_lmi40 = burden_shares(
-    bills_hp, cohort_bldg_ids, income_df, bill_cols=LMI_40_BILL_COLS,
+    bills_hp, cohort_bldg_ids, income_df, bill_cols=LMI_ENROLLED_BILL_COLS,
 )
 below_hp_seasonal_lmi40, above_hp_seasonal_lmi40 = burden_shares(
-    bills_hprate_hp, cohort_bldg_ids, income_df, bill_cols=LMI_40_BILL_COLS,
+    bills_hprate_hp, cohort_bldg_ids, income_df, bill_cols=LMI_ENROLLED_BILL_COLS,
 )
 below_hp_seasonal_lmi100, above_hp_seasonal_lmi100 = burden_shares(
     bills_hprate_hp, cohort_bldg_ids, income_df, bill_cols=LMI_100_BILL_COLS,
 )
 
-print(f"Current HVAC (40% enrolled):         {above_current_lmi40:.1f}% above 6%")
-print(f"HP + default rates (40% enrolled):   {above_hp_default_lmi40:.1f}% above 6%")
-print(f"HP + seasonal rates (40% enrolled):  {above_hp_seasonal_lmi40:.1f}% above 6%")
+_pct = LMI_CURRENT_ENROLLMENT_PCT
+print(f"Current HVAC ({_pct}% enrolled):         {above_current_lmi40:.1f}% above 6%")
+print(f"HP + default rates ({_pct}% enrolled):   {above_hp_default_lmi40:.1f}% above 6%")
+print(f"HP + seasonal rates ({_pct}% enrolled):  {above_hp_seasonal_lmi40:.1f}% above 6%")
 print(f"HP + seasonal rates (100% enrolled): {above_hp_seasonal_lmi100:.1f}% above 6%")
 
 report_vars["pct_burdened_hp_seasonal_lmi100"] = above_hp_seasonal_lmi100 / 100
@@ -5413,10 +5497,16 @@ report_vars["pct_burdened_hp_seasonal_lmi100"] = above_hp_seasonal_lmi100 / 100
 #| label: fig-burden-bar-lmi-current
 #| fig-cap: "Share of low-income gas-heated households above the 6% energy burden threshold"
 
-plot_burden_bar(
+_p_burden_lmi = plot_burden_bar(
     [below_current_lmi40, below_hp_default_lmi40, below_hp_seasonal_lmi40, below_hp_seasonal_lmi100],
     [above_current_lmi40, above_hp_default_lmi40, above_hp_seasonal_lmi40, above_hp_seasonal_lmi100],
 )
+_fig_burden_lmi = _p_burden_lmi.draw()
+add_matplotlib_footnote(
+    _fig_burden_lmi,
+    LMI_ENROLLED_CAPTION + " Rightmost bar: universal 100% enrollment (_lmi_100 columns) on the HP seasonal rate.",
+)
+display_svg(_fig_burden_lmi)
 ```
 
 #### By utility
@@ -5433,9 +5523,9 @@ for code in UTIL_ORDER_CODES:
         continue
     util_income = income_df.filter(pl.col(BLDG_ID).is_in(util_bldg_ids))
     burden_by_utility[code] = {
-        "current": burden_shares(bills_current, util_bldg_ids, util_income, bill_cols=LMI_40_BILL_COLS),
-        "hp_default": burden_shares(bills_hp, util_bldg_ids, util_income, bill_cols=LMI_40_BILL_COLS),
-        "hp_seasonal": burden_shares(bills_hprate_hp, util_bldg_ids, util_income, bill_cols=LMI_40_BILL_COLS),
+        "current": burden_shares(bills_current, util_bldg_ids, util_income, bill_cols=LMI_ENROLLED_BILL_COLS),
+        "hp_default": burden_shares(bills_hp, util_bldg_ids, util_income, bill_cols=LMI_ENROLLED_BILL_COLS),
+        "hp_seasonal": burden_shares(bills_hprate_hp, util_bldg_ids, util_income, bill_cols=LMI_ENROLLED_BILL_COLS),
         "hp_seasonal_lmi100": burden_shares(bills_hprate_hp, util_bldg_ids, util_income, bill_cols=LMI_100_BILL_COLS),
     }
 
@@ -5567,11 +5657,10 @@ def plot_burden_bar_by_utility(
 
     display_svg(fig)
 ```
-pe
 
 ```{python}
 #| label: fig-burden-bar-lmi-current-by-utility
-#| fig-cap: "Share of low-income gas-heated households above the 6% energy burden threshold by utility, with current LMI discount enrollment (~40%)"
+#| fig-cap: "Share of low-income gas-heated households above the 6% energy burden threshold by utility, with modeled LMI discount enrollment (see constants cell)."
 
 plot_burden_bar_by_utility(
     burden_by_utility, UTIL_NAMES,

@@ -744,7 +744,7 @@ gas_kwh_after = df_after_load["out.natural_gas.total.energy_consumption"].sum()
 
 ```{python}
 #| label: fig-consumption-vs-bills-state
-#| fig-cap: "Annual energy consumption and energy bills before and after switching to a heat pump, for the gas-heated home at the statewide median energy bill (among gas-heated homes with full baseline cooling)."
+#| fig-cap: "Annual energy consumption and energy bills before and after switching to a heat pump, for the gas-heated home at the statewide median energy bill (among gas-heated homes with full baseline cooling). 1 kWh of gas = 3,412 BTU."
 
 norm_kwh = elec_kwh_before + gas_kwh_before
 norm_bill = _elec_before + _gas_before
@@ -879,7 +879,7 @@ fig_combined
 
 ```{python}
 #| label: fig-consumption-only-state
-#| fig-cap: "Annual energy consumption before and after switching to a heat pump, for the gas-heated home at the statewide median energy bill (among gas-heated homes with full baseline cooling)."
+#| fig-cap: "Annual energy consumption before and after switching to a heat pump, for the gas-heated home at the statewide median energy bill (among gas-heated homes with full baseline cooling). 1 kWh of gas = 3,412 BTU."
 
 fig_energy_only = p_combined.draw()
 for a in list(fig_energy_only.artists):
@@ -914,7 +914,7 @@ fig_energy_only
 
 ```{python}
 #| label: fig-consumption-elec-focus-state
-#| fig-cap: "Electricity use and electric bills both grow roughly 3× after switching to a heat pump."
+#| fig-cap: "Electricity use and electric bills both grow roughly 2× after switching to a heat pump. 1 kWh of gas = 3,412 BTU."
 
 FOCUS_COMP_COLORS = {"Electricity": "#FFC729", "Natural Gas": "#CCCCCC"}
 FOCUS_COMP_LABEL_COLORS = {"Electricity": "#FFC729", "Natural Gas": "#999999"}
@@ -1060,11 +1060,11 @@ fig_focus
 
 ```{python}
 #| label: fig-bill-components-decomposed-state
-#| fig-cap: "Median energy bill components (decomposed) — Statewide"
+#| fig-cap: "Annual energy bills for Syracuse home, before and after heat pumps, broken down by total gas bill, electric supply bill, and electric delivery bill. The home's annual gas and electricity consumption are from NREL's 2024 ResStock release; bills are calculated using NGrid Upstate's 2025 gas and electricity rates. Electricity bill includes supply and delivery surcharges but excludes reconciliation and other true-up charges."
 
 p_decomposed = plot_bill_components_decomposed(
     median_current_state, median_hp_state,
-    "Median energy bill components — Statewide",
+    "Electric supply and delivery bills double after home in Syracuse, NY switches to a heat pump",
 )
 
 fig_decomposed = p_decomposed.draw()
@@ -1154,13 +1154,21 @@ _after_monthly = df_after_load.select(
     pl.col(_elec_col).alias("elec_after"),
 )
 _monthly = _before_monthly.join(_after_monthly, on="month_label").with_columns(
+    pl.min_horizontal("elec_before", "elec_after").alias("elec_shared_base"),
     (pl.col("elec_after") - pl.col("elec_before")).clip(lower_bound=0).alias("elec_incremental"),
+    (pl.col("elec_before") - pl.col("elec_after")).clip(lower_bound=0).alias("elec_cooling_savings"),
 )
 
-INCR_SEGMENT_ORDER = ["New electricity from heat pump", "Electricity before heat pump"]
+INCR_SEGMENT_ORDER = [
+    "New electricity from heat pump",
+    "More efficient cooling",
+    "Electricity before heat pump",
+]
 incremental_df = pl.concat([
-    _monthly.select("month_label", pl.col("elec_before").alias("kwh"))
+    _monthly.select("month_label", pl.col("elec_shared_base").alias("kwh"))
     .with_columns(pl.lit("Electricity before heat pump").alias("segment")),
+    _monthly.select("month_label", pl.col("elec_cooling_savings").alias("kwh"))
+    .with_columns(pl.lit("More efficient cooling").alias("segment")),
     _monthly.select("month_label", pl.col("elec_incremental").alias("kwh"))
     .with_columns(pl.lit("New electricity from heat pump").alias("segment")),
 ]).with_columns(
@@ -1171,16 +1179,23 @@ incremental_df = pl.concat([
 
 ```{python}
 #| label: fig-consumption-before-after-state
-#| fig-cap: "Monthly electricity consumption for a representative gas-heated home, before and after switching to a heat pump"
+#| fig-cap: "Monthly electricity consumption for a representative gas-heated home, before and after switching to a heat pump. Winter consumption grows sharply, while summer consumption falls because the heat pump cools more efficiently than the home's prior air conditioner. 1 kWh of gas = 3,412 BTU."
+
+_SAVINGS_FILL = (0.784, 0.635, 0.0, 0.35)  # #C8A200 at 35% opacity
+_SAVINGS_LABEL_COLOR = "#D4BA46"
 
 INCR_COLORS = {
     "Electricity before heat pump": "#C8A200",
+    "More efficient cooling": _SAVINGS_FILL,
     "New electricity from heat pump": "#FFC729",
 }
 
 _dec = _monthly.filter(pl.col("month_label") == "Dec")
-_dec_before = float(_dec["elec_before"][0])
+_dec_base = float(_dec["elec_shared_base"][0])
 _dec_incr = float(_dec["elec_incremental"][0])
+_aug = _monthly.filter(pl.col("month_label") == "Aug")
+_aug_base = float(_aug["elec_shared_base"][0])
+_aug_savings = float(_aug["elec_cooling_savings"][0])
 _n = len(MONTH_LABELS)
 _lx = _n + 0.6
 
@@ -1190,17 +1205,20 @@ _lx = _n + 0.6
     + scale_fill_manual(values=INCR_COLORS)
     + scale_y_continuous(expand=(0, 0, 0.05, 0))
     + scale_x_discrete(expand=(0.02, 0, 0.15, 0))
-    + annotate("text", x=_lx, y=_dec_before / 2,
+    + annotate("text", x=_lx, y=_dec_base / 2,
                label="Electricity use\nbefore heat pump",
                ha="left", va="center", size=9, color="#C8A200", fontweight="bold")
     + annotate("segment", x=_n + 0.15, xend=_lx - 0.05,
-               y=_dec_before / 2, yend=_dec_before / 2, color="#C8A200", size=0.5)
-    + annotate("text", x=_lx, y=_dec_before + _dec_incr / 2,
+               y=_dec_base / 2, yend=_dec_base / 2, color="#C8A200", size=0.5)
+    + annotate("text", x=_lx, y=_dec_base + _dec_incr / 2,
                label="New electricity use\nfrom heat pump",
                ha="left", va="center", size=9, color="#D4A800", fontweight="bold")
     + annotate("segment", x=_n + 0.15, xend=_lx - 0.05,
-               y=_dec_before + _dec_incr / 2, yend=_dec_before + _dec_incr / 2,
+               y=_dec_base + _dec_incr / 2, yend=_dec_base + _dec_incr / 2,
                color="#D4A800", size=0.5)
+    + annotate("text", x=8, y=_aug_base + _aug_savings + 80,
+               label="More efficient cooling\nlowers use",
+               ha="center", va="bottom", size=9, color=_SAVINGS_LABEL_COLOR, fontweight="bold")
     + labs(x="", y="Electricity consumption (kWh)")
     + theme_switchbox()
     + theme(figure_size=(14, 5), legend_position="none")
@@ -1827,7 +1845,7 @@ natgas_state_lmi_full = (
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-state-state-lmi-current
-#| fig-cap: "Bill impact of switching to heat pumps for natural gas-heated households (Statewide). Assumes 40% of LMI households receive LMI discounts before and after switching to a heat pump."
+#| fig-cap: "Change in total annual energy bills (electricity + natural gas) for natural gas-heated households that switch to heat pumps (NY, statewide). Assumes 40% of LMI households are enrolled in the utilities’ energy affordability program before and after switching to a heat pump."
 
 plot_quadrant_bar(
     [("Natural gas", natgas_state_lmi40)],
@@ -1843,7 +1861,7 @@ plot_quadrant_bar(
 
 ```{python}
 #| label: fig-quadrant-bar-oil-propane-state
-#| fig-cap: "Bill impact of switching to heat pumps for oil/propane-heated households (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
+#| fig-cap: "Change in total annual energy bills (electricity + oil/propane) for oil/propane-heated households that switch to heat pumps (NY, statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
 
 plot_quadrant_bar(
     [("Oil / propane", oil_propane_state)],
@@ -1860,7 +1878,7 @@ plot_quadrant_bar(
 
 ```{python}
 #| label: fig-quadrant-bar-elec-resistance-state
-#| fig-cap: "Bill impact of switching to heat pumps for electric resistance-heated households (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
+#| fig-cap: "Change in total annual energy bills (electricity) for electric resistance-heated households that switch to heat pumps (NY, statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
 
 plot_quadrant_bar(
     [("Electric resistance", elec_resistance_state)],
@@ -1949,7 +1967,7 @@ computed from the statewide ResStock sample (upgrade 0 — current HVAC).
 
 ```{python}
 #| label: fig-households-by-fuel
-#| fig-cap: "Percentage of households by primary heating fuel"
+#| fig-cap: "Percentage of NY State households by primary heating fuel"
 
 FUEL_CATEGORIES = [
     "Natural Gas", "Propane", "Fuel Oil", "Heat Pump", "Resistance", "Other/None",
@@ -2254,7 +2272,7 @@ for label, row in [("Gas", median_gas_bat), ("Heat pump", median_hp_bat)]:
 
 ```{python}
 #| label: fig-cross-subsidy-example
-#| fig-cap: "Annual electric delivery bill vs. electric delivery cost of service for the median gas-heated home, before and after switching to a heat pump."
+#| fig-cap: "Annual electric delivery bill vs. delivery cost of service for the home in Syracuse, NY, before and after switching to a heat pump. Home's electric loads are from ResStock, bills are caculated using NGrid Upstate's 2025 electric rates. Cost-of-service is from Switchbox analysis of T&D marginal costs and utility revenue requirements."
 
 DECOMPOSE_COS = False
 
@@ -2459,7 +2477,7 @@ side_text_df = pl.DataFrame([
     + facet_wrap("scenario", ncol=2)
     + labs(
         x="", y="$ / year",
-        title="Electric delivery bill vs. delivery cost of service — same home, before and after heat pump",
+        title="Electric delivery bill vs. cost of service — home in Syracuse, NY, before and after heat pump",
         fill="",
     )
     + theme_switchbox()
@@ -2547,6 +2565,7 @@ report_vars["natgas_mean_delivery_cost"] = (
 report_vars["natgas_mean_delivery_bill"] = _weighted_mean(_natgas_sub, "annual_bill_delivery", "weight")
 report_vars["natgas_mean_delivery_bat"] = _weighted_mean(_natgas_sub, _bat_col, "weight")
 report_vars["oil_propane_mean_delivery_bat"] = _weighted_mean(_op_sub, _bat_col, "weight")
+report_vars["elec_resistance_share_of_households"] = _er_sub["weight"].sum() / total_weight
 report_vars["elec_resistance_mean_delivery_bat"] = _weighted_mean(_er_sub, _bat_col, "weight")
 report_vars["elec_resistance_total_cross_subsidy_delivery_millions"] = (
     (_er_sub[BAT_DELIVERY] * _er_sub["weight"]).sum() / 1e6

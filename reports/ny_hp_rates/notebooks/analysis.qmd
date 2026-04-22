@@ -91,8 +91,10 @@ def add_matplotlib_footnote(
     fig: Figure,
     note: str | None,
     *,
-    width: int = 88,
-    fontsize: int = 7,
+    width: int = 96,
+    fontsize: int = 12,
+    x: float = 0.02,
+    ha: str = "left",
 ) -> None:
     """Append wrapped *note* below the figure (matplotlib only)."""
     if not note:
@@ -100,8 +102,8 @@ def add_matplotlib_footnote(
     lines = textwrap.wrap(note, width=width) or [""]
     wrapped = "\n".join(lines)
     extra = 0.022 * max(0, len(lines) - 1)
-    fig.subplots_adjust(bottom=min(0.32, 0.11 + extra))
-    fig.text(0.5, 0.01, wrapped, fontsize=fontsize, ha="center", va="bottom")
+    fig.subplots_adjust(bottom=min(0.36, 0.12 + extra))
+    fig.text(x, 0.01, wrapped, fontsize=fontsize, ha=ha, va="bottom")
 ```
 
 ## Parameters
@@ -207,11 +209,11 @@ LMI_ENROLLED_BILL_COLS = lmi_enrolled_bill_cols(LMI_CURRENT_ENROLLMENT_PCT)
 INCLUDE_LMI_DISCOUNT = True  # False = undiscounted (legacy)
 ACTIVE_BILL_COLS = LMI_ENROLLED_BILL_COLS if INCLUDE_LMI_DISCOUNT else LMI_BILL_COLS
 LMI_ENROLLED_CAPTION = (
-    f"Assumes ~{LMI_CURRENT_ENROLLMENT_PCT}% of LMI households receive discounts before and after HP switch."
+    f"* Assumes ~{LMI_CURRENT_ENROLLMENT_PCT}% of LMI households receive discounts before and after HP switch."
 )
 LMI_CAPTION_SUFFIX = (
     LMI_ENROLLED_CAPTION if INCLUDE_LMI_DISCOUNT else
-    "Undiscounted annual bills (LMI discount enrollment not modeled)."
+    "* Undiscounted annual bills (LMI discount enrollment not modeled)."
 )
 report_vars["lmi_caption_suffix"] = LMI_CAPTION_SUFFIX
 report_vars["lmi_enrolled_caption"] = LMI_ENROLLED_CAPTION
@@ -1871,7 +1873,7 @@ def _lmi_delta_state(
 
 
 delta_state_lmi_enrolled = _lmi_delta_state(
-    bills_current, bills_hp, LMI_ENROLLED_BILL_COLS, LMI_ENROLLED_BILL_COLS,
+    bills_current, bills_hp, ACTIVE_BILL_COLS, ACTIVE_BILL_COLS,
 )
 
 natgas_state_lmi_enrolled = (
@@ -1890,16 +1892,21 @@ report_vars["pct_natgas_lose_1k_default_lmi40"] = _lmi40_def_lose_1k / _lmi40_de
 #| label: fig-quadrant-bar-natgas-state-state-lmi-current
 #| fig-cap: "Bill impact of switching to heat pumps for natural gas-heated households (Statewide)."
 
+_title_natgas_state_lmi: list[tuple[str, str]] = [
+    ("How bills would change for ", "#000000"),
+    ("natural gas", "#7A8A10"),
+    (" heated homes after switching to ", "#000000"),
+    ("heat pumps", "#c47600"),
+]
+if INCLUDE_LMI_DISCOUNT:
+    _title_natgas_state_lmi.append(
+        (f"\n(~{LMI_CURRENT_ENROLLMENT_PCT}% LMI discounts)", "#000000"),
+    )
+
 plot_quadrant_bar(
     [("Natural gas", natgas_state_lmi_enrolled)],
-    title_parts=[
-        ("How bills would change for ", "#000000"),
-        ("natural gas", "#7A8A10"),
-        (" heated homes after switching to ", "#000000"),
-        ("heat pumps", "#c47600"),
-        (f"\n(~{LMI_CURRENT_ENROLLMENT_PCT}% LMI discounts)", "#000000"),
-    ],
-    footnote=LMI_ENROLLED_CAPTION,
+    title_parts=_title_natgas_state_lmi,
+    footnote=LMI_CAPTION_SUFFIX,
 )
 ```
 
@@ -4584,7 +4591,7 @@ comes from `bills_hprate_hp` (`RUN_HPRATE_HP`) instead of `bills_hp` (runs 3+4).
 #| label: compute-lmi-switch-deltas-state
 
 delta_switch_state_lmi_enrolled = _lmi_delta_state(
-    bills_current, bills_hprate_hp, LMI_ENROLLED_BILL_COLS, LMI_ENROLLED_BILL_COLS,
+    bills_current, bills_hprate_hp, ACTIVE_BILL_COLS, ACTIVE_BILL_COLS,
 )
 delta_switch_state_lmi_full = _lmi_delta_state(
     bills_current, bills_hprate_hp, LMI_40_BILL_COLS, LMI_100_BILL_COLS,
@@ -4628,7 +4635,7 @@ plot_quadrant_bar(
         (" heated homes after switching to ", "#000000"),
         ("heat pumps", "#c47600"),
     ],
-    footnote=LMI_ENROLLED_CAPTION,
+    footnote=LMI_CAPTION_SUFFIX,
 )
 ```
 
@@ -4737,7 +4744,7 @@ parquet) to align with the primary reference chart.
 #| label: compute-deltas-natgas-switch-ehrate-lmi-enrolled
 
 delta_switch_state_ehrate_lmi_enrolled = _lmi_delta_state(
-    bills_current, bills_ehrate_hp, LMI_ENROLLED_BILL_COLS, LMI_ENROLLED_BILL_COLS,
+    bills_current, bills_ehrate_hp, ACTIVE_BILL_COLS, ACTIVE_BILL_COLS,
 )
 natgas_switch_ehrate_state_lmi_enrolled = (
     delta_switch_state_ehrate_lmi_enrolled
@@ -4768,7 +4775,7 @@ plot_quadrant_bar(
         (" heated homes after switching to ", "#000000"),
         ("heat pumps", "#c47600"),
     ],
-    footnote=LMI_ENROLLED_CAPTION,
+    footnote=LMI_CAPTION_SUFFIX,
 )
 ```
 
@@ -5388,12 +5395,20 @@ print(f"HP + seasonal rates: {above_hp_seasonal:.1f}% above 6% | {below_hp_seaso
 ```{python}
 #| label: burden-bar-helper
 
-BURDEN_SCENARIO_LABELS = [
-    f"Current HVAC\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
-    f"Heat Pump\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
-    f"Heat Pump\nHP Seasonal Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
-    "Heat Pump\nHP Seasonal Rates\n100% LMI Discounts",
-]
+if INCLUDE_LMI_DISCOUNT:
+    BURDEN_SCENARIO_LABELS = [
+        f"Current HVAC\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+        f"Heat Pump\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+        f"Heat Pump\nHP Seasonal Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+        "Heat Pump\nHP Seasonal Rates\n100% LMI Discounts",
+    ]
+else:
+    BURDEN_SCENARIO_LABELS = [
+        "Current HVAC\nDefault Rates\n(undiscounted bills)",
+        "Heat Pump\nDefault Rates\n(undiscounted bills)",
+        "Heat Pump\nHP Seasonal Rates\n(undiscounted bills)",
+        "Heat Pump\nHP Seasonal Rates\n100% LMI Discounts",
+    ]
 BURDEN_SEGMENT_ORDER = ["Above 6%", "Below 6%"]
 BURDEN_COLORS = {
     "Above 6%": SB_COLORS["carrot"],
@@ -5472,13 +5487,13 @@ Energy burdens in the first three scenarios use the bill columns for
 #| label: burden-compute-lmi-current
 
 below_current_lmi40, above_current_lmi40 = burden_shares(
-    bills_current, cohort_bldg_ids, income_df, bill_cols=LMI_ENROLLED_BILL_COLS,
+    bills_current, cohort_bldg_ids, income_df, bill_cols=ACTIVE_BILL_COLS,
 )
 below_hp_default_lmi40, above_hp_default_lmi40 = burden_shares(
-    bills_hp, cohort_bldg_ids, income_df, bill_cols=LMI_ENROLLED_BILL_COLS,
+    bills_hp, cohort_bldg_ids, income_df, bill_cols=ACTIVE_BILL_COLS,
 )
 below_hp_seasonal_lmi40, above_hp_seasonal_lmi40 = burden_shares(
-    bills_hprate_hp, cohort_bldg_ids, income_df, bill_cols=LMI_ENROLLED_BILL_COLS,
+    bills_hprate_hp, cohort_bldg_ids, income_df, bill_cols=ACTIVE_BILL_COLS,
 )
 below_hp_seasonal_lmi100, above_hp_seasonal_lmi100 = burden_shares(
     bills_hprate_hp, cohort_bldg_ids, income_df, bill_cols=LMI_100_BILL_COLS,
@@ -5504,7 +5519,8 @@ _p_burden_lmi = plot_burden_bar(
 _fig_burden_lmi = _p_burden_lmi.draw()
 add_matplotlib_footnote(
     _fig_burden_lmi,
-    LMI_ENROLLED_CAPTION + " Rightmost bar: universal 100% enrollment (_lmi_100 columns) on the HP seasonal rate.",
+    LMI_CAPTION_SUFFIX
+    + " Rightmost bar: universal 100% enrollment (_lmi_100 columns) on the HP seasonal rate.",
 )
 display_svg(_fig_burden_lmi)
 ```
@@ -5523,9 +5539,9 @@ for code in UTIL_ORDER_CODES:
         continue
     util_income = income_df.filter(pl.col(BLDG_ID).is_in(util_bldg_ids))
     burden_by_utility[code] = {
-        "current": burden_shares(bills_current, util_bldg_ids, util_income, bill_cols=LMI_ENROLLED_BILL_COLS),
-        "hp_default": burden_shares(bills_hp, util_bldg_ids, util_income, bill_cols=LMI_ENROLLED_BILL_COLS),
-        "hp_seasonal": burden_shares(bills_hprate_hp, util_bldg_ids, util_income, bill_cols=LMI_ENROLLED_BILL_COLS),
+        "current": burden_shares(bills_current, util_bldg_ids, util_income, bill_cols=ACTIVE_BILL_COLS),
+        "hp_default": burden_shares(bills_hp, util_bldg_ids, util_income, bill_cols=ACTIVE_BILL_COLS),
+        "hp_seasonal": burden_shares(bills_hprate_hp, util_bldg_ids, util_income, bill_cols=ACTIVE_BILL_COLS),
         "hp_seasonal_lmi100": burden_shares(bills_hprate_hp, util_bldg_ids, util_income, bill_cols=LMI_100_BILL_COLS),
     }
 
@@ -5546,12 +5562,20 @@ _BURDEN_LABEL_ABOVE = "ENERGY BURDEN ABOVE 6%"
 _BURDEN_LABEL_BELOW = "ENERGY BURDEN BELOW 6%"
 
 _BURDEN_UTIL_SCENARIO_KEYS = ["current", "hp_default", "hp_seasonal", "hp_seasonal_lmi100"]
-_BURDEN_UTIL_SCENARIO_LABELS = [
-    f"Current HVAC\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
-    f"Heat Pump\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
-    f"Heat Pump\nHP Seasonal Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
-    "Heat Pump\nHP Seasonal Rates\n100% LMI Discounts",
-]
+if INCLUDE_LMI_DISCOUNT:
+    _BURDEN_UTIL_SCENARIO_LABELS = [
+        f"Current HVAC\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+        f"Heat Pump\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+        f"Heat Pump\nHP Seasonal Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+        "Heat Pump\nHP Seasonal Rates\n100% LMI Discounts",
+    ]
+else:
+    _BURDEN_UTIL_SCENARIO_LABELS = [
+        "Current HVAC\nDefault Rates\n(undiscounted bills)",
+        "Heat Pump\nDefault Rates\n(undiscounted bills)",
+        "Heat Pump\nHP Seasonal Rates\n(undiscounted bills)",
+        "Heat Pump\nHP Seasonal Rates\n100% LMI Discounts",
+    ]
 
 
 def plot_burden_bar_by_utility(

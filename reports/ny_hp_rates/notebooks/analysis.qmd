@@ -4576,6 +4576,43 @@ _lmi40_lose_1k = natgas_switch_state_lmi40.filter(pl.col("delta") > 1000)["weigh
 report_vars["pct_natgas_save_hprate_lmi40"] = _lmi40_save / _lmi40_total
 report_vars["pct_natgas_lose_1k_hprate_lmi40"] = _lmi40_lose_1k / _lmi40_total
 
+# TOU minus seasonal (post–HP bills), same sign convention as the TOU−seasonal histogram: negative
+# when the TOU rate yields a *lower* annual bill. Among TOU savers (vs. current), report −E[TOU−seasonal]
+# as a positive “extra savings vs. seasonal” figure — same LMI ~40% bill columns as the save shares.
+if INCLUDE_TOU:
+    _extra_vs_sea = (
+        delta_switch_state_lmi40.join(
+            delta_tou_state_lmi40.select(
+                BLDG_ID,
+                pl.col("bill_after").alias("bill_tou_lmi40"),
+                pl.col("delta").alias("delta_tou_vs_current_lmi40"),
+            ),
+            on=BLDG_ID,
+            how="inner",
+        )
+        .filter(pl.col("heats_with_natgas"))
+        .select(
+            "weight",
+            # `bill_after` on the left is the seasonal heat-pump total.
+            (pl.col("bill_tou_lmi40") - pl.col("bill_after")).alias("tou_minus_seasonal_lmi40"),
+            pl.col("delta_tou_vs_current_lmi40"),
+        )
+    )
+    _tou_savers = _extra_vs_sea.filter(pl.col("delta_tou_vs_current_lmi40") < 0)
+    _tws = _tou_savers["weight"].sum()
+    report_vars["natgas_tou_extra_vs_seasonal_lmi40"] = (
+        -float(
+            (
+                _tou_savers["tou_minus_seasonal_lmi40"] * _tou_savers["weight"]
+            ).sum()
+            / _tws
+        )
+        if _tws > 0
+        else 0.0
+    )
+else:
+    report_vars["natgas_tou_extra_vs_seasonal_lmi40"] = 0.0
+
 natgas_switch_state_lmi_full = (
     delta_switch_state_lmi_full
     .filter(pl.col("heats_with_natgas"))

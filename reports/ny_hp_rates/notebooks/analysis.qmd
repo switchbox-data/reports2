@@ -2904,6 +2904,345 @@ overpay_df = overpay_df.with_columns(
 ```
 
 
+## Default electric tariffs
+
+Each utility's residential electric tariff has two components: a **delivery** portion (fixed monthly charge plus volumetric rates from the utility's rate case, topped up with surcharges) and a **supply** portion (wholesale costs passed through via the Market Supply Charge or equivalent). The table below summarizes both components for all seven utilities as encoded in the simulation's URDB JSON tariff files.
+
+```{python}
+#| label: default-tariff-helpers
+
+import json
+
+TARIFF_DIR = f"rate_design/hp_rates/{_state_lower}/config/tariffs/electric"
+
+
+def _load_rate(filename: str) -> dict:
+    content = fetch_rdp_file(f"{TARIFF_DIR}/{filename}", ref=RDP_REF)
+    return json.loads(content)["items"][0]
+
+
+def _get_rates(tariff: dict) -> list[float]:
+    return [tier[0]["rate"] for tier in tariff["energyratestructure"]]
+```
+
+```{python}
+#| label: default-tariff-data
+
+_default_rows: list[dict] = []
+
+for display, code in TARIFF_UTILS.items():
+    d = _load_rate(f"{code}_default.json")
+    b = _load_rate(f"{code}_default_supply.json")
+
+    fixed = d["fixedchargefirstmeter"]
+    d_rates = _get_rates(d)
+    b_rates = _get_rates(b)
+
+    weekday = d["energyweekdayschedule"]
+    weekend = d["energyweekendschedule"]
+    has_tou = weekday != weekend
+    has_tiers = any(len(period) > 1 for period in d["energyratestructure"])
+
+    if has_tou:
+        # PSEG-LI delivery: 4 periods (0=summer off, 1=summer on,
+        # 2=winter off, 3=winter on).
+        # PSEG-LI bundled supply: 24 periods (2 per month, even=off, odd=on).
+        # Summer = Jun–Sep (months 5–8, bundled periods 10–17),
+        # Winter = Oct–May (months 0–4 & 9–11, bundled periods 0–9 & 18–23).
+        summer_month_indices = [5, 6, 7, 8]
+        winter_month_indices = [0, 1, 2, 3, 4, 9, 10, 11]
+        b_summer_off = sum(b_rates[m * 2] for m in summer_month_indices) / len(summer_month_indices)
+        b_summer_on = sum(b_rates[m * 2 + 1] for m in summer_month_indices) / len(summer_month_indices)
+        b_winter_off = sum(b_rates[m * 2] for m in winter_month_indices) / len(winter_month_indices)
+        b_winter_on = sum(b_rates[m * 2 + 1] for m in winter_month_indices) / len(winter_month_indices)
+        s_summer_off = b_summer_off - d_rates[0]
+        s_summer_on = b_summer_on - d_rates[1]
+        s_winter_off = b_winter_off - d_rates[2]
+        s_winter_on = b_winter_on - d_rates[3]
+        _default_rows.append({
+            "Utility": display, "Season": "Summer",
+            "Fixed charge ($/mo)": fixed,
+            "Delivery (¢/kWh)": f"{d_rates[0]*100:.1f} off-peak / {d_rates[1]*100:.1f} on-peak",
+            "Supply (¢/kWh)": f"{s_summer_off*100:.1f} off-peak / {s_summer_on*100:.1f} on-peak",
+        })
+        _default_rows.append({
+            "Utility": display, "Season": "Winter",
+            "Fixed charge ($/mo)": "",
+            "Delivery (¢/kWh)": f"{d_rates[2]*100:.1f} off-peak / {d_rates[3]*100:.1f} on-peak",
+            "Supply (¢/kWh)": f"{s_winter_off*100:.1f} off-peak / {s_winter_on*100:.1f} on-peak",
+        })
+    elif has_tiers:
+        # ConEd, O&R: delivery has 2 seasonal periods (0=summer Jun–Sep,
+        # 1=winter Oct–May), each with a 250 kWh tier break.
+        # Bundled supply has 12 monthly periods, each with tiers.
+        # Average bundled supply over summer/winter months, then subtract delivery.
+        d_struct = d["energyratestructure"]
+        b_struct = b["energyratestructure"]
+        summer_months = [5, 6, 7, 8]
+        winter_months = [0, 1, 2, 3, 4, 9, 10, 11]
+        for d_pidx, season_label, months in [
+            (0, "Summer", summer_months),
+            (1, "Winter", winter_months),
+        ]:
+            d_t1 = d_struct[d_pidx][0]["rate"]
+            d_t2 = d_struct[d_pidx][1]["rate"]
+            b_t1_avg = sum(b_struct[m][0]["rate"] for m in months) / len(months)
+            b_t2_avg = sum(b_struct[m][1]["rate"] for m in months) / len(months)
+            s_t1 = b_t1_avg - d_t1
+            s_t2 = b_t2_avg - d_t2
+            if abs(d_t1 - d_t2) < 0.0001:
+                d_cell = f"{d_t1*100:.2f}"
+            else:
+                d_cell = f"{d_t1*100:.2f} (first 250) / {d_t2*100:.2f}"
+            if abs(s_t1 - s_t2) < 0.0001:
+                s_cell = f"{s_t1*100:.2f}"
+            else:
+                s_cell = f"{s_t1*100:.2f} (first 250) / {s_t2*100:.2f}"
+            _default_rows.append({
+                "Utility": display, "Season": season_label,
+                "Fixed charge ($/mo)": fixed if season_label == "Summer" else "",
+                "Delivery (¢/kWh)": d_cell,
+                "Supply (¢/kWh)": s_cell,
+            })
+    else:
+        # Flat monthly-varying: delivery and bundled may have different
+        # period counts (e.g. NYSEG delivery=6, bundled=12). Use the
+        # schedule to resolve each month's rate, then subtract.
+        d_monthly = [d["energyratestructure"][d["energyweekdayschedule"][m][0]][0]["rate"] for m in range(12)]
+        b_monthly = [b["energyratestructure"][b["energyweekdayschedule"][m][0]][0]["rate"] for m in range(12)]
+        s_monthly = [b_monthly[m] - d_monthly[m] for m in range(12)]
+        d_lo, d_hi = min(d_monthly), max(d_monthly)
+        s_lo, s_hi = min(s_monthly), max(s_monthly)
+        _default_rows.append({
+            "Utility": display, "Season": "Monthly",
+            "Fixed charge ($/mo)": fixed,
+            "Delivery (¢/kWh)": f"{d_lo*100:.1f}–{d_hi*100:.1f}",
+            "Supply (¢/kWh)": f"{s_lo*100:.1f}–{s_hi*100:.1f}",
+        })
+
+_default_tariff_df = pl.DataFrame(_default_rows)
+```
+
+```{python}
+#| label: tbl-elec-default-tariffs
+#| tbl-cap: "Default residential electric tariffs used in the simulation, per utility. Delivery includes the base rate-case delivery charge plus all volumetric surcharges topped up into the delivery revenue requirement. Supply includes the bundled commodity charge, MFC, and CES supply surcharge. Rates shown are pre-calibration values from filed tariff schedules."
+
+from lib.great_tables import get_switchbox_gt_tab_options
+from lib.quarto import display_gt
+
+_default_gt = (
+    GT(_default_tariff_df)
+    .tab_source_note("Monthly: rates vary by calendar month; range shown. ConEd and O&R have increasing-block tiers with a 250 kWh/month threshold; '(first 250)' denotes the first-block rate. PSEG-LI has time-of-use rates; peak = weekday 3–7 PM, off-peak = all other hours and weekends.")
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+display_gt(_default_gt)
+```
+
+
+## Default gas tariffs
+
+```{python}
+#| label: gas-tariff-data
+
+GAS_TARIFF_DIR = f"rate_design/hp_rates/{_state_lower}/config/tariffs/gas"
+
+_GAS_COLS = ("Heating (SF)", "Heating (MF)", "Non-heating")
+
+GAS_TARIFFS: dict[str, dict[str, str]] = {
+    "CenHud": {k: "cenhud.json" for k in _GAS_COLS},
+    "ConEd": {
+        "Heating (SF)": "coned_sf_heating.json",
+        "Heating (MF)": "coned_mf_heating.json",
+        "Non-heating": "coned_nonheating.json",
+    },
+    "KEDLI": {
+        "Heating (SF)": "kedli_sf_heating.json",
+        "Heating (MF)": "kedli_mf.json",
+        "Non-heating": "kedli_sf_nonheating.json",
+    },
+    "KEDNY": {
+        "Heating (SF)": "kedny_sf_heating.json",
+        "Heating (MF)": "kedny_mf.json",
+        "Non-heating": "kedny_sf_nonheating.json",
+    },
+    "NFG": {k: "nfg.json" for k in _GAS_COLS},
+    "NiMo": {k: "nimo.json" for k in _GAS_COLS},
+    "NYSEG": {
+        "Heating (SF)": "nyseg_heating.json",
+        "Heating (MF)": "nyseg_heating.json",
+        "Non-heating": "nyseg_nonheating.json",
+    },
+    "O&R": {k: "or.json" for k in _GAS_COLS},
+    "RG&E": {k: "rge.json" for k in _GAS_COLS},
+}
+
+
+def _load_gas_rate(filename: str) -> dict:
+    content = fetch_rdp_file(f"{GAS_TARIFF_DIR}/{filename}", ref=RDP_REF)
+    return json.loads(content)["items"][0]
+
+
+_KWH_PER_THERM = 29.3  # from tariff_fetch kwh_multiplier("per therm")
+
+
+def _parse_gas_tariff(tariff: dict) -> tuple[float, str]:
+    """Return (fixed_charge, tier_description_html) for a gas tariff."""
+    fixed = tariff["fixedchargefirstmeter"]
+    struct = tariff["energyratestructure"]
+    schedule = tariff["energyweekdayschedule"]
+
+    month_periods = [schedule[m][0] for m in range(12)]
+    n_tiers = len(struct[month_periods[0]])
+    avg_rates = []
+    for t in range(n_tiers):
+        avg_rates.append(
+            sum(struct[month_periods[m]][t]["rate"] for m in range(12)) / 12
+        )
+
+    ref_period = struct[month_periods[0]]
+    thresholds = [round(ref_period[t].get("max", 0) / _KWH_PER_THERM) for t in range(n_tiers)]
+
+    # Drop the tiny first tier (< 5 therms) and merge into the second tier.
+    skip_first = n_tiers > 1 and thresholds[0] < 5
+    start = 1 if skip_first else 0
+
+    def _rate_str(cents: float) -> str:
+        if cents >= 100:
+            return f"${cents / 100:,.2f}"
+        return f"{cents:.0f}¢"
+
+    remaining = list(range(start, n_tiers))
+    lines: list[str] = []
+    for i, t in enumerate(remaining):
+        rate_cents = avg_rates[t] * _KWH_PER_THERM * 100
+        rs = _rate_str(rate_cents)
+        if len(remaining) == 1:
+            lines.append(f"{rs}/therm")
+        elif i == 0:
+            lines.append(f"{rs} first {thresholds[t]:,} therms")
+        elif i == len(remaining) - 1:
+            lines.append(f"{rs} over {thresholds[remaining[i - 1]]:,} therms")
+        else:
+            prev = thresholds[remaining[i - 1]]
+            cur = thresholds[t]
+            lines.append(f"{rs} next {cur - prev:,} therms")
+    return fixed, "<br>".join(lines)
+
+
+_gas_cache: dict[str, tuple[float, str]] = {}
+_COL_KEYS = {
+    "Heating (SF)": ("hsf_fixed", "hsf_tiers"),
+    "Heating (MF)": ("hmf_fixed", "hmf_tiers"),
+    "Non-heating": ("nh_fixed", "nh_tiers"),
+}
+
+_gas_rows: list[dict] = []
+for utility, variants in GAS_TARIFFS.items():
+    row: dict = {"Gas utility": utility}
+    for col in _GAS_COLS:
+        fk, tk = _COL_KEYS[col]
+        if col not in variants:
+            row[fk] = "—"
+            row[tk] = "—"
+        else:
+            fname = variants[col]
+            if fname not in _gas_cache:
+                tariff = _load_gas_rate(fname)
+                _gas_cache[fname] = _parse_gas_tariff(tariff)
+            fixed, tiers = _gas_cache[fname]
+            row[fk] = f"${fixed:,.2f}"
+            row[tk] = tiers
+    _gas_rows.append(row)
+
+_gas_tariff_df = pl.DataFrame(_gas_rows)
+```
+
+```{python}
+#| label: tbl-gas-default-tariffs
+#| tbl-cap: "Default residential gas tariffs used in the simulation, per gas utility. Single-tariff utilities apply the same rate to all residential customers."
+
+from great_tables import md
+
+_gas_gt = (
+    GT(_gas_tariff_df)
+    .fmt_markdown(columns=["hsf_tiers", "hmf_tiers", "nh_tiers"])
+    .cols_label(
+        hsf_fixed="Fixed ($/mo)",
+        hsf_tiers=md("Volumetric<br>(per therm)"),
+        hmf_fixed="Fixed ($/mo)",
+        hmf_tiers=md("Volumetric<br>(per therm)"),
+        nh_fixed="Fixed ($/mo)",
+        nh_tiers=md("Volumetric<br>(per therm)"),
+    )
+    .tab_spanner(label="Heating (SF)", columns=["hsf_fixed", "hsf_tiers"])
+    .tab_spanner(label="Heating (MF)", columns=["hmf_fixed", "hmf_tiers"])
+    .tab_spanner(label="Non-heating", columns=["nh_fixed", "nh_tiers"])
+    .tab_source_note(
+        "All gas tariffs use increasing-block tiers; volumetric rates and "
+        "thresholds are converted from the underlying kWh-equivalent URDB JSON "
+        "to therms. Rates shown are annual averages across monthly rate periods. "
+        "CenHud, NFG, NiMo, O&R, and RG&E have a single residential schedule "
+        "that applies to all customers; values are repeated across columns."
+    )
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+display_gt(_gas_gt)
+```
+
+## Delivered fuel prices
+
+```{python}
+#| label: tbl-delivered-fuel-prices
+#| tbl-cap: "Residential delivered fuel prices used in the simulation (2024 monthly averages for New York)."
+
+_fuel_prices = (
+    pl.scan_parquet(
+        "s3://data.sb/eia/heating_fuel_prices/**/*.parquet",
+        hive_partitioning=True,
+    )
+    .filter(
+        (pl.col("year") == YEAR - 1)
+        & (pl.col("state") == STATE)
+        & (pl.col("price_type") == "residential")
+    )
+    .collect()
+)
+
+def _fmt_range(row: dict) -> str:
+    return f"${row['min']:.2f} – ${row['max']:.2f}"
+
+_fuel_agg = (
+    _fuel_prices
+    .group_by("product")
+    .agg(
+        pl.col("price_per_gallon").min().alias("min"),
+        pl.col("price_per_gallon").max().alias("max"),
+        pl.col("price_per_gallon").mean().alias("mean"),
+    )
+)
+
+_fuel_summary = pl.DataFrame({
+    "Fuel": [
+        "Heating oil" if r["product"] == "heating_oil" else "Propane"
+        for r in _fuel_agg.iter_rows(named=True)
+    ],
+    "Monthly range ($/gal)": [_fmt_range(r) for r in _fuel_agg.iter_rows(named=True)],
+    "Annual avg ($/gal)": _fuel_agg["mean"].to_list(),
+}).sort("Fuel")
+
+_fuel_gt = (
+    GT(_fuel_summary)
+    .fmt_currency(columns=["Annual avg ($/gal)"], decimals=2)
+    .tab_source_note(
+        "Source: EIA Form 877, 2024 weekly residential prices for New York, "
+        "averaged to monthly. Prices are $/gallon excluding taxes."
+    )
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+display_gt(_fuel_gt)
+```
+
+
 ## Proposed fair rate: seasonal delivery pricing
 
 We propose a simple seasonal delivery rate for heat pump customers: summer
@@ -2918,8 +3257,6 @@ Both tariffs are calibrated URDB JSONs from the state's tariff config directory.
 
 ```{python}
 #| label: rate-table-data
-
-import json
 
 TARIFF_DIR = f"rate_design/hp_rates/{_state_lower}/config/tariffs/electric"
 
@@ -4470,6 +4807,18 @@ if INCLUDE_TOU:
     _total_w = _natgas_w["weight"].sum()
     _within_50 = _natgas_w.filter(pl.col("diff_energy_total").abs() <= 50)["weight"].sum()
     report_vars["pct_within_50"] = _within_50 / _total_w
+
+    _all_hp = _tou_vs_seasonal.with_columns((-pl.col("diff_energy_total")).alias("shift_saving"))
+    _all_w = _all_hp["weight"].sum()
+    report_vars["tou_shift_mean_saving"] = float(
+        (_all_hp["shift_saving"] * _all_hp["weight"]).sum() / _all_w
+    )
+    _sorted = _all_hp.sort("shift_saving")
+    _cum = _sorted["weight"].cum_sum()
+    _p25_idx = (_cum >= 0.25 * _all_w).arg_max()
+    _p75_idx = (_cum >= 0.75 * _all_w).arg_max()
+    report_vars["tou_shift_saving_p25"] = float(_sorted["shift_saving"][_p25_idx])
+    report_vars["tou_shift_saving_p75"] = float(_sorted["shift_saving"][_p75_idx])
 ```
 
 ```{python}

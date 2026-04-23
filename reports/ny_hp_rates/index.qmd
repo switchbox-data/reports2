@@ -1331,11 +1331,11 @@ All modeling, bill calculation, and rate design was performed using Switchbox's 
 
 We use NREL's ResStock 2024.2 dataset to model New York's residential building stock. ResStock uses EnergyPlus physics-based simulations to represent the existing U.S. housing stock as a statistical sample, collectively matching the state's diversity of building types, sizes, ages, envelope characteristics, and heating equipment. These are simulated buildings, not individual real households. The 2024.2 release uses actual meteorological year 2018 (AMY 2018) weather data.[^resstock-cite]
 
-[^resstock-cite]: Default national sample weights represent ~252 real-world homes each. [@nrel_EndUseLoadProfiles_2024].
+[^resstock-cite]: Default national sample weights represent ~252 real-world homes each. [@nrel_EndUseLoadProfiles_2024]. Single weather year was chosen to preserve weather driven coincident peaks which can be obscured in the composite weather models.
 
-New York has seven major electric utilities, each with its own tariff structure, service territory, and regulatory filings. We model all seven: Central Hudson (CenHud), Con Edison, National Grid (Niagara Mohawk / NiMo), New York State Electric & Gas (NYSEG), Orange & Rockland (O&R), PSEG Long Island (PSEG-LI / LIPA), and Rochester Gas & Electric (RG&E). Each ResStock building is assigned to an electric utility and, where applicable, a gas utility based on its geographic location. We rescale the ResStock sampling weights for each utility so that the weighted customer count matches the EIA-861 reported residential customer count as of 2024.[^resstock-reweight]
+New York has seven major electric utilities, each with its own tariff structure, service territory, and regulatory filings. We model all seven: Central Hudson (CenHud), Con Edison (ConEd), National Grid-Niagara Mohawk (NiMo), New York State Electric & Gas (NYSEG), Orange & Rockland (O&R), PSEG Long Island (PSEG-LI), and Rochester Gas & Electric (RG&E). Each ResStock building is assigned to an electric utility and, where applicable, a gas utility based on its geographic location. We rescale the ResStock sampling weights for each utility so that the weighted customer count matches the EIA-861 reported residential customer count as of 2024.[^resstock-reweight]
 
-[^resstock-reweight]: We apply a uniform proportional rescaling to the ResStock building weights so that the weighted customer count matches the EIA-861 reported residential customer count as of 2024. This preserves the relative weighting across buildings while ensuring that utility-level totals aggregate correctly. Implemented in the [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/reweight_customer_counts.py).
+[^resstock-reweight]: We apply a uniform proportional rescaling to the ResStock building weights so that the weighted customer count matches the EIA-861 reported residential customer count as of 2024. This preserves the relative weighting across buildings while ensuring that utility-level totals aggregate correctly. Implemented in the [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/reweight_customer_counts.py). [@eia_EIA861AnnualElectric_2026]
 
 ResStock outputs 15-minute end-use load profiles (electricity, gas, oil, propane) for each building; we aggregate to hourly resolution for bill calculation. We use two scenarios from this dataset:
 
@@ -1348,15 +1348,12 @@ ResStock outputs 15-minute end-use load profiles (electricity, gas, oil, propane
 
 **Load curve adjustments.** We apply two corrections to ResStock load curves before running the bill analysis.
 
-**Multifamily non-HVAC electricity correction.** An analysis comparing ResStock residential loads to EIA-861 electricity sales across New York utilities revealed a systematic pattern: utilities with a higher share of multifamily buildings showed larger discrepancies between EIA-reported residential sales and the ResStock loads scaled to customer count. We traced the discrepancy to non-HVAC end uses (plug loads, lighting, appliances, and miscellaneous loads). Multifamily buildings in ResStock had non-HVAC electricity intensity (kWh per square foot) roughly 1.5–2.0 times higher than single-family buildings, while HVAC intensity was actually about 40% lower for multifamily — directionally sensible since multifamily buildings have less exposed exterior surface area per dwelling unit.
+**Multifamily non-HVAC electricity correction.** An analysis comparing ResStock residential loads to EIA-861 electricity sales [@eia_EIA861AnnualElectric_2026] across New York utilities revealed a systematic pattern: utilities with a higher share of multifamily buildings showed larger discrepancies between EIA-reported residential sales and the ResStock loads scaled to customer count. We traced the discrepancy to non-HVAC end uses (plug loads, lighting, appliances, and miscellaneous loads).
+
+Multifamily buildings in ResStock had non-HVAC electricity intensity (kWh per square foot) roughly 1.5–2.0 times higher than single-family buildings, while HVAC intensity was actually about 40% lower for multifamily — directionally sensible since multifamily buildings have less exposed exterior surface area per dwelling unit.
 
 We correct this by computing the mean non-HVAC electricity intensity (kWh/sqft, among buildings with non-zero consumption) for single-family and multifamily buildings separately, then dividing each multifamily building's non-HVAC end-use consumption by the multifamily-to-single-family ratio for that end use. Each end use gets its own ratio. **HVAC loads are left unchanged.** The same scaling factors are applied to both annual totals and hourly load curves, preserving each building's hourly shape while reducing the non-HVAC magnitude.[^mf-adjustment]
 
-[^mf-adjustment]: After customer reweighting and the multifamily correction, the total electricity consumption (kWh) implied by the ResStock loads does not perfectly match EIA-861 reported residential sales. Residual discrepancies remain — ResStock is above EIA for four utilities (Con Edison, RG&E, Central Hudson, NiMo) and below EIA for three (NYSEG, O&R, PSEG-LI), with magnitudes ranging from about 2% to 8%. We do not rescale the kWh to match EIA; the loads that enter the simulation are the ResStock hourly profiles, reweighted only for customer count. This means the simulation's calibrated delivery rates are somewhat lower (for utilities where ResStock exceeds EIA) or somewhat higher (for the rest) than the rates the utilities actually filed, since the same delivery revenue requirement is spread across a slightly different kWh denominator. The discrepancy does not affect relative comparisons between rate designs — the same kWh enters all scenarios — but it means the absolute $/kWh rates and dollar bill amounts are approximate rather than exact reproductions of filed rates. Non-HVAC adjustment implemented in [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/adjust_mf_electricity.py). Each adjusted building is flagged to prevent double-application. Validation in the [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/post/compare_resstock_eia861_loads.py).
-
-**Non-HP multifamily HVAC approximation (upgrade 2 only).** ResStock's upgrade 2 scenario converts most buildings to heat pumps, but a subset of large multifamily buildings (primarily 5+ unit, 8+ story) are left unconverted — their upgrade 2 load curves are identical to upgrade 0. To ensure these buildings are represented as HP customers in the upgrade 2 analysis, we approximate their HP load profiles using a $k$-nearest-neighbor method: for each unconverted multifamily building, we find the 15 buildings at the same weather station whose heating load curves are closest by root mean squared error (RMSE), then replace the target building's HVAC electricity, natural gas, fuel oil, and propane columns with the average of those neighbors' profiles. Metadata is updated to mark these buildings as heat pump customers.[^approx-hp]
-
-[^approx-hp]: HVAC approximation implemented in [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/approximate_non_hp_load.py). Each approximated building is flagged.
 
 
 ::: {.column-margin}
@@ -1374,20 +1371,44 @@ We correct this by computing the mean non-HVAC electricity intensity (kWh/sqft, 
 : ResStock − EIA % difference, before and after multifamily non-HVAC correction. {.sm}
 :::
 
+ After customer reweighting and the multifamily correction, the total electricity consumption (kWh) implied by the ResStock loads does not perfectly match EIA-861 reported residential sales. Residual discrepancies remain — ResStock is above EIA for four utilities (Con Edison, RG&E, Central Hudson, NiMo) and below EIA for three (NYSEG, O&R, PSEG-LI), with magnitudes ranging from about 2% to 8%. We do not rescale the kWh to match EIA; the loads that enter the simulation are the ResStock hourly profiles, reweighted only for customer count. This means the simulation's calibrated delivery rates are somewhat lower (for utilities where ResStock exceeds EIA) or somewhat higher (for the rest) than the rates the utilities actually filed, since the same delivery revenue requirement is spread across a slightly different kWh denominator. The discrepancy does not affect relative comparisons between rate designs — the same kWh enters all scenarios — but it means the absolute $/kWh rates and dollar bill amounts are approximate rather than exact reproductions of filed rates.
+
+
+[^mf-adjustment]: Non-HVAC adjustment implemented in [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/adjust_mf_electricity.py). Each adjusted building is flagged to prevent double-application. Validation in the [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/post/compare_resstock_eia861_loads.py).
+
+**Non-HP multifamily HVAC approximation (upgrade 2 only).** ResStock's upgrade 2 scenario converts most buildings to heat pumps, but a subset of large multifamily buildings (primarily 5+ unit, 8+ story) are left unconverted — their upgrade 2 load curves are identical to upgrade 0. To ensure these buildings are represented as HP customers in the upgrade 2 analysis, we approximate their HP load profiles using a $k$-nearest-neighbor method: for each unconverted multifamily building, we find the 15 buildings at the same weather station whose heating load curves are closest by root mean squared error (RMSE), then replace the target building's HVAC electricity, natural gas, fuel oil, and propane columns with the average of those neighbors' profiles. Metadata is updated to mark these buildings as heat pump customers.[^approx-hp]
+
+[^approx-hp]: HVAC approximation implemented in [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/approximate_non_hp_load.py). Each approximated building is flagged.
+
+
 
 #### Energy prices and tariffs
 
-**Electricity.** Each of the seven utilities has its own residential electric tariff, consisting of a **delivery** portion (fixed monthly customer charge plus volumetric rates set in the utility's most recent rate case) and a **supply** portion (reflecting NYISO wholesale costs passed through via the Market Supply Charge or equivalent). Electric tariff data was sourced from Genability's utility rate database and verified against each utility's filed tariff schedules. Delivery tariffs and supply tariffs are committed in the RDP in standard URDB JSON format.[^cite-tariff-elec]
+**Electricity.** Each of the seven utilities has its own residential electric tariff, consisting of a **delivery** portion (fixed monthly customer charge[^fixed-charge-composition] plus volumetric rates set in the utility's most recent rate case) and a **supply** portion (the utility's bundled commodity charge — Market Supply Charge, Power Supply Charge, or equivalent — which passes through NYISO wholesale energy costs to residential customers). Both delivery and supply rates were sourced from Genability's (Arcadia) utility rate database, classified into delivery and supply components, and verified against each utility's filed tariff schedules. Tariffs are committed in the RDP in standard URDB JSON format.[^cite-tariff-elec]
 
-[^cite-tariff-elec]: Filed tariffs for all seven utilities are committed in the [RDP](https://github.com/switchbox-data/rate-design-platform/tree/main/rate_design/hp_rates/ny/config/tariffs/electric) (one JSON per utility per tariff component). A detailed charge-by-charge taxonomy of every charge on each utility's residential bill — including which charges are included in the delivery revenue requirement, which are top-up surcharges, and which are excluded — is documented internally.
+[^cite-tariff-elec]: Rates sourced from the [Genability (Arcadia)](https://www.arcadia.com/products/genability) utility rate database. Filed tariffs for all seven utilities are committed in the [RDP](https://github.com/switchbox-data/rate-design-platform/tree/main/rate_design/hp_rates/ny/config/tariffs/electric). A [detailed charge-by-charge taxonomy](https://github.com/switchbox-data/rate-design-platform/tree/main/rate_design/hp_rates/ny/config/rev_requirement/top-ups) of every charge on each utility's residential bill — including which charges are included in the delivery revenue requirement and which are excluded — is documented as well.
 
-**Natural gas.** Homes that heat with natural gas are assigned utility-specific residential heating tariffs. When a home installs a heat pump, it is moved from the heating rate to the corresponding non-heating rate (lower volumetric charges). Homes with zero gas consumption receive no gas tariff. Gas tariff data was sourced from RateAcuity and verified against utility filings.[^cite-tariff-gas]
+:::::  {.column-body-outset-right}
+{{< embed notebooks/analysis.qmd#tbl-elec-default-tariffs >}}
+:::::
 
-[^cite-tariff-gas]: Filed gas tariffs are committed in the [RDP](https://github.com/switchbox-data/rate-design-platform/tree/main/rate_design/hp_rates/ny/config/tariffs/gas).
+[^fixed-charge-composition]: The fixed charge includes the customer charge and, for ConEd, NYSEG, O&R, and RG&E, a separate billing & payment processing charge. Some utilities' charges change mid-year; the table shows the annual average. PSEG-LI's customer charge is assessed daily ($0.54/day).
+
+**Natural gas.** Homes that heat with natural gas are assigned utility-specific residential heating tariffs. When a home installs a heat pump, it is moved from the heating rate to the corresponding non-heating rate (lower volumetric charges). Homes with zero gas consumption receive no gas tariff. Gas tariff data was sourced from RateAcuity and verified against utility filings.[^cite-tariff-gas] ConEd, KEDLI, and KEDNY publish separate heating schedules for single-family and multifamily customers; the remaining utilities use the same schedule for both. CenHud, NFG, NiMo, O&R, and RG&E each have a single residential gas schedule that applies to all customers regardless of heating status or building type. NYSEG has separate heating and non-heating tariffs with identical volumetric rates but different fixed charges ($20.30 vs. $16.30). Volumetric rates vary by calendar month; the table shows the annual average of each tier's rate. The first tier (≤ 4 therms) is merged into the second for readability.
+
+[^cite-tariff-gas]: Rates sourced from the [RateAcuity](https://rateacuity.com) residential gas tariff database. Filed gas tariffs are committed in the [RDP](https://github.com/switchbox-data/rate-design-platform/tree/main/rate_design/hp_rates/ny/config/tariffs/gas).
+
+:::::  {.column-body-outset-right}
+{{< embed notebooks/analysis.qmd#tbl-gas-default-tariffs >}}
+:::::
+
+
 
 **Delivered fuels.** For homes that heat with heating oil or propane, we use EIA's monthly residential fuel price series for New York, applied to each building's modeled annual consumption.[^cite-eia877]
 
-[^cite-eia877]: EIA Form EIA-877, Petroleum Marketing Monthly — 2024 monthly residential heating oil and propane prices for New York. Available from the [EIA Petroleum Marketing Monthly](https://www.eia.gov/petroleum/heatingoil/). [@eia_HeatingOilPropanePrices_2024].
+[^cite-eia877]: EIA Form EIA-877, Petroleum Marketing Monthly — 2024 monthly residential heating oil and propane prices for New York. Available from the [EIA Petroleum Marketing Monthly](https://www.eia.gov/petroleum/heatingoilpropane/). [@eia_HeatingOilPropanePrices_2024].
+
+{{< embed notebooks/analysis.qmd#tbl-delivered-fuel-prices >}}
 
 #### Assigning tariffs to buildings
 
@@ -1401,13 +1422,7 @@ For each building, we apply the relevant tariffs to the building's hourly electr
 
 [^link_cairo]: Electric bills are computed by [CAIRO](https://github.com/NatLabRockies/CAIRO). The [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/post/build_master_bills.py) combines the delivery and supply portions; gas bills are computed independently by the [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/post/gas_bills.py).
 
-All bill comparisons are include Low-income discounts for 40 percent of elidible households for natural gas and electric bills. See @sec-methods-lmi. Results are computed building-by-building, aggregated using ResStock sample weights, and broken out by baseline heating fuel type (natural gas, oil/propane, electric resistance).
-
-#### Revenue requirement assembly
-
-The total revenue requirement we simulate against is assembled from two sources. The **delivery revenue requirement** comes from each utility's most recent rate case — a fixed dollar amount derived from the utility's own embedded cost-of-service study (see @sec-methods-rr-table below). The **top-up charges** (program surcharges, supply commodity, and other volumetric charges not part of the rate-case delivery amount) are estimated separately: we take the actual filed $/kWh rates for each charge from 2025 tariff schedules and multiply them by the ResStock kWh to produce annual dollar budgets.[^rr-assembly]
-
-[^rr-assembly]: The top-up process means the assumptions behind the rate-case delivery revenue requirement (the utility's own customer count and kWh projections) are not the same as those used for top-up budgets (EIA customers and ResStock kWh). The delivery amount was designed to be recovered from a specific volume of kWh; we recover it from a different volume (typically larger), so the simulation's calibrated delivery rates are somewhat lower than the rates the utility actually filed.
+All bill comparisons include low-income discounts for 40 percent of eligible households for natural gas and electric bills. See @sec-methods-lmi. Results are computed building-by-building, aggregated using ResStock sample weights, and broken out by baseline heating fuel type (natural gas, oil/propane, electric resistance).
 
 ---
 
@@ -1425,7 +1440,9 @@ When we calculate the bills for each building under the default rates, we also c
 
 The cross-subsidization analysis uses the {{< glossary "Bill Alignment Test" >}} (BAT), developed by [@simeone_BillAlignmentTest_2023]. The BAT compares what each customer pays in electric delivery charges against their delivery cost of service.
 
-We operate the BAT at the **subclass level**: heat pump customers as one subclass, non-heat pump customers (fossil fuel and electric resistance) as the other. This lets us measure the total dollars flowing from one group to the other under a given rate structure.
+We operate the BAT at the **subclass level**: heat pump customers as one subclass, non-heat pump customers (fossil fuel and electric resistance) as the other. This lets us measure the total dollars flowing from one group to the other under a given rate structure, which serves as the basis to redistribute the {{< glossary "revenue requirement" >}} between the subclasses (see @sec-methods-rr-table below).
+
+
 
 #### How we measure the cost of service for each customer {#sec-methods-cost-of-service}
 
@@ -1452,7 +1469,7 @@ where:
 
 The {{< glossary "marginal cost" >}} component (also called the {{< glossary "economic burden" >}}) captures the incremental cost that a customer's hourly load pattern _causes_ the system to incur — the cost of the next unit of generation, transmission, and distribution capacity needed to serve that load. The residual captures everything else in the utility's {{< glossary "revenue requirement" >}} that marginal cost pricing does not recover — sunk costs such as carrying charges on past capital investments, operations and maintenance on existing assets, and the regulated return on the rate base.
 
-The next several subsections explain where each piece comes from: first the marginal costs, then the residual and how we allocate it.
+The next several subsections explain where each piece comes from: first the marginal costs, then the revenue requirement (delivery and residual)and how we allocate it.
 
 #### Where the marginal costs come from
 
@@ -1486,7 +1503,15 @@ This pattern recurs below for generation capacity, applied to locality-specific 
 
 $$MC^{\text{energy}}_h = \text{LBMP}_h$$
 
-For single-zone utilities, we use that zone's hourly LBMP directly. For multi-zone utilities, we compute a load-weighted average: $\text{LBMP}_h = \sum_z (\text{LBMP}_{z,h} \times L_{z,h}) / \sum_z L_{z,h}$, where the zonal load shares come from NYISO zone-level hourly demand mapped to utility territories.
+For single-zone utilities, we use that zone's hourly LBMP directly. For multi-zone utilities, we compute a load-weighted average where the zonal load shares come from NYISO zone-level hourly demand mapped to utility territories.
+
+$$\text{LBMP}_h = \sum_z (\text{LBMP}_{z,h} \times L_{z,h}) / \sum_z L_{z,h}$$
+
+where:
+
+- $z$ — NYISO pricing zone within the utility's territory
+- $\text{LBMP}_{z,h}$ — real-time locational marginal price in zone $z$ during hour $h$ ($/MWh)
+- $L_{z,h}$ — hourly demand in zone $z$ during hour $h$ (MW), from NYISO zone-level data mapped to utility territories
 
 ::: {.column-margin}
 
@@ -1503,9 +1528,16 @@ For single-zone utilities, we use that zone's hourly LBMP directly. For multi-zo
 : NY utility to NYISO LBMP zone mapping. Single-zone utilities use the zone's LBMP directly; multi-zone utilities use a load-weighted average across their zones. {.sm}
 :::
 
-[^cite-lbmp]: NYISO real-time 5-minute LBMPs aggregated to hourly arithmetic means per zone; multi-zone utilities are blended via the load-weighted formula above. Output is normalized to the CAIRO 8,760-hour calendar (December 31 dropped in leap years) with small gaps linearly interpolated. No transmission-loss gross-up and no inflation adjustment are applied. Hourly energy MC signals are built by the [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/marginal_costs/generate_supply_energy_mc.py).
+[^cite-lbmp]: NYISO real-time 5-minute LBMPs aggregated to hourly arithmetic means per zone [@nyiso_RealTimePrices_2024]; multi-zone utilities are blended via the load-weighted formula above. Output is normalized to the CAIRO 8,760-hour calendar (December 31 dropped in leap years) with small gaps linearly interpolated. No transmission-loss gross-up and no inflation adjustment are applied. Hourly energy MC signals are built by the [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/marginal_costs/generate_supply_energy_mc.py).
 
-**Generation capacity.** NYISO operates an Installed Capacity (ICAP) market with monthly spot auctions. Unlike ISO-NE's single forward auction, NYISO prices capacity by **locality** — geographic zones with different levels of transmission constraint. Four auction localities clear at different prices: Rest of State (NYCA-priced; the ROS capacity obligation covers zones A–F, but peak hours are identified from the full statewide load, zones A–K), Lower Hudson Valley (auction locality GHIJ, zones G–J inclusive of NYC; labeled "LHV" internally), New York City (NYC, zone J), and Long Island (LI, zone K). Downstate utilities pay higher capacity prices because their constrained transmission paths require local generation. Only Spot auction clearances are ingested; Strip and Monthly auctions are excluded. Published ICAP $/kW-month clearing prices are used directly, with no UCAP derating applied.
+**Generation capacity.** NYISO operates an Installed Capacity (ICAP) market with monthly spot auctions. Unlike ISO-NE's single forward auction, NYISO prices capacity by **locality** — geographic zones with different levels of transmission constraint. Four auction localities clear at different prices:
+
+- **Rest of State** (ROS, NYCA-priced) — the ROS capacity obligation covers zones A–F, but peak hours are identified from the full statewide load, zones A–K
+- **Lower Hudson Valley** (LHV, auction locality G–J, inclusive of NYC)
+- **New York City** (NYC, zone J)
+- **Long Island** (LI, zone K)
+
+Downstate utilities pay higher capacity prices because their constrained transmission paths require local generation. Only Spot auction clearing prices are ingested; Strip and Monthly auctions are excluded. Published ICAP $/kW-month prices are used directly, with no Unforced Capacity (UCAP) derating applied.
 
 For each auction locality, the pipeline identifies the top 8 hours per month by aggregate load across that locality's _nested_ zone footprint, then allocates the monthly ICAP auction price across those hours using exceedance weights:[^cite-icap]
 
@@ -1515,36 +1547,43 @@ where:
 
 - $w_{h,m}$ — exceedance weight for hour $h$ in month $m$ (from the formula above, applied to the nested locality's aggregate load, top 8 hours per month)
 - $P^{\text{ICAP}}_{m}$ — ICAP auction clearing price for month $m$ in the applicable locality ($/kW-month)
-- $c_w$ — capacity weight: the utility's share of its capacity obligation in each locality (e.g. Con Edison: 0.87 NYC + 0.13 LHV, from Table 7-5 of the NYISO ICAP Manual
+- $c_w$ — capacity weight: the utility's share of its capacity obligation in each locality (e.g. Con Edison: 0.87 NYC + 0.13 LHV, from Table 7-5 of the NYISO ICAP Manual)
 
 For the NYCA-priced (Rest-of-State) component, the nested-locality load used to identify peak hours is the full NYISO statewide aggregate (all 11 zones, A–K); the NYCA ICAP partition itself, however, represents A–F capacity. For the GHIJ-priced component, the nested footprint is zones G–J. Multi-locality utilities (Con Edison) sum separate component signals: each component's monthly price is scaled by the utility's locality capacity weight, then allocated to that nested locality's top-8 peak hours. At most $8 \times 12 = 96$ component-hour allocations are assigned per locality; a two-locality utility such as Con Edison has up to 192 allocations, but fewer distinct clock hours if its two localities' top-8 hours overlap.
 
-[^cite-icap]: NYISO ICAP monthly Spot auction clearing prices by locality. Auction-locality-to-nested-footprint mappings and utility capacity-obligation weights are sourced from the NYISO ICAP Manual (Table 7-5) via the [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/data/nyiso/zone_mapping/generate_zone_mapping_csv.py). Hourly capacity MC signals are built in the [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/marginal_costs/generate_supply_capacity_mc.py).
+[^cite-icap]: NYISO ICAP monthly Spot auction clearing prices by locality [@nyiso_ICAPSpotAuctionResults_2024]. Auction-locality-to-nested-footprint mappings and utility capacity-obligation weights are sourced from the NYISO ICAP Manual (Table 7-5) [@nyiso_InstalledCapacityManual_2026] via the [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/data/nyiso/zone_mapping/generate_zone_mapping_csv.py). Hourly capacity MC signals are built in the [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/marginal_costs/generate_supply_capacity_mc.py).
 
 **Bulk transmission.** Bulk-TX marginal costs capture the incremental cost of regional transmission infrastructure (roughly 115 kV and above). Rather than levelizing a single utility-filed revenue requirement, the RDP derives a per-locality $/kW-yr cost from NYISO's own project-level public-policy and competitive-solicitation transmission studies, then allocates it to hourly peaks using an 80-hour seasonal window.[^cite-bulk-tx] The pipeline has five stages:
 
-1. **Inputs.** Project-level NYISO Public Policy Transmission Planning and Competitive System Planning Process (CSPP) benefit studies, together with the NiMo MCOS bulk-TX entry, are collected as pipeline inputs. Seven input scenarios — AC Primary, the two Addendum Optimizer variants (Existing Localities and G-J Elimination), the two Addendum MMU variants (Baseline and CES+Ret, merged), LI Export (Policy), and NiMo MCOS (Bulk TX) — map to six distinct constraint groups.
+1. **Inputs.** Project-level NYISO Public Policy Transmission Planning and Competitive System Planning Process (CSPP) benefit studies, together with the NiMo MCOS bulk-TX entry, are collected as pipeline inputs. Seven input scenarios — AC Primary, the two Addendum Optimizer variants (Existing Localities and G-J Elimination), the two Addendum MMU variants (Baseline and CES+Retirement, merged), LI Export (Policy), and NiMo MCOS (Bulk TX) — map to six distinct constraint groups.
 2. **Derivation.** For each constraint group, the [derivation script](https://github.com/switchbox-data/rate-design-platform/blob/main/data/nyiso/transmission/derive_tx_values.py) computes a $/kW-yr value via a cumulative-secant aggregation over its member projects.
 3. **Paying-locality aggregation.** Each constraint group is mapped to one or more paying localities (ROS, LHV, NYC, LI) via the nested-locality scheme in the [derivation script](https://github.com/switchbox-data/rate-design-platform/blob/main/data/nyiso/transmission/derive_tx_values.py); per-paying-locality costs are averaged within group.
 4. **Hourly allocation.** For each utility, the [allocation script](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/marginal_costs/bulk_tx_nyiso.py) identifies System Capability Resource (SCR) hours as the top 40 load hours in each of summer and winter (80 total) within the utility's nested-locality load. Each constraint-group annual value is spread across those 80 hours using a two-level weight:
-$$w_h = \phi_s \cdot \frac{\max(L_h - T_s,\ 0)}{\sum_{h' \in \text{season } s} \max(L_{h'} - T_{s'},\ 0)}$$
-where $T_s$ is season $s$'s 41st-highest load and $\phi_s = (\text{peak}_s - \tau_{\min}) / \sum_{s'} (\text{peak}_{s'} - \tau_{\min})$ with $\tau_{\min} = \min_s T_s$. Weights sum to 1.0 globally (validated to 1e-4).
+$$w_h = \underbrace{\phi_s}_{\text{season share}} \cdot \underbrace{\frac{\max(L_h - T_s,\ 0)}{\sum_{h' \in \text{season } s} \max(L_{h'} - T_{s'},\ 0)}}_{\text{within-season share}}$$
+
+where:
+
+- $L_h$ — load in hour $h$
+- $T_s$ — season $s$'s SCR threshold: the 41st-highest load hour, below which $w_h = 0$
+- $\phi_s$ — season share: the fraction of the annual cost allocated to season $s$, equal to $(\text{peak}_s - \tau_{\min}) / \sum_{s'} (\text{peak}_{s'} - \tau_{\min})$, where $\text{peak}_s$ is the highest load in season $s$ and $\tau_{\min} = \min_s T_s$
+
+The within-season factor distributes a season's cost across its 40 SCR hours in proportion to how far each hour's load exceeds the threshold $T_s$. The season factor $\phi_s$ then scales each season's total share by how much its peak rises above the lower season's threshold — so a locality whose winter peak is well above its summer peak assigns proportionally more cost to winter hours. Weights sum to 1.0 globally (validated to 1e-4).
 
 5. **Utility blend.** The [blend script](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/marginal_costs/generate_bulk_tx_mc.py) combines each utility's paying-locality streams using the utility's capacity-obligation shares from the zone mapping, yielding the utility's hourly bulk-TX $/kW-hr.
 
 The seasonal SCR window (40 + 40) — rather than a single monthly top-$N$ — reflects that bulk-transmission constraints can bind in either season, and the two-level weight lets winter-peaking localities receive proportionate cost recovery.
 
-[^cite-bulk-tx]: Project-level inputs trace back to NYISO Public Policy Transmission Planning and Competitive System Planning Process (CSPP) benefit studies, plus the NiMo MCOS bulk-TX entry. Constraint-group $/kW-yr values are computed by the [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/data/nyiso/transmission/derive_tx_values.py). Hourly allocation to the 80-hour SCR window with two-level weighting is implemented in the [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/marginal_costs/bulk_tx_nyiso.py); the per-utility blend is assembled by the [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/marginal_costs/generate_bulk_tx_mc.py). See the [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/context/code/marginal_costs/ny_bulk_tx_marginal_costs.md) for end-to-end pipeline documentation.
+[^cite-bulk-tx]: Project-level inputs trace back to NYISO Public Policy Transmission Planning and Competitive System Planning Process (CSPP) benefit studies, plus the NiMo MCOS bulk-TX entry [@nyiso_ACTransmissionPublic_2018; @nyiso_ACTransmissionAddendum_2019; @nyiso_LongIslandOffshore_2023]. Constraint-group $/kW-yr values are computed by the [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/data/nyiso/transmission/derive_tx_values.py). Hourly allocation to the 80-hour SCR window with two-level weighting is implemented in the [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/marginal_costs/bulk_tx_nyiso.py); the per-utility blend is assembled by the [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/marginal_costs/generate_bulk_tx_mc.py). See the [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/context/code/marginal_costs/ny_bulk_tx_marginal_costs.md) for end-to-end pipeline documentation.
 
 **Sub-transmission and distribution.** Each NY utility filed a Marginal Cost of Service (MCOS) study in 2025 as part of PSC Docket 19-E-0283. These studies project planned capital investments in local grid infrastructure — substations, feeders, and sub-transmission lines — over a multi-year horizon. From each study, we extract a **diluted marginal cost**: the annualized cost of new infrastructure divided by the utility's total system peak, expressed in $/kW-yr. This represents the expected infrastructure cost of adding one kW of peak load to the system, accounting for the fact that most grid components have spare capacity (headroom).
 
-We use the **incremental diluted** variant — based on the capital entering service in each year, not the cumulative total — because the BAT's economic cost concept requires the cost _caused by new load_, not the carrying charges on historical investment (which belong in the residual). The 2026–2032 window is harmonized across utilities — individual MCOS filings cover 8–11 years, and we truncate each to the common seven-year horizon so values are comparable. Levelization is a simple arithmetic mean over those seven years, with no discounting; some utility workbooks report WACC-based NPV levelizations, but the BAT allocates costs to a specific year's load rather than to a present-value equivalent, so we use the undiscounted average. Studies filed in 2025 dollars (ConEd, O&R, PSEG-LI) are rebased to real 2026 dollars using BLS CPI so all seven utilities share a common base year. The per-utility values, levelized over 2026–2032 in real 2026 dollars, are:
+We use the **incremental diluted** variant — based on the capital entering service in each year, not the cumulative total — because the BAT's economic cost concept requires the cost _caused by new load_, not the carrying charges on historical investment (which belong in the residual). The 2026–2032 window is harmonized across utilities — individual MCOS filings cover 8–11 years, and we truncate each to the common seven-year horizon so values are comparable. Levelization is a simple arithmetic mean over those seven years, with no discounting; some utility workbooks report WACC-based NPV levelizations, but the BAT allocates costs to a specific year's load rather than to a present-value equivalent, so we use the undiscounted average. Studies filed in 2025 dollars (ConEd, O&R, PSEG-LI) are rebased to real 2026 dollars using BLS CPI [@fred_ConsumerPriceIndexAll_2025] so all seven utilities share a common base year. The per-utility values, levelized over 2026–2032 in real 2026 dollars, are:
 
 | Utility              | Sub-TX + Dist MC | Study preparer    |
 | -------------------- | ---------------: | ----------------- |
 | PSEG-LI              |      $1.16/kW-yr | PSEG-LI staff     |
 | O&R                  |      $3.90/kW-yr | NERA              |
-| Central Hudson       |      $3.93/kW-yr | DSA (NERA method) |
+| Central Hudson       |      $3.93/kW-yr | Demand Side Analytics (NERA method) |
 | RG&E                 |      $4.36/kW-yr | CRA International |
 | NYSEG                |      $4.40/kW-yr | CRA International |
 | National Grid (NiMo) |      $4.49/kW-yr | NiMo staff        |
@@ -1581,19 +1620,15 @@ $$EB_i = \sum_{h=1}^{8760} L_{i,h} \times MC_h$$
 
 Customers who consume more electricity during peak hours — when capacity costs are nonzero — bear a larger economic burden than customers whose load is concentrated in off-peak hours.
 
-#### Why there is a residual revenue requirement {#sec-methods-residual}
+Marginal costs tell us what each customer's load pattern *costs the system going forward*, but the utility needs to collect far more than that. The {{< glossary "revenue requirement" >}} is the total amount regulators authorize the utility to recover from ratepayers each year — covering not just new infrastructure but also the carrying charges on decades of past investment, operations and maintenance, the regulated return on the rate base, and program surcharges. This is the dollar amount we need to divide fairly between the HP and non-HP subclasses. The delivery revenue requirement alone dwarfs the revenue that marginal cost pricing would generate, so how we allocate the difference — the residual — determines most of each customer's bill.
 
-::: {.column-margin}
-{{< glossary-def residual >}}
-:::
+#### Revenue requirement
 
-::: {.column-margin}
-{{< glossary-def "revenue requirement" >}}
-:::
+The total revenue requirement we simulate against is assembled from two sources. The **delivery revenue requirement** comes from each utility's most recent rate case — a fixed dollar amount derived from the utility's own embedded cost-of-service study. The **top-up charges** (program surcharges, supply commodity, and other volumetric charges not part of the rate-case delivery amount) are estimated separately: we take the actual filed $/kWh rates for each charge from 2025 tariff schedules and multiply them by the ResStock kWh to produce annual dollar budgets.[^rr-assembly]
 
-Marginal costs capture only the forward-looking incremental cost of new infrastructure — the specific projects in each utility's current capital plan and the next MW of generation and transmission capacity. In rate design, this is typically called the long-run marginal cost (LRMC): the cost of serving an additional unit of demand when the infrastructure stock can be fully adjusted over time. The capital plan serves as a practical proxy for LRMC; it captures near-term investment needs but may not fully reflect long-run equilibrium costs. Marginal costs do not capture the embedded cost of existing infrastructure: carrying charges on past investments, operations and maintenance on sunk assets, regulatory return on the rate base, or customer-related costs. These are real costs that the utility must recover, but they are not caused by any individual customer's current consumption decisions.
+[^rr-assembly]: The top-up process means the assumptions behind the rate-case delivery revenue requirement (the utility's own customer count and kWh projections) are not the same as those used for top-up budgets (EIA customers and ResStock kWh). The delivery amount was designed to be recovered from a specific volume of kWh; we recover it from a different volume (typically larger), so the simulation's calibrated delivery rates are somewhat lower than the rates the utility actually filed. See [RDP](https://github.com/switchbox-data/rate-design-platform/tree/main/rate_design/hp_rates/ny/config/rev_requirement/top-ups) for details on top-ups.
 
-The gap between the utility's total {{< glossary "revenue requirement" >}} and the revenue that marginal cost pricing generates is the {{< glossary residual >}}. For New York's utilities, the delivery residual typically represents 87–98% of total delivery revenue — only a small fraction of what customers pay for delivery reflects the forward-looking cost of new infrastructure.
+
 
 #### Residential delivery revenue requirement {#sec-methods-rr-table}
 
@@ -1608,7 +1643,24 @@ Table: Residential delivery revenue requirements ($000s)
 | Orange & Rockland             | January 1, 2025 | December 31, 2025 |                    $248,359 | [Docket 24-E-0060](https://www.documentcloud.org/documents/27422823-joint-proposals-and-stipulations-11-08-2024-joint-proposal-and-appendices-45147253/#document/p314/a2804590) [@o&r_Docket24E0060Joint_2024]                                     |
 | Rochester Gas & Electric      | May 1, 2025     | April 30, 2026    |                    $325,583 | [Docket 25-E-01376](https://www.documentcloud.org/documents/27422850-exhibits-09-26-2025-revenue-allocation-and-rate-design-panel-supplemental-candu-exhibits-61117988/#document/p2/a2804672) [@nysegrg&e_Docket25E01376Exhibits_2025]             |
 | New York State Electric & Gas | May 1, 2025     | April 30, 2026    |                    $834,674 | [Docket 25-E-01376](https://www.documentcloud.org/documents/27422850-exhibits-09-26-2025-revenue-allocation-and-rate-design-panel-supplemental-candu-exhibits-61117988/#document/p1/a2804616) [@nysegrg&e_Docket25E01376Exhibits_2025]             |
-| Con Edison                    | January 1, 2025 | December 31, 2026 |                  $3,116,197 | [Docket 25-E-00241](https://www.documentcloud.org/documents/27687458-correspondence-01-31-2025-2025-filing-letter-and-attachments-11531948/#document/p104/a2804859) [@coned_Docket25E00241Correspondence_2025]                                     |
+| Con Edison                    | January 1, 2025 | December 31, 2026 |                  $3,116,197 | [Docket 25-E-00241](https://www.documentcloud.org/documents/27687458-correspondence-01-31-2025-2025-filing-letter-and-attachments-11531948/#document/p104/a2804859) [@coned_Docket25E00241Correspondence_2025] |
+
+
+
+
+#### Why there is a residual revenue requirement {#sec-methods-residual}
+
+::: {.column-margin}
+{{< glossary-def residual >}}
+:::
+
+::: {.column-margin}
+{{< glossary-def "revenue requirement" >}}
+:::
+
+Marginal costs capture only the forward-looking incremental cost of new infrastructure — the specific projects in each utility's current capital plan and the next MW of generation and transmission capacity. In rate design, this is typically called the long-run marginal cost (LRMC): the cost of serving an additional unit of demand when the infrastructure stock can be fully adjusted over time. The capital plan serves as a practical proxy for LRMC; it captures near-term investment needs but may not fully reflect long-run equilibrium costs. Marginal costs do not capture the embedded cost of existing infrastructure: carrying charges on past investments, operations and maintenance on sunk assets, regulatory return on the rate base, or customer-related costs. These are real costs that the utility must recover, but they are not caused by any individual customer's current consumption decisions.
+
+The gap between the utility's total {{< glossary "revenue requirement" >}} and the revenue that marginal cost pricing generates is the {{< glossary residual >}}. For New York's utilities, the delivery residual typically represents 87–98% of total delivery revenue — only a small fraction of what customers pay for delivery reflects the forward-looking cost of new infrastructure.
 
 #### How we allocate the residual {#sec-methods-residual-allocation}
 
@@ -1634,7 +1686,7 @@ where:
 
 Other normative allocation methods exist. {{< glossary EPMC >}} (equi-proportional marginal cost) allocates the residual in proportion to each subclass's share of total marginal costs. **Volumetric** allocation splits it by kWh share. **Ramsey pricing** allocates inversely to demand elasticity. Each would produce different subclass cost-of-service estimates; per-customer is the most equal-treatment choice and is the one applied in the results reported here.
 
-Under per-customer allocation, the BAT reveals how the current delivery rate redistributes costs between customer groups. Heat pump customers, who consume more electricity (especially in winter, when capacity marginal costs are low), pay a disproportionate share of the delivery revenue requirement relative to the cost they impose on the system.[^script-rr-mid]
+Under per-customer allocation, the BAT reveals how the current delivery rate redistributes costs between customer groups. Heat pump customers consume more electricity overall, and their additional consumption is concentrated in winter — a season when capacity marginal costs are low because the system peaks in summer. Under flat delivery rates, these winter kWh are billed at the same $/kWh as summer kWh, so HP customers pay a disproportionate share of the delivery revenue requirement relative to the cost they impose on the system.[^script-rr-mid]
 
 [^script-rr-mid]: BAT values, per-customer economic burden, and cross-subsidy are computed by CAIRO during the run. The [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/mid/compute_subclass_rr.py) then applies the per-customer split between HP and non-HP subclasses. BAT results are consolidated across utilities by the [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/post/build_master_bat.py).
 
@@ -1672,9 +1724,19 @@ By construction, this rate collects exactly the HP subclass's allocated cost of 
 
 [^script-fair-rate]: The fair seasonal flat delivery rate is derived by the [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/mid/compute_subclass_rr.py).
 
+#### The electric heating seasonal delivery rate {#sec-methods-eh-rate}
+
+The HP seasonal rate corrects the cross-subsidy that heat pump customers pay into, but heat pump customers are not the only electric heating customers who overpay. Electric resistance customers — baseboard heaters, wall units, and older forced-air systems — also consume disproportionately in winter and overpay under flat volumetric delivery rates for the same structural reason.
+
+The electric heating rate extends the seasonal rate's logic to a broader subclass. Instead of splitting customers into HP vs. non-HP, we redefine the subclass boundary: **electric heating** (heat pump + electric resistance) vs. **non-electric-heating** (natural gas, fuel oil, propane). The BAT is re-run with this wider boundary, producing a combined cost of service for all electric heating customers. The seasonal rate formula is identical to the HP-only version — summer volumetric rate matches the default, winter rate lowered — but calibrated to the combined electric heating subclass's revenue requirement.[^script-eh-rate]
+
+Because the electric heating subclass is larger (more customers, more kWh), the cross-subsidy being unwound is correspondingly larger, and the recalibrated default rate for non-electric-heating customers rises by more than under the HP-only rate. The findings in @sec-eh-rate quantify this tradeoff.
+
+[^script-eh-rate]: The electric heating rate uses the same [RDP calibration script](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/mid/compute_subclass_rr.py) as the HP seasonal rate, with the subclass definition widened to include electric resistance customers.
+
 #### The HP seasonal time-of-use delivery rate {#sec-methods-tou}
 
-The seasonal flat rate solves the fairness problem — HP customers pay their fair share — but it does not send a price signal about _when_ customers consume. A time-of-use (TOU) rate goes further: it varies the price by time of day, charging more during peak hours (when grid infrastructure costs are concentrated) and less during off-peak hours. This creates an incentive for customers with programmable heat pumps to shift load away from peaks, reducing system costs.
+The seasonal flat rate solves the fairness problem — heat pump customers pay their fair share — but it does not send a price signal about _when_ customers consume. A time-of-use (TOU) rate goes further: it varies the price by time of day, charging more during peak hours (when grid infrastructure costs are concentrated) and less during off-peak hours. This creates an incentive for customers with programmable heat pumps to shift load away from peaks, reducing system costs.
 
 **Demand-weighted MC per period.** The TOU rate divides each day into a peak period and an off-peak period. The rate for each period is the demand-weighted average marginal cost within that period:
 
@@ -1702,7 +1764,7 @@ The resulting peak windows for each utility are:
 | O&R | 5 hours | 16:00–21:00 | 16:00–21:00 |
 | PSEG-LI | 5 hours | 16:00–21:00 | 16:00–21:00 |
 
-**Calibration to revenue requirement.** The TOU period prices (peak and off-peak, by season) are expressed as ratios derived from the demand-weighted MC formula. CAIRO then calibrates the absolute price level so that total revenue from the TOU rate equals the HP subclass's per-customer-allocated revenue requirement — the same dollar amount as the seasonal flat rate, but distributed across time periods.
+**Calibration to revenue requirement.** The TOU period prices (peak and off-peak, by season) are expressed as ratios derived from the demand-weighted MC formula. CAIRO then calibrates the absolute price level so that total revenue from the TOU rate equals the heat pump subclass's per-customer-allocated revenue requirement — the same dollar amount as the seasonal flat rate, but distributed across time periods.
 
 #### Bill comparisons under the proposed rates
 
@@ -1717,7 +1779,7 @@ Once the rates are calibrated, we compute additional sets of bill comparisons us
 
 TOU rates create a financial incentive to shift electricity use away from peak hours — running the heat pump harder before the peak period, for instance, or letting the house coast during peak hours and recovering afterward. This is demand flexibility: customers responding to price signals by changing _when_ they consume electricity, without reducing how much they consume overall.
 
-The demand flexibility analysis models how heat pump customers shift electricity consumption from peak to off-peak hours in response to TOU price signals. The key parameter is the elasticity of substitution ($\varepsilon$), which controls how much load shifts for a given peak-to-off-peak price ratio.[^elast_def] We calibrate this parameter separately for each utility and season, anchored to empirical evidence from real TOU pricing pilots.
+The demand flexibility analysis models how heat pump customers shift electricity consumption from peak to off-peak hours in response to TOU price signals. The key parameter is the elasticity of substitution ($\varepsilon$), which controls how much load shifts for a given peak-to-off-peak price ratio.[^elast_def] In other words, how willing a home is to change their energy use for a given price increase during the peak period. We calibrate this parameter separately for each utility and season, anchored to empirical evidence from real TOU pricing pilots.
 
 [^elast_def]: A more negative elasticity means more load shifts away from peak hours for a given peak-to-off-peak price ratio. The bigger the difference between the peak and off-peak rates, the more customers shift their demand.
 
@@ -1735,7 +1797,7 @@ At a 2:1 price ratio, this predicts ~5.6% peak reduction; at 4:1, ~10.1%. Return
 
 $$\text{peak reduction} = -0.011 + (-0.111) \times \ln(\text{price ratio})$$
 
-At the same price ratios, this predicts ~8.8% peak reduction at 2:1 and ~16.5% at 4:1 — roughly 1.5–1.6x the no-tech response. Since most modern heat pumps are programmable and can respond to price signals automatically, we use the with-tech model for our presented results. That said, the resulting bill savings from demand shifting are modest either way — on the order of $15–$35 per HP customer per year — compared to the much larger savings from simply being on a TOU rate.
+At the same price ratios, this predicts ~8.8% peak reduction at 2:1 and ~16.5% at 4:1 — roughly 1.5–1.6x the no-tech response. Since most modern heat pumps are programmable and can respond to price signals automatically, we use the with-tech model for our presented results. That said, the resulting bill savings from demand shifting are modest either way — on the order of `{python} dollar(v.tou_shift_saving_p25, 0)`–`{python} dollar(v.tou_shift_saving_p75, 0)` per HP customer per year (25th–75th percentile; mean `{python} dollar(v.tou_shift_mean_saving, 0)`) — compared to the much larger savings from simply being on a TOU rate.
 
 #### Calibrating the elasticity to our TOU rates
 
@@ -1873,7 +1935,7 @@ Most upstate utilities use SMI as the income benchmark for EEAP tiers 5–7. Con
 
 #### How we apply discounts in the simulation
 
-Because ResStock does not include program enrollment data, we assign EAP/EEAP tiers based on household income from ResStock metadata. We inflate ResStock's 2019-dollar income to 2025 dollars using the BLS CPI-U, then compute each household's income as a percentage of FPL (adjusted for household size) and SMI (or AMI in applicable territories). Tier assignment follows the rules above, except that we do not assign Tier 4 (which requires DSS referral data we cannot observe).[^lmi-script]
+Because ResStock does not include program enrollment data, we assign EAP/EEAP tiers based on household income from ResStock metadata. We inflate ResStock's 2019-dollar income to 2025 dollars using the BLS CPI-U [@fred_ConsumerPriceIndexAll_2025], then compute each household's income as a percentage of FPL (adjusted for household size) and SMI (or AMI in applicable territories). Tier assignment follows the rules above, except that we do not assign Tier 4 (which requires DSS referral data we cannot observe).[^lmi-script]
 
 [^lmi-script]: LMI tier assignment and discounts are applied by the [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/post/apply_ny_lmi_to_master_bills.py), using [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/post/lmi_common.py) shared tier logic and [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/post/data/ny_eap_credits.yaml) EAP credit tables.
 
@@ -1897,9 +1959,10 @@ This section documents how we derived the sub-TX + distribution marginal cost fo
 
 #### Con Edison and Orange & Rockland
 
-Con Edison and O&R (its subsidiary) both use the NERA marginal cost methodology, which organizes investment into **cost
-centers** corresponding to different levels of the grid. Their MCOS workbooks present costs in an undiluted form — $/kW
+Con Edison and O&R (its subsidiary) both use the NERA Economic Consulting marginal cost methodology — an approach developed in the late 1970s for EPRI's Electric Utility Rate Design Study that uses economic carrying charges to annualize marginal capital costs — which organizes investment into **cost centers** corresponding to different levels of the grid.[^coned_or_mcos] Their MCOS workbooks present costs in an undiluted form — $/kW
 of new capacity — so we needed to compute the diluted values ourselves.
+
+[^coned_or_mcos]: See ConEd's 2025 MCOS filing, Docket 19-E-0283 [@coned_Docket19E02832025_2025]. O&R's filing: [@o&r_Docket19E02832025_2025].
 
 Unlike NiMo, ConEd required no project-level classification — its workbook already separates costs into cost centers
 that map directly to grid tiers: **Transmission** (138–345 kV) covers bulk transmission, which we exclude, and the
@@ -1911,7 +1974,7 @@ against the NYISO Gold Book.[^coned_or_goldbook]
     ConEd's two Transmission projects (Eastern Queens 138 kV and Brooklyn Clean Energy Hub 345 kV) both appear in Gold
     Book Table VII.
 
-O&R required a partial split of its CapEx Transmission sheet. Of three 138 kV projects, only West Nyack appears
+O&R required a partial split of its "CapEx Transmission" worksheet [@o&r_Docket19E02832025_2025a]. Of three 138 kV projects, only West Nyack appears
 in the Gold Book; Oak Street and New Hempstead (both 138 kV reconductoring) do not. Under a "Gold Book entries =
 bulk TX" approach, these two projects would fall through the gap — excluded from our analysis but absent from the
 bulk TX analysis too. We reclassify them as local sub-transmission and include them in the sub-TX + distribution
@@ -1944,7 +2007,7 @@ area-station-to-system diversity (coincidence factor ≈0.95 for both). Escalati
 (1,079 MW).[^coned_or_peak]
 
 [^coned_or_peak]:
-    ConEd: Coincident Load sheet, 2025 area station coincident total. O&R: Coincident Forecast sheet, 2024 value. Both
+    ConEd: Coincident Load sheet, 2025 area station coincident total [@coned_Docket19E02832025_2025a]. O&R: Coincident Forecast sheet, 2024 value [@o&r_Docket19E02832025_2025a]. Both
     from the respective MCOS workbooks. Using the area station coincident total (rather than the lower system coincident
     peak) is correct because the composite rate already includes the area-to-system diversity adjustment.
 
@@ -2141,7 +2204,7 @@ across study years):
 | Primary Feeder          |      $2/kW-yr |
 | **Total at Primary**    | **$15/kW-yr** |
 
-We aggregate project-level capital from worksheet W2 of the CRA workbook using the NERA method, rather than adopting
+We aggregate project-level capital from worksheet W2 of the CRA workbook [@nysegrg&e_Docket19E02832025_2025] using the NERA method, rather than adopting
 CRA's pre-computed system-level tables. The NERA-style project roll-up yields a cleaner incremental diluted value and
 matches the approach used in the other six utilities' studies; the CRA system tables differ primarily in how they treat
 loss factors and horizon-year spikes, which would bias cross-utility comparisons. Levelized over 2026–2032 in real 2026

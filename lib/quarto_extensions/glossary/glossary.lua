@@ -120,7 +120,14 @@ return {
   end
 
   if not quarto.doc.isFormat("html:js") then
-    return pandoc.Strong(pandoc.Str(display))
+    -- Wrap in a Span with class "GlossaryTerm" so the ICML writer emits a
+    -- dedicated CharacterStyle/GlossaryTerm that the designer can style in
+    -- one place. Nest Strong inside so terms default to bold until the
+    -- designer defines the GlossaryTerm character style in InDesign.
+    return pandoc.Span(
+      pandoc.Strong(pandoc.Str(display)),
+      pandoc.Attr("", {"GlossaryTerm"})
+    )
   end
 
   addHTMLDeps()
@@ -179,13 +186,17 @@ end,
 
   if not quarto.doc.isFormat("html:js") then
     local defDoc = pandoc.read(def, "html")
+    local termSpan = pandoc.Span(
+      pandoc.Strong(pandoc.Str(display)),
+      pandoc.Attr("", {"GlossaryTerm"})
+    )
     local blocks = pandoc.Blocks({
-      pandoc.Para({ pandoc.Strong(pandoc.Str(display)) })
+      pandoc.Para({ termSpan })
     })
     for _, block in ipairs(defDoc.blocks) do
       blocks:insert(block)
     end
-    return pandoc.Div(blocks)
+    return pandoc.Div(blocks, pandoc.Attr("", {"GlossaryDef"}))
   end
 
   addHTMLDeps()

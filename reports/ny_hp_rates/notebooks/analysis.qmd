@@ -36,7 +36,6 @@ from __future__ import annotations
 
 from pathlib import Path
 import math
-import textwrap
 
 import polars as pl
 from great_tables import GT
@@ -85,25 +84,6 @@ def _weighted_percentile(df: pl.DataFrame, col: str, w_col: str, q: float) -> fl
 def _weighted_mean(df: pl.DataFrame, col: str, w_col: str) -> float:
     """Weighted arithmetic mean."""
     return float((df[col] * df[w_col]).sum() / df[w_col].sum())
-
-
-def add_matplotlib_footnote(
-    fig: Figure,
-    note: str | None,
-    *,
-    width: int = 96,
-    fontsize: int = 12,
-    x: float = 0.02,
-    ha: str = "left",
-) -> None:
-    """Append wrapped *note* below the figure (matplotlib only)."""
-    if not note:
-        return
-    lines = textwrap.wrap(note, width=width) or [""]
-    wrapped = "\n".join(lines)
-    extra = 0.022 * max(0, len(lines) - 1)
-    fig.subplots_adjust(bottom=min(0.36, 0.12 + extra))
-    fig.text(x, 0.01, wrapped, fontsize=fontsize, ha=ha, va="bottom")
 ```
 
 ## Parameters
@@ -503,7 +483,23 @@ def bill_components_for_scenario(
     bills_lf: pl.LazyFrame,
     utility: str | None = None,
 ) -> pl.DataFrame:
-    """Extract annual bill components (electric + gas + delivered fuels) from master bills."""
+    """Extract annual bill components (electric + gas + delivered fuels) from master bills.
+
+    ``energy_total`` here is deliberately the **undiscounted** sum of the
+    per-component columns (fixed + volumetric delivery + supply + gas/oil/propane),
+    so it matches the visible total of stacked-bar charts that plot these
+    components directly. It does NOT equal ``energy_total_bill`` from the master
+    bills after ingest (which was rewritten to follow ``ACTIVE_BILL_COLS`` and is
+    LMI-aware when ``INCLUDE_LMI_DISCOUNT`` is on).
+
+    For LMI-aware bill-change deltas, use ``delta_state`` /
+    ``delta_state_lmi_enrolled`` (which pull ``energy_total_bill`` directly),
+    not the frames returned by this function.
+
+    Callers that publish ``energy_total`` into prose via ``report_vars`` must
+    ensure the chosen building has no LMI credit; otherwise the narrative total
+    will disagree with the LMI-aware quadrant charts surrounding it.
+    """
     filtered = bills_lf.filter(pl.col("month") == ANNUAL_MONTH)
     if utility is not None:
         filtered = filtered.filter(pl.col("sb.electric_utility") == utility)
@@ -525,6 +521,9 @@ def bill_components_for_scenario(
                 + pl.col("oil_total_bill")
                 + pl.col("propane_total_bill")
             ).alias("energy_total"),
+            pl.col("elec_total_bill"),
+            pl.col("elec_total_bill_lmi_40"),
+            pl.col("elec_total_bill_lmi_100"),
             "heats_with_natgas",
             "in.hvac_cooling_partial_space_conditioning",
         )
@@ -738,12 +737,26 @@ hp_same_bldgs_state = (
 assert not hp_same_bldgs_state.is_empty(), "No matching buildings statewide (HP)"
 
 median_bldg_id_state = 328510                                                    # <3>
-median_current_state = (                                                         # <3>
-    natgas_current_state                                                         # <3>
-    .filter(pl.col(BLDG_ID) == median_bldg_id_state)                            # <3>
-    .select(SELECT_COLS)                                                         # <3>
-)                                                                                # <3>
-assert len(median_current_state) == 1, f"Hardcoded bldg {median_bldg_id_state} not found in natgas pool"
+_median_raw = (
+    natgas_current_state
+    .filter(pl.col(BLDG_ID) == median_bldg_id_state)
+)
+assert len(_median_raw) == 1, f"Hardcoded bldg {median_bldg_id_state} not found in natgas pool"
+# Guards the chart/prose consistency described in ``bill_components_for_scenario``:
+# ``energy_total`` (sum of components) must equal ``elec_total_bill_lmi_*`` for
+# this building, otherwise the LMI-aware quadrant-chart narrative will disagree
+# with the bill-components narrative for the same household.
+_median_raw_row = _median_raw.row(0, named=True)
+_median_lmi_credit = _median_raw_row["elec_total_bill"] - _median_raw_row[
+    "elec_total_bill_lmi_40" if LMI_CURRENT_ENROLLMENT_PCT == 40 else "elec_total_bill_lmi_100"
+]
+assert abs(_median_lmi_credit) < 1.0, (
+    f"Representative bldg {median_bldg_id_state} has an LMI credit of "
+    f"${_median_lmi_credit:.2f}. ``median_energy_total`` uses the undiscounted "
+    f"component sum, so prose will disagree with the LMI-aware quadrant charts. "
+    f"Pick a non-LMI representative building or reconcile the narratives."
+)
+median_current_state = _median_raw.select(SELECT_COLS)
 median_hp_state = (
     hp_same_bldgs_state
     .filter(pl.col(BLDG_ID) == median_bldg_id_state)
@@ -1340,7 +1353,6 @@ def plot_quadrant_bar(
     rows: list[tuple[str, pl.DataFrame]],
     title: str = "How bills would change after switching to heat pumps:",
     title_parts: list[tuple[str, str]] | None = None,
-    footnote: str | None = None,
 ) -> ggplot | Figure:
     """Horizontal stacked bar(s) showing quadrant proportions.
 
@@ -1488,8 +1500,6 @@ def plot_quadrant_bar(
             x_pos = bb.transformed(fig.transFigure.inverted()).x1
             if i < len(title_parts) - 1:
                 x_pos += space_fig
-        if footnote:
-            add_matplotlib_footnote(fig, footnote)
         return fig
 
     return p
@@ -1509,7 +1519,6 @@ def plot_quadrant_bar_by_utility(
     fuel_filter: pl.Expr,
     title_parts: list[tuple[str, str]],
     scenario_labels: tuple[str, str] = ("Default rate", "HP seasonal rate"),
-    footnote: str | None = None,
 ) -> None:
     """Grouped quadrant bars for each utility in a single tall figure.
 
@@ -1582,9 +1591,10 @@ def plot_quadrant_bar_by_utility(
             ax.barh(bp, width, left=left, height=_QBU_BAR_HEIGHT,
                     color=QUADRANT_COLORS[q], edgecolor="none", align="edge")
             if width >= 3:
+                ax.text(left + width / 2, bp + _QBU_BAR_HEIGHT / 2, f"{width:.1f}%",
                         ha="center", va="center", color="white",
                         fontsize=10, fontweight="bold", fontfamily="IBM Plex Sans")
-                        fontsize=10, fontweight="bold", fontfamily="IBM Plex Sans")
+            left += width
 
     for bp, label in zip(bar_positions, bar_scenario_labels):
         ax.text(101, bp + _QBU_BAR_HEIGHT / 2, label,
@@ -1602,7 +1612,7 @@ def plot_quadrant_bar_by_utility(
             mid = cum + first_pct[q] / 2
             cum += first_pct[q]
             if first_pct[q] < 2:
-            if first_pct[q] < 2:
+                continue
             ax.text(mid, label_y, QUADRANT_LABELS[q],
                     ha="center", va="bottom", fontsize=8,
                     fontweight="bold", color=QUADRANT_COLORS[q],
@@ -1634,8 +1644,6 @@ def plot_quadrant_bar_by_utility(
         if i < len(title_parts) - 1:
             x_pos += space_fig
 
-    if footnote:
-        add_matplotlib_footnote(fig, footnote)
     display_svg(fig)
 ```
 

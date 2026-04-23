@@ -2967,6 +2967,10 @@ for display, code in TARIFF_UTILS.items():
 rate_wide = pl.DataFrame([summer_row, winter_row, discount_row])
 util_cols = [c for c in rate_wide.columns if c != "metric"]
 
+_discount_values = [discount_row[c] for c in util_cols]
+report_vars["hp_seasonal_winter_discount_min_pct"] = min(_discount_values)
+report_vars["hp_seasonal_winter_discount_max_pct"] = max(_discount_values)
+
 ```
 
 ```{python}
@@ -4265,7 +4269,7 @@ report_vars["pct_elec_resistance_lose_1k_hprate"] = _er_sw_lose_1k / _er_sw_tota
 
 ```{python}
 #| label: fig-bill-decomposed-fair-rate-state
-#| fig-cap: "Annual energy bill for the representative gas-heated home in Syracuse: before heat pumps, after heat pumps at default rates, and after heat pumps at fair rates."
+#| fig-cap: "Annual energy bill for the representative gas-heated home in Syracuse: before heat pumps under default rates, after heat pumps under default rates, and after heat pumps under seasonal heat pump rates. Assumes National Grid Upstate's default gas / electric delivery and supply rates from 2025."
 
 import io
 
@@ -4420,6 +4424,20 @@ if INCLUDE_TOU:
         (pl.col("bill_after") - pl.col("bill_before")).alias("delta")
     )
     natgas_tou_state = delta_tou_state.filter(pl.col("heats_with_natgas")).select("delta", "weight")
+
+    delta_tou_state_lmi40 = _lmi_delta_state(
+        bills_current, bills_tou_hp, LMI_40_BILL_COLS, LMI_40_BILL_COLS,
+    )
+    natgas_tou_state_lmi40 = (
+        delta_tou_state_lmi40
+        .filter(pl.col("heats_with_natgas"))
+        .select("delta", "weight")
+    )
+    _tou_lmi40_total = natgas_tou_state_lmi40["weight"].sum()
+    _tou_lmi40_save = natgas_tou_state_lmi40.filter(pl.col("delta") < 0)["weight"].sum()
+    _tou_lmi40_lose_1k = natgas_tou_state_lmi40.filter(pl.col("delta") > 1000)["weight"].sum()
+    report_vars["pct_natgas_save_tou_lmi40"] = _tou_lmi40_save / _tou_lmi40_total
+    report_vars["pct_natgas_lose_1k_tou_lmi40"] = _tou_lmi40_lose_1k / _tou_lmi40_total
 ```
 
 ```{python}
@@ -4440,18 +4458,23 @@ if INCLUDE_TOU:
             ("heat pumps", "#c47600"),
         ],
     )
+    _q_default = quadrant_pcts(natgas_state)
     _q_fair = quadrant_pcts(natgas_switch_state)
     _q_tou = quadrant_pcts(natgas_tou_state)
+    _default_lose = _q_default["losses $0-1k"] + _q_default["losses > $1k"]
     _fair_lose = _q_fair["losses $0-1k"] + _q_fair["losses > $1k"]
     _tou_lose = _q_tou["losses $0-1k"] + _q_tou["losses > $1k"]
     report_vars["tou_lose_drop_pp"] = (_fair_lose - _tou_lose) / 100
     report_vars["tou_save_1k_rise_pp"] = (_q_tou["savings > $1k"] - _q_fair["savings > $1k"]) / 100
+    report_vars["tou_vs_default_lose_drop_pp"] = (_default_lose - _tou_lose) / 100
+    report_vars["tou_vs_default_save_1k_rise_pp"] = (_q_tou["savings > $1k"] - _q_default["savings > $1k"]) / 100
 
     def _weighted_mean_savings(df: pl.DataFrame) -> float:
         savers = df.filter(pl.col("delta") < 0)
         return float((-savers["delta"] * savers["weight"]).sum() / savers["weight"].sum())
 
     report_vars["tou_avg_savings_rise"] = _weighted_mean_savings(natgas_tou_state) - _weighted_mean_savings(natgas_switch_state)
+    report_vars["tou_vs_default_avg_savings_rise"] = _weighted_mean_savings(natgas_tou_state) - _weighted_mean_savings(natgas_state)
 else:
     _tou_quadrant_fig = None
 _tou_quadrant_fig
@@ -4567,7 +4590,7 @@ report_vars["pct_natgas_save_1k_hprate_lmi_full"] = _lmif_save_1k / _lmif_total
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-switch-hprate-state-lmi-current
-#| fig-cap: "Change in total annual energy bills — natural gas homes switching to a heat pump: default vs. seasonal rate (Statewide). Assumes 40% of LMI households receive LMI discounts before and after switching to a heat pump."
+#| fig-cap: "Change in total annual gas + electric bills — natural gas homes switching to a heat pump: default delivery rates vs. seasonal heat pump delivery rate (NY, Statewide). Assumes 40% of LMI households are enrolled in utility energy affordability programs before and after switching to a heat pump."
 
 plot_quadrant_bar(
     [
@@ -4700,7 +4723,7 @@ report_vars["pct_natgas_lose_1k_ehrate_lmi40"] = _lmi40_eh_lose_1k / _lmi40_eh_t
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-switch-ehrate-state-lmi-current
-#| fig-cap: "Change in total annual energy bills — natural gas homes switching to a heat pump: default rate vs. electric heating rate (Statewide). Assumes 40% of LMI households receive LMI discounts before and after switching to a heat pump."
+#| fig-cap: "Change in total annual energy bills — natural gas homes switching to a heat pump: default rate vs. electric heating rate (Statewide). Assumes 40% of LMI households are enrolled in utility energy affordability programs before and after switching to a heat pump."
 
 plot_quadrant_bar(
     [
@@ -5430,11 +5453,133 @@ report_vars["pct_burdened_hp_seasonal_lmi100"] = above_hp_seasonal_lmi100 / 100
 
 ```{python}
 #| label: fig-burden-bar-lmi-current
-#| fig-cap: "Share of low-income gas-heated households above the 6% energy burden threshold"
+#| fig-cap: "Share of low-income gas-heated households above the 6% high energy burden threshold"
 
 plot_burden_bar(
     [below_current_lmi40, below_hp_default_lmi40, below_hp_seasonal_lmi40, below_hp_seasonal_lmi100],
     [above_current_lmi40, above_hp_default_lmi40, above_hp_seasonal_lmi40, above_hp_seasonal_lmi100],
+)
+```
+
+```{python}
+#| label: burden-cohort-op
+
+low_income_op_bldgs = (
+    bills_current
+    .filter(
+        (pl.col("month") == ANNUAL_MONTH)
+        & (pl.col("heats_with_oil") | pl.col("heats_with_propane"))
+        & pl.col("is_lmi_any")
+        & (pl.col(INCOME_COL) > 0)
+    )
+    .select(BLDG_ID, "weight", "energy_total_bill", INCOME_COL, "sb.electric_utility")
+    .collect()
+)
+
+cohort_op_bldg_ids = low_income_op_bldgs[BLDG_ID].to_list()
+income_op_df = low_income_op_bldgs.select(BLDG_ID, INCOME_COL)
+```
+
+```{python}
+#| label: burden-compute-lmi-current-op
+
+below_current_op_lmi40, above_current_op_lmi40 = burden_shares(
+    bills_current, cohort_op_bldg_ids, income_op_df, bill_cols=LMI_40_BILL_COLS,
+)
+below_hp_default_op_lmi40, above_hp_default_op_lmi40 = burden_shares(
+    bills_hp, cohort_op_bldg_ids, income_op_df, bill_cols=LMI_40_BILL_COLS,
+)
+below_hp_seasonal_op_lmi40, above_hp_seasonal_op_lmi40 = burden_shares(
+    bills_hprate_hp, cohort_op_bldg_ids, income_op_df, bill_cols=LMI_40_BILL_COLS,
+)
+below_hp_seasonal_op_lmi100, above_hp_seasonal_op_lmi100 = burden_shares(
+    bills_hprate_hp, cohort_op_bldg_ids, income_op_df, bill_cols=LMI_100_BILL_COLS,
+)
+
+print(
+    f"[Oil/propane LMI] Current: {above_current_op_lmi40:.1f}%  HP+default: {above_hp_default_op_lmi40:.1f}%  "
+    f"HP+seasonal(40%): {above_hp_seasonal_op_lmi40:.1f}%  HP+seasonal(100%LMI): {above_hp_seasonal_op_lmi100:.1f}%"
+)
+```
+
+```{python}
+#| label: fig-burden-bar-lmi-current-op
+#| fig-cap: "Share of low-income households that heat with oil or propane above the 6% high energy burden threshold"
+
+plot_burden_bar(
+    [
+        below_current_op_lmi40,
+        below_hp_default_op_lmi40,
+        below_hp_seasonal_op_lmi40,
+        below_hp_seasonal_op_lmi100,
+    ],
+    [
+        above_current_op_lmi40,
+        above_hp_default_op_lmi40,
+        above_hp_seasonal_op_lmi40,
+        above_hp_seasonal_op_lmi100,
+    ],
+)
+```
+
+```{python}
+#| label: burden-cohort-er
+
+low_income_er_bldgs = (
+    bills_current
+    .filter(
+        (pl.col("month") == ANNUAL_MONTH)
+        & (pl.col(HEATING_TYPE_COL) == "electrical_resistance")
+        & pl.col("is_lmi_any")
+        & (pl.col(INCOME_COL) > 0)
+    )
+    .select(BLDG_ID, "weight", "energy_total_bill", INCOME_COL, "sb.electric_utility")
+    .collect()
+)
+
+cohort_er_bldg_ids = low_income_er_bldgs[BLDG_ID].to_list()
+income_er_df = low_income_er_bldgs.select(BLDG_ID, INCOME_COL)
+```
+
+```{python}
+#| label: burden-compute-lmi-current-er
+
+below_current_er_lmi40, above_current_er_lmi40 = burden_shares(
+    bills_current, cohort_er_bldg_ids, income_er_df, bill_cols=LMI_40_BILL_COLS,
+)
+below_hp_default_er_lmi40, above_hp_default_er_lmi40 = burden_shares(
+    bills_hp, cohort_er_bldg_ids, income_er_df, bill_cols=LMI_40_BILL_COLS,
+)
+below_hp_seasonal_er_lmi40, above_hp_seasonal_er_lmi40 = burden_shares(
+    bills_hprate_hp, cohort_er_bldg_ids, income_er_df, bill_cols=LMI_40_BILL_COLS,
+)
+below_hp_seasonal_er_lmi100, above_hp_seasonal_er_lmi100 = burden_shares(
+    bills_hprate_hp, cohort_er_bldg_ids, income_er_df, bill_cols=LMI_100_BILL_COLS,
+)
+
+print(
+    f"[El. resistance LMI] Current: {above_current_er_lmi40:.1f}%  HP+default: {above_hp_default_er_lmi40:.1f}%  "
+    f"HP+seasonal(40%): {above_hp_seasonal_er_lmi40:.1f}%  HP+seasonal(100%LMI): {above_hp_seasonal_er_lmi100:.1f}%"
+)
+```
+
+```{python}
+#| label: fig-burden-bar-lmi-current-er
+#| fig-cap: "Share of low-income electric-resistance households above the 6% high energy burden threshold"
+
+plot_burden_bar(
+    [
+        below_current_er_lmi40,
+        below_hp_default_er_lmi40,
+        below_hp_seasonal_er_lmi40,
+        below_hp_seasonal_er_lmi100,
+    ],
+    [
+        above_current_er_lmi40,
+        above_hp_default_er_lmi40,
+        above_hp_seasonal_er_lmi40,
+        above_hp_seasonal_er_lmi100,
+    ],
 )
 ```
 
@@ -5586,7 +5731,6 @@ def plot_burden_bar_by_utility(
 
     display_svg(fig)
 ```
-pe
 
 ```{python}
 #| label: fig-burden-bar-lmi-current-by-utility
@@ -5607,6 +5751,16 @@ report_vars["pct_burdened_hp_seasonal"] = above_hp_seasonal / 100
 report_vars["pct_burdened_current_lmi40"] = above_current_lmi40 / 100
 report_vars["pct_burdened_hp_default_lmi40"] = above_hp_default_lmi40 / 100
 report_vars["pct_burdened_hp_seasonal_lmi40"] = above_hp_seasonal_lmi40 / 100
+
+report_vars["pct_burdened_current_op_lmi40"] = above_current_op_lmi40 / 100
+report_vars["pct_burdened_hp_default_op_lmi40"] = above_hp_default_op_lmi40 / 100
+report_vars["pct_burdened_hp_seasonal_op_lmi40"] = above_hp_seasonal_op_lmi40 / 100
+report_vars["pct_burdened_hp_seasonal_op_lmi100"] = above_hp_seasonal_op_lmi100 / 100
+
+report_vars["pct_burdened_current_er_lmi40"] = above_current_er_lmi40 / 100
+report_vars["pct_burdened_hp_default_er_lmi40"] = above_hp_default_er_lmi40 / 100
+report_vars["pct_burdened_hp_seasonal_er_lmi40"] = above_hp_seasonal_er_lmi40 / 100
+report_vars["pct_burdened_hp_seasonal_er_lmi100"] = above_hp_seasonal_er_lmi100 / 100
 ```
 
 ## Appendix: demand-flex elasticity calibration

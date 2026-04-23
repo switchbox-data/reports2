@@ -1553,13 +1553,13 @@ For the NYCA-priced (Rest-of-State) component, the nested-locality load used to 
 
 [^cite-icap]: NYISO ICAP monthly Spot auction clearing prices by locality [@nyiso_ICAPSpotAuctionResults_2024]. Auction-locality-to-nested-footprint mappings and utility capacity-obligation weights are sourced from the NYISO ICAP Manual (Table 7-5) [@nyiso_InstalledCapacityManual_2026] via the [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/data/nyiso/zone_mapping/generate_zone_mapping_csv.py). Hourly capacity MC signals are built in the [RDP](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/marginal_costs/generate_supply_capacity_mc.py).
 
-**Bulk transmission.** Bulk-TX marginal costs capture the incremental cost of regional transmission infrastructure (roughly 115 kV and above). Rather than levelizing a single utility-filed revenue requirement, the RDP derives a per-locality $/kW-yr cost from NYISO's own project-level public-policy and competitive-solicitation transmission studies, then allocates it to hourly peaks using an 80-hour seasonal window.[^cite-bulk-tx] The pipeline has five stages:
+**Bulk transmission.** Bulk-TX marginal costs capture the incremental cost of regional transmission infrastructure (roughly 115 kV and above). Rather than levelizing a single utility-filed revenue requirement, the RDP derives a per-locality $/kW-yr cost from NYISO's own project-level public-policy and competitive-solicitation transmission studies, then allocates it to hourly peaks using an 80-hour seasonal window. The pipeline has five stages:
 
-1. **Inputs.** Project-level NYISO Public Policy Transmission Planning and Competitive System Planning Process (CSPP) benefit studies, together with the NiMo MCOS bulk-TX entry, are collected as pipeline inputs. Seven input scenarios — AC Primary, the two Addendum Optimizer variants (Existing Localities and G-J Elimination), the two Addendum MMU variants (Baseline and CES+Retirement, merged), LI Export (Policy), and NiMo MCOS (Bulk TX) — map to six distinct constraint groups.
+1. **Inputs.** Project-level NYISO Public Policy Transmission Planning and Competitive System Planning Process (CSPP) benefit studies, together with the NiMo MCOS bulk-TX entry, are collected as pipeline inputs. Seven input scenarios — AC Primary, the two Addendum Optimizer variants (Existing Localities and G-J Elimination), the two Addendum MMU variants (Baseline and CES+Retirement, merged), LI Export (Policy), and NiMo MCOS (Bulk TX) — map to six distinct constraint groups. [^cite-bulk-tx]
 2. **Derivation.** For each constraint group, the [derivation script](https://github.com/switchbox-data/rate-design-platform/blob/main/data/nyiso/transmission/derive_tx_values.py) computes a $/kW-yr value via a cumulative-secant aggregation over its member projects.
 3. **Paying-locality aggregation.** Each constraint group is mapped to one or more paying localities (ROS, LHV, NYC, LI) via the nested-locality scheme in the [derivation script](https://github.com/switchbox-data/rate-design-platform/blob/main/data/nyiso/transmission/derive_tx_values.py); per-paying-locality costs are averaged within group.
 4. **Hourly allocation.** For each utility, the [allocation script](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/marginal_costs/bulk_tx_nyiso.py) identifies System Capability Resource (SCR) hours as the top 40 load hours in each of summer and winter (80 total) within the utility's nested-locality load. Each constraint-group annual value is spread across those 80 hours using a two-level weight:
-$$w_h = \underbrace{\phi_s}_{\text{season share}} \cdot \underbrace{\frac{\max(L_h - T_s,\ 0)}{\sum_{h' \in \text{season } s} \max(L_{h'} - T_{s'},\ 0)}}_{\text{within-season share}}$$
+$$w_h = \underbrace{\phi_s}_{\text{season share}} \cdot \underbrace{\frac{\max(L_h - T_s,\ 0)}{\sum_{h' \in \text{season } s} \max(L_{h'} - T_s,\ 0)}}_{\text{within-season share}}$$
 
 where:
 
@@ -1994,17 +1994,21 @@ bundled "Substation" cost center correctly captures all local delivery investmen
 **MC formula.** For each cost center and year, we computed:
 
 $$
-\text{Annual RR}(Y) = \text{Capital}(Y) \times \text{Composite Rate} \times \text{Escalation}(Y)
+\text{Annual RR}(Y) = \text{Capital}(Y) \times r \times e(Y)
 $$
 
 $$
-\text{MC}(Y) = \frac{\text{Annual RR}(Y)}{\text{Denominator}}
+\text{MC}_{\text{diluted}}(Y) = \frac{\text{Annual RR}(Y)}{P}
 $$
 
-The composite rate is the "Annual MC at System Peak" rate from the carrying charge schedule, which already adjusts for
-area-station-to-system diversity (coincidence factor ≈0.95 for both). Escalation uses the GDP Implicit Price Deflator
-(2.1%/yr). The system peak is ConEd's 2025 area station coincident total (11,998 MW) or O&R's 2024 coincident forecast
-(1,079 MW).[^coned_or_peak]
+where:
+
+- $\text{Capital}(Y)$ — in-service capital (\$000s); cumulative (all projects through year $Y$) or incremental (new projects entering service in $Y$)
+- $r$ — composite rate: the "Annual MC at System Peak" carrying charge from Schedule 11 (ConEd) or Schedule 10 (O&R), which folds together the Economic Carrying Charge, O&M + A&G loading, and the area-station-to-system coincidence adjustment
+- $e(Y)$ — GDP Implicit Price Deflator escalation factor for year $Y$, read per-year from the workbook (2.4% in 2026, then 2.1%/yr from 2027 onward)
+- $P$ — system peak demand (MW), held constant across years: ConEd's 2025 area station coincident total (11,998 MW) or O&R's 2024 coincident forecast (1,079 MW)
+
+The composite rate already embeds the area-station-to-system diversity adjustment (coincidence factor ≈0.95 for ConEd; O&R's carrying charge schedule embeds a similar adjustment). Dividing by the area station coincident total (rather than the lower system coincident peak) is therefore correct.[^coned_or_peak]
 
 [^coned_or_peak]:
     ConEd: Coincident Load sheet, 2025 area station coincident total [@coned_Docket19E02832025_2025a]. O&R: Coincident Forecast sheet, 2024 value [@o&r_Docket19E02832025_2025a]. Both
@@ -2099,18 +2103,27 @@ input without exclusion.
 
 **MC formula.** CenHud's workbook provides each project's fully-loaded annual cost per kW of new capacity (row 26),
 which already incorporates a 30% reserve margin, 16.1% general plant loading, level-specific ECCR rates (13.72% for
-transmission, 13.33% for substations, 17.83% for feeders), working capital charges, and loss factors. The system-wide
-marginal cost aggregates projects by weighting each project's annual cost by its area's share of the coincident system
-peak:
+transmission, 13.33% for substations, 17.83% for feeders), working capital charges, and loss factors. We compute the
+system-wide diluted marginal cost by summing each project's total annual cost and dividing by the system peak:
 
 $$
-\text{MC}_{\text{diluted}}(Y) = \sum_{p \in \text{in-scope}} \text{annual cost}(p) \times \text{peak share}(p)
+\text{MC}_{\text{diluted}}(Y) = \frac{\displaystyle\sum_{p \in Y} \text{AnnualCost}(p) \times \text{Capacity}(p)}{P}
 $$
 
-**Flat nominal costs.** CenHud is the only NY utility that does not apply inflation escalation. A project's $/kW-yr is
-identical in every year after in-service — no GDP deflator, no Blue Chip rate. This is a real methodological outlier:
-over a 10-year horizon, it understates later-year costs by \~20% relative to the other utilities' 2%/yr escalation. For
-our analysis, this means real and nominal values are identical.
+where:
+
+- $\text{AnnualCost}(p)$ — fully-loaded annual cost per kW of project $p$ (row 26)
+- $\text{Capacity}(p)$ — project capacity (kW)
+- $P$ — 2024 system coincident peak (1,103 MW)
+
+The workbook reports an alternative peak-share–weighted formulation; we use the capacity-based version above for
+cross-utility consistency.
+
+**Flat nominal costs.** CenHud is the only NY utility whose filing does not apply inflation escalation — a project's
+$/kW-yr is identical in every year after in-service, with no GDP deflator or Blue Chip rate. Over a 10-year horizon,
+this understates later-year nominal costs by \~20% relative to the other utilities' \~2%/yr escalation. We treat the
+flat workbook values as real (base-year 2026) dollars and separately compute a nominal series by escalating at 2.1%/yr
+(GDP deflator) for cross-utility comparisons. The levelized BAT input uses the real (flat) series.
 
 **Cumulative vs. incremental capital.** As with the other utilities, we compute both perspectives. CenHud's per-project
 in-service years make this straightforward — projects contribute starting in their in-service year. For the BAT inputs,
@@ -2134,9 +2147,8 @@ CenHud's total incremental diluted MC ($4/kW-yr) is the lowest of the four utili
 project budgets ($111M total capital over 10 years), a mostly stable or declining load territory (many areas have ample
 headroom), and the absence of escalation.
 
-CenHud's workbook dilutes by peak-share (project MW ÷ local peak) and reports flat nominal dollars across years. To
-compare across utilities we re-normalize on a capacity-based denominator (system peak MW) and apply a 2.1%/yr cost
-escalator so the nominal-flat series becomes a real-2026 time series consistent with the other six utilities
+CenHud's workbook dilutes by peak-share (project MW ÷ local peak) and reports flat dollars across years. To
+compare across utilities we re-normalize on a capacity-based denominator (system peak MW)
 [@cenhud_Docket19E02832025_2025]. Levelized over 2026–2032 in real 2026 dollars, the incremental diluted BAT input for
 Central Hudson is $3.93/kW-yr.
 
@@ -2173,26 +2185,34 @@ substation (115 kV/46 kV), upstream feeder (115 kV/34.5 kV), distribution substa
 kV/4 kV) — are local sub-transmission and distribution, included in the BAT input without exclusion.
 
 **NERA-style aggregation.** We parse 107 projects with nonzero capital from W2 (Investment Location Detail) and
-derive composite annualization rates from the workbook (0.10248 for substations, 0.09801 for feeders). The formulas
-are identical to NiMo/ConEd/O&R/CenHud:
+derive composite annualization rates from the workbook (0.10248 for substations, 0.09801 for feeders). The diluted
+system-wide marginal cost for each cost center in year $Y$ is:
 
-$$\text{Annualized \$/kW} = \frac{\text{Total Capital}}{\text{Capacity}} \times r$$
+$$
+\text{MC}_{\text{diluted}}(Y) = \frac{\displaystyle\sum_{p \in Y} \text{Capital}(p) \times r_p}{P}
+$$
 
 where:
 
-- $\text{Total Capital}$ — total capital cost of the project
-- $\text{Capacity}$ — nameplate capacity of the project (kW)
-- $r$ — composite annualization rate (Economic Carrying Charge Rate)
+- $\text{Capital}(p)$ — total capital cost of project $p$ (\$000s)
+- $r_p$ — composite annualization rate for project $p$'s equipment type, folding together the Economic Carrying Charge and O&M + A&G loading (0.10248 for substations, 0.09801 for feeders)
+- $P$ — 2035 forecast system peak (2,036 MW), held constant across years
 
-scoped by in-service year. Loss factors from W4 are applied when computing the "Total at Primary" column. No projects enter
-service in 2026–2027, so those years have zero incremental MC.
+No projects enter service in 2026–2027, so those years have zero incremental MC.
 
 **Cost inflation.** We apply 2.0%/yr inflation to project costs from their in-service year. For cumulative MC, prior
-years' contributions are inflated forward to current-year dollars before summing. Levelization uses NPV discounting at a
-6.975% WACC.
+years' contributions are inflated forward to current-year dollars before summing. Levelization is the simple arithmetic
+mean of real (base-year) MC over the 2026–2032 window.
 
-**Primary voltage level.** We report all values at primary distribution voltage. The "Total at Primary" includes
-demand-related loss factors (\~5%) from the W4 sheet.
+**Primary voltage level.** We report the "Total at Primary" at primary distribution voltage by applying demand-related
+loss factors from the W4 sheet:
+
+$$
+\text{Total at Primary}(Y) = \sum_{c} \text{MC}_c(Y) \times \lambda_c
+$$
+
+where $\lambda_c$ is the W4 loss factor for cost center $c$ (upstream 1.050, dist sub 1.029, primary feeder 1.022).
+The individual cost-center rows in the table below are pre-loss-factor values.
 
 **Levelized results.** We computed the incremental diluted MC at primary voltage (real 2026 $/kW-yr, simple average
 across study years):
@@ -2236,9 +2256,9 @@ NYSEG.[^rge_mcos] RG&E has 4 operating divisions (Canandaigua, Central, Fillmore
 
 [^rge_mcos]: See RG&E's 2025 MCOS filing, Docket 19-E-0283 [@nysegrg&e_Docket19E02832025_2025].
 
-The methodology is identical to NYSEG: no bulk TX, NERA-style project-level aggregation from W2, 2.0%/yr inflation, NPV
-levelization at 6.975% WACC, and primary voltage output with loss factors from W4. See the NYSEG section above for full
-methodology details.
+The methodology follows the same CRA/NERA framework as NYSEG — project-level aggregation from W2, 2.0%/yr inflation,
+simple-mean levelization over 2026–2032, and primary voltage output — with RG&E-specific composite rates (0.10283 for
+substations, 0.09836 for feeders) and loss factors from W4. See the NYSEG section above for full methodology details.
 
 **Levelized results** (real 2026 $/kW-yr, simple average across study years):
 
@@ -2343,7 +2363,7 @@ total. For each project, we extracted the station name, capacity added (MW), cap
 (T-Station, T-Line, D-Station, D-Line), an annualized cost per MW (capital converted to a yearly revenue requirement via
 an Economic Carrying Charge Rate), and an in-service year. A few representative rows:
 
-| Station                              | Capacity | Capital | Annualized cost/MW | In-service |
+| Station                              | Capacity | Capital | Annualized cost/MW (at ISD) | In-service |
 | ------------------------------------ | -------: | ------: | -----------------: | ---------: |
 | Sawyer Ave (distribution substation) |    12 MW |   $3.6M |               $39k |     FY2029 |
 | Altamont (distribution substation)   |    27 MW |   $8.4M |               $26k |     FY2031 |
@@ -2374,18 +2394,19 @@ GitHub](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/p
 via an Economic Carrying Charge Rate (ECCR), inflating at 2.1%/yr per the Blue Chip GDP deflator. The diluted marginal
 cost for a set of projects divides their total annualized cost by the system peak:
 
-$$MC(Y) = \frac{\sum_j F_j \times C_j}{P_{\text{system}}}$$
+$$
+\text{MC}_{\text{diluted}}(Y) = \frac{\displaystyle\sum_{j} F_j \times C_j}{P}
+$$
 
 where:
 
-- $MC(Y)$ — diluted marginal cost for year $Y$ ($/kW)
-- $F_j$ — base-year (FY2026) annualized cost per MW for project $j$
+- $F_j$ — base-year (FY2026) annualized cost per MW for project $j$ (\$000s/MW)
 - $C_j$ — capacity of project $j$ (MW)
-- $P_{\text{system}}$ — system peak demand (MW)
+- $P$ — system peak demand (MW)
 
 We used NiMo's 2024 system peak of 6,616 MW.[^nimo_peak]
 
-[^nimo_peak]: NiMo Peak Load Forecast, March 2025. <!-- TODO: [@TODO_nimo_peak_load_forecast] -->
+[^nimo_peak]: 2024 actual peak from NiMo's Peak Load Forecast (March 2025), used as a CLI input to the analysis script. The peak is not read from the MCOS workbook itself [@nimo_Docket19E02832025_2025a].
 
 The full analysis is in a [script on GitHub](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/dist_mc/nimo/analyze_nimo_mcos.py). We averaged the real (FY2026-dollar)
 incremental diluted MC across all study years. The levelized results:

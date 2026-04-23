@@ -1,0 +1,1367 @@
+---
+title: "RI energy burden investigation (standalone)"
+subtitle: "Low-income, gas-heated households under default vs. HP flat rates"
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+This notebook is a **standalone** copy of the energy burden analysis that lives as a fragment in [`investigate_RI_energy_burden.qmd`](investigate_RI_energy_burden.qmd) and as a section inside [`analysis.qmd`](analysis.qmd). Parameters, S3 paths, CPI inflation, master bill lazy frames, and plotting imports are inlined here so you can render or `quarto preview` this file without running the full RI analysis notebook.
+
+**Scope:** LMI, gas-heated cohort; burden threshold 6%; scenarios = current HVAC (runs 1+2), HP + default (3+4), HP + HP flat rate (19+20).
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import polars as pl
+from lib.plotnine import SB_COLORS, theme_switchbox
+from lib.quarto import display_svg
+from plotnine import (
+    aes,
+    annotate,
+    element_blank,
+    geom_col,
+    geom_hline,
+    geom_text,
+    ggplot,
+    guides,
+    labs,
+    scale_fill_manual,
+    scale_x_discrete,
+    scale_y_continuous,
+    theme,
+)
+
+report_vars: dict = {}
+```
+
+## Parameters
+
+```{python}
+#| label: params
+
+# Keep in sync with `analysis.qmd` when re-pointing batches or years.
+BATCH = "ri_20260330_170M-rr-and-all-topups_lmi_fix"
+STATE = "RI"
+YEAR = 2025
+
+_state_lower = STATE.lower()
+S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
+PATH_MASTER_BILLS_12 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_1+2/comb_bills_year_target/"
+PATH_MASTER_BILLS_34 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_3+4/comb_bills_year_target/"
+PATH_MASTER_BILLS_1920 = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}/run_19+20/comb_bills_year_target/"
+
+
+BATCH_NY = "ny_20260326_flex_r1-16"
+PATH_MASTER_BILLS_12_NY = f"{S3_BASE}/ny/all_utilities/{BATCH_NY}/run_1+2/comb_bills_year_target/"
+PATH_MASTER_BILLS_34_NY = f"{S3_BASE}/ny/all_utilities/{BATCH_NY}/run_3+4/comb_bills_year_target/"
+PATH_MASTER_BILLS_1920_NY = f"{S3_BASE}/ny/all_utilities/{BATCH_NY}/run_19+20/comb_bills_year_target/"
+PATH_ANNUAL_LOAD_CURVE_RI = "s3://data.sb/nrel/resstock/res_2024_amy2018_2/load_curve_annual/state=RI/upgrade=00/RI_upgrade00_metadata_and_annual_results.parquet"
+PATH_ANNUAL_LOAD_CURVE_NY = "s3://data.sb/nrel/resstock/res_2024_amy2018_2/load_curve_annual/state=NY/upgrade=00/NY_upgrade00_metadata_and_annual_results.parquet"
+PATH_CPI = "s3://data.sb/fred/cpi/"
+
+```
+
+## Constants
+
+```{python}
+#| label: constants
+
+ANNUAL_MONTH = "Annual"
+BLDG_ID = "bldg_id"
+INCOME_COL = "in.representative_income"
+RESSTOCK_INCOME_DOLLAR_YEAR = 2019
+BURDEN_THRESHOLD = 0.06
+LMI_CURRENT_ENROLLMENT_PCT = 32
+report_vars["lmi_current_enrollment_pct"] = LMI_CURRENT_ENROLLMENT_PCT
+LMI_BILL_COLS = ["elec_total_bill", "gas_total_bill", "oil_total_bill", "propane_total_bill"]
+# RI master bills use LMI 32% and 100% tiers (no separate 40% column set).
+LMI_40_BILL_COLS = ["elec_total_bill_lmi_32", "gas_total_bill_lmi_32", "oil_total_bill", "propane_total_bill"]
+LMI_100_BILL_COLS = ["elec_total_bill_lmi_100", "gas_total_bill_lmi_100", "oil_total_bill", "propane_total_bill"]
+UTIL_NAMES = {
+    "rie": "Rhode Island Energy",
+}
+UTIL_ORDER_CODES = ["rie"]
+
+LOAD_CURVE_ANNUAL_NET_ELECTRICITY_CONSUMPTION_COL = "out.electricity.net.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_FLOOR_AREA_COL = "out.params.floor_area_foundation_ft_2"
+LOAD_CURVE_ANNUAL_COOLING_CAPACITY_COL = "out.params.size_cooling_system_primary_k_btu_h"
+LOAD_CURVE_ANNUAL_COOLING_PEAK_COL = "out.load.cooling.peak.kbtu_hr"
+LOAD_CURVE_ANNUAL_COOLING_DELIVERED_COL = "out.load.cooling.energy_delivered.kbtu"
+LOAD_CURVE_ANNUAL_COOLING_CONSUMED_COL = "out.electricity.cooling.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_COOLING_FAN_CONSUMED_COL = "out.electricity.cooling_fans_pumps.energy_consumption.kwh"
+# Derived in-notebook alias for cooling kWh + cooling fans/pumps kWh (not a parquet column).
+COOLING_KWH_SUM_COL = "_cooling_plus_fan_kwh"
+LOAD_CURVE_ANNUAL_HEATING_CONSUMED_COL = "out.electricity.heating.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_HEATING_FAN_CONSUMED_COL = "out.electricity.heating_fans_pumps.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_BKUP_HEATING_CONSUMED_COL = "out.electricity.heating_hp_bkup.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_BKUP_HEATING_FAN_CONSUMED_COL = "out.electricity.heating_hp_bkup_fa.energy_consumption.kwh"
+# Derived: heating + heating fans/pumps + HP backup + HP backup fans/pumps kWh (not a parquet column).
+HEATING_KWH_SUM_COL = "_heating_fourway_kwh_sum"
+HEATING_KWH_SUM_SOURCE_COLS = (
+    LOAD_CURVE_ANNUAL_HEATING_CONSUMED_COL,
+    LOAD_CURVE_ANNUAL_HEATING_FAN_CONSUMED_COL,
+    LOAD_CURVE_ANNUAL_BKUP_HEATING_CONSUMED_COL,
+    LOAD_CURVE_ANNUAL_BKUP_HEATING_FAN_CONSUMED_COL,
+)
+
+LOAD_CURVE_ANNUAL_CEILING_FAN_COL = "out.electricity.ceiling_fan.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_CLOTHES_DRYER_COL = "out.electricity.clothes_dryer.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_CLOTHES_WASHER_COL = "out.electricity.clothes_washer.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_DISHWASHER_COL = "out.electricity.dishwasher.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_FREEZER_COL = "out.electricity.freezer.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_HOT_WATER_COL = "out.electricity.hot_water.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_EXTERIOR_LIGHT_COL = "out.electricity.lighting_exterior.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_GARAGE_LIGHT_COL = "out.electricity.lighting_garage.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_INTERIOR_LIGHT_COL = "out.electricity.lighting_interior.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_VENT_COL = "out.electricity.mech_vent.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_SPA_COL = "out.electricity.permanent_spa_heat.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_SPA_PUMP_COL = "out.electricity.permanent_spa_pump.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_PLUG_LOAD_COL = "out.electricity.plug_loads.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_PV_COL = "out.electricity.pv.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_OVEN_COL = "out.electricity.range_oven.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_FRIDGE_COL = "out.electricity.refrigerator.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_WELL_PUMP_COL = "out.electricity.well_pump.energy_consumption.kwh"
+
+# Appliance annual kWh columns split into three groups (partition of the former bundle).
+LOAD_CURVE_ANNUAL_APPLIANCES_PV_COLS = (LOAD_CURVE_ANNUAL_PV_COL,)
+LOAD_CURVE_ANNUAL_APPLIANCES_LAUNDRY_DHW_PLUG_COLS = (
+    LOAD_CURVE_ANNUAL_CLOTHES_DRYER_COL,
+    LOAD_CURVE_ANNUAL_CLOTHES_WASHER_COL,
+    LOAD_CURVE_ANNUAL_DISHWASHER_COL,
+    LOAD_CURVE_ANNUAL_HOT_WATER_COL,
+    LOAD_CURVE_ANNUAL_PLUG_LOAD_COL,
+)
+LOAD_CURVE_ANNUAL_APPLIANCES_OTHER_COLS = (
+    LOAD_CURVE_ANNUAL_CEILING_FAN_COL,
+    LOAD_CURVE_ANNUAL_FREEZER_COL,
+    LOAD_CURVE_ANNUAL_EXTERIOR_LIGHT_COL,
+    LOAD_CURVE_ANNUAL_GARAGE_LIGHT_COL,
+    LOAD_CURVE_ANNUAL_INTERIOR_LIGHT_COL,
+    LOAD_CURVE_ANNUAL_VENT_COL,
+    LOAD_CURVE_ANNUAL_SPA_COL,
+    LOAD_CURVE_ANNUAL_SPA_PUMP_COL,
+    LOAD_CURVE_ANNUAL_OVEN_COL,
+    LOAD_CURVE_ANNUAL_FRIDGE_COL,
+    LOAD_CURVE_ANNUAL_WELL_PUMP_COL,
+)
+LOAD_CURVE_ANNUAL_APPLIANCES_COLS = (
+    *LOAD_CURVE_ANNUAL_APPLIANCES_PV_COLS,
+    *LOAD_CURVE_ANNUAL_APPLIANCES_LAUNDRY_DHW_PLUG_COLS,
+    *LOAD_CURVE_ANNUAL_APPLIANCES_OTHER_COLS,
+)
+# Derived category sums and total (not parquet columns).
+APPLIANCES_PV_KWH_SUM_COL = "_appliances_pv_kwh_sum"
+APPLIANCES_LAUNDRY_DHW_PLUG_KWH_SUM_COL = "_appliances_laundry_dhw_plug_kwh_sum"
+APPLIANCES_OTHER_KWH_SUM_COL = "_appliances_other_kwh_sum"
+APPLIANCES_KWH_SUM_COL = "_appliances_bundle_kwh_sum"
+
+
+# Natural gas total
+LOAD_CURVE_ANNUAL_NAT_GAS_TOTAL = "out.natural_gas.total.energy_consumption.kwh"
+
+# Natural gas appliances
+LOAD_CURVE_ANNUAL_NAT_GAS_DRYER = "out.natural_gas.clothes_dryer.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_NAT_GAS_FIREPLACE = "out.natural_gas.fireplace.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_NAT_GAS_GRILL = "out.natural_gas.grill.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_NAT_GAS_HOT_WATER = "out.natural_gas.hot_water.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_NAT_GAS_LIGHTING = "out.natural_gas.lighting.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_NAT_GAS_SPA_HEAT = "out.natural_gas.permanent_spa_heat.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_NAT_GAS_POOL_HEATER = "out.natural_gas.pool_heater.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_NAT_GAS_RANGE_OVEN = "out.natural_gas.range_oven.energy_consumption.kwh"
+
+
+# Natural gas HVAC
+LOAD_CURVE_ANNUAL_NAT_GAS_HVAC_HEATING = "out.natural_gas.heating.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_NAT_GAS_HVAC_HEATING_BKUP = "out.natural_gas.heating_hp_bkup.energy_consumption.kwh"
+
+LOAD_CURVE_ANNUAL_NAT_GAS_APPLIANCES_COLS = (
+    LOAD_CURVE_ANNUAL_NAT_GAS_DRYER,
+    LOAD_CURVE_ANNUAL_NAT_GAS_FIREPLACE,
+    LOAD_CURVE_ANNUAL_NAT_GAS_GRILL,
+    LOAD_CURVE_ANNUAL_NAT_GAS_HOT_WATER,
+    LOAD_CURVE_ANNUAL_NAT_GAS_LIGHTING,
+    LOAD_CURVE_ANNUAL_NAT_GAS_SPA_HEAT,
+    LOAD_CURVE_ANNUAL_NAT_GAS_POOL_HEATER,
+    LOAD_CURVE_ANNUAL_NAT_GAS_RANGE_OVEN,
+)
+LOAD_CURVE_ANNUAL_NAT_GAS_HVAC_COLS = (
+    LOAD_CURVE_ANNUAL_NAT_GAS_HVAC_HEATING,
+    LOAD_CURVE_ANNUAL_NAT_GAS_HVAC_HEATING_BKUP,
+)
+
+# Propane total
+LOAD_CURVE_ANNUAL_PROPANE_TOTAL = "out.propane.total.energy_consumption.kwh"
+
+# Propane appliances
+LOAD_CURVE_ANNUAL_PROPANE_DRYER = "out.propane.clothes_dryer.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_PROPANE_HOT_WATER = "out.propane.hot_water.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_PROPANE_RANGE_OVEN = "out.propane.range_oven.energy_consumption.kwh"
+
+# Propane HVAC
+LOAD_CURVE_ANNUAL_PROPANE_HVAC_HEATING = "out.propane.heating.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_PROPANE_HVAC_HEATING_BKUP = "out.propane.heating_hp_bkup.energy_consumption.kwh"
+
+LOAD_CURVE_ANNUAL_PROPANE_APPLIANCES_COLS = (
+    LOAD_CURVE_ANNUAL_PROPANE_DRYER,
+    LOAD_CURVE_ANNUAL_PROPANE_HOT_WATER,
+    LOAD_CURVE_ANNUAL_PROPANE_RANGE_OVEN,
+)
+LOAD_CURVE_ANNUAL_PROPANE_HVAC_COLS = (
+    LOAD_CURVE_ANNUAL_PROPANE_HVAC_HEATING,
+    LOAD_CURVE_ANNUAL_PROPANE_HVAC_HEATING_BKUP,
+)
+
+# Fuel oil total
+LOAD_CURVE_ANNUAL_FUEL_OIL_TOTAL = "out.fuel_oil.total.energy_consumption.kwh"
+
+# Fuel oil appliances
+LOAD_CURVE_ANNUAL_FUEL_OIL_HOT_WATER = "out.fuel_oil.hot_water.energy_consumption.kwh"
+
+# Fuel oil HVAC
+LOAD_CURVE_ANNUAL_FUEL_OIL_HVAC_HEATING = "out.fuel_oil.heating.energy_consumption.kwh"
+LOAD_CURVE_ANNUAL_FUEL_OIL_HVAC_HEATING_BKUP = "out.fuel_oil.heating_hp_bkup.energy_consumption.kwh"
+
+LOAD_CURVE_ANNUAL_FUEL_OIL_APPLIANCES_COLS = (LOAD_CURVE_ANNUAL_FUEL_OIL_HOT_WATER,)
+LOAD_CURVE_ANNUAL_FUEL_OIL_HVAC_COLS = (
+    LOAD_CURVE_ANNUAL_FUEL_OIL_HVAC_HEATING,
+    LOAD_CURVE_ANNUAL_FUEL_OIL_HVAC_HEATING_BKUP,
+)
+
+
+```
+
+## Data ingest
+
+```{python}
+#| label: ingest
+
+bills_current = pl.scan_parquet(PATH_MASTER_BILLS_12, hive_partitioning=True)
+bills_hp = pl.scan_parquet(PATH_MASTER_BILLS_34, hive_partitioning=True)
+bills_hprate_hp = pl.scan_parquet(PATH_MASTER_BILLS_1920, hive_partitioning=True)
+load_curve_annual_ri = pl.scan_parquet(PATH_ANNUAL_LOAD_CURVE_RI, hive_partitioning=True)
+load_curve_annual_ny = pl.scan_parquet(PATH_ANNUAL_LOAD_CURVE_NY, hive_partitioning=True)
+
+bills_current_ny = pl.scan_parquet(PATH_MASTER_BILLS_12_NY, hive_partitioning=True)
+bills_hp_ny = pl.scan_parquet(PATH_MASTER_BILLS_34_NY, hive_partitioning=True)
+bills_hprate_hp_ny = pl.scan_parquet(PATH_MASTER_BILLS_1920_NY, hive_partitioning=True)
+```
+
+```{python}
+#| label: sample-size
+
+_sample = (
+    bills_current.filter(pl.col("month") == ANNUAL_MONTH).select(BLDG_ID, "weight").collect()
+)
+n_resstock_bldgs = _sample[BLDG_ID].n_unique()
+n_rie_customers = int(round(_sample["weight"].sum()))
+
+print(f"RI annual master bills — unique buildings: {n_resstock_bldgs:,} (all buildings; not the analysis cohort).")
+print(f"RI sum of weights (all annual rows): {n_rie_customers:,}")
+print("All plots and tables below use the LMI + gas-heated cohort only (defined after CPI ingest).")
+```
+
+```{python}
+#| label: ingest-cpi
+
+_cpi = pl.read_parquet(PATH_CPI)
+_cpi_from = float(_cpi.filter(pl.col("year") == RESSTOCK_INCOME_DOLLAR_YEAR)["value"][0])
+_cpi_to = float(_cpi.filter(pl.col("year") == YEAR)["value"][0])
+INCOME_CPI_RATIO = _cpi_to / _cpi_from
+print(f"CPI inflation ratio {RESSTOCK_INCOME_DOLLAR_YEAR}→{YEAR}: {INCOME_CPI_RATIO:.4f}")
+```
+
+## Energy burden for low-income gas-heated households
+
+What share of low-income, gas-heated households face a high energy burden — defined as spending more than 6% of annual
+income on energy — and how does that share change when they switch to heat pumps under different rate designs?
+
+We focus on low-and-moderate-income (LMI) households — identified by the `is_lmi` flag in the master bill tables —
+who heat with natural gas in the baseline scenario (upgrade 0). We track the same cohort of buildings across three
+scenarios:
+
+1. **Current HVAC, default rates** (runs 1+2) — the status quo
+2. **Heat pump, default rates** (runs 3+4) — electrified but on flat rates
+3. **Heat pump, HP flat rates** (runs 19+20) — electrified on the proposed HP flat rate
+
+```{python}
+#| label: burden-cohort
+
+low_income_gas_bldgs = (
+    bills_current.filter(
+        (pl.col("month") == ANNUAL_MONTH)
+        & pl.col("heats_with_natgas")
+        & pl.col("is_lmi_any")
+        & (pl.col(INCOME_COL) > 0)
+    )
+    .select(BLDG_ID, "weight", "energy_total_bill", INCOME_COL, "sb.electric_utility")
+    .collect()
+)
+
+low_income_gas_bldgs_ny = (
+    bills_current_ny.filter(
+        (pl.col("month") == ANNUAL_MONTH)
+        & pl.col("heats_with_natgas")
+        & pl.col("is_lmi_any")
+        & (pl.col(INCOME_COL) > 0)
+    )
+    .select(BLDG_ID, "weight", "energy_total_bill", INCOME_COL, "sb.electric_utility")
+    .collect()
+)
+
+cohort_bldg_ids = low_income_gas_bldgs[BLDG_ID].to_list()
+cohort_bldg_ids_ny = low_income_gas_bldgs_ny[BLDG_ID].to_list()
+n_cohort = len(cohort_bldg_ids)
+n_cohort_weighted = low_income_gas_bldgs["weight"].sum()
+n_cohort_ny = len(cohort_bldg_ids_ny)
+n_cohort_weighted_ny = low_income_gas_bldgs_ny["weight"].sum()
+
+print(
+    f"LMI + gas-heated cohort — RI: {n_cohort:,} buildings (weighted customers ≈ {n_cohort_weighted:,.0f})  |  "
+    f"NY: {n_cohort_ny:,} (≈ {n_cohort_weighted_ny:,.0f})",
+)
+```
+
+```{python}
+#| label: burden-compute
+
+
+def burden_shares(
+    bills_lf: pl.LazyFrame,
+    bldg_ids: list,
+    income_df: pl.DataFrame,
+    bill_cols: list[str] = LMI_BILL_COLS,
+    burden_threshold: float = BURDEN_THRESHOLD,
+) -> tuple[float, float]:
+    """Return (weighted_pct_below, weighted_pct_above) the burden threshold.
+
+    bill_cols controls which columns are summed to form the total energy bill.
+    Default uses the undiscounted columns; pass LMI_40_BILL_COLS or
+    LMI_100_BILL_COLS to use LMI-discounted bills.
+
+    Income is inflated from ResStock's 2019$ to the current year via
+    INCOME_CPI_RATIO so that burden = bill / income uses consistent dollars.
+    """
+    annual = (
+        bills_lf.filter(pl.col("month") == ANNUAL_MONTH)
+        .select(BLDG_ID, "weight", *bill_cols)
+        .collect()
+        .filter(pl.col(BLDG_ID).is_in(bldg_ids))
+        .with_columns(pl.sum_horizontal(bill_cols).alias("total_bill"))
+        .join(income_df.select(BLDG_ID, INCOME_COL), on=BLDG_ID, how="inner")
+        .with_columns(
+            (pl.col("total_bill") / (pl.col(INCOME_COL) * INCOME_CPI_RATIO)).alias("burden"),
+        )
+        .with_columns((pl.col("burden") > burden_threshold).alias("is_burdened"))
+    )
+    total_weight = annual["weight"].sum()
+    burdened_weight = annual.filter(pl.col("is_burdened"))["weight"].sum()
+    pct_above = burdened_weight / total_weight * 100
+    pct_below = 100 - pct_above
+    return (pct_below, pct_above)
+
+
+income_df = low_income_gas_bldgs.select(BLDG_ID, INCOME_COL)
+
+below_current, above_current = burden_shares(bills_current, cohort_bldg_ids, income_df)
+below_hp_default, above_hp_default = burden_shares(bills_hp, cohort_bldg_ids, income_df)
+below_hp_flat, above_hp_flat = burden_shares(bills_hprate_hp, cohort_bldg_ids, income_df)
+
+print(f"Current HVAC:        {above_current:.1f}% above 6% | {below_current:.1f}% below")
+print(f"HP + default rates:  {above_hp_default:.1f}% above 6% | {below_hp_default:.1f}% below")
+print(f"HP + flat rates: {above_hp_flat:.1f}% above 6% | {below_hp_flat:.1f}% below")
+```
+
+```{python}
+#| label: burden-bar-helper
+
+BURDEN_SCENARIO_LABELS = [
+    f"Current HVAC\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+    f"Heat Pump\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+    f"Heat Pump\nHP Flat Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+    "Heat Pump\nHP Flat Rates\n100% LMI Discounts",
+]
+BURDEN_SEGMENT_ORDER = ["Above 6%", "Below 6%"]
+BURDEN_COLORS = {
+    "Above 6%": SB_COLORS["carrot"],
+    "Below 6%": SB_COLORS["sky"],
+}
+
+
+def plot_burden_bar(
+    below_pcts: list[float],
+    above_pcts: list[float],
+    scenario_labels: list[str] = BURDEN_SCENARIO_LABELS,
+):
+    """Diverging bar chart of burden shares centered on the 6% threshold.
+
+    Orange bars (above 6%) extend upward from y=0; blue bars (below 6%)
+    extend downward. The y=0 line represents the burden threshold.
+    """
+    rows = []
+    for scenario, above, below in zip(scenario_labels, above_pcts, below_pcts):
+        rows.append({
+            "scenario": scenario,
+            "segment": "Above 6%",
+            "value": above,
+            "label": f"{round(above)}%",
+            "label_y": above / 2,
+        })
+        rows.append({
+            "scenario": scenario,
+            "segment": "Below 6%",
+            "value": -below,
+            "label": f"{round(below)}%",
+            "label_y": -below / 2,
+        })
+
+    df = pl.DataFrame(rows).with_columns(
+        pl.col("scenario").cast(pl.Enum(scenario_labels)),
+        pl.col("segment").cast(pl.Enum(BURDEN_SEGMENT_ORDER)),
+    )
+
+    return (
+        ggplot(df, aes(x="scenario", y="value", fill="segment"))
+        + geom_col(width=0.5)
+        + geom_text(
+            aes(y="label_y", label="label"),
+            color="white",
+            fontweight="bold",
+            size=11,
+        )
+        + geom_hline(yintercept=0, size=1.5, color="#333333")
+        + annotate(
+            "text",
+            x=0.45,
+            y=0,
+            label="6% Burden\nThreshold",
+            ha="right",
+            va="center",
+            fontweight="bold",
+            size=11,
+            color="#333333",
+            family="IBM Plex Sans",
+        )
+        + scale_fill_manual(values=BURDEN_COLORS)
+        + scale_x_discrete(limits=scenario_labels, expand=(0, 0.8, 0, 0.5))
+        + scale_y_continuous(
+            expand=(0.05, 0, 0.05, 0),
+            labels=lambda xs: ["" for _ in xs],
+        )
+        + guides(fill=False)
+        + labs(x="", y="")
+        + theme_switchbox()
+        + theme(
+            figure_size=(10, 7),
+            axis_text_y=element_blank(),
+            axis_ticks_major_y=element_blank(),
+            axis_ticks_minor_y=element_blank(),
+            axis_line_y=element_blank(),
+            panel_grid=element_blank(),
+            axis_line_x=element_blank(),
+            axis_ticks_major_x=element_blank(),
+        )
+    )
+```
+
+### With current LMI discount enrollment (tier in `LMI_40_BILL_COLS`)
+
+For Rhode Island, master bills expose a **32%** enrolled LMI tier (`elec_total_bill_lmi_32` / `gas_total_bill_lmi_32`). Scenario labels use `LMI_CURRENT_ENROLLMENT_PCT` (32) for display consistency with `analysis.qmd`.
+
+```{python}
+#| label: burden-compute-lmi-current
+
+below_current_lmi40, above_current_lmi40 = burden_shares(
+    bills_current, cohort_bldg_ids, income_df, bill_cols=LMI_40_BILL_COLS,
+)
+below_hp_default_lmi40, above_hp_default_lmi40 = burden_shares(
+    bills_hp, cohort_bldg_ids, income_df, bill_cols=LMI_40_BILL_COLS,
+)
+below_hp_flat_lmi40, above_hp_flat_lmi40 = burden_shares(
+    bills_hprate_hp, cohort_bldg_ids, income_df, bill_cols=LMI_40_BILL_COLS,
+)
+below_hp_flat_lmi100, above_hp_flat_lmi100 = burden_shares(
+    bills_hprate_hp, cohort_bldg_ids, income_df, bill_cols=LMI_100_BILL_COLS,
+)
+
+print(f"Current HVAC (32% enrolled):         {above_current_lmi40:.1f}% above 6%")
+print(f"HP + default rates (32% enrolled):   {above_hp_default_lmi40:.1f}% above 6%")
+print(f"HP + flat rates (32% enrolled):  {above_hp_flat_lmi40:.1f}% above 6%")
+print(f"HP + flat rates (100% enrolled): {above_hp_flat_lmi100:.1f}% above 6%")
+
+report_vars["pct_burdened_hp_flat_lmi100"] = above_hp_flat_lmi100 / 100
+```
+
+```{python}
+#| label: fig-burden-bar-lmi-current
+#| fig-cap: "Share of low-income gas-heated households above the 6% energy burden threshold"
+
+plot_burden_bar(
+    [below_current_lmi40, below_hp_default_lmi40, below_hp_flat_lmi40, below_hp_flat_lmi100],
+    [above_current_lmi40, above_hp_default_lmi40, above_hp_flat_lmi40, above_hp_flat_lmi100],
+)
+```
+
+#### By utility
+
+```{python}
+#| label: burden-compute-lmi-current-by-utility
+
+burden_by_utility: dict[str, dict[str, tuple[float, float]]] = {}
+for code in UTIL_ORDER_CODES:
+    util_bldg_ids = low_income_gas_bldgs.filter(pl.col("sb.electric_utility") == code)[BLDG_ID].to_list()
+    if len(util_bldg_ids) < 10:
+        continue
+    util_income = income_df.filter(pl.col(BLDG_ID).is_in(util_bldg_ids))
+    burden_by_utility[code] = {
+        "current": burden_shares(bills_current, util_bldg_ids, util_income, bill_cols=LMI_40_BILL_COLS),
+        "hp_default": burden_shares(bills_hp, util_bldg_ids, util_income, bill_cols=LMI_40_BILL_COLS),
+        "hp_flat": burden_shares(bills_hprate_hp, util_bldg_ids, util_income, bill_cols=LMI_40_BILL_COLS),
+        "hp_flat_lmi100": burden_shares(bills_hprate_hp, util_bldg_ids, util_income, bill_cols=LMI_100_BILL_COLS),
+    }
+
+for code, data in burden_by_utility.items():
+    print(
+        f"{UTIL_NAMES[code]:20s}  Current: {data['current'][1]:5.1f}%  "
+        f"HP default: {data['hp_default'][1]:5.1f}%  HP flat: {data['hp_flat'][1]:5.1f}%  "
+        f"HP flat+100%LMI: {data['hp_flat_lmi100'][1]:5.1f}%",
+    )
+```
+
+```{python}
+#| label: burden-bar-by-utility-helper
+
+_BBU_BAR_HEIGHT = 0.55
+_BBU_GROUP_GAP = 0.7
+_BBU_INTRA_GAP = 0.15
+_BBU_HEADER_SPACE = 0.55
+_BBU_LABEL_SPACE = 0.35
+
+_BURDEN_LABEL_ABOVE = "ENERGY BURDEN ABOVE 6%"
+_BURDEN_LABEL_BELOW = "ENERGY BURDEN BELOW 6%"
+
+_BURDEN_UTIL_SCENARIO_KEYS = ["current", "hp_default", "hp_flat", "hp_flat_lmi100"]
+_BURDEN_UTIL_SCENARIO_LABELS = [
+    f"Current HVAC\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+    f"Heat Pump\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+    f"Heat Pump\nHP Flat Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+    "Heat Pump\nHP Flat Rates\n100% LMI Discounts",
+]
+
+
+def plot_burden_bar_by_utility(
+    burden_data: dict[str, dict[str, tuple[float, float]]],
+    utility_names: dict[str, str],
+    scenario_keys: list[str] = _BURDEN_UTIL_SCENARIO_KEYS,
+    scenario_labels: list[str] = _BURDEN_UTIL_SCENARIO_LABELS,
+    title: str = "",
+) -> None:
+    """Diverging burden bars (above/below 6%) for each utility.
+
+    Displays as inline SVG via IPython so Quarto's ``embed`` shortcode works.
+    """
+    import matplotlib.pyplot as plt
+
+    ordered_codes = list(reversed(UTIL_ORDER_CODES))
+    active_codes = [c for c in ordered_codes if c in burden_data]
+    n_utils = len(active_codes)
+    n_scenarios = len(scenario_keys)
+
+    bar_positions: list[float] = []
+    bar_labels: list[str] = []
+    bar_above: list[float] = []
+    bar_below: list[float] = []
+    utility_header_ys: list[tuple[float, str]] = []
+    label_rows: list[tuple[float, float, float]] = []
+
+    y = 0.0
+    for u_idx, code in enumerate(active_codes):
+        utility_header_ys.append((y, utility_names[code]))
+        y += _BBU_HEADER_SPACE
+
+        first_below, first_above = burden_data[code][scenario_keys[0]]
+        label_rows.append((y, first_above, first_below))
+        y += _BBU_LABEL_SPACE
+
+        for s_idx, key in enumerate(scenario_keys):
+            below, above = burden_data[code][key]
+            bar_positions.append(y)
+            bar_labels.append(scenario_labels[s_idx])
+            bar_above.append(above)
+            bar_below.append(below)
+            y += _BBU_BAR_HEIGHT + (_BBU_INTRA_GAP if s_idx < n_scenarios - 1 else 0)
+        if u_idx < n_utils - 1:
+            y += _BBU_GROUP_GAP
+
+    y_max = y + 0.1
+    fig_height = 1.5 + n_utils * 3.6
+
+    fig, ax = plt.subplots(figsize=(12.5, fig_height))
+    ax.set_xlim(-100, 100)
+    ax.set_ylim(-0.1, y_max)
+    ax.invert_yaxis()
+    ax.set_xticks([])
+    ax.set_yticks([])
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    carrot = BURDEN_COLORS["Above 6%"]
+    sky = BURDEN_COLORS["Below 6%"]
+
+    for bp, above, below in zip(bar_positions, bar_above, bar_below):
+        ax.barh(bp, above, left=0, height=_BBU_BAR_HEIGHT, color=carrot, edgecolor="none", align="edge")
+        ax.barh(bp, -below, left=0, height=_BBU_BAR_HEIGHT, color=sky, edgecolor="none", align="edge")
+        if above >= 3:
+            ax.text(
+                above / 2,
+                bp + _BBU_BAR_HEIGHT / 2,
+                f"{round(above)}%",
+                ha="center",
+                va="center",
+                color="white",
+                fontsize=10,
+                fontweight="bold",
+                fontfamily="IBM Plex Sans",
+            )
+        if below >= 3:
+            ax.text(
+                -below / 2,
+                bp + _BBU_BAR_HEIGHT / 2,
+                f"{round(below)}%",
+                ha="center",
+                va="center",
+                color="white",
+                fontsize=10,
+                fontweight="bold",
+                fontfamily="IBM Plex Sans",
+            )
+
+    for bp, label in zip(bar_positions, bar_labels):
+        ax.text(
+            101,
+            bp + _BBU_BAR_HEIGHT / 2,
+            label,
+            ha="left",
+            va="center",
+            fontsize=8,
+            fontweight="bold",
+            fontfamily="IBM Plex Sans",
+        )
+
+    for header_y, util_name in utility_header_ys:
+        ax.text(
+            -100,
+            header_y,
+            util_name,
+            ha="left",
+            va="top",
+            fontsize=11,
+            fontweight="bold",
+            fontfamily="GT Planar",
+            color="#333333",
+        )
+
+    ax.axvline(x=0, color="#333333", linewidth=1.5)
+
+    for label_y, first_above, first_below in label_rows:
+        ax.text(
+            first_above / 2,
+            label_y,
+            _BURDEN_LABEL_ABOVE,
+            ha="center",
+            va="bottom",
+            fontsize=8,
+            fontweight="bold",
+            color=carrot,
+            fontfamily="IBM Plex Sans",
+        )
+        ax.text(
+            -first_below / 2,
+            label_y,
+            _BURDEN_LABEL_BELOW,
+            ha="center",
+            va="bottom",
+            fontsize=8,
+            fontweight="bold",
+            color=sky,
+            fontfamily="IBM Plex Sans",
+        )
+
+    fig.subplots_adjust(left=0.02, right=0.82, top=0.95, bottom=0.01)
+
+    if title:
+        ax_pos = ax.get_position()
+        fig.text(
+            ax_pos.x0,
+            0.97,
+            title,
+            fontsize=12,
+            fontweight="bold",
+            fontfamily="GT Planar",
+            color="black",
+            va="top",
+        )
+
+    display_svg(fig)
+```
+
+```{python}
+#| label: fig-burden-bar-lmi-current-by-utility
+#| fig-cap: "Share of low-income gas-heated households above the 6% energy burden threshold by utility, with current LMI discount enrollment (~32% RI tier)"
+
+plot_burden_bar_by_utility(
+    burden_by_utility,
+    UTIL_NAMES,
+    title="Energy burdens for LMI customers, by utility",
+)
+```
+
+```{python}
+#| label: lmi-bill-share-burden-build
+
+_LMI_BILL_PCT_NAMES = ("pct_elec", "pct_gas", "pct_oil", "pct_propane")
+_LMI_BILL_LABELS = ("Electricity", "Natural gas", "Fuel oil", "Propane")
+
+
+def _lmi_bill_share_with_burden(path: str, bldg_ids: list) -> pl.DataFrame:
+    """Annual rows for ``bldg_ids`` with positive four-fuel bill sum and positive income; burden vs threshold."""
+    tb = pl.sum_horizontal([pl.col(c).fill_null(0) for c in LMI_BILL_COLS])
+    return (
+        pl.scan_parquet(path, hive_partitioning=True)
+        .filter(pl.col("month") == ANNUAL_MONTH)
+        .filter(pl.col(BLDG_ID).is_in(bldg_ids))
+        .select(BLDG_ID, INCOME_COL, *LMI_BILL_COLS)
+        .with_columns(tb.alias("_bill_sum_four"))
+        .filter(pl.col("_bill_sum_four") > 0)
+        .filter(pl.col(INCOME_COL).fill_null(0) > 0)
+        .with_columns(
+            (pl.col("_bill_sum_four") / (pl.col(INCOME_COL) * INCOME_CPI_RATIO)).alias("_burden"),
+        )
+        .with_columns((pl.col("_burden") > BURDEN_THRESHOLD).alias("is_energy_burdened"))
+        .with_columns(
+            [
+                (100 * pl.col(LMI_BILL_COLS[i]).fill_null(0) / pl.col("_bill_sum_four")).alias(
+                    _LMI_BILL_PCT_NAMES[i]
+                )
+                for i in range(len(LMI_BILL_COLS))
+            ]
+        )
+        .collect()
+    )
+
+
+_lmi_bill_share_burden_ri = _lmi_bill_share_with_burden(PATH_MASTER_BILLS_12, cohort_bldg_ids)
+_lmi_bill_share_burden_ny = _lmi_bill_share_with_burden(PATH_MASTER_BILLS_12_NY, cohort_bldg_ids_ny)
+
+for _st, _df in (("RI", _lmi_bill_share_burden_ri), ("NY", _lmi_bill_share_burden_ny)):
+    _n_b = _df.filter(pl.col("is_energy_burdened")).height
+    _n_nb = _df.filter(~pl.col("is_energy_burdened")).height
+    print(
+        f"{_st}: income>0 & four-fuel sum>0: {_df.height:,}  |  "
+        f"burdened (>{BURDEN_THRESHOLD:.0%} of CPI-adjusted income): {_n_b:,}  |  "
+        f"not burdened: {_n_nb:,}",
+    )
+```
+
+## Diagnosing the RI vs. NY energy burden gap
+
+**Cohort:** **LMI + gas-heated** buildings — run **1+2** master bills, **`month == Annual`**, **positive sum of `LMI_BILL_COLS`**, **positive `in.representative_income`** — same frames as `_lmi_bill_share_burden_ri` / `_ny` (computed in the previous chunk). **Burden** is `_bill_sum_four ÷ (income × INCOME_CPI_RATIO)`; **energy burdened** is burden **>** `BURDEN_THRESHOLD` (**6%**). Percentages are **unweighted** shares of buildings (no ResStock weights in these tables). The **headline table** is next; **pooled income deciles** and the **mean bill bridge** appear **after** the LMI bill-mix figures below.
+
+**How to read the headline row:** Energy burden is a **ratio of bills to income**. When **median and mean `in.representative_income` are higher for New York than for Rhode Island** in the table below, while **median and mean total bills are similar or not much lower in NY**, the main driver of Rhode Island’s **higher % above the 6% threshold** and **higher median burden %** is typically **income composition within the LMI cohort**: modeled LMI gas-heated homes in NY sit **higher in nominal income** (still LMI) than their RI counterparts, so the **same or a modestly lower bill** translates into a **lower burden percentage** in NY. Bills still matter, but the headline contrast is **largely a denominator story**—**lower representative income in RI**—not only higher energy charges. The pooled income-decile table later in this notebook holds income bands fixed across states to separate bill effects from that composition effect.
+
+```{python}
+#| label: tbl-burden-ri-ny-headline-summary
+#| tbl-cap: "Headline comparison: burden prevalence, median burden, bills, and income — RI vs. NY (LMI + gas-heated cohort)."
+
+from great_tables import GT, md
+
+_burden_diag_combo = pl.concat(
+    [
+        _lmi_bill_share_burden_ri.with_columns(pl.lit("Rhode Island").alias("State")),
+        _lmi_bill_share_burden_ny.with_columns(pl.lit("New York").alias("State")),
+    ],
+    how="vertical",
+)
+
+_tbl_headline = (
+    _burden_diag_combo.group_by("State")
+    .agg(
+        pl.len().alias("N_buildings"),
+        (100.0 * pl.col("is_energy_burdened").cast(pl.Float64).mean()).alias("pct_burdened"),
+        (100.0 * pl.col("_burden").median()).alias("median_burden_pct"),
+        pl.col("_bill_sum_four").median().alias("median_total_bill"),
+        pl.col("_bill_sum_four").mean().alias("mean_total_bill"),
+        pl.col(INCOME_COL).median().alias("median_income_resstock"),
+        pl.col(INCOME_COL).mean().alias("mean_income_resstock"),
+    )
+    .sort("State", descending=True)
+)
+
+_gt_headline = (
+    GT(_tbl_headline)
+    .tab_header(
+        title="RI vs. NY — headline burden diagnostics",
+        subtitle=md(
+            f"Income is `in.representative_income` (ResStock {RESSTOCK_INCOME_DOLLAR_YEAR}$). "
+            f"Bills are undiscounted sum of `LMI_BILL_COLS` ($/yr). "
+            f"Median/mean burden shown as % of CPI-adjusted income (×{INCOME_CPI_RATIO:.4f})."
+        ),
+    )
+    .fmt_integer(columns="N_buildings")
+    .fmt_number(columns=["pct_burdened", "median_burden_pct"], decimals=1)
+    .fmt_currency(
+        columns=["median_total_bill", "mean_total_bill", "median_income_resstock", "mean_income_resstock"],
+        decimals=0,
+    )
+    .cols_label(
+        N_buildings=md("*N*"),
+        pct_burdened=md("% burdened<br>(>6%)"),
+        median_burden_pct=md("Median<br>burden %"),
+        median_total_bill=md("Median<br>total bill"),
+        mean_total_bill=md("Mean<br>total bill"),
+        median_income_resstock=md("Median<br>income"),
+        mean_income_resstock=md("Mean<br>income"),
+    )
+)
+
+_gt_headline
+```
+
+```{python}
+#| label: print-headline-interpretation
+
+_r = _tbl_headline.filter(pl.col("State") == "Rhode Island").to_dicts()[0]
+_n = _tbl_headline.filter(pl.col("State") == "New York").to_dicts()[0]
+print("\n--- Headline gap (RI minus NY) ---")
+print(
+    f"  % burdened:     {_r['pct_burdened'] - _n['pct_burdened']:+.1f} pp "
+    f"  (RI {_r['pct_burdened']:.1f}%  vs  NY {_n['pct_burdened']:.1f}%)",
+)
+print(
+    f"  Median burden:  {_r['median_burden_pct'] - _n['median_burden_pct']:+.2f} pp of income "
+    f"  (RI {_r['median_burden_pct']:.2f}%  vs  NY {_n['median_burden_pct']:.2f}%)",
+)
+print(
+    f"  Median bill:    ${_r['median_total_bill'] - _n['median_total_bill']:+,.0f}/yr "
+    f"  (RI ${_r['median_total_bill']:,.0f}  vs  NY ${_n['median_total_bill']:,.0f})",
+)
+print(
+    f"  Median income:  ${_r['median_income_resstock'] - _n['median_income_resstock']:+,.0f} "
+    f"(ResStock $; same CPI scaling applies to both)",
+)
+_d_med_bill = float(_r["median_total_bill"] - _n["median_total_bill"])
+_d_med_inc = float(_r["median_income_resstock"] - _n["median_income_resstock"])
+if abs(_d_med_inc) < 500:
+    print(
+        "\n  Note: median incomes are similar; a large burden gap with small income gap "
+        "usually points to the **bill side** (rates, use, fuel mix), not poorer households in-sample.",
+    )
+```
+
+## Representative annual income (RI vs. NY)
+
+Each panel is the distribution of **`in.representative_income`** for the **LMI + gas-heated cohort** (`low_income_gas_bldgs` / `low_income_gas_bldgs_ny`), run **1+2** annual master bills. Values are in **ResStock nominal dollars** (see `RESSTOCK_INCOME_DOLLAR_YEAR`). The **horizontal axis uses the same range in both panels**: upper limit from the **pooled 99.5th percentile** across RI and NY cohorts (rounded up to the nearest $5,000); incomes above that appear in the rightmost bin.
+
+```{python}
+#| label: fig-representative-income-ri-ny
+#| fig-cap: "LMI + gas-heated cohort: distribution of `in.representative_income`, RI vs. NY. Shared x-axis (pooled 99.5th percentile, rounded); y-axis is percent of buildings in that state."
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+_income_dist_ri = low_income_gas_bldgs.select(BLDG_ID, INCOME_COL)
+_income_dist_ny = low_income_gas_bldgs_ny.select(BLDG_ID, INCOME_COL)
+
+_ri_inc = np.asarray(_income_dist_ri[INCOME_COL].to_numpy(), dtype=np.float64)
+_ny_inc = np.asarray(_income_dist_ny[INCOME_COL].to_numpy(), dtype=np.float64)
+_pooled = np.concatenate([_ri_inc, _ny_inc])
+_hi_pct = float(np.percentile(_pooled, 99.5))
+_xmax = float(max(np.ceil(_hi_pct / 5000.0) * 5000.0, 10_000.0))
+_bin_width = max(2500.0, _xmax / 40.0)
+_edges = np.arange(0, _xmax + _bin_width, _bin_width)
+
+fig, axes = plt.subplots(1, 2, figsize=(11, 4.2), sharex=True, sharey=False)
+_body = "IBM Plex Sans"
+_title = "GT Planar"
+for ax, vals, state_name, color, n_b in zip(
+    axes,
+    (_ri_inc, _ny_inc),
+    ("Rhode Island", "New York"),
+    (SB_COLORS["sky"], SB_COLORS["carrot"]),
+    (_ri_inc.size, _ny_inc.size),
+):
+    v = np.clip(vals, 0.0, _xmax)
+    n = int(v.size)
+    if n > 0:
+        w = np.full(n, 100.0 / n, dtype=np.float64)
+        ax.hist(v, bins=_edges, weights=w, color=color, edgecolor="white", linewidth=0.7)
+    ax.set_xlim(0.0, _xmax)
+    ax.set_title(f"{state_name}\n(n = {n_b:,} buildings)", fontsize=12, fontweight="bold", fontfamily=_title)
+    ax.set_ylabel("Percent of buildings (%)", fontsize=11, fontfamily=_body)
+    ax.tick_params(axis="both", labelsize=10)
+    for tl in ax.get_xticklabels() + ax.get_yticklabels():
+        tl.set_fontfamily(_body)
+    ax.grid(axis="y", alpha=0.25, linewidth=0.6)
+    ax.set_axisbelow(True)
+
+
+def _sync_hist_axes_ylim_income(ax0, ax1) -> None:
+    ymax = 0.0
+    for ax in (ax0, ax1):
+        for p in ax.patches:
+            h = p.get_height()
+            if h is not None and np.isfinite(h):
+                ymax = max(ymax, float(h))
+    ytop = ymax * 1.05 if ymax > 0 else 1.0
+    ytop = max(ytop, 0.5)
+    ax0.set_ylim(0.0, ytop)
+    ax1.set_ylim(0.0, ytop)
+
+
+_sync_hist_axes_ylim_income(axes[0], axes[1])
+
+axes[1].set_ylabel("")
+axes[0].set_xlabel(
+    f"Representative annual income (ResStock {RESSTOCK_INCOME_DOLLAR_YEAR}$, run 1+2 annual)",
+    fontsize=11,
+    fontfamily=_body,
+)
+axes[1].set_xlabel(
+    f"Representative annual income (ResStock {RESSTOCK_INCOME_DOLLAR_YEAR}$, run 1+2 annual)",
+    fontsize=11,
+    fontfamily=_body,
+)
+fig.suptitle(
+    "Representative annual income — LMI + gas-heated cohort",
+    fontsize=13,
+    fontweight="bold",
+    fontfamily=_title,
+    y=1.02,
+)
+fig.subplots_adjust(left=0.08, right=0.98, top=0.82, bottom=0.18, wspace=0.18)
+display_svg(fig)
+```
+
+
+## Total annual energy bill (RI vs. NY)
+
+Same **LMI + gas-heated** cohort and **run 1+2** annual master bills as the bill-mix table above. **Total bill** is the sum of undiscounted **`LMI_BILL_COLS`** (electricity, gas, oil, propane); only buildings with **positive** four-fuel sum are included (same filter as the bill-mix table). The table summarizes the distribution of that total in dollars; the figure is two histograms (RI and NY) with **shared x-axis** limits from the **pooled 99.5th percentile** (rounded to the nearest $100); bar heights are **percent of buildings** in that state (each panel sums to 100%).
+
+```{python}
+#| label: tbl-ri-ny-total-bill-summary
+#| tbl-cap: "LMI + gas-heated cohort. Distribution summary of total annual undiscounted energy bill (sum of LMI_BILL_COLS, $/yr). RI vs. NY; run 1+2 annual."
+
+from great_tables import GT, md
+
+
+def _lmi_total_bill_annual_from_dir(path: str) -> pl.DataFrame:
+    return (
+        pl.scan_parquet(path, hive_partitioning=True)
+        .filter(pl.col("month") == ANNUAL_MONTH)
+        .select(BLDG_ID, *LMI_BILL_COLS)
+        .with_columns(
+            pl.sum_horizontal([pl.col(c).fill_null(0) for c in LMI_BILL_COLS]).alias("_bill_sum_four"),
+        )
+        .filter(pl.col("_bill_sum_four") > 0)
+        .collect()
+    )
+
+
+_tot_ann_bill_ri = _lmi_total_bill_annual_from_dir(PATH_MASTER_BILLS_12).filter(
+    pl.col(BLDG_ID).is_in(cohort_bldg_ids),
+)
+_tot_ann_bill_ny = _lmi_total_bill_annual_from_dir(PATH_MASTER_BILLS_12_NY).filter(
+    pl.col(BLDG_ID).is_in(cohort_bldg_ids_ny),
+)
+
+_ri_tot = _tot_ann_bill_ri["_bill_sum_four"]
+_ny_tot = _tot_ann_bill_ny["_bill_sum_four"]
+
+_tbl_total_bill_summary = pl.DataFrame({
+    "Statistic": ["Mean", "Median", "Q25", "Q75"],
+    "Rhode_Island": [
+        float(_ri_tot.mean()),
+        float(_ri_tot.median()),
+        float(_ri_tot.quantile(0.25)),
+        float(_ri_tot.quantile(0.75)),
+    ],
+    "New_York": [
+        float(_ny_tot.mean()),
+        float(_ny_tot.median()),
+        float(_ny_tot.quantile(0.25)),
+        float(_ny_tot.quantile(0.75)),
+    ],
+})
+
+_gt_total_bill_summary = (
+    GT(_tbl_total_bill_summary)
+    .tab_header(
+        title="Total annual energy bill ($/yr)",
+        subtitle=md(
+            f"LMI + gas-heated cohort. RI *N* = {_tot_ann_bill_ri.height:,} &nbsp;·&nbsp; "
+            f"NY *N* = {_tot_ann_bill_ny.height:,} — sum of electricity + gas + oil + propane bills."
+        ),
+    )
+    .fmt_currency(columns=["Rhode_Island", "New_York"], decimals=0)
+    .cols_label(
+        Statistic="",
+        Rhode_Island="Rhode Island",
+        New_York="New York",
+    )
+    .cols_align(align="right", columns=["Rhode_Island", "New_York"])
+)
+
+_gt_total_bill_summary
+```
+
+```{python}
+#| label: fig-total-bill-distribution-ri-ny
+#| fig-cap: "LMI + gas-heated cohort: distribution of total annual undiscounted energy bill (sum of LMI_BILL_COLS), RI vs. NY. Shared x-axis (pooled 99.5th percentile, rounded to $100); y-axis is percent of buildings in that state."
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+
+def _lmi_total_bill_annual_from_dir(path: str) -> pl.DataFrame:
+    return (
+        pl.scan_parquet(path, hive_partitioning=True)
+        .filter(pl.col("month") == ANNUAL_MONTH)
+        .select(BLDG_ID, *LMI_BILL_COLS)
+        .with_columns(
+            pl.sum_horizontal([pl.col(c).fill_null(0) for c in LMI_BILL_COLS]).alias("_bill_sum_four"),
+        )
+        .filter(pl.col("_bill_sum_four") > 0)
+        .collect()
+    )
+
+
+_tot_ann_bill_ri_fig = _lmi_total_bill_annual_from_dir(PATH_MASTER_BILLS_12).filter(
+    pl.col(BLDG_ID).is_in(cohort_bldg_ids),
+)
+_tot_ann_bill_ny_fig = _lmi_total_bill_annual_from_dir(PATH_MASTER_BILLS_12_NY).filter(
+    pl.col(BLDG_ID).is_in(cohort_bldg_ids_ny),
+)
+
+_ri_b = np.asarray(_tot_ann_bill_ri_fig["_bill_sum_four"].to_numpy(), dtype=np.float64)
+_ny_b = np.asarray(_tot_ann_bill_ny_fig["_bill_sum_four"].to_numpy(), dtype=np.float64)
+_pool_b = np.concatenate([_ri_b[np.isfinite(_ri_b) & (_ri_b >= 0)], _ny_b[np.isfinite(_ny_b) & (_ny_b >= 0)]])
+_hi_b = float(np.percentile(_pool_b, 99.5)) if _pool_b.size else 10_000.0
+_hi_b = max(_hi_b, 500.0)
+_xmax_b = float(max(np.ceil(_hi_b / 100.0) * 100.0, 1_000.0))
+_n_bins_b = min(45, max(20, int(_xmax_b / 250.0)))
+_edges_b = np.linspace(0.0, _xmax_b, _n_bins_b + 1)
+
+fig_b2, axes_b2 = plt.subplots(1, 2, figsize=(11, 4.2), sharex=True, sharey=False)
+_body_b = "IBM Plex Sans"
+_title_b = "GT Planar"
+for ax, vals, state_name, color, n_b in zip(
+    axes_b2,
+    (_ri_b, _ny_b),
+    ("Rhode Island", "New York"),
+    (SB_COLORS["sky"], SB_COLORS["carrot"]),
+    (_ri_b.size, _ny_b.size),
+):
+    v = np.clip(vals, 0.0, _xmax_b)
+    n = int(v.size)
+    if n > 0:
+        w = np.full(n, 100.0 / n, dtype=np.float64)
+        ax.hist(v, bins=_edges_b, weights=w, color=color, edgecolor="white", linewidth=0.7)
+    ax.set_xlim(0.0, _xmax_b)
+    ax.set_title(f"{state_name}\n(n = {n_b:,} buildings)", fontsize=12, fontweight="bold", fontfamily=_title_b)
+    ax.set_ylabel("Percent of buildings (%)", fontsize=11, fontfamily=_body_b)
+    ax.tick_params(axis="both", labelsize=10)
+    for tl in ax.get_xticklabels() + ax.get_yticklabels():
+        tl.set_fontfamily(_body_b)
+    ax.grid(axis="y", alpha=0.25, linewidth=0.6)
+    ax.set_axisbelow(True)
+
+
+def _sync_hist_axes_ylim_bill(ax0, ax1) -> None:
+    ymax = 0.0
+    for ax in (ax0, ax1):
+        for p in ax.patches:
+            h = p.get_height()
+            if h is not None and np.isfinite(h):
+                ymax = max(ymax, float(h))
+    ytop = ymax * 1.05 if ymax > 0 else 1.0
+    ytop = max(ytop, 0.5)
+    ax0.set_ylim(0.0, ytop)
+    ax1.set_ylim(0.0, ytop)
+
+
+_sync_hist_axes_ylim_bill(axes_b2[0], axes_b2[1])
+
+axes_b2[1].set_ylabel("")
+axes_b2[0].set_xlabel(
+    "Total annual bill — elec + gas + oil + propane ($/yr, undiscounted run 1+2)",
+    fontsize=11,
+    fontfamily=_body_b,
+)
+axes_b2[1].set_xlabel(
+    "Total annual bill — elec + gas + oil + propane ($/yr, undiscounted run 1+2)",
+    fontsize=11,
+    fontfamily=_body_b,
+)
+fig_b2.suptitle(
+    "Total annual energy bill — LMI + gas-heated cohort",
+    fontsize=13,
+    fontweight="bold",
+    fontfamily=_title_b,
+    y=1.02,
+)
+fig_b2.subplots_adjust(left=0.08, right=0.98, top=0.82, bottom=0.18, wspace=0.18)
+display_svg(fig_b2)
+```
+
+### Summary tables: fuel shares (RI vs. NY)
+
+**Bill shares** are **percent of the four-fuel annual bill** (`100 ×` that fuel’s `LMI_BILL_COLS` column `÷` sum of the four), for cohort buildings with **positive** bill sum (run 1+2 annual). **Site shares** are **percent of four-fuel site kWh** (same construction as the regression section), for cohort buildings with **positive** summed site kWh. Units are **percentage points** (0–100 scale).
+
+```{python}
+#| label: tbl-ri-ny-bill-pct-summary
+#| tbl-cap: "LMI + gas-heated cohort. Distribution summary of each fuel’s share of the four-fuel annual bill (%). RI vs. NY; run 1+2, annual, undiscounted bills."
+
+from great_tables import GT, md
+
+
+def _lmi_bill_share_annual_from_dir(path: str) -> pl.DataFrame:
+    return (
+        pl.scan_parquet(path, hive_partitioning=True)
+        .filter(pl.col("month") == ANNUAL_MONTH)
+        .select(BLDG_ID, *LMI_BILL_COLS)
+        .with_columns(
+            pl.sum_horizontal([pl.col(c).fill_null(0) for c in LMI_BILL_COLS]).alias("_bill_sum_four"),
+        )
+        .filter(pl.col("_bill_sum_four") > 0)
+        .with_columns(
+            [
+                (100 * pl.col(LMI_BILL_COLS[i]).fill_null(0) / pl.col("_bill_sum_four")).alias(
+                    _LMI_BILL_PCT_NAMES[i]
+                )
+                for i in range(len(LMI_BILL_COLS))
+            ]
+        )
+        .collect()
+    )
+
+
+_lmi_bill_share_annual = _lmi_bill_share_annual_from_dir(PATH_MASTER_BILLS_12).filter(
+    pl.col(BLDG_ID).is_in(cohort_bldg_ids),
+)
+_lmi_bill_share_annual_ny = _lmi_bill_share_annual_from_dir(PATH_MASTER_BILLS_12_NY).filter(
+    pl.col(BLDG_ID).is_in(cohort_bldg_ids_ny),
+)
+
+
+def _fuel_share_summary_rows(
+    df_ri: pl.DataFrame,
+    df_ny: pl.DataFrame,
+    cols: tuple[str, ...],
+    labels: tuple[str, ...],
+) -> pl.DataFrame:
+    rows: list[dict[str, float | str]] = []
+    for c, lab in zip(cols, labels, strict=True):
+        rows.append({
+            "Fuel": lab,
+            "RI_mean_pct": float(df_ri[c].mean()),
+            "RI_median_pct": float(df_ri[c].median()),
+            "RI_q25_pct": float(df_ri[c].quantile(0.25)),
+            "RI_q75_pct": float(df_ri[c].quantile(0.75)),
+            "NY_mean_pct": float(df_ny[c].mean()),
+            "NY_median_pct": float(df_ny[c].median()),
+            "NY_q25_pct": float(df_ny[c].quantile(0.25)),
+            "NY_q75_pct": float(df_ny[c].quantile(0.75)),
+        })
+    return pl.DataFrame(rows)
+
+
+_tbl_bill_pct_ri_ny = _fuel_share_summary_rows(
+    _lmi_bill_share_annual,
+    _lmi_bill_share_annual_ny,
+    _LMI_BILL_PCT_NAMES,
+    _LMI_BILL_LABELS,
+)
+
+_gt_bill_pct_ri_ny = (
+    GT(_tbl_bill_pct_ri_ny)
+    .tab_header(
+        title="Bill mix: each fuel as % of four-fuel annual total",
+        subtitle=md(
+            f"LMI + gas-heated cohort. RI *N* = {_lmi_bill_share_annual.height:,} &nbsp;·&nbsp; NY *N* = {_lmi_bill_share_annual_ny.height:,} "
+            "(sum of `LMI_BILL_COLS` &gt; 0)."
+        ),
+    )
+    .fmt_number(
+        columns=[
+            "RI_mean_pct",
+            "RI_median_pct",
+            "RI_q25_pct",
+            "RI_q75_pct",
+            "NY_mean_pct",
+            "NY_median_pct",
+            "NY_q25_pct",
+            "NY_q75_pct",
+        ],
+        decimals=1,
+    )
+    .cols_label(
+        RI_mean_pct=md("RI<br>mean"),
+        RI_median_pct=md("RI<br>median"),
+        RI_q25_pct=md("RI<br>Q25"),
+        RI_q75_pct=md("RI<br>Q75"),
+        NY_mean_pct=md("NY<br>mean"),
+        NY_median_pct=md("NY<br>median"),
+        NY_q25_pct=md("NY<br>Q25"),
+        NY_q75_pct=md("NY<br>Q75"),
+    )
+    .cols_align(
+        align="right",
+        columns=[
+            "RI_mean_pct",
+            "RI_median_pct",
+            "RI_q25_pct",
+            "RI_q75_pct",
+            "NY_mean_pct",
+            "NY_median_pct",
+            "NY_q25_pct",
+            "NY_q75_pct",
+        ],
+    )
+    .tab_source_note(source_note="All values are percent of annual bill (electricity + gas + oil + propane), $/yr.")
+)
+
+_gt_bill_pct_ri_ny
+```
+
+```{python}
+#| label: tbl-ri-ny-site-pct-summary
+#| tbl-cap: "LMI + gas-heated cohort. Distribution summary of each fuel’s share of four-fuel site energy (%). RI vs. NY; ResStock upgrade 0 annual load curves."
+
+
+def _site_energy_fuel_shares_by_bldg(lf: pl.LazyFrame) -> pl.DataFrame:
+    e = LOAD_CURVE_ANNUAL_NET_ELECTRICITY_CONSUMPTION_COL
+    g = LOAD_CURVE_ANNUAL_NAT_GAS_TOTAL
+    p = LOAD_CURVE_ANNUAL_PROPANE_TOTAL
+    fo = LOAD_CURVE_ANNUAL_FUEL_OIL_TOTAL
+    return (
+        lf.select(BLDG_ID, e, g, p, fo)
+        .with_columns(
+            pl.col(e).fill_null(0).alias("_e"),
+            pl.col(g).fill_null(0).alias("_g"),
+            pl.col(p).fill_null(0).alias("_p"),
+            pl.col(fo).fill_null(0).alias("_fo"),
+        )
+        .with_columns((pl.col("_e") + pl.col("_g") + pl.col("_p") + pl.col("_fo")).alias("_tot_site_kwh"))
+        .filter(pl.col("_tot_site_kwh") > 0)
+        .with_columns(
+            (100.0 * pl.col("_e") / pl.col("_tot_site_kwh")).alias("pct_elec_site_energy"),
+            (100.0 * pl.col("_g") / pl.col("_tot_site_kwh")).alias("pct_gas_site_energy"),
+            (100.0 * pl.col("_p") / pl.col("_tot_site_kwh")).alias("pct_propane_site_energy"),
+            (100.0 * pl.col("_fo") / pl.col("_tot_site_kwh")).alias("pct_fuel_oil_site_energy"),
+            pl.col("_e").alias("kwh_net_electricity"),
+            pl.col("_g").alias("kwh_natural_gas_total"),
+            pl.col("_p").alias("kwh_propane_total"),
+            pl.col("_fo").alias("kwh_fuel_oil_total"),
+        )
+        .select(
+            BLDG_ID,
+            "pct_elec_site_energy",
+            "pct_gas_site_energy",
+            "pct_propane_site_energy",
+            "pct_fuel_oil_site_energy",
+            "kwh_net_electricity",
+            "kwh_natural_gas_total",
+            "kwh_propane_total",
+            "kwh_fuel_oil_total",
+        )
+        .collect()
+    )
+
+
+_ri_site_fuel_shares = _site_energy_fuel_shares_by_bldg(load_curve_annual_ri).filter(
+    pl.col(BLDG_ID).is_in(cohort_bldg_ids),
+)
+_ny_site_fuel_shares = _site_energy_fuel_shares_by_bldg(load_curve_annual_ny).filter(
+    pl.col(BLDG_ID).is_in(cohort_bldg_ids_ny),
+)
+
+_SITE_PCT_COLS = (
+    "pct_elec_site_energy",
+    "pct_gas_site_energy",
+    "pct_propane_site_energy",
+    "pct_fuel_oil_site_energy",
+)
+_SITE_PCT_LABELS = ("Electricity", "Natural gas", "Propane", "Fuel oil")
+
+_tbl_site_pct_ri_ny = _fuel_share_summary_rows(
+    _ri_site_fuel_shares,
+    _ny_site_fuel_shares,
+    _SITE_PCT_COLS,
+    _SITE_PCT_LABELS,
+)
+
+_gt_site_pct_ri_ny = (
+    GT(_tbl_site_pct_ri_ny)
+    .tab_header(
+        title="Site energy mix: each fuel as % of four-fuel site kWh",
+        subtitle=md(
+            f"LMI + gas-heated cohort. RI *N* = {_ri_site_fuel_shares.height:,} &nbsp;·&nbsp; NY *N* = {_ny_site_fuel_shares.height:,} "
+            "(positive sum of net elec + gas + propane + fuel oil site kWh)."
+        ),
+    )
+    .fmt_number(
+        columns=[
+            "RI_mean_pct",
+            "RI_median_pct",
+            "RI_q25_pct",
+            "RI_q75_pct",
+            "NY_mean_pct",
+            "NY_median_pct",
+            "NY_q25_pct",
+            "NY_q75_pct",
+        ],
+        decimals=1,
+    )
+    .cols_label(
+        RI_mean_pct=md("RI<br>mean"),
+        RI_median_pct=md("RI<br>median"),
+        RI_q25_pct=md("RI<br>Q25"),
+        RI_q75_pct=md("RI<br>Q75"),
+        NY_mean_pct=md("NY<br>mean"),
+        NY_median_pct=md("NY<br>median"),
+        NY_q25_pct=md("NY<br>Q25"),
+        NY_q75_pct=md("NY<br>Q75"),
+    )
+    .cols_align(
+        align="right",
+        columns=[
+            "RI_mean_pct",
+            "RI_median_pct",
+            "RI_q25_pct",
+            "RI_q75_pct",
+            "NY_mean_pct",
+            "NY_median_pct",
+            "NY_q25_pct",
+            "NY_q75_pct",
+        ],
+    )
+    .tab_source_note(source_note="All values are percent of annual site kWh (net electricity + gas total + propane total + fuel oil total).")
+)
+
+_gt_site_pct_ri_ny
+```
+
+## Conclusion
+
+The **total annual energy bill** distributions for this cohort line up fairly closely between Rhode Island and New York (see the summary table and histogram above), and the **bill mix** and **site energy mix** tables do not show a large, systematic shift in how fuels show up in bills versus site kWh. By contrast, **representative annual income** in the same LMI + gas-heated cohort is **higher in New York** than in Rhode Island (mean and median both sit above Rhode Island in the income figure and headline diagnostics earlier in the notebook).
+
+Energy burden is **annual energy spending divided by income**. When bills are similar but incomes are lower, **more buildings cross a fixed burden threshold** (here, 6%) even if per-building energy costs are not dramatically different. That pattern is a strong reason Rhode Island would show a **higher share of energy-burdened `bldg_id`s** than New York in these tables, without needing a large gap in modeled bills.
+
+Both cohorts are defined with the same logical filter — **`is_lmi_any` in the master bills, gas heat, positive income** — but that flag is produced using **state-specific LMI rules** in the bill pipeline. So “LMI” does not mean an identical income cut or enrollment rule in RI versus NY; it means each building cleared that state’s LMI classification. **Differences in how New York and Rhode Island LMI buildings are classified**, together with **lower representative incomes among RI LMI buildings in this sample**, plausibly explain much of the gap in burden shares relative to differences in total bills alone.

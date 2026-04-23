@@ -1586,10 +1586,9 @@ def plot_quadrant_bar_by_utility(
             ax.barh(bp, width, left=left, height=_QBU_BAR_HEIGHT,
                     color=QUADRANT_COLORS[q], edgecolor="none", align="edge")
             if width >= 3:
-                ax.text(left + width / 2, bp + _QBU_BAR_HEIGHT / 2, f"{width:.1f}%",
                         ha="center", va="center", color="white",
                         fontsize=10, fontweight="bold", fontfamily="IBM Plex Sans")
-            left += width
+                        fontsize=10, fontweight="bold", fontfamily="IBM Plex Sans")
 
     for bp, label in zip(bar_positions, bar_scenario_labels):
         ax.text(101, bp + _QBU_BAR_HEIGHT / 2, label,
@@ -1607,7 +1606,7 @@ def plot_quadrant_bar_by_utility(
             mid = cum + first_pct[q] / 2
             cum += first_pct[q]
             if first_pct[q] < 2:
-                continue
+            if first_pct[q] < 2:
             ax.text(mid, label_y, QUADRANT_LABELS[q],
                     ha="center", va="bottom", fontsize=8,
                     fontweight="bold", color=QUADRANT_COLORS[q],
@@ -5477,32 +5476,30 @@ def plot_burden_bar(
     )
 ```
 
-### With modeled LMI discount enrollment
+### With current LMI discount enrollment (~40%)
 
-Energy burdens in the first three scenarios use the bill columns for
-``LMI_CURRENT_ENROLLMENT_PCT`` (40 or 100). The fourth scenario contrasts universal
-100% enrollment (``_lmi_100`` columns) against that modeled tier.
+An estimated 40% of LMI households currently receive LMI discounts on their utility bills. We recompute energy burdens
+using the `_lmi_40` bill columns, which apply the discount to those households who are currently enrolled.
 
 ```{python}
 #| label: burden-compute-lmi-current
 
 below_current_lmi40, above_current_lmi40 = burden_shares(
-    bills_current, cohort_bldg_ids, income_df, bill_cols=ACTIVE_BILL_COLS,
+    bills_current, cohort_bldg_ids, income_df, bill_cols=LMI_40_BILL_COLS,
 )
 below_hp_default_lmi40, above_hp_default_lmi40 = burden_shares(
-    bills_hp, cohort_bldg_ids, income_df, bill_cols=ACTIVE_BILL_COLS,
+    bills_hp, cohort_bldg_ids, income_df, bill_cols=LMI_40_BILL_COLS,
 )
 below_hp_seasonal_lmi40, above_hp_seasonal_lmi40 = burden_shares(
-    bills_hprate_hp, cohort_bldg_ids, income_df, bill_cols=ACTIVE_BILL_COLS,
+    bills_hprate_hp, cohort_bldg_ids, income_df, bill_cols=LMI_40_BILL_COLS,
 )
 below_hp_seasonal_lmi100, above_hp_seasonal_lmi100 = burden_shares(
     bills_hprate_hp, cohort_bldg_ids, income_df, bill_cols=LMI_100_BILL_COLS,
 )
 
-_pct = LMI_CURRENT_ENROLLMENT_PCT
-print(f"Current HVAC ({_pct}% enrolled):         {above_current_lmi40:.1f}% above 6%")
-print(f"HP + default rates ({_pct}% enrolled):   {above_hp_default_lmi40:.1f}% above 6%")
-print(f"HP + seasonal rates ({_pct}% enrolled):  {above_hp_seasonal_lmi40:.1f}% above 6%")
+print(f"Current HVAC (40% enrolled):         {above_current_lmi40:.1f}% above 6%")
+print(f"HP + default rates (40% enrolled):   {above_hp_default_lmi40:.1f}% above 6%")
+print(f"HP + seasonal rates (40% enrolled):  {above_hp_seasonal_lmi40:.1f}% above 6%")
 print(f"HP + seasonal rates (100% enrolled): {above_hp_seasonal_lmi100:.1f}% above 6%")
 
 report_vars["pct_burdened_hp_seasonal_lmi100"] = above_hp_seasonal_lmi100 / 100
@@ -5512,17 +5509,10 @@ report_vars["pct_burdened_hp_seasonal_lmi100"] = above_hp_seasonal_lmi100 / 100
 #| label: fig-burden-bar-lmi-current
 #| fig-cap: "Share of low-income gas-heated households above the 6% energy burden threshold"
 
-_p_burden_lmi = plot_burden_bar(
+plot_burden_bar(
     [below_current_lmi40, below_hp_default_lmi40, below_hp_seasonal_lmi40, below_hp_seasonal_lmi100],
     [above_current_lmi40, above_hp_default_lmi40, above_hp_seasonal_lmi40, above_hp_seasonal_lmi100],
 )
-_fig_burden_lmi = _p_burden_lmi.draw()
-add_matplotlib_footnote(
-    _fig_burden_lmi,
-    LMI_CAPTION_SUFFIX
-    + " Rightmost bar: universal 100% enrollment (_lmi_100 columns) on the HP seasonal rate.",
-)
-display_svg(_fig_burden_lmi)
 ```
 
 #### By utility
@@ -5539,9 +5529,9 @@ for code in UTIL_ORDER_CODES:
         continue
     util_income = income_df.filter(pl.col(BLDG_ID).is_in(util_bldg_ids))
     burden_by_utility[code] = {
-        "current": burden_shares(bills_current, util_bldg_ids, util_income, bill_cols=ACTIVE_BILL_COLS),
-        "hp_default": burden_shares(bills_hp, util_bldg_ids, util_income, bill_cols=ACTIVE_BILL_COLS),
-        "hp_seasonal": burden_shares(bills_hprate_hp, util_bldg_ids, util_income, bill_cols=ACTIVE_BILL_COLS),
+        "current": burden_shares(bills_current, util_bldg_ids, util_income, bill_cols=LMI_40_BILL_COLS),
+        "hp_default": burden_shares(bills_hp, util_bldg_ids, util_income, bill_cols=LMI_40_BILL_COLS),
+        "hp_seasonal": burden_shares(bills_hprate_hp, util_bldg_ids, util_income, bill_cols=LMI_40_BILL_COLS),
         "hp_seasonal_lmi100": burden_shares(bills_hprate_hp, util_bldg_ids, util_income, bill_cols=LMI_100_BILL_COLS),
     }
 
@@ -5562,20 +5552,12 @@ _BURDEN_LABEL_ABOVE = "ENERGY BURDEN ABOVE 6%"
 _BURDEN_LABEL_BELOW = "ENERGY BURDEN BELOW 6%"
 
 _BURDEN_UTIL_SCENARIO_KEYS = ["current", "hp_default", "hp_seasonal", "hp_seasonal_lmi100"]
-if INCLUDE_LMI_DISCOUNT:
-    _BURDEN_UTIL_SCENARIO_LABELS = [
-        f"Current HVAC\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
-        f"Heat Pump\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
-        f"Heat Pump\nHP Seasonal Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
-        "Heat Pump\nHP Seasonal Rates\n100% LMI Discounts",
-    ]
-else:
-    _BURDEN_UTIL_SCENARIO_LABELS = [
-        "Current HVAC\nDefault Rates\n(undiscounted bills)",
-        "Heat Pump\nDefault Rates\n(undiscounted bills)",
-        "Heat Pump\nHP Seasonal Rates\n(undiscounted bills)",
-        "Heat Pump\nHP Seasonal Rates\n100% LMI Discounts",
-    ]
+_BURDEN_UTIL_SCENARIO_LABELS = [
+    f"Current HVAC\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+    f"Heat Pump\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+    f"Heat Pump\nHP Seasonal Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+    "Heat Pump\nHP Seasonal Rates\n100% LMI Discounts",
+]
 
 
 def plot_burden_bar_by_utility(
@@ -5682,9 +5664,10 @@ def plot_burden_bar_by_utility(
     display_svg(fig)
 ```
 
+
 ```{python}
 #| label: fig-burden-bar-lmi-current-by-utility
-#| fig-cap: "Share of low-income gas-heated households above the 6% energy burden threshold by utility, with modeled LMI discount enrollment (see constants cell)."
+#| fig-cap: "Share of low-income gas-heated households above the 6% energy burden threshold by utility, with current LMI discount enrollment (~40%)"
 
 plot_burden_bar_by_utility(
     burden_by_utility, UTIL_NAMES,

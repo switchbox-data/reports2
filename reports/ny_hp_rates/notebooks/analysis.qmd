@@ -193,6 +193,11 @@ ACTIVE_BILL_COLS = LMI_ENROLLED_BILL_COLS if INCLUDE_LMI_DISCOUNT else LMI_BILL_
 # alternatives (no LMI / ~40% / ~100%) sit under each affected chunk. After changing
 # ``INCLUDE_LMI_DISCOUNT`` or ``LMI_CURRENT_ENROLLMENT_PCT`` (40 vs 100), update those
 # fig-caps to match so prose matches the bill columns in the plots.
+# NOTE: chunk ``fig-quadrant-bar-natgas-state-state-lmi-current`` uses a custom
+# fig-cap ("40% of LMI households are enrolled in the utilities' energy
+# affordability program...") that hardcodes the 40% LMI-on assumption and has
+# no commented alternatives. If you flip ``INCLUDE_LMI_DISCOUNT`` or set
+# ``LMI_CURRENT_ENROLLMENT_PCT = 100``, update that fig-cap by hand.
 UTIL_NAMES = {  # state-dependent: swap when switching states
     "cenhud": "Central Hudson",
     "coned": "Con Edison",
@@ -1912,6 +1917,17 @@ report_vars["pct_natgas_lose_1k_default_lmi40"] = _lmi40_def_lose_1k / _lmi40_de
 ```{python}
 #| label: fig-quadrant-bar-natgas-state-state-lmi-current
 #| fig-cap: "Change in total annual energy bills (electricity + natural gas) for natural gas-heated households that switch to heat pumps (NY, statewide). Assumes 40% of LMI households are enrolled in the utilities’ energy affordability program before and after switching to a heat pump."
+
+_title_natgas_state_lmi: list[tuple[str, str]] = [
+    ("How bills would change for ", "#000000"),
+    ("natural gas", "#7A8A10"),
+    (" heated homes after switching to ", "#000000"),
+    ("heat pumps", "#c47600"),
+]
+if INCLUDE_LMI_DISCOUNT:
+    _title_natgas_state_lmi.append(
+        (f"\n(~{LMI_CURRENT_ENROLLMENT_PCT}% LMI discounts)", "#000000"),
+    )
 
 plot_quadrant_bar(
     [("Natural gas", natgas_state_lmi_enrolled)],
@@ -4823,7 +4839,7 @@ if INCLUDE_TOU:
     natgas_tou_state = delta_tou_state.filter(pl.col("heats_with_natgas")).select("delta", "weight")
 
     delta_tou_state_lmi40 = _lmi_delta_state(
-        bills_current, bills_tou_hp, LMI_40_BILL_COLS, LMI_40_BILL_COLS,
+        bills_current, bills_tou_hp, ACTIVE_BILL_COLS, ACTIVE_BILL_COLS,
     )
     natgas_tou_state_lmi40 = (
         delta_tou_state_lmi40
@@ -4991,7 +5007,7 @@ report_vars["pct_natgas_lose_1k_hprate_lmi40"] = _lmi40_lose_1k / _lmi40_total
 # as a positive “extra savings vs. seasonal” figure — same LMI ~40% bill columns as the save shares.
 if INCLUDE_TOU:
     _extra_vs_sea = (
-        delta_switch_state_lmi40.join(
+        delta_switch_state_lmi_enrolled.join(
             delta_tou_state_lmi40.select(
                 BLDG_ID,
                 pl.col("bill_after").alias("bill_tou_lmi40"),

@@ -104,6 +104,49 @@ def _prune_quarto_intermediates(out_dir: Path) -> None:
             f.unlink()
 
 
+# File resources (SVGs, PNGs, …) that Pandoc links into the ICML appear as
+# ``LinkResourceURI="file:<relative-path>"`` attributes.  Anything in the
+# figure-icml tree that *isn't* in that set is a leftover — most commonly
+# one of the 1x1 carrier SVGs that ``display_gt`` emits to smuggle native
+# ICML ``<Table>`` XML through Quarto's embed pipeline (our ``icml_gt``
+# filter reads them off disk, decodes the embedded XML, and replaces the
+# link with a raw ICML block, leaving the SVG unreferenced on disk).
+_LINK_RESOURCE_RE = re.compile(r'LinkResourceURI="file:([^"]+)"')
+
+
+def _prune_orphan_figure_assets(out_dir: Path, icml_text: str) -> int:
+    """Delete figure-icml assets not referenced by the final ICML.
+
+    Returns the count deleted.  Safe: we only touch files under
+    ``index_files/figure-icml/``; anything still referenced stays put.
+    """
+    fig_dir = out_dir / "index_files" / "figure-icml"
+    if not fig_dir.is_dir():
+        return 0
+
+    referenced: set[Path] = set()
+    for m in _LINK_RESOURCE_RE.finditer(icml_text):
+        uri = m.group(1)
+        try:
+            referenced.add((out_dir / uri).resolve())
+        except OSError:
+            continue
+
+    n_removed = 0
+    for asset in fig_dir.iterdir():
+        if not asset.is_file():
+            continue
+        try:
+            resolved = asset.resolve()
+        except OSError:
+            continue
+        if resolved in referenced:
+            continue
+        asset.unlink()
+        n_removed += 1
+    return n_removed
+
+
 _SVG_WIDTH_RE = re.compile(r'(<svg\b[^>]*?)\bwidth="([0-9.]+)pt"')
 _SVG_HEIGHT_RE = re.compile(r'(<svg\b[^>]*?)\bheight="([0-9.]+)pt"')
 
@@ -214,6 +257,10 @@ def typeset(qmd_path: Path) -> None:
                 )
         if changed:
             output_path.write_text(icml_text, encoding="utf-8")
+
+        n_orphans = _prune_orphan_figure_assets(out, icml_text)
+        if n_orphans:
+            print(f"📐 Pruned {n_orphans} orphan figure asset(s) (GT table carriers, etc.)")
 
     print(f"✅ Typeset complete: {output_path}")
 

@@ -8,7 +8,11 @@ that can be dropped onto Google Drive.  Post-processing steps:
   ``math/`` directory to ``icml/math/`` alongside the ICML.
 - Runs icml_sidenotes conversion if the ICML contains footnotes.
 - Runs icml_crossrefs conversion to turn ``@sec-*`` links into live InDesign
-  cross-references (page numbers).
+  cross-references (page numbers). Disabled by default — set
+  ``SWITCHBOX_ICML_CROSSREFS=1`` to enable. InDesign 2024+ currently rejects
+  the crossref rewrite with a "No element found" error on placement; until
+  that's tracked down, the raw ``HyperlinkTextSource`` emitted by pandoc is
+  what ships.
 
 Usage (from a report directory)::
 
@@ -119,7 +123,10 @@ def typeset(qmd_path: Path) -> None:
             icml_text = icml_sidenotes.convert(icml_text)
             changed = True
             print(f"📐 Converted footnotes to sidenotes in {output_path}")
-        if "HyperlinkTextDestination/#sec-" in icml_text:
+        # Crossref rewrite is opt-in: InDesign currently rejects the output
+        # with "No element found" on placement. Set SWITCHBOX_ICML_CROSSREFS=1
+        # to re-enable while iterating on icml_crossrefs.py.
+        if os.environ.get("SWITCHBOX_ICML_CROSSREFS") == "1" and "HyperlinkTextDestination/#sec-" in icml_text:
             before = icml_text.count("<CrossReferenceSource")
             icml_text = icml_crossrefs.convert(icml_text)
             added = icml_text.count("<CrossReferenceSource") - before

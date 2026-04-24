@@ -6,10 +6,12 @@ them faithfully.  The helpers here produce outputs that survive the
 embed pipeline so ``{{< embed >}}`` can be used instead of file-based
 workarounds.
 
-* **``display_figure``** — for matplotlib figures: SVG for HTML, high-res
-  PNG for DOCX/ICML.  ``display_svg`` is a backwards-compatible alias.
-* **``display_gt``** — for Great Tables (``text/html`` → base64-decoded HTML
-  for HTML output; high-res PNG for ICML/non-HTML output).
+* **``display_figure``** — for matplotlib figures: SVG for HTML and ICML,
+  high-res PNG for DOCX (to dodge Pandoc's fuzzy 96-DPI rsvg-convert).
+  ``display_svg`` is a backwards-compatible alias.
+* **``display_gt``** — for Great Tables: base64-decoded HTML for HTML output,
+  high-res PNG for DOCX/ICML (GT markup doesn't survive Pandoc's path to
+  either format).
 """
 
 from __future__ import annotations
@@ -27,19 +29,31 @@ if TYPE_CHECKING:
 
 
 def _render_as_raster() -> bool:
-    """Return True when targeting a non-HTML format (DOCX, ICML).
+    """Return True when GT tables must be rasterized (DOCX or ICML).
 
     Checks for ``SWITCHBOX_GT_AS_IMAGE=1`` or ``SWITCHBOX_TYPESET=1``.
     Set by ``lib.just.typeset`` (ICML) and by the ``just draft`` recipe
-    (DOCX).  Used by both ``display_figure`` (SVG → PNG) and
-    ``display_gt`` (HTML → PNG) to produce raster output that embeds
-    cleanly in Word and InDesign.
+    (DOCX).  Great Tables' HTML output doesn't survive Pandoc's path to
+    either Word or ICML, so ``display_gt`` falls back to a PNG screenshot
+    in both cases.
     """
     return os.environ.get("SWITCHBOX_GT_AS_IMAGE") == "1" or os.environ.get("SWITCHBOX_TYPESET") == "1"
 
 
+def _render_figures_as_raster() -> bool:
+    """Return True when matplotlib figures must be rasterized (DOCX only).
+
+    Set by ``just draft`` via ``SWITCHBOX_GT_AS_IMAGE=1`` to work around
+    Pandoc's default 96-DPI ``rsvg-convert`` pipeline into DOCX, which
+    produces fuzzy figures.  ICML (``SWITCHBOX_TYPESET=1``) is intentionally
+    excluded — InDesign places SVG natively at full fidelity, and the
+    project-level ``fig-format: svg`` keeps raw Quarto figures as SVG too.
+    """
+    return os.environ.get("SWITCHBOX_GT_AS_IMAGE") == "1"
+
+
 def display_figure(fig: Figure, *, dpi: int = 300) -> None:
-    """Render a matplotlib figure as SVG (HTML) or high-res PNG (DOCX/ICML).
+    """Render a matplotlib figure as SVG (HTML/ICML) or high-res PNG (DOCX).
 
     Quarto Manuscript's ``{{< embed >}}`` breaks on cells that produce
     multi-MIME output (e.g. a raw matplotlib Figure emits both PNG and
@@ -48,20 +62,20 @@ def display_figure(fig: Figure, *, dpi: int = 300) -> None:
 
     The output format depends on the target:
 
-    * **HTML** (default): ``image/svg+xml`` — sharp at any zoom, styled by
-      CSS, inlined by ``just render``'s post-processing.
-    * **DOCX / ICML**: ``image/png`` at *dpi* (default 300) — avoids the
-      fuzzy rasterization that happens when Pandoc converts SVG via
+    * **HTML** (default) and **ICML**: ``image/svg+xml`` — sharp at any
+      zoom, styled by CSS (HTML) or placed natively by InDesign (ICML).
+    * **DOCX**: ``image/png`` at *dpi* (default 300) — avoids the fuzzy
+      rasterization that happens when Pandoc converts SVG via
       ``rsvg-convert`` at its default 96 DPI.
 
-    Format detection reuses ``_render_as_raster()`` (env vars
-    ``SWITCHBOX_GT_AS_IMAGE`` / ``SWITCHBOX_TYPESET``).
+    Format detection uses ``_render_figures_as_raster()``
+    (``SWITCHBOX_GT_AS_IMAGE=1`` only).
 
     After saving, the figure is closed to free memory.
     """
     import matplotlib.pyplot as plt
 
-    if _render_as_raster():
+    if _render_figures_as_raster():
         from IPython.display import Image, display
 
         fig.savefig(buf := io.BytesIO(), format="png", dpi=dpi, bbox_inches="tight")

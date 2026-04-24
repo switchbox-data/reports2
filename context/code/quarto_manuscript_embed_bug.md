@@ -37,9 +37,9 @@ Use **`lib.quarto.display_figure`** (or its alias **`display_svg`**) so the cell
 
 - **HTML** (`just render`): emits `image/svg+xml` — sharp at any zoom, inlined by post-processing.
 - **DOCX** (`just draft`): emits `image/png` at 300 DPI — avoids the fuzzy rasterization that happens when Pandoc converts SVG via `rsvg-convert` at 96 DPI.
-- **ICML** (`just typeset`): same PNG path as DOCX.
+- **ICML** (`just typeset`): emits `image/svg+xml` — InDesign places SVG natively at full fidelity, and the project-level `fig-format: svg` keeps raw Quarto figures SVG too. Only GT tables are rasterized for ICML (see `display_gt` below).
 
-Format detection uses env vars `SWITCHBOX_GT_AS_IMAGE` / `SWITCHBOX_TYPESET`, set by the respective Justfile recipes.
+Format detection: figures rasterize on `SWITCHBOX_GT_AS_IMAGE=1` only (set by `just draft`); GT tables rasterize on either `SWITCHBOX_GT_AS_IMAGE=1` or `SWITCHBOX_TYPESET=1` (the latter set by `just typeset`).
 
 ```python
 from lib.quarto import display_figure  # or display_svg (alias)

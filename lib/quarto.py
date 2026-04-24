@@ -13,10 +13,17 @@ workarounds.
 
   * **HTML**: base64-decoded ``<div>`` (survives ``{{< embed >}}``).
   * **DOCX** (``SWITCHBOX_GT_AS_IMAGE=1``): high-res PNG screenshot.
-  * **ICML** (``SWITCHBOX_TYPESET=1``): vector SVG with real ``<text>``
-    elements, via Chrome's CDP ``Page.printToPDF`` → Inkscape's native
-    PDF importer.  Requires ``inkscape`` on ``PATH`` (provisioned in
-    ``infra/user-data.sh`` and ``.devcontainer/Dockerfile``).
+  * **ICML** (``SWITCHBOX_TYPESET=1``): native InDesign ``<Table>`` XML
+    (see :mod:`lib.great_tables.icml`), base64-packaged inside a 1x1
+    placeholder SVG carrier and promoted to a raw ICML block by
+    :file:`lib/quarto_extensions/icml_gt/icml_gt.lua` (the carrier dance
+    is required because Quarto's embed pipeline strips
+    ``text/markdown`` outputs from ``tbl-*`` cells and Pandoc's ICML
+    writer refuses ``text/html`` — but ``image/svg+xml`` survives
+    end-to-end).  The designer's InDesign document resolves the
+    referenced named styles (``TableStyle/Table Inline``,
+    ``CellStyle/Cell Header``, etc.), producing a native editable
+    table that reflows with the layout instead of a placed SVG raster.
 """
 
 from __future__ import annotations
@@ -24,12 +31,8 @@ from __future__ import annotations
 import base64
 import io
 import os
-import shutil
-import subprocess
 import tempfile
-import time
 import uuid
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -37,12 +40,14 @@ if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
 
-def _render_gt_as_svg() -> bool:
-    """Return True when GT tables must be rendered as vector SVG (ICML only).
+def _render_gt_as_icml() -> bool:
+    """Return True when GT tables must be rendered as native ICML (ICML only).
 
-    Set by ``lib.just.typeset`` via ``SWITCHBOX_TYPESET=1``.  ICML is placed
-    in InDesign, which handles SVG natively with full vector fidelity and
-    editable text; rasterizing at 300 DPI loses both.
+    Set by ``lib.just.typeset`` via ``SWITCHBOX_TYPESET=1``.  ICML is
+    placed in InDesign, which renders a native ``<Table>`` element as
+    an editable table that reflows with the layout (text wraps
+    properly when the designer resizes the frame) — unlike placed SVG,
+    which shrinks text proportionally.
     """
     return os.environ.get("SWITCHBOX_TYPESET") == "1"
 
@@ -124,13 +129,16 @@ def display_gt(table: GT) -> None:
     * **DOCX** (``SWITCHBOX_GT_AS_IMAGE=1``): renders the table as a
       high-res PNG (3x scale, ~300 DPI) using GT's headless Chrome
       screenshot.
-    * **ICML** (``SWITCHBOX_TYPESET=1``): renders the table as a vector
-      SVG with real ``<text>`` elements.  The pipeline is Chrome CDP
-      ``Page.printToPDF`` (vector) → Inkscape's native PDF importer
-      (``inkscape --export-plain-svg``).  InDesign places the SVG
-      natively with editable text.  Requires ``inkscape`` on ``PATH``
-      (provisioned in ``infra/user-data.sh`` and
-      ``.devcontainer/Dockerfile``).
+    * **ICML** (``SWITCHBOX_TYPESET=1``): converts the GT to a native
+      ``<Table>`` ICML fragment (via :mod:`lib.great_tables.icml`) and
+      emits it as an HTML carrier div that the
+      :file:`lib/quarto_extensions/icml_gt/icml_gt.lua` filter promotes
+      to a raw ICML block.  The InDesign designer's template resolves
+      the referenced named styles (``TableStyle/Table Inline``,
+      ``CellStyle/Cell Header``, etc.), yielding a native editable table
+      that reflows with the layout.  Any unexpected exception falls back
+      to the PNG raster path so a single bad table can't break the whole
+      ICML build.
 
     Usage in ``analysis.qmd``::
 
@@ -143,8 +151,8 @@ def display_gt(table: GT) -> None:
 
         {{< embed notebooks/analysis.qmd#tbl-my-table >}}
     """
-    if _render_gt_as_svg():
-        _display_gt_as_svg(table)
+    if _render_gt_as_icml():
+        _display_gt_as_icml(table)
     elif _render_as_raster():
         _display_gt_as_image(table)
     else:
@@ -183,126 +191,57 @@ def _display_gt_as_image(table: GT, *, scale: float = 3.0) -> None:
         os.unlink(tmp_path)
 
 
-def _display_gt_as_svg(table: GT, *, scale: float = 1.0) -> None:
-    """Render GT to a vector SVG with real ``<text>`` and display it.
+def _display_gt_as_icml(table: GT) -> None:
+    """Emit a GT as a native ICML ``<Table>`` fragment via an SVG carrier.
 
-    Pipeline: GT HTML → headless Chrome (``Page.printToPDF``) → vector
-    PDF → Inkscape (``--export-plain-svg``, native importer) → SVG.
+    Getting ICML out of Quarto's ``{{< embed >}}`` pipeline for ``tbl-*``
+    labelled cells is surprisingly fiddly.  Candidates considered:
 
-    The native Inkscape importer preserves PDF text as ``<text>`` /
-    ``<tspan>`` elements; the ``--pdf-poppler`` backend would convert
-    them to outlined paths, which is why we don't pass it.
+    * ``text/markdown`` — Quarto strips these outputs entirely before
+      they reach the Pandoc AST (even when their content is a
+      ``{=icml}`` raw block).
+    * ``text/html`` — survives the ``.embed.ipynb`` step but Pandoc's
+      ICML writer emits "Unable to display output for mime type(s):
+      text/html" for it, because HTML isn't a first-class ICML media.
 
-    The Switchbox house fonts must be installed as TrueType-flavored
-    ``*.ttf`` (not CFF-flavored ``*.otf``) in the server's fontconfig.
-    Chrome embeds CFF-OTFs as PDF Type 3 fonts, which Inkscape's native
-    importer can't decode for font size — every ``<text>`` ends up with
-    ``font-size:1e-32px`` (invisible). TrueType-flavored fonts get
-    embedded as CID TrueType and decode correctly. See
-    ``reports/.style/fonts/README.md`` for the OTF → TTF conversion.
-
-    InDesign places the resulting SVG natively with editable text.
+    What *does* survive the full pipeline is ``image/svg+xml``: Quarto
+    writes it to a file, and Pandoc references it via
+    ``pandoc.Image``.  So we smuggle the ICML XML out as base64 inside
+    an otherwise-empty 1x1 SVG, and let the
+    :file:`lib/quarto_extensions/icml_gt/icml_gt.lua` filter look for
+    those carrier SVGs, read them back off disk, decode the embedded
+    XML, and replace the Figure with ``pandoc.RawBlock("icml", xml)``
+    before Pandoc writes the ICML Story.  On any exception we fall back
+    to the PNG raster path so a single bad table can't break the whole
+    ICML build.
     """
-    from great_tables._utils_selenium import _get_web_driver
     from IPython.display import SVG, display
 
-    if shutil.which("inkscape") is None:
-        raise RuntimeError(
-            "Inkscape not found on PATH. GT → SVG for ICML requires "
-            "`apt-get install inkscape` (see infra/user-data.sh and "
-            ".devcontainer/Dockerfile)."
+    try:
+        from lib.great_tables.icml import render_gt_to_icml  # local import: keep HTML path light
+
+        icml_xml = render_gt_to_icml(table)
+    except Exception as exc:  # pragma: no cover — safety net for unexpected GT shapes
+        import warnings
+
+        warnings.warn(
+            f"GT → ICML conversion failed ({type(exc).__name__}: {exc}); falling back to PNG raster for this table.",
+            stacklevel=2,
         )
+        _display_gt_as_image(table)
+        return
 
-    html = table.as_raw_html(make_page=True)
-
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        tmp = Path(tmp_dir)
-        html_path = tmp / "table.html"
-        html_path.write_text(html, encoding="utf-8")
-        pdf_path = tmp / "table.pdf"
-        svg_path = tmp / "table.svg"
-
-        wdriver_cls = _get_web_driver("chrome")
-        with wdriver_cls() as driver:
-            driver.set_window_size(6000, 6000)
-            driver.get(f"file://{html_path}")
-
-            # Kill body margin/padding/centering so the table is flush to
-            # (0,0), apply zoom, force a reflow.
-            driver.execute_script(
-                "var s=document.createElement('style');"
-                "s.innerText='html,body{margin:0!important;padding:0!important;}"
-                " body>div{margin:0!important;padding:0!important;}';"
-                "document.head.appendChild(s);"
-                "var el=document.getElementsByTagName('table')[0];"
-                f"el.style.zoom='{scale}';"
-                "el.parentNode.style.display='none';"
-                "el.parentNode.style.display='';"
-            )
-            time.sleep(0.1)
-
-            # Shrink window to the table's intrinsic width so the browser
-            # doesn't center or soft-wrap it.
-            table_w = driver.execute_script("return document.getElementsByTagName('table')[0].scrollWidth;")
-            driver.set_window_size(int(table_w * scale + 20), 6000)
-            time.sleep(0.1)
-
-            dims = driver.execute_script(
-                "var t=document.getElementsByTagName('table')[0];"
-                "var r=t.getBoundingClientRect();"
-                "return [t.scrollWidth, t.scrollHeight, r.left, r.top,"
-                " document.body.scrollHeight];"
-            )
-            client_w, scroll_h, left, top, body_h = dims
-
-            pad = 8
-            width_px = client_w * scale + max(left, 0) * 2 + pad * 2
-            height_px = max(scroll_h * scale, body_h) + max(top, 0) * 2 + pad * 2
-            width_in = width_px / 96.0
-            height_in = height_px / 96.0
-
-            # ``Page.printToPDF`` paginates by default; ``preferCSSPageSize``
-            # plus an explicit ``@page`` matching our page dims keeps the
-            # whole table on one page so Inkscape emits a single SVG.
-            driver.execute_script(
-                "var s=document.createElement('style');"
-                f"s.innerText='@page {{ size: {width_in}in {height_in}in;"
-                " margin: 0; }}';"
-                "document.head.appendChild(s);"
-            )
-
-            pdf_result = driver.execute_cdp_cmd(
-                "Page.printToPDF",
-                {
-                    "printBackground": True,
-                    "preferCSSPageSize": True,
-                    "paperWidth": width_in,
-                    "paperHeight": height_in,
-                    "marginTop": 0,
-                    "marginBottom": 0,
-                    "marginLeft": 0,
-                    "marginRight": 0,
-                    "scale": 1.0,
-                },
-            )
-            pdf_path.write_bytes(base64.b64decode(pdf_result["data"]))
-
-        # Do NOT pass --pdf-poppler: the native Inkscape importer keeps
-        # text as <text>/<tspan>; the poppler backend outlines it.
-        subprocess.run(
-            [
-                "inkscape",
-                "--export-type=svg",
-                "--export-plain-svg",
-                "-o",
-                str(svg_path),
-                str(pdf_path),
-            ],
-            check=True,
-            timeout=120,
-            capture_output=True,
-        )
-
-        svg_bytes = svg_path.read_bytes()
-
-    display(SVG(data=svg_bytes))
+    encoded = base64.b64encode(icml_xml.encode("utf-8")).decode("ascii")
+    # The SVG itself is a 1x1 placeholder — InDesign never sees it; the
+    # Lua filter unconditionally replaces the whole Figure before the
+    # ICML writer runs.  Chunk the base64 payload into 76-char lines to
+    # keep downstream tools happy with the SVG.
+    lines = [encoded[i : i + 76] for i in range(0, len(encoded), 76)]
+    payload = "\n".join(lines)
+    svg = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<svg xmlns="http://www.w3.org/2000/svg" width="1pt" height="1pt" version="1.1">\n'
+        f"  <desc>switchbox-icml-gt\ndata-icml-b64:\n{payload}\n</desc>\n"
+        "</svg>\n"
+    )
+    display(SVG(data=svg))

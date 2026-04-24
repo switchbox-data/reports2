@@ -66,24 +66,19 @@ RUN /tmp/install-feature.sh "ghcr.io/rocker-org/devcontainer-features/quarto-cli
 # python3-tk: Required for matplotlib to work with quarto
 # chromium-browser: Shared library dependencies for Chromium, required for Mermaid diagrams in quarto (must be combined with installChromium=true above)
 # ghostscript: Required by dvisvgm for PostScript special processing (LaTeX math → SVG)
-# inkscape: Converts Chrome-printed vector PDFs of GT tables to real-text SVG
-#   for ICML/InDesign placement (see lib/quarto.py::_display_gt_as_svg).
 RUN /tmp/install-feature.sh "ghcr.io/rocker-org/devcontainer-features/apt-packages:1" \
-    packages="python3-tk, chromium-browser, ghostscript, inkscape"
+    packages="python3-tk, chromium-browser, ghostscript"
 
 # Install Switchbox house fonts (GT Planar, IBM Plex Sans, Farnham Text) into
-# fontconfig so headless Chrome can resolve them by name. Without these, the
-# GT → SVG pipeline in lib/quarto.py falls back to Liberation Sans and bakes
-# that name into the SVG — designers then see the wrong font on their Macs
-# even though they have the real fonts installed.
+# fontconfig so headless Chrome (used by `just draft` to PNG-rasterize GT
+# tables for DOCX) can resolve them by name. Without these, Chrome falls
+# back to Liberation Sans and designers see the wrong font in Word.
 #
-# We install the TrueType-flavored siblings (*.ttf), not the CFF-flavored
-# OTFs that the web reports use. Chrome's Page.printToPDF embeds CFF-OTFs
-# as PDF Type 3 fonts, which Inkscape's native PDF importer can't decode
-# for font size — every <text> ends up with font-size:1e-32px (invisible).
-# TrueType-flavored fonts get embedded as CID TrueType, preserving real
-# font sizes and editable text. See reports/.style/fonts/README.md.
-COPY reports/.style/fonts/*.ttf /usr/local/share/fonts/switchbox/
+# We install the CFF-flavored OTFs directly — same binaries the web reports
+# load. The legacy GT → vector-SVG ICML path (Chrome CDP PDF → Inkscape) is
+# gone, so the TrueType siblings that existed to dodge Inkscape's CFF-Type-3
+# bug are no longer needed. See reports/.style/fonts/README.md.
+COPY reports/.style/fonts/*.otf /usr/local/share/fonts/switchbox/
 RUN fc-cache -fv > /dev/null
 
 # Install TinyTeX for LaTeX math rendering in ICML output (just typeset)

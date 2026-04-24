@@ -33,6 +33,28 @@ from lib.just import icml_crossrefs, icml_sidenotes
 INDESIGN_MAX_WIDTH_PT = 504.0
 
 
+# Pandoc's ICML writer emits a stray ``(a)`` subfigure label before the
+# real ``Table N: …`` caption whenever a FloatRefTarget's content is a
+# RawInline (which is exactly what ``icml_gt.lua`` produces to smuggle a
+# native ``<Table>`` through the pipeline).  We strip those spurious
+# labels after the fact: any ``ParagraphStyle/Caption`` paragraph whose
+# only content is ``(a)`` is unambiguously the writer's subfigure label
+# rather than something the author wrote.
+_SUBFIGURE_LABEL_RE = re.compile(
+    r"<ParagraphStyleRange AppliedParagraphStyle=\"ParagraphStyle/Caption\">\s*"
+    r"<CharacterStyleRange AppliedCharacterStyle=\"\$ID/NormalCharacterStyle\">\s*"
+    r"<Content>\([a-z]\)</Content>\s*"
+    r"</CharacterStyleRange>\s*"
+    r"</ParagraphStyleRange>\s*"
+    r"<Br />\s*",
+)
+
+
+def _strip_subfigure_labels(icml_text: str) -> str:
+    """Remove Pandoc's spurious ``(a)`` subfigure labels before GT captions."""
+    return _SUBFIGURE_LABEL_RE.sub("", icml_text)
+
+
 def _output_name(qmd_path: Path) -> str:
     """Generate a date-stamped ICML filename from the source .qmd."""
     stem = qmd_path.stem if qmd_path.stem != "index" else "report"
@@ -172,6 +194,11 @@ def typeset(qmd_path: Path) -> None:
     if output_path.exists():
         icml_text = output_path.read_text(encoding="utf-8")
         changed = False
+        stripped = _strip_subfigure_labels(icml_text)
+        if stripped != icml_text:
+            icml_text = stripped
+            changed = True
+            print("📐 Stripped spurious (a) subfigure labels from GT tables")
         if "<Footnote>" in icml_text:
             icml_text = icml_sidenotes.convert(icml_text)
             changed = True

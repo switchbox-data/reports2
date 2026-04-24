@@ -162,6 +162,21 @@ def get_switchbox_gt_tab_options(
         Any other valid ``tab_options`` keys (e.g. ``table_width``, ``table_layout``) merged
         on top; use for table-specific layout. ``table_additional_css`` in overrides replaces
         the merged list unless you extend manually — prefer ``extra_table_additional_css``.
+
+    Notes
+    -----
+    To override the ICML ``TableStyle`` used for *this particular table* when
+    it's emitted via ``display_gt`` under ``SWITCHBOX_TYPESET=1`` (e.g.
+    ``"Table"`` instead of the default ``"Table Inline"``), use the
+    companion helper :func:`lib.great_tables.set_icml_table_style`::
+
+        from lib.great_tables import get_switchbox_gt_tab_options, set_icml_table_style
+
+        gt = GT(df).tab_options(**get_switchbox_gt_tab_options())
+        set_icml_table_style(gt, "Table")
+
+    The hook lives on the GT object rather than in this dict because
+    :meth:`great_tables.GT.tab_options` rejects unknown kwargs.
     """
     css: list[str] = []
     if include_font_faces:

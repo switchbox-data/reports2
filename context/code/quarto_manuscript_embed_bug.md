@@ -37,9 +37,9 @@ Use **`lib.quarto.display_figure`** (or its alias **`display_svg`**) so the cell
 
 - **HTML** (`just render`): emits `image/svg+xml` — sharp at any zoom, inlined by post-processing.
 - **DOCX** (`just draft`): emits `image/png` at 300 DPI — avoids the fuzzy rasterization that happens when Pandoc converts SVG via `rsvg-convert` at 96 DPI.
-- **ICML** (`just typeset`): emits `image/svg+xml` — InDesign places SVG natively at full fidelity, and the project-level `fig-format: svg` keeps raw Quarto figures SVG too. Only GT tables are rasterized for ICML (see `display_gt` below).
+- **ICML** (`just typeset`): emits `image/svg+xml` — InDesign places SVG natively at full fidelity, and the project-level `fig-format: svg` keeps raw Quarto figures SVG too. GT tables also get SVG for ICML (see `display_gt` below).
 
-Format detection: figures rasterize on `SWITCHBOX_GT_AS_IMAGE=1` only (set by `just draft`); GT tables rasterize on either `SWITCHBOX_GT_AS_IMAGE=1` or `SWITCHBOX_TYPESET=1` (the latter set by `just typeset`).
+Format detection: figures rasterize on `SWITCHBOX_GT_AS_IMAGE=1` only (set by `just draft`); GT tables rasterize to PNG on `SWITCHBOX_GT_AS_IMAGE=1`, render as vector SVG on `SWITCHBOX_TYPESET=1` (set by `just typeset`), and otherwise base64-encode as HTML.
 
 ```python
 from lib.quarto import display_figure  # or display_svg (alias)
@@ -55,7 +55,11 @@ Give the cell `#| label: fig-my-chart` and `#| fig-cap: "..."`, then use `{{< em
 
 ### Great Tables: `display_gt` (preferred for `{{< embed >}}`)
 
-Use **`lib.quarto.display_gt`** so the cell has a single `text/html` output whose GT markup is base64-encoded inside a `<script>` tag. Pandoc cannot parse opaque base64, so the full table survives the `--to ipynb` round-trip. At page load, JavaScript decodes and injects the HTML into the DOM — no iframe, so the table participates in the host page's CSS cascade (Switchbox fonts, colors).
+Use **`lib.quarto.display_gt`** so the cell has a single output whose GT markup survives Pandoc's `--to ipynb` round-trip. The output format is chosen by environment:
+
+- **HTML** (`just render`): base64-encodes the GT HTML inside a `<div>` + `<script>`; JavaScript decodes and injects the markup at page load. Pandoc cannot parse opaque base64, so the full table survives. No iframe — the table participates in the host page's CSS cascade (Switchbox fonts, colors).
+- **DOCX** (`just draft`, `SWITCHBOX_GT_AS_IMAGE=1`): emits a high-res PNG screenshot (GT's headless-Chrome `save()` at 3× scale). GT's HTML + web fonts don't survive Pandoc's DOCX writer reliably.
+- **ICML** (`just typeset`, `SWITCHBOX_TYPESET=1`): emits a vector SVG with real `<text>` / `<tspan>` elements. Pipeline: GT HTML → headless Chrome via Selenium → `Page.printToPDF` (CDP) produces a vector PDF → `inkscape --export-plain-svg` (native importer, **not** `--pdf-poppler`, which outlines text) produces an editable-text SVG → `IPython.display.SVG`. Quarto writes the SVG to `icml/index_files/figure-icml/<label>-output-N.svg` and Pandoc's ICML writer emits a `<Link LinkResourceURI="file:...">`. Requires `inkscape` on `PATH` (provisioned by `rate-design-platform/infra/user-data.sh` and `reports2/.devcontainer/Dockerfile`).
 
 ```python
 from lib.quarto import display_gt

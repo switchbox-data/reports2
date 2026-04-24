@@ -66,8 +66,25 @@ RUN /tmp/install-feature.sh "ghcr.io/rocker-org/devcontainer-features/quarto-cli
 # python3-tk: Required for matplotlib to work with quarto
 # chromium-browser: Shared library dependencies for Chromium, required for Mermaid diagrams in quarto (must be combined with installChromium=true above)
 # ghostscript: Required by dvisvgm for PostScript special processing (LaTeX math → SVG)
+# inkscape: Converts Chrome-printed vector PDFs of GT tables to real-text SVG
+#   for ICML/InDesign placement (see lib/quarto.py::_display_gt_as_svg).
 RUN /tmp/install-feature.sh "ghcr.io/rocker-org/devcontainer-features/apt-packages:1" \
-    packages="python3-tk, chromium-browser, ghostscript"
+    packages="python3-tk, chromium-browser, ghostscript, inkscape"
+
+# Install Switchbox house fonts (GT Planar, IBM Plex Sans, Farnham Text) into
+# fontconfig so headless Chrome can resolve them by name. Without these, the
+# GT → SVG pipeline in lib/quarto.py falls back to Liberation Sans and bakes
+# that name into the SVG — designers then see the wrong font on their Macs
+# even though they have the real fonts installed.
+#
+# We install the TrueType-flavored siblings (*.ttf), not the CFF-flavored
+# OTFs that the web reports use. Chrome's Page.printToPDF embeds CFF-OTFs
+# as PDF Type 3 fonts, which Inkscape's native PDF importer can't decode
+# for font size — every <text> ends up with font-size:1e-32px (invisible).
+# TrueType-flavored fonts get embedded as CID TrueType, preserving real
+# font sizes and editable text. See reports/.style/fonts/README.md.
+COPY reports/.style/fonts/*.ttf /usr/local/share/fonts/switchbox/
+RUN fc-cache -fv > /dev/null
 
 # Install TinyTeX for LaTeX math rendering in ICML output (just typeset)
 # The icml_math Lua filter calls latex + dvisvgm to pre-render math to SVG.

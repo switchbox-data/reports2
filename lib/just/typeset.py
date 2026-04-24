@@ -21,6 +21,7 @@ Usage (from a report directory)::
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -28,6 +29,8 @@ from datetime import date
 from pathlib import Path
 
 from lib.just import icml_crossrefs, icml_sidenotes
+
+INDESIGN_MAX_WIDTH_PT = 504.0
 
 
 def _output_name(qmd_path: Path) -> str:
@@ -79,6 +82,54 @@ def _prune_quarto_intermediates(out_dir: Path) -> None:
             f.unlink()
 
 
+_SVG_WIDTH_RE = re.compile(r'(<svg\b[^>]*?)\bwidth="([0-9.]+)pt"')
+_SVG_HEIGHT_RE = re.compile(r'(<svg\b[^>]*?)\bheight="([0-9.]+)pt"')
+
+
+def _cap_oversized_svgs(out_dir: Path) -> int:
+    """Shrink any figure SVG wider than the InDesign text column.
+
+    Belt-and-suspenders for figures that escape the ``plt.subplots`` figsize
+    cap (e.g. code that calls ``fig.set_size_inches`` after construction).
+    Rewrites the root ``width``/``height`` attributes while leaving the
+    ``viewBox`` untouched so content scales uniformly.  Text in these
+    stragglers WILL scale down proportionally — the warning lets you
+    chase down the offending ``figsize`` call and fix it at source.
+    """
+    n_fixed = 0
+    for svg in out_dir.rglob("*.svg"):
+        text = svg.read_text(encoding="utf-8")
+        width_match = _SVG_WIDTH_RE.search(text)
+        if width_match is None:
+            continue
+        width = float(width_match.group(2))
+        if width <= INDESIGN_MAX_WIDTH_PT:
+            continue
+
+        scale = INDESIGN_MAX_WIDTH_PT / width
+        height_match = _SVG_HEIGHT_RE.search(text)
+        new_text = _SVG_WIDTH_RE.sub(
+            lambda m: f'{m.group(1)}width="{INDESIGN_MAX_WIDTH_PT:g}pt"',
+            text,
+            count=1,
+        )
+        if height_match is not None:
+            new_height = float(height_match.group(2)) * scale
+            new_text = _SVG_HEIGHT_RE.sub(
+                lambda m, h=new_height: f'{m.group(1)}height="{h:g}pt"',
+                new_text,
+                count=1,
+            )
+
+        svg.write_text(new_text, encoding="utf-8")
+        n_fixed += 1
+        print(
+            f"⚠️  SVG wider than 504 pt — scaled ({width:.0f} → "
+            f"{INDESIGN_MAX_WIDTH_PT:.0f} pt, text shrunk): {svg.relative_to(out_dir)}"
+        )
+    return n_fixed
+
+
 def typeset(qmd_path: Path) -> None:
     out = Path("icml")
     output_name = _output_name(qmd_path)
@@ -111,6 +162,10 @@ def typeset(qmd_path: Path) -> None:
     n_svgs = _move_math_svgs(out)
     if n_svgs:
         print(f"📐 Moved {n_svgs} math SVGs to {out / 'math'}/")
+
+    n_capped = _cap_oversized_svgs(out)
+    if n_capped:
+        print(f"📐 Capped {n_capped} oversized SVG(s) to {INDESIGN_MAX_WIDTH_PT:.0f} pt wide")
 
     _prune_quarto_intermediates(out)
 

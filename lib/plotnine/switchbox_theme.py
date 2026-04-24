@@ -72,6 +72,64 @@ def _register_fonts() -> None:
 
     mpl.rcParams["svg.fonttype"] = "none"
     _FONTS_REGISTERED = True
+    _install_figsize_cap()
+
+
+# Typeset-only figsize cap.  The InDesign text column is 504 pt = 7 in at
+# the 72 pt-per-inch convention used by both SVG's ``pt`` unit and InDesign's
+# layout.  Matplotlib SVGs embed an outer ``width="<fig_width_in * 72>pt"``,
+# so a figure rendered at figsize=(12.5, h) imports 900 pt wide and has to
+# be scaled down by hand — which shrinks the theme's 11 pt axis labels to
+# ~6 pt.  Capping figsize at 7 in at render time lets matplotlib's layout
+# reflow against the smaller frame while text stays at its native pt size.
+_MAX_FIG_WIDTH_IN = 7.0
+_FIGSIZE_CAP_INSTALLED = False
+
+
+def _typeset_mode() -> bool:
+    return os.environ.get("SWITCHBOX_TYPESET") == "1"
+
+
+def _cap_figsize(figsize: Any) -> Any:
+    if figsize is None:
+        return figsize
+    try:
+        w, h = figsize
+    except (TypeError, ValueError):
+        return figsize
+    if w > _MAX_FIG_WIDTH_IN:
+        return (_MAX_FIG_WIDTH_IN, h * _MAX_FIG_WIDTH_IN / w)
+    return figsize
+
+
+def _install_figsize_cap() -> None:
+    """Monkey-patch ``plt.figure``/``plt.subplots`` to cap width at 7 in.
+
+    Only active when ``SWITCHBOX_TYPESET=1`` (set by ``just typeset``).
+    Web (``just render``) and DOCX (``just draft``) output are unaffected.
+    """
+    global _FIGSIZE_CAP_INSTALLED
+    if _FIGSIZE_CAP_INSTALLED or not _typeset_mode():
+        return
+
+    import matplotlib.pyplot as plt
+
+    _orig_figure = plt.figure
+    _orig_subplots = plt.subplots
+
+    def figure(*args: Any, **kwargs: Any) -> Any:
+        if "figsize" in kwargs:
+            kwargs["figsize"] = _cap_figsize(kwargs["figsize"])
+        return _orig_figure(*args, **kwargs)
+
+    def subplots(*args: Any, **kwargs: Any) -> Any:
+        if "figsize" in kwargs:
+            kwargs["figsize"] = _cap_figsize(kwargs["figsize"])
+        return _orig_subplots(*args, **kwargs)
+
+    plt.figure = figure  # type: ignore[assignment]
+    plt.subplots = subplots  # type: ignore[assignment]
+    _FIGSIZE_CAP_INSTALLED = True
 
 
 SB_COLORS: dict[str, str] = {

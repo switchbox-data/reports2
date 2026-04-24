@@ -7,6 +7,8 @@ that can be dropped onto Google Drive.  Post-processing steps:
 - Moves math SVGs (rendered by the icml_math Lua filter) from the temp
   ``math/`` directory to ``icml/math/`` alongside the ICML.
 - Runs icml_sidenotes conversion if the ICML contains footnotes.
+- Runs icml_crossrefs conversion to turn ``@sec-*`` links into live InDesign
+  cross-references (page numbers).
 
 Usage (from a report directory)::
 
@@ -23,7 +25,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from lib.just import icml_sidenotes
+from lib.just import icml_crossrefs, icml_sidenotes
 
 
 def _output_name(qmd_path: Path) -> str:
@@ -112,10 +114,22 @@ def typeset(qmd_path: Path) -> None:
 
     if output_path.exists():
         icml_text = output_path.read_text(encoding="utf-8")
+        changed = False
         if "<Footnote>" in icml_text:
-            converted = icml_sidenotes.convert(icml_text)
-            output_path.write_text(converted, encoding="utf-8")
+            icml_text = icml_sidenotes.convert(icml_text)
+            changed = True
             print(f"📐 Converted footnotes to sidenotes in {output_path}")
+        if "HyperlinkTextDestination/#sec-" in icml_text:
+            before = icml_text.count("<CrossReferenceSource")
+            icml_text = icml_crossrefs.convert(icml_text)
+            added = icml_text.count("<CrossReferenceSource") - before
+            if added:
+                changed = True
+                print(
+                    f"📐 Converted {added} @sec refs to live cross-references in {output_path}",
+                )
+        if changed:
+            output_path.write_text(icml_text, encoding="utf-8")
 
     print(f"✅ Typeset complete: {output_path}")
 

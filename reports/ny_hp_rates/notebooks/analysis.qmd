@@ -98,7 +98,7 @@ STATE = "NY"
 YEAR = 2025
 
 ### UPDATE WITH NEW RUNS
-BATCH = "ny_20260416a_r1-36"
+BATCH = "ny_20260416a_with_passthrough_r1-36"
 RDP_REF = "205041d"  # rate-design-platform git ref for fetch_rdp_file
 ###
 
@@ -266,9 +266,12 @@ def apply_energy_total_bill(lf: pl.LazyFrame) -> pl.LazyFrame:
 
 def apply_supply_passthrough(
     proposed_lf: pl.LazyFrame,
-    baseline_lf: pl.LazyFrame,
 ) -> pl.LazyFrame:
-    """Replace supply columns in proposed with baseline's supply (same buildings, same kWh).
+    """Replace supply columns in proposed with passthrough baseline (run 1+2).
+
+    Master bills now include `passthrough_supply` column with baseline supply
+    values from run 1+2 (upgrade 0) for every building. This replaces the
+    previous workaround that manually joined baseline bills.
 
     Recomputes elec_total_bill and LMI electric columns.
     Gas/oil/propane and delivery columns are untouched.
@@ -280,11 +283,6 @@ def apply_supply_passthrough(
     credit (conservative: slightly underestimates the discount).  The notebook
     only uses Annual LMI rows, so monthly LMI imprecision is irrelevant.
     """
-    baseline_supply = baseline_lf.select(
-        "bldg_id",
-        "month",
-        pl.col("elec_supply_bill").alias("_baseline_supply"),
-    )
     return (
         proposed_lf
         .with_columns(
@@ -295,13 +293,12 @@ def apply_supply_passthrough(
                 "_credit_100"
             ),
         )
-        .join(baseline_supply, on=["bldg_id", "month"], how="left")
         .with_columns(
-            pl.col("_baseline_supply").alias("elec_supply_bill"),
+            pl.col("passthrough_supply").alias("elec_supply_bill"),
             (
                 pl.col("elec_fixed_charge")
                 + pl.col("elec_delivery_bill")
-                + pl.col("_baseline_supply")
+                + pl.col("passthrough_supply")
             ).alias("elec_total_bill"),
         )
         .with_columns(
@@ -312,16 +309,19 @@ def apply_supply_passthrough(
             .clip(lower_bound=0.0)
             .alias("elec_total_bill_lmi_100"),
         )
-        .drop("_baseline_supply", "_credit_40", "_credit_100")
+        .drop("_credit_40", "_credit_100")
     )
 
 
 def apply_supply_passthrough_tou(
     tou_lf: pl.LazyFrame,
     seasonal_lf: pl.LazyFrame,
-    baseline_lf: pl.LazyFrame,
 ) -> pl.LazyFrame:
     """Scale TOU supply bills to passthrough revenue while preserving load-shifting structure.
+
+    Master bills now include `passthrough_supply` column with baseline supply
+    values from run 1+2 (upgrade 0). This replaces the previous workaround that
+    manually joined baseline bills.
 
     CAIRO TOU-flex lowers total supply revenue relative to the seasonal target
     because load shifting moves kWh from high-MC peak to low-MC off-peak hours.
@@ -329,7 +329,7 @@ def apply_supply_passthrough_tou(
     revenue level — not the per-customer residual level the runs were built with.
 
     Per utility u (weighted sums on Annual rows):
-        RR_pass[u]     = baseline supply revenue  (run 3+4, flat rates)
+        RR_pass[u]     = baseline supply revenue from passthrough_supply column
         RR_percust[u]  = seasonal HP supply revenue (run 7+8, no shifting)
         RR_tou[u]      = TOU HP supply revenue (run 15+16, with shifting)
         savings[u]     = RR_percust[u] - RR_tou[u]
@@ -344,16 +344,29 @@ def apply_supply_passthrough_tou(
     _UTIL = "sb.electric_utility"
     _ANNUAL = "Annual"
 
-    def _weighted_supply_rr(lf: pl.LazyFrame, alias: str) -> pl.LazyFrame:
-        return (
-            lf.filter(pl.col("month") == _ANNUAL)
-            .group_by(_UTIL)
-            .agg((pl.col("elec_supply_bill") * pl.col("weight")).sum().alias(alias))
-        )
+    # Compute passthrough revenue target from passthrough_supply column
+    rr_pass = (
+        tou_lf
+        .filter(pl.col("month") == _ANNUAL)
+        .group_by(_UTIL)
+        .agg((pl.col("passthrough_supply") * pl.col("weight")).sum().alias("_rr_pass"))
+    )
 
-    rr_pass = _weighted_supply_rr(baseline_lf, "_rr_pass")
-    rr_percust = _weighted_supply_rr(seasonal_lf, "_rr_percust")
-    rr_tou = _weighted_supply_rr(tou_lf, "_rr_tou")
+    # Compute seasonal HP supply revenue (no load shifting)
+    rr_percust = (
+        seasonal_lf
+        .filter(pl.col("month") == _ANNUAL)
+        .group_by(_UTIL)
+        .agg((pl.col("elec_supply_bill") * pl.col("weight")).sum().alias("_rr_percust"))
+    )
+
+    # Compute TOU HP supply revenue (with load shifting)
+    rr_tou = (
+        tou_lf
+        .filter(pl.col("month") == _ANNUAL)
+        .group_by(_UTIL)
+        .agg((pl.col("elec_supply_bill") * pl.col("weight")).sum().alias("_rr_tou"))
+    )
 
     scale_factors = (
         rr_pass
@@ -403,44 +416,36 @@ def apply_supply_passthrough_tou(
 #| label: ingest
 
 # ---------------------------------------------------------------------------
-# Supply passthrough workaround
+# Supply passthrough from master bills columns
 # ---------------------------------------------------------------------------
-# The HP seasonal and TOU runs (5+6, 7+8, 13+14, 15+16) were built with
-# per-customer supply residual allocation, which shifts supply costs between
-# subclasses.  Under passthrough, the supply tariff is unchanged from default
-# rates — each customer pays the same supply rate they already have.
-#
-# The correct fix is to define CAIRO runs with residual_allocation_supply =
-# "passthrough" in the scenario YAMLs and rebuild the master bills.  We did
-# not have time to set up and run those CAIRO batches before the deadline, so
-# instead we apply the fix here in two ways:
+# Master bills now include `passthrough_delivery` and `passthrough_supply`
+# columns containing baseline values from run 1+2 (upgrade 0) for every
+# building. When SUPPLY_PASSTHROUGH is enabled, we replace supply bills with
+# these passthrough values in two ways:
 #
 # (1) SEASONAL scenarios (5+6, 7+8): flat replacement — each building's
-#     supply bill is replaced with its baseline supply (u0 → run 1+2,
-#     u2 → run 3+4).  Under flat/seasonal rates with no load shifting,
-#     passthrough supply = baseline supply exactly.
+#     supply bill is replaced with its passthrough_supply value. Under
+#     flat/seasonal rates with no load shifting, passthrough supply equals
+#     baseline supply exactly.
 #
-# (2) TOU scenario (15+16): multiplicative scaling.  CAIRO TOU-flex lowers
+# (2) TOU scenario (15+16): multiplicative scaling. CAIRO TOU-flex lowers
 #     total supply revenue relative to the seasonal target because load
 #     shifting moves kWh from high-MC peak to low-MC off-peak hours.
-#     Flat replacement would kill these load-shifting benefits.  Instead,
+#     Flat replacement would kill these load-shifting benefits. Instead,
 #     we keep the TOU bill *shape* (who shifted more pays less) and scale
 #     the level per utility so the weighted sum equals:
 #
 #         adjusted_RR = RR_pass - (RR_percust - RR_tou)
 #
-#     where RR_pass = baseline supply revenue (run 3+4), RR_percust =
-#     seasonal HP supply revenue (run 7+8, no shifting), and RR_tou =
-#     TOU HP supply revenue (run 15+16, with shifting).  The difference
+#     where RR_pass is computed from the passthrough_supply column,
+#     RR_percust = seasonal HP supply revenue (run 7+8, no shifting), and
+#     RR_tou = TOU HP supply revenue (run 15+16, with shifting). The difference
 #     RR_percust - RR_tou is the MC savings from load shifting, which
 #     is preserved under passthrough.
 #
 # LMI electric columns are recomputed by recovering the fixed monthly credit
 # from the proposed data and reapplying it to the new total.  Gas/oil/propane
 # and delivery columns are untouched.
-#
-# TODO: Once CAIRO runs with passthrough supply exist, remove this workaround
-# and point the paths at the new master bills.
 # ---------------------------------------------------------------------------
 
 bills_current = pl.scan_parquet(PATH_MASTER_BILLS_BASELINE, hive_partitioning=True)
@@ -456,12 +461,12 @@ bills_tou_hp = (
 )
 
 if SUPPLY_PASSTHROUGH:
-    bills_hprate_current = apply_supply_passthrough(bills_hprate_current, bills_current)
+    bills_hprate_current = apply_supply_passthrough(bills_hprate_current)
     if bills_tou_hp is not None:
-        bills_tou_hp = apply_supply_passthrough_tou(bills_tou_hp, bills_hprate_hp, bills_hp)
-    bills_hprate_hp = apply_supply_passthrough(bills_hprate_hp, bills_hp)
-    bills_ehrate_current = apply_supply_passthrough(bills_ehrate_current, bills_current)
-    bills_ehrate_hp = apply_supply_passthrough(bills_ehrate_hp, bills_hp)
+        bills_tou_hp = apply_supply_passthrough_tou(bills_tou_hp, bills_hprate_hp)
+    bills_hprate_hp = apply_supply_passthrough(bills_hprate_hp)
+    bills_ehrate_current = apply_supply_passthrough(bills_ehrate_current)
+    bills_ehrate_hp = apply_supply_passthrough(bills_ehrate_hp)
 
 bills_current = apply_energy_total_bill(bills_current)
 bills_hp = apply_energy_total_bill(bills_hp)

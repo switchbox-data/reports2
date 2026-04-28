@@ -1,5 +1,5 @@
 ---
-title: NY HP Rate Design Analysis
+title: NY Heat Pump Rate Design Analysis
 reference-location: margin
 fig-cap-location: bottom
 execute:
@@ -20,7 +20,7 @@ The analysis follows the report's arc:
 3. **Cross-subsidization** — the Bill Alignment Test (BAT), showing that heat
    pump customers systematically overpay for delivery under current rates.
 4. **Fair rate proposal** — a seasonal delivery rate that eliminates the
-   cross-subsidy, and its impact on HP and non-HP customers.
+   cross-subsidy, and its impact on heat pump and non-heat-pump customers.
 5. **Energy burden** — how switching to heat pumps affects low-income
    households' energy burden under different LMI discount scenarios.
 
@@ -193,6 +193,11 @@ ACTIVE_BILL_COLS = LMI_ENROLLED_BILL_COLS if INCLUDE_LMI_DISCOUNT else LMI_BILL_
 # alternatives (no LMI / ~40% / ~100%) sit under each affected chunk. After changing
 # ``INCLUDE_LMI_DISCOUNT`` or ``LMI_CURRENT_ENROLLMENT_PCT`` (40 vs 100), update those
 # fig-caps to match so prose matches the bill columns in the plots.
+# NOTE: chunk ``fig-quadrant-bar-natgas-state-state-lmi-current`` uses a custom
+# fig-cap ("40% of LMI households are enrolled in the utilities' energy
+# affordability program...") that hardcodes the 40% LMI-on assumption and has
+# no commented alternatives. If you flip ``INCLUDE_LMI_DISCOUNT`` or set
+# ``LMI_CURRENT_ENROLLMENT_PCT = 100``, update that fig-cap by hand.
 UTIL_NAMES = {  # state-dependent: swap when switching states
     "cenhud": "Central Hudson",
     "coned": "Con Edison",
@@ -714,8 +719,8 @@ def plot_bill_components_decomposed(
 ### Representative home
 
 We hardcode a specific building chosen for its narrative qualities: bills increase
-after HP switch under default rates, but decrease below baseline under fair rates,
-with a delivery overpayment close to the statewide average for HP owners.
+after the heat pump switch under default rates, but decrease below baseline under fair rates,
+with a delivery overpayment close to the statewide average for heat pump owners.
 
 ```{python}
 #| label: compute-bill-components-state
@@ -785,10 +790,10 @@ report_vars["median_net_increase"] = report_vars["median_elec_jump"] - report_va
 ```
 
 1. Same natgas-only filter as the representative-building cell. Statewide, ~2.7% of natgas buildings are dropped.
-2. Pre-filter the HP scenario to the same natgas-only building IDs so we can look up individual buildings.
+2. Pre-filter the heat pump scenario to the same natgas-only building IDs so we can look up individual buildings.
 3. Hardcoded building: 1,698 sqft, 1940s, 3-bed, 1-story SFD in Syracuse, Onondaga County (NiMo).
-   Bills increase after HP switch under default rates but decrease below baseline under fair rates,
-   with delivery overpayment close to the statewide average for HP owners (~$855/yr).
+   Bills increase after the heat pump switch under default rates but decrease below baseline under fair rates,
+   with delivery overpayment close to the statewide average for heat pump owners (~$855/yr).
 
 We also load monthly load curves for this building from ResStock to show energy consumption (in kWh) alongside the bill
 charts.
@@ -815,7 +820,7 @@ gas_kwh_after = df_after_load["out.natural_gas.total.energy_consumption"].sum()
 
 ```{python}
 #| label: fig-consumption-vs-bills-state
-#| fig-cap: "Annual energy consumption and energy bills before and after switching to a heat pump, for the gas-heated home at the statewide median energy bill (among gas-heated homes with full baseline cooling)."
+#| fig-cap: "Annual energy consumption and energy bills before and after switching to a heat pump, for the gas-heated home at the statewide median energy bill (among gas-heated homes with full baseline cooling). 1 kWh of gas = 3,412 BTU."
 
 norm_kwh = elec_kwh_before + gas_kwh_before
 norm_bill = _elec_before + _gas_before
@@ -950,7 +955,7 @@ fig_combined
 
 ```{python}
 #| label: fig-consumption-only-state
-#| fig-cap: "Annual energy consumption before and after switching to a heat pump, for the gas-heated home at the statewide median energy bill (among gas-heated homes with full baseline cooling)."
+#| fig-cap: "Annual energy consumption before and after switching to a heat pump, for the gas-heated home at the statewide median energy bill (among gas-heated homes with full baseline cooling). 1 kWh of gas = 3,412 BTU."
 
 fig_energy_only = p_combined.draw()
 for a in list(fig_energy_only.artists):
@@ -985,7 +990,7 @@ fig_energy_only
 
 ```{python}
 #| label: fig-consumption-elec-focus-state
-#| fig-cap: "Electricity use and electric bills both grow roughly 3× after switching to a heat pump."
+#| fig-cap: "Electricity use and electric bills both grow roughly 2× after switching to a heat pump. 1 kWh of gas = 3,412 BTU."
 
 FOCUS_COMP_COLORS = {"Electricity": "#FFC729", "Natural Gas": "#CCCCCC"}
 FOCUS_COMP_LABEL_COLORS = {"Electricity": "#FFC729", "Natural Gas": "#999999"}
@@ -1131,11 +1136,11 @@ fig_focus
 
 ```{python}
 #| label: fig-bill-components-decomposed-state
-#| fig-cap: "Median energy bill components (decomposed) — Statewide"
+#| fig-cap: "Annual energy bills for Syracuse home, before and after heat pumps, broken down by total gas bill, electric supply bill, and electric delivery bill. The home's annual gas and electricity consumption are from NREL's 2024 ResStock release; bills are calculated using NGrid Upstate's 2025 gas and electricity rates. Electricity bill includes supply and delivery surcharges but excludes reconciliation and other true-up charges."
 
 p_decomposed = plot_bill_components_decomposed(
     median_current_state, median_hp_state,
-    "Median energy bill components — Statewide",
+    "Electric supply and delivery bills double after home in Syracuse, NY switches to a heat pump",
 )
 
 fig_decomposed = p_decomposed.draw()
@@ -1225,13 +1230,21 @@ _after_monthly = df_after_load.select(
     pl.col(_elec_col).alias("elec_after"),
 )
 _monthly = _before_monthly.join(_after_monthly, on="month_label").with_columns(
+    pl.min_horizontal("elec_before", "elec_after").alias("elec_shared_base"),
     (pl.col("elec_after") - pl.col("elec_before")).clip(lower_bound=0).alias("elec_incremental"),
+    (pl.col("elec_before") - pl.col("elec_after")).clip(lower_bound=0).alias("elec_cooling_savings"),
 )
 
-INCR_SEGMENT_ORDER = ["New electricity from heat pump", "Electricity before heat pump"]
+INCR_SEGMENT_ORDER = [
+    "New electricity from heat pump",
+    "More efficient cooling",
+    "Electricity before heat pump",
+]
 incremental_df = pl.concat([
-    _monthly.select("month_label", pl.col("elec_before").alias("kwh"))
+    _monthly.select("month_label", pl.col("elec_shared_base").alias("kwh"))
     .with_columns(pl.lit("Electricity before heat pump").alias("segment")),
+    _monthly.select("month_label", pl.col("elec_cooling_savings").alias("kwh"))
+    .with_columns(pl.lit("More efficient cooling").alias("segment")),
     _monthly.select("month_label", pl.col("elec_incremental").alias("kwh"))
     .with_columns(pl.lit("New electricity from heat pump").alias("segment")),
 ]).with_columns(
@@ -1242,16 +1255,23 @@ incremental_df = pl.concat([
 
 ```{python}
 #| label: fig-consumption-before-after-state
-#| fig-cap: "Monthly electricity consumption for a representative gas-heated home, before and after switching to a heat pump"
+#| fig-cap: "Monthly electricity consumption for a representative gas-heated home, before and after switching to a heat pump. Winter consumption grows sharply, while summer consumption falls because the heat pump cools more efficiently than the home's prior air conditioner. 1 kWh of gas = 3,412 BTU."
+
+_SAVINGS_FILL = (0.784, 0.635, 0.0, 0.35)  # #C8A200 at 35% opacity
+_SAVINGS_LABEL_COLOR = "#D4BA46"
 
 INCR_COLORS = {
     "Electricity before heat pump": "#C8A200",
+    "More efficient cooling": _SAVINGS_FILL,
     "New electricity from heat pump": "#FFC729",
 }
 
 _dec = _monthly.filter(pl.col("month_label") == "Dec")
-_dec_before = float(_dec["elec_before"][0])
+_dec_base = float(_dec["elec_shared_base"][0])
 _dec_incr = float(_dec["elec_incremental"][0])
+_aug = _monthly.filter(pl.col("month_label") == "Aug")
+_aug_base = float(_aug["elec_shared_base"][0])
+_aug_savings = float(_aug["elec_cooling_savings"][0])
 _n = len(MONTH_LABELS)
 _lx = _n + 0.6
 
@@ -1261,17 +1281,20 @@ _lx = _n + 0.6
     + scale_fill_manual(values=INCR_COLORS)
     + scale_y_continuous(expand=(0, 0, 0.05, 0))
     + scale_x_discrete(expand=(0.02, 0, 0.15, 0))
-    + annotate("text", x=_lx, y=_dec_before / 2,
+    + annotate("text", x=_lx, y=_dec_base / 2,
                label="Electricity use\nbefore heat pump",
                ha="left", va="center", size=9, color="#C8A200", fontweight="bold")
     + annotate("segment", x=_n + 0.15, xend=_lx - 0.05,
-               y=_dec_before / 2, yend=_dec_before / 2, color="#C8A200", size=0.5)
-    + annotate("text", x=_lx, y=_dec_before + _dec_incr / 2,
+               y=_dec_base / 2, yend=_dec_base / 2, color="#C8A200", size=0.5)
+    + annotate("text", x=_lx, y=_dec_base + _dec_incr / 2,
                label="New electricity use\nfrom heat pump",
                ha="left", va="center", size=9, color="#D4A800", fontweight="bold")
     + annotate("segment", x=_n + 0.15, xend=_lx - 0.05,
-               y=_dec_before + _dec_incr / 2, yend=_dec_before + _dec_incr / 2,
+               y=_dec_base + _dec_incr / 2, yend=_dec_base + _dec_incr / 2,
                color="#D4A800", size=0.5)
+    + annotate("text", x=8, y=_aug_base + _aug_savings + 80,
+               label="More efficient cooling\nlowers use",
+               ha="center", va="bottom", size=9, color=_SAVINGS_LABEL_COLOR, fontweight="bold")
     + labs(x="", y="Electricity consumption (kWh)")
     + theme_switchbox()
     + theme(figure_size=(14, 5), legend_position="none")
@@ -1383,7 +1406,7 @@ def plot_quadrant_bar(
     stacking_order = list(reversed(QUADRANT_ORDER))
 
     seg_label_records: list[dict] = []
-    seg_label_offset = 0.33
+    seg_label_offset = 0.45
     for i, pct in enumerate(all_pcts):
         bar_x = n_scenarios - i
         cum = 0.0
@@ -1417,7 +1440,7 @@ def plot_quadrant_bar(
             })
     row_label_df = pl.DataFrame(row_label_records) if row_label_records else None
 
-    top_expand = 0.55 if n_scenarios > 1 else 1.2
+    top_expand = 0.7 if n_scenarios > 1 else 1.2
     plotnine_title = "" if title_parts else title
 
     p = (
@@ -1429,18 +1452,18 @@ def plot_quadrant_bar(
             position=position_stack(vjust=0.5),
             format_string="{:.1f}%",
             color="white",
-            size=10,
+            size=11,
             fontweight="bold",
         )
         + scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
-        + scale_y_continuous(expand=(0, 0, 0.15, 0))
+        + scale_y_continuous(expand=(0, 0, 0.32, 0))
         + scale_x_discrete(expand=(0, 0.35, 0, top_expand))
         + coord_flip()
         + guides(fill=False)
         + labs(x="", y="", title=plotnine_title)
         + theme_switchbox()
         + theme(
-            figure_size=(12.5, max(2.6, 1.0 + 1.2 * n_scenarios)),
+            figure_size=(13.5, max(2.6, 1.0 + 1.4 * n_scenarios)),
             axis_text=element_blank(),
             axis_ticks_x=element_blank(),
             axis_ticks_y=element_blank(),
@@ -1461,7 +1484,7 @@ def plot_quadrant_bar(
                 sub,
                 aes(x="x", y="y", label="label", color="color"),
                 ha=ha_val, va="bottom",
-                size=8, fontweight="bold",
+                size=10, fontweight="bold",
                 inherit_aes=False,
                 show_legend=False,
             )
@@ -1471,7 +1494,7 @@ def plot_quadrant_bar(
             row_label_df,
             aes(x="x", y="y", label="label"),
             ha="left", va="center",
-            size=9, fontweight="bold",
+            size=11, fontweight="bold",
             inherit_aes=False,
         )
 
@@ -1507,9 +1530,8 @@ def plot_quadrant_bar(
 
 _QBU_BAR_HEIGHT = 0.45
 _QBU_GROUP_GAP = 1.0
-_QBU_INTRA_GAP = 0.12
 _QBU_HEADER_SPACE = 0.55
-_QBU_LABEL_SPACE = 0.35
+_QBU_LABEL_SPACE = 0.4
 
 
 def plot_quadrant_bar_by_utility(
@@ -1518,7 +1540,7 @@ def plot_quadrant_bar_by_utility(
     utility_names: dict[str, str],
     fuel_filter: pl.Expr,
     title_parts: list[tuple[str, str]],
-    scenario_labels: tuple[str, str] = ("Default rate", "HP seasonal rate"),
+    scenario_labels: tuple[str, str] = ("Default rate", "HP delivery rate"),
 ) -> None:
     """Grouped quadrant bars for each utility in a single tall figure.
 
@@ -1545,7 +1567,6 @@ def plot_quadrant_bar_by_utility(
         ]
 
     n_utils = len(util_data)
-    n_scenarios = 2
 
     bar_positions: list[float] = []
     bar_scenario_labels: list[str] = []
@@ -1558,20 +1579,18 @@ def plot_quadrant_bar_by_utility(
         utility_header_ys.append((y, util_name))
         y += _QBU_HEADER_SPACE
 
-        first_pct = scenarios[0][1]
-        label_rows.append((y, first_pct))
-        y += _QBU_LABEL_SPACE
-
-        for s_idx, (s_label, pct) in enumerate(scenarios):
+        for s_label, pct in scenarios:
+            y += _QBU_LABEL_SPACE
+            label_rows.append((y, pct))
             bar_positions.append(y)
             bar_scenario_labels.append(s_label)
             bar_pcts.append(pct)
-            y += _QBU_BAR_HEIGHT + (_QBU_INTRA_GAP if s_idx < n_scenarios - 1 else 0)
+            y += _QBU_BAR_HEIGHT
         if u_idx < n_utils - 1:
             y += _QBU_GROUP_GAP
 
     y_max = y + 0.1
-    fig_height = 1.5 + n_utils * 2.3
+    fig_height = 1.5 + n_utils * 2.7
 
     fig, ax = plt.subplots(figsize=(12.5, fig_height))
     ax.set_xlim(0, 100)
@@ -1593,32 +1612,32 @@ def plot_quadrant_bar_by_utility(
             if width >= 3:
                 ax.text(left + width / 2, bp + _QBU_BAR_HEIGHT / 2, f"{width:.1f}%",
                         ha="center", va="center", color="white",
-                        fontsize=10, fontweight="bold", fontfamily="IBM Plex Sans")
+                        fontsize=11, fontweight="bold", fontfamily="IBM Plex Sans")
             left += width
 
     for bp, label in zip(bar_positions, bar_scenario_labels):
         ax.text(101, bp + _QBU_BAR_HEIGHT / 2, label,
-                ha="left", va="center", fontsize=9, fontweight="bold",
+                ha="left", va="center", fontsize=11, fontweight="bold",
                 fontfamily="IBM Plex Sans")
 
     for header_y, util_name in utility_header_ys:
         ax.text(0, header_y, util_name,
-                ha="left", va="top", fontsize=11, fontweight="bold",
+                ha="left", va="top", fontsize=13, fontweight="bold",
                 fontfamily="GT Planar", color="#333333")
 
-    for label_y, first_pct in label_rows:
+    for label_y, bar_pct in label_rows:
         cum = 0.0
         for q in stacking_order:
-            mid = cum + first_pct[q] / 2
-            cum += first_pct[q]
-            if first_pct[q] < 2:
+            mid = cum + bar_pct[q] / 2
+            cum += bar_pct[q]
+            if bar_pct[q] < 2:
                 continue
             ax.text(mid, label_y, QUADRANT_LABELS[q],
-                    ha="center", va="bottom", fontsize=8,
+                    ha="center", va="bottom", fontsize=10,
                     fontweight="bold", color=QUADRANT_COLORS[q],
                     fontfamily="IBM Plex Sans")
 
-    fig.subplots_adjust(left=0.02, right=0.85, top=0.95, bottom=0.01)
+    fig.subplots_adjust(left=0.02, right=0.82, top=0.95, bottom=0.01)
 
     # Multi-color title
     renderer = fig.canvas.get_renderer()
@@ -1727,6 +1746,7 @@ _elec_change_table = pl.DataFrame(_table_rows).pivot(
 
 ```{python}
 #| label: tbl-elec-pct-change
+#| tbl-cap: "Median percent increase in annual electricity consumption for fossil-heated households after switching to a heat pump, by utility territory and baseline cooling status (full, partial, or none). Based on ResStock 2024 hourly load profiles, pre- and post-heat-pump, for households that currently heat with natural gas, oil, or propane."
 
 from lib.great_tables import get_switchbox_gt_tab_options
 from lib.quarto import display_gt
@@ -1893,11 +1913,7 @@ report_vars["pct_natgas_lose_1k_default_lmi40"] = _lmi40_def_lose_1k / _lmi40_de
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-state-state-lmi-current
-#| fig-cap: "Bill impact of switching to heat pumps for natural gas-heated households (Statewide). Assumes ~40% of LMI households receive discounts before and after HP switch."
-# Fig-cap LMI variants (see ``INCLUDE_LMI_DISCOUNT`` / ``LMI_CURRENT_ENROLLMENT_PCT`` in chunk ``constants``):
-# #| fig-cap: "Bill impact of switching to heat pumps for natural gas-heated households (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
-# #| fig-cap: "Bill impact of switching to heat pumps for natural gas-heated households (Statewide). Assumes ~40% of LMI households receive discounts before and after HP switch."
-# #| fig-cap: "Bill impact of switching to heat pumps for natural gas-heated households (Statewide). Assumes ~100% of LMI households receive discounts before and after HP switch."
+#| fig-cap: "Change in total annual energy bills (electricity + natural gas) for natural gas-heated households that switch to heat pumps (NY, statewide). Assumes 40% of LMI households are enrolled in the utilities’ energy affordability program before and after switching to a heat pump."
 
 _title_natgas_state_lmi: list[tuple[str, str]] = [
     ("How bills would change for ", "#000000"),
@@ -1918,11 +1934,7 @@ plot_quadrant_bar(
 
 ```{python}
 #| label: fig-quadrant-bar-oil-propane-state
-#| fig-cap: "Bill impact of switching to heat pumps for oil/propane-heated households (Statewide). Assumes ~40% of LMI households receive discounts before and after HP switch."
-# Fig-cap LMI variants (see chunk ``constants``):
-# #| fig-cap: "Bill impact of switching to heat pumps for oil/propane-heated households (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
-# #| fig-cap: "Bill impact of switching to heat pumps for oil/propane-heated households (Statewide). Assumes ~40% of LMI households receive discounts before and after HP switch."
-# #| fig-cap: "Bill impact of switching to heat pumps for oil/propane-heated households (Statewide). Assumes ~100% of LMI households receive discounts before and after HP switch."
+#| fig-cap: "Change in total annual energy bills (electricity + oil/propane) for oil/propane-heated households that switch to heat pumps (NY, statewide). Assumes 40% of LMI households are enrolled in the utilities’ energy affordability program before and after switching to a heat pump."
 
 plot_quadrant_bar(
     [("Oil / propane", oil_propane_state)],
@@ -1939,11 +1951,7 @@ plot_quadrant_bar(
 
 ```{python}
 #| label: fig-quadrant-bar-elec-resistance-state
-#| fig-cap: "Bill impact of switching to heat pumps for electric resistance-heated households (Statewide). Assumes ~40% of LMI households receive discounts before and after HP switch."
-# Fig-cap LMI variants (see chunk ``constants``):
-# #| fig-cap: "Bill impact of switching to heat pumps for electric resistance-heated households (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
-# #| fig-cap: "Bill impact of switching to heat pumps for electric resistance-heated households (Statewide). Assumes ~40% of LMI households receive discounts before and after HP switch."
-# #| fig-cap: "Bill impact of switching to heat pumps for electric resistance-heated households (Statewide). Assumes ~100% of LMI households receive discounts before and after HP switch."
+#| fig-cap: "Change in total annual energy bills (electricity) for electric resistance-heated households that switch to heat pumps (NY, statewide). Assumes 40% of LMI households are enrolled in the utilities’ energy affordability program before and after switching to a heat pump."
 
 plot_quadrant_bar(
     [("Electric resistance", elec_resistance_state)],
@@ -2032,7 +2040,7 @@ computed from the statewide ResStock sample (upgrade 0 — current HVAC).
 
 ```{python}
 #| label: fig-households-by-fuel
-#| fig-cap: "Percentage of households by primary heating fuel"
+#| fig-cap: "Percentage of NY State households by primary heating fuel"
 
 FUEL_CATEGORIES = [
     "Natural Gas", "Propane", "Fuel Oil", "Heat Pump", "Resistance", "Other/None",
@@ -2327,7 +2335,7 @@ print(
     f"Median bldg {median_bldg_id_state} "
     f"({median_gas_bat['sb.electric_utility']}):"
 )
-for label, row in [("Gas", median_gas_bat), ("HP", median_hp_bat)]:
+for label, row in [("Gas", median_gas_bat), ("Heat pump", median_hp_bat)]:
     print(
         f"  {label}: bill=${row['revenue']:,.0f}, "
         f"MC=${row['mc']:,.0f}, residual=${row['residual']:,.0f}, "
@@ -2337,7 +2345,7 @@ for label, row in [("Gas", median_gas_bat), ("HP", median_hp_bat)]:
 
 ```{python}
 #| label: fig-cross-subsidy-example
-#| fig-cap: "Annual electric delivery bill vs. electric delivery cost of service for the median gas-heated home, before and after switching to a heat pump."
+#| fig-cap: "Annual electric delivery bill vs. delivery cost of service for the home in Syracuse, NY, before and after switching to a heat pump. Home's electric loads are from ResStock, bills are caculated using NGrid Upstate's 2025 electric rates. Cost-of-service is from Switchbox analysis of T&D marginal costs and utility revenue requirements."
 
 DECOMPOSE_COS = False
 
@@ -2542,7 +2550,7 @@ side_text_df = pl.DataFrame([
     + facet_wrap("scenario", ncol=2)
     + labs(
         x="", y="$ / year",
-        title="Electric delivery bill vs. delivery cost of service — same home, before and after heat pump",
+        title="Electric delivery bill vs. cost of service — home in Syracuse, NY, before and after heat pump",
         fill="",
     )
     + theme_switchbox()
@@ -2553,7 +2561,7 @@ side_text_df = pl.DataFrame([
 ### Statewide summary and report statistics
 
 We compute the mean delivery BAT by heating type — the key numbers that
-quantify how much HP customers overpay and how much fossil fuel customers
+quantify how much heat pump customers overpay and how much fossil fuel customers
 underpay.
 
 ```{python}
@@ -2630,6 +2638,7 @@ report_vars["natgas_mean_delivery_cost"] = (
 report_vars["natgas_mean_delivery_bill"] = _weighted_mean(_natgas_sub, "annual_bill_delivery", "weight")
 report_vars["natgas_mean_delivery_bat"] = _weighted_mean(_natgas_sub, _bat_col, "weight")
 report_vars["oil_propane_mean_delivery_bat"] = _weighted_mean(_op_sub, _bat_col, "weight")
+report_vars["elec_resistance_share_of_households"] = _er_sub["weight"].sum() / total_weight
 report_vars["elec_resistance_mean_delivery_bat"] = _weighted_mean(_er_sub, _bat_col, "weight")
 report_vars["elec_resistance_total_cross_subsidy_delivery_millions"] = (
     (_er_sub[BAT_DELIVERY] * _er_sub["weight"]).sum() / 1e6
@@ -2826,8 +2835,8 @@ for ht in FACET_ORDER:
 
 ### Impact of tech-specific rates on fossil fuel cross-subsidization
 
-What happens to fossil fuel customers' cross-subsidization if tech-specific rates zero out the net overpayment of HP
-customers, ER customers, or both? We spread the released overpayment uniformly across fossil fuel households and report
+What happens to fossil fuel customers' cross-subsidization if tech-specific rates zero out the net overpayment of heat pump
+customers, electric resistance customers, or both? We spread the released overpayment uniformly across fossil fuel households and report
 the shift in their net, mean annual BAT, and mean monthly BAT (over a 6-month heating season).
 
 ```{python}
@@ -2847,9 +2856,9 @@ hp = labeled_all.filter(pl.col("heating_label") == "Heat pump")
 hp_net = (hp[col] * hp["weight"]).sum()
 
 scenarios = [
-    ("HP rate only", hp_net),
-    ("ER rate only", er_net),
-    ("HP + ER rates", hp_net + er_net),
+    ("Heat pump rate only", hp_net),
+    ("Electric resistance rate only", er_net),
+    ("Heat pump + electric resistance rates", hp_net + er_net),
 ]
 
 scenario_rows = []
@@ -2883,10 +2892,10 @@ for name, released in scenarios:
 )
 ```
 
-### Typical HP customer: bill vs. cost of service by utility
+### Typical heat pump customer: bill vs. cost of service by utility
 
 The single-utility example above is illustrative, but does the pattern hold statewide?
-For each utility we pick the HP building nearest the weighted-median BAT and
+For each utility we pick the heat pump building nearest the weighted-median BAT and
 compare its annual electric bill against its cost of service (marginal cost +
 residual allocation). The overpayment gap is consistent across all seven
 service territories.
@@ -2947,7 +2956,7 @@ median_hp_bldgs = pl.concat(utility_picks)
 
 ```{python}
 #| label: fig-cross-subsidy-by-utility
-#| fig-cap: "How much the typical HP customer overpays on delivery in each utility territory."
+#| fig-cap: "Delivery bill alignment for the typical (median-overpayment) heat pump customer, by utility territory. Values are the difference between the customer's annual electric delivery bill under the utility's default rate and their delivery cost of service, with positive values indicating overpayment. Cost of service calculated using NREL's CAIRO model and each utility's 2025 MCOS study (see methods)."
 
 overpay_df = (
     median_hp_bldgs
@@ -2977,7 +2986,7 @@ overpay_df = overpay_df.with_columns(
     + scale_y_continuous(expand=(0, 0, 0.12, 0))
     + labs(
         x="", y="$ / year",
-        title="How much the typical HP customer overpays on delivery",
+        title="How much the typical heat pump customer overpays on delivery",
     )
     + theme_switchbox()
     + theme(
@@ -3330,7 +3339,7 @@ display_gt(_fuel_gt)
 
 We propose a simple seasonal delivery rate for heat pump customers: summer
 rates match the current default, while winter rates are reduced to the level
-where HP customers' annual delivery bills equal their cost-of-service, on
+where heat pump customers' annual delivery bills equal their cost-of-service, on
 average. Each utility gets a unique winter rate reflecting its territory's
 costs.
 
@@ -3368,11 +3377,15 @@ for display, code in TARIFF_UTILS.items():
 rate_wide = pl.DataFrame([summer_row, winter_row, discount_row])
 util_cols = [c for c in rate_wide.columns if c != "metric"]
 
+_discount_values = [discount_row[c] for c in util_cols]
+report_vars["hp_seasonal_winter_discount_min_pct"] = min(_discount_values)
+report_vars["hp_seasonal_winter_discount_max_pct"] = max(_discount_values)
+
 ```
 
 ```{python}
 #| label: tbl-rate-table
-#| tbl-cap: "Proposed seasonal heat pump rate, per utility. Summer rates match current default rate (when default rate is flat), winter rates are reduced to align HP customers' annual bills with their cost-of-service."
+#| tbl-cap: "Proposed seasonal heat pump rate, per utility. Summer rates match current default rate (when default rate is flat), winter rates are reduced to align heat pump customers' annual bills with their cost-of-service."
 
 _rate_gt = (
     GT(rate_wide, rowname_col="metric")
@@ -3383,12 +3396,12 @@ _rate_gt = (
 display_gt(_rate_gt)
 ```
 
-## Proposed electric-heating rate: a seasonal rate for HP + ER customers
+## Proposed electric-heating rate: a seasonal rate for heat pump and electric-resistance customers
 
 The electric-heating (EH) seasonal rate extends the seasonal structure to
 both heat-pump and electric-resistance customers. Summer delivery rates
 match the default rate; winter delivery rates are reduced to align the
-combined HP + ER customers' annual delivery bills with their combined
+combined heat pump and electric-resistance customers' annual delivery bills with their combined
 cost-of-service, on average.
 
 ```{python}
@@ -3411,7 +3424,7 @@ util_cols_eh = [c for c in rate_wide_eh.columns if c != "metric"]
 
 ```{python}
 #| label: tbl-rate-table-eh
-#| tbl-cap: "Proposed electric-heating seasonal rate, per utility. Applies to combined HP + ER customers. Summer rates match the current default rate (when default rate is flat); winter rates are reduced to align HP + ER customers' annual bills with their combined cost-of-service."
+#| tbl-cap: "Proposed electric-heating seasonal rate, per utility. Applies to combined heat pump and electric-resistance customers. Summer rates match the current default rate (when default rate is flat); winter rates are reduced to align heat pump and electric-resistance customers' annual bills with their combined cost-of-service."
 
 _rate_gt_eh = (
     GT(rate_wide_eh, rowname_col="metric")
@@ -3982,6 +3995,14 @@ def _make_tou_chart(display_name, tariff_code):
                     va="center", ha="left", fontsize=8,
                     color=SB_COLORS["saffron"], fontweight="bold",
                     clip_on=False)
+    else:
+        # Reserve the same right-side margin so bar widths align with
+        # flat-default charts above.
+        for ax in (ax_top, ax_bot):
+            ax.text(24, 0, "  00¢ default",
+                    va="center", ha="left", fontsize=8,
+                    color="none", fontweight="bold",
+                    clip_on=False)
 
     delivery_patch = mpatches.Patch(facecolor=_C_DELIVERY, label="Delivery")
     supply_patch = mpatches.Patch(facecolor=_C_SUPPLY, label="Supply")
@@ -3998,49 +4019,49 @@ def _tou_schedule_svg(display_name: str, tariff_code: str) -> None:
 
 ```{python}
 #| label: fig-tou-schedule-coned
-#| fig-cap: "TOU rate schedule — ConEd"
+#| fig-cap: "On-peak and off-peak schedule and prices of TOU heat pump rate designed for ConEd"
 
 _tou_schedule_svg("ConEd", "coned")
 ```
 
 ```{python}
 #| label: fig-tou-schedule-nimo
-#| fig-cap: "TOU rate schedule — National Grid"
+#| fig-cap: "On-peak and off-peak schedule and prices of TOU heat pump rate designed for National Grid"
 
 _tou_schedule_svg("NiMo", "nimo")
 ```
 
 ```{python}
 #| label: fig-tou-schedule-nyseg
-#| fig-cap: "TOU rate schedule — NYSEG"
+#| fig-cap: "On-peak and off-peak schedule and prices of TOU heat pump rate designed for NYSEG"
 
 _tou_schedule_svg("NYSEG", "nyseg")
 ```
 
 ```{python}
 #| label: fig-tou-schedule-cenhud
-#| fig-cap: "TOU rate schedule — Central Hudson"
+#| fig-cap: "On-peak and off-peak schedule and prices of TOU heat pump rate designed for Central Hudson"
 
 _tou_schedule_svg("CenHud", "cenhud")
 ```
 
 ```{python}
 #| label: fig-tou-schedule-rge
-#| fig-cap: "TOU rate schedule — RG&E"
+#| fig-cap: "On-peak and off-peak schedule and prices of TOU heat pump rate designed for RG&E"
 
 _tou_schedule_svg("RG&E", "rge")
 ```
 
 ```{python}
 #| label: fig-tou-schedule-or
-#| fig-cap: "TOU rate schedule — O&R"
+#| fig-cap: "On-peak and off-peak schedule and prices of TOU heat pump rate designed for O&R"
 
 _tou_schedule_svg("O&R", "or")
 ```
 
 ```{python}
 #| label: fig-tou-schedule-psegli
-#| fig-cap: "TOU rate schedule — PSEG-LI"
+#| fig-cap: "On-peak and off-peak schedule and prices of TOU heat pump rate designed for PSEG-LI"
 
 _tou_schedule_svg("PSEG-LI", "psegli")
 ```
@@ -4050,7 +4071,7 @@ _tou_schedule_svg("PSEG-LI", "psegli")
 Under the TOU flex rate, customers have an incentive to shift electricity consumption from expensive peak hours to
 cheaper off-peak hours. We model this response using a constant-elasticity demand model calibrated to empirical
 evidence from the Arcturus 2.0 meta-analysis of TOU pricing pilots. The charts below illustrate this for a single
-representative HP building in the `UTILITY` service territory: how much load shifts from peak to off-peak, and what
+representative heat pump building in the `UTILITY` service territory: how much load shifts from peak to off-peak, and what
 that means in dollar terms.
 
 ```{python}
@@ -4271,13 +4292,13 @@ if INCLUDE_TOU:
         return fig
 ```
 
-We pick one HP building in the `UTILITY` territory and load its 8,760-hour load profile, assign each hour to
+We pick one heat pump building in the `UTILITY` territory and load its 8,760-hour load profile, assign each hour to
 peak or off-peak based on the TOU flex tariff schedule, and compute the constant-elasticity demand shift:
 $Q_\text{remaining} = Q_\text{peak} \times (P_\text{on} / P_\text{flat})^\varepsilon$.
 
 ```{python}
 #| label: fig-tou-flex-kwh-before
-#| fig-cap: "Seasonal electricity consumption by TOU period for a representative HP building, showing the kWh that would shift under demand-flex"
+#| fig-cap: "Seasonal electricity consumption by TOU period for a representative heat pump building, showing the kWh that would shift under demand-flex"
 
 if INCLUDE_TOU:
     _fig = _flex_bar_chart(
@@ -4301,7 +4322,7 @@ Energy is conserved — total seasonal kWh stays the same.
 
 ```{python}
 #| label: fig-tou-flex-kwh-shift
-#| fig-cap: "Before and after demand-flex: seasonal kWh by TOU period for a representative HP building"
+#| fig-cap: "Before and after demand-flex: seasonal kWh by TOU period for a representative heat pump building"
 
 if INCLUDE_TOU:
     _fig = _flex_bar_chart(
@@ -4331,7 +4352,7 @@ Both bars are the same width — total kWh is conserved. The "Will shift" chunk 
 
 ```{python}
 #| label: fig-tou-flex-bill-before
-#| fig-cap: "Seasonal bill by TOU period for a representative HP building, showing the bill component that would change under demand-flex"
+#| fig-cap: "Seasonal bill by TOU period for a representative heat pump building, showing the bill component that would change under demand-flex"
 
 if INCLUDE_TOU:
     _s = _flex_season_stats
@@ -4355,7 +4376,7 @@ rate. When this load moves to off-peak, it will be priced at the cheaper off-pea
 
 ```{python}
 #| label: fig-tou-flex-bill-shift
-#| fig-cap: "Before and after demand-flex: seasonal bill by TOU period for a representative HP building"
+#| fig-cap: "Before and after demand-flex: seasonal bill by TOU period for a representative heat pump building"
 
 if INCLUDE_TOU:
     _s = _flex_season_stats
@@ -4389,7 +4410,7 @@ season by season.
 
 ```{python}
 #| label: fig-tou-flex-combined-after
-#| fig-cap: "Before and after demand-flex: seasonal kWh and bill for a representative HP building"
+#| fig-cap: "Before and after demand-flex: seasonal kWh and bill for a representative heat pump building"
 
 if INCLUDE_TOU:
     _s = _flex_season_stats
@@ -4428,9 +4449,9 @@ if INCLUDE_TOU:
 ## Cross-subsidization under fair rate
 
 Does the seasonal rate actually fix the cross-subsidy? We compare the BAT
-distributions under flat rates (run 1+2) and HP seasonal rates (`RUN_HPRATE`) — same
+distributions under flat rates (run 1+2) and seasonal heat pump rates (`RUN_HPRATE`) — same
 buildings, same upgrade 0, only the rate structure changes. If the seasonal rate
-is well-designed, the HP overpayment should collapse to near zero.
+is well-designed, the heat pump overpayment should collapse to near zero.
 
 ```{python}
 #| label: bat-56-ingest
@@ -4451,10 +4472,10 @@ bat_all_56 = (
 )
 ```
 
-### Summary: HP overpayment before vs. after
+### Summary: heat pump overpayment before vs. after
 
 The comparison table shows how the mean delivery BAT changes for each heating
-type when HP customers move from the default flat rate to the seasonal rate.
+type when heat pump customers move from the default flat rate to the seasonal rate.
 
 ```{python}
 #| label: bat-comparison-table
@@ -4496,19 +4517,19 @@ _bat_comp_gt = (
     .fmt_currency(columns=["current", "seasonal"], decimals=0)
     .cols_label(
         current="Current flat rates",
-        seasonal="HP seasonal rate",
+        seasonal="Seasonal heat pump rate",
     )
     .tab_options(**get_switchbox_gt_tab_options())
 )
 display_gt(_bat_comp_gt)
 ```
 
-## Bill impact of fair rate on HP customers
+## Bill impact of fair rate on heat pump customers
 
 What happens to a fossil-fuel customer's total energy bill if they switch to a
-heat pump **and** get the proposed HP seasonal delivery rate? The "before" is
+heat pump **and** get the proposed seasonal heat pump delivery rate? The "before" is
 their current bill under today's flat rates (run 1+2, upgrade 0) and the
-"after" is their bill as an HP customer on the seasonal rate (`RUN_HPRATE_HP`,
+"after" is their bill as a heat pump customer on the seasonal rate (`RUN_HPRATE_HP`,
 upgrade 2). The delta captures both the fuel switch and the rate change.
 
 ```{python}
@@ -4553,9 +4574,9 @@ report_vars["pct_natgas_save_1k_hprate"] = _sw_save_1k_w / _sw_total_w
 
 ```{python}
 #| label: fig-bill-change-natgas-default-vs-hprate-state
-#| fig-cap: "Annual bill change comparison — natural gas homes switching to HP: default vs. seasonal rate (Statewide)"
+#| fig-cap: "Annual bill change comparison — natural gas homes switching to a heat pump: default vs. seasonal rate (Statewide)"
 
-_comparison_rows = [("Default rate", natgas_state), ("HP seasonal rate", natgas_switch_state)]
+_comparison_rows = [("Default rate", natgas_state), ("Seasonal heat pump rate", natgas_switch_state)]
 
 _all_deltas = pl.concat([r[1] for r in _comparison_rows])
 _snap = max(BIN_WIDTH, 50)
@@ -4630,7 +4651,7 @@ _label_df = pl.DataFrame(_label_records).with_columns(pl.col("rate").cast(_rate_
 
 ```{python}
 #| label: fig-bill-change-oil-propane-switch-hprate-state
-#| fig-cap: "Annual bill change — oil/propane homes switching to HP with seasonal rate (Statewide)"
+#| fig-cap: "Annual bill change — oil/propane homes switching to a heat pump with seasonal rate (Statewide)"
 
 oil_propane_switch_state = (
     delta_switch_state
@@ -4647,7 +4668,7 @@ report_vars["pct_oil_propane_lose_1k_hprate"] = _op_sw_lose_1k / _op_sw_total
 
 ```{python}
 #| label: fig-bill-change-elec-resistance-switch-hprate-state
-#| fig-cap: "Annual bill change — electric resistance homes switching to HP with seasonal rate (Statewide)"
+#| fig-cap: "Annual bill change — electric resistance homes switching to a heat pump with seasonal rate (Statewide)"
 
 elec_resistance_switch_state = (
     delta_switch_state
@@ -4666,7 +4687,7 @@ report_vars["pct_elec_resistance_lose_1k_hprate"] = _er_sw_lose_1k / _er_sw_tota
 
 ```{python}
 #| label: fig-bill-decomposed-fair-rate-state
-#| fig-cap: "Annual energy bill for the representative gas-heated home in Syracuse: before heat pumps, after heat pumps at default rates, and after heat pumps at fair rates."
+#| fig-cap: "Annual energy bill for the representative gas-heated home in Syracuse: before heat pumps under default rates, after heat pumps under default rates, and after heat pumps under seasonal heat pump rates. Assumes National Grid Upstate's default gas / electric delivery and supply rates from 2025."
 
 import io
 
@@ -4785,30 +4806,99 @@ display_svg(fig_3bar)
 ```
 
 ```{python}
-#| label: fig-quadrant-bar-natgas-switch-hprate-by-utility
-#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. seasonal rate, by utility. Assumes ~40% of LMI households receive discounts before and after HP switch."
-# Fig-cap LMI variants (see chunk ``constants``):
-# #| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. seasonal rate, by utility. Undiscounted annual bills (LMI discount enrollment not modeled)."
-# #| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. seasonal rate, by utility. Assumes ~40% of LMI households receive discounts before and after HP switch."
-# #| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. seasonal rate, by utility. Assumes ~100% of LMI households receive discounts before and after HP switch."
+#| label: fig-quadrant-bar-per-util-helpers
 
-plot_quadrant_bar_by_utility(
-    delta_state, delta_switch_state,
-    utility_names=UTIL_NAMES,
-    fuel_filter=pl.col("heats_with_natgas"),
-    title_parts=[
-        ("How bills would change for ", "#000000"),
-        ("natural gas", "#7A8A10"),
-        (" heated homes after switching to ", "#000000"),
-        ("heat pumps", "#c47600"),
-    ],
-)
+def _qbu_filter(df, fuel_filter, util_code):
+    return (
+        df.filter(fuel_filter & (pl.col("sb.electric_utility") == util_code))
+          .select("delta", "weight")
+    )
+
+_QBU_NATGAS_TITLE_PARTS = [
+    ("How bills would change for ", "#000000"),
+    ("natural gas", "#7A8A10"),
+    (" heated homes after switching to ", "#000000"),
+    ("heat pumps", "#c47600"),
+]
+_QBU_OP_TITLE_PARTS = [
+    ("How bills would change for ", "#000000"),
+    ("fuel oil", "#4a8fa0"),
+    (" or ", "#000000"),
+    ("propane", "#3a8fa0"),
+    (" heated homes after switching to ", "#000000"),
+    ("heat pumps", "#c47600"),
+]
+_QBU_ER_TITLE_PARTS = [
+    ("How bills would change for ", "#000000"),
+    ("electric resistance", "#b08e00"),
+    (" heated homes after switching to ", "#000000"),
+    ("heat pumps", "#c47600"),
+]
+
+
+def _plot_per_util_quadrant(fuel_filter, title_parts, util_code: str):
+    return plot_quadrant_bar(
+        [
+            ("Default rate", _qbu_filter(delta_state, fuel_filter, util_code)),
+            ("HP delivery rate", _qbu_filter(delta_switch_state, fuel_filter, util_code)),
+        ],
+        title_parts=[(f"{UTIL_NAMES[util_code]} — ", "#333333")] + title_parts,
+    )
+```
+
+```{python}
+#| label: fig-quadrant-bar-natgas-switch-hprate-cenhud
+#| fig-cap: "Change in total annual energy bills — Central Hudson natural gas homes switching to a heat pump: default delivery rates vs. dedicated heat pump delivery rate. Assumes 40% of LMI households are enrolled in the utilities' energy affordability program before and after switching to a heat pump."
+
+_plot_per_util_quadrant(pl.col("heats_with_natgas"), _QBU_NATGAS_TITLE_PARTS, "cenhud")
+```
+
+```{python}
+#| label: fig-quadrant-bar-natgas-switch-hprate-coned
+#| fig-cap: "Change in total annual energy bills — Con Edison natural gas homes switching to a heat pump: default delivery rates vs. dedicated heat pump delivery rate. Assumes 40% of LMI households are enrolled in the utilities' energy affordability program before and after switching to a heat pump."
+
+_plot_per_util_quadrant(pl.col("heats_with_natgas"), _QBU_NATGAS_TITLE_PARTS, "coned")
+```
+
+```{python}
+#| label: fig-quadrant-bar-natgas-switch-hprate-nimo
+#| fig-cap: "Change in total annual energy bills — National Grid natural gas homes switching to a heat pump: default delivery rates vs. dedicated heat pump delivery rate. Assumes 40% of LMI households are enrolled in the utilities' energy affordability program before and after switching to a heat pump."
+
+_plot_per_util_quadrant(pl.col("heats_with_natgas"), _QBU_NATGAS_TITLE_PARTS, "nimo")
+```
+
+```{python}
+#| label: fig-quadrant-bar-natgas-switch-hprate-nyseg
+#| fig-cap: "Change in total annual energy bills — NYSEG natural gas homes switching to a heat pump: default delivery rates vs. dedicated heat pump delivery rate. Assumes 40% of LMI households are enrolled in the utilities' energy affordability program before and after switching to a heat pump."
+
+_plot_per_util_quadrant(pl.col("heats_with_natgas"), _QBU_NATGAS_TITLE_PARTS, "nyseg")
+```
+
+```{python}
+#| label: fig-quadrant-bar-natgas-switch-hprate-or
+#| fig-cap: "Change in total annual energy bills — O&R natural gas homes switching to a heat pump: default delivery rates vs. dedicated heat pump delivery rate. Assumes 40% of LMI households are enrolled in the utilities' energy affordability program before and after switching to a heat pump."
+
+_plot_per_util_quadrant(pl.col("heats_with_natgas"), _QBU_NATGAS_TITLE_PARTS, "or")
+```
+
+```{python}
+#| label: fig-quadrant-bar-natgas-switch-hprate-psegli
+#| fig-cap: "Change in total annual energy bills — PSEG-LI natural gas homes switching to a heat pump: default delivery rates vs. dedicated heat pump delivery rate. Assumes 40% of LMI households are enrolled in the utilities' energy affordability program before and after switching to a heat pump."
+
+_plot_per_util_quadrant(pl.col("heats_with_natgas"), _QBU_NATGAS_TITLE_PARTS, "psegli")
+```
+
+```{python}
+#| label: fig-quadrant-bar-natgas-switch-hprate-rge
+#| fig-cap: "Change in total annual energy bills — RG&E natural gas homes switching to a heat pump: default delivery rates vs. dedicated heat pump delivery rate. Assumes 40% of LMI households are enrolled in the utilities' energy affordability program before and after switching to a heat pump."
+
+_plot_per_util_quadrant(pl.col("heats_with_natgas"), _QBU_NATGAS_TITLE_PARTS, "rge")
 ```
 
 ### Adding TOU to the comparison
 
-What happens if HP customers get the TOU flex rate instead of the flat seasonal rate? The
-"before" is their current bill under today's flat rates (run 1+2, upgrade 0) and the "after" is their bill as an HP
+What happens if heat pump customers get the TOU flex rate instead of the flat seasonal rate? The
+"before" is their current bill under today's flat rates (run 1+2, upgrade 0) and the "after" is their bill as a heat pump
 customer on the calibrated TOU flex rate (`RUN_TOU_HP`, upgrade 2).
 
 ```{python}
@@ -4825,22 +4915,32 @@ if INCLUDE_TOU:
         (pl.col("bill_after") - pl.col("bill_before")).alias("delta")
     )
     natgas_tou_state = delta_tou_state.filter(pl.col("heats_with_natgas")).select("delta", "weight")
+
+    delta_tou_state_lmi40 = _lmi_delta_state(
+        bills_current, bills_tou_hp, ACTIVE_BILL_COLS, ACTIVE_BILL_COLS,
+    )
+    natgas_tou_state_lmi40 = (
+        delta_tou_state_lmi40
+        .filter(pl.col("heats_with_natgas"))
+        .select("delta", "weight")
+    )
+    _tou_lmi40_total = natgas_tou_state_lmi40["weight"].sum()
+    _tou_lmi40_save = natgas_tou_state_lmi40.filter(pl.col("delta") < 0)["weight"].sum()
+    _tou_lmi40_lose_1k = natgas_tou_state_lmi40.filter(pl.col("delta") > 1000)["weight"].sum()
+    report_vars["pct_natgas_save_tou_lmi40"] = _tou_lmi40_save / _tou_lmi40_total
+    report_vars["pct_natgas_lose_1k_tou_lmi40"] = _tou_lmi40_lose_1k / _tou_lmi40_total
 ```
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-tou-state
-#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. fair vs. TOU + fair rate (Statewide). Assumes ~40% of LMI households receive discounts before and after HP switch."
-# Fig-cap LMI variants (see chunk ``constants``):
-# #| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. fair vs. TOU + fair rate (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
-# #| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. fair vs. TOU + fair rate (Statewide). Assumes ~40% of LMI households receive discounts before and after HP switch."
-# #| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. fair vs. TOU + fair rate (Statewide). Assumes ~100% of LMI households receive discounts before and after HP switch."
+#| fig-cap: "Change in total annual energy bills — natural gas homes switching to a heat pump: default rates vs. dedicated heat pump delivery rate vs. time-of-use heat pump rate (Statewide). Assumes 40% of LMI households are enrolled in the utilities’ energy affordability program before and after switching to a heat pump."
 
 if INCLUDE_TOU:
     _tou_quadrant_fig = plot_quadrant_bar(
         [
             ("Default rate", natgas_state),
-            ("Fair rate", natgas_switch_state),
-            ("TOU flex + fair rate", natgas_tou_state),
+            ("HP delivery rate", natgas_switch_state),
+            ("TOU HP rate", natgas_tou_state),
         ],
         title_parts=[
             ("How bills would change for ", "#000000"),
@@ -4849,18 +4949,23 @@ if INCLUDE_TOU:
             ("heat pumps", "#c47600"),
         ],
     )
+    _q_default = quadrant_pcts(natgas_state)
     _q_fair = quadrant_pcts(natgas_switch_state)
     _q_tou = quadrant_pcts(natgas_tou_state)
+    _default_lose = _q_default["losses $0-1k"] + _q_default["losses > $1k"]
     _fair_lose = _q_fair["losses $0-1k"] + _q_fair["losses > $1k"]
     _tou_lose = _q_tou["losses $0-1k"] + _q_tou["losses > $1k"]
     report_vars["tou_lose_drop_pp"] = (_fair_lose - _tou_lose) / 100
     report_vars["tou_save_1k_rise_pp"] = (_q_tou["savings > $1k"] - _q_fair["savings > $1k"]) / 100
+    report_vars["tou_vs_default_lose_drop_pp"] = (_default_lose - _tou_lose) / 100
+    report_vars["tou_vs_default_save_1k_rise_pp"] = (_q_tou["savings > $1k"] - _q_default["savings > $1k"]) / 100
 
     def _weighted_mean_savings(df: pl.DataFrame) -> float:
         savers = df.filter(pl.col("delta") < 0)
         return float((-savers["delta"] * savers["weight"]).sum() / savers["weight"].sum())
 
     report_vars["tou_avg_savings_rise"] = _weighted_mean_savings(natgas_tou_state) - _weighted_mean_savings(natgas_switch_state)
+    report_vars["tou_vs_default_avg_savings_rise"] = _weighted_mean_savings(natgas_tou_state) - _weighted_mean_savings(natgas_state)
 else:
     _tou_quadrant_fig = None
 _tou_quadrant_fig
@@ -4914,7 +5019,7 @@ if INCLUDE_TOU:
 
 ```{python}
 #| label: fig-histogram-tou-delta-weighted
-#| fig-cap: "Distribution of annual bill change when switching from the seasonal HP rate to the TOU HP rate (natural gas homes)"
+#| fig-cap: "Distribution of annual bill change when switching from the seasonal heat pump rate to the TOU heat pump rate (natural gas homes)"
 
 if INCLUDE_TOU:
     _BW = 10
@@ -4936,7 +5041,7 @@ if INCLUDE_TOU:
         + coord_cartesian(xlim=(-200, 200))
         + scale_y_continuous(expand=(0, 0, 0.05, 0))
         + labs(
-            title="Annual bill change, TOU − seasonal HP rate",
+            title="Annual bill change, TOU − seasonal heat pump rate",
             x="Annual bill change ($/yr)",
             y="Number of homes",
         )
@@ -4975,6 +5080,43 @@ _lmi40_lose_1k = natgas_switch_state_lmi_enrolled.filter(pl.col("delta") > 1000)
 report_vars["pct_natgas_save_hprate_lmi40"] = _lmi40_save / _lmi40_total
 report_vars["pct_natgas_lose_1k_hprate_lmi40"] = _lmi40_lose_1k / _lmi40_total
 
+# TOU minus seasonal (post–HP bills), same sign convention as the TOU−seasonal histogram: negative
+# when the TOU rate yields a *lower* annual bill. Among TOU savers (vs. current), report −E[TOU−seasonal]
+# as a positive “extra savings vs. seasonal” figure — same LMI ~40% bill columns as the save shares.
+if INCLUDE_TOU:
+    _extra_vs_sea = (
+        delta_switch_state_lmi_enrolled.join(
+            delta_tou_state_lmi40.select(
+                BLDG_ID,
+                pl.col("bill_after").alias("bill_tou_lmi40"),
+                pl.col("delta").alias("delta_tou_vs_current_lmi40"),
+            ),
+            on=BLDG_ID,
+            how="inner",
+        )
+        .filter(pl.col("heats_with_natgas"))
+        .select(
+            "weight",
+            # `bill_after` on the left is the seasonal heat-pump total.
+            (pl.col("bill_tou_lmi40") - pl.col("bill_after")).alias("tou_minus_seasonal_lmi40"),
+            pl.col("delta_tou_vs_current_lmi40"),
+        )
+    )
+    _tou_savers = _extra_vs_sea.filter(pl.col("delta_tou_vs_current_lmi40") < 0)
+    _tws = _tou_savers["weight"].sum()
+    report_vars["natgas_tou_extra_vs_seasonal_lmi40"] = (
+        -float(
+            (
+                _tou_savers["tou_minus_seasonal_lmi40"] * _tou_savers["weight"]
+            ).sum()
+            / _tws
+        )
+        if _tws > 0
+        else 0.0
+    )
+else:
+    report_vars["natgas_tou_extra_vs_seasonal_lmi40"] = 0.0
+
 natgas_switch_state_lmi_full = (
     delta_switch_state_lmi_full
     .filter(pl.col("heats_with_natgas"))
@@ -4989,16 +5131,12 @@ report_vars["pct_natgas_save_1k_hprate_lmi_full"] = _lmif_save_1k / _lmif_total
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-switch-hprate-state-lmi-current
-#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. seasonal rate (Statewide). Assumes ~40% of LMI households receive discounts before and after HP switch."
-# Fig-cap LMI variants (see chunk ``constants``):
-# #| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. seasonal rate (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
-# #| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. seasonal rate (Statewide). Assumes ~40% of LMI households receive discounts before and after HP switch."
-# #| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default vs. seasonal rate (Statewide). Assumes ~100% of LMI households receive discounts before and after HP switch."
+#| fig-cap: "Change in total annual gas + electric bills — natural gas homes switching to a heat pump: default delivery rates vs. dedicated heat pump delivery rate (NY, Statewide). Assumes 40% of LMI households are enrolled in utility energy affordability programs before and after switching to a heat pump."
 
 plot_quadrant_bar(
     [
         ("Default rate", natgas_state_lmi_enrolled),
-        ("HP seasonal rate", natgas_switch_state_lmi_enrolled),
+        ("HP delivery rate", natgas_switch_state_lmi_enrolled),
     ],
     title_parts=[
         ("How bills would change for ", "#000000"),
@@ -5011,16 +5149,12 @@ plot_quadrant_bar(
 
 ```{python}
 #| label: fig-quadrant-bar-oil-propane-switch-hprate-state
-#| fig-cap: "Change in total annual energy bills — oil/propane homes switching to HP: default vs. seasonal rate (Statewide). Assumes ~40% of LMI households receive discounts before and after HP switch."
-# Fig-cap LMI variants (see chunk ``constants``):
-# #| fig-cap: "Change in total annual energy bills — oil/propane homes switching to HP: default vs. seasonal rate (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
-# #| fig-cap: "Change in total annual energy bills — oil/propane homes switching to HP: default vs. seasonal rate (Statewide). Assumes ~40% of LMI households receive discounts before and after HP switch."
-# #| fig-cap: "Change in total annual energy bills — oil/propane homes switching to HP: default vs. seasonal rate (Statewide). Assumes ~100% of LMI households receive discounts before and after HP switch."
+#| fig-cap: "Change in total annual energy bills — oil/propane homes switching to a heat pump: default delivery rates vs. dedicated heat pump delivery rate (Statewide). Assumes 40% of LMI households are enrolled in utility energy affordability programs before and after switching to a heat pump."
 
 plot_quadrant_bar(
     [
         ("Default rate", oil_propane_state),
-        ("HP seasonal rate", oil_propane_switch_state),
+        ("HP delivery rate", oil_propane_switch_state),
     ],
     title_parts=[
         ("How bills would change for ", "#000000"),
@@ -5034,40 +5168,62 @@ plot_quadrant_bar(
 ```
 
 ```{python}
-#| label: fig-quadrant-bar-oil-propane-switch-hprate-by-utility
-#| fig-cap: "Change in total annual energy bills — oil/propane homes switching to HP: default vs. seasonal rate, by utility. Assumes ~40% of LMI households receive discounts before and after HP switch."
-# Fig-cap LMI variants (see chunk ``constants``):
-# #| fig-cap: "Change in total annual energy bills — oil/propane homes switching to HP: default vs. seasonal rate, by utility. Undiscounted annual bills (LMI discount enrollment not modeled)."
-# #| fig-cap: "Change in total annual energy bills — oil/propane homes switching to HP: default vs. seasonal rate, by utility. Assumes ~40% of LMI households receive discounts before and after HP switch."
-# #| fig-cap: "Change in total annual energy bills — oil/propane homes switching to HP: default vs. seasonal rate, by utility. Assumes ~100% of LMI households receive discounts before and after HP switch."
+#| label: fig-quadrant-bar-oil-propane-switch-hprate-cenhud
+#| fig-cap: "Change in total annual energy bills — Central Hudson oil/propane homes switching to a heat pump: default delivery rates vs. dedicated heat pump delivery rate. Assumes 40% of LMI households are enrolled in utility energy affordability programs before and after switching to a heat pump."
 
-plot_quadrant_bar_by_utility(
-    delta_state, delta_switch_state,
-    utility_names=UTIL_NAMES,
-    fuel_filter=pl.col("heats_with_oil") | pl.col("heats_with_propane"),
-    title_parts=[
-        ("How bills would change for ", "#000000"),
-        ("fuel oil", "#4a8fa0"),
-        (" or ", "#000000"),
-        ("propane", "#3a8fa0"),
-        (" heated homes after switching to ", "#000000"),
-        ("heat pumps", "#c47600"),
-    ],
-)
+_plot_per_util_quadrant(pl.col("heats_with_oil") | pl.col("heats_with_propane"), _QBU_OP_TITLE_PARTS, "cenhud")
+```
+
+```{python}
+#| label: fig-quadrant-bar-oil-propane-switch-hprate-coned
+#| fig-cap: "Change in total annual energy bills — Con Edison oil/propane homes switching to a heat pump: default delivery rates vs. dedicated heat pump delivery rate. Assumes 40% of LMI households are enrolled in utility energy affordability programs before and after switching to a heat pump."
+
+_plot_per_util_quadrant(pl.col("heats_with_oil") | pl.col("heats_with_propane"), _QBU_OP_TITLE_PARTS, "coned")
+```
+
+```{python}
+#| label: fig-quadrant-bar-oil-propane-switch-hprate-nimo
+#| fig-cap: "Change in total annual energy bills — National Grid oil/propane homes switching to a heat pump: default delivery rates vs. dedicated heat pump delivery rate. Assumes 40% of LMI households are enrolled in utility energy affordability programs before and after switching to a heat pump."
+
+_plot_per_util_quadrant(pl.col("heats_with_oil") | pl.col("heats_with_propane"), _QBU_OP_TITLE_PARTS, "nimo")
+```
+
+```{python}
+#| label: fig-quadrant-bar-oil-propane-switch-hprate-nyseg
+#| fig-cap: "Change in total annual energy bills — NYSEG oil/propane homes switching to a heat pump: default delivery rates vs. dedicated heat pump delivery rate. Assumes 40% of LMI households are enrolled in utility energy affordability programs before and after switching to a heat pump."
+
+_plot_per_util_quadrant(pl.col("heats_with_oil") | pl.col("heats_with_propane"), _QBU_OP_TITLE_PARTS, "nyseg")
+```
+
+```{python}
+#| label: fig-quadrant-bar-oil-propane-switch-hprate-or
+#| fig-cap: "Change in total annual energy bills — O&R oil/propane homes switching to a heat pump: default delivery rates vs. dedicated heat pump delivery rate. Assumes 40% of LMI households are enrolled in utility energy affordability programs before and after switching to a heat pump."
+
+_plot_per_util_quadrant(pl.col("heats_with_oil") | pl.col("heats_with_propane"), _QBU_OP_TITLE_PARTS, "or")
+```
+
+```{python}
+#| label: fig-quadrant-bar-oil-propane-switch-hprate-psegli
+#| fig-cap: "Change in total annual energy bills — PSEG-LI oil/propane homes switching to a heat pump: default delivery rates vs. dedicated heat pump delivery rate. Assumes 40% of LMI households are enrolled in utility energy affordability programs before and after switching to a heat pump."
+
+_plot_per_util_quadrant(pl.col("heats_with_oil") | pl.col("heats_with_propane"), _QBU_OP_TITLE_PARTS, "psegli")
+```
+
+```{python}
+#| label: fig-quadrant-bar-oil-propane-switch-hprate-rge
+#| fig-cap: "Change in total annual energy bills — RG&E oil/propane homes switching to a heat pump: default delivery rates vs. dedicated heat pump delivery rate. Assumes 40% of LMI households are enrolled in utility energy affordability programs before and after switching to a heat pump."
+
+_plot_per_util_quadrant(pl.col("heats_with_oil") | pl.col("heats_with_propane"), _QBU_OP_TITLE_PARTS, "rge")
 ```
 
 ```{python}
 #| label: fig-quadrant-bar-elec-resistance-switch-hprate-state
-#| fig-cap: "Change in total annual energy bills — electric resistance homes switching to HP: default vs. seasonal rate (Statewide). Assumes ~40% of LMI households receive discounts before and after HP switch."
-# Fig-cap LMI variants (see chunk ``constants``):
-# #| fig-cap: "Change in total annual energy bills — electric resistance homes switching to HP: default vs. seasonal rate (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
-# #| fig-cap: "Change in total annual energy bills — electric resistance homes switching to HP: default vs. seasonal rate (Statewide). Assumes ~40% of LMI households receive discounts before and after HP switch."
-# #| fig-cap: "Change in total annual energy bills — electric resistance homes switching to HP: default vs. seasonal rate (Statewide). Assumes ~100% of LMI households receive discounts before and after HP switch."
+#| fig-cap: "Change in total annual energy bills — electric resistance homes switching to a heat pump: default delivery rates vs. dedicated heat pump delivery rate (Statewide). Assumes 40% of LMI households are enrolled in utility energy affordability programs before and after switching to a heat pump."
 
 plot_quadrant_bar(
     [
         ("Default rate", elec_resistance_state),
-        ("HP seasonal rate", elec_resistance_switch_state),
+        ("HP delivery rate", elec_resistance_switch_state),
     ],
     title_parts=[
         ("How bills would change for ", "#000000"),
@@ -5079,35 +5235,63 @@ plot_quadrant_bar(
 ```
 
 ```{python}
-#| label: fig-quadrant-bar-elec-resistance-switch-hprate-by-utility
-#| fig-cap: "Change in total annual energy bills — electric resistance homes switching to HP: default vs. seasonal rate, by utility. Assumes ~40% of LMI households receive discounts before and after HP switch."
-# Fig-cap LMI variants (see chunk ``constants``):
-# #| fig-cap: "Change in total annual energy bills — electric resistance homes switching to HP: default vs. seasonal rate, by utility. Undiscounted annual bills (LMI discount enrollment not modeled)."
-# #| fig-cap: "Change in total annual energy bills — electric resistance homes switching to HP: default vs. seasonal rate, by utility. Assumes ~40% of LMI households receive discounts before and after HP switch."
-# #| fig-cap: "Change in total annual energy bills — electric resistance homes switching to HP: default vs. seasonal rate, by utility. Assumes ~100% of LMI households receive discounts before and after HP switch."
+#| label: fig-quadrant-bar-elec-resistance-switch-hprate-cenhud
+#| fig-cap: "Change in total annual energy bills — Central Hudson electric resistance homes switching to a heat pump: default delivery rates vs. dedicated heat pump delivery rate. Assumes 40% of LMI households are enrolled in utility energy affordability programs before and after switching to a heat pump."
 
-plot_quadrant_bar_by_utility(
-    delta_state, delta_switch_state,
-    utility_names=UTIL_NAMES,
-    fuel_filter=pl.col(HEATING_TYPE_COL) == "electrical_resistance",
-    title_parts=[
-        ("How bills would change for ", "#000000"),
-        ("electric resistance", "#b08e00"),
-        (" heated homes after switching to ", "#000000"),
-        ("heat pumps", "#c47600"),
-    ],
-)
+_plot_per_util_quadrant(pl.col(HEATING_TYPE_COL) == "electrical_resistance", _QBU_ER_TITLE_PARTS, "cenhud")
+```
+
+```{python}
+#| label: fig-quadrant-bar-elec-resistance-switch-hprate-coned
+#| fig-cap: "Change in total annual energy bills — Con Edison electric resistance homes switching to a heat pump: default delivery rates vs. dedicated heat pump delivery rate. Assumes 40% of LMI households are enrolled in utility energy affordability programs before and after switching to a heat pump."
+
+_plot_per_util_quadrant(pl.col(HEATING_TYPE_COL) == "electrical_resistance", _QBU_ER_TITLE_PARTS, "coned")
+```
+
+```{python}
+#| label: fig-quadrant-bar-elec-resistance-switch-hprate-nimo
+#| fig-cap: "Change in total annual energy bills — National Grid electric resistance homes switching to a heat pump: default delivery rates vs. dedicated heat pump delivery rate. Assumes 40% of LMI households are enrolled in utility energy affordability programs before and after switching to a heat pump."
+
+_plot_per_util_quadrant(pl.col(HEATING_TYPE_COL) == "electrical_resistance", _QBU_ER_TITLE_PARTS, "nimo")
+```
+
+```{python}
+#| label: fig-quadrant-bar-elec-resistance-switch-hprate-nyseg
+#| fig-cap: "Change in total annual energy bills — NYSEG electric resistance homes switching to a heat pump: default delivery rates vs. dedicated heat pump delivery rate. Assumes 40% of LMI households are enrolled in utility energy affordability programs before and after switching to a heat pump."
+
+_plot_per_util_quadrant(pl.col(HEATING_TYPE_COL) == "electrical_resistance", _QBU_ER_TITLE_PARTS, "nyseg")
+```
+
+```{python}
+#| label: fig-quadrant-bar-elec-resistance-switch-hprate-or
+#| fig-cap: "Change in total annual energy bills — O&R electric resistance homes switching to a heat pump: default delivery rates vs. dedicated heat pump delivery rate. Assumes 40% of LMI households are enrolled in utility energy affordability programs before and after switching to a heat pump."
+
+_plot_per_util_quadrant(pl.col(HEATING_TYPE_COL) == "electrical_resistance", _QBU_ER_TITLE_PARTS, "or")
+```
+
+```{python}
+#| label: fig-quadrant-bar-elec-resistance-switch-hprate-psegli
+#| fig-cap: "Change in total annual energy bills — PSEG-LI electric resistance homes switching to a heat pump: default delivery rates vs. dedicated heat pump delivery rate. Assumes 40% of LMI households are enrolled in utility energy affordability programs before and after switching to a heat pump."
+
+_plot_per_util_quadrant(pl.col(HEATING_TYPE_COL) == "electrical_resistance", _QBU_ER_TITLE_PARTS, "psegli")
+```
+
+```{python}
+#| label: fig-quadrant-bar-elec-resistance-switch-hprate-rge
+#| fig-cap: "Change in total annual energy bills — RG&E electric resistance homes switching to a heat pump: default delivery rates vs. dedicated heat pump delivery rate. Assumes 40% of LMI households are enrolled in utility energy affordability programs before and after switching to a heat pump."
+
+_plot_per_util_quadrant(pl.col(HEATING_TYPE_COL) == "electrical_resistance", _QBU_ER_TITLE_PARTS, "rge")
 ```
 
 ## Bill impact of electric heating rate
 
-The electric heating rate (EH rate) is a distinct rate design from the HP seasonal
+The electric heating rate (EH rate) is a distinct rate design from the seasonal heat pump
 rate. It applies to all winter-heavy electric customers — both heat pumps **and**
 electric resistance — and is funded by a recalibrated flat rate on non-electric-
 heating customers. This section compares four views of the EH rate's distributional
-impact: gas-to-HP switching economics under the EH rate, the rate-change benefit
+impact: gas-to-heat-pump switching economics under the EH rate, the rate-change benefit
 for ER customers who stay on ER, the cost shift to fossil-heated customers, and a
-side-by-side of ER→HP savings under the seasonal HP rate vs. the EH rate.
+side-by-side of electric resistance → heat pump savings under the seasonal heat pump rate vs. the EH rate.
 
 The EH-rate master bills come from runs `RUN_EHRATE` (u0, all homes keep current
 HVAC; electric heaters on EH rate, others on recalibrated flat rate) and
@@ -5116,8 +5300,8 @@ HVAC; electric heaters on EH rate, others on recalibrated flat rate) and
 ### Gas → HP under the electric heating rate (LMI-enrolled bills)
 
 Mirrors the seasonal-rate gas switch comparison above: Bar 1 is the gas customer
-switching to HP under today's default rate, Bar 2 is the same customer switching
-to HP under the EH rate. The "before" state is identical in both bars (baseline
+switching to a heat pump under today's default rate, Bar 2 is the same customer switching
+to a heat pump under the EH rate. The "before" state is identical in both bars (baseline
 HVAC on default rate), so differences come entirely from the "after" rate regime.
 We use the bill columns matching ``LMI_CURRENT_ENROLLMENT_PCT`` (40 or 100 in
 parquet) to align with the primary reference chart.
@@ -5143,16 +5327,12 @@ report_vars["pct_natgas_lose_1k_ehrate_lmi40"] = _lmi40_eh_lose_1k / _lmi40_eh_t
 
 ```{python}
 #| label: fig-quadrant-bar-natgas-switch-ehrate-state-lmi-current
-#| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default rate vs. electric heating rate (Statewide). Assumes ~40% of LMI households receive discounts before and after HP switch."
-# Fig-cap LMI variants (see chunk ``constants``):
-# #| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default rate vs. electric heating rate (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
-# #| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default rate vs. electric heating rate (Statewide). Assumes ~40% of LMI households receive discounts before and after HP switch."
-# #| fig-cap: "Change in total annual energy bills — natural gas homes switching to HP: default rate vs. electric heating rate (Statewide). Assumes ~100% of LMI households receive discounts before and after HP switch."
+#| fig-cap: "Change in total annual energy bills — natural gas homes switching to a heat pump: default rate vs. electric heating rate (Statewide). Assumes 40% of LMI households are enrolled in utility energy affordability programs before and after switching to a heat pump."
 
 plot_quadrant_bar(
     [
         ("Default rate", natgas_state_lmi_enrolled),
-        ("HP seasonal rate", natgas_switch_state_lmi_enrolled),
+        ("Heat pump rate", natgas_switch_state_lmi_enrolled),
         ("Electric heating rate", natgas_switch_ehrate_state_lmi_enrolled),
     ],
     title_parts=[
@@ -5259,7 +5439,7 @@ display_svg(_fig_er_hist)
 Funding the EH rate discount for electric heaters requires a small upward
 recalibration of the flat rate paid by fossil-heated customers (natural gas, fuel
 oil, propane, and other non-electric heating types). This chart isolates that
-cost shift for the non-ER, non-HP population — holding equipment constant at
+cost shift for the non-electric-resistance, non-heat-pump population — holding equipment constant at
 baseline. We explicitly exclude electric-resistance customers (covered in the
 previous chart, which shows them benefiting from the rate) to keep the cost-shift
 story clean.
@@ -5321,11 +5501,7 @@ fossil_hprate_state = (
 
 ```{python}
 #| label: fig-bill-change-fossil-ehrate-state
-#| fig-cap: "Monthly bill change — non-electric-heating homes (natural gas, fuel oil, propane, other) under the HP seasonal rate vs. the electric heating rate (Statewide). Equipment held constant at baseline; delta reflects the recalibrated flat rate only. Assumes ~40% of LMI households receive discounts before and after HP switch."
-# Fig-cap LMI variants (see chunk ``constants``):
-# #| fig-cap: "Monthly bill change — non-electric-heating homes (natural gas, fuel oil, propane, other) under the HP seasonal rate vs. the electric heating rate (Statewide). Equipment held constant at baseline; delta reflects the recalibrated flat rate only. Undiscounted annual bills (LMI discount enrollment not modeled)."
-# #| fig-cap: "Monthly bill change — non-electric-heating homes (natural gas, fuel oil, propane, other) under the HP seasonal rate vs. the electric heating rate (Statewide). Equipment held constant at baseline; delta reflects the recalibrated flat rate only. Assumes ~40% of LMI households receive discounts before and after HP switch."
-# #| fig-cap: "Monthly bill change — non-electric-heating homes (natural gas, fuel oil, propane, other) under the HP seasonal rate vs. the electric heating rate (Statewide). Equipment held constant at baseline; delta reflects the recalibrated flat rate only. Assumes ~100% of LMI households receive discounts before and after HP switch."
+#| fig-cap: "Average monthly bill change — non-electric-heating homes (natural gas, fuel oil, propane, other) under the seasonal heat pump rate vs. the electric heating rate (Statewide). Homes maintain current heating equipment, bill changes reflects the recalibrated default rates only. Assumes ~40% of LMI households are enrolled in utility energy affordability programs."
 
 REBAL_3_COLORS = {
     "increase < $5/mo": "#ef9a9a",
@@ -5334,9 +5510,9 @@ REBAL_3_COLORS = {
 }
 REBAL_3_ORDER = list(REBAL_3_COLORS.keys())
 REBAL_3_LABELS = {
-    "increase < $5/mo": "< $5/MO",
-    "increase $5-$15/mo": "$5-$15/MO",
-    "increase >= $15/mo": ">= $15/MO",
+    "increase < $5/mo": r"< \$5/MO",
+    "increase $5-$15/mo": r"\$5-\$15/MO",
+    "increase >= $15/mo": r">= \$15/MO",
 }
 
 def _fossil_pcts(df: pl.DataFrame) -> dict:
@@ -5349,7 +5525,7 @@ def _fossil_pcts(df: pl.DataFrame) -> dict:
     }
 
 _scenarios = [
-    ("HP seasonal rate", fossil_hprate_state),
+    ("Heat pump rate", fossil_hprate_state),
     ("Electric heating rate", fossil_ehrate_state),
 ]
 _scenario_order = list(reversed([s for s, _ in _scenarios]))
@@ -5391,7 +5567,7 @@ for _i, (_scen, _) in enumerate(_scenarios):
                 y=_label_x,
                 label=REBAL_3_LABELS[_q],
                 ha=_label_ha, va="bottom",
-                size=8, color=REBAL_3_COLORS[_q], fontweight="bold",
+                size=10, color=REBAL_3_COLORS[_q], fontweight="bold",
             )
         )
 
@@ -5410,25 +5586,25 @@ p = (
         position=position_stack(vjust=0.5),
         format_string="{:.0f}%",
         color="white",
-        size=10,
+        size=11,
         fontweight="bold",
     )
     + geom_text(
         _row_label_df,
         aes(x="x", y="y", label="label"),
         ha="left", va="center",
-        size=9, fontweight="bold",
+        size=11, fontweight="bold",
         inherit_aes=False,
     )
     + scale_fill_manual(values=REBAL_3_COLORS, breaks=REBAL_3_ORDER)
     + scale_y_continuous(expand=(0, 0, 0.15, 0))
-    + scale_x_discrete(expand=(0, 0.35, 0, 0.55))
+    + scale_x_discrete(expand=(0, 0.35, 0, 0.7))
     + coord_flip()
     + guides(fill=False)
-    + labs(x="", y="", title="Monthly bill change for fossil-fuel homes: HP seasonal rate vs. electric heating rate")
+    + labs(x="", y="", title="Monthly bill change for fossil-fuel homes: seasonal heat pump rate vs. electric heating rate")
     + theme_switchbox()
     + theme(
-        figure_size=(12.5, max(2.6, 1.0 + 1.2 * _n)),
+        figure_size=(12.5, max(2.6, 1.0 + 1.4 * _n)),
         axis_text=element_blank(),
         axis_ticks_x=element_blank(),
         axis_ticks_y=element_blank(),
@@ -5444,17 +5620,17 @@ _fig_fossil_eh = p.draw()
 display_svg(_fig_fossil_eh)
 ```
 
-### ER → HP savings under three rate regimes
+### Electric resistance → heat pump savings under three rate regimes
 
 Annual bill change for an electric-resistance customer switching to a heat pump,
 computed under three rate combinations:
 
 - **Bar 1 — status quo:** default rate before and after.
-- **Bar 2 — HP seasonal rate after:** default rate before, HP seasonal rate
-  after. The incentive added by putting the new HP customer on the HP seasonal
+- **Bar 2 — seasonal heat pump rate after:** default rate before, seasonal heat pump rate
+  after. The incentive added by putting the new heat pump customer on the seasonal heat pump
   rate.
-- **Bar 3 — EH rate before and after:** for an ER customer already on the EH
-  rate, the bill change from upgrading to HP while staying on the EH rate.
+- **Bar 3 — EH rate before and after:** for an electric-resistance customer already on the EH
+  rate, the bill change from upgrading to a heat pump while staying on the EH rate.
 
 ```{python}
 #| label: compute-deltas-er-switch-three-regimes
@@ -5546,17 +5722,13 @@ report_vars["mean_er_switch_delta_ehrate"] = _weighted_mean(
 
 ```{python}
 #| label: fig-quadrant-bar-elec-resistance-switch-three-regimes-state
-#| fig-cap: "Annual bill change for electric resistance homes switching to HP under three rate regimes (Statewide). Bar 1: default rate before and after. Bar 2: default rate before, HP seasonal rate after. Bar 3: EH rate before and after. Assumes ~40% of LMI households receive discounts before and after HP switch."
-# Fig-cap LMI variants (see chunk ``constants``):
-# #| fig-cap: "Annual bill change for electric resistance homes switching to HP under three rate regimes (Statewide). Bar 1: default rate before and after. Bar 2: default rate before, HP seasonal rate after. Bar 3: EH rate before and after. Undiscounted annual bills (LMI discount enrollment not modeled)."
-# #| fig-cap: "Annual bill change for electric resistance homes switching to HP under three rate regimes (Statewide). Bar 1: default rate before and after. Bar 2: default rate before, HP seasonal rate after. Bar 3: EH rate before and after. Assumes ~40% of LMI households receive discounts before and after HP switch."
-# #| fig-cap: "Annual bill change for electric resistance homes switching to HP under three rate regimes (Statewide). Bar 1: default rate before and after. Bar 2: default rate before, HP seasonal rate after. Bar 3: EH rate before and after. Assumes ~100% of LMI households receive discounts before and after HP switch."
+#| fig-cap: "Annual bill change for electric resistance homes switching to a heat pump under three rate regimes (NY, Statewide). Bar 1: default rate before and after. Bar 2: default rate before, seasonal heat pump rate after. Bar 3: electric heating rate before and after. Assumes 40% of LMI households are enrolled in utility energy affordability programs before and after switching to a heat pump."
 
 plot_quadrant_bar(
     [
-        (" ER → HP\n (default rate)", elec_resistance_switch_default_state),
-        ("ER (default rate)  →\nHP (seasonal rate)", elec_resistance_switch_default_to_hprate_state),
-        ("ER (EH seasonal rate)  →\nHP (EH seasonal rate)", elec_resistance_switch_ehrate_state),
+        ("Electric resistance (default rate)  →\nHeat pump (default rate)", elec_resistance_switch_default_state),
+        ("Electric resistance (default rate)  →\nHeat pump (HP rate)", elec_resistance_switch_default_to_hprate_state),
+        ("Electric resistance (EH rate)  →\nHeat pump (EH rate)", elec_resistance_switch_ehrate_state),
     ],
     title_parts=[
         ("How bills would change for ", "#000000"),
@@ -5567,13 +5739,13 @@ plot_quadrant_bar(
 )
 ```
 
-## Bill impact of HP seasonal rate on non-HP customers
+## Bill impact of seasonal heat pump rate on non-heat-pump customers
 
-What happens to fossil-fuel customers' bills if all existing HP customers opt in to the seasonal rate — but the non-HP
+What happens to fossil-fuel customers' bills if all existing heat pump customers opt in to the seasonal rate — but the non-heat-pump
 customers themselves stay on their current heating system (upgrade 0) and on the recalibrated flat rate?
 
-In the HP seasonal precalc run (`RUN_HPRATE`), the HP seasonal rate is applied to HP customers and the flat rate is recalibrated for everyone else. Non-HP
-customers keep the same heating system; what changes is a slight adjustment to the flat rate once the HP cross-subsidy
+In the heat pump seasonal precalc run (`RUN_HPRATE`), the seasonal heat pump rate is applied to heat pump customers and the flat rate is recalibrated for everyone else. Non-heat-pump
+customers keep the same heating system; what changes is a slight adjustment to the flat rate once the heat pump cross-subsidy
 is removed. Comparing run 1+2 vs `RUN_HPRATE` for fossil-fuel buildings shows this (expected to be very small) impact.
 
 ```{python}
@@ -5596,15 +5768,11 @@ delta_rebal_state = annual_before_rebal_state.join(annual_after_rebal_state, on=
 )
 ```
 
-### Statewide — non-HP bill impact of cross-subsidy removal
+### Statewide — non-heat-pump bill impact of cross-subsidy removal
 
 ```{python}
 #| label: fig-bill-change-non-hp-rebal-state
-#| fig-cap: "Average monthly bill change — all non-HP homes after cross-subsidy removal (Statewide). Assumes ~40% of LMI households receive discounts before and after HP switch."
-# Fig-cap LMI variants (see chunk ``constants``):
-# #| fig-cap: "Average monthly bill change — all non-HP homes after cross-subsidy removal (Statewide). Undiscounted annual bills (LMI discount enrollment not modeled)."
-# #| fig-cap: "Average monthly bill change — all non-HP homes after cross-subsidy removal (Statewide). Assumes ~40% of LMI households receive discounts before and after HP switch."
-# #| fig-cap: "Average monthly bill change — all non-HP homes after cross-subsidy removal (Statewide). Assumes ~100% of LMI households receive discounts before and after HP switch."
+#| fig-cap: "Average monthly bill change — all non-heat-pump homes after cross-subsidy removal (NY, Statewide). Assumes 40% of LMI households are enrolled in utility energy affordability programs before and after switching to a heat pump."
 
 REBAL_3_COLORS = {
     "bill decrease": "#81c784",
@@ -5631,10 +5799,10 @@ _pct_rebal = {
     "increase ≥ $5/mo": monthly_rebal.filter(pl.col("delta_monthly") >= 5)["weight"].sum() / total_w * 100,
 }
 
-_records = [{"scenario": "All non-HP", "category": k, "pct": v} for k, v in _pct_rebal.items()]
+_records = [{"scenario": "All non-heat-pump", "category": k, "pct": v} for k, v in _pct_rebal.items()]
 _plot_df = pl.DataFrame(_records).with_columns(
     pl.col("category").cast(pl.Enum(REBAL_3_ORDER)),
-    pl.col("scenario").cast(pl.Enum(["All non-HP"])),
+    pl.col("scenario").cast(pl.Enum(["All non-heat-pump"])),
 )
 
 _stacking_order = list(reversed(REBAL_3_ORDER))
@@ -5652,7 +5820,7 @@ for _q in _stacking_order:
             y=_mid,
             label=REBAL_3_LABELS[_q],
             ha="center", va="bottom",
-            size=8, color=REBAL_3_COLORS[_q], fontweight="bold",
+            size=10, color=REBAL_3_COLORS[_q], fontweight="bold",
         )
     )
 
@@ -5665,7 +5833,7 @@ p = (
         position=position_stack(vjust=0.5),
         format_string="{:.0f}%",
         color="white",
-        size=10,
+        size=11,
         fontweight="bold",
     )
     + scale_fill_manual(values=REBAL_3_COLORS, breaks=REBAL_3_ORDER)
@@ -5673,7 +5841,7 @@ p = (
     + scale_x_discrete(expand=(0, 0.35, 0, 1.2))
     + coord_flip()
     + guides(fill=False)
-    + labs(x="", y="", title="Monthly bill change for non-HP homes after cross-subsidy removal")
+    + labs(x="", y="", title="Monthly bill change for non-heat-pump homes after cross-subsidy removal")
     + theme_switchbox()
     + theme(
         figure_size=(12.5, 2.6),
@@ -5717,7 +5885,7 @@ scenarios:
 
 1. **Current HVAC, default rates** (runs 1+2) — the status quo
 2. **Heat pump, default rates** (runs 3+4) — electrified but on flat rates
-3. **Heat pump, HP seasonal rates** (`RUN_HPRATE_HP`) — electrified on the proposed seasonal rate
+3. **Heat pump, seasonal heat pump rates** (`RUN_HPRATE_HP`) — electrified on the proposed seasonal rate
 
 ```{python}
 #| label: burden-cohort
@@ -5784,9 +5952,9 @@ below_current, above_current = burden_shares(bills_current, cohort_bldg_ids, inc
 below_hp_default, above_hp_default = burden_shares(bills_hp, cohort_bldg_ids, income_df)
 below_hp_seasonal, above_hp_seasonal = burden_shares(bills_hprate_hp, cohort_bldg_ids, income_df)
 
-print(f"Current HVAC:        {above_current:.1f}% above 6% | {below_current:.1f}% below")
-print(f"HP + default rates:  {above_hp_default:.1f}% above 6% | {below_hp_default:.1f}% below")
-print(f"HP + seasonal rates: {above_hp_seasonal:.1f}% above 6% | {below_hp_seasonal:.1f}% below")
+print(f"Current HVAC:                  {above_current:.1f}% above 6% | {below_current:.1f}% below")
+print(f"Heat pump + default rates:     {above_hp_default:.1f}% above 6% | {below_hp_default:.1f}% below")
+print(f"Heat pump + seasonal rates:    {above_hp_seasonal:.1f}% above 6% | {below_hp_seasonal:.1f}% below")
 ```
 
 ```{python}
@@ -5795,8 +5963,8 @@ print(f"HP + seasonal rates: {above_hp_seasonal:.1f}% above 6% | {below_hp_seaso
 BURDEN_SCENARIO_LABELS = [
     f"Current HVAC\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
     f"Heat Pump\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
-    f"Heat Pump\nHP Seasonal Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
-    "Heat Pump\nHP Seasonal Rates\n100% LMI Discounts",
+    f"Heat Pump\nHeat Pump Delivery Rate\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+    "Heat Pump\nHeat Pump Delivery Rate\n100% LMI Discounts",
 ]
 BURDEN_SEGMENT_ORDER = ["Above 6%", "Below 6%"]
 BURDEN_COLORS = {
@@ -5887,21 +6055,143 @@ below_hp_seasonal_lmi100, above_hp_seasonal_lmi100 = burden_shares(
     bills_hprate_hp, cohort_bldg_ids, income_df, bill_cols=LMI_100_BILL_COLS,
 )
 
-print(f"Current HVAC (40% enrolled):         {above_current_lmi40:.1f}% above 6%")
-print(f"HP + default rates (40% enrolled):   {above_hp_default_lmi40:.1f}% above 6%")
-print(f"HP + seasonal rates (40% enrolled):  {above_hp_seasonal_lmi40:.1f}% above 6%")
-print(f"HP + seasonal rates (100% enrolled): {above_hp_seasonal_lmi100:.1f}% above 6%")
+print(f"Current HVAC (40% enrolled):                {above_current_lmi40:.1f}% above 6%")
+print(f"Heat pump + default rates (40% enrolled):   {above_hp_default_lmi40:.1f}% above 6%")
+print(f"Heat pump + seasonal rates (40% enrolled):  {above_hp_seasonal_lmi40:.1f}% above 6%")
+print(f"Heat pump + seasonal rates (100% enrolled): {above_hp_seasonal_lmi100:.1f}% above 6%")
 
 report_vars["pct_burdened_hp_seasonal_lmi100"] = above_hp_seasonal_lmi100 / 100
 ```
 
 ```{python}
 #| label: fig-burden-bar-lmi-current
-#| fig-cap: "Share of low-income gas-heated households above the 6% energy burden threshold"
+#| fig-cap: "Share of low-income gas-heated households above the 6% high energy burden threshold"
 
 plot_burden_bar(
     [below_current_lmi40, below_hp_default_lmi40, below_hp_seasonal_lmi40, below_hp_seasonal_lmi100],
     [above_current_lmi40, above_hp_default_lmi40, above_hp_seasonal_lmi40, above_hp_seasonal_lmi100],
+)
+```
+
+```{python}
+#| label: burden-cohort-op
+
+low_income_op_bldgs = (
+    bills_current
+    .filter(
+        (pl.col("month") == ANNUAL_MONTH)
+        & (pl.col("heats_with_oil") | pl.col("heats_with_propane"))
+        & pl.col("is_lmi_any")
+        & (pl.col(INCOME_COL) > 0)
+    )
+    .select(BLDG_ID, "weight", "energy_total_bill", INCOME_COL, "sb.electric_utility")
+    .collect()
+)
+
+cohort_op_bldg_ids = low_income_op_bldgs[BLDG_ID].to_list()
+income_op_df = low_income_op_bldgs.select(BLDG_ID, INCOME_COL)
+```
+
+```{python}
+#| label: burden-compute-lmi-current-op
+
+below_current_op_lmi40, above_current_op_lmi40 = burden_shares(
+    bills_current, cohort_op_bldg_ids, income_op_df, bill_cols=LMI_40_BILL_COLS,
+)
+below_hp_default_op_lmi40, above_hp_default_op_lmi40 = burden_shares(
+    bills_hp, cohort_op_bldg_ids, income_op_df, bill_cols=LMI_40_BILL_COLS,
+)
+below_hp_seasonal_op_lmi40, above_hp_seasonal_op_lmi40 = burden_shares(
+    bills_hprate_hp, cohort_op_bldg_ids, income_op_df, bill_cols=LMI_40_BILL_COLS,
+)
+below_hp_seasonal_op_lmi100, above_hp_seasonal_op_lmi100 = burden_shares(
+    bills_hprate_hp, cohort_op_bldg_ids, income_op_df, bill_cols=LMI_100_BILL_COLS,
+)
+
+print(
+    f"[Oil/propane LMI] Current: {above_current_op_lmi40:.1f}%  HP+default: {above_hp_default_op_lmi40:.1f}%  "
+    f"HP+seasonal(40%): {above_hp_seasonal_op_lmi40:.1f}%  HP+seasonal(100%LMI): {above_hp_seasonal_op_lmi100:.1f}%"
+)
+```
+
+```{python}
+#| label: fig-burden-bar-lmi-current-op
+#| fig-cap: "Share of low-income households that heat with oil or propane above the 6% high energy burden threshold"
+
+plot_burden_bar(
+    [
+        below_current_op_lmi40,
+        below_hp_default_op_lmi40,
+        below_hp_seasonal_op_lmi40,
+        below_hp_seasonal_op_lmi100,
+    ],
+    [
+        above_current_op_lmi40,
+        above_hp_default_op_lmi40,
+        above_hp_seasonal_op_lmi40,
+        above_hp_seasonal_op_lmi100,
+    ],
+)
+```
+
+```{python}
+#| label: burden-cohort-er
+
+low_income_er_bldgs = (
+    bills_current
+    .filter(
+        (pl.col("month") == ANNUAL_MONTH)
+        & (pl.col(HEATING_TYPE_COL) == "electrical_resistance")
+        & pl.col("is_lmi_any")
+        & (pl.col(INCOME_COL) > 0)
+    )
+    .select(BLDG_ID, "weight", "energy_total_bill", INCOME_COL, "sb.electric_utility")
+    .collect()
+)
+
+cohort_er_bldg_ids = low_income_er_bldgs[BLDG_ID].to_list()
+income_er_df = low_income_er_bldgs.select(BLDG_ID, INCOME_COL)
+```
+
+```{python}
+#| label: burden-compute-lmi-current-er
+
+below_current_er_lmi40, above_current_er_lmi40 = burden_shares(
+    bills_current, cohort_er_bldg_ids, income_er_df, bill_cols=LMI_40_BILL_COLS,
+)
+below_hp_default_er_lmi40, above_hp_default_er_lmi40 = burden_shares(
+    bills_hp, cohort_er_bldg_ids, income_er_df, bill_cols=LMI_40_BILL_COLS,
+)
+below_hp_seasonal_er_lmi40, above_hp_seasonal_er_lmi40 = burden_shares(
+    bills_hprate_hp, cohort_er_bldg_ids, income_er_df, bill_cols=LMI_40_BILL_COLS,
+)
+below_hp_seasonal_er_lmi100, above_hp_seasonal_er_lmi100 = burden_shares(
+    bills_hprate_hp, cohort_er_bldg_ids, income_er_df, bill_cols=LMI_100_BILL_COLS,
+)
+
+print(
+    f"[El. resistance LMI] Current: {above_current_er_lmi40:.1f}%  HP+default: {above_hp_default_er_lmi40:.1f}%  "
+    f"HP+seasonal(40%): {above_hp_seasonal_er_lmi40:.1f}%  HP+seasonal(100%LMI): {above_hp_seasonal_er_lmi100:.1f}%"
+)
+```
+
+```{python}
+#| label: fig-burden-bar-lmi-current-er
+#| fig-cap: "Share of low-income electric-resistance households above the 6% high energy burden threshold"
+
+plot_burden_bar(
+    [
+        below_current_er_lmi40,
+        below_hp_default_er_lmi40,
+        below_hp_seasonal_er_lmi40,
+        below_hp_seasonal_er_lmi100,
+    ],
+    [
+        above_current_er_lmi40,
+        above_hp_default_er_lmi40,
+        above_hp_seasonal_er_lmi40,
+        above_hp_seasonal_er_lmi100,
+    ],
 )
 ```
 
@@ -5926,7 +6216,7 @@ for code in UTIL_ORDER_CODES:
     }
 
 for code, data in burden_by_utility.items():
-    print(f"{UTIL_NAMES[code]:20s}  Current: {data['current'][1]:5.1f}%  HP default: {data['hp_default'][1]:5.1f}%  HP seasonal: {data['hp_seasonal'][1]:5.1f}%  HP seasonal+100%LMI: {data['hp_seasonal_lmi100'][1]:5.1f}%")
+    print(f"{UTIL_NAMES[code]:20s}  Current: {data['current'][1]:5.1f}%  Heat pump default: {data['hp_default'][1]:5.1f}%  Heat pump seasonal: {data['hp_seasonal'][1]:5.1f}%  Heat pump seasonal+100%LMI: {data['hp_seasonal_lmi100'][1]:5.1f}%")
 ```
 
 ```{python}
@@ -5945,8 +6235,8 @@ _BURDEN_UTIL_SCENARIO_KEYS = ["current", "hp_default", "hp_seasonal", "hp_season
 _BURDEN_UTIL_SCENARIO_LABELS = [
     f"Current HVAC\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
     f"Heat Pump\nDefault Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
-    f"Heat Pump\nHP Seasonal Rates\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
-    "Heat Pump\nHP Seasonal Rates\n100% LMI Discounts",
+    f"Heat Pump\nHeat Pump Delivery Rate\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+    "Heat Pump\nHeat Pump Delivery Rate\n100% LMI Discounts",
 ]
 
 
@@ -6054,15 +6344,71 @@ def plot_burden_bar_by_utility(
     display_svg(fig)
 ```
 
+```{python}
+#| label: fig-burden-bar-per-util-helper
+
+def _plot_burden_util(util_code: str):
+    if util_code not in burden_by_utility:
+        print(f"No low-income gas-heated households for {UTIL_NAMES[util_code]}")
+        return None
+    d = burden_by_utility[util_code]
+    keys = ["current", "hp_default", "hp_seasonal", "hp_seasonal_lmi100"]
+    return (
+        plot_burden_bar(
+            [d[k][0] for k in keys],
+            [d[k][1] for k in keys],
+        )
+        + labs(title=f"Energy burdens for LMI customers — {UTIL_NAMES[util_code]}")
+    )
+```
 
 ```{python}
-#| label: fig-burden-bar-lmi-current-by-utility
-#| fig-cap: "Share of low-income gas-heated households above the 6% energy burden threshold by utility, with current LMI discount enrollment (~40%)"
+#| label: fig-burden-bar-lmi-current-cenhud
+#| fig-cap: "Share of low-income natural gas–heated Central Hudson households above the 6% energy burden threshold, with current LMI discount enrollment (~40%)"
 
-plot_burden_bar_by_utility(
-    burden_by_utility, UTIL_NAMES,
-    title="Energy burdens for LMI customers, by utility",
-)
+_plot_burden_util("cenhud")
+```
+
+```{python}
+#| label: fig-burden-bar-lmi-current-coned
+#| fig-cap: "Share of low-income natural gas–heated Con Edison households above the 6% energy burden threshold, with current LMI discount enrollment (~40%)"
+
+_plot_burden_util("coned")
+```
+
+```{python}
+#| label: fig-burden-bar-lmi-current-nimo
+#| fig-cap: "Share of low-income natural gas–heated National Grid households above the 6% energy burden threshold, with current LMI discount enrollment (~40%)"
+
+_plot_burden_util("nimo")
+```
+
+```{python}
+#| label: fig-burden-bar-lmi-current-nyseg
+#| fig-cap: "Share of low-income natural gas–heated NYSEG households above the 6% energy burden threshold, with current LMI discount enrollment (~40%)"
+
+_plot_burden_util("nyseg")
+```
+
+```{python}
+#| label: fig-burden-bar-lmi-current-or
+#| fig-cap: "Share of low-income natural gas–heated O&R households above the 6% energy burden threshold, with current LMI discount enrollment (~40%)"
+
+_plot_burden_util("or")
+```
+
+```{python}
+#| label: fig-burden-bar-lmi-current-psegli
+#| fig-cap: "Share of low-income natural gas–heated PSEG-LI households above the 6% energy burden threshold, with current LMI discount enrollment (~40%)"
+
+_plot_burden_util("psegli")
+```
+
+```{python}
+#| label: fig-burden-bar-lmi-current-rge
+#| fig-cap: "Share of low-income natural gas–heated RG&E households above the 6% energy burden threshold, with current LMI discount enrollment (~40%)"
+
+_plot_burden_util("rge")
 ```
 
 ```{python}
@@ -6074,12 +6420,23 @@ report_vars["pct_burdened_hp_seasonal"] = above_hp_seasonal / 100
 report_vars["pct_burdened_current_lmi40"] = above_current_lmi40 / 100
 report_vars["pct_burdened_hp_default_lmi40"] = above_hp_default_lmi40 / 100
 report_vars["pct_burdened_hp_seasonal_lmi40"] = above_hp_seasonal_lmi40 / 100
+
+report_vars["pct_burdened_current_op_lmi40"] = above_current_op_lmi40 / 100
+report_vars["pct_burdened_hp_default_op_lmi40"] = above_hp_default_op_lmi40 / 100
+report_vars["pct_burdened_hp_seasonal_op_lmi40"] = above_hp_seasonal_op_lmi40 / 100
+report_vars["pct_burdened_hp_seasonal_op_lmi100"] = above_hp_seasonal_op_lmi100 / 100
+
+report_vars["pct_burdened_current_er_lmi40"] = above_current_er_lmi40 / 100
+report_vars["pct_burdened_hp_default_er_lmi40"] = above_hp_default_er_lmi40 / 100
+report_vars["pct_burdened_hp_seasonal_er_lmi40"] = above_hp_seasonal_er_lmi40 / 100
+report_vars["pct_burdened_hp_seasonal_er_lmi100"] = above_hp_seasonal_er_lmi100 / 100
 ```
 
 ## Appendix: demand-flex elasticity calibration
 
 ```{python}
 #| label: tbl-seasonal-elasticities
+#| tbl-cap: "Per-utility, per-season elasticity-of-substitution parameters used to model heat pump customer load shifting under a TOU heat pump rate. Each row reports the calibrated elasticity, the Arcturus 2.0 meta-analysis peak-reduction target it was calibrated to hit at the utility's peak-to-off-peak price ratio, and the resulting annual bill savings per heat pump building from rate arbitrage. Two variants are shown: 'no tech' (Arcturus' peak-reduction estimate for pilots without enabling technology) and 'with tech' (estimate for pilots with enabling technology, e.g., smart thermostats). See @sec-methods-demand-flex for the calibration methodology."
 
 if INCLUDE_TOU:
     from great_tables import GT, loc, style, md
@@ -6112,10 +6469,10 @@ if INCLUDE_TOU:
             price_ratio=md("Price<br>ratio"),
             seasonal_recommended_elasticity=md("Elasticity<br>(no tech)"),
             seasonal_arcturus_target_pct=md("Arcturus target<br>(no tech, %)"),
-            seasonal_recommended_savings=md("Savings/HP<br>(no tech, $)"),
+            seasonal_recommended_savings=md("Savings per heat pump<br>(no tech, $)"),
             seasonal_recommended_elasticity_with_tech=md("Elasticity<br>(with tech)"),
             seasonal_arcturus_target_pct_with_tech=md("Arcturus target<br>(with tech, %)"),
-            seasonal_recommended_savings_with_tech=md("Savings/HP<br>(with tech, $)"),
+            seasonal_recommended_savings_with_tech=md("Savings per heat pump<br>(with tech, $)"),
         )
         .fmt_number("price_ratio", decimals=2)
         .fmt_number(["seasonal_recommended_elasticity", "seasonal_recommended_elasticity_with_tech"], decimals=2)
@@ -6123,7 +6480,7 @@ if INCLUDE_TOU:
         .fmt_currency(["seasonal_recommended_savings", "seasonal_recommended_savings_with_tech"], decimals=0)
         .tab_header(
             title="Demand-flex elasticity calibration by utility and season",
-            subtitle="Calibrated to Arcturus 2.0 meta-analysis; savings are annual rate arbitrage per HP building",
+            subtitle="Calibrated to Arcturus 2.0 meta-analysis; savings are annual rate arbitrage per heat pump building",
         )
         .tab_options(**get_switchbox_gt_tab_options())
     )

@@ -262,10 +262,33 @@ def convert(icml: str) -> str:
     result = _FOOTNOTE_BLOCK.sub(_replace, icml)
     result = _inject_styles(result)
 
-    # Append sidenote stories before </Document>
+    # Insert sidenote stories immediately after the main pandoc_story's
+    # closing </Story>, BEFORE the document-level <Hyperlink> declarations
+    # block.  InDesign wires <Hyperlink Source="htss-N"> to its source by
+    # forward reference at parse time: every htss-N must already have
+    # appeared in some Story by the time the parser hits its Hyperlink.
+    # Pandoc's template emits all hyperlinks after the single main story,
+    # so if we appended sidenote stories at end-of-document the 50+ htss
+    # sources living inside them would be unreachable, and outbound URL
+    # links in footnotes would silently fail to import as live links.
+    # Cross-refs aren't affected because <CrossReferenceSource> encodes
+    # its destination inline (no Hyperlink declaration needed).
     if stories:
         stories_block = "\n".join(stories)
-        result = result.replace("</Document>", f"{stories_block}\n</Document>")
+        # Use re.sub with a function so the replacement is treated as a
+        # literal string (avoids accidental backreference expansion if
+        # any URL or content contains a "\1" sequence).
+        result, n_subs = re.subn(
+            r"</Story>",
+            lambda m: "</Story>\n" + stories_block,
+            result,
+            count=1,
+        )
+        if n_subs == 0:
+            result = result.replace(
+                "</Document>",
+                f"{stories_block}\n</Document>",
+            )
 
     return result
 

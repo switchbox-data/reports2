@@ -60,18 +60,22 @@ local function lookupDef(term, options)
   local metafile = io.open(options.path, 'r')
   if not metafile then
     io.stderr:write("Cannot open glossary file " .. options.path)
-    return ""
+    return "", nil
   end
   local content = "---\n" .. metafile:read("*a") .. "\n---\n"
   metafile:close()
   local glossary = pandoc.read(content, "markdown").meta
-  for key, value in pairs(glossary) do
-    glossary[string.lower(key)] = value
+  -- index the glossary by both original-case keys and lowercased keys,
+  -- so we can find the canonical key even when the lookup is case-insensitive
+  local lowerToOriginal = {}
+  for key, _ in pairs(glossary) do
+    lowerToOriginal[string.lower(key)] = key
   end
-  if kwExists(glossary, term) then
-    return metaToHTML(glossary[term])
+  local canonicalKey = lowerToOriginal[term]
+  if canonicalKey ~= nil then
+    return metaToHTML(glossary[canonicalKey]), canonicalKey
   end
-  return ""
+  return "", nil
 end
 
 ---Merge user provided options with defaults
@@ -112,8 +116,9 @@ return {
 
 ["glossary"] = function(args, kwargs, meta)
   local options = mergeOptions(kwargs, meta)
-  local display = pandoc.utils.stringify(args[1])
-  local term = string.lower(display)
+  local lookupTerm = pandoc.utils.stringify(args[1])
+  local term = string.lower(lookupTerm)
+  local display = lookupTerm
 
   if kwExists(kwargs, "display") then
     display = pandoc.utils.stringify(kwargs.display)
@@ -146,24 +151,35 @@ return {
   end
 
   local def = ""
+  local canonicalKey = nil
   if kwExists(kwargs, "def") then
     def = pandoc.utils.stringify(kwargs.def)
   else
-    def = lookupDef(term, options)
+    def, canonicalKey = lookupDef(term, options)
+    if canonicalKey == nil then
+      quarto.log.warning(
+        "Glossary term '" .. lookupTerm .. "' not found in " .. options.path
+      )
+    end
   end
 
+  -- the popup's term should be the canonical key from the glossary file
+  -- (preserving its case), falling back to the term the author wrote when
+  -- the lookup fails.
+  local popupTerm = canonicalKey or lookupTerm
+
   if options.add_to_table then
-    globalGlossaryTable[term] = def
+    globalGlossaryTable[popupTerm] = def
   end
 
   local glosstext
   if options.popup == "hover" then
     glosstext = "<button class='glossary'><span class='def'>"
-      .. glossaryDL(display, def)
+      .. glossaryDL(popupTerm, def)
       .. "</span>" .. display .. "</button>"
   elseif options.popup == "click" then
     glosstext = "<button class='glossary'><span class='def'>"
-      .. glossaryDL(display, def)
+      .. glossaryDL(popupTerm, def)
       .. "</span>" .. display .. "</button>"
   elseif options.popup == "none" then
     glosstext = "<button class='glossary'>" .. display .. "</button>"
@@ -174,20 +190,29 @@ end,
 
 ["glossary-def"] = function(args, kwargs, meta)
   local options = mergeOptions(kwargs, meta)
-  local display = pandoc.utils.stringify(args[1])
-  local term = string.lower(display)
+  local lookupTerm = pandoc.utils.stringify(args[1])
+  local term = string.lower(lookupTerm)
+  local display = lookupTerm
 
   local def = ""
+  local canonicalKey = nil
   if kwExists(kwargs, "def") then
     def = pandoc.utils.stringify(kwargs.def)
   else
-    def = lookupDef(term, options)
+    def, canonicalKey = lookupDef(term, options)
+    if canonicalKey == nil then
+      quarto.log.warning(
+        "Glossary term '" .. lookupTerm .. "' not found in " .. options.path
+      )
+    end
   end
+
+  local popupTerm = canonicalKey or lookupTerm
 
   if not quarto.doc.isFormat("html:js") then
     local defDoc = pandoc.read(def, "html")
     local termSpan = pandoc.Span(
-      pandoc.Strong(pandoc.Str(display)),
+      pandoc.Strong(pandoc.Str(popupTerm)),
       pandoc.Attr("", {"GlossaryTerm"})
     )
     local blocks = pandoc.Blocks({
@@ -202,10 +227,10 @@ end,
   addHTMLDeps()
 
   if options.add_to_table == nil or options.add_to_table then
-    globalGlossaryTable[term] = def
+    globalGlossaryTable[popupTerm] = def
   end
 
-  return pandoc.RawBlock('html', glossaryDL(display, def))
+  return pandoc.RawBlock('html', glossaryDL(popupTerm, def))
 end
 
 }

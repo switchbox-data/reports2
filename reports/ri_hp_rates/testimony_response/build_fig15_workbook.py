@@ -299,48 +299,56 @@ def _write_readme(wb: Workbook, inputs: dict) -> None:
 
 def _write_inputs_revenue_requirement(wb: Workbook, inputs: dict) -> None:
     ws = wb.create_sheet("inputs_revenue_requirement")
+    yaml_ref = f"rate-design-platform@{RDP_REF}: {RDP_REV_YAML_PATH}"
     rows = [
-        ["key", "value", "source / notes"],
+        ["key", "value", "source", "notes"],
         [
             "total_delivery_revenue_requirement",
             inputs["total_delivery_revenue_requirement"],
-            "rate-design-platform rie_rate_case_test_year.yaml: total_delivery_revenue_requirement",
+            f"{yaml_ref} -> total_delivery_revenue_requirement",
+            "Total RIE delivery revenue requirement for the test year ($).",
         ],
         [
             "test_year_customer_count",
             inputs["test_year_customer_count"],
-            "rie_rate_case_test_year.yaml: test_year_customer_count",
+            f"{yaml_ref} -> test_year_customer_count",
+            "Total RIE residential customers in the test year.",
         ],
         [
             "test_year_residential_kwh",
             inputs["test_year_residential_kwh"],
-            "rie_rate_case_test_year.yaml: test_year_residential_kwh",
+            f"{yaml_ref} -> test_year_residential_kwh",
+            "Total RIE residential delivered kWh in the test year.",
         ],
         [
             "customer_charge_total",
             inputs["customer_charge_total"],
-            "rie_rate_case_test_year.yaml: delivery_revenue_requirement.customer_charge.total_budget",
+            f"{yaml_ref} -> delivery_revenue_requirement.customer_charge.total_budget",
+            "Portion of revenue requirement recovered through fixed customer charges.",
         ],
         [
             "core_delivery_rate_total",
             inputs["core_delivery_rate_total"],
-            "rie_rate_case_test_year.yaml: delivery_revenue_requirement.core_delivery_rate.total_budget",
+            f"{yaml_ref} -> delivery_revenue_requirement.core_delivery_rate.total_budget",
+            "Portion of revenue requirement recovered through volumetric delivery rates.",
         ],
         [
             "annual_fixed_per_customer",
             f"=({REF_TOTAL_RR} - {REF_DEFAULT_VOL} * {REF_TY_KWH}) / {REF_N_CUSTOMERS}",
-            "Derived. Used to back out annual_kwh per building from delivery bill. Mirrors cost_of_service_by_subclass.qmd line ~159.",
+            "Derived in this workbook",
+            "Used to back out annual_kwh per building from delivery bill. Mirrors cost_of_service_by_subclass.qmd line ~159.",
         ],
         [
             "DISPLAY_CUSTOMER_TOTAL",
             f"=ROUND({REF_N_CUSTOMERS}, 0)",
+            "Derived in this workbook",
             "Integer total used for largest-remainder customer display rounding.",
         ],
     ]
     for r in rows:
         ws.append(r)
-    _header_fill(ws, 1, 3)
-    _autosize(ws, {"A": 36, "B": 22, "C": 90})
+    _header_fill(ws, 1, 4)
+    _autosize(ws, {"A": 36, "B": 22, "C": 70, "D": 70})
     # Named ranges (workbook-scoped) referencing column B.
     for row, name in [
         (2, "total_delivery_revenue_requirement"),
@@ -360,28 +368,32 @@ def _write_inputs_revenue_requirement(wb: Workbook, inputs: dict) -> None:
 
 def _write_inputs_tariffs(wb: Workbook, inputs: dict) -> None:
     ws = wb.create_sheet("inputs_tariffs")
+    rdp = f"rate-design-platform@{RDP_REF}"
     rows = [
-        ["key", "value", "source / notes"],
+        ["key", "value", "source", "notes"],
         [
             "default_vol_usd_per_kwh",
             inputs["default_vol_usd_per_kwh"],
-            f"{RDP_TARIFF_DIR}/rie_default_calibrated.json (energyratestructure[0][0].rate). Used in the BAT pipeline to back out annual kWh per building.",
+            f"{rdp}: {RDP_TARIFF_DIR}/rie_default_calibrated.json -> energyratestructure[0][0].rate",
+            "Status-quo uniform default delivery $/kWh. Used in the BAT pipeline to back out annual kWh per building from the delivery bill.",
         ],
         [
             "hp_flat_vol_usd_per_kwh",
             inputs["hp_flat_vol_usd_per_kwh"],
-            f"{RDP_TARIFF_DIR}/rie_hp_flat_calibrated.json. Reference only; Figure 15 uses the default uniform rate.",
+            f"{rdp}: {RDP_TARIFF_DIR}/rie_hp_flat_calibrated.json -> energyratestructure[0][0].rate",
+            "Reference only. Figure 15 is computed under the default uniform rate, not the HP-flat rate.",
         ],
         [
             "nonhp_default_vol_usd_per_kwh",
             inputs["nonhp_default_vol_usd_per_kwh"],
-            f"{RDP_TARIFF_DIR}/rie_nonhp_default_calibrated.json. Reference only.",
+            f"{rdp}: {RDP_TARIFF_DIR}/rie_nonhp_default_calibrated.json -> energyratestructure[0][0].rate",
+            "Reference only. Companion to HP-flat for the HP-flat scenario.",
         ],
     ]
     for r in rows:
         ws.append(r)
-    _header_fill(ws, 1, 3)
-    _autosize(ws, {"A": 32, "B": 18, "C": 90})
+    _header_fill(ws, 1, 4)
+    _autosize(ws, {"A": 32, "B": 18, "C": 80, "D": 70})
     for row, name in [
         (2, "default_vol_usd_per_kwh"),
         (3, "hp_flat_vol_usd_per_kwh"),

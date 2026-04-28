@@ -812,14 +812,99 @@ def build_workbook(output_path: Path) -> Path:
     return output_path
 
 
+_TAB_FORMATTING: dict[str, dict] = {
+    "README": {
+        "wrap_columns": ["A:C"],
+        "column_widths_px": {"A": 280, "B": 480, "C": 480},
+        "freeze_rows": 1,
+        "bold_header": True,
+    },
+    "inputs_revenue_requirement": {
+        "column_number_formats": {"B": "#,##0.00"},
+        "wrap_columns": ["C:D"],
+        "column_widths_px": {"A": 240, "B": 140, "C": 480, "D": 480},
+        "freeze_rows": 1,
+        "bold_header": True,
+    },
+    "inputs_tariffs": {
+        # Volumetric rates are sub-cent precision; 4 dp keeps them readable.
+        "column_number_formats": {"B": "0.0000"},
+        "wrap_columns": ["C:D"],
+        "column_widths_px": {"A": 240, "B": 130, "C": 520, "D": 480},
+        "freeze_rows": 1,
+        "bold_header": True,
+    },
+    "bat_per_building": {
+        "column_number_formats": {
+            "B": "#,##0.00",
+            "D": '"$"#,##0.00',
+            "E": '"$"#,##0.00',
+            "F": '"$"#,##0.00',
+            "G": '"$"#,##0.00',
+            "H": '"$"#,##0.00',
+            "I": "#,##0.00",
+            "J": "#,##0.00",
+            "K": "#,##0.00",
+            "L": "#,##0.00",
+            "M": "#,##0.00",
+        },
+        "auto_resize_columns": ["A:M"],
+        "freeze_rows": 1,
+        "bold_header": True,
+    },
+    "subclass_aggregates": {
+        "column_number_formats": {
+            "C": "#,##0.00",
+            "D": '"$"#,##0.00',
+            "E": '"$"#,##0.00',
+            "F": '"$"#,##0.00',
+            "G": "#,##0.00",
+            "H": "#,##0.00",
+            "I": "#,##0",
+            "J": "#,##0.00",
+            "K": "#,##0",
+            "L": "#,##0",
+            "M": "0.0%",
+        },
+        "auto_resize_columns": ["A:M"],
+        "freeze_rows": 1,
+        "bold_header": True,
+    },
+    "fig15_published": {
+        "column_number_formats": {
+            "B": "#,##0",
+            "C": "0.0%",
+            "D": '"$"#,##0',
+            "E": '"$"#,##0',
+            "F": '"$"#,##0',
+            "G": "0.0%",
+        },
+        "auto_resize_columns": ["A:G"],
+        "freeze_rows": 4,
+        "bold_header": True,
+    },
+    "validation": {
+        "column_number_formats": {"B": "#,##0.00", "C": "#,##0.00", "D": "#,##0.00"},
+        "auto_resize_columns": ["A:F"],
+        "freeze_rows": 1,
+        "bold_header": True,
+    },
+}
+
+
 def upload_to_sheet(xlsx_path: Path, spreadsheet_id: str) -> None:
     """Mirror the workbook into the target Google Sheet, preserving formulas."""
-    from lib.data.gsheets import xlsx_to_gsheet
+    from lib.data.gsheets import apply_sheet_formatting, xlsx_to_gsheet
 
     print(f"Uploading {xlsx_path} -> Google Sheet {spreadsheet_id} ...", flush=True)
     # Remove any pre-existing tabs (e.g. stale `Sheet1`) so the discovery
     # response shows exactly the workbook contents and nothing else.
-    xlsx_to_gsheet(xlsx_path, spreadsheet_id, delete_other_tabs=True)
+    spreadsheet = xlsx_to_gsheet(xlsx_path, spreadsheet_id, delete_other_tabs=True)
+    print("Applying number / wrap / width formatting ...", flush=True)
+    for ws in spreadsheet.worksheets():
+        spec = _TAB_FORMATTING.get(ws.title)
+        if spec:
+            apply_sheet_formatting(ws, **spec)
     print(
         f"Done. View at https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit",
         flush=True,

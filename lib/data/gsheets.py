@@ -242,3 +242,148 @@ def xlsx_to_gsheet(
             if ws.title not in uploaded and len(spreadsheet.worksheets()) > 1:
                 spreadsheet.del_worksheet(ws)
     return spreadsheet
+
+
+def _col_letter_to_index(letter: str) -> int:
+    """A->1, B->2, ..., Z->26, AA->27, ..."""
+    n = 0
+    for ch in letter.upper():
+        n = n * 26 + (ord(ch) - ord("A") + 1)
+    return n
+
+
+def _col_range_to_indices(rng: str) -> tuple[int, int]:
+    """Convert ``"A"`` or ``"C:D"`` to inclusive 1-based (start, end) indices."""
+    if ":" in rng:
+        a, b = rng.split(":")
+        return _col_letter_to_index(a), _col_letter_to_index(b)
+    i = _col_letter_to_index(rng)
+    return i, i
+
+
+def apply_sheet_formatting(
+    worksheet: gspread.Worksheet,
+    *,
+    column_number_formats: dict[str, str] | None = None,
+    wrap_columns: list[str] | None = None,
+    column_widths_px: dict[str, int] | None = None,
+    auto_resize_columns: list[str] | None = None,
+    freeze_rows: int | None = None,
+    bold_header: bool = False,
+) -> None:
+    """Apply common visual formatting to a Google Sheets worksheet.
+
+    All operations are issued in a single ``batch_update`` so the call uses one
+    Sheets API quota unit per worksheet.
+
+    Args:
+        worksheet: Target ``gspread.Worksheet``.
+        column_number_formats: ``{"D:F": "#,##0.00", "G": "0.0%"}``. Uses Excel
+            number-format codes; Sheets infers ``type`` (NUMBER / PERCENT /
+            CURRENCY) from the pattern.
+        wrap_columns: Columns (e.g. ``["C:D"]``) on which to set
+            ``wrapStrategy=WRAP``.
+        column_widths_px: ``{"A": 280, "B:C": 480}`` fixed pixel widths.
+        auto_resize_columns: Columns to auto-fit to content. Applied AFTER any
+            fixed widths so it can override them.
+        freeze_rows: Number of frozen header rows (e.g. 1).
+        bold_header: If True, bold the first row.
+    """
+    sheet_id = worksheet.id
+    requests: list[dict[str, Any]] = []
+
+    def _col_range(rng: str) -> dict[str, Any]:
+        s, e = _col_range_to_indices(rng)
+        return {
+            "sheetId": sheet_id,
+            "dimension": "COLUMNS",
+            "startIndex": s - 1,
+            "endIndex": e,
+        }
+
+    if column_number_formats:
+        for rng, pattern in column_number_formats.items():
+            s, e = _col_range_to_indices(rng)
+            ntype = "PERCENT" if "%" in pattern else "CURRENCY" if "$" in pattern or "€" in pattern else "NUMBER"
+            requests.append(
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "startColumnIndex": s - 1,
+                            "endColumnIndex": e,
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "numberFormat": {"type": ntype, "pattern": pattern},
+                            },
+                        },
+                        "fields": "userEnteredFormat.numberFormat",
+                    }
+                }
+            )
+
+    if wrap_columns:
+        for rng in wrap_columns:
+            s, e = _col_range_to_indices(rng)
+            requests.append(
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "startColumnIndex": s - 1,
+                            "endColumnIndex": e,
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "wrapStrategy": "WRAP",
+                                "verticalAlignment": "TOP",
+                            },
+                        },
+                        "fields": "userEnteredFormat.wrapStrategy,userEnteredFormat.verticalAlignment",
+                    }
+                }
+            )
+
+    if column_widths_px:
+        for rng, px in column_widths_px.items():
+            requests.append(
+                {
+                    "updateDimensionProperties": {
+                        "range": _col_range(rng),
+                        "properties": {"pixelSize": int(px)},
+                        "fields": "pixelSize",
+                    }
+                }
+            )
+
+    if auto_resize_columns:
+        for rng in auto_resize_columns:
+            requests.append({"autoResizeDimensions": {"dimensions": _col_range(rng)}})
+
+    if freeze_rows is not None:
+        requests.append(
+            {
+                "updateSheetProperties": {
+                    "properties": {
+                        "sheetId": sheet_id,
+                        "gridProperties": {"frozenRowCount": int(freeze_rows)},
+                    },
+                    "fields": "gridProperties.frozenRowCount",
+                }
+            }
+        )
+
+    if bold_header:
+        requests.append(
+            {
+                "repeatCell": {
+                    "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1},
+                    "cell": {"userEnteredFormat": {"textFormat": {"bold": True}}},
+                    "fields": "userEnteredFormat.textFormat.bold",
+                }
+            }
+        )
+
+    if requests:
+        worksheet.spreadsheet.batch_update({"requests": requests})

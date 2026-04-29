@@ -1255,8 +1255,7 @@ incremental_df = pl.concat([
 
 ```{python}
 #| label: fig-consumption-before-after-state
-#| fig-cap: "Monthly electricity consumption for a representative gas-heated home, before and after switching to a heat pump. Winter consumption grows sharply, while summer consumption falls because the heat pump cools more efficiently than the home's prior air conditioner. 1 kWh of gas = 3,412 BTU."
-
+#| fig-cap: "Monthly electricity consumption for Syracuse home, before and after installing a heat pump. Home heated by gas furnace and cooled by central AC before the switch. After the switch, winter electricity use grows sharply, while summer use falls because heat pumps cools more efficiently than old AC unit."
 _SAVINGS_FILL = (0.784, 0.635, 0.0, 0.35)  # #C8A200 at 35% opacity
 _SAVINGS_LABEL_COLOR = "#D4BA46"
 
@@ -1951,7 +1950,7 @@ plot_quadrant_bar(
 
 ```{python}
 #| label: fig-quadrant-bar-elec-resistance-state
-#| fig-cap: "Change in total annual energy bills (electricity) for electric resistance-heated households that switch to heat pumps (NY, statewide). Assumes 40% of LMI households are enrolled in the utilities’ energy affordability program before and after switching to a heat pump."
+#| fig-cap: "Change in total annual energy bills for electric resistance-heated households that switch to heat pumps (NY, statewide). Assumes 40% of LMI households are enrolled in the utilities’ energy affordability program before and after switching to a heat pump."
 
 plot_quadrant_bar(
     [("Electric resistance", elec_resistance_state)],
@@ -2345,7 +2344,7 @@ for label, row in [("Gas", median_gas_bat), ("Heat pump", median_hp_bat)]:
 
 ```{python}
 #| label: fig-cross-subsidy-example
-#| fig-cap: "Annual electric delivery bill vs. delivery cost of service for the home in Syracuse, NY, before and after switching to a heat pump. Home's electric loads are from ResStock, bills are caculated using NGrid Upstate's 2025 electric rates. Cost-of-service is from Switchbox analysis of T&D marginal costs and utility revenue requirements."
+#| fig-cap: "Annual electric delivery bill vs. delivery cost of service for the home in Syracuse, NY, before and after switching to a heat pump. Home's electric loads are from ResStock, bills are calculated using NGrid Upstate's 2025 electric rates. Cost-of-service is from Switchbox analysis of T&D marginal costs and utility revenue requirements."
 
 DECOMPOSE_COS = False
 
@@ -2600,6 +2599,9 @@ report_vars["nonhp_households_millions"] = (total_weight - _hp_sub["weight"].sum
 report_vars["hp_mean_delivery_cost"] = (
     _weighted_mean(_hp_sub, "economic_burden_delivery", "weight")
     + _weighted_mean(_hp_sub, RESIDUAL_DELIVERY, "weight")
+)
+report_vars["hp_total_delivery_cost_millions"] = (
+    ((_hp_sub["economic_burden_delivery"] + _hp_sub[RESIDUAL_DELIVERY]) * _hp_sub["weight"]).sum() / 1e6
 )
 report_vars["ff_mean_delivery_cost"] = (
     _weighted_mean(_ff_sub, "economic_burden_delivery", "weight")
@@ -3381,11 +3383,17 @@ _discount_values = [discount_row[c] for c in util_cols]
 report_vars["hp_seasonal_winter_discount_min_pct"] = min(_discount_values)
 report_vars["hp_seasonal_winter_discount_max_pct"] = max(_discount_values)
 
+# National Grid (NiMo) summer and winter delivery rates under the proposed
+# seasonal HP rate, used in the Syracuse home worked example. Summer rate
+# matches the current default delivery rate by design.
+report_vars["natgrid_hp_summer_delivery_rate_cents"] = summer_row["NiMo"]
+report_vars["natgrid_hp_winter_delivery_rate_cents"] = winter_row["NiMo"]
+
 ```
 
 ```{python}
 #| label: tbl-rate-table
-#| tbl-cap: "Proposed seasonal heat pump rate, per utility. Summer rates match current default rate (when default rate is flat), winter rates are reduced to align heat pump customers' annual bills with their cost-of-service."
+#| tbl-cap: "Proposed seasonal heat pump rate, per utility. Summer rates match current default rate (when default rate is flat), winter rates are reduced to align heat pump customers' annual bills with their cost-of-service. Default delivery rates in ConEd, O&R, and PSEG-LI are not flat—Switchbox derived flat rates for these utilities as a starting point."
 
 _rate_gt = (
     GT(rate_wide, rowname_col="metric")
@@ -5601,7 +5609,7 @@ p = (
     + scale_x_discrete(expand=(0, 0.35, 0, 0.7))
     + coord_flip()
     + guides(fill=False)
-    + labs(x="", y="", title="Monthly bill change for fossil-fuel homes: seasonal heat pump rate vs. electric heating rate")
+    + labs(x="", y="", title="Monthly bill change for fossil-fuel homes: dedicated heat pump delivery rate vs. electric heating delivery rate")
     + theme_switchbox()
     + theme(
         figure_size=(12.5, max(2.6, 1.0 + 1.4 * _n)),

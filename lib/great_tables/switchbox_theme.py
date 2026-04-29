@@ -6,6 +6,8 @@ Parallels ``lib/plotnine/switchbox_theme.py`` for charts:
   **left-aligned** (tier 1).
 - **Subtitle** — same as plotnine ``plot_subtitle``: GT Planar Regular, 13px, ``#333333``,
   left-aligned; extra bottom padding before the column-header rule.
+- **Title without subtitle** — same bottom padding before the column-header rule as the subtitle
+  case (tables that omit ``subtitle`` still get spacing below the title).
 - **Column spanners** — GT Planar **Bold**, 12px, ``#333333`` (slightly smaller than plotnine axis titles).
 - **Column labels** (leaf headers under spanners) — GT Planar Regular, 12px, ``#333333``.
 - **Stub (row labels)** — IBM Plex Sans Regular, 11px, ``#4D4D4D``.
@@ -58,6 +60,9 @@ SB_GT_PER_YEAR_HTML_PATTERN = '{x}<span class="sb-gt-per-year-suffix"> / year</s
 _COLUMN_LABEL_PX = "12px"
 # Space below subtitle before the column-label block (thick rule); GT default ~5px is tight.
 _HEADING_SUBTITLE_PADDING_BOTTOM = "20px"
+# When there is no subtitle row, preserve similar breathing room below the title (replacing the gap
+# that previously came from the subtitle block's bottom padding).
+_HEADING_TITLE_PADDING_BOTTOM_WHEN_NO_SUBTITLE = "20px"
 # Space around source notes: no horizontal rule before/after the note block; padding separates it from
 # data rows so it reads as caption text, not another grid row.
 _SOURCE_NOTE_PADDING_TOP = "14px"
@@ -82,6 +87,8 @@ def _switchbox_gt_typography_rules() -> list[str]:
         "font-family: 'GT-Planar-Bold', 'GT Planar', sans-serif !important; "
         "font-size: 15px !important; line-height: 1.2 !important; font-weight: normal !important; "
         "color: #000000 !important; text-align: left !important; }",
+        ".gt_table thead:not(:has(.gt_subtitle)) .gt_heading .gt_title { "
+        f"padding-bottom: {_HEADING_TITLE_PADDING_BOTTOM_WHEN_NO_SUBTITLE} !important; }}",
         ".gt_table .gt_heading .gt_subtitle { "
         "font-family: 'GT-Planar', 'GT Planar', sans-serif !important; "
         f"font-size: 13px !important; line-height: 1.35 !important; font-weight: normal !important; "

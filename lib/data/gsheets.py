@@ -270,6 +270,7 @@ def apply_sheet_formatting(
     auto_resize_columns: list[str] | None = None,
     freeze_rows: int | None = None,
     bold_header: bool = False,
+    bold_rows: list[int] | None = None,
 ) -> None:
     """Apply common visual formatting to a Google Sheets worksheet.
 
@@ -288,6 +289,8 @@ def apply_sheet_formatting(
             fixed widths so it can override them.
         freeze_rows: Number of frozen header rows (e.g. 1).
         bold_header: If True, bold the first row.
+        bold_rows: Optional list of additional 1-indexed row numbers to bold
+            (e.g. interior section-header rows on a README sheet).
     """
     sheet_id = worksheet.id
     requests: list[dict[str, Any]] = []
@@ -384,6 +387,23 @@ def apply_sheet_formatting(
                 }
             }
         )
+
+    if bold_rows:
+        for row in bold_rows:
+            # row is 1-indexed in the public API; convert to 0-indexed for Sheets.
+            requests.append(
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "startRowIndex": int(row) - 1,
+                            "endRowIndex": int(row),
+                        },
+                        "cell": {"userEnteredFormat": {"textFormat": {"bold": True}}},
+                        "fields": "userEnteredFormat.textFormat.bold",
+                    }
+                }
+            )
 
     if requests:
         worksheet.spreadsheet.batch_update({"requests": requests})

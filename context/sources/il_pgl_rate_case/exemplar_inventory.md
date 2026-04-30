@@ -23,7 +23,7 @@ Page counts pulled from each source file's `**Pages**:` header.
 
 ### 1. Bradley Cebulko — PIO Direct (capital spending & gas system planning)
 
-- **File**: `20230509_337548-588147_Testimony_Direct_Testimony_on_behalf_of_Environmental_Law_Policy_Center_Environmental_Defense_Fund_N_part1of4.md`
+- **File**: `icc_23-0069_direct_testimony_pio_cebulko.md`
 - **Date**: 2023-05-09 · **Submission**: 337548-588147 · **Type**: Direct
 - **Party**: Public Interest Organizations (PIO) — Environmental Law & Policy Center, Environmental Defense Fund, NRDC, Illinois PIRG
 - **Witness**: Bradley Cebulko, Senior Manager, Strategen Consulting (Sacramento, CA); previously Senior Policy Advisor, Washington UTC
@@ -44,7 +44,7 @@ Page counts pulled from each source file's `**Pages**:` header.
 
 ### 2. Justin Schott — PIO Direct (energy equity)
 
-- **File**: `20230509_337545-588139_Testimony_Direct_Testimony_on_behalf_of_Environmental_Law_Policy_Center_Environmental_Defense_Fund_N_part3of9.md`
+- **File**: `icc_23-0069_direct_testimony_pio_schott.md`
 - **Date**: 2023-05-09 · **Submission**: 337545-588139 · **Type**: Direct
 - **Party**: PIO (ELPC/EDF/NRDC/ILPIRG)
 - **Witness**: Justin Schott, Director, Energy Equity Project (EEP); Lecturer in Energy Justice, University of Michigan School for Environment and Sustainability
@@ -62,7 +62,7 @@ Page counts pulled from each source file's `**Pages**:` header.
 
 ### 3. David E. Dismukes — AG Direct (infrastructure metrics & QIP)
 
-- **File**: `20230509_337554-588212_Testimony_Direct_Testimony_of_the_People_of_the_State_of_Illinois_part1of3.md`
+- **File**: `icc_23-0069_direct_testimony_ag_dismukes.md`
 - **Date**: 2023-05-09 · **Submission**: 337554-588212 · **Type**: Direct
 - **Party**: People of the State of Illinois (Office of the Attorney General)
 - **Witness**: David E. Dismukes, Ph.D., Consulting Economist, Acadian Consulting Group; Professor Emeritus, Louisiana State University; Senior Fellow, MSU Institute of Public Utilities
@@ -81,7 +81,7 @@ Page counts pulled from each source file's `**Pages**:` header.
 
 ### 4. Bradley Cebulko — PIO Rebuttal (electrification & decarbonization)
 
-- **File**: `20230717_340066-593250_Testimony_Rebuttal_Testimony_on_behalf_of_Environmental_Law_Policy_Center_Environmental_Defense_Fund_part1of11.md`
+- **File**: `icc_23-0069_rebuttal_testimony_pio_cebulko.md`
 - **Date**: 2023-07-17 · **Submission**: 340066-593250 · **Type**: Rebuttal
 - **Party**: PIO (ELPC/EDF/NRDC/ILPIRG)
 - **Witness**: Bradley Cebulko, Strategen Consulting (same as #1)
@@ -95,7 +95,7 @@ Page counts pulled from each source file's `**Pages**:` header.
 
 ### 5. Catherine Elder — PIO Rebuttal (operational facilities)
 
-- **File**: `20230717_340066-593259_Testimony_Rebuttal_Testimony_on_behalf_of_Environmental_Law_Policy_Center_Environmental_Defense_Fund_part8of11.md`
+- **File**: `icc_23-0069_rebuttal_testimony_pio_elder.md`
 - **Date**: 2023-07-17 · **Submission**: 340066-593259 · **Type**: Rebuttal
 - **Party**: PIO (ELPC/EDF/NRDC/ILPIRG)
 - **Witness**: Catherine Elder, Aspen Environmental Group (Sacramento, CA), leads firm's energy economics practice; B.A. UC Berkeley, M.P.A. Harvard Kennedy; 20+ yrs PG&E
@@ -110,7 +110,7 @@ Page counts pulled from each source file's `**Pages**:` header.
 
 ### 6. James A. Leyko — CUB/PCR/City of Chicago Rebuttal (incentive compensation)
 
-- **File**: `20230717_340061-593239_Testimony_Rebuttal_Testimony_on_behalf_of_the_Citizens_Utility_Board_People_for_Community_Recovery_a_part3of4.md`
+- **File**: `icc_23-0069_rebuttal_testimony_cub_pcr_chicago_leyko.md`
 - **Date**: 2023-07-17 · **Submission**: 340061-593239 · **Type**: Rebuttal
 - **Party**: Citizens Utility Board (CUB), People for Community Recovery (PCR), City of Chicago
 - **Witness**: James A. Leyko, Brubaker & Associates (Chesterfield, MO); Project 11444
@@ -123,7 +123,7 @@ Page counts pulled from each source file's `**Pages**:` header.
 
 ### 7. Sol DeLeon — City of Chicago Rebuttal (GHG, NPAs, SMP)
 
-- **File**: `20230717_340067-593264_Testimony_PART_1_Rebuttal_Testimony_of_the_City_of_Chicago.md`
+- **File**: `icc_23-0069_rebuttal_testimony_chicago_deleon.md`
 - **Date**: 2023-07-17 · **Submission**: 340067-593264 · **Type**: Rebuttal
 - **Party**: City of Chicago
 - **Witness**: Dr. Sol DeLeon, Principal Associate, Synapse Energy Economics (Cambridge, MA)
@@ -139,7 +139,7 @@ Page counts pulled from each source file's `**Pages**:` header.
 
 ### 8. Karl R. Rábago — City of Chicago Rebuttal (fixed charges & ECOSS)
 
-- **File**: `20230717_340073-593273_Testimony_PART_6_Rebuttal_Testimony_of_City_of_Chicago.md`
+- **File**: `icc_23-0069_rebuttal_testimony_chicago_rabago.md`
 - **Date**: 2023-07-17 · **Submission**: 340073-593273 · **Type**: Rebuttal
 - **Party**: City of Chicago
 - **Witness**: Karl R. Rábago, Principal, Rábago Energy LLC (utility rate design and cost-of-service expert)
@@ -155,7 +155,7 @@ Page counts pulled from each source file's `**Pages**:` header.
 
 ### 9. Rod Walker — AG Rebuttal (pipeline benchmarking, SMP, facilities)
 
-- **File**: `20230717_340089-593309_Testimony_PART_3_Rebuttal_Testimony_on_behalf_of_the_People_of_the_State_of_Illinois_part1of4.md`
+- **File**: `icc_23-0069_rebuttal_testimony_ag_walker.md`
 - **Date**: 2023-07-17 · **Submission**: 340089-593309 · **Type**: Rebuttal
 - **Party**: People of the State of Illinois (AG)
 - **Witness**: Rod Walker, CEO/President, Rod Walker & Associates (Chattanooga, TN); previously filed AG Ex. 3.00 direct
@@ -172,7 +172,7 @@ Page counts pulled from each source file's `**Pages**:` header.
 
 ### 10. David J. Effron — AG Direct on Rehearing (incremental plant)
 
-- **File**: `20240305_347802-607433_Testimony_PART_1_Direct_Testimony_on_Rehearing_of_the_People_of_the_State_of_Illinois_part1of3.md`
+- **File**: `icc_23-0069_rehearing_direct_testimony_ag_effron.md`
 - **Date**: 2024-03-05 · **Submission**: 347802-607433 · **Type**: Direct on Rehearing
 - **Party**: People of the State of Illinois (AG)
 - **Witness**: David J. Effron, independent utility regulation consultant (North Hampton, NH); CPA; B.A. Dartmouth (Economics), M.B.A. Columbia; testified in 300+ cases across 29+ states

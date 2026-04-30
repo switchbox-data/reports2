@@ -869,7 +869,8 @@ res_only |>
 ```
 
 ```{r}
-#| label: single-block-eg
+#| label: fig-single-block-eg
+#| fig-cap: "Stacked PRP vs NPA cost components for a single example census block (170314407001003): pipeline replacement on the left vs single- and multi-family electrification, grid upgrade, and gas decommissioning on the right."
 #| fig-height: 9
 #| fig-width: 8
 
@@ -1001,7 +1002,8 @@ ggplot() +
 ```
 
 ```{r}
-#| label: single-block-eg-ss
+#| label: fig-single-block-eg-ss
+#| fig-cap: "Same single-block PRP vs NPA decomposition with scattershot electrification NPV added to the PRP side of the comparison."
 #| fig-height: 9
 #| fig-width: 8
 
@@ -1323,59 +1325,75 @@ n_miles_res <- sum(res_only$street_miles, na.rm = TRUE)
 n_miles_mixed <- sum(pg_summary$street_miles, na.rm = TRUE) - n_miles_res
 n_miles_remaining <- total_prp_miles - n_miles_res - n_miles_mixed
 
-# Create data frame with manual position calculation
+# Stack order: factor levels reversed by position_stack, so the LAST level
+# ends up at the bottom of the stack and at the LEFT after coord_flip.
+# Levels c("remain", "mixed", "res") → res on left, mixed middle, remain on right.
 plot_data <- data.frame(
   category = factor(
     c("remain", "mixed", "res"),
     levels = c("remain", "mixed", "res")
   ),
-  label = c(
-    "Remaining PRP miles",
-    "Planned mixed-zoning",
-    "Planned fully residential"
-  ),
   miles = c(n_miles_remaining, n_miles_mixed, n_miles_res)
-) |>
-  arrange(desc(category)) |>
-  mutate(
-    cumsum_miles = cumsum(miles),
-    text_position = c(0, 150, total_prp_miles), #cumsum_miles - miles / 2,
-    label_text = paste0(label, "\n(", round(miles), " miles)")
-  )
+)
+
+# Segment midpoints along the y axis (horizontal after coord_flip)
+res_mid <- n_miles_res / 2
+mixed_mid <- n_miles_res + n_miles_mixed / 2
+remain_mid <- n_miles_res + n_miles_mixed + n_miles_remaining / 2
+
+# Bar is centered at categorical x = 1, width = 0.5 → spans 0.75..1.25
+bar_top <- 1.25
+bar_bot <- 0.75
 
 ggplot() +
   geom_bar(
     data = plot_data,
     aes(x = "", y = miles, fill = category),
     stat = "identity",
-    width = 0.7
+    width = 0.5
   ) +
-  ggrepel::geom_text_repel(
-    data = plot_data,
-    aes(x = "", y = text_position, label = label_text, color = category),
-    direction = "y",
-    nudge_x = 0.65,
-    # nudge_y = 10,
-    # segment.color = "gray50",
-    # size = 3.5,
-    force = 1,
-    show.legend = FALSE
+  # Residential callout above bar with leader line
+  annotate("segment",
+    x = bar_top, xend = 1.55, y = res_mid, yend = res_mid,
+    color = sb_colors[["midnight"]], linewidth = 0.4
+  ) +
+  annotate("text",
+    x = 1.6, y = res_mid,
+    label = paste0("Planned fully residential\n(", round(n_miles_res), " miles)"),
+    color = sb_colors[["midnight"]],
+    hjust = 0, vjust = 0, size = 3.5, fontface = "bold"
+  ) +
+  # Mixed callout below bar with leader line
+  annotate("segment",
+    x = bar_bot, xend = 0.45, y = mixed_mid, yend = mixed_mid,
+    color = sb_colors[["saffron"]], linewidth = 0.4
+  ) +
+  annotate("text",
+    x = 0.4, y = mixed_mid,
+    label = paste0("Planned mixed-zoning\n(", round(n_miles_mixed), " miles)"),
+    color = sb_colors[["saffron"]],
+    hjust = 0, vjust = 1, size = 3.5, fontface = "bold"
+  ) +
+  # Remaining label centered above the gray segment
+  annotate("text",
+    x = 1.6, y = remain_mid,
+    label = paste0(
+      "Remaining PRP miles\n(",
+      format(round(n_miles_remaining), big.mark = ","),
+      " miles)"
+    ),
+    color = "gray30",
+    hjust = 0.5, vjust = 0, size = 3.5, fontface = "bold"
   ) +
   scale_fill_manual(
     values = c(
       "res" = sb_colors[["midnight"]],
       "mixed" = sb_colors[["saffron"]],
-      "remain" = "gray"
+      "remain" = "gray80"
     )
   ) +
-  scale_color_manual(
-    values = c(
-      "res" = sb_colors[["midnight"]],
-      "mixed" = sb_colors[["saffron"]],
-      "remain" = "gray"
-    )
-  ) +
-  scale_y_continuous(limits = c(-250, total_prp_miles+200), expand = c(0, 0)) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.02))) +
+  scale_x_discrete(expand = expansion(add = c(0.9, 0.9))) +
   coord_flip(clip = "off") +
   labs(y = "", x = "") +
   theme(
@@ -1385,7 +1403,7 @@ ggplot() +
     axis.ticks = element_blank(),
     panel.grid = element_blank(),
     legend.position = "none",
-    plot.margin = margin(t = 40, r = 10, b = 10, l = 10)
+    plot.margin = margin(t = 10, r = 20, b = 10, l = 20)
   )
 
 ```
@@ -1396,64 +1414,62 @@ ggplot() +
 #| fig-width: 8
 #| fig-height: 5
 
-# Calculate miles by project type
-
 n_miles_planned <- sum(pg_summary$street_miles, na.rm = TRUE)
 n_miles_remaining <- total_prp_miles - n_miles_planned
 
-# Create data frame with manual position calculation
+# Levels chosen so coord_flip puts planned on LEFT, remain on RIGHT
+# (position_stack reverses factor order: highest level → bottom of stack → LEFT after flip)
 plot_data <- data.frame(
   category = factor(
     c("remain", "planned"),
     levels = c("remain", "planned")
   ),
-  label = c(
-    "Remaining PRP miles",
-    "Planned PRP miles"
-  ),
   miles = c(n_miles_remaining, n_miles_planned)
-) |>
-  arrange(desc(category)) |>
-  mutate(
-    cumsum_miles = cumsum(miles),
-    text_position = c(145, total_prp_miles), #cumsum_miles - miles / 2,
-    label_text = paste0(label, "\n(", round(miles), " miles)")
-  )
+)
+
+planned_mid <- n_miles_planned / 2
+remain_mid <- n_miles_planned + n_miles_remaining / 2
+
+# Bar centered at categorical x = 1, width = 0.5 → spans 0.75..1.25
+bar_top <- 1.25
 
 ggplot() +
   geom_bar(
     data = plot_data,
     aes(x = "", y = miles, fill = category),
     stat = "identity",
-    width = 0.7
+    width = 0.5
   ) +
-  ggrepel::geom_text_repel(
-    data = plot_data,
-    aes(x = "", y = text_position, label = label_text, color = category),
-    direction = "y",
-    nudge_x = 0.65,
-    # nudge_y = 10,
-    # segment.color = "gray50",
-    # size = 3.5,
-    force = 1,
-    show.legend = FALSE
+  # Planned callout above bar with leader line
+  annotate("segment",
+    x = bar_top, xend = 1.55, y = planned_mid, yend = planned_mid,
+    color = sb_colors[["sky"]], linewidth = 0.4
+  ) +
+  annotate("text",
+    x = 1.6, y = planned_mid,
+    label = paste0("Planned PRP miles\n(", round(n_miles_planned), " miles)"),
+    color = sb_colors[["sky"]],
+    hjust = 0, vjust = 0, size = 3.5, fontface = "bold"
+  ) +
+  # Remaining label centered above the gray segment
+  annotate("text",
+    x = 1.6, y = remain_mid,
+    label = paste0(
+      "Remaining PRP miles\n(",
+      format(round(n_miles_remaining), big.mark = ","),
+      " miles)"
+    ),
+    color = "gray30",
+    hjust = 0.5, vjust = 0, size = 3.5, fontface = "bold"
   ) +
   scale_fill_manual(
     values = c(
       "planned" = sb_colors[["sky"]],
-      "remain" = "gray"
+      "remain" = "gray80"
     )
   ) +
-  scale_color_manual(
-    values = c(
-      "planned" = sb_colors[["sky"]],
-      "remain" = "gray"
-    )
-  ) +
-  scale_y_continuous(
-    limits = c(-250, total_prp_miles + 200),
-    expand = c(0, 0)
-  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.02))) +
+  scale_x_discrete(expand = expansion(add = c(0.6, 0.9))) +
   coord_flip(clip = "off") +
   labs(y = "", x = "") +
   theme(
@@ -1463,7 +1479,7 @@ ggplot() +
     axis.ticks = element_blank(),
     panel.grid = element_blank(),
     legend.position = "none",
-    plot.margin = margin(t = 40, r = 10, b = 10, l = 10)
+    plot.margin = margin(t = 10, r = 20, b = 10, l = 20)
   )
 ```
 
@@ -1473,57 +1489,31 @@ ggplot() +
 #| fig-width: 8
 #| fig-height: 5
 
-# Calculate miles by project type
-
-n_miles_remaining <- total_prp_miles
-
-# Create data frame with manual position calculation
 plot_data <- data.frame(
-  category = factor(
-    c("remain"),
-    levels = c("remain")
-  ),
-  label = c(
-    "Remaining PRP miles"
-  ),
-  miles = c(n_miles_remaining)
-) |>
-  arrange(desc(category)) |>
-  mutate(
-    cumsum_miles = cumsum(miles),
-    text_position = c(total_prp_miles), #cumsum_miles - miles / 2,
-    label_text = paste0(label, "\n(", scales::comma(round(miles)), " miles)")
-  )
+  category = factor(c("remain"), levels = c("remain")),
+  miles = c(total_prp_miles)
+)
 
 ggplot() +
   geom_bar(
     data = plot_data,
     aes(x = "", y = miles, fill = category),
     stat = "identity",
-    width = 0.7
+    width = 0.5
   ) +
-  ggrepel::geom_text_repel(
-    data = plot_data,
-    aes(x = "", y = text_position, label = label_text, color = category),
-    direction = "y",
-    nudge_x = 0.65,
-    # nudge_y = 10,
-    # segment.color = "gray50",
-    # size = 3.5,
-    force = 1,
-    show.legend = FALSE
+  annotate("text",
+    x = 1.6, y = total_prp_miles / 2,
+    label = paste0(
+      "Remaining PRP miles\n(",
+      format(round(total_prp_miles), big.mark = ","),
+      " miles)"
+    ),
+    color = "gray30",
+    hjust = 0.5, vjust = 0, size = 3.5, fontface = "bold"
   ) +
-  scale_fill_manual(
-    values = c(
-      "remain" = "gray"
-    )
-  ) +
-  scale_color_manual(
-    values = c(
-      "remain" = "gray"
-    )
-  ) +
-  scale_y_continuous(limits = c(-250, total_prp_miles+200), expand = c(0, 0)) +
+  scale_fill_manual(values = c("remain" = "gray80")) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.02))) +
+  scale_x_discrete(expand = expansion(add = c(0.6, 0.9))) +
   coord_flip(clip = "off") +
   labs(y = "", x = "") +
   theme(
@@ -1533,7 +1523,7 @@ ggplot() +
     axis.ticks = element_blank(),
     panel.grid = element_blank(),
     legend.position = "none",
-    plot.margin = margin(t = 40, r = 10, b = 10, l = 10)
+    plot.margin = margin(t = 10, r = 20, b = 10, l = 20)
   )
 ```
 

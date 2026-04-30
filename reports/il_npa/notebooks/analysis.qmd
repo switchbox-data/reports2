@@ -209,6 +209,139 @@ TIME_PERIOD <- 10 # 10-year timeline
 RES_THRESHOLD <- 0.9
 ```
 
+### Electrification cost derivation
+
+The per-home electrification costs ($C_{\text{SF}}$ and $C_{\text{MF}}$) are derived from ComEd's CY2024 Cost-Effectiveness Analysis, which reports average costs for individual electrification measures deployed through ComEd's Whole Home Electric program. The source data is in the `comed_itemized cots` tab of our [cost assumptions spreadsheet](https://docs.google.com/spreadsheets/d/1xxa47dClvp0rosZhUP1R7790CNXMLSD_0ExrPccR3p0/edit?gid=681639934#gid=681639934).
+
+For each end-use category, the ComEd data reports multiple program variants (e.g. DAC and non-DAC, or different equipment types like ducted vs. ductless heat pumps). We compute a **quantity-weighted average** across variants within each category: each variant's average cost is weighted by the number of units deployed in CY2024, so variants with more installations pull the average toward their cost. We then sum the weighted averages across end-use categories to get the total per-home or per-unit cost.
+
+```{r}
+#| echo: false
+
+itemized_url <- "https://docs.google.com/spreadsheets/d/1xxa47dClvp0rosZhUP1R7790CNXMLSD_0ExrPccR3p0/export?format=csv&gid=681639934"
+itemized_df <- read_csv(itemized_url) |>
+  mutate(
+    `Average Cost` = as.numeric(gsub("[\\$,]", "", `Average Cost`)),
+    Quantity = as.numeric(gsub("[\\$,]", "", Quantity))
+  )
+```
+
+```{r}
+#| echo: false
+
+# SF electrification cost breakdown (rows 58-67 in the sheet = "Whole Home Electric, SF")
+sf_dryer <- itemized_df |>
+  filter(`Savings Category` %in% c(
+    "Clothes Dryer - Electrification - DAC",
+    "Clothes Dryer - Electrification"
+  ), Component == "SF")
+sf_dryer_cost <- weighted.mean(sf_dryer$`Average Cost`, sf_dryer$Quantity)
+
+sf_cooktop <- itemized_df |>
+  filter(`Savings Category` %in% c(
+    "Cooktop - Electrification - DAC",
+    "Cooktop - Electrification"
+  ), Component == "SF")
+sf_cooktop_cost <- weighted.mean(sf_cooktop$`Average Cost`, sf_cooktop$Quantity)
+
+sf_hpwh <- itemized_df |>
+  filter(`Savings Category` %in% c(
+    "Heat Pump Water Heater - Electrification - DAC",
+    "Heat Pump Water Heater - Electrification"
+  ), Component == "SF")
+sf_hpwh_cost <- weighted.mean(sf_hpwh$`Average Cost`, sf_hpwh$Quantity)
+
+sf_hvac <- itemized_df |>
+  filter(`Savings Category` %in% c(
+    "Ductless Heat Pump - Electrification - DAC",
+    "Ductless Heat Pump - Electrification",
+    "Air Source Heat Pump - Electrification - DAC",
+    "Air Source Heat Pump - Electrification"
+  ), Component == "SF")
+sf_hvac_cost <- weighted.mean(sf_hvac$`Average Cost`, sf_hvac$Quantity)
+
+sf_total <- sf_dryer_cost + sf_cooktop_cost + sf_hpwh_cost + sf_hvac_cost
+
+# MF electrification cost breakdown (rows 49-57 in the sheet = "Whole Home Electric, MF")
+mf_dryer <- itemized_df |>
+  filter(`Savings Category` %in% c(
+    "Clothes Dryer - Electrification - DAC",
+    "Clothes Dryer - Electrification"
+  ), Component == "MF")
+mf_dryer_cost <- weighted.mean(mf_dryer$`Average Cost`, mf_dryer$Quantity)
+
+mf_cooktop <- itemized_df |>
+  filter(`Savings Category` == "Cooktop - Electrification - DAC", Component == "MF")
+mf_cooktop_cost <- mf_cooktop$`Average Cost`
+
+mf_hw <- itemized_df |>
+  filter(`Savings Category` %in% c(
+    "Heat Pump Water Heater - Electrification - DAC",
+    "Heat Pump Water Heater - Electrification",
+    "Electric Water Heater - Electrification - DAC"
+  ), Component == "MF")
+mf_hw_cost <- weighted.mean(mf_hw$`Average Cost`, mf_hw$Quantity)
+
+mf_hvac <- itemized_df |>
+  filter(`Savings Category` %in% c(
+    "Ductless Heat Pump - Electrification - DAC",
+    "Air Source Heat Pump - Electrification - DAC",
+    "Air Source Heat Pump - Electrification"
+  ), Component == "MF")
+mf_hvac_cost <- weighted.mean(mf_hvac$`Average Cost`, mf_hvac$Quantity)
+
+mf_total <- mf_dryer_cost + mf_cooktop_cost + mf_hw_cost + mf_hvac_cost
+```
+
+The table below shows the itemized costs for each end-use category. Each row is a quantity-weighted average of the program variants within that category. Where costs differ across variants, a range (min–max) is shown.
+
+```{r}
+#| echo: false
+#| label: tbl-electrification-costs
+#| tbl-cap: "Itemized electrification costs per home (SF) and per unit (MF)"
+
+library(gt)
+library(tibble)
+
+make_range <- function(costs) {
+  if (length(costs) <= 1) return("")
+  lo <- min(costs)
+  hi <- max(costs)
+  if (abs(hi - lo) < 1) return("")
+  paste0("$", formatC(lo, format = "f", digits = 0, big.mark = ","),
+         "–$", formatC(hi, format = "f", digits = 0, big.mark = ","))
+}
+
+cost_table <- tribble(
+  ~`End Use`, ~`SF Wt. Avg.`, ~`SF Range`, ~`MF Wt. Avg.`, ~`MF Range`,
+  "HVAC (heat pump)", sf_hvac_cost, make_range(sf_hvac$`Average Cost`), mf_hvac_cost, make_range(mf_hvac$`Average Cost`),
+  "Water heater", sf_hpwh_cost, make_range(sf_hpwh$`Average Cost`), mf_hw_cost, make_range(mf_hw$`Average Cost`),
+  "Cooktop", sf_cooktop_cost, make_range(sf_cooktop$`Average Cost`), mf_cooktop_cost, make_range(mf_cooktop$`Average Cost`),
+  "Clothes dryer", sf_dryer_cost, make_range(sf_dryer$`Average Cost`), mf_dryer_cost, make_range(mf_dryer$`Average Cost`),
+  "Total", sf_total, "", mf_total, ""
+)
+
+cost_table |>
+  gt() |>
+  fmt_currency(columns = c(`SF Wt. Avg.`, `MF Wt. Avg.`), decimals = 0) |>
+  tab_spanner(label = "Single-Family (per home)", columns = c(`SF Wt. Avg.`, `SF Range`)) |>
+  tab_spanner(label = "Multi-Family (per unit)", columns = c(`MF Wt. Avg.`, `MF Range`)) |>
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_body(rows = `End Use` == "Total")
+  ) |>
+  tab_source_note("Source: ComEd CY2024 Cost-Effectiveness Analysis (Guidehouse)")
+```
+
+Let's verify these match the values in our cost assumptions sheet:
+
+```{r}
+#| echo: false
+
+stopifnot(abs(sf_total - cost_elec_sf) < 1)
+stopifnot(abs(mf_total - cost_elec_mf) < 1)
+```
+
 # Cost Calculations
 
 For each city block, we calculate:
@@ -369,7 +502,8 @@ pg_summary <- pg_summary |>
 pg_summary <- pg_summary |>
   mutate(
     # Annual cost of scattershot electrification (evenly distributed)
-    scattershot_annual_cost = (PCT_ELEC * elec_cost_total) / TIME_PERIOD,
+    # Excludes decommissioning: gas infrastructure remains in operation under scattershot
+    scattershot_annual_cost = (PCT_ELEC * (elec_sf_cost + elec_mf_cost)) / TIME_PERIOD,
 
     # NPV of scattershot costs (t=0 to TIME_PERIOD-1)
     scattershot_npv = scattershot_annual_cost *
@@ -1026,7 +1160,7 @@ plot_data <- res_only |>
     pipeline_assigned = street_miles,
     grid_cost = total_residential_units * grid_upgrade_cost_hh,
     decomm_cost = street_miles * cost_decomm_mile,
-    scattershot_annual = (PCT_ELEC * elec_cost_total) / TIME_PERIOD,
+    scattershot_annual = (PCT_ELEC * (elec_sf_cost + elec_mf_cost + grid_cost)) / TIME_PERIOD,
     scattershot_npv_cost = scattershot_annual *
       sum(1 / (1 + DISCOUNT_RATE)^(0:(TIME_PERIOD - 1))),
   ) |>

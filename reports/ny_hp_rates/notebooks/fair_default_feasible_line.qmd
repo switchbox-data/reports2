@@ -1,0 +1,514 @@
+---
+title: Fair-Default Feasible Line Plots
+reference-location: margin
+fig-cap-location: bottom
+execute:
+  warning: false
+  message: false
+---
+
+This notebook plots the fixed-charge and seasonal-rate combinations that would eliminate the heat-pump cross-subsidy for each New York utility.
+It starts from the normal run 1 and run 2 CAIRO outputs: run 1 for delivery, and run 2 for delivery plus supply.
+
+The computation is imported from `rate-design-platform`.
+This notebook only resolves the run outputs, assembles the inputs, and renders the plots.
+For kWh totals, it always uses the local ResStock `load_curve_monthly` files.
+Volumetric rates from `rate-design-platform` are in `$/kWh`, matching the URDB tariff JSON `rate` fields.
+The plots display cents per kWh using the conversion `cents/kWh = $/kWh * 100`, so a `0.002 $/kWh` rate displays as `0.2¢/kWh`.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+import math
+import os
+from pathlib import Path
+import sys
+
+import polars as pl
+from lib.data.s3 import list_s3_subdirs, run_dir
+from lib.plotnine import SB_COLORS, theme_switchbox
+from lib.quarto import display_svg
+from plotnine import (
+    aes,
+    facet_wrap,
+    geom_line,
+    geom_point,
+    geom_rect,
+    geom_segment,
+    geom_text,
+    ggplot,
+    labs,
+    scale_color_manual,
+    scale_linetype_manual,
+    scale_x_continuous,
+    scale_y_continuous,
+    theme,
+)
+
+CACHE_DIR = Path("../cache")
+CACHE_DIR.mkdir(exist_ok=True)
+POLARS_TEMP_DIR = CACHE_DIR / "polars"
+POLARS_TEMP_DIR.mkdir(exist_ok=True)
+os.environ.setdefault("POLARS_TEMP_DIR", str(POLARS_TEMP_DIR.resolve()))
+
+PATH_RDP = Path("/ebs/home/sherry_switch_box/rate-design-platform")
+sys.path.insert(0, str(PATH_RDP))
+
+from utils.mid.compute_fair_default_inputs import (  # noqa: E402
+    AffineLine,
+    FeasibleLineData,
+    StrategyPoint,
+    compute_feasible_line_from_runs,
+)
+```
+
+## Parameters
+
+```{python}
+#| label: params
+
+STATE = "NY"
+STATE_LOWER = STATE.lower()
+UPGRADE = "00"
+PATH_RESSTOCK = "/ebs/data/nrel/resstock/res_2024_amy2018_2"
+
+# Latest normal all-utility NY batch; only runs 1 and 2 are used.
+BATCH = "ny_20260417a_r1-36"
+RUN_DELIVERY_SUFFIX = "run1_up00_precalc__default"
+RUN_SUPPLY_SUFFIX = "run2_up00_precalc_supply__default"
+
+GROUP_COL = "has_hp"
+SUBCLASS_VALUE = "true"
+CROSS_SUBSIDY_COL = "BAT_percustomer"
+FIXED_CHARGE_FLOOR = 0.0
+
+UTIL_NAMES = {
+    "cenhud": "Central Hudson",
+    "coned": "Con Edison",
+    "nimo": "National Grid",
+    "nyseg": "NYSEG",
+    "or": "O&R",
+    "psegli": "PSEG-LI",
+    "rge": "RG&E",
+}
+UTIL_ORDER_CODES = ["psegli", "coned", "or", "cenhud", "nyseg", "rge", "nimo"]
+
+S3_OUTPUT_BASE = f"s3://data.sb/switchbox/cairo/outputs/hp_rates/{STATE_LOWER}"
+```
+
+## Feasible-Line Assembly
+
+For each utility, we resolve the run directories directly from S3 and delegate the actual feasible-line computation to `compute_feasible_line_from_runs` in `rate-design-platform`.
+Passing no marginal-cost seasonal ratio omits the marginal-cost seasonal-rate reform.
+The two closed-form points retained in the summary are the fixed-charge-only reform and the seasonal-rate-only reform.
+
+```{python}
+#| label: feasible-line-helpers
+
+
+def _resolve_utility_run_dirs(utility: str) -> dict[str, str]:
+    utility_base = f"{S3_OUTPUT_BASE}/{utility}/{BATCH}/"
+    subdirs = list_s3_subdirs(utility_base)
+    return {
+        "delivery": run_dir(subdirs, RUN_DELIVERY_SUFFIX),
+        "supply": run_dir(subdirs, RUN_SUPPLY_SUFFIX),
+    }
+
+
+def _base_tariff_path(utility: str, variant: str) -> Path:
+    suffix = "_supply" if variant == "supply" else ""
+    return PATH_RDP / f"rate_design/hp_rates/ny/config/tariffs/electric/{utility}_default{suffix}_calibrated.json"
+
+
+def _compute_feasible_lines_for_utility(utility: str) -> dict[str, FeasibleLineData]:
+    run_dirs = _resolve_utility_run_dirs(utility)
+    return compute_feasible_line_from_runs(
+        run_dir_delivery=run_dirs["delivery"],
+        run_dir_supply=run_dirs["supply"],
+        resstock_base=PATH_RESSTOCK,
+        state=STATE,
+        upgrade=UPGRADE,
+        path_base_tariff_delivery=_base_tariff_path(utility, "delivery"),
+        path_base_tariff_supply=_base_tariff_path(utility, "supply"),
+        group_col=GROUP_COL,
+        subclass_value=SUBCLASS_VALUE,
+        cross_subsidy_col=CROSS_SUBSIDY_COL,
+        fixed_charge_floor=FIXED_CHARGE_FLOOR,
+        title_delivery=f"{UTIL_NAMES[utility]} — Delivery",
+        title_supply=f"{UTIL_NAMES[utility]} — Supply",
+    )
+
+
+def _compute_all_feasible_lines() -> dict[str, dict[str, FeasibleLineData]]:
+    return {utility: _compute_feasible_lines_for_utility(utility) for utility in UTIL_ORDER_CODES}
+
+
+feasible_lines = _compute_all_feasible_lines()
+```
+
+Let's take a quick look at the fixed-charge range and reform points we computed for each utility.
+
+```{python}
+#| label: feasible-line-summary
+
+
+def _strategy_lookup(data: FeasibleLineData, label: str) -> StrategyPoint:
+    return next(sp for sp in data.strategies if sp.label == label)
+
+
+summary_rows = []
+for utility, utility_data in feasible_lines.items():
+    for variant, data in utility_data.items():
+        a = _strategy_lookup(data, "A")
+        b = _strategy_lookup(data, "B")
+        summary_rows.append(
+            {
+                "utility": utility,
+                "utility_label": UTIL_NAMES[utility],
+                "variant": variant,
+                "base_fixed_charge": data.base_fixed_charge,
+                "feasible_min": data.feasible_min,
+                "feasible_max": data.feasible_max,
+                "fixed_charge_only_reform_fixed_charge": a.fixed_charge,
+                "seasonal_rate_only_reform_fixed_charge": b.fixed_charge,
+                "winter_intercept": data.r_win.intercept,
+                "winter_slope": data.r_win.slope,
+                "summer_intercept": data.r_sum.intercept,
+                "summer_slope": data.r_sum.slope,
+            }
+        )
+
+summary = pl.DataFrame(summary_rows)
+summary
+```
+
+At the minimum feasible fixed charge, one of the seasonal volumetric rates is usually close to zero. The table below evaluates the feasible line at that minimum fixed charge for each utility.
+
+```{python}
+#| label: min-feasible-rate-table
+
+min_feasible_rows = []
+for utility, utility_data in feasible_lines.items():
+    for variant, data in utility_data.items():
+        min_fixed_charge = data.feasible_min
+        if data.feasible_exists and math.isfinite(min_fixed_charge):
+            winter_rate_cents_per_kwh = data.r_win.at(min_fixed_charge) * 100.0
+            summer_rate_cents_per_kwh = data.r_sum.at(min_fixed_charge) * 100.0
+        else:
+            winter_rate_cents_per_kwh = math.nan
+            summer_rate_cents_per_kwh = math.nan
+        min_feasible_rows.append(
+            {
+                "utility": UTIL_NAMES[utility],
+                "run": "Delivery only" if variant == "delivery" else "Delivery + supply",
+                "min_feasible_fixed_charge_$_per_month": min_fixed_charge,
+                "winter_rate_cents_per_kwh": winter_rate_cents_per_kwh,
+                "summer_rate_cents_per_kwh": summer_rate_cents_per_kwh,
+            }
+        )
+
+min_feasible_rates = (
+    pl.DataFrame(min_feasible_rows)
+    .with_columns(
+        pl.col("utility").cast(pl.Enum([UTIL_NAMES[utility] for utility in UTIL_ORDER_CODES])),
+        pl.col("run").cast(pl.Enum(["Delivery only", "Delivery + supply"])),
+    )
+    .sort("utility", "run")
+)
+min_feasible_rates
+```
+
+## Plot Helpers
+
+The plotting helpers below mirror the RDP plotting module's fixed-charge sweep.
+The line panels do not mark reform points; the summary table above labels them as the fixed-charge-only reform and the seasonal-rate-only reform.
+
+```{python}
+#| label: plot-helpers
+
+_INF = math.inf
+_STRATEGY_COLORS = {
+    "A": SB_COLORS["carrot"],
+    "B": SB_COLORS["midnight"],
+}
+
+
+def _verify_affine_vs_strategies(data: FeasibleLineData) -> None:
+    tol = 1e-6
+    for sp in data.strategies:
+        if sp.label == "A":
+            continue
+        computed_win = data.r_win.at(sp.fixed_charge)
+        computed_sum = data.r_sum.at(sp.fixed_charge)
+        if sp.winter_rate is not None and not math.isnan(sp.winter_rate):
+            assert abs(computed_win - sp.winter_rate) <= tol
+        if sp.summer_rate is not None and not math.isnan(sp.summer_rate):
+            assert abs(computed_sum - sp.summer_rate) <= tol
+
+
+def _sweep_range(data: FeasibleLineData, f_min: float | None = None, f_max: float | None = None) -> tuple[float, float]:
+    fc_floor = max(0.0, data.fixed_charge_floor)
+    r_sum_zero = data.r_sum.zero_crossing()
+    r_win_zero = data.r_win.zero_crossing()
+    natural_upper = max(
+        data.feasible_max if math.isfinite(data.feasible_max) else 0.0,
+        r_sum_zero if (math.isfinite(r_sum_zero) and r_sum_zero > 0) else 0.0,
+        r_win_zero if (math.isfinite(r_win_zero) and r_win_zero > 0) else 0.0,
+    )
+    for sp in data.strategies:
+        if math.isfinite(sp.fixed_charge):
+            natural_upper = max(natural_upper, sp.fixed_charge)
+    lo = f_min if f_min is not None else max(20.0, fc_floor)
+    hi = f_max if f_max is not None else natural_upper + 10.0
+    if hi <= lo:
+        hi = lo + 20.0
+    return lo, hi
+
+
+def _linspace(lo: float, hi: float, n: int = 300) -> list[float]:
+    step = (hi - lo) / (n - 1)
+    return [lo + i * step for i in range(n)]
+
+
+def _rate_cents_per_kwh(rate_dollars_per_kwh: float) -> float:
+    return rate_dollars_per_kwh * 100.0
+
+
+def _strategy_rate(data: FeasibleLineData, strategy: StrategyPoint, line: AffineLine, stored_rate: float | None) -> float:
+    if stored_rate is not None and not math.isnan(stored_rate):
+        return _rate_cents_per_kwh(stored_rate)
+    return _rate_cents_per_kwh(line.at(strategy.fixed_charge))
+
+
+def _plot_frames(data: FeasibleLineData) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+    lo, hi = _sweep_range(data)
+    fs = _linspace(lo, hi)
+    line_rows = []
+    for f in fs:
+        line_rows.extend(
+            [
+                {"fixed_charge": f, "rate_cents_per_kwh": _rate_cents_per_kwh(data.r_win.at(f)), "season": "Winter"},
+                {"fixed_charge": f, "rate_cents_per_kwh": _rate_cents_per_kwh(data.r_sum.at(f)), "season": "Summer"},
+            ]
+        )
+    strategy_rows = []
+    for sp in data.strategies:
+        if sp.label not in {"A", "B"} or not math.isfinite(sp.fixed_charge):
+            continue
+        strategy_rows.extend(
+            [
+                {
+                    "fixed_charge": sp.fixed_charge,
+                    "rate_cents_per_kwh": _strategy_rate(data, sp, data.r_win, sp.winter_rate),
+                    "season": "Winter",
+                    "strategy": f"Strategy {sp.label}",
+                    "label": sp.label,
+                    "feasible": sp.feasible,
+                },
+                {
+                    "fixed_charge": sp.fixed_charge,
+                    "rate_cents_per_kwh": _strategy_rate(data, sp, data.r_sum, sp.summer_rate),
+                    "season": "Summer",
+                    "strategy": f"Strategy {sp.label}",
+                    "label": sp.label,
+                    "feasible": sp.feasible,
+                },
+            ]
+        )
+    line_df = pl.DataFrame(line_rows)
+    strategy_df = pl.DataFrame(strategy_rows)
+    y_min = min(float(line_df["rate_cents_per_kwh"].min()), 0.0)
+    y_max = max(float(line_df["rate_cents_per_kwh"].max()), 0.0)
+    y_pad = max((y_max - y_min) * 0.08, 0.5)
+    feas_lo = max(data.feasible_min if math.isfinite(data.feasible_min) else lo, lo)
+    feas_hi = min(data.feasible_max if math.isfinite(data.feasible_max) else hi, hi)
+    rect_df = pl.DataFrame(
+        [
+            {
+                "xmin": feas_lo,
+                "xmax": feas_hi,
+                "ymin": y_min - y_pad,
+                "ymax": y_max + y_pad,
+            }
+        ]
+        if data.feasible_exists and feas_hi > feas_lo
+        else []
+    )
+    return line_df, strategy_df, rect_df
+
+
+def _all_plot_frames() -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+    line_frames = []
+    strategy_frames = []
+    rect_frames = []
+    range_rows = []
+    for utility in UTIL_ORDER_CODES:
+        for variant, data in feasible_lines[utility].items():
+            _verify_affine_vs_strategies(data)
+            line_df, strategy_df, rect_df = _plot_frames(data)
+            variant_label = "Delivery only" if variant == "delivery" else "Delivery + supply"
+            context = {
+                "utility": utility,
+                "utility_label": UTIL_NAMES[utility],
+                "variant": variant_label,
+            }
+            line_frames.append(line_df.with_columns(**{key: pl.lit(value) for key, value in context.items()}))
+            strategy_frames.append(strategy_df.with_columns(**{key: pl.lit(value) for key, value in context.items()}))
+            if rect_df.height:
+                rect_frames.append(rect_df.with_columns(**{key: pl.lit(value) for key, value in context.items()}))
+            range_rows.append(
+                {
+                    **context,
+                    "feasible_min": data.feasible_min,
+                    "feasible_max": data.feasible_max,
+                    "feasible_exists": data.feasible_exists,
+                }
+            )
+
+    return (
+        pl.concat(line_frames),
+        pl.concat(strategy_frames),
+        pl.concat(rect_frames) if rect_frames else pl.DataFrame(),
+        pl.DataFrame(range_rows),
+    )
+
+
+line_all, strategy_all, rect_all, range_all = _all_plot_frames()
+
+
+def _ordered_plot_frames(
+    variant: str,
+    utility_codes: list[str],
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    utility_labels = [UTIL_NAMES[utility] for utility in utility_codes]
+    utility_dtype = pl.Enum(utility_labels)
+    season_dtype = pl.Enum(["Winter", "Summer"])
+    line_df = (
+        line_all.filter(
+            (pl.col("variant") == variant)
+            & (pl.col("utility").is_in(utility_codes))
+        )
+        .with_columns(
+            pl.col("utility_label").cast(utility_dtype),
+            pl.col("season").cast(season_dtype),
+        )
+    )
+    rect_df = (
+        rect_all.filter(
+            (pl.col("variant") == variant)
+            & (pl.col("utility").is_in(utility_codes))
+        )
+        .with_columns(pl.col("utility_label").cast(utility_dtype))
+    )
+    return line_df, rect_df
+
+
+def plot_multi_utility_feasible_grid(variant: str, utility_codes: list[str], title: str):
+    line_df, rect_df = _ordered_plot_frames(variant, utility_codes)
+    p = (
+        ggplot(line_df, aes("fixed_charge", "rate_cents_per_kwh", color="season", linetype="season"))
+        + geom_rect(
+            rect_df,
+            aes(xmin="xmin", xmax="xmax", ymin="ymin", ymax="ymax"),
+            inherit_aes=False,
+            fill=SB_COLORS["pistachio"],
+            alpha=0.13,
+            color="none",
+        )
+        + geom_line(size=0.85)
+        + facet_wrap("utility_label", ncol=2, scales="free")
+        + scale_color_manual(values={"Winter": SB_COLORS["midnight"], "Summer": SB_COLORS["carrot"]})
+        + scale_linetype_manual(values={"Winter": "solid", "Summer": "dashed"})
+        + scale_x_continuous(labels=lambda breaks: [f"${b:,.0f}" for b in breaks])
+        + scale_y_continuous(labels=lambda breaks: [f"{b:,.2f}¢/kWh" for b in breaks])
+        + labs(
+            title=title,
+            subtitle="Each line shows the seasonal volumetric rate implied by a fixed-charge choice; the green band marks the feasible fixed-charge range.",
+            x="Fixed charge",
+            y="Volumetric rate",
+            color="Season",
+            linetype="Season",
+        )
+        + theme_switchbox()
+        + theme(figure_size=(12.5, 13.5), legend_position="bottom")
+    )
+    fig = p.draw()
+    display_svg(fig)
+
+
+def plot_feasible_fixed_charge_ranges(variant: str, title: str):
+    ranges = range_all.filter((pl.col("feasible_exists")) & (pl.col("variant") == variant))
+    p = (
+        ggplot(ranges, aes("utility_label", "feasible_min"))
+        + geom_segment(
+            aes(x="utility_label", xend="utility_label", y="feasible_min", yend="feasible_max"),
+            size=2.2,
+            lineend="round",
+            color=SB_COLORS["midnight"] if variant == "Delivery only" else SB_COLORS["carrot"],
+        )
+        + geom_point(
+            size=2.7,
+            color=SB_COLORS["midnight"] if variant == "Delivery only" else SB_COLORS["carrot"],
+        )
+        + geom_point(
+            aes(y="feasible_max"),
+            size=2.7,
+            color=SB_COLORS["midnight"] if variant == "Delivery only" else SB_COLORS["carrot"],
+        )
+        + scale_y_continuous(labels=lambda breaks: [f"${b:,.0f}" for b in breaks])
+        + labs(
+            title=title,
+            subtitle="Vertical ranges show the fixed charges for which both winter and summer volumetric rates are non-negative.",
+            x="Utility",
+            y="Fixed charge",
+        )
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 7.0), legend_position="none")
+    )
+    fig = p.draw()
+    display_svg(fig)
+```
+
+## Feasible Seasonal Rates
+
+```{python}
+#| label: fig-feasible-lines-delivery
+#| fig-cap: "Feasible fixed-charge and seasonal delivery-rate combinations for each New York utility."
+
+plot_multi_utility_feasible_grid(
+    "Delivery only",
+    UTIL_ORDER_CODES,
+    "Feasible fair-default delivery rates by utility",
+)
+```
+
+```{python}
+#| label: fig-feasible-lines-delivery-supply
+#| fig-cap: "Feasible fixed-charge and seasonal delivery-plus-supply rate combinations for each New York utility."
+
+plot_multi_utility_feasible_grid(
+    "Delivery + supply",
+    UTIL_ORDER_CODES,
+    "Feasible fair-default delivery-plus-supply rates by utility",
+)
+```
+
+## Feasible Fixed-Charge Ranges
+
+```{python}
+#| label: fig-feasible-fixed-charge-ranges-delivery
+#| fig-cap: "Feasible default fixed-charge ranges by utility for delivery rates."
+
+plot_feasible_fixed_charge_ranges("Delivery only", "Feasible default delivery fixed-charge ranges")
+```
+
+```{python}
+#| label: fig-feasible-fixed-charge-ranges-delivery-supply
+#| fig-cap: "Feasible default fixed-charge ranges by utility for delivery-plus-supply rates."
+
+plot_feasible_fixed_charge_ranges("Delivery + supply", "Feasible default delivery-plus-supply fixed-charge ranges")
+```

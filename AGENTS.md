@@ -1316,3 +1316,45 @@ When a task involves creating, updating, or referencing issues, use the Linear M
 | `just publish`    | Report dir | Copy to root `docs/`, inline SVGs, prune intermediates |
 | `just diff`       | Report dir | Diff current render against baseline                   |
 | `just clean`      | Report dir | Remove report caches                                   |
+
+## Cursor Cloud specific instructions
+
+### Environment setup
+
+The Cloud Agent VM is Ubuntu 24.04 (not the devcontainer). The update script installs system deps, uv, just, Quarto, yamlfmt, prek, R pak, Switchbox fonts, and then runs `uv sync` and `install-r-deps.sh`. After the update script runs, the dev environment is ready.
+
+### Private dependency: `cairo`
+
+The `cairo` Python package (from `NatLabRockies/CAIRO`, a private GitHub repo) is not accessible in Cloud Agent VMs. Use `uv sync --group dev --no-install-package cairo --no-install-package website-diff` to install Python deps. The venv at `/workspace/.venv` will work for everything except code that imports `cairo` or `website-diff` directly.
+
+### Running commands without `uv run`
+
+Because the private `cairo` dependency causes `uv run` to fail, run tools directly from the venv:
+
+- Lint: `ruff check .` and `ruff format --check .`
+- Typecheck: `ty check`
+- Test: `python -m pytest --doctest-modules tests/`
+- Quarto: `quarto render` (set `QUARTO_PYTHON=/workspace/.venv/bin/python`)
+
+The `just check` and `just test` commands use `uv run` internally and will fail due to the missing `cairo` dependency. Run the underlying tools directly instead.
+
+### PATH and environment variables
+
+These are set in `~/.bashrc`:
+
+```
+export PATH="$HOME/.local/bin:/workspace/.venv/bin:$PATH"
+export QUARTO_PYTHON=/workspace/.venv/bin/python
+```
+
+### Rendering reports
+
+Full report rendering (`just render`) requires AWS S3 credentials (the analysis notebooks fetch data from `s3://data.sb/`). Without AWS access, you can:
+
+- Render standalone `.qmd` files (not in manuscript mode): `quarto render file.qmd --to html`
+- Render `index.qmd` with `--no-execute` if the freeze cache already exists
+- Test the rendering pipeline with standalone test documents
+
+### R ggplot2 theme
+
+When rendering R documents outside of a report directory, `source("lib/ggplot/switchbox_theme.R")` calculates the project root from `getwd()`. Make sure the working directory is `/workspace` or a subdirectory of it, or the font path resolution will fail.

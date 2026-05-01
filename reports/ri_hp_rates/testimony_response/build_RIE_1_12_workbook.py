@@ -17,9 +17,9 @@ The proof has three parts:
 
 Run from the report directory::
 
-    uv run python -m testimony_response.build_revenue_neutrality_workbook \\
+    uv run python -m testimony_response.build_RIE_1_12_workbook \\
         --output cache/revenue_neutrality.xlsx
-    uv run python -m testimony_response.build_revenue_neutrality_workbook --upload
+    uv run python -m testimony_response.build_RIE_1_12_workbook --upload
 
 See ``cost_of_service_by_subclass.qmd`` for the published-side analysis
 logic that this workbook reproduces with formulas.
@@ -41,7 +41,7 @@ from openpyxl.workbook.defined_name import DefinedName
 from lib.rdp import fetch_rdp_file, parse_urdb_json
 
 # ---------------------------------------------------------------------------
-# Cross-sheet A1 references (Google Sheets compatible; see fig15 workbook).
+# Cross-sheet A1 references (Google Sheets compatible; see build_RIE_1_11_DIV_7_workbook).
 # ---------------------------------------------------------------------------
 REF_TOTAL_RR = "inputs_revenue_requirement!$B$2"
 REF_N_CUSTOMERS = "inputs_revenue_requirement!$B$3"
@@ -55,7 +55,7 @@ REF_HP_VOL = "inputs_tariffs!$B$3"
 REF_NONHP_VOL = "inputs_tariffs!$B$4"
 
 # ---------------------------------------------------------------------------
-# Constants aligned with cost_of_service_by_subclass.qmd & build_fig15.
+# Constants aligned with cost_of_service_by_subclass.qmd & build_RIE_1_11_DIV_7_workbook.
 # ---------------------------------------------------------------------------
 UTILITY = "rie"
 BATCH = "ri_20260331_r1-20_rate_case_test_year"
@@ -69,6 +69,7 @@ RDP_TARIFF_DIR = "rate_design/hp_rates/ri/config/tariffs/electric"
 RDP_GITHUB_BASE = "https://github.com/switchbox-data/rate-design-platform/blob"
 REPORTS2_GITHUB_BASE = "https://github.com/switchbox-data/reports2/blob"
 
+# Default upload target: RIE 1-12 discovery response Sheet (revenue neutrality).
 DEFAULT_SPREADSHEET_ID = "1JlSDvgS6H70OCIJ4Q8LRQGNFS6AJcaeh7ccNxaab08A"
 
 # Only the two delivery allocation methods reported in the testimony:
@@ -82,7 +83,7 @@ METHOD_LABELS: dict[str, str] = {
 
 
 # ---------------------------------------------------------------------------
-# Permalink helpers (identical to fig15 workbook).
+# Permalink helpers (identical to build_RIE_1_11_DIV_7_workbook).
 # ---------------------------------------------------------------------------
 def _rdp_permalink(rel_path: str) -> str:
     return f"{RDP_GITHUB_BASE}/{RDP_REF}/{rel_path}"
@@ -170,7 +171,7 @@ def load_inputs() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Shared formatting helpers (identical to fig15).
+# Shared formatting helpers (identical to build_RIE_1_11_DIV_7_workbook).
 # ---------------------------------------------------------------------------
 def _bold(ws, cell: str) -> None:  # type: ignore[no-untyped-def]
     ws[cell].font = Font(bold=True)
@@ -265,7 +266,12 @@ def _write_readme(wb: Workbook, inputs: dict) -> None:
         ],
         [
             "bat_per_building",
-            "One row per building: weight, has_hp, delivery bill, annual_kwh (formula), weighted products.",
+            (
+                "One row per building: weight, has_hp, delivery bill, annual_kwh back-derived from delivery bill "
+                "(= (annual_bill_delivery - annual_fixed_per_customer) / vol_rate), annual_bill_delivery_check formula "
+                "(= annual_kwh * vol_rate + annual_fixed_per_customer), weighted products. "
+                "weight is uniform: test_year_customer_count / n_buildings (each building represents the same number of customers)."
+            ),
             "",
         ],
         [
@@ -347,9 +353,9 @@ def _write_inputs_revenue_requirement(wb: Workbook, inputs: dict) -> None:
             "annual_fixed_per_customer",
             f"=({REF_TOTAL_RR} - {REF_DEFAULT_VOL} * {REF_TY_KWH}) / {REF_N_CUSTOMERS}",
             "Derived in this workbook",
-            "Annual delivery charges per customer that are NOT "
-            "recovered volumetrically (customer charge + fixed top-ups). "
-            "Same formula as cost_of_service_by_subclass.qmd.",
+            "Annual non-volumetric delivery charges per customer "
+            "(customer charge + fixed top-ups). "
+            "Validated: annual_kwh * vol_rate + this value ≈ annual_bill_delivery.",
         ],
     ]
     for r in rows:
@@ -491,6 +497,7 @@ def _write_bat_per_building(wb: Workbook, bat: pl.DataFrame) -> int:
         "heating_type_v2",
         "annual_bill_delivery",
         "annual_kwh",
+        "annual_bill_delivery_check",
         "w_bill",
         "w_kwh",
     ]
@@ -506,6 +513,7 @@ def _write_bat_per_building(wb: Workbook, bat: pl.DataFrame) -> int:
             "postprocess_group.has_hp",
             "postprocess_group.heating_type_v2",
             "annual_bill_delivery",
+            "annual_kwh",
         ).iter_rows()
     )
     for i, row in enumerate(rows_data, start=2):
@@ -514,14 +522,10 @@ def _write_bat_per_building(wb: Workbook, bat: pl.DataFrame) -> int:
         ws.cell(row=i, column=3, value=str(row[2]).lower())
         ws.cell(row=i, column=4, value=row[3])
         ws.cell(row=i, column=5, value=float(row[4]))
-        # annual_kwh = (bill - annual_fixed) / default_vol
-        ws.cell(
-            row=i,
-            column=6,
-            value=f"=(E{i}-{REF_ANNUAL_FIXED})/{REF_DEFAULT_VOL}",
-        )
-        ws.cell(row=i, column=7, value=f"=B{i}*E{i}")
-        ws.cell(row=i, column=8, value=f"=B{i}*F{i}")
+        ws.cell(row=i, column=6, value=float(row[5]))
+        ws.cell(row=i, column=7, value=f"=F{i}*{REF_DEFAULT_VOL}+{REF_ANNUAL_FIXED}")
+        ws.cell(row=i, column=8, value=f"=B{i}*E{i}")
+        ws.cell(row=i, column=9, value=f"=B{i}*F{i}")
 
     last_row = 1 + n
     _autosize(
@@ -533,8 +537,9 @@ def _write_bat_per_building(wb: Workbook, bat: pl.DataFrame) -> int:
             "D": 22,
             "E": 18,
             "F": 14,
-            "G": 16,
+            "G": 24,
             "H": 16,
+            "I": 16,
         },
     )
 
@@ -543,8 +548,9 @@ def _write_bat_per_building(wb: Workbook, bat: pl.DataFrame) -> int:
         "C": "ws_has_hp",
         "E": "ws_annual_bill",
         "F": "ws_annual_kwh",
-        "G": "ws_w_bill",
-        "H": "ws_w_kwh",
+        "G": "ws_bill_check",
+        "H": "ws_w_bill",
+        "I": "ws_w_kwh",
     }
     for col, name in col_to_name.items():
         wb.defined_names[name] = DefinedName(
@@ -575,8 +581,8 @@ def _write_hp_nonhp_aggregates(wb: Workbook, last_bat_row: int) -> None:
     last = last_bat_row
     rng_weight = f"bat_per_building!$B$2:$B${last}"
     rng_has_hp = f"bat_per_building!$C$2:$C${last}"
-    rng_w_bill = f"bat_per_building!$G$2:$G${last}"
-    rng_w_kwh = f"bat_per_building!$H$2:$H${last}"
+    rng_w_bill = f"bat_per_building!$H$2:$H${last}"
+    rng_w_kwh = f"bat_per_building!$I$2:$I${last}"
 
     # Row 2: HP
     ws.cell(row=2, column=1, value="Heat pump")
@@ -1062,12 +1068,26 @@ def build_workbook(output_path: Path) -> Path:
         flush=True,
     )
 
+    bat = bat.with_columns(
+        (
+            (pl.col("annual_bill_delivery") - inputs["annual_fixed_per_customer"]) / inputs["default_vol_usd_per_kwh"]
+        ).alias("annual_kwh")
+    )
+
+    _weighted_kwh = float((bat["weight"] * bat["annual_kwh"]).sum())
+    _kwh_err = abs(_weighted_kwh - inputs["test_year_residential_kwh"])
+    assert _kwh_err < 1.0, (
+        f"sum(weight * annual_kwh) = {_weighted_kwh:,.0f} vs test_year_residential_kwh "
+        f"= {inputs['test_year_residential_kwh']:,.0f}; error = {_kwh_err:,.2f}"
+    )
+    print(f"  annual_kwh derived from bills (aggregate kWh error = {_kwh_err:.4f})", flush=True)
+
     wb = Workbook()
     default = wb.active
     if default is not None:
         wb.remove(default)
 
-    # inputs_tariffs first so annual_fixed formula resolves (same as fig15).
+    # inputs_tariffs first so annual_fixed formula resolves (same as RIE 1-11 / DIV-7 workbook).
     _write_readme(wb, inputs)
     _write_inputs_tariffs(wb, inputs)
     _write_inputs_revenue_requirement(wb, inputs)
@@ -1128,10 +1148,11 @@ _TAB_FORMATTING: dict[str, dict] = {
             "B": "#,##0.00",
             "E": '"$"#,##0.00',
             "F": "#,##0.00",
-            "G": "#,##0.00",
+            "G": '"$"#,##0.00',
             "H": "#,##0.00",
+            "I": "#,##0.00",
         },
-        "auto_resize_columns": ["A:H"],
+        "auto_resize_columns": ["A:I"],
         "freeze_rows": 1,
         "bold_header": True,
     },

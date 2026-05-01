@@ -20,7 +20,7 @@ from openpyxl import load_workbook
 REPORT_DIR = Path("/ebs/home/alex_switch_box/reports2/reports/ri_hp_rates")
 sys.path.insert(0, str(REPORT_DIR))
 
-from testimony_response.build_revenue_neutrality_workbook import (  # noqa: E402
+from testimony_response.build_RIE_1_12_workbook import (  # noqa: E402
     DELIVERY_METHODS_REPORTED,
     METHOD_LABELS,
     load_inputs,
@@ -61,6 +61,7 @@ def _structural_check(xlsx_path: Path) -> None:
         "ws_has_hp",
         "ws_annual_bill",
         "ws_annual_kwh",
+        "ws_bill_check",
         "ws_w_bill",
         "ws_w_kwh",
         "agg_hp_customers",
@@ -73,13 +74,13 @@ def _structural_check(xlsx_path: Path) -> None:
     assert not missing_names, f"missing named ranges: {missing_names}"
     print(f"  named ranges: {len(actual_names)} (OK)")
 
-    # Check bat_per_building formulas.
     bat_ws = wb["bat_per_building"]
-    assert bat_ws["F2"].value == "=(E2-inputs_revenue_requirement!$B$7)/inputs_tariffs!$B$2", (
-        f"unexpected annual_kwh formula: {bat_ws['F2'].value}"
+    assert isinstance(bat_ws["F2"].value, (int, float)), f"expected numeric annual_kwh, got {bat_ws['F2'].value!r}"
+    assert "F2" in bat_ws["G2"].value and "inputs_tariffs" in bat_ws["G2"].value, (
+        f"expected annual_bill_delivery_check formula, got {bat_ws['G2'].value!r}"
     )
-    assert bat_ws["G2"].value == "=B2*E2"
-    assert bat_ws["H2"].value == "=B2*F2"
+    assert bat_ws["H2"].value == "=B2*E2"
+    assert bat_ws["I2"].value == "=B2*F2"
     n_rows = bat_ws.max_row - 1
     print(f"  bat_per_building data rows: {n_rows:,}")
 
@@ -205,7 +206,7 @@ def _numerical_check() -> None:
 def main() -> int:
     xlsx_path = REPORT_DIR / "cache" / "revenue_neutrality.xlsx"
     if not xlsx_path.exists():
-        print(f"ERROR: {xlsx_path} not found. Run build_revenue_neutrality_workbook.py first.")
+        print(f"ERROR: {xlsx_path} not found. Run build_RIE_1_12_workbook.py first.")
         return 1
     _structural_check(xlsx_path)
     _numerical_check()

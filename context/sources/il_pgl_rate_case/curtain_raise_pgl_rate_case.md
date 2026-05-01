@@ -305,9 +305,9 @@ Nine third-party petitioners successfully petitioned to intervene in PGL Docket 
 
 ### PGL direct testimony (NSG-PGL Exhibits):
 
-- 20260105_375324-657962_285_Filing_PART_1_285_Filing_Testimony_part1of15.pdf — Eidukas overview (NSG-PGL Ex. 1.0)
+- icc_26-XXXX_direct_testimony_nsg_pgl_eidukas.pdf — Eidukas overview (NSG-PGL Ex. 1.0); originally `20260105_375324-657962_..._part1of15.pdf`
 - 20260105_375324-657963_..._Testimony_part2of15.pdf — Eidukas (continued)
-- 20260105_375324-657976_..._Testimony_part13of15.pdf — Eldringhoff/Dickson PRP testimony (NSG-PGL Ex. 3.0)
+- icc_26-XXXX_direct_testimony_nsg_pgl_eldringhoff_dickson.pdf — Eldringhoff/Dickson PRP testimony (NSG-PGL Ex. 3.0); originally `20260105_375324-657976_..._part13of15.pdf`
 - 20260105_375325-657983_PART_2_..._Testimony_part5of18.pdf — QIP sunset reference
 - 20260105_375328-658043_PART_5_..._Testimony_part1of68.pdf — Graves/Figueroa/Sreenath decarbonization economics
 - 20260105_375328-658045_PART_5_..._Testimony_part3of68.pdf — cost of capital

@@ -6,18 +6,18 @@ Conventions observed across the 10 exemplar testimonies in `reports/il_npa/sourc
 
 Filename shorthand used in citations (suffix `.md` omitted):
 
-| Short tag          | File                                                       |
-| ------------------ | ---------------------------------------------------------- |
-| `cebulko-direct`   | `20230509_337548-588147_..._part1of4.md`                   |
-| `schott-direct`    | `20230509_337545-588139_..._part3of9.md`                   |
-| `dismukes-direct`  | `20230509_337554-588212_..._part1of3.md`                   |
-| `cebulko-rebuttal` | `20230717_340066-593250_..._part1of11.md`                  |
-| `elder-rebuttal`   | `20230717_340066-593259_..._part8of11.md`                  |
-| `leyko-rebuttal`   | `20230717_340061-593239_..._part3of4.md`                   |
-| `deleon-rebuttal`  | `20230717_340067-593264_..._PART_1_..._City_of_Chicago.md` |
-| `rabago-rebuttal`  | `20230717_340073-593273_..._PART_6_..._City_of_Chicago.md` |
-| `walker-rebuttal`  | `20230717_340089-593309_..._PART_3_..._part1of4.md`        |
-| `effron-rehearing` | `20240305_347802-607433_..._PART_1_..._part1of3.md`        |
+| Short tag          | File                                                      |
+| ------------------ | --------------------------------------------------------- |
+| `cebulko-direct`   | `icc_23-0069_direct_testimony_pio_cebulko.md`             |
+| `schott-direct`    | `icc_23-0069_direct_testimony_pio_schott.md`              |
+| `dismukes-direct`  | `icc_23-0069_direct_testimony_ag_dismukes.md`             |
+| `cebulko-rebuttal` | `icc_23-0069_rebuttal_testimony_pio_cebulko.md`           |
+| `elder-rebuttal`   | `icc_23-0069_rebuttal_testimony_pio_elder.md`             |
+| `leyko-rebuttal`   | `icc_23-0069_rebuttal_testimony_cub_pcr_chicago_leyko.md` |
+| `deleon-rebuttal`  | `icc_23-0069_rebuttal_testimony_chicago_deleon.md`        |
+| `rabago-rebuttal`  | `icc_23-0069_rebuttal_testimony_chicago_rabago.md`        |
+| `walker-rebuttal`  | `icc_23-0069_rebuttal_testimony_ag_walker.md`             |
+| `effron-rehearing` | `icc_23-0069_rehearing_direct_testimony_ag_effron.md`     |
 
 ## 1. Cover page and docket caption
 

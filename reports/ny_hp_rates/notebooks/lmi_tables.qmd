@@ -58,23 +58,23 @@ from lib.great_tables import get_switchbox_gt_tab_options
 from lib.quarto import display_gt
 ```
 
-## Load LMI households from master bills
+## Load households from master bills
 
-We pull annual rows for the baseline scenario (`upgrade == 0`, `month == "Annual"`) from the run 1+2 master bills, filter to LMI households (`is_lmi_any`), and keep just the columns needed to assign each home a heating bucket.
+We pull annual rows for the baseline scenario (`upgrade == 0`, `month == "Annual"`) from the run 1+2 master bills. We keep all households so we can calculate each heating bucket's share of all customers and its LMI share, then filter to LMI households for the tenure breakdown.
 
 ```{python}
 #| label: load-bills
 
-bills_lmi = (
+bills_all = (
     pl.scan_parquet(PATH_MASTER_BILLS_BASELINE, hive_partitioning=True)
     .filter(
         (pl.col("month") == "Annual")
         & (pl.col("upgrade") == 0)
-        & (pl.col("is_lmi_any"))
     )
     .select(
         "bldg_id",
         pl.col("weight").alias("resstock_weight"),
+        "is_lmi_any",
         HEATING_TYPE_COL,
         "heats_with_natgas",
         "heats_with_oil",
@@ -83,8 +83,12 @@ bills_lmi = (
     .collect()
 )
 
+bills_lmi = bills_all.filter(pl.col("is_lmi_any"))
+
+print(f"All households (raw rows): {bills_all.height:,}")
+print(f"All households ResStock weight: {bills_all['resstock_weight'].sum():,.0f}")
 print(f"LMI households (raw rows): {bills_lmi.height:,}")
-print(f"Total ResStock weight: {bills_lmi['resstock_weight'].sum():,.0f}")
+print(f"LMI households ResStock weight: {bills_lmi['resstock_weight'].sum():,.0f}")
 bills_lmi.head(5)
 ```
 
@@ -102,7 +106,7 @@ meta_sb["in.tenure"].value_counts().sort("count", descending=True)
 
 ## Join, bucket, and flag tenure
 
-We join the LMI household rows on `bldg_id`, derive a mutually-exclusive `heating_bucket`, and flag renters and unknown-tenure rows. Buckets follow the convention used elsewhere in the analysis (see `analysis.qmd`): heat pumps and electric resistance are read directly off `postprocess_group.heating_type`; the fossil-fuel bucket is split by which fuel flag is set.
+We derive a mutually-exclusive `heating_bucket` for all households, then join tenure metadata and flag renters and unknown-tenure rows. Buckets follow the convention used elsewhere in the analysis (see `analysis.qmd`): heat pumps and electric resistance are read directly off `postprocess_group.heating_type`; the fossil-fuel bucket is split by which fuel flag is set.
 
 ```{python}
 #| label: join-bucket
@@ -128,14 +132,19 @@ heating_bucket_expr = (
     .alias("heating_bucket")
 )
 
-df_lmi = (
-    bills_lmi
+df_all = (
+    bills_all
+    .with_columns(heating_bucket_expr)
     .join(meta_sb.select("bldg_id", "in.tenure"), on="bldg_id", how="left")
     .with_columns(
-        heating_bucket_expr,
         (pl.col("in.tenure") == "Renter").alias("is_renter"),
         ((pl.col("in.tenure") == "Not Available") | pl.col("in.tenure").is_null()).alias("is_tenure_unknown"),
     )
+)
+
+df_lmi = (
+    df_all
+    .filter(pl.col("is_lmi_any"))
 )
 
 df_lmi.head(5)
@@ -143,7 +152,7 @@ df_lmi.head(5)
 
 ## Aggregate
 
-We compute weighted counts and tenure shares per `heating_bucket`, then append an "All LMI" total row. Tenure denominators are all LMI households in each bucket, so `% renter + % owner + % unknown = 100%`.
+We compute weighted customer counts, LMI counts, and tenure shares per `heating_bucket`, then append an "All LMI" total row. Tenure denominators are all LMI households in each bucket, so `% renter + % owner + % unknown = 100%`.
 
 ```{python}
 #| label: aggregate
@@ -161,6 +170,15 @@ def _bucket_aggregates(df: pl.DataFrame) -> pl.DataFrame:
 
 by_bucket = _bucket_aggregates(df_lmi)
 total_lmi_count = float(df_lmi["resstock_weight"].sum())
+total_customer_count = float(df_all["resstock_weight"].sum())
+
+all_customers_by_bucket = df_all.group_by("heating_bucket").agg(
+    pl.col("resstock_weight").sum().alias("n_all_households"),
+    ((pl.col("is_renter").cast(pl.Float64) * pl.col("resstock_weight")).sum()
+     / pl.col("resstock_weight").sum()).alias("pct_renter_all_customers"),
+    ((pl.col("is_tenure_unknown").cast(pl.Float64) * pl.col("resstock_weight")).sum()
+     / pl.col("resstock_weight").sum()).alias("pct_unknown_tenure_all_customers"),
+)
 
 all_lmi_row = pl.DataFrame({
     "heating_bucket": ["All LMI"],
@@ -173,63 +191,120 @@ all_lmi_row = pl.DataFrame({
         float((df_lmi["is_tenure_unknown"].cast(pl.Float64) * df_lmi["resstock_weight"]).sum())
         / total_lmi_count
     ],
+    "n_all_households": [total_customer_count],
+    "pct_renter_all_customers": [
+        float((df_all["is_renter"].cast(pl.Float64) * df_all["resstock_weight"]).sum())
+        / total_customer_count
+    ],
+    "pct_unknown_tenure_all_customers": [
+        float((df_all["is_tenure_unknown"].cast(pl.Float64) * df_all["resstock_weight"]).sum())
+        / total_customer_count
+    ],
 })
 
 bucket_dtype = pl.Enum([*HEATING_BUCKET_ORDER, "All LMI"])
 
 agg = (
-    pl.concat([by_bucket, all_lmi_row], how="vertical")
+    by_bucket
+    .join(all_customers_by_bucket, on="heating_bucket", how="left")
+    .pipe(lambda df: pl.concat([df, all_lmi_row], how="vertical"))
     .with_columns(
         (pl.col("n_lmi_households") / total_lmi_count).alias("share_of_lmi"),
+        (pl.col("n_all_households") / total_customer_count).alias("share_of_customers"),
+        (pl.col("n_lmi_households") / pl.col("n_all_households")).alias("pct_group_lmi"),
         (1 - pl.col("pct_renter") - pl.col("pct_unknown_tenure")).alias("pct_owner"),
+        (1 - pl.col("pct_renter_all_customers") - pl.col("pct_unknown_tenure_all_customers")).alias("pct_owner_all_customers"),
         pl.col("heating_bucket").cast(bucket_dtype),
     )
     .sort("heating_bucket")
     .select(
         "heating_bucket",
         "n_lmi_households",
+        "n_all_households",
         "share_of_lmi",
+        "share_of_customers",
+        "pct_group_lmi",
+        "pct_renter_all_customers",
         "pct_renter",
+        "pct_owner_all_customers",
         "pct_owner",
+        "pct_unknown_tenure_all_customers",
         "pct_unknown_tenure",
     )
 )
 
-show_unknown_tenure = bool((agg["pct_unknown_tenure"] > 0).any())
+show_unknown_tenure = bool(
+    ((agg["pct_unknown_tenure"] > 0) | (agg["pct_unknown_tenure_all_customers"] > 0)).any()
+)
 
 agg
 ```
 
 ## Combined summary
 
-Heating-fuel mix and tenure breakdown of NY LMI households in one view.
+Customer heating-fuel mix, LMI share, and LMI tenure breakdown in one view.
 
 ```{python}
 #| label: tbl-lmi-by-heating
-#| tbl-cap: "Heating-fuel mix and tenure of NY LMI households. Heating type and tenure come from NREL's ResStock metadata @nrel_EndUseLoadProfiles_2024; LMI status was inferred from household income relative to the Federal Poverty Line."
+#| tbl-cap: "Heating-fuel mix of NY customers, with LMI share and tenure breakdown. Heating type and tenure come from NREL's ResStock metadata @nrel_EndUseLoadProfiles_2024; LMI status was inferred from household income relative to the Federal Poverty Line."
 
 combined_cols = [
     "heating_bucket",
-    "n_lmi_households",
-    "share_of_lmi",
-    "pct_renter",
-    "pct_owner",
+    "n_all_households",
+    "share_of_customers",
+    "pct_group_lmi",
+    "pct_renter_display",
+    "pct_owner_display",
 ]
-combined_pct_cols = ["share_of_lmi", "pct_renter", "pct_owner"]
+combined_pct_cols = [
+    "share_of_customers",
+    "pct_group_lmi",
+]
 combined_labels = {
-    "n_lmi_households": "LMI households (weighted)",
-    "share_of_lmi": "Share of LMI",
-    "pct_renter": "% renter",
-    "pct_owner": "% owner",
+    "n_all_households": "Customers (weighted)",
+    "share_of_customers": "% of customers",
+    "pct_group_lmi": "% of group that is LMI",
+    "pct_renter_display": "% renter: all customers (LMI)",
+    "pct_owner_display": "% owner: all customers (LMI)",
 }
 if show_unknown_tenure:
-    combined_cols.append("pct_unknown_tenure")
-    combined_pct_cols.append("pct_unknown_tenure")
-    combined_labels["pct_unknown_tenure"] = "% unknown tenure"
+    combined_cols.append("pct_unknown_tenure_display")
+    combined_labels["pct_unknown_tenure_display"] = "% unknown tenure: all customers (LMI)"
+
+
+def _format_pct_pair(pct_all_customers: float, pct_lmi: float) -> str:
+    """Format all-customer and LMI percentages for the combined table."""
+    return f"{pct_all_customers:.0%} ({pct_lmi:.0%})"
+
+
+combined_summary = agg.with_columns(
+    pl.when(pl.col("heating_bucket").cast(pl.String) == "All LMI")
+    .then(pl.lit("All customers"))
+    .otherwise(pl.col("heating_bucket").cast(pl.String))
+    .alias("heating_bucket"),
+    pl.struct("pct_renter_all_customers", "pct_renter")
+    .map_elements(
+        lambda row: _format_pct_pair(row["pct_renter_all_customers"], row["pct_renter"]),
+        return_dtype=pl.String,
+    )
+    .alias("pct_renter_display"),
+    pl.struct("pct_owner_all_customers", "pct_owner")
+    .map_elements(
+        lambda row: _format_pct_pair(row["pct_owner_all_customers"], row["pct_owner"]),
+        return_dtype=pl.String,
+    )
+    .alias("pct_owner_display"),
+    pl.struct("pct_unknown_tenure_all_customers", "pct_unknown_tenure")
+    .map_elements(
+        lambda row: _format_pct_pair(row["pct_unknown_tenure_all_customers"], row["pct_unknown_tenure"]),
+        return_dtype=pl.String,
+    )
+    .alias("pct_unknown_tenure_display"),
+)
 
 _combined_gt = (
-    GT(agg.select(combined_cols), rowname_col="heating_bucket")
-    .fmt_number(columns="n_lmi_households", decimals=0, use_seps=True)
+    GT(combined_summary.select(combined_cols), rowname_col="heating_bucket")
+    .fmt_number(columns="n_all_households", decimals=0, use_seps=True)
     .fmt_percent(
         columns=combined_pct_cols,
         decimals=0,

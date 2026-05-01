@@ -251,7 +251,6 @@ def _verify_affine_vs_strategies(data: FeasibleLineData) -> None:
 
 
 def _sweep_range(data: FeasibleLineData, f_min: float | None = None, f_max: float | None = None) -> tuple[float, float]:
-    fc_floor = max(0.0, data.fixed_charge_floor)
     r_sum_zero = data.r_sum.zero_crossing()
     r_win_zero = data.r_win.zero_crossing()
     natural_upper = max(
@@ -262,7 +261,7 @@ def _sweep_range(data: FeasibleLineData, f_min: float | None = None, f_max: floa
     for sp in data.strategies:
         if math.isfinite(sp.fixed_charge):
             natural_upper = max(natural_upper, sp.fixed_charge)
-    lo = f_min if f_min is not None else max(20.0, fc_floor)
+    lo = f_min if f_min is not None else 0.0
     hi = f_max if f_max is not None else natural_upper + 10.0
     if hi <= lo:
         hi = lo + 20.0
@@ -284,7 +283,7 @@ def _strategy_rate(data: FeasibleLineData, strategy: StrategyPoint, line: Affine
     return _rate_cents_per_kwh(line.at(strategy.fixed_charge))
 
 
-def _plot_frames(data: FeasibleLineData) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+def _plot_frames(data: FeasibleLineData) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, tuple[float, float]]:
     lo, hi = _sweep_range(data)
     fs = _linspace(lo, hi)
     line_rows = []
@@ -324,6 +323,8 @@ def _plot_frames(data: FeasibleLineData) -> tuple[pl.DataFrame, pl.DataFrame, pl
     y_min = min(float(line_df["rate_cents_per_kwh"].min()), 0.0)
     y_max = max(float(line_df["rate_cents_per_kwh"].max()), 0.0)
     y_pad = max((y_max - y_min) * 0.08, 0.5)
+    y_lo = y_min - y_pad
+    y_hi = y_max + y_pad
     feas_lo = max(data.feasible_min if math.isfinite(data.feasible_min) else lo, lo)
     feas_hi = min(data.feasible_max if math.isfinite(data.feasible_max) else hi, hi)
     rect_df = pl.DataFrame(
@@ -331,25 +332,26 @@ def _plot_frames(data: FeasibleLineData) -> tuple[pl.DataFrame, pl.DataFrame, pl
             {
                 "xmin": feas_lo,
                 "xmax": feas_hi,
-                "ymin": y_min - y_pad,
-                "ymax": y_max + y_pad,
+                "ymin": y_lo,
+                "ymax": y_hi,
             }
         ]
         if data.feasible_exists and feas_hi > feas_lo
         else []
     )
-    return line_df, strategy_df, rect_df
+    return line_df, strategy_df, rect_df, (y_lo, y_hi)
 
 
-def _all_plot_frames() -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+def _all_plot_frames() -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     line_frames = []
     strategy_frames = []
     rect_frames = []
     range_rows = []
+    vline_frames = []
     for utility in UTIL_ORDER_CODES:
         for variant, data in feasible_lines[utility].items():
             _verify_affine_vs_strategies(data)
-            line_df, strategy_df, rect_df = _plot_frames(data)
+            line_df, strategy_df, rect_df, (y_lo, y_hi) = _plot_frames(data)
             variant_label = "Delivery only" if variant == "delivery" else "Delivery + supply"
             context = {
                 "utility": utility,
@@ -368,22 +370,36 @@ def _all_plot_frames() -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.Dat
                     "feasible_exists": data.feasible_exists,
                 }
             )
+            # Vline row: use concrete y_lo/y_hi so plotnine never sees ±inf
+            if math.isfinite(data.base_fixed_charge):
+                vline_frames.append(
+                    pl.DataFrame(
+                        [{
+                            **context,
+                            "xintercept": data.base_fixed_charge,
+                            "label": f"${data.base_fixed_charge:,.0f}/mo",
+                            "y_lo": y_lo,
+                            "y_hi": y_hi,
+                        }]
+                    )
+                )
 
     return (
         pl.concat(line_frames),
         pl.concat(strategy_frames),
         pl.concat(rect_frames) if rect_frames else pl.DataFrame(),
         pl.DataFrame(range_rows),
+        pl.concat(vline_frames) if vline_frames else pl.DataFrame(),
     )
 
 
-line_all, strategy_all, rect_all, range_all = _all_plot_frames()
+line_all, strategy_all, rect_all, range_all, vline_all = _all_plot_frames()
 
 
 def _ordered_plot_frames(
     variant: str,
     utility_codes: list[str],
-) -> tuple[pl.DataFrame, pl.DataFrame]:
+) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     utility_labels = [UTIL_NAMES[utility] for utility in utility_codes]
     utility_dtype = pl.Enum(utility_labels)
     season_dtype = pl.Enum(["Winter", "Summer"])
@@ -404,11 +420,24 @@ def _ordered_plot_frames(
         )
         .with_columns(pl.col("utility_label").cast(utility_dtype))
     )
-    return line_df, rect_df
+    vline_df = (
+        vline_all.filter(
+            (pl.col("variant") == variant)
+            & (pl.col("utility").is_in(utility_codes))
+        )
+        .with_columns(pl.col("utility_label").cast(utility_dtype))
+    )
+    return line_df, rect_df, vline_df
+
+
+_LEGEND_CURRENT = "Current rate"
 
 
 def plot_multi_utility_feasible_grid(variant: str, utility_codes: list[str], title: str):
-    line_df, rect_df = _ordered_plot_frames(variant, utility_codes)
+    line_df, rect_df, vline_df = _ordered_plot_frames(variant, utility_codes)
+    # Add season column so the vline appears in the shared color + linetype legend
+    vline_df = vline_df.with_columns(pl.lit(_LEGEND_CURRENT).alias("season"))
+
     p = (
         ggplot(line_df, aes("fixed_charge", "rate_cents_per_kwh", color="season", linetype="season"))
         + geom_rect(
@@ -419,10 +448,39 @@ def plot_multi_utility_feasible_grid(variant: str, utility_codes: list[str], tit
             alpha=0.13,
             color="none",
         )
+        # Dotted vline with concrete y_lo/y_hi — no ±inf
+        + geom_segment(
+            vline_df,
+            aes(x="xintercept", xend="xintercept", y="y_lo", yend="y_hi", color="season", linetype="season"),
+            size=0.85,
+        )
+        # Dollar label near the top of each panel, nudged right of the vline
+        + geom_text(
+            vline_df,
+            aes(x="xintercept", y="y_hi", label="label"),
+            inherit_aes=False,
+            color=SB_COLORS["sky"],
+            size=8,
+            va="top",
+            ha="left",
+            nudge_x=1.5,
+        )
         + geom_line(size=0.85)
         + facet_wrap("utility_label", ncol=2, scales="free")
-        + scale_color_manual(values={"Winter": SB_COLORS["midnight"], "Summer": SB_COLORS["carrot"]})
-        + scale_linetype_manual(values={"Winter": "solid", "Summer": "dashed"})
+        + scale_color_manual(
+            values={
+                "Winter": SB_COLORS["midnight"],
+                "Summer": SB_COLORS["carrot"],
+                _LEGEND_CURRENT: SB_COLORS["sky"],
+            }
+        )
+        + scale_linetype_manual(
+            values={
+                "Winter": "solid",
+                "Summer": "dashed",
+                _LEGEND_CURRENT: "dotted",
+            }
+        )
         + scale_x_continuous(labels=lambda breaks: [f"${b:,.0f}" for b in breaks])
         + scale_y_continuous(labels=lambda breaks: [f"{b:,.2f}¢/kWh" for b in breaks])
         + labs(
@@ -430,8 +488,8 @@ def plot_multi_utility_feasible_grid(variant: str, utility_codes: list[str], tit
             subtitle="Each line shows the seasonal volumetric rate implied by a fixed-charge choice; the green band marks the feasible fixed-charge range.",
             x="Fixed charge",
             y="Volumetric rate",
-            color="Season",
-            linetype="Season",
+            color="",
+            linetype="",
         )
         + theme_switchbox()
         + theme(figure_size=(12.5, 13.5), legend_position="bottom")
@@ -442,27 +500,41 @@ def plot_multi_utility_feasible_grid(variant: str, utility_codes: list[str], tit
 
 def plot_feasible_fixed_charge_ranges(variant: str, title: str):
     ranges = range_all.filter((pl.col("feasible_exists")) & (pl.col("variant") == variant))
+    # Order utilities by feasible_min ascending (lowest required fixed charge first)
+    ordered_labels = (
+        ranges.sort("feasible_min")
+        .get_column("utility_label")
+        .to_list()
+    )
+    ranges = ranges.with_columns(
+        pl.col("utility_label").cast(pl.Enum(ordered_labels))
+    )
+    bar_color = SB_COLORS["midnight"] if variant == "Delivery only" else SB_COLORS["carrot"]
+    y_max = float(ranges["feasible_max"].max())
     p = (
         ggplot(ranges, aes("utility_label", "feasible_min"))
         + geom_segment(
             aes(x="utility_label", xend="utility_label", y="feasible_min", yend="feasible_max"),
             size=2.2,
             lineend="round",
-            color=SB_COLORS["midnight"] if variant == "Delivery only" else SB_COLORS["carrot"],
+            color=bar_color,
         )
         + geom_point(
             size=2.7,
-            color=SB_COLORS["midnight"] if variant == "Delivery only" else SB_COLORS["carrot"],
+            color=bar_color,
         )
         + geom_point(
             aes(y="feasible_max"),
             size=2.7,
-            color=SB_COLORS["midnight"] if variant == "Delivery only" else SB_COLORS["carrot"],
+            color=bar_color,
         )
-        + scale_y_continuous(labels=lambda breaks: [f"${b:,.0f}" for b in breaks])
+        + scale_y_continuous(
+            limits=(0, y_max * 1.08),
+            labels=lambda breaks: [f"${b:,.0f}" for b in breaks],
+        )
         + labs(
             title=title,
-            subtitle="Vertical ranges show the fixed charges for which both winter and summer volumetric rates are non-negative.",
+            subtitle="Vertical ranges show the fixed charges for which both winter and summer volumetric rates are non-negative. Utilities ordered by minimum feasible fixed charge.",
             x="Utility",
             y="Fixed charge",
         )

@@ -160,7 +160,7 @@ def main() -> None:
     n_after = text.count("<CrossReferenceSource")
     path.write_text(text, encoding="utf-8")
     print(
-        f"Wrote {path} (sec cross-refs: {n_after} CrossReferenceSource; "
+        f"Wrote {path} (converted {n_before} HyperlinkTextSource -> {n_after} CrossReferenceSource; "
         f"remaining HyperlinkTextSource: {text.count('<HyperlinkTextSource')})",
     )
 

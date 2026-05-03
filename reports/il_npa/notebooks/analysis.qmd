@@ -209,6 +209,139 @@ TIME_PERIOD <- 10 # 10-year timeline
 RES_THRESHOLD <- 0.9
 ```
 
+### Electrification cost derivation
+
+The per-home electrification costs ($C_{\text{SF}}$ and $C_{\text{MF}}$) are derived from ComEd's CY2024 Cost-Effectiveness Analysis, which reports average costs for individual electrification measures deployed through ComEd's Whole Home Electric program. The source data is in the `comed_itemized cots` tab of our [cost assumptions spreadsheet](https://docs.google.com/spreadsheets/d/1xxa47dClvp0rosZhUP1R7790CNXMLSD_0ExrPccR3p0/edit?gid=681639934#gid=681639934).
+
+For each end-use category, the ComEd data reports multiple program variants (e.g. DAC and non-DAC, or different equipment types like ducted vs. ductless heat pumps). We compute a **quantity-weighted average** across variants within each category: each variant's average cost is weighted by the number of units deployed in CY2024, so variants with more installations pull the average toward their cost. We then sum the weighted averages across end-use categories to get the total per-home or per-unit cost.
+
+```{r}
+#| echo: false
+
+itemized_url <- "https://docs.google.com/spreadsheets/d/1xxa47dClvp0rosZhUP1R7790CNXMLSD_0ExrPccR3p0/export?format=csv&gid=681639934"
+itemized_df <- read_csv(itemized_url) |>
+  mutate(
+    `Average Cost` = as.numeric(gsub("[\\$,]", "", `Average Cost`)),
+    Quantity = as.numeric(gsub("[\\$,]", "", Quantity))
+  )
+```
+
+```{r}
+#| echo: false
+
+# SF electrification cost breakdown (rows 58-67 in the sheet = "Whole Home Electric, SF")
+sf_dryer <- itemized_df |>
+  filter(`Savings Category` %in% c(
+    "Clothes Dryer - Electrification - DAC",
+    "Clothes Dryer - Electrification"
+  ), Component == "SF")
+sf_dryer_cost <- weighted.mean(sf_dryer$`Average Cost`, sf_dryer$Quantity)
+
+sf_cooktop <- itemized_df |>
+  filter(`Savings Category` %in% c(
+    "Cooktop - Electrification - DAC",
+    "Cooktop - Electrification"
+  ), Component == "SF")
+sf_cooktop_cost <- weighted.mean(sf_cooktop$`Average Cost`, sf_cooktop$Quantity)
+
+sf_hpwh <- itemized_df |>
+  filter(`Savings Category` %in% c(
+    "Heat Pump Water Heater - Electrification - DAC",
+    "Heat Pump Water Heater - Electrification"
+  ), Component == "SF")
+sf_hpwh_cost <- weighted.mean(sf_hpwh$`Average Cost`, sf_hpwh$Quantity)
+
+sf_hvac <- itemized_df |>
+  filter(`Savings Category` %in% c(
+    "Ductless Heat Pump - Electrification - DAC",
+    "Ductless Heat Pump - Electrification",
+    "Air Source Heat Pump - Electrification - DAC",
+    "Air Source Heat Pump - Electrification"
+  ), Component == "SF")
+sf_hvac_cost <- weighted.mean(sf_hvac$`Average Cost`, sf_hvac$Quantity)
+
+sf_total <- sf_dryer_cost + sf_cooktop_cost + sf_hpwh_cost + sf_hvac_cost
+
+# MF electrification cost breakdown (rows 49-57 in the sheet = "Whole Home Electric, MF")
+mf_dryer <- itemized_df |>
+  filter(`Savings Category` %in% c(
+    "Clothes Dryer - Electrification - DAC",
+    "Clothes Dryer - Electrification"
+  ), Component == "MF")
+mf_dryer_cost <- weighted.mean(mf_dryer$`Average Cost`, mf_dryer$Quantity)
+
+mf_cooktop <- itemized_df |>
+  filter(`Savings Category` == "Cooktop - Electrification - DAC", Component == "MF")
+mf_cooktop_cost <- mf_cooktop$`Average Cost`
+
+mf_hw <- itemized_df |>
+  filter(`Savings Category` %in% c(
+    "Heat Pump Water Heater - Electrification - DAC",
+    "Heat Pump Water Heater - Electrification",
+    "Electric Water Heater - Electrification - DAC"
+  ), Component == "MF")
+mf_hw_cost <- weighted.mean(mf_hw$`Average Cost`, mf_hw$Quantity)
+
+mf_hvac <- itemized_df |>
+  filter(`Savings Category` %in% c(
+    "Ductless Heat Pump - Electrification - DAC",
+    "Air Source Heat Pump - Electrification - DAC",
+    "Air Source Heat Pump - Electrification"
+  ), Component == "MF")
+mf_hvac_cost <- weighted.mean(mf_hvac$`Average Cost`, mf_hvac$Quantity)
+
+mf_total <- mf_dryer_cost + mf_cooktop_cost + mf_hw_cost + mf_hvac_cost
+```
+
+The table below shows the itemized costs for each end-use category. Each row is a quantity-weighted average of the program variants within that category. Where costs differ across variants, a range (min–max) is shown.
+
+```{r}
+#| echo: false
+#| label: tbl-electrification-costs
+#| tbl-cap: "Itemized electrification costs per home (SF) and per unit (MF)"
+
+library(gt)
+library(tibble)
+
+make_range <- function(costs) {
+  if (length(costs) <= 1) return("")
+  lo <- min(costs)
+  hi <- max(costs)
+  if (abs(hi - lo) < 1) return("")
+  paste0("$", formatC(lo, format = "f", digits = 0, big.mark = ","),
+         "–$", formatC(hi, format = "f", digits = 0, big.mark = ","))
+}
+
+cost_table <- tribble(
+  ~`End Use`, ~`SF Wt. Avg.`, ~`SF Range`, ~`MF Wt. Avg.`, ~`MF Range`,
+  "HVAC (heat pump)", sf_hvac_cost, make_range(sf_hvac$`Average Cost`), mf_hvac_cost, make_range(mf_hvac$`Average Cost`),
+  "Water heater", sf_hpwh_cost, make_range(sf_hpwh$`Average Cost`), mf_hw_cost, make_range(mf_hw$`Average Cost`),
+  "Cooktop", sf_cooktop_cost, make_range(sf_cooktop$`Average Cost`), mf_cooktop_cost, make_range(mf_cooktop$`Average Cost`),
+  "Clothes dryer", sf_dryer_cost, make_range(sf_dryer$`Average Cost`), mf_dryer_cost, make_range(mf_dryer$`Average Cost`),
+  "Total", sf_total, "", mf_total, ""
+)
+
+cost_table |>
+  gt() |>
+  fmt_currency(columns = c(`SF Wt. Avg.`, `MF Wt. Avg.`), decimals = 0) |>
+  tab_spanner(label = "Single-Family (per home)", columns = c(`SF Wt. Avg.`, `SF Range`)) |>
+  tab_spanner(label = "Multi-Family (per unit)", columns = c(`MF Wt. Avg.`, `MF Range`)) |>
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_body(rows = `End Use` == "Total")
+  ) |>
+  tab_source_note("Source: ComEd CY2024 Cost-Effectiveness Analysis (Guidehouse)")
+```
+
+Let's verify these match the values in our cost assumptions sheet:
+
+```{r}
+#| echo: false
+
+stopifnot(abs(sf_total - cost_elec_sf) < 1)
+stopifnot(abs(mf_total - cost_elec_mf) < 1)
+```
+
 # Cost Calculations
 
 For each city block, we calculate:
@@ -369,7 +502,8 @@ pg_summary <- pg_summary |>
 pg_summary <- pg_summary |>
   mutate(
     # Annual cost of scattershot electrification (evenly distributed)
-    scattershot_annual_cost = (PCT_ELEC * elec_cost_total) / TIME_PERIOD,
+    # Excludes decommissioning: gas infrastructure remains in operation under scattershot
+    scattershot_annual_cost = (PCT_ELEC * (elec_sf_cost + elec_mf_cost)) / TIME_PERIOD,
 
     # NPV of scattershot costs (t=0 to TIME_PERIOD-1)
     scattershot_npv = scattershot_annual_cost *
@@ -869,8 +1003,7 @@ res_only |>
 ```
 
 ```{r}
-#| label: fig-single-block-eg
-#| fig-cap: "Stacked PRP vs NPA cost components for a single example census block (170314407001003): pipeline replacement on the left vs single- and multi-family electrification, grid upgrade, and gas decommissioning on the right."
+#| label: single-block-eg
 #| fig-height: 9
 #| fig-width: 8
 
@@ -1002,8 +1135,7 @@ ggplot() +
 ```
 
 ```{r}
-#| label: fig-single-block-eg-ss
-#| fig-cap: "Same single-block PRP vs NPA decomposition with scattershot electrification NPV added to the PRP side of the comparison."
+#| label: single-block-eg-ss
 #| fig-height: 9
 #| fig-width: 8
 
@@ -1028,7 +1160,7 @@ plot_data <- res_only |>
     pipeline_assigned = street_miles,
     grid_cost = total_residential_units * grid_upgrade_cost_hh,
     decomm_cost = street_miles * cost_decomm_mile,
-    scattershot_annual = (PCT_ELEC * elec_cost_total) / TIME_PERIOD,
+    scattershot_annual = (PCT_ELEC * (elec_sf_cost + elec_mf_cost + grid_cost)) / TIME_PERIOD,
     scattershot_npv_cost = scattershot_annual *
       sum(1 / (1 + DISCOUNT_RATE)^(0:(TIME_PERIOD - 1))),
   ) |>
@@ -1325,75 +1457,59 @@ n_miles_res <- sum(res_only$street_miles, na.rm = TRUE)
 n_miles_mixed <- sum(pg_summary$street_miles, na.rm = TRUE) - n_miles_res
 n_miles_remaining <- total_prp_miles - n_miles_res - n_miles_mixed
 
-# Stack order: factor levels reversed by position_stack, so the LAST level
-# ends up at the bottom of the stack and at the LEFT after coord_flip.
-# Levels c("remain", "mixed", "res") → res on left, mixed middle, remain on right.
+# Create data frame with manual position calculation
 plot_data <- data.frame(
   category = factor(
     c("remain", "mixed", "res"),
     levels = c("remain", "mixed", "res")
   ),
+  label = c(
+    "Remaining PRP miles",
+    "Planned mixed-zoning",
+    "Planned fully residential"
+  ),
   miles = c(n_miles_remaining, n_miles_mixed, n_miles_res)
-)
-
-# Segment midpoints along the y axis (horizontal after coord_flip)
-res_mid <- n_miles_res / 2
-mixed_mid <- n_miles_res + n_miles_mixed / 2
-remain_mid <- n_miles_res + n_miles_mixed + n_miles_remaining / 2
-
-# Bar is centered at categorical x = 1, width = 0.5 → spans 0.75..1.25
-bar_top <- 1.25
-bar_bot <- 0.75
+) |>
+  arrange(desc(category)) |>
+  mutate(
+    cumsum_miles = cumsum(miles),
+    text_position = c(0, 150, total_prp_miles), #cumsum_miles - miles / 2,
+    label_text = paste0(label, "\n(", round(miles), " miles)")
+  )
 
 ggplot() +
   geom_bar(
     data = plot_data,
     aes(x = "", y = miles, fill = category),
     stat = "identity",
-    width = 0.5
+    width = 0.7
   ) +
-  # Residential callout above bar with leader line
-  annotate("segment",
-    x = bar_top, xend = 1.55, y = res_mid, yend = res_mid,
-    color = sb_colors[["midnight"]], linewidth = 0.4
-  ) +
-  annotate("text",
-    x = 1.6, y = res_mid,
-    label = paste0("Planned fully residential\n(", round(n_miles_res), " miles)"),
-    color = sb_colors[["midnight"]],
-    hjust = 0, vjust = 0, size = 3.5, fontface = "bold"
-  ) +
-  # Mixed callout below bar with leader line
-  annotate("segment",
-    x = bar_bot, xend = 0.45, y = mixed_mid, yend = mixed_mid,
-    color = sb_colors[["saffron"]], linewidth = 0.4
-  ) +
-  annotate("text",
-    x = 0.4, y = mixed_mid,
-    label = paste0("Planned mixed-zoning\n(", round(n_miles_mixed), " miles)"),
-    color = sb_colors[["saffron"]],
-    hjust = 0, vjust = 1, size = 3.5, fontface = "bold"
-  ) +
-  # Remaining label centered above the gray segment
-  annotate("text",
-    x = 1.6, y = remain_mid,
-    label = paste0(
-      "Remaining PRP miles\n(",
-      format(round(n_miles_remaining), big.mark = ","),
-      " miles)"
-    ),
-    color = "gray30",
-    hjust = 0.5, vjust = 0, size = 3.5, fontface = "bold"
+  ggrepel::geom_text_repel(
+    data = plot_data,
+    aes(x = "", y = text_position, label = label_text, color = category),
+    direction = "y",
+    nudge_x = 0.65,
+    # nudge_y = 10,
+    # segment.color = "gray50",
+    # size = 3.5,
+    force = 1,
+    show.legend = FALSE
   ) +
   scale_fill_manual(
     values = c(
       "res" = sb_colors[["midnight"]],
       "mixed" = sb_colors[["saffron"]],
-      "remain" = "gray80"
+      "remain" = "gray"
     )
   ) +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.02))) +
-  scale_x_discrete(expand = expansion(add = c(0.9, 0.9))) +
+  scale_color_manual(
+    values = c(
+      "res" = sb_colors[["midnight"]],
+      "mixed" = sb_colors[["saffron"]],
+      "remain" = "gray"
+    )
+  ) +
+  scale_y_continuous(limits = c(-250, total_prp_miles+200), expand = c(0, 0)) +
   coord_flip(clip = "off") +
   labs(y = "", x = "") +
   theme(
@@ -1403,7 +1519,7 @@ ggplot() +
     axis.ticks = element_blank(),
     panel.grid = element_blank(),
     legend.position = "none",
-    plot.margin = margin(t = 10, r = 20, b = 10, l = 20)
+    plot.margin = margin(t = 40, r = 10, b = 10, l = 10)
   )
 
 ```
@@ -1414,62 +1530,64 @@ ggplot() +
 #| fig-width: 8
 #| fig-height: 5
 
+# Calculate miles by project type
+
 n_miles_planned <- sum(pg_summary$street_miles, na.rm = TRUE)
 n_miles_remaining <- total_prp_miles - n_miles_planned
 
-# Levels chosen so coord_flip puts planned on LEFT, remain on RIGHT
-# (position_stack reverses factor order: highest level → bottom of stack → LEFT after flip)
+# Create data frame with manual position calculation
 plot_data <- data.frame(
   category = factor(
     c("remain", "planned"),
     levels = c("remain", "planned")
   ),
+  label = c(
+    "Remaining PRP miles",
+    "Planned PRP miles"
+  ),
   miles = c(n_miles_remaining, n_miles_planned)
-)
-
-planned_mid <- n_miles_planned / 2
-remain_mid <- n_miles_planned + n_miles_remaining / 2
-
-# Bar centered at categorical x = 1, width = 0.5 → spans 0.75..1.25
-bar_top <- 1.25
+) |>
+  arrange(desc(category)) |>
+  mutate(
+    cumsum_miles = cumsum(miles),
+    text_position = c(145, total_prp_miles), #cumsum_miles - miles / 2,
+    label_text = paste0(label, "\n(", round(miles), " miles)")
+  )
 
 ggplot() +
   geom_bar(
     data = plot_data,
     aes(x = "", y = miles, fill = category),
     stat = "identity",
-    width = 0.5
+    width = 0.7
   ) +
-  # Planned callout above bar with leader line
-  annotate("segment",
-    x = bar_top, xend = 1.55, y = planned_mid, yend = planned_mid,
-    color = sb_colors[["sky"]], linewidth = 0.4
-  ) +
-  annotate("text",
-    x = 1.6, y = planned_mid,
-    label = paste0("Planned PRP miles\n(", round(n_miles_planned), " miles)"),
-    color = sb_colors[["sky"]],
-    hjust = 0, vjust = 0, size = 3.5, fontface = "bold"
-  ) +
-  # Remaining label centered above the gray segment
-  annotate("text",
-    x = 1.6, y = remain_mid,
-    label = paste0(
-      "Remaining PRP miles\n(",
-      format(round(n_miles_remaining), big.mark = ","),
-      " miles)"
-    ),
-    color = "gray30",
-    hjust = 0.5, vjust = 0, size = 3.5, fontface = "bold"
+  ggrepel::geom_text_repel(
+    data = plot_data,
+    aes(x = "", y = text_position, label = label_text, color = category),
+    direction = "y",
+    nudge_x = 0.65,
+    # nudge_y = 10,
+    # segment.color = "gray50",
+    # size = 3.5,
+    force = 1,
+    show.legend = FALSE
   ) +
   scale_fill_manual(
     values = c(
       "planned" = sb_colors[["sky"]],
-      "remain" = "gray80"
+      "remain" = "gray"
     )
   ) +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.02))) +
-  scale_x_discrete(expand = expansion(add = c(0.6, 0.9))) +
+  scale_color_manual(
+    values = c(
+      "planned" = sb_colors[["sky"]],
+      "remain" = "gray"
+    )
+  ) +
+  scale_y_continuous(
+    limits = c(-250, total_prp_miles + 200),
+    expand = c(0, 0)
+  ) +
   coord_flip(clip = "off") +
   labs(y = "", x = "") +
   theme(
@@ -1479,7 +1597,7 @@ ggplot() +
     axis.ticks = element_blank(),
     panel.grid = element_blank(),
     legend.position = "none",
-    plot.margin = margin(t = 10, r = 20, b = 10, l = 20)
+    plot.margin = margin(t = 40, r = 10, b = 10, l = 10)
   )
 ```
 
@@ -1489,31 +1607,57 @@ ggplot() +
 #| fig-width: 8
 #| fig-height: 5
 
+# Calculate miles by project type
+
+n_miles_remaining <- total_prp_miles
+
+# Create data frame with manual position calculation
 plot_data <- data.frame(
-  category = factor(c("remain"), levels = c("remain")),
-  miles = c(total_prp_miles)
-)
+  category = factor(
+    c("remain"),
+    levels = c("remain")
+  ),
+  label = c(
+    "Remaining PRP miles"
+  ),
+  miles = c(n_miles_remaining)
+) |>
+  arrange(desc(category)) |>
+  mutate(
+    cumsum_miles = cumsum(miles),
+    text_position = c(total_prp_miles), #cumsum_miles - miles / 2,
+    label_text = paste0(label, "\n(", scales::comma(round(miles)), " miles)")
+  )
 
 ggplot() +
   geom_bar(
     data = plot_data,
     aes(x = "", y = miles, fill = category),
     stat = "identity",
-    width = 0.5
+    width = 0.7
   ) +
-  annotate("text",
-    x = 1.6, y = total_prp_miles / 2,
-    label = paste0(
-      "Remaining PRP miles\n(",
-      format(round(total_prp_miles), big.mark = ","),
-      " miles)"
-    ),
-    color = "gray30",
-    hjust = 0.5, vjust = 0, size = 3.5, fontface = "bold"
+  ggrepel::geom_text_repel(
+    data = plot_data,
+    aes(x = "", y = text_position, label = label_text, color = category),
+    direction = "y",
+    nudge_x = 0.65,
+    # nudge_y = 10,
+    # segment.color = "gray50",
+    # size = 3.5,
+    force = 1,
+    show.legend = FALSE
   ) +
-  scale_fill_manual(values = c("remain" = "gray80")) +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.02))) +
-  scale_x_discrete(expand = expansion(add = c(0.6, 0.9))) +
+  scale_fill_manual(
+    values = c(
+      "remain" = "gray"
+    )
+  ) +
+  scale_color_manual(
+    values = c(
+      "remain" = "gray"
+    )
+  ) +
+  scale_y_continuous(limits = c(-250, total_prp_miles+200), expand = c(0, 0)) +
   coord_flip(clip = "off") +
   labs(y = "", x = "") +
   theme(
@@ -1523,7 +1667,7 @@ ggplot() +
     axis.ticks = element_blank(),
     panel.grid = element_blank(),
     legend.position = "none",
-    plot.margin = margin(t = 10, r = 20, b = 10, l = 20)
+    plot.margin = margin(t = 40, r = 10, b = 10, l = 10)
   )
 ```
 

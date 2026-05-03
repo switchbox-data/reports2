@@ -1285,10 +1285,7 @@ def upload_to_sheet(
         try:
             # Use gspread's list_spreadsheet_files which has working credentials
             all_files = gc.list_spreadsheet_files(folder_id=folder_id)
-            files_to_delete = [
-                f for f in all_files
-                if f.get("name") == filename and not f.get("trashed", False)
-            ]
+            files_to_delete = [f for f in all_files if f.get("name") == filename and not f.get("trashed", False)]
 
             if files_to_delete:
                 print(f"Found {len(files_to_delete)} file(s) to delete:", flush=True)

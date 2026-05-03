@@ -80,18 +80,14 @@ RIE_RESSTOCK_CUSTOMER_COUNT: float = 481_896.13
 
 # customer_scale_factor = test_year_customer_count / resstock_customer_count
 # Used by CAIRO's return_buildingstock to rescale sample weights to match test year.
-RIE_CUSTOMER_SCALE_FACTOR: float = (
-    RIE_TEST_YEAR_CUSTOMER_COUNT / RIE_RESSTOCK_CUSTOMER_COUNT
-)  # = 0.8702037719
+RIE_CUSTOMER_SCALE_FACTOR: float = RIE_TEST_YEAR_CUSTOMER_COUNT / RIE_RESSTOCK_CUSTOMER_COUNT  # = 0.8702037719
 
 # resstock_kwh_scale_factor from rie_rate_case_test_year.yaml
 # = test_year_residential_kwh / resstock_total_residential_kwh_after_customer_scaling
 # Applied in run_scenario.py:645:  raw_load_elec = raw_load_elec * kwh_scale_factor
 RIE_KWH_SCALE_FACTOR: float = 0.9568112362177266
 
-RATE_CASE_SOURCE = (
-    "Docket 25-45-GE, RIE Book 21, Blazunas Schedules & Workpapers (11/26/2025)"
-)
+RATE_CASE_SOURCE = "Docket 25-45-GE, RIE Book 21, Blazunas Schedules & Workpapers (11/26/2025)"
 RATE_CASE_URL = (
     "https://www.documentcloud.org/documents/27926651-"
     "docket-25-45-ge-rie-book-21-blazunas-schedules-workpapers-11262025/"
@@ -99,7 +95,7 @@ RATE_CASE_URL = (
 )
 
 # Code reference where the factor is applied
-CODE_REF = "rate_design/hp_rates/run_scenario.py, lines 640–645"
+CODE_REF = "rate_design/hp_rates/run_scenario.py, lines 640-645"
 CODE_SNIPPET = "raw_load_elec = raw_load_elec * settings.kwh_scale_factor"
 
 # ---------------------------------------------------------------------------
@@ -165,9 +161,7 @@ def load_resstock_annual_from_monthly(
     opts_util = storage_options if _is_s3(path_utility_assignment) else None
 
     monthly_lf = pl.scan_parquet(f"{path_monthly_dir}/*.parquet", storage_options=opts)
-    annual_lf = monthly_lf.group_by(BLDG_ID_COL).agg(
-        pl.col(TOTAL_ELEC_MONTHLY_COL).sum().alias("annual_kwh")
-    )
+    annual_lf = monthly_lf.group_by(BLDG_ID_COL).agg(pl.col(TOTAL_ELEC_MONTHLY_COL).sum().alias("annual_kwh"))
     util_lf = pl.scan_parquet(path_utility_assignment, storage_options=opts_util)
 
     return cast(
@@ -217,6 +211,7 @@ def load_eia_by_utility(
 # Style helpers
 # ---------------------------------------------------------------------------
 
+
 def _bold(ws, cell: str) -> None:
     ws[cell].font = Font(bold=True)
 
@@ -250,6 +245,7 @@ def _yellow_fill(ws, row: int, n_cols: int) -> None:
 # ---------------------------------------------------------------------------
 # Sheet writers
 # ---------------------------------------------------------------------------
+
 
 def _write_readme(wb: Workbook, resstock_kwh_mf_adjusted: float) -> None:
     ws = wb.create_sheet("README", 0)
@@ -399,7 +395,10 @@ def _write_readme(wb: Workbook, resstock_kwh_mf_adjusted: float) -> None:
         ("Source", RATE_CASE_SOURCE),
         ("URL", RATE_CASE_URL),
         ("test_year_residential_kwh", f"{RIE_TEST_YEAR_RESIDENTIAL_KWH:,.0f}  (PRB-1-ELEC p.14, line 8, col k)"),
-        ("test_year_customer_count", f"{RIE_TEST_YEAR_CUSTOMER_COUNT:,.2f}  (= 5,032,174 bills ÷ 12 months, p.14 line 9 col d)"),
+        (
+            "test_year_customer_count",
+            f"{RIE_TEST_YEAR_CUSTOMER_COUNT:,.2f}  (= 5,032,174 bills ÷ 12 months, p.14 line 9 col d)",
+        ),
     ]:
         ws[f"A{row}"] = label
         _bold(ws, f"A{row}")
@@ -413,9 +412,18 @@ def _write_readme(wb: Workbook, resstock_kwh_mf_adjusted: float) -> None:
     ws[f"A{row}"].font = Font(bold=True, size=12)
     row += 1
     for label, path in [
-        ("ResStock _sb release (load_curve_monthly)", f"{S3_BASE_RESSTOCK}/{RESSTOCK_RELEASE_SB}/load_curve_monthly/state={STATE}/upgrade={UPGRADE}/"),
-        ("ResStock _sb release (load_curve_hourly — CAIRO input)", f"{S3_BASE_RESSTOCK}/{RESSTOCK_RELEASE_SB}/load_curve_hourly/state={STATE}/upgrade={UPGRADE}/"),
-        ("Utility assignment", f"{S3_BASE_RESSTOCK}/{RESSTOCK_RELEASE_SB}/metadata_utility/state={STATE}/utility_assignment.parquet"),
+        (
+            "ResStock _sb release (load_curve_monthly)",
+            f"{S3_BASE_RESSTOCK}/{RESSTOCK_RELEASE_SB}/load_curve_monthly/state={STATE}/upgrade={UPGRADE}/",
+        ),
+        (
+            "ResStock _sb release (load_curve_hourly — CAIRO input)",
+            f"{S3_BASE_RESSTOCK}/{RESSTOCK_RELEASE_SB}/load_curve_hourly/state={STATE}/upgrade={UPGRADE}/",
+        ),
+        (
+            "Utility assignment",
+            f"{S3_BASE_RESSTOCK}/{RESSTOCK_RELEASE_SB}/metadata_utility/state={STATE}/utility_assignment.parquet",
+        ),
         ("EIA-861 (external context)", f"{S3_BASE_EIA861}/year={EIA_YEAR}/state={STATE}/data.parquet"),
     ]:
         ws[f"A{row}"] = label
@@ -433,7 +441,10 @@ def _write_readme(wb: Workbook, resstock_kwh_mf_adjusted: float) -> None:
         ("README", "This sheet — overview, pipeline, code reference, data sources"),
         ("pipeline", "Three-stage pipeline with per-customer kWh at each stage"),
         ("scale_factor_derivation", "Step-by-step derivation of resstock_kwh_scale_factor = 0.9568"),
-        ("before_kwh_calibration", "Stage 2 vs rate case target: ResStock after customer rescaling, before kWh scaling"),
+        (
+            "before_kwh_calibration",
+            "Stage 2 vs rate case target: ResStock after customer rescaling, before kWh scaling",
+        ),
         ("after_kwh_calibration", "Stage 3 vs rate case target: ResStock after kWh scale factor applied"),
         ("summary", "Side-by-side before/after comparison"),
     ]:
@@ -497,7 +508,9 @@ def _write_pipeline(wb: Workbook, resstock_kwh_mf_adjusted: float) -> None:
             "0 — Pre-MF adjustment (base release)",
             "MF non-HVAC electricity overestimation corrected (baked into _sb release)",
             "_sb release already incorporates this",
-            None, None, None,
+            None,
+            None,
+            None,
             "N/A — MF adj not quantified here",
             "CCCCCC",
         ),
@@ -530,7 +543,7 @@ def _write_pipeline(wb: Workbook, resstock_kwh_mf_adjusted: float) -> None:
             customers,
             kwh_after_kwh_scaling,
             kwh_after_kwh_scaling / customers,
-            f"{kwh_after_kwh_scaling - target:+.0f} kWh ≈ 0",
+            f"'{kwh_after_kwh_scaling - target:+.0f} kWh ≈ 0",
             "E2EFDA",
         ),
         (
@@ -626,7 +639,11 @@ def _write_pipeline(wb: Workbook, resstock_kwh_mf_adjusted: float) -> None:
     ws.cell(row=row, column=1, value="After kWh scale factor")
     ws.cell(row=row, column=2, value=after_bldg).number_format = "#,##0.00"
     ws.cell(row=row, column=3, value=after_bldg / 12).number_format = "#,##0.00"
-    ws.cell(row=row, column=4, value=f"{(RIE_KWH_SCALE_FACTOR - 1) * 100:.2f}% ({before_bldg - after_bldg:,.0f} kWh/year less)")
+    ws.cell(
+        row=row,
+        column=4,
+        value=f"{(RIE_KWH_SCALE_FACTOR - 1) * 100:.2f}% ({before_bldg - after_bldg:,.0f} kWh/year less)",
+    )
 
     ws.column_dimensions["A"].width = 30
     ws.column_dimensions["B"].width = 55
@@ -675,51 +692,109 @@ def _write_scale_factor_derivation(
         row += 1
 
     section("Step 1: Rate Case Test Year Reference (the target)", "EEF2FF")
-    data_row("test_year_customer_count", RIE_TEST_YEAR_CUSTOMER_COUNT, "#,##0.00",
-             "PRB-1-ELEC p.14, line 9, col d  (= 5,032,174 bills ÷ 12 months)")
-    data_row("test_year_residential_kwh", RIE_TEST_YEAR_RESIDENTIAL_KWH, "#,##0",
-             "PRB-1-ELEC p.14, line 8, col k  ← CALIBRATION TARGET")
-    data_row("Rate case kWh per customer", RIE_TEST_YEAR_RESIDENTIAL_KWH / RIE_TEST_YEAR_CUSTOMER_COUNT,
-             "#,##0.00", "test_year_residential_kwh ÷ test_year_customer_count")
+    data_row(
+        "test_year_customer_count",
+        RIE_TEST_YEAR_CUSTOMER_COUNT,
+        "#,##0.00",
+        "PRB-1-ELEC p.14, line 9, col d  (= 5,032,174 bills ÷ 12 months)",
+    )
+    data_row(
+        "test_year_residential_kwh",
+        RIE_TEST_YEAR_RESIDENTIAL_KWH,
+        "#,##0",
+        "PRB-1-ELEC p.14, line 8, col k  ← CALIBRATION TARGET",
+    )
+    data_row(
+        "Rate case kWh per customer",
+        RIE_TEST_YEAR_RESIDENTIAL_KWH / RIE_TEST_YEAR_CUSTOMER_COUNT,
+        "#,##0.00",
+        "test_year_residential_kwh ÷ test_year_customer_count",
+    )
     row += 1
 
     section("Step 2: ResStock Input from _sb Release (MF-Adjusted)", "EEF2FF")
-    data_row("resstock_customer_count", RIE_RESSTOCK_CUSTOMER_COUNT, "#,##0.00",
-             "sum(weight) for utility=rie in res_2024_amy2018_2_sb")
-    data_row("resstock_total_residential_kwh", resstock_kwh_mf_adjusted, "#,##0.00",
-             "sum(annual_kwh × weight) from load_curve_monthly, utility=rie")
-    data_row("ResStock kWh per customer", resstock_kwh_mf_adjusted / RIE_RESSTOCK_CUSTOMER_COUNT,
-             "#,##0.00", "resstock_total_residential_kwh ÷ resstock_customer_count")
+    data_row(
+        "resstock_customer_count",
+        RIE_RESSTOCK_CUSTOMER_COUNT,
+        "#,##0.00",
+        "sum(weight) for utility=rie in res_2024_amy2018_2_sb",
+    )
+    data_row(
+        "resstock_total_residential_kwh",
+        resstock_kwh_mf_adjusted,
+        "#,##0.00",
+        "sum(annual_kwh * weight) from load_curve_monthly, utility=rie",
+    )
+    data_row(
+        "ResStock kWh per customer",
+        resstock_kwh_mf_adjusted / RIE_RESSTOCK_CUSTOMER_COUNT,
+        "#,##0.00",
+        "resstock_total_residential_kwh ÷ resstock_customer_count",
+    )
     row += 1
 
     section("Step 3: Customer-Count Rescaling (CAIRO return_buildingstock)", "FFFACC")
-    data_row("customer_scale_factor", RIE_CUSTOMER_SCALE_FACTOR, "0.0000000000",
-             "test_year_customer_count ÷ resstock_customer_count",
-             f"={RIE_TEST_YEAR_CUSTOMER_COUNT:.2f}/{RIE_RESSTOCK_CUSTOMER_COUNT:.2f}")
-    data_row("resstock_kwh_after_customer_scaling", resstock_kwh_customer_scaled, "#,##0.00",
-             "resstock_total_residential_kwh × customer_scale_factor",
-             f"={resstock_kwh_mf_adjusted:.2f}*{RIE_CUSTOMER_SCALE_FACTOR:.10f}")
-    data_row("kWh per customer (after rescaling)", resstock_kwh_customer_scaled / RIE_TEST_YEAR_CUSTOMER_COUNT,
-             "#,##0.00", "← still 7,031; customer rescaling does NOT fix intensity gap")
-    data_row("Intensity gap vs rate case", (resstock_kwh_customer_scaled / RIE_TEST_YEAR_CUSTOMER_COUNT
-                                             - RIE_TEST_YEAR_RESIDENTIAL_KWH / RIE_TEST_YEAR_CUSTOMER_COUNT),
-             "+#,##0.00; -#,##0.00", "kWh/customer above rate case target (needs correction)")
+    data_row(
+        "customer_scale_factor",
+        RIE_CUSTOMER_SCALE_FACTOR,
+        "0.0000000000",
+        "test_year_customer_count ÷ resstock_customer_count",
+        f"={RIE_TEST_YEAR_CUSTOMER_COUNT:.2f}/{RIE_RESSTOCK_CUSTOMER_COUNT:.2f}",
+    )
+    data_row(
+        "resstock_kwh_after_customer_scaling",
+        resstock_kwh_customer_scaled,
+        "#,##0.00",
+        "resstock_total_residential_kwh * customer_scale_factor",
+        f"={resstock_kwh_mf_adjusted:.2f}*{RIE_CUSTOMER_SCALE_FACTOR:.10f}",
+    )
+    data_row(
+        "kWh per customer (after rescaling)",
+        resstock_kwh_customer_scaled / RIE_TEST_YEAR_CUSTOMER_COUNT,
+        "#,##0.00",
+        "← still 7,031; customer rescaling does NOT fix intensity gap",
+    )
+    data_row(
+        "Intensity gap vs rate case",
+        (
+            resstock_kwh_customer_scaled / RIE_TEST_YEAR_CUSTOMER_COUNT
+            - RIE_TEST_YEAR_RESIDENTIAL_KWH / RIE_TEST_YEAR_CUSTOMER_COUNT
+        ),
+        "+#,##0.00; -#,##0.00",
+        "kWh/customer above rate case target (needs correction)",
+    )
     row += 1
 
     section("Step 4: Calculate resstock_kwh_scale_factor", "E2EFDA")
-    data_row("resstock_kwh_scale_factor", RIE_KWH_SCALE_FACTOR, "0.0000000000000000",
-             "test_year_residential_kwh ÷ resstock_kwh_after_customer_scaling",
-             f"={RIE_TEST_YEAR_RESIDENTIAL_KWH:.0f}/{resstock_kwh_customer_scaled:.2f}")
-    data_row("Percent adjustment", (RIE_KWH_SCALE_FACTOR - 1.0) * 100, '0.00"%"',
-             f"Every building's every hourly load is scaled by this factor")
+    data_row(
+        "resstock_kwh_scale_factor",
+        RIE_KWH_SCALE_FACTOR,
+        "0.0000000000000000",
+        "test_year_residential_kwh ÷ resstock_kwh_after_customer_scaling",
+        f"={RIE_TEST_YEAR_RESIDENTIAL_KWH:.0f}/{resstock_kwh_customer_scaled:.2f}",
+    )
+    data_row(
+        "Percent adjustment",
+        (RIE_KWH_SCALE_FACTOR - 1.0) * 100,
+        '0.00"%"',
+        "Every building's every hourly load is scaled by this factor",
+    )
     row += 1
 
     section("Step 5: Apply Scale Factor (run_scenario.py:645)", "E2EFDA")
-    data_row("Final ResStock kWh", resstock_kwh_final, "#,##0.00",
-             "resstock_kwh_after_customer_scaling × resstock_kwh_scale_factor",
-             f"={resstock_kwh_customer_scaled:.2f}*{RIE_KWH_SCALE_FACTOR:.16f}")
-    data_row("kWh per customer (final)", resstock_kwh_final / RIE_TEST_YEAR_CUSTOMER_COUNT,
-             "#,##0.00", "= rate case target per-customer kWh ✓")
+    data_row(
+        "Final ResStock kWh",
+        resstock_kwh_final,
+        "#,##0.00",
+        "resstock_kwh_after_customer_scaling * resstock_kwh_scale_factor",
+        f"={resstock_kwh_customer_scaled:.2f}*{RIE_KWH_SCALE_FACTOR:.16f}",
+    )
+    data_row(
+        "kWh per customer (final)",
+        resstock_kwh_final / RIE_TEST_YEAR_CUSTOMER_COUNT,
+        "#,##0.00",
+        "Rate case target per-customer kWh ✓",
+    )
     row += 1
 
     section("Verification", "E2EFDA")
@@ -754,20 +829,55 @@ def _write_comparison(ws, metrics: dict, title: str, subtitle: str) -> None:
     row += 1
 
     rows = [
-        ("Customer count (test year)", metrics["customers"], "customers",
-         "test_year_customer_count — rate case filing", "#,##0.00"),
-        ("ResStock total kWh", metrics["resstock_kwh"], "kWh",
-         "sum(annual_kwh × weight) — see pipeline sheet for derivation", "#,##0"),
-        ("Rate case target kWh", metrics["target_kwh"], "kWh",
-         "test_year_residential_kwh — rate case filing (calibration target)", "#,##0"),
-        ("ResStock kWh per customer", metrics["resstock_kwh_per_customer"], "kWh/customer",
-         "ResStock total kWh ÷ customer count", "#,##0.00"),
-        ("Rate case kWh per customer", metrics["target_kwh_per_customer"], "kWh/customer",
-         "Rate case target kWh ÷ customer count", "#,##0.00"),
-        ("Difference (kWh)", metrics["diff_kwh"], "kWh",
-         "ResStock − Rate Case target; positive = ResStock over-estimates", "#,##0"),
-        ("% Difference from rate case target", metrics["pct_diff"], "%",
-         "After calibration this should be ≈ 0%", "0.00"),
+        (
+            "Customer count (test year)",
+            metrics["customers"],
+            "customers",
+            "test_year_customer_count — rate case filing",
+            "#,##0.00",
+        ),
+        (
+            "ResStock total kWh",
+            metrics["resstock_kwh"],
+            "kWh",
+            "sum(annual_kwh * weight) — see pipeline sheet for derivation",
+            "#,##0",
+        ),
+        (
+            "Rate case target kWh",
+            metrics["target_kwh"],
+            "kWh",
+            "test_year_residential_kwh — rate case filing (calibration target)",
+            "#,##0",
+        ),
+        (
+            "ResStock kWh per customer",
+            metrics["resstock_kwh_per_customer"],
+            "kWh/customer",
+            "ResStock total kWh ÷ customer count",
+            "#,##0.00",
+        ),
+        (
+            "Rate case kWh per customer",
+            metrics["target_kwh_per_customer"],
+            "kWh/customer",
+            "Rate case target kWh ÷ customer count",
+            "#,##0.00",
+        ),
+        (
+            "Difference (kWh)",
+            metrics["diff_kwh"],
+            "kWh",
+            "ResStock - Rate Case target; positive = ResStock over-estimates",
+            "#,##0",
+        ),
+        (
+            "% Difference from rate case target",
+            metrics["pct_diff"],
+            "%",
+            "After calibration this should be ≈ 0%",
+            "0.00",
+        ),
     ]
 
     for label, value, unit, note, fmt in rows:
@@ -816,20 +926,43 @@ def _write_summary(
     row += 1
 
     summary_rows = [
-        ("Customers (test year)", before["customers"], after["customers"], "#,##0.00",
-         "Unchanged — set by customer_count_override in RR YAML"),
-        ("ResStock total kWh", before["resstock_kwh"], after["resstock_kwh"], "#,##0",
-         f"Change = −{before['resstock_kwh'] - after['resstock_kwh']:,.0f} kWh ({(RIE_KWH_SCALE_FACTOR - 1)*100:.2f}%)"),
-        ("Rate case target kWh", before["target_kwh"], after["target_kwh"], "#,##0",
-         "Unchanged — fixed reference from rate case filing"),
-        ("kWh per customer (ResStock)", before["resstock_kwh_per_customer"], after["resstock_kwh_per_customer"],
-         "#,##0.00", "Drops from 7,031 to 6,727 after scale factor"),
-        ("kWh per customer (rate case)", before["target_kwh_per_customer"], after["target_kwh_per_customer"],
-         "#,##0.00", "Unchanged — fixed target"),
-        ("Difference from target (kWh)", before["diff_kwh"], after["diff_kwh"], "#,##0",
-         "After calibration ≈ 0"),
-        ("% Difference from target", before["pct_diff"], after["pct_diff"], "0.00",
-         "After calibration ≈ 0%"),
+        (
+            "Customers (test year)",
+            before["customers"],
+            after["customers"],
+            "#,##0.00",
+            "Unchanged — set by customer_count_override in RR YAML",
+        ),
+        (
+            "ResStock total kWh",
+            before["resstock_kwh"],
+            after["resstock_kwh"],
+            "#,##0",
+            f"Change = -{before['resstock_kwh'] - after['resstock_kwh']:,.0f} kWh ({(RIE_KWH_SCALE_FACTOR - 1) * 100:.2f}%)",
+        ),
+        (
+            "Rate case target kWh",
+            before["target_kwh"],
+            after["target_kwh"],
+            "#,##0",
+            "Unchanged — fixed reference from rate case filing",
+        ),
+        (
+            "kWh per customer (ResStock)",
+            before["resstock_kwh_per_customer"],
+            after["resstock_kwh_per_customer"],
+            "#,##0.00",
+            "Drops from 7,031 to 6,727 after scale factor",
+        ),
+        (
+            "kWh per customer (rate case)",
+            before["target_kwh_per_customer"],
+            after["target_kwh_per_customer"],
+            "#,##0.00",
+            "Unchanged — fixed target",
+        ),
+        ("Difference from target (kWh)", before["diff_kwh"], after["diff_kwh"], "#,##0", "After calibration ≈ 0"),
+        ("% Difference from target", before["pct_diff"], after["pct_diff"], "0.00", "After calibration ≈ 0%"),
     ]
 
     for label, bval, aval, fmt, note in summary_rows:
@@ -851,7 +984,9 @@ def _write_summary(
     row += 2
 
     if eia_kwh is not None:
-        ws.cell(row=row, column=1, value="EIA-861 Context (external benchmark — NOT the calibration target)").font = Font(bold=True, size=11)
+        ws.cell(
+            row=row, column=1, value="EIA-861 Context (external benchmark — NOT the calibration target)"
+        ).font = Font(bold=True, size=11)
         ws.merge_cells(f"A{row}:E{row}")
         row += 1
         ws.cell(row=row, column=1, value="Metric")
@@ -1103,6 +1238,7 @@ def compute_stage_metrics(resstock_kwh: float) -> dict:
 # Workbook builder
 # ---------------------------------------------------------------------------
 
+
 def build_workbook(output_path: Path) -> Path:
     data_source = "local EBS" if BASE_RESSTOCK.startswith("/ebs") else "S3"
     print(f"Building RIE kWh scale factor workbook (data from: {data_source})...", flush=True)
@@ -1110,13 +1246,9 @@ def build_workbook(output_path: Path) -> Path:
     print(f"  Rate case target kWh:       {RIE_TEST_YEAR_RESIDENTIAL_KWH:,.0f}", flush=True)
     print(f"  Rate case customer count:   {RIE_TEST_YEAR_CUSTOMER_COUNT:,.2f}", flush=True)
 
-    path_monthly_dir = (
-        f"{BASE_RESSTOCK}/{RESSTOCK_RELEASE_SB}/load_curve_monthly"
-        f"/state={STATE}/upgrade={UPGRADE}"
-    )
+    path_monthly_dir = f"{BASE_RESSTOCK}/{RESSTOCK_RELEASE_SB}/load_curve_monthly/state={STATE}/upgrade={UPGRADE}"
     path_utility_assignment = (
-        f"{BASE_RESSTOCK}/{RESSTOCK_RELEASE_SB}/metadata_utility"
-        f"/state={STATE}/utility_assignment.parquet"
+        f"{BASE_RESSTOCK}/{RESSTOCK_RELEASE_SB}/metadata_utility/state={STATE}/utility_assignment.parquet"
     )
     path_eia861 = f"{BASE_EIA861}/year={EIA_YEAR}/state={STATE}/data.parquet"
     storage_opts = _storage_options()
@@ -1138,15 +1270,29 @@ def build_workbook(output_path: Path) -> Path:
     resstock_kwh_customer_scaled = resstock_kwh_mf_adjusted * RIE_CUSTOMER_SCALE_FACTOR
     resstock_kwh_final = resstock_kwh_customer_scaled * RIE_KWH_SCALE_FACTOR
 
-    print(f"\n  Stage 1 — _sb input:              {resstock_kwh_mf_adjusted:,.0f} kWh  "
-          f"({resstock_kwh_mf_adjusted / RIE_RESSTOCK_CUSTOMER_COUNT:,.0f} kWh/customer)", flush=True)
-    print(f"  Stage 2 — after customer scaling: {resstock_kwh_customer_scaled:,.0f} kWh  "
-          f"({resstock_kwh_customer_scaled / RIE_TEST_YEAR_CUSTOMER_COUNT:,.0f} kWh/customer)", flush=True)
-    print(f"  Stage 3 — after kWh scale factor: {resstock_kwh_final:,.0f} kWh  "
-          f"({resstock_kwh_final / RIE_TEST_YEAR_CUSTOMER_COUNT:,.0f} kWh/customer)", flush=True)
-    print(f"  Rate case target:                 {RIE_TEST_YEAR_RESIDENTIAL_KWH:,.0f} kWh  "
-          f"({RIE_TEST_YEAR_RESIDENTIAL_KWH / RIE_TEST_YEAR_CUSTOMER_COUNT:,.0f} kWh/customer)", flush=True)
-    print(f"  Difference (stage 3 − target):    {resstock_kwh_final - RIE_TEST_YEAR_RESIDENTIAL_KWH:+.2f} kWh", flush=True)
+    print(
+        f"\n  Stage 1 — _sb input:              {resstock_kwh_mf_adjusted:,.0f} kWh  "
+        f"({resstock_kwh_mf_adjusted / RIE_RESSTOCK_CUSTOMER_COUNT:,.0f} kWh/customer)",
+        flush=True,
+    )
+    print(
+        f"  Stage 2 — after customer scaling: {resstock_kwh_customer_scaled:,.0f} kWh  "
+        f"({resstock_kwh_customer_scaled / RIE_TEST_YEAR_CUSTOMER_COUNT:,.0f} kWh/customer)",
+        flush=True,
+    )
+    print(
+        f"  Stage 3 — after kWh scale factor: {resstock_kwh_final:,.0f} kWh  "
+        f"({resstock_kwh_final / RIE_TEST_YEAR_CUSTOMER_COUNT:,.0f} kWh/customer)",
+        flush=True,
+    )
+    print(
+        f"  Rate case target:                 {RIE_TEST_YEAR_RESIDENTIAL_KWH:,.0f} kWh  "
+        f"({RIE_TEST_YEAR_RESIDENTIAL_KWH / RIE_TEST_YEAR_CUSTOMER_COUNT:,.0f} kWh/customer)",
+        flush=True,
+    )
+    print(
+        f"  Difference (stage 3 - target):    {resstock_kwh_final - RIE_TEST_YEAR_RESIDENTIAL_KWH:+.2f} kWh", flush=True
+    )
 
     before = compute_stage_metrics(resstock_kwh_customer_scaled)
     after = compute_stage_metrics(resstock_kwh_final)
@@ -1163,7 +1309,8 @@ def build_workbook(output_path: Path) -> Path:
 
     ws_before = wb.create_sheet("before_kwh_calibration")
     _write_comparison(
-        ws_before, before,
+        ws_before,
+        before,
         "Before kWh Calibration — Stage 2: After Customer Rescaling",
         "ResStock after customer-count rescaling (stage 2) vs rate case target. "
         "Per-customer kWh still 7,031 — intensity gap not yet corrected.",
@@ -1171,7 +1318,8 @@ def build_workbook(output_path: Path) -> Path:
 
     ws_after = wb.create_sheet("after_kwh_calibration")
     _write_comparison(
-        ws_after, after,
+        ws_after,
+        after,
         "After kWh Calibration — Stage 3: After kWh Scale Factor Applied",
         "ResStock after kWh scale factor applied (stage 3) vs rate case target. "
         "% difference from target ≈ 0 — calibration complete.",
@@ -1193,6 +1341,7 @@ def build_workbook(output_path: Path) -> Path:
 # Main / upload
 # ---------------------------------------------------------------------------
 
+
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()
 
@@ -1201,8 +1350,9 @@ def main(argv: list[str] | None = None) -> int:
     output_group.add_argument("--output", type=Path, help="Local output path (.xlsx)")
     output_group.add_argument("--sheet-id", help="Google Sheet ID to update")
     output_group.add_argument("--folder-id", help="Google Drive folder ID for new sheet")
-    parser.add_argument("--filename", default="RIE kWh Scale Factor Analysis",
-                        help="Filename for new Google Sheet (with --folder-id)")
+    parser.add_argument(
+        "--filename", default="RIE kWh Scale Factor Analysis", help="Filename for new Google Sheet (with --folder-id)"
+    )
     args = parser.parse_args(argv)
 
     output_path = args.output if args.output else Path("cache/rie_kwh_scale_factor_workbook.xlsx")
@@ -1223,8 +1373,7 @@ def main(argv: list[str] | None = None) -> int:
                     try:
                         all_files = gc.list_spreadsheet_files(folder_id=args.folder_id)
                         files_to_delete = [
-                            f for f in all_files
-                            if f.get("name") == args.filename and not f.get("trashed", False)
+                            f for f in all_files if f.get("name") == args.filename and not f.get("trashed", False)
                         ]
                         if files_to_delete:
                             print(f"Found {len(files_to_delete)} file(s) to delete:", flush=True)
@@ -1277,6 +1426,7 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as e:
         print(f"Error building workbook: {e}", file=sys.stderr)
         import traceback
+
         traceback.print_exc()
         return 1
 

@@ -3243,6 +3243,86 @@ For our distribution marginal cost input, we use the **Sub-TX + Distribution** i
 Sub-transmission lines and stations (69–115kV) deliver power to the distribution substations that serve customers —
 their costs are local delivery costs, not NYISO bulk system costs, and load growth drives investment at both levels.
 
+---
+
+## How we derived the feasible fair-default seasonal rates {#sec-methods-fair-default-feasible}
+
+The fair-default rate design (@sec-seasonal-rate) replaces the flat default delivery rate with a **monthly fixed charge** $F$ plus **two seasonal volumetric rates** — a winter rate $r_w$ and a summer rate $r_s$ — that apply to every residential customer, HP and non-HP alike. The rate has to do two things at once: collect the same total delivery revenue the utility collects today, _and_ leave HP customers paying their fair share. Those two requirements are the constraints below. They pin down a one-parameter family of solutions: for every choice of $F$, there is exactly one $(r_w, r_s)$ pair that satisfies both. The feasible-line plots trace that family.
+
+### The two constraints
+
+The inputs to the calculation are the per-group totals already produced by the BAT run (see @sec-methods-bat) and the monthly ResStock loads:
+
+- $N_{\text{class}}$, $N_{\text{HP}}$ — weighted customer counts for the full residential class and the HP subclass.
+- $B_{\text{class}}$, $B_{\text{HP}}$ — current annual delivery bills for each group under today's default rate.
+- $Q^{w}_{\text{class}}$, $Q^{s}_{\text{class}}$, $Q^{w}_{\text{HP}}$, $Q^{s}_{\text{HP}}$ — total winter and summer kWh for each group, summed from `load_curve_monthly`.
+- $\Delta_{\text{HP}}$ — the HP subclass cross-subsidy from the BAT (per-customer × $N_{\text{HP}}$).
+
+**C1 — class revenue requirement.** Total delivery revenue collected from the residential class under the new rate equals the revenue collected today (this is the {{< glossary "revenue requirement" >}} the utility has to recover):
+
+$$12 \cdot F \cdot N_{\text{class}} \;+\; r_w \cdot Q^{w}_{\text{class}} \;+\; r_s \cdot Q^{s}_{\text{class}} \;=\; B_{\text{class}}$$
+
+**C2 — HP subclass fair revenue.** Total delivery revenue collected from the HP subclass equals their **fair bill** — what they would pay if their cross-subsidy were eliminated. The fair bill is the current bill minus the cross-subsidy:
+
+$$12 \cdot F \cdot N_{\text{HP}} \;+\; r_w \cdot Q^{w}_{\text{HP}} \;+\; r_s \cdot Q^{s}_{\text{HP}} \;=\; B_{\text{HP}} - \Delta_{\text{HP}}$$
+
+By construction, if C2 holds, the post-rate HP cross-subsidy is zero. C1 ensures the utility stays whole.
+
+### Solving for the seasonal rates at each fixed charge
+
+C1 and C2 are two linear equations in three unknowns $(F, r_w, r_s)$. Treat $F$ as the policy lever and the system becomes 2-by-2 in $(r_w, r_s)$. Subtracting fixed-charge revenue from each side moves the system into the volumetric variables, and solving by elimination gives a closed-form solution that is **affine in $F$**:[^script-fair-default-feasible]
+
+$$r_w(F) = a_w + b_w \cdot F, \qquad r_s(F) = a_s + b_s \cdot F$$
+
+The intercepts $a_w, a_s$ and slopes $b_w, b_s$ are pinned entirely by the eight inputs above. Each utility has its own coefficients because each utility has its own customer counts, bills, and seasonal kWh. The two seasonal lines for each utility — $r_w(F)$ in winter and $r_s(F)$ in summer — are what the feasible-line plots show (@fig-feasible-lines-delivery).
+
+[^script-fair-default-feasible]: Closed-form derivation and feasibility computation in [`utils/mid/compute_fair_default_inputs.py`](https://github.com/switchbox-data/rate-design-platform/blob/1a57bfc481e915fdb8a615c49bcea0001861b364/utils/mid/compute_fair_default_inputs.py) (`fixed_charge_feasibility` and `_seasonal_rates_at_fixed_charge`).
+
+:::{.column-page-inset-right}
+{{< embed notebooks/fair_default_feasible_line.qmd#fig-feasible-lines-delivery >}}
+:::
+
+### What the feasibility range means
+
+A solution to C1 and C2 exists for any $F$, but a _usable_ rate also requires both volumetric rates to be non-negative. Each constraint $r_w(F) \geq 0$ and $r_s(F) \geq 0$ is linear in $F$, so each carves out a half-line; their intersection is the **feasible fixed-charge range** $[F_{\min}, F_{\max}]$ — the green band in the plots. Inside this band, the utility is whole, the HP cross-subsidy is zero, and both rates are non-negative. Outside it, one rate would have to flip negative — winter at low $F$, summer at high $F$.
+
+The lower bound $F_{\min}$ — the smallest fixed charge that makes the rate feasible — is the practically relevant one. It is what we call the **minimum feasible fixed charge** for that utility (@fig-feasible-fixed-charge-ranges-delivery).
+
+:::{.column-page-inset-right}
+{{< embed notebooks/fair_default_feasible_line.qmd#fig-feasible-fixed-charge-ranges-delivery >}}
+:::
+
+### Why the minimum feasible fixed charge has to be so high
+
+HP customers consume disproportionately in winter, so eliminating their cross-subsidy pushes the winter rate down and the summer rate up. The lower we hold $F$, the more of the cross-subsidy correction has to come through the volumetric rates alone — and at some point the winter rate would have to go negative. Raising $F$ shifts revenue collection into the fixed channel, which falls equally on every customer regardless of when they consume. That widens the room for a non-negative winter rate. The minimum feasible $F$ is just the breakeven point where the winter rate is exactly zero — any lower and you would be paying customers to use electricity in winter.[^min-feasible-floor]
+
+[^min-feasible-floor]: For most NY utilities, $F_{\min}$ is several times the current fixed charge — often `$30`–`$60` per month, against today's `$15`–`$25`. This is why the fair-default rate design pairs a sharply seasonal volumetric rate with a substantially higher fixed charge.
+
+### Loosening C2: the revenue-sufficient sweep
+
+The feasible line above keeps both constraints active and asks: _what rates eliminate the cross-subsidy?_ If we instead drop C2 and keep only C1, we get a much larger family of rates — every $(F, r_w, r_s)$ that simply keeps the utility whole. This is the **revenue-sufficient sweep**.
+
+With only C1, fix any $F$ and any $r_w$, and the summer rate is uniquely pinned:
+
+$$r_s(r_w, F) \;=\; \frac{B_{\text{class}} - 12 \cdot F \cdot N_{\text{class}} - r_w \cdot Q^{w}_{\text{class}}}{Q^{s}_{\text{class}}}$$
+
+When $r_w = r_s$, this reduces to the **flat rate** at fixed charge $F$ — the rate the class would pay if there were no seasonal differentiation. Sweeping $r_w$ down from the flat rate, $r_s$ rises monotonically. Because C2 is no longer enforced, the HP subclass generally still cross-subsidizes — but by how much?
+
+We measure that residual directly. At each $(F, r_w)$ pair, plug the C1-implied $r_s$ back into the HP bill formula and subtract the HP fair bill:
+
+$$\Delta_{\text{HP}}^{\text{post}}(F, r_w) \;=\; \big[ 12 F N_{\text{HP}} + r_w Q^{w}_{\text{HP}} + r_s(r_w, F) \cdot Q^{s}_{\text{HP}} \big] - \big( B_{\text{HP}} - \Delta_{\text{HP}} \big)$$
+
+Positive values mean HP customers are still overpaying; zero means we have landed on the feasible line. We sweep this for four representative fixed charges — the current charge, the minimum feasible charge, and two levels in between — and plot both the rate pairs (@fig-rev-sufficient-rates) and the residual HP cross-subsidy per customer (@fig-rev-sufficient-cross-subsidy).
+
+:::{.column-page-inset-right}
+{{< embed notebooks/fair_default_feasible_line.qmd#fig-rev-sufficient-rates >}}
+:::
+
+:::{.column-page-inset-right}
+{{< embed notebooks/fair_default_feasible_line.qmd#fig-rev-sufficient-cross-subsidy >}}
+:::
+
+The takeaway: at the current fixed charge, no choice of seasonal rates eliminates the cross-subsidy — at most we can chip away at it. The cross-subsidy only goes to zero when $F$ reaches the minimum feasible charge _and_ the seasonal rates land exactly on the feasible line. That is the upper-left corner of the green band in the feasible-line plots.
 
 # References
 

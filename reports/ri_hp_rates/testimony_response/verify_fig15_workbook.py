@@ -4,7 +4,7 @@ Two checks:
 
 1. **Structural** — open the xlsx and confirm the expected sheets, named ranges,
    and formula strings exist. This guards against accidental schema drift if
-   ``build_fig15_workbook.py`` is refactored.
+   ``build_RIE_1_11_DIV_7_workbook.py`` is refactored.
 2. **Numerical** — re-run the same polars aggregation that
    ``cost_of_service_by_subclass.qmd`` uses for ``tbl-cos-by-subclass-avg``,
    then print the expected per-subclass averages alongside what the workbook's
@@ -30,7 +30,7 @@ from openpyxl import load_workbook
 REPORT_DIR = Path("/ebs/home/alex_switch_box/reports2/reports/ri_hp_rates")
 sys.path.insert(0, str(REPORT_DIR))
 
-from testimony_response.build_fig15_workbook import (  # noqa: E402
+from testimony_response.build_RIE_1_11_DIV_7_workbook import (  # noqa: E402
     HT_V2_LABELS,
     HT_V2_ORDER,
     load_inputs,
@@ -67,6 +67,7 @@ def _structural_check(xlsx_path: Path) -> None:
         "ws_BAT_epmc",
         "ws_cos",
         "ws_annual_kwh",
+        "ws_bill_check",
         "ws_w_revenue",
         "ws_w_cos",
         "ws_w_xs",
@@ -79,12 +80,14 @@ def _structural_check(xlsx_path: Path) -> None:
 
     bat_ws = wb["bat_per_building"]
     assert bat_ws["H2"].value == "=E2+F2", bat_ws["H2"].value
-    expected_kwh = "=(D2-inputs_revenue_requirement!$B$7)/inputs_tariffs!$B$2"
-    assert bat_ws["I2"].value == expected_kwh, bat_ws["I2"].value
-    assert bat_ws["J2"].value == "=B2*D2"
-    assert bat_ws["K2"].value == "=B2*H2"
-    assert bat_ws["L2"].value == "=B2*G2"
-    assert bat_ws["M2"].value == "=B2*I2"
+    assert isinstance(bat_ws["I2"].value, (int, float)), f"expected numeric annual_kwh, got {bat_ws['I2'].value!r}"
+    assert "I2" in bat_ws["J2"].value and "inputs_tariffs" in bat_ws["J2"].value, (
+        f"expected annual_bill_delivery_check formula, got {bat_ws['J2'].value!r}"
+    )
+    assert bat_ws["K2"].value == "=B2*D2"
+    assert bat_ws["L2"].value == "=B2*H2"
+    assert bat_ws["M2"].value == "=B2*G2"
+    assert bat_ws["N2"].value == "=B2*I2"
     n_rows = bat_ws.max_row - 1
     print(f"  bat_per_building data rows: {n_rows:,}")
 
@@ -173,7 +176,7 @@ def _numerical_check() -> None:
 def main() -> int:
     xlsx_path = REPORT_DIR / "cache" / "fig15_cos_by_subclass.xlsx"
     if not xlsx_path.exists():
-        print(f"ERROR: {xlsx_path} not found. Run build_fig15_workbook.py first.")
+        print(f"ERROR: {xlsx_path} not found. Run build_RIE_1_11_DIV_7_workbook.py first.")
         return 1
     _structural_check(xlsx_path)
     _numerical_check()

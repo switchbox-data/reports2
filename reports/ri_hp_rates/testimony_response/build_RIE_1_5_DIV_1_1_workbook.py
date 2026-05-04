@@ -14,8 +14,8 @@ mirrored into a target Google Sheet, preserving formulas via
 
 Run from the report directory::
 
-    uv run python -m testimony_response.build_fig2_workbook --output cache/fig2_subclass_delivery.xlsx
-    uv run python -m testimony_response.build_fig2_workbook --upload
+    uv run python -m testimony_response.build_RIE_1_5_DIV_1_1_workbook --output cache/fig2_subclass_delivery.xlsx
+    uv run python -m testimony_response.build_RIE_1_5_DIV_1_1_workbook --upload
 
 See ``cost_of_service_by_subclass.qmd`` (cell ``tbl-testimony-subclass-delivery``)
 for the published-side aggregation logic that this workbook recreates with
@@ -94,7 +94,7 @@ def _reports2_permalink(rel_path: str, *, line_range: tuple[int, int] | None = N
     return url
 
 
-# Default upload target: Figure 2 discovery response Sheet.
+# Default upload target: RIE 1-5 / DIV 1-1 discovery response Sheet (Figure 2).
 DEFAULT_SPREADSHEET_ID = "10pe7gh9FWWkGKrru7hr6BWXjS3DGzgGe_gKBX68kZ6A"
 
 HT_V2_ORDER = (
@@ -227,12 +227,17 @@ def _write_readme(wb: Workbook, inputs: dict) -> None:
         ],
         [
             "inputs_tariffs",
-            "Calibrated default volumetric delivery $/kWh. Used to derive per-building annual kWh from the delivery bill.",
+            "Calibrated default volumetric delivery $/kWh.",
             "",
         ],
         [
             "bat_per_building",
-            "One row per RIE residential building. Columns from CAIRO BAT parquet, plus formula columns: cost_of_service_delivery, annual_kwh, weighted aggregates.",
+            (
+                "One row per RIE residential building. Columns from CAIRO BAT parquet, "
+                "annual_kwh back-derived from delivery bill (= (annual_bill_delivery - annual_fixed_per_customer) / vol_rate), "
+                "plus formula columns: cost_of_service_delivery, annual_bill_delivery_check (= annual_kwh * vol_rate + annual_fixed_per_customer), "
+                "and weighted aggregates. weight is uniform: test_year_customer_count / n_buildings (each building represents the same number of customers)."
+            ),
             "",
         ],
         [
@@ -379,7 +384,7 @@ def _write_inputs_revenue_requirement(wb: Workbook, inputs: dict) -> None:
             "annual_fixed_per_customer",
             f"=({REF_TOTAL_RR} - {REF_DEFAULT_VOL} * {REF_TY_KWH}) / {REF_N_CUSTOMERS}",
             "Derived in this workbook",
-            "Used to back out annual_kwh per building from delivery bill. Mirrors cost_of_service_by_subclass.qmd line ~159.",
+            "Annual non-volumetric delivery charges per customer (customer charge + fixed top-ups). Validated: annual_kwh * vol_rate + this value ≈ annual_bill_delivery.",
         ],
         [
             "DISPLAY_CUSTOMER_TOTAL",
@@ -443,6 +448,7 @@ def _write_bat_per_building(wb: Workbook, bat: pl.DataFrame) -> int:
         "BAT_epmc_delivery",
         "cost_of_service_delivery",
         "annual_kwh",
+        "annual_bill_delivery_check",
         "w_revenue",
         "w_cos",
         "w_xs",
@@ -462,6 +468,7 @@ def _write_bat_per_building(wb: Workbook, bat: pl.DataFrame) -> int:
             "economic_burden_delivery",
             "residual_share_epmc_delivery",
             "BAT_epmc_delivery",
+            "annual_kwh",
         ).iter_rows()
     )
     for i, row in enumerate(rows, start=2):
@@ -473,15 +480,12 @@ def _write_bat_per_building(wb: Workbook, bat: pl.DataFrame) -> int:
         ws.cell(row=i, column=6, value=float(row[5]))
         ws.cell(row=i, column=7, value=float(row[6]))
         ws.cell(row=i, column=8, value=f"=E{i}+F{i}")
-        ws.cell(
-            row=i,
-            column=9,
-            value=f"=(D{i}-{REF_ANNUAL_FIXED_PER_CUSTOMER})/{REF_DEFAULT_VOL}",
-        )
-        ws.cell(row=i, column=10, value=f"=B{i}*D{i}")
-        ws.cell(row=i, column=11, value=f"=B{i}*H{i}")
-        ws.cell(row=i, column=12, value=f"=B{i}*G{i}")
-        ws.cell(row=i, column=13, value=f"=B{i}*I{i}")
+        ws.cell(row=i, column=9, value=float(row[7]))
+        ws.cell(row=i, column=10, value=f"=I{i}*{REF_DEFAULT_VOL}+{REF_ANNUAL_FIXED_PER_CUSTOMER}")
+        ws.cell(row=i, column=11, value=f"=B{i}*D{i}")
+        ws.cell(row=i, column=12, value=f"=B{i}*H{i}")
+        ws.cell(row=i, column=13, value=f"=B{i}*G{i}")
+        ws.cell(row=i, column=14, value=f"=B{i}*I{i}")
 
     last_row = 1 + n
     widths = {
@@ -494,10 +498,11 @@ def _write_bat_per_building(wb: Workbook, bat: pl.DataFrame) -> int:
         "G": 18,
         "H": 22,
         "I": 14,
-        "J": 16,
+        "J": 24,
         "K": 16,
-        "L": 14,
-        "M": 16,
+        "L": 16,
+        "M": 14,
+        "N": 16,
     }
     _autosize(ws, widths)
 
@@ -508,10 +513,11 @@ def _write_bat_per_building(wb: Workbook, bat: pl.DataFrame) -> int:
         "G": "ws_BAT_epmc",
         "H": "ws_cos",
         "I": "ws_annual_kwh",
-        "J": "ws_w_revenue",
-        "K": "ws_w_cos",
-        "L": "ws_w_xs",
-        "M": "ws_w_kwh",
+        "J": "ws_bill_check",
+        "K": "ws_w_revenue",
+        "L": "ws_w_cos",
+        "M": "ws_w_xs",
+        "N": "ws_w_kwh",
     }
     for col, name in col_to_name.items():
         wb.defined_names[name] = DefinedName(
@@ -549,10 +555,10 @@ def _write_subclass_aggregates(wb: Workbook, last_bat_row: int) -> None:
     last = last_bat_row
     rng_weight = f"bat_per_building!$B$2:$B${last}"
     rng_heating = f"bat_per_building!$C$2:$C${last}"
-    rng_w_revenue = f"bat_per_building!$J$2:$J${last}"
-    rng_w_cos = f"bat_per_building!$K$2:$K${last}"
-    rng_w_xs = f"bat_per_building!$L$2:$L${last}"
-    rng_w_kwh = f"bat_per_building!$M$2:$M${last}"
+    rng_w_revenue = f"bat_per_building!$K$2:$K${last}"
+    rng_w_cos = f"bat_per_building!$L$2:$L${last}"
+    rng_w_xs = f"bat_per_building!$M$2:$M${last}"
+    rng_w_kwh = f"bat_per_building!$N$2:$N${last}"
     sub_last = 1 + n_sub
     total_row = 2 + n_sub
 
@@ -815,6 +821,20 @@ def build_workbook(output_path: Path) -> Path:
     print(f"  default_vol_usd_per_kwh = {inputs['default_vol_usd_per_kwh']:.6f}", flush=True)
     print(f"  annual_fixed_per_customer = ${inputs['annual_fixed_per_customer']:,.2f}", flush=True)
 
+    bat = bat.with_columns(
+        (
+            (pl.col("annual_bill_delivery") - inputs["annual_fixed_per_customer"]) / inputs["default_vol_usd_per_kwh"]
+        ).alias("annual_kwh")
+    )
+
+    _weighted_kwh = float((bat["weight"] * bat["annual_kwh"]).sum())
+    _kwh_err = abs(_weighted_kwh - inputs["test_year_residential_kwh"])
+    assert _kwh_err < 1.0, (
+        f"sum(weight * annual_kwh) = {_weighted_kwh:,.0f} vs test_year_residential_kwh "
+        f"= {inputs['test_year_residential_kwh']:,.0f}; error = {_kwh_err:,.2f}"
+    )
+    print(f"  annual_kwh derived from bills (aggregate kWh error = {_kwh_err:.4f})", flush=True)
+
     wb = Workbook()
     default = wb.active
     if default is not None:
@@ -868,12 +888,13 @@ _TAB_FORMATTING: dict[str, dict] = {
             "G": '"$"#,##0.00',
             "H": '"$"#,##0.00',
             "I": "#,##0.00",
-            "J": "#,##0.00",
+            "J": '"$"#,##0.00',
             "K": "#,##0.00",
             "L": "#,##0.00",
             "M": "#,##0.00",
+            "N": "#,##0.00",
         },
-        "auto_resize_columns": ["A:M"],
+        "auto_resize_columns": ["A:N"],
         "freeze_rows": 1,
         "bold_header": True,
     },

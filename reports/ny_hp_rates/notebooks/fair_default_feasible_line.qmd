@@ -45,11 +45,47 @@ from plotnine import (
     ggplot,
     labs,
     scale_color_manual,
+    scale_fill_manual,
     scale_linetype_manual,
     scale_x_continuous,
+    scale_x_reverse,
     scale_y_continuous,
     theme,
 )
+
+
+def _integer_cent_breaks(limits: tuple[float, float]) -> list[int]:
+    """Minor breaks: every 1 cent, integer values, within the data limits."""
+    lo, hi = float(min(limits)), float(max(limits))
+    lo_int = int(math.floor(lo))
+    hi_int = int(math.ceil(hi))
+    return list(range(lo_int, hi_int + 1))
+
+
+def _major_5c_breaks(limits: tuple[float, float]) -> list[int]:
+    """Major breaks every 5 cents, snapped to multiples of 5, within the data limits.
+
+    Used for both ¢/kWh axes (volumetric rates) so labels don't overlap on
+    facets whose data range spans 10+ cents.
+    """
+    lo, hi = float(min(limits)), float(max(limits))
+    lo_int = int(math.floor(lo / 5.0)) * 5
+    hi_int = int(math.ceil(hi / 5.0)) * 5
+    return list(range(lo_int, hi_int + 1, 5))
+
+
+def _cent_label(breaks: list[float]) -> list[str]:
+    """Compact ¢/kWh tick label for axes with integer breaks ('5¢/kWh')."""
+    return [f"{b:.0f}¢/kWh" for b in breaks]
+
+
+def _pct_25_breaks(limits: tuple[float, float]) -> list[int]:
+    """Major breaks every 25 percentage points within the data limits."""
+    lo, hi = float(min(limits)), float(max(limits))
+    lo_int = int(math.floor(lo / 25.0)) * 25
+    hi_int = int(math.ceil(hi / 25.0)) * 25
+    return list(range(lo_int, hi_int + 1, 25))
+
 
 CACHE_DIR = Path("../cache")
 CACHE_DIR.mkdir(exist_ok=True)
@@ -876,7 +912,7 @@ def plot_revenue_sufficient_rates(
             inherit_aes=False,
             color=SB_COLORS["sky"],
             size=8,
-            ha="right",
+            ha="left",
             va="bottom",
             nudge_x=-0.25,
             nudge_y=0.35,
@@ -894,18 +930,22 @@ def plot_revenue_sufficient_rates(
                 "Summer": "dashed",
             }
         )
-        + scale_x_continuous(
-            expand=(0, 0, 0.08, 0),
-            labels=lambda breaks: [f"{b:,.1f}¢/kWh" for b in breaks],
+        + scale_x_reverse(
+            breaks=_major_5c_breaks,
+            minor_breaks=_integer_cent_breaks,
+            expand=(0.04, 0, 0.08, 0),
+            labels=_cent_label,
         )
         + scale_y_continuous(
+            breaks=_major_5c_breaks,
+            minor_breaks=_integer_cent_breaks,
             expand=(0, 0, 0.12, 0),
-            labels=lambda breaks: [f"{b:,.1f}¢/kWh" for b in breaks],
+            labels=_cent_label,
         )
         + labs(
             title=title,
             subtitle="At the current fixed charge, winter rates are swept down from the current flat rate; summer rates rise to maintain revenue sufficiency. Cost-reflective MC seasonal marker is an outstanding follow-up.",
-            x="Winter volumetric rate",
+            x="Winter volumetric rate (lower → right)",
             y="Volumetric rate",
             color="",
             linetype="",
@@ -921,8 +961,51 @@ def plot_revenue_sufficient_cross_subsidy(
     variant: str,
     utility_codes: list[str],
     title: str,
+    only_current_fixed_charge: bool = False,
 ):
     _, cross_subsidy_df, endpoint_df = _revenue_sufficient_plot_frames(variant, utility_codes)
+
+    # Baseline = current cross-subsidy per utility = max of "Current fixed charge" line.
+    # Computed before filtering so the all-lines and current-only views share a y scale.
+    baseline_df = (
+        cross_subsidy_df.filter(pl.col("fixed_charge_level") == "Current fixed charge")
+        .group_by("utility_label", maintain_order=True)
+        .agg(pl.col("cross_subsidy_per_customer").max().alias("baseline_cs"))
+    )
+
+    cross_subsidy_df = cross_subsidy_df.join(baseline_df, on="utility_label").with_columns(
+        (pl.col("cross_subsidy_per_customer") / pl.col("baseline_cs") * 100).alias("cs_pct"),
+        # Compact "$45/mo" label without the " (min feasible)" suffix that the
+        # endpoint label used to carry.
+        pl.format("${}/mo", pl.col("fixed_charge").round(0).cast(pl.Int64)).alias("fc_short_label"),
+    )
+    endpoint_df = endpoint_df.join(baseline_df, on="utility_label").with_columns(
+        (pl.col("cross_subsidy_per_customer") / pl.col("baseline_cs") * 100).alias("cs_pct"),
+        pl.format("${}", pl.col("cross_subsidy_per_customer").round(0).cast(pl.Int64)).alias("endpoint_label"),
+    )
+
+    # Midpoint of each (utility, fixed_charge_level) line, used for the
+    # prominent fixed-charge label.
+    midpoint_df = (
+        cross_subsidy_df.with_columns(
+            (
+                pl.col("winter_rate_cents_per_kwh")
+                - pl.col("winter_rate_cents_per_kwh").mean().over("utility_label", "fixed_charge_level")
+            )
+            .abs()
+            .alias("dist_from_mean")
+        )
+        .sort("utility_label", "fixed_charge_level", "dist_from_mean")
+        .group_by(["utility_label", "fixed_charge_level"], maintain_order=True)
+        .first()
+        .drop("dist_from_mean")
+    )
+
+    if only_current_fixed_charge:
+        cross_subsidy_df = cross_subsidy_df.filter(pl.col("fixed_charge_level") == "Current fixed charge")
+        endpoint_df = endpoint_df.filter(pl.col("fixed_charge_level") == "Current fixed charge")
+        midpoint_df = midpoint_df.filter(pl.col("fixed_charge_level") == "Current fixed charge")
+
     zero_line_df = (
         cross_subsidy_df.group_by("utility_label", maintain_order=True)
         .agg(
@@ -932,12 +1015,23 @@ def plot_revenue_sufficient_cross_subsidy(
         .with_columns(pl.lit(0.0).alias("y"))
     )
 
+    subtitle = (
+        "100% = each utility's current heat-pump cross-subsidy. "
+        "Midpoint pill on each line is the monthly fixed charge; endpoint label is the residual cross-subsidy "
+        "per customer at a zero winter rate."
+    )
+    if only_current_fixed_charge:
+        subtitle = (
+            "Holding each utility's current default fixed charge, this is the residual heat-pump cross-subsidy "
+            "as the winter delivery rate is lowered from today's flat rate to zero. " + subtitle
+        )
+
     p = (
         ggplot(
             cross_subsidy_df,
             aes(
                 "winter_rate_cents_per_kwh",
-                "cross_subsidy_per_customer",
+                "cs_pct",
                 color="fixed_charge_level",
             ),
         )
@@ -952,43 +1046,60 @@ def plot_revenue_sufficient_cross_subsidy(
         + geom_line(size=0.9)
         + geom_point(
             endpoint_df,
-            aes("winter_rate_cents_per_kwh", "cross_subsidy_per_customer", color="fixed_charge_level"),
+            aes("winter_rate_cents_per_kwh", "cs_pct", color="fixed_charge_level"),
             inherit_aes=False,
-            size=2.3,
+            size=2.0,
         )
-        + geom_label(
+        + geom_text(
             endpoint_df,
             aes(
                 "winter_rate_cents_per_kwh",
-                "cross_subsidy_per_customer",
-                label="label",
+                "cs_pct",
+                label="endpoint_label",
                 color="fixed_charge_level",
             ),
             inherit_aes=False,
-            fill="white",
-            label_size=0.25,
-            label_padding=0.12,
-            size=8,
-            ha="left",
+            size=7,
+            ha="right",
             va="center",
             nudge_x=0.35,
         )
-        + facet_wrap("utility_label", ncol=2, scales="free")
-        + scale_x_continuous(
-            expand=(0, 0, 0.08, 0),
-            labels=lambda breaks: [f"{b:,.1f}¢/kWh" for b in breaks],
+        + geom_label(
+            midpoint_df,
+            aes(
+                "winter_rate_cents_per_kwh",
+                "cs_pct",
+                label="fc_short_label",
+                fill="fixed_charge_level",
+            ),
+            inherit_aes=False,
+            color="white",
+            fontweight="bold",
+            size=10,
+            label_padding=0.22,
+            label_size=0,
+        )
+        + facet_wrap("utility_label", ncol=2, scales="free_x")
+        + scale_x_reverse(
+            breaks=_major_5c_breaks,
+            minor_breaks=_integer_cent_breaks,
+            expand=(0.04, 0, 0.08, 0),
+            labels=_cent_label,
         )
         + scale_y_continuous(
-            expand=(0.08, 0, 0.16, 0),
-            labels=lambda breaks: [f"${b:,.0f}" for b in breaks],
+            breaks=_pct_25_breaks,
+            expand=(0.06, 0, 0.18, 0),
+            labels=lambda breaks: [f"{b:.0f}%" for b in breaks],
         )
         + scale_color_manual(values=_FIXED_CHARGE_COLORS)
+        + scale_fill_manual(values=_FIXED_CHARGE_COLORS)
         + labs(
             title=title,
-            subtitle="Positive values mean heat-pump customers are overpaying relative to their BAT benchmark. Dotted lines mark zero; endpoint labels show the residual at a zero winter rate.",
-            x="Winter volumetric rate",
-            y="Cross-subsidy per heat-pump customer",
+            subtitle=subtitle,
+            x="Winter volumetric rate (lower → right)",
+            y="Cross-subsidy (% of today's level)",
             color="Fixed charge",
+            fill="Fixed charge",
         )
         + theme_switchbox()
         + theme(figure_size=(12.5, 13.5), legend_position="bottom")
@@ -1043,23 +1154,42 @@ The cost-reflective seasonal marker is intentionally left out for now.
 Adding it requires carrying the marginal-cost seasonal ratio into this notebook or persisting it with the run outputs.
 
 ```{python}
+#| label: rev-sufficient-utils
+
+# PSEG-LI, Con Edison, and O&R are excluded from the revenue-sufficient sweep plots.
+REV_SUFFICIENT_UTIL_CODES = [u for u in UTIL_ORDER_CODES if u not in {"psegli", "coned", "or"}]
+```
+
+```{python}
 #| label: fig-rev-sufficient-rates
 #| fig-cap: "Revenue-sufficient delivery-rate pairs as the winter rate is lowered from the current default rate."
 
 plot_revenue_sufficient_rates(
     "Delivery only",
-    UTIL_ORDER_CODES,
+    REV_SUFFICIENT_UTIL_CODES,
     "Revenue-sufficient seasonal delivery rates by utility",
 )
 ```
 
 ```{python}
-#| label: fig-rev-sufficient-cross-subsidy
-#| fig-cap: "Residual heat-pump cross-subsidy under revenue-sufficient seasonal delivery rates."
+#| label: fig-rev-sufficient-cross-subsidy-current
+#| fig-cap: "Residual heat-pump cross-subsidy at the current fixed charge as the winter delivery rate is lowered."
 
 plot_revenue_sufficient_cross_subsidy(
     "Delivery only",
-    UTIL_ORDER_CODES,
+    REV_SUFFICIENT_UTIL_CODES,
+    "Cross-subsidy remaining at the current fixed charge",
+    only_current_fixed_charge=True,
+)
+```
+
+```{python}
+#| label: fig-rev-sufficient-cross-subsidy
+#| fig-cap: "Residual heat-pump cross-subsidy under revenue-sufficient seasonal delivery rates, across a range of fixed charges."
+
+plot_revenue_sufficient_cross_subsidy(
+    "Delivery only",
+    REV_SUFFICIENT_UTIL_CODES,
     "Cross-subsidy remaining after revenue-sufficient seasonal differentiation",
 )
 ```

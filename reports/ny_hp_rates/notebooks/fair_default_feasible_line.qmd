@@ -709,6 +709,37 @@ def plot_feasible_fixed_charge_ranges(variant: str, title: str):
     display_svg(fig)
 
 
+_FIXED_CHARGE_LEVELS = [
+    "Current fixed charge",
+    "Fixed charge step 2",
+    "Fixed charge step 3",
+    "Minimum feasible fixed charge",
+]
+_FIXED_CHARGE_COLORS = {
+    "Current fixed charge": SB_COLORS["sky"],
+    "Fixed charge step 2": SB_COLORS["midnight"],
+    "Fixed charge step 3": SB_COLORS["carrot"],
+    "Minimum feasible fixed charge": SB_COLORS["pistachio"],
+}
+
+
+def _revenue_sufficient_fixed_charge_specs(data: RevenueSufficientLineData) -> list[dict[str, object]]:
+    base = data.base_fixed_charge
+    min_feasible = data.feasible_min_fixed_charge
+    if not data.feasible_min_exists or not math.isfinite(min_feasible) or min_feasible <= base:
+        min_feasible = base * 4.0
+    fixed_charges = _linspace(base, min_feasible, n=4)
+    return [
+        {
+            "fixed_charge_level": level,
+            "fixed_charge_label": f"${fixed_charge:,.0f}/mo"
+            + (" (min feasible)" if level == "Minimum feasible fixed charge" else ""),
+            "fixed_charge": fixed_charge,
+        }
+        for level, fixed_charge in zip(_FIXED_CHARGE_LEVELS, fixed_charges, strict=True)
+    ]
+
+
 def _revenue_sufficient_plot_frames(
     variant: str,
     utility_codes: list[str],
@@ -717,69 +748,99 @@ def _revenue_sufficient_plot_frames(
     utility_labels = [UTIL_NAMES[utility] for utility in utility_codes]
     utility_dtype = pl.Enum(utility_labels)
     season_dtype = pl.Enum(["Winter", "Summer"])
+    fixed_charge_level_dtype = pl.Enum(_FIXED_CHARGE_LEVELS)
     rate_rows = []
     cross_subsidy_rows = []
     endpoint_rows = []
 
     for utility in utility_codes:
         data = revenue_sufficient_lines[utility][variant_key]
-        winter_rates = _linspace(data.winter_rate_min, data.winter_rate_max, n=120)
-        for winter_rate in winter_rates:
-            summer_rate = data.summer_rate_at(winter_rate)
-            context = {
-                "utility": utility,
-                "utility_label": UTIL_NAMES[utility],
-                "variant": variant,
-                "winter_rate_cents_per_kwh": _rate_cents_per_kwh(winter_rate),
-            }
-            rate_rows.extend(
-                [
+        fixed_charge_specs = _revenue_sufficient_fixed_charge_specs(data)
+        winter_rate_max = max(
+            data.flat_rate_at(float(spec["fixed_charge"])) for spec in fixed_charge_specs
+        )
+        winter_rates = _linspace(data.winter_rate_min, max(data.winter_rate_min, winter_rate_max), n=120)
+        for spec in fixed_charge_specs:
+            fixed_charge = float(spec["fixed_charge"])
+            flat_rate_at_fixed_charge = data.flat_rate_at(fixed_charge)
+            for winter_rate in winter_rates:
+                if winter_rate > flat_rate_at_fixed_charge:
+                    continue
+                summer_rate = data.summer_rate_at(
+                    winter_rate=winter_rate,
+                    fixed_charge=fixed_charge,
+                )
+                context = {
+                    "utility": utility,
+                    "utility_label": UTIL_NAMES[utility],
+                    "variant": variant,
+                    "winter_rate_cents_per_kwh": _rate_cents_per_kwh(winter_rate),
+                    **spec,
+                }
+                rate_rows.extend(
+                    [
+                        {
+                            **context,
+                            "rate_cents_per_kwh": _rate_cents_per_kwh(winter_rate),
+                            "season": "Winter",
+                        },
+                        {
+                            **context,
+                            "rate_cents_per_kwh": _rate_cents_per_kwh(summer_rate),
+                            "season": "Summer",
+                        },
+                    ]
+                )
+                cross_subsidy_rows.append(
                     {
                         **context,
-                        "rate_cents_per_kwh": _rate_cents_per_kwh(winter_rate),
-                        "season": "Winter",
-                    },
-                    {
-                        **context,
-                        "rate_cents_per_kwh": _rate_cents_per_kwh(summer_rate),
-                        "season": "Summer",
-                    },
-                ]
+                        "cross_subsidy_per_customer": data.subclass_cross_subsidy_per_customer_at(
+                            winter_rate=winter_rate,
+                            fixed_charge=fixed_charge,
+                        ),
+                    }
+                )
+
+            floor_cross_subsidy = data.subclass_cross_subsidy_per_customer_at(
+                winter_rate=data.winter_rate_min,
+                fixed_charge=fixed_charge,
             )
-            cross_subsidy_rows.append(
+            endpoint_rows.append(
                 {
-                    **context,
-                    "cross_subsidy_per_customer": data.subclass_cross_subsidy_per_customer_at(winter_rate),
+                    "utility": utility,
+                    "utility_label": UTIL_NAMES[utility],
+                    "variant": variant,
+                    "winter_rate_cents_per_kwh": _rate_cents_per_kwh(data.winter_rate_min),
+                    **spec,
+                    "cross_subsidy_per_customer": floor_cross_subsidy,
+                    "label": f'{spec["fixed_charge_label"]}: ${floor_cross_subsidy:,.0f}/customer',
                 }
             )
-
-        floor_cross_subsidy = data.subclass_cross_subsidy_per_customer_at(data.winter_rate_min)
-        endpoint_rows.append(
-            {
-                "utility": utility,
-                "utility_label": UTIL_NAMES[utility],
-                "variant": variant,
-                "winter_rate_cents_per_kwh": _rate_cents_per_kwh(data.winter_rate_min),
-                "cross_subsidy_per_customer": floor_cross_subsidy,
-                "label": f"${floor_cross_subsidy:,.0f}/customer",
-            }
-        )
 
     rate_df = (
         pl.DataFrame(rate_rows)
         .with_columns(
             pl.col("utility_label").cast(utility_dtype),
             pl.col("season").cast(season_dtype),
+            pl.col("fixed_charge_level").cast(fixed_charge_level_dtype),
         )
-        .sort("utility_label", "season", "winter_rate_cents_per_kwh")
+        .sort("utility_label", "fixed_charge_level", "season", "winter_rate_cents_per_kwh")
     )
     cross_subsidy_df = (
         pl.DataFrame(cross_subsidy_rows)
-        .with_columns(pl.col("utility_label").cast(utility_dtype))
-        .sort("utility_label", "winter_rate_cents_per_kwh")
+        .with_columns(
+            pl.col("utility_label").cast(utility_dtype),
+            pl.col("fixed_charge_level").cast(fixed_charge_level_dtype),
+        )
+        .sort("utility_label", "fixed_charge_level", "winter_rate_cents_per_kwh")
     )
-    endpoint_df = pl.DataFrame(endpoint_rows).with_columns(
-        pl.col("utility_label").cast(utility_dtype)
+    endpoint_df = (
+        pl.DataFrame(endpoint_rows)
+        .with_columns(
+            pl.col("utility_label").cast(utility_dtype),
+            pl.col("fixed_charge_level").cast(fixed_charge_level_dtype),
+        )
+        .sort("utility_label", "fixed_charge_level")
     )
     return rate_df, cross_subsidy_df, endpoint_df
 
@@ -790,6 +851,7 @@ def plot_revenue_sufficient_rates(
     title: str,
 ):
     rate_df, _, _ = _revenue_sufficient_plot_frames(variant, utility_codes)
+    rate_df = rate_df.filter(pl.col("fixed_charge_level") == "Current fixed charge")
     current_df = (
         rate_df.filter(pl.col("season") == "Winter")
         .sort("utility_label", "winter_rate_cents_per_kwh")
@@ -871,7 +933,14 @@ def plot_revenue_sufficient_cross_subsidy(
     )
 
     p = (
-        ggplot(cross_subsidy_df, aes("winter_rate_cents_per_kwh", "cross_subsidy_per_customer"))
+        ggplot(
+            cross_subsidy_df,
+            aes(
+                "winter_rate_cents_per_kwh",
+                "cross_subsidy_per_customer",
+                color="fixed_charge_level",
+            ),
+        )
         + geom_segment(
             zero_line_df,
             aes(x="xmin", xend="xmax", y="y", yend="y"),
@@ -880,19 +949,22 @@ def plot_revenue_sufficient_cross_subsidy(
             linetype="dotted",
             size=0.65,
         )
-        + geom_line(size=0.9, color=SB_COLORS["midnight"])
+        + geom_line(size=0.9)
         + geom_point(
             endpoint_df,
-            aes("winter_rate_cents_per_kwh", "cross_subsidy_per_customer"),
+            aes("winter_rate_cents_per_kwh", "cross_subsidy_per_customer", color="fixed_charge_level"),
             inherit_aes=False,
-            color=SB_COLORS["carrot"],
             size=2.3,
         )
         + geom_label(
             endpoint_df,
-            aes("winter_rate_cents_per_kwh", "cross_subsidy_per_customer", label="label"),
+            aes(
+                "winter_rate_cents_per_kwh",
+                "cross_subsidy_per_customer",
+                label="label",
+                color="fixed_charge_level",
+            ),
             inherit_aes=False,
-            color=SB_COLORS["carrot"],
             fill="white",
             label_size=0.25,
             label_padding=0.12,
@@ -910,14 +982,16 @@ def plot_revenue_sufficient_cross_subsidy(
             expand=(0.08, 0, 0.16, 0),
             labels=lambda breaks: [f"${b:,.0f}" for b in breaks],
         )
+        + scale_color_manual(values=_FIXED_CHARGE_COLORS)
         + labs(
             title=title,
-            subtitle="Positive values mean heat-pump customers are overpaying relative to their BAT benchmark. Dotted lines mark zero; orange points mark the residual at a zero winter rate.",
+            subtitle="Positive values mean heat-pump customers are overpaying relative to their BAT benchmark. Dotted lines mark zero; endpoint labels show the residual at a zero winter rate.",
             x="Winter volumetric rate",
             y="Cross-subsidy per heat-pump customer",
+            color="Fixed charge",
         )
         + theme_switchbox()
-        + theme(figure_size=(12.5, 13.5), legend_position="none")
+        + theme(figure_size=(12.5, 13.5), legend_position="bottom")
     )
     fig = p.draw()
     display_svg(fig)

@@ -1,0 +1,403 @@
+---
+title: "NY HP Rates — LMI demographics by heating type"
+reference-location: margin
+fig-cap-location: bottom
+execute:
+  warning: false
+  message: false
+---
+
+This side notebook profiles the **low-and-moderate-income (LMI)** subpopulation of the NY ResStock sample by primary heating fuel. For this notebook, LMI means households in electric LMI tiers 1-3. It answers two questions advocates have asked for the rate-design filing:
+
+1. How are LMI households distributed across heating fuels — heat pumps, electric resistance, natural gas, oil/propane?
+2. Within each heating-fuel cohort, what share of LMI households **rent** their home?
+
+::: {.callout-note}
+LMI assignment in this analysis is derived from the electric LMI tier assigned during CAIRO post-processing (`elec_lmi_tier` in {1, 2, 3}; tier 0 means non-LMI). Treat the percentages here as approximate. Renter share comes from ResStock tenure metadata; rows with missing tenure are reported as "unknown tenure" rather than imputed.
+:::
+
+## Parameters
+
+```{python}
+#| label: params
+
+STATE = "NY"
+YEAR = 2025
+
+### UPDATE WITH NEW RUNS
+BATCH = "ny_20260416a_r1-36"
+RDP_REF = "205041d"  # rate-design-platform git ref for fetch_rdp_file
+###
+
+_state_lower = STATE.lower()
+S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
+_BILLS = f"{S3_BASE}/{_state_lower}/all_utilities/{BATCH}"
+
+PATH_MASTER_BILLS_BASELINE = f"{_BILLS}/run_1+2/comb_bills_year_target/"
+PATH_METADATA_SB = (
+    "s3://data.sb/nrel/resstock/res_2024_amy2018_2_sb/"
+    "metadata_utility/state=NY/utility_assignment.parquet"
+)
+
+md_sb_cols = ["bldg_id", "in.tenure", "postprocess_group.heating_type"]
+
+HEATING_TYPE_COL = "postprocess_group.heating_type"
+```
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+import polars as pl
+from great_tables import GT
+
+from lib.great_tables import get_switchbox_gt_tab_options
+from lib.quarto import display_gt
+```
+
+## Load households from master bills
+
+We pull annual rows for the baseline scenario (`upgrade == 0`, `month == "Annual"`) from the run 1+2 master bills. We keep all households so we can calculate each heating bucket's share of all customers and its LMI share, then filter to households in electric LMI tiers 1-3 for the tenure breakdown.
+
+```{python}
+#| label: load-bills
+
+bills_all = (
+    pl.scan_parquet(PATH_MASTER_BILLS_BASELINE, hive_partitioning=True)
+    .filter(
+        (pl.col("month") == "Annual")
+        & (pl.col("upgrade") == 0)
+    )
+    .select(
+        "bldg_id",
+        pl.col("weight").alias("resstock_weight"),
+        "elec_lmi_tier",
+        HEATING_TYPE_COL,
+        "heats_with_natgas",
+        "heats_with_oil",
+        "heats_with_propane",
+    )
+    .collect()
+)
+
+bills_lmi = bills_all.filter(pl.col("elec_lmi_tier").is_between(1, 3))
+
+print(f"All households (raw rows): {bills_all.height:,}")
+print(f"All households ResStock weight: {bills_all['resstock_weight'].sum():,.0f}")
+print(f"LMI households (raw rows): {bills_lmi.height:,}")
+print(f"LMI households ResStock weight: {bills_lmi['resstock_weight'].sum():,.0f}")
+bills_lmi.head(5)
+```
+
+## Load tenure metadata
+
+`in.tenure` is not preserved in the master bills, so we pull it from the per-state utility assignment metadata.
+
+```{python}
+#| label: load-meta
+
+meta_sb = pl.read_parquet(PATH_METADATA_SB, columns=md_sb_cols)
+print(f"meta_sb: {meta_sb.height:,} rows")
+meta_sb["in.tenure"].value_counts().sort("count", descending=True)
+```
+
+## Join, bucket, and flag tenure
+
+We derive a mutually-exclusive `heating_bucket` for all households, then join tenure metadata and flag renters and unknown-tenure rows. Buckets follow the convention used elsewhere in the analysis (see `analysis.qmd`): heat pumps and electric resistance are read directly off `postprocess_group.heating_type`; the fossil-fuel bucket is split by which fuel flag is set.
+
+```{python}
+#| label: join-bucket
+
+HEATING_BUCKET_ORDER = [
+    "Heat pump",
+    "Electric resistance",
+    "Natural gas",
+    "Oil / propane",
+    "Other",
+]
+
+heating_bucket_expr = (
+    pl.when(pl.col(HEATING_TYPE_COL) == "heat_pump")
+    .then(pl.lit("Heat pump"))
+    .when(pl.col(HEATING_TYPE_COL) == "electrical_resistance")
+    .then(pl.lit("Electric resistance"))
+    .when(pl.col("heats_with_natgas"))
+    .then(pl.lit("Natural gas"))
+    .when(pl.col("heats_with_oil") | pl.col("heats_with_propane"))
+    .then(pl.lit("Oil / propane"))
+    .otherwise(pl.lit("Other"))
+    .alias("heating_bucket")
+)
+
+df_all = (
+    bills_all
+    .with_columns(heating_bucket_expr)
+    .join(meta_sb.select("bldg_id", "in.tenure"), on="bldg_id", how="left")
+    .with_columns(
+        (pl.col("in.tenure") == "Renter").alias("is_renter"),
+        ((pl.col("in.tenure") == "Not Available") | pl.col("in.tenure").is_null()).alias("is_tenure_unknown"),
+    )
+)
+
+df_lmi = (
+    df_all
+    .filter(pl.col("elec_lmi_tier").is_between(1, 3))
+)
+
+df_lmi.head(5)
+```
+
+## Aggregate
+
+We compute weighted customer counts, LMI counts, and tenure shares per `heating_bucket`, then append an "All LMI" total row. Tenure denominators are all LMI households in each bucket, so `% renter + % owner + % unknown = 100%`.
+
+```{python}
+#| label: aggregate
+
+def _bucket_aggregates(df: pl.DataFrame) -> pl.DataFrame:
+    """Weighted LMI counts and tenure shares per heating_bucket."""
+    return df.group_by("heating_bucket").agg(
+        pl.col("resstock_weight").sum().alias("n_lmi_households"),
+        ((pl.col("is_renter").cast(pl.Float64) * pl.col("resstock_weight")).sum()
+         / pl.col("resstock_weight").sum()).alias("pct_renter"),
+        ((pl.col("is_tenure_unknown").cast(pl.Float64) * pl.col("resstock_weight")).sum()
+         / pl.col("resstock_weight").sum()).alias("pct_unknown_tenure"),
+    )
+
+
+by_bucket = _bucket_aggregates(df_lmi)
+total_lmi_count = float(df_lmi["resstock_weight"].sum())
+total_customer_count = float(df_all["resstock_weight"].sum())
+
+all_customers_by_bucket = df_all.group_by("heating_bucket").agg(
+    pl.col("resstock_weight").sum().alias("n_all_households"),
+    ((pl.col("is_renter").cast(pl.Float64) * pl.col("resstock_weight")).sum()
+     / pl.col("resstock_weight").sum()).alias("pct_renter_all_customers"),
+    ((pl.col("is_tenure_unknown").cast(pl.Float64) * pl.col("resstock_weight")).sum()
+     / pl.col("resstock_weight").sum()).alias("pct_unknown_tenure_all_customers"),
+)
+
+all_lmi_row = pl.DataFrame({
+    "heating_bucket": ["All LMI"],
+    "n_lmi_households": [total_lmi_count],
+    "pct_renter": [
+        float((df_lmi["is_renter"].cast(pl.Float64) * df_lmi["resstock_weight"]).sum())
+        / total_lmi_count
+    ],
+    "pct_unknown_tenure": [
+        float((df_lmi["is_tenure_unknown"].cast(pl.Float64) * df_lmi["resstock_weight"]).sum())
+        / total_lmi_count
+    ],
+    "n_all_households": [total_customer_count],
+    "pct_renter_all_customers": [
+        float((df_all["is_renter"].cast(pl.Float64) * df_all["resstock_weight"]).sum())
+        / total_customer_count
+    ],
+    "pct_unknown_tenure_all_customers": [
+        float((df_all["is_tenure_unknown"].cast(pl.Float64) * df_all["resstock_weight"]).sum())
+        / total_customer_count
+    ],
+})
+
+bucket_dtype = pl.Enum([*HEATING_BUCKET_ORDER, "All LMI"])
+
+agg = (
+    by_bucket
+    .join(all_customers_by_bucket, on="heating_bucket", how="left")
+    .pipe(lambda df: pl.concat([df, all_lmi_row], how="vertical"))
+    .with_columns(
+        (pl.col("n_lmi_households") / total_lmi_count).alias("share_of_lmi"),
+        (pl.col("n_all_households") / total_customer_count).alias("share_of_customers"),
+        (pl.col("n_lmi_households") / pl.col("n_all_households")).alias("pct_group_lmi"),
+        (1 - pl.col("pct_renter") - pl.col("pct_unknown_tenure")).alias("pct_owner"),
+        (1 - pl.col("pct_renter_all_customers") - pl.col("pct_unknown_tenure_all_customers")).alias("pct_owner_all_customers"),
+        (pl.col("pct_renter") * pl.col("n_lmi_households") / pl.col("n_all_households")).alias("pct_lmi_renter_of_group"),
+        ((1 - pl.col("pct_renter") - pl.col("pct_unknown_tenure")) * pl.col("n_lmi_households") / pl.col("n_all_households")).alias("pct_lmi_owner_of_group"),
+        (pl.col("pct_unknown_tenure") * pl.col("n_lmi_households") / pl.col("n_all_households")).alias("pct_lmi_unknown_tenure_of_group"),
+        pl.col("heating_bucket").cast(bucket_dtype),
+    )
+    .sort("heating_bucket")
+    .select(
+        "heating_bucket",
+        "n_lmi_households",
+        "n_all_households",
+        "share_of_lmi",
+        "share_of_customers",
+        "pct_group_lmi",
+        "pct_renter_all_customers",
+        "pct_lmi_renter_of_group",
+        "pct_renter",
+        "pct_owner_all_customers",
+        "pct_lmi_owner_of_group",
+        "pct_owner",
+        "pct_unknown_tenure_all_customers",
+        "pct_lmi_unknown_tenure_of_group",
+        "pct_unknown_tenure",
+    )
+)
+
+show_unknown_tenure = bool(
+    ((agg["pct_unknown_tenure"] > 0) | (agg["pct_unknown_tenure_all_customers"] > 0)).any()
+)
+
+agg
+```
+
+## Combined summary
+
+Customer heating-fuel mix, LMI share, and LMI tenure breakdown in one view.
+
+```{python}
+#| label: tbl-lmi-by-heating
+#| tbl-cap: "Heating-fuel mix of NY customers, with LMI share and tenure breakdown. Heating type and tenure come from NREL's ResStock metadata @nrel_EndUseLoadProfiles_2024; LMI status means electric LMI tiers 1-3."
+
+combined_cols = [
+    "heating_bucket",
+    "n_all_households",
+    "share_of_customers",
+    "pct_group_lmi",
+    "pct_renter_display",
+    "pct_owner_display",
+]
+combined_pct_cols = [
+    "share_of_customers",
+    "pct_group_lmi",
+]
+combined_labels = {
+    "n_all_households": "Customers (weighted)",
+    "share_of_customers": "% of customers",
+    "pct_group_lmi": "% of group that is LMI",
+    "pct_renter_display": "% renter: all (LMI)",
+    "pct_owner_display": "% owner: all (LMI)",
+}
+if show_unknown_tenure:
+    combined_cols.append("pct_unknown_tenure_display")
+    combined_labels["pct_unknown_tenure_display"] = "% unknown tenure: all (LMI)"
+
+
+def _format_pct_pair(pct_all_customers: float, pct_lmi: float) -> str:
+    """Format all-customer and LMI percentages for the combined table."""
+    return f"{pct_all_customers:.0%} ({pct_lmi:.0%})"
+
+
+combined_summary = agg.with_columns(
+    pl.when(pl.col("heating_bucket").cast(pl.String) == "All LMI")
+    .then(pl.lit("All customers"))
+    .otherwise(pl.col("heating_bucket").cast(pl.String))
+    .alias("heating_bucket"),
+    pl.struct("pct_renter_all_customers", "pct_lmi_renter_of_group")
+    .map_elements(
+        lambda row: _format_pct_pair(row["pct_renter_all_customers"], row["pct_lmi_renter_of_group"]),
+        return_dtype=pl.String,
+    )
+    .alias("pct_renter_display"),
+    pl.struct("pct_owner_all_customers", "pct_lmi_owner_of_group")
+    .map_elements(
+        lambda row: _format_pct_pair(row["pct_owner_all_customers"], row["pct_lmi_owner_of_group"]),
+        return_dtype=pl.String,
+    )
+    .alias("pct_owner_display"),
+    pl.struct("pct_unknown_tenure_all_customers", "pct_lmi_unknown_tenure_of_group")
+    .map_elements(
+        lambda row: _format_pct_pair(row["pct_unknown_tenure_all_customers"], row["pct_lmi_unknown_tenure_of_group"]),
+        return_dtype=pl.String,
+    )
+    .alias("pct_unknown_tenure_display"),
+)
+
+_combined_gt = (
+    GT(combined_summary.select(combined_cols), rowname_col="heating_bucket")
+    .fmt_number(columns="n_all_households", decimals=0, use_seps=True)
+    .fmt_percent(
+        columns=combined_pct_cols,
+        decimals=0,
+    )
+    .cols_label(**combined_labels)
+    .tab_stubhead(label="Heating fuel")
+    .tab_source_note(
+        "Renter/owner columns show the share of all customers in each heating group with that tenure; "
+        "parenthetical is the share of all customers who are both LMI and that tenure."
+    )
+    .tab_source_note(
+        "Data source: National Laboratory of the Rockies's ResStock 2024 AMY2018 release 2; "
+        "LMI status refers to EAP tiers 1-3, assigned using household income and inferred vulnerability indicators. Customer counts were reweighted to match EIA residential customer counts for NY electric utilities."
+    )
+    .tab_options(**get_switchbox_gt_tab_options(table_width="auto"))
+)
+display_gt(_combined_gt)
+```
+
+## Heating-fuel distribution within LMI
+
+What heats LMI homes in NY?
+
+```{python}
+#| label: tbl-lmi-heating-share
+#| tbl-cap: "Heating-fuel mix of NY LMI households. Heating type comes from NREL's ResStock metadata @nrel_EndUseLoadProfiles_2024; LMI means electric LMI tiers 1-3 (≤60% SMI)."
+
+_heating_share_gt = (
+    GT(
+        agg.select("heating_bucket", "n_lmi_households", "share_of_lmi"),
+        rowname_col="heating_bucket",
+    )
+    .fmt_number(columns="n_lmi_households", decimals=0, use_seps=True)
+    .fmt_percent(columns="share_of_lmi", decimals=0)
+    .cols_label(
+        n_lmi_households="LMI households (weighted)",
+        share_of_lmi="% of LMI households",
+    )
+    .tab_stubhead(label="Heating fuel")
+    .tab_source_note(
+        "Data source: National Laboratory of the Rockies's ResStock 2024 AMY2018 release 2; "
+       "LMI status refers to EAP tiers 1-3, assigned using household income and inferred vulnerability indicators.Customer counts were reweighted to match EIA residential customer counts for NY electric utilities."
+    )
+    .tab_options(**get_switchbox_gt_tab_options(table_width="auto"))
+)
+display_gt(_heating_share_gt)
+```
+
+## Tenure breakdown within LMI
+
+What share of LMI households rent or own? `% unknown tenure` is shown if any LMI households have missing tenure.
+
+```{python}
+#| label: tbl-lmi-tenure
+#| tbl-cap: "Tenure of NY LMI households. Tenure comes from NREL's ResStock metadata @nrel_EndUseLoadProfiles_2024; LMI means electric LMI tiers 1-3 (≤60% SMI)."
+
+tenure_rows = [
+    {"tenure": "Renter", "n_lmi_households": total_lmi_count * float(all_lmi_row["pct_renter"][0])},
+    {"tenure": "Owner", "n_lmi_households": total_lmi_count * (1 - float(all_lmi_row["pct_renter"][0]) - float(all_lmi_row["pct_unknown_tenure"][0]))},
+]
+
+tenure_summary = (
+    pl.DataFrame(tenure_rows)
+    .with_columns((pl.col("n_lmi_households") / total_lmi_count).alias("share_of_lmi"))
+)
+
+_tenure_gt = (
+    GT(tenure_summary, rowname_col="tenure")
+    .fmt_number(columns="n_lmi_households", decimals=0, use_seps=True)
+    .fmt_percent(columns="share_of_lmi", decimals=0)
+    .cols_label(
+        n_lmi_households="LMI households (weighted)",
+        share_of_lmi="% of LMI households",
+    )
+    .tab_stubhead(label="Tenure")
+    .tab_source_note(
+        "Data source: National Laboratory of the Rockies's ResStock 2024 AMY2018 release 2; "
+        "LMI status refers to EAP tiers 1-3, assigned using household income and inferred vulnerability indicators. Customer counts were reweighted to match EIA residential customer counts for NY electric utilities."
+    )
+    .tab_options(**get_switchbox_gt_tab_options(table_width="auto"))
+)
+display_gt(_tenure_gt)
+```
+
+
+```{python}
+_combined_gt.save("../img/lmi_table1.png", window_size=(900, 800))
+_heating_share_gt.save("../img/lmi_table2.png", window_size=(550, 800))
+_tenure_gt.save("../img/lmi_table3.png", window_size=(550, 800))
+```

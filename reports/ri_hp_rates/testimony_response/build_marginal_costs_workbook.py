@@ -322,7 +322,7 @@ def _write_readme(wb: Workbook) -> None:
         [
             "API: EIA hourly utility loads",
             _rdp_permalink("data/eia/hourly_loads/fetch_zone_loads_parquet.py"),
-            "Fetches EIA-930 hourly demand by utility. @eia_HourlyElectricGridMonitor_2025.",
+            'Fetches EIA-930 hourly demand by utility. Source: EIA, "Hourly Electric Grid Monitor (Form EIA-930)," 2025, https://www.eia.gov/electricity/gridmonitor/.',
         ],
         [
             "API: EIA utility load aggregation",
@@ -332,22 +332,22 @@ def _write_readme(wb: Workbook) -> None:
         [
             "API: ISO-NE LMP",
             _rdp_permalink("data/isone/lmp/fetch_isone_lmp_parquet.py"),
-            "Fetches ISO-NE real-time LMP. @isone_ISONEWebServices_2025.",
+            'Fetches ISO-NE real-time LMP. Source: ISO NE, "ISO-NE Web Services API: Hourly Locational Marginal Prices," 2025, https://webservices.iso-ne.com/api/v1.1.',
         ],
         [
             "API: ISO-NE zone loads",
             _rdp_permalink("data/isone/hourly_demand/fetch_isone_zone_loads.py"),
-            "Fetches ISO-NE 8-zone hourly demand (CELT). @isone_CeltReport_2025.",
+            'Fetches ISO-NE 8-zone hourly demand (CELT). Source: ISO NE, "Capacity, Energy, Loads, and Transmission (CELT) Report," 2025, https://www.iso-ne.com/system-planning/system-plans-studies/celt.',
         ],
         [
             "API: ISO-NE ancillary prices",
             _rdp_permalink("data/isone/ancillary/fetch_isone_ancillary_parquet.py"),
-            "Fetches ISO-NE regulation clearing prices. @iso-ne_RegulationClearingPrices_2025.",
+            'Fetches ISO-NE regulation clearing prices. Source: ISO NE, "Five-Minute Regulation Clearing Prices (Final)," 2025, https://webservices.iso-ne.com/api/v1.1/fiveminutercp/final/day/.',
         ],
         [
             "FCA clearing prices CSV",
             _rdp_permalink("data/isone/capacity/fca/fca_clearing_prices.csv"),
-            "Historical FCA results. @isone_ForwardCapacityAuction_2024.",
+            'Historical FCA results. Source: ISO NE, "Forward Capacity Auction Results Report," 2024, https://www.iso-ne.com/static-assets/documents/2018/05/fca-results-report.pdf.',
         ],
         [
             "Methodology: RI bulk TX",
@@ -405,17 +405,17 @@ def _write_readme(wb: Workbook) -> None:
         [
             "aesc_ptf_kw_year ($/kW-yr)",
             AESC_PTF_KW_YEAR,
-            "AESC 2024 avoided PTF. @synapse_AvoidedEnergySupply_2024.",
+            'AESC 2024 avoided PTF. Source: Synapse, "Avoided Energy Supply Components (AESC) in New England: 2024 Report," 2024.',
         ],
         [
             "sub_tx_and_dist_mc_kw_yr ($/kW-yr, 2025$)",
             SUB_TX_AND_DIST_MC_KW_YR_2025,
-            "AESC 2024 dist $80.24/kW-yr (2019$) x CPI 2025/2019. @synapse_AvoidedEnergySupply_2024 + @fred_ConsumerPriceIndexAll_2025.",
+            'AESC 2024 dist $80.24/kW-yr (2019$) x CPI 2025/2019. Sources: Synapse, "AESC in New England: 2024 Report," 2024; U.S. BLS, "Consumer Price Index (CUUR0000SA0)," 2025, https://fred.stlouisfed.org/series/CUUR0000SA0.',
         ],
         [
             "fca_sene_blended_kw_yr ($/kW-yr)",
             FCA_SENE_BLENDED_KW_YR,
-            "FCA15 SENE $3.980 x 5mo + FCA16 SENE $2.639 x 7mo. @isone_ForwardCapacityAuction_2024.",
+            'FCA15 SENE $3.980 x 5mo + FCA16 SENE $2.639 x 7mo. Source: ISO NE, "Forward Capacity Auction Results Report," 2024.',
         ],
         ["n_peak_hours", N_PEAK_HOURS, "Convention: top 100 hours for all peak-driven allocations."],
     ]
@@ -437,19 +437,19 @@ def _write_inputs_scalars(wb: Workbook) -> None:
             "aesc_ptf_kw_year",
             AESC_PTF_KW_YEAR,
             _rdp_permalink("utils/pre/marginal_costs/bulk_tx_isone.py"),
-            "AESC 2024 avoided PTF ($/kW-yr). Synapse Energy Economics. @synapse_AvoidedEnergySupply_2024.",
+            'AESC 2024 avoided PTF ($/kW-yr). Source: Synapse, "Avoided Energy Supply Components (AESC) in New England: 2024 Report," 2024.',
         ],
         [
             "sub_tx_and_dist_mc_kw_yr",
             SUB_TX_AND_DIST_MC_KW_YR_2025,
             _rdp_permalink("rate_design/hp_rates/ri/config/marginal_costs/ri_marginal_costs_2025.csv"),
-            "AESC 2024 dist $80.24 (2019$) adjusted to 2025$ via CPIAUCSL. @synapse_AvoidedEnergySupply_2024 + @fred_ConsumerPriceIndexAll_2025.",
+            'AESC 2024 dist $80.24 (2019$) adjusted to 2025$ via CPIAUCSL. Sources: Synapse, "AESC in New England: 2024 Report," 2024; U.S. BLS, "Consumer Price Index (CUUR0000SA0)," 2025, https://fred.stlouisfed.org/series/CUUR0000SA0.',
         ],
         [
             "fca_sene_blended_kw_yr",
             FCA_SENE_BLENDED_KW_YR,
             _rdp_permalink("data/isone/capacity/fca/fca_clearing_prices.csv"),
-            "Calendar-year 2025 blended: FCA15 SENE $3.980/kW-mo x 5 + FCA16 SENE $2.639/kW-mo x 7 = $38.373/kW-yr. @isone_ForwardCapacityAuction_2024.",
+            'Calendar-year 2025 blended: FCA15 SENE $3.980/kW-mo x 5 + FCA16 SENE $2.639/kW-mo x 7 = $38.373/kW-yr. Source: ISO NE, "Forward Capacity Auction Results Report," 2024.',
         ],
         [
             "n_peak_hours",
@@ -465,24 +465,19 @@ def _write_inputs_scalars(wb: Workbook) -> None:
     ws.sheet_view.showGridLines = False
 
 
-def _join_mc_with_load(mc_parquet: pl.DataFrame, load_df: pl.DataFrame) -> pl.DataFrame:
-    """Left-join load_df onto the MC parquet's 8760 grid.
-
-    Computes a rank over rows where load_mw is non-null. Missing hours (DST
-    gaps in raw data) are left as null and rendered blank in the workbook.
-    """
-    df = mc_parquet.join(load_df, on="timestamp", how="left")
+def _rank_load(load_df: pl.DataFrame) -> pl.DataFrame:
+    """Rank load hours descending. Missing hours left as null."""
     rank = (
-        df.filter(pl.col("load_mw").is_not_null())
+        load_df.filter(pl.col("load_mw").is_not_null())
         .sort("load_mw", descending=True)
         .with_row_index("rank_0")
         .with_columns((pl.col("rank_0") + 1).cast(pl.Int32).alias("rank"))
         .select("timestamp", "rank")
     )
-    return df.join(rank, on="timestamp", how="left").sort("timestamp")
+    return load_df.join(rank, on="timestamp", how="left").sort("timestamp")
 
 
-def _write_mc_dist_sub_tx(wb: Workbook, rie_load: pl.DataFrame, mc_parquet: pl.DataFrame) -> None:
+def _write_mc_dist_sub_tx(wb: Workbook, rie_load: pl.DataFrame) -> None:
     """Dist & sub-TX: PoP top-100 on RIE utility load."""
     ws = wb.create_sheet("mc_dist_sub_tx")
     headers = [
@@ -492,13 +487,12 @@ def _write_mc_dist_sub_tx(wb: Workbook, rie_load: pl.DataFrame, mc_parquet: pl.D
         "is_peak_top100",
         "pop_weight",
         "mc_dist_sub_tx_per_kwh",
-        "mc_parquet_value",
     ]
     ws.append(headers)
     _header_fill(ws, 1, len(headers))
     ws.freeze_panes = "A2"
 
-    joined = _join_mc_with_load(mc_parquet, rie_load)
+    joined = _rank_load(rie_load)
 
     for i, row in enumerate(joined.iter_rows(named=True), start=2):
         ws.cell(row=i, column=1, value=row["timestamp"].strftime("%Y-%m-%d %H:%M"))
@@ -513,10 +507,8 @@ def _write_mc_dist_sub_tx(wb: Workbook, rie_load: pl.DataFrame, mc_parquet: pl.D
             value=f"=IFERROR(IF(D{i},B{i}/SUMPRODUCT(($C$2:$C$8761<={REF_N_PEAK})*IFERROR($B$2:$B$8761,0)),0),0)",
         )
         ws.cell(row=i, column=6, value=f"=E{i}*{REF_SUB_TX_DIST}")
-        mc_val = row["mc_value"]
-        ws.cell(row=i, column=7, value=float(mc_val) if mc_val is not None else 0.0)
 
-    _autosize(ws, {"A": 18, "B": 14, "C": 8, "D": 14, "E": 14, "F": 22, "G": 18})
+    _autosize(ws, {"A": 18, "B": 14, "C": 8, "D": 14, "E": 14, "F": 22})
 
 
 def _write_exceedance_tab(
@@ -524,7 +516,6 @@ def _write_exceedance_tab(
     sheet_name: str,
     load_label: str,
     load_df: pl.DataFrame,
-    mc_parquet: pl.DataFrame,
     cost_ref: str,
     mc_label: str,
 ) -> None:
@@ -539,13 +530,12 @@ def _write_exceedance_tab(
         "exceedance",
         "exceedance_weight",
         mc_label,
-        "mc_parquet_value",
     ]
     ws.append(headers)
     _header_fill(ws, 1, len(headers))
     ws.freeze_panes = "A2"
 
-    joined = _join_mc_with_load(mc_parquet, load_df)
+    joined = _rank_load(load_df)
 
     for i, row in enumerate(joined.iter_rows(named=True), start=2):
         ws.cell(row=i, column=1, value=row["timestamp"].strftime("%Y-%m-%d %H:%M"))
@@ -562,63 +552,57 @@ def _write_exceedance_tab(
             value=f"=IFERROR(IF(D{i},F{i}/SUMPRODUCT(($C$2:$C$8761<={REF_N_PEAK})*IFERROR(IF($B$2:$B$8761>E{i},$B$2:$B$8761-E{i},0),0)),0),0)",
         )
         ws.cell(row=i, column=8, value=f"=G{i}*{cost_ref}")
-        mc_val = row["mc_value"]
-        ws.cell(row=i, column=9, value=float(mc_val) if mc_val is not None else 0.0)
 
     _autosize(
         ws,
-        {"A": 18, "B": 18, "C": 8, "D": 14, "E": 20, "F": 14, "G": 16, "H": 24, "I": 18},
+        {"A": 18, "B": 18, "C": 8, "D": 14, "E": 20, "F": 14, "G": 16, "H": 24},
     )
 
 
-def _write_mc_bulk_tx(wb: Workbook, ne_load: pl.DataFrame, mc_parquet: pl.DataFrame) -> None:
+def _write_mc_bulk_tx(wb: Workbook, ne_load: pl.DataFrame) -> None:
     """Bulk TX: exceedance top-100 on NE system load."""
     _write_exceedance_tab(
         wb,
         "mc_bulk_tx",
         "ne_system_load_mw",
         ne_load,
-        mc_parquet,
         cost_ref=REF_AESC_PTF,
         mc_label="mc_bulk_tx_per_kwh",
     )
 
 
-def _write_mc_supply_energy(wb: Workbook, lmp_df: pl.DataFrame, mc_parquet: pl.DataFrame) -> None:
+def _write_mc_supply_energy(wb: Workbook, lmp_df: pl.DataFrame) -> None:
     """Supply energy: LMP / 1000."""
     ws = wb.create_sheet("mc_supply_energy")
-    headers = ["timestamp", "ri_zone_lmp_mwh", "mc_supply_energy_per_kwh", "mc_parquet_value"]
+    headers = ["timestamp", "ri_zone_lmp_mwh", "mc_supply_energy_per_kwh"]
     ws.append(headers)
     _header_fill(ws, 1, len(headers))
     ws.freeze_panes = "A2"
 
-    joined = mc_parquet.join(lmp_df, on="timestamp", how="left").sort("timestamp")
+    lmp_sorted = lmp_df.sort("timestamp")
 
-    for i, row in enumerate(joined.iter_rows(named=True), start=2):
+    for i, row in enumerate(lmp_sorted.iter_rows(named=True), start=2):
         ws.cell(row=i, column=1, value=row["timestamp"].strftime("%Y-%m-%d %H:%M"))
         if row["lmp_usd_per_mwh"] is not None:
             ws.cell(row=i, column=2, value=float(row["lmp_usd_per_mwh"]))
         ws.cell(row=i, column=3, value=f"=IFERROR(B{i}/1000,0)")
-        mc_val = row["mc_value"]
-        ws.cell(row=i, column=4, value=float(mc_val) if mc_val is not None else 0.0)
 
-    _autosize(ws, {"A": 18, "B": 18, "C": 24, "D": 18})
+    _autosize(ws, {"A": 18, "B": 18, "C": 24})
 
 
-def _write_mc_supply_capacity(wb: Workbook, sene_load: pl.DataFrame, mc_parquet: pl.DataFrame) -> None:
+def _write_mc_supply_capacity(wb: Workbook, sene_load: pl.DataFrame) -> None:
     """Supply capacity: FCA exceedance top-100 on SENE load."""
     _write_exceedance_tab(
         wb,
         "mc_supply_capacity",
         "sene_load_mw",
         sene_load,
-        mc_parquet,
         cost_ref=REF_FCA_BLENDED,
         mc_label="mc_supply_capacity_per_kwh",
     )
 
 
-def _write_mc_supply_ancillary(wb: Workbook, ancillary_df: pl.DataFrame, mc_parquet: pl.DataFrame) -> None:
+def _write_mc_supply_ancillary(wb: Workbook, ancillary_df: pl.DataFrame) -> None:
     """Supply ancillary: (reg_service + reg_capacity) / 1000."""
     ws = wb.create_sheet("mc_supply_ancillary")
     headers = [
@@ -626,25 +610,22 @@ def _write_mc_supply_ancillary(wb: Workbook, ancillary_df: pl.DataFrame, mc_parq
         "reg_service_mwh",
         "reg_capacity_mwh",
         "mc_supply_ancillary_per_kwh",
-        "mc_parquet_value",
     ]
     ws.append(headers)
     _header_fill(ws, 1, len(headers))
     ws.freeze_panes = "A2"
 
-    joined = mc_parquet.join(ancillary_df, on="timestamp", how="left").sort("timestamp")
+    anc_sorted = ancillary_df.sort("timestamp")
 
-    for i, row in enumerate(joined.iter_rows(named=True), start=2):
+    for i, row in enumerate(anc_sorted.iter_rows(named=True), start=2):
         ws.cell(row=i, column=1, value=row["timestamp"].strftime("%Y-%m-%d %H:%M"))
         if row["reg_service_price_usd_per_mwh"] is not None:
             ws.cell(row=i, column=2, value=float(row["reg_service_price_usd_per_mwh"]))
         if row["reg_capacity_price_usd_per_mwh"] is not None:
             ws.cell(row=i, column=3, value=float(row["reg_capacity_price_usd_per_mwh"]))
         ws.cell(row=i, column=4, value=f"=IFERROR((B{i}+C{i})/1000,0)")
-        mc_val = row["mc_value"]
-        ws.cell(row=i, column=5, value=float(mc_val) if mc_val is not None else 0.0)
 
-    _autosize(ws, {"A": 18, "B": 16, "C": 16, "D": 26, "E": 18})
+    _autosize(ws, {"A": 18, "B": 16, "C": 16, "D": 26})
 
 
 def _write_mc_combined(wb: Workbook) -> None:
@@ -778,16 +759,98 @@ def _write_validation(wb: Workbook) -> None:
 # ── Main build ────────────────────────────────────────────────────────────────
 
 
+def _derive_pop_mc(load_df: pl.DataFrame, annual_cost: float, n_peak: int) -> pl.DataFrame:
+    """Reproduce PoP allocation in Python (mirrors the spreadsheet formulas)."""
+    ranked = _rank_load(load_df)
+    peak = ranked.filter(pl.col("rank").is_not_null(), pl.col("rank") <= n_peak)
+    peak_load_sum = float(peak["load_mw"].sum())
+    return (
+        ranked.with_columns(
+            pl.when(pl.col("rank").is_not_null() & (pl.col("rank") <= n_peak))
+            .then(pl.col("load_mw") / peak_load_sum * annual_cost)
+            .otherwise(0.0)
+            .alias("mc_derived")
+        )
+        .select("timestamp", "mc_derived")
+        .sort("timestamp")
+    )
+
+
+def _derive_exceedance_mc(load_df: pl.DataFrame, annual_cost: float, n_peak: int) -> pl.DataFrame:
+    """Reproduce exceedance allocation in Python (mirrors the spreadsheet formulas)."""
+    ranked = _rank_load(load_df)
+    threshold = float(ranked.filter(pl.col("rank") == n_peak + 1)["load_mw"].item())
+    return (
+        ranked.with_columns(
+            pl.when(pl.col("rank").is_not_null() & (pl.col("rank") <= n_peak))
+            .then(
+                (pl.col("load_mw") - threshold).clip(lower_bound=0)
+                / (
+                    ranked.filter(pl.col("rank").is_not_null(), pl.col("rank") <= n_peak)
+                    .select((pl.col("load_mw") - threshold).clip(lower_bound=0).sum())
+                    .item()
+                )
+                * annual_cost
+            )
+            .otherwise(0.0)
+            .alias("mc_derived")
+        )
+        .select("timestamp", "mc_derived")
+        .sort("timestamp")
+    )
+
+
+def _validate_mc_against_parquets(
+    rie_load: pl.DataFrame,
+    ne_load: pl.DataFrame,
+    sene_load: pl.DataFrame,
+    lmp_df: pl.DataFrame,
+    ancillary_df: pl.DataFrame,
+) -> None:
+    """Assert that our derivation reproduces the MC parquets passed to CAIRO."""
+    tol = 1e-4
+
+    def _check(name: str, derived: pl.DataFrame, parquet: pl.DataFrame) -> None:
+        joined = derived.join(parquet, on="timestamp", how="inner").sort("timestamp")
+        max_err = float((joined["mc_derived"] - joined["mc_value"]).abs().max())  # type: ignore[arg-type]
+        assert max_err < tol, f"{name}: max hourly error = {max_err:.2e} (tol = {tol:.0e})"
+        print(f"  {name}: PASS (max error = {max_err:.2e})", flush=True)
+
+    _check(
+        "dist_sub_tx",
+        _derive_pop_mc(rie_load, SUB_TX_AND_DIST_MC_KW_YR_2025, N_PEAK_HOURS),
+        load_dist_sub_tx_parquet(),
+    )
+    _check(
+        "bulk_tx",
+        _derive_exceedance_mc(ne_load, AESC_PTF_KW_YEAR, N_PEAK_HOURS),
+        load_bulk_tx_parquet(),
+    )
+    # Supply parquets are stored in $/MWh (energy, ancillary) or scaled by
+    # 1000 (capacity), so we derive in those same native units for comparison.
+    cap_derived = _derive_exceedance_mc(sene_load, FCA_SENE_BLENDED_KW_YR, N_PEAK_HOURS)
+    cap_derived = cap_derived.with_columns(pl.col("mc_derived") * 1000.0)
+    _check("supply_capacity", cap_derived, load_supply_capacity_parquet())
+
+    energy_derived = (
+        lmp_df.sort("timestamp")
+        .with_columns(pl.col("lmp_usd_per_mwh").alias("mc_derived"))
+        .select("timestamp", "mc_derived")
+    )
+    _check("supply_energy", energy_derived, load_supply_energy_parquet())
+
+    anc_derived = (
+        ancillary_df.sort("timestamp")
+        .with_columns(
+            (pl.col("reg_service_price_usd_per_mwh") + pl.col("reg_capacity_price_usd_per_mwh")).alias("mc_derived")
+        )
+        .select("timestamp", "mc_derived")
+    )
+    _check("supply_ancillary", anc_derived, load_supply_ancillary_parquet())
+
+
 def build_workbook(output_path: Path) -> Path:
     """Build and save the .xlsx workbook. Returns the output path."""
-    print("Loading MC parquets from S3 ...", flush=True)
-    mc_dist = load_dist_sub_tx_parquet()
-    mc_bulk = load_bulk_tx_parquet()
-    mc_energy = load_supply_energy_parquet()
-    mc_capacity = load_supply_capacity_parquet()
-    mc_ancillary = load_supply_ancillary_parquet()
-    print(f"  All 5 parquets loaded ({mc_dist.height} rows each)", flush=True)
-
     print("Loading raw ISO-NE / EIA data from S3 ...", flush=True)
     rie_load = load_rie_hourly_load()
     print(f"  RIE utility load: {rie_load.height} hours", flush=True)
@@ -800,6 +863,9 @@ def build_workbook(output_path: Path) -> Path:
     ancillary_df = load_ancillary_prices()
     print(f"  Ancillary prices: {ancillary_df.height} hours", flush=True)
 
+    print("Validating derivation against MC parquets passed to CAIRO ...", flush=True)
+    _validate_mc_against_parquets(rie_load, ne_load, sene_load, lmp_df, ancillary_df)
+
     print("Building workbook ...", flush=True)
     wb = Workbook()
     default = wb.active
@@ -808,11 +874,11 @@ def build_workbook(output_path: Path) -> Path:
 
     _write_readme(wb)
     _write_inputs_scalars(wb)
-    _write_mc_dist_sub_tx(wb, rie_load, mc_dist)
-    _write_mc_bulk_tx(wb, ne_load, mc_bulk)
-    _write_mc_supply_energy(wb, lmp_df, mc_energy)
-    _write_mc_supply_capacity(wb, sene_load, mc_capacity)
-    _write_mc_supply_ancillary(wb, ancillary_df, mc_ancillary)
+    _write_mc_dist_sub_tx(wb, rie_load)
+    _write_mc_bulk_tx(wb, ne_load)
+    _write_mc_supply_energy(wb, lmp_df)
+    _write_mc_supply_capacity(wb, sene_load)
+    _write_mc_supply_ancillary(wb, ancillary_df)
     _write_mc_combined(wb)
     _write_validation(wb)
 
@@ -844,9 +910,8 @@ _TAB_FORMATTING: dict[str, dict] = {
             "B": "#,##0.0",
             "E": "0.000000",
             "F": "0.000000",
-            "G": "0.000000",
         },
-        "auto_resize_columns": ["A:G"],
+        "auto_resize_columns": ["A:F"],
         "freeze_rows": 1,
         "bold_header": True,
     },
@@ -857,9 +922,8 @@ _TAB_FORMATTING: dict[str, dict] = {
             "F": "#,##0.00",
             "G": "0.000000",
             "H": "0.000000",
-            "I": "0.000000",
         },
-        "auto_resize_columns": ["A:I"],
+        "auto_resize_columns": ["A:H"],
         "freeze_rows": 1,
         "bold_header": True,
     },
@@ -867,9 +931,8 @@ _TAB_FORMATTING: dict[str, dict] = {
         "column_number_formats": {
             "B": "#,##0.00",
             "C": "0.000000",
-            "D": "0.000000",
         },
-        "auto_resize_columns": ["A:D"],
+        "auto_resize_columns": ["A:C"],
         "freeze_rows": 1,
         "bold_header": True,
     },
@@ -880,9 +943,8 @@ _TAB_FORMATTING: dict[str, dict] = {
             "F": "#,##0.00",
             "G": "0.000000",
             "H": "0.000000",
-            "I": "0.000000",
         },
-        "auto_resize_columns": ["A:I"],
+        "auto_resize_columns": ["A:H"],
         "freeze_rows": 1,
         "bold_header": True,
     },
@@ -891,9 +953,8 @@ _TAB_FORMATTING: dict[str, dict] = {
             "B": "#,##0.00",
             "C": "#,##0.00",
             "D": "0.000000",
-            "E": "0.000000",
         },
-        "auto_resize_columns": ["A:E"],
+        "auto_resize_columns": ["A:D"],
         "freeze_rows": 1,
         "bold_header": True,
     },

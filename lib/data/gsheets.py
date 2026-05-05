@@ -89,6 +89,70 @@ def open_sheet_by_id(spreadsheet_id: str) -> gspread.Spreadsheet:
     return gc.open_by_key(spreadsheet_id)
 
 
+def create_sheet_in_folder(title: str, folder_id: str) -> gspread.Spreadsheet:
+    """Create a new Google Sheet in a Drive folder, replacing any non-trashed file of the same name.
+
+    Searches the folder for any existing non-trashed file whose name matches
+    ``title`` and permanently deletes it before creating the new spreadsheet.
+
+    Args:
+        title: Name for the new spreadsheet.
+        folder_id: Google Drive folder ID (the long string in the folder URL).
+
+    Returns:
+        The newly created ``gspread.Spreadsheet``.
+    """
+    gc, _ = get_gspread_client()
+    drive_files_url = "https://www.googleapis.com/drive/v3/files"
+
+    # Use Drive API v3 directly so we can include '{folder_id}' in parents in the
+    # query itself rather than relying on client-side filtering.  We also page
+    # through all results in case there are more than 100 matches.
+    safe_title = title.replace("\\", "\\\\").replace("'", "\\'")
+    query = f"name = '{safe_title}' and '{folder_id}' in parents and trashed = false"
+    existing: list[dict] = []
+    page_token: str | None = None
+    while True:
+        params: dict[str, Any] = {
+            "q": query,
+            "fields": "nextPageToken, files(id, name)",
+            "supportsAllDrives": True,
+            "includeItemsFromAllDrives": True,
+            "pageSize": 100,
+        }
+        if page_token:
+            params["pageToken"] = page_token
+        resp = gc.http_client.session.get(drive_files_url, params=params)
+        if not resp.ok:
+            print(
+                f"Warning: Drive search failed ({resp.status_code}): {resp.text[:120]}",
+                flush=True,
+            )
+            break
+        data = resp.json()
+        existing.extend(data.get("files", []))
+        page_token = data.get("nextPageToken")
+        if not page_token:
+            break
+
+    print(f"Found {len(existing)} existing sheet(s) named '{title}' in folder {folder_id}", flush=True)
+    for f in existing:
+        fid = f["id"]
+        print(f"  Trashing '{f['name']}' ({fid}) ...", flush=True)
+        # PATCH trashed=true works with editor role; permanent DELETE requires organizer.
+        resp = gc.http_client.session.patch(
+            f"{drive_files_url}/{fid}",
+            json={"trashed": True},
+            params={"supportsAllDrives": True},
+        )
+        if resp.ok:
+            print("  Trashed.", flush=True)
+        else:
+            print(f"  Warning: could not trash {fid} ({resp.status_code}): {resp.text[:120]}", flush=True)
+
+    return gc.create(title, folder_id=folder_id)
+
+
 def upsert_worksheet(
     spreadsheet: gspread.Spreadsheet,
     title: str,

@@ -91,6 +91,11 @@ if (!dir.exists(outputs_dir)) {
 }
 
 source(here("lib", "ggplot", "switchbox_theme.R"))
+# Match showtext's text-rendering DPI to Quarto's actual chart device
+# DPI (~96).  The shared theme leaves it at 300 (designed for retina
+# raster output), which makes 12pt labels render as ~37pt on Quarto's
+# 96-DPI device — every label overlaps its bars and clips the panel.
+showtext::showtext_opts(dpi = 96)
 # Set options
 # options(dplyr.print_max = Inf)
 ```
@@ -199,6 +204,19 @@ peak_kw_winter <- prp_df |> filter(variable == "peak_kw_winter") |> pull(value)
 peak_kw_delta <- peak_kw_winter - peak_kw_summer
 lrmc_peak_kw <- prp_df |> filter(variable == "LMRC_historical") |> pull(value)
 grid_upgrade_cost_hh <- lrmc_peak_kw * peak_kw_delta
+
+# PRP program scope and total spending — loaded from input sheet so the
+# system-wide denominator and total program cost stay in sync with PGL's
+# filings. `lpp_program_3` is the 1,020-mile remaining CI/DI scope ordered
+# by the 2024 SMP Investigation Order; `lpp_spending_total` is the implied
+# total PRP capital through 2034 from the year-by-year trajectory in
+# NSG-PGL Ex. 1.0 (Eidukas) at 12-13:240-247.
+total_prp_miles <- prp_df |>
+  filter(variable == "lpp_program_3") |>
+  pull(value)
+lpp_spending_total <- prp_df |>
+  filter(variable == "lpp_spending_total") |>
+  pull(value)
 
 # Scattershot electrification constants
 PCT_ELEC <- 0.30 # 30% electrification rate (Chicago Climate Action Plan goal)
@@ -378,6 +396,13 @@ pg_summary <- pg_summary |>
       elec_mf_cost +
       elec_comm_cost +
       street_miles * cost_decomm_mile,
+    # Split elec_cost_total into the two underlying rate-base ledgers.
+    # Grid upgrades are recovered through ComEd electric rates (per ComEd's
+    # ICC-approved delivery charges and Multi-Year Integrated Grid Plan),
+    # not through PGL gas rates and not directly out of household pockets.
+    grid_upgrade_cost_block = grid_upgrade_cost_hh *
+      (sf_parcels + mf_units),
+    elec_pgl_cost_total = elec_cost_total - grid_upgrade_cost_block,
     pct_residential = (sf_parcels + mf_parcels) /
       non_vacant_parcels,
     res_parcel_diff = non_vacant_parcels - (sf_parcels + mf_parcels),
@@ -498,16 +523,34 @@ pg_summary <- pg_summary |>
 # Calculate scattershot electrification costs (unmanaged gas transition scenario)
 # Assumes PCT_ELEC of residential units electrify over TIME_PERIOD years
 # We are agnostic to the timing here. Each block assumes the PRP occurs in year 0 and scattershot occurs in years 0-9.
+#
+# Scattershot cost has two ledger components:
+#   - Household: heat-pump equipment, water heater, cooktop, dryer (the
+#     out-of-pocket cost households pay, after federal incentives, when they
+#     electrify their own home).
+#   - ComEd electric ratepayers: distribution-grid upgrades, recovered through
+#     ComEd's delivery charges from all electric customers, not directly from
+#     the electrifying household.
+# We split the NPV both ways so downstream report variables can attribute
+# scattershot cost to the correct payer.
+
+npv_factor <- sum(1 / (1 + DISCOUNT_RATE)^(0:(TIME_PERIOD - 1)))
 
 pg_summary <- pg_summary |>
   mutate(
     # Annual cost of scattershot electrification (evenly distributed)
     # Excludes decommissioning: gas infrastructure remains in operation under scattershot
     scattershot_annual_cost = (PCT_ELEC * (elec_sf_cost + elec_mf_cost)) / TIME_PERIOD,
+    scattershot_annual_cost_household = (PCT_ELEC *
+      ((sf_parcels * cost_elec_sf) + (mf_units * cost_elec_mf))) / TIME_PERIOD,
+    scattershot_annual_cost_grid = (PCT_ELEC * grid_upgrade_cost_block) /
+      TIME_PERIOD,
 
     # NPV of scattershot costs (t=0 to TIME_PERIOD-1)
-    scattershot_npv = scattershot_annual_cost *
-      sum(1 / (1 + DISCOUNT_RATE)^(0:(TIME_PERIOD - 1))),
+    scattershot_npv = scattershot_annual_cost * npv_factor,
+    scattershot_npv_household = scattershot_annual_cost_household *
+      npv_factor,
+    scattershot_npv_grid = scattershot_annual_cost_grid * npv_factor,
 
     # PRP cost plus scattershot electrification NPV
     prp_cost_ss = prp_cost + scattershot_npv,
@@ -566,6 +609,13 @@ n_res_blocks_1_to_1_5 <- sum(res_only$npa_over_prp > 1 & res_only$npa_over_prp <
 n_res_blocks_0_to_1_5 <- sum(res_only$npa_over_prp < 1.5, na.rm = TRUE)
 pct_res_blocks_1_to_1_5 <- (n_res_blocks_1_to_1_5 / n_res_blocks)
 pct_res_blocks_0_to_1_5 <- (n_res_blocks_0_to_1_5 / n_res_blocks)
+
+# blocks with cost ratio between 1.0 and 2.0 (PRP-equivalent up to 2x PRP),
+# expressed both as a share of all res blocks and as a share of the "remaining"
+# blocks (those not already cheaper than PRP under Perspective 1)
+n_res_blocks_1_to_2 <- sum(res_only$npa_over_prp > 1 & res_only$npa_over_prp < 2, na.rm = TRUE)
+pct_res_blocks_1_to_2 <- (n_res_blocks_1_to_2 / n_res_blocks)
+pct_remaining_blocks_1_to_2 <- (n_res_blocks_1_to_2 / (n_res_blocks - n_res_blocks_cheaper))
 ```
 
 ```{r}
@@ -640,6 +690,54 @@ n_mf_1_5_ss <- sum(res_1_5_ss$total_residential_units - res_1_5_ss$sf_parcels, n
 # street miles counts (scattershot)
 n_miles_1_0_ss <- sum(res_1_0_ss$street_miles, na.rm = TRUE)
 n_miles_1_5_ss <- sum(res_1_5_ss$street_miles, na.rm = TRUE)
+```
+
+```{r}
+# Portfolio totals across all in-scope residential blocks.
+#
+# Each NPA cost stream is split across the rate-base ledger that actually
+# funds it, so downstream consumers (the testimony narrative in particular)
+# can attribute spending to the correct payer.
+#
+#   - PGL gas ratepayers fund electrification equipment and pipe
+#     decommissioning under coordinated TE; under PRP they fund pipe
+#     replacement.
+#   - ComEd electric ratepayers fund local distribution-grid upgrades to
+#     accommodate new winter electric load, recovered through ComEd delivery
+#     charges.
+#   - Households fund their own equipment out of pocket (and through federal
+#     incentives) under scattershot; they pay nothing additional under
+#     coordinated TE because the utility does the work.
+
+# PRP cost (PGL gas ratepayer ledger).
+total_prp_cost_portfolio <- sum(res_only$prp_cost, na.rm = TRUE)
+
+# Coordinated TE cost, split by ledger.
+total_npa_cost_portfolio <- sum(res_only$elec_cost_total, na.rm = TRUE)
+total_npa_pgl_cost_portfolio <- sum(res_only$elec_pgl_cost_total, na.rm = TRUE)
+total_grid_upgrade_cost_portfolio <- sum(res_only$grid_upgrade_cost_block, na.rm = TRUE)
+
+# Scattershot scenario, split by ledger. The household number is the figure
+# that should appear in any "households fund X" claim; the grid component is
+# socialized across all ComEd electric ratepayers.
+total_ss_npv_portfolio <- sum(res_only$scattershot_npv, na.rm = TRUE)
+total_ss_npv_household_portfolio <- sum(res_only$scattershot_npv_household, na.rm = TRUE)
+total_ss_npv_grid_portfolio <- sum(res_only$scattershot_npv_grid, na.rm = TRUE)
+
+# Combined PRP + scattershot cost (full societal envelope).
+total_prp_ss_portfolio <- total_prp_cost_portfolio + total_ss_npv_portfolio
+
+# Net societal savings from coordinated TE.
+portfolio_savings_vs_prp <- total_prp_cost_portfolio - total_npa_cost_portfolio
+portfolio_savings_vs_prp_ss <- total_prp_ss_portfolio - total_npa_cost_portfolio
+
+# Net savings on the PGL-gas-ratepayer + household ledger only — the two
+# ledgers paired in the §VII Q4 narrative. ComEd electric ratepayers fund
+# grid upgrades under both scenarios (more under coordinated TE, since 100%
+# of homes electrify versus 30% under scattershot); their portion is tracked
+# separately above and discussed alongside the two-ledger comparison.
+portfolio_savings_pgl_household <- (total_prp_cost_portfolio +
+  total_ss_npv_household_portfolio) - total_npa_pgl_cost_portfolio
 ```
 
 ```{r}
@@ -950,7 +1048,7 @@ cumulative_data |>
 #| fig-width: 8
 #| fig-height: 6
 
-res_only |>
+bar_data_ss <- res_only |>
   data.frame() |>
   summarise(
     total_prp_cost = sum(prp_cost, na.rm = TRUE),
@@ -965,50 +1063,77 @@ res_only |>
   mutate(
     scenario = if_else(
       cost_type == "total_elec_cost",
-      "NPA",
+      "Coordinated TE",
       "PRP + scattershot"
     )
-  ) |>
+  )
+
+scenario_totals_ss <- bar_data_ss |>
+  group_by(scenario) |>
+  summarise(total = sum(cost), .groups = "drop")
+
+bar_data_ss |>
   ggplot() +
   geom_bar(
     aes(x = scenario, y = cost, fill = reorder(cost_type, cost)),
-    stat = "identity"
+    stat = "identity",
+    width = 0.55
   ) +
-
+  geom_text(
+    data = scenario_totals_ss,
+    aes(
+      x = scenario,
+      y = total,
+      label = scales::dollar(total, scale = 1e-6, suffix = "M", accuracy = 1)
+    ),
+    vjust = -0.6,
+    fontface = "bold",
+    color = "#333333"
+  ) +
   scale_y_continuous(
     limits = c(0, 750e6),
-    breaks = seq(0, 750e6, by = 100e6),
+    breaks = seq(0, 700e6, by = 100e6),
     labels = scales::dollar_format(scale = 1e-6, suffix = "M", accuracy = 1),
     expand = c(0, 0)
   ) +
+  scale_x_discrete(limits = c("PRP + scattershot", "Coordinated TE")) +
   scale_fill_manual(
     values = c(
       "total_prp_cost" = sb_colors[["midnight"]],
       "total_elec_cost" = sb_colors[["pistachio_text"]],
-      "total_ss_npv" = "gray"
+      "total_ss_npv" = "gray70"
     ),
     labels = c(
       "total_prp_cost" = "Pipeline replacement",
-      "total_elec_cost" = "Targeted electrification",
+      "total_elec_cost" = "Coordinated targeted electrification",
       "total_ss_npv" = "Scattershot electrification"
     ),
-    breaks = c("total_elec_cost", "total_ss_npv", "total_prp_cost")
+    breaks = c("total_prp_cost", "total_ss_npv", "total_elec_cost")
   ) +
   labs(
     x = "",
-    y = "Total saving from targeted electrification vs PRP + scattershot",
+    y = "Total upfront capital cost",
     fill = ""
   ) +
-  theme(axis.title.y = element_text(margin = margin(r = 10)))
+  theme(
+    axis.title.y = element_text(margin = margin(r = 10)),
+    legend.position = "right"
+  )
 ```
 
 ```{r}
-#| label: single-block-eg
+#| label: fig-single-block-eg
 #| fig-height: 9
 #| fig-width: 8
 
 sample_id <- "170314407001003" #"170316913001026"
-total_pipe_touching <- 0.1726
+# Total street centerline running along this block's borders, measured
+# from streets_in_construction.geojson (E 87th Pl 0.125 mi + portions of
+# S Langley Ave 0.021 mi and S St Lawrence Ave 0.040 mi). Used as the
+# proxy for miles of CI/DI gas main beneath the streets — see
+# geo_data_cleaning.qmd ("We use street miles as a proxy for pipeline
+# miles to be replaced").
+total_pipe_touching <- 0.1949
 total_prp_cost_ex <- total_pipe_touching * cost_lpp_mile
 
 plot_data <- res_only |>
@@ -1135,12 +1260,18 @@ ggplot() +
 ```
 
 ```{r}
-#| label: single-block-eg-ss
+#| label: fig-single-block-eg-ss
 #| fig-height: 9
 #| fig-width: 8
 
 sample_id <- "170314407001003" #"170316913001026"
-total_pipe_touching <- 0.1726
+# Total street centerline running along this block's borders, measured
+# from streets_in_construction.geojson (E 87th Pl 0.125 mi + portions of
+# S Langley Ave 0.021 mi and S St Lawrence Ave 0.040 mi). Used as the
+# proxy for miles of CI/DI gas main beneath the streets — see
+# geo_data_cleaning.qmd ("We use street miles as a proxy for pipeline
+# miles to be replaced").
+total_pipe_touching <- 0.1949
 total_prp_cost_ex <- total_pipe_touching * cost_lpp_mile
 
 plot_data <- res_only |>
@@ -1398,7 +1529,7 @@ theme(
 
 ```{r}
 #| label: fig-prp-spending-by-year-all
-#| fig-cap: "Estimated total planned PRP spending by project start year. We include all projects, including those that affect blocks with commercial properties."
+#| fig-cap: "Estimated total planned PRP spending by project start year. We include both fully residential blocks and mixed-zoning blocks (those with one or more commercial or industrial parcels)."
 pg_summary |>
   mutate(
     full_res = case_when(
@@ -1450,7 +1581,8 @@ pg_summary |>
 #| fig-width: 8
 #| fig-height: 5
 
-total_prp_miles <- 1451
+# total_prp_miles is loaded from the input sheet (lpp_program_3) at the top
+# of the notebook; do not redeclare it here.
 
 # Calculate miles by project type
 n_miles_res <- sum(res_only$street_miles, na.rm = TRUE)

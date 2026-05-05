@@ -1,0 +1,1337 @@
+---
+title: "Direct Testimony of Juan-Pablo Velez"
+subtitle: "On Behalf of the Citizens Utility Board — ICC Docket No. 26-0065"
+date: 2026-05-05
+author:
+  - name: Juan-Pablo Velez
+    email: jpv@switch.box
+    affiliations:
+      - Switchbox
+keywords: [Peoples Gas, pipe retirement, non-pipeline alternatives, targeted electrification, ICC, Illinois]
+bibliography: ../references.bib
+license: "CC BY-NC"
+toc: true
+notebook-links: false
+reference-location: margin
+fig-cap: true
+fig-cap-location: margin
+tbl-cap-location: margin
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+execute:
+  echo: false
+format:
+  html:
+    page-layout: article
+---
+
+```{r}
+#| label: setup
+#| echo: false
+#| message: false
+#| warning: false
+library(scales)
+library(here)
+library(dplyr)
+library(sf)
+here::i_am("reports/il_npa/working_draft_testimony.qmd")
+load(here("reports", "il_npa", "report_variables.RData"))
+
+# `res_only` and `res_only_w_area` are sf data frames; drop geometry once so
+# downstream dplyr verbs operate on plain data.frames.
+res_only_df        <- st_drop_geometry(res_only)
+res_only_w_area_df <- st_drop_geometry(res_only_w_area)
+
+# System-wide PRP scope: `total_prp_miles` and `lpp_spending_total` are
+# loaded from the input sheet (lpp_program_3, lpp_spending_total) by
+# notebooks/analysis.qmd and arrive via report_variables.RData above. We
+# alias `total_prp_miles` to `prp_total_miles` for prose-readability.
+# `n_prp_projects` is the count of Phase I PRP projects PGL has filed
+# for cost recovery in this rate case (NSG-PGL Ex. 3.0 at 105) — the
+# first tranche of work toward the Commission's 1,020-mile retirement
+# directive, not the total project count needed to retire all 1,020
+# miles. Not currently in the input sheet — update here if PGL's filing
+# revises the project count.
+prp_total_miles    <- total_prp_miles
+n_prp_projects     <- 179
+pct_miles_in_scope <- n_miles / prp_total_miles
+
+# Per-block example values for the §V single-block walkthrough.
+sample_block_id <- "170314407001003"
+sample_block <- res_only_df |> filter(geoid10 == sample_block_id)
+# Total street centerline running along this block's borders, measured
+# directly from the Chicago Street Centerlines dataset (E 87th Pl 0.125 mi
+# + bordering segments of S Langley Ave and S St Lawrence Ave totaling
+# 0.061 mi). Used as the proxy for miles of CI/DI gas main beneath the
+# streets — see notebooks/geo_data_cleaning.qmd ("We use street miles as
+# a proxy for pipeline miles to be replaced").
+sample_total_pipe       <- 0.1949
+sample_attributed_pipe  <- sample_block$street_miles
+sample_sf               <- sample_block$sf_parcels
+sample_mf_buildings     <- sample_block$mf_parcels
+sample_mf_units         <- sample_block$mf_units
+sample_total_units      <- sample_block$total_residential_units
+sample_prp_cost         <- sample_block$prp_cost
+sample_elec_sf_cost     <- sample_sf * cost_elec_sf
+sample_elec_mf_cost     <- sample_mf_units * cost_elec_mf
+sample_grid_cost        <- sample_total_units * grid_upgrade_cost_hh
+sample_decomm_cost      <- sample_attributed_pipe * cost_decomm_mile
+sample_total_npa        <- sample_elec_sf_cost + sample_elec_mf_cost +
+  sample_grid_cost + sample_decomm_cost
+sample_ratio            <- sample_total_npa / sample_prp_cost
+
+# Per-block scattershot values for the §VII single-block walkthrough.
+sample_scattershot_npv  <- sample_block$scattershot_npv
+sample_prp_ss           <- sample_prp_cost + sample_scattershot_npv
+sample_ratio_ss         <- sample_total_npa / sample_prp_ss
+
+# Neighborhood-level cost-effectiveness summary for §V.
+neigh_summary <- res_only_w_area_df |>
+  filter(neighborhood %in% c("Englewood", "Garfield Ridge", "Lincoln Square")) |>
+  group_by(neighborhood) |>
+  summarise(
+    n_res     = n(),
+    n_cheaper = sum(npa_over_prp <= 1, na.rm = TRUE),
+    pct_cheap = n_cheaper / n_res,
+    .groups   = "drop"
+  )
+get_neigh <- function(name, col) neigh_summary |> filter(neighborhood == name) |> pull({{ col }})
+n_eng        <- get_neigh("Englewood",      n_res)
+n_eng_cheap  <- get_neigh("Englewood",      n_cheaper)
+pct_eng      <- get_neigh("Englewood",      pct_cheap)
+n_gar        <- get_neigh("Garfield Ridge", n_res)
+n_gar_cheap  <- get_neigh("Garfield Ridge", n_cheaper)
+pct_gar      <- get_neigh("Garfield Ridge", pct_cheap)
+n_lin        <- get_neigh("Lincoln Square", n_res)
+n_lin_cheap  <- get_neigh("Lincoln Square", n_cheaper)
+pct_lin      <- get_neigh("Lincoln Square", pct_cheap)
+
+# Portfolio totals (total_prp_cost_portfolio, total_npa_cost_portfolio,
+# total_npa_pgl_cost_portfolio, total_grid_upgrade_cost_portfolio,
+# total_ss_npv_portfolio, total_ss_npv_household_portfolio,
+# total_ss_npv_grid_portfolio, total_prp_ss_portfolio,
+# portfolio_savings_vs_prp, portfolio_savings_vs_prp_ss,
+# portfolio_savings_pgl_household) are computed in
+# notebooks/analysis.qmd and loaded from report_variables.RData above.
+```
+
+> **STATE OF ILLINOIS**
+>
+> **ILLINOIS COMMERCE COMMISSION**
+
+| The Peoples Gas Light and Coke Company                                                                                  | ) | Docket No. 26-0065 |
+| ----------------------------------------------------------------------------------------------------------------------- | - | ------------------ |
+| Proposed general increase in rates and revisions to service classifications, riders and terms and conditions of service | ) |                    |
+
+**DIRECT TESTIMONY OF**
+
+**JUAN-PABLO VELEZ**
+
+**ON BEHALF OF THE**
+
+**CITIZENS UTILITY BOARD**
+
+**CUB Exhibit 1.0**
+
+April 30, 2026
+
+---
+
+## I. INTRODUCTION AND QUALIFICATIONS
+
+**Q.** Please state your name and business address.
+
+**A.** Juan-Pablo Velez. Co-founder and Executive Director of Switchbox. 1 Whitehall Street, 17th Floor, New York, NY 10004.
+
+
+<br>
+
+**Q.** By whom are you employed and in what capacity?
+
+**A.** I am currently the Executive Director of Switchbox, a non-profit policy think tank building open analyses of state climate and energy policy for advocates, regulators, and the public.
+
+
+<br>
+
+**Q.** On whose behalf are you submitting this testimony?
+
+**A.** I am testifying on behalf of the Citizens Utility Board ("CUB").
+
+
+<br>
+
+**Q.** Please summarize your professional and educational background.
+
+**A.** I have a BA in Sociology from the University of Chicago. I took post-graduate math courses in probability theory, mathematical statistics, and vector calculus at Columbia University and NYU.
+
+Before founding Switchbox, I was a staff machine learning engineer at Spotify, where I helped build some of the company's large-scale AI systems. Before that, I worked as a data scientist for a boutique data science consultancy called Polynumeral.
+
+I founded and have led Switchbox for the past four years, where I have authored reports covering heat pump rates, building electrification and weatherization incentive programs, green hydrogen blending, non-pipeline alternatives, the economics and grid impacts of all-electric new construction mandates, and other topics. Our reports are based on software implementations of economics and engineering models.
+
+I have presented our work on heat pump rate design at Northeast Energy Efficiency Partnership’s annual Heating Electrification Workshop and in front of the Illinois Commerce Commission. Our clients have included Environmental Defense Fund, Natural Resources Defense Council, Earthjustice, Acadia Center, Green Energy Consumers Alliance, Rewiring America, and others. Our reports have been covered by numerous national and local press outlets.
+
+
+<br>
+
+**Q.** Have you previously testified before the Illinois Commerce Commission?
+
+**A.** No.
+
+
+<br>
+
+**Q.** Have you previously testified or submitted comments in regulatory proceedings in other states?
+
+**A.** Yes. I submitted prefiled expert testimony before the Rhode Island Public Utilities Commission (RIPUC) on heat pump rates and bill-alignment analyses on April 16, 2026.
+
+
+<br>
+
+**Q.** Was this testimony prepared by you or under your direct supervision?
+
+**A.** Yes.
+
+
+<br>
+
+**Q.** Are you sponsoring any exhibits with this testimony?
+
+**A.** Yes:
+
+- CUB Ex. 1.1: Figures & Tables Appendix
+- CUB Ex. 1.2: Analysis Methodology
+- CUB Ex. 1.3: Juan-Pablo Velez's CV
+
+---
+
+## II. PURPOSE OF TESTIMONY AND SUMMARY OF RECOMMENDATIONS
+
+**Q.** What is the purpose of your testimony?
+
+**A.** The purpose of my testimony is threefold. First, I identify the share of PGL's planned residential PRP scope that is cost-effective to electrify under three different cost-effectiveness perspectives. To do so, I quantify the upfront capital cost of meeting the Commission's 2035 cast-iron / ductile-iron ("CI/DI") retirement deadline through **targeted electrification** ("TE"), a type of non-pipeline alternative ("NPA"), and compare that cost to PGL's planned **pipe replacement**. The comparison is made at the level of residential blocks within PGL's planned Pipe Retirement Program ("PRP") project areas. Second, I show why the **current PRP process and the emerging NPA-evaluation framework discussed at the ICC's NPA workshop cannot, by construction, capture that potential**. Third, I recommend a three-part order the Commission should issue to help realize that potential.
+
+
+<br>
+
+**Q.** How is your testimony organized?
+
+**A.** My testimony is organized as follows. Section III provides background and policy context. It describes the conflict between Chicago's electrification goals and PGL's pipe-replacement trajectory. Section IV describes my scope and analytical approach. Sections V through VII present three findings, one per cost-effectiveness perspective. Section VIII provides a structural critique. That is, why the current PRP and emerging NPA-evaluation processes cannot capture the potential benefits of TE. Section IX sets out my recommendations to the Commission.
+
+
+<br>
+
+**Q.** Please summarize your principal findings.
+
+**A.** My findings can be summarized in four parts, one for each cost-effectiveness perspective, plus a synthesis across all three.
+
+Under the first cost-effectiveness perspective, of `r comma(n_res_blocks)` fully residential blocks inside PGL's planned PRP project areas, **approximately `r percent(pct_res_blocks_cheaper, accuracy = 0.1)`** (`r comma(n_res_blocks_cheaper)` blocks) are individually cheaper to electrify than to replace pipe, even before counting benefits beyond cost savings on upfront capital expenditures.
+
+Under the second cost-effectiveness perspective, I detail a "portfolio" cost-neutral approach. This approach considers how the sequencing of TE implementation could affect its cost-effectiveness. Prioritizing the electrification of the cheapest blocks would lead to savings that could be used to electrify the next-most expensive group of blocks. Under this approach, **approximately `r percent(zero_crossing, accuracy = 0.1)`** of the PRP portfolio could be electrified at no net additional cost compared to PGL's PRP.
+
+Under the third cost-effectiveness perspective, the comparison is made against the following counterfactual: PGL's planned pipe replacement plus the household-level "scattershot" electrification that would unfold as Chicago moves toward the residential electrification target in its Climate Action Plan. To represent that pattern, I assume that approximately 30% of residential units in the PRP scope electrify uniformly over a 10-year horizon, consistent with the CAP's 2035 trajectory. Under that counterfactual, **the entire residential portfolio is cheaper to coordinate as TE than to repipe-plus-scattershot**, and **approximately `r percent(pct_res_blocks_cheaper_ss, accuracy = 0.1)`** of blocks are individually cheaper under that comparison.
+
+Across all three perspectives, the share of the residential PRP scope that is cost-effective to electrify is large — somewhere between roughly a quarter and all of it. There is no defensible reading of the data under which the answer is "approximately none."
+
+
+<br>
+
+**Q.** Please summarize your recommendations.
+
+**A.** The Commission should issue a **three-part order**, structured to be incremental and to require no redirection of capital from the existing PRP.
+
+1. **Order an independent third-party, selected by the Commission, to conduct a large-scale hydraulic feasibility study** covering the full universe of mains currently planned for retirement under the PRP (approximately `r comma(prp_total_miles)` miles).
+
+At minimum, the study must do three things:
+
+(i) Identify the decommissioning sequence of pipe segments within the PRP program that would **maximize** the miles of CI/DI pipe that are hydraulically feasible to decommission citywide, assuming affected customers participate in targeted electrification projects.
+
+(ii) Report the maximum number of CI/DI pipe miles, city blocks, and physical buildings that are hydraulically decommissionable under that maximizing sequence.
+
+(iii) Identify the capabilities PGL would need to execute targeted electrification projects on the majority of city blocks identified as cost-effective to electrify and hydraulically feasible to decommission (assuming affected customers participated), and identify the gap between those capabilities and how PGL operates today. Decommissioning at this scale is not just a planning exercise: it requires signing up entire blocks of households at once rather than one customer at a time, coordinating gas decommissioning with electrification retrofits and potential ComEd grid upgrades, and bulk procuring efficient electrical appliances. None of these are capabilities PGL operates today, and the study should report what it would take to build them.
+
+Decommissioning a segment of CI/DI pipe requires that targeted electrification of the affected buildings be cost-effective, and that it be hydraulically feasible to do so. The analysis presented in this testimony provides strong evidence that a significant share of the residential blocks that PGL is planning to do pipe replacement projects on could instead be cost-effectively electrified. However, we do not know which of these pipe segments would be hydraulically feasible to decommission, which in turn depends on the sequence in which surrounding pipe segments are decommissioned.
+
+The purpose of the study would be to complement the cost-effectiveness analysis presented in this testimony with a high-level estimate of how many pipe segments it would be possible to decommission citywide if PGL was proactively planning to do so, rather than reactively evaluating hydraulic feasibility as individual projects are planned.
+
+The independence of the study is essential. PGL has a financial incentive to underrepresent the share of its system that is hydraulically decommissionable, and no other party — not CUB, not Staff, not the Attorney General — can verify PGL's claims about hydraulic feasibility without access to PGL's pipe-topology data. A study conducted by PGL itself is at risk of ratifying the status quo.
+
+2. **Order PGL to release the inputs to the Part 1 study.** Public inputs must be made available to all parties so they can replicate, sanity-check, and extend the work. Sensitive inputs — most importantly PGL's hydraulic pipe-topology data, along with any customer-level data — must be made available to qualified intervenors under NDA.
+
+3. **Order a follow-on process to translate the Part 1 findings into an actionable plan.** Whether structured as a technical workshop or a new docketed proceeding, that process should produce two outputs: an estimate of the number of hydraulically feasible and cost-effective city blocks currently served by CI/DI mains that are planned for retirement under the PRP, and the design of a TE "track" under the PRP program that would allow PGL to decommission a meaningful share of those blocks. As proposed, the PRP program retires pipe segments in highest-risk order. For reasons that are detailed in this testimony, exclusive use of this approach precludes the possibility of large-scale targeted electrification. The TE "track" would run alongside the existing "riskiest-first" track of the PRP program, proactively decommissioning lower-risk pipe segments in a sequence that maximizes hydraulic feasibility. Together, these two tracks prioritize addressing safety risk while proactively executing on cost-effective TE. Without this third step, the Part 1 study risks producing a finding on which no party is empowered to act.
+
+---
+
+## III. BACKGROUND AND POLICY CONTEXT
+
+**Q.** What is the central policy tension this testimony addresses?
+
+**A.** Chicago and PGL are operating on two trajectories that point in opposite directions for the same residential customer base. On one side, Chicago has set a goal of electrifying 30% of residential buildings by 2035 in the Chicago Climate Action Plan.[^cap-2035] On the other side, the Commission has directed PGL to retire all remaining CI/DI mains under 36 inches by January 1, 2035 — roughly 1 in 4 miles of mains in PGL's distribution system[^smp-final-order] — and PGL proposes to do this work primarily through traditional pipe replacement.[^prp-traditional]
+
+[^cap-2035]: City of Chicago, [*Chicago Climate Action Plan*](https://www.documentcloud.org/documents/26372224-chicago-cap-071822/) (2022) at 106.
+[^smp-final-order]: Final Order in [Docket 24-0081](https://www.documentcloud.org/documents/28094650-p2024-0081-final-order-633326/) at 3, 97.
+[^prp-traditional]: NSG-PGL [Ex. 3.0](https://www.documentcloud.org/documents/28094644-p2026-0065-nsg-pgl-ex-3-0-direct-testimony-of-polly-m-eldringhoff-and-jerry-dickson-657976/#document/p38) at 38:778–788.
+
+The same households are being asked to fund both: their own electrification costs and the PRP capital invested in gas infrastructure whose useful life their departure shortens. The magnitude of that overlap — the PRP capital that would be spent on blocks where electrification is cost-competitive, and that would become stranded as those households leave the gas system — is what the analysis presented in this testimony quantifies.
+
+
+<br>
+
+**Q.** What is PGL asking the Commission to authorize on the PRP in this case?
+
+**A.** PGL is asking the Commission to authorize **`r n_prp_projects` distinct PRP projects** in this rate case. These `r n_prp_projects` projects are PGL's first tranche of work toward the Commission's directive to retire approximately `r comma(prp_total_miles)` miles of CI/DI pipe by the end of 2034 — they cover only a subset of the eventual total.[^prp-scope] Project-level spending is approximately $188M in 2026 and $306M in 2027, excluding contingency.[^prp-project-spending] Total PRP spending — approximately $214M in 2026 and $360M in 2027, including contingency — would flow through base rates rather than through Rider QIP, which has sunset.[^prp-total-spending]
+
+[^prp-scope]: NSG-PGL [Ex. 3.0](https://www.documentcloud.org/documents/28094644-p2026-0065-nsg-pgl-ex-3-0-direct-testimony-of-polly-m-eldringhoff-and-jerry-dickson-657976/#document/p8) at 8:150–151, 105.
+[^prp-project-spending]: NSG-PGL [Ex. 3.0](https://www.documentcloud.org/documents/28094644-p2026-0065-nsg-pgl-ex-3-0-direct-testimony-of-polly-m-eldringhoff-and-jerry-dickson-657976/#document/p106) at 106:2022 to 107:2026.
+[^prp-total-spending]: Direct Testimony of Theodore Eidukas, NSG-PGL [Ex. 1.0](https://www.documentcloud.org/documents/28094647-p2026-0065-nsg-pgl-ex-1-0-direct-testimony-of-theodore-eidukas-657962/#document/p4) at 4:86–89, 13:243–244.
+
+PGL also acknowledges that residential gas demand on its system is declining: its SC-1 residential sales forecast is down nearly 5% by 2027 relative to 2024.[^sc1-decline]
+
+[^sc1-decline]: NSG-PGL [Ex. 1.0](https://www.documentcloud.org/documents/28094647-p2026-0065-nsg-pgl-ex-1-0-direct-testimony-of-theodore-eidukas-657962/#document/p21) at 21:394–396.
+
+
+<br>
+
+**Q.** Did the Commission's prior order open the door to non-pipeline alternatives?
+
+**A.** Yes. The Final Order in Docket 24-0081 (Feb. 20, 2025) directed PGL to "work with stakeholders to study the feasibility of NPAs on its distribution system."[^npa-directive] The Commission specifically directed PGL to consider, at minimum, seven topics drawn from the City of Chicago's testimony in the SMP investigation: gas asset risk and timeline; hydraulic feasibility; the outlook for local electric capacity; types and numbers of customers; coordination with community-based organizations, local governments, and others; customer propensity to opt in to an NPA project; and equity in the locations of NPA projects.[^coc-seven-topics]
+
+[^npa-directive]: Final Order in [Docket 24-0081](https://www.documentcloud.org/documents/28094650-p2024-0081-final-order-633326/) (Feb. 20, 2025) at 205.
+[^coc-seven-topics]: City of Chicago direct testimony, COC [Ex. 1.00](https://www.documentcloud.org/documents/28094648-p2024-0081-coc-ex-1-00-direct-testimony-of-gregory-lander-615437/#document/p48) at 48:910–49:927.
+
+While I am not a lawyer, my reading of the Final Order is that the Commission's directive to study NPAs has two primary motivations:
+
+1. **Cost.** The Commission found PGL "uniquely situated to seriously consider the application of Non-Pipeline Alternatives" because of its "urban, dense service territory, combined with significant CI/DI pipe retirement work"[^npa-directive] — language that, in regulatory NPA practice, identifies the conditions under which NPAs are most likely to be cheaper than replacement. The Commission also adopted the City of Chicago's framing that NPAs "can present cost savings, emissions reductions, and other societal benefits,"[^coc-three-benefits] and grounded the directive in the Initiating Order's request for "alternatives to the SMP" — PGL's largest capital program.[^initiating-order-alternatives] The directive, in other words, treats NPAs as a potential way to do the same job (CI/DI retirement) for less ratepayer cost.
+
+[^coc-three-benefits]: City of Chicago direct testimony, COC [Ex. 1.00](https://www.documentcloud.org/documents/28094648-p2024-0081-coc-ex-1-00-direct-testimony-of-gregory-lander-615437/#document/p48) at 48 ("[NPAs] can present cost savings, emissions reductions, and other societal benefits."), as cited and adopted in [Final Order](https://www.documentcloud.org/documents/28094650-p2024-0081-final-order-633326/) at 202.
+[^initiating-order-alternatives]: [Order Initiating Investigation, Docket 24-0081](https://www.documentcloud.org/documents/28094740-605030/#document/p3) (Feb. 7, 2024) at 3 (asking for information regarding alternatives to the SMP).
+
+2. **Electrification and decarbonization.** The Commission's directive cross-references the Future of Gas proceeding, whose explicit charter is decarbonizing the gas system, and incorporates by reference its prior finding that planning methods to mitigate stranded-asset risk on the gas distribution system include NPAs.[^fog-decarb-cross-ref] It adopts the City's position that PGL's investment decisions must be "compatible with the goals and objectives of [the City's] energy vision, articulated in the Climate Action Plan"[^city-cap-context] — including the Plan's target to electrify 30% of existing residential buildings by 2035.[^cap-electrification] Two of the seven minimum study topics the Commission specifically adopted — **the outlook for local electric capacity** and **customer propensity to opt in to an NPA project**[^coc-seven-topics] — only make sense if NPAs are understood to include shifting customers off gas to electricity; neither question is relevant to liners, repairs, or other pipeline-based interventions. The consensus framing in the NPA workshops, including by utility Nicor Gas, was that "decarbonization is a primary objective of this proceeding."[^nicor-decarb]
+
+[^fog-decarb-cross-ref]: [Final Order](https://www.documentcloud.org/documents/28094650-p2024-0081-final-order-633326/) at 204 ("The Commission expressly determined that Non-Pipeline Alternatives ('NPAs') should be examined in the Future of Gas proceeding. See 2023 Final Order at 122."); 2023 Final Order, [Docket 23-0068/0069 (Consol.)](https://www.documentcloud.org/documents/28094741-601245/#document/p122) at 122 (directing the Future of Gas process to consider, among other issues, "[s]tranded assets of the gas distribution system and planning methods to mitigate the issue, including NPAs").
+[^city-cap-context]: City of Chicago direct testimony, COC [Ex. 1.00](https://www.documentcloud.org/documents/28094648-p2024-0081-coc-ex-1-00-direct-testimony-of-gregory-lander-615437/), as recounted in [Final Order](https://www.documentcloud.org/documents/28094650-p2024-0081-final-order-633326/) at ~30.
+[^cap-electrification]: City of Chicago, [2022 Climate Action Plan](https://www.documentcloud.org/documents/26372224-chicago-cap-071822/) (target: electrifying 30% of total existing residential buildings, 20% of total existing industrial buildings, 10% of total existing commercial buildings, and 90% of total existing City-owned buildings by 2035), as recounted in [Final Order](https://www.documentcloud.org/documents/28094650-p2024-0081-final-order-633326/) at ~30.
+[^nicor-decarb]: Nicor Gas comments at NPA Workshop #1, summarized in Celia Johnson Consulting, [*NPA Workshop Report*](https://www.documentcloud.org/documents/28094646-npa-for-peoples-gas-workshop-report-2026-02-11/#document/p17) (Feb. 11, 2026) at 11.
+
+This testimony responds to both motivations: it identifies _at what scale_ pipe retirement and targeted electrification can be paired cost-effectively on PGL's urban, CI/DI-heavy system.
+
+
+<br>
+
+**Q.** What did the NPA workshop process actually produce?
+
+**A.** Eight workshops were held between September and December 2025 with over 140 participants. The Facilitator's Report concludes that "the feasibility of NPAs were not studied" during the workshop process and that PGL "did not commit to specific actions related to NPAs on its distribution system."[^facilitator-report]
+
+[^facilitator-report]: Celia Johnson Consulting, [*ICC Non-Pipeline Alternatives Workshops for Peoples Gas Summary Report*](https://www.documentcloud.org/documents/28094646-npa-for-peoples-gas-workshop-report-2026-02-11/#document/p14) (Feb. 11, 2026), at 14 ("the feasibility of NPAs were not studied in the NPA Workshop process, and Peoples Gas did not commit to specific actions related to NPAs on its distribution system").
+
+The City of Chicago, in written comments on the draft report, argued that the Commission's directive for the workshop series was not fulfilled. The City and the Facilitator's Report converge on the same two reasons. PGL had not retained its NPA consultant during the workshop period — the consultant was hired only after the workshops had concluded — and as a result PGL was "not in a position to propose an evaluation framework" or to engage in detailed discussions with stakeholders about how NPAs would be incorporated into the PRP. ComEd was unable to participate in the workshops or to submit written comments on local electric capacity by the time the report was finalized, which prevented stakeholders from assessing one of the seven minimum workshop topics the Commission had specified. The Commission's 120-day workshop window provided no opportunity to remedy these gaps before the report's deadline.
+
+Switchbox's presentation at Workshop #8 on December 16, 2025, shared the analysis underlying this testimony.[^workshop-8] The cost-effective TE potential I quantify in Sections V through VII was therefore on the workshop record before this rate case was filed.
+
+[^workshop-8]: [*NPA Workshop #8 Meeting Notes*](https://www.documentcloud.org/documents/28094649-npa-workshop-8-meeting-notes-2025-12-16/#document/p8), ICC Non-Pipeline Alternatives Workshops for Peoples Gas (Dec. 16, 2025), at 8 (recording Switchbox's presentation of the cost-effectiveness analysis underlying this testimony).
+
+
+<br>
+
+**Q.** What did PGL itself say about NPAs in the present rate case?
+
+**A.** PGL's position on NPAs in this rate case has two parts that do not fit together.
+
+At the project level, PGL commits to considering NPAs before deciding to replace CI/DI pipe, and identifies geothermal systems, targeted electrification, and cured-in-place liners as the current options it would consider.[^prp-npa-options]
+
+[^prp-npa-options]: NSG-PGL [Ex. 3.0](https://www.documentcloud.org/documents/28094644-p2026-0065-nsg-pgl-ex-3-0-direct-testimony-of-polly-m-eldringhoff-and-jerry-dickson-657976/#document/p99) at 99:1881–1890.
+
+But at the system level, PGL forecloses any rate-case action on those same alternatives. PGL witnesses Graves, Figueroa, and Sreenath argue that it is "neither feasible nor realistic" for PGL to include in this rate case any material resource or service design plans that would call for decarbonization or affect PRP execution in 2027 or beyond in a cost-effective manner.[^gfs-not-feasible] They give five reasons:
+
+[^gfs-not-feasible]: Direct Testimony of Frank C. Graves, Josh Figueroa, and Ragini Sreenath, NSG-PGL [Ex. 7.0](https://www.documentcloud.org/documents/28094645-p2026-0065-nsg-pgl-ex-7-0-direct-testimony-of-frank-c-graves-josh-figueroa-and-ragini-sreenath-658043/#document/p8) at 8:174 to 9:216.
+
+- **Unresolved policy issues.** The Commission has not yet decided how to handle critical issues such as incentivizing or mandating customer fuel switching, which are under discussion in the Illinois Future of Gas ("FoG") proceedings and other forums but whose outcomes remain unclear. Aggressive decarbonization by gas and electric utilities may require new laws and regulatory authorizations to permit new forms of engagement with customer end-use energy management.
+
+- **Limited budget and staff.** PGL does not currently have the resources to run large-scale decarbonization programs, and scaling them up would require material changes to the Commission's historic approach to rate-setting. This explains why we propose that this topic be considered as part of the hydraulic feasibility study we recommend.
+
+- **Electric system challenges.** The Illinois electric grid is already facing significant demand pressures and fundamental cost increases, citing recent North American Electric Reliability Corporation ("NERC") assessments and the December 2025 Illinois Resource Adequacy Study. The witnesses argue that mandating electricity for heating and cooking, alongside surging demand from data centers, would exacerbate these pressures and make a near-term carbon-free power supply less likely.
+
+- **Big projects take administrative time.** Major decarbonization initiatives require long lead times for siting, permitting, neighborhood coordination, and cross-utility planning. The witnesses also state that, based on the Commission's recent decisions in gas utility rate cases, they understand the Commission's preference is that potential pilot studies be addressed in the ongoing FoG proceeding rather than in rate cases.
+
+- **The Commission's 2035 retirement directive.** The Commission has ordered PGL to complete the retirement of CI/DI main in Chicago by 2035. Satisfying that 10-year horizon while also reducing operating costs takes priority while longer-term policy questions are addressed.
+
+The witnesses reach a second major conclusion: PGL would need a series of new authorizations even to begin preparing for deep decarbonization, with deep decarbonization itself anticipated to proceed only starting around 2030. Those authorizations include expanded budgets, new investment-decision criteria, clarity on incentives and potential subsidies, and policies for recovery of stranded costs and decarbonization expenses. The witnesses note that several of the relevant mechanisms — capitalized energy efficiency, rate-base subsidies for low-income NPA adoption, cross-billing of gas-utility-sponsored electrification to local electric utilities, utility ownership of behind-the-meter decarbonization equipment, and NPA adoption incentives such as performance-based rates — have precedents or are under consideration in other states' FoG proceedings.
+
+
+<br>
+
+**Q.** How does this testimony respond to PGL's framing of the role of NPAs?
+
+**A.** I disagree with PGL's framing that Targeted Electrification NPAs are within scope at the project level but cannot be evaluated at the system level. System-level cost-effectiveness can be approximately estimated using publicly available GIS data on parcels, buildings, and street centerlines, and that is what this testimony does. System-level hydraulic feasibility can be similarly approximated using PGL's existing hydraulic pipe model, which PGL already operates internally — and that is precisely the analysis the recommendations in Section IX ask the Commission to order. The information needed to evaluate NPAs at the system level is not unavailable: it is simply not on the record.
+
+In addition, while we agree that the Commission has currently bound PGL to complete the retirement of CI/DI mains by 2035, we do not agree that the potential for large-scale targeted electrification constitutes a longer-term policy question that is out of scope for this rate case (rather, it may be the 2035 goal itself that is incompatible with large-scale targeted electrification.) The Commission is considering whether to authorize the retirement of roughly a quarter of the City of Chicago's gas distribution system, which PGL has indicated it will do primarily via replacement. The choices being locked in by that decision are not abstract policy questions for some future docket — they are concrete, system-shaping commitments whose consequences will compound for decades.
+
+PGL's own forecast expects residential gas demand to decline by nearly 5% by 2027,[^sc1-decline] indicating that the natural gas death spiral — a negative feedback loop wherein rising gas delivery costs push customers to electrify, leaving fewer customers to pay for gas delivery, which raises delivery rates further — may already be underway. The pattern is not unique to PGL: independent statewide analyses of Illinois's gas-system trajectory document the same dynamic across other Illinois utilities and reach similar conclusions about the cost dynamics that result.[^bdc-future-gas-il] Rebuilding a quarter of Chicago's gas distribution network — which needs to be decommissioned over the next few decades to meet Illinois's decarbonization goals — would inflate PGL's rate base, worsening and accelerating that spiral.
+
+[^bdc-future-gas-il]: Building Decarbonization Coalition and Groundwork Data, [*The Future of Gas in Illinois*](https://www.documentcloud.org/documents/26377843-bdc-the-future-of-gas-in-illinois/) (May 2024) at 5–6, 78.
+
+Large-scale targeted electrification, on the other hand, would kick-start the process of decommissioning the distribution system, slowing the death spiral and dramatically accelerating Chicago's electrification trajectory.
+
+---
+
+## IV. SCOPE AND ANALYTICAL APPROACH
+
+**Q.** What are the planned PRP project areas your analysis covers, and where does the project-area data come from?
+
+**A.** PGL maintains a public construction map of its planned PRP project areas at https://www.peoplesgasdelivery.com/services/pipe-retirement-program-construction. The map renders project polygons coded by status — Preparation, Installation, Restoration, and Complete. It also stores the per-project metadata (project name, phase code, contractor, status, and construction start and end dates). The project areas analyzed by this testimony are sourced directly from that public map.
+
+I applied two pre-processing steps to this dataset of GIS polygons. First, I unioned adjacent and overlapping project polygons to avoid double-counting pipe miles where two or more projects share an edge or footprint. For unioned polygons whose component projects had different start dates, I retained the latest of those dates. Second, I only kept project areas currently classified as "planned", and excluded any project area already underway or completed at the time of the analysis. The final PRP project dataset comprises project polygons with construction start dates after January 1, 2026, excluding service-installation and street-restoration projects.
+
+::: {.column-page-inset-right}
+![PGL's planned PRP project areas.](img/city_wide_projects.png){#fig-projects}
+:::
+
+Within that universe of project areas, my analysis focuses on a specific subset of fully residential city blocks.
+
+
+<br>
+
+**Q.** What is the universe of pipe and customers in scope?
+
+**A.** Inside the footprint of PGL's planned PRP project areas, my analysis identifies `r comma(n_blocks_total)` total city blocks. Of those, `r comma(n_res_blocks)` — approximately `r percent(pct_res_blocks_total, accuracy = 0.1)` — are fully residential blocks, and they form the "in-scope" set of city blocks evaluated in this analysis. I exclude mixed-zoning and commercial blocks because per-unit electrification costs for non-residential buildings in Chicago are not well-established in the public literature, and including them would introduce a source of cost uncertainty that the residential-only analysis does not have.
+
+@fig-blocks-by-type shows where these city blocks are located within PGL's planned PRP project areas. The blue blocks are the in-scope residential blocks, and the yellow blocks are the excluded mixed-zoning and commercial blocks.
+
+::: {.column-page-inset-right}
+![Fully residential blocks (dark blue) and excluded mixed-zoning blocks (yellow) within PGL's planned PRP project areas.](img/city_wide_block_type.png){#fig-blocks-by-type}
+:::
+
+The `r comma(n_res_blocks)` in-scope residential blocks contain `r comma(n_res_units)` residential units, comprising `r comma(n_sf)` single-family parcels and `r comma(n_mf)` multi-family units.
+
+I estimate that `r round(n_miles)` miles of mains run beneath these blocks. That is roughly `r percent(pct_miles_in_scope, accuracy = 0.1)` of the approximately `r comma(prp_total_miles)` miles of CI/DI mains PGL plans to retire system-wide under the PRP, as shown in @fig-miles-of-prp-3seg.[^prp-scope]
+
+::: {.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-miles-of-prp-3seg >}}
+:::
+
+<br>
+
+**Q.** What cost categories did you include in your comparison of the up-front costs of pipe replacement and targeted electrification?
+
+**A.** The cost model is built from six inputs.
+
+On the pipe-replacement side, I use approximately `r dollar(cost_lpp_mile, scale = 1e-6, suffix = "M", accuracy = 0.01)` per mile for replacement and approximately `r dollar(cost_decomm_mile, scale = 1e-3, suffix = "K", accuracy = 1)` per mile for decommissioning. The replacement-cost figure is the implied program-wide average of PGL's own forecast PRP capital trajectory through 2034, as filed in this rate case, divided by the Commission's 2034 retirement directive.[^prp-replacement-cost] The decommissioning-cost figure is from PGL's System Modernization Plan filing in Docket 24-0081.[^smp-decomm-cost]
+
+[^prp-replacement-cost]: Implied program-wide average from PGL's filings in this rate case. NSG-PGL [Ex. 1.0](https://www.documentcloud.org/documents/28094647-p2026-0065-nsg-pgl-ex-1-0-direct-testimony-of-theodore-eidukas-657962/#document/p5) (Eidukas) at 5–6 forecasts annual PRP capital of approximately $214M (2026), $360M (2027), $532M (2028), $537M (2029), and approximately $535M annually thereafter through 2034 — implying approximately $4.318B in total PRP capital over the program horizon. Dividing by approximately 1,020 miles of CI/DI main subject to the Commission's retirement directive (NSG-PGL [Ex. 3.0](https://www.documentcloud.org/documents/28094644-p2026-0065-nsg-pgl-ex-3-0-direct-testimony-of-polly-m-eldringhoff-and-jerry-dickson-657976/#document/p8) at 8) yields approximately $4.23M per mile.
+[^smp-decomm-cost]: Peoples Gas, [*System Modernization Plan* at 50](https://www.documentcloud.org/documents/26371764-p2024-0081-pgl-ex-20-220-part-1-47633300/#document/p50) (Docket 24-0081, decommissioning).
+
+On the electrification side, I use approximately `r dollar(cost_elec_sf, scale = 1e-3, suffix = "K", accuracy = 1)` per unit for single-family electrification and approximately `r dollar(cost_elec_mf, scale = 1e-3, suffix = "K", accuracy = 1)` per unit for multi-family electrification, drawn from Commonwealth Edison's ("ComEd") CY2024 Cost-Effectiveness Analysis, prepared by Guidehouse. To capture the cost of accommodating new winter electric load on the local distribution grid, I add an electric distribution upgrade cost of approximately `r dollar(grid_upgrade_cost_hh, accuracy = 1)` per household — derived from the long-run marginal cost of distribution capacity, approximately `r dollar(lrmc_peak_kw, accuracy = 0.01)` per kilowatt, applied to the incremental winter peak demand from heating electrification (the difference between winter peak with a heat pump and summer peak with air conditioning). The grid-upgrade figure is sourced from Energy and Environmental Economics' ("E3") Value of Distributed Energy Resources analysis for Illinois.
+
+For the scattershot baseline used in the third cost-effectiveness perspective, I assume that approximately 30% of residential units in the in-scope blocks electrify uniformly over a 10-year horizon, discounted at 5%. That trajectory is anchored to the residential electrification target in Chicago's Climate Action Plan, as discussed in §III.
+
+The full citation chain for each input is documented in the Analysis Methodology (CUB Ex. 1.2).
+
+
+<br>
+
+**Q.** What did you exclude from your analysis?
+
+**A.** The analysis excludes seven categories of cost, benefit, and feasibility considerations.
+
+1. I exclude operating costs, rate-base effects, and externalities. That covers gas-bill and electric-bill impacts on participants and non-participants, avoided gas-system O&M, rate-base and return-on-equity effects, and the carbon-emissions and air-quality benefits of switching off gas heating. This is an upfront-capital-only analysis.
+
+2. I exclude project-specific PRP cost variation. I use a single average dollars-per-mile figure across all blocks, derived from PGL's rate case filing. PGL has the actual project-by-project cost data and acknowledges that projects are heterogeneous.[^prp-cost-variation] Using PGL's own project-by-project costs instead of a single average would change which specific blocks are identified as cost-effective TE candidates. (Consequently, our analysis should not be used as basis for detailed TE planning, but rather as an estimate of the potential cost savings of cost-effective TE citywide.)
+
+3. I exclude any escalation of PRP capital costs beyond PGL's own forecast. The approximately `r dollar(cost_lpp_mile, scale = 1e-6, suffix = "M", accuracy = 0.01)`-per-mile figure I use is the implied program-wide average of PGL's PRP capital trajectory through 2034, as filed in this rate case,[^prp-replacement-cost] held flat across all blocks and across the program horizon.
+
+4. I exclude hydraulic decommissioning feasibility — whether segments can be physically decommissioned as a unit, given the rest of the network. That question is taken up structurally in §VIII.
+
+5. I exclude social feasibility. The analysis assumes that every unit on a block participates in TE. Real-world participation rates would depend on enabling policies, program design, marketing, and incentive levels.
+
+6. I exclude pipe lining, repair, and other kind of NPAs — a third pathway between full pipe replacement and full electrification. The analytical focus here is the cost-effectiveness of TE specifically. In practice, a real-world program could combine TE on cost-effective blocks with lining or repair on others.
+
+7. As noted above, I exclude commercial and industrial parcels for lack of public data on their upfront electrification costs.
+
+[^prp-cost-variation]: NSG-PGL [Ex. 3.0](https://www.documentcloud.org/documents/28094644-p2026-0065-nsg-pgl-ex-3-0-direct-testimony-of-polly-m-eldringhoff-and-jerry-dickson-657976/#document/p106) at 106–107 (project-by-project cost budgets and estimates for Phase I PRP projects, showing per-project variation in scope and dollars).
+
+
+<br>
+
+**Q.** What three cost-effectiveness perspectives do you evaluate?
+
+**A.** I evaluate the in-scope residential blocks under three different perspectives on upfront cost-effectiveness.
+
+Perspective 1 — Strict block-level cost-effectiveness. A block is deemed cost-effective only when its TE cost is at or below its PRP cost. This is the most conservative possible upfront-cost test.
+
+Perspective 2 — Portfolio cost-neutral. I rank the in-scope residential blocks cheapest-first by their TE-to-PRP cost ratio. The savings on the cheapest blocks offset the higher costs of the next-cheapest blocks. The cost-effective set extends to the point where cumulative net savings cross zero. In other words: how many blocks could be electrified for the same cost as PGL was already going to spend on pipe replacement, assuming the cheapest-to-TE blocks are prioritized?
+
+Perspective 3 — Portfolio with scattershot electrification baseline. I compare coordinated TE not to PRP alone, but to PRP plus the upfront capital cost of a scattershot household-level electrification trajectory consistent with Chicago's stated 2035 residential electrification target of 30%. This comparison takes the City of Chicago's stated electrification goal seriously: under the electrification trajectory needed to meet that goal, Chicagoans would pay for both new pipe under PRP and for 30% of their homes to be electrified over the same period, unless those investments are coordinated. In other words, this is a total upfront cost perspective.
+
+<br>
+
+**Q.** How do the three cost-effectiveness perspectives compare?
+
+**A.**
+The three perspectives are not competing hypotheses. They are three different ways of balancing two values that this proceeding must weigh together: ratepayer cost-effectiveness on the one hand, and the City's stated electrification trajectory on the other. **Perspective 1** privileges ratepayer cost-effectiveness absolutely — TE is justified only on blocks where it would strictly save money relative to pipe replacement on those blocks. In other words, pursuing TE on these blocks would address potential leaks on those blocks for less than pipe replacement, and would have the important additional benefit of fully electrifying those homes.
+
+**Perspective 2** recognizes that TE and pipe replacement are not equivalent investments: a dollar spent on TE advances the City toward its decarbonization goals, while a dollar spent on PRP risks creating stranded assets in a system the State must wind down to meet its decarbonization goals. Under that asymmetry, the natural question is no longer whether TE strictly saves money block by block, but how much TE could be done _at the same total cost as PRP_ across the portfolio.
+
+**Perspective 3** carries that logic one step further, by noting that it makes little sense to rebuild the gas distribution system while simultaneously paying — outside the rate base, household by household — to retire approximately 30% of its demand. A simple way to measure this opportunity cost is to compare TE to PRP plus scattershot electrification, and the question becomes how many blocks could be fully electrified for less than that combined sum.
+
+---
+
+## V. PERSPECTIVE 1 (STRICT BLOCK-LEVEL COST-EFFECTIVENESS)
+
+**Q.** Under a strict block-by-block cost-effectiveness comparison, what share of fully residential blocks in PGL's planned PRP project areas could be electrified at or below the cost of pipe replacement?
+
+**A.** Approximately `r percent(pct_res_blocks_cheaper, accuracy = 0.1)` — `r comma(n_res_blocks_cheaper)` of the `r comma(n_res_blocks)` in-scope fully residential blocks — are individually cheaper to electrify than to replace pipe under the cost inputs and exclusions described in §IV.
+
+
+<br>
+
+**Q.** To understand the methodology you used to arrive at those aggregate results, can you walk through how your methodology is applied to a single block?
+
+**A.** The cost comparison is built from the bottom up — block by block — using publicly available parcel and street data. To illustrate the methodology I apply to every in-scope residential block, I walk through the calculation for a single representative block: Census block `r sample_block_id`, on East 87th Place in Chicago's South Side.
+
+Aerial imagery shows a low-density Chicago residential block dominated by single-family homes, with several vacant lots and a few low-rise multi-family buildings interspersed.
+
+::: {.column-page-inset-right}
+![Aerial view of the example census block on East 87th Place, before annotation.](img/google_street.png){#fig-aerial-87th}
+:::
+
+To estimate the length of CI/DI gas main serving this block, we measure the length of the street running along its borders, on the assumption that one main runs beneath each street. Approximately `r round(sample_total_pipe, 2)` miles of street run along this block.
+
+
+::: {.column-page-inset-right}
+![Outline of the example block showing the approximately `r round(sample_total_pipe, 2)` miles of street running along its borders, used as a proxy for the CI/DI gas main beneath.](img/street_outline.png){#fig-outline-87th}
+:::
+
+Because the gas main under this street serves homes on either side of the street, the analysis allocates the pipe replacement cost along this block proportionally, yielding approximately `r round(sample_attributed_pipe, 3)` miles of pipe attributed to this block for cost-accounting purposes.
+
+At the approximately `r dollar(cost_lpp_mile, scale = 1e-6, suffix = "M", accuracy = 0.01)` per mile pipe-replacement cost from §IV, pipe replacement on this block prices at approximately `r dollar(sample_prp_cost, scale = 1e-3, suffix = "K", accuracy = 1)`.
+
+To estimate the electrification cost, we start by looking at the parcels on the block. Each parcel is either a residential structure, containing one or more residential units, or a vacant lot.
+
+::: {.column-page-inset-right}
+![Parcel-level view of the example block: blue = structures, green = vacant lots — the inputs to the per-block cost model.](img/colored_individual_block.png){#fig-parcels-87th}
+:::
+
+The block contains `r sample_sf` single-family parcels and `r sample_mf_buildings` multi-family buildings totaling `r sample_mf_units` multi-family units — `r sample_total_units` residential units in all. Housing units, not street miles, drive the electrification side of the comparison, which has four components:
+
+(i) Single-family electrification: `r sample_sf` single-family units at a cost of `r dollar(cost_elec_sf, scale = 1e-3, suffix = "K", accuracy = 1)` to fully electrify each unit, totaling `r dollar(sample_elec_sf_cost, scale = 1e-3, suffix = "K", accuracy = 1)`.
+
+(ii) Multi-family electrification: `r sample_mf_units` units at an average cost of `r dollar(cost_elec_mf, scale = 1e-3, suffix = "K", accuracy = 1)` to fully electrify each unit, totaling `r dollar(sample_elec_mf_cost, scale = 1e-3, suffix = "K", accuracy = 1)`.
+
+(iii) Electric distribution upgrade: the incremental load associated with electrifying `r sample_total_units` residential units would prompt electric distribution upgrades costing `r dollar(grid_upgrade_cost_hh, accuracy = 1)` per unit, totaling `r dollar(sample_grid_cost, scale = 1e-3, suffix = "K", accuracy = 1)`. (This particular block may or may not need distribution upgrades — the marginal cost of distribution upgrades we use here is a citywide average.)
+
+(iv) Pipe decommissioning: the same approximately `r round(sample_attributed_pipe, 3)` miles of estimated pipe would cost approximately `r dollar(cost_decomm_mile, scale = 1e-3, suffix = "K", accuracy = 1)` per mile to decommission, totaling `r dollar(sample_decomm_cost, scale = 1e-3, suffix = "K", accuracy = 1)`.
+
+Summed together, the electrification side of the comparison comes to approximately `r dollar(sample_total_npa, scale = 1e-3, suffix = "K", accuracy = 1)` against approximately `r dollar(sample_prp_cost, scale = 1e-3, suffix = "K", accuracy = 1)` for pipe replacement, as shown in @fig-single-block-eg.
+
+::: {.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-single-block-eg >}}
+:::
+
+The block's TE-to-PRP cost ratio is approximately `r percent(sample_ratio, accuracy = 1)` — so it is more expensive to electrify than to replace pipe on this particular block. It is not part of the cost-effective set under Perspective 1.
+
+The same methodology, applied to all `r comma(n_res_blocks)` in-scope residential blocks, drives every finding in this section.
+
+
+<br>
+
+**Q.** Does the share of cost-effective blocks vary across Chicago neighborhoods?
+
+**A.** Yes, dramatically. Different Chicago neighborhoods sit at very different points on the housing density distribution, and density largely drives the block-level cost ratio. Lower-density blocks dominated by single-family homes have few residential units per mile of pipe, so each unit's electrification cost is set against a relatively large share of avoided pipe-replacement cost on the PRP side. Higher-density blocks dominated by multi-family buildings have many units per mile, so per-unit electrification costs accumulate against a smaller per-unit pipe-cost share — raising the ratio.
+
+<br>
+
+**Q.** Can you walk through some example neighborhoods?
+
+**A.** Yes. To illustrate the variation, I selected three contrasting neighborhoods that all have planned PRP projects: Englewood on the South Side, Garfield Ridge on the Southwest Side, and Lincoln Square on the North Side. Together they span the range of housing density in PGL's planned PRP footprint — from low-density blocks with substantial vacant land, through moderate-density bungalow blocks, to dense multi-family blocks. The maps below show each neighborhood's fully residential blocks colored by TE-to-PRP cost ratio: green and yellow blocks are cost-effective under Perspective 1, orange and red are not.
+
+In **Englewood**, `r comma(n_eng)` of the in-scope residential blocks fall within the neighborhood boundary, and approximately `r percent(pct_eng, accuracy = 1)` of them — `r comma(n_eng_cheap)` blocks — are individually cheaper to electrify than to replace pipe. That is more than twice the citywide cost-effective share. Englewood's housing stock is predominantly single-family, and substantial vacant land further lowers the residential-unit count per mile of pipe — yielding favorable economics on a strict block-by-block cost-effectiveness test.
+
+::: {.column-page-inset-right}
+![Englewood: NPA-to-PRP cost ratio by block. Most in-scope blocks are cheaper to electrify than to replace pipe.](img/englewood.png){#fig-englewood}
+:::
+
+In **Garfield Ridge**, `r comma(n_gar)` in-scope residential blocks fall within the neighborhood boundary, of which approximately `r percent(pct_gar, accuracy = 1)` — `r comma(n_gar_cheap)` blocks — are cost-effective under Perspective 1. Many blocks in this neighborhood are made up of detached single-family bungalows on standard Chicago lots — visible in the map as the prevalent yellow shading, indicating cost ratios in the 100–150% range — while denser multi-family blocks pull others into the orange/red.
+
+::: {.column-page-inset-right}
+![Garfield Ridge: NPA-to-PRP cost ratio by block. A roughly even mix of cost-effective (green/yellow) and not-cost-effective (orange/red) blocks.](img/garfield_ridge.png){#fig-garfield-ridge}
+:::
+
+In **Lincoln Square**, `r comma(n_lin)` in-scope residential blocks fall within the neighborhood boundary, and approximately `r percent(pct_lin, accuracy = 1)` — `r comma(n_lin_cheap)` blocks — are cost-effective under Perspective 1. The neighborhood is dense with two-flats, three-flats, and small apartment buildings, which packs many homes onto each mile of pipe. Replacing that pipe costs roughly the same regardless of how many homes sit above it, but electrifying those homes costs more for each one added — so on these blocks, electrifying every unit costs more than the pipe replacement it would avoid. The map is almost entirely red.
+
+::: {.column-page-inset-right}
+![Lincoln Square: NPA-to-PRP cost ratio by block. Almost no in-scope blocks are cheaper to electrify than to replace pipe.](img/lincoln_square.png){#fig-lincoln-square}
+:::
+
+
+<br>
+
+**Q.** Does the geographic pattern across these three neighborhoods correlate with income?
+
+**A.** In these three neighborhoods, yes — and the correlation runs in a direction the Commission should attend to. Englewood, the lowest-income of the three, is also the most cost-effective to electrify under Perspective 1 due to its low density and substantial vacant land. Lincoln Square, the highest-income, is the least cost-effective due to its high density and dense multi-family housing. Garfield Ridge sits between them on both the density and income dimensions.
+
+This is a finding about these three neighborhoods, not a system-wide claim. I have not analyzed the income distribution across all `r comma(n_res_blocks)` in-scope residential blocks in PGL's planned PRP project areas, and I do not assert that the income-cost-effectiveness correlation observed here would hold across all currently planned PRP projects or across PGL's entire CI/DI service territory.
+
+However, the directional implication is clear: a TE program based on Perspective 1 cost-effectiveness alone would tend to land disproportionately on neighborhoods with high concentrations of vacant land, which tend to be lower-income.
+
+
+<br>
+
+**Q.** What does this upfront capital cost comparison between TE and PRP look like across all of PGL's planned PRP project areas?
+
+**A.** The histogram in @fig-histogram-npa-over-prp is the citywide picture under Perspective 1: each in-scope residential block plotted by its NPA-to-PRP cost ratio — the cost of electrifying the block divided by the cost of replacing the pipe under it. If a block is to the left of 100%, it is cheaper to electrify than to replace pipe.
+
+::: {.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-histogram-npa-over-prp >}}
+:::
+
+Roughly **`r percent(pct_res_blocks_cheaper, accuracy = 0.1)`** of residential blocks in PGL's planned PRP project areas sit below 100%, meaning they would be cheaper to electrify than to replace pipe. Of the remaining blocks in the distribution, approximately **`r percent(pct_remaining_blocks_1_to_2, accuracy = 1)`** sit between 100% and 200%. These are blocks where TE is more expensive than pipe replacement at the strict block-by-block test, but where the gap is small enough that most of them become cost-effective under the portfolio and scattershot perspectives in §§ VI and VII.
+
+
+<br>
+
+**Q.** What attribute most strongly predicts whether a block is cheaper to electrify than to replace pipe, and what are the implications for TE program design?
+
+**A.** Housing density, dominantly — the same driver visible in the contrast between Englewood, Garfield Ridge, and Lincoln Square, but now across all `r comma(n_res_blocks)` in-scope residential blocks. Lower-density blocks dominated by single-family homes — particularly those that include vacant lots — skew toward cheap-to-electrify. Higher-density blocks dominated by multi-family buildings skew toward expensive.
+
+@fig-scatter-density-vs-npa-over-prp-w-line plots NPA-to-PRP cost ratio against units per acre within the fully residential blocks in PGL's planned PRP project areas. Each point is a block, colored by the share of units on the block that are single-family.
+
+::: {.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-scatter-density-vs-npa-over-prp-w-line >}}
+:::
+
+The orange points (with high shares of single-family units) cluster in the lower-left, while the blue points (with low shares of single-family units) climb up and to the right. This, along with the upward slope, shows a positive correlation between higher density and lower cost-effectiveness.
+
+This density-cost relationship, though high-level, is a fundamental input to any large-scale TE planning process: it identifies where on the system TE is most likely to be cost-effective before any block-level engineering work is undertaken.
+
+And this analysis does not rely on proprietary data or analytical tools: the entire block-level analysis in this testimony rests on two public datasets — Cook County Assessor parcel records (for housing counts and types) and the City of Chicago's street centerline file (for miles of mains) — which PGL, Commission Staff, and other parties to this docket can use to reproduce these results.
+
+
+<br>
+
+**Q.** How feasible is the assumption that every household on a block would participate?
+
+**A.** While I am not a lawyer, my understanding is that the 100%-participation assumption built into Perspective 1 reflects a constraint of current state law: a public utility cannot currently abandon or discontinue gas service to a customer without Commission approval (220 ILCS 5/8-508), and a gas main cannot be physically retired while any customer remains connected to it.
+
+However, the purpose of the cost-effectiveness analysis is to identify the scale of cost-effective potential first. There would be little value in spending energy on the social-feasibility question if no blocks were cost-effective to electrify in the first place. Conversely, the fact that a non-trivial share of residential blocks are cost-effective even under the strictest upfront cost test strengthens, rather than weakens, the case for practically addressing social feasibility.
+
+<br>
+
+**Q.** If PGL undertook TE on these `r comma(n_res_blocks_cheaper)` cost-effective blocks, how many housing units would be upgraded, how many miles of pipe would be decommissioned, and how much upfront capital would be saved?
+
+**A.** The `r comma(n_res_blocks_cheaper)` in-scope residential blocks where electrification is at or below the cost of pipe replacement under Perspective 1 collectively contain `r comma(n_res_units_1_0)` residential units — `r comma(n_sf_1_0)` single-family parcels and `r comma(n_mf_1_0)` multi-family units — and approximately `r round(n_miles_1_0, 1)` miles of CI/DI mains that PGL would not need to replace if those blocks were electrified instead.
+
+Aggregated across these `r comma(n_res_blocks_cheaper)` blocks, the electrification cost totals approximately `r dollar(npa_total_ce_1_0, scale = 1e-6, suffix = "M", accuracy = 0.1)`, against pipe-replacement cost of approximately `r dollar(prp_total_ce_1_0, scale = 1e-6, suffix = "M", accuracy = 0.1)` — a difference of approximately `r dollar(-1 * total_cost_diff_1_0, scale = 1e-6, suffix = "M", accuracy = 0.1)` in upfront capital savings under the Perspective 1 test.
+
+
+<br>
+
+**Q.** Why does this finding matter to the Commission?
+
+**A.** It connects directly to three interests the Commission already balances under standard prudence-and-reasonableness review.
+
+1. **Prudence in the face of a contracting customer base.** Cost is a central element of prudence review, and on blocks where TE delivers the same service for less upfront capital than pipe replacement, PGL's choice of pipe replacement is harder to defend on prudence grounds. That question sharpens when read against PGL's own filing, which forecasts residential gas sales declining nearly 5% by 2027 versus 2024.[^sc1-decline] New pipe installed in front of customers PGL itself expects to leave the system is exposed to stranding over its depreciation period, with the cost of any stranding falling on the customers who remain.
+
+2. **Leak reduction.** The SMP Investigation Order's leak-reduction objective — to replace PGL's leak-prone CI/DI pipe[^smp-leak-objective] — is met identically by removing the gas line on a block as by replacing it. On the cheaper-to-electrify blocks, removal achieves the same safety outcome at lower upfront capital cost than replacement, while simultaneously advancing Chicago's residential electrification goals. (Other non-pipeline alternatives — lining, repair, smaller-scope retirements — are not in scope for this testimony but could in principle reduce leak risk at still lower cost on these blocks.)
+
+[^smp-leak-objective]: Final Order in [Docket 24-0081](https://www.documentcloud.org/documents/28094650-p2024-0081-final-order-633326/#document/p7) at 7.
+
+3. **Bill affordability.** Avoided capital costs translate to lower gas delivery rate hikes for all PGL customers — TE participants and non-participants alike.
+
+Even under the strictest possible upfront cost-effectiveness test, a sizeable subset of the residential blocks in PGL's already planned project areas satisfy all three of these interests at lower cost than PGL's planned pipe replacement.
+
+That is the floor of the conversation, not its ceiling — Perspectives 2 and 3 in §§ VI and VII relax the test in two different ways, and each identifies a larger cost-effective share.
+
+---
+
+## VI. PERSPECTIVE 2 (PORTFOLIO COST-NEUTRALITY)
+
+**Q.** What does Perspective 2 measure that Perspective 1 does not?
+
+**A.** Perspective 1 asked whether each individual block's electrification cost is at or below its own pipe-replacement cost. That is a useful floor, but it is not the question the Commission ultimately faces. The Commission is being asked to authorize approximately $214M in 2026 and $360M in 2027 of PRP capital across `r n_prp_projects` Phase I projects in this rate case[^prp-total-spending] — the first tranche of work toward the Commission's broader directive to retire approximately `r comma(prp_total_miles)` miles of CI/DI pipe by 2034.[^prp-scope] PGL's testimony suggests retiring all of these miles will cost of `r dollar(lpp_spending_total, scale = 1e-9, suffix = "B", accuracy = 0.1)`.[^prp-total-spending]. That authorization is a portfolio decision, not a block-by-block decision.
+
+The relevant question at the portfolio level is simpler and more consequential than the strict block-by-block comparison: if the Commission is prepared to authorize that level of capital spending anyway, could the same total dollars be deployed in a way that retires leak-prone pipe and advances Chicago's residential electrification trajectory at the same time, rather than locking in new pipe in front of customers PGL itself forecasts are beginning to leave the system?
+
+Perspective 2 takes up that question directly. It asks how many of the in-scope residential blocks could be electrified for no more upfront capital than PGL was already planning to spend replacing pipe on the same blocks. The mechanic is straightforward. I rank the `r comma(n_res_blocks)` in-scope residential blocks cheapest-first by their TE-to-PRP cost ratio. I walk down the ranking from the most cost-effective block to the least. The difference between each block's TE cost and its PRP cost is the net savings from electrifying that block. I accumulate this net savings as long as each block's TE cost is below its PRP cost. Once each block's PRP cost starts to exceed its TE costs — which happens after the `r percent(pct_res_blocks_cheaper, accuracy = 0.1)` cost-effective blocks under Perspective 1 have been electrified — the difference is "paid for" from the savings accumulated by electrifying previous blocks. Electrification continues until all savings are exhausted, yielding the share of blocks that can be electrified for no more upfront capital than PGL was already planning to spend replacing pipe on the same blocks.
+
+
+<br>
+
+**Q.** What does this analysis conclude?
+
+**A.** Approximately `r percent(zero_crossing, accuracy = 0.1)` of the `r comma(n_res_blocks)` in-scope residential blocks could be electrified for the same total upfront capital that PGL has planned to spend replacing pipe on those same blocks.
+
+The cumulative-savings curve in the figure below visualizes the process described in the preceding answer. The horizontal axis shows the percentage of blocks electrified, while the vertical axis shows the cumulative net savings from electrifying the blocks in cheapest-first order.
+
+::: {.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-cumulative-saving-bar >}}
+:::
+
+Moving from the left, the cumulative-savings curve rises as more cheaper-to-electrify blocks are retrofitted and peaks at the Perspective 1 threshold of approximately `r percent(pct_res_blocks_cheaper, accuracy = 0.1)` — in other words, at the percentage of blocks for which it is strictly cheaper to electrify than to replace pipe. The curve then declines as more-expensive-to-electrify blocks are retrofitted and the savings are "spent down." The curve crosses zero at approximately `r percent(zero_crossing, accuracy = 0.1)` of the blocks in the portfolio.
+
+The crossing point is the Perspective 2 cost-neutral threshold. This threshold divides the graph into two regions: the green left region where the cumulative savings are positive, and the red right region where the cumulative savings are negative.
+
+The figure above gives an accounting view of total capital cost outlay, comparing what PGL plans to spend on fully residential blocks within already planned PRP project areas against what it would cost to electrify a cheapest-first slice of those same blocks. PGL is already planning to spend approximately `r dollar(total_prp_cost_portfolio, scale = 1e-6, suffix = "M", accuracy = 1)` on pipe replacement across these residential blocks. Spending the same dollars on TE, in cheapest-first order, would deliver the same retirement of CI/DI mains combined with full electrification across approximately `r percent(zero_crossing, accuracy = 0.1)` of those blocks. In this scenario, the remaining residential blocks would still be addressed through PRP. Perspective 2 changes the physical mix of investments, while keeping the upfront capital the same.
+
+
+<br>
+
+**Q.** Why do the findings from Perspective 2 matter to the Commission?
+
+**A.** Perspective 2 aligns with the Commission's own stated motivations for the NPA workshops in Docket 24-0081: lower leak risk, advance electrification, and hold customer costs steady. It is not the cheapest possible leak-mitigation strategy — that distinction would belong to lining and repair (on segments where these techniques are viable), which would not advance Illinois's electrification goals. Rather, it is the _cheapest electrification-maximizing strategy_ that holds total upfront capital cost at or below PGL's existing PRP plan.
+
+In addition, Perspective 2's cost-neutrality framing aligns the NPA discussion with the actual decision the Commission is making in this case. The Commission is not only deciding how much capital to authorize under the PRP program. It is also deciding what physical infrastructure that capital will deliver. If the Commission is prepared to authorize PGL to spend billions of ratepayer dollars over the next decade, then at minimum that spending should meaningfully advance the City of Chicago's residential electrification goal, rather than investing in new gas assets that need to be decommissioned to meet Illinois's decarbonization goals, and which may become stranded over the depreciation period.
+
+---
+
+## VII. PERSPECTIVE 3 (COORDINATED TE VS PRP-WITH-SCATTERSHOT)
+
+**Q.** What does Perspective 3 take into account that Perspectives 1 and 2 do not?
+
+**A.** Perspectives 1 and 2 both compared NPA cost to PRP cost in isolation, implicitly assuming that nothing else changes on the customer side over the same horizon — that no households on the in-scope residential blocks would electrify their own homes between 2026 and 2035 while PGL is replacing the gas main beneath them.
+
+This is neither a realistic baseline nor one compatible with the City of Chicago's residential electrification goal.[^cap-2035] In a scenario consistent with the City's goal, approximately a third of the homes on a typical in-scope block would be electrifying anyway over the next decade. Perspective 3 brings that customer-side activity into the comparison.
+
+<br>
+
+**Q.** Can you illustrate Perspective 3's methodology through an example?
+
+**A.**
+
+To make the cost-comparison under Perspective 3 concrete, let me revisit the example block from §V — Census block `r sample_block_id` on East 87th Place. Under Perspective 1, that block was more expensive to electrify than to replace pipe: the TE-to-PRP cost ratio was approximately `r percent(sample_ratio, accuracy = 1)`, just above the 100% threshold, so the block was not part of the cost-effective set.
+
+The Perspective 1 comparison included only PGL's planned pipe replacement on this block. It did not include the simultaneous, household-by-household electrification investment that would be unfolding on the same block over the same decade.
+
+If approximately a third of the homes on this block electrify over the next ten years — the share required for the block to track the City's 2035 residential electrification target — then the appropriate counterfactual from a total upfront cost perspective is no longer "TE on the whole block" versus "pipe replacement on the whole block." It is "TE on the whole block" versus "pipe replacement on the whole block plus scattershot electrification on roughly a third of the homes."
+
+Adding the net present value of that scattershot electrification to the PRP side of the comparison adds approximately `r dollar(sample_scattershot_npv, scale = 1e-3, suffix = "K", accuracy = 1)` in upfront capital cost. Once it is added, the same block that was not cost-effective under Perspective 1 becomes cost-effective: the TE-to-(PRP+scattershot) ratio falls to approximately `r percent(sample_ratio_ss, accuracy = 1)`.
+
+@fig-single-block-eg-ss shows the same cost decomposition as @fig-single-block-eg in §V, with the scattershot-electrification NPV added to the PRP side.
+
+::: {.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-single-block-eg-ss >}}
+:::
+
+This bar chart compares the following plain-English scenarios:
+
+PRP-plus-scattershot:
+
+1. Ratepayers and households together fund approximately `r dollar(sample_prp_ss, scale = 1e-3, suffix = "K", accuracy = 1)` of upfront capital for both the pipe replacement and their own electrification.
+
+2. PGL's leak-prone CI/DI main is replaced.
+
+3. Approximately a third of the homes on the block are electrified one at a time at the end of the decade.
+
+Under TE:
+
+1. Ratepayers (and possibly taxpayers, see questions on who pays below) fund approximately `r dollar(sample_total_npa, scale = 1e-3, suffix = "K", accuracy = 1)` of upfront capital across both cost streams.
+
+2. The gas line is decommissioned, achieving the same leak-reduction outcome that pipe replacement would.
+
+3. Every home on the block is electrified.
+
+For the same total cost as replacing the pipe and electrifying only a third of the homes, TE would deliver the same leak-reduction outcome and electrify 100% of the block.
+
+<br>
+
+**Q.** What are the key findings of your analysis under Perspective 3?
+
+**A.** Across the entire in-scope residential portfolio, fully electrifying every home on the in-scope blocks would cost only approximately `r percent(-portfolio_savings_vs_prp_ss / total_prp_ss_portfolio, accuracy = 0.1)` more — about `r dollar(-portfolio_savings_vs_prp_ss, scale = 1e-6, suffix = "M", accuracy = 1)` in undiscounted upfront capital — than replacing all the pipe under those blocks plus the scattershot electrification of approximately 30% of the homes (consistent with the City's stated 2035 trajectory).
+
+@fig-total-spending-bar-ss decomposes the comparison. The PRP-plus-scattershot bar splits into pipeline replacement (the dark portion) plus scattershot-electrification NPA (the light portion), against the single-bar coordinated-TE total.
+
+::: {.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-total-spending-bar-ss >}}
+:::
+
+While the size of these capital expenditures is comparable, their impact is not: under PRP + scattershot, the pipe on all blocks would be replaced at the same time that a third of the homes served by this pipe exit the gas system. Under TE, all the pipe would be decommissioned, and all households would be electrified.
+
+At the block level, approximately `r percent(pct_res_blocks_cheaper_ss, accuracy = 0.1)` of the in-scope residential blocks (`r comma(n_res_blocks_cheaper_ss)` blocks) are individually cheaper to electrify than to repipe-plus-scattershot under Perspective 3 — compared to approximately `r percent(pct_res_blocks_cheaper, accuracy = 0.1)` under Perspective 1. The cost-effective share more than doubles.
+
+What's more, approximately `r percent(zero_crossing_ss, accuracy = 0.1)` of the in-scope residential blocks could be electrified for no more upfront capital than PRP plus the scattershot electrification of approximately 30% of the homes — the Perspective 3 cost-neutral threshold. Applying the same cumulative-savings mechanic from §VI to the scattershot-aware comparison, the savings on blocks where TE is strictly cheaper than PRP+scattershot fund the electrification of additional blocks where TE is modestly more expensive, until the cumulative outlay reaches the total of PRP+scattershot.
+
+
+<br>
+
+**Q.** Why do the findings under Perspective 3 matter to the Commission?
+
+**A.** Perspective 3 models the outcomes necessary to achieve state and city decarbonization goals: the gas system retired and the homes it serves electrified. Perspective 3 shows that achieving that outcome — moving in the right direction — costs society approximately the same upfront capital as moving in precisely the wrong direction.
+
+Under the coordinated TE scenario, every residential block in PGL's planned PRP project areas would be decommissioned at the end of its useful life, every home would be electrified, and Chicago would move toward the trajectory the City has stated and the emissions reductions the State has committed to. **One energy system, not two.**
+
+Under PRP + scattershot, PGL would rebuild the pipe on these blocks (and eventually a quarter of the City's gas distribution system), while approximately a third of the households served by that pipe leave the system one home at a time — precisely the dynamic that drives the natural gas death spiral I described in §III.
+
+PRP + scattershot accelerates a "race to the bottom" of customer attrition. For roughly the same total cost, coordinated TE uses the pipe retirement as an opportunity to kick off Chicago's managed transition from natural gas to electrification.
+
+<br>
+
+**Q.** While the total cost of coordinated TE might be comparable to the total cost of PRP-plus-scattershot, wouldn't coordinated TE raise gas rates more than PRP-plus-scattershot, since the utility doesn't pay for scattershot electrification?
+
+**A.** Yes — if the entirety of the coordinated-TE cost were borne by gas ratepayers. In that scenario, coordinated TE would cost gas ratepayers approximately `r dollar(total_npa_pgl_cost_portfolio - total_prp_cost_portfolio, scale = 1e-6, suffix = "M", accuracy = 1)` more than PRP-plus-scattershot.
+
+That said, this additional cost is a cost-recovery design problem, not a fatal flaw in coordinated TE itself. It need not all be paid for by gas ratepayers. There exist a range of financing tools that could shift a meaningful share of the rate-base impact off PGL's base rates, including:
+
+1. A revolving loan fund operated by the City of Chicago or the State of Illinois, with bond-financed up-front capital recovered from participating customers through property-tax assessments. Such a fund is being considered by NYSERDA in New York State.
+
+2. On-bill financing for participating customers, modeled on on-bill repayment frameworks operating in multiple states.
+
+Pairing large-scale TE under a gas-ratepayer-funded PRP program with taxpayer-funded financing would allow the spending under PRP to be used productively, to move Chicago closer to the City's and State's decarbonization goals, rather than spending the same amount to move in the wrong direction (as described in the previous answer).
+
+---
+
+## VIII. WHY THE CURRENT PRP AND EMERGING NPA-EVALUATION PROCESSES CANNOT CAPTURE THIS POTENTIAL
+
+**Q.** Are PGL's current PRP project-selection process and the NPA-evaluation framework discussed at the ICC's NPA workshop sufficient to capture a meaningful share of the cost-effective TE potential you have identified?
+
+**A.** No. The two processes, taken together, cannot capture more than a negligible share of the cost-effective TE potential I have identified — including under the most conservative of the three perspectives in §§V through VII. This is not a tuning problem: no adjustment to JANA-style risk weights or NPA evaluation frameworks would change this conclusion.
+
+The reason is structural: it lies in the exclusive use of a riskiest-first project-selection process. Two problems follow from that approach, and neither can be fixed without adding an additional "track" of pipe retirement projects that runs parallel to riskiest-first.
+
+
+<br>
+
+**Q.** What is the first problem with the current PRP process and NPA evaluation framework?
+
+**A.** The first problem is timing. Under the PRP as scoped in Docket 24-0081, projects are ranked using JANA-style probabilistic risk scoring, and PGL selects projects in approximately riskiest-first order, evaluating one project at a time.[^prp-risk-first] The emerging NPA-evaluation framework discussed at the ICC's NPA workshops sits on top of that risk-first sequencing: the NPA question ("could we do an NPA on this project instead?") is asked only after a project has already been selected based on its risk score.
+
+[^prp-risk-first]: NSG-PGL [Ex. 3.0](https://www.documentcloud.org/documents/28094644-p2026-0065-nsg-pgl-ex-3-0-direct-testimony-of-polly-m-eldringhoff-and-jerry-dickson-657976/#document/p89) at 89:1686–1693, 96:1815–1828.
+
+That risk-first sequencing is incompatible with large-scale TE. Even on a block where TE is unambiguously cheaper than pipe replacement, and all households agree to participate, carrying out TE would inevitably take longer than replacing the pipe would, due to the need to do customer outreach, identify HVAC contractors and electricians, perform building retrofits, and coordinate any needed grid upgrades with ComEd.
+
+Once a segment has been selected on the basis of its risk score, the "would it be feasible to electrify this block instead?" question is, by construction, being asked about the riskiest remaining pipe in the system. The likely answer: "we cannot wait two to three years for full block electrification, because the pipe is too risky. We need to replace it now." Cost-effective TE will rarely if ever win the timing fight when considered for the riskiest remaining pipe, no matter how cost-effective it is.
+
+<br>
+
+**Q.** What is the second problem?
+
+**A.** The second problem is that whether a given pipe segment can actually be physically retired depends on the rest of the network. A segment can be decommissioned only when pressures on the remaining network balance, and when no downstream customers would be left without service.
+
+However, this hydraulic feasibility question depends on which adjacent segments have already been decommissioned. Decommissioning is thus a _network_ problem, not a project-by-project problem.
+
+To illustrate: suppose a particular high-risk pipe segment is considered for TE, and the NPA evaluation process finds that the segment is not hydraulically decommissionable: retiring it means that customers downstream would be stranded. That finding is not a fixed fact about the segment; it is a fact about the segment given the current state of the network around it. In this scenario, had PGL proactively decommissioned a handful of downstream segments first, before arriving at this juncture, the same segment would have indeed been hydraulically decommissionable.
+
+Risk-first project selection is oblivious to that network context. It selects the segment scoring highest on probabilistic risk, not the segments that are hydraulically feasible to decommission, and which would enable other segments to be decommissioned. The realized share of pipe that turns out to be hydraulically decommissionable under risk-first selection will necessarily fall below the share that could have been decommissionable under a planning exercise that identifies a decommissioning sequence that maximizes the overall hydraulic feasibility of TE. That is true mathematically, before any field data is collected.
+
+I am not suggesting that PGL stop addressing the highest-risk pipe. I am simply pointing out that maximizing the hydraulic feasibility of TE requires system-wide planning and proactive decommissioning, not a reactive project-by-project NPA evaluation.
+
+<br>
+
+**Q.** What is the consequence of these two problems for large-scale TE?
+
+**A.** If TE is only ever evaluated project-by-project for the riskiest pipe segments, PGL is likely to rarely, if ever, find it to be a timely and hydraulically feasible option — even if it is cost-effective.
+
+<br>
+
+**Q.** What would the right structural fix look like?
+
+**A.** Capturing a meaningful share of the cost-effective TE potential identified by this testimony requires a parallel "second track" of the PRP program based on hydraulic feasibility planning and proactive decommissioning and electrification of entire sections of the gas network. This second track would not be a replacement for the existing process, but an addition to it.
+
+- Track 1 (updated current process): continue risk-first retirement on the truly highest-risk pipe — those segments that genuinely cannot wait two to three years for a coordinated block-level electrification project to organize. In this track, pipe repair and relining should be preferred to replacement whenever feasible.
+
+- Track 2 (new): plan proactively how to decommission the less-risky neighboring segments, in a sequence that maximizes hydraulic decommissioning feasibility, on the subset of blocks where TE is cost-effective under whatever cost-effectiveness perspective the Commission adopts. This track would retire pipe segments "from the ends in" in addition to "riskiest-first."
+
+The two tracks together handle real safety risk and capture the cost-effective TE. Neither track alone does both.
+
+---
+
+## IX. RECOMMENDATIONS TO THE COMMISSION
+
+**Q.** What do you recommend the Commission order?
+
+**A.** The Commission should issue a three-part order. None of the three parts asks the Commission to commit to a Track 2 program at the present time, or to a specific number of blocks for electrification. Rather, they lay the foundation, by asking the Commission to put an analysis on the record that would tell every party — including PGL — what the hydraulically feasible scale of Track 2 might be, and what organizational capabilities PGL would need to execute it.
+
+<br>
+
+**Q.** What is Part 1 of the recommended order?
+
+**A.** Part 1 is the analytical foundation. The Commission should order an independent third party, selected by the Commission, to conduct a hydraulic-feasibility-and-sequencing study covering the full universe of mains currently planned for retirement under the PRP — approximately `r comma(prp_total_miles)` miles in total. PGL has filed `r n_prp_projects` Phase I projects in this docket as the first tranche of this work, but the study should cover the full universe to be retired by 2034.[^prp-scope]
+
+The independence requirement is essential. The most useful precedent is the Safety Monitor mechanism the Commission established in the SMP investigation,[^smp-safety-monitor] which directed Commission Staff — not PGL — to issue an RFP and hire an outside auditor to oversee PGL's CI/DI retirement work, with the cost borne initially by PGL but recoverable through ratemaking. If PGL conducts the Part 1 study itself, it is at substantial risk of producing an endorsement of the status quo, given that it maximizes shareholder value by replacing pipe segments.
+
+[^smp-safety-monitor]: Final Order in [Docket 24-0081](https://www.documentcloud.org/documents/28094650-p2024-0081-final-order-633326/#document/p218) at 218–221 (Section VIII.F.1, Safety Monitor) and 222 (ordering paragraph: "Commission Staff shall hire an auditor (Safety Monitor) to oversee The Peoples Gas Light and Coke Company's CI/DI pipe retirement work consistent with the direction in this Order").
+
+At minimum, the study must answer three questions:
+
+(i) Maximum-decommissioning sequence: For the PRP universe of pipe, what sequence of decommissioning — paired with voluntary TE on the affected blocks — maximizes the cumulative share of mileage that can be physically retired?
+
+(ii) Decommissionable upper bound: Under that maximizing sequence, what is the upper bound on the share of planned PRP miles, and the share of planned project areas, that is hydraulically feasible to decommission?
+
+(iii) **Capability requirements.** What would PGL need to do organizationally to decommission at this scale? For instance, what engineering planning, contractor staging, customer engagement, and procurement capabilities would PGL need to execute a Track 2 program at the cadence implied by (ii), and what is the gap between those capabilities and what PGL operates today? Decommissioning at this scale is not a planning exercise alone. It requires signing up entire blocks of households at once rather than one customer at a time, coordinating gas decommissioning with electrification and ComEd grid upgrades on a single project schedule, and procuring electrification equipment in volume. None of these are capabilities PGL operates today, and the study should report what it would take to build them.
+
+<br>
+
+**Q.** Please describe Part 2 of the recommended order.
+
+**A.** Part 2 would order PGL to release the inputs to the Part 1 study so the analysis can be independently verified. The release should have two tiers, matched to the sensitivity of the data:
+
+1. Public inputs. All inputs to the study that can be made public must be made public, so other parties can replicate, sanity-check, and extend the work.
+
+2. Sensitive inputs under NDA. The truly sensitive inputs — most importantly PGL's hydraulic pipe-topology data, along with any customer-level data — must be made available to qualified intervenors under NDA, in a new docketed proceeding scoped around this question.
+
+The Part 2 release is essential because of the scale and stakes of the undertaking. The Commission is weighing whether to authorize the rebuild — or, conversely, the coordinated retirement — of roughly a quarter of the City of Chicago's gas distribution system, with consequences that will compound for decades. A modeling exercise of that scale necessarily involves judgment calls about cost trajectories, hydraulic constraints, customer participation, and sequencing rules, and multi-party review of those judgment calls is the most reliable check the regulatory process has. Public inputs let academics, modelers, and public-interest researchers replicate, sanity-check, and extend the Part 1 findings. Without NDA-protected access to PGL's hydraulic pipe-topology and customer data, qualified intervenors — CUB, PIRG, Staff, the Attorney General, the City of Chicago — cannot test the Part 1 consultant's assumptions, propose alternative scenarios, or bring an informed analysis to the Part 3 program-design process.
+
+<br>
+
+**Q.** Please describe Part 3 of the recommended order.
+
+**A.** Part 3 is to order a follow-on process to translate the Part 1 findings into an actionable plan. Whether structured as a technical workshop, as a new docketed proceeding, or as both, that process should produce two outputs:
+
+- An estimate, grounded in the Part 1 study, of the number of hydraulically feasible and cost-effective blocks across PGL's full PRP universe.
+
+- The design of a Track 2 program that would allow PGL to decommission a meaningful share of those blocks at the cadence implied by the 2035 deadline.
+
+Without this third step, there is no pathway that converts the analytical findings into a decision from the ICC about the scale of TE that PGL should pursue, and from that decision into real-world program design.
+
+<br>
+
+**Q.** Is this ask feasible and necessary?
+
+**A.** Yes — on five grounds.
+
+1. **Costs**: The cost of the study itself is small. It would be well under 1% of the approximately $188M of planned PRP project spending in 2026 alone, but it would shed light on a question of enormous scale and consequence.[^prp-project-spending]
+
+2. **Information asymmetry**: The disagreement between PGL and intervenors over hydraulic feasibility is not a disagreement of opinion. It is a disagreement that turns on a single dataset — PGL's hydraulic pipe-topology model — that exists only inside PGL. The information asymmetry is therefore structural. Without ordered access to that dataset, the question of how much of the PRP universe is decommissionable cannot be settled by any party other than PGL itself.
+
+3. **Incentive conflict**: PGL has a business incentive to characterize hydraulic feasibility as low. A study conducted by PGL itself would be answering a question PGL has a financial interest in the answer to.
+
+4. **Missing data**: A docketed proceeding with NDA-protected access converts the dispute from rhetorical to empirical. Empirical disputes — over shared data and shared methods, on the record — are exactly the kind the Commission is equipped to resolve. The current state of the record, where PGL asserts low feasibility and no other party can test that assertion, is not.
+
+5. **Follow-through**: The ask is consistent with the Commission's own stated direction in opening the NPA workshops in Docket 24-0081. The Commission already asked the question. This ask operationalizes it.
+
+
+<br>
+
+**Q.** What are you **not** claiming?
+
+**A.** Three things.
+
+1. I am not claiming a specific number of blocks should be electrified. The data does not yet support a specific number. That is precisely the point of Part 1.
+
+2. I am not claiming the cost numbers in this testimony are precise. They are conservative averages built from public data and are documented in CUB Ex. 1.2. They are meant to show the scale of potential cost-effective TE, not the precise cost of any particular block.
+
+3. I am not claiming hydraulic feasibility is high. I am claiming that nobody currently knows what it is, including PGL, because nobody has run the sequencing analysis. Part 1 of our ask is how to find out.
+
+
+**Q.** Does this conclude your direct testimony?
+
+**A.** Yes, it does.
+
+---
+
+# CUB Ex. 1.1 - FIGURES & TABLES INDEX
+
+**What this is.** A standalone listing of every figure and map embedded inline in this testimony, with the in-document figure label, the source artifact, and a one-paragraph analytical context for what each figure shows and how it was constructed.
+
+### SECTION IV — SCOPE AND ANALYTICAL APPROACH
+
+**Figure IV-1** (`fig-blocks-by-type`, `city_wide_block_type.png`): **Citywide map of fully residential blocks (dark blue) and excluded mixed-zoning blocks (yellow)** within PGL's planned PRP project areas. Static map; defines the in-scope analytical footprint for this testimony.
+
+::: {.column-page-inset-right}
+![](img/city_wide_block_type.png)
+:::
+
+**Figure IV-2** (`fig-miles-of-prp-3seg`): **System-wide PRP mileage in three segments** — fully residential blocks (in scope), mixed-zoning blocks (out of scope), and remaining system-wide miles not yet tied to a planned project. A single stacked bar, chosen to communicate scale at a glance: this analysis covers approximately `r round(n_miles)` of approximately `r comma(prp_total_miles)` system-wide PRP miles. Data: PGL planned PRP project areas joined to Cook County parcel data and Chicago street segments.
+
+::: {.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-miles-of-prp-3seg >}}
+:::
+
+**Figure IV-3** (`fig-prp-spending-by-year-all`): **Estimated PRP capital by project start year, all block types**. Annual stacked-bar histogram derived by multiplying street-mile counts on each block by PGL's pipe-replacement cost assumption (Docket 24-0081)[^smp-replacement-cost] and bucketing by the latest project start year for each block. Stacked into residential vs. mixed-zoning to show that residential blocks dominate the planned capital cost in some years and not others.
+
+[^smp-replacement-cost]: Peoples Gas, [*System Modernization Plan*, PGL Ex. 2.0](https://www.documentcloud.org/documents/26371764-p2024-0081-pgl-ex-20-220-part-1-47633300/#document/p50) (Docket 24-0081) at 50 (per-mile pipe-replacement cost assumption used in this figure's $/mile calculation).
+
+::: {.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-prp-spending-by-year-all >}}
+:::
+
+### SECTION V — PERSPECTIVE 1 (STRICT BLOCK-LEVEL COST-EFFECTIVENESS)
+
+**Figure V-1** (`fig-aerial-87th`, `google_street.png`): **Aerial view of the example block** (East 87th Place, Census block GEOID 170314407001003). Static image; aerial imagery base layer.
+
+::: {.column-page-inset-right}
+![](img/google_street.png)
+:::
+
+**Figure V-2** (`fig-outline-87th`, `street_outline.png`): **Block outline overlaid on aerial**, showing the approximately `r round(sample_total_pipe, 2)` miles of street centerline running along the example block's borders (used as the proxy for miles of CI/DI gas main beneath the streets).
+
+::: {.column-page-inset-right}
+![](img/street_outline.png)
+:::
+
+**Figure V-3** (`fig-parcels-87th`, `colored_individual_block.png`): **Parcel-level view of the example block** — blue = structures, green = vacant lots. These parcel counts are the inputs to the per-block electrification cost model.
+
+::: {.column-page-inset-right}
+![](img/colored_individual_block.png)
+:::
+
+**Figure V-4** (`fig-single-block-eg`): **PRP vs. NPA cost stack for the example block.** Pipeline replacement on the left bar; single-family electrification, multi-family electrification, electric distribution upgrade, and gas decommissioning on the right bar. The same four cost components, applied at scale, drive every other Perspective 1 result in this section.
+
+::: {.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-single-block-eg >}}
+:::
+
+**Figure V-5** (`fig-englewood`, `englewood.png`): **Englewood NPA-to-PRP cost ratio by block.** Static map; five-bin color scale (< 50% dark green, 50–100% light green, 100–150% yellow, 150–200% orange, > 200% red).
+
+::: {.column-page-inset-right}
+![](img/englewood.png)
+:::
+
+**Figure V-6** (`fig-garfield-ridge`, `garfield_ridge.png`): **Garfield Ridge NPA-to-PRP cost ratio by block.** Same map style as Figure V-5.
+
+::: {.column-page-inset-right}
+![](img/garfield_ridge.png)
+:::
+
+**Figure V-7** (`fig-lincoln-square`, `lincoln_square.png`): **Lincoln Square NPA-to-PRP cost ratio by block.** Same map style as Figure V-5.
+
+::: {.column-page-inset-right}
+![](img/lincoln_square.png)
+:::
+
+**Figure V-8** (`fig-histogram-npa-over-prp`): **Citywide histogram of NPA-to-PRP cost ratios** across all `r comma(n_res_blocks)` in-scope residential blocks. Bins of 10%; truncated at 350% for legibility. The mass to the left of 100% is the approximately `r percent(pct_res_blocks_cheaper, accuracy = 0.1)` Perspective 1 cost-effective share.
+
+::: {.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-histogram-npa-over-prp >}}
+:::
+
+**Figure V-9** (`fig-scatter-density-vs-npa-over-prp-w-line`): **Density vs. cost ratio scatter** with OLS fit. Each point is one in-scope residential block; color encodes the share of units on the block that are single-family. Establishes housing density as the dominant predictor of block-level cost-effectiveness.
+
+::: {.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-scatter-density-vs-npa-over-prp-w-line >}}
+:::
+
+**Figure V-10** (`fig-city-wide-colored`, `city_wide_colored.png`): **Citywide map of NPA-to-PRP cost ratio by block.** Same five-bin color scale as the neighborhood maps in Figures V-5 through V-7. Static map render across PGL's full planned PRP footprint.
+
+::: {.column-page-inset-right}
+![](img/city_wide_colored.png)
+:::
+
+### SECTION VI — PERSPECTIVE 2 (PORTFOLIO COST-NEUTRALITY)
+
+**Figure VI-1** (`fig-cumulative-saving-bar`): **Cumulative net savings under Perspective 2** as in-scope residential blocks are electrified cheapest-first by TE-to-PRP cost ratio. Bar form: green bars = net savings still positive at that share; red bars = net cost drag past the cost-neutral threshold. Communicates the positive-then-negative shape of the cumulative-savings curve directly. The cost-neutral threshold sits at approximately `r percent(zero_crossing, accuracy = 0.1)` of the in-scope residential portfolio.
+
+::: {.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-cumulative-saving-bar >}}
+:::
+
+### SECTION VII — PERSPECTIVE 3 (COORDINATED TE VS. PRP-WITH-SCATTERSHOT)
+
+**Figure VII-1** (`fig-single-block-eg-ss`): **Single-block PRP vs. NPA cost stack with scattershot NPV** added to the PRP side, for the same example block as Figure V-4. The added scattershot component shows how the present value of household-by-household electrification — under the City of Chicago's stated 30%-by-2035 trajectory — changes the PRP-side comparison.
+
+::: {.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-single-block-eg-ss >}}
+:::
+
+**Figure VII-2** (`fig-total-spending-bar-ss`): **Portfolio-total stacked bars: coordinated TE vs. PRP-plus-scattershot** across all `r comma(n_res_blocks)` in-scope residential blocks. The PRP-plus-scattershot bar decomposes into pipeline replacement (dark portion) plus scattershot electrification NPV (light portion: 30% of units over a 10-year horizon, 5% discount rate); the coordinated-TE bar is shown as a single total against it.
+
+::: {.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-total-spending-bar-ss >}}
+:::
+
+---
+
+# CUB Ex. 1.2 - ANALYSIS METHODOLOGY
+
+## Overview
+
+To identify opportunities for cost-effective targeted electrification in Chicago's Peoples Gas service territory, we compared the **upfront capital costs** of two approaches to managing aging natural gas infrastructure:
+
+- **Pipeline Replacement Program (PRP)**: Replacing deteriorating gas mains with new gas pipes, the traditional utility approach to infrastructure management.
+- **Non-Pipe Alternative (NPA)**: Electrifying buildings (eliminating their gas service), upgrading the electric distribution grid to handle increased demand, and decommissioning the gas infrastructure.
+
+We conducted a **census block-level geospatial analysis** of Peoples Gas's planned construction projects in Chicago, focusing on fully residential blocks where electrification costs are well-established and building participation is more feasible. For each block, we calculated both PRP and NPA costs, then identified blocks where electrification would cost the same or less than pipeline replacement.
+
+Our measurement of **cost-effectiveness** is the ratio of NPA cost to PRP cost. We analyze upfront capital costs only, excluding ongoing operational costs, utility rate impacts, and financing mechanisms. This conservative approach focuses on infrastructure investment decisions facing the utility and ratepayers.
+
+This analysis does not consider the hydraulic feasibility of decommissioning gas mains. It is possible that some pipelines can not be removed due to the physical constraints of the gas system. The results are intended to provide an understanding of the potential scale of opportunity for cost-effective targeted electrification.
+
+The remainder of this exhibit describes the analysis in detail: the data sources used (@sec-data-sources), the geospatial methods that assign parcels and street infrastructure to census blocks (@sec-geospatial), the cost calculations for PRP and NPA at the block level (@sec-cost-calculations) and the three scenarios under which we evaluate cost-effectiveness (@sec-scenarios).
+
+## Cost-Effectiveness Evaluation Scenarios {#sec-scenarios}
+
+We evaluate the economic case for targeted electrification under three different scenarios:
+
+**Scenario 1: Strict Block-Level Cost-Effectiveness (Ratio ≤ 1.0)**
+Electrify only blocks where NPA cost is less than or equal to PRP cost. This conservative approach ensures immediate cost savings on every block and avoids any subsidization across blocks. However, it may miss opportunities to maximize overall system cost savings by using savings from low-cost blocks to enable electrification of moderate-cost blocks.
+
+**Scenario 2: Portfolio Cost-Neutral Approach (Cumulative Savings ≥ 0)**
+Maximize the number of electrified blocks while maintaining overall cost neutrality across the portfolio. We rank blocks by cost-effectiveness ratio from most cost-effective to least cost-effective. We add up the savings for all blocks included in scenario 1 (most cost-effective). We then quantify how many additional blocks could be electrified with the remaining savings, stopping when cumulative net savings reach zero. This approach allows low-cost blocks to "subsidize" higher-cost blocks, maximizing electrification within a fixed budget constraint equal to total PRP spending.
+
+**Scenario 3: Avoiding Future Scattershot Electrification**
+This scenario considers electrification happens independent of any NPA program. This scenario recognizes that pipeline replacement does not prevent future electrification—it merely makes it uncoordinated and more expensive. Here we take the same PRP costs used in scenarios 1 and 2 and add the cost of scattershot electrification over `r TIME_PERIOD` years. By comparing NPA to PRP plus scattershot, we identify blocks where coordinated electrification avoids duplicative infrastructure investments.
+
+Under this scenario, the comparison is:
+
+- **With NPA**: Costs include coordinated upfront electrification, grid upgrades, and pipeline decommissioning
+- **Without NPA (PRP-with-scattershot)**: Costs include pipeline replacement, NPV of `r percent(PCT_ELEC)` gradual electrification over `r TIME_PERIOD` years, and ongoing grid upgrades
+
+This approach accounts for Chicago's Climate Action Plan electrification goals and provides a more realistic assessment of the true cost of continued gas infrastructure investment in a decarbonizing economy.
+
+## Data Sources {#sec-data-sources}
+
+This analysis integrates multiple geospatial and administrative datasets:
+
+**Peoples Gas Construction Polygons**
+Planned pipeline replacement project areas from Peoples Gas's interactive construction map [@peoplesgas_PipeRetirementProgram_2025], with construction timelines and project status. We analyze only planned projects.
+
+**Census Block Boundaries**
+Chicago census block boundaries from the 2010 Census (GEOID10), the finest-grain geographic unit published by the Census Bureau.[^blocks] Blocks serve as our primary unit of analysis for aggregating parcel and infrastructure data.
+
+[^blocks]: [2010 Census Block Boundaries](https://www.census.gov/cgi-bin/geo/shapefiles/index.php?year=2010&layergroup=Blocks), U.S. Census Bureau TIGER/Line Shapefiles
+
+**Cook County Parcel Data**
+Property parcel boundaries and assessor classifications for all parcels in Cook County [@cookcounty_ParcelBoundaries_2025]. We use assessor classification codes to categorize parcels as residential (single-family or multi-family), commercial, industrial, mixed-use, or vacant.
+
+**Chicago Building Footprints**
+Building polygon geometries from the Chicago Data Portal, with unit counts where available from building permit records [@cityofchicago_BuildingFootprintsCurrent_2025]. We match buildings to parcels to estimate residential unit counts for multi-family buildings.
+
+**Chicago Street Centerlines**
+Street centerline geometries from the Chicago Data Portal, representing the center of street rights-of-way where gas mains typically run [@cityofchicago_StreetCenterLines_2025]. We use street lengths as a proxy for gas pipeline miles.
+
+**Cost Estimates**
+Cost assumptions for pipeline replacement, electrification equipment, grid upgrades, and pipeline decommissioning, compiled from utility rate cases and prior studies.[^costs]
+
+[^costs]: [Cost Assumptions Spreadsheet](https://docs.google.com/spreadsheets/d/1xxa47dClvp0rosZhUP1R7790CNXMLSD_0ExrPccR3p0/edit)
+
+## Data Preprocessing Pipeline {#sec-preprocessing}
+
+Before the main analysis, three preprocessing stages prepare the raw geospatial data:
+
+1. **Construction polygon cleaning.** Peoples Gas publishes individual construction project polygons that frequently overlap. We union overlapping polygons using a connected-components algorithm (1 sq meter overlap threshold) to create non-overlapping project areas. We exclude projects classified as Public Improvement / System Improvement Replacement (PI/SI) and street and landscape restoration projects. We classify the remaining projects as "planned" or "closed" based on their construction start date: projects with a start date before January 1, 2026 are treated as closed (construction already underway), and the remainder as planned. We analyze only planned projects.
+
+2. **Parcel-building matching.** Cook County parcel boundaries and Chicago building footprints are produced by independent surveys with different precisions. We perform a citywide spatial join to match buildings to parcels, then use a Cook County Assessor lookup table [@cookcountyassessorsoffice_DefinitionsClassificationReal_2025] to assign unit counts and building class information to each parcel (see @sec-parcel-classification). Parcels are used to calculate the number of residential units on each block.
+
+3. **Geospatial aggregation.** We intersect the cleaned construction polygons with census blocks, assign parcels to blocks, and allocate street miles proportionally (see @sec-street-miles) — producing the block-level dataset used in the cost analysis.
+
+## Geospatial Processing Methodology {#sec-geospatial}
+
+Our geospatial analysis assigns parcels and street infrastructure to census blocks within construction project areas.
+
+### Identifying Blocks in Construction Areas
+
+We intersected the cleaned construction polygons with Chicago census block boundaries to identify all blocks that would be affected by planned pipeline replacement projects. Since construction polygons are irregular and may cover only portions of blocks, we created both:
+
+- **Clipped block segments**: The portion of each block that falls within a construction polygon, used for calculating street mile allocation.
+- **Full block geometries**: Complete census block boundaries, used for assigning parcels and reporting results.
+
+### Parcel Identification and Assignment
+
+To identify parcels affected by pipeline replacement projects, we applied an 8-meter buffer around construction polygons. This buffer captures parcels adjacent to streets where pipeline work will occur, even when the construction polygon only covers the street right-of-way. The buffer is used exclusively for parcel identification; all other spatial calculations use unbuffered construction polygons.
+
+We assigned each parcel to exactly one census block using a **largest-overlap method**: for each parcel, we calculated its area of overlap with all intersecting blocks (using full, unclipped block boundaries) and assigned the parcel to the block with which it had the greatest overlap. This one-to-one assignment ensures each parcel is counted only once in our analysis.
+
+### Parcel Classification and Unit Counting {#sec-parcel-classification}
+
+We classified each parcel using Cook County assessor property class codes [@cookcountyassessorsoffice_DefinitionsClassificationReal_2025]:
+
+- **Single-family residential**: Detached homes, townhomes, and other single-unit dwellings
+- **Multi-family residential**: Buildings with 2+ dwelling units, including small apartment buildings and large complexes
+- **Mixed-use**: Properties with both residential and commercial uses
+- **Commercial**: Retail, office, and service properties
+- **Industrial**: Manufacturing, warehousing, and industrial facilities
+- **Vacant**: Unimproved land
+
+For residential parcels, we estimated unit counts by spatially matching parcels to building footprints and using unit counts from building permit records where available. For parcels without building matches, we used assessor records to estimate unit counts based on property classification.[^unit-counts]
+
+[^unit-counts]: For example, if a building with the classification code "multi-family 2-6 units" does not have a recorded number of units, we assign it 4 units.
+
+Mixed-use parcels were treated as multi-family residential in our unit counts, as they contain dwelling units and would need to be addressed in any targeted electrification program.
+
+### Street Miles Allocation {#sec-street-miles}
+
+Gas pipelines typically run along street centerlines. To estimate pipeline miles for each block, we:
+
+1. **Clipped street centerlines** to construction polygon boundaries, retaining only street segments within planned construction areas
+2. **Calculated total street miles** within each construction polygon (using the unbuffered polygons)
+3. **Allocated street miles to blocks proportionally** by each block's perimeter within the construction polygon
+
+The proportional allocation uses each clipped block segment's perimeter as a fraction of the total block perimeter across all blocks in that construction polygon. This approach ensures that all street miles within a construction polygon are allocated to adjacent blocks, and that blocks with more street frontage receive proportionally more pipeline miles.
+
+**Example:** Imagine a construction zone with **10 miles of gas pipeline** to allocate across 5 city blocks. We measure each block's perimeter (the boundary) that falls within the construction zone:
+
+- **Block A**: 2 miles of perimeter (completely inside the zone)
+- **Block B**: 2 miles of perimeter (completely inside the zone)
+- **Block C**: 2 miles of perimeter (completely inside the zone)
+- **Block D**: 2 miles of perimeter (completely inside the zone)
+- **Block E**: 1 mile of perimeter (only half the block is in the zone)
+
+**Total perimeter across all blocks** = 9 miles
+
+Now we divide up the 10 miles of pipeline based on each block's share of the total perimeter:
+
+- Block A: (2 ÷ 9) × 10 = **2.2 miles** of pipeline allocated
+- Block B: (2 ÷ 9) × 10 = **2.2 miles** of pipeline allocated
+- Block C: (2 ÷ 9) × 10 = **2.2 miles** of pipeline allocated
+- Block D: (2 ÷ 9) × 10 = **2.2 miles** of pipeline allocated
+- Block E: (1 ÷ 9) × 10 = **1.1 miles** of pipeline allocated
+
+Total: 10.0 miles ✓
+
+Block E gets half as much pipeline because its perimeter in the zone is half that of the other blocks—we're dividing up the pipeline proportionally based on how much block boundary is in the construction area.
+
+### Residential Block Filtering
+
+We filtered to **fully residential blocks** using several criteria:
+
+- Blocks must contain **no commercial or industrial parcels** (a hard filter based on assessor classification)
+- Blocks must have **at least one residential unit**
+- Residential parcels must comprise **>90% of non-vacant parcels**
+- Manual exclusion of blocks with institutional uses (schools, churches) that don't appear in commercial/industrial classifications
+- Exclusion of blocks with ≤2 parcels, which are typically not residential
+- Exclusion of blocks where all parcels have railroad ("RR") assessor classification
+- Manual verification of edge cases using satellite imagery
+
+Non-residential blocks are excluded before street miles are allocated, so their pipeline miles are redistributed to adjacent eligible blocks — for example, a residential block across from a park inherits the full pipeline segment.
+
+This filtering process identified `r comma(n_res_blocks)` fully residential blocks out of `r comma(n_blocks_total)` total blocks in construction areas. The conservative filtering ensures that our analysis focuses on blocks where coordinated residential electrification would be most feasible.
+
+## Cost Calculations {#sec-cost-calculations}
+
+For each residential block, we calculated both PRP and NPA costs using the following methods:
+
+### Pipeline Replacement Program (PRP) Costs
+
+For each block, PRP cost represents the capital investment to replace gas mains:
+
+$$\text{PRP Cost}_b = \text{Street Miles}_b \times C_{\text{PRP}}$$
+
+Where:
+
+- $\text{Street Miles}_b$ — estimated pipeline miles on the block
+- $C_{\text{PRP}}$ — cost per mile of pipeline replacement
+
+We use $C_{\text{PRP}}$ = `r dollar(cost_lpp_mile, accuracy = 1, scale = 1e-6, suffix = " million")` per mile, the implied program-wide average from PGL's filings in this rate case (Docket P2026-0065).[^cost-per-mile] PGL forecasts annual PRP capital of approximately $214M (2026), $360M (2027), $532M (2028), $537M (2029), and approximately $535M annually thereafter through 2034 — implying approximately $4.318B in total PRP capital over the program horizon. The Commission has directed PGL to retire approximately 1,020 miles of CI/DI main under 36 inches by January 1, 2035. Dividing total forecast capital by total miles yields approximately $4.23M per mile, capturing materials, labor, street restoration, contractor overhead, and contingency, but excluding utility administrative costs and return on equity.
+
+[^cost-per-mile]: Numerator from Direct Testimony of Theodore Eidukas, NSG-PGL [Ex. 1.0](https://www.documentcloud.org/documents/28094647-p2026-0065-nsg-pgl-ex-1-0-direct-testimony-of-theodore-eidukas-657962/#document/p5) at 5–6. Denominator from Direct Testimony of Eldringhoff and Dickson, NSG-PGL [Ex. 3.0](https://www.documentcloud.org/documents/28094644-p2026-0065-nsg-pgl-ex-3-0-direct-testimony-of-polly-m-eldringhoff-and-jerry-dickson-657976/#document/p8) at 8.
+
+### Non-Pipe Alternative (NPA) Costs
+
+For each block, NPA cost represents the total capital investment to electrify all residential units and decommission the gas infrastructure:
+
+$$\text{NPA Cost}_b = \text{SF Elec.}_b + \text{MF Elec.}_b + \text{Grid Upgrades}_b + \text{Decommissioning}_b$$
+
+Where:
+
+- $\text{SF Elec.}_b$ — cost to electrify all single-family parcels on the block
+- $\text{MF Elec.}_b$ — cost to electrify all multi-family units on the block
+- $\text{Grid Upgrades}_b$ — distribution grid capacity expansion for the block
+- $\text{Decommissioning}_b$ — cost to retire gas mains in place on the block
+
+**Electrification costs:**
+
+$$\text{SF Elec.}_b = N_{\text{SF},b} \times C_{\text{SF}}$$
+
+$$\text{MF Elec.}_b = N_{\text{MF},b} \times C_{\text{MF}}$$
+
+$C_{\text{SF}}$ and $C_{\text{MF}}$ are derived from ComEd's CY2024 Cost-Effectiveness Analysis [@gin_ComEdCostEffectivenessAnalysis_2025]. For each end-use category (HVAC, water heater, cooktop, clothes dryer), the source reports average costs across multiple program variants (e.g.  ducted and ductless). We compute a **quantity-weighted average** across variants within each category — weighting by the number of units deployed in CY2024 — then sum across categories. Multi-family per-unit costs are lower due to shared infrastructure and economies of scale.
+
+```{r}
+#| label: tbl-electrification-costs
+#| tbl-cap: "Itemized electrification costs per home (SF) and per unit (MF)"
+
+library(gt)
+library(tibble)
+
+make_range <- function(costs) {
+  if (length(costs) <= 1) return("")
+  lo <- min(costs)
+  hi <- max(costs)
+  if (abs(hi - lo) < 1) return("")
+  paste0("$", formatC(lo, format = "f", digits = 0, big.mark = ","),
+         "–$", formatC(hi, format = "f", digits = 0, big.mark = ","))
+}
+
+cost_table <- tribble(
+  ~`End Use`, ~`SF Wt. Avg.`, ~`SF Range`, ~`MF Wt. Avg.`, ~`MF Range`,
+  "HVAC (heat pump)", sf_hvac_cost, make_range(sf_hvac$`Average Cost`), mf_hvac_cost, make_range(mf_hvac$`Average Cost`),
+  "Water heater", sf_hpwh_cost, make_range(sf_hpwh$`Average Cost`), mf_hw_cost, make_range(mf_hw$`Average Cost`),
+  "Cooktop", sf_cooktop_cost, make_range(sf_cooktop$`Average Cost`), mf_cooktop_cost, make_range(mf_cooktop$`Average Cost`),
+  "Clothes dryer", sf_dryer_cost, make_range(sf_dryer$`Average Cost`), mf_dryer_cost, make_range(mf_dryer$`Average Cost`),
+  "Total", sf_total, "", mf_total, ""
+)
+
+cost_table |>
+  gt() |>
+  fmt_currency(columns = c(`SF Wt. Avg.`, `MF Wt. Avg.`), decimals = 0) |>
+  tab_spanner(label = "Single-Family (per home)", columns = c(`SF Wt. Avg.`, `SF Range`)) |>
+  tab_spanner(label = "Multi-Family (per unit)", columns = c(`MF Wt. Avg.`, `MF Range`)) |>
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_body(rows = `End Use` == "Total")
+  ) |>
+  tab_source_note("Source: ComEd CY2024 Cost-Effectiveness Analysis (Guidehouse)")
+```
+
+**Grid upgrade costs:**
+
+$$\text{Grid Upgrades}_b = (N_{\text{SF},b} + N_{\text{MF},b}) \times C_{\text{grid}}$$
+
+$C_{\text{grid}}$ is derived from the **Long Run Marginal Cost (LRMC)** of electric distribution capacity:
+
+$$C_{\text{grid}} = \Delta \text{Peak Demand (kW)} \times \text{LRMC per kW}$$
+
+The incremental peak demand is the difference between winter peak (heat pump + heat pump water heater at design temperature) and summer peak (with AC):
+
+$$\Delta \text{Peak Demand} = \text{`r peak_kw_winter` kW (winter)} - \text{`r peak_kw_summer` kW (summer)} = \text{`r peak_kw_delta` kW}$$
+
+Multiplying by the LRMC gives a grid upgrade cost of `r dollar(grid_upgrade_cost_hh, accuracy = 1, scale = 1, suffix = "")` per household.
+
+| Parameter | Value | Source |
+|-----------|-------|--------|
+| $C_{\text{SF}}$ (single-family electrification) | `r dollar(cost_elec_sf, accuracy = 1)` / home | @gin_ComEdCostEffectivenessAnalysis_2025 |
+| $C_{\text{MF}}$ (multi-family electrification) | `r dollar(cost_elec_mf, accuracy = 1, scale = 1, suffix = "")` / unit | @gin_ComEdCostEffectivenessAnalysis_2025 |
+| Summer peak demand (with AC) | `r peak_kw_summer` kW | @decker_IntroductionElectricUtility_2024 |
+| Winter peak: heat pump at -20°F | `r peak_kw_winter - 0.5` kW | @decker_IntroductionElectricUtility_2024 |
+| Winter peak: heat pump water heater | 0.5 kW | @fenaughty_DetailedEvaluationElectric_2023 |
+| Winter peak (total) | `r peak_kw_winter` kW | Sum of above |
+| LRMC of distribution capacity | `r dollar(lrmc_peak_kw, accuracy = 1, scale = 1, suffix = "")` / kW | @debenedictis_ValueCompensationDistributed_2025 |
+| $C_{\text{grid}}$ (grid upgrade per household) | `r dollar(grid_upgrade_cost_hh, accuracy = 1, scale = 1, suffix = "")` / household | Derived |
+
+**Pipeline decommissioning cost:**
+
+$$\text{Decommissioning}_b = \text{Street Miles}_b \times C_{\text{decomm}}$$
+
+We use `r dollar(cost_decomm_mile, accuracy = 1, scale = 1, suffix = "")` per mile as the average cost to retire gas mains in place.[^decomm]
+
+[^decomm]: Peoples Gas and the SMP [@peoplesgas_PeoplesGasSMP_2024], [p. 50](https://www.documentcloud.org/documents/26371764-p2024-0081-pgl-ex-20-220-part-1-47633300/#document/p50).
+
+### Cost-Effectiveness Ratio
+
+For each block, we calculate:
+
+$$R_b = \frac{\text{NPA Cost}_b}{\text{PRP Cost}_b}$$
+
+Where $R_b < 1$ means electrification is cheaper than pipeline replacement, $R_b = 1$ means costs are equal, and $R_b > 1$ means pipeline replacement is cheaper.
+
+### Scattershot Electrification Modeling {#sec-scattershot}
+
+To create a more realistic counterfactual for the pipeline replacement scenario, we model **scattershot electrification**: the gradual, uncoordinated transition to electric heating that would occur even if pipelines are replaced. Whether driven by increasing gas costs, equipment failures, climate policies, or consumer preference, a portion of homes will electrify over time regardless of gas infrastructure investments. This creates an **unmanaged gas transition** where ratepayer capital is spent on both the gas system and electrification, with no coordination.
+
+We base our scattershot assumptions on Chicago's Climate Action Plan [@cityofchicago_ChicagoClimateAction_2022], which targets significant residential electrification by 2035. For each block, we assume **`r percent(PCT_ELEC)` of residential units** electrify over **`r TIME_PERIOD` years**, distributed evenly. The annual scattershot cost per block is:
+
+$$A_b = \frac{p \times (\text{SF Elec.}_b + \text{MF Elec.}_b + \text{Grid Upgrades}_b)}{T}$$
+
+Where $p$ = `r percent(PCT_ELEC)`, $T$ = `r TIME_PERIOD` years, and the numerator excludes decommissioning because the gas system remains in operation under scattershot. We discount to a net present value at $r$ = `r percent(DISCOUNT_RATE)`:
+
+$$\text{Scattershot NPV}_b = \sum_{t=0}^{T-1} \frac{A_b}{(1 + r)^t}$$
+
+The adjusted cost-effectiveness ratio compares NPA against PRP plus scattershot:
+
+$$R_b^{\text{ss}} = \frac{\text{NPA Cost}_b}{\text{PRP Cost}_b + \text{Scattershot NPV}_b}$$
+
+$R_b^{\text{ss}} < 1$ means coordinated upfront electrification is cheaper than pipeline replacement combined with unmanaged electrification.
+
+## Assumptions {#sec-assumptions}
+
+Our analysis assumes:
+
+- **Fully residential blocks only**, due to the variability and uncertainty in commercial and industrial electrification costs. We exclude blocks with commercial or industrial properties. A complete non-pipe alternative assessment would require detailed commercial building analysis.
+- **Street centerlines as a proxy for gas pipeline routes**. We use publicly available street centerline data from the Chicago Data Portal to estimate pipeline miles, as detailed gas infrastructure maps are not publicly available. Actual gas pipeline routes may deviate from street centerlines in some locations, but this provides a reasonable approximation at the block level.
+- **Upfront capital costs only**. We compare only the initial infrastructure investment costs, not ongoing operational expenses (utility bills, maintenance), carbon emissions, or ratepayer cost allocation mechanisms. A full lifecycle analysis would include these operational factors.
+- **Average electrification costs** for residential buildings: air-source heat pumps for space heating and cooling, heat pump water heaters, and induction stoves. Actual costs vary significantly by building characteristics (age, size, existing electrical service, heating system configuration), but we use averages that may over- or under-estimate costs for specific buildings.
+- **Grid upgrade costs** based on the Long Run Marginal Cost (LRMC) of electric distribution capacity, calculated from the incremental peak demand increase from electrification. This captures long-term costs of expanding distribution infrastructure.
+- **Pipeline decommissioning costs** for retiring gas mains in place, estimated per mile of main retired. Excavation and removal costs would be higher if required by local regulations.
+- **Census block as the unit of analysis**. Blocks are the smallest geographic unit that allows us to aggregate parcel-level data while maintaining spatial relationships with pipeline infrastructure.
+- **All residents would participate** in a coordinated electrification program. In practice, participation rates would depend on program design, incentive levels, and customer preferences, requiring careful program design and potentially phased implementation.
+- **Programmatic filtering with manual verification** to identify fully residential blocks. Our method uses automated parcel classification with manual verification using satellite imagery for edge cases. This approach is replicable but could be refined with additional building data.
+- **Current cost estimates** for all equipment and infrastructure, without adjusting for potential future cost changes from technology improvements, inflation, or economies of scale.

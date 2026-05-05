@@ -22,7 +22,6 @@ import sys
 from pathlib import Path
 
 import polars as pl
-import yaml
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 
@@ -40,9 +39,17 @@ PATH_BILLS_12 = f"{S3_BASE}/{_state}/all_utilities/{BATCH}/run_1+2/comb_bills_ye
 PATH_BILLS_34 = f"{S3_BASE}/{_state}/all_utilities/{BATCH}/run_3+4/comb_bills_year_target/"
 PATH_BILLS_1920 = f"{S3_BASE}/{_state}/all_utilities/{BATCH}/run_19+20/comb_bills_year_target/"
 
+KWH_BATCH = "ri_20260504_kwh_export_v2"
+_KWH_BASE = f"{S3_BASE}/{_state}/rie/{KWH_BATCH}"
+PATH_KWH_U0 = f"{_KWH_BASE}/20260505_011359_ri_rie_run1_up00_precalc__default/billing_kwh_annual.parquet"
+PATH_KWH_U2 = f"{_KWH_BASE}/20260505_011437_ri_rie_run3_up02_default__default/billing_kwh_annual.parquet"
+
 RDP_REF = "e9e5088"
-RDP_REV_YAML_PATH = "rate_design/hp_rates/ri/config/rev_requirement/rie_rate_case_test_year.yaml"
 RDP_TARIFF_DIR = "rate_design/hp_rates/ri/config/tariffs/electric"
+
+FIXED_CHARGE_PER_MONTH = 10.01
+FIXED_CHARGE_PER_YEAR = FIXED_CHARGE_PER_MONTH * 12
+HP_FLAT_COMBINED_RATE = 0.23129
 
 REPORTS2_GITHUB_BASE = "https://github.com/switchbox-data/reports2/blob"
 
@@ -57,7 +64,6 @@ BILL_COLS = [
     "oil_total_bill",
     "propane_total_bill",
 ]
-KWH_COLS = ["elec_delivery_bill", "elec_fixed_charge"]
 LMI_BILL_COLS = [
     "elec_total_bill_lmi_32",
     "gas_total_bill_lmi_32",
@@ -123,7 +129,6 @@ def _load_annual_bills(path: str) -> pl.DataFrame:
             "weight",
             "heats_with_natgas",
             *BILL_COLS,
-            *KWH_COLS,
         )
         .collect()
     )
@@ -131,31 +136,24 @@ def _load_annual_bills(path: str) -> pl.DataFrame:
     return result
 
 
-def _load_inputs() -> dict:
-    """Pull revenue-requirement YAML, tariff rates, and report tariff-table values."""
-    import pickle
+def _load_billing_kwh(path: str) -> pl.DataFrame:
+    """Load exported billing kWh (annual grid-consumed electricity)."""
+    return pl.read_parquet(path).select("bldg_id", "annual_kwh_grid")
 
-    raw_yaml = fetch_rdp_file(RDP_REV_YAML_PATH, RDP_REF)
-    rev = yaml.safe_load(raw_yaml)
-    total_rr = float(rev["total_delivery_revenue_requirement"])
-    n_customers = float(rev["test_year_customer_count"])
-    ty_kwh = float(rev["test_year_residential_kwh"])
+
+def _load_inputs() -> dict:
+    """Pull tariff rates and report tariff-table values."""
+    import pickle
 
     def _fetch_tariff(filename: str) -> dict:
         return parse_urdb_json(fetch_rdp_file(f"{RDP_TARIFF_DIR}/{filename}", RDP_REF))
 
-    default_del = _fetch_tariff("rie_default_calibrated.json")
     hp_flat_del = _fetch_tariff("rie_hp_flat_calibrated.json")
     hp_flat_sup = _fetch_tariff("rie_hp_flat_supply_calibrated.json")
-
-    default_vol = float(default_del["items"][0]["energyratestructure"][0][0]["rate"])
-    annual_fixed_per_customer = (total_rr - default_vol * ty_kwh) / n_customers
 
     rv = pickle.loads(Path("cache/report_variables.pkl").read_bytes())
 
     return {
-        "default_vol_usd_per_kwh": default_vol,
-        "annual_fixed_per_customer": annual_fixed_per_customer,
         "tariff_table": {
             "elec_customer_charge": rv["elec_customer_charge"],
             "elec_other_fixed_charges": rv["elec_other_fixed_charges"],
@@ -167,20 +165,12 @@ def _load_inputs() -> dict:
             "gas_nonheating_fixed_charge": rv["gas_nonheating_fixed_charge"],
             "gas_avg_per_therm": rv["gas_avg_per_therm"],
             "gas_nonheating_avg_per_therm": rv["gas_nonheating_avg_per_therm"],
+            "oil_price_range": rv.get("oil_price_range", "$3.48–$4.10 /gal (monthly prices)"),  # noqa: RUF001
+            "propane_price_range": rv.get("propane_price_range", "$3.44–$3.67 /gal (monthly prices)"),  # noqa: RUF001
             "hp_flat_delivery_cents": float(hp_flat_del["items"][0]["energyratestructure"][0][0]["rate"]) * 100,
             "hp_flat_supply_cents": float(hp_flat_sup["items"][0]["energyratestructure"][0][0]["rate"]) * 100,
         },
     }
-
-
-def _derive_annual_kwh(bills: pl.DataFrame, inputs: dict) -> pl.DataFrame:
-    """Add annual_kwh column derived from the delivery bill components."""
-    return bills.with_columns(
-        (
-            (pl.col("elec_fixed_charge") + pl.col("elec_delivery_bill") - inputs["annual_fixed_per_customer"])
-            / inputs["default_vol_usd_per_kwh"]
-        ).alias("annual_kwh")
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -374,12 +364,92 @@ def _write_assumptions(wb: Workbook, scenario_id: str, inputs: dict) -> None:
         ws.cell(row=row, column=2).alignment = Alignment(wrap_text=True)
         row += 1
 
+    # --- How bills are computed -----------------------------------------------
+    row += 1
+    ws.cell(row=row, column=1, value="How bills are computed")
+    ws.cell(row=row, column=1).font = Font(bold=True)
+    row += 1
+
+    how_rows: list[tuple[str, str]] = [
+        (
+            "Fixed charge",
+            f"${FIXED_CHARGE_PER_MONTH:.2f}/mo (${FIXED_CHARGE_PER_YEAR:.2f}/yr): "
+            "$6.00 customer charge + $3.22 RE Growth + $0.79 LIHEAP Enhancement. "
+            "Matches fixedchargefirstmeter in all calibrated tariff JSONs and the testimony.",
+        ),
+        (
+            "kWh source",
+            "Exported directly from CAIRO's billing pipeline (billing_kwh_annual.parquet). "
+            "These are grid-consumed kWh after PV clipping (max(electricity_net, 0)), "
+            "kwh_scale_factor application (0.9568), and 48-hour day-of-week timeshift. "
+            "Upgrade 0 = before HP, upgrade 2 = after HP.",
+        ),
+        (
+            "Electric bills",
+            "From CAIRO's hourly simulation (elec_total_bill). "
+            "CAIRO applies each hour's consumption to the applicable tariff rate and sums to the annual total.",
+        ),
+    ]
+    for label, value in how_rows:
+        ws.cell(row=row, column=1, value=label)
+        ws.cell(row=row, column=2, value=value)
+        ws.cell(row=row, column=2).alignment = Alignment(wrap_text=True)
+        row += 1
+
+    # --- Seasonal rate explanation for 1-8 ------------------------------------
+    if scenario_id == "1-8":
+        row += 1
+        ws.cell(row=row, column=1, value="Why no bill-verification formula (RIE 1-8)")
+        ws.cell(row=row, column=1).font = Font(bold=True)
+        row += 1
+        seasonal_text = (
+            "The default supply tariff (rie_default_supply_calibrated.json) uses three seasonal rates:\n"
+            " - Winter (Jan, Feb, Mar, Nov, Dec): 31.38 ¢/kWh\n"
+            " - Summer (Jun, Jul, Aug, Sep): 24.78 ¢/kWh\n"
+            " - Shoulder (Apr, May, Oct): 29.49 ¢/kWh\n\n"
+            "These rates bundle delivery + supply. Because each building has a different monthly "
+            "consumption profile, a single annual_kwh × rate formula cannot reproduce the bill — "  # noqa: RUF001
+            "it would require 12 monthly kWh values and per-month rate assignments. "
+            "CAIRO computes bills hourly (8,760 hours), applying the correct seasonal rate to each "
+            "hour's consumption, then sums to the annual total.\n\n"
+            "The elec_total_bill column is the exact annual bill from CAIRO. "
+            "To verify it independently, one would need the building's hourly load profile "
+            "(available in billing_kwh_8760.parquet) and the seasonal rate schedule above.\n\n"
+            "For RIE 1-9, the HP flat tariff uses a single year-round rate (23.13 ¢/kWh), so "
+            "annual_kwh × 0.23129 + 10.01 × 12 reproduces the bill within ~$1."  # noqa: RUF001
+        )
+        ws.cell(row=row, column=1, value=seasonal_text)
+        ws.cell(row=row, column=1).alignment = Alignment(wrap_text=True)
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
+        row += 1
+
+    # --- Bill verification formula for 1-9 ------------------------------------
+    if scenario_id == "1-9":
+        row += 1
+        ws.cell(row=row, column=1, value="Bill-verification formula (RIE 1-9)")
+        ws.cell(row=row, column=1).font = Font(bold=True)
+        row += 1
+        verify_text = (
+            f"The HP flat supply tariff (rie_hp_flat_supply_calibrated.json) uses a single flat rate "
+            f"of {HP_FLAT_COMBINED_RATE * 100:.2f} ¢/kWh (delivery + supply bundled). The verification formula is:\n\n"
+            f"  elec_bill_formula = annual_kwh_after × {HP_FLAT_COMBINED_RATE} + {FIXED_CHARGE_PER_MONTH} × 12\n\n"  # noqa: RUF001
+            "The elec_bill_residual column shows elec_bill_after - elec_bill_formula. "
+            "Residuals of ~$1 are expected due to CAIRO's hourly billing mechanics "
+            "(48-hour day-of-week timeshift aligning 2018 weather year to 2025)."
+        )
+        ws.cell(row=row, column=1, value=verify_text)
+        ws.cell(row=row, column=1).alignment = Alignment(wrap_text=True)
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
+        row += 1
+
     # --- Data sources -------------------------------------------------------
     row += 1
     ds_rows: list[tuple[str, str]] = [
         ("Data sources", ""),
         ("Before bills", f"{scen['before_desc']}\n{scen['before_path']}"),
         ("After bills", f"{scen['after_desc']}\n{scen['after_path']}"),
+        ("kWh (upgrade 0)", f"billing_kwh_annual.parquet from\n{PATH_KWH_U0}"),
+        ("kWh (upgrade 2)", f"billing_kwh_annual.parquet from\n{PATH_KWH_U2}"),
         (
             "Analysis notebook",
             _reports2_permalink("reports/ri_hp_rates/notebooks/analysis.qmd"),
@@ -402,14 +472,13 @@ def _write_assumptions(wb: Workbook, scenario_id: str, inputs: dict) -> None:
         (
             "annual_kwh_before",
             "Annual grid-consumed electricity (kWh), upgrade 0 (current HVAC). "
-            "Derived from delivery bill: (bill_delivery - annual_fixed_per_customer) / vol_rate. "
-            "Same derivation as RIE 1-5 workbook.",
+            "Exported from CAIRO billing pipeline (billing_kwh_annual.parquet). "
+            "Reflects PV clipping, kwh_scale_factor (0.9568), and 48-hour timeshift.",
         ),
         (
             "annual_kwh_after",
             "Annual grid-consumed electricity (kWh), upgrade 2 (heat pump). "
-            "Derived from run 3+4 delivery bills (default rate); "
-            "same physical consumption regardless of which tariff is applied.",
+            "Same source as above; same physical consumption regardless of tariff.",
         ),
         ("elec_bill_before", "Annual electric bill before HP, undiscounted"),
         (
@@ -440,6 +509,23 @@ def _write_assumptions(wb: Workbook, scenario_id: str, inputs: dict) -> None:
         ("saves", "Formula: 1 if delta < 0, else 0"),
         ("w_saves", "Formula: weight * saves (weighted savings indicator)"),
     ]
+
+    # Add 1-9-specific formula columns
+    if scenario_id == "1-9":
+        col_rows.extend(
+            [
+                (
+                    "elec_bill_formula",
+                    f"Formula: annual_kwh_after × {HP_FLAT_COMBINED_RATE} + {FIXED_CHARGE_PER_MONTH} × 12. "  # noqa: RUF001
+                    "Verification of the CAIRO electric bill using the HP flat combined rate.",
+                ),
+                (
+                    "elec_bill_residual",
+                    "Formula: elec_bill_after - elec_bill_formula. Expected ~$1 from CAIRO's hourly billing mechanics.",
+                ),
+            ]
+        )
+
     for label, value in col_rows:
         ws.cell(row=row, column=1, value=label)
         if label in bold_labels:
@@ -452,7 +538,7 @@ def _write_assumptions(wb: Workbook, scenario_id: str, inputs: dict) -> None:
     ws.sheet_view.showGridLines = False
 
 
-def _write_per_building(wb: Workbook, gas: pl.DataFrame) -> int:
+def _write_per_building(wb: Workbook, gas: pl.DataFrame, scenario_id: str) -> int:
     """Write per-building bills sheet. Returns the last data row number."""
     ws = wb.create_sheet("per_building")
 
@@ -481,6 +567,14 @@ def _write_per_building(wb: Workbook, gas: pl.DataFrame) -> int:
         "saves",  # V  formula
         "w_saves",  # W  formula
     ]
+    if scenario_id == "1-9":
+        headers.extend(
+            [
+                "elec_bill_formula",  # X  formula (1-9 only)
+                "elec_bill_residual",  # Y  formula (1-9 only)
+            ]
+        )
+
     ws.append(headers)
     _header_fill(ws, 1, len(headers))
     ws.freeze_panes = "A2"
@@ -523,6 +617,12 @@ def _write_per_building(wb: Workbook, gas: pl.DataFrame) -> int:
         # W: w_saves = weight * saves
         ws.cell(row=i, column=23, value=f"=B{i}*V{i}")
 
+        if scenario_id == "1-9":
+            # X: elec_bill_formula = annual_kwh_after * rate + fixed * 12
+            ws.cell(row=i, column=24, value=f"=D{i}*{HP_FLAT_COMBINED_RATE}+{FIXED_CHARGE_PER_MONTH}*12")
+            # Y: elec_bill_residual = elec_bill_after - elec_bill_formula
+            ws.cell(row=i, column=25, value=f"=K{i}-X{i}")
+
     last_row = 1 + len(rows)
 
     for r in range(2, last_row + 1):
@@ -530,35 +630,39 @@ def _write_per_building(wb: Workbook, gas: pl.DataFrame) -> int:
             ws[f"{col}{r}"].number_format = "#,##0"
         for col in "EFGHIJKLMNOPQRSTU":
             ws[f"{col}{r}"].number_format = '"$"#,##0.00'
+        if scenario_id == "1-9":
+            ws[f"X{r}"].number_format = '"$"#,##0.00'
+            ws[f"Y{r}"].number_format = '"$"#,##0.00'
 
-    _autosize(
-        ws,
-        {
-            "A": 10,
-            "B": 10,
-            "C": 18,
-            "D": 18,
-            "E": 16,
-            "F": 18,
-            "G": 16,
-            "H": 18,
-            "I": 14,
-            "J": 16,
-            "K": 16,
-            "L": 18,
-            "M": 16,
-            "N": 18,
-            "O": 14,
-            "P": 16,
-            "Q": 22,
-            "R": 22,
-            "S": 22,
-            "T": 22,
-            "U": 14,
-            "V": 8,
-            "W": 12,
-        },
-    )
+    widths: dict[str, int] = {
+        "A": 10,
+        "B": 10,
+        "C": 18,
+        "D": 18,
+        "E": 16,
+        "F": 18,
+        "G": 16,
+        "H": 18,
+        "I": 14,
+        "J": 16,
+        "K": 16,
+        "L": 18,
+        "M": 16,
+        "N": 18,
+        "O": 14,
+        "P": 16,
+        "Q": 22,
+        "R": 22,
+        "S": 22,
+        "T": 22,
+        "U": 14,
+        "V": 8,
+        "W": 12,
+    }
+    if scenario_id == "1-9":
+        widths["X"] = 18
+        widths["Y"] = 18
+    _autosize(ws, widths)
     return last_row
 
 
@@ -681,7 +785,7 @@ def build_workbook(
         wb.remove(default_ws)
 
     _write_assumptions(wb, scenario_id, inputs)
-    last_row = _write_per_building(wb, gas)
+    last_row = _write_per_building(wb, gas, scenario_id)
     _write_result(wb, last_row, scenario_id)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -696,54 +800,62 @@ def build_workbook(
 # ---------------------------------------------------------------------------
 # Google Sheets upload.
 # ---------------------------------------------------------------------------
-_TAB_FORMATTING: dict[str, dict] = {
-    "assumptions": {
-        "wrap_columns": ["B:B"],
-        "column_widths_px": {"A": 180, "B": 640},
-        "freeze_rows": 0,
-        "bold_header": False,
-    },
-    "per_building": {
-        "column_number_formats": {
-            "C": "#,##0",
-            "D": "#,##0",
-            "E": '"$"#,##0.00',
-            "F": '"$"#,##0.00',
-            "G": '"$"#,##0.00',
-            "H": '"$"#,##0.00',
-            "I": '"$"#,##0.00',
-            "J": '"$"#,##0.00',
-            "K": '"$"#,##0.00',
-            "L": '"$"#,##0.00',
-            "M": '"$"#,##0.00',
-            "N": '"$"#,##0.00',
-            "O": '"$"#,##0.00',
-            "P": '"$"#,##0.00',
-            "Q": '"$"#,##0.00',
-            "R": '"$"#,##0.00',
-            "S": '"$"#,##0.00',
-            "T": '"$"#,##0.00',
-            "U": '"$"#,##0.00',
+def _tab_formatting(scenario_id: str) -> dict[str, dict]:
+    number_formats = {
+        "C": "#,##0",
+        "D": "#,##0",
+        "E": '"$"#,##0.00',
+        "F": '"$"#,##0.00',
+        "G": '"$"#,##0.00',
+        "H": '"$"#,##0.00',
+        "I": '"$"#,##0.00',
+        "J": '"$"#,##0.00',
+        "K": '"$"#,##0.00',
+        "L": '"$"#,##0.00',
+        "M": '"$"#,##0.00',
+        "N": '"$"#,##0.00',
+        "O": '"$"#,##0.00',
+        "P": '"$"#,##0.00',
+        "Q": '"$"#,##0.00',
+        "R": '"$"#,##0.00',
+        "S": '"$"#,##0.00',
+        "T": '"$"#,##0.00',
+        "U": '"$"#,##0.00',
+    }
+    auto_range = "A:W"
+    if scenario_id == "1-9":
+        number_formats["X"] = '"$"#,##0.00'
+        number_formats["Y"] = '"$"#,##0.00'
+        auto_range = "A:Y"
+    return {
+        "assumptions": {
+            "wrap_columns": ["B:B"],
+            "column_widths_px": {"A": 180, "B": 640},
+            "freeze_rows": 0,
+            "bold_header": False,
         },
-        "auto_resize_columns": ["A:W"],
-        "freeze_rows": 1,
-        "bold_header": True,
-    },
-    "result": {
-        "auto_resize_columns": ["A:C"],
-        "freeze_rows": 0,
-        "bold_header": True,
-    },
-}
+        "per_building": {
+            "column_number_formats": number_formats,
+            "auto_resize_columns": [auto_range],
+            "freeze_rows": 1,
+            "bold_header": True,
+        },
+        "result": {
+            "auto_resize_columns": ["A:C"],
+            "freeze_rows": 0,
+            "bold_header": True,
+        },
+    }
 
 
-def upload_to_sheet(xlsx_path: Path, spreadsheet_id: str) -> None:
+def upload_to_sheet(xlsx_path: Path, spreadsheet_id: str, scenario_id: str) -> None:
     from lib.data.gsheets import apply_sheet_formatting, xlsx_to_gsheet
 
     print(f"  Uploading {xlsx_path} -> {spreadsheet_id} ...", flush=True)
     spreadsheet = xlsx_to_gsheet(xlsx_path, spreadsheet_id, delete_other_tabs=True)
+    tab_fmt = _tab_formatting(scenario_id)
     for ws in spreadsheet.worksheets():
-        spec = _TAB_FORMATTING.get(ws.title)
+        spec = tab_fmt.get(ws.title)
         if spec:
             apply_sheet_formatting(ws, **spec)
     print(
@@ -766,9 +878,16 @@ def main(argv: list[str] | None = None) -> int:
 
     print("Loading tariff inputs ...", flush=True)
     inputs = _load_inputs()
+    print(f"  fixed_charge = ${FIXED_CHARGE_PER_MONTH:.2f}/mo (${FIXED_CHARGE_PER_YEAR:.2f}/yr)", flush=True)
+
+    print("Loading billing kWh (upgrade 0 from run-1, upgrade 2 from run-3) ...", flush=True)
+    kwh_before = _load_billing_kwh(PATH_KWH_U0)
+    kwh_after = _load_billing_kwh(PATH_KWH_U2)
     print(
-        f"  vol_rate = {inputs['default_vol_usd_per_kwh']:.5f}, "
-        f"annual_fixed = ${inputs['annual_fixed_per_customer']:,.2f}",
+        f"  upgrade 0: {kwh_before.height:,} buildings, "
+        f"median {kwh_before['annual_kwh_grid'].median():,.0f} kWh\n"
+        f"  upgrade 2: {kwh_after.height:,} buildings, "
+        f"median {kwh_after['annual_kwh_grid'].median():,.0f} kWh",
         flush=True,
     )
 
@@ -784,15 +903,6 @@ def main(argv: list[str] | None = None) -> int:
     after_hprate = _load_annual_bills(PATH_BILLS_1920)
     print(f"  {after_hprate.height:,} rows", flush=True)
 
-    print("Deriving annual kWh (upgrade 0 from run 1+2, upgrade 2 from run 3+4) ...", flush=True)
-    kwh_before = _derive_annual_kwh(before, inputs)
-    kwh_after = _derive_annual_kwh(after_default, inputs)
-    print(
-        f"  upgrade 0 median: {kwh_before['annual_kwh'].median():,.0f} kWh, "
-        f"upgrade 2 median: {kwh_after['annual_kwh'].median():,.0f} kWh",
-        flush=True,
-    )
-
     gas_default = _join_and_filter(before, after_default, kwh_before, kwh_after)
     gas_hprate = _join_and_filter(before, after_hprate, kwh_before, kwh_after)
 
@@ -803,8 +913,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.upload:
         print("\nUploading ...", flush=True)
-        upload_to_sheet(out_1_8, SPREADSHEET_1_8)
-        upload_to_sheet(out_1_9, SPREADSHEET_1_9)
+        upload_to_sheet(out_1_8, SPREADSHEET_1_8, "1-8")
+        upload_to_sheet(out_1_9, SPREADSHEET_1_9, "1-9")
 
     return 0
 
@@ -828,12 +938,12 @@ def _join_and_filter(
     )
     joined = before_r.join(after_r, on="bldg_id", how="inner")
     joined = joined.join(
-        kwh_before.select("bldg_id", pl.col("annual_kwh").alias("annual_kwh_before")),
+        kwh_before.select("bldg_id", pl.col("annual_kwh_grid").alias("annual_kwh_before")),
         on="bldg_id",
         how="left",
     )
     joined = joined.join(
-        kwh_after.select("bldg_id", pl.col("annual_kwh").alias("annual_kwh_after")),
+        kwh_after.select("bldg_id", pl.col("annual_kwh_grid").alias("annual_kwh_after")),
         on="bldg_id",
         how="left",
     )

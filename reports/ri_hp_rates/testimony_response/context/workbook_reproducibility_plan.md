@@ -5,29 +5,15 @@
 Revise the RIE 1-8 and RIE 1-9 workbooks so that:
 
 1. A reviewer can **recreate every number** from documented inputs (tariff JSONs,
-   rev_req YAMLs, ResStock kWh, CAIRO bills).
+   exported billing kWh, CAIRO bills).
 2. The workbook values **match the expert testimony** (`expert_testimony.qmd`),
    specifically the inline computed values from `report_variables.pkl` and the
    figures from `analysis.qmd`.
 
-## Current state
+## Status: implemented
 
-The workbook already includes:
-
-- **per_building tab**: bldg_id, weight, annual_kwh_before, annual_kwh_after,
-  before/after bills (elec, gas, oil, propane with LMI adjustment), delta, save flag.
-- **result tab**: headline percentage (weighted share that saves/loses), computed
-  with live Excel formulas from per_building data.
-- **assumptions tab**: tariff tables (default before, HP after for 1-9), data
-  source S3 paths, column descriptions.
-
-### Gaps
-
-| Gap                                  | Impact                                                                                                                                                                                           |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **kWh derivation is indirect**       | `annual_kwh` is back-derived from delivery bill via `(bill_delivery − annual_fixed_per_customer) / vol_rate`. This is opaque and doesn't surface the actual ResStock kWh or the scaling factors. |
-| **Tariff rates not linked to bills** | The assumptions tab lists tariff rates, but there's no formula connecting rates × kWh to the bill components.                                                                                    |
-| **Testimony figures not traceable**  | The testimony cites percentages (79% lose, 87% save) that come from `report_variables.pkl`. The workbook computes these independently but doesn't show they match.                               |
+All phases below have been implemented. The workbook script
+(`build_RIE_1_8_1_9_workbook.py`) has been updated.
 
 ## Approach: use total bills, not decomposed bills
 
@@ -41,101 +27,120 @@ Instead, the workbook presents:
 
 - **Total electric bill** from CAIRO (exact, unambiguous)
 - **Tariff rates** from the calibrated tariffs (matching the testimony)
-- **Fixed charge** of $10.01/mo ($120.12/yr) — the sum of the three per-customer
-  line items: $6.00 customer charge + $3.22 RE Growth + $0.79 LIHEAP Enhancement
-- **Verification**: `annual_kwh × vol_rate + $10.01 × 12 ≈ elec_total_bill`
-  (within ~$1 from CAIRO's hourly billing mechanics)
+- **Fixed charge** of $10.01/mo ($120.12/yr) — used consistently across all
+  workbooks (RIE 1-8, 1-9, and 1-11). This is the sum of the three per-customer
+  line items: $6.00 customer charge + $3.22 RE Growth + $0.79 LIHEAP Enhancement.
+  It matches `fixedchargefirstmeter = 10.01` in all calibrated tariff JSONs and
+  what the testimony cites.
+- **Billing kWh** exported directly from CAIRO's billing pipeline
+  (`billing_kwh_annual.parquet`), not back-derived from bills.
 
-This is consistent with the testimony, the calibrated tariffs, and what CAIRO
-actually billed against (`fixedchargefirstmeter = 10.01` in all calibrated JSONs).
+## Key decisions
 
-## Plan
+### Consistent fixed charge: $10.01/mo
 
-### Phase 1: Link tariff rates to bill verification formulas
+All workbooks use $10.01/mo ($120.12/yr). This is:
 
-In the assumptions tab, add a **"How to verify"** section:
+- The sum of the three per-customer line items on the bill ($6.00 customer charge
+  - $3.22 RE Growth + $0.79 LIHEAP Enhancement)
+- What the calibrated tariff JSONs use (`fixedchargefirstmeter = 10.01`)
+- What the testimony cites as the fixed charges
+- What CAIRO actually bills against hourly
+
+Other fixed charge values exist in different contexts but are NOT used in the
+workbooks:
+
+- $11.47/mo — `rie_flat.json` (used only by `build_master_bills.py` to
+  decompose the bill into delivery/supply components; not the actual billing
+  fixed charge)
+- $117.54/yr — revenue-equation residual from the old kWh back-derivation
+  (now removed)
+- $137.64/yr ($11.47 × 12) — what `build_master_bills.py` reports as
+  `elec_fixed_charge` (a different decomposition)
+
+### kWh source: exported from CAIRO billing pipeline
+
+kWh values are loaded from `billing_kwh_annual.parquet`, exported directly from
+CAIRO's billing pipeline during runs. These are the exact grid-consumed kWh that
+CAIRO uses for billing, after:
+
+- PV clipping (`grid_cons = max(electricity_net, 0)`)
+- `kwh_scale_factor` application (0.9568)
+- 48-hour day-of-week timeshift (aligning 2018 weather year to 2025)
+
+Each building gets exactly two kWh values: upgrade 0 (before HP) and upgrade 2
+(after HP). These are the same regardless of which tariff is applied.
+
+Source files:
+
+- Upgrade 0: `s3://data.sb/switchbox/cairo/outputs/hp_rates/ri/rie/ri_20260504_kwh_export_v2/20260505_011359_ri_rie_run1_up00_precalc__default/billing_kwh_annual.parquet`
+- Upgrade 2: `s3://data.sb/switchbox/cairo/outputs/hp_rates/ri/rie/ri_20260504_kwh_export_v2/20260505_011437_ri_rie_run3_up02_default__default/billing_kwh_annual.parquet`
+
+### Bill-verification formula: RIE 1-9 only
+
+RIE 1-9 uses the HP flat supply tariff (`rie_hp_flat_supply_calibrated.json`),
+which has a single flat rate of 23.129 ¢/kWh (delivery + supply bundled). The
+verification formula is:
 
 ```
-For building i with annual_kwh_after = K:
-
-  RIE 1-8 (default rates, after HP):
-    elec_total_bill ≈ K × weighted_avg_supply_rate + $10.01 × 12
-    The default supply tariff is seasonal (winter/summer/shoulder),
-    so the annual bill depends on each building's monthly consumption
-    profile. The annual total matches CAIRO output within ~$1.
-
-  RIE 1-9 (HP flat rates, after HP):
-    elec_total_bill ≈ K × 0.23129 + $10.01 × 12
-    The HP flat supply tariff is a single flat rate (delivery+supply
-    bundled). This formula reproduces CAIRO's total bill within ~$1.
-
-  Fixed charge ($10.01/mo):
-    $6.00/mo customer charge + $3.22/mo RE Growth + $0.79/mo LIHEAP
-    Enhancement. These are unchanged by the proposal.
-
-  The ~$1 tolerance arises from CAIRO's hourly billing mechanics
-  (48-hour day-of-week timeshift aligning 2018 weather year to 2025).
+elec_bill_formula = annual_kwh_after × 0.23129 + 10.01 × 12
 ```
 
-### Phase 2: Surface the kWh derivation
+This reproduces CAIRO's total bill within ~$1. The residual column
+(`elec_bill_residual = elec_bill_after - elec_bill_formula`) is included in the
+per_building sheet.
 
-The current kWh back-derivation (`(bill_delivery − fixed) / vol_rate`) is opaque.
-Document the derivation clearly:
+### Why no bill-verification formula for RIE 1-8
 
-1. kWh are derived from the status-quo delivery run (run 1+2), where the tariff
-   is a single flat rate: `annual_kwh = (annual_bill_delivery − $117.54) / 0.14078`.
-   The $117.54 is the revenue-equation residual (see `cairo_bill_decomposition.md`).
-2. This produces the same kWh for both RIE 1-8 and RIE 1-9 (before = upgrade 0,
-   after = upgrade 2).
-3. For 6 PV buildings, `annual_kwh` reflects grid-consumed electricity only
-   (import-only kWh), because CAIRO does not credit export hours.
+The default supply tariff (`rie_default_supply_calibrated.json`) uses three
+seasonal rates:
 
-Add a note in the assumptions tab explaining this derivation and citing the
-`kwh_scale_factor = 0.9568` from `rie_rate_case_test_year.yaml`.
+- Winter (Jan, Feb, Mar, Nov, Dec): 31.38 ¢/kWh
+- Summer (Jun, Jul, Aug, Sep): 24.78 ¢/kWh
+- Shoulder (Apr, May, Oct): 29.49 ¢/kWh
 
-### Phase 3: Cross-reference with testimony
+These rates bundle delivery + supply. Because each building has a different
+monthly consumption profile, a single `annual_kwh × rate` formula cannot
+reproduce the bill — it would require 12 monthly kWh values and per-month rate
+assignments. CAIRO computes bills hourly (8,760 hours), applying the correct
+seasonal rate to each hour's consumption, then sums to the annual total.
 
-Add a **testimony_match** section in the assumptions tab that maps workbook
-outputs to specific testimony claims:
+The `elec_total_bill` column is the exact annual bill from CAIRO. To verify it
+independently, one would need the building's hourly load profile (available in
+`billing_kwh_8760.parquet`) and the seasonal rate schedule above.
 
-| Testimony claim                                 | Testimony source                                         | Workbook cell            | Match?     |
-| ----------------------------------------------- | -------------------------------------------------------- | ------------------------ | ---------- |
-| "79% of gas-heated households would lose money" | Section V, inline `pct(v.pct_natgas_lose_default_lmi40)` | result!B2                | Must match |
-| "87% of gas-heated households would save money" | Section V, inline `pct(v.pct_natgas_save_hprate_lmi40)`  | result!B2                | Must match |
-| Delivery rate 14.08 ¢/kWh                       | Section V, rate comparison tables                        | assumptions tariff table | Must match |
-| HP delivery rate 8.25 ¢/kWh                     | Section V, `cents(c.hp_pct_reduction)`                   | assumptions tariff table | Must match |
-| Fixed charge $10.01/mo                          | Section V, `fixed_charges_description`                   | assumptions tariff table | Must match |
-| LMI discount at 32% enrollment                  | Section VI                                               | assumptions tab          | Must match |
+## What each workbook tab contains
 
-### Phase 4: Documentation
+### assumptions tab
 
-1. Update the assumptions tab "How bills are computed" section:
-   - Bills come from CAIRO's hourly simulation (ResStock loads × tariff rates).
-   - The fixed charge is $10.01/mo, matching the calibrated tariff JSONs and testimony.
-   - CAIRO applies a `kwh_scale_factor` of 0.9568 and a 48-hour day-of-week
-     timeshift (aligning 2018 weather loads to 2025 calendar), which produces
-     small (~$1) differences from `kWh × annual_rate + fixed × 12`.
-2. Reference `cairo_bill_decomposition.md` for full technical details.
+- Discovery request text
+- LMI discount tier (32% enrollment)
+- Bill columns used and filtering criteria
+- **Tariff tables**: Default tariffs (before) and HP subclass tariffs (after,
+  1-9 only), replicating `tbl-rie-energy-tariffs` from the testimony. Includes
+  electric delivery, supply (seasonal and flat), gas, oil, and propane rates.
+- **How bills are computed**: Fixed charge ($10.01/mo), kWh source (exported
+  from CAIRO), electric bill source (CAIRO hourly simulation).
+- **Why no formula (1-8)** or **Bill-verification formula (1-9)**: Explains
+  the seasonal rate limitation for 1-8, or provides the verification formula
+  for 1-9.
+- **Data sources**: S3 paths for master bills and billing kWh parquets.
+- **Column descriptions**: All per_building columns documented.
 
-## Implementation order
+### per_building tab
 
-1. **Phase 1 first** — linking rates to verification formulas is the most impactful
-   for reproducibility and doesn't require loading new data.
-2. **Phase 3 next** — cross-reference ensures testimony match.
-3. **Phase 2** — kWh derivation documentation (the current back-derivation works;
-   this phase clarifies it).
-4. **Phase 4 throughout** — documentation updates happen alongside each phase.
+- bldg_id, weight
+- annual_kwh_before (upgrade 0), annual_kwh_after (upgrade 2)
+- Before/after bills: elec, gas, oil, propane (undiscounted and LMI-adjusted)
+- LMI discount amounts, total energy bills, delta, saves flag, weighted saves
+- **RIE 1-9 only**: elec_bill_formula and elec_bill_residual columns
 
-## Files involved
+### result tab
 
-| File                                                     | Role                              |
-| -------------------------------------------------------- | --------------------------------- |
-| `testimony_response/build_RIE_1_8_1_9_workbook.py`       | Primary script to modify          |
-| `testimony_response/verify_RIE_1_8_1_9_workbook.py`      | Verification script               |
-| `testimony_response/context/cairo_bill_decomposition.md` | Reference for bill mechanics      |
-| `cache/report_variables.pkl`                             | Source of testimony inline values |
-| `notebooks/analysis.qmd`                                 | Source of testimony figures       |
-| `expert_testimony.qmd`                                   | The testimony document itself     |
+- Total gas-heated customers (weighted)
+- Customers that save (weighted)
+- Percentage that save / lose
+- Headline figure
 
 ## Key tariff files (rate-design-platform)
 
@@ -150,10 +155,21 @@ All calibrated tariffs use `fixedchargefirstmeter = 10.01` ($6.00 + $3.22 + $0.7
 
 ## CAIRO batch and runs
 
-Batch: `ri_20260331_r1-20_rate_case_test_year`
+Bills batch: `ri_20260331_r1-20_rate_case_test_year`
+kWh batch: `ri_20260504_kwh_export_v2`
 
 | Master bill path                    | Runs                        | Description                           |
 | ----------------------------------- | --------------------------- | ------------------------------------- |
 | `run_1+2/comb_bills_year_target/`   | 1 (delivery) + 2 (supply)   | Before: upgrade 0, default rates      |
 | `run_3+4/comb_bills_year_target/`   | 3 (delivery) + 4 (supply)   | After (1-8): upgrade 2, default rates |
 | `run_19+20/comb_bills_year_target/` | 19 (delivery) + 20 (supply) | After (1-9): upgrade 2, HP flat rates |
+
+## Files involved
+
+| File                                                     | Role                              |
+| -------------------------------------------------------- | --------------------------------- |
+| `testimony_response/build_RIE_1_8_1_9_workbook.py`       | Primary script (updated)          |
+| `testimony_response/context/cairo_bill_decomposition.md` | Reference for bill mechanics      |
+| `cache/report_variables.pkl`                             | Source of testimony inline values |
+| `notebooks/analysis.qmd`                                 | Source of testimony figures       |
+| `expert_testimony.qmd`                                   | The testimony document itself     |

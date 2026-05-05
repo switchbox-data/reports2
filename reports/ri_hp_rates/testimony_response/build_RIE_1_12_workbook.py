@@ -133,9 +133,6 @@ def _write_readme(wb: Workbook) -> None:
     ws["A8"] = "Analysis notebook"
     ws["B8"] = _reports2_permalink("reports/ri_hp_rates/notebooks/cost_of_service_by_subclass.qmd")
 
-    ws["A9"] = "This workbook's build script"
-    ws["B9"] = _reports2_permalink("reports/ri_hp_rates/testimony_response/build_RIE_1_12_workbook.py")
-
     _autosize(ws, {"A": 30, "B": 100})
     ws.sheet_view.showGridLines = False
 

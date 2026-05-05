@@ -50,8 +50,8 @@ BATCH = "ri_20260331_r1-20_rate_case_test_year"
 RUN_DELIVERY = "1"
 RUN_SUPPLY = "2"
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
-RESSTOCK_BASE = "s3://data.sb/nrel/resstock/res_2024_amy2018_2"
-LOCAL_RESSTOCK_BASE = Path("/ebs/data/nrel/resstock/res_2024_amy2018_2")
+RESSTOCK_BASE = "s3://data.sb/nrel/resstock/res_2024_amy2018_2_sb"
+LOCAL_RESSTOCK_BASE = Path("/ebs/data/nrel/resstock/res_2024_amy2018_2_sb")
 LOCAL_RESSTOCK_METADATA = LOCAL_RESSTOCK_BASE / "metadata_utility" / "state=RI" / "utility_assignment.parquet"
 LOCAL_RESSTOCK_LOADS_UPGRADE0 = LOCAL_RESSTOCK_BASE / "load_curve_hourly" / "state=RI" / "upgrade=00"
 S3_MC_DIST_SUB_TX = "s3://data.sb/switchbox/marginal_costs/ri/dist_and_sub_tx/utility=rie/year=2025/data.parquet"
@@ -134,14 +134,9 @@ def load_revenue_requirement_yaml() -> dict:
     return dict(REV_REQ)
 
 
-def load_master_bat_data(
-    batch: str, run_delivery: str, run_supply: str, utility: str = UTILITY
-) -> pl.DataFrame:
+def load_master_bat_data(batch: str, run_delivery: str, run_supply: str, utility: str = UTILITY) -> pl.DataFrame:
     """Load master BAT data from S3 for the specified run."""
-    s3_path = (
-        f"{S3_BASE}/{STATE}/all_utilities/{batch}/"
-        f"run_{run_delivery}+{run_supply}/cross_subsidization_BAT_values/"
-    )
+    s3_path = f"{S3_BASE}/{STATE}/all_utilities/{batch}/run_{run_delivery}+{run_supply}/cross_subsidization_BAT_values/"
     print(f"Loading master BAT from: {s3_path}", flush=True)
 
     storage_options = get_aws_storage_options()
@@ -156,10 +151,11 @@ def load_master_bat_data(
 
 def load_aggregate_load_curves(
     kwh_scale_factor: float = 1.0,
+    test_year_customer_count: float | None = None,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Load ResStock load curves and aggregate by heating subclass.
 
-    Reads from local EBS disk (source: s3://data.sb/nrel/resstock/res_2024_amy2018_2/).
+    Reads from local EBS disk (source: s3://data.sb/nrel/resstock/res_2024_amy2018_2_sb/).
     Returns (agg_by_subclass, mc_delivery) where:
       - agg_by_subclass: 8760 rows × (timestamp + one column per subclass), in kWh
       - mc_delivery: 8760 rows × (timestamp, mc_dist_sub_tx, mc_bulk_tx, mc_delivery_total)
@@ -168,12 +164,25 @@ def load_aggregate_load_curves(
       YAML.  Applied to all subclass load columns so that the aggregate loads match the
       kWh series CAIRO uses internally when computing economic burden and EPMC allocation.
       Default 1.0 (no scaling) preserves backward-compat for callers that don't pass it.
+
+    test_year_customer_count: When provided, rescales ResStock sample weights so their sum
+      equals this value (matching CAIRO's weight normalization to the rate-case customer
+      count).  Without this, raw ResStock weights are used — which overstate aggregate
+      totals vs. CAIRO's internal calculations.
     """
     # Load metadata to get bldg_id → subclass + weight for RIE upgrade=0 buildings
     print("Loading ResStock metadata ...", flush=True)
-    meta = pl.read_parquet(LOCAL_RESSTOCK_METADATA).filter(
-        (pl.col("sb.electric_utility") == UTILITY) & (pl.col("upgrade") == 0)
-    ).select("bldg_id", SUBCLASS_COL, "weight")
+    meta = (
+        pl.read_parquet(LOCAL_RESSTOCK_METADATA)
+        .filter((pl.col("sb.electric_utility") == UTILITY) & (pl.col("upgrade") == 0))
+        .select("bldg_id", SUBCLASS_COL, "weight")
+    )
+
+    # Rescale weights to match CAIRO's normalization (test_year_customer_count from YAML)
+    if test_year_customer_count is not None:
+        raw_total = float(meta["weight"].sum())
+        weight_scale = test_year_customer_count / raw_total
+        meta = meta.with_columns(pl.col("weight") * weight_scale)
 
     # Load all per-building 8760 load files and join with metadata
     print(f"Loading {meta.height} ResStock load curves from local disk ...", flush=True)
@@ -203,9 +212,7 @@ def load_aggregate_load_curves(
     # Assign hour_of_year 1..8760 so we can join MC by position, not by date.
     # ResStock uses AMY 2018 (a real calendar year), MC parquets use 2025.
     # The two series represent the same 8760-hour pattern; we align by order.
-    agg = agg.with_columns(
-        (pl.int_range(1, agg.height + 1, eager=True)).alias("hour_of_year")
-    )
+    agg = agg.with_columns((pl.int_range(1, agg.height + 1, eager=True)).alias("hour_of_year"))
 
     # Apply CAIRO's kWh scale factor so that aggregate loads match the series CAIRO
     # uses when computing economic burden and EPMC allocation.  This normalises the
@@ -233,21 +240,18 @@ def load_aggregate_load_curves(
         else:
             # Fallback: first float column (skips integer metadata columns like year)
             float_cols = [c for c in df.columns if c != "timestamp" and df[c].dtype.is_float()]
-            mc_col = float_cols[0] if float_cols else [
-                c for c in df.columns if c != "timestamp" and df[c].dtype.is_numeric()
-            ][-1]
+            mc_col = (
+                float_cols[0]
+                if float_cols
+                else [c for c in df.columns if c != "timestamp" and df[c].dtype.is_numeric()][-1]
+            )
         df = df.select("timestamp", pl.col(mc_col).alias(name)).sort("timestamp").head(8760)
-        return df.with_columns(
-            (pl.int_range(1, df.height + 1, eager=True)).alias("hour_of_year")
-        )
+        return df.with_columns((pl.int_range(1, df.height + 1, eager=True)).alias("hour_of_year"))
 
     mc_dist = _load_mc(S3_MC_DIST_SUB_TX, "mc_dist_sub_tx")
     mc_bulk = _load_mc(S3_MC_BULK_TX, "mc_bulk_tx")
-    mc = (
-        mc_dist.join(mc_bulk.drop("timestamp"), on="hour_of_year")
-        .with_columns(
-            (pl.col("mc_dist_sub_tx") + pl.col("mc_bulk_tx")).alias("mc_delivery_total")
-        )
+    mc = mc_dist.join(mc_bulk.drop("timestamp"), on="hour_of_year").with_columns(
+        (pl.col("mc_dist_sub_tx") + pl.col("mc_bulk_tx")).alias("mc_delivery_total")
     )
 
     return agg, mc
@@ -334,21 +338,21 @@ def add_overview_sheet(wb: Workbook, rev_req: dict) -> None:
             "multiplied its hourly load by the hourly marginal cost and summed across all 8,760 hours. "
             "This annual marginal cost total is the building's 'economic burden' (EB) - its delivery "
             "cost-causation score. This is analogous to the NCP demand metric RIE uses at the class level, "
-            "but provides a more granular signal that captures WHEN costs actually occur."
+            "but provides a more granular signal that captures WHEN costs actually occur.",
         ),
         (
             "Step 2: COMPUTE SUBCLASS SHARES",
             "Summed the economic burden across all buildings within each customer subclass "
             "(heat pump, natural gas, electric resistance, oil, propane), weighting by ResStock sample weight. "
             "Each subclass's share of the total economic burden represents its share of cost-causation. "
-            "Customer counts by subclass were estimated from the 2020 Residential Energy Consumption Survey (RECS)."
+            "Customer counts by subclass were estimated from the 2020 Residential Energy Consumption Survey (RECS).",
         ),
         (
             "Step 3: ALLOCATE RESIDENTIAL DELIVERY REVENUE",
             f"Applied each subclass's share of cost-causation to the total Residential Delivery Revenue Requirement "
             f"(${rev_req.get('total_delivery_revenue_requirement', 0):,.0f}) to arrive at each subclass's allocated "
             "cost-of-service. This uses the Equi-Proportional Marginal Cost (EPMC) method: "
-            "R_i = R × (EB_i / Σ(EB_j × weight_j)), where R_i is the revenue allocated to subclass i."
+            "R_i = R × (EB_i / Σ(EB_j × weight_j)), where R_i is the revenue allocated to subclass i.",
         ),
         (
             "Step 4: MEASURE THE CROSS-SUBSIDY",
@@ -356,7 +360,7 @@ def add_overview_sheet(wb: Workbook, rev_req: dict) -> None:
             "(computed by applying Test Year rates to each ResStock building's hourly load profile) "
             "and compared to the subclass's allocated cost of service from Step 3. A subclass that pays "
             "more than its cost of service is being overcharged - it is cross-subsidizing the other subclasses. "
-            "This comparison is known as the Bill Alignment Test."
+            "This comparison is known as the Bill Alignment Test.",
         ),
     ]
 
@@ -398,28 +402,28 @@ def add_overview_sheet(wb: Workbook, rev_req: dict) -> None:
             "Bulk transmission ($69/kW-year) and sub-transmission/distribution ($80.24/kW-year) costs "
             "from AESC 2024 study (Synapse Energy Economics). AESC 2024 is the standard avoided cost "
             "input used by all New England states for energy efficiency cost-effectiveness screening. "
-            "RI PUC Docket 4600 benefit-cost framework draws directly from AESC."
+            "RI PUC Docket 4600 benefit-cost framework draws directly from AESC.",
         ),
         (
             "ResStock Loads",
             "NREL ResStock End-Use Load Profiles 2024.2 release (AMY 2018). 8,760-hour profiles for "
             "every modeled dwelling, broken down by end use. Simulated using EnergyPlus, DOE's flagship "
             "building energy simulation engine. Validated against EIA Form 861 utility sales, utility "
-            "load research, and smart meter data. ISO-NE uses ResStock for heat pump adoption forecasts."
+            "load research, and smart meter data. ISO-NE uses ResStock for heat pump adoption forecasts.",
         ),
         (
             "Customer Counts",
             "Heating-system subclass shares from 2020 Residential Energy Consumption Survey (RECS), "
-            "applied to Test Year residential customer count."
+            "applied to Test Year residential customer count.",
         ),
         (
             "CAIRO Outputs",
             f"Economic burden and BAT calculations. Batch: {BATCH}, Runs: {RUN_DELIVERY}+{RUN_SUPPLY}. "
-            "EPMC implementation in utils/mid/patches.py."
+            "EPMC implementation in utils/mid/patches.py.",
         ),
         (
             "Revenue Requirement",
-            "RIE rate case test year (Sept 2024 - Aug 2025) from rie_hp_vs_nonhp_rate_case_test_year.yaml"
+            "RIE rate case test year (Sept 2024 - Aug 2025) from rie_hp_vs_nonhp_rate_case_test_year.yaml",
         ),
     ]
 
@@ -640,7 +644,7 @@ def add_resstock_loads_sheet(wb: Workbook, rev_req: dict) -> None:
 
     metadata = [
         ("Dataset", "NREL ResStock End-Use Load Profiles"),
-        ("Release", "2024.2 (res_2024_amy2018_2)"),
+        ("Release", "2024.2 (res_2024_amy2018_2_sb)"),
         ("Weather Year", "AMY 2018 (Actual Meteorological Year)"),
         ("State", "Rhode Island"),
         ("Buildings Modeled", f"{n_buildings:,}"),
@@ -689,15 +693,13 @@ def add_resstock_loads_sheet(wb: Workbook, rev_req: dict) -> None:
         ws.merge_cells(f"B{row}:F{row}")
         row += 1
 
-    ws[f"A{row+1}"] = "Load Profile Structure"
-    ws[f"A{row+1}"].font = SECTION_FONT
-    ws[f"A{row+1}"].fill = SECTION_FILL
-    ws.merge_cells(f"A{row+1}:F{row+1}")
+    ws[f"A{row + 1}"] = "Load Profile Structure"
+    ws[f"A{row + 1}"].font = SECTION_FONT
+    ws[f"A{row + 1}"].fill = SECTION_FILL
+    ws.merge_cells(f"A{row + 1}:F{row + 1}")
 
-    ws[f"A{row+2}"] = (
-        "For each building, ResStock provides hourly consumption (kWh) for:"
-    )
-    ws.merge_cells(f"A{row+2}:F{row+2}")
+    ws[f"A{row + 2}"] = "For each building, ResStock provides hourly consumption (kWh) for:"
+    ws.merge_cells(f"A{row + 2}:F{row + 2}")
 
     end_uses = [
         "Total electricity (out.electricity.total.energy_consumption)",
@@ -712,21 +714,21 @@ def add_resstock_loads_sheet(wb: Workbook, rev_req: dict) -> None:
         ws.merge_cells(f"B{row}:F{row}")
         row += 1
 
-    ws[f"A{row+1}"] = "Representativeness"
-    ws[f"A{row+1}"].font = SECTION_FONT
-    ws[f"A{row+1}"].fill = SECTION_FILL
-    ws.merge_cells(f"A{row+1}:F{row+1}")
+    ws[f"A{row + 1}"] = "Representativeness"
+    ws[f"A{row + 1}"].font = SECTION_FONT
+    ws[f"A{row + 1}"].fill = SECTION_FILL
+    ws.merge_cells(f"A{row + 1}:F{row + 1}")
 
     customers_per_building = (n_buildings and (419348 / n_buildings)) or 0
-    ws[f"A{row+2}"] = (
+    ws[f"A{row + 2}"] = (
         f"Each of the {n_buildings:,} ResStock buildings represents approximately "
         f"{customers_per_building:.0f} actual residential customers in Rhode Island Energy's "
         "service territory. ResStock's sample weights ensure that the modeled building stock "
         "matches the statistical distribution of the actual housing stock."
     )
-    ws[f"A{row+2}"].alignment = Alignment(wrap_text=True, vertical="top")
-    ws.merge_cells(f"A{row+2}:F{row+2}")
-    ws.row_dimensions[row+2].height = 60
+    ws[f"A{row + 2}"].alignment = Alignment(wrap_text=True, vertical="top")
+    ws.merge_cells(f"A{row + 2}:F{row + 2}")
+    ws.row_dimensions[row + 2].height = 60
 
     row = row + 3
     ws[f"A{row}"] = "Validation and Calibration"
@@ -833,28 +835,28 @@ def add_economic_burden_sheet(wb: Workbook) -> None:
         ws.merge_cells(f"B{row}:F{row}")
         row += 1
 
-    ws[f"A{row+1}"] = "Interpretation"
-    ws[f"A{row+1}"].font = SECTION_FONT
-    ws[f"A{row+1}"].fill = SECTION_FILL
-    ws.merge_cells(f"A{row+1}:F{row+1}")
+    ws[f"A{row + 1}"] = "Interpretation"
+    ws[f"A{row + 1}"].font = SECTION_FONT
+    ws[f"A{row + 1}"].fill = SECTION_FILL
+    ws.merge_cells(f"A{row + 1}:F{row + 1}")
 
-    ws[f"A{row+2}"] = (
+    ws[f"A{row + 2}"] = (
         "The economic burden represents the marginal system cost directly caused by a "
         "building's consumption pattern. Buildings that consume more during high-marginal-cost "
         "hours (peak periods when infrastructure is constrained) have higher economic burdens "
         "relative to their total kWh. Buildings that consume primarily during low-marginal-cost "
         "hours (off-peak periods with excess capacity) have lower economic burdens."
     )
-    ws[f"A{row+2}"].alignment = Alignment(wrap_text=True, vertical="top")
-    ws.merge_cells(f"A{row+2}:F{row+2}")
-    ws.row_dimensions[row+2].height = 80
+    ws[f"A{row + 2}"].alignment = Alignment(wrap_text=True, vertical="top")
+    ws.merge_cells(f"A{row + 2}:F{row + 2}")
+    ws.row_dimensions[row + 2].height = 80
 
-    ws[f"A{row+4}"] = "High-Cost Hours"
-    ws[f"A{row+4}"].font = SECTION_FONT
-    ws[f"A{row+4}"].fill = SECTION_FILL
-    ws.merge_cells(f"A{row+4}:F{row+4}")
+    ws[f"A{row + 4}"] = "High-Cost Hours"
+    ws[f"A{row + 4}"].font = SECTION_FONT
+    ws[f"A{row + 4}"].fill = SECTION_FILL
+    ws.merge_cells(f"A{row + 4}:F{row + 4}")
 
-    ws[f"A{row+5}"] = (
+    ws[f"A{row + 5}"] = (
         "The testimony reference to 'high-cost hours' refers to the hours when capacity "
         "marginal costs are non-zero (approximately 200-300 hours per year). These are the "
         "hours when the transmission and distribution grids are constrained and incremental "
@@ -862,9 +864,9 @@ def add_economic_burden_sheet(wb: Workbook) -> None:
         "includes ALL 8,760 hours — both energy costs (present in every hour) and capacity "
         "costs (concentrated in peak hours)."
     )
-    ws[f"A{row+5}"].alignment = Alignment(wrap_text=True, vertical="top")
-    ws.merge_cells(f"A{row+5}:F{row+5}")
-    ws.row_dimensions[row+5].height = 90
+    ws[f"A{row + 5}"].alignment = Alignment(wrap_text=True, vertical="top")
+    ws.merge_cells(f"A{row + 5}:F{row + 5}")
+    ws.row_dimensions[row + 5].height = 90
 
     # Set column widths
     ws.column_dimensions["A"].width = 25
@@ -872,9 +874,7 @@ def add_economic_burden_sheet(wb: Workbook) -> None:
     ws.column_dimensions["C"].width = 60
 
 
-def add_subclass_aggregation_sheet(
-    wb: Workbook, bat_df: pl.DataFrame, agg: pl.DataFrame
-) -> None:
+def add_subclass_aggregation_sheet(wb: Workbook, bat_df: pl.DataFrame, agg: pl.DataFrame) -> None:
     """Add sheet showing subclass-level economic burden aggregation."""
     ws = wb.create_sheet("4. Subclass Aggregation")
 
@@ -902,12 +902,10 @@ def add_subclass_aggregation_sheet(
         bat_df.group_by("postprocess_group.has_hp")
         .agg(
             [
-            pl.col("bldg_id").count().alias("n_buildings"),
-            pl.col("weight").sum().alias("total_weight"),
-            (pl.col("economic_burden_delivery") * pl.col("weight"))
-            .sum()
-            .alias("total_eb"),
-            pl.col("economic_burden_delivery").mean().alias("mean_eb"),
+                pl.col("bldg_id").count().alias("n_buildings"),
+                pl.col("weight").sum().alias("total_weight"),
+                (pl.col("economic_burden_delivery") * pl.col("weight")).sum().alias("total_eb"),
+                pl.col("economic_burden_delivery").mean().alias("mean_eb"),
             ]
         )
         .sort("postprocess_group.has_hp", descending=True)
@@ -918,9 +916,7 @@ def add_subclass_aggregation_sheet(
     subclasses_sh6 = [c for c in agg.columns if c not in ("timestamp", "hour_of_year")]
     n_mc_sh6 = 3  # mc_dist_sub_tx, mc_bulk_tx, mc_delivery_total
     eb_start_sh6 = 2 + len(subclasses_sh6) + n_mc_sh6  # 1-based column index
-    sh6_eb_col: dict[str, str] = {
-        sc: get_column_letter(eb_start_sh6 + i) for i, sc in enumerate(subclasses_sh6)
-    }
+    sh6_eb_col: dict[str, str] = {sc: get_column_letter(eb_start_sh6 + i) for i, sc in enumerate(subclasses_sh6)}
     SH6 = "6. Aggregate Load Curves"
     SH5 = "5. Revenue Allocation"
     sh6_totals_row = 7  # row 5=section header, row 6=col header, row 7=totals
@@ -998,23 +994,23 @@ def add_subclass_aggregation_sheet(
     ws[f"F{row}"].fill = SECTION_FILL
     ws[f"G{row}"].fill = SECTION_FILL
 
-    ws[f"A{row+2}"] = "Cost-Causation Share Formula"
-    ws[f"A{row+2}"].font = SECTION_FONT
-    ws[f"A{row+2}"].fill = SECTION_FILL
-    ws.merge_cells(f"A{row+2}:G{row+2}")
+    ws[f"A{row + 2}"] = "Cost-Causation Share Formula"
+    ws[f"A{row + 2}"].font = SECTION_FONT
+    ws[f"A{row + 2}"].fill = SECTION_FILL
+    ws.merge_cells(f"A{row + 2}:G{row + 2}")
 
-    ws[f"A{row+3}"] = "Share_i = (Σ(EB_i,b × weight_b)) / (Σ(EB_j,b × weight_b))"
-    ws[f"A{row+3}"].font = Font(italic=True)
-    ws.merge_cells(f"A{row+3}:G{row+3}")
+    ws[f"A{row + 3}"] = "Share_i = (Σ(EB_i,b × weight_b)) / (Σ(EB_j,b × weight_b))"
+    ws[f"A{row + 3}"].font = Font(italic=True)
+    ws.merge_cells(f"A{row + 3}:G{row + 3}")
 
-    ws[f"A{row+5}"] = (
+    ws[f"A{row + 5}"] = (
         "Where the numerator sums over all buildings b in subclass i, and the denominator "
         "sums over all buildings b in all subclasses j. The share represents each subclass's "
         "contribution to total system marginal costs."
     )
-    ws[f"A{row+5}"].alignment = Alignment(wrap_text=True, vertical="top")
-    ws.merge_cells(f"A{row+5}:G{row+5}")
-    ws.row_dimensions[row+5].height = 50
+    ws[f"A{row + 5}"].alignment = Alignment(wrap_text=True, vertical="top")
+    ws.merge_cells(f"A{row + 5}:G{row + 5}")
+    ws.row_dimensions[row + 5].height = 50
 
     # Set column widths
     ws.column_dimensions["A"].width = 18
@@ -1026,9 +1022,7 @@ def add_subclass_aggregation_sheet(
     ws.column_dimensions["G"].width = 15
 
 
-def add_revenue_allocation_sheet(
-    wb: Workbook, bat_df: pl.DataFrame, rev_req: dict, agg: pl.DataFrame
-) -> None:
+def add_revenue_allocation_sheet(wb: Workbook, bat_df: pl.DataFrame, rev_req: dict, agg: pl.DataFrame) -> None:
     """Add sheet showing final revenue requirement allocation."""
     ws = wb.create_sheet("5. Revenue Allocation")
 
@@ -1055,9 +1049,7 @@ def add_revenue_allocation_sheet(
     # .xlsx (all sheets present) and are re-applied post-upload for Google Sheets.
     _sh6_subcols = [c for c in agg.columns if c not in ("timestamp", "hour_of_year")]
     _sh6_eb_start = 2 + len(_sh6_subcols) + 3  # +3 for three MC columns
-    _sh6_eb_cols: dict[str, str] = {
-        sc: get_column_letter(_sh6_eb_start + i) for i, sc in enumerate(_sh6_subcols)
-    }
+    _sh6_eb_cols: dict[str, str] = {sc: get_column_letter(_sh6_eb_start + i) for i, sc in enumerate(_sh6_subcols)}
     _SH6 = "6. Aggregate Load Curves"
     _sh6_tot = 7  # totals row in Sheet 6
 
@@ -1140,56 +1132,56 @@ def add_revenue_allocation_sheet(
     for cell in [f"A{row}", f"B{row}", f"C{row}", f"D{row}", f"E{row}", f"F{row}"]:
         ws[cell].fill = SECTION_FILL
 
-    ws[f"A{row+2}"] = "EPMC Allocation Formula"
-    ws[f"A{row+2}"].font = SECTION_FONT
-    ws[f"A{row+2}"].fill = SECTION_FILL
-    ws.merge_cells(f"A{row+2}:F{row+2}")
+    ws[f"A{row + 2}"] = "EPMC Allocation Formula"
+    ws[f"A{row + 2}"].font = SECTION_FONT
+    ws[f"A{row + 2}"].fill = SECTION_FILL
+    ws.merge_cells(f"A{row + 2}:F{row + 2}")
 
-    ws[f"A{row+3}"] = "COS_i = RR × (EB_i / EB_total);  Residual_i = COS_i − EB_i"
-    ws[f"A{row+3}"].font = Font(italic=True)
-    ws.merge_cells(f"A{row+3}:F{row+3}")
+    ws[f"A{row + 3}"] = "COS_i = RR × (EB_i / EB_total);  Residual_i = COS_i − EB_i"
+    ws[f"A{row + 3}"].font = Font(italic=True)
+    ws.merge_cells(f"A{row + 3}:F{row + 3}")
 
-    ws[f"A{row+5}"] = (
+    ws[f"A{row + 5}"] = (
         "Where COS_i is the EPMC-allocated cost-of-service for subclass i, RR is the total "
         "Delivery Revenue Requirement, EB_i is subclass i's total weighted economic burden "
         "(scaled load × marginal cost, col C), and EB_total is the sum across all subclasses "
         "(col C total row).  Loads are scaled by the CAIRO resstock_kwh_scale_factor so that "
         "the aggregate kWh matches the test-year residential total."
     )
-    ws[f"A{row+5}"].alignment = Alignment(wrap_text=True, vertical="top")
-    ws.merge_cells(f"A{row+5}:F{row+5}")
-    ws.row_dimensions[row+5].height = 60
+    ws[f"A{row + 5}"].alignment = Alignment(wrap_text=True, vertical="top")
+    ws.merge_cells(f"A{row + 5}:F{row + 5}")
+    ws.row_dimensions[row + 5].height = 60
 
-    ws[f"A{row+7}"] = "Comparison to Rate Case Revenue Requirement"
-    ws[f"A{row+7}"].font = SECTION_FONT
-    ws[f"A{row+7}"].fill = SECTION_FILL
-    ws.merge_cells(f"A{row+7}:F{row+7}")
+    ws[f"A{row + 7}"] = "Comparison to Rate Case Revenue Requirement"
+    ws[f"A{row + 7}"].font = SECTION_FONT
+    ws[f"A{row + 7}"].fill = SECTION_FILL
+    ws.merge_cells(f"A{row + 7}:F{row + 7}")
 
-    ws[f"A{row+8}"] = "Total Delivery RR (from YAML)"
-    ws[f"A{row+8}"].font = Font(bold=True)
-    ws[f"B{row+8}"] = total_delivery_rr  # input value — hardcoded intentionally
-    ws[f"B{row+8}"].number_format = "$#,##0"
-    ws.merge_cells(f"B{row+8}:C{row+8}")
+    ws[f"A{row + 8}"] = "Total Delivery RR (from YAML)"
+    ws[f"A{row + 8}"].font = Font(bold=True)
+    ws[f"B{row + 8}"] = total_delivery_rr  # input value — hardcoded intentionally
+    ws[f"B{row + 8}"].number_format = "$#,##0"
+    ws.merge_cells(f"B{row + 8}:C{row + 8}")
 
-    ws[f"A{row+9}"] = "Total Cost-of-Service (EPMC sum)"
-    ws[f"A{row+9}"].font = Font(bold=True)
-    ws[f"B{row+9}"] = f"=E{total_row}"  # references total row column E above
-    ws[f"B{row+9}"].number_format = "$#,##0"
-    ws.merge_cells(f"B{row+9}:C{row+9}")
+    ws[f"A{row + 9}"] = "Total Cost-of-Service (EPMC sum)"
+    ws[f"A{row + 9}"].font = Font(bold=True)
+    ws[f"B{row + 9}"] = f"=E{total_row}"  # references total row column E above
+    ws[f"B{row + 9}"].number_format = "$#,##0"
+    ws.merge_cells(f"B{row + 9}:C{row + 9}")
 
-    ws[f"A{row+10}"] = "Difference"
-    ws[f"A{row+10}"].font = Font(bold=True)
-    ws[f"B{row+10}"] = f"=B{row+8}-B{row+9}"  # RR minus COS
-    ws[f"B{row+10}"].number_format = "$#,##0"
-    ws.merge_cells(f"B{row+10}:C{row+10}")
+    ws[f"A{row + 10}"] = "Difference"
+    ws[f"A{row + 10}"].font = Font(bold=True)
+    ws[f"B{row + 10}"] = f"=B{row + 8}-B{row + 9}"  # RR minus COS
+    ws[f"B{row + 10}"].number_format = "$#,##0"
+    ws.merge_cells(f"B{row + 10}:C{row + 10}")
 
-    ws[f"D{row+8}"] = (
+    ws[f"D{row + 8}"] = (
         "The difference reflects rounding and the specific run configuration used. "
         "In CAIRO's pre-calc mode, the BAT is calibrated to balance exactly."
     )
-    ws[f"D{row+8}"].alignment = Alignment(wrap_text=True, vertical="top")
-    ws.merge_cells(f"D{row+8}:F{row+11}")
-    ws.row_dimensions[row+8].height = 60
+    ws[f"D{row + 8}"].alignment = Alignment(wrap_text=True, vertical="top")
+    ws.merge_cells(f"D{row + 8}:F{row + 11}")
+    ws.row_dimensions[row + 8].height = 60
 
     # Set column widths
     ws.column_dimensions["A"].width = 22
@@ -1200,9 +1192,7 @@ def add_revenue_allocation_sheet(
     ws.column_dimensions["F"].width = 15
 
 
-def add_load_curves_sheet(
-    wb: Workbook, agg: pl.DataFrame, mc: pl.DataFrame, rev_req: dict
-) -> None:
+def add_load_curves_sheet(wb: Workbook, agg: pl.DataFrame, mc: pl.DataFrame, rev_req: dict) -> None:
     """Add sheet with 8760-row aggregate load curves, MC, and hourly EB = load × MC."""
     ws = wb.create_sheet("6. Aggregate Load Curves")
 
@@ -1231,13 +1221,11 @@ def add_load_curves_sheet(
     # Join on hour_of_year (1..8760) — ResStock timestamps are AMY 2018, MC timestamps are 2025.
     subclasses = [c for c in agg.columns if c not in ("timestamp", "hour_of_year")]
     mc_cols = ["mc_dist_sub_tx", "mc_bulk_tx", "mc_delivery_total"]
-    combined = agg.join(mc.select(["hour_of_year"] + mc_cols), on="hour_of_year")
+    combined = agg.join(mc.select(["hour_of_year", *mc_cols]), on="hour_of_year")
 
     eb_col_names = [f"eb_{sc}" for sc in subclasses]
-    for sc, eb_col in zip(subclasses, eb_col_names):
-        combined = combined.with_columns(
-            (pl.col(sc) * pl.col("mc_delivery_total")).alias(eb_col)
-        )
+    for sc, eb_col in zip(subclasses, eb_col_names, strict=False):
+        combined = combined.with_columns((pl.col(sc) * pl.col("mc_delivery_total")).alias(eb_col))
 
     load_col_labels = {sc: f"Load: {sc}\n(kWh, weighted)" for sc in subclasses}
     eb_col_labels = {f"eb_{sc}": f"EB: {sc}\n(load × MC, $)" for sc in subclasses}
@@ -1248,7 +1236,7 @@ def add_load_curves_sheet(
     }
 
     # Column order: timestamp | load cols | MC cols | EB cols
-    headers = ["timestamp"] + subclasses + mc_cols + eb_col_names
+    headers = ["timestamp", *subclasses, *mc_cols, *eb_col_names]
     all_labels = {"timestamp": "Timestamp", **load_col_labels, **mc_labels, **eb_col_labels}
 
     # Section header spans
@@ -1263,9 +1251,7 @@ def add_load_curves_sheet(
     # Column letter for mc_delivery_total (last MC column, immediately before the EB section).
     mc_total_letter = get_column_letter(eb_start - 1)
     # {eb_col_name: load_col_letter} — used to generate EB formulas in data rows.
-    eb_load_letters: dict[str, str] = {
-        f"eb_{sc}": get_column_letter(load_start + i) for i, sc in enumerate(subclasses)
-    }
+    eb_load_letters: dict[str, str] = {f"eb_{sc}": get_column_letter(load_start + i) for i, sc in enumerate(subclasses)}
     n_data_rows = combined.height  # 8760
 
     def _section(label: str, col_start: int, width: int) -> None:
@@ -1377,7 +1363,12 @@ def add_cost_allocation_sheet(
         ("Test Year Residential Customer Count", total_customers, "#,##0", "Same YAML"),
         ("Sub-TX & Distribution MC", "Top 100 hrs RIE load", "@", f"Source: {S3_MC_DIST_SUB_TX}"),
         ("Bulk Transmission MC", "Top 100 hrs NE system load", "@", f"Source: {S3_MC_BULK_TX}"),
-        ("ResStock Loads", "8760-hr per building, upgrade=0", "@", f"Source: {RESSTOCK_BASE}/load_curve_hourly/state=RI/upgrade=00/"),
+        (
+            "ResStock Loads",
+            "8760-hr per building, upgrade=0",
+            "@",
+            f"Source: {RESSTOCK_BASE}/load_curve_hourly/state=RI/upgrade=00/",
+        ),
     ]
     row = 7
     for label, val, fmt, source in inputs:
@@ -1398,8 +1389,13 @@ def add_cost_allocation_sheet(
     row += 1
 
     headers = [
-        "Subclass", "Weighted Load (kWh/yr)", "Economic Burden ($)",
-        "Share of EB (%)", "Allocated Revenue Req. ($)", "Allocated Rev. Req. per Customer ($)", "Note",
+        "Subclass",
+        "Weighted Load (kWh/yr)",
+        "Economic Burden ($)",
+        "Share of EB (%)",
+        "Allocated Revenue Req. ($)",
+        "Allocated Rev. Req. per Customer ($)",
+        "Note",
     ]
     for col_idx, h in enumerate(headers, start=1):
         cell = ws.cell(row=row, column=col_idx, value=h)
@@ -1534,9 +1530,6 @@ def _nan(x: float | None) -> bool:
 def add_validation_sheet(
     wb: Workbook,
     bat_df: pl.DataFrame,
-    allocation: pl.DataFrame,
-    agg: pl.DataFrame,
-    mc: pl.DataFrame,
     rev_req: dict[str, Any],
 ) -> None:
     """Add a validation sheet cross-referencing workbook values against expert testimony.
@@ -1593,7 +1586,8 @@ def add_validation_sheet(
 
     # Diagnose bat_df column availability so workbook-value N/As are easy to trace.
     _diag_missing = [
-        col for col in (
+        col
+        for col in (
             "annual_bill_delivery",
             "economic_burden_delivery",
             "residual_share_epmc_delivery",
@@ -1609,8 +1603,7 @@ def add_validation_sheet(
     ]
     if _diag_missing:
         print(
-            f"  [validation] WARNING: bat_df missing columns → workbook values will be N/A: "
-            f"{_diag_missing}",
+            f"  [validation] WARNING: bat_df missing columns → workbook values will be N/A: {_diag_missing}",
             flush=True,
         )
     else:
@@ -1660,18 +1653,6 @@ def add_validation_sheet(
     total_rr = float(rev_req.get("total_delivery_revenue_requirement", 0))
     total_customers = float(rev_req.get("test_year_customer_count", 0))
 
-
-    # MC peak-hour counts: nonzero hours in each MC column
-    wb_bulk_tx_peak_hrs: float | None = (
-        float(int((mc["mc_bulk_tx"] > 0).sum())) if "mc_bulk_tx" in mc.columns else None
-    )
-    wb_dist_sub_peak_hrs: float | None = (
-        float(int((mc["mc_dist_sub_tx"] > 0).sum())) if "mc_dist_sub_tx" in mc.columns else None
-    )
-
-    # ResStock building count (rows in BAT data after filtering to RIE)
-    wb_n_bldgs = float(bat_df.height)
-
     # Column-presence flags
     has_hp_flag = "postprocess_group.has_hp" in bat_df.columns
     has_htv2 = "postprocess_group.heating_type_v2" in bat_df.columns
@@ -1690,9 +1671,7 @@ def add_validation_sheet(
         """Σ (economic_burden + residual) × weight — total EPMC COS for a subgroup."""
         if not (has_eb and has_residual) or df.is_empty():
             return nan
-        return float(
-            ((df["economic_burden_delivery"] + df["residual_share_epmc_delivery"]) * df["weight"]).sum()
-        )
+        return float(((df["economic_burden_delivery"] + df["residual_share_epmc_delivery"]) * df["weight"]).sum())
 
     def _epmc_xs_total(df: pl.DataFrame) -> float:
         """Σ BAT_epmc_delivery × weight — total EPMC cross-subsidy.
@@ -1709,9 +1688,7 @@ def add_validation_sheet(
         """Weighted mean EPMC cross-subsidy per building = xs_total / total_weight."""
         if not has_bat_epmc or df.is_empty():
             return nan
-        return float((df["BAT_epmc_delivery"] * df["weight"]).sum()) / float(
-            df["weight"].sum()
-        )
+        return float((df["BAT_epmc_delivery"] * df["weight"]).sum()) / float(df["weight"].sum())
 
     def _group_revenue(df: pl.DataFrame) -> float:
         """Σ annual_bill_delivery × weight — total delivery revenue from subgroup.
@@ -1755,60 +1732,43 @@ def add_validation_sheet(
 
     # HP stats
     wb_hp_cos = _weighted_cos(hp_df)
-    wb_hp_xs = _epmc_xs_total(hp_df)          # positive = HP overpays
-    wb_hp_rev = _group_revenue(hp_df)          # = annual_bill_delivery × weight
-    wb_hp_pct_over = (
-        wb_hp_xs / wb_hp_cos * 100
-        if not (_nan(wb_hp_xs) or _nan(wb_hp_cos) or wb_hp_cos == 0)
-        else nan
-    )
+    wb_hp_xs = _epmc_xs_total(hp_df)  # positive = HP overpays
+    wb_hp_rev = _group_revenue(hp_df)  # = annual_bill_delivery × weight
+    wb_hp_pct_over = wb_hp_xs / wb_hp_cos * 100 if not (_nan(wb_hp_xs) or _nan(wb_hp_cos) or wb_hp_cos == 0) else nan
     wb_hp_mean_bat = _epmc_xs_mean(hp_df)
 
     # NG stats
     wb_ng_cos = _weighted_cos(ng_df)
-    _wb_ng_xs = _epmc_xs_total(ng_df)          # negative = NG underpays (currently unused in rows)
-    wb_ng_rev = _group_revenue(ng_df)          # = annual_bill_delivery × weight
+    _wb_ng_xs = _epmc_xs_total(ng_df)  # negative = NG underpays (currently unused in rows)
+    wb_ng_rev = _group_revenue(ng_df)  # = annual_bill_delivery × weight
     wb_ng_rev_pct_of_cos = (
-        wb_ng_rev / wb_ng_cos * 100
-        if not (_nan(wb_ng_rev) or _nan(wb_ng_cos) or wb_ng_cos == 0)
-        else nan
+        wb_ng_rev / wb_ng_cos * 100 if not (_nan(wb_ng_rev) or _nan(wb_ng_cos) or wb_ng_cos == 0) else nan
     )
-    wb_ng_mean_bat = _epmc_xs_mean(ng_df)     # negative = NG underpays
+    wb_ng_mean_bat = _epmc_xs_mean(ng_df)  # negative = NG underpays
 
     # DF (delivered fuels: oil + propane) stats
     wb_df_cos = _weighted_cos(df_df)
     _wb_df_xs = _epmc_xs_total(df_df)  # unused in rows
-    wb_df_rev = _group_revenue(df_df)          # = annual_bill_delivery × weight
+    wb_df_rev = _group_revenue(df_df)  # = annual_bill_delivery × weight
     wb_df_rev_pct_of_cos = (
-        wb_df_rev / wb_df_cos * 100
-        if not (_nan(wb_df_rev) or _nan(wb_df_cos) or wb_df_cos == 0)
-        else nan
+        wb_df_rev / wb_df_cos * 100 if not (_nan(wb_df_rev) or _nan(wb_df_cos) or wb_df_cos == 0) else nan
     )
-    wb_df_mean_bat = _epmc_xs_mean(df_df)     # negative = DF underpays
+    wb_df_mean_bat = _epmc_xs_mean(df_df)  # negative = DF underpays
 
     # ER (electric resistance) stats — overpayment only; no separate COS check needed
-    wb_er_xs = _epmc_xs_total(er_df)          # positive = ER overpays
+    wb_er_xs = _epmc_xs_total(er_df)  # positive = ER overpays
 
     # All-residential totals (for HP % of total COS / revenue)
     wb_total_cos = _weighted_cos(bat_df)
     wb_total_rev_computed = _group_revenue(bat_df)
     wb_hp_pct_of_total_cos = (
-        wb_hp_cos / wb_total_cos * 100
-        if not (_nan(wb_hp_cos) or _nan(wb_total_cos) or wb_total_cos == 0)
-        else nan
+        wb_hp_cos / wb_total_cos * 100 if not (_nan(wb_hp_cos) or _nan(wb_total_cos) or wb_total_cos == 0) else nan
     )
     wb_hp_pct_of_total_rev = (
         wb_hp_rev / wb_total_rev_computed * 100
         if not (_nan(wb_hp_rev) or _nan(wb_total_rev_computed) or wb_total_rev_computed == 0)
         else nan
     )
-
-    # EPMC allocation recomputed from load curves (internal cross-check)
-    hp_alloc_rr: float | None = None
-    for alloc_row in allocation.iter_rows(named=True):
-        if alloc_row["subclass"] == "heat_pump":
-            hp_alloc_rr = float(alloc_row["allocated_rr"])
-            break
 
     def _tv(d: dict[str, Any], key: str) -> float | None:
         """Fetch a testimony value by key, returning None if absent."""
@@ -1869,74 +1829,6 @@ def add_validation_sheet(
         ),
     ]
 
-    # ── Marginal Cost Parameters ───────────────────────────────────────────────
-    checks += [
-        (
-            "MC Parameters",
-            "Bulk Transmission avoided capacity cost ($/kW-year)\n[hardcoded — stated in testimony]",
-            "Section IX (~line 1153)\n$69/kW-year (AESC 2024 Pool TX Facility)",
-            69.0,
-            69.0,
-            "#,##0.00",
-            0.0,
-            True,
-        ),
-        (
-            "MC Parameters",
-            "Sub-TX & Distribution avoided capacity cost ($/kW-year)\n[hardcoded — stated in testimony]",
-            "Section IX (~line 1154)\n$80.24/kW-year (AESC 2024 distribution capacity)",
-            80.24,
-            80.24,
-            "#,##0.00",
-            0.0,
-            True,
-        ),
-        (
-            "MC Parameters",
-            "Bulk TX: Hours with non-zero MC in the 8,760-hr series",
-            "Section IX (~line 1153)\nTop 100 hours of aggregate NE system load",
-            100.0,
-            wb_bulk_tx_peak_hrs if wb_bulk_tx_peak_hrs is not None else nan,
-            "#,##0",
-            0.0,
-            False,
-        ),
-        (
-            "MC Parameters",
-            "Sub-TX & Dist: Hours with non-zero MC in the 8,760-hr series",
-            "Section IX (~line 1154)\nTop 100 hours of RIE system load (summer only)",
-            100.0,
-            wb_dist_sub_peak_hrs if wb_dist_sub_peak_hrs is not None else nan,
-            "#,##0",
-            0.0,
-            False,
-        ),
-    ]
-
-    # ── ResStock Data ──────────────────────────────────────────────────────────
-    checks += [
-        (
-            "ResStock Data",
-            "ResStock buildings in RIE service territory\n(rows in master BAT after filtering to utility=rie)",
-            "Section IX (~line 1097)\nv.n_resstock_bldgs",
-            _tv(v_vals, "n_resstock_bldgs"),
-            wb_n_bldgs,
-            "#,##0",
-            0.0,
-            False,
-        ),
-        (
-            "ResStock Data",
-            "Hours per building [hardcoded — stated in testimony]",
-            "Section IX (~line 1134)\n8,760 hours stated in testimony",
-            8760.0,
-            8760.0,
-            "#,##0",
-            0.0,
-            True,
-        ),
-    ]
-
     # ── Final Results: Heat Pump Subclass ─────────────────────────────────────
     # These are the numbers that appear verbatim in the testimony narrative.
     # Testimony source: Section II (~lines 270, 294, 336) and Section I (~line 184).
@@ -1994,8 +1886,7 @@ def add_validation_sheet(
             "HP group: % overpayment relative to EPMC COS (ppt)\n"
             "= (HP revenue − HP COS) / HP COS × 100\n"
             "Testimony: '[HP customers] paid [X]% more than their delivery cost-of-service'",
-            "Section II (~line 336)\nc.cos_default_hp_pct_over_cos\n"
-            "(stored as ppt, e.g. 28 means 28%)",
+            "Section II (~line 336)\nc.cos_default_hp_pct_over_cos\n(stored as ppt, e.g. 28 means 28%)",
             _tv(c_vals, "cos_default_hp_pct_over_cos"),
             wb_hp_pct_over,
             "0.0",
@@ -2154,24 +2045,6 @@ def add_validation_sheet(
         ),
     ]
 
-    # ── Internal EPMC Cross-Check ──────────────────────────────────────────────
-    # The HP allocated RR recomputed from raw load curves × MC (Sheet 7) should
-    # agree with the HP EPMC COS derived from the CAIRO master BAT (Sheet 4).
-    # Any gap reflects rounding or hour-alignment differences vs. CAIRO's run.
-    if hp_alloc_rr is not None and not _nan(wb_hp_cos):
-        checks.append((
-            "Internal Cross-Check",
-            "HP allocated RR (Sheet 7, recomputed from load curves × MC)\n"
-            "vs. HP EPMC COS from CAIRO master BAT (Sheet 4)\n"
-            "A large gap here means the two computations diverge — investigate.",
-            "Internal consistency check\n(Sheet 7 vs. Sheet 4 of this workbook;\nno testimony line)",
-            wb_hp_cos,
-            hp_alloc_rr,
-            "$#,##0",
-            2.0,
-            False,
-        ))
-
     # ── Write rows ─────────────────────────────────────────────────────────────
     row = hdr_row + 1
     prev_cat: str | None = None
@@ -2244,11 +2117,7 @@ def add_validation_sheet(
             ws.cell(row=row, column=6, value="—")
 
         # Column G: tolerance
-        tol_str = (
-            "hardcoded parameter"
-            if is_info
-            else ("exact (< $1 / 1 unit)" if tol_pct == 0.0 else f"±{tol_pct}%")
-        )
+        tol_str = "hardcoded parameter" if is_info else ("exact (< $1 / 1 unit)" if tol_pct == 0.0 else f"±{tol_pct}%")
         ws.cell(row=row, column=7, value=tol_str)
 
         # Column H: status
@@ -2310,7 +2179,8 @@ def build_workbook(
     rev_req = load_revenue_requirement_yaml()
     bat_df = load_master_bat_data(BATCH, RUN_DELIVERY, RUN_SUPPLY)
     scale_factor = float(rev_req.get("resstock_kwh_scale_factor", 1.0))
-    agg_loads, mc_delivery = load_aggregate_load_curves(scale_factor)
+    customer_count = float(rev_req.get("test_year_customer_count", 0))
+    agg_loads, mc_delivery = load_aggregate_load_curves(scale_factor, test_year_customer_count=customer_count or None)
     allocation = compute_cost_allocation(agg_loads, mc_delivery, rev_req)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2323,7 +2193,7 @@ def build_workbook(
     add_revenue_allocation_sheet(wb, bat_df, rev_req, agg_loads)
     add_load_curves_sheet(wb, agg_loads, mc_delivery, rev_req)
     add_cost_allocation_sheet(wb, allocation, agg_loads, mc_delivery, rev_req)
-    add_validation_sheet(wb, bat_df, allocation, agg_loads, mc_delivery, rev_req)
+    add_validation_sheet(wb, bat_df, rev_req)
     wb.save(str(output_path))
     print(
         f"Wrote {output_path} ({output_path.stat().st_size / 1024:.1f} KB)",
@@ -2337,9 +2207,7 @@ def build_workbook(
     subclasses_sh6 = [c for c in agg_loads.columns if c not in ("timestamp", "hour_of_year")]
     n_mc_sh6 = 3  # mc_dist_sub_tx, mc_bulk_tx, mc_delivery_total
     eb_start_sh6 = 2 + len(subclasses_sh6) + n_mc_sh6
-    sh6_eb: dict[str, str] = {
-        sc: get_column_letter(eb_start_sh6 + i) for i, sc in enumerate(subclasses_sh6)
-    }
+    sh6_eb: dict[str, str] = {sc: get_column_letter(eb_start_sh6 + i) for i, sc in enumerate(subclasses_sh6)}
     sh6 = "6. Aggregate Load Curves"
     sh5 = "5. Revenue Allocation"
     sh6_totals = 7  # section header row 5, col header row 6, totals row 7

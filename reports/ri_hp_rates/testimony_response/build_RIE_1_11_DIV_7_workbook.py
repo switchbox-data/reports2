@@ -70,6 +70,13 @@ RDP_REV_YAML_PATH = "rate_design/hp_rates/ri/config/rev_requirement/rie_rate_cas
 RDP_TARIFF_DIR = "rate_design/hp_rates/ri/config/tariffs/electric"
 RDP_GITHUB_BASE = "https://github.com/switchbox-data/rate-design-platform/blob"
 
+FIXED_CHARGE_PER_MONTH = 10.01
+FIXED_CHARGE_PER_YEAR = FIXED_CHARGE_PER_MONTH * 12
+
+KWH_BATCH = "ri_20260504_kwh_export_v2"
+_KWH_BASE = f"{S3_BASE}/{STATE_LOWER}/{UTILITY}/{KWH_BATCH}"
+PATH_KWH_U0 = f"{_KWH_BASE}/20260505_011359_ri_rie_run1_up00_precalc__default/billing_kwh_annual.parquet"
+
 
 def _rdp_permalink(rel_path: str) -> str:
     """SHA-pinned GitHub permalink for a rate-design-platform file."""
@@ -148,6 +155,11 @@ def load_master_bat() -> pl.DataFrame:
     return df
 
 
+def _load_billing_kwh(path: str) -> pl.DataFrame:
+    """Load exported billing kWh (annual grid-consumed electricity)."""
+    return pl.read_parquet(path).select("bldg_id", "annual_kwh_grid")
+
+
 def load_inputs() -> dict:
     """Pull revenue-requirement YAML + calibrated tariff JSONs from rate-design-platform."""
     raw_yaml = fetch_rdp_file(RDP_REV_YAML_PATH, RDP_REF)
@@ -167,8 +179,6 @@ def load_inputs() -> dict:
 
     default_vol = vol_rate("rie_default_calibrated.json")
 
-    annual_fixed_per_customer = (total_rr - default_vol * ty_kwh) / n_customers
-
     return {
         "total_delivery_revenue_requirement": total_rr,
         "test_year_customer_count": n_customers,
@@ -176,7 +186,7 @@ def load_inputs() -> dict:
         "customer_charge_total": customer_charge_total,
         "core_delivery_rate_total": core_delivery_total,
         "default_vol_usd_per_kwh": default_vol,
-        "annual_fixed_per_customer": annual_fixed_per_customer,
+        "annual_fixed_per_customer": FIXED_CHARGE_PER_YEAR,
     }
 
 
@@ -254,9 +264,10 @@ def _write_readme(wb: Workbook, inputs: dict) -> None:
             (
                 "One row per residential building. Data columns: bldg_id, weight, heating_type_v2, "
                 "annual_bill_delivery, economic_burden_delivery (from CAIRO), and annual_kwh "
-                "(back-derived from delivery bill). Formula columns: "
-                "residual_share_epmc_delivery (= EB * epmc_rate), "
+                "(CAIRO billing kWh export: grid-consumed kWh after PV clipping and kwh_scale_factor). "
+                "Formula columns: residual_share_epmc_delivery (= EB * epmc_rate), "
                 "BAT_epmc_delivery (= bill - COS), cost_of_service_delivery (= EB + residual_share), "
+                "bill_formula (= kwh * vol + fixed, verifies bill), bill_residual (= bill - bill_formula), "
                 "and weighted_* products for aggregation."
             ),
             "",
@@ -329,9 +340,17 @@ def _write_readme(wb: Workbook, inputs: dict) -> None:
             "annual_fixed_per_customer ($)",
             inputs["annual_fixed_per_customer"],
             (
-                "Test-year revenue equation: (total_RR - vol_rate * total_kWh) / customers. "
-                "Inputs from RIE Docket 25-45-GE, Book 21, PRB-1-ELEC p. 14, lines 8-9 "
-                "(Blazunas Schedules, Nov 2025)."
+                f"Calibrated tariff: fixedchargefirstmeter = ${FIXED_CHARGE_PER_MONTH}/mo x 12. "
+                "Customer charge ($6.00) + RE Growth ($3.22) + LIHEAP Enhancement ($0.79). "
+                "Matches rie_default_calibrated.json."
+            ),
+        ],
+        [
+            "billing kWh (upgrade 0)",
+            PATH_KWH_U0,
+            (
+                "CAIRO billing pipeline export: annual grid-consumed kWh per building "
+                "(max(electricity_net, 0) per hour, after kwh_scale_factor and 48h timeshift)."
             ),
         ],
     ]
@@ -341,7 +360,7 @@ def _write_readme(wb: Workbook, inputs: dict) -> None:
     # Section-header rows: adjust if rows above change.
     for header_row in (3, 9, 16, 24):
         _header_fill(ws, header_row, 3)
-    for label_row in range(25, 30):
+    for label_row in range(25, 31):
         _bold(ws, f"A{label_row}")
     _autosize(ws, {"A": 42, "B": 70, "C": 80})
     ws.sheet_view.showGridLines = False
@@ -384,9 +403,10 @@ def _write_inputs_revenue_requirement(wb: Workbook, inputs: dict) -> None:
         ],
         [
             "annual_fixed_per_customer",
-            f"=({REF_TOTAL_RR} - {REF_DEFAULT_VOL} * {REF_TY_KWH}) / {REF_N_CUSTOMERS}",
-            "Test-year revenue equation (RIE Docket 25-45-GE, Book 21, PRB-1-ELEC p. 14)",
-            "Annual non-volumetric delivery charges per customer. Per-customer share of delivery revenue not recovered through volumetric rates.",
+            FIXED_CHARGE_PER_YEAR,
+            _rdp_permalink(f"{RDP_TARIFF_DIR}/rie_default_calibrated.json"),
+            f"Calibrated tariff: fixedchargefirstmeter = ${FIXED_CHARGE_PER_MONTH}/mo x 12 = ${FIXED_CHARGE_PER_YEAR}/yr. "
+            "Customer charge ($6.00) + RE Growth ($3.22) + LIHEAP Enhancement ($0.79).",
         ],
         [
             "DISPLAY_CUSTOMER_TOTAL",
@@ -462,19 +482,21 @@ def _write_bat_per_building(wb: Workbook, bat: pl.DataFrame) -> int:
     """Write per-building rows with EPMC formula columns. Returns last data row."""
     ws = wb.create_sheet("bat_per_building")
     headers = [
-        "bldg_id",
-        "weight",
-        "heating_type_v2",
-        "annual_bill_delivery",
-        "economic_burden_delivery",
-        "residual_share_epmc_delivery",
-        "BAT_epmc_delivery",
-        "cost_of_service_delivery",
-        "annual_kwh",
-        "weighted_bill",
-        "weighted_cos",
-        "weighted_cross_subsidy",
-        "weighted_kwh",
+        "bldg_id",  # A
+        "weight",  # B
+        "heating_type_v2",  # C
+        "annual_bill_delivery",  # D  DATA
+        "economic_burden_delivery",  # E  DATA
+        "residual_share_epmc_delivery",  # F  FORMULA
+        "BAT_epmc_delivery",  # G  FORMULA
+        "cost_of_service_delivery",  # H  FORMULA
+        "annual_kwh",  # I  DATA (CAIRO export)
+        "bill_formula",  # J  FORMULA (kwh * vol + fixed)
+        "bill_residual",  # K  FORMULA (bill - bill_formula)
+        "weighted_bill",  # L  FORMULA
+        "weighted_cos",  # M  FORMULA
+        "weighted_cross_subsidy",  # N  FORMULA
+        "weighted_kwh",  # O  FORMULA
     ]
     ws.append(headers)
     _header_fill(ws, 1, len(headers))
@@ -492,19 +514,21 @@ def _write_bat_per_building(wb: Workbook, bat: pl.DataFrame) -> int:
         ).iter_rows()
     )
     for i, row in enumerate(rows, start=2):
-        ws.cell(row=i, column=1, value=row[0])
-        ws.cell(row=i, column=2, value=float(row[1]))
-        ws.cell(row=i, column=3, value=row[2])
-        ws.cell(row=i, column=4, value=float(row[3]))
-        ws.cell(row=i, column=5, value=float(row[4]))
-        ws.cell(row=i, column=6, value=f"=E{i}*{REF_EPMC_RATE}")
-        ws.cell(row=i, column=7, value=f"=D{i}-(E{i}+F{i})")
-        ws.cell(row=i, column=8, value=f"=E{i}+F{i}")
-        ws.cell(row=i, column=9, value=float(row[5]))
-        ws.cell(row=i, column=10, value=f"=B{i}*D{i}")
-        ws.cell(row=i, column=11, value=f"=B{i}*H{i}")
-        ws.cell(row=i, column=12, value=f"=B{i}*G{i}")
-        ws.cell(row=i, column=13, value=f"=B{i}*I{i}")
+        ws.cell(row=i, column=1, value=row[0])  # A: bldg_id
+        ws.cell(row=i, column=2, value=float(row[1]))  # B: weight
+        ws.cell(row=i, column=3, value=row[2])  # C: heating_type_v2
+        ws.cell(row=i, column=4, value=float(row[3]))  # D: annual_bill_delivery
+        ws.cell(row=i, column=5, value=float(row[4]))  # E: economic_burden_delivery
+        ws.cell(row=i, column=6, value=f"=E{i}*{REF_EPMC_RATE}")  # F: residual_share
+        ws.cell(row=i, column=7, value=f"=D{i}-(E{i}+F{i})")  # G: BAT_epmc
+        ws.cell(row=i, column=8, value=f"=E{i}+F{i}")  # H: COS
+        ws.cell(row=i, column=9, value=float(row[5]))  # I: annual_kwh
+        ws.cell(row=i, column=10, value=f"=I{i}*{REF_DEFAULT_VOL}+{REF_ANNUAL_FIXED_PER_CUSTOMER}")  # J: bill_formula
+        ws.cell(row=i, column=11, value=f"=D{i}-J{i}")  # K: bill_residual
+        ws.cell(row=i, column=12, value=f"=B{i}*D{i}")  # L: weighted_bill
+        ws.cell(row=i, column=13, value=f"=B{i}*H{i}")  # M: weighted_cos
+        ws.cell(row=i, column=14, value=f"=B{i}*G{i}")  # N: weighted_cross_subsidy
+        ws.cell(row=i, column=15, value=f"=B{i}*I{i}")  # O: weighted_kwh
 
     last_row = 1 + n
     _autosize(
@@ -521,8 +545,10 @@ def _write_bat_per_building(wb: Workbook, bat: pl.DataFrame) -> int:
             "I": 14,
             "J": 16,
             "K": 16,
-            "L": 22,
+            "L": 16,
             "M": 16,
+            "N": 22,
+            "O": 16,
         },
     )
 
@@ -533,10 +559,10 @@ def _write_bat_per_building(wb: Workbook, bat: pl.DataFrame) -> int:
         "G": "ws_BAT_epmc",
         "H": "ws_cos",
         "I": "ws_annual_kwh",
-        "J": "ws_weighted_bill",
-        "K": "ws_weighted_cos",
-        "L": "ws_weighted_cross_subsidy",
-        "M": "ws_weighted_kwh",
+        "L": "ws_weighted_bill",
+        "M": "ws_weighted_cos",
+        "N": "ws_weighted_cross_subsidy",
+        "O": "ws_weighted_kwh",
     }
     for col, name in col_to_name.items():
         wb.defined_names[name] = DefinedName(
@@ -573,10 +599,10 @@ def _write_subclass_aggregates(wb: Workbook, last_bat_row: int) -> None:
     last = last_bat_row
     rng_weight = f"bat_per_building!$B$2:$B${last}"
     rng_heating = f"bat_per_building!$C$2:$C${last}"
-    rng_w_revenue = f"bat_per_building!$J$2:$J${last}"
-    rng_w_cos = f"bat_per_building!$K$2:$K${last}"
-    rng_w_xs = f"bat_per_building!$L$2:$L${last}"
-    rng_w_kwh = f"bat_per_building!$M$2:$M${last}"
+    rng_w_revenue = f"bat_per_building!$L$2:$L${last}"
+    rng_w_cos = f"bat_per_building!$M$2:$M${last}"
+    rng_w_xs = f"bat_per_building!$N$2:$N${last}"
+    rng_w_kwh = f"bat_per_building!$O$2:$O${last}"
     sub_last = 1 + n_sub  # Last subclass data row index.
 
     # Subclass rows.
@@ -763,7 +789,6 @@ def _validate_against_published(bat: pl.DataFrame, inputs: dict) -> None:
 
     total_w = float(bat["weight"].sum())
     total_rev = float((bat["weight"] * bat["annual_bill_delivery"]).sum())
-    total_kwh = float((bat["weight"] * bat["annual_kwh"]).sum())
 
     # --- Aggregate totals ---
     assert abs(total_w - inputs["test_year_customer_count"]) < 0.5, (
@@ -772,10 +797,15 @@ def _validate_against_published(bat: pl.DataFrame, inputs: dict) -> None:
     assert abs(total_rev - inputs["total_delivery_revenue_requirement"]) < 2_000, (
         f"sum(w*bill) = ${total_rev:,.0f} vs total_delivery_RR = ${inputs['total_delivery_revenue_requirement']:,.0f}"
     )
-    assert abs(total_kwh - inputs["test_year_residential_kwh"]) < 1.0, (
-        f"sum(w*kwh) = {total_kwh:,.0f} vs test_year_residential_kwh = {inputs['test_year_residential_kwh']:,.0f}"
-    )
     print("  Aggregate totals: PASS", flush=True)
+
+    # --- Bill formula verification ---
+    # annual_kwh * vol_rate + annual_fixed should exactly reproduce annual_bill_delivery.
+    bill_check = bat["annual_kwh"] * inputs["default_vol_usd_per_kwh"] + FIXED_CHARGE_PER_YEAR
+    bill_err = (bat["annual_bill_delivery"] - bill_check).abs()
+    max_bill_err = float(bill_err.max())
+    assert max_bill_err < 0.01, f"Bill formula: max per-building error = ${max_bill_err:.6f} (tol = $0.01)"
+    print(f"  Bill formula: PASS (max err = ${max_bill_err:.2e})", flush=True)
 
     # --- EPMC formula validation ---
     # Verify that the EPMC formula (EB * (RR/sum_w_EB - 1)) reproduces the
@@ -871,11 +901,16 @@ def build_workbook(output_path: Path) -> Path:
     print(f"  default_vol_usd_per_kwh = {inputs['default_vol_usd_per_kwh']:.6f}", flush=True)
     print(f"  annual_fixed_per_customer = ${inputs['annual_fixed_per_customer']:,.2f}", flush=True)
 
-    bat = bat.with_columns(
-        (
-            (pl.col("annual_bill_delivery") - inputs["annual_fixed_per_customer"]) / inputs["default_vol_usd_per_kwh"]
-        ).alias("annual_kwh")
+    print(f"Loading billing kWh from {PATH_KWH_U0} ...", flush=True)
+    kwh = _load_billing_kwh(PATH_KWH_U0)
+    print(f"  {kwh.height:,} buildings, median {kwh['annual_kwh_grid'].median():,.0f} kWh", flush=True)
+
+    bat = bat.join(
+        kwh.select("bldg_id", pl.col("annual_kwh_grid").alias("annual_kwh")),
+        on="bldg_id",
+        how="left",
     )
+    assert bat["annual_kwh"].null_count() == 0, "Some buildings missing billing kWh"
 
     inputs["sum_weighted_eb"] = float((bat["weight"] * bat["economic_burden_delivery"]).sum())
     print(f"  sum_weighted_eb = ${inputs['sum_weighted_eb']:,.0f}", flush=True)
@@ -889,8 +924,8 @@ def build_workbook(output_path: Path) -> Path:
         wb.remove(default)
 
     # Sheet creation order is also the upload order. Put inputs_tariffs before
-    # inputs_revenue_requirement so that the latter's annual_fixed_per_customer
-    # formula (which references inputs_tariffs!$B$2) resolves at upload time.
+    # inputs_revenue_requirement so that cross-sheet references (e.g.
+    # bat_per_building formulas referencing inputs_tariffs!$B$2) resolve.
     _write_readme(wb, inputs)
     _write_inputs_tariffs(wb, inputs)
     _write_inputs_revenue_requirement(wb, inputs)
@@ -938,12 +973,14 @@ _TAB_FORMATTING: dict[str, dict] = {
             "G": '"$"#,##0.00',
             "H": '"$"#,##0.00',
             "I": "#,##0.00",
-            "J": "#,##0.00",
-            "K": "#,##0.00",
+            "J": '"$"#,##0.00',
+            "K": '"$"#,##0.00',
             "L": "#,##0.00",
             "M": "#,##0.00",
+            "N": "#,##0.00",
+            "O": "#,##0.00",
         },
-        "auto_resize_columns": ["A:M"],
+        "auto_resize_columns": ["A:O"],
         "freeze_rows": 1,
         "bold_header": True,
     },

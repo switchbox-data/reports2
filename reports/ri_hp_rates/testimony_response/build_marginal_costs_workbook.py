@@ -67,6 +67,7 @@ RDP_GITHUB_BASE = "https://github.com/switchbox-data/rate-design-platform/blob"
 REPORTS2_GITHUB_BASE = "https://github.com/switchbox-data/reports2/blob"
 
 DEFAULT_SPREADSHEET_ID = "1GmLOgM90orMbFnhFti169idl9Li6QM8_IQKRWGhEct8"
+DELIVERY_ONLY_SPREADSHEET_ID = "1JvDqZjE1ZpHWi3hPU-_q4LxF7TxwCGFuUm7rBMX3vT0"
 
 
 # ── Permalink helpers ─────────────────────────────────────────────────────────
@@ -93,6 +94,8 @@ def _reports2_permalink(rel_path: str) -> str:
     """SHA-pinned GitHub permalink for a file in the reports2 repo."""
     return f"{REPORTS2_GITHUB_BASE}/{_reports2_head_sha()}/{rel_path}"
 
+
+_README_BOLD_ROWS: list[int] = []
 
 # ── Formatting helpers ────────────────────────────────────────────────────────
 
@@ -252,15 +255,21 @@ REF_AESC_PTF = "inputs_scalars!$B$2"
 REF_SUB_TX_DIST = "inputs_scalars!$B$3"
 REF_FCA_BLENDED = "inputs_scalars!$B$4"
 REF_N_PEAK = "inputs_scalars!$B$5"
+REF_N_PEAK_DELIVERY_ONLY = "inputs_scalars!$B$4"
 
 
 # ── Tab writers ───────────────────────────────────────────────────────────────
 
 
-def _write_readme(wb: Workbook) -> None:
+def _write_readme(wb: Workbook, *, delivery_only: bool = False) -> None:
     ws = wb.create_sheet("README", 0)
+    title = (
+        "Marginal Costs Workbook — RIE 2025 (delivery-only: bulk TX + dist/sub-TX)"
+        if delivery_only
+        else "Marginal Costs Workbook — RIE 2025 (5-component 8760 derivation)"
+    )
     rows: list[list] = [
-        ["Marginal Costs Workbook — RIE 2025 (5-component 8760 derivation)", "", ""],
+        [title, "", ""],
         ["", "", ""],
         # --- Item / Source / Notes section ---
         ["Item", "Source", "Notes"],
@@ -269,41 +278,53 @@ def _write_readme(wb: Workbook) -> None:
             _rdp_permalink("utils/pre/marginal_costs/generate_utility_tx_dx_mc.py"),
             "Produces dist_and_sub_tx parquet via PoP (probability of peak) on utility load.",
         ],
-        [
-            "Generator: supply energy MC",
-            _rdp_permalink("utils/pre/marginal_costs/generate_supply_energy_mc.py"),
-            "LMP/1000 direct conversion.",
-        ],
-        [
-            "Generator: supply capacity MC",
-            _rdp_permalink("utils/pre/marginal_costs/generate_supply_capacity_mc.py"),
-            "FCA exceedance on SENE aggregate load.",
-        ],
-        [
-            "Generator: supply ancillary MC",
-            _rdp_permalink("utils/pre/marginal_costs/generate_supply_ancillary_mc.py"),
-            "Regulation (service + capacity) / 1000.",
-        ],
+        *(
+            []
+            if delivery_only
+            else [
+                [
+                    "Generator: supply energy MC",
+                    _rdp_permalink("utils/pre/marginal_costs/generate_supply_energy_mc.py"),
+                    "LMP/1000 direct conversion.",
+                ],
+                [
+                    "Generator: supply capacity MC",
+                    _rdp_permalink("utils/pre/marginal_costs/generate_supply_capacity_mc.py"),
+                    "FCA exceedance on SENE aggregate load.",
+                ],
+                [
+                    "Generator: supply ancillary MC",
+                    _rdp_permalink("utils/pre/marginal_costs/generate_supply_ancillary_mc.py"),
+                    "Regulation (service + capacity) / 1000.",
+                ],
+            ]
+        ),
         [
             "Generator: bulk TX MC",
             _rdp_permalink("utils/pre/marginal_costs/generate_bulk_tx_mc.py"),
             "AESC PTF exceedance on NE system load.",
         ],
-        [
-            "Core: supply_energy.py",
-            _rdp_permalink("utils/pre/marginal_costs/supply_energy.py"),
-            "ISO-NE LMP loading and energy MC computation.",
-        ],
-        [
-            "Core: supply_capacity_isone.py",
-            _rdp_permalink("utils/pre/marginal_costs/supply_capacity_isone.py"),
-            "FCA price resolution and capacity exceedance allocation.",
-        ],
-        [
-            "Core: supply_ancillary.py",
-            _rdp_permalink("utils/pre/marginal_costs/supply_ancillary.py"),
-            "Ancillary regulation price loading.",
-        ],
+        *(
+            []
+            if delivery_only
+            else [
+                [
+                    "Core: supply_energy.py",
+                    _rdp_permalink("utils/pre/marginal_costs/supply_energy.py"),
+                    "ISO-NE LMP loading and energy MC computation.",
+                ],
+                [
+                    "Core: supply_capacity_isone.py",
+                    _rdp_permalink("utils/pre/marginal_costs/supply_capacity_isone.py"),
+                    "FCA price resolution and capacity exceedance allocation.",
+                ],
+                [
+                    "Core: supply_ancillary.py",
+                    _rdp_permalink("utils/pre/marginal_costs/supply_ancillary.py"),
+                    "Ancillary regulation price loading.",
+                ],
+            ]
+        ),
         [
             "Core: bulk_tx_isone.py",
             _rdp_permalink("utils/pre/marginal_costs/bulk_tx_isone.py"),
@@ -329,40 +350,60 @@ def _write_readme(wb: Workbook) -> None:
             _rdp_permalink("data/eia/hourly_loads/aggregate_eia_utility_loads.py"),
             "Aggregates raw EIA zone loads into utility-level profiles.",
         ],
-        [
-            "API: ISO-NE LMP",
-            _rdp_permalink("data/isone/lmp/fetch_isone_lmp_parquet.py"),
-            'Fetches ISO-NE real-time LMP. Source: ISO NE, "ISO-NE Web Services API: Hourly Locational Marginal Prices," 2025, https://webservices.iso-ne.com/api/v1.1.',
-        ],
+        *(
+            []
+            if delivery_only
+            else [
+                [
+                    "API: ISO-NE LMP",
+                    _rdp_permalink("data/isone/lmp/fetch_isone_lmp_parquet.py"),
+                    'Fetches ISO-NE real-time LMP. Source: ISO NE, "ISO-NE Web Services API: Hourly Locational Marginal Prices," 2025, https://webservices.iso-ne.com/api/v1.1.',
+                ],
+            ]
+        ),
         [
             "API: ISO-NE zone loads",
             _rdp_permalink("data/isone/hourly_demand/fetch_isone_zone_loads.py"),
             'Fetches ISO-NE 8-zone hourly demand (CELT). Source: ISO NE, "Capacity, Energy, Loads, and Transmission (CELT) Report," 2025, https://www.iso-ne.com/system-planning/system-plans-studies/celt.',
         ],
-        [
-            "API: ISO-NE ancillary prices",
-            _rdp_permalink("data/isone/ancillary/fetch_isone_ancillary_parquet.py"),
-            'Fetches ISO-NE regulation clearing prices. Source: ISO NE, "Five-Minute Regulation Clearing Prices (Final)," 2025, https://webservices.iso-ne.com/api/v1.1/fiveminutercp/final/day/.',
-        ],
-        [
-            "FCA clearing prices CSV",
-            _rdp_permalink("data/isone/capacity/fca/fca_clearing_prices.csv"),
-            'Historical FCA results. Source: ISO NE, "Forward Capacity Auction Results Report," 2024, https://www.iso-ne.com/static-assets/documents/2018/05/fca-results-report.pdf.',
-        ],
+        *(
+            []
+            if delivery_only
+            else [
+                [
+                    "API: ISO-NE ancillary prices",
+                    _rdp_permalink("data/isone/ancillary/fetch_isone_ancillary_parquet.py"),
+                    'Fetches ISO-NE regulation clearing prices. Source: ISO NE, "Five-Minute Regulation Clearing Prices (Final)," 2025, https://webservices.iso-ne.com/api/v1.1/fiveminutercp/final/day/.',
+                ],
+                [
+                    "FCA clearing prices CSV",
+                    _rdp_permalink("data/isone/capacity/fca/fca_clearing_prices.csv"),
+                    'Historical FCA results. Source: ISO NE, "Forward Capacity Auction Results Report," 2024, https://www.iso-ne.com/static-assets/documents/2018/05/fca-results-report.pdf.',
+                ],
+            ]
+        ),
         [
             "Methodology: RI bulk TX",
             _rdp_permalink("context/methods/marginal_costs/ri_bulk_transmission_marginal_cost.md"),
             "Documents the NE system peak exceedance method for RNS/PTF allocation.",
         ],
-        [
-            "Methodology: RI supply cost recovery",
-            _rdp_permalink("context/domain/marginal_costs/ri_supply_cost_recovery.md"),
-            "Documents supply component methodology for RI.",
-        ],
+        *(
+            []
+            if delivery_only
+            else [
+                [
+                    "Methodology: RI supply cost recovery",
+                    _rdp_permalink("context/domain/marginal_costs/ri_supply_cost_recovery.md"),
+                    "Documents supply component methodology for RI.",
+                ],
+            ]
+        ),
         [
             "This workbook builder",
             _reports2_permalink("reports/ri_hp_rates/testimony_response/build_marginal_costs_workbook.py"),
-            "Script that generated this workbook.",
+            "Script that generated this workbook (--delivery-only)."
+            if delivery_only
+            else "Script that generated this workbook.",
         ],
         ["", "", ""],
         # --- Sheet directory ---
@@ -378,24 +419,32 @@ def _write_readme(wb: Workbook) -> None:
             "8760 rows: NE system load, rank, exceedance weight, and bulk TX MC per kWh. Top 100 hours are non-zero.",
             "",
         ],
-        [
-            "mc_supply_energy",
-            "8760 rows: RI zone LMP ($/MWh) and supply energy MC (= LMP / 1000).",
-            "",
-        ],
-        [
-            "mc_supply_capacity",
-            "8760 rows: SENE aggregate load, rank, exceedance weight, and supply capacity MC. Top 100 hours non-zero.",
-            "",
-        ],
-        [
-            "mc_supply_ancillary",
-            "8760 rows: regulation service + capacity prices, and supply ancillary MC (= sum / 1000).",
-            "",
-        ],
+        *(
+            []
+            if delivery_only
+            else [
+                [
+                    "mc_supply_energy",
+                    "8760 rows: RI zone LMP ($/MWh) and supply energy MC (= LMP / 1000).",
+                    "",
+                ],
+                [
+                    "mc_supply_capacity",
+                    "8760 rows: SENE aggregate load, rank, exceedance weight, and supply capacity MC. Top 100 hours non-zero.",
+                    "",
+                ],
+                [
+                    "mc_supply_ancillary",
+                    "8760 rows: regulation service + capacity prices, and supply ancillary MC (= sum / 1000).",
+                    "",
+                ],
+            ]
+        ),
         [
             "mc_combined",
-            "8760 rows joining all 5 components: delivery total, supply total, grand total MC per kWh.",
+            "8760 rows joining delivery components: dist/sub-TX + bulk TX."
+            if delivery_only
+            else "8760 rows joining all 5 components: delivery total, supply total, grand total MC per kWh.",
             "",
         ],
         ["validation", "Formula-level checks: weight sums, annual cost totals, non-zero hour counts.", ""],
@@ -412,24 +461,35 @@ def _write_readme(wb: Workbook) -> None:
             SUB_TX_AND_DIST_MC_KW_YR_2025,
             'AESC 2024 dist $80.24/kW-yr (2019$) x CPI 2025/2019. Sources: Synapse, "AESC in New England: 2024 Report," 2024; U.S. BLS, "Consumer Price Index (CUUR0000SA0)," 2025, https://fred.stlouisfed.org/series/CUUR0000SA0.',
         ],
-        [
-            "fca_sene_blended_kw_yr ($/kW-yr)",
-            FCA_SENE_BLENDED_KW_YR,
-            'FCA15 SENE $3.980 x 5mo + FCA16 SENE $2.639 x 7mo. Source: ISO NE, "Forward Capacity Auction Results Report," 2024.',
-        ],
+        *(
+            []
+            if delivery_only
+            else [
+                [
+                    "fca_sene_blended_kw_yr ($/kW-yr)",
+                    FCA_SENE_BLENDED_KW_YR,
+                    'FCA15 SENE $3.980 x 5mo + FCA16 SENE $2.639 x 7mo. Source: ISO NE, "Forward Capacity Auction Results Report," 2024.',
+                ],
+            ]
+        ),
         ["n_peak_hours", N_PEAK_HOURS, "Convention: top 100 hours for all peak-driven allocations."],
     ]
     for r in rows:
         ws.append(r)
     ws["A1"].font = Font(bold=True, size=14)
-    # Bold section headers
-    for header_row in (3, 27, 37):
-        _header_fill(ws, header_row, 3)
+    # Bold section headers — find them dynamically since row count varies
+    bold_rows = []
+    for row_idx, row_data in enumerate(rows, start=1):
+        if row_data and row_data[0] in ("Item", "Sheet", "Key scalar inputs (also live in inputs_scalars)"):
+            _header_fill(ws, row_idx, 3)
+            bold_rows.append(row_idx)
+    _README_BOLD_ROWS.clear()
+    _README_BOLD_ROWS.extend(bold_rows)
     _autosize(ws, {"A": 44, "B": 80, "C": 80})
     ws.sheet_view.showGridLines = False
 
 
-def _write_inputs_scalars(wb: Workbook) -> None:
+def _write_inputs_scalars(wb: Workbook, *, delivery_only: bool = False) -> None:
     ws = wb.create_sheet("inputs_scalars")
     rows = [
         ["key", "value", "source", "notes"],
@@ -445,19 +505,24 @@ def _write_inputs_scalars(wb: Workbook) -> None:
             _rdp_permalink("rate_design/hp_rates/ri/config/marginal_costs/ri_marginal_costs_2025.csv"),
             'AESC 2024 dist $80.24 (2019$) adjusted to 2025$ via CPIAUCSL. Sources: Synapse, "AESC in New England: 2024 Report," 2024; U.S. BLS, "Consumer Price Index (CUUR0000SA0)," 2025, https://fred.stlouisfed.org/series/CUUR0000SA0.',
         ],
-        [
-            "fca_sene_blended_kw_yr",
-            FCA_SENE_BLENDED_KW_YR,
-            _rdp_permalink("data/isone/capacity/fca/fca_clearing_prices.csv"),
-            'Calendar-year 2025 blended: FCA15 SENE $3.980/kW-mo x 5 + FCA16 SENE $2.639/kW-mo x 7 = $38.373/kW-yr. Source: ISO NE, "Forward Capacity Auction Results Report," 2024.',
-        ],
+    ]
+    if not delivery_only:
+        rows.append(
+            [
+                "fca_sene_blended_kw_yr",
+                FCA_SENE_BLENDED_KW_YR,
+                _rdp_permalink("data/isone/capacity/fca/fca_clearing_prices.csv"),
+                'Calendar-year 2025 blended: FCA15 SENE $3.980/kW-mo x 5 + FCA16 SENE $2.639/kW-mo x 7 = $38.373/kW-yr. Source: ISO NE, "Forward Capacity Auction Results Report," 2024.',
+            ]
+        )
+    rows.append(
         [
             "n_peak_hours",
             N_PEAK_HOURS,
             _rdp_permalink("utils/pre/marginal_costs/supply_utils.py"),
             "Top-N hours for exceedance and PoP allocation (consistent across all peak-driven components).",
-        ],
-    ]
+        ]
+    )
     for r in rows:
         ws.append(r)
     _header_fill(ws, 1, 4)
@@ -477,7 +542,7 @@ def _rank_load(load_df: pl.DataFrame) -> pl.DataFrame:
     return load_df.join(rank, on="timestamp", how="left").sort("timestamp")
 
 
-def _write_mc_dist_sub_tx(wb: Workbook, rie_load: pl.DataFrame) -> None:
+def _write_mc_dist_sub_tx(wb: Workbook, rie_load: pl.DataFrame, *, ref_n_peak: str = REF_N_PEAK) -> None:
     """Dist & sub-TX: PoP top-100 on RIE utility load."""
     ws = wb.create_sheet("mc_dist_sub_tx")
     headers = [
@@ -500,11 +565,11 @@ def _write_mc_dist_sub_tx(wb: Workbook, rie_load: pl.DataFrame) -> None:
             ws.cell(row=i, column=2, value=float(row["load_mw"]))
         if row["rank"] is not None:
             ws.cell(row=i, column=3, value=int(row["rank"]))
-        ws.cell(row=i, column=4, value=f"=IF(ISNUMBER(C{i}),C{i}<={REF_N_PEAK},FALSE)")
+        ws.cell(row=i, column=4, value=f"=IF(ISNUMBER(C{i}),C{i}<={ref_n_peak},FALSE)")
         ws.cell(
             row=i,
             column=5,
-            value=f"=IFERROR(IF(D{i},B{i}/SUMPRODUCT(($C$2:$C$8761<={REF_N_PEAK})*IFERROR($B$2:$B$8761,0)),0),0)",
+            value=f"=IFERROR(IF(D{i},B{i}/SUMPRODUCT(($C$2:$C$8761<={ref_n_peak})*IFERROR($B$2:$B$8761,0)),0),0)",
         )
         ws.cell(row=i, column=6, value=f"=E{i}*{REF_SUB_TX_DIST}")
 
@@ -518,6 +583,8 @@ def _write_exceedance_tab(
     load_df: pl.DataFrame,
     cost_ref: str,
     mc_label: str,
+    *,
+    ref_n_peak: str = REF_N_PEAK,
 ) -> None:
     """Generic exceedance allocation tab (used for bulk_tx and supply capacity)."""
     ws = wb.create_sheet(sheet_name)
@@ -543,13 +610,13 @@ def _write_exceedance_tab(
             ws.cell(row=i, column=2, value=float(row["load_mw"]))
         if row["rank"] is not None:
             ws.cell(row=i, column=3, value=int(row["rank"]))
-        ws.cell(row=i, column=4, value=f"=IF(ISNUMBER(C{i}),C{i}<={REF_N_PEAK},FALSE)")
-        ws.cell(row=i, column=5, value=f"=LARGE($B$2:$B$8761,{REF_N_PEAK}+1)")
+        ws.cell(row=i, column=4, value=f"=IF(ISNUMBER(C{i}),C{i}<={ref_n_peak},FALSE)")
+        ws.cell(row=i, column=5, value=f"=LARGE($B$2:$B$8761,{ref_n_peak}+1)")
         ws.cell(row=i, column=6, value=f"=IFERROR(IF(D{i},MAX(0,B{i}-E{i}),0),0)")
         ws.cell(
             row=i,
             column=7,
-            value=f"=IFERROR(IF(D{i},F{i}/SUMPRODUCT(($C$2:$C$8761<={REF_N_PEAK})*IFERROR(IF($B$2:$B$8761>E{i},$B$2:$B$8761-E{i},0),0)),0),0)",
+            value=f"=IFERROR(IF(D{i},F{i}/SUMPRODUCT(($C$2:$C$8761<={ref_n_peak})*IFERROR(IF($B$2:$B$8761>E{i},$B$2:$B$8761-E{i},0),0)),0),0)",
         )
         ws.cell(row=i, column=8, value=f"=G{i}*{cost_ref}")
 
@@ -559,7 +626,7 @@ def _write_exceedance_tab(
     )
 
 
-def _write_mc_bulk_tx(wb: Workbook, ne_load: pl.DataFrame) -> None:
+def _write_mc_bulk_tx(wb: Workbook, ne_load: pl.DataFrame, *, ref_n_peak: str = REF_N_PEAK) -> None:
     """Bulk TX: exceedance top-100 on NE system load."""
     _write_exceedance_tab(
         wb,
@@ -568,6 +635,7 @@ def _write_mc_bulk_tx(wb: Workbook, ne_load: pl.DataFrame) -> None:
         ne_load,
         cost_ref=REF_AESC_PTF,
         mc_label="mc_bulk_tx_per_kwh",
+        ref_n_peak=ref_n_peak,
     )
 
 
@@ -628,60 +696,60 @@ def _write_mc_supply_ancillary(wb: Workbook, ancillary_df: pl.DataFrame) -> None
     _autosize(ws, {"A": 18, "B": 16, "C": 16, "D": 26})
 
 
-def _write_mc_combined(wb: Workbook) -> None:
-    """Combined tab: cross-sheet references summing the 5 components."""
+def _write_mc_combined(wb: Workbook, *, delivery_only: bool = False) -> None:
+    """Combined tab: cross-sheet references summing components."""
     ws = wb.create_sheet("mc_combined")
-    headers = [
-        "timestamp",
-        "mc_dist_sub_tx",
-        "mc_bulk_tx",
-        "mc_supply_energy",
-        "mc_supply_capacity",
-        "mc_supply_ancillary",
-        "mc_delivery_total",
-        "mc_supply_total",
-        "mc_total",
-    ]
-    ws.append(headers)
-    _header_fill(ws, 1, len(headers))
-    ws.freeze_panes = "A2"
 
-    for i in range(2, 8762):
-        # Timestamp from dist_sub_tx tab
-        ws.cell(row=i, column=1, value=f"=mc_dist_sub_tx!A{i}")
-        # Individual components
-        ws.cell(row=i, column=2, value=f"=mc_dist_sub_tx!F{i}")
-        ws.cell(row=i, column=3, value=f"=mc_bulk_tx!H{i}")
-        ws.cell(row=i, column=4, value=f"=mc_supply_energy!C{i}")
-        ws.cell(row=i, column=5, value=f"=mc_supply_capacity!H{i}")
-        ws.cell(row=i, column=6, value=f"=mc_supply_ancillary!D{i}")
-        # Aggregates
-        ws.cell(row=i, column=7, value=f"=B{i}+C{i}")  # delivery total
-        ws.cell(row=i, column=8, value=f"=D{i}+E{i}+F{i}")  # supply total
-        ws.cell(row=i, column=9, value=f"=G{i}+H{i}")  # grand total
-
-    _autosize(
-        ws,
-        {
-            "A": 18,
-            "B": 16,
-            "C": 14,
-            "D": 18,
-            "E": 18,
-            "F": 20,
-            "G": 18,
-            "H": 16,
-            "I": 12,
-        },
-    )
+    if delivery_only:
+        headers = ["timestamp", "mc_dist_sub_tx", "mc_bulk_tx", "mc_delivery_total"]
+        ws.append(headers)
+        _header_fill(ws, 1, len(headers))
+        ws.freeze_panes = "A2"
+        for i in range(2, 8762):
+            ws.cell(row=i, column=1, value=f"=mc_dist_sub_tx!A{i}")
+            ws.cell(row=i, column=2, value=f"=mc_dist_sub_tx!F{i}")
+            ws.cell(row=i, column=3, value=f"=mc_bulk_tx!H{i}")
+            ws.cell(row=i, column=4, value=f"=B{i}+C{i}")
+        _autosize(ws, {"A": 18, "B": 16, "C": 14, "D": 18})
+    else:
+        headers = [
+            "timestamp",
+            "mc_dist_sub_tx",
+            "mc_bulk_tx",
+            "mc_supply_energy",
+            "mc_supply_capacity",
+            "mc_supply_ancillary",
+            "mc_delivery_total",
+            "mc_supply_total",
+            "mc_total",
+        ]
+        ws.append(headers)
+        _header_fill(ws, 1, len(headers))
+        ws.freeze_panes = "A2"
+        for i in range(2, 8762):
+            ws.cell(row=i, column=1, value=f"=mc_dist_sub_tx!A{i}")
+            ws.cell(row=i, column=2, value=f"=mc_dist_sub_tx!F{i}")
+            ws.cell(row=i, column=3, value=f"=mc_bulk_tx!H{i}")
+            ws.cell(row=i, column=4, value=f"=mc_supply_energy!C{i}")
+            ws.cell(row=i, column=5, value=f"=mc_supply_capacity!H{i}")
+            ws.cell(row=i, column=6, value=f"=mc_supply_ancillary!D{i}")
+            ws.cell(row=i, column=7, value=f"=B{i}+C{i}")
+            ws.cell(row=i, column=8, value=f"=D{i}+E{i}+F{i}")
+            ws.cell(row=i, column=9, value=f"=G{i}+H{i}")
+        _autosize(
+            ws,
+            {"A": 18, "B": 16, "C": 14, "D": 18, "E": 18, "F": 20, "G": 18, "H": 16, "I": 12},
+        )
 
 
-def _write_validation(wb: Workbook) -> None:
+def _write_validation(wb: Workbook, *, delivery_only: bool = False) -> None:
     """Validation tab: formula-level checks on weight sums and annual totals."""
     ws = wb.create_sheet("validation")
     headers = ["check", "actual", "expected", "abs_error", "tolerance", "ok"]
     ws.append(headers)
     _header_fill(ws, 1, len(headers))
+
+    ref_n = REF_N_PEAK_DELIVERY_ONLY if delivery_only else REF_N_PEAK
 
     checks = [
         (
@@ -709,36 +777,42 @@ def _write_validation(wb: Workbook) -> None:
             0.01,
         ),
         (
-            "sum(exceedance_weight) for capacity = 1.0",
-            "=SUM(mc_supply_capacity!G$2:G$8761)",
-            "=1",
-            1e-6,
-        ),
-        (
-            "sum(mc_supply_capacity_per_kwh) = fca_blended_kw_yr",
-            "=SUM(mc_supply_capacity!H$2:H$8761)",
-            f"={REF_FCA_BLENDED}",
-            0.01,
-        ),
-        (
             "non-zero hours dist_sub_tx = 100",
             '=COUNTIF(mc_dist_sub_tx!F$2:F$8761,">0")',
-            f"={REF_N_PEAK}",
+            f"={ref_n}",
             0,
         ),
         (
             "non-zero hours bulk_tx = 100",
             '=COUNTIF(mc_bulk_tx!H$2:H$8761,">0")',
-            f"={REF_N_PEAK}",
-            0,
-        ),
-        (
-            "non-zero hours capacity = 100",
-            '=COUNTIF(mc_supply_capacity!H$2:H$8761,">0")',
-            f"={REF_N_PEAK}",
+            f"={ref_n}",
             0,
         ),
     ]
+
+    if not delivery_only:
+        checks.extend(
+            [
+                (
+                    "sum(exceedance_weight) for capacity = 1.0",
+                    "=SUM(mc_supply_capacity!G$2:G$8761)",
+                    "=1",
+                    1e-6,
+                ),
+                (
+                    "sum(mc_supply_capacity_per_kwh) = fca_blended_kw_yr",
+                    "=SUM(mc_supply_capacity!H$2:H$8761)",
+                    f"={REF_FCA_BLENDED}",
+                    0.01,
+                ),
+                (
+                    "non-zero hours capacity = 100",
+                    '=COUNTIF(mc_supply_capacity!H$2:H$8761,">0")',
+                    f"={ref_n}",
+                    0,
+                ),
+            ]
+        )
 
     for i, (name, actual, expected, tol) in enumerate(checks, start=2):
         ws.cell(row=i, column=1, value=name)
@@ -849,22 +923,30 @@ def _validate_mc_against_parquets(
     _check("supply_ancillary", anc_derived, load_supply_ancillary_parquet())
 
 
-def build_workbook(output_path: Path) -> Path:
+def build_workbook(output_path: Path, *, delivery_only: bool = False) -> Path:
     """Build and save the .xlsx workbook. Returns the output path."""
+    mode = "delivery-only" if delivery_only else "full (5-component)"
+    print(f"Building {mode} marginal cost workbook ...", flush=True)
+
     print("Loading raw ISO-NE / EIA data from S3 ...", flush=True)
     rie_load = load_rie_hourly_load()
     print(f"  RIE utility load: {rie_load.height} hours", flush=True)
     ne_load = load_ne_system_load()
     print(f"  NE system load: {ne_load.height} hours", flush=True)
-    sene_load = load_sene_load()
-    print(f"  SENE aggregate load: {sene_load.height} hours", flush=True)
-    lmp_df = load_ri_lmp()
-    print(f"  RI zone LMP: {lmp_df.height} hours", flush=True)
-    ancillary_df = load_ancillary_prices()
-    print(f"  Ancillary prices: {ancillary_df.height} hours", flush=True)
+
+    if not delivery_only:
+        sene_load = load_sene_load()
+        print(f"  SENE aggregate load: {sene_load.height} hours", flush=True)
+        lmp_df = load_ri_lmp()
+        print(f"  RI zone LMP: {lmp_df.height} hours", flush=True)
+        ancillary_df = load_ancillary_prices()
+        print(f"  Ancillary prices: {ancillary_df.height} hours", flush=True)
 
     print("Validating derivation against MC parquets passed to CAIRO ...", flush=True)
-    _validate_mc_against_parquets(rie_load, ne_load, sene_load, lmp_df, ancillary_df)
+    if delivery_only:
+        _validate_delivery_only(rie_load, ne_load)
+    else:
+        _validate_mc_against_parquets(rie_load, ne_load, sene_load, lmp_df, ancillary_df)
 
     print("Building workbook ...", flush=True)
     wb = Workbook()
@@ -872,20 +954,44 @@ def build_workbook(output_path: Path) -> Path:
     if default is not None:
         wb.remove(default)
 
-    _write_readme(wb)
-    _write_inputs_scalars(wb)
-    _write_mc_dist_sub_tx(wb, rie_load)
-    _write_mc_bulk_tx(wb, ne_load)
-    _write_mc_supply_energy(wb, lmp_df)
-    _write_mc_supply_capacity(wb, sene_load)
-    _write_mc_supply_ancillary(wb, ancillary_df)
-    _write_mc_combined(wb)
-    _write_validation(wb)
+    ref_n = REF_N_PEAK_DELIVERY_ONLY if delivery_only else REF_N_PEAK
+    _write_readme(wb, delivery_only=delivery_only)
+    _write_inputs_scalars(wb, delivery_only=delivery_only)
+    _write_mc_dist_sub_tx(wb, rie_load, ref_n_peak=ref_n)
+    _write_mc_bulk_tx(wb, ne_load, ref_n_peak=ref_n)
+    if not delivery_only:
+        _write_mc_supply_energy(wb, lmp_df)
+        _write_mc_supply_capacity(wb, sene_load)
+        _write_mc_supply_ancillary(wb, ancillary_df)
+    _write_mc_combined(wb, delivery_only=delivery_only)
+    _write_validation(wb, delivery_only=delivery_only)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(str(output_path))
     print(f"Wrote {output_path} ({output_path.stat().st_size / 1024:.1f} KB)", flush=True)
     return output_path
+
+
+def _validate_delivery_only(rie_load: pl.DataFrame, ne_load: pl.DataFrame) -> None:
+    """Validate only the two delivery MC components against parquets."""
+    tol = 1e-4
+
+    def _check(name: str, derived: pl.DataFrame, parquet: pl.DataFrame) -> None:
+        joined = derived.join(parquet, on="timestamp", how="inner").sort("timestamp")
+        max_err = float((joined["mc_derived"] - joined["mc_value"]).abs().max())  # type: ignore[arg-type]
+        assert max_err < tol, f"{name}: max hourly error = {max_err:.2e} (tol = {tol:.0e})"
+        print(f"  {name}: PASS (max error = {max_err:.2e})", flush=True)
+
+    _check(
+        "dist_sub_tx",
+        _derive_pop_mc(rie_load, SUB_TX_AND_DIST_MC_KW_YR_2025, N_PEAK_HOURS),
+        load_dist_sub_tx_parquet(),
+    )
+    _check(
+        "bulk_tx",
+        _derive_exceedance_mc(ne_load, AESC_PTF_KW_YEAR, N_PEAK_HOURS),
+        load_bulk_tx_parquet(),
+    )
 
 
 # ── Formatting & upload ───────────────────────────────────────────────────────
@@ -896,7 +1002,6 @@ _TAB_FORMATTING: dict[str, dict] = {
         "column_widths_px": {"A": 300, "B": 540, "C": 540},
         "freeze_rows": 1,
         "bold_header": True,
-        "bold_rows": [3, 27, 37],
     },
     "inputs_scalars": {
         "column_number_formats": {"B": "#,##0.000"},
@@ -992,7 +1097,10 @@ def upload_to_sheet(xlsx_path: Path, spreadsheet_id: str) -> None:
     for ws in spreadsheet.worksheets():
         spec = _TAB_FORMATTING.get(ws.title)
         if spec:
-            apply_sheet_formatting(ws, **spec)
+            fmt = dict(spec)
+            if ws.title == "README" and _README_BOLD_ROWS:
+                fmt["bold_rows"] = list(_README_BOLD_ROWS)
+            apply_sheet_formatting(ws, **fmt)
     print(
         f"Done. View at https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit",
         flush=True,
@@ -1004,8 +1112,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("cache/marginal_costs_rie_2025.xlsx"),
-        help="Output .xlsx path. Default: cache/marginal_costs_rie_2025.xlsx",
+        default=None,
+        help="Output .xlsx path. Defaults depend on --delivery-only.",
     )
     parser.add_argument(
         "--upload",
@@ -1014,12 +1122,26 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--spreadsheet-id",
-        default=DEFAULT_SPREADSHEET_ID,
-        help=f"Override the upload target Sheet id. Default: {DEFAULT_SPREADSHEET_ID}",
+        default=None,
+        help="Override the upload target Sheet id.",
+    )
+    parser.add_argument(
+        "--delivery-only",
+        action="store_true",
+        help="Only include delivery MCs (dist/sub-TX + bulk TX). Omit supply tabs.",
     )
     args = parser.parse_args(argv)
 
-    out = build_workbook(args.output)
+    if args.output is None:
+        args.output = (
+            Path("cache/marginal_costs_rie_2025_delivery.xlsx")
+            if args.delivery_only
+            else Path("cache/marginal_costs_rie_2025.xlsx")
+        )
+    if args.spreadsheet_id is None:
+        args.spreadsheet_id = DELIVERY_ONLY_SPREADSHEET_ID if args.delivery_only else DEFAULT_SPREADSHEET_ID
+
+    out = build_workbook(args.output, delivery_only=args.delivery_only)
     if args.upload:
         upload_to_sheet(out, args.spreadsheet_id)
     return 0

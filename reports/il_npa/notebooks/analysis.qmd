@@ -604,6 +604,13 @@ n_res_blocks_1_to_1_5 <- sum(res_only$npa_over_prp > 1 & res_only$npa_over_prp <
 n_res_blocks_0_to_1_5 <- sum(res_only$npa_over_prp < 1.5, na.rm = TRUE)
 pct_res_blocks_1_to_1_5 <- (n_res_blocks_1_to_1_5 / n_res_blocks)
 pct_res_blocks_0_to_1_5 <- (n_res_blocks_0_to_1_5 / n_res_blocks)
+
+# blocks with cost ratio between 1.0 and 2.0 (PRP-equivalent up to 2x PRP),
+# expressed both as a share of all res blocks and as a share of the "remaining"
+# blocks (those not already cheaper than PRP under Perspective 1)
+n_res_blocks_1_to_2 <- sum(res_only$npa_over_prp > 1 & res_only$npa_over_prp < 2, na.rm = TRUE)
+pct_res_blocks_1_to_2 <- (n_res_blocks_1_to_2 / n_res_blocks)
+pct_remaining_blocks_1_to_2 <- (n_res_blocks_1_to_2 / (n_res_blocks - n_res_blocks_cheaper))
 ```
 
 ```{r}
@@ -1036,7 +1043,7 @@ cumulative_data |>
 #| fig-width: 8
 #| fig-height: 6
 
-res_only |>
+bar_data_ss <- res_only |>
   data.frame() |>
   summarise(
     total_prp_cost = sum(prp_cost, na.rm = TRUE),
@@ -1051,41 +1058,62 @@ res_only |>
   mutate(
     scenario = if_else(
       cost_type == "total_elec_cost",
-      "NPA",
+      "Coordinated TE",
       "PRP + scattershot"
     )
-  ) |>
+  )
+
+scenario_totals_ss <- bar_data_ss |>
+  group_by(scenario) |>
+  summarise(total = sum(cost), .groups = "drop")
+
+bar_data_ss |>
   ggplot() +
   geom_bar(
     aes(x = scenario, y = cost, fill = reorder(cost_type, cost)),
-    stat = "identity"
+    stat = "identity",
+    width = 0.55
   ) +
-
+  geom_text(
+    data = scenario_totals_ss,
+    aes(
+      x = scenario,
+      y = total,
+      label = scales::dollar(total, scale = 1e-6, suffix = "M", accuracy = 1)
+    ),
+    vjust = -0.6,
+    fontface = "bold",
+    color = "#333333"
+  ) +
   scale_y_continuous(
     limits = c(0, 750e6),
-    breaks = seq(0, 750e6, by = 100e6),
+    breaks = seq(0, 700e6, by = 100e6),
     labels = scales::dollar_format(scale = 1e-6, suffix = "M", accuracy = 1),
     expand = c(0, 0)
   ) +
+  scale_x_discrete(limits = c("PRP + scattershot", "Coordinated TE")) +
   scale_fill_manual(
     values = c(
       "total_prp_cost" = sb_colors[["midnight"]],
       "total_elec_cost" = sb_colors[["pistachio_text"]],
-      "total_ss_npv" = "gray"
+      "total_ss_npv" = "gray70"
     ),
     labels = c(
       "total_prp_cost" = "Pipeline replacement",
-      "total_elec_cost" = "Targeted electrification",
+      "total_elec_cost" = "Coordinated targeted electrification",
       "total_ss_npv" = "Scattershot electrification"
     ),
-    breaks = c("total_elec_cost", "total_ss_npv", "total_prp_cost")
+    breaks = c("total_prp_cost", "total_ss_npv", "total_elec_cost")
   ) +
   labs(
     x = "",
-    y = "Total saving from targeted electrification vs PRP + scattershot",
+    y = "Total upfront capital cost",
     fill = ""
   ) +
-  theme(axis.title.y = element_text(margin = margin(r = 10)))
+  theme(
+    axis.title.y = element_text(margin = margin(r = 10)),
+    legend.position = "right"
+  )
 ```
 
 ```{r}

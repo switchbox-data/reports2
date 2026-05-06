@@ -57,11 +57,11 @@ REF_DEFAULT_VOL = "inputs_tariffs!$B$2"
 # Same constants as cost_of_service_by_subclass.qmd; if the testimony rebases
 # onto a new batch or RDP ref, update these in lock-step with the notebook.
 UTILITY = "rie"
-BATCH = "ri_20260331_r1-20_rate_case_test_year"
+BATCH = "ri_20260507_r1-2_grid_cons_fix"
 STATE_LOWER = "ri"
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
 PATH_MASTER_BAT_12 = f"{S3_BASE}/{STATE_LOWER}/all_utilities/{BATCH}/run_1+2/cross_subsidization_BAT_values/"
-RDP_REF = "e9e5088"
+RDP_REF = "0b203bc"
 RDP_REV_YAML_PATH = "rate_design/hp_rates/ri/config/rev_requirement/rie_rate_case_test_year.yaml"
 RDP_TARIFF_DIR = "rate_design/hp_rates/ri/config/tariffs/electric"
 RDP_GITHUB_BASE = "https://github.com/switchbox-data/rate-design-platform/blob"

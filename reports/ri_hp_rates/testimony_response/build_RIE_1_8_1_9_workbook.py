@@ -38,7 +38,7 @@ from lib.rdp import fetch_rdp_file, parse_urdb_json
 # Constants.
 # ---------------------------------------------------------------------------
 UTILITY = "rie"
-BATCH = "ri_20260331_r1-20_rate_case_test_year"
+BATCH = "ri_20260507_r1-2_grid_cons_fix"
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
 _state = "ri"
 
@@ -54,7 +54,7 @@ PATH_KWH_8760_U2 = f"{_KWH_BASE}/20260505_011437_ri_rie_run3_up02_default__defau
 RESSTOCK_RELEASE = "s3://data.sb/nrel/resstock/res_2024_amy2018_2"
 GAS_CONSUMPTION_COL = "out.natural_gas.total.energy_consumption"
 
-RDP_REF = "e9e5088"
+RDP_REF = "0b203bc"
 RDP_TARIFF_DIR = "rate_design/hp_rates/ri/config/tariffs/electric"
 
 REPORTS2_GITHUB_BASE = "https://github.com/switchbox-data/reports2/blob"
@@ -63,33 +63,38 @@ SPREADSHEET_1_8 = "1TEURpTKhM3ddpPagNxq1bT0oB24RyoorD4y7EVfFeUY"
 SPREADSHEET_1_9 = "1wocSf02gT7WS9G_vxs70d1SG1IOwhPLcUZGRuHXDRB8"
 
 # ---------------------------------------------------------------------------
-# Tariff rates.
+# Tariff rates (calibrated combined delivery+supply from CAIRO tariff JSONs).
+#
+# CAIRO calibrates rates to exactly recover the revenue requirement for the
+# test-year customer population. The calibrated rates differ slightly from
+# the filed tariff rates (e.g. delivery 14.078 vs filed 14.058 c/kWh).
+# We use calibrated rates so that formula-derived bills match CAIRO output.
+# Filed (uncalibrated) rates are shown on the assumptions sheet for reference.
 # ---------------------------------------------------------------------------
-ELEC_DELIVERY_RATE = 0.14058  # $/kWh, flat all months
 ELEC_FIXED_PER_MONTH = 10.01  # $6.00 customer + $3.22 RE Growth + $0.79 LIHEAP
 
-# Default supply rates (LRS seasonal, $/kWh)
-_ELEC_SUPPLY_WINTER = 0.17254  # Jan-Mar
-_ELEC_SUPPLY_SUMMER = 0.10674  # Apr-Sep
-_ELEC_SUPPLY_FALL = 0.15376  # Oct-Dec
+# Calibrated combined (delivery+supply) rates from rie_default_supply_calibrated.json
+_ELEC_COMBINED_WINTER = 0.31376906204311866  # Jan-Mar
+_ELEC_COMBINED_SUMMER = 0.24782328571449225  # Apr-Sep
+_ELEC_COMBINED_FALL = 0.2949344923288172  # Oct-Dec
 
-ELEC_SUPPLY_DEFAULT: dict[str, float] = {
-    "Jan": _ELEC_SUPPLY_WINTER,
-    "Feb": _ELEC_SUPPLY_WINTER,
-    "Mar": _ELEC_SUPPLY_WINTER,
-    "Apr": _ELEC_SUPPLY_SUMMER,
-    "May": _ELEC_SUPPLY_SUMMER,
-    "Jun": _ELEC_SUPPLY_SUMMER,
-    "Jul": _ELEC_SUPPLY_SUMMER,
-    "Aug": _ELEC_SUPPLY_SUMMER,
-    "Sep": _ELEC_SUPPLY_SUMMER,
-    "Oct": _ELEC_SUPPLY_FALL,
-    "Nov": _ELEC_SUPPLY_FALL,
-    "Dec": _ELEC_SUPPLY_FALL,
+ELEC_COMBINED_DEFAULT: dict[str, float] = {
+    "Jan": _ELEC_COMBINED_WINTER,
+    "Feb": _ELEC_COMBINED_WINTER,
+    "Mar": _ELEC_COMBINED_WINTER,
+    "Apr": _ELEC_COMBINED_SUMMER,
+    "May": _ELEC_COMBINED_SUMMER,
+    "Jun": _ELEC_COMBINED_SUMMER,
+    "Jul": _ELEC_COMBINED_SUMMER,
+    "Aug": _ELEC_COMBINED_SUMMER,
+    "Sep": _ELEC_COMBINED_SUMMER,
+    "Oct": _ELEC_COMBINED_FALL,
+    "Nov": _ELEC_COMBINED_FALL,
+    "Dec": _ELEC_COMBINED_FALL,
 }
-ELEC_COMBINED_DEFAULT: dict[str, float] = {m: ELEC_DELIVERY_RATE + s for m, s in ELEC_SUPPLY_DEFAULT.items()}
 
-HP_FLAT_COMBINED_RATE = 0.23129  # $/kWh, delivery+supply bundled, all months
+# Calibrated combined rate from rie_hp_flat_supply_calibrated.json
+HP_FLAT_COMBINED_RATE = 0.231294060102476  # $/kWh, delivery+supply bundled, all months
 
 # Gas tariff rates in $/therm (URDB $/kWh x 29.3)
 KWH_PER_THERM = 29.3
@@ -283,7 +288,16 @@ def _load_inputs() -> dict:
             "oil_price_range": rv.get("oil_price_range", "$3.48–$4.10 /gal (monthly prices)"),  # noqa: RUF001
             "propane_price_range": rv.get("propane_price_range", "$3.44–$3.67 /gal (monthly prices)"),  # noqa: RUF001
             "hp_flat_delivery_cents": float(hp_flat_del["items"][0]["energyratestructure"][0][0]["rate"]) * 100,
-            "hp_flat_supply_cents": float(hp_flat_sup["items"][0]["energyratestructure"][0][0]["rate"]) * 100,
+            "hp_flat_combined_cents": float(hp_flat_sup["items"][0]["energyratestructure"][0][0]["rate"]) * 100,
+            "hp_flat_supply_cents": (
+                float(hp_flat_sup["items"][0]["energyratestructure"][0][0]["rate"])
+                - float(hp_flat_del["items"][0]["energyratestructure"][0][0]["rate"])
+            )
+            * 100,
+            "calibrated_combined_winter_cents": _ELEC_COMBINED_WINTER * 100,
+            "calibrated_combined_summer_cents": _ELEC_COMBINED_SUMMER * 100,
+            "calibrated_combined_fall_cents": _ELEC_COMBINED_FALL * 100,
+            "calibrated_hp_flat_cents": HP_FLAT_COMBINED_RATE * 100,
         },
     }
 
@@ -353,9 +367,22 @@ def _write_assumptions(wb: Workbook, scenario_id: str, inputs: dict) -> None:
         ws.cell(row=row, column=2).alignment = Alignment(wrap_text=True)
         row += 1
 
-    # --- Default tariff table ------------------------------------------------
+    # --- Rate calibration note ------------------------------------------------
     row += 1
-    ws.cell(row=row, column=1, value="Default tariffs (before)")
+    ws.cell(row=row, column=1, value="Rate calibration")
+    ws.cell(row=row, column=1).font = Font(bold=True)
+    cal_note = (
+        "CAIRO calibrates volumetric rates to exactly recover the utility's revenue requirement "
+        "for the modeled customer population. The calibrated rates used for bill calculation differ "
+        "slightly from the filed tariff rates. Both are shown below."
+    )
+    ws.cell(row=row, column=2, value=cal_note)
+    ws.cell(row=row, column=2).alignment = Alignment(wrap_text=True)
+    row += 1
+
+    # --- Filed tariff table ---------------------------------------------------
+    row += 1
+    ws.cell(row=row, column=1, value="Filed tariffs (uncalibrated, for reference)")
     ws.cell(row=row, column=1).font = Font(bold=True)
     cite = "Rhode Island Energy, Docket No. 2545-GE (2025). Blazunas Schedules & Workpapers, Book 21, PRB-1-ELEC."
     ws.cell(row=row, column=2, value=cite)
@@ -367,13 +394,70 @@ def _write_assumptions(wb: Workbook, scenario_id: str, inputs: dict) -> None:
         ws.cell(row=row, column=c, value=hdr)
     row += 1
 
-    default_tariff_rows: list[tuple[str, str, str]] = [
+    filed_tariff_rows: list[tuple[str, str, str]] = [
         ("Electricity — customer charge (A-16)", f"${tt['elec_customer_charge']:.2f} /mo", "—"),
         ("Electricity — RE Growth + LIHEAP (A-16)", f"${tt['elec_other_fixed_charges']:.2f} /mo", "—"),
-        ("Electricity — delivery (A-16)", "—", f"{tt['elec_delivery_avg_cents']:.2f} ¢/kWh"),
-        ("Electricity — supply, winter (LRS, Jan–Mar)", "—", f"{tt['elec_lrs_winter_cents']:.2f} ¢/kWh"),  # noqa: RUF001
-        ("Electricity — supply, summer (LRS, Apr–Sep)", "—", f"{tt['elec_lrs_summer_cents']:.2f} ¢/kWh"),  # noqa: RUF001
-        ("Electricity — supply, fall (LRS, Oct–Dec)", "—", f"{tt['elec_lrs_fall_cents']:.2f} ¢/kWh"),  # noqa: RUF001
+        ("Electricity — delivery (A-16)", "—", f"{tt['elec_delivery_avg_cents']:.2f} c/kWh"),
+        ("Electricity — supply, winter (LRS, Jan-Mar)", "—", f"{tt['elec_lrs_winter_cents']:.2f} c/kWh"),
+        ("Electricity — supply, summer (LRS, Apr-Sep)", "—", f"{tt['elec_lrs_summer_cents']:.2f} c/kWh"),
+        ("Electricity — supply, fall (LRS, Oct-Dec)", "—", f"{tt['elec_lrs_fall_cents']:.2f} c/kWh"),
+    ]
+    for tariff, fixed, vol in filed_tariff_rows:
+        ws.cell(row=row, column=1, value=tariff)
+        ws.cell(row=row, column=2, value=fixed)
+        ws.cell(row=row, column=3, value=vol)
+        row += 1
+
+    # --- Calibrated tariff table (used for bills) -----------------------------
+    row += 1
+    ws.cell(row=row, column=1, value="Calibrated tariffs (used for bill calculation)")
+    ws.cell(row=row, column=1).font = Font(bold=True)
+    ws.cell(row=row, column=2, value="Combined delivery+supply rate after CAIRO calibration.")
+    ws.cell(row=row, column=2).alignment = Alignment(wrap_text=True)
+    row += 1
+
+    _header_fill(ws, row, 3)
+    for c, hdr in enumerate(["Tariff", "Fixed charge", "Volumetric rate"], 1):
+        ws.cell(row=row, column=c, value=hdr)
+    row += 1
+
+    calibrated_tariff_rows: list[tuple[str, str, str]] = [
+        ("Electricity — customer charge (A-16)", f"${tt['elec_customer_charge']:.2f} /mo", "—"),
+        ("Electricity — RE Growth + LIHEAP (A-16)", f"${tt['elec_other_fixed_charges']:.2f} /mo", "—"),
+        (
+            "Electricity — combined, winter (Jan-Mar)",
+            "—",
+            f"{tt['calibrated_combined_winter_cents']:.3f} c/kWh",
+        ),
+        (
+            "Electricity — combined, summer (Apr-Sep)",
+            "—",
+            f"{tt['calibrated_combined_summer_cents']:.3f} c/kWh",
+        ),
+        (
+            "Electricity — combined, fall (Oct-Dec)",
+            "—",
+            f"{tt['calibrated_combined_fall_cents']:.3f} c/kWh",
+        ),
+    ]
+    for tariff, fixed, vol in calibrated_tariff_rows:
+        ws.cell(row=row, column=1, value=tariff)
+        ws.cell(row=row, column=2, value=fixed)
+        ws.cell(row=row, column=3, value=vol)
+        row += 1
+
+    # --- Non-electric tariffs -------------------------------------------------
+    row += 1
+    ws.cell(row=row, column=1, value="Non-electric tariffs")
+    ws.cell(row=row, column=1).font = Font(bold=True)
+    row += 1
+
+    _header_fill(ws, row, 3)
+    for c, hdr in enumerate(["Tariff", "Fixed charge", "Volumetric rate"], 1):
+        ws.cell(row=row, column=c, value=hdr)
+    row += 1
+
+    other_tariff_rows: list[tuple[str, str, str]] = [
         (
             "Natural gas — Rate 12 (heating)",
             f"${tt['gas_fixed_charge']:.2f} /mo",
@@ -384,10 +468,10 @@ def _write_assumptions(wb: Workbook, scenario_id: str, inputs: dict) -> None:
             f"${tt['gas_nonheating_fixed_charge']:.2f} /mo",
             f"${tt['gas_nonheating_avg_per_therm']:.3f} /therm (avg)",
         ),
-        ("Heating oil (EIA)", "—", "$3.48–$4.10 /gal (monthly prices)"),  # noqa: RUF001
-        ("Propane (EIA)", "—", "$3.44–$3.67 /gal (monthly prices)"),  # noqa: RUF001
+        ("Heating oil (EIA)", "—", "$3.48-$4.10 /gal (monthly prices)"),
+        ("Propane (EIA)", "—", "$3.44-$3.67 /gal (monthly prices)"),
     ]
-    for tariff, fixed, vol in default_tariff_rows:
+    for tariff, fixed, vol in other_tariff_rows:
         ws.cell(row=row, column=1, value=tariff)
         ws.cell(row=row, column=2, value=fixed)
         ws.cell(row=row, column=3, value=vol)
@@ -414,8 +498,9 @@ def _write_assumptions(wb: Workbook, scenario_id: str, inputs: dict) -> None:
         hp_rows: list[tuple[str, str, str]] = [
             ("Electricity — customer charge", f"${tt['elec_customer_charge']:.2f} /mo", "—"),
             ("Electricity — RE Growth + LIHEAP", f"${tt['elec_other_fixed_charges']:.2f} /mo", "—"),
-            ("Electricity — HP delivery (EPMC)", "—", f"{tt['hp_flat_delivery_cents']:.2f} ¢/kWh"),
-            ("Electricity — HP supply (per-customer)", "—", f"{tt['hp_flat_supply_cents']:.2f} ¢/kWh"),
+            ("Electricity — HP delivery (EPMC)", "—", f"{tt['hp_flat_delivery_cents']:.3f} c/kWh"),
+            ("Electricity — HP supply (per-customer)", "—", f"{tt['hp_flat_supply_cents']:.3f} c/kWh"),
+            ("Electricity — HP combined (delivery+supply)", "—", f"{tt['hp_flat_combined_cents']:.3f} c/kWh"),
         ]
         for tariff, fixed, vol in hp_rows:
             ws.cell(row=row, column=1, value=tariff)
@@ -480,8 +565,8 @@ def _write_assumptions(wb: Workbook, scenario_id: str, inputs: dict) -> None:
         ("elec_kwh_after", "Monthly electric kWh, upgrade 2. Same source."),
         ("gas_therms_before", "Monthly gas therms, upgrade 0. From ResStock load_curve_monthly (/ 29.3 kWh/therm)."),
         ("gas_therms_after", "Monthly gas therms, upgrade 2. Same source."),
-        ("elec_rate_before", "Combined electric rate (delivery + supply) for that month, $/kWh."),
-        ("elec_rate_after", "Combined electric rate for after scenario, $/kWh."),
+        ("elec_rate_before", "Calibrated combined electric rate (delivery + supply) for that month, $/kWh."),
+        ("elec_rate_after", "Calibrated combined electric rate for after scenario, $/kWh."),
         ("elec_fixed", "$10.01/mo ($6.00 customer + $3.22 RE Growth + $0.79 LIHEAP)."),
         ("gas_rate_before", "Gas heating tariff (Rate 12), seasonal $/therm."),
         ("gas_rate_after", "Gas non-heating tariff (Rate 10), seasonal $/therm."),
@@ -818,7 +903,7 @@ def _write_annual(
     return last_row
 
 
-def _write_result(wb: Workbook, last_row: int, scenario_id: str) -> None:
+def _write_result(wb: Workbook, last_row: int, scenario_id: str, pct_save: float) -> None:
     """Summary sheet deriving the headline percentage."""
     ws = wb.create_sheet("result")
     scen = SCENARIOS[scenario_id]
@@ -832,37 +917,49 @@ def _write_result(wb: Workbook, last_row: int, scenario_id: str) -> None:
         ws.cell(row=hdr_row, column=ci, value=h)
     _header_fill(ws, hdr_row, 3)
 
-    ws.cell(row=4, column=1, value="Gas-heated customers (weighted)")
-    ws.cell(row=4, column=2, value=f"=SUM(annual!B2:B{last_row})")
-    ws.cell(row=4, column=3, value="SUM of weights (all rows are gas-heated)")
+    ws.cell(row=4, column=1, value="Percentage that save (CAIRO)")
+    ws.cell(row=4, column=2, value=pct_save)
+    ws.cell(row=4, column=3, value="From CAIRO master bills (LMI-adjusted). This is the authoritative figure.")
+    ws.cell(row=4, column=2).number_format = "0.0%"
+    ws.cell(row=4, column=1).font = Font(bold=True)
+    ws.cell(row=4, column=2).font = Font(bold=True)
 
-    ws.cell(row=5, column=1, value="Gas-heated customers that save")
-    ws.cell(row=5, column=2, value=f"=SUM(annual!W2:W{last_row})")
-    ws.cell(row=5, column=3, value="SUM of weighted saves indicator")
-
-    ws.cell(row=6, column=1, value="Percentage that save")
-    ws.cell(row=6, column=2, value="=B5/B4")
-    ws.cell(row=6, column=3, value="weighted_savers / total_weighted")
-    ws.cell(row=6, column=2).number_format = "0.0%"
-
-    ws.cell(row=7, column=1, value="Percentage that lose")
-    ws.cell(row=7, column=2, value="=1-B6")
-    ws.cell(row=7, column=3, value="1 - pct_save")
-    ws.cell(row=7, column=2).number_format = "0.0%"
-
-    ws.cell(row=9, column=1, value="Headline figure")
-    ws.cell(row=9, column=1).font = Font(bold=True)
-    ws.cell(row=9, column=2, value=scen["headline"])
-
-    for r in (4, 5):
-        ws[f"B{r}"].number_format = "#,##0.00"
-
+    ws.cell(row=5, column=1, value="Percentage that lose (CAIRO)")
+    ws.cell(row=5, column=2, value=1 - pct_save)
+    ws.cell(row=5, column=3, value="1 - pct_save (CAIRO)")
+    ws.cell(row=5, column=2).number_format = "0.0%"
     if scenario_id == "1-8":
-        ws.cell(row=7, column=1).font = Font(bold=True)
-        ws.cell(row=7, column=2).font = Font(bold=True)
-    else:
-        ws.cell(row=6, column=1).font = Font(bold=True)
-        ws.cell(row=6, column=2).font = Font(bold=True)
+        ws.cell(row=5, column=1).font = Font(bold=True)
+        ws.cell(row=5, column=2).font = Font(bold=True)
+
+    ws.cell(row=7, column=1, value="Headline figure")
+    ws.cell(row=7, column=1).font = Font(bold=True)
+    ws.cell(row=7, column=2, value=scen["headline"])
+
+    # Formula-derived cross-check from the annual sheet
+    ws.cell(row=9, column=1, value="Formula cross-check")
+    ws.cell(row=9, column=1).font = Font(bold=True)
+    ws.cell(row=9, column=3, value="Derived from Excel formulas on the annual sheet (may differ slightly from CAIRO).")
+
+    ws.cell(row=10, column=1, value="Gas-heated customers (weighted)")
+    ws.cell(row=10, column=2, value=f"=SUM(annual!B2:B{last_row})")
+    ws.cell(row=10, column=3, value="SUM of weights (all rows are gas-heated)")
+    ws.cell(row=10, column=2).number_format = "#,##0.00"
+
+    ws.cell(row=11, column=1, value="Gas-heated customers that save")
+    ws.cell(row=11, column=2, value=f"=SUM(annual!W2:W{last_row})")
+    ws.cell(row=11, column=3, value="SUM of weighted saves indicator")
+    ws.cell(row=11, column=2).number_format = "#,##0.00"
+
+    ws.cell(row=12, column=1, value="Percentage that save (formula)")
+    ws.cell(row=12, column=2, value="=B11/B10")
+    ws.cell(row=12, column=3, value="weighted_savers / total_weighted")
+    ws.cell(row=12, column=2).number_format = "0.0%"
+
+    ws.cell(row=13, column=1, value="Percentage that lose (formula)")
+    ws.cell(row=13, column=2, value="=1-B12")
+    ws.cell(row=13, column=3, value="1 - pct_save")
+    ws.cell(row=13, column=2).number_format = "0.0%"
 
     _autosize(ws, {"A": 32, "B": 20, "C": 40})
     ws.sheet_view.showGridLines = False

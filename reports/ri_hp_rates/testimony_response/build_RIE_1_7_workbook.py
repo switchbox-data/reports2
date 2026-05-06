@@ -46,7 +46,7 @@ REPORT_DIR = Path(__file__).resolve().parents[1]
 
 UTILITY = "rie"
 STATE = "ri"
-BATCH = "ri_20260331_r1-20_rate_case_test_year"
+BATCH = "ri_20260507_r1-2_grid_cons_fix"
 RUN_DELIVERY = "1"
 RUN_SUPPLY = "2"
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
@@ -62,18 +62,18 @@ SUBCLASS_ORDER = ["heat_pump", "electrical_resistance", "fossil_fuel"]
 
 # RDP git ref — used only to build permalink URLs for source attribution in the workbook.
 # Do NOT fetch from rate-design-platform at runtime; use the hardcoded constants below.
-RDP_REF = "e9e5088"
+RDP_REF = "0b203bc"
 RDP_GITHUB_BASE = "https://github.com/switchbox-data/rate-design-platform/blob"
 REPORTS2_GITHUB_BASE = "https://github.com/switchbox-data/reports2/blob"
 
-# Revenue-requirement constants — sourced from rate-design-platform @ e9e5088:
+# Revenue-requirement constants — sourced from rate-design-platform @ 0b203bc:
 #   rate_design/hp_rates/ri/config/rev_requirement/rie_rate_case_test_year.yaml
 #   rate_design/hp_rates/ri/config/rev_requirement/rie_hp_vs_nonhp_rate_case_test_year.yaml
 # Update these when rate-case inputs change.
 REV_REQ: dict = {
     "total_delivery_revenue_requirement": 446463143.03,
     "test_year_customer_count": 419347.83,
-    "resstock_kwh_scale_factor": 0.9568112362177266,
+    "resstock_kwh_scale_factor": 0.9594257590448669,
     # subclass_customers not present in source YAMLs; per-subclass counts unavailable
     "subclass_customers": {},
 }
@@ -128,7 +128,7 @@ def get_aws_storage_options() -> dict:
 def load_revenue_requirement_yaml() -> dict:
     """Return the hardcoded revenue-requirement parameters.
 
-    Sourced from rate-design-platform @ e9e5088 (rie_rate_case_test_year.yaml and
+    Sourced from rate-design-platform @ 0b203bc (rie_rate_case_test_year.yaml and
     rie_hp_vs_nonhp_rate_case_test_year.yaml).  Update REV_REQ above when inputs change.
     """
     return dict(REV_REQ)
@@ -468,11 +468,16 @@ def add_overview_sheet(wb: Workbook, rev_req: dict) -> None:
     ws[f"A{row}"] = (
         "Delivery capacity costs are allocated using a probability-of-peak approach, where the annualized cost "
         "of new capacity investment is spread across only the hours most likely to drive that investment:\n\n"
-        "• Bulk transmission: $69/kW-year allocated across top 100 hours of aggregate New England system load\n"
-        "• Sub-transmission and distribution: $80.24/kW-year allocated across top 100 hours of RIE system load (summer only)\n\n"
-        "Importantly, not every peak hour receives equal weight. Hours outside the top 100 receive zero cost. "
-        "Within the top 100, hours closer to the peak carry MORE cost, because they are more likely to be the "
-        "capacity-binding hour that triggers the need for a new investment. All other hours receive zero delivery capacity cost."
+        "• Bulk transmission: $69/kW-year allocated across top 100 hours of aggregate New England system load, "
+        "using exceedance weighting (each hour's weight is proportional to its load above the threshold at the "
+        "100th-highest hour)\n"
+        "• Sub-transmission and distribution: $80.24/kW-year (2019$, CPI-inflated to test year) allocated across "
+        "top 100 hours of RIE system load, using load-share weighting (each hour's weight is proportional to its "
+        "load as a share of total load in the top 100 hours). Because RIE is summer-peaking, these hours fall in "
+        "summer.\n\n"
+        "In both methods, hours outside the top 100 receive zero cost. Within the top 100, hours closer to the "
+        "peak carry more cost, because they are more likely to be the capacity-binding hour that triggers the need "
+        "for a new investment."
     )
     ws[f"A{row}"].alignment = Alignment(wrap_text=True, vertical="top")
     ws.merge_cells(f"A{row}:F{row}")
@@ -536,17 +541,17 @@ def add_marginal_cost_sheet(wb: Workbook) -> None:
         (
             "Bulk Transmission",
             "Cost of bulk TX infrastructure reinforcements",
-            "ISO-NE incremental benefit studies",
-            "Top 40 hours per season by load (seasonal coincident peak)",
+            "AESC 2024 avoided PTF ($69/kW-year)",
+            "Top 100 hours of aggregate NE system load (exceedance-weighted)",
             "$/kW-year → $/kWh in peak hours",
-            "~160 hours (40/season × 4)",
+            "100 hours",
             "generate_bulk_tx_mc.py",
         ),
         (
             "Sub-TX + Distribution",
             "Cost of local delivery infrastructure",
-            "RIE MCOS project-level capital, annualized and levelized (2026-2032)",
-            "Top 100 hours by utility load (probability of peak)",
+            "AESC 2024 avoided distribution capacity ($80.24/kW-year, 2019$, CPI-inflated)",
+            "Top 100 hours by utility load (load-share weighted)",
             "$/kW-year → $/kWh in peak hours",
             "100 hours",
             "generate_utility_tx_dx_mc.py",
@@ -587,12 +592,17 @@ def add_marginal_cost_sheet(wb: Workbook) -> None:
     ws["A17"] = (
         "For bulk transmission and distribution capacity costs, a probability-of-peak approach is used "
         "where the annualized cost of new capacity investment is spread across only the top 100 hours most "
-        "likely to drive that investment. Importantly, not every peak hour receives equal weight:\n\n"
-        "• Hours outside the top 100 receive ZERO delivery capacity cost\n"
-        "• Within the top 100, hours closer to the peak carry MORE cost, because they are more likely "
-        "to be the capacity-binding hour that triggers the need for a new investment\n\n"
-        "This weighted allocation reflects the engineering reality that not all hours contribute equally "
-        "to infrastructure need. The full technical details of the weighting method are in Schedule JPV-2."
+        "likely to drive that investment. Hours outside the top 100 receive ZERO delivery capacity cost. "
+        "Within the top 100, hours closer to the peak carry MORE cost. The two delivery components use "
+        "slightly different weighting schemes:\n\n"
+        "• Bulk transmission (exceedance-weighted): Each peak hour's weight is proportional to its load "
+        "above the threshold at the 100th-highest hour. This concentrates cost most heavily in the very "
+        "highest hours.\n"
+        "• Sub-TX + distribution (load-share weighted): Each peak hour's weight is proportional to its load "
+        "as a share of total load across the top 100 hours. Higher-load hours still receive more weight, but "
+        "the gradient is less steep than exceedance weighting.\n\n"
+        "Both methods reflect the engineering reality that not all hours contribute equally to infrastructure "
+        "need. The full technical details of the weighting methods are in Schedule JPV-2."
     )
     ws["A17"].alignment = Alignment(wrap_text=True, vertical="top")
     ws.merge_cells("A17:G17")
@@ -1359,7 +1369,7 @@ def add_cost_allocation_sheet(
     ws.merge_cells("A6:G6")
 
     inputs = [
-        ("Total Delivery Revenue Requirement", total_rr, "$#,##0", "RDP @ e9e5088: rie_rate_case_test_year.yaml"),
+        ("Total Delivery Revenue Requirement", total_rr, "$#,##0", "RDP @ 0b203bc: rie_rate_case_test_year.yaml"),
         ("Test Year Residential Customer Count", total_customers, "#,##0", "Same YAML"),
         ("Sub-TX & Distribution MC", "Top 100 hrs RIE load", "@", f"Source: {S3_MC_DIST_SUB_TX}"),
         ("Bulk Transmission MC", "Top 100 hrs NE system load", "@", f"Source: {S3_MC_BULK_TX}"),

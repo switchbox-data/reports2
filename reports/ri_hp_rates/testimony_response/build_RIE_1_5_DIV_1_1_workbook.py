@@ -5,7 +5,7 @@ Figure 2 in the Pre-Filed Direct Testimony of Juan-Pablo Velez (page 10,
 breakdown of customers, consumption, and delivery revenue by residential
 heating subclass for the test year (9/1/24 to 8/31/25).
 
-This script reproduces every published number from per-building BAT outputs
+This script reproduces every published number from per-building CAIRO outputs
 plus a small set of revenue-requirement and tariff inputs, with **live
 formulas** in every aggregation cell. The output is an ``.xlsx`` that opens
 identically in Excel and Google Sheets; with ``--upload`` the same workbook is
@@ -25,9 +25,11 @@ formulas instead of polars group-by/sum.
 from __future__ import annotations
 
 import argparse
+import pickle
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import polars as pl
 import yaml
@@ -114,7 +116,7 @@ HT_V2_LABELS: dict[str, str] = {
 
 
 def load_master_bat() -> pl.DataFrame:
-    """Mirror ``load_master_bat`` in ``cost_of_service_by_subclass.qmd``."""
+    """Load per-building BAT data for RIE (delivery bills and weights only)."""
     df = (
         pl.scan_parquet(PATH_MASTER_BAT_12, hive_partitioning=True)
         .filter(pl.col("sb.electric_utility") == UTILITY)
@@ -123,9 +125,6 @@ def load_master_bat() -> pl.DataFrame:
             "weight",
             "postprocess_group.heating_type_v2",
             "annual_bill_delivery",
-            "economic_burden_delivery",
-            "residual_share_epmc_delivery",
-            "BAT_epmc_delivery",
         )
         .collect()
     )
@@ -181,6 +180,9 @@ def _autosize(ws, widths: dict[str, int]) -> None:
         ws.column_dimensions[col].width = w
 
 
+# ---------------------------------------------------------------------------
+# Sheet writers.
+# ---------------------------------------------------------------------------
 def _write_readme(wb: Workbook, inputs: dict) -> None:
     ws = wb.create_sheet("README", 0)
     s3_bat = f"{S3_BASE}/{STATE_LOWER}/all_utilities/{BATCH}/run_1+2/cross_subsidization_BAT_values/"
@@ -189,14 +191,9 @@ def _write_readme(wb: Workbook, inputs: dict) -> None:
         ["", "", ""],
         ["Item", "Source", "Notes"],
         [
-            "Per-building BAT outputs",
+            "Per-building CAIRO outputs",
             s3_bat,
-            "CAIRO batch outputs (one row per RIE residential building) used as the per-building basis for all weighted aggregates.",
-        ],
-        [
-            "CAIRO batch",
-            BATCH,
-            "RIE test-year status-quo batch (run_1+2 = uniform default delivery + supply for all customers).",
+            "One row per residential building under the status-quo uniform default delivery + supply rate for all customers. Used as the per-building basis for all weighted aggregates.",
         ],
         [
             "Revenue-requirement YAML",
@@ -231,28 +228,22 @@ def _write_readme(wb: Workbook, inputs: dict) -> None:
             "",
         ],
         [
-            "bat_per_building",
+            "bill_per_building",
             (
-                "One row per RIE residential building. Columns from CAIRO BAT parquet, "
-                "annual_kwh back-derived from delivery bill (= (annual_bill_delivery - annual_fixed_per_customer) / vol_rate), "
-                "plus formula columns: cost_of_service_delivery, annual_bill_delivery_check (= annual_kwh * vol_rate + annual_fixed_per_customer), "
-                "and weighted aggregates. weight is uniform: test_year_customer_count / n_buildings (each building represents the same number of customers)."
+                "One row per residential building. Columns: bldg_id, weight (calibrated to test_year_customer_count), "
+                "heating_type_v2, annual_kwh, annual_bill_delivery (= annual_kwh * vol_rate + annual_fixed_per_customer), "
+                "w_revenue (= weight * annual_bill_delivery), w_kwh (= weight * annual_kwh)."
             ),
             "",
         ],
         [
             "subclass_aggregates",
-            "Five subclass rows + 'All customers' total via live SUMIFS / SUMPRODUCT over bat_per_building. Includes consumption_gwh, pct_all_consumption, and pct_all_revenue alongside the largest-remainder customer display columns.",
+            "Five subclass rows + 'All customers' total via live SUMIFS / SUMPRODUCT over bill_per_building. Includes consumption_gwh, pct_all_consumption, and pct_all_revenue alongside the largest-remainder customer display columns.",
             "",
         ],
         [
             "fig2_published",
             "Final published layout: customers, % of customers, consumption (GWh), % of consumption, delivery revenue, % of revenue.",
-            "",
-        ],
-        [
-            "validation",
-            "Formula-level checks that mirror the polars asserts in the notebook (sum of weights, total revenue, cross-subsidy nets to zero, derived total kWh, derived total GWh).",
             "",
         ],
         ["", "", ""],
@@ -284,18 +275,6 @@ def _write_readme(wb: Workbook, inputs: dict) -> None:
             "",
         ],
         ["", "", ""],
-        ["Non-goal", "", ""],
-        [
-            "Per-building EB / EPMC residual / BAT_epmc reconstruction",
-            (
-                "Out of scope. These are produced upstream by CAIRO from ResStock hourly loads + marginal "
-                "cost shapes; reconstructing them in spreadsheet formulas across ~131k buildings x 8760 hours "
-                "is infeasible. See rate-design-platform/context/methods/bat_mc_residual/epmc_and_supply_allocation.md "
-                "and utils/post/build_master_bat.py for the upstream methodology."
-            ),
-            "",
-        ],
-        ["", "", ""],
         ["Key inputs (also live in inputs_revenue_requirement / inputs_tariffs)", "Value", "Source"],
         [
             "total_delivery_revenue_requirement ($)",
@@ -309,7 +288,7 @@ def _write_readme(wb: Workbook, inputs: dict) -> None:
         [
             "test_year_customer_count",
             inputs["test_year_customer_count"],
-            ("PRB-1-ELEC exhibit, p. 14, lines 8-9, column d. 5,032,174 bills / 12 = 419,347.83 customers."),
+            "PRB-1-ELEC exhibit, p. 14, lines 8-9, column d. 5,032,174 bills / 12 = 419,347.83 customers.",
         ],
         [
             "test_year_residential_kwh",
@@ -325,21 +304,19 @@ def _write_readme(wb: Workbook, inputs: dict) -> None:
             "annual_fixed_per_customer ($)",
             inputs["annual_fixed_per_customer"],
             (
-                "Derived: (total_delivery_revenue_requirement - default_vol_usd_per_kwh "
-                "* test_year_residential_kwh) / test_year_customer_count."
+                "Test-year revenue equation: (total_RR - vol_rate * total_kWh) / customers. "
+                "Inputs from RIE Docket 25-45-GE, Book 21, PRB-1-ELEC p. 14, lines 8-9 "
+                "(Blazunas Schedules, Nov 2025)."
             ),
         ],
     ]
     for r in rows:
         ws.append(r)
     ws["A1"].font = Font(bold=True, size=14)
-    # Section-header rows: title=1, item header=3, sheet header=11,
-    # column header=19, non-goal header=27, key inputs header=30. The
-    # "fig2_published column" section has 6 rows (Figure 15 has 6 too) so
-    # offsets match. Confirmed against the rows[] indices above.
-    for header_row in (3, 11, 19, 27, 30):
+    # Section headers: item=3, sheets=10, columns=17, key inputs=25.
+    for header_row in (3, 10, 17, 25):
         _header_fill(ws, header_row, 3)
-    for label_row in range(31, 36):
+    for label_row in range(26, 31):
         _bold(ws, f"A{label_row}")
     _autosize(ws, {"A": 42, "B": 70, "C": 80})
     ws.sheet_view.showGridLines = False
@@ -383,8 +360,8 @@ def _write_inputs_revenue_requirement(wb: Workbook, inputs: dict) -> None:
         [
             "annual_fixed_per_customer",
             f"=({REF_TOTAL_RR} - {REF_DEFAULT_VOL} * {REF_TY_KWH}) / {REF_N_CUSTOMERS}",
-            "Derived in this workbook",
-            "Annual non-volumetric delivery charges per customer (customer charge + fixed top-ups). Validated: annual_kwh * vol_rate + this value ≈ annual_bill_delivery.",
+            "Test-year revenue equation (RIE Docket 25-45-GE, Book 21, PRB-1-ELEC p. 14)",
+            "Annual non-volumetric delivery charges per customer. Per-customer share of delivery revenue not recovered through volumetric rates.",
         ],
         [
             "DISPLAY_CUSTOMER_TOTAL",
@@ -421,7 +398,7 @@ def _write_inputs_tariffs(wb: Workbook, inputs: dict) -> None:
             "default_vol_usd_per_kwh",
             inputs["default_vol_usd_per_kwh"],
             _rdp_permalink(f"{RDP_TARIFF_DIR}/rie_default_calibrated.json"),
-            "Field: energyratestructure[0][0].rate. Status-quo uniform default delivery $/kWh. Used in the BAT pipeline to back out annual kWh per building from the delivery bill.",
+            "Field: energyratestructure[0][0].rate. Status-quo uniform default delivery $/kWh.",
         ],
     ]
     for r in rows:
@@ -435,24 +412,17 @@ def _write_inputs_tariffs(wb: Workbook, inputs: dict) -> None:
     ws.sheet_view.showGridLines = False
 
 
-def _write_bat_per_building(wb: Workbook, bat: pl.DataFrame) -> int:
-    """Write per-building BAT rows + formula columns. Returns last data row index."""
-    ws = wb.create_sheet("bat_per_building")
+def _write_bill_per_building(wb: Workbook, bat: pl.DataFrame) -> int:
+    """Write per-building rows + formula columns. Returns last data row index."""
+    ws = wb.create_sheet("bill_per_building")
     headers = [
-        "bldg_id",
-        "weight",
-        "heating_type_v2",
-        "annual_bill_delivery",
-        "economic_burden_delivery",
-        "residual_share_epmc_delivery",
-        "BAT_epmc_delivery",
-        "cost_of_service_delivery",
-        "annual_kwh",
-        "annual_bill_delivery_check",
-        "w_revenue",
-        "w_cos",
-        "w_xs",
-        "w_kwh",
+        "bldg_id",  # A
+        "weight",  # B
+        "heating_type_v2",  # C
+        "annual_kwh",  # D  data
+        "annual_bill_delivery",  # E  formula = D * vol_rate + fixed
+        "w_revenue",  # F  formula = B * E
+        "w_kwh",  # G  formula = B * D
     ]
     ws.append(headers)
     _header_fill(ws, 1, len(headers))
@@ -464,65 +434,33 @@ def _write_bat_per_building(wb: Workbook, bat: pl.DataFrame) -> int:
             "bldg_id",
             "weight",
             "postprocess_group.heating_type_v2",
-            "annual_bill_delivery",
-            "economic_burden_delivery",
-            "residual_share_epmc_delivery",
-            "BAT_epmc_delivery",
             "annual_kwh",
         ).iter_rows()
     )
     for i, row in enumerate(rows, start=2):
-        ws.cell(row=i, column=1, value=row[0])
-        ws.cell(row=i, column=2, value=float(row[1]))
-        ws.cell(row=i, column=3, value=row[2])
-        ws.cell(row=i, column=4, value=float(row[3]))
-        ws.cell(row=i, column=5, value=float(row[4]))
-        ws.cell(row=i, column=6, value=float(row[5]))
-        ws.cell(row=i, column=7, value=float(row[6]))
-        ws.cell(row=i, column=8, value=f"=E{i}+F{i}")
-        ws.cell(row=i, column=9, value=float(row[7]))
-        ws.cell(row=i, column=10, value=f"=I{i}*{REF_DEFAULT_VOL}+{REF_ANNUAL_FIXED_PER_CUSTOMER}")
-        ws.cell(row=i, column=11, value=f"=B{i}*D{i}")
-        ws.cell(row=i, column=12, value=f"=B{i}*H{i}")
-        ws.cell(row=i, column=13, value=f"=B{i}*G{i}")
-        ws.cell(row=i, column=14, value=f"=B{i}*I{i}")
+        ws.cell(row=i, column=1, value=row[0])  # A: bldg_id
+        ws.cell(row=i, column=2, value=float(row[1]))  # B: weight
+        ws.cell(row=i, column=3, value=row[2])  # C: heating_type_v2
+        ws.cell(row=i, column=4, value=float(row[3]))  # D: annual_kwh
+        ws.cell(row=i, column=5, value=f"=D{i}*{REF_DEFAULT_VOL}+{REF_ANNUAL_FIXED_PER_CUSTOMER}")
+        ws.cell(row=i, column=6, value=f"=B{i}*E{i}")  # F: w_revenue
+        ws.cell(row=i, column=7, value=f"=B{i}*D{i}")  # G: w_kwh
 
     last_row = 1 + n
-    widths = {
-        "A": 10,
-        "B": 10,
-        "C": 22,
-        "D": 18,
-        "E": 22,
-        "F": 22,
-        "G": 18,
-        "H": 22,
-        "I": 14,
-        "J": 24,
-        "K": 16,
-        "L": 16,
-        "M": 14,
-        "N": 16,
-    }
-    _autosize(ws, widths)
+    _autosize(ws, {"A": 10, "B": 10, "C": 22, "D": 14, "E": 18, "F": 16, "G": 16})
 
     col_to_name = {
         "B": "ws_weight",
         "C": "ws_heating_type",
-        "D": "ws_annual_bill",
-        "G": "ws_BAT_epmc",
-        "H": "ws_cos",
-        "I": "ws_annual_kwh",
-        "J": "ws_bill_check",
-        "K": "ws_w_revenue",
-        "L": "ws_w_cos",
-        "M": "ws_w_xs",
-        "N": "ws_w_kwh",
+        "D": "ws_annual_kwh",
+        "E": "ws_annual_bill",
+        "F": "ws_w_revenue",
+        "G": "ws_w_kwh",
     }
     for col, name in col_to_name.items():
         wb.defined_names[name] = DefinedName(
             name=name,
-            attr_text=f"bat_per_building!${col}$2:${col}${last_row}",
+            attr_text=f"bill_per_building!${col}$2:${col}${last_row}",
         )
     return last_row
 
@@ -534,18 +472,16 @@ def _write_subclass_aggregates(wb: Workbook, last_bat_row: int) -> None:
         "subclass",  # B
         "n_customers",  # C
         "revenue_delivery",  # D
-        "cost_of_service",  # E
-        "cross_subsidy",  # F
-        "total_kwh",  # G
-        "raw_display_count",  # H
-        "floor_display_count",  # I
-        "remainder",  # J
-        "rank_remainder",  # K
-        "n_customers_display",  # L
-        "pct_customers_display",  # M
-        "consumption_gwh",  # N -- new for Figure 2
-        "pct_all_consumption",  # O -- new for Figure 2
-        "pct_all_revenue",  # P -- new for Figure 2
+        "total_kwh",  # E
+        "raw_display_count",  # F
+        "floor_display_count",  # G
+        "remainder",  # H
+        "rank_remainder",  # I
+        "n_customers_display",  # J
+        "pct_customers_display",  # K
+        "consumption_gwh",  # L
+        "pct_all_consumption",  # M
+        "pct_all_revenue",  # N
     ]
     ws.append(headers)
     _header_fill(ws, 1, len(headers))
@@ -553,12 +489,10 @@ def _write_subclass_aggregates(wb: Workbook, last_bat_row: int) -> None:
     n_sub = len(HT_V2_ORDER)
 
     last = last_bat_row
-    rng_weight = f"bat_per_building!$B$2:$B${last}"
-    rng_heating = f"bat_per_building!$C$2:$C${last}"
-    rng_w_revenue = f"bat_per_building!$K$2:$K${last}"
-    rng_w_cos = f"bat_per_building!$L$2:$L${last}"
-    rng_w_xs = f"bat_per_building!$M$2:$M${last}"
-    rng_w_kwh = f"bat_per_building!$N$2:$N${last}"
+    rng_weight = f"bill_per_building!$B$2:$B${last}"
+    rng_heating = f"bill_per_building!$C$2:$C${last}"
+    rng_w_revenue = f"bill_per_building!$F$2:$F${last}"
+    rng_w_kwh = f"bill_per_building!$G$2:$G${last}"
     sub_last = 1 + n_sub
     total_row = 2 + n_sub
 
@@ -568,65 +502,47 @@ def _write_subclass_aggregates(wb: Workbook, last_bat_row: int) -> None:
         ws.cell(row=row, column=2, value=HT_V2_LABELS[key])
         ws.cell(row=row, column=3, value=f"=SUMIFS({rng_weight}, {rng_heating}, A{row})")
         ws.cell(row=row, column=4, value=f"=SUMIFS({rng_w_revenue}, {rng_heating}, A{row})")
-        ws.cell(row=row, column=5, value=f"=SUMIFS({rng_w_cos}, {rng_heating}, A{row})")
-        ws.cell(row=row, column=6, value=f"=SUMIFS({rng_w_xs}, {rng_heating}, A{row})")
-        ws.cell(row=row, column=7, value=f"=SUMIFS({rng_w_kwh}, {rng_heating}, A{row})")
-        ws.cell(
-            row=row,
-            column=8,
-            value=f"=C{row}*{REF_DISPLAY_TOTAL}/SUM($C$2:$C${sub_last})",
-        )
-        ws.cell(row=row, column=9, value=f"=INT(H{row})")
-        ws.cell(row=row, column=10, value=f"=H{row}-I{row}")
-        ws.cell(row=row, column=11, value=f"=RANK(J{row},$J$2:$J${sub_last})")
-        ws.cell(
-            row=row,
-            column=12,
-            value=f"=I{row}+IF(K{row}<={REF_DISPLAY_TOTAL}-SUM($I$2:$I${sub_last}),1,0)",
-        )
-        ws.cell(row=row, column=13, value=f"=L{row}/{REF_DISPLAY_TOTAL}")
-        # Figure 2 columns: consumption_gwh, pct_all_consumption, pct_all_revenue.
-        # Reference the "All customers" total row (G{total_row}, D{total_row})
-        # so the percentages always sum to 100% within the worksheet.
-        ws.cell(row=row, column=14, value=f"=G{row}/1000000")
-        ws.cell(row=row, column=15, value=f"=G{row}/$G${total_row}")
-        ws.cell(row=row, column=16, value=f"=D{row}/$D${total_row}")
+        ws.cell(row=row, column=5, value=f"=SUMIFS({rng_w_kwh}, {rng_heating}, A{row})")
+        ws.cell(row=row, column=6, value=f"=C{row}*{REF_DISPLAY_TOTAL}/SUM($C$2:$C${sub_last})")
+        ws.cell(row=row, column=7, value=f"=INT(F{row})")
+        ws.cell(row=row, column=8, value=f"=F{row}-G{row}")
+        ws.cell(row=row, column=9, value=f"=RANK(H{row},$H$2:$H${sub_last})")
+        ws.cell(row=row, column=10, value=f"=G{row}+IF(I{row}<={REF_DISPLAY_TOTAL}-SUM($G$2:$G${sub_last}),1,0)")
+        ws.cell(row=row, column=11, value=f"=J{row}/{REF_DISPLAY_TOTAL}")
+        ws.cell(row=row, column=12, value=f"=E{row}/1000000")
+        ws.cell(row=row, column=13, value=f"=E{row}/$E${total_row}")
+        ws.cell(row=row, column=14, value=f"=D{row}/$D${total_row}")
 
     ws.cell(row=total_row, column=1, value="all_customers")
     ws.cell(row=total_row, column=2, value="All customers")
     ws.cell(row=total_row, column=3, value=f"=SUM({rng_weight})")
     ws.cell(row=total_row, column=4, value=f"=SUM({rng_w_revenue})")
-    ws.cell(row=total_row, column=5, value=f"=SUM({rng_w_cos})")
-    ws.cell(row=total_row, column=6, value=f"=SUM({rng_w_xs})")
-    ws.cell(row=total_row, column=7, value=f"=SUM({rng_w_kwh})")
-    ws.cell(row=total_row, column=8, value=f"={REF_DISPLAY_TOTAL}")
-    ws.cell(row=total_row, column=9, value=f"={REF_DISPLAY_TOTAL}")
-    ws.cell(row=total_row, column=10, value=0)
-    ws.cell(row=total_row, column=11, value="")
-    ws.cell(row=total_row, column=12, value=f"={REF_DISPLAY_TOTAL}")
+    ws.cell(row=total_row, column=5, value=f"=SUM({rng_w_kwh})")
+    ws.cell(row=total_row, column=6, value=f"={REF_DISPLAY_TOTAL}")
+    ws.cell(row=total_row, column=7, value=f"={REF_DISPLAY_TOTAL}")
+    ws.cell(row=total_row, column=8, value=0)
+    ws.cell(row=total_row, column=9, value="")
+    ws.cell(row=total_row, column=10, value=f"={REF_DISPLAY_TOTAL}")
+    ws.cell(row=total_row, column=11, value=1)
+    ws.cell(row=total_row, column=12, value=f"=E{total_row}/1000000")
     ws.cell(row=total_row, column=13, value=1)
-    ws.cell(row=total_row, column=14, value=f"=G{total_row}/1000000")
-    ws.cell(row=total_row, column=15, value=1)
-    ws.cell(row=total_row, column=16, value=1)
+    ws.cell(row=total_row, column=14, value=1)
 
     _bold(ws, f"A{total_row}")
     _bold(ws, f"B{total_row}")
 
-    money_cols = ("D", "E", "F")
-    for c in money_cols:
-        for r in range(2, total_row + 1):
-            ws[f"{c}{r}"].number_format = '"$"#,##0'
     for r in range(2, total_row + 1):
         ws[f"C{r}"].number_format = "#,##0.0"
+        ws[f"D{r}"].number_format = '"$"#,##0'
+        ws[f"E{r}"].number_format = "#,##0"
+        ws[f"F{r}"].number_format = "#,##0.00"
         ws[f"G{r}"].number_format = "#,##0"
         ws[f"H{r}"].number_format = "#,##0.00"
-        ws[f"I{r}"].number_format = "#,##0"
-        ws[f"J{r}"].number_format = "#,##0.00"
-        ws[f"L{r}"].number_format = "#,##0"
+        ws[f"J{r}"].number_format = "#,##0"
+        ws[f"K{r}"].number_format = "0.0%"
+        ws[f"L{r}"].number_format = "#,##0.0"
         ws[f"M{r}"].number_format = "0.0%"
-        ws[f"N{r}"].number_format = "#,##0.0"
-        ws[f"O{r}"].number_format = "0.0%"
-        ws[f"P{r}"].number_format = "0.0%"
+        ws[f"N{r}"].number_format = "0.0%"
 
     _autosize(
         ws,
@@ -636,17 +552,15 @@ def _write_subclass_aggregates(wb: Workbook, last_bat_row: int) -> None:
             "C": 16,
             "D": 18,
             "E": 18,
-            "F": 16,
-            "G": 18,
-            "H": 14,
-            "I": 14,
-            "J": 12,
-            "K": 8,
+            "F": 14,
+            "G": 14,
+            "H": 12,
+            "I": 8,
+            "J": 14,
+            "K": 14,
             "L": 14,
-            "M": 14,
+            "M": 16,
             "N": 14,
-            "O": 16,
-            "P": 14,
         },
     )
     ws.freeze_panes = "C2"
@@ -664,7 +578,7 @@ def _write_fig2_published(wb: Workbook) -> None:
     title = "Customers, consumption, and delivery revenue by residential subclass"
     subtitle = (
         "RIE Test Year (9/1/2024 to 8/31/2025). Source: cost_of_service_by_subclass.qmd "
-        "(tbl-testimony-subclass-delivery) and the per-building BAT outputs documented in README. "
+        "(tbl-testimony-subclass-delivery) and the per-building CAIRO outputs documented in README. "
         "Embedded as Figure 2 on page 10 of the Pre-Filed Direct Testimony of Juan-Pablo Velez."
     )
     ws["A1"] = title
@@ -694,12 +608,12 @@ def _write_fig2_published(wb: Workbook) -> None:
         agg_row = 1 + i
         out_row = header_row + i
         ws.cell(row=out_row, column=1, value=f"=subclass_aggregates!B{agg_row}")
-        ws.cell(row=out_row, column=2, value=f"=subclass_aggregates!L{agg_row}")
-        ws.cell(row=out_row, column=3, value=f"=subclass_aggregates!M{agg_row}")
-        ws.cell(row=out_row, column=4, value=f"=subclass_aggregates!N{agg_row}")
-        ws.cell(row=out_row, column=5, value=f"=subclass_aggregates!O{agg_row}")
+        ws.cell(row=out_row, column=2, value=f"=subclass_aggregates!J{agg_row}")
+        ws.cell(row=out_row, column=3, value=f"=subclass_aggregates!K{agg_row}")
+        ws.cell(row=out_row, column=4, value=f"=subclass_aggregates!L{agg_row}")
+        ws.cell(row=out_row, column=5, value=f"=subclass_aggregates!M{agg_row}")
         ws.cell(row=out_row, column=6, value=f"=subclass_aggregates!D{agg_row}")
-        ws.cell(row=out_row, column=7, value=f"=subclass_aggregates!P{agg_row}")
+        ws.cell(row=out_row, column=7, value=f"=subclass_aggregates!N{agg_row}")
 
     n_rows = len(rows)
     last_data_row = header_row + n_rows
@@ -719,97 +633,103 @@ def _write_fig2_published(wb: Workbook) -> None:
         for r in range(header_row + 1, last_data_row + 1):
             ws.cell(row=r, column=c).alignment = Alignment(horizontal="center")
 
-    _autosize(
-        ws,
-        {
-            "A": 24,
-            "B": 14,
-            "C": 16,
-            "D": 16,
-            "E": 18,
-            "F": 18,
-            "G": 14,
-        },
+    _autosize(ws, {"A": 24, "B": 14, "C": 16, "D": 16, "E": 18, "F": 18, "G": 14})
+    ws.sheet_view.showGridLines = False
+
+
+# ---------------------------------------------------------------------------
+# Runtime validation against published Figure 2.
+# ---------------------------------------------------------------------------
+def _validate_against_published(bat: pl.DataFrame, inputs: dict) -> None:
+    """Assert that weighted aggregates match report_variables.pkl (Figure 2)."""
+    total_w = float(bat["weight"].sum())
+    total_rev = float((bat["weight"] * bat["annual_bill_delivery"]).sum())
+    total_kwh = float((bat["weight"] * bat["annual_kwh"]).sum())
+
+    # Aggregate totals.
+    assert abs(total_w - inputs["test_year_customer_count"]) < 0.5, (
+        f"sum(weight) = {total_w:,.2f} vs test_year_customer_count = {inputs['test_year_customer_count']:,.2f}"
     )
-    ws.sheet_view.showGridLines = False
+    assert abs(total_rev - inputs["total_delivery_revenue_requirement"]) < 2_000, (
+        f"sum(w*bill) = ${total_rev:,.0f} vs total_delivery_RR = ${inputs['total_delivery_revenue_requirement']:,.0f}"
+    )
+    assert abs(total_kwh - inputs["test_year_residential_kwh"]) < 1.0, (
+        f"sum(w*kwh) = {total_kwh:,.0f} vs test_year_residential_kwh = {inputs['test_year_residential_kwh']:,.0f}"
+    )
+    print("  Aggregate totals: PASS", flush=True)
+
+    # Per-subclass validation against the published Figure 2.
+    pkl_path = Path(__file__).resolve().parents[1] / "cache" / "report_variables_cos_subclass.pkl"
+    assert pkl_path.exists(), f"Missing {pkl_path}. Render cost_of_service_by_subclass.qmd first."
+    v = SimpleNamespace(**pickle.loads(pkl_path.read_bytes()))
+    published_rows: list[dict] = v.testimony_subclass_delivery_rows
+
+    by_ht = bat.group_by("postprocess_group.heating_type_v2").agg(
+        pl.col("weight").sum().alias("n_customers"),
+        (pl.col("weight") * pl.col("annual_bill_delivery")).sum().alias("revenue_delivery"),
+        (pl.col("weight") * pl.col("annual_kwh")).sum().alias("total_kwh"),
+    )
+    actual = {row["postprocess_group.heating_type_v2"]: row for row in by_ht.iter_rows(named=True)}
+
+    import numpy as np
+
+    # Reproduce largest-remainder rounding for customer display counts.
+    display_total = round(inputs["test_year_customer_count"])
+    sub_weights = [actual[k]["n_customers"] for k in HT_V2_ORDER]
+    raw_counts = np.array(sub_weights) * display_total / total_w
+    floors = np.floor(raw_counts).astype(np.int64)
+    remainder = display_total - int(floors.sum())
+    order = np.argsort(-(raw_counts - floors))
+    for k in range(remainder):
+        floors[order[k]] += 1
+
+    for pub_row in published_rows:
+        sub_name = pub_row["subclass"]
+        if sub_name == "All customers":
+            continue
+        key = next(k for k, v_label in HT_V2_LABELS.items() if v_label == sub_name)
+        idx = list(HT_V2_ORDER).index(key)
+        a = actual[key]
+
+        wb_customers = int(floors[idx])
+        pub_customers = int(pub_row["n_customers_display"])
+        assert wb_customers == pub_customers, f"{sub_name}: customers {wb_customers} != published {pub_customers}"
+
+        wb_gwh = a["total_kwh"] / 1_000_000.0
+        pub_gwh = float(pub_row["consumption_gwh"])
+        assert abs(wb_gwh - pub_gwh) < 0.05, f"{sub_name}: consumption {wb_gwh:.1f} GWh != published {pub_gwh:.1f} GWh"
+
+        wb_rev = a["revenue_delivery"]
+        pub_rev = float(pub_row["revenue_delivery"])
+        assert abs(wb_rev - pub_rev) < 1.0, f"{sub_name}: revenue ${wb_rev:,.0f} != published ${pub_rev:,.0f}"
+
+        wb_pct_cust = float(floors[idx]) / display_total
+        pub_pct_cust = float(pub_row["pct_customers_display"])
+        assert abs(wb_pct_cust - pub_pct_cust) < 0.001, (
+            f"{sub_name}: pct_customers {wb_pct_cust:.4f} != published {pub_pct_cust:.4f}"
+        )
+
+        wb_pct_cons = a["total_kwh"] / total_kwh
+        pub_pct_cons = float(pub_row["pct_all_consumption"])
+        assert abs(wb_pct_cons - pub_pct_cons) < 0.001, (
+            f"{sub_name}: pct_consumption {wb_pct_cons:.4f} != published {pub_pct_cons:.4f}"
+        )
+
+        wb_pct_rev = a["revenue_delivery"] / total_rev
+        pub_pct_rev = float(pub_row["pct_all_revenue"])
+        assert abs(wb_pct_rev - pub_pct_rev) < 0.001, (
+            f"{sub_name}: pct_revenue {wb_pct_rev:.4f} != published {pub_pct_rev:.4f}"
+        )
+
+    print("  Figure 2 replication: PASS (all subclass values match published)", flush=True)
 
 
-def _write_validation(wb: Workbook, last_bat_row: int) -> None:
-    ws = wb.create_sheet("validation")
-    headers = ["check", "actual", "expected", "abs_error", "tolerance", "ok"]
-    ws.append(headers)
-    _header_fill(ws, 1, len(headers))
-
-    last = last_bat_row
-    rng_weight = f"bat_per_building!$B$2:$B${last}"
-    rng_bill = f"bat_per_building!$D$2:$D${last}"
-    rng_xs = f"bat_per_building!$G$2:$G${last}"
-    rng_cos = f"bat_per_building!$H$2:$H${last}"
-    rng_kwh = f"bat_per_building!$I$2:$I${last}"
-
-    rows = [
-        (
-            "sum(weight) approx test_year_customer_count",
-            f"=SUM({rng_weight})",
-            f"={REF_N_CUSTOMERS}",
-            None,
-            0.05,
-        ),
-        (
-            "sum(weight x delivery_bill) approx total_delivery_revenue_requirement",
-            f"=SUMPRODUCT({rng_weight}, {rng_bill})",
-            f"={REF_TOTAL_RR}",
-            None,
-            2000.0,
-        ),
-        (
-            "sum(weight x BAT_epmc) approx 0 (cross-subsidy nets to zero)",
-            f"=SUMPRODUCT({rng_weight}, {rng_xs})",
-            "=0",
-            None,
-            5000.0,
-        ),
-        (
-            "sum(weight x cost_of_service) approx total_delivery_revenue_requirement",
-            f"=SUMPRODUCT({rng_weight}, {rng_cos})",
-            f"={REF_TOTAL_RR}",
-            None,
-            5000.0,
-        ),
-        (
-            "sum(weight x annual_kwh) approx test_year_residential_kwh",
-            f"=SUMPRODUCT({rng_weight}, {rng_kwh})",
-            f"={REF_TY_KWH}",
-            None,
-            1.0,
-        ),
-        (
-            "sum(weight x annual_kwh) / 1e6 approx total consumption_gwh in subclass_aggregates",
-            f"=SUMPRODUCT({rng_weight}, {rng_kwh})/1000000",
-            "=subclass_aggregates!N7",
-            None,
-            0.001,
-        ),
-    ]
-    for i, (name, actual, expected, _err, tol) in enumerate(rows, start=2):
-        ws.cell(row=i, column=1, value=name)
-        ws.cell(row=i, column=2, value=actual)
-        ws.cell(row=i, column=3, value=expected)
-        ws.cell(row=i, column=4, value=f"=ABS(B{i}-C{i})")
-        ws.cell(row=i, column=5, value=tol)
-        ws.cell(row=i, column=6, value=f'=IF(D{i}<=E{i}, "OK", "FAIL")')
-
-    _autosize(ws, {"A": 80, "B": 22, "C": 22, "D": 16, "E": 14, "F": 8})
-    for r in range(2, 2 + len(rows)):
-        ws[f"B{r}"].number_format = "#,##0.00"
-        ws[f"C{r}"].number_format = "#,##0.00"
-        ws[f"D{r}"].number_format = "#,##0.00"
-    ws.sheet_view.showGridLines = False
-
-
+# ---------------------------------------------------------------------------
+# Orchestration.
+# ---------------------------------------------------------------------------
 def build_workbook(output_path: Path) -> Path:
     """Build and save the .xlsx workbook. Returns the output path."""
-    print(f"Loading per-building BAT from {PATH_MASTER_BAT_12} ...", flush=True)
+    print(f"Loading per-building data from {PATH_MASTER_BAT_12} ...", flush=True)
     bat = load_master_bat()
     print(f"  {bat.height:,} rows", flush=True)
 
@@ -827,43 +747,36 @@ def build_workbook(output_path: Path) -> Path:
         ).alias("annual_kwh")
     )
 
-    _weighted_kwh = float((bat["weight"] * bat["annual_kwh"]).sum())
-    _kwh_err = abs(_weighted_kwh - inputs["test_year_residential_kwh"])
-    assert _kwh_err < 1.0, (
-        f"sum(weight * annual_kwh) = {_weighted_kwh:,.0f} vs test_year_residential_kwh "
-        f"= {inputs['test_year_residential_kwh']:,.0f}; error = {_kwh_err:,.2f}"
-    )
-    print(f"  annual_kwh derived from bills (aggregate kWh error = {_kwh_err:.4f})", flush=True)
+    print("Validating against published Figure 2 ...", flush=True)
+    _validate_against_published(bat, inputs)
 
     wb = Workbook()
     default = wb.active
     if default is not None:
         wb.remove(default)
 
-    # inputs_tariffs before inputs_revenue_requirement so the latter's
-    # annual_fixed_per_customer formula resolves at upload time.
     _write_readme(wb, inputs)
     _write_inputs_tariffs(wb, inputs)
     _write_inputs_revenue_requirement(wb, inputs)
-    last_bat_row = _write_bat_per_building(wb, bat)
+    last_bat_row = _write_bill_per_building(wb, bat)
     _write_subclass_aggregates(wb, last_bat_row)
     _write_fig2_published(wb)
-    _write_validation(wb, last_bat_row)
-
     output_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(str(output_path))
     print(f"Wrote {output_path} ({output_path.stat().st_size / 1024:.1f} KB)", flush=True)
     return output_path
 
 
+# ---------------------------------------------------------------------------
+# Google Sheets upload.
+# ---------------------------------------------------------------------------
 _TAB_FORMATTING: dict[str, dict] = {
     "README": {
         "wrap_columns": ["A:C"],
         "column_widths_px": {"A": 280, "B": 480, "C": 480},
         "freeze_rows": 1,
         "bold_header": True,
-        # Section-header rows; must stay in sync with _write_readme offsets.
-        "bold_rows": [3, 11, 19, 27, 30],
+        "bold_rows": [3, 10, 17, 25],
     },
     "inputs_revenue_requirement": {
         "column_number_formats": {"B": "#,##0.00"},
@@ -879,22 +792,15 @@ _TAB_FORMATTING: dict[str, dict] = {
         "freeze_rows": 1,
         "bold_header": True,
     },
-    "bat_per_building": {
+    "bill_per_building": {
         "column_number_formats": {
             "B": "#,##0.00",
-            "D": '"$"#,##0.00',
+            "D": "#,##0.00",
             "E": '"$"#,##0.00',
-            "F": '"$"#,##0.00',
-            "G": '"$"#,##0.00',
-            "H": '"$"#,##0.00',
-            "I": "#,##0.00",
-            "J": '"$"#,##0.00',
-            "K": "#,##0.00",
-            "L": "#,##0.00",
-            "M": "#,##0.00",
-            "N": "#,##0.00",
+            "F": "#,##0.00",
+            "G": "#,##0.00",
         },
-        "auto_resize_columns": ["A:N"],
+        "auto_resize_columns": ["A:G"],
         "freeze_rows": 1,
         "bold_header": True,
     },
@@ -902,20 +808,18 @@ _TAB_FORMATTING: dict[str, dict] = {
         "column_number_formats": {
             "C": "#,##0.00",
             "D": '"$"#,##0.00',
-            "E": '"$"#,##0.00',
-            "F": '"$"#,##0.00',
-            "G": "#,##0.00",
+            "E": "#,##0.00",
+            "F": "#,##0.00",
+            "G": "#,##0",
             "H": "#,##0.00",
             "I": "#,##0",
-            "J": "#,##0.00",
-            "K": "#,##0",
-            "L": "#,##0",
+            "J": "#,##0",
+            "K": "0.0%",
+            "L": "#,##0.0",
             "M": "0.0%",
-            "N": "#,##0.0",
-            "O": "0.0%",
-            "P": "0.0%",
+            "N": "0.0%",
         },
-        "auto_resize_columns": ["A:P"],
+        "auto_resize_columns": ["A:N"],
         "freeze_rows": 1,
         "bold_header": True,
     },
@@ -930,12 +834,6 @@ _TAB_FORMATTING: dict[str, dict] = {
         },
         "auto_resize_columns": ["A:G"],
         "freeze_rows": 4,
-        "bold_header": True,
-    },
-    "validation": {
-        "column_number_formats": {"B": "#,##0.00", "C": "#,##0.00", "D": "#,##0.00"},
-        "auto_resize_columns": ["A:F"],
-        "freeze_rows": 1,
         "bold_header": True,
     },
 }

@@ -35,7 +35,7 @@ from lib.rdp import fetch_rdp_file
 # ---------------------------------------------------------------------------
 # Constants.
 # ---------------------------------------------------------------------------
-RDP_REF = "e9e5088"
+RDP_REF = "0b203bc"
 RDP_REV_YAML_PATH = "rate_design/hp_rates/ri/config/rev_requirement/rie_rate_case_test_year.yaml"
 RDP_HPVS_YAML_PATH = "rate_design/hp_rates/ri/config/rev_requirement/rie_hp_vs_nonhp_rate_case_test_year.yaml"
 RDP_GITHUB_BASE = "https://github.com/switchbox-data/rate-design-platform/blob"

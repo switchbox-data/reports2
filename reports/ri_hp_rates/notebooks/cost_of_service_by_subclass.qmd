@@ -40,8 +40,11 @@ import yaml
 
 from lib.rdp import fetch_rdp_file, parse_urdb_json
 
+BATCH = "ri_20260507_r1-2_grid_cons_fix"
+RDP_REF = "0b203bc"
+
 UTILITY = "rie"
-BATCH = "ri_20260331_r1-20_rate_case_test_year"
+# BATCH = "ri_20260331_r1-20_rate_case_test_year"
 STATE_LOWER = "ri"
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
 PATH_MASTER_BAT_12 = (
@@ -52,7 +55,7 @@ PATH_MASTER_BAT_1718 = (
 )
 
 # rate-design-platform rev for revenue-requirement YAML (align with analysis.qmd when updating)
-RDP_REF = "e9e5088"
+# RDP_REF = "e9e5088"
 _PATH_RIE_RATE_CASE_YAML = (
     "rate_design/hp_rates/ri/config/rev_requirement/rie_rate_case_test_year.yaml"
 )
@@ -129,11 +132,22 @@ report_vars["rie_rev_req_other_delivery_avg_fixed_usd_per_mo"] = (
 _RDP_RIE_ELEC_TARIFF_DIR = "rate_design/hp_rates/ri/config/tariffs/electric"
 
 
+def _rie_calibrated_tariff(*, rel_filename: str) -> dict:
+    """Parse a URDB-shaped delivery JSON from the RDP repo at RDP_REF."""
+    path = f"{_RDP_RIE_ELEC_TARIFF_DIR}/{rel_filename}"
+    return parse_urdb_json(fetch_rdp_file(path, RDP_REF))
+
+
 def _rie_calibrated_volumetric_usd_per_kwh(*, rel_filename: str) -> float:
     """First energy tier in URDB-shaped delivery JSON → `$/kWh` (matches CAIRO calibrated tariff input)."""
-    path = f"{_RDP_RIE_ELEC_TARIFF_DIR}/{rel_filename}"
-    doc = parse_urdb_json(fetch_rdp_file(path, RDP_REF))
+    doc = _rie_calibrated_tariff(rel_filename=rel_filename)
     return float(doc["items"][0]["energyratestructure"][0][0]["rate"])
+
+
+def _rie_calibrated_fixed_usd_per_month(*, rel_filename: str) -> float:
+    """Fixed charge from URDB-shaped delivery JSON → `$/month` (matches CAIRO calibrated tariff input)."""
+    doc = _rie_calibrated_tariff(rel_filename=rel_filename)
+    return float(doc["items"][0]["fixedchargefirstmeter"])
 
 
 def _rie_calibrated_volumetric_c_per_kwh(*, rel_filename: str) -> str:
@@ -154,10 +168,12 @@ report_vars["hp_flat_volumetric_delivery_pct_below_default"] = (
     else float("nan")
 )
 
-# Annual fixed delivery charges per customer (customer charge + fixed delivery top-ups).
+# Annual fixed delivery charges per customer — read from the calibrated tariff so the
+# derived kWh matches CAIRO's billing_kwh_annual (post-PV-netting), not the YAML's
+# test_year_residential_kwh (pre-PV).
 _annual_fixed_per_customer = (
-    TOTAL_DELIVERY_REVENUE_REQUIREMENT - _default_vol_usd_kwh * _ty_kwh
-) / TEST_YEAR_CUSTOMER_COUNT
+    _rie_calibrated_fixed_usd_per_month(rel_filename="rie_default_calibrated.json") * 12.0
+)
 
 # PRB-1 volumetric components (¢/kWh): core delivery vs transmission + uncollectible, from YAML budgets ÷ test-year kWh.
 _drr = _rev_yaml["delivery_revenue_requirement"]
@@ -1966,9 +1982,15 @@ bat = bat.with_columns(
     ((pl.col("annual_bill_delivery") - _annual_fixed_per_customer) / _default_vol_usd_kwh)
     .alias("annual_kwh"),
 )
+# Derived total kWh reflects post-PV grid consumption (< YAML test_year_residential_kwh
+# which is pre-PV).  The gap equals the weighted PV self-consumption across all buildings.
 _derived_total_kwh = float((bat["weight"] * bat["annual_kwh"]).sum())
-assert abs(_derived_total_kwh - _ty_kwh) / _ty_kwh < 1e-6, (
-    f"derived total kWh {_derived_total_kwh:,.0f} vs YAML {_ty_kwh:,.0f}"
+assert _derived_total_kwh <= _ty_kwh, (
+    f"derived total kWh {_derived_total_kwh:,.0f} should be ≤ YAML {_ty_kwh:,.0f}"
+)
+assert abs(_derived_total_kwh - _ty_kwh) / _ty_kwh < 0.01, (
+    f"derived total kWh {_derived_total_kwh:,.0f} vs YAML {_ty_kwh:,.0f} "
+    f"differs by {abs(_derived_total_kwh - _ty_kwh) / _ty_kwh:.4%} (> 1%)"
 )
 
 cos_tbl = build_cos_table(bat)

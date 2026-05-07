@@ -46,7 +46,7 @@ REPORT_DIR = Path(__file__).resolve().parents[1]
 
 UTILITY = "rie"
 STATE = "ri"
-BATCH = "ri_20260331_r1-20_rate_case_test_year"
+BATCH = "ri_20260507_r1-2_grid_cons_fix"
 RUN_DELIVERY = "1"
 RUN_SUPPLY = "2"
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
@@ -62,18 +62,18 @@ SUBCLASS_ORDER = ["heat_pump", "electrical_resistance", "fossil_fuel"]
 
 # RDP git ref — used only to build permalink URLs for source attribution in the workbook.
 # Do NOT fetch from rate-design-platform at runtime; use the hardcoded constants below.
-RDP_REF = "e9e5088"
+RDP_REF = "0b203bc"
 RDP_GITHUB_BASE = "https://github.com/switchbox-data/rate-design-platform/blob"
 REPORTS2_GITHUB_BASE = "https://github.com/switchbox-data/reports2/blob"
 
-# Revenue-requirement constants — sourced from rate-design-platform @ e9e5088:
+# Revenue-requirement constants — sourced from rate-design-platform @ 0b203bc:
 #   rate_design/hp_rates/ri/config/rev_requirement/rie_rate_case_test_year.yaml
 #   rate_design/hp_rates/ri/config/rev_requirement/rie_hp_vs_nonhp_rate_case_test_year.yaml
 # Update these when rate-case inputs change.
 REV_REQ: dict = {
     "total_delivery_revenue_requirement": 446463143.03,
     "test_year_customer_count": 419347.83,
-    "resstock_kwh_scale_factor": 0.9568112362177266,
+    "resstock_kwh_scale_factor": 0.9594257590448669,
     # subclass_customers not present in source YAMLs; per-subclass counts unavailable
     "subclass_customers": {},
 }
@@ -128,7 +128,7 @@ def get_aws_storage_options() -> dict:
 def load_revenue_requirement_yaml() -> dict:
     """Return the hardcoded revenue-requirement parameters.
 
-    Sourced from rate-design-platform @ e9e5088 (rie_rate_case_test_year.yaml and
+    Sourced from rate-design-platform @ 0b203bc (rie_rate_case_test_year.yaml and
     rie_hp_vs_nonhp_rate_case_test_year.yaml).  Update REV_REQ above when inputs change.
     """
     return dict(REV_REQ)
@@ -1369,7 +1369,7 @@ def add_cost_allocation_sheet(
     ws.merge_cells("A6:G6")
 
     inputs = [
-        ("Total Delivery Revenue Requirement", total_rr, "$#,##0", "RDP @ e9e5088: rie_rate_case_test_year.yaml"),
+        ("Total Delivery Revenue Requirement", total_rr, "$#,##0", "RDP @ 0b203bc: rie_rate_case_test_year.yaml"),
         ("Test Year Residential Customer Count", total_customers, "#,##0", "Same YAML"),
         ("Sub-TX & Distribution MC", "Top 100 hrs RIE load", "@", f"Source: {S3_MC_DIST_SUB_TX}"),
         ("Bulk Transmission MC", "Top 100 hrs NE system load", "@", f"Source: {S3_MC_BULK_TX}"),

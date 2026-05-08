@@ -418,7 +418,7 @@ def add_overview_sheet(wb: Workbook, rev_req: dict) -> None:
         ),
         (
             "Revenue Requirement",
-            "RIE rate case test year (Sept 2024 - Aug 2025) from rie_hp_vs_nonhp_rate_case_test_year.yaml",
+            "Expert testimony, Section III (Q&A beginning ~line 221); Docket 25-45-GE, PRB-1-ELEC exhibit. ",
         ),
     ]
 
@@ -1364,8 +1364,19 @@ def add_cost_allocation_sheet(
     ws.merge_cells("A6:G6")
 
     inputs = [
-        ("Total Delivery Revenue Requirement", total_rr, "$#,##0", "RDP @ 0b203bc: rie_rate_case_test_year.yaml"),
-        ("Test Year Residential Customer Count", total_customers, "#,##0", "Same YAML"),
+        (
+            "Total Delivery Revenue Requirement",
+            total_rr,
+            "$#,##0",
+            "Expert testimony, Section III (line ~223); Docket 25-45-GE, PRB-1-ELEC exhibit. ",
+        ),
+        (
+            "Test Year Residential Customer Count",
+            total_customers,
+            "#,##0",
+            "Expert testimony, Section III (line ~223) and Section IX (line ~1091); "
+            "Docket 25-45-GE, PRB-1-ELEC exhibit. ",
+        ),
         ("Sub-TX & Distribution MC", "Top 100 hrs RIE load", "@", f"Source: {S3_MC_DIST_SUB_TX}"),
         ("Bulk Transmission MC", "Top 100 hrs NE system load", "@", f"Source: {S3_MC_BULK_TX}"),
         (
@@ -1473,7 +1484,11 @@ def add_cost_allocation_sheet(
         ("Billing kWh 8760 (S3)", S3_BILLING_KWH_8760),
         ("Sub-TX & Distribution MC", S3_MC_DIST_SUB_TX),
         ("Bulk Transmission MC", S3_MC_BULK_TX),
-        ("Revenue Requirement", "rie_hp_vs_nonhp_rate_case_test_year.yaml"),
+        (
+            "Revenue Requirement",
+            "Expert testimony, Section III (line ~223): total residential delivery revenue and customer count; "
+            "Docket 25-45-GE, PRB-1-ELEC exhibit. ",
+        ),
         ("AESC 2024", "Synapse Energy Economics. Avoided Energy Supply Components of New England: 2024 Report."),
     ]
     for label, val in sources:

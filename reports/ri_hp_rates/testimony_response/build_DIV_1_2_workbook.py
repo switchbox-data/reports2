@@ -58,11 +58,11 @@ S3_MASTER_BAT = (
     f"{S3_BASE}/{STATE}/all_utilities/{BATCH}/run_{RUN_DELIVERY}+{RUN_SUPPLY}/cross_subsidization_BAT_values/"
 )
 
-RDP_REF = "e9e5088"
+RDP_REF = "0b203bc"
 RDP_GITHUB_BASE = "https://github.com/switchbox-data/rate-design-platform/blob"
 REPORTS2_GITHUB_BASE = "https://github.com/switchbox-data/reports2/blob"
 
-# Revenue-requirement constants — sourced from rate-design-platform @ e9e5088:
+# Revenue-requirement constants — sourced from rate-design-platform @ 0b203bc:
 #   rate_design/hp_rates/ri/config/rev_requirement/rie_rate_case_test_year.yaml
 REV_REQ: dict = {
     "total_delivery_revenue_requirement": 446463143.03,
@@ -246,7 +246,7 @@ def _get_default_vol_rate() -> float:
 
     Same approach as cost_of_service_by_subclass.qmd: parse the URDB JSON.
     We hardcode the value to avoid a runtime dependency on rate-design-platform.
-    The calibrated rate for rie_default is 0.05039586... $/kWh (from e9e5088).
+    The calibrated rate for rie_default is 0.14039622... $/kWh (from 0b203bc).
     """
     from lib.rdp import fetch_rdp_file, parse_urdb_json
 
@@ -351,25 +351,43 @@ def add_overview_sheet(wb: Workbook) -> None:
     ws.merge_cells(f"A{row}:F{row}")
     row += 1
 
-    params = [
-        ("Utility", UTILITY),
-        ("Batch", BATCH),
-        ("Run (delivery + supply)", f"{RUN_DELIVERY}+{RUN_SUPPLY}"),
-        ("Total Delivery Revenue Requirement", f"${REV_REQ['total_delivery_revenue_requirement']:,.2f}"),
-        ("Test Year Customer Count", f"{REV_REQ['test_year_customer_count']:,.2f}"),
-        ("Test Year Residential kWh", f"{REV_REQ['test_year_residential_kwh']:,.0f}"),
-        ("ResStock kWh Scale Factor", f"{REV_REQ['resstock_kwh_scale_factor']:.16f}"),
-        ("Test Year", "9/1/2024 - 8/31/2025"),
+    params: list[tuple[str, str, str]] = [
+        ("Utility", UTILITY, ""),
+        ("Batch", BATCH, ""),
+        ("Run (delivery + supply)", f"{RUN_DELIVERY}+{RUN_SUPPLY}", ""),
+        (
+            "Total Delivery Revenue Requirement",
+            f"${REV_REQ['total_delivery_revenue_requirement']:,.2f}",
+            "Expert testimony, Section III; Docket 25-45-GE, PRB-1-ELEC exhibit. "
+            "https://switchbox-data.github.io/reports2/ri_hp_rates/expert_testimony.html",
+        ),
+        (
+            "Test Year Customer Count",
+            f"{REV_REQ['test_year_customer_count']:,.2f}",
+            "Expert testimony, Section III and Section IX; Docket 25-45-GE, PRB-1-ELEC exhibit. "
+            "https://switchbox-data.github.io/reports2/ri_hp_rates/expert_testimony.html",
+        ),
+        ("Test Year Residential kWh", f"{REV_REQ['test_year_residential_kwh']:,.0f}", ""),
+        ("ResStock kWh Scale Factor", f"{REV_REQ['resstock_kwh_scale_factor']:.16f}", ""),
+        ("Test Year", "9/1/2024 - 8/31/2025", ""),
     ]
-    for label, val in params:
+    for label, val, citation in params:
         ws[f"A{row}"] = label
         ws[f"A{row}"].font = Font(bold=True)
-        ws[f"B{row}"] = val
-        ws.merge_cells(f"B{row}:F{row}")
+        if citation:
+            ws[f"B{row}"] = val
+            ws[f"C{row}"] = citation
+            ws[f"C{row}"].alignment = Alignment(wrap_text=True, vertical="top")
+            ws.merge_cells(f"C{row}:F{row}")
+            ws.row_dimensions[row].height = 30
+        else:
+            ws[f"B{row}"] = val
+            ws.merge_cells(f"B{row}:F{row}")
         row += 1
 
-    ws.column_dimensions["A"].width = 18
-    ws.column_dimensions["B"].width = 40
+    ws.column_dimensions["A"].width = 28
+    ws.column_dimensions["B"].width = 20
+    ws.column_dimensions["C"].width = 60
 
 
 def add_load_curves_sheet(wb: Workbook, agg: pl.DataFrame) -> None:
@@ -637,7 +655,9 @@ def add_cos_by_subclass_sheet(wb: Workbook, bat_df: pl.DataFrame) -> None:
             "total_delivery_revenue_requirement",
             total_rr,
             yaml_ref,
-            "Total test-year delivery revenue requirement ($). Source: RIE rate case filing, PRB-1-ELEC.",
+            "Total test-year delivery revenue requirement ($). "
+            "Expert testimony, Section III; Docket 25-45-GE, PRB-1-ELEC exhibit. "
+            "https://switchbox-data.github.io/reports2/ri_hp_rates/expert_testimony.html",
         ),
         (
             SWE_ROW,

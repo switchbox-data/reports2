@@ -1011,7 +1011,7 @@ def build_workbook(
     _write_assumptions(wb, scenario_id, inputs)
     n_buildings = _write_monthly(wb, monthly_data, scenario_id)
     last_row = _write_annual(wb, annual_lmi, scenario_id, n_buildings)
-    _write_result(wb, last_row, scenario_id)
+    _write_result(wb, last_row, scenario_id, pct_save)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(str(output_path))

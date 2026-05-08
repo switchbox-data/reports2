@@ -111,14 +111,14 @@ def _reports2_permalink(rel_path: str) -> str:
 _README_BOLD_ROWS: list[int] = []
 
 
-def _header_fill(ws, row: int, n_cols: int) -> None:  # type: ignore[no-untyped-def]
+def _header_fill(ws, row: int, n_cols: int) -> None:
     fill = PatternFill("solid", fgColor="E8E8E8")
     for c in range(1, n_cols + 1):
         ws.cell(row=row, column=c).font = Font(bold=True)
         ws.cell(row=row, column=c).fill = fill
 
 
-def _autosize(ws, widths: dict[str, int]) -> None:  # type: ignore[no-untyped-def]
+def _autosize(ws, widths: dict[str, int]) -> None:
     for col, w in widths.items():
         ws.column_dimensions[col].width = w
 
@@ -149,7 +149,7 @@ def load_billing_8760() -> pl.DataFrame:
 
 def load_master_bat() -> pl.DataFrame:
     """Load master BAT for run 1+2, filtered to RIE."""
-    return (
+    df = (
         pl.scan_parquet(PATH_MASTER_BAT_12, hive_partitioning=True)
         .filter(pl.col("sb.electric_utility") == UTILITY)
         .select(
@@ -163,6 +163,8 @@ def load_master_bat() -> pl.DataFrame:
         )
         .collect()
     )
+    assert isinstance(df, pl.DataFrame)
+    return df
 
 
 def load_rr_yaml() -> dict:
@@ -218,7 +220,7 @@ def build_subclass_8760(billing_8760: pl.DataFrame, bat: pl.DataFrame) -> pl.Dat
 
     kwh_cols = [f"kWh_{sc}" for sc in SUBCLASS_ORDER]
     result = result.with_columns(
-        sum(pl.col(c) for c in kwh_cols).alias("kWh_total"),
+        pl.sum_horizontal([pl.col(c) for c in kwh_cols]).alias("kWh_total"),
     ).sort("timestamp")
 
     return result

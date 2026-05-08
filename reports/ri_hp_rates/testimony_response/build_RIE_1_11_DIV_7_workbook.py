@@ -73,9 +73,8 @@ RDP_GITHUB_BASE = "https://github.com/switchbox-data/rate-design-platform/blob"
 FIXED_CHARGE_PER_MONTH = 10.01
 FIXED_CHARGE_PER_YEAR = FIXED_CHARGE_PER_MONTH * 12
 
-KWH_BATCH = "ri_20260504_kwh_export_v2"
-_KWH_BASE = f"{S3_BASE}/{STATE_LOWER}/{UTILITY}/{KWH_BATCH}"
-PATH_KWH_U0 = f"{_KWH_BASE}/20260505_011359_ri_rie_run1_up00_precalc__default/billing_kwh_annual.parquet"
+_CAIRO_RUN_DIR = f"{S3_BASE}/{STATE_LOWER}/{UTILITY}/{BATCH}/20260507_213944_ri_rie_run1_up00_precalc__default"
+PATH_KWH_U0 = f"{_CAIRO_RUN_DIR}/billing_kwh_annual.parquet"
 
 
 def _rdp_permalink(rel_path: str) -> str:

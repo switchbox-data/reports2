@@ -76,7 +76,9 @@ REV_REQ: dict = {
     "total_delivery_revenue_requirement": 446463143.03,
     "test_year_customer_count": 419347.83,
     "resstock_kwh_scale_factor": 0.9594257590448669,
-    # subclass_customers not present in source YAMLs; per-subclass counts unavailable
+    # subclass_customers: per-subclass customer counts are calculated at runtime by summing
+    # ResStock sample weights (rescaled to match test_year_customer_count) grouped by heating
+    # system subclass. Not hardcoded here because they're derived from the BAT data.
     "subclass_customers": {},
 }
 
@@ -294,8 +296,8 @@ def create_workbook() -> Workbook:
 
 
 def add_overview_sheet(wb: Workbook, rev_req: dict) -> None:
-    """Add overview sheet explaining the cost allocation methodology."""
-    ws = wb.create_sheet("Overview")
+    """Add README sheet explaining the cost allocation methodology."""
+    ws = wb.create_sheet("README")
 
     # Title
     ws["A1"] = "Schedule JPV-3: Cost Allocation Methodology Workpapers"
@@ -407,9 +409,9 @@ def add_overview_sheet(wb: Workbook, rev_req: dict) -> None:
             "load research, and smart meter data. ISO-NE uses ResStock for heat pump adoption forecasts.",
         ),
         (
-            "Customer Counts",
-            "Heating-system subclass shares from 2020 Residential Energy Consumption Survey (RECS), "
-            "applied to Test Year residential customer count.",
+            "Subclass Customer Counts",
+            "ResStock sample weights rescaled to Test Year total (PRB-1-ELEC), grouped by heating system. "
+            "Building characteristics based on RECS 2020 and U.S. Census.",
         ),
         (
             "CAIRO Outputs",
@@ -1429,7 +1431,10 @@ def add_cost_allocation_sheet(
     SH6 = "6. Aggregate Load Curves"
     sh6_tot = 7  # row 5=section header, 6=col header, 7=totals
 
-    # Customer count split (use RECS proportions from rev_req if available, else "N/A")
+    # Customer count per subclass: calculated by summing ResStock sample weights (which have
+    # been rescaled to match test_year_customer_count) within each heating system subclass.
+    # ResStock building characteristics are based on RECS and Census data, so this implicitly
+    # applies RECS heating-system distributions to the rate-case customer count.
     subclass_customers = rev_req.get("subclass_customers", {})
 
     data_start = row + 1  # first data row
@@ -2255,7 +2260,7 @@ def build_workbook(
 # ── Google Sheets upload ───────────────────────────────────────────────────────
 
 _TAB_FORMATTING: dict[str, dict] = {
-    "1. Overview": {
+    "1. README": {
         "wrap_columns": ["B:B"],
         "column_widths_px": {"A": 240, "B": 560},
         "freeze_rows": 0,

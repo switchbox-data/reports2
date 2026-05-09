@@ -358,14 +358,18 @@ def add_overview_sheet(wb: Workbook) -> None:
         (
             "Total Delivery Revenue Requirement",
             f"${REV_REQ['total_delivery_revenue_requirement']:,.2f}",
-            "Expert testimony, Section III; Docket 25-45-GE, PRB-1-ELEC exhibit. "
+            "Expert testimony, Section III; Docket 25-45-GE, PRB-1-ELEC exhibit. ",
         ),
         (
             "Test Year Customer Count",
             f"{REV_REQ['test_year_customer_count']:,.2f}",
-            "Expert testimony, Section III and Section IX; Docket 25-45-GE, PRB-1-ELEC exhibit. "
+            "Expert testimony, Section III and Section IX; Docket 25-45-GE, PRB-1-ELEC exhibit. ",
         ),
-        ("Test Year Residential kWh", f"{REV_REQ['test_year_residential_kwh']:,.0f}", ""),
+        (
+            "Test Year Residential kWh",
+            f"{REV_REQ['test_year_residential_kwh']:,.0f}",
+            "Expert testimony, Section III; Docket 25-45-GE, PRB-1-ELEC exhibit. ",
+        ),
         ("ResStock kWh Scale Factor", f"{REV_REQ['resstock_kwh_scale_factor']:.16f}", ""),
         ("Test Year", "9/1/2024 - 8/31/2025", ""),
     ]
@@ -654,7 +658,7 @@ def add_cos_by_subclass_sheet(wb: Workbook, bat_df: pl.DataFrame) -> None:
             total_rr,
             yaml_ref,
             "Total test-year delivery revenue requirement ($). "
-            "Expert testimony, Section III; Docket 25-45-GE, PRB-1-ELEC exhibit. "
+            "Expert testimony, Section III; Docket 25-45-GE, PRB-1-ELEC exhibit. ",
         ),
         (
             SWE_ROW,

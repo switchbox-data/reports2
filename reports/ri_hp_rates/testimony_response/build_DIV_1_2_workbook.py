@@ -41,32 +41,34 @@ REPORT_DIR = Path(__file__).resolve().parents[1]
 
 UTILITY = "rie"
 STATE = "ri"
-BATCH = "ri_20260331_r1-20_rate_case_test_year"
+BATCH = "ri_20260507_r1-2_grid_cons_fix"
 RUN_DELIVERY = "1"
 RUN_SUPPLY = "2"
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
 RESSTOCK_BASE = "s3://data.sb/nrel/resstock/res_2024_amy2018_2_sb"
 LOCAL_RESSTOCK_BASE = Path("/ebs/data/nrel/resstock/res_2024_amy2018_2_sb")
 LOCAL_RESSTOCK_METADATA = LOCAL_RESSTOCK_BASE / "metadata_utility" / "state=RI" / "utility_assignment.parquet"
-LOCAL_RESSTOCK_LOADS_UPGRADE0 = LOCAL_RESSTOCK_BASE / "load_curve_hourly" / "state=RI" / "upgrade=00"
+S3_BILLING_KWH_8760 = (
+    f"{S3_BASE}/{STATE}/{UTILITY}/{BATCH}/20260507_213944_ri_rie_run1_up00_precalc__default/billing_kwh_8760.parquet"
+)
+BILLING_KWH_COL = "grid_cons_kwh"  # toggle: "grid_cons_kwh" (floored at 0) or "load_data_kwh" (raw)
 S3_MC_DIST_SUB_TX = "s3://data.sb/switchbox/marginal_costs/ri/dist_and_sub_tx/utility=rie/year=2025/data.parquet"
 S3_MC_BULK_TX = "s3://data.sb/switchbox/marginal_costs/ri/bulk_tx/utility=rie/year=2025/data.parquet"
 S3_MASTER_BAT = (
     f"{S3_BASE}/{STATE}/all_utilities/{BATCH}/run_{RUN_DELIVERY}+{RUN_SUPPLY}/cross_subsidization_BAT_values/"
 )
-ELEC_TOTAL_COL = "out.electricity.total.energy_consumption"
 
-RDP_REF = "e9e5088"
+RDP_REF = "0b203bc"
 RDP_GITHUB_BASE = "https://github.com/switchbox-data/rate-design-platform/blob"
 REPORTS2_GITHUB_BASE = "https://github.com/switchbox-data/reports2/blob"
 
-# Revenue-requirement constants — sourced from rate-design-platform @ e9e5088:
+# Revenue-requirement constants — sourced from rate-design-platform @ 0b203bc:
 #   rate_design/hp_rates/ri/config/rev_requirement/rie_rate_case_test_year.yaml
 REV_REQ: dict = {
     "total_delivery_revenue_requirement": 446463143.03,
     "test_year_customer_count": 419347.83,
     "test_year_residential_kwh": 2821237490.0,
-    "resstock_kwh_scale_factor": 0.9568112362177266,
+    "resstock_kwh_scale_factor": 0.9594257590448669,
 }
 
 DEFAULT_FOLDER_ID = "1uPcJbcOChD6zoFuPb-gsxSByPr7xwmCH"
@@ -142,11 +144,12 @@ def load_master_bat() -> pl.DataFrame:
 def load_aggregate_load_curves_v2(
     bat_df: pl.DataFrame,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """Load 8760-hour ResStock load curves aggregated by heating_type_v2 subclass.
+    """Load CAIRO billing kWh 8760 from S3 and aggregate by heating_type_v2 subclass.
 
-    Uses the bldg_id → heating_type_v2 mapping from the master BAT (which has the
-    5-class column) and joins it onto ResStock metadata (which only has the 3-class
-    heating_type).
+    Reads hourly load data from ``S3_BILLING_KWH_8760`` (a single parquet containing
+    all building 8760s with a ``bldg_id`` column). The kWh column used is controlled
+    by ``BILLING_KWH_COL``. Uses the bldg_id → heating_type_v2 mapping from the
+    master BAT (which has the 5-class column) joined onto ResStock metadata.
 
     Returns (agg_by_subclass, mc_delivery) where agg_by_subclass has columns
     for each heating_type_v2 label (Heat pump, Electric resistance, etc.) plus
@@ -170,24 +173,18 @@ def load_aggregate_load_curves_v2(
     weight_scale = test_year_customer_count / raw_total
     meta = meta.with_columns(pl.col("weight") * weight_scale)
 
-    print(f"Loading {meta.height} ResStock load curves from local disk ...", flush=True)
-    frames: list[pl.DataFrame] = []
-    load_dir = LOCAL_RESSTOCK_LOADS_UPGRADE0
-    bldg_set = set(meta["bldg_id"].to_list())
-    for fname in sorted(load_dir.iterdir()):
-        bldg_id = int(fname.stem.split("-")[0])
-        if bldg_id not in bldg_set:
-            continue
-        lf = pl.read_parquet(fname).select("timestamp", ELEC_TOTAL_COL)
-        lf = lf.with_columns(pl.lit(bldg_id).alias("bldg_id"))
-        frames.append(lf)
+    # Load all-buildings 8760 from CAIRO billing_kwh parquet on S3
+    print(f"Loading billing kWh 8760 from S3: {S3_BILLING_KWH_8760}", flush=True)
+    print(f"  Using column: {BILLING_KWH_COL}", flush=True)
+    billing = pl.read_parquet(S3_BILLING_KWH_8760).select("bldg_id", "timestamp", BILLING_KWH_COL)
 
-    loads = pl.concat(frames)
-    loads = loads.join(meta, on="bldg_id")
+    # Keep only buildings present in metadata and join to get subclass + weight
+    loads = billing.join(meta, on="bldg_id")
+    print(f"  Matched {loads['bldg_id'].n_unique():,} buildings, {loads.height:,} hourly rows", flush=True)
 
     agg = (
         loads.group_by(["timestamp", "postprocess_group.heating_type_v2"])
-        .agg((pl.col(ELEC_TOTAL_COL) * pl.col("weight")).sum().alias("weighted_kwh"))
+        .agg((pl.col(BILLING_KWH_COL) * pl.col("weight")).sum().alias("weighted_kwh"))
         .pivot(on="postprocess_group.heating_type_v2", index="timestamp", values="weighted_kwh")
         .sort("timestamp")
         .head(8760)
@@ -249,7 +246,7 @@ def _get_default_vol_rate() -> float:
 
     Same approach as cost_of_service_by_subclass.qmd: parse the URDB JSON.
     We hardcode the value to avoid a runtime dependency on rate-design-platform.
-    The calibrated rate for rie_default is 0.05039586... $/kWh (from e9e5088).
+    The calibrated rate for rie_default is 0.14039622... $/kWh (from 0b203bc).
     """
     from lib.rdp import fetch_rdp_file, parse_urdb_json
 
@@ -329,7 +326,7 @@ def add_overview_sheet(wb: Workbook) -> None:
     sources = [
         ("Master BAT (CAIRO outputs)", S3_MASTER_BAT),
         ("ResStock metadata", f"{RESSTOCK_BASE}/metadata_utility/state=RI/utility_assignment.parquet"),
-        ("ResStock load curves", f"{RESSTOCK_BASE}/load_curve_hourly/state=RI/upgrade=00/"),
+        ("Billing kWh 8760 (S3)", S3_BILLING_KWH_8760),
         ("Sub-TX/distribution MC", S3_MC_DIST_SUB_TX),
         ("Bulk transmission MC", S3_MC_BULK_TX),
         (
@@ -354,25 +351,45 @@ def add_overview_sheet(wb: Workbook) -> None:
     ws.merge_cells(f"A{row}:F{row}")
     row += 1
 
-    params = [
-        ("Utility", UTILITY),
-        ("Batch", BATCH),
-        ("Run (delivery + supply)", f"{RUN_DELIVERY}+{RUN_SUPPLY}"),
-        ("Total Delivery Revenue Requirement", f"${REV_REQ['total_delivery_revenue_requirement']:,.2f}"),
-        ("Test Year Customer Count", f"{REV_REQ['test_year_customer_count']:,.2f}"),
-        ("Test Year Residential kWh", f"{REV_REQ['test_year_residential_kwh']:,.0f}"),
-        ("ResStock kWh Scale Factor", f"{REV_REQ['resstock_kwh_scale_factor']:.16f}"),
-        ("Test Year", "9/1/2024 - 8/31/2025"),
+    params: list[tuple[str, str, str]] = [
+        ("Utility", UTILITY, ""),
+        ("Batch", BATCH, ""),
+        ("Run (delivery + supply)", f"{RUN_DELIVERY}+{RUN_SUPPLY}", ""),
+        (
+            "Total Delivery Revenue Requirement",
+            f"${REV_REQ['total_delivery_revenue_requirement']:,.2f}",
+            "Expert testimony, Section III; Docket 25-45-GE, PRB-1-ELEC exhibit. ",
+        ),
+        (
+            "Test Year Customer Count",
+            f"{REV_REQ['test_year_customer_count']:,.2f}",
+            "Expert testimony, Section III and Section IX; Docket 25-45-GE, PRB-1-ELEC exhibit. ",
+        ),
+        (
+            "Test Year Residential kWh",
+            f"{REV_REQ['test_year_residential_kwh']:,.0f}",
+            "Expert testimony, Section III; Docket 25-45-GE, PRB-1-ELEC exhibit. ",
+        ),
+        ("ResStock kWh Scale Factor", f"{REV_REQ['resstock_kwh_scale_factor']:.16f}", ""),
+        ("Test Year", "9/1/2024 - 8/31/2025", ""),
     ]
-    for label, val in params:
+    for label, val, citation in params:
         ws[f"A{row}"] = label
         ws[f"A{row}"].font = Font(bold=True)
-        ws[f"B{row}"] = val
-        ws.merge_cells(f"B{row}:F{row}")
+        if citation:
+            ws[f"B{row}"] = val
+            ws[f"C{row}"] = citation
+            ws[f"C{row}"].alignment = Alignment(wrap_text=True, vertical="top")
+            ws.merge_cells(f"C{row}:F{row}")
+            ws.row_dimensions[row].height = 30
+        else:
+            ws[f"B{row}"] = val
+            ws.merge_cells(f"B{row}:F{row}")
         row += 1
 
-    ws.column_dimensions["A"].width = 18
-    ws.column_dimensions["B"].width = 40
+    ws.column_dimensions["A"].width = 28
+    ws.column_dimensions["B"].width = 20
+    ws.column_dimensions["C"].width = 60
 
 
 def add_load_curves_sheet(wb: Workbook, agg: pl.DataFrame) -> None:
@@ -640,7 +657,8 @@ def add_cos_by_subclass_sheet(wb: Workbook, bat_df: pl.DataFrame) -> None:
             "total_delivery_revenue_requirement",
             total_rr,
             yaml_ref,
-            "Total test-year delivery revenue requirement ($). Source: RIE rate case filing, PRB-1-ELEC.",
+            "Total test-year delivery revenue requirement ($). "
+            "Expert testimony, Section III; Docket 25-45-GE, PRB-1-ELEC exhibit. ",
         ),
         (
             SWE_ROW,

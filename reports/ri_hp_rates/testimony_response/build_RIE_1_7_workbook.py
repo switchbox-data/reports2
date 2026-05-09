@@ -53,10 +53,12 @@ S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
 RESSTOCK_BASE = "s3://data.sb/nrel/resstock/res_2024_amy2018_2_sb"
 LOCAL_RESSTOCK_BASE = Path("/ebs/data/nrel/resstock/res_2024_amy2018_2_sb")
 LOCAL_RESSTOCK_METADATA = LOCAL_RESSTOCK_BASE / "metadata_utility" / "state=RI" / "utility_assignment.parquet"
-LOCAL_RESSTOCK_LOADS_UPGRADE0 = LOCAL_RESSTOCK_BASE / "load_curve_hourly" / "state=RI" / "upgrade=00"
+S3_BILLING_KWH_8760 = (
+    f"{S3_BASE}/{STATE}/{UTILITY}/{BATCH}/20260507_213944_ri_rie_run1_up00_precalc__default/billing_kwh_8760.parquet"
+)
+BILLING_KWH_COL = "grid_cons_kwh"  # toggle: "grid_cons_kwh" (floored at 0) or "load_data_kwh" (raw)
 S3_MC_DIST_SUB_TX = "s3://data.sb/switchbox/marginal_costs/ri/dist_and_sub_tx/utility=rie/year=2025/data.parquet"
 S3_MC_BULK_TX = "s3://data.sb/switchbox/marginal_costs/ri/bulk_tx/utility=rie/year=2025/data.parquet"
-ELEC_TOTAL_COL = "out.electricity.total.energy_consumption"  # kWh per hour
 SUBCLASS_COL = "postprocess_group.heating_type"
 SUBCLASS_ORDER = ["heat_pump", "electrical_resistance", "fossil_fuel"]
 
@@ -74,7 +76,9 @@ REV_REQ: dict = {
     "total_delivery_revenue_requirement": 446463143.03,
     "test_year_customer_count": 419347.83,
     "resstock_kwh_scale_factor": 0.9594257590448669,
-    # subclass_customers not present in source YAMLs; per-subclass counts unavailable
+    # subclass_customers: per-subclass customer counts are calculated at runtime by summing
+    # ResStock sample weights (rescaled to match test_year_customer_count) grouped by heating
+    # system subclass. Not hardcoded here because they're derived from the BAT data.
     "subclass_customers": {},
 }
 
@@ -153,9 +157,12 @@ def load_aggregate_load_curves(
     kwh_scale_factor: float = 1.0,
     test_year_customer_count: float | None = None,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """Load ResStock load curves and aggregate by heating subclass.
+    """Load CAIRO billing kWh 8760 from S3 and aggregate by heating subclass.
 
-    Reads from local EBS disk (source: s3://data.sb/nrel/resstock/res_2024_amy2018_2_sb/).
+    Reads hourly load data from ``S3_BILLING_KWH_8760`` (a single parquet containing
+    all building 8760s with a ``bldg_id`` column) and ResStock metadata from local disk.
+    The kWh column used is controlled by ``BILLING_KWH_COL``.
+
     Returns (agg_by_subclass, mc_delivery) where:
       - agg_by_subclass: 8760 rows × (timestamp + one column per subclass), in kWh
       - mc_delivery: 8760 rows × (timestamp, mc_dist_sub_tx, mc_bulk_tx, mc_delivery_total)
@@ -184,34 +191,24 @@ def load_aggregate_load_curves(
         weight_scale = test_year_customer_count / raw_total
         meta = meta.with_columns(pl.col("weight") * weight_scale)
 
-    # Load all per-building 8760 load files and join with metadata
-    print(f"Loading {meta.height} ResStock load curves from local disk ...", flush=True)
-    frames: list[pl.DataFrame] = []
-    load_dir = LOCAL_RESSTOCK_LOADS_UPGRADE0
-    bldg_set = set(meta["bldg_id"].to_list())
-    for fname in sorted(load_dir.iterdir()):
-        bldg_id = int(fname.stem.split("-")[0])
-        if bldg_id not in bldg_set:
-            continue
-        lf = pl.read_parquet(fname).select("timestamp", ELEC_TOTAL_COL)
-        lf = lf.with_columns(pl.lit(bldg_id).alias("bldg_id"))
-        frames.append(lf)
+    # Load all-buildings 8760 from CAIRO billing_kwh parquet on S3
+    print(f"Loading billing kWh 8760 from S3: {S3_BILLING_KWH_8760}", flush=True)
+    print(f"  Using column: {BILLING_KWH_COL}", flush=True)
+    billing = pl.read_parquet(S3_BILLING_KWH_8760).select("bldg_id", "timestamp", BILLING_KWH_COL)
 
-    loads = pl.concat(frames)
-    loads = loads.join(meta, on="bldg_id")
+    # Keep only buildings present in metadata and join to get subclass + weight
+    loads = billing.join(meta, on="bldg_id")
+    print(f"  Matched {loads['bldg_id'].n_unique():,} buildings, {loads.height:,} hourly rows", flush=True)
 
     # Weighted sum per subclass per hour: Σ(load_kWh × weight)
     # Sort by timestamp to guarantee chronological order, then add 1-based hour_of_year index.
     agg = (
         loads.group_by(["timestamp", SUBCLASS_COL])
-        .agg((pl.col(ELEC_TOTAL_COL) * pl.col("weight")).sum().alias("weighted_kwh"))
+        .agg((pl.col(BILLING_KWH_COL) * pl.col("weight")).sum().alias("weighted_kwh"))
         .pivot(on=SUBCLASS_COL, index="timestamp", values="weighted_kwh")
         .sort("timestamp")
-        .head(8760)  # AMY 2018 has 8784 hrs (leap year) — keep first 8760
+        .head(8760)
     )
-    # Assign hour_of_year 1..8760 so we can join MC by position, not by date.
-    # ResStock uses AMY 2018 (a real calendar year), MC parquets use 2025.
-    # The two series represent the same 8760-hour pattern; we align by order.
     agg = agg.with_columns((pl.int_range(1, agg.height + 1, eager=True)).alias("hour_of_year"))
 
     # Apply CAIRO's kWh scale factor so that aggregate loads match the series CAIRO
@@ -299,8 +296,8 @@ def create_workbook() -> Workbook:
 
 
 def add_overview_sheet(wb: Workbook, rev_req: dict) -> None:
-    """Add overview sheet explaining the cost allocation methodology."""
-    ws = wb.create_sheet("Overview")
+    """Add README sheet explaining the cost allocation methodology."""
+    ws = wb.create_sheet("README")
 
     # Title
     ws["A1"] = "Schedule JPV-3: Cost Allocation Methodology Workpapers"
@@ -412,9 +409,9 @@ def add_overview_sheet(wb: Workbook, rev_req: dict) -> None:
             "load research, and smart meter data. ISO-NE uses ResStock for heat pump adoption forecasts.",
         ),
         (
-            "Customer Counts",
-            "Heating-system subclass shares from 2020 Residential Energy Consumption Survey (RECS), "
-            "applied to Test Year residential customer count.",
+            "Subclass Customer Counts",
+            "ResStock sample weights rescaled to Test Year total (PRB-1-ELEC), grouped by heating system. "
+            "Building characteristics based on RECS 2020 and U.S. Census.",
         ),
         (
             "CAIRO Outputs",
@@ -423,7 +420,7 @@ def add_overview_sheet(wb: Workbook, rev_req: dict) -> None:
         ),
         (
             "Revenue Requirement",
-            "RIE rate case test year (Sept 2024 - Aug 2025) from rie_hp_vs_nonhp_rate_case_test_year.yaml",
+            "Expert testimony, Section III (Q&A beginning ~line 221); Docket 25-45-GE, PRB-1-ELEC exhibit. ",
         ),
     ]
 
@@ -661,7 +658,8 @@ def add_resstock_loads_sheet(wb: Workbook, rev_req: dict) -> None:
         ("Hours per Building", "8,760"),
         ("Total Data Points", f"{n_buildings * 8760:,}"),
         ("Simulation Engine", "EnergyPlus (DOE building energy simulation)"),
-        ("S3 Path", f"{RESSTOCK_BASE}/"),
+        ("Load Source", S3_BILLING_KWH_8760),
+        ("Load Column", f"{BILLING_KWH_COL} (grid consumption, floored at zero)"),
     ]
 
     row = 4
@@ -1215,8 +1213,7 @@ def add_load_curves_sheet(wb: Workbook, agg: pl.DataFrame, mc: pl.DataFrame, rev
         f"resstock_kwh_scale_factor ({rev_req.get('resstock_kwh_scale_factor', 1.0):.10f}) so that "
         "the aggregate kWh matches RIE's test-year residential total — exactly as CAIRO does "
         "internally when computing economic burden and EPMC allocation. "
-        f"Source: {RESSTOCK_BASE}/load_curve_hourly/state=RI/upgrade=00/ "
-        f"(read locally from {LOCAL_RESSTOCK_LOADS_UPGRADE0}). "
+        f"Source: {S3_BILLING_KWH_8760} (column: {BILLING_KWH_COL}). "
         "Delivery MC columns sourced from "
         f"{S3_MC_DIST_SUB_TX} and {S3_MC_BULK_TX}. "
         "Each 'EB Contribution' column = Load (kWh) × MC_delivery_total ($/kWh) for that hour. "
@@ -1369,15 +1366,26 @@ def add_cost_allocation_sheet(
     ws.merge_cells("A6:G6")
 
     inputs = [
-        ("Total Delivery Revenue Requirement", total_rr, "$#,##0", "RDP @ 0b203bc: rie_rate_case_test_year.yaml"),
-        ("Test Year Residential Customer Count", total_customers, "#,##0", "Same YAML"),
+        (
+            "Total Delivery Revenue Requirement",
+            total_rr,
+            "$#,##0",
+            "Expert testimony, Section III (line ~223); Docket 25-45-GE, PRB-1-ELEC exhibit. ",
+        ),
+        (
+            "Test Year Residential Customer Count",
+            total_customers,
+            "#,##0",
+            "Expert testimony, Section III (line ~223) and Section IX (line ~1091); "
+            "Docket 25-45-GE, PRB-1-ELEC exhibit. ",
+        ),
         ("Sub-TX & Distribution MC", "Top 100 hrs RIE load", "@", f"Source: {S3_MC_DIST_SUB_TX}"),
         ("Bulk Transmission MC", "Top 100 hrs NE system load", "@", f"Source: {S3_MC_BULK_TX}"),
         (
-            "ResStock Loads",
-            "8760-hr per building, upgrade=0",
+            "Billing kWh 8760",
+            f"8760-hr per building, column={BILLING_KWH_COL}",
             "@",
-            f"Source: {RESSTOCK_BASE}/load_curve_hourly/state=RI/upgrade=00/",
+            f"Source: {S3_BILLING_KWH_8760}",
         ),
     ]
     row = 7
@@ -1423,7 +1431,10 @@ def add_cost_allocation_sheet(
     SH6 = "6. Aggregate Load Curves"
     sh6_tot = 7  # row 5=section header, 6=col header, 7=totals
 
-    # Customer count split (use RECS proportions from rev_req if available, else "N/A")
+    # Customer count per subclass: calculated by summing ResStock sample weights (which have
+    # been rescaled to match test_year_customer_count) within each heating system subclass.
+    # ResStock building characteristics are based on RECS and Census data, so this implicitly
+    # applies RECS heating-system distributions to the rate-case customer count.
     subclass_customers = rev_req.get("subclass_customers", {})
 
     data_start = row + 1  # first data row
@@ -1475,11 +1486,14 @@ def add_cost_allocation_sheet(
     ws.merge_cells(f"A{row}:G{row}")
     row += 1
     sources = [
-        ("ResStock Loads (local)", str(LOCAL_RESSTOCK_LOADS_UPGRADE0)),
-        ("ResStock Loads (S3 canonical)", f"{RESSTOCK_BASE}/load_curve_hourly/state=RI/upgrade=00/"),
+        ("Billing kWh 8760 (S3)", S3_BILLING_KWH_8760),
         ("Sub-TX & Distribution MC", S3_MC_DIST_SUB_TX),
         ("Bulk Transmission MC", S3_MC_BULK_TX),
-        ("Revenue Requirement", "rie_hp_vs_nonhp_rate_case_test_year.yaml"),
+        (
+            "Revenue Requirement",
+            "Expert testimony, Section III (line ~223): total residential delivery revenue and customer count; "
+            "Docket 25-45-GE, PRB-1-ELEC exhibit. ",
+        ),
         ("AESC 2024", "Synapse Energy Economics. Avoided Energy Supply Components of New England: 2024 Report."),
     ]
     for label, val in sources:
@@ -2246,7 +2260,7 @@ def build_workbook(
 # ── Google Sheets upload ───────────────────────────────────────────────────────
 
 _TAB_FORMATTING: dict[str, dict] = {
-    "1. Overview": {
+    "1. README": {
         "wrap_columns": ["B:B"],
         "column_widths_px": {"A": 240, "B": 560},
         "freeze_rows": 0,

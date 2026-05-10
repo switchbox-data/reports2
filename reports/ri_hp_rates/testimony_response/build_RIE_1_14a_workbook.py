@@ -1,7 +1,13 @@
-"""Build RIE 1-14: Subclass-level cost-of-service study workbook.
+"""Build RIE 1-14a: Subclass-level cost-of-service study workbook.
 
-Responds to: "Please provide, in Excel with all formulas intact, the
-'cost-of-service study at the subclass level' performed by Witness Velez."
+Responds to RIE 1-14(a): "Please provide, in Excel with all formulas intact,
+the 'cost-of-service study at the subclass level' performed by Witness Velez."
+
+Reference: Pre-Filed Direct Testimony of Juan-Pablo Velez, Page 76 of 85,
+line 8: "I performed a cost-of-service study at the subclass level -- the
+same kind of exercise the Company performs at the class level in its Allocated
+Cost of Service Study ('ACOSS'), but applied one level deeper, within the
+residential class."
 
 The workbook decomposes total delivery revenue into marginal costs (economic
 burden) and EPMC residual for each heating-type subclass, using hourly
@@ -21,12 +27,13 @@ validation         Formula-level checks.
 
 Usage::
 
-    cd /ebs/home/alex_switch_box/reports2
+    cd reports/ri_hp_rates
 
-    uv run python -m testimony_response.build_RIE_1_14_workbook \
-        --output cache/rie_1_14_subclass_coss.xlsx
+    # Build locally only:
+    uv run python -m testimony_response.build_RIE_1_14a_workbook --no-upload
 
-    uv run python -m testimony_response.build_RIE_1_14_workbook --upload
+    # Build and upload to default Drive folder (default behavior):
+    uv run python -m testimony_response.build_RIE_1_14a_workbook
 """
 
 from __future__ import annotations
@@ -82,7 +89,8 @@ SUBCLASS_LABELS = {
     "other": "Other",
 }
 
-DEFAULT_SPREADSHEET_ID = "1wC4tH5jrOWfuDqUz_DPBORfxb_sHDv2SYBWnHEhFbVA"
+DEFAULT_FOLDER_ID = "1uPcJbcOChD6zoFuPb-gsxSByPr7xwmCH"
+DEFAULT_TITLE = "RIE 1-14a"
 
 # ── Permalink helpers ─────────────────────────────────────────────────────────
 
@@ -233,7 +241,7 @@ def _write_readme(wb: Workbook) -> None:
     ws = wb.create_sheet("README", 0)
     rows: list[list] = [
         [
-            "Subclass Cost-of-Service Workbook — RIE 2025 (delivery)",
+            "RIE 1-14a: Subclass Cost-of-Service Workbook - RIE 2025 (delivery)",
             "",
             "",
         ],
@@ -271,7 +279,7 @@ def _write_readme(wb: Workbook) -> None:
         ],
         [
             "This workbook builder",
-            _reports2_permalink("reports/ri_hp_rates/testimony_response/build_RIE_1_14_workbook.py"),
+            _reports2_permalink("reports/ri_hp_rates/testimony_response/build_RIE_1_14a_workbook.py"),
             "Script that generated this workbook.",
         ],
         ["", "", ""],
@@ -671,7 +679,7 @@ def _write_validation(
 
 
 def build_workbook(output_path: Path) -> Path:
-    print("Building RIE 1-14 subclass COSS workbook ...", flush=True)
+    print("Building RIE 1-14a subclass COSS workbook ...", flush=True)
 
     print("Loading RR YAML and calibrated tariff ...", flush=True)
     rr_yaml = load_rr_yaml()
@@ -783,11 +791,42 @@ _TAB_FORMATTING: dict[str, dict] = {
 }
 
 
-def upload_to_sheet(xlsx_path: Path, spreadsheet_id: str) -> None:
-    from lib.data.gsheets import apply_sheet_formatting, xlsx_to_gsheet
+def upload_to_folder(
+    xlsx_path: Path,
+    folder_id: str,
+    title: str,
+    formula_patches: dict[str, dict[str, str]] | None = None,
+) -> None:
+    """Create (or replace) a Google Sheet in the given Drive folder.
 
-    print(f"Uploading {xlsx_path} -> Google Sheet {spreadsheet_id} ...", flush=True)
-    spreadsheet = xlsx_to_gsheet(xlsx_path, spreadsheet_id, delete_other_tabs=True)
+    Searches the folder for any existing non-trashed file with the same name and
+    trashes it before creating a fresh spreadsheet. Mirrors the workbook contents
+    with live formulas via ``xlsx_to_gsheet``, then applies tab formatting.
+
+    ``formula_patches`` is an optional ``{sheet_name: {cell_addr: formula}}`` map of
+    cross-sheet formulas to re-write *after* the full upload.  Because
+    ``xlsx_to_gsheet`` writes sheets one at a time, cross-sheet references written
+    early are flagged as broken until all tabs exist.  Writing them again here, after
+    every tab is present, ensures they evaluate correctly.
+    """
+    from lib.data.gsheets import (
+        apply_sheet_formatting,
+        create_sheet_in_folder,
+        write_values_with_formulas,
+        xlsx_to_gsheet,
+    )
+
+    print(f"Uploading '{title}' to Drive folder {folder_id} ...", flush=True)
+    spreadsheet = create_sheet_in_folder(title, folder_id)
+    xlsx_to_gsheet(xlsx_path, spreadsheet.id, delete_other_tabs=True)
+
+    if formula_patches:
+        print("Patching cross-sheet formulas ...", flush=True)
+        for sheet_name, patches in formula_patches.items():
+            ws = spreadsheet.worksheet(sheet_name)
+            for cell_addr, formula in patches.items():
+                write_values_with_formulas(ws, [[formula]], start=cell_addr)
+
     print("Applying formatting ...", flush=True)
     for ws in spreadsheet.worksheets():
         spec = _TAB_FORMATTING.get(ws.title)
@@ -797,36 +836,41 @@ def upload_to_sheet(xlsx_path: Path, spreadsheet_id: str) -> None:
                 fmt["bold_rows"] = list(_README_BOLD_ROWS)
             apply_sheet_formatting(ws, **fmt)
     print(
-        f"Done. View at https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit",
+        f"Done. View at https://docs.google.com/spreadsheets/d/{spreadsheet.id}/edit",
         flush=True,
     )
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Build RIE 1-14: subclass cost-of-service workbook.")
+    parser = argparse.ArgumentParser(
+        description=__doc__.splitlines()[0] if __doc__ else "",
+    )
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("cache/rie_1_14_subclass_coss.xlsx"),
+        default=Path("cache/rie_1_14a_subclass_coss.xlsx"),
+        help="Output .xlsx path. Default: cache/rie_1_14a_subclass_coss.xlsx",
     )
     parser.add_argument(
-        "--upload",
+        "--folder-id",
+        default=DEFAULT_FOLDER_ID,
+        help=f"Google Drive folder ID to upload into. Default: {DEFAULT_FOLDER_ID}",
+    )
+    parser.add_argument(
+        "--title",
+        default=DEFAULT_TITLE,
+        help=f"Name for the Google Sheet. Default: '{DEFAULT_TITLE}'",
+    )
+    parser.add_argument(
+        "--no-upload",
         action="store_true",
-        help="Upload to a Google Sheet after building.",
-    )
-    parser.add_argument(
-        "--spreadsheet-id",
-        default=DEFAULT_SPREADSHEET_ID,
-        help="Target Google Sheet id for upload.",
+        help="Build the .xlsx locally without uploading to Google Drive.",
     )
     args = parser.parse_args(argv)
 
     out = build_workbook(args.output)
-    if args.upload:
-        if not args.spreadsheet_id:
-            print("ERROR: --spreadsheet-id is required for upload.", file=sys.stderr)
-            return 1
-        upload_to_sheet(out, args.spreadsheet_id)
+    if not args.no_upload:
+        upload_to_folder(out, args.folder_id, args.title)
     return 0
 
 

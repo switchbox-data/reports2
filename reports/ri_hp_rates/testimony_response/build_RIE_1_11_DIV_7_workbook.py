@@ -61,11 +61,11 @@ REF_DEFAULT_VOL = "inputs_tariffs!$B$2"
 # Same constants as cost_of_service_by_subclass.qmd; if the testimony rebases
 # onto a new batch or RDP ref, update these in lock-step with the notebook.
 UTILITY = "rie"
-BATCH = "ri_20260331_r1-20_rate_case_test_year"
+BATCH = "ri_20260507_r1-2_grid_cons_fix"
 STATE_LOWER = "ri"
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
 PATH_MASTER_BAT_12 = f"{S3_BASE}/{STATE_LOWER}/all_utilities/{BATCH}/run_1+2/cross_subsidization_BAT_values/"
-RDP_REF = "e9e5088"
+RDP_REF = "0b203bc"
 RDP_REV_YAML_PATH = "rate_design/hp_rates/ri/config/rev_requirement/rie_rate_case_test_year.yaml"
 RDP_TARIFF_DIR = "rate_design/hp_rates/ri/config/tariffs/electric"
 RDP_GITHUB_BASE = "https://github.com/switchbox-data/rate-design-platform/blob"
@@ -73,9 +73,8 @@ RDP_GITHUB_BASE = "https://github.com/switchbox-data/rate-design-platform/blob"
 FIXED_CHARGE_PER_MONTH = 10.01
 FIXED_CHARGE_PER_YEAR = FIXED_CHARGE_PER_MONTH * 12
 
-KWH_BATCH = "ri_20260504_kwh_export_v2"
-_KWH_BASE = f"{S3_BASE}/{STATE_LOWER}/{UTILITY}/{KWH_BATCH}"
-PATH_KWH_U0 = f"{_KWH_BASE}/20260505_011359_ri_rie_run1_up00_precalc__default/billing_kwh_annual.parquet"
+_CAIRO_RUN_DIR = f"{S3_BASE}/{STATE_LOWER}/{UTILITY}/{BATCH}/20260507_213944_ri_rie_run1_up00_precalc__default"
+PATH_KWH_U0 = f"{_CAIRO_RUN_DIR}/billing_kwh_annual.parquet"
 
 
 def _rdp_permalink(rel_path: str) -> str:

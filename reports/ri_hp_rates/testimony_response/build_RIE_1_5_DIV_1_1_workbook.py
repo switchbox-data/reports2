@@ -53,18 +53,27 @@ REF_CORE_DELIVERY = "inputs_revenue_requirement!$B$6"
 REF_ANNUAL_FIXED_PER_CUSTOMER = "inputs_revenue_requirement!$B$7"
 REF_DISPLAY_TOTAL = "inputs_revenue_requirement!$B$8"
 REF_DEFAULT_VOL = "inputs_tariffs!$B$2"
+REF_FIXED_PER_MONTH = "inputs_tariffs!$B$3"
 
 # Same constants as cost_of_service_by_subclass.qmd; if the testimony rebases
 # onto a new batch or RDP ref, update these in lock-step with the notebook.
 UTILITY = "rie"
-BATCH = "ri_20260331_r1-20_rate_case_test_year"
+BATCH = "ri_20260507_r1-2_grid_cons_fix"
 STATE_LOWER = "ri"
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
 PATH_MASTER_BAT_12 = f"{S3_BASE}/{STATE_LOWER}/all_utilities/{BATCH}/run_1+2/cross_subsidization_BAT_values/"
-RDP_REF = "e9e5088"
+RDP_REF = "0b203bc"
 RDP_REV_YAML_PATH = "rate_design/hp_rates/ri/config/rev_requirement/rie_rate_case_test_year.yaml"
 RDP_TARIFF_DIR = "rate_design/hp_rates/ri/config/tariffs/electric"
 RDP_GITHUB_BASE = "https://github.com/switchbox-data/rate-design-platform/blob"
+
+FIXED_CHARGE_PER_MONTH = 10.01
+FIXED_CHARGE_PER_YEAR = FIXED_CHARGE_PER_MONTH * 12
+
+PATH_BILLING_KWH = (
+    f"{S3_BASE}/{STATE_LOWER}/{UTILITY}/{BATCH}"
+    "/20260507_213944_ri_rie_run1_up00_precalc__default/billing_kwh_annual.parquet"
+)
 
 
 def _rdp_permalink(rel_path: str) -> str:
@@ -132,6 +141,11 @@ def load_master_bat() -> pl.DataFrame:
     return df
 
 
+def _load_billing_kwh() -> pl.DataFrame:
+    """Load exported billing kWh (annual grid-consumed electricity)."""
+    return pl.read_parquet(PATH_BILLING_KWH).select("bldg_id", "annual_kwh_grid")
+
+
 def load_inputs() -> dict:
     """Pull revenue-requirement YAML + calibrated tariff JSON from rate-design-platform."""
     raw_yaml = fetch_rdp_file(RDP_REV_YAML_PATH, RDP_REF)
@@ -151,8 +165,6 @@ def load_inputs() -> dict:
 
     default_vol = vol_rate("rie_default_calibrated.json")
 
-    annual_fixed_per_customer = (total_rr - default_vol * ty_kwh) / n_customers
-
     return {
         "total_delivery_revenue_requirement": total_rr,
         "test_year_customer_count": n_customers,
@@ -160,7 +172,8 @@ def load_inputs() -> dict:
         "customer_charge_total": customer_charge_total,
         "core_delivery_rate_total": core_delivery_total,
         "default_vol_usd_per_kwh": default_vol,
-        "annual_fixed_per_customer": annual_fixed_per_customer,
+        "fixed_charge_per_month": FIXED_CHARGE_PER_MONTH,
+        "annual_fixed_per_customer": FIXED_CHARGE_PER_YEAR,
     }
 
 
@@ -201,9 +214,14 @@ def _write_readme(wb: Workbook, inputs: dict) -> None:
             "Test-year customer count, total delivery revenue requirement, test-year residential kWh, customer charge total, core delivery rate total.",
         ],
         [
+            "Billing kWh (annual, per building)",
+            PATH_BILLING_KWH,
+            "Per-building annual grid-consumed kWh exported from CAIRO's billing pipeline. Ground-truth kWh used for billing (post-PV-netting, kwh_scale_factor, day-of-week timeshift).",
+        ],
+        [
             "Calibrated default tariff JSON",
             _rdp_permalink(f"{RDP_TARIFF_DIR}/rie_default_calibrated.json"),
-            "energyratestructure[0][0].rate is the default uniform $/kWh used to back out annual kWh per building from delivery bill.",
+            "energyratestructure[0][0].rate is the calibrated default delivery $/kWh; fixedchargefirstmeter is $10.01/month ($6.00 customer charge + $3.22 RE Growth + $0.79 LIHEAP).",
         ],
         [
             "Notebook that produces the published table",
@@ -219,19 +237,20 @@ def _write_readme(wb: Workbook, inputs: dict) -> None:
         ["Sheet", "What it contains", ""],
         [
             "inputs_revenue_requirement",
-            "Test-year customer count, total delivery revenue requirement, test-year residential kWh, customer charge total, core delivery rate total, derived annual fixed delivery $/customer.",
+            "Test-year customer count, total delivery revenue requirement, test-year residential kWh, customer charge total, core delivery rate total, annual fixed delivery $/customer (from tariff), revenue-identity verification.",
             "",
         ],
         [
             "inputs_tariffs",
-            "Calibrated default volumetric delivery $/kWh.",
+            "Calibrated default volumetric delivery $/kWh and fixed charge $/month from rie_default_calibrated.json.",
             "",
         ],
         [
             "bill_per_building",
             (
                 "One row per residential building. Columns: bldg_id, weight (calibrated to test_year_customer_count), "
-                "heating_type_v2, annual_kwh, annual_bill_delivery (= annual_kwh * vol_rate + annual_fixed_per_customer), "
+                "heating_type_v2, annual_kwh (ground truth from billing_kwh_annual.parquet), "
+                "annual_bill_delivery (formula: annual_kwh * vol_rate + annual_fixed — verifiable against CAIRO), "
                 "w_revenue (= weight * annual_bill_delivery), w_kwh (= weight * annual_kwh)."
             ),
             "",
@@ -301,22 +320,26 @@ def _write_readme(wb: Workbook, inputs: dict) -> None:
             _rdp_permalink(f"{RDP_TARIFF_DIR}/rie_default_calibrated.json"),
         ],
         [
+            "fixed_charge_per_month ($)",
+            inputs["fixed_charge_per_month"],
+            (
+                "fixedchargefirstmeter from rie_default_calibrated.json. "
+                "$6.00 customer charge + $3.22 RE Growth + $0.79 LIHEAP Enhancement."
+            ),
+        ],
+        [
             "annual_fixed_per_customer ($)",
             inputs["annual_fixed_per_customer"],
-            (
-                "Test-year revenue equation: (total_RR - vol_rate * total_kWh) / customers. "
-                "Inputs from RIE Docket 25-45-GE, Book 21, PRB-1-ELEC p. 14, lines 8-9 "
-                "(Blazunas Schedules, Nov 2025)."
-            ),
+            ("= fixed_charge_per_month * 12. Verified by revenue-identity check in inputs_revenue_requirement row 9."),
         ],
     ]
     for r in rows:
         ws.append(r)
     ws["A1"].font = Font(bold=True, size=14)
-    # Section headers: item=3, sheets=10, columns=17, key inputs=25.
-    for header_row in (3, 10, 17, 25):
+    # Section headers: item=3, sheets=11, columns=18, key inputs=26.
+    for header_row in (3, 11, 18, 26):
         _header_fill(ws, header_row, 3)
-    for label_row in range(26, 31):
+    for label_row in range(27, 33):
         _bold(ws, f"A{label_row}")
     _autosize(ws, {"A": 42, "B": 70, "C": 80})
     ws.sheet_view.showGridLines = False
@@ -359,15 +382,22 @@ def _write_inputs_revenue_requirement(wb: Workbook, inputs: dict) -> None:
         ],
         [
             "annual_fixed_per_customer",
-            f"=({REF_TOTAL_RR} - {REF_DEFAULT_VOL} * {REF_TY_KWH}) / {REF_N_CUSTOMERS}",
-            "Test-year revenue equation (RIE Docket 25-45-GE, Book 21, PRB-1-ELEC p. 14)",
-            "Annual non-volumetric delivery charges per customer. Per-customer share of delivery revenue not recovered through volumetric rates.",
+            f"={REF_FIXED_PER_MONTH}*12",
+            _rdp_permalink(f"{RDP_TARIFF_DIR}/rie_default_calibrated.json"),
+            "fixedchargefirstmeter * 12. Annual non-volumetric delivery charges per customer ($6.00 customer + $3.22 RE Growth + $0.79 LIHEAP, per month).",
         ],
         [
             "DISPLAY_CUSTOMER_TOTAL",
             f"=ROUND({REF_N_CUSTOMERS}, 0)",
             "Derived in this workbook",
             "Integer total used for largest-remainder customer display rounding.",
+        ],
+        [
+            "annual_fixed_check_revenue_identity",
+            f"=({REF_TOTAL_RR} - {REF_DEFAULT_VOL} * {REF_TY_KWH}) / {REF_N_CUSTOMERS}",
+            "Verification: should equal annual_fixed_per_customer (B7)",
+            "Revenue-identity back-derivation: (total_RR - vol_rate * TY_KWH) / N_customers. "
+            "Matches B7 when CAIRO calibration is consistent (grid_cons_fix batch).",
         ],
     ]
     for r in rows:
@@ -382,6 +412,7 @@ def _write_inputs_revenue_requirement(wb: Workbook, inputs: dict) -> None:
         (6, "core_delivery_rate_total"),
         (7, "annual_fixed_per_customer"),
         (8, "DISPLAY_CUSTOMER_TOTAL"),
+        (9, "annual_fixed_check_revenue_identity"),
     ]:
         wb.defined_names[name] = DefinedName(
             name=name,
@@ -392,13 +423,20 @@ def _write_inputs_revenue_requirement(wb: Workbook, inputs: dict) -> None:
 
 def _write_inputs_tariffs(wb: Workbook, inputs: dict) -> None:
     ws = wb.create_sheet("inputs_tariffs")
+    tariff_ref = _rdp_permalink(f"{RDP_TARIFF_DIR}/rie_default_calibrated.json")
     rows = [
         ["key", "value", "source", "notes"],
         [
             "default_vol_usd_per_kwh",
             inputs["default_vol_usd_per_kwh"],
-            _rdp_permalink(f"{RDP_TARIFF_DIR}/rie_default_calibrated.json"),
+            tariff_ref,
             "Field: energyratestructure[0][0].rate. Status-quo uniform default delivery $/kWh.",
+        ],
+        [
+            "fixed_charge_per_month",
+            inputs["fixed_charge_per_month"],
+            tariff_ref,
+            "Field: fixedchargefirstmeter. $6.00 customer charge + $3.22 RE Growth + $0.79 LIHEAP Enhancement.",
         ],
     ]
     for r in rows:
@@ -407,6 +445,7 @@ def _write_inputs_tariffs(wb: Workbook, inputs: dict) -> None:
     _autosize(ws, {"A": 32, "B": 18, "C": 80, "D": 70})
     for row, name in [
         (2, "default_vol_usd_per_kwh"),
+        (3, "fixed_charge_per_month"),
     ]:
         wb.defined_names[name] = DefinedName(name=name, attr_text=f"inputs_tariffs!$B${row}")
     ws.sheet_view.showGridLines = False
@@ -733,6 +772,15 @@ def build_workbook(output_path: Path) -> Path:
     bat = load_master_bat()
     print(f"  {bat.height:,} rows", flush=True)
 
+    print(f"Loading billing kWh from {PATH_BILLING_KWH} ...", flush=True)
+    billing_kwh = _load_billing_kwh()
+    print(f"  {billing_kwh.height:,} rows", flush=True)
+
+    bat = bat.join(billing_kwh, on="bldg_id", how="left")
+    null_kwh = bat.filter(pl.col("annual_kwh_grid").is_null()).height
+    assert null_kwh == 0, f"{null_kwh} buildings have no billing kWh"
+    bat = bat.rename({"annual_kwh_grid": "annual_kwh"})
+
     print("Loading revenue-requirement YAML and tariff JSON from rate-design-platform ...", flush=True)
     inputs = load_inputs()
     print(f"  total_delivery_revenue_requirement = ${inputs['total_delivery_revenue_requirement']:,.0f}", flush=True)
@@ -741,10 +789,28 @@ def build_workbook(output_path: Path) -> Path:
     print(f"  default_vol_usd_per_kwh = {inputs['default_vol_usd_per_kwh']:.6f}", flush=True)
     print(f"  annual_fixed_per_customer = ${inputs['annual_fixed_per_customer']:,.2f}", flush=True)
 
+    # Verify bill reconstruction: kWh * vol_rate + fixed should match CAIRO's bill.
     bat = bat.with_columns(
-        (
-            (pl.col("annual_bill_delivery") - inputs["annual_fixed_per_customer"]) / inputs["default_vol_usd_per_kwh"]
-        ).alias("annual_kwh")
+        (pl.col("annual_kwh") * inputs["default_vol_usd_per_kwh"] + inputs["annual_fixed_per_customer"]).alias(
+            "bill_reconstructed"
+        )
+    )
+    bill_residual = (bat["bill_reconstructed"] - bat["annual_bill_delivery"]).abs()
+    max_residual = float(bill_residual.max())  # type: ignore[arg-type]
+    print(f"  Bill reconstruction max residual: ${max_residual:.4f}", flush=True)
+    assert max_residual < 1.0, f"bill reconstruction residual ${max_residual:.2f} > $1.00"
+    bat = bat.drop("bill_reconstructed")
+
+    # Revenue-identity check: tariff fixed should match back-derived fixed.
+    back_derived_fixed = (
+        inputs["total_delivery_revenue_requirement"]
+        - inputs["default_vol_usd_per_kwh"] * inputs["test_year_residential_kwh"]
+    ) / inputs["test_year_customer_count"]
+    print(
+        f"  Revenue-identity fixed: ${back_derived_fixed:,.2f} "
+        f"(tariff: ${inputs['annual_fixed_per_customer']:,.2f}, "
+        f"diff: ${abs(back_derived_fixed - inputs['annual_fixed_per_customer']):,.4f})",
+        flush=True,
     )
 
     print("Validating against published Figure 2 ...", flush=True)

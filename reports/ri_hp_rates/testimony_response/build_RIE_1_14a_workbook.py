@@ -17,13 +17,14 @@ RIE 1-10 (build_marginal_costs_workbook.py --delivery-only).
 Tabs
 ----
 README             Overview and source links.
-inputs_scalars     Key parameters from the RR YAML and tariff JSON.
+inputs_scalars     Key parameters from the RR YAML and tariff JSON, with notes
+                   citing relevant expert testimony sections.
 mc_combined        8760 delivery MC (dist/sub-TX + bulk TX), same as RIE 1-10.
 subclass_loads     8760 weighted kWh by heating subclass (from billing_kwh_8760).
 subclass_mc_alloc  8760 MC x load allocation by subclass -- live formulas.
 subclass_coss      Summary: customers, kWh, marginal cost, EPMC residual,
                    cost of service, revenue, cross-subsidy per subclass.
-validation         Formula-level checks.
+validation         Formula-level checks with expert testimony cross-references.
 
 Usage::
 
@@ -278,6 +279,11 @@ def _write_readme(wb: Workbook) -> None:
             "Quarto notebook that produces the subclass COSS tables in the expert testimony.",
         ],
         [
+            "Expert testimony",
+            _reports2_permalink("reports/ri_hp_rates/expert_testimony.qmd"),
+            "Pre-Filed Direct Testimony of Juan-Pablo Velez. Key values cross-referenced in inputs_scalars notes and validation checks.",
+        ],
+        [
             "This workbook builder",
             _reports2_permalink("reports/ri_hp_rates/testimony_response/build_RIE_1_14a_workbook.py"),
             "Script that generated this workbook.",
@@ -309,7 +315,11 @@ def _write_readme(wb: Workbook) -> None:
             "Summary: customers, consumption, economic burden, EPMC residual, COS, revenue, cross-subsidy by subclass.",
             "",
         ],
-        ["validation", "Formula-level checks against YAML targets and BAT totals.", ""],
+        [
+            "validation",
+            "Formula-level checks against YAML targets, BAT totals, and expert testimony values.",
+            "",
+        ],
     ]
     for r in rows:
         ws.append(r)
@@ -335,23 +345,62 @@ def _write_inputs_scalars(wb: Workbook, rr_yaml: dict, tariff: dict) -> None:
     ty_customers = float(rr_yaml["test_year_customer_count"])
     kwh_sf = float(rr_yaml["resstock_kwh_scale_factor"])
 
+    yaml_url = _rdp_permalink(RDP_RR_YAML_PATH)
+    tariff_url = _rdp_permalink(RDP_TARIFF_PATH)
     rows = [
-        ["key", "value", "source"],
-        ["total_delivery_revenue_requirement", total_delivery_rr, "RR YAML"],
-        ["test_year_residential_kwh", ty_kwh, "RR YAML"],
-        ["test_year_customer_count", ty_customers, "RR YAML"],
-        ["resstock_kwh_scale_factor", kwh_sf, "RR YAML"],
-        ["volumetric_rate_usd_per_kwh", vol_rate, "Calibrated tariff JSON"],
-        ["fixed_charge_usd_per_month", fixed_monthly, "Calibrated tariff JSON"],
-        ["fixed_charge_usd_per_year", fixed_annual, "=B7*12"],
+        ["key", "value", "source", "notes"],
+        [
+            "total_delivery_revenue_requirement",
+            total_delivery_rr,
+            yaml_url,
+            "Test Year total residential delivery revenue requirement ($). Expert testimony §III and §IX.",
+        ],
+        [
+            "test_year_residential_kwh",
+            ty_kwh,
+            yaml_url,
+            "Test Year total residential kWh. "
+            "Expert testimony §IX: 'the Company's Test Year total of [2.82 billion] kWh'.",
+        ],
+        [
+            "test_year_customer_count",
+            ty_customers,
+            yaml_url,
+            "Test Year residential customer count. "
+            "Expert testimony §IX: applied to RECS 2020 shares to derive subclass counts.",
+        ],
+        [
+            "resstock_kwh_scale_factor",
+            kwh_sf,
+            yaml_url,
+            "Scaling factor applied to ResStock kWh to match Test Year total. "
+            "Expert testimony §IX: 'a small additional scaling factor'.",
+        ],
+        [
+            "volumetric_rate_usd_per_kwh",
+            vol_rate,
+            tariff_url,
+            "Calibrated volumetric delivery rate ($/kWh) from CAIRO precalc.",
+        ],
+        [
+            "fixed_charge_usd_per_month",
+            fixed_monthly,
+            tariff_url,
+            "Monthly fixed customer charge ($6.00/month). Expert testimony §III: '$6.00/month'.",
+        ],
+        [
+            "fixed_charge_usd_per_year",
+            fixed_annual,
+            "Derived: monthly x 12",
+            "Derived: monthly fixed charge x 12.",
+        ],
     ]
     for r in rows:
         ws.append(r)
-    # Make the annual fixed charge a formula
-    ws.cell(row=9, column=2, value="=B7*12")
-    ws.cell(row=9, column=3, value="Derived: monthly x 12")
-    _header_fill(ws, 1, 3)
-    _autosize(ws, {"A": 40, "B": 24, "C": 40})
+    # Overwrite B8 with live formula referencing B7 (monthly charge)
+    ws.cell(row=8, column=2, value="=B7*12")
+    _header_fill(ws, 1, 4)
+    _autosize(ws, {"A": 40, "B": 24, "C": 80, "D": 80})
     ws.sheet_view.showGridLines = False
 
 
@@ -442,7 +491,7 @@ def _write_subclass_mc_alloc(wb: Workbook, n_hours: int = 8760) -> None:
 REF_DELIVERY_RR = "inputs_scalars!$B$2"
 REF_TY_KWH = "inputs_scalars!$B$3"
 REF_TY_CUSTOMERS = "inputs_scalars!$B$4"
-REF_FIXED_ANNUAL = "inputs_scalars!$B$9"
+REF_FIXED_ANNUAL = "inputs_scalars!$B$8"
 REF_VOL_RATE = "inputs_scalars!$B$6"
 
 
@@ -622,37 +671,37 @@ def _write_validation(
 
     checks = [
         (
-            "sum(weight) = test_year_customer_count",
+            "sum(weight) = test_year_customer_count [expert testimony §IX]",
             bat_total_w,
             ty_customers,
             1.0,
         ),
         (
-            "sum(w * delivery_bill) = total_delivery_RR",
+            "sum(w * delivery_bill) = total_delivery_RR [expert testimony §III, §IX]",
             bat_total_rev,
             total_delivery_rr,
             100.0,
         ),
         (
-            "sum(w * COS) ~ total_delivery_RR",
+            "sum(w * COS) ~ total_delivery_RR [expert testimony §III, §IX]",
             bat_total_cos,
             total_delivery_rr,
             5000.0,
         ),
         (
-            "sum(cross-subsidy) nets to ~0",
+            "sum(cross-subsidy) nets to ~0 [expert testimony §IX Step 4: BAT]",
             abs(bat_total_xs),
             0.0,
             5000.0,
         ),
         (
-            "8760 weighted grid kWh = test_year_residential_kwh",
+            "8760 weighted grid kWh = test_year_residential_kwh [expert testimony §IX]",
             loads_total_kwh,
             ty_kwh,
             1000.0,
         ),
         (
-            "subclass_mc_alloc sum = BAT economic_burden total",
+            "subclass_mc_alloc sum = BAT economic_burden total [expert testimony §IX]",
             f"=SUM(subclass_mc_alloc!{mc_total_col}$2:{mc_total_col}$8761)",
             bat_total_eb,
             1000.0,
@@ -667,7 +716,7 @@ def _write_validation(
         ws.cell(row=i, column=5, value=tol)
         ws.cell(row=i, column=6, value=f'=IF(D{i}<=E{i},"OK","FAIL")')
 
-    _autosize(ws, {"A": 52, "B": 20, "C": 20, "D": 14, "E": 14, "F": 8})
+    _autosize(ws, {"A": 70, "B": 20, "C": 20, "D": 14, "E": 14, "F": 8})
     for r in range(2, 2 + len(checks)):
         ws[f"B{r}"].number_format = "#,##0.00"
         ws[f"C{r}"].number_format = "#,##0.00"
@@ -731,8 +780,8 @@ _TAB_FORMATTING: dict[str, dict] = {
     },
     "inputs_scalars": {
         "column_number_formats": {"B": "#,##0.000000"},
-        "wrap_columns": ["C"],
-        "column_widths_px": {"A": 300, "B": 160, "C": 300},
+        "wrap_columns": ["C", "D"],
+        "column_widths_px": {"A": 300, "B": 160, "C": 540, "D": 540},
         "freeze_rows": 1,
         "bold_header": True,
     },
@@ -742,7 +791,7 @@ _TAB_FORMATTING: dict[str, dict] = {
             "C": "0.000000",
             "D": "0.000000",
         },
-        "auto_resize_columns": ["A:D"],
+        "column_widths_px": {"A": 130, "B": 130, "C": 115, "D": 144},
         "freeze_rows": 1,
         "bold_header": True,
     },
@@ -755,7 +804,7 @@ _TAB_FORMATTING: dict[str, dict] = {
             "F": "#,##0.000",
             "G": "#,##0.000",
         },
-        "auto_resize_columns": ["A:G"],
+        "column_widths_px": {"A": 130, "B": 130, "C": 130, "D": 130, "E": 130, "F": 130, "G": 130},
         "freeze_rows": 1,
         "bold_header": True,
     },
@@ -769,12 +818,36 @@ _TAB_FORMATTING: dict[str, dict] = {
             "G": "$#,##0.000000",
             "H": "$#,##0.000000",
         },
-        "auto_resize_columns": ["A:H"],
+        "column_widths_px": {
+            "A": 130,
+            "B": 144,
+            "C": 130,
+            "D": 130,
+            "E": 130,
+            "F": 130,
+            "G": 130,
+            "H": 130,
+        },
         "freeze_rows": 1,
         "bold_header": True,
     },
     "subclass_coss": {
-        "auto_resize_columns": ["A:N"],
+        "column_widths_px": {
+            "A": 158,
+            "B": 100,
+            "C": 115,
+            "D": 144,
+            "E": 130,
+            "F": 216,
+            "G": 72,
+            "H": 130,
+            "I": 216,
+            "J": 72,
+            "K": 130,
+            "L": 100,
+            "M": 200,
+            "N": 144,
+        },
         "freeze_rows": 1,
         "bold_header": True,
     },
@@ -784,7 +857,7 @@ _TAB_FORMATTING: dict[str, dict] = {
             "C": "#,##0.00",
             "D": "#,##0.00",
         },
-        "auto_resize_columns": ["A:F"],
+        "column_widths_px": {"A": 504, "B": 144, "C": 144, "D": 100, "E": 100, "F": 58},
         "freeze_rows": 1,
         "bold_header": True,
     },

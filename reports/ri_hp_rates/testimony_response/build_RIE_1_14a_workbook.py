@@ -25,6 +25,7 @@ subclass_mc_alloc  8760 MC x load allocation by subclass -- live formulas.
 subclass_coss      Summary: customers, kWh, marginal cost, EPMC residual,
                    cost of service, revenue, cross-subsidy per subclass.
 validation         Formula-level checks with expert testimony cross-references.
+validation_testimony  Per-subclass comparison vs. expert testimony cache.
 
 Usage::
 
@@ -41,9 +42,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import pickle
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 import yaml
@@ -89,6 +92,8 @@ SUBCLASS_LABELS = {
     "delivered_fuels": "Delivered fuels",
     "other": "Other",
 }
+
+REPORT_DIR = Path(__file__).resolve().parents[1]
 
 DEFAULT_FOLDER_ID = "1uPcJbcOChD6zoFuPb-gsxSByPr7xwmCH"
 DEFAULT_TITLE = "RIE 1-14a"
@@ -318,6 +323,11 @@ def _write_readme(wb: Workbook) -> None:
         [
             "validation",
             "Formula-level checks against YAML targets, BAT totals, and expert testimony values.",
+            "",
+        ],
+        [
+            "validation_testimony",
+            "Per-subclass comparison of workbook values against expert testimony cache (report_variables_cos_subclass.pkl).",
             "",
         ],
     ]
@@ -724,6 +734,163 @@ def _write_validation(
     ws.sheet_view.showGridLines = False
 
 
+def _write_validation_testimony(wb: Workbook) -> None:
+    """Compare subclass_coss values against the expert testimony cache.
+
+    Loads ``report_variables_cos_subclass.pkl`` (the same pickle that feeds
+    the rendered expert testimony) and checks per-subclass customers, COS,
+    revenue, and cross-subsidy, plus aggregate totals.  Mirrors the approach
+    used in build_DIV_1_2_workbook.py § ``add_validation_sheet``.
+    """
+    ws = wb.create_sheet("validation_testimony")
+
+    ws["A1"] = "Validation: Workbook vs. Expert Testimony"
+    ws["A1"].font = Font(bold=True, size=12)
+    ws.merge_cells("A1:G1")
+
+    hdr_row = 3
+    headers = ["Metric", "Workbook", "Testimony", "Diff", "% Diff", "Tol", "Status"]
+    for col_idx, h in enumerate(headers, start=1):
+        cell = ws.cell(row=hdr_row, column=col_idx, value=h)
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill("solid", fgColor="E8E8E8")
+
+    # Load testimony pickle
+    cos_pkl = REPORT_DIR / "cache" / "report_variables_cos_subclass.pkl"
+    t_vars: dict[str, Any] = {}
+    if cos_pkl.exists():
+        t_vars = pickle.loads(cos_pkl.read_bytes())
+
+    # subclass_coss layout - row 1 = header, rows 2-6 = subclasses, row 7 = total
+    # Columns: B=Customers, D=Consumption, I=COS, K=Revenue, M=Cross-subsidy
+    coss = "subclass_coss"
+    n_sc = len(SUBCLASS_ORDER)
+    total_row = 2 + n_sc  # row 7
+
+    # Subclass row mapping: SUBCLASS_ORDER index → coss row
+    prefix_map = {
+        "heat_pump": "hp",
+        "electrical_resistance": "er",
+        "natgas": "ng",
+        "delivered_fuels": "df",
+    }
+
+    checks: list[tuple[str, str | float, float | None, float]] = []
+
+    # Aggregate parameter checks
+    checks.append(
+        (
+            "Total Delivery RR [expert testimony §III]",
+            f"={REF_DELIVERY_RR}",
+            t_vars.get("rie_rev_req_total_delivery_rr"),
+            0.01,
+        )
+    )
+    checks.append(
+        (
+            "Test Year Customers [expert testimony §IX]",
+            f"={REF_TY_CUSTOMERS}",
+            t_vars.get("rie_rev_req_test_year_customer_count"),
+            0.01,
+        )
+    )
+
+    # Per-subclass checks (COS, revenue, cross-subsidy, customers)
+    for sc_key in SUBCLASS_ORDER:
+        prefix = prefix_map.get(sc_key)
+        if prefix is None:
+            continue
+        sc_idx = SUBCLASS_ORDER.index(sc_key)
+        sc_row = 2 + sc_idx
+        label = SUBCLASS_LABELS[sc_key]
+
+        checks.append(
+            (
+                f"{label} - Customers [expert testimony §V, §IX]",
+                f"={coss}!B{sc_row}",
+                t_vars.get(f"cos_default_{prefix}_group_customers"),
+                1.0,
+            )
+        )
+        checks.append(
+            (
+                f"{label} - COS [expert testimony §V]",
+                f"={coss}!I{sc_row}",
+                t_vars.get(f"cos_default_{prefix}_group_cos"),
+                1.0,
+            )
+        )
+        checks.append(
+            (
+                f"{label} - Revenue [expert testimony §V]",
+                f"={coss}!K{sc_row}",
+                t_vars.get(f"cos_default_{prefix}_group_rev"),
+                1.0,
+            )
+        )
+        checks.append(
+            (
+                f"{label} - Cross-subsidy [expert testimony §V]",
+                f"={coss}!M{sc_row}",
+                t_vars.get(f"cos_default_{prefix}_group_xs"),
+                1.0,
+            )
+        )
+
+    # Total row checks
+    checks.append(
+        (
+            "Total customers [expert testimony §V]",
+            f"={coss}!B{total_row}",
+            t_vars.get("cos_subclass_total_customers"),
+            1.0,
+        )
+    )
+    checks.append(
+        (
+            "Total revenue [expert testimony §V]",
+            f"={coss}!K{total_row}",
+            t_vars.get("cos_subclass_total_delivery_rev"),
+            100.0,
+        )
+    )
+    checks.append(
+        (
+            "Total COS [expert testimony §V]",
+            f"={coss}!I{total_row}",
+            t_vars.get("cos_subclass_total_cos"),
+            100.0,
+        )
+    )
+
+    row = hdr_row + 1
+    for metric, wb_val, t_val, tol in checks:
+        ws.cell(row=row, column=1, value=metric)
+
+        if (isinstance(wb_val, str) and wb_val.startswith("=")) or wb_val is not None:
+            ws.cell(row=row, column=2, value=wb_val).number_format = "#,##0.00"
+        else:
+            ws.cell(row=row, column=2, value="N/A")
+
+        if t_val is not None:
+            ws.cell(row=row, column=3, value=t_val).number_format = "#,##0.00"
+            ws.cell(row=row, column=4, value=f"=B{row}-C{row}").number_format = "#,##0.00"
+            ws.cell(row=row, column=5, value=f"=IF(C{row}<>0,ABS(D{row}/C{row}),0)").number_format = "0.00%"
+            ws.cell(row=row, column=6, value=tol).number_format = "#,##0.00"
+            ws.cell(row=row, column=7, value=f'=IF(ABS(D{row})<={tol},"PASS","FAIL")')
+        else:
+            ws.cell(row=row, column=3, value="N/A")
+            for c in (4, 5, 6):
+                ws.cell(row=row, column=c, value="")
+            ws.cell(row=row, column=7, value="N/A")
+
+        row += 1
+
+    _autosize(ws, {"A": 50, "B": 16, "C": 16, "D": 14, "E": 10, "F": 8, "G": 8})
+    ws.freeze_panes = f"A{hdr_row + 1}"
+    ws.sheet_view.showGridLines = False
+
+
 # ── Main build ────────────────────────────────────────────────────────────────
 
 
@@ -763,6 +930,7 @@ def build_workbook(output_path: Path) -> Path:
     _write_subclass_mc_alloc(wb)
     _write_subclass_coss(wb, bat, rr_yaml, tariff)
     _write_validation(wb, bat, rr_yaml, tariff, loads_8760)
+    _write_validation_testimony(wb)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(str(output_path))
@@ -859,6 +1027,17 @@ _TAB_FORMATTING: dict[str, dict] = {
         },
         "column_widths_px": {"A": 504, "B": 144, "C": 144, "D": 100, "E": 100, "F": 58},
         "freeze_rows": 1,
+        "bold_header": True,
+    },
+    "validation_testimony": {
+        "column_number_formats": {
+            "B": "#,##0.00",
+            "C": "#,##0.00",
+            "D": "#,##0.00",
+            "E": "0.00%",
+        },
+        "column_widths_px": {"A": 360, "B": 115, "C": 115, "D": 100, "E": 72, "F": 58, "G": 58},
+        "freeze_rows": 3,
         "bold_header": True,
     },
 }

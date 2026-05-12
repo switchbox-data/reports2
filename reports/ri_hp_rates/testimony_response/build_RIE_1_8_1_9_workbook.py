@@ -23,7 +23,6 @@ Run from the report directory::
 from __future__ import annotations
 
 import argparse
-import datetime
 import subprocess
 import sys
 from pathlib import Path
@@ -46,10 +45,11 @@ PATH_BILLS_12 = f"{S3_BASE}/{_state}/all_utilities/{BATCH}/run_1+2/comb_bills_ye
 PATH_BILLS_34 = f"{S3_BASE}/{_state}/all_utilities/{BATCH}/run_3+4/comb_bills_year_target/"
 PATH_BILLS_1920 = f"{S3_BASE}/{_state}/all_utilities/{BATCH}/run_19+20/comb_bills_year_target/"
 
-KWH_BATCH = "ri_20260504_kwh_export_v2"
-_KWH_BASE = f"{S3_BASE}/{_state}/rie/{KWH_BATCH}"
-PATH_KWH_8760_U0 = f"{_KWH_BASE}/20260505_011359_ri_rie_run1_up00_precalc__default/billing_kwh_8760.parquet"
-PATH_KWH_8760_U2 = f"{_KWH_BASE}/20260505_011437_ri_rie_run3_up02_default__default/billing_kwh_8760.parquet"
+_CAIRO_BASE = f"{S3_BASE}/{_state}/rie/{BATCH}"
+_RUN1_DIR = f"{_CAIRO_BASE}/20260507_213944_ri_rie_run1_up00_precalc__default"
+_RUN3_DIR = f"{_CAIRO_BASE}/20260507_214049_ri_rie_run3_up02_default__default"
+PATH_KWH_8760_U0 = f"{_RUN1_DIR}/billing_kwh_8760.parquet"
+PATH_KWH_8760_U2 = f"{_RUN3_DIR}/billing_kwh_8760.parquet"
 
 RESSTOCK_RELEASE = "s3://data.sb/nrel/resstock/res_2024_amy2018_2"
 GAS_CONSUMPTION_COL = "out.natural_gas.total.energy_consumption"
@@ -63,38 +63,17 @@ SPREADSHEET_1_8 = "1TEURpTKhM3ddpPagNxq1bT0oB24RyoorD4y7EVfFeUY"
 SPREADSHEET_1_9 = "1wocSf02gT7WS9G_vxs70d1SG1IOwhPLcUZGRuHXDRB8"
 
 # ---------------------------------------------------------------------------
-# Tariff rates (calibrated combined delivery+supply from CAIRO tariff JSONs).
+# Tariff rates.
 #
 # CAIRO calibrates rates to exactly recover the revenue requirement for the
 # test-year customer population. The calibrated rates differ slightly from
 # the filed tariff rates (e.g. delivery 14.078 vs filed 14.058 c/kWh).
 # We use calibrated rates so that formula-derived bills match CAIRO output.
 # Filed (uncalibrated) rates are shown on the assumptions sheet for reference.
+#
+# Rates are read from tariff JSONs at runtime (see _load_elec_tariffs) so
+# they stay in sync with the RDP_REF commit and batch recalibrations.
 # ---------------------------------------------------------------------------
-ELEC_FIXED_PER_MONTH = 10.01  # $6.00 customer + $3.22 RE Growth + $0.79 LIHEAP
-
-# Calibrated combined (delivery+supply) rates from rie_default_supply_calibrated.json
-_ELEC_COMBINED_WINTER = 0.31376906204311866  # Jan-Mar
-_ELEC_COMBINED_SUMMER = 0.24782328571449225  # Apr-Sep
-_ELEC_COMBINED_FALL = 0.2949344923288172  # Oct-Dec
-
-ELEC_COMBINED_DEFAULT: dict[str, float] = {
-    "Jan": _ELEC_COMBINED_WINTER,
-    "Feb": _ELEC_COMBINED_WINTER,
-    "Mar": _ELEC_COMBINED_WINTER,
-    "Apr": _ELEC_COMBINED_SUMMER,
-    "May": _ELEC_COMBINED_SUMMER,
-    "Jun": _ELEC_COMBINED_SUMMER,
-    "Jul": _ELEC_COMBINED_SUMMER,
-    "Aug": _ELEC_COMBINED_SUMMER,
-    "Sep": _ELEC_COMBINED_SUMMER,
-    "Oct": _ELEC_COMBINED_FALL,
-    "Nov": _ELEC_COMBINED_FALL,
-    "Dec": _ELEC_COMBINED_FALL,
-}
-
-# Calibrated combined rate from rie_hp_flat_supply_calibrated.json
-HP_FLAT_COMBINED_RATE = 0.231294060102476  # $/kWh, delivery+supply bundled, all months
 
 # Gas tariff rates in $/therm (URDB $/kWh x 29.3)
 KWH_PER_THERM = 29.3
@@ -136,14 +115,6 @@ GAS_NONHEATING_PER_THERM: dict[str, float] = {m: r * KWH_PER_THERM for m, r in _
 
 MONTH_ORDER = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 MONTH_INT_TO_STR: dict[int, str] = {i + 1: m for i, m in enumerate(MONTH_ORDER)}
-
-# Build hour→month mapping for 2018 (AMY weather year).
-_HOUR_TO_MONTH: list[int] = []
-for _m in range(1, 13):
-    _start = datetime.datetime(2018, _m, 1)
-    _end = datetime.datetime(2018, _m + 1, 1) if _m < 12 else datetime.datetime(2019, 1, 1)
-    _HOUR_TO_MONTH.extend([_m] * int((_end - _start).total_seconds() // 3600))
-assert len(_HOUR_TO_MONTH) == 8760
 
 # Bills columns used from master bills.
 LMI_BILL_COLS = [
@@ -201,17 +172,16 @@ def _reports2_permalink(rel_path: str) -> str:
 # Data loading.
 # ---------------------------------------------------------------------------
 def _load_monthly_elec_kwh(path_8760: str) -> pl.DataFrame:
-    """Load 8760 billing kWh and roll to monthly."""
-    hour_map = pl.DataFrame(
-        {
-            "hour": list(range(8760)),
-            "month_int": _HOUR_TO_MONTH,
-        }
-    ).with_columns(pl.col("hour").cast(pl.Int16))
+    """Load 8760 billing kWh and roll to monthly.
 
+    Timestamps in the parquet are UTC (EST timezone info is lost during the
+    numpy conversion in prepare_billing_kwh). CAIRO bills in EST (fixed
+    UTC-5), so we subtract 5 hours before extracting the month to match
+    CAIRO's month-boundary assignment.
+    """
     return (
         pl.scan_parquet(path_8760)
-        .join(hour_map.lazy(), on="hour")
+        .with_columns((pl.col("timestamp") - pl.duration(hours=5)).dt.month().alias("month_int"))
         .group_by("bldg_id", "month_int")
         .agg(pl.col("grid_cons_kwh").sum().alias("elec_kwh"))
         .sort("bldg_id", "month_int")
@@ -261,19 +231,53 @@ def _load_bills(path: str) -> pl.DataFrame:
     )
 
 
+def _urdb_month_to_rate(tariff: dict) -> dict[str, float]:
+    """Build month→rate ($/kWh) mapping from a URDB tariff JSON.
+
+    Works for both flat (single-period) and seasonal (multi-period) tariffs.
+    Uses the weekday schedule to determine which rate period applies to each
+    month (all hours within a month share the same period for these tariffs).
+    """
+    item = tariff["items"][0]
+    schedule = item["energyweekdayschedule"]  # 12 rows (months), 24 cols (hours)
+    rates = [p[0]["rate"] for p in item["energyratestructure"]]
+    result: dict[str, float] = {}
+    for month_idx, month_name in enumerate(MONTH_ORDER):
+        period = schedule[month_idx][0]  # all hours same period for these tariffs
+        result[month_name] = rates[period]
+    return result
+
+
 def _load_inputs() -> dict:
-    """Pull tariff rates and report tariff-table values."""
+    """Pull tariff rates from RDP tariff JSONs and report variables."""
     import pickle
 
     def _fetch_tariff(filename: str) -> dict:
         return parse_urdb_json(fetch_rdp_file(f"{RDP_TARIFF_DIR}/{filename}", RDP_REF))
 
+    default_sup = _fetch_tariff("rie_default_supply_calibrated.json")
     hp_flat_del = _fetch_tariff("rie_hp_flat_calibrated.json")
     hp_flat_sup = _fetch_tariff("rie_hp_flat_supply_calibrated.json")
 
-    rv = pickle.loads(Path("cache/report_variables.pkl").read_bytes())
+    # Build month→rate maps from live tariff JSONs
+    elec_combined_default = _urdb_month_to_rate(default_sup)
+    hp_flat_combined_rate = float(hp_flat_sup["items"][0]["energyratestructure"][0][0]["rate"])
+    elec_fixed_per_month = float(default_sup["items"][0]["fixedchargefirstmeter"])
+
+    # Extract seasonal rates for the assumptions sheet
+    default_rates = default_sup["items"][0]["energyratestructure"]
+    combined_winter = float(default_rates[0][0]["rate"])
+    combined_summer = float(default_rates[1][0]["rate"]) if len(default_rates) > 1 else combined_winter
+    combined_fall = float(default_rates[2][0]["rate"]) if len(default_rates) > 2 else combined_winter
+
+    pkl_path = Path(__file__).resolve().parents[1] / "cache" / "report_variables.pkl"
+    assert pkl_path.exists(), f"Missing {pkl_path}. Render notebooks/analysis.qmd first."
+    rv = pickle.loads(pkl_path.read_bytes())
 
     return {
+        "elec_combined_default": elec_combined_default,
+        "hp_flat_combined_rate": hp_flat_combined_rate,
+        "elec_fixed_per_month": elec_fixed_per_month,
         "tariff_table": {
             "elec_customer_charge": rv["elec_customer_charge"],
             "elec_other_fixed_charges": rv["elec_other_fixed_charges"],
@@ -288,16 +292,15 @@ def _load_inputs() -> dict:
             "oil_price_range": rv.get("oil_price_range", "$3.48–$4.10 /gal (monthly prices)"),  # noqa: RUF001
             "propane_price_range": rv.get("propane_price_range", "$3.44–$3.67 /gal (monthly prices)"),  # noqa: RUF001
             "hp_flat_delivery_cents": float(hp_flat_del["items"][0]["energyratestructure"][0][0]["rate"]) * 100,
-            "hp_flat_combined_cents": float(hp_flat_sup["items"][0]["energyratestructure"][0][0]["rate"]) * 100,
+            "hp_flat_combined_cents": hp_flat_combined_rate * 100,
             "hp_flat_supply_cents": (
-                float(hp_flat_sup["items"][0]["energyratestructure"][0][0]["rate"])
-                - float(hp_flat_del["items"][0]["energyratestructure"][0][0]["rate"])
+                hp_flat_combined_rate - float(hp_flat_del["items"][0]["energyratestructure"][0][0]["rate"])
             )
             * 100,
-            "calibrated_combined_winter_cents": _ELEC_COMBINED_WINTER * 100,
-            "calibrated_combined_summer_cents": _ELEC_COMBINED_SUMMER * 100,
-            "calibrated_combined_fall_cents": _ELEC_COMBINED_FALL * 100,
-            "calibrated_hp_flat_cents": HP_FLAT_COMBINED_RATE * 100,
+            "calibrated_combined_winter_cents": combined_winter * 100,
+            "calibrated_combined_summer_cents": combined_summer * 100,
+            "calibrated_combined_fall_cents": combined_fall * 100,
+            "calibrated_hp_flat_cents": hp_flat_combined_rate * 100,
         },
     }
 
@@ -625,6 +628,7 @@ def _write_monthly(
     wb: Workbook,
     monthly_data: pl.DataFrame,
     scenario_id: str,
+    inputs: dict,
 ) -> int:
     """Write monthly derivation sheet. Returns number of buildings."""
     ws = wb.create_sheet("monthly")
@@ -651,11 +655,15 @@ def _write_monthly(
     _header_fill(ws, 1, len(headers))
     ws.freeze_panes = "A2"
 
+    elec_combined_default: dict[str, float] = inputs["elec_combined_default"]
+    hp_flat_combined_rate: float = inputs["hp_flat_combined_rate"]
+    elec_fixed_per_month: float = inputs["elec_fixed_per_month"]
+
     elec_rate_after_map: dict[str, float]
     if scenario_id == "1-8":
-        elec_rate_after_map = ELEC_COMBINED_DEFAULT
+        elec_rate_after_map = elec_combined_default
     else:
-        elec_rate_after_map = dict.fromkeys(MONTH_ORDER, HP_FLAT_COMBINED_RATE)
+        elec_rate_after_map = dict.fromkeys(MONTH_ORDER, hp_flat_combined_rate)
 
     bldg_ids = monthly_data["bldg_id"].unique().sort().to_list()
     n_buildings = len(bldg_ids)
@@ -670,7 +678,7 @@ def _write_monthly(
             gas_kwh_b = float(mrow["gas_kwh_before"][0])
             gas_kwh_a = float(mrow["gas_kwh_after"][0])
 
-            elec_rate_b = ELEC_COMBINED_DEFAULT[m]
+            elec_rate_b = elec_combined_default[m]
             elec_rate_a = elec_rate_after_map[m]
             gas_rate_b = GAS_HEATING_PER_THERM[m]
             gas_rate_a = GAS_NONHEATING_PER_THERM[m]
@@ -685,7 +693,7 @@ def _write_monthly(
             ws.cell(row=r, column=6, value=gas_kwh_a / KWH_PER_THERM)
             ws.cell(row=r, column=7, value=elec_rate_b)  # G
             ws.cell(row=r, column=8, value=elec_rate_a)  # H
-            ws.cell(row=r, column=9, value=ELEC_FIXED_PER_MONTH)  # I
+            ws.cell(row=r, column=9, value=elec_fixed_per_month)  # I
             ws.cell(row=r, column=10, value=gas_rate_b)  # J
             ws.cell(row=r, column=11, value=gas_rate_a)  # K
             ws.cell(row=r, column=12, value=GAS_FIXED_PER_MONTH)  # L
@@ -780,15 +788,15 @@ def _write_annual(
     data_cols = [
         "bldg_id",
         "weight",
-        "has_elec_discount",
-        "has_gas_discount",
+        "elec_total_bill_before",
         "elec_total_bill_lmi_32_before",
+        "gas_total_bill_before",
         "gas_total_bill_lmi_32_before",
         "oil_total_bill_before",
         "propane_total_bill_before",
-        "has_elec_discount_after",
-        "has_gas_discount_after",
+        "elec_total_bill_after",
         "elec_total_bill_lmi_32_after",
+        "gas_total_bill_after",
         "gas_total_bill_lmi_32_after",
         "oil_total_bill_after",
         "propane_total_bill_after",
@@ -803,15 +811,15 @@ def _write_annual(
         (
             bid,
             weight,
-            has_elec_disc_b,
-            has_gas_disc_b,
+            elec_bill_b,
             elec_lmi_b,
+            gas_bill_b,
             gas_lmi_b,
             oil_b,
             propane_b,
-            has_elec_disc_a,
-            has_gas_disc_a,
+            elec_bill_a,
             elec_lmi_a,
+            gas_bill_a,
             gas_lmi_a,
             oil_a,
             propane_a,
@@ -824,14 +832,14 @@ def _write_annual(
         ws.cell(row=ar, column=5, value=f"=SUM(monthly!E{ms}:E{me})")  # E: therms before
         ws.cell(row=ar, column=6, value=f"=SUM(monthly!F{ms}:F{me})")  # F: therms after
         ws.cell(row=ar, column=7, value=f"=SUM(monthly!M{ms}:M{me})")  # G: elec bill before (SUM)
-        # H: elec LMI before — discounted value if LMI, else =G (matches undiscounted)
-        if has_elec_disc_b:
+        # H: elec LMI before — CAIRO LMI value if discounted, else formula ref
+        if elec_bill_b != elec_lmi_b:
             ws.cell(row=ar, column=8, value=float(elec_lmi_b))
         else:
             ws.cell(row=ar, column=8, value=f"=G{ar}")
         ws.cell(row=ar, column=9, value=f"=SUM(monthly!O{ms}:O{me})")  # I: gas bill before (SUM)
         # J: gas LMI before
-        if has_gas_disc_b:
+        if gas_bill_b != gas_lmi_b:
             ws.cell(row=ar, column=10, value=float(gas_lmi_b))
         else:
             ws.cell(row=ar, column=10, value=f"=I{ar}")
@@ -839,13 +847,13 @@ def _write_annual(
         ws.cell(row=ar, column=12, value=float(propane_b))  # L: propane before
         ws.cell(row=ar, column=13, value=f"=SUM(monthly!N{ms}:N{me})")  # M: elec bill after (SUM)
         # N: elec LMI after
-        if has_elec_disc_a:
+        if elec_bill_a != elec_lmi_a:
             ws.cell(row=ar, column=14, value=float(elec_lmi_a))
         else:
             ws.cell(row=ar, column=14, value=f"=M{ar}")
         ws.cell(row=ar, column=15, value=f"=SUM(monthly!P{ms}:P{me})")  # O: gas bill after (SUM)
         # P: gas LMI after
-        if has_gas_disc_a:
+        if gas_bill_a != gas_lmi_a:
             ws.cell(row=ar, column=16, value=float(gas_lmi_a))
         else:
             ws.cell(row=ar, column=16, value=f"=O{ar}")
@@ -939,7 +947,11 @@ def _write_result(wb: Workbook, last_row: int, scenario_id: str, pct_save: float
     # Formula-derived cross-check from the annual sheet
     ws.cell(row=9, column=1, value="Formula cross-check")
     ws.cell(row=9, column=1).font = Font(bold=True)
-    ws.cell(row=9, column=3, value="Derived from Excel formulas on the annual sheet (may differ slightly from CAIRO).")
+    ws.cell(
+        row=9,
+        column=3,
+        value="Derived from Excel formulas on the annual sheet. Should match CAIRO with grid_cons_fix batch.",
+    )
 
     ws.cell(row=10, column=1, value="Gas-heated customers (weighted)")
     ws.cell(row=10, column=2, value=f"=SUM(annual!B2:B{last_row})")
@@ -1009,9 +1021,9 @@ def build_workbook(
         wb.remove(default_ws)
 
     _write_assumptions(wb, scenario_id, inputs)
-    n_buildings = _write_monthly(wb, monthly_data, scenario_id)
+    n_buildings = _write_monthly(wb, monthly_data, scenario_id, inputs)
     last_row = _write_annual(wb, annual_lmi, scenario_id, n_buildings)
-    _write_result(wb, last_row, scenario_id)
+    _write_result(wb, last_row, scenario_id, pct_save)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(str(output_path))
@@ -1135,15 +1147,19 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  {gas_monthly_u2.height} rows", flush=True)
 
     # --- Build monthly data for gas-heated buildings -----------------------
+    elec_combined_default: dict[str, float] = inputs["elec_combined_default"]
+    hp_flat_combined_rate: float = inputs["hp_flat_combined_rate"]
+    elec_fixed_per_month: float = inputs["elec_fixed_per_month"]
+
     def _build_monthly(scenario_id: str) -> pl.DataFrame:
         """Join electric + gas consumption for 12 months per gas-heated building."""
         elec_rate_after = (
-            ELEC_COMBINED_DEFAULT if scenario_id == "1-8" else dict.fromkeys(MONTH_ORDER, HP_FLAT_COMBINED_RATE)
+            elec_combined_default if scenario_id == "1-8" else dict.fromkeys(MONTH_ORDER, hp_flat_combined_rate)
         )
         rate_df = pl.DataFrame(
             {
                 "month": MONTH_ORDER,
-                "elec_rate_before": [ELEC_COMBINED_DEFAULT[m] for m in MONTH_ORDER],
+                "elec_rate_before": [elec_combined_default[m] for m in MONTH_ORDER],
                 "elec_rate_after": [elec_rate_after[m] for m in MONTH_ORDER],
                 "gas_rate_before": [GAS_HEATING_PER_THERM[m] for m in MONTH_ORDER],
                 "gas_rate_after": [GAS_NONHEATING_PER_THERM[m] for m in MONTH_ORDER],
@@ -1177,34 +1193,26 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     def _build_annual_lmi(bills_before: pl.DataFrame, bills_after: pl.DataFrame) -> pl.DataFrame:
-        """Annual bills (undiscounted + LMI + discount flags) for the annual sheet."""
-        all_bill_cols = [*LMI_BILL_COLS]
-        before_annual = (
-            bills_before.filter((pl.col("month") == "Annual") & pl.col("heats_with_natgas"))
-            .with_columns(
-                (pl.col("elec_total_bill") != pl.col("elec_total_bill_lmi_32")).alias("has_elec_discount"),
-                (pl.col("gas_total_bill") != pl.col("gas_total_bill_lmi_32")).alias("has_gas_discount"),
-            )
-            .select(
-                "bldg_id",
-                "weight",
-                "has_elec_discount",
-                "has_gas_discount",
-                *[pl.col(c).alias(f"{c}_before") for c in all_bill_cols],
-            )
+        """Annual bills (undiscounted + LMI) for the annual sheet.
+
+        Passes through both undiscounted and LMI bill values so the writer
+        can compare them inline: if they differ, the building has an LMI
+        discount and gets the CAIRO value as data; otherwise the LMI column
+        just references the formula-derived undiscounted bill.
+        """
+        lmi_and_undiscounted = [
+            "elec_total_bill",
+            "gas_total_bill",
+            *LMI_BILL_COLS,
+        ]
+        before_annual = bills_before.filter((pl.col("month") == "Annual") & pl.col("heats_with_natgas")).select(
+            "bldg_id",
+            "weight",
+            *[pl.col(c).alias(f"{c}_before") for c in lmi_and_undiscounted],
         )
-        after_annual = (
-            bills_after.filter((pl.col("month") == "Annual") & pl.col("heats_with_natgas"))
-            .with_columns(
-                (pl.col("elec_total_bill") != pl.col("elec_total_bill_lmi_32")).alias("has_elec_discount_after"),
-                (pl.col("gas_total_bill") != pl.col("gas_total_bill_lmi_32")).alias("has_gas_discount_after"),
-            )
-            .select(
-                "bldg_id",
-                "has_elec_discount_after",
-                "has_gas_discount_after",
-                *[pl.col(c).alias(f"{c}_after") for c in all_bill_cols],
-            )
+        after_annual = bills_after.filter((pl.col("month") == "Annual") & pl.col("heats_with_natgas")).select(
+            "bldg_id",
+            *[pl.col(c).alias(f"{c}_after") for c in lmi_and_undiscounted],
         )
         return before_annual.join(after_annual, on="bldg_id").sort("bldg_id")
 
@@ -1212,6 +1220,74 @@ def main(argv: list[str] | None = None) -> int:
     monthly_hprate = _build_monthly("1-9")
     annual_lmi_default = _build_annual_lmi(bills_12, bills_34)
     annual_lmi_hprate = _build_annual_lmi(bills_12, bills_1920)
+
+    # --- Bill-reconstruction verification -----------------------------------
+    # Compute bills hourly (same as CAIRO: each hour × its seasonal rate)
+    # then sum to monthly. This isolates whether the residual comes from
+    # month-boundary assignment differences between Polars and Pandas.
+    print("Verifying bill reconstruction ...", flush=True)
+
+    # Build a month→rate Series for the tariff schedule
+    rate_by_month = pl.DataFrame(
+        {"month_int": list(range(1, 13)), "rate": [elec_combined_default[m] for m in MONTH_ORDER]}
+    )
+
+    # Hourly bill = grid_cons_kwh × rate for that hour's month (EST)
+    hourly_bills = (
+        pl.scan_parquet(PATH_KWH_8760_U0)
+        .filter(pl.col("bldg_id").is_in(gas_bldg_ids))
+        .with_columns((pl.col("timestamp") - pl.duration(hours=5)).dt.month().cast(pl.Int64).alias("month_int"))
+        .join(rate_by_month.lazy(), on="month_int")
+        .with_columns((pl.col("grid_cons_kwh") * pl.col("rate")).alias("hourly_bill"))
+        .group_by("bldg_id")
+        .agg(pl.col("hourly_bill").sum().alias("annual_elec_hourly"))
+        .collect()
+    )
+
+    # Annual bill = hourly sum + 12 × fixed charge
+    hourly_bills = hourly_bills.with_columns(
+        (pl.col("annual_elec_hourly") + 12 * elec_fixed_per_month).alias("annual_elec_formula")
+    )
+
+    cairo_elec = bills_12.filter((pl.col("month") == "Annual") & pl.col("heats_with_natgas")).select(
+        "bldg_id", pl.col("elec_total_bill").alias("annual_elec_cairo")
+    )
+    recon = hourly_bills.join(cairo_elec, on="bldg_id")
+    recon = recon.with_columns((pl.col("annual_elec_formula") - pl.col("annual_elec_cairo")).abs().alias("residual"))
+    max_residual = float(recon["residual"].max())  # type: ignore[arg-type]
+    median_residual = float(recon["residual"].median())  # type: ignore[arg-type]
+    print(f"  Hourly bill residual: median ${median_residual:.4f}, max ${max_residual:.4f}", flush=True)
+
+    if max_residual >= 1.0:
+        worst = recon.sort("residual", descending=True).head(5)
+        print("  Worst 5 buildings:", flush=True)
+        for row in worst.iter_rows(named=True):
+            print(
+                f"    bldg {row['bldg_id']}: formula=${row['annual_elec_formula']:.2f}"
+                f"  cairo=${row['annual_elec_cairo']:.2f}"
+                f"  diff=${row['annual_elec_formula'] - row['annual_elec_cairo']:.4f}",
+                flush=True,
+            )
+
+    # Also check the monthly aggregation used in the workbook
+    recon_monthly = (
+        monthly_default.filter(pl.col("bldg_id").is_in(gas_bldg_ids))
+        .with_columns(
+            (pl.col("elec_kwh_before") * pl.col("elec_rate_before") + elec_fixed_per_month).alias("elec_bill_formula")
+        )
+        .group_by("bldg_id")
+        .agg(pl.col("elec_bill_formula").sum().alias("annual_elec_monthly"))
+    )
+    recon_monthly = recon_monthly.join(cairo_elec, on="bldg_id")
+    recon_monthly = recon_monthly.with_columns(
+        (pl.col("annual_elec_monthly") - pl.col("annual_elec_cairo")).abs().alias("residual")
+    )
+    max_monthly = float(recon_monthly["residual"].max())  # type: ignore[arg-type]
+    median_monthly = float(recon_monthly["residual"].median())  # type: ignore[arg-type]
+    print(f"  Monthly-agg residual: median ${median_monthly:.4f}, max ${max_monthly:.4f}", flush=True)
+
+    assert max_residual < 1.0, f"hourly bill reconstruction residual ${max_residual:.4f} > $1.00"
+    print("  Bill reconstruction: PASS", flush=True)
 
     out_1_8 = build_workbook(
         Path("cache/rie_1_8.xlsx"),

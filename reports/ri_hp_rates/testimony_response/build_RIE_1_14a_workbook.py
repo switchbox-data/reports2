@@ -1,7 +1,13 @@
-"""Build RIE 1-14: Subclass-level cost-of-service study workbook.
+"""Build RIE 1-14a: Subclass-level cost-of-service study workbook.
 
-Responds to: "Please provide, in Excel with all formulas intact, the
-'cost-of-service study at the subclass level' performed by Witness Velez."
+Responds to RIE 1-14(a): "Please provide, in Excel with all formulas intact,
+the 'cost-of-service study at the subclass level' performed by Witness Velez."
+
+Reference: Pre-Filed Direct Testimony of Juan-Pablo Velez, Page 76 of 85,
+line 8: "I performed a cost-of-service study at the subclass level -- the
+same kind of exercise the Company performs at the class level in its Allocated
+Cost of Service Study ('ACOSS'), but applied one level deeper, within the
+residential class."
 
 The workbook decomposes total delivery revenue into marginal costs (economic
 burden) and EPMC residual for each heating-type subclass, using hourly
@@ -11,31 +17,36 @@ RIE 1-10 (build_marginal_costs_workbook.py --delivery-only).
 Tabs
 ----
 README             Overview and source links.
-inputs_scalars     Key parameters from the RR YAML and tariff JSON.
+inputs_scalars     Key parameters from the RR YAML and tariff JSON, with notes
+                   citing relevant expert testimony sections.
 mc_combined        8760 delivery MC (dist/sub-TX + bulk TX), same as RIE 1-10.
 subclass_loads     8760 weighted kWh by heating subclass (from billing_kwh_8760).
 subclass_mc_alloc  8760 MC x load allocation by subclass -- live formulas.
 subclass_coss      Summary: customers, kWh, marginal cost, EPMC residual,
                    cost of service, revenue, cross-subsidy per subclass.
-validation         Formula-level checks.
+validation         Formula-level checks with expert testimony cross-references.
+validation_testimony  Per-subclass comparison vs. expert testimony cache.
 
 Usage::
 
-    cd /ebs/home/alex_switch_box/reports2
+    cd reports/ri_hp_rates
 
-    uv run python -m testimony_response.build_RIE_1_14_workbook \
-        --output cache/rie_1_14_subclass_coss.xlsx
+    # Build locally only:
+    uv run python -m testimony_response.build_RIE_1_14a_workbook --no-upload
 
-    uv run python -m testimony_response.build_RIE_1_14_workbook --upload
+    # Build and upload to default Drive folder (default behavior):
+    uv run python -m testimony_response.build_RIE_1_14a_workbook
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import pickle
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 import yaml
@@ -82,7 +93,10 @@ SUBCLASS_LABELS = {
     "other": "Other",
 }
 
-DEFAULT_SPREADSHEET_ID = "1wC4tH5jrOWfuDqUz_DPBORfxb_sHDv2SYBWnHEhFbVA"
+REPORT_DIR = Path(__file__).resolve().parents[1]
+
+DEFAULT_FOLDER_ID = "1uPcJbcOChD6zoFuPb-gsxSByPr7xwmCH"
+DEFAULT_TITLE = "RIE 1-14a"
 
 # ── Permalink helpers ─────────────────────────────────────────────────────────
 
@@ -233,7 +247,7 @@ def _write_readme(wb: Workbook) -> None:
     ws = wb.create_sheet("README", 0)
     rows: list[list] = [
         [
-            "Subclass Cost-of-Service Workbook — RIE 2025 (delivery)",
+            "RIE 1-14a: Subclass Cost-of-Service Workbook - RIE 2025 (delivery)",
             "",
             "",
         ],
@@ -270,8 +284,13 @@ def _write_readme(wb: Workbook) -> None:
             "Quarto notebook that produces the subclass COSS tables in the expert testimony.",
         ],
         [
+            "Expert testimony",
+            _reports2_permalink("reports/ri_hp_rates/expert_testimony.qmd"),
+            "Pre-Filed Direct Testimony of Juan-Pablo Velez. Key values cross-referenced in inputs_scalars notes and validation checks.",
+        ],
+        [
             "This workbook builder",
-            _reports2_permalink("reports/ri_hp_rates/testimony_response/build_RIE_1_14_workbook.py"),
+            _reports2_permalink("reports/ri_hp_rates/testimony_response/build_RIE_1_14a_workbook.py"),
             "Script that generated this workbook.",
         ],
         ["", "", ""],
@@ -301,7 +320,16 @@ def _write_readme(wb: Workbook) -> None:
             "Summary: customers, consumption, economic burden, EPMC residual, COS, revenue, cross-subsidy by subclass.",
             "",
         ],
-        ["validation", "Formula-level checks against YAML targets and BAT totals.", ""],
+        [
+            "validation",
+            "Formula-level checks against YAML targets, BAT totals, and expert testimony values.",
+            "",
+        ],
+        [
+            "validation_testimony",
+            "Per-subclass comparison of workbook values against expert testimony cache (report_variables_cos_subclass.pkl).",
+            "",
+        ],
     ]
     for r in rows:
         ws.append(r)
@@ -327,23 +355,62 @@ def _write_inputs_scalars(wb: Workbook, rr_yaml: dict, tariff: dict) -> None:
     ty_customers = float(rr_yaml["test_year_customer_count"])
     kwh_sf = float(rr_yaml["resstock_kwh_scale_factor"])
 
+    yaml_url = _rdp_permalink(RDP_RR_YAML_PATH)
+    tariff_url = _rdp_permalink(RDP_TARIFF_PATH)
     rows = [
-        ["key", "value", "source"],
-        ["total_delivery_revenue_requirement", total_delivery_rr, "RR YAML"],
-        ["test_year_residential_kwh", ty_kwh, "RR YAML"],
-        ["test_year_customer_count", ty_customers, "RR YAML"],
-        ["resstock_kwh_scale_factor", kwh_sf, "RR YAML"],
-        ["volumetric_rate_usd_per_kwh", vol_rate, "Calibrated tariff JSON"],
-        ["fixed_charge_usd_per_month", fixed_monthly, "Calibrated tariff JSON"],
-        ["fixed_charge_usd_per_year", fixed_annual, "=B7*12"],
+        ["key", "value", "source", "notes"],
+        [
+            "total_delivery_revenue_requirement",
+            total_delivery_rr,
+            yaml_url,
+            "Test Year total residential delivery revenue requirement ($). Expert testimony §III and §IX.",
+        ],
+        [
+            "test_year_residential_kwh",
+            ty_kwh,
+            yaml_url,
+            "Test Year total residential kWh. "
+            "Expert testimony §IX: 'the Company's Test Year total of [2.82 billion] kWh'.",
+        ],
+        [
+            "test_year_customer_count",
+            ty_customers,
+            yaml_url,
+            "Test Year residential customer count. "
+            "Expert testimony §IX: applied to RECS 2020 shares to derive subclass counts.",
+        ],
+        [
+            "resstock_kwh_scale_factor",
+            kwh_sf,
+            yaml_url,
+            "Scaling factor applied to ResStock kWh to match Test Year total. "
+            "Expert testimony §IX: 'a small additional scaling factor'.",
+        ],
+        [
+            "volumetric_rate_usd_per_kwh",
+            vol_rate,
+            tariff_url,
+            "Calibrated volumetric delivery rate ($/kWh) from CAIRO precalc.",
+        ],
+        [
+            "fixed_charge_usd_per_month",
+            fixed_monthly,
+            tariff_url,
+            "Monthly fixed customer charge ($6.00/month). Expert testimony §III: '$6.00/month'.",
+        ],
+        [
+            "fixed_charge_usd_per_year",
+            fixed_annual,
+            "Derived: monthly x 12",
+            "Derived: monthly fixed charge x 12.",
+        ],
     ]
     for r in rows:
         ws.append(r)
-    # Make the annual fixed charge a formula
-    ws.cell(row=9, column=2, value="=B7*12")
-    ws.cell(row=9, column=3, value="Derived: monthly x 12")
-    _header_fill(ws, 1, 3)
-    _autosize(ws, {"A": 40, "B": 24, "C": 40})
+    # Overwrite B8 with live formula referencing B7 (monthly charge)
+    ws.cell(row=8, column=2, value="=B7*12")
+    _header_fill(ws, 1, 4)
+    _autosize(ws, {"A": 40, "B": 24, "C": 80, "D": 80})
     ws.sheet_view.showGridLines = False
 
 
@@ -434,7 +501,7 @@ def _write_subclass_mc_alloc(wb: Workbook, n_hours: int = 8760) -> None:
 REF_DELIVERY_RR = "inputs_scalars!$B$2"
 REF_TY_KWH = "inputs_scalars!$B$3"
 REF_TY_CUSTOMERS = "inputs_scalars!$B$4"
-REF_FIXED_ANNUAL = "inputs_scalars!$B$9"
+REF_FIXED_ANNUAL = "inputs_scalars!$B$8"
 REF_VOL_RATE = "inputs_scalars!$B$6"
 
 
@@ -614,37 +681,37 @@ def _write_validation(
 
     checks = [
         (
-            "sum(weight) = test_year_customer_count",
+            "sum(weight) = test_year_customer_count [expert testimony §IX]",
             bat_total_w,
             ty_customers,
             1.0,
         ),
         (
-            "sum(w * delivery_bill) = total_delivery_RR",
+            "sum(w * delivery_bill) = total_delivery_RR [expert testimony §III, §IX]",
             bat_total_rev,
             total_delivery_rr,
             100.0,
         ),
         (
-            "sum(w * COS) ~ total_delivery_RR",
+            "sum(w * COS) ~ total_delivery_RR [expert testimony §III, §IX]",
             bat_total_cos,
             total_delivery_rr,
             5000.0,
         ),
         (
-            "sum(cross-subsidy) nets to ~0",
+            "sum(cross-subsidy) nets to ~0 [expert testimony §IX Step 4: BAT]",
             abs(bat_total_xs),
             0.0,
             5000.0,
         ),
         (
-            "8760 weighted grid kWh = test_year_residential_kwh",
+            "8760 weighted grid kWh = test_year_residential_kwh [expert testimony §IX]",
             loads_total_kwh,
             ty_kwh,
             1000.0,
         ),
         (
-            "subclass_mc_alloc sum = BAT economic_burden total",
+            "subclass_mc_alloc sum = BAT economic_burden total [expert testimony §IX]",
             f"=SUM(subclass_mc_alloc!{mc_total_col}$2:{mc_total_col}$8761)",
             bat_total_eb,
             1000.0,
@@ -659,7 +726,7 @@ def _write_validation(
         ws.cell(row=i, column=5, value=tol)
         ws.cell(row=i, column=6, value=f'=IF(D{i}<=E{i},"OK","FAIL")')
 
-    _autosize(ws, {"A": 52, "B": 20, "C": 20, "D": 14, "E": 14, "F": 8})
+    _autosize(ws, {"A": 70, "B": 20, "C": 20, "D": 14, "E": 14, "F": 8})
     for r in range(2, 2 + len(checks)):
         ws[f"B{r}"].number_format = "#,##0.00"
         ws[f"C{r}"].number_format = "#,##0.00"
@@ -667,11 +734,168 @@ def _write_validation(
     ws.sheet_view.showGridLines = False
 
 
+def _write_validation_testimony(wb: Workbook) -> None:
+    """Compare subclass_coss values against the expert testimony cache.
+
+    Loads ``report_variables_cos_subclass.pkl`` (the same pickle that feeds
+    the rendered expert testimony) and checks per-subclass customers, COS,
+    revenue, and cross-subsidy, plus aggregate totals.  Mirrors the approach
+    used in build_DIV_1_2_workbook.py § ``add_validation_sheet``.
+    """
+    ws = wb.create_sheet("validation_testimony")
+
+    ws["A1"] = "Validation: Workbook vs. Expert Testimony"
+    ws["A1"].font = Font(bold=True, size=12)
+    ws.merge_cells("A1:G1")
+
+    hdr_row = 3
+    headers = ["Metric", "Workbook", "Testimony", "Diff", "% Diff", "Tol", "Status"]
+    for col_idx, h in enumerate(headers, start=1):
+        cell = ws.cell(row=hdr_row, column=col_idx, value=h)
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill("solid", fgColor="E8E8E8")
+
+    # Load testimony pickle
+    cos_pkl = REPORT_DIR / "cache" / "report_variables_cos_subclass.pkl"
+    t_vars: dict[str, Any] = {}
+    if cos_pkl.exists():
+        t_vars = pickle.loads(cos_pkl.read_bytes())
+
+    # subclass_coss layout - row 1 = header, rows 2-6 = subclasses, row 7 = total
+    # Columns: B=Customers, D=Consumption, I=COS, K=Revenue, M=Cross-subsidy
+    coss = "subclass_coss"
+    n_sc = len(SUBCLASS_ORDER)
+    total_row = 2 + n_sc  # row 7
+
+    # Subclass row mapping: SUBCLASS_ORDER index → coss row
+    prefix_map = {
+        "heat_pump": "hp",
+        "electrical_resistance": "er",
+        "natgas": "ng",
+        "delivered_fuels": "df",
+    }
+
+    checks: list[tuple[str, str | float, float | None, float]] = []
+
+    # Aggregate parameter checks
+    checks.append(
+        (
+            "Total Delivery RR [expert testimony §III]",
+            f"={REF_DELIVERY_RR}",
+            t_vars.get("rie_rev_req_total_delivery_rr"),
+            0.01,
+        )
+    )
+    checks.append(
+        (
+            "Test Year Customers [expert testimony §IX]",
+            f"={REF_TY_CUSTOMERS}",
+            t_vars.get("rie_rev_req_test_year_customer_count"),
+            0.01,
+        )
+    )
+
+    # Per-subclass checks (COS, revenue, cross-subsidy, customers)
+    for sc_key in SUBCLASS_ORDER:
+        prefix = prefix_map.get(sc_key)
+        if prefix is None:
+            continue
+        sc_idx = SUBCLASS_ORDER.index(sc_key)
+        sc_row = 2 + sc_idx
+        label = SUBCLASS_LABELS[sc_key]
+
+        checks.append(
+            (
+                f"{label} - Customers [expert testimony §V, §IX]",
+                f"={coss}!B{sc_row}",
+                t_vars.get(f"cos_default_{prefix}_group_customers"),
+                1.0,
+            )
+        )
+        checks.append(
+            (
+                f"{label} - COS [expert testimony §V]",
+                f"={coss}!I{sc_row}",
+                t_vars.get(f"cos_default_{prefix}_group_cos"),
+                1.0,
+            )
+        )
+        checks.append(
+            (
+                f"{label} - Revenue [expert testimony §V]",
+                f"={coss}!K{sc_row}",
+                t_vars.get(f"cos_default_{prefix}_group_rev"),
+                1.0,
+            )
+        )
+        checks.append(
+            (
+                f"{label} - Cross-subsidy [expert testimony §V]",
+                f"={coss}!M{sc_row}",
+                t_vars.get(f"cos_default_{prefix}_group_xs"),
+                1.0,
+            )
+        )
+
+    # Total row checks
+    checks.append(
+        (
+            "Total customers [expert testimony §V]",
+            f"={coss}!B{total_row}",
+            t_vars.get("cos_subclass_total_customers"),
+            1.0,
+        )
+    )
+    checks.append(
+        (
+            "Total revenue [expert testimony §V]",
+            f"={coss}!K{total_row}",
+            t_vars.get("cos_subclass_total_delivery_rev"),
+            100.0,
+        )
+    )
+    checks.append(
+        (
+            "Total COS [expert testimony §V]",
+            f"={coss}!I{total_row}",
+            t_vars.get("cos_subclass_total_cos"),
+            100.0,
+        )
+    )
+
+    row = hdr_row + 1
+    for metric, wb_val, t_val, tol in checks:
+        ws.cell(row=row, column=1, value=metric)
+
+        if (isinstance(wb_val, str) and wb_val.startswith("=")) or wb_val is not None:
+            ws.cell(row=row, column=2, value=wb_val).number_format = "#,##0.00"
+        else:
+            ws.cell(row=row, column=2, value="N/A")
+
+        if t_val is not None:
+            ws.cell(row=row, column=3, value=t_val).number_format = "#,##0.00"
+            ws.cell(row=row, column=4, value=f"=B{row}-C{row}").number_format = "#,##0.00"
+            ws.cell(row=row, column=5, value=f"=IF(C{row}<>0,ABS(D{row}/C{row}),0)").number_format = "0.00%"
+            ws.cell(row=row, column=6, value=tol).number_format = "#,##0.00"
+            ws.cell(row=row, column=7, value=f'=IF(ABS(D{row})<={tol},"PASS","FAIL")')
+        else:
+            ws.cell(row=row, column=3, value="N/A")
+            for c in (4, 5, 6):
+                ws.cell(row=row, column=c, value="")
+            ws.cell(row=row, column=7, value="N/A")
+
+        row += 1
+
+    _autosize(ws, {"A": 50, "B": 16, "C": 16, "D": 14, "E": 10, "F": 8, "G": 8})
+    ws.freeze_panes = f"A{hdr_row + 1}"
+    ws.sheet_view.showGridLines = False
+
+
 # ── Main build ────────────────────────────────────────────────────────────────
 
 
 def build_workbook(output_path: Path) -> Path:
-    print("Building RIE 1-14 subclass COSS workbook ...", flush=True)
+    print("Building RIE 1-14a subclass COSS workbook ...", flush=True)
 
     print("Loading RR YAML and calibrated tariff ...", flush=True)
     rr_yaml = load_rr_yaml()
@@ -706,6 +930,7 @@ def build_workbook(output_path: Path) -> Path:
     _write_subclass_mc_alloc(wb)
     _write_subclass_coss(wb, bat, rr_yaml, tariff)
     _write_validation(wb, bat, rr_yaml, tariff, loads_8760)
+    _write_validation_testimony(wb)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(str(output_path))
@@ -723,8 +948,8 @@ _TAB_FORMATTING: dict[str, dict] = {
     },
     "inputs_scalars": {
         "column_number_formats": {"B": "#,##0.000000"},
-        "wrap_columns": ["C"],
-        "column_widths_px": {"A": 300, "B": 160, "C": 300},
+        "wrap_columns": ["C", "D"],
+        "column_widths_px": {"A": 300, "B": 160, "C": 540, "D": 540},
         "freeze_rows": 1,
         "bold_header": True,
     },
@@ -734,7 +959,7 @@ _TAB_FORMATTING: dict[str, dict] = {
             "C": "0.000000",
             "D": "0.000000",
         },
-        "auto_resize_columns": ["A:D"],
+        "column_widths_px": {"A": 130, "B": 130, "C": 115, "D": 144},
         "freeze_rows": 1,
         "bold_header": True,
     },
@@ -747,7 +972,7 @@ _TAB_FORMATTING: dict[str, dict] = {
             "F": "#,##0.000",
             "G": "#,##0.000",
         },
-        "auto_resize_columns": ["A:G"],
+        "column_widths_px": {"A": 130, "B": 130, "C": 130, "D": 130, "E": 130, "F": 130, "G": 130},
         "freeze_rows": 1,
         "bold_header": True,
     },
@@ -761,12 +986,36 @@ _TAB_FORMATTING: dict[str, dict] = {
             "G": "$#,##0.000000",
             "H": "$#,##0.000000",
         },
-        "auto_resize_columns": ["A:H"],
+        "column_widths_px": {
+            "A": 130,
+            "B": 144,
+            "C": 130,
+            "D": 130,
+            "E": 130,
+            "F": 130,
+            "G": 130,
+            "H": 130,
+        },
         "freeze_rows": 1,
         "bold_header": True,
     },
     "subclass_coss": {
-        "auto_resize_columns": ["A:N"],
+        "column_widths_px": {
+            "A": 158,
+            "B": 100,
+            "C": 115,
+            "D": 144,
+            "E": 130,
+            "F": 216,
+            "G": 72,
+            "H": 130,
+            "I": 216,
+            "J": 72,
+            "K": 130,
+            "L": 100,
+            "M": 200,
+            "N": 144,
+        },
         "freeze_rows": 1,
         "bold_header": True,
     },
@@ -776,18 +1025,60 @@ _TAB_FORMATTING: dict[str, dict] = {
             "C": "#,##0.00",
             "D": "#,##0.00",
         },
-        "auto_resize_columns": ["A:F"],
+        "column_widths_px": {"A": 504, "B": 144, "C": 144, "D": 100, "E": 100, "F": 58},
         "freeze_rows": 1,
+        "bold_header": True,
+    },
+    "validation_testimony": {
+        "column_number_formats": {
+            "B": "#,##0.00",
+            "C": "#,##0.00",
+            "D": "#,##0.00",
+            "E": "0.00%",
+        },
+        "column_widths_px": {"A": 360, "B": 115, "C": 115, "D": 100, "E": 72, "F": 58, "G": 58},
+        "freeze_rows": 3,
         "bold_header": True,
     },
 }
 
 
-def upload_to_sheet(xlsx_path: Path, spreadsheet_id: str) -> None:
-    from lib.data.gsheets import apply_sheet_formatting, xlsx_to_gsheet
+def upload_to_folder(
+    xlsx_path: Path,
+    folder_id: str,
+    title: str,
+    formula_patches: dict[str, dict[str, str]] | None = None,
+) -> None:
+    """Create (or replace) a Google Sheet in the given Drive folder.
 
-    print(f"Uploading {xlsx_path} -> Google Sheet {spreadsheet_id} ...", flush=True)
-    spreadsheet = xlsx_to_gsheet(xlsx_path, spreadsheet_id, delete_other_tabs=True)
+    Searches the folder for any existing non-trashed file with the same name and
+    trashes it before creating a fresh spreadsheet. Mirrors the workbook contents
+    with live formulas via ``xlsx_to_gsheet``, then applies tab formatting.
+
+    ``formula_patches`` is an optional ``{sheet_name: {cell_addr: formula}}`` map of
+    cross-sheet formulas to re-write *after* the full upload.  Because
+    ``xlsx_to_gsheet`` writes sheets one at a time, cross-sheet references written
+    early are flagged as broken until all tabs exist.  Writing them again here, after
+    every tab is present, ensures they evaluate correctly.
+    """
+    from lib.data.gsheets import (
+        apply_sheet_formatting,
+        create_sheet_in_folder,
+        write_values_with_formulas,
+        xlsx_to_gsheet,
+    )
+
+    print(f"Uploading '{title}' to Drive folder {folder_id} ...", flush=True)
+    spreadsheet = create_sheet_in_folder(title, folder_id)
+    xlsx_to_gsheet(xlsx_path, spreadsheet.id, delete_other_tabs=True)
+
+    if formula_patches:
+        print("Patching cross-sheet formulas ...", flush=True)
+        for sheet_name, patches in formula_patches.items():
+            ws = spreadsheet.worksheet(sheet_name)
+            for cell_addr, formula in patches.items():
+                write_values_with_formulas(ws, [[formula]], start=cell_addr)
+
     print("Applying formatting ...", flush=True)
     for ws in spreadsheet.worksheets():
         spec = _TAB_FORMATTING.get(ws.title)
@@ -797,36 +1088,41 @@ def upload_to_sheet(xlsx_path: Path, spreadsheet_id: str) -> None:
                 fmt["bold_rows"] = list(_README_BOLD_ROWS)
             apply_sheet_formatting(ws, **fmt)
     print(
-        f"Done. View at https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit",
+        f"Done. View at https://docs.google.com/spreadsheets/d/{spreadsheet.id}/edit",
         flush=True,
     )
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Build RIE 1-14: subclass cost-of-service workbook.")
+    parser = argparse.ArgumentParser(
+        description=__doc__.splitlines()[0] if __doc__ else "",
+    )
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("cache/rie_1_14_subclass_coss.xlsx"),
+        default=Path("cache/rie_1_14a_subclass_coss.xlsx"),
+        help="Output .xlsx path. Default: cache/rie_1_14a_subclass_coss.xlsx",
     )
     parser.add_argument(
-        "--upload",
+        "--folder-id",
+        default=DEFAULT_FOLDER_ID,
+        help=f"Google Drive folder ID to upload into. Default: {DEFAULT_FOLDER_ID}",
+    )
+    parser.add_argument(
+        "--title",
+        default=DEFAULT_TITLE,
+        help=f"Name for the Google Sheet. Default: '{DEFAULT_TITLE}'",
+    )
+    parser.add_argument(
+        "--no-upload",
         action="store_true",
-        help="Upload to a Google Sheet after building.",
-    )
-    parser.add_argument(
-        "--spreadsheet-id",
-        default=DEFAULT_SPREADSHEET_ID,
-        help="Target Google Sheet id for upload.",
+        help="Build the .xlsx locally without uploading to Google Drive.",
     )
     args = parser.parse_args(argv)
 
     out = build_workbook(args.output)
-    if args.upload:
-        if not args.spreadsheet_id:
-            print("ERROR: --spreadsheet-id is required for upload.", file=sys.stderr)
-            return 1
-        upload_to_sheet(out, args.spreadsheet_id)
+    if not args.no_upload:
+        upload_to_folder(out, args.folder_id, args.title)
     return 0
 
 

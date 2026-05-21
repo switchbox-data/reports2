@@ -1,0 +1,337 @@
+---
+title: "Washington residential customers — share of customers, energy, and peak load by heating group"
+execute:
+  warning: false
+  message: false
+---
+
+This is a back-of-envelope analysis comparing Washington residential customers by their heating type (heat pump, electric resistance, natural gas, etc.) on three dimensions: how many of them there are, how much electricity they consume in a year, and how much load they contribute during the top 100 system-load hours.
+
+The first two are proxies for **share of delivery revenue** under a flat volumetric rate; the third is a proxy for **share of demand-driven cost of service** (an embedded-cost-of-service-style demand allocator). The gap between revenue share and cost share is a rough indicator of where cross-subsidies are likely happening — without needing dollars to see it.
+
+This notebook lives in `reports/ny_hp_rates/notebooks/` so we don't have to spin up a whole new Quarto project for one table. It's not part of the published `ny_hp_rates` report and is not in the `_quarto.yml` render list.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import polars as pl
+from great_tables import GT, loc, style
+
+from lib.great_tables import get_switchbox_gt_tab_options
+from lib.quarto import display_gt
+```
+
+## Parameters
+
+```{python}
+#| label: params
+
+# Both paths are local on the EBS volume; ResStock loads from S3 take 28+ min for a whole state,
+# whereas scanning ~12k local parquets is on the order of seconds.
+PATH_METADATA = Path(
+    "/ebs/data/nrel/resstock/res_2024_amy2018_2_sb"
+    "/metadata/state=WA/upgrade=00/metadata-sb.parquet"
+)
+PATH_HOURLY_DIR = Path(
+    "/ebs/data/nrel/resstock/res_2024_amy2018_2"
+    "/load_curve_hourly/state=WA/upgrade=00"
+)
+
+TOP_N_HOURS = 100
+```
+
+We use the same heating-group ordering and labels as the NY cost-of-service tables so cross-state comparison is easy:
+
+```{python}
+#| label: heating-groups
+
+HT_V2_ORDER = (
+    "heat_pump",
+    "electrical_resistance",
+    "natgas",
+    "delivered_fuels",
+    "other",
+)
+HT_V2_LABELS: dict[str, str] = {
+    "heat_pump": "Heat pump",
+    "electrical_resistance": "Electric resistance",
+    "natgas": "Natural gas",
+    "delivered_fuels": "Delivered fuels",
+    "other": "Other",
+}
+```
+
+## Load metadata
+
+Each row in this metadata file represents one ResStock building (a single-family home or a unit in a multifamily building) in Washington under the baseline (upgrade 00). The columns we care about are `bldg_id`, `weight` (the CAIRO sample weight — number of real-world households this row represents), and `postprocess_group.heating_type_v2` (the Switchbox-derived heating-group label, added by `data/resstock/identify_heating_type.py` in `rate-design-platform`).
+
+```{python}
+#| label: load-metadata
+
+md = (
+    pl.read_parquet(PATH_METADATA)
+    .select(
+        "bldg_id",
+        "weight",
+        pl.col("postprocess_group.heating_type_v2").alias("subclass"),
+    )
+)
+print(f"Buildings: {md.height:,}  |  Weighted households: {md['weight'].sum():,.0f}")
+md.head(5)
+```
+
+Let's count buildings and weighted households per heating group as a sanity check:
+
+```{python}
+#| label: subclass-counts
+
+md_by_sub = (
+    md.group_by("subclass")
+    .agg(
+        pl.len().alias("n_buildings"),
+        pl.col("weight").sum().alias("n_customers"),
+    )
+    .with_columns(
+        (pl.col("n_customers") / pl.col("n_customers").sum()).alias("pct_customers"),
+    )
+    .sort("n_customers", descending=True)
+)
+md_by_sub
+```
+
+## Build hourly load × heating group
+
+We want one row per `(timestamp, subclass)` with the **statewide weighted residential load** in kWh — collapsing 12,246 buildings × 8,760 hours down to ~5 × 8,760 = 43,800 rows. Polars can stream this in one lazy pipeline: scan all hourly parquets, attach `bldg_id` from the file path, join to metadata to bring in `weight` and `subclass`, multiply load by weight, and group by `(timestamp, subclass)`. Only the 43,800-row aggregate is materialized.
+
+```{python}
+#| label: hourly-by-subclass
+
+md_lf = md.lazy()
+
+hourly_by_sub = (
+    pl.scan_parquet(str(PATH_HOURLY_DIR / "*.parquet"), include_file_paths="path")
+    .with_columns(
+        pl.col("path")
+        .str.extract(r"(\d+)-0\.parquet$")
+        .cast(pl.Int64)
+        .alias("bldg_id"),
+    )
+    .select(
+        "bldg_id",
+        "timestamp",
+        pl.col("out.electricity.total.energy_consumption").alias("kwh"),
+    )
+    .join(md_lf, on="bldg_id", how="inner")
+    .with_columns((pl.col("kwh") * pl.col("weight")).alias("kwh_w"))
+    .group_by(["timestamp", "subclass"])
+    .agg(pl.sum("kwh_w").alias("kwh_w_state"))
+    .collect()
+)
+print(f"hourly_by_sub: {hourly_by_sub.shape}  (timestamps × subclasses)")
+hourly_by_sub.head(5)
+```
+
+Quick sanity check on magnitudes — we'd expect ~30 TWh/yr of residential electric consumption across ~3M Washington households (roughly 10 MWh/household/yr, near the national residential average):
+
+```{python}
+#| label: sanity-annual-total
+
+annual_state_kwh = float(hourly_by_sub["kwh_w_state"].sum())
+hourly_state = (
+    hourly_by_sub.group_by("timestamp")
+    .agg(pl.sum("kwh_w_state").alias("kwh_w_total"))
+    .sort("timestamp")
+)
+print(f"Total annual residential kWh: {annual_state_kwh:,.0f}")
+print(f"Total annual residential GWh: {annual_state_kwh / 1e6:,.0f}")
+print(
+    f"Per-household annual kWh: "
+    f"{annual_state_kwh / float(md['weight'].sum()):,.0f}"
+)
+print(
+    f"Statewide hourly load — mean: {float(hourly_state['kwh_w_total'].mean()) / 1e3:,.1f} MWh/h, "
+    f"max: {float(hourly_state['kwh_w_total'].max()) / 1e3:,.1f} MWh/h"
+)
+```
+
+## Identify the top 100 system-load hours
+
+The "system" here is residential-only: the sum of weighted ResStock household loads. Washington is a winter-peaking system, so we expect these top hours to cluster in cold-snap evenings (Dec–Feb, 6–8 PM).
+
+```{python}
+#| label: top-hours
+
+top_hours = (
+    hourly_state.sort("kwh_w_total", descending=True)
+    .head(TOP_N_HOURS)
+    .select("timestamp", "kwh_w_total")
+)
+top_hours.head(5)
+```
+
+```{python}
+#| label: top-hours-distribution
+
+top_hours_dist = (
+    top_hours.with_columns(
+        pl.col("timestamp").dt.month().alias("month"),
+        pl.col("timestamp").dt.hour().alias("hour"),
+    )
+    .group_by("month")
+    .agg(pl.len().alias("n_hours"))
+    .sort("month")
+)
+print("Top-100 hour count by month:")
+print(top_hours_dist)
+
+print()
+print("Top-100 hour count by hour-of-day:")
+print(
+    top_hours.with_columns(pl.col("timestamp").dt.hour().alias("hour"))
+    .group_by("hour")
+    .agg(pl.len().alias("n_hours"))
+    .sort("n_hours", descending=True)
+    .head(8)
+)
+```
+
+## Compute the three percentages
+
+We're computing three numbers per heating group:
+
+- `pct_customers` — share of weighted households (revenue proxy at the customer-charge level)
+- `pct_annual_kwh` — share of total residential annual kWh (revenue proxy under a flat volumetric rate)
+- `pct_top100_kwh` — share of residential kWh consumed during the top 100 system-load hours (cost-of-service / demand-allocator proxy)
+
+```{python}
+#| label: subclass-shares
+
+# Share of customers, by subclass.
+pct_customers = (
+    md.group_by("subclass")
+    .agg(pl.col("weight").sum().alias("n_customers"))
+    .with_columns(
+        (pl.col("n_customers") / pl.col("n_customers").sum()).alias("pct_customers"),
+    )
+    .select("subclass", "pct_customers", "n_customers")
+)
+
+# Share of total annual consumption, by subclass.
+pct_annual_kwh = (
+    hourly_by_sub.group_by("subclass")
+    .agg(pl.col("kwh_w_state").sum().alias("annual_kwh"))
+    .with_columns(
+        (pl.col("annual_kwh") / pl.col("annual_kwh").sum()).alias("pct_annual_kwh"),
+    )
+    .select("subclass", "pct_annual_kwh", "annual_kwh")
+)
+
+# Share of load in the top 100 hours, by subclass.
+top_set = top_hours.select("timestamp")
+pct_top100_kwh = (
+    hourly_by_sub.join(top_set, on="timestamp", how="inner")
+    .group_by("subclass")
+    .agg(pl.col("kwh_w_state").sum().alias("top100_kwh"))
+    .with_columns(
+        (pl.col("top100_kwh") / pl.col("top100_kwh").sum()).alias("pct_top100_kwh"),
+    )
+    .select("subclass", "pct_top100_kwh", "top100_kwh")
+)
+```
+
+Assemble into one tidy frame with a fixed row order (HP, ER, NG, delivered fuels, other) plus an "All customers" total row at the bottom:
+
+```{python}
+#| label: assemble-table
+
+spine = pl.DataFrame({"subclass": list(HT_V2_ORDER)})
+
+shares = (
+    spine
+    .join(pct_customers, on="subclass", how="left")
+    .join(pct_annual_kwh, on="subclass", how="left")
+    .join(pct_top100_kwh, on="subclass", how="left")
+    .with_columns(
+        pl.col("pct_customers").fill_null(0.0),
+        pl.col("pct_annual_kwh").fill_null(0.0),
+        pl.col("pct_top100_kwh").fill_null(0.0),
+    )
+    .with_columns(
+        pl.col("subclass").replace(HT_V2_LABELS).alias("subclass"),
+    )
+    .select("subclass", "pct_customers", "pct_annual_kwh", "pct_top100_kwh")
+)
+
+total_row = pl.DataFrame(
+    {
+        "subclass": ["All customers"],
+        "pct_customers": [float(shares["pct_customers"].sum())],
+        "pct_annual_kwh": [float(shares["pct_annual_kwh"].sum())],
+        "pct_top100_kwh": [float(shares["pct_top100_kwh"].sum())],
+    }
+)
+
+shares_tbl = pl.concat([shares, total_row], how="vertical")
+shares_tbl
+```
+
+## The table
+
+```{python}
+#| label: tbl-wa-heating-group-share
+#| tbl-cap: "Washington residential customers — share of customers, share of annual electric consumption, and share of load in the top 100 system-load hours, by heating group."
+
+_gt = (
+    GT(shares_tbl, rowname_col="subclass")
+    .tab_header(
+        title=(
+            "Washington residential heating groups: share of customers, "
+            "energy, and peak load"
+        ),
+        subtitle=(
+            "Heat pump and electric-resistance customers' share of load "
+            "in the top 100 system-load hours, compared to their share of "
+            "customers and annual consumption"
+        ),
+    )
+    .tab_stubhead(label="Heating group")
+    .cols_label(
+        pct_customers="% of customers",
+        pct_annual_kwh="% of annual consumption",
+        pct_top100_kwh="% of load in top 100 hours",
+    )
+    .fmt_percent(
+        columns=["pct_customers", "pct_annual_kwh", "pct_top100_kwh"],
+        decimals=1,
+    )
+    .sub_missing(missing_text="—")
+    .tab_options(**get_switchbox_gt_tab_options())
+    .cols_align(
+        align="center",
+        columns=["pct_customers", "pct_annual_kwh", "pct_top100_kwh"],
+    )
+    .tab_style(style=style.text(align="center"), locations=loc.column_labels())
+    .tab_source_note(
+        "ResStock 2024 (res_2024_amy2018_2_sb), Washington, upgrade 00 "
+        "(baseline). Heating groups derived from "
+        "postprocess_group.heating_type_v2. Top 100 hours selected from "
+        "statewide weighted residential hourly load."
+    )
+)
+display_gt(_gt)
+```
+
+## Quick interpretation
+
+Compare the **% of annual consumption** column (revenue proxy under a flat volumetric rate) to the **% of load in top 100 hours** column (cost-of-service proxy via a demand allocator):
+
+- A heating group whose top-100-hour share **exceeds** its annual-consumption share is a **net cost-driver** under flat volumetric rates — they impose more system cost than they pay for through energy charges.
+- A group whose top-100-hour share is **below** its annual-consumption share is a **net cost-payer** — they subsidize the cost-drivers.
+
+Compare the **% of customers** column to the same two: customers paying high fixed/customer charges contribute disproportionately at that flat-charge level.

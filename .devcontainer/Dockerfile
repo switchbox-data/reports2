@@ -84,8 +84,19 @@ RUN fc-cache -fv > /dev/null
 # Install TinyTeX for LaTeX math rendering in ICML output (just typeset)
 # The icml_math Lua filter calls latex + dvisvgm to pre-render math to SVG.
 # dvisvgm is not included in TinyTeX by default and must be installed separately.
+#
+# `quarto install tinytex` installs a TinyTeX frozen against a specific TeX Live
+# release. Every spring CTAN rolls over to the next annual release, so the
+# default network repository becomes newer than this frozen install and tlmgr
+# refuses to install anything ("tlmgr itself needs to be updated"). Pin tlmgr to
+# the historic frozen snapshot matching the installed release (detected
+# dynamically) so package installs are reproducible regardless of build date.
+# See https://tug.org/historic.
 RUN quarto install tinytex --no-prompt && \
-    /root/.TinyTeX/bin/*/tlmgr install dvisvgm standalone mathtools amsfonts && \
+    TLMGR="$(echo /root/.TinyTeX/bin/*/tlmgr)" && \
+    TLYEAR="$("$TLMGR" --version | grep -oP 'TeX Live \K[0-9]{4}' | head -1)" && \
+    "$TLMGR" option repository "https://ftp.math.utah.edu/pub/tex/historic/systems/texlive/${TLYEAR}/tlnet-final" && \
+    "$TLMGR" install dvisvgm standalone mathtools amsfonts && \
     ln -sf /root/.TinyTeX/bin/x86_64-linux/latex /usr/local/bin/latex && \
     ln -sf /root/.TinyTeX/bin/x86_64-linux/dvisvgm /usr/local/bin/dvisvgm
 

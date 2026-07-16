@@ -1,6 +1,6 @@
 # BGE's Time-of-Use Rates, Explained
 
-*Section to append to "Maryland DRIVE Act TOU Implementation: IOU Compliance, Opt-Out Authority, and the July 2026 Reports."*
+_Section to append to "Maryland DRIVE Act TOU Implementation: IOU Compliance, Opt-Out Authority, and the July 2026 Reports."_
 
 BGE has four residential time-of-use offerings, created across four decades, and they overlap confusingly. This section explains what each one is, why BGE built it, what problem it was solving, and which ones still matter. It then answers the question of how BGE views TOU going forward.
 
@@ -40,11 +40,11 @@ Every utility offering an opt-in TOU rate is picking a point on this tradeoff. B
 
 ### Three vocabulary items
 
-**Opt-in vs. opt-out vs. default.** *Opt-in* means the customer must affirmatively choose the rate. *Opt-out* (also called *default*) means the customer is placed on the rate automatically and must act to leave. This distinction is the single biggest determinant of enrollment — research consistently finds opt-in TOU enrollment in the low tens of percent at best, while default TOU enrollment runs above 80%, because most people never change anything. Maryland's DRIVE Act requires opt-in TOU tariffs and only *permits* the Commission to require automatic enrollment in narrow circumstances. The July 1, 2026 reports are supposed to evaluate whether to go further.
+**Opt-in vs. opt-out vs. default.** _Opt-in_ means the customer must affirmatively choose the rate. _Opt-out_ (also called _default_) means the customer is placed on the rate automatically and must act to leave. This distinction is the single biggest determinant of enrollment — research consistently finds opt-in TOU enrollment in the low tens of percent at best, while default TOU enrollment runs above 80%, because most people never change anything. Maryland's DRIVE Act requires opt-in TOU tariffs and only _permits_ the Commission to require automatic enrollment in narrow circumstances. The July 1, 2026 reports are supposed to evaluate whether to go further.
 
 **The ratio.** Shorthand for the on-peak price divided by the off-peak price. A "3.2:1 ratio" means peak electricity costs 3.2 times what off-peak electricity costs. In this docket the ratios are quoted on an **all-in basis** — supply plus delivery plus riders, i.e., what actually shows up on the bill. This matters because a strong ratio on one component can be diluted into a weak ratio overall once the flat components are added to both sides.
 
-**Rate schedule vs. rider.** A *rate schedule* is the customer's base rate — you're on Schedule R, or Schedule RD, and so on; you can only be on one. A *rider* is an add-on that modifies or supplements a schedule. This distinction turns out to matter a great deal for BGE, because its most successful TOU product is a rider, not a schedule — and that's not an accident.
+**Rate schedule vs. rider.** A _rate schedule_ is the customer's base rate — you're on Schedule R, or Schedule RD, and so on; you can only be on one. A _rider_ is an add-on that modifies or supplements a schedule. This distinction turns out to matter a great deal for BGE, because its most successful TOU product is a rider, not a schedule — and that's not an accident.
 
 ---
 
@@ -62,10 +62,10 @@ Maryland restructured its electricity market. That means BGE's bill has two sepa
 
 Here is BGE's entire residential stack, organized by that distinction plus one other — whether the rate exposes the customer's whole house or just their EV charger:
 
-| | Whole house | EV charger only |
-|---|---|---|
-| **Supply TOU only** *(delivery is flat)* | **Schedule RL** (1984)<br>**Schedule EV** (2013) | **Rider 6 / VC-TOU** (2020) |
-| **Supply *and* delivery TOU** | **Schedule RD** (2019) | — |
+|                                          | Whole house                                   | EV charger only             |
+| ---------------------------------------- | --------------------------------------------- | --------------------------- |
+| **Supply TOU only** _(delivery is flat)_ | **Schedule RL** (1984) **Schedule EV** (2013) | **Rider 6 / VC-TOU** (2020) |
+| **Supply _and_ delivery TOU**            | **Schedule RD** (2019)                        | —                           |
 
 **Only Schedule RD time-varies the distribution charge.** RL, EV, and Rider 6 all sit on top of a flat delivery rate. Rider 6 says so explicitly in its tariff: all metered usage is billed Schedule R distribution rates regardless.
 
@@ -93,10 +93,10 @@ The metering technology of the era constrained the design. These were mechanical
 
 Three rating periods (Suppl. 745, filed 04/30/2026, effective 05/01/2026):
 
-| Season | Peak | Intermediate | Off-peak |
-|---|---|---|---|
-| Summer | 10 a.m.–8 p.m. weekdays | 7–10 a.m., 8–11 p.m. | everything else |
-| Non-summer | 7–11 a.m., 5–9 p.m. weekdays | 11 a.m.–5 p.m. | everything else |
+| Season     | Peak                         | Intermediate         | Off-peak        |
+| ---------- | ---------------------------- | -------------------- | --------------- |
+| Summer     | 10 a.m.–8 p.m. weekdays      | 7–10 a.m., 8–11 p.m. | everything else |
+| Non-summer | 7–11 a.m., 5–9 p.m. weekdays | 11 a.m.–5 p.m.       | everything else |
 
 Weekends and listed national holidays are entirely off-peak. Non-summer periods shift one hour during the daylight-saving transition windows.
 
@@ -106,7 +106,7 @@ A **ten-hour summer peak** is the giveaway that this is a 1984 design. Modern ra
 
 **How it's doing: badly, and BGE says so.** Over 50,000 customers were enrolled as of July 2025 — by far BGE's largest TOU population. But BGE told the Commission there has been **"little to no difference" in usage patterns of RL customers compared to customers on the flat Schedule R.** Fifty thousand customers, no measurable behavior change.
 
-The reason is arithmetic. September 2025 SOS supply rates were 22.388¢ on-peak, 13.357¢ intermediate, 12.750¢ off-peak — a 1.76:1 supply ratio. But then you add the flat 4.83¢ delivery charge to *both* sides, and the all-in ratio collapses to roughly 1.5:1. BGE cited **1.3:1** on May 2025 rates. A 30% peak premium is simply not enough money to make anyone reschedule their life.
+The reason is arithmetic. September 2025 SOS supply rates were 22.388¢ on-peak, 13.357¢ intermediate, 12.750¢ off-peak — a 1.76:1 supply ratio. But then you add the flat 4.83¢ delivery charge to _both_ sides, and the all-in ratio collapses to roughly 1.5:1. BGE cited **1.3:1** on May 2025 rates. A 30% peak premium is simply not enough money to make anyone reschedule their life.
 
 OPC saw the same numbers and drew the optimistic conclusion: this large customer base is an **"untapped"** resource, and a stronger price signal could produce substantial peak reductions at relatively low cost. You already have 50,000 people on a TOU rate; you just have to make the rate mean something.
 
@@ -114,7 +114,7 @@ OPC saw the same numbers and drew the optimistic conclusion: this large customer
 
 **Status: live, and it is where the volume is.** If BGE's TOU program produces measurable peak reduction, the most likely source is 50,000 RL customers finally facing a signal worth responding to.
 
-*One structural implication worth noting: because RL's time variation is entirely on the supply side, an RL customer who buys supply from a third-party retailer would face a flat delivery charge and their supplier's pricing — meaning the rate does nothing at all for them. This follows logically from the tariff structure rather than from an explicit statement in the record.*
+_One structural implication worth noting: because RL's time variation is entirely on the supply side, an RL customer who buys supply from a third-party retailer would face a flat delivery charge and their supplier's pricing — meaning the rate does nothing at all for them. This follows logically from the tariff structure rather than from an explicit statement in the record._
 
 ### Schedule RD — Residential Delivery and Energy Time-of-Use (2019)
 
@@ -123,23 +123,46 @@ OPC saw the same numbers and drew the optimistic conclusion: this large customer
 Three things converged in the late 2010s:
 
 1. **BGE finished deploying smart meters (AMI).** For the first time, BGE could measure and bill every residential customer's consumption on an hourly basis. RL's coarse blocks were a technology constraint that no longer existed.
-2. **The Commission opened PC 44**, its grid-modernization proceeding ("Transforming Maryland's Electric Distribution Systems"). One of its work groups — the Rate Design Work Group — was tasked specifically with designing full-scale TOU offerings for Maryland. Its 2022 report is cited in Order No. 91917 as the origin of the ratio methodology now in use.
+2. **The Commission opened PC 44**, its grid-modernization proceeding ("Transforming Maryland's Electric Distribution Systems"). One of its work groups — the Rate Design Work Group — was tasked specifically with designing full-scale TOU offerings for Maryland. Its 2022 report ([`mdpuc_240945_pc44_tou_rate_design_work_group_report.md`](../sources/md_hp_rates/mdpuc_240945_pc44_tou_rate_design_work_group_report.md), Maillog No. 240945) is cited in [Order No. 91917](../sources/md_hp_rates/mdpuc_9761_order_91917_drive_act_implementation.md) as the origin of the ratio methodology now in use — specifically OPC's average-and-peak approach (~60/40 on-peak/off-peak split of primary distribution costs), which BGE applied when lowering Schedule RD's all-in ratio from 3.2:1 to 2.8:1.
 3. **BGE's existing TOU rates were supply-only and weak.** RL demonstrably did nothing. Schedule EV was tiny. Neither said anything about distribution costs.
+
+**History — from PC 44 pilot through DRIVE (2017–2026).**
+
+The Commission did not wake up one morning and file a tariff. Schedule RD is the commercial name for what started as the **PC 44 TOU pilot** — a two-year stakeholder process in Public Conference 44 ("Transforming Maryland's Electric Distribution Systems") before anyone could enroll.
+
+| When             | What happened                                                                                                                                                                                                                                                                                                                                                    |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Jan 2017**     | PC 44 Notice convenes the **Rate Design Work Group** and directs three pilot tracks: (1) time-varying **distribution** rates, (2) time-varying **retail/supply** rates, and (3) time-varying rates for **distributed-solar** customers. AMI deployment is the enabling technology; BGE's smart-meter rollout is essentially complete.                            |
+| **Jun 2017**     | Work Group [**straw proposal**](../sources/md_hp_rates/mdpuc_pc44_rate_design_straw_proposal_20170627.md): cost-based on/off-peak periods from load curves; allocate **100% of primary distribution costs to on-peak**; layer SOS supply and transmission/capacity into peak; target a steep **4:1–6:1 all-in ratio**; opt-in pilot with Brattle EM&V.           |
+| **Nov 28, 2017** | Commission **Letter Order** (Maillog 217978) sets pilot direction — utility combined delivery+SOS TOU moves forward; retail-supply and solar tracks proceed on parallel paths.                                                                                                                                                                                   |
+| **Feb 9, 2018**  | Work Group [**Final Report**](../sources/md_hp_rates/mdpuc_218934_pc44_rate_design_final_report.md) (Maillog 218934): stakeholder consensus on pilot design — two periods (no intermediate), revenue-neutral rate shaping, recruitment targets, LMI subgroup, Brattle evaluation plan.                                                                           |
+| **May 7, 2018**  | Commission **Letter Order** approves the opt-in PC 44 TOU pilot tariffs for BGE, Pepco, and Delmarva. BGE's tariff is **Schedule RD**; PHI's is **Schedule R-TOU-P**.                                                                                                                                                                                            |
+| **2018–2019**    | Brattle drafts EM&V plans; utilities implement billing systems and recruit volunteers. Parallel tracks: Commission **rejects initial retail-supplier bids** (Nov 2018) then later approves **Constellation** (BGE) and **Inspire** (Pepco) load-shaping pilots (2019); **Value of Solar study** filed (Nov 2018) in lieu of a separate solar-customer TOU pilot. |
+| **Jun 2019**     | **Pilot launches.** ~3,800 customers across the three Joint Utilities enroll on combined delivery+SOS TOU rates. BGE's offering is Schedule RD — the first BGE residential rate to time-vary the **distribution** charge.                                                                                                                                        |
+| **May 2021**     | Pilot ends (extended past the original two-year window). Brattle **end-of-pilot evaluation** filed Oct 2021; results presented to Commission Jan 2022 (−9.3% summer weekday peak, −4.9% non-summer weekday peak for BGE).                                                                                                                                        |
+| **Jun–Jul 2022** | Work Group **full-scale report** ([ML 240945](../sources/md_hp_rates/mdpuc_240945_pc44_tou_rate_design_work_group_report.md)) recommends permanent opt-in TOU; **Order No. 90298** (July 26) opens Schedule RD beyond the pilot sample. Enrollment stays tiny (~1,200 vs. ~3,800 pilot participants).                                                            |
+| **Oct 2022**     | RD **closed to new net-metering enrollments** (Suppl. 709); existing dual RD + Rider 18 customers grandfathered. Later reversed — current tariff allows NEM.                                                                                                                                                                                                     |
+| **2024**         | **DRIVE Act** (HB 1256) requires each IOU to file opt-in TOU tariffs and enrollment targets for January 1, 2028.                                                                                                                                                                                                                                                 |
+| **Jul 2025**     | BGE files TOU compliance in **Case No. 9761**: weaken RD from **3.2:1 to 2.8:1** all-in (enrollment barrier), add **`$369K`** marketing/education, target **+3,200** new RD/RL customers by 2028. Ratio methodology draws on OPC's ~60/40 primary-distribution split from the 240945 workgroup debate.                                                           |
+| **Oct 2025**     | **[Order No. 91917](../sources/md_hp_rates/mdpuc_9761_order_91917_drive_act_implementation.md)** accepts BGE's RD modification on enrollment grounds (peak rate "presents a high barrier"); SEIA/AEU/CHESSA objection to weakening the signal overruled.                                                                                                         |
+| **May 2026**     | Revised RD tariff pages filed (**ML 329078**) and accepted (**ML 330315**) — 2.8:1 ratio takes effect in rates.                                                                                                                                                                                                                                                  |
+
+That's the full arc: PC 44 designed a strong cost-based rate; the pilot proved behavior change; permanent rollout barely moved enrollment; DRIVE responded by **weakening the signal to sell more of it** — the tension from Part 1 playing out in policy.
 
 **Schedule RD is the answer to the question "what would a real TOU rate look like if we designed one from scratch, with modern meters, to reflect what actually drives cost?"** It is the only BGE residential rate that time-varies the delivery charge — meaning it is the only one that tells a customer anything about the cost of the wires serving them.
 
 **How it works.**
 
 - Customer charge: $10.00/month (RY3, effective January 1, 2026)
-- **Delivery Service Charge: on-peak $0.11550/kWh, off-peak $0.02987/kWh** — a 3.87:1 ratio *in delivery alone*
+- **Delivery Service Charge: on-peak $0.11550/kWh, off-peak $0.02987/kWh** — a 3.87:1 ratio _in delivery alone_
 - Layered on TOU supply: 36.778¢ on-peak vs. 10.575¢ off-peak (September 2025)
 - All-in: roughly 48¢ against 14¢
 
 Two periods, no intermediate:
 
-| Season | On-peak | Off-peak |
-|---|---|---|
-| Summer | 3–8 p.m. weekdays | everything else |
+| Season     | On-peak                     | Off-peak        |
+| ---------- | --------------------------- | --------------- |
+| Summer     | 3–8 p.m. weekdays           | everything else |
 | Non-summer | 6–9 a.m., 5–9 p.m. weekdays | everything else |
 
 These windows are the modern design, and each is chosen for a reason. **The summer 3–8 p.m. window** is five hours targeting when PJM's system peak and BGE's distribution loading actually occur — air conditioning at maximum, people arriving home, solar output declining. **The winter 6–9 a.m. and 5–9 p.m. windows** reflect the two-humped shape of winter residential load: the morning wake-up (heat, hot water, showers, cooking) and the evening return.
@@ -148,15 +171,19 @@ These windows are the modern design, and each is chosen for a reason. **The summ
 
 **How it's doing: 1,200 customers.** Out of roughly 1.25 million residential accounts. That is the tension from Part 1 in its purest form — BGE built the technically correct rate, and almost nobody wants it.
 
-BGE surveyed customers to find out why, and the answer was exactly what you'd predict: **the peak rate itself was the barrier.** At 3.2:1 all-in, the rate reads as risky. So BGE's DRIVE Act proposal was to *weaken* its best rate — **3.2:1 down to 2.8:1** — in order to sell more of it. Revised tariff filed 04/16/2026 (ML 329078), accepted 05/20/2026 (ML 330315).
+BGE surveyed customers to find out why, and the answer was exactly what you'd predict: **the peak rate itself was the barrier.** At 3.2:1 all-in, the rate reads as risky. So BGE's DRIVE Act proposal was to _weaken_ its best rate — **3.2:1 down to 2.8:1** — in order to sell more of it. Revised tariff filed 04/16/2026 (ML 329078), accepted 05/20/2026 (ML 330315).
 
 **The fight this caused is worth understanding**, because it inverts the usual assumption that regulators push utilities toward stronger signals while utilities resist.
 
 SEIA, Advanced Energy United, and the Chesapeake Solar and Storage Association jointly objected. Their argument: keep the ratios high, because a lower ratio worsens free ridership — customers who can save money without changing anything have an incentive to enroll, and with a lower ratio, the ones who do enroll have less reason to actually shift consumption. You end up paying out savings and buying nothing.
 
-The Commission sided with BGE, and — in the parallel discussion of Pepco's and Delmarva's rates — offered an affirmative cost-causation defense of the weaker signal that's worth quoting because it's a substantive rate-design position, not a concession: moderating the differential "will serve to reallocate a significant portion of transmission and capacity costs across all hours, not just peak hours," which "will better align the companies' R-TOU-P rates with cost causation principles as costs will be allocated in a manner that reflects the typical residential load factor."
+The Commission sided with BGE on Schedule RD: Order No. 91917 finds that the 3.2:1 ratio "presents a high barrier for many BGE customers" and that lowering it to 2.8:1 "may encourage greater participation" — an enrollment rationale, not a cost-causation one.[^91917-bge-rd]
 
-The argument being made there is that an extremely high peak ratio *over*-assigns capacity and transmission costs to a handful of hours relative to how residential load actually causes those costs. Whether you buy that or not, it's a real position and not merely a rationalization of the enrollment problem.
+In the parallel discussion of Pepco's and Delmarva's Schedule R-TOU-P (4.5:1 down to ~2.7:1), the Commission added a separate, affirmative cost-causation defense of weakening the ratio: moderating the differential "will serve to reallocate a significant portion of transmission and capacity costs across all hours, not just peak hours," which "will better align the companies' R-TOU-P rates with cost causation principles as costs will be allocated in a manner that reflects the typical residential load factor."[^91917-phi] That argument — that an extremely high peak ratio _over_-assigns capacity and transmission costs to a handful of hours relative to how residential load actually causes those costs — appears in the PHI section of the order, not in the BGE holding. Whether you buy it or not, it's a real rate-design position the Commission adopted for Exelon's other Maryland utilities; BGE's RD approval rests on the barrier-to-enrollment logic alone.
+
+[^91917-bge-rd]: Order No. 91917, Case No. 9761 (Oct. 21, 2025), Section II.C.1 (BGE), p. 23. See [`mdpuc_9761_order_91917_drive_act_implementation.md`](../sources/md_hp_rates/mdpuc_9761_order_91917_drive_act_implementation.md).
+
+[^91917-phi]: Order No. 91917, Case No. 9761 (Oct. 21, 2025), Section II.C.2 (PHI Companies), p. 25. Same source.
 
 **Status: live; BGE's flagship, and the only rate that matters for distribution cost causation.**
 
@@ -177,9 +204,9 @@ BGE chose option 2. Schedule EV is a whole-house TOU rate gated on EV ownership.
 
 **How it's doing: 190 customers.** It failed, and it failed for two identifiable reasons.
 
-*First, the trade is bad.* To influence one appliance, the customer must put their refrigerator, air conditioning, dryer, and everything else onto a TOU rate. That's a lot of downside risk to accept in exchange for cheaper overnight charging. Most EV owners decline.
+_First, the trade is bad._ To influence one appliance, the customer must put their refrigerator, air conditioning, dryer, and everything else onto a TOU rate. That's a lot of downside risk to accept in exchange for cheaper overnight charging. Most EV owners decline.
 
-*Second, and more damning: it excluded exactly the population it needed.* Look at Schedule EV's rider list and notice what isn't there — **Rider 18, Net Energy Metering, does not appear.** Solar customers cannot take the rate. But EV owners and rooftop solar owners are heavily overlapping populations. BGE said so directly in its EVsmart 2.0 filing: the main reason for un-enrollments from its EV rates has been customers installing solar panels. Customers were signing up, going solar, and being kicked off.
+_Second, and more damning: it excluded exactly the population it needed._ Look at Schedule EV's rider list and notice what isn't there — **Rider 18, Net Energy Metering, does not appear.** Solar customers cannot take the rate. But EV owners and rooftop solar owners are heavily overlapping populations. BGE said so directly in its EVsmart 2.0 filing: the main reason for un-enrollments from its EV rates has been customers installing solar panels. Customers were signing up, going solar, and being kicked off.
 
 **Status: dying — but its ghost persists, which is genuinely useful to know.**
 
@@ -187,13 +214,13 @@ BGE proposed in Case No. 9478 (EV Phase II) to close Schedule EV to new enrollme
 
 But Schedule EV doesn't actually disappear even if closed, because **it is the pricing reference for Rider 6.** BGE's SOS rate sheet states it plainly: "For customers participating in Rider 6 – Vehicle Charging TOU (VC-TOU) Adjustment Program, the VC-TOU On-Peak and Off-Peak Total SOS Rates are equal to the Schedule EV On-Peak and Off-Peak Total SOS Rates, respectively." Rider 6 needs a TOU price shape to compute against, and Schedule EV's is the one it uses. Schedule EV's shape is also the template BGE is applying to RL.
 
-So Schedule EV is becoming a rate-design artifact rather than a rate — closed to customers, but still the pricing engine underneath BGE's fastest-growing offering *and* its largest legacy one. If you're modeling BGE's rates, you can't discard it.
+So Schedule EV is becoming a rate-design artifact rather than a rate — closed to customers, but still the pricing engine underneath BGE's fastest-growing offering _and_ its largest legacy one. If you're modeling BGE's rates, you can't discard it.
 
 ### Rider 6 — Vehicle Charging Time-of-Use Adjustment (2020), marketed as EVsmart® EV-TOU
 
 **The problem it was solving: everything that was wrong with Schedule EV.**
 
-By 2020 the technology had changed. Networked Level 2 chargers and manufacturer telematics APIs could report EV-only consumption with timestamps, straight from the charger or the car. That meant you could finally price *just the EV* — without a second meter, and without touching the rest of the house.
+By 2020 the technology had changed. Networked Level 2 chargers and manufacturer telematics APIs could report EV-only consumption with timestamps, straight from the charger or the car. That meant you could finally price _just the EV_ — without a second meter, and without touching the rest of the house.
 
 **How it works — and the mechanism is the whole point.** Rider 6 is not a rate schedule. It's a **billing adjustment**. The customer stays on flat Schedule R. The charger or the vehicle reports EV kWh by time period. BGE then computes what those kWh would have cost at Schedule EV's TOU supply rates versus what they cost at Schedule R's flat supply rate, and applies the difference as a line item:
 
@@ -236,18 +263,18 @@ Applies to Schedules R, RL, RD, and EV alike — it shows up in every residentia
 
 This matters more than its obscurity suggests, for one reason: **it is enrolled on a default basis, and BGE has run it for over a decade.** As Brattle analysts noted when it launched, "the first residential default dynamic pricing deployments have just begun in Maryland and Delaware, where BGE and PHI are enrolling all of their residential customers in peak time rebates."
 
-So when the July 2026 reports take up opt-out TOU, the question is not *whether BGE is capable of, or philosophically opposed to, defaulting customers into time-varying pricing.* It has been doing exactly that since the early 2010s. The question is narrower and sharper: **will BGE default customers into a rate that can make their bill go up?** PTR never could. That asymmetry is the entire distinction, and it's the one BGE has spent fifteen years on the comfortable side of.
+So when the July 2026 reports take up opt-out TOU, the question is not _whether BGE is capable of, or philosophically opposed to, defaulting customers into time-varying pricing._ It has been doing exactly that since the early 2010s. The question is narrower and sharper: **will BGE default customers into a rate that can make their bill go up?** PTR never could. That asymmetry is the entire distinction, and it's the one BGE has spent fifteen years on the comfortable side of.
 
 ---
 
 ## Part 4: The enrollment reality check
 
-| Offering | Created | What's exposed | Delivery TOU? | Enrolled | Status |
-|---|---|---|---|---|---|
-| Schedule RL | 1984 | Whole house, 3 periods | No | >50,000 | Live; re-shaped 1.3:1 → 1.9:1 |
-| Rider 6 (VC-TOU) | 2020 | EV charger only, 2 periods | No | 3,700 | Live; growing; actively marketed |
-| Schedule RD | 2019 | Whole house, 2 periods | **Yes** | 1,200 | Live; re-shaped 3.2:1 → 2.8:1 |
-| Schedule EV | 2013 | Whole house, 2 periods | No | 190 | Closure proposed in Case 9478 |
+| Offering         | Created | What's exposed             | Delivery TOU? | Enrolled | Status                           |
+| ---------------- | ------- | -------------------------- | ------------- | -------- | -------------------------------- |
+| Schedule RL      | 1984    | Whole house, 3 periods     | No            | >50,000  | Live; re-shaped 1.3:1 → 1.9:1    |
+| Rider 6 (VC-TOU) | 2020    | EV charger only, 2 periods | No            | 3,700    | Live; growing; actively marketed |
+| Schedule RD      | 2019    | Whole house, 2 periods     | **Yes**       | 1,200    | Live; re-shaped 3.2:1 → 2.8:1    |
+| Schedule EV      | 2013    | Whole house, 2 periods     | No            | 190      | Closure proposed in Case 9478    |
 
 BGE told the Commission its marketing "targets a total of 11 percent of residential customers enrolled in a TOU rate by 2028 (compared to today's 5 percent enrollment)," with a specific target of **3,200 additional customers** in Schedule RD or RL by January 1, 2028.
 
@@ -257,7 +284,7 @@ First, roughly 91% of it is the 1984 RL population — sitting on a rate BGE its
 
 Second, the arithmetic doesn't close where you'd expect. On roughly 1.25 million residential accounts, going from 5% to 11% means roughly **75,000 net new TOU customers**. But only 3,200 of those come from the RD/RL marketing effort BGE budgeted for. The remaining ~72,000 have to come from what BGE calls "its existing EV TOU target" — i.e., Rider 6.
 
-If that reading is right, **BGE's TOU strategy is, in substance, an EV strategy**, and the whole-house rates are a side program. *(This decomposition is my inference from BGE's stated figures, not something BGE published — worth verifying against the July 1, 2025 filing at 34–35.)*
+If that reading is right, **BGE's TOU strategy is, in substance, an EV strategy**, and the whole-house rates are a side program. _(This decomposition is my inference from BGE's stated figures, not something BGE published — worth verifying against the July 1, 2025 filing at 34–35.)_
 
 ---
 
@@ -285,7 +312,7 @@ The generalization: **BGE markets time-varying pricing hard when the customer's 
 
 ### Where has BGE landed on how strong the signal should be?
 
-Somewhere in the **1.9:1 to 2.8:1 band** — and revealingly, it arrived there from both directions at once. It asked to *lower* RD from 3.2:1 to 2.8:1 because the peak rate deterred enrollment. It asked to *raise* RL from 1.3:1 to 1.9:1 because that ratio "is not a sufficient price signal to incent customers to shift their behavior." The Commission described 1.9:1 as a "middle ground" for customers who find RD's peak rates too high.
+Somewhere in the **1.9:1 to 2.8:1 band** — and revealingly, it arrived there from both directions at once. It asked to _lower_ RD from 3.2:1 to 2.8:1 because the peak rate deterred enrollment. It asked to _raise_ RL from 1.3:1 to 1.9:1 because that ratio "is not a sufficient price signal to incent customers to shift their behavior." The Commission described 1.9:1 as a "middle ground" for customers who find RD's peak rates too high.
 
 Read generously, BGE is triangulating toward an optimum between enrollment and effect — which is a legitimate thing to do and arguably what the tension in Part 1 demands. Read skeptically, BGE is optimizing for the thing it will actually be measured against on January 1, 2028, which is an **enrollment target — a headcount, not a megawatt.** Nothing in the DRIVE Act's TOU provisions holds BGE accountable for load actually shifting.
 
@@ -293,25 +320,25 @@ Read generously, BGE is triangulating toward an optimum between enrollment and e
 
 **Yes — and this is the most revealing part of the record. But it sees them in its virtual power plant program, not in its TOU rates. And it has attached a condition.**
 
-*First, the condition.* Per OPC's characterization of BGE's PC 77 filing (ML 328165 at 17): "BGE has proposed that if demand response or other EDSSS resources are used to defer or avoid distribution system upgrades, those resources should receive **the same favorable cost recovery treatment that traditional capital infrastructure would have received.**" Alongside that, BGE asked to recover its VPP costs through a **regulatory asset earning a return at its weighted average cost of capital** until fully recovered.
+_First, the condition._ Per OPC's characterization of BGE's PC 77 filing (ML 328165 at 17): "BGE has proposed that if demand response or other EDSSS resources are used to defer or avoid distribution system upgrades, those resources should receive **the same favorable cost recovery treatment that traditional capital infrastructure would have received.**" Alongside that, BGE asked to recover its VPP costs through a **regulatory asset earning a return at its weighted average cost of capital** until fully recovered.
 
-Brief translation, since these are ratemaking terms of art: a *regulatory asset* lets the utility put spending on its balance sheet and recover it from customers later, earning a return in the meantime. *WACC* is the blended debt-and-equity return — substantially higher than the cost of debt alone. So BGE is asking to earn on avoided infrastructure roughly what it would have earned on built infrastructure.
+Brief translation, since these are ratemaking terms of art: a _regulatory asset_ lets the utility put spending on its balance sheet and recover it from customers later, earning a return in the meantime. _WACC_ is the blended debt-and-equity return — substantially higher than the cost of debt alone. So BGE is asking to earn on avoided infrastructure roughly what it would have earned on built infrastructure.
 
 OPC's rebuttal is the classic non-wires-alternative argument, and it lands cleanly: "A non-wires alternative is supposed to reduce customer costs by avoiding unnecessary infrastructure spending. **It should not preserve the same earnings opportunity the utility would have received if the avoided capital project had been built anyway.** If the lower-cost alternative is treated as though it were the higher-cost investment it replaces, much of the value of the substitution is lost." OPC also distinguishes the risk profiles: physical infrastructure carries construction, operational, and multi-decade maintenance obligations, whereas aggregator fees and customer incentives "are largely programmatic. They compensate participation or services, rather than finance utility-owned infrastructure."
 
 So the honest summary is: **BGE affirmatively asserts that demand-side resources can defer distribution capex — and conditions its enthusiasm on being made whole for the earnings it would lose by not building.** That's not hypocrisy; it's the throughput and capex-return incentive doing exactly what the regulatory structure asks it to do. But it means you should read BGE's deferral analysis knowing what BGE wants out of it.
 
-*Second, and more important for your purposes: the deferral numbers live in the VPP filings, not the TOU filings.*
+_Second, and more important for your purposes: the deferral numbers live in the VPP filings, not the TOU filings._
 
 BGE's EDSSS (virtual power plant) pilot came with quantification: **$1,545,955 in cost against an estimated 7.621 MW peak reduction**, which BGE explicitly framed as demonstrating "a return on investment in terms of grid capacity management," with stated goals including support for "customer affordability by potentially deferring costly infrastructure upgrades, improving load forecasting accuracy, and providing direct compensation to participating customers." When the Commission rejected that pilot as insufficiently ambitious and ordered a refiling, BGE came back with **up to 188 MW** of flexible load.
 
 BGE has published **no comparable MW or dollar deferral estimate for its TOU rates.** Not a small one — none.
 
-**That asymmetry is the answer to your question, and it isn't an oversight.** Deferring a distribution upgrade requires three things: load reduction that is *firm* (you can count on it), *locational* (on the specific constrained feeder), and *dispatchable* (available on the specific day the constraint binds). An opt-in TOU rate delivers none of the three. It is a voluntary, diffuse, system-wide price nudge with no performance obligation. A VPP delivers all three — contracted MW, at known locations, callable on command.
+**That asymmetry is the answer to your question, and it isn't an oversight.** Deferring a distribution upgrade requires three things: load reduction that is _firm_ (you can count on it), _locational_ (on the specific constrained feeder), and _dispatchable_ (available on the specific day the constraint binds). An opt-in TOU rate delivers none of the three. It is a voluntary, diffuse, system-wide price nudge with no performance obligation. A VPP delivers all three — contracted MW, at known locations, callable on command.
 
 The Commission is alive to this. It agreed with stakeholders who "criticized certain electric company EDSSS proposals for focusing on system peak reduction and neglecting local peak reduction," and directed the utilities to develop strategies for identifying local needs and locational marketing targeting.
 
-BGE's implicit theory of the case, then, is that **TOU is a customer-choice affordability product and the VPP is the grid asset.** That's coherent — arguably correct — but it sits awkwardly against a statute that asks BGE to evaluate deferral potential *from TOU rates* specifically.
+BGE's implicit theory of the case, then, is that **TOU is a customer-choice affordability product and the VPP is the grid asset.** That's coherent — arguably correct — but it sits awkwardly against a statute that asks BGE to evaluate deferral potential _from TOU rates_ specifically.
 
 This is also why the shape of BGE's July 1, 2026 filing is interesting: it filed both as a party to the joint Exelon "Deferring Distribution System Upgrades Report" (ML 331710) **and separately** its own "Drive Act Capital Deferral Potential July 1 Report" (ML 331727). A separate company-specific capital-deferral document implies BGE did quantification it didn't want blended into a three-utility joint filing.
 
@@ -325,12 +352,12 @@ If BGE prevails, its entire residential demand-side portfolio — including the 
 
 ### So where will BGE land on opt-out?
 
-Its actual position lives in ML 331727, which I couldn't retrieve. The structural read points negative-to-conditional:
+Its actual position lives in ML 331727, **now retrieved and summarized in Part 8 below: BGE recommends _against_ opt-out TOU.** The structural read below correctly pointed negative (though the recommendation turned out _not_ to be conditioned on cost recovery):
 
 - BGE just finished arguing that customers won't opt in at 3.2:1 because the peak price frightens them. That's an odd predicate for then defaulting non-consenting customers into those same prices.
 - The DRIVE Act's own findings flag protecting low- and moderate-income households "from negative bill impacts during a transition to TOU rates" — a caution BGE can point to.
 - Pepco's revenue-erosion argument about Schedule R-TM shows the Exelon utilities are alert to a specific mechanical problem: revenue targets are set per rate class, so customers migrating between classes changes authorized revenue. A wholesale opt-out transition would trigger that at maximum scale.
-- BGE's default instrument of choice has always been the no-downside PTR — which it now proposes to move *into DRIVE* rather than convert into a TOU default.
+- BGE's default instrument of choice has always been the no-downside PTR — which it now proposes to move _into DRIVE_ rather than convert into a TOU default.
 
 If BGE endorses opt-out, expect the endorsement to arrive conditioned on cost-recovery and revenue-target treatment.
 
@@ -340,27 +367,74 @@ If BGE endorses opt-out, expect the endorsement to arrive conditioned on cost-re
 
 **1. BGE has operated an electric-heat-differentiated TOU schedule since 1984, and nobody seems to be looking at it.**
 
-The RL/RLH split (tariff codes 44 and 45) means BGE has maintained separate TOU treatment for electric-heating and non-electric-heating customers for forty years, with an availability clause explicitly conditioned on electric central air conditioning *or electric central heating*. That is, functionally, a latent heat pump rate class sitting inside a legacy tariff.
+The RL/RLH split (tariff codes 44 and 45) means BGE has maintained separate TOU treatment for electric-heating and non-electric-heating customers for forty years, with an availability clause explicitly conditioned on electric central air conditioning _or electric central heating_. That is, functionally, a latent heat pump rate class sitting inside a legacy tariff.
 
 It's relevant to your New England campaign for two reasons. It's a precedent — a major IOU already runs a heating-differentiated TOU schedule at scale, which is useful when a utility elsewhere claims the concept is novel or administratively infeasible. And it's a live gap: BGE is about to re-shape RL's price signal from 1.3:1 to 1.9:1, and nothing in the record indicates any heating-specific analysis behind that. Whether the re-shaping was tested separately for RLH customers — who have a fundamentally different load shape from RL customers — is a clean data request.
 
 **2. Schedule RD's delivery charges appear not to be seasonally differentiated — only the period definitions change.**
 
-The tariff shows a single on-peak delivery rate ($0.11550) and a single off-peak rate ($0.02987), while separately defining summer on-peak as 3–8 p.m. and non-summer on-peak as 6–9 a.m. and 5–9 p.m. So the *hours* change by season but the *prices* don't.
+The tariff shows a single on-peak delivery rate ($0.11550) and a single off-peak rate ($0.02987), while separately defining summer on-peak as 3–8 p.m. and non-summer on-peak as 6–9 a.m. and 5–9 p.m. So the _hours_ change by season but the _prices_ don't.
 
 The consequence for a heat pump customer: they face the same 11.55¢ on-peak delivery charge at 7 a.m. in January as at 4 p.m. in August — on a system that peaks in summer. That's a defensible administrative simplification, but it isn't cost causation. A winter morning kWh on a summer-peaking distribution system does not drive distribution capacity cost the way an August afternoon kWh does.
 
-This matters directly if BGE's July 1 report leans on RD as evidence that TOU rates can defer distribution investment. It's also the exact structural question at issue in your Rhode Island MCOSS work — whether winter heat pump load actually causes incremental distribution capacity cost — and BGE's rate design implicitly assumes an answer without doing the analysis. *(Verify against the post-May-2026 tariff sheet; the version I retrieved is Suppl. 723, and ML 329078/330315 revised it.)*
+This matters directly if BGE's July 1 report leans on RD as evidence that TOU rates can defer distribution investment. It's also the exact structural question at issue in your Rhode Island MCOSS work — whether winter heat pump load actually causes incremental distribution capacity cost — and BGE's rate design implicitly assumes an answer without doing the analysis. _(Verify against the post-May-2026 tariff sheet; the version I retrieved is Suppl. 723, and ML 329078/330315 revised it.)_
 
 ---
 
 ## Part 7: What to look for when you get the reports
+
+_(ML 331727 has since been obtained; see Part 8 for what it actually said. The items below were the original watch-list; most are now answered there.)_
 
 - **Whether ML 331727 quantifies deferral in MW or dollars at the feeder level, or only qualitatively** — and whether it separates TOU deferral from VPP deferral. My expectation is that it either folds TOU into the VPP number or concedes that TOU can't be relied on for deferral because it isn't dispatchable. Either would be a useful admission.
 - **Whether BGE conditions any opt-out endorsement on cost-recovery treatment.** Given the pattern above, expect the endorsement to come with an invoice.
 - **Whether there's any EM&V baseline for the RL re-shaping.** There isn't one today. Potomac Edison was directed to build evaluation, measurement, and verification metrics with the Rate Design Work Group because it had no existing residential TOU rate — but BGE's RL has been running since 1984 with, on BGE's own account, no measurable effect ever detected. Re-shaping it to 1.9:1 without an EM&V design means nobody will be able to say whether it worked.
 - **The common metrics prescribed by Orders 92158 (ML 326582) and 92422 (ML 330633)**, which constrain what these reports could say in the first place.
 - **BGE's non-residential SOS TOU analysis**, due to the Rate Design Work Group within six months of Order No. 91917 (so roughly April 2026), covering supply ratios, use of intermediate periods, and peak periods. The Commission opened this door deliberately, noting the DRIVE Act "does not specifically limit TOU rate participation to residential customers."
+
+---
+
+## Part 8: What the July 1, 2026 report actually said (ML 331727)
+
+BGE's "DRIVE Act Capital Deferral Potential July 1 Report" (ML 331727, filed July 1, 2026) is now in hand, and it confirms — in BGE's own words — nearly every structural prediction in Parts 5 and 7. Two questions from your brief: how much capacity deferral potential BGE found, and whether it supports auto-enrollment.
+
+### 1. How much capacity deferral potential did BGE find?
+
+**BGE quantified the _size of the problem_, but pointedly declined to quantify how much of it TOU (or any demand-side program) could actually solve.** That distinction is the whole report.
+
+**The scale of the need.** Grounding the analysis in its 2026 Annual System Plan Update, BGE identified, over the 2027–2036 planning horizon, **190 forecasted feeder overloads and 33 forecasted substation transformer overloads**, totaling:
+
+| Component type | Associated MW of overload |
+| -------------- | ------------------------- |
+| Feeders        | 547 MW                    |
+| Substations    | 393 MW                    |
+
+**The catch: almost all of it is long-duration.** BGE binned each overload by how many hours it exceeds its rating on the worst day. The overwhelming majority of the MW sits in the **6+ hour** bucket — **494.2 of 547 feeder MW and 342.5 of 393 substation MW**. Only about **10% of total overload MW are short-duration** (≤5 hours), and BGE names that ~10% as the _only_ population "that may be appropriate scenarios to begin building non-wires capabilities." In BGE's own framing, most of the forecasted need "is not well suited to behavioral demand response or many current energy storage configurations or chemistries commercially viable today."
+
+**The timing splits summer from winter — and this matters directly for heat pumps.** BGE's time-of-day analysis (limited to the ≤5-hour constraints) found summer overloads clustered in the afternoon/early evening, "generally consistent with the operating windows of existing demand response," while **winter overloads occur in the early morning (roughly 4–8 a.m.) and late evening (8 p.m.–midnight)** — hours that "raise different operational and customer participation considerations." BGE explicitly flags winter-focused, automated, customer-centered load management (including managed charging) as the growth area, and ties expanded _winter_ residential DR value to _heat pump penetration_ going forward.
+
+**The crucial refusal.** The Commission's common-metrics order (No. 92422) asked, for each constraint, the "peak load reduction potential of… the distribution programs an IOU has assessed as possible non-wires solutions." BGE **excluded that metric (item "(d)")** outright, stating plainly: "BGE does not currently evaluate demand-side program impacts at the individual constraint level as part of its ESP process." Its existing NWS evaluations have used **utility-owned front-of-the-meter storage only** — not TOU, not demand response. So there is _no_ feeder-level TOU deferral number in the report, by design. This is exactly the asymmetry Part 7 predicted: BGE conceded TOU can't be relied on for deferral rather than manufacturing a number for it.
+
+**Where BGE ranks TOU among the tools.** BGE's program-by-program screen (Table 4 of the report) rates TOU dead last for deferral usefulness: **Locational Signal "Low," Scalability "Poor,"** time-of-day "rigid blocks," seasonality "static." Its verdict: "TOU rates remain useful for customer engagement and load shaping, but they are less suitable as the primary tool for component-specific deferral because they are behavioral, generally not dispatchable, and difficult to target a constrained feeder or substation." The only TOU behavioral evidence it cites is the **Brattle PC44 Schedule RD pilot: −9.3% summer weekday peak and −4.9% non-summer weekday peak** — and BGE immediately discounts it, noting the pilot was opt-in _and_ paid survey incentives, and that Schedules RL and EV "have not been studied for MW reduction potential" at all.
+
+By contrast, BGE points to its **dispatchable** resources as the real deferral candidates: residential demand response (Connected Rewards + PeakRewards, ~**125 MW** of filed on-summer-peak reduction) rated "High" locational signal; managed charging and C&I DR "High"; storage "High"/"Precise." Its cost-per-kW table underscores where it thinks the value is: Connected Rewards **$14/kW-yr** (utility admin), PeakRewards **$19/kW-yr**, Smart Charge Management **$293/kW-yr** — with no comparable figure offered for any TOU rate.
+
+**Bottom line on deferral:** BGE found ~940 MW of forecasted feeder-plus-substation overload over ten years, told the Commission ~90% of it is too long-duration for demand-side resources to touch, and declined to attribute _any_ of the addressable ~10% to TOU specifically — reserving deferral value for dispatchable, locational, verifiable resources (DR, managed charging, storage, and its proposed VPP). TOU is explicitly demoted to "a complementary foundation for broader load shaping and customer education."
+
+### 2. Does BGE support auto-enrollment (opt-out TOU)? No.
+
+**BGE's recommendation is unambiguous: "Recommend against Opt-Out TOU rates for Distribution Level Capital needs."** This resolves the open question in Part 5 — and, notably, the recommendation is _not_ conditioned on cost-recovery treatment (the "endorsement with an invoice" Part 7 anticipated never materializes, because there is no endorsement).
+
+BGE's reasoning runs on three tracks:
+
+**(a) Opt-out buys enrollment, not behavior.** BGE marshals out-of-state benchmarks showing peak reductions "generally ranging from approximately 1.3% to 8.0%," with the strongest results only where rates are targeted, well-designed, and paired with engaged or flexible customers. Its headline cautionary example is **PSEG Long Island: ~900,000 customers defaulted, 97% participation — but only ~1.3% average summer weekday peak reduction (21 MW across 850,000 accounts).** BGE's gloss: "high enrollment under an opt-out structure does not necessarily translate into high, durable, locationally useful load reduction." Because opt-out sweeps in customers who are "less aware, less able to shift usage, or less motivated," the behavioral response is weaker than the opt-in, incentivized RD pilot — so the already-modest deferral case gets _worse_, not better, under opt-out.
+
+**(b) Affordability and adverse bill impacts.** BGE's central customer-protection argument comes straight from its own PC44 pilot bill-impact analysis: of **100,000+ customers analyzed, 40% would have seen higher bills — averaging almost $4/month more — if they did not shift usage.** BGE's conclusion: "it is not the right time for such a transition given affordability constraints and customer perceptions at this time." (Note the tension with your heat pump work: an opt-out default that raises bills for 40% of non-shifting customers is precisely the "negative bill impacts during a transition" the DRIVE Act's own findings caution against.)
+
+**(c) Implementation cost and mechanics.** Even setting merits aside, BGE lists the feasibility burdens a full opt-out transition would impose: heavy customer education and marketing (weekly usage emails and customer-specific bill-impact tools, as in the pilot); expanded call-center staffing and a web-based opt-out path; affordability protections; **decoupling complications** (BGE calculates TOU and non-TOU schedules separately under Electric Rider 25, so mass migration between classes would need test-year adjustments); and IT/billing-system investment.
+
+BGE's stated alternative is the one it has been building all along: "Support an engaged customer base managing load proactively" via existing and proposed DRIVE Act programs that turn customers into "prosumers" through "advanced technology channels" — i.e., managed charging, DR, storage, and the VPP, not a defaulted whole-house rate.
+
+**One caveat worth flagging for the heat pump campaign:** BGE frames its opposition narrowly around _distribution-level capital deferral_ and _current_ affordability conditions ("at this time," "under current conditions"). It does not argue opt-out TOU is never appropriate — only that it won't reliably defer distribution capex and would hurt bills now. That leaves the door open to revisiting opt-out on affordability/decarbonization grounds later, especially once AMI-enabled, better-designed rates and stronger customer protections exist.
 
 ---
 
@@ -378,16 +452,17 @@ This matters directly if BGE's July 1 report leans on RD as evidence that TOU ra
 
 ## Primary sources
 
-| Source | Locator |
-|---|---|
-| Order No. 91917 (DRIVE Act Implementation, Oct. 21, 2025) | psc.maryland.gov/wp-content/uploads/Order-91917_ML-323522-9761-1.pdf |
-| Case No. 9761 docket jacket | webpscxb.pscmaryland.com/DMS/case/9761 |
-| BGE Schedule RD tariff (Suppl. 723) | bge.com CDN — `P3_SCH_RD.pdf` |
-| BGE Schedule RL tariff (Suppl. 717/745) | contentstack — `P3_SCH_RL.pdf` |
-| BGE Schedule EV tariff (Suppl. 659/674) | contentstack — `ScheduleEV.pdf` |
-| BGE Riders 6/7/8 (Suppl. 727) | contentstack — `Rdrs_6_7_8.pdf` |
-| BGE SOS rates & misc. charges (Sept. 2025) | bge.com CDN — `POLR_Rates_PTC_MiscCharges.pdf` |
-| OPC Comments, Case 9761 & PC 77 (Apr. 1, 2026) | opc.maryland.gov/Portals/0/Files/Publications/Others/ |
-| BGE EVsmart 2.0 / EV Phase II (Case 9478) | e9insight.com/wp-content/uploads/2024/06/7-CN9478_BGE-EVsmart2.0-_F-3.pdf |
-| BGE EVsmart EV-TOU program page | bge.com/SmartEnergy/InnovationTechnology/Pages/EVTOURate.aspx |
-| DLS Fiscal & Policy Note, HB 1256 (2024RS) | mgaleg.maryland.gov/2024RS/fnotes/bil_0006/hb1256.pdf |
+| Source                                                        | Locator                                                                                                                                                                                                                |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Order No. 91917 (DRIVE Act Implementation, Oct. 21, 2025)     | [`mdpuc_9761_order_91917_drive_act_implementation.md`](../sources/md_hp_rates/mdpuc_9761_order_91917_drive_act_implementation.md); [PDF](https://psc.maryland.gov/wp-content/uploads/Order-91917_ML-323522-9761-1.pdf) |
+| PC44 Rate Design Work Group, 2022 TOU Report (Maillog 240945) | [`mdpuc_240945_pc44_tou_rate_design_work_group_report.md`](../sources/md_hp_rates/mdpuc_240945_pc44_tou_rate_design_work_group_report.md)                                                                              |
+| Case No. 9761 docket jacket                                   | webpscxb.pscmaryland.com/DMS/case/9761                                                                                                                                                                                 |
+| BGE Schedule RD tariff (Suppl. 723)                           | bge.com CDN — `P3_SCH_RD.pdf`                                                                                                                                                                                          |
+| BGE Schedule RL tariff (Suppl. 717/745)                       | contentstack — `P3_SCH_RL.pdf`                                                                                                                                                                                         |
+| BGE Schedule EV tariff (Suppl. 659/674)                       | contentstack — `ScheduleEV.pdf`                                                                                                                                                                                        |
+| BGE Riders 6/7/8 (Suppl. 727)                                 | contentstack — `Rdrs_6_7_8.pdf`                                                                                                                                                                                        |
+| BGE SOS rates & misc. charges (Sept. 2025)                    | bge.com CDN — `POLR_Rates_PTC_MiscCharges.pdf`                                                                                                                                                                         |
+| OPC Comments, Case 9761 & PC 77 (Apr. 1, 2026)                | opc.maryland.gov/Portals/0/Files/Publications/Others/                                                                                                                                                                  |
+| BGE EVsmart 2.0 / EV Phase II (Case 9478)                     | e9insight.com/wp-content/uploads/2024/06/7-CN9478_BGE-EVsmart2.0-_F-3.pdf                                                                                                                                              |
+| BGE EVsmart EV-TOU program page                               | bge.com/SmartEnergy/InnovationTechnology/Pages/EVTOURate.aspx                                                                                                                                                          |
+| DLS Fiscal & Policy Note, HB 1256 (2024RS)                    | mgaleg.maryland.gov/2024RS/fnotes/bil_0006/hb1256.pdf                                                                                                                                                                  |

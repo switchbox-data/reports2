@@ -1,6 +1,6 @@
 # Prepared Direct Testimony of Jennifer A. Karas
 
-**Source**: mdpuc_331766_direct_testimony_karas.pdf
+**Source**: Maryland PSC direct testimony, Maillog 331766 (BGE rate case, July 2, 2026)
 **Pages**: 128
 **Date**: July 2, 2026
 **Author**: Jennifer A. Karas, Manager of Rate Administration, Baltimore Gas and Electric Company

@@ -1,6 +1,6 @@
 # Prepared Direct Testimony of Jason M. B. Manuel
 
-**Source**: mdpuc_331766_direct_testimony_manuel.pdf
+**Source**: Maryland PSC direct testimony, Maillog 331766 (BGE rate case, July 2, 2026)
 **Pages**: 29 total (20 pages of testimony + 3 exhibit cover/data pages + page breaks)
 **Date**: July 2, 2026
 **Author**: Jason M. B. Manuel, Senior Manager of Revenue Policy, Baltimore Gas and Electric Company

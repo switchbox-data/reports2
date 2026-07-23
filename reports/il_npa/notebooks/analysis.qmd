@@ -21,7 +21,7 @@ This analysis compares the cost of two approaches to managing aging natural gas 
 1. **Pipeline Replacement Program (PRP)**: Traditional approach of replacing old pipes with new gas pipes
 2. **Non-Pipe Alternative (NPA)**: Electrifying buildings and decommissioning gas infrastructure
 
-We analyze data from Peoples Gas construction projects to identify census blocks where electrification would cost the same or less than pipeline replacement. This analysis focuses on fully residential blocks due to lack of data on the variable costs of electrifying commercial and industrial properties. Our measurement of cost effectiveness is the ratio of the cost of electrification to the cost of pipeline replacement. We only consider upfront costs, including pipeline replacement or decommissioning, electrification, and electirc grid upgrades. We do not include the ongoing costs of operating the electrified buildings or rate payer impacts.
+We analyze data from Peoples Gas construction projects to identify census blocks where electrification would cost the same or less than pipeline replacement. This analysis focuses on fully residential blocks due to lack of data on the variable costs of electrifying commercial and industrial properties. Our measurement of cost effectiveness is the ratio of the cost of electrification to the cost of pipeline replacement. We only consider upfront costs, including pipeline replacement or decommissioning, electrification, and electric grid upgrades. We do not include the ongoing costs of operating the electrified buildings or rate payer impacts.
 
 We consider 3 measures of cost effectiveness:
 1. For each block, electrification should be strictly cheaper than pipeline replacement.
@@ -90,6 +90,8 @@ if (!dir.exists(outputs_dir)) {
   dir.create(outputs_dir, recursive = TRUE)
 }
 
+USE_PROJECT_COSTS <- TRUE
+
 source(here("lib", "ggplot", "switchbox_theme.R"))
 # Match showtext's text-rendering DPI to Quarto's actual chart device
 # DPI (~96).  The shared theme leaves it at 300 (designed for retina
@@ -107,14 +109,18 @@ showtext::showtext_opts(dpi = 96)
 We load pre-processed data that summarizes each census block's characteristics, including the number of residential units, commercial properties, and miles of gas pipeline.
 
 ```{r}
-# Load summary data based on aggregation level
-geojson_files <- list.files(outputs_dir,
-                            pattern = "peoplesgas_with_buildings_streets_block_.*\\.geojson$",
-                            full.names = TRUE) |>
-  sort()
+if (USE_PROJECT_COSTS) {
+  geojson_files <- list.files(outputs_dir,
+    pattern = "peoplesgas_with_buildings_streets_block_.*_with_est_prp\\.geojson$",
+    full.names = TRUE) |> sort()
+} else {
+  geojson_files <- list.files(outputs_dir,
+    pattern = "peoplesgas_with_buildings_streets_block_[^_]*\\.geojson$",
+    full.names = TRUE) |> sort()
+}
 
 if (length(geojson_files) == 0) {
-  stop("No summary GeoJSON files found for ANALYSIS_LEVEL='block'. Run geo_data_cleaning.qmd first.")
+  stop("No summary GeoJSON files found. Run geo_data_cleaning.qmd (and allocate_prp_costs.py if USE_PROJECT_COSTS=TRUE) first.")
 }
 
 latest_geojson <- tail(geojson_files, 1)
@@ -386,7 +392,11 @@ cost_elec_comm <- 0 # placeholder for commercial electrification. We did not ana
 
 pg_summary <- pg_summary |>
   mutate(
-    prp_cost = street_miles * cost_lpp_mile,
+    prp_cost = if_else(
+      USE_PROJECT_COSTS & !is.na(est_prp),
+      est_prp,
+      street_miles * cost_lpp_mile
+    ),
     elec_sf_cost = (sf_parcels * cost_elec_sf) +
       (grid_upgrade_cost_hh * sf_parcels),
     elec_mf_cost = (mf_units * cost_elec_mf) +

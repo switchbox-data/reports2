@@ -29,6 +29,7 @@ The companion repo [rate-design-platform](https://github.com/switchbox-data/rate
 | `docs/`                        | Published HTML reports served via GitHub Pages at `switchbox-data.github.io/reports2`.                                                                                                                                                              |
 | `tests/`                       | Pytest test suite.                                                                                                                                                                                                                                  |
 | `.devcontainer/`               | Dev container configuration (Dockerfile, devcontainer.json).                                                                                                                                                                                        |
+| `.cursor/skills/`              | Cursor Agent Skills: reusable workflows (PUC document fetch/extract, copy editing, etc.). See **Agent skills** below.                                                                                                                               |
 | `Justfile`                     | Root task runner: `install`, `check`, `test`, `new_report`, `aws`, `clean`.                                                                                                                                                                         |
 | `pyproject.toml`               | Python dependencies (managed by uv).                                                                                                                                                                                                                |
 | `DESCRIPTION`                  | R dependencies (managed by pak).                                                                                                                                                                                                                    |
@@ -1236,6 +1237,45 @@ If the chart's designed width is narrower than the container, it centers automat
 14. **Respect data boundaries.** Don't assume large data is in git. Follow S3 paths documented in existing notebooks.
 15. **When adding or modifying modules under `lib/`**, update the "Shared libraries (`lib/`)" section in this file so the module tables stay accurate.
 16. **Update the context index**: When adding or removing files under `context/`, update `context/README.md` so the index stays accurate.
+17. **Use agent skills** for specialized workflows (PUC filings, copy edits). Read the relevant `.cursor/skills/<name>/SKILL.md` when the task matches a skill's description; add new skills when a workflow is repeated and non-obvious.
+
+## Agent skills
+
+Project-specific [Cursor Agent Skills](https://cursor.com/docs/context/skills) live under **`.cursor/skills/`**. Each skill is a directory with a `SKILL.md` file (YAML frontmatter + instructions). Optional supporting files (`reference.md`, `scripts/`) sit alongside it.
+
+### How agents discover skills
+
+Cursor injects skill **names and descriptions** into agent context. When a task matches a skill's `description`, the agent should **read that skill's `SKILL.md` in full** before proceeding — do not rediscover fetch URLs, form POST patterns, or extraction conventions from scratch.
+
+Skills are **auto-invoked by default** unless `disable-model-invocation: true` is set in frontmatter (then the user must name the skill explicitly).
+
+### When to add a skill
+
+Add a skill when a workflow is:
+
+- **Repeated** (you expect to do it again),
+- **Non-obvious** (multiple steps, jurisdiction-specific URLs, known pitfalls), and
+- **Stable enough** to document (not a one-off experiment).
+
+Do **not** put skills under `context/` — skills are operational guides; `context/` is reference material extracted from sources.
+
+### Current skills
+
+| Skill               | Path                              | Use when …                                                                                                                                                    |
+| ------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **copy-edit**       | `.cursor/skills/copy-edit/`       | Copy editing or proofreading a report `index.qmd` (Chicago/CMOS + Switchbox house style).                                                                     |
+| **mdpuc-documents** | `.cursor/skills/mdpuc-documents/` | Fetching or extracting **Maryland PSC (MDPUC)** filings — MailLog search, `psc.maryland.gov` uploads, markdown extracts under `context/sources/md_hp_rates/`. |
+
+More **PUC document skills** for other jurisdictions (e.g. RI PUC, ICC) may be added alongside `mdpuc-documents` as those corpora grow. Each jurisdiction gets its own skill when fetch paths and conventions differ materially.
+
+### PUC document skills (pattern)
+
+PUC skills follow a common two-phase pattern:
+
+1. **Fetch** — jurisdiction-specific (MailLog/DMS, commission website uploads, case jacket browser).
+2. **Extract** — shared quality bar: `rate-design-platform/.cursor/commands/extract-pdf-to-markdown.md`, with an existing high-quality extract in `context/sources/<jurisdiction>_hp_rates/` as reference.
+
+Committed context stores **markdown only**; local PDFs are ephemeral fetch artifacts. Index entries in `context/README.md` cite `.md` paths and Maillog/case metadata, not local PDF filenames.
 
 ## Quarto reference
 

@@ -1,0 +1,1384 @@
+---
+title: "CAIRO run results review"
+format:
+  html:
+    toc: true
+    code-fold: false
+    fig-format: svg
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+This **state-agnostic** notebook reviews the outputs of one Prefect pipeline batch — one
+rate `SCENARIO`, both stages — for any given state. Run it after a batch completes to
+sanity-check inputs, verify bill arithmetic, and get an initial read on
+cross-subsidization and bill-change patterns.
+
+Master tables are organized by **segment**, one `{scenario}_{stage}` pair per row below,
+built by `rate-design-platform`'s Prefect-native post-processing
+(`just build-all-master-prefect`):
+
+| Segment | Stage | What it represents |
+|---------|-------|--------------------|
+| `<SCENARIO>_precalc` | Precalc | Pre-retrofit population, tariff calibrated on today's rates |
+| `<SCENARIO>_calibrated` | Calibrated | Heat-pump population, using the (possibly promoted) calibrated tariff |
+
+See `context/code/orchestration/prefect_pipeline.md` (in `rate-design-platform`) for the
+full vocabulary — scenario, stage, variant, quartet — and how these tables are built.
+
+> **Demonstration batch**: This notebook currently uses MD batch `md_20260803_a`,
+> scenario `hp_seasonal_percustomer_passthrough`, as a worked example.
+> **To review a different state, batch, or scenario, change `STATE`, `BATCH`,
+> `SCENARIO`, and optionally `BAT_SCOPE` in the Parameters cell and re-render
+> (or restart the Quarto Jupyter session and run all cells).**
+
+---
+
+## How to use for a new state or batch
+
+1. Build the master tables first (from `rate_design/hp_rates/` in `rate-design-platform`):
+   ```bash
+   just s <state> build-all-master-prefect <batch>
+   ```
+2. Change `STATE`, `BATCH`, and `SCENARIO` (matching a scenario name declared in that
+   utility's `pipeline_{utility}.yaml`) in the *Parameters* cell below.
+3. Re-render the notebook (`quarto render cairo_run_results.qmd`), or restart the
+   Quarto Jupyter session and run all cells.
+4. No other code changes are needed — paths and BAT column suffixes derive from
+   `STATE`, `BATCH`, `SCENARIO`, and `BAT_SCOPE`.
+
+> This notebook only supports the Prefect pipeline's master-table layout
+> (`{scenario}_{stage}` segments). To review a legacy `run_<delivery>+<supply>` batch
+> (e.g. an older NY batch), check out an earlier revision of this notebook with
+> `git log -- reports/templates/cairo_run_results.qmd`.
+
+---
+
+## Notebook sections
+
+| Section | What it covers |
+|---------|---------------|
+| **1 — Load data** | Read master bills and BAT tables from S3 for both stages of `SCENARIO` |
+| **2 — Input data quality checks (EDA)** | Utility assignments, heating-type composition, gas and electric spending distributions |
+| **3 — Structural quality checks** | Schema validation, row counts, bill arithmetic identities, baseline-column checks |
+| **4 — Baseline analysis (precalc stage)** | Cross-subsidy table, BAT distribution, monthly bill pattern |
+| **5 — Bill change analysis (precalc → calibrated)** | Quadrant bar chart, savings breakdown by heating type |
+
+
+## Parameters
+
+Change `STATE`, `BATCH`, and `SCENARIO` here to switch batches. Set `BAT_SCOPE` to
+`"delivery"` (delivery-only CAIRO run, default) or `"total"` (delivery + supply run).
+Everything else derives from these values.
+
+```{python}
+#| label: setup
+from __future__ import annotations
+
+import math
+from typing import cast
+
+import matplotlib.pyplot as plt
+import polars as pl
+from IPython.display import display
+from plotnine import (
+    aes,
+    coord_flip,
+    facet_wrap,
+    geom_col,
+    geom_hline,
+    geom_text,
+    ggplot,
+    guides,
+    labs,
+    position_dodge,
+    position_stack,
+    scale_fill_manual,
+    scale_x_discrete,
+    scale_y_continuous,
+    theme,
+)
+
+from lib.plotnine import SB_COLORS, theme_switchbox
+from lib.quarto import display_figure
+```
+
+```{python}
+#| label: params
+# ── Change these three values to review a different state, batch, or scenario ─
+STATE = "md"  # lowercase state abbreviation, e.g. "ri", "md", "ny"
+BATCH = "md_20260803_a"
+SCENARIO = "hp_seasonal_percustomer_passthrough"  # rate scenario name, as declared in that utility's pipeline YAML
+# ─────────────────────────────────────────────────────────────────────────────
+
+# The scenario representing today's status-quo rates -- normally the pipeline's
+# `bill_change_baseline.scenario` (see rate_design/hp_rates/{state}/config/scenarios/
+# pipeline_{utility}.yaml). Always loaded alongside SCENARIO (Section 1) so Section
+# 4e can compare the reform's cross-subsidy against the status-quo cross-subsidy it
+# is meant to fix, regardless of what SCENARIO is set to.
+BASELINE_SCENARIO = "default"
+
+S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
+
+# A "segment" is one (scenario, stage) pair, matching the Prefect master-table folder
+# name `{scenario}_{stage}`. `precalc` runs today's rates on the pre-retrofit
+# population; `calibrated` runs the (possibly promoted) calibrated tariff on the
+# heat-pump population. See context/code/orchestration/prefect_pipeline.md in
+# rate-design-platform for the full vocabulary.
+STAGE_ORDER = ["precalc", "calibrated"]
+STAGE_LABELS: dict[str, str] = {"precalc": "Precalc", "calibrated": "Calibrated"}
+SEGMENTS: dict[str, str] = {stage: f"{SCENARIO}_{stage}" for stage in STAGE_ORDER}
+SEGMENTS_BASELINE: dict[str, str] = {stage: f"{BASELINE_SCENARIO}_{stage}" for stage in STAGE_ORDER}
+
+DATASETS: dict[str, str] = {
+    "bills": "comb_bills_year_target",
+    "bat": "cross_subsidization_BAT_values",
+}
+
+# ResStock release used only for the Section 2a zero-gas cross-check; the master
+# tables above already carry ResStock metadata pre-joined by the post-processing
+# builders and don't need this.
+RESSTOCK_RELEASE = "res_2024_amy2018_2"
+RESSTOCK_S3_BASE = "s3://data.sb/nrel/resstock"
+
+BLDG_ID = "bldg_id"
+UTILITY_COL = "sb.electric_utility"
+GAS_UTILITY_COL = "sb.gas_utility"
+HEATING_TYPE_COL = "postprocess_group.heating_type_v2"
+MONTH_ORDER = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+# Human-readable labels for postprocess_group.heating_type_v2 values. Attributes
+# always come from the baseline (precalc) upgrade, so this classification holds on
+# every segment -- including calibrated, where ResStock would otherwise mark every
+# building as a heat pump.
+HEATING_TYPE_LABELS: dict[str, str] = {
+    "heat_pump": "Existing heat pump",
+    "electrical_resistance": "Electric resistance",
+    "natgas": "Natural gas",
+    "delivered_fuels": "Oil/propane",
+    "other": "Other",
+}
+# Display order for heating groups in charts and tables
+HEATING_ORDER = ["Natural gas", "Oil/propane", "Electric resistance", "Existing heat pump", "Other"]
+
+
+# ── BAT scope for Section 4 (cross-subsidy tables and charts) ────────────────
+# "delivery" = columns from the delivery-only run (*_delivery in master BAT).
+# "total"    = columns from the delivery+supply run (*_total in master BAT).
+BAT_SCOPE = "delivery"
+if BAT_SCOPE not in ("delivery", "total"):
+    raise ValueError(f"BAT_SCOPE must be 'delivery' or 'total', got {BAT_SCOPE!r}")
+
+COL_BAT = f"BAT_percustomer_{BAT_SCOPE}"
+COL_ANNUAL_BILL_BAT = f"annual_bill_{BAT_SCOPE}"
+COL_ECON_BURDEN = f"economic_burden_{BAT_SCOPE}"
+COL_RESIDUAL = f"residual_share_{BAT_SCOPE}"
+BAT_SCOPE_LABEL = "Delivery only" if BAT_SCOPE == "delivery" else "Total (delivery + supply)"
+BILL_SHARE_COL = "% of delivery bill revenue" if BAT_SCOPE == "delivery" else "% of total bill revenue"
+
+print(f"Reviewing {STATE.upper()} batch: {BATCH}, scenario: {SCENARIO}")
+print(f"Segments: {SEGMENTS}")
+print(f"Baseline scenario (status quo): {BASELINE_SCENARIO!r} -> segments: {SEGMENTS_BASELINE}")
+print(f"BAT analysis scope: {BAT_SCOPE_LABEL} ({COL_BAT})")
+```
+
+## Section 1: Load data
+
+We load `comb_bills_year_target/` (monthly bills per building) and
+`cross_subsidization_BAT_values/` (annual BAT metrics per building) for both stages of
+`SCENARIO`. Both datasets are Hive-partitioned on `sb.electric_utility`.
+
+Each row in the **bills** table represents one building in one month (plus an `"Annual"`
+summary row). Each row in the **BAT** table represents one building (annual only).
+Schema details are in the `AGENTS.md` master-table documentation (in
+`rate-design-platform`).
+
+We also load the **precalc**-stage BAT table for `BASELINE_SCENARIO` (today's
+status-quo rates), independent of `SCENARIO` -- used in Section 4e to show the
+cross-subsidy `SCENARIO` is meant to fix.
+
+```{python}
+def master_path(segment: str, dataset: str) -> str:
+    return f"{S3_BASE}/{STATE}/all_utilities/{BATCH}/{segment}/{dataset}/"
+
+
+def load_master_table(segment: str, dataset: str) -> pl.DataFrame:
+    return cast(
+        pl.DataFrame,
+        pl.scan_parquet(master_path(segment, dataset), hive_partitioning=True).collect(),
+    )
+
+
+bills_by_stage: dict[str, pl.DataFrame] = {}
+bat_by_stage: dict[str, pl.DataFrame] = {}
+
+for stage, segment in SEGMENTS.items():
+    try:
+        bills_by_stage[stage] = load_master_table(segment, DATASETS["bills"])
+        bat_by_stage[stage] = load_master_table(segment, DATASETS["bat"])
+    except Exception as exc:
+        raise FileNotFoundError(
+            f"Could not load segment {segment!r} at "
+            f"{master_path(segment, DATASETS['bills'])}. Build it first:\n"
+            f"  cd rate_design/hp_rates && just s {STATE} build-all-master-prefect {BATCH}"
+        ) from exc
+
+print("Loaded both stages.")
+for stage in STAGE_ORDER:
+    b = bills_by_stage[stage]
+    bt = bat_by_stage[stage]
+    months_present = sorted(b.filter(pl.col("month") != "Annual")["month"].unique().to_list())
+    upgrade = b["upgrade"][0]
+    print(
+        f"  {STAGE_LABELS[stage]} (upgrade {upgrade}): bills {b.shape}  |  BAT {bt.shape}  |  months: {months_present}"
+    )
+
+# Baseline (status-quo) precalc BAT -- always loaded for the Section 4e before/after
+# comparison, independent of SCENARIO. Reuse SCENARIO's own table when they're the
+# same segment to avoid a redundant S3 read.
+if BASELINE_SCENARIO == SCENARIO:
+    bat_baseline_precalc = bat_by_stage["precalc"]
+    print(f"Baseline scenario {BASELINE_SCENARIO!r} == SCENARIO: reusing precalc BAT already loaded above.")
+else:
+    baseline_segment = SEGMENTS_BASELINE["precalc"]
+    try:
+        bat_baseline_precalc = load_master_table(baseline_segment, DATASETS["bat"])
+    except Exception as exc:
+        raise FileNotFoundError(
+            f"Could not load baseline segment {baseline_segment!r} at "
+            f"{master_path(baseline_segment, DATASETS['bat'])}. Build it first:\n"
+            f"  cd rate_design/hp_rates && just s {STATE} build-all-master-prefect {BATCH}"
+        ) from exc
+    print(f"Baseline scenario {BASELINE_SCENARIO!r} precalc BAT: {bat_baseline_precalc.shape}")
+```
+
+```{python}
+# Quick schema peek — useful when working with an unfamiliar batch
+print("Bills schema:")
+print(bills_by_stage[STAGE_ORDER[0]].schema)
+print("\nBAT schema:")
+print(bat_by_stage[STAGE_ORDER[0]].schema)
+```
+
+## Section 2: Input data quality checks (EDA)
+
+Before looking at bills and the BAT, we examine the raw inputs: how buildings are
+distributed across utility territories, what their baseline heating systems are, and
+what their gas and electric spending looks like. These checks catch assignment errors
+and calibration anomalies early.
+
+All EDA in this section uses the precalc stage (`"Annual"` rows).
+
+### 2a: Utility assignment
+
+What fraction of buildings (and weighted households) are assigned to each electric and
+gas utility? We expect the partition to align with each utility's approximate share of
+the state's residential customers.
+
+A large fraction of **null gas assignments** is normal — buildings that heat with
+electricity, propane, or oil are not assigned a gas utility. Investigate if the null
+fraction is surprisingly low in a territory with extensive gas infrastructure, or
+surprisingly high in a gas-dense market.
+
+```{python}
+annual_precalc = bills_by_stage["precalc"].filter(pl.col("month") == "Annual")
+total_bldgs = annual_precalc.height
+total_weighted = cast(float, annual_precalc["weight"].sum())
+
+print(
+    f"Precalc stage (upgrade {annual_precalc['upgrade'][0]}) — Annual rows: "
+    f"{total_bldgs:,} sample buildings, {total_weighted:,.0f} weighted households\n"
+)
+
+# Electric utility assignment
+elec_assign = (
+    annual_precalc.with_columns(pl.col(UTILITY_COL).fill_null("(null)"))
+    .group_by(UTILITY_COL)
+    .agg(
+        pl.len().alias("buildings"),
+        pl.col("weight").sum().alias("weighted_households"),
+    )
+    .with_columns(
+        (pl.col("weighted_households") / total_weighted * 100).round(1).alias("pct_of_total"),
+    )
+    .sort("weighted_households", descending=True)
+    .rename({UTILITY_COL: "electric_utility"})
+)
+# Add summary row for electric (cast to match schema)
+elec_assign_with_total = pl.concat(
+    [
+        elec_assign,
+        pl.DataFrame(
+            {
+                "electric_utility": ["**TOTAL**"],
+                "buildings": [elec_assign["buildings"].sum()],
+                "weighted_households": [elec_assign["weighted_households"].sum()],
+                "pct_of_total": [elec_assign["pct_of_total"].sum()],
+            },
+            schema=elec_assign.schema,
+        ),
+    ]
+)
+print("Electric utility assignment:")
+display(elec_assign_with_total)
+
+# Gas utility assignment
+gas_assign = (
+    annual_precalc.with_columns(pl.col(GAS_UTILITY_COL).fill_null("(null — no gas service)"))
+    .group_by(GAS_UTILITY_COL)
+    .agg(
+        pl.len().alias("buildings"),
+        pl.col("weight").sum().alias("weighted_households"),
+    )
+    .with_columns(
+        (pl.col("weighted_households") / total_weighted * 100).round(1).alias("pct_of_total"),
+    )
+    .sort("weighted_households", descending=True)
+    .rename({GAS_UTILITY_COL: "gas_utility"})
+)
+# Add summary row for gas (cast to match schema)
+gas_assign_with_total = pl.concat(
+    [
+        gas_assign,
+        pl.DataFrame(
+            {
+                "gas_utility": ["**TOTAL**"],
+                "buildings": [gas_assign["buildings"].sum()],
+                "weighted_households": [gas_assign["weighted_households"].sum()],
+                "pct_of_total": [gas_assign["pct_of_total"].sum()],
+            },
+            schema=gas_assign.schema,
+        ),
+    ]
+)
+print("\nGas utility assignment (null = no gas service / unassigned):")
+display(gas_assign_with_total)
+```
+
+### Zero gas usage verification
+
+Cross-check the gas utility assignment against ResStock annual gas consumption.
+Buildings with zero annual gas consumption should align closely with the
+"(null — no gas service)" category above, since gas utility assignment is gated
+on `has_natgas_connection` (derived from nonzero gas consumption in
+`load_curve_annual`).
+
+Both metrics below are **unweighted building counts** for apples-to-apples
+comparison. Small differences can arise from sampling variance or buildings with
+minimal gas usage that round to zero in annual totals but are flagged as connected.
+
+```{python}
+# Cross-check the gas utility assignment against ResStock annual gas consumption.
+GAS_CONSUMPTION_COL = "out.natural_gas.total.energy_consumption.kwh"
+
+# Construct path to load_curve_annual for this state and the precalc-stage upgrade.
+# Filename pattern: {STATE}_upgrade{UPGRADE}_metadata_and_annual_results.parquet
+upgrade_padded = f"{int(annual_precalc['upgrade'][0]):02d}"
+annual_filename = f"{STATE.upper()}_upgrade{upgrade_padded}_metadata_and_annual_results.parquet"
+annual_path = f"{RESSTOCK_S3_BASE}/{RESSTOCK_RELEASE}/load_curve_annual/state={STATE.upper()}/upgrade={upgrade_padded}/{annual_filename}"
+
+print(f"Loading ResStock annual load curves from:\n  {annual_path}\n")
+
+# Load annual data and check for gas consumption column
+annual_lf = pl.scan_parquet(annual_path)
+
+# Select just bldg_id and gas consumption
+gas_check = cast(pl.DataFrame, annual_lf.select([BLDG_ID, GAS_CONSUMPTION_COL]).collect())
+
+# Count buildings with zero gas consumption
+zero_gas = gas_check.filter(pl.col(GAS_CONSUMPTION_COL) == 0).height
+nonzero_gas = gas_check.filter(pl.col(GAS_CONSUMPTION_COL) > 0).height
+total_bldgs_annual = gas_check.height
+
+pct_zero_gas = zero_gas / total_bldgs_annual * 100
+pct_nonzero_gas = nonzero_gas / total_bldgs_annual * 100
+
+print(f"Buildings with zero annual gas consumption: {zero_gas:,} / {total_bldgs_annual:,} ({pct_zero_gas:.1f}%)")
+print(
+    f"Buildings with nonzero annual gas consumption: {nonzero_gas:,} / {total_bldgs_annual:,} ({pct_nonzero_gas:.1f}%)"
+)
+
+# Compare to null gas utility assignment (unweighted building count)
+try:
+    null_gas_bldgs = gas_assign.filter(pl.col("gas_utility") == "(null — no gas service)")["buildings"][0]
+    pct_null_gas_unweighted = null_gas_bldgs / total_bldgs * 100
+    print(
+        f"\nFor comparison, unweighted null gas utility assignment: {null_gas_bldgs:,} / {total_bldgs:,} ({pct_null_gas_unweighted:.1f}%)"
+    )
+    print(
+        f"Difference (zero gas usage - null assignment): {pct_zero_gas - pct_null_gas_unweighted:.1f} percentage points"
+    )
+except (NameError, IndexError):
+    print("\n(Run the utility assignment cell above first to compare with null gas assignment)")
+```
+
+### 2b: Heating type and fuel composition
+
+What fraction of buildings heat with each fuel or technology under the precalc stage
+(baseline)? This breakdown drives cross-subsidy and bill-change patterns throughout
+the analysis.
+
+The `postprocess_group.heating_type_v2` column classifies buildings into five groups.
+Attributes are always read from the baseline (precalc) upgrade, so this classification
+holds on every segment — including calibrated, where ResStock would otherwise mark
+every building as a heat pump:
+
+- **Natural gas** — primary heat source is natural gas
+- **Oil/propane** — primary heat source is a delivered fuel (oil or propane)
+- **Electric resistance** — primary heat source is electric resistance
+- **Existing heat pump** — already has a heat pump in the baseline
+- **Other** — none of the above (e.g. wood, unspecified)
+
+```{python}
+def add_heating_label(df: pl.DataFrame) -> pl.DataFrame:
+    """Map postprocess_group.heating_type_v2 codes to human-readable labels."""
+    return df.with_columns(
+        pl.col(HEATING_TYPE_COL)
+        .replace_strict(HEATING_TYPE_LABELS, default=pl.col(HEATING_TYPE_COL))
+        .alias("heating_label")
+    )
+
+
+heating_df = add_heating_label(annual_precalc)
+heating_stats = (
+    heating_df.group_by("heating_label")
+    .agg(
+        pl.len().alias("buildings"),
+        pl.col("weight").sum().alias("weighted_households"),
+        pl.col("heats_with_natgas").cast(pl.Int32).sum().alias("heats_natgas"),
+        pl.col("heats_with_oil").cast(pl.Int32).sum().alias("heats_oil"),
+        pl.col("heats_with_propane").cast(pl.Int32).sum().alias("heats_propane"),
+        pl.col("heats_with_electricity").cast(pl.Int32).sum().alias("heats_electricity"),
+    )
+    .with_columns(
+        (pl.col("weighted_households") / total_weighted * 100).round(1).alias("pct_of_total"),
+    )
+    .sort("weighted_households", descending=True)
+)
+print("Baseline heating-type breakdown (precalc stage):")
+display(heating_stats)
+
+avail_order = [h for h in HEATING_ORDER if h in heating_df["heating_label"].unique().to_list()]
+chart_data = (
+    heating_stats.filter(pl.col("heating_label").is_in(avail_order))
+    .with_columns(pl.col("heating_label").cast(pl.Enum(avail_order)))
+    .sort("heating_label")
+)
+
+# Create pie chart
+colors = {
+    "Natural gas": SB_COLORS["carrot"],
+    "Oil/propane": SB_COLORS["saffron"],
+    "Electric resistance": SB_COLORS["pistachio"],
+    "Existing heat pump": SB_COLORS["sky"],
+    "Other": "#CCCCCC",
+}
+labels = chart_data["heating_label"].to_list()
+sizes = chart_data["pct_of_total"].to_list()
+pie_colors = [colors.get(label, "#CCCCCC") for label in labels]
+
+fig, ax = plt.subplots(figsize=(8, 6))
+result = ax.pie(
+    sizes,
+    labels=labels,
+    colors=pie_colors,
+    autopct="%.1f%%",
+    textprops={"fontsize": 11},
+    pctdistance=0.7,
+)
+autotexts = result[2]  # type: ignore[index-out-of-bounds]
+for t in autotexts:
+    t.set_color("white")
+    t.set_fontweight("bold")
+ax.set_title("Baseline heating type distribution (precalc stage)", fontsize=15, fontweight="bold")
+plt.tight_layout()
+display_figure(fig)
+```
+
+### 2c: Annual gas spending by gas utility
+
+Summary of annual gas bills (`gas_total_bill`, in dollars) for buildings with non-zero
+gas bills, grouped by assigned gas utility.
+
+> **Note**: `gas_total_bill` is a bill amount (dollars), not volumetric consumption
+> (kWh or therms). For actual consumption data, cross-reference the ResStock monthly
+> load curves column `out.natural_gas.total.energy_consumption`.
+
+Implausibly wide min/max ranges, or extreme mean-to-median ratios, often trace to
+incorrect tariff calibration or misassigned buildings.
+
+```{python}
+gas_bill_stats = (
+    annual_precalc.filter(pl.col("gas_total_bill") > 0)
+    .with_columns(pl.col(GAS_UTILITY_COL).fill_null("(null)"))
+    .group_by(GAS_UTILITY_COL)
+    .agg(
+        pl.len().alias("buildings_with_gas_bill"),
+        pl.col("weight").sum().alias("weighted_households"),
+        pl.col("gas_total_bill").min().round(0).alias("min_gas_bill"),
+        pl.col("gas_total_bill").max().round(0).alias("max_gas_bill"),
+        pl.col("gas_total_bill").mean().round(0).alias("mean_gas_bill"),
+        pl.col("gas_total_bill").median().round(0).alias("median_gas_bill"),
+    )
+    .sort("buildings_with_gas_bill", descending=True)
+    .rename({GAS_UTILITY_COL: "gas_utility"})
+)
+print("Annual gas spending stats by gas utility\n(buildings with gas_total_bill > 0; unweighted mean/median):")
+display(gas_bill_stats)
+```
+
+### 2d: Annual electric bill by electric utility
+
+Summary of annual total electric bills (`elec_total_bill = fixed + delivery volumetric
++ supply`), grouped by electric utility. The decomposition into fixed charge, delivery,
+and supply components helps identify which tariff component is driving outliers.
+
+Cross-check median values against published tariff rates for a rough sanity check.
+
+```{python}
+elec_bill_stats = (
+    annual_precalc.group_by(UTILITY_COL)
+    .agg(
+        pl.len().alias("buildings"),
+        pl.col("weight").sum().alias("weighted_households"),
+        pl.col("elec_total_bill").min().round(0).alias("min_elec_total"),
+        pl.col("elec_total_bill").max().round(0).alias("max_elec_total"),
+        pl.col("elec_total_bill").mean().round(0).alias("mean_elec_total"),
+        pl.col("elec_total_bill").median().round(0).alias("median_elec_total"),
+        pl.col("elec_fixed_charge").median().round(0).alias("median_fixed"),
+        pl.col("elec_delivery_bill").median().round(0).alias("median_delivery"),
+        pl.col("elec_supply_bill").median().round(0).alias("median_supply"),
+    )
+    .sort("buildings", descending=True)
+    .rename({UTILITY_COL: "electric_utility"})
+)
+print("Annual electric bill stats by electric utility (precalc stage, unweighted mean/median):")
+display(elec_bill_stats)
+```
+
+## Section 3: Structural quality checks
+
+These checks catch common post-processing errors before any analysis proceeds:
+
+- **Duplicate building IDs** — indicate a failed post-processing merge or join.
+- **ID mismatches** — buildings that made it into one table but not the other.
+- **Electric component arithmetic**:
+  `elec_total_bill ≈ elec_fixed_charge + elec_delivery_bill + elec_supply_bill`
+- **Energy total arithmetic**:
+  `energy_total_bill ≈ elec_total_bill + gas_total_bill + propane_total_bill + oil_total_bill`
+- **BAT identity** (for the active `BAT_SCOPE`):
+  `BAT_percustomer ≈ annual_bill − economic_burden − residual_share` on the matching
+  `*_delivery` or `*_total` columns.
+- **Baseline columns present** — `baseline_elec_*` has no nulls on any segment (the
+  builders join it from `bill_change_baseline`'s master bills table).
+- **Baseline self-consistency** — on the precalc segment (assuming `SCENARIO` is the
+  pipeline's configured `bill_change_baseline`, typically `default`), `baseline_elec_*`
+  must equal that segment's own `elec_*` columns.
+
+All assertions must pass before continuing. A failed assertion points to a specific
+post-processing step to investigate.
+
+```{python}
+qa_rows: list[dict[str, object]] = []
+
+for stage in STAGE_ORDER:
+    bills = bills_by_stage[stage]
+    bat = bat_by_stage[stage]
+    annual = bills.filter(pl.col("month") == "Annual")
+
+    elec_err = cast(
+        float,
+        annual.select(
+            (
+                pl.col("elec_total_bill")
+                - pl.col("elec_fixed_charge")
+                - pl.col("elec_delivery_bill")
+                - pl.col("elec_supply_bill")
+            )
+            .abs()
+            .max()
+        ).item()
+        or 0,
+    )
+    energy_err = cast(
+        float,
+        annual.select(
+            (
+                pl.col("energy_total_bill")
+                - pl.col("elec_total_bill")
+                - pl.col("gas_total_bill")
+                - pl.col("propane_total_bill")
+                - pl.col("oil_total_bill")
+            )
+            .abs()
+            .max()
+        ).item()
+        or 0,
+    )
+    bat_err = cast(
+        float,
+        bat.select(
+            (pl.col(COL_BAT) - pl.col(COL_ANNUAL_BILL_BAT) + pl.col(COL_ECON_BURDEN) + pl.col(COL_RESIDUAL)).abs().max()
+        ).item()
+        or 0,
+    )
+    baseline_nulls = int(annual["baseline_elec_delivery_bill"].null_count())
+
+    if stage == "precalc" and SCENARIO == "default":
+        baseline_self_err = cast(
+            float,
+            annual.select(
+                (
+                    (pl.col("baseline_elec_fixed_charge") - pl.col("elec_fixed_charge")).abs()
+                    + (pl.col("baseline_elec_delivery_bill") - pl.col("elec_delivery_bill")).abs()
+                    + (pl.col("baseline_elec_supply_bill") - pl.col("elec_supply_bill")).abs()
+                ).max()
+            ).item()
+            or 0,
+        )
+    else:
+        baseline_self_err = None
+
+    qa_rows.append(
+        {
+            "stage": stage,
+            "bill rows": bills.height,
+            "BAT rows": bat.height,
+            "annual bill bldgs": annual[BLDG_ID].n_unique(),
+            "BAT bldgs": bat[BLDG_ID].n_unique(),
+            "duplicate annual IDs": annual.height - annual[BLDG_ID].n_unique(),
+            "duplicate BAT IDs": bat.height - bat[BLDG_ID].n_unique(),
+            "bill IDs missing from BAT": annual.join(bat.select(BLDG_ID), on=BLDG_ID, how="anti").height,
+            "BAT IDs missing from bills": bat.join(annual.select(BLDG_ID), on=BLDG_ID, how="anti").height,
+            "max elec component error": elec_err,
+            "max energy component error": energy_err,
+            f"max BAT identity error ({BAT_SCOPE})": bat_err,
+            "baseline_elec_* nulls": baseline_nulls,
+            "baseline self-consistency error": baseline_self_err,
+        }
+    )
+
+qa = pl.DataFrame(qa_rows)
+display(qa)
+
+bat_id_col = f"max BAT identity error ({BAT_SCOPE})"
+assert qa["duplicate annual IDs"].sum() == 0, "Duplicate annual bill IDs found"
+assert qa["duplicate BAT IDs"].sum() == 0, "Duplicate BAT IDs found"
+assert qa["bill IDs missing from BAT"].sum() == 0, "Bill IDs missing from BAT table"
+assert qa["BAT IDs missing from bills"].sum() == 0, "BAT IDs missing from bills table"
+assert cast(float, qa["max elec component error"].max()) < 0.01, "Electric component arithmetic mismatch"
+assert cast(float, qa["max energy component error"].max()) < 0.01, "Energy total arithmetic mismatch"
+assert cast(float, qa[bat_id_col].max()) < 0.01, "BAT identity check failed"
+assert qa["baseline_elec_* nulls"].sum() == 0, "baseline_elec_* columns have null values"
+
+_baseline_self = qa.filter(pl.col("baseline self-consistency error").is_not_null())
+if not _baseline_self.is_empty():
+    assert cast(float, _baseline_self["baseline self-consistency error"].max()) < 0.01, (
+        "Precalc segment's baseline_elec_* columns don't match its own elec_* bills -- "
+        "check bill_change_baseline in the pipeline YAML"
+    )
+elif SCENARIO != "default":
+    print(
+        f"(Skipped baseline self-consistency check: SCENARIO={SCENARIO!r} is not "
+        f"assumed to be the pipeline's bill_change_baseline scenario.)"
+    )
+
+# Baseline (BASELINE_SCENARIO) precalc BAT is loaded separately in Section 1 (not part
+# of the STAGE_ORDER loop above), so it needs its own identity + null check here.
+if BASELINE_SCENARIO != SCENARIO:
+    baseline_bat_err = cast(
+        float,
+        bat_baseline_precalc.select(
+            (pl.col(COL_BAT) - pl.col(COL_ANNUAL_BILL_BAT) + pl.col(COL_ECON_BURDEN) + pl.col(COL_RESIDUAL)).abs().max()
+        ).item()
+        or 0,
+    )
+    baseline_bat_nulls = int(bat_baseline_precalc[COL_BAT].null_count())
+    print(
+        f"Baseline ({BASELINE_SCENARIO}_precalc) BAT identity error ({BAT_SCOPE}): "
+        f"{baseline_bat_err:.6g}, nulls: {baseline_bat_nulls}"
+    )
+    assert baseline_bat_err < 0.01, "Baseline BAT identity check failed"
+    assert baseline_bat_nulls == 0, f"Baseline BAT column {COL_BAT!r} has null values"
+else:
+    print(f"Baseline scenario == SCENARIO ({SCENARIO!r}): baseline BAT already validated above.")
+
+print("All structural checks passed.")
+```
+
+## Section 4: Baseline analysis (precalc stage)
+
+This section uses the precalc-stage segment (`<SCENARIO>_precalc`), representing the
+current state: each building is on its existing heating system with today's electric
+and gas rates. BAT tables and charts honor **`BAT_SCOPE`** from the Parameters cell
+(default: delivery-only).
+
+### 4a: Weighted statistics helpers
+
+We define weighted mean and weighted quantile here so they are available to all
+subsequent cells.
+
+```{python}
+def weighted_mean(df: pl.DataFrame, value: str, weight: str = "weight") -> float:
+    """Weighted arithmetic mean."""
+    valid = df.filter(pl.col(value).is_not_null() & pl.col(weight).is_not_null())
+    wsum = cast(float, valid[weight].sum())
+    if valid.is_empty() or wsum == 0:
+        return float("nan")
+    return cast(float, (valid[value] * valid[weight]).sum()) / wsum
+
+
+def weighted_quantile(
+    df: pl.DataFrame,
+    value: str,
+    q: float,
+    weight: str = "weight",
+) -> float:
+    """Weighted quantile via cumulative weight sort."""
+    valid = df.filter(pl.col(value).is_not_null() & pl.col(weight).is_not_null()).sort(value)
+    wsum = cast(float, valid[weight].sum())
+    if valid.is_empty() or wsum == 0:
+        return float("nan")
+    return float(valid.filter(pl.col(weight).cum_sum() >= wsum * q)[value][0])
+```
+
+### 4b: Cross-subsidization table
+
+The **Bill Alignment Test (BAT)** measures whether each customer pays more or less than
+their cost of service. A positive BAT means the customer **overpays** (they
+cross-subsidize others). A negative BAT means they **underpay** (they receive a
+cross-subsidy from others).
+
+The table below uses the master BAT columns for the active **`BAT_SCOPE`** (`delivery`
+or `total`). Under flat volumetric delivery rates, heat pump and electric resistance
+customers typically overpay on **delivery** BAT because they use more electricity than
+fossil-fuel customers, whose delivery cost does not scale with gas consumption.
+
+Column definitions:
+
+- **% of … bill revenue** — group's weighted share of `annual_bill_{BAT_SCOPE}`
+- **% of cost of service** — group's weighted share of
+  `economic_burden_{BAT_SCOPE} + residual_share_{BAT_SCOPE}`
+- **Net cross-subsidy** — sum of weighted `BAT_percustomer_{BAT_SCOPE}` for the group.
+  Positive = group overpays; negative = group underpays. Net across all groups ≈ $0.
+- **Mean BAT** — weighted mean `BAT_percustomer_{BAT_SCOPE}` (positive = overpaying)
+
+```{python}
+bat_precalc = add_heating_label(bat_by_stage["precalc"]).with_columns(
+    (pl.col(COL_ECON_BURDEN) + pl.col(COL_RESIDUAL)).alias("cost_of_service"),
+)
+
+_total_customers = cast(float, bat_precalc["weight"].sum())
+_total_revenue = cast(float, (bat_precalc[COL_ANNUAL_BILL_BAT] * bat_precalc["weight"]).sum())
+_total_cos = cast(float, (bat_precalc["cost_of_service"] * bat_precalc["weight"]).sum())
+
+_avail_groups = [h for h in HEATING_ORDER if h in bat_precalc["heating_label"].unique().to_list()]
+_groups: dict[str, pl.DataFrame] = {
+    label: bat_precalc.filter(pl.col("heating_label") == label) for label in _avail_groups
+}
+
+cs_rows: list[dict[str, object]] = []
+for name, gdf in _groups.items():
+    g_cust = cast(float, gdf["weight"].sum())
+    g_rev = cast(float, (gdf[COL_ANNUAL_BILL_BAT] * gdf["weight"]).sum())
+    g_cos = cast(float, (gdf["cost_of_service"] * gdf["weight"]).sum())
+    g_net = cast(float, (gdf[COL_BAT] * gdf["weight"]).sum())
+
+    cs_rows.append(
+        {
+            "Customer group": name,
+            "% of customers": round(g_cust / _total_customers * 100, 1),
+            BILL_SHARE_COL: round(g_rev / _total_revenue * 100, 1),
+            "% of cost of service": round(g_cos / _total_cos * 100, 1),
+            "Net cross-subsidy ($M/yr)": round(g_net / 1e6, 1),
+            "Mean BAT ($/yr)": round(weighted_mean(gdf, COL_BAT), 0),
+        }
+    )
+
+cs_table = pl.DataFrame(cs_rows)
+print(f"Cross-subsidization by customer group (precalc, {BAT_SCOPE_LABEL}, weighted):")
+print(
+    f"System-wide check: sum of net cross-subsidy = ${sum(r['Net cross-subsidy ($M/yr)'] for r in cs_rows):.1f}M (should be ~$0M)"
+)
+display(cs_table)
+```
+
+```{python}
+per_cust_rows: list[dict[str, object]] = []
+for name in [h for h in HEATING_ORDER if h in bat_precalc["heating_label"].unique().to_list()]:
+    gdf = bat_precalc.filter(pl.col("heating_label") == name)
+    g_cust = cast(float, gdf["weight"].sum())
+
+    per_cust_rows.append(
+        {
+            "Customer group": name,
+            "Weighted households": round(g_cust),
+            "% of customers": round(g_cust / _total_customers * 100, 1),
+            "Mean annual bill ($/yr)": round(weighted_mean(gdf, COL_ANNUAL_BILL_BAT), 0),
+            "Mean cost of service ($/yr)": round(weighted_mean(gdf, "cost_of_service"), 0),
+            "Mean BAT ($/yr)": round(weighted_mean(gdf, COL_BAT), 0),
+            "Median BAT ($/yr)": round(weighted_quantile(gdf, COL_BAT, 0.5), 0),
+            "% overpaying": round(cast(float, gdf.filter(pl.col(COL_BAT) > 0)["weight"].sum()) / g_cust * 100, 1),
+        }
+    )
+
+per_cust_table = pl.DataFrame(per_cust_rows)
+print(f"Per-customer cross-subsidization by heating type (precalc, {BAT_SCOPE_LABEL}):")
+display(per_cust_table)
+```
+
+### 4c: BAT by heating type (precalc stage only)
+
+The bar chart shows weighted mean BAT by baseline heating type for the active
+**`BAT_SCOPE`**, using the **precalc stage only**. Calibrated-stage BAT is not analyzed
+here: calibrated runs use a deliberately large revenue requirement so CAIRO doesn't
+rescale the tariff to the heat-pump load, which inflates residual shares (and BAT) by
+roughly 500x versus precalc. See `context/code/orchestration/prefect_pipeline.md` in
+`rate-design-platform` for detail.
+
+```{python}
+bat_summary_rows: list[dict[str, object]] = []
+avail = [h for h in HEATING_ORDER if h in bat_precalc["heating_label"].unique().to_list()]
+for group in avail:
+    gdf = bat_precalc.filter(pl.col("heating_label") == group)
+    total_w = cast(float, gdf["weight"].sum())
+    bat_summary_rows.append(
+        {
+            "heating_label": group,
+            "mean_bat": weighted_mean(gdf, COL_BAT),
+            "median_bat": weighted_quantile(gdf, COL_BAT, 0.5),
+            "pct_overpaying": (cast(float, gdf.filter(pl.col(COL_BAT) > 0)["weight"].sum()) / total_w * 100),
+        }
+    )
+
+bat_summary = pl.DataFrame(bat_summary_rows)
+print(f"Weighted mean BAT ($/yr) by heating type (precalc, {BAT_SCOPE_LABEL}):")
+display(
+    bat_summary.select(
+        "heating_label",
+        "mean_bat",
+        "median_bat",
+        "pct_overpaying",
+    )
+)
+
+avail_bat = [h for h in HEATING_ORDER if h in bat_summary["heating_label"].unique().to_list()]
+bat_plot_data = bat_summary.with_columns(
+    pl.col("heating_label").cast(pl.Enum(avail_bat)),
+)
+
+(
+    ggplot(bat_plot_data, aes(x="heating_label", y="mean_bat"))
+    + geom_col(fill=SB_COLORS["sky"], width=0.6)
+    + geom_hline(yintercept=0, color="#666666", size=0.7)
+    + scale_y_continuous(labels=lambda xs: [f"${x:,.0f}" for x in xs])
+    + labs(
+        x="Baseline heating type",
+        y="Weighted mean BAT ($/year)",
+        title=f"Mean BAT by baseline heating type (precalc, {BAT_SCOPE_LABEL})",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4.5))
+)
+```
+
+### 4d: Monthly bill pattern
+
+Weighted-mean household energy bills by month, before (precalc) and after
+(calibrated) the heat pump retrofit. Winter months show the largest divergence:
+gas-heated homes have high gas bills under precalc, while after the retrofit
+(calibrated) gas bills effectively drop to zero and electric bills increase due to
+heat pump load.
+
+```{python}
+monthly_rows: list[dict[str, object]] = []
+for stage in STAGE_ORDER:
+    monthly = bills_by_stage[stage].filter(pl.col("month").is_in(MONTH_ORDER))
+    for month in MONTH_ORDER:
+        mdf = monthly.filter(pl.col("month") == month)
+        if mdf.is_empty():
+            continue
+        monthly_rows.append(
+            {
+                "stage": STAGE_LABELS[stage],
+                "month": month,
+                "energy_bill": weighted_mean(mdf, "energy_total_bill"),
+                "elec_bill": weighted_mean(mdf, "elec_total_bill"),
+            }
+        )
+
+_stage_labels_order = [STAGE_LABELS[stage] for stage in STAGE_ORDER]
+monthly_df = pl.DataFrame(monthly_rows).with_columns(
+    pl.col("stage").cast(pl.Enum(_stage_labels_order)),
+    pl.col("month").cast(pl.Enum(MONTH_ORDER)),
+)
+
+(
+    ggplot(monthly_df, aes(x="month", y="energy_bill", fill="stage"))
+    + geom_col(position=position_dodge(width=0.8), width=0.7)
+    + scale_fill_manual(
+        values={
+            STAGE_LABELS["precalc"]: SB_COLORS["sky"],
+            STAGE_LABELS["calibrated"]: SB_COLORS["carrot"],
+        }
+    )
+    + scale_x_discrete(limits=MONTH_ORDER)
+    + scale_y_continuous(labels=lambda xs: [f"${x:,.0f}" for x in xs])
+    + labs(
+        x="Month",
+        y="Weighted mean household energy bill",
+        fill="Stage",
+        title="Monthly household energy bills — precalc vs. calibrated",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4.5), legend_position="top")
+)
+```
+
+### 4e: Before vs after -- does `<SCENARIO>` reduce the cross-subsidy?
+
+Sections 4b/4c analyze `<SCENARIO>_precalc` on its own. For a rate reform that already
+differentiates tariffs within its own precalc stage (e.g. a `multi_rate_collapsed`
+quartet calibrated by `postprocess_group.has_hp`, like `hp_seasonal_percustomer_passthrough`),
+precalc-stage BAT can already be close to zero for the customers the reform targets --
+that is the reform working as designed, not a data-loading problem. To see the
+status-quo cross-subsidy the reform is meant to fix, this section compares:
+
+- **Before** -- `<BASELINE_SCENARIO>_precalc` (today's rates, pre-retrofit population)
+- **After** -- `<SCENARIO>_precalc` (the reform's own tariff, same pre-retrofit population)
+
+Both sides use the same pre-retrofit population under different tariffs, so this
+isolates the **tariff-design effect**. It is distinct from the precalc -> calibrated
+comparison in Section 5, which isolates the **heat-pump-adoption effect** under one
+fixed tariff.
+
+Skipped automatically when `BASELINE_SCENARIO == SCENARIO` (nothing to compare).
+
+```{python}
+if BASELINE_SCENARIO == SCENARIO:
+    print(f"Skipping 4e: BASELINE_SCENARIO == SCENARIO ({SCENARIO!r}) -- before and after would be identical.")
+else:
+    bat_before = add_heating_label(bat_baseline_precalc)
+    bat_after = bat_precalc  # from 4b: add_heating_label(bat_by_stage["precalc"])
+
+    def _phase_stats(df: pl.DataFrame, phase: str) -> pl.DataFrame:
+        """Weighted mean BAT and % overpaying by heating_label, tagged with a phase label."""
+        avail = [h for h in HEATING_ORDER if h in df["heating_label"].unique().to_list()]
+        rows: list[dict[str, object]] = []
+        for name in avail:
+            gdf = df.filter(pl.col("heating_label") == name)
+            g_w = cast(float, gdf["weight"].sum())
+            rows.append(
+                {
+                    "heating_label": name,
+                    "phase": phase,
+                    "mean_bat": weighted_mean(gdf, COL_BAT),
+                    "pct_overpaying": cast(float, gdf.filter(pl.col(COL_BAT) > 0)["weight"].sum()) / g_w * 100,
+                }
+            )
+        return pl.DataFrame(rows)
+
+    before_stats = _phase_stats(bat_before, "Before")
+    after_stats = _phase_stats(bat_after, "After")
+
+    comparison = (
+        before_stats.select(
+            "heating_label",
+            pl.col("mean_bat").alias("Mean BAT before ($/yr)"),
+            pl.col("pct_overpaying").alias("% overpaying before"),
+        )
+        .join(
+            after_stats.select(
+                "heating_label",
+                pl.col("mean_bat").alias("Mean BAT after ($/yr)"),
+                pl.col("pct_overpaying").alias("% overpaying after"),
+            ),
+            on="heating_label",
+            how="inner",
+        )
+        .with_columns((pl.col("Mean BAT after ($/yr)") - pl.col("Mean BAT before ($/yr)")).alias("Δ mean BAT ($/yr)"))
+        .with_columns(
+            pl.col(c).round(0) for c in ["Mean BAT before ($/yr)", "Mean BAT after ($/yr)", "Δ mean BAT ($/yr)"]
+        )
+        .with_columns(pl.col(c).round(1) for c in ["% overpaying before", "% overpaying after"])
+    )
+
+    _avail_4e = [h for h in HEATING_ORDER if h in comparison["heating_label"].unique().to_list()]
+    comparison = comparison.with_columns(pl.col("heating_label").cast(pl.Enum(_avail_4e))).sort("heating_label")
+
+    print(f"Cross-subsidy before ({BASELINE_SCENARIO}_precalc) vs after ({SCENARIO}_precalc), {BAT_SCOPE_LABEL}:")
+    display(comparison)
+
+    _before_abs = weighted_mean(bat_before.with_columns(pl.col(COL_BAT).abs().alias("_abs_bat")), "_abs_bat")
+    _after_abs = weighted_mean(bat_after.with_columns(pl.col(COL_BAT).abs().alias("_abs_bat")), "_abs_bat")
+    _before_pct = (
+        cast(float, bat_before.filter(pl.col(COL_BAT) > 0)["weight"].sum())
+        / cast(float, bat_before["weight"].sum())
+        * 100
+    )
+    _after_pct = (
+        cast(float, bat_after.filter(pl.col(COL_BAT) > 0)["weight"].sum())
+        / cast(float, bat_after["weight"].sum())
+        * 100
+    )
+    print(
+        f"System-wide: mean |BAT| (magnitude of over/under-payment) ${_before_abs:,.0f}/yr -> "
+        f"${_after_abs:,.0f}/yr; % overpaying {_before_pct:.1f}% -> {_after_pct:.1f}%"
+    )
+
+    _phase_order = ["Before", "After"]
+    chart_data = (
+        pl.concat([before_stats, after_stats])
+        .with_columns(
+            pl.col("heating_label").cast(pl.Enum(_avail_4e)),
+            pl.col("phase").cast(pl.Enum(_phase_order)),
+        )
+        .sort("heating_label")
+    )
+
+    _before_after_chart = (
+        ggplot(chart_data, aes(x="heating_label", y="mean_bat", fill="phase"))
+        + geom_col(position=position_dodge(width=0.8), width=0.7)
+        + geom_hline(yintercept=0, color="#666666", size=0.7)
+        + scale_fill_manual(values={"Before": SB_COLORS["carrot"], "After": SB_COLORS["sky"]})
+        + scale_y_continuous(labels=lambda xs: [f"${x:,.0f}" for x in xs])
+        + labs(
+            x="Baseline heating type",
+            y="Weighted mean BAT ($/year)",
+            fill="",
+            title=f"Mean BAT by baseline heating type: before vs after (precalc, {BAT_SCOPE_LABEL})",
+        )
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 4.5), legend_position="top")
+    )
+    display(_before_after_chart)
+```
+
+## Section 5: Bill change analysis (precalc → calibrated)
+
+This section compares each building's annual energy bill **before** (precalc stage)
+and **after** (calibrated stage) the heat pump retrofit.
+
+Bill change δ = `bill_after − bill_before`; negative δ means savings.
+
+Buildings are classified by their **precalc-stage** heating type throughout — i.e., by
+the baseline fuel they would be replacing.
+
+```{python}
+# ── Quadrant definitions (from analysis.qmd) ──────────────────────────────────
+
+QUADRANT_COLORS: dict[str, str] = {
+    "savings > $1k": "#1b5e20",
+    "savings $0-1k": "#81c784",
+    "losses $0-1k": "#ef9a9a",
+    "losses > $1k": "#b71c1c",
+}
+QUADRANT_ORDER = list(QUADRANT_COLORS.keys())
+QUADRANT_LABELS: dict[str, str] = {
+    "losses > $1k": "LOSE > $1K",
+    "losses $0-1k": "LOSE $0-1K",
+    "savings $0-1k": "SAVE $0-1K",
+    "savings > $1k": "SAVE > $1K",
+}
+
+
+def quadrant_pcts(df: pl.DataFrame) -> dict[str, float]:
+    """Weighted % of households in each bill-change quadrant (df must have 'delta' + 'weight')."""
+    total = cast(float, df["weight"].sum())
+    return {
+        "savings > $1k": cast(float, df.filter(pl.col("delta") < -1000)["weight"].sum()) / total * 100,
+        "savings $0-1k": cast(
+            float,
+            df.filter((pl.col("delta") >= -1000) & (pl.col("delta") < 0))["weight"].sum(),
+        )
+        / total
+        * 100,
+        "losses $0-1k": cast(
+            float,
+            df.filter((pl.col("delta") >= 0) & (pl.col("delta") < 1000))["weight"].sum(),
+        )
+        / total
+        * 100,
+        "losses > $1k": cast(float, df.filter(pl.col("delta") >= 1000)["weight"].sum()) / total * 100,
+    }
+
+
+# ── Bill change dataframe ──────────────────────────────────────────────────────
+
+bill_delta = (
+    add_heating_label(
+        bills_by_stage["precalc"]
+        .filter(pl.col("month") == "Annual")
+        .select(
+            BLDG_ID,
+            UTILITY_COL,
+            "weight",
+            HEATING_TYPE_COL,
+            "heats_with_natgas",
+            "heats_with_oil",
+            "heats_with_propane",
+            pl.col("energy_total_bill").alias("bill_before"),
+        )
+    )
+    .join(
+        bills_by_stage["calibrated"]
+        .filter(pl.col("month") == "Annual")
+        .select(BLDG_ID, pl.col("energy_total_bill").alias("bill_after")),
+        on=BLDG_ID,
+        how="inner",
+        validate="1:1",
+    )
+    .with_columns((pl.col("bill_after") - pl.col("bill_before")).alias("delta"))
+)
+
+# Only analyze heating types that would actually be upgrading to a heat pump
+# (exclude "Existing heat pump" - they already have heat pumps)
+avail_heating = [
+    h for h in HEATING_ORDER if h in bill_delta["heating_label"].unique().to_list() and h != "Existing heat pump"
+]
+n_save = bill_delta.filter(pl.col("delta") < 0).height
+pct_save = n_save / bill_delta.height * 100
+print(f"Bill delta computed for {bill_delta.height:,} buildings.  {pct_save:.1f}% have negative delta (savings).")
+print(f"Heating groups: {avail_heating}")
+```
+
+### 5a: Quadrant bar chart by heating type
+
+Each bar shows the percentage of weighted households in four outcome bins:
+
+| Bin | Definition |
+|-----|------------|
+| SAVE > $1K | Annual energy bill decreases by more than $1,000 |
+| SAVE $0-1K | Annual energy bill decreases by $0–$1,000 |
+| LOSE $0-1K | Annual energy bill increases by $0–$1,000 |
+| LOSE > $1K | Annual energy bill increases by more than $1,000 |
+
+A bar leaning heavily green indicates that most households in that group would save
+money by switching to a heat pump under current rates.
+
+```{python}
+qb_records: list[dict[str, object]] = []
+for group in avail_heating:
+    gdf = bill_delta.filter(pl.col("heating_label") == group)
+    pct = quadrant_pcts(gdf)
+    for q in QUADRANT_ORDER:
+        qb_records.append({"heating_label": group, "quadrant": q, "pct": pct[q]})
+
+qb_plot = pl.DataFrame(qb_records).with_columns(
+    pl.col("heating_label").cast(pl.Enum(list(reversed(avail_heating)))),
+    pl.col("quadrant").cast(pl.Enum(QUADRANT_ORDER)),
+)
+
+(
+    ggplot(qb_plot, aes(x="heating_label", y="pct", fill="quadrant"))
+    + geom_col(position="stack", width=0.55)
+    + geom_text(
+        mapping=aes(label="pct"),
+        data=qb_plot.filter(pl.col("pct") >= 3),
+        position=position_stack(vjust=0.5),
+        format_string="{:.1f}%",
+        color="white",
+        size=11,
+        fontweight="bold",
+    )
+    + scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
+    + scale_y_continuous(expand=(0, 0, 0.02, 0))
+    + coord_flip()
+    + guides(fill=False)
+    + labs(
+        x="",
+        y="% of weighted households",
+        title="Change in total annual energy bill after upgrading to heat pump (precalc → calibrated)",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, max(3.5, 1.0 + 1.4 * len(avail_heating))))
+)
+```
+
+### 5b: Savings breakdown table
+
+The table below shows the fraction of weighted households in each savings/loss bin,
+broken out by baseline heating type, plus weighted mean and median bill changes.
+The bin boundaries ($0, $1k, $2k) are the same as in the quadrant bars above, with
+an additional `Save > $2k/yr` bin to capture large savings from oil/propane retrofits.
+
+```{python}
+SAVE_BINS: list[tuple[float, float, str]] = [
+    (-float("inf"), -2000, "Save > $2k/yr"),
+    (-2000, -1000, "Save $1k-$2k/yr"),
+    (-1000, 0, "Save $0-$1k/yr"),
+    (0, 1000, "Lose $0-$1k/yr"),
+    (1000, float("inf"), "Lose > $1k/yr"),
+]
+
+savings_rows: list[dict[str, object]] = []
+for group in avail_heating:
+    gdf = bill_delta.filter(pl.col("heating_label") == group)
+    total_w = cast(float, gdf["weight"].sum())
+    row: dict[str, object] = {
+        "Baseline heating": group,
+        "Buildings": gdf.height,
+        "Weighted hholds": round(total_w),
+    }
+    for lo, hi, label in SAVE_BINS:
+        if lo == -float("inf"):
+            filt = gdf.filter(pl.col("delta") < hi)
+        elif hi == float("inf"):
+            filt = gdf.filter(pl.col("delta") >= lo)
+        else:
+            filt = gdf.filter((pl.col("delta") >= lo) & (pl.col("delta") < hi))
+        row[label] = f"{cast(float, filt['weight'].sum()) / total_w * 100:.1f}%"
+    row["Mean change ($/yr)"] = f"${weighted_mean(gdf, 'delta'):,.0f}"
+    row["Median change ($/yr)"] = f"${weighted_quantile(gdf, 'delta', 0.5):,.0f}"
+    savings_rows.append(row)
+
+savings_df = pl.DataFrame(savings_rows)
+print(
+    "Bill change after calibration (precalc → calibrated), by baseline heating type (% of weighted households in each bin):"
+)
+display(savings_df)
+```
+
+### 5c: Bill change histogram by heating type
+
+Distribution of annual bill changes, trimmed to the 1st-99th percentile, faceted by
+baseline heating type. Green bars are savings; orange bars are increases. A well-behaved
+batch produces a smooth, roughly unimodal distribution centered left of zero for
+fossil-fuel homes and a broader, more symmetric distribution for electric resistance
+homes (which lose the gas bill but gain less electric savings).
+
+```{python}
+BIN_WIDTH = 100
+_lo = math.floor(weighted_quantile(bill_delta, "delta", 0.01) / BIN_WIDTH) * BIN_WIDTH
+_hi = math.ceil(weighted_quantile(bill_delta, "delta", 0.99) / BIN_WIDTH) * BIN_WIDTH
+
+hist_data = (
+    bill_delta.filter(pl.col("heating_label").is_in(avail_heating))
+    .with_columns(
+        ((pl.col("delta") / BIN_WIDTH).floor() * BIN_WIDTH + BIN_WIDTH / 2).alias("bin_center"),
+        pl.when(pl.col("delta") < 0).then(pl.lit("Savings")).otherwise(pl.lit("Increase")).alias("direction"),
+    )
+    .filter(pl.col("bin_center").is_between(_lo, _hi))
+    .group_by("heating_label", "bin_center", "direction")
+    .agg(pl.col("weight").sum().alias("weighted_households"))
+    .with_columns(
+        pl.col("heating_label").cast(pl.Enum(avail_heating)),
+        pl.col("direction").cast(pl.Enum(["Savings", "Increase"])),
+    )
+)
+
+(
+    ggplot(hist_data, aes(x="bin_center", y="weighted_households", fill="direction"))
+    + geom_col(width=BIN_WIDTH * 0.9)
+    + facet_wrap("heating_label", ncol=1, scales="free_y")
+    + scale_fill_manual(values={"Savings": SB_COLORS["sky"], "Increase": SB_COLORS["carrot"]})
+    + scale_y_continuous(labels=lambda xs: [f"{x:,.0f}" for x in xs])
+    + labs(
+        x="Annual energy bill change ($/year)",
+        y="Weighted households",
+        fill="Outcome",
+        title="Distribution of annual bill changes after calibration (1st-99th percentile)",
+    )
+    + theme_switchbox()
+    + theme(
+        figure_size=(10.5, max(4.5, 2.5 * len(avail_heating))),
+        legend_position="top",
+    )
+)
+```
+
+### 5d: Utility-level summary
+
+Per-utility summary of bill-change and precalc-stage BAT (honors **`BAT_SCOPE`**). Helps
+identify whether one utility's results are driving state-level patterns.
+
+When `BASELINE_SCENARIO != SCENARIO`, an extra `mean_bat_precalc_baseline` column shows
+the same statistic under the status-quo scenario for comparison (see also Section 4e).
+
+```{python}
+util_bat_precalc = bat_by_stage["precalc"]
+util_rows: list[dict[str, object]] = []
+
+for utility in sorted(annual_precalc[UTILITY_COL].drop_nulls().unique().to_list()):
+    delta_u = bill_delta.filter(pl.col(UTILITY_COL) == utility)
+    bat_u = util_bat_precalc.filter(pl.col(UTILITY_COL) == utility)
+    if delta_u.is_empty() or bat_u.is_empty():
+        continue
+    util_row: dict[str, object] = {
+        "utility": utility,
+        "buildings": delta_u.height,
+        "weighted_households": round(cast(float, delta_u["weight"].sum())),
+        "mean_bill_change": round(weighted_mean(delta_u, "delta"), 0),
+        "median_bill_change": round(weighted_quantile(delta_u, "delta", 0.5), 0),
+        "pct_saving": round(
+            cast(float, delta_u.filter(pl.col("delta") < 0)["weight"].sum())
+            / cast(float, delta_u["weight"].sum())
+            * 100,
+            1,
+        ),
+        f"mean_bat_precalc ({BAT_SCOPE})": round(weighted_mean(bat_u, COL_BAT), 0),
+        "pct_overpaying_precalc": round(
+            cast(float, bat_u.filter(pl.col(COL_BAT) > 0)["weight"].sum()) / cast(float, bat_u["weight"].sum()) * 100,
+            1,
+        ),
+    }
+    if BASELINE_SCENARIO != SCENARIO:
+        bat_baseline_u = bat_baseline_precalc.filter(pl.col(UTILITY_COL) == utility)
+        if not bat_baseline_u.is_empty():
+            util_row[f"mean_bat_precalc_baseline ({BASELINE_SCENARIO})"] = round(
+                weighted_mean(bat_baseline_u, COL_BAT), 0
+            )
+    util_rows.append(util_row)
+
+util_df = pl.DataFrame(util_rows)
+print(f"Per-utility summary (precalc BAT [{BAT_SCOPE_LABEL}] + bill change):")
+display(util_df)
+```
+
+---
+
+## Interpretation checklist
+
+Before using these results in a report or policy analysis:
+
+1. **Structural checks passed** — All assertions in Section 3 must pass cleanly. A
+   failure indicates a specific post-processing step to investigate.
+
+2. **Utility coverage looks right** — Confirm that weighted household totals per
+   utility (Section 2a) are stable across stages and plausible for the service
+   territory.
+
+3. **Heating-type breakdown is plausible** — The precalc-stage heating-type
+   composition (Section 2b) should reflect the state's known building stock. A
+   suspiciously low fossil-fuel share or high heat-pump share may indicate a
+   ResStock metadata issue.
+
+4. **Gas null fraction makes sense** — High gas-null share is expected in all-electric
+   territories; investigate if it is unexpectedly low in a gas-dense market.
+
+5. **BAT signs are correct** — Under flat default rates, fossil-fuel customers should
+   show negative BAT (they underpay); HP/ER customers should show positive BAT
+   (they overpay). Compare using the same **`BAT_SCOPE`** you intend to cite (default
+   `delivery` matches delivery-run CAIRO outputs). Precalc stage only — calibrated BAT
+   is not analyzed (Section 4c). Note that a near-zero precalc BAT for `SCENARIO`'s own
+   HP customers is *expected*, not a bug, when `SCENARIO` is a subclass-differentiated
+   tariff (e.g. `multi_rate_collapsed` quartets calibrated by `postprocess_group.has_hp`,
+   like `hp_seasonal_percustomer_passthrough`) — the reform is designed to zero out that
+   cross-subsidy already at the precalc stage. To see the status-quo cross-subsidy the
+   reform is meant to fix, check **Section 4e**, which compares `BASELINE_SCENARIO`'s
+   precalc BAT (before) against `SCENARIO`'s precalc BAT (after) on the same population.
+
+6. **Cross-subsidy magnitude is reasonable** — Compare against prior state runs at
+   similar utility scales to identify implausible outliers.
+
+7. **Bill change signs match fuel-cost logic** — Fossil-fuel homes should generally
+   save in warmer states (low heating loads) and see more mixed results in cold
+   states with high gas demand. Oil/propane homes typically show larger savings.
+
+8. **To review another state, batch, or scenario** — Change `STATE`, `BATCH`,
+   `SCENARIO`, and optionally `BASELINE_SCENARIO` or `BAT_SCOPE` in the Parameters
+   cell, then re-render (or restart the Quarto Jupyter session and run all cells).
+   Build master tables first (`just build-all-master-prefect`), including the
+   `BASELINE_SCENARIO`'s precalc segment.

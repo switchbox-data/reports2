@@ -30,27 +30,64 @@ citation:
 #    href: docs/switchbox_report.pdf
 ---
 
+```{python}
+#| echo: false
+
+import pickle
+from pathlib import Path
+from types import SimpleNamespace
+
+v = SimpleNamespace(**pickle.loads(Path("cache/report_variables.pkl").read_bytes()))
+
+
+def dollar(x, accuracy=0):
+    return f"${x:,.{accuracy}f}"
+
+
+def million(x, digits=1):
+    return f"${x:,.{digits}f} million"
+
+
+def pct(x, accuracy=0):
+    return f"{x * 100:,.{accuracy}f}%"
+
+
+def cents(x, accuracy=2):
+    return f"{x:,.{accuracy}f}"
+```
+
 # Introduction
 
 # Executive Summary
 
-- If you are a BGE customer (on schedule R) and you go from natural gas to a heat pump, your total annual energy bills go up TK% of the time
-- HP customers (on schedule R) are being overcharged by an average of $TK a year
+- If you are a BGE customer (on schedule R) and you go from natural gas to a heat pump, your total annual energy bills go up `{python} pct(v.pct_natgas_hp_bill_increase_default)` of the time
+- HP customers (on schedule R) are being overcharged by an average of `{python} dollar(v.hp_overpay_mean_default)` a year
     - Since this is on the delivery side, it's the same on RL, because it has essentially the same volumetric delivery rate
-- A TOU rate doesn't fix it: HP customers on schedule RD would still be overcharged by an average of $TK a year
+- A TOU rate doesn't fix it: HP customers on schedule RD would still be overcharged by an average of $TK a year[^tou-blocked]
+
+[^tou-blocked]: No time-of-use (Schedule RD) scenario has been run for this batch yet — BGE's pipeline config only defines `default` and `hp_seasonal_percustomer_passthrough` scenarios so far. Once a TOU scenario exists, the same delivery Bill Alignment Test used elsewhere in this report answers this directly.
+
 - There are two ways to fix this
     - Lower the volumetric rate by raising the fixed charge (and maybe by making the volumetric rate seasonal... but in a revenue-neutral way.)
-        - You'd have to raise it to $TK a month from $TK today in order to eliminate the cross-subsidy.
+        - You'd have to raise it to $TK a month from `{python} dollar(v.tariff_default_fixed_charge)` today in order to eliminate the cross-subsidy.[^fixed-charge-blocked]
             - Is this equivalent to making the fixed charge equal residual costs, and having volumetric just cover marginal?
         - If you do this on the default rate, it is very disruptive.
-        - If you do this via an optional rate that anyone can access, then it would raise the bills of TK% of existing HP customers compared to being on schedule R
-        - Bill impact if you do this: TK percentage points more people can save by moving to heat pumps
-        - Energy burden impact if you do this: under current HVAC TK% of customers are burdened. This changes to TK% under heat pumps and default rates. And it changes to TK% under heat pumps and higher fixed charge.
+        - If you do this via an optional rate that anyone can access, then it would raise the bills of `{python} pct(1 - v.pct_hp_bill_decrease_seasonal_ratedesign)` of existing HP customers compared to being on schedule R[^optional-rate-modeled]
+        - Bill impact if you do this: `{python} f"{v.pct_pt_improvement_natgas_hp_savings:.0f}"` percentage points more people can save by moving to heat pumps[^optional-rate-modeled]
+        - Energy burden impact if you do this: under current HVAC TK% of customers are burdened. This changes to TK% under heat pumps and default rates. And it changes to TK% under heat pumps and higher fixed charge.[^burden-blocked]
     - Lower the volumetric rate full stop, which only works through a tech-specific rate
-        - Under a flat design, the volumetric delivery would have to go from $TK per kWh today to $TK to eliminate the overpayment
-            - The bill impact on other customers would be $TK per month
-        - If you wanted to do this through a seasonal design, the volumetric delivery rate would stay the same in summer but would drop to $TK per kWh in winter.
-        - Energy burden impact if you do this: under current HVAC TK% of customers are burdened. This changes to TK% under heat pumps and default rates. And it changes to TK% under heat pumps and lower volumetric rate.
+        - Under a flat design, the volumetric delivery would have to go from $TK per kWh today to $TK to eliminate the overpayment[^flat-blocked]
+            - The bill impact on other customers would be $TK per month[^flat-blocked]
+        - If you wanted to do this through a seasonal design, the volumetric delivery rate would stay roughly the same in summer (`{python} cents(v.tariff_seasonal_summer_cents)`&cent;/kWh, vs. `{python} cents(v.tariff_default_avg_cents)`&cent;/kWh today) but would drop to `{python} cents(v.tariff_seasonal_winter_cents)`&cent;/kWh in winter (@fig-monthly-bill-representative).
+        - Energy burden impact if you do this: under current HVAC TK% of customers are burdened. This changes to TK% under heat pumps and default rates. And it changes to TK% under heat pumps and lower volumetric rate.[^burden-blocked]
+
+[^fixed-charge-blocked]: No CAIRO scenario has actually raised BGE's fixed charge yet — the one reform tariff calibrated so far (`hp_seasonal_percustomer_passthrough`) keeps the `{python} dollar(v.tariff_default_fixed_charge)`/month fixed charge unchanged and instead moves the residual revenue requirement into a seasonal volumetric rate. See the analysis notebook's "What the tariff actually changed" section.
+
+[^optional-rate-modeled]: BGE's pipeline hasn't calibrated a fixed-charge-based optional rate. The only optional rate that's actually been modeled is the seasonal tech-specific rate described below, which is assigned automatically by subclass rather than by customer choice: every building in the heat-pump subclass sees a bill *decrease* under it (not an increase), since it's calibrated to reflect their delivery cost of service, and gas-to-heat-pump conversions save money `{python} f"{v.pct_pt_improvement_natgas_hp_savings:.0f}"` more percentage points of the time than under schedule R.
+
+[^burden-blocked]: Energy burden analysis is deferred this pass. `in.representative_income` is already present in the master bills table for a follow-up.
+
+[^flat-blocked]: No flat-rate heat-pump scenario has been run for this batch — only the seasonal tech-specific design above exists. `rate_case_funcs.py`'s functions (`extract_tariff_rates`, `bill_delta_between_segments`, `hp_bat_summary`) are written generically over scenario, so answering this is a config-only follow-up once a flat scenario is run, not new code.
 
 - Headroom analysis?
 - Cost-of-service calculation using NCP allocators doesn't make sense
@@ -65,13 +102,35 @@ citation:
     - However, the new T&D costs associated with that new load are only X%, not TK%: by using cooling in the top 100 loads hours of the year, they impose approximately $TK in new distribution costs and $TK in transmission costs, in any given year. But they are being charged $TK and $TK extra.
     - That extra revenue has the effect of pushing rates down, which means that fossil-heating customers end up paying LESS than they would otherwise (than their cost to serve).
     - This also happens with riders, by the way: given that the budgets they collect are fixed in any given year, if my contribution to said program doubles from one year to the next, other people are get to pay less than they would have otherwise. Cross-subsidy still happens!
-    - In total, HP customers are overpaying by $TK million a year across BGE's territory.
-        - (Overpayment here is defined as incremental delivery bill - incremental marginal cost, so we'd need to estimate this for people currently on heat pumps.)
+    - In total, HP customers are overpaying by `{python} million(v.hp_overpay_total_millions_default)` a year across BGE's territory.
+        - (Overpayment here is defined as incremental delivery bill - incremental marginal cost, so we'd need to estimate this for people currently on heat pumps — this is exactly the delivery Bill Alignment Test total from earlier in this summary.)
     - We are charging HP customers more than their incremental cost of service in order to subsidize the electrical bills of the customers who heat in the ways that the state of MD is trying to move away from.
 
 # Background
 
 # Findings
+
+## What happens to a representative household under the seasonal rate?
+
+To make the seasonal tech-specific rate concrete, we follow a single representative BGE
+home: the weighted-median natural-gas-heated household, ranked by its annual energy bill
+today. This household currently pays `{python} dollar(v.representative_annual_bill_before)`
+a year for natural gas heat and electricity. After switching to a heat pump under the
+seasonal reform rate, its annual energy bill becomes
+`{python} dollar(v.representative_annual_bill_after)`. Its monthly electric bill, split into
+delivery and supply, shows the seasonal design at work (@fig-monthly-bill-representative):
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-monthly-bill-representative >}}
+:::
+
+The delivery share of this household's bill is lowest in the winter months — January,
+February, March, November, and December — precisely when its heat-pump heating load, and
+its total electricity consumption, is highest. That's the seasonal rate design doing its
+job: the winter volumetric delivery rate is lower specifically because that's when heat
+pump customers use the most electricity, so the same lower rate that reduces their annual
+overpayment also shows up concretely in their monthly bills, in the months that matter most
+to them.
 
 # Appendix
 

@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     import polars as pl
+    from plotnine import ggplot
 
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
 MONTH_ORDER = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -114,6 +115,30 @@ def load_master_bat(state: str, batch: str, segment: str) -> pl.LazyFrame:
         master_table_uri(state, batch, segment, "cross_subsidization_BAT_values"),
         hive_partitioning=True,
     )
+
+
+def load_billing_kwh_annual(state: str, utility: str, batch: str, segment: str) -> pl.LazyFrame:
+    """Load per-building annual kWh from a CAIRO run's raw ``billing_kwh_annual.parquet``.
+
+    Unlike master bills/BAT (Prefect ``all_utilities`` tables), CAIRO's raw
+    per-building kWh export is only written to each individual per-utility run
+    directory (with a ``{cairo_ts}_...`` prefix), never promoted to a master
+    table. This resolves that run directory via ``list_s3_subdirs`` + ``run_dir``,
+    matching on the ``"{utility}_{segment}_delivery"`` suffix -- the kWh export
+    only exists in ``_delivery`` runs, not ``_supply`` runs.
+
+    Returns a LazyFrame with ``bldg_id``, ``annual_kwh_grid`` (post-PV-netting
+    grid consumption), ``annual_kwh_total`` (pre-PV gross consumption), and
+    ``has_pv``.
+    """
+    import polars as pl
+
+    from lib.data.s3 import list_s3_subdirs, run_dir
+
+    base = f"{S3_BASE}/{state.lower()}/{utility}/{batch}/"
+    subdirs = list_s3_subdirs(base)
+    run_path = run_dir(subdirs, name_ends_with=f"{utility}_{segment}_delivery")
+    return pl.scan_parquet(f"{run_path}/billing_kwh_annual.parquet")
 
 
 # --- Weighted stats ------------------------------------------------------------
@@ -213,6 +238,166 @@ def bill_change_incidence(delta_df: pl.DataFrame, weight_col: str = "weight") ->
     }
 
 
+# --- Bill-change quadrant chart --------------------------------------------------
+
+# Human-readable labels for postprocess_group.heating_type_v2 codes. Attributes
+# always come from the baseline (precalc) upgrade, so this classification holds
+# on every segment -- including calibrated, where ResStock would otherwise mark
+# every building as a heat pump.
+HEATING_TYPE_LABELS: dict[str, str] = {
+    "heat_pump": "Existing heat pump",
+    "electrical_resistance": "Electric resistance",
+    "natgas": "Natural gas",
+    "delivered_fuels": "Oil/propane",
+    "other": "Other",
+}
+# Display order for heating groups in charts and tables.
+HEATING_ORDER = ["Natural gas", "Oil/propane", "Electric resistance", "Existing heat pump", "Other"]
+# Codes excluded by default from plot_bill_change_quadrants(): "heat_pump"
+# customers already have a heat pump (not "upgrading" to one), and "other" is a
+# heterogeneous/unclassified bucket not worth breaking out on its own.
+DEFAULT_EXCLUDED_HEATING_CODES = {"heat_pump", "other"}
+
+QUADRANT_COLORS: dict[str, str] = {
+    "savings > $1k": "#1b5e20",
+    "savings $0-1k": "#81c784",
+    "losses $0-1k": "#ef9a9a",
+    "losses > $1k": "#b71c1c",
+}
+QUADRANT_ORDER = list(QUADRANT_COLORS.keys())
+
+
+def add_heating_label(df: pl.DataFrame, code_col: str = "heating_type_v2") -> pl.DataFrame:
+    """Map heating-type codes to human-readable labels, added as a ``heating_label`` column.
+
+    *code_col* defaults to ``"heating_type_v2"``, the alias
+    ``bill_delta_between_segments`` gives ``postprocess_group.heating_type_v2``.
+    Pass ``code_col="postprocess_group.heating_type_v2"`` when operating
+    directly on a master bills/BAT table instead of a delta table.
+    """
+    import polars as pl
+
+    return df.with_columns(
+        pl.col(code_col).replace_strict(HEATING_TYPE_LABELS, default=pl.col(code_col)).alias("heating_label")
+    )
+
+
+def quadrant_pcts(df: pl.DataFrame, weight_col: str = "weight") -> dict[str, float]:
+    """Weighted % of households in each bill-change quadrant.
+
+    *df* must have a ``delta`` column (dollar change in annual bill) and a
+    weight column. Quadrant boundaries are fixed at +/- $1,000, matching the
+    savings/loss framing used throughout the rate-case reports.
+    """
+    import polars as pl
+
+    total = cast(float, df[weight_col].sum())
+    return {
+        "savings > $1k": cast(float, df.filter(pl.col("delta") < -1000)[weight_col].sum()) / total * 100,
+        "savings $0-1k": cast(
+            float,
+            df.filter((pl.col("delta") >= -1000) & (pl.col("delta") < 0))[weight_col].sum(),
+        )
+        / total
+        * 100,
+        "losses $0-1k": cast(
+            float,
+            df.filter((pl.col("delta") >= 0) & (pl.col("delta") < 1000))[weight_col].sum(),
+        )
+        / total
+        * 100,
+        "losses > $1k": cast(float, df.filter(pl.col("delta") >= 1000)[weight_col].sum()) / total * 100,
+    }
+
+
+def plot_bill_change_quadrants(
+    state: str,
+    batch: str,
+    segment_before: str,
+    segment_after: str,
+    *,
+    rate_name: str = "current rate",
+    heating_types: list[str] | None = None,
+) -> ggplot:
+    """Stacked horizontal bar chart of bill-change quadrants by baseline heating type.
+
+    Wraps ``bill_delta_between_segments()`` — *segment_before* and
+    *segment_after* are ``{scenario}_{stage}`` segment names, exactly as passed
+    there. The most common usage holds *segment_before* fixed at today's actual
+    bill (e.g. ``"default_precalc"``) while varying *segment_after* across
+    scenarios' calibrated stage (e.g. ``"default_calibrated"`` vs.
+    ``"hp_seasonal_percustomer_passthrough_calibrated"``), so each call answers
+    "would this customer save money switching to a heat pump" under a
+    different candidate rate, all relative to the same before-retrofit
+    baseline bill.
+
+    Each bar shows the weighted % of households in four bins: savings/losses
+    of $0-1k and >$1k a year. *rate_name* is threaded into the chart title
+    (e.g. ``"default rate"``, ``"seasonal HP rate"``) so charts built under
+    different scenarios are self-labeling.
+
+    *heating_types* restricts to specific baseline ``heating_type_v2`` codes
+    (e.g. ``["natgas"]``). If ``None`` (default), includes every available
+    heating type except ``"heat_pump"`` (already has a heat pump, not
+    "upgrading") and ``"other"`` (heterogeneous/unclassified) — see
+    ``DEFAULT_EXCLUDED_HEATING_CODES``.
+    """
+    import plotnine as plt
+    import polars as pl
+
+    from lib.plotnine import theme_switchbox
+
+    delta = bill_delta_between_segments(state, batch, segment_before, segment_after)
+    if heating_types is not None:
+        delta = delta.filter(pl.col("heating_type_v2").is_in(heating_types))
+    else:
+        delta = delta.filter(~pl.col("heating_type_v2").is_in(DEFAULT_EXCLUDED_HEATING_CODES))
+    delta = add_heating_label(delta)
+
+    avail_heating = [h for h in HEATING_ORDER if h in delta["heating_label"].unique().to_list()]
+    if not avail_heating:
+        raise ValueError(
+            f"No heating types remain to plot for segments {segment_before!r} -> {segment_after!r} "
+            f"after applying heating_types={heating_types!r}."
+        )
+
+    records: list[dict[str, object]] = []
+    for group in avail_heating:
+        pct = quadrant_pcts(delta.filter(pl.col("heating_label") == group))
+        for q in QUADRANT_ORDER:
+            records.append({"heating_label": group, "quadrant": q, "pct": pct[q]})
+
+    plot_df = pl.DataFrame(records).with_columns(
+        pl.col("heating_label").cast(pl.Enum(list(reversed(avail_heating)))),
+        pl.col("quadrant").cast(pl.Enum(QUADRANT_ORDER)),
+    )
+
+    return (
+        plt.ggplot(plot_df, plt.aes(x="heating_label", y="pct", fill="quadrant"))
+        + plt.geom_col(position="stack", width=0.55)
+        + plt.geom_text(
+            mapping=plt.aes(label="pct"),
+            data=plot_df.filter(pl.col("pct") >= 3),
+            position=plt.position_stack(vjust=0.5),
+            format_string="{:.1f}%",
+            color="white",
+            size=11,
+            fontweight="bold",
+        )
+        + plt.scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
+        + plt.scale_y_continuous(expand=(0, 0, 0.02, 0))
+        + plt.coord_flip()
+        + plt.guides(fill=False)
+        + plt.labs(
+            x="",
+            y="% of weighted households",
+            title=f"Change in total annual energy bill after switching to a heat pump, under the {rate_name}",
+        )
+        + theme_switchbox()
+        + plt.theme(figure_size=(10.5, max(3.5, 1.0 + 1.4 * len(avail_heating))))
+    )
+
+
 # --- HP overpayment / BAT -------------------------------------------------------
 
 
@@ -274,6 +459,124 @@ def compare_bat_across_scenarios(state: str, batch: str, scenarios: list[str], *
 
     rows = [hp_bat_summary(state, batch, scenario, **kwargs) for scenario in scenarios]
     return pl.DataFrame(rows)
+
+
+# --- Cost of service by subclass -------------------------------------------------
+
+
+def cost_of_service_by_subclass(
+    state: str,
+    batch: str,
+    utility: str,
+    scenario: str,
+    *,
+    group_col: str = "postprocess_group.heating_type_v2",
+    bat_col: str = "BAT_percustomer_delivery",
+) -> pl.DataFrame:
+    """Delivery revenue, cost of service, and cross-subsidy by heating-type subclass.
+
+    Reads master BAT at ``{scenario}_precalc`` (BAT is only valid at precalc,
+    see module docstring) filtered to *utility*, joins CAIRO's raw per-building
+    kWh export (``load_billing_kwh_annual``) on ``bldg_id``, and aggregates by
+    *group_col*.
+
+    "Cost of service" is ``economic_burden_delivery + residual_share_delivery``
+    -- confirmed to reconstruct ``annual_bill_delivery`` together with
+    ``BAT_percustomer_delivery`` (the module's default ``bat_col``) to within
+    floating-point error, i.e. ``economic_burden + residual_share + BAT ==
+    annual_bill``. Percentages are self-normalized against the weighted total
+    across all customers, not an external revenue-requirement figure -- that's
+    state/docket-specific and not available for every state.
+
+    Returns one row per *group_col* value present in the data (ordered by
+    ``HEATING_ORDER`` when *group_col* is the default heating-type column) plus
+    a trailing "All customers" total row, with columns ``subclass``,
+    ``n_customers``, ``consumption_gwh``, ``revenue_delivery``,
+    ``cost_of_service``, ``cross_subsidy``, and their ``pct_all_*`` shares plus
+    ``pct_overpayment_vs_cos`` (``cross_subsidy / cost_of_service``).
+    """
+    import polars as pl
+
+    bat = cast(
+        "pl.DataFrame",
+        load_master_bat(state, batch, segment_name(scenario, "precalc"))
+        .filter(pl.col("sb.electric_utility") == utility)
+        .collect(),
+    )
+    kwh = cast(
+        "pl.DataFrame",
+        load_billing_kwh_annual(state, utility, batch, segment_name(scenario, "precalc")).collect(),
+    )
+    joined = bat.join(kwh, on="bldg_id", how="inner", validate="1:1").with_columns(
+        (pl.col("economic_burden_delivery") + pl.col("residual_share_delivery")).alias("cost_of_service"),
+    )
+
+    by_group = (
+        joined.group_by(group_col)
+        .agg(
+            pl.col("weight").sum().alias("n_customers"),
+            (pl.col("weight") * pl.col("annual_kwh_grid")).sum().alias("total_kwh"),
+            (pl.col("weight") * pl.col("annual_bill_delivery")).sum().alias("revenue_delivery"),
+            (pl.col("weight") * pl.col("cost_of_service")).sum().alias("cost_of_service"),
+            (pl.col("weight") * pl.col(bat_col)).sum().alias("cross_subsidy"),
+        )
+        .rename({group_col: "subclass"})
+    )
+    if group_col == "postprocess_group.heating_type_v2":
+        by_group = by_group.with_columns(
+            pl.col("subclass").replace_strict(HEATING_TYPE_LABELS, default=pl.col("subclass")),
+        )
+        row_order = [*(h for h in HEATING_ORDER if h in by_group["subclass"].to_list()), "All customers"]
+    else:
+        row_order = [*by_group["subclass"].to_list(), "All customers"]
+
+    total_row = by_group.select(
+        pl.lit("All customers").alias("subclass"),
+        pl.col("n_customers").sum(),
+        pl.col("total_kwh").sum(),
+        pl.col("revenue_delivery").sum(),
+        pl.col("cost_of_service").sum(),
+        pl.col("cross_subsidy").sum(),
+    )
+
+    cos_tbl = (
+        pl.concat([by_group, total_row], how="vertical")
+        .with_columns(pl.col("subclass").cast(pl.Enum(row_order)))
+        .sort("subclass")
+    )
+
+    total_customers = float(by_group["n_customers"].sum())
+    total_kwh = float(by_group["total_kwh"].sum())
+    total_revenue = float(by_group["revenue_delivery"].sum())
+    total_cos = float(by_group["cost_of_service"].sum())
+
+    return (
+        cos_tbl.with_columns(
+            (pl.col("total_kwh") / 1e6).alias("consumption_gwh"),
+            (pl.col("n_customers") / total_customers).alias("pct_all_customers"),
+            (pl.col("total_kwh") / total_kwh).alias("pct_all_consumption"),
+            (pl.col("revenue_delivery") / total_revenue).alias("pct_all_revenue"),
+            (pl.col("cost_of_service") / total_cos).alias("pct_all_cost_of_service"),
+            pl.when(pl.col("cost_of_service") > 0)
+            .then(pl.col("cross_subsidy") / pl.col("cost_of_service"))
+            .otherwise(None)
+            .alias("pct_overpayment_vs_cos"),
+        )
+        .drop("total_kwh")
+        .select(
+            "subclass",
+            "n_customers",
+            "pct_all_customers",
+            "consumption_gwh",
+            "pct_all_consumption",
+            "revenue_delivery",
+            "pct_all_revenue",
+            "cost_of_service",
+            "pct_all_cost_of_service",
+            "cross_subsidy",
+            "pct_overpayment_vs_cos",
+        )
+    )
 
 
 # --- Representative household + monthly decomposition ---------------------------

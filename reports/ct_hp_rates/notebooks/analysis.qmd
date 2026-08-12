@@ -58,7 +58,7 @@ from great_tables import GT
 
 from lib.plotnine import SB_COLORS, theme_switchbox
 from lib.great_tables import get_switchbox_gt_tab_options
-from lib.quarto import display_gt
+from lib.quarto import display_gt, display_svg
 from lib.rates_analysis.rate_case_funcs import (
     MONTH_ORDER,
     bat_by_group,
@@ -72,6 +72,7 @@ from lib.rates_analysis.rate_case_funcs import (
     load_tariff_json,
     monthly_bill_components,
     plot_bill_change_quadrants,
+    plot_mc_heatmap,
     segment_name,
     weighted_median_bldg_id,
 )
@@ -97,6 +98,7 @@ STATE = _batch_config["STATE"]
 BATCH = _batch_config["BATCH"]
 RDP_REF = _batch_config["RDP_REF"]
 UTILITY = "ct_eversource"
+YEAR = 2025
 
 DEFAULT_SCENARIO = _batch_config["BASELINE_BILL_SCENARIO"]
 SEASONAL_SCENARIO = "hp_seasonal_percustomer_passthrough"
@@ -320,6 +322,56 @@ _cos_gt = (
     .tab_options(**get_switchbox_gt_tab_options())
 )
 display_gt(_cos_gt)
+```
+
+## When are delivery costs actually incurred?
+
+CT Eversource's delivery marginal costs — bulk transmission and distribution +
+sub-transmission capacity — are hourly series covering all 8,760 hours of 2025.
+Both are zero most of the year and spike only in a small number of hours, which
+is exactly the timing mismatch a uniform volumetric rate can't reflect.
+
+```{python}
+#| label: load-mc-heatmap-data
+
+MC_S3_OPTS = {"aws_region": "us-west-2"}
+PATH_BULK_TX = f"s3://data.sb/switchbox/marginal_costs/ct/bulk_tx/utility={UTILITY}/year={YEAR}/data.parquet"
+PATH_DIST_SUB_TX = f"s3://data.sb/switchbox/marginal_costs/ct/dist_and_sub_tx/utility={UTILITY}/year={YEAR}/data.parquet"
+
+_bulk_tx = pl.read_parquet(PATH_BULK_TX, storage_options=MC_S3_OPTS)
+_dist_sub_tx = pl.read_parquet(PATH_DIST_SUB_TX, storage_options=MC_S3_OPTS)
+
+mc_heatmap_df = (
+    _bulk_tx.join(_dist_sub_tx.select("timestamp", "mc_total_per_kwh"), on="timestamp")
+    .rename({"bulk_tx_cost_enduse": "mc_bulk_tx", "mc_total_per_kwh": "mc_dist_sub_tx"})
+    .with_columns(
+        pl.col("timestamp").dt.ordinal_day().alias("day_of_year"),
+        pl.col("timestamp").dt.hour().alias("hour"),
+    )
+)
+assert mc_heatmap_df.height == 8760
+```
+
+```{python}
+#| label: fig-mc-heatmap-bulk-tx
+#| fig-cap: "Hourly marginal bulk transmission capacity costs, CT Eversource, 2025."
+
+display_svg(plot_mc_heatmap(
+    mc_heatmap_df, "mc_bulk_tx",
+    title="Bulk Transmission — Marginal Capacity Cost by Hour",
+    high_color=SB_COLORS["midnight"],
+))
+```
+
+```{python}
+#| label: fig-mc-heatmap-dist-sub-tx
+#| fig-cap: "Hourly marginal distribution and sub-transmission capacity costs, CT Eversource, 2025."
+
+display_svg(plot_mc_heatmap(
+    mc_heatmap_df, "mc_dist_sub_tx",
+    title="Distribution + Sub-Transmission — Marginal Capacity Cost by Hour",
+    high_color=SB_COLORS["carrot"],
+))
 ```
 
 ## A time-of-use rate doesn't fix it — but we can't show that yet

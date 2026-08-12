@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     import polars as pl
+    from matplotlib.figure import Figure
     from plotnine import ggplot
 
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
@@ -396,6 +397,53 @@ def plot_bill_change_quadrants(
         + theme_switchbox()
         + plt.theme(figure_size=(10.5, max(3.5, 1.0 + 1.4 * len(avail_heating))))
     )
+
+
+def plot_mc_heatmap(
+    df: pl.DataFrame,
+    value_col: str,
+    *,
+    title: str,
+    high_color: str,
+    x_col: str = "day_of_year",
+    y_col: str = "hour",
+    fill_label: str = "$/kWh",
+    figure_size: tuple[float, float] = (10.5, 4),
+) -> Figure:
+    """Render an 8760-hour (day-of-year x hour-of-day) marginal-cost heatmap.
+
+    Filters to rows where *value_col* is positive (zero-cost hours are left
+    blank rather than tiled white), draws with plotnine, and rasterizes the
+    tile layer before returning so ``display_svg``/``display_figure`` produces
+    a compact SVG. Expects *df* to already have day-of-year and hour columns
+    (e.g. via ``.dt.ordinal_day()`` / ``.dt.hour()`` on a timestamp column).
+    """
+    import plotnine as plt
+    import polars as pl
+
+    from lib.plotnine import theme_switchbox
+
+    nz = df.filter(pl.col(value_col) > 0)
+    p = (
+        plt.ggplot(nz, plt.aes(x=x_col, y=y_col, fill=value_col))
+        + plt.geom_tile()
+        + plt.scale_fill_gradient(low="#FFFFFF", high=high_color)
+        + plt.scale_x_continuous(
+            breaks=[1, 91, 182, 274, 365],
+            labels=["Jan", "Apr", "Jul", "Oct", "Dec"],
+            limits=(1, 365),
+        )
+        + plt.scale_y_continuous(breaks=[0, 6, 12, 18, 23], limits=(0, 23))
+        + plt.coord_cartesian(expand=False)
+        + plt.labs(title=title, x="", y="Hour of day", fill=fill_label)
+        + theme_switchbox()
+        + plt.theme(figure_size=figure_size, legend_position="right")
+    )
+    fig = p.draw()
+    for ax in fig.get_axes():
+        for img in ax.get_images():
+            img.set_rasterized(True)
+    return fig
 
 
 # --- HP overpayment / BAT -------------------------------------------------------

@@ -49,6 +49,7 @@ The analysis follows the report's arc:
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import polars as pl
 import yaml
@@ -60,7 +61,10 @@ from lib.plotnine import SB_COLORS, theme_switchbox
 from lib.great_tables import get_switchbox_gt_tab_options
 from lib.quarto import display_gt, display_svg
 from lib.rates_analysis.rate_case_funcs import (
+    HEATING_ORDER,
     MONTH_ORDER,
+    add_heating_label,
+    annual_bill_components,
     bat_by_group,
     bill_change_incidence,
     bill_delta_between_segments,
@@ -73,6 +77,8 @@ from lib.rates_analysis.rate_case_funcs import (
     monthly_bill_components,
     plot_bill_change_quadrants,
     plot_mc_heatmap,
+    plot_revenue_requirement_breakdown,
+    revenue_requirement_breakdown_by_subclass,
     segment_name,
     weighted_median_bldg_id,
 )
@@ -100,8 +106,11 @@ RDP_REF = _batch_config["RDP_REF"]
 UTILITY = "ct_eversource"
 YEAR = 2025
 
+RESIDUAL = 'percustomer' # percustomer or epmc
+
 DEFAULT_SCENARIO = _batch_config["BASELINE_BILL_SCENARIO"]
-SEASONAL_SCENARIO = "hp_seasonal_percustomer_passthrough"
+SEASONAL_SCENARIO = f"hp_seasonal_{RESIDUAL}_passthrough"
+FLAT_SCENARIO = f"hp_flat_{RESIDUAL}_passthrough"
 
 print(f"state={STATE}  batch={BATCH}  rdp_ref={RDP_REF}  utility={UTILITY}")
 ```
@@ -135,6 +144,8 @@ SEG_DEFAULT_PRECALC = segment_name(DEFAULT_SCENARIO, "precalc")
 SEG_DEFAULT_CALIBRATED = segment_name(DEFAULT_SCENARIO, "calibrated")
 SEG_SEASONAL_PRECALC = segment_name(SEASONAL_SCENARIO, "precalc")
 SEG_SEASONAL_CALIBRATED = segment_name(SEASONAL_SCENARIO, "calibrated")
+SEG_FLAT_PRECALC = segment_name(FLAT_SCENARIO, "precalc")
+SEG_FLAT_CALIBRATED = segment_name(FLAT_SCENARIO, "calibrated")
 
 bills_default_precalc = load_master_bills(STATE, BATCH, SEG_DEFAULT_PRECALC)
 bills_default_calibrated = load_master_bills(STATE, BATCH, SEG_DEFAULT_CALIBRATED)
@@ -149,11 +160,12 @@ residential customers they represent once we sum ResStock's sample weights.
 ```{python}
 #| label: sample-size
 
-_sample = (
+_sample = cast(
+    pl.DataFrame,
     bills_default_precalc
     .filter(pl.col("month") == "Annual")
     .select("bldg_id", "weight", "postprocess_group.heating_type_v2", "postprocess_group.has_hp", "energy_total_bill")
-    .collect()
+    .collect(),
 )
 print(_sample.head())
 
@@ -237,6 +249,17 @@ plot_bill_change_quadrants(
 )
 ```
 
+
+```{python}
+#| label: fig-bill-change-quadrants-default-natgas-flat
+#| fig-cap: "Change in total annual energy bill after switching to a heat pump, natural-gas-heated homes only, under CT Eversource's default rate."
+
+plot_bill_change_quadrants(
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_FLAT_CALIBRATED,
+    rate_name="HP seasonal rate"
+)
+```
+
 ## Heat pump customers are overpaying for delivery today
 
 Even setting bill *changes* aside, existing heat pump customers already pay more for
@@ -271,16 +294,46 @@ subclass underpaying relative to their delivery cost of service:
 
 ```{python}
 #| label: tbl-bat-by-heating-type
-#| tbl-cap: "Average delivery over/underpayment by baseline heating type, relative to cost of service (CT Eversource, default rate)."
+#| tbl-cap: "Average delivery revenue, cost of service, and over/underpayment by baseline heating type (CT Eversource, default rate)."
 
-_bat_by_type = bat_by_group(STATE, BATCH, DEFAULT_SCENARIO)
+_bat_by_type = (
+    add_heating_label(
+        bat_by_group(
+            STATE,
+            BATCH,
+            DEFAULT_SCENARIO,
+            bat_col=f"BAT_{RESIDUAL}_delivery",
+            residual=RESIDUAL,
+        ),
+        code_col="postprocess_group.heating_type_v2",
+    )
+    .drop("postprocess_group.heating_type_v2")
+    .with_columns(pl.col("heating_label").cast(pl.Enum(HEATING_ORDER)))
+    .sort("heating_label")
+)
 _bat_by_type_gt = (
-    GT(_bat_by_type, rowname_col="postprocess_group.heating_type_v2")
-    .fmt_currency(columns="mean_per_year", decimals=0)
+    GT(_bat_by_type, rowname_col="heating_label")
+    .fmt_currency(
+        columns=[
+            "revenue_per_customer",
+            "marginal_cost_per_customer",
+            "residual_per_customer",
+            "cost_of_service_per_customer",
+            "mean_per_year",
+        ],
+        decimals=0,
+    )
     .fmt_number(columns="n_weighted", decimals=0)
-    .cols_label(mean_per_year="Average over/underpayment", n_weighted="Weighted customers")
+    .cols_label(
+        revenue_per_customer="Avg. revenue",
+        marginal_cost_per_customer="Avg. marginal cost",
+        residual_per_customer="Avg. residual",
+        cost_of_service_per_customer="Avg. cost of service",
+        mean_per_year="Avg. over/underpayment",
+        n_weighted="Weighted customers",
+    )
     .tab_stubhead(label="Baseline heating type")
-    .tab_source_note("Positive = overpaying delivery cost of service; negative = underpaying.")
+    .tab_source_note(f"Positive over/underpayment = overpaying delivery cost of service; negative = underpaying. Per-customer figures are weight-averaged. Residual allocator = {RESIDUAL}.")
     .tab_options(**get_switchbox_gt_tab_options())
 )
 display_gt(_bat_by_type_gt)
@@ -296,7 +349,11 @@ over/underpayment above.
 #| label: tbl-cos-by-subclass
 #| tbl-cap: "Delivery revenue, cost of service, and cross-subsidy by heating-type subclass (CT Eversource, default rate)."
 
-cos_tbl = cost_of_service_by_subclass(STATE, BATCH, UTILITY, DEFAULT_SCENARIO)
+cos_tbl = cost_of_service_by_subclass(
+    STATE, BATCH, UTILITY, DEFAULT_SCENARIO,
+    bat_col=f"BAT_{RESIDUAL}_delivery",
+    residual=RESIDUAL,
+)
 
 _cos_gt = (
     GT(cos_tbl, rowname_col="subclass")
@@ -307,6 +364,8 @@ _cos_gt = (
         pct_all_consumption="% of consumption",
         revenue_delivery="Delivery revenue",
         pct_all_revenue="% of revenue",
+        marginal_cost="Marginal cost",
+        residual="Residual",
         cost_of_service="Cost of service",
         pct_all_cost_of_service="% of cost",
         cross_subsidy="Cross-subsidy",
@@ -316,13 +375,59 @@ _cos_gt = (
     .fmt_number(columns="consumption_gwh", decimals=1)
     .fmt_percent(columns=["pct_all_customers", "pct_all_consumption", "pct_all_revenue", "pct_all_cost_of_service"], decimals=1)
     .fmt_percent(columns="pct_overpayment_vs_cos", decimals=1)
-    .fmt_currency(columns=["revenue_delivery", "cost_of_service", "cross_subsidy"], decimals=0)
+    .fmt_currency(
+        columns=["revenue_delivery", "marginal_cost", "residual", "cost_of_service", "cross_subsidy"],
+        decimals=0,
+    )
     .tab_stubhead(label="Baseline heating type")
-    .tab_source_note("Positive cross-subsidy = overpaying delivery cost of service; negative = underpaying.")
+    .tab_source_note(
+        f"Cost of service = marginal cost + residual. "
+        f"Positive cross-subsidy = overpaying delivery cost of service; negative = underpaying. "
+        f"Residual allocator = {RESIDUAL}."
+    )
     .tab_options(**get_switchbox_gt_tab_options())
 )
 display_gt(_cos_gt)
 ```
+
+`cost_of_service` above is itself the sum of two differently-motivated pieces: the
+**marginal cost** each subclass causes (`economic_burden_delivery`, the cost-causation-based
+charge) and the **residual** (`residual_share_delivery`, the leftover revenue requirement —
+fixed and sunk costs not attributable to any one customer — allocated across subclasses by
+CAIRO's chosen allocator). Splitting them out shows *why* each subclass over- or underpays,
+not just by how much.
+
+```{python}
+#| label: fig-revenue-requirement-breakdown
+#| fig-cap: "CT Eversource's residential delivery revenue requirement, split into marginal cost recovery and residual, by baseline heating-type subclass."
+
+revreq_breakdown = revenue_requirement_breakdown_by_subclass(STATE, BATCH, UTILITY, DEFAULT_SCENARIO)
+plot_revenue_requirement_breakdown(revreq_breakdown)
+```
+
+```{python}
+#| label: report-vars-revenue-requirement-breakdown
+
+_revreq_total = revreq_breakdown.filter(pl.col("subclass") == "All customers")
+report_vars["revreq_marginal_cost_millions"] = (
+    _revreq_total.filter(pl.col("component") == "Marginal cost")["value"][0] / 1e6
+)
+report_vars["revreq_residual_millions"] = (
+    _revreq_total.filter(pl.col("component") == "Residual")["value"][0] / 1e6
+)
+report_vars["revreq_pct_residual"] = report_vars["revreq_residual_millions"] / (
+    report_vars["revreq_marginal_cost_millions"] + report_vars["revreq_residual_millions"]
+)
+```
+
+Across all of CT Eversource's residential customers, `{python} f"${report_vars['revreq_marginal_cost_millions']:.1f}"`
+million a year of the delivery revenue requirement recovers marginal cost, while
+`{python} f"${report_vars['revreq_residual_millions']:.1f}"` million —
+`{python} f"{report_vars['revreq_pct_residual']:.0%}"` of the total — is residual. That
+imbalance holds within every subclass too (@fig-revenue-requirement-breakdown): residual
+revenue is several times larger than marginal cost for every baseline heating type, which is
+exactly why the residual *allocator* — not the marginal-cost charge — is what mostly
+determines whether a subclass over- or underpays in the table above.
 
 ## When are delivery costs actually incurred?
 
@@ -356,22 +461,22 @@ assert mc_heatmap_df.height == 8760
 #| label: fig-mc-heatmap-bulk-tx
 #| fig-cap: "Hourly marginal bulk transmission capacity costs, CT Eversource, 2025."
 
-display_svg(plot_mc_heatmap(
+plot_mc_heatmap(
     mc_heatmap_df, "mc_bulk_tx",
     title="Bulk Transmission — Marginal Capacity Cost by Hour",
     high_color=SB_COLORS["midnight"],
-))
+)
 ```
 
 ```{python}
 #| label: fig-mc-heatmap-dist-sub-tx
 #| fig-cap: "Hourly marginal distribution and sub-transmission capacity costs, CT Eversource, 2025."
 
-display_svg(plot_mc_heatmap(
+plot_mc_heatmap(
     mc_heatmap_df, "mc_dist_sub_tx",
     title="Distribution + Sub-Transmission — Marginal Capacity Cost by Hour",
     high_color=SB_COLORS["carrot"],
-))
+)
 ```
 
 ## A time-of-use rate doesn't fix it — but we can't show that yet
@@ -402,16 +507,18 @@ We read both tariffs' calibrated URDB JSON directly to see what changed.
 
 tariff_default = load_tariff_json(STATE, UTILITY, f"{UTILITY}_default_calibrated", RDP_REF)
 tariff_seasonal = load_tariff_json(STATE, UTILITY, f"{UTILITY}_{SEASONAL_SCENARIO}_calibrated", RDP_REF)
-
+tariff_flat = load_tariff_json(STATE, UTILITY, f"{UTILITY}_{FLAT_SCENARIO}_calibrated", RDP_REF)
 rates_default = extract_tariff_rates(tariff_default)
 rates_seasonal = extract_tariff_rates(tariff_seasonal)
+rates_flat = extract_tariff_rates(tariff_flat)
 print("default:", rates_default)
 print("seasonal:", rates_seasonal)
+print("flat:", rates_flat)
 ```
 
 ```{python}
 #| label: tbl-tariff-months
-#| tbl-cap: "Volumetric delivery rate by month, today's default rate vs. the seasonal heat-pump rate."
+#| tbl-cap: "Volumetric delivery rate by month: today's default rate vs. the seasonal and flat heat-pump rates."
 
 def _month_rate_table(rates: dict, label: str) -> pl.DataFrame:
     return pl.DataFrame({
@@ -422,13 +529,23 @@ def _month_rate_table(rates: dict, label: str) -> pl.DataFrame:
         ],
     })
 
-_tariff_months = _month_rate_table(rates_default, "Default rate (¢/kWh)").join(
-    _month_rate_table(rates_seasonal, "Seasonal HP rate (¢/kWh)"), on="month"
-).with_columns(pl.col("month").cast(pl.Enum(MONTH_ORDER)))
+_tariff_months = (
+    _month_rate_table(rates_default, "Default rate (¢/kWh)")
+    .join(_month_rate_table(rates_seasonal, "Seasonal HP rate (¢/kWh)"), on="month")
+    .join(_month_rate_table(rates_flat, "Flat HP rate (¢/kWh)"), on="month")
+    .with_columns(pl.col("month").cast(pl.Enum(MONTH_ORDER)))
+)
 
 _tariff_months_gt = (
     GT(_tariff_months, rowname_col="month")
-    .fmt_number(columns=["Default rate (¢/kWh)", "Seasonal HP rate (¢/kWh)"], decimals=2)
+    .fmt_number(
+        columns=[
+            "Default rate (¢/kWh)",
+            "Seasonal HP rate (¢/kWh)",
+            "Flat HP rate (¢/kWh)",
+        ],
+        decimals=2,
+    )
     .tab_stubhead(label="Month")
     .tab_options(**get_switchbox_gt_tab_options())
 )
@@ -524,7 +641,7 @@ being compared:
 ```{python}
 #| label: compute-ratedesign-delta
 
-delta_ratedesign = bill_delta_between_segments(STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_SEASONAL_PRECALC)
+delta_ratedesign = bill_delta_between_segments(STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_FLAT_PRECALC)
 
 incidence_hp_ratedesign = bill_change_incidence(delta_ratedesign.filter(pl.col("has_hp")))
 incidence_nonhp_ratedesign = bill_change_incidence(delta_ratedesign.filter(~pl.col("has_hp")))
@@ -556,30 +673,101 @@ a small bump, but the distribution has a tail (@fig-hist-nonhp-ratedesign).
 ```{python}
 #| label: fig-hist-nonhp-ratedesign
 #| fig-cap: "Distribution of the annual bill change for the non-heat-pump subclass, from the default rate to the recalibrated non-HP tariff under the seasonal fair scenario (same, pre-retrofit HVAC throughout)."
-
 (
-    plt.ggplot(delta_ratedesign.filter(~pl.col("has_hp")))
-    + plt.aes(x="delta")
-    + plt.geom_histogram(binwidth=25, fill=SB_COLORS["midnight"])
+    plt.ggplot(delta_ratedesign.filter(~pl.col("has_hp")).with_columns((pl.col("delta") / 12).alias("delta_monthly")))
+    + plt.aes(x="delta_monthly")
+    + plt.geom_histogram(binwidth=1, fill=SB_COLORS["midnight"])
     + plt.geom_vline(
-        xintercept=incidence_nonhp_ratedesign["median_delta"],
+        xintercept=incidence_nonhp_ratedesign["median_delta"] / 12,
         color=SB_COLORS["carrot"],
         linetype="dashed",
     )
-    + plt.labs(x="Change in annual energy bill ($)", y="Count of households")
+    + plt.labs(x="Change in monthly energy bill ($)", y="Count of households")
     + plt.scale_x_continuous(
-        breaks=lambda limits: list(range(
-            (int(limits[0]) // 50) * 50,
-            int(limits[1]) + 50,
-            50,
-        )),
-        labels=lambda xs: [
-            f"${x:,.0f}" if x >= 0 else f"-${abs(x):,.0f}" for x in xs
-        ],
+        breaks=lambda limits: list(
+            range(
+                (int(limits[0]) // 5) * 5,
+                int(limits[1]) + 5,
+                5,
+            )
+        ),
+        labels=lambda xs: [f"${x:,.0f}" if x >= 0 else f"-${abs(x):,.0f}" for x in xs],
         minor_breaks=[],
     )
     + theme_switchbox()
     + plt.theme(figure_size=(10.5, 4.5))
+)
+```
+
+```{python}
+#| label: fig-cdf-nonhp-ratedesign2
+#| fig-cap: "Cumulative share of non-heat-pump households by monthly bill change under the reform tariff, all non-HP vs. excluding electric resistance and heat-pump baseline heating types."
+
+_nonhp_base = delta_ratedesign.filter(~pl.col("has_hp"))
+
+
+def _weighted_monthly_cdf(df: pl.DataFrame) -> pl.DataFrame:
+    return (
+        df.with_columns((pl.col("delta") / 12).alias("delta_monthly"))
+        .sort("delta_monthly")
+        .with_columns(
+            (pl.col("weight").cum_sum() / pl.col("weight").sum()).alias("cdf")
+        )
+    )
+
+
+_cdf_series = ["All non-HP", "Excl. electric resistance & heat pump"]
+_nonhp_cdf = pl.concat(
+    [
+        _weighted_monthly_cdf(_nonhp_base).with_columns(pl.lit(_cdf_series[0]).alias("series")),
+        _weighted_monthly_cdf(
+            _nonhp_base.filter(
+                ~pl.col("heating_type_v2").is_in(["electrical_resistance", "heat_pump"])
+            )
+        ).with_columns(pl.lit(_cdf_series[1]).alias("series")),
+    ]
+).with_columns(pl.col("series").cast(pl.Enum(_cdf_series)))
+
+(
+    plt.ggplot(_nonhp_cdf, plt.aes(x="delta_monthly", y="cdf", color="series"))
+    + plt.geom_step()
+    + plt.geom_vline(
+        xintercept=incidence_nonhp_ratedesign["median_delta"] / 12,
+        color=SB_COLORS["carrot"],
+        linetype="dashed",
+    )
+    + plt.labs(
+        x="Change in monthly energy bill ($)",
+        y="Share of non-HP households",
+        color=None,
+    )
+    + plt.scale_color_manual(values=[SB_COLORS["midnight"], SB_COLORS["sky"]])
+    + plt.scale_x_continuous(
+        breaks=lambda limits: list(
+            range(
+                (int(limits[0]) // 5) * 5,
+                int(limits[1]) + 5,
+                5,
+            )
+        ),
+        minor_breaks=lambda limits: list(
+            range(
+                int(limits[0]),
+                int(limits[1]) + 1,
+                1,
+            )
+        ),
+        labels=lambda xs: [
+            f"${x:,.0f}" if x >= 0 else f"-${abs(x):,.0f}" for x in xs
+        ],
+    )
+    + plt.scale_y_continuous(
+        breaks=[i / 10 for i in range(11)],
+        minor_breaks=[i / 20 for i in range(21)],
+        labels=lambda ys: [f"{y:.0%}" for y in ys],
+    )
+    + theme_switchbox()
+    + plt.theme(figure_size=(10.5, 4.5), legend_position="bottom")
 )
 ```
 
@@ -625,12 +813,13 @@ into delivery and supply.
 ```{python}
 #| label: pick-representative-household
 
-_natgas_baseline = (
+_natgas_baseline = cast(
+    pl.DataFrame,
     bills_default_precalc
     .filter(pl.col("month") == "Annual")
     .filter(pl.col("postprocess_group.heating_type_v2") == "natgas")
     .select("bldg_id", "weight", "energy_total_bill")
-    .collect()
+    .collect(),
 )
 median_natgas_bldg_id = weighted_median_bldg_id(_natgas_baseline, "energy_total_bill")
 print(f"Representative natural-gas-heated building: bldg_id={median_natgas_bldg_id}")
@@ -691,10 +880,13 @@ _before_bill = float(
     _natgas_baseline.filter(pl.col("bldg_id") == median_natgas_bldg_id)["energy_total_bill"][0]
 )
 _after_bill = float(
-    bills_seasonal_calibrated
-    .filter((pl.col("bldg_id") == median_natgas_bldg_id) & (pl.col("month") == "Annual"))
-    .select("energy_total_bill")
-    .collect()["energy_total_bill"][0]
+    cast(
+        pl.DataFrame,
+        bills_seasonal_calibrated
+        .filter((pl.col("bldg_id") == median_natgas_bldg_id) & (pl.col("month") == "Annual"))
+        .select("energy_total_bill")
+        .collect(),
+    )["energy_total_bill"][0]
 )
 report_vars["representative_bldg_id"] = median_natgas_bldg_id
 report_vars["representative_annual_bill_before"] = _before_bill
@@ -707,6 +899,209 @@ For this household, the annual energy bill goes from `{python} f"${report_vars['
 of each monthly bill is lowest in the winter months (Jan, Feb, Mar, Nov, Dec) precisely when
 heating load — and total consumption — is highest, which is what the lower winter volumetric
 rate is designed to do.
+
+### The same household's annual bill, three ways
+
+Putting the same building's annual bill side by side across all three states — natural gas
+today, heat pump under today's default rate, and heat pump under the seasonal reform rate —
+shows how much of the heat-pump bill increase the reform actually offsets.
+
+```{python}
+#| label: fig-bill-decomposed-representative
+#| fig-cap: "Annual energy bill for the representative CT Eversource natural-gas home: before heat pumps, after heat pumps at the default rate, and after heat pumps at the seasonal reform rate."
+
+import matplotlib.patches as mpatches
+import matplotlib.pyplot as pyplot  # noqa: ICN001 -- avoid clobbering the plotnine `plt` alias used elsewhere
+import numpy as np
+
+median_natgas_bldg_id = 499391
+
+_before = annual_bill_components(STATE, BATCH, SEG_DEFAULT_PRECALC, median_natgas_bldg_id)
+_after_default = annual_bill_components(STATE, BATCH, SEG_DEFAULT_CALIBRATED, median_natgas_bldg_id)
+_after_seasonal = annual_bill_components(STATE, BATCH, SEG_SEASONAL_CALIBRATED, median_natgas_bldg_id)
+
+_DECOMPOSED_COLORS = {
+    "delivery_fixed": "#023047",
+    "delivery_volumetric": "#56B4E9",
+    "supply": "#E69F00",
+    "gas": "#CCCCCC",
+}
+_DECOMPOSED_LABEL_COLORS = {**_DECOMPOSED_COLORS, "gas": "#888888"}
+
+
+def _fmt_dollar(v: float) -> str:
+    return f"${v:,.0f}"
+
+
+_scenarios = ["Natural gas\nfurnace", "Heat pump\n(default rate)", "Heat pump\n(seasonal rate)"]
+_x = np.arange(len(_scenarios))
+_w = 0.55
+_comp_keys = ["delivery_fixed", "delivery_volumetric", "supply", "gas"]
+_bars_data = [_before, _after_default, _after_seasonal]
+
+fig_3bar, ax_3bar = pyplot.subplots(figsize=(12, 7))
+
+ax_3bar.set_title(
+    "Seasonal rate narrows the heat pump bill increase",
+    fontfamily="GT Planar",
+    fontweight="bold",
+    fontsize=15,
+    loc="left",
+    pad=12,
+)
+
+_bottoms = [0.0] * 3
+for _ck in _comp_keys:
+    _vals = [_bars_data[i][_ck] for i in range(3)]
+    ax_3bar.bar(_x, _vals, _w, bottom=_bottoms, color=_DECOMPOSED_COLORS[_ck], edgecolor="none")
+    for _i, (_v, _b) in enumerate(zip(_vals, _bottoms)):
+        if _v > 80:
+            ax_3bar.text(
+                _x[_i],
+                _b + _v / 2,
+                _fmt_dollar(_v),
+                ha="center",
+                va="center",
+                color="white",
+                fontweight="bold",
+                fontsize=11,
+                zorder=11,
+            )
+    _bottoms = [_b + _v for _b, _v in zip(_bottoms, _vals)]
+
+_totals = [sum(_bars_data[i][k] for k in _comp_keys) for i in range(3)]
+
+for _i in (0, 1):
+    ax_3bar.text(
+        _x[_i],
+        _totals[_i] + 50,
+        _fmt_dollar(_totals[_i]),
+        ha="center",
+        va="bottom",
+        color="#333333",
+        fontweight="bold",
+        fontsize=12,
+    )
+
+_delivery_before = _before["delivery_fixed"] + _before["delivery_volumetric"]
+ax_3bar.hlines(
+    y=_delivery_before,
+    xmin=-0.5,
+    xmax=_x[2] + _w / 2,
+    color=SB_COLORS["saffron"],
+    linewidth=1.8,
+    linestyle=(0, (6, 4)),
+    zorder=10,
+)
+
+_savings = _totals[1] - _totals[2]
+_pct_savings = _savings / _totals[1] * 100
+
+_rect = mpatches.FancyBboxPatch(
+    (_x[2] - _w / 2, _totals[2]),
+    _w,
+    _savings,
+    boxstyle="square,pad=0",
+    facecolor=SB_COLORS["saffron"],
+    alpha=0.12,
+    edgecolor="#B8960A",
+    linewidth=2.0,
+    linestyle=(0, (5, 3)),
+    hatch="////",
+    zorder=3,
+)
+ax_3bar.add_patch(_rect)
+
+ax_3bar.text(
+    _x[2],
+    _totals[2] + 50,
+    _fmt_dollar(_totals[2]),
+    ha="center",
+    va="bottom",
+    color="#333333",
+    fontweight="bold",
+    fontsize=12,
+    zorder=8,
+)
+
+ax_3bar.annotate(
+    "",
+    xy=(_x[2], _totals[2] + 180),
+    xytext=(_x[2], _totals[1] - 60),
+    arrowprops=dict(arrowstyle="->,head_length=0.4,head_width=0.25", color=SB_COLORS["saffron"], lw=2.2),
+    zorder=6,
+)
+
+ax_3bar.text(
+    _x[2],
+    _totals[1] + 180,
+    f"-{_pct_savings:.0f}%",
+    ha="center",
+    va="bottom",
+    color=SB_COLORS["saffron"],
+    fontweight="bold",
+    fontsize=14,
+)
+ax_3bar.text(
+    _x[2],
+    _totals[1] + 50,
+    f"-{_fmt_dollar(_savings)}",
+    ha="center",
+    va="bottom",
+    color=SB_COLORS["saffron"],
+    fontsize=11,
+    alpha=0.8,
+)
+
+_side_x = _x[2] + _w / 2 + 0.15
+_d3 = _after_seasonal
+_side_specs = [
+    ("Delivery\n(Fixed)", _d3["delivery_fixed"] / 2, _DECOMPOSED_LABEL_COLORS["delivery_fixed"]),
+    (
+        "Delivery\n(Volumetric)",
+        _d3["delivery_fixed"] + _d3["delivery_volumetric"] / 2,
+        _DECOMPOSED_LABEL_COLORS["delivery_volumetric"],
+    ),
+    (
+        "Supply",
+        _d3["delivery_fixed"] + _d3["delivery_volumetric"] + _d3["supply"] / 2,
+        _DECOMPOSED_LABEL_COLORS["supply"],
+    ),
+    (
+        "Gas",
+        _d3["delivery_fixed"] + _d3["delivery_volumetric"] + _d3["supply"] + _d3["gas"] / 2,
+        _DECOMPOSED_LABEL_COLORS["gas"],
+    ),
+]
+for _lbl, _ym, _clr in _side_specs:
+    ax_3bar.plot([_x[2] + _w / 2 + 0.02, _side_x - 0.03], [_ym, _ym], color=_clr, linewidth=0.7, alpha=0.6)
+    ax_3bar.text(_side_x, _ym, _lbl, color=_clr, ha="left", va="center", fontsize=8.5, fontweight="bold")
+
+ax_3bar.set_xticks(_x)
+ax_3bar.set_xticklabels(_scenarios, fontsize=11)
+ax_3bar.set_ylabel("Annual energy bill ($)", fontsize=12)
+ax_3bar.set_ylim(0, max(_totals) * 1.22)
+ax_3bar.set_xlim(-0.5, _x[2] + _w / 2 + 0.7)
+ax_3bar.spines["top"].set_visible(False)
+ax_3bar.spines["right"].set_visible(False)
+ax_3bar.spines["bottom"].set_bounds(-0.5, _x[2] + _w / 2)
+
+report_vars["seasonal_reform_savings_dollar"] = _savings
+report_vars["seasonal_reform_savings_pct"] = _pct_savings / 100
+report_vars["representative_annual_bill_after_default"] = _totals[1]
+
+fig_3bar.tight_layout()
+display_svg(fig_3bar)
+```
+
+Even under the seasonal reform tariff, this household's heat-pump bill
+(`{python} f"${report_vars['representative_annual_bill_after']:,.0f}"`) stays above its
+original gas bill
+(`{python} f"${report_vars['representative_annual_bill_before']:,.0f}"`) — the reform closes
+part of the gap, cutting the default-rate heat-pump bill by
+`{python} f"{report_vars['seasonal_reform_savings_pct']:.0%}"`
+(`{python} f"${report_vars['seasonal_reform_savings_dollar']:,.0f}"`/yr), but doesn't erase the
+increase entirely for this particular building.
 
 ## A flat-rate tech-specific design isn't modeled yet
 

@@ -48,6 +48,7 @@ The analysis follows the report's arc:
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import cast
 
@@ -63,6 +64,8 @@ from lib.quarto import display_gt, display_svg
 from lib.rates_analysis.rate_case_funcs import (
     HEATING_ORDER,
     MONTH_ORDER,
+    QUADRANT_COLORS,
+    QUADRANT_ORDER,
     add_heating_label,
     annual_bill_components,
     bat_by_group,
@@ -235,6 +238,99 @@ plot_bill_change_quadrants(
 )
 ```
 
+The stacked bars above compress each heating type into four bins; the histograms below show
+the full weighted distribution for natural-gas-heated homes only under the same three
+before/after-retrofit comparisons.
+
+```{python}
+#| label: natgas-bill-change-histogram-helpers
+
+BIN_WIDTH = 100
+
+
+def _weighted_percentile(df: pl.DataFrame, col: str, w_col: str, q: float) -> float:
+    """Weighted percentile via cumulative weight."""
+    s = df.sort(col)
+    cum = s[w_col].cum_sum() / s[w_col].sum()
+    return float(s.filter(cum >= q)[col][0])
+
+
+def _natgas_bill_change_hist(df: pl.DataFrame, title: str) -> plt.ggplot:
+    """Weighted histogram of annual bill change for natural-gas homes, colored by quadrant."""
+    hist_df = df.select("delta", "weight")
+    hist_snap = max(BIN_WIDTH, 50)
+    hist_x_lo = math.floor(_weighted_percentile(hist_df, "delta", "weight", 0.01) / hist_snap) * hist_snap
+    hist_x_hi = math.ceil(_weighted_percentile(hist_df, "delta", "weight", 0.99) / hist_snap) * hist_snap
+    hist_binned = (
+        hist_df.with_columns(
+            ((pl.col("delta") / BIN_WIDTH).floor() * BIN_WIDTH + BIN_WIDTH / 2).alias("bin_center"),
+        )
+        .with_columns(
+            pl.when(pl.col("bin_center") <= -1000)
+            .then(pl.lit("savings > $1k"))
+            .when((pl.col("bin_center") > -1000) & (pl.col("bin_center") < 0))
+            .then(pl.lit("savings $0-1k"))
+            .when((pl.col("bin_center") >= 0) & (pl.col("bin_center") < 1000))
+            .then(pl.lit("losses $0-1k"))
+            .otherwise(pl.lit("losses > $1k"))
+            .alias("quadrant"),
+        )
+        .group_by("bin_center", "quadrant")
+        .agg(pl.col("weight").sum().alias("weight_sum"))
+        .with_columns(pl.col("quadrant").cast(pl.Enum(QUADRANT_ORDER)))
+    )
+    return (
+        plt.ggplot(hist_binned, plt.aes(x="bin_center", y="weight_sum", fill="quadrant"))
+        + plt.geom_col(width=BIN_WIDTH * 0.9)
+        + plt.geom_vline(xintercept=[-1000, 0, 1000], linetype="dotted", color="gray")
+        + plt.scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
+        + plt.coord_cartesian(xlim=(hist_x_lo, hist_x_hi))
+        + plt.labs(x="Annual bill change ($)", y="Weighted households", title=title)
+        + plt.guides(fill=False)
+        + theme_switchbox()
+        + plt.theme(figure_size=(10.5, 4.5))
+    )
+
+
+delta_natgas_default_to_seasonal = bill_delta_between_segments(
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_SEASONAL_CALIBRATED
+).filter(pl.col("heating_type_v2") == "natgas")
+
+delta_natgas_default_to_flat = bill_delta_between_segments(
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_FLAT_CALIBRATED
+).filter(pl.col("heating_type_v2") == "natgas")
+```
+
+```{python}
+#| label: fig-hist-natgas-bill-change-default
+#| fig-cap: "Distribution of the annual total energy bill change for natural-gas-heated MD BGE homes after switching to a heat pump, under the default rate."
+
+_natgas_bill_change_hist(
+    delta_natgas_default,
+    "Natural-gas homes switching to a heat pump under the default rate",
+)
+```
+
+```{python}
+#| label: fig-hist-natgas-bill-change-seasonal
+#| fig-cap: "Distribution of the annual total energy bill change for natural-gas-heated MD BGE homes after switching to a heat pump, under the HP seasonal rate."
+
+_natgas_bill_change_hist(
+    delta_natgas_default_to_seasonal,
+    "Natural-gas homes switching to a heat pump under the HP seasonal rate",
+)
+```
+
+```{python}
+#| label: fig-hist-natgas-bill-change-flat
+#| fig-cap: "Distribution of the annual total energy bill change for natural-gas-heated MD BGE homes after switching to a heat pump, under the HP flat rate."
+
+_natgas_bill_change_hist(
+    delta_natgas_default_to_flat,
+    "Natural-gas homes switching to a heat pump under the HP flat rate",
+)
+```
+
 Restricting to just the natural-gas subclass isolates the incidence figure computed above
 (`{python} f"{report_vars['pct_natgas_hp_bill_increase_default']:.0%}"` seeing an increase)
 into the same savings/loss bins, rather than just a binary increase/decrease split.
@@ -256,9 +352,11 @@ plot_bill_change_quadrants(
 
 plot_bill_change_quadrants(
     STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_FLAT_CALIBRATED,
-    rate_name="HP seasonal rate"
+    rate_name="HP flat rate"
 )
 ```
+
+
 
 ## Heat pump customers are overpaying for delivery today
 

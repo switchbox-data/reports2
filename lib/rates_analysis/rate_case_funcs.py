@@ -266,6 +266,15 @@ QUADRANT_COLORS: dict[str, str] = {
     "losses > $1k": "#b71c1c",
 }
 QUADRANT_ORDER = list(QUADRANT_COLORS.keys())
+# Short, human-readable captions drawn inline next to each bar segment in
+# plot_bill_change_quadrants() in lieu of a standard plotnine legend (which
+# would need a separate lookup against QUADRANT_COLORS to interpret).
+QUADRANT_LABELS: dict[str, str] = {
+    "losses > $1k": "LOSE > $1K",
+    "losses $0-1k": "LOSE $0-1K",
+    "savings $0-1k": "SAVE $0-1K",
+    "savings > $1k": "SAVE > $1K",
+}
 
 
 def add_heating_label(df: pl.DataFrame, code_col: str = "heating_type_v2") -> pl.DataFrame:
@@ -342,6 +351,14 @@ def plot_bill_change_quadrants(
     heating type except ``"heat_pump"`` (already has a heat pump, not
     "upgrading") and ``"other"`` (heterogeneous/unclassified) — see
     ``DEFAULT_EXCLUDED_HEATING_CODES``.
+
+    Since each bar's quadrant mix can look very different (e.g. an
+    electric-resistance row might be almost entirely "savings > $1k" while a
+    natural-gas row is split across all four bins), the chart replaces the
+    usual plotnine fill legend with short color-matched captions
+    (``QUADRANT_LABELS``) drawn above *every* bar's segments (skipped only
+    when a segment is under 2% of that bar) rather than a single reference
+    row — a single row's mix isn't guaranteed to include every quadrant.
     """
     import plotnine as plt
     import polars as pl
@@ -363,8 +380,10 @@ def plot_bill_change_quadrants(
         )
 
     records: list[dict[str, object]] = []
+    group_pcts: dict[str, dict[str, float]] = {}
     for group in avail_heating:
         pct = quadrant_pcts(delta.filter(pl.col("heating_label") == group))
+        group_pcts[group] = pct
         for q in QUADRANT_ORDER:
             records.append({"heating_label": group, "quadrant": q, "pct": pct[q]})
 
@@ -373,7 +392,38 @@ def plot_bill_change_quadrants(
         pl.col("quadrant").cast(pl.Enum(QUADRANT_ORDER)),
     )
 
-    return (
+    # Build one caption per bar segment >= 2% of that bar, positioned in the
+    # gap just above the bar it belongs to (an "x" offset past the bar's own
+    # categorical position, since coord_flip makes "x" the vertical axis).
+    # Ported from the evolved plot_quadrant_bar() in ny_hp_rates's
+    # notebooks/analysis.qmd, adapted from per-scenario rows to per-heating-
+    # type rows.
+    stacking_order = list(reversed(QUADRANT_ORDER))
+    seg_label_offset = 0.45
+    seg_label_records: list[dict[str, object]] = []
+    for i, group in enumerate(avail_heating):
+        group_x = len(avail_heating) - i
+        pct = group_pcts[group]
+        cum = 0.0
+        for q in stacking_order:
+            seg_start = cum
+            mid = cum + pct[q] / 2
+            cum += pct[q]
+            if pct[q] < 2:
+                continue
+            label_y, label_ha = (seg_start, "left") if seg_start < 1 else (mid, "center")
+            seg_label_records.append(
+                {
+                    "x": group_x + seg_label_offset,
+                    "y": label_y,
+                    "label": QUADRANT_LABELS[q],
+                    "color": QUADRANT_COLORS[q],
+                    "ha": label_ha,
+                }
+            )
+    seg_label_df = pl.DataFrame(seg_label_records) if seg_label_records else None
+
+    p = (
         plt.ggplot(plot_df, plt.aes(x="heating_label", y="pct", fill="quadrant"))
         + plt.geom_col(position="stack", width=0.55)
         + plt.geom_text(
@@ -386,7 +436,8 @@ def plot_bill_change_quadrants(
             fontweight="bold",
         )
         + plt.scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
-        + plt.scale_y_continuous(expand=(0, 0, 0.02, 0))
+        + plt.scale_y_continuous(expand=(0, 0, 0.04, 0))
+        + plt.scale_x_discrete(expand=(0, 0, 0, 0.6))
         + plt.coord_flip()
         + plt.guides(fill=False)
         + plt.labs(
@@ -395,8 +446,25 @@ def plot_bill_change_quadrants(
             title=f"Change in total annual energy bill after switching to a heat pump, under the {rate_name}",
         )
         + theme_switchbox()
-        + plt.theme(figure_size=(10.5, max(3.5, 1.0 + 1.4 * len(avail_heating))))
+        + plt.theme(figure_size=(11.5, max(3.5, 1.0 + 1.4 * len(avail_heating))))
     )
+
+    if seg_label_df is not None:
+        for ha_val in seg_label_df["ha"].unique().to_list():
+            sub = seg_label_df.filter(pl.col("ha") == ha_val)
+            p = p + plt.geom_text(
+                mapping=plt.aes(x="x", y="y", label="label", color="color"),
+                data=sub,
+                ha=ha_val,
+                va="bottom",
+                size=9,
+                fontweight="bold",
+                inherit_aes=False,
+                show_legend=False,
+            )
+        p = p + plt.scale_color_identity()
+
+    return p
 
 
 def plot_mc_heatmap(

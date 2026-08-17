@@ -482,15 +482,50 @@ def bat_by_group(
     *,
     bat_col: str = "BAT_percustomer_delivery",
     group_col: str = "postprocess_group.heating_type_v2",
+    residual: str | None = None,
 ) -> pl.DataFrame:
-    """Weighted mean BAT and weighted customer count by *group_col*, read from ``{scenario}_precalc``."""
+    """Weighted mean BAT and cost-of-service components by *group_col*.
+
+    Always read from ``{scenario}_precalc``. Columns:
+
+    - ``mean_per_year`` — weighted mean of *bat_col* (over/underpayment)
+    - ``revenue_per_customer`` — weighted mean ``annual_bill_delivery``
+    - ``marginal_cost_per_customer`` — weighted mean ``economic_burden_delivery``
+    - ``residual_per_customer`` — weighted mean ``residual_share_*_delivery``
+    - ``cost_of_service_per_customer`` — weighted mean
+      ``economic_burden_delivery + residual_share_*_delivery``
+    - ``n_weighted`` — sum of sample weights
+
+    *residual* selects the residual-share column the same way as
+    ``cost_of_service_by_subclass``: ``None`` / ``"percustomer"`` →
+    ``residual_share_delivery``; otherwise ``residual_share_{residual}_delivery``.
+    """
     import polars as pl
+
+    residual_col = (
+        "residual_share_delivery"
+        if residual is None or residual == "percustomer"
+        else f"residual_share_{residual}_delivery"
+    )
 
     bat = cast("pl.DataFrame", load_master_bat(state, batch, segment_name(scenario, "precalc")).collect())
     return (
-        bat.group_by(group_col)
+        bat.with_columns(
+            (pl.col("economic_burden_delivery") + pl.col(residual_col)).alias("_cost_of_service"),
+        )
+        .group_by(group_col)
         .agg(
             ((pl.col(bat_col) * pl.col("weight")).sum() / pl.col("weight").sum()).alias("mean_per_year"),
+            ((pl.col("annual_bill_delivery") * pl.col("weight")).sum() / pl.col("weight").sum()).alias(
+                "revenue_per_customer"
+            ),
+            ((pl.col("economic_burden_delivery") * pl.col("weight")).sum() / pl.col("weight").sum()).alias(
+                "marginal_cost_per_customer"
+            ),
+            ((pl.col(residual_col) * pl.col("weight")).sum() / pl.col("weight").sum()).alias("residual_per_customer"),
+            ((pl.col("_cost_of_service") * pl.col("weight")).sum() / pl.col("weight").sum()).alias(
+                "cost_of_service_per_customer"
+            ),
             pl.col("weight").sum().alias("n_weighted"),
         )
         .sort("n_weighted", descending=True)
@@ -520,6 +555,7 @@ def cost_of_service_by_subclass(
     *,
     group_col: str = "postprocess_group.heating_type_v2",
     bat_col: str = "BAT_percustomer_delivery",
+    residual: str | None = None,
 ) -> pl.DataFrame:
     """Delivery revenue, cost of service, and cross-subsidy by heating-type subclass.
 
@@ -528,22 +564,33 @@ def cost_of_service_by_subclass(
     kWh export (``load_billing_kwh_annual``) on ``bldg_id``, and aggregates by
     *group_col*.
 
-    "Cost of service" is ``economic_burden_delivery + residual_share_delivery``
+    "Cost of service" is ``economic_burden_delivery + residual_share_*_delivery``
     -- confirmed to reconstruct ``annual_bill_delivery`` together with
     ``BAT_percustomer_delivery`` (the module's default ``bat_col``) to within
     floating-point error, i.e. ``economic_burden + residual_share + BAT ==
-    annual_bill``. Percentages are self-normalized against the weighted total
-    across all customers, not an external revenue-requirement figure -- that's
-    state/docket-specific and not available for every state.
+    annual_bill``. The residual column is ``residual_share_delivery`` when
+    *residual* is ``None`` or ``"percustomer"``, else
+    ``residual_share_{residual}_delivery`` (e.g. ``"epmc"`` →
+    ``residual_share_epmc_delivery``). Percentages are self-normalized against
+    the weighted total across all customers, not an external
+    revenue-requirement figure -- that's state/docket-specific and not
+    available for every state.
 
     Returns one row per *group_col* value present in the data (ordered by
     ``HEATING_ORDER`` when *group_col* is the default heating-type column) plus
     a trailing "All customers" total row, with columns ``subclass``,
     ``n_customers``, ``consumption_gwh``, ``revenue_delivery``,
-    ``cost_of_service``, ``cross_subsidy``, and their ``pct_all_*`` shares plus
+    ``marginal_cost``, ``residual``, ``cost_of_service`` (= marginal + residual),
+    ``cross_subsidy``, and their ``pct_all_*`` shares plus
     ``pct_overpayment_vs_cos`` (``cross_subsidy / cost_of_service``).
     """
     import polars as pl
+
+    residual_col = (
+        "residual_share_delivery"
+        if residual is None or residual == "percustomer"
+        else f"residual_share_{residual}_delivery"
+    )
 
     bat = cast(
         "pl.DataFrame",
@@ -556,7 +603,7 @@ def cost_of_service_by_subclass(
         load_billing_kwh_annual(state, utility, batch, segment_name(scenario, "precalc")).collect(),
     )
     joined = bat.join(kwh, on="bldg_id", how="inner", validate="1:1").with_columns(
-        (pl.col("economic_burden_delivery") + pl.col("residual_share_delivery")).alias("cost_of_service"),
+        (pl.col("economic_burden_delivery") + pl.col(residual_col)).alias("cost_of_service"),
     )
 
     by_group = (
@@ -565,6 +612,8 @@ def cost_of_service_by_subclass(
             pl.col("weight").sum().alias("n_customers"),
             (pl.col("weight") * pl.col("annual_kwh_grid")).sum().alias("total_kwh"),
             (pl.col("weight") * pl.col("annual_bill_delivery")).sum().alias("revenue_delivery"),
+            (pl.col("weight") * pl.col("economic_burden_delivery")).sum().alias("marginal_cost"),
+            (pl.col("weight") * pl.col(residual_col)).sum().alias("residual"),
             (pl.col("weight") * pl.col("cost_of_service")).sum().alias("cost_of_service"),
             (pl.col("weight") * pl.col(bat_col)).sum().alias("cross_subsidy"),
         )
@@ -583,6 +632,8 @@ def cost_of_service_by_subclass(
         pl.col("n_customers").sum(),
         pl.col("total_kwh").sum(),
         pl.col("revenue_delivery").sum(),
+        pl.col("marginal_cost").sum(),
+        pl.col("residual").sum(),
         pl.col("cost_of_service").sum(),
         pl.col("cross_subsidy").sum(),
     )
@@ -619,11 +670,146 @@ def cost_of_service_by_subclass(
             "pct_all_consumption",
             "revenue_delivery",
             "pct_all_revenue",
+            "marginal_cost",
+            "residual",
             "cost_of_service",
             "pct_all_cost_of_service",
             "cross_subsidy",
             "pct_overpayment_vs_cos",
         )
+    )
+
+
+# --- Revenue requirement breakdown (marginal cost vs. residual) -----------------
+
+REVENUE_REQ_COMPONENT_COLORS: dict[str, str] = {
+    "Marginal cost": "#023047",  # SB_COLORS["midnight"] -- hardcoded to avoid importing lib.plotnine at module load
+    "Residual": "#fc9706",  # SB_COLORS["carrot"]
+}
+# Enum order for geom_col(position="stack"): the *first* level renders at the
+# top of a vertical stack (last at the bottom); after coord_flip that puts the
+# first level at the left of the horizontal bar. Listing "Residual" first here
+# puts "Marginal cost" at the left / "Residual" at the right, reading
+# left-to-right in the same order as the legend (which uses the reversed list
+# as its `breaks`, since legend order isn't reversed by coord_flip).
+REVENUE_REQ_COMPONENT_ORDER = ["Residual", "Marginal cost"]
+
+
+def revenue_requirement_breakdown_by_subclass(
+    state: str,
+    batch: str,
+    utility: str,
+    scenario: str,
+    *,
+    group_col: str = "postprocess_group.heating_type_v2",
+) -> pl.DataFrame:
+    """Delivery revenue requirement split into marginal cost recovery vs. residual, by subclass.
+
+    Reads master BAT at ``{scenario}_precalc`` (BAT/cost-of-service columns
+    are only valid at precalc, see module docstring) filtered to *utility*,
+    and sums each customer's ``economic_burden_delivery`` (the marginal-cost
+    -based charge) and ``residual_share_delivery`` (the allocated residual
+    revenue requirement) by *group_col*. Together these two components sum to
+    the same ``cost_of_service`` total ``cost_of_service_by_subclass()``
+    computes -- this function keeps the two pieces separate instead of
+    combining them, for a marginal-cost-vs-residual chart rather than a
+    cross-subsidy table.
+
+    Long-form output, one row per ``(subclass, component)``, ready for
+    ``plot_revenue_requirement_breakdown()``. Columns: ``subclass``,
+    ``component`` (``"Marginal cost"`` or ``"Residual"``), ``value`` ($/yr).
+    Includes a trailing ``"All customers"`` subclass with the utility-wide
+    total.
+    """
+    import polars as pl
+
+    bat = cast(
+        "pl.DataFrame",
+        load_master_bat(state, batch, segment_name(scenario, "precalc"))
+        .filter(pl.col("sb.electric_utility") == utility)
+        .collect(),
+    )
+    by_group = (
+        bat.group_by(group_col)
+        .agg(
+            (pl.col("weight") * pl.col("economic_burden_delivery")).sum().alias("Marginal cost"),
+            (pl.col("weight") * pl.col("residual_share_delivery")).sum().alias("Residual"),
+        )
+        .rename({group_col: "subclass"})
+    )
+    if group_col == "postprocess_group.heating_type_v2":
+        by_group = by_group.with_columns(
+            pl.col("subclass").replace_strict(HEATING_TYPE_LABELS, default=pl.col("subclass")),
+        )
+        row_order = [*(h for h in HEATING_ORDER if h in by_group["subclass"].to_list()), "All customers"]
+    else:
+        row_order = [*by_group["subclass"].to_list(), "All customers"]
+
+    total_row = by_group.select(
+        pl.lit("All customers").alias("subclass"),
+        pl.col("Marginal cost").sum(),
+        pl.col("Residual").sum(),
+    )
+
+    wide = (
+        pl.concat([by_group, total_row], how="vertical")
+        .with_columns(pl.col("subclass").cast(pl.Enum(row_order)))
+        .sort("subclass")
+    )
+    return wide.unpivot(
+        on=["Marginal cost", "Residual"],
+        index="subclass",
+        variable_name="component",
+        value_name="value",
+    )
+
+
+def plot_revenue_requirement_breakdown(
+    breakdown: pl.DataFrame,
+    *,
+    title: str = "Delivery revenue requirement: marginal cost vs. residual",
+    include_total: bool = False,
+) -> ggplot:
+    """Stacked horizontal bar chart of the marginal-cost / residual split by subclass.
+
+    Takes the long-form output of ``revenue_requirement_breakdown_by_subclass()``
+    directly. Drops the ``"All customers"`` row by default -- the utility-wide
+    total dwarfs every individual subclass on a shared dollar axis, making the
+    per-subclass bars unreadable; pass ``include_total=True`` to keep it as an
+    extra bar (e.g. for a single-utility summary chart with no subclasses).
+
+    No in-bar dollar labels: subclasses vary too widely in magnitude for a
+    single label-size threshold to work well (small subclasses' segments are
+    too narrow), and the exact figures already live in the companion
+    ``cost_of_service_by_subclass()`` table.
+    """
+    import plotnine as plt
+    import polars as pl
+
+    from lib.plotnine import theme_switchbox
+
+    df = breakdown if include_total else breakdown.filter(pl.col("subclass") != "All customers")
+    avail = [s for s in HEATING_ORDER if s in df["subclass"].to_list()]
+    if include_total:
+        avail = [*avail, "All customers"]
+    if not avail:
+        raise ValueError("No subclasses remain to plot in `breakdown` (empty after excluding 'All customers'?).")
+
+    plot_df = df.with_columns(
+        pl.col("subclass").cast(pl.String).cast(pl.Enum(list(reversed(avail)))),
+        pl.col("component").cast(pl.Enum(REVENUE_REQ_COMPONENT_ORDER)),
+        (pl.col("value") / 1e6).alias("value_millions"),
+    )
+
+    return (
+        plt.ggplot(plot_df, plt.aes(x="subclass", y="value_millions", fill="component"))
+        + plt.geom_col(position="stack", width=0.6)
+        + plt.scale_fill_manual(values=REVENUE_REQ_COMPONENT_COLORS, breaks=list(reversed(REVENUE_REQ_COMPONENT_ORDER)))
+        + plt.scale_y_continuous(expand=(0, 0, 0.06, 0))
+        + plt.coord_flip()
+        + plt.labs(x="", y="$ millions / year", fill="", title=title)
+        + theme_switchbox()
+        + plt.theme(figure_size=(10.5, max(3.5, 1.0 + 0.9 * len(avail))))
     )
 
 
@@ -673,6 +859,32 @@ def monthly_bill_components(state: str, batch: str, segment: str, bldg_id: int) 
         variable_name="component",
         value_name="value",
     )
+
+
+def annual_bill_components(state: str, batch: str, segment: str, bldg_id: int) -> dict[str, float]:
+    """Return one building's annual bill, decomposed into delivery fixed/volumetric, supply, and gas.
+
+    Companion to ``monthly_bill_components()`` — same inputs, but the
+    ``"Annual"`` row instead of the 12 monthly rows, with delivery split into
+    ``delivery_fixed``/``delivery_volumetric`` (not combined) so callers can
+    build a full electric+gas bill decomposition for a single household.
+    """
+    import polars as pl
+
+    row = cast(
+        "pl.DataFrame",
+        load_master_bills(state, batch, segment)
+        .filter((pl.col("bldg_id") == bldg_id) & (pl.col("month") == "Annual"))
+        .select(
+            pl.col("elec_fixed_charge").alias("delivery_fixed"),
+            pl.col("elec_delivery_bill").alias("delivery_volumetric"),
+            pl.col("elec_supply_bill").alias("supply"),
+            pl.col("gas_total_bill").alias("gas"),
+            pl.col("energy_total_bill").alias("energy_total"),
+        )
+        .collect(),
+    )
+    return {col: float(row[col][0]) for col in row.columns}
 
 
 # --- Tariff introspection --------------------------------------------------------

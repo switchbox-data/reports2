@@ -1,9 +1,12 @@
 ---
-title: ANALYSIS TEMPLATE
+title: BGE Rate Case Analysis
 
 toc: true
 reference-location: margin
 fig-cap-location: bottom
+execute:
+  warning: false
+  message: false
 
 appendix-style: default
 citation-location: document
@@ -14,3 +17,588 @@ format:
   html:
     page-layout: full
 ---
+
+This notebook contains the analysis behind the BGE (Baltimore Gas and Electric) rate case
+report. Starting from CAIRO simulation outputs on S3, it computes every statistic that
+appears in the report narrative (`index.qmd`).
+
+The functions doing the actual data crunching live in
+[`lib/rates_analysis/rate_case_funcs.py`](../../../lib/rates_analysis/rate_case_funcs.py), a
+module generalized over state, batch, and scenario so it can be reused for other utilities
+and future tariff designs (e.g. a flat-rate heat pump tariff) without changes. This notebook
+just calls those functions with BGE's specific state/batch/scenario values.
+
+The analysis follows the report's arc:
+
+1. **Bill-increase incidence today** — how often switching from natural gas to a heat pump
+   raises a customer's total energy bill under BGE's current (Schedule R) rates.
+2. **Cross-subsidization** — the Bill Alignment Test (BAT), showing heat pump customers
+   systematically overpay for electric delivery under today's rates.
+3. **A tech-specific seasonal rate** — the one reform tariff CAIRO has calibrated so far,
+   and what it does to the cross-subsidy, to bill incidence, and to a representative
+   household's monthly bills.
+4. **What's blocked** — a time-of-use rate and a flat-rate tech-specific design are both
+   discussed in the report, but neither has a CAIRO scenario yet; this notebook flags those
+   gaps explicitly rather than fabricating numbers for them.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import polars as pl
+import yaml
+import plotnine as plt
+from great_tables import GT
+
+
+from lib.plotnine import SB_COLORS, theme_switchbox
+from lib.great_tables import get_switchbox_gt_tab_options
+from lib.quarto import display_gt
+from lib.rates_analysis.rate_case_funcs import (
+    MONTH_ORDER,
+    bat_by_group,
+    bill_change_incidence,
+    bill_delta_between_segments,
+    compare_bat_across_scenarios,
+    extract_tariff_rates,
+    hp_bat_summary,
+    load_master_bills,
+    load_tariff_json,
+    monthly_bill_components,
+    segment_name,
+    weighted_median_bldg_id,
+)
+
+
+report_vars: dict = {}
+```
+
+## Parameters
+
+Batch and tariff-fetch pin (`RDP_REF`) live in `batch_config.yaml` alongside this report, not
+hardcoded here, so re-running against a new batch is a one-file change. `RDP_REF` is a fixed
+git commit SHA (not `main`) — the exact `rate-design-platform` commit that introduced the
+scenario/tariff configs this batch was run against — so tariff JSONs are always fetched from
+the code that actually produced this batch's numbers, even if `main` moves on later.
+
+```{python}
+#| label: params
+
+_batch_config = yaml.safe_load(Path("../batch_config.yaml").read_text())
+
+STATE = _batch_config["STATE"]
+BATCH = _batch_config["BATCH"]
+RDP_REF = _batch_config["RDP_REF"]
+UTILITY = "bge"
+
+DEFAULT_SCENARIO = _batch_config["BASELINE_BILL_SCENARIO"]
+SEASONAL_SCENARIO = "hp_seasonal_percustomer_passthrough"
+
+print(f"state={STATE}  batch={BATCH}  rdp_ref={RDP_REF}  utility={UTILITY}")
+```
+
+Batch `md_20260803_a` has two calibrated scenarios for BGE, each run at two stages:
+
+- `precalc` — ResStock upgrade 00 (today's mixed heating population), tariff as filed/priced.
+- `calibrated` — ResStock upgrade 02 (same buildings retrofitted to heat pumps), tariff
+  recalibrated to meet each subclass's revenue requirement under that scenario's design.
+
+| Scenario | What it is |
+| --- | --- |
+| `default` | BGE's current Schedule R-like tariff (a single rate schedule for all residential customers). |
+| `hp_seasonal_percustomer_passthrough` | A subclass-differentiated pair of tariffs, assigned automatically by each building's modeled heating type (`has_hp`), not by customer choice: the heat-pump subclass gets a seasonal volumetric delivery rate (same fixed charge as `default`); the non-heat-pump subclass gets its own separate, recalibrated tariff (`non-hp_base_percustomer_passthrough`) rather than staying on `default`, since the revenue no longer collected from the heat-pump subclass has to be made up somewhere. The residual (non-marginal-cost) revenue requirement is allocated per customer within each subclass. |
+
+No time-of-use (schedule RD) or flat-rate heat-pump scenario exists yet in BGE's pipeline
+config — the report bullets that depend on those are flagged as blocked below, not filled in
+with invented numbers.
+
+## Import data
+
+The master bills and BAT tables are pre-built, Hive-partitioned parquet datasets — one row
+per building per month (bills) or per building (BAT) — with ResStock metadata columns
+already joined in. We load all four segments as LazyFrames; nothing is materialized until a
+later cell filters and collects what it needs.
+
+```{python}
+#| label: ingest
+
+SEG_DEFAULT_PRECALC = segment_name(DEFAULT_SCENARIO, "precalc")
+SEG_DEFAULT_CALIBRATED = segment_name(DEFAULT_SCENARIO, "calibrated")
+SEG_SEASONAL_PRECALC = segment_name(SEASONAL_SCENARIO, "precalc")
+SEG_SEASONAL_CALIBRATED = segment_name(SEASONAL_SCENARIO, "calibrated")
+
+bills_default_precalc = load_master_bills(STATE, BATCH, SEG_DEFAULT_PRECALC)
+bills_default_calibrated = load_master_bills(STATE, BATCH, SEG_DEFAULT_CALIBRATED)
+bills_seasonal_precalc = load_master_bills(STATE, BATCH, SEG_SEASONAL_PRECALC)
+bills_seasonal_calibrated = load_master_bills(STATE, BATCH, SEG_SEASONAL_CALIBRATED)
+```
+
+Let's look at a sample of the `default_precalc` bills to see what's in the table, and check
+the sample size — how many ResStock buildings we have, and how many actual BGE residential
+customers they represent once we sum ResStock's sample weights.
+
+```{python}
+#| label: sample-size
+
+_sample = (
+    bills_default_precalc
+    .filter(pl.col("month") == "Annual")
+    .select("bldg_id", "weight", "postprocess_group.heating_type_v2", "postprocess_group.has_hp", "energy_total_bill")
+    .collect()
+)
+print(_sample.head())
+
+n_resstock_bldgs = _sample["bldg_id"].n_unique()
+n_bge_customers = float(_sample["weight"].sum())
+report_vars["n_resstock_bldgs"] = n_resstock_bldgs
+report_vars["n_bge_customers"] = n_bge_customers
+print(f"Unique ResStock buildings: {n_resstock_bldgs:,}")
+print(f"Total BGE residential customers (sum of weights): {n_bge_customers:,.0f}")
+```
+
+Every building appears in all four segments (`default`/`hp_seasonal_percustomer_passthrough`
+× `precalc`/`calibrated`) — confirmed by checking that each segment's `bldg_id` set is
+identical, which is what makes the same-tariff before/after comparisons and same-stage
+cross-scenario comparisons below valid (they're diffing the same population against itself).
+
+## Bill-increase incidence switching from natural gas to a heat pump, under today's rate
+
+How often does a natural-gas-heated BGE home end up with a *higher* total annual energy bill
+(electric + gas) after switching to a heat pump, if nothing about the rate design changes?
+We diff each building's annual `energy_total_bill` between `default_precalc` (today's HVAC,
+today's tariff) and `default_calibrated` (same building retrofitted to a heat pump, same
+tariff family, recalibrated for the new load) — a same-scenario, before/after-retrofit
+comparison — restricted to buildings whose baseline heating fuel is natural gas.
+
+```{python}
+#| label: compute-natgas-hp-delta-default
+
+delta_natgas_default = bill_delta_between_segments(
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED
+).filter(pl.col("heating_type_v2") == "natgas")
+
+incidence_natgas_default = bill_change_incidence(delta_natgas_default)
+incidence_natgas_default
+```
+
+```{python}
+#| label: report-vars-natgas-hp-delta-default
+
+report_vars["pct_natgas_hp_bill_increase_default"] = incidence_natgas_default["pct_increase"]
+report_vars["pct_natgas_hp_bill_decrease_default"] = incidence_natgas_default["pct_decrease"]
+report_vars["mean_natgas_hp_bill_increase_default"] = incidence_natgas_default["mean_delta"]
+report_vars["median_natgas_hp_bill_increase_default"] = incidence_natgas_default["median_delta"]
+```
+
+**`{python} f"{report_vars['pct_natgas_hp_bill_increase_default']:.0%}"` of natural-gas-heated
+BGE homes would see their total annual energy bill go up** after switching to a heat pump
+under today's rate — a mean increase of `{python} f"${report_vars['mean_natgas_hp_bill_increase_default']:,.0f}"`
+a year (median `{python} f"${report_vars['median_natgas_hp_bill_increase_default']:,.0f}"`).
+The rest see a decrease, mostly from avoided gas costs outweighing the added electric load.
+
+## Heat pump customers are overpaying for delivery today
+
+Even setting bill *changes* aside, existing heat pump customers already pay more for
+electric delivery than their incremental cost of service justifies — the Bill Alignment Test
+(BAT) quantifies this directly. BAT values are only meaningful at the `precalc` stage (see
+the module docstring in `rate_case_funcs.py`): the `calibrated` stage's revenue requirement is
+deliberately inflated for calibration purposes, so its BAT is not a valid cross-subsidy
+measure even though the bills themselves are correct there.
+
+```{python}
+#| label: hp-bat-summary-default
+
+bat_default_hp = hp_bat_summary(STATE, BATCH, DEFAULT_SCENARIO)
+bat_default_hp
+```
+
+```{python}
+#| label: report-vars-hp-bat-default
+
+report_vars["hp_overpay_mean_default"] = bat_default_hp["mean_per_year"]
+report_vars["hp_overpay_total_millions_default"] = bat_default_hp["total_per_year_millions"]
+report_vars["hp_share_of_households_default"] = bat_default_hp["n_weighted"] / n_bge_customers
+```
+
+**Heat pump customers on Schedule R overpay for delivery by an average of
+`{python} f"${report_vars['hp_overpay_mean_default']:,.0f}"` a year** — `{python} f"${report_vars['hp_overpay_total_millions_default']:.1f}"`
+million a year in total across BGE's roughly `{python} f"{report_vars['hp_share_of_households_default']:.0%}"`
+heat-pump-heated residential population. That overpayment isn't unique to heat pumps — it's
+a feature of BGE's uniform volumetric delivery rate. The same table, split by baseline
+heating type, shows every all-electric subclass overpaying and every fossil-fuel subclass
+underpaying relative to their delivery cost of service:
+
+```{python}
+#| label: tbl-bat-by-heating-type
+#| tbl-cap: "Average delivery over/underpayment by baseline heating type, relative to cost of service (BGE, Schedule R)."
+
+_bat_by_type = bat_by_group(STATE, BATCH, DEFAULT_SCENARIO)
+_bat_by_type_gt = (
+    GT(_bat_by_type, rowname_col="postprocess_group.heating_type_v2")
+    .fmt_currency(columns="mean_per_year", decimals=0)
+    .fmt_number(columns="n_weighted", decimals=0)
+    .cols_label(mean_per_year="Average over/underpayment", n_weighted="Weighted customers")
+    .tab_stubhead(label="Baseline heating type")
+    .tab_source_note("Positive = overpaying delivery cost of service; negative = underpaying.")
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+display_gt(_bat_by_type_gt)
+```
+
+Delivery rates are volumetric, so this result doesn't depend on which specific rate schedule
+a customer is on — Schedule RL has essentially the same volumetric delivery rate as Schedule R,
+so the same overpayment applies there too (this isn't separately re-derived here since it
+follows directly from the rate structure, not from a separate CAIRO run).
+
+## A time-of-use rate doesn't fix it — but we can't show that yet
+
+::: {.callout-note}
+No time-of-use (Schedule RD) scenario has been run for this batch — `pipeline_bge.yaml` only
+defines `default` and `hp_seasonal_percustomer_passthrough` scenarios so far. The report's
+TOU claim is left as `TK` rather than filled in with a fabricated number. Once a TOU scenario
+exists, the exact same `hp_bat_summary()` call used above answers this — no new code needed.
+:::
+
+## Fixing the cross-subsidy with a tech-specific seasonal rate
+
+The report describes two ways to eliminate the heat-pump delivery cross-subsidy: raise the
+fixed charge (lowering the volumetric rate for everyone, revenue-neutral), or lower the
+volumetric rate specifically for heat pump customers via a tech-specific rate. The one reform
+tariff CAIRO has calibrated so far — `hp_seasonal_percustomer_passthrough` — takes the second
+path: a seasonal volumetric delivery rate for the heat-pump subclass, paired with a separate
+recalibrated tariff for the non-heat-pump subclass, with the residual revenue requirement
+allocated per customer within each subclass.
+
+### What the tariff actually changed
+
+We read both tariffs' calibrated URDB JSON directly to see what changed.
+
+```{python}
+#| label: load-tariffs
+
+tariff_default = load_tariff_json(STATE, UTILITY, f"{UTILITY}_default_calibrated", RDP_REF)
+tariff_seasonal = load_tariff_json(STATE, UTILITY, f"{UTILITY}_{SEASONAL_SCENARIO}_calibrated", RDP_REF)
+
+rates_default = extract_tariff_rates(tariff_default)
+rates_seasonal = extract_tariff_rates(tariff_seasonal)
+print("default:", rates_default)
+print("seasonal:", rates_seasonal)
+```
+
+```{python}
+#| label: tbl-tariff-months
+#| tbl-cap: "Volumetric delivery rate by month, today's Schedule R vs. the seasonal heat-pump rate."
+
+def _month_rate_table(rates: dict, label: str) -> pl.DataFrame:
+    return pl.DataFrame({
+        "month": MONTH_ORDER,
+        label: [
+            rates["period_rates"][rates["month_to_period"][m]] * 100
+            for m in MONTH_ORDER
+        ],
+    })
+
+_tariff_months = _month_rate_table(rates_default, "Schedule R (¢/kWh)").join(
+    _month_rate_table(rates_seasonal, "Seasonal HP rate (¢/kWh)"), on="month"
+).with_columns(pl.col("month").cast(pl.Enum(MONTH_ORDER)))
+
+_tariff_months_gt = (
+    GT(_tariff_months, rowname_col="month")
+    .fmt_number(columns=["Schedule R (¢/kWh)", "Seasonal HP rate (¢/kWh)"], decimals=2)
+    .tab_stubhead(label="Month")
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+display_gt(_tariff_months_gt)
+```
+
+```{python}
+#| label: report-vars-tariff-rates
+
+report_vars["tariff_default_fixed_charge"] = rates_default["fixed_charge"]
+report_vars["tariff_seasonal_fixed_charge"] = rates_seasonal["fixed_charge"]
+report_vars["tariff_seasonal_summer_cents"] = rates_seasonal["period_rates"][0] * 100
+report_vars["tariff_seasonal_winter_cents"] = rates_seasonal["period_rates"][1] * 100
+report_vars["tariff_default_avg_cents"] = (
+    sum(rates_default["period_rates"][rates_default["month_to_period"][m]] for m in MONTH_ORDER)
+    / len(MONTH_ORDER)
+    * 100
+)
+```
+
+::: {.callout-important}
+**The calibrated seasonal tariff keeps exactly the same $`{python} f"{report_vars['tariff_default_fixed_charge']:.0f}"`/month
+fixed charge as Schedule R** — we confirmed this both in the tariff JSON and in the master
+bills' `elec_fixed_charge` column (identical for every building in both scenarios). CAIRO's
+"per-customer" residual allocation here is expressed entirely through the seasonal
+*volumetric* rate, not a higher fixed charge. That means **this scenario does not answer the
+report's "raise the fixed charge" question** (the bullets asking what fixed charge would be
+needed, and what a fixed-charge-based optional rate would do to existing HP customers and
+bill incidence) — no CAIRO scenario has actually raised BGE's fixed charge yet, for anyone.
+Those bullets are left as `TK` below rather than answered with a mechanism this data doesn't
+implement.
+
+What this scenario *does* answer is the report's other path: a tech-specific rate that lowers
+the volumetric rate for heat pump customers, done seasonally. The summer rate
+(`{python} f"{report_vars['tariff_seasonal_summer_cents']:.2f}"`¢/kWh, Jun–Sep) is close to
+today's `{python} f"{report_vars['tariff_default_avg_cents']:.2f}"`¢/kWh average, while the
+winter rate drops to `{python} f"{report_vars['tariff_seasonal_winter_cents']:.2f}"`¢/kWh
+(Jan–May, Oct–Dec) — confirming the report's framing that a seasonal tech-specific design
+would hold the summer rate roughly flat while cutting the winter rate.
+:::
+
+### Does the seasonal rate actually eliminate the cross-subsidy?
+
+`hp_bat_summary()` on the `default` scenario already gave us the "before" number above
+(`{python} f"${report_vars['hp_overpay_mean_default']:,.0f}"`/yr). `compare_bat_across_scenarios()`
+adds the "after" number in the same table, so we can see both without a second, redundant
+call:
+
+```{python}
+#| label: tbl-bat-before-after
+#| tbl-cap: "Heat pump customers' average delivery overpayment, before and after the seasonal reform tariff."
+
+_bat_compare = compare_bat_across_scenarios(STATE, BATCH, [DEFAULT_SCENARIO, SEASONAL_SCENARIO])
+_bat_compare_gt = (
+    GT(_bat_compare.select("scenario", "mean_per_year", "total_per_year_millions"), rowname_col="scenario")
+    .fmt_currency(columns="mean_per_year", decimals=0)
+    .fmt_currency(columns="total_per_year_millions", decimals=1)
+    .cols_label(mean_per_year="Average overpayment ($/yr)", total_per_year_millions="Total ($M/yr)")
+    .tab_stubhead(label="Scenario")
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+display_gt(_bat_compare_gt)
+```
+
+```{python}
+#| label: report-vars-bat-seasonal
+
+report_vars["hp_overpay_mean_seasonal"] = float(
+    _bat_compare.filter(pl.col("scenario") == SEASONAL_SCENARIO)["mean_per_year"][0]
+)
+```
+
+Under the seasonal rate, the heat-pump subclass's average delivery overpayment falls to
+essentially zero (`{python} f"${report_vars['hp_overpay_mean_seasonal']:,.2f}"`/yr) — CAIRO
+calibrated the seasonal volumetric rate specifically to close this gap, so this confirms the
+calibration worked rather than solving anything new.
+
+### Isolating the rate-design effect, before anyone retrofits
+
+This comparison holds HVAC equipment fixed and changes only the tariff, so the bill change it
+measures is purely a rate-design effect, not a retrofit effect. To be precise about what's
+being compared:
+
+- **Population**: every BGE residential customer, split into the two subclasses used by the
+  reform tariff — the **heat-pump subclass** (buildings our model assigns a heat pump to,
+  `has_hp == true`) and the **non-heat-pump subclass** (everyone else). This split is
+  automatic, based on each building's modeled heating type — not a choice a customer makes.
+- **HVAC, before and after**: base/pre-retrofit (`upgrade=00`) for both subclasses in both the
+  "before" and "after" case. Nobody has actually installed a heat pump in either segment being
+  compared here — `default_precalc` and `hp_seasonal_percustomer_passthrough_precalc` are both
+  `upgrade=00` runs.
+- **Tariff, before**: today's Schedule R, applied identically to both subclasses.
+- **Tariff, after**: the reform tariff pair — the heat-pump subclass moves to the seasonal
+  rate examined above, and the non-heat-pump subclass moves to its own separate, recalibrated
+  tariff (`non-hp_base_percustomer_passthrough`), not an unchanged Schedule R, since the
+  revenue no longer collected from the heat-pump subclass has to be recovered somewhere.
+
+```{python}
+#| label: compute-ratedesign-delta
+
+delta_ratedesign = bill_delta_between_segments(STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_SEASONAL_PRECALC)
+
+incidence_hp_ratedesign = bill_change_incidence(delta_ratedesign.filter(pl.col("has_hp")))
+incidence_nonhp_ratedesign = bill_change_incidence(delta_ratedesign.filter(~pl.col("has_hp")))
+print("heat-pump subclass, Schedule R -> seasonal rate:", incidence_hp_ratedesign)
+print("non-heat-pump subclass, Schedule R -> recalibrated non-HP tariff:", incidence_nonhp_ratedesign)
+```
+
+```{python}
+#| label: report-vars-ratedesign-delta
+
+report_vars["hp_mean_bill_change_seasonal_ratedesign"] = incidence_hp_ratedesign["mean_delta"]
+report_vars["pct_hp_bill_decrease_seasonal_ratedesign"] = incidence_hp_ratedesign["pct_decrease"]
+report_vars["nonhp_mean_bill_change_seasonal_ratedesign"] = incidence_nonhp_ratedesign["mean_delta"]
+report_vars["pct_nonhp_bill_increase_seasonal_ratedesign"] = incidence_nonhp_ratedesign["pct_increase"]
+```
+
+Every building in the heat-pump subclass sees its bill fall under the reform tariff — a mean
+decrease of `{python} f"${-report_vars['hp_mean_bill_change_seasonal_ratedesign']:,.0f}"` a
+year, even before any of them have installed a heat pump — because the seasonal rate was
+calibrated to charge that subclass its (pre-retrofit) cost of service. That decrease has to
+come from somewhere: the non-heat-pump subclass's recalibrated tariff raises their bills by a
+mean of `{python} f"${report_vars['nonhp_mean_bill_change_seasonal_ratedesign']:,.0f}"` a
+year, because removing the heat-pump subsidy shifts BGE's residual revenue requirement onto
+everyone else. (This is the seasonal tech-specific rate's version of the report's "impact on
+other customers" question — the fixed-charge version of that question is blocked, per the
+callout above.)
+
+The mean hides how that increase is distributed across the non-heat-pump subclass — most see
+a small bump, but the distribution has a tail (@fig-hist-nonhp-ratedesign).
+
+```{python}
+#| label: fig-hist-nonhp-ratedesign
+#| fig-cap: "Distribution of the annual bill change for the non-heat-pump subclass, from Schedule R to the recalibrated non-HP tariff under the seasonal fair scenario (same, pre-retrofit HVAC throughout)."
+
+(
+    plt.ggplot(delta_ratedesign.filter(~pl.col("has_hp")))
+    + plt.aes(x="delta")
+    + plt.geom_histogram(binwidth=25, fill=SB_COLORS["midnight"])
+    + plt.geom_vline(
+        xintercept=incidence_nonhp_ratedesign["median_delta"],
+        color=SB_COLORS["carrot"],
+        linetype="dashed",
+    )
+    + plt.labs(x="Change in annual energy bill ($)", y="Count of households")
+    + plt.scale_x_continuous(
+        breaks=lambda limits: list(range(
+            (int(limits[0]) // 50) * 50,
+            int(limits[1]) + 50,
+            50,
+        )),
+        labels=lambda xs: [
+            f"${x:,.0f}" if x >= 0 else f"-${abs(x):,.0f}" for x in xs
+        ],
+        minor_breaks=[],
+    )
+    + theme_switchbox()
+    + plt.theme(figure_size=(10.5, 4.5))
+)
+```
+
+### Does the seasonal rate change how many heat pump conversions save money?
+
+We repeat the natural-gas → heat-pump retrofit comparison from the first section, but this
+time under the seasonal reform tariff instead of Schedule R.
+
+```{python}
+#| label: compute-natgas-hp-delta-seasonal
+
+delta_natgas_seasonal = bill_delta_between_segments(
+    STATE, BATCH, SEG_SEASONAL_PRECALC, SEG_SEASONAL_CALIBRATED
+).filter(pl.col("heating_type_v2") == "natgas")
+
+incidence_natgas_seasonal = bill_change_incidence(delta_natgas_seasonal)
+incidence_natgas_seasonal
+```
+
+```{python}
+#| label: report-vars-natgas-hp-delta-seasonal
+
+report_vars["pct_natgas_hp_bill_increase_seasonal"] = incidence_natgas_seasonal["pct_increase"]
+report_vars["pct_natgas_hp_bill_decrease_seasonal"] = incidence_natgas_seasonal["pct_decrease"]
+report_vars["pct_pt_improvement_natgas_hp_savings"] = (
+    (incidence_natgas_seasonal["pct_decrease"] - incidence_natgas_default["pct_decrease"]) * 100
+)
+```
+
+Under the seasonal rate, only `{python} f"{report_vars['pct_natgas_hp_bill_increase_seasonal']:.0%}"`
+of natural-gas homes would see a bill increase after switching to a heat pump — down from
+`{python} f"{report_vars['pct_natgas_hp_bill_increase_default']:.0%}"` under Schedule R. That's
+`{python} f"{report_vars['pct_pt_improvement_natgas_hp_savings']:.0f}"` more percentage points
+of natural-gas customers who'd come out ahead switching to a heat pump.
+
+### A representative household's monthly bills, before and after
+
+To make the seasonal design concrete, we pick the weighted-median natural-gas-heated BGE home
+(by annual `energy_total_bill` today) and follow that same building through to a heat pump,
+under the seasonal rate — showing its actual monthly electric bill, split into delivery and
+supply.
+
+```{python}
+#| label: pick-representative-household
+
+_natgas_baseline = (
+    bills_default_precalc
+    .filter(pl.col("month") == "Annual")
+    .filter(pl.col("postprocess_group.heating_type_v2") == "natgas")
+    .select("bldg_id", "weight", "energy_total_bill")
+    .collect()
+)
+median_natgas_bldg_id = weighted_median_bldg_id(_natgas_baseline, "energy_total_bill")
+print(f"Representative natural-gas-heated building: bldg_id={median_natgas_bldg_id}")
+```
+
+```{python}
+#| label: fig-monthly-bill-representative
+#| fig-cap: "A representative BGE home's monthly electric bill after switching to a heat pump, under the seasonal rate."
+
+_monthly = monthly_bill_components(STATE, BATCH, SEG_SEASONAL_CALIBRATED, median_natgas_bldg_id)
+
+_COMPONENT_ORDER = ["Electric Supply Bill", "Electric Delivery Bill"]
+_COMPONENT_COLORS = {
+    "Electric Delivery Bill": SB_COLORS["midnight"],
+    "Electric Supply Bill": SB_COLORS["carrot"],
+}
+_monthly_plot_df = _monthly.with_columns(pl.col("component").cast(pl.Enum(_COMPONENT_ORDER)))
+
+(
+    plt.ggplot(_monthly_plot_df, plt.aes(x="month", y="value", fill="component"))
+    + plt.geom_col(position="stack", width=0.7)
+    + plt.scale_fill_manual(values=_COMPONENT_COLORS, breaks=_COMPONENT_ORDER)
+    + plt.scale_x_discrete(limits=MONTH_ORDER)
+    + plt.scale_y_continuous(expand=(0, 0, 0.08, 0))
+    + plt.labs(x="", y="$ / month", fill="", title="Monthly electric bill after switching to a heat pump (seasonal rate)")
+    + theme_switchbox()
+    + plt.theme(figure_size=(10.5, 4.5))
+)
+```
+
+```{python}
+#| label: report-vars-representative-household
+
+_before_bill = float(
+    _natgas_baseline.filter(pl.col("bldg_id") == median_natgas_bldg_id)["energy_total_bill"][0]
+)
+_after_bill = float(
+    bills_seasonal_calibrated
+    .filter((pl.col("bldg_id") == median_natgas_bldg_id) & (pl.col("month") == "Annual"))
+    .select("energy_total_bill")
+    .collect()["energy_total_bill"][0]
+)
+report_vars["representative_bldg_id"] = median_natgas_bldg_id
+report_vars["representative_annual_bill_before"] = _before_bill
+report_vars["representative_annual_bill_after"] = _after_bill
+```
+
+For this household, the annual energy bill goes from `{python} f"${report_vars['representative_annual_bill_before']:,.0f}"`
+(natural gas + electric today) to `{python} f"${report_vars['representative_annual_bill_after']:,.0f}"`
+(all-electric heat pump, seasonal rate) — and within that heat-pump bill, the delivery share
+of each monthly bill is lowest in the winter months (Jan, Feb, Mar, Nov, Dec) precisely when
+heating load — and total consumption — is highest, which is what the lower winter volumetric
+rate is designed to do.
+
+## A flat-rate tech-specific design isn't modeled yet
+
+::: {.callout-note}
+No `hp_flat_*` scenario has been run for this batch — only the seasonal design above exists.
+The report's flat-rate bullets (what the flat delivery rate would need to be, and its bill
+impact on other customers) are left as `TK`. Once a flat-rate scenario exists (e.g. a
+`structure: flat` variant of the HP subclass tariff in `pipeline_bge.yaml`), the exact same
+functions used above — `extract_tariff_rates()`, `bill_delta_between_segments()`,
+`hp_bat_summary()` — apply unchanged with `scenario="hp_flat_percustomer_passthrough"` (or
+whatever it's named); none of `rate_case_funcs.py` is scenario-shape-specific.
+:::
+
+## Energy burden — out of scope this pass
+
+The report's energy-burden bullets (bullets asking what share of customers are burdened under
+current HVAC vs. heat pumps, under default vs. reform rates) are deferred; `in.representative_income`
+is already present on the master bills table if this gets picked up in a follow-up.
+
+## Export report variables
+
+```{python}
+#| label: export-report-vars
+
+import pickle
+
+Path("../cache").mkdir(exist_ok=True)
+Path("../cache/report_variables.pkl").write_bytes(pickle.dumps(report_vars))
+report_vars
+```

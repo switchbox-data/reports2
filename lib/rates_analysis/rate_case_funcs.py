@@ -222,6 +222,68 @@ def bill_delta_between_segments(
     return cast("pl.DataFrame", joined.collect())
 
 
+def bat_component_delta(
+    state: str,
+    batch: str,
+    segment_before: str,
+    segment_after: str,
+    *,
+    components: list[str] | None = None,
+    exclude_has_hp: bool = True,
+) -> pl.DataFrame:
+    """Per-building delta of BAT cost-allocation components between two segments.
+
+    Analogous to ``bill_delta_between_segments()`` but reads the master BAT
+    table (one row per building, annual) and diffs multiple columns at once.
+
+    The default *components* are ``annual_bill_delivery`` (delivery revenue)
+    and ``economic_burden_delivery`` (marginal-cost allocation).  Both are
+    valid at *both* precalc and calibrated stages: ``annual_bill`` is the
+    actual bill (correct at calibrated per module-level docs), and
+    ``economic_burden`` is purely load x MC (independent of revenue
+    requirement / tariff calibration).
+
+    Returns one row per building with ``bldg_id``, ``weight``, ``has_hp``,
+    ``heating_type_v2``, and for each component *c*: ``{c}_before``,
+    ``{c}_after``, ``delta_{c}``.
+
+    When *exclude_has_hp* is True (default), buildings with a heat pump at
+    baseline (``postprocess_group.has_hp == True`` in *segment_before*) are
+    dropped — they already have a heat pump and aren't "converting".
+    """
+    import polars as pl
+
+    if components is None:
+        components = ["annual_bill_delivery", "economic_burden_delivery"]
+
+    before_select: list[pl.Expr | str] = [
+        "bldg_id",
+        "weight",
+        pl.col("postprocess_group.has_hp").alias("has_hp"),
+        pl.col("postprocess_group.heating_type_v2").alias("heating_type_v2"),
+        *[pl.col(c).alias(f"{c}_before") for c in components],
+    ]
+    after_select: list[pl.Expr | str] = [
+        "bldg_id",
+        *[pl.col(c).alias(f"{c}_after") for c in components],
+    ]
+
+    before = load_master_bat(state, batch, segment_before).select(before_select)
+    # annual_bill_delivery and economic_burden_delivery are valid at calibrated
+    # (see docstring), so suppress the stage warning from load_master_bat.
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=".*not a `_precalc` segment.*")
+        after = load_master_bat(state, batch, segment_after).select(after_select)
+
+    joined = before.join(after, on="bldg_id", how="inner")
+    if exclude_has_hp:
+        joined = joined.filter(pl.col("has_hp") == False)  # noqa: E712
+    joined = joined.with_columns(
+        *[(pl.col(f"{c}_after") - pl.col(f"{c}_before")).alias(f"delta_{c}") for c in components]
+    )
+    return cast("pl.DataFrame", joined.collect())
+
+
 def bill_change_incidence(delta_df: pl.DataFrame, weight_col: str = "weight") -> dict:
     """Weighted incidence stats for a ``bill_delta_between_segments`` result.
 

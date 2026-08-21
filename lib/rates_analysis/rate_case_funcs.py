@@ -32,6 +32,7 @@ BAT/``residual_share`` is not. Every BAT-reading function here reads
 
 from __future__ import annotations
 
+import math
 import warnings
 from typing import TYPE_CHECKING, cast
 
@@ -526,6 +527,102 @@ def plot_bill_change_quadrants(
             )
         p = p + plt.scale_color_identity()
 
+    return p
+
+
+def plot_weighted_bill_change_hist(
+    df: pl.DataFrame,
+    title: str,
+    *,
+    bin_width: int = 100,
+    show_mean_median: bool = False,
+) -> ggplot:
+    """Weighted histogram of annual bill change, colored by quadrant.
+
+    *df* must have ``delta`` (dollar change) and ``weight`` columns. Bins are
+    colored with ``QUADRANT_COLORS`` at the same +/- $1,000 boundaries as
+    ``plot_bill_change_quadrants()``.
+
+    When *show_mean_median* is True, adds dashed vertical lines for the
+    weighted mean (carrot) and median (midnight) with text annotations.
+    """
+    import plotnine as plt
+    import polars as pl
+
+    from lib.plotnine import SB_COLORS, theme_switchbox
+
+    hist_df = df.select("delta", "weight")
+    hist_snap = max(bin_width, 50)
+    hist_x_lo = math.floor(weighted_quantile(hist_df, "delta", 0.01) / hist_snap) * hist_snap
+    hist_x_hi = math.ceil(weighted_quantile(hist_df, "delta", 0.99) / hist_snap) * hist_snap
+    _range = hist_x_hi - hist_x_lo
+    _tick_step = bin_width if _range <= bin_width * 12 else bin_width * 2
+    _tick_lo = math.floor(hist_x_lo / _tick_step) * _tick_step
+    _tick_hi = math.ceil(hist_x_hi / _tick_step) * _tick_step
+    hist_binned = (
+        hist_df.with_columns(
+            ((pl.col("delta") / bin_width).floor() * bin_width + bin_width / 2).alias("bin_center"),
+        )
+        .with_columns(
+            pl.when(pl.col("bin_center") <= -1000)
+            .then(pl.lit("savings > $1k"))
+            .when((pl.col("bin_center") > -1000) & (pl.col("bin_center") < 0))
+            .then(pl.lit("savings $0-1k"))
+            .when((pl.col("bin_center") >= 0) & (pl.col("bin_center") < 1000))
+            .then(pl.lit("losses $0-1k"))
+            .otherwise(pl.lit("losses > $1k"))
+            .alias("quadrant"),
+        )
+        .group_by("bin_center", "quadrant")
+        .agg(pl.col("weight").sum().alias("weight_sum"))
+        .with_columns(pl.col("quadrant").cast(pl.Enum(QUADRANT_ORDER)))
+    )
+    p = (
+        plt.ggplot(hist_binned, plt.aes(x="bin_center", y="weight_sum", fill="quadrant"))
+        + plt.geom_col(width=bin_width * 0.9)
+        + plt.geom_vline(xintercept=[-1000, 0, 1000], linetype="dotted", color="gray")
+        + plt.scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
+        + plt.scale_x_continuous(
+            breaks=list(range(_tick_lo, _tick_hi + _tick_step, _tick_step)),
+            labels=lambda xs: [f"${x:,.0f}" if x >= 0 else f"-${abs(x):,.0f}" for x in xs],
+        )
+        + plt.coord_cartesian(xlim=(hist_x_lo, hist_x_hi))
+        + plt.labs(x="Annual bill change ($)", y="Weighted households", title=title)
+        + plt.guides(fill=False)
+        + theme_switchbox()
+        + plt.theme(figure_size=(10.5, 4.5))
+    )
+    if show_mean_median:
+        w_mean = weighted_mean(hist_df, "delta")
+        w_median = weighted_quantile(hist_df, "delta", 0.50)
+        y_top = cast("float", hist_binned["weight_sum"].max())
+        p = (
+            p
+            + plt.geom_vline(xintercept=w_mean, linetype="dashed", color=SB_COLORS["carrot"], size=0.8)
+            + plt.geom_vline(xintercept=w_median, linetype="dashed", color=SB_COLORS["midnight"], size=0.8)
+            + plt.annotate(
+                "text",
+                x=w_mean + bin_width * 0.4,
+                y=y_top * 0.97,
+                label=f"Mean ${w_mean:,.0f}",
+                ha="left",
+                va="top",
+                color=SB_COLORS["carrot"],
+                size=9,
+                fontweight="bold",
+            )
+            + plt.annotate(
+                "text",
+                x=w_median + bin_width * 0.4,
+                y=y_top * 0.87,
+                label=f"Median ${w_median:,.0f}",
+                ha="left",
+                va="top",
+                color=SB_COLORS["midnight"],
+                size=9,
+                fontweight="bold",
+            )
+        )
     return p
 
 

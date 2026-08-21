@@ -48,7 +48,6 @@ The analysis follows the report's arc:
 
 from __future__ import annotations
 
-import math
 from pathlib import Path
 from typing import cast
 
@@ -64,12 +63,9 @@ from lib.quarto import display_gt, display_svg
 from lib.rates_analysis.rate_case_funcs import (
     HEATING_ORDER,
     MONTH_ORDER,
-    QUADRANT_COLORS,
-    QUADRANT_ORDER,
     add_heating_label,
     annual_bill_components,
     bat_by_group,
-    bat_component_delta,
     bill_change_incidence,
     bill_delta_between_segments,
     compare_bat_across_scenarios,
@@ -83,6 +79,7 @@ from lib.rates_analysis.rate_case_funcs import (
     plot_mc_heatmap,
     plot_representative_cost_breakdown,
     plot_revenue_requirement_breakdown,
+    plot_weighted_bill_change_hist,
     representative_cost_data,
     revenue_requirement_breakdown_by_subclass,
     segment_name,
@@ -271,101 +268,6 @@ before/after-retrofit comparisons.
 ```{python}
 #| label: natgas-bill-change-histogram-helpers
 
-BIN_WIDTH = 100
-
-
-def _weighted_percentile(df: pl.DataFrame, col: str, w_col: str, q: float) -> float:
-    """Weighted percentile via cumulative weight."""
-    s = df.sort(col)
-    cum = s[w_col].cum_sum() / s[w_col].sum()
-    return float(s.filter(cum >= q)[col][0])
-
-
-def _weighted_mean(df: pl.DataFrame, col: str, w_col: str) -> float:
-    """Weighted mean."""
-    return float((df[col] * df[w_col]).sum() / df[w_col].sum())
-
-
-def _weighted_bill_change_hist(
-    df: pl.DataFrame,
-    title: str,
-    *,
-    show_mean_median: bool = False,
-) -> plt.ggplot:
-    """Weighted histogram of annual bill change, colored by quadrant.
-
-    When *show_mean_median* is True, adds dashed vertical lines for the
-    weighted mean (carrot) and median (saffron) with text annotations.
-    """
-    hist_df = df.select("delta", "weight")
-    hist_snap = max(BIN_WIDTH, 50)
-    hist_x_lo = math.floor(_weighted_percentile(hist_df, "delta", "weight", 0.01) / hist_snap) * hist_snap
-    hist_x_hi = math.ceil(_weighted_percentile(hist_df, "delta", "weight", 0.99) / hist_snap) * hist_snap
-    _range = hist_x_hi - hist_x_lo
-    _tick_step = BIN_WIDTH if _range <= BIN_WIDTH * 12 else BIN_WIDTH * 2
-    _tick_lo = math.floor(hist_x_lo / _tick_step) * _tick_step
-    _tick_hi = math.ceil(hist_x_hi / _tick_step) * _tick_step
-    hist_binned = (
-        hist_df.with_columns(
-            ((pl.col("delta") / BIN_WIDTH).floor() * BIN_WIDTH + BIN_WIDTH / 2).alias("bin_center"),
-        )
-        .with_columns(
-            pl.when(pl.col("bin_center") <= -1000)
-            .then(pl.lit("savings > $1k"))
-            .when((pl.col("bin_center") > -1000) & (pl.col("bin_center") < 0))
-            .then(pl.lit("savings $0-1k"))
-            .when((pl.col("bin_center") >= 0) & (pl.col("bin_center") < 1000))
-            .then(pl.lit("losses $0-1k"))
-            .otherwise(pl.lit("losses > $1k"))
-            .alias("quadrant"),
-        )
-        .group_by("bin_center", "quadrant")
-        .agg(pl.col("weight").sum().alias("weight_sum"))
-        .with_columns(pl.col("quadrant").cast(pl.Enum(QUADRANT_ORDER)))
-    )
-    p = (
-        plt.ggplot(hist_binned, plt.aes(x="bin_center", y="weight_sum", fill="quadrant"))
-        + plt.geom_col(width=BIN_WIDTH * 0.9)
-        + plt.geom_vline(xintercept=[-1000, 0, 1000], linetype="dotted", color="gray")
-        + plt.scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
-        + plt.scale_x_continuous(
-            breaks=list(range(_tick_lo, _tick_hi + _tick_step, _tick_step)),
-            labels=lambda xs: [f"${x:,.0f}" if x >= 0 else f"-${abs(x):,.0f}" for x in xs],
-        )
-        + plt.coord_cartesian(xlim=(hist_x_lo, hist_x_hi))
-        + plt.labs(x="Annual bill change ($)", y="Weighted households", title=title)
-        + plt.guides(fill=False)
-        + theme_switchbox()
-        + plt.theme(figure_size=(10.5, 4.5))
-    )
-    if show_mean_median:
-        w_mean = _weighted_mean(hist_df, "delta", "weight")
-        w_median = _weighted_percentile(hist_df, "delta", "weight", 0.50)
-        y_top = float(hist_binned["weight_sum"].max())
-        p = (
-            p
-            + plt.geom_vline(xintercept=w_mean, linetype="dashed", color=SB_COLORS["carrot"], size=0.8)
-            + plt.geom_vline(xintercept=w_median, linetype="dashed", color=SB_COLORS["midnight"], size=0.8)
-            + plt.annotate(
-                "text",
-                x=w_mean + BIN_WIDTH * 0.4, y=y_top * 0.97,
-                label=f"Mean ${w_mean:,.0f}",
-                ha="left", va="top",
-                color=SB_COLORS["carrot"],
-                size=9, fontweight="bold",
-            )
-            + plt.annotate(
-                "text",
-                x=w_median + BIN_WIDTH * 0.4, y=y_top * 0.87,
-                label=f"Median ${w_median:,.0f}",
-                ha="left", va="top",
-                color=SB_COLORS["midnight"],
-                size=9, fontweight="bold",
-            )
-        )
-    return p
-
-
 delta_natgas_default_to_seasonal = bill_delta_between_segments(
     STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_SEASONAL_CALIBRATED
 ).filter(pl.col("heating_type_v2") == "natgas")
@@ -379,7 +281,7 @@ delta_natgas_default_to_flat = bill_delta_between_segments(
 #| label: fig-hist-natgas-bill-change-default
 #| fig-cap: "Distribution of the annual total energy bill change for natural-gas-heated MD BGE homes after switching to a heat pump, under the default rate."
 
-_weighted_bill_change_hist(
+plot_weighted_bill_change_hist(
     delta_natgas_default,
     "Natural-gas homes switching to a heat pump under the default rate",
 )
@@ -389,7 +291,7 @@ _weighted_bill_change_hist(
 #| label: fig-hist-natgas-bill-change-seasonal
 #| fig-cap: "Distribution of the annual total energy bill change for natural-gas-heated MD BGE homes after switching to a heat pump, under the HP seasonal rate."
 
-_weighted_bill_change_hist(
+plot_weighted_bill_change_hist(
     delta_natgas_default_to_seasonal,
     "Natural-gas homes switching to a heat pump under the HP seasonal rate",
 )
@@ -399,7 +301,7 @@ _weighted_bill_change_hist(
 #| label: fig-hist-natgas-bill-change-flat
 #| fig-cap: "Distribution of the annual total energy bill change for natural-gas-heated MD BGE homes after switching to a heat pump, under the HP flat rate."
 
-_weighted_bill_change_hist(
+plot_weighted_bill_change_hist(
     delta_natgas_default_to_flat,
     "Natural-gas homes switching to a heat pump under the HP flat rate",
 )
@@ -1364,124 +1266,6 @@ plot_representative_cost_breakdown(
 The report's energy-burden bullets (asking what share of customers are burdened under current
 HVAC vs. heat pumps, under default vs. reform rates) are deferred; `in.representative_income`
 is already present on the master bills table if this gets picked up in a follow-up.
-
-## Incremental delivery revenue vs. marginal cost
-
-When a non-heat-pump home switches to a heat pump, its electricity consumption rises — and
-so does its delivery bill. But does the *revenue* the utility collects from that home rise
-by more or less than the *marginal cost* that home actually imposes on the grid? The answer
-tells us whether the conversion is a net contributor or a net cost to the delivery system
-under the current rate design.
-
-We compare each non-HP building's annual delivery revenue (`annual_bill_delivery`) and
-marginal-cost allocation (`economic_burden_delivery`) between upgrade 00 (pre-retrofit,
-`default_precalc`) and upgrade 02 (post-retrofit, `default_calibrated`) in the master BAT
-table.
-
-```{python}
-#| label: bat-component-delta-data
-
-bat_delta = bat_component_delta(
-    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED,
-)
-bat_delta = bat_delta.with_columns(
-    (pl.col("delta_annual_bill_delivery") - pl.col("delta_economic_burden_delivery")).alias("delta_gap"),
-)
-bat_delta_natgas = bat_delta.filter(pl.col("heating_type_v2") == "natgas")
-bat_delta_natgas.head()
-```
-
-Before looking at the full distribution of these deltas, it's useful to see the average
-percent change each component represents relative to its pre-retrofit value. We define the
-percent change for each component as its weighted-average change divided by its
-weighted-average pre-retrofit value; for the revenue-minus-marginal-cost gap, the
-pre-retrofit value is the building's initial over/underpayment
-(`annual_bill_delivery_before - economic_burden_delivery_before`).
-
-```{python}
-#| label: tbl-bat-component-pct-change
-#| tbl-cap: "Average percent change in delivery revenue, marginal cost, and the revenue-minus-marginal-cost gap after switching to a heat pump (natural-gas homes, MD BGE default rate)."
-
-_pct_change_components = [
-    ("Delivery revenue", "annual_bill_delivery_before", "delta_annual_bill_delivery"),
-    ("Delivery marginal cost", "economic_burden_delivery_before", "delta_economic_burden_delivery"),
-]
-_pct_change_rows = []
-for _label, _before_col, _delta_col in _pct_change_components:
-    _before_mean = _weighted_mean(bat_delta_natgas, _before_col, "weight")
-    _delta_mean = _weighted_mean(bat_delta_natgas, _delta_col, "weight")
-    _pct_change_rows.append(
-        {"component": _label, "avg_before": _before_mean, "avg_delta": _delta_mean, "pct_change": _delta_mean / _before_mean}
-    )
-
-_gap_before_mean = _weighted_mean(
-    bat_delta_natgas.with_columns(
-        (pl.col("annual_bill_delivery_before") - pl.col("economic_burden_delivery_before")).alias("gap_before")
-    ),
-    "gap_before",
-    "weight",
-)
-_gap_delta_mean = _weighted_mean(bat_delta_natgas, "delta_gap", "weight")
-_pct_change_rows.append(
-    {
-        "component": "Revenue minus marginal cost (gap)",
-        "avg_before": _gap_before_mean,
-        "avg_delta": _gap_delta_mean,
-        "pct_change": _gap_delta_mean / _gap_before_mean,
-    }
-)
-
-_bat_delta_pct_change_gt = (
-    GT(pl.DataFrame(_pct_change_rows), rowname_col="component")
-    .fmt_currency(columns=["avg_before", "avg_delta"], decimals=0)
-    .fmt_percent(columns="pct_change", decimals=1)
-    .cols_label(
-        avg_before="Avg. before HP",
-        avg_delta="Avg. change after HP",
-        pct_change="Avg. % change",
-    )
-    .tab_stubhead(label="Component")
-    .tab_source_note(
-        "Percent change = weighted-average change ÷ weighted-average pre-retrofit value. "
-        "Gap = delivery revenue minus delivery marginal cost."
-    )
-    .tab_options(**get_switchbox_gt_tab_options())
-)
-display_gt(_bat_delta_pct_change_gt)
-```
-
-```{python}
-#| label: fig-hist-delta-delivery-revenue
-#| fig-cap: "Distribution of the change in annual delivery revenue per building after switching to a heat pump (natural-gas homes, MD BGE default rate)."
-
-_weighted_bill_change_hist(
-    bat_delta_natgas.select(pl.col("delta_annual_bill_delivery").alias("delta"), "weight"),
-    "Change in delivery revenue after HP retrofit",
-    show_mean_median=True,
-)
-```
-
-```{python}
-#| label: fig-hist-delta-delivery-mc
-#| fig-cap: "Distribution of the change in annual delivery marginal-cost allocation per building after switching to a heat pump (natural-gas homes, MD BGE default rate)."
-
-_weighted_bill_change_hist(
-    bat_delta_natgas.select(pl.col("delta_economic_burden_delivery").alias("delta"), "weight"),
-    "Change in delivery marginal cost after HP retrofit",
-    show_mean_median=True,
-)
-```
-
-```{python}
-#| label: fig-hist-delta-revenue-minus-mc
-#| fig-cap: "Distribution of incremental delivery revenue minus incremental marginal cost per building after switching to a heat pump (natural-gas homes, MD BGE default rate). Positive values mean the utility collects more incremental revenue than the building's incremental cost — i.e. the conversion subsidizes other customers."
-
-_weighted_bill_change_hist(
-    bat_delta_natgas.select(pl.col("delta_gap").alias("delta"), "weight"),
-    "Incremental delivery revenue minus marginal cost after HP retrofit",
-    show_mean_median=True,
-)
-```
 
 ## Export report variables
 

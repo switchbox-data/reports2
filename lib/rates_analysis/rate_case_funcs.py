@@ -270,6 +270,7 @@ def bat_component_delta(
     *,
     components: list[str] | None = None,
     exclude_has_hp: bool = True,
+    utility: str | None = None,
 ) -> pl.DataFrame:
     """Per-building delta of BAT cost-allocation components between two segments.
 
@@ -290,6 +291,11 @@ def bat_component_delta(
     When *exclude_has_hp* is True (default), buildings with a heat pump at
     baseline (``postprocess_group.has_hp == True`` in *segment_before*) are
     dropped — they already have a heat pump and aren't "converting".
+
+    When *utility* is set, both segments' master BAT are filtered to
+    ``sb.electric_utility == utility`` before joining — a no-op for
+    single-utility batches, but avoids silently mixing in other utilities'
+    buildings (and the wasted read) once a batch covers more than one.
     """
     import polars as pl
 
@@ -308,12 +314,18 @@ def bat_component_delta(
         *[pl.col(c).alias(f"{c}_after") for c in components],
     ]
 
-    before = load_master_bat(state, batch, segment_before).select(before_select)
+    before = load_master_bat(state, batch, segment_before)
     # annual_bill_delivery and economic_burden_delivery are valid at calibrated
     # (see docstring), so suppress the stage warning from load_master_bat.
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", message=".*not a `_precalc` segment.*")
-        after = load_master_bat(state, batch, segment_after).select(after_select)
+        after = load_master_bat(state, batch, segment_after)
+
+    if utility is not None:
+        before = before.filter(pl.col("sb.electric_utility") == utility)
+        after = after.filter(pl.col("sb.electric_utility") == utility)
+    before = before.select(before_select)
+    after = after.select(after_select)
 
     joined = before.join(after, on="bldg_id", how="inner")
     if exclude_has_hp:
@@ -663,6 +675,64 @@ def plot_weighted_bill_change_hist(
             )
         )
     return p
+
+
+def plot_weighted_hist_by_group(
+    df: pl.DataFrame,
+    value_col: str,
+    group_col: str,
+    title: str,
+    *,
+    bin_width: float = 100.0,
+    x_label: str = "Value",
+) -> ggplot:
+    """Weighted histogram of *value_col*, faceted by *group_col*.
+
+    Unlike ``plot_weighted_bill_change_hist()``, bins are a single flat color
+    (no quadrant thresholds) since this is used for non-dollar values like
+    incremental kWh, where the +/- $1,000 bill-change boundaries don't apply.
+    Each facet gets its own free x/y scale (``facet_wrap(..., scales="free")``)
+    since different groups (e.g. heating types) can have very different
+    ranges and magnitudes.
+
+    *df* must have *value_col*, ``weight``, and *group_col* columns.
+    """
+    import plotnine as plt
+    import polars as pl
+    from mizani.breaks import breaks_extended
+
+    from lib.plotnine import SB_COLORS, theme_switchbox
+
+    hist_df = df.select(value_col, "weight", group_col)
+    hist_snap = max(bin_width, 1)
+    hist_x_lo = math.floor(weighted_quantile(hist_df, value_col, 0.01) / hist_snap) * hist_snap
+    hist_x_hi = math.ceil(weighted_quantile(hist_df, value_col, 0.99) / hist_snap) * hist_snap
+    hist_binned = (
+        hist_df.with_columns(
+            ((pl.col(value_col) / bin_width).floor() * bin_width + bin_width / 2).alias("bin_center"),
+        )
+        .group_by("bin_center", group_col)
+        .agg(pl.col("weight").sum().alias("weight_sum"))
+    )
+    # coord_cartesian() only zooms the view -- it doesn't affect break calculation,
+    # so the default breaks are spaced to cover the full (unclipped) data range and
+    # most land outside the zoomed-in window. Force breaks over the same
+    # (hist_x_lo, hist_x_hi) window we're actually displaying instead.
+    breaks_fn = breaks_extended(n=8)
+    return (
+        plt.ggplot(hist_binned, plt.aes(x="bin_center", y="weight_sum"))
+        + plt.geom_col(width=bin_width * 0.9, fill=SB_COLORS["sky"])
+        + plt.geom_vline(xintercept=0, linetype="dotted", color="gray")
+        + plt.facet_wrap(group_col, scales="free")
+        + plt.coord_cartesian(xlim=(hist_x_lo, hist_x_hi))
+        + plt.scale_x_continuous(
+            breaks=lambda _limits, lo=hist_x_lo, hi=hist_x_hi: breaks_fn((lo, hi)),
+            labels=lambda xs: [f"{x:,.0f}" for x in xs],
+        )
+        + plt.labs(x=x_label, y="Weighted households", title=title)
+        + theme_switchbox()
+        + plt.theme(figure_size=(10.5, 4.5))
+    )
 
 
 # --- Rate-design-only bill change (pre-retrofit, tariff-only comparison) --------

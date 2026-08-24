@@ -143,6 +143,45 @@ def load_billing_kwh_annual(state: str, utility: str, batch: str, segment: str) 
     return pl.scan_parquet(f"{run_path}/billing_kwh_annual.parquet")
 
 
+def load_delivery_mc_heatmap(state: str, utility: str, year: int) -> pl.DataFrame:
+    """Load and join hourly bulk-transmission and distribution/sub-transmission marginal costs.
+
+    Reads the two per-utility marginal-cost parquet files CAIRO's marginal-cost
+    pipeline writes to S3 (not part of the master-table Prefect pipeline), joins
+    them on ``timestamp``, and adds ``day_of_year``/``hour`` columns for
+    ``plot_mc_heatmap()``. Raises if the result doesn't cover all 8,760 hours of
+    *year*.
+
+    Returns columns ``timestamp``, ``mc_bulk_tx``, ``mc_dist_sub_tx``,
+    ``day_of_year``, ``hour``.
+    """
+    import polars as pl
+
+    s3_opts = {"aws_region": "us-west-2"}
+    path_bulk_tx = (
+        f"s3://data.sb/switchbox/marginal_costs/{state.lower()}/bulk_tx/utility={utility}/year={year}/data.parquet"
+    )
+    path_dist_sub_tx = (
+        f"s3://data.sb/switchbox/marginal_costs/{state.lower()}/dist_and_sub_tx/"
+        f"utility={utility}/year={year}/data.parquet"
+    )
+
+    bulk_tx = pl.read_parquet(path_bulk_tx, storage_options=s3_opts)
+    dist_sub_tx = pl.read_parquet(path_dist_sub_tx, storage_options=s3_opts)
+
+    heatmap_df = (
+        bulk_tx.join(dist_sub_tx.select("timestamp", "mc_total_per_kwh"), on="timestamp")
+        .rename({"bulk_tx_cost_enduse": "mc_bulk_tx", "mc_total_per_kwh": "mc_dist_sub_tx"})
+        .with_columns(
+            pl.col("timestamp").dt.ordinal_day().alias("day_of_year"),
+            pl.col("timestamp").dt.hour().alias("hour"),
+        )
+    )
+    if heatmap_df.height != 8760:
+        raise ValueError(f"Expected 8760 hourly rows for {state}/{utility}/{year}, got {heatmap_df.height}.")
+    return heatmap_df
+
+
 # --- Weighted stats ------------------------------------------------------------
 
 
@@ -626,6 +665,114 @@ def plot_weighted_bill_change_hist(
     return p
 
 
+# --- Rate-design-only bill change (pre-retrofit, tariff-only comparison) --------
+
+
+def plot_ratedesign_monthly_hist(
+    delta_df: pl.DataFrame,
+    median_delta: float,
+    *,
+    binwidth: float = 1,
+    fill_color: str | None = None,
+) -> ggplot:
+    """Unweighted monthly-$ histogram of a rate-design-only bill change.
+
+    *delta_df* is a ``bill_delta_between_segments()`` result (or a subset of
+    one), already filtered to the population of interest -- typically the
+    non-heat-pump subclass under a reform tariff, holding HVAC equipment
+    fixed and varying only the tariff. *median_delta* is that population's
+    weighted median **annual** ``delta`` (e.g.
+    ``bill_change_incidence(delta_df)["median_delta"]``); both the histogram
+    and the reference line are shown in $/month.
+    """
+    import plotnine as plt
+    import polars as pl
+
+    from lib.plotnine import SB_COLORS, theme_switchbox
+
+    fill_color = fill_color or SB_COLORS["midnight"]
+    plot_df = delta_df.with_columns((pl.col("delta") / 12).alias("delta_monthly"))
+
+    return (
+        plt.ggplot(plot_df, plt.aes(x="delta_monthly"))
+        + plt.geom_histogram(binwidth=binwidth, fill=fill_color)
+        + plt.geom_vline(xintercept=median_delta / 12, color=SB_COLORS["carrot"], linetype="dashed")
+        + plt.labs(x="Change in monthly energy bill ($)", y="Count of households")
+        + plt.scale_x_continuous(
+            breaks=lambda limits: list(range((int(limits[0]) // 5) * 5, int(limits[1]) + 5, 5)),
+            labels=lambda xs: [f"${x:,.0f}" if x >= 0 else f"-${abs(x):,.0f}" for x in xs],
+            minor_breaks=[],
+        )
+        + theme_switchbox()
+        + plt.theme(figure_size=(10.5, 4.5))
+    )
+
+
+def plot_ratedesign_cdf(
+    delta_df: pl.DataFrame,
+    median_delta: float,
+    *,
+    exclude_heating_types: list[str] | None = None,
+    series_labels: tuple[str, str] = ("All non-HP", "Excl. electric resistance & heat pump"),
+    y_label: str = "Share of non-HP households",
+) -> ggplot:
+    """Weighted CDF of a rate-design-only monthly bill change, all vs. a heating-type-excluded subset.
+
+    *delta_df* is a ``bill_delta_between_segments()`` result already filtered
+    to the population of interest (typically the non-heat-pump subclass).
+    Draws two step CDFs -- the full population and, by default, that
+    population excluding ``"electrical_resistance"``/``"heat_pump"`` baseline
+    heating types (pass *exclude_heating_types* to change which codes are
+    dropped for the second series). *median_delta* is the full population's
+    weighted median **annual** delta; the dashed reference line is drawn in
+    $/month.
+    """
+    import plotnine as plt
+    import polars as pl
+
+    from lib.plotnine import SB_COLORS, theme_switchbox
+
+    exclude_heating_types = (
+        exclude_heating_types if exclude_heating_types is not None else ["electrical_resistance", "heat_pump"]
+    )
+
+    def _weighted_monthly_cdf(df: pl.DataFrame) -> pl.DataFrame:
+        return (
+            df.with_columns((pl.col("delta") / 12).alias("delta_monthly"))
+            .sort("delta_monthly")
+            .with_columns((pl.col("weight").cum_sum() / pl.col("weight").sum()).alias("cdf"))
+        )
+
+    cdf_df = pl.concat(
+        [
+            _weighted_monthly_cdf(delta_df).with_columns(pl.lit(series_labels[0]).alias("series")),
+            _weighted_monthly_cdf(
+                delta_df.filter(~pl.col("heating_type_v2").is_in(exclude_heating_types))
+            ).with_columns(pl.lit(series_labels[1]).alias("series")),
+        ]
+    ).with_columns(pl.col("series").cast(pl.Enum(list(series_labels))))
+
+    return (
+        plt.ggplot(cdf_df, plt.aes(x="delta_monthly", y="cdf", color="series"))
+        + plt.geom_step()
+        + plt.geom_vline(xintercept=median_delta / 12, color=SB_COLORS["carrot"], linetype="dashed")
+        + plt.labs(x="Change in monthly energy bill ($)", y=y_label, color=None)
+        + plt.scale_color_manual(values=[SB_COLORS["midnight"], SB_COLORS["sky"]])
+        + plt.scale_x_continuous(
+            breaks=lambda limits: list(range((int(limits[0]) // 5) * 5, int(limits[1]) + 5, 5)),
+            minor_breaks=lambda limits: list(range(int(limits[0]), int(limits[1]) + 1, 1)),
+            labels=lambda xs: [f"${x:,.0f}" if x >= 0 else f"-${abs(x):,.0f}" for x in xs],
+        )
+        + plt.scale_y_continuous(
+            breaks=[i / 10 for i in range(11)],
+            minor_breaks=[i / 20 for i in range(21)],
+            labels=lambda ys: [f"{y:.0%}" for y in ys],
+        )
+        + theme_switchbox()
+        + plt.theme(figure_size=(10.5, 4.5), legend_position="bottom")
+    )
+
+
 def plot_mc_heatmap(
     df: pl.DataFrame,
     value_col: str,
@@ -1088,6 +1235,37 @@ def monthly_bill_components(state: str, batch: str, segment: str, bldg_id: int) 
     )
 
 
+MONTHLY_BILL_COMPONENT_ORDER = ["Electric Supply Bill", "Electric Delivery Bill"]
+MONTHLY_BILL_COMPONENT_COLORS: dict[str, str] = {
+    "Electric Delivery Bill": "#023047",  # SB_COLORS["midnight"]
+    "Electric Supply Bill": "#fc9706",  # SB_COLORS["carrot"]
+}
+
+
+def plot_monthly_bill_components(monthly_df: pl.DataFrame, title: str) -> ggplot:
+    """Stacked monthly electric bill chart, delivery vs. supply.
+
+    Takes the long-form output of ``monthly_bill_components()`` directly.
+    """
+    import plotnine as plt
+    import polars as pl
+
+    from lib.plotnine import theme_switchbox
+
+    plot_df = monthly_df.with_columns(pl.col("component").cast(pl.Enum(MONTHLY_BILL_COMPONENT_ORDER)))
+
+    return (
+        plt.ggplot(plot_df, plt.aes(x="month", y="value", fill="component"))
+        + plt.geom_col(position="stack", width=0.7)
+        + plt.scale_fill_manual(values=MONTHLY_BILL_COMPONENT_COLORS, breaks=MONTHLY_BILL_COMPONENT_ORDER)
+        + plt.scale_x_discrete(limits=MONTH_ORDER)
+        + plt.scale_y_continuous(expand=(0, 0, 0.08, 0))
+        + plt.labs(x="", y="$ / month", fill="", title=title)
+        + theme_switchbox()
+        + plt.theme(figure_size=(10.5, 4.5))
+    )
+
+
 def annual_bill_components(state: str, batch: str, segment: str, bldg_id: int) -> dict[str, float]:
     """Return one building's annual bill, decomposed into delivery fixed/volumetric, supply, and gas.
 
@@ -1248,6 +1426,202 @@ def representative_cost_data(
             "delivery_volumetric": hp_bill["delivery_volumetric"],
         },
     }
+
+
+DECOMPOSED_BILL_COMPONENT_KEYS = ["delivery_fixed", "delivery_volumetric", "supply", "gas"]
+DECOMPOSED_BILL_COLORS: dict[str, str] = {
+    "delivery_fixed": "#023047",
+    "delivery_volumetric": "#56B4E9",
+    "supply": "#E69F00",
+    "gas": "#CCCCCC",
+}
+DECOMPOSED_BILL_LABEL_COLORS: dict[str, str] = {**DECOMPOSED_BILL_COLORS, "gas": "#888888"}
+
+
+def _fmt_dollar(v: float) -> str:
+    return f"${v:,.0f}"
+
+
+def plot_decomposed_bill_3bar(
+    before: dict[str, float],
+    after_default: dict[str, float],
+    after_reform: dict[str, float],
+    *,
+    third_scenario_label: str,
+    title: str,
+) -> tuple[Figure, float, float, float, float]:
+    """Three-bar decomposed annual bill chart: natural gas, HP on the default rate, HP on a reform rate.
+
+    Each of *before*, *after_default*, *after_reform* is an
+    ``annual_bill_components()``-shaped dict (``delivery_fixed``,
+    ``delivery_volumetric``, ``supply``, ``gas``). *third_scenario_label*
+    names the reform bar (e.g. ``"Heat pump\\n(seasonal rate)"``).
+
+    Draws with raw matplotlib (not plotnine) for the per-segment $ labels,
+    the dashed "today's delivery cost" reference line, and the bracketed
+    savings annotation between the second and third bars — none of which map
+    cleanly onto plotnine's grammar.
+
+    Returns ``(fig, savings $, savings pct as a fraction, total default-rate
+    HP bill, total reform-rate HP bill)``.
+    """
+    import matplotlib.patches as mpatches
+    import matplotlib.pyplot as pyplot
+    import numpy as np
+
+    from lib.plotnine import SB_COLORS
+
+    scenarios = ["Natural gas\nfurnace", "Heat pump\n(default rate)", third_scenario_label]
+    x = np.arange(len(scenarios))
+    w = 0.55
+    comp_keys = DECOMPOSED_BILL_COMPONENT_KEYS
+    bars_data = [before, after_default, after_reform]
+
+    fig, ax = pyplot.subplots(figsize=(12, 7))
+    ax.set_title(
+        title,
+        fontfamily="GT Planar",
+        fontweight="bold",
+        fontsize=15,
+        loc="left",
+        pad=12,
+    )
+
+    bottoms = [0.0] * 3
+    for ck in comp_keys:
+        vals = [bars_data[i][ck] for i in range(3)]
+        ax.bar(x, vals, w, bottom=bottoms, color=DECOMPOSED_BILL_COLORS[ck], edgecolor="none")
+        for i, (v, b) in enumerate(zip(vals, bottoms, strict=False)):
+            if v > 80:
+                ax.text(
+                    x[i],
+                    b + v / 2,
+                    _fmt_dollar(v),
+                    ha="center",
+                    va="center",
+                    color="white",
+                    fontweight="bold",
+                    fontsize=11,
+                    zorder=11,
+                )
+        bottoms = [b + v for b, v in zip(bottoms, vals, strict=False)]
+
+    totals = [sum(bars_data[i][k] for k in comp_keys) for i in range(3)]
+
+    for i in (0, 1):
+        ax.text(
+            x[i],
+            totals[i] + 50,
+            _fmt_dollar(totals[i]),
+            ha="center",
+            va="bottom",
+            color="#333333",
+            fontweight="bold",
+            fontsize=12,
+        )
+
+    delivery_before = before["delivery_fixed"] + before["delivery_volumetric"]
+    ax.hlines(
+        y=delivery_before,
+        xmin=-0.5,
+        xmax=x[2] + w / 2,
+        color=SB_COLORS["saffron"],
+        linewidth=1.8,
+        linestyle=(0, (6, 4)),
+        zorder=10,
+    )
+
+    savings = totals[1] - totals[2]
+    pct_savings = savings / totals[1] * 100
+
+    rect = mpatches.FancyBboxPatch(
+        (x[2] - w / 2, totals[2]),
+        w,
+        savings,
+        boxstyle="square,pad=0",
+        facecolor=SB_COLORS["saffron"],
+        alpha=0.12,
+        edgecolor="#B8960A",
+        linewidth=2.0,
+        linestyle=(0, (5, 3)),
+        hatch="////",
+        zorder=3,
+    )
+    ax.add_patch(rect)
+
+    ax.text(
+        x[2],
+        totals[2] + 50,
+        _fmt_dollar(totals[2]),
+        ha="center",
+        va="bottom",
+        color="#333333",
+        fontweight="bold",
+        fontsize=12,
+        zorder=8,
+    )
+    ax.annotate(
+        "",
+        xy=(x[2], totals[2] + 180),
+        xytext=(x[2], totals[1] - 60),
+        arrowprops={"arrowstyle": "->,head_length=0.4,head_width=0.25", "color": SB_COLORS["saffron"], "lw": 2.2},
+        zorder=6,
+    )
+    ax.text(
+        x[2],
+        totals[1] + 180,
+        f"-{pct_savings:.0f}%",
+        ha="center",
+        va="bottom",
+        color=SB_COLORS["saffron"],
+        fontweight="bold",
+        fontsize=14,
+    )
+    ax.text(
+        x[2],
+        totals[1] + 50,
+        f"-{_fmt_dollar(savings)}",
+        ha="center",
+        va="bottom",
+        color=SB_COLORS["saffron"],
+        fontsize=11,
+        alpha=0.8,
+    )
+
+    side_x = x[2] + w / 2 + 0.15
+    d3 = after_reform
+    side_specs = [
+        ("Delivery\n(Fixed)", d3["delivery_fixed"] / 2, DECOMPOSED_BILL_LABEL_COLORS["delivery_fixed"]),
+        (
+            "Delivery\n(Volumetric)",
+            d3["delivery_fixed"] + d3["delivery_volumetric"] / 2,
+            DECOMPOSED_BILL_LABEL_COLORS["delivery_volumetric"],
+        ),
+        (
+            "Supply",
+            d3["delivery_fixed"] + d3["delivery_volumetric"] + d3["supply"] / 2,
+            DECOMPOSED_BILL_LABEL_COLORS["supply"],
+        ),
+        (
+            "Gas",
+            d3["delivery_fixed"] + d3["delivery_volumetric"] + d3["supply"] + d3["gas"] / 2,
+            DECOMPOSED_BILL_LABEL_COLORS["gas"],
+        ),
+    ]
+    for lbl, ym, clr in side_specs:
+        ax.plot([x[2] + w / 2 + 0.02, side_x - 0.03], [ym, ym], color=clr, linewidth=0.7, alpha=0.6)
+        ax.text(side_x, ym, lbl, color=clr, ha="left", va="center", fontsize=8.5, fontweight="bold")
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(scenarios, fontsize=11)
+    ax.set_ylabel("Annual energy bill ($)", fontsize=12)
+    ax.set_ylim(0, max(totals) * 1.22)
+    ax.set_xlim(-0.5, x[2] + w / 2 + 0.7)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["bottom"].set_bounds(-0.5, x[2] + w / 2)
+    fig.tight_layout()
+    return fig, savings, pct_savings / 100, totals[1], totals[2]
 
 
 def plot_representative_cost_breakdown(
@@ -1456,3 +1830,29 @@ def extract_tariff_rates(tariff: dict) -> dict:
         "period_rates": period_rates,
         "month_to_period": month_to_period,
     }
+
+
+def tariff_month_rate_table(rates_by_label: dict[str, dict]) -> pl.DataFrame:
+    """Month-by-month volumetric delivery rate (¢/kWh), for one or more tariffs side by side.
+
+    *rates_by_label* maps a display column label (e.g. ``"Default rate
+    (¢/kWh)"``) to the corresponding ``extract_tariff_rates()`` output. Builds
+    one rate column per label from its ``period_rates``/``month_to_period``,
+    then joins all of them on ``month`` (ordered Jan-Dec via ``MONTH_ORDER``).
+    Works for any number of tariffs, not just the historical pair/triple.
+    """
+    import polars as pl
+
+    def _one_tariff_table(rates: dict, label: str) -> pl.DataFrame:
+        return pl.DataFrame(
+            {
+                "month": MONTH_ORDER,
+                label: [rates["period_rates"][rates["month_to_period"][m]] * 100 for m in MONTH_ORDER],
+            }
+        )
+
+    tables = [_one_tariff_table(rates, label) for label, rates in rates_by_label.items()]
+    result = tables[0]
+    for table in tables[1:]:
+        result = result.join(table, on="month")
+    return result.with_columns(pl.col("month").cast(pl.Enum(MONTH_ORDER)))

@@ -1,0 +1,315 @@
+---
+title: MD BGE Subclass Non-Coincident Peak Cost-Causation
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+execute:
+  warning: false
+  message: false
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+
+Utility cost-of-service studies often allocate demand-related delivery costs across
+customer classes using each class's **non-coincident peak (NCP)** — the maximum demand that
+class ever reaches, regardless of when it happens. That method implicitly assumes every
+class's peak matters equally, no matter its timing. But heat-pump homes tend to peak on cold
+winter mornings, while today's dominant natural-gas-heated population still peaks on hot
+summer afternoons (running air conditioning). An NCP allocator conflates *how big* a class's
+peak is with *when* it happens — and can assign heat-pump customers a disproportionate share
+of delivery costs relative to their actual share of the customer population.
+
+This notebook reproduces that argument for MD BGE, computing each residential heating-type
+subclass's (heat pump, natural gas, oil/propane, electric resistance) hourly load, its own
+peak magnitude and timing, and its resulting share of a hypothetical NCP-based cost
+allocation — purely from ResStock hourly load curves. It deliberately stops there: it does
+**not** attempt a dollar-denominated, voltage-level embedded-cost allocation (the way RI's
+`embedded_costs.qmd` does), because that requires BGE's own multi-voltage embedded cost of
+service study (ECOSS) workpapers, which aren't yet available for this analysis (tracked
+separately, not in scope for RDP-264). What follows is the one piece of that RI notebook that
+actually made it into testimony — the NCP-share argument alone, generalized to run against
+any state/utility/batch.
+
+The functions doing the data crunching live in
+[`lib/rates_analysis/ncp_funcs.py`](../../../lib/rates_analysis/ncp_funcs.py). This notebook
+just calls those with MD BGE's specific state/batch/scenario values from `batch_config.yaml`.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+import pickle
+import warnings
+from pathlib import Path
+
+import polars as pl
+import yaml
+from great_tables import GT
+
+from lib.great_tables import get_switchbox_gt_tab_options
+from lib.quarto import display_gt
+from lib.rates_analysis.ncp_funcs import (
+    aggregate_hourly_by_subclass,
+    compute_subclass_ncp_shares,
+    load_subclass_population,
+    scan_hourly_loads_for_buildings,
+    subclass_ncp_report_vars,
+    validate_hourly_against_annual_kwh,
+)
+from lib.rates_analysis.rate_case_funcs import (
+    HEATING_ORDER,
+    HEATING_TYPE_LABELS,
+    load_billing_kwh_annual,
+    segment_name,
+)
+
+report_vars: dict = {}
+```
+
+## Parameters
+
+Batch identity lives in `batch_config.yaml` alongside this report, not hardcoded here, so
+re-running against a new batch is a one-file change. `RESSTOCK_RELEASE` and `UPGRADE` point at
+the Switchbox-corrected (`_sb`) ResStock release CAIRO's inputs are drawn from — upgrade `00`
+is today's mixed heating population (pre-retrofit), the same population `analysis.qmd` and
+`incremental_cos.qmd` use for their pre-retrofit numbers. We prefer the local EBS mirror of
+that release over S3 when it's present, since `scan_hourly_loads_for_buildings` opens one
+parquet file per building — thousands of S3 GETs for a full state — and local disk skips that
+per-file network overhead entirely.
+
+```{python}
+#| label: params
+
+_batch_config = yaml.safe_load(Path("../batch_config.yaml").read_text())
+
+STATE = _batch_config["STATE"]
+BATCH = _batch_config["BATCH"]
+DEFAULT_SCENARIO = _batch_config["BASELINE_BILL_SCENARIO"]
+RESSTOCK_RELEASE = _batch_config["RESSTOCK_RELEASE"]
+UTILITY = "bge"
+UPGRADE = "00"
+
+_local_resstock = Path(f"/ebs/data/nrel/resstock/{RESSTOCK_RELEASE}")
+PATH_RESSTOCK_RELEASE = (
+    str(_local_resstock) if _local_resstock.exists() else f"s3://data.sb/nrel/resstock/{RESSTOCK_RELEASE}"
+)
+
+SEG_DEFAULT_PRECALC = segment_name(DEFAULT_SCENARIO, "precalc")
+
+print(f"state={STATE}  utility={UTILITY}  batch={BATCH}  upgrade={UPGRADE}")
+print(f"resstock_release={PATH_RESSTOCK_RELEASE}")
+```
+
+## Subclass population
+
+We start from CAIRO's own master bills table, which already classifies every building into a
+heating-type-v2 subclass (`heat_pump`, `natgas`, `delivered_fuels` — oil or propane —,
+`electrical_resistance`, or `other`) and assigns it to a utility. Reusing CAIRO's
+classification (rather than re-deriving it from raw ResStock metadata) keeps this consistent
+with every other MD BGE notebook and avoids a separate `buildstock_fetch` dependency just to
+identify heating type.
+
+```{python}
+#| label: load-population
+
+population = load_subclass_population(STATE, BATCH, SEG_DEFAULT_PRECALC, UTILITY).collect()
+population.head()
+```
+
+```{python}
+#| label: population-counts
+
+(
+    population.group_by("postprocess_group.heating_type_v2")
+    .agg(pl.len().alias("n_buildings"), pl.col("weight").sum().alias("weighted_customers"))
+    .sort("weighted_customers", descending=True)
+)
+```
+
+MD BGE's residential population in this batch has `{python} f"{population.height:,}"` sampled
+buildings, representing `{python} f"{population['weight'].sum():,.0f}"` weighted customers
+across the five subclasses above.
+
+```{python}
+#| label: bldg-ids
+
+bldg_ids = population["bldg_id"].to_list()
+```
+
+## Hourly loads
+
+For every building in that population, we scan its raw ResStock hourly load curve directly
+from S3 and compute **grid consumption** — `max(total_load - abs(pv), 0)` — the same formula
+CAIRO itself bills against
+([`rate-design-platform/utils/loads.py`](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/loads.py)).
+This matters: RI's original `embedded_costs.qmd` summed `out.electricity.net.energy_consumption`
+instead, which that module documents as diverging from `total` by up to ~10% even for
+non-solar buildings. We build each building's parquet path directly from its `bldg_id`
+(rather than scanning the whole state's `load_curve_hourly` partition and filtering), since
+MD BGE is a small fraction of that partition.
+
+```{python}
+#| label: scan-hourly
+
+hourly = scan_hourly_loads_for_buildings(PATH_RESSTOCK_RELEASE, STATE, UPGRADE, bldg_ids)
+hourly.head().collect()
+```
+
+## Validating against CAIRO's own billed kWh
+
+Before trusting these hourly loads for anything, we check them against CAIRO's own
+per-building annual kWh export (`billing_kwh_annual.parquet`, read via
+`rate_case_funcs.load_billing_kwh_annual()`). CAIRO can apply a uniform
+`resstock_kwh_scale_factor` to a utility's loads before billing (to match a rate case's
+test-year kWh) — see
+[`rate-design-platform/utils/pre/rev_requirement/README.md`](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/pre/rev_requirement/README.md)
+— so we don't expect our raw hourly sum to equal CAIRO's billed annual kWh 1:1 even when
+methodology is fully aligned. `validate_hourly_against_annual_kwh()` handles this by
+discovering that scale factor empirically (the *median* per-building ratio of CAIRO's value
+to ours) rather than hardcoding it from a separate repo's per-batch config, and flags any
+building whose own ratio departs meaningfully from that population-wide median — a real
+per-building mismatch, not just the expected uniform scaling.
+
+```{python}
+#| label: validate-hourly-vs-annual
+
+computed_annual = (
+    hourly.group_by("bldg_id")
+    .agg(pl.col("grid_kwh").sum().alias("computed_annual_kwh_grid"))
+    .collect()
+)
+reference_annual = load_billing_kwh_annual(STATE, UTILITY, BATCH, SEG_DEFAULT_PRECALC)
+
+with warnings.catch_warnings(record=True) as caught_warnings:
+    warnings.simplefilter("always")
+    kwh_comparison = validate_hourly_against_annual_kwh(computed_annual, reference_annual)
+    for _w in caught_warnings:
+        print(f"WARNING: {_w.message}")
+
+kwh_comparison.describe()
+```
+
+The median ratio above (`annual_kwh_grid / computed_annual_kwh_grid`) is CAIRO's implied
+`resstock_kwh_scale_factor` for MD BGE in this batch. A warning naming a count of buildings
+outside tolerance is expected here — real ResStock buildings show some
+`out.electricity.net`/`out.electricity.total` calibration drift beyond the shared scale
+factor, which is exactly what this check surfaces. Crucially, **this doesn't undermine the
+NCP-share analysis below**: a uniform scale factor multiplies every building's every hour by
+the same constant, so it cancels out entirely in a *share* calculation (each subclass's peak
+divided by the sum of all subclasses' peaks). The outlier buildings this check flags are a
+data-quality note for future work, not a reason to distrust the shares that follow.
+
+## Aggregating to subclass hourly loads
+
+Next we weight each building's hourly grid consumption by its ResStock sample weight and sum
+within each subclass, producing one weighted hourly load curve per heating-type subclass —
+the shape each subclass's peak will be read off of.
+
+```{python}
+#| label: aggregate-by-subclass
+
+aggregate_curves = aggregate_hourly_by_subclass(hourly, population)
+aggregate_curves.head()
+```
+
+## Subclass NCP shares
+
+For each subclass we now take its own maximum hourly weighted load (its "secondary NCP") and
+the timestamp it occurs at, then divide by the sum of every subclass's own maximum to get that
+subclass's share of a hypothetical NCP-based cost allocation. We use the full year (not a
+summer-only window), matching what RI's testimony actually reported.
+
+```{python}
+#| label: compute-ncp-shares
+
+ncp_shares = compute_subclass_ncp_shares(aggregate_curves, only_consider_summer_peaks=False)
+ncp_shares
+```
+
+```{python}
+#| label: tbl-subclass-ncp-shares
+#| tbl-cap: "Each residential heating-type subclass's share of customers versus its share of a hypothetical non-coincident-peak (NCP) cost allocation, and the timestamp of its own peak (MD BGE, ResStock upgrade 00)."
+
+_ncp_display = (
+    ncp_shares.with_columns(
+        pl.col("postprocess_group.heating_type_v2")
+        .replace_strict(HEATING_TYPE_LABELS, default=pl.col("postprocess_group.heating_type_v2"))
+        .alias("heating_type")
+    )
+    .with_columns(pl.col("heating_type").cast(pl.Enum(HEATING_ORDER)))
+    .sort("heating_type")
+    .select(
+        "heating_type",
+        "num_homes_pct_of_total",
+        "subclass_pct_of_class_share",
+        "ncp_timestamp",
+        "secondary_ncp_raw",
+        "annual_kwh",
+    )
+)
+
+_ncp_gt = (
+    GT(_ncp_display, rowname_col="heating_type")
+    .fmt_percent(columns=["num_homes_pct_of_total", "subclass_pct_of_class_share"], scale_values=False, decimals=1)
+    .fmt_number(columns=["secondary_ncp_raw", "annual_kwh"], decimals=0)
+    .cols_label(
+        num_homes_pct_of_total="Share of customers",
+        subclass_pct_of_class_share="Share of NCP allocation",
+        ncp_timestamp="Own peak occurs at",
+        secondary_ncp_raw="Own peak (weighted kW)",
+        annual_kwh="Annual weighted kWh",
+    )
+    .tab_stubhead(label="Baseline heating type")
+    .tab_source_note(
+        "Share of NCP allocation = this subclass's own hourly peak ÷ the sum of every "
+        "subclass's own hourly peak. Peaks are each subclass's own maximum weighted hourly "
+        "grid consumption across the full year, not a single coincident system peak."
+    )
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+display_gt(_ncp_gt)
+```
+
+```{python}
+#| label: extract-report-vars
+
+report_vars.update(subclass_ncp_report_vars(ncp_shares))
+report_vars
+```
+
+Heat pump customers are `{python} f"{report_vars['hp_pct_of_customers']:.0f}%"` of MD BGE's
+residential population, but would account for
+`{python} f"{report_vars['hp_ncp_share_pct']:.0f}%"` of an NCP-based delivery cost allocation
+— disproportionate to their customer share. Their own peak occurs at
+`{python} report_vars['hp_ncp_timestamp'].strftime("%B %-d, %Y at %-I %p")`, a winter morning.
+Natural-gas-heated customers, still the largest subclass at
+`{python} f"{report_vars['natgas_pct_of_customers']:.0f}%"` of customers, would receive only
+`{python} f"{report_vars['natgas_ncp_share_pct']:.0f}%"` of that same allocation, with their
+own peak at `{python} report_vars['natgas_ncp_timestamp'].strftime("%B %-d, %Y at %-I %p")` —
+a summer afternoon. An NCP allocator scores each subclass on its own peak in isolation, so it
+never has to reconcile that these two subclasses aren't even peaking at the same time of year.
+
+## Export report variables
+
+This notebook writes to its own cache file (`ncp_report_variables.pkl`), separate from
+`analysis.qmd`'s `report_variables.pkl`, since both are rendered in the same Quarto project
+and a shared, fully-overwritten cache file would let whichever notebook renders last silently
+clobber the other's variables.
+
+```{python}
+#| label: export-report-vars
+
+Path("../cache").mkdir(exist_ok=True)
+Path("../cache/ncp_report_variables.pkl").write_bytes(pickle.dumps(report_vars))
+```

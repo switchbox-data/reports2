@@ -1,0 +1,167 @@
+---
+title: "Fair default fixed charge (Strategy A)"
+jupyter: python3
+---
+
+This notebook computes the **revenue-neutral fixed charge** that would eliminate
+the heat-pump delivery cross-subsidy on BGE's default rate, without changing
+total class delivery revenue. It implements Strategy A ("fixed_charge_only")
+from the fair-default rate design math (see
+`rate-design-platform/context/methods/tou_and_rates/fair_default_rate_design.md`,
+section 4).
+
+The key insight: because BGE's Schedule R has three seasonal volumetric periods,
+the V^0-based formula (which uses each customer's actual baseline volumetric
+bill) gives the correct answer, whereas the simpler kWh shortcut in the RDP
+solver assumes a flat rate and would produce a slightly different (incorrect)
+result. See `lib/rates_analysis/fair_default.py` for the full derivation.
+
+No CAIRO run is needed — the closed-form solution uses only aggregated
+quantities already available in the cost-of-service table and the calibrated
+tariff JSON from `analysis.qmd`.
+
+## Setup
+
+```{python}
+#| label: setup
+
+import pickle
+from pathlib import Path
+
+import yaml
+
+from lib.rates_analysis.fair_default import fair_default_fixed_charge_only
+from lib.rates_analysis.rate_case_funcs import (
+    cost_of_service_by_subclass,
+    extract_tariff_rates,
+    load_tariff_json,
+)
+
+report_vars: dict = {}
+```
+
+```{python}
+#| label: params
+
+_batch_config = yaml.safe_load(Path("../batch_config.yaml").read_text())
+
+STATE = _batch_config["STATE"]
+BATCH = _batch_config["BATCH"]
+RDP_REF = _batch_config["RDP_REF"]
+UTILITY = "bge"
+
+RESIDUAL = "percustomer"
+DEFAULT_SCENARIO = _batch_config["BASELINE_BILL_SCENARIO"]
+
+print(f"state={STATE}  batch={BATCH}  rdp_ref={RDP_REF}  utility={UTILITY}")
+```
+
+## Load COS inputs
+
+We reuse `cost_of_service_by_subclass()` — the same call `analysis.qmd` makes —
+to get the delivery revenue, customer count, and cross-subsidy for the heat-pump
+subclass and all customers.
+
+```{python}
+#| label: load-cos
+
+cos_tbl = cost_of_service_by_subclass(
+    STATE, BATCH, UTILITY, DEFAULT_SCENARIO,
+    bat_col=f"BAT_{RESIDUAL}_delivery",
+    residual=RESIDUAL,
+)
+cos_tbl
+```
+
+```{python}
+#| label: extract-scalars
+
+hp_row = cos_tbl.filter(cos_tbl["subclass"] == "Existing heat pump")
+all_row = cos_tbl.filter(cos_tbl["subclass"] == "All customers")
+
+class_revenue = float(all_row["revenue_delivery"][0])
+class_customers = float(all_row["n_customers"][0])
+hp_revenue = float(hp_row["revenue_delivery"][0])
+hp_customers = float(hp_row["n_customers"][0])
+hp_cross_subsidy = float(hp_row["cross_subsidy"][0])
+
+print(f"Class: revenue=${class_revenue:,.0f}  customers={class_customers:,.0f}")
+print(f"HP:    revenue=${hp_revenue:,.0f}  customers={hp_customers:,.0f}  cross-subsidy=${hp_cross_subsidy:,.0f}")
+```
+
+## Load baseline fixed charge
+
+The baseline fixed charge F_0 comes from BGE's calibrated default tariff — the
+same URDB JSON that `analysis.qmd` loads.
+
+```{python}
+#| label: load-tariff
+
+tariff_default = load_tariff_json(STATE, UTILITY, f"{UTILITY}_default_calibrated", RDP_REF)
+rates_default = extract_tariff_rates(tariff_default)
+f0 = rates_default["fixed_charge"]
+print(f"F_0 = ${f0:.2f}/month")
+print(f"Period rates: {rates_default['period_rates']}")
+print(f"Month → period: {rates_default['month_to_period']}")
+```
+
+## Solve for fair-default fixed charge
+
+```{python}
+#| label: solve
+
+result = fair_default_fixed_charge_only(
+    class_revenue=class_revenue,
+    class_customers=class_customers,
+    subclass_revenue=hp_revenue,
+    subclass_customers=hp_customers,
+    subclass_cross_subsidy=hp_cross_subsidy,
+    base_fixed_charge=f0,
+)
+print(f"F*       = ${result.fixed_charge:.2f}/month")
+print(f"Δ        = ${result.delta:+.2f}/month (from ${f0:.2f})")
+print(f"λ*       = {result.implied_lambda:.6f}")
+print(f"Feasible = {result.feasible}")
+```
+
+## Sanity checks
+
+Verify that the solution satisfies both constraints (C1: class revenue
+neutrality, C2: subclass cross-subsidy elimination).
+
+```{python}
+#| label: sanity-checks
+
+import math
+
+v0_cls = class_revenue - 12 * f0 * class_customers
+v0_hp = hp_revenue - 12 * f0 * hp_customers
+tc_hp = hp_revenue - hp_cross_subsidy
+
+c1_bill = 12 * result.fixed_charge * class_customers + result.implied_lambda * v0_cls
+c2_bill = 12 * result.fixed_charge * hp_customers + result.implied_lambda * v0_hp
+
+print(f"C1: 12·F*·N_cls + λ·V0_cls = ${c1_bill:,.2f}  (should equal RR = ${class_revenue:,.2f})")
+print(f"C2: 12·F*·N_hp  + λ·V0_hp  = ${c2_bill:,.2f}  (should equal TC_hp = ${tc_hp:,.2f})")
+
+assert math.isclose(c1_bill, class_revenue, rel_tol=1e-9), f"C1 violated: {c1_bill} != {class_revenue}"
+assert math.isclose(c2_bill, tc_hp, rel_tol=1e-9), f"C2 violated: {c2_bill} != {tc_hp}"
+print("Both constraints satisfied.")
+```
+
+## Export report variables
+
+```{python}
+#| label: export
+
+report_vars["fixed_charge"] = result.fixed_charge
+report_vars["fixed_charge_delta"] = result.delta
+report_vars["implied_lambda"] = result.implied_lambda
+report_vars["feasible"] = result.feasible
+
+cache_dir = Path("../cache")
+cache_dir.mkdir(exist_ok=True)
+cache_path = cache_dir / "flat_fair_default_report_variables.pkl"
+cache_path.write_bytes(pickle.dumps(report_vars))
+print(f"Exported {len(report_vars)} variables to {cache_path}")
+```

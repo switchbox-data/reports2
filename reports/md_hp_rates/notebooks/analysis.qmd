@@ -115,13 +115,15 @@ RDP_REF = _batch_config["RDP_REF"]
 UTILITY = "bge"
 YEAR = 2025
 
-RESIDUAL = 'percustomer' # percustomer or epmc
+RESIDUAL = "percustomer"  # percustomer or epmc
+
+BILL_COL = "energy_total_bill" # "energy_total_bill" (baseline), "energy_total_bill_lmi_48", or "energy_total_bill_lmi_100"
 
 DEFAULT_SCENARIO = _batch_config["BASELINE_BILL_SCENARIO"]
 SEASONAL_SCENARIO = f"hp_seasonal_{RESIDUAL}_passthrough"
 FLAT_SCENARIO = f"hp_flat_{RESIDUAL}_passthrough"
 
-print(f"state={STATE}  batch={BATCH}  rdp_ref={RDP_REF}  utility={UTILITY}")
+print(f"state={STATE}  batch={BATCH}  rdp_ref={RDP_REF}  utility={UTILITY}  bill_col={BILL_COL}")
 ```
 
 Batch `md_20260803_a` has two calibrated scenarios for MD BGE, each run at two stages:
@@ -138,6 +140,13 @@ Batch `md_20260803_a` has two calibrated scenarios for MD BGE, each run at two s
 No time-of-use or flat-rate heat-pump scenario exists yet in MD BGE's pipeline
 config — the report bullets that depend on those are flagged as blocked below, not filled in
 with invented numbers.
+
+Every bill-change comparison in this notebook (every `bill_delta_between_segments()` and
+`plot_bill_change_quadrants()` call) reads the `BILL_COL` column set in the params cell
+above — currently **`{python} BILL_COL`**. Leaving it at `energy_total_bill` compares
+baseline (undiscounted) bills; switching it to `energy_total_bill_lmi_48` or
+`energy_total_bill_lmi_100` reruns every comparison below net of Maryland's OHEP low-income
+bill discount, at 48% or 100% participation respectively.
 
 ## Import data
 
@@ -195,7 +204,7 @@ cross-scenario comparisons below valid (they're diffing the same population agai
 
 How often does a natural-gas-heated MD BGE home end up with a *higher* total annual
 energy bill (electric + gas) after switching to a heat pump, if nothing about the rate design
-changes? We diff each building's annual `energy_total_bill` between `default_precalc`
+changes? We diff each building's annual **`{python} BILL_COL`** between `default_precalc`
 (today's HVAC, today's tariff) and `default_calibrated` (same building retrofitted to a heat
 pump, same tariff family, recalibrated for the new load) — a same-scenario,
 before/after-retrofit comparison — restricted to buildings whose baseline heating fuel is
@@ -205,7 +214,7 @@ natural gas.
 #| label: compute-natgas-hp-delta-default
 
 delta_natgas_default = bill_delta_between_segments(
-    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED, bill_col=BILL_COL
 ).filter(pl.col("heating_type_v2") == "natgas")
 
 incidence_natgas_default = bill_change_incidence(delta_natgas_default)
@@ -240,6 +249,7 @@ baseline heating type.
 
 plot_bill_change_quadrants(
     STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED,
+    bill_col=BILL_COL,
     rate_name="default rate",
 )
 ```
@@ -252,6 +262,7 @@ plot_bill_change_quadrants(
 
 plot_bill_change_quadrants(
     STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_SEASONAL_CALIBRATED,
+    bill_col=BILL_COL,
     rate_name="HP seasonal rate"
 )
 ```
@@ -263,6 +274,7 @@ plot_bill_change_quadrants(
 
 plot_bill_change_quadrants(
     STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_FLAT_CALIBRATED,
+    bill_col=BILL_COL,
     rate_name="HP flat rate"
 )
 ```
@@ -275,11 +287,11 @@ before/after-retrofit comparisons.
 #| label: natgas-bill-change-histogram-helpers
 
 delta_natgas_default_to_seasonal = bill_delta_between_segments(
-    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_SEASONAL_CALIBRATED
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_SEASONAL_CALIBRATED, bill_col=BILL_COL
 ).filter(pl.col("heating_type_v2") == "natgas")
 
 delta_natgas_default_to_flat = bill_delta_between_segments(
-    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_FLAT_CALIBRATED
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_FLAT_CALIBRATED, bill_col=BILL_COL
 ).filter(pl.col("heating_type_v2") == "natgas")
 ```
 
@@ -694,7 +706,7 @@ being compared:
 ```{python}
 #| label: compute-ratedesign-delta
 
-delta_ratedesign = bill_delta_between_segments(STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_FLAT_PRECALC)
+delta_ratedesign = bill_delta_between_segments(STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_FLAT_PRECALC, bill_col=BILL_COL)
 
 incidence_hp_ratedesign = bill_change_incidence(delta_ratedesign.filter(pl.col("has_hp")))
 incidence_nonhp_ratedesign = bill_change_incidence(delta_ratedesign.filter(~pl.col("has_hp")))
@@ -752,7 +764,7 @@ time under the seasonal reform tariff instead of the default rate.
 #| label: compute-natgas-hp-delta-seasonal
 
 delta_natgas_seasonal = bill_delta_between_segments(
-    STATE, BATCH, SEG_SEASONAL_PRECALC, SEG_SEASONAL_CALIBRATED
+    STATE, BATCH, SEG_SEASONAL_PRECALC, SEG_SEASONAL_CALIBRATED, bill_col=BILL_COL
 ).filter(pl.col("heating_type_v2") == "natgas")
 
 incidence_natgas_seasonal = bill_change_incidence(delta_natgas_seasonal)

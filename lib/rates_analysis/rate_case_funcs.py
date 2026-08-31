@@ -428,6 +428,7 @@ def plot_bill_change_quadrants(
     segment_before: str,
     segment_after: str,
     *,
+    bill_col: str = "energy_total_bill",
     rate_name: str = "current rate",
     heating_types: list[str] | None = None,
 ) -> ggplot:
@@ -442,6 +443,12 @@ def plot_bill_change_quadrants(
     "would this customer save money switching to a heat pump" under a
     different candidate rate, all relative to the same before-retrofit
     baseline bill.
+
+    *bill_col* is passed straight through to ``bill_delta_between_segments()``
+    — defaults to ``"energy_total_bill"`` (baseline bills) but can be set to
+    an LMI-discounted column (e.g. ``"energy_total_bill_lmi_48"``) when the
+    master bills table has one, to show bill changes net of existing
+    low-income assistance instead.
 
     Each bar shows the weighted % of households in four bins: savings/losses
     of $0-1k and >$1k a year. *rate_name* is threaded into the chart title
@@ -467,7 +474,7 @@ def plot_bill_change_quadrants(
 
     from lib.plotnine import theme_switchbox
 
-    delta = bill_delta_between_segments(state, batch, segment_before, segment_after)
+    delta = bill_delta_between_segments(state, batch, segment_before, segment_after, bill_col=bill_col)
     if heating_types is not None:
         delta = delta.filter(pl.col("heating_type_v2").is_in(heating_types))
     else:

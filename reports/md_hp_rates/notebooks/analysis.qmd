@@ -68,6 +68,7 @@ from lib.rates_analysis.rate_case_funcs import (
     bat_by_group,
     bill_change_incidence,
     bill_delta_between_segments,
+    burden_shares,
     compare_bat_across_scenarios,
     cost_of_service_by_subclass,
     extract_tariff_rates,
@@ -77,6 +78,7 @@ from lib.rates_analysis.rate_case_funcs import (
     load_tariff_json,
     monthly_bill_components,
     plot_bill_change_quadrants,
+    plot_burden_bar_by_utility,
     plot_decomposed_bill_3bar,
     plot_mc_heatmap,
     plot_monthly_bill_components,
@@ -115,13 +117,24 @@ RDP_REF = _batch_config["RDP_REF"]
 UTILITY = "bge"
 YEAR = 2025
 
-RESIDUAL = 'percustomer' # percustomer or epmc
+# residual
+RESIDUAL = "percustomer"  # percustomer or epmc
+
+# bills
+BILL_COL_LMI_CURRENT = "energy_total_bill_lmi_48"
+BILL_COL_LMI_100 = "energy_total_bill_lmi_100"
+BILL_COL_BASELINE = "energy_total_bill"
+
+
+# this is the column that will be used for all comparisons and plots
+BILL_COL = BILL_COL_LMI_CURRENT  # BILL_COL_BASELINE, BILL_COL_LMI_CURRENT, or BILL_COL_LMI_100
+
 
 DEFAULT_SCENARIO = _batch_config["BASELINE_BILL_SCENARIO"]
 SEASONAL_SCENARIO = f"hp_seasonal_{RESIDUAL}_passthrough"
 FLAT_SCENARIO = f"hp_flat_{RESIDUAL}_passthrough"
 
-print(f"state={STATE}  batch={BATCH}  rdp_ref={RDP_REF}  utility={UTILITY}")
+print(f"state={STATE}  batch={BATCH}  rdp_ref={RDP_REF}  utility={UTILITY}  bill_col={BILL_COL}")
 ```
 
 Batch `md_20260803_a` has two calibrated scenarios for MD BGE, each run at two stages:
@@ -139,12 +152,21 @@ No time-of-use or flat-rate heat-pump scenario exists yet in MD BGE's pipeline
 config — the report bullets that depend on those are flagged as blocked below, not filled in
 with invented numbers.
 
+Every bill-change comparison in this notebook (every `bill_delta_between_segments()` and
+`plot_bill_change_quadrants()` call) reads the `BILL_COL` column set in the params cell
+above — currently **`{python} BILL_COL`**. Leaving it at `energy_total_bill` compares
+baseline (undiscounted) bills; switching it to `energy_total_bill_lmi_48` or
+`energy_total_bill_lmi_100` reruns every comparison below net of Maryland's OHEP low-income
+bill discount, at 48% or 100% participation respectively.
+
 ## Import data
 
 The master bills and BAT tables are pre-built, Hive-partitioned parquet datasets — one row
 per building per month (bills) or per building (BAT) — with ResStock metadata columns
-already joined in. We load all four segments as LazyFrames; nothing is materialized until a
-later cell filters and collects what it needs.
+already joined in. We load the default, seasonal, and flat-calibrated segments as
+LazyFrames (the energy-burden section below needs `bills_flat_calibrated` directly, in
+addition to the default/seasonal LazyFrames already used elsewhere); nothing is materialized
+until a later cell filters and collects what it needs.
 
 ```{python}
 #| label: ingest
@@ -160,6 +182,7 @@ bills_default_precalc = load_master_bills(STATE, BATCH, SEG_DEFAULT_PRECALC)
 bills_default_calibrated = load_master_bills(STATE, BATCH, SEG_DEFAULT_CALIBRATED)
 bills_seasonal_precalc = load_master_bills(STATE, BATCH, SEG_SEASONAL_PRECALC)
 bills_seasonal_calibrated = load_master_bills(STATE, BATCH, SEG_SEASONAL_CALIBRATED)
+bills_flat_calibrated = load_master_bills(STATE, BATCH, SEG_FLAT_CALIBRATED)
 ```
 
 Let's look at a sample of the `default_precalc` bills to see what's in the table, and check
@@ -195,7 +218,7 @@ cross-scenario comparisons below valid (they're diffing the same population agai
 
 How often does a natural-gas-heated MD BGE home end up with a *higher* total annual
 energy bill (electric + gas) after switching to a heat pump, if nothing about the rate design
-changes? We diff each building's annual `energy_total_bill` between `default_precalc`
+changes? We diff each building's annual **`{python} BILL_COL`** between `default_precalc`
 (today's HVAC, today's tariff) and `default_calibrated` (same building retrofitted to a heat
 pump, same tariff family, recalibrated for the new load) — a same-scenario,
 before/after-retrofit comparison — restricted to buildings whose baseline heating fuel is
@@ -205,7 +228,7 @@ natural gas.
 #| label: compute-natgas-hp-delta-default
 
 delta_natgas_default = bill_delta_between_segments(
-    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED, bill_col=BILL_COL
 ).filter(pl.col("heating_type_v2") == "natgas")
 
 incidence_natgas_default = bill_change_incidence(delta_natgas_default)
@@ -240,6 +263,7 @@ baseline heating type.
 
 plot_bill_change_quadrants(
     STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED,
+    bill_col=BILL_COL,
     rate_name="default rate",
 )
 ```
@@ -252,6 +276,7 @@ plot_bill_change_quadrants(
 
 plot_bill_change_quadrants(
     STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_SEASONAL_CALIBRATED,
+    bill_col=BILL_COL,
     rate_name="HP seasonal rate"
 )
 ```
@@ -263,6 +288,7 @@ plot_bill_change_quadrants(
 
 plot_bill_change_quadrants(
     STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_FLAT_CALIBRATED,
+    bill_col=BILL_COL,
     rate_name="HP flat rate"
 )
 ```
@@ -275,11 +301,11 @@ before/after-retrofit comparisons.
 #| label: natgas-bill-change-histogram-helpers
 
 delta_natgas_default_to_seasonal = bill_delta_between_segments(
-    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_SEASONAL_CALIBRATED
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_SEASONAL_CALIBRATED, bill_col=BILL_COL
 ).filter(pl.col("heating_type_v2") == "natgas")
 
 delta_natgas_default_to_flat = bill_delta_between_segments(
-    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_FLAT_CALIBRATED
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_FLAT_CALIBRATED, bill_col=BILL_COL
 ).filter(pl.col("heating_type_v2") == "natgas")
 ```
 
@@ -694,7 +720,7 @@ being compared:
 ```{python}
 #| label: compute-ratedesign-delta
 
-delta_ratedesign = bill_delta_between_segments(STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_FLAT_PRECALC)
+delta_ratedesign = bill_delta_between_segments(STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_FLAT_PRECALC, bill_col=BILL_COL)
 
 incidence_hp_ratedesign = bill_change_incidence(delta_ratedesign.filter(pl.col("has_hp")))
 incidence_nonhp_ratedesign = bill_change_incidence(delta_ratedesign.filter(~pl.col("has_hp")))
@@ -752,7 +778,7 @@ time under the seasonal reform tariff instead of the default rate.
 #| label: compute-natgas-hp-delta-seasonal
 
 delta_natgas_seasonal = bill_delta_between_segments(
-    STATE, BATCH, SEG_SEASONAL_PRECALC, SEG_SEASONAL_CALIBRATED
+    STATE, BATCH, SEG_SEASONAL_PRECALC, SEG_SEASONAL_CALIBRATED, bill_col=BILL_COL
 ).filter(pl.col("heating_type_v2") == "natgas")
 
 incidence_natgas_seasonal = bill_change_incidence(delta_natgas_seasonal)
@@ -950,11 +976,214 @@ plot_representative_cost_breakdown(
 )
 ```
 
-## Energy burden — out of scope this pass
+## Energy burden
 
-The report's energy-burden bullets (asking what share of customers are burdened under current
-HVAC vs. heat pumps, under default vs. reform rates) are deferred; `in.representative_income`
-is already present on the master bills table if this gets picked up in a follow-up.
+Beyond the bill-change and cross-subsidy questions above, we ask a third question: for
+low-income customers, how much of their income goes to energy bills, and does that share
+cross a common "energy burden" threshold? We look at MD BGE's LMI-eligible, natural-gas-heated
+cohort — households flagged `is_lmi_any` (eligible for Maryland's OHEP low-income discount,
+MEAP + EUSP combined) with a valid ResStock-modeled income — across four scenarios: today's
+HVAC on the default rate, a heat pump on the default rate, and a heat pump on a reform rate
+at both OHEP's currently-modeled participation rate and a hypothetical 100% participation
+rate. We do this once for the seasonal reform rate and once for the flat reform rate.
+
+```{python}
+#| label: burden-constants
+
+INCOME_COL = "in.representative_income"
+RESSTOCK_INCOME_DOLLAR_YEAR = 2019
+BURDEN_THRESHOLD = 0.06
+PATH_CPI = "s3://data.sb/fred/cpi/"
+LMI_CURRENT_ENROLLMENT_PCT = 48  # this batch's modeled OHEP participation rate (energy_total_bill_lmi_48)
+UTIL_NAMES = {"bge": "Baltimore Gas & Electric"}
+UTIL_ORDER_CODES = ["bge"]
+
+report_vars["burden_threshold"] = BURDEN_THRESHOLD
+report_vars["lmi_current_enrollment_pct"] = LMI_CURRENT_ENROLLMENT_PCT / 100
+```
+
+ResStock's `in.representative_income` is denominated in 2019 dollars (ACS 2018 survey
+vintage), while bills are priced at current tariff rates (`{python} f"{YEAR}"`). We inflate
+income to the bills' dollar year via CPI before computing burden ratios, using the same
+FRED CPI series the LMI tier-assignment pipeline uses.
+
+```{python}
+#| label: burden-cpi
+
+_cpi = pl.read_parquet(PATH_CPI)
+_cpi_from = float(_cpi.filter(pl.col("year") == RESSTOCK_INCOME_DOLLAR_YEAR)["value"][0])
+_cpi_to = float(_cpi.filter(pl.col("year") == YEAR)["value"][0])
+INCOME_CPI_RATIO = _cpi_to / _cpi_from
+print(f"CPI inflation ratio {RESSTOCK_INCOME_DOLLAR_YEAR}->{YEAR}: {INCOME_CPI_RATIO:.4f}")
+```
+
+The LMI-eligible, gas-heated cohort: natural-gas-heated buildings (`heats_with_natgas`) that
+are OHEP-eligible (`is_lmi_any`) with a positive modeled income. We read these from
+`default_precalc` — heating fuel, LMI eligibility, and income are baseline attributes that
+carry across every segment (they don't change when a building is retrofitted to a heat pump
+or when the tariff is recalibrated).
+
+```{python}
+#| label: burden-cohort
+
+low_income_gas_bldgs = cast(
+    pl.DataFrame,
+    bills_default_precalc.filter(pl.col("month") == "Annual")
+    .filter(pl.col("heats_with_natgas") & pl.col("is_lmi_any") & (pl.col(INCOME_COL) > 0))
+    .select("bldg_id", INCOME_COL, "sb.electric_utility")
+    .collect(),
+)
+income_df = low_income_gas_bldgs.select("bldg_id", INCOME_COL)
+
+print(f"LMI-eligible, gas-heated cohort: {low_income_gas_bldgs.height:,} buildings")
+```
+
+For each reform rate, we compute the weighted share of this cohort above/below the
+`{python} f"{BURDEN_THRESHOLD:.0%}"` burden threshold across four scenarios: current HVAC on
+the default rate, a heat pump on the default rate, and a heat pump on the reform rate at
+both OHEP's modeled `{python} f"{LMI_CURRENT_ENROLLMENT_PCT}"`% participation and a
+hypothetical 100% participation. `burden_shares()` (from `rate_case_funcs`) does the actual
+weighting; we call it once per utility (just BGE here) so the notebook generalizes to a
+multi-utility batch without changes.
+
+```{python}
+#| label: burden-compute-seasonal
+
+burden_by_utility_seasonal: dict[str, dict[str, tuple[float, float]]] = {}
+for code in UTIL_ORDER_CODES:
+    util_bldg_ids = low_income_gas_bldgs.filter(pl.col("sb.electric_utility") == code)["bldg_id"].to_list()
+    if len(util_bldg_ids) < 10:
+        continue
+    util_income = income_df.filter(pl.col("bldg_id").is_in(util_bldg_ids))
+    burden_by_utility_seasonal[code] = {
+        "current": burden_shares(
+            bills_default_precalc, util_bldg_ids, util_income, [BILL_COL_LMI_CURRENT],
+            BURDEN_THRESHOLD, income_col=INCOME_COL, income_cpi_ratio=INCOME_CPI_RATIO,
+        ),
+        "hp_default": burden_shares(
+            bills_default_calibrated, util_bldg_ids, util_income, [BILL_COL_LMI_CURRENT],
+            BURDEN_THRESHOLD, income_col=INCOME_COL, income_cpi_ratio=INCOME_CPI_RATIO,
+        ),
+        "hp_seasonal_current": burden_shares(
+            bills_seasonal_calibrated, util_bldg_ids, util_income, [BILL_COL_LMI_CURRENT],
+            BURDEN_THRESHOLD, income_col=INCOME_COL, income_cpi_ratio=INCOME_CPI_RATIO,
+        ),
+        "hp_seasonal_100": burden_shares(
+            bills_seasonal_calibrated, util_bldg_ids, util_income, [BILL_COL_LMI_100],
+            BURDEN_THRESHOLD, income_col=INCOME_COL, income_cpi_ratio=INCOME_CPI_RATIO,
+        ),
+    }
+
+for code, data in burden_by_utility_seasonal.items():
+    print(
+        f"{UTIL_NAMES[code]:25s}  Current: {data['current'][1]:5.1f}%  "
+        f"HP default: {data['hp_default'][1]:5.1f}%  "
+        f"HP seasonal: {data['hp_seasonal_current'][1]:5.1f}%  "
+        f"HP seasonal+100%LMI: {data['hp_seasonal_100'][1]:5.1f}%"
+    )
+```
+
+```{python}
+#| label: report-vars-burden-seasonal
+
+_bge_seasonal = burden_by_utility_seasonal["bge"]
+report_vars["burden_pct_above_threshold_current"] = _bge_seasonal["current"][1] / 100
+report_vars["burden_pct_above_threshold_hp_default"] = _bge_seasonal["hp_default"][1] / 100
+report_vars["burden_pct_above_threshold_hp_seasonal_current"] = _bge_seasonal["hp_seasonal_current"][1] / 100
+report_vars["burden_pct_above_threshold_hp_seasonal_100"] = _bge_seasonal["hp_seasonal_100"][1] / 100
+```
+
+```{python}
+#| label: fig-burden-seasonal
+#| fig-cap: "Share of LMI-eligible, natural-gas-heated MD BGE households above the 6% energy-burden threshold, under the seasonal reform rate."
+
+display_svg(
+    plot_burden_bar_by_utility(
+        burden_by_utility_seasonal,
+        UTIL_NAMES,
+        UTIL_ORDER_CODES,
+        scenario_keys=["current", "hp_default", "hp_seasonal_current", "hp_seasonal_100"],
+        scenario_labels=[
+            f"Current HVAC\nDefault Rate\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+            f"Heat Pump\nDefault Rate\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+            f"Heat Pump\nSeasonal Rate\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+            "Heat Pump\nSeasonal Rate\n100% LMI Discounts",
+        ],
+        burden_threshold=BURDEN_THRESHOLD,
+        title="Energy burdens for LMI customers, seasonal rate",
+    )
+)
+```
+
+We repeat the same four-scenario comparison for the **flat** reform rate.
+
+```{python}
+#| label: burden-compute-flat
+
+burden_by_utility_flat: dict[str, dict[str, tuple[float, float]]] = {}
+for code in UTIL_ORDER_CODES:
+    util_bldg_ids = low_income_gas_bldgs.filter(pl.col("sb.electric_utility") == code)["bldg_id"].to_list()
+    if len(util_bldg_ids) < 10:
+        continue
+    util_income = income_df.filter(pl.col("bldg_id").is_in(util_bldg_ids))
+    burden_by_utility_flat[code] = {
+        "current": burden_shares(
+            bills_default_precalc, util_bldg_ids, util_income, [BILL_COL_LMI_CURRENT],
+            BURDEN_THRESHOLD, income_col=INCOME_COL, income_cpi_ratio=INCOME_CPI_RATIO,
+        ),
+        "hp_default": burden_shares(
+            bills_default_calibrated, util_bldg_ids, util_income, [BILL_COL_LMI_CURRENT],
+            BURDEN_THRESHOLD, income_col=INCOME_COL, income_cpi_ratio=INCOME_CPI_RATIO,
+        ),
+        "hp_flat_current": burden_shares(
+            bills_flat_calibrated, util_bldg_ids, util_income, [BILL_COL_LMI_CURRENT],
+            BURDEN_THRESHOLD, income_col=INCOME_COL, income_cpi_ratio=INCOME_CPI_RATIO,
+        ),
+        "hp_flat_100": burden_shares(
+            bills_flat_calibrated, util_bldg_ids, util_income, [BILL_COL_LMI_100],
+            BURDEN_THRESHOLD, income_col=INCOME_COL, income_cpi_ratio=INCOME_CPI_RATIO,
+        ),
+    }
+
+for code, data in burden_by_utility_flat.items():
+    print(
+        f"{UTIL_NAMES[code]:25s}  Current: {data['current'][1]:5.1f}%  "
+        f"HP default: {data['hp_default'][1]:5.1f}%  "
+        f"HP flat: {data['hp_flat_current'][1]:5.1f}%  "
+        f"HP flat+100%LMI: {data['hp_flat_100'][1]:5.1f}%"
+    )
+```
+
+```{python}
+#| label: report-vars-burden-flat
+
+_bge_flat = burden_by_utility_flat["bge"]
+report_vars["burden_pct_above_threshold_hp_flat_current"] = _bge_flat["hp_flat_current"][1] / 100
+report_vars["burden_pct_above_threshold_hp_flat_100"] = _bge_flat["hp_flat_100"][1] / 100
+```
+
+```{python}
+#| label: fig-burden-flat
+#| fig-cap: "Share of LMI-eligible, natural-gas-heated MD BGE households above the 6% energy-burden threshold, under the flat reform rate."
+display_svg(
+plot_burden_bar_by_utility(
+    burden_by_utility_flat,
+    UTIL_NAMES,
+    UTIL_ORDER_CODES,
+    scenario_keys=["current", "hp_default", "hp_flat_current", "hp_flat_100"],
+    scenario_labels=[
+        f"Current HVAC\nDefault Rate\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+        f"Heat Pump\nDefault Rate\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+        f"Heat Pump\nFlat Rate\n~{LMI_CURRENT_ENROLLMENT_PCT}% LMI Discounts",
+        "Heat Pump\nFlat Rate\n100% LMI Discounts",
+    ])
+)
+```
+
+Across both reform rates, the "current" and "HP default" bars are identical by construction
+— they don't depend on the reform rate at all — so only the third and fourth bars (the
+reform rate at modeled and 100% LMI participation) differ between the seasonal and flat
+charts above.
 
 ## Export report variables
 

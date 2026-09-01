@@ -375,7 +375,7 @@ Key rate components:
 
 ---
 
-## Company Exhibit JAK-2: E-Sheets Summary
+## Company Exhibit JAK-2: E-Sheets (Rate Development Exhibits)
 
 ### Sheet E-1: Revenue Summary by Schedule
 
@@ -392,6 +392,198 @@ Key rate components:
 | SL        | $2,514,892         | 6.0%                   | 8.2%                            |
 | PL        | $0                 | 0.0%                   | 0.0%                            |
 | **Total** | **$156,098,502**   | **2.8%**               | **9.5%**                        |
+
+### Sheet E-2: Two-Step Revenue Allocation
+
+Based on 12 months actual ending March 2026.
+
+**Step 1**: Move classes with RROR below 0.90 toward system average. Only Schedule R qualifies (RROR 0.65); allocation moves it 50% toward 0.90.
+
+**Step 2**: Remaining increase allocated proportionally to base revenues (excluding Schedules T and PL).
+
+| Schedule  | Base Revenue at Current Rates | Relative RROR | Step 1 Allocation | Step 2 Allocation | Total Allocation |
+| --------- | ----------------------------- | ------------- | ----------------- | ----------------- | ---------------- |
+| R         | $731,639,007                  | 0.65          | $32,043,473       | $68,037,464       | $100,080,936     |
+| RL        | $48,718,575                   | 0.91          | --                | $4,530,497        | $4,530,497       |
+| G         | $133,845,488                  | 1.41          | --                | $12,446,722       | $12,446,722      |
+| GU        | $282,053                      | 1.41          | --                | $26,229           | $26,229          |
+| GS        | $10,937,796                   | 1.85          | --                | $1,017,141        | $1,017,141       |
+| GL        | $307,849,492                  | 1.63          | --                | $28,627,914       | $28,627,914      |
+| P         | $73,903,185                   | 1.27          | --                | $6,872,495        | $6,872,495       |
+| T         | $1,842,151                    | 20.46         | --                | --                | --               |
+| SL        | $27,024,184                   | 1.06          | --                | $2,513,066        | $2,513,066       |
+| PL        | $21,471,092                   | 2.70          | --                | --                | --               |
+| **Total** | **$1,357,513,023**            |               | **$32,043,473**   | **$124,071,527**  | **$156,115,000** |
+
+### Sheet E-3: Schedule R — Residential Service
+
+| Component            | Billing Determinants | Current Effective Rate | Revenue at Current Rates | Proposed Billing Det. | Proposed Rate | Proposed Revenue | Change           | % Change |
+| -------------------- | -------------------- | ---------------------- | ------------------------ | --------------------- | ------------- | ---------------- | ---------------- | -------- |
+| Customer Charge      | 13,973,317 bills     | $10.00/bill            | $139,733,170             | 13,973,317 bills      | $11.00/bill   | $153,706,487     | $13,973,317      | 10.0%    |
+| Delivery Service Chg | 12,191,675,329 kWh   | $0.04855/kWh           | $591,905,837             | 11,897,218,812 kWh    | $0.05699/kWh  | $678,022,500     | $86,116,663      | 14.5%    |
+| **Total**            |                      |                        | **$731,639,007**         |                       |               | **$831,728,987** | **$100,089,980** | 13.7%    |
+
+Revenue allocated: $100,080,936. Difference from allocated: $9,044.
+
+Note: Rider 25 adjustment of -$0.00004/kWh applied to current rate to get effective rate.
+
+### Sheet E-4: Schedule RL — Residential Optional TOU
+
+| Component            | Billing Determinants | Current Effective Rate | Revenue at Current Rates | Proposed Billing Det. | Proposed Rate | Proposed Revenue | Change         | % Change |
+| -------------------- | -------------------- | ---------------------- | ------------------------ | --------------------- | ------------- | ---------------- | -------------- | -------- |
+| Customer Charge      | 693,925 bills        | $12.00/bill            | $8,327,100               | 693,925 bills         | $12.00/bill   | $8,327,100       | $0             | 0.0%     |
+| Delivery Service Chg | 818,801,439 kWh      | $0.04933/kWh           | $40,391,475              | 818,485,374 kWh       | $0.05488/kWh  | $44,918,477      | $4,527,002     | 11.2%    |
+| **Total**            |                      |                        | **$48,718,575**          |                       |               | **$53,245,577**  | **$4,527,002** | 9.3%     |
+
+Revenue allocated: $4,530,497. Difference from allocated: -$3,495.
+
+### Sheet E-5: Schedule G — General Service
+
+| Component                    | Billing Determinants | Current Effective Rate | Revenue at Current Rates | Proposed Billing Det. | Proposed Rate | Proposed Revenue | Change          | % Change |
+| ---------------------------- | -------------------- | ---------------------- | ------------------------ | --------------------- | ------------- | ---------------- | --------------- | -------- |
+| Customer Charge (Secondary)  | 1,323,557 bills      | $15.60/bill            | $20,647,489              | 1,323,557 bills       | $17.20/bill   | $22,765,180      | $2,117,691      | 10.3%    |
+| Customer Charge (Primary)    | 194 bills            | $15.60/bill            | $3,026                   | 194 bills             | $17.20/bill   | $3,337           | $310            | 10.3%    |
+| Delivery Svc Chg (Secondary) | 2,419,424,550 kWh    | $0.04676/kWh           | $113,132,292             | 2,444,327,361 kWh     | $0.05051/kWh  | $123,462,975     | $10,330,683     | 9.1%     |
+| Delivery Svc Chg (Primary)   | 1,315,143 kWh        | $0.04766/kWh           | $62,680                  | 1,315,143 kWh         | $0.04849/kWh  | $63,771          | $1,091          | 1.7%     |
+| **Total**                    |                      |                        | **$133,845,488**         |                       |               | **$146,295,263** | **$12,449,776** | 9.3%     |
+
+Revenue allocated: $12,446,722. Difference from allocated: $3,053.
+
+### Sheet E-6: Schedule GS — General Service Small
+
+| Component            | Billing Determinants | Current Effective Rate | Revenue at Current Rates | Proposed Billing Det. | Proposed Rate | Proposed Revenue | Change         | % Change |
+| -------------------- | -------------------- | ---------------------- | ------------------------ | --------------------- | ------------- | ---------------- | -------------- | -------- |
+| Customer Charge      | 33,462 bills         | $18.60/bill            | $622,393                 | 33,462 bills          | $18.60/bill   | $622,393         | $0             | 0.0%     |
+| Delivery Service Chg | 240,452,290 kWh      | $0.04290/kWh           | $10,315,403              | 246,866,515 kWh       | $0.04591/kWh  | $11,333,642      | $1,018,239     | 9.9%     |
+| **Total**            |                      |                        | **$10,937,796**          |                       |               | **$11,956,035**  | **$1,018,239** | 9.3%     |
+
+Revenue allocated: $1,017,141. Difference from allocated: $1,098.
+
+### Sheet E-7: Schedule GU — General Unmetered Service
+
+| Component            | Billing Determinants | Current Rate | Revenue at Current Rates | Proposed Billing Det. | Proposed Rate | Proposed Revenue | Change      | % Change |
+| -------------------- | -------------------- | ------------ | ------------------------ | --------------------- | ------------- | ---------------- | ----------- | -------- |
+| Customer Charge      | 25,920 bills         | $6.00/bill   | $155,520                 | 25,920 bills          | $6.00/bill    | $155,520         | $0          | 0.0%     |
+| Delivery Service Chg | 2,481,048 kWh        | $0.05100/kWh | $126,533                 | 2,481,048 kWh         | $0.06157/kWh  | $152,758         | $26,225     | 20.7%    |
+| **Total**            |                      |              | **$282,053**             |                       |               | **$308,278**     | **$26,225** | 9.3%     |
+
+Revenue allocated: $26,229. Difference from allocated: -$4.
+
+### Sheet E-8: Schedule GL — General Service Large
+
+| Component                     | Billing Determinants | Current Effective Rate | Revenue at Current Rates | Proposed Billing Det. | Proposed Rate | Proposed Revenue | Change          | % Change |
+| ----------------------------- | -------------------- | ---------------------- | ------------------------ | --------------------- | ------------- | ---------------- | --------------- | -------- |
+| Customer Charge (Secondary)   | 152,409 bills        | $97.00/bill            | $14,783,673              | 152,409 bills         | $97.00/bill   | $14,783,673      | $0              | 0.0%     |
+| Customer Charge (Primary)     | 3,052 bills          | $97.00/bill            | $296,044                 | 3,052 bills           | $97.00/bill   | $296,044         | $0              | 0.0%     |
+| **Demand Charge (Secondary)** | **18,555,235 kW**    | **$5.52/kW**           | **$102,424,897**         | **18,555,235 kW**     | **$6.32/kW**  | **$117,269,085** | **$14,844,188** | 14.5%    |
+| **Demand Charge (Primary)**   | **1,140,698 kW**     | **$5.30/kW**           | **$6,045,699**           | **1,140,698 kW**      | **$6.07/kW**  | **$6,924,037**   | **$878,337**    | 14.5%    |
+| Delivery Svc Chg (Secondary)  | 7,039,608,735 kWh    | $0.02503/kWh           | $176,201,407             | 7,054,703,014 kWh     | $0.02650/kWh  | $186,949,630     | $10,748,223     | 6.1%     |
+| Delivery Svc Chg (Primary)    | 506,427,181 kWh      | $0.01599/kWh           | $8,097,771               | 401,972,227 kWh       | $0.02544/kWh  | $10,226,173      | $2,128,402      | 26.3%    |
+| **Total**                     |                      |                        | **$307,849,492**         |                       |               | **$336,448,642** | **$28,599,150** | 9.3%     |
+
+Revenue allocated: $28,627,914. Difference from allocated: -$28,764.
+
+Note: Demand charge billing determinants are annual sums of monthly billed kW across all customers in the class. Secondary: 18,555,235 kW; Primary: 1,140,698 kW. Total demand charge revenue at current rates: $108,470,596 (secondary + primary). At proposed rates: $124,193,122.
+
+### Sheet E-9: Schedule P — Primary Voltage Service
+
+| Component            | Billing Determinants | Current Rate | Revenue at Current Rates | Proposed Billing Det. | Proposed Rate | Proposed Revenue | Change         | % Change |
+| -------------------- | -------------------- | ------------ | ------------------------ | --------------------- | ------------- | ---------------- | -------------- | -------- |
+| Customer Charge      | 3,833 bills          | $660.00/bill | $2,529,780               | 3,833 bills           | $660.00/bill  | $2,529,780       | $0             | 0.0%     |
+| **Demand Charge**    | **9,836,591 kW**     | **$3.99/kW** | **$39,247,998**          | **9,836,591 kW**      | **$4.38/kW**  | **$43,084,269**  | **$3,836,271** | 9.8%     |
+| Delivery Service Chg | 4,745,259,590 kWh    | $0.00677/kWh | $32,125,407              | 4,745,259,590 kWh     | $0.00741/kWh  | $35,162,374      | $3,036,967     | 9.5%     |
+| **Total**            |                      |              | **$73,903,185**          |                       |               | **$80,776,423**  | **$6,873,238** | 9.3%     |
+
+Revenue allocated: $6,872,495. Difference from allocated: $743.
+
+### Sheet E-10: Schedule T — Transmission Service
+
+| Component            | Billing Determinants | Current Rate   | Revenue at Current Rates | Proposed Billing Det. | Proposed Rate  | Proposed Revenue | Change | % Change |
+| -------------------- | -------------------- | -------------- | ------------------------ | --------------------- | -------------- | ---------------- | ------ | -------- |
+| Customer Charge      | 60 bills             | $2,400.00/bill | $144,000                 | 60 bills              | $2,400.00/bill | $144,000         | $0     | 0.0%     |
+| Delivery Service Chg | 832,426,966 kWh      | $0.00204/kWh   | $1,698,151               | 832,426,966 kWh       | $0.00204/kWh   | $1,698,151       | $0     | 0.0%     |
+| **Total**            |                      |                | **$1,842,151**           |                       |                | **$1,842,151**   | **$0** | 0.0%     |
+
+Revenue allocated: $0. No change proposed.
+
+### Sheet E-11: Schedule SL — Street Lighting (3 pages)
+
+Total revenue at current rates: $27,024,184. Total revenue at proposed rates: $29,539,077. Change: $2,514,892 (9.3%). Revenue allocated: $2,513,066.
+
+Revenue components:
+
+| Component                           | Revenue at Current | Revenue at Proposed | Change         | % Change |
+| ----------------------------------- | ------------------ | ------------------- | -------------- | -------- |
+| Delivery Service Charge (lamp-watt) | $2,414,058         | $3,420,240          | $1,006,182     | 41.7%    |
+| Facilities (UG cable, fixtures)     | $20,459,608        | $21,714,750         | $1,255,142     | 6.1%     |
+| Maintenance (reactive+preventive)   | $897,576           | $952,549            | $54,974        | 6.1%     |
+| Maintenance (reactive only)         | $3,252,943         | $3,451,537          | $198,594       | 6.1%     |
+| **Total**                           | **$27,024,184**    | **$29,539,077**     | **$2,514,892** | 9.3%     |
+
+Detailed fixture-level rates cover mercury vapor, sodium vapor, metal halide, and LED fixture types at various wattages, plus overhead/underground supplied poles, cable charges, and maintenance rates per lamp.
+
+### Sheet E-12: Schedule PL — Private Area Lighting (5 pages)
+
+Total revenue at current rates: $26,737,006 (total rates). Base delivery revenue at current rates: $21,471,092. No change proposed ($0 increase, 0.0%).
+
+Revenue components:
+
+| Component            | Fixtures | Revenue at Current (Total) | Revenue at Current (Delivery) |
+| -------------------- | -------- | -------------------------- | ----------------------------- |
+| Overhead Fixtures    | 231,227  | $3,254,154                 | $1,728,063                    |
+| Underground Fixtures | 356,935  | $7,073,055                 | $4,733,834                    |
+| LED Fixtures         | 314,156  | $6,651,735                 | $5,251,134                    |
+| UG Supplied Poles    | 518,340  | $9,751,096                 | $9,751,096                    |
+| Miscellaneous Equip. | 1,048    | $6,965                     | $6,965                        |
+| **Total**            |          | **$26,737,006**            | **$21,471,092**               |
+
+Note: Schedule PL rates include both a delivery component (column 1a) and a supply component (column 1b) in the current total rate. Proposed rates are unchanged.
+
+### Sheet E-13: Schedule RD — Revenue-Neutral TOU Rates
+
+Demonstrates that Schedule RD proposed rates are revenue-neutral to Schedule R proposed rates:
+
+| Component                 | Billing Determinants | Rate         | Revenue          |
+| ------------------------- | -------------------- | ------------ | ---------------- |
+| Customer Charge (=Sch R)  | 13,973,317 bills     | $11.00/bill  | $153,706,487     |
+| On-Peak Delivery Svc Chg  | 2,600,732,032 kWh    | $0.10733/kWh | $279,136,569     |
+| Off-Peak Delivery Svc Chg | 9,296,486,780 kWh    | $0.04291/kWh | $398,912,248     |
+| **Total RD Revenue**      | 11,897,218,812 kWh   |              | **$831,755,304** |
+| Sch R Revenue (E-3)       |                      |              | $831,728,987     |
+| Difference                |                      |              | $26,317 (0.0%)   |
+
+On-peak share: 21.9% of total kWh, 41.2% of delivery service revenue. Off-peak share: 78.1% of kWh, 58.8% of delivery service revenue.
+
+### Sheet E-14: Rider 25 Effective Rate Derivation (2 pages)
+
+Rider 25 (Monthly Rate Adjustment/decoupling) adjustments by schedule, calculated as the difference between the target base revenue and current Case 9692 RY3 delivery service rates:
+
+| Schedule         | Target Base Revenue | Customer Charge Rev | Demand Charge Rev | Delivery Charge Rev | Billing Det. (kWh) | Effective Rate | Current Rate | Rider 25 Adj. |
+| ---------------- | ------------------- | ------------------- | ----------------- | ------------------- | ------------------ | -------------- | ------------ | ------------- |
+| R                | $731,661,007        | $139,733,170        | --                | $591,927,901        | 12,191,675,329     | $0.04855/kWh   | $0.04859     | -$0.00004     |
+| RL               | $48,721,086         | $8,327,100          | --                | $40,393,986         | 818,801,439        | $0.04933/kWh   | $0.04830     | +$0.00103     |
+| G                | $133,770,739        | $20,647,489         | --                | $113,123,250        | 2,419,424,550      | $0.04676/kWh   | $0.04965     | -$0.00289     |
+| GS               | $10,938,157         | $622,393            | --                | $10,315,763         | 240,452,290        | $0.04290/kWh   | $0.04316     | -$0.00026     |
+| GL (Secondary)   | $293,376,818        | $14,783,673         | $102,424,897      | $176,168,248        | 7,039,608,735      | $0.02503/kWh   | $0.02346     | +$0.00157     |
+| GL (Primary/GLP) | $14,437,494         | $296,044            | $6,045,699        | $8,095,750          | 506,427,181        | $0.01599/kWh   | $0.02252     | -$0.00653     |
+
+### Sheet E-15: Percent Increase in Customers' Total Electric Bills
+
+| Schedule  | Distribution Rev from BGE Bills | Sales (kWh)        | Est. Commodity Rev | Total Est. BGE Bills | Change (E-1)     | % Increase |
+| --------- | ------------------------------- | ------------------ | ------------------ | -------------------- | ---------------- | ---------- |
+| R         | $854,658,922                    | 12,191,675,329     | $1,781,081,849     | $2,635,740,771       | $100,089,980     | 3.8%       |
+| RL        | $58,366,360                     | 818,801,439        | $119,618,702       | $177,985,062         | $4,527,002       | 2.5%       |
+| G         | $201,612,010                    | 2,420,739,693      | $329,632,124       | $531,244,134         | $12,449,776      | 2.3%       |
+| GU        | $424,887                        | 2,481,048          | $337,844           | $762,731             | $26,225          | 3.4%       |
+| GS        | $17,548,626                     | 240,452,290        | $32,742,388        | $50,291,014          | $1,018,239       | 2.0%       |
+| GL        | $368,015,602                    | 7,546,035,916      | $898,732,878       | $1,266,748,479       | $28,599,150      | 2.3%       |
+| P         | $88,234,642                     | 4,745,259,590      | $565,160,417       | $653,395,059         | $6,873,238       | 1.1%       |
+| T         | $3,986,427                      | 832,426,966        | $99,142,052        | $103,128,479         | $0               | 0.0%       |
+| SL        | $30,541,016                     | 129,867,726        | $11,456,931        | $41,997,947          | $2,514,892       | 6.0%       |
+| PL        | $21,409,131                     | 60,032,155         | $5,265,913         | $26,675,045          | $0               | 0.0%       |
+| **Total** | **$1,644,797,623**              | **28,987,772,152** | **$3,843,171,098** | **$5,487,968,721**   | **$156,098,502** | **2.8%**   |
+
+Estimated POLR rates used: R/RL $0.14609/kWh; G/GU/GS $0.13617/kWh; GL $0.11910/kWh; P/T $0.11910/kWh; SL $0.08822/kWh.
 
 ### Sheet E-16: Residential Bill Comparison (Schedule R)
 

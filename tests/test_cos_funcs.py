@@ -87,6 +87,7 @@ def _delta_frame_with_kwh_by_group() -> pl.DataFrame:
         {
             "bldg_id": [1, 2, 3],
             "weight": [2.0, 2.0, 2.0],
+            "has_hp": [False, False, False],
             "heating_type_v2": ["natgas", "natgas", "electrical_resistance"],
             "annual_bill_delivery_before": [100.0, 200.0, 300.0],
             "delta_annual_bill_delivery": [50.0, 20.0, -50.0],
@@ -133,3 +134,14 @@ def test_bat_component_summary_by_heating_type_weighted_sum_ratio() -> None:
     # even though every individual group's ratio was positive -- exactly the kind of
     # aggregation pitfall the by-heating-type breakdown exists to surface.
     assert total["mc_dollars_per_incremental_kwh"][0] == pytest.approx(-20.0 / 400.0)
+
+
+def test_bat_component_summary_by_heating_type_rejects_has_hp_rows() -> None:
+    """The "All non-HP" total row is only accurate if has_hp buildings were already
+    excluded upstream (bat_component_delta(exclude_has_hp=True)) -- this function
+    can't re-derive that itself, so it must raise rather than silently mislabel the
+    total when a caller passes it a frame that still has has_hp=True buildings."""
+    bat_delta = _delta_frame_with_kwh_by_group().with_columns(pl.Series("has_hp", [False, True, False]))
+
+    with pytest.raises(ValueError, match="has_hp"):
+        bat_component_summary_by_heating_type(bat_delta)

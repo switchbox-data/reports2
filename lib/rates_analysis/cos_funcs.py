@@ -115,6 +115,13 @@ def bat_component_summary_by_heating_type(
     one frame) and summarizes it one row per *group_col* value, plus a
     trailing "All non-HP" total row.
 
+    Precondition: *bat_delta* must already have baseline heat-pump buildings
+    excluded (e.g. via ``bat_component_delta(exclude_has_hp=True)``, the
+    default that ``bat_component_delta_with_gap()`` goes through) — this
+    function trusts that exclusion for the "All non-HP" label rather than
+    re-deriving it, and raises ``ValueError`` if any ``has_hp`` row slips
+    through.
+
     Percent change and `$`-per-incremental-kWh are both **weighted-sum
     ratios** (``sum(weight * x) / sum(weight * y)``), not averages of each
     building's own ratio. A per-building ratio blows up for any building
@@ -135,6 +142,14 @@ def bat_component_summary_by_heating_type(
     import polars as pl
 
     from lib.rates_analysis.rate_case_funcs import HEATING_ORDER, HEATING_TYPE_LABELS
+
+    if bat_delta["has_hp"].any():
+        n_hp = bat_delta["has_hp"].sum()
+        raise ValueError(
+            f"bat_component_summary_by_heating_type() assumes has_hp buildings were already "
+            f"excluded upstream (see bat_component_delta(exclude_has_hp=True)); got {n_hp} rows "
+            f"with has_hp=True."
+        )
 
     revenue_before_col = f"{revenue_col}_before"
     revenue_delta_col = f"delta_{revenue_col}"

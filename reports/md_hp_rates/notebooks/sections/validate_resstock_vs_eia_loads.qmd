@@ -1,0 +1,548 @@
+---
+jupyter: python3
+execute:
+  warning: false
+  message: false
+---
+
+# Validate ResStock loads against EIA-861
+
+This notebook loads ResStock building metadata, utility assignments, and annual load
+curves for MD, then compares weighted residential totals to EIA-861
+utility sales — first on customer counts, then on kWh after adjusting for
+customer-count mismatch.
+
+By default it reads metadata and annual loads from the **`_sb`** companion release
+(`res_2024_amy2018_2_sb`); set `USE_SB_RELEASE = False` to read the same tables from
+the raw NREL release (`res_2024_amy2018_2`) instead — e.g. to see how much
+Switchbox's post-processing (MF non-HVAC scaling, non-HP approximation) moves the
+comparison.
+
+---
+
+## How to use
+
+1. Set `STATE` (lowercase 2-letter abbreviation) and `RESSTOCK_RELEASE` (the **raw**,
+   non-`_sb` release name) in Parameters.
+2. Set `USE_SB_RELEASE` (default `True`) to choose the `_sb` or raw release for
+   metadata and annual load curves.
+3. Optionally set `UPGRADE` (default `"00"`) and `EIA_YEAR` (default `2018`, to match
+   ResStock AMY 2018).
+4. Restart the kernel and run all cells.
+
+---
+
+## Data sources
+
+| Input | S3 location |
+|-------|-------------|
+| Metadata | `s3://data.sb/nrel/resstock/<release>[_sb]/metadata/state=<ST>/upgrade=<uu>/metadata[-sb].parquet` |
+| Utility assignment (always `_sb`) | `s3://data.sb/nrel/resstock/<release>_sb/metadata_utility/state=<ST>/utility_assignment.parquet` |
+| Annual load curves | `s3://data.sb/nrel/resstock/<release>[_sb]/load_curve_annual/state=<ST>/upgrade=<uu>/<ST>_upgrade<uu>_metadata_and_annual_results.parquet` |
+| EIA-861 utility stats | `s3://data.sb/eia/861/electric_utility_stats/year=<year>/state=<ST>/data.parquet` |
+
+`USE_SB_RELEASE` controls **metadata** and **annual load curves** together:
+
+- **`True` (default):** `metadata-sb.parquet` and the `_sb` annual file. Both reflect
+  Switchbox's post-processing adjustments (e.g. MF non-HVAC scaling, non-HP
+  approximation); the `_sb` annual values match the sum of the `_sb` monthly/hourly
+  load curves.
+- **`False`:** raw `metadata.parquet` and the raw NREL annual file — unmodified NREL
+  simulation output, useful for isolating how much the `_sb` adjustments move the
+  ResStock-vs-EIA comparison.
+
+**Utility assignment never toggles.** `utility_assignment.parquet` is a Switchbox-only
+artifact generated only under the `_sb` release — it has no raw-release counterpart
+(see `context/code/data/resstock_sb_release_pipeline_main_py.md`) — so it's always read
+from `<release>_sb`, regardless of `USE_SB_RELEASE`.
+
+Either way, annual electricity is read directly from
+`out.electricity.total.energy_consumption.kwh`; sample `weight` comes from whichever
+metadata file `USE_SB_RELEASE` selects.
+
+---
+
+## Notebook sections
+
+| Section | What it covers |
+|---------|---------------|
+| **1 — Load data** | Read metadata, utility assignment, and annual loads; keep the `bldg_id` intersection |
+| **2 — Sum by utility** | Weighted electricity totals by `sb.electric_utility` |
+| **3 — Compare to EIA** | Customer-count ratios; then kWh comparison after scaling ResStock to EIA customer counts |
+| **4 — Assumptions** | *(todo)* Document limitations and interpretation guidance |
+
+## Parameters
+
+Change `STATE`, `RESSTOCK_RELEASE`, and `USE_SB_RELEASE` here. Everything else derives from these values.
+
+```{python}
+from __future__ import annotations
+
+from typing import cast
+
+import polars as pl
+from IPython.display import display
+```
+
+```{python}
+# ── Change these to validate a different state or release ─────────────────────
+STATE = "md"  # lowercase state abbreviation, e.g. "ri", "ny", "ma"
+RESSTOCK_RELEASE = "res_2024_amy2018_2"  # base (raw, non-_sb) release name
+UPGRADE = "00"  # zero-padded ResStock upgrade id
+EIA_YEAR = 2018  # EIA-861 report year (2018 aligns with ResStock AMY 2018)
+# True: read metadata + annual loads from the _sb release ("metadata-sb.parquet", _sb
+# annual). False: read them from the raw NREL release ("metadata.parquet", raw annual).
+USE_SB_RELEASE = True
+# ──────────────────────────────────────────────────────────────────────────────
+
+STATE_UPPER = STATE.upper()
+RESSTOCK_RELEASE_RAW = RESSTOCK_RELEASE.removesuffix("_sb")
+RESSTOCK_RELEASE_SB = f"{RESSTOCK_RELEASE_RAW}_sb"
+
+# Metadata and annual loads toggle between raw and _sb per USE_SB_RELEASE.
+# utility_assignment.parquet is a Switchbox-only artifact that is never written under
+# the raw release (see context/code/data/resstock_sb_release_pipeline_main_py.md), so
+# it always comes from _sb regardless of the toggle.
+RESSTOCK_RELEASE_ACTIVE = RESSTOCK_RELEASE_SB if USE_SB_RELEASE else RESSTOCK_RELEASE_RAW
+METADATA_FILENAME = "metadata-sb.parquet" if USE_SB_RELEASE else "metadata.parquet"
+RELEASE_SOURCE_LABEL = "_sb (post-processed)" if USE_SB_RELEASE else "raw NREL (unmodified)"
+
+S3_RESSTOCK = "s3://data.sb/nrel/resstock"
+S3_EIA861 = "s3://data.sb/eia/861/electric_utility_stats"
+
+BLDG_ID = "bldg_id"
+UTILITY_COL = "sb.electric_utility"
+WEIGHT_COL = "weight"
+# Annual electricity total (".kwh" suffix on the annual file; same column name in raw and _sb)
+ANNUAL_ELEC_COL = "out.electricity.total.energy_consumption.kwh"
+
+PATH_METADATA = (
+    f"{S3_RESSTOCK}/{RESSTOCK_RELEASE_ACTIVE}/metadata/state={STATE_UPPER}/upgrade={UPGRADE}/{METADATA_FILENAME}"
+)
+# Always _sb: utility_assignment.parquet has no raw-release counterpart.
+PATH_UTILITY_ASSIGNMENT = (
+    f"{S3_RESSTOCK}/{RESSTOCK_RELEASE_SB}/metadata_utility/state={STATE_UPPER}/utility_assignment.parquet"
+)
+PATH_ANNUAL = (
+    f"{S3_RESSTOCK}/{RESSTOCK_RELEASE_ACTIVE}/load_curve_annual/"
+    f"state={STATE_UPPER}/upgrade={UPGRADE}/"
+    f"{STATE_UPPER}_upgrade{UPGRADE}_metadata_and_annual_results.parquet"
+)
+PATH_EIA861 = f"{S3_EIA861}/year={EIA_YEAR}/state={STATE_UPPER}/data.parquet"
+
+print(f"State:              {STATE_UPPER}")
+print(f"Release source:     {RESSTOCK_RELEASE_ACTIVE} ({RELEASE_SOURCE_LABEL})")
+print(f"Utility assignment: {RESSTOCK_RELEASE_SB} (always _sb; Switchbox-only, no raw equivalent)")
+print(f"Upgrade:            {UPGRADE}")
+print(f"EIA-861 year:       {EIA_YEAR}")
+print()
+print(f"Metadata:           {PATH_METADATA}")
+print(f"Utility assignment: {PATH_UTILITY_ASSIGNMENT}")
+print(f"Annual load curves: {PATH_ANNUAL}")
+print(f"EIA-861 stats:      {PATH_EIA861}")
+```
+
+## Section 1: Load data
+
+We read three ResStock tables from S3. Metadata and annual load curves come from
+either the raw NREL release or the `_sb` release, per `USE_SB_RELEASE`; utility
+assignment always comes from `_sb` (see Parameters):
+
+1. **Metadata** (`metadata-sb.parquet` or raw `metadata.parquet`) — building
+   attributes and sample `weight` (one row per `bldg_id` for this upgrade).
+2. **`utility_assignment.parquet`** — `sb.electric_utility` / `sb.gas_utility` per building.
+3. **`load_curve_annual`** — a single parquet with one row per `bldg_id` carrying
+   `out.electricity.total.energy_consumption.kwh` (the annual electricity total). We
+   read this directly as `annual_kwh` — no monthly aggregation needed.
+
+After loading, we print shape, schema, and a small sample so the reader can confirm
+the expected columns are present before aggregation.
+
+> **Note:** The `_sb` versions of metadata and annual load curves reflect Switchbox's
+> post-processing adjustments and (for annual) match the sum of the `_sb`
+> monthly/hourly load curves; the raw NREL versions do not. Reading the single annual
+> parquet is far faster than fetching thousands of monthly files, whichever source
+> `USE_SB_RELEASE` selects.
+
+```{python}
+def load_parquet(path: str) -> pl.DataFrame:
+    """Collect a parquet file (or Hive directory) from S3 or local disk."""
+    return cast(pl.DataFrame, pl.scan_parquet(path).collect())
+
+
+def preview(name: str, df: pl.DataFrame, key_cols: list[str] | None = None) -> None:
+    """Print shape, optional key-column check, schema head, and a few rows."""
+    print(f"=== {name} ===")
+    print(f"shape: {df.shape[0]:,} rows x {df.shape[1]} cols")
+    if key_cols:
+        missing = [c for c in key_cols if c not in df.columns]
+        if missing:
+            raise ValueError(f"{name} is missing required columns: {missing}")
+        print(f"required columns present: {key_cols}")
+    print("schema (first 25):")
+    for col, dtype in list(df.schema.items())[:25]:
+        print(f"  {col}: {dtype}")
+    if len(df.schema) > 25:
+        print(f"  … ({len(df.schema) - 25} more columns)")
+    display(df.head(5))
+    print()
+```
+
+```{python}
+print(f"Loading metadata from:\n  {PATH_METADATA}\n")
+metadata = load_parquet(PATH_METADATA)
+preview(f"metadata ({RELEASE_SOURCE_LABEL})", metadata, key_cols=[BLDG_ID, WEIGHT_COL])
+```
+
+```{python}
+print(f"Loading utility assignment from:\n  {PATH_UTILITY_ASSIGNMENT}\n")
+utility_assignment = load_parquet(PATH_UTILITY_ASSIGNMENT)
+preview(
+    "utility_assignment",
+    utility_assignment,
+    key_cols=[BLDG_ID, UTILITY_COL],
+)
+```
+
+```{python}
+print(f"Loading annual load curves ({RELEASE_SOURCE_LABEL}):\n  {PATH_ANNUAL}\n")
+annual = load_parquet(PATH_ANNUAL).select(
+    BLDG_ID,
+    pl.col(ANNUAL_ELEC_COL).alias("annual_kwh"),
+)
+preview(f"load_curve_annual ({RELEASE_SOURCE_LABEL})", annual, key_cols=[BLDG_ID, "annual_kwh"])
+```
+
+### Align on shared buildings
+
+Metadata, utility assignment, and annual loads should each have one row per building
+for this state/upgrade. Small mismatches can occur when a building is present in one
+table but not another (e.g. off-by-one row-count differences between the annual file
+and metadata).
+
+For the rest of this notebook we keep only the **intersection** of `bldg_id`s across
+all three tables, and report any IDs that were dropped.
+
+```{python}
+n_meta = metadata.height
+n_ua = utility_assignment.height
+n_annual = annual.height
+n_meta_ids = metadata[BLDG_ID].n_unique()
+n_ua_ids = utility_assignment[BLDG_ID].n_unique()
+n_annual_ids = annual[BLDG_ID].n_unique()
+
+print("Before intersection:")
+print(f"  metadata:           {n_meta:,} rows, {n_meta_ids:,} unique {BLDG_ID}")
+print(f"  utility_assignment: {n_ua:,} rows, {n_ua_ids:,} unique {BLDG_ID}")
+print(f"  annual ({RELEASE_SOURCE_LABEL}):       {n_annual:,} rows, {n_annual_ids:,} unique {BLDG_ID}")
+
+if n_meta != n_meta_ids:
+    print("WARNING: metadata has duplicate bldg_id values")
+if n_ua != n_ua_ids:
+    print("WARNING: utility_assignment has duplicate bldg_id values")
+if n_annual != n_annual_ids:
+    print("WARNING: annual ({RELEASE_SOURCE_LABEL}) has duplicate bldg_id values")
+
+meta_ids = set(metadata[BLDG_ID].to_list())
+ua_ids = set(utility_assignment[BLDG_ID].to_list())
+annual_ids = set(annual[BLDG_ID].to_list())
+shared_ids = meta_ids & ua_ids & annual_ids
+
+dropped_meta = sorted(meta_ids - shared_ids)
+dropped_ua = sorted(ua_ids - shared_ids)
+dropped_annual = sorted(annual_ids - shared_ids)
+
+print(f"\nShared bldg_ids (metadata ∩ utility_assignment ∩ annual): {len(shared_ids):,}")
+print(f"  dropped from metadata only:           {len(dropped_meta):,} {dropped_meta[:10]}")
+print(f"  dropped from utility_assignment only: {len(dropped_ua):,} {dropped_ua[:10]}")
+print(f"  dropped from annual only:             {len(dropped_annual):,} {dropped_annual[:10]}")
+
+shared_ids_list = list(shared_ids)
+metadata = metadata.filter(pl.col(BLDG_ID).is_in(shared_ids_list))
+utility_assignment = utility_assignment.filter(pl.col(BLDG_ID).is_in(shared_ids_list))
+annual = annual.filter(pl.col(BLDG_ID).is_in(shared_ids_list))
+
+print("\nAfter intersection:")
+print(f"  metadata:           {metadata.height:,}")
+print(f"  utility_assignment: {utility_assignment.height:,}")
+print(f"  annual ({RELEASE_SOURCE_LABEL}):       {annual.height:,}")
+assert metadata.height == utility_assignment.height == annual.height
+assert metadata[BLDG_ID].n_unique() == metadata.height
+```
+
+## Section 2: Sum electricity by utility
+
+Join the aligned annual loads to utility assignment and metadata `weight` on
+`bldg_id`, then for each `sb.electric_utility` sum **weighted** annual electricity:
+
+$$\text{resstock\_total\_kwh} = \sum_i (\text{annual\_kwh}_i \times \text{weight}_i)$$
+
+ResStock `weight` is the sample expansion factor from the metadata file
+selected by `USE_SB_RELEASE` (each building
+represents roughly 252 dwellings). Customer counts are likewise
+$\sum_i \text{weight}_i$.
+
+Buildings with a null electric utility assignment are reported separately and
+excluded from the per-utility totals.
+
+```{python}
+annual_with_utility = (
+    annual.select(BLDG_ID, "annual_kwh")
+    .join(
+        metadata.select(BLDG_ID, WEIGHT_COL),
+        on=BLDG_ID,
+        how="inner",
+        validate="1:1",
+    )
+    .join(
+        utility_assignment.select(BLDG_ID, UTILITY_COL),
+        on=BLDG_ID,
+        how="inner",
+        validate="1:1",
+    )
+    .with_columns((pl.col("annual_kwh") * pl.col(WEIGHT_COL)).alias("weighted_kwh"))
+)
+
+n_null_utility = annual_with_utility.filter(pl.col(UTILITY_COL).is_null()).height
+if n_null_utility:
+    print(f"WARNING: {n_null_utility:,} buildings have null {UTILITY_COL}; excluded from totals")
+
+resstock_by_utility = (
+    annual_with_utility.filter(pl.col(UTILITY_COL).is_not_null())
+    .group_by(UTILITY_COL)
+    .agg(
+        pl.len().alias("buildings"),
+        pl.col(WEIGHT_COL).sum().alias("resstock_customers"),
+        pl.col("weighted_kwh").sum().alias("resstock_total_kwh"),
+    )
+    .sort("resstock_total_kwh", descending=True)
+    .rename({UTILITY_COL: "utility_code"})
+)
+
+resstock_by_utility_with_total = pl.concat(
+    [
+        resstock_by_utility,
+        pl.DataFrame(
+            {
+                "utility_code": ["**TOTAL**"],
+                "buildings": [resstock_by_utility["buildings"].sum()],
+                "resstock_customers": [resstock_by_utility["resstock_customers"].sum()],
+                "resstock_total_kwh": [resstock_by_utility["resstock_total_kwh"].sum()],
+            },
+            schema=resstock_by_utility.schema,
+        ),
+    ]
+)
+
+print(f"ResStock weighted electricity by {UTILITY_COL} ({STATE_UPPER}, upgrade {UPGRADE}, {RELEASE_SOURCE_LABEL}):")
+display(resstock_by_utility_with_total)
+```
+
+## Section 3: Compare to EIA-861
+
+We compare ResStock to **EIA-861 residential sales** in two steps:
+
+1. **Customer counts** — `resstock_customers` (sum of sample weights) vs
+   `eia_residential_customers`, and their ratio.
+2. **Electricity (kWh)** — scale ResStock total kWh by the inverse customer ratio
+   so the kWh comparison is not driven by customer-count mismatch, then report
+   ratios and % differences.
+
+The join key is a `utility_code` (short std_name, e.g. `bge`) that both
+sides share: ResStock's `sb.electric_utility` on one side, and EIA-861's
+`utility_code` column on the other. The EIA-861 parquet's `utility_code` is
+derived at *fetch time* from `rate-design-platform`'s
+[`utils/utility_codes.py`](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/utility_codes.py)
+crosswalk (EIA `utility_id_eia` → std_name) — if a utility was added to that
+crosswalk *after* the EIA-861 parquet for this state was last fetched,
+`utility_code` will be `null` for it even though `utility_id_eia` is present.
+
+To make this notebook robust to a stale/partial `utility_code` column, we build
+our own `utility_id_eia → utility_code` map below (mirroring the current
+`utils/utility_codes.py`) and use it to fill in any missing values before
+aggregating. **This map is state-specific — update it when switching `STATE`.**
+
+```{python}
+print(f"Loading EIA-861 residential sales from:\n  {PATH_EIA861}\n")
+eia_raw = load_parquet(PATH_EIA861)
+preview(
+    "eia861",
+    eia_raw,
+    key_cols=["utility_id_eia", "utility_code", "residential_sales_mwh", "residential_customers"],
+)
+
+n_null_code = eia_raw.filter(pl.col("utility_code").is_null()).height
+print(f"Rows with null utility_code: {n_null_code:,} of {eia_raw.height:,}")
+```
+
+### Fill in missing `utility_code` values
+
+The map below is `state`-specific: it lists every `utility_id_eia` we expect for
+`STATE` and the `sb.electric_utility` std_name it corresponds to, taken from
+`rate-design-platform`'s `utils/utility_codes.py`. We use it only to fill in rows
+where `utility_code` is currently `null` — any row that already has a non-null
+`utility_code` is left as-is.
+
+**When running this notebook for a different state**, replace this dict with the
+`(state=STATE)` entries from `utils/utility_codes.py` (`std_name` →
+`eia_utility_ids`), or skip this cell if that state's `utility_code` column is
+already fully populated.
+
+```{python}
+# utility_id_eia -> sb.electric_utility std_name, for STATE = "md".
+# Source: rate-design-platform/utils/utility_codes.py (UTILITIES list, state="MD").
+EIA_UTILITY_ID_TO_STD_NAME = {
+    1167: "bge",
+    15270: "pepco",
+    15263: "poted",
+    5027: "dpl",
+    17637: "smeco",
+    3503: "choptank",
+    40167: "somerset_rec",
+    1615: "berlin_muni",
+    7908: "hagerstown_muni",
+    5625: "easton_muni",
+}
+
+eia_filled = eia_raw.with_columns(
+    pl.coalesce(
+        pl.col("utility_code"),
+        pl.col("utility_id_eia").replace_strict(EIA_UTILITY_ID_TO_STD_NAME, default=None),
+    ).alias("utility_code")
+)
+
+n_filled = (
+    eia_filled.filter(pl.col("utility_code").is_not_null()).height
+    - eia_raw.filter(pl.col("utility_code").is_not_null()).height
+)
+print(f"Filled in utility_code for {n_filled:,} rows using EIA_UTILITY_ID_TO_STD_NAME.")
+
+n_still_null_with_sales = eia_filled.filter(
+    pl.col("utility_code").is_null() & (pl.col("residential_sales_mwh") > 0)
+).height
+if n_still_null_with_sales:
+    print(
+        f"WARNING: {n_still_null_with_sales:,} utilities with residential sales still have "
+        f"no utility_code (not in EIA_UTILITY_ID_TO_STD_NAME) and will be excluded below."
+    )
+
+eia_by_utility = (
+    eia_filled.filter(pl.col("utility_code").is_not_null())
+    .group_by("utility_code")
+    .agg(
+        (pl.col("residential_sales_mwh").sum() * 1000).alias("eia_residential_kwh"),
+        pl.col("residential_customers").sum().alias("eia_residential_customers"),
+    )
+)
+
+print(f"\nEIA-861 residential sales by utility_code ({STATE_UPPER}, {EIA_YEAR}):")
+display(eia_by_utility.sort("eia_residential_kwh", descending=True))
+```
+
+### Customer-count comparison
+
+First we join ResStock and EIA on `utility_code` and look **only** at customer
+counts. ResStock customers are $\sum_i \text{weight}_i$; EIA customers are
+`residential_customers` from EIA-861.
+
+$$\text{customers\_ratio} = \frac{\text{resstock\_customers}}{\text{eia\_residential\_customers}}$$
+
+A ratio near 1 means the sample expansion matches EIA's reported customer base
+for that utility. Ratios far from 1 (or `inf` when EIA reports 0 customers)
+mean later kWh comparisons must be customer-normalized.
+
+```{python}
+joined = resstock_by_utility.join(eia_by_utility, on="utility_code", how="inner")
+
+n_dropped = resstock_by_utility.height - joined.height
+if n_dropped:
+    dropped_codes = sorted(set(resstock_by_utility["utility_code"]) - set(joined["utility_code"]))
+    print(
+        f"WARNING: {n_dropped} ResStock utilities had no EIA-861 match and were "
+        f"dropped from the comparison: {dropped_codes}"
+    )
+
+customers_comparison = joined.select(
+    "utility_code",
+    "buildings",
+    "resstock_customers",
+    "eia_residential_customers",
+    (pl.col("resstock_customers") / pl.col("eia_residential_customers")).alias("customers_ratio"),
+    (
+        (pl.col("resstock_customers") - pl.col("eia_residential_customers")) / pl.col("eia_residential_customers") * 100
+    ).alias("customers_pct_diff"),
+).sort("resstock_customers", descending=True)
+
+print(f"ResStock vs EIA-861 customer counts by utility ({STATE_UPPER}, {EIA_YEAR}):")
+display(customers_comparison)
+```
+
+### kWh comparison (customer-count normalized)
+
+To isolate differences in **per-customer electricity use**, we scale ResStock
+weighted total kWh to EIA's customer count before comparing:
+
+$$
+\text{resstock\_total\_kwh\_normalized} =
+\text{resstock\_total\_kwh} \times
+\frac{\text{eia\_residential\_customers}}{\text{resstock\_customers}}
+= \frac{\text{resstock\_total\_kwh}}{\text{customers\_ratio}}
+$$
+
+Then:
+
+- `kwh_ratio` = normalized ResStock kWh / EIA residential kWh  
+- `kwh_pct_diff` = (normalized ResStock − EIA) / EIA × 100
+
+Utilities with zero EIA customers (or zero ResStock customers) cannot be
+normalized this way and are excluded from the kWh table below.
+
+```{python}
+kwh_base = joined.filter(
+    (pl.col("eia_residential_customers") > 0) & (pl.col("resstock_customers") > 0) & (pl.col("eia_residential_kwh") > 0)
+)
+
+n_excluded_kwh = joined.height - kwh_base.height
+if n_excluded_kwh:
+    excluded_codes = sorted(set(joined["utility_code"]) - set(kwh_base["utility_code"]))
+    print(
+        f"Excluded {n_excluded_kwh} utilities from kWh comparison "
+        f"(zero EIA/ResStock customers or zero EIA kWh): {excluded_codes}"
+    )
+
+kwh_comparison = (
+    kwh_base.with_columns(
+        (pl.col("resstock_total_kwh") * pl.col("eia_residential_customers") / pl.col("resstock_customers")).alias(
+            "resstock_total_kwh_normalized"
+        ),
+        (pl.col("resstock_customers") / pl.col("eia_residential_customers")).alias("customers_ratio"),
+    )
+    .with_columns(
+        (pl.col("resstock_total_kwh_normalized") / pl.col("eia_residential_kwh")).alias("kwh_ratio"),
+        (
+            (pl.col("resstock_total_kwh_normalized") - pl.col("eia_residential_kwh"))
+            / pl.col("eia_residential_kwh")
+            * 100
+        ).alias("kwh_pct_diff"),
+    )
+    .select(
+        "utility_code",
+        "buildings",
+        "resstock_total_kwh",
+        "customers_ratio",
+        "resstock_total_kwh_normalized",
+        "eia_residential_kwh",
+        "kwh_ratio",
+        "kwh_pct_diff",
+    )
+    .sort("resstock_total_kwh", descending=True)
+)
+
+print(f"ResStock vs EIA-861 residential kWh by utility (customer-count normalized; {STATE_UPPER}, {EIA_YEAR}, {RELEASE_SOURCE_LABEL}):")
+display(kwh_comparison)
+```
+
+## Section 4: Assumptions and limitations
+
+*Coming next — document weighting, residential-only EIA scope, year alignment, and
+known discrepancy drivers.*

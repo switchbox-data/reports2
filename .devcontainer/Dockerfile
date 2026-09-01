@@ -69,6 +69,18 @@ RUN /tmp/install-feature.sh "ghcr.io/rocker-org/devcontainer-features/quarto-cli
 RUN /tmp/install-feature.sh "ghcr.io/rocker-org/devcontainer-features/apt-packages:1" \
     packages="python3-tk, chromium-browser, ghostscript"
 
+# Install Switchbox house fonts (GT Planar, IBM Plex Sans, Farnham Text) into
+# fontconfig so headless Chrome (used by `just draft` to PNG-rasterize GT
+# tables for DOCX) can resolve them by name. Without these, Chrome falls
+# back to Liberation Sans and designers see the wrong font in Word.
+#
+# We install the CFF-flavored OTFs directly — same binaries the web reports
+# load. The legacy GT → vector-SVG ICML path (Chrome CDP PDF → Inkscape) is
+# gone, so the TrueType siblings that existed to dodge Inkscape's CFF-Type-3
+# bug are no longer needed. See reports/.style/fonts/README.md.
+COPY reports/.style/fonts/*.otf /usr/local/share/fonts/switchbox/
+RUN fc-cache -fv > /dev/null
+
 # Install TinyTeX for LaTeX math rendering in ICML output (just typeset)
 # The icml_math Lua filter calls latex + dvisvgm to pre-render math to SVG.
 # dvisvgm is not included in TinyTeX by default and must be installed separately.

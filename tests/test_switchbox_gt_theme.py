@@ -21,6 +21,9 @@ def test_get_switchbox_gt_tab_options_has_typography_and_css() -> None:
     assert any(":has(tr.gt_col_headings ~ tr.gt_col_headings)" in rule for rule in css)
     assert any("tbody tr.gt_striped" in rule for rule in css)
     assert any("gt_subtitle" in rule and "padding-bottom: 20px" in rule for rule in css)
+    assert any(
+        ":not(:has(.gt_subtitle))" in rule and "gt_title" in rule and "padding-bottom: 20px" in rule for rule in css
+    )
     assert any("gt_sourcenote" in rule and "padding-top: 14px" in rule for rule in css)
 
 

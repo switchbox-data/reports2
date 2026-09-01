@@ -66,7 +66,11 @@ end, function(float)
   -- Case 3: Other content (GT tables, HTML divs, etc.)
   -- Emit the content followed by a raw ICML caption paragraph so it gets
   -- ParagraphStyle/Caption in InDesign.
-  local blocks = pandoc.Blocks({float.content})
+  -- Pass float.content directly: pandoc.Blocks coerces a single Block, a list
+  -- of Blocks, or a Blocks list.  Wrapping in {float.content} breaks when
+  -- float.content is already a Blocks list (each element gets coerced as a
+  -- Block, which a Blocks list is not → "got table" error).
+  local blocks = pandoc.Blocks(float.content)
   if #caption_inlines > 0 then
     blocks:insert(raw_icml_caption(caption_inlines))
   end

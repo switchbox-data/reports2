@@ -37,9 +37,9 @@ report_vars: dict = {}
 ```{python}
 #| label: params
 
-BATCH = "ny_20260408_all_epmc_r1-24"
+BATCH = "ny_20260416a_r1-36"
 STATE_LOWER = "ny"
-RDP_REF = "530564d"  # includes EPMC TOU flex calibrated tariffs
+RDP_REF = "205041d"
 S3_BASE = "s3://data.sb/switchbox/cairo/outputs/hp_rates"
 
 RUN_DEFAULT = "1+2"
@@ -84,6 +84,8 @@ HT_V2_LABELS: dict[str, str] = {
 ## Scenario registry
 
 Each entry defines a proposed-run variant: the CAIRO run pair, the residual allocation method used in BAT column selection, the tariff name fragments (for extracting volumetric rates into table subtitles), and a human-readable label. Every scenario is rendered as its own section of comparison tables below.
+
+The EPMC entries (`SCENARIOS[1]`, `SCENARIOS[3]`) are retained here to preserve positional indices used by downstream cells (`SCENARIOS[0]`, `[2]`, `[4]`), but the entire EPMC section below is currently disabled via `#| eval: false` because the EPMC-calibrated tariffs for some utilities are not available at the pinned `RDP_REF`. Do not remove these entries without first refactoring all `SCENARIOS[<int>]` lookups to be id-keyed.
 
 ```{python}
 #| label: scenarios
@@ -135,6 +137,24 @@ SCENARIOS: list[dict] = [
         "description": (
             "HP customers on seasonal TOU flex delivery rate; non-HP on "
             "recalibrated flat. Residual allocated via EPMC."
+        ),
+    },
+    # EH seasonal applies to HP *and* ER customers jointly; the
+    # ``hp_tariff``/``nonhp_tariff`` keys are inherited from the HP-focused
+    # scenarios above and repurposed here (``hp_tariff`` holds the tariff
+    # applied to all electric-heating customers; ``nonhp_tariff`` holds the
+    # tariff applied to everyone else).
+    {
+        "id": "eh_seasonal_percustomer",
+        "run": "33+34",
+        "residual_alloc": "percustomer",
+        "hp_tariff": "elec_heat_seasonal_percustomer",
+        "nonhp_tariff": "non_electric_heating",
+        "label": "EH seasonal rate, per-customer residual",
+        "description": (
+            "HP + ER customers on electric-heating seasonal delivery rate; "
+            "fossil-fuel customers on recalibrated flat. Residual allocated "
+            "per customer."
         ),
     },
 ]
@@ -223,42 +243,6 @@ def _cos_gt_center_cells(gt: GT, *, data_columns: list[str]) -> GT:
             locations=loc.column_labels(),
         )
     )
-
-
-BASELINE_COS_TOTALS_SUBTITLE = (
-    "Total delivery revenue, delivery cost of service, and cross-subsidy by residential "
-    "customer subclass, under default rates"
-)
-BASELINE_COS_AVG_SUBTITLE = (
-    "Average delivery bill, delivery cost of service, and cross-subsidy by residential "
-    "customer subclass, under default rates"
-)
-BASELINE_COS_TOTALS_SUBTITLE_SUPPLY = (
-    "Total supply revenue, supply cost of service, and cross-subsidy by residential "
-    "customer subclass, under default rates"
-)
-BASELINE_COS_AVG_SUBTITLE_SUPPLY = (
-    "Average supply bill, supply cost of service, and cross-subsidy by residential "
-    "customer subclass, under default rates"
-)
-BASELINE_COS_TOTALS_SUBTITLE_SUPPLY_VOL = (
-    "Total supply revenue, supply cost of service, and cross-subsidy by residential "
-    "customer subclass, under default rates. Volumetric residual allocation."
-)
-BASELINE_COS_AVG_SUBTITLE_SUPPLY_VOL = (
-    "Average supply bill, supply cost of service, and cross-subsidy by residential "
-    "customer subclass, under default rates. Volumetric residual allocation."
-)
-BASELINE_COS_TOTALS_SUBTITLE_SUPPLY_PT = (
-    "Total supply revenue, supply cost of service, and cross-subsidy by residential "
-    "customer subclass, under default rates. Supply passthrough (no BAT adjustment; "
-    "cross-subsidy is zero by construction)."
-)
-BASELINE_COS_AVG_SUBTITLE_SUPPLY_PT = (
-    "Average supply bill, supply cost of service, and cross-subsidy by residential "
-    "customer subclass, under default rates. Supply passthrough (no BAT adjustment; "
-    "cross-subsidy is zero by construction)."
-)
 
 
 def _fmt_usd_0(x: float) -> str:
@@ -378,8 +362,8 @@ def cos_sw_summary_abridged_title(cos_tbl: pl.DataFrame) -> str:
     _pct_cust = float(_hp["pct_customers_display"][0]) * 100
     _pct_rev = float(_hp["pct_all_revenue"][0]) * 100
     return (
-        f"Households with heat pumps make up {_pct_cust:.1f}% of electric customers but pay "
-        f"{_pct_rev:.1f}% of electricity delivery revenue"
+        f"Residential electric customers with heat pumps make up {_pct_cust:.1f}% of customers but pay "
+        f"{_pct_rev:.1f}% of delivery revenue"
     )
 
 
@@ -428,8 +412,9 @@ def cos_baseline_avg_title(util_label: str | None, cos_tbl: pl.DataFrame) -> str
 
 # Keep in sync with ``utils/post/build_master_bat.py`` (UPGRADE_00_RUNS / UPGRADE_02_RUNS).
 # Includes 25 for ``25+26`` EPMC TOU flex runs (same ResStock upgrade as 21/22).
-_RESSTOCK_UPGRADE_00_RUNS = frozenset({1, 2, 5, 6, 9, 10, 13, 14, 17, 18, 21, 22, 25})
-_RESSTOCK_UPGRADE_02_RUNS = frozenset({3, 4, 7, 8, 11, 12, 15, 16, 19, 20, 23, 24})
+# Includes 29, 30, 33, 34 for EH seasonal runs (upgrade 00, pre-HP); 31, 32, 35, 36 post-HP.
+_RESSTOCK_UPGRADE_00_RUNS = frozenset({1, 2, 5, 6, 9, 10, 13, 14, 17, 18, 21, 22, 25, 29, 30, 33, 34})
+_RESSTOCK_UPGRADE_02_RUNS = frozenset({3, 4, 7, 8, 11, 12, 15, 16, 19, 20, 23, 24, 31, 32, 35, 36})
 
 RESSTOCK_ELEC_TOTAL_KWH_COL = "out.electricity.total.energy_consumption"
 RESSTOCK_ELEC_NET_KWH_COL = "out.electricity.net.energy_consumption"
@@ -840,7 +825,6 @@ def build_gt_cos_totals(
     cos_tbl: pl.DataFrame,
     *,
     title: str = "Delivery revenue and cost of service by residential customer subclass",
-    subtitle: str | None = None,
     source_note: str | None = None,
     statewide_narrow: bool = False,
     side_label: str = "Delivery",
@@ -875,7 +859,8 @@ def build_gt_cos_totals(
     }
     _gt = (
         GT(_gt_df, rowname_col="subclass")
-        .tab_header(title=title, subtitle=subtitle)
+        .tab_header(title=title)
+        .tab_stubhead(label="Heating source")
         .tab_options(**_COS_GT_TAB_OPTS)
         .cols_label(**{c: _label_map[c] for c in _data_cols})
     )
@@ -912,7 +897,6 @@ def build_gt_cos_totals_abridged(
     cos_tbl: pl.DataFrame,
     *,
     title: str = "Delivery revenue by subclass",
-    subtitle: str | None = None,
     side_label: str = "Delivery",
 ) -> GT:
     """Statewide summary: customers, consumption (GWh), and delivery revenue (no COS / cross-subsidy)."""
@@ -936,7 +920,8 @@ def build_gt_cos_totals_abridged(
     ]
     _gt = (
         GT(_gt_df, rowname_col="subclass")
-        .tab_header(title=title, subtitle=subtitle)
+        .tab_header(title=title)
+        .tab_stubhead(label="Heating source")
         .tab_options(**_COS_GT_TAB_OPTS)
         .cols_label(
             n_customers_display="Customers",
@@ -976,7 +961,6 @@ def build_gt_mc_diagnostic(
     bat: pl.DataFrame,
     *,
     title: str,
-    subtitle: str | None = None,
 ) -> GT:
     """Build a diagnostic table showing MC (economic burden), residual, and COS by subclass.
 
@@ -1060,7 +1044,8 @@ def build_gt_mc_diagnostic(
     ]
     _gt = (
         GT(tbl, rowname_col="subclass")
-        .tab_header(title=title, subtitle=subtitle)
+        .tab_header(title=title)
+        .tab_stubhead(label="Heating source")
         .tab_options(**_COS_GT_TAB_OPTS)
         .tab_spanner(label="Marginal cost (economic burden)", columns=["total_mc", "avg_mc"])
         .tab_spanner(label="Residual allocation", columns=["total_residual", "avg_residual"])
@@ -1096,7 +1081,6 @@ def build_gt_cos_comparison_totals(
     cos_proposed: pl.DataFrame,
     *,
     title: str,
-    subtitle: str,
     label_spanner_today: str,
     label_spanner_proposed: str,
     side_label: str = "Delivery",
@@ -1161,7 +1145,8 @@ def build_gt_cos_comparison_totals(
     _cmp_table_id = f"gt-cos-cmp-tot-{uuid.uuid4().hex[:12]}"
     _gt = (
         GT(_gt_df, rowname_col="subclass")
-        .tab_header(title=title, subtitle=subtitle)
+        .tab_header(title=title)
+        .tab_stubhead(label="Heating source")
         .tab_spanner(
             label=label_spanner_today,
             columns=[
@@ -1249,7 +1234,6 @@ def build_gt_cos_avg(
     cos_tbl: pl.DataFrame,
     *,
     title: str = "Average delivery bill, COS, and cross-subsidy by subclass (per customer-year)",
-    subtitle: str | None = None,
     source_note: str | None = None,
     side_label: str = "Delivery",
 ) -> GT:
@@ -1310,7 +1294,8 @@ def build_gt_cos_avg(
     )
     _gt = (
         GT(_avg_tbl, rowname_col="subclass")
-        .tab_header(title=title, subtitle=subtitle)
+        .tab_header(title=title)
+        .tab_stubhead(label="Heating source")
         .tab_options(**_COS_GT_TAB_OPTS)
         .cols_label(
             pct_customers_display="% of customers",
@@ -1354,7 +1339,6 @@ def build_gt_cos_comparison_avg(
     cos_proposed: pl.DataFrame,
     *,
     title: str,
-    subtitle: str,
     label_spanner_default: str,
     label_spanner_proposed: str,
     side_label: str = "Delivery",
@@ -1442,7 +1426,8 @@ def build_gt_cos_comparison_avg(
     _cmp_table_id = f"gt-cos-cmp-avg-{uuid.uuid4().hex[:12]}"
     _gt = (
         GT(_gt_df, rowname_col="subclass")
-        .tab_header(title=title, subtitle=subtitle)
+        .tab_header(title=title)
+        .tab_stubhead(label="Heating source")
         .tab_spanner(
             label=label_spanner_default,
             columns=["avg_del_default", "avg_xsub_default"],
@@ -1713,7 +1698,6 @@ display_gt(
     build_gt_cos_totals(
         cos_default_sw_supply_pc,
         title=cos_baseline_totals_title(None, cos_default_sw_supply_pc),
-        subtitle=BASELINE_COS_TOTALS_SUBTITLE_SUPPLY,
         source_note=cos_table_baseline_source_note(),
         statewide_narrow=True,
         side_label="Supply",
@@ -1725,13 +1709,12 @@ display_gt(
 
 ```{python}
 #| label: tbl-baseline-sw-avg-supply-pc
-#| tbl-cap: "Average annual supply bill, supply cost of service, and cross-subsidy by residential customer subclass, under default rates. Per-customer supply residual only."
+#| tbl-cap: "Average annual electric supply bill, supply cost of service, and cross-subsidy by residential customer subclass, under default rates. Per-customer supply residual only."
 
 display_gt(
     build_gt_cos_avg(
         cos_default_sw_supply_pc,
         title=cos_baseline_avg_title(None, cos_default_sw_supply_pc),
-        subtitle=BASELINE_COS_AVG_SUBTITLE_SUPPLY,
         source_note=cos_table_baseline_source_note(),
         side_label="Supply",
     )
@@ -1750,7 +1733,6 @@ display_gt(
     build_gt_mc_diagnostic(
         bat_default_supply_pc,
         title="Marginal cost, residual, and COS decomposition — NY statewide (supply)",
-        subtitle="Default rates (run 1+2). Supply side; residual allocated per customer.",
     )
 )
 ```
@@ -1783,7 +1765,6 @@ display_gt(
         cos_default_sw_supply_pc,
         cos_hp_seasonal_sw_supply_pc,
         title="Heat pump rate eliminates cross-subsidy from electric customers with heat pumps to those who heat with fossil fuels",
-        subtitle=f"Supply: total cross-subsidy by subclass, before and after HP customers switch to {_sc['hp_tariff'].replace('_', ' ')} rate",
         label_spanner_today=_spanner_today_supply,
         label_spanner_proposed=_spanner_proposed_supply,
         side_label="Supply",
@@ -1802,7 +1783,6 @@ display_gt(
         cos_default_sw_supply_pc,
         cos_hp_seasonal_sw_supply_pc,
         title="Heat pump rate eliminates cross-subsidy from electric customers with heat pumps to those who heat with fossil fuels",
-        subtitle=f"Supply: average cross-subsidy by subclass, before and after HP customers switch to {_sc['hp_tariff'].replace('_', ' ')} rate",
         label_spanner_default=_spanner_today_supply,
         label_spanner_proposed=_spanner_proposed_supply,
         side_label="Supply",
@@ -1822,7 +1802,6 @@ for util in UTILITIES:
         build_gt_cos_totals(
             _cos_u,
             title=cos_baseline_totals_title(_label_u, _cos_u),
-            subtitle=BASELINE_COS_TOTALS_SUBTITLE_SUPPLY,
             source_note=cos_table_baseline_source_note(),
             side_label="Supply",
         )
@@ -1831,7 +1810,6 @@ for util in UTILITIES:
         build_gt_cos_avg(
             _cos_u,
             title=cos_baseline_avg_title(_label_u, _cos_u),
-            subtitle=BASELINE_COS_AVG_SUBTITLE_SUPPLY,
             source_note=cos_table_baseline_source_note(),
             side_label="Supply",
         )
@@ -1938,7 +1916,6 @@ display_gt(
     build_gt_cos_totals(
         cos_default_sw_supply_vol,
         title=cos_baseline_totals_title(None, cos_default_sw_supply_vol),
-        subtitle=BASELINE_COS_TOTALS_SUBTITLE_SUPPLY_VOL,
         source_note=cos_table_baseline_source_note(),
         statewide_narrow=True,
         side_label="Supply",
@@ -1956,7 +1933,6 @@ display_gt(
     build_gt_cos_avg(
         cos_default_sw_supply_vol,
         title=cos_baseline_avg_title(None, cos_default_sw_supply_vol),
-        subtitle=BASELINE_COS_AVG_SUBTITLE_SUPPLY_VOL,
         source_note=cos_table_baseline_source_note(),
         side_label="Supply",
     )
@@ -2004,7 +1980,6 @@ display_gt(
     build_gt_cos_totals(
         cos_default_sw_supply_pt,
         title=cos_baseline_totals_title(None, cos_default_sw_supply_pt),
-        subtitle=BASELINE_COS_TOTALS_SUBTITLE_SUPPLY_PT,
         source_note=cos_table_baseline_source_note(),
         statewide_narrow=True,
         side_label="Supply",
@@ -2022,7 +1997,6 @@ display_gt(
     build_gt_cos_avg(
         cos_default_sw_supply_pt,
         title=cos_baseline_avg_title(None, cos_default_sw_supply_pt),
-        subtitle=BASELINE_COS_AVG_SUBTITLE_SUPPLY_PT,
         source_note=cos_table_baseline_source_note(),
         side_label="Supply",
     )
@@ -2039,7 +2013,6 @@ display_gt(
     build_gt_mc_diagnostic(
         bat_passthrough_supply,
         title="Marginal cost, residual, and COS decomposition — NY statewide (supply)",
-        subtitle="Default rates (run 1+2). Supply side; passthrough (residual = bill − marginal cost; BAT = 0).",
     )
 )
 ```
@@ -2083,13 +2056,12 @@ print(f"  Weighted delivery revenue: ${(bat_default_pc['weight'] * bat_default_p
 
 ```{python}
 #| label: tbl-baseline-sw-summary-pc
-#| tbl-cap: "Total customers, electricity consumption, and delivery revenue by residential customer subclass, statewide, under each utility's default rate. Assumes lump-sum residual allocation (equal residual share for all customers)."
+#| tbl-cap: "Total residential customers, electricity consumption, and delivery revenue by heating source, statewide, under each utility's default rate. Total customer counts are from EIA form-861, subclass customer counts are derived from RECS 2020, total revenue is derived from utility rate cases and 2025 delivery rates, subclass consumption comes from ResStock 2024 loads, subclass revenue comes from Switchbox bill calculations, using 2025 utility delivery rates (fixed and volumetric) applied to ResStock loads geographically assigned to each utility."
 
 display_gt(
     build_gt_cos_totals_abridged(
         cos_default_sw_pc,
         title=cos_sw_summary_abridged_title(cos_default_sw_pc),
-        subtitle="Customer counts, electricity consumption, and delivery revenue by residential customer subclass, under default rates",
     )
 )
 ```
@@ -2098,13 +2070,12 @@ display_gt(
 
 ```{python}
 #| label: tbl-baseline-sw-totals-pc
-#| tbl-cap: "Total delivery revenue, delivery cost of service, and cross-subsidy by residential customer subclass, statewide, under each utility's default rate. Assumes lump-sum residual allocation (equal residual share for all customers)."
+#| tbl-cap: "Total electric delivery revenue, electric delivery cost of service, and cross-subsidy by residential customer heating source subclass, statewide, under each utility's default rate. Assumes lump-sum residual allocation (equal residual share for all customers). Subclass cost-of-service calculated using NREL's CAIRO model, applied to: a. utility-level revenue requirements, b. ResStock 2024 loads (assigned to each utility based on geographic location), c. zonal marginal transmission costs from NYISO, and d. marginal distribution costs from each utility's 2025 MCOS study. Full details available in methods section."
 
 display_gt(
     build_gt_cos_totals(
         cos_default_sw_pc,
         title=cos_baseline_totals_title(None, cos_default_sw_pc),
-        subtitle=BASELINE_COS_TOTALS_SUBTITLE,
         source_note=cos_table_baseline_source_note(),
         statewide_narrow=True,
     )
@@ -2115,13 +2086,12 @@ display_gt(
 
 ```{python}
 #| label: tbl-baseline-sw-avg-pc
-#| tbl-cap: "Average annual delivery bill, delivery cost of service, and cross-subsidy by residential customer subclass, under default rates. Assumes lump-sum residual allocation (equal residual share for all customers)."
+#| tbl-cap: "Average annual electric delivery bill, electric delivery cost of service, and cross-subsidy by residential customer subclass, under default rates. Assumes lump-sum residual allocation (equal residual share for all customers)."
 
 display_gt(
     build_gt_cos_avg(
         cos_default_sw_pc,
         title=cos_baseline_avg_title(None, cos_default_sw_pc),
-        subtitle=BASELINE_COS_AVG_SUBTITLE,
         source_note=cos_table_baseline_source_note(),
     )
 )
@@ -2139,7 +2109,6 @@ display_gt(
     build_gt_mc_diagnostic(
         bat_default_pc,
         title="Marginal cost, residual, and COS decomposition — NY statewide",
-        subtitle="Default rates (run 1+2). Residual allocated per customer.",
     )
 )
 ```
@@ -2160,7 +2129,7 @@ print(
 
 ```{python}
 #| label: tbl-hp-seasonal-sw-totals-pc
-#| tbl-cap: "Default vs HP seasonal delivery revenue, COS, and cross-subsidy — NY statewide (per-customer residual)"
+#| tbl-cap: "Default vs HP seasonal electric delivery revenue, electric delivery cost of service, and cross-subsidy — NY statewide (per-customer residual)"
 
 _sc = SCENARIOS[0]
 _spanner_today = f"All customers on utility's default rates"
@@ -2173,7 +2142,6 @@ display_gt(
         cos_default_sw_pc,
         cos_hp_seasonal_sw_pc,
         title="Heat pump rate eliminates cross-subsidy from electric customers with heat pumps to those who heat with fossil fuels",
-        subtitle=f"Total cross-subsidy by subclass, before and after HP customers switch to {_sc['hp_tariff'].replace('_', ' ')} rate",
         label_spanner_today=_spanner_today,
         label_spanner_proposed=_spanner_proposed,
     )
@@ -2184,16 +2152,66 @@ display_gt(
 
 ```{python}
 #| label: tbl-hp-seasonal-sw-avg-pc
-#| tbl-cap: "Average delivery bill, delivery cost of service, and cross-subsidy by subclass, under two sections: 1. all customers under each utility's current default rates and 2. all heat pump customers on utility's HP seasonal rate and all other customers on utility's adjusted default rate. Assumes lump-sum residual allocation (equal residual share for all customers)."
+#| tbl-cap: "Average electric delivery bill, delivery cost of service, and cross-subsidy by heating fuel type, under two sections: 1. all customers under each utility's current default rates and 2. all heat pump customers on utility's HP seasonal rate and all other customers on utility's adjusted default rate. Assumes lump-sum residual allocation (equal residual share for all customers)."
 
 display_gt(
     build_gt_cos_comparison_avg(
         cos_default_sw_pc,
         cos_hp_seasonal_sw_pc,
         title="Heat pump rate eliminates cross-subsidy from electric customers with heat pumps to those who heat with fossil fuels",
-        subtitle=f"Average cross-subsidy by subclass, before and after HP customers switch to {_sc['hp_tariff'].replace('_', ' ')} rate",
         label_spanner_default=_spanner_today,
         label_spanner_proposed=_spanner_proposed,
+    )
+)
+```
+
+## EH seasonal vs. baseline statewide — totals (per-customer residual)
+
+```{python}
+#| label: load-eh-seasonal-pc
+
+bat_eh_seasonal_pc, cos_eh_seasonal_sw_pc, cos_eh_seasonal_by_util_pc = (
+    load_scenario_proposed_cos(SCENARIOS[4])
+)
+print(
+    f"EH seasonal (percustomer) loaded: {bat_eh_seasonal_pc.height:,} buildings, "
+    f"weighted customers: {bat_eh_seasonal_pc['weight'].sum():,.0f}"
+)
+```
+
+```{python}
+#| label: tbl-eh-seasonal-sw-totals-pc
+#| tbl-cap: "Default vs EH seasonal delivery revenue, COS, and cross-subsidy — NY statewide (per-customer residual). The EH seasonal rate applies to HP and ER customers jointly."
+
+_spanner_today_eh = "All customers on utility's default rates"
+_spanner_proposed_eh = (
+    "Electric-heating customers (HP + ER) on EH seasonal rate; "
+    "fossil-fuel customers on adjusted flat rate"
+)
+display_gt(
+    build_gt_cos_comparison_totals(
+        cos_default_sw_pc,
+        cos_eh_seasonal_sw_pc,
+        title="EH seasonal rate eliminates cross-subsidy from electric-heating customers to those who heat with fossil fuels",
+        label_spanner_today=_spanner_today_eh,
+        label_spanner_proposed=_spanner_proposed_eh,
+    )
+)
+```
+
+## EH seasonal vs. baseline statewide — averages (per-customer residual)
+
+```{python}
+#| label: tbl-eh-seasonal-sw-avg-pc
+#| tbl-cap: "Average electric delivery bill, delivery cost of service, and cross-subsidy by subclass, under two sections: 1. all customers under each utility's current default rates and 2. all electric-heating customers (HP + ER) on utility's EH seasonal rate and all other customers on utility's adjusted flat rate. Assumes lump-sum residual allocation (equal residual share for all customers)."
+
+display_gt(
+    build_gt_cos_comparison_avg(
+        cos_default_sw_pc,
+        cos_eh_seasonal_sw_pc,
+        title="EH seasonal rate eliminates cross-subsidy from electric-heating customers to those who heat with fossil fuels",
+        label_spanner_default=_spanner_today_eh,
+        label_spanner_proposed=_spanner_proposed_eh,
     )
 )
 ```
@@ -2226,7 +2244,6 @@ display_gt(
         cos_default_sw_pc,
         cos_tou_flex_sw_pc,
         title="Heat pump rate eliminates cross-subsidy from electric customers with heat pumps to those who heat with fossil fuels",
-        subtitle=f"Total cross-subsidy by subclass, before and after HP customers switch to {_sc['hp_tariff'].replace('_', ' ')} rate",
         label_spanner_today=_spanner_today,
         label_spanner_proposed=_spanner_proposed,
     )
@@ -2237,14 +2254,13 @@ display_gt(
 
 ```{python}
 #| label: tbl-hp-tou-flex-sw-avg-pc
-#| tbl-cap: "Default vs HP TOU flex average delivery bill and cross-subsidy — NY statewide (per-customer residual)"
+#| tbl-cap: "Default vs HP TOU flex average electric delivery bill and cross-subsidy — NY statewide (per-customer residual)"
 
 display_gt(
     build_gt_cos_comparison_avg(
         cos_default_sw_pc,
         cos_tou_flex_sw_pc,
         title="Heat pump rate eliminates cross-subsidy from electric customers with heat pumps to those who heat with fossil fuels",
-        subtitle=f"Average cross-subsidy by subclass, before and after HP customers switch to {_sc['hp_tariff'].replace('_', ' ')} rate",
         label_spanner_default=_spanner_today,
         label_spanner_proposed=_spanner_proposed,
     )
@@ -2256,35 +2272,136 @@ display_gt(
 Default-rate tables for each of the seven NY utilities, using per-customer residual allocation. Each utility shows a totals table followed by an averages table.
 
 ```{python}
-#| label: baseline-per-util-pc-totals
+#| label: tbl-baseline-per-util-pc-totals-helper
 
-for util in UTILITIES:
-    _label_u = UTIL_DISPLAY[util]
+def _cos_totals_for(util: str):
     _cos_u = cos_default_by_util_pc[util]
-    display_gt(
-        build_gt_cos_totals(
-            _cos_u,
-            title=cos_baseline_totals_title(_label_u, _cos_u),
-            subtitle=BASELINE_COS_TOTALS_SUBTITLE,
-            source_note=cos_table_baseline_source_note(),
-        )
+    return build_gt_cos_totals(
+        _cos_u,
+        title=cos_baseline_totals_title(UTIL_DISPLAY[util], _cos_u),
+        source_note=cos_table_baseline_source_note(),
+    )
+
+_PER_UTIL_TOTALS_CAP_PREFIX = (
+    "Total electric delivery revenue, electric delivery cost of service, and "
+    "cross-subsidy by residential customer heating source subclass under the "
+    "default rate, for"
+)
+_PER_UTIL_TOTALS_CAP_SUFFIX = (
+    ". Assumes lump-sum (per-customer) residual allocation — equal residual "
+    "share for all customers. Subclass cost-of-service calculated using NREL's "
+    "CAIRO model."
+)
+```
+
+```{python}
+#| label: tbl-baseline-per-util-pc-totals-cenhud
+#| tbl-cap: "Total electric delivery revenue, electric delivery cost of service, and cross-subsidy by residential customer heating source subclass under the default rate, for Central Hudson. Assumes lump-sum (per-customer) residual allocation — equal residual share for all customers. Subclass cost-of-service calculated using NREL's CAIRO model."
+
+display_gt(_cos_totals_for("cenhud"))
+```
+
+```{python}
+#| label: tbl-baseline-per-util-pc-totals-coned
+#| tbl-cap: "Total electric delivery revenue, electric delivery cost of service, and cross-subsidy by residential customer heating source subclass under the default rate, for Con Edison. Assumes lump-sum (per-customer) residual allocation — equal residual share for all customers. Subclass cost-of-service calculated using NREL's CAIRO model."
+
+display_gt(_cos_totals_for("coned"))
+```
+
+```{python}
+#| label: tbl-baseline-per-util-pc-totals-nimo
+#| tbl-cap: "Total electric delivery revenue, electric delivery cost of service, and cross-subsidy by residential customer heating source subclass under the default rate, for National Grid. Assumes lump-sum (per-customer) residual allocation — equal residual share for all customers. Subclass cost-of-service calculated using NREL's CAIRO model."
+
+display_gt(_cos_totals_for("nimo"))
+```
+
+```{python}
+#| label: tbl-baseline-per-util-pc-totals-nyseg
+#| tbl-cap: "Total electric delivery revenue, electric delivery cost of service, and cross-subsidy by residential customer heating source subclass under the default rate, for NYSEG. Assumes lump-sum (per-customer) residual allocation — equal residual share for all customers. Subclass cost-of-service calculated using NREL's CAIRO model."
+
+display_gt(_cos_totals_for("nyseg"))
+```
+
+```{python}
+#| label: tbl-baseline-per-util-pc-totals-or
+#| tbl-cap: "Total electric delivery revenue, electric delivery cost of service, and cross-subsidy by residential customer heating source subclass under the default rate, for O&R. Assumes lump-sum (per-customer) residual allocation — equal residual share for all customers. Subclass cost-of-service calculated using NREL's CAIRO model."
+
+display_gt(_cos_totals_for("or"))
+```
+
+```{python}
+#| label: tbl-baseline-per-util-pc-totals-psegli
+#| tbl-cap: "Total electric delivery revenue, electric delivery cost of service, and cross-subsidy by residential customer heating source subclass under the default rate, for PSEG-LI. Assumes lump-sum (per-customer) residual allocation — equal residual share for all customers. Subclass cost-of-service calculated using NREL's CAIRO model."
+
+display_gt(_cos_totals_for("psegli"))
+```
+
+```{python}
+#| label: tbl-baseline-per-util-pc-totals-rge
+#| tbl-cap: "Total electric delivery revenue, electric delivery cost of service, and cross-subsidy by residential customer heating source subclass under the default rate, for RG&E. Assumes lump-sum (per-customer) residual allocation — equal residual share for all customers. Subclass cost-of-service calculated using NREL's CAIRO model."
+
+display_gt(_cos_totals_for("rge"))
+```
+
+```{python}
+#| label: tbl-baseline-per-util-pc-avg-helper
+
+def _cos_avg_for(util: str):
+    _cos_u = cos_default_by_util_pc[util]
+    return build_gt_cos_avg(
+        _cos_u,
+        title=cos_baseline_avg_title(UTIL_DISPLAY[util], _cos_u),
+        source_note=cos_table_baseline_source_note(),
     )
 ```
 
 ```{python}
-#| label: baseline-per-util-pc-avg
+#| label: tbl-baseline-per-util-pc-avg-cenhud
+#| tbl-cap: "Average annual electric delivery bill, electric delivery cost of service, and cross-subsidy by residential customer heating source subclass under the default rate, for Central Hudson. Assumes lump-sum (per-customer) residual allocation — equal residual share for all customers."
 
-for util in UTILITIES:
-    _label_u = UTIL_DISPLAY[util]
-    _cos_u = cos_default_by_util_pc[util]
-    display_gt(
-        build_gt_cos_avg(
-            _cos_u,
-            title=cos_baseline_avg_title(_label_u, _cos_u),
-            subtitle=BASELINE_COS_AVG_SUBTITLE,
-            source_note=cos_table_baseline_source_note(),
-        )
-    )
+display_gt(_cos_avg_for("cenhud"))
+```
+
+```{python}
+#| label: tbl-baseline-per-util-pc-avg-coned
+#| tbl-cap: "Average annual electric delivery bill, electric delivery cost of service, and cross-subsidy by residential customer heating source subclass under the default rate, for Con Edison. Assumes lump-sum (per-customer) residual allocation — equal residual share for all customers."
+
+display_gt(_cos_avg_for("coned"))
+```
+
+```{python}
+#| label: tbl-baseline-per-util-pc-avg-nimo
+#| tbl-cap: "Average annual electric delivery bill, electric delivery cost of service, and cross-subsidy by residential customer heating source subclass under the default rate, for National Grid. Assumes lump-sum (per-customer) residual allocation — equal residual share for all customers."
+
+display_gt(_cos_avg_for("nimo"))
+```
+
+```{python}
+#| label: tbl-baseline-per-util-pc-avg-nyseg
+#| tbl-cap: "Average annual electric delivery bill, electric delivery cost of service, and cross-subsidy by residential customer heating source subclass under the default rate, for NYSEG. Assumes lump-sum (per-customer) residual allocation — equal residual share for all customers."
+
+display_gt(_cos_avg_for("nyseg"))
+```
+
+```{python}
+#| label: tbl-baseline-per-util-pc-avg-or
+#| tbl-cap: "Average annual electric delivery bill, electric delivery cost of service, and cross-subsidy by residential customer heating source subclass under the default rate, for O&R. Assumes lump-sum (per-customer) residual allocation — equal residual share for all customers."
+
+display_gt(_cos_avg_for("or"))
+```
+
+```{python}
+#| label: tbl-baseline-per-util-pc-avg-psegli
+#| tbl-cap: "Average annual electric delivery bill, electric delivery cost of service, and cross-subsidy by residential customer heating source subclass under the default rate, for PSEG-LI. Assumes lump-sum (per-customer) residual allocation — equal residual share for all customers."
+
+display_gt(_cos_avg_for("psegli"))
+```
+
+```{python}
+#| label: tbl-baseline-per-util-pc-avg-rge
+#| tbl-cap: "Average annual electric delivery bill, electric delivery cost of service, and cross-subsidy by residential customer heating source subclass under the default rate, for RG&E. Assumes lump-sum (per-customer) residual allocation — equal residual share for all customers."
+
+display_gt(_cos_avg_for("rge"))
 ```
 
 
@@ -2311,7 +2428,6 @@ for util in UTILITIES:
             cos_default_by_util_pc[util],
             cos_hp_seasonal_by_util_pc[util],
             title=f"Delivery revenue, COS, and cross-subsidy — {_label_u}",
-            subtitle=f"{_sc['label']}.",
             label_spanner_today=_span_today,
             label_spanner_proposed=_span_prop,
         )
@@ -2320,8 +2436,7 @@ for util in UTILITIES:
         build_gt_cos_comparison_avg(
             cos_default_by_util_pc[util],
             cos_hp_seasonal_by_util_pc[util],
-            title=f"Average delivery bill, COS, and cross-subsidy — {_label_u}",
-            subtitle=f"{_sc['label']}.",
+            title=f"Average electric delivery bill, COS, and cross-subsidy — {_label_u}",
             label_spanner_default=_span_today,
             label_spanner_proposed=_span_prop,
         )
@@ -2352,7 +2467,6 @@ for util in UTILITIES:
             cos_default_by_util_pc[util],
             cos_tou_flex_by_util_pc[util],
             title=f"Delivery revenue, COS, and cross-subsidy — {_label_u}",
-            subtitle=f"{_sc['label']}.",
             label_spanner_today=_span_today,
             label_spanner_proposed=_span_prop,
         )
@@ -2362,7 +2476,6 @@ for util in UTILITIES:
             cos_default_by_util_pc[util],
             cos_tou_flex_by_util_pc[util],
             title=f"Average delivery bill, COS, and cross-subsidy — {_label_u}",
-            subtitle=f"{_sc['label']}.",
             label_spanner_default=_span_today,
             label_spanner_proposed=_span_prop,
         )
@@ -2385,7 +2498,12 @@ fill_report_vars_for_scenario(
     cos_tou_flex_sw_pc,
     cos_tou_flex_by_util_pc,
 )
-print("Per-customer report vars saved for HP seasonal and HP TOU flex")
+fill_report_vars_for_scenario(
+    SCENARIOS[4]["id"],
+    cos_eh_seasonal_sw_pc,
+    cos_eh_seasonal_by_util_pc,
+)
+print("Per-customer report vars saved for HP seasonal, HP TOU flex, and EH seasonal")
 ```
 
 ---
@@ -2400,6 +2518,7 @@ The baseline _revenue_ is the same as above (run 1+2, same bills), but the COS d
 
 ```{python}
 #| label: load-default-epmc
+#| eval: false
 
 bat_default_epmc = load_master_bat(
     PATH_MASTER_BAT_DEFAULT, residual_alloc="epmc"
@@ -2429,13 +2548,13 @@ print(f"  Weighted delivery revenue: ${(bat_default_epmc['weight'] * bat_default
 
 ```{python}
 #| label: tbl-baseline-sw-summary-epmc
-#| tbl-cap: "Customers, consumption, and delivery revenue by subclass — NY statewide, default rates (EPMC residual)."
+#| eval: false
+#| tbl-cap: "Residential customers, consumption, and delivery revenue by heating fuel type — NY statewide, default rates (EPMC residual)."
 
 display_gt(
     build_gt_cos_totals_abridged(
         cos_default_sw_epmc,
         title=cos_sw_summary_abridged_title(cos_default_sw_epmc),
-        subtitle="Customer counts, electricity consumption, and delivery revenue by residential customer subclass, under default rates",
     )
 )
 ```
@@ -2444,13 +2563,13 @@ display_gt(
 
 ```{python}
 #| label: tbl-baseline-sw-totals-epmc
-#| tbl-cap: "Total delivery revenue, delivery cost of service, and cross-subsidy by residential customer subclass, under default rates. Assumes equal-percentage-of-marginal-cost (EPMC) residual allocation: each subclass is allocated a share of the residual in proportion to its share of total marginal cost."
+#| eval: false
+#| tbl-cap: "Total electric delivery revenue, electric delivery cost of service, and cross-subsidy by residential customer heating fuel type, under default rates. Assumes equal-percentage-of-marginal-cost (EPMC) residual allocation: each subclass is allocated a share of the residual in proportion to its share of total marginal cost."
 
 display_gt(
     build_gt_cos_totals(
         cos_default_sw_epmc,
         title=cos_baseline_totals_title(None, cos_default_sw_epmc),
-        subtitle=BASELINE_COS_TOTALS_SUBTITLE,
         source_note=cos_table_baseline_source_note(residual="epmc"),
         statewide_narrow=True,
     )
@@ -2461,13 +2580,13 @@ display_gt(
 
 ```{python}
 #| label: tbl-baseline-sw-avg-epmc
-#| tbl-cap: "Average annual delivery bill, delivery cost of service, and cross-subsidy by residential customer subclass, under default rates. Assumes equal-percentage-of-marginal-cost (EPMC) residual allocation: each subclass is allocated a share of the residual in proportion to its share of total marginal cost."
+#| eval: false
+#| tbl-cap: "Average annual electric delivery bill, electric delivery cost of service, and cross-subsidy by residential customer subclass, under default rates. Assumes equal-percentage-of-marginal-cost (EPMC) residual allocation: each subclass is allocated a share of the residual in proportion to its share of total marginal cost."
 
 display_gt(
     build_gt_cos_avg(
         cos_default_sw_epmc,
         title=cos_baseline_avg_title(None, cos_default_sw_epmc),
-        subtitle=BASELINE_COS_AVG_SUBTITLE,
         source_note=cos_table_baseline_source_note(residual="epmc"),
     )
 )
@@ -2479,13 +2598,13 @@ Same decomposition as the per-customer diagnostic above. The **marginal cost** c
 
 ```{python}
 #| label: tbl-mc-diagnostic-sw-epmc
+#| eval: false
 #| tbl-cap: "Marginal cost, residual, and COS decomposition by subclass — NY statewide (EPMC residual)"
 
 display_gt(
     build_gt_mc_diagnostic(
         bat_default_epmc,
         title="Marginal cost, residual, and COS decomposition — NY statewide",
-        subtitle="Default rates (run 1+2). Residual allocated via EPMC.",
     )
 )
 ```
@@ -2494,6 +2613,7 @@ display_gt(
 
 ```{python}
 #| label: load-hp-seasonal-epmc
+#| eval: false
 
 bat_hp_seasonal_epmc, cos_hp_seasonal_sw_epmc, cos_hp_seasonal_by_util_epmc = (
     load_scenario_proposed_cos(SCENARIOS[1])
@@ -2506,6 +2626,7 @@ print(
 
 ```{python}
 #| label: tbl-hp-seasonal-sw-totals-epmc
+#| eval: false
 #| tbl-cap: "Default vs HP seasonal delivery revenue, COS, and cross-subsidy — NY statewide (EPMC residual)"
 
 _sc = SCENARIOS[1]
@@ -2518,7 +2639,6 @@ display_gt(
         cos_default_sw_epmc,
         cos_hp_seasonal_sw_epmc,
         title="Heat pump rate eliminates cross-subsidy from electric customers with heat pumps to those who heat with fossil fuels",
-        subtitle=f"Total cross-subsidy by subclass, before and after HP customers switch to {_sc['hp_tariff'].replace('_', ' ')} rate",
         label_spanner_today=_spanner_today,
         label_spanner_proposed=_spanner_proposed,
     )
@@ -2529,6 +2649,7 @@ display_gt(
 
 ```{python}
 #| label: tbl-hp-seasonal-sw-avg-epmc
+#| eval: false
 #| tbl-cap: "Default vs HP seasonal average delivery bill and cross-subsidy — NY statewide (EPMC residual)"
 
 display_gt(
@@ -2536,7 +2657,6 @@ display_gt(
         cos_default_sw_epmc,
         cos_hp_seasonal_sw_epmc,
         title="Heat pump rate eliminates cross-subsidy from electric customers with heat pumps to those who heat with fossil fuels",
-        subtitle=f"Average cross-subsidy by subclass, before and after HP customers switch to {_sc['hp_tariff'].replace('_', ' ')} rate",
         label_spanner_default=_spanner_today,
         label_spanner_proposed=_spanner_proposed,
     )
@@ -2545,8 +2665,12 @@ display_gt(
 
 ## HP TOU flex vs. baseline statewide — totals (EPMC residual)
 
+Disabled: the current batch (`ny_20260416a_r1-36`) does not include run pair
+25+26 (HP TOU flex EPMC). Re-enable when a batch with those runs is wired up.
+
 ```{python}
 #| label: load-hp-tou-flex-epmc
+#| eval: false
 
 bat_tou_flex_epmc, cos_tou_flex_sw_epmc, cos_tou_flex_by_util_epmc = (
     load_scenario_proposed_cos(SCENARIOS[3])
@@ -2560,6 +2684,7 @@ print(
 ```{python}
 #| label: tbl-hp-tou-flex-sw-totals-epmc
 #| tbl-cap: "Default vs HP TOU flex delivery revenue, COS, and cross-subsidy — NY statewide (EPMC residual)"
+#| eval: false
 
 _sc = SCENARIOS[3]
 _spanner_proposed = (
@@ -2571,7 +2696,6 @@ display_gt(
         cos_default_sw_epmc,
         cos_tou_flex_sw_epmc,
         title="Heat pump rate eliminates cross-subsidy from electric customers with heat pumps to those who heat with fossil fuels",
-        subtitle=f"Total cross-subsidy by subclass, before and after HP customers switch to {_sc['hp_tariff'].replace('_', ' ')} rate",
         label_spanner_today=_spanner_today,
         label_spanner_proposed=_spanner_proposed,
     )
@@ -2583,13 +2707,13 @@ display_gt(
 ```{python}
 #| label: tbl-hp-tou-flex-sw-avg-epmc
 #| tbl-cap: "Default vs HP TOU flex average delivery bill and cross-subsidy — NY statewide (EPMC residual)"
+#| eval: false
 
 display_gt(
     build_gt_cos_comparison_avg(
         cos_default_sw_epmc,
         cos_tou_flex_sw_epmc,
         title="Heat pump rate eliminates cross-subsidy from electric customers with heat pumps to those who heat with fossil fuels",
-        subtitle=f"Average cross-subsidy by subclass, before and after HP customers switch to {_sc['hp_tariff'].replace('_', ' ')} rate",
         label_spanner_default=_spanner_today,
         label_spanner_proposed=_spanner_proposed,
     )
@@ -2602,6 +2726,7 @@ Default-rate tables for each of the seven NY utilities, using EPMC residual allo
 
 ```{python}
 #| label: baseline-per-util-epmc
+#| eval: false
 
 for util in UTILITIES:
     _label_u = UTIL_DISPLAY[util]
@@ -2610,7 +2735,6 @@ for util in UTILITIES:
         build_gt_cos_totals(
             _cos_u,
             title=cos_baseline_totals_title(_label_u, _cos_u),
-            subtitle=BASELINE_COS_TOTALS_SUBTITLE,
             source_note=cos_table_baseline_source_note(residual="epmc"),
         )
     )
@@ -2618,7 +2742,6 @@ for util in UTILITIES:
         build_gt_cos_avg(
             _cos_u,
             title=cos_baseline_avg_title(_label_u, _cos_u),
-            subtitle=BASELINE_COS_AVG_SUBTITLE,
             source_note=cos_table_baseline_source_note(residual="epmc"),
         )
     )
@@ -2631,6 +2754,7 @@ Comparison tables for each utility: default rates vs. HP seasonal rate (run 21+2
 
 ```{python}
 #| label: hp-seasonal-per-util-epmc
+#| eval: false
 
 _sc = SCENARIOS[1]
 for util in UTILITIES:
@@ -2648,7 +2772,6 @@ for util in UTILITIES:
             cos_default_by_util_epmc[util],
             cos_hp_seasonal_by_util_epmc[util],
             title=f"Delivery revenue, COS, and cross-subsidy — {_label_u}",
-            subtitle=f"{_sc['label']}.",
             label_spanner_today=_span_today,
             label_spanner_proposed=_span_prop,
         )
@@ -2658,7 +2781,6 @@ for util in UTILITIES:
             cos_default_by_util_epmc[util],
             cos_hp_seasonal_by_util_epmc[util],
             title=f"Average delivery bill, COS, and cross-subsidy — {_label_u}",
-            subtitle=f"{_sc['label']}.",
             label_spanner_default=_span_today,
             label_spanner_proposed=_span_prop,
         )
@@ -2670,8 +2792,12 @@ print("Displayed HP seasonal per-utility comparison tables (EPMC)")
 
 Comparison tables for each utility: default rates vs. HP seasonal TOU flex rate (run 25+26), with EPMC residual allocation.
 
+Disabled: the current batch (`ny_20260416a_r1-36`) does not include run pair
+25+26. Re-enable when a batch with those runs is wired up.
+
 ```{python}
 #| label: hp-tou-flex-per-util-epmc
+#| eval: false
 
 _sc = SCENARIOS[3]
 for util in UTILITIES:
@@ -2689,7 +2815,6 @@ for util in UTILITIES:
             cos_default_by_util_epmc[util],
             cos_tou_flex_by_util_epmc[util],
             title=f"Delivery revenue, COS, and cross-subsidy — {_label_u}",
-            subtitle=f"{_sc['label']}.",
             label_spanner_today=_span_today,
             label_spanner_proposed=_span_prop,
         )
@@ -2699,7 +2824,6 @@ for util in UTILITIES:
             cos_default_by_util_epmc[util],
             cos_tou_flex_by_util_epmc[util],
             title=f"Average delivery bill, COS, and cross-subsidy — {_label_u}",
-            subtitle=f"{_sc['label']}.",
             label_spanner_default=_span_today,
             label_spanner_proposed=_span_prop,
         )
@@ -2711,18 +2835,23 @@ print("Displayed HP TOU flex per-utility comparison tables (EPMC)")
 
 ```{python}
 #| label: report-vars-epmc
+#| eval: false
 
 fill_report_vars_for_scenario(
     SCENARIOS[1]["id"],
     cos_hp_seasonal_sw_epmc,
     cos_hp_seasonal_by_util_epmc,
 )
-fill_report_vars_for_scenario(
-    SCENARIOS[3]["id"],
-    cos_tou_flex_sw_epmc,
-    cos_tou_flex_by_util_epmc,
-)
-print("EPMC report vars saved for HP seasonal and HP TOU flex")
+# SCENARIOS[3] (HP TOU flex EPMC, run 25+26) disabled — batch
+# ``ny_20260416a_r1-36`` does not include those runs. Re-enable alongside
+# the disabled TOU flex EPMC table cells above when a batch with 25+26 is
+# wired up.
+# fill_report_vars_for_scenario(
+#     SCENARIOS[3]["id"],
+#     cos_tou_flex_sw_epmc,
+#     cos_tou_flex_by_util_epmc,
+# )
+print("EPMC report vars saved for HP seasonal (HP TOU flex disabled)")
 ```
 
 ---

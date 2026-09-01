@@ -1,0 +1,244 @@
+---
+title: MD BGE Incremental Delivery Revenue vs. Marginal Cost
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+execute:
+  warning: false
+  message: false
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+
+This notebook asks whether a heat-pump conversion is a net contributor or a net cost to
+MD BGE's delivery system under the current rate design. Starting from CAIRO master BAT
+tables on S3, it diffs each non-heat-pump building's annual delivery revenue,
+marginal-cost allocation, and grid electricity consumption between upgrade 00
+(pre-retrofit) and upgrade 02 (post-retrofit).
+
+The functions doing the data crunching live in
+[`lib/rates_analysis/cos_funcs.py`](../../../lib/rates_analysis/cos_funcs.py) and
+[`lib/rates_analysis/rate_case_funcs.py`](../../../lib/rates_analysis/rate_case_funcs.py).
+This notebook just calls those with MD BGE's specific state/batch/scenario values from
+`batch_config.yaml`.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import polars as pl
+import yaml
+from great_tables import GT
+
+from lib.great_tables import get_switchbox_gt_tab_options
+from lib.quarto import display_gt
+from lib.rates_analysis.cos_funcs import (
+    bat_component_delta_with_gap,
+    bat_component_summary_by_heating_type,
+)
+from lib.rates_analysis.rate_case_funcs import (
+    add_heating_label,
+    plot_weighted_bill_change_hist,
+    plot_weighted_hist_by_group,
+    segment_name,
+)
+```
+
+## Parameters
+
+Batch identity lives in `batch_config.yaml` alongside this report, not hardcoded here, so
+re-running against a new batch is a one-file change. `UTILITY` matches the code
+`analysis.qmd` uses for MD BGE.
+
+```{python}
+#| label: params
+
+_batch_config = yaml.safe_load(Path("../batch_config.yaml").read_text())
+
+STATE = _batch_config["STATE"]
+BATCH = _batch_config["BATCH"]
+DEFAULT_SCENARIO = _batch_config["BASELINE_BILL_SCENARIO"]
+UTILITY = "bge"
+
+SEG_DEFAULT_PRECALC = segment_name(DEFAULT_SCENARIO, "precalc")
+SEG_DEFAULT_CALIBRATED = segment_name(DEFAULT_SCENARIO, "calibrated")
+
+print(f"state={STATE}  utility={UTILITY}  batch={BATCH}  scenario={DEFAULT_SCENARIO}")
+```
+
+## Incremental delivery revenue vs. marginal cost
+
+When a non-heat-pump home switches to a heat pump, its electricity consumption changes — and
+so does its delivery bill. But does the *revenue* the utility collects from that home change
+by more or less than the *marginal cost* that home actually imposes on the grid? The answer
+tells us whether the conversion is a net contributor or a net cost to the delivery system
+under the current rate design.
+
+We compare each non-HP building's annual delivery revenue (`annual_bill_delivery`),
+marginal-cost allocation (`economic_burden_delivery`), and grid electricity consumption
+(`annual_kwh_grid`) between upgrade 00 (pre-retrofit, `default_precalc`) and upgrade 02
+(post-retrofit, `default_calibrated`). We fetch every non-HP baseline heating type in one
+pass rather than filtering to natural gas alone, since how the increment behaves differs by
+heating type -- see below.
+
+```{python}
+#| label: bat-component-delta-data
+
+bat_delta = bat_component_delta_with_gap(
+    STATE,
+    UTILITY,
+    BATCH,
+    SEG_DEFAULT_PRECALC,
+    SEG_DEFAULT_CALIBRATED,
+)
+bat_delta.head()
+```
+
+Not every heating type gains electric load from a heat pump conversion. Homes already
+heating with **electric resistance** typically see grid consumption *fall*, since a heat
+pump is a much more efficient electric appliance replacing a much less efficient one; homes
+switching from **combustion fuels** (natural gas, oil, propane) see grid consumption *rise*,
+since the heat pump is new electric load. The table below breaks out average pre-retrofit
+consumption, the average incremental change, and the average percent change in revenue and
+marginal cost by baseline heating type, plus a $-per-incremental-kWh figure for both
+revenue and marginal cost. That figure is a **weighted-sum ratio** (total incremental
+dollars ÷ total incremental kWh across the group), not an average of each building's own
+ratio -- a per-building ratio is unstable for any building whose incremental kWh is near
+zero, which the weighted-sum approach avoids.
+
+```{python}
+#| label: tbl-bat-component-summary-by-heating-type
+#| tbl-cap: "Average pre-retrofit consumption, incremental kWh, and incremental delivery revenue/marginal cost by baseline heating type after switching to a heat pump (MD BGE default rate)."
+
+_bat_summary_by_heating_type = bat_component_summary_by_heating_type(bat_delta)
+_bat_summary_gt = (
+    GT(_bat_summary_by_heating_type, rowname_col="heating_type")
+    .fmt_number(columns=["n_weighted", "avg_kwh_before", "avg_kwh_delta"], decimals=0)
+    .fmt_currency(
+        columns=["revenue_avg_before", "revenue_avg_delta", "mc_avg_before", "mc_avg_delta"],
+        decimals=0,
+    )
+    .fmt_percent(columns=["revenue_pct_change", "mc_pct_change"], decimals=1)
+    .fmt_currency(
+        columns=["revenue_dollars_per_incremental_kwh", "mc_dollars_per_incremental_kwh"],
+        decimals=3,
+    )
+    .cols_label(
+        n_weighted="Weighted homes",
+        avg_kwh_before="Avg. grid kWh before",
+        avg_kwh_delta="Avg. Δ grid kWh",
+        revenue_avg_before="Avg. revenue before",
+        revenue_avg_delta="Avg. Δ revenue",
+        revenue_pct_change="Δ revenue %",
+        revenue_dollars_per_incremental_kwh="Revenue $/Δ kWh",
+        mc_avg_before="Avg. MC before",
+        mc_avg_delta="Avg. Δ MC",
+        mc_pct_change="Δ MC %",
+        mc_dollars_per_incremental_kwh="MC $/Δ kWh",
+    )
+    .tab_stubhead(label="Baseline heating type")
+    .tab_spanner(label="Delivery revenue", columns=["revenue_avg_before", "revenue_avg_delta", "revenue_pct_change", "revenue_dollars_per_incremental_kwh"])
+    .tab_spanner(label="Delivery marginal cost", columns=["mc_avg_before", "mc_avg_delta", "mc_pct_change", "mc_dollars_per_incremental_kwh"])
+    .tab_source_note(
+        "$/Δ kWh = weighted-sum incremental dollars ÷ weighted-sum incremental kWh for the "
+        "group (not an average of each building's own ratio). MC = marginal cost."
+    )
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+display_gt(_bat_summary_gt)
+```
+
+The sign flip is visible directly in the incremental-kWh distribution: electric-resistance
+homes cluster on the negative side while combustion-heated homes cluster on the positive
+side (@fig-hist-delta-kwh).
+
+```{python}
+#| label: fig-hist-delta-kwh
+#| fig-cap: "Distribution of the change in annual grid electricity consumption per building after switching to a heat pump, by baseline heating type (MD BGE default rate)."
+
+plot_weighted_hist_by_group(
+    add_heating_label(bat_delta),
+    "delta_annual_kwh_grid",
+    "heating_label",
+    "Change in grid kWh after HP retrofit, by baseline heating type",
+    bin_width=250,
+    x_label="Annual grid kWh change",
+)
+```
+
+The remaining three figures show the population-wide (all non-HP heating types combined)
+distribution of the dollar-denominated deltas underlying the table above.
+
+```{python}
+#| label: fig-hist-delta-delivery-revenue
+#| fig-cap: "Distribution of the change in annual delivery revenue per building after switching to a heat pump, across all non-HP baseline heating types (MD BGE default rate)."
+
+plot_weighted_bill_change_hist(
+    bat_delta.select(pl.col("delta_annual_bill_delivery").alias("delta"), "weight"),
+    "Change in delivery revenue after HP retrofit",
+    show_mean_median=True,
+)
+```
+
+```{python}
+#| label: fig-hist-delta-delivery-mc
+#| fig-cap: "Distribution of the change in annual delivery marginal-cost allocation per building after switching to a heat pump, across all non-HP baseline heating types (MD BGE default rate)."
+
+plot_weighted_bill_change_hist(
+    bat_delta.select(pl.col("delta_economic_burden_delivery").alias("delta"), "weight"),
+    "Change in delivery marginal cost after HP retrofit",
+    bin_width=25,
+    show_mean_median=True,
+)
+```
+
+```{python}
+#| label: fig-hist-delta-delivery-revenue-by-heating-type
+#| fig-cap: "Distribution of the change in annual delivery revenue per building after switching to a heat pump, faceted by baseline heating type (MD BGE default rate)."
+plot_weighted_hist_by_group(
+    add_heating_label(bat_delta),
+    "delta_annual_bill_delivery",
+    "heating_label",
+    "Change in delivery revenue after HP retrofit, by baseline heating type",
+    bin_width=100,
+    x_label="Annual delivery revenue change",
+)
+```
+
+```{python}
+#| label: fig-hist-delta-revenue-minus-mc
+#| fig-cap: "Distribution of incremental delivery revenue minus incremental marginal cost per building after switching to a heat pump, across all non-HP baseline heating types (MD BGE default rate). Positive values mean the utility collects more incremental revenue than the building's incremental cost — i.e. the conversion subsidizes other customers."
+
+plot_weighted_bill_change_hist(
+    bat_delta.select(pl.col("delta_gap").alias("delta"), "weight"),
+    "Incremental delivery revenue minus marginal cost after HP retrofit",
+    show_mean_median=True,
+)
+```
+
+```{python}
+#| label: fig-hist-delta-revenue-minus-mc-by-heating-type
+#| fig-cap: "Distribution of incremental delivery revenue minus incremental marginal cost per building after switching to a heat pump, faceted by baseline heating type (MD BGE default rate)."
+
+plot_weighted_hist_by_group(
+    add_heating_label(bat_delta),
+    "delta_gap",
+    "heating_label",
+    "Incremental delivery revenue minus marginal cost after HP retrofit, by baseline heating type",
+    bin_width=100,
+    x_label="Revenue minus marginal cost change",
+)
+```

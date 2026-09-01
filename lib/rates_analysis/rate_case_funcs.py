@@ -270,6 +270,7 @@ def bat_component_delta(
     *,
     components: list[str] | None = None,
     exclude_has_hp: bool = True,
+    utility: str | None = None,
 ) -> pl.DataFrame:
     """Per-building delta of BAT cost-allocation components between two segments.
 
@@ -290,6 +291,11 @@ def bat_component_delta(
     When *exclude_has_hp* is True (default), buildings with a heat pump at
     baseline (``postprocess_group.has_hp == True`` in *segment_before*) are
     dropped — they already have a heat pump and aren't "converting".
+
+    When *utility* is set, both segments' master BAT are filtered to
+    ``sb.electric_utility == utility`` before joining — a no-op for
+    single-utility batches, but avoids silently mixing in other utilities'
+    buildings (and the wasted read) once a batch covers more than one.
     """
     import polars as pl
 
@@ -308,12 +314,18 @@ def bat_component_delta(
         *[pl.col(c).alias(f"{c}_after") for c in components],
     ]
 
-    before = load_master_bat(state, batch, segment_before).select(before_select)
+    before = load_master_bat(state, batch, segment_before)
     # annual_bill_delivery and economic_burden_delivery are valid at calibrated
     # (see docstring), so suppress the stage warning from load_master_bat.
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", message=".*not a `_precalc` segment.*")
-        after = load_master_bat(state, batch, segment_after).select(after_select)
+        after = load_master_bat(state, batch, segment_after)
+
+    if utility is not None:
+        before = before.filter(pl.col("sb.electric_utility") == utility)
+        after = after.filter(pl.col("sb.electric_utility") == utility)
+    before = before.select(before_select)
+    after = after.select(after_select)
 
     joined = before.join(after, on="bldg_id", how="inner")
     if exclude_has_hp:
@@ -428,6 +440,7 @@ def plot_bill_change_quadrants(
     segment_before: str,
     segment_after: str,
     *,
+    bill_col: str = "energy_total_bill",
     rate_name: str = "current rate",
     heating_types: list[str] | None = None,
 ) -> ggplot:
@@ -442,6 +455,12 @@ def plot_bill_change_quadrants(
     "would this customer save money switching to a heat pump" under a
     different candidate rate, all relative to the same before-retrofit
     baseline bill.
+
+    *bill_col* is passed straight through to ``bill_delta_between_segments()``
+    — defaults to ``"energy_total_bill"`` (baseline bills) but can be set to
+    an LMI-discounted column (e.g. ``"energy_total_bill_lmi_48"``) when the
+    master bills table has one, to show bill changes net of existing
+    low-income assistance instead.
 
     Each bar shows the weighted % of households in four bins: savings/losses
     of $0-1k and >$1k a year. *rate_name* is threaded into the chart title
@@ -467,7 +486,7 @@ def plot_bill_change_quadrants(
 
     from lib.plotnine import theme_switchbox
 
-    delta = bill_delta_between_segments(state, batch, segment_before, segment_after)
+    delta = bill_delta_between_segments(state, batch, segment_before, segment_after, bill_col=bill_col)
     if heating_types is not None:
         delta = delta.filter(pl.col("heating_type_v2").is_in(heating_types))
     else:
@@ -665,6 +684,64 @@ def plot_weighted_bill_change_hist(
     return p
 
 
+def plot_weighted_hist_by_group(
+    df: pl.DataFrame,
+    value_col: str,
+    group_col: str,
+    title: str,
+    *,
+    bin_width: float = 100.0,
+    x_label: str = "Value",
+) -> ggplot:
+    """Weighted histogram of *value_col*, faceted by *group_col*.
+
+    Unlike ``plot_weighted_bill_change_hist()``, bins are a single flat color
+    (no quadrant thresholds) since this is used for non-dollar values like
+    incremental kWh, where the +/- $1,000 bill-change boundaries don't apply.
+    Each facet gets its own free x/y scale (``facet_wrap(..., scales="free")``)
+    since different groups (e.g. heating types) can have very different
+    ranges and magnitudes.
+
+    *df* must have *value_col*, ``weight``, and *group_col* columns.
+    """
+    import plotnine as plt
+    import polars as pl
+    from mizani.breaks import breaks_extended
+
+    from lib.plotnine import SB_COLORS, theme_switchbox
+
+    hist_df = df.select(value_col, "weight", group_col)
+    hist_snap = max(bin_width, 1)
+    hist_x_lo = math.floor(weighted_quantile(hist_df, value_col, 0.01) / hist_snap) * hist_snap
+    hist_x_hi = math.ceil(weighted_quantile(hist_df, value_col, 0.99) / hist_snap) * hist_snap
+    hist_binned = (
+        hist_df.with_columns(
+            ((pl.col(value_col) / bin_width).floor() * bin_width + bin_width / 2).alias("bin_center"),
+        )
+        .group_by("bin_center", group_col)
+        .agg(pl.col("weight").sum().alias("weight_sum"))
+    )
+    # coord_cartesian() only zooms the view -- it doesn't affect break calculation,
+    # so the default breaks are spaced to cover the full (unclipped) data range and
+    # most land outside the zoomed-in window. Force breaks over the same
+    # (hist_x_lo, hist_x_hi) window we're actually displaying instead.
+    breaks_fn = breaks_extended(n=8)
+    return (
+        plt.ggplot(hist_binned, plt.aes(x="bin_center", y="weight_sum"))
+        + plt.geom_col(width=bin_width * 0.9, fill=SB_COLORS["sky"])
+        + plt.geom_vline(xintercept=0, linetype="dotted", color="gray")
+        + plt.facet_wrap(group_col, scales="free")
+        + plt.coord_cartesian(xlim=(hist_x_lo, hist_x_hi))
+        + plt.scale_x_continuous(
+            breaks=lambda _limits, lo=hist_x_lo, hi=hist_x_hi: breaks_fn((lo, hi)),
+            labels=lambda xs: [f"{x:,.0f}" for x in xs],
+        )
+        + plt.labs(x=x_label, y="Weighted households", title=title)
+        + theme_switchbox()
+        + plt.theme(figure_size=(10.5, 4.5))
+    )
+
+
 # --- Rate-design-only bill change (pre-retrofit, tariff-only comparison) --------
 
 
@@ -817,6 +894,245 @@ def plot_mc_heatmap(
     for ax in fig.get_axes():
         for img in ax.get_images():
             img.set_rasterized(True)
+    return fig
+
+
+# --- Energy burden ---------------------------------------------------------------
+
+
+def burden_shares(
+    bills_lf: pl.LazyFrame,
+    bldg_ids: list,
+    income_df: pl.DataFrame,
+    bill_cols: list[str],
+    burden_threshold: float = 0.06,
+    *,
+    income_col: str = "in.representative_income",
+    income_cpi_ratio: float = 1.0,
+    bldg_id_col: str = "bldg_id",
+    month: str = "Annual",
+) -> tuple[float, float]:
+    """Return ``(weighted_pct_below, weighted_pct_above)`` an energy-burden threshold.
+
+    *bill_cols* controls which columns of *bills_lf* are summed to form each
+    building's total energy bill for this call -- pass a single LMI-discounted
+    column (e.g. ``["energy_total_bill_lmi_48"]``) to compute burden under an
+    LMI discount, or several delivered-fuel columns to sum them into one bill.
+
+    Burden is ``bill / (income * income_cpi_ratio)``. *income_col* is
+    typically ResStock's ``in.representative_income``, denominated in an
+    earlier dollar year than the bills; *income_cpi_ratio* inflates it to the
+    bills' dollar year (pass ``1.0``, the default, if *income_df* is already
+    in the right dollar year).
+
+    *bldg_ids* restricts the computation to a cohort (e.g. low-income,
+    gas-heated buildings); *income_df* must have *bldg_id_col* and
+    *income_col*.
+    """
+    import polars as pl
+
+    collected = cast(
+        "pl.DataFrame",
+        bills_lf.filter(pl.col("month") == month).select(bldg_id_col, "weight", *bill_cols).collect(),
+    )
+    annual = (
+        collected.filter(pl.col(bldg_id_col).is_in(bldg_ids))
+        .with_columns(pl.sum_horizontal(bill_cols).alias("total_bill"))
+        .join(income_df.select(bldg_id_col, income_col), on=bldg_id_col, how="inner")
+        .with_columns(
+            (pl.col("total_bill") / (pl.col(income_col) * income_cpi_ratio)).alias("burden"),
+        )
+        .with_columns((pl.col("burden") > burden_threshold).alias("is_burdened"))
+    )
+    total_weight = float(annual["weight"].sum())
+    burdened_weight = float(annual.filter(pl.col("is_burdened"))["weight"].sum())
+    pct_above = burdened_weight / total_weight * 100
+    pct_below = 100 - pct_above
+    return (pct_below, pct_above)
+
+
+def plot_burden_bar_by_utility(
+    burden_data: dict[str, dict[str, tuple[float, float]]],
+    utility_names: dict[str, str],
+    utility_order_codes: list[str],
+    scenario_keys: list[str],
+    scenario_labels: list[str],
+    burden_threshold: float = 0.06,
+    title: str = "",
+) -> Figure:
+    """Diverging burden bars (above/below *burden_threshold*) for each utility.
+
+    *burden_data* is ``{utility_code: {scenario_key: (pct_below, pct_above)}}``
+    -- exactly the shape produced by calling ``burden_shares()`` once per
+    utility per scenario. *utility_order_codes* fixes utility ordering (top to
+    bottom); utilities present in *burden_data* but missing from
+    *utility_order_codes* are silently dropped. *scenario_keys* indexes into
+    each utility's per-scenario dict, in the order bars are drawn within a
+    utility's group; *scenario_labels* are the labels drawn next to those bars
+    (same length and order as *scenario_keys*).
+
+    Draws with raw matplotlib -- bar heights, group spacing, and the
+    threshold-line/label layout don't map cleanly onto plotnine's grammar.
+    Returns the ``Figure``; wrap in ``display_svg``/``display_figure`` to embed.
+    """
+    import matplotlib.pyplot as pyplot
+
+    from lib.plotnine import SB_COLORS
+
+    bar_height = 0.55
+    group_gap = 0.7
+    intra_gap = 0.15
+    header_space = 0.55
+    label_space = 0.35
+
+    label_above = f"ENERGY BURDEN ABOVE {burden_threshold:.0%}"
+    label_below = f"ENERGY BURDEN BELOW {burden_threshold:.0%}"
+
+    ordered_codes = list(reversed(utility_order_codes))
+    active_codes = [c for c in ordered_codes if c in burden_data]
+    n_utils = len(active_codes)
+    n_scenarios = len(scenario_keys)
+
+    bar_positions: list[float] = []
+    bar_labels: list[str] = []
+    bar_above: list[float] = []
+    bar_below: list[float] = []
+    utility_header_ys: list[tuple[float, str]] = []
+    label_rows: list[tuple[float, float]] = []
+
+    y = 0.0
+    for u_idx, code in enumerate(active_codes):
+        utility_header_ys.append((y, utility_names[code]))
+        y += header_space
+
+        # Both header labels sit the same distance from the center line (mirrored),
+        # rather than each centered on its own side's average bar width -- above and
+        # below values are complementary (they sum to 100 per bar), so this average
+        # is a stable, data-derived offset rather than a hardcoded constant.
+        group_values = [burden_data[code][key] for key in scenario_keys]
+        label_offset = sum(below + above for below, above in group_values) / (4 * len(group_values))
+        label_rows.append((y, label_offset))
+        y += label_space
+
+        for s_idx, key in enumerate(scenario_keys):
+            below, above = burden_data[code][key]
+            bar_positions.append(y)
+            bar_labels.append(scenario_labels[s_idx])
+            bar_above.append(above)
+            bar_below.append(below)
+            y += bar_height + (intra_gap if s_idx < n_scenarios - 1 else 0)
+        if u_idx < n_utils - 1:
+            y += group_gap
+
+    y_max = y + 0.1
+    fig_height = 1.5 + n_utils * 3.6
+
+    fig, ax = pyplot.subplots(figsize=(12.5, fig_height))
+    ax.set_xlim(-100, 100)
+    ax.set_ylim(-0.1, y_max)
+    ax.invert_yaxis()
+    ax.set_xticks([])
+    ax.set_yticks([])
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    carrot = SB_COLORS["carrot"]
+    sky = SB_COLORS["sky"]
+
+    for bp, above, below in zip(bar_positions, bar_above, bar_below, strict=True):
+        ax.barh(bp, above, left=0, height=bar_height, color=carrot, edgecolor="none", align="edge")
+        ax.barh(bp, -below, left=0, height=bar_height, color=sky, edgecolor="none", align="edge")
+        if above >= 3:
+            ax.text(
+                above / 2,
+                bp + bar_height / 2,
+                f"{round(above)}%",
+                ha="center",
+                va="center",
+                color="white",
+                fontsize=10,
+                fontweight="bold",
+                fontfamily="IBM Plex Sans",
+            )
+        if below >= 3:
+            ax.text(
+                -below / 2,
+                bp + bar_height / 2,
+                f"{round(below)}%",
+                ha="center",
+                va="center",
+                color="white",
+                fontsize=10,
+                fontweight="bold",
+                fontfamily="IBM Plex Sans",
+            )
+
+    for bp, label in zip(bar_positions, bar_labels, strict=True):
+        ax.text(
+            101,
+            bp + bar_height / 2,
+            label,
+            ha="left",
+            va="center",
+            fontsize=8,
+            fontweight="bold",
+            fontfamily="IBM Plex Sans",
+        )
+
+    for header_y, util_name in utility_header_ys:
+        ax.text(
+            -100,
+            header_y,
+            util_name,
+            ha="left",
+            va="top",
+            fontsize=11,
+            fontweight="bold",
+            fontfamily="GT Planar",
+            color="#333333",
+        )
+
+    ax.axvline(x=0, color="#333333", linewidth=1.5)
+
+    for label_y, label_offset in label_rows:
+        ax.text(
+            label_offset,
+            label_y,
+            label_above,
+            ha="center",
+            va="bottom",
+            fontsize=8,
+            fontweight="bold",
+            color=carrot,
+            fontfamily="IBM Plex Sans",
+        )
+        ax.text(
+            -label_offset,
+            label_y,
+            label_below,
+            ha="center",
+            va="bottom",
+            fontsize=8,
+            fontweight="bold",
+            color=sky,
+            fontfamily="IBM Plex Sans",
+        )
+
+    fig.subplots_adjust(left=0.02, right=0.82, top=0.95, bottom=0.01)
+
+    if title:
+        ax_pos = ax.get_position()
+        fig.text(
+            ax_pos.x0,
+            0.97,
+            title,
+            fontsize=12,
+            fontweight="bold",
+            fontfamily="GT Planar",
+            color="black",
+            va="top",
+        )
+
     return fig
 
 

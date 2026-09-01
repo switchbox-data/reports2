@@ -36,8 +36,13 @@ import math
 import warnings
 from typing import TYPE_CHECKING, cast
 
+import matplotlib.patches as mpatches
+import matplotlib.pyplot as pyplot
+import numpy as np
+import polars as pl
+
 if TYPE_CHECKING:
-    import polars as pl
+    from matplotlib.axes import Axes
     from matplotlib.figure import Figure
     from plotnine import ggplot
 
@@ -86,8 +91,6 @@ def load_master_bills(state: str, batch: str, segment: str) -> pl.LazyFrame:
     One row per building per month (Jan-Dec + Annual), incl. ``energy_total_bill``,
     ``postprocess_group.heating_type_v2``, ``postprocess_group.has_hp``, ``weight``.
     """
-    import polars as pl
-
     return pl.scan_parquet(
         master_table_uri(state, batch, segment, "comb_bills_year_target"),
         hive_partitioning=True,
@@ -105,8 +108,6 @@ def load_master_bat(state: str, batch: str, segment: str) -> pl.LazyFrame:
     revenue requirement; don't use ``*_calibrated`` segments for cross-subsidy
     analysis, even though the bills in that segment are correct.
     """
-    import polars as pl
-
     if not segment.endswith("_precalc"):
         warnings.warn(
             f"Loading BAT from segment {segment!r}, which is not a `_precalc` segment. "
@@ -133,8 +134,6 @@ def load_billing_kwh_annual(state: str, utility: str, batch: str, segment: str) 
     grid consumption), ``annual_kwh_total`` (pre-PV gross consumption), and
     ``has_pv``.
     """
-    import polars as pl
-
     from lib.data.s3 import list_s3_subdirs, run_dir
 
     base = f"{S3_BASE}/{state.lower()}/{utility}/{batch}/"
@@ -155,8 +154,6 @@ def load_delivery_mc_heatmap(state: str, utility: str, year: int) -> pl.DataFram
     Returns columns ``timestamp``, ``mc_bulk_tx``, ``mc_dist_sub_tx``,
     ``day_of_year``, ``hour``.
     """
-    import polars as pl
-
     s3_opts = {"aws_region": "us-west-2"}
     path_bulk_tx = (
         f"s3://data.sb/switchbox/marginal_costs/{state.lower()}/bulk_tx/utility={utility}/year={year}/data.parquet"
@@ -238,8 +235,6 @@ def bill_delta_between_segments(
     Returns a DataFrame with ``bldg_id``, ``weight``, ``has_hp``,
     ``heating_type_v2``, ``bill_before``, ``bill_after``, ``delta``.
     """
-    import polars as pl
-
     before = (
         load_master_bills(state, batch, segment_before)
         .filter(pl.col("month") == month)
@@ -291,8 +286,6 @@ def bat_component_delta(
     baseline (``postprocess_group.has_hp == True`` in *segment_before*) are
     dropped — they already have a heat pump and aren't "converting".
     """
-    import polars as pl
-
     if components is None:
         components = ["annual_bill_delivery", "economic_burden_delivery"]
 
@@ -387,8 +380,6 @@ def add_heating_label(df: pl.DataFrame, code_col: str = "heating_type_v2") -> pl
     Pass ``code_col="postprocess_group.heating_type_v2"`` when operating
     directly on a master bills/BAT table instead of a delta table.
     """
-    import polars as pl
-
     return df.with_columns(
         pl.col(code_col).replace_strict(HEATING_TYPE_LABELS, default=pl.col(code_col)).alias("heating_label")
     )
@@ -401,8 +392,6 @@ def quadrant_pcts(df: pl.DataFrame, weight_col: str = "weight") -> dict[str, flo
     weight column. Quadrant boundaries are fixed at +/- $1,000, matching the
     savings/loss framing used throughout the rate-case reports.
     """
-    import polars as pl
-
     total = cast(float, df[weight_col].sum())
     return {
         "savings > $1k": cast(float, df.filter(pl.col("delta") < -1000)[weight_col].sum()) / total * 100,
@@ -470,7 +459,6 @@ def plot_bill_change_quadrants(
     row — a single row's mix isn't guaranteed to include every quadrant.
     """
     import plotnine as plt
-    import polars as pl
 
     from lib.plotnine import theme_switchbox
 
@@ -593,7 +581,6 @@ def plot_weighted_bill_change_hist(
     weighted mean (carrot) and median (midnight) with text annotations.
     """
     import plotnine as plt
-    import polars as pl
 
     from lib.plotnine import SB_COLORS, theme_switchbox
 
@@ -693,7 +680,6 @@ def plot_ratedesign_monthly_hist(
     and the reference line are shown in $/month.
     """
     import plotnine as plt
-    import polars as pl
 
     from lib.plotnine import SB_COLORS, theme_switchbox
 
@@ -735,7 +721,6 @@ def plot_ratedesign_cdf(
     $/month.
     """
     import plotnine as plt
-    import polars as pl
 
     from lib.plotnine import SB_COLORS, theme_switchbox
 
@@ -800,7 +785,6 @@ def plot_mc_heatmap(
     (e.g. via ``.dt.ordinal_day()`` / ``.dt.hour()`` on a timestamp column).
     """
     import plotnine as plt
-    import polars as pl
 
     from lib.plotnine import theme_switchbox
 
@@ -859,8 +843,6 @@ def burden_shares(
     gas-heated buildings); *income_df* must have *bldg_id_col* and
     *income_col*.
     """
-    import polars as pl
-
     collected = cast(
         "pl.DataFrame",
         bills_lf.filter(pl.col("month") == month).select(bldg_id_col, "weight", *bill_cols).collect(),
@@ -905,8 +887,6 @@ def plot_burden_bar_by_utility(
     threshold-line/label layout don't map cleanly onto plotnine's grammar.
     Returns the ``Figure``; wrap in ``display_svg``/``display_figure`` to embed.
     """
-    import matplotlib.pyplot as pyplot
-
     from lib.plotnine import SB_COLORS
 
     bar_height = 0.55
@@ -1082,8 +1062,6 @@ def hp_bat_summary(
 
     Positive BAT = overpaying relative to cost of service; negative = underpaying.
     """
-    import polars as pl
-
     bat = cast("pl.DataFrame", load_master_bat(state, batch, segment_name(scenario, "precalc")).collect())
     sub = bat.filter(pl.col(group_col) == group_value)
     total_per_year = float((sub[bat_col] * sub["weight"]).sum())
@@ -1120,8 +1098,6 @@ def bat_by_group(
     ``cost_of_service_by_subclass``: ``None`` / ``"percustomer"`` →
     ``residual_share_delivery``; otherwise ``residual_share_{residual}_delivery``.
     """
-    import polars as pl
-
     residual_col = (
         "residual_share_delivery"
         if residual is None or residual == "percustomer"
@@ -1158,8 +1134,6 @@ def compare_bat_across_scenarios(state: str, batch: str, scenarios: list[str], *
     E.g. ``compare_bat_across_scenarios(state, batch, ["default", "hp_seasonal_percustomer_passthrough"])``
     gives the HP subclass's overpayment before and after a reform tariff in one table.
     """
-    import polars as pl
-
     rows = [hp_bat_summary(state, batch, scenario, **kwargs) for scenario in scenarios]
     return pl.DataFrame(rows)
 
@@ -1204,8 +1178,6 @@ def cost_of_service_by_subclass(
     ``cross_subsidy``, and their ``pct_all_*`` shares plus
     ``pct_overpayment_vs_cos`` (``cross_subsidy / cost_of_service``).
     """
-    import polars as pl
-
     residual_col = (
         "residual_share_delivery"
         if residual is None or residual == "percustomer"
@@ -1341,8 +1313,6 @@ def revenue_requirement_breakdown_by_subclass(
     Includes a trailing ``"All customers"`` subclass with the utility-wide
     total.
     """
-    import polars as pl
-
     bat = cast(
         "pl.DataFrame",
         load_master_bat(state, batch, segment_name(scenario, "precalc"))
@@ -1404,7 +1374,6 @@ def plot_revenue_requirement_breakdown(
     ``cost_of_service_by_subclass()`` table.
     """
     import plotnine as plt
-    import polars as pl
 
     from lib.plotnine import theme_switchbox
 
@@ -1461,8 +1430,6 @@ def monthly_bill_components(state: str, batch: str, segment: str, bldg_id: int) 
     (``elec_fixed_charge + elec_delivery_bill`` vs. ``elec_supply_bill``).
     ``month`` is ordered Jan-Dec (the ``"Annual"`` row is excluded).
     """
-    import polars as pl
-
     filtered = (
         load_master_bills(state, batch, segment)
         .filter((pl.col("bldg_id") == bldg_id) & (pl.col("month") != "Annual"))
@@ -1494,7 +1461,6 @@ def plot_monthly_bill_components(monthly_df: pl.DataFrame, title: str) -> ggplot
     Takes the long-form output of ``monthly_bill_components()`` directly.
     """
     import plotnine as plt
-    import polars as pl
 
     from lib.plotnine import theme_switchbox
 
@@ -1520,8 +1486,6 @@ def annual_bill_components(state: str, batch: str, segment: str, bldg_id: int) -
     ``delivery_fixed``/``delivery_volumetric`` (not combined) so callers can
     build a full electric+gas bill decomposition for a single household.
     """
-    import polars as pl
-
     row = cast(
         "pl.DataFrame",
         load_master_bills(state, batch, segment)
@@ -1540,25 +1504,12 @@ def annual_bill_components(state: str, batch: str, segment: str, bldg_id: int) -
 
 # --- Representative household cost-breakdown chart -------------------------------
 
-# Bar labels (x-axis categories) for plot_representative_cost_breakdown().
-COST_BREAKDOWN_BAR_ORDER = ["Annual\nkWh", "Cost of\nService", "Delivery\nBill"]
-
-# Stacking order (bottom to top, via position_stack(reverse=True)) within each
-# bar. Only kWh, marginal cost, and delivery volumetric get an "existing" /
-# "incremental" split in the HP panel -- residual and the fixed charge are flat,
+# Only kWh, marginal cost, and delivery volumetric get an "existing" /
+# "incremental" split in the HP bar -- residual and the fixed charge are flat,
 # per-customer costs that don't move with load, so they render as a single block
-# in both panels (which is itself part of the story: they *shouldn't* grow with
-# incremental consumption).
-COST_BREAKDOWN_COMPONENT_ORDER = [
-    "kWh (existing)",
-    "kWh (incremental)",
-    "Marginal Cost (existing)",
-    "Marginal Cost (incremental)",
-    "Residual",
-    "Delivery Fixed",
-    "Delivery Volumetric (existing)",
-    "Delivery Volumetric (incremental)",
-]
+# in both bars (which is itself part of the story: they *shouldn't* grow with
+# incremental consumption). Incremental segments always stack last (on top),
+# regardless of metric.
 COST_BREAKDOWN_COLORS: dict[str, str] = {
     "kWh (existing)": "#023047",
     "kWh (incremental)": "#5b90a8",
@@ -1610,8 +1561,6 @@ def representative_cost_data(
     to a heat pump, so *ng_segment*'s residual is reused for the HP side too,
     rather than reading the unreliable calibrated-stage residual.
     """
-    import polars as pl
-
     ng_segment = ng_segment or segment_name("default", "precalc")
     residual_col = (
         "residual_share_delivery"
@@ -1711,10 +1660,6 @@ def plot_decomposed_bill_3bar(
     Returns ``(fig, savings $, savings pct as a fraction, total default-rate
     HP bill, total reform-rate HP bill)``.
     """
-    import matplotlib.patches as mpatches
-    import matplotlib.pyplot as pyplot
-    import numpy as np
-
     from lib.plotnine import SB_COLORS
 
     scenarios = ["Natural gas\nfurnace", "Heat pump\n(default rate)", third_scenario_label]
@@ -1870,6 +1815,51 @@ def plot_decomposed_bill_3bar(
     return fig, savings, pct_savings / 100, totals[1], totals[2]
 
 
+def _cost_breakdown_stack(
+    ax: Axes,
+    components: list[tuple[str, float]],
+    *,
+    min_label_share: float,
+    width: float = 0.55,
+) -> tuple[float, dict[str, float]]:
+    """Draw one stacked bar and return its total and each segment's y-midpoint
+    (data coordinates), for later side-label placement."""
+    total = sum(value for _, value in components)
+    bottom = 0.0
+    mids: dict[str, float] = {}
+    for component, value in components:
+        ax.bar(0, value, width, bottom=bottom, color=COST_BREAKDOWN_COLORS[component], edgecolor="none", zorder=2)
+        mids[component] = bottom + value / 2
+        if value >= min_label_share * total and len(components) > 1:
+            ax.text(
+                0,
+                bottom + value / 2,
+                _fmt_cost_breakdown_value(component, value),
+                ha="center",
+                va="center",
+                color=COST_BREAKDOWN_LABEL_COLORS[component],
+                fontweight="bold",
+                fontsize=8.5,
+                zorder=3,
+            )
+        bottom += value
+    ax.text(
+        0,
+        total * 1.02,
+        _fmt_cost_breakdown_value(components[0][0], total),
+        ha="center",
+        va="bottom",
+        color="#333333",
+        fontweight="bold",
+        fontsize=9,
+    )
+    return total, mids
+
+
+def _fmt_cost_breakdown_value(component: str, value: float) -> str:
+    return f"{value:,.0f} kWh" if component in _COST_BREAKDOWN_KWH_COMPONENTS else f"${value:,.0f}"
+
+
 def plot_representative_cost_breakdown(
     data: dict[str, dict[str, float]],
     *,
@@ -1877,36 +1867,36 @@ def plot_representative_cost_breakdown(
     ng_label: str = "Natural Gas",
     hp_label: str = "Heat Pump",
     min_label_share: float = 0.03,
-) -> ggplot:
+) -> Figure:
     """Render the representative-household cost-breakdown chart.
 
     Takes the dict from ``representative_cost_data()`` -- ``data["ng"]`` and
     ``data["hp"]``, each with ``kwh``, ``mc``, ``residual``,
     ``delivery_fixed``, ``delivery_volumetric``.
 
-    Three facet panels in one row -- annual kWh, cost of service (marginal
-    cost + residual), delivery bill (fixed + volumetric) -- each with two
-    bars, *ng_label* and *hp_label*. Panels use independent
-    (``scales="free_y"``) y-axes since kWh and dollar values are on wildly
-    different scales (thousands vs. hundreds); putting them on one shared
-    axis squashes the dollar bars into illegibly thin slivers. The HP bar in
-    the kWh/marginal-cost/volumetric panels splits into an "existing" portion
-    (held at the NG bar's value) and an "incremental" portion stacked on top
-    in a lighter shade of the same color -- residual and the fixed charge get
-    no incremental split, since they're flat, per-customer costs that don't
-    move with load.
+    Six bars in one row, grouped by metric: *ng_label*/*hp_label* for annual
+    kWh, then for cost of service (marginal cost + residual), then for
+    delivery bill (fixed + volumetric). Each pair shares a y-axis scale (so
+    the *ng_label*-to-*hp_label* height is directly comparable); scale is
+    independent *across* metric groups, since kWh and dollar values are on
+    wildly different scales (thousands vs. hundreds) -- sharing one axis
+    across metrics would squash the dollar bars into illegible slivers. This
+    is drawn with raw matplotlib rather than plotnine: plotnine's faceting
+    can only share a y-scale per full row (``facet_grid``) or per individual
+    panel (``facet_wrap``), not per pair of panels.
+
+    Within the *hp_label* bar, kWh, marginal cost, and delivery volumetric
+    each split into an "existing" portion (held at the *ng_label* bar's
+    value) and an "incremental" portion, always stacked last (on top)
+    regardless of metric -- residual and the fixed charge get no incremental
+    split, since they're flat, per-customer costs that don't move with load.
 
     Every segment at least *min_label_share* of its bar's total gets a
     value-and-unit annotation (skipped for single-component bars, whose value
-    is already shown by the bar-total label above it). Y-axis ticks/labels
-    are hidden throughout -- annotations carry the values, so the tick marks
-    would only add clutter.
+    is already shown by the bar-total label above it), plus a component-name
+    label connected by a thin line to the right of each group's *hp_label*
+    bar (ported from ``plot_decomposed_bill_3bar``'s side labels).
     """
-    import plotnine as plt
-    import polars as pl
-
-    from lib.plotnine import theme_switchbox
-
     ng, hp = data["ng"], data["hp"]
     # HP - NG for each load-driven component; can go negative in unusual cases
     # (e.g. a rate redesign that lowers the volumetric rate enough to offset
@@ -1917,121 +1907,115 @@ def plot_representative_cost_breakdown(
         "mc": hp["mc"] - ng["mc"],
         "delivery_volumetric": hp["delivery_volumetric"] - ng["delivery_volumetric"],
     }
-    incremental_spec = [
-        ("kwh", "kWh (incremental)", "Annual\nkWh"),
-        ("mc", "Marginal Cost (incremental)", "Cost of\nService"),
-        ("delivery_volumetric", "Delivery Volumetric (incremental)", "Delivery\nBill"),
+
+    groups: list[tuple[str, list[tuple[str, float]], list[tuple[str, float]]]] = [
+        (
+            "Annual\nkWh",
+            [("kWh (existing)", ng["kwh"])],
+            [("kWh (existing)", hp["kwh"] - incremental["kwh"]), ("kWh (incremental)", incremental["kwh"])],
+        ),
+        (
+            "Cost of\nService",
+            [("Residual", ng["residual"]), ("Marginal Cost (existing)", ng["mc"])],
+            [
+                ("Residual", hp["residual"]),
+                ("Marginal Cost (existing)", hp["mc"] - incremental["mc"]),
+                ("Marginal Cost (incremental)", incremental["mc"]),
+            ],
+        ),
+        (
+            "Delivery\nBill",
+            [
+                ("Delivery Fixed", ng["delivery_fixed"]),
+                ("Delivery Volumetric (existing)", ng["delivery_volumetric"]),
+            ],
+            [
+                ("Delivery Fixed", hp["delivery_fixed"]),
+                (
+                    "Delivery Volumetric (existing)",
+                    hp["delivery_volumetric"] - incremental["delivery_volumetric"],
+                ),
+                ("Delivery Volumetric (incremental)", incremental["delivery_volumetric"]),
+            ],
+        ),
     ]
 
-    def _records(scenario: str, d: dict[str, float], *, incr: dict[str, float]) -> list[dict[str, str | float]]:
-        recs = [
-            {
-                "scenario": scenario,
-                "bar": "Annual\nkWh",
-                "component": "kWh (existing)",
-                "value": d["kwh"] - incr.get("kwh", 0.0),
-            },
-            {
-                "scenario": scenario,
-                "bar": "Cost of\nService",
-                "component": "Marginal Cost (existing)",
-                "value": d["mc"] - incr.get("mc", 0.0),
-            },
-            {"scenario": scenario, "bar": "Cost of\nService", "component": "Residual", "value": d["residual"]},
-            {
-                "scenario": scenario,
-                "bar": "Delivery\nBill",
-                "component": "Delivery Fixed",
-                "value": d["delivery_fixed"],
-            },
-            {
-                "scenario": scenario,
-                "bar": "Delivery\nBill",
-                "component": "Delivery Volumetric (existing)",
-                "value": d["delivery_volumetric"] - incr.get("delivery_volumetric", 0.0),
-            },
-        ]
-        for key, component, bar in incremental_spec:
-            if key in incr:
-                recs.append({"scenario": scenario, "bar": bar, "component": component, "value": incr[key]})
-        return recs
+    # Bar axes in visual order, interleaved with two narrow spacer axes that
+    # separate the three metric groups.
+    fig, axes = pyplot.subplots(1, 8, figsize=(14, 6.5), gridspec_kw={"width_ratios": [1, 1, 0.35, 1, 1, 0.35, 1, 1]})
+    bar_axes = [axes[0], axes[1], axes[3], axes[4], axes[6], axes[7]]
+    for spacer_idx in (2, 5):
+        axes[spacer_idx].axis("off")
+        axes[spacer_idx].patch.set_alpha(0)
 
-    records = _records(ng_label, ng, incr={})
-    records += _records(hp_label, hp, incr=incremental)
+    fig.suptitle(title, x=0.02, y=0.98, ha="left", va="top", fontweight="bold", fontsize=14)
+    fig.subplots_adjust(top=0.78)
 
-    plot_df = pl.DataFrame(records).with_columns(
-        pl.col("scenario").cast(pl.Enum([ng_label, hp_label])),
-        pl.col("bar").cast(pl.Enum(COST_BREAKDOWN_BAR_ORDER)),
-        pl.col("component").cast(pl.Enum(COST_BREAKDOWN_COMPONENT_ORDER)),
-    )
-
-    def _fmt_value(component: str, value: float) -> str:
-        return f"{value:,.0f} kWh" if component in _COST_BREAKDOWN_KWH_COMPONENTS else f"${value:,.0f}"
-
-    def _fmt_total(bar: str, value: float) -> str:
-        return f"{value:,.0f} kWh" if bar == "Annual\nkWh" else f"${value:,.0f}"
-
-    bar_totals = (
-        plot_df.group_by("scenario", "bar")
-        .agg(pl.col("value").sum().alias("total"), pl.len().alias("n_components"))
-        .with_columns(
-            pl.col("scenario").cast(pl.Enum([ng_label, hp_label])),
-            pl.col("bar").cast(pl.Enum(COST_BREAKDOWN_BAR_ORDER)),
-        )
-    )
-    bar_totals = bar_totals.with_columns(
-        (pl.col("total") * 1.02).alias("label_y"),
-        pl.struct(["bar", "total"])
-        .map_elements(lambda s: _fmt_total(str(s["bar"]), s["total"]), return_dtype=pl.String)
-        .alias("total_label"),
-    )
-
-    seg_label_df = (
-        plot_df.sort("scenario", "bar", "component")
-        .with_columns(pl.col("value").cum_sum().over("scenario", "bar").alias("_cum"))
-        .with_columns((pl.col("_cum") - pl.col("value") / 2).alias("y_mid"))
-        .join(bar_totals.select("scenario", "bar", "total", "n_components"), on=["scenario", "bar"])
-        .filter((pl.col("value") >= min_label_share * pl.col("total")) & (pl.col("n_components") > 1))
-        .with_columns(
-            pl.struct(["component", "value"])
-            .map_elements(lambda s: _fmt_value(str(s["component"]), s["value"]), return_dtype=pl.String)
-            .alias("value_label"),
-            pl.col("component").cast(pl.String).replace_strict(COST_BREAKDOWN_LABEL_COLORS).alias("label_color"),
-        )
-    )
-
-    return (
-        plt.ggplot(plot_df, plt.aes(x="scenario", y="value", fill="component"))
-        + plt.geom_col(position=plt.position_stack(reverse=True), width=0.55)
-        + plt.geom_text(
-            mapping=plt.aes(x="scenario", y="y_mid", label="value_label", color="label_color"),
-            data=seg_label_df,
-            fontweight="bold",
-            size=8.5,
-            inherit_aes=False,
-        )
-        + plt.geom_text(
-            mapping=plt.aes(x="scenario", y="label_y", label="total_label"),
-            data=bar_totals,
+    group_hp_axes: list[tuple[Axes, dict[str, float]]] = []
+    for group_idx, (group_title, ng_components, hp_components) in enumerate(groups):
+        ax_ng, ax_hp = bar_axes[2 * group_idx], bar_axes[2 * group_idx + 1]
+        total_ng, _ = _cost_breakdown_stack(ax_ng, ng_components, min_label_share=min_label_share)
+        total_hp, mids_hp = _cost_breakdown_stack(ax_hp, hp_components, min_label_share=min_label_share)
+        ymax = max(total_ng, total_hp) * 1.2
+        for ax, scenario_label in ((ax_ng, ng_label), (ax_hp, hp_label)):
+            ax.set_ylim(0, ymax)
+            ax.set_xlim(-0.5, 0.5)
+            ax.set_xticks([0])
+            ax.set_xticklabels([scenario_label], fontsize=10)
+            ax.set_yticks([])
+            for spine in ("top", "right", "left"):
+                ax.spines[spine].set_visible(False)
+        # Group title, centered over the pair, placed from the pair's actual
+        # post-layout figure position (subplots_adjust above already applied).
+        fig.canvas.draw()
+        pos_ng, pos_hp = ax_ng.get_position(), ax_hp.get_position()
+        fig.text(
+            (pos_ng.x0 + pos_hp.x1) / 2,
+            pos_ng.y1 + 0.03,
+            group_title,
+            ha="center",
             va="bottom",
-            color="#333333",
+            fontsize=11,
             fontweight="bold",
-            size=9,
-            inherit_aes=False,
         )
-        + plt.scale_fill_manual(values=COST_BREAKDOWN_COLORS, breaks=COST_BREAKDOWN_COMPONENT_ORDER)
-        + plt.scale_color_identity()
-        + plt.scale_y_continuous(expand=(0, 0, 0.16, 0))
-        + plt.facet_wrap("bar", ncol=3, scales="free_y")
-        + plt.labs(x="", y="", fill="", title=title)
-        + theme_switchbox()
-        + plt.theme(
-            figure_size=(10.5, 5.25),
-            legend_position="none",
-            axis_text_y=plt.element_blank(),
-            axis_ticks_major_y=plt.element_blank(),
-        )
-    )
+        group_hp_axes.append((ax_hp, mids_hp))
+
+    # Component-name labels, connected by a thin line, to the right of each
+    # group's hp_label bar. Drawn on a full-figure transparent overlay axes
+    # (in figure-fraction coordinates converted from each bar's data
+    # coordinates) rather than directly on the bar's own axes with
+    # clip_on=False: overflow text drawn that way gets visually occluded by
+    # whichever axes' patch is drawn next in z-order, once the text crosses
+    # into that axes' screen region. The overlay, added and drawn last, has
+    # nothing drawn after it to occlude it.
+    overlay = fig.add_axes((0, 0, 1, 1))
+    overlay.axis("off")
+    overlay.patch.set_alpha(0)
+    fig.canvas.draw()
+    inv = fig.transFigure.inverted()
+    for ax_hp, mids_hp in group_hp_axes:
+        x_bar_edge, _ = inv.transform(ax_hp.transData.transform((0.275, 0)))
+        for component, y_mid in mids_hp.items():
+            label_color = COST_BREAKDOWN_LABEL_COLORS[component]
+            line_color = COST_BREAKDOWN_COLORS[component] if label_color == "white" else label_color
+            _, y_fig = inv.transform(ax_hp.transData.transform((0, y_mid)))
+            x0, x1 = x_bar_edge + 0.006, x_bar_edge + 0.03
+            overlay.plot(
+                [x0, x1], [y_fig, y_fig], color=line_color, linewidth=0.7, alpha=0.6, transform=fig.transFigure
+            )
+            overlay.text(
+                x1 + 0.004,
+                y_fig,
+                component.replace(" (", "\n("),
+                color=line_color,
+                ha="left",
+                va="center",
+                fontsize=7.5,
+                fontweight="bold",
+                transform=fig.transFigure,
+            )
+
+    return fig
 
 
 # --- Tariff introspection --------------------------------------------------------
@@ -2087,7 +2071,6 @@ def tariff_month_rate_table(rates_by_label: dict[str, dict]) -> pl.DataFrame:
     then joins all of them on ``month`` (ordered Jan-Dec via ``MONTH_ORDER``).
     Works for any number of tariffs, not just the historical pair/triple.
     """
-    import polars as pl
 
     def _one_tariff_table(rates: dict, label: str) -> pl.DataFrame:
         return pl.DataFrame(

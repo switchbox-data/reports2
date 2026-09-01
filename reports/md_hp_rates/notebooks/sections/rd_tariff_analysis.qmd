@@ -8,34 +8,34 @@ execute:
 # BGE Schedule RD Rate Analysis
 ## Comparing R/RL vs RD Time-of-Use rates for heat pump customers
 
-This notebook analyzes BGE's Schedule RD (Residential Delivery and Energy Time-of-Use) 
-rate for heat pump customers, comparing bills and cross-subsidies between:
+This notebook analyzes BGE's Schedule RD (Residential Delivery and Energy Time-of-Use)
+rate for heat pump customers, comparing energy bills between:
 
-- **Before**: Gas heating on R/RL tariff (default scenario, upgrade 00)
-- **After**: Heat pump on RD tariff (default_rd scenario, upgrade 02)
+- **Before**: Gas heating on R/RL tariff (`default` quartet, `precalc` stage → upgrade 00)
+- **After**: Heat pump on RD tariff (`default_rd` quartet, `calibrated` stage → upgrade 02)
 
-This represents the full transition: switching from gas heating to a heat pump AND 
-moving to the RD time-of-use tariff. Both tariffs are calibrated to the same revenue 
-requirement.
+This is the full transition: switching from gas heating to a heat pump *and*
+moving to the RD time-of-use tariff. Segment names are `{scenario}_{stage}` and each
+maps to its own master bills table under the batch, so the two sides come from two
+completely different quartets.
 
 ```{python}
 # Setup
 from __future__ import annotations
 
-from pathlib import Path
 from typing import cast
 
-import pandas as pd
 import polars as pl
 import plotnine as p9
+from great_tables import GT
 
+from lib.great_tables import get_switchbox_gt_tab_options
 from lib.plotnine import SB_COLORS
+from lib.quarto import display_gt
 from lib.rates_analysis.rate_case_funcs import (
     HEATING_ORDER,
-    MONTH_ORDER,
     add_heating_label,
     load_master_bills,
-    load_master_bat,
     weighted_mean,
     weighted_quantile,
 )
@@ -47,13 +47,14 @@ STATE = "md"
 BATCH = "md_20260825_rd_comparison"
 UTILITY = "bge"
 
-# Segments to compare
-SEGMENT_DEFAULT = "default_precalc"     # R/RL rates, upgrade 00 (gas heating)
-SEGMENT_RD = "default_rd_calibrated"   # RD rates, upgrade 02 (heat pump)
+# Segments = {scenario}_{stage}. These pull two different quartets:
+#   default / precalc      → R/RL on upgrade 00
+#   default_rd / calibrated → RD on upgrade 02
+SEGMENT_DEFAULT = "default_precalc"
+SEGMENT_RD = "default_rd_calibrated"
 ```
 
 ```{python}
-# Load data
 # Load master bills for both segments
 bills_default = cast(
     pl.DataFrame,
@@ -69,26 +70,9 @@ bills_rd = cast(
     .collect(),
 )
 
-# Load BAT values
-bat_default = cast(
-    pl.DataFrame,
-    load_master_bat(STATE, BATCH, SEGMENT_DEFAULT)
-    .filter(pl.col("sb.electric_utility") == UTILITY)
-    .collect(),
-)
-
-bat_rd = cast(
-    pl.DataFrame,
-    load_master_bat(STATE, BATCH, SEGMENT_RD)
-    .filter(pl.col("sb.electric_utility") == UTILITY)
-    .collect(),
-)
-
-# Add heating type labels
+# Add heating type labels (baseline heating, from master-table metadata)
 bills_default = add_heating_label(bills_default, code_col="postprocess_group.heating_type_v2")
 bills_rd = add_heating_label(bills_rd, code_col="postprocess_group.heating_type_v2")
-bat_default = add_heating_label(bat_default, code_col="postprocess_group.heating_type_v2")
-bat_rd = add_heating_label(bat_rd, code_col="postprocess_group.heating_type_v2")
 
 print(f"Loaded {len(bills_default):,} bill records for default scenario")
 print(f"Loaded {len(bills_rd):,} bill records for RD scenario")
@@ -117,10 +101,10 @@ bill_change = (
         on="bldg_id",
         how="inner",
     )
-    .with_columns([
+    .with_columns(
         (pl.col("bill_rd") - pl.col("bill_default")).alias("bill_change"),
-        ((pl.col("bill_rd") - pl.col("bill_default")) / pl.col("bill_default") * 100).alias("pct_change"),
-    ])
+        ((pl.col("bill_rd") - pl.col("bill_default")) / pl.col("bill_default")).alias("pct_change"),
+    )
 )
 
 # Plot
@@ -147,17 +131,27 @@ summary = (
     .agg([
         pl.col("bldg_id").count().alias("n_buildings"),
         pl.col("weight").sum().alias("weight_total"),
-        (pl.col("bill_change") * pl.col("weight")).sum().alias("weighted_bill_change"),
-        (pl.col("pct_change") * pl.col("weight")).sum().alias("weighted_pct_change"),
-    ])
-    .with_columns([
-        (pl.col("weighted_bill_change") / pl.col("weight_total")).alias("mean_bill_change"),
-        (pl.col("weighted_pct_change") / pl.col("weight_total")).alias("mean_pct_change"),
+        ((pl.col("bill_change") * pl.col("weight")).sum() / pl.col("weight").sum()).alias("mean_bill_change"),
+        ((pl.col("pct_change") * pl.col("weight")).sum() / pl.col("weight").sum()).alias("mean_pct_change"),
     ])
     .sort("heating_label")
 )
 
-print(summary)
+_summary_gt = (
+    GT(summary, rowname_col="heating_label")
+    .cols_label(
+        n_buildings="Buildings",
+        weight_total="Weighted households",
+        mean_bill_change="Mean bill change",
+        mean_pct_change="Mean % change",
+    )
+    .fmt_number(columns=["n_buildings", "weight_total"], decimals=0, use_seps=True)
+    .fmt_currency(columns="mean_bill_change", decimals=0)
+    .fmt_percent(columns="mean_pct_change", decimals=1)
+    .tab_stubhead(label="Baseline heating type")
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+display_gt(_summary_gt)
 ```
 
 ### Savings/Losses Quadrant Bar Chart
@@ -271,11 +265,11 @@ broken out by baseline heating type.
 
 ```{python}
 SAVE_BINS: list[tuple[float, float, str]] = [
-    (-float("inf"), -2000, "Save > $2k/yr"),
-    (-2000, -1000, "Save $1k-$2k/yr"),
-    (-1000, 0, "Save $0-$1k/yr"),
-    (0, 1000, "Lose $0-$1k/yr"),
-    (1000, float("inf"), "Lose > $1k/yr"),
+    (-float("inf"), -2000, "save_gt_2k"),
+    (-2000, -1000, "save_1k_2k"),
+    (-1000, 0, "save_0_1k"),
+    (0, 1000, "lose_0_1k"),
+    (1000, float("inf"), "lose_gt_1k"),
 ]
 
 savings_rows: list[dict[str, object]] = []
@@ -283,70 +277,49 @@ for group in avail_heating:
     gdf = bill_change.filter(pl.col("heating_label") == group)
     total_w = cast(float, gdf["weight"].sum())
     row: dict[str, object] = {
-        "Baseline heating": group,
-        "Buildings": gdf.height,
-        "Weighted hholds": round(total_w),
+        "heating_label": group,
+        "n_buildings": gdf.height,
+        "weight_total": total_w,
     }
-    for lo, hi, label in SAVE_BINS:
+    for lo, hi, col in SAVE_BINS:
         if lo == -float("inf"):
             filt = gdf.filter(pl.col("bill_change") < hi)
         elif hi == float("inf"):
             filt = gdf.filter(pl.col("bill_change") >= lo)
         else:
             filt = gdf.filter((pl.col("bill_change") >= lo) & (pl.col("bill_change") < hi))
-        row[label] = f"{cast(float, filt['weight'].sum()) / total_w * 100:.1f}%"
-    row["Mean change ($/yr)"] = f"${weighted_mean(gdf, 'bill_change'):,.0f}"
-    row["Median change ($/yr)"] = f"${weighted_quantile(gdf, 'bill_change', 0.5):,.0f}"
+        row[col] = cast(float, filt["weight"].sum()) / total_w
+    row["mean_change"] = weighted_mean(gdf, "bill_change")
+    row["median_change"] = weighted_quantile(gdf, "bill_change", 0.5)
     savings_rows.append(row)
 
 savings_df = pl.DataFrame(savings_rows)
-print("Bill change by baseline heating type (% of weighted households in each bin):")
-savings_df
-```
 
-## Cross-Subsidization (BAT) Analysis
-
-```{python}
-# Compare BAT metrics
-bat_comparison = (
-    bat_default
-    .select([
-        "bldg_id",
-        "heating_label",
-        "weight",
-        pl.col("BAT_vol_total").alias("bat_default"),
-    ])
-    .join(
-        bat_rd.select([
-            "bldg_id",
-            pl.col("BAT_vol_total").alias("bat_rd"),
-        ]),
-        on="bldg_id",
-        how="inner",
+_savings_gt = (
+    GT(savings_df, rowname_col="heating_label")
+    .cols_label(
+        n_buildings="Buildings",
+        weight_total="Weighted households",
+        save_gt_2k="Save > $2k/yr",
+        save_1k_2k="Save $1k–$2k/yr",
+        save_0_1k="Save $0–$1k/yr",
+        lose_0_1k="Lose $0–$1k/yr",
+        lose_gt_1k="Lose > $1k/yr",
+        mean_change="Mean change",
+        median_change="Median change",
     )
-    .with_columns([
-        (pl.col("bat_rd") - pl.col("bat_default")).alias("bat_change"),
-    ])
+    .fmt_number(columns=["n_buildings", "weight_total"], decimals=0, use_seps=True)
+    .fmt_percent(
+        columns=["save_gt_2k", "save_1k_2k", "save_0_1k", "lose_0_1k", "lose_gt_1k"],
+        decimals=1,
+    )
+    .fmt_currency(columns=["mean_change", "median_change"], decimals=0)
+    .tab_stubhead(label="Baseline heating type")
+    .tab_source_note(
+        "Shares are weighted households in each annual bill-change bin. "
+        "Mean/median are weight-averaged $/yr changes (R/RL u00 → RD u02)."
+    )
+    .tab_options(**get_switchbox_gt_tab_options())
 )
-
-# Summary by heating type
-bat_summary = (
-    bat_comparison
-    .group_by("heating_label")
-    .agg([
-        pl.col("bldg_id").count().alias("n_buildings"),
-        pl.col("weight").sum().alias("weight_total"),
-        (pl.col("bat_default") * pl.col("weight")).sum().alias("weighted_bat_default"),
-        (pl.col("bat_rd") * pl.col("weight")).sum().alias("weighted_bat_rd"),
-        (pl.col("bat_change") * pl.col("weight")).sum().alias("weighted_bat_change"),
-    ])
-    .with_columns([
-        (pl.col("weighted_bat_default") / pl.col("weight_total")).alias("mean_bat_default"),
-        (pl.col("weighted_bat_rd") / pl.col("weight_total")).alias("mean_bat_rd"),
-        (pl.col("weighted_bat_change") / pl.col("weight_total")).alias("mean_bat_change"),
-    ])
-    .sort("heating_label")
-)
-
-print(bat_summary)
+display_gt(_savings_gt)
 ```

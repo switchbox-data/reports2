@@ -1,0 +1,254 @@
+---
+jupyter: python3
+execute:
+  warning: false
+  message: false
+---
+
+# Maryland OHEP award history (MEAP & EUSP)
+
+July–December timeline of **applications**, **households receiving benefits**, **average award**, and **total benefits paid** for Maryland OHEP bill-assistance grants — **MEAP** (heating) and **EUSP** (electric) — plus the **FY26 scheduled matrices** currently applied in rate-design-platform's Maryland LMI workflow.
+
+**DLS data rule:** each program year is taken from the **most recent** DLS N00I0006 report that covers it (see `context/sources/md_hp_rates/ohep/DLS-OHEP-award-and-participation-history.md`):
+
+| Values for FY | DLS report | Exhibit |
+| ------------- | ---------- | ------- |
+| 2021 | 2023FY | Ex. 2 (Jul–**Nov**) |
+| 2022 | 2024FY | Ex. 2 (Jul–Dec) |
+| 2023 | 2025FY | Ex. 10 (Jul–Dec) |
+| 2024 | 2026FY | Ex. 9 (Jul–Dec) |
+| 2025 & 2026 | 2027FY | Ex. 14 (Jul–Dec) |
+
+These are **first-half (YTD)** snapshots, not full fiscal-year totals. FY 2025 Jul–Dec averages omit year-end supplemental grants (2027FY note).
+
+```{python}
+from __future__ import annotations
+
+import polars as pl
+from great_tables import GT
+
+from lib.great_tables import get_switchbox_gt_tab_options
+from lib.quarto import display_gt
+
+# Canonical Jul–Dec (FY21: Jul–Nov) series — matches
+# context/sources/md_hp_rates/ohep/DLS-OHEP-award-and-participation-history.md
+meap_history = pl.DataFrame(
+    {
+        "fy": ["FY2021*", "FY2022", "FY2023", "FY2024", "FY2025", "FY2026"],
+        "applications": [84478, 65783, 84944, 93825, 96879, 121679],
+        "receiving_benefits": [40110, 43664, 47908, 56329, 69484, 80170],
+        "avg_benefit": [510.0, 834.0, 849.0, 761.0, 186.0, 290.0],
+        "benefits_paid_m": [20.5, 36.4, 40.7, 42.8, 13.0, 23.0],
+        "source": [
+            "2023FY Ex. 2",
+            "2024FY Ex. 2",
+            "2025FY Ex. 10",
+            "2026FY Ex. 9",
+            "2027FY Ex. 14",
+            "2027FY Ex. 14",
+        ],
+    }
+)
+
+eusp_history = pl.DataFrame(
+    {
+        "fy": ["FY2021*", "FY2022", "FY2023", "FY2024", "FY2025", "FY2026"],
+        "applications": [79755, 63702, 84247, 93986, 97480, 122039],
+        "receiving_benefits": [39607, 42706, 47806, 53641, 69941, 80778],
+        "avg_benefit": [471.0, 742.0, 939.0, 668.0, 252.0, 518.0],
+        "benefits_paid_m": [18.7, 31.7, 44.9, 35.8, 18.0, 42.0],
+        "source": [
+            "2023FY Ex. 2",
+            "2024FY Ex. 2",
+            "2025FY Ex. 10",
+            "2026FY Ex. 9",
+            "2027FY Ex. 14",
+            "2027FY Ex. 14",
+        ],
+    }
+)
+
+# FY26 scheduled annual grants from rate-design-platform
+# utils/post/data/md_ohep_benefits.yaml (levels 1–5 only; 6–7 excluded).
+meap_matrix = pl.DataFrame(
+    {
+        "poverty_level": [
+            "1 (0–25% FPL)",
+            "2 (26–50% FPL)",
+            "3 (51–100% FPL)",
+            "4 (101–150% FPL)",
+            "5 (151–200% FPL)",
+        ],
+        "electric": [100, 100, 100, 100, 100],
+        "gas": [550, 475, 400, 360, 300],
+        "oil_kerosene": [1100, 990, 880, 770, 650],
+        "propane": [1000, 930, 830, 725, 600],
+        "wood_coal": [550, 475, 400, 360, 300],
+    }
+)
+
+# EUSP: gas / oil / propane / wood share identical band amounts in FY26.
+eusp_matrix_electric = pl.DataFrame(
+    {
+        "poverty_level": [
+            "1 (0–25% FPL)",
+            "2 (26–50% FPL)",
+            "3 (51–100% FPL)",
+            "4 (101–150% FPL)",
+            "5 (151–200% FPL)",
+        ],
+        "kwh_0_4k": [875, 800, 750, 700, 650],
+        "kwh_4k_8k": [900, 850, 800, 750, 700],
+        "kwh_8k_12k": [950, 900, 850, 800, 750],
+        "kwh_over_12k": [1000, 950, 900, 850, 800],
+    }
+)
+
+eusp_matrix_non_electric = pl.DataFrame(
+    {
+        "poverty_level": [
+            "1 (0–25% FPL)",
+            "2 (26–50% FPL)",
+            "3 (51–100% FPL)",
+            "4 (101–150% FPL)",
+            "5 (151–200% FPL)",
+        ],
+        "kwh_0_4k": [350, 300, 250, 225, 175],
+        "kwh_4k_8k": [400, 350, 300, 250, 200],
+        "kwh_8k_12k": [450, 400, 350, 300, 250],
+        "kwh_over_12k": [500, 450, 400, 350, 300],
+    }
+)
+
+
+def timeline_gt(df: pl.DataFrame, program: str) -> None:
+    gt = (
+        GT(df, rowname_col="fy")
+        .cols_label(
+            applications="Applications",
+            receiving_benefits="Receiving benefits",
+            avg_benefit="Average benefit",
+            benefits_paid_m="Benefits paid ($M)",
+            source="Source exhibit",
+        )
+        .fmt_number(columns=["applications", "receiving_benefits"], decimals=0, use_seps=True)
+        .fmt_currency(columns="avg_benefit", decimals=0)
+        .fmt_number(columns="benefits_paid_m", decimals=1)
+        .tab_stubhead(label=program)
+        .tab_source_note(
+            "*FY2021 window is July–November (2023FY Exhibit 2), not July–December. "
+            "FY2025 Jul–Dec averages exclude year-end supplemental benefits."
+        )
+        .tab_options(**get_switchbox_gt_tab_options())
+    )
+    display_gt(gt)
+
+
+def meap_matrix_gt(df: pl.DataFrame) -> None:
+    gt = (
+        GT(df, rowname_col="poverty_level")
+        .cols_label(
+            electric="Electric",
+            gas="Gas",
+            oil_kerosene="Oil / kerosene",
+            propane="Propane",
+            wood_coal="Wood / coal",
+        )
+        .fmt_currency(
+            columns=["electric", "gas", "oil_kerosene", "propane", "wood_coal"],
+            decimals=0,
+        )
+        .tab_stubhead(label="Poverty level")
+        .tab_header(title="FY26 MEAP annual grant matrix (USD / program year)")
+        .tab_source_note(
+            "Source: rate-design-platform utils/post/data/md_ohep_benefits.yaml "
+            "(OHEP FY26 MEAP Benefit Matrix). Levels 6–7 not modeled."
+        )
+        .tab_options(**get_switchbox_gt_tab_options())
+    )
+    display_gt(gt)
+
+
+def eusp_matrix_gt(df: pl.DataFrame, heating: str) -> None:
+    gt = (
+        GT(df, rowname_col="poverty_level")
+        .cols_label(
+            kwh_0_4k="0–4,000 kWh",
+            kwh_4k_8k="4,001–8,000 kWh",
+            kwh_8k_12k="8,001–12,000 kWh",
+            kwh_over_12k=">12,000 kWh",
+        )
+        .fmt_currency(
+            columns=["kwh_0_4k", "kwh_4k_8k", "kwh_8k_12k", "kwh_over_12k"],
+            decimals=0,
+        )
+        .tab_stubhead(label="Poverty level")
+        .tab_header(title=f"FY26 EUSP annual grant — {heating} (USD / program year)")
+        .tab_source_note(
+            "Source: rate-design-platform utils/post/data/md_ohep_benefits.yaml "
+            "(OHEP FY26 EUSP Benefit Matrix). Levels 6–7 not modeled."
+        )
+        .tab_options(**get_switchbox_gt_tab_options())
+    )
+    display_gt(gt)
+```
+
+## DLS mid-year history
+
+### MEAP (heating assistance)
+
+```{python}
+#| label: tbl-meap-history
+#| tbl-cap: "MEAP applications, recipients, average benefit, and benefits paid (DLS Jul–Dec YTD)"
+timeline_gt(meap_history, "MEAP")
+```
+
+Mid-year MEAP awards ran ~`$510` → peak ~`$849` (FY23) → still high in FY24 (`$761`) → collapse to **`$186`** in FY25 H1 → partial rebound to **`$290`** in FY26 H1. Households receiving benefits rose steadily (~40k → ~80k in the H1 window). Total benefits paid peaked mid-period (~`$43M` in FY24 H1) then fell with the FY25 cut.
+
+### EUSP (electric bill assistance)
+
+```{python}
+#| label: tbl-eusp-history
+#| tbl-cap: "EUSP bill payment applications, recipients, average benefit, and benefits paid (DLS Jul–Dec YTD)"
+timeline_gt(eusp_history, "EUSP bill payment")
+```
+
+Mid-year EUSP average awards peaked at **`$939`** (FY23), fell to **`$668`** (FY24) and **`$252`** (FY25 H1), then recovered to **`$518`** (FY26 H1). Receiving-benefits counts and applications both stepped up sharply after categorical eligibility (FY24 onward). Benefits paid in the H1 window: ~`$19M` → peak **`$44.9M`** (FY23) → **`$18M`** (FY25) → **`$42M`** (FY26).
+
+## FY26 award matrices used in the MD LMI workflow
+
+rate-design-platform applies these **scheduled annual grants** via `utils/post/apply_md_ohep_to_master_bills.py`, reading `utils/post/data/md_ohep_benefits.yaml` (`program_year: fy26`). Only poverty levels **1–5** are modeled; levels 6 (subsidized/sub-metered) and 7 (categorical >200% FPL) are excluded. Annual grants are allocated across months in the master-bills post-process.
+
+Companion extracts: `context/sources/md_hp_rates/ohep/FY26-MEAP-Benefit-Matrix.md`, `FY26-EUSP-Benefit-Matrix.md`.
+
+### MEAP matrix (by poverty level × heating fuel)
+
+```{python}
+#| label: tbl-meap-matrix
+#| tbl-cap: "FY26 MEAP annual grant amounts currently applied in the Maryland LMI workflow"
+meap_matrix_gt(meap_matrix)
+```
+
+Electric-heat MEAP awards are flat at **`$100`**/year across levels 1–5. Gas/wood awards run **`$300`–`$550`**; oil **`$650`–`$1,100`**; propane **`$600`–`$1,000`**.
+
+### EUSP matrix (by poverty level × heating fuel × annual kWh)
+
+Gas, oil/kerosene, propane, and wood/coal share the same FY26 EUSP band amounts, so the non-electric table below covers all four fuels.
+
+```{python}
+#| label: tbl-eusp-matrix-electric
+#| tbl-cap: "FY26 EUSP annual grants for electric-heat customers (by poverty level and kWh band)"
+eusp_matrix_gt(eusp_matrix_electric, "electric heat")
+```
+
+```{python}
+#| label: tbl-eusp-matrix-non-electric
+#| tbl-cap: "FY26 EUSP annual grants for non-electric heat (gas / oil / propane / wood; identical bands)"
+eusp_matrix_gt(eusp_matrix_non_electric, "non-electric heat")
+```
+
+Electric-heat EUSP grants run **`$650`–`$1,000`**; non-electric heat **`$175`–`$500`**, rising with poverty severity and annual kWh band.
+
+## Bottom line for modeling
+
+We apply the **FY26 scheduled matrices** above (not the DLS mid-year realized averages). On the Jul–Dec DLS series, FY26 average awards (`$290` MEAP / `$518` EUSP) are a **partial recovery** from the FY25 trough, still below the FY22–FY23 peak — especially MEAP, which remains well under FY21–FY24 mid-year averages. FY26 is representative of the current post-categorical-eligibility regime, not of a simple five-year mean of these H1 averages.

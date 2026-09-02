@@ -423,6 +423,72 @@ def quadrant_pcts(df: pl.DataFrame, weight_col: str = "weight") -> dict[str, flo
     }
 
 
+# Below this width, a quadrant caption is dropped rather than drawn: showing
+# one for a sub-rounding-error sliver (e.g. 0.05%) would add clutter without
+# conveying anything real.
+_QUADRANT_MIN_CAPTIONED_PCT = 0.5
+# A segment counts as touching an edge -- and gets its caption anchored at
+# that edge, extending inward -- whenever the cumulative width of all
+# segments from that edge (inclusive) is within this threshold. This is
+# checked cumulatively rather than per-segment so that a *chain* of small
+# segments at the same edge (e.g. both loss quadrants tiny) all anchor
+# consistently, instead of the second one falling through to "center" and
+# overlapping the first (which centering text over a near-zero-width segment
+# would otherwise do, since the text overflows both sides of the segment).
+_QUADRANT_EDGE_ANCHOR_PCT = 5.0
+# Two edge-anchored captions on the same side of the same bar (e.g. both
+# small losses at the start) are placed at the same "y" starting point --
+# without this, their text would still collide despite being correctly
+# anchored. Stack them onto successive lines above the bar instead.
+_QUADRANT_SEG_LABEL_OFFSET = 0.45
+_QUADRANT_SEG_LABEL_STAGGER = 0.22
+
+
+def _quadrant_seg_label_df(pcts_by_row: list[dict[str, float]]) -> pl.DataFrame | None:
+    """Build the caption layout shared by plot_bill_change_quadrants() and
+    plot_bill_change_quadrant_comparison().
+
+    *pcts_by_row* is one ``quadrant_pcts()``-shaped dict per bar, in
+    top-to-bottom drawing order (row 0 ends up on top, since coord_flip()
+    draws the first categorical position at the bottom). Returns a frame with
+    one row per caption actually drawn: ``x`` (categorical position, offset
+    above its bar), ``y`` (position along the bar), ``label``, ``color``, and
+    ``ha`` (text alignment) -- or ``None`` if every segment was empty.
+    """
+    stacking_order = list(reversed(QUADRANT_ORDER))
+    n_rows = len(pcts_by_row)
+    records: list[dict[str, object]] = []
+    for i, pct in enumerate(pcts_by_row):
+        row_x = n_rows - i
+        cum = 0.0
+        edge_caption_count = {"left": 0, "right": 0}
+        for q in stacking_order:
+            seg_start = cum
+            mid = cum + pct[q] / 2
+            cum += pct[q]
+            if pct[q] < _QUADRANT_MIN_CAPTIONED_PCT:
+                continue
+            if cum <= _QUADRANT_EDGE_ANCHOR_PCT:
+                label_y, label_ha = seg_start, "left"
+            elif (100 - seg_start) <= _QUADRANT_EDGE_ANCHOR_PCT:
+                label_y, label_ha = cum, "right"
+            else:
+                label_y, label_ha = mid, "center"
+            stack_idx = edge_caption_count.get(label_ha, 0)
+            if label_ha in edge_caption_count:
+                edge_caption_count[label_ha] += 1
+            records.append(
+                {
+                    "x": row_x + _QUADRANT_SEG_LABEL_OFFSET + stack_idx * _QUADRANT_SEG_LABEL_STAGGER,
+                    "y": label_y,
+                    "label": QUADRANT_LABELS[q],
+                    "color": QUADRANT_COLORS[q],
+                    "ha": label_ha,
+                }
+            )
+    return pl.DataFrame(records) if records else None
+
+
 def plot_bill_change_quadrants(
     state: str,
     batch: str,
@@ -466,9 +532,10 @@ def plot_bill_change_quadrants(
     electric-resistance row might be almost entirely "savings > $1k" while a
     natural-gas row is split across all four bins), the chart replaces the
     usual plotnine fill legend with short color-matched captions
-    (``QUADRANT_LABELS``) drawn above *every* bar's segments (skipped only
-    when a segment is under 2% of that bar) rather than a single reference
-    row — a single row's mix isn't guaranteed to include every quadrant.
+    (``QUADRANT_LABELS``) drawn above *every* bar's segments that's actually
+    present (skipped only when a segment rounds to ~0%) rather than a single
+    reference row — a single row's mix isn't guaranteed to include every
+    quadrant.
     """
     import plotnine as plt
 
@@ -501,36 +568,13 @@ def plot_bill_change_quadrants(
         pl.col("quadrant").cast(pl.Enum(QUADRANT_ORDER)),
     )
 
-    # Build one caption per bar segment >= 2% of that bar, positioned in the
-    # gap just above the bar it belongs to (an "x" offset past the bar's own
-    # categorical position, since coord_flip makes "x" the vertical axis).
-    # Ported from the evolved plot_quadrant_bar() in ny_hp_rates's
+    # Build one caption per bar segment that's actually present, positioned
+    # in the gap just above the bar it belongs to (an "x" offset past the
+    # bar's own categorical position, since coord_flip makes "x" the vertical
+    # axis). Ported from the evolved plot_quadrant_bar() in ny_hp_rates's
     # notebooks/analysis.qmd, adapted from per-scenario rows to per-heating-
     # type rows.
-    stacking_order = list(reversed(QUADRANT_ORDER))
-    seg_label_offset = 0.45
-    seg_label_records: list[dict[str, object]] = []
-    for i, group in enumerate(avail_heating):
-        group_x = len(avail_heating) - i
-        pct = group_pcts[group]
-        cum = 0.0
-        for q in stacking_order:
-            seg_start = cum
-            mid = cum + pct[q] / 2
-            cum += pct[q]
-            if pct[q] < 2:
-                continue
-            label_y, label_ha = (seg_start, "left") if seg_start < 1 else (mid, "center")
-            seg_label_records.append(
-                {
-                    "x": group_x + seg_label_offset,
-                    "y": label_y,
-                    "label": QUADRANT_LABELS[q],
-                    "color": QUADRANT_COLORS[q],
-                    "ha": label_ha,
-                }
-            )
-    seg_label_df = pl.DataFrame(seg_label_records) if seg_label_records else None
+    seg_label_df = _quadrant_seg_label_df([group_pcts[g] for g in avail_heating])
 
     p = (
         plt.ggplot(plot_df, plt.aes(x="heating_label", y="pct", fill="quadrant"))
@@ -555,7 +599,19 @@ def plot_bill_change_quadrants(
             title=f"Change in total annual energy bill after switching to a heat pump, under the {rate_name}",
         )
         + theme_switchbox()
-        + plt.theme(figure_size=(11.5, max(3.5, 1.0 + 1.4 * len(avail_heating))))
+        + plt.theme(
+            figure_size=(11.5, max(3.5, 1.0 + 1.4 * len(avail_heating))),
+            # The %-of-households scale is redundant with the in-bar labels
+            # above, so drop its axis entirely (title/text/ticks/line). Since
+            # coord_flip() renders the "x" aesthetic (heating_label) as the
+            # screen's vertical axis, its per-category breaks are what draw
+            # the faint horizontal lines across the panel -- blank those too.
+            axis_title_x=plt.element_blank(),
+            axis_text_x=plt.element_blank(),
+            axis_ticks_x=plt.element_blank(),
+            axis_line_x=plt.element_blank(),
+            panel_grid_major_y=plt.element_blank(),
+        )
     )
 
     if seg_label_df is not None:
@@ -572,6 +628,177 @@ def plot_bill_change_quadrants(
                 show_legend=False,
             )
         p = p + plt.scale_color_identity()
+
+    return p
+
+
+def plot_bill_change_quadrant_comparison(
+    rows: list[tuple[str, pl.DataFrame]],
+    title: str = "How bills would change after switching to heat pumps:",
+    title_parts: list[tuple[str, str]] | None = None,
+) -> ggplot | Figure:
+    """Horizontal stacked bar(s) of bill-change quadrants, one bar per *rows* entry.
+
+    Unlike ``plot_bill_change_quadrants()`` (one bar per baseline heating
+    type, all under the *same* rate), this is the comparison in the other
+    direction: pass pre-built ``(label, df)`` pairs to put one population's
+    (e.g. one heating type's) bill-change distribution side by side across
+    *multiple* rates (e.g. default vs. seasonal HP rate vs. flat HP rate).
+    Each *df* must already be filtered to the population of interest and have
+    ``delta`` (dollar bill change) and ``weight`` columns — typically built by
+    calling ``bill_delta_between_segments()`` once per rate scenario and
+    filtering to one ``heating_type_v2``. *label* becomes that row's
+    right-hand caption (e.g. ``"Default rate"``); rows are drawn top-to-bottom
+    in the order given.
+
+    When *title_parts* is given (a list of ``(text, color)`` tuples, e.g.
+    ``[("How bills would change for ", "#000000"), ("natural gas",
+    "#7A8A10"), (" heated homes after switching to ", "#000000"),
+    ("heat pumps", "#c47600")]``), the plotnine title is replaced by a
+    matplotlib multi-color title and the function returns a ``Figure``
+    instead of a ``ggplot`` (plotnine titles can't mix colors within one
+    string). Otherwise the plain *title* string is used as a standard
+    plotnine title.
+
+    Since row labels are drawn as captions rather than axis text (there is no
+    axis at all — see below), a single row renders with no right-hand label;
+    pass at least two rows to see per-row captions.
+    """
+    import plotnine as plt
+
+    from lib.plotnine import theme_switchbox
+
+    records: list[dict[str, object]] = []
+    all_pcts: list[dict[str, float]] = []
+    for row_label, df in rows:
+        pct = quadrant_pcts(df)
+        all_pcts.append(pct)
+        for q in QUADRANT_ORDER:
+            records.append({"scenario": row_label, "quadrant": q, "pct": pct[q]})
+
+    scenario_order = [r[0] for r in reversed(rows)]
+    plot_df = pl.DataFrame(records).with_columns(
+        pl.col("quadrant").cast(pl.Enum(QUADRANT_ORDER)),
+        pl.col("scenario").cast(pl.Enum(scenario_order)),
+    )
+
+    n_scenarios = len(rows)
+
+    # Build one caption per bar segment that's actually present, positioned
+    # in the gap just above the bar it belongs to (an "x" offset past the
+    # bar's own categorical position, since coord_flip makes "x" the vertical
+    # axis) -- same approach and edge-anchoring rationale as
+    # plot_bill_change_quadrants().
+    seg_label_df = _quadrant_seg_label_df(all_pcts)
+
+    # Unlike plot_bill_change_quadrants() (whose categorical axis text *is*
+    # the row label), here the whole axis is blanked below, so row labels
+    # (e.g. "Default rate") are drawn as text past the right end of each bar.
+    row_label_records: list[dict[str, object]] = []
+    if n_scenarios > 1:
+        for i, (row_label, _) in enumerate(rows):
+            bar_pos = n_scenarios - i
+            row_label_records.append({"x": bar_pos, "y": 101, "label": row_label})
+    row_label_df = pl.DataFrame(row_label_records) if row_label_records else None
+
+    top_expand = 0.7 if n_scenarios > 1 else 1.2
+    plotnine_title = "" if title_parts else title
+
+    p = (
+        plt.ggplot(plot_df, plt.aes(x="scenario", y="pct", fill="quadrant"))
+        + plt.geom_col(position="stack", width=0.55)
+        + plt.geom_text(
+            mapping=plt.aes(label="pct"),
+            data=plot_df.filter(pl.col("pct") >= 3),
+            position=plt.position_stack(vjust=0.5),
+            format_string="{:.1f}%",
+            color="white",
+            size=11,
+            fontweight="bold",
+        )
+        + plt.scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
+        + plt.scale_y_continuous(expand=(0, 0, 0.32, 0))
+        + plt.scale_x_discrete(expand=(0, 0.35, 0, top_expand))
+        + plt.coord_flip()
+        + plt.guides(fill=False)
+        + plt.labs(x="", y="", title=plotnine_title)
+        + theme_switchbox()
+        + plt.theme(
+            figure_size=(13.5, max(2.6, 1.0 + 1.4 * n_scenarios)),
+            # No axis at all here: percentages are already captioned in-bar,
+            # and row labels are captioned at the right end of each bar (see
+            # row_label_df above), so the categorical axis text would be
+            # redundant.
+            axis_text=plt.element_blank(),
+            axis_ticks_x=plt.element_blank(),
+            axis_ticks_y=plt.element_blank(),
+            axis_line_x=plt.element_blank(),
+            axis_line_y=plt.element_blank(),
+            panel_grid=plt.element_blank(),
+            plot_title=(
+                plt.element_blank() if title_parts else plt.element_text(ha="left", margin={"b": -8, "unit": "pt"})
+            ),
+        )
+    )
+    if seg_label_df is not None:
+        for ha_val in seg_label_df["ha"].unique().to_list():
+            sub = seg_label_df.filter(pl.col("ha") == ha_val)
+            p = p + plt.geom_text(
+                mapping=plt.aes(x="x", y="y", label="label", color="color"),
+                data=sub,
+                ha=ha_val,
+                va="bottom",
+                size=10,
+                fontweight="bold",
+                inherit_aes=False,
+                show_legend=False,
+            )
+        p = p + plt.scale_color_identity()
+    if row_label_df is not None:
+        p = p + plt.geom_text(
+            mapping=plt.aes(x="x", y="y", label="label"),
+            data=row_label_df,
+            ha="left",
+            va="center",
+            size=11,
+            fontweight="bold",
+            inherit_aes=False,
+        )
+
+    if title_parts:
+        fig = p.draw()
+        # get_window_extent() below needs a renderer to measure text against;
+        # draw() once here so it can fall back to the figure's cached
+        # renderer instead of calling the backend-specific fig.canvas.get_renderer().
+        fig.canvas.draw()
+        fig_w_px = fig.get_window_extent().width
+
+        # Measure the width of a single space in this font by diffing two
+        # probe strings, so multi-color title segments can be laid out
+        # left-to-right with normal word spacing between them.
+        _t1 = fig.text(0, -1, "xx", fontsize=12, fontweight="bold", fontfamily="GT Planar")
+        _t2 = fig.text(0, -1, "x x", fontsize=12, fontweight="bold", fontfamily="GT Planar")
+        space_fig = (_t2.get_window_extent().width - _t1.get_window_extent().width) / fig_w_px
+        _t1.remove()
+        _t2.remove()
+
+        x_pos = fig.axes[0].get_position().x0
+        for i, (text_str, color) in enumerate(title_parts):
+            t = fig.text(
+                x_pos,
+                0.92,
+                text_str.strip(),
+                color=color,
+                fontsize=12,
+                fontweight="bold",
+                fontfamily="GT Planar",
+                va="bottom",
+            )
+            bb = t.get_window_extent()
+            x_pos = bb.transformed(fig.transFigure.inverted()).x1
+            if i < len(title_parts) - 1:
+                x_pos += space_fig
+        return fig
 
     return p
 

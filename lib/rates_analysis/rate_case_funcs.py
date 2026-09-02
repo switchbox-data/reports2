@@ -1947,13 +1947,16 @@ def plot_representative_cost_breakdown(
     Six bars in one row, grouped by metric: *ng_label*/*hp_label* for annual
     kWh, then for cost of service (marginal cost + residual), then for
     delivery bill (fixed + volumetric). Each pair shares a y-axis scale (so
-    the *ng_label*-to-*hp_label* height is directly comparable); scale is
-    independent *across* metric groups, since kWh and dollar values are on
-    wildly different scales (thousands vs. hundreds) -- sharing one axis
-    across metrics would squash the dollar bars into illegible slivers. This
-    is drawn with raw matplotlib rather than plotnine: plotnine's faceting
-    can only share a y-scale per full row (``facet_grid``) or per individual
-    panel (``facet_wrap``), not per pair of panels.
+    the *ng_label*-to-*hp_label* height is directly comparable). The kWh
+    group is scaled independently, since kWh and dollar values are on wildly
+    different scales (thousands vs. hundreds) -- sharing one axis across
+    those would squash the dollar bars into illegible slivers. The cost-of-
+    service and delivery-bill groups, both dollar-denominated, additionally
+    share one scale *across* the two groups, so a given bar height means the
+    same dollar amount in either group. This is drawn with raw matplotlib
+    rather than plotnine: plotnine's faceting can only share a y-scale per
+    full row (``facet_grid``) or per individual panel (``facet_wrap``), not
+    per pair of panels.
 
     Within the *hp_label* bar, kWh, marginal cost, and delivery volumetric
     each split into an "existing" portion (held at the *ng_label* bar's
@@ -2021,12 +2024,26 @@ def plot_representative_cost_breakdown(
     fig.suptitle(title, x=0.02, y=0.98, ha="left", va="top", fontweight="bold", fontsize=14)
     fig.subplots_adjust(top=0.78)
 
-    group_hp_axes: list[tuple[Axes, dict[str, float]]] = []
+    # Draw every group's bars first (without setting a y-scale yet), so the
+    # cost-of-service and delivery-bill groups' totals are both known before
+    # picking a shared ymax for them below.
+    group_records: list[tuple[str, Axes, Axes, float, float, dict[str, float]]] = []
     for group_idx, (group_title, ng_components, hp_components) in enumerate(groups):
         ax_ng, ax_hp = bar_axes[2 * group_idx], bar_axes[2 * group_idx + 1]
         total_ng, _ = _cost_breakdown_stack(ax_ng, ng_components, min_label_share=min_label_share)
         total_hp, mids_hp = _cost_breakdown_stack(ax_hp, hp_components, min_label_share=min_label_share)
-        ymax = max(total_ng, total_hp) * 1.2
+        group_records.append((group_title, ax_ng, ax_hp, total_ng, total_hp, mids_hp))
+
+    # Cost of service (index 1) and delivery bill (index 2) are both
+    # dollar-denominated, so they share one ymax across *both* groups -- not
+    # just within each ng/hp pair -- so a bar's height means the same dollar
+    # amount whether it's cost-of-service or delivery bill. The kWh group
+    # (index 0) keeps its own independent scale, per the docstring above.
+    dollar_ymax = max(total for *_, total_ng, total_hp, _ in group_records[1:] for total in (total_ng, total_hp)) * 1.2
+
+    group_hp_axes: list[tuple[Axes, dict[str, float]]] = []
+    for group_idx, (group_title, ax_ng, ax_hp, total_ng, total_hp, mids_hp) in enumerate(group_records):
+        ymax = max(total_ng, total_hp) * 1.2 if group_idx == 0 else dollar_ymax
         for ax, scenario_label in ((ax_ng, ng_label), (ax_hp, hp_label)):
             ax.set_ylim(0, ymax)
             ax.set_xlim(-0.5, 0.5)

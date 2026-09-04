@@ -14,13 +14,16 @@ weighted-average monthly electricity profile for each population — before and
 after switching to a heat pump — then apply today's filed rate components to
 produce a per-component bill decomposition.
 
-The outputs are two charts per population:
+The outputs are three chart types per population:
 
 1. **Monthly load before/after** — a stacked bar chart showing how monthly
    electricity consumption changes when a home installs a heat pump.
 2. **Annual bill by component** — a stacked bar chart showing how
    each bill component (customer charge, distribution, transmission, EmPOWER
    Maryland, generation) changes before and after the heat pump.
+3. **Monthly delivery marginal cost** — a stacked bar chart showing the
+   monthly transmission and distribution marginal costs the average home
+   causes, before and after installing a heat pump.
 
 These charts and the associated report variables are used in
 `expert_testimony.qmd` to ground the representative-home argument.
@@ -46,11 +49,20 @@ from lib.quarto import display_gt, display_figure
 from lib.rdp import fetch_rdp_file
 from lib.rates_analysis.rate_case_funcs import (
     MONTH_ORDER,
+    building_delivery_mc_8760,
+    load_billing_kwh_8760,
+    load_delivery_mc_heatmap,
     load_master_bills,
     monthly_bill_from_profile,
+    monthly_load_y_max,
     plot_annual_bill_component_stacked,
+    plot_monthly_delivery_mc,
+    plot_monthly_load,
     plot_monthly_load_before_after,
     segment_name,
+    sum_8760_to_monthly,
+    weighted_avg_hourly,
+    weighted_avg_monthly,
 )
 
 report_vars: dict = {}
@@ -75,14 +87,14 @@ print(f"state={STATE}  batch={BATCH}  rdp_ref={RDP_REF}  utility={UTILITY}")
 
 ## Import data
 
-We load master bills for two segments:
+We load two data sources:
 
-- **`default_precalc`** — upgrade 0 (today's mixed heating population). Both the
-  bill columns and `elec_grid_kwh` reflect today's tariff and today's loads.
-- **`default_calibrated`** — upgrade 2 (same buildings retrofitted to heat pumps).
-  The bill columns here use a recalibrated tariff (unsuitable for "today's rates"
-  comparisons), but `elec_grid_kwh` is the raw ResStock load — tariff-independent.
-  We only use `elec_grid_kwh` from this segment.
+- **Master bills** (precalc segment only) — for population metadata: building
+  IDs, sample weights, and heating fuel flags. We do not use `elec_grid_kwh`
+  from master bills; all kWh data comes from the hourly parquets below.
+- **`billing_kwh_8760.parquet`** — CAIRO's hourly grid consumption for each
+  building (post-PV-netting, scaled to match utility sales). One file per
+  segment. This is the same kWh basis CAIRO uses for BAT and bill calculations.
 
 ```{python}
 #| label: ingest
@@ -91,10 +103,12 @@ SEG_PRECALC = segment_name(DEFAULT_SCENARIO, "precalc")
 SEG_CALIBRATED = segment_name(DEFAULT_SCENARIO, "calibrated")
 
 bills_precalc = load_master_bills(STATE, BATCH, SEG_PRECALC)
-bills_calibrated = load_master_bills(STATE, BATCH, SEG_CALIBRATED)
+
+kwh_8760_precalc = load_billing_kwh_8760(STATE, UTILITY, BATCH, SEG_PRECALC)
+kwh_8760_calibrated = load_billing_kwh_8760(STATE, UTILITY, BATCH, SEG_CALIBRATED)
 ```
 
-Let's confirm the columns we need are present and look at the data:
+Let's confirm the metadata columns we need are present:
 
 ```{python}
 #| label: check-columns
@@ -103,7 +117,7 @@ _sample = cast(
     pl.DataFrame,
     bills_precalc.filter(pl.col("month") == "Annual")
     .select(
-        "bldg_id", "weight", "elec_grid_kwh", "month",
+        "bldg_id", "weight",
         "heats_with_natgas", "heats_with_oil", "heats_with_propane",
     )
     .head(5)
@@ -135,7 +149,6 @@ _annual_precalc = cast(
     .select(
         "bldg_id", "weight",
         "heats_with_natgas", "heats_with_oil", "heats_with_propane",
-        "elec_grid_kwh",
     )
     .collect(),
 )
@@ -154,46 +167,18 @@ for label, pop in [("Natural gas", pop_natgas), ("Delivered fuel", pop_delivered
     print(f"{label}: {n:,} ResStock buildings → {weighted:,.0f} weighted households")
 ```
 
-## Monthly load profiles
+## Monthly and hourly load profiles
 
-For each population and upgrade, we compute the weighted-average monthly kWh
-from the master bills' `elec_grid_kwh` column.
-
-```{python}
-#| label: monthly-profiles
-
-
-def weighted_avg_monthly(
-    bills_lf: pl.LazyFrame, bldg_ids: list[int], weights: pl.DataFrame
-) -> pl.DataFrame:
-    """Compute weighted-average monthly kWh for a set of buildings."""
-    monthly = cast(
-        pl.DataFrame,
-        bills_lf.filter(
-            (pl.col("month") != "Annual")
-            & (pl.col("sb.electric_utility") == UTILITY)
-            & pl.col("bldg_id").is_in(bldg_ids)
-        )
-        .select("bldg_id", "month", "elec_grid_kwh")
-        .collect(),
-    )
-    joined = monthly.join(weights, on="bldg_id")
-    return (
-        joined.group_by("month")
-        .agg(
-            ((pl.col("elec_grid_kwh") * pl.col("weight")).sum() / pl.col("weight").sum())
-            .alias("kwh")
-        )
-        .sort(pl.col("month").cast(pl.Enum(MONTH_ORDER)))
-        .rename({"month": "month_label"})
-        .with_columns(pl.col("month_label").cast(pl.Enum(MONTH_ORDER)))
-    )
-```
+For each population and upgrade, we compute both a monthly kWh profile (for
+load charts and bill computation) and an hourly 8760 profile (for marginal-cost
+multiplication). Both come from `billing_kwh_8760.parquet` — the same scaled kWh
+basis CAIRO uses for BAT and bills.
 
 ```{python}
 #| label: compute-profiles
 
 profiles: dict[str, dict[str, pl.DataFrame]] = {}
+hourly_profiles: dict[str, dict[str, pl.DataFrame]] = {}
 
 for pop_label, pop_df in [
     ("natgas", pop_natgas),
@@ -203,10 +188,13 @@ for pop_label, pop_df in [
     bldg_ids = pop_df["bldg_id"].to_list()
     weights = pop_df.select("bldg_id", "weight")
 
-    before = weighted_avg_monthly(bills_precalc, bldg_ids, weights)
-    after = weighted_avg_monthly(bills_calibrated, bldg_ids, weights)
-
+    before = weighted_avg_monthly(kwh_8760_precalc, bldg_ids, weights)
+    after = weighted_avg_monthly(kwh_8760_calibrated, bldg_ids, weights)
     profiles[pop_label] = {"before": before, "after": after}
+
+    before_hourly = weighted_avg_hourly(kwh_8760_precalc, bldg_ids, weights)
+    after_hourly = weighted_avg_hourly(kwh_8760_calibrated, bldg_ids, weights)
+    hourly_profiles[pop_label] = {"before": before_hourly, "after": after_hourly}
 
     annual_before = before["kwh"].sum()
     annual_after = after["kwh"].sum()
@@ -357,18 +345,36 @@ cooling), and the saffron segment shows new electricity use from the heat pump
 ### Natural gas homes
 
 ```{python}
-#| label: fig-monthly-load-natgas
-#| fig-cap: "Average monthly electricity for BGE natural-gas-heated homes, before and after heat pump installation."
+#| label: fig-monthly-load-natgas-before
+#| fig-cap: "Average monthly electricity for BGE natural-gas-heated homes before heat pump installation."
 
 _natgas_monthly = profiles["natgas"]["before"].join(
     profiles["natgas"]["after"].rename({"kwh": "after_kwh"}),
     on="month_label",
 ).rename({"kwh": "before_kwh"})
+_natgas_y_max = monthly_load_y_max(
+    before_kwh=_natgas_monthly["before_kwh"],
+    after_kwh=_natgas_monthly["after_kwh"],
+)
 
-plot_monthly_load_before_after(
+_fig = plot_monthly_load(
+    profiles["natgas"]["before"],
+    title="Average natural-gas-heated home",
+    y_max=_natgas_y_max,
+)
+display_figure(_fig)
+```
+
+```{python}
+#| label: fig-monthly-load-natgas
+#| fig-cap: "Average monthly electricity for BGE natural-gas-heated homes, before and after heat pump installation."
+
+_fig = plot_monthly_load_before_after(
     _natgas_monthly,
     title="Average natural-gas-heated home",
+    y_max=_natgas_y_max,
 )
+display_figure(_fig)
 ```
 
 ### Delivered fuel homes
@@ -382,10 +388,11 @@ _delivered_monthly = profiles["delivered"]["before"].join(
     on="month_label",
 ).rename({"kwh": "before_kwh"})
 
-plot_monthly_load_before_after(
+_fig = plot_monthly_load_before_after(
     _delivered_monthly,
     title="Average delivered-fuel-heated home",
 )
+display_figure(_fig)
 ```
 
 ### All fossil fuel homes
@@ -399,10 +406,11 @@ _all_fossil_monthly = profiles["all_fossil"]["before"].join(
     on="month_label",
 ).rename({"kwh": "before_kwh"})
 
-plot_monthly_load_before_after(
+_fig = plot_monthly_load_before_after(
     _all_fossil_monthly,
     title="Average fossil-fuel-heated home",
 )
+display_figure(_fig)
 ```
 
 ## Chart 2: Annual bill by component
@@ -448,6 +456,129 @@ plot_annual_bill_component_stacked(
     bill_results["all_fossil"]["after"],
     title="Average fossil-fuel-heated home",
 )
+```
+
+## Chart 3: Monthly delivery marginal costs
+
+How much does it actually cost to deliver electricity to the average home each
+month? We multiply each population's hourly load profile against the hourly
+transmission and distribution marginal cost schedules, then sum to monthly
+totals. The result shows the cost the grid incurs to serve that home — before
+and after heat pump installation.
+
+```{python}
+#| label: load-mc-8760
+
+mc_8760 = load_delivery_mc_heatmap(STATE, UTILITY, 2025)
+print(f"MC 8760: {mc_8760.height} hours, columns: {mc_8760.columns}")
+```
+
+```{python}
+#| label: compute-mc
+
+mc_monthly: dict[str, dict[str, pl.DataFrame]] = {}
+
+for pop_label in ["natgas", "delivered", "all_fossil"]:
+    for period, hourly_df in [
+        ("before", hourly_profiles[pop_label]["before"]),
+        ("after", hourly_profiles[pop_label]["after"]),
+    ]:
+        mc_hourly = building_delivery_mc_8760(hourly_df, mc_8760)
+        mc_tx_monthly = sum_8760_to_monthly(mc_hourly, "mc_tx_dollars")
+        mc_dist_monthly = sum_8760_to_monthly(mc_hourly, "mc_dist_dollars")
+        monthly_combined = mc_tx_monthly.join(
+            mc_dist_monthly, on="month_label"
+        )
+        mc_monthly.setdefault(pop_label, {})[period] = monthly_combined
+
+        annual_tx = float(mc_tx_monthly["mc_tx_dollars"].sum())
+        annual_dist = float(mc_dist_monthly["mc_dist_dollars"].sum())
+        annual_delivery = annual_tx + annual_dist
+
+        report_vars[f"{pop_label}_annual_mc_tx_{period}"] = annual_tx
+        report_vars[f"{pop_label}_annual_mc_dist_{period}"] = annual_dist
+        report_vars[f"{pop_label}_annual_mc_delivery_{period}"] = annual_delivery
+
+        print(f"{pop_label} {period}: TX=${annual_tx:,.2f}  Dist=${annual_dist:,.2f}  Total=${annual_delivery:,.2f}")
+
+    before_total = report_vars[f"{pop_label}_annual_mc_delivery_before"]
+    after_total = report_vars[f"{pop_label}_annual_mc_delivery_after"]
+    report_vars[f"{pop_label}_pct_mc_delivery_change"] = (
+        (after_total - before_total) / before_total if before_total > 0 else 0.0
+    )
+    print(f"  → change: {report_vars[f'{pop_label}_pct_mc_delivery_change']:+.1%}\n")
+```
+
+### Natural gas homes
+
+```{python}
+#| label: fig-monthly-mc-natgas-before
+#| fig-cap: "Monthly delivery marginal cost for the average BGE natural-gas-heated home before heat pump installation."
+
+_fig = plot_monthly_delivery_mc(
+    mc_monthly["natgas"]["before"],
+    title="Average natural-gas-heated home (before heat pump)",
+)
+display_figure(_fig)
+```
+
+```{python}
+#| label: fig-monthly-mc-natgas-after
+#| fig-cap: "Monthly delivery marginal cost for the average BGE natural-gas-heated home after heat pump installation."
+
+_fig = plot_monthly_delivery_mc(
+    mc_monthly["natgas"]["after"],
+    title="Average natural-gas-heated home (after heat pump)",
+)
+display_figure(_fig)
+```
+
+### Delivered fuel homes
+
+```{python}
+#| label: fig-monthly-mc-delivered-before
+#| fig-cap: "Monthly delivery marginal cost for the average BGE delivered-fuel-heated home before heat pump installation."
+
+_fig = plot_monthly_delivery_mc(
+    mc_monthly["delivered"]["before"],
+    title="Average delivered-fuel-heated home (before heat pump)",
+)
+display_figure(_fig)
+```
+
+```{python}
+#| label: fig-monthly-mc-delivered-after
+#| fig-cap: "Monthly delivery marginal cost for the average BGE delivered-fuel-heated home after heat pump installation."
+
+_fig = plot_monthly_delivery_mc(
+    mc_monthly["delivered"]["after"],
+    title="Average delivered-fuel-heated home (after heat pump)",
+)
+display_figure(_fig)
+```
+
+### All fossil fuel homes
+
+```{python}
+#| label: fig-monthly-mc-all-fossil-before
+#| fig-cap: "Monthly delivery marginal cost for all BGE fossil-fuel-heated homes before heat pump installation."
+
+_fig = plot_monthly_delivery_mc(
+    mc_monthly["all_fossil"]["before"],
+    title="Average fossil-fuel-heated home (before heat pump)",
+)
+display_figure(_fig)
+```
+
+```{python}
+#| label: fig-monthly-mc-all-fossil-after
+#| fig-cap: "Monthly delivery marginal cost for all BGE fossil-fuel-heated homes after heat pump installation."
+
+_fig = plot_monthly_delivery_mc(
+    mc_monthly["all_fossil"]["after"],
+    title="Average fossil-fuel-heated home (after heat pump)",
+)
+display_figure(_fig)
 ```
 
 ## Report variables

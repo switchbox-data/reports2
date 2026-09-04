@@ -18,6 +18,11 @@ Single-file mode (one argument):
     exists.  If embedded figures appear as PNG, run ``just render`` (no
     arguments) first to build the cache.
 
+    The embed pipeline also maintains its own cache under
+    ``.quarto/embed/``.  When rendering a file with ``{{< embed >}}``,
+    this script clears the embed cache so the pipeline picks up fresh
+    notebook outputs from the main freeze cache, avoiding stale data.
+
 Usage (from a report directory):
     uv run python -m lib.just.render                  # full project
     uv run python -m lib.just.render foo.qmd          # single file
@@ -134,14 +139,21 @@ def _has_embeds(qmd_path: Path) -> bool:
 def _render_single(qmd_path: Path) -> None:
     """Single-file render with fig-format forwarding and move to docs/."""
     docs = Path("docs")
+    has_embeds = _has_embeds(qmd_path)
 
-    if _has_embeds(qmd_path) and not Path(".quarto/_freeze").exists():
+    if has_embeds and not Path(".quarto/_freeze").exists():
         print(
             "⚠️  This file embeds figures from other notebooks, but no freeze\n"
             "   cache exists. Embedded figures will render as PNG instead of SVG.\n"
             "   Run `just render` (full project) first to build the cache.",
             file=sys.stderr,
         )
+
+    if has_embeds:
+        embed_dir = Path(".quarto/embed")
+        if embed_dir.exists():
+            print("🧹 Clearing embed cache to avoid stale notebook outputs...")
+            shutil.rmtree(embed_dir)
 
     cmd: list[str] = ["quarto", "render", str(qmd_path)]
     fig_format = _get_project_fig_format()

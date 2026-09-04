@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import math
 import warnings
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, cast, overload
 
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as pyplot
@@ -817,6 +817,22 @@ def plot_bill_change_quadrants(
         p = p + plt.scale_color_identity()
 
     return p
+
+
+@overload
+def plot_bill_change_quadrant_comparison(
+    rows: list[tuple[str, pl.DataFrame]],
+    title: str = "How bills would change after switching to heat pumps:",
+    title_parts: list[tuple[str, str]] = ...,
+) -> Figure: ...
+
+
+@overload
+def plot_bill_change_quadrant_comparison(
+    rows: list[tuple[str, pl.DataFrame]],
+    title: str = "How bills would change after switching to heat pumps:",
+    title_parts: None = None,
+) -> ggplot: ...
 
 
 def plot_bill_change_quadrant_comparison(
@@ -2680,7 +2696,7 @@ def monthly_load_y_max(
     peak = 0.0
     for series in (kwh, before_kwh, after_kwh):
         if series is not None:
-            peak = max(peak, float(series.max()))
+            peak = max(peak, cast(float, series.max()))
     return max(500, int(math.ceil(peak / 500) * 500))
 
 

@@ -5,7 +5,12 @@ from __future__ import annotations
 import polars as pl
 import pytest
 
-from lib.rates_analysis.rate_case_funcs import MONTH_ORDER, tariff_month_rate_table
+from lib.rates_analysis.rate_case_funcs import (
+    MONTH_ORDER,
+    _annual_bill_component_stack_data,
+    plot_annual_bill_component_stacked,
+    tariff_month_rate_table,
+)
 
 
 def _flat_rates(rate: float) -> dict:
@@ -51,3 +56,66 @@ def test_tariff_month_rate_table_joins_multiple_tariffs_on_month() -> None:
 
     jan_row = tbl.filter(pl.col("month") == "Jan")
     assert jan_row["Seasonal rate (¢/kWh)"][0] == pytest.approx(8.0)
+
+
+def _monthly_bill_rows(values: dict[str, float]) -> pl.DataFrame:
+    return pl.DataFrame(
+        [{"component": component, "month": "Jan", "value": value / 12} for component, value in values.items()]
+    )
+
+
+def test_annual_bill_component_stack_data_totals_match_after() -> None:
+    before = _monthly_bill_rows(
+        {
+            "Customer Charge": 120.0,
+            "Distribution": 600.0,
+            "Generation": 1400.0,
+        }
+    )
+    after = _monthly_bill_rows(
+        {
+            "Customer Charge": 120.0,
+            "Distribution": 1000.0,
+            "Generation": 2400.0,
+        }
+    )
+
+    stacked = _annual_bill_component_stack_data(before, after)
+    totals = stacked.group_by("component").agg(pl.col("value").sum().alias("total"))
+    expected = after.group_by("component").agg(pl.col("value").sum().alias("after_total"))
+    joined = totals.join(expected.cast({"component": stacked["component"].dtype}), on="component")
+    assert joined["total"].to_list() == pytest.approx(joined["after_total"].to_list())
+
+
+def test_annual_bill_component_stack_data_raises_on_negative_increment() -> None:
+    before = _monthly_bill_rows({"Distribution": 600.0})
+    after = _monthly_bill_rows({"Distribution": 500.0})
+
+    with pytest.raises(ValueError, match="non-negative"):
+        _annual_bill_component_stack_data(before, after)
+
+
+def test_plot_annual_bill_component_stacked_renders(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("lib.quarto.display_figure", lambda fig: None)
+
+    before = _monthly_bill_rows(
+        {
+            "Customer Charge": 121.0,
+            "Distribution": 598.0,
+            "Transmission": 280.0,
+            "EmPOWER Maryland": 141.0,
+            "Generation": 1467.0,
+        }
+    )
+    after = _monthly_bill_rows(
+        {
+            "Customer Charge": 121.0,
+            "Distribution": 1003.0,
+            "Transmission": 469.0,
+            "EmPOWER Maryland": 233.0,
+            "Generation": 2446.0,
+        }
+    )
+
+    fig = plot_annual_bill_component_stacked(before, after, title="Test")
+    assert fig is not None

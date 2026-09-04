@@ -52,6 +52,7 @@ from lib.rates_analysis.rate_case_funcs import (
     building_delivery_mc_8760,
     load_billing_kwh_8760,
     load_delivery_mc_heatmap,
+    load_master_bat,
     load_master_bills,
     monthly_bill_from_profile,
     monthly_load_y_max,
@@ -59,6 +60,7 @@ from lib.rates_analysis.rate_case_funcs import (
     plot_monthly_delivery_mc,
     plot_monthly_load,
     plot_monthly_load_before_after,
+    plot_representative_cost_breakdown,
     segment_name,
     sum_8760_to_monthly,
     weighted_avg_hourly,
@@ -577,6 +579,165 @@ display_figure(_fig)
 _fig = plot_monthly_delivery_mc(
     mc_monthly["all_fossil"]["after"],
     title="Average fossil-fuel-heated home (after heat pump)",
+)
+display_figure(_fig)
+```
+
+## Chart 4: Cost breakdown — kWh, cost of service, and delivery bill
+
+This chart ties together the three dimensions above — load, marginal cost, and
+bill — into a single side-by-side comparison. For each population, it shows the
+natural-gas baseline and heat-pump states across three panels:
+
+1. **Annual kWh** — total electricity consumption, split into "existing"
+   (what the home already used) and "incremental" (new load from the heat pump).
+2. **Cost of Service** — the per-customer residual (shared infrastructure costs,
+   same for every customer) plus the marginal cost (driven by when and how much
+   the home draws from the grid), split into existing and incremental.
+3. **Delivery Bill** — the fixed charge plus volumetric delivery charges
+   (distribution + transmission + EmPOWER Maryland), split into existing and
+   incremental.
+
+The key insight: the Cost of Service bars and Delivery Bill bars should be
+roughly the same height if rates are aligned with costs. When the Delivery Bill
+bar towers over the Cost of Service bar after the heat pump, the difference is
+the overpayment.
+
+### Read the per-customer residual
+
+Under per-customer allocation, `residual_share_delivery` is the same dollar
+amount for every residential customer in the utility. We read it once from
+master-BAT.
+
+```{python}
+#| label: read-residual
+
+_bat = load_master_bat(STATE, BATCH, SEG_PRECALC)
+_residual = float(
+    _bat.filter(pl.col("bldg_id") == pop_natgas["bldg_id"][0])
+    .select("residual_share_delivery")
+    .collect()
+    .item()
+)
+report_vars["natgas_residual"] = _residual
+print(f"Per-customer residual (delivery): ${_residual:,.2f}")
+```
+
+### Assemble cost-breakdown data
+
+```{python}
+#| label: assemble-cost-breakdown
+
+def _build_cost_breakdown(pop_label: str) -> dict[str, dict[str, float]]:
+    """Assemble the 5-field dict that plot_representative_cost_breakdown expects."""
+    ng_fixed = report_vars[f"{pop_label}_annual_customer_charge_before"]
+    ng_delivery_vol = (
+        report_vars[f"{pop_label}_annual_distribution_before"]
+        + report_vars[f"{pop_label}_annual_transmission_before"]
+        + report_vars[f"{pop_label}_annual_empower_maryland_before"]
+    )
+
+    hp_fixed = report_vars[f"{pop_label}_annual_customer_charge_after"]
+    hp_delivery_vol = (
+        report_vars[f"{pop_label}_annual_distribution_after"]
+        + report_vars[f"{pop_label}_annual_transmission_after"]
+        + report_vars[f"{pop_label}_annual_empower_maryland_after"]
+    )
+
+    # Store derived vars for testimony
+    report_vars[f"{pop_label}_delivery_vol_before"] = ng_delivery_vol
+    report_vars[f"{pop_label}_delivery_vol_after"] = hp_delivery_vol
+    report_vars[f"{pop_label}_delivery_total_before"] = ng_fixed + ng_delivery_vol
+    report_vars[f"{pop_label}_delivery_total_after"] = hp_fixed + hp_delivery_vol
+    report_vars[f"{pop_label}_cos_before"] = _residual + report_vars[f"{pop_label}_annual_mc_delivery_before"]
+    report_vars[f"{pop_label}_cos_after"] = _residual + report_vars[f"{pop_label}_annual_mc_delivery_after"]
+    report_vars[f"{pop_label}_pct_cos_change"] = (
+        (report_vars[f"{pop_label}_cos_after"] - report_vars[f"{pop_label}_cos_before"])
+        / report_vars[f"{pop_label}_cos_before"]
+    )
+    report_vars[f"{pop_label}_pct_delivery_bill_change"] = (
+        (report_vars[f"{pop_label}_delivery_total_after"] - report_vars[f"{pop_label}_delivery_total_before"])
+        / report_vars[f"{pop_label}_delivery_total_before"]
+    )
+    report_vars[f"{pop_label}_hp_delivery_overpayment"] = (
+        report_vars[f"{pop_label}_delivery_total_after"] - report_vars[f"{pop_label}_cos_after"]
+    )
+
+    return {
+        "ng": {
+            "kwh": report_vars[f"{pop_label}_annual_kwh_before"],
+            "mc": report_vars[f"{pop_label}_annual_mc_delivery_before"],
+            "residual": _residual,
+            "delivery_fixed": ng_fixed,
+            "delivery_volumetric": ng_delivery_vol,
+        },
+        "hp": {
+            "kwh": report_vars[f"{pop_label}_annual_kwh_after"],
+            "mc": report_vars[f"{pop_label}_annual_mc_delivery_after"],
+            "residual": _residual,
+            "delivery_fixed": hp_fixed,
+            "delivery_volumetric": hp_delivery_vol,
+        },
+    }
+
+cost_breakdown_data: dict[str, dict[str, dict[str, float]]] = {}
+for pop_label in ["natgas", "delivered", "all_fossil"]:
+    cost_breakdown_data[pop_label] = _build_cost_breakdown(pop_label)
+```
+
+### Sanity check
+
+The Cost of Service group (MC + Residual) and the Delivery Bill group (Fixed +
+Volumetric) are two decompositions of the same total delivery cost. For the
+natural-gas (pre-HP) bar they should be close. A large divergence would mean
+the marginal cost calculation or the bill components are misaligned.
+
+```{python}
+#| label: sanity-check-cos-vs-bill
+
+for pop_label in ["natgas", "delivered", "all_fossil"]:
+    ng = cost_breakdown_data[pop_label]["ng"]
+    cos_total = ng["mc"] + ng["residual"]
+    bill_total = ng["delivery_fixed"] + ng["delivery_volumetric"]
+    diff = abs(cos_total - bill_total)
+    print(f"{pop_label} NG bar — COS: ${cos_total:,.2f}  Bill: ${bill_total:,.2f}  diff: ${diff:,.2f}")
+```
+
+### Natural gas homes
+
+```{python}
+#| label: fig-cost-breakdown-natgas
+#| fig-cap: "Annual kWh, delivery cost of service, and delivery bill for the average BGE natural-gas-heated home, before and after switching to a heat pump."
+
+_fig = plot_representative_cost_breakdown(
+    cost_breakdown_data["natgas"],
+    title="Switching to a heat pump raises usage, marginal cost, and delivery bill",
+)
+display_figure(_fig)
+```
+
+### Delivered fuel homes
+
+```{python}
+#| label: fig-cost-breakdown-delivered
+#| fig-cap: "Annual kWh, delivery cost of service, and delivery bill for the average BGE delivered-fuel-heated home, before and after switching to a heat pump."
+
+_fig = plot_representative_cost_breakdown(
+    cost_breakdown_data["delivered"],
+    title="Switching to a heat pump raises usage, marginal cost, and delivery bill",
+)
+display_figure(_fig)
+```
+
+### All fossil fuel homes
+
+```{python}
+#| label: fig-cost-breakdown-all-fossil
+#| fig-cap: "Annual kWh, delivery cost of service, and delivery bill for all BGE fossil-fuel-heated homes, before and after switching to a heat pump."
+
+_fig = plot_representative_cost_breakdown(
+    cost_breakdown_data["all_fossil"],
+    title="Switching to a heat pump raises usage, marginal cost, and delivery bill",
 )
 display_figure(_fig)
 ```

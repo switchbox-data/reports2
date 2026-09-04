@@ -33,6 +33,8 @@ from pathlib import Path
 
 import yaml
 
+from lib.just.quarto_env import quarto_env
+
 BASELINE = Path(".diff/baseline")
 INLINE_SVGS = Path("../.style/inline_svgs.py")
 
@@ -106,7 +108,10 @@ def _render_project() -> None:
         shutil.copytree(docs, BASELINE)
 
     print("📖 Rendering Quarto project...")
-    result = subprocess.run(["quarto", "render", "."])
+    env = quarto_env()
+    if python := env.get("QUARTO_PYTHON"):
+        print(f"🐍 QUARTO_PYTHON={python}")
+    result = subprocess.run(["quarto", "render", "."], env=env)
     if result.returncode != 0:
         print("💥 Quarto render failed!", file=sys.stderr)
         sys.exit(1)
@@ -144,7 +149,7 @@ def _render_single(qmd_path: Path) -> None:
         cmd.extend(["-M", f"fig-format:{fig_format}"])
 
     print(f"📖 Rendering {qmd_path}...")
-    result = subprocess.run(cmd)
+    result = subprocess.run(cmd, env=quarto_env())
     if result.returncode != 0:
         print("💥 Quarto render failed!", file=sys.stderr)
         sys.exit(1)

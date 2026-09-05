@@ -57,12 +57,17 @@ from lib.rates_analysis.rate_case_funcs import (
     monthly_load_y_max,
     plot_annual_bill_component_stacked,
     plot_monthly_delivery_mc,
+    plot_seasonal_delivery_mc,
+    plot_seasonal_delivery_mc_comparison,
     plot_monthly_load,
     plot_monthly_load_before_after,
+    plot_monthly_load_with_peak,
     segment_name,
     sum_8760_to_monthly,
+    sum_monthly_peak_offpeak_kwh,
     weighted_avg_hourly,
     weighted_avg_monthly,
+    _aggregate_seasonal_mc,
 )
 
 report_vars: dict = {}
@@ -106,6 +111,9 @@ bills_precalc = load_master_bills(STATE, BATCH, SEG_PRECALC)
 
 kwh_8760_precalc = load_billing_kwh_8760(STATE, UTILITY, BATCH, SEG_PRECALC)
 kwh_8760_calibrated = load_billing_kwh_8760(STATE, UTILITY, BATCH, SEG_CALIBRATED)
+
+mc_8760 = load_delivery_mc_heatmap(STATE, UTILITY, 2025)
+print(f"MC 8760: {mc_8760.height} hours, columns: {mc_8760.columns}")
 ```
 
 Let's confirm the metadata columns we need are present:
@@ -198,10 +206,12 @@ for pop_label, pop_df in [
 
     annual_before = before["kwh"].sum()
     annual_after = after["kwh"].sum()
-    pct_change = (annual_after - annual_before) / annual_before
+    annual_delta = annual_after - annual_before
+    pct_change = annual_delta / annual_before
 
     report_vars[f"{pop_label}_annual_kwh_before"] = annual_before
     report_vars[f"{pop_label}_annual_kwh_after"] = annual_after
+    report_vars[f"{pop_label}_annual_kwh_delta"] = annual_delta
     report_vars[f"{pop_label}_pct_kwh_change"] = pct_change
 
     print(f"\n{pop_label}:")
@@ -314,6 +324,16 @@ for pop_label in ["natgas", "delivered", "all_fossil"]:
         for row in annual_by_component.iter_rows(named=True):
             component_key = row["component"].lower().replace(" ", "_")
             report_vars[f"{pop_label}_annual_{component_key}_{period}"] = row["value"]
+
+    for component in ["distribution", "transmission", "empower_maryland"]:
+        report_vars[f"{pop_label}_annual_{component}_delta"] = (
+            report_vars[f"{pop_label}_annual_{component}_after"]
+            - report_vars[f"{pop_label}_annual_{component}_before"]
+        )
+    report_vars[f"{pop_label}_annual_delivery_charges_delta"] = (
+        report_vars[f"{pop_label}_annual_distribution_delta"]
+        + report_vars[f"{pop_label}_annual_transmission_delta"]
+    )
 ```
 
 Let's see the annual bill breakdown for natural-gas homes:
@@ -346,7 +366,7 @@ cooling), and the saffron segment shows new electricity use from the heat pump
 
 ```{python}
 #| label: fig-monthly-load-natgas-before
-#| fig-cap: "Average monthly electricity for BGE natural-gas-heated homes before heat pump installation."
+#| fig-cap: "Average monthly electricity for BGE natural-gas-heated homes before heat pump installation, with peak-hour usage highlighted."
 
 _natgas_monthly = profiles["natgas"]["before"].join(
     profiles["natgas"]["after"].rename({"kwh": "after_kwh"}),
@@ -357,8 +377,25 @@ _natgas_y_max = monthly_load_y_max(
     after_kwh=_natgas_monthly["after_kwh"],
 )
 
-_fig = plot_monthly_load(
-    profiles["natgas"]["before"],
+_natgas_peak_split = sum_monthly_peak_offpeak_kwh(
+    hourly_profiles["natgas"]["before"], mc_8760
+)
+_SUMMER_MONTH_LABELS = ["Jun", "Jul", "Aug", "Sep"]
+_natgas_total_peak_kwh = float(_natgas_peak_split["kwh_peak"].sum())
+_natgas_summer_peak_kwh = float(
+    _natgas_peak_split.filter(pl.col("month_label").is_in(_SUMMER_MONTH_LABELS))["kwh_peak"].sum()
+)
+report_vars["natgas_annual_peak_kwh"] = _natgas_total_peak_kwh
+report_vars["natgas_pct_kwh_during_peak_hours"] = (
+    _natgas_total_peak_kwh / report_vars["natgas_annual_kwh_before"]
+    if report_vars["natgas_annual_kwh_before"] > 0
+    else 0.0
+)
+report_vars["natgas_pct_peak_kwh_jun_sep"] = (
+    _natgas_summer_peak_kwh / _natgas_total_peak_kwh if _natgas_total_peak_kwh > 0 else 0.0
+)
+_fig = plot_monthly_load_with_peak(
+    _natgas_peak_split,
     title="Average natural-gas-heated home",
     y_max=_natgas_y_max,
 )
@@ -367,12 +404,79 @@ display_figure(_fig)
 
 ```{python}
 #| label: fig-monthly-load-natgas
-#| fig-cap: "Average monthly electricity for BGE natural-gas-heated homes, before and after heat pump installation."
+#| fig-cap: "Average monthly electricity for BGE natural-gas-heated homes, before and after heat pump installation, with peak-hour usage highlighted."
 
+_natgas_peak_after = sum_monthly_peak_offpeak_kwh(
+    hourly_profiles["natgas"]["after"], mc_8760
+)
+_OCT_MAY_MONTH_LABELS = ["Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May"]
+_JUN_SEP_MONTH_LABELS = ["Jun", "Jul", "Aug", "Sep"]
+_natgas_oct_may_before = float(
+    _natgas_monthly.filter(pl.col("month_label").is_in(_OCT_MAY_MONTH_LABELS))[
+        "before_kwh"
+    ].sum()
+)
+_natgas_oct_may_after = float(
+    _natgas_monthly.filter(pl.col("month_label").is_in(_OCT_MAY_MONTH_LABELS))[
+        "after_kwh"
+    ].sum()
+)
+report_vars["natgas_pct_kwh_change_oct_may"] = (
+    (_natgas_oct_may_after - _natgas_oct_may_before) / _natgas_oct_may_before
+    if _natgas_oct_may_before > 0
+    else 0.0
+)
+_natgas_winter_peak_before = float(
+    _natgas_peak_split.filter(pl.col("month_label").is_in(_OCT_MAY_MONTH_LABELS))[
+        "kwh_peak"
+    ].sum()
+)
+_natgas_winter_peak_after = float(
+    _natgas_peak_after.filter(pl.col("month_label").is_in(_OCT_MAY_MONTH_LABELS))[
+        "kwh_peak"
+    ].sum()
+)
+report_vars["natgas_pct_peak_kwh_change_oct_may"] = (
+    (_natgas_winter_peak_after - _natgas_winter_peak_before) / _natgas_winter_peak_before
+    if _natgas_winter_peak_before > 0
+    else 0.0
+)
+_natgas_jun_sep_before = float(
+    _natgas_monthly.filter(pl.col("month_label").is_in(_JUN_SEP_MONTH_LABELS))[
+        "before_kwh"
+    ].sum()
+)
+_natgas_jun_sep_after = float(
+    _natgas_monthly.filter(pl.col("month_label").is_in(_JUN_SEP_MONTH_LABELS))[
+        "after_kwh"
+    ].sum()
+)
+report_vars["natgas_pct_kwh_change_jun_sep"] = (
+    (_natgas_jun_sep_after - _natgas_jun_sep_before) / _natgas_jun_sep_before
+    if _natgas_jun_sep_before > 0
+    else 0.0
+)
+_natgas_summer_peak_before = float(
+    _natgas_peak_split.filter(pl.col("month_label").is_in(_JUN_SEP_MONTH_LABELS))[
+        "kwh_peak"
+    ].sum()
+)
+_natgas_summer_peak_after = float(
+    _natgas_peak_after.filter(pl.col("month_label").is_in(_JUN_SEP_MONTH_LABELS))[
+        "kwh_peak"
+    ].sum()
+)
+report_vars["natgas_pct_peak_kwh_change_jun_sep"] = (
+    (_natgas_summer_peak_after - _natgas_summer_peak_before) / _natgas_summer_peak_before
+    if _natgas_summer_peak_before > 0
+    else 0.0
+)
 _fig = plot_monthly_load_before_after(
     _natgas_monthly,
     title="Average natural-gas-heated home",
     y_max=_natgas_y_max,
+    peak_before=_natgas_peak_split,
+    peak_after=_natgas_peak_after,
 )
 display_figure(_fig)
 ```
@@ -467,13 +571,6 @@ totals. The result shows the cost the grid incurs to serve that home — before
 and after heat pump installation.
 
 ```{python}
-#| label: load-mc-8760
-
-mc_8760 = load_delivery_mc_heatmap(STATE, UTILITY, 2025)
-print(f"MC 8760: {mc_8760.height} hours, columns: {mc_8760.columns}")
-```
-
-```{python}
 #| label: compute-mc
 
 mc_monthly: dict[str, dict[str, pl.DataFrame]] = {}
@@ -506,16 +603,37 @@ for pop_label in ["natgas", "delivered", "all_fossil"]:
     report_vars[f"{pop_label}_pct_mc_delivery_change"] = (
         (after_total - before_total) / before_total if before_total > 0 else 0.0
     )
+    report_vars[f"{pop_label}_annual_mc_tx_delta"] = (
+        report_vars[f"{pop_label}_annual_mc_tx_after"]
+        - report_vars[f"{pop_label}_annual_mc_tx_before"]
+    )
+    report_vars[f"{pop_label}_annual_mc_dist_delta"] = (
+        report_vars[f"{pop_label}_annual_mc_dist_after"]
+        - report_vars[f"{pop_label}_annual_mc_dist_before"]
+    )
     print(f"  → change: {report_vars[f'{pop_label}_pct_mc_delivery_change']:+.1%}\n")
+
+_SEASON_VAR_SUFFIX = {"Oct-May": "oct_may", "Jun-Sep": "jun_sep"}
+for pop_label in ["natgas", "delivered", "all_fossil"]:
+    for season, suffix in _SEASON_VAR_SUFFIX.items():
+        before_delivery = sum(_aggregate_seasonal_mc(mc_monthly[pop_label]["before"])[season].values())
+        after_delivery = sum(_aggregate_seasonal_mc(mc_monthly[pop_label]["after"])[season].values())
+        delta = after_delivery - before_delivery
+        report_vars[f"{pop_label}_seasonal_mc_delivery_{suffix}_before"] = before_delivery
+        report_vars[f"{pop_label}_seasonal_mc_delivery_{suffix}_after"] = after_delivery
+        report_vars[f"{pop_label}_seasonal_mc_delivery_{suffix}_delta"] = delta
+        report_vars[f"{pop_label}_pct_seasonal_mc_delivery_{suffix}_change"] = (
+            delta / before_delivery if before_delivery > 0 else 0.0
+        )
 ```
 
 ### Natural gas homes
 
 ```{python}
-#| label: fig-monthly-mc-natgas-before
-#| fig-cap: "Monthly delivery marginal cost for the average BGE natural-gas-heated home before heat pump installation."
+#| label: fig-seasonal-mc-natgas-before
+#| fig-cap: "Seasonal delivery marginal cost for the average BGE natural-gas-heated home before heat pump installation."
 
-_fig = plot_monthly_delivery_mc(
+_fig = plot_seasonal_delivery_mc(
     mc_monthly["natgas"]["before"],
     title="Average natural-gas-heated home (before heat pump)",
 )
@@ -523,12 +641,13 @@ display_figure(_fig)
 ```
 
 ```{python}
-#| label: fig-monthly-mc-natgas-after
-#| fig-cap: "Monthly delivery marginal cost for the average BGE natural-gas-heated home after heat pump installation."
+#| label: fig-seasonal-mc-natgas-comparison
+#| fig-cap: "Seasonal delivery marginal cost for the average BGE natural-gas-heated home, before and after heat pump installation."
 
-_fig = plot_monthly_delivery_mc(
+_fig = plot_seasonal_delivery_mc_comparison(
+    mc_monthly["natgas"]["before"],
     mc_monthly["natgas"]["after"],
-    title="Average natural-gas-heated home (after heat pump)",
+    title="Average natural-gas-heated home",
 )
 display_figure(_fig)
 ```
@@ -536,10 +655,10 @@ display_figure(_fig)
 ### Delivered fuel homes
 
 ```{python}
-#| label: fig-monthly-mc-delivered-before
-#| fig-cap: "Monthly delivery marginal cost for the average BGE delivered-fuel-heated home before heat pump installation."
+#| label: fig-seasonal-mc-delivered-before
+#| fig-cap: "Seasonal delivery marginal cost for the average BGE delivered-fuel-heated home before heat pump installation."
 
-_fig = plot_monthly_delivery_mc(
+_fig = plot_seasonal_delivery_mc(
     mc_monthly["delivered"]["before"],
     title="Average delivered-fuel-heated home (before heat pump)",
 )
@@ -547,10 +666,10 @@ display_figure(_fig)
 ```
 
 ```{python}
-#| label: fig-monthly-mc-delivered-after
-#| fig-cap: "Monthly delivery marginal cost for the average BGE delivered-fuel-heated home after heat pump installation."
+#| label: fig-seasonal-mc-delivered-after
+#| fig-cap: "Seasonal delivery marginal cost for the average BGE delivered-fuel-heated home after heat pump installation."
 
-_fig = plot_monthly_delivery_mc(
+_fig = plot_seasonal_delivery_mc(
     mc_monthly["delivered"]["after"],
     title="Average delivered-fuel-heated home (after heat pump)",
 )
@@ -560,10 +679,10 @@ display_figure(_fig)
 ### All fossil fuel homes
 
 ```{python}
-#| label: fig-monthly-mc-all-fossil-before
-#| fig-cap: "Monthly delivery marginal cost for all BGE fossil-fuel-heated homes before heat pump installation."
+#| label: fig-seasonal-mc-all-fossil-before
+#| fig-cap: "Seasonal delivery marginal cost for all BGE fossil-fuel-heated homes before heat pump installation."
 
-_fig = plot_monthly_delivery_mc(
+_fig = plot_seasonal_delivery_mc(
     mc_monthly["all_fossil"]["before"],
     title="Average fossil-fuel-heated home (before heat pump)",
 )
@@ -571,10 +690,10 @@ display_figure(_fig)
 ```
 
 ```{python}
-#| label: fig-monthly-mc-all-fossil-after
-#| fig-cap: "Monthly delivery marginal cost for all BGE fossil-fuel-heated homes after heat pump installation."
+#| label: fig-seasonal-mc-all-fossil-after
+#| fig-cap: "Seasonal delivery marginal cost for all BGE fossil-fuel-heated homes after heat pump installation."
 
-_fig = plot_monthly_delivery_mc(
+_fig = plot_seasonal_delivery_mc(
     mc_monthly["all_fossil"]["after"],
     title="Average fossil-fuel-heated home (after heat pump)",
 )

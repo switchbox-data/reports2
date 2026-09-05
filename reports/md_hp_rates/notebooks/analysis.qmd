@@ -584,13 +584,52 @@ mc_heatmap_df = load_delivery_mc_heatmap(STATE, UTILITY, YEAR)
 ```
 
 ```{python}
+#| label: report-vars-mc-peak-seasonality
+
+_SUMMER_MONTHS = {6, 7, 8, 9}
+
+
+def _pct_mc_peak_hours_in_summer(mc_col: str) -> float:
+    """Share of non-zero marginal-cost hours that fall in June–September."""
+    peak_hours = mc_heatmap_df.filter(pl.col(mc_col) > 0)
+    if peak_hours.is_empty():
+        return 0.0
+    summer_peak = peak_hours.filter(pl.col("timestamp").dt.month().is_in(_SUMMER_MONTHS))
+    return summer_peak.height / peak_hours.height
+
+
+report_vars["pct_dist_mc_peak_hours_jun_sep"] = _pct_mc_peak_hours_in_summer("mc_dist_sub_tx")
+report_vars["pct_bulk_tx_mc_peak_hours_jun_sep"] = _pct_mc_peak_hours_in_summer("mc_bulk_tx")
+
+_delivery_peak_hours = mc_heatmap_df.filter(
+    (pl.col("mc_bulk_tx") > 0) | (pl.col("mc_dist_sub_tx") > 0)
+)
+report_vars["pct_peak_hours_jun_sep"] = (
+    _delivery_peak_hours.filter(pl.col("timestamp").dt.month().is_in(_SUMMER_MONTHS)).height
+    / _delivery_peak_hours.height
+)
+
+_peak_hours = mc_heatmap_df.filter(
+    (pl.col("mc_bulk_tx") > 0) | (pl.col("mc_dist_sub_tx") > 0)
+)
+_dist_peak_hours = _peak_hours.filter(pl.col("mc_dist_sub_tx") > 0)
+_tx_peak_hours = _peak_hours.filter(pl.col("mc_bulk_tx") > 0)
+report_vars["mc_dist_peak_per_kwh_min"] = float(_dist_peak_hours["mc_dist_sub_tx"].min())
+report_vars["mc_dist_peak_per_kwh_max"] = float(_dist_peak_hours["mc_dist_sub_tx"].max())
+report_vars["mc_bulk_tx_peak_per_kwh_min"] = float(_tx_peak_hours["mc_bulk_tx"].min())
+report_vars["mc_bulk_tx_peak_per_kwh_max"] = float(_tx_peak_hours["mc_bulk_tx"].max())
+```
+
+```{python}
 #| label: fig-mc-heatmap-bulk-tx
 #| fig-cap: "Hourly marginal bulk transmission capacity costs, MD BGE, 2025."
 
-plot_mc_heatmap(
-    mc_heatmap_df, "mc_bulk_tx",
-    title="Bulk Transmission — Marginal Capacity Cost by Hour",
-    high_color=SB_COLORS["midnight"],
+display_svg(
+    plot_mc_heatmap(
+        mc_heatmap_df, "mc_bulk_tx",
+        title="Bulk Transmission — Marginal Capacity Cost by Hour",
+        high_color=SB_COLORS["midnight"],
+    )
 )
 ```
 
@@ -598,10 +637,12 @@ plot_mc_heatmap(
 #| label: fig-mc-heatmap-dist-sub-tx
 #| fig-cap: "Hourly marginal distribution and sub-transmission capacity costs, MD BGE, 2025."
 
-plot_mc_heatmap(
-    mc_heatmap_df, "mc_dist_sub_tx",
-    title="Distribution + Sub-Transmission — Marginal Capacity Cost by Hour",
-    high_color=SB_COLORS["carrot"],
+display_svg(
+    plot_mc_heatmap(
+        mc_heatmap_df, "mc_dist_sub_tx",
+        title="Distribution + Sub-Transmission — Marginal Capacity Cost by Hour",
+        high_color=SB_COLORS["carrot"],
+    )
 )
 ```
 

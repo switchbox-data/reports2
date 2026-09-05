@@ -243,41 +243,138 @@ By better aligning these rates with cost causation, this proposal would eliminat
 - Heat pump rates are a practical way to solve this problem.
 
 - When you are on natural gas or delivered fuels and you install heat pumps, you use more electricity. Homes that heat with natural gas in BGE's territory consume an average of `{python} f"{r.natgas_annual_kwh_before:,.0f}"` kWh per year.
-- When this home installs a heat pump, their annual electricity consumption goes up by `{python} pct(r.natgas_pct_kwh_change)`.
-- Due to volumetric rates, that causes their electricity bill to go up. They go from paying:
-  - `{python} dollar(r.natgas_annual_generation_before)` for generation, per year, to `{python} dollar(r.natgas_annual_generation_after)` for generation, per year.
-  - `{python} dollar(r.natgas_annual_distribution_before)` for distribution, per year, to `{python} dollar(r.natgas_annual_distribution_after)` for distribution, per year.
-  - `{python} dollar(r.natgas_annual_transmission_before)` for transmission, per year, to `{python} dollar(r.natgas_annual_transmission_after)` for transmission, per year.
-  - `{python} dollar(r.natgas_annual_empower_maryland_before)` for EmPOWER Maryland, per year, to `{python} dollar(r.natgas_annual_empower_maryland_after)` for EmPOWER Maryland, per year.
-
-:::{.column-page-inset-right}
-{{< embed notebooks/representative_home.qmd#fig-monthly-load-natgas-before >}}
-:::
-
-:::{.column-page-inset-right}
-{{< embed notebooks/representative_home.qmd#fig-monthly-load-natgas >}}
-:::
+- When these homes install heat pumps, their annual electricity consumption goes up by `{python} pct(r.natgas_pct_kwh_change)`, on average.
 
 :::{.column-page-inset-right}
 {{< embed notebooks/representative_home.qmd#fig-annual-bill-components-natgas >}}
 :::
 
-- It makes sense that they pay `{python} pct(r.natgas_pct_kwh_change)` more for generation, because they are consuming `{python} pct(r.natgas_pct_kwh_change)` more electricity.
+- Since most costs are collected through volumetric rates, this increase in electricity use leads to higher electricity bills for these homes. They go from paying:
+  - `{python} dollar(r.natgas_annual_generation_before)` for generation, per year, to `{python} dollar(r.natgas_annual_generation_after)` for generation, per year.
+  - `{python} dollar(r.natgas_annual_distribution_before)` for distribution, per year, to `{python} dollar(r.natgas_annual_distribution_after)` for distribution, per year.
+  - `{python} dollar(r.natgas_annual_transmission_before)` for transmission, per year, to `{python} dollar(r.natgas_annual_transmission_after)` for transmission, per year.
+  - `{python} dollar(r.natgas_annual_empower_maryland_before)` for EmPOWER Maryland, per year, to `{python} dollar(r.natgas_annual_empower_maryland_after)` for EmPOWER Maryland, per year.
 
-- But how much does this additional load actually cost to serve? The following charts show the monthly delivery marginal cost — the actual cost the grid incurs in transmission and distribution to serve the average natural-gas-heated home, before and after installing a heat pump. Before the heat pump, this home causes `{python} dollar(r.natgas_annual_mc_delivery_before, 2)` per year in delivery marginal costs. After, it causes `{python} dollar(r.natgas_annual_mc_delivery_after, 2)` — a `{python} pct(r.natgas_pct_mc_delivery_change)` increase.
+- Following the cost-causation principle, customers should pay for the costs they cause.
+- When natural-gas-heated homes switch their heating fuel to electricity, they increase their annual electricity consumption by `{python} f"{r.natgas_annual_kwh_delta:,.0f}"` kWh from one year to the next
+- Every one of those additional kWh causes additional _generation_ costs: BGE has to pay for those kWh from the PJM energy market, and so on.
+- So it makes sense that customers pay BGE back for each of those new kWh. Had they not consumed this additional energy, BGE would not have had to pay for it.
+
+
+- But are these `{python} f"{r.natgas_annual_kwh_delta:,.0f}"` kWh also causing `{python} dollar(r.natgas_annual_distribution_delta)` in additional _distribution_ costs, and `{python} dollar(r.natgas_annual_transmission_delta)` in additional _transmission_ costs?
+- For that to be the case, those kWh would need to be triggering `{python} dollar(r.natgas_annual_distribution_delta)` and `{python} dollar(r.natgas_annual_transmission_delta)` worth of capacity upgrades to the distribution and transmission networks, respectively.
+- In fact, our analysis shows that when a home adopts heat pumps, they don't actually cause _any_ additional distribution and transmission costs, on net.
+
+- How is this possible? Because while heat pumps increase electricity use in the _winter_, most distribution and transmission capacity upgrades are triggered by usage during peak hours in the _summer_, and heat pumps actually _reduce_ usage during the summer peak, on average.
+
+To see this, let's examine the Company's peak hours.
 
 :::{.column-page-inset-right}
-{{< embed notebooks/representative_home.qmd#fig-monthly-mc-natgas-before >}}
+{{< embed notebooks/analysis.qmd#fig-mc-heatmap-bulk-tx >}}
 :::
 
 :::{.column-page-inset-right}
-{{< embed notebooks/representative_home.qmd#fig-monthly-mc-natgas-after >}}
+{{< embed notebooks/analysis.qmd#fig-mc-heatmap-dist-sub-tx >}}
 :::
 
-- But it only makes to pay `{python} dollar(r.natgas_annual_transmission_after - r.natgas_annual_transmission_before)` more for transmission and `{python} dollar(r.natgas_annual_distribution_after - r.natgas_annual_distribution_before)` more for distribution if the cost to serve them also goes up proportionally.
-# - According to the cost-causation principle, it only makes sense for the average home to be charged `{python} dollar(r.natgas_annual_transmission_after - r.natgas_annual_transmission_before)` dollars more for transmission and `{python} dollar(r.natgas_annual_distribution_after - r.natgas_annual_distribution_before)` dollars more for distribution if their new load causes that many dollars more in costs.
+When customers use electricity during these periods, they trigger upgrades to the distribution and transmission capacity. These upgrades cause new transmission and distribution costs to be incurred by BGE.[^when-usage-triggers-upgrades] Under the cost-causation principle, these new costs should be repaid by the customers who caused them: those with usage during these peak hours.
+
+Customer usage outside of peak hours doesn't trigger upgrades, so it doesn't cause any new transmission or distribution costs.
+
+For BGE's distribution system, I estimate that `{python} pct(v.pct_dist_mc_peak_hours_jun_sep)` of peak hours occur between June and September. Across BGE's PJM zone, `{python} pct(v.pct_bulk_tx_mc_peak_hours_jun_sep)` of peak hours occur during the same period.
+
+Now let's examine the load shape of the average natural-gas-heated home, before and after installs a heat pump, to see how its usage interacts with the Company's peak hours.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/representative_home.qmd#fig-monthly-load-natgas-before >}}
+:::
+
+In total, the home consumes `{python} f"{r.natgas_annual_peak_kwh:,.0f}"` kWh during peak hours (red segment of the chart), which is `{python} pct(r.natgas_pct_kwh_during_peak_hours)` of its total annual usage.
+
+As @fig-monthly-load-natgas-before shows, `{python} pct(r.natgas_pct_peak_kwh_jun_sep)` of these peak hour kWhs occur between June and September. This is due to the fact that `{python} pct(v.pct_peak_hours_jun_sep)` of the Company's peak hours occur during these months, which is also when the average natural-gas-heated home's monthly usage is highest (due to high penetration of air conditioning in BGE's territory.)
+
+Each kWh a customer consumes during a peak hour causes between `{python} dollar(v.mc_dist_peak_per_kwh_min, 2)` and `{python} dollar(v.mc_dist_peak_per_kwh_max, 2)` of new distribution costs to be incurred by BGE, depending on the hour, and between `{python} dollar(v.mc_bulk_tx_peak_per_kwh_min, 2)` and `{python} dollar(v.mc_bulk_tx_peak_per_kwh_max, 2)` of new transmission costs.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/representative_home.qmd#fig-seasonal-mc-natgas-before >}}
+:::
+
+By the end of the year, the `{python} f"{r.natgas_annual_peak_kwh:,.0f}"` kWh the average natural-gas-heated home consumes during peak hours causes a total of `{python} dollar(r.natgas_annual_mc_dist_before)` in new distribution costs, and `{python} dollar(r.natgas_annual_mc_tx_before)` in new transmission costs.
+
+Any customer that consumes during peak hours causes new distribution and transmission costs, every year—not just heat pump customers. The question is: when the average natural-gas-heated home installs a heat pump, do they start causing _more_ than `{python} dollar(r.natgas_annual_mc_dist_before)` in new distribution costs, and `{python} dollar(r.natgas_annual_mc_tx_before)` in new transmission costs every year? If so, then under the cost-causation principle, their distribution and transmission bill should go up by this incremental amount.
+
+How does the load shape change when the home installs a heat pump?
+
+:::{.column-page-inset-right}
+{{< embed notebooks/representative_home.qmd#fig-monthly-load-natgas >}}
+:::
+
+As expected, when the home installs a heat pump, its electrical consumption between October and May grows by `{python} pct(r.natgas_pct_kwh_change_oct_may)`. Since `{python} pct(1 - v.pct_peak_hours_jun_sep)` of BGE's peak hours do occur during these colder months, the kWhs consumed during winter peak hours also grows by `{python} pct(r.natgas_pct_peak_kwh_change_oct_may)`.
+
+However, because heat pumps are more efficient at cooling than the average air conditioner currently installed in BGE's territory, the home's electrical consumption between June and September actually _decreases_ by `{python} pct(abs(r.natgas_pct_kwh_change_jun_sep))`. And that means that the kWhs consumed during summer peak hours shrink by `{python} pct(abs(r.natgas_pct_peak_kwh_change_jun_sep))`.
+
+This means that after installing a heat pump, the average natural-gas-heated home causes more new transmission and distribution costs during the winter than it did before, but less in the summer. How does it net out?
+
+:::{.column-page-inset-right}
+{{< embed notebooks/representative_home.qmd#fig-seasonal-mc-natgas-comparison >}}
+:::
+
+In winter, the home now causes `{python} dollar(r.natgas_seasonal_mc_delivery_oct_may_after)` in new distribution and transmission costs, up from `{python} dollar(r.natgas_seasonal_mc_delivery_oct_may_before)` before—an increase of `{python} dollar(r.natgas_seasonal_mc_delivery_oct_may_delta)`. But this is more than offset by the fact that it now causes `{python} dollar(r.natgas_seasonal_mc_delivery_jun_sep_after)` in new distribution and transmission costs in the summer, down from `{python} dollar(r.natgas_seasonal_mc_delivery_jun_sep_before)` before—a decrease of `{python} dollar(abs(r.natgas_seasonal_mc_delivery_jun_sep_delta))`.
+
+Bottom line: the average natural-gas-heated home causes `{python} dollar(r.natgas_annual_mc_delivery_before)` in new T&D costs per year before installing a heat pump, and it causes `{python} dollar(r.natgas_annual_mc_delivery_after)` after. In other words, it causes no _additional_ new T&D costs but it nevertheless gets charged an additional `{python} dollar(r.natgas_annual_delivery_charges_delta)` for both.
+
+This is a clear violation of the cost-causation principle, and it means that BGE is overcharging heat pump customers by `{python} dollar(r.natgas_annual_delivery_charges_delta)` per year, on average.
+
+**Q.** Why do these over-payments create a cross-subsidy, or cost-shift?
+
+**A.**
+
+**Q.** Why does this create a cross-subsidy?
+
+**A.**
+
+When customers install heat pumps, they pay `{python} dollar(r.natgas_annual_delivery_charges_delta)` more for distribution and transmission, despite causing no additional new T&D costs (on net). Because BGE's distribution and transmission revenue requirement are fixed in any given year, if a customer suddenly starts paying a larger share of this revenue requirement, that puts downward pressure on the volumetric distribution and transmission rates, which in turn reduces the amount paid by customers who still heat with fossil fuels (all else equal).
+
+This creates a cross-subsidy, or cost-shift, between heat pump and fossil-fueled electric customers. Existing heat pump customers already shoulder a disproportionate share of the revenue requirements for distribution and transmission, and every household that installs a heat pump increases the magnitude of this cross-subsidy.
+
+**Q.** Is BGE aware of this problem?
+
+**A.** Yes. Karas testimony...
+
+**Q.** Why is the cross-subsidy a problem?
+
+**A.** It's unfair, for one thing.
+
+But also, Maryland is doing the biggest electrification push in the country. The cross-subsidy is an unintentional policy that is diametrically opposed to the state's other electrification policies: it actively discourages heat pump adoption by making heat pump operating costs artificially high, in order to lower the electricity bills of customers that heat with fossil fuels.
+
+**Q.** Are heat pump customers also overpaying for EmPOWER Maryland?
+
+**A.** Yes.
+
+EmPOWER Maryland is a policy program, so the cost-causation principle doesn't apply here, but we contend that heat pump customers are neverthless overpaying for EmPOWER.
+
+EmPOWER's costs aren't caused by its customers. Rather, its budget is simply set by Maryland's Public Service Commission, and volumetric rates are created to collect the corresponding revenue.
+
+Under volumetric rates, customers who use more electricity pay more into the EmPOWER fund. This means that customers who adopt heat pumps systematically pay more into EmPOWER, by an average of `{python} dollar(r.natgas_annual_empower_maryland_delta)` per year.
+
+And because EmPOWER's budgets are fixed in any given year, these higher payments put downward pressure on the EmPOWER rate, which in turn reduces the amount paid into EmPOWER by households without heat pumps.
+
+So the identical cost-shift dynamics observed in the collection of distribution and transmission costs also apply here: existing heat pump customers already bear a disproportionate share of the EmPOWER costs, and every household that installs a heat pump increases the magnitude of this cross-subsidy.
+
+EmPOWER has been reoriented toward lowering greenhouse gas emissions, and heat pump adoption is the single highest-impact building decarbonization measure. Funding the state's main program for promoting heat pump installation by penalizing heat pump operating costs—in order to lower the electricity bills of customers that heat with fossil fuels—is counterproductive, to say the least.
+
+The Commission has options for how to collect revenue for EmPOWER. It should do so in a way that doesn't directly undermine the program's goals. Natural-gas-heated customers currently pay `{python} dollar(r.natgas_annual_empower_maryland_before)` a year into EmPOWER, on average. By embracing a lower EmPOWER rate for heat pump customers, the Commission could keep an electrifying home's EmPOWER contribution roughly constant, maintaining the status quo while removing the penalty on heat pump operating costs.
+
+**Q.** How much are heat pump customers overpaying for distribution and transmission and EmPOWER combined?
+
+**A.** Combining the distribution, transmission, and EmPOWER overpayments, the average natural-gas-heated home that installs a heat pump is overcharged by `{python} dollar(r.natgas_annual_delivery_charges_delta + r.natgas_annual_empower_maryland_delta)` per year. That is `{python} dollar(r.natgas_annual_delivery_charges_delta)` in T&D overcharges plus `{python} dollar(r.natgas_annual_empower_maryland_delta)` in excess EmPOWER contributions.
+
+To put that in perspective: this `{python} dollar(r.natgas_annual_delivery_charges_delta + r.natgas_annual_empower_maryland_delta)` penalty is a pure transfer from heat pump customers to fossil-heating customers. It does not reflect any additional costs that heat pump customers impose on the grid—as I have shown, they impose no additional T&D costs on net—and it does not reflect any additional costs that heat pump customers impose on EmPOWER's budget.
+
+This overpayment is not a one-time event. It recurs every year, for every heat pump customer. And as Maryland achieves its building electrification goals under the Climate Solutions Now Act, the number of affected households will only increase, and the cumulative cross-subsidy will compound.
 
 
+---
 
 - overpayments have accumulated over time into a large cross-subsidy.
 - overpayments make the NG to HP transition bad, which is actively undermining adoption.
@@ -292,3 +389,5 @@ By better aligning these rates with cost causation, this proposal would eliminat
 
 - MA does it
 - Eversource in CT is doing it, and here's their rationale
+
+[^when-usage-triggers-upgrades]: Technically, BGE only directly incurs the cost of distribution upgrades, whereas the cost of transmission upgrades is incurred by PJM. However, BGE ultimately passes the cost of transmission upgrades to BGE customers through the Standard Offer Service tariff.

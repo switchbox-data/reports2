@@ -30,12 +30,15 @@ import plotnine as p9
 from great_tables import GT
 
 from lib.great_tables import get_switchbox_gt_tab_options
-from lib.plotnine import SB_COLORS
+from lib.plotnine import SB_COLORS, theme_switchbox
 from lib.quarto import display_gt
 from lib.rates_analysis.rate_case_funcs import (
     HEATING_ORDER,
+    QUADRANT_COLORS,
+    QUADRANT_ORDER,
     add_heating_label,
     load_master_bills,
+    quadrant_pcts,
     weighted_mean,
     weighted_quantile,
 )
@@ -169,58 +172,17 @@ A bar leaning heavily green indicates that most households in that group would s
 money by switching from R/RL to RD with a heat pump.
 
 ```{python}
-from plotnine import (
-    aes,
-    coord_flip,
-    geom_col,
-    geom_text,
-    ggplot,
-    guides,
-    labs,
-    position_stack,
-    scale_fill_manual,
-    scale_y_continuous,
-    theme,
-)
-from lib.plotnine import theme_switchbox
-
-# Quadrant definitions
-QUADRANT_COLORS: dict[str, str] = {
-    "savings > $1k": "#1b5e20",
-    "savings $0-1k": "#81c784",
-    "losses $0-1k": "#ef9a9a",
-    "losses > $1k": "#b71c1c",
-}
-QUADRANT_ORDER = list(QUADRANT_COLORS.keys())
-
-def quadrant_pcts(df: pl.DataFrame) -> dict[str, float]:
-    """Weighted % of households in each bill-change quadrant."""
-    total = cast(float, df["weight"].sum())
-    return {
-        "savings > $1k": cast(float, df.filter(pl.col("bill_change") < -1000)["weight"].sum()) / total * 100,
-        "savings $0-1k": cast(
-            float,
-            df.filter((pl.col("bill_change") >= -1000) & (pl.col("bill_change") < 0))["weight"].sum(),
-        ) / total * 100,
-        "losses $0-1k": cast(
-            float,
-            df.filter((pl.col("bill_change") >= 0) & (pl.col("bill_change") < 1000))["weight"].sum(),
-        ) / total * 100,
-        "losses > $1k": cast(float, df.filter(pl.col("bill_change") >= 1000)["weight"].sum()) / total * 100,
-    }
-```
-
-```{python}
-# Calculate quadrant percentages by heating type
 avail_heating = sorted(
     bill_change.select("heating_label").unique().to_series().to_list(),
-    key=lambda x: HEATING_ORDER.index(x) if x in HEATING_ORDER else 999
+    key=lambda x: HEATING_ORDER.index(x) if x in HEATING_ORDER else 999,
 )
 
 qb_records: list[dict[str, object]] = []
 for group in avail_heating:
-    gdf = bill_change.filter(pl.col("heating_label") == group)
-    pct = quadrant_pcts(gdf)
+    pct = quadrant_pcts(
+        bill_change.filter(pl.col("heating_label") == group),
+        value_col="bill_change",
+    )
     for q in QUADRANT_ORDER:
         qb_records.append({"heating_label": group, "quadrant": q, "pct": pct[q]})
 
@@ -229,30 +191,29 @@ qb_plot = pl.DataFrame(qb_records).with_columns(
     pl.col("quadrant").cast(pl.Enum(QUADRANT_ORDER)),
 )
 
-# Create the quadrant bar chart
 plot = (
-    ggplot(qb_plot, aes(x="heating_label", y="pct", fill="quadrant"))
-    + geom_col(position="stack", width=0.55)
-    + geom_text(
-        mapping=aes(label="pct"),
+    p9.ggplot(qb_plot, p9.aes(x="heating_label", y="pct", fill="quadrant"))
+    + p9.geom_col(position="stack", width=0.55)
+    + p9.geom_text(
+        mapping=p9.aes(label="pct"),
         data=qb_plot.filter(pl.col("pct") >= 3),
-        position=position_stack(vjust=0.5),
+        position=p9.position_stack(vjust=0.5),
         format_string="{:.1f}%",
         color="white",
         size=11,
         fontweight="bold",
     )
-    + scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
-    + scale_y_continuous(expand=(0, 0, 0.02, 0))
-    + coord_flip()
-    + guides(fill=False)
-    + labs(
+    + p9.scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
+    + p9.scale_y_continuous(expand=(0, 0, 0.02, 0))
+    + p9.coord_flip()
+    + p9.guides(fill=False)
+    + p9.labs(
         x="",
         y="% of weighted households",
         title="Change in annual bill: Gas on R/RL (u00) → Heat Pump on RD (u02)",
     )
     + theme_switchbox()
-    + theme(figure_size=(10.5, max(3.5, 1.0 + 1.4 * len(avail_heating))))
+    + p9.theme(figure_size=(10.5, max(3.5, 1.0 + 1.4 * len(avail_heating))))
 )
 
 plot

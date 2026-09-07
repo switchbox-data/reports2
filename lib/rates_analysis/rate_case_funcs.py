@@ -37,6 +37,8 @@ import warnings
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
     import polars as pl
     from matplotlib.figure import Figure
     from plotnine import ggplot
@@ -394,32 +396,73 @@ def add_heating_label(df: pl.DataFrame, code_col: str = "heating_type_v2") -> pl
     )
 
 
-def quadrant_pcts(df: pl.DataFrame, weight_col: str = "weight") -> dict[str, float]:
-    """Weighted % of households in each bill-change quadrant.
+def weighted_range_pcts(
+    df: pl.DataFrame,
+    *,
+    value_col: str,
+    weight_col: str = "weight",
+    low_end: Mapping[str, float],
+    middle: Sequence[tuple[str, float, float]],
+    high_end: Mapping[str, float],
+) -> dict[str, float]:
+    """Weighted percent of rows in labeled low / middle / high ranges.
 
-    *df* must have a ``delta`` column (dollar change in annual bill) and a
-    weight column. Quadrant boundaries are fixed at +/- $1,000, matching the
-    savings/loss framing used throughout the rate-case reports.
+    ``low_end`` maps a label to an exclusive upper bound (``value < bound``).
+    ``middle`` is a sequence of ``(label, lo, hi)`` half-open intervals
+    ``[lo, hi)``; pass as many interior ranges as the chart needs.
+    ``high_end`` maps a label to an inclusive lower bound (``value >= bound``).
+
+    Labels are returned in ``low_end``, then ``middle``, then ``high_end``
+    order. Percents are on a 0-100 scale and sum to 100 when the ranges
+    partition the data and every row has a finite weight.
     """
     import polars as pl
 
-    total = cast(float, df[weight_col].sum())
-    return {
-        "savings > $1k": cast(float, df.filter(pl.col("delta") < -1000)[weight_col].sum()) / total * 100,
-        "savings $0-1k": cast(
-            float,
-            df.filter((pl.col("delta") >= -1000) & (pl.col("delta") < 0))[weight_col].sum(),
-        )
-        / total
-        * 100,
-        "losses $0-1k": cast(
-            float,
-            df.filter((pl.col("delta") >= 0) & (pl.col("delta") < 1000))[weight_col].sum(),
-        )
-        / total
-        * 100,
-        "losses > $1k": cast(float, df.filter(pl.col("delta") >= 1000)[weight_col].sum()) / total * 100,
-    }
+    middle_labels = [label for label, _lo, _hi in middle]
+    labels = [*low_end.keys(), *middle_labels, *high_end.keys()]
+    if len(labels) != len(set(labels)):
+        duplicates = sorted({label for label in labels if labels.count(label) > 1})
+        raise ValueError(f"Range labels must be unique; duplicates: {duplicates}")
+
+    total = cast("float", df[weight_col].sum())
+    if total == 0:
+        return dict.fromkeys(labels, 0.0)
+
+    value = pl.col(value_col)
+    out: dict[str, float] = {}
+    for label, bound in low_end.items():
+        out[label] = cast("float", df.filter(value < bound)[weight_col].sum()) / total * 100
+    for label, lo, hi in middle:
+        out[label] = cast("float", df.filter((value >= lo) & (value < hi))[weight_col].sum()) / total * 100
+    for label, bound in high_end.items():
+        out[label] = cast("float", df.filter(value >= bound)[weight_col].sum()) / total * 100
+    return out
+
+
+def quadrant_pcts(
+    df: pl.DataFrame,
+    weight_col: str = "weight",
+    value_col: str = "delta",
+) -> dict[str, float]:
+    """Weighted % of households in each bill-change quadrant.
+
+    *df* must have a dollar-change column (default ``delta``) and a weight
+    column. Quadrant boundaries are fixed at +/- $1,000, matching the
+    savings/loss framing used throughout the rate-case reports.
+
+    For custom cutoffs or labels, call :func:`weighted_range_pcts` instead.
+    """
+    return weighted_range_pcts(
+        df,
+        value_col=value_col,
+        weight_col=weight_col,
+        low_end={"savings > $1k": -1000},
+        middle=[
+            ("savings $0-1k", -1000, 0),
+            ("losses $0-1k", 0, 1000),
+        ],
+        high_end={"losses > $1k": 1000},
+    )
 
 
 def plot_bill_change_quadrants(

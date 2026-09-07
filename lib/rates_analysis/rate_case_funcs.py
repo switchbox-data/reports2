@@ -37,7 +37,7 @@ import warnings
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Sequence
 
     import polars as pl
     from matplotlib.figure import Figure
@@ -400,26 +400,19 @@ def weighted_range_pcts(
     df: pl.DataFrame,
     *,
     value_col: str,
+    ranges: Sequence[tuple[str, float, float]],
     weight_col: str = "weight",
-    low_end: Mapping[str, float],
-    middle: Sequence[tuple[str, float, float]],
-    high_end: Mapping[str, float],
 ) -> dict[str, float]:
-    """Weighted percent of rows in labeled low / middle / high ranges.
+    """Weighted percent of rows in labeled half-open intervals.
 
-    ``low_end`` maps a label to an exclusive upper bound (``value < bound``).
-    ``middle`` is a sequence of ``(label, lo, hi)`` half-open intervals
-    ``[lo, hi)``; pass as many interior ranges as the chart needs.
-    ``high_end`` maps a label to an inclusive lower bound (``value >= bound``).
-
-    Labels are returned in ``low_end``, then ``middle``, then ``high_end``
-    order. Percents are on a 0-100 scale and sum to 100 when the ranges
-    partition the data and every row has a finite weight.
+    ``ranges`` is ``(label, lo, hi)`` meaning ``lo <= value < hi``. Use
+    ``-math.inf`` / ``math.inf`` for unbounded tails. Labels are returned in
+    the order given. Percents are on a 0-100 scale and sum to 100 when the
+    ranges partition the data and every row has a finite weight.
     """
     import polars as pl
 
-    middle_labels = [label for label, _lo, _hi in middle]
-    labels = [*low_end.keys(), *middle_labels, *high_end.keys()]
+    labels = [label for label, _lo, _hi in ranges]
     if len(labels) != len(set(labels)):
         duplicates = sorted({label for label in labels if labels.count(label) > 1})
         raise ValueError(f"Range labels must be unique; duplicates: {duplicates}")
@@ -430,12 +423,8 @@ def weighted_range_pcts(
 
     value = pl.col(value_col)
     out: dict[str, float] = {}
-    for label, bound in low_end.items():
-        out[label] = cast("float", df.filter(value < bound)[weight_col].sum()) / total * 100
-    for label, lo, hi in middle:
+    for label, lo, hi in ranges:
         out[label] = cast("float", df.filter((value >= lo) & (value < hi))[weight_col].sum()) / total * 100
-    for label, bound in high_end.items():
-        out[label] = cast("float", df.filter(value >= bound)[weight_col].sum()) / total * 100
     return out
 
 
@@ -456,12 +445,12 @@ def quadrant_pcts(
         df,
         value_col=value_col,
         weight_col=weight_col,
-        low_end={"savings > $1k": -1000},
-        middle=[
+        ranges=[
+            ("savings > $1k", -math.inf, -1000),
             ("savings $0-1k", -1000, 0),
             ("losses $0-1k", 0, 1000),
+            ("losses > $1k", 1000, math.inf),
         ],
-        high_end={"losses > $1k": 1000},
     )
 
 

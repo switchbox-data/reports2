@@ -37,7 +37,7 @@ from lib.rates_analysis.rate_case_funcs import (
     QUADRANT_COLORS,
     QUADRANT_ORDER,
     add_heating_label,
-    load_master_bills,
+    bill_delta_between_segments,
     quadrant_pcts,
     weighted_mean,
     weighted_quantile,
@@ -58,61 +58,25 @@ SEGMENT_RD = "default_rd_calibrated"
 ```
 
 ```{python}
-# Load master bills for both segments
-bills_default = cast(
-    pl.DataFrame,
-    load_master_bills(STATE, BATCH, SEGMENT_DEFAULT)
-    .filter(pl.col("sb.electric_utility") == UTILITY)
-    .collect(),
-)
+# Annual energy-bill change: R/RL on upgrade 00 → RD on upgrade 02
+bill_change = add_heating_label(
+    bill_delta_between_segments(
+        STATE,
+        BATCH,
+        SEGMENT_DEFAULT,
+        SEGMENT_RD,
+        electric_utility=UTILITY,
+    )
+).with_columns((pl.col("delta") / pl.col("bill_before")).alias("pct_change"))
 
-bills_rd = cast(
-    pl.DataFrame,
-    load_master_bills(STATE, BATCH, SEGMENT_RD)
-    .filter(pl.col("sb.electric_utility") == UTILITY)
-    .collect(),
-)
-
-# Add heating type labels (baseline heating, from master-table metadata)
-bills_default = add_heating_label(bills_default, code_col="postprocess_group.heating_type_v2")
-bills_rd = add_heating_label(bills_rd, code_col="postprocess_group.heating_type_v2")
-
-print(f"Loaded {len(bills_default):,} bill records for default scenario")
-print(f"Loaded {len(bills_rd):,} bill records for RD scenario")
+print(f"{len(bill_change):,} buildings")
 ```
 
 ## Bill Change Analysis
 
 ```{python}
-# Compute bill changes
-bill_change = (
-    bills_default
-    .filter(pl.col("month") == "Annual")
-    .select([
-        "bldg_id",
-        "weight",
-        "heating_label",
-        pl.col("energy_total_bill").alias("bill_default"),
-    ])
-    .join(
-        bills_rd
-        .filter(pl.col("month") == "Annual")
-        .select([
-            "bldg_id",
-            pl.col("energy_total_bill").alias("bill_rd"),
-        ]),
-        on="bldg_id",
-        how="inner",
-    )
-    .with_columns(
-        (pl.col("bill_rd") - pl.col("bill_default")).alias("bill_change"),
-        ((pl.col("bill_rd") - pl.col("bill_default")) / pl.col("bill_default")).alias("pct_change"),
-    )
-)
-
-# Plot
 plot = (
-    p9.ggplot(bill_change.to_pandas(), p9.aes(x="bill_change", weight="weight"))
+    p9.ggplot(bill_change, p9.aes(x="delta", weight="weight"))
     + p9.geom_histogram(bins=50, fill=SB_COLORS["sky"], alpha=0.7)
     + p9.facet_wrap("~ heating_label", scales="free_y")
     + p9.labs(
@@ -134,7 +98,7 @@ summary = (
     .agg([
         pl.col("bldg_id").count().alias("n_buildings"),
         pl.col("weight").sum().alias("weight_total"),
-        ((pl.col("bill_change") * pl.col("weight")).sum() / pl.col("weight").sum()).alias("mean_bill_change"),
+        ((pl.col("delta") * pl.col("weight")).sum() / pl.col("weight").sum()).alias("mean_bill_change"),
         ((pl.col("pct_change") * pl.col("weight")).sum() / pl.col("weight").sum()).alias("mean_pct_change"),
     ])
     .sort("heating_label")
@@ -179,10 +143,7 @@ avail_heating = sorted(
 
 qb_records: list[dict[str, object]] = []
 for group in avail_heating:
-    pct = quadrant_pcts(
-        bill_change.filter(pl.col("heating_label") == group),
-        value_col="bill_change",
-    )
+    pct = quadrant_pcts(bill_change.filter(pl.col("heating_label") == group))
     for q in QUADRANT_ORDER:
         qb_records.append({"heating_label": group, "quadrant": q, "pct": pct[q]})
 
@@ -244,14 +205,14 @@ for group in avail_heating:
     }
     for lo, hi, col in SAVE_BINS:
         if lo == -float("inf"):
-            filt = gdf.filter(pl.col("bill_change") < hi)
+            filt = gdf.filter(pl.col("delta") < hi)
         elif hi == float("inf"):
-            filt = gdf.filter(pl.col("bill_change") >= lo)
+            filt = gdf.filter(pl.col("delta") >= lo)
         else:
-            filt = gdf.filter((pl.col("bill_change") >= lo) & (pl.col("bill_change") < hi))
+            filt = gdf.filter((pl.col("delta") >= lo) & (pl.col("delta") < hi))
         row[col] = cast(float, filt["weight"].sum()) / total_w
-    row["mean_change"] = weighted_mean(gdf, "bill_change")
-    row["median_change"] = weighted_quantile(gdf, "bill_change", 0.5)
+    row["mean_change"] = weighted_mean(gdf, "delta")
+    row["median_change"] = weighted_quantile(gdf, "delta", 0.5)
     savings_rows.append(row)
 
 savings_df = pl.DataFrame(savings_rows)

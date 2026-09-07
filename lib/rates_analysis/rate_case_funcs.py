@@ -220,6 +220,7 @@ def bill_delta_between_segments(
     *,
     bill_col: str = "energy_total_bill",
     month: str = "Annual",
+    electric_utility: str | None = None,
 ) -> pl.DataFrame:
     """Diff a per-building bill column between any two ``{scenario}_{stage}`` segments.
 
@@ -237,21 +238,23 @@ def bill_delta_between_segments(
     segments/stages for the same population (see rate-design-platform PR #503's
     ``master_metadata.py``).
 
+    *electric_utility* optionally restricts to one ``sb.electric_utility``
+    value (from *segment_before*) before the join.
+
     Returns a DataFrame with ``bldg_id``, ``weight``, ``has_hp``,
     ``heating_type_v2``, ``bill_before``, ``bill_after``, ``delta``.
     """
     import polars as pl
 
-    before = (
-        load_master_bills(state, batch, segment_before)
-        .filter(pl.col("month") == month)
-        .select(
-            "bldg_id",
-            "weight",
-            pl.col(bill_col).alias("bill_before"),
-            pl.col("postprocess_group.has_hp").alias("has_hp"),
-            pl.col("postprocess_group.heating_type_v2").alias("heating_type_v2"),
-        )
+    before = load_master_bills(state, batch, segment_before).filter(pl.col("month") == month)
+    if electric_utility is not None:
+        before = before.filter(pl.col("sb.electric_utility") == electric_utility)
+    before = before.select(
+        "bldg_id",
+        "weight",
+        pl.col(bill_col).alias("bill_before"),
+        pl.col("postprocess_group.has_hp").alias("has_hp"),
+        pl.col("postprocess_group.heating_type_v2").alias("heating_type_v2"),
     )
     after = (
         load_master_bills(state, batch, segment_after)

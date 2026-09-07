@@ -1222,7 +1222,7 @@ def main(argv: list[str] | None = None) -> int:
     annual_lmi_hprate = _build_annual_lmi(bills_12, bills_1920)
 
     # --- Bill-reconstruction verification -----------------------------------
-    # Compute bills hourly (same as CAIRO: each hour × its seasonal rate)
+    # Compute bills hourly (same as CAIRO: each hour x its seasonal rate)
     # then sum to monthly. This isolates whether the residual comes from
     # month-boundary assignment differences between Polars and Pandas.
     print("Verifying bill reconstruction ...", flush=True)
@@ -1232,7 +1232,7 @@ def main(argv: list[str] | None = None) -> int:
         {"month_int": list(range(1, 13)), "rate": [elec_combined_default[m] for m in MONTH_ORDER]}
     )
 
-    # Hourly bill = grid_cons_kwh × rate for that hour's month (EST)
+    # Hourly bill = grid_cons_kwh x rate for that hour's month (EST)
     hourly_bills = (
         pl.scan_parquet(PATH_KWH_8760_U0)
         .filter(pl.col("bldg_id").is_in(gas_bldg_ids))
@@ -1244,7 +1244,7 @@ def main(argv: list[str] | None = None) -> int:
         .collect()
     )
 
-    # Annual bill = hourly sum + 12 × fixed charge
+    # Annual bill = hourly sum + 12 x fixed charge
     hourly_bills = hourly_bills.with_columns(
         (pl.col("annual_elec_hourly") + 12 * elec_fixed_per_month).alias("annual_elec_formula")
     )

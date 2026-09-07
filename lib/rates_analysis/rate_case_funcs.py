@@ -43,6 +43,9 @@ import polars as pl
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
+    from collections.abc import Sequence
+
+    import polars as pl
     from matplotlib.figure import Figure
     from plotnine import ggplot
 
@@ -467,6 +470,7 @@ def bill_delta_between_segments(
     *,
     bill_col: str = "energy_total_bill",
     month: str = "Annual",
+    electric_utility: str | None = None,
 ) -> pl.DataFrame:
     """Diff a per-building bill column between any two ``{scenario}_{stage}`` segments.
 
@@ -484,19 +488,23 @@ def bill_delta_between_segments(
     segments/stages for the same population (see rate-design-platform PR #503's
     ``master_metadata.py``).
 
+    *electric_utility* optionally restricts to one ``sb.electric_utility``
+    value (from *segment_before*) before the join.
+
     Returns a DataFrame with ``bldg_id``, ``weight``, ``has_hp``,
     ``heating_type_v2``, ``bill_before``, ``bill_after``, ``delta``.
     """
-    before = (
-        load_master_bills(state, batch, segment_before)
-        .filter(pl.col("month") == month)
-        .select(
-            "bldg_id",
-            "weight",
-            pl.col(bill_col).alias("bill_before"),
-            pl.col("postprocess_group.has_hp").alias("has_hp"),
-            pl.col("postprocess_group.heating_type_v2").alias("heating_type_v2"),
-        )
+    import polars as pl
+
+    before = load_master_bills(state, batch, segment_before).filter(pl.col("month") == month)
+    if electric_utility is not None:
+        before = before.filter(pl.col("sb.electric_utility") == electric_utility)
+    before = before.select(
+        "bldg_id",
+        "weight",
+        pl.col(bill_col).alias("bill_before"),
+        pl.col("postprocess_group.has_hp").alias("has_hp"),
+        pl.col("postprocess_group.heating_type_v2").alias("heating_type_v2"),
     )
     after = (
         load_master_bills(state, batch, segment_after)
@@ -649,30 +657,60 @@ def add_heating_label(df: pl.DataFrame, code_col: str = "heating_type_v2") -> pl
     )
 
 
-def quadrant_pcts(df: pl.DataFrame, weight_col: str = "weight") -> dict[str, float]:
+def weighted_range_pcts(
+    df: pl.DataFrame,
+    *,
+    value_col: str,
+    ranges: Sequence[tuple[str, float, float]],
+    weight_col: str = "weight",
+) -> dict[str, float]:
+    """Weighted percent of rows in labeled half-open intervals.
+
+    ``ranges`` is ``(label, lo, hi)`` meaning ``lo <= value < hi``. Use
+    ``-math.inf`` / ``math.inf`` for unbounded tails. Labels are returned in
+    the order given. Percents are on a 0-100 scale and sum to 100 when the
+    ranges partition the data and every row has a finite weight.
+    """
+    labels = [label for label, _lo, _hi in ranges]
+    if len(labels) != len(set(labels)):
+        duplicates = sorted({label for label in labels if labels.count(label) > 1})
+        raise ValueError(f"Range labels must be unique; duplicates: {duplicates}")
+
+    total = cast("float", df[weight_col].sum())
+    if total == 0:
+        return dict.fromkeys(labels, 0.0)
+
+    value = pl.col(value_col)
+    out: dict[str, float] = {}
+    for label, lo, hi in ranges:
+        out[label] = cast("float", df.filter((value >= lo) & (value < hi))[weight_col].sum()) / total * 100
+    return out
+
+
+def quadrant_pcts(
+    df: pl.DataFrame,
+    weight_col: str = "weight",
+    value_col: str = "delta",
+) -> dict[str, float]:
     """Weighted % of households in each bill-change quadrant.
 
-    *df* must have a ``delta`` column (dollar change in annual bill) and a
-    weight column. Quadrant boundaries are fixed at +/- $1,000, matching the
+    *df* must have a dollar-change column (default ``delta``) and a weight
+    column. Quadrant boundaries are fixed at +/- $1,000, matching the
     savings/loss framing used throughout the rate-case reports.
+
+    For custom cutoffs or labels, call :func:`weighted_range_pcts` instead.
     """
-    total = cast(float, df[weight_col].sum())
-    return {
-        "savings > $1k": cast(float, df.filter(pl.col("delta") < -1000)[weight_col].sum()) / total * 100,
-        "savings $0-1k": cast(
-            float,
-            df.filter((pl.col("delta") >= -1000) & (pl.col("delta") < 0))[weight_col].sum(),
-        )
-        / total
-        * 100,
-        "losses $0-1k": cast(
-            float,
-            df.filter((pl.col("delta") >= 0) & (pl.col("delta") < 1000))[weight_col].sum(),
-        )
-        / total
-        * 100,
-        "losses > $1k": cast(float, df.filter(pl.col("delta") >= 1000)[weight_col].sum()) / total * 100,
-    }
+    return weighted_range_pcts(
+        df,
+        value_col=value_col,
+        weight_col=weight_col,
+        ranges=[
+            ("savings > $1k", -math.inf, -1000),
+            ("savings $0-1k", -1000, 0),
+            ("losses $0-1k", 0, 1000),
+            ("losses > $1k", 1000, math.inf),
+        ],
+    )
 
 
 # Below this width, a quadrant caption is dropped rather than drawn: showing

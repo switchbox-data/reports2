@@ -700,6 +700,264 @@ _fig = plot_seasonal_delivery_mc(
 display_figure(_fig)
 ```
 
+## Chart 4: Cost vs. charge gap
+
+When a home installs a heat pump, its T&D marginal cost barely changes (the
+costs it _causes_ stay roughly flat), yet its T&D _charges_ jump (because
+volumetric rates × more kWh). The gap between additional costs caused and
+additional charges paid is the overpayment. We build three candidate
+visualizations of this disconnect so the best one can be embedded in the
+expert testimony.
+
+```{python}
+#| label: cost-charge-data
+
+import matplotlib.patches as mpatches
+from matplotlib import pyplot
+
+_mc_tx_before = report_vars["natgas_annual_mc_tx_before"]
+_mc_dist_before = report_vars["natgas_annual_mc_dist_before"]
+_mc_tx_after = report_vars["natgas_annual_mc_tx_after"]
+_mc_dist_after = report_vars["natgas_annual_mc_dist_after"]
+
+_charge_tx_before = report_vars["natgas_annual_transmission_before"]
+_charge_dist_before = report_vars["natgas_annual_distribution_before"]
+_charge_tx_after = report_vars["natgas_annual_transmission_after"]
+_charge_dist_after = report_vars["natgas_annual_distribution_after"]
+
+_mc_delivery_before = _mc_tx_before + _mc_dist_before
+_mc_delivery_after = _mc_tx_after + _mc_dist_after
+_charge_delivery_before = _charge_tx_before + _charge_dist_before
+_charge_delivery_after = _charge_tx_after + _charge_dist_after
+
+_mc_tx_delta = _mc_tx_after - _mc_tx_before
+_mc_dist_delta = _mc_dist_after - _mc_dist_before
+_charge_tx_delta = _charge_tx_after - _charge_tx_before
+_charge_dist_delta = _charge_dist_after - _charge_dist_before
+
+_delivery_charges_delta = _charge_delivery_after - _charge_delivery_before
+_mc_delivery_delta = _mc_delivery_after - _mc_delivery_before
+
+_COLOR_TX = "#023047"
+_COLOR_DIST = "#68bed8"
+_COLOR_GAP = "#fc9706"
+
+def _fmt_cc_dollar(x):
+    if abs(x) < 1:
+        return "$0"
+    sign = "+" if x > 0 else ("-" if x < 0 else "")
+    return f"{sign}${abs(x):,.0f}" if x != abs(x) else f"${x:,.0f}"
+
+def _fmt_cc_dollar_plain(x):
+    if abs(x) < 1:
+        return "$0"
+    return f"${abs(x):,.0f}"
+
+def _draw_cc_stacked_bar(ax, x, tx_val, dist_val, width, *, label_inside=True):
+    """Draw a stacked bar with transmission (bottom) and distribution (top)."""
+    ax.bar(x, tx_val, width, color=_COLOR_TX, zorder=3)
+    ax.bar(x, dist_val, width, bottom=tx_val, color=_COLOR_DIST, zorder=3)
+    total = tx_val + dist_val
+    if label_inside and total > 0:
+        if tx_val / max(total, 1e-9) >= 0.15:
+            ax.text(x, tx_val / 2, _fmt_cc_dollar_plain(tx_val),
+                    ha="center", va="center", color="white",
+                    fontweight="bold", fontsize=10, fontfamily="IBM Plex Sans", zorder=4)
+        if dist_val / max(total, 1e-9) >= 0.15:
+            ax.text(x, tx_val + dist_val / 2, _fmt_cc_dollar_plain(dist_val),
+                    ha="center", va="center", color="white",
+                    fontweight="bold", fontsize=10, fontfamily="IBM Plex Sans", zorder=4)
+    ax.text(x, total + total * 0.02, _fmt_cc_dollar_plain(total),
+            ha="center", va="bottom", fontweight="bold", fontsize=11,
+            fontfamily="IBM Plex Sans", color="#333333", zorder=4)
+    return total
+
+def _cc_legend():
+    return [
+        mpatches.Patch(facecolor=_COLOR_TX, label="Transmission"),
+        mpatches.Patch(facecolor=_COLOR_DIST, label="Distribution"),
+    ]
+
+print("Cost-vs-charge data ready:")
+print(f"  MC delivery: before={_mc_delivery_before:,.2f}  after={_mc_delivery_after:,.2f}  delta={_mc_delivery_delta:+,.2f}")
+print(f"  Charge delivery: before={_charge_delivery_before:,.2f}  after={_charge_delivery_after:,.2f}  delta={_delivery_charges_delta:+,.2f}")
+```
+
+### Option A: Delta chart
+
+```{python}
+#| label: fig-cost-vs-charge-delta-natgas
+#| fig-cap: "Change in annual T&D costs caused vs. T&D charges paid when a natural-gas-heated home installs a heat pump."
+
+fig, ax = pyplot.subplots(figsize=(10.5, 5))
+ax.set_title("Average natural-gas-heated home",
+             fontfamily="GT Planar", fontweight="bold", fontsize=15, loc="left", pad=12)
+
+_w = 0.5
+_pos = [0, 1.5]
+
+_mc_delta_total = _mc_tx_delta + _mc_dist_delta
+if _mc_delta_total <= 0:
+    ax.bar(_pos[0], 0, _w, color=_COLOR_TX, zorder=3)
+    ax.text(_pos[0], _delivery_charges_delta * 0.03,
+            _fmt_cc_dollar(_mc_delta_total),
+            ha="center", va="bottom", fontweight="bold", fontsize=11,
+            fontfamily="IBM Plex Sans", color="#333333", zorder=4)
+else:
+    _draw_cc_stacked_bar(ax, _pos[0], max(_mc_tx_delta, 0), max(_mc_dist_delta, 0), _w)
+
+_t2 = _draw_cc_stacked_bar(ax, _pos[1], _charge_tx_delta, _charge_dist_delta, _w)
+
+_gap = _delivery_charges_delta - _mc_delivery_delta
+_bracket_y = _t2 * 0.5
+ax.annotate("",
+            xy=(_pos[0] + _w/2 + 0.05, _bracket_y),
+            xytext=(_pos[1] - _w/2 - 0.05, _bracket_y),
+            arrowprops=dict(arrowstyle="<->", color=_COLOR_GAP, lw=2))
+ax.text((_pos[0] + _pos[1]) / 2, _bracket_y + _t2 * 0.05,
+        f"Overpayment: {_fmt_cc_dollar_plain(_gap)}/yr",
+        ha="center", va="bottom", fontweight="bold", fontsize=12,
+        color=_COLOR_GAP, fontfamily="IBM Plex Sans")
+
+ax.set_xticks(_pos)
+ax.set_xticklabels(["Additional T&D\ncosts caused", "Additional T&D\ncharges paid"],
+                   fontsize=11, fontfamily="IBM Plex Sans")
+ax.set_ylim(0, _t2 * 1.25)
+ax.spines["top"].set_visible(False)
+ax.spines["right"].set_visible(False)
+ax.yaxis.set_major_formatter(lambda x, _: f"${x:,.0f}")
+ax.set_ylabel("Annual change ($)", fontsize=12, fontfamily="IBM Plex Sans")
+ax.legend(handles=_cc_legend(), loc="upper left", frameon=False, fontsize=10)
+fig.tight_layout()
+display_figure(fig)
+```
+
+### Option B: Three-bar chart
+
+```{python}
+#| label: fig-cost-vs-charge-3bar-natgas
+#| fig-cap: "Annual T&D costs caused vs. T&D charges paid for the average BGE natural-gas-heated home."
+
+fig, ax = pyplot.subplots(figsize=(10.5, 5))
+ax.set_title("Average natural-gas-heated home",
+             fontfamily="GT Planar", fontweight="bold", fontsize=15, loc="left", pad=12)
+
+_w = 0.5
+_pos = [0, 1.0, 2.5]
+
+_t1 = _draw_cc_stacked_bar(ax, _pos[0], _mc_tx_before, _mc_dist_before, _w)
+_t2 = _draw_cc_stacked_bar(ax, _pos[1], _mc_tx_after, _mc_dist_after, _w)
+_t3 = _draw_cc_stacked_bar(ax, _pos[2], _charge_tx_after, _charge_dist_after, _w)
+
+_max_total = max(_t1, _t2, _t3)
+
+# The incremental overpayment: charge increase minus cost increase
+_overpayment = _delivery_charges_delta - _mc_delivery_delta
+
+# "≈ same" annotation between bars 1 and 2
+_avg_mc = (_t1 + _t2) / 2
+ax.text((_pos[0] + _pos[1]) / 2, _avg_mc + _max_total * 0.04,
+        "≈ same",
+        ha="center", va="bottom", fontsize=11, fontstyle="italic",
+        color="#666666", fontfamily="IBM Plex Sans")
+
+# Stacked annotation to the right of bar 3 showing cost change, charge change,
+# and the overpayment
+_note_x = _pos[2] + _w / 2 + 0.15
+_note_y = _t3 * 0.65
+ax.text(_note_x, _note_y, (
+    f"Cost increase: {_fmt_cc_dollar(_mc_delivery_delta)}\n"
+    f"Charge increase: +{_fmt_cc_dollar_plain(_delivery_charges_delta)}\n"
+    f"Overpayment: {_fmt_cc_dollar_plain(_overpayment)}/yr"
+), ha="left", va="center", fontsize=10, fontfamily="IBM Plex Sans",
+   color=_COLOR_GAP, fontweight="bold", linespacing=1.6)
+
+ax.set_xticks(_pos)
+ax.set_xticklabels(["T&D costs\ncaused\n(before HP)", "T&D costs\ncaused\n(after HP)",
+                    "T&D charges\npaid\n(after HP)"],
+                   fontsize=10, fontfamily="IBM Plex Sans")
+ax.set_ylim(0, _max_total * 1.30)
+ax.spines["top"].set_visible(False)
+ax.spines["right"].set_visible(False)
+ax.yaxis.set_major_formatter(lambda x, _: f"${x:,.0f}")
+ax.set_ylabel("Annual ($)", fontsize=12, fontfamily="IBM Plex Sans")
+ax.legend(handles=_cc_legend(), loc="upper left", frameon=False, fontsize=10)
+fig.tight_layout()
+display_figure(fig)
+```
+
+### Option C: Four-bar grouped chart
+
+```{python}
+#| label: fig-cost-vs-charge-4bar-natgas
+#| fig-cap: "Annual T&D costs caused vs. T&D charges paid for the average BGE natural-gas-heated home, before and after heat pump installation."
+
+fig, ax = pyplot.subplots(figsize=(10.5, 5.5))
+ax.set_title("Average natural-gas-heated home",
+             fontfamily="GT Planar", fontweight="bold", fontsize=15, loc="left", pad=12)
+
+_w = 0.4
+_gap_within = 0.55
+_gap_between = 1.6
+
+_pos = [0, _gap_within, _gap_between, _gap_between + _gap_within]
+
+_t1 = _draw_cc_stacked_bar(ax, _pos[0], _mc_tx_before, _mc_dist_before, _w)
+_t2 = _draw_cc_stacked_bar(ax, _pos[1], _charge_tx_before, _charge_dist_before, _w)
+_t3 = _draw_cc_stacked_bar(ax, _pos[2], _mc_tx_after, _mc_dist_after, _w)
+_t4 = _draw_cc_stacked_bar(ax, _pos[3], _charge_tx_after, _charge_dist_after, _w)
+
+_max_total = max(_t1, _t2, _t3, _t4)
+
+for _group_idx, _label in enumerate(["Before HP", "After HP"]):
+    _center = (_pos[_group_idx * 2] + _pos[_group_idx * 2 + 1]) / 2
+    ax.text(_center, -_max_total * 0.15, _label,
+            ha="center", va="top", fontweight="bold", fontsize=12,
+            fontfamily="IBM Plex Sans")
+
+_bar_labels = ["Costs\ncaused", "Charges\npaid", "Costs\ncaused", "Charges\npaid"]
+for _i, _label in enumerate(_bar_labels):
+    ax.text(_pos[_i], -_max_total * 0.05, _label,
+            ha="center", va="top", fontsize=9, fontfamily="IBM Plex Sans",
+            color="#666666")
+
+for _group_idx in range(2):
+    _mc_t = [_t1, _t3][_group_idx]
+    _ch_t = [_t2, _t4][_group_idx]
+    _g = _ch_t - _mc_t
+    _mid = (_mc_t + _ch_t) / 2
+    _x_mc = _pos[_group_idx * 2]
+    _x_ch = _pos[_group_idx * 2 + 1]
+    ax.annotate("",
+                xy=(_x_mc + _w/2 + 0.02, _mid),
+                xytext=(_x_ch - _w/2 - 0.02, _mid),
+                arrowprops=dict(arrowstyle="<->", color=_COLOR_GAP, lw=1.5))
+    ax.text((_x_mc + _x_ch) / 2, _mid + _max_total * 0.03,
+            _fmt_cc_dollar_plain(_g),
+            ha="center", va="bottom", fontsize=10,
+            color=_COLOR_GAP, fontweight="bold", fontfamily="IBM Plex Sans")
+
+_before_gap = _charge_delivery_before - _mc_delivery_before
+_after_gap = _charge_delivery_after - _mc_delivery_after
+_gap_widening = _after_gap - _before_gap
+ax.text(_pos[-1] + _w/2 + 0.15, _max_total * 0.8,
+        f"Gap widens by\n{_fmt_cc_dollar_plain(_gap_widening)}/yr",
+        ha="left", va="center", fontsize=11, fontweight="bold",
+        color=_COLOR_GAP, fontfamily="IBM Plex Sans")
+
+ax.set_xticks([])
+ax.set_ylim(0, _max_total * 1.25)
+ax.set_xlim(_pos[0] - 0.5, _pos[-1] + 1.2)
+ax.spines["top"].set_visible(False)
+ax.spines["right"].set_visible(False)
+ax.yaxis.set_major_formatter(lambda x, _: f"${x:,.0f}")
+ax.set_ylabel("Annual ($)", fontsize=12, fontfamily="IBM Plex Sans")
+ax.legend(handles=_cc_legend(), loc="upper left", frameon=False, fontsize=10)
+fig.tight_layout()
+display_figure(fig)
+```
+
+
 ## Report variables
 
 Export all computed stats for use in `expert_testimony.qmd`.

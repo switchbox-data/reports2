@@ -42,10 +42,10 @@ import numpy as np
 import polars as pl
 
 if TYPE_CHECKING:
-    from matplotlib.axes import Axes
     from collections.abc import Sequence
 
     import polars as pl
+    from matplotlib.axes import Axes
     from matplotlib.figure import Figure
     from plotnine import ggplot
 
@@ -1099,6 +1099,7 @@ def plot_weighted_bill_change_hist(
     *,
     bin_width: int = 100,
     show_mean_median: bool = False,
+    x_label: str = "Annual bill change ($)",
 ) -> ggplot:
     """Weighted histogram of annual bill change, colored by quadrant.
 
@@ -1108,6 +1109,9 @@ def plot_weighted_bill_change_hist(
 
     When *show_mean_median* is True, adds dashed vertical lines for the
     weighted mean (carrot) and median (midnight) with text annotations.
+
+    *x_label* overrides the default x-axis label, for callers whose ``delta``
+    column isn't a plain bill change (e.g. incremental revenue minus marginal cost).
     """
     import plotnine as plt
 
@@ -1149,7 +1153,7 @@ def plot_weighted_bill_change_hist(
             labels=lambda xs: [f"${x:,.0f}" if x >= 0 else f"-${abs(x):,.0f}" for x in xs],
         )
         + plt.coord_cartesian(xlim=(hist_x_lo, hist_x_hi))
-        + plt.labs(x="Annual bill change ($)", y="Weighted households", title=title)
+        + plt.labs(x=x_label, y="Weighted households", title=title)
         + plt.guides(fill=False)
         + theme_switchbox()
         + plt.theme(figure_size=(10.5, 4.5))

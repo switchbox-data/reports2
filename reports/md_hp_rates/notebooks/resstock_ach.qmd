@@ -1,0 +1,1820 @@
+---
+title: ResStock ACH50 Infiltration Analysis
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+execute:
+  warning: false
+  message: false
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+
+ResStock assigns air infiltration rates (ACH50) to each simulated dwelling from the LBNL
+Residential Diagnostics Database (ResDB). An overestimate of infiltration directly inflates
+both heating and cooling loads — but by different amounts, because infiltration is a larger
+fraction of the heating load than the cooling load.
+
+This notebook investigates whether a systematic ACH50 overestimate could explain the
+varied overstatement of heating and cooling loads that we observe when comparing ResStock
+to RECS 2020. It fits a weighted linear regression within each heating-type group for
+electric heating, electric cooling, and gas heating end-uses, uses the regression to
+simulate per-building load corrections under a range of ACH50 reductions, and evaluates
+how close the corrected electric total gets to the BGE test-year kWh. The same correction
+is applied to natural gas heating loads for consistency.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import numpy as np
+import polars as pl
+import yaml
+
+from lib.plotnine import SB_COLORS, theme_switchbox
+from lib.quarto import display_figure
+from plotnine import (
+    aes,
+    annotate,
+    coord_cartesian,
+    facet_wrap,
+    geom_col,
+    geom_histogram,
+    geom_hline,
+    geom_point,
+    geom_smooth,
+    geom_vline,
+    ggplot,
+    labs,
+    scale_x_continuous,
+    scale_y_continuous,
+    theme,
+)
+```
+
+## Parameters
+
+```{python}
+#| label: parameters
+
+STATE = "md"
+RESSTOCK_RELEASE = "res_2024_amy2018_2"
+UPGRADE = "00"
+
+STATE_UPPER = STATE.upper()
+RELEASE_SB = f"{RESSTOCK_RELEASE}_sb"
+
+EBS_BASE = Path(f"/ebs/data/nrel/resstock/{RELEASE_SB}")
+S3_BASE = f"s3://data.sb/nrel/resstock/{RELEASE_SB}"
+
+# Prefer local EBS mirror; fall back to S3
+if EBS_BASE.exists():
+    DATA_BASE = str(EBS_BASE)
+    print(f"Reading from local EBS mirror: {DATA_BASE}")
+else:
+    DATA_BASE = S3_BASE
+    print(f"Reading from S3: {DATA_BASE}")
+
+META_PATH = f"{DATA_BASE}/metadata/state={STATE_UPPER}/upgrade={UPGRADE}/metadata-sb.parquet"
+UA_PATH = f"{DATA_BASE}/metadata_utility/state={STATE_UPPER}/utility_assignment.parquet"
+ANNUAL_PATH = f"{DATA_BASE}/load_curve_annual/state={STATE_UPPER}/upgrade={UPGRADE}/"
+```
+
+Load the BGE test-year budget from `rate-design-platform`:
+
+```{python}
+#| label: load-test-year
+
+RDP_ROOT = Path("/ebs/home/alex_switch_box/rate-design-platform")
+RR_PATH = RDP_ROOT / "rate_design/hp_rates/md/config/rev_requirement/bge_rate_case_test_year.yaml"
+
+with open(RR_PATH) as f:
+    rr = yaml.safe_load(f)
+
+TEST_YEAR_KWH = rr["test_year_residential_kwh"]
+TEST_YEAR_CC = rr["test_year_customer_count"]
+
+print(f"Test-year residential kWh:  {TEST_YEAR_KWH:>20,.0f}")
+print(f"Test-year customer count:   {TEST_YEAR_CC:>20,.2f}")
+```
+
+## RECS 2020 microdata
+
+We load the EIA [Residential Energy Consumption Survey (RECS) 2020](https://www.eia.gov/consumption/residential/data/2020/)
+microdata directly, rather than hardcoding benchmark values from a prior analysis. This
+lets us compute kWh/sqft benchmarks from the raw data, verify them in-notebook, and
+explore additional metrics like cooling intensity per *cooled* square footage.
+
+```{python}
+#| label: load-recs
+
+RECS_PATH = Path("../cache/recs2020_public_v7.csv")
+
+recs_all = pl.read_csv(RECS_PATH, infer_schema_length=20000)
+recs_md = recs_all.filter(pl.col("state_postal") == STATE_UPPER)
+print(f"RECS 2020 Maryland respondents: {len(recs_md)}")
+```
+
+### Classify RECS homes by heating type
+
+We follow the RECS equipment code classification documented in
+`bge_resstock_recs_load_validation.md`: heat pumps are EQUIPM ∈ {4, 13}, electric
+resistance is EQUIPM ∈ {3, 5, 10} with FUELHEAT = 5 (electricity), and non-electric-heat
+homes have FUELHEAT ≠ 5.
+
+```{python}
+#| label: recs-classify
+
+recs_md = recs_md.with_columns(
+    pl.when(pl.col("EQUIPM").is_in([4, 13]))
+    .then(pl.lit("Heat Pump"))
+    .when(pl.col("EQUIPM").is_in([3, 5, 10]) & (pl.col("FUELHEAT") == 5))
+    .then(pl.lit("Resistance"))
+    .when(pl.col("FUELHEAT") != 5)
+    .then(pl.lit("Non-electric"))
+    .otherwise(pl.lit("Other"))
+    .alias("recs_group"),
+)
+
+# Verify: counts and weighted population by group
+for g in ["Resistance", "Heat Pump", "Non-electric", "Other"]:
+    sub = recs_md.filter(pl.col("recs_group") == g)
+    wt = sub["NWEIGHT"].sum()
+    print(f"  {g:<20s}  n={len(sub):>4d}   wtd={wt/1e6:.2f}M")
+```
+
+### Compute RECS benchmarks
+
+We compute weighted-average kWh per square foot for each heating-type group and end-use.
+For electric heating, all homes in each group contribute (they all have the relevant
+equipment). For electric cooling, we restrict to homes **with cooling equipment**
+(`ACEQUIPM_PUB > 0`), since homes without AC have zero cooling kWh by definition —
+including them would dilute the intensity benchmark. For gas heating, we use the
+space-heating-specific variable `CUFEETNGSPH` (CCF ≈ therms) on non-electric homes with
+gas heating (`CUFEETNGSPH > 0`).
+
+The method is "weighted mean of per-building ratios": $\sum w_i \cdot (\text{kWh}_i /
+\text{sqft}_i) \;/\; \sum w_i$, which gives each household equal influence regardless of
+size.
+
+```{python}
+#| label: recs-benchmarks
+
+recs_nw = recs_md["NWEIGHT"].to_numpy().astype(float)
+recs_sqft = recs_md["TOTSQFT_EN"].to_numpy().astype(float)
+recs_csqft = recs_md["TOTCSQFT"].to_numpy().astype(float)
+recs_hsqft = recs_md["TOTHSQFT"].to_numpy().astype(float)
+recs_kwhsph = recs_md["KWHSPH"].to_numpy().astype(float)
+recs_kwhcol = recs_md["KWHCOL"].to_numpy().astype(float)
+recs_gas_sph = recs_md["CUFEETNGSPH"].to_numpy().astype(float)
+recs_acequipm = recs_md["ACEQUIPM_PUB"].to_numpy().astype(int)
+recs_group_arr = recs_md["recs_group"].to_list()
+
+def recs_group_mask(group: str) -> np.ndarray:
+    return np.array([g == group for g in recs_group_arr])
+
+RECS_BENCHMARKS: dict[tuple[str, str], float] = {}
+
+print("RECS benchmarks using TOTSQFT_EN (total floor area) as denominator:")
+print(f"{'Group':<20s}  {'End-use':<15s}  {'kWh/sqft':>10s}  {'N':>5s}  {'Notes'}")
+print("-" * 75)
+
+for g in ["Resistance", "Heat Pump", "Non-electric"]:
+    mask = recs_group_mask(g)
+    w = recs_nw[mask]
+    sqft = recs_sqft[mask]
+
+    # Electric heating: all homes in group
+    heat = recs_kwhsph[mask]
+    heat_psf = (w * heat / sqft).sum() / w.sum()
+    RECS_BENCHMARKS[(g, "Elec heating")] = heat_psf
+    print(f"{g:<20s}  {'Elec heating':<15s}  {heat_psf:>10.2f}  {mask.sum():>5d}  all homes in group")
+
+    # Electric cooling: homes with AC only (ACEQUIPM_PUB > 0)
+    has_ac = recs_acequipm[mask] > 0
+    cool = recs_kwhcol[mask]
+    cool_psf = (w[has_ac] * cool[has_ac] / sqft[has_ac]).sum() / w[has_ac].sum()
+    RECS_BENCHMARKS[(g, "Elec cooling")] = cool_psf
+    print(f"{g:<20s}  {'Elec cooling':<15s}  {cool_psf:>10.2f}  {has_ac.sum():>5d}  AC owners only")
+
+# Gas heating: non-electric homes with gas space heating
+ne_mask = recs_group_mask("Non-electric")
+has_gas = recs_gas_sph[ne_mask] > 0
+w_ne = recs_nw[ne_mask]
+sqft_ne = recs_sqft[ne_mask]
+gas = recs_gas_sph[ne_mask]
+gas_therms_psf = (w_ne[has_gas] * gas[has_gas] / sqft_ne[has_gas]).sum() / w_ne[has_gas].sum()
+gas_kwh_psf = gas_therms_psf * 29.3
+RECS_BENCHMARKS[("Non-electric", "Gas heating")] = gas_kwh_psf
+print(f"{'Non-electric':<20s}  {'Gas heating':<15s}  {gas_kwh_psf:>10.2f}  {has_gas.sum():>5d}  gas users, {gas_therms_psf:.3f} therms/sqft × 29.3")
+
+# --- Adjusted benchmarks: conditioned sqft as denominator ---
+# Heating uses TOTHSQFT; cooling uses TOTCSQFT.  These are the physically
+# meaningful denominators because RECS homes often condition only part of
+# their floor area, while ResStock assumes whole-house conditioning.
+RECS_BENCHMARKS_ADJUSTED: dict[tuple[str, str], float] = {}
+
+print()
+print("RECS benchmarks using conditioned sqft (TOTHSQFT / TOTCSQFT) as denominator:")
+print(f"{'Group':<20s}  {'End-use':<15s}  {'kWh/cond.sqft':>14s}  {'N':>5s}  {'Notes'}")
+print("-" * 80)
+
+for g in ["Resistance", "Heat Pump", "Non-electric"]:
+    mask = recs_group_mask(g)
+    w = recs_nw[mask]
+    hsqft = recs_hsqft[mask]
+
+    # Electric heating: homes with heated sqft > 0
+    heat = recs_kwhsph[mask]
+    has_h = hsqft > 0
+    heat_adj = (w[has_h] * heat[has_h] / hsqft[has_h]).sum() / w[has_h].sum()
+    RECS_BENCHMARKS_ADJUSTED[(g, "Elec heating")] = heat_adj
+    print(f"{g:<20s}  {'Elec heating':<15s}  {heat_adj:>14.2f}  {has_h.sum():>5d}  homes w/ TOTHSQFT > 0")
+
+    # Electric cooling: AC owners with cooled sqft > 0
+    has_ac = recs_acequipm[mask] > 0
+    csqft = recs_csqft[mask]
+    cool = recs_kwhcol[mask]
+    ac_and_csqft = has_ac & (csqft > 0)
+    cool_adj = (w[ac_and_csqft] * cool[ac_and_csqft] / csqft[ac_and_csqft]).sum() / w[ac_and_csqft].sum()
+    RECS_BENCHMARKS_ADJUSTED[(g, "Elec cooling")] = cool_adj
+    print(f"{g:<20s}  {'Elec cooling':<15s}  {cool_adj:>14.2f}  {ac_and_csqft.sum():>5d}  AC + TOTCSQFT > 0")
+
+# Gas heating: non-electric homes with gas + heated sqft > 0
+ne_hsqft = recs_hsqft[ne_mask]
+has_gas_h = has_gas & (ne_hsqft > 0)
+gas_therms_adj = (w_ne[has_gas_h] * gas[has_gas_h] / ne_hsqft[has_gas_h]).sum() / w_ne[has_gas_h].sum()
+gas_kwh_adj = gas_therms_adj * 29.3
+RECS_BENCHMARKS_ADJUSTED[("Non-electric", "Gas heating")] = gas_kwh_adj
+print(f"{'Non-electric':<20s}  {'Gas heating':<15s}  {gas_kwh_adj:>14.2f}  {has_gas_h.sum():>5d}  gas + TOTHSQFT > 0, {gas_therms_adj:.3f} therms/sqft × 29.3")
+
+# --- Side-by-side summary ---
+print()
+print(f"{'Group':<20s}  {'End-use':<15s}  {'kWh/total sqft':>15s}  {'kWh/cond. sqft':>15s}  {'Δ%':>6s}")
+print("-" * 80)
+for key in RECS_BENCHMARKS:
+    orig = RECS_BENCHMARKS[key]
+    adj = RECS_BENCHMARKS_ADJUSTED[key]
+    g, eu = key
+    pct_diff = (adj - orig) / orig * 100
+    print(f"{g:<20s}  {eu:<15s}  {orig:>15.2f}  {adj:>15.2f}  {pct_diff:>+5.0f}%")
+
+print()
+print("The adjusted benchmarks are higher because the denominator (conditioned area)")
+print("is smaller than total floor area. The Δ% reflects the partial-conditioning")
+print("gap that ResStock's whole-house assumption obscures.")
+```
+
+### Distribution of RECS kWh/sqft by heating type
+
+The weighted means above are point estimates. With sample sizes of 59–217 per group, the
+underlying distributions matter — a wide spread or heavy tails would weaken the benchmark,
+while a tight distribution would strengthen it. We report the full range (min–max),
+interquartile range (P25–P75), weighted standard deviation, and the standard error of the
+weighted mean for each end-use × group combination.
+
+```{python}
+#| label: recs-distribution
+
+def weighted_stats(values: np.ndarray, weights: np.ndarray) -> dict:
+    """Compute weighted mean, std, SE, and percentiles."""
+    w_sum = weights.sum()
+    w_mean = (weights * values).sum() / w_sum
+    w_var = (weights * (values - w_mean) ** 2).sum() / w_sum
+    w_std = np.sqrt(w_var)
+    n_eff = w_sum**2 / (weights**2).sum()
+    w_se = w_std / np.sqrt(n_eff)
+    sorted_idx = np.argsort(values)
+    sorted_vals = values[sorted_idx]
+    sorted_wts = weights[sorted_idx]
+    cum_wt = np.cumsum(sorted_wts)
+    cum_wt_norm = cum_wt / cum_wt[-1]
+    p25 = sorted_vals[np.searchsorted(cum_wt_norm, 0.25)]
+    p50 = sorted_vals[np.searchsorted(cum_wt_norm, 0.50)]
+    p75 = sorted_vals[np.searchsorted(cum_wt_norm, 0.75)]
+    return {
+        "mean": w_mean, "std": w_std, "se": w_se, "n_eff": n_eff,
+        "min": values.min(), "p25": p25, "p50": p50, "p75": p75, "max": values.max(),
+        "n": len(values),
+    }
+
+print("RECS 2020 Maryland — kWh/sqft distribution by heating type and end-use")
+print()
+print(f"{'Group':<16s}  {'End-use':<13s}  {'N':>4s}  {'Mean':>6s}  {'SE':>6s}  "
+      f"{'Std':>6s}  {'Min':>6s}  {'P25':>6s}  {'P50':>6s}  {'P75':>6s}  {'Max':>6s}")
+print("-" * 105)
+
+for g in ["Resistance", "Heat Pump", "Non-electric"]:
+    mask = recs_group_mask(g)
+    w = recs_nw[mask]
+    sqft = recs_sqft[mask]
+
+    # Electric heating (all homes in group)
+    heat_psf = recs_kwhsph[mask] / sqft
+    s = weighted_stats(heat_psf, w)
+    print(f"{g:<16s}  {'Elec heating':<13s}  {s['n']:>4d}  {s['mean']:>6.2f}  {s['se']:>6.2f}  "
+          f"{s['std']:>6.2f}  {s['min']:>6.2f}  {s['p25']:>6.2f}  {s['p50']:>6.2f}  {s['p75']:>6.2f}  {s['max']:>6.2f}")
+
+    # Electric cooling (AC owners only)
+    has_ac = recs_acequipm[mask] > 0
+    if has_ac.sum() > 0:
+        cool_psf = recs_kwhcol[mask][has_ac] / sqft[has_ac]
+        s = weighted_stats(cool_psf, w[has_ac])
+        print(f"{g:<16s}  {'Elec cooling':<13s}  {s['n']:>4d}  {s['mean']:>6.2f}  {s['se']:>6.2f}  "
+              f"{s['std']:>6.2f}  {s['min']:>6.2f}  {s['p25']:>6.2f}  {s['p50']:>6.2f}  {s['p75']:>6.2f}  {s['max']:>6.2f}")
+
+    # Gas heating (non-electric, gas users only) — in therms/sqft
+    if g == "Non-electric":
+        has_gas_g = recs_gas_sph[mask] > 0
+        if has_gas_g.sum() > 0:
+            gas_psf = recs_gas_sph[mask][has_gas_g] / sqft[has_gas_g]
+            s = weighted_stats(gas_psf, w[has_gas_g])
+            print(f"{g:<16s}  {'Gas htg thm':<13s}  {s['n']:>4d}  {s['mean']:>6.3f}  {s['se']:>6.3f}  "
+                  f"{s['std']:>6.3f}  {s['min']:>6.3f}  {s['p25']:>6.3f}  {s['p50']:>6.3f}  {s['p75']:>6.3f}  {s['max']:>6.3f}")
+            print(f"{'':>16s}  {'  (×29.3 kWh)':<13s}  {'':>4s}  {s['mean']*29.3:>6.2f}  {s['se']*29.3:>6.2f}  "
+                  f"{s['std']*29.3:>6.2f}  {s['min']*29.3:>6.2f}  {s['p25']*29.3:>6.2f}  {s['p50']*29.3:>6.2f}  {s['p75']*29.3:>6.2f}  {s['max']*29.3:>6.2f}")
+
+    print()
+```
+
+### Bootstrap confidence intervals
+
+The weighted means above are point estimates from 59–217 RECS respondents per group. To
+assess how much sampling variability these estimates carry, we compute confidence intervals
+using two complementary methods:
+
+1. **Jackknife replicate weights (JK1)**: RECS 2020 provides 60 replicate weights
+   (`NWEIGHT1`–`NWEIGHT60`) designed for variance estimation under the complex survey design.
+   The JK1 variance is $\text{Var} = \frac{59}{60} \sum_{r=1}^{60} (\hat\theta_r - \hat\theta_0)^2$,
+   where $\hat\theta_0$ is the full-sample estimate and $\hat\theta_r$ uses replicate weight $r$.
+   This is EIA's recommended approach and correctly accounts for stratification and clustering.
+
+2. **Case-resample bootstrap** (2,000 resamples): For visualization, we also draw bootstrap
+   samples with replacement from the respondents within each group, using the original
+   `NWEIGHT` in the weighted-mean calculation. This gives a richer distribution to plot as a
+   histogram.
+
+```{python}
+#| label: recs-bootstrap
+
+N_REPS = 60
+JK_SCALE = (N_REPS - 1) / N_REPS  # 59/60
+N_BOOT = 2000
+rng = np.random.default_rng(42)
+
+rep_weight_cols = [f"NWEIGHT{r}" for r in range(1, N_REPS + 1)]
+rep_weights = recs_md.select(rep_weight_cols).to_numpy().astype(float)
+
+def weighted_mean_ratio(values: np.ndarray, denoms: np.ndarray, weights: np.ndarray) -> float:
+    """Weighted mean of per-building ratios: sum(w * v/d) / sum(w)."""
+    return (weights * values / denoms).sum() / weights.sum()
+
+# Define the 6 benchmarks: (label, group_mask_indices, numerator, denominator, weights, rep_weights)
+benchmark_specs: list[dict] = []
+
+for g in ["Resistance", "Heat Pump"]:
+    mask = recs_group_mask(g)
+    benchmark_specs.append({
+        "label": f"{g}, Elec heating",
+        "values": recs_kwhsph[mask],
+        "denoms": recs_sqft[mask],
+        "base_w": recs_nw[mask],
+        "rep_w": rep_weights[mask],
+    })
+    ac_sub = recs_acequipm[mask] > 0
+    benchmark_specs.append({
+        "label": f"{g}, Elec cooling",
+        "values": recs_kwhcol[mask][ac_sub],
+        "denoms": recs_sqft[mask][ac_sub],
+        "base_w": recs_nw[mask][ac_sub],
+        "rep_w": rep_weights[mask][ac_sub],
+    })
+
+ne_mask = recs_group_mask("Non-electric")
+ne_ac = recs_acequipm[ne_mask] > 0
+benchmark_specs.append({
+    "label": "Non-electric, Elec cooling",
+    "values": recs_kwhcol[ne_mask][ne_ac],
+    "denoms": recs_sqft[ne_mask][ne_ac],
+    "base_w": recs_nw[ne_mask][ne_ac],
+    "rep_w": rep_weights[ne_mask][ne_ac],
+})
+ne_gas = recs_gas_sph[ne_mask] > 0
+benchmark_specs.append({
+    "label": "Non-electric, Gas heating",
+    "values": recs_gas_sph[ne_mask][ne_gas] * 29.3,
+    "denoms": recs_sqft[ne_mask][ne_gas],
+    "base_w": recs_nw[ne_mask][ne_gas],
+    "rep_w": rep_weights[ne_mask][ne_gas],
+})
+
+# Compute JK variance and bootstrap distribution for each benchmark
+boot_rows: list[dict] = []
+summary_rows: list[dict] = []
+
+for spec in benchmark_specs:
+    v, d, bw, rw = spec["values"], spec["denoms"], spec["base_w"], spec["rep_w"]
+    n = len(v)
+    theta_0 = weighted_mean_ratio(v, d, bw)
+
+    # Jackknife replicate estimates
+    theta_r = np.array([weighted_mean_ratio(v, d, rw[:, r]) for r in range(N_REPS)])
+    jk_var = JK_SCALE * np.sum((theta_r - theta_0) ** 2)
+    jk_se = np.sqrt(jk_var)
+
+    # Case-resample bootstrap
+    boot_est = np.empty(N_BOOT)
+    for b in range(N_BOOT):
+        idx = rng.integers(0, n, size=n)
+        boot_est[b] = weighted_mean_ratio(v[idx], d[idx], bw[idx])
+
+    for val in boot_est:
+        boot_rows.append({"benchmark": spec["label"], "boot_value": val})
+
+    summary_rows.append({
+        "benchmark": spec["label"],
+        "n": n,
+        "point_est": round(theta_0, 3),
+        "jk_se": round(jk_se, 3),
+        "jk_ci_lo": round(theta_0 - 1.96 * jk_se, 3),
+        "jk_ci_hi": round(theta_0 + 1.96 * jk_se, 3),
+        "ci_width_pct": round((2 * 1.96 * jk_se) / theta_0 * 100, 1),
+    })
+
+boot_df = pl.DataFrame(boot_rows)
+summary_df = pl.DataFrame(summary_rows)
+
+# Panel ordering for facet_wrap
+panel_order = [s["label"] for s in benchmark_specs]
+boot_df = boot_df.with_columns(pl.col("benchmark").cast(pl.Enum(panel_order)))
+
+# Annotation dataframes for vertical lines
+point_line_df = pl.DataFrame([
+    {"benchmark": r["benchmark"], "x": r["point_est"]} for r in summary_rows
+]).with_columns(pl.col("benchmark").cast(pl.Enum(panel_order)))
+
+ci_lo_df = pl.DataFrame([
+    {"benchmark": r["benchmark"], "x": r["jk_ci_lo"]} for r in summary_rows
+]).with_columns(pl.col("benchmark").cast(pl.Enum(panel_order)))
+
+ci_hi_df = pl.DataFrame([
+    {"benchmark": r["benchmark"], "x": r["jk_ci_hi"]} for r in summary_rows
+]).with_columns(pl.col("benchmark").cast(pl.Enum(panel_order)))
+
+p = (
+    ggplot(boot_df, aes(x="boot_value"))
+    + geom_histogram(bins=40, fill=SB_COLORS["sky"], alpha=0.7, color="white")
+    + geom_vline(point_line_df, aes(xintercept="x"), color=SB_COLORS["midnight"], size=1.2)
+    + geom_vline(ci_lo_df, aes(xintercept="x"), color=SB_COLORS["carrot"], linetype="dashed", size=0.8)
+    + geom_vline(ci_hi_df, aes(xintercept="x"), color=SB_COLORS["carrot"], linetype="dashed", size=0.8)
+    + facet_wrap("benchmark", scales="free", ncol=3)
+    + labs(
+        title="Bootstrap distributions of RECS 2020 Maryland kWh/sqft benchmarks",
+        subtitle="Solid line = point estimate; dashed lines = JK-based 95% CI",
+        x="kWh / sqft",
+        y="Count (2,000 bootstrap resamples)",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 6.5))
+)
+p
+```
+
+The table below shows the point estimate, jackknife standard error, and 95% CI for each
+benchmark. The CI width as a percentage of the point estimate indicates how precisely each
+benchmark is measured — wider CIs warrant more caution when using the benchmark to
+evaluate ResStock accuracy.
+
+```{python}
+#| label: recs-bootstrap-summary
+
+summary_df
+```
+
+The heating benchmarks carry wider relative CIs (31–37%) than the cooling benchmarks
+(19–27%), driven by larger variance in heating intensity across homes and smaller sample
+sizes (69–73 vs. 59–203). The gas heating benchmark, despite its larger absolute CI
+width, is reasonably precise relative to its magnitude (20%). The non-electric cooling
+benchmark is the tightest (19% CI width), benefiting from the largest sample (n=203).
+
+Even at their widest, these CIs are narrow enough that the qualitative finding —
+ResStock substantially overstates heating loads relative to RECS — holds across the
+entire confidence range. The smallest ResStock-vs-RECS gap (resistance electric heating)
+still exceeds the upper bound of the RECS CI.
+
+### Cooling intensity: total sqft vs cooled sqft
+
+ResStock assumes whole-house cooling for every home with AC. But RECS reports both total
+floor area (`TOTSQFT_EN`) and cooled floor area (`TOTCSQFT`), revealing that many homes
+cool only a portion of their space. The weighted-average cooled fraction across Maryland
+homes with AC is roughly 80–90% depending on heating type — meaning ResStock's
+whole-house assumption inflates the effective cooling area by 10–20%.
+
+This matters for benchmarking: cooling kWh per *cooled* square foot is the more
+physically meaningful metric for comparing against ResStock's simulated cooling loads.
+
+```{python}
+#| label: recs-cooling-sqft
+
+# Filter to AC owners (ACEQUIPM_PUB > 0), consistent with the benchmarks above.
+# Homes without AC have zero cooling kWh; including them dilutes the intensity.
+print(f"{'Group':<20s}  {'kWh/TOTSQFT':>12s}  {'kWh/TOTCSQFT':>14s}  {'Cooled frac':>12s}  {'N (AC owners)':>14s}")
+print("-" * 80)
+
+RECS_COOLING_PER_COOLED_SQFT: dict[str, float] = {}
+
+for g in ["Resistance", "Heat Pump", "Non-electric", "All homes"]:
+    if g == "All homes":
+        mask = np.ones(len(recs_nw), dtype=bool)
+    else:
+        mask = recs_group_mask(g)
+
+    # Restrict to AC owners
+    has_ac = recs_acequipm[mask] > 0
+    w = recs_nw[mask][has_ac]
+    sqft = recs_sqft[mask][has_ac]
+    csqft = recs_csqft[mask][has_ac]
+    cool = recs_kwhcol[mask][has_ac]
+    has_c = csqft > 0
+
+    cool_per_totsqft = (w * cool / sqft).sum() / w.sum()
+    cool_per_csqft = (w[has_c] * cool[has_c] / csqft[has_c]).sum() / w[has_c].sum() if has_c.sum() > 0 else float("nan")
+    cooled_frac = (w * np.where(sqft > 0, csqft / sqft, 0)).sum() / w.sum()
+
+    RECS_COOLING_PER_COOLED_SQFT[g] = cool_per_csqft
+
+    print(f"{g:<20s}  {cool_per_totsqft:>12.2f}  {cool_per_csqft:>14.2f}  {cooled_frac:>11.1%}  {has_ac.sum():>5d}/{mask.sum():>3d}")
+
+print()
+print("Both columns are restricted to AC owners, matching the RECS_BENCHMARKS filter.")
+print("'kWh/TOTSQFT' matches the benchmark used for gap-closing comparisons above.")
+print("'kWh/TOTCSQFT' uses cooled sqft as the denominator — the physically meaningful")
+print("intensity for comparing against ResStock, which assumes whole-house cooling.")
+```
+
+### Heating intensity: total sqft vs heated sqft
+
+The same partial-conditioning issue applies to heating. RECS reports heated floor area
+(`TOTHSQFT`) alongside total floor area (`TOTSQFT_EN`). Many homes — especially older
+ones — don't heat their entire floor area (basements, attics, spare rooms). ResStock
+assumes whole-house heating, so its simulated heating loads are spread over the full
+floor area. The ratio of `TOTHSQFT / TOTSQFT_EN` tells us how large the
+partial-heating gap is in RECS.
+
+```{python}
+#| label: recs-heating-sqft
+
+print(f"{'Group':<20s}  {'kWh/TOTSQFT':>12s}  {'kWh/TOTHSQFT':>14s}  {'Heated frac':>12s}  {'N':>14s}")
+print("-" * 80)
+
+RECS_HEATING_PER_HEATED_SQFT: dict[str, float] = {}
+
+# Electric heating by group
+for g in ["Resistance", "Heat Pump", "Non-electric", "All homes"]:
+    if g == "All homes":
+        mask = np.ones(len(recs_nw), dtype=bool)
+    else:
+        mask = recs_group_mask(g)
+
+    w = recs_nw[mask]
+    sqft = recs_sqft[mask]
+    hsqft = recs_hsqft[mask]
+    heat = recs_kwhsph[mask]
+    has_h = hsqft > 0
+
+    heat_per_totsqft = (w * heat / sqft).sum() / w.sum()
+    heat_per_hsqft = (w[has_h] * heat[has_h] / hsqft[has_h]).sum() / w[has_h].sum() if has_h.sum() > 0 else float("nan")
+    heated_frac = (w * np.where(sqft > 0, hsqft / sqft, 0)).sum() / w.sum()
+
+    RECS_HEATING_PER_HEATED_SQFT[g] = heat_per_hsqft
+
+    print(f"{g:<20s}  {heat_per_totsqft:>12.2f}  {heat_per_hsqft:>14.2f}  {heated_frac:>11.1%}  {has_h.sum():>5d}/{mask.sum():>3d}")
+
+# Gas heating for non-electric homes
+print()
+print("Gas heating (non-electric homes with CUFEETNGSPH > 0):")
+print(f"{'':20s}  {'thm/TOTSQFT':>12s}  {'thm/TOTHSQFT':>14s}  {'kWh-eq/TOTHSQFT':>16s}  {'Heated frac':>12s}  {'N':>5s}")
+print("-" * 90)
+
+ne_mask = recs_group_mask("Non-electric")
+w_ne = recs_nw[ne_mask]
+sqft_ne = recs_sqft[ne_mask]
+hsqft_ne = recs_hsqft[ne_mask]
+gas = recs_gas_sph[ne_mask]
+has_gas_h = (gas > 0) & (hsqft_ne > 0)
+has_gas_any = gas > 0
+
+gas_per_totsqft = (w_ne[has_gas_any] * gas[has_gas_any] / sqft_ne[has_gas_any]).sum() / w_ne[has_gas_any].sum()
+gas_per_hsqft = (w_ne[has_gas_h] * gas[has_gas_h] / hsqft_ne[has_gas_h]).sum() / w_ne[has_gas_h].sum()
+heated_frac_gas = (w_ne[has_gas_any] * np.where(sqft_ne[has_gas_any] > 0, hsqft_ne[has_gas_any] / sqft_ne[has_gas_any], 0)).sum() / w_ne[has_gas_any].sum()
+
+print(f"{'Non-electric':<20s}  {gas_per_totsqft:>12.3f}  {gas_per_hsqft:>14.3f}  {gas_per_hsqft * 29.3:>16.2f}  {heated_frac_gas:>11.1%}  {has_gas_h.sum():>5d}")
+
+print()
+print("Heated fractions are generally higher than cooled fractions — most homes heat")
+print("more of their space than they cool. But the gap is still meaningful: ~90% heated")
+print("vs ~80-90% cooled, translating to a 5-15% increase in intensity per conditioned sqft.")
+```
+
+## Load data
+
+We need three datasets: ResStock metadata (for `in.infiltration`, `in.sqft`, and heating
+type), utility assignments (to filter to BGE), and annual load curves (for end-use kWh and
+sample weights). We use `grid_cons = max(total - abs(pv), 0)` for the total kWh, matching
+the billing basis in CAIRO and the `build_rate_case_test_year.py` pipeline. This is what
+flows through the meter; it differs from `out.electricity.total` for buildings with PV.
+
+```{python}
+#| label: load-data
+
+meta = pl.read_parquet(META_PATH)
+ua = pl.read_parquet(UA_PATH)
+annual = pl.read_parquet(ANNUAL_PATH)
+
+bge_ids = ua.filter(pl.col("sb.electric_utility") == "bge")["bldg_id"].to_list()
+
+print(f"Total MD buildings: {len(meta):,}")
+print(f"BGE buildings:      {len(bge_ids):,}")
+```
+
+### Join and classify
+
+```{python}
+#| label: join-classify
+
+HEATING_E_COLS = [
+    "out.electricity.heating.energy_consumption.kwh",
+    "out.electricity.heating_fans_pumps.energy_consumption.kwh",
+    "out.electricity.heating_hp_bkup.energy_consumption.kwh",
+    "out.electricity.heating_hp_bkup_fa.energy_consumption.kwh",
+]
+COOLING_E_COLS = [
+    "out.electricity.cooling.energy_consumption.kwh",
+    "out.electricity.cooling_fans_pumps.energy_consumption.kwh",
+]
+GAS_HEATING_COLS = [
+    "out.natural_gas.heating.energy_consumption.kwh",
+    "out.natural_gas.heating_hp_bkup.energy_consumption.kwh",
+]
+
+ELEC_TOTAL_COL = "out.electricity.total.energy_consumption.kwh"
+ELEC_PV_COL = "out.electricity.pv.energy_consumption.kwh"
+
+select_cols = (
+    ["bldg_id", "weight", ELEC_TOTAL_COL, ELEC_PV_COL,
+     "out.natural_gas.total.energy_consumption.kwh"]
+    + HEATING_E_COLS + COOLING_E_COLS + GAS_HEATING_COLS
+)
+
+bge = (
+    meta
+    .filter(pl.col("bldg_id").is_in(bge_ids))
+    .join(annual.select(select_cols), on="bldg_id")
+    .with_columns(
+        pl.col("in.infiltration").str.replace(" ACH50", "").cast(pl.Int32).alias("ach50"),
+        pl.col("in.sqft").cast(pl.Float64).alias("sqft"),
+        sum(pl.col(c) for c in HEATING_E_COLS).alias("elec_heating_kwh"),
+        sum(pl.col(c) for c in COOLING_E_COLS).alias("elec_cooling_kwh"),
+        sum(pl.col(c) for c in GAS_HEATING_COLS).alias("gas_heating_kwh"),
+        # grid_cons = max(total - abs(pv), 0) — matches CAIRO billing basis
+        (pl.col(ELEC_TOTAL_COL) - pl.col(ELEC_PV_COL).abs()).clip(lower_bound=0.0).alias("grid_cons_kwh"),
+    )
+    .with_columns(
+        pl.when(~pl.col("heats_with_electricity"))
+        .then(pl.lit("Non-electric"))
+        .when(pl.col("postprocess_group.has_hp"))
+        .then(pl.lit("Heat Pump"))
+        .otherwise(pl.lit("Resistance"))
+        .alias("group"),
+        (pl.col("elec_heating_kwh") / pl.col("sqft")).alias("heat_per_sqft"),
+        (pl.col("elec_cooling_kwh") / pl.col("sqft")).alias("cool_per_sqft"),
+        (pl.col("gas_heating_kwh") / pl.col("sqft")).alias("gas_heat_per_sqft"),
+    )
+)
+
+print(f"BGE buildings loaded: {len(bge):,}")
+print(f"Weighted customers:   {bge['weight'].sum():,.0f}")
+```
+
+Let's take a quick look at the key columns:
+
+```{python}
+#| label: show-data
+
+bge.select(
+    "bldg_id", "group", "ach50", "sqft", "weight",
+    "elec_heating_kwh", "elec_cooling_kwh", "gas_heating_kwh",
+    "grid_cons_kwh",
+).head(10)
+```
+
+## ACH50 distribution
+
+ResStock assigns ACH50 values from discrete bins (1, 2, 3, ... 50 ACH50). Published
+benchmarks for existing U.S. housing suggest a national median around 12 ACH50 (LBNL
+ResDB, Chan et al. 2013, 134k homes), and field practitioners report most existing homes
+in the Mid-Atlantic testing at 6–12 ACH50, with values above 15 being unusual.
+
+```{python}
+#| label: ach50-distribution
+
+w = bge["weight"].to_numpy().astype(float)
+ach = bge["ach50"].to_numpy().astype(float)
+
+wtd_mean = (ach * w).sum() / w.sum()
+
+sorted_idx = np.argsort(ach)
+cum_w = np.cumsum(w[sorted_idx]) / w.sum()
+p50_idx = np.searchsorted(cum_w, 0.50)
+wtd_median = ach[sorted_idx[p50_idx]]
+
+print(f"Weighted mean ACH50:   {wtd_mean:.1f}")
+print(f"Weighted median ACH50: {wtd_median:.0f}")
+```
+
+### ACH50 by vintage
+
+Older homes should be leakier. Let's verify that ResStock's assignment follows this pattern:
+
+```{python}
+#| label: ach50-by-vintage
+
+vintage_stats = (
+    bge
+    .group_by("in.vintage")
+    .agg(
+        (pl.col("ach50") * pl.col("weight")).sum() / pl.col("weight").sum(),
+        pl.col("weight").sum().alias("total_weight"),
+        pl.len().alias("n"),
+    )
+    .rename({"ach50": "wtd_mean_ach50"})
+    .sort("in.vintage")
+)
+
+vintage_stats
+```
+
+### ACH50 by heating group
+
+```{python}
+#| label: ach50-by-group
+
+group_stats = (
+    bge
+    .group_by("group")
+    .agg(
+        (pl.col("ach50") * pl.col("weight")).sum() / pl.col("weight").sum(),
+        pl.col("weight").sum().alias("total_weight"),
+        pl.len().alias("n"),
+    )
+    .rename({"ach50": "wtd_mean_ach50"})
+    .sort("group")
+)
+
+group_stats
+```
+
+## Relationship between ACH50 and loads
+
+The physical model: total heating (or cooling) load is the sum of an infiltration-driven
+component and everything else (conduction through the shell, solar gains, internal gains).
+Only the infiltration term is proportional to ACH50. So the linear model
+
+$$\text{kWh/sqft} = a + b \times \text{ACH50}$$
+
+has a physical interpretation: the intercept $a$ captures the ACH50-independent base load,
+while the slope $b$ captures the marginal kWh/sqft per unit of ACH50. The infiltration
+fraction at any ACH50 level is $b \times \text{ACH50} / (a + b \times \text{ACH50})$.
+
+### Scatterplots
+
+```{python}
+#| label: fig-ach50-scatter-heating
+#| fig-cap: "Electric heating kWh/sqft vs ACH50, by heating group"
+
+p = (
+    ggplot(
+        bge.filter(pl.col("heat_per_sqft") > 0).select(
+            "ach50", "heat_per_sqft", "group", "weight"
+        ),
+        aes("ach50", "heat_per_sqft"),
+    )
+    + geom_point(aes(size="weight"), alpha=0.15, color=SB_COLORS["sky"])
+    + geom_smooth(method="lm", color=SB_COLORS["midnight"], se=False)
+    + facet_wrap("group", scales="free_y")
+    + labs(
+        title="Electric heating intensity rises with ACH50",
+        x="ACH50",
+        y="kWh / sqft",
+    )
+    + scale_x_continuous(breaks=range(0, 55, 10))
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4), legend_position="none")
+)
+
+fig = p.draw()
+display_figure(fig)
+```
+
+```{python}
+#| label: fig-ach50-scatter-cooling
+#| fig-cap: "Electric cooling kWh/sqft vs ACH50, by heating group"
+
+p = (
+    ggplot(
+        bge.filter(pl.col("cool_per_sqft") > 0).select(
+            "ach50", "cool_per_sqft", "group", "weight"
+        ),
+        aes("ach50", "cool_per_sqft"),
+    )
+    + geom_point(aes(size="weight"), alpha=0.15, color=SB_COLORS["carrot"])
+    + geom_smooth(method="lm", color=SB_COLORS["midnight"], se=False)
+    + facet_wrap("group", scales="free_y")
+    + labs(
+        title="Electric cooling intensity also rises with ACH50, but more weakly",
+        x="ACH50",
+        y="kWh / sqft",
+    )
+    + scale_x_continuous(breaks=range(0, 55, 10))
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4), legend_position="none")
+)
+
+fig = p.draw()
+display_figure(fig)
+```
+
+```{python}
+#| label: fig-ach50-scatter-gas-heating
+#| fig-cap: "Gas heating kWh/sqft vs ACH50 (Non-electric homes only)"
+
+gas_plot_df = bge.filter(
+    (pl.col("gas_heat_per_sqft") > 0) & (pl.col("group") == "Non-electric")
+).select("ach50", "gas_heat_per_sqft", "group", "weight")
+
+p = (
+    ggplot(gas_plot_df, aes("ach50", "gas_heat_per_sqft"))
+    + geom_point(aes(size="weight"), alpha=0.15, color=SB_COLORS["saffron"])
+    + geom_smooth(method="lm", color=SB_COLORS["midnight"], se=False)
+    + labs(
+        title="Gas heating intensity also rises with ACH50",
+        x="ACH50",
+        y="kWh / sqft (thermal)",
+    )
+    + scale_x_continuous(breaks=range(0, 55, 10))
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4), legend_position="none")
+)
+
+fig = p.draw()
+display_figure(fig)
+```
+
+### Weighted linear regression
+
+We now fit the linear model within each group/end-use combination using weighted least
+squares. The key outputs are the slope, intercept, and the implied **infiltration fraction**
+at the mean ACH50 level.
+
+```{python}
+#| label: regression
+
+def weighted_linreg(
+    x: np.ndarray, y: np.ndarray, w: np.ndarray
+) -> dict:
+    """Weighted linear regression y = a + b*x. Returns dict with a, b, r2."""
+    sw = w.sum()
+    sx = (w * x).sum() / sw
+    sy = (w * y).sum() / sw
+    sxx = (w * x * x).sum() / sw - sx * sx
+    sxy = (w * x * y).sum() / sw - sx * sy
+    syy = (w * y * y).sum() / sw - sy * sy
+
+    b = sxy / sxx
+    a = sy - b * sx
+    r2 = (sxy**2) / (sxx * syy) if syy > 0 else 0.0
+    return {"intercept": a, "slope": b, "r2": r2}
+
+
+ENDUSES = [
+    ("Elec heating", "heat_per_sqft", "elec_heating_kwh"),
+    ("Elec cooling", "cool_per_sqft", "elec_cooling_kwh"),
+    ("Gas heating", "gas_heat_per_sqft", "gas_heating_kwh"),
+]
+
+GROUPS = ["Resistance", "Heat Pump", "Non-electric"]
+
+results = []
+for g in GROUPS:
+    sub = bge.filter(pl.col("group") == g)
+    ach_arr = sub["ach50"].to_numpy().astype(float)
+    w_arr = sub["weight"].to_numpy().astype(float)
+
+    for enduse_label, per_sqft_col, _raw_col in ENDUSES:
+        vals = sub[per_sqft_col].to_numpy()
+        mask = (vals > 0) & np.isfinite(vals) & (w_arr > 0)
+        if mask.sum() < 10:
+            continue
+
+        reg = weighted_linreg(ach_arr[mask], vals[mask], w_arr[mask])
+        mean_ach = (ach_arr[mask] * w_arr[mask]).sum() / w_arr[mask].sum()
+        total_at_mean = reg["intercept"] + reg["slope"] * mean_ach
+        infilt_frac = reg["slope"] * mean_ach / total_at_mean if total_at_mean > 0 else 0
+
+        results.append({
+            "group": g,
+            "enduse": enduse_label,
+            "intercept": reg["intercept"],
+            "slope": reg["slope"],
+            "r2": reg["r2"],
+            "mean_ach50": mean_ach,
+            "infilt_fraction": infilt_frac,
+            "n": int(mask.sum()),
+        })
+
+reg_df = pl.DataFrame(results)
+```
+
+```{python}
+#| label: show-regression
+
+reg_df.select(
+    "group", "enduse",
+    pl.col("intercept").round(3),
+    pl.col("slope").round(4),
+    pl.col("r2").round(3),
+    pl.col("mean_ach50").round(1),
+    (pl.col("infilt_fraction") * 100).round(0).alias("infilt_%"),
+    "n",
+)
+```
+
+At the mean ACH50 of ~20, infiltration accounts for roughly **61–65% of the heating load**
+but only **21–33% of the cooling load**. This is physically consistent: heating losses are
+dominated by the building envelope (conduction + infiltration), while cooling loads have
+large solar gain and internal gain components that do not depend on ACH50.
+
+Note that the slopes are fitted _separately within each heating-type group_, so they
+implicitly capture each system's efficiency (COP). The electric heating slope for heat pump
+homes (~0.13 kWh/sqft per ACH50) is roughly half that of resistance homes (~0.24), implying
+an effective heating-season COP of ~1.8 — consistent with cold-climate ASHP performance.
+The gas heating slope (~0.33 kWh/sqft per ACH50) reflects gas furnace efficiency (~80–95%).
+No additional COP adjustment is needed.
+
+## Simulated ACH50 correction
+
+We now apply a uniform percentage reduction to every building's ACH50 and use the linear
+model to predict what its heating and cooling loads would be at the reduced ACH50. Electric
+non-heating, non-cooling loads are left unchanged. Gas non-heating loads are also left
+unchanged.
+
+For a building _i_ in group _g_ with end-use column _e_:
+
+$$\text{corrected}_{i,e} = \max\!\Big(0,\; \text{original}_{i,e} - b_{g,e} \times \text{sqft}_i \times \text{ACH50}_i \times \delta\Big)$$
+
+where $b_{g,e}$ is the regression slope for that group/end-use and $\delta$ is the fractional
+ACH50 reduction.
+
+```{python}
+#| label: correction-sweep
+
+# Build a lookup of slopes by (group, enduse)
+slope_lookup: dict[tuple[str, str], float] = {}
+for row in reg_df.iter_rows(named=True):
+    slope_lookup[(row["group"], row["enduse"])] = row["slope"]
+
+# Prepare numpy arrays for vectorized computation
+ach_arr = bge["ach50"].to_numpy().astype(float)
+sqft_arr = bge["sqft"].to_numpy().astype(float)
+w_arr = bge["weight"].to_numpy().astype(float)
+group_arr = bge["group"].to_list()
+total_kwh = bge["grid_cons_kwh"].to_numpy().astype(float)
+heat_kwh = bge["elec_heating_kwh"].to_numpy().astype(float)
+cool_kwh = bge["elec_cooling_kwh"].to_numpy().astype(float)
+gas_heat_kwh = bge["gas_heating_kwh"].to_numpy().astype(float)
+gas_total_kwh = bge["out.natural_gas.total.energy_consumption.kwh"].to_numpy().astype(float)
+gas_other_kwh = gas_total_kwh - gas_heat_kwh
+other_kwh = total_kwh - heat_kwh - cool_kwh
+
+customer_scale = TEST_YEAR_CC / w_arr.sum()
+original_total_gwh = (w_arr * total_kwh).sum() * customer_scale / 1e9
+original_gas_gwh = (w_arr * gas_total_kwh).sum() * customer_scale / 1e9
+test_year_gwh = TEST_YEAR_KWH / 1e9
+
+sweep_results = []
+for delta_pct in range(0, 55, 5):
+    delta = delta_pct / 100.0
+
+    corrected_heat = np.copy(heat_kwh)
+    corrected_cool = np.copy(cool_kwh)
+    corrected_gas_heat = np.copy(gas_heat_kwh)
+
+    for i in range(len(bge)):
+        g = group_arr[i]
+        s_heat = slope_lookup.get((g, "Elec heating"), 0.0)
+        s_cool = slope_lookup.get((g, "Elec cooling"), 0.0)
+        s_gas = slope_lookup.get((g, "Gas heating"), 0.0)
+        corrected_heat[i] = max(0, heat_kwh[i] - s_heat * sqft_arr[i] * ach_arr[i] * delta)
+        corrected_cool[i] = max(0, cool_kwh[i] - s_cool * sqft_arr[i] * ach_arr[i] * delta)
+        corrected_gas_heat[i] = max(0, gas_heat_kwh[i] - s_gas * sqft_arr[i] * ach_arr[i] * delta)
+
+    corrected_total = corrected_heat + corrected_cool + other_kwh
+    corrected_gas_total = corrected_gas_heat + gas_other_kwh
+    corrected_gwh = (w_arr * corrected_total).sum() * customer_scale / 1e9
+    corrected_gas_gwh = (w_arr * corrected_gas_total).sum() * customer_scale / 1e9
+
+    sweep_results.append({
+        "delta_pct": delta_pct,
+        "corrected_elec_gwh": corrected_gwh,
+        "corrected_gas_gwh": corrected_gas_gwh,
+        "gap_to_test_year_pct": (corrected_gwh - test_year_gwh) / test_year_gwh * 100,
+        "gas_change_pct": (corrected_gas_gwh - original_gas_gwh) / original_gas_gwh * 100,
+    })
+
+sweep_df = pl.DataFrame(sweep_results)
+```
+
+```{python}
+#| label: show-sweep
+
+sweep_df.with_columns(
+    pl.col("corrected_elec_gwh").round(2),
+    pl.col("corrected_gas_gwh").round(2),
+    pl.col("gap_to_test_year_pct").round(1).alias("elec_gap_%"),
+    pl.col("gas_change_pct").round(1).alias("gas_change_%"),
+).select("delta_pct", "corrected_elec_gwh", "elec_gap_%", "corrected_gas_gwh", "gas_change_%")
+```
+
+### Visualize the correction sweep
+
+```{python}
+#| label: fig-correction-sweep
+#| fig-cap: "Corrected total electric GWh as a function of uniform ACH50 reduction"
+
+p = (
+    ggplot(sweep_df, aes("delta_pct", "corrected_elec_gwh"))
+    + geom_point(color=SB_COLORS["midnight"], size=3)
+    + geom_hline(yintercept=test_year_gwh, linetype="dashed", color=SB_COLORS["carrot"])
+    + annotate(
+        "text",
+        x=35,
+        y=test_year_gwh + 0.15,
+        label=f"Test-year target: {test_year_gwh:.1f} GWh",
+        color=SB_COLORS["carrot"],
+        size=11,
+        fontweight="bold",
+        ha="left",
+    )
+    + labs(
+        title="How far does an ACH50 correction get us? (electric)",
+        subtitle="Per-building linear model applied to heating and cooling end-uses",
+        x="Uniform ACH50 reduction (%)",
+        y="Total residential electric GWh",
+    )
+    + scale_x_continuous(breaks=range(0, 55, 10))
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 5))
+)
+
+fig = p.draw()
+display_figure(fig)
+```
+
+## LBNL ResDB benchmark: what should BGE's ACH50 distribution look like?
+
+Rather than choosing an ACH50 correction to hit the test-year target, we derive the
+correction from an independent, published source: the **LBNL Residential Diagnostics
+Database regression model** (Chan, Joh & Sherman 2013, _Energy and Buildings_ 66: 616–625).
+
+This model predicts normalized leakage (NL) — a dimensionless, size-adjusted air leakage
+metric — from a home's vintage, climate zone, floor area, and height, based on 134,000
+field blower-door measurements across 43 U.S. states. It explains 68% of observed variance
+in NL. Crucially, **ResStock itself draws its ACH50 assignments from this same database**,
+so using the published regression as a benchmark is internally consistent.
+
+The key regression (Eq. 4 / Table 3 in Chan et al.):
+
+$$\ln(\text{NL}) = \hat{\beta}_{\text{year}} + \hat{\beta}_{\text{cz}} + \hat{\beta}_{\text{area}} \times A + \hat{\beta}_h \times H$$
+
+where $A$ is floor area (m²) and $H$ is building height (m). For typical homes that are
+neither low-income weatherization participants nor energy-efficiency rated, the WAP and
+energy-rating indicator terms are zero.
+
+The approximate conversion is $\text{ACH50} \approx C \times \text{NL} / H^{0.7}$, where
+$C \approx 39.3$ is calibrated from the paper's rule of thumb (NL = 0.55 ↔ ACH50 = 10
+for a typical single-story home at H = 3 m).
+
+```{python}
+#| label: chan-regression
+
+# -----------------------------------------------------------------
+# Chan et al. (2013) Table 3 regression coefficients
+# -----------------------------------------------------------------
+
+# Year-built indicators (β_year)
+BETA_YEAR = {
+    "prior_1960": -0.250,
+    "1960s": -0.433,
+    "1970s": -0.452,
+    "1980s": -0.654,
+    "1990s": -0.915,
+    "2000_after": -1.058,
+}
+
+# Climate zone: Maryland = IECC 4A (Humid-4)
+BETA_CZ_4A = 0.326
+
+# Continuous variables
+BETA_AREA = -0.00208   # per m² of floor area
+BETA_H = 0.0638        # per m of building height
+
+# NL → ACH50 conversion constant (calibrated: NL=0.55 → ACH50=10 at H=3m)
+C_NL_ACH50 = 39.3
+
+def resstock_vintage_to_chan(vintage: str) -> str:
+    """Map ResStock's in.vintage to Chan et al. vintage category."""
+    if vintage in ("<1940", "1940s", "1950s"):
+        return "prior_1960"
+    elif vintage == "1960s":
+        return "1960s"
+    elif vintage == "1970s":
+        return "1970s"
+    elif vintage == "1980s":
+        return "1980s"
+    elif vintage == "1990s":
+        return "1990s"
+    else:  # 2000s, 2010s
+        return "2000_after"
+
+def stories_to_height_m(stories_str: str) -> float:
+    """Convert ResStock stories to building height (m).
+
+    Chan et al. convention: 3m for 1-story, 5.5m for 2-story, 8m for 3-story.
+    For tall MF buildings, cap at 3 stories for the NL model (which was
+    developed for single-family detached homes).
+    """
+    try:
+        s = int(stories_str)
+    except (ValueError, TypeError):
+        return 3.0
+    s = min(s, 3)
+    return 2.5 * s + 0.5
+
+def predict_ach50_chan(vintage: str, sqft: float, stories: str) -> float:
+    """Predict ACH50 for a single building using Chan et al. (2013)."""
+    beta_yr = BETA_YEAR[resstock_vintage_to_chan(vintage)]
+    area_m2 = sqft / 10.764
+    h_m = stories_to_height_m(stories)
+
+    ln_nl = beta_yr + BETA_CZ_4A + BETA_AREA * area_m2 + BETA_H * h_m
+    nl = np.exp(ln_nl)
+    return C_NL_ACH50 * nl / (h_m ** 0.7)
+
+print("Chan et al. (2013) regression implemented.")
+print(f"Climate zone: 4A (β_cz = {BETA_CZ_4A})")
+print(f"WAP / energy-rated indicators: both 0 (typical housing stock)")
+```
+
+Now apply this per-building to the BGE ResStock sample:
+
+```{python}
+#| label: benchmark-comparison
+
+vintage_arr = bge["in.vintage"].to_list()
+stories_arr = bge["in.geometry_stories"].to_list()
+
+predicted_ach50 = np.array([
+    predict_ach50_chan(vintage_arr[i], sqft_arr[i], stories_arr[i])
+    for i in range(len(bge))
+])
+
+wtd_mean_predicted = (predicted_ach50 * w_arr).sum() / w_arr.sum()
+wtd_mean_resstock = (ach_arr * w_arr).sum() / w_arr.sum()
+
+overshoot_ratio = wtd_mean_resstock / wtd_mean_predicted
+delta_benchmark = 1.0 - 1.0 / overshoot_ratio
+
+print(f"Chan et al. predicted weighted-mean ACH50:   {wtd_mean_predicted:.1f}")
+print(f"ResStock assigned weighted-mean ACH50:       {wtd_mean_resstock:.1f}")
+print(f"Overshoot ratio (ResStock / benchmark):      {overshoot_ratio:.2f}")
+print(f"Implied uniform correction δ:                {delta_benchmark:.1%}")
+print()
+print(f"In other words, ResStock's ACH50 values for BGE homes are")
+print(f"{(overshoot_ratio - 1) * 100:.0f}% higher than what the Chan et al. regression")
+print(f"predicts for the same vintage, climate zone, and building size distribution.")
+```
+
+### Benchmark by vintage
+
+The overshoot may vary by vintage — ResStock may be more accurate for newer homes
+(where code compliance data is better) than for older ones:
+
+```{python}
+#| label: benchmark-by-vintage
+
+bge_check = bge.with_columns(
+    pl.Series("predicted_ach50", predicted_ach50),
+)
+
+vintage_comparison = (
+    bge_check
+    .group_by("in.vintage")
+    .agg(
+        (pl.col("ach50") * pl.col("weight")).sum() / pl.col("weight").sum(),
+        (pl.col("predicted_ach50") * pl.col("weight")).sum() / pl.col("weight").sum(),
+        pl.col("weight").sum().alias("total_weight"),
+    )
+    .rename({"ach50": "resstock_ach50", "predicted_ach50": "chan_ach50"})
+    .with_columns(
+        (pl.col("resstock_ach50") / pl.col("chan_ach50")).alias("ratio"),
+    )
+    .sort("in.vintage")
+)
+
+vintage_comparison.with_columns(
+    pl.col("resstock_ach50").round(1),
+    pl.col("chan_ach50").round(1),
+    pl.col("ratio").round(2),
+)
+```
+
+## Apply the benchmark-driven correction
+
+The Chan et al. regression gives us a defensible, per-building target ACH50 derived from
+a published model based on 134,000 field measurements. The implied correction ratio tells
+us by how much to uniformly reduce ACH50, then we propagate that through the heating/cooling
+regressions fitted earlier in this notebook.
+
+```{python}
+#| label: solve-delta
+
+# Per-building "correctable per unit delta": slope * sqft * ach50
+correctable_heat = np.array([
+    slope_lookup.get((group_arr[i], "Elec heating"), 0.0) * sqft_arr[i] * ach_arr[i]
+    for i in range(len(bge))
+])
+correctable_cool = np.array([
+    slope_lookup.get((group_arr[i], "Elec cooling"), 0.0) * sqft_arr[i] * ach_arr[i]
+    for i in range(len(bge))
+])
+correctable_gas_heat = np.array([
+    slope_lookup.get((group_arr[i], "Gas heating"), 0.0) * sqft_arr[i] * ach_arr[i]
+    for i in range(len(bge))
+])
+elec_correctable_gwh = (w_arr * (correctable_heat + correctable_cool)).sum() * customer_scale / 1e9
+
+# δ* that would fully close the electric gap (for reference only)
+delta_star_full = (original_total_gwh - test_year_gwh) / elec_correctable_gwh
+
+print(f"Original electric total:     {original_total_gwh:>10.2f} GWh")
+print(f"Test-year target:            {test_year_gwh:>10.2f} GWh")
+print(f"Gap:                         {original_total_gwh - test_year_gwh:>+10.2f} GWh ({(original_total_gwh - test_year_gwh) / test_year_gwh * 100:+.1f}%)")
+print()
+print(f"Benchmark-driven δ (Chan et al.):  {delta_benchmark:.1%}")
+print(f"Gap-closing δ* (electric only):    {delta_star_full:.1%}")
+print()
+if delta_benchmark < delta_star_full:
+    print(f"The benchmark correction ({delta_benchmark:.0%}) is smaller than the δ*")
+    print(f"needed to fully close the gap ({delta_star_full:.0%}), meaning ACH50")
+    print(f"overestimation alone does not explain all of the discrepancy.")
+else:
+    print(f"The benchmark correction ({delta_benchmark:.0%}) exceeds δ*")
+    print(f"({delta_star_full:.0%}), suggesting ACH50 overestimation could")
+    print(f"more than account for the total load gap.")
+```
+
+### Apply the correction
+
+```{python}
+#| label: apply-benchmark
+
+corrected_heat_star = np.maximum(0, heat_kwh - delta_benchmark * correctable_heat)
+corrected_cool_star = np.maximum(0, cool_kwh - delta_benchmark * correctable_cool)
+corrected_gas_heat_star = np.maximum(0, gas_heat_kwh - delta_benchmark * correctable_gas_heat)
+corrected_total_star = corrected_heat_star + corrected_cool_star + other_kwh
+corrected_gas_total_star = corrected_gas_heat_star + gas_other_kwh
+
+bge = bge.with_columns(
+    pl.Series("corrected_heat_kwh", corrected_heat_star),
+    pl.Series("corrected_cool_kwh", corrected_cool_star),
+    pl.Series("corrected_gas_heat_kwh", corrected_gas_heat_star),
+    pl.Series("corrected_total_kwh", corrected_total_star),
+    pl.Series("corrected_gas_total_kwh", corrected_gas_total_star),
+    pl.Series("predicted_ach50", predicted_ach50),
+)
+
+corrected_gwh_star = (w_arr * corrected_total_star).sum() * customer_scale / 1e9
+corrected_gas_gwh_star = (w_arr * corrected_gas_total_star).sum() * customer_scale / 1e9
+gap_closed_gwh = original_total_gwh - corrected_gwh_star
+gap_total_gwh = original_total_gwh - test_year_gwh
+pct_closed = gap_closed_gwh / gap_total_gwh * 100
+
+corrected_mean_ach50 = wtd_mean_resstock * (1 - delta_benchmark)
+
+print(f"Benchmark-driven correction: δ = {delta_benchmark:.1%}")
+print(f"  ResStock mean ACH50:   {wtd_mean_resstock:.1f} → {corrected_mean_ach50:.1f}")
+print(f"  Chan et al. target:    {wtd_mean_predicted:.1f}")
+print()
+print(f"ELECTRIC")
+print(f"  Original total:        {original_total_gwh:.2f} GWh")
+print(f"  Corrected total:       {corrected_gwh_star:.2f} GWh")
+print(f"  Test-year target:      {test_year_gwh:.2f} GWh")
+print(f"  Gap closed:            {gap_closed_gwh:.2f} GWh of {gap_total_gwh:.2f} GWh ({pct_closed:.0f}%)")
+print(f"  Remaining gap:         {corrected_gwh_star - test_year_gwh:+.2f} GWh ({(corrected_gwh_star - test_year_gwh) / test_year_gwh * 100:+.1f}%)")
+print()
+gas_change_pct = (corrected_gas_gwh_star - original_gas_gwh) / original_gas_gwh * 100
+print(f"NATURAL GAS")
+print(f"  Original total:        {original_gas_gwh:.2f} GWh (thermal)")
+print(f"  Corrected total:       {corrected_gas_gwh_star:.2f} GWh (thermal)")
+print(f"  Change:                {gas_change_pct:+.1f}%")
+```
+
+## Group-level impact
+
+How does the benchmark-driven correction distribute across heating-type groups? The
+within-ResStock regression slopes differ by group and end-use (electric heating, electric
+cooling, gas heating), so the same ACH50 correction produces group-specific load reductions.
+
+```{python}
+#| label: group-impact
+
+for g in GROUPS:
+    mask = np.array([x == g for x in group_arr])
+    w_g = w_arr[mask]
+    orig_g = (w_g * total_kwh[mask]).sum() / w_g.sum()
+    corr_g = (w_g * corrected_total_star[mask]).sum() / w_g.sum()
+    heat_orig = (w_g * heat_kwh[mask]).sum() / w_g.sum()
+    heat_corr = (w_g * corrected_heat_star[mask]).sum() / w_g.sum()
+    cool_orig = (w_g * cool_kwh[mask]).sum() / w_g.sum()
+    cool_corr = (w_g * corrected_cool_star[mask]).sum() / w_g.sum()
+    gas_orig = (w_g * gas_heat_kwh[mask]).sum() / w_g.sum()
+    gas_corr = (w_g * corrected_gas_heat_star[mask]).sum() / w_g.sum()
+
+    print(f"{g}")
+    print(f"  Elec total:    {orig_g:>10,.0f} → {corr_g:>10,.0f}  ({(corr_g - orig_g) / orig_g * 100:+.1f}%)")
+    print(f"  Elec heating:  {heat_orig:>10,.0f} → {heat_corr:>10,.0f}  ({(heat_corr - heat_orig) / heat_orig * 100 if heat_orig > 0 else 0:+.1f}%)")
+    print(f"  Elec cooling:  {cool_orig:>10,.0f} → {cool_corr:>10,.0f}  ({(cool_corr - cool_orig) / cool_orig * 100 if cool_orig > 0 else 0:+.1f}%)")
+    if gas_orig > 0:
+        print(f"  Gas heating:   {gas_orig:>10,.0f} → {gas_corr:>10,.0f}  ({(gas_corr - gas_orig) / gas_orig * 100:+.1f}%)")
+    print()
+```
+
+## RECS comparison: how much of the kWh/sqft gap does ACH50 explain?
+
+The RECS benchmarks computed above give us independent targets for each end-use and
+heating-type group. We can compare the benchmark-driven regression correction to those
+targets:
+
+```{python}
+#| label: recs-coverage
+
+print(f"Benchmark-driven ACH50 correction: δ = {delta_benchmark:.1%}")
+print()
+
+# --- Gap-closing against original benchmarks (TOTSQFT_EN) ---
+print("Against RECS benchmarks using total sqft (TOTSQFT_EN):")
+print(f"{'Group':<15s}  {'End-use':<15s}  {'RS orig':>8s}  {'RS corr':>8s}  "
+      f"{'RECS':>6s}  {'Gap closed':>10s}")
+print(f"{'-'*15}  {'-'*15}  {'-'*8}  {'-'*8}  {'-'*6}  {'-'*10}")
+
+for (g, eu), recs_val in RECS_BENCHMARKS.items():
+    sub_mask = np.array([x == g for x in group_arr])
+    w_g = w_arr[sub_mask]
+    sqft_g = sqft_arr[sub_mask]
+
+    if eu == "Elec heating":
+        orig_vals = heat_kwh[sub_mask]
+        corr_vals = corrected_heat_star[sub_mask]
+    elif eu == "Elec cooling":
+        orig_vals = cool_kwh[sub_mask]
+        corr_vals = corrected_cool_star[sub_mask]
+    elif eu == "Gas heating":
+        orig_vals = gas_heat_kwh[sub_mask]
+        corr_vals = corrected_gas_heat_star[sub_mask]
+    else:
+        continue
+
+    orig_per_sqft = (w_g * orig_vals / sqft_g).sum() / w_g.sum()
+    corr_per_sqft = (w_g * corr_vals / sqft_g).sum() / w_g.sum()
+
+    original_gap = orig_per_sqft - recs_val
+    closed = orig_per_sqft - corr_per_sqft
+    pct_closed = closed / original_gap * 100 if original_gap > 0 else 0
+
+    print(f"{g:<15s}  {eu:<15s}  {orig_per_sqft:>8.2f}  {corr_per_sqft:>8.2f}  "
+          f"{recs_val:>6.2f}  {pct_closed:>9.0f}%")
+
+# --- Gap-closing against adjusted benchmarks (conditioned sqft) ---
+# ResStock divides by total sqft (it assumes whole-house conditioning),
+# so the "gap" to the adjusted RECS benchmark (which uses conditioned sqft)
+# is smaller — the adjusted benchmark is higher, closer to ResStock.
+print()
+print("Against RECS benchmarks using conditioned sqft (TOTHSQFT / TOTCSQFT):")
+print(f"{'Group':<15s}  {'End-use':<15s}  {'RS orig':>8s}  {'RS corr':>8s}  "
+      f"{'RECS adj':>8s}  {'Gap closed':>10s}")
+print(f"{'-'*15}  {'-'*15}  {'-'*8}  {'-'*8}  {'-'*8}  {'-'*10}")
+
+for (g, eu), recs_adj in RECS_BENCHMARKS_ADJUSTED.items():
+    sub_mask = np.array([x == g for x in group_arr])
+    w_g = w_arr[sub_mask]
+    sqft_g = sqft_arr[sub_mask]
+
+    if eu == "Elec heating":
+        orig_vals = heat_kwh[sub_mask]
+        corr_vals = corrected_heat_star[sub_mask]
+    elif eu == "Elec cooling":
+        orig_vals = cool_kwh[sub_mask]
+        corr_vals = corrected_cool_star[sub_mask]
+    elif eu == "Gas heating":
+        orig_vals = gas_heat_kwh[sub_mask]
+        corr_vals = corrected_gas_heat_star[sub_mask]
+    else:
+        continue
+
+    # ResStock still uses total sqft (whole-house assumption)
+    orig_per_sqft = (w_g * orig_vals / sqft_g).sum() / w_g.sum()
+    corr_per_sqft = (w_g * corr_vals / sqft_g).sum() / w_g.sum()
+
+    adj_gap = orig_per_sqft - recs_adj
+    closed = orig_per_sqft - corr_per_sqft
+    pct_closed = closed / adj_gap * 100 if adj_gap > 0 else 0
+
+    print(f"{g:<15s}  {eu:<15s}  {orig_per_sqft:>8.2f}  {corr_per_sqft:>8.2f}  "
+          f"{recs_adj:>8.2f}  {pct_closed:>9.0f}%")
+
+print()
+print("The adjusted RECS benchmarks are higher (more kWh per conditioned sqft),")
+print("so the original gap is smaller and the ACH50 correction closes a larger")
+print("fraction of it. This makes sense: part of the ResStock-vs-RECS gap was")
+print("never about infiltration — it was about ResStock conditioning the whole")
+print("house while real homes condition only a portion.")
+```
+
+## Summary
+
+```{python}
+#| label: summary
+
+print("=" * 70)
+print("ACH50 INFILTRATION CORRECTION — BENCHMARK-DRIVEN APPROACH")
+print("=" * 70)
+print()
+print("Source: Chan, Joh & Sherman (2013), 'Analysis of air leakage")
+print("  measurements of US houses', Energy and Buildings 66: 616-625.")
+print("  Regression model (Table 3) based on 134,000 field blower-door")
+print("  measurements from the LBNL Residential Diagnostics Database.")
+print()
+print(f"ResStock BGE weighted mean ACH50:     {wtd_mean_resstock:.1f}")
+print(f"Chan et al. predicted mean ACH50:     {wtd_mean_predicted:.1f}")
+print(f"Overshoot:                            {(overshoot_ratio - 1) * 100:.0f}%")
+print(f"Implied uniform correction δ:         {delta_benchmark:.1%}")
+print()
+remaining_pct = (corrected_gwh_star - test_year_gwh) / test_year_gwh * 100
+print("ELECTRIC:")
+print(f"  Original total:                     {original_total_gwh:.2f} GWh")
+print(f"  After benchmark correction:         {corrected_gwh_star:.2f} GWh")
+print(f"  Test-year target:                   {test_year_gwh:.2f} GWh")
+print(f"  Fraction of gap closed:             {pct_closed:.0f}%")
+print(f"  Remaining gap:                      {remaining_pct:+.1f}%")
+print()
+gas_change_summary = (corrected_gas_gwh_star - original_gas_gwh) / original_gas_gwh * 100
+print("NATURAL GAS:")
+print(f"  Original total:                     {original_gas_gwh:.2f} GWh (thermal)")
+print(f"  After benchmark correction:         {corrected_gas_gwh_star:.2f} GWh (thermal)")
+print(f"  Change:                             {gas_change_summary:+.1f}%")
+print()
+print("COP ACCOUNTING:")
+print("  The per-group regression slopes implicitly capture each heating")
+print("  system's COP. The ratio of resistance-heating slope to heat-pump-")
+print("  heating slope is ~1.8, consistent with cold-climate ASHP performance.")
+print("  No separate COP adjustment is needed.")
+print()
+print("Interpretation:")
+print(f"  ResStock assigns BGE homes ACH50 values that are {(overshoot_ratio - 1) * 100:.0f}% higher than")
+print(f"  predicted by the Chan et al. regression for the same vintage, climate")
+print(f"  zone, and building-size distribution. A correction to match the")
+print(f"  published benchmark — without reference to the test-year target —")
+print(f"  closes {pct_closed:.0f}% of the electric kWh gap and reduces gas heating loads")
+print(f"  by {abs(gas_change_summary):.0f}%.")
+if remaining_pct > 0.5:
+    print(f"\n  The remaining {remaining_pct:+.1f}% electric gap is attributable to other factors")
+    print(f"  (solar gain overestimation, internal gains, duct losses,")
+    print(f"  partial-space conditioning, etc.).")
+elif remaining_pct < -0.5:
+    print(f"\n  The correction overshoots the target by {abs(remaining_pct):.1f}%, suggesting")
+    print(f"  the benchmark may slightly overcorrect ACH50, or that other factors")
+    print(f"  partially offset the infiltration overstatement.")
+else:
+    print(f"\n  Remarkably, the benchmark-driven correction nearly matches the")
+    print(f"  test-year total, providing strong independent validation.")
+```
+
+## Per-building ACH50 correction
+
+The uniform correction above applies a single δ = `{python} f"{delta_benchmark:.1%}"` to
+every home, derived from the ratio of weighted means. But the Chan et al. regression already
+gives us a per-building ACH50 prediction — conditioned on each home's vintage, floor area,
+and height — so we can target the correction where the discrepancy actually is.
+
+The per-building correction uses each home's own Chan-predicted ACH50 as the target:
+
+$$\text{kWh}'_i = \max\!\Big(0,\; \text{kWh}_i - b_{g,e} \times \text{sqft}_i \times \big(\text{ACH50}^{\text{RS}}_i - \text{ACH50}^{\text{Chan}}_i\big)\Big)$$
+
+This is still a correction, not a replacement: the original ResStock-simulated load (which
+encodes thermostat settings, occupancy, equipment, shell quality, duct losses, and everything
+else) is the starting point. Only the infiltration component changes, by the amount implied
+by the per-building ACH50 discrepancy. Homes where ResStock and Chan agree get little or no
+correction; homes where ResStock substantially overshoots get a larger correction.
+
+Note that for some buildings, Chan may predict a _higher_ ACH50 than ResStock assigned. In
+those cases, the correction increases the load — the formula is symmetric. This is physically
+consistent: if a building was assigned a too-tight envelope, its simulated infiltration loss
+was too low.
+
+```{python}
+#| label: per-building-correction
+
+# Per-building ΔACH50: positive means ResStock overestimates (correction reduces load)
+delta_ach50_per_bldg = ach_arr - predicted_ach50
+
+# Per-building corrected end-use loads
+pb_heat = np.array([
+    max(0, heat_kwh[i] - slope_lookup.get((group_arr[i], "Elec heating"), 0.0)
+        * sqft_arr[i] * delta_ach50_per_bldg[i])
+    for i in range(len(bge))
+])
+pb_cool = np.array([
+    max(0, cool_kwh[i] - slope_lookup.get((group_arr[i], "Elec cooling"), 0.0)
+        * sqft_arr[i] * delta_ach50_per_bldg[i])
+    for i in range(len(bge))
+])
+pb_gas_heat = np.array([
+    max(0, gas_heat_kwh[i] - slope_lookup.get((group_arr[i], "Gas heating"), 0.0)
+        * sqft_arr[i] * delta_ach50_per_bldg[i])
+    for i in range(len(bge))
+])
+
+pb_total = pb_heat + pb_cool + other_kwh
+pb_gas_total = pb_gas_heat + gas_other_kwh
+
+# Attach to the DataFrame for downstream analysis
+bge = bge.with_columns(
+    pl.Series("pb_corrected_heat_kwh", pb_heat),
+    pl.Series("pb_corrected_cool_kwh", pb_cool),
+    pl.Series("pb_corrected_gas_heat_kwh", pb_gas_heat),
+    pl.Series("pb_corrected_total_kwh", pb_total),
+    pl.Series("pb_corrected_gas_total_kwh", pb_gas_total),
+    pl.Series("delta_ach50", delta_ach50_per_bldg),
+)
+
+pb_elec_gwh = (w_arr * pb_total).sum() * customer_scale / 1e9
+pb_gas_gwh = (w_arr * pb_gas_total).sum() * customer_scale / 1e9
+
+print("Per-building ACH50 correction applied.")
+print(f"  Buildings with ΔACH50 > 0 (load reduced):   {(delta_ach50_per_bldg > 0).sum():,}")
+print(f"  Buildings with ΔACH50 ≈ 0 (unchanged):      {(np.abs(delta_ach50_per_bldg) < 0.5).sum():,}")
+print(f"  Buildings with ΔACH50 < 0 (load increased):  {(delta_ach50_per_bldg < 0).sum():,}")
+```
+
+### Vintage-level correction scale
+
+The per-building approach applies different effective δ values to different vintages, because
+the Chan et al. overshoot is not uniform across the housing stock. Older homes see larger
+absolute corrections; newer homes (where ResStock is closer to the benchmark) see smaller
+ones.
+
+```{python}
+#| label: pb-vintage-delta
+
+pb_vintage = (
+    bge.select("in.vintage", "ach50", "predicted_ach50", "delta_ach50", "weight")
+    .group_by("in.vintage")
+    .agg(
+        (pl.col("ach50") * pl.col("weight")).sum() / pl.col("weight").sum(),
+        (pl.col("predicted_ach50") * pl.col("weight")).sum() / pl.col("weight").sum(),
+        (pl.col("delta_ach50") * pl.col("weight")).sum() / pl.col("weight").sum(),
+        pl.col("weight").sum().alias("total_weight"),
+        pl.len().alias("n"),
+    )
+    .rename({"ach50": "rs_mean_ach50", "predicted_ach50": "chan_mean_ach50",
+             "delta_ach50": "mean_delta_ach50"})
+    .with_columns(
+        (pl.col("rs_mean_ach50") / pl.col("chan_mean_ach50")).alias("overshoot_ratio"),
+        (1 - pl.col("chan_mean_ach50") / pl.col("rs_mean_ach50")).alias("effective_delta"),
+    )
+    .sort("in.vintage")
+)
+
+pb_vintage.select(
+    "in.vintage",
+    pl.col("rs_mean_ach50").round(1),
+    pl.col("chan_mean_ach50").round(1),
+    pl.col("mean_delta_ach50").round(1),
+    pl.col("overshoot_ratio").round(2),
+    (pl.col("effective_delta") * 100).round(1).alias("effective_δ_%"),
+    "n",
+)
+```
+
+For comparison, the uniform approach applies δ = `{python} f"{delta_benchmark:.1%}"` to
+every vintage. The per-building approach lets each vintage settle at its own effective
+correction.
+
+### Overall electric consumption
+
+```{python}
+#| label: pb-electric-total
+
+gap_total = original_total_gwh - test_year_gwh
+uniform_closed = original_total_gwh - corrected_gwh_star
+pb_closed = original_total_gwh - pb_elec_gwh
+
+print(f"{'':30s}  {'GWh':>10s}  {'vs test-year':>12s}")
+print(f"{'-'*30}  {'-'*10}  {'-'*12}")
+print(f"{'Original ResStock':30s}  {original_total_gwh:>10.2f}  {(original_total_gwh - test_year_gwh) / test_year_gwh * 100:>+11.1f}%")
+print(f"{'Uniform δ correction':30s}  {corrected_gwh_star:>10.2f}  {(corrected_gwh_star - test_year_gwh) / test_year_gwh * 100:>+11.1f}%")
+print(f"{'Per-building correction':30s}  {pb_elec_gwh:>10.2f}  {(pb_elec_gwh - test_year_gwh) / test_year_gwh * 100:>+11.1f}%")
+print(f"{'Test-year target':30s}  {test_year_gwh:>10.2f}  {'—':>12s}")
+print()
+print(f"Gap closed (uniform δ):      {uniform_closed:.2f} GWh ({uniform_closed / gap_total * 100:.0f}% of gap)")
+print(f"Gap closed (per-building):   {pb_closed:.2f} GWh ({pb_closed / gap_total * 100:.0f}% of gap)")
+print()
+pb_gas_change = (pb_gas_gwh - original_gas_gwh) / original_gas_gwh * 100
+uniform_gas_change = (corrected_gas_gwh_star - original_gas_gwh) / original_gas_gwh * 100
+print(f"NATURAL GAS (thermal kWh):")
+print(f"  Original:              {original_gas_gwh:.2f} GWh")
+print(f"  Uniform δ:             {corrected_gas_gwh_star:.2f} GWh ({uniform_gas_change:+.1f}%)")
+print(f"  Per-building:          {pb_gas_gwh:.2f} GWh ({pb_gas_change:+.1f}%)")
+```
+
+### Impact by heating-type group
+
+```{python}
+#| label: pb-group-impact
+
+print(f"{'Group':<15s}  {'Metric':<15s}  {'Original':>10s}  {'Uniform δ':>10s}  "
+      f"{'Per-bldg':>10s}  {'Δ uniform':>10s}  {'Δ per-bldg':>10s}")
+print(f"{'-'*15}  {'-'*15}  {'-'*10}  {'-'*10}  {'-'*10}  {'-'*10}  {'-'*10}")
+
+for g in GROUPS:
+    mask = np.array([x == g for x in group_arr])
+    w_g = w_arr[mask]
+
+    for label, orig, uniform_corr, pb_corr in [
+        ("Elec total",   total_kwh[mask],    corrected_total_star[mask],     pb_total[mask]),
+        ("Elec heating",  heat_kwh[mask],     corrected_heat_star[mask],      pb_heat[mask]),
+        ("Elec cooling",  cool_kwh[mask],     corrected_cool_star[mask],      pb_cool[mask]),
+        ("Gas heating",   gas_heat_kwh[mask], corrected_gas_heat_star[mask],  pb_gas_heat[mask]),
+    ]:
+        orig_avg = (w_g * orig).sum() / w_g.sum()
+        if orig_avg < 1:
+            continue
+        uni_avg = (w_g * uniform_corr).sum() / w_g.sum()
+        pb_avg = (w_g * pb_corr).sum() / w_g.sum()
+
+        print(f"{g:<15s}  {label:<15s}  {orig_avg:>10,.0f}  {uni_avg:>10,.0f}  "
+              f"{pb_avg:>10,.0f}  {(uni_avg - orig_avg) / orig_avg * 100:>+9.1f}%  "
+              f"{(pb_avg - orig_avg) / orig_avg * 100:>+9.1f}%")
+    print()
+```
+
+### RECS kWh/sqft comparison
+
+How close does the per-building correction get to the independent RECS benchmarks, compared
+to the uniform correction?
+
+```{python}
+#| label: pb-recs-comparison
+
+# --- Against original benchmarks (total sqft) ---
+print("Against RECS benchmarks using total sqft (TOTSQFT_EN):")
+print(f"{'Group':<15s}  {'End-use':<15s}  {'RS orig':>8s}  {'Uniform δ':>10s}  "
+      f"{'Per-bldg':>10s}  {'RECS':>6s}  {'Gap closed':>22s}")
+print(f"{'':30s}  {'':>8s}  {'':>10s}  {'':>10s}  {'':>6s}  {'Uniform':>10s}  {'Per-bldg':>10s}")
+print(f"{'-'*15}  {'-'*15}  {'-'*8}  {'-'*10}  {'-'*10}  {'-'*6}  {'-'*10}  {'-'*10}")
+
+for (g, eu), recs_val in RECS_BENCHMARKS.items():
+    sub_mask = np.array([x == g for x in group_arr])
+    w_g = w_arr[sub_mask]
+    sqft_g = sqft_arr[sub_mask]
+
+    if eu == "Elec heating":
+        orig_vals = heat_kwh[sub_mask]
+        uni_vals = corrected_heat_star[sub_mask]
+        pb_vals = pb_heat[sub_mask]
+    elif eu == "Elec cooling":
+        orig_vals = cool_kwh[sub_mask]
+        uni_vals = corrected_cool_star[sub_mask]
+        pb_vals = pb_cool[sub_mask]
+    elif eu == "Gas heating":
+        orig_vals = gas_heat_kwh[sub_mask]
+        uni_vals = corrected_gas_heat_star[sub_mask]
+        pb_vals = pb_gas_heat[sub_mask]
+    else:
+        continue
+
+    orig_psf = (w_g * orig_vals / sqft_g).sum() / w_g.sum()
+    uni_psf = (w_g * uni_vals / sqft_g).sum() / w_g.sum()
+    pb_psf = (w_g * pb_vals / sqft_g).sum() / w_g.sum()
+
+    orig_gap = orig_psf - recs_val
+    uni_closed = (orig_psf - uni_psf) / orig_gap * 100 if orig_gap > 0 else 0
+    pb_closed_pct = (orig_psf - pb_psf) / orig_gap * 100 if orig_gap > 0 else 0
+
+    print(f"{g:<15s}  {eu:<15s}  {orig_psf:>8.2f}  {uni_psf:>10.2f}  "
+          f"{pb_psf:>10.2f}  {recs_val:>6.2f}  {uni_closed:>9.0f}%  {pb_closed_pct:>10.0f}%")
+
+# --- Against adjusted benchmarks (conditioned sqft) ---
+print()
+print("Against RECS benchmarks using conditioned sqft (TOTHSQFT / TOTCSQFT):")
+print(f"{'Group':<15s}  {'End-use':<15s}  {'RS orig':>8s}  {'Uniform δ':>10s}  "
+      f"{'Per-bldg':>10s}  {'RECS adj':>8s}  {'Gap closed':>22s}")
+print(f"{'':30s}  {'':>8s}  {'':>10s}  {'':>10s}  {'':>8s}  {'Uniform':>10s}  {'Per-bldg':>10s}")
+print(f"{'-'*15}  {'-'*15}  {'-'*8}  {'-'*10}  {'-'*10}  {'-'*8}  {'-'*10}  {'-'*10}")
+
+for (g, eu), recs_adj in RECS_BENCHMARKS_ADJUSTED.items():
+    sub_mask = np.array([x == g for x in group_arr])
+    w_g = w_arr[sub_mask]
+    sqft_g = sqft_arr[sub_mask]
+
+    if eu == "Elec heating":
+        orig_vals = heat_kwh[sub_mask]
+        uni_vals = corrected_heat_star[sub_mask]
+        pb_vals = pb_heat[sub_mask]
+    elif eu == "Elec cooling":
+        orig_vals = cool_kwh[sub_mask]
+        uni_vals = corrected_cool_star[sub_mask]
+        pb_vals = pb_cool[sub_mask]
+    elif eu == "Gas heating":
+        orig_vals = gas_heat_kwh[sub_mask]
+        uni_vals = corrected_gas_heat_star[sub_mask]
+        pb_vals = pb_gas_heat[sub_mask]
+    else:
+        continue
+
+    orig_psf = (w_g * orig_vals / sqft_g).sum() / w_g.sum()
+    uni_psf = (w_g * uni_vals / sqft_g).sum() / w_g.sum()
+    pb_psf = (w_g * pb_vals / sqft_g).sum() / w_g.sum()
+
+    adj_gap = orig_psf - recs_adj
+    uni_closed = (orig_psf - uni_psf) / adj_gap * 100 if adj_gap > 0 else 0
+    pb_closed_pct = (orig_psf - pb_psf) / adj_gap * 100 if adj_gap > 0 else 0
+
+    print(f"{g:<15s}  {eu:<15s}  {orig_psf:>8.2f}  {uni_psf:>10.2f}  "
+          f"{pb_psf:>10.2f}  {recs_adj:>8.2f}  {uni_closed:>9.0f}%  {pb_closed_pct:>10.0f}%")
+```
+
+### Per-building vs. uniform: summary comparison
+
+```{python}
+#| label: pb-summary
+
+print("=" * 70)
+print("PER-BUILDING vs. UNIFORM ACH50 CORRECTION — COMPARISON")
+print("=" * 70)
+print()
+print("Both approaches use the same regression slopes (kWh/sqft per ACH50,")
+print("fitted within ResStock by heating-type group). They differ only in")
+print("how ΔACH50 is determined for each building:")
+print()
+print("  Uniform:      ΔACH50_i = δ × ACH50_RS_i, same δ for all homes")
+print("  Per-building:  ΔACH50_i = ACH50_RS_i − ACH50_Chan_i, per-home target")
+print()
+print(f"  Uniform δ:                {delta_benchmark:.1%}")
+print(f"  Per-building mean |Δ|:    {(np.abs(delta_ach50_per_bldg) * w_arr).sum() / w_arr.sum():.1f} ACH50")
+print(f"  Per-building mean δ_eff:  {(delta_ach50_per_bldg / ach_arr * w_arr).sum() / w_arr.sum():.1%}")
+print()
+
+pb_remaining = (pb_elec_gwh - test_year_gwh) / test_year_gwh * 100
+uni_remaining = (corrected_gwh_star - test_year_gwh) / test_year_gwh * 100
+print("ELECTRIC:")
+print(f"  {'':30s}  {'Uniform δ':>10s}  {'Per-bldg':>10s}")
+print(f"  {'Corrected total (GWh)':30s}  {corrected_gwh_star:>10.2f}  {pb_elec_gwh:>10.2f}")
+print(f"  {'Gap to test-year':30s}  {uni_remaining:>+9.1f}%  {pb_remaining:>+9.1f}%")
+print(f"  {'Gap closed':30s}  {uniform_closed / gap_total * 100:>9.0f}%  {pb_closed / gap_total * 100:>9.0f}%")
+print()
+print("NATURAL GAS (thermal kWh):")
+print(f"  {'':30s}  {'Uniform δ':>10s}  {'Per-bldg':>10s}")
+print(f"  {'Corrected total (GWh)':30s}  {corrected_gas_gwh_star:>10.2f}  {pb_gas_gwh:>10.2f}")
+print(f"  {'Change from original':30s}  {uniform_gas_change:>+9.1f}%  {pb_gas_change:>+9.1f}%")
+print()
+print("The per-building correction targets the ACH50 discrepancy where it")
+print("actually is — concentrated in older vintages — rather than spreading")
+print("it uniformly. Because it uses each home's own Chan-predicted ACH50")
+print("as the target, it also allows corrections in both directions: homes")
+print("with too-tight envelopes get a load increase, while homes with")
+print("overstated infiltration get a load decrease.")
+```

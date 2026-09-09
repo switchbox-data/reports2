@@ -42,10 +42,10 @@ import numpy as np
 import polars as pl
 
 if TYPE_CHECKING:
-    from matplotlib.axes import Axes
     from collections.abc import Sequence
 
     import polars as pl
+    from matplotlib.axes import Axes
     from matplotlib.figure import Figure
     from plotnine import ggplot
 

@@ -1,0 +1,246 @@
+---
+title: MD BGE Bill Change Analysis — Schedule R (As Filed)
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+execute:
+  warning: false
+  message: false
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+
+This notebook isolates the natural-gas-to-heat-pump bill-change analysis so it can run
+against this batch today. `analysis.qmd` also compares MD BGE's `default` schedule to
+calibrated `hp_seasonal_*`/`hp_flat_*` reform tariffs, but this batch (`md_20260909_a`) has
+only run `default_r_uncalibrated` and `default_rd_uncalibrated` so far — no reform scenario
+exists yet to compare against. Rather than let those missing scenarios break the whole
+notebook, this one covers just the piece that *is* available: how a BGE Schedule R
+customer's bill changes when they switch from natural gas to a heat pump, under the rate
+exactly as filed.
+
+The functions doing the actual data crunching are the same ones `analysis.qmd` uses, from
+[`lib/rates_analysis/rate_case_funcs.py`](../../../lib/rates_analysis/rate_case_funcs.py) —
+this notebook just calls a smaller subset of them, scoped to the one scenario this batch has.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import cast
+
+import polars as pl
+import yaml
+
+from lib.rates_analysis.rate_case_funcs import (
+    bill_change_incidence,
+    bill_delta_between_segments,
+    load_master_bills,
+    plot_bill_change_quadrants,
+    plot_weighted_bill_change_hist,
+    segment_name,
+)
+
+report_vars: dict = {}
+```
+
+## Parameters
+
+Batch identity lives in `batch_config.yaml` alongside this report, not hardcoded here, so
+re-running against a new batch is a one-file change. `BASELINE_BILL_SCENARIO` is
+`"default_r_uncalibrated"` — BGE's Schedule R billed exactly as filed (CAIRO's "uncalibrated"
+mode, meaning the tariff itself isn't recalibrated to hit a revenue-requirement target; see
+`pipeline_bge.yaml`'s comment: "Posted Schedule R billed as-is"). That's a different
+"calibrated" than the *stage* name below — don't confuse the two.
+
+```{python}
+#| label: params
+
+_batch_config = yaml.safe_load(Path("../batch_config.yaml").read_text())
+
+STATE = _batch_config["STATE"]
+BATCH = _batch_config["BATCH"]
+UTILITY = "bge"
+
+# bills
+BILL_COL_LMI_CURRENT = "energy_total_bill_lmi_48"
+BILL_COL_LMI_100 = "energy_total_bill_lmi_100"
+BILL_COL_BASELINE = "energy_total_bill"
+
+# this is the column that will be used for all comparisons and plots
+BILL_COL = BILL_COL_LMI_CURRENT  # BILL_COL_BASELINE, BILL_COL_LMI_CURRENT, or BILL_COL_LMI_100
+
+DEFAULT_SCENARIO = _batch_config["BASELINE_BILL_SCENARIO"]
+
+# Heating season for the winter-only charts: Oct–Mar.
+WINTER_MONTHS = ["Oct", "Nov", "Dec", "Jan", "Feb", "Mar"]
+
+print(f"state={STATE}  batch={BATCH}  utility={UTILITY}  scenario={DEFAULT_SCENARIO}  bill_col={BILL_COL}")
+```
+
+Every bill-change comparison below reads the `BILL_COL` column set above — currently
+**`{python} BILL_COL`**. Leaving it at `energy_total_bill` compares baseline (undiscounted)
+bills; switching it to `energy_total_bill_lmi_48` or `energy_total_bill_lmi_100` reruns every
+comparison net of Maryland's OHEP low-income bill discount, at 48% or 100% participation
+respectively.
+
+`segment_name()` turns a scenario + stage into the directory name CAIRO's post-processing
+writes master tables under:
+
+- **`precalc`** — today's mixed heating population (pre-retrofit), Schedule R as filed. This
+  is our **baseline**: `default_r_uncalibrated_precalc/`.
+- **`calibrated`** — the same buildings retrofitted to a heat pump, still on Schedule R as
+  filed. This is our **after**: `default_r_uncalibrated_calibrated/`.
+
+```{python}
+#| label: ingest
+
+SEG_DEFAULT_PRECALC = segment_name(DEFAULT_SCENARIO, "precalc")
+SEG_DEFAULT_CALIBRATED = segment_name(DEFAULT_SCENARIO, "calibrated")
+
+bills_default_precalc = load_master_bills(STATE, BATCH, SEG_DEFAULT_PRECALC)
+bills_default_calibrated = load_master_bills(STATE, BATCH, SEG_DEFAULT_CALIBRATED)
+
+print(f"baseline segment: {SEG_DEFAULT_PRECALC}")
+print(f"after segment:    {SEG_DEFAULT_CALIBRATED}")
+```
+
+Let's look at a sample of the baseline bills to see what's in the table, and check the sample
+size — how many ResStock buildings we have, and how many actual MD BGE residential customers
+they represent once we sum ResStock's sample weights.
+
+```{python}
+#| label: sample-size
+
+_sample = cast(
+    pl.DataFrame,
+    bills_default_precalc
+    .filter(pl.col("month") == "Annual")
+    .select("bldg_id", "weight", "postprocess_group.heating_type_v2", "postprocess_group.has_hp", "energy_total_bill")
+    .collect(),
+)
+print(_sample.head())
+
+n_resstock_bldgs = _sample["bldg_id"].n_unique()
+n_utility_customers = float(_sample["weight"].sum())
+report_vars["n_resstock_bldgs"] = n_resstock_bldgs
+report_vars["n_utility_customers"] = n_utility_customers
+print(f"Unique ResStock buildings: {n_resstock_bldgs:,}")
+print(f"Total MD BGE residential customers (sum of weights): {n_utility_customers:,.0f}")
+```
+
+## Bill-increase incidence switching from natural gas to a heat pump, under Schedule R
+
+How often does a natural-gas-heated MD BGE home end up with a *higher* total annual energy
+bill (electric + gas) after switching to a heat pump, if nothing about the rate design
+changes? We diff each building's annual **`{python} BILL_COL`** between
+`default_r_uncalibrated_precalc` (today's HVAC, Schedule R as filed) and
+`default_r_uncalibrated_calibrated` (same building retrofitted to a heat pump, same tariff)
+— a same-scenario, before/after-retrofit comparison — restricted to buildings whose baseline
+heating fuel is natural gas.
+
+```{python}
+#| label: compute-natgas-hp-delta-default
+
+delta_natgas_default = bill_delta_between_segments(
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED, bill_col=BILL_COL
+).filter(pl.col("heating_type_v2") == "natgas")
+
+incidence_natgas_default = bill_change_incidence(delta_natgas_default)
+incidence_natgas_default
+```
+
+```{python}
+#| label: report-vars-natgas-hp-delta-default
+
+report_vars["pct_natgas_hp_bill_increase_default"] = incidence_natgas_default["pct_increase"]
+report_vars["pct_natgas_hp_bill_decrease_default"] = incidence_natgas_default["pct_decrease"]
+report_vars["mean_natgas_hp_bill_increase_default"] = incidence_natgas_default["mean_delta"]
+report_vars["median_natgas_hp_bill_increase_default"] = incidence_natgas_default["median_delta"]
+```
+
+**`{python} f"{report_vars['pct_natgas_hp_bill_increase_default']:.0%}"` of natural-gas-heated
+MD BGE homes would see their total annual energy bill go up** after switching to a heat pump
+under Schedule R as filed — a mean increase of
+`{python} f"${report_vars['mean_natgas_hp_bill_increase_default']:,.0f}"` a year (median
+`{python} f"${report_vars['median_natgas_hp_bill_increase_default']:,.0f}"`). The rest see a
+decrease, mostly from avoided gas costs outweighing the added electric load.
+
+## Bill change quadrant plot
+
+`plot_bill_change_quadrants()` gives a more granular view of the same before/after-retrofit
+comparison — instead of just a mean and median, it shows the weighted share of households
+landing in each of four savings/loss bins ($0-1k and >$1k, in each direction), split by
+baseline heating type.
+
+```{python}
+#| label: fig-bill-change-quadrants-default-all
+#| fig-cap: "Change in total annual energy bill after switching to a heat pump, by baseline heating type, under MD BGE's Schedule R (as filed)."
+
+plot_bill_change_quadrants(
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED,
+    bill_col=BILL_COL,
+    rate_name="Schedule R rate (as filed)",
+)
+```
+
+The annual view mixes summer cooling with winter heating. Restricting the same before/after-retrofit comparison to October–March isolates the months where a heat pump actually replaces the furnace. The `$1k` bins are still absolute dollars over those six months, not a scaled annual equivalent.
+
+```{python}
+#| label: fig-bill-change-quadrants-default-winter
+#| fig-cap: "Change in total Oct–March energy bill after switching to a heat pump, by baseline heating type, under MD BGE's Schedule R (as filed)."
+
+plot_bill_change_quadrants(
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED,
+    bill_col=BILL_COL,
+    rate_name="Schedule R rate (as filed)",
+    month=WINTER_MONTHS,
+)
+```
+
+The stacked bars above compress each heating type into four bins; the histogram below shows
+the full weighted distribution for natural-gas-heated homes only, under the same
+before/after-retrofit comparison.
+
+```{python}
+#| label: fig-hist-natgas-bill-change-default
+#| fig-cap: "Distribution of the annual total energy bill change for natural-gas-heated MD BGE homes after switching to a heat pump, under Schedule R as filed."
+
+plot_weighted_bill_change_hist(
+    delta_natgas_default,
+    "Natural-gas homes switching to a heat pump under Schedule R (as filed)",
+)
+```
+
+Restricting to just the natural-gas subclass isolates the incidence figure computed above
+(`{python} f"{report_vars['pct_natgas_hp_bill_increase_default']:.0%}"` seeing an increase)
+into the same savings/loss bins, rather than just a binary increase/decrease split.
+
+## Export report variables
+
+This notebook writes to its own cache file (`bills_only_report_variables.pkl`), separate from
+`analysis.qmd`'s `report_variables.pkl`, since both are rendered in the same Quarto project
+and a shared, fully-overwritten cache file would let whichever notebook renders last silently
+clobber the other's variables.
+
+```{python}
+#| label: export-report-vars
+
+import pickle
+
+Path("../cache").mkdir(exist_ok=True)
+Path("../cache/bills_only_report_variables.pkl").write_bytes(pickle.dumps(report_vars))
+report_vars
+```

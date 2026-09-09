@@ -10,6 +10,8 @@ import pytest
 from lib.rates_analysis.rate_case_funcs import (
     MONTH_ORDER,
     _annual_bill_component_stack_data,
+    _normalize_bill_months,
+    bill_period_phrase,
     plot_annual_bill_component_stacked,
     quadrant_pcts,
     tariff_month_rate_table,
@@ -219,3 +221,17 @@ def test_weighted_range_pcts_five_bins() -> None:
         "lose > $1k",
     ]
     assert all(v == pytest.approx(20.0) for v in pct.values())
+
+
+def test_normalize_bill_months_rejects_annual_mix() -> None:
+    with pytest.raises(ValueError, match="Cannot combine"):
+        _normalize_bill_months(["Annual", "Jan"])
+    with pytest.raises(ValueError, match="non-empty"):
+        _normalize_bill_months([])
+    assert _normalize_bill_months("Jan") == ["Jan"]
+
+
+def test_bill_period_phrase() -> None:
+    assert bill_period_phrase("Annual") == "annual"
+    assert bill_period_phrase("Jan") == "Jan"
+    assert bill_period_phrase(["Oct", "Nov", "Dec", "Jan", "Feb", "Mar"]) == "Oct-Mar"

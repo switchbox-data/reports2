@@ -1,0 +1,247 @@
+---
+jupyter: python3
+execute:
+  warning: false
+  message: false
+---
+
+# BGE Schedule RD Rate Analysis
+## Comparing R/RL vs RD Time-of-Use rates for heat pump customers
+
+This notebook analyzes BGE's Schedule RD (Residential Delivery and Energy Time-of-Use)
+rate for heat pump customers, comparing energy bills between:
+
+- **Before**: Gas heating on R/RL tariff (`default` quartet, `precalc` stage → upgrade 00)
+- **After**: Heat pump on RD tariff (`default_rd` quartet, `calibrated` stage → upgrade 02)
+
+This is the full transition: switching from gas heating to a heat pump *and*
+moving to the RD time-of-use tariff. Segment names are `{scenario}_{stage}` and each
+maps to its own master bills table under the batch, so the two sides come from two
+completely different quartets.
+
+```{python}
+# Setup
+from __future__ import annotations
+
+from typing import cast
+
+import polars as pl
+import plotnine as p9
+from great_tables import GT
+
+from lib.great_tables import get_switchbox_gt_tab_options
+from lib.plotnine import SB_COLORS, theme_switchbox
+from lib.quarto import display_gt
+from lib.rates_analysis.rate_case_funcs import (
+    HEATING_ORDER,
+    QUADRANT_COLORS,
+    QUADRANT_ORDER,
+    add_heating_label,
+    bill_delta_between_segments,
+    quadrant_pcts,
+    weighted_mean,
+    weighted_quantile,
+)
+```
+
+```{python}
+# Parameters
+STATE = "md"
+BATCH = "md_20260825_rd_comparison"
+UTILITY = "bge"
+
+# Segments = {scenario}_{stage}. These pull two different quartets:
+#   default / precalc      → R/RL on upgrade 00
+#   default_rd / calibrated → RD on upgrade 02
+SEGMENT_DEFAULT = "default_precalc"
+SEGMENT_RD = "default_rd_calibrated"
+```
+
+```{python}
+# Annual energy-bill change: R/RL on upgrade 00 → RD on upgrade 02
+bill_change = add_heating_label(
+    bill_delta_between_segments(
+        STATE,
+        BATCH,
+        SEGMENT_DEFAULT,
+        SEGMENT_RD,
+        electric_utility=UTILITY,
+    )
+).with_columns((pl.col("delta") / pl.col("bill_before")).alias("pct_change"))
+
+print(f"{len(bill_change):,} buildings")
+```
+
+## Bill Change Analysis
+
+```{python}
+plot = (
+    p9.ggplot(bill_change, p9.aes(x="delta", weight="weight"))
+    + p9.geom_histogram(bins=50, fill=SB_COLORS["sky"], alpha=0.7)
+    + p9.facet_wrap("~ heating_label", scales="free_y")
+    + p9.labs(
+        x="Annual bill change ($)",
+        y="Weighted count",
+        title="Annual Bill Change: R/RL → RD with Heat Pump",
+    )
+    + p9.theme_minimal()
+    + p9.theme(figure_size=(10, 4))
+)
+plot
+```
+
+```{python}
+# Summary statistics
+summary = (
+    bill_change
+    .group_by("heating_label")
+    .agg([
+        pl.col("bldg_id").count().alias("n_buildings"),
+        pl.col("weight").sum().alias("weight_total"),
+        ((pl.col("delta") * pl.col("weight")).sum() / pl.col("weight").sum()).alias("mean_bill_change"),
+        ((pl.col("pct_change") * pl.col("weight")).sum() / pl.col("weight").sum()).alias("mean_pct_change"),
+    ])
+    .sort("heating_label")
+)
+
+_summary_gt = (
+    GT(summary, rowname_col="heating_label")
+    .cols_label(
+        n_buildings="Buildings",
+        weight_total="Weighted households",
+        mean_bill_change="Mean bill change",
+        mean_pct_change="Mean % change",
+    )
+    .fmt_number(columns=["n_buildings", "weight_total"], decimals=0, use_seps=True)
+    .fmt_currency(columns="mean_bill_change", decimals=0)
+    .fmt_percent(columns="mean_pct_change", decimals=1)
+    .tab_stubhead(label="Baseline heating type")
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+display_gt(_summary_gt)
+```
+
+### Savings/Losses Quadrant Bar Chart
+
+This chart shows the distribution of bill changes in four quadrants:
+
+| Bin | Definition |
+|-----|------------|
+| SAVE > $1K | Annual energy bill decreases by more than $1,000 |
+| SAVE $0-1K | Annual energy bill decreases by $0–$1,000 |
+| LOSE $0-1K | Annual energy bill increases by $0–$1,000 |
+| LOSE > $1K | Annual energy bill increases by more than $1,000 |
+
+A bar leaning heavily green indicates that most households in that group would save
+money by switching from R/RL to RD with a heat pump.
+
+```{python}
+avail_heating = sorted(
+    bill_change.select("heating_label").unique().to_series().to_list(),
+    key=lambda x: HEATING_ORDER.index(x) if x in HEATING_ORDER else 999,
+)
+
+qb_records: list[dict[str, object]] = []
+for group in avail_heating:
+    pct = quadrant_pcts(bill_change.filter(pl.col("heating_label") == group))
+    for q in QUADRANT_ORDER:
+        qb_records.append({"heating_label": group, "quadrant": q, "pct": pct[q]})
+
+qb_plot = pl.DataFrame(qb_records).with_columns(
+    pl.col("heating_label").cast(pl.Enum(list(reversed(avail_heating)))),
+    pl.col("quadrant").cast(pl.Enum(QUADRANT_ORDER)),
+)
+
+plot = (
+    p9.ggplot(qb_plot, p9.aes(x="heating_label", y="pct", fill="quadrant"))
+    + p9.geom_col(position="stack", width=0.55)
+    + p9.geom_text(
+        mapping=p9.aes(label="pct"),
+        data=qb_plot.filter(pl.col("pct") >= 3),
+        position=p9.position_stack(vjust=0.5),
+        format_string="{:.1f}%",
+        color="white",
+        size=11,
+        fontweight="bold",
+    )
+    + p9.scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
+    + p9.scale_y_continuous(expand=(0, 0, 0.02, 0))
+    + p9.coord_flip()
+    + p9.guides(fill=False)
+    + p9.labs(
+        x="",
+        y="% of weighted households",
+        title="Change in annual bill: Gas on R/RL (u00) → Heat Pump on RD (u02)",
+    )
+    + theme_switchbox()
+    + p9.theme(figure_size=(10.5, max(3.5, 1.0 + 1.4 * len(avail_heating))))
+)
+
+plot
+```
+
+### Savings Breakdown Table
+
+The table below shows the fraction of weighted households in each savings/loss bin,
+broken out by baseline heating type.
+
+```{python}
+SAVE_BINS: list[tuple[float, float, str]] = [
+    (-float("inf"), -2000, "save_gt_2k"),
+    (-2000, -1000, "save_1k_2k"),
+    (-1000, 0, "save_0_1k"),
+    (0, 1000, "lose_0_1k"),
+    (1000, float("inf"), "lose_gt_1k"),
+]
+
+savings_rows: list[dict[str, object]] = []
+for group in avail_heating:
+    gdf = bill_change.filter(pl.col("heating_label") == group)
+    total_w = cast(float, gdf["weight"].sum())
+    row: dict[str, object] = {
+        "heating_label": group,
+        "n_buildings": gdf.height,
+        "weight_total": total_w,
+    }
+    for lo, hi, col in SAVE_BINS:
+        if lo == -float("inf"):
+            filt = gdf.filter(pl.col("delta") < hi)
+        elif hi == float("inf"):
+            filt = gdf.filter(pl.col("delta") >= lo)
+        else:
+            filt = gdf.filter((pl.col("delta") >= lo) & (pl.col("delta") < hi))
+        row[col] = cast(float, filt["weight"].sum()) / total_w
+    row["mean_change"] = weighted_mean(gdf, "delta")
+    row["median_change"] = weighted_quantile(gdf, "delta", 0.5)
+    savings_rows.append(row)
+
+savings_df = pl.DataFrame(savings_rows)
+
+_savings_gt = (
+    GT(savings_df, rowname_col="heating_label")
+    .cols_label(
+        n_buildings="Buildings",
+        weight_total="Weighted households",
+        save_gt_2k="Save > $2k/yr",
+        save_1k_2k="Save $1k–$2k/yr",
+        save_0_1k="Save $0–$1k/yr",
+        lose_0_1k="Lose $0–$1k/yr",
+        lose_gt_1k="Lose > $1k/yr",
+        mean_change="Mean change",
+        median_change="Median change",
+    )
+    .fmt_number(columns=["n_buildings", "weight_total"], decimals=0, use_seps=True)
+    .fmt_percent(
+        columns=["save_gt_2k", "save_1k_2k", "save_0_1k", "lose_0_1k", "lose_gt_1k"],
+        decimals=1,
+    )
+    .fmt_currency(columns=["mean_change", "median_change"], decimals=0)
+    .tab_stubhead(label="Baseline heating type")
+    .tab_source_note(
+        "Shares are weighted households in each annual bill-change bin. "
+        "Mean/median are weight-averaged $/yr changes (R/RL u00 → RD u02)."
+    )
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+display_gt(_savings_gt)
+```

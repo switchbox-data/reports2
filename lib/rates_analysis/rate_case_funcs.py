@@ -42,6 +42,9 @@ import numpy as np
 import polars as pl
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    import polars as pl
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
     from plotnine import ggplot
@@ -142,6 +145,258 @@ def load_billing_kwh_annual(state: str, utility: str, batch: str, segment: str) 
     return pl.scan_parquet(f"{run_path}/billing_kwh_annual.parquet")
 
 
+def load_billing_kwh_8760(state: str, utility: str, batch: str, segment: str) -> pl.LazyFrame:
+    """Load per-building hourly kWh from a CAIRO run's ``billing_kwh_8760.parquet``.
+
+    Same run-directory resolution as :func:`load_billing_kwh_annual`. Returns a
+    LazyFrame with ``bldg_id``, ``timestamp``, and ``grid_cons_kwh`` (post-PV-
+    netting grid consumption, floored at 0).
+
+    Timestamps are returned as-is (UTC in current CAIRO output). Callers that
+    join against local-time marginal costs should shift by the appropriate UTC
+    offset before joining.
+    """
+    import polars as pl
+
+    from lib.data.s3 import list_s3_subdirs, run_dir
+
+    base = f"{S3_BASE}/{state.lower()}/{utility}/{batch}/"
+    subdirs = list_s3_subdirs(base)
+    run_path = run_dir(subdirs, name_ends_with=f"{utility}_{segment}_delivery")
+    return pl.scan_parquet(f"{run_path}/billing_kwh_8760.parquet").select("bldg_id", "timestamp", "grid_cons_kwh")
+
+
+def weighted_avg_hourly(
+    kwh_8760: pl.LazyFrame,
+    bldg_ids: list[int],
+    weights: pl.DataFrame,
+) -> pl.DataFrame:
+    """Weighted-average hourly load profile for a set of buildings.
+
+    Parameters
+    ----------
+    kwh_8760
+        LazyFrame from :func:`load_billing_kwh_8760` with columns
+        ``bldg_id``, ``timestamp``, ``grid_cons_kwh``.
+    bldg_ids
+        Building IDs to include (one population).
+    weights
+        DataFrame with ``bldg_id`` and ``weight`` columns.
+
+    Returns
+    -------
+    pl.DataFrame
+        8760-row DataFrame with ``timestamp`` and ``kwh``.
+    """
+    import polars as pl
+
+    hourly = cast(
+        pl.DataFrame,
+        kwh_8760.filter(pl.col("bldg_id").is_in(bldg_ids)).collect(),
+    ).join(weights.select("bldg_id", "weight"), on="bldg_id")
+    return (
+        hourly.group_by("timestamp")
+        .agg(((pl.col("grid_cons_kwh") * pl.col("weight")).sum() / pl.col("weight").sum()).alias("kwh"))
+        .sort("timestamp")
+    )
+
+
+def weighted_avg_monthly(
+    kwh_8760: pl.LazyFrame,
+    bldg_ids: list[int],
+    weights: pl.DataFrame,
+) -> pl.DataFrame:
+    """Weighted-average monthly kWh for a set of buildings.
+
+    Sums each building's hourly kWh to monthly totals, then takes the weighted
+    average across buildings. Replaces notebook-local functions that read
+    ``elec_grid_kwh`` from master bills.
+
+    Parameters
+    ----------
+    kwh_8760
+        LazyFrame from :func:`load_billing_kwh_8760`.
+    bldg_ids
+        Building IDs to include (one population).
+    weights
+        DataFrame with ``bldg_id`` and ``weight`` columns.
+
+    Returns
+    -------
+    pl.DataFrame
+        12-row DataFrame with ``month_label`` (Enum Jan-Dec) and ``kwh``.
+        Compatible with :func:`plot_monthly_load`, :func:`plot_monthly_load_before_after`,
+        and :func:`monthly_bill_from_profile`.
+    """
+    import polars as pl
+
+    monthly_per_bldg = cast(
+        pl.DataFrame,
+        kwh_8760.filter(pl.col("bldg_id").is_in(bldg_ids))
+        .with_columns(pl.col("timestamp").dt.month().alias("_month_num"))
+        .group_by("bldg_id", "_month_num")
+        .agg(pl.col("grid_cons_kwh").sum().alias("kwh"))
+        .collect(),
+    ).join(weights.select("bldg_id", "weight"), on="bldg_id")
+    month_num_to_label = {i + 1: m for i, m in enumerate(MONTH_ORDER)}
+    return (
+        monthly_per_bldg.group_by("_month_num")
+        .agg(((pl.col("kwh") * pl.col("weight")).sum() / pl.col("weight").sum()).alias("kwh"))
+        .sort("_month_num")
+        .with_columns(pl.col("_month_num").replace_strict(month_num_to_label).alias("month_label"))
+        .select(
+            pl.col("month_label").cast(pl.Enum(MONTH_ORDER)),
+            "kwh",
+        )
+    )
+
+
+def sum_8760_to_monthly(hourly: pl.DataFrame, value_col: str = "kwh") -> pl.DataFrame:
+    """Sum an 8760-row hourly series to 12 monthly totals.
+
+    Parameters
+    ----------
+    hourly
+        DataFrame with ``timestamp`` and *value_col*.
+    value_col
+        Column to sum within each month.
+
+    Returns
+    -------
+    pl.DataFrame
+        12-row DataFrame with ``month_label`` (Enum Jan-Dec) and the summed
+        *value_col*.
+    """
+    import polars as pl
+
+    month_num_to_label = {i + 1: m for i, m in enumerate(MONTH_ORDER)}
+    return (
+        hourly.with_columns(pl.col("timestamp").dt.month().alias("_month_num"))
+        .group_by("_month_num")
+        .agg(pl.col(value_col).sum())
+        .sort("_month_num")
+        .with_columns(pl.col("_month_num").replace_strict(month_num_to_label).alias("month_label"))
+        .select(
+            pl.col("month_label").cast(pl.Enum(MONTH_ORDER)),
+            value_col,
+        )
+    )
+
+
+def sum_monthly_peak_offpeak_kwh(
+    load_8760: pl.DataFrame,
+    mc_8760: pl.DataFrame,
+    *,
+    utc_offset_hours: int = -5,
+) -> pl.DataFrame:
+    """Split hourly kWh into peak vs. off-peak and sum to monthly totals.
+
+    An hour is "peak" when either the bulk-transmission or distribution
+    marginal cost is positive (same definition used in
+    ``analysis.qmd::_pct_mc_peak_hours_in_summer``).
+
+    Parameters
+    ----------
+    load_8760
+        8760-row DataFrame with ``timestamp`` (UTC) and ``kwh`` — a single
+        building or population-average hourly profile from
+        :func:`weighted_avg_hourly`.
+    mc_8760
+        DataFrame from :func:`load_delivery_mc_heatmap` with ``timestamp``
+        (local), ``mc_bulk_tx``, ``mc_dist_sub_tx``.
+    utc_offset_hours
+        Hours to shift ``load_8760`` timestamps to align with ``mc_8760``.
+        Default ``-5`` converts CAIRO's UTC to Eastern Standard Time.
+
+    Returns
+    -------
+    pl.DataFrame
+        12-row DataFrame with ``month_label`` (Enum Jan-Dec),
+        ``kwh_offpeak``, ``kwh_peak``.  The two columns sum to the same
+        monthly totals as :func:`weighted_avg_monthly`.
+    """
+    import polars as pl
+
+    load_local = load_8760.with_columns((pl.col("timestamp") + pl.duration(hours=utc_offset_hours)).alias("timestamp"))
+    joined = load_local.join(
+        mc_8760.select("timestamp", "mc_bulk_tx", "mc_dist_sub_tx"),
+        on="timestamp",
+    )
+    if joined.height != 8760:
+        raise ValueError(
+            f"Expected 8760 rows after join, got {joined.height}. Check timestamp alignment between load and MC data."
+        )
+
+    month_num_to_label = {i + 1: m for i, m in enumerate(MONTH_ORDER)}
+    flagged = joined.with_columns(
+        pl.col("timestamp").dt.month().alias("_month_num"),
+        ((pl.col("mc_bulk_tx") > 0) | (pl.col("mc_dist_sub_tx") > 0)).alias("_is_peak"),
+    )
+    return (
+        flagged.group_by("_month_num")
+        .agg(
+            pl.col("kwh").filter(~pl.col("_is_peak")).sum().alias("kwh_offpeak"),
+            pl.col("kwh").filter(pl.col("_is_peak")).sum().alias("kwh_peak"),
+        )
+        .sort("_month_num")
+        .with_columns(pl.col("_month_num").replace_strict(month_num_to_label).alias("month_label"))
+        .select(
+            pl.col("month_label").cast(pl.Enum(MONTH_ORDER)),
+            "kwh_offpeak",
+            "kwh_peak",
+        )
+    )
+
+
+def building_delivery_mc_8760(
+    load_8760: pl.DataFrame,
+    mc_8760: pl.DataFrame,
+    *,
+    utc_offset_hours: int = -5,
+) -> pl.DataFrame:
+    """Multiply an hourly load profile by delivery marginal costs.
+
+    Takes a single building (or population-average) load profile and the 8760
+    delivery marginal-cost schedule, aligns their timestamps, and returns
+    hourly marginal cost in dollars for transmission and distribution separately.
+
+    Parameters
+    ----------
+    load_8760
+        8760-row DataFrame with ``timestamp`` and ``kwh``. Timestamps may be
+        UTC (as returned by :func:`weighted_avg_hourly` on data from
+        :func:`load_billing_kwh_8760`).
+    mc_8760
+        DataFrame from :func:`load_delivery_mc_heatmap` with ``timestamp``,
+        ``mc_bulk_tx``, ``mc_dist_sub_tx``. Timestamps are local.
+    utc_offset_hours
+        Hours to shift ``load_8760`` timestamps to align with ``mc_8760``.
+        Default ``-5`` converts CAIRO's UTC to Eastern Standard Time.
+
+    Returns
+    -------
+    pl.DataFrame
+        8760-row DataFrame with ``timestamp`` (local), ``mc_tx_dollars``,
+        ``mc_dist_dollars``.
+    """
+    import polars as pl
+
+    load_local = load_8760.with_columns((pl.col("timestamp") + pl.duration(hours=utc_offset_hours)).alias("timestamp"))
+    joined = load_local.join(
+        mc_8760.select("timestamp", "mc_bulk_tx", "mc_dist_sub_tx"),
+        on="timestamp",
+    )
+    if joined.height != 8760:
+        raise ValueError(
+            f"Expected 8760 rows after join, got {joined.height}. Check timestamp alignment between load and MC data."
+        )
+    return joined.select(
+        "timestamp",
+        (pl.col("kwh") * pl.col("mc_bulk_tx")).alias("mc_tx_dollars"),
+        (pl.col("kwh") * pl.col("mc_dist_sub_tx")).alias("mc_dist_dollars"),
+    )
+
+
 def load_delivery_mc_heatmap(state: str, utility: str, year: int) -> pl.DataFrame:
     """Load and join hourly bulk-transmission and distribution/sub-transmission marginal costs.
 
@@ -215,6 +470,7 @@ def bill_delta_between_segments(
     *,
     bill_col: str = "energy_total_bill",
     month: str = "Annual",
+    electric_utility: str | None = None,
 ) -> pl.DataFrame:
     """Diff a per-building bill column between any two ``{scenario}_{stage}`` segments.
 
@@ -232,19 +488,23 @@ def bill_delta_between_segments(
     segments/stages for the same population (see rate-design-platform PR #503's
     ``master_metadata.py``).
 
+    *electric_utility* optionally restricts to one ``sb.electric_utility``
+    value (from *segment_before*) before the join.
+
     Returns a DataFrame with ``bldg_id``, ``weight``, ``has_hp``,
     ``heating_type_v2``, ``bill_before``, ``bill_after``, ``delta``.
     """
-    before = (
-        load_master_bills(state, batch, segment_before)
-        .filter(pl.col("month") == month)
-        .select(
-            "bldg_id",
-            "weight",
-            pl.col(bill_col).alias("bill_before"),
-            pl.col("postprocess_group.has_hp").alias("has_hp"),
-            pl.col("postprocess_group.heating_type_v2").alias("heating_type_v2"),
-        )
+    import polars as pl
+
+    before = load_master_bills(state, batch, segment_before).filter(pl.col("month") == month)
+    if electric_utility is not None:
+        before = before.filter(pl.col("sb.electric_utility") == electric_utility)
+    before = before.select(
+        "bldg_id",
+        "weight",
+        pl.col(bill_col).alias("bill_before"),
+        pl.col("postprocess_group.has_hp").alias("has_hp"),
+        pl.col("postprocess_group.heating_type_v2").alias("heating_type_v2"),
     )
     after = (
         load_master_bills(state, batch, segment_after)
@@ -397,30 +657,60 @@ def add_heating_label(df: pl.DataFrame, code_col: str = "heating_type_v2") -> pl
     )
 
 
-def quadrant_pcts(df: pl.DataFrame, weight_col: str = "weight") -> dict[str, float]:
+def weighted_range_pcts(
+    df: pl.DataFrame,
+    *,
+    value_col: str,
+    ranges: Sequence[tuple[str, float, float]],
+    weight_col: str = "weight",
+) -> dict[str, float]:
+    """Weighted percent of rows in labeled half-open intervals.
+
+    ``ranges`` is ``(label, lo, hi)`` meaning ``lo <= value < hi``. Use
+    ``-math.inf`` / ``math.inf`` for unbounded tails. Labels are returned in
+    the order given. Percents are on a 0-100 scale and sum to 100 when the
+    ranges partition the data and every row has a finite weight.
+    """
+    labels = [label for label, _lo, _hi in ranges]
+    if len(labels) != len(set(labels)):
+        duplicates = sorted({label for label in labels if labels.count(label) > 1})
+        raise ValueError(f"Range labels must be unique; duplicates: {duplicates}")
+
+    total = cast("float", df[weight_col].sum())
+    if total == 0:
+        return dict.fromkeys(labels, 0.0)
+
+    value = pl.col(value_col)
+    out: dict[str, float] = {}
+    for label, lo, hi in ranges:
+        out[label] = cast("float", df.filter((value >= lo) & (value < hi))[weight_col].sum()) / total * 100
+    return out
+
+
+def quadrant_pcts(
+    df: pl.DataFrame,
+    weight_col: str = "weight",
+    value_col: str = "delta",
+) -> dict[str, float]:
     """Weighted % of households in each bill-change quadrant.
 
-    *df* must have a ``delta`` column (dollar change in annual bill) and a
-    weight column. Quadrant boundaries are fixed at +/- $1,000, matching the
+    *df* must have a dollar-change column (default ``delta``) and a weight
+    column. Quadrant boundaries are fixed at +/- $1,000, matching the
     savings/loss framing used throughout the rate-case reports.
+
+    For custom cutoffs or labels, call :func:`weighted_range_pcts` instead.
     """
-    total = cast(float, df[weight_col].sum())
-    return {
-        "savings > $1k": cast(float, df.filter(pl.col("delta") < -1000)[weight_col].sum()) / total * 100,
-        "savings $0-1k": cast(
-            float,
-            df.filter((pl.col("delta") >= -1000) & (pl.col("delta") < 0))[weight_col].sum(),
-        )
-        / total
-        * 100,
-        "losses $0-1k": cast(
-            float,
-            df.filter((pl.col("delta") >= 0) & (pl.col("delta") < 1000))[weight_col].sum(),
-        )
-        / total
-        * 100,
-        "losses > $1k": cast(float, df.filter(pl.col("delta") >= 1000)[weight_col].sum()) / total * 100,
-    }
+    return weighted_range_pcts(
+        df,
+        value_col=value_col,
+        weight_col=weight_col,
+        ranges=[
+            ("savings > $1k", -math.inf, -1000),
+            ("savings $0-1k", -1000, 0),
+            ("losses $0-1k", 0, 1000),
+            ("losses > $1k", 1000, math.inf),
+        ],
+    )
 
 
 # Below this width, a quadrant caption is dropped rather than drawn: showing
@@ -2399,3 +2689,1114 @@ def tariff_month_rate_table(rates_by_label: dict[str, dict]) -> pl.DataFrame:
     for table in tables[1:]:
         result = result.join(table, on="month")
     return result.with_columns(pl.col("month").cast(pl.Enum(MONTH_ORDER)))
+
+
+# --- Representative-home bill decomposition ----------------------------------
+
+# Month keys used in bge_monthly_rates_2025.yaml (Apr-Mar fiscal year).
+_RATE_YAML_MONTH_TO_LABEL: dict[str, str] = {
+    "2025-04": "Apr",
+    "2025-05": "May",
+    "2025-06": "Jun",
+    "2025-07": "Jul",
+    "2025-08": "Aug",
+    "2025-09": "Sep",
+    "2025-10": "Oct",
+    "2025-11": "Nov",
+    "2025-12": "Dec",
+    "2026-01": "Jan",
+    "2026-02": "Feb",
+    "2026-03": "Mar",
+}
+
+
+def monthly_bill_from_profile(
+    monthly_kwh: pl.DataFrame,
+    rate_components: dict[str, dict[str, object]],
+) -> pl.DataFrame:
+    """Compute monthly bills by component from a kWh profile and rate schedule.
+
+    Parameters
+    ----------
+    monthly_kwh
+        12-row DataFrame with ``month_label`` (Jan-Dec) and ``kwh`` columns.
+    rate_components
+        Dict keyed by display component name (e.g. ``"Distribution"``).
+        Each value is a dict with:
+
+        - ``charge_unit``: ``"$/kWh"`` or ``"$/month"``
+        - ``monthly_rates``: ``{YYYY-MM: float, ...}`` — 12 entries keyed by
+          the rate-year month string (e.g. ``"2025-04"`` for April).
+
+    Returns
+    -------
+    pl.DataFrame
+        Long-form: ``month_label`` (Enum Jan-Dec), ``component`` (str),
+        ``value`` (f64, dollars).
+    """
+    import polars as pl
+
+    frames: list[pl.DataFrame] = []
+    for component_name, spec in rate_components.items():
+        unit = spec["charge_unit"]
+        raw_rates: dict[str, float] = spec["monthly_rates"]  # type: ignore[assignment]
+        label_rates = {_RATE_YAML_MONTH_TO_LABEL[k]: v for k, v in raw_rates.items()}
+
+        if unit == "$/kWh":
+            rows = [
+                {
+                    "month_label": m,
+                    "component": component_name,
+                    "value": float(monthly_kwh.filter(pl.col("month_label") == m)["kwh"][0]) * label_rates[m],
+                }
+                for m in MONTH_ORDER
+            ]
+        else:
+            rows = [{"month_label": m, "component": component_name, "value": label_rates[m]} for m in MONTH_ORDER]
+        frames.append(pl.DataFrame(rows))
+
+    return pl.concat(frames).with_columns(pl.col("month_label").cast(pl.Enum(MONTH_ORDER)))
+
+
+# --- Monthly load before/after chart -----------------------------------------
+
+_MONTHLY_LOAD_BEFORE_COLOR = "#C8A200"
+_MONTHLY_LOAD_PEAK_COLOR = "#C85436"
+_MONTHLY_LOAD_X_EXPAND = (0.02, 0, 0.02, 0)
+_MONTHLY_LOAD_PANEL_RIGHT = 0.82
+
+
+def _finalize_monthly_load_fig(fig: Figure) -> Figure:
+    """Reserve matching right margin on all monthly-load charts for alignment."""
+    fig.subplots_adjust(right=_MONTHLY_LOAD_PANEL_RIGHT)
+    return fig
+
+
+def monthly_load_y_max(
+    *,
+    kwh: pl.Series | None = None,
+    before_kwh: pl.Series | None = None,
+    after_kwh: pl.Series | None = None,
+) -> int:
+    """Round peak monthly kWh up to the next 500 for aligned y-axes."""
+    import math
+
+    peak = 0.0
+    for series in (kwh, before_kwh, after_kwh):
+        if series is not None:
+            peak = max(peak, float(series.max()))
+    return max(500, int(math.ceil(peak / 500) * 500))
+
+
+def _add_monthly_load_side_callouts(fig: Figure, monthly: pl.DataFrame) -> None:
+    """Add December segment callouts in the right margin without shrinking bars."""
+    import polars as pl
+    from matplotlib.transforms import blended_transform_factory
+
+    from lib.plotnine import SB_COLORS
+
+    ax = fig.axes[0]
+    trans = blended_transform_factory(ax.transAxes, ax.transData)
+    dec = monthly.filter(pl.col("month_label") == "Dec").row(0, named=True)
+    dec_base = float(min(dec["before_kwh"], dec["after_kwh"]))
+    dec_new = float(max(0.0, dec["after_kwh"] - dec["before_kwh"]))
+
+    for y, label, color in (
+        (dec_base / 2, "Electricity use\nbefore heat pump", _MONTHLY_LOAD_BEFORE_COLOR),
+        (dec_base + dec_new / 2, "New electricity use\nfrom heat pump", SB_COLORS["saffron"]),
+    ):
+        ax.annotate(
+            "",
+            xy=(12, y),
+            xytext=(1.0, y),
+            xycoords=("data", "data"),
+            textcoords=trans,
+            arrowprops={"arrowstyle": "-", "color": color, "lw": 1.5, "shrinkA": 0, "shrinkB": 0},
+            annotation_clip=False,
+        )
+        ax.text(
+            1.02,
+            y,
+            label,
+            transform=trans,
+            ha="left",
+            va="center",
+            fontsize=11,
+            color=color,
+            fontweight="bold",
+            clip_on=False,
+        )
+
+
+_SEGMENT_ORDER = [
+    "New electricity use from heat pump",
+    "More efficient cooling",
+    "Electricity use before heat pump",
+]
+_SEGMENT_COLORS: dict[str, str | tuple[float, ...]] = {
+    "Electricity use before heat pump": _MONTHLY_LOAD_BEFORE_COLOR,
+    "More efficient cooling": (0.784, 0.635, 0.0, 0.35),
+    "New electricity use from heat pump": "#FFC729",
+}
+_SAVINGS_LABEL_COLOR = "#D4BA46"
+
+
+def plot_monthly_load(
+    monthly: pl.DataFrame,
+    *,
+    title: str = "",
+    figure_size: tuple[float, float] = (14, 5),
+    y_max: int | None = None,
+) -> Figure:
+    """Single-series monthly kWh bar chart (pre-heat-pump electricity use)."""
+    import polars as pl
+    from plotnine import (
+        aes,
+        geom_col,
+        ggplot,
+        labs,
+        scale_x_discrete,
+        scale_y_continuous,
+        theme,
+    )
+
+    from lib.plotnine import theme_switchbox
+
+    chart_data = monthly.with_columns(pl.col("month_label").cast(pl.Enum(MONTH_ORDER)))
+    ymax = y_max if y_max is not None else monthly_load_y_max(kwh=monthly["kwh"])
+
+    p = (
+        ggplot(chart_data, aes(x="month_label", y="kwh"))
+        + geom_col(width=0.7, fill=_MONTHLY_LOAD_BEFORE_COLOR)
+        + scale_y_continuous(limits=(0, ymax), expand=(0, 0))
+        + scale_x_discrete(expand=_MONTHLY_LOAD_X_EXPAND)
+        + labs(title=title, x="", y="Electricity consumption (kWh)")
+        + theme_switchbox()
+        + theme(figure_size=figure_size, legend_position="none")
+    )
+
+    return _finalize_monthly_load_fig(p.draw())
+
+
+def plot_monthly_load_with_peak(
+    monthly: pl.DataFrame,
+    *,
+    title: str = "",
+    figure_size: tuple[float, float] = (14, 5),
+    y_max: int | None = None,
+) -> Figure:
+    """Monthly kWh bar chart with peak-hour wedges highlighted.
+
+    Like :func:`plot_monthly_load` but splits each bar into off-peak (gold)
+    and peak-hour (terracotta) segments so the reader can see which months
+    have electricity consumption during the grid's peak hours.
+
+    Parameters
+    ----------
+    monthly
+        12-row DataFrame with ``month_label``, ``kwh_offpeak``, ``kwh_peak``
+        (from :func:`sum_monthly_peak_offpeak_kwh`).
+    title
+        Optional chart title.
+    figure_size
+        plotnine figure size in inches.
+    y_max
+        Y-axis upper limit in kWh.  Defaults to the next 500 above the peak
+        total monthly kWh.
+
+    Returns
+    -------
+    Figure
+        matplotlib Figure; wrap in ``display_figure`` to embed.
+    """
+    import polars as pl
+    from matplotlib.transforms import blended_transform_factory
+    from plotnine import (
+        aes,
+        geom_col,
+        ggplot,
+        labs,
+        scale_fill_manual,
+        scale_x_discrete,
+        scale_y_continuous,
+        theme,
+    )
+
+    from lib.plotnine import theme_switchbox
+
+    _PEAK_SEGMENT_ORDER = ["Peak-hour usage", "Off-peak usage"]
+    _PEAK_SEGMENT_COLORS = {
+        "Off-peak usage": _MONTHLY_LOAD_BEFORE_COLOR,
+        "Peak-hour usage": _MONTHLY_LOAD_PEAK_COLOR,
+    }
+
+    total_kwh = monthly["kwh_offpeak"] + monthly["kwh_peak"]
+    ymax = y_max if y_max is not None else monthly_load_y_max(kwh=total_kwh)
+
+    chart_data = pl.concat(
+        [
+            monthly.select(
+                "month_label",
+                pl.col("kwh_offpeak").alias("kwh"),
+            ).with_columns(pl.lit("Off-peak usage").alias("segment")),
+            monthly.select(
+                "month_label",
+                pl.col("kwh_peak").alias("kwh"),
+            ).with_columns(pl.lit("Peak-hour usage").alias("segment")),
+        ]
+    ).with_columns(
+        pl.col("month_label").cast(pl.Enum(MONTH_ORDER)),
+        pl.col("segment").cast(pl.Enum(_PEAK_SEGMENT_ORDER)),
+    )
+
+    p = (
+        ggplot(chart_data, aes(x="month_label", y="kwh", fill="segment"))
+        + geom_col(width=0.7)
+        + scale_fill_manual(values=_PEAK_SEGMENT_COLORS)
+        + scale_y_continuous(limits=(0, ymax), expand=(0, 0))
+        + scale_x_discrete(expand=_MONTHLY_LOAD_X_EXPAND)
+        + labs(title=title, x="", y="Electricity consumption (kWh)")
+        + theme_switchbox()
+        + theme(figure_size=figure_size, legend_position="none")
+    )
+
+    fig = _finalize_monthly_load_fig(p.draw())
+
+    # --- Direct annotations instead of a legend ---
+    ax = fig.axes[0]
+    trans = blended_transform_factory(ax.transAxes, ax.transData)
+
+    # Side callout for the gold base segment — anchor to December (rightmost
+    # bar, always pure off-peak) so the line draws cleanly into the margin.
+    dec_offpeak = float(monthly.filter(pl.col("month_label") == "Dec")["kwh_offpeak"][0])
+    callout_y = dec_offpeak / 2
+    ax.annotate(
+        "",
+        xy=(12, callout_y),
+        xytext=(1.0, callout_y),
+        xycoords=("data", "data"),
+        textcoords=trans,
+        arrowprops={
+            "arrowstyle": "-",
+            "color": _MONTHLY_LOAD_BEFORE_COLOR,
+            "lw": 1.5,
+            "shrinkA": 0,
+            "shrinkB": 0,
+        },
+        annotation_clip=False,
+    )
+    ax.text(
+        1.02,
+        callout_y,
+        "Electricity use",
+        transform=trans,
+        ha="left",
+        va="center",
+        fontsize=11,
+        color=_MONTHLY_LOAD_BEFORE_COLOR,
+        fontweight="bold",
+        clip_on=False,
+    )
+
+    # In-chart annotation above the tallest peak wedge
+    _peak_idx = monthly["kwh_peak"].arg_max()
+    assert _peak_idx is not None, "kwh_peak column is empty"
+    peak_month_idx = int(_peak_idx)
+    peak_month_label = monthly["month_label"][peak_month_idx]
+    peak_bar_x = MONTH_ORDER.index(peak_month_label) + 1
+    peak_bar_top = float(monthly["kwh_offpeak"][peak_month_idx] + monthly["kwh_peak"][peak_month_idx])
+
+    ax.text(
+        peak_bar_x,
+        peak_bar_top + 25,
+        "Usage during\npeak hours",
+        ha="center",
+        va="bottom",
+        fontsize=11,
+        color=_MONTHLY_LOAD_PEAK_COLOR,
+        fontweight="bold",
+        transform=ax.transData,
+    )
+
+    return fig
+
+
+def plot_monthly_load_before_after(
+    monthly: pl.DataFrame,
+    *,
+    title: str = "",
+    figure_size: tuple[float, float] = (14, 5),
+    y_max: int | None = None,
+    peak_before: pl.DataFrame | None = None,
+    peak_after: pl.DataFrame | None = None,
+) -> Figure:
+    """Three-segment monthly bar chart: base + savings + new load from heat pump.
+
+    When *peak_before* and *peak_after* are supplied, peak-hour kWh wedges are
+    added at the top of the base and new-HP segments (never in the savings
+    segment), with delta labels showing increase/decrease in peak-hour usage.
+
+    Parameters
+    ----------
+    monthly
+        DataFrame with columns ``month_label``, ``before_kwh``, ``after_kwh``.
+        Works for a single building (12 rows) or a population average.
+    title
+        Optional chart title.
+    figure_size
+        plotnine figure size in inches.
+    y_max
+        Y-axis upper limit in kWh. Defaults to the next 500 above the peak
+        before or after monthly kWh.
+    peak_before
+        12-row DataFrame with ``month_label``, ``kwh_offpeak``, ``kwh_peak``
+        from :func:`sum_monthly_peak_offpeak_kwh` for the pre-HP profile.
+        Must be provided together with *peak_after* or both ``None``.
+    peak_after
+        Same as *peak_before* but for the post-HP profile.
+
+    Returns
+    -------
+    Figure
+        matplotlib Figure; wrap in ``display_figure`` to embed.
+    """
+    import polars as pl
+    from plotnine import (
+        aes,
+        annotate,
+        geom_col,
+        ggplot,
+        labs,
+        scale_fill_manual,
+        scale_x_discrete,
+        scale_y_continuous,
+        theme,
+    )
+
+    from lib.plotnine import theme_switchbox
+
+    show_peak = peak_before is not None and peak_after is not None
+    if (peak_before is None) != (peak_after is None):
+        raise ValueError("peak_before and peak_after must both be provided or both None")
+
+    if not show_peak:
+        # --- Original 3-segment path (no peak data) ---
+        segment_order = _SEGMENT_ORDER
+        segment_colors = _SEGMENT_COLORS
+
+        chart_data = pl.concat(
+            [
+                monthly.select(
+                    "month_label",
+                    pl.min_horizontal("before_kwh", "after_kwh").alias("kwh"),
+                ).with_columns(pl.lit("Electricity use before heat pump").alias("segment")),
+                monthly.select(
+                    "month_label",
+                    (pl.col("before_kwh") - pl.col("after_kwh")).clip(lower_bound=0).alias("kwh"),
+                ).with_columns(pl.lit("More efficient cooling").alias("segment")),
+                monthly.select(
+                    "month_label",
+                    (pl.col("after_kwh") - pl.col("before_kwh")).clip(lower_bound=0).alias("kwh"),
+                ).with_columns(pl.lit("New electricity use from heat pump").alias("segment")),
+            ]
+        ).with_columns(
+            pl.col("month_label").cast(pl.Enum(MONTH_ORDER)),
+            pl.col("segment").cast(pl.Enum(segment_order)),
+        )
+    else:
+        # --- 5-segment path with peak wedges ---
+        assert peak_before is not None
+        assert peak_after is not None
+        # Join peak data with monthly for per-month computation
+        _m = monthly.join(
+            peak_before.select("month_label", pl.col("kwh_peak").alias("before_peak")),
+            on="month_label",
+        ).join(
+            peak_after.select("month_label", pl.col("kwh_peak").alias("after_peak")),
+            on="month_label",
+        )
+
+        # Per-month segment computation — ONE red wedge per bar.
+        # The red wedge shows after_peak (peak-hour kWh in the post-HP
+        # profile), carved from whichever segment is on top:
+        #   - Winter (after > before): red at top of new-HP saffron
+        #   - Summer (before >= after): red at top of base gold
+        _m = _m.with_columns(
+            pl.min_horizontal("before_kwh", "after_kwh").alias("base_kwh"),
+            (pl.col("before_kwh") - pl.col("after_kwh")).clip(lower_bound=0).alias("savings_kwh"),
+            (pl.col("after_kwh") - pl.col("before_kwh")).clip(lower_bound=0).alias("new_hp_kwh"),
+        ).with_columns(
+            # Savings months: peak carved from base; clamp to base size
+            pl.when(pl.col("new_hp_kwh") > 0)
+            .then(0)
+            .otherwise(pl.min_horizontal("after_peak", "base_kwh"))
+            .alias("peak_in_base"),
+            # New-HP months: peak carved from new-HP; clamp to segment size
+            pl.when(pl.col("new_hp_kwh") > 0)
+            .then(pl.min_horizontal("after_peak", "new_hp_kwh"))
+            .otherwise(0)
+            .alias("peak_in_new"),
+        )
+
+        segment_order = [
+            "New HP peak",
+            "New HP off-peak",
+            "More efficient cooling",
+            "Base peak",
+            "Base off-peak",
+        ]
+        segment_colors: dict[str, str | tuple[float, ...]] = {
+            "Base off-peak": _MONTHLY_LOAD_BEFORE_COLOR,
+            "Base peak": _MONTHLY_LOAD_PEAK_COLOR,
+            "More efficient cooling": (0.784, 0.635, 0.0, 0.35),
+            "New HP off-peak": "#FFC729",
+            "New HP peak": _MONTHLY_LOAD_PEAK_COLOR,
+        }
+
+        chart_data = pl.concat(
+            [
+                _m.select("month_label", (pl.col("base_kwh") - pl.col("peak_in_base")).alias("kwh")).with_columns(
+                    pl.lit("Base off-peak").alias("segment")
+                ),
+                _m.select("month_label", pl.col("peak_in_base").alias("kwh")).with_columns(
+                    pl.lit("Base peak").alias("segment")
+                ),
+                _m.select("month_label", pl.col("savings_kwh").alias("kwh")).with_columns(
+                    pl.lit("More efficient cooling").alias("segment")
+                ),
+                _m.select("month_label", (pl.col("new_hp_kwh") - pl.col("peak_in_new")).alias("kwh")).with_columns(
+                    pl.lit("New HP off-peak").alias("segment")
+                ),
+                _m.select("month_label", pl.col("peak_in_new").alias("kwh")).with_columns(
+                    pl.lit("New HP peak").alias("segment")
+                ),
+            ]
+        ).with_columns(
+            pl.col("month_label").cast(pl.Enum(MONTH_ORDER)),
+            pl.col("segment").cast(pl.Enum(segment_order)),
+        )
+
+    ymax = (
+        y_max
+        if y_max is not None
+        else monthly_load_y_max(
+            before_kwh=monthly["before_kwh"],
+            after_kwh=monthly["after_kwh"],
+        )
+    )
+
+    savings_by_month = monthly.with_columns((pl.col("before_kwh") - pl.col("after_kwh")).alias("savings"))
+    max_savings_month = savings_by_month.sort("savings", descending=True).row(0, named=True)
+    has_savings = max_savings_month["savings"] > 0
+
+    p = (
+        ggplot(chart_data, aes(x="month_label", y="kwh", fill="segment"))
+        + geom_col(width=0.7)
+        + scale_fill_manual(values=segment_colors)
+        + scale_y_continuous(limits=(0, ymax), expand=(0, 0))
+        + scale_x_discrete(expand=_MONTHLY_LOAD_X_EXPAND)
+        + labs(title=title, x="", y="Electricity consumption (kWh)")
+        + theme_switchbox()
+        + theme(figure_size=figure_size, legend_position="none")
+    )
+
+    if has_savings:
+        sav_label = max_savings_month["month_label"]
+        sav_idx = MONTH_ORDER.index(sav_label) + 1
+        sav_base = float(min(max_savings_month["before_kwh"], max_savings_month["after_kwh"]))
+        sav_amount = float(max_savings_month["savings"])
+        p = p + annotate(
+            "text",
+            x=sav_idx,
+            y=sav_base + sav_amount + 30,
+            label="More efficient cooling\nlowers use",
+            ha="center",
+            va="bottom",
+            size=11,
+            color=_SAVINGS_LABEL_COLOR,
+            fontweight="bold",
+        )
+
+    fig = _finalize_monthly_load_fig(p.draw())
+    _add_monthly_load_side_callouts(fig, monthly)
+
+    # --- Peak-hour delta annotations ---
+    if show_peak:
+        assert peak_before is not None
+        assert peak_after is not None
+        ax = fig.axes[0]
+        delta_peak = (
+            peak_after.select("month_label", pl.col("kwh_peak").alias("after_peak"))
+            .join(
+                peak_before.select("month_label", pl.col("kwh_peak").alias("before_peak")),
+                on="month_label",
+            )
+            .with_columns((pl.col("after_peak") - pl.col("before_peak")).alias("delta"))
+        )
+
+        # Label on the month with the largest peak-hour increase
+        max_increase = delta_peak.sort("delta", descending=True).row(0, named=True)
+        if max_increase["delta"] > 0:
+            inc_label = max_increase["month_label"]
+            inc_x = MONTH_ORDER.index(inc_label) + 1
+            inc_bar_top = float(monthly.filter(pl.col("month_label") == inc_label)["after_kwh"][0])
+            ax.text(
+                inc_x,
+                inc_bar_top + 25,
+                "Peak-hour usage\nincrease \u2191",
+                ha="center",
+                va="bottom",
+                fontsize=11,
+                color=_MONTHLY_LOAD_PEAK_COLOR,
+                fontweight="bold",
+                transform=ax.transData,
+            )
+
+        # Label on the month with the largest peak-hour decrease — placed
+        # below the base-peak wedge (inside the bar) to avoid colliding with
+        # the "More efficient cooling" label that sits above the bar top.
+        max_decrease = delta_peak.sort("delta").row(0, named=True)
+        if max_decrease["delta"] < 0:
+            dec_label = max_decrease["month_label"]
+            dec_x = MONTH_ORDER.index(dec_label) + 1
+            dec_row = _m.filter(pl.col("month_label") == dec_label)
+            base_offpeak = float(dec_row["base_kwh"][0] - dec_row["peak_in_base"][0])
+            base_peak = float(dec_row["peak_in_base"][0])
+            dec_y = base_offpeak + base_peak / 2
+            ax.annotate(
+                "Peak-hour\nusage\ndecrease \u2193",
+                xy=(dec_x, dec_y),
+                xytext=(dec_x + 1.8, dec_y),
+                ha="left",
+                va="center",
+                fontsize=11,
+                color=_MONTHLY_LOAD_PEAK_COLOR,
+                fontweight="bold",
+                arrowprops={
+                    "arrowstyle": "-",
+                    "color": _MONTHLY_LOAD_PEAK_COLOR,
+                    "lw": 1.5,
+                    "shrinkA": 0,
+                    "shrinkB": 2,
+                },
+            )
+
+    return fig
+
+
+# --- Annual bill component stacked chart ------------------------------------
+
+_BILL_COMPONENT_ORDER = [
+    "Customer Charge",
+    "Distribution",
+    "Transmission",
+    "EmPOWER Maryland",
+    "Generation",
+]
+
+_BILL_SEGMENT_ORDER = [
+    "Increment",
+    "Before",
+]
+
+_BILL_COLORS: dict[str, str] = {
+    "Customer Charge|Before": "#023047",
+    "Customer Charge|Increment": "#023047",
+    "Distribution|Before": "#023047",
+    "Distribution|Increment": "#5b90a8",
+    "Transmission|Before": "#023047",
+    "Transmission|Increment": "#5b90a8",
+    "EmPOWER Maryland|Before": "#023047",
+    "EmPOWER Maryland|Increment": "#5b90a8",
+    "Generation|Before": "#fc9706",
+    "Generation|Increment": "#ffc729",
+}
+
+
+def _annual_bill_component_stack_data(
+    before_bills: pl.DataFrame,
+    after_bills: pl.DataFrame,
+) -> pl.DataFrame:
+    """Reshape annual bill totals into before + increment segments for stacking."""
+    import polars as pl
+
+    before_annual = before_bills.group_by("component").agg(pl.col("value").sum().alias("before"))
+    after_annual = after_bills.group_by("component").agg(pl.col("value").sum().alias("after"))
+    joined = before_annual.join(after_annual, on="component", how="inner").with_columns(
+        (pl.col("after") - pl.col("before")).alias("increment"),
+    )
+
+    negative = joined.filter(pl.col("increment") < 0)
+    if not negative.is_empty():
+        details = ", ".join(
+            f"{row['component']} (before={row['before']:.2f}, after={row['after']:.2f})"
+            for row in negative.iter_rows(named=True)
+        )
+        msg = f"Annual bill component increments must be non-negative; got negative values for: {details}"
+        raise ValueError(msg)
+
+    long = joined.select(
+        pl.col("component"),
+        pl.lit("Before").alias("segment"),
+        pl.col("before").alias("value"),
+    ).vstack(
+        joined.select(
+            pl.col("component"),
+            pl.lit("Increment").alias("segment"),
+            pl.col("increment").alias("value"),
+        )
+    )
+
+    return long.with_columns(
+        (pl.col("component") + "|" + pl.col("segment")).alias("fill_key"),
+        pl.col("component").cast(pl.Enum(_BILL_COMPONENT_ORDER)),
+        pl.col("segment").cast(pl.Enum(_BILL_SEGMENT_ORDER)),
+    )
+
+
+def plot_annual_bill_component_stacked(
+    before_bills: pl.DataFrame,
+    after_bills: pl.DataFrame,
+    *,
+    title: str = "",
+    figure_size: tuple[float, float] = (10.5, 5),
+) -> Figure:
+    """Stacked bar chart of annual bills by component, before vs after HP.
+
+    Each bar stacks the pre-HP bill component (bottom) and the incremental
+    amount added after heat pump installation (top). Bar height equals the
+    post-HP component total.
+
+    Parameters
+    ----------
+    before_bills
+        Long-form monthly bills from ``monthly_bill_from_profile()``
+        (upgrade 0).
+    after_bills
+        Long-form monthly bills from ``monthly_bill_from_profile()``
+        (upgrade 2).
+    title
+        Optional chart title.
+    figure_size
+        plotnine figure size in inches.
+
+    Returns
+    -------
+    Figure
+        matplotlib Figure rendered via ``display_figure``.
+
+    Raises
+    ------
+    ValueError
+        If any component's after-minus-before increment is negative.
+    """
+    import polars as pl
+    from plotnine import (
+        aes,
+        geom_col,
+        geom_text,
+        ggplot,
+        labs,
+        position_stack,
+        scale_fill_manual,
+        scale_x_discrete,
+        scale_y_continuous,
+        theme,
+    )
+
+    from lib.plotnine import theme_switchbox
+    from lib.quarto import display_figure
+
+    chart_data = _annual_bill_component_stack_data(before_bills, after_bills).with_columns(
+        pl.when(pl.col("value").abs() >= 1.0)
+        .then(pl.col("value").round(0).cast(pl.Int64).cast(pl.Utf8).str.replace(r"^(-?\d+)$", "$$$1"))
+        .otherwise(pl.lit(""))
+        .alias("label"),
+    )
+
+    p = (
+        ggplot(chart_data, aes(x="component", y="value", fill="fill_key"))
+        + geom_col(width=0.6, position=position_stack(reverse=True))
+        + geom_text(
+            aes(label="label"),
+            position=position_stack(vjust=0.5, reverse=True),
+            size=9,
+            color="white",
+            fontweight="bold",
+        )
+        + scale_fill_manual(values=_BILL_COLORS)
+        + scale_x_discrete(limits=_BILL_COMPONENT_ORDER)
+        + scale_y_continuous(
+            labels=lambda xs: [f"${x:,.0f}" for x in xs],
+            expand=(0, 0, 0.08, 0),
+        )
+        + labs(title=title, x="", y="Annual bill")
+        + theme_switchbox()
+        + theme(figure_size=figure_size, legend_position="none")
+    )
+
+    fig = p.draw()
+    display_figure(fig)
+    return fig
+
+
+# --- Delivery marginal cost charts ------------------------------------------
+
+_MC_COMPONENT_ORDER = ["Transmission", "Distribution"]
+_MC_COLORS = {
+    "Distribution": "#68bed8",
+    "Transmission": "#023047",
+}
+_SUMMER_MONTHS = {"Jun", "Jul", "Aug", "Sep"}
+_SEASON_ORDER = ["Jun-Sep", "Oct-May"]
+
+
+def plot_monthly_delivery_mc(
+    monthly_mc: pl.DataFrame,
+    *,
+    title: str = "",
+    figure_size: tuple[float, float] = (14, 5),
+) -> Figure:
+    """Stacked bar chart of monthly delivery marginal costs (transmission + distribution).
+
+    Parameters
+    ----------
+    monthly_mc
+        12-row DataFrame with ``month_label`` (Enum Jan-Dec),
+        ``mc_tx_dollars``, and ``mc_dist_dollars``.
+    title
+        Chart title.
+    figure_size
+        plotnine figure size in inches.
+
+    Returns
+    -------
+    Figure
+        matplotlib Figure; wrap in ``display_figure`` to embed.
+    """
+    import polars as pl
+    from plotnine import (
+        aes,
+        geom_col,
+        ggplot,
+        labs,
+        scale_fill_manual,
+        scale_x_discrete,
+        scale_y_continuous,
+        theme,
+    )
+
+    from lib.plotnine import theme_switchbox
+
+    chart_data = pl.concat(
+        [
+            monthly_mc.select("month_label", pl.col("mc_tx_dollars").alias("dollars")).with_columns(
+                pl.lit("Transmission").alias("component")
+            ),
+            monthly_mc.select("month_label", pl.col("mc_dist_dollars").alias("dollars")).with_columns(
+                pl.lit("Distribution").alias("component")
+            ),
+        ]
+    ).with_columns(
+        pl.col("month_label").cast(pl.Enum(MONTH_ORDER)),
+        pl.col("component").cast(pl.Enum(_MC_COMPONENT_ORDER)),
+    )
+
+    p = (
+        ggplot(chart_data, aes(x="month_label", y="dollars", fill="component"))
+        + geom_col(width=0.7)
+        + scale_fill_manual(values=_MC_COLORS)
+        + scale_x_discrete(expand=(0.02, 0, 0.02, 0))
+        + scale_y_continuous(
+            labels=lambda xs: [f"${x:,.2f}" for x in xs],
+            expand=(0, 0, 0.05, 0),
+        )
+        + labs(title=title, x="", y="Delivery marginal cost ($)", fill="")
+        + theme_switchbox()
+        + theme(figure_size=figure_size)
+    )
+
+    return p.draw()
+
+
+def _aggregate_seasonal_mc(
+    monthly_mc: pl.DataFrame,
+) -> dict[str, dict[str, float]]:
+    """Aggregate 12-row monthly MC into Jun-Sep and Oct-May totals.
+
+    Returns ``{"Jun-Sep": {"tx": ..., "dist": ...}, "Oct-May": {...}}``.
+    """
+    seasonal = (
+        monthly_mc.with_columns(
+            pl.when(pl.col("month_label").cast(pl.String).is_in(_SUMMER_MONTHS))
+            .then(pl.lit("Jun-Sep"))
+            .otherwise(pl.lit("Oct-May"))
+            .alias("season")
+        )
+        .group_by("season")
+        .agg(
+            pl.col("mc_tx_dollars").sum(),
+            pl.col("mc_dist_dollars").sum(),
+        )
+    )
+    result: dict[str, dict[str, float]] = {}
+    for row in seasonal.iter_rows(named=True):
+        result[row["season"]] = {
+            "tx": row["mc_tx_dollars"],
+            "dist": row["mc_dist_dollars"],
+        }
+    return result
+
+
+def _fmt_mc_dollar(v: float) -> str:
+    """Format a marginal-cost dollar value (smaller than bill amounts)."""
+    return f"${v:,.2f}"
+
+
+def _draw_seasonal_mc_bar(
+    ax: Axes,
+    x: float,
+    tx: float,
+    dist: float,
+    width: float,
+    *,
+    min_label_height: float = 1.5,
+) -> float:
+    """Draw one stacked bar: Distribution (sky) bottom, Transmission (midnight) top.
+
+    In-bar labels are shown only when a segment is tall enough to read.
+    A total label is placed above the bar.
+
+    Returns the total height (dist + tx).
+    """
+    ax.bar(x, dist, width, bottom=0, color=_MC_COLORS["Distribution"], edgecolor="none")
+    ax.bar(x, tx, width, bottom=dist, color=_MC_COLORS["Transmission"], edgecolor="none")
+
+    total = dist + tx
+
+    if dist >= min_label_height:
+        ax.text(
+            x,
+            dist / 2,
+            _fmt_mc_dollar(dist),
+            ha="center",
+            va="center",
+            color="white",
+            fontweight="bold",
+            fontsize=11,
+            zorder=11,
+        )
+    if tx >= min_label_height:
+        ax.text(
+            x,
+            dist + tx / 2,
+            _fmt_mc_dollar(tx),
+            ha="center",
+            va="center",
+            color="white",
+            fontweight="bold",
+            fontsize=11,
+            zorder=11,
+        )
+
+    ax.text(
+        x,
+        total * 1.01,
+        _fmt_mc_dollar(total),
+        ha="center",
+        va="bottom",
+        color="#333333",
+        fontweight="bold",
+        fontsize=12,
+    )
+
+    return total
+
+
+def plot_seasonal_delivery_mc(
+    monthly_mc: pl.DataFrame,
+    *,
+    title: str = "",
+    figure_size: tuple[float, float] = (10.5, 5),
+) -> Figure:
+    """Two-bar seasonal delivery MC chart (one bar per season).
+
+    Aggregates monthly transmission and distribution costs into Jun-Sep and
+    Oct-May buckets, then draws a stacked bar for each with in-bar component
+    labels and an above-bar total.
+
+    Parameters
+    ----------
+    monthly_mc
+        12-row DataFrame with ``month_label`` (Enum Jan-Dec),
+        ``mc_tx_dollars``, and ``mc_dist_dollars``.
+    title
+        Chart title.
+    figure_size
+        matplotlib figure size in inches.
+
+    Returns
+    -------
+    Figure
+        matplotlib Figure; wrap in ``display_figure`` to embed.
+    """
+    agg = _aggregate_seasonal_mc(monthly_mc)
+
+    fig, ax = pyplot.subplots(figsize=figure_size)
+    ax.set_title(title, fontfamily="GT Planar", fontweight="bold", fontsize=15, loc="left", pad=12)
+
+    w = 0.5
+    positions = [0, 1.2]
+
+    max_total = 0.0
+    for i, season in enumerate(_SEASON_ORDER):
+        total = _draw_seasonal_mc_bar(ax, positions[i], agg[season]["tx"], agg[season]["dist"], w)
+        max_total = max(max_total, total)
+
+    ax.set_xticks(positions)
+    ax.set_xticklabels(_SEASON_ORDER, fontsize=11, fontfamily="IBM Plex Sans")
+    ax.set_ylabel("Delivery marginal cost ($)", fontsize=12, fontfamily="IBM Plex Sans")
+    ax.set_ylim(0, max_total * 1.15)
+    ax.set_xlim(positions[0] - 0.6, positions[-1] + 0.6)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.yaxis.set_major_formatter(lambda x, _: f"${x:,.2f}")
+    fig.tight_layout()
+    return fig
+
+
+def plot_seasonal_delivery_mc_comparison(
+    monthly_before: pl.DataFrame,
+    monthly_after: pl.DataFrame,
+    *,
+    title: str = "",
+    figure_size: tuple[float, float] = (10.5, 6),
+) -> Figure:
+    """Four-bar seasonal delivery MC chart comparing before and after heat pump.
+
+    Groups bars into two pairs (Jun-Sep and Oct-May), each with a before and
+    after bar.  A hatched rectangle and delta annotation between each pair
+    shows the seasonal change, and a bracket across the top shows the net
+    annual change.
+
+    Parameters
+    ----------
+    monthly_before
+        12-row monthly MC DataFrame for the pre-HP period.
+    monthly_after
+        12-row monthly MC DataFrame for the post-HP period.
+    title
+        Chart title.
+    figure_size
+        matplotlib figure size in inches.
+
+    Returns
+    -------
+    Figure
+        matplotlib Figure; wrap in ``display_figure`` to embed.
+    """
+    from lib.plotnine import SB_COLORS
+
+    agg_before = _aggregate_seasonal_mc(monthly_before)
+    agg_after = _aggregate_seasonal_mc(monthly_after)
+
+    fig, ax = pyplot.subplots(figsize=figure_size)
+    ax.set_title(title, fontfamily="GT Planar", fontweight="bold", fontsize=15, loc="left", pad=12)
+
+    w = 0.45
+    gap_within = 0.55
+    gap_between = 1.5
+
+    x = np.array([0, gap_within, gap_between, gap_between + gap_within])
+
+    pairs = [
+        (agg_before[_SEASON_ORDER[0]], agg_after[_SEASON_ORDER[0]]),
+        (agg_before[_SEASON_ORDER[1]], agg_after[_SEASON_ORDER[1]]),
+    ]
+
+    totals: list[float] = []
+    for group_idx, (before_data, after_data) in enumerate(pairs):
+        t_before = _draw_seasonal_mc_bar(ax, x[group_idx * 2], before_data["tx"], before_data["dist"], w)
+        t_after = _draw_seasonal_mc_bar(ax, x[group_idx * 2 + 1], after_data["tx"], after_data["dist"], w)
+        totals.extend([t_before, t_after])
+
+    max_total = max(totals)
+
+    # --- Delta annotations between before/after pairs ---
+    deltas: list[float] = []
+    for group_idx in range(2):
+        before_total = totals[group_idx * 2]
+        after_total = totals[group_idx * 2 + 1]
+        delta = after_total - before_total
+        deltas.append(delta)
+
+        short_top = min(before_total, after_total)
+        tall_top = max(before_total, after_total)
+
+        # Hatched box on the shorter bar of the pair
+        x_short = x[group_idx * 2] if before_total <= after_total else x[group_idx * 2 + 1]
+
+        rect = mpatches.FancyBboxPatch(
+            (x_short - w / 2, short_top),
+            w,
+            tall_top - short_top,
+            boxstyle="square,pad=0",
+            facecolor=SB_COLORS["saffron"],
+            alpha=0.12,
+            edgecolor="#B8960A",
+            linewidth=1.5,
+            linestyle=(0, (5, 3)),
+            hatch="////",
+            zorder=3,
+        )
+        ax.add_patch(rect)
+
+        sign = "+" if delta >= 0 else ""
+        ax.text(
+            x_short,
+            tall_top + max_total * 0.02,
+            f"{sign}{_fmt_mc_dollar(delta)}",
+            ha="center",
+            va="bottom",
+            color=SB_COLORS["saffron"],
+            fontweight="bold",
+            fontsize=12,
+        )
+
+    # --- X-axis labels ---
+    ax.set_xticks([])
+
+    for group_idx, season_label in enumerate(_SEASON_ORDER):
+        group_center = (x[group_idx * 2] + x[group_idx * 2 + 1]) / 2
+        ax.text(
+            group_center,
+            -max_total * 0.10,
+            season_label,
+            ha="center",
+            va="top",
+            fontsize=12,
+            fontweight="bold",
+            fontfamily="IBM Plex Sans",
+        )
+
+    bar_labels = ["Before", "After", "Before", "After"]
+    for i, label in enumerate(bar_labels):
+        ax.text(
+            x[i],
+            -max_total * 0.04,
+            label,
+            ha="center",
+            va="top",
+            fontsize=10,
+            fontfamily="IBM Plex Sans",
+            color="#666666",
+        )
+
+    ax.set_ylabel("Delivery marginal cost ($)", fontsize=12, fontfamily="IBM Plex Sans")
+    ax.set_ylim(0, max_total * 1.25)
+    ax.set_xlim(x[0] - 0.55, x[-1] + 0.55)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.yaxis.set_major_formatter(lambda val, _: f"${val:,.2f}")
+    fig.tight_layout()
+    return fig

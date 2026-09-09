@@ -18,6 +18,11 @@ Single-file mode (one argument):
     exists.  If embedded figures appear as PNG, run ``just render`` (no
     arguments) first to build the cache.
 
+    The embed pipeline also maintains its own cache under
+    ``.quarto/embed/``.  When rendering a file with ``{{< embed >}}``,
+    this script clears the embed cache so the pipeline picks up fresh
+    notebook outputs from the main freeze cache, avoiding stale data.
+
 Usage (from a report directory):
     uv run python -m lib.just.render                  # full project
     uv run python -m lib.just.render foo.qmd          # single file
@@ -32,6 +37,8 @@ import sys
 from pathlib import Path
 
 import yaml
+
+from lib.just.quarto_env import quarto_env
 
 BASELINE = Path(".diff/baseline")
 INLINE_SVGS = Path("../.style/inline_svgs.py")
@@ -106,7 +113,10 @@ def _render_project() -> None:
         shutil.copytree(docs, BASELINE)
 
     print("📖 Rendering Quarto project...")
-    result = subprocess.run(["quarto", "render", "."])
+    env = quarto_env()
+    if python := env.get("QUARTO_PYTHON"):
+        print(f"🐍 QUARTO_PYTHON={python}")
+    result = subprocess.run(["quarto", "render", "."], env=env)
     if result.returncode != 0:
         print("💥 Quarto render failed!", file=sys.stderr)
         sys.exit(1)
@@ -129,8 +139,9 @@ def _has_embeds(qmd_path: Path) -> bool:
 def _render_single(qmd_path: Path) -> None:
     """Single-file render with fig-format forwarding and move to docs/."""
     docs = Path("docs")
+    has_embeds = _has_embeds(qmd_path)
 
-    if _has_embeds(qmd_path) and not Path(".quarto/_freeze").exists():
+    if has_embeds and not Path(".quarto/_freeze").exists():
         print(
             "⚠️  This file embeds figures from other notebooks, but no freeze\n"
             "   cache exists. Embedded figures will render as PNG instead of SVG.\n"
@@ -138,13 +149,19 @@ def _render_single(qmd_path: Path) -> None:
             file=sys.stderr,
         )
 
+    if has_embeds:
+        embed_dir = Path(".quarto/embed")
+        if embed_dir.exists():
+            print("🧹 Clearing embed cache to avoid stale notebook outputs...")
+            shutil.rmtree(embed_dir)
+
     cmd: list[str] = ["quarto", "render", str(qmd_path)]
     fig_format = _get_project_fig_format()
     if fig_format:
         cmd.extend(["-M", f"fig-format:{fig_format}"])
 
     print(f"📖 Rendering {qmd_path}...")
-    result = subprocess.run(cmd)
+    result = subprocess.run(cmd, env=quarto_env())
     if result.returncode != 0:
         print("💥 Quarto render failed!", file=sys.stderr)
         sys.exit(1)

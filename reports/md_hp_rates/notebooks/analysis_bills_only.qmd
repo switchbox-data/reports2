@@ -20,12 +20,13 @@ format:
 
 This notebook isolates the natural-gas-to-heat-pump bill-change analysis so it can run
 against this batch today. `analysis.qmd` also compares MD BGE's `default` schedule to
-calibrated `hp_seasonal_*`/`hp_flat_*` reform tariffs, but this batch (`md_20260909_a`) has
-only run `default_r_uncalibrated` and `default_rd_uncalibrated` so far — no reform scenario
-exists yet to compare against. Rather than let those missing scenarios break the whole
-notebook, this one covers just the piece that *is* available: how a BGE Schedule R
-customer's bill changes when they switch from natural gas to a heat pump, under the rate
-exactly as filed.
+calibrated `hp_seasonal_*`/`hp_flat_*` reform tariffs, but this batch has only run a
+handful of single-tariff, "posted rate billed as-is" scenarios so far — no calibrated
+reform scenario exists yet to compare against. Rather than let those missing scenarios
+break the whole notebook, this one covers just the pieces that *are* available: how a
+BGE Schedule R customer's bill changes when they switch from natural gas to a heat pump
+under the rate exactly as filed, and the same before/after-retrofit comparison repeated
+under BGE's proposed Schedule R-HP (`rhp_flat`) rate.
 
 The functions doing the actual data crunching are the same ones `analysis.qmd` uses, from
 [`lib/rates_analysis/rate_case_funcs.py`](../../../lib/rates_analysis/rate_case_funcs.py) —
@@ -80,14 +81,21 @@ BILL_COL_LMI_100 = "energy_total_bill_lmi_100"
 BILL_COL_BASELINE = "energy_total_bill"
 
 # this is the column that will be used for all comparisons and plots
-BILL_COL = BILL_COL_BASELINE  # BILL_COL_BASELINE, BILL_COL_LMI_CURRENT, or BILL_COL_LMI_100
+BILL_COL = BILL_COL_LMI_CURRENT  # BILL_COL_BASELINE, BILL_COL_LMI_CURRENT, or BILL_COL_LMI_100
 
 DEFAULT_SCENARIO = _batch_config["BASELINE_BILL_SCENARIO"]
+
+# BGE's proposed Schedule R-HP (flat, uncalibrated), from rate-design-platform's
+# `default_rhp_flat_uncalibrated` scenario — same "posted rate billed as-is"
+# convention as DEFAULT_SCENARIO, just pointed at the `rhp_flat` tariff pair.
+RHP_SCENARIO = _batch_config["RHP_BILL_SCENARIO"]
 
 # Heating season for the winter-only charts: Oct–Mar.
 WINTER_MONTHS = ["Oct", "Nov", "Dec", "Jan", "Feb", "Mar"]
 
-print(f"state={STATE}  batch={BATCH}  utility={UTILITY}  scenario={DEFAULT_SCENARIO}  bill_col={BILL_COL}")
+print(f"state={STATE}  batch={BATCH}  utility={UTILITY}  bill_col={BILL_COL}")
+print(f"default scenario: {DEFAULT_SCENARIO}")
+print(f"rhp scenario:     {RHP_SCENARIO}")
 ```
 
 Every bill-change comparison below reads the `BILL_COL` column set above — currently
@@ -110,11 +118,19 @@ writes master tables under:
 SEG_DEFAULT_PRECALC = segment_name(DEFAULT_SCENARIO, "precalc")
 SEG_DEFAULT_CALIBRATED = segment_name(DEFAULT_SCENARIO, "calibrated")
 
+SEG_RHP_PRECALC = segment_name(RHP_SCENARIO, "precalc")
+SEG_RHP_CALIBRATED = segment_name(RHP_SCENARIO, "calibrated")
+
+bills_rhp_precalc = load_master_bills(STATE, BATCH, SEG_RHP_PRECALC)
+bills_rhp_calibrated = load_master_bills(STATE, BATCH, SEG_RHP_CALIBRATED)
+
+
 bills_default_precalc = load_master_bills(STATE, BATCH, SEG_DEFAULT_PRECALC)
 bills_default_calibrated = load_master_bills(STATE, BATCH, SEG_DEFAULT_CALIBRATED)
 
 print(f"baseline segment: {SEG_DEFAULT_PRECALC}")
 print(f"after segment:    {SEG_DEFAULT_CALIBRATED}")
+print(f"rhp fair rate segment: {SEG_RHP_CALIBRATED}")
 ```
 
 Let's look at a sample of the baseline bills to see what's in the table, and check the sample
@@ -227,6 +243,98 @@ plot_weighted_bill_change_hist(
 Restricting to just the natural-gas subclass isolates the incidence figure computed above
 (`{python} f"{report_vars['pct_natgas_hp_bill_increase_default']:.0%}"` seeing an increase)
 into the same savings/loss bins, rather than just a binary increase/decrease split.
+
+## Schedule R-HP: the same analysis under the proposed rate
+
+BGE's proposed Schedule R-HP (see `expert_testimony.qmd` Section V, and
+`rate-design-platform`'s
+[`bge_rhp_flat.yaml`](https://github.com/switchbox-data/rate-design-platform/blob/main/rate_design/hp_rates/md/config/tariffs/electric/custom_rates/bge_rhp_flat.yaml))
+lowers the flat delivery, transmission, and EmPOWER Maryland volumetric rate for heat pump
+customers, leaving generation/supply unchanged. This repeats the exact same
+before/after-retrofit, same-tariff comparison as above — annual **`{python} BILL_COL`**,
+`default_r_uncalibrated` swapped for `default_rhp_flat_uncalibrated` — so a natural-gas home
+switching to a heat pump is billed under the proposed rate instead of Schedule R as filed.
+
+Like `DEFAULT_SCENARIO` above, `RHP_SCENARIO` uses the `single_rate_uncalibrated` "posted
+rate billed as-is" quartet — it isn't calibrated to a revenue-requirement target — pointed
+at the `rhp_flat` tariff pair instead of `default`. This section requires
+`default_rhp_flat_uncalibrated` to have been run for this batch; if it hasn't, the ingest
+cell below will fail to find the corresponding master tables on S3.
+
+
+### Bill-increase incidence switching from natural gas to a heat pump, under Schedule R-HP
+
+```{python}
+#| label: compute-natgas-hp-delta-rhp
+
+delta_natgas_rhp = bill_delta_between_segments(
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_RHP_CALIBRATED, bill_col=BILL_COL
+).filter(pl.col("heating_type_v2") == "natgas")
+
+incidence_natgas_rhp = bill_change_incidence(delta_natgas_rhp)
+incidence_natgas_rhp
+```
+
+```{python}
+#| label: report-vars-natgas-hp-delta-rhp
+
+report_vars["pct_natgas_hp_bill_increase_rhp"] = incidence_natgas_rhp["pct_increase"]
+report_vars["pct_natgas_hp_bill_decrease_rhp"] = incidence_natgas_rhp["pct_decrease"]
+report_vars["mean_natgas_hp_bill_increase_rhp"] = incidence_natgas_rhp["mean_delta"]
+report_vars["median_natgas_hp_bill_increase_rhp"] = incidence_natgas_rhp["median_delta"]
+```
+
+**`{python} f"{report_vars['pct_natgas_hp_bill_increase_rhp']:.0%}"` of natural-gas-heated MD
+BGE homes would see their total annual energy bill go up** after switching to a heat pump
+under Schedule R-HP — a mean increase of
+`{python} f"${report_vars['mean_natgas_hp_bill_increase_rhp']:,.0f}"` a year (median
+`{python} f"${report_vars['median_natgas_hp_bill_increase_rhp']:,.0f}"`), compared with
+`{python} f"{report_vars['pct_natgas_hp_bill_increase_default']:.0%}"` under Schedule R as
+filed.
+
+### Bill change quadrant plot, Schedule R-HP
+
+```{python}
+#| label: fig-bill-change-quadrants-rhp-all
+#| fig-cap: "Change in total annual energy bill after switching to a heat pump, by baseline heating type, under MD BGE's proposed Schedule R-HP."
+
+plot_bill_change_quadrants(
+    STATE,
+    BATCH,
+    SEG_DEFAULT_PRECALC,
+    SEG_RHP_CALIBRATED,
+    bill_col=BILL_COL,
+    rate_name="Schedule R-HP rate",
+)
+```
+
+Same winter-only (Oct–Mar) restriction as the Schedule R version above, now under Schedule
+R-HP.
+
+```{python}
+#| label: fig-bill-change-quadrants-rhp-winter
+#| fig-cap: "Change in total Oct–March energy bill after switching to a heat pump, by baseline heating type, under MD BGE's proposed Schedule R-HP."
+
+plot_bill_change_quadrants(
+    STATE,
+    BATCH,
+    SEG_DEFAULT_PRECALC,
+    SEG_RHP_CALIBRATED,
+    bill_col=BILL_COL,
+    rate_name="Schedule R-HP rate",
+    month=WINTER_MONTHS,
+)
+```
+
+```{python}
+#| label: fig-hist-natgas-bill-change-rhp
+#| fig-cap: "Distribution of the annual total energy bill change for natural-gas-heated MD BGE homes after switching to a heat pump, under Schedule R-HP."
+
+plot_weighted_bill_change_hist(
+    delta_natgas_rhp,
+    "Natural-gas homes switching to a heat pump under Schedule R-HP",
+)
+```
 
 ## Export report variables
 

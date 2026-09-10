@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import math
 import warnings
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, cast
 
 import matplotlib.patches as mpatches
@@ -42,8 +43,6 @@ import numpy as np
 import polars as pl
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     import polars as pl
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
@@ -462,6 +461,64 @@ def weighted_pct(df: pl.DataFrame, predicate: pl.Expr | pl.Series, weight_col: s
 # --- Bill-change diff ----------------------------------------------------------
 
 
+def _normalize_bill_months(month: str | Sequence[str]) -> list[str]:
+    """Coerce ``month=`` to a non-empty list of master-bills ``month`` labels."""
+    months = [month] if isinstance(month, str) else list(month)
+    if not months:
+        raise ValueError("month must be a non-empty month name or sequence of month names")
+    if "Annual" in months and len(months) > 1:
+        raise ValueError("Cannot combine 'Annual' with calendar months; pass one or the other")
+    return months
+
+
+def bill_period_phrase(month: str | Sequence[str]) -> str:
+    """Short phrase for chart titles: ``annual``, ``Jan``, or ``Oct-May``."""
+    months = _normalize_bill_months(month)
+    if months == ["Annual"]:
+        return "annual"
+    if len(months) == 1:
+        return months[0]
+    return f"{months[0]}-{months[-1]}"
+
+
+def _month_bills_for_delta(
+    bills: pl.LazyFrame,
+    months: list[str],
+    bill_col: str,
+    *,
+    bill_alias: str,
+    keep_meta: bool,
+    electric_utility: str | None = None,
+) -> pl.LazyFrame:
+    """Filter to *months* and optionally sum them to one row per building."""
+    filtered = bills.filter(pl.col("month").is_in(months))
+    if electric_utility is not None:
+        filtered = filtered.filter(pl.col("sb.electric_utility") == electric_utility)
+
+    if len(months) == 1:
+        cols: list[pl.Expr | str] = ["bldg_id"]
+        if keep_meta:
+            cols.extend(
+                [
+                    "weight",
+                    pl.col("postprocess_group.has_hp").alias("has_hp"),
+                    pl.col("postprocess_group.heating_type_v2").alias("heating_type_v2"),
+                ]
+            )
+        cols.append(pl.col(bill_col).alias(bill_alias))
+        return filtered.select(cols)
+
+    agg: list[pl.Expr] = [pl.col(bill_col).sum().alias(bill_alias)]
+    if keep_meta:
+        agg = [
+            pl.col("weight").first(),
+            pl.col(bill_col).sum().alias(bill_alias),
+            pl.col("postprocess_group.has_hp").first().alias("has_hp"),
+            pl.col("postprocess_group.heating_type_v2").first().alias("heating_type_v2"),
+        ]
+    return filtered.group_by("bldg_id").agg(agg)
+
+
 def bill_delta_between_segments(
     state: str,
     batch: str,
@@ -469,7 +526,7 @@ def bill_delta_between_segments(
     segment_after: str,
     *,
     bill_col: str = "energy_total_bill",
-    month: str = "Annual",
+    month: str | Sequence[str] = "Annual",
     electric_utility: str | None = None,
 ) -> pl.DataFrame:
     """Diff a per-building bill column between any two ``{scenario}_{stage}`` segments.
@@ -483,6 +540,12 @@ def bill_delta_between_segments(
       ``"hp_seasonal_percustomer_passthrough_precalc"``): same population,
       comparing two tariffs.
 
+    *month* selects which master-bills rows to diff. ``"Annual"`` (default) uses
+    the annual total. A calendar month (``"Jan"``) diffs that month alone. A
+    sequence of calendar months (e.g. BGE winter ``Oct``-``May``) sums those
+    months per building before the join — the ``delta`` is then the change over
+    that season, not a scaled annual figure.
+
     Metadata columns (``heating_type_v2``, ``has_hp``) are carried from
     *segment_before* — they are baseline-derived and identical across
     segments/stages for the same population (see rate-design-platform PR #503's
@@ -494,22 +557,21 @@ def bill_delta_between_segments(
     Returns a DataFrame with ``bldg_id``, ``weight``, ``has_hp``,
     ``heating_type_v2``, ``bill_before``, ``bill_after``, ``delta``.
     """
-    import polars as pl
-
-    before = load_master_bills(state, batch, segment_before).filter(pl.col("month") == month)
-    if electric_utility is not None:
-        before = before.filter(pl.col("sb.electric_utility") == electric_utility)
-    before = before.select(
-        "bldg_id",
-        "weight",
-        pl.col(bill_col).alias("bill_before"),
-        pl.col("postprocess_group.has_hp").alias("has_hp"),
-        pl.col("postprocess_group.heating_type_v2").alias("heating_type_v2"),
+    months = _normalize_bill_months(month)
+    before = _month_bills_for_delta(
+        load_master_bills(state, batch, segment_before),
+        months,
+        bill_col,
+        bill_alias="bill_before",
+        keep_meta=True,
+        electric_utility=electric_utility,
     )
-    after = (
-        load_master_bills(state, batch, segment_after)
-        .filter(pl.col("month") == month)
-        .select("bldg_id", pl.col(bill_col).alias("bill_after"))
+    after = _month_bills_for_delta(
+        load_master_bills(state, batch, segment_after),
+        months,
+        bill_col,
+        bill_alias="bill_after",
+        keep_meta=False,
     )
     joined = before.join(after, on="bldg_id", how="inner").with_columns(
         (pl.col("bill_after") - pl.col("bill_before")).alias("delta")
@@ -788,6 +850,7 @@ def plot_bill_change_quadrants(
     bill_col: str = "energy_total_bill",
     rate_name: str = "current rate",
     heating_types: list[str] | None = None,
+    month: str | Sequence[str] = "Annual",
 ) -> ggplot:
     """Stacked horizontal bar chart of bill-change quadrants by baseline heating type.
 
@@ -818,6 +881,12 @@ def plot_bill_change_quadrants(
     "upgrading") and ``"other"`` (heterogeneous/unclassified) — see
     ``DEFAULT_EXCLUDED_HEATING_CODES``.
 
+    *month* is passed through to ``bill_delta_between_segments()``. The default
+    ``"Annual"`` diffs the annual total; pass a sequence of calendar months
+    (e.g. BGE winter ``["Oct", ..., "May"]``) to bin the seasonal sum. Quadrant
+    cutoffs stay at +/- $1,000 of that period's dollar change — they are not
+    scaled to a 12-month equivalent.
+
     Since each bar's quadrant mix can look very different (e.g. an
     electric-resistance row might be almost entirely "savings > $1k" while a
     natural-gas row is split across all four bins), the chart replaces the
@@ -831,7 +900,7 @@ def plot_bill_change_quadrants(
 
     from lib.plotnine import theme_switchbox
 
-    delta = bill_delta_between_segments(state, batch, segment_before, segment_after, bill_col=bill_col)
+    delta = bill_delta_between_segments(state, batch, segment_before, segment_after, bill_col=bill_col, month=month)
     if heating_types is not None:
         delta = delta.filter(pl.col("heating_type_v2").is_in(heating_types))
     else:
@@ -886,7 +955,10 @@ def plot_bill_change_quadrants(
         + plt.labs(
             x="",
             y="% of weighted households",
-            title=f"Change in total annual energy bill after switching to a heat pump, under the {rate_name}",
+            title=(
+                f"Change in total {bill_period_phrase(month)} energy bill after "
+                f"switching to a heat pump, under the {rate_name}"
+            ),
         )
         + theme_switchbox()
         + plt.theme(
@@ -1099,6 +1171,7 @@ def plot_weighted_bill_change_hist(
     *,
     bin_width: int = 100,
     show_mean_median: bool = False,
+    x_label: str = "Annual bill change ($)",
 ) -> ggplot:
     """Weighted histogram of annual bill change, colored by quadrant.
 
@@ -1108,6 +1181,9 @@ def plot_weighted_bill_change_hist(
 
     When *show_mean_median* is True, adds dashed vertical lines for the
     weighted mean (carrot) and median (midnight) with text annotations.
+
+    *x_label* overrides the default x-axis label, for callers whose ``delta``
+    column isn't a plain bill change (e.g. incremental revenue minus marginal cost).
     """
     import plotnine as plt
 
@@ -1149,7 +1225,7 @@ def plot_weighted_bill_change_hist(
             labels=lambda xs: [f"${x:,.0f}" if x >= 0 else f"-${abs(x):,.0f}" for x in xs],
         )
         + plt.coord_cartesian(xlim=(hist_x_lo, hist_x_hi))
-        + plt.labs(x="Annual bill change ($)", y="Weighted households", title=title)
+        + plt.labs(x=x_label, y="Weighted households", title=title)
         + plt.guides(fill=False)
         + theme_switchbox()
         + plt.theme(figure_size=(10.5, 4.5))
@@ -2784,7 +2860,9 @@ def monthly_load_y_max(
     peak = 0.0
     for series in (kwh, before_kwh, after_kwh):
         if series is not None:
-            peak = max(peak, float(series.max()))
+            max_val = series.max()
+            if isinstance(max_val, (int, float)):
+                peak = max(peak, float(max_val))
     return max(500, int(math.ceil(peak / 500) * 500))
 
 

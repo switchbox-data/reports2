@@ -1,0 +1,251 @@
+---
+title: "Delivery Marginal Costs: Peak-Hour Analysis and Heatmaps"
+reference-location: margin
+fig-cap-location: bottom
+execute:
+  warning: false
+  message: false
+---
+
+This notebook loads BGE's hourly marginal costs for bulk transmission and
+distribution + sub-transmission capacity — 8,760 hours of 2025 — and answers
+two questions used in the expert testimony:
+
+1. **When do peak hours occur?** We compute what share of each cost
+   component's non-zero hours fall in the summer (June–September) vs. the rest
+   of the year.
+2. **What do peak hours look like?** We render day-of-year × hour-of-day
+   heatmaps showing the concentration of marginal costs across the year.
+
+The outputs — report variables and labeled figures — are consumed directly by
+`expert_testimony.qmd`.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+import pickle
+from pathlib import Path
+
+import polars as pl
+import yaml
+
+from lib.plotnine import SB_COLORS
+from lib.quarto import display_figure
+from lib.rates_analysis.rate_case_funcs import (
+    load_delivery_mc_heatmap,
+    plot_mc_heatmap,
+)
+
+report_vars: dict = {}
+```
+
+## Parameters
+
+```{python}
+#| label: params
+
+_batch_config = yaml.safe_load(Path("../batch_config.yaml").read_text())
+
+STATE = _batch_config["STATE"]
+UTILITY = "bge"
+YEAR = 2025
+
+print(f"state={STATE}  utility={UTILITY}  year={YEAR}")
+```
+
+## Load marginal cost data
+
+We load two hourly marginal-cost series from S3 and join them into a single
+8,760-row DataFrame:
+
+- **`mc_bulk_tx`** — the marginal cost of bulk transmission capacity
+  (PJM-zone-level, allocated to BGE). When this value is positive in a given
+  hour, customer usage during that hour triggers transmission capacity
+  investment.
+- **`mc_dist_sub_tx`** — the marginal cost of distribution and
+  sub-transmission capacity (utility-specific). When positive, usage triggers
+  distribution system upgrades.
+
+Both are zero in most hours and spike only during a small number of peak hours
+— the timing mismatch that a uniform volumetric rate cannot reflect.
+
+```{python}
+#| label: load-data
+
+mc_df = load_delivery_mc_heatmap(STATE, UTILITY, YEAR)
+print(f"Loaded {mc_df.height:,} hours, columns: {mc_df.columns}")
+print(f"\nSchema:\n{mc_df.schema}")
+```
+
+Let's look at the first few rows and some summary statistics:
+
+```{python}
+#| label: show-data
+
+mc_df.head(10)
+```
+
+```{python}
+#| label: summary-stats
+
+print("Bulk transmission MC:")
+print(f"  Non-zero hours: {mc_df.filter(pl.col('mc_bulk_tx') > 0).height:,}")
+print(f"  Min (when >0):  ${mc_df.filter(pl.col('mc_bulk_tx') > 0)['mc_bulk_tx'].min():.4f}/kWh")
+print(f"  Max:            ${mc_df['mc_bulk_tx'].max():.4f}/kWh")
+print(f"  Mean (all hrs): ${mc_df['mc_bulk_tx'].mean():.6f}/kWh")
+
+print("\nDistribution + sub-transmission MC:")
+print(f"  Non-zero hours: {mc_df.filter(pl.col('mc_dist_sub_tx') > 0).height:,}")
+print(f"  Min (when >0):  ${mc_df.filter(pl.col('mc_dist_sub_tx') > 0)['mc_dist_sub_tx'].min():.4f}/kWh")
+print(f"  Max:            ${mc_df['mc_dist_sub_tx'].max():.4f}/kWh")
+print(f"  Mean (all hrs): ${mc_df['mc_dist_sub_tx'].mean():.6f}/kWh")
+```
+
+## Peak-hour seasonality
+
+The key question for the testimony: what share of each component's peak hours
+(hours where the marginal cost is positive) fall in the summer months
+(June–September)?
+
+If peak hours are overwhelmingly in summer, then heat pumps — which increase
+winter usage but can decrease summer usage — are not driving significant additional T&D costs.
+This is the foundation of the cost-causation argument.
+
+```{python}
+#| label: peak-seasonality
+
+_SUMMER_MONTHS = {6, 7, 8, 9}
+
+
+def _pct_mc_peak_hours_in_summer(mc_col: str) -> float:
+    """Share of non-zero marginal-cost hours that fall in June–September."""
+    peak_hours = mc_df.filter(pl.col(mc_col) > 0)
+    if peak_hours.is_empty():
+        return 0.0
+    summer_peak = peak_hours.filter(
+        pl.col("timestamp").dt.month().is_in(_SUMMER_MONTHS)
+    )
+    return summer_peak.height / peak_hours.height
+
+
+report_vars["pct_dist_mc_peak_hours_jun_sep"] = _pct_mc_peak_hours_in_summer(
+    "mc_dist_sub_tx"
+)
+report_vars["pct_bulk_tx_mc_peak_hours_jun_sep"] = _pct_mc_peak_hours_in_summer(
+    "mc_bulk_tx"
+)
+
+# Combined: hours where *either* component has a non-zero MC
+_delivery_peak_hours = mc_df.filter(
+    (pl.col("mc_bulk_tx") > 0) | (pl.col("mc_dist_sub_tx") > 0)
+)
+report_vars["pct_peak_hours_jun_sep"] = (
+    _delivery_peak_hours.filter(
+        pl.col("timestamp").dt.month().is_in(_SUMMER_MONTHS)
+    ).height
+    / _delivery_peak_hours.height
+)
+
+print(
+    f"Distribution peak hours in Jun-Sep: "
+    f"{report_vars['pct_dist_mc_peak_hours_jun_sep']:.1%}"
+)
+print(
+    f"Bulk TX peak hours in Jun-Sep:      "
+    f"{report_vars['pct_bulk_tx_mc_peak_hours_jun_sep']:.1%}"
+)
+print(
+    f"Any delivery peak hours in Jun-Sep: "
+    f"{report_vars['pct_peak_hours_jun_sep']:.1%}"
+)
+```
+
+## Per-kWh marginal cost ranges during peak hours
+
+During peak hours, each kWh of customer usage triggers a specific dollar amount
+of new infrastructure cost. We record the min and max of that per-kWh cost for
+both components — the testimony uses these to convey the range of costs a
+customer causes during peak hours.
+
+```{python}
+#| label: mc-per-kwh-ranges
+
+_dist_peak = mc_df.filter(pl.col("mc_dist_sub_tx") > 0)
+_tx_peak = mc_df.filter(pl.col("mc_bulk_tx") > 0)
+
+report_vars["mc_dist_peak_per_kwh_min"] = float(_dist_peak["mc_dist_sub_tx"].min())
+report_vars["mc_dist_peak_per_kwh_max"] = float(_dist_peak["mc_dist_sub_tx"].max())
+report_vars["mc_bulk_tx_peak_per_kwh_min"] = float(_tx_peak["mc_bulk_tx"].min())
+report_vars["mc_bulk_tx_peak_per_kwh_max"] = float(_tx_peak["mc_bulk_tx"].max())
+
+print("Per-kWh MC during peak hours:")
+print(
+    f"  Distribution: ${report_vars['mc_dist_peak_per_kwh_min']:.4f} – "
+    f"${report_vars['mc_dist_peak_per_kwh_max']:.4f}/kWh"
+)
+print(
+    f"  Bulk TX:      ${report_vars['mc_bulk_tx_peak_per_kwh_min']:.4f} – "
+    f"${report_vars['mc_bulk_tx_peak_per_kwh_max']:.4f}/kWh"
+)
+```
+
+## Heatmaps
+
+These heatmaps show the marginal cost of each component across every hour of
+the year (day-of-year on the x-axis, hour-of-day on the y-axis). Hours with
+zero marginal cost are left blank; colored tiles indicate hours where customer
+usage triggers new infrastructure costs.
+
+The visual pattern makes the seasonality unmistakable: both components' peak
+hours cluster in summer afternoons, with transmission showing a tighter
+concentration than distribution.
+
+### Bulk transmission
+
+```{python}
+#| label: fig-mc-heatmap-bulk-tx
+#| fig-cap: "Hourly marginal bulk transmission capacity costs, MD BGE, 2025."
+
+_fig = plot_mc_heatmap(
+    mc_df,
+    "mc_bulk_tx",
+    title="Bulk Transmission — Marginal Capacity Cost by Hour",
+    high_color=SB_COLORS["midnight"],
+)
+display_figure(_fig)
+```
+
+### Distribution and sub-transmission
+
+```{python}
+#| label: fig-mc-heatmap-dist-sub-tx
+#| fig-cap: "Hourly marginal distribution and sub-transmission capacity costs, MD BGE, 2025."
+
+_fig = plot_mc_heatmap(
+    mc_df,
+    "mc_dist_sub_tx",
+    title="Distribution + Sub-Transmission — Marginal Capacity Cost by Hour",
+    high_color=SB_COLORS["carrot"],
+)
+display_figure(_fig)
+```
+
+## Export report variables
+
+```{python}
+#| label: export-vars
+
+Path("../cache").mkdir(exist_ok=True)
+Path("../cache/delivery_mc_vars.pkl").write_bytes(pickle.dumps(report_vars))
+
+print("Exported report variables:")
+for k, v in sorted(report_vars.items()):
+    if isinstance(v, float):
+        print(f"  {k}: {v:.6f}")
+    else:
+        print(f"  {k}: {v}")
+```

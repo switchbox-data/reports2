@@ -3265,7 +3265,17 @@ def plot_monthly_load_before_after(
 
     savings_by_month = monthly.with_columns((pl.col("before_kwh") - pl.col("after_kwh")).alias("savings"))
     max_savings_month = savings_by_month.sort("savings", descending=True).row(0, named=True)
-    has_savings = max_savings_month["savings"] > 0
+    # Only label the savings segment when summer kWh drops by at least 5%
+    _summer_before = float(
+        monthly.filter(pl.col("month_label").is_in(["Jun", "Jul", "Aug", "Sep"]))["before_kwh"].sum()
+    )
+    _summer_after = float(
+        monthly.filter(pl.col("month_label").is_in(["Jun", "Jul", "Aug", "Sep"]))["after_kwh"].sum()
+    )
+    _summer_pct_decrease = (
+        (_summer_before - _summer_after) / _summer_before if _summer_before > 0 else 0.0
+    )
+    has_savings = max_savings_month["savings"] > 0 and _summer_pct_decrease >= 0.05
 
     p = (
         ggplot(chart_data, aes(x="month_label", y="kwh", fill="segment"))
@@ -3430,6 +3440,103 @@ def _annual_bill_component_stack_data(
         pl.col("component").cast(pl.Enum(_BILL_COMPONENT_ORDER)),
         pl.col("segment").cast(pl.Enum(_BILL_SEGMENT_ORDER)),
     )
+
+
+_BILL_SINGLE_COLORS: dict[str, str] = {
+    "Customer Charge": "#023047",
+    "Distribution": "#023047",
+    "Transmission": "#023047",
+    "EmPOWER Maryland": "#023047",
+    "Generation": "#fc9706",
+}
+
+
+def plot_annual_bill_component_single(
+    bills: pl.DataFrame,
+    *,
+    title: str = "",
+    figure_size: tuple[float, float] = (10.5, 5),
+    y_max: float | None = None,
+) -> Figure:
+    """Single-bar chart of annual bills by component (one period only).
+
+    Shows one bar per component with a dollar label centered inside. Uses
+    midnight for delivery components and carrot for Generation, matching the
+    "Before" color scheme of the stacked chart.
+
+    Parameters
+    ----------
+    bills
+        Long-form monthly bills from ``monthly_bill_from_profile()``.
+    title
+        Optional chart title.
+    figure_size
+        plotnine figure size in inches.
+    y_max
+        Optional y-axis upper limit. Defaults to auto with 8 % headroom.
+
+    Returns
+    -------
+    Figure
+        matplotlib Figure; wrap in ``display_figure`` to embed.
+    """
+    import polars as pl
+    from plotnine import (
+        aes,
+        geom_col,
+        geom_text,
+        ggplot,
+        labs,
+        position_stack,
+        scale_fill_manual,
+        scale_x_discrete,
+        scale_y_continuous,
+        theme,
+    )
+
+    from lib.plotnine import theme_switchbox
+
+    annual = (
+        bills.group_by("component")
+        .agg(pl.col("value").sum().alias("value"))
+        .with_columns(
+            pl.col("component").cast(pl.Enum(_BILL_COMPONENT_ORDER)),
+            pl.when(pl.col("value").abs() >= 1.0)
+            .then(
+                pl.col("value").round(0).cast(pl.Int64).cast(pl.Utf8).str.replace(
+                    r"^(-?\d+)$", "$$$1"
+                )
+            )
+            .otherwise(pl.lit(""))
+            .alias("label"),
+        )
+    )
+
+    y_upper = y_max if y_max is not None else float(annual["value"].max()) * 1.08
+
+    p = (
+        ggplot(annual, aes(x="component", y="value", fill="component"))
+        + geom_col(width=0.6)
+        + geom_text(
+            aes(label="label"),
+            position=position_stack(vjust=0.5),
+            size=9,
+            color="white",
+            fontweight="bold",
+        )
+        + scale_fill_manual(values=_BILL_SINGLE_COLORS)
+        + scale_x_discrete(limits=_BILL_COMPONENT_ORDER)
+        + scale_y_continuous(
+            labels=lambda xs: [f"${x:,.0f}" for x in xs],
+            limits=(0, y_upper),
+            expand=(0, 0, 0.08, 0),
+        )
+        + labs(title=title, x="", y="Annual bill")
+        + theme_switchbox()
+        + theme(figure_size=figure_size, legend_position="none")
+    )
+
+    return p.draw()
 
 
 def plot_annual_bill_component_stacked(

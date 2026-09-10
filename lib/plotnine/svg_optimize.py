@@ -1,5 +1,16 @@
 """Post-draw optimization for plotnine/matplotlib SVG output.
 
+**STATUS: DISABLED.**  The optimization described below is correct in
+principle but broken in practice — matplotlib's mixed-mode SVG renderer
+mispositions ``<image>`` elements that originate from artists inside
+``AnchoredOffsetbox`` containers (which is exactly where plotnine nests
+its colorbar ``QuadMesh``).  The rasterized PNG strip ends up inside the
+data area instead of in the legend, leaving orphaned tick marks and
+labels with no gradient bar.  See the ``rasterize_colorbars`` docstring
+for the full diagnosis.
+
+Background
+----------
 Matplotlib's SVG backend renders continuous colorbars (the ``QuadMesh``
 inside a ``Colorbar``) using Gouraud-shaded triangles.  In SVG this is
 simulated with three ``<linearGradient>`` defs plus a ``colorMat``/
@@ -9,47 +20,51 @@ plotnine figure with a continuous fill scale (e.g. ``scale_fill_gradient``)
 pays this tax, and with the Switchbox pipeline that inlines every SVG
 into ``index.html`` the tax compounds across the whole report.
 
-The fix is to call ``artist.set_rasterized(True)`` on the colorbar's
-``QuadMesh`` *before* ``Figure.savefig(format="svg")``.  Matplotlib's
-SVG backend then emits one small embedded PNG strip for the colorbar
-(base64-encoded inside an ``<image>`` element) while everything else —
-axes, text, tiles — stays vector.
+The *intended* fix was to call ``artist.set_rasterized(True)`` on the
+colorbar's ``QuadMesh`` before ``Figure.savefig(format="svg")``.
+Matplotlib's SVG backend would then emit one small embedded PNG strip
+for the colorbar while everything else stayed vector.  Unfortunately
+the backend computes the ``<image>`` element's ``x``/``y`` from the
+artist's data-coordinate transform *without* accounting for the
+``AnchoredOffsetbox`` positioning transform that plotnine uses to place
+the legend to the right of the axes.  The result is a gradient blob
+displaced into the data area and a legend that shows only ticks.
+
+Until matplotlib fixes the mixed-mode renderer for offset-box children,
+this optimization must stay disabled.  The function is kept as a no-op
+so callers don't need to change, and the module docstring serves as a
+record of the issue for future revisiting.
+
+Potential future fixes:
+  - Post-process the SVG: strip the Gouraud-triangle ``<g>`` for the
+    colorbar and replace it with a single ``<rect>`` +
+    ``<linearGradient>``.
+  - Wait for a matplotlib release that fixes offset-box rasterization.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from matplotlib.collections import QuadMesh
-
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
 
 def rasterize_colorbars(fig: Figure) -> None:
-    """Mark every ``QuadMesh`` in ``fig`` as rasterized for SVG output.
+    """No-op.  Colorbar rasterization is disabled.
 
-    Run this on a drawn figure just before ``savefig(format="svg")``.
-    The colorbar solids become a small embedded PNG inside the SVG,
-    which trims ~700 KB per continuous-fill chart while keeping text
-    and axes as crisp vector.
+    This function previously marked every ``QuadMesh`` in *fig* as
+    rasterized for SVG output, trimming ~700 KB of Gouraud-triangle
+    markup per continuous-fill chart.  It is now a no-op because
+    matplotlib's SVG mixed-mode renderer mispositions ``<image>``
+    elements for artists nested inside ``AnchoredOffsetbox`` —
+    the container plotnine uses for its colorbar guide.
 
-    Plotnine nests the colorbar ``QuadMesh`` inside an ``AuxTransformBox``
-    inside the guide's ``AnchoredOffsetbox``, so a naive
-    ``ax.get_children()`` walk misses it.  ``Figure.findobj`` recurses
-    into offset boxes via each artist's ``get_children``, which finds
-    the mesh no matter how deep it's nested.
+    The symptom: the colorbar gradient strip appears *inside* the data
+    area (displaced by the offset-box anchor), while the legend region
+    shows only tick marks and labels with no gradient bar.
 
-    We intentionally do not change ``fig.dpi``: plotnine's colorbar
-    placement (see ``plotnine.guides.guide_colorbar``) is sensitive to
-    DPI, and matplotlib's rasterization resolution at the figure's
-    native DPI is already fine for the small legend strip.
-
-    Parameters
-    ----------
-    fig :
-        Drawn matplotlib figure (e.g. ``plotnine.ggplot.draw()`` output,
-        or the figure wrapped by ``mpl_save_view``).
+    Callers (``display_figure``, the ``save_helper`` monkey-patch) are
+    left in place so they don't need to change; this function simply
+    returns without modifying *fig*.
     """
-    for artist in fig.findobj(QuadMesh):
-        artist.set_rasterized(True)

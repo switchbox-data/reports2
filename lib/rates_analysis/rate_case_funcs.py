@@ -1366,10 +1366,12 @@ def plot_mc_heatmap(
     """Render an 8760-hour (day-of-year x hour-of-day) marginal-cost heatmap.
 
     Filters to rows where *value_col* is positive (zero-cost hours are left
-    blank rather than tiled white), draws with plotnine, and rasterizes the
-    tile layer before returning so ``display_svg``/``display_figure`` produces
-    a compact SVG. Expects *df* to already have day-of-year and hour columns
-    (e.g. via ``.dt.ordinal_day()`` / ``.dt.hour()`` on a timestamp column).
+    blank rather than tiled white) and draws with plotnine.  Expects *df* to
+    already have day-of-year and hour columns (e.g. via
+    ``.dt.ordinal_day()`` / ``.dt.hour()`` on a timestamp column).
+
+    The caller should pass the returned ``Figure`` to
+    ``display_figure`` / ``display_svg`` for Quarto embedding.
     """
     import plotnine as plt
 
@@ -1391,11 +1393,7 @@ def plot_mc_heatmap(
         + theme_switchbox()
         + plt.theme(figure_size=figure_size, legend_position="right")
     )
-    fig = p.draw()
-    for ax in fig.get_axes():
-        for img in ax.get_images():
-            img.set_rasterized(True)
-    return fig
+    return p.draw()
 
 
 # --- Energy burden ---------------------------------------------------------------
@@ -3191,12 +3189,8 @@ def plot_monthly_load_before_after(
     _summer_before = float(
         monthly.filter(pl.col("month_label").is_in(["Jun", "Jul", "Aug", "Sep"]))["before_kwh"].sum()
     )
-    _summer_after = float(
-        monthly.filter(pl.col("month_label").is_in(["Jun", "Jul", "Aug", "Sep"]))["after_kwh"].sum()
-    )
-    _summer_pct_decrease = (
-        (_summer_before - _summer_after) / _summer_before if _summer_before > 0 else 0.0
-    )
+    _summer_after = float(monthly.filter(pl.col("month_label").is_in(["Jun", "Jul", "Aug", "Sep"]))["after_kwh"].sum())
+    _summer_pct_decrease = (_summer_before - _summer_after) / _summer_before if _summer_before > 0 else 0.0
     has_savings = max_savings_month["savings"] > 0 and _summer_pct_decrease >= 0.05
 
     p = (
@@ -3424,11 +3418,7 @@ def plot_annual_bill_component_single(
         .with_columns(
             pl.col("component").cast(pl.Enum(_BILL_COMPONENT_ORDER)),
             pl.when(pl.col("value").abs() >= 1.0)
-            .then(
-                pl.col("value").round(0).cast(pl.Int64).cast(pl.Utf8).str.replace(
-                    r"^(-?\d+)$", "$$$1"
-                )
-            )
+            .then(pl.col("value").round(0).cast(pl.Int64).cast(pl.Utf8).str.replace(r"^(-?\d+)$", "$$$1"))
             .otherwise(pl.lit(""))
             .alias("label"),
         )

@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import math
 import warnings
+from collections.abc import Collection
 from typing import TYPE_CHECKING, cast
 
 import matplotlib.patches as mpatches
@@ -121,6 +122,30 @@ def load_master_bat(state: str, batch: str, segment: str) -> pl.LazyFrame:
         master_table_uri(state, batch, segment, "cross_subsidization_BAT_values"),
         hive_partitioning=True,
     )
+
+
+def load_master_bat_for_utility(
+    state: str,
+    batch: str,
+    segment: str,
+    utility: str,
+    *,
+    columns: Collection[str] | None = None,
+) -> pl.LazyFrame:
+    """Load one utility's master BAT rows, optionally selecting required columns.
+
+    When ``columns`` is provided, raise a clear error before execution if the
+    master table does not contain every requested column. The result remains
+    lazy so callers can add filters or transformations before collecting.
+    """
+    bat = load_master_bat(state, batch, segment).filter(pl.col("sb.electric_utility") == utility)
+    if columns is None:
+        return bat
+
+    missing = set(columns) - set(bat.collect_schema().names())
+    if missing:
+        raise ValueError(f"{segment} is missing required columns: {sorted(missing)}")
+    return bat.select(sorted(columns))
 
 
 def load_billing_kwh_annual(state: str, utility: str, batch: str, segment: str) -> pl.LazyFrame:
@@ -2784,7 +2809,9 @@ def monthly_load_y_max(
     peak = 0.0
     for series in (kwh, before_kwh, after_kwh):
         if series is not None:
-            peak = max(peak, float(series.max()))
+            raw = series.max()
+            if isinstance(raw, int | float):
+                peak = max(peak, float(raw))
     return max(500, int(math.ceil(peak / 500) * 500))
 
 
@@ -3191,12 +3218,8 @@ def plot_monthly_load_before_after(
     _summer_before = float(
         monthly.filter(pl.col("month_label").is_in(["Jun", "Jul", "Aug", "Sep"]))["before_kwh"].sum()
     )
-    _summer_after = float(
-        monthly.filter(pl.col("month_label").is_in(["Jun", "Jul", "Aug", "Sep"]))["after_kwh"].sum()
-    )
-    _summer_pct_decrease = (
-        (_summer_before - _summer_after) / _summer_before if _summer_before > 0 else 0.0
-    )
+    _summer_after = float(monthly.filter(pl.col("month_label").is_in(["Jun", "Jul", "Aug", "Sep"]))["after_kwh"].sum())
+    _summer_pct_decrease = (_summer_before - _summer_after) / _summer_before if _summer_before > 0 else 0.0
     has_savings = max_savings_month["savings"] > 0 and _summer_pct_decrease >= 0.05
 
     p = (
@@ -3424,17 +3447,15 @@ def plot_annual_bill_component_single(
         .with_columns(
             pl.col("component").cast(pl.Enum(_BILL_COMPONENT_ORDER)),
             pl.when(pl.col("value").abs() >= 1.0)
-            .then(
-                pl.col("value").round(0).cast(pl.Int64).cast(pl.Utf8).str.replace(
-                    r"^(-?\d+)$", "$$$1"
-                )
-            )
+            .then(pl.col("value").round(0).cast(pl.Int64).cast(pl.Utf8).str.replace(r"^(-?\d+)$", "$$$1"))
             .otherwise(pl.lit(""))
             .alias("label"),
         )
     )
 
-    y_upper = y_max if y_max is not None else float(annual["value"].max()) * 1.08
+    raw_max = annual["value"].max()
+    peak = float(raw_max) if isinstance(raw_max, int | float) else 0.0
+    y_upper = y_max if y_max is not None else peak * 1.08
 
     p = (
         ggplot(annual, aes(x="component", y="value", fill="component"))

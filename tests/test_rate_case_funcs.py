@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import math
+from typing import cast
 
 import polars as pl
 import pytest
 
+from lib.rates_analysis import rate_case_funcs
 from lib.rates_analysis.rate_case_funcs import (
     MONTH_ORDER,
     _annual_bill_component_stack_data,
+    load_master_bat_for_utility,
     plot_annual_bill_component_stacked,
     quadrant_pcts,
     tariff_month_rate_table,
@@ -22,6 +25,57 @@ QUADRANTS = [
     ("losses $0-1k", 0.0, 1000.0),
     ("losses > $1k", 1000.0, math.inf),
 ]
+
+
+def test_load_master_bat_for_utility_filters_and_selects_columns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = pl.DataFrame(
+        {
+            "bldg_id": [1, 2, 3],
+            "sb.electric_utility": ["bge", "pepco", "bge"],
+            "weight": [1.0, 2.0, 3.0],
+        }
+    ).lazy()
+    monkeypatch.setattr(rate_case_funcs, "load_master_bat", lambda *_: source)
+
+    result = cast(
+        "pl.DataFrame",
+        load_master_bat_for_utility(
+            "MD",
+            "batch",
+            "scenario_precalc",
+            "bge",
+            columns={"bldg_id", "weight"},
+        ).collect(),
+    )
+
+    assert result.columns == ["bldg_id", "weight"]
+    assert result["bldg_id"].to_list() == [1, 3]
+
+
+def test_load_master_bat_for_utility_rejects_missing_columns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = pl.DataFrame(
+        {
+            "bldg_id": [1],
+            "sb.electric_utility": ["bge"],
+        }
+    ).lazy()
+    monkeypatch.setattr(rate_case_funcs, "load_master_bat", lambda *_: source)
+
+    with pytest.raises(
+        ValueError,
+        match="scenario_precalc is missing required columns: \\['weight'\\]",
+    ):
+        load_master_bat_for_utility(
+            "MD",
+            "batch",
+            "scenario_precalc",
+            "bge",
+            columns={"bldg_id", "weight"},
+        )
 
 
 def _flat_rates(rate: float) -> dict:

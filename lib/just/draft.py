@@ -27,7 +27,6 @@ Usage (from a report directory)::
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import shutil
 import subprocess
@@ -40,6 +39,8 @@ from datetime import date
 from pathlib import Path
 
 import yaml
+
+from lib.just.quarto_env import quarto_env
 
 # Reference template for expert testimony formatting (ICC-style: Times
 # New Roman 12pt, double-spaced, line-numbered, witness header).
@@ -350,7 +351,7 @@ def draft(qmd_path: Path, *, testimony: bool = False) -> None:
 
     _clear_notebook_cache()
 
-    env = {**os.environ, "SWITCHBOX_GT_AS_IMAGE": "1"}
+    env = quarto_env(SWITCHBOX_GT_AS_IMAGE="1")
     cmd = [
         "quarto",
         "render",

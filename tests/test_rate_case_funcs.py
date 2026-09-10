@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import cast
 
 import polars as pl
@@ -10,9 +11,20 @@ import pytest
 from lib.rates_analysis import rate_case_funcs
 from lib.rates_analysis.rate_case_funcs import (
     MONTH_ORDER,
+    _annual_bill_component_stack_data,
     load_master_bat_for_utility,
+    plot_annual_bill_component_stacked,
+    quadrant_pcts,
     tariff_month_rate_table,
+    weighted_range_pcts,
 )
+
+QUADRANTS = [
+    ("savings > $1k", -math.inf, -1000.0),
+    ("savings $0-1k", -1000.0, 0.0),
+    ("losses $0-1k", 0.0, 1000.0),
+    ("losses > $1k", 1000.0, math.inf),
+]
 
 
 def test_load_master_bat_for_utility_filters_and_selects_columns(
@@ -109,3 +121,155 @@ def test_tariff_month_rate_table_joins_multiple_tariffs_on_month() -> None:
 
     jan_row = tbl.filter(pl.col("month") == "Jan")
     assert jan_row["Seasonal rate (¢/kWh)"][0] == pytest.approx(8.0)
+
+
+def _monthly_bill_rows(values: dict[str, float]) -> pl.DataFrame:
+    return pl.DataFrame(
+        [{"component": component, "month": "Jan", "value": value / 12} for component, value in values.items()]
+    )
+
+
+def test_annual_bill_component_stack_data_totals_match_after() -> None:
+    before = _monthly_bill_rows(
+        {
+            "Customer Charge": 120.0,
+            "Distribution": 600.0,
+            "Generation": 1400.0,
+        }
+    )
+    after = _monthly_bill_rows(
+        {
+            "Customer Charge": 120.0,
+            "Distribution": 1000.0,
+            "Generation": 2400.0,
+        }
+    )
+
+    stacked = _annual_bill_component_stack_data(before, after)
+    totals = stacked.group_by("component").agg(pl.col("value").sum().alias("total"))
+    expected = after.group_by("component").agg(pl.col("value").sum().alias("after_total"))
+    joined = totals.join(expected.cast({"component": stacked["component"].dtype}), on="component")
+    assert joined["total"].to_list() == pytest.approx(joined["after_total"].to_list())
+
+
+def test_annual_bill_component_stack_data_raises_on_negative_increment() -> None:
+    before = _monthly_bill_rows({"Distribution": 600.0})
+    after = _monthly_bill_rows({"Distribution": 500.0})
+
+    with pytest.raises(ValueError, match="non-negative"):
+        _annual_bill_component_stack_data(before, after)
+
+
+def test_plot_annual_bill_component_stacked_renders(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("lib.quarto.display_figure", lambda fig: None)
+
+    before = _monthly_bill_rows(
+        {
+            "Customer Charge": 121.0,
+            "Distribution": 598.0,
+            "Transmission": 280.0,
+            "EmPOWER Maryland": 141.0,
+            "Generation": 1467.0,
+        }
+    )
+    after = _monthly_bill_rows(
+        {
+            "Customer Charge": 121.0,
+            "Distribution": 1003.0,
+            "Transmission": 469.0,
+            "EmPOWER Maryland": 233.0,
+            "Generation": 2446.0,
+        }
+    )
+
+    fig = plot_annual_bill_component_stacked(before, after, title="Test")
+    assert fig is not None
+
+
+def test_weighted_range_pcts_partitions_known_weights() -> None:
+    df = pl.DataFrame(
+        {
+            "bill_change": [-1500.0, -500.0, 500.0, 1500.0],
+            "weight": [1.0, 1.0, 2.0, 1.0],
+        }
+    )
+    pct = weighted_range_pcts(df, value_col="bill_change", ranges=QUADRANTS)
+    assert list(pct) == [
+        "savings > $1k",
+        "savings $0-1k",
+        "losses $0-1k",
+        "losses > $1k",
+    ]
+    assert pct["savings > $1k"] == pytest.approx(20.0)
+    assert pct["savings $0-1k"] == pytest.approx(20.0)
+    assert pct["losses $0-1k"] == pytest.approx(40.0)
+    assert pct["losses > $1k"] == pytest.approx(20.0)
+    assert sum(pct.values()) == pytest.approx(100.0)
+
+
+def test_weighted_range_pcts_zero_weight() -> None:
+    df = pl.DataFrame({"bill_change": [100.0], "weight": [0.0]})
+    pct = weighted_range_pcts(
+        df,
+        value_col="bill_change",
+        ranges=[
+            ("low", -math.inf, 0.0),
+            ("mid", 0.0, 200.0),
+            ("high", 200.0, math.inf),
+        ],
+    )
+    assert pct == {"low": 0.0, "mid": 0.0, "high": 0.0}
+
+
+def test_weighted_range_pcts_rejects_duplicate_labels() -> None:
+    df = pl.DataFrame({"bill_change": [1.0], "weight": [1.0]})
+    with pytest.raises(ValueError, match="duplicates: \\['same'\\]"):
+        weighted_range_pcts(
+            df,
+            value_col="bill_change",
+            ranges=[
+                ("same", -math.inf, 0.0),
+                ("same", 0.0, 1.0),
+                ("high", 1.0, math.inf),
+            ],
+        )
+
+
+def test_quadrant_pcts_wrapper_uses_delta_column() -> None:
+    df = pl.DataFrame(
+        {
+            "delta": [-1500.0, -500.0, 500.0, 1500.0],
+            "weight": [1.0, 1.0, 2.0, 1.0],
+        }
+    )
+    pct = quadrant_pcts(df)
+    assert pct["savings > $1k"] == pytest.approx(20.0)
+    assert pct["losses $0-1k"] == pytest.approx(40.0)
+
+
+def test_weighted_range_pcts_five_bins() -> None:
+    df = pl.DataFrame(
+        {
+            "bill_change": [-2500.0, -1500.0, -500.0, 500.0, 1500.0],
+            "weight": [1.0, 1.0, 1.0, 1.0, 1.0],
+        }
+    )
+    pct = weighted_range_pcts(
+        df,
+        value_col="bill_change",
+        ranges=[
+            ("save > $2k", -math.inf, -2000.0),
+            ("save $1k-2k", -2000.0, -1000.0),
+            ("save $0-1k", -1000.0, 0.0),
+            ("lose $0-1k", 0.0, 1000.0),
+            ("lose > $1k", 1000.0, math.inf),
+        ],
+    )
+    assert list(pct) == [
+        "save > $2k",
+        "save $1k-2k",
+        "save $0-1k",
+        "lose $0-1k",
+        "lose > $1k",
+    ]
+    assert all(v == pytest.approx(20.0) for v in pct.values())

@@ -88,7 +88,10 @@ UTILITY = "bge"
 
 DEFAULT_SCENARIO = _batch_config["BASELINE_BILL_SCENARIO"]
 
+USE_BGE_ACTUALS = False
+
 print(f"state={STATE}  batch={BATCH}  rdp_ref={RDP_REF}  utility={UTILITY}")
+print(f"USE_BGE_ACTUALS={USE_BGE_ACTUALS}")
 ```
 
 ## Import data
@@ -115,6 +118,114 @@ kwh_8760_calibrated = load_billing_kwh_8760(STATE, UTILITY, BATCH, SEG_CALIBRATE
 
 mc_8760 = load_delivery_mc_heatmap(STATE, UTILITY, 2025)
 print(f"MC 8760: {mc_8760.height} hours, columns: {mc_8760.columns}")
+```
+
+We also load BGE's actual residential customer data from discovery responses,
+regardless of the `USE_BGE_ACTUALS` flag (we always need it for the ground
+truth comparison charts). The monthly Excel covers the test year (April
+2025–March 2026) with customer counts and kWh sales broken out by
+electric-heating vs. non-electric-heating for Schedules R and RL. The hourly
+Excel provides aggregate hourly kWh by schedule for calendar 2024.
+
+```{python}
+#| label: ingest-bge
+import io
+import boto3
+from plotnine import (
+    aes,
+    geom_col,
+    ggplot,
+    labs,
+    position_dodge,
+    scale_fill_manual,
+    scale_x_discrete,
+    scale_y_continuous,
+    theme,
+)
+
+_s3 = boto3.client("s3")
+
+# ── Monthly data (test year Apr 2025–Mar 2026) ──────────────────────────────
+_obj = _s3.get_object(
+    Bucket="data.sb",
+    Key="bge/bge_electric_monthly_residential_customers_kwh_revenues_202504_202605.xlsx",
+)
+_raw_bge = pl.read_excel(io.BytesIO(_obj["Body"].read()))
+
+_bge_month_cols = _raw_bge.columns[1:13]
+_BGE_COL_TO_MONTH = {
+    1: "Apr", 2: "May", 3: "Jun", 4: "Jul", 5: "Aug", 6: "Sep",
+    7: "Oct", 8: "Nov", 9: "Dec", 10: "Jan", 11: "Feb", 12: "Mar",
+}
+_MONTH_TO_NUM = {m: i + 1 for i, m in enumerate(MONTH_ORDER)}
+
+def _bge_row(row_idx: int) -> list[float]:
+    return [float(_raw_bge[row_idx, c]) for c in _bge_month_cols]
+
+_cust_non_heating = [a + b for a, b in zip(_bge_row(0), _bge_row(2))]
+_cust_heating     = [a + b for a, b in zip(_bge_row(1), _bge_row(3))]
+_kwh_non_heating  = [a + b for a, b in zip(_bge_row(6), _bge_row(8))]
+_kwh_heating      = [a + b for a, b in zip(_bge_row(7), _bge_row(9))]
+
+bge_monthly = pl.DataFrame({
+    "month_label": [_BGE_COL_TO_MONTH[i + 1] for i in range(12)],
+    "bge_non_heating_kwh": [k / c for k, c in zip(_kwh_non_heating, _cust_non_heating)],
+    "bge_heating_kwh": [k / c for k, c in zip(_kwh_heating, _cust_heating)],
+})
+
+# Customer counts by calendar month (for dividing hourly aggregates)
+_bge_cust_by_month_non_heating: dict[int, float] = {}
+_bge_cust_by_month_heating: dict[int, float] = {}
+for i in range(12):
+    month_num = _MONTH_TO_NUM[_BGE_COL_TO_MONTH[i + 1]]
+    _bge_cust_by_month_non_heating[month_num] = _cust_non_heating[i]
+    _bge_cust_by_month_heating[month_num] = _cust_heating[i]
+
+print("BGE monthly per-customer kWh:")
+print(bge_monthly)
+
+# ── Hourly data (calendar 2024, 8784 hours) ──────────────────────────────────
+_obj = _s3.get_object(
+    Bucket="data.sb",
+    Key="bge/bge_hourly_residential_kwh.xlsx",
+)
+_raw_hourly = pl.read_excel(io.BytesIO(_obj["Body"].read()))
+
+_hourly = _raw_hourly.select(
+    pl.col("Day").cast(pl.String).str.zfill(6).str.to_datetime("%m%d%y").alias("date"),
+    pl.col("Hour").cast(pl.Int32),
+    (pl.col("R") + pl.col("RL")).alias("agg_non_heating_kwh"),
+    (pl.col("RH") + pl.col("RLH")).alias("agg_heating_kwh"),
+).filter(
+    ~((pl.col("date").dt.month() == 2) & (pl.col("date").dt.day() == 29))
+).with_columns(
+    (pl.col("date") + pl.duration(hours=pl.col("Hour").cast(pl.Int64) - 1)).alias("timestamp"),
+    pl.col("date").dt.month().alias("month_num"),
+)
+assert _hourly.height == 8760, f"Expected 8760 hours after dropping Feb 29, got {_hourly.height}"
+
+_cust_nh = _hourly["month_num"].replace_strict(_bge_cust_by_month_non_heating, return_dtype=pl.Float64)
+_cust_h = _hourly["month_num"].replace_strict(_bge_cust_by_month_heating, return_dtype=pl.Float64)
+
+# mc_8760 timestamps are local (EST); weighted_avg_hourly returns UTC
+# (the downstream sum_monthly_peak_offpeak_kwh shifts load by -5h to match mc_8760).
+# So we store BGE hourly with UTC timestamps = mc_8760 + 5h.
+_mc_ts_utc = mc_8760.sort("timestamp").select(
+    (pl.col("timestamp") + pl.duration(hours=5)).alias("timestamp")
+)["timestamp"]
+
+bge_hourly_non_heating = pl.DataFrame({
+    "timestamp": _mc_ts_utc,
+    "kwh": (_hourly["agg_non_heating_kwh"] / _cust_nh),
+})
+bge_hourly_heating = pl.DataFrame({
+    "timestamp": _mc_ts_utc,
+    "kwh": (_hourly["agg_heating_kwh"] / _cust_h),
+})
+
+print(f"\nBGE hourly: {bge_hourly_non_heating.height} hours")
+print(f"  Non-heating annual kWh: {bge_hourly_non_heating['kwh'].sum():,.0f}")
+print(f"  Heating annual kWh: {bge_hourly_heating['kwh'].sum():,.0f}")
 ```
 
 Let's confirm the metadata columns we need are present:
@@ -218,6 +329,36 @@ for pop_label, pop_df in [
     print(f"\n{pop_label}:")
     print(f"  Annual kWh before: {annual_before:,.0f}")
     print(f"  Annual kWh after:  {annual_after:,.0f}")
+    print(f"  Change: {pct_change:+.1%}")
+
+if USE_BGE_ACTUALS:
+    _month_enum = pl.Enum(MONTH_ORDER)
+    profiles["all_fossil"]["before"] = bge_monthly.select(
+        pl.col("month_label").cast(_month_enum),
+        pl.col("bge_non_heating_kwh").alias("kwh"),
+    )
+    profiles["all_fossil"]["after"] = bge_monthly.select(
+        pl.col("month_label").cast(_month_enum),
+        pl.col("bge_heating_kwh").alias("kwh"),
+    )
+    hourly_profiles["all_fossil"]["before"] = bge_hourly_non_heating
+    hourly_profiles["all_fossil"]["after"] = bge_hourly_heating
+
+    _before = profiles["all_fossil"]["before"]
+    _after = profiles["all_fossil"]["after"]
+    annual_before = _before["kwh"].sum()
+    annual_after = _after["kwh"].sum()
+    annual_delta = annual_after - annual_before
+    pct_change = annual_delta / annual_before
+
+    report_vars["all_fossil_annual_kwh_before"] = annual_before
+    report_vars["all_fossil_annual_kwh_after"] = annual_after
+    report_vars["all_fossil_annual_kwh_delta"] = annual_delta
+    report_vars["all_fossil_pct_kwh_change"] = pct_change
+
+    print("\n[BGE ACTUALS] Overwrote all_fossil profiles with BGE data:")
+    print(f"  Annual kWh before (non-heating): {annual_before:,.0f}")
+    print(f"  Annual kWh after (electric heating): {annual_after:,.0f}")
     print(f"  Change: {pct_change:+.1%}")
 ```
 
@@ -658,6 +799,186 @@ _fig = plot_monthly_load_before_after(
     title="Average fossil-fuel-heated home",
     y_max=_all_fossil_y_max,
 )
+display_figure(_fig)
+```
+
+### BGE ground truth comparison
+
+BGE provided monthly customer counts and kilowatt-hour sales for its
+residential schedules (R and RL) for the test year April 2025–March 2026,
+broken out by electric-heating vs. non-electric-heating customers. We can
+divide total kWh by customer count to get an average monthly consumption per
+customer, then compare to our simulated profiles.
+
+- **Non-electric-heating** customers are the real-world equivalent of our
+  simulated fossil-fuel-heated population before heat pump installation. We
+  expect similar seasonal shapes, with differences attributable to weather
+  (BGE's test year vs. ResStock's AMY 2018).
+- **Electric-heating** customers include both heat pumps and electric
+  resistance heaters. We expect their winter consumption to exceed our
+  simulated heat-pump-only profile, because electric resistance is less
+  efficient than the Upgrade 1 heat pumps we model, and existing real-world
+  heat pumps may be less efficient than Upgrade 1.
+
+The BGE monthly data (`bge_monthly`) was loaded in the Import data section above.
+
+```{python}
+#| label: parse-bge-ground-truth
+print(bge_monthly)
+```
+
+```{python}
+#| label: fig-monthly-load-bge-before-comparison
+#| fig-cap: "Average monthly electricity for BGE non-electric-heating customers (sky) vs. simulated fossil-fuel-heated homes before heat pump installation (gold). BGE data: test year April 2025–March 2026 (Schedules R + RL). Simulation: NREL ResStock 2024.2 upgrade 0, AMY 2018."
+
+_SIM_BEFORE_LABEL = "ResStock simulation"
+_BGE_BEFORE_LABEL = "BGE actual (non-electric-heating)"
+_MONTH_ENUM = pl.Enum(MONTH_ORDER)
+
+_before_df = pl.concat([
+    profiles["all_fossil"]["before"].select(
+        pl.col("month_label").cast(_MONTH_ENUM),
+        pl.col("kwh").cast(pl.Float64),
+        pl.lit(_SIM_BEFORE_LABEL).alias("source"),
+    ),
+    bge_monthly.select(
+        pl.col("month_label").cast(_MONTH_ENUM),
+        pl.col("bge_non_heating_kwh").alias("kwh"),
+        pl.lit(_BGE_BEFORE_LABEL).alias("source"),
+    ),
+]).with_columns(
+    pl.col("source").cast(pl.Enum([_SIM_BEFORE_LABEL, _BGE_BEFORE_LABEL]))
+)
+
+_ymax_bge_before = int((max(_before_df["kwh"]) // 500 + 1) * 500)
+
+_p = (
+    ggplot(_before_df, aes(x="month_label", y="kwh", fill="source"))
+    + geom_col(width=0.7, position=position_dodge(width=0.75))
+    + scale_fill_manual(values={_SIM_BEFORE_LABEL: "#C8A200", _BGE_BEFORE_LABEL: SB_COLORS["sky"]})
+    + scale_y_continuous(limits=(0, _ymax_bge_before), expand=(0, 0))
+    + scale_x_discrete(expand=(0.02, 0, 0.02, 0))
+    + labs(
+        title="Before heat pump: simulation vs. BGE actual",
+        x="",
+        y="Average monthly electricity (kWh)",
+        fill="",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4.5), legend_position="top")
+)
+_fig = _p.draw()
+display_figure(_fig)
+```
+
+```{python}
+#| label: fig-monthly-load-bge-after-comparison
+#| fig-cap: "Average monthly electricity for BGE electric-heating customers (sky) vs. simulated fossil-fuel-heated homes after heat pump installation (saffron). BGE data: test year April 2025–March 2026 (Schedules R + RL, heating). Simulation: NREL ResStock 2024.2 upgrade 1, AMY 2018."
+
+_SIM_AFTER_LABEL = "ResStock simulation (heat pump)"
+_BGE_AFTER_LABEL = "BGE actual (electric heating)"
+
+_after_df = pl.concat([
+    profiles["all_fossil"]["after"].select(
+        pl.col("month_label").cast(_MONTH_ENUM),
+        pl.col("kwh").cast(pl.Float64),
+        pl.lit(_SIM_AFTER_LABEL).alias("source"),
+    ),
+    bge_monthly.select(
+        pl.col("month_label").cast(_MONTH_ENUM),
+        pl.col("bge_heating_kwh").alias("kwh"),
+        pl.lit(_BGE_AFTER_LABEL).alias("source"),
+    ),
+]).with_columns(
+    pl.col("source").cast(pl.Enum([_SIM_AFTER_LABEL, _BGE_AFTER_LABEL]))
+)
+
+_ymax_bge_after = int((max(_after_df["kwh"]) // 500 + 1) * 500)
+
+_p = (
+    ggplot(_after_df, aes(x="month_label", y="kwh", fill="source"))
+    + geom_col(width=0.7, position=position_dodge(width=0.75))
+    + scale_fill_manual(values={_SIM_AFTER_LABEL: SB_COLORS["saffron"], _BGE_AFTER_LABEL: SB_COLORS["sky"]})
+    + scale_y_continuous(limits=(0, _ymax_bge_after), expand=(0, 0))
+    + scale_x_discrete(expand=(0.02, 0, 0.02, 0))
+    + labs(
+        title="After heat pump: simulation vs. BGE actual",
+        x="",
+        y="Average monthly electricity (kWh)",
+        fill="",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4.5), legend_position="top")
+)
+_fig = _p.draw()
+display_figure(_fig)
+```
+
+The second chart above compares BGE electric-heating customers to our
+simulated fossil-fuel homes _after_ they receive the Upgrade 1 heat pump. But
+a more direct comparison is to the simulation's _existing_ electric-heating
+population in Upgrade 0 (baseline), which includes both heat pumps and
+electric resistance — the same mix that BGE's electric-heating flag captures.
+
+```{python}
+#| label: fig-monthly-load-bge-elec-heating-comparison
+#| fig-cap: "Average monthly electricity for BGE electric-heating customers (sky) vs. simulated electric-heating homes in the baseline (Upgrade 0, gold). BGE data: test year April 2025–March 2026 (Schedules R + RL, heating). Simulation: NREL ResStock 2024.2 upgrade 0, AMY 2018."
+
+_pop_elec_heating = cast(
+    pl.DataFrame,
+    bills_precalc.filter(
+        (pl.col("month") == "Annual")
+        & (pl.col("sb.electric_utility") == UTILITY)
+        & pl.col("heats_with_electricity")
+    )
+    .select("bldg_id", "weight")
+    .collect(),
+)
+print(f"Electric-heating population: {len(_pop_elec_heating):,} buildings, "
+      f"{_pop_elec_heating['weight'].sum():,.0f} weighted households")
+
+_elec_heating_monthly = weighted_avg_monthly(
+    kwh_8760_precalc,
+    _pop_elec_heating["bldg_id"].to_list(),
+    _pop_elec_heating,
+)
+
+_SIM_ELEC_LABEL = "ResStock simulation (electric heating, upgrade 0)"
+_BGE_ELEC_LABEL = "BGE actual (electric heating)"
+
+_elec_df = pl.concat([
+    _elec_heating_monthly.select(
+        pl.col("month_label").cast(_MONTH_ENUM),
+        pl.col("kwh").cast(pl.Float64),
+        pl.lit(_SIM_ELEC_LABEL).alias("source"),
+    ),
+    bge_monthly.select(
+        pl.col("month_label").cast(_MONTH_ENUM),
+        pl.col("bge_heating_kwh").alias("kwh"),
+        pl.lit(_BGE_ELEC_LABEL).alias("source"),
+    ),
+]).with_columns(
+    pl.col("source").cast(pl.Enum([_SIM_ELEC_LABEL, _BGE_ELEC_LABEL]))
+)
+
+_ymax_bge_elec = int((max(_elec_df["kwh"]) // 500 + 1) * 500)
+
+_p = (
+    ggplot(_elec_df, aes(x="month_label", y="kwh", fill="source"))
+    + geom_col(width=0.7, position=position_dodge(width=0.75))
+    + scale_fill_manual(values={_SIM_ELEC_LABEL: "#C8A200", _BGE_ELEC_LABEL: SB_COLORS["sky"]})
+    + scale_y_continuous(limits=(0, _ymax_bge_elec), expand=(0, 0))
+    + scale_x_discrete(expand=(0.02, 0, 0.02, 0))
+    + labs(
+        title="Electric heating: simulation (upgrade 0) vs. BGE actual",
+        x="",
+        y="Average monthly electricity (kWh)",
+        fill="",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4.5), legend_position="top")
+)
+_fig = _p.draw()
 display_figure(_fig)
 ```
 
@@ -1320,6 +1641,101 @@ ax.set_ylabel("Annual ($)", fontsize=12, fontfamily="IBM Plex Sans")
 ax.legend(handles=_cc_legend(), loc="upper left", frameon=False, fontsize=10)
 fig.tight_layout()
 display_figure(fig)
+```
+
+
+## Schedule R-HP rates
+
+We now compute the per-component volumetric rates for a proposed Schedule R-HP.
+The goal is to set rates that eliminate the overpayment documented above — the
+gap between what a heat-pump customer _causes_ in costs and what they _pay_ in
+charges — for the average fossil-fuel-heated home.
+
+The logic differs by component:
+
+- **EmPOWER Maryland**: There is no marginal-cost justification for the bill
+  increase (EmPOWER is a surcharge, not a cost-causation charge), so we set the
+  rate to hold the annual EmPOWER bill flat — the same dollar amount before and
+  after installing a heat pump.
+- **Transmission and Distribution**: We allow the bill to increase by exactly
+  the marginal-cost increase — the customer pays for the additional costs they
+  cause, but nothing above that.
+- **Generation**: Unchanged — generation charges already track costs fairly.
+
+```{python}
+#| label: compute-rhp-rates
+
+# --- EmPOWER: hold annual bill flat ------------------------------------------
+_empower_before = report_vars["all_fossil_annual_empower_maryland_before"]
+_empower_after = report_vars["all_fossil_annual_empower_maryland_after"]
+_lambda_empower = _empower_before / _empower_after
+
+# --- Transmission: bill increase = marginal cost increase --------------------
+_tx_before = report_vars["all_fossil_annual_transmission_before"]
+_tx_after = report_vars["all_fossil_annual_transmission_after"]
+_mc_tx_delta = report_vars["all_fossil_annual_mc_tx_delta"]
+_fair_tx_after = _tx_before + _mc_tx_delta
+_lambda_tx = _fair_tx_after / _tx_after
+
+# --- Distribution: bill increase = marginal cost increase --------------------
+_dist_before = report_vars["all_fossil_annual_distribution_before"]
+_dist_after = report_vars["all_fossil_annual_distribution_after"]
+_mc_dist_delta = report_vars["all_fossil_annual_mc_dist_delta"]
+_fair_dist_after = _dist_before + _mc_dist_delta
+_lambda_dist = _fair_dist_after / _dist_after
+
+# --- Average rates (kWh-weighted using the after-HP profile) -----------------
+_kwh_after = report_vars["all_fossil_annual_kwh_after"]
+
+_avg_rate_dist = _dist_after / _kwh_after
+_avg_rate_tx = _tx_after / _kwh_after
+_avg_rate_empower = _empower_after / _kwh_after
+_avg_rate_gen = report_vars["all_fossil_annual_generation_after"] / _kwh_after
+
+_rhp_rate_dist = _avg_rate_dist * _lambda_dist
+_rhp_rate_tx = _avg_rate_tx * _lambda_tx
+_rhp_rate_empower = _avg_rate_empower * _lambda_empower
+
+# --- Store report vars -------------------------------------------------------
+report_vars["rhp_lambda_dist"] = _lambda_dist
+report_vars["rhp_lambda_tx"] = _lambda_tx
+report_vars["rhp_lambda_empower"] = _lambda_empower
+
+report_vars["rhp_avg_rate_dist"] = _avg_rate_dist
+report_vars["rhp_avg_rate_tx"] = _avg_rate_tx
+report_vars["rhp_avg_rate_empower"] = _avg_rate_empower
+report_vars["rhp_avg_rate_gen"] = _avg_rate_gen
+report_vars["rhp_avg_rate_non_gen_total"] = _avg_rate_dist + _avg_rate_tx + _avg_rate_empower
+
+report_vars["rhp_rate_dist"] = _rhp_rate_dist
+report_vars["rhp_rate_tx"] = _rhp_rate_tx
+report_vars["rhp_rate_empower"] = _rhp_rate_empower
+
+report_vars["rhp_pct_change_dist"] = _lambda_dist - 1.0
+report_vars["rhp_pct_change_tx"] = _lambda_tx - 1.0
+report_vars["rhp_pct_change_empower"] = _lambda_empower - 1.0
+
+report_vars["rhp_fair_tx_bill_after"] = _fair_tx_after
+report_vars["rhp_fair_dist_bill_after"] = _fair_dist_after
+
+# --- Print summary -----------------------------------------------------------
+print("Schedule R-HP rate computation (all-fossil homes):\n")
+print(f"{'Component':<20s}  {'Sched R':>10s}  {'Sched R-HP':>10s}  {'Change':>8s}  {'λ':>6s}")
+print("-" * 62)
+for _label, _r, _rhp, _pct in [
+    ("Distribution", _avg_rate_dist, _rhp_rate_dist, _lambda_dist - 1),
+    ("Transmission", _avg_rate_tx, _rhp_rate_tx, _lambda_tx - 1),
+    ("EmPOWER MD", _avg_rate_empower, _rhp_rate_empower, _lambda_empower - 1),
+    ("Generation", _avg_rate_gen, _avg_rate_gen, 0.0),
+]:
+    print(f"{_label:<20s}  {_r*100:>9.2f}¢  {_rhp*100:>9.2f}¢  {_pct:>+7.1%}  {_pct+1:>.4f}")
+
+print(f"\nEmPOWER: bill before=${_empower_before:,.0f}  after=${_empower_after:,.0f}  "
+      f"→ hold flat at ${_empower_before:,.0f}")
+print(f"TX: bill before=${_tx_before:,.0f}  after=${_tx_after:,.0f}  "
+      f"MC delta=${_mc_tx_delta:+,.0f}  → fair after=${_fair_tx_after:,.0f}")
+print(f"Dist: bill before=${_dist_before:,.0f}  after=${_dist_after:,.0f}  "
+      f"MC delta=${_mc_dist_delta:+,.0f}  → fair after=${_fair_dist_after:,.0f}")
 ```
 
 

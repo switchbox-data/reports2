@@ -2782,7 +2782,7 @@ def monthly_load_y_max(
     peak = 0.0
     for series in (kwh, before_kwh, after_kwh):
         if series is not None:
-            peak = max(peak, float(series.max()))
+            peak = max(peak, cast(float, series.max()))
     return max(500, int(math.ceil(peak / 500) * 500))
 
 
@@ -3424,7 +3424,7 @@ def plot_annual_bill_component_single(
         )
     )
 
-    y_upper = y_max if y_max is not None else float(annual["value"].max()) * 1.08
+    y_upper = y_max if y_max is not None else cast(float, annual["value"].max()) * 1.08
 
     p = (
         ggplot(annual, aes(x="component", y="value", fill="component"))

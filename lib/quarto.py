@@ -106,9 +106,13 @@ def display_figure(fig: Figure, *, dpi: int = 300) -> None:
     else:
         from IPython.display import SVG, display
 
+        from lib.plotnine.svg_optimize import rasterize_colorbars, relocate_colorbar_images
+
+        rasterize_colorbars(fig)
         fig.savefig(buf := io.BytesIO(), format="svg", bbox_inches="tight")
         plt.close(fig)
-        display(SVG(data=buf.getvalue()))
+        svg_bytes = relocate_colorbar_images(buf.getvalue())
+        display(SVG(data=svg_bytes))
 
 
 display_svg = display_figure

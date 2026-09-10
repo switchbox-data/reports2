@@ -3218,12 +3218,8 @@ def plot_monthly_load_before_after(
     _summer_before = float(
         monthly.filter(pl.col("month_label").is_in(["Jun", "Jul", "Aug", "Sep"]))["before_kwh"].sum()
     )
-    _summer_after = float(
-        monthly.filter(pl.col("month_label").is_in(["Jun", "Jul", "Aug", "Sep"]))["after_kwh"].sum()
-    )
-    _summer_pct_decrease = (
-        (_summer_before - _summer_after) / _summer_before if _summer_before > 0 else 0.0
-    )
+    _summer_after = float(monthly.filter(pl.col("month_label").is_in(["Jun", "Jul", "Aug", "Sep"]))["after_kwh"].sum())
+    _summer_pct_decrease = (_summer_before - _summer_after) / _summer_before if _summer_before > 0 else 0.0
     has_savings = max_savings_month["savings"] > 0 and _summer_pct_decrease >= 0.05
 
     p = (
@@ -3451,17 +3447,15 @@ def plot_annual_bill_component_single(
         .with_columns(
             pl.col("component").cast(pl.Enum(_BILL_COMPONENT_ORDER)),
             pl.when(pl.col("value").abs() >= 1.0)
-            .then(
-                pl.col("value").round(0).cast(pl.Int64).cast(pl.Utf8).str.replace(
-                    r"^(-?\d+)$", "$$$1"
-                )
-            )
+            .then(pl.col("value").round(0).cast(pl.Int64).cast(pl.Utf8).str.replace(r"^(-?\d+)$", "$$$1"))
             .otherwise(pl.lit(""))
             .alias("label"),
         )
     )
 
-    y_upper = y_max if y_max is not None else float(annual["value"].max()) * 1.08
+    raw_max = annual["value"].max()
+    peak = float(raw_max) if isinstance(raw_max, int | float) else 0.0
+    y_upper = y_max if y_max is not None else peak * 1.08
 
     p = (
         ggplot(annual, aes(x="component", y="value", fill="component"))

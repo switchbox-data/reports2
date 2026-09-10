@@ -1,32 +1,34 @@
 ---
+title: "BGE Schedule RD bill-change analysis"
+
 jupyter: python3
 execute:
   warning: false
   message: false
 ---
 
-# BGE Schedule RD Rate Analysis
-## Comparing R/RL vs RD Time-of-Use rates for heat pump customers
+This notebook answers one question: **How would a BGE customer's annual energy
+bill change when moving from Schedule R before a heat-pump retrofit to
+Schedule RD after the retrofit?**
 
-This notebook analyzes BGE's Schedule RD (Residential Delivery and Energy Time-of-Use)
-rate for heat pump customers, comparing energy bills between:
+The comparison changes both the modeled building upgrade and the electric tariff:
 
-- **Before**: Gas heating on R/RL tariff (`default` quartet, `precalc` stage → upgrade 00)
-- **After**: Heat pump on RD tariff (`default_rd` quartet, `calibrated` stage → upgrade 02)
-
-This is the full transition: switching from gas heating to a heat pump *and*
-moving to the RD time-of-use tariff. Segment names are `{scenario}_{stage}` and each
-maps to its own master bills table under the batch, so the two sides come from two
-completely different quartets.
+- **Before:** the `default_r_uncalibrated_precalc` segment, which bills
+  **upgrade 00** — the home as it exists today, with its original heating
+  system — on Schedule R.
+- **After:** the `default_rd_uncalibrated_calibrated` segment, which bills
+  **upgrade 01** — the same home after the heat-pump retrofit — on Schedule RD.
 
 ```{python}
 # Setup
 from __future__ import annotations
 
+from pathlib import Path
 from typing import cast
 
 import polars as pl
 import plotnine as p9
+import yaml
 from great_tables import GT
 
 from lib.great_tables import get_switchbox_gt_tab_options
@@ -44,21 +46,32 @@ from lib.rates_analysis.rate_case_funcs import (
 )
 ```
 
+Batch identity lives in `batch_config.yaml`, keeping this notebook aligned with
+the other Maryland rate-analysis notebooks.
+
 ```{python}
 # Parameters
-STATE = "md"
-BATCH = "md_20260825_rd_comparison"
+_batch_config = yaml.safe_load(Path("../batch_config.yaml").read_text())
+
+STATE = _batch_config["STATE"]
+BATCH = _batch_config["BATCH"]
 UTILITY = "bge"
 
 # Segments = {scenario}_{stage}. These pull two different quartets:
-#   default / precalc      → R/RL on upgrade 00
-#   default_rd / calibrated → RD on upgrade 02
-SEGMENT_DEFAULT = "default_precalc"
-SEGMENT_RD = "default_rd_calibrated"
+#   default_r_uncalibrated / precalc       → R on upgrade 00
+#   default_rd_uncalibrated / calibrated   → RD on upgrade 01 (HP retrofit)
+SEGMENT_DEFAULT = f"{_batch_config['BASELINE_BILL_SCENARIO']}_precalc"
+SEGMENT_RD = "default_rd_uncalibrated_calibrated"
+UPGRADE_BEFORE = 0
+UPGRADE_AFTER = 1
 ```
 
+We now join the two annual master-bill tables by modeled building. `delta` is
+the after bill minus the before bill, so a negative value means the household
+would save money.
+
 ```{python}
-# Annual energy-bill change: R/RL on upgrade 00 → RD on upgrade 02
+# Annual energy-bill change: R on baseline upgrade → RD on HP upgrade
 bill_change = add_heating_label(
     bill_delta_between_segments(
         STATE,
@@ -69,28 +82,50 @@ bill_change = add_heating_label(
     )
 ).with_columns((pl.col("delta") / pl.col("bill_before")).alias("pct_change"))
 
-print(f"{len(bill_change):,} buildings")
+if bill_change["bldg_id"].n_unique() != bill_change.height:
+    raise ValueError("Expected one annual bill-change row per modeled building")
+
+print(
+    f"{bill_change.height:,} modeled buildings representing "
+    f"{bill_change['weight'].sum():,.0f} BGE customers"
+)
 ```
 
-## Bill Change Analysis
+## What is the annual bill change?
+
+The distribution varies substantially by the home's baseline heating system.
+The figure shows annual bill changes across the modeled BGE population; values
+below zero are savings.
 
 ```{python}
+#| label: fig-rd-bill-change-distribution
+#| fig-cap: "Annual energy-bill change from Schedule R before the heat-pump retrofit to Schedule RD after the retrofit, by baseline heating system."
+
 plot = (
     p9.ggplot(bill_change, p9.aes(x="delta", weight="weight"))
     + p9.geom_histogram(bins=50, fill=SB_COLORS["sky"], alpha=0.7)
     + p9.facet_wrap("~ heating_label", scales="free_y")
     + p9.labs(
-        x="Annual bill change ($)",
-        y="Weighted count",
-        title="Annual Bill Change: R/RL → RD with Heat Pump",
+        x="Annual energy-bill change ($)",
+        y="Weighted households",
+        title=(
+            f"Annual energy-bill change: R (u{UPGRADE_BEFORE:02d}) → "
+            f"RD (u{UPGRADE_AFTER:02d})"
+        ),
     )
-    + p9.theme_minimal()
-    + p9.theme(figure_size=(10, 4))
+    + theme_switchbox()
+    + p9.theme(figure_size=(10.5, 5))
 )
 plot
 ```
 
+The table reports the weighted mean change and the share of households that
+would save within each baseline heating group.
+
 ```{python}
+#| label: tbl-rd-bill-change-summary
+#| tbl-cap: "Annual energy-bill change by baseline heating system"
+
 # Summary statistics
 summary = (
     bill_change
@@ -100,6 +135,13 @@ summary = (
         pl.col("weight").sum().alias("weight_total"),
         ((pl.col("delta") * pl.col("weight")).sum() / pl.col("weight").sum()).alias("mean_bill_change"),
         ((pl.col("pct_change") * pl.col("weight")).sum() / pl.col("weight").sum()).alias("mean_pct_change"),
+        (
+            pl.when(pl.col("delta") < 0)
+            .then(pl.col("weight"))
+            .otherwise(0.0)
+            .sum()
+            / pl.col("weight").sum()
+        ).alias("share_saving"),
     ])
     .sort("heating_label")
 )
@@ -111,31 +153,39 @@ _summary_gt = (
         weight_total="Weighted households",
         mean_bill_change="Mean bill change",
         mean_pct_change="Mean % change",
+        share_saving="Share saving",
     )
     .fmt_number(columns=["n_buildings", "weight_total"], decimals=0, use_seps=True)
     .fmt_currency(columns="mean_bill_change", decimals=0)
-    .fmt_percent(columns="mean_pct_change", decimals=1)
+    .fmt_percent(columns=["mean_pct_change", "share_saving"], decimals=1)
     .tab_stubhead(label="Baseline heating type")
+    .tab_source_note(
+        f"Schedule R (u{UPGRADE_BEFORE:02d}) → "
+        f"Schedule RD (u{UPGRADE_AFTER:02d}); negative changes are savings."
+    )
     .tab_options(**get_switchbox_gt_tab_options())
 )
 display_gt(_summary_gt)
 ```
 
-### Savings/Losses Quadrant Bar Chart
+### How large are the savings or increases?
 
 This chart shows the distribution of bill changes in four quadrants:
 
 | Bin | Definition |
-|-----|------------|
+|---|---|
 | SAVE > $1K | Annual energy bill decreases by more than $1,000 |
-| SAVE $0-1K | Annual energy bill decreases by $0–$1,000 |
-| LOSE $0-1K | Annual energy bill increases by $0–$1,000 |
+| SAVE $0–1K | Annual energy bill decreases by $0–$1,000 |
+| LOSE $0–1K | Annual energy bill increases by $0–$1,000 |
 | LOSE > $1K | Annual energy bill increases by more than $1,000 |
 
-A bar leaning heavily green indicates that most households in that group would save
-money by switching from R/RL to RD with a heat pump.
+Green represents savings and red represents increases. Each bar sums to 100% of
+the weighted households in that baseline heating group.
 
 ```{python}
+#| label: fig-rd-bill-change-quadrants
+#| fig-cap: "Share of BGE households in four annual bill-change ranges, by baseline heating system."
+
 avail_heating = sorted(
     bill_change.select("heating_label").unique().to_series().to_list(),
     key=lambda x: HEATING_ORDER.index(x) if x in HEATING_ORDER else 999,
@@ -171,7 +221,10 @@ plot = (
     + p9.labs(
         x="",
         y="% of weighted households",
-        title="Change in annual bill: Gas on R/RL (u00) → Heat Pump on RD (u02)",
+        title=(
+            f"Annual energy-bill change: R (u{UPGRADE_BEFORE:02d}) → "
+            f"RD (u{UPGRADE_AFTER:02d})"
+        ),
     )
     + theme_switchbox()
     + p9.theme(figure_size=(10.5, max(3.5, 1.0 + 1.4 * len(avail_heating))))
@@ -180,12 +233,15 @@ plot = (
 plot
 ```
 
-### Savings Breakdown Table
+### Detailed bill-change ranges
 
-The table below shows the fraction of weighted households in each savings/loss bin,
-broken out by baseline heating type.
+The final table divides savings into narrower ranges and reports weighted mean
+and median changes.
 
 ```{python}
+#| label: tbl-rd-bill-change-ranges
+#| tbl-cap: "Detailed annual bill-change ranges by baseline heating system"
+
 SAVE_BINS: list[tuple[float, float, str]] = [
     (-float("inf"), -2000, "save_gt_2k"),
     (-2000, -1000, "save_1k_2k"),
@@ -238,8 +294,9 @@ _savings_gt = (
     .fmt_currency(columns=["mean_change", "median_change"], decimals=0)
     .tab_stubhead(label="Baseline heating type")
     .tab_source_note(
-        "Shares are weighted households in each annual bill-change bin. "
-        "Mean/median are weight-averaged $/yr changes (R/RL u00 → RD u02)."
+        f"Shares are weighted households in each annual bill-change bin. "
+        f"Mean and median are annual changes for R "
+        f"(u{UPGRADE_BEFORE:02d}) → RD (u{UPGRADE_AFTER:02d})."
     )
     .tab_options(**get_switchbox_gt_tab_options())
 )

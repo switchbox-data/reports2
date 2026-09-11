@@ -15,6 +15,7 @@ from lib.rates_analysis.rate_case_funcs import (
     load_master_bat_for_utility,
     plot_annual_bill_component_stacked,
     quadrant_pcts,
+    segment_upgrade,
     tariff_month_rate_table,
     weighted_range_pcts,
 )
@@ -52,6 +53,25 @@ def test_load_master_bat_for_utility_filters_and_selects_columns(
 
     assert result.columns == ["bldg_id", "weight"]
     assert result["bldg_id"].to_list() == [1, 3]
+
+
+def test_segment_upgrade_returns_the_single_upgrade_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = pl.DataFrame({"upgrade": [1, 1, 1]}).lazy()
+    monkeypatch.setattr(rate_case_funcs, "load_master_bills", lambda *_: source)
+
+    assert segment_upgrade("MD", "batch", "default_rd_uncalibrated_calibrated") == 1
+
+
+def test_segment_upgrade_rejects_mixed_upgrade_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = pl.DataFrame({"upgrade": [0, 1]}).lazy()
+    monkeypatch.setattr(rate_case_funcs, "load_master_bills", lambda *_: source)
+
+    with pytest.raises(ValueError, match="distinct upgrade IDs"):
+        segment_upgrade("MD", "batch", "mixed_segment")
 
 
 def test_load_master_bat_for_utility_rejects_missing_columns(

@@ -101,6 +101,26 @@ def load_master_bills(state: str, batch: str, segment: str) -> pl.LazyFrame:
     )
 
 
+def segment_upgrade(state: str, batch: str, segment: str) -> int:
+    """Return the ResStock upgrade ID stored on a master-bills segment.
+
+    Each Prefect master-bills segment is produced from one CAIRO run, so
+    ``upgrade`` is constant. Reading it from the table keeps notebooks in
+    sync if the pipeline later maps ``precalc`` / ``calibrated`` to different
+    upgrade IDs.
+    """
+    distinct = cast(
+        "pl.DataFrame",
+        load_master_bills(state, batch, segment).select("upgrade").unique().collect(),
+    )
+    upgrades = distinct.get_column("upgrade").to_list()
+    if len(upgrades) != 1:
+        raise ValueError(
+            f"Segment {segment!r} has {len(upgrades)} distinct upgrade IDs {upgrades!r}; expected exactly one"
+        )
+    return int(upgrades[0])
+
+
 def load_master_bat(state: str, batch: str, segment: str) -> pl.LazyFrame:
     """Load the ``cross_subsidization_BAT_values`` master table for one batch segment.
 

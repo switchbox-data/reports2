@@ -1266,10 +1266,11 @@ Do **not** put skills under `context/` — skills are operational guides; `conte
 
 ### Current skills
 
-| Skill               | Path                              | Use when …                                                                                                                                                    |
-| ------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **copy-edit**       | `.cursor/skills/copy-edit/`       | Copy editing or proofreading a report `index.qmd` (Chicago/CMOS + Switchbox house style).                                                                     |
-| **mdpuc-documents** | `.cursor/skills/mdpuc-documents/` | Fetching or extracting **Maryland PSC (MDPUC)** filings — MailLog search, `psc.maryland.gov` uploads, markdown extracts under `context/sources/md_hp_rates/`. |
+| Skill                | Path                               | Use when …                                                                                                                                                    |
+| -------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **copy-edit**        | `.cursor/skills/copy-edit/`        | Copy editing or proofreading a report `index.qmd` (Chicago/CMOS + Switchbox house style).                                                                     |
+| **expert-testimony** | `.cursor/skills/expert-testimony/` | Writing or editing expert testimony in Q&A format for regulatory proceedings (PUC/PSC/ICC rate cases, docket filings).                                        |
+| **mdpuc-documents**  | `.cursor/skills/mdpuc-documents/`  | Fetching or extracting **Maryland PSC (MDPUC)** filings — MailLog search, `psc.maryland.gov` uploads, markdown extracts under `context/sources/md_hp_rates/`. |
 
 More **PUC document skills** for other jurisdictions (e.g. RI PUC, ICC) may be added alongside `mdpuc-documents` as those corpora grow. Each jurisdiction gets its own skill when fetch paths and conventions differ materially.
 

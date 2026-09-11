@@ -57,6 +57,7 @@ from lib.rates_analysis.rate_case_funcs import (
     monthly_load_y_max,
     plot_annual_bill_component_single,
     plot_annual_bill_component_stacked,
+    plot_decomposed_bill_2bar,
     plot_monthly_delivery_mc,
     plot_seasonal_delivery_mc,
     plot_seasonal_delivery_mc_comparison,
@@ -91,7 +92,7 @@ UTILITY = "bge"
 
 DEFAULT_SCENARIO = _batch_config["BASELINE_BILL_SCENARIO"]
 
-USE_BGE_ACTUALS = False
+USE_BGE_ACTUALS = True
 
 print(f"state={STATE}  batch={BATCH}  rdp_ref={RDP_REF}  utility={UTILITY}")
 print(f"USE_BGE_ACTUALS={USE_BGE_ACTUALS}")
@@ -506,6 +507,137 @@ for period in ["before", "after"]:
     for row in annual.iter_rows(named=True):
         print(f"  {row['component']:20s} ${row['annual']:,.2f}")
     print(f"  {'TOTAL':20s} ${annual['annual'].sum():,.2f}")
+```
+
+## Total energy bills (before/after heat pump)
+
+We now compute the average _total_ energy bill — electricity plus fossil fuel —
+for each population before and after heat pump installation. The electric
+components come from the profile-based bill computation above; the fossil fuel
+bills come from the master bills (CAIRO's full bill calculation, which includes
+gas tariff bills for natgas homes and EIA-price-based oil/propane costs for
+delivered-fuel homes).
+
+```{python}
+#| label: compute-total-energy-bills
+
+_fossil_cols = ["gas_total_bill", "oil_total_bill", "propane_total_bill"]
+_fossil_annual = cast(
+    pl.DataFrame,
+    bills_precalc.filter(
+        (pl.col("month") == "Annual") & (pl.col("sb.electric_utility") == UTILITY)
+    )
+    .select("bldg_id", "upgrade", "weight", *_fossil_cols)
+    .collect(),
+)
+
+
+def _weighted_avg_fossil(pop_df: pl.DataFrame, upgrade: int) -> dict[str, float]:
+    """Weighted-average fossil fuel bills for a population at a given upgrade."""
+    joined = (
+        _fossil_annual.filter(pl.col("upgrade") == upgrade)
+        .join(pop_df.select("bldg_id", "weight"), on="bldg_id", suffix="_pop")
+        .with_columns(w=pl.col("weight_pop"))
+    )
+    total_w = joined["w"].sum()
+    return {
+        col: (joined[col] * joined["w"]).sum() / total_w
+        for col in _fossil_cols
+    }
+
+
+# Natural gas homes
+_ng_fossil_before = _weighted_avg_fossil(pop_natgas, upgrade=0)
+_ng_fossil_after = _weighted_avg_fossil(pop_natgas, upgrade=2)
+
+natgas_before = {
+    "delivery_fixed": report_vars["natgas_annual_customer_charge_before"],
+    "delivery_volumetric": (
+        report_vars["natgas_annual_distribution_before"]
+        + report_vars["natgas_annual_transmission_before"]
+        + report_vars["natgas_annual_empower_maryland_before"]
+    ),
+    "supply": report_vars["natgas_annual_generation_before"],
+    "gas": _ng_fossil_before["gas_total_bill"],
+}
+
+natgas_after = {
+    "delivery_fixed": report_vars["natgas_annual_customer_charge_after"],
+    "delivery_volumetric": (
+        report_vars["natgas_annual_distribution_after"]
+        + report_vars["natgas_annual_transmission_after"]
+        + report_vars["natgas_annual_empower_maryland_after"]
+    ),
+    "supply": report_vars["natgas_annual_generation_after"],
+    "gas": _ng_fossil_after["gas_total_bill"],
+}
+
+# Delivered fuel homes
+_del_fossil_before = _weighted_avg_fossil(pop_delivered, upgrade=0)
+_del_fossil_after = _weighted_avg_fossil(pop_delivered, upgrade=2)
+
+delivered_before = {
+    "delivery_fixed": report_vars["delivered_annual_customer_charge_before"],
+    "delivery_volumetric": (
+        report_vars["delivered_annual_distribution_before"]
+        + report_vars["delivered_annual_transmission_before"]
+        + report_vars["delivered_annual_empower_maryland_before"]
+    ),
+    "supply": report_vars["delivered_annual_generation_before"],
+    "gas": _del_fossil_before["oil_total_bill"] + _del_fossil_before["propane_total_bill"],
+}
+
+delivered_after = {
+    "delivery_fixed": report_vars["delivered_annual_customer_charge_after"],
+    "delivery_volumetric": (
+        report_vars["delivered_annual_distribution_after"]
+        + report_vars["delivered_annual_transmission_after"]
+        + report_vars["delivered_annual_empower_maryland_after"]
+    ),
+    "supply": report_vars["delivered_annual_generation_after"],
+    "gas": _del_fossil_after["oil_total_bill"] + _del_fossil_after["propane_total_bill"],
+}
+
+# Store total energy bill report vars
+for pop_label, b, a in [("natgas", natgas_before, natgas_after), ("delivered", delivered_before, delivered_after)]:
+    total_before = sum(b.values())
+    total_after = sum(a.values())
+    report_vars[f"{pop_label}_total_energy_bill_before"] = total_before
+    report_vars[f"{pop_label}_total_energy_bill_after"] = total_after
+    report_vars[f"{pop_label}_total_energy_bill_delta"] = total_after - total_before
+    report_vars[f"{pop_label}_fossil_fuel_bill_before"] = b["gas"]
+    report_vars[f"{pop_label}_fossil_fuel_bill_after"] = a["gas"]
+
+for label, b, a in [("Natural gas", natgas_before, natgas_after), ("Delivered fuel", delivered_before, delivered_after)]:
+    print(f"\n{label}:")
+    print(f"  Before: {sum(b.values()):,.0f}  (elec {sum(v for k, v in b.items() if k != 'gas'):,.0f} + fossil {b['gas']:,.0f})")
+    print(f"  After:  {sum(a.values()):,.0f}  (elec {sum(v for k, v in a.items() if k != 'gas'):,.0f} + fossil {a['gas']:,.0f})")
+```
+
+```{python}
+#| label: fig-total-bill-before-after-natgas
+#| fig-cap: "Average annual energy bills for BGE natural-gas-heated homes, before and after heat pump installation."
+
+fig_natgas_ba = plot_decomposed_bill_2bar(
+    natgas_before,
+    natgas_after,
+    bar_labels=("Natural gas\nfurnace", "Heat pump"),
+    title="Average annual energy bill: natural-gas-heated homes",
+)
+display_figure(fig_natgas_ba)
+```
+
+```{python}
+#| label: fig-total-bill-before-after-delivered
+#| fig-cap: "Average annual energy bills for BGE delivered-fuel-heated homes, before and after heat pump installation."
+
+fig_delivered_ba = plot_decomposed_bill_2bar(
+    delivered_before,
+    delivered_after,
+    bar_labels=("Oil/propane\nfurnace", "Heat pump"),
+    title="Average annual energy bill: delivered-fuel-heated homes",
+)
+display_figure(fig_delivered_ba)
 ```
 
 ## Chart 1: Monthly load before/after

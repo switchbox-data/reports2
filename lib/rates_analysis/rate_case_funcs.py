@@ -2476,6 +2476,115 @@ def plot_decomposed_bill_3bar(
     return fig, savings, pct_savings / 100, totals[1], totals[2]
 
 
+def plot_decomposed_bill_2bar(
+    before: dict[str, float],
+    after: dict[str, float],
+    *,
+    bar_labels: tuple[str, str],
+    title: str,
+) -> Figure:
+    """Two-bar decomposed annual bill chart: fossil-fuel furnace vs. heat pump.
+
+    Each of *before* and *after* is a dict with keys matching
+    ``DECOMPOSED_BILL_COMPONENT_KEYS`` (``delivery_fixed``,
+    ``delivery_volumetric``, ``supply``, ``gas``).  *bar_labels* names the
+    two bars (e.g. ``("Natural gas\\nfurnace", "Heat pump")``).
+
+    Draws with raw matplotlib for per-segment dollar labels and total
+    annotations.  Returns the ``Figure`` (caller uses ``display_figure``).
+    """
+    scenarios = list(bar_labels)
+    x = np.arange(len(scenarios))
+    w = 0.55
+    comp_keys = DECOMPOSED_BILL_COMPONENT_KEYS
+    bars_data = [before, after]
+
+    fig, ax = pyplot.subplots(figsize=(10.5, 6))
+    ax.set_title(
+        title,
+        fontfamily="GT Planar",
+        fontweight="bold",
+        fontsize=15,
+        loc="left",
+        pad=12,
+    )
+
+    bottoms = [0.0, 0.0]
+    for ck in comp_keys:
+        vals = [bars_data[i][ck] for i in range(2)]
+        ax.bar(x, vals, w, bottom=bottoms, color=DECOMPOSED_BILL_COLORS[ck], edgecolor="none")
+        for i, (v, b) in enumerate(zip(vals, bottoms, strict=False)):
+            if v > 80:
+                ax.text(
+                    x[i],
+                    b + v / 2,
+                    _fmt_dollar(v),
+                    ha="center",
+                    va="center",
+                    color="white",
+                    fontweight="bold",
+                    fontsize=11,
+                    zorder=11,
+                )
+        bottoms = [b + v for b, v in zip(bottoms, vals, strict=False)]
+
+    totals = [sum(bars_data[i][k] for k in comp_keys) for i in range(2)]
+
+    for i in range(2):
+        ax.text(
+            x[i],
+            totals[i] + 40,
+            _fmt_dollar(totals[i]),
+            ha="center",
+            va="bottom",
+            color="#333333",
+            fontweight="bold",
+            fontsize=12,
+        )
+
+    # Side labels on the right of the after (HP) bar
+    side_x = x[1] + w / 2 + 0.15
+    y_cursor = 0.0
+    for key, label in [
+        ("delivery_fixed", "Delivery\n(Fixed)"),
+        ("delivery_volumetric", "Delivery\n(Volumetric)"),
+        ("supply", "Supply"),
+        ("gas", "Fossil fuel"),
+    ]:
+        val = after[key]
+        if val > 30:
+            ym = y_cursor + val / 2
+            ax.plot(
+                [x[1] + w / 2 + 0.02, side_x - 0.03],
+                [ym, ym],
+                color=DECOMPOSED_BILL_LABEL_COLORS[key],
+                linewidth=0.7,
+                alpha=0.6,
+            )
+            ax.text(
+                side_x,
+                ym,
+                label,
+                color=DECOMPOSED_BILL_LABEL_COLORS[key],
+                ha="left",
+                va="center",
+                fontsize=8.5,
+                fontweight="bold",
+            )
+        y_cursor += val
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(scenarios, fontsize=11)
+    ax.set_ylabel("Annual energy bill ($)", fontsize=12)
+    ax.set_ylim(0, max(totals) * 1.18)
+    ax.set_xlim(-0.5, x[-1] + w / 2 + 0.7)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["bottom"].set_bounds(-0.5, x[-1] + w / 2)
+    fig.tight_layout()
+    return fig
+
+
 def _cost_breakdown_stack(
     ax: Axes,
     components: list[tuple[str, float]],

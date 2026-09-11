@@ -58,6 +58,7 @@ from lib.rates_analysis.rate_case_funcs import (
     plot_annual_bill_component_single,
     plot_annual_bill_component_stacked,
     plot_decomposed_bill_2bar,
+    plot_decomposed_bill_3bar,
     plot_monthly_delivery_mc,
     plot_seasonal_delivery_mc,
     plot_seasonal_delivery_mc_comparison,
@@ -522,13 +523,17 @@ delivered-fuel homes).
 #| label: compute-total-energy-bills
 
 _fossil_cols = ["gas_total_bill", "oil_total_bill", "propane_total_bill"]
+_fossil_select = ["bldg_id", "upgrade", "weight", *_fossil_cols]
+_fossil_filter = (pl.col("month") == "Annual") & (pl.col("sb.electric_utility") == UTILITY)
+
+bills_calibrated = load_master_bills(STATE, BATCH, SEG_CALIBRATED)
+
 _fossil_annual = cast(
     pl.DataFrame,
-    bills_precalc.filter(
-        (pl.col("month") == "Annual") & (pl.col("sb.electric_utility") == UTILITY)
-    )
-    .select("bldg_id", "upgrade", "weight", *_fossil_cols)
-    .collect(),
+    pl.concat([
+        bills_precalc.filter(_fossil_filter).select(_fossil_select),
+        bills_calibrated.filter(_fossil_filter).select(_fossil_select),
+    ]).collect(),
 )
 
 
@@ -548,7 +553,7 @@ def _weighted_avg_fossil(pop_df: pl.DataFrame, upgrade: int) -> dict[str, float]
 
 # Natural gas homes
 _ng_fossil_before = _weighted_avg_fossil(pop_natgas, upgrade=0)
-_ng_fossil_after = _weighted_avg_fossil(pop_natgas, upgrade=2)
+_ng_fossil_after = _weighted_avg_fossil(pop_natgas, upgrade=1)
 
 natgas_before = {
     "delivery_fixed": report_vars["natgas_annual_customer_charge_before"],
@@ -574,7 +579,7 @@ natgas_after = {
 
 # Delivered fuel homes
 _del_fossil_before = _weighted_avg_fossil(pop_delivered, upgrade=0)
-_del_fossil_after = _weighted_avg_fossil(pop_delivered, upgrade=2)
+_del_fossil_after = _weighted_avg_fossil(pop_delivered, upgrade=1)
 
 delivered_before = {
     "delivery_fixed": report_vars["delivered_annual_customer_charge_before"],
@@ -623,6 +628,13 @@ fig_natgas_ba = plot_decomposed_bill_2bar(
     natgas_after,
     bar_labels=("Natural gas\nfurnace", "Heat pump"),
     title="Average annual energy bill: natural-gas-heated homes",
+    reserve_third=True,
+    side_labels={
+        "delivery_fixed": "Customer\nCharge",
+        "delivery_volumetric": "Transmission,\nDistribution,\nEmPOWER",
+        "supply": "Generation",
+        "gas": "Natural\nGas",
+    },
 )
 display_figure(fig_natgas_ba)
 ```
@@ -636,6 +648,13 @@ fig_delivered_ba = plot_decomposed_bill_2bar(
     delivered_after,
     bar_labels=("Oil/propane\nfurnace", "Heat pump"),
     title="Average annual energy bill: delivered-fuel-heated homes",
+    reserve_third=True,
+    side_labels={
+        "delivery_fixed": "Customer\nCharge",
+        "delivery_volumetric": "Transmission,\nDistribution,\nEmPOWER",
+        "supply": "Generation",
+        "gas": "Oil/\nPropane",
+    },
 )
 display_figure(fig_delivered_ba)
 ```
@@ -1375,6 +1394,8 @@ _mc_delivery_delta = _mc_delivery_after - _mc_delivery_before
 
 _COLOR_TX = "#023047"
 _COLOR_DIST = "#68bed8"
+_COLOR_TX_COST = "#546800"
+_COLOR_DIST_COST = "#A0AF12"
 _COLOR_GAP = "#fc9706"
 
 def _fmt_cc_dollar(x):
@@ -1388,29 +1409,32 @@ def _fmt_cc_dollar_plain(x):
         return "$0"
     return f"${abs(x):,.0f}"
 
-def _draw_cc_stacked_bar(ax, x, tx_val, dist_val, width, *, label_inside=True):
-    """Draw a stacked bar with transmission (bottom) and distribution (top)."""
-    ax.bar(x, tx_val, width, color=_COLOR_TX, zorder=3)
-    ax.bar(x, dist_val, width, bottom=tx_val, color=_COLOR_DIST, zorder=3)
+def _draw_cc_stacked_bar(ax, x, tx_val, dist_val, width, *, label_inside=True,
+                         color_dist=_COLOR_DIST, color_tx=_COLOR_TX):
+    """Draw a stacked bar with distribution (bottom) and transmission (top)."""
+    ax.bar(x, dist_val, width, color=color_dist, zorder=3)
+    ax.bar(x, tx_val, width, bottom=dist_val, color=color_tx, zorder=3)
     total = tx_val + dist_val
     if label_inside and total > 0:
-        if tx_val / max(total, 1e-9) >= 0.15:
-            ax.text(x, tx_val / 2, _fmt_cc_dollar_plain(tx_val),
-                    ha="center", va="center", color="white",
-                    fontweight="bold", fontsize=10, fontfamily="IBM Plex Sans", zorder=4)
         if dist_val / max(total, 1e-9) >= 0.15:
-            ax.text(x, tx_val + dist_val / 2, _fmt_cc_dollar_plain(dist_val),
+            ax.text(x, dist_val / 2, _fmt_cc_dollar_plain(dist_val),
                     ha="center", va="center", color="white",
-                    fontweight="bold", fontsize=10, fontfamily="IBM Plex Sans", zorder=4)
+                    fontweight="bold", fontsize=11, fontfamily="IBM Plex Sans", zorder=4)
+        if tx_val / max(total, 1e-9) >= 0.15:
+            ax.text(x, dist_val + tx_val / 2, _fmt_cc_dollar_plain(tx_val),
+                    ha="center", va="center", color="white",
+                    fontweight="bold", fontsize=11, fontfamily="IBM Plex Sans", zorder=4)
     ax.text(x, total + total * 0.02, _fmt_cc_dollar_plain(total),
-            ha="center", va="bottom", fontweight="bold", fontsize=11,
+            ha="center", va="bottom", fontweight="bold", fontsize=12,
             fontfamily="IBM Plex Sans", color="#333333", zorder=4)
     return total
 
 def _cc_legend():
     return [
-        mpatches.Patch(facecolor=_COLOR_TX, label="Transmission"),
-        mpatches.Patch(facecolor=_COLOR_DIST, label="Distribution"),
+        mpatches.Patch(facecolor=_COLOR_DIST_COST, label="Distribution (cost)"),
+        mpatches.Patch(facecolor=_COLOR_TX_COST, label="Transmission (cost)"),
+        mpatches.Patch(facecolor=_COLOR_DIST, label="Distribution (charge)"),
+        mpatches.Patch(facecolor=_COLOR_TX, label="Transmission (charge)"),
     ]
 
 print("Cost-vs-charge data ready:")
@@ -1429,40 +1453,43 @@ ax.set_title("Average natural-gas-heated home",
              fontfamily="GT Planar", fontweight="bold", fontsize=15, loc="left", pad=12)
 
 _w = 0.5
-_pos = [0, 1.5]
+_pos = [0, 0.8]
+
+_t1 = _draw_cc_stacked_bar(ax, _pos[0], _charge_tx_delta, _charge_dist_delta, _w)
 
 _mc_delta_total = _mc_tx_delta + _mc_dist_delta
 if _mc_delta_total <= 0:
-    ax.bar(_pos[0], 0, _w, color=_COLOR_TX, zorder=3)
-    ax.text(_pos[0], _delivery_charges_delta * 0.03,
+    ax.bar(_pos[1], 0, _w, color=_COLOR_TX_COST, zorder=3)
+    ax.text(_pos[1], _t1 * 0.03,
             _fmt_cc_dollar(_mc_delta_total),
             ha="center", va="bottom", fontweight="bold", fontsize=11,
             fontfamily="IBM Plex Sans", color="#333333", zorder=4)
+    _t2 = 0.0
 else:
-    _draw_cc_stacked_bar(ax, _pos[0], max(_mc_tx_delta, 0), max(_mc_dist_delta, 0), _w)
-
-_t2 = _draw_cc_stacked_bar(ax, _pos[1], _charge_tx_delta, _charge_dist_delta, _w)
+    _t2 = _draw_cc_stacked_bar(ax, _pos[1], max(_mc_tx_delta, 0), max(_mc_dist_delta, 0), _w,
+                               color_dist=_COLOR_DIST_COST, color_tx=_COLOR_TX_COST)
 
 _gap = _delivery_charges_delta - _mc_delivery_delta
-_bracket_y = _t2 * 0.5
-ax.annotate("",
-            xy=(_pos[0] + _w/2 + 0.05, _bracket_y),
-            xytext=(_pos[1] - _w/2 - 0.05, _bracket_y),
-            arrowprops=dict(arrowstyle="<->", color=_COLOR_GAP, lw=2))
-ax.text((_pos[0] + _pos[1]) / 2, _bracket_y + _t2 * 0.05,
-        f"Overpayment: {_fmt_cc_dollar_plain(_gap)}/yr",
+_x_left = _pos[0] + _w / 2
+_x_right = _pos[1] - _w / 2
+ax.plot([_x_left, _x_right], [_t1, _t2],
+        color=_COLOR_GAP, linewidth=2.0, zorder=5)
+_mid_x = (_x_left + _x_right) / 2
+_mid_y = (_t1 + _t2) / 2
+ax.text(_mid_x, _mid_y + _t1 * 0.06,
+        f"Overpays\n{_fmt_cc_dollar_plain(_gap)}/yr",
         ha="center", va="bottom", fontweight="bold", fontsize=12,
         color=_COLOR_GAP, fontfamily="IBM Plex Sans")
 
 ax.set_xticks(_pos)
-ax.set_xticklabels(["Additional T&D\ncosts caused", "Additional T&D\ncharges paid"],
+ax.set_xticklabels(["Additional T&D\ncharges paid", "Additional T&D\ncosts caused"],
                    fontsize=11, fontfamily="IBM Plex Sans")
-ax.set_ylim(0, _t2 * 1.25)
+ax.set_ylim(0, _t1 * 1.25)
 ax.spines["top"].set_visible(False)
 ax.spines["right"].set_visible(False)
 ax.yaxis.set_major_formatter(lambda x, _: f"${x:,.0f}")
 ax.set_ylabel("Annual change ($)", fontsize=12, fontfamily="IBM Plex Sans")
-ax.legend(handles=_cc_legend(), loc="upper left", frameon=False, fontsize=10)
+ax.legend(handles=_cc_legend(), loc="upper right", frameon=False, fontsize=10)
 fig.tight_layout()
 display_figure(fig)
 ```
@@ -1510,40 +1537,43 @@ ax.set_title("Average fossil-fuel-heated home",
              fontfamily="GT Planar", fontweight="bold", fontsize=15, loc="left", pad=12)
 
 _w = 0.5
-_pos = [0, 1.5]
+_pos = [0, 0.8]
+
+_t1 = _draw_cc_stacked_bar(ax, _pos[0], _af_charge_tx_delta, _af_charge_dist_delta, _w)
 
 _af_mc_delta_total = _af_mc_tx_delta + _af_mc_dist_delta
 if _af_mc_delta_total <= 0:
-    ax.bar(_pos[0], 0, _w, color=_COLOR_TX, zorder=3)
-    ax.text(_pos[0], _af_delivery_charges_delta * 0.03,
+    ax.bar(_pos[1], 0, _w, color=_COLOR_TX_COST, zorder=3)
+    ax.text(_pos[1], _t1 * 0.03,
             _fmt_cc_dollar(_af_mc_delta_total),
             ha="center", va="bottom", fontweight="bold", fontsize=11,
             fontfamily="IBM Plex Sans", color="#333333", zorder=4)
+    _t2 = 0.0
 else:
-    _draw_cc_stacked_bar(ax, _pos[0], max(_af_mc_tx_delta, 0), max(_af_mc_dist_delta, 0), _w)
-
-_t2 = _draw_cc_stacked_bar(ax, _pos[1], _af_charge_tx_delta, _af_charge_dist_delta, _w)
+    _t2 = _draw_cc_stacked_bar(ax, _pos[1], max(_af_mc_tx_delta, 0), max(_af_mc_dist_delta, 0), _w,
+                               color_dist=_COLOR_DIST_COST, color_tx=_COLOR_TX_COST)
 
 _gap = _af_delivery_charges_delta - _af_mc_delivery_delta
-_bracket_y = _t2 * 0.5
-ax.annotate("",
-            xy=(_pos[0] + _w/2 + 0.05, _bracket_y),
-            xytext=(_pos[1] - _w/2 - 0.05, _bracket_y),
-            arrowprops=dict(arrowstyle="<->", color=_COLOR_GAP, lw=2))
-ax.text((_pos[0] + _pos[1]) / 2, _bracket_y + _t2 * 0.05,
-        f"Overpayment: {_fmt_cc_dollar_plain(_gap)}/yr",
+_x_left = _pos[0] + _w / 2
+_x_right = _pos[1] - _w / 2
+ax.plot([_x_left, _x_right], [_t1, _t2],
+        color=_COLOR_GAP, linewidth=2.0, zorder=5)
+_mid_x = (_x_left + _x_right) / 2
+_mid_y = (_t1 + _t2) / 2
+ax.text(_mid_x, _mid_y + _t1 * 0.06,
+        f"Overpays\n{_fmt_cc_dollar_plain(_gap)}/yr",
         ha="center", va="bottom", fontweight="bold", fontsize=12,
         color=_COLOR_GAP, fontfamily="IBM Plex Sans")
 
 ax.set_xticks(_pos)
-ax.set_xticklabels(["Additional T&D\ncosts caused", "Additional T&D\ncharges paid"],
+ax.set_xticklabels(["Additional T&D\ncharges paid", "Additional T&D\ncosts caused"],
                    fontsize=11, fontfamily="IBM Plex Sans")
-ax.set_ylim(0, _t2 * 1.25)
+ax.set_ylim(0, _t1 * 1.25)
 ax.spines["top"].set_visible(False)
 ax.spines["right"].set_visible(False)
 ax.yaxis.set_major_formatter(lambda x, _: f"${x:,.0f}")
 ax.set_ylabel("Annual change ($)", fontsize=12, fontfamily="IBM Plex Sans")
-ax.legend(handles=_cc_legend(), loc="upper left", frameon=False, fontsize=10)
+ax.legend(handles=_cc_legend(), loc="upper right", frameon=False, fontsize=10)
 fig.tight_layout()
 display_figure(fig)
 ```
@@ -1641,6 +1671,81 @@ print(f"TX: bill before=${_tx_before:,.0f}  after=${_tx_after:,.0f}  "
       f"MC delta=${_mc_tx_delta:+,.0f}  → fair after=${_fair_tx_after:,.0f}")
 print(f"Dist: bill before=${_dist_before:,.0f}  after=${_dist_after:,.0f}  "
       f"MC delta=${_mc_dist_delta:+,.0f}  → fair after=${_fair_dist_after:,.0f}")
+```
+
+## 3-bar bill chart: before / HP default rate / HP R-HP rate
+
+The 3-bar chart adds a third bar showing what happens to the household's
+total energy bill under Schedule R-HP. The R-HP per-kWh rates (computed
+above from all-fossil averages) are applied to each population's
+post-HP annual kWh to produce the R-HP delivery bill.
+
+```{python}
+#| label: fig-total-bill-3bar-natgas
+#| fig-cap: "Average annual energy bills for BGE natural-gas-heated homes: before heat pumps, after heat pumps under Schedule R, and after heat pumps under Schedule R-HP."
+
+_rhp_delivery_vol_natgas = report_vars["natgas_annual_kwh_after"] * (
+    report_vars["rhp_rate_dist"]
+    + report_vars["rhp_rate_tx"]
+    + report_vars["rhp_rate_empower"]
+)
+natgas_reform = {
+    "delivery_fixed": natgas_after["delivery_fixed"],
+    "delivery_volumetric": _rhp_delivery_vol_natgas,
+    "supply": natgas_after["supply"],
+    "gas": natgas_after["gas"],
+}
+
+fig_natgas_3bar, _ng_savings, _ng_savings_pct, _, _ = plot_decomposed_bill_3bar(
+    natgas_before,
+    natgas_after,
+    natgas_reform,
+    third_scenario_label="Heat pump\n(Schedule R-HP)",
+    title="Average annual energy bill: natural-gas-heated homes",
+    side_labels={
+        "delivery_fixed": "Customer\nCharge",
+        "delivery_volumetric": "Transmission,\nDistribution,\nEmPOWER",
+        "supply": "Generation",
+        "gas": "Natural\nGas",
+    },
+)
+report_vars["natgas_rhp_savings_dollar"] = _ng_savings
+report_vars["natgas_rhp_savings_pct"] = _ng_savings_pct
+display_figure(fig_natgas_3bar)
+```
+
+```{python}
+#| label: fig-total-bill-3bar-delivered
+#| fig-cap: "Average annual energy bills for BGE delivered-fuel-heated homes: before heat pumps, after heat pumps under Schedule R, and after heat pumps under Schedule R-HP."
+
+_rhp_delivery_vol_delivered = report_vars["delivered_annual_kwh_after"] * (
+    report_vars["rhp_rate_dist"]
+    + report_vars["rhp_rate_tx"]
+    + report_vars["rhp_rate_empower"]
+)
+delivered_reform = {
+    "delivery_fixed": delivered_after["delivery_fixed"],
+    "delivery_volumetric": _rhp_delivery_vol_delivered,
+    "supply": delivered_after["supply"],
+    "gas": delivered_after["gas"],
+}
+
+fig_delivered_3bar, _del_savings, _del_savings_pct, _, _ = plot_decomposed_bill_3bar(
+    delivered_before,
+    delivered_after,
+    delivered_reform,
+    third_scenario_label="Heat pump\n(Schedule R-HP)",
+    title="Average annual energy bill: delivered-fuel-heated homes",
+    side_labels={
+        "delivery_fixed": "Customer\nCharge",
+        "delivery_volumetric": "Transmission,\nDistribution,\nEmPOWER",
+        "supply": "Generation",
+        "gas": "Oil/\nPropane",
+    },
+)
+report_vars["delivered_rhp_savings_dollar"] = _del_savings
+report_vars["delivered_rhp_savings_pct"] = _del_savings_pct
+display_figure(fig_delivered_3bar)
 ```
 
 

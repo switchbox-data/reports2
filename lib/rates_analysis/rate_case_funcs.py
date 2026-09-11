@@ -3620,8 +3620,16 @@ _MC_COLORS = {
     "Distribution": "#68bed8",
     "Transmission": "#023047",
 }
-_SUMMER_MONTHS = {"Jun", "Jul", "Aug", "Sep"}
-_SEASON_ORDER = ["Jun-Sep", "Oct-May"]
+_ALL_MONTH_ABBRS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def _season_labels(summer_months: set[str]) -> tuple[str, str]:
+    """Derive ``("May-Sep", "Oct-Apr")``-style labels from a set of summer month abbreviations."""
+    ordered = [m for m in _ALL_MONTH_ABBRS if m in summer_months]
+    winter = [m for m in _ALL_MONTH_ABBRS if m not in summer_months]
+    summer_label = f"{ordered[0]}-{ordered[-1]}"
+    winter_label = f"{winter[0]}-{winter[-1]}"
+    return summer_label, winter_label
 
 
 def plot_monthly_delivery_mc(
@@ -3694,16 +3702,21 @@ def plot_monthly_delivery_mc(
 
 def _aggregate_seasonal_mc(
     monthly_mc: pl.DataFrame,
+    *,
+    summer_months: set[str],
 ) -> dict[str, dict[str, float]]:
-    """Aggregate 12-row monthly MC into Jun-Sep and Oct-May totals.
+    """Aggregate 12-row monthly MC into summer and winter totals.
 
-    Returns ``{"Jun-Sep": {"tx": ..., "dist": ...}, "Oct-May": {...}}``.
+    *summer_months* is a set of 3-letter month abbreviations (e.g.
+    ``{"May", "Jun", "Jul", "Aug", "Sep"}``).  The returned dict is keyed by
+    the derived season labels (e.g. ``{"May-Sep": {...}, "Oct-Apr": {...}}``).
     """
+    summer_label, winter_label = _season_labels(summer_months)
     seasonal = (
         monthly_mc.with_columns(
-            pl.when(pl.col("month_label").cast(pl.String).is_in(_SUMMER_MONTHS))
-            .then(pl.lit("Jun-Sep"))
-            .otherwise(pl.lit("Oct-May"))
+            pl.when(pl.col("month_label").cast(pl.String).is_in(summer_months))
+            .then(pl.lit(summer_label))
+            .otherwise(pl.lit(winter_label))
             .alias("season")
         )
         .group_by("season")
@@ -3789,13 +3802,14 @@ def _draw_seasonal_mc_bar(
 def plot_seasonal_delivery_mc(
     monthly_mc: pl.DataFrame,
     *,
+    summer_months: set[str],
     title: str = "",
     figure_size: tuple[float, float] = (10.5, 5),
 ) -> Figure:
     """Two-bar seasonal delivery MC chart (one bar per season).
 
-    Aggregates monthly transmission and distribution costs into Jun-Sep and
-    Oct-May buckets, then draws a stacked bar for each with in-bar component
+    Aggregates monthly transmission and distribution costs into summer and
+    winter buckets, then draws a stacked bar for each with in-bar component
     labels and an above-bar total.
 
     Parameters
@@ -3803,6 +3817,9 @@ def plot_seasonal_delivery_mc(
     monthly_mc
         12-row DataFrame with ``month_label`` (Enum Jan-Dec),
         ``mc_tx_dollars``, and ``mc_dist_dollars``.
+    summer_months
+        Set of 3-letter month abbreviations defining the summer season
+        (e.g. ``{"May", "Jun", "Jul", "Aug", "Sep"}``).
     title
         Chart title.
     figure_size
@@ -3813,7 +3830,8 @@ def plot_seasonal_delivery_mc(
     Figure
         matplotlib Figure; wrap in ``display_figure`` to embed.
     """
-    agg = _aggregate_seasonal_mc(monthly_mc)
+    agg = _aggregate_seasonal_mc(monthly_mc, summer_months=summer_months)
+    season_order = list(_season_labels(summer_months))
 
     fig, ax = pyplot.subplots(figsize=figure_size)
     ax.set_title(title, fontfamily="GT Planar", fontweight="bold", fontsize=15, loc="left", pad=12)
@@ -3822,12 +3840,12 @@ def plot_seasonal_delivery_mc(
     positions = [0, 1.2]
 
     max_total = 0.0
-    for i, season in enumerate(_SEASON_ORDER):
+    for i, season in enumerate(season_order):
         total = _draw_seasonal_mc_bar(ax, positions[i], agg[season]["tx"], agg[season]["dist"], w)
         max_total = max(max_total, total)
 
     ax.set_xticks(positions)
-    ax.set_xticklabels(_SEASON_ORDER, fontsize=11, fontfamily="IBM Plex Sans")
+    ax.set_xticklabels(season_order, fontsize=11, fontfamily="IBM Plex Sans")
     ax.set_ylabel("Delivery marginal cost ($)", fontsize=12, fontfamily="IBM Plex Sans")
     ax.set_ylim(0, max_total * 1.15)
     ax.set_xlim(positions[0] - 0.6, positions[-1] + 0.6)
@@ -3842,12 +3860,13 @@ def plot_seasonal_delivery_mc_comparison(
     monthly_before: pl.DataFrame,
     monthly_after: pl.DataFrame,
     *,
+    summer_months: set[str],
     title: str = "",
     figure_size: tuple[float, float] = (10.5, 6),
 ) -> Figure:
     """Four-bar seasonal delivery MC chart comparing before and after heat pump.
 
-    Groups bars into two pairs (Jun-Sep and Oct-May), each with a before and
+    Groups bars into two pairs (summer and winter), each with a before and
     after bar.  A hatched rectangle and delta annotation between each pair
     shows the seasonal change, and a bracket across the top shows the net
     annual change.
@@ -3858,6 +3877,9 @@ def plot_seasonal_delivery_mc_comparison(
         12-row monthly MC DataFrame for the pre-HP period.
     monthly_after
         12-row monthly MC DataFrame for the post-HP period.
+    summer_months
+        Set of 3-letter month abbreviations defining the summer season
+        (e.g. ``{"May", "Jun", "Jul", "Aug", "Sep"}``).
     title
         Chart title.
     figure_size
@@ -3870,8 +3892,9 @@ def plot_seasonal_delivery_mc_comparison(
     """
     from lib.plotnine import SB_COLORS
 
-    agg_before = _aggregate_seasonal_mc(monthly_before)
-    agg_after = _aggregate_seasonal_mc(monthly_after)
+    agg_before = _aggregate_seasonal_mc(monthly_before, summer_months=summer_months)
+    agg_after = _aggregate_seasonal_mc(monthly_after, summer_months=summer_months)
+    season_order = list(_season_labels(summer_months))
 
     fig, ax = pyplot.subplots(figsize=figure_size)
     ax.set_title(title, fontfamily="GT Planar", fontweight="bold", fontsize=15, loc="left", pad=12)
@@ -3883,8 +3906,8 @@ def plot_seasonal_delivery_mc_comparison(
     x = np.array([0, gap_within, gap_between, gap_between + gap_within])
 
     pairs = [
-        (agg_before[_SEASON_ORDER[0]], agg_after[_SEASON_ORDER[0]]),
-        (agg_before[_SEASON_ORDER[1]], agg_after[_SEASON_ORDER[1]]),
+        (agg_before[season_order[0]], agg_after[season_order[0]]),
+        (agg_before[season_order[1]], agg_after[season_order[1]]),
     ]
 
     totals: list[float] = []
@@ -3939,7 +3962,7 @@ def plot_seasonal_delivery_mc_comparison(
     # --- X-axis labels ---
     ax.set_xticks([])
 
-    for group_idx, season_label in enumerate(_SEASON_ORDER):
+    for group_idx, season_label in enumerate(season_order):
         group_center = (x[group_idx * 2] + x[group_idx * 2 + 1]) / 2
         ax.text(
             group_center,

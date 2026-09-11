@@ -891,13 +891,112 @@ total-electric charts, the denominator also contains untouched non-space-conditi
 load, which dilutes the correction differently in each release and leaves a visible gap
 between the lines.
 
+## Monthly trend: absolute kWh
+
+The percent-change charts above cancel out each release's baseline so the *proportional*
+effect of upgrade 01 is comparable. The charts below keep the units in kWh: weighted
+mean of the per-building delta (upgrade 01 − upgrade 00), one line per release. Negative
+values are savings. This is where the ACH50 correction shows up as a gap between
+releases -- the same proportional heating cut applied to a leakier (raw) baseline
+produces a larger kWh reduction.
+
+```{python}
+#| label: monthly-kwh-delta-summary
+
+monthly_total_kwh = {
+    label: summarize_by_release_month(df, "delta_total") for label, df in MONTHLY_DELTAS.items()
+}
+monthly_heating_kwh = {
+    label: summarize_by_release_month(df, "delta_heating") for label, df in MONTHLY_DELTAS.items()
+}
+```
+
+```{python}
+#| label: kwh-delta-plot-helper
+
+
+def plot_monthly_kwh_delta(summary: pl.DataFrame, metric_label: str, population_label: str) -> p9.ggplot:
+    """Weighted-mean kWh delta by calendar month, one line per release."""
+    return (
+        p9.ggplot(summary, p9.aes(x="month", y="mean_delta", color="release", group="release"))
+        + p9.geom_hline(yintercept=0, linetype="dotted", color="gray")
+        + p9.geom_line(size=1)
+        + p9.geom_point(size=2.5)
+        + p9.scale_color_manual(values=RELEASE_COLORS, breaks=RELEASE_ORDER)
+        + p9.scale_y_continuous(labels=lambda breaks: [f"{b:,.0f}" for b in breaks])
+        + p9.labs(
+            x="Month",
+            y="Weighted mean delta (kWh)",
+            color="Release",
+            title=f"{population_label}: kWh change in {metric_label}",
+        )
+        + theme_switchbox()
+        + p9.theme(figure_size=(10.5, 4.5))
+    )
+```
+
+### Electric-resistance homes
+
+```{python}
+#| label: fig-monthly-total-kwh-er
+#| fig-cap: "Weighted-mean total-electric delta (upg01 - upg00) by month, BGE electric-resistance homes"
+
+fig = plot_monthly_kwh_delta(monthly_total_kwh[LABEL_ER], "total-electric use", LABEL_ER).draw()
+display_figure(fig)
+```
+
+```{python}
+#| label: fig-monthly-heating-kwh-er
+#| fig-cap: "Weighted-mean electric-heating-input delta (upg01 - upg00) by month, BGE electric-resistance homes"
+
+fig = plot_monthly_kwh_delta(monthly_heating_kwh[LABEL_ER], "electric-heating input", LABEL_ER).draw()
+display_figure(fig)
+```
+
+### Existing-heat-pump homes
+
+```{python}
+#| label: fig-monthly-total-kwh-hp
+#| fig-cap: "Weighted-mean total-electric delta (upg01 - upg00) by month, BGE existing-heat-pump homes"
+
+fig = plot_monthly_kwh_delta(monthly_total_kwh[LABEL_HP], "total-electric use", LABEL_HP).draw()
+display_figure(fig)
+```
+
+```{python}
+#| label: fig-monthly-heating-kwh-hp
+#| fig-cap: "Weighted-mean electric-heating-input delta (upg01 - upg00) by month, BGE existing-heat-pump homes"
+
+fig = plot_monthly_kwh_delta(monthly_heating_kwh[LABEL_HP], "electric-heating input", LABEL_HP).draw()
+display_figure(fig)
+```
+
+### Combined (electric-resistance + heat-pump)
+
+```{python}
+#| label: fig-monthly-total-kwh-combined
+#| fig-cap: "Weighted-mean total-electric delta (upg01 - upg00) by month, BGE electric-resistance and heat-pump homes combined"
+
+fig = plot_monthly_kwh_delta(monthly_total_kwh[LABEL_COMBINED], "total-electric use", LABEL_COMBINED).draw()
+display_figure(fig)
+```
+
+```{python}
+#| label: fig-monthly-heating-kwh-combined
+#| fig-cap: "Weighted-mean electric-heating-input delta (upg01 - upg00) by month, BGE electric-resistance and heat-pump homes combined"
+
+fig = plot_monthly_kwh_delta(monthly_heating_kwh[LABEL_COMBINED], "electric-heating input", LABEL_COMBINED).draw()
+display_figure(fig)
+```
+
 ## Export
 
 The tables below are the scaling factors this notebook exists to produce: one row per
-calendar month, three columns of percent change in **whole-home total electric use**
-(upgrade 01 vs upgrade 00), one column per ResStock release. Values are the
-ratio-of-weighted-sums percent change used in the charts above (not a mean of
-per-building ratios), so `-25` means a 25% reduction. Column names match the
+calendar month, three columns of a **multiplicative factor** on whole-home total electric
+use (upgrade 01 vs upgrade 00), one column per ResStock release. They come from the same
+ratio-of-weighted-sums used in the percent-change charts, rewritten as
+`1 + pct_delta / 100`, so `-23` percent becomes `0.77`. Multiply a month's observed load
+by the factor to estimate that month after the upgrade. Column names match the
 `RELEASES` keys (`raw`, `sb`, `sb_ach_ratio`) so they can be read as `df.sb` /
 `df["sb_ach_ratio"]` without quoting display labels.
 
@@ -912,22 +1011,23 @@ and existing-HP-only tables are pickled alongside it.
 RELEASE_COL = {info["label"]: key for key, info in RELEASES.items()}
 
 
-def monthly_pct_wide(summary: pl.DataFrame) -> pl.DataFrame:
-    """One row per month, one percent-change column per release (`raw` / `sb` / `sb_ach_ratio`)."""
+def monthly_scale_wide(summary: pl.DataFrame) -> pl.DataFrame:
+    """One row per month, one upgrade-01 / upgrade-00 load factor per release."""
     return (
         summary.pivot(on="release", index="month", values="pct_delta")
         .rename(RELEASE_COL)
+        .with_columns([(pl.col(c) / 100 + 1).alias(c) for c in RELEASES])
         .select("month", *RELEASES)
         .sort("month")
     )
 
 
-monthly_pct_total_wide = {
-    "er": monthly_pct_wide(monthly_total_pct[LABEL_ER]),
-    "hp": monthly_pct_wide(monthly_total_pct[LABEL_HP]),
-    "combined": monthly_pct_wide(monthly_total_pct[LABEL_COMBINED]),
+monthly_scale_total_wide = {
+    "er": monthly_scale_wide(monthly_total_pct[LABEL_ER]),
+    "hp": monthly_scale_wide(monthly_total_pct[LABEL_HP]),
+    "combined": monthly_scale_wide(monthly_total_pct[LABEL_COMBINED]),
 }
-monthly_pct_total_wide["combined"]
+monthly_scale_total_wide["combined"]
 ```
 
 ```{python}
@@ -940,10 +1040,10 @@ path_pkl = path_cache / "rs_release_comp_monthly_pct_total.pkl"
 path_pkl.write_bytes(
     pickle.dumps(
         {
-            "metric": "pct_change_total_electric_upg01_vs_upg00",
-            "unit": "percent",
+            "metric": "scale_factor_total_electric_upg01_vs_upg00",
+            "unit": "multiplier",
             "populations": {
-                key: df.to_pandas() for key, df in monthly_pct_total_wide.items()
+                key: df.to_pandas() for key, df in monthly_scale_total_wide.items()
             },
         }
     )

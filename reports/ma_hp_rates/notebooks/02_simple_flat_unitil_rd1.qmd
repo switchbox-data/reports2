@@ -1,0 +1,200 @@
+---
+title: "BRM Sandbox"
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+
+format:
+  html:
+    page-layout: full
+---
+
+Import libraries.
+
+```{r}
+# Clear environment first
+rm(list = ls())
+
+library(tidyverse)
+library(lubridate)
+library(scales)
+library(gt)
+library(gtExtras)
+library(jsonlite)  # Make sure to load this explicitly
+
+# Check that it's alive
+current_time <- Sys.time()
+print(current_time)
+```
+
+1.  Open the JSON and quick inspection
+
+```{r}
+
+library(tidyverse)
+library(jsonlite)
+
+# Read the JSON
+unitil_ma_rd1 <- fromJSON("data/arcadia/tariffs/unitil_ma_rd1_20250108.json")
+#unitil_ma_rd1 <- fromJSON("data/arcadia/tariffs/ng_ny_scv1_new.json")
+
+
+# Convert the rates array directly to a dataframe and select columns
+# Extract the data with rateAmount from the first rate band
+unitil_ma_rd1_table <- tibble(
+  rateGroupName = unitil_ma_rd1$rates$rateGroupName,
+  rateName = unitil_ma_rd1$rates$rateName,
+  chargeType = unitil_ma_rd1$rates$chargeType,
+  chargeClass = unitil_ma_rd1$rates$chargeClass,
+  rateAmount = sapply(unitil_ma_rd1$rates$rateBands, function(x) x$rateAmount[1])
+)
+
+# Save to CSV
+write_csv(unitil_ma_rd1_table, "data/ma_hp_rates/electric/unitil_ma_rd1_20250108.csv")
+
+
+# Print to console
+print(n=75, unitil_ma_rd1_table)
+
+```
+
+2.  Group the rates by type
+
+```{r}
+# Get sums of rateAmount for each unique combination
+unitil_ma_rd1_grouped <- unitil_ma_rd1_table %>%
+  group_by(chargeType, chargeClass) %>%
+  summarise(
+    total_rate = sum(rateAmount),
+    .groups = 'drop'
+  ) %>%
+  arrange(chargeType, chargeClass)
+
+# Print to console
+print(unitil_ma_rd1_grouped)
+
+# 1. Get the fully-loaded per-kWh rate
+# Get the sum of consumption-based rates from Unitil table
+consumption_sum <- unitil_ma_rd1_grouped %>%
+  filter(chargeType == "CONSUMPTION_BASED") %>%
+  summarise(total_consumption_rate = sum(total_rate, na.rm = TRUE)) %>%
+  pull(total_consumption_rate)
+
+print(paste("Total consumption-based rate:", consumption_sum))
+```
+
+To calculate an electric bill we need to....
+
+1.  Get the fully-burdened per-kWh portion (`CONSUMPTION_BASED`)
+    -   Typically this will be two parts
+        -   `DISTRIBUTION`
+        -   `SUPPLY, CONTRACTED`
+2.  Get any demand-based charges
+    -   This will be based on the max load in a given timeframe?
+3.  Get the fixed portion of the bill (`FIXED_PRICE`)
+
+```{r}
+# source("src/rates_api/rates_modules/00_outline.R")
+
+# #distribution_8760 = transform_consumption_rates_to_8760(unitil_ma_rd1_grouped, "CONSUMPTION_BASED", "DISTRIBUTION")
+
+# rate_summary_table <- unitil_ma_rd1_grouped
+
+# rate_value <- rate_summary_table %>%
+#   filter(chargeClass == "DISTRIBUTION", chargeType == "CONSUMPTION_BASED") %>%
+#   pull(total_rate)
+
+# print(rate_value)
+# # Create 8760-length vector with the rate value repeated
+# hourly_rates <- rep(rate_value, 8760)
+
+# print(hourly_rates)
+
+# tibble(
+#   timestamp = 1:8760,
+#   rate = hourly_rates
+# )
+
+
+```
+
+# 2 - Apply Consumption rates to ResStock homes
+
+1.  Load a table of ResStock electric load profiles (8760 rows x N homes)
+2.  `mutate` to apply the all-in consumption rate
+3.  Get a 12xN tibble for the consumption component of the bill
+
+```{r}
+source("src/rates_api/rates_modules/00_outline.R")
+consumption_distribution_8760 = transform_flat_consumption_rates_to_8760(unitil_ma_rd1_grouped, "CONSUMPTION_BASED", "DISTRIBUTION")
+
+glimpse(consumption_distribution_8760)
+
+consumption_supply_8760 = transform_flat_consumption_rates_to_8760(unitil_ma_rd1_grouped, "CONSUMPTION_BASED", "SUPPLY,CONTRACTED")
+```
+
+```{r}
+electricity_consumption <- as_tibble(read_csv("data/ResStock/ma_hp/combined_electricity_consumption.csv"))
+
+# # Show tibble structure
+# glimpse(electricity_consumption)
+
+# # Get dimensions of the tibble
+# dim(electricity_consumption)
+
+# Apply the
+hourly_cost <- electricity_consumption %>%
+  mutate(across(everything(), ~.x * consumption_distribution_8760$rate))
+
+
+
+hourly_cost <- hourly_cost %>%
+  mutate(datetime = as_datetime("2018-01-01") + hours(row_number() - 1))
+
+glimpse(hourly_cost)
+
+monthly_consumption_costs <- hourly_cost %>%
+  group_by(month = floor_date(datetime, "month")) %>%
+  summarize(
+    bldg_10_total = sum(bldg_10),
+    bldg_1000_total = sum(bldg_1000)
+  )
+
+monthly_consumption_costs
+
+```
+
+# 3 - Get the Fixed Price portion
+
+```{r}
+rate_value <- unitil_ma_rd1_grouped %>%
+  filter(chargeType == "FIXED_PRICE") %>%
+  pull(total_rate)
+
+fixed_12 = transform_fixed_price_to_12(unitil_ma_rd1_grouped, "FIXED_PRICE")
+
+
+```
+
+# 4 - Get the minimum
+
+```{r}
+rate_value <- unitil_ma_rd1_grouped %>%
+  filter(chargeType == "MINIMUM_CHARGE") %>%
+  pull(total_rate)
+
+minimum_12 = transform_fixed_price_to_12(unitil_ma_rd1_grouped, "MINIMUM_CHARGE")
+```
+
+# 5 - Add them together to get a bill
+
+```{r}
+
+total_bill_by_month <- monthly_consumption_costs %>%
+  mutate(across(everything(), ~.x + fixed_12$rate))
+
+total_bill_by_month
+
+
+```

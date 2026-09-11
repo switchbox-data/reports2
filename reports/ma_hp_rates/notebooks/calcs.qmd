@@ -1,0 +1,841 @@
+---
+title: analysis - MA HP Rates
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+    fig-dpi: 600
+execute:
+  #fig-width: 9 # Expand default width
+  fig-dpi: 600
+
+knitr:
+  opts_chunk:
+    dev: "ragg_png"
+---
+# Setup
+# Setup
+```{r}
+#| label: setup
+library(lubridate)
+library(patchwork)
+library(tidyverse)
+library(ggrepel)
+
+# Switchbox Libraries
+source("/workspaces/reports/lib/ggplot/switchbox_theme.R")
+source("/workspaces/reports/lib/rates_analysis/heat_pump_rate_funcs.R")
+
+
+# Global parameters
+exclude_municipal <- TRUE
+supply_year = 2024
+path_rs_db <- "/workspaces/reports/data/ResStock/2022_resstock_amy2018_release_1.1/rs_ma_hp_rates_2.db"
+
+hp_eff_for_stats <- "mid_hp"
+hvac_for_utility_bills <- "mid_hp"
+round_dollars <- 0
+round_percent <- 1
+
+scenario_colors = c(
+  "baseline_rates_current_hvac" = "grey50",
+
+  "baseline" = "#023047",
+  "baseline_rates_low_hp" = "#023047",
+  "baseline_rates_mid_hp" = "#023047",
+  "baseline_rates_high_hp" = "#023047",
+
+  "hpr_approved" = "#FC9706",
+  "approved_low_hp" = "#FC9706",
+  "approved_mid_hp" = "#FC9706",
+  "approved_high_hp" = "#FC9706",
+
+  "hpr_doer" = "#68BED8",
+  "doer_low_hp" = "#68BED8",
+  "doer_mid_hp" = "#68BED8",
+  "doer_high_hp" = "#68BED8"
+)
+
+bldg_id_for_debugging = 134260
+
+# Option to pull from cached data
+# ---------------------------------
+cached_or_recompute = "recompute"
+# ---------------------------------
+
+# if (cached_or_recompute == "cached") {
+#   load("/workspaces/reports/src/ma_hp_rates/cache/full_workspace.RData")
+# }
+
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+housing_units <- DBI::dbReadTable(con, "housing_units")
+DBI::dbDisconnect(con)
+
+
+
+```
+
+## Add Columns to Housing Units Table
+```{r}
+#| label: data-add-housing-units-columns
+source("/workspaces/reports/lib/rates_analysis/heat_pump_rate_funcs.R")
+
+# 1. add a column to the housing_units table that is the baseline heating type (basically 'in.heating_fuel' but splits electricity into resistance and heat pump)
+# add_baseline_heating_type(path_rs_db)
+
+# 2. add a column to the housing_units table that is the income in dollars
+#assign_precise_income_dollars(path_rs_db)
+
+# 3. Add building_type and building_type_group columns to housing_units table
+#add_building_type_group(path_rs_db)
+```
+
+## Housing Units Summary Counts
+```{r}
+#| label: data-get-housing-units-counts
+# --------------------------------------------------------------------------
+
+# Get some summary counts
+county_code_rs <- 'statewide'
+display_stats <- TRUE
+
+if (display_stats) {
+
+  con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+  housing_units <- DBI::dbReadTable(con, "housing_units")
+  DBI::dbDisconnect(con)
+
+  # Heating Type Counts
+  heating_type_counts <- get_housing_units_column_counts("baseline_heating_type", county_code_rs)
+  print("Heating Type Counts")
+  print(heating_type_counts)
+
+  # Gas Utility Counts
+  gas_utility_counts <- get_housing_units_column_counts("gas_utility", county_code_rs)
+  print("Gas Utility Counts")
+    print(gas_utility_counts)
+
+  # Electric Utility Counts
+  electric_utility_counts <- get_housing_units_column_counts("electric_utility", county_code_rs)
+  print("Electric Utility Counts")
+  print(electric_utility_counts)
+
+  # City Counts
+  city_counts <- get_housing_units_column_counts("\"in.city\"", county_code_rs)
+  print("City Counts")
+  print(city_counts)
+
+  # County Counts
+  county_counts <- get_housing_units_column_counts("\"in.county\"", county_code_rs)
+  print("County Counts")
+  print(county_counts)
+
+  # Housing Types Counts
+  housing_types_counts <- get_housing_units_column_counts("\"in.geometry_building_type_acs\"", county_code_rs)
+  print("Housing Types Counts")
+  print(housing_types_counts)
+}
+```
+
+
+# Monthly Bills
+## Electric Bills
+```{r}
+#| label: data-electric-bills
+
+source("/workspaces/reports/lib/ggplot/switchbox_theme.R")
+source("/workspaces/reports/lib/rates_analysis/heat_pump_rate_funcs.R")
+
+tables <- c("ma_monthly", "housing_units", "delivery_tariffs_elec", "supply_rates_elec")
+
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+for (table in tables) {
+  print(paste0("\nColumns in ", table, ":"))
+  print(DBI::dbListFields(con, table))
+}
+DBI::dbDisconnect(con)
+
+
+if (cached_or_recompute == "recompute") {
+  con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+  delivery_tariffs_elec <- DBI::dbReadTable(con, "delivery_tariffs_elec")
+  supply_rates_elec <- DBI::dbReadTable(con, "supply_rates_elec")
+  DBI::dbDisconnect(con)
+
+  # Get the monthly bills
+  monthly_bills_elec <- get_monthly_bills_elec(path_rs_db, supply_year)
+
+  # apply low-income discounts
+  url_sheet_low_income_thresholds <- "https://docs.google.com/spreadsheets/d/1QSBYVgaxIVmyT23Xlz_jYe153jaA6XUK2WgPTVphCEk/edit?gid=1688752002#gid=1688752002"
+  sheet_name = "low_income_thresholds_elec"
+
+  monthly_bills_elec_discounted <- apply_low_income_discounts(
+    path_rs_db,
+    url_sheet_low_income_thresholds,
+    sheet_name,
+    monthly_bills_elec,
+    "electricity"
+  )
+
+  # ------------------------------------------------------------
+  # Annual bills
+  full_year_bills_elec <- calc_annual_bills_from_monthly(monthly_bills_elec_discounted, "electricity")
+
+  # ------------------------------------------------------------
+  # Heating Season ("Winter") bills
+  # add the season column (Winter/Summer); note this is different for each utility
+  monthly_bills_elec_discounted <- add_season_column(monthly_bills_elec_discounted)
+  winter_bills_elec <- calc_annual_bills_from_monthly(monthly_bills_elec_discounted |> filter(season == "winter"), "electricity")
+
+}
+
+monthly_bills_elec_x <- monthly_bills_elec_discounted |> slice_sample(n = 200)
+full_year_bills_elec_x <- full_year_bills_elec |> slice_sample(n = 200)
+winter_bills_elec_x <- winter_bills_elec |> slice_sample(n = 200)
+
+```
+
+
+## Gas Bills
+```{r}
+#| label: data-gas-bills
+source("/workspaces/reports/lib/rates_analysis/heat_pump_rate_funcs.R")
+
+if (cached_or_recompute == "recompute") {
+  con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+  supply_rates_gas <- DBI::dbReadTable(con, "supply_rates_gas")
+  delivery_tariffs_gas <- DBI::dbReadTable(con, "delivery_tariffs_gas")
+  DBI::dbDisconnect(con)
+
+  monthly_bills_gas <- get_monthly_bills_gas(path_rs_db, year = supply_year)
+
+  # apply low-income discounts`
+  url_sheet_low_income_thresholds <- "https://docs.google.com/spreadsheets/d/1QSBYVgaxIVmyT23Xlz_jYe153jaA6XUK2WgPTVphCEk/edit?gid=1688752002#gid=1688752002"
+  sheet_name = "low_income_thresholds_gas"
+
+  monthly_bills_gas_discounted <- apply_low_income_discounts(
+    path_rs_db,
+    url_sheet_low_income_thresholds,
+    sheet_name,
+    monthly_bills_gas,
+    "gas"
+  )
+
+
+  # ------------------------------------------------------------
+  # Annual bills
+  full_year_bills_gas <- calc_annual_bills_from_monthly(monthly_bills_gas_discounted, "gas")
+
+  # ------------------------------------------------------------
+  # Heating Season ("Winter") bills
+  # add the season column (Winter/Summer); note this is different for each utility
+  monthly_bills_gas_discounted <- add_season_column(monthly_bills_gas_discounted)
+  winter_bills_gas <- calc_annual_bills_from_monthly(monthly_bills_gas_discounted |> filter(season == "winter"), "gas")
+
+
+}
+
+monthly_bills_gas_x <- monthly_bills_gas_discounted |> slice_sample(n = 200)
+monthly_bills_gas_21 <- monthly_bills_gas_discounted |> filter(bldg_id == 21)
+full_year_bills_gas_x <- full_year_bills_gas |> slice_sample(n = 200)
+winter_bills_gas_x <- winter_bills_gas |> slice_sample(n = 200)
+```
+
+## Fuel Oil Bills
+```{r}
+#| label: data-fuel-oil-bills
+source("/workspaces/reports/lib/rates_analysis/heat_pump_rate_funcs.R")
+
+if (cached_or_recompute == "recompute") {
+  monthly_bills_fueloil <- get_monthly_bills_fueloil(path_rs_db, year = supply_year)
+
+  # apply low-income discounts
+  url_sheet_low_income_thresholds <- "https://docs.google.com/spreadsheets/d/1QSBYVgaxIVmyT23Xlz_jYe153jaA6XUK2WgPTVphCEk/edit?gid=1688752002#gid=1688752002"
+  sheet_name = "low_income_thresholds_fueloil"
+
+  monthly_bills_fueloil_discounted <- apply_low_income_discounts(
+    path_rs_db,
+    url_sheet_low_income_thresholds,
+    sheet_name,
+    monthly_bills_fueloil,
+    "fueloil"
+  )
+
+  # ------------------------------------------------------------
+  # Annual bills
+  full_year_bills_fueloil <- calc_annual_bills_from_monthly(monthly_bills_fueloil_discounted, "fueloil")
+
+  # ------------------------------------------------------------
+  # Heating Season ("Winter") bills
+  # add the season column (Winter/Summer); note this is different for each utility
+  monthly_bills_fueloil_discounted <- add_season_column(monthly_bills_fueloil_discounted)
+  winter_bills_fueloil <- calc_annual_bills_from_monthly(monthly_bills_fueloil_discounted |> filter(season == "winter"), "fueloil")
+
+}
+
+monthly_bills_fueloil_x <- monthly_bills_fueloil_discounted |> slice_sample(n = 200)
+full_year_bills_fueloil_x <- full_year_bills_fueloil |> slice_sample(n = 200)
+winter_bills_fueloil_x <- winter_bills_fueloil |> slice_sample(n = 200)
+```
+
+## Propane Bills
+```{r}
+#| label: data-propane-bills
+
+source("/workspaces/reports/lib/rates_analysis/heat_pump_rate_funcs.R")
+
+
+if (cached_or_recompute == "recompute") {
+  monthly_bills_propane <- get_monthly_bills_propane(path_rs_db, year = supply_year)
+
+  # apply low-income discounts
+  url_sheet_low_income_thresholds <- "https://docs.google.com/spreadsheets/d/1QSBYVgaxIVmyT23Xlz_jYe153jaA6XUK2WgPTVphCEk/edit?gid=1688752002#gid=1688752002"
+  sheet_name = "low_income_thresholds_propane"
+
+  monthly_bills_propane_discounted <- apply_low_income_discounts(
+    path_rs_db,
+    url_sheet_low_income_thresholds,
+    sheet_name,
+    monthly_bills_propane,
+    "propane"
+  )
+
+  # ------------------------------------------------------------
+  # full_year bills
+  full_year_bills_propane <- calc_annual_bills_from_monthly(monthly_bills_propane_discounted, "propane")
+
+  # ------------------------------------------------------------
+  # Heating Season ("Winter") bills
+  # add the season column (Winter/Summer); note this is different for each utility
+  monthly_bills_propane_discounted <- add_season_column(monthly_bills_propane_discounted)
+  winter_bills_propane <- calc_annual_bills_from_monthly(monthly_bills_propane_discounted |> filter(season == "winter"), "propane")
+}
+
+monthly_bills_propane_x <- monthly_bills_propane_discounted |> slice_sample(n = 200)
+full_year_bills_propane_x <- full_year_bills_propane |> slice_sample(n = 200)
+winter_bills_propane_x <- winter_bills_propane |> slice_sample(n = 200)
+
+```
+
+# Annual Bills by Component
+## data-annual-bills-by-component
+```{r}
+annual_bills_elec_components <- monthly_bills_elec |>
+  filter(!(electric_utility == 'municipal')) |>
+  group_by(bldg_id, electric_utility, version, hvac) |>
+  summarise(annual_elec_supply_charge = sum(supply_charge),
+            annual_elec_delivery_charge = sum(delivery_charge),
+            annual_elec_customer_charge = sum(customer_charge),
+            .groups = "drop") |>
+  ungroup()
+
+annual_bills_gas_totals <- monthly_bills_gas_discounted |>
+  filter(!is.na(gas_utility)) |>
+  select(bldg_id, hvac, monthly_bill) |>
+  group_by(bldg_id, hvac) |>
+  summarise(annual_gas_bill = sum(monthly_bill)) |>
+  ungroup()
+
+annual_bills_by_component_wide <- annual_bills_elec_components |>
+  left_join(annual_bills_gas_totals, by = c("bldg_id", "hvac"))
+
+
+annual_bills_by_component <- annual_bills_by_component_wide |>
+  filter(!is.na(annual_gas_bill)) |>
+  group_by(version, hvac) |>
+  summarise(annual_elec_supply_charge = median(annual_elec_supply_charge),
+            annual_elec_delivery_charge = median(annual_elec_delivery_charge),
+            annual_elec_customer_charge = median(annual_elec_customer_charge),
+            annual_gas_bill = median(annual_gas_bill),
+            .groups = "drop") |>
+  pivot_longer(cols = starts_with("annual_"),
+               names_to = "charge_type",
+               values_to = "amount") |>
+  mutate(
+    hvac = factor(hvac, levels = c("current", "low_hp", "mid_hp", "high_hp")),
+    version = factor(version, levels = c("baseline", "hpr_approved", "hpr_doer")),
+    #charge_type = factor(charge_type, levels = c("supply_charge", "delivery_charge", "customer_charge"))
+  ) |>
+  # filter down to four cases using a single filter with OR conditions:
+  filter(
+    (hvac == "current" & version == "baseline") |
+    (hvac == "mid_hp" & version == "baseline") |
+    (hvac == "mid_hp" & version == "hpr_approved") |
+    (hvac == "mid_hp" & version == "hpr_doer")
+  )
+
+# for now, remove the gas bills
+annual_bills_by_component <- annual_bills_by_component |>
+  filter(charge_type != "annual_gas_bill")
+
+# remove intermediate tables
+rm(annual_bills_elec_components, annual_bills_gas_totals, annual_bills_by_component_wide)
+
+```
+
+# Annual
+## Annual Bills
+```{r}
+#| label: data-annual-bills-combined
+source("/workspaces/reports/lib/rates_analysis/heat_pump_rate_funcs.R")
+
+winter_or_full_year <- "winter"
+
+if (winter_or_full_year == "winter") {
+  bills_elec <- winter_bills_elec
+  bills_gas <- winter_bills_gas
+  bills_fueloil <- winter_bills_fueloil
+  bills_propane <- winter_bills_propane
+} else {
+  bills_elec <- full_year_bills_elec
+  bills_gas <- full_year_bills_gas
+  bills_fueloil <- full_year_bills_fueloil
+  bills_propane <- full_year_bills_propane
+}
+
+if (cached_or_recompute == "recompute") {
+  # --------------------------
+  annual_bills_all <- bills_elec |>
+    left_join(bills_gas, by = c("bldg_id", "year", "hvac", "shell", "appliances", "county", "building_type", "occupants"), suffix = c("_elec", "_gas"))|>
+    left_join(bills_fueloil, by = c("bldg_id", "year","hvac", "shell", "appliances", "county", "building_type", "occupants"), suffix = c("_gas", "_fueloil"))|>
+    left_join(bills_propane, by = c("bldg_id", "year","hvac", "shell", "appliances", "county", "building_type", "occupants"), suffix = c("_fueloil", "_propane"))|>
+    mutate(annual_bill_energy = annual_bill_gas + annual_bill_elec + annual_bill_fueloil + annual_bill_propane,
+          annual_bill_raw_energy = annual_bill_raw_gas + annual_bill_raw_elec + annual_bill_raw_fueloil + annual_bill_raw_propane
+    ) |>
+    pivot_longer(cols = c(annual_bill_elec, annual_bill_gas, annual_bill_fueloil, annual_bill_propane, annual_bill_energy, annual_bill_raw_gas, annual_bill_raw_elec, annual_bill_raw_fueloil, annual_bill_raw_propane, annual_bill_raw_energy), names_to = "bill_type", values_to = "annual_bill") |>
+    mutate(raw_or_discounted = ifelse(grepl("raw", bill_type), "raw", "discounted")) |>
+
+    # filter down to just 4 cases
+    # ---------------------------
+    # baseline: upgrade==0, version_elec=="baseline"
+    # upgrade with baseline rates: upgrade==4, version_elec=="baseline"
+    # upgrade with approved rates: upgrade==4, version_elec=="hpr_approved"
+    # upgrade with doer rates: upgrade==4, version_elec=="hpr_doer"
+    filter(
+        # Case 1: baseline pre-HP
+        (hvac == 'current' & version_elec == "baseline") |
+
+        # Case 2: post-HP with baseline rates
+        (hvac == 'low_hp' & version_elec == "baseline") |
+        # Case 3: post-HP with approved rates
+        (hvac == 'low_hp' & version_elec == "hpr_approved") |
+        # Case 4: post-HP with DOER rates
+        (hvac == 'low_hp' & version_elec == "hpr_doer") |
+
+        # Case 5: post-HP with baseline rates
+        (hvac == 'mid_hp' & version_elec == "baseline") |
+        # Case 6: post-HP with approved rates
+        (hvac == 'mid_hp' & version_elec == "hpr_approved") |
+        # Case 7: post-HP with DOER rates
+        (hvac == 'mid_hp' & version_elec == "hpr_doer") |
+
+        # Case 8: post-HP with baseline rates
+        (hvac == 'high_hp' & version_elec == "baseline") |
+        # Case 9: post-HP with approved rates
+        (hvac == 'high_hp' & version_elec == "hpr_approved") |
+        # Case 10: post-HP with DOER rates
+        (hvac == 'high_hp' & version_elec == "hpr_doer")
+      ) |>
+      filter(bill_type %in% c("annual_bill_elec", "annual_bill_gas", "annual_bill_fueloil", "annual_bill_propane", "annual_bill_energy", "annual_bill_raw_elec", "annual_bill_raw_gas", "annual_bill_raw_fueloil", "annual_bill_raw_propane", "annual_bill_raw_energy"))
+
+
+  # --------------------------
+
+
+
+  # Energy Burden calculation
+  # Add income data, calculate energy burden
+  annual_bills_all <- annual_bills_all |>
+    left_join(housing_units |> select(bldg_id, assigned_income), by = "bldg_id") |>
+    mutate(energy_burden = annual_bill / assigned_income)
+
+  # Add baseline_heating_type
+  annual_bills_all <- annual_bills_all |>
+    left_join(housing_units |> select(bldg_id, baseline_heating_type), by = "bldg_id")
+
+  # Filter to just supply_year
+  annual_bills_20YY <- annual_bills_all |> filter(year == supply_year)
+
+  annual_bills_20YY_x = annual_bills_20YY |> sample_n(100)
+
+  # ---------------------------
+  # First table = annual bill WITH LI discounts
+  annual_bills <- annual_bills_20YY |> filter(bill_type %in% c("annual_bill_elec", "annual_bill_gas", "annual_bill_fueloil", "annual_bill_propane", "annual_bill_energy"))
+
+  # ---------------------------
+  # Second table = annual bill WITHOUT LI discounts
+  annual_bills_undiscounted <- annual_bills_20YY |> filter(bill_type %in% c("annual_bill_raw_elec", "annual_bill_raw_gas", "annual_bill_raw_fueloil", "annual_bill_raw_propane", "annual_bill_raw_energy"))
+
+  annual_bills_no_elec_discount <- annual_bills_20YY %>%
+  # Filter out municipal utilities if needed
+  filter(electric_utility != "municipal") %>%
+  # Keep only the relevant bill types
+  filter(bill_type %in% c("annual_bill_raw_elec", "annual_bill_gas", "annual_bill_fueloil", "annual_bill_propane")) %>%
+  # Group by all identifier columns
+  group_by(bldg_id, year, hvac, shell, appliances, county, building_type, occupants,
+           electric_utility, version_elec, tariff_id_elec, gas_utility, version_gas,
+           tariff_id_gas, assigned_income, baseline_heating_type) %>%
+  # Calculate total energy bill
+  summarize(
+    annual_bill_energy = sum(annual_bill, na.rm = TRUE),
+    # Maintain these individual bills if needed
+    annual_bill_raw_elec = sum(annual_bill[bill_type == "annual_bill_raw_elec"], na.rm = TRUE),
+    annual_bill_gas = sum(annual_bill[bill_type == "annual_bill_gas"], na.rm = TRUE),
+    annual_bill_fueloil = sum(annual_bill[bill_type == "annual_bill_fueloil"], na.rm = TRUE),
+    annual_bill_propane = sum(annual_bill[bill_type == "annual_bill_propane"], na.rm = TRUE),
+    # Keep raw_or_discounted if it's consistent within groups
+    raw_or_discounted = "mixed",
+    .groups = "drop"
+  ) %>%
+  # Convert back to long format if needed
+  pivot_longer(
+    cols = c(annual_bill_energy, annual_bill_raw_elec, annual_bill_gas,
+             annual_bill_fueloil, annual_bill_propane),
+    names_to = "bill_type",
+    values_to = "annual_bill"
+  ) %>%
+  # Recalculate energy burden if needed
+  mutate(energy_burden = case_when(
+    !is.na(assigned_income) & assigned_income > 0 ~ annual_bill / assigned_income,
+    TRUE ~ NA_real_
+  ))
+
+  # --------------------------
+  # Cleanup and save
+  if (exclude_municipal) {
+    annual_bills_with_municipal <- annual_bills
+    annual_bills_with_municipal_undiscounted <- annual_bills_undiscounted
+    annual_bills_with_municipal_no_elec_discount <- annual_bills_no_elec_discount
+
+
+    annual_bills <- annual_bills |> filter(electric_utility != "municipal")
+    annual_bills_undiscounted <- annual_bills_undiscounted |> filter(electric_utility != "municipal")
+    annual_bills_no_elec_discount <- annual_bills_no_elec_discount |> filter(electric_utility != "municipal")
+  }
+
+  con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+  DBI::dbWriteTable(con, "annual_bills", annual_bills, overwrite = TRUE)
+  DBI::dbWriteTable(con, "annual_bills_undiscounted", annual_bills_undiscounted, overwrite = TRUE)
+  DBI::dbWriteTable(con, "annual_bills_no_elec_discount", annual_bills_no_elec_discount, overwrite = TRUE)
+  DBI::dbDisconnect(con)
+
+}
+annual_bills_x = annual_bills |> filter(bldg_id == bldg_id_for_debugging)
+annual_bills_undiscounted_x = annual_bills_undiscounted |> filter(bldg_id == bldg_id_for_debugging)
+annual_bills_no_elec_discount_x = annual_bills_no_elec_discount |> filter(bldg_id == bldg_id_for_debugging)
+```
+
+## Annual Bill Change
+```{r}
+#| label: data-annual-bill-change
+source("/workspaces/reports/lib/rates_analysis/heat_pump_rate_funcs.R")
+
+# Calculate savings by comparing to baseline version
+if (cached_or_recompute == "recompute") {
+  # --------------------------
+  annual_change <- annual_bills |>
+    # First get baseline values to compare against
+    filter(hvac == 'current' & version_elec == "baseline") |>
+    select(bldg_id, year, electric_utility, county, building_type, occupants, bill_type, annual_bill, raw_or_discounted, assigned_income) |>
+    rename(baseline_bill = annual_bill) |>
+    # Join back to full dataset
+    right_join(annual_bills |> filter(hvac %in% c('low_hp', 'mid_hp', 'high_hp')),
+              by = c("bldg_id", "year", "electric_utility", "county", "building_type", "occupants", "bill_type", "raw_or_discounted", "assigned_income")) |>
+    # Calculate savings
+    mutate(
+      annual_bill_change = annual_bill - baseline_bill,
+      bill_type = case_when(
+        bill_type == "annual_bill_elec" ~ "annual_bill_change_elec",
+        bill_type == "annual_bill_gas" ~ "annual_bill_change_gas",
+        bill_type == "annual_bill_fueloil" ~ "annual_bill_change_fueloil",
+        bill_type == "annual_bill_propane" ~ "annual_bill_change_propane",
+        bill_type == "annual_bill_energy" ~ "annual_bill_change_energy"
+      )
+    ) |>
+    select(-baseline_bill, -annual_bill)
+
+  con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+  DBI::dbWriteTable(con, "annual_change", annual_change, overwrite = TRUE)
+  DBI::dbDisconnect(con)
+
+  # --------------------------
+  # UNDISCOUNTED annual bill change
+  # Calculate savings by comparing to baseline version
+  annual_change_undiscounted <- annual_bills_undiscounted |>
+    # First get baseline values to compare against
+    filter(hvac == 'current' & version_elec == "baseline") |>
+    select(bldg_id, year, electric_utility, county, building_type, occupants, bill_type, annual_bill, raw_or_discounted, assigned_income) |>
+    rename(baseline_bill = annual_bill) |>
+    # Join back to full dataset
+    right_join(annual_bills_undiscounted |> filter(hvac %in% c('low_hp', 'mid_hp', 'high_hp')),
+              by = c("bldg_id", "year", "electric_utility", "county", "building_type", "occupants", "bill_type", "raw_or_discounted", "assigned_income")) |>
+    # Calculate savings
+    mutate(
+      annual_bill_change = annual_bill - baseline_bill,
+      bill_type = case_when(
+        bill_type == "annual_bill_raw_elec" ~ "annual_bill_change_raw_elec",
+        bill_type == "annual_bill_raw_gas" ~ "annual_bill_change_raw_gas",
+        bill_type == "annual_bill_raw_fueloil" ~ "annual_bill_change_raw_fueloil",
+        bill_type == "annual_bill_raw_propane" ~ "annual_bill_change_raw_propane",
+        bill_type == "annual_bill_raw_energy" ~ "annual_bill_change_raw_energy"
+      )
+    ) |>
+    # only cases where upgrade==4 are interesting...these are the post-HP install cases
+    #filter(upgrade == 4) |>
+    select(-baseline_bill, -annual_bill)
+
+  con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+  DBI::dbWriteTable(con, "annual_change_undiscounted", annual_change_undiscounted, overwrite = TRUE)
+  DBI::dbDisconnect(con)
+
+  # --------------------------
+  # NO ELECTRIC DISCOUNT annual bill change
+  # Calculate savings by comparing to baseline version
+  annual_change_no_elec_discount <- annual_bills_no_elec_discount |>
+    # First get baseline values to compare against
+    filter(hvac == 'current' & version_elec == "baseline") |>
+    select(bldg_id, year, electric_utility, county, building_type, occupants, bill_type, annual_bill, raw_or_discounted, assigned_income) |>
+    rename(baseline_bill = annual_bill) |>
+    # Join back to full dataset
+    right_join(annual_bills_no_elec_discount |> filter(hvac %in% c('low_hp', 'mid_hp', 'high_hp')),
+              by = c("bldg_id", "year", "electric_utility", "county", "building_type", "occupants", "bill_type", "raw_or_discounted", "assigned_income")) |>
+    # Calculate savings
+    mutate(
+      annual_bill_change = annual_bill - baseline_bill,
+      bill_type = case_when(
+        bill_type == "annual_bill_elec" ~ "annual_bill_change_elec",
+        bill_type == "annual_bill_gas" ~ "annual_bill_change_gas",
+        bill_type == "annual_bill_fueloil" ~ "annual_bill_change_fueloil",
+        bill_type == "annual_bill_propane" ~ "annual_bill_change_propane",
+        bill_type == "annual_bill_energy" ~ "annual_bill_change_energy"
+      )
+    ) |>
+    # only cases where upgrade==4 are interesting...these are the post-HP install cases
+    #filter(upgrade == 4) |>
+    select(-baseline_bill, -annual_bill)
+
+
+  # --------------------------
+  if (exclude_municipal) {
+    annual_change_with_municipal <- annual_change
+    annual_change_with_municipal_undiscounted <- annual_change_undiscounted
+    annual_change_with_municipal_no_elec_discount <- annual_change_no_elec_discount
+
+    annual_change <- annual_change |> filter(electric_utility != "municipal")
+    annual_change_undiscounted <- annual_change_undiscounted |> filter(electric_utility != "municipal")
+    annual_change_no_elec_discount <- annual_change_no_elec_discount |> filter(electric_utility != "municipal")
+  }
+
+  con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+  DBI::dbWriteTable(con, "annual_change_no_elec_discount", annual_change_no_elec_discount, overwrite = TRUE)
+  DBI::dbDisconnect(con)
+}
+
+
+annual_change_x = annual_change |> filter(bldg_id == bldg_id_for_debugging)
+annual_change_undiscounted_x = annual_change_undiscounted |> filter(bldg_id == bldg_id_for_debugging)
+annual_change_no_elec_discount_x = annual_change_no_elec_discount |> filter(bldg_id == bldg_id_for_debugging)
+```
+
+
+## Winter Energy (kWh)
+```{r}
+#| label: data-annual-energy
+#| echo: false
+#| output: false
+
+
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+
+# Query annual energy consumption by building and HVAC scenario
+winter_months_6 = c(11, 12, 1, 2, 3, 4)
+winter_energy_6_months <- tbl(con, "ma_monthly") |>
+  filter(month %in% winter_months_6) |>
+  group_by(bldg_id, hvac) |>
+  summarise(
+    total_elec_kwh = sum(total_elec_kwh),
+    total_gas_kwh = sum(total_gas_kwh),
+    total_propane_kwh = sum(total_propane_kwh),
+    total_fuel_oil_kwh = sum(total_fuel_oil_kwh)
+  ) |>
+  collect()
+
+DBI::dbDisconnect(con)
+
+
+winter_energy_6_months <- winter_energy_6_months |>
+  left_join(housing_units |> select(bldg_id, baseline_heating_type, electric_utility), by = "bldg_id") |>
+  filter(electric_utility %in% c("unitil", "nationalgrid"))
+
+
+winter_months_8 = c(10, 11, 12, 1, 2, 3, 4, 5)
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+
+winter_energy_8_months <- tbl(con, "ma_monthly") |>
+  filter(month %in% winter_months_8) |>
+  group_by(bldg_id, hvac) |>
+  summarise(
+    total_elec_kwh = sum(total_elec_kwh),
+    total_gas_kwh = sum(total_gas_kwh),
+    total_propane_kwh = sum(total_propane_kwh),
+    total_fuel_oil_kwh = sum(total_fuel_oil_kwh)
+  ) |>
+  collect()
+
+DBI::dbDisconnect(con)
+
+winter_energy_8_months <- winter_energy_8_months |>
+  left_join(housing_units |> select(bldg_id, baseline_heating_type, electric_utility), by = "bldg_id") |>
+  filter(electric_utility == "eversource")
+
+
+winter_energy <- bind_rows(winter_energy_6_months, winter_energy_8_months)
+rm(winter_energy_6_months, winter_energy_8_months)
+
+# throw out any rows whereh total elec kwh < 0 (net producers)
+winter_energy <- winter_energy |>
+  filter(total_elec_kwh > 0) |>
+  pivot_longer(cols = c(total_elec_kwh, total_gas_kwh, total_propane_kwh, total_fuel_oil_kwh), names_to = "fuel", values_to = "total_winter_kwh") |>
+  mutate(
+    fuel = case_when(
+      fuel == "total_elec_kwh" ~ "electricity",
+      fuel == "total_gas_kwh" ~ "gas",
+      fuel == "total_propane_kwh" ~ "propane",
+      fuel == "total_fuel_oil_kwh" ~ "fuel_oil",
+      TRUE ~ "other"
+    )
+  )
+
+winter_energy_delta <- winter_energy |>
+  # Pivot wider to get each hvac scenario in separate columns
+  pivot_wider(
+    id_cols = c(bldg_id, fuel),
+    names_from = hvac,
+    values_from = total_winter_kwh
+  ) |>
+  # Calculate deltas compared to current
+  mutate(
+    delta_low_hp = low_hp - current,
+    delta_mid_hp = mid_hp - current,
+    delta_high_hp = high_hp - current
+  ) |>
+  # Select only relevant columns
+  select(bldg_id, fuel, starts_with("delta_")) |>
+  # Pivot longer to get back to tidy format
+  pivot_longer(
+    cols = starts_with("delta_"),
+    names_to = "hvac",
+    values_to = "delta_winter_kwh"
+  ) |>
+  # Clean up hvac names by removing "delta_" prefix
+  mutate(
+    hvac = str_remove(hvac, "delta_")
+  ) |>
+  # Join back with housing_units to get baseline heating type and utility
+  left_join(
+    housing_units |>
+    select(bldg_id, baseline_heating_type, electric_utility),
+    by = "bldg_id"
+  )
+
+```
+# ------------------------------------------------------------------------------
+# Export Data
+# ------------------------------------------------------------------------------
+
+## Export just "annual_change_with_municipal"
+```{r}
+#| label: data-export-annual-change-with-municipal
+path_annual_change_db = "/workspaces/reports/data/ma_hp_rates/annual_change.db"
+
+export_annual_change <- FALSE
+if (export_annual_change) {
+  # Create directory if it doesn't exist
+  dir.create(dirname(path_annual_change_db), recursive = TRUE, showWarnings = FALSE)
+
+  # Connect to the database and add the table
+  con <- DBI::dbConnect(duckdb::duckdb(), path_annual_change_db, create = TRUE)
+
+  # Write the annual_change_with_municipal table to the database
+  DBI::dbWriteTable(con, "annual_change_with_municipal", annual_change_with_municipal, append = TRUE)
+
+  # Disconnect from the database
+  DBI::dbDisconnect(con)
+
+  cat("Successfully exported annual_change_with_municipal table to database at:", path_annual_change_db, "\n")
+}
+
+```
+
+
+
+## Export of "full workspace" and "output_for_analysis"
+```{r}
+#| label: data-export
+
+save_full_workspace <- FALSE
+
+# Create cache directory if it doesn't exist
+dir.create("/workspaces/reports/src/ma_hp_rates/cache/", recursive = TRUE, showWarnings = FALSE)
+
+
+if (cached_or_recompute == "recompute") {
+
+
+  if (save_full_workspace) {
+    save.image(file = "/workspaces/reports/src/ma_hp_rates/cache/full_calcs_workspace.RData")
+  }
+
+  rm(monthly_bills_elec)
+  rm(monthly_bills_elec_discounted)
+  rm(monthly_bills_gas)
+  rm(monthly_bills_gas_discounted)
+  rm(monthly_bills_fueloil)
+  rm(monthly_bills_fueloil_discounted)
+  rm(monthly_bills_propane)
+  rm(monthly_bills_propane_discounted)
+
+  rm(bills_elec)
+  rm(bills_fueloil)
+  rm(bills_gas)
+  rm(bills_propane)
+  rm(bills_resistance)
+
+  rm(annual_bills_all)
+  rm(annual_bills_20YY)
+  rm(annual_bills_x)
+  rm(annual_bills_heating_oil)
+  rm(annual_bills_natural_gas)
+  rm(annual_bills_propane)
+  rm(annual_bills_raw)
+
+  rm(annual_change_all_fuels)
+  rm(annual_change_heating_oil)
+  rm(annual_change_natural_gas)
+  rm(annual_change_propane)
+  rm(annual_change_resistance)
+
+  rm(full_year_bills_elec)
+  rm(full_year_bills_fueloil)
+  rm(full_year_bills_gas)
+  rm(full_year_bills_propane)
+  rm(full_year_bills_resistance)
+
+  rm(winter_bills_elec)
+  rm(winter_bills_fueloil)
+  rm(winter_bills_gas)
+  rm(winter_bills_propane)
+  rm(winter_bills_resistance)
+
+  save.image(file = "/workspaces/reports/src/ma_hp_rates/cache/output_for_analysis.RData")
+}
+```

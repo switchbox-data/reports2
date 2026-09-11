@@ -1,0 +1,468 @@
+
+
+# MA Gas Supply Rates
+- https://www.mass.gov/info-details/information-on-gas-supply-and-delivery-charges#gas-supply-rate-information-(gaf)-
+
+
+```{python}
+import pandas as pd
+import numpy as np
+from datetime import datetime
+import re
+import warnings
+warnings.filterwarnings('ignore')  # Suppress all warnings
+
+
+
+utility_alias_map = {
+    # Current names
+    "Berkshire Gas": "berkshire",
+    "Eversource Gas Company of Massachusetts d/b/a/ Eversource Energy": "eversource_egma",
+    "NSTAR Gas d/b/a Eversource Energy": "eversource_nstar",
+    "Liberty Utilities- North Attleboro & Fall River": "liberty_attleboro",
+    "Liberty Utilities - Blackstone": "liberty_blackstone",
+    "National Grid - Boston Gas": "nationalgrid_boston",
+    "National Grid - former Colonial Gas": "nationalgrid_colonial",
+    "Fitchburg Gas d/b/a Unitil": "unitil",
+
+    # Historical/alternative names
+    "Bay State Gas d/b/a Columbia Gas of Massachusetts": "eversource_baystate",
+    "Bay State Gas": "eversource_baystate",
+    "BAYSTATE GAS": "eversource_baystate",
+    "Bay State Gas Company d/b/a Columbia Gas of Massachusetts": "eversource_baystate",
+    "BERKSHIRE GAS": "berkshire",
+    "BLACKSTONE GAS": "liberty_blackstone",
+    "Blackstone Gas": "liberty_blackstone",
+    "Eversource Gas Company of Massachusetts": "eversource_egma",
+    "Eversource Gas Company of Massachusetts (formerly Bay State Gas d/b/a Columbia Gas of Massachusetts)": "eversource_baystate",
+    "Fitchburg Gas": "unitil",
+    "FITCHBURG GAS": "unitil",
+    "KeySpan - Boston Gas": "nationalgrid_boston",
+    "KEYSPAN - BOSTON GAS": "nationalgrid_boston",
+    "KEYSPAN - COLONIAL - CAPE": "nationalgrid_colonial",
+    "KEYSPAN - ESSEX": "nationalgrid_boston",
+    "KEYSPAN - COLONIAL - LOWELL": "nationalgrid_colonial",
+    "Liberty Utilities (New England Natural Gas Company)": "liberty_blackstone",
+    "NATIONAL GRID - ESSEX": "nationalgrid_boston",
+    "NATIONAL GRID - BOSTON GAS": "nationalgrid_boston",
+    "National Grid - BOSTON GAS": "nationalgrid_boston",
+    "National Grid - BOSTON GAS ": "nationalgrid_boston",
+    "National Grid - Boston / Essex Gas": "nationalgrid_boston",
+    "National Grid - Boston / Essex Gas": "nationalgrid_boston",
+    "NATIONAL GRID - COLONIAL": "nationalgrid_colonial",
+    "National Grid - Colonial": "nationalgrid_colonial",
+    "National Grid - Colonial": "nationalgrid_colonial",
+    "National Grid - COLONIAL ": "nationalgrid_colonial",
+    "National Grid - Colonial Gas": "nationalgrid_colonial",
+    "National Grid - Colonial": "nationalgrid_colonial",
+    "National Grid - Colonial": "nationalgrid_colonial",
+    "NATIONAL GRID - COLONIAL - CAPE": "nationalgrid_colonial",
+    "NATIONAL GRID - COLONIAL - LOWELL": "nationalgrid_colonial",
+    "NEW ENGLAND GAS": "liberty_blackstone",
+    "New England Gas": "liberty_blackstone",
+    "NSTAR GAS": "eversource_nstar",
+    "NSTAR Gas": "eversource_nstar"
+}
+
+
+def process_gas_sheet(path: str, sheet_name: str, debug=False) -> pd.DataFrame:
+    # Read the raw data without specifying column names
+    raw_data = pd.read_excel(path, sheet_name=sheet_name, header=None)
+    #print(sheet_name)
+
+    # Add a fifth column if there are only 4
+    if raw_data.shape[1] == 4:
+        raw_data[4] = np.nan
+
+    # --------------------------------------------------------------------------
+    # Get effective date from second row (do this once per sheet)
+    #date_str = raw_data.iloc[1, 0]
+    # Extract date from sheet name
+    date_str = sheet_name.split()[-1]
+    #match = re.search(r'Effective\s+(?:\[)?(\w+\s+\d+,\s*\d{4}|\d{1,2}-\d{1,2}-\d{2}|\d{1,2}/\d{1,2}/\d{2})(?:\])?(?:\s+rev\s+\d+)?', str(date_str))
+    # if not match:
+    #     return pd.DataFrame()  # Return empty DataFrame if no date found
+
+    #date_str = match.group(1)
+    try:
+        # Try Month name format (February 1, 2015)
+        effective_date = datetime.strptime(date_str, '%B %d, %Y').date()
+    except ValueError:
+        try:
+            # Try hyphen format (2-1-15)
+            effective_date = datetime.strptime(date_str, '%m-%d-%y').date()
+        except ValueError:
+            # Try slash format (3/1/16)
+            effective_date = datetime.strptime(date_str, '%m/%d/%y').date()
+            print(f"Error parsing date: {date_str}")
+
+    if debug: print(f"\n\n\n\n\n\n\n")
+    print(f"Processing sheet: {sheet_name} --> Effective date: {effective_date}")
+    if debug: print(f"Raw data shape: {raw_data.shape}")
+
+
+    # --------------------------------------------------------------------------
+    # Set column names
+    if debug: print(f"Raw data columns: {raw_data.columns}")
+
+    try:
+        raw_data.columns = ["Rate Class", "Billing Unit", "GAF", "LDAF", "TBD"]
+    except:
+        # skip this sheet entirely...the data format is wonky
+        print(f"Skipping sheet: {sheet_name} because the data format is wonky")
+        return pd.DataFrame()
+
+    # Find header rows
+    header_rows = raw_data[
+        (raw_data["Rate Class"] == "Rate Class") |
+        (raw_data["Billing Unit"] == "Billing Unit") |
+        (raw_data["GAF"] == "GAF") |
+        (raw_data["LDAF"] == "LDAF")
+    ].index.tolist()
+
+    if debug: print(f"Header rows: {header_rows}")
+
+    # Process each section and combine
+    result_dfs = []
+
+    for i, header_row in enumerate(header_rows):
+        # Get utility name from row above header
+        utility_name = raw_data.iloc[header_row - 1, 0]
+
+        # Determine end of section
+        data_end = (raw_data.shape[0] if i == len(header_rows) - 1
+                   else header_rows[i + 1] - 3)
+
+        # Extract data section
+        data_section = raw_data.iloc[header_row + 1:data_end].copy()
+
+        if debug: print(f"\nData section: {data_section}")
+
+        format_change_date = datetime.strptime("11-1-17", "%m-%d-%y").date()
+        if effective_date >= format_change_date:
+            data_section.columns = ["rate_class", "billing_unit", "gaf", "ldaf", "revised_ldaf"]
+        else:
+            data_section.columns = ["rate_class", "billing_unit", "gaf", "ldaf", "total"]
+
+
+        # Clean and process the section
+        section_df = (data_section
+            .assign(
+                utility_raw=utility_name,
+                effective_date=effective_date
+            )
+            .dropna(how='all')  # Remove rows where all values are NA
+        )
+
+        if section_df.shape[0] == 0:
+            print(f"Section df is empty for sheet: {sheet_name}")
+            continue
+
+        if debug: print(f"Section df: {section_df}")
+
+        # Split rows where Rate Class contains comma or slash
+        split_rows = []
+        for _, row in section_df.iterrows():
+            if isinstance(row['rate_class'], str) and (',' in row['rate_class'] or '/' in row['rate_class']):
+                # Split the rate class on comma or slash and strip whitespace
+                rate_classes = [rc.strip() for rc in re.split('[,/]', row['rate_class'])]
+                # Create a new row for each rate class
+                for rc in rate_classes:
+                    new_row = row.copy()
+                    new_row['rate_class'] = rc
+                    split_rows.append(new_row)
+            else:
+                split_rows.append(row)
+
+        # Filter rows to only keep specified billing units
+        # This also removes notes or other random non-data
+        split_rows = [row for row in split_rows if row['billing_unit'] in ["$/Therm", "$/MDCQ", "$/Ccf", "Ccf"]]
+        if debug: print(f"Split rows: {split_rows}")
+
+        # Convert back to DataFrame
+        section_df = pd.DataFrame(split_rows)
+
+        # Update LDAF with revised values where available
+        if effective_date >= format_change_date:
+            section_df['ldaf'] = section_df['revised_ldaf'].fillna(section_df['ldaf'])
+
+
+        # Add a year and a month column
+        section_df['year'] = section_df.iloc[0]['effective_date'].year
+        section_df['month'] = section_df.iloc[0]['effective_date'].month
+
+        # Select final columns
+        section_df = section_df[['utility_raw', 'effective_date', 'year', 'month', 'rate_class', 'billing_unit', 'gaf', 'ldaf']]
+
+        result_dfs.append(section_df)
+
+    # Combine all sections
+    if not result_dfs:
+        return pd.DataFrame()
+
+
+
+    ################################################################################
+    # Process the combined data
+    ################################################################################
+    result = pd.concat(result_dfs, ignore_index=True)
+
+    # --------------------------------------------------------------------------
+    # Apply utility mapping
+    result['gas_utility'] = result['utility_raw'].map(utility_alias_map)
+
+    # --------------------------------------------------------------------------
+    # Split rate classes (written on the same row in the original data xlsx)
+    result = (result.assign(
+        rate_class=result['rate_class'].str.split('[,/]\\s*')
+    ).explode('rate_class'))
+
+    # --------------------------------------------------------------------------
+    # Any rows that say simpley "residential", expand those to be 4 separate rows where rate_class is R-1, R-2, R-3, R-4
+    # First explode any comma/slash separated rate classes
+    result = (result.assign(
+        rate_class=result['rate_class'].str.split('[,/]\\s*')
+    ).explode('rate_class'))
+
+    # Then expand generic residential classes into specific ones
+    residential_mask = result['rate_class'].str.lower().isin(['residential', 'all residential'])
+    residential_rows = result[residential_mask].copy()
+    non_residential_rows = result[~residential_mask].copy()
+
+    # Create expanded rows for each residential rate class
+    expanded_rows = []
+    for _, row in residential_rows.iterrows():
+        for rate_class in ['R-1', 'R-2', 'R-3', 'R-4']:
+            new_row = row.copy()
+            new_row['rate_class'] = rate_class
+            expanded_rows.append(new_row)
+
+    # Combine the expanded residential rows with the non-residential rows
+    result = pd.concat([
+        non_residential_rows,
+        pd.DataFrame(expanded_rows)
+    ], ignore_index=True)
+
+
+    # --------------------------------------------------------------------------
+    # Convert gaf and ldac from therms to kWh
+    result['gaf'] = result['gaf'].astype(float) / 29.30710701724138
+    result['ldaf'] = result['ldaf'].astype(float) / 29.30710701724138
+    result['billing_unit'] = '$/kWh'
+
+    return result[['gas_utility', 'utility_raw', 'effective_date', 'year', 'month', 'rate_class', 'billing_unit', 'gaf', 'ldaf']]
+
+
+
+def fill_monthly_rates(gas_supply_rates: pd.DataFrame,
+                      gas_utility: str,
+                      rate_class: str) -> pd.DataFrame:
+    """
+    Creates a complete monthly grid of rates, filling in missing values using forward fill.
+
+    Args:
+        gas_supply_rates (pd.DataFrame): DataFrame containing gas supply rates
+        gas_utility (str): Name of the gas utility to filter for
+        rate_class (str): Rate class to filter for
+
+    Returns:
+        pd.DataFrame: Complete monthly rates with filled values and filled_flag indicator
+    """
+    # Filter for specific utility and rate class
+    utility_rates = gas_supply_rates[
+        (gas_supply_rates['gas_utility'] == gas_utility) &
+        (gas_supply_rates['rate_class'] == rate_class)
+    ]
+
+    # Get the earliest date
+    start_date = utility_rates['effective_date'].min()
+    print(f"{gas_utility} {rate_class} --> start date: {start_date}")
+
+    # Create month-year grid
+    month_year_grid = pd.DataFrame({
+        'year': pd.date_range(start=start_date,
+                             end=pd.Timestamp.now(),
+                             freq='M').year,
+        'month': pd.date_range(start=start_date,
+                              end=pd.Timestamp.now(),
+                              freq='M').month
+    }).drop_duplicates()
+
+    # Join and fill
+    rates_complete = (
+        month_year_grid
+        .merge(utility_rates,
+               on=['year', 'month'],
+               how='left')
+        .sort_values(['year', 'month'])
+        # Mark NaN values before filling
+        .assign(filled_flag=lambda df: df['gaf'].isna())
+        # Forward fill NaN values
+        .ffill()
+    )
+    return rates_complete
+
+
+################################################################################
+# Main execution
+path_ma_gas_supply_rates = "/workspaces/reports/data/utility_rates/gas/madpu/GAF Historical Data.xlsx"
+
+# Get all sheets and filter for those after 2010
+xl = pd.ExcelFile(path_ma_gas_supply_rates)
+sheets = xl.sheet_names
+
+# Filter sheets by year
+relevant_sheets = [s for s in sheets if s and
+                  s[-2:].isdigit() and
+                  int(s[-2:]) >= 9 and
+                  int(s[-2:]) < 26]
+print("Processing sheets:", relevant_sheets)
+
+
+# Process all sheets and combine
+gas_supply_rates = pd.concat([
+    process_gas_sheet(path_ma_gas_supply_rates, sheet, debug=False)
+    for sheet in relevant_sheets
+], ignore_index=True)
+
+print(gas_supply_rates.columns)
+
+# --------------------------------------------------------------------------
+def calculate_utility_average(gas_supply_rates: pd.DataFrame,
+                            subsidiary_names: list,
+                            parent_name: str) -> pd.DataFrame:
+    """
+    Calculate average rates across utility subsidiaries and add them as a new utility.
+
+    Args:
+        gas_supply_rates (pd.DataFrame): DataFrame containing gas supply rates
+        subsidiary_names (list): List of subsidiary utility names to average
+        parent_name (str): Name to use for the averaged/parent utility
+
+    Returns:
+        pd.DataFrame: Original DataFrame with new averaged rows appended
+    """
+    # Calculate averages for subsidiaries
+    utility_avg = (gas_supply_rates[gas_supply_rates['gas_utility'].isin(subsidiary_names)]
+        .groupby(['effective_date', 'year', 'month', 'rate_class', 'billing_unit'])
+        .agg({
+            'gaf': 'mean',
+            'ldaf': 'mean'
+        })
+        .reset_index()
+        .assign(
+            gas_utility=parent_name,
+            utility_raw=parent_name
+        )
+    )
+
+    # Append the new averaged rows to the original dataframe
+    return pd.concat([gas_supply_rates, utility_avg], ignore_index=True)
+
+# Example usage:
+gas_supply_rates = calculate_utility_average(
+    gas_supply_rates,
+    ['eversource_egma', 'eversource_baystate', 'eversource_nstar'],
+    'eversource'
+)
+
+
+gas_supply_rates = calculate_utility_average(
+    gas_supply_rates,
+    ['liberty_blackstone', 'liberty_attleboro'],
+    'liberty'
+)
+
+gas_supply_rates = calculate_utility_average(
+    gas_supply_rates,
+    ['nationalgrid_boston', 'nationalgrid_colonial'],
+    'nationalgrid'
+)
+# --------------------------------------------------------------------------
+
+
+
+# Once we have all the data in a single dataframe, we can fill in missing values
+# First we need a list of all the utility/rate_class combos
+utility_rate_combos = (gas_supply_rates
+    .groupby(['gas_utility', 'rate_class'])
+    .size()
+    .reset_index()
+    .drop(0, axis=1)
+)
+
+# Now we can fill in missing values using ffill()
+all_filled_rates = pd.DataFrame()
+for _, row in utility_rate_combos.iterrows():
+    gas_utility = row['gas_utility']
+    rate_class = row['rate_class']
+    print(f"{gas_utility} {rate_class}")
+    filled_rates = fill_monthly_rates(gas_supply_rates, gas_utility, rate_class)
+    all_filled_rates = pd.concat([all_filled_rates, filled_rates])
+
+all_filled_rates['supply_rate'] = all_filled_rates['gaf']
+
+all_filled_rates.to_csv("/workspaces/reports/data/utility_rates/gas/madpu/gas_supply_rates_tidy_filled.csv", index=False)
+
+```
+
+```{python}
+# Connect to duckdb and write the supply rates table
+
+all_filled_rates = all_filled_rates[all_filled_rates['rate_class'].isin(['R-1', 'R-2', 'R-3', 'R-4'])]
+
+import duckdb
+con = duckdb.connect('/workspaces/reports/data/ResStock/2022_resstock_amy2018_release_1.1/rs_ma_hp_rates.db')
+con.execute("DROP TABLE IF EXISTS supply_rates_gas")
+con.execute("CREATE TABLE supply_rates_gas AS SELECT * FROM all_filled_rates")
+con.close()
+```
+
+
+```{python}
+import plotly
+import plotly.express as px
+# Plot the supply rates
+gas_utility = 'unitil'
+rate_class = 'R-1'
+
+filled_rates = all_filled_rates[(all_filled_rates['gas_utility'] == gas_utility) & (all_filled_rates['rate_class'] == rate_class)]
+
+# Create interactive plot with plotly
+fig = px.scatter(filled_rates,
+              x='month',
+              y='gaf',
+              title=f'{gas_utility} Gas Supply Rates for {rate_class}',
+              labels={'month': 'Date',
+                     'gaf': 'Gas Adjustment Factor ($/kWh)'},
+              template='plotly_white')
+
+# Customize hover text
+fig.update_traces(hovertemplate='Date: %{x}<br>Rate: $%{y:.4f}/kWh')
+
+# Update layout
+fig.update_layout(
+    showlegend=False,
+    hovermode='x unified',
+    xaxis_title='Date',
+    yaxis_title='Rate ($/kWh)'
+)
+
+fig.show()
+
+```
+
+
+```{python}
+
+# Find any utilities not in the mapping
+unmapped_utilities = gas_supply_rates[~gas_supply_rates['gas_utility'].isin(utility_alias_map.values())]
+
+if len(unmapped_utilities) > 0:
+    print("\nUtilities found that are not in mapping:")
+    print(unmapped_utilities[['gas_utility', 'utility_raw', 'effective_date']].drop_duplicates())
+else:
+    print("\nAll utilities were successfully mapped")
+
+
+```

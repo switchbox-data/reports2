@@ -1,0 +1,86 @@
+---
+title: ny_supply_rates
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+
+```{r}
+source("lib/ggplot/switchbox_theme.R")
+source("lib/rates_analysis/heat_pump_rate_funcs.R")
+library(lubridate)
+library(patchwork)
+library(tidyverse)
+
+library(googlesheets4)
+
+url_sheet <- "https://docs.google.com/spreadsheets/d/1HZOZfyuCLaAWvTndVjkhhuZe6Blcp1tcajYwcHBRN3M/edit?gid=1947524045#gid=1947524045"
+googlesheets4::gs4_deauth()
+tariffs_raw <- read_sheet(url_sheet, sheet = "SC1_ERB2") |>
+  mutate(tariff_id = paste0(utility, "_", version)) |>
+  select(-source)
+
+# Combine some categories for convenience
+tariffs_coned_delivery <- tariffs_raw |>
+  # Group by tariff_name, type, and all other columns except name and value
+  group_by(
+    utility, version, customer_class, tariff_name, domain,
+    class, type, variability, season,
+    start_month, end_month, period, start_hour, end_hour, tariff_id
+  ) %>%
+  # Summarize to combine the values and use type as the new name
+  summarize(
+    name = first(type),  # Use the type as the new name
+    value = sum(value),
+    .groups = "drop"
+  ) |>
+  # Apply the name mapping
+  mutate(
+    name = case_when(
+      name == "customer_charge" ~ "Customer Charge",
+      name == "merchant_function_rate" ~ "Merchant Function Charge",
+      name == "delivery_rate" ~ "Energy Delivery Rate",
+      name == "adjustment_rate" ~ "Adjustment Charge",
+      name == "program_rate" ~ "Program Charge",
+      name == "sales_tax_rate" ~ "Sales Tax Rate",
+      TRUE ~ name  # Keep original name if no mapping exists
+    )
+  )
+
+# Hourly Tariffs must be assigned to the month-hour grid
+# For ConEd analysis...
+#  + 288 rows for R3 (24 hours x 12 months)
+#  + 288 rows for R4 (24 hours x 12 months)
+#  = 576 rows in the LONG table called "month_hour_tariff_energy"
+hourly_tariffs_coned_delivery <- tariffs_coned_delivery |> filter(variability == "hourly")
+delivery_tariff_month_hour_energy <- assign_tariffs_to_month_hour_grid(hourly_tariffs_coned_delivery)
+
+# Expand monthly and yearly tariffs to month grid
+# For ConEd analysis...
+#  + 60 rows for R1: 5 rates (customer, adjustment, delivery, merchant function, sales tax) x 12 months
+#  + 48 rows for R3: 4 raters (no delivery, its an hourly rate) x 12 months
+#  + 48 rows for R4: 4 raters (no delivery, its an hourly rate) x 12 months
+#  = 156 rows in the LONG table called "month_tariff"
+monthly_yearly_tariffs <- tariffs_coned_delivery |> filter(variability %in% c("monthly", "yearly"))
+delivery_tariff_month <- assign_tariffs_to_month_grid(monthly_yearly_tariffs)
+head(delivery_tariff_month, n=30)
+
+
+# Add to database
+path_rs_db <- "data/ResStock/2022_resstock_amy2018_release_1.1/rs_ny_coned_hp_rates.db"
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+DBI::dbWriteTable(con, "delivery_tariff_month_hour_energy", delivery_tariff_month_hour_energy, overwrite = TRUE)
+DBI::dbWriteTable(con, "delivery_tariff_month", delivery_tariff_month, overwrite = TRUE)
+DBI::dbDisconnect(con)
+
+```

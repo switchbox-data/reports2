@@ -1,0 +1,157 @@
+---
+title: ma_delivery_tariffs_elec
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+
+# MA Electric Delivery Tariffs
+```{r}
+library(tidyverse)
+library(scales)
+library(gt)
+library(gtExtras)
+library(jsonlite)
+library(RSQLite)
+library(readxl)
+
+source("/workspaces/reports/lib/ggplot/switchbox_theme.R")
+
+library(tidyverse)
+library(googlesheets4)
+
+url_sheet_delivery_tariffs_elec_ma <- "https://docs.google.com/spreadsheets/d/1efE96zgziHTaLX-lPV1vRKVZze9gcKuD-nJyB-QFOQY/edit?gid=658606865#gid=658606865"
+googlesheets4::gs4_deauth()
+tariffs_elec_raw <- read_sheet(url_sheet_delivery_tariffs_elec_ma, sheet = "tariffs") |>
+  mutate(tariff_id = paste0(electric_utility, "_", version)) |>
+  select(-source)
+
+
+# The tariffs are specified by season, so we need to expand them out to the monthly grid
+
+# Eversource
+summer_months_eversource <- c(6,7,8,9)
+winter_months_eversource <- c(10,11,12,1,2,3,4,5)
+delivery_tariffs_elec_eversource <- tariffs_elec_raw |>
+  filter(electric_utility == "eversource") |>
+  mutate(
+    month = if_else(season == "summer",
+                    list(summer_months_eversource),
+                    list(winter_months_eversource))
+  ) |>
+  #select(-season) |>
+  unnest(month) |>
+  arrange(electric_utility, month)
+
+# National Grid
+summer_months_nationalgrid <- c(5,6,7,8,9,10)
+winter_months_nationalgrid <- c(11,12,1,2,3,4)
+delivery_tariffs_elec_nationalgrid <- tariffs_elec_raw |>
+  filter(electric_utility == "nationalgrid") |>
+  mutate(
+    month = if_else(season == "summer",
+                    list(summer_months_nationalgrid),
+                    list(winter_months_nationalgrid))
+  ) |>
+  #select(-season) |>
+  unnest(month) |>
+  arrange(electric_utility, month)
+
+# Unitil
+summer_months_unitil <- c(5,6,7,8,9,10)
+winter_months_unitil <- c(11,12,1,2,3,4)
+delivery_tariffs_elec_unitil <- tariffs_elec_raw |>
+  filter(electric_utility == "unitil") |>
+  mutate(
+    month = if_else(season == "summer",
+                    list(summer_months_unitil),
+                    list(winter_months_unitil))
+  ) |>
+  #select(-season) |>
+  unnest(month) |>
+  arrange(electric_utility, month)
+
+# Municipal/CCA
+# Eversource
+summer_months_municipal <- c(6,7,8,9)
+winter_months_municipal <- c(10,11,12,1,2,3,4,5)
+delivery_tariffs_elec_municipal <- tariffs_elec_raw |>
+  filter(electric_utility == "municipal") |>
+  mutate(
+    month = if_else(season == "summer",
+                    list(summer_months_municipal),
+                    list(winter_months_municipal))
+  ) |>
+  #select(-season) |>
+  unnest(month) |>
+  arrange(electric_utility, month)
+
+# Combine all the delivery tariffs
+delivery_tariffs_elec <- bind_rows(
+  delivery_tariffs_elec_eversource,
+  delivery_tariffs_elec_nationalgrid,
+  delivery_tariffs_elec_unitil,
+  delivery_tariffs_elec_municipal
+) |>
+select(class, type, season, electric_utility, customer_class, name, version, value, tariff_id, month)
+
+
+path_rs_db <- "data/ResStock/2022_resstock_amy2018_release_1.1/rs_ma_hp_rates_2.db"
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+DBI::dbWriteTable(
+  con,
+  "delivery_tariffs_elec",
+  delivery_tariffs_elec,
+  overwrite = TRUE
+)
+DBI::dbDisconnect(con)
+```
+
+```{r}
+source("/workspaces/reports/lib/ggplot/switchbox_theme.R")
+
+delivery_tariffs_elec_plot <- delivery_tariffs_elec |>
+  filter(type=="delivery_rate") |>
+  mutate(
+    version = factor(version),
+    electric_utility = factor(electric_utility)
+  ) |>
+  ggplot(aes(x=month, y=value, color=version, linetype=electric_utility)) +
+  geom_line() +
+  labs(
+    x = "Month",
+    y = "Rate ($/kWh)",
+    color = "Rate Version",
+    linetype = "Utility",
+    title = "Electric Delivery Tariffs by Month"
+  ) +
+  scale_x_continuous(breaks = 1:12, labels = month.abb) +
+  scale_y_continuous(labels = scales::label_dollar()) +
+  scale_color_manual(values = c(
+    "baseline" = "#023047",
+    "hpr_approved" = "#FC9706",
+    "hpr_doer" = "#68BED8"
+  )) +
+  theme(legend.position = "bottom")
+
+delivery_tariffs_elec_plot
+
+ggsave(
+  "/workspaces/reports/src/ma_hp_rates/img/delivery_tariffs_elec_plot.png",
+  delivery_tariffs_elec_plot,
+  width = 10,
+  height = 6
+)
+
+
+```

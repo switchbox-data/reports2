@@ -1,0 +1,460 @@
+---
+title: ma_supply_rates
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+
+
+# What's this?
+- Massachusetts utilities [publish](https://www.mass.gov/info-details/basic-service-information-and-rates#basic-service-pricing-) "Basic Service Pricing" sheets with monthly supply rates.
+- We can use these for the supply portion of the bill
+- This notebook is EDA for that sheet
+
+# MA Electric Supply Rates
+```{r}
+library(tidyverse)
+library(scales)
+library(gt)
+library(gtExtras)
+library(jsonlite)
+library(RSQLite)
+library(readxl)
+library(lubridate)
+
+source("/workspaces/reports/lib/ggplot/switchbox_theme.R")
+
+ma_supply_rates_monthly_raw <- readxl::read_excel(
+  path = "/workspaces/reports/data/utility_rates/electric/madpu/Basic Service Rates 12.30.2024.xlsx",
+  sheet = "Monthly Prices",
+  range = "A4:G255",
+  .name_repair = "unique",  # Ensures column names are unique
+  col_names = c("year", "month", "blank", "nationalgrid", "eversource_nstar", "eversource_wmeco", "unitil")
+)
+
+#View(ma_supply_rates_monthly_raw)
+
+# Fill in missing year values by carrying forward the last valid year
+ma_supply_rates_monthly <- ma_supply_rates_monthly_raw |>
+  mutate(
+    year = as.numeric(year),  # Convert to numeric, invalid values become NA
+    year = if_else(
+      !is.na(year),  # If it's a valid year
+      year,          # Keep it
+      NA_real_      # Otherwise make it NA
+    )
+  ) |>
+  fill(year, .direction = "down")|>  # Fill NAs with previous valid value
+  mutate(
+    month = case_when(
+      month == "Jan" ~ 1,
+      month == "Feb" ~ 2,
+      month == "Mar" ~ 3,
+      month == "Apr" ~ 4,
+      month == "May" ~ 5,
+      month == "June" ~ 6,
+      month == "July" ~ 7,
+      month == "Aug" ~ 8,
+      month == "Sept" ~ 9,
+      month == "Oct" ~ 10,
+      month == "Nov" ~ 11,
+      month == "Dec" ~ 12
+    )
+  ) |>
+  select(-blank) |>
+  mutate(
+    eversource = (eversource_nstar + eversource_wmeco) / 2
+  ) |>
+  mutate(
+    across(
+      -c(year, month),  # Select all columns except year and month
+      ~ . / 100  # Divide each selected column by 100
+    )
+  ) |>
+  mutate(
+    type = "all_hours",
+    zone = "everywhere"
+  )
+
+# Pivot to long format
+ma_supply_rates_monthly_long <- ma_supply_rates_monthly |>
+  pivot_longer(
+    cols = c(nationalgrid, eversource_nstar, eversource_wmeco, eversource, unitil),
+    names_to = "electric_utility",
+    values_to = "supply_rate"
+  )
+
+# Save to CSV
+write.csv(
+  ma_supply_rates_monthly_long,
+  "/workspaces/reports/data/utility_rates/electric/madpu/ma_supply_rates_monthly_20250329.csv",
+  row.names = FALSE
+)
+
+```
+
+
+# Zero Muni Supply Rates
+```{r}
+
+# Get all unique month-year combinations
+month_year_combinations <- ma_supply_rates_monthly_long |>
+  distinct(year, month)
+
+# Create municipal rows with supply_rate = 0
+municipal_zeros <- month_year_combinations |>
+  mutate(
+    type = "all_hours",
+    zone = "everywhere",
+    electric_utility = "municipal",
+    supply_rate = 0
+  )
+
+# Add these rows to the existing data - fix the variable name
+ma_supply_rates_monthly_long <- bind_rows(
+  ma_supply_rates_monthly_long,
+  municipal_zeros
+)
+
+# Now view the correct dataframe
+View(ma_supply_rates_monthly_long)
+
+```
+
+## Write to the DB
+```{r}
+# Write to database
+path_rs_db <- "data/ResStock/2022_resstock_amy2018_release_1.1/rs_ma_hp_rates_2.db"
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+DBI::dbWriteTable(con, "supply_rates_elec", ma_supply_rates_monthly_long, overwrite = TRUE)
+DBI::dbDisconnect(con)
+
+```
+
+
+# Now use E3's rates database
+## IOU rates
+```{r }
+#| label: data-ma-muni-supply-rates
+path_ma_muni_supply_rates_xlsx <- "/workspaces/reports/data/utility_rates/electric/madpu/residential_electricity_rates_database_20250520.xlsx"
+
+
+get_edc_supply_rates <- function(utility_name, component_subtype) {
+  readxl::read_xlsx(
+    path = path_ma_muni_supply_rates_xlsx,
+    sheet = "Rates Database",
+    range = "A2:L17583"
+  ) |>
+  filter(
+    `Utility Type` == "Electric Distribution Company",
+    `Component Subtype` == component_subtype,
+    `Utility / Town Name` == utility_name,
+    `Cost Category` == "Energy Supply"
+  ) |>
+  mutate(
+    year = Year,
+    month = as.integer(format(Month, "%m")),
+    type = "all_hours",
+    zone = "everywhere",
+    electric_utility = `Utility / Town Name`,
+    supply_rate = `$/kWh`
+  ) |>
+  select(
+    year,
+    month,
+    type,
+    zone,
+    electric_utility,
+    supply_rate
+  )
+}
+
+
+ng_supply_rates <- get_edc_supply_rates("National Grid", "Basic Service Fixed Price")
+eversource_wma_supply_rates <- get_edc_supply_rates("Eversource_WMA", "Basic Service Fixed Price")
+eversource_ma_supply_rates <- get_edc_supply_rates("Eversource_EMA", "Basic Service Fixed Price")
+unitil_supply_rates <- get_edc_supply_rates("Unitil", "Basic Service Fixed Price")
+
+# ng_agg_supply_rates <- get_edc_supply_rates("National Grid", "Retail Aggregation Service Rate")
+# eversource_wma_agg_supply_rates <- get_edc_supply_rates("Eversource_WMA", "Retail Aggregation Service Rate")
+# eversource_ma_agg_supply_rates <- get_edc_supply_rates("Eversource_EMA", "Retail Aggregation Service Rate")
+# unitil_agg_supply_rates <- get_edc_supply_rates("Unitil", "Retail Aggregation Service Rate")
+```
+
+## Municipal rates
+```{r }
+path_ma_muni_supply_rates_xlsx <- "/workspaces/reports/data/utility_rates/electric/madpu/residential_electricity_rates_database_20250520.xlsx"
+
+# Read the E3 rates data
+muni_supply_rates <- readxl::read_xlsx(
+  path = path_ma_muni_supply_rates_xlsx,
+  sheet = "Rates Database",
+  range = "A2:L17583"
+) |>
+filter(
+  `Utility Type` == "Municipal Light Plant",
+  `Cost Category` == "Energy Supply"
+) |>
+mutate(
+  year = Year,
+  month = as.integer(format(Month, "%m")),
+  type = "all_hours",
+  zone = "everywhere",
+  muni_name = `Utility / Town Name`,
+  supply_rate = `$/kWh`
+) |>
+select(
+  year,
+  month,
+  type,
+  zone,
+  muni_name,
+  supply_rate
+)
+
+#View(muni_supply_rates |> sample_n(20))
+
+# Calculate median supply rates by year and month across all municipal utilities
+muni_supply_rates_monthly <- muni_supply_rates |>
+  group_by(year, month) |>
+  summarise(
+    supply_rate = median(supply_rate, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(
+    type = "all_hours",
+    zone = "everywhere",
+    electric_utility = "municipal"
+  )
+
+
+# ------------------------------------------------------------
+# Adding 2024 supply rates
+#
+# Remove any rows where year is 2024
+muni_supply_rates_monthly_long <- muni_supply_rates_monthly |>
+  filter(year != 2024)
+
+inflation_202Y_to_2024 <- c(1.215, 1.16, 1.074, 1.032)
+muni_supply_rates_2024 <- muni_supply_rates_monthly |>
+  filter(year %in% c(2020, 2021, 2022, 2023)) |>
+  mutate(
+    supply_rate = case_when(
+      year == 2020 ~ supply_rate * inflation_202Y_to_2024[1],
+      year == 2021 ~ supply_rate * inflation_202Y_to_2024[2],
+      year == 2022 ~ supply_rate * inflation_202Y_to_2024[3],
+      year == 2023 ~ supply_rate * inflation_202Y_to_2024[4],
+      TRUE ~ supply_rate
+    )
+  ) |>
+  group_by(month) |>
+  summarise(
+    supply_rate = mean(supply_rate, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(
+    year = 2024,
+    type = "all_hours",
+    zone = "everywhere",
+    electric_utility = "municipal"
+  )
+
+
+# ------------------------------------------------------------
+# Adding 2023 Oct-Nov-Dec
+#
+# # Remove any rows where year is 2024
+# muni_supply_rates_monthly_long <- muni_supply_rates_monthly |>
+#   filter(year < 2023, month < 10)
+
+inflation_202Y_to_2023 <- c(1.177, 1.124, 1.041, 1.0)
+muni_supply_rates_Q4_2023 <- muni_supply_rates_monthly |>
+  filter(year %in% c(2020, 2021, 2022)) |>
+  filter(month %in% c(10, 11, 12)) |>
+  mutate(
+    supply_rate = case_when(
+      year == 2020 ~ supply_rate * inflation_202Y_to_2024[1],
+      year == 2021 ~ supply_rate * inflation_202Y_to_2024[2],
+      year == 2022 ~ supply_rate * inflation_202Y_to_2024[3],
+      year == 2023 ~ supply_rate * inflation_202Y_to_2024[4],
+      TRUE ~ supply_rate
+    )
+  ) |>
+  group_by(month) |>
+  summarise(
+    supply_rate = mean(supply_rate, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(
+    year = 2023,
+    type = "all_hours",
+    zone = "everywhere",
+    electric_utility = "municipal"
+  )
+
+#View(muni_supply_rates_Q4_2023)
+# ------------------------------------------------------------
+# Append the 2024 data
+muni_supply_rates_monthly <- bind_rows(
+  muni_supply_rates_monthly,
+  muni_supply_rates_2024,
+  muni_supply_rates_Q4_2023
+)
+
+```
+
+
+
+```{r}
+supply_rates_monthly_long <- bind_rows(
+  muni_supply_rates_monthly,
+  ma_supply_rates_monthly_long,
+  ng_supply_rates,
+  eversource_wma_supply_rates,
+  eversource_ma_supply_rates,
+  unitil_supply_rates
+)
+
+# Create datetime column and plot supply rates
+supply_rates_monthly_long |>
+  filter(electric_utility != "municipal") |>
+  filter(year > 2016) |>
+  #filter(electric_utility %in% c("municipal", "nationalgrid", "eversource", "unitil")) |>
+  mutate(
+    date = as.Date(paste(year, month, "01", sep = "-")),
+    electric_utility = factor(electric_utility)
+  ) |>
+  ggplot(aes(x = date, y = supply_rate, color = electric_utility)) +
+  geom_line() +
+  scale_y_continuous(labels = scales::label_dollar()) +
+  labs(
+    title = "Massachusetts Electric Supply Rates",
+    x = "Date",
+    y = "Supply Rate ($/kWh)",
+    color = "Utility"
+  )
+
+```
+
+
+```{r}
+
+supply_rates_plot <- supply_rates_monthly_long |>
+  filter((year > 2015) & (year < 2024)) |>
+  pivot_wider(names_from = electric_utility, values_from = supply_rate, values_fill = 0) |>
+  select(year, month, eversource, nationalgrid, unitil, municipal) |>
+  mutate(
+    muni_over_eversource = municipal/eversource,
+    muni_over_nationalgrid = municipal/nationalgrid,
+    muni_over_unitil = municipal/unitil
+  ) |>
+  select(
+    month,
+    muni_over_eversource,
+    muni_over_nationalgrid,
+    muni_over_unitil
+  ) |>
+  group_by(month) |>
+  summarize(
+    muni_over_eversource = mean(muni_over_eversource),
+    muni_over_nationalgrid = mean(muni_over_nationalgrid),
+    muni_over_unitil = mean(muni_over_unitil),
+    .groups = "drop"
+  )
+
+View(supply_rates_plot)
+```
+
+
+
+```{r}
+# Combine the median supply rates with the individual utility supply rates
+# supply_rates_monthly_long <- bind_rows(
+#   muni_supply_rates_monthly,
+#   ma_supply_rates_monthly_long
+# )
+
+# Write to database
+path_rs_db <- "data/ResStock/2022_resstock_amy2018_release_1.1/rs_ma_hp_rates_2.db"
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+DBI::dbWriteTable(con, "supply_rates_elec", supply_rates_monthly_long, overwrite = TRUE)
+DBI::dbDisconnect(con)
+
+```
+
+# 12-month spaghetti plot
+```{r}
+
+
+muni_supply <- muni_supply_rates |>
+  mutate(
+    date = lubridate::ymd(paste0(year, "-", month, "-01"))
+  )
+
+
+
+mean_muni_rates <- muni_supply |>
+  group_by(year, month, type, zone) |>
+  summarise(
+    supply_rate = mean(supply_rate, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(
+    muni_name = "mean_muni",
+    date = lubridate::ymd(paste0(year, "-", month, "-01"))
+  )
+
+median_muni_rates <- muni_supply |>
+  group_by(year, month, type, zone) |>
+  summarise(
+    supply_rate = median(supply_rate, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(
+    muni_name = "median_muni",
+    date = lubridate::ymd(paste0(year, "-", month, "-01"))
+  )
+
+# Bind the mean rates to the original data
+muni_supply_x <- bind_rows(
+  muni_supply,
+  mean_muni_rates,
+  median_muni_rates
+)
+
+#View(muni_supply_x)
+
+
+
+
+# Create time series plot for each unique municipal utility
+muni_supply_x |>
+  mutate(
+    date = lubridate::ymd(paste0(year, "-", month, "-01"))
+  ) |>
+  ggplot(aes(x = date, y = supply_rate, color = muni_name, group = muni_name)) +
+  geom_line(alpha = 0.7, linewidth = 0.5) +
+  scale_y_continuous(labels = scales::label_dollar()) +
+  labs(
+    title = "Massachusetts Municipal Utilities Electric Supply Rates",
+    x = "Date",
+    y = "Supply Rate ($/kWh)",
+    color = "Municipal Utility"
+  ) +
+  theme(legend.position = "none")  # Hiding legend due to many municipalities
+
+
+
+
+
+  ```

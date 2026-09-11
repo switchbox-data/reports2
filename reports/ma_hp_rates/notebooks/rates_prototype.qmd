@@ -1,0 +1,447 @@
+---
+title: rates_prototype
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+
+# Rates Prototype
+```{r}
+assign_tariffs_to_month_hour_grid <- function(month_hour_grid, tariffs) {
+  # Process each tariff and create a lookup table
+  lookup_table <- tariffs %>%
+
+    # Must operate rowwise()
+    rowwise() %>%
+
+    # create 2 lists:
+    #     months for all the months covered, including handling wraparound
+    #     hours for all the hours covered, again including handling wraparound
+    mutate(
+      # Create a list of months covered by this tariff_season_period combination
+      months = list(if (start_month <= end_month) {
+        start_month:end_month
+      } else {
+        c(start_month:12, 1:end_month)
+      }),
+      # Create a list of hours covered by this tariff
+      hours = list(if (start_hour <= end_hour) {
+        start_hour:end_hour
+      } else {
+        c(start_hour:23, 0:end_hour)
+      })
+    ) |>
+
+    # Now create a table that we can join with the month_hour_grid
+    # Expand the months and hours
+    unnest(months) |>
+    unnest(hours) |>
+
+    # Select only the columns we need
+    select(month = months, hour = hours, value)
+
+
+  # Before joining, check for duplicate month-hour combinations in the lookup table
+  duplicate_check <- lookup_table %>%
+    group_by(month, hour) %>%
+    summarize(
+      count = n(),
+      values = paste(unique(value), collapse = ", "),
+      .groups = "drop"
+    ) %>%
+    filter(count > 1)
+
+  if (nrow(duplicate_check) > 0) {
+    warning("Found duplicate values for some month-hour combinations:")
+    print(duplicate_check)
+
+    # We'll use the first value for each month-hour combination
+    lookup_table <- lookup_table %>%
+      group_by(month, hour) %>%
+      slice(1) %>%
+      ungroup()
+  }
+
+  month_hour_tariff <- month_hour_grid %>%
+    left_join(lookup_table, by = c("month", "hour"))
+
+  # Check for missing values
+  missing_count <- sum(is.na(month_hour_tariff$value))
+  if (missing_count > 0) {
+    warning(paste("There are", missing_count, "month-hour combinations without a value"))
+  }
+
+  return(month_hour_tariff)
+}
+
+
+```
+
+# Gather Data: Loads, Supply Rates, Tariffs
+## Loads
+```{r}
+# this one works
+library(tidyverse)
+
+bldg_ids = c(217291, 448378, 309696, 102137, 409444, 107049, 490878, 249001, 46306, 405471)
+
+# Read from the database
+path_rs_db <-"/workspaces/reports/data/ResStock/2022_resstock_amy2018_release_1.1/rs_20250307.db"
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+
+# Hourly
+hourly_load_2022_raw <- tbl(con, "NY_hourly") |>
+  filter(upgrade == 4) |>
+  filter(bldg_id %in% bldg_ids) |>
+  select(
+    bldg_id,
+    upgrade,
+    month,
+    day,
+    hour,
+    elec_consumption = `sum_out.electricity.total.energy_consumption`
+  ) |>
+  collect()
+DBI::dbDisconnect(con)
+
+# Temporary: randomly assign bldgs to utilities
+# First create mapping of building IDs to utilities
+bldg_utility_map <- tibble(
+  bldg_id = unique(hourly_load_2022_raw$bldg_id),
+  utility = sample(c("national_grid", "eversource_nstar", "eversource_wme_co", "unitil"),
+                  size = length(unique(hourly_load_2022_raw$bldg_id)),
+                  replace = TRUE)
+)
+
+# Then join this mapping to the monthly load data
+hourly_load_2022 <- hourly_load_2022_raw |>
+  left_join(bldg_utility_map, by = "bldg_id")
+
+# Monthly
+monthly_load_2022_raw <- hourly_load_2022 |>
+  filter(upgrade == 4) |>
+  select(
+    bldg_id,
+    upgrade,
+    month,
+    elec_consumption
+  ) |>
+  filter(bldg_id %in% bldg_ids) |>
+  summarize (
+    .by = c(bldg_id, upgrade, month),
+    elec_consumption = sum(elec_consumption)
+  )
+```
+
+## Supply Rates
+```{r}
+# Load and clean the supply data
+# path_supply_rates_monthly_ma <- "/workspaces/reports/data/utility_rates/electric/madpu/supply_rates_20250318.xlsx"
+# supply_rates_monthly_ma <- readxl::read_excel(path_supply_rates_monthly_ma, range = "'Monthly Prices'!B2:G255") |>
+#   janitor::clean_names() |>
+#   select(
+#     month = x1,
+#     national_grid = national_grid,
+#     eversource_nstar = nstar,
+#     eversource_wme_co = wme_co,
+#     unitil
+#   ) |>
+#   slice(-1) |>
+#   select(-month) |>
+#   mutate(
+#     year = 2025 - (row_number() - 1) %/% 12,
+#     month = (12 - (row_number() - 1) %% 12),
+#   )|>
+#   pivot_longer(
+#     cols = c(national_grid, eversource_nstar, eversource_wme_co, unitil),
+#     names_to = "utility",
+#     values_to = "supply_rate"
+#   ) |>
+#   mutate(supply_rate = supply_rate / 100) # convert to $/kWh (from cents/kWh)
+
+# # Pick the yar we want to study
+# supply_rates_monthly_ma_2024 <- supply_rates_monthly_ma |> filter(year == 2024)
+```
+
+### ConEd Supply Rates
+```{r}
+# coned extract...
+
+# - for coned,
+#   - utility (should all be coned)
+#   - zone
+#   - customer_class
+#   - year
+#   - month
+#   - ht/lt
+#   - period
+#   - rate
+# -> so write some extract code that
+
+```
+
+### Plot the supply rates just bc
+```{r}
+
+# plot_supply_rates <- function(rates_df, year) {
+#   rates_df |>
+#     filter(year == !!year) |>
+#     ggplot(aes(x = month, y = supply_rate, color = utility, group = utility)) + # Added group aesthetic
+#     geom_line() +
+#     geom_point() +
+#     labs(
+#       x = "Month",
+#       y = "Supply Rate ($/kWh)",
+#       title = paste("MA Utility Supply Rates in", year),
+#       color = "Utility"
+#     ) +
+#     scale_x_discrete(limits = month.abb) +
+#     theme_minimal()
+# }
+
+# plot_supply_rates(ma_supply_rates_monthly, 2024)
+
+
+```
+
+
+
+
+
+## Delivery Tariffs
+### MA delivery tariffs
+```{r}
+# library(googlesheets4)
+
+# url_sheet <- "https://docs.google.com/spreadsheets/d/1efE96zgziHTaLX-lPV1vRKVZze9gcKuD-nJyB-QFOQY/edit?gid=658606865#gid=658606865"
+# googlesheets4::gs4_deauth()
+# tariffs_raw <- read_sheet(url_sheet, sheet = "tariffs") |>
+#   mutate(tariff_id = paste0(utility, "_", version)) |>
+#   select(-source)
+
+# summer_months <- c(5,6,7,8,9,10)
+# winter_months <- c(11,12,1,2,3,4)
+
+# tariffs <- tariffs_raw |>
+#   mutate(
+#     month = if_else(season == "summer",
+#                     list(summer_months),
+#                     list(winter_months))
+#   ) |>
+#   select(-season) |>
+#   unnest(month) |>
+#   arrange(utility, month)
+
+```
+
+
+
+### ConEd Delivery Tariffs
+```{r}
+library(googlesheets4)
+
+url_sheet <- "https://docs.google.com/spreadsheets/d/1HZOZfyuCLaAWvTndVjkhhuZe6Blcp1tcajYwcHBRN3M/edit?gid=1947524045#gid=1947524045"
+googlesheets4::gs4_deauth()
+tariffs_raw <- read_sheet(url_sheet, sheet = "SC1_ERB2") |>
+  mutate(tariff_id = paste0(utility, "_", version)) |>
+  select(-source)
+```
+
+
+```{r}
+month_hour_grid <- expand.grid(
+  month = 1:12,
+  hour = 0:23
+) |>
+arrange(month, hour)
+
+# Get hourly tariffs
+hourly_tariffs_raw <- tariffs_raw |>
+  filter(variability == "hourly")
+head(hourly_tariffs_raw)
+
+month_hour_tariff <- assign_tariffs_to_month_hour_grid(month_hour_grid, hourly_tariffs_raw)
+
+```
+
+
+
+```{r}
+
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+
+# the duckDB at con has a table called "NY_hourly" that has the hourly load data
+# that's 8760 hours x 33676 bldg_ids = 295M rows...much more than we can fit into memory
+# we need to add the month_hour_tariff table to the db as a temporary table, then join it with NY_hourly INSIDE the db
+
+# Add month_hour_tariff to the db
+DBI::dbWriteTable(con, "month_hour_tariff", month_hour_tariff, overwrite = TRUE)
+
+# Join month_hour_tariff with NY_hourly inside the db
+query <- sprintf("
+SELECT
+    nyh.bldg_id,
+    nyh.upgrade,
+    nyh.month,
+    SUM(nyh.\"sum_out.electricity.total.energy_consumption\") AS monthly_consumption,
+    SUM(nyh.\"sum_out.electricity.total.energy_consumption\" * mht.value) AS monthly_delivery_charge
+FROM
+    NY_hourly AS nyh
+LEFT JOIN
+    month_hour_tariff AS mht
+ON
+    nyh.month = mht.month AND
+    nyh.hour = mht.hour
+WHERE
+    nyh.bldg_id IN (%s)
+GROUP BY
+    nyh.bldg_id,
+    nyh.upgrade,
+    nyh.month
+ORDER BY
+    nyh.bldg_id,
+    nyh.month
+", paste(bldg_ids, collapse = ","))
+
+monthly_load_with_tariffs <- DBI::dbGetQuery(con, query)
+DBI::dbDisconnect(con)
+
+```
+
+
+# Calculate Bills
+## Monthly Bills
+```{r}
+
+calculate_monthly_bills <- function(monthly_load, tariffs, supply_rates) {
+  monthly_load |>
+
+    # Part 1: Tariffs -> 3 joins for customer_charge, delivery_rate, sales_tax
+    left_join(
+      tariffs |>
+        filter(type == "customer_charge") |>
+        select(month, utility, value, version, tariff_id) |>
+        rename(customer_charge = value),
+        by = c(month, utility)
+    ) |>
+    left_join(
+      tariffs |>
+        filter(type == "delivery_rate") |>
+        select(month, utility, value, version, tariff_id) |>
+        rename(delivery_rate = value),
+        by = c(month, utility)
+    ) |>
+    left_join(
+      tariffs |>
+        filter(type == "sales_tax_rate") |>
+        select(month, utility, value, version, tariff_id) |>
+        rename(sales_tax_rate = value),
+        by = c(month, utility)
+    ) |>
+
+    # Part 2: Supply rates -> join on utility and month
+    left_join(
+      supply_rates,
+      by = c("month", "utility")
+    ) |>
+
+    # Part 3: Calculate monthly bill
+    mutate(
+      delivery_charge = elec_consumption * delivery_rate,
+      supply_charge = elec_consumption * supply_rate,
+      total_pretax_bill = supply_charge + delivery_charge + customer_charge,
+      sales_tax_charge = total_pretax_bill * sales_tax_rate,
+      total_bill = total_pretax_bill + sales_tax_charge
+    ) |>
+    arrange(bldg_id, month, upgrade, version, tariff_id)
+}
+
+monthly_bills_2022 <- calculate_monthly_bills(monthly_load_2022,
+                                            tariffs,
+                                            supply_rates_monthly_ma_2024)
+
+```
+
+## Annual Bills
+```{r}
+
+calculate_annual_bills_from_monthly <- function(monthly_bills) {
+  monthly_bills |>
+    group_by(bldg_id, upgrade, version, tariff_id) |>
+    summarize(
+      annual_bill = sum(total_bill)
+    ) |>
+    collect()
+}
+
+annual_bills_2022 <- calculate_annual_bills_from_monthly(monthly_bills_2022)
+
+```
+
+# Plots (for sanity checking)
+```{r}
+library(patchwork)  # Add this at the top with other library imports
+
+# Get the overall x-axis limits from all data
+min_bill <- 0
+max_bill <- 25000
+
+p1 <- annual_bills_2022 |>
+  filter(version == "hpr_doer") |>
+  ggplot(aes(x = annual_bill)) +
+  geom_histogram(fill = "#68BED8", alpha = 0.8) +
+  labs(title = "HPR DOER", x = NULL) +
+  scale_x_continuous(
+    labels = scales::dollar_format(),
+    limits = c(min_bill, max_bill)
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p2 <- annual_bills_2022 |>
+  filter(version == "hpr_approved") |>
+  ggplot(aes(x = annual_bill)) +
+  geom_histogram(fill = "#FC9706", alpha = 0.8) +
+  labs(title = "HPR Approved", x = NULL) +
+  scale_x_continuous(
+    labels = scales::dollar_format(),
+    limits = c(min_bill, max_bill)
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p3 <- annual_bills_2022 |>
+  filter(version == "baseline") |>
+  ggplot(aes(x = annual_bill)) +
+  geom_histogram(fill = "#023047", alpha = 0.8) +
+  labs(title = "Baseline", x = "Annual Bill ($)") +
+  scale_x_continuous(
+    labels = scales::dollar_format(),
+    limits = c(min_bill, max_bill)
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# Combine plots vertically using patchwork
+p1 / p2 / p3 +
+  plot_layout(heights = c(1, 1, 1)) +
+  plot_annotation(
+    theme = theme(plot.margin = margin(10, 10, 10, 10))
+  )
+
+# ggsave(
+#   "annual_bills_hist.png",
+#   width = 8,
+#   height = 10,
+#   dpi = 300
+# )
+
+
+```

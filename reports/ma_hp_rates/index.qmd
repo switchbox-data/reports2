@@ -1,0 +1,873 @@
+---
+title: "Heat Pump Rates in Massachusetts"
+subtitle: "A Detailed Analysis of Proposed Winter Season Delivery Rates for Heat Pump Customers in Existing Construction"
+date: 2025-06-02
+author:
+  - name: Bryan Murray
+    orcid: 0009-0008-4505-0657
+    email: bryan@switch.box
+    affiliations:
+      - Switchbox
+  - name: Juan-Pablo Velez
+    orcid: 0009-0000-5203-1536
+    email: jpv@switch.box
+    affiliations:
+      - Switchbox
+
+keywords: air-source heat pumps, electric rates, rate design, massachusetts
+
+bibliography: ../references.bib
+license: "CC BY-NC"
+
+toc: true
+notebook-links: false
+reference-location: margin
+fig-cap: true
+fig-cap-location: margin
+tbl-cap-location: margin
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+---
+
+```{r}
+#| label: index-setup
+library(tidyverse)
+library(scales)
+library(gt)
+library(gtExtras)
+
+source("/workspaces/reports/lib/ggplot/switchbox_theme.R")
+
+# Import variables
+load(file = "/workspaces/reports/src/ma_hp_rates/cache/report_variables.RData")
+```
+
+
+# Introduction
+
+To meet its climate targets, Massachusetts needs to retrofit hundreds of thousands of homes with heat pumps over the next decade.[^2030report] However, under today's electric rates, cold-climate air-source heat pumps (ccASHPs) can raise household heating bills for home retrofits, creating a significant barrier to adoption.[^iawg-report]
+
+[^2030report]: The state's Clean Energy and Climate Plan [@eea_CleanEnergyClimate_2022] calls for 65% of residential-scale heating to be heat pump equipment by 2030 and 80% of homes heated and cooled by electric heat pumps by 2050.
+
+[^iawg-report]: See [p. 10](https://www.documentcloud.org/documents/26016907-e3-near-term-rate-design-to-align-with-the-commonwealths-decarbonization-goals-2024/?mode=document#document/p11/a2664804) of the Interagency Rates Working Group's Near-Term Rate Design report [@e3_NearTermRateDesign_2024].
+
+This happens, in part, because households with heat pumps end up paying more than their fair share for grid infrastructure costs, effectively subsidizing customers who continue using fossil fuel heating systems.[^subsidies]
+
+[^subsidies]: When a household switches to heat pumps, the amount they pay their utility for delivering electricity goes up. Utilities use these customer payments to repay loans they took out to build the grid. These financing costs are fixed in the short term, since today heat pumps simply use existing grid capacity meant for the summer peak, so collecting more from heat pump customers means collecting less from everyone else.
+
+Recognizing this challenge, Massachusetts is introducing **seasonally discounted electric delivery rates** specifically for heat pump customers.
+
+The Department of Public Utilities (DPU) has ordered the state's three investor-owned utilities—National Grid, Eversource, and Unitil—to develop heating season discounts on delivery charges for heat pump customers.[^orders]
+
+[^orders]: See the orders in [D.P.U. 23-80](https://www.documentcloud.org/documents/25940112-ma-dpu-docket-23-80-order-2024/#document/p413/a2664805) for Unitil [@dpu_Docket2380Order_2024] and [D.P.U. 23-150](https://www.documentcloud.org/documents/25940109-ma-dpu-docket-23-150-order-2024/?mode=document#document/p530/a2664806) for National Grid [@dpu_Docket23150Order_2024].
+
+Unitil launched its heat pump rate in March 2025, while National Grid and Eversource are preparing to launch theirs ahead of the 2025–26 heating season. In this report, we refer to these DPU-ordered tariffs as "1.0" heat pump rates.
+
+However, the Massachusetts Interagency Rates Working Group (IRWG) has determined that these **"1.0" rates** are insufficient to remove the **operating cost barrier** to heat pump adoption.[^more]
+
+On behalf of the IRWG, the Department of Energy Resources (DOER) has proposed deeper seasonal discounts—termed **"2.0" rates** in this memo—and petitioned the DPU to investigate their proposal.[^petition]
+
+[^more]: See [p. 17](https://www.documentcloud.org/documents/25956351-19883471near-term-rate-strategy-recommendations-accompanying-recommendations-to-near-term-rate-strategy-report-2024/#document/p17/a2652820) of the IRWG's Near-Term Rate Strategy Recommendations report [@e3_NearTermRateStrategy_2024].
+[^petition]: See [DOER's petition](https://www.documentcloud.org/documents/25941015-doerseasonalheatpumpratepetitipetition-requesting-dpu-open-an-investigation-into-a-seasonal-heat-pump-rate/) in Docket 25-08 [@doer_Docket2508Petition_2025].
+
+In recent orders, the Department has indicated that "further investigation is required to analyze the range of potential bill impacts" of these proposed 2.0 rates before deciding whether to approve them.[^quote]
+
+[^quote]: See the DPU's comment on [p. 513](https://www.documentcloud.org/documents/25940109-ma-dpu-docket-23-150-order-2024/#document/p531/a2652524) of its order in Docket 23-150 [@dpu_Docket23150Order_2024].
+
+Using data on gas and electric supply and delivery rates, low-income discounts, and detailed building energy simulations that reflect the Commonwealth's diverse housing stock, this report models how default, 1.0, and 2.0 heat pump rates would likely affect energy bills during heating season for households that switch to cold-climate air-source heat pumps (ccASHPs).[^appendix]
+
+[^appendix]: For a detailed description of the data and methods used in this memo, see the [appendix](#sec-data-and-methods).
+
+Our analysis covers the full spectrum of the state's existing housing stock—from single-family homes to large multifamily buildings, from natural gas customers to those using heating oil or electric resistance—and examines outcomes across all investor-owned utility territories.
+
+Given the state's ongoing focus on energy affordability, we also evaluate how combining heat pump rates with existing low-income discounts would affect **winter energy burdens** for low-income households that install ccASHPs.
+
+While the findings in this memo assume 2024 gas and electric supply rates, we perform a sensitivity analysis and find that the impacts of heat pump rates on operating costs are robust to commodity price swings.
+
+Our analysis details the full range of impacts—on both energy bills and burdens—that would result from adopting the 2.0 rates, allowing regulators and the public to evaluate the extent to which DOER's proposal would remove the operating cost barrier to ccASHP adoption in Massachusetts.
+
+# Executive Summary
+
+Our analysis models default, 1.0, and 2.0 heat pump rates for all homes served by investor-owned electric utilities in Massachusetts and finds that:
+
+- Under current default electric rates, **`r round(pct_that_save_default_all_fuels)`%** of Massachusetts homes would save money by switching to cold-climate air-source heat pumps (ccASHPs).
+- Today, heat pump customers are being overcharged by **`r fig_stacked_bar_components_delivery_on_top_savings_doer_pct_of_total_bill`%** per heating season, on average.
+- By correcting this overcharge, DOER's proposed "2.0" heat pump rates would dramatically **improve savings** for homes that switch to heat pumps: **`r round(pct_that_save_doer_all_fuels)`%** of homes would save on their winter energy bills, with median savings of **$`r round(-1 * median_savings_doer_all_fuels)`** per heating season.
+- Heat pump adoption could be a powerful tool for **energy affordability**: if low-income households install cold-climate air-source heat pumps and are auto-enrolled in low-income electricity discounts under the 2.0 rates, **`r round(pct_below_6_doer_rates_mid_hp_discounted)`%** would spend less than 6% of their income on winter energy bills—a significant improvement from today, where only **`r round(pct_below_6_baseline_rates_current_hvac_100pct_participation)`%** could achieve this benchmark even with full participation in existing discount programs.
+- The 2.0 rates would overcome the operating cost barrier for homes that currently face the biggest bill increases: **`r round(pct_save_singlefam_doer)`%** of single-family homes would save money (up from **`r round(pct_save_singlefam_baseline)`%** under current rates), as would **`r round(pct_that_save_doer_natural_gas)`%** of homes currently heated with natural gas (up from **`r round(pct_that_save_default_natural_gas)`%** today)—with median savings of **$`r round(-1 * median_savings_singlefam_doer)`** and **$`r round(-1 * median_savings_doer_natural_gas)`** per heating season, respectively.
+- For the **`r round(100 * (pct_homes_fuel_oil + pct_homes_propane + pct_homes_electric_resistance))`%** of Massachusetts homes currently using electric resistance or delivered fuels (heating oil and propane), heat pumps would deliver universal and substantial savings: under 2.0 rates, **`r round(pct_that_save_doer_heating_oil)`%** of oil-heated homes would save a median of **$`r round(-1 * median_savings_doer_heating_oil)`** per heating season, while _all_ electric resistance homes would save a median of **$`r round(-1 * median_savings_doer_resistance)`**.
+
+# Background {#sec-background}
+
+Understanding DOER's proposed heat pump rates requires a working knowledge of how electric bills work.
+
+## Supply and Delivery Charges
+
+Electric bills are composed of two main components:
+
+- **Supply charge**: the dollar amount a customer pays for the _actual electricity_ they consume. The supply charge is calculated by multiplying a customer's electricity consumption (in kWh) over the preceding billing period by the volumetric **supply rate** (in $ per kWh).
+- **Delivery charge**: the dollar amount a customer pays for the _poles and wires_ that deliver that electricity to their building.[^caveat2] Delivery charges are the sum of two subcharges:
+  - **Fixed delivery charge**: a flat fee (in $ per month) that customers pay for being connected to the grid, regardless of their usage.
+  - **Volumetric delivery charge**: a fee that grows in proportion to the amount of electricity a customer uses. The volumetric delivery charge is calculated by multiplying a customer's electricity consumption (in kWh) over the preceding billing period by the volumetric **delivery rate** (in $ per kWh).
+
+[^caveat2]: Electric bills also contain surcharges that pay for energy efficiency, renewables, and other policy programs. In Massachusetts, these surcharges are typically bundled into the overall delivery charge, not listed as individual line items on the bill.
+
+The key takeaway is this: when a customer consumes more electricity, not only do they pay more for the electricity itself, but **they also pay more for the poles and wires that deliver that electricity**.
+
+## Heat Pumps and Delivery Charges
+
+When a customer switches from fossil fuel heating to air-source heat pumps, they will consume more electricity and therefore pay more for the grid (see @fig-stacked-bar-components-delivery-on-top):
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-stacked-bar-components-delivery-on-top-pre >}}
+:::
+
+While it makes sense that heat pump customers would pay for the _additional_ electricity they consume, it does not make sense that they should pay roughly twice as much for the _existing_ poles and wires that deliver that electricity.[^assumption]
+
+At present, all electric heat customers, including heat pump customers, are being penalized: the larger delivery charges they pay have the effect of lowering delivery charges for all other customers, at the expense of making heat pumps less competitive with fossil fuel heating. This **cross-subsidization** issue is fully explored in section @sec-subsidy.
+
+[^assumption]: Given the slow adoption of heat pumps for heating, and the fact that the grid is already built to serve (one-way) heat pumps for cooling, also known as air conditioners, the state's transmission and distribution infrastructure can handle the additional wintertime load until the mid-2030s [@iso-ne_NewEnglandsElectricity_2025].
+
+
+## Heat Pump Rates: 1.0 and 2.0
+
+DOER's proposed 2.0 rates, and to a lesser extent the 1.0 rates approved by the DPU, would address this imbalance by reducing the **volumetric delivery rates** paid by electric utility customers with heat pumps during the **heating season** only. The electric delivery rates paid by all other customers would remain the same.
+
+The DPU's **1.0 heat pump rates** would lower National Grid, Eversource, and Unitil's current delivery rates by 23% to 36%, depending on the utility, while DOER's proposed **2.0 rates** would reduce them all by 63%.
+
+::: {.column-page-inset-right}
+| Rate Type | Unitil | | National Grid | | Eversource | |
+|-----------|---------|---|---------------|---|------------|---|
+|           | $/kWh   | discount | $/kWh      | discount | $/kWh    | discount |
+| default rate | 0.26493 | — | 0.18091 | — | 0.19122 | — |
+| 1.0 rate | 0.20307 | 23.3% | 0.12669 | 30.0% | 0.12094 | 36.8% |
+| 2.0 rate | 0.09652 | 63.6% | 0.06652 | 63.2% | 0.0702 | 63.3% |
+: Today's default electric delivery rates, along with the 1.0 and 2.0 heat pump delivery rates proposed for each investor-owned utility. {#tbl-heat-pump-rates}
+:::
+
+
+## Impact of Heat Pump Rates on Electricity Bills
+How significant are these discounts? What would be the impact on the electricity bills of homes with air-source heat pumps?
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-stacked-bar-components-delivery-on-top >}}
+:::
+
+@fig-stacked-bar-components-delivery-on-top shows the median electric bill _after_ households install heat pumps, and how heat pump rates reduce this bill.
+
+Across all homes in Massachusetts, the median electric bill for heat pump customers would decrease by **`r fig_stacked_bar_components_delivery_on_top_savings_approved_pct_of_total_bill`%** under the DPU's 1.0 rates, and by **`r fig_stacked_bar_components_delivery_on_top_savings_doer_pct_of_total_bill`%** under DOER's proposed 2.0 rates.
+
+The question this report seeks to answer is: how significant would these savings be compared to what customers are currently paying to hear their homes with fossil fuels?
+
+
+# Scope and Assumptions
+
+This report is based on the following assumptions:
+
+- This memo focuses only on **cold-climate air-source heat pumps** (ccASHPs) retrofits; ground-source heat pumps (GSHPs) are out of scope.
+- The ccASHPs are assumed to have an **HSPF of 11**, a midrange winter efficiency model commonly available in the market.
+- We only model **HVAC replacements**, not full electrification. Homes are assumed to keep whatever appliances they already had before installing ccASHPs, including their existing hot water heater.
+- We only consider heat pump retrofits in **existing construction**; new construction is out of scope.
+- Unless otherwise noted, the analysis only evaluates households served by **investor-owned electric utilities**. Municipal light plant (MLP) customers are out of scope, as MLPs are not currently developing heat pump rates.
+- **Before switching** to heat pumps, homes are assumed to use their **current heating system** (which may be a furnace, boiler, or electric resistance) and **fuel** (natural gas, heating oil, propane, or electricity). The small percentage of existing homes with heat pumps are excluded from the analysis.
+- **After switching**, homes are assumed to use cold-climate air-source heat pumps entirely, **without backup fossil fuel heating**.
+- Homes are not assumed to install additional **weatherization measures** they don't already have, such as insulation, air sealing, or window upgrades.
+- The upfront costs of heat pump installations are out of scope; the focus is on **post-installation operating costs**.
+- The analysis only looks at **home energy bills** during the heating season. While heat pump operating costs are motivation for this analysis, we examine each home's _entire_ energy bill during the heating season (before and after switching), including any nonheating electrical costs (as these would also be discounted by heat pump rates) and any remaining fossil fuel costs.
+- The **heating season**, which is also called "**winter**" throughout the report, is defined as November to April for National Grid and Unitil and October to May for Eversource.
+- Likewise, the analysis only considers **heating season energy burdens**, defined as the percentage of a household's total annual income spent on energy during the heating season. Gasoline expenditures and nonheating season home energy bills are out of scope, so this metric understates the true energy burden of low-income households.
+- **Low-income households** are defined as those making less than $50,000 per year.
+- Gas and electricity **supply rates** (for each investor-owned utility) are from **2024**, as well as state average propane and heating oil prices from the same year, are assumed throughout. However, see the [sensitivity analysis](#sec-sensitivity-analysis) for a discussion of how our findings would change if supply prices were to change.
+- **Gas delivery rates** reflect current tariffs at each of the state's six investor-owned gas utilities.
+- Before switching to heat pumps, households on natural gas are assumed to use residential **gas heating delivery rates**. After switching, they are assumed to use residential nonheating gas rates for any residual natural gas usage (though not every home uses natural gas).
+- Electricity supply rates **do not reflect municipal aggregation** programs. Nearly half of Massachusetts residential electricity customers are served by these programs, which tend to offer lower rates than basic service from investor-owned utilities, so our analysis is likely overestimating heat pump operating costs for these customers.
+- We model three electric delivery rates: current electric tariffs for each investor-owned utility (called **"default" rates** throughout the memo), heat pump rates approved or soon to be approved by the DPU (called **"1.0" rates**), and heat pump rates proposed by DOER in the 25-08 Docket (called **"2.0" rates**).
+- Unless otherwise noted, analysis assumes **100% participation in low-income discount programs**, both gas and electric, by eligible households.
+- Pre- and post-switch energy bills are modeled by applying supply and delivery rates (and low-income discounts) to **simulated load profiles** from ResStock. This is an industry-standard dataset from the National Renewable Energy Laboratory (NREL) that simulates the energy consumption of a statistically representative sample of homes in Massachusetts.[^e3]
+
+[^e3]: This "digital twin" of the Commonwealth's housing stock is the same dataset used by E3 to model the impact of heat pump rates in its reports for the Interagency Rates Working Group [@e3_NearTermRateDesign_2024].
+
+# Findings
+
+## How would heat pump rates affect customers who install air-source heat pumps?
+
+From century-old triple-deckers to rural single-family homes, Massachusetts' residential buildings are as diverse as their heating systems.
+
+Consequently, homes that adopt cold-climate air-source heat pumps (ccASHPs) may encounter a broad range of operating costs: some may wind up with higher heating bills, while others enjoy significant savings.
+
+### Bill savings under default rates
+@fig-baseline-hist-all-fuel-types shows how **winter energy bills** would change for all existing homes in Massachusetts if they switched from whatever HVAC system they currently have to ccASHPs—under **default rates**.[^ratedetails]
+
+[^ratedetails]: Namely, current default electric and gas delivery rates for each investor-owned utility, and 2024 gas and electricity supply rates.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-baseline-hist-all-fuel-types >}}
+:::
+
+::: column-margin
+In this chart, negative values represent savings: homes below $0 would see their heating bills go down, those above would see them go up.
+:::
+
+Note that _every_ dwelling in the state is represented in @fig-baseline-hist-all-fuel-types, whether they're single or multifamily, currently heated by electric resistance, a boiler combusting delivered fuels, or a furnace burning natural gas.
+
+Two findings stand out:
+
+First, there is no "typical" change in heating bills post-install. Rather, a wide variety of bill changes are possible, depending on the peculiarities of each building.
+
+Second, **`r round(pct_that_save_default_all_fuels)`%** of homes in Massachusetts would cut their winter energy bills by switching to ccASHPs under current default electric rates.
+
+This figure puts the heat pump operating cost problem in perspective: already, almost **half** of the state's homes can save money by making the switch.
+
+And the savings, for these cost-saving homes, are significant: a median of **$`r -1*(median_savings_default_all_fuels)`** per heating season,[^clarification] which is equivalent to a bill reduction of **$`r round(-1*(median_savings_default_all_fuels / 6))`** per winter month, on average, likely enough for many households to take note.[^clarification2]
+
+[^clarification]: To be clear, these are the median _savings_ enjoyed by the `r round(pct_that_save_default_all_fuels)`% of homes that would cut their bills by switching, not the median _bill change_. And these are the _median_ savings, so half of these homes would save more, half would save less.
+
+[^clarification2]: $`r round(-1*(median_savings_default_all_fuels / 6))` is the median annual savings divided by six months that make up the heating season, from November to March. In practice, the median cost-saving household will save more than this monthly average during the season's colder months, less during the warmer months.
+
+On the other hand, `r round(100 - pct_that_save_default_all_fuels)`% of Massachusetts homes would end up with higher winter energy bills after installing ccASHPs—under existing electric rates, which disadvantage heat pumps. For these homes, the median bill increase would be $`r round(median_loss_default_all_fuels)` a heating season, an average of $`r round(median_loss_default_all_fuels / 6)` per winter month.
+
+**What would happen to the "typical" home?**
+
+When looking across _all_ homes, the median winter energy bill would rise by $`r round(median_bill_change_default_all_fuels / 6)` a month, a modest increase that households are unlikely to notice.
+
+But given the large variation in bill changes—`r round(fig_baseline_hist_all_fuel_types_pct_large_savings + fig_baseline_hist_all_fuel_types_pct_large_increase)`% of homes gain _or_ lose more than $1,000 a year after switching—fixating on the median outcome obscures both the large number of homes that enjoy real savings and the larger number that face significant bill hikes.
+
+In other words, there is no "typical" home: to remove the operating cost barrier to heat pump adoption via rate design, it's not enough to select electric delivery rates that lower bills for the _average_ home.
+
+Rather, policymakers would need to choose rates that produce savings for the _vast majority_ of homes switching to ccASHPs—regardless of how those homes are currently heated.
+
+### Bill Savings under 1.0 Heat Pump Rates
+
+Recognizing this challenge, the DPU has ordered the state's three investor-owned electric utilities to offer optional rates to heat pump customers that lower their delivery charges during the heating season.
+
+These "1.0" rates aim to make heat pump operating costs more competitive with those of fossil fuel heating systems.
+
+Once implemented, how effective would they be?
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-hists-all-fuel-types-default-and-1.0 >}}
+:::
+
+Statewide, **`r round(pct_that_save_approved_all_fuels)`%** of homes would cut their heating bills by installing cold-climate air-source heat pumps—if they also signed up for the 1.0 heat pump rates being developed by Unitil, National Grid, and Eversource.
+
+Under the 1.0 rates, not only would _more_ households save than under default rates, but the _amount_ they save would increase as well: the median savings over the heating season rise from \$`r round(-1 * median_savings_default_all_fuels)` to **\$`r round(-1 * median_savings_approved_all_fuels)`**, equivalent to **\$`r round(-1 * median_savings_approved_all_fuels / 6)`** per winter month, on average.
+
+Compared to default delivery rates, 1.0 heat pump rates increase the percent of homes that can lower their heating bills with ccASHPs by `r round(pct_that_save_approved_all_fuels - pct_that_save_default_all_fuels)` percentage points, and increase the median savings enjoyed by these homes by $`r round((-1 * median_savings_approved_all_fuels) - (-1 * median_savings_default_all_fuels))`.
+
+All told, 1.0 heat pump rates represent an improvement on the status quo, but not a transformative one, and are insufficient to fully meet the state's goal of removing the operating cost barrier of switching to electric heating.
+
+### Bill Savings under 2.0 Heat Pump Rates
+
+Our analysis shows that Massachusetts' first generation of heat pump rates—the "1.0" heat pump rates developed by Unitil, National Grid, and Eversource—would only modestly improve heat pump operating costs.
+
+In its December 2024 report, the Interagency Rates Working Group (IRWG) arrived at a similar conclusion, determining that "important modifications to these rates ... are necessary to ensure the rates can reduce energy burdens for customers switching from gas to heat pumps."[^strategy1]
+
+The "2.0" rates proposed by these state agencies would further reduce delivery charges for heat pump customers during the heating season, with the goal of "[bringing] winter season heating costs more in line with natural gas heating."[^strategy2]
+
+[^strategy1]: See the IRWG's Near-Term Rate Strategy Recommendations report [@e3_NearTermRateStrategy_2024] at [p. 17](https://www.documentcloud.org/documents/25956351-19883471near-term-rate-strategy-recommendations-accompanying-recommendations-to-near-term-rate-strategy-report-2024/#document/p17/a2652820).
+[^strategy2]: ibid. [@e3_NearTermRateStrategy_2024] at p. 16.
+
+If implemented, would the 2.0 rates proposed by DOER succeed at eliminating the operating cost barrier?
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-hists-all-fuel-types >}}
+:::
+
+To a large extent, they would: under the 2.0 rates, **`r round(pct_that_save_doer_all_fuels)`%** of homes served by investor-owned electric utilities in the Commonwealth would save by switching to heat pumps.[^improvements]
+
+[^improvements]: This represents a `r round(pct_that_save_doer_all_fuels - pct_that_save_default_all_fuels)` percentage point improvement over the default rates, and `r round(pct_that_save_doer_all_fuels - pct_that_save_approved_all_fuels)` percentage points over the 1.0 rates.
+
+These homes would enjoy median savings of **\$`r round(-1 * median_savings_doer_all_fuels)`** per heating season, or **\$`r round(-1 * median_savings_doer_all_fuels / 6)`** per month, on average.
+
+And while **`r round(100 - pct_that_save_doer_all_fuels)`%** of homes in Massachusetts would still see their bills go up, only **`r round(pct_that_lose_big_doer_all_fuels)`%** would experience large increases of over $1,000 a year, and all would gain safer and more comfortable homes.[^comfort]
+
+[^comfort]: Heat pumps run longer cycles at lower output levels than furnaces, for instance, reducing temperature swings and causing surfaces to absorb and radiate heat. They don't dry out indoor air the way furnaces do. And they eliminate the risk of carbon monoxide poisoning and methane leaks from gas piping and equipment.
+
+@tbl-summary-all-fuels summarizes the impact of the default, 1.0, and 2.0 rates on winter heating bills for all homes in Massachusetts:
+
+:::{.column-page-inset-right}
+| Metric | <span style="color: #023047">Default</span> | <span style="color: #FC9706">Approved</span> | <span style="color: #68BED8">Proposed</span> |
+|----------|---------|----------|-----------|
+| Median Bill Change | $`r median_bill_change_default_all_fuels` | $`r median_bill_change_approved_all_fuels` | $`r median_bill_change_doer_all_fuels` |
+| Percent of Homes That Save | `r pct_that_save_default_all_fuels`% | `r pct_that_save_approved_all_fuels`% | `r pct_that_save_doer_all_fuels`%|
+| Percent of Homes That Save more than $1K | `r pct_that_save_big_default_all_fuels`% | `r pct_that_save_big_approved_all_fuels`% | `r pct_that_save_big_doer_all_fuels`%|
+| Percent of Homes That Lose | `r pct_that_lose_default_all_fuels`% | `r pct_that_lose_approved_all_fuels`% | `r pct_that_lose_doer_all_fuels`%|
+| Percent of Homes That Lose more than $1K | `r pct_that_lose_big_default_all_fuels`% | `r pct_that_lose_big_approved_all_fuels`% | `r pct_that_lose_big_doer_all_fuels`%|
+| Median Bill Savings for Homes That Save | $`r median_savings_default_all_fuels` | $`r median_savings_approved_all_fuels` | $`r median_savings_doer_all_fuels` |
+| Median Bill Increase for Homes That Lose | $`r median_loss_default_all_fuels` | $`r median_loss_approved_all_fuels` | $`r median_loss_doer_all_fuels` |
+
+: Statistics for winter energy bill changes in Massachusetts for homes switching to heat pumps under default, 1.0, and 2.0 heat pump rates. {#tbl-summary-all-fuels}
+
+:::
+
+## How would heat pump rates affect low-income customers?
+
+Energy affordability has become the defining issue in Massachusetts energy policy, with ratepayers facing unprecedented bill increases that have prompted emergency action from Beacon Hill to utility headquarters.
+
+The crisis began in earnest during the winter of 2022–23, when Russia's invasion of Ukraine sent natural gas prices soaring and Massachusetts households saw their energy bills spike by hundreds of dollars per month.
+
+What initially appeared to be a temporary supply shock exposed deeper structural problems: when commodity prices eventually fell, ratepayers discovered their bills remained stubbornly high due to rising delivery charges.
+
+In response, the Department of Public Utilities launched a new investigation in January 2024 specifically focused on energy affordability.[^dpuaffordability] The DPU recognized that Massachusetts faced a fundamental challenge: how to maintain affordable energy while simultaneously funding the energy transition.
+
+[^dpuaffordability]: See D.P.U. Docket 24-15 [@dpu_Docket2415Order_2024]. For an analysis of the DPU's proposed tiered LMI discount program, see Switchbox's recent memo, [Tiered Discount Rates in Massachusetts](https://www.switch.box/ma/tdr) [@smith_TieredDiscountRates_2025].
+
+The energy affordability crisis reached new heights during the winter of 2024–25, prompting Governor Healey to provide immediate relief to struggling ratepayers in March 2025 and introduce the Energy Affordability, Independence & Innovation Act in May.[^act]
+
+[^act]: For more details on the EAIIA, see [here](https://www.mass.gov/info-details/the-energy-affordability-independence-and-innovation-act).
+
+Against this backdrop sits a critical question about the impact of heat pumps on energy affordability. The Interagency Rates Working Group was explicitly created with a _dual mandate_: to design electricity rates that prioritize the reduction of energy burdens while incentivizing transportation and building electrification.
+
+Since heat pumps can sometimes raise the heating bills of households on natural gas, policymakers have been concerned that heat pump adoption could worsen energy burdens for low-income customers.
+
+But are these concerns justified? And can rate design turn heat pump adoption into a tool for improving affordability, rather than undermining it?
+
+In this section, we examine **winter energy burdens**—the percent of a household's annual income spent on home energy bills during the heating season—for "low-income" households, defined as those making less than $50,000 per year.[^why50]
+
+[^why50]: Regardless of household size, households making less than $50,000 per year are eligible for full low-income gas discounts at all gas utilities, full electric discounts in Unitil and Eversource, and at least partial discounts in National Grid.
+
+::: {.callout-important}
+Energy affordability is commonly measured in terms of household *energy burden*, the percentage of its annual income spent on energy.
+
+Policymakers typically consider households with energy burdens above 6% to be highly burdened.
+
+The **winter energy burdens** we analyze in this section are a _subset_ of traditional energy burdens: our study only looks at _home_ energy bills _during heating season_. Gasoline expenditures and home energy bills during the rest of the year are out of scope. In other words, household's full energy burdens are larger than reported in this section.
+:::
+
+### Winter energy burdens today
+
+What do winter energy burdens look like in Massachusetts today? And how would they change under heat pump rates?
+
+A low-income household's winter energy burden _before_ switching to heat pumps is heavily affected by whether it participates in a low-income energy discount program, which reduces gas and electricity bills by a set percentage for eligible households.[^discount_programs]
+
+[^discount_programs]: Households that qualify for low-income gas discounts get a 25% discount on their gas bills and a 40% and 42% discount on their electricity bills in Unitil and Eversource territories, respectively. For National Grid, these electric discount rates range from 71% of the bill for households at 100% of the federal poverty line to 32% for households making 60% of the state median income for same-sized households. See our [discounts database](https://docs.google.com/spreadsheets/d/1QSBYVgaxIVmyT23Xlz_jYe153jaA6XUK2WgPTVphCEk/edit?gid=1688752002#gid=1688752002) for more details.
+
+In fact, the statewide energy burden picture varies significantly depending on how many eligible households actually participate in these programs.
+
+@fig-li-burdens-current-hvac compares the distribution of winter energy burdens for low-income households served by investor-owned electric utilities under two extreme scenarios: 0% and 100% participation in low-income discount programs.
+
+The reality likely falls somewhere between these extremes. It's hard to say exactly, as enrollment rate estimates vary, and we lack comprehensive data on the building characteristics and heating systems of program participants.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-li-burdens-current-hvac >}}
+:::
+
+In the scenario where no eligible households are enrolled in these programs (the bottom chart), **`r round(100 - pct_below_6_baseline_rates_current_hvac_0pct_participation)`%** of households making less than $50,000 in Massachusetts would face high winter energy burdens.
+
+If all eligible households participate low-income gas and electric discount programs (the top scenario), the situation improves significantly: **`r round(100 - pct_below_6_baseline_rates_current_hvac_100pct_participation)`%** of these households would spend more than 6% of their income on winter energy bills. This represents a substantial **`r round(pct_below_6_baseline_rates_current_hvac_100pct_participation - pct_below_6_baseline_rates_current_hvac_0pct_participation)`** percentage point improvement, yet still leaves more than half of low-income households struggling to afford their heating bills.
+
+:::{.callout-note}
+Recall that these figures only capture winter home energy burdens, excluding gasoline and summer energy bills.
+
+The total energy burdens faced by low-income households in Massachusetts are therefore higher than reported here.
+:::
+
+
+### Winter energy burdens after heat pump adoption
+
+Would widespread heat pump adoption by low-income households under current default electric rates make an already bad situation worse, increasing energy burdens in aggregate?
+
+@fig-li-burdens-grid-comparison suggests otherwise:
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-li-burdens-grid-comparison >}}
+:::
+
+If all households with incomes below $50,000 adopted ccASHPs today _without_ enrolling in low-income electricity discounts, **`r round(100 - pct_below_6_ccashp_100pct_undiscounted)`%** of these households would spend more than 6% of their income on winter energy bills. This figure is nearly identical to the existing heating burdens faced by households (on their current HVAC systems) who have _not_ signed up for gas discounts.
+
+If, on the other hand, we assume that all eligible households sign up for low-income electricity discounts after switching to heat pumps (assuming they're not on them already), the savings picture brightens considerably.
+
+In this scenario, **`r round(100 - pct_below_6_ccashp_100pct_discounted)`%** of households making less than $50,000 would remain highly burdened—already a **`r round(pct_below_6_ccashp_100pct_discounted - pct_below_6_baseline_rates_current_hvac_100pct_participation)`** point improvement over today's heating burdens, assuming 100% participation in gas and electric discounts.
+
+In other words, heat pump adoption by low-income households does not appear to worsen heating burdens _in general_, though individual cases may vary. (The primary exception would be natural gas customers who currently receive gas discounts but fail to enroll in electric discounts after installing heat pumps.)
+
+### Winter energy burdens under heat pump rates
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-li-burdens-hp-rates >}}
+:::
+
+Combining low-income electricity discounts with the approved 1.0 heat pump rates improves this outlook further, with only **`r round(100 - pct_below_6_approved_rates_mid_hp_discounted)`%** of households under $50,000 spending more than 6% of their income on winter energy bills.
+
+The proposed 2.0 heat pump rates would deliver the most substantial relief: combined with existing low-income electricity discounts, only **`r round(100 - pct_below_6_doer_rates_mid_hp_discounted)`%** of these households would spend more than 6% of their income on winter energy bills—compared with **`r round(100 - pct_below_6_ccashp_100pct_undiscounted)`%** of low-income households who install heat pumps under default rates _without_ enrolling in low-income electricity discounts.
+
+These findings reveal that rather than threatening energy affordability, **the transition to efficient electric heat represents a rare opportunity to systematically reduce energy burdens for low-income households**: before switching to ccASHPs, if 100% of eligible households signed up for low-income electric and gas discounts today, only **`r round(pct_below_6_baseline_rates_current_hvac_100pct_participation)`**% of low-income Massachusetts households would end up with winter energy burdens under 6%.
+
+But if the state prioritized heat pump adoption among low-income households, utilities implemented 2.0 rates, and households were auto-enrolled in electricity discounts upon installation, then **`r round(pct_below_6_doer_rates_mid_hp_discounted)`**% of these households would be able to spend less than 6% of their income on winter energy bills.
+
+While the preceding analysis assumes a 6% threshold for energy burdens, the threshold is currently being discussed within the DPU's energy affordability docket, and regulators may end up adopting a more ambitious 4% threshold.[^dpu_energy_docket]
+
+[^dpu_energy_docket]: See D.P.U. Docket 24-15 [@dpu_Docket2415Order_2024].
+
+Today, in the best-case scenario, only **`r round(fig_hists_li_discount_histograms_current_hvac_100pct_discounts_default_rates_low_energy_burden)`%** of low-income households be able to spend less than 4% of their income on winter energy bills.
+
+With heat pumps, low-income electricity discounts, and 2.0 rates, up to **`r round(fig_hists_li_discount_histograms_ccashp_100pct_discounts_2.0_rates_low_energy_burden)`%** of these households could meet this more stringent threshold.
+
+## How would heat pump rates affect customers without heat pumps? {#sec-subsidy}
+
+Under 2.0 rates, customers with heat pumps would pay less than under default rates. Does that mean other customers would pay more? In other words, would ratepayers _without_ heat pumps be subsidizing ratepayers who choose to electrify?
+
+### Heat pumps are being overcharged
+
+In fact, the opposite is true: **customers with heat pumps are currently subsidizing everyone else**. Why is this the case?
+
+When a household installs heat pumps, its electricity consumption goes up. Under today's largely _volumetric_ delivery charges (see @sec-background), when a household consumes more electricity, it also pays more for the utility's poles and wires.
+
+This makes sense if the household's new winter-time electricity use creates a need for an **upgrade** to those poles and wires. In that case, the household would need to pay for these **new costs** to avoid imposing them on other customers.
+
+But today, and for the next decade, heat pump installations are _not_ triggering widespread grid upgrades, because Massachusetts's grid is _already designed to serve heat pumps_: the entire system is sized to meet the demand from the millions of **one-way heat pumps**—also known as air-conditioners—that 87% of Commonwealth homes use to keep cool during the summer.[^summer_heat_pump_usage]
+
+[^summer_heat_pump_usage]: As of 2020, 32% of homes in Massachusetts had central A/C, 58% had at least one window unit, and [87% had either or both](https://www.documentcloud.org/documents/26001926-eia-air-conditioning-by-state-2023/?mode=document#document/p1/a2664680) [@eia_HighlightsAidConditioning_2023]. Air-source heat pumps are generally more efficient for cooling than conventional air conditioners.
+
+In fact, only around 80% of the New England grid's capacity is currently used during the winter.[^winter_capacity] When a cold-climate heat pump is installed today, its heating load simply taps into this spare wintertime capacity.
+
+[^winter_capacity]: Between 2000 and 2024, ISO-NE's summer peaks on the hottest and most humid days have averaged around [25.6 GW](https://www.documentcloud.org/documents/26016910-iso-ne-new-englands-electricity-use-2025/?mode=document#document/p2/a2664810), while peaks on the coldest days have averaged around 21 GW [@iso-ne_NewEnglandsElectricity_2025].
+
+New England's grid operator doesn't expect this surplus capacity in winter months to be used up until the mid-2030s, when electrification will cause the grid to transition from summer-peaking to winter-peaking,[^winter_peak] and utilities will indeed need to upgrade the grid to accommodate demand from heat pumps.
+
+[^winter_peak]: ISO-NE forecasts that summer peak demand under above-average weather will be [28.3 GW](https://docs.google.com/spreadsheets/d/1m5K11bfuREhd2gk6yh4D4KhL9utvRTMotiQM0V2SQ6o/edit?disco=AAABndzqwbM) in 2034, while winter peak demand under below-average weather will be [28.7 GW](https://docs.google.com/spreadsheets/d/1m5K11bfuREhd2gk6yh4D4KhL9utvRTMotiQM0V2SQ6o/edit?disco=AAABndzqwbQ) in 2034–35 [@iso-ne_20252034ForecastCapacity_2025].
+
+Until then, utilities are paying back loans for the grid they've already built to serve summer peak demand. Because these costs are fixed, increased revenue from electrifying households allows utilities to reduce rates,[^caveat] which lowers electric bills for non-heat pump customers.
+
+[^caveat]: In practice, electrical utilities raise rates every few years to pay for ongoing grid investment. Strictly speaking, non-heat pump customers are more likely to experience _lower rate hikes_ as a result of cross-subsidization from heat pump customers, rather than _rate decreases_. **The key point is that heat pump customers should not be disproportionately charged for grid investment they are not causing.**
+
+### 2.0 rates fix the overcharging problem
+
+One way to correct this cross-subsidy would be to lower the winter delivery rate for customers with heat pumps to the point where those households switching from fossil fuels would pay the same amount for delivery as they did before they installed heat pumps, on average.[^resistance] This is essentially what DOER's proposed 2.0 rates accomplish (@fig-stacked-bar-components-delivery-on-top).
+
+[^resistance]: Customers switching from electric resistance would pay less for electric delivery.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-stacked-bar-components-supply-on-top >}}
+:::
+
+Under 2.0 rates, the median delivery charge for Massachusetts heat pump customers would be approximately equal to the median delivery charge for non-heat pump customers. A customer that installs heat pumps would pay more for the actual electricity they consume, but approximately the same amount for the infrastructure that delivers it.
+
+DOER's 2.0 rates represent a win-win: new heat pump customers would no longer be overcharged for their access to the grid, improving heat pump economics without imposing any new costs on non-heat pump customers.
+
+
+# Conclusion
+
+Our findings reveal that while the approved "1.0" rates offer modest improvements, they fail to fully correct the cross-subsidy between heat pump customers and non-heat pump customers. As a consequence, they fall short of removing the operating cost barrier to widespread heat pump adoption.
+
+By fixing this inequity, the proposed "2.0" heat pump rates would fundamentally transform the economics of residential building electrification in the Commonwealth.
+
+Under current electric rates, switching to cold-climate air-source heat pumps reduces heating bills for only **`r round(pct_that_save_default_all_fuels)`%** of existing homes in the Commonwealth. The 2.0 rates would extend these savings to **`r round(pct_that_save_doer_all_fuels)`%** of Massachusetts households, substantially reducing the operating cost barrier to heat pump adoption.
+
+The shift would be particularly pronounced in market segments where heat pumps currently struggle to compete: existing single-family homes, and buildings heated with natural gas.
+
+For single-family homes, which make up just over half the state's housing stock, the share of households that save would more than double, from **`r round(pct_save_singlefam_baseline)`%** to **`r round(pct_save_singlefam_doer)`%** (see @sec-savings-by-building-type for full analysis).
+
+For homes heated with natural gas, which have faced some of the steepest post-installation bill increases, the portion that save would rise from **`r round(pct_that_save_default_natural_gas)`%** to **`r round(pct_that_save_doer_natural_gas)`%** (see @sec-savings-by-fuel).
+
+Perhaps most significantly, the 2.0 rates could help resolve the tension between building electrification and energy affordability.
+
+When combined with existing low-income electricity discounts, these rates would enable **`r round(pct_below_6_doer_rates_mid_hp_discounted)`%** of low-income households to keep their winter energy bills under 6% of their income after installing heat pumps. This represents a marked improvement over the status quo, where at best **`r round(pct_below_6_baseline_rates_current_hvac_100pct_participation)`%** of these households would be able to keep their winter energy burdens under 6% _without_ switching to heat pumps—assuming 100% participation in current discount programs.
+
+The 2.0 rates would have their most dramatic impact on the **`r round(100 * (pct_homes_fuel_oil + pct_homes_propane + pct_homes_electric_resistance))`%** of Massachusetts homes that rely on delivered fuels or electric resistance heating. Nearly all would see substantial savings, with median bill savings of **$`r round(-1 * median_savings_doer_heating_oil)`** per heating season for oil-heated homes and **$`r round(-1 * median_savings_doer_resistance)`** for those with electric resistance.
+
+The data suggests that well-designed rates can effectively address one of the primary barriers to heat pump adoption—the risk of higher operating costs—while advancing the state's energy affordability goals.
+
+By bringing heat pump operating costs for investor-owned utility customers closer to those already enjoyed by municipal utility customers, the 2.0 rates would help create the conditions necessary for the widespread adoption of this crucial decarbonization technology.
+
+While the 1.0 rates represent a step in the right direction, only the 2.0 rates would allow Massachusetts to credibly position heat pumps as a vehicle for the vast majority of households to cut their energy bills, helping to catalyze widespread adoption of this crucial decarbonization technology.
+
+# Appendix: Additional findings
+
+
+## How do savings vary by fuel? {#sec-savings-by-fuel}
+
+The statewide findings in preceding sections help us assess the overall impact of electric rate designs on heat pump operating costs. But they also mask important differences in how homes' current heating systems affect their heating bills after they make the switch.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-bar-fuel-types >}}
+:::
+
+Broadly speaking, Massachusetts homes fall into three distinct heating scenarios, each with its own distinct operating costs:
+
+1. Homes connected to the natural gas network, which currently benefit from relatively low fuel costs
+2. Homes not on the gas network heated with delivered fuels (heating oil and propane), which face higher fuel costs
+3. Homes heated with electric resistance, which face high bills due to the inefficiency of this technology
+
+Understanding how buildings in each of these scenarios would fare under the 1.0 and 2.0 heat pump rates is crucial for evaluating whether they would effectively remove the operating cost barrier to the widespread adoption of heat pumps in existing homes.
+
+Let's examine each scenario in detail.
+
+
+### Natural Gas
+Half of the Commonwealth's homes (`r round(100 * pct_homes_natural_gas)`%) are heated by natural gas.
+
+While heat pump efficiency will continue to improve and gas delivery rates are likely to get more expensive,[^zcma] the current generation of ccASHPs can struggle to compete against natural gas under today's electric rates.
+
+[^zcma]: See Groundwork Data's report on New Construction and the Future of Gas in Massachusetts [@groundworkdata_NewConstructionFuture_2024].
+
+How wide is the operating cost gap between gas and ccASHPs under default rates, and to what extent would this gap be closed by the 1.0 and 2.0 heat pump rates?
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-hists-natural-gas >}}
+:::
+
+Under default electric rates, only **`r round(pct_that_save_default_natural_gas)`%** of homes heated by natural gas would cut their bills by switching to ccASHPs. These homes would save a median of $`r round(-1 * median_savings_default_natural_gas)`.
+
+Under the approved 1.0 heat pump rates, **`r round(pct_that_save_approved_natural_gas)`%** of homes would save, with median savings of $`r round(-1 * median_savings_approved_natural_gas)`, and incremental improvement that would be unable to fully remove the operating cost barrier.
+
+Under the proposed 2.0 rates, however, **`r round(pct_that_save_doer_natural_gas)`%** of homes heated by natural gas would cut their bills by switching to ccASHPs. These households would save a median of **$`r round(-1 *  median_savings_doer_natural_gas)`** per heating season, or **$`r round(-1 *  median_savings_doer_natural_gas / 6)`** a month.
+
+The remaining `r round(100 - pct_that_save_doer_natural_gas)`% of homes would see their bills rise by a median of $`r round(median_loss_doer_natural_gas)` per heating season (\$`r round(median_loss_doer_natural_gas / 6)` per month), down from $`r round(median_loss_default_natural_gas)` under default rates.
+
+In other words, the 2.0 rates would remove the operating cost barrier for three out of four gas-heated homes in Massachusetts, while shrinking the bill increases faced by the remaining homes to a level most households can afford.
+
+### Delivered Fuels
+
+Nearly a third of homes in the state are heated by delivered heating oil (`r round(100 * pct_homes_fuel_oil)`%) or propane (`r round(100 * pct_homes_propane)`%), the latter fuel being more common in newer construction.
+
+The vast majority of delivered fuel customers lack access to the natural gas distribution network, and usually face higher heating bills as a result.
+
+Because of this situation, delivered fuel customers are often considered natural candidates for heat pump adoption.
+
+How often would these homes actually save money by switching to efficient electric heating?
+
+Let's look at heating oil first (@fig-hists-heating-oil).
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-hists-heating-oil >}}
+:::
+
+Under default electric rates, **`r round(pct_that_save_default_heating_oil)`%** of homes heated by heating oil would save on their winter energy bills by switching to ccASHPs. The median savings these homes can expect today is $`r round(-1 * median_savings_default_heating_oil)` per heating season, or $`r round(-1 * median_savings_default_heating_oil / 6)` per winter month.
+
+Under the approved 1.0 heat pump rates, **`r round(pct_that_save_approved_heating_oil)`%** of households on heating oil save, a `r round(pct_that_save_approved_heating_oil - pct_that_save_default_heating_oil)` percentage point improvement over default rates.
+
+Finally, under the proposed 2.0 heat pump rates, **`r round(pct_that_save_doer_heating_oil)`%** of households on heating oil could lower their bills by switching to heat pumps, and these homes would save a median of **$`r round(-1 * median_savings_doer_heating_oil)`** per heating season, or **$`r round(-1 * median_savings_doer_heating_oil / 6)`** a month.
+
+Under today's rates, in other words, switching from heating oil to heat pumps _does not guarantee savings_. Post-installation, bills are as likely to rise as they are to fall. The proposed 2.0 rates would reshape this situation, however, delivering sizable savings to nearly all heating oil customers.
+
+Though the vast majority of homes without access to the gas network use heating oil in Massachusetts, propane has become the fossil fuel of choice in newer homes.
+
+Let's look at them next (@fig-hists-propane):
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-hists-propane >}}
+:::
+
+The outlook is even more favorable for homes heated by propane, which is more expensive than heating oil.
+
+**`r round(pct_that_save_default_propane)`%** of households heated by propane would save under current electric rates, which would rise to **`r round(pct_that_save_approved_propane)`%** under the approved 1.0 heat pump rates, and reach  **`r round(pct_that_save_doer_propane)`%** under the proposed 2.0 rates.
+
+Under 2.0 rates, virtually all propane-heated homes would save a median of **$`r round(-1 * median_savings_doer_propane)`** per heating season, or **$`r round(-1 * median_savings_doer_propane / 6)`** per winter month.
+
+The data is clear: for the `r ceiling((pct_homes_fuel_oil + pct_homes_propane) * 100)`% of homes in Massachusetts on delivered fuels, the proposed 2.0 rates would turn heat pump adoption into an engine for energy affordability.
+
+### Electric resistance
+
+A small but significant share of Massachusetts homes (`r round(100 * pct_homes_electric_resistance)`%) use electric resistance heating. Unlike fossil fuel systems, these homes already use electricity for heating—just very inefficiently.
+
+Electric resistance heating converts electricity directly into heat at 100% efficiency. Cold-climate air-source heat pumps, by contrast, use electricity to harvest heat from the outside air, achieving 200-300% efficiency.
+
+This fundamental difference means that switching from resistance heating to heat pumps is guaranteed to lower heating bills, regardless of electric rates, as @fig-hists-resistance shows.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-hists-resistance >}}
+:::
+
+
+Under current default electric rates, **`r round(pct_that_save_default_resistance)`%** of homes with electric resistance heating would cut their energy bills by switching to ccASHPs, saving a median of $`r round(-1 * median_savings_default_resistance)` per heating season.
+
+The approved 1.0 heat pump rates would increase these savings, with all homes saving a median of $`r round(-1 * median_savings_approved_resistance)`.
+
+Under the proposed 2.0 rates, the median savings for all resistance-heated homes switching to heat pumps would rise to of **$`r round(-1 * median_savings_doer_resistance)`** per heating season, or **$`r round(-1 * median_savings_doer_resistance / 6)`** per month.
+
+The data shows that electric resistance heating represents a unique opportunity for building electrification in Massachusetts. Unlike fossil-fuel-heated homes, the dwellings face **no** operating cost barrier to adoption.
+
+In fact, switching to heat pumps would deliver universal, immediate and significant savings on heating bills—even under today's rates. The proposed 2.0 rates would only make these savings more substantial.
+
+## How do savings vary by building type? {#sec-savings-by-building-type}
+
+How a building is heated isn't the only factor that determines whether switching to heat pumps will save money—the building itself matters, too.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-stacked-bar-building-type >}}
+:::
+
+Just over half of the Commonwealth's homes are in single-family buildings, with the rest split evenly between 2-4 and 5+ unit multifamily buildings.
+
+Let's examine how different building types would fare if they adopted heat pumps today.
+
+### Single-family homes
+Under current default rates, the larger the building a particular dwelling is in, the more likely it is to save by switching to heat pumps: only **`r round(pct_save_singlefam_baseline)`%** of single family homes would save, compared to **`r round(pct_save_2to4_baseline)`%** of homes in 2-4 unit buildings, and **`r round(pct_save_5plus_baseline)`%** of those in 5+ unit buildings.
+
+This trend is likely caused by the fact that units in larger buildings tend to have lower heat loss, since they have fewer exterior surfaces.
+
+This fact sheds light on a major driver of the heat pump operating cost barrier: in the single-family homes that house the majority of the state's population, operating a heat pump with default rates will raise the home's heating bill about two-thirds of the time. In 5+ unit buildings, the reverse is true.
+
+Do the 1.0 and 2.0 heat pump rates remove the operating cost barrier for single-family homes?
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-hists-single-family-home >}}
+:::
+
+Under the 1.0 heat pump rates, **`r round(pct_save_singlefam_approved)`%** of single-family homes would save by switching, up from `r round(pct_save_singlefam_baseline)`% under default rates.
+
+But under the proposed 2.0 rates, **`r round(pct_save_singlefam_doer)`%** of these homes would cut their heating bills, and they'd save a median of **$`r round(-1 * median_savings_singlefam_doer)`** per heating season, or **$`r round(-1 * median_savings_singlefam_doer / 6)`** per month.
+
+In other words, the 1.0 rates represent modest progress in removing the operating cost barrier for single-family homes.
+
+The 2.0 rates proposed by DOER, on the other hand, would transform heat pumps into a significant money saver for three-quarters of single-family homes, while reducing post-install bill increases for most of the remaining homes to a manageable level.
+
+### 2-4 unit buildings
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-hists-2-4-units >}}
+:::
+
+Under the 1.0 heat pump rates, **`r round(pct_save_2to4_approved)`%** of 2-4 unit buildings would save by switching to heat pumps, up from `r round(pct_save_2to4_baseline)`% under default rates.
+
+Under the 2.0 rates, however, **`r round(pct_save_2to4_doer)`%** of these homes would cut their heating bills, and they'd save a median of **$`r round(-1 * median_savings_2to4_doer)`** per heating season, or **$`r round(-1 * median_savings_2to4_doer / 6)`** per winter month.
+
+### 5+ unit buildings
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-hists-5-plus-units >}}
+:::
+
+Under the 1.0 heat pump rates, **`r round(pct_save_5plus_approved)`%** of 5+ unit buildings would save by switching to heat pumps, up from `r round(pct_save_5plus_baseline)`% under default rates.
+
+But under the 2.0 rates, **`r round(pct_save_5plus_doer)`%** of these homes would cut their heating bills, and they'd save a median of **$`r round(-1 * median_savings_5plus_doer)`** per heating season, or **$`r round(-1 * median_savings_5plus_doer / 6)`** per winter month.
+
+Overall, the more units a building has, the more likely the homes within are to save by switching to heat pumps, but the smaller these savings tend to be, all else equal.
+
+This is likely because apartments consume less energy than single-family homes, so the potential upside is smaller. But at a median savings of $`r round(-1 * median_savings_2to4_doer / 6)` for homes in 2-4 unit buildings and $`r round(-1 * median_savings_5plus_doer / 6)` for 5+ unit buildings per winter month, the upside is still significant.
+
+## How do savings vary by utility?
+
+Up to this point, our analysis has focused on how heat pump rates would affect heating bills statewide.
+
+However, each of Massachusetts' three investor-owned utilities—National Grid, Eversource, and Unitil—is developing its own distinct heat pump delivery rates.
+
+This raises an important question: do the savings patterns we've observed statewide hold true across all utility territories, or do local rate structures create meaningful differences in heat pump operating costs?
+
+The answer matters for both policymakers and prospective heat pump adopters.
+
+If utility-specific factors significantly influence post-installation heating bills, then a household's decision to electrify may depend as much on which utility serves their home as on their building's characteristics or current heating system.
+
+As it happens, the data reveals that Unitil customers face a higher operating cost barrier than customers of the other two investor-owned electric utilities (@fig-stacked-bars-utility-rate-scenarios):
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-stacked-bars-utility-rate-scenarios >}}
+:::
+
+
+Simply put, Eversource and National Grid customers—which make up the vast majority in the state—would enjoy significant savings by switching to heat pumps under 2.0 rates, while Unitil customers would see more mixed results.
+
+Specifically, under 2.0 rates, **`r round(utility_change_eversource_hpr_doer_large_savings + utility_change_eversource_hpr_doer_small_savings)`%** of Eversource customers and **`r round(utility_change_nationalgrid_hpr_doer_large_savings + utility_change_nationalgrid_hpr_doer_small_savings)`%** of National Grid customers would see their annual heating bills decrease when switching to heat pumps.
+
+Unitil tells a different story. Even with the 2.0 rates, only **`r round(utility_change_unitil_hpr_doer_large_savings + utility_change_unitil_hpr_doer_small_savings)`%** of Unitil customers would see bill reductions. Why is this the case?
+
+The answer lies in Unitil's significantly higher electric delivery rates,[^higher-rates] which cause bills to rise much more sharply when households switch to heat pumps.
+
+[^higher-rates]: While Eversource and National Grid's volumetric deliver charges are currently $0.19 and $0.18 per kWh, respectively, Unitil's are $0.26 per kWh.
+
+Under _default_ rates, while roughly **`r round(utility_change_eversource_baseline_large_savings + utility_change_eversource_baseline_small_savings)`%** of Eversource customers and **`r round(utility_change_nationalgrid_baseline_large_savings + utility_change_nationalgrid_baseline_small_savings)`%** of National Grid customers would save money by switching to heat pumps, only **`r round(utility_change_unitil_baseline_large_savings + utility_change_unitil_baseline_small_savings)`%** of Unitil customers would see savings.
+
+More troubling, **`r round(utility_change_unitil_baseline_large_increase)`%** of Unitil customers would face large bill increases exceeding $1,000 annually under default rates—a rate of severe bill shock that's substantially higher than the **`r round(utility_change_eversource_baseline_large_increase)`%** and **`r round(utility_change_nationalgrid_baseline_large_increase)`%** experienced by Eversource and National Grid customers, respectively, after installing heat pumps.
+
+Even the 2.0 rates can only do so much to overcome this structural disadvantage. While the seasonal discounts help—reducing the share of Unitil customers facing large increases from **`r round(utility_change_unitil_baseline_large_increase)`%** to **`r round(utility_change_unitil_hpr_doer_large_increase)`%**—they're starting from a disadvantaged position and can only partially close the gap.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-boxplot-utility-bills >}}
+:::
+
+This disparity in post-installation outcomes might be manageable if Unitil customers started out with lower heating bills, allowing room for bill hikes while limiting the overall impact.
+
+But the opposite is true. Unitil customers currently face the highest heating bills in the state, with median annual costs of **$`r round(utility_bills_unitil_baseline_rates_current_hvac_p50)`** compared to **$`r round(utility_bills_eversource_baseline_rates_current_hvac_p50)`** for Eversource and **$`r round(utility_bills_nationalgrid_baseline_rates_current_hvac_p50)`** for National Grid customers.
+
+In other words, Unitil customers start with the highest heating bills, see the smallest share of households benefit from heat pump adoption, and end up with the highest heat pump operating costs in the state.
+
+Still, it's worth noting that even in Unitil territory, roughly half of customers would benefit from heat pump adoption under the 2.0 rates.
+
+Moreover, this challenge only affects a small portion of the state's population: Unitil serves just over 100,000 customers, while Eversource and National Grid together serve nearly 30 times more.
+
+## How do savings compare to public power rates?
+
+Our analysis so far has focused on the three investor-owned utilities (IOUs) that serve the majority of Massachusetts households.
+
+But roughly one in six households in the state receives electricity from municipal light plants (MLPs)—publicly-owned utilities that set their own rates and are exempt from many state regulations.
+
+How do the heat pump operating costs achieved by the 1.0 and 2.0 IOU rates compare to what MLP customers would experience under existing municipal rates?
+
+As of today, MLPs are not developing dedicated rates for heat pump customers. But these public utilities are known to offer lower rates than IOUs,[^public-power-rates] so this comparison provides a useful benchmark to gauge the effectiveness of the 2.0 heat pump rates.
+
+[^public-power-rates]: See [this report](https://www.mmwec.org/who-we-are/economic-benefit-mlps/) from Massachusetts Municipal Wholesale Electric Company [@mmwec_EconomicBenefitsMLPs_2023].
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-boxplot-utility-bills-munis >}}
+:::
+
+@fig-boxplot-utility-bills-munis compares the distribution of winter energy bills post-heat pump installation for MLP customers under default rates, to those of IOU customers under default and 2.0 heat pump rates.
+
+National Grid and Eversource bills decline significantly under 2.0 rates—with median bills of **$`r round(utility_bills_nationalgrid_hpr_doer_p50)`** and **$`r round(utility_bills_eversource_hpr_doer_p50)`**, respectively—and just about manage to close the gap with the median MLP bill.
+
+MLP bills are less spread out than those of National Grid and Eversource, though that may reflect the smaller housing units in the urban areas where MLPs are common.
+
+Overall, while the 2.0 rates may appear like ambitious discounts, their aggregate effect is to move the operating costs of heat pumps for IOU customers closer to those already enjoyed by MLP customers.
+
+## How do savings vary with commodity prices? {#sec-sensitivity-analysis}
+
+Although this report focuses on electric _delivery_ rates, the _supply_ rates customers pay for electricity and natural gas also determine whether their bills decrease when switching to heat pumps. And as @fig-historical-supply-rates shows, these commodity prices can be quite volatile:
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-historical-supply-rates >}}
+:::
+
+The findings throughout this report reflect supply prices from 2024. Would our results have been different if we used data from another year? In other words, do fluctuations in electricity and natural gas _supply_ rates swamp the savings that result from heat pump _delivery_ rates?
+
+To sensitize our findings against supply price fluctuations, we re-run our post-installation bill change analysis using inflation-adjusted historical supply rates, while maintaining delivery rates and consumption patterns constant.
+
+These results are presented in @fig-supply-year-sensitivity.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-supply-year-sensitivity >}}
+:::
+
+@fig-supply-year-sensitivity confirms that the energy affordability benefits of the 2.0 rates, which we document throughout this report, are both **real and durable in the face of supply price fluctuations**:
+
+- Take 2023, the worst year in recent memory for heat pump owners. Electricity, gas, and heating oil supply prices all spiked, raising heating bills throughout the state regardless of how homes were heated.
+- However, the price of electricity rose faster than that of gas or oil, so fewer households would have saved by switching to heat pumps that year, compared to the previous year. This deterioration was temporary, however: the savings picture in 2024 largely returned to the pre-2023 trend.
+- Moreover, the 2.0 rates would have offered protection against the price volatility in 2023: under default rates, 34% of heat pump owners would have paid $1,000 or more extra by running heat pumps that year (as opposed to their pre-retrofit heating system). Under 2.0 rates that proportion would have been more than halved to 14%.
+
+@fig-supply-year-sensitivity also offers a deeper insight: In Massachusetts, the primary reason that heat pumps currently struggle to compete against natural gas isn't because gas is cheaper than electricity. It's because households with heat pumps are subsidizing the delivery costs of all other electric customers. **Fundamentally, heat pumps are being handicapped by unfair delivery rates, not by cheap natural gas**.
+
+
+# Appendix: Data and Methods {#sec-data-and-methods}
+Our analysis calculates the monthly electricity, natural gas, fuel oil, and propane bills—before and after switching to cold-climate air-source heat pumps—for a set of 11,690 virtual homes, which comprise a statistically representative sample of the Massachusetts residential housing stock.
+
+The analysis happens in three steps:
+
+1. First, we take energy consumption profiles from NREL's ResStock, as described in [Building Stock Sampling via ResStock](#sec-resstock). ResStock natively provides energy consumption for each appliance in the home at 15-minute resolution, which we aggregate to monthly totals per fuel type
+2. Next, we assign each virtual home an electric utility, and, if applicable, a gas utility. This allows us to associate each home with the appropriate electric and gas supply and delivery rates. Homes that use delivered fuels are associated with statewide average prices for propane and heating oil.
+3. Finally, to calculate energy burden metrics, we assign to each home a precise income within the income bracket information for each home provided by ResStock.
+
+Delivery tariffs are drawn from the directly from utilities' filings with the Massachusetts Department of Public Utilities (DPU).
+
+[Supply rates](##sec-supply-rates) for electricity and gas are also sourced from MADPU's [Basic Service Rates](https://www.mass.gov/info-details/basic-service-information-and-rates), while delivered fuel prices come from [EIA](https://www.eia.gov/dnav/pet/pet_pri_wfr_dcus_SVT_w.htm).
+
+All supply rates are inflated to 2024 dollars to align with our other cost assumptions.
+
+
+### Building Stock Sampling via ResStock {#sec-resstock}
+ResStock is a database of simulated home energy consumption profiles developed and maintained by the National Renewable Energy Lab (NREL).
+
+The database has appliance-level load data for over 500,000 "virtual" homes nationwide at 15-minute resolution, 4 major fuel types (electricity, natural gas, fuel oil, and propane) and several different weather years.
+
+The "baseline" set of virtual homes are meant to collectively represent the United States' residential housing stock as it looked in 2018. The End Use Load Profiles (EULP) project adds several upgrade packages, which virtually "install" various combinations of weatherization, HVAC upgrades, and appliance electrification and recompute each homes' 15-minute energy consumption for each appliance.
+
+We use EULP's 2022.1.1 release, specifically the Baseline, Upgrade 3 ("Minimum Efficiency Heat Pump"), and Upgrade 4 ("High Efficiency Heat Pump") cases.[^eulp] To approximate a heat pump with an HSPF of 11, we average the Upgrade 3 and Upgrade 4 heat pump load profiles for each home, and this is used throughout the analysis.
+
+[^eulp]: See [@nrel_EndUseLoadProfiles_2022].
+
+
+### Home Income Assignment
+ResStock provides income brackets for each virtual home in 2018 dollars, but not precise income figures, which are required to calculate each homes winter energy burden.
+
+To assign specific annual incomes to each home, we use income distribution data from the US Census Bureau's Public Use Microdata Sample (PUMS) database.[^pums] For each home in our sample, we randomly draw an income value from the PUMS data that falls within that home's ResStock-assigned income bracket.
+
+Finally, we inflate all income values to 2024 dollars to align with our other cost assumptions.
+
+[^pums]: See [@censusbureau_AmericanCommunitySurvey_2022].
+
+
+### Home Utility Assignment
+We assign utilities to each home based on its geographic location. ResStock provides state, county, and [PUMA](https://www.census.gov/programs-surveys/geography/guidance/geo-areas/pumas.html) (Public Use Microdata Area) information for each home, with PUMAs typically being smaller than counties.
+
+For electric utilities, we assign all homes in a PUMA to the utility that serves that area. In cases where a PUMA overlaps multiple electric utility service territories, we divide the homes proportionally based on each utility's share of the PUMA's geographic area.
+
+Gas utility assignment follows a similar process, with two key differences. First, some geographic areas are not served by the natural gas distribution network at all, so homes in these PUMAs are not assigned a gas utility. Second, homes that show no gas heating loads in the ResStock data are also not assigned a gas utility, regardless of their location.
+
+### Heating Season Definition
+The definition of heating season varies by utility. Eversource defines the season as October to May, while National Grid and Unitil use November to April.
+
+These differing heating seasons are reflected in our data, both in the calculation of annual heating bills and in the application of low-income discounts. This means that, all else equal, Eversource customers will appear to have higher total bills and higher winter heating burdens.
+
+### Delivery Rates {#sec-delivery-rates}
+
+**Gas delivery rates** were gathered directly from the websites of investor-owned gas utilities, and are collected [here](https://docs.google.com/spreadsheets/d/1ikBwsX3UF4RheRrEoQzAHFqwXbI07Z-iXEiIEYraFNI/edit?gid=2068435314#gid=2068435314).
+
+**Electric delivery rates** were drawn directly from or reconstructed from the sources as described in @tbl-rate-filings, and are collected [here](https://docs.google.com/spreadsheets/d/1efE96zgziHTaLX-lPV1vRKVZze9gcKuD-nJyB-QFOQY/edit?usp=sharing).
+
+::: {.column-page-inset-right}
+| Utility | Default rate | 1.0 heat pump rate | 2.0 heat pump rate |
+|--------|-------------|------|------|
+| Eversource | [Eversource](https://www.documentcloud.org/documents/25906374-ema-greater-boston-rates-electric/#document/p1/a2632943) | [DPU 12-53](https://www.documentcloud.org/documents/25922649-eversource_electric_delivery_exh-es-hp-2-heat-pump-rate-design/#document/p8/a2632942) | [DOER Proposal](https://www.documentcloud.org/documents/25560519-2025-exhibit-c-illustrative-hp-rate-design/#document/p1/a2627574) |
+| National Grid | [DOER Proposal](https://www.documentcloud.org/documents/25560519-2025-exhibit-c-illustrative-hp-rate-design/#document/p1/a2627574) | [DOER Proposal](https://www.documentcloud.org/documents/25560519-2025-exhibit-c-illustrative-hp-rate-design/#document/p1/a2627574) | [DOER Proposal](https://www.documentcloud.org/documents/25560519-2025-exhibit-c-illustrative-hp-rate-design/#document/p1/a2627574) |
+| Unitil | [Unitil](https://www.documentcloud.org/documents/25555039-electric-rate-case-impacts-july-1-2024/#document/p1/a2626352) | [DOER Proposal](https://www.documentcloud.org/documents/25560519-2025-exhibit-c-illustrative-hp-rate-design/#document/p1/a2627574)  | [DOER Proposal](https://www.documentcloud.org/documents/25560519-2025-exhibit-c-illustrative-hp-rate-design/#document/p1/a2627574)  |
+: Electric delivery rates used in this analysis. {#tbl-rate-filings}
+:::
+
+### Municipal Light Plant Rates {#sec-muni-rates}
+Municipal Light Plants (MLPs) are publically-owned electric distribution utilities, typically but not necessarily serving a single town or county. Massachusetts has 41 MLPs, collectively serving around 14% of the state's electric load. Notably, MLPs are exempt from state ratemaking regulation, so they are not actively pursuing the heat-pump-friendly rates analyzed in this report. Instead, each the 41 MLPs has its own delivery tariffs; our analysis uses the median MLP customer charge and deliver rates from 2023, as provided by the [Massachusetts Residential Electricity Rates Database](https://www.mass.gov/doc/massachusetts-residential-electricity-rates-database), inflated to 2024 dollars.
+
+MLPs are often motivated by price stability. As we can see in @fig-mlp-charges, the median fixed **customer charge** for grew 16% from 2019 to 2024, slower than inflation over that period. The median **delivery charge** for MLPs grew 26%, on pace with inflation.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-mlp-charges >}}
+:::
+
+### Supply Rates {#sec-supply-rates}
+**Electric supply rates** come from the monthly-varying Basic Service Rates for each utility as provided by the [Massachusetts Department of Public Utilities](https://www.mass.gov/doc/basic-service-rates) (DPU). We selected supply rates for 2024.
+
+**Gas supply rates** also come from the DPU, specifically the [Historical GAF/LDAF workbook](https://www.mass.gov/info-details/information-on-gas-supply-and-delivery-charges#gas-supply-rate-information-(gaf)-). We selected supply rates for 2024.
+
+Gas prices are historically provided in Therms or MMBTU; to match ResStock and provide direct comparison to electric heating, we convert to kWh using 1 Therm = 29.307 kWh.
+
+We also consolidated utilities to reflect mergers and acquisitions, ultimately arriving at the three gas utilities used in this analysis: Eversource, National Grid, and Unitil.
+
+For **delivered fuel prices**, we aggregated EIA's [Weekly Heating Oil and Propane Prices](https://www.eia.gov/dnav/pet/pet_pri_wfr_dcus_SVT_w.htm) into monthly averages to align with the electric and gas series.
+
+Finally, all supply rates are inflated to 2024 dollars. This allows the direct comparison of historical supply price volatility, as in @fig-historical-supply-rates, which shows a clear seasonal trend as well as distinct spikes in prices in 2023.
+
+
+### The Spark Gap {#sec-spark-gap}
+The spike in supply costs in 2023 increased the price of electricity, gas, and heating oil alike, raising heating bills throughout the state regardless of how homes were heated.
+
+So heat pumps were more expensive to operate that year. But where they more expensive to operate _compared to the alternatives_?
+
+This report is focused on the operating cost impacts of _switching_ to heat pumps, so we are more interested in the _relative_ costs of home heating fuels.
+
+Had the cost of all fuels risen proportionally, the 2023's expensive energy would have been felt equally among all homeowners, regardless of heating type. While everyone's bills would have gotten more expensive, the _change_ in bills from switching to heat pumps would not have budged.
+
+But that's not what happened: electricity and gas supply prices both skyrocketed, but electricity rose _faster_ than gas, making post-install bill changes worse during that year than others.
+
+The ratio of a delivered kWh of electric energy to a delivered kWh of natural gas energy,[^formula], sometimes called the **Spark Gap**, is a simple way to track relative heating costs, and is shown in @fig-historical-spark-gap for our Massachusetts data.
+
+[^formula]: 1 kWh = 1/29.3 therm.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-historical-spark-gap >}}
+:::
+
+
+# Acknowledgments
+
+The authors would like to thank:
+
+- Jolette Westbook, EDF
+- Kyle Murray, Acadia Center
+- Ben Butterworth, Acadia Center
+- Jamie Dickerson, Acadia Center
+- Lisa Cunningham, ZeroCarbonMA
+- David Mendels, ZeroCarbonMA
+- Amanda Sachs, Rewiring America
+- Ausin Dawson, Massachusetts Department of Energy Resources
+- Mike Giovanniello, Massachusetts Department of Energy Resources
+- Annette McDermott, Sunstone Strategies
+- Mark Sandeen, MassSolar
+- Larry Chretien, Green Energy Consumers Alliance
+- Amanda Baker, Green Energy Consumers Alliance
+- Mica Crouse, Big Mountain Impact
+
+# References
+
+::: {#refs}
+:::

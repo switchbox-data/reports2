@@ -1,0 +1,60 @@
+---
+title: ma_delivery_tariffs_fueloil
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+
+# MA Propane Delivery Tariffs
+```{r}
+library(tidyverse)
+library(scales)
+library(gt)
+library(gtExtras)
+library(jsonlite)
+library(RSQLite)
+library(readxl)
+
+source("/workspaces/reports/lib/ggplot/switchbox_theme.R")
+
+library(tidyverse)
+library(googlesheets4)
+
+url_sheet_delivery_tariffs_fueloil_ma <- "https://docs.google.com/spreadsheets/d/1UDvrB0dhjY_8M8cnxsdbgAuoW95F6bm670V7SAROAAo/edit?gid=658606865#gid=658606865"
+googlesheets4::gs4_deauth()
+tariffs_fueloil_raw <- read_sheet(url_sheet_delivery_tariffs_fueloil_ma, sheet = "tariffs")
+
+summer_months <- c(5,6,7,8,9,10)
+winter_months <- c(11,12,1,2,3,4)
+
+# The tariffs are specified by season, so we need to expand them out to the monthly grid
+delivery_tariffs_fueloil <- tariffs_fueloil_raw |>
+  mutate(
+    month = if_else(season == "summer",
+                    list(summer_months),
+                    list(winter_months))
+  ) |>
+  select(-season) |>
+  unnest(month) |>
+  arrange(month)
+
+#path_rs_db <- "data/ResStock/2022_resstock_amy2018_release_1.1/rs_ma_hp_rates.db"
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+DBI::dbWriteTable(
+  con,
+  "delivery_tariffs_fueloil",
+  delivery_tariffs_fueloil,
+  overwrite = TRUE
+)
+DBI::dbDisconnect(con)
+```

@@ -1,0 +1,117 @@
+---
+title: ny_supply_rates
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+
+```{r}
+
+source("lib/ggplot/switchbox_theme.R")
+library(lubridate)
+library(patchwork)
+library(tidyverse)
+
+
+supply_rates_raw = read_csv("/workspaces/reports/data/utility_rates/electric/ConEd/ConEd - LDS_APPND.csv", skip = 1) |>
+  janitor::clean_names() |>
+  filter(type == "1") |>
+  rename(
+    from_dt = x2,
+    to_dt = x3,
+    trip = x4,
+    all_hours_h = `lt_zone_h_5`,
+    on_peak_h = `lt_zone_h_7`,
+    off_peak_h = `lt_zone_h_9`,
+    all_hours_i = `lt_zone_i_11`,
+    on_peak_i = `lt_zone_i_13`,
+    off_peak_i = `lt_zone_i_15`,
+    all_hours_j = `lt_zone_j_17`,
+    on_peak_j = `lt_zone_j_19`,
+    off_peak_j = `lt_zone_j_21`
+  ) |>
+  mutate(
+    from_dt = ymd(from_dt),
+    to_dt = ymd(to_dt)
+  )|>
+  mutate(
+    start_year = year(from_dt),
+    start_month = month(from_dt),
+    start_day = day(from_dt)
+  ) |>
+  mutate(
+    utility = "coned"
+  )
+
+# ------------------------------------------------------------
+# Mean by month
+supply_rates <- supply_rates_raw |>
+  select(
+    all_hours_h,
+    on_peak_h,
+    off_peak_h,
+    all_hours_i,
+    on_peak_i,
+    off_peak_i,
+    all_hours_j,
+    on_peak_j,
+    off_peak_j,
+    start_month,
+    start_year
+  ) |>
+  # ConEd provides different supply rates for 1-month periods, but starting each day of the month,
+  # ie 365 different supply rates in each year, with each rate covering a 30-day period from "start_day"
+  # We'll take the average all all the rates for a given "start_month" to get a single rate for that month
+  group_by(start_month, start_year) |>
+  summarize(
+    all_hours_h = mean(all_hours_h),
+    on_peak_h = mean(on_peak_h),
+    off_peak_h = mean(off_peak_h),
+    all_hours_i = mean(all_hours_i),
+    on_peak_i = mean(on_peak_i),
+    off_peak_i = mean(off_peak_i),
+    all_hours_j = mean(all_hours_j),
+    on_peak_j = mean(on_peak_j),
+    off_peak_j = mean(off_peak_j),
+    .groups = "drop"
+  ) |>
+  arrange(start_year, start_month) |>
+  mutate(
+    month = start_month,
+    year = start_year
+  ) |>
+  select(-c(start_month, start_year)) |>
+  pivot_longer(
+    cols = -c(month, year),
+    names_to = "name",
+    values_to = "rate"
+  ) |>
+  mutate(
+    utility = "coned"
+  )
+
+# Save to CSV
+write_csv(
+  supply_rates,
+  "/workspaces/reports/data/utility_rates/electric/ConEd/coned_supply_rates.csv"
+)
+
+
+# Add to database
+path_rs_db <- "data/ResStock/2022_resstock_amy2018_release_1.1/rs_ny_coned_hp_rates.db"
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+DBI::dbWriteTable(con, "supply_rates", supply_rates, overwrite = TRUE)
+DBI::dbDisconnect(con)
+
+
+```

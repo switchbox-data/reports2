@@ -1,0 +1,1148 @@
+---
+title: ANALYSIS - ma_hp_rates
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+
+# Introduction
+How does Unitil's heat pump friendly rate change the bill for heat-pump-having homeowners?
+
+## Steps
+
+### 1.  Get the monthly total energy from all RS 2022.1 homes in
+
+-   specifically `out.electricity.total.energy_consumption`
+-   this is accomplished by downloading and repacking (see `data/ResStock/Justfile`)
+
+### 2.  Get the rates
+
+-   Unitil's rates are provided in ...
+-   Supply rates are saved at `/data/ma_hp_rates/rates/supply_250227.csv`
+
+### 3. Multiply the monthly energy usage totals by the rates
+
+
+### R Boilerplate
+```{r}
+library(tidyverse)
+library(scales)
+
+library(gt)
+library(gtExtras)
+library(jsonlite)
+library(RSQLite)
+
+source("/workspaces/reports/lib/ggplot/switchbox_theme.R")
+
+source("/workspaces/reports/lib/rates_api/arcadia_utils.R")
+```
+
+```{r}
+library(systemfonts)
+library(showtext)
+font_add(
+  family = "IBM-Plex-Sans",
+  regular = "/workspaces/reports/docs/fonts/ibm_plex_sans/IBMPlexSans-Regular.otf",
+  bold = "/workspaces/reports/docs/fonts/ibm_plex_sans/IBMPlexSans-Bold.otf"
+)
+showtext_auto()
+
+theme_set(theme_minimal())
+theme_update(
+  panel.background = element_rect(fill = "white", color = "white"),
+  legend.title = element_text(hjust = 0.5), # Centers the legend title
+  axis.line = element_line(linewidth = 0.5),
+  axis.ticks = element_line(color = "black"),
+  # panel.grid.minor.x = element_blank(),
+  text = element_text(family = "IBM-Plex-Sans", size = 12),
+  axis.text = element_text(
+    family = "IBM-Plex-Sans",
+    size = 12
+  ),
+  axis.title = element_text(
+    family = "IBM-Plex-Sans",
+    size = 12
+  ),
+  strip.text = element_text(
+    size = 12, # Font size
+    family = "IBM-Plex-Sans",
+  ),
+  axis.title.x = element_text(margin = margin(t = 15)),
+  axis.title.y = element_text(margin = margin(r = 15))
+)
+
+
+sb_colors <- c(
+  "sky" = "#68BED8", # primary
+  "midnight" = "#023047", # primary
+  "carrot" = "#FC9706", # primary
+  "saffron" = "#FFC729", # secondary
+  "pistachio" = "#A0AF12", # secondary
+  "black" = "#000000", # utilitarian
+  "white" = "#FFFFFF", # utilitarian
+  "midnight_text" = "#0B6082", # lighter, text only
+  "pistachio_text" = "#546800" # darker, text only
+)
+
+
+ma_hp_rates_colors <- c(
+  "Deep Ocean" = "#0A4B68",
+  "Azure" = "#2A6D8A",
+  "Cerulean" = "#4996B2"
+)
+
+```
+
+
+# Step 1. Get the monthly total energy from all RS 2022.1 homes
+```{r}
+con <- dbConnect(duckdb::duckdb(), "/workspaces/reports/data/ResStock/2022_resstock_amy2018_release_1.1/rs_20250227.db")
+
+# Read only the electricity consumption column from monthly_2022 table
+monthly_2022 <- dbGetQuery(con, "SELECT bldg_id, month, upgrade, \"sum_out.electricity.total.energy_consumption\", \"sum_out.electricity.heating.energy_consumption\" FROM monthly_2022 WHERE upgrade IN (3,4)")
+
+# Disconnect from database
+dbDisconnect(con)
+
+# Show first few rows and structure
+#glimpse(monthly_2022)
+#head(monthly_2022, n=100)
+
+# Median TOTAL monthly electricity consumption by upgrade
+total_monthly_2022 <- monthly_2022 |>
+  group_by(month, upgrade) |>
+  summarize(
+    median_electricity = median(`sum_out.electricity.total.energy_consumption`),
+    .groups = 'drop'
+  ) |>
+  pivot_wider(
+    names_from = upgrade,
+    values_from = median_electricity,
+    names_prefix = "upgrade_"
+  )
+
+total_monthly_2022 <- total_monthly_2022 |>
+  mutate(
+    relative_diff = (`upgrade_4` - `upgrade_3`) / `upgrade_3` * 100
+  )
+
+print("Median TOTAL monthly electricity consumption by upgrade:")
+print(total_monthly_2022, n=24)
+
+# Median HEATING monthly electricity consumption by upgrade
+heating_monthly_2022 <- monthly_2022 |>
+  select(bldg_id, month, upgrade, `sum_out.electricity.heating.energy_consumption`) |>
+  group_by(month, upgrade) |>
+  summarize(
+    median_heating = median(`sum_out.electricity.heating.energy_consumption`),
+    .groups = 'drop'
+  ) |>
+  pivot_wider(
+    names_from = upgrade,
+    values_from = median_heating,
+    names_prefix = "upgrade_"
+  )
+
+heating_monthly_2022 <- heating_monthly_2022 |>
+  mutate(
+    relative_diff = (`upgrade_4` - `upgrade_3`) / `upgrade_3` * 100
+  )
+
+print("Median HEATING monthly electricity consumption by upgrade:")
+print(heating_monthly_2022, n=24)
+```
+
+
+```{r}
+
+total_u4_2022 <- monthly_2022 |>
+  filter(upgrade == 4) |>
+  select(bldg_id, month, `sum_out.electricity.total.energy_consumption`) |>
+  group_by(month)
+
+glimpse(total_u4_2022)
+
+# Get 20 random unique building IDs
+bldgs_u4_2022 <- total_u4_2022 |>
+  ungroup() |>
+  distinct(bldg_id)
+
+# Join the sampled buildings back to the total data
+subset_u4_2022 <- total_u4_2022 |>
+  inner_join(bldgs_u4_2022, by = "bldg_id") |>
+  pivot_wider(
+    names_from = bldg_id,
+    values_from = `sum_out.electricity.total.energy_consumption`
+  ) |>
+  select(month, everything())
+View(subset_u4_2022)
+
+# Get a single building
+bldg40261_u4_2022 <- total_u4_2022 |>
+  filter(bldg_id == 40261)
+```
+
+# Step 2. Get the rates
+
+## Baseline Rate
+Rates are just a bunch of sub-charges that basically fall into 2 classes:
+- Fixed charges
+- Consumption-based charges
+
+We can see all the rate components for Unitil's baseline "RD-1" rate alongside the Heat Pump Rate in the table below.
+
+```{r}
+
+# Read in the rates CSV
+unitil_rates_2024 <- read_csv("data/ma_hp_rates/electric/unitil_rates_2024.csv") |>
+  as_tibble()
+
+print(unitil_rates_2024, n = nrow(unitil_rates_2024))
+
+```
+
+## Heat Pump Rate
+- The heat pump rate is nothing more than a 64% discount on the per-kWh Distribution Charge, as described on (this Unitil webpage)[https://unitil.com/ma-heat-pump-rate/en].
+  - See page 400 MADPU ruling on Unitil Rate case from July 2024 [@madpu_MAUnitilRate_2024]
+  - $0.0958/kWh -> $0.0345/kWh
+  - This discount only applies in the months of November through April (Nov 1 - Apr 30)
+- 64% sounds great, but the the distribution charge is only part of the all-in per-kWh delivery rate, not to mention the per-kWh supply rate.
+- It's really only a discount on the all-in per-kWh _delivery_ rate (see below)
+
+```{r}
+
+rate_components <- tibble(
+  component = c("Fixed Charge", "Transmission", "Distribution", "Adjustment", "Programs", "Supply"),
+  `RD-1` = c(
+    sum(ifelse(unitil_rates_2024$chargeType == "FIXED_PRICE" &
+               unitil_rates_2024$chargeClass == "FIXED_CHARGE",
+               unitil_rates_2024$`RD-1`, 0)),
+    sum(ifelse(unitil_rates_2024$chargeType == "CONSUMPTION_BASED" &
+               unitil_rates_2024$chargeClass == "TRANSMISSION",
+               unitil_rates_2024$`RD-1`, 0)),
+    sum(ifelse(unitil_rates_2024$chargeType == "CONSUMPTION_BASED" &
+               unitil_rates_2024$chargeClass == "DISTRIBUTION",
+               unitil_rates_2024$`RD-1`, 0)),
+    sum(ifelse(unitil_rates_2024$chargeType == "CONSUMPTION_BASED" &
+               unitil_rates_2024$chargeClass == "ADJUSTMENT",
+               unitil_rates_2024$`RD-1`, 0)),
+    sum(ifelse(unitil_rates_2024$chargeType == "CONSUMPTION_BASED" &
+               unitil_rates_2024$chargeClass == "PROGRAMS",
+               unitil_rates_2024$`RD-1`, 0)),
+    sum(ifelse(unitil_rates_2024$chargeType == "CONSUMPTION_BASED" &
+               unitil_rates_2024$chargeClass == "SUPPLY",
+               unitil_rates_2024$`RD-1`, 0))
+  )
+)
+
+print("--------------------------------")
+print("Rate components:")
+print(rate_components)
+
+# Create consumption_components by filtering out "Fixed Distribution"
+consumption_components <- rate_components |>
+  filter(component != "Fixed Charge")
+
+# Display results
+# Calculate sum of delivery components (excluding supply)
+delivery_sum <- sum(consumption_components$`RD-1`[consumption_components$component  %in% c("Transmission", "Distribution", "Adjustment", "Programs")])
+print(paste("Sum of delivery components:", delivery_sum))
+
+delivery_pct <- consumption_components$`RD-1`[consumption_components$component == "Distribution"] / delivery_sum
+print(paste("RD-1 delivery pct:", delivery_pct))
+
+```
+
+
+```{r}
+# Transform consumption_components into a 12x5 tibble with monthly rows
+# 12 rows
+# 5 columns (Transmission, Distribution, Adjustment, Programs, Supply)
+consumption_RD1_12rows <- consumption_components |>
+  pivot_wider(
+    names_from = component,
+    values_from = `RD-1`
+  ) |>
+  slice(rep(1, 12)) |>
+  mutate(month = 1:12) |>
+  select(month, everything())
+
+# HPR is the same as RD1 except for the Distribution charge, which is discounted by 64% in Nov-Apr
+consumption_HPR_12rows <- consumption_RD1_12rows |>
+  mutate(Distribution = ifelse(month %in% c(11,12,1,2,3,4), Distribution * 0.36, Distribution))
+
+
+print(consumption_RD1_12rows)
+print(consumption_HPR_12rows)
+
+```
+
+
+### Savings Shortcut
+- Note that we have a savings shortcut here...it's just the per-kWh difference for the Distribution Charge, $0.0958 - $0.0345 = $0.0613
+- The MADPU likes to use 600kWh a month as a benchmark for consumption. 600kWh x $0.0613/kWh = $36.78/month
+- But homes that adopt a heat pump will use more than 600kWh a month. For these homes, both the total bill and the savings will be higher.
+- With ResStock we can do even better by multiplying the charge difference by the heating signal
+  - `out.heating.total.energy_consumption` * $0.0613/kWh
+  - This is the most direct way to estimates "how much cheaper is it to operate a heat pump when adoption this new rate?" because it removes the rest of the home's energy use from the equation.
+
+```{r}
+# Step 1. Create a monthly all-in per-kWh rate
+hpr_savings <- consumption_HPR_12rows$Distribution - consumption_RD1_12rows$Distribution
+
+# Step 2. Multiply the all-in per-kWh rate by the heating signal
+monthly_savings <- tibble(
+  month = 1:12,
+  savings = hpr_savings * heating_monthly_2022$upgrade_4
+)
+
+print(paste("Total savings: $", round(sum(monthly_savings$savings), 2)))
+```
+
+### Supply Rates
+- (Unitil historical rates)[https://unitil.com/suppliers/energy-supplier-resources#historical]
+  - That page provides an annoying Excel file, which we transform into a tidy CSV format
+  - tranformation: `ma_hp_rates/notebooks/03_ma_supply_rates.qmd`
+  - tidy csv: `data/ma_hp_rates/electric/unitil_supply_rates.csv`
+
+- The discount is eroded when we consider the supply rate.
+- For simplicity we'll consider the customer option of buying energy directly from Unitil. Those are published....
+-
+
+```{r}
+supply_rates <- read_csv("data/ma_hp_rates/electric/unitil_supply_rates.csv")
+
+supply_period = "flat15"
+
+if (supply_period == "2024/2025") {
+  # We'll consider this past year, so April 2024 - March 2025
+  # Get 12 months of supply rates starting from Nov 2024
+  # supply_rates_12mo <- supply_rates |>
+  #   filter(
+  #     (Year == 2024 & Month >= 8) |
+  #     (Year == 2025 & Month < 8)
+  #   ) |>
+  #   select(Year, Month, Monthly) |>
+  #   arrange(Month)
+
+} else if (supply_period == "2022") {
+  supply_rates_12mo <- supply_rates |>
+    filter(Year == 2022)|>
+    select(Year, Month, Monthly) |>
+  arrange(Month)
+
+} else if (supply_period == "flat15") {
+  supply_rates_12mo <- tibble(
+    Year = 2022,
+    Month = 1:12,
+    Monthly = 0.1500
+  )
+}
+
+print(supply_rates_12mo)
+
+```
+
+- Now replace the Supply column with the actually monthly-varying supply rate
+```{r}
+consumption_RD1_12 <- consumption_RD1_12rows |>
+  mutate(
+    Supply = supply_rates_12mo$Monthly,
+    total = rowSums(across(c(Supply, Transmission, Adjustment, Programs, Distribution)))
+  )
+
+options(digits = 3)
+print(consumption_RD1_12, n=24)
+
+consumption_HPR_12 <- consumption_HPR_12rows |>
+  mutate(
+    Supply = supply_rates_12mo$Monthly,
+    total = rowSums(across(c(Supply, Transmission, Adjustment, Programs, Distribution)))
+  )
+
+print(consumption_HPR_12, n=24)
+
+
+```
+
+```{r}
+all_in_consumption_RD1 <- consumption_RD1_12 |>
+  mutate(
+    all_in = rowSums(across(c(Supply, Transmission, Adjustment, Programs, Distribution)))
+  ) |>
+  select(month, all_in)
+
+print("All-in consumption under RD-1 rate:")
+print(all_in_consumption_RD1, n=12)
+
+
+all_in_consumption_HPR <- consumption_HPR_12 |>
+  mutate(
+    all_in = rowSums(across(c(Supply, Transmission, Adjustment, Programs, Distribution)))
+  ) |>
+  select(month, all_in)
+
+print("All-in consumption under HPR rate:")
+print(all_in_consumption_HPR, n=12)
+
+```
+
+
+
+# 3. Multiply the monthly energy usage totals by the rates to get the monthly bill
+- This gives a sample of monthly bills, including the distribution of who pays more and who pays less
+- We can even review that set for things like income distribution, etc.
+
+```{r}
+# Create a new dataframe with the same structure as consumption_RD1_12
+# but multiply each rate component by the monthly consumption
+monthly_bills_RD1 <- consumption_RD1_12 |>
+  mutate(
+    Fixed = rate_components$`RD-1`[rate_components$component == "Fixed Charge"],
+    Supply = Supply * total_monthly_2022$upgrade_4,
+    Transmission = Transmission * total_monthly_2022$upgrade_4,
+    Adjustment = Adjustment * total_monthly_2022$upgrade_4,
+    Programs = Programs * total_monthly_2022$upgrade_4,
+    Distribution = Distribution * total_monthly_2022$upgrade_4,
+  ) |>
+  select(Fixed, Supply, Transmission, Adjustment, Programs, Distribution)
+
+
+print("Monthly bills under RD-1 rate:")
+print(monthly_bills_RD1, n=24)
+
+
+# Heat pump Rate
+monthly_bills_HPR <- consumption_HPR_12 |>
+  mutate(
+    Fixed = rate_components$`RD-1`[rate_components$component == "Fixed Charge"],
+    Supply = Supply * total_monthly_2022$upgrade_4,
+    Transmission = Transmission * total_monthly_2022$upgrade_4,
+    Adjustment = Adjustment * total_monthly_2022$upgrade_4,
+    Programs = Programs * total_monthly_2022$upgrade_4,
+    Distribution = Distribution * total_monthly_2022$upgrade_4,
+  ) |>
+  select(Fixed, Supply, Transmission, Adjustment, Programs, Distribution)
+
+print("Monthly bills under Heat Pump Rate:")
+print(monthly_bills_HPR, n=24)
+
+
+monthly_bills_RD1_long <- monthly_bills_RD1 |>
+  mutate(Month = 1:12) |>
+  pivot_longer(
+    cols = -Month,
+    names_to = "Component",
+    values_to = "Amount"
+  ) |>
+  mutate(Rate = "RD-1")
+
+monthly_bills_HPR_long <- monthly_bills_HPR |>
+  mutate(Month = 1:12) |>
+  pivot_longer(
+    cols = -Month,
+    names_to = "Component",
+    values_to = "Amount"
+  ) |>
+  mutate(Rate = "HPR")
+
+# Combine the data
+monthly_bills_combined <- bind_rows(monthly_bills_RD1_long, monthly_bills_HPR_long)
+
+# Set the order of components
+monthly_bills_combined$Component <- factor(
+  monthly_bills_combined$Component,
+  levels = c("Distribution", "Programs", "Adjustment", "Transmission", "Supply", "Fixed")
+)
+
+```
+
+```{r}
+# Calculate annual totals by component and rate
+annual_bills <- monthly_bills_combined |>
+  group_by(Rate, Component) |>
+  summarize(
+    Amount = sum(Amount),
+    .groups = 'drop'
+  )
+
+print("Annual Bills:")
+print(annual_bills)
+
+
+# Print total annual bills by rate
+annual_totals <- annual_bills |>
+  group_by(Rate) |>
+  summarize(
+    Total = sum(Amount),
+    .groups = 'drop'
+  )
+
+print("Annual totals by rate:")
+print(annual_totals)
+
+# Calculate and print the difference
+rd1_total <- annual_totals |> filter(Rate == "RD-1") |> pull(Total)
+hpr_total <- annual_totals |> filter(Rate == "HPR") |> pull(Total)
+savings <- rd1_total - hpr_total
+
+print(paste("\nAnnual savings with Heat Pump Rate: $", round(savings, 2)))
+
+# Print full component breakdown
+print("\nFull component breakdown:")
+print(annual_bills, n=24)
+
+
+```
+
+
+### Annual bill for every bldg_id
+```{r}
+
+glimpse(subset_u4_2022)
+
+# Get building IDs (column names except 'month')
+rs_upgrade <- "4, High Efficiency"
+
+if (rs_upgrade == "4, High Efficiency") {
+  bldg_ids <- names(subset_u4_2022)[names(subset_u4_2022) != "month"]
+} else if (rs_upgrade == "3, Minimum Efficiency") {
+  bldg_ids <- names(subset_u3_2022)[names(subset_u3_2022) != "month"]
+}
+# Create empty list to store annual bills
+annual_bills_RD1 <- list()
+annual_bills_HPR <- list()
+
+# Calculate annual bill for each building
+for (bldg_id in bldg_ids) {
+  # Get monthly consumption for this building
+  monthly_consumption <- subset_u4_2022[[bldg_id]]
+
+  # Multiply by monthly rates and sum
+  annual_bill <- sum(monthly_consumption * all_in_consumption_RD1$all_in)
+
+  # Store in list
+  annual_bills_RD1[[bldg_id]] <- annual_bill
+}
+
+for (bldg_id in bldg_ids) {
+  # Get monthly consumption for this building
+  monthly_consumption <- subset_u4_2022[[bldg_id]]
+
+  # Multiply by monthly rates and sum
+  annual_bill <- sum(monthly_consumption * all_in_consumption_HPR$all_in)
+
+  # Store in list
+  annual_bills_HPR[[bldg_id]] <- annual_bill
+}
+
+
+# Convert to tibble for easier viewing
+annual_bills_RD1_df <- tibble(
+  bldg_id = names(annual_bills_RD1),
+  annual_bill = unlist(annual_bills_RD1)
+)
+
+annual_bills_HPR_df <- tibble(
+  bldg_id = names(annual_bills_HPR),
+  annual_bill = unlist(annual_bills_HPR)
+)
+
+print("Annual bills under RD-1 rate for sample buildings:")
+print(annual_bills_RD1_df)
+
+print("Annual bills under HPR rate for sample buildings:")
+print(annual_bills_HPR_df)
+
+```
+
+```{r}
+
+# Calculate percent savings
+savings_df <- annual_bills_RD1_df |>
+  left_join(annual_bills_HPR_df, by = "bldg_id") |>
+  mutate(
+    savings = annual_bill.y - annual_bill.x,
+    percent_savings = (annual_bill.y - annual_bill.x) / annual_bill.x * 100
+  ) |>
+  select(bldg_id, savings, percent_savings)
+
+print("Savings under HPR vs RD-1:")
+print(savings_df)
+
+# Calculate summary statistics
+savings_summary <- savings_df |>
+  summarise(
+    mean_savings = mean(percent_savings),
+    median_savings = median(percent_savings),
+    min_savings = min(percent_savings),
+    max_savings = max(percent_savings)
+  )
+
+print("\nSavings Summary Statistics:")
+print(savings_summary)
+
+
+
+
+
+```
+
+
+
+
+# 4. Bar Chart
+
+## Monthly Bar Chart
+```{r}
+source("/workspaces/reports/lib/ggplot/switchbox_theme.R")
+
+
+# Create a position variable for side-by-side bars
+monthly_bills_combined <- monthly_bills_combined |>
+  mutate(pos = as.numeric(factor(Month)) + ifelse(Rate == "RD-1", -0.2, 0.2))
+
+# Create the plot with stacked bars side-by-side
+ggplot(monthly_bills_combined, aes(x = pos, y = Amount, fill = Component)) +
+  geom_bar(stat = "identity", position = "stack", width = 0.4) +
+  scale_x_continuous(breaks = 1:12, labels = month.abb) +
+  scale_fill_brewer(palette = "Set3") +
+  labs(
+    title = "Monthly Bills Comparison: RD-1 vs HPR",
+    subtitle = paste("Supply Period:", supply_period),
+    x = "",
+    y = "Amount ($)",
+    fill = "Bill Component"
+  ) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = c(.5, .7),
+    legend.box = "vertical",
+    legend.background = element_rect(fill = "grey90")
+  )+
+
+  # Add text annotations for rate types
+  annotate(
+    "text",
+    x = 1.2, # Position for RD-1 label (middle of first half)
+    y = monthly_bills_combined |> filter(Month == 1, Rate == "RD-1") |> pull(Amount) |> sum() * 1.03,
+    label = "RD-1 (Baseline)",
+    family = "IBM-Plex-Sans",
+    size = 4
+  ) +
+  annotate(
+    "text",
+    x = 1.7, # Position for HPR label (middle of second half)
+    y = monthly_bills_combined |> filter(Month == 1, Rate == "HPR") |> pull(Amount) |> sum() * 1.03,
+    label = "Heat Pump Rate",
+    family = "IBM-Plex-Sans",
+    size = 4
+  )
+
+
+```
+
+## Annual Bar Chart
+
+```{r}
+
+
+# Create the annual comparison plot
+ggplot(annual_bills, aes(x = factor(Rate, levels = c("RD-1", "HPR")), y = Amount, fill = Component)) +
+  geom_bar(stat = "identity", position = "stack", width = 0.6) +
+  scale_fill_brewer(palette = "Set3") +
+  scale_x_discrete(labels = c("RD-1" = "RD-1 (Default)", "HPR" = "Heat Pump Rate")) +
+  scale_y_continuous(labels = scales::dollar_format()) +
+  labs(
+    title = "Annual Bill Comparison: RD-1 vs HPR",
+    subtitle = paste("Supply Period:", supply_period),
+    x = "",
+    y = "Median Annual Bill ($)",
+    fill = "Bill Component"
+  ) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = "right",
+    legend.box = "vertical",
+    legend.background = element_rect(fill = "grey90")
+  ) +
+  # Add total amount annotations
+  annotate(
+    "text",
+    x = "RD-1",
+    y = rd1_total * 1.02,
+    label = paste0("$", format(round(rd1_total, 0), big.mark=",")),
+  ) +
+  annotate(
+    "text",
+    x = "HPR",
+    y = hpr_total * 1.02,
+    label = paste0("$", format(round(hpr_total, 0), big.mark=",")),
+  )
+  # Add percent difference annotation
+  # annotate(
+  #   "text",
+  #   x = 1.5,
+  #   y = max(rd1_total, hpr_total) * 0.97,
+  #   label = paste0(round((hpr_total - rd1_total) / rd1_total * 100, 1), "% difference ↓"),
+  # )
+
+  # ggsave(
+  #   "src/ma_hp_rates/img/bills_annual.png",
+  #   width = 10,
+  #   height = 8,
+  #   dpi = 300
+  # )
+
+```
+
+## Annual Stacked Bar, Looped
+```{r}
+
+bill_colors <- c(
+  "Distribution" = sb_colors[["carrot"]],
+  "Programs" = ma_hp_rates_colors[["Cerulean"]],
+  "Adjustment" = ma_hp_rates_colors[["Azure"]],
+  "Transmission" = ma_hp_rates_colors[["Deep Ocean"]],
+  "Supply" = sb_colors[["pistachio"]],
+  "Fixed" = sb_colors[["midnight"]]
+)
+
+y_annotation_offset <- 50
+
+# Get unique components in order they appear
+components <- rev(unique(annual_bills$Component))
+print(components)
+
+# Loop through number of components
+for (i in 0:length(components)) {
+  # Take only first i components
+  subset_bills <- annual_bills |>
+    filter(Component %in% components[0:i])
+
+  # Calculate subtotals for each rate up to current component
+  rd1_component <- subset_bills$Amount[subset_bills$Rate == "RD-1"]
+  rd1_subtotal <- sum(subset_bills$Amount[subset_bills$Rate == "RD-1"])
+  hpr_component <- subset_bills$Amount[subset_bills$Rate == "HPR"]
+  hpr_subtotal <- sum(subset_bills$Amount[subset_bills$Rate == "HPR"])
+
+  # Create a dummy dataset with all components to set consistent legend space
+  dummy_data <- annual_bills |>
+    complete(Rate, Component) |>
+    replace_na(list(Amount = 0))
+
+  ggplot() +
+    # Plot the dummy data with zero alpha to reserve legend space
+    geom_bar(data = dummy_data,
+             aes(x = factor(Rate, levels = c("RD-1", "HPR")),
+                 y = Amount, fill = Component),
+             stat = "identity", position = "stack", width = 0.6,
+             alpha = 0) +
+    # Plot the actual subset data
+    geom_bar(data = subset_bills,
+             aes(x = factor(Rate, levels = c("RD-1", "HPR")),
+                 y = Amount, fill = Component),
+             stat = "identity", position = "stack", width = 0.6) +
+    scale_fill_manual(values = bill_colors) +
+    scale_x_discrete(labels = c("RD-1" = "RD-1 (Default)", "HPR" = "Heat Pump Rate")) +
+    scale_y_continuous(limits = c(0, 4500), labels = scales::dollar_format()) +
+    labs(
+      title = "Annual Bill Comparison: RD-1 vs HPR",
+      subtitle = paste("Supply Period:", supply_period),
+      x = "",
+      y = "Median Annual Bill ($)",
+      fill = "Bill Component"
+    ) +
+    theme(
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor = element_blank(),
+      legend.position = "right",
+      legend.box = "vertical",
+      legend.background = element_rect(fill = "grey90")
+    ) +
+    # Add subtotal annotations for current components
+    annotate(
+      "text",
+      x = "RD-1",
+      y = (rd1_subtotal + y_annotation_offset),
+      label = paste0("$", format(round(rd1_subtotal, 0), big.mark=",")),
+    ) +
+    annotate(
+      "text",
+      x = "HPR",
+      y = (hpr_subtotal + y_annotation_offset),
+      label = paste0("$", format(round(hpr_subtotal, 0), big.mark=",")),
+    )
+
+  ggsave(
+    paste0("src/ma_hp_rates/img/bills_annual_stacked_", i, ".png"),
+    width = 4,
+    height = 3,
+    dpi = 300
+  )
+}
+
+```
+
+
+
+
+# 5. Histograms
+
+```{r}
+# Combine the data and create density plots
+annual_bills_combined <- bind_rows(
+  mutate(annual_bills_HPR_df, rate = "HPR"),
+   mutate(annual_bills_RD1_df, rate = "RD-1")
+)
+
+
+print(mean(annual_bills_combined$annual_bill))
+print(sd(annual_bills_combined$annual_bill))
+
+# Calculate mean and standard deviation
+mean_bill <- mean(annual_bills_combined$annual_bill)
+sd_bill <- sd(annual_bills_combined$annual_bill)
+
+# Filter to within 3 standard deviations
+annual_bills_combined <- annual_bills_combined |>
+  filter(annual_bill >= mean_bill - 3*sd_bill,
+         annual_bill <= mean_bill + 3*sd_bill)
+
+
+print(annual_bills_combined)
+
+# Create density plot
+ggplot(annual_bills_combined, aes(x = annual_bill, color = rate)) +
+  geom_density(size = 1) +
+  # geom_vline(data = annual_bills_combined |> group_by(rate) |>
+  #            summarize(mean_bill = mean(annual_bill)),
+  #            aes(xintercept = mean_bill, color = rate),
+  #            linetype = "dashed") +
+  annotate(
+    "text",
+    x = 1000,
+    y = 0.00015,
+    label = "HPR",
+    size = 18/.pt,
+    color = sb_colors[["carrot"]],
+    fontface = "bold"
+  ) +
+  annotate(
+    "text",
+    x = 2600,
+    y = 0.00013,
+    label = "RD-1",
+    size = 18/.pt,
+    color = sb_colors[["midnight"]],
+    fontface = "bold"
+  ) +
+  geom_vline(xintercept = 6000, color = "red", linetype = "solid") +
+  annotate(
+    "text",
+    x = 6200,
+    y = 0.00012,
+    label = "Median Energy Burden Threshold in MA",
+    size = 14/.pt,
+    color = "red",
+    fontface = "bold",
+    hjust = -0.03
+  ) +
+  scale_color_manual(values = c(
+    "RD-1" = sb_colors[["midnight"]],
+    "HPR" = sb_colors[["carrot"]]
+  )) +
+  xlim(0, 20000) +
+  labs(
+    title = "Distribution of Annual Bills",
+    subtitle = sprintf(
+      "Supply Period: %s | Upgrade: %s",
+      as.character(supply_period),
+      as.character(rs_upgrade)
+    ),
+    x = "Annual Bill Amount ($)",
+    y = "Density",
+    color = "Rate Type"
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(hjust = 0.5)
+  )
+
+ggsave(
+  "src/ma_hp_rates/img/bills_density.png",
+  width = 5,
+  height = 3,
+  dpi = 300
+)
+
+```
+
+
+# 6. Box-and-Whisker Plot
+```{r}
+
+# Calculate quartiles for each rate type
+quartiles <- annual_bills_combined |>
+  group_by(rate) |>
+  summarize(
+    q1 = quantile(annual_bill, 0.25),
+    median = median(annual_bill),
+    q3 = quantile(annual_bill, 0.75)
+  )
+
+print("Quartiles by rate type:")
+print(quartiles)
+
+# Create box plot
+ggplot(annual_bills_combined, aes(x = factor(rate, levels = c("RD-1", "HPR")), y = annual_bill, fill = rate)) +
+  geom_boxplot(outlier.size = 0.5) +
+  scale_y_continuous(limits = c(0, 20000), labels = scales::dollar_format()) +
+  scale_x_discrete(labels = c("RD-1" = "RD-1 (Default)", "HPR" = "Heat Pump Rate")) +
+  scale_fill_manual(values = c(
+    "RD-1" = sb_colors[["midnight"]],
+    "HPR" = sb_colors[["carrot"]]
+  )) +
+  geom_text(data = quartiles,
+            aes(x = rate, y = q1, label = sprintf("Q1: $%.0f", q1)),
+            vjust = 1.7, hjust = 0, position = position_nudge(x = 0.05), color = "black", size = 12/.pt) +
+  geom_text(data = quartiles,
+            aes(x = rate, y = median, label = sprintf("Median: $%.0f", median)),
+            vjust = -.8, hjust = 0, position = position_nudge(x = 0.05), color = c("black", sb_colors[["sky"]]), size = 12/.pt) +
+  geom_text(data = quartiles,
+            aes(x = rate, y = q3, label = sprintf("Q3: $%.0f", q3)),
+            vjust = -0.7, hjust = 0, position = position_nudge(x = 0.05), color = "black", size = 12/.pt) +
+  labs(
+    title = "Distribution of Annual Bills",
+    subtitle = sprintf(
+      "Supply Period: %s | Upgrade: %s",
+      as.character(supply_period),
+      as.character(rs_upgrade)
+    ),
+    x = "Rate Type",
+    y = "Annual Bill Amount ($)"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "none"
+  )
+ggsave(
+  "src/ma_hp_rates/img/bills_boxplot.png",
+  width = 6,
+  height = 3,
+  dpi = 300
+)
+
+```
+
+
+```{r}
+library(patchwork)
+print(annual_bills_combined)
+
+title_x = 0
+title_y = 90
+title_hjust = 0.1
+
+# Create stacked histogram
+# Create separate plots for each rate type
+rd1_plot <- ggplot(subset(annual_bills_combined, rate == "RD-1"),
+                   aes(x = annual_bill)) +
+  geom_histogram(fill = sb_colors[["midnight"]], binwidth = 500) +
+  scale_x_continuous(labels = scales::dollar_format()) +
+  labs(y = "Count") +
+  annotate(
+    "text",
+    x = title_x,
+    y = title_y,
+    label = "RD-1 (Default)",
+    size = 18/.pt,
+    color = sb_colors[["midnight"]],
+    fontface = "bold",
+    hjust = title_hjust
+  ) +
+  geom_vline(xintercept = median(subset(annual_bills_combined, rate == "RD-1")$annual_bill), color = sb_colors[["midnight"]], linetype = "solid") +
+  annotate(
+    "text",
+    x = median(subset(annual_bills_combined, rate == "RD-1")$annual_bill),
+    y = 80,
+    label = "Median RD-1 Bill: $4,269",
+    size = 14/.pt,
+    color = sb_colors[["midnight"]],
+    fontface = "bold",
+    hjust = -.05
+  )
+  # geom_vline(xintercept = 6000, color = "red", linetype = "solid") +
+  # annotate(
+  #   "text",
+  #   x = 6100,
+  #   y = 60,
+  #   label = "Median Energy Burden Threshold in MA",
+  #   size = 14/.pt,
+  #   color = "red",
+  #   fontface = "bold",
+  #   hjust = 0
+  # )
+
+
+hpr_plot <- ggplot(subset(annual_bills_combined, rate == "HPR"),
+                   aes(x = annual_bill)) +
+  geom_histogram(fill = sb_colors[["carrot"]], binwidth = 500) +
+  scale_x_continuous(labels = scales::dollar_format()) +
+  labs(x = "Annual Bill Amount ($)",
+       y = "Count") +
+  annotate(
+    "text",
+    x = title_x,
+    y = title_y,
+    label = "Heat Pump Rate",
+    size = 18/.pt,
+    color = sb_colors[["carrot"]],
+    fontface = "bold",
+    hjust = title_hjust
+  ) +
+  geom_vline(xintercept = median(subset(annual_bills_combined, rate == "HPR")$annual_bill), color = sb_colors[["carrot"]], linetype = "solid") +
+  annotate(
+    "text",
+    x = median(subset(annual_bills_combined, rate == "HPR")$annual_bill),
+    y = 80,
+    label = "Median HPR Bill: $3,838",
+    size = 14/.pt,
+    color = sb_colors[["carrot"]],
+    fontface = "bold",
+    hjust = -0.05
+  )
+  # geom_vline(xintercept = 6000, color = "red", linetype = "solid") +
+  # annotate(
+  #   "text",
+  #   x = 6100,
+  #   y = 60,
+  #   label = "Median Energy Burden Threshold in MA",
+  #   size = 14/.pt,
+  #   color = "red",
+  #   fontface = "bold",
+  #   hjust = 0
+  # )
+
+# Combine plots using patchwork
+combined_plot <- rd1_plot / hpr_plot +
+  plot_annotation(
+    title = "Distribution of Annual Bills",
+    subtitle = sprintf(
+      "Supply Period: %s | Upgrade: %s",
+      as.character(supply_period),
+      as.character(rs_upgrade)
+    )
+  )
+
+combined_plot
+
+
+# Save the combined plot
+ggsave(
+  "src/ma_hp_rates/img/bills_stacked_histograms.png",
+  plot = combined_plot,
+  width = 5,
+  height = 3,
+  dpi = 300
+)
+
+
+
+
+```
+
+
+```{r}
+
+# Create histogram of percent savings
+ggplot(savings_df, aes(x = abs(percent_savings))) +
+  geom_histogram(
+    fill = sb_colors[["pistachio"]],
+    color = sb_colors[["black"]],
+    binwidth = 0.5
+  ) +
+  labs(
+    title = "Distribution of Absolute Percent Savings",
+    subtitle = sprintf(
+      "Supply Period: %s | Upgrade: %s",
+      as.character(supply_period),
+      as.character(rs_upgrade)
+    ),
+    x = "Percent Savings (%)",
+    y = "Count"
+  ) +
+  scale_x_continuous(labels = function(x) paste0(x, "%")) +
+  theme(
+    plot.title = element_text(
+      family = "IBM-Plex-Sans",
+      size = 16,
+      face = "bold"
+    ),
+    plot.subtitle = element_text(
+      family = "IBM-Plex-Sans",
+      size = 12
+    )
+  )
+
+# Save the plot
+ggsave(
+  "src/ma_hp_rates/img/savings_histogram.png",
+  width = 5,
+  height = 3,
+  dpi = 300
+)
+
+
+```
+
+
+# Next round
+
+- Histograms
+  3 layers
+    Default
+    HPR
+    DOER
+
+- Savings
+  - default vs HPR
+- default vs doer
+
+- bill breakdown
+  - 3 categories
+    - fixed
+    - delviery
+    - supply
+
+- (maybe)
+
+- ----
+- comparing utiliies
+  - hist values 3x (by utility)
+
+
+
+
+Sprint 2: static switching analyis
+  - get gas bills
+  - also geographic parsin
+
+Sprint 3: Supply variance
+  - just use the same 3 rates, but different years' supply rates
+
+
+-

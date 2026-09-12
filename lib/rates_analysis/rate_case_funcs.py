@@ -1013,6 +1013,11 @@ def plot_bill_change_quadrant_single(
 ) -> ggplot:
     """Single horizontal bar of bill-change quadrants for one heating type under one rate.
 
+    .. deprecated::
+        Use ``plot_bill_change_quadrant_rate_comparison()`` with a single
+        ``rates`` entry instead — it produces the same chart with consistent
+        sizing and a right-hand row label.
+
     Like ``plot_bill_change_quadrants`` but shows only one heating type as a
     single bar, giving it more visual weight when the analysis discusses each
     fuel individually rather than comparing them side-by-side.
@@ -1121,6 +1126,7 @@ def plot_bill_change_quadrant_rate_comparison(
     heating_type: str,
     bill_col: str = "energy_total_bill",
     month: str | Sequence[str] = "Annual",
+    title: str | None = None,
     title_parts: list[tuple[str, str]] | None = None,
 ) -> ggplot | Figure:
     """Compare bill-change quadrants for one heating type across multiple rate scenarios.
@@ -1143,6 +1149,9 @@ def plot_bill_change_quadrant_rate_comparison(
         Column to diff; defaults to ``"energy_total_bill"``.
     month
         ``"Annual"`` or a sequence of calendar months.
+    title
+        Override the auto-generated title string. When *None* (default), a
+        title is built from *heating_type* and *month*.
     title_parts
         Optional multi-color title parts (see
         ``plot_bill_change_quadrant_comparison``).
@@ -1168,7 +1177,7 @@ def plot_bill_change_quadrant_rate_comparison(
 
     return plot_bill_change_quadrant_comparison(
         rows,
-        title=default_title,
+        title=title or default_title,
         title_parts=title_parts,
     )
 
@@ -1201,9 +1210,8 @@ def plot_bill_change_quadrant_comparison(
     string). Otherwise the plain *title* string is used as a standard
     plotnine title.
 
-    Since row labels are drawn as captions rather than axis text (there is no
-    axis at all — see below), a single row renders with no right-hand label;
-    pass at least two rows to see per-row captions.
+    Row labels are drawn as captions past the right end of each bar (there is
+    no axis text); they render for any number of rows, including a single row.
     """
     import plotnine as plt
 
@@ -1236,13 +1244,12 @@ def plot_bill_change_quadrant_comparison(
     # the row label), here the whole axis is blanked below, so row labels
     # (e.g. "Default rate") are drawn as text past the right end of each bar.
     row_label_records: list[dict[str, object]] = []
-    if n_scenarios > 1:
-        for i, (row_label, _) in enumerate(rows):
-            bar_pos = n_scenarios - i
-            row_label_records.append({"x": bar_pos, "y": 101, "label": row_label})
+    for i, (row_label, _) in enumerate(rows):
+        bar_pos = n_scenarios - i
+        row_label_records.append({"x": bar_pos, "y": 101, "label": row_label})
     row_label_df = pl.DataFrame(row_label_records) if row_label_records else None
 
-    top_expand = 0.7 if n_scenarios > 1 else 1.2
+    top_expand = 0.7
     plotnine_title = "" if title_parts else title
 
     p = (
@@ -1265,7 +1272,7 @@ def plot_bill_change_quadrant_comparison(
         + plt.labs(x="", y="", title=plotnine_title)
         + theme_switchbox()
         + plt.theme(
-            figure_size=(13.5, max(2.6, 1.0 + 1.4 * n_scenarios)),
+            figure_size=(13.5, max(3.2, 1.0 + 1.4 * n_scenarios)),
             # No axis at all here: percentages are already captioned in-bar,
             # and row labels are captioned at the right end of each bar (see
             # row_label_df above), so the categorical axis text would be
@@ -2653,10 +2660,10 @@ def plot_decomposed_bill_3bar(
     ax.set_xticklabels(scenarios, fontsize=11)
     ax.set_ylabel("Annual energy bill ($)", fontsize=12)
     ax.set_ylim(0, max(totals) * 1.22)
-    ax.set_xlim(-0.5, x[2] + w / 2 + 0.7)
+    ax.set_xlim(x[0] - w / 2 - 0.3, x[2] + w / 2 + 0.7)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.spines["bottom"].set_bounds(-0.5, x[2] + w / 2)
+    ax.spines["bottom"].set_bounds(x[0] - w / 2 - 0.3, x[2] + w / 2)
     fig.tight_layout()
     return fig, savings, pct_savings / 100, totals[1], totals[2]
 
@@ -2771,10 +2778,10 @@ def plot_decomposed_bill_2bar(
     ax.set_xticklabels(scenarios, fontsize=11)
     ax.set_ylabel("Annual energy bill ($)", fontsize=12)
     ax.set_ylim(0, max(totals) * 1.18)
-    ax.set_xlim(-0.5, x_end + 0.7)
+    ax.set_xlim(x[0] - w / 2 - 0.3, x_end + 0.7)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.spines["bottom"].set_bounds(-0.5, x_end)
+    ax.spines["bottom"].set_bounds(x[0] - w / 2 - 0.3, x[1] + w / 2)
     fig.tight_layout()
     return fig
 
@@ -4198,9 +4205,10 @@ def plot_seasonal_delivery_mc(
     ax.set_xticklabels(season_order, fontsize=11, fontfamily="IBM Plex Sans")
     ax.set_ylabel("Delivery marginal cost ($)", fontsize=12, fontfamily="IBM Plex Sans")
     ax.set_ylim(0, max_total * 1.15)
-    ax.set_xlim(positions[0] - 0.5, positions[-1] + 1.2)
+    ax.set_xlim(positions[0] - w / 2 - 0.3, positions[-1] + 1.2)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+    ax.spines["bottom"].set_bounds(positions[0] - w / 2 - 0.3, positions[-1] + w / 2)
     ax.yaxis.set_major_formatter(lambda x, _: f"${x:,.2f}")
     fig.tight_layout()
 
@@ -4348,9 +4356,10 @@ def plot_seasonal_delivery_mc_comparison(
 
     ax.set_ylabel("Delivery marginal cost ($)", fontsize=12, fontfamily="IBM Plex Sans")
     ax.set_ylim(0, max_total * 1.25)
-    ax.set_xlim(x[0] - 0.55, x[-1] + 1.2)
+    ax.set_xlim(x[0] - w / 2 - 0.3, x[-1] + 1.2)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+    ax.spines["bottom"].set_bounds(x[0] - w / 2 - 0.3, x[-1] + w / 2)
     ax.yaxis.set_major_formatter(lambda val, _: f"${val:,.2f}")
     fig.tight_layout()
 

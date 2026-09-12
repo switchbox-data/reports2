@@ -50,7 +50,6 @@ from lib.rates_analysis.rate_case_funcs import (
     bill_delta_between_segments,
     load_master_bills,
     plot_bill_change_quadrant_rate_comparison,
-    plot_bill_change_quadrant_single,
     plot_bill_change_quadrants,
     plot_weighted_bill_change_hist,
     segment_name,
@@ -159,6 +158,32 @@ print(f"Unique ResStock buildings: {n_resstock_bldgs:,}")
 print(f"Total MD BGE residential customers (sum of weights): {n_utility_customers:,.0f}")
 ```
 
+What share of BGE's residential customers heat with each fuel type? We compute weighted
+shares from the baseline (pre-retrofit) population — each building's ResStock sample weight
+represents the number of actual BGE customers it stands for, so the weighted share is the
+population share.
+
+```{python}
+#| label: heating-type-shares
+
+_ht_shares = (
+    _sample.group_by("postprocess_group.heating_type_v2")
+    .agg(pl.col("weight").sum().alias("weighted_n"))
+    .with_columns((pl.col("weighted_n") / pl.col("weighted_n").sum()).alias("share"))
+    .sort("weighted_n", descending=True)
+)
+print(_ht_shares)
+
+report_vars["pct_customers_natgas"] = float(
+    _ht_shares.filter(pl.col("postprocess_group.heating_type_v2") == "natgas")["share"][0]
+)
+report_vars["pct_customers_delivered"] = float(
+    _ht_shares.filter(pl.col("postprocess_group.heating_type_v2") == "delivered_fuels")["share"][0]
+)
+print(f"Natural gas: {report_vars['pct_customers_natgas']:.1%}")
+print(f"Delivered fuels: {report_vars['pct_customers_delivered']:.1%}")
+```
+
 ## Bill-increase incidence switching from natural gas to a heat pump, under Schedule R
 
 How often does a natural-gas-heated MD BGE home end up with a *higher* total annual energy
@@ -187,6 +212,26 @@ report_vars["pct_natgas_hp_bill_increase_default"] = incidence_natgas_default["p
 report_vars["pct_natgas_hp_bill_decrease_default"] = incidence_natgas_default["pct_decrease"]
 report_vars["mean_natgas_hp_bill_increase_default"] = incidence_natgas_default["mean_delta"]
 report_vars["median_natgas_hp_bill_increase_default"] = incidence_natgas_default["median_delta"]
+```
+
+```{python}
+#| label: compute-delivered-hp-delta-default
+
+delta_delivered_default = bill_delta_between_segments(
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED, bill_col=BILL_COL
+).filter(pl.col("heating_type_v2") == "delivered_fuels")
+
+incidence_delivered_default = bill_change_incidence(delta_delivered_default)
+incidence_delivered_default
+```
+
+```{python}
+#| label: report-vars-delivered-hp-delta-default
+
+report_vars["pct_delivered_hp_bill_increase_default"] = incidence_delivered_default["pct_increase"]
+report_vars["pct_delivered_hp_bill_decrease_default"] = incidence_delivered_default["pct_decrease"]
+report_vars["mean_delivered_hp_bill_increase_default"] = incidence_delivered_default["mean_delta"]
+report_vars["median_delivered_hp_bill_increase_default"] = incidence_delivered_default["median_delta"]
 ```
 
 **`{python} f"{report_vars['pct_natgas_hp_bill_increase_default']:.0%}"` of natural-gas-heated
@@ -220,11 +265,12 @@ The same quadrant breakdown, shown one fuel at a time for standalone embedding i
 #| label: fig-bill-change-quadrants-default-natgas
 #| fig-cap: "Change in total annual energy bill for natural-gas-heated homes after switching to a heat pump, under MD BGE's Schedule R."
 
-plot_bill_change_quadrant_single(
-    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED,
+plot_bill_change_quadrant_rate_comparison(
+    STATE, BATCH, SEG_DEFAULT_PRECALC,
+    rates=[(SEG_DEFAULT_CALIBRATED, "Schedule R")],
     heating_type="natgas",
     bill_col=BILL_COL,
-    rate_name="Schedule R",
+    title="Change in annual electricity + gas bills after heat pump under Schedule R,\nfor natural-gas-heated homes",
 )
 ```
 
@@ -232,11 +278,12 @@ plot_bill_change_quadrant_single(
 #| label: fig-bill-change-quadrants-default-delivered
 #| fig-cap: "Change in total annual energy bill for delivered-fuel-heated homes after switching to a heat pump, under MD BGE's Schedule R."
 
-plot_bill_change_quadrant_single(
-    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED,
+plot_bill_change_quadrant_rate_comparison(
+    STATE, BATCH, SEG_DEFAULT_PRECALC,
+    rates=[(SEG_DEFAULT_CALIBRATED, "Schedule R")],
     heating_type="delivered_fuels",
     bill_col=BILL_COL,
-    rate_name="Schedule R",
+    title="Change in annual electricity + delivered fuel bills after heat pump under Schedule R,\nfor delivered-fuel-heated homes",
 )
 ```
 
@@ -352,6 +399,7 @@ plot_bill_change_quadrant_rate_comparison(
     ],
     heating_type="natgas",
     bill_col=BILL_COL,
+    title="Change in annual electricity + gas bills after heat pump under Schedule R vs. Schedule R-HP,\nfor natural-gas-heated homes",
 )
 ```
 
@@ -369,6 +417,7 @@ plot_bill_change_quadrant_rate_comparison(
     ],
     heating_type="delivered_fuels",
     bill_col=BILL_COL,
+    title="Change in annual electricity + delivered fuel bills after heat pump under Schedule R vs. Schedule R-HP,\nfor delivered-fuel-heated homes",
 )
 ```
 

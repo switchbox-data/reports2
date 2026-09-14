@@ -1849,6 +1849,104 @@ report_vars["delivered_rhp_vs_furnace_savings_pct"] = (
 display_figure(fig_delivered_3bar)
 ```
 
+### Schedule R vs. RD and RD vs. R-HP 3-bar charts
+
+These charts answer two questions for natural-gas-heated homes:
+
+1. How does a heat pump customer's bill stack compare on **Schedule R vs. Schedule RD**?
+   (before → HP on R → HP on RD)
+2. How does **Schedule RD compare to Schedule R-HP**?
+   (before → HP on RD → HP on R-HP)
+
+The RD bill components come directly from the RD segment's master bills (CAIRO applies the
+TOU rates internally), unlike the R and R-HP bars which are constructed from rate components
+× kWh profiles above.
+
+```{python}
+#| label: compute-rd-bill-components
+
+RD_SCENARIO = _batch_config["RD_BILL_SCENARIO"]
+SEG_RD_CALIBRATED = segment_name(RD_SCENARIO, "calibrated")
+
+_rd_annual = cast(
+    pl.DataFrame,
+    load_master_bills(STATE, BATCH, SEG_RD_CALIBRATED)
+    .filter((pl.col("month") == "Annual") & (pl.col("sb.electric_utility") == UTILITY))
+    .select(
+        "bldg_id", "weight",
+        "elec_fixed_charge", "elec_delivery_bill", "elec_supply_bill",
+        "gas_total_bill", "oil_total_bill", "propane_total_bill",
+    )
+    .collect(),
+)
+
+
+def _weighted_avg_rd(pop_df: pl.DataFrame, fuel: str) -> dict[str, float]:
+    """Weighted-average bill components from the RD master bills for a population."""
+    joined = _rd_annual.join(pop_df.select("bldg_id"), on="bldg_id")
+    w = joined["weight"]
+    total_w = w.sum()
+    gas_val = (
+        (joined["gas_total_bill"] * w).sum() / total_w
+        if fuel == "natgas"
+        else ((joined["oil_total_bill"] + joined["propane_total_bill"]) * w).sum() / total_w
+    )
+    return {
+        "delivery_fixed": (joined["elec_fixed_charge"] * w).sum() / total_w,
+        "delivery_volumetric": (joined["elec_delivery_bill"] * w).sum() / total_w,
+        "supply": (joined["elec_supply_bill"] * w).sum() / total_w,
+        "gas": gas_val,
+    }
+
+
+natgas_rd = _weighted_avg_rd(pop_natgas, "natgas")
+
+print("Natural gas — RD bill components:")
+for k, v in natgas_rd.items():
+    print(f"  {k}: ${v:,.0f}")
+print(f"  total: ${sum(natgas_rd.values()):,.0f}")
+```
+
+```{python}
+#| label: fig-total-bill-3bar-natgas-r-rd
+#| fig-cap: "Average annual energy bills for BGE natural-gas-heated homes: before heat pumps, after heat pumps under Schedule R, and after heat pumps under Schedule RD."
+
+fig_ng_r_rd, _, _, _, _ = plot_decomposed_bill_3bar(
+    natgas_before,
+    natgas_after,
+    natgas_rd,
+    third_scenario_label="Heat pump\n(Schedule RD)",
+    title="Average annual electricity + natural gas bill under Schedule R vs. Schedule RD,\nbefore and after heat pump, for BGE natural-gas-heated homes",
+    side_labels={
+        "delivery_fixed": "Customer\nCharge",
+        "delivery_volumetric": "Transmission,\nDistribution,\nEmPOWER",
+        "supply": "Generation",
+        "gas": "Natural\nGas",
+    },
+)
+display_figure(fig_ng_r_rd)
+```
+
+```{python}
+#| label: fig-total-bill-3bar-natgas-rd-rhp
+#| fig-cap: "Average annual energy bills for BGE natural-gas-heated homes: before heat pumps, after heat pumps under Schedule RD, and after heat pumps under Schedule R-HP."
+
+fig_ng_rd_rhp, _, _, _, _ = plot_decomposed_bill_3bar(
+    natgas_before,
+    natgas_rd,
+    natgas_reform,
+    third_scenario_label="Heat pump\n(Schedule R-HP)",
+    title="Average annual electricity + natural gas bill under Schedule RD vs. Schedule R-HP,\nbefore and after heat pump, for BGE natural-gas-heated homes",
+    side_labels={
+        "delivery_fixed": "Customer\nCharge",
+        "delivery_volumetric": "Transmission,\nDistribution,\nEmPOWER",
+        "supply": "Generation",
+        "gas": "Natural\nGas",
+    },
+)
+display_figure(fig_ng_rd_rhp)
+```
+
 ```{python}
 #| label: rs-release-comp-impact
 

@@ -1663,6 +1663,322 @@ fig.tight_layout()
 display_figure(fig)
 ```
 
+## Schedule RD rates
+
+Schedule RD is BGE's time-of-use distribution rate. It charges different delivery
+rates during on-peak and off-peak hours. All other riders — transmission,
+EmPOWER, environmental surcharge — are flat and identical to Schedule R.
+
+The comparison here is the realistic policy scenario: a customer on Schedule R
+(before HP) installs a heat pump and switches to Schedule RD (after HP). The left
+bar (incremental T&D costs caused) is unchanged — marginal costs do not depend on
+the tariff. The right bar replaces R's flat distribution charges with RD's TOU
+distribution charges.
+
+```{python}
+#| label: rd-tou-schedule
+
+# ── TOU window definition (URDB / tariff convention) ──────────────────────────
+# Timestamps: subtract 5h from the profiles' "UTC" to get mc_8760 local time.
+# Summer (Jun=6..Sep=9): on-peak = weekday hours 15–19 (3pm–8pm local).
+# Non-summer (Oct..May): on-peak = weekday hours 6–8 (6am–9am) + 17–20 (5pm–9pm).
+
+_RD_SUMMER_MONTHS = {6, 7, 8, 9}
+_RD_ON_PEAK_SUMMER_HOURS = {15, 16, 17, 18, 19}
+_RD_ON_PEAK_NONSUMMER_HOURS = {6, 7, 8, 17, 18, 19, 20}
+
+def _classify_tou(df: pl.DataFrame) -> pl.DataFrame:
+    """Add 'is_onpeak' bool column to an 8760-row hourly DataFrame.
+
+    Timestamps are assumed to be in 'UTC' (mc_8760 local + 5h).  We shift
+    back by 5 hours to get the local-time convention used by the URDB JSON
+    and the tariff schedule.
+    """
+    return df.with_columns(
+        (pl.col("timestamp") + pl.duration(hours=-5)).alias("_local_ts"),
+    ).with_columns(
+        pl.col("_local_ts").dt.month().alias("_month"),
+        pl.col("_local_ts").dt.weekday().alias("_dow"),  # Mon=1..Sun=7
+        pl.col("_local_ts").dt.hour().alias("_hour"),
+    ).with_columns(
+        pl.when(pl.col("_dow") >= 6)  # Saturday=6, Sunday=7 → off-peak
+        .then(pl.lit(False))
+        .when(pl.col("_month").is_in(_RD_SUMMER_MONTHS))
+        .then(pl.col("_hour").is_in(_RD_ON_PEAK_SUMMER_HOURS))
+        .otherwise(pl.col("_hour").is_in(_RD_ON_PEAK_NONSUMMER_HOURS))
+        .alias("is_onpeak"),
+    ).drop("_local_ts", "_month", "_dow", "_hour")
+
+
+_af_hourly_before = _classify_tou(hourly_profiles["all_fossil"]["before"])
+_af_hourly_after = _classify_tou(hourly_profiles["all_fossil"]["after"])
+
+_onpeak_hours = int(_af_hourly_before.filter(pl.col("is_onpeak"))["is_onpeak"].sum())
+print(f"On-peak hours per year: {_onpeak_hours}")
+
+_pct_onpeak_kwh_before = (
+    _af_hourly_before.filter(pl.col("is_onpeak"))["kwh"].sum()
+    / _af_hourly_before["kwh"].sum()
+)
+_pct_onpeak_kwh_after = (
+    _af_hourly_after.filter(pl.col("is_onpeak"))["kwh"].sum()
+    / _af_hourly_after["kwh"].sum()
+)
+
+report_vars["rd_pct_onpeak_kwh_before"] = float(_pct_onpeak_kwh_before)
+report_vars["rd_pct_onpeak_kwh_after"] = float(_pct_onpeak_kwh_after)
+
+print(f"% of kWh on-peak (before HP): {_pct_onpeak_kwh_before:.1%}")
+print(f"% of kWh on-peak (after HP):  {_pct_onpeak_kwh_after:.1%}")
+```
+
+### RD distribution bill computation
+
+We compute distribution charges at two rate vintages:
+
+1. **Current filed** (Rate Year 3, effective June 2026): on-peak \$0.08874/kWh,
+   off-peak \$0.03736/kWh. Same vintage as the YAML-based R rates.
+2. **Karas proposed** (rate case, proposed August 2026): on-peak \$0.10733/kWh,
+   off-peak \$0.04291/kWh.
+
+Both include the environmental surcharge (\$0.00015/kWh, flat) to stay consistent
+with the R analysis.
+
+```{python}
+#| label: rd-bill-computation
+
+# ── Rate definitions (delivery service charge + env surcharge) ────────────────
+_ENV_SURCHARGE = 0.00015
+
+_RD_RATES = {
+    "current": {
+        "label": "Current filed (RY3)",
+        "onpeak": 0.08874 + _ENV_SURCHARGE,
+        "offpeak": 0.03736 + _ENV_SURCHARGE,
+    },
+    "proposed": {
+        "label": "Karas proposed",
+        "onpeak": 0.10733 + _ENV_SURCHARGE,
+        "offpeak": 0.04291 + _ENV_SURCHARGE,
+    },
+}
+
+
+def _rd_annual_distribution(hourly_df: pl.DataFrame, rates: dict) -> float:
+    """Compute annual distribution charges under RD TOU rates."""
+    return float(
+        hourly_df.with_columns(
+            pl.when(pl.col("is_onpeak"))
+            .then(pl.col("kwh") * rates["onpeak"])
+            .otherwise(pl.col("kwh") * rates["offpeak"])
+            .alias("dist_charge")
+        )["dist_charge"].sum()
+    )
+
+
+# ── Compute for each vintage ─────────────────────────────────────────────────
+# "Before" = Schedule R flat distribution charge (already computed)
+_af_dist_before_r = report_vars["all_fossil_annual_distribution_before"]
+
+# Transmission (unchanged — same rider)
+_af_tx_before = report_vars["all_fossil_annual_transmission_before"]
+_af_tx_after = report_vars["all_fossil_annual_transmission_after"]
+_af_tx_delta = _af_tx_after - _af_tx_before
+
+# EmPOWER (unchanged — same rider)
+_af_emp_before = report_vars["all_fossil_annual_empower_maryland_before"]
+_af_emp_after = report_vars["all_fossil_annual_empower_maryland_after"]
+
+# Marginal cost deltas (unchanged — cost doesn't depend on tariff)
+_af_mc_tx_delta_rd = report_vars["all_fossil_annual_mc_tx_delta"]
+_af_mc_dist_delta_rd = report_vars["all_fossil_annual_mc_dist_delta"]
+_af_mc_delivery_delta_rd = _af_mc_tx_delta_rd + _af_mc_dist_delta_rd
+
+for vintage_key, rates in _RD_RATES.items():
+    _rd_dist_before = _rd_annual_distribution(_af_hourly_before, rates)
+    _rd_dist_after = _rd_annual_distribution(_af_hourly_after, rates)
+    _rd_dist_delta = _rd_dist_after - _rd_dist_before
+
+    # T&D charge delta: RD distribution delta + transmission delta (unchanged)
+    _rd_td_charges_delta = _rd_dist_delta + _af_tx_delta
+    _rd_overpayment = _rd_td_charges_delta - _af_mc_delivery_delta_rd
+
+    report_vars[f"rd_{vintage_key}_annual_distribution_before"] = _rd_dist_before
+    report_vars[f"rd_{vintage_key}_annual_distribution_after"] = _rd_dist_after
+    report_vars[f"rd_{vintage_key}_distribution_delta"] = _rd_dist_delta
+    report_vars[f"rd_{vintage_key}_delivery_charges_delta"] = _rd_td_charges_delta
+    report_vars[f"rd_{vintage_key}_overpayment"] = _rd_overpayment
+
+    print(f"\n{rates['label']}:")
+    print(f"  RD dist before: ${_rd_dist_before:,.2f}  after: ${_rd_dist_after:,.2f}  delta: ${_rd_dist_delta:+,.2f}")
+    print(f"  TX delta (unchanged): ${_af_tx_delta:+,.2f}")
+    print(f"  T&D charges delta: ${_rd_td_charges_delta:+,.2f}")
+    print(f"  MC delivery delta: ${_af_mc_delivery_delta_rd:+,.2f}")
+    print(f"  Overpayment: ${_rd_overpayment:+,.2f}")
+
+# ── Natgas-specific RD distribution (for the 4-bar bill chart) ────────────────
+_ng_hourly_after = _classify_tou(hourly_profiles["natgas"]["after"])
+_ng_rd_dist_after = _rd_annual_distribution(_ng_hourly_after, _RD_RATES["current"])
+report_vars["natgas_rd_current_annual_distribution_after"] = _ng_rd_dist_after
+print(f"\nNatgas RD distribution (current filed, after HP): ${_ng_rd_dist_after:,.2f}")
+```
+
+### Cost-vs-charge charts — Schedule RD
+
+```{python}
+#| label: fig-cost-vs-charge-delta-all-fossil-rd-current
+#| fig-cap: "Change in annual T&D costs caused vs. T&D charges paid when a fossil-fuel-heated home installs a heat pump and switches to Schedule RD at current filed rates."
+
+_v = "current"
+_rd_dist_delta_v = report_vars[f"rd_{_v}_distribution_delta"]
+_rd_td_delta_v = report_vars[f"rd_{_v}_delivery_charges_delta"]
+_rd_overpay_v = report_vars[f"rd_{_v}_overpayment"]
+
+fig, ax = pyplot.subplots(figsize=(12.5, 5))
+ax.set_title(
+    "Incremental new T&D costs caused vs. incremental T&D bills paid,\n"
+    "for BGE electric customers switching from Schedule R to Schedule RD\n"
+    "(current filed RD rates)",
+    fontfamily="GT Planar", fontweight="bold", fontsize=15, loc="left", pad=12,
+)
+
+_w = 0.5
+_pos = [0, 0.8]
+
+_mc_total = _af_mc_tx_delta_rd + _af_mc_dist_delta_rd
+if _mc_total <= 0:
+    ax.bar(_pos[0], 0, _w, color=_COLOR_TX_COST, zorder=3)
+    ax.text(
+        _pos[0], _rd_td_delta_v * 0.03,
+        _fmt_cc_dollar(_mc_total),
+        ha="center", va="bottom", fontweight="bold", fontsize=11,
+        fontfamily="IBM Plex Sans", color="#333333", zorder=4,
+    )
+    _t1 = 0.0
+else:
+    _t1 = _draw_cc_stacked_bar(
+        ax, _pos[0], max(_af_mc_tx_delta_rd, 0), max(_af_mc_dist_delta_rd, 0), _w,
+        color_dist=_COLOR_DIST_COST, color_tx=_COLOR_TX_COST,
+    )
+
+_t2 = _draw_cc_stacked_bar(ax, _pos[1], _af_tx_delta, _rd_dist_delta_v, _w)
+
+_side_x = _pos[1] + _w / 2 + 0.08
+_side_labels = [
+    ("Distribution (RD TOU)", _rd_dist_delta_v / 2, _COLOR_DIST),
+    ("Transmission", _rd_dist_delta_v + _af_tx_delta / 2, _COLOR_TX),
+]
+for _lbl, _ym, _clr in _side_labels:
+    ax.plot([_pos[1] + _w / 2 + 0.02, _side_x - 0.02], [_ym, _ym],
+            color=_clr, linewidth=0.7, alpha=0.6)
+    ax.text(_side_x, _ym, _lbl, color=_clr, ha="left", va="center",
+            fontsize=11, fontweight="bold")
+
+_gap = _rd_overpay_v
+_x_left = _pos[0] + _w / 2
+_x_right = _pos[1] - _w / 2
+ax.plot([_x_left, _x_right], [_t1, _t2],
+        color=_COLOR_GAP, linewidth=2.0, zorder=5)
+_mid_x = (_x_left + _x_right) / 2
+_mid_y = (_t1 + _t2) / 2
+ax.text(_mid_x, _mid_y + _t2 * 0.06,
+        f"Overpays\n{_fmt_cc_dollar_plain(_gap)}/yr",
+        ha="center", va="bottom", fontweight="bold", fontsize=12,
+        color=_COLOR_GAP, fontfamily="IBM Plex Sans")
+
+ax.set_xticks(_pos)
+ax.set_xticklabels(
+    ["Additional T&D\ncosts caused", "Additional T&D\ncharges paid\n(Schedule RD, current)"],
+    fontsize=11, fontfamily="IBM Plex Sans",
+)
+ax.set_ylim(0, _t2 * 1.25)
+ax.spines["top"].set_visible(False)
+ax.spines["right"].set_visible(False)
+ax.spines["bottom"].set_bounds(_pos[0] - _w / 2 - 0.3, _pos[1] + _w / 2)
+ax.yaxis.set_major_formatter(lambda x, _: f"${x:,.0f}")
+ax.set_ylabel("Annual change ($)", fontsize=12, fontfamily="IBM Plex Sans")
+ax.set_xlim(_pos[0] - _w / 2 - 0.3, _pos[1] + _w / 2 + 0.8)
+fig.tight_layout()
+display_figure(fig)
+```
+
+```{python}
+#| label: fig-cost-vs-charge-delta-all-fossil-rd-proposed
+#| fig-cap: "Change in annual T&D costs caused vs. T&D charges paid when a fossil-fuel-heated home installs a heat pump and switches to Schedule RD at proposed rates."
+
+_v = "proposed"
+_rd_dist_delta_v = report_vars[f"rd_{_v}_distribution_delta"]
+_rd_td_delta_v = report_vars[f"rd_{_v}_delivery_charges_delta"]
+_rd_overpay_v = report_vars[f"rd_{_v}_overpayment"]
+
+fig, ax = pyplot.subplots(figsize=(12.5, 5))
+ax.set_title(
+    "Incremental new T&D costs caused vs. incremental T&D bills paid,\n"
+    "for BGE electric customers switching from Schedule R to Schedule RD\n"
+    "(proposed RD rates)",
+    fontfamily="GT Planar", fontweight="bold", fontsize=15, loc="left", pad=12,
+)
+
+_w = 0.5
+_pos = [0, 0.8]
+
+_mc_total = _af_mc_tx_delta_rd + _af_mc_dist_delta_rd
+if _mc_total <= 0:
+    ax.bar(_pos[0], 0, _w, color=_COLOR_TX_COST, zorder=3)
+    ax.text(
+        _pos[0], _rd_td_delta_v * 0.03,
+        _fmt_cc_dollar(_mc_total),
+        ha="center", va="bottom", fontweight="bold", fontsize=11,
+        fontfamily="IBM Plex Sans", color="#333333", zorder=4,
+    )
+    _t1 = 0.0
+else:
+    _t1 = _draw_cc_stacked_bar(
+        ax, _pos[0], max(_af_mc_tx_delta_rd, 0), max(_af_mc_dist_delta_rd, 0), _w,
+        color_dist=_COLOR_DIST_COST, color_tx=_COLOR_TX_COST,
+    )
+
+_t2 = _draw_cc_stacked_bar(ax, _pos[1], _af_tx_delta, _rd_dist_delta_v, _w)
+
+_side_x = _pos[1] + _w / 2 + 0.08
+_side_labels = [
+    ("Distribution (RD TOU)", _rd_dist_delta_v / 2, _COLOR_DIST),
+    ("Transmission", _rd_dist_delta_v + _af_tx_delta / 2, _COLOR_TX),
+]
+for _lbl, _ym, _clr in _side_labels:
+    ax.plot([_pos[1] + _w / 2 + 0.02, _side_x - 0.02], [_ym, _ym],
+            color=_clr, linewidth=0.7, alpha=0.6)
+    ax.text(_side_x, _ym, _lbl, color=_clr, ha="left", va="center",
+            fontsize=11, fontweight="bold")
+
+_gap = _rd_overpay_v
+_x_left = _pos[0] + _w / 2
+_x_right = _pos[1] - _w / 2
+ax.plot([_x_left, _x_right], [_t1, _t2],
+        color=_COLOR_GAP, linewidth=2.0, zorder=5)
+_mid_x = (_x_left + _x_right) / 2
+_mid_y = (_t1 + _t2) / 2
+ax.text(_mid_x, _mid_y + _t2 * 0.06,
+        f"Overpays\n{_fmt_cc_dollar_plain(_gap)}/yr",
+        ha="center", va="bottom", fontweight="bold", fontsize=12,
+        color=_COLOR_GAP, fontfamily="IBM Plex Sans")
+
+ax.set_xticks(_pos)
+ax.set_xticklabels(
+    ["Additional T&D\ncosts caused", "Additional T&D\ncharges paid\n(Schedule RD, proposed)"],
+    fontsize=11, fontfamily="IBM Plex Sans",
+)
+ax.set_ylim(0, _t2 * 1.25)
+ax.spines["top"].set_visible(False)
+ax.spines["right"].set_visible(False)
+ax.spines["bottom"].set_bounds(_pos[0] - _w / 2 - 0.3, _pos[1] + _w / 2)
+ax.yaxis.set_major_formatter(lambda x, _: f"${x:,.0f}")
+ax.set_ylabel("Annual change ($)", fontsize=12, fontfamily="IBM Plex Sans")
+ax.set_xlim(_pos[0] - _w / 2 - 0.3, _pos[1] + _w / 2 + 0.8)
+fig.tight_layout()
+display_figure(fig)
+```
+
 
 ## Schedule R-HP rates
 
@@ -1809,6 +2125,148 @@ display_figure(fig_natgas_3bar)
 ```
 
 ```{python}
+#| label: fig-total-bill-4bar-natgas
+#| fig-cap: "Average annual energy bills for BGE natural-gas-heated homes: before heat pumps, after heat pumps under Schedule R, after heat pumps under Schedule RD, and after heat pumps under Schedule R-HP."
+
+from lib.rates_analysis.rate_case_funcs import (
+    DECOMPOSED_BILL_COLORS,
+    DECOMPOSED_BILL_COMPONENT_KEYS,
+    DECOMPOSED_BILL_LABEL_COLORS,
+)
+
+_ng_rd_dist_after_val = report_vars["natgas_rd_current_annual_distribution_after"]
+natgas_rd = {
+    "delivery_fixed": natgas_after["delivery_fixed"],
+    "delivery_volumetric": (
+        _ng_rd_dist_after_val
+        + report_vars["natgas_annual_transmission_after"]
+        + report_vars["natgas_annual_empower_maryland_after"]
+    ),
+    "supply": natgas_after["supply"],
+    "gas": natgas_after["gas"],
+}
+
+_scenarios = [
+    "Natural gas\nfurnace",
+    "Heat pump\n(Schedule R)",
+    "Heat pump\n(Schedule RD)",
+    "Heat pump\n(Schedule R-HP)",
+]
+_bars = [natgas_before, natgas_after, natgas_rd, natgas_reform]
+_n = len(_scenarios)
+_x = list(range(_n))
+_w = 0.55
+_comp_keys = DECOMPOSED_BILL_COMPONENT_KEYS
+
+fig, ax = pyplot.subplots(figsize=(14, 7))
+ax.set_title(
+    "Average annual electricity + natural gas bill under Schedule R, Schedule RD,\n"
+    "and Schedule R-HP, before and after heat pump, for BGE natural-gas-heated homes",
+    fontfamily="GT Planar", fontweight="bold", fontsize=15, loc="left", pad=12,
+)
+
+_bottoms = [0.0] * _n
+for ck in _comp_keys:
+    _vals = [_bars[i][ck] for i in range(_n)]
+    ax.bar(_x, _vals, _w, bottom=_bottoms, color=DECOMPOSED_BILL_COLORS[ck], edgecolor="none")
+    for i, (v, b) in enumerate(zip(_vals, _bottoms, strict=False)):
+        if v > 80:
+            ax.text(
+                _x[i], b + v / 2, f"${v:,.0f}",
+                ha="center", va="center", color="white",
+                fontweight="bold", fontsize=11, zorder=11,
+            )
+    _bottoms = [b + v for b, v in zip(_bottoms, _vals, strict=False)]
+
+_totals = [sum(_bars[i][k] for k in _comp_keys) for i in range(_n)]
+
+# Total labels on bars 0, 1, 2
+for i in (0, 1, 2):
+    ax.text(
+        _x[i], _totals[i] + 50, f"${_totals[i]:,.0f}",
+        ha="center", va="bottom", color="#333333", fontweight="bold", fontsize=12,
+    )
+
+# Dashed delivery-before reference line
+_delivery_before = natgas_before["delivery_fixed"] + natgas_before["delivery_volumetric"]
+ax.hlines(
+    y=_delivery_before,
+    xmin=-0.5, xmax=_x[3] + _w / 2,
+    color=SB_COLORS["saffron"], linewidth=1.8,
+    linestyle=(0, (6, 4)), zorder=10,
+)
+
+# Savings annotation between bar 1 (default) and bar 3 (R-HP)
+_savings_rhp = _totals[1] - _totals[3]
+_pct_savings_rhp = _savings_rhp / _totals[1] * 100
+
+_rect = mpatches.FancyBboxPatch(
+    (_x[3] - _w / 2, _totals[3]),
+    _w, _savings_rhp,
+    boxstyle="square,pad=0",
+    facecolor=SB_COLORS["saffron"], alpha=0.12,
+    edgecolor="#B8960A", linewidth=2.0,
+    linestyle=(0, (5, 3)), hatch="////", zorder=3,
+)
+ax.add_patch(_rect)
+
+ax.text(
+    _x[3], _totals[3] + 50, f"${_totals[3]:,.0f}",
+    ha="center", va="bottom", color="#333333", fontweight="bold", fontsize=12, zorder=8,
+)
+ax.annotate(
+    "",
+    xy=(_x[3], _totals[3] + 180),
+    xytext=(_x[3], _totals[1] - 60),
+    arrowprops={"arrowstyle": "->,head_length=0.4,head_width=0.25",
+                "color": SB_COLORS["saffron"], "lw": 2.2},
+    zorder=6,
+)
+ax.text(
+    _x[3], _totals[1] + 180, f"-{_pct_savings_rhp:.0f}%",
+    ha="center", va="bottom", color=SB_COLORS["saffron"],
+    fontweight="bold", fontsize=14,
+)
+ax.text(
+    _x[3], _totals[1] + 50, f"-${_savings_rhp:,.0f}",
+    ha="center", va="bottom", color=SB_COLORS["saffron"],
+    fontsize=11, alpha=0.8,
+)
+
+# Side labels on bar 3 (R-HP, rightmost)
+_side_x = _x[3] + _w / 2 + 0.15
+_d4 = natgas_reform
+_side_specs = [
+    ("Customer\nCharge", _d4["delivery_fixed"] / 2, DECOMPOSED_BILL_LABEL_COLORS["delivery_fixed"]),
+    ("Transmission,\nDistribution,\nEmPOWER",
+     _d4["delivery_fixed"] + _d4["delivery_volumetric"] / 2,
+     DECOMPOSED_BILL_LABEL_COLORS["delivery_volumetric"]),
+    ("Generation",
+     _d4["delivery_fixed"] + _d4["delivery_volumetric"] + _d4["supply"] / 2,
+     DECOMPOSED_BILL_LABEL_COLORS["supply"]),
+    ("Natural\nGas",
+     _d4["delivery_fixed"] + _d4["delivery_volumetric"] + _d4["supply"] + _d4["gas"] / 2,
+     DECOMPOSED_BILL_LABEL_COLORS["gas"]),
+]
+for _lbl, _ym, _clr in _side_specs:
+    ax.plot([_x[3] + _w / 2 + 0.02, _side_x - 0.03], [_ym, _ym],
+            color=_clr, linewidth=0.7, alpha=0.6)
+    ax.text(_side_x, _ym, _lbl, color=_clr, ha="left", va="center",
+            fontsize=11, fontweight="bold")
+
+ax.set_xticks(_x)
+ax.set_xticklabels(_scenarios, fontsize=11)
+ax.set_ylabel("Annual energy bill ($)", fontsize=12)
+ax.set_ylim(0, max(_totals) * 1.22)
+ax.set_xlim(_x[0] - _w / 2 - 0.3, _x[3] + _w / 2 + 0.7)
+ax.spines["top"].set_visible(False)
+ax.spines["right"].set_visible(False)
+ax.spines["bottom"].set_bounds(_x[0] - _w / 2 - 0.3, _x[3] + _w / 2)
+fig.tight_layout()
+display_figure(fig)
+```
+
+```{python}
 #| label: fig-total-bill-3bar-delivered
 #| fig-cap: "Average annual energy bills for BGE delivered-fuel-heated homes: before heat pumps, after heat pumps under Schedule R, and after heat pumps under Schedule R-HP."
 
@@ -1847,104 +2305,6 @@ report_vars["delivered_rhp_vs_furnace_savings_pct"] = (
     _del_vs_furnace_savings / report_vars["delivered_total_energy_bill_before"]
 )
 display_figure(fig_delivered_3bar)
-```
-
-### Schedule R vs. RD and RD vs. R-HP 3-bar charts
-
-These charts answer two questions for natural-gas-heated homes:
-
-1. How does a heat pump customer's bill stack compare on **Schedule R vs. Schedule RD**?
-   (before → HP on R → HP on RD)
-2. How does **Schedule RD compare to Schedule R-HP**?
-   (before → HP on RD → HP on R-HP)
-
-The RD bill components come directly from the RD segment's master bills (CAIRO applies the
-TOU rates internally), unlike the R and R-HP bars which are constructed from rate components
-× kWh profiles above.
-
-```{python}
-#| label: compute-rd-bill-components
-
-RD_SCENARIO = _batch_config["RD_BILL_SCENARIO"]
-SEG_RD_CALIBRATED = segment_name(RD_SCENARIO, "calibrated")
-
-_rd_annual = cast(
-    pl.DataFrame,
-    load_master_bills(STATE, BATCH, SEG_RD_CALIBRATED)
-    .filter((pl.col("month") == "Annual") & (pl.col("sb.electric_utility") == UTILITY))
-    .select(
-        "bldg_id", "weight",
-        "elec_fixed_charge", "elec_delivery_bill", "elec_supply_bill",
-        "gas_total_bill", "oil_total_bill", "propane_total_bill",
-    )
-    .collect(),
-)
-
-
-def _weighted_avg_rd(pop_df: pl.DataFrame, fuel: str) -> dict[str, float]:
-    """Weighted-average bill components from the RD master bills for a population."""
-    joined = _rd_annual.join(pop_df.select("bldg_id"), on="bldg_id")
-    w = joined["weight"]
-    total_w = w.sum()
-    gas_val = (
-        (joined["gas_total_bill"] * w).sum() / total_w
-        if fuel == "natgas"
-        else ((joined["oil_total_bill"] + joined["propane_total_bill"]) * w).sum() / total_w
-    )
-    return {
-        "delivery_fixed": (joined["elec_fixed_charge"] * w).sum() / total_w,
-        "delivery_volumetric": (joined["elec_delivery_bill"] * w).sum() / total_w,
-        "supply": (joined["elec_supply_bill"] * w).sum() / total_w,
-        "gas": gas_val,
-    }
-
-
-natgas_rd = _weighted_avg_rd(pop_natgas, "natgas")
-
-print("Natural gas — RD bill components:")
-for k, v in natgas_rd.items():
-    print(f"  {k}: ${v:,.0f}")
-print(f"  total: ${sum(natgas_rd.values()):,.0f}")
-```
-
-```{python}
-#| label: fig-total-bill-3bar-natgas-r-rd
-#| fig-cap: "Average annual energy bills for BGE natural-gas-heated homes: before heat pumps, after heat pumps under Schedule R, and after heat pumps under Schedule RD."
-
-fig_ng_r_rd, _, _, _, _ = plot_decomposed_bill_3bar(
-    natgas_before,
-    natgas_after,
-    natgas_rd,
-    third_scenario_label="Heat pump\n(Schedule RD)",
-    title="Average annual electricity + natural gas bill under Schedule R vs. Schedule RD,\nbefore and after heat pump, for BGE natural-gas-heated homes",
-    side_labels={
-        "delivery_fixed": "Customer\nCharge",
-        "delivery_volumetric": "Transmission,\nDistribution,\nEmPOWER",
-        "supply": "Generation",
-        "gas": "Natural\nGas",
-    },
-)
-display_figure(fig_ng_r_rd)
-```
-
-```{python}
-#| label: fig-total-bill-3bar-natgas-rd-rhp
-#| fig-cap: "Average annual energy bills for BGE natural-gas-heated homes: before heat pumps, after heat pumps under Schedule RD, and after heat pumps under Schedule R-HP."
-
-fig_ng_rd_rhp, _, _, _, _ = plot_decomposed_bill_3bar(
-    natgas_before,
-    natgas_rd,
-    natgas_reform,
-    third_scenario_label="Heat pump\n(Schedule R-HP)",
-    title="Average annual electricity + natural gas bill under Schedule RD vs. Schedule R-HP,\nbefore and after heat pump, for BGE natural-gas-heated homes",
-    side_labels={
-        "delivery_fixed": "Customer\nCharge",
-        "delivery_volumetric": "Transmission,\nDistribution,\nEmPOWER",
-        "supply": "Generation",
-        "gas": "Natural\nGas",
-    },
-)
-display_figure(fig_ng_rd_rhp)
 ```
 
 ```{python}

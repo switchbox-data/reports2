@@ -3916,8 +3916,8 @@ def plot_annual_bill_component_stacked(
             fontweight="bold",
         )
         + geom_text(
-            bar_totals,
-            aes(x="component", y="total", label="total_label"),
+            mapping=aes(x="component", y="total", label="total_label"),
+            data=bar_totals,
             va="bottom",
             size=10,
             color="#333333",

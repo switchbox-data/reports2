@@ -1,0 +1,294 @@
+---
+title: "BGE Schedule RD incremental overpayment and underpayment"
+
+toc: true
+reference-location: margin
+tbl-cap-location: top
+execute:
+  warning: false
+  message: false
+
+format:
+  html:
+    page-layout: full
+---
+
+This notebook measures the incremental delivery overpayment when a BGE
+customer moves from Schedule R before a heat-pump retrofit to Schedule RD
+after the retrofit. It compares the same modeled building in two segments:
+
+- **Before:** upgrade 00 on posted, uncalibrated Schedule R.
+- **After:** upgrade 01 on posted, uncalibrated Schedule RD.
+
+For each building, over/underpayment is the change in its delivery bill minus
+the change in its allocated delivery marginal cost:
+
+$$
+\text{over/underpayment}
+=
+(B_{\mathrm{HP}} - B_{\mathrm{baseline}})
+-
+(MC_{\mathrm{HP}} - MC_{\mathrm{baseline}}).
+$$
+
+Positive values are overpayment; negative values are underpayment. Residual
+cost is not part of this incremental metric.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import polars as pl
+import yaml
+from great_tables import GT
+
+from lib.great_tables import get_switchbox_gt_tab_options
+from lib.quarto import display_gt
+from lib.rates_analysis.rate_case_funcs import (
+    HEATING_ORDER,
+    add_heating_label,
+    bat_component_delta,
+    segment_upgrade,
+    weighted_mean,
+)
+```
+
+## Parameters
+
+Batch identity lives in `batch_config.yaml`, keeping this notebook aligned
+with the other Maryland rate-analysis notebooks.
+
+```{python}
+#| label: parameters
+
+_batch_config = yaml.safe_load(Path("../batch_config.yaml").read_text())
+
+STATE = _batch_config["STATE"]
+BATCH = _batch_config["BATCH"]
+UTILITY = "bge"
+BILL_COL = "annual_bill_delivery"
+MC_COL = "economic_burden_delivery"
+
+SEGMENT_BEFORE = f"{_batch_config['BASELINE_BILL_SCENARIO']}_precalc"
+SEGMENT_AFTER = "default_rd_uncalibrated_calibrated"
+UPGRADE_BEFORE = segment_upgrade(STATE, BATCH, SEGMENT_BEFORE)
+UPGRADE_AFTER = segment_upgrade(STATE, BATCH, SEGMENT_AFTER)
+
+print(
+    f"state={STATE}  utility={UTILITY}  batch={BATCH}\n"
+    f"before={SEGMENT_BEFORE} (upgrade {UPGRADE_BEFORE:02d})\n"
+    f"after={SEGMENT_AFTER} (upgrade {UPGRADE_AFTER:02d})"
+)
+```
+
+## Compare delivery bills and marginal costs
+
+We join the two master BAT segments by building ID. The underlying
+`annual_bill_delivery` and `economic_burden_delivery` columns remain valid in
+both stages even though calibrated-stage BAT and residual-allocation columns
+do not. Homes that already had heat pumps in upgrade 00 are excluded because
+they are not undergoing the modeled retrofit.
+
+```{python}
+#| label: compare-segments
+
+payment = add_heating_label(
+    bat_component_delta(
+        STATE,
+        BATCH,
+        SEGMENT_BEFORE,
+        SEGMENT_AFTER,
+        components=[BILL_COL, MC_COL],
+        utility=UTILITY,
+    )
+).with_columns(
+    (
+        pl.col(f"delta_{BILL_COL}") - pl.col(f"delta_{MC_COL}")
+    ).alias("over_underpayment")
+)
+
+print(
+    f"{payment.height:,} modeled buildings representing "
+    f"{payment['weight'].sum():,.0f} BGE customers"
+)
+```
+
+Let's inspect the columns used in the calculation:
+
+```{python}
+#| label: payment-sample
+
+payment.select(
+    "bldg_id",
+    "heating_label",
+    "weight",
+    f"{BILL_COL}_before",
+    f"{BILL_COL}_after",
+    f"delta_{BILL_COL}",
+    f"{MC_COL}_before",
+    f"{MC_COL}_after",
+    f"delta_{MC_COL}",
+    "over_underpayment",
+).head(8)
+```
+
+```{python}
+#| label: tbl-scenario-inventory
+#| tbl-cap: "Master BAT segments used in the Schedule R-to-RD incremental overpayment analysis."
+
+_inventory = pl.DataFrame(
+    {
+        "period": ["Before retrofit", "After retrofit"],
+        "segment": [SEGMENT_BEFORE, SEGMENT_AFTER],
+        "upgrade": [UPGRADE_BEFORE, UPGRADE_AFTER],
+        "tariff": ["Schedule R", "Schedule RD"],
+    }
+)
+
+display_gt(
+    GT(_inventory)
+    .cols_label(
+        period="Comparison",
+        segment="Master BAT segment",
+        upgrade="Upgrade",
+        tariff="Tariff",
+    )
+    .fmt_number(columns="upgrade", decimals=0)
+    .tab_source_note(
+        f"Source: s3://data.sb/switchbox/cairo/outputs/hp_rates/"
+        f"{STATE.lower()}/all_utilities/{BATCH}/."
+    )
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+```
+
+## Incremental overpayment by baseline heating type
+
+We report weighted averages for each baseline heating type. The “All
+fossil-fuel homes” row combines homes originally heated with natural gas, oil,
+or propane—the population addressed by the expert-testimony overpayment
+calculation.
+
+```{python}
+#| label: payment-summary
+
+def summarize_payment(df: pl.DataFrame, label: str) -> dict[str, str | float]:
+    return {
+        "heating_type": label,
+        "weighted_customers": float(df["weight"].sum()),
+        "avg_bill_before": weighted_mean(df, f"{BILL_COL}_before"),
+        "avg_bill_after": weighted_mean(df, f"{BILL_COL}_after"),
+        "avg_bill_change": weighted_mean(df, f"delta_{BILL_COL}"),
+        "avg_mc_before": weighted_mean(df, f"{MC_COL}_before"),
+        "avg_mc_after": weighted_mean(df, f"{MC_COL}_after"),
+        "avg_mc_change": weighted_mean(df, f"delta_{MC_COL}"),
+        "avg_over_underpayment": weighted_mean(df, "over_underpayment"),
+        "aggregate_over_underpayment_m": float(
+            (df["over_underpayment"] * df["weight"]).sum()
+        )
+        / 1e6,
+    }
+
+
+available_heating = [
+    label
+    for label in HEATING_ORDER
+    if label in payment["heating_label"].unique().to_list()
+]
+summary_rows = [
+    summarize_payment(
+        payment.filter(pl.col("heating_label") == label),
+        label,
+    )
+    for label in available_heating
+]
+
+FOSSIL_HEATING = ["Natural gas", "Oil/propane"]
+fossil_payment = payment.filter(pl.col("heating_label").is_in(FOSSIL_HEATING))
+summary_rows.append(
+    summarize_payment(fossil_payment, "All fossil-fuel homes")
+)
+
+payment_summary = pl.DataFrame(summary_rows)
+```
+
+```{python}
+#| label: tbl-payment-summary
+#| tbl-cap: "Incremental BGE delivery overpayment after moving from Schedule R before a heat-pump retrofit to Schedule RD afterward, by baseline heating type."
+
+display_gt(
+    GT(payment_summary)
+    .cols_label(
+        heating_type="Baseline heating type",
+        weighted_customers="Customers",
+        avg_bill_before="Bill before",
+        avg_bill_after="Bill after",
+        avg_bill_change="Bill change",
+        avg_mc_before="MC before",
+        avg_mc_after="MC after",
+        avg_mc_change="MC change",
+        avg_over_underpayment="Over/underpayment",
+        aggregate_over_underpayment_m="Aggregate ($M)",
+    )
+    .fmt_number(columns="weighted_customers", decimals=0, use_seps=True)
+    .fmt_currency(
+        columns=[
+            "avg_bill_before",
+            "avg_bill_after",
+            "avg_bill_change",
+            "avg_mc_before",
+            "avg_mc_after",
+            "avg_mc_change",
+            "avg_over_underpayment",
+        ],
+        decimals=0,
+    )
+    .fmt_number(columns="aggregate_over_underpayment_m", decimals=2)
+    .tab_source_note(
+        "Over/underpayment = change in delivery bill − change in delivery "
+        "marginal cost. Positive values are overpayment."
+    )
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+```
+
+## Result for fossil-heated homes
+
+```{python}
+#| label: fossil-result
+
+_fossil_result = payment_summary.filter(
+    pl.col("heating_type") == "All fossil-fuel homes"
+)
+FOSSIL_BILL_CHANGE = float(_fossil_result["avg_bill_change"][0])
+FOSSIL_MC_CHANGE = float(_fossil_result["avg_mc_change"][0])
+FOSSIL_OVERPAYMENT = float(_fossil_result["avg_over_underpayment"][0])
+FOSSIL_AGGREGATE_OVERPAYMENT_M = float(
+    _fossil_result["aggregate_over_underpayment_m"][0]
+)
+```
+
+When the average BGE fossil-heated home moves from Schedule R before the
+heat-pump retrofit to Schedule RD afterward, its annual delivery bill increases
+by **`{python} f"${FOSSIL_BILL_CHANGE:,.0f}"`** while its allocated annual
+delivery marginal cost increases by **`{python} f"${FOSSIL_MC_CHANGE:,.0f}"`**.
+The difference is an incremental delivery overpayment of
+**`{python} f"${FOSSIL_OVERPAYMENT:,.0f}"` per year**, or
+**`{python} f"${FOSSIL_AGGREGATE_OVERPAYMENT_M:,.1f} million"`** across the
+modeled BGE fossil-heated population.
+
+## Interpretation limits
+
+- This comparison intentionally changes both the building upgrade and tariff:
+  Schedule R on upgrade 00 to Schedule RD on upgrade 01. It therefore answers
+  the customer transition specified above; it does not isolate the retrofit
+  effect while holding the tariff fixed.
+- Existing heat-pump homes are excluded because they do not undergo the
+  modeled fossil-to-heat-pump conversion.
+- Over/underpayment uses delivery bills and marginal-cost allocations only.
+  Residual costs and Maryland OHEP discounts are outside this metric.

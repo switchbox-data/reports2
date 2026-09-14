@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 import math
+from typing import cast
 
 import polars as pl
 import pytest
 
+from lib.rates_analysis import rate_case_funcs
 from lib.rates_analysis.rate_case_funcs import (
     MONTH_ORDER,
     _annual_bill_component_stack_data,
     _normalize_bill_months,
     bill_period_phrase,
+    load_master_bat_for_utility,
     plot_annual_bill_component_stacked,
     quadrant_pcts,
+    segment_upgrade,
     tariff_month_rate_table,
     weighted_range_pcts,
 )
@@ -24,6 +28,76 @@ QUADRANTS = [
     ("losses $0-1k", 0.0, 1000.0),
     ("losses > $1k", 1000.0, math.inf),
 ]
+
+
+def test_load_master_bat_for_utility_filters_and_selects_columns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = pl.DataFrame(
+        {
+            "bldg_id": [1, 2, 3],
+            "sb.electric_utility": ["bge", "pepco", "bge"],
+            "weight": [1.0, 2.0, 3.0],
+        }
+    ).lazy()
+    monkeypatch.setattr(rate_case_funcs, "load_master_bat", lambda *_: source)
+
+    result = cast(
+        "pl.DataFrame",
+        load_master_bat_for_utility(
+            "MD",
+            "batch",
+            "scenario_precalc",
+            "bge",
+            columns={"bldg_id", "weight"},
+        ).collect(),
+    )
+
+    assert result.columns == ["bldg_id", "weight"]
+    assert result["bldg_id"].to_list() == [1, 3]
+
+
+def test_segment_upgrade_returns_the_single_upgrade_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = pl.DataFrame({"upgrade": [1, 1, 1]}).lazy()
+    monkeypatch.setattr(rate_case_funcs, "load_master_bills", lambda *_: source)
+
+    assert segment_upgrade("MD", "batch", "default_rd_uncalibrated_calibrated") == 1
+
+
+def test_segment_upgrade_rejects_mixed_upgrade_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = pl.DataFrame({"upgrade": [0, 1]}).lazy()
+    monkeypatch.setattr(rate_case_funcs, "load_master_bills", lambda *_: source)
+
+    with pytest.raises(ValueError, match="distinct upgrade IDs"):
+        segment_upgrade("MD", "batch", "mixed_segment")
+
+
+def test_load_master_bat_for_utility_rejects_missing_columns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = pl.DataFrame(
+        {
+            "bldg_id": [1],
+            "sb.electric_utility": ["bge"],
+        }
+    ).lazy()
+    monkeypatch.setattr(rate_case_funcs, "load_master_bat", lambda *_: source)
+
+    with pytest.raises(
+        ValueError,
+        match="scenario_precalc is missing required columns: \\['weight'\\]",
+    ):
+        load_master_bat_for_utility(
+            "MD",
+            "batch",
+            "scenario_precalc",
+            "bge",
+            columns={"bldg_id", "weight"},
+        )
 
 
 def _flat_rates(rate: float) -> dict:

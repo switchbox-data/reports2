@@ -94,9 +94,11 @@ UTILITY = "bge"
 DEFAULT_SCENARIO = _batch_config["BASELINE_BILL_SCENARIO"]
 
 USE_BGE_ACTUALS = True
+SCALE_HEATING_BY_RS_RELEASE_COMP = False
 
 print(f"state={STATE}  batch={BATCH}  rdp_ref={RDP_REF}  utility={UTILITY}")
 print(f"USE_BGE_ACTUALS={USE_BGE_ACTUALS}")
+print(f"SCALE_HEATING_BY_RS_RELEASE_COMP={SCALE_HEATING_BY_RS_RELEASE_COMP}")
 ```
 
 ## Import data
@@ -233,6 +235,23 @@ print(f"  Non-heating annual kWh: {bge_hourly_non_heating['kwh'].sum():,.0f}")
 print(f"  Heating annual kWh: {bge_hourly_heating['kwh'].sum():,.0f}")
 ```
 
+```{python}
+#| label: load-rs-release-comp-factors
+
+_rs_comp_factors: dict[str, float] = {}
+if SCALE_HEATING_BY_RS_RELEASE_COMP:
+    _pkl_path = Path("../cache/rs_release_comp_monthly_pct_total.pkl")
+    assert _pkl_path.exists(), f"Missing {_pkl_path} — run rs_release_comp.qmd first"
+    _pkl_data = pickle.loads(_pkl_path.read_bytes())
+    _combined_pdf = _pkl_data["populations"]["combined"]
+    _rs_comp_factors = dict(zip(_combined_pdf["month"], _combined_pdf["sb_ach_ratio"]))
+    print("RS release comp monthly scale factors (sb_ach_ratio, combined):")
+    for _m, _f in _rs_comp_factors.items():
+        print(f"  {_m}: {_f:.4f}")
+else:
+    print("SCALE_HEATING_BY_RS_RELEASE_COMP is False — skipping RS release comp pickle.")
+```
+
 Let's confirm the metadata columns we need are present:
 
 ```{python}
@@ -365,6 +384,41 @@ if USE_BGE_ACTUALS:
     print(f"  Annual kWh before (non-heating): {annual_before:,.0f}")
     print(f"  Annual kWh after (electric heating): {annual_after:,.0f}")
     print(f"  Change: {pct_change:+.1%}")
+
+    if SCALE_HEATING_BY_RS_RELEASE_COMP:
+        _report_vars_unscaled = dict(report_vars)
+
+        _month_num_to_label = {i + 1: m for i, m in enumerate(MONTH_ORDER)}
+        profiles["all_fossil"]["after"] = profiles["all_fossil"]["after"].with_columns(
+            pl.col("kwh")
+            * pl.col("month_label")
+            .cast(pl.String)
+            .replace_strict(_rs_comp_factors, return_dtype=pl.Float64),
+        )
+        hourly_profiles["all_fossil"]["after"] = hourly_profiles["all_fossil"]["after"].with_columns(
+            pl.col("kwh")
+            * pl.col("timestamp")
+            .dt.month()
+            .replace_strict(
+                {num: _rs_comp_factors[label] for num, label in _month_num_to_label.items()},
+                return_dtype=pl.Float64,
+            ),
+        )
+
+        _after_scaled = profiles["all_fossil"]["after"]
+        annual_after_scaled = _after_scaled["kwh"].sum()
+        annual_delta_scaled = annual_after_scaled - annual_before
+        pct_change_scaled = annual_delta_scaled / annual_before
+
+        report_vars["all_fossil_annual_kwh_after"] = annual_after_scaled
+        report_vars["all_fossil_annual_kwh_delta"] = annual_delta_scaled
+        report_vars["all_fossil_pct_kwh_change"] = pct_change_scaled
+
+        print("\n[RS RELEASE COMP SCALING] Applied sb_ach_ratio factors to all_fossil after:")
+        print(f"  Annual kWh after (unscaled): {annual_after:,.0f}")
+        print(f"  Annual kWh after (scaled):   {annual_after_scaled:,.0f}")
+        print(f"  Difference: {annual_after_scaled - annual_after:,.0f} ({(annual_after_scaled / annual_after - 1):+.1%})")
+        print(f"  Delta vs before (scaled): {annual_delta_scaled:,.0f} ({pct_change_scaled:+.1%})")
 ```
 
 Let's look at the natural-gas monthly profile:
@@ -1793,6 +1847,35 @@ report_vars["delivered_rhp_vs_furnace_savings_pct"] = (
     _del_vs_furnace_savings / report_vars["delivered_total_energy_bill_before"]
 )
 display_figure(fig_delivered_3bar)
+```
+
+```{python}
+#| label: rs-release-comp-impact
+
+if SCALE_HEATING_BY_RS_RELEASE_COMP and "_report_vars_unscaled" in dir():
+    _changed = {}
+    for k in sorted(report_vars):
+        v_new = report_vars[k]
+        v_old = _report_vars_unscaled.get(k)
+        if not isinstance(v_new, (int, float)):
+            continue
+        if v_old is None:
+            continue
+        if not isinstance(v_old, (int, float)):
+            continue
+        if abs(v_new - v_old) > 1e-10:
+            _changed[k] = (v_old, v_new)
+
+    print("[RS RELEASE COMP SCALING] Impact on report variables")
+    print(f"{'Variable':<55s} {'Unscaled':>12s} {'Scaled':>12s} {'Δ':>10s} {'%Δ':>8s}")
+    print("-" * 97)
+    for k, (old, new) in _changed.items():
+        delta = new - old
+        pct = (delta / old * 100) if old != 0 else float("inf")
+        print(f"  {k:<53s} {old:>12,.2f} {new:>12,.2f} {delta:>+10,.2f} {pct:>+7.1f}%")
+    print(f"\n  {len(_changed)} variables changed out of {len(report_vars)} total.")
+else:
+    print("RS release comp scaling not applied — no comparison to show.")
 ```
 
 

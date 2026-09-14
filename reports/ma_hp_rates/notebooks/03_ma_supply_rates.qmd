@@ -1,0 +1,128 @@
+---
+title: ma_supply_rates
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+
+
+# What's this?
+- Massachusetts utilities [publish](https://www.mass.gov/info-details/basic-service-information-and-rates#basic-service-pricing-) "Basic Service Pricing" sheets with monthly supply rates.
+- We can use these for the supply portion of the bill
+- This notebook is EDA for that sheet
+
+# EDA
+### R Boilerplate
+```{r}
+library(tidyverse)
+library(scales)
+
+library(gt)
+library(gtExtras)
+library(jsonlite)
+library(RSQLite)
+library(readxl)
+
+source("/workspaces/reports/lib/ggplot/switchbox_theme.R")
+```
+
+
+```{r}
+ma_supply_rates_monthly_raw <- readxl::read_excel(
+  path = "/workspaces/reports/data/utility_rates/electric/madpu/Basic Service Rates 12.30.2024.xlsx",
+  sheet = "Monthly Prices",
+  range = "A4:G255",
+  .name_repair = "unique",  # Ensures column names are unique
+  col_names = c("year", "month", "blank", "national_grid", "eversource_nstar", "eversource_wmeco", "unitil")
+)
+
+View(ma_supply_rates_monthly_raw)
+
+# Fill in missing year values by carrying forward the last valid year
+ma_supply_rates_monthly <- ma_supply_rates_monthly_raw |>
+  mutate(
+    year = as.numeric(year),  # Convert to numeric, invalid values become NA
+    year = if_else(
+      !is.na(year),  # If it's a valid year
+      year,          # Keep it
+      NA_real_      # Otherwise make it NA
+    )
+  ) |>
+  fill(year, .direction = "down")|>  # Fill NAs with previous valid value
+  mutate(
+    month = case_when(
+      month == "Jan" ~ 1,
+      month == "Feb" ~ 2,
+      month == "Mar" ~ 3,
+      month == "Apr" ~ 4,
+      month == "May" ~ 5,
+      month == "June" ~ 6,
+      month == "July" ~ 7,
+      month == "Aug" ~ 8,
+      month == "Sept" ~ 9,
+      month == "Oct" ~ 10,
+      month == "Nov" ~ 11,
+      month == "Dec" ~ 12
+    )
+  ) |>
+  select(-blank) |>
+  mutate(
+    eversource = (eversource_nstar + eversource_wmeco) / 2
+  ) |>
+  mutate(
+    across(
+      -c(year, month),  # Select all columns except year and month
+      ~ . / 100  # Divide each selected column by 100
+    )
+  )
+
+
+
+
+View(ma_supply_rates_monthly)
+
+# Pivot to long format
+ma_supply_rates_monthly_long <- ma_supply_rates_monthly |>
+  pivot_longer(
+    cols = c(national_grid, eversource_nstar, eversource_wmeco, eversource, unitil),
+    names_to = "electric_utility",
+    values_to = "supply_rate"
+  )
+
+View(ma_supply_rates_monthly_long)
+
+
+write.csv(
+  ma_supply_rates_monthly_long,
+  "/workspaces/reports/data/utility_rates/electric/madpu/ma_supply_rates_monthly_20250329.csv",
+  row.names = FALSE
+)
+
+
+```
+
+# 12-month spaghetti plot
+```{r}
+source("/workspaces/reports/lib/rates_api/heat_pump_rate_funcs.R")
+
+plot_supply_rates_12_months(
+  ma_supply_rates_monthly_long,
+  "national_grid",
+  highlight_years = 2022:2025
+)
+```
+
+# All Years, All Utilities
+```{r}
+
+```

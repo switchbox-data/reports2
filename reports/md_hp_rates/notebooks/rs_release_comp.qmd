@@ -1,0 +1,1098 @@
+---
+title: ResStock Release Comparison — BGE Electric-Heating Homes
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+execute:
+  warning: false
+  message: false
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+
+Switchbox maintains three versions of NREL's ResStock dataset for Maryland: the raw
+NREL release, a Switchbox-processed `_sb` release (utility assignment, heating-type
+classification, metadata enrichment), and an ACH-ratio infiltration-corrected
+`_sb_ach_ratio` release (a fitted-ratio ACH50 correction — see
+[`resstock_ach.qmd`](resstock_ach.qmd)'s "Fitted-ratio correction" section — and the
+release the current MD BGE batch actually runs CAIRO against; see
+`rate-design-platform/rate_design/hp_rates/md/config/scenarios/pipeline_bge.yaml`).
+[`investigation_er_hp_loads.md`](investigation_er_hp_loads.md) first flagged that the
+electric-resistance (ER) → heat-pump (HP) load-change picture shifts across these three
+releases. This notebook quantifies that shift at the **per-building level** for BGE's
+electric-heating homes: the delta in total annual electric consumption between upgrade 00
+and upgrade 01, the same delta restricted to the winter heating season (October–March,
+both as a single whole-winter number and broken out month by month), and both of those
+repeated for electric *heating input* only (rather than total electric, which also
+includes cooling and everything else).
+
+The bulk of the notebook covers the **electric-resistance (ER)** homes that upgrade 01
+converts to a heat pump. The monthly percent-change section at the end repeats the two
+key charts for three populations: ER homes, homes that **already have a heat pump** at
+baseline, and the two **combined** — the last being the population that matches
+whole-home billing data which identifies electric-heating customers without
+distinguishing strip heat from heat pumps.
+
+Throughout, **delta = upgrade 01 − upgrade 00**, so a negative delta means the HP upgrade
+*reduces* electric consumption relative to the ER baseline.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import plotnine as p9
+import polars as pl
+
+from lib.plotnine import SB_COLORS, theme_switchbox
+from lib.quarto import display_figure
+from lib.rates_analysis.ncp_funcs import grid_consumption_expr
+from lib.rates_analysis.rate_case_funcs import (
+    plot_weighted_hist_by_group,
+    weighted_mean,
+    weighted_pct,
+    weighted_quantile,
+)
+```
+
+## Parameters
+
+We compare three releases, keyed by their directory suffix under
+`/ebs/data/nrel/resstock/`. Each entry's `label` is what shows up in every table and
+chart in this notebook, in this same left-to-right/top-to-bottom order.
+
+```{python}
+#| label: params-releases
+
+STATE = "MD"
+UTILITY = "bge"
+EBS_BASE = Path("/ebs/data/nrel/resstock")
+
+RELEASES = {
+    "raw": {"path": EBS_BASE / "res_2024_amy2018_2", "label": "Raw NREL"},
+    "sb": {"path": EBS_BASE / "res_2024_amy2018_2_sb", "label": "Switchbox-processed"},
+    "sb_ach_ratio": {"path": EBS_BASE / "res_2024_amy2018_2_sb_ach_ratio", "label": "ACH-ratio corrected"},
+}
+RELEASE_ORDER = [r["label"] for r in RELEASES.values()]
+RELEASE_COLORS = {
+    "Raw NREL": SB_COLORS["sky"],
+    "Switchbox-processed": SB_COLORS["carrot"],
+    "ACH-ratio corrected": SB_COLORS["midnight"],
+}
+```
+
+Upgrade 00 is the ER baseline and upgrade 01 is NREL's "ENERGY STAR heat pump with
+electric backup" upgrade — present in all three releases. Only the `_sb` and
+`_sb_ach_ratio` releases carry ResStock's heating-type classification
+(`postprocess_group.heating_type_v2`) and utility assignment
+(`sb.electric_utility`); the raw release has neither. Since `bldg_id` identity is shared
+across all three releases (they're the same underlying buildings, just with different
+load-correction steps applied), we derive the BGE-electric-resistance population once
+from `_sb` and reuse that same set of buildings — and the same ResStock sample
+`weight`, which reflects sampling probability, not any load correction — across all
+three releases. That's what makes the raw/`_sb`/`_sb_ach_ratio` numbers below directly
+comparable at the per-building level.
+
+```{python}
+#| label: params-population
+
+POPULATION_RELEASE = "sb"
+UPGRADE_BASE = "00"
+UPGRADE_HP = "01"
+
+# Display labels for the three populations we chart, used in plot titles.
+LABEL_ER = "BGE electric-resistance homes"
+LABEL_HP = "BGE existing-heat-pump homes"
+LABEL_COMBINED = "BGE electric-resistance + heat-pump homes"
+```
+
+The month-by-month breakdown covers the **full calendar year**, since the HP upgrade
+changes cooling-season consumption too, not just heating. We keep a separate winter
+definition (October through March) for the whole-heating-season aggregate. ResStock's
+hourly load curves carry a `month` column (1–12), so we aggregate on that directly
+rather than relying on a monthly load-curve file — the raw release doesn't have one for
+MD, so hourly is the common denominator across all three releases.
+
+```{python}
+#| label: params-months
+
+ALL_MONTHS = list(range(1, 13))
+WINTER_MONTHS = [10, 11, 12, 1, 2, 3]
+MONTH_NUM_TO_LABEL = {
+    1: "Jan",
+    2: "Feb",
+    3: "Mar",
+    4: "Apr",
+    5: "May",
+    6: "Jun",
+    7: "Jul",
+    8: "Aug",
+    9: "Sep",
+    10: "Oct",
+    11: "Nov",
+    12: "Dec",
+}
+MONTH_ORDER = [MONTH_NUM_TO_LABEL[m] for m in ALL_MONTHS]
+WINTER_MONTH_LABELS = [MONTH_NUM_TO_LABEL[m] for m in WINTER_MONTHS]
+```
+
+Electric heating input is the sum of ResStock's four heating-related electricity
+end-uses (main heating, heating fans/pumps, and the heat pump's electric-resistance
+backup coils, both steady-state and freeze-avoidance) — the same `HEATING_E_COLS`
+convention used in `investigation_er_hp_loads.md` and `resstock_ach.qmd`. Annual load
+curves suffix these columns with `.kwh`; hourly load curves don't.
+
+```{python}
+#| label: params-heating-cols
+
+HEATING_E_COLS_ANNUAL = [
+    "out.electricity.heating.energy_consumption.kwh",
+    "out.electricity.heating_fans_pumps.energy_consumption.kwh",
+    "out.electricity.heating_hp_bkup.energy_consumption.kwh",
+    "out.electricity.heating_hp_bkup_fa.energy_consumption.kwh",
+]
+HEATING_E_COLS_HOURLY = [c.replace(".kwh", "") for c in HEATING_E_COLS_ANNUAL]
+```
+
+## Population: BGE electric-resistance and heat-pump homes
+
+We load `_sb`'s upgrade-00 metadata and utility assignment once, then filter to two
+disjoint BGE populations by baseline heating type
+(`postprocess_group.heating_type_v2`) — ResStock's own classification, not a
+re-derivation from raw fuel/equipment fields:
+
+- **Electric resistance** (ER): homes whose baseline heating is electric resistance, so
+  upgrade 01 is a genuine fuel-switch-in-place from strip heat to a heat pump.
+- **Existing heat pump** (HP): homes that *already* have a heat pump at baseline, so
+  upgrade 01 is an efficiency upgrade rather than an equipment-type change.
+- **Combined**: the union of the two, which is the population BGE's own billing data
+  would correspond to if it identifies electric-heating customers without
+  distinguishing strip heat from heat pumps.
+
+```{python}
+#| label: load-population
+
+pop_release_path = RELEASES[POPULATION_RELEASE]["path"]
+meta = pl.read_parquet(
+    pop_release_path / "metadata" / f"state={STATE}" / f"upgrade={UPGRADE_BASE}" / "metadata-sb.parquet"
+)
+ua = pl.read_parquet(pop_release_path / "metadata_utility" / f"state={STATE}" / "utility_assignment.parquet")
+bge_ids = ua.filter(pl.col("sb.electric_utility") == UTILITY).select("bldg_id")
+
+
+def bge_population_by_heating_type(heating_type: str) -> pl.DataFrame:
+    """BGE bldg_id + weight for one `postprocess_group.heating_type_v2` value."""
+    return (
+        meta.join(bge_ids, on="bldg_id", how="semi")
+        .filter(pl.col("postprocess_group.heating_type_v2") == heating_type)
+        .select("bldg_id", "weight")
+    )
+
+
+population_er = bge_population_by_heating_type("electrical_resistance")
+population_hp = bge_population_by_heating_type("heat_pump")
+population_combined = pl.concat([population_er, population_hp], how="vertical")
+```
+
+The two heating types are mutually exclusive in `heating_type_v2`, so the combined
+population is a straight concatenation with no building counted twice — worth asserting
+rather than assuming, since double-counting would silently inflate every weighted
+statistic downstream.
+
+```{python}
+#| label: show-population
+
+assert population_combined["bldg_id"].n_unique() == population_combined.height, "ER and HP populations overlap"
+
+for label, pop in [(LABEL_ER, population_er), (LABEL_HP, population_hp), (LABEL_COMBINED, population_combined)]:
+    print(f"{label:45s} {pop.height:>6,d} buildings, {pop['weight'].sum():>10,.0f} weighted customers")
+```
+
+## Annual load, per release
+
+Each release has a single per-state, per-upgrade annual load-curve file with one row
+per building. We compute two per-building metrics from it: total grid consumption
+(`max(total − |pv|, 0)`, matching CAIRO's billing basis via
+`grid_consumption_expr()`) and electric heating input (the four `HEATING_E_COLS_ANNUAL`
+summed).
+
+```{python}
+#| label: annual-loader
+
+
+def load_annual_release(release_path: Path, upgrade: str, ids: list[int]) -> pl.DataFrame:
+    """One release/upgrade's annual total + heating electric kWh, for a fixed building set."""
+    path = (
+        release_path
+        / "load_curve_annual"
+        / f"state={STATE}"
+        / f"upgrade={upgrade}"
+        / f"{STATE}_upgrade{upgrade}_metadata_and_annual_results.parquet"
+    )
+    lf = pl.scan_parquet(path).filter(pl.col("bldg_id").is_in(ids))
+    return lf.select(
+        "bldg_id",
+        grid_consumption_expr(
+            load_col="out.electricity.total.energy_consumption.kwh",
+            pv_col="out.electricity.pv.energy_consumption.kwh",
+        ).alias("total_kwh"),
+        sum((pl.col(c) for c in HEATING_E_COLS_ANNUAL), start=pl.lit(0.0)).alias("heating_kwh"),
+    ).collect()
+```
+
+For each release, we load upgrade 00 and upgrade 01 separately, join them on
+`bldg_id`, and take `delta = upg01 − upg00` for both metrics. `annual_delta_for_release`
+takes a `population` (bldg_id + weight) so we can reuse it for the ER population here,
+the heat-pump population below, and the combined population further down, without
+duplicating the loading/joining logic.
+
+```{python}
+#| label: annual-delta-per-release
+
+
+def annual_delta_for_release(key: str, population: pl.DataFrame) -> pl.DataFrame:
+    """Per-building annual total/heating delta (upg01 - upg00) for one release."""
+    ids = population["bldg_id"].to_list()
+    release_path = RELEASES[key]["path"]
+    upg0 = load_annual_release(release_path, UPGRADE_BASE, ids).rename(
+        {"total_kwh": "total_kwh_upg0", "heating_kwh": "heating_kwh_upg0"}
+    )
+    upg1 = load_annual_release(release_path, UPGRADE_HP, ids).rename(
+        {"total_kwh": "total_kwh_upg1", "heating_kwh": "heating_kwh_upg1"}
+    )
+    return (
+        upg0.join(upg1, on="bldg_id")
+        .join(population, on="bldg_id")
+        .with_columns(
+            (pl.col("total_kwh_upg1") - pl.col("total_kwh_upg0")).alias("delta_total"),
+            (pl.col("heating_kwh_upg1") - pl.col("heating_kwh_upg0")).alias("delta_heating"),
+        )
+        .with_columns(pl.lit(RELEASES[key]["label"]).alias("release"))
+    )
+```
+
+```{python}
+#| label: annual-deltas-combine
+
+annual_deltas_er = pl.concat(
+    [annual_delta_for_release(k, population_er) for k in RELEASES], how="vertical"
+).with_columns(pl.col("release").cast(pl.Enum(RELEASE_ORDER)))
+annual_deltas_er.head()
+```
+
+## Winter and monthly load, per release
+
+Sub-annual figures come from per-building hourly files (`{bldg_id}-{upgrade}.parquet`).
+We compute the same two per-hour metrics as above, then aggregate two ways: grouping by
+`bldg_id` over the six winter months gives the whole-winter total; grouping by `bldg_id`
+and `month` over all twelve months gives the individual-month totals.
+
+```{python}
+#| label: hourly-loader
+
+
+def load_hourly_release(release_path: Path, upgrade: str, ids: list[int], months: list[int]) -> pl.LazyFrame:
+    """Hourly total/heating grid consumption for a fixed building set and month set.
+
+    Constructs per-building parquet paths directly rather than scanning the whole
+    hourly partition and filtering, matching the "single utility from S3" guidance
+    (avoids probing every file just to keep a handful of buildings' rows) -- even
+    though these reads are local, it keeps the pattern consistent with
+    lib.rates_analysis.ncp_funcs.scan_hourly_loads_for_buildings.
+    """
+    load_dir = release_path / "load_curve_hourly" / f"state={STATE}" / f"upgrade={upgrade}"
+    upgrade_int = str(int(upgrade))
+    paths = [str(load_dir / f"{bid}-{upgrade_int}.parquet") for bid in ids]
+    return (
+        pl.scan_parquet(paths)
+        .filter(pl.col("month").is_in(months))
+        .select(
+            "bldg_id",
+            "month",
+            grid_consumption_expr().alias("total_kwh"),
+            sum((pl.col(c) for c in HEATING_E_COLS_HOURLY), start=pl.lit(0.0)).alias("heating_kwh"),
+        )
+    )
+
+
+def winter_totals_for_release(release_path: Path, upgrade: str, ids: list[int]) -> pl.DataFrame:
+    """Whole-winter (Oct-Mar) total/heating kWh, one row per building."""
+    return (
+        load_hourly_release(release_path, upgrade, ids, WINTER_MONTHS)
+        .group_by("bldg_id")
+        .agg(pl.col("total_kwh").sum(), pl.col("heating_kwh").sum())
+        .collect()
+    )
+
+
+def monthly_for_release(release_path: Path, upgrade: str, ids: list[int]) -> pl.DataFrame:
+    """Per-calendar-month total/heating kWh, twelve rows per building."""
+    return (
+        load_hourly_release(release_path, upgrade, ids, ALL_MONTHS)
+        .group_by("bldg_id", "month")
+        .agg(pl.col("total_kwh").sum(), pl.col("heating_kwh").sum())
+        .collect()
+    )
+```
+
+Same upg01 − upg00 delta pattern as the annual section, once for the whole-winter
+aggregate and once for the per-month breakdown.
+
+```{python}
+#| label: winter-delta-per-release
+
+
+def winter_delta_for_release(key: str, population: pl.DataFrame) -> pl.DataFrame:
+    """Per-building whole-winter total/heating delta (upg01 - upg00) for one release."""
+    ids = population["bldg_id"].to_list()
+    release_path = RELEASES[key]["path"]
+    upg0 = winter_totals_for_release(release_path, UPGRADE_BASE, ids).rename(
+        {"total_kwh": "total_kwh_upg0", "heating_kwh": "heating_kwh_upg0"}
+    )
+    upg1 = winter_totals_for_release(release_path, UPGRADE_HP, ids).rename(
+        {"total_kwh": "total_kwh_upg1", "heating_kwh": "heating_kwh_upg1"}
+    )
+    return (
+        upg0.join(upg1, on="bldg_id")
+        .join(population, on="bldg_id")
+        .with_columns(
+            (pl.col("total_kwh_upg1") - pl.col("total_kwh_upg0")).alias("delta_total"),
+            (pl.col("heating_kwh_upg1") - pl.col("heating_kwh_upg0")).alias("delta_heating"),
+        )
+        .with_columns(pl.lit(RELEASES[key]["label"]).alias("release"))
+    )
+```
+
+```{python}
+#| label: winter-deltas-combine
+
+winter_deltas_er = pl.concat(
+    [winter_delta_for_release(k, population_er) for k in RELEASES], how="vertical"
+).with_columns(pl.col("release").cast(pl.Enum(RELEASE_ORDER)))
+winter_deltas_er.head()
+```
+
+```{python}
+#| label: monthly-delta-per-release
+
+
+def monthly_delta_for_release(key: str, population: pl.DataFrame) -> pl.DataFrame:
+    """Per-building, per-calendar-month total/heating delta (upg01 - upg00) for one release."""
+    ids = population["bldg_id"].to_list()
+    release_path = RELEASES[key]["path"]
+    upg0 = monthly_for_release(release_path, UPGRADE_BASE, ids).rename(
+        {"total_kwh": "total_kwh_upg0", "heating_kwh": "heating_kwh_upg0"}
+    )
+    upg1 = monthly_for_release(release_path, UPGRADE_HP, ids).rename(
+        {"total_kwh": "total_kwh_upg1", "heating_kwh": "heating_kwh_upg1"}
+    )
+    return (
+        upg0.join(upg1, on=["bldg_id", "month"])
+        .join(population, on="bldg_id")
+        .with_columns(
+            (pl.col("total_kwh_upg1") - pl.col("total_kwh_upg0")).alias("delta_total"),
+            (pl.col("heating_kwh_upg1") - pl.col("heating_kwh_upg0")).alias("delta_heating"),
+        )
+        .with_columns(
+            pl.lit(RELEASES[key]["label"]).alias("release"),
+            pl.col("month").replace_strict(MONTH_NUM_TO_LABEL).alias("month_label"),
+        )
+    )
+```
+
+```{python}
+#| label: monthly-deltas-combine
+
+monthly_deltas_er = pl.concat(
+    [monthly_delta_for_release(k, population_er) for k in RELEASES], how="vertical"
+).with_columns(
+    pl.col("release").cast(pl.Enum(RELEASE_ORDER)),
+    pl.col("month_label").cast(pl.Enum(MONTH_ORDER)),
+)
+monthly_deltas_er.head()
+```
+
+Let's run a quick sanity check: restricted to the six winter months, each building's
+monthly deltas should sum to exactly its whole-winter delta, since both are derived from
+the same underlying hourly rows just aggregated differently.
+
+```{python}
+#| label: sanity-check-monthly-sums-to-winter
+
+_check = (
+    monthly_deltas_er.filter(pl.col("month").is_in(WINTER_MONTHS))
+    .group_by("bldg_id", "release")
+    .agg(pl.col("delta_total").sum().alias("sum_of_monthly_deltas"))
+    .join(winter_deltas_er.select("bldg_id", "release", "delta_total"), on=["bldg_id", "release"])
+    .with_columns((pl.col("sum_of_monthly_deltas") - pl.col("delta_total")).abs().alias("diff"))
+)
+max_diff = _check["diff"].max()
+print(f"Max |sum of monthly deltas - whole-winter delta|: {max_diff:.2e} kWh")
+assert max_diff < 1e-6, "Monthly deltas don't sum to the whole-winter delta -- aggregation bug"
+```
+
+## Summary statistics
+
+For each metric, we report the weighted mean delta, weighted median delta, and the
+weighted percent of homes where the HP upgrade *increases* consumption (`delta > 0`),
+one row per release.
+
+```{python}
+#| label: summarize-helper
+
+
+def summarize_by_release(df: pl.DataFrame, value_col: str) -> pl.DataFrame:
+    """Weighted mean/median delta and % of homes with an increase, one row per release."""
+    rows = [
+        {
+            "release": release,
+            "mean_delta": weighted_mean(sub, value_col),
+            "median_delta": weighted_quantile(sub, value_col, 0.5),
+            "pct_increase": weighted_pct(sub, pl.col(value_col) > 0) * 100,
+            "n_weighted": sub["weight"].sum(),
+        }
+        for release in RELEASE_ORDER
+        if (sub := df.filter(pl.col("release") == release)).height > 0
+    ]
+    return pl.DataFrame(rows)
+```
+
+### Annual
+
+```{python}
+#| label: annual-total-summary
+
+annual_total_summary_er = summarize_by_release(annual_deltas_er, "delta_total")
+annual_total_summary_er
+```
+
+```{python}
+#| label: annual-heating-summary
+
+annual_heating_summary_er = summarize_by_release(annual_deltas_er, "delta_heating")
+annual_heating_summary_er
+```
+
+### Whole winter (Oct–Mar)
+
+```{python}
+#| label: winter-total-summary
+
+winter_total_summary_er = summarize_by_release(winter_deltas_er, "delta_total")
+winter_total_summary_er
+```
+
+```{python}
+#| label: winter-heating-summary
+
+winter_heating_summary_er = summarize_by_release(winter_deltas_er, "delta_heating")
+winter_heating_summary_er
+```
+
+### Individual calendar months
+
+Same three stats, but computed separately for each release/month combination.
+
+```{python}
+#| label: summarize-monthly-helper
+
+
+def summarize_by_release_month(df: pl.DataFrame, value_col: str) -> pl.DataFrame:
+    """Weighted mean/median delta and % of homes with an increase, per release x month."""
+    rows = [
+        {
+            "release": release,
+            "month": month,
+            "mean_delta": weighted_mean(sub, value_col),
+            "median_delta": weighted_quantile(sub, value_col, 0.5),
+            "pct_increase": weighted_pct(sub, pl.col(value_col) > 0) * 100,
+        }
+        for release in RELEASE_ORDER
+        for month in MONTH_ORDER
+        if (
+            sub := df.filter((pl.col("release") == release) & (pl.col("month_label") == month))
+        ).height
+        > 0
+    ]
+    return pl.DataFrame(rows).with_columns(
+        pl.col("release").cast(pl.Enum(RELEASE_ORDER)),
+        pl.col("month").cast(pl.Enum(MONTH_ORDER)),
+    )
+```
+
+```{python}
+#| label: monthly-total-summary
+
+monthly_total_summary_er = summarize_by_release_month(monthly_deltas_er, "delta_total")
+monthly_total_summary_er
+```
+
+Pivoted wide (month x release) for an at-a-glance read of the mean delta:
+
+```{python}
+#| label: monthly-total-pivot
+
+monthly_total_summary_er.pivot(on="release", index="month", values="mean_delta").sort("month")
+```
+
+```{python}
+#| label: monthly-heating-summary
+
+monthly_heating_summary_er = summarize_by_release_month(monthly_deltas_er, "delta_heating")
+monthly_heating_summary_er
+```
+
+```{python}
+#| label: monthly-heating-pivot
+
+monthly_heating_summary_er.pivot(on="release", index="month", values="mean_delta").sort("month")
+```
+
+## Distributions
+
+Weighted histograms of the per-building delta, faceted by release with free scales
+(since the ACH-ratio-corrected release systematically shrinks the magnitude of the
+delta, as the summary tables above already show).
+
+```{python}
+#| label: fig-annual-total-hist
+#| fig-cap: "Annual total-electric delta (upg01 - upg00), BGE electric-resistance homes, by release"
+
+p = plot_weighted_hist_by_group(
+    annual_deltas_er,
+    value_col="delta_total",
+    group_col="release",
+    title="Annual total-electric delta by release",
+    x_label="Annual delta (kWh)",
+    bin_width=250,
+)
+fig = p.draw()
+display_figure(fig)
+```
+
+```{python}
+#| label: fig-annual-heating-hist
+#| fig-cap: "Annual electric-heating-input delta (upg01 - upg00), BGE electric-resistance homes, by release"
+
+p = plot_weighted_hist_by_group(
+    annual_deltas_er,
+    value_col="delta_heating",
+    group_col="release",
+    title="Annual electric-heating-input delta by release",
+    x_label="Annual delta (kWh)",
+    bin_width=250,
+)
+fig = p.draw()
+display_figure(fig)
+```
+
+```{python}
+#| label: fig-winter-total-hist
+#| fig-cap: "Whole-winter (Oct-Mar) total-electric delta (upg01 - upg00), BGE electric-resistance homes, by release"
+
+p = plot_weighted_hist_by_group(
+    winter_deltas_er,
+    value_col="delta_total",
+    group_col="release",
+    title="Whole-winter total-electric delta by release",
+    x_label="Winter delta (kWh)",
+    bin_width=150,
+)
+fig = p.draw()
+display_figure(fig)
+```
+
+```{python}
+#| label: fig-winter-heating-hist
+#| fig-cap: "Whole-winter (Oct-Mar) electric-heating-input delta (upg01 - upg00), BGE electric-resistance homes, by release"
+
+p = plot_weighted_hist_by_group(
+    winter_deltas_er,
+    value_col="delta_heating",
+    group_col="release",
+    title="Whole-winter electric-heating-input delta by release",
+    x_label="Winter delta (kWh)",
+    bin_width=150,
+)
+fig = p.draw()
+display_figure(fig)
+```
+
+## Heat-pump and combined populations
+
+Everything above covers the ER homes. Because the three delta helpers take a
+`population` argument, we can run the identical pipeline over the existing-heat-pump
+homes without duplicating any loading or joining logic.
+
+```{python}
+#| label: hp-deltas
+
+annual_deltas_hp = pl.concat(
+    [annual_delta_for_release(k, population_hp) for k in RELEASES], how="vertical"
+).with_columns(pl.col("release").cast(pl.Enum(RELEASE_ORDER)))
+winter_deltas_hp = pl.concat(
+    [winter_delta_for_release(k, population_hp) for k in RELEASES], how="vertical"
+).with_columns(pl.col("release").cast(pl.Enum(RELEASE_ORDER)))
+monthly_deltas_hp = pl.concat(
+    [monthly_delta_for_release(k, population_hp) for k in RELEASES], how="vertical"
+).with_columns(
+    pl.col("release").cast(pl.Enum(RELEASE_ORDER)),
+    pl.col("month_label").cast(pl.Enum(MONTH_ORDER)),
+)
+```
+
+The combined population needs no new file reads. These frames are one row per building
+(per month, in the monthly case) and the two populations are disjoint, so stacking them
+gives exactly the frame we'd get by running the loaders over the union of building IDs.
+
+```{python}
+#| label: combined-deltas
+
+annual_deltas_combined = pl.concat([annual_deltas_er, annual_deltas_hp], how="vertical")
+winter_deltas_combined = pl.concat([winter_deltas_er, winter_deltas_hp], how="vertical")
+monthly_deltas_combined = pl.concat([monthly_deltas_er, monthly_deltas_hp], how="vertical")
+```
+
+To compare populations side by side, we stack each population's `summarize_by_release`
+output with a `population` column.
+
+```{python}
+#| label: cross-population-helper
+
+ANNUAL_DELTAS = {LABEL_ER: annual_deltas_er, LABEL_HP: annual_deltas_hp, LABEL_COMBINED: annual_deltas_combined}
+WINTER_DELTAS = {LABEL_ER: winter_deltas_er, LABEL_HP: winter_deltas_hp, LABEL_COMBINED: winter_deltas_combined}
+MONTHLY_DELTAS = {
+    LABEL_ER: monthly_deltas_er,
+    LABEL_HP: monthly_deltas_hp,
+    LABEL_COMBINED: monthly_deltas_combined,
+}
+
+
+def summarize_across_populations(frames: dict[str, pl.DataFrame], value_col: str) -> pl.DataFrame:
+    """summarize_by_release run per population, stacked with a `population` column."""
+    return pl.concat(
+        [summarize_by_release(df, value_col).with_columns(pl.lit(label).alias("population")) for label, df in frames.items()],
+        how="vertical",
+    ).select("population", "release", "mean_delta", "median_delta", "pct_increase", "n_weighted")
+```
+
+Annual deltas, all three populations:
+
+```{python}
+#| label: annual-total-summary-all
+
+summarize_across_populations(ANNUAL_DELTAS, "delta_total")
+```
+
+```{python}
+#| label: annual-heating-summary-all
+
+summarize_across_populations(ANNUAL_DELTAS, "delta_heating")
+```
+
+Whole-winter deltas, all three populations:
+
+```{python}
+#| label: winter-total-summary-all
+
+summarize_across_populations(WINTER_DELTAS, "delta_total")
+```
+
+```{python}
+#| label: winter-heating-summary-all
+
+summarize_across_populations(WINTER_DELTAS, "delta_heating")
+```
+
+## Monthly trend: percent change by month
+
+The histograms above collapse each release's winter into one number, and the absolute
+kWh deltas in the previous sections are hard to compare release to release, since the
+ACH50 correction shifts each release's *baseline* load level too -- a bigger baseline
+can produce a bigger absolute delta even if the HP upgrade has the same proportional
+effect. So here we plot each release's delta as a **percent change relative to that
+release's own upgrade-00 baseline**, month by month across the full calendar year. We use
+a ratio of weighted sums (population-level kWh saved divided by population-level baseline
+kWh) rather than a weighted mean of each building's own percent change, since a handful of
+homes have near-zero baseline heating load in shoulder months -- dividing by a near-zero
+baseline would blow up those buildings' individual percent changes into outliers.
+
+```{python}
+#| label: summarize-pct-change-helper
+
+
+def summarize_pct_change_by_release_month(df: pl.DataFrame, delta_col: str, baseline_col: str) -> pl.DataFrame:
+    """Weighted % change (ratio of weighted sums), one row per release x month.
+
+    A month with no weighted baseline load at all yields None rather than a divide-by-zero:
+    it can't happen for the BGE populations here, but it would for a utility/state whose
+    summer heating load rounds to nothing.
+    """
+    rows = []
+    for release in RELEASE_ORDER:
+        for month in MONTH_ORDER:
+            sub = df.filter((pl.col("release") == release) & (pl.col("month_label") == month))
+            if sub.height == 0:
+                continue
+            baseline = (sub[baseline_col] * sub["weight"]).sum()
+            delta = (sub[delta_col] * sub["weight"]).sum()
+            rows.append(
+                {
+                    "release": release,
+                    "month": month,
+                    "pct_delta": delta / baseline * 100 if baseline > 0 else None,
+                }
+            )
+    return pl.DataFrame(rows).with_columns(
+        pl.col("release").cast(pl.Enum(RELEASE_ORDER)),
+        pl.col("month").cast(pl.Enum(MONTH_ORDER)),
+    )
+```
+
+We compute two metrics -- whole-home total electric use, and electric heating input --
+for each of the three populations, giving the six series we chart below.
+
+One caveat on reading the heating charts in summer: heating is a rounding error in June
+through September (under 1% of total electric use in those months), so the percent change
+there is a ratio of two very small numbers. It's real, but it describes almost no kWh.
+
+```{python}
+#| label: monthly-pct-change-summary
+
+monthly_total_pct = {
+    label: summarize_pct_change_by_release_month(df, "delta_total", "total_kwh_upg0")
+    for label, df in MONTHLY_DELTAS.items()
+}
+monthly_heating_pct = {
+    label: summarize_pct_change_by_release_month(df, "delta_heating", "heating_kwh_upg0")
+    for label, df in MONTHLY_DELTAS.items()
+}
+```
+
+```{python}
+#| label: monthly-pct-change-table
+
+pl.concat(
+    [df.with_columns(pl.lit(label).alias("population")) for label, df in monthly_total_pct.items()],
+    how="vertical",
+).pivot(on="release", index=["population", "month"], values="pct_delta")
+```
+
+Each chart shows one line per release, so the vertical spread between lines is the
+release effect and the shape across months is the seasonal effect.
+
+```{python}
+#| label: pct-change-plot-helper
+
+
+def pct_axis_labels(breaks: list[float]) -> list[str]:
+    """Percent labels, adding a decimal only when the chosen breaks need one.
+
+    The HP population's total-electric range is narrow enough that matplotlib picks
+    2.5-point steps; formatting those with no decimals would print -2% for -2.5%.
+    """
+    decimals = 0 if all(float(b).is_integer() for b in breaks if b == b) else 1
+    return [f"{b:.{decimals}f}%" for b in breaks]
+
+
+def plot_monthly_pct_change(summary: pl.DataFrame, metric_label: str, population_label: str) -> p9.ggplot:
+    """Weighted % change by calendar month, one line per release."""
+    return (
+        p9.ggplot(summary, p9.aes(x="month", y="pct_delta", color="release", group="release"))
+        + p9.geom_hline(yintercept=0, linetype="dotted", color="gray")
+        + p9.geom_line(size=1)
+        + p9.geom_point(size=2.5)
+        + p9.scale_color_manual(values=RELEASE_COLORS, breaks=RELEASE_ORDER)
+        + p9.scale_y_continuous(labels=pct_axis_labels)
+        + p9.labs(
+            x="Month",
+            y="Weighted % change (upg01 vs upg00)",
+            color="Release",
+            title=f"{population_label}: % change in {metric_label}",
+        )
+        + theme_switchbox()
+        + p9.theme(figure_size=(10.5, 4.5))
+    )
+```
+
+### Electric-resistance homes
+
+```{python}
+#| label: fig-monthly-total-line-er
+#| fig-cap: "Weighted % change in total-electric use (upg01 vs upg00) by month, BGE electric-resistance homes"
+
+fig = plot_monthly_pct_change(monthly_total_pct[LABEL_ER], "total-electric use", LABEL_ER).draw()
+display_figure(fig)
+```
+
+```{python}
+#| label: fig-monthly-heating-line-er
+#| fig-cap: "Weighted % change in electric-heating-input use (upg01 vs upg00) by month, BGE electric-resistance homes"
+
+fig = plot_monthly_pct_change(monthly_heating_pct[LABEL_ER], "electric-heating input", LABEL_ER).draw()
+display_figure(fig)
+```
+
+### Existing-heat-pump homes
+
+```{python}
+#| label: fig-monthly-total-line-hp
+#| fig-cap: "Weighted % change in total-electric use (upg01 vs upg00) by month, BGE existing-heat-pump homes"
+
+fig = plot_monthly_pct_change(monthly_total_pct[LABEL_HP], "total-electric use", LABEL_HP).draw()
+display_figure(fig)
+```
+
+```{python}
+#| label: fig-monthly-heating-line-hp
+#| fig-cap: "Weighted % change in electric-heating-input use (upg01 vs upg00) by month, BGE existing-heat-pump homes"
+
+fig = plot_monthly_pct_change(monthly_heating_pct[LABEL_HP], "electric-heating input", LABEL_HP).draw()
+display_figure(fig)
+```
+
+### Combined (electric-resistance + heat-pump)
+
+```{python}
+#| label: fig-monthly-total-line-combined
+#| fig-cap: "Weighted % change in total-electric use (upg01 vs upg00) by month, BGE electric-resistance and heat-pump homes combined"
+
+fig = plot_monthly_pct_change(monthly_total_pct[LABEL_COMBINED], "total-electric use", LABEL_COMBINED).draw()
+display_figure(fig)
+```
+
+```{python}
+#| label: fig-monthly-heating-line-combined
+#| fig-cap: "Weighted % change in electric-heating-input use (upg01 vs upg00) by month, BGE electric-resistance and heat-pump homes combined"
+
+fig = plot_monthly_pct_change(monthly_heating_pct[LABEL_COMBINED], "electric-heating input", LABEL_COMBINED).draw()
+display_figure(fig)
+```
+
+Across all three populations, the heating-input percent change moves very little
+between releases, while the total-electric percent change moves more. That asymmetry
+follows from what the ACH50 correction actually rescales: electric heating and electric
+cooling, but *not* the remaining end uses (lighting, appliances, plug loads, water
+heating). In the heating charts, both the numerator and the denominator of the ratio are
+made up entirely of rescaled quantities, so the correction largely cancels out. In the
+total-electric charts, the denominator also contains untouched non-space-conditioning
+load, which dilutes the correction differently in each release and leaves a visible gap
+between the lines.
+
+## Monthly trend: absolute kWh
+
+The percent-change charts above cancel out each release's baseline so the *proportional*
+effect of upgrade 01 is comparable. The charts below keep the units in kWh: weighted
+mean of the per-building delta (upgrade 01 − upgrade 00), one line per release. Negative
+values are savings. This is where the ACH50 correction shows up as a gap between
+releases -- the same proportional heating cut applied to a leakier (raw) baseline
+produces a larger kWh reduction.
+
+```{python}
+#| label: monthly-kwh-delta-summary
+
+monthly_total_kwh = {
+    label: summarize_by_release_month(df, "delta_total") for label, df in MONTHLY_DELTAS.items()
+}
+monthly_heating_kwh = {
+    label: summarize_by_release_month(df, "delta_heating") for label, df in MONTHLY_DELTAS.items()
+}
+```
+
+```{python}
+#| label: kwh-delta-plot-helper
+
+
+def plot_monthly_kwh_delta(summary: pl.DataFrame, metric_label: str, population_label: str) -> p9.ggplot:
+    """Weighted-mean kWh delta by calendar month, one line per release."""
+    return (
+        p9.ggplot(summary, p9.aes(x="month", y="mean_delta", color="release", group="release"))
+        + p9.geom_hline(yintercept=0, linetype="dotted", color="gray")
+        + p9.geom_line(size=1)
+        + p9.geom_point(size=2.5)
+        + p9.scale_color_manual(values=RELEASE_COLORS, breaks=RELEASE_ORDER)
+        + p9.scale_y_continuous(labels=lambda breaks: [f"{b:,.0f}" for b in breaks])
+        + p9.labs(
+            x="Month",
+            y="Weighted mean delta (kWh)",
+            color="Release",
+            title=f"{population_label}: kWh change in {metric_label}",
+        )
+        + theme_switchbox()
+        + p9.theme(figure_size=(10.5, 4.5))
+    )
+```
+
+### Electric-resistance homes
+
+```{python}
+#| label: fig-monthly-total-kwh-er
+#| fig-cap: "Weighted-mean total-electric delta (upg01 - upg00) by month, BGE electric-resistance homes"
+
+fig = plot_monthly_kwh_delta(monthly_total_kwh[LABEL_ER], "total-electric use", LABEL_ER).draw()
+display_figure(fig)
+```
+
+```{python}
+#| label: fig-monthly-heating-kwh-er
+#| fig-cap: "Weighted-mean electric-heating-input delta (upg01 - upg00) by month, BGE electric-resistance homes"
+
+fig = plot_monthly_kwh_delta(monthly_heating_kwh[LABEL_ER], "electric-heating input", LABEL_ER).draw()
+display_figure(fig)
+```
+
+### Existing-heat-pump homes
+
+```{python}
+#| label: fig-monthly-total-kwh-hp
+#| fig-cap: "Weighted-mean total-electric delta (upg01 - upg00) by month, BGE existing-heat-pump homes"
+
+fig = plot_monthly_kwh_delta(monthly_total_kwh[LABEL_HP], "total-electric use", LABEL_HP).draw()
+display_figure(fig)
+```
+
+```{python}
+#| label: fig-monthly-heating-kwh-hp
+#| fig-cap: "Weighted-mean electric-heating-input delta (upg01 - upg00) by month, BGE existing-heat-pump homes"
+
+fig = plot_monthly_kwh_delta(monthly_heating_kwh[LABEL_HP], "electric-heating input", LABEL_HP).draw()
+display_figure(fig)
+```
+
+### Combined (electric-resistance + heat-pump)
+
+```{python}
+#| label: fig-monthly-total-kwh-combined
+#| fig-cap: "Weighted-mean total-electric delta (upg01 - upg00) by month, BGE electric-resistance and heat-pump homes combined"
+
+fig = plot_monthly_kwh_delta(monthly_total_kwh[LABEL_COMBINED], "total-electric use", LABEL_COMBINED).draw()
+display_figure(fig)
+```
+
+```{python}
+#| label: fig-monthly-heating-kwh-combined
+#| fig-cap: "Weighted-mean electric-heating-input delta (upg01 - upg00) by month, BGE electric-resistance and heat-pump homes combined"
+
+fig = plot_monthly_kwh_delta(monthly_heating_kwh[LABEL_COMBINED], "electric-heating input", LABEL_COMBINED).draw()
+display_figure(fig)
+```
+
+## Export
+
+The tables below are the scaling factors this notebook exists to produce: one row per
+calendar month, three columns of a **multiplicative factor** on whole-home total electric
+use (upgrade 01 vs upgrade 00), one column per ResStock release. They come from the same
+ratio-of-weighted-sums used in the percent-change charts, rewritten as
+`1 + pct_delta / 100`, so `-23` percent becomes `0.77`. Multiply a month's observed load
+by the factor to estimate that month after the upgrade. Column names match the
+`RELEASES` keys (`raw`, `sb`, `sb_ach_ratio`) so they can be read as `df.sb` /
+`df["sb_ach_ratio"]` without quoting display labels.
+
+The **combined** table is the one that matches BGE billing data which identifies
+electric-heating customers without distinguishing strip heat from heat pumps. ER-only
+and existing-HP-only tables are pickled alongside it.
+
+```{python}
+#| label: export-monthly-pct-wide
+
+# Display label -> identifier used as a column name in the pickle.
+RELEASE_COL = {info["label"]: key for key, info in RELEASES.items()}
+
+
+def monthly_scale_wide(summary: pl.DataFrame) -> pl.DataFrame:
+    """One row per month, one upgrade-01 / upgrade-00 load factor per release."""
+    return (
+        summary.pivot(on="release", index="month", values="pct_delta")
+        .rename(RELEASE_COL)
+        .with_columns([(pl.col(c) / 100 + 1).alias(c) for c in RELEASES])
+        .select("month", *RELEASES)
+        .sort("month")
+    )
+
+
+monthly_scale_total_wide = {
+    "er": monthly_scale_wide(monthly_total_pct[LABEL_ER]),
+    "hp": monthly_scale_wide(monthly_total_pct[LABEL_HP]),
+    "combined": monthly_scale_wide(monthly_total_pct[LABEL_COMBINED]),
+}
+monthly_scale_total_wide["combined"]
+```
+
+```{python}
+#| label: export-pickle
+import pickle
+
+path_cache = Path("../cache")
+path_cache.mkdir(parents=True, exist_ok=True)
+path_pkl = path_cache / "rs_release_comp_monthly_pct_total.pkl"
+path_pkl.write_bytes(
+    pickle.dumps(
+        {
+            "metric": "scale_factor_total_electric_upg01_vs_upg00",
+            "unit": "multiplier",
+            "populations": {
+                key: df.to_pandas() for key, df in monthly_scale_total_wide.items()
+            },
+        }
+    )
+)
+print(f"Wrote {path_pkl}")
+```
+
+## Closing summary
+
+How much does the ACH-ratio correction change the picture for the ER population, and is
+that change concentrated in particular months? We compare the ACH-ratio-corrected release
+against raw NREL, month by month across the year, as a percent difference in the
+weighted-mean total delta.
+
+```{python}
+#| label: closing-divergence
+
+_pivot = monthly_total_summary_er.pivot(on="release", index="month", values="mean_delta").sort("month")
+divergence = _pivot.with_columns(
+    (
+        (pl.col("ACH-ratio corrected") - pl.col("Raw NREL")).abs() / pl.col("Raw NREL").abs() * 100
+    ).alias("pct_diff_vs_raw")
+).sort("pct_diff_vs_raw", descending=True)
+divergence
+```
+
+```{python}
+#| label: closing-print
+
+annual_raw = annual_total_summary_er.filter(pl.col("release") == "Raw NREL")["mean_delta"][0]
+annual_ach = annual_total_summary_er.filter(pl.col("release") == "ACH-ratio corrected")["mean_delta"][0]
+winter_raw = winter_total_summary_er.filter(pl.col("release") == "Raw NREL")["mean_delta"][0]
+winter_ach = winter_total_summary_er.filter(pl.col("release") == "ACH-ratio corrected")["mean_delta"][0]
+worst_month = divergence["month"][0]
+worst_pct = divergence["pct_diff_vs_raw"][0]
+best_month = divergence["month"][-1]
+best_pct = divergence["pct_diff_vs_raw"][-1]
+
+print(f"Annual total-electric savings, weighted mean: {annual_raw:,.0f} kWh (raw) -> {annual_ach:,.0f} kWh (ACH-ratio corrected)")
+print(f"  ({(annual_ach - annual_raw) / abs(annual_raw) * 100:+.0f}% change in magnitude)\n")
+print(f"Whole-winter total-electric savings, weighted mean: {winter_raw:,.0f} kWh (raw) -> {winter_ach:,.0f} kWh (ACH-ratio corrected)")
+print(f"  ({(winter_ach - winter_raw) / abs(winter_raw) * 100:+.0f}% change in magnitude)\n")
+print("Month-to-month divergence between raw and ACH-ratio corrected, full year:")
+print(f"  {best_pct:.0f}% ({best_month}) to {worst_pct:.0f}% ({worst_month})")
+
+_winter_div = divergence.filter(pl.col("month").is_in(WINTER_MONTH_LABELS)).sort("pct_diff_vs_raw")
+print("\nRestricted to the six winter months, where nearly all the kWh sit:")
+print(
+    f"  {_winter_div['pct_diff_vs_raw'][0]:.0f}% ({_winter_div['month'][0]})"
+    f" to {_winter_div['pct_diff_vs_raw'][-1]:.0f}% ({_winter_div['month'][-1]})"
+)
+```

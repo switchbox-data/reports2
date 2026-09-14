@@ -1,0 +1,5163 @@
+---
+title: analysis - MA HP Rates
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+# Setup
+```{r}
+#| label: setup
+library(lubridate)
+library(patchwork)
+library(tidyverse)
+library(ggrepel)
+
+# Switchbox Libraries
+source("/workspaces/reports/lib/ggplot/switchbox_theme.R")
+source("/workspaces/reports/lib/rates_analysis/heat_pump_rate_funcs.R")
+
+# Global parameters
+exclude_municipal <- TRUE
+supply_year = 2024
+path_rs_db <- "/workspaces/reports/data/ResStock/2022_resstock_amy2018_release_1.1/rs_ma_hp_rates_2.db"
+
+hp_eff_for_report <- "mid_hp"
+hvac_for_utility_bills <- "mid_hp"
+round_dollars <- 0
+round_percent <- 1
+
+bldg_id_for_debugging = 2913
+
+# Run calcs.qmd to generate the data for this notebook
+# This will be stored in /cache, but removed
+load("/workspaces/reports/src/ma_hp_rates/cache/output_for_analysis.RData")
+
+
+
+
+
+```
+
+## Color Definitions
+```{r}
+scenario_colors = c(
+  "baseline_rates_current_hvac" = "grey50",
+
+  "baseline" = "#023047",
+  "baseline_rates_low_hp" = "#023047",
+  "baseline_rates_mid_hp" = "#023047",
+  "baseline_rates_high_hp" = "#023047",
+
+  "hpr_approved" = "#FC9706",
+  "approved_low_hp" = "#FC9706",
+  "approved_mid_hp" = "#FC9706",
+  "approved_high_hp" = "#FC9706",
+
+  "hpr_doer" = "#68BED8",
+  "doer_low_hp" = "#68BED8",
+  "doer_mid_hp" = "#68BED8",
+  "doer_high_hp" = "#68BED8"
+)
+
+library(RColorBrewer)
+
+
+heating_type_colors = c(
+  "Natural Gas" = "#8C510A",        # brown
+  "Fuel Oil" = "#D8B365",           # light brown
+  "Propane" = "#F6E8C3",            # very light brown
+  "Resistance" = "#5AB4AC",         # BrBG palette
+  "Heat Pump" = "#80CDC1",          # BrBG palette
+  "Other/None" = "#C7EAE5"          # BrBG palette
+)
+
+housing_type_colors = c(
+  "Single-Family" = "#1B9E77",     # dark2[1] - teal
+  "2-4 Units" = "#D95F02",         # dark2[2] - orange
+  "5+ Units" = "#7570B3"           # dark2[3] - purple
+)
+
+```
+
+
+## plot function prototypes
+### hist_for_single_rate_version()
+```{r}
+#| label: hist_for_single_rate_version() prototype
+hist_for_single_rate_version <- function(
+  annual_change_table,
+  version_elec,
+  x_limits = c(-3000, 3000),
+  y_limits = c(0, 1000),
+  binwidth = 100,
+  show_category_labels = TRUE
+) {
+
+  # --------------------------------------
+  # Plot parameters
+  x_min <- x_limits[1]
+  x_max <- x_limits[2]
+
+  # Define the breaks for binning
+  breaks <- seq(floor(x_min/binwidth)*binwidth, ceiling(x_max/binwidth)*binwidth, by = binwidth)
+
+  # More balanced color palette with less contrast
+  dark_red <- "#db8b87"        # dark red
+  light_red <- "#eaada9"       # light red
+  light_green <- "#8ebd85"     # light green
+  dark_green <- "#5e8a5e"      # dark green
+  # --------------------------------------
+
+  # Filter data for mid_hp
+  plot_data <- annual_change_table |>
+    filter(hvac == "mid_hp", version_elec == !!version_elec) |>
+    # Add category column before binning with new cutoffs
+    mutate(bill_category = case_when(
+      annual_bill_change <= -1000 ~ "large_savings",
+      annual_bill_change < 0 ~ "small_savings",
+      annual_bill_change < 1000 ~ "small_increase",
+      TRUE ~ "large_increase"
+    ))
+
+  # Calculate percentages for each category
+  category_percentages <- plot_data |>
+    group_by(bill_category) |>
+    summarise(count = n(), .groups = "drop") |>
+    mutate(percentage = count / sum(count) * 100)
+
+  # Get percentages for annotation
+  pct_large_savings <- category_percentages |>
+    filter(bill_category == "large_savings") |>
+    pull(percentage) |>
+    round(1)
+  if(length(pct_large_savings) == 0) pct_large_savings <- 0
+
+  pct_small_savings <- category_percentages |>
+    filter(bill_category == "small_savings") |>
+    pull(percentage) |>
+    round(1)
+  if(length(pct_small_savings) == 0) pct_small_savings <- 0
+
+  pct_small_increase <- category_percentages |>
+    filter(bill_category == "small_increase") |>
+    pull(percentage) |>
+    round(1)
+  if(length(pct_small_increase) == 0) pct_small_increase <- 0
+
+  pct_large_increase <- category_percentages |>
+    filter(bill_category == "large_increase") |>
+    pull(percentage) |>
+    round(1)
+  if(length(pct_large_increase) == 0) pct_large_increase <- 0
+
+  # Manually bin the data and calculate counts - this preserves the bill_category
+  binned_data <- plot_data |>
+    mutate(bin = cut(annual_bill_change,
+                     breaks = breaks,
+                     include.lowest = TRUE,
+                     right = FALSE)) |>
+    group_by(bin, bill_category) |>
+    summarise(count = n(), .groups = "drop") |>
+    # Add bin midpoint for plotting
+    mutate(bin_mid = as.numeric(as.character(
+      sapply(bin, function(b) {
+        # Extract bin boundaries and calculate midpoint
+        vals <- as.numeric(gsub("\\(|\\]|\\[|\\)", "", strsplit(as.character(b), ",")[[1]]))
+        return(mean(vals))
+      })
+    )))
+
+  # Position the bars at the very top and text just below
+  bar_y_pos <- y_limits[2]  # Exactly at the top
+  text_y_pos <- y_limits[2] * 0.95  # Just below the colored line
+
+  # Calculate x positions for percentage labels (center of each category)
+  x_large_savings <- mean(c(x_min, -1000))
+  x_small_savings <- mean(c(-1000, 0))
+  x_small_increase <- mean(c(0, 1000))
+  x_large_increase <- mean(c(1000, x_max))
+
+  # Create the plot using geom_col() with binned data
+  px_hist_by_rate_version <- ggplot(binned_data, aes(x = bin_mid, y = count, fill = bill_category)) +
+    # Add vertical dotted lines at the category boundaries
+    geom_vline(xintercept = c(-1000, 0, 1000), linetype = "dotted", color = "gray50", size = 0.5) +
+
+    # Add the bars
+    geom_col(position = "stack", width = binwidth * 0.9) +
+
+    # Set the fill colors manually with expanded categories
+    scale_fill_manual(
+      values = c(
+        "large_savings" = "#5e8a5e",      # dark green
+        "small_savings" = "#8ebd85",      # light green
+        "small_increase" = "#eaada9",     # light red
+        "large_increase" = "#db8b87"      # dark red
+      ),
+      guide = "none"
+    ) +
+
+    # Add horizontal lines at the very top of the plot
+    # With colors matching their respective categories
+    annotate("segment",
+             x = x_min, xend = -1000,
+             y = bar_y_pos, yend = bar_y_pos,
+             color = dark_green, size = 1) +
+
+    annotate("segment",
+             x = -1000, xend = 0,
+             y = bar_y_pos, yend = bar_y_pos,
+             color = light_green, size = 1) +
+
+    annotate("segment",
+             x = 0, xend = 1000,
+             y = bar_y_pos, yend = bar_y_pos,
+             color = light_red, size = 1) +
+
+    annotate("segment",
+             x = 1000, xend = x_max,
+             y = bar_y_pos, yend = bar_y_pos,
+             color = dark_red, size = 1) +
+
+    # Add percentage labels for each category directly below the lines
+    annotate("text",
+             x = x_large_savings,
+             y = text_y_pos * 0.95,
+             label = paste0(pct_large_savings, "%"),
+             size = 3,
+             fontface = "bold") +
+
+    annotate("text",
+             x = x_small_savings,
+             y = text_y_pos * 0.95,
+             label = paste0(pct_small_savings, "%"),
+             size = 3,
+             fontface = "bold") +
+
+    annotate("text",
+             x = x_small_increase,
+             y = text_y_pos * 0.95,
+             label = paste0(pct_small_increase, "%"),
+             size = 3,
+             fontface = "bold") +
+
+    annotate("text",
+             x = x_large_increase,
+             y = text_y_pos * 0.95,
+             label = paste0(pct_large_increase, "%"),
+             size = 3,
+             fontface = "bold") +
+
+    # Rest of the plot styling
+    labs(
+      title = glue::glue("Change in Total Winter Energy Bills after Switching to Heat Pumps"),
+      x = "Annual Bill Change ($)",
+      y = "# of Homes"
+    ) +
+    scale_y_continuous(
+      labels = function(x) paste0(round(x * 242.13 * 0.001), "k"),
+      name = "# of Homes",
+      limits = y_limits,
+      breaks = seq(0, y_limits[2]*242.13, by=50000)/242.13
+    ) +
+    scale_x_continuous(
+      labels = scales::dollar_format(),
+      limits = x_limits,
+      breaks = seq(x_min, x_max, by = 500)
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),
+      panel.grid.major = element_line(linewidth = 0.2),
+      panel.grid.minor = element_blank(),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.position = "none",
+      aspect.ratio = 0.6
+    ) +
+    {
+      if (show_category_labels) {
+        list(
+          annotate("text", x = x_large_savings,   y = y_limits[2]*0.97,
+                   label = "savings > $1k",  size = 3, fontface = "bold"),
+          annotate("text", x = x_small_savings,   y = y_limits[2]*0.97,
+                   label = "savings $0–1k", size = 3, fontface = "bold"),  # make bold
+          annotate("text", x = x_small_increase,  y = y_limits[2]*0.97,
+                   label = "losses  $0–1k", size = 3, fontface = "bold"),  # make bold
+          annotate("text", x = x_large_increase,  y = y_limits[2]*0.97,
+                   label = "losses  > $1k", size = 3, fontface = "bold")
+        )
+      }
+    } +
+    coord_cartesian(clip = "off")
+
+  return(list(px_hist_by_rate_version, category_percentages))
+}
+
+```
+
+### plot_bill_change_histograms()
+```{r}
+#| label: plot_bill_change_histograms() prototype
+
+plot_bill_change_histograms <- function(
+  annual_change_table,
+  bill_type,
+  baseline_heating_type_option,
+  electric_utility_option,
+  supply_year,
+  second_subtitle = NULL,
+  x_limits = c(-2500, 2500),
+  y_limits = c(0, 100000)/242.13,
+  binwidth = 100
+) {
+
+
+  # Create nicer version labels
+  version_labels <- c(
+    "baseline" = "Default Rates",
+    "hpr_approved" = "1.0 Rates",
+    "hpr_doer" = "2.0 Rates"
+  )
+
+  # Create three histograms without individual titles
+  result_baseline <- hist_for_single_rate_version(
+    annual_change_table = annual_change_table,
+    version_elec = "baseline",
+    x_limits = x_limits,
+    y_limits = y_limits,
+    binwidth = binwidth,
+    show_category_labels = FALSE
+  )
+
+  p1_baseline <- result_baseline[[1]] +
+    labs(title = NULL) +  # Remove title
+    ylab(NULL) +                 # Remove y-axis label
+    theme(
+      axis.title.x = element_blank(),  # Remove x axis title from top two plots
+      axis.text.x = element_blank(),   # Remove x tick labels from top two plots
+      axis.ticks.x = element_blank(),  # Remove x ticks from top two plots
+      plot.margin = margin(5, 5, 0, 5),  # Consistent margins (top, right, bottom, left)
+      axis.title.y = element_blank()     # Remove y title from top plot
+    ) +
+    # Add elegant version label on right side
+    annotate("text",
+             x = x_limits[2] * 0.95,
+             y = y_limits[2] * 0.7,
+             label = version_labels["baseline"],
+             hjust = 1,
+             fontface = "bold",
+             size = 4,
+             color = "#023047")
+
+  result_approved <- hist_for_single_rate_version(
+    annual_change_table = annual_change_table,
+    version_elec = "hpr_approved",
+    x_limits = x_limits,
+    y_limits = y_limits,
+    binwidth = binwidth,
+    show_category_labels = FALSE
+  )
+
+  p2_approved <- result_approved[[1]] +
+    labs(title = NULL) +  # Remove title
+    ylab(NULL) +
+    theme(
+      axis.title.x = element_blank(),  # Remove x axis title from top two plots
+      axis.text.x = element_blank(),   # Remove x tick labels from top two plots
+      axis.ticks.x = element_blank(),  # Remove x ticks from top two plots
+      axis.title.y = element_blank(),   # Remove y title from middle plot
+      plot.margin = margin(0, 5, 0, 5)  # Consistent margins (no top/bottom margin)
+    ) +
+    # Add elegant version label on right side
+    annotate("text",
+             x = x_limits[2] * 0.95,
+             y = y_limits[2] * 0.7,
+             label = version_labels["hpr_approved"],
+             hjust = 1,
+             fontface = "bold",
+             size = 4,
+             color = "#FC9706")
+
+  result_doer <- hist_for_single_rate_version(
+    annual_change_table = annual_change_table,
+    version_elec = "hpr_doer",
+    x_limits = x_limits,
+    y_limits = y_limits,
+    binwidth = binwidth,
+    show_category_labels = FALSE
+  )
+
+  p3_doer <- result_doer[[1]] +
+    labs(title = NULL) +  # Remove title
+    ylab(NULL) +
+    theme(
+      axis.title.y = element_blank(),  # Remove y title from bottom plot
+      plot.margin = margin(0, 5, 5, 5),  # Consistent margins
+      axis.title.x = element_text(size = 9),
+    ) +
+    # Add elegant version label on right side
+    annotate("text",
+             x = x_limits[2] * 0.95,
+             y = y_limits[2] * 0.7,
+             label = version_labels["hpr_doer"],
+             hjust = 1,
+             fontface = "bold",
+             size = 4,
+             color = "#68BED8")
+
+  # print(result_baseline[[1]])
+  # print(result_approved[[1]])
+  # print(result_doer[[1]])
+
+  # Combine plots with shared x and y axes
+  combined_plot <- p1_baseline / p2_approved / p3_doer +
+    plot_layout(heights = c(1, 1, 1)) +  # Equal heights for all plots
+    plot_annotation(
+      title = case_when(
+        bill_type == "annual_bill_change_elec" ~ glue::glue("Switching from {baseline_heating_type_option} to Heat Pump: Change in Annual Electric Bill"),
+        bill_type == "annual_bill_change_energy" ~ glue::glue("Change in Total Winter Energy Bills after Switching to Heat Pump from {baseline_heating_type_option}"),
+        bill_type == "annual_bill_change_gas" ~ glue::glue("Switching from {baseline_heating_type_option} to Heat Pump: Change in Annual Gas Bill"),
+        TRUE ~ "Heat Pump Rate Bill Changes" # Default case
+      ),
+      subtitle = second_subtitle,
+      theme = theme(
+        plot.margin = margin(10, 25, 10, 10),  # Add more right margin for labels
+        plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5, size = 8),
+      )
+    ) &
+    # Apply consistent theming to all plots
+    theme(
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_line(linewidth = 0.2, color = "gray90"),
+      panel.grid.major.y = element_line(linewidth = 0.2, color = "gray90"),
+      aspect.ratio = 0.18,
+    )
+
+  # Wrap the combined plot to add a shared y-axis label
+  combined_plot <- patchwork::wrap_elements(combined_plot) +
+    labs(tag = "# of Homes") +
+    theme(
+      plot.tag = element_text(angle = 90, vjust = 0.5, hjust = 0.5, face = "plain", size = 9),
+      plot.tag.position = "left"
+    )
+
+  return(list(combined_plot, result_baseline[[2]], result_approved[[2]], result_doer[[2]]))
+}
+
+
+```
+
+## table-delivery-tariffs-elec
+```{r}
+#| label: tbl-delivery-tariffs-elec
+round_tariffs <- 4
+
+# Eversource
+delivery_rate_eversource_summary_baseline <- delivery_tariffs_elec |>
+  filter(electric_utility == "eversource", version == "baseline", type == "delivery_rate") |>
+  pull(value) |>
+  unique() |>
+  round(round_tariffs)
+
+delivery_rate_eversource_summary_approved <- delivery_tariffs_elec |>
+  filter(electric_utility == "eversource", version == "hpr_approved", type == "delivery_rate") |>
+  pull(value) |>
+  min() |>
+  round(round_tariffs)
+
+delivery_rate_eversource_summary_doer <- delivery_tariffs_elec |>
+  filter(electric_utility == "eversource", version == "hpr_doer", type == "delivery_rate") |>
+  pull(value) |>
+  min() |>
+  round(round_tariffs)
+
+# National Grid
+delivery_rate_nationalgrid_summary_baseline <- delivery_tariffs_elec |>
+  filter(electric_utility == "nationalgrid", version == "baseline", type == "delivery_rate") |>
+  pull(value) |>
+  unique() |>
+  round(round_tariffs)
+
+delivery_rate_nationalgrid_summary_approved <- delivery_tariffs_elec |>
+  filter(electric_utility == "nationalgrid", version == "hpr_approved", type == "delivery_rate") |>
+  pull(value) |>
+  min() |>
+  round(round_tariffs)
+
+delivery_rate_nationalgrid_summary_doer <- delivery_tariffs_elec |>
+  filter(electric_utility == "nationalgrid", version == "hpr_doer", type == "delivery_rate") |>
+  pull(value) |>
+  min() |>
+  round(round_tariffs)
+
+# Eversource
+delivery_rate_unitil_summary_baseline <- delivery_tariffs_elec |>
+  filter(electric_utility == "unitil", version == "baseline", type == "delivery_rate") |>
+  pull(value) |>
+  unique() |>
+  round(round_tariffs)
+
+delivery_rate_unitil_summary_approved <- delivery_tariffs_elec |>
+  filter(electric_utility == "unitil", version == "hpr_approved", type == "delivery_rate") |>
+  pull(value) |>
+  min() |>
+  round(round_tariffs)
+
+delivery_rate_unitil_summary_doer <- delivery_tariffs_elec |>
+  filter(electric_utility == "unitil", version == "hpr_doer", type == "delivery_rate") |>
+  pull(value) |>
+  min() |>
+  round(round_tariffs)
+
+
+# Municipal
+delivery_rate_municipal_summary_baseline <- delivery_tariffs_elec |>
+  filter(electric_utility == "municipal", version == "baseline", type == "delivery_rate") |>
+  pull(value) |>
+  unique() |>
+  round(round_tariffs)
+
+delivery_rate_municipal_summary_approved <- delivery_tariffs_elec |>
+  filter(electric_utility == "municipal", version == "hpr_approved", type == "delivery_rate") |>
+  pull(value) |>
+  min() |>
+  round(round_tariffs)
+
+delivery_rate_municipal_summary_doer <- delivery_tariffs_elec |>
+  filter(electric_utility == "municipal", version == "hpr_doer", type == "delivery_rate") |>
+  pull(value) |>
+  min() |>
+  round(round_tariffs)
+
+
+# Create summary table of delivery rates
+delivery_rates_summary <- tibble(
+  Utility = c(
+    "Eversource", "Eversource", "Eversource",
+    "National Grid", "National Grid", "National Grid",
+    "Unitil", "Unitil", "Unitil",
+    "Municipal", "Municipal", "Municipal"
+  ),
+  Version = rep(c("Baseline", "HPR Approved", "HPR DOER"), 4),
+  `Delivery Rate` = c(
+    delivery_rate_eversource_summary_baseline,
+    delivery_rate_eversource_summary_approved,
+    delivery_rate_eversource_summary_doer,
+    delivery_rate_nationalgrid_summary_baseline,
+    delivery_rate_nationalgrid_summary_approved,
+    delivery_rate_nationalgrid_summary_doer,
+    delivery_rate_unitil_summary_baseline,
+    delivery_rate_unitil_summary_approved,
+    delivery_rate_unitil_summary_doer,
+    delivery_rate_municipal_summary_baseline,
+    delivery_rate_municipal_summary_approved,
+    delivery_rate_municipal_summary_doer
+  )
+)
+
+# Display the table
+knitr::kable(delivery_rates_summary,
+             caption = "Summary of Delivery Rates by Utility and Version",
+             format = "pipe",
+             digits = 4)
+```
+
+
+# ------------------------------------------------------------------------------
+# Background
+# ------------------------------------------------------------------------------
+
+## fig-stacked-bar-components-delivery-on-top
+```{r}
+#| label: fig-stacked-bar-components-delivery-on-top
+#| fig-cap: "Median electric bill for Massachusetts homes that install air-source heat pumps, under default, 1.0 and 2.0 heat pump rates."
+
+bill_component_colors = c(
+  "annual_gas_bill" = "grey50", # grey
+  "annual_elec_supply_charge" = "#A0AF12",
+  "annual_elec_delivery_charge" = "#023047",
+  "annual_elec_customer_charge" = "#68BED8",
+  "pre_hp_delivery_total" = "#FC9706"
+)
+
+
+stack_order_delivery_on_top = c(
+  "annual_gas_bill",
+  "annual_elec_delivery_charge", # top
+  "annual_elec_customer_charge", # middle
+  "annual_elec_supply_charge" # bottom
+)
+
+components <- factor(stack_order_delivery_on_top, levels = stack_order_delivery_on_top)
+
+annual_bills_by_component_plot <- annual_bills_by_component |>
+  arrange(match(charge_type, components)) |>
+  filter(hvac == "mid_hp")
+
+
+# Ugly, but here we get the balues from the stacked bar chart
+y_baseline_customer_charge <- annual_bills_by_component_plot |> filter(version == "baseline", hvac == "mid_hp", charge_type == "annual_elec_customer_charge") |> pull(amount)
+y_baseline_delivery_charge <- annual_bills_by_component_plot |> filter(version == "baseline", hvac == "mid_hp", charge_type == "annual_elec_delivery_charge") |> pull(amount)
+y_baseline_supply_charge <- annual_bills_by_component_plot |> filter(version == "baseline", hvac == "mid_hp", charge_type == "annual_elec_supply_charge") |> pull(amount)
+
+y_approved_customer_charge <- annual_bills_by_component_plot |> filter(version == "hpr_approved", hvac == "mid_hp", charge_type == "annual_elec_customer_charge") |> pull(amount)
+y_approved_delivery_charge <- annual_bills_by_component_plot |> filter(version == "hpr_approved", hvac == "mid_hp", charge_type == "annual_elec_delivery_charge") |> pull(amount)
+y_approved_supply_charge <- annual_bills_by_component_plot |> filter(version == "hpr_approved", hvac == "mid_hp", charge_type == "annual_elec_supply_charge") |> pull(amount)
+
+y_doer_customer_charge <- annual_bills_by_component_plot |> filter(version == "hpr_doer", hvac == "mid_hp", charge_type == "annual_elec_customer_charge") |> pull(amount)
+y_doer_delivery_charge <- annual_bills_by_component_plot |> filter(version == "hpr_doer", hvac == "mid_hp", charge_type == "annual_elec_delivery_charge") |> pull(amount)
+y_doer_supply_charge <- annual_bills_by_component_plot |> filter(version == "hpr_doer", hvac == "mid_hp", charge_type == "annual_elec_supply_charge") |> pull(amount)
+y_doer_natural_gas <- annual_bills_by_component_plot |> filter(version == "hpr_doer", hvac == "mid_hp", charge_type == "annual_gas_bill") |> pull(amount)
+
+
+# Savings and percentage savings
+fig_stacked_bar_components_delivery_on_top_savings_approved <- y_approved_delivery_charge - y_baseline_delivery_charge
+fig_stacked_bar_components_delivery_on_top_savings_approved_pct <- fig_stacked_bar_components_delivery_on_top_savings_approved / y_baseline_delivery_charge
+
+fig_stacked_bar_components_delivery_on_top_savings_doer <- y_doer_delivery_charge - y_baseline_delivery_charge
+fig_stacked_bar_components_delivery_on_top_savings_doer_pct <- fig_stacked_bar_components_delivery_on_top_savings_doer / y_baseline_delivery_charge
+
+y_baseline_bill <- y_baseline_customer_charge + y_baseline_delivery_charge + y_baseline_supply_charge
+
+fig_stacked_bar_components_delivery_on_top_savings_approved_pct_of_total_bill <- (fig_stacked_bar_components_delivery_on_top_savings_approved / y_baseline_bill * -100) |> round(0)
+
+fig_stacked_bar_components_delivery_on_top_savings_doer_pct_of_total_bill <- (fig_stacked_bar_components_delivery_on_top_savings_doer / y_baseline_bill * -100) |> round(0)
+
+
+y_annotation_offset <- 0
+x_label_offset <- 3.5
+
+
+fig_bill_stacked_bar_delivery_on_top <- ggplot(annual_bills_by_component_plot |>
+  mutate(charge_type = factor(charge_type, levels = components)),
+       aes(x = interaction(hvac, version), y = amount, fill = charge_type)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Components of Annual Electricity Bill",
+       x = "",
+       y = "Annual Cost ($)",
+       fill = "Charge Type") +
+  scale_fill_manual(values = bill_component_colors) +
+  scale_y_continuous(labels = scales::dollar_format(), limits = c(0, 4500), breaks = seq(0, 5000, by = 1000), expand = c(0,0)) +
+  scale_x_discrete(labels = c("Current HVAC\nCurrent Rates",
+                           "Mid-Efficiency HP\nCurrent Rates",
+                           "Mid-Efficiency HP\n1.0 Rates",
+                           "Mid-Efficiency HP\n2.0 Rates")) +
+  coord_cartesian(clip = "off") +
+  theme(
+    text = element_text(family = "IBM-Plex-Sans"),
+    axis.title.x = element_text(margin = margin(t = 3)),
+    axis.title.y = element_text(margin = margin(r = 3)),
+    legend.position = "none",
+    plot.margin = margin(t = 3, r = 200, b = 0, l = 10, unit = "pt")
+  ) +
+
+  # instead of a legend, write annotation for the 3 categories to the right of the right-most bar
+  annotate(
+    "text",
+    x = x_label_offset,
+    y = (y_doer_supply_charge/2) + y_annotation_offset,
+    label = "Supply Charge",
+    hjust = 0,
+    family = "IBM-Plex-Sans",
+    color = bill_component_colors["annual_elec_supply_charge"],
+    size = 6,
+    fontface = "bold"
+  ) +
+  annotate(
+    "text",
+    x = x_label_offset,
+    y = (y_doer_customer_charge/1.6) + y_doer_supply_charge + y_annotation_offset,
+    label = "Customer Charge",
+    hjust = 0,
+    family = "IBM-Plex-Sans",
+    color = bill_component_colors["annual_elec_customer_charge"],
+    size = 6,
+    fontface = "bold"
+  ) +
+  annotate(
+    "text",
+    x = x_label_offset,
+    y = (y_doer_delivery_charge/2) + y_doer_customer_charge + y_doer_supply_charge + y_annotation_offset,
+    label = "Delivery Charge",
+    hjust = 0,
+    family = "IBM-Plex-Sans",
+    color = bill_component_colors["annual_elec_delivery_charge"],
+    size = 6,
+    fontface = "bold"
+  ) +
+
+  # No legend
+  theme(legend.position = "none")
+
+fig_bill_stacked_bar_delivery_on_top
+
+
+
+```
+
+
+```{r}
+#| label: fig-stacked-bar-components-delivery-on-top-pre
+#| fig-cap: "Median electric bill for Massachusetts homes, with current HVAC vs. mid-efficiency heat pump, under default delvery rates and 2024 supply rates."
+
+fig_bill_stacked_bar_delivery_on_top
+
+```
+
+# ------------------------------------------------------------------------------
+# Findings
+# ------------------------------------------------------------------------------
+
+## data-all-fuel-types
+```{r}
+#| label: data-all-fuel-types
+########################################################
+# Data
+########################################################
+
+# Parameters
+bill_type <- 'annual_bill_change_energy'
+electric_utility_option <- 'statewide'
+baseline_heating_type_option <- 'All Fuels'
+
+annual_change_all_fuel_types <- annual_change |>
+  filter(electric_utility != "municipal") |>
+  filter(!is.na(annual_bill_change) & is.finite(annual_bill_change),
+        bill_type == !!bill_type,
+        if (electric_utility_option != "statewide") electric_utility == !!electric_utility_option else TRUE,
+        if (baseline_heating_type_option != "All Fuels") baseline_heating_type == !!baseline_heating_type_option else TRUE,
+        year == !!supply_year
+        )
+
+# Print these to console
+scenario_stats_all_fuel_types_low_hp <- calc_stats_by_rate_version(annual_change_all_fuel_types |> filter(electric_utility != "municipal"), hp_eff_for_stats = "low_hp", print_table = FALSE)
+scenario_stats_all_fuel_types_mid_hp <- calc_stats_by_rate_version(annual_change_all_fuel_types |> filter(electric_utility != "municipal"), hp_eff_for_stats = "mid_hp", print_table = FALSE)
+scenario_stats_all_fuel_types_high_hp <- calc_stats_by_rate_version(annual_change_all_fuel_types |> filter(electric_utility != "municipal"), hp_eff_for_stats = "high_hp", print_table = FALSE)
+#
+# These are the values used in the report!!!
+# Calculate statistics for each version and set to the values used in the report
+hp_eff_for_report <- "mid_hp"
+scenario_stats_all_fuel_types <- calc_stats_by_rate_version(annual_change_all_fuel_types |> filter(electric_utility != "municipal"),
+                                                          hp_eff_for_stats = hp_eff_for_report,
+                                                          print_table = FALSE)
+
+# Save as variables to be exported then used in the report
+versions <- list(
+  list(version = "baseline", prefix = "default"),
+  list(version = "hpr_approved", prefix = "approved"),
+  list(version = "hpr_doer", prefix = "doer")
+)
+
+# Loop through versions to calculate statistics
+for (v in versions) {
+  # Get the stats for this version
+  stats <- scenario_stats_all_fuel_types |>
+    filter(version_elec == v$version)
+
+  # Calculate and assign all statistics for this version
+  # eg "baseline_median_bill_change", "approved_pct_that_save"...
+  assign(paste0("median_bill_change_", v$prefix, "_all_fuels"),
+         round(stats |> pull(median_change), round_dollars))
+  assign(paste0("pct_that_save_", v$prefix, "_all_fuels"),
+         round(stats |> pull(pct_that_save), round_percent))
+  assign(paste0("pct_that_save_big_", v$prefix, "_all_fuels"),
+         round(stats |> pull(pct_that_save_big), round_percent))
+  assign(paste0("pct_that_lose_", v$prefix, "_all_fuels"),
+         round(stats |> pull(pct_that_lose), round_percent))
+  assign(paste0("pct_that_lose_big_", v$prefix, "_all_fuels"),
+         round(stats |> pull(pct_that_lose_big), round_percent))
+  assign(paste0("median_savings_", v$prefix, "_all_fuels"),
+         round(stats |> pull(median_savings), round_dollars))
+  assign(paste0("median_loss_", v$prefix, "_all_fuels"),
+         round(stats |> pull(median_loss), round_dollars))
+}
+```
+
+## ---------- How many homes would lower their bills by switching to heat pumps today? ----------
+### fig-baseline-hist-all-fuel-types
+```{r}
+#| label: fig-baseline-hist-all-fuel-types
+result_baseline_all_fuels <- hist_for_single_rate_version(
+  annual_change_table = annual_change_all_fuel_types,
+  version_elec = "baseline"
+)
+
+plot_all_fuels <- result_baseline_all_fuels[[1]]
+
+
+fig_baseline_hist_all_fuel_types_pct_large_savings <- result_baseline_all_fuels[[2]] |>
+  filter(bill_category == "large_savings") |>
+  pull(percentage)
+
+fig_baseline_hist_all_fuel_types_pct_small_savings <- result_baseline_all_fuels[[2]] |>
+  filter(bill_category == "small_savings") |>
+  pull(percentage)
+
+fig_baseline_hist_all_fuel_types_pct_large_increase <- result_baseline_all_fuels[[2]] |>
+  filter(bill_category == "large_increase") |>
+  pull(percentage)
+
+fig_baseline_hist_all_fuel_types_pct_that_save <- result_baseline_all_fuels[[2]] |>
+  filter(bill_category == "small_savings" | bill_category == "large_savings") |>
+  pull(percentage) |>
+  sum()
+
+print(plot_all_fuels)
+```
+
+### data-hists-all-fuel-types-default-and-1.0
+```{r}
+#| label: fig-hists-all-fuel-types-default-and-1.0
+#| fig-cap: "Change in total winter energy bills after switching to heat pumps, for every home in MA served by an investor-owned electric utility, under default vs. 1.0 heat pump electric delivery rates. Assumes default gas delivery rates, 2024 supply rates for gas and electricity, and 100% participation in low-income discount programs by eligible households."
+
+
+# Parameters that match the 3-panel call above
+x_limits  <- c(-2500, 2500)
+y_limits  <- c(0, 200000)/242.13
+binwidth  <- 100
+
+# Default-rates histogram (mid-efficiency HPs)
+p_default <- hist_for_single_rate_version(
+  annual_change_table = annual_change_all_fuel_types,
+  version_elec        = "baseline",
+  x_limits            = x_limits,
+  y_limits            = y_limits,
+  binwidth            = binwidth,
+  show_category_labels = FALSE   # keep consistent with 3-panel
+)[[1]]
+
+# remove x-axis from top panel
+p_default <- p_default +
+  labs(title = NULL, y = NULL) +
+  theme(axis.title.x = element_blank(),
+        # axis.text.x  = element_blank(),
+        # axis.ticks.x = element_blank(),
+        axis.title.y = element_blank()) +
+  annotate("text", x = x_limits[2]*0.95, y = y_limits[2]*0.7,
+           label = "Default Rates", hjust = 1, fontface = "bold", size = 4, color = "#023047")
+
+# 1.0-rates histogram
+p_1rates <- hist_for_single_rate_version(
+  annual_change_table = annual_change_all_fuel_types,
+  version_elec        = "hpr_approved",
+  x_limits            = x_limits,
+  y_limits            = y_limits,
+  binwidth            = binwidth,
+  show_category_labels = FALSE
+)[[1]]
+
+# remove subplot title and y-label from bottom histogram
+p_1rates <- p_1rates + labs(title = NULL, y = NULL) +
+  theme(axis.title.y = element_blank()) +
+  annotate("text", x = x_limits[2]*0.95, y = y_limits[2]*0.7,
+           label = "1.0 Rates", hjust = 1, fontface = "bold", size = 4, color = "#FC9706")
+
+# ------------------------------------------------------------------------------
+# Stack and combiner
+
+plot_all_fuels_default_1 <- p_default / p_1rates +
+  plot_layout(heights = c(1, 1)) +  # Equal heights for all plots
+  plot_annotation(
+    title = case_when(
+      bill_type == "annual_bill_change_elec" ~ glue::glue("Switching from {baseline_heating_type_option} to Heat Pump: Change in Annual Electric Bill"),
+      bill_type == "annual_bill_change_energy" ~ glue::glue("Change in Total Winter Energy Bills after Switching to Heat Pump from {baseline_heating_type_option}"),
+      bill_type == "annual_bill_change_gas" ~ glue::glue("Switching from {baseline_heating_type_option} to Heat Pump: Change in Annual Gas Bill"),
+      TRUE ~ "Heat Pump Rate Bill Changes" # Default case
+    ),
+    theme = theme(
+      plot.margin = margin(10, 25, 10, 10),  # Add more right margin for labels
+      plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),
+      plot.subtitle = element_text(hjust = 0.5, size = 8),
+    )
+  ) &
+  # Apply consistent theming to all plots
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_line(linewidth = 0.2, color = "gray90"),
+    panel.grid.major.y = element_line(linewidth = 0.2, color = "gray90"),
+    aspect.ratio = 0.18,
+  )
+
+# Wrap the combined plot to add a shared y-axis label
+plot_all_fuels_default_1 <- patchwork::wrap_elements(plot_all_fuels_default_1) +
+  labs(tag = "# of Homes") +
+  theme(
+    plot.tag = element_text(angle = 90, vjust = 0.5, hjust = 0.5, face = "plain", size = 9),
+    plot.tag.position = "left"
+  )
+
+print(plot_all_fuels_default_1)
+```
+
+###  Bill impact of 1.0 seasonal heat pump rates (fig-hists-all-fuel-types)
+```{r}
+#| label: fig-hists-all-fuel-types
+#| fig-cap: "Change in total winter energy bills after switching to heat pumps, for every home in MA served by an investor-owned electric utility, under default vs. 1.0 vs. 2.0 heat pump electric delivery rates. Assumes default gas delivery rates, 2024 supply rates for gas and electricity, and 100% participation in low-income discount programs by eligible households."
+
+########################################################
+# Plots
+########################################################
+result_all_fuels <- plot_bill_change_histograms(
+  annual_change_table = annual_change_all_fuel_types,
+  bill_type = bill_type,
+  baseline_heating_type_option = baseline_heating_type_option,
+  electric_utility_option = electric_utility_option,
+  supply_year = supply_year,
+  second_subtitle = NULL,
+  x_limits = c(-2500, 2500),
+  y_limits = c(0, 200000)/242.13,
+  binwidth = 100
+)
+
+# First return item is the plot
+plot_all_fuels <- result_all_fuels[[1]]
+
+
+# results[2-4] are the category percentages for baseline, approved, and doer, respectively.
+# Here we assigned them to workspace variables for easy access in the report.
+rate_versions <- list(
+  list(name = "baseline", result_index = 2, prefix = "baseline"),
+  list(name = "approved", result_index = 3, prefix = "approved"),
+  list(name = "doer", result_index = 4, prefix = "doer")
+)
+
+# Loop through each rate version
+for (version in rate_versions) {
+  # Get the result for this version
+  result <- result_all_fuels[[version$result_index]]
+
+  # Extract large savings percentage
+  assign(paste0("fig_hists_all_fuel_type_", version$prefix, "_pct_large_savings"),
+         round(result |> filter(bill_category == "large_savings") |> pull(percentage), round_percent))
+
+  # Extract small savings percentage
+  assign(paste0("fig_hists_all_fuel_type_", version$prefix, "_pct_small_savings"),
+         round(result |> filter(bill_category == "small_savings") |> pull(percentage), round_percent))
+
+  # Calculate total savings percentage
+  assign(paste0("fig_hists_all_fuel_type_", version$prefix, "_pct_that_save"),
+         result |>
+           filter(bill_category == "small_savings" | bill_category == "large_savings") |>
+           pull(percentage) |>
+           sum() |>
+           round(round_percent))
+}
+
+print(plot_all_fuels)
+```
+
+## ---------- How do savings vary by fuel? ----------
+### fig-bar-fuel-types
+```{r}
+#| label: fig-bar-fuel-types
+#| fig-cap: "Proportion of MA homes by primary heating fuel."
+#| fig-width: 8
+#| fig-height: 2
+
+baseline_heating_type_counts_rs_raw <- get_housing_units_column_counts("electric_utility", "statewide")
+
+# ------------------------------------------------------------------------------
+# housing_units (ResStock)
+baseline_heating_type_counts_rs_raw <- get_housing_units_column_counts("baseline_heating_type", "statewide")
+
+
+baseline_heating_type_counts_rs <- baseline_heating_type_counts_rs_raw |>
+  mutate(rs_heating_type_group = case_when(
+    baseline_heating_type %in% c("Natural Gas") ~ "Natural Gas",
+    baseline_heating_type %in% c("Fuel Oil") ~ "Fuel Oil",
+    baseline_heating_type %in% c("Propane") ~ "Propane",
+    baseline_heating_type %in% c("Resistance") ~ "Resistance",
+    baseline_heating_type %in% c("Heat Pump") ~ "Heat Pump",
+    baseline_heating_type %in% c("Other Fuel", "None") ~ "Other/None",
+    TRUE ~ "Other"
+  )) |>
+  mutate(rs_heating_type_group = factor(rs_heating_type_group,
+                                   levels = c("Natural Gas", "Propane", "Fuel Oil",  "Heat Pump", "Resistance", "Other/None"))) |>
+  group_by(rs_heating_type_group, .drop = FALSE) |>
+  summarise(count = sum(count), .groups = "drop") |>
+  mutate(pct = count / sum(count),
+         cum_pct = cumsum(pct),
+         pct_label = paste0(rs_heating_type_group, ": ", scales::percent(pct, accuracy=1))
+         )
+
+pct_homes_natural_gas <- baseline_heating_type_counts_rs |> filter(rs_heating_type_group == "Natural Gas") |> pull(pct)
+pct_homes_fuel_oil <- baseline_heating_type_counts_rs |> filter(rs_heating_type_group == "Fuel Oil") |> pull(pct)
+pct_homes_propane <- baseline_heating_type_counts_rs |> filter(rs_heating_type_group == "Propane") |> pull(pct)
+pct_homes_electric_resistance <- baseline_heating_type_counts_rs |> filter(rs_heating_type_group == "Resistance") |> pull(pct)
+
+baseline_heating_type_counts_for_plot <- baseline_heating_type_counts_rs |>
+  arrange((cum_pct)) |>
+  mutate(
+    # Start position is the cumulative percentage of previous segments
+    start_pos = lag(cum_pct, default = 0),
+    # End position is the cumulative percentage including current segment
+    end_pos = cum_pct,
+    # Center position for text labels
+    label_pos = start_pos + pct/2
+  )
+
+ggplot() +
+  geom_rect(
+    data = baseline_heating_type_counts_for_plot,
+    aes(xmin = start_pos, xmax = end_pos, ymin = 0.85, ymax = 1.15, fill = rs_heating_type_group)
+  ) +
+  ggrepel::geom_text_repel(
+    data = baseline_heating_type_counts_for_plot,
+    aes(x = label_pos, y = 1, label = pct_label, color = rs_heating_type_group),
+    direction = "y",
+    nudge_y = 0.15,
+    nudge_x = 0.005,
+    size = 3,
+    segment.size = 0.0,
+    hjust = 0,
+    vjust = 0,
+    angle = 30
+  ) +
+  xlim(0, 1.2) +
+  ylim(0.8, 1.4) +
+  scale_fill_manual(values = heating_type_colors) +
+  scale_color_manual(values = heating_type_colors) +
+  theme_void() +
+  theme(legend.position = "none")
+```
+
+
+
+### CRUFT: Compare to EIA
+```{r}
+# # group to match EIA
+# heating_type_counts_rs <- baseline_heating_type_counts_rs_raw |>
+#   mutate(heating_type = case_when(
+#     baseline_heating_type %in% c("Natural Gas") ~ "Natural Gas",
+#     baseline_heating_type %in% c("Fuel Oil") ~ "Fuel Oil",
+#     baseline_heating_type %in% c("Propane") ~ "Propane",
+#     baseline_heating_type %in% c("Resistance", "Heat Pump") ~ "Electricity",
+#     baseline_heating_type %in% c("Other Fuel", "None") ~ "Other/None",
+#     TRUE ~ "Other"
+#   )) |>
+#   group_by(heating_type) |>
+#   summarise(count = sum(count), .groups = "drop") |>
+#   mutate(pct = count / sum(count)) |>
+#   mutate(source = "rs")
+
+
+
+# # ------------------------------------------------------------------------------
+# # EIA
+# # Load EIA state profile data
+# heating_type_counts_eia <- read.csv("/workspaces/reports/data/eia/state_energy_profiles/ma_heating_sources_20250517.csv")
+# heating_type_counts_eia <- heating_type_counts_eia |>
+#   rename(heating_type = Energy.Source,
+#          pct = MA,
+#          pct_usa = U.S..Average) |>
+#   mutate(source = "eia")
+
+# # ------------------------------------------------------------------------------
+# # Bind
+# heating_type_counts <- bind_rows(
+#   heating_type_counts_eia |> select(heating_type, pct, source),
+#   heating_type_counts_rs |> select(heating_type, pct, source)
+# )
+# View(heating_type_counts)
+
+# # heating_type_counts <- heating_type_counts |>
+# #   mutate(source = factor(source, levels = c("eia", "rs")))
+
+
+# plot_order = c("Natural Gas", "Fuel Oil",  "Electricity", "Propane", "Other/None")
+# heating_type_counts_plot <- ggplot(
+#   heating_type_counts |>
+#     filter(source == "eia") |>
+#     mutate(heating_type = factor(heating_type, levels = plot_order)),
+#   aes(x = heating_type, y = pct)) +
+#   geom_bar(stat = "identity", fill = sb_colors["midnight"]) +
+#   geom_text(aes(label = sprintf("%.1f%%", pct*100),
+#                 y = pct + 0.02),
+#             size = 3) +
+#   labs(
+#     title = "Distribution of Heating Types in MA",
+#     x = NULL,
+#     y = "Percent of Buildings in MA"
+#   ) +
+#   scale_y_continuous(labels = scales::percent) +
+#   theme(
+#     axis.text.x = element_text(angle = 0, hjust = 0.5),
+#     panel.grid.major.x = element_blank()
+#   )
+
+# print(heating_type_counts_plot)
+
+```
+
+### fig-hists-natural-gas
+```{r}
+#| label: fig-hists-natural-gas
+#| fig-cap: "Change in total winter energy bills after switching to heat pumps, for every natural gas-heated home in MA served by an investor-owned electric utility, under default vs. 1.0 vs. 2.0 heat pump electric delivery rates. Assumes default gas delivery rates, 2024 supply rates for gas and electricity, and 100% participation in low-income programs by eligible households."
+
+########################################################
+# Data
+########################################################
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Parameters
+bill_type <- 'annual_bill_change_energy'
+electric_utility_option <- 'statewide'
+baseline_heating_type_option <- 'Natural Gas'
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+annual_change_natural_gas <- annual_change |>
+  filter(electric_utility != "municipal") |>
+  filter(!is.na(annual_bill_change) & is.finite(annual_bill_change),
+        bill_type == !!bill_type,
+        if (electric_utility_option != "statewide") electric_utility == !!electric_utility_option else TRUE,
+        if (baseline_heating_type_option != "All Fuels") baseline_heating_type == !!baseline_heating_type_option else TRUE,
+        year == !!supply_year
+  )
+
+# Print these to console
+scenario_stats_natural_gas_low_hp <- calc_stats_by_rate_version(annual_change_natural_gas, "low_hp", print_table = FALSE)
+scenario_stats_natural_gas_mid_hp <- calc_stats_by_rate_version(annual_change_natural_gas, "mid_hp", print_table = FALSE)
+scenario_stats_natural_gas_high_hp <- calc_stats_by_rate_version(annual_change_natural_gas, "high_hp", print_table = FALSE)
+#
+#
+#
+# These are the values used in the report!!!
+# Calculate statistics for each version and set to the values used in the report
+hp_eff_for_report <- "mid_hp"
+scenario_stats_natural_gas <- calc_stats_by_rate_version(annual_change_natural_gas, hp_eff_for_report, print_table = FALSE)
+
+versions <- list(
+  list(version = "baseline", prefix = "default"),
+  list(version = "hpr_approved", prefix = "approved"),
+  list(version = "hpr_doer", prefix = "doer")
+)
+
+# Loop through versions to calculate statistics
+for (v in versions) {
+  # Get the stats for this version
+  stats <- scenario_stats_natural_gas |>
+    filter(version_elec == v$version)
+
+  # Calculate and assign all statistics for this version
+  assign(paste0("median_bill_change_", v$prefix, "_natural_gas"),
+         round(stats |> pull(median_change), round_dollars))
+  assign(paste0("pct_that_save_", v$prefix, "_natural_gas"),
+         round(stats |> pull(pct_that_save), round_percent))
+  assign(paste0("median_savings_", v$prefix, "_natural_gas"),
+         round(stats |> pull(median_savings), round_dollars))
+  assign(paste0("median_loss_", v$prefix, "_natural_gas"),
+         round(stats |> pull(median_loss), round_dollars))
+}
+
+result_natural_gas <- plot_bill_change_histograms(
+  annual_change_table = annual_change_natural_gas,
+  bill_type = bill_type,
+  baseline_heating_type_option = baseline_heating_type_option,
+  electric_utility_option = electric_utility_option,
+  supply_year = supply_year,
+  #second_subtitle = "Natural Gas Heating",
+  x_limits = c(-2500, 2500),
+  y_limits = c(0, 200000)/242.13,
+  binwidth = 100
+)
+
+# First return item is the plot
+plot_natural_gas <- result_natural_gas[[1]]
+
+
+# results[2-4] are the category percentages for baseline, approved, and doer, respectively.
+# Here we assigned them to workspace variables for easy access in the report.
+rate_versions <- list(
+  list(name = "baseline", result_index = 2, prefix = "baseline"),
+  list(name = "approved", result_index = 3, prefix = "approved"),
+  list(name = "doer", result_index = 4, prefix = "doer")
+)
+
+# Loop through each rate version
+for (version in rate_versions) {
+  # Get the result for this version
+  result <- result_natural_gas[[version$result_index]]
+
+  # Extract large savings percentage
+  assign(paste0("fig_hists_natural_gas_", version$prefix, "_pct_large_savings"),
+         round(result |> filter(bill_category == "large_savings") |> pull(percentage), round_percent))
+
+  # Extract small savings percentage
+  assign(paste0("fig_hists_natural_gas_", version$prefix, "_pct_small_savings"),
+         round(result |> filter(bill_category == "small_savings") |> pull(percentage), round_percent))
+
+  # Calculate total savings percentage
+  assign(paste0("fig_hists_natural_gas_", version$prefix, "_pct_that_save"),
+         result |>
+           filter(bill_category == "small_savings" | bill_category == "large_savings") |>
+           pull(percentage) |>
+           sum() |>
+           round(round_percent))
+}
+
+print(plot_natural_gas)
+```
+
+### fig-hists-heating-oil
+```{r}
+#| label: fig-hists-heating-oil
+#| fig-cap: "Change in total winter energy bills after switching to heat pumps, for every heating oil-heated home in MA served by an investor-owned electric utility, under default vs. 1.0 vs. 2.0 heat pump electric delivery rates. Assumes 2024 supply rates for electricity, 2024 heating oil prices, and 100% participation in electric low-income programs by eligible households"
+
+########################################################
+# Data
+########################################################
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Parameters
+bill_type <- 'annual_bill_change_energy'
+electric_utility_option <- 'statewide'
+baseline_heating_type_option <- 'Fuel Oil'
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+annual_change_heating_oil <- annual_change |>
+  filter(electric_utility != "municipal") |>
+  filter(!is.na(annual_bill_change) & is.finite(annual_bill_change),
+        bill_type == !!bill_type,
+        if (electric_utility_option != "statewide") electric_utility == !!electric_utility_option else TRUE,
+        if (baseline_heating_type_option != "all") baseline_heating_type == !!baseline_heating_type_option else TRUE,
+        year == supply_year)
+
+# Print these to console
+scenario_stats_natural_gas_low_hp <- calc_stats_by_rate_version(annual_change_heating_oil, "low_hp", print_table = FALSE)
+scenario_stats_natural_gas_mid_hp <- calc_stats_by_rate_version(annual_change_heating_oil, "mid_hp", print_table = FALSE)
+scenario_stats_natural_gas_high_hp <- calc_stats_by_rate_version(annual_change_heating_oil, "high_hp", print_table = FALSE)
+#
+#
+#
+# These are the values used in the report!!!
+# Calculate statistics for each version and set to the values used in the report
+hp_eff_for_report <- "mid_hp"
+scenario_stats_heating_oil <- calc_stats_by_rate_version(annual_change_heating_oil, hp_eff_for_report, print_table = FALSE)
+
+versions <- list(
+  list(version = "baseline", prefix = "default"),
+  list(version = "hpr_approved", prefix = "approved"),
+  list(version = "hpr_doer", prefix = "doer")
+)
+
+# Loop through versions to calculate statistics
+for (v in versions) {
+  # Get the stats for this version
+  stats <- scenario_stats_heating_oil |>
+    filter(version_elec == v$version)
+
+  # Calculate and assign all statistics for this version
+  assign(paste0("median_bill_change_", v$prefix, "_heating_oil"),
+         round(stats |> pull(median_change), round_dollars))
+  assign(paste0("pct_that_save_", v$prefix, "_heating_oil"),
+         round(stats |> pull(pct_that_save), round_percent))
+  assign(paste0("median_savings_", v$prefix, "_heating_oil"),
+         round(stats |> pull(median_savings), round_dollars))
+  assign(paste0("median_loss_", v$prefix, "_heating_oil"),
+         round(stats |> pull(median_loss), round_dollars))
+}
+
+
+########################################################
+# Plots
+########################################################
+result_heating_oil <- plot_bill_change_histograms(
+  annual_change_table = annual_change_heating_oil,
+  bill_type = bill_type,
+  baseline_heating_type_option = baseline_heating_type_option,
+  electric_utility_option = electric_utility_option,
+  supply_year = supply_year,
+  #second_subtitle = "Fuel Oil Heating",
+  x_limits = c(-2500, 2500),
+  y_limits = c(0, 50000)/242.13,
+  binwidth = 100
+)
+
+# First return item is the plot
+plot_heating_oil <- result_heating_oil[[1]]
+
+
+# results[2-4] are the category percentages for baseline, approved, and doer, respectively.
+# Here we assigned them to workspace variables for easy access in the report.
+rate_versions <- list(
+  list(name = "baseline", result_index = 2, prefix = "baseline"),
+  list(name = "approved", result_index = 3, prefix = "approved"),
+  list(name = "doer", result_index = 4, prefix = "doer")
+)
+
+# Loop through each rate version
+for (version in rate_versions) {
+  # Get the result for this version
+  result <- result_heating_oil[[version$result_index]]
+
+  # Extract large savings percentage
+  assign(paste0("fig_hists_heating_oil_", version$prefix, "_pct_large_savings"),
+         round(result |> filter(bill_category == "large_savings") |> pull(percentage), round_percent))
+
+  # Extract small savings percentage
+  assign(paste0("fig_hists_heating_oil_", version$prefix, "_pct_small_savings"),
+         round(result |> filter(bill_category == "small_savings") |> pull(percentage), round_percent))
+
+  # Calculate total savings percentage
+  assign(paste0("fig_hists_heating_oil_", version$prefix, "_pct_that_save"),
+         result |>
+           filter(bill_category == "small_savings" | bill_category == "large_savings") |>
+           pull(percentage) |>
+           sum() |>
+           round(round_percent))
+}
+
+print(plot_heating_oil)
+```
+
+### fig-hists-propane
+```{r}
+#| label: fig-hists-propane
+#| fig-cap: "Change in total winter energy bills after switching to heat pumps, for every propane-heated home in MA served by an investor-owned electric utility, under default vs. 1.0 vs. 2.0 heat pump electric delivery rates. Assumes 2024 supply rates for electricity, 2024 propane prices, and 100% participation in electric low-income programs by eligible households"
+
+########################################################
+# Data
+########################################################
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Parameters
+bill_type <- 'annual_bill_change_energy'
+electric_utility_option <- 'statewide'
+baseline_heating_type_option <- 'Propane'
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+annual_change_propane <- annual_change |>
+  filter(electric_utility != "municipal") |>
+  filter(!is.na(annual_bill_change) & is.finite(annual_bill_change),
+        bill_type == !!bill_type,
+        if (electric_utility_option != "statewide") electric_utility == !!electric_utility_option else TRUE,
+        if (baseline_heating_type_option != "all") baseline_heating_type == !!baseline_heating_type_option else TRUE,
+        year == supply_year)
+
+# Print these to console
+scenario_stats_propane_low_hp <- calc_stats_by_rate_version(annual_change_propane, "low_hp", print_table = FALSE)
+scenario_stats_propane_mid_hp <- calc_stats_by_rate_version(annual_change_propane, "mid_hp", print_table = FALSE)
+scenario_stats_propane_high_hp <- calc_stats_by_rate_version(annual_change_propane, "high_hp", print_table = FALSE)
+#
+#
+#
+# These are the values used in the report!!!
+# Calculate statistics for each version and set to the values used in the report
+hp_eff_for_report <- "mid_hp"
+scenario_stats_propane <- calc_stats_by_rate_version(annual_change_propane, hp_eff_for_report, print_table = FALSE)
+
+versions <- list(
+  list(version = "baseline", prefix = "default"),
+  list(version = "hpr_approved", prefix = "approved"),
+  list(version = "hpr_doer", prefix = "doer")
+)
+
+# Loop through versions to calculate statistics
+for (v in versions) {
+  # Get the stats for this version
+  stats <- scenario_stats_propane |>
+    filter(version_elec == v$version)
+
+  # Calculate and assign all statistics for this version
+  assign(paste0("median_bill_change_", v$prefix, "_propane"),
+         round(stats |> pull(median_change), round_dollars))
+  assign(paste0("pct_that_save_", v$prefix, "_propane"),
+         round(stats |> pull(pct_that_save), round_percent))
+  assign(paste0("median_savings_", v$prefix, "_propane"),
+         round(stats |> pull(median_savings), round_dollars))
+  assign(paste0("median_loss_", v$prefix, "_propane"),
+         round(stats |> pull(median_loss), round_dollars))
+}
+
+result_propane <- plot_bill_change_histograms(
+  annual_change_table = annual_change_propane,
+  bill_type = bill_type,
+  baseline_heating_type_option = baseline_heating_type_option,
+  electric_utility_option = electric_utility_option,
+  supply_year = supply_year,
+  #second_subtitle = "Natural Gas Heating",
+  x_limits = c(-2500, 2500),
+  y_limits = c(0, 10000)/242.13,
+  binwidth = 100
+)
+
+# First return item is the plot
+plot_propane <- result_propane[[1]]
+
+
+# results[2-4] are the category percentages for baseline, approved, and doer, respectively.
+# Here we assigned them to workspace variables for easy access in the report.
+rate_versions <- list(
+  list(name = "baseline", result_index = 2, prefix = "baseline"),
+  list(name = "approved", result_index = 3, prefix = "approved"),
+  list(name = "doer", result_index = 4, prefix = "doer")
+)
+
+# Loop through each rate version
+for (version in rate_versions) {
+  # Get the result for this version
+  result <- result_propane[[version$result_index]]
+
+  # Extract large savings percentage
+  assign(paste0("fig_hists_propane_", version$prefix, "_pct_large_savings"),
+         round(result |> filter(bill_category == "large_savings") |> pull(percentage), round_percent))
+
+  # Extract small savings percentage
+  assign(paste0("fig_hists_propane_", version$prefix, "_pct_small_savings"),
+         round(result |> filter(bill_category == "small_savings") |> pull(percentage), round_percent))
+
+  # Calculate total savings percentage
+  assign(paste0("fig_hists_propane_", version$prefix, "_pct_that_save"),
+         result |>
+           filter(bill_category == "small_savings" | bill_category == "large_savings") |>
+           pull(percentage) |>
+           sum() |>
+           round(round_percent))
+}
+
+print(plot_propane)
+```
+
+### fig-hists-resistance
+```{r}
+#| label: fig-hists-resistance
+#| fig-cap: "Change in total winter energy bills after switching to heat pumps, for every electric resistance-heated home in MA served by an investor-owned electric utility, under default vs. 1.0 vs. 2.0 heat pump electric delivery rates. Assumes default gas delivery rates, 2024 supply rates for gas and electricity, and 100% participation in low-income programs by eligible households"
+
+########################################################
+# Data
+########################################################
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Parameters
+bill_type <- 'annual_bill_change_energy'
+electric_utility_option <- 'statewide'
+baseline_heating_type_option <- 'Resistance'
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+annual_change_resistance <- annual_change |>
+  filter(electric_utility != "municipal") |>
+  # NOTE!!!! Deliberately filtering out positive bill changes
+  filter(!is.na(annual_bill_change) & is.finite(annual_bill_change) & annual_bill_change < 0,
+        bill_type == !!bill_type,
+        if (electric_utility_option != "statewide") electric_utility == !!electric_utility_option else TRUE,
+        if (baseline_heating_type_option != "all") baseline_heating_type == !!baseline_heating_type_option else TRUE,
+        year == supply_year)
+
+# Print these to console
+scenario_stats_resistance_low_hp <- calc_stats_by_rate_version(annual_change_resistance, "low_hp", print_table = FALSE)
+scenario_stats_resistance_mid_hp <- calc_stats_by_rate_version(annual_change_resistance, "mid_hp", print_table = FALSE)
+scenario_stats_resistance_high_hp <- calc_stats_by_rate_version(annual_change_resistance, "high_hp", print_table = FALSE)
+#
+#
+#
+# These are the values used in the report!!!
+# Calculate statistics for each version and set to the values used in the report
+hp_eff_for_report <- "mid_hp"
+scenario_stats_resistance <- calc_stats_by_rate_version(annual_change_resistance, hp_eff_for_report, print_table = FALSE)
+
+versions <- list(
+  list(version = "baseline", prefix = "default"),
+  list(version = "hpr_approved", prefix = "approved"),
+  list(version = "hpr_doer", prefix = "doer")
+)
+
+# Loop through versions to calculate statistics
+for (v in versions) {
+  # Get the stats for this version
+  stats <- scenario_stats_resistance |>
+    filter(version_elec == v$version)
+
+  # Calculate and assign all statistics for this version
+  assign(paste0("median_bill_change_", v$prefix, "_resistance"),
+         round(stats |> pull(median_change), round_dollars))
+  assign(paste0("pct_that_save_", v$prefix, "_resistance"),
+         round(stats |> pull(pct_that_save), round_percent))
+  assign(paste0("median_savings_", v$prefix, "_resistance"),
+         round(stats |> pull(median_savings), round_dollars))
+  assign(paste0("median_loss_", v$prefix, "_resistance"),
+         round(stats |> pull(median_loss), round_dollars))
+}
+
+result_resistance <- plot_bill_change_histograms(
+  annual_change_table = annual_change_resistance,
+  bill_type = bill_type,
+  baseline_heating_type_option = baseline_heating_type_option,
+  electric_utility_option = electric_utility_option,
+  supply_year = supply_year,
+  #second_subtitle = "Natural Gas Heating",
+  x_limits = c(-2500, 2500),
+  y_limits = c(0, 50000)/242.13,
+  binwidth = 100
+)
+
+# First return item is the plot
+plot_resistance <- result_resistance[[1]]
+
+
+# results[2-4] are the category percentages for baseline, approved, and doer, respectively.
+# Here we assigned them to workspace variables for easy access in the report.
+rate_versions <- list(
+  list(name = "baseline", result_index = 2, prefix = "baseline"),
+  list(name = "approved", result_index = 3, prefix = "approved"),
+  list(name = "doer", result_index = 4, prefix = "doer")
+)
+
+# Loop through each rate version
+for (version in rate_versions) {
+  # Get the result for this version
+  result <- result_resistance[[version$result_index]]
+
+  # Extract large savings percentage
+  assign(paste0("fig_hists_resistance_", version$prefix, "_pct_large_savings"),
+         round(result |> filter(bill_category == "large_savings") |> pull(percentage), round_percent))
+
+  # Extract small savings percentage
+  assign(paste0("fig_hists_resistance_", version$prefix, "_pct_small_savings"),
+         round(result |> filter(bill_category == "small_savings") |> pull(percentage), round_percent))
+
+  # Calculate total savings percentage
+  assign(paste0("fig_hists_resistance_", version$prefix, "_pct_that_save"),
+         result |>
+           filter(bill_category == "small_savings" | bill_category == "large_savings") |>
+           pull(percentage) |>
+           sum() |>
+           round(round_percent))
+}
+
+print(plot_resistance)
+```
+
+## ---------- How do savings vary by building type? ----------
+### data-building-type
+```{r}
+#| label: data-building-type
+annual_change_bldg_type <- annual_change |>
+  mutate(
+    building_type_group = case_when(
+      building_type %in% c("Single-Family Detached", "Mobile Home", "Single-Family Attached") ~ "Single-Family",
+      building_type %in% c("2 Unit", "3 or 4 Unit") ~ "2-4 Units",
+      building_type %in% c("5 to 9 Unit", "10 to 19 Unit", "20 to 49 Unit", "50 or more Unit") ~ "5+ Units",
+      TRUE ~ "Other"
+    ),
+  )
+
+# Create box plots by building type and version_elec
+building_type_group_order = c("Single-Family", "2-4 Units", "5+ Units")
+
+building_type_group_names = c("Single-Family", "2-4 Units", "5+ Units")
+
+data_box_building_type <- annual_change_bldg_type |>
+  filter(!is.na(annual_bill_change) & is.finite(annual_bill_change),
+        bill_type == "annual_bill_change_energy",
+        raw_or_discounted == "discounted",
+        building_type_group %in% building_type_group_order)
+
+# Convert building_type to factor with specified order
+data_box_building_type <- data_box_building_type |>
+  mutate(building_type_group = factor(building_type_group, levels = building_type_group_order))
+
+# Calculate custom boxplot stats for each group
+box_building_type_stats <- data_box_building_type |>
+  group_by(building_type_group, version_elec) |>
+  summarise(
+    data_min   = min(annual_bill_change, na.rm = TRUE),                # lower whisker
+    lower  = quantile(annual_bill_change, 0.1, na.rm = TRUE),     # lower hinge (Q1)
+    middle = median(annual_bill_change, na.rm = TRUE),             # median
+    upper  = quantile(annual_bill_change, 0.9, na.rm = TRUE),     # upper hinge (Q3)
+    data_max   = max(annual_bill_change, na.rm = TRUE),                # upper whisker
+    pct_that_save = mean(annual_bill_change < 0, na.rm = TRUE),
+    median_savings = median(annual_bill_change[annual_bill_change < 0], na.rm = TRUE),  # median of negative values (savings)
+    .groups = "drop",
+  )
+
+```
+
+### fig-stacked-bar-building-type
+```{r}
+#| label: fig-stacked-bar-building-type
+#| fig-cap: "Proportion of MA homes by building type."
+#| fig-width: 8
+#| fig-height: 1
+
+# Get counts of buildings by type
+building_counts <- data_box_building_type |>
+  group_by(building_type_group) |>
+  summarise(n = n_distinct(bldg_id)) |>
+  mutate(pct = n / sum(n) * 100) |>
+  arrange(match(building_type_group, building_type_group_order))
+
+# Calculate placement for labels
+building_counts <- building_counts |>
+  mutate(
+    pct = n / sum(n),
+    pct_label = paste0(building_type_group, ": ", scales::percent(pct, accuracy=1)),
+    cum_pct = cumsum(pct),
+    placement = cum_pct
+  )
+
+building_counts_for_plot <- building_counts |>
+  mutate(
+    # Start position is the cumulative percentage of previous segments
+    start_pos = lag(cum_pct, default = 0),
+    # End position is the cumulative percentage including current segment
+    end_pos = cum_pct,
+    # Center position for text labels
+    center_pos = (start_pos + end_pos) / 2
+  )
+
+ggplot() +
+  geom_rect(
+    data = building_counts_for_plot,
+    aes(xmin = start_pos, xmax = end_pos, ymin = 0.85, ymax = 1.15, fill = building_type_group)
+  ) +
+  ggrepel::geom_text_repel(
+    data = building_counts_for_plot,
+    aes(x = end_pos-0.005, y = 1, label = pct_label, color = building_type_group),
+    direction = "y",
+    nudge_y = 0.2,
+    nudge_x = -0.05,
+    size = 3,
+    segment.size = 0.0,
+    hjust = .8,
+    vjust = 0.5
+  ) +
+  xlim(0, 1.2) +
+  ylim(0.8, 1.2) +
+  scale_fill_manual(values = housing_type_colors) +
+  scale_color_manual(values = housing_type_colors) +
+  theme_void() +
+  theme(legend.position = "none")
+
+```
+
+
+### fig-hists-single-family-home
+```{r}
+#| label: fig-hists-single-family-home
+#| fig-cap: "Change in total winter energy bills after switching to heat pumps, for every single-family home in MA served by an investor-owned electric utility, under default vs. 1.0 vs. 2.0 heat pump electric delivery rates. Assumes default gas delivery rates, 2024 supply rates for gas and electricity, and 100% participation in low-income programs by eligible households"
+
+bill_type <- 'annual_bill_change_energy'
+electric_utility_option <- 'Statewide EDC'
+baseline_heating_type_option <- 'All Fuels'
+
+building_type_group <- "Single-Family"
+
+annual_change_single_family_home <- annual_change_bldg_type |>
+  filter(electric_utility != "municipal") |>
+  filter(!is.na(annual_bill_change) & is.finite(annual_bill_change),
+        bill_type == !!bill_type,
+        if (electric_utility_option != "Statewide EDC") electric_utility == !!electric_utility_option else TRUE,
+        if (baseline_heating_type_option != "All Fuels") baseline_heating_type == !!baseline_heating_type_option else TRUE,
+        year == supply_year,
+        building_type_group == !!building_type_group
+        )
+
+
+
+result_single_family_home <- plot_bill_change_histograms(
+  annual_change_table = annual_change_single_family_home,
+  bill_type = bill_type,
+  baseline_heating_type_option = baseline_heating_type_option,
+  electric_utility_option = electric_utility_option,
+  supply_year = supply_year,
+  second_subtitle = "Single-Family Homes",
+  x_limits = c(-2500, 2500),
+  y_limits = c(0, 100000)/242.13,
+  binwidth = 100
+)
+
+# First return item is the plot
+plot_single_family_home <- result_single_family_home[[1]]
+
+
+# results[2-4] are the category percentages for baseline, approved, and doer, respectively.
+# Here we assigned them to workspace variables for easy access in the report.
+rate_versions <- list(
+  list(name = "baseline", result_index = 2, prefix = "baseline"),
+  list(name = "approved", result_index = 3, prefix = "approved"),
+  list(name = "doer", result_index = 4, prefix = "doer")
+)
+
+# Loop through each rate version
+for (version in rate_versions) {
+  # Get the result for this version
+  result <- result_single_family_home[[version$result_index]]
+
+  # Extract large savings percentage
+  assign(paste0("fig_hists_single_family_home_", version$prefix, "_pct_large_savings"),
+         round(result |> filter(bill_category == "large_savings") |> pull(percentage), round_percent))
+
+  # Extract small savings percentage
+  assign(paste0("fig_hists_single_family_home_", version$prefix, "_pct_small_savings"),
+         round(result |> filter(bill_category == "small_savings") |> pull(percentage), round_percent))
+
+  # Calculate total savings percentage
+  assign(paste0("fig_hists_single_family_home_", version$prefix, "_pct_that_save"),
+         result |>
+           filter(bill_category == "small_savings" | bill_category == "large_savings") |>
+           pull(percentage) |>
+           sum() |>
+           round(round_percent))
+}
+
+print(plot_single_family_home)
+```
+
+### fig-hists-2-4-units
+```{r}
+#| label: fig-hists-2-4-units
+#| fig-cap: "Change in total winter energy bills after switching to heat pumps, for every MA home in a 2-4 unit building served by an investor-owned electric utility, under default vs. 1.0 vs. 2.0 heat pump electric delivery rates. Assumes default gas delivery rates, 2024 supply rates for gas and electricity, and 100% participation in low-income programs by eligible households"
+
+bill_type <- 'annual_bill_change_energy'
+electric_utility_option <- 'Statewide EDC'
+baseline_heating_type_option <- 'All Fuels'
+
+building_type_group <- "2-4 Units"
+
+annual_change_2_4_units <- annual_change_bldg_type |>
+  filter(electric_utility != "municipal") |>
+  filter(!is.na(annual_bill_change) & is.finite(annual_bill_change),
+        bill_type == !!bill_type,
+        if (electric_utility_option != "Statewide EDC") electric_utility == !!electric_utility_option else TRUE,
+        if (baseline_heating_type_option != "All Fuels") baseline_heating_type == !!baseline_heating_type_option else TRUE,
+        year == supply_year,
+        building_type_group == !!building_type_group
+        )
+
+
+result_2_4_units <- plot_bill_change_histograms(
+  annual_change_table = annual_change_2_4_units,
+  bill_type = bill_type,
+  baseline_heating_type_option = baseline_heating_type_option,
+  electric_utility_option = electric_utility_option,
+  supply_year = supply_year,
+  second_subtitle = "2-4 Unit Building",
+  x_limits = c(-2500, 2500),
+  y_limits = c(0, 100000)/242.13,
+  binwidth = 100
+)
+
+# First return item is the plot
+plot_2_4_units <- result_2_4_units[[1]]
+
+
+# results[2-4] are the category percentages for baseline, approved, and doer, respectively.
+# Here we assigned them to workspace variables for easy access in the report.
+rate_versions <- list(
+  list(name = "baseline", result_index = 2, prefix = "baseline"),
+  list(name = "approved", result_index = 3, prefix = "approved"),
+  list(name = "doer", result_index = 4, prefix = "doer")
+)
+
+# Loop through each rate version
+for (version in rate_versions) {
+  # Get the result for this version
+  result <- result_2_4_units[[version$result_index]]
+
+  # Extract large savings percentage
+  assign(paste0("fig_hists_2_4_units_", version$prefix, "_pct_large_savings"),
+         round(result |> filter(bill_category == "large_savings") |> pull(percentage), round_percent))
+
+  # Extract small savings percentage
+  assign(paste0("fig_hists_2_4_units_", version$prefix, "_pct_small_savings"),
+         round(result |> filter(bill_category == "small_savings") |> pull(percentage), round_percent))
+
+  # Calculate total savings percentage
+  assign(paste0("fig_hists_2_4_units_", version$prefix, "_pct_that_save"),
+         result |>
+           filter(bill_category == "small_savings" | bill_category == "large_savings") |>
+           pull(percentage) |>
+           sum() |>
+           round(round_percent))
+}
+
+print(plot_2_4_units)
+```
+
+### fig-hists-5-plus-units
+```{r}
+#| label: fig-hists-5-plus-units
+#| fig-cap: "Change in total winter energy bills after switching to heat pumps, for every MA home in a 5+ unit building served by an investor-owned electric utility, under default vs. 1.0 vs. 2.0 heat pump electric delivery rates. Assumes default gas delivery rates, 2024 supply rates for gas and electricity, and 100% participation in low-income programs by eligible households"
+
+bill_type <- 'annual_bill_change_energy'
+electric_utility_option <- 'Statewide EDC'
+baseline_heating_type_option <- 'All Fuels'
+
+building_type_group <- "5+ Units"
+
+annual_change_5_plus_units <- annual_change_bldg_type |>
+  filter(electric_utility != "municipal") |>
+  filter(!is.na(annual_bill_change) & is.finite(annual_bill_change),
+        bill_type == !!bill_type,
+        if (electric_utility_option != "Statewide EDC") electric_utility == !!electric_utility_option else TRUE,
+        if (baseline_heating_type_option != "All Fuels") baseline_heating_type == !!baseline_heating_type_option else TRUE,
+        year == supply_year,
+        building_type_group == !!building_type_group
+        )
+
+
+result_5_plus_units <- plot_bill_change_histograms(
+  annual_change_table = annual_change_5_plus_units,
+  bill_type = bill_type,
+  baseline_heating_type_option = baseline_heating_type_option,
+  electric_utility_option = electric_utility_option,
+  supply_year = supply_year,
+  second_subtitle = "5+ Unit Building",
+  x_limits = c(-2500, 2500),
+  y_limits = c(0, 100000)/242.13,
+  binwidth = 100
+)
+
+# First return item is the plot
+plot_5_plus_units <- result_5_plus_units[[1]]
+
+
+# results[2-4] are the category percentages for baseline, approved, and doer, respectively.
+# Here we assigned them to workspace variables for easy access in the report.
+rate_versions <- list(
+  list(name = "baseline", result_index = 2, prefix = "baseline"),
+  list(name = "approved", result_index = 3, prefix = "approved"),
+  list(name = "doer", result_index = 4, prefix = "doer")
+)
+
+# Loop through each rate version
+for (version in rate_versions) {
+  # Get the result for this version
+  result <- result_5_plus_units[[version$result_index]]
+
+  # Extract large savings percentage
+  assign(paste0("fig_hists_5_plus_units_", version$prefix, "_pct_large_savings"),
+         round(result |> filter(bill_category == "large_savings") |> pull(percentage), round_percent))
+
+  # Extract small savings percentage
+  assign(paste0("fig_hists_5_plus_units_", version$prefix, "_pct_small_savings"),
+         round(result |> filter(bill_category == "small_savings") |> pull(percentage), round_percent))
+
+  # Calculate total savings percentage
+  assign(paste0("fig_hists_5_plus_units_", version$prefix, "_pct_that_save"),
+         result |>
+           filter(bill_category == "small_savings" | bill_category == "large_savings") |>
+           pull(percentage) |>
+           sum() |>
+           round(round_percent))
+}
+
+print(plot_5_plus_units)
+```
+
+### fig-box-building-type
+```{r data-box-building-type}
+# Create filtered dataset for ridge plots - remove top/bottom 2.5% of values for each group
+data_ridges_trimmed_building_type <- data_box_building_type |>
+  group_by(building_type_group, version_elec) |>
+  mutate(
+    lower_bound = quantile(annual_bill_change, 0.05, na.rm = TRUE),
+    upper_bound = quantile(annual_bill_change, 0.95, na.rm = TRUE)
+  ) |>
+  filter(annual_bill_change >= lower_bound & annual_bill_change <= upper_bound) |>
+  ungroup()
+```
+
+### fig-box-building-type-default-only
+```{r}
+pct_save_5plus_baseline <- round((box_building_type_stats |> filter(building_type_group == "5+ Units", version_elec == "baseline") |> pull(pct_that_save)*100))
+
+pct_save_5plus_approved <- round((box_building_type_stats |> filter(building_type_group == "5+ Units", version_elec == "hpr_approved") |> pull(pct_that_save)*100))
+
+pct_save_5plus_doer <- round((box_building_type_stats |> filter(building_type_group == "5+ Units", version_elec == "hpr_doer") |> pull(pct_that_save)*100))
+
+
+pct_save_2to4_baseline <- round((box_building_type_stats |> filter(building_type_group == "2-4 Units", version_elec == "baseline") |> pull(pct_that_save))*100)
+
+pct_save_2to4_approved <- round((box_building_type_stats |> filter(building_type_group == "2-4 Units", version_elec == "hpr_approved") |> pull(pct_that_save))*100)
+
+pct_save_2to4_doer <- round((box_building_type_stats |> filter(building_type_group == "2-4 Units", version_elec == "hpr_doer") |> pull(pct_that_save))*100)
+
+
+pct_save_singlefam_baseline <- round((box_building_type_stats |> filter(building_type_group == "Single-Family", version_elec == "baseline") |> pull(pct_that_save))*100)
+
+pct_save_singlefam_approved <- round((box_building_type_stats |> filter(building_type_group == "Single-Family", version_elec == "hpr_approved") |> pull(pct_that_save))*100)
+
+pct_save_singlefam_doer <- round((box_building_type_stats |> filter(building_type_group == "Single-Family", version_elec == "hpr_doer") |> pull(pct_that_save))*100)
+
+# Define median_savings variables
+median_savings_singlefam_doer <- round(box_building_type_stats |>
+  filter(building_type_group == "Single-Family", version_elec == "hpr_doer") |> pull(median_savings))
+
+median_savings_singlefam_approved <- round(box_building_type_stats |>
+  filter(building_type_group == "Single-Family", version_elec == "hpr_approved") |> pull(median_savings))
+
+median_savings_singlefam_baseline <- round(box_building_type_stats |>
+  filter(building_type_group == "Single-Family", version_elec == "baseline") |> pull(median_savings))
+
+median_savings_2to4_doer <- round(box_building_type_stats |>
+  filter(building_type_group == "2-4 Units", version_elec == "hpr_doer") |> pull(median_savings))
+
+median_savings_5plus_doer <- round(box_building_type_stats |>
+  filter(building_type_group == "5+ Units", version_elec == "hpr_doer") |> pull(median_savings))
+
+
+```
+
+
+## ---------- How do heat pump rates affect winter energy burdens? ----------
+### data-impact-of-low-income-discounts
+```{r}
+#| label: data-impact-of-low-income-discounts
+
+incomes_threshold <- 50000
+binwidth <- 250
+
+# Energy Burdens today
+li_baseline_rates_current_hvac_0pct_participation <- annual_bills_undiscounted |>
+  filter(bill_type == "annual_bill_raw_energy" & hvac == "current" & version_elec == "baseline" & assigned_income <= incomes_threshold)
+
+li_baseline_rates_current_hvac_100pct_participation <- annual_bills |>
+  filter(bill_type == "annual_bill_energy" & hvac == "current" & version_elec == "baseline" & assigned_income <= incomes_threshold)
+
+# After switching to heat pumps, but with current rates
+li_baseline_undiscounted <- annual_bills_undiscounted |>
+  filter(bill_type == "annual_bill_raw_energy" & hvac == hvac_for_utility_bills & version_elec == "baseline" & assigned_income <= incomes_threshold)
+li_baseline_no_elec_discount <- annual_bills_no_elec_discount |>
+  filter(bill_type == "annual_bill_energy" & hvac == hvac_for_utility_bills & version_elec == "baseline" & assigned_income <= incomes_threshold)
+li_baseline_discounted <- annual_bills |>
+  filter(bill_type == "annual_bill_energy" & hvac == hvac_for_utility_bills & version_elec == "baseline" & assigned_income <= incomes_threshold)
+
+# Heat Pump Rates
+li_hpr_approved_discounted <- annual_bills |>
+  filter(bill_type == "annual_bill_energy" & hvac == hvac_for_utility_bills & version_elec == "hpr_approved" & assigned_income <= incomes_threshold)
+li_hpr_doer_discounted <- annual_bills |>
+  filter(bill_type == "annual_bill_energy" & hvac == hvac_for_utility_bills & version_elec == "hpr_doer" & assigned_income <= incomes_threshold)
+
+```
+
+### fig-hists-impact-of-low-income-discounts
+```{r}
+#| label: fig-hists-impact-of-low-income-discounts
+#|
+
+plot_li_discount_histograms <- function(
+  datasets,
+  hvac_for_utility_bills,
+  incomes_threshold,
+  x_limits = c(0, 0.2),
+  y_limits = c(0, 150000/242.13),
+  binwidth = 0.01
+) {
+  # # Define dataset list with names for easy processing
+  # datasets <- list(
+  #   "Baseline Rates, Current HVAC, 100% Participation" = li_baseline_rates_current_hvac_100pct_participation,
+  #   "Baseline Rates, Current HVAC, 0% Participation" = li_baseline_rates_current_hvac_0pct_participation,
+  #   "Baseline Rates, Mid HP, Undiscounted" = li_baseline_undiscounted,
+  #   "Baseline Rates, Mid HP, Discounted" = li_baseline_discounted,
+  #   "Approved Rates, Mid HP, Discounted" = li_hpr_approved_discounted,
+  #   "DOER Rates, Mid HP, Discounted" = li_hpr_doer_discounted
+  # )
+
+  # Define color palette for each dataset
+  colors <- c(
+    "Baseline Rates, Current HVAC, 100% Participation" = "magenta",
+    "Baseline Rates, Current HVAC, 0% Participation" = "red",
+    "Baseline Rates, Mid HP, Undiscounted" = "grey50",
+    "Baseline Rates, Mid HP, Discounted" = "#023047",
+    "Approved Rates, Mid HP, Discounted" = "#FC9706",
+    "DOER Rates, Mid HP, Discounted" = "#68BED8"
+  )
+
+  # Calculate y_max across all datasets if not provided
+  if (is.null(y_limits)) {
+    y_max <- 10
+    for (dataset_name in names(datasets)) {
+      hist_plot <- ggplot(datasets[[dataset_name]], aes(x = energy_burden)) +
+        geom_histogram(binwidth = binwidth)
+
+      current_max <- max(ggplot_build(hist_plot)$data[[1]]$count, na.rm = TRUE)
+      y_max <- max(y_max, current_max)
+    }
+
+    y_max <- ceiling(y_max * 1.1)
+    y_limits <- c(0, y_max)
+  }
+
+  #Function to create a single histogram for a dataset
+  create_single_histogram <- function(data, name, is_first = FALSE, is_last = FALSE) {
+    low_burden_threshold <- 0.04
+    moderate_burden_threshold <- 0.06
+    high_burden_threshold <- 0.12
+
+
+    # Calculate bill categories
+    data <- data |>
+      mutate(bill_category = case_when(
+        energy_burden < low_burden_threshold ~ "low_energy_burden",
+        energy_burden < moderate_burden_threshold ~ "moderate_energy_burden",
+        energy_burden < high_burden_threshold ~ "high_energy_burden",
+        TRUE ~ "very_high_energy_burden"
+      ))
+
+    # Calculate percentages for each category
+    category_percentages <- data |>
+      group_by(bill_category) |>
+      summarise(count = n(), .groups = "drop") |>
+      mutate(percentage = count / sum(count) * 100)
+
+    # Get percentages for annotation
+    pct_low_energy_burden <- category_percentages |>
+      filter(bill_category == "low_energy_burden") |>
+      pull(percentage) |>
+      round(1)
+
+    pct_moderate_energy_burden <- category_percentages |>
+      filter(bill_category == "moderate_energy_burden") |>
+      pull(percentage) |>
+      round(1)
+
+    pct_high_energy_burden <- category_percentages |>
+      filter(bill_category == "high_energy_burden") |>
+      pull(percentage) |>
+      round(1)
+
+    pct_very_high_energy_burden <- category_percentages |>
+      filter(bill_category == "very_high_energy_burden") |>
+      pull(percentage) |>
+      round(1)
+
+    # Calculate bin breaks and midpoints
+    breaks <- seq(floor(x_limits[1]/binwidth)*binwidth, ceiling(x_limits[2]/binwidth)*binwidth, by = binwidth)
+
+    # Manually bin the data
+    binned_data <- data |>
+      mutate(bin = cut(energy_burden,
+                      breaks = breaks,
+                      include.lowest = TRUE,
+                      right = FALSE)) |>
+      group_by(bin, bill_category) |>
+      summarise(count = n(), .groups = "drop") |>
+      # Add bin midpoint for plotting
+      mutate(bin_mid = as.numeric(as.character(
+        sapply(bin, function(b) {
+          # Extract bin boundaries and calculate midpoint
+          vals <- as.numeric(gsub("\\(|\\]|\\[|\\)", "", strsplit(as.character(b), ",")[[1]]))
+          return(mean(vals))
+        })
+      )))
+
+    # More balanced color palette
+    dark_red <- "#db8b87"        # dark red
+    light_red <- "#eaada9"       # light red
+    light_green <- "#8ebd85"     # light green
+    dark_green <- "#5e8a5e"      # dark green
+
+    # Position the bars at the top and text just below
+    bar_y_pos <- y_limits[2]
+    text_y_pos <- y_limits[2] * 0.90
+
+    # Calculate x positions for percentage labels
+    x_low_energy_burden <- mean(c(0, low_burden_threshold-0.002))
+    x_moderate_energy_burden <- mean(c(low_burden_threshold, moderate_burden_threshold))
+    x_high_energy_burden <- mean(c(moderate_burden_threshold, high_burden_threshold))
+    x_very_high_energy_burden <- mean(c(high_burden_threshold, x_limits[2]))
+
+    # Create the plot
+    plot <- ggplot(binned_data, aes(x = bin_mid, y = count, fill = bill_category)) +
+      # Add vertical dotted lines at the category boundaries
+      geom_vline(xintercept = c(low_burden_threshold, moderate_burden_threshold, high_burden_threshold), linetype = "dotted", color = "gray50", size = 0.5) +
+
+      # Add the bars
+      geom_col(position = "stack", width = binwidth * 0.9) +
+
+      # Set the fill colors
+      scale_fill_manual(
+        values = c(
+          "low_energy_burden" = dark_green,
+          "moderate_energy_burden" = light_green,
+          "high_energy_burden" = light_red,
+          "very_high_energy_burden" = dark_red
+        ),
+        guide = "none"
+      ) +
+
+      # Add horizontal colored lines at the top
+      annotate("segment",
+                x = x_limits[1], xend = low_burden_threshold,
+                y = bar_y_pos, yend = bar_y_pos,
+                color = dark_green, size = 1) +
+
+      annotate("segment",
+                x = low_burden_threshold, xend = moderate_burden_threshold,
+                y = bar_y_pos, yend = bar_y_pos,
+                color = light_green, size = 1) +
+
+      annotate("segment",
+                x = moderate_burden_threshold, xend = high_burden_threshold,
+                y = bar_y_pos, yend = bar_y_pos,
+                color = light_red, size = 1) +
+
+      annotate("segment",
+                x = high_burden_threshold, xend = x_limits[2],
+                y = bar_y_pos, yend = bar_y_pos,
+                color = dark_red, size = 1) +
+
+      # Add percentage labels
+      annotate("text",
+                x = x_low_energy_burden,
+                y = text_y_pos * 0.95,
+                label = paste0(pct_low_energy_burden, "%"),
+                size = 3,
+                fontface = "bold") +
+
+      annotate("text",
+                x = x_moderate_energy_burden,
+                y = text_y_pos * 0.95,
+                label = paste0(pct_moderate_energy_burden, "%"),
+                size = 3,
+                fontface = "bold") +
+
+      annotate("text",
+                x = x_high_energy_burden,
+                y = text_y_pos * 0.95,
+                label = paste0(pct_high_energy_burden, "%"),
+                size = 3,
+                fontface = "bold") +
+
+      annotate("text",
+                x = x_very_high_energy_burden,
+                y = text_y_pos * 0.95,
+                label = paste0(pct_very_high_energy_burden, "%"),
+                size = 3,
+                fontface = "bold") +
+
+      # Add dataset name on the right
+      annotate("text",
+                x = x_limits[2] * 0.95,
+                y = y_limits[2] * 0.7,
+                label = name,
+                hjust = 1,
+                fontface = "bold",
+                size = 3,
+                color = colors[name]) +
+
+      # Format axes
+      scale_y_continuous(
+        labels = function(x) paste0(round(x * 242.13 * 0.001), "k"),
+        name = "# of Homes",
+        limits = y_limits,
+        breaks = c(0, 50000, 100000, 150000)/242.13
+      ) +
+      scale_x_continuous(
+        labels = scales::percent_format(accuracy = 1),
+        name = "Energy Burden",
+        limits = x_limits,
+        breaks = c(low_burden_threshold, moderate_burden_threshold, high_burden_threshold)
+      ) +
+
+      # Apply theme
+      theme_minimal() +
+      theme(
+        panel.grid.major = element_line(linewidth = 0.2),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 0.15
+      )
+
+    # Configure axes based on position
+    if (!is_last) {
+      plot <- plot +
+        theme(
+          axis.title.x = element_blank(),
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank()
+        )
+    }
+    return(list(plot, category_percentages))
+  }
+
+
+  # Create each histogram
+  dataset_names <- names(datasets)
+  plots <- list()
+  list_of_category_percentages <- list()
+  for (i in 1:length(datasets)) {
+    name <- dataset_names[i]
+    is_first <- (i == 1)
+    is_last <- (i == length(datasets))
+
+    result_single_histogram <- create_single_histogram(
+      data = datasets[[name]],
+      name = name,
+      is_first = is_first,
+      is_last = is_last
+    )
+
+    plots[[i]] <- result_single_histogram[[1]]
+    list_of_category_percentages[[i]] <- result_single_histogram[[2]]
+  }
+
+  # Combine plots with patchwork
+  combined_plot <- plots[[1]]
+  for (i in 2:length(plots)) {
+    combined_plot <- combined_plot / plots[[i]]
+  }
+
+  # Add overall title and formatting
+  final_plot <- combined_plot +
+    plot_layout(
+      heights = rep(1, length(plots)),
+      guides = "collect"
+    ) +
+    plot_annotation(
+      title = "Winter Energy Burdens in Massachusetts, by Scenario",
+      subtitle = paste0("Among households below $", incomes_threshold),
+      theme = theme(
+        plot.title = element_text(hjust = 0.5, size = 9, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5, size = 8),
+        plot.margin = margin(5, 5, 5, 5, "pt")
+      )
+    ) &
+    theme(
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_line(linewidth = 0.2, color = "gray90"),
+      panel.grid.major.y = element_line(linewidth = 0.2, color = "gray90"),
+      plot.margin = margin(1, 5, 1, 5, "pt")
+    )
+
+  return(list(final_plot, list_of_category_percentages))
+}
+
+# ---------
+# Function Inputs
+
+datasets <- list(
+  "Current HVAC, 100% Discounts, Default Rates" = li_baseline_rates_current_hvac_100pct_participation,
+  "Current HVAC, 0% Discounts, Default Rates" = li_baseline_rates_current_hvac_0pct_participation,
+  "ccASHP, 0% Discounts, Default Rates" = li_baseline_undiscounted,
+  "ccASHP, 100% Discounts, Default Rates" = li_baseline_discounted,
+  "ccASHP, 100% Discounts, 1.0 Rates" = li_hpr_approved_discounted,
+  "ccASHP, 100% Discounts, 2.0 Rates" = li_hpr_doer_discounted
+)
+
+
+
+
+
+# ---------
+# Actually use the function
+result_li_discount_histograms <- plot_li_discount_histograms(
+  datasets,
+  incomes_threshold = incomes_threshold,
+  x_limits = c(0, 0.2),
+  y_limits = c(0, 150000/242.13),
+  binwidth = 0.01
+)
+
+# Extract results with different variable names
+combined_plot <- result_li_discount_histograms[[1]]
+list_of_category_percentages <- result_li_discount_histograms[[2]]
+
+# Display the plot
+print(combined_plot)
+
+# Fix the rate_versions to match your actual datasets
+rate_versions <- list(
+  list(name = "baseline_undiscounted", result_index = 3, prefix = "baseline_undiscounted"),
+  list(name = "baseline_discounted", result_index = 4, prefix = "baseline_discounted"),
+  list(name = "approved", result_index = 5, prefix = "approved"),
+  list(name = "doer", result_index = 6, prefix = "doer")
+)
+
+# Fix the category name and loop structure
+for (i in seq_along(datasets)) {
+  dataset_name <- names(datasets)[i]
+  dataset_name <- tolower(gsub("[,]", "", dataset_name))
+  dataset_name <- tolower(gsub("[%]", "pct", dataset_name))
+  dataset_name <- tolower(gsub("__", "_", dataset_name))
+  # Get the result for this dataset
+  result <- list_of_category_percentages[[i]]
+
+  # Use the correct category names from your function
+  for (category in c("low_energy_burden", "moderate_energy_burden", "high_energy_burden", "very_high_energy_burden")) {
+    pct_value <- result |>
+      filter(bill_category == category) |>
+      pull(percentage)
+
+    if (length(pct_value) > 0) {
+      assign(paste0("fig_hists_li_discount_histograms_", gsub(" ", "_", dataset_name), "_", category),
+             round(pct_value, round_percent))
+    }
+  }
+}
+
+```
+
+### data-pct_below_6_li_discount_variables
+```{r pct_below_6_li_discount_variables}
+pct_below_6_baseline_rates_current_hvac_100pct_participation <- fig_hists_li_discount_histograms_current_hvac_100pct_discounts_default_rates_low_energy_burden + fig_hists_li_discount_histograms_current_hvac_100pct_discounts_default_rates_moderate_energy_burden
+
+pct_below_6_baseline_rates_current_hvac_0pct_participation <- fig_hists_li_discount_histograms_current_hvac_0pct_discounts_default_rates_low_energy_burden + fig_hists_li_discount_histograms_current_hvac_0pct_discounts_default_rates_moderate_energy_burden
+
+pct_below_6_ccashp_100pct_undiscounted <- fig_hists_li_discount_histograms_ccashp_0pct_discounts_default_rates_low_energy_burden + fig_hists_li_discount_histograms_ccashp_0pct_discounts_default_rates_moderate_energy_burden
+
+pct_below_6_ccashp_100pct_discounted <- fig_hists_li_discount_histograms_ccashp_100pct_discounts_default_rates_low_energy_burden + fig_hists_li_discount_histograms_ccashp_100pct_discounts_default_rates_moderate_energy_burden
+
+pct_below_6_approved_rates_mid_hp_discounted <- fig_hists_li_discount_histograms_ccashp_100pct_discounts_1.0_rates_low_energy_burden + fig_hists_li_discount_histograms_ccashp_100pct_discounts_1.0_rates_moderate_energy_burden
+
+pct_below_6_doer_rates_mid_hp_discounted <- fig_hists_li_discount_histograms_ccashp_100pct_discounts_2.0_rates_low_energy_burden + fig_hists_li_discount_histograms_ccashp_100pct_discounts_2.0_rates_moderate_energy_burden
+
+```
+
+### create_single_histogram_standalone()
+```{r}
+# Create helper function with better aspect ratio
+create_single_histogram_standalone <- function(data, name, colors, x_limits = c(0, 0.2), y_limits = c(0, 150000/242.13), binwidth = 0.01, show_x_axis = TRUE, show_y_axis = TRUE) {
+  low_burden_threshold <- 0.04
+  moderate_burden_threshold <- 0.06
+  high_burden_threshold <- 0.12
+
+  # Calculate bill categories
+  data <- data |>
+    mutate(bill_category = case_when(
+      energy_burden < low_burden_threshold ~ "low_energy_burden",
+      energy_burden < moderate_burden_threshold ~ "moderate_energy_burden",
+      energy_burden < high_burden_threshold ~ "high_energy_burden",
+      TRUE ~ "very_high_energy_burden"
+    ))
+
+  # Calculate percentages for each category
+  category_percentages <- data |>
+    group_by(bill_category) |>
+    summarise(count = n(), .groups = "drop") |>
+    mutate(percentage = count / sum(count) * 100)
+
+  # Get percentages for annotation
+  pct_low_energy_burden <- category_percentages |>
+    filter(bill_category == "low_energy_burden") |>
+    pull(percentage) |>
+    round(1)
+
+  pct_moderate_energy_burden <- category_percentages |>
+    filter(bill_category == "moderate_energy_burden") |>
+    pull(percentage) |>
+    round(1)
+
+  pct_high_energy_burden <- category_percentages |>
+    filter(bill_category == "high_energy_burden") |>
+    pull(percentage) |>
+    round(1)
+
+  pct_very_high_energy_burden <- category_percentages |>
+    filter(bill_category == "very_high_energy_burden") |>
+    pull(percentage) |>
+    round(1)
+
+  # Calculate bin breaks and midpoints
+  breaks <- seq(floor(x_limits[1]/binwidth)*binwidth, ceiling(x_limits[2]/binwidth)*binwidth, by = binwidth)
+
+  # Manually bin the data
+  binned_data <- data |>
+    mutate(bin = cut(energy_burden,
+                    breaks = breaks,
+                    include.lowest = TRUE,
+                    right = FALSE)) |>
+    group_by(bin, bill_category) |>
+    summarise(count = n(), .groups = "drop") |>
+    mutate(bin_mid = as.numeric(as.character(
+      sapply(bin, function(b) {
+        vals <- as.numeric(gsub("\\(|\\]|\\[|\\)", "", strsplit(as.character(b), ",")[[1]]))
+        return(mean(vals))
+      })
+    )))
+
+  # More balanced color palette
+  dark_red <- "#db8b87"
+  light_red <- "#eaada9"
+  light_green <- "#8ebd85"
+  dark_green <- "#5e8a5e"
+
+  # Position the bars at the top and text just below
+  bar_y_pos <- y_limits[2]
+  text_y_pos <- y_limits[2] * 0.90
+
+  # Calculate x positions for percentage labels
+  x_low_energy_burden <- mean(c(0, low_burden_threshold-0.002))
+  x_moderate_energy_burden <- mean(c(low_burden_threshold, moderate_burden_threshold))
+  x_high_energy_burden <- mean(c(moderate_burden_threshold, high_burden_threshold))
+  x_very_high_energy_burden <- mean(c(high_burden_threshold, x_limits[2]))
+
+  # Create the plot
+  plot <- ggplot(binned_data, aes(x = bin_mid, y = count, fill = bill_category)) +
+    # Add vertical dotted lines at the category boundaries
+    geom_vline(xintercept = c(low_burden_threshold, moderate_burden_threshold, high_burden_threshold),
+               linetype = "dotted", color = "gray50", size = 0.5) +
+    # Add bars
+    geom_col(position = "stack", width = binwidth * 0.9) +
+
+    # Set the fill colors for the bars
+    scale_fill_manual(
+      values = c(
+        "low_energy_burden" = dark_green,
+        "moderate_energy_burden" = light_green,
+        "high_energy_burden" = light_red,
+        "very_high_energy_burden" = dark_red
+      ),
+      guide = "none"
+    ) +
+    # Add vertical lines at the category boundaries
+    annotate("segment",
+              x = x_limits[1], xend = low_burden_threshold,
+              y = bar_y_pos, yend = bar_y_pos,
+              color = dark_green, size = 1) +
+    annotate("segment",
+              x = low_burden_threshold, xend = moderate_burden_threshold,
+              y = bar_y_pos, yend = bar_y_pos,
+              color = light_green, size = 1) +
+    annotate("segment",
+              x = moderate_burden_threshold, xend = high_burden_threshold,
+              y = bar_y_pos, yend = bar_y_pos,
+              color = light_red, size = 1) +
+    annotate("segment",
+              x = high_burden_threshold, xend = x_limits[2],
+              y = bar_y_pos, yend = bar_y_pos,
+              color = dark_red, size = 1) +
+    annotate("text",
+              x = x_low_energy_burden,
+              y = text_y_pos * 0.95,
+              label = paste0(pct_low_energy_burden, "%"),
+              size = 3,
+              fontface = "bold") +
+    annotate("text",
+              x = x_moderate_energy_burden,
+              y = text_y_pos * 0.95,
+              label = paste0(pct_moderate_energy_burden, "%"),
+              size = 3,
+              fontface = "bold") +
+    annotate("text",
+              x = x_high_energy_burden,
+              y = text_y_pos * 0.95,
+              label = paste0(pct_high_energy_burden, "%"),
+              size = 3,
+              fontface = "bold") +
+    annotate("text",
+              x = x_very_high_energy_burden,
+              y = text_y_pos * 0.95,
+              label = paste0(pct_very_high_energy_burden, "%"),
+              size = 3,
+              fontface = "bold") +
+    annotate("text",
+              x = x_limits[2] * 0.95,
+              y = y_limits[2] * 0.7,
+              label = name,
+              hjust = 1,
+              fontface = "bold",
+              size = 3,
+              color = colors[name]) +
+    scale_y_continuous(
+      labels = function(x) paste0(round(x * 242.13 * 0.001), "k"),
+      #name = "# of Homes",
+      limits = y_limits,
+      breaks = c(0, 50000, 100000, 150000)/242.13
+    ) +
+    scale_x_continuous(
+      labels = scales::percent_format(accuracy = 1),
+      name = "Winter Energy Burden",
+      limits = x_limits,
+      breaks = c(low_burden_threshold, moderate_burden_threshold, high_burden_threshold),
+    ) +
+    theme_minimal() +
+    theme(
+      panel.grid.major = element_line(linewidth = 0.2),
+      panel.grid.minor = element_blank(),
+      aspect.ratio = 0.18,  # CHANGED: Increased from 0.15 to match bill change histograms
+      axis.title.x = element_text(size = 8)
+    )
+
+  # Remove x-axis elements if requested
+  if (!show_x_axis) {
+    plot <- plot +
+      theme(
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()
+      )
+  }
+
+  # Remove y-axis elements if requested
+  if (!show_y_axis) {
+    plot <- plot +
+      theme(
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank()
+      )
+  }
+
+  return(plot)
+}
+
+```
+
+### fig-li-burdens-current-hvac (fig13)
+```{r}
+#| label: fig-li-burdens-current-hvac
+#| fig-cap: "Winter energy burdens for every MA household with annual incomes less than $50,000, under current HVAC systems, with and without 100% participation in low-income gas and electric discount programs. Assumes default delivery rates and 2024 supply rates for gas and electricity."
+
+
+# Define colors
+colors <- c(
+  "Current HVAC, 100% Discounts, Default Rates" = "magenta",
+  "Current HVAC, 0% Discounts, Default Rates" = "red",
+  "ccASHP, 0% Discounts, Default Rates" = "grey50",
+  "ccASHP, 100% Discounts, Default Rates" = "#023047",
+  "ccASHP, 100% Discounts, 1.0 Rates" = "#FC9706",
+  "ccASHP, 100% Discounts, 2.0 Rates" = "#68BED8"
+)
+
+# PLOT 1: Histograms 1 and 2 with tighter spacing
+plot1_hist1 <- create_single_histogram_standalone(
+  data = li_baseline_rates_current_hvac_100pct_participation,
+  name = "Current HVAC, 100% Discounts, Default Rates",
+  colors = colors,
+  show_x_axis = TRUE,
+  show_y_axis = FALSE
+) + theme(plot.margin = margin(0, 5, 0, 5))  # Even tighter margins
+
+plot1_hist2 <- create_single_histogram_standalone(
+  data = li_baseline_rates_current_hvac_0pct_participation,
+  name = "Current HVAC, 0% Discounts, Default Rates",
+  colors = colors,
+  show_x_axis = TRUE,
+  show_y_axis = FALSE
+) + theme(plot.margin = margin(0, 5, 0, 5))  # Even tighter margins
+
+plot1_combined <- plot1_hist1 / plot1_hist2 +
+  plot_layout(
+    heights = c(1, 1)
+  ) +
+  plot_annotation(
+    title = "Winter Energy Burdens in Massachusetts: Current HVAC",
+    subtitle = paste0("Among households below $", incomes_threshold),
+    theme = theme(
+      plot.title = element_text(hjust = 0.5, size = 9, face = "bold"),
+      plot.subtitle = element_text(hjust = 0.5, size = 8),
+      plot.margin = margin(10, 10, 10, 10)  # Much smaller overall margins
+    )
+  )
+
+
+# Wrap the plot to add a shared y-axis label on the left
+plot1_combined <- wrap_elements(plot1_combined) +
+  labs(tag = "# of Homes") +
+  theme(
+    plot.tag = element_text(angle = 90, vjust = 0.5, hjust = 0.5, face = "plain", size = 9),
+    plot.tag.position = "left"
+  )
+
+print(plot1_combined)
+```
+
+### fig-li-burdens-grid-comparison (fig14)
+```{r}
+#| label: fig-li-burdens-grid-comparison
+#| fig-cap: "Winter energy burdens for every MA household with annual income less than $50,000, current HVAC vs. ccASHPS, with and without 100% participation in low-income gas and electric discount programs. Assumes default delivery rates and 2024 supply rates for gas and electricity."
+
+# Define colors
+colors <- c(
+  "Current HVAC, 100% Discounts" = "magenta",
+  "Current HVAC, 0% Discounts" = "red",
+  "ccASHP, 0% Discounts" = "grey50",
+  "ccASHP, 100% Discounts" = "#023047",
+  "ccASHP, 100% Discounts" = "#FC9706",
+  "ccASHP, 100% Discounts" = "#68BED8"
+)
+
+
+# PLOT 3: 2x2 Grid with better aspect ratio and tighter spacing
+plot3_hist2 <- create_single_histogram_standalone(
+  data = li_baseline_rates_current_hvac_0pct_participation,
+  name = "Current HVAC, 0% Discounts",
+  colors = colors,
+  show_x_axis = FALSE,
+  show_y_axis = TRUE  # Keep y-axis for left column
+) + theme(
+  aspect.ratio = 0.5,
+  plot.margin = margin(2, 1, 1, 2),
+  axis.title.y = element_blank()  # Remove individual y-axis title
+)
+
+plot3_hist3 <- create_single_histogram_standalone(
+  data = li_baseline_undiscounted,
+  name = "ccASHP, 0% Discounts",
+  colors = colors,
+  show_x_axis = TRUE,
+  show_y_axis = TRUE  # Keep y-axis for left column
+) + theme(
+  aspect.ratio = 0.5,
+  plot.margin = margin(1, 1, 2, 2),
+  axis.title.y = element_blank()  # Remove individual y-axis title
+)
+
+plot3_hist1 <- create_single_histogram_standalone(
+  data = li_baseline_rates_current_hvac_100pct_participation,
+  name = "Current HVAC, 100% Discounts",
+  colors = colors,
+  show_x_axis = FALSE,
+  show_y_axis = FALSE  # Remove y-axis for right column
+) + theme(aspect.ratio = 0.5, plot.margin = margin(2, 2, 1, 1))
+
+plot3_hist4 <- create_single_histogram_standalone(
+  data = li_baseline_discounted,
+  name = "ccASHP, 100% Discounts",
+  colors = colors,
+  show_x_axis = TRUE,
+  show_y_axis = FALSE  # Remove y-axis for right column
+) + theme(aspect.ratio = 0.5, plot.margin = margin(1, 2, 2, 1))
+
+# Combine with patchwork
+plot3_combined <- (plot3_hist2 | plot3_hist1) / (plot3_hist3 | plot3_hist4) +
+  plot_layout(heights = c(1, 1), widths = c(1, 1)) +
+  plot_annotation(
+    title = "Winter Energy Burdens: Comparison of HVAC and Discount Scenarios",
+    subtitle = paste0("Among households below $", incomes_threshold, "| Default Rates"),
+    theme = theme(
+      plot.title = element_text(hjust = 0.5, size = 9, face = "bold"),
+      plot.subtitle = element_text(hjust = 0.5, size = 8),
+      plot.margin = margin(10, 10, 10, 30)  # Extra left margin for y-axis label
+    )
+  )
+
+# Wrap the plot to add a shared y-axis label on the left
+plot3_combined <- wrap_elements(plot3_combined) +
+  labs(tag = "# of Homes") +
+  theme(
+    plot.tag = element_text(angle = 90, vjust = 0.5, hjust = 0.5, face = "plain", size = 9),
+    plot.tag.position = "left"
+  )
+
+print(plot3_combined)
+```
+
+### fig-li-burdens-hp-rates (fig15)
+```{r}
+#| label: fig-li-burdens-hp-rates
+#| fig-cap: "Winter energy burdens after switching to ccASHPS, for every MA household with annual income less than $50,000, under default vs. 1.0 vs. 2.0 heat pump electric delivery rates combined with 100% participation in low-income gas and electric discount programs. Assumes default gas delivery rates and 2024 supply rates for gas and electricity."
+
+# PLOT 15: Histograms 4, 5, 6 with tighter spacing
+plot2_hist4 <- create_single_histogram_standalone(
+  data = li_baseline_discounted,
+  name = "ccASHP, 100% Discounts, Default Rates",
+  colors = colors,
+  show_x_axis = FALSE,
+  show_y_axis = FALSE
+) + theme(plot.margin = margin(5, 5, 0, 5))  # Reduced margins
+
+plot2_hist5 <- create_single_histogram_standalone(
+  data = li_hpr_approved_discounted,
+  name = "ccASHP, 100% Discounts, 1.0 Rates",
+  colors = colors,
+  show_x_axis = FALSE,
+  show_y_axis = FALSE
+) + theme(plot.margin = margin(0, 5, 0, 5))  # Reduced margins
+
+plot2_hist6 <- create_single_histogram_standalone(
+  data = li_hpr_doer_discounted,
+  name = "ccASHP, 100% Discounts, 2.0 Rates",
+  colors = colors,
+  show_x_axis = TRUE,
+  show_y_axis = FALSE
+) + theme(plot.margin = margin(0, 5, 5, 5))  # Reduced margins
+
+plot2_combined <- plot2_hist4 / plot2_hist5 / plot2_hist6 +
+  plot_layout(heights = c(1, 1, 1)) +
+  plot_annotation(
+    title = "Winter Energy Burdens: Heat Pump Scenarios with Different Rates",
+    subtitle = paste0("Among households below $", incomes_threshold, " with 100% discount participation"),
+    theme = theme(
+      plot.title = element_text(hjust = 0.5, size = 9, face = "bold"),
+      plot.subtitle = element_text(hjust = 0.5, size = 8),
+      plot.margin = margin(10, 10, 10, 10)  # Reduced overall margins
+    )
+  )
+
+# Wrap the plot to add a shared y-axis label on the left
+plot2_combined <- wrap_elements(plot2_combined) +
+  labs(tag = "# of Homes") +
+  theme(
+    plot.tag = element_text(angle = 90, vjust = 0.5, hjust = 0.5, face = "plain", size = 9),
+    plot.tag.position = "left"
+  )
+
+print(plot2_combined)
+```
+
+
+## ---------- How do savings vary by utility? ----------
+### fig-stacked-bars-utility-rate-scenarios (fig16)
+```{r}
+#| label: fig-stacked-bars-utility-rate-scenarios
+#| fig-cap: "Proportion of MA homes served by each investor-owned electric utility that would see a large or small bill savings or increase in total winter energy bills when switching to heat pumps, under default vs. 1.0 vs. 2.0 heat pump electric delivery rates. Assumes default gas delivery rates, 2024 supply rates for gas and electricity, and 100% participation in low-income programs by eligible households."
+
+# Create a function to categorize bill changes
+categorize_bill_changes_by_utility <- function(data) {
+  data %>%
+    filter(bill_type == "annual_bill_change_energy",
+           hvac == hvac_for_utility_bills,
+           version_elec %in% c("baseline", "hpr_approved", "hpr_doer")) %>%
+    mutate(category = case_when(
+      annual_bill_change <= -1000 ~ "large_savings",
+      annual_bill_change < 0 ~ "small_savings",
+      annual_bill_change < 1000 ~ "small_increase",
+      TRUE ~ "large_increase"
+    )) %>%
+    group_by(electric_utility, version_elec, category) %>%
+    summarise(count = n(), .groups = "drop") %>%
+    group_by(electric_utility, version_elec) %>%
+    mutate(
+      total = sum(count),
+      percentage = count / total * 100,
+      utility_scenario = paste(electric_utility, version_elec, sep = "_")
+    ) %>%
+    ungroup()
+}
+
+# Apply the function to the data
+utility_scenario_counts <- categorize_bill_changes_by_utility(annual_change_with_municipal)
+
+# Set factor levels for correct ordering
+utility_scenario_counts <- utility_scenario_counts %>%
+  mutate(
+    # FIXED: Order for stacking - this controls the visual stacking order
+    # For negative values, the order is visually reversed, so we put large_savings before small_savings
+    category = factor(
+      category,
+      levels = c("large_increase", "small_increase", "large_savings", "small_savings")
+    ),
+    electric_utility = factor(
+      electric_utility,
+      levels = c("eversource", "nationalgrid", "unitil", "municipal")
+    ),
+    version_elec = factor(
+      version_elec,
+      levels = c("baseline", "hpr_approved", "hpr_doer")
+    ),
+    utility_scenario = factor(
+      utility_scenario,
+      levels = paste(rep(c("eversource", "nationalgrid", "unitil", "municipal"), each = 3),
+                    rep(c("baseline", "hpr_approved", "hpr_doer"), 4),
+                    sep = "_")
+    )
+  )
+
+# Create the stacked bar chart
+ggplot(utility_scenario_counts, aes(x = utility_scenario, y = percentage, fill = category)) +
+  # Reference line at 0 (boundary between savings and increases)
+  geom_hline(yintercept = 0, linetype = "solid", color = "gray40", linewidth = 0.5) +
+  # For savings categories (plotted downward)
+  geom_col(
+    data = utility_scenario_counts %>% filter(category %in% c("large_savings", "small_savings")),
+    aes(y = -percentage),
+    position = "stack"
+  ) +
+  # For increase categories (plotted upward)
+  geom_col(
+    data = utility_scenario_counts %>% filter(category %in% c("small_increase", "large_increase")),
+    position = "stack"
+  ) +
+  # Add percentage labels for savings (negative values)
+  geom_text(
+    data = utility_scenario_counts %>% filter(category %in% c("large_savings", "small_savings")),
+    aes(y = -percentage, label = paste0(round(percentage, 1), "%")),
+    position = position_stack(vjust = 0.5),
+    color = "white",
+    fontface = "bold",
+    size = 2.5
+  ) +
+  # Add percentage labels for increases (positive values)
+  geom_text(
+    data = utility_scenario_counts %>% filter(category %in% c("small_increase", "large_increase")),
+    aes(label = paste0(round(percentage, 1), "%")),
+    position = position_stack(vjust = 0.5),
+    color = "white",
+    fontface = "bold",
+    size = 2.5
+  ) +
+  # FIXED: Swapped the colors for increase categories
+  scale_fill_manual(
+    values = c(
+      "large_savings" = "#5e8a5e",      # dark green
+      "small_savings" = "#8ebd85",      # light green
+      "small_increase" = "#eaada9",     # FIXED: now light red (was dark red)
+      "large_increase" = "#db8b87"      # FIXED: now dark red (was light red)
+    ),
+    labels = c(
+      "large_savings" = ">$1,000 savings",
+      "small_savings" = "$0-$1,000 savings",
+      "small_increase" = "$0-$1,000 increase",
+      "large_increase" = ">$1,000 increase"
+    ),
+    breaks = c("large_increase", "small_increase", "small_savings", "large_savings")
+  ) +
+  # Add utility grouping
+  scale_y_continuous(
+    labels = NULL,
+  ) +
+  scale_x_discrete(
+    labels = rep(c("Default", "1.0", "2.0 rates"), 4),
+    guide = guide_axis(n.dodge = 1)
+  ) +
+  # Add utility labels with faceting
+  facet_wrap(
+    ~ factor(electric_utility,
+            levels = c("eversource", "nationalgrid", "unitil", "municipal"),
+            labels = c("Eversource", "National Grid", "Unitil", "Municipal")),
+    nrow = 1,
+    scales = "free_x"
+  ) +
+  labs(
+    title = "Change in Total Winter Energy Bills when Switching to Heat Pump, by Utility",
+    subtitle = glue::glue("{supply_year} Supply Prices"),
+    x = NULL,
+    y = "",
+    fill = ""
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 8),
+    axis.text.x = element_text(angle = 0, hjust = 0.5),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    strip.text = element_text(face = "bold")
+  )
+
+# Create and export report variables for each utility, scenario, and category combination
+for (utility in c("eversource", "nationalgrid", "unitil", "municipal")) {
+  for (scenario in c("baseline", "hpr_approved", "hpr_doer")) {
+    for (category in c("large_savings", "small_savings", "large_increase", "small_increase")) {
+      # Get the percentage for this specific combination
+      pct_value <- utility_scenario_counts |>
+        filter(electric_utility == utility & version_elec == scenario & category == !!category) |>
+        pull(percentage)
+
+      # Handle cases where the category might not exist (assign 0)
+      if (length(pct_value) == 0) {
+        pct_value <- 0
+      }
+
+      # Create variable name like: utility_scenario_counts_eversource_baseline_large_savings
+      var_name <- paste("utility_change_", utility, "_", scenario, "_", category, sep = "")
+      assign(var_name, round(pct_value, round_percent))
+    }
+  }
+}
+
+```
+
+### fig-boxplot-utility-bills (fig17)
+```{r}
+#| label: fig-boxplot-utility-bills
+#| fig-cap: "Distribution of total winter energy bills, for all MA homes served by an investor-owned electric utility, before and after switching to heat pumps, under default vs. 1.0 vs. 2.0 heat pump electric delivery rates, by utility. Assumes default gas delivery rates, 2024 supply rates for gas and electricity, and 100% participation in low-income programs by eligible households."
+
+# Prepare the data for boxplots (exclude municipal)
+utility_bills_boxplot <- annual_bills_with_municipal |>
+  filter(
+    bill_type == "annual_bill_energy",
+    raw_or_discounted == "discounted",
+    electric_utility %in% c("eversource", "nationalgrid", "unitil")  # Remove municipal
+  ) |>
+  mutate(scenario = case_when(
+      hvac == 'current' & version_elec == "baseline" ~ "baseline_rates_current_hvac",
+      hvac == hvac_for_utility_bills & version_elec == "baseline" ~ "baseline",
+      hvac == hvac_for_utility_bills & version_elec == "hpr_approved" ~ "hpr_approved",
+      hvac == hvac_for_utility_bills & version_elec == "hpr_doer" ~ "hpr_doer",
+      TRUE ~ NA_character_
+  )) |>
+  filter(!is.na(scenario)) |>
+  mutate(
+    scenario = factor(
+      scenario,
+      levels = c(
+        "hpr_doer",
+        "hpr_approved",
+        "baseline",
+        "baseline_rates_current_hvac"
+      )
+    ),
+    electric_utility = factor(electric_utility,
+                            levels = c("eversource", "nationalgrid", "unitil"))
+  )
+
+# Loop through versions to calculate statistics
+for (eu in c("eversource", "nationalgrid", "unitil")) {
+  for (s in c("baseline_rates_current_hvac", "baseline", "hpr_approved", "hpr_doer")) {
+    # Get the stats for this version
+    stats <- utility_bills_boxplot |>
+      filter(electric_utility == eu) |>
+      filter(scenario == s) |>
+      summarise(
+        p25 = quantile(annual_bill, 0.25),
+        p50 = quantile(annual_bill, 0.50),
+        p75 = quantile(annual_bill, 0.75)
+      )
+    assign(paste0("utility_bills_", eu, "_", s, "_p25"),
+           round(stats |> pull(p25), round_dollars))
+    assign(paste0("utility_bills_", eu, "_", s, "_p50"),
+           round(stats |> pull(p50), round_dollars))
+    assign(paste0("utility_bills_", eu, "_", s, "_p75"),
+           round(stats |> pull(p75), round_dollars))
+  }
+}
+
+# Create the boxplot with flipped axes and no outliers
+ggplot(utility_bills_boxplot, aes(y = electric_utility, x = annual_bill, fill = scenario)) +
+  geom_boxplot(
+    position = position_dodge(width = 0.85),
+    alpha = 0.8,
+    outlier.shape = NA  # Remove outliers but keep whiskers
+  ) +
+  scale_fill_manual(
+    values = c(
+      "baseline_rates_current_hvac" = "grey50",
+      "baseline" = "#023047",
+      "hpr_approved" = "#FC9706",
+      "hpr_doer" = "#68BED8"
+    ),
+    labels = c(
+      "baseline_rates_current_hvac" = "Baseline Rates, Current HVAC",
+      "baseline" = "Baseline Rates, Mid HP",
+      "hpr_approved" = "Heat Pump, 1.0 HP Rates",
+      "hpr_doer" = "Heat Pump, 2.0 HP Rates"
+    )
+  ) +
+  guides(fill = guide_legend(reverse = TRUE)) +
+  scale_y_discrete(
+    labels = c(
+      "eversource" = "Eversource",
+      "nationalgrid" = "National Grid",
+      "unitil" = "Unitil"
+    ),
+    expand = expansion(mult = c(0.3, 0.3))  # Add space at top for labels
+  ) +
+  scale_x_continuous(
+    labels = scales::dollar_format(),
+    expand = expansion(mult = c(0.0, 0.05)),
+    limits = c(0, 8000)
+  ) +
+  labs(
+    title = "Distribution of Winter Energy Bills by Utility and Scenario",
+    subtitle = "Vertical lines represent 25th, 50th, and 75th percentiles; outliers removed",
+    y = NULL,
+    x = "Annual Energy Bill",
+    fill = "Scenario"
+  ) +
+    # Add colored annotations instead of legend
+  annotate("text", x = 5600, y = 3.39, label = "Current HVAC, Default Rates",
+           color = "grey50", fontface = "bold", size = 3.5, hjust = 0) +
+  annotate("text", x = 5500, y = 3.19, label = "Heat Pump, Default Rates",
+           color = "#023047", fontface = "bold", size = 3.5, hjust = 0) +
+  annotate("text", x = 5400, y = 2.99, label = "Heat Pump, 1.0 HP Rates",
+           color = "#FC9706", fontface = "bold", size = 3.5, hjust = 0) +
+  annotate("text", x = 5300, y = 2.78, label = "Heat Pump, 2.0 HP Rates",
+           color = "#68BED8", fontface = "bold", size = 3.5, hjust = 0) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 8, color = "gray60"),
+    panel.grid.major.y = element_blank(),
+    aspect.ratio = 0.5,
+    plot.margin = margin(t = 0.05, r = 0.1, b = 0.05, l = 0.1),
+    axis.title.x = element_text(size = 8),
+    axis.title.y = element_text(size = 8),
+    axis.text.x = element_text(size = 8),
+    axis.text.y = element_text(size = 8),
+    legend.position = "none"  # Remove the legend
+  )
+
+```
+
+### fig-boxplot-utility-bills-munis (fig18)
+```{r}
+#| label: fig-boxplot-utility-bills-munis
+#| fig-cap: "Distribution of total winter energy bills after switching to heat pumps, for all MA homes served by an investor-owned electric utility and municipal light plants, under default vs. 2.0 heat pump electric delivery rates, by IOUs vs. MLPS. Municipal supply and delivery rates are averaged across all MLPs. Assumes default IOU gas delivery rates, 2024 IOU supply rates for gas and electricity, and 100% participation in IOU low-income programs by eligible households."
+#| fig-width: 6
+#| fig-height: 4
+#|
+# Prepare the data for boxplots (exclude municipal)
+utility_bills_boxplot <- annual_bills_with_municipal |>
+  filter(
+    bill_type == "annual_bill_energy",
+    raw_or_discounted == "discounted",
+    electric_utility %in% c("municipal", "eversource", "nationalgrid", "unitil")
+  ) |>
+  mutate(scenario = case_when(
+      hvac == 'current' & version_elec == "baseline" ~ "baseline_rates_current_hvac",
+      hvac == hvac_for_utility_bills & version_elec == "baseline" ~ "baseline",
+      hvac == hvac_for_utility_bills & version_elec == "hpr_approved" ~ "hpr_approved",
+      hvac == hvac_for_utility_bills & version_elec == "hpr_doer" ~ "hpr_doer",
+      TRUE ~ NA_character_
+  )) |>
+  filter(!is.na(scenario)) |>
+  filter(!(scenario %in% c("baseline_rates_current_hvac", "hpr_approved"))) |>
+  mutate(
+    annual_bill = ifelse(electric_utility == "municipal" & scenario == "hpr_doer", 0, annual_bill),
+    scenario = factor(
+      scenario,
+      levels = c(
+        "hpr_doer",
+        "baseline"
+      )
+    ),
+    electric_utility = factor(electric_utility,
+                            levels = c("municipal", "eversource", "nationalgrid", "unitil"))
+  )
+
+# Create the boxplot with flipped axes and no outliers
+ggplot(utility_bills_boxplot, aes(y = electric_utility, x = annual_bill, fill = scenario)) +
+  geom_boxplot(
+    position = position_dodge(width = 0.85),
+    alpha = 0.8,
+    outlier.shape = NA  # Remove outliers but keep whiskers
+  ) +
+  scale_fill_manual(
+    values = c(
+      "baseline" = "#023047",
+      "hpr_doer" = "#68BED8"
+    ),
+    labels = c(
+      "baseline" = "Heat Pump, Default Rates",
+      "hpr_doer" = "Heat Pump, 2.0 HP Rates"
+    )
+  ) +
+  scale_y_discrete(
+    labels = c(
+      "municipal" = "Municipal Light Plants",
+      "eversource" = "Eversource",
+      "nationalgrid" = "National Grid",
+      "unitil" = "Unitil"
+    ),
+    expand = expansion(mult = c(0.2, 0.3))  # Add space at top for labels
+  ) +
+  scale_x_continuous(
+    labels = scales::dollar_format(),
+    expand = expansion(mult = c(0.0, 0.05)),
+    limits = c(0, 8000)
+  ) +
+  labs(
+    title = "Distribution of Winter Energy Bills, by Utility ",
+    subtitle = "Vertical lines represent 25th, 50th, and 75th percentiles; outliers removed",
+    y = NULL,
+    x = "Annual Energy Bill",
+    fill = "Scenario"
+  ) +
+  # Add colored annotations instead of legend
+  annotate("text", x = 5300, y = 4.06, label = "Heat Pump, Default Rates",
+           color = "#023047", fontface = "bold", size = 3.5, hjust = 0) +
+  annotate("text", x = 4200, y = 3.66, label = "Heat Pump, 2.0 HP Rates",
+           color = "#68BED8", fontface = "bold", size = 3.5, hjust = 0) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 8, color = "gray60"),
+    panel.grid.major.y = element_blank(),
+    aspect.ratio = 0.5,
+    plot.margin = margin(t = 0.05, r = 0.1, b = 0.05, l = 0.1),
+    axis.title.x = element_text(size = 8),
+    axis.title.y = element_text(size = 8),
+    axis.text.x = element_text(size = 8),
+    axis.text.y = element_text(size = 8),
+    legend.position = "none"  # Remove the legend
+  )
+```
+
+
+### fig-bldg-type-by-utility
+```{r}
+#| label: fig-bldg-type-by-utility
+#| fig-cap: "Building Type Distribution by Utility"
+
+annual_change_bldg_type <- annual_change |>
+  mutate(
+    building_type_group = case_when(
+      building_type %in% c("Single-Family Detached", "Mobile Home", "Single-Family Attached") ~ "Single-Family",
+      building_type %in% c("2 Unit", "3 or 4 Unit") ~ "2-4 Units",
+      building_type %in% c("5 to 9 Unit", "10 to 19 Unit", "20 to 49 Unit", "50 or more Unit") ~ "5+ Units",
+      TRUE ~ "Other"
+    ),
+  )
+
+# Create box plots by building type and version_elec
+building_type_group_order = c("Single-Family", "2-4 Units", "5+ Units")
+
+building_type_group_names = c("Single-Family", "2-4 Units", "5+ Units")
+
+
+
+# Calculate proportions of building types by utility
+building_type_by_utility <- annual_change_bldg_type |>
+  filter(
+    building_type_group %in% building_type_group_order,
+    electric_utility != "municipal"
+  ) |>
+  group_by(electric_utility, building_type_group) |>
+  summarise(n = n_distinct(bldg_id)) |>
+  group_by(electric_utility) |>
+  mutate(
+    pct = n / sum(n),
+    building_type_group = factor(building_type_group, levels = building_type_group_order)
+  ) |>
+  ungroup()
+
+# Create stacked bar plot
+ggplot(building_type_by_utility, aes(x = electric_utility, y = pct, fill = building_type_group)) +
+  geom_col(position = "stack", width = 0.7) +
+  geom_text(
+    aes(label = scales::percent(pct, accuracy = 1)),
+    position = position_stack(vjust = 0.5),
+    color = "white",
+    fontface = "bold"
+  ) +
+  scale_y_continuous(
+    labels = scales::percent,
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    title = "Building Type Distribution by Utility",
+    x = NULL,
+    y = "Percentage of Buildings",
+    fill = "Building Type"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(hjust = 0.5),
+    axis.text.x = element_text(angle = 0),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank()
+  )
+
+```
+
+### fig-heating-type-by-utility
+```{r}
+#| label: fig-heating-type-by-utility
+#| fig-cap: "Heating Type Distribution by Utility"
+
+# Create box plots by building type and version_elec
+baseline_heating_type_order = c("None", "Other Fuel", "Heat Pump", "Propane", "Resistance", "Fuel Oil", "Natural Gas")
+
+baseline_heating_type_names = c("None", "Other Fuel", "Heat Pump", "Propane", "Electric Resistance", "Fuel Oil", "Natural Gas")
+
+
+# Choose a color palette for building types
+library(RColorBrewer)
+heating_type_palette <- rev(brewer.pal(n = length(baseline_heating_type_order), name = "Dark2"))
+
+
+# Calculate proportions of heating types by utility
+heating_type_by_utility <- annual_change_bldg_type |>
+  filter(electric_utility != "municipal") |>
+  filter(baseline_heating_type != "None") |>
+  group_by(electric_utility, baseline_heating_type) |>
+  summarise(n = n_distinct(bldg_id)) |>
+  group_by(electric_utility) |>
+  mutate(
+    pct = n / sum(n),
+    baseline_heating_type = factor(baseline_heating_type, levels = (baseline_heating_type_order))
+  ) |>
+  ungroup()
+
+# Get Unitil data for label positioning
+unitil_data <- heating_type_by_utility |>
+  filter(electric_utility == "unitil") |>
+  arrange(baseline_heating_type) |>
+  mutate(
+    cumsum_pct = cumsum(pct),
+    label_y = 1- (cumsum_pct - pct/2)
+  )
+
+
+# Create stacked bar plot
+ggplot(heating_type_by_utility, aes(x = electric_utility, y = pct, fill = baseline_heating_type)) +
+  geom_col(position = "stack", width = 0.7) +
+  geom_text(
+    aes(label = scales::percent(pct, accuracy = 1)),
+    position = position_stack(vjust = 0.5),
+    color = "white",
+    fontface = "bold"
+  ) +
+  # Add text annotations aligned with Unitil bars
+  geom_text(
+    data = unitil_data,
+    aes(
+      x = 'unitil',
+      y = label_y,
+      label = baseline_heating_type,
+      color = baseline_heating_type
+    ),
+    hjust = 0,
+    position = position_nudge(x = 0.39)  # Move labels right by 0.5 * column width (0.7)
+  ) +
+  scale_y_continuous(
+    labels = scales::percent,
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  scale_fill_manual(values = heating_type_palette) +
+  scale_color_manual(values = heating_type_palette) +
+  labs(
+    title = "Heating Type Distribution by Utility",
+    x = NULL,
+    y = "Percentage of Buildings"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(hjust = 0.5),
+    axis.text.x = element_text(angle = 0),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    plot.margin = margin(10, 120, 10, 10)
+  ) +
+  coord_cartesian(clip = "off")
+
+
+
+```
+
+
+
+
+# ------------------------------------------------------------------------------
+# Appendx
+# ------------------------------------------------------------------------------
+
+
+## - - - -  MLP Subsection - - - -
+### Load MLP Delivery Tariffs
+```{r}
+#| label: load-mlp-delivery-tariffs
+path_mlp_delivery_tariffs <- "/workspaces/reports/data/utility_rates/electric/madpu/ma_mlp_delivery_tariffs.rds"
+mlp_delivery_tariffs <- readRDS(path_mlp_delivery_tariffs)
+```
+
+### fig-mlp-charges
+```{r}
+#| label: fig-mlp-charges
+#| fig-cap: "Distribution of customer and delivery charges for MA's 41 MLPs. The average customer charge increased 15% from 2019 to 2024, less than inflation in the same time period. The average delivery charge increase 26% from 2019 to 2024, on pace with inflation."
+
+# Customer Charge
+mlp_customer_charge_median_2019 <- mlp_delivery_tariffs |>
+  filter(Year == 2019, charge_type == "customer_charge") |>
+  summarise(median = median(Value, na.rm = TRUE)) |>
+  pull(median)
+
+mlp_customer_charge_median_2024 <- mlp_delivery_tariffs |>
+  filter(Year == 2024, charge_type == "customer_charge") |>
+  summarise(median = median(Value, na.rm = TRUE)) |>
+  pull(median)
+
+mlp_customer_charge_increase_pct <- (mlp_customer_charge_median_2024 - mlp_customer_charge_median_2019) / mlp_customer_charge_median_2019
+
+customer_charge_by_year <- mlp_delivery_tariffs |>
+  filter(charge_type == "customer_charge") |>
+  filter(Year %in% c(2019, 2024)) |>
+  mutate(Year = as.factor(Year))
+
+# Delivery Charge
+mlp_delivery_charge_median_2019 <- mlp_delivery_tariffs |>
+  filter(Year == 2019, charge_type == "delivery_rate") |>
+  summarise(median = median(Value, na.rm = TRUE)) |>
+  pull(median)
+
+mlp_delivery_charge_median_2024 <- mlp_delivery_tariffs |>
+  filter(Year == 2024, charge_type == "delivery_rate") |>
+  summarise(median = median(Value, na.rm = TRUE)) |>
+  pull(median)
+
+mlp_delivery_charge_increase_pct <- (mlp_delivery_charge_median_2024 - mlp_delivery_charge_median_2019) / mlp_delivery_charge_median_2019
+
+delivery_charge_by_year <- mlp_delivery_tariffs |>
+  filter(charge_type == "delivery_rate") |>
+  filter(Year %in% c(2019, 2024)) |>
+  mutate(Year = as.factor(Year))
+
+
+# Make sure patchwork is loaded for plot arrangement
+library(patchwork)
+library(ggridges)
+
+# Create the customer charge plot (remove legend)
+colors <- c("2019" = "#FFC729", "2024" = "#A0AF12")
+customer_plot <- customer_charge_by_year |>
+  ggplot(aes(x = Value, y = fct_rev(Year), fill = Year)) +
+  geom_density_ridges(
+    alpha = 0.7,
+    rel_min_height = 0.01,
+    scale = 1,
+    color = NA
+  ) +
+  stat_density_ridges(
+    quantile_lines = TRUE,
+    quantiles = 2,
+    alpha = 0,
+    color = "black",
+    linetype = "dashed",
+    scale = 1
+  ) +
+  geom_text(
+    data = customer_charge_by_year |>
+      group_by(Year) |>
+      summarise(
+        median = median(Value, na.rm = TRUE),
+        y = as.numeric(fct_rev(Year)) + 0.03
+      ),
+    aes(
+      x = median+0.2,
+      y = y,
+      label = paste0(Year, ": $", round(median, 2))
+    ),
+    vjust = 0,
+    hjust = 0,
+    size = 2.5
+  ) +
+  scale_x_continuous(
+    limits = c(0, 15),
+    labels = scales::label_dollar()
+  ) +
+  scale_y_discrete(expand = expansion(mult = c(0, 0.1))) +
+  scale_fill_manual(values = colors) +
+  labs(
+    title = NULL,
+    x = "Customer Charge ($)",
+    y = "Year"
+  ) +
+  theme_minimal() +
+  theme(
+    aspect.ratio = 0.85,  # Set aspect ratio for the individual plot
+    legend.position = "none",
+    plot.title = element_text(hjust = 0.5, size = 10),
+    plot.margin = margin(10, 10, 10, 10),  #
+    axis.text.x = element_text(size = 8)
+
+  )  # Remove legend from this plot
+
+# Create the delivery charge plot (keep legend)
+delivery_plot <- delivery_charge_by_year |>
+  ggplot(aes(x = Value, y = fct_rev(Year), fill = Year)) +
+  geom_density_ridges(
+    alpha = 0.7,
+    rel_min_height = 0.01,
+    scale = 1,
+    color = NA
+  ) +
+  stat_density_ridges(
+    quantile_lines = TRUE,
+    quantiles = 2,
+    alpha = 0,
+    color = "black",
+    linetype = "dashed",
+    scale = 1
+  ) +
+  geom_text(
+    data = delivery_charge_by_year |>
+      group_by(Year) |>
+      summarise(
+        median = median(Value, na.rm = TRUE),
+        y = as.numeric(fct_rev(Year)) + 0.03
+      ),
+    aes(
+      x = median+0.005,
+      y = y,
+      label = paste0(Year, ": $", round(median, 3))
+    ),
+    vjust = 0,
+    hjust = 0,
+    size = 2.5
+  ) +
+  scale_x_continuous(
+    limits = c(0.05, 0.25),
+    labels = scales::label_dollar(),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  scale_y_discrete(expand = expansion(mult = c(0, 0.1))) +
+  scale_fill_manual(values = colors) +
+  labs(
+    title = NULL,
+    x = "Delivery Charge ($)",
+    y = NULL
+  ) +
+  theme_minimal() +
+  theme(
+    aspect.ratio = 0.85,  # Set aspect ratio for the individual plot
+    plot.title = element_text(hjust = 0.5, size = 10),
+    plot.margin = margin(10, 10, 10, 25),  #
+    axis.title.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.text.x = element_text(size = 8)
+  )
+
+# Create a 2x1 grid with the plots and shared legend at the bottom
+combined_plot <- (customer_plot + delivery_plot) +
+  plot_layout(guides = "collect") +
+  plot_annotation(
+    title = "Distribution of MLP Customer and Delivery Charges, by Year",
+    theme = theme(plot.title = element_text(hjust = 0.5, size = 12))
+  ) +
+  theme(
+    legend.position = "none",
+   plot.margin = margin(2, 2, 2, 2)
+  )
+
+# Display the combined plot
+combined_plot
+```
+
+### fig-hists-edc-mlp-burden
+```{r}
+#| label: fig-hists-edc-mlp-burden
+#| fig-cap: "fig-hists-edc-mlp-burden"
+
+plot_edc_mlp_burden_histograms <- function(
+  datasets,
+  hvac_for_utility_bills,
+  x_limits = c(0, 0.2),
+  y_limits = NULL,
+  binwidth = 0.01
+) {
+  # Define color palette for each dataset
+  colors <- c(
+    "EDC Baseline" = "grey50",
+    "EDC Approved" = "#d13b40",
+    "EDC DOER" = "#023047",
+    "MLP Baseline" = "#FC9706"
+  )
+
+  # # Calculate y_max across all datasets if not provided
+  # if (is.null(y_limits)) {
+  #   y_max <- 10
+  #   for (dataset_name in names(datasets)) {
+  #     hist_plot <- ggplot(datasets[[dataset_name]], aes(x = energy_burden)) +
+  #       geom_histogram(binwidth = binwidth)
+
+  #     current_max <- max(ggplot_build(hist_plot)$data[[1]]$count, na.rm = TRUE)
+  #     y_max <- max(y_max, current_max)
+  #   }
+
+  #   y_max <- ceiling(y_max * 1.1)
+  #
+  # }
+
+
+
+  # Function to create a single histogram for a dataset
+  create_single_histogram <- function(data, name, is_first = FALSE, is_last = FALSE) {
+    low_burden_threshold <- 0.04
+    moderate_burden_threshold <- 0.06
+    high_burden_threshold <- 0.12
+
+    # Calculate bill categories based on energy burden
+    data <- data |>
+      mutate(bill_category = case_when(
+        energy_burden < low_burden_threshold ~ "low_energy_burden",
+        energy_burden < moderate_burden_threshold ~ "moderate_energy_burden",
+        energy_burden < high_burden_threshold ~ "high_energy_burden",
+        TRUE ~ "very_high_energy_burden"
+      ))
+
+    # Calculate percentages for each category
+    category_percentages <- data |>
+      group_by(bill_category) |>
+      summarise(count = n(), .groups = "drop") |>
+      mutate(percentage = count / sum(count) * 100)
+
+    # Get percentages for annotation
+    pct_low_energy_burden <- category_percentages |>
+      filter(bill_category == "low_energy_burden") |>
+      pull(percentage) |>
+      round(1)
+
+    pct_moderate_energy_burden <- category_percentages |>
+      filter(bill_category == "moderate_energy_burden") |>
+      pull(percentage) |>
+      round(1)
+
+    pct_high_energy_burden <- category_percentages |>
+      filter(bill_category == "high_energy_burden") |>
+      pull(percentage) |>
+      round(1)
+
+    pct_very_high_energy_burden <- category_percentages |>
+      filter(bill_category == "very_high_energy_burden") |>
+      pull(percentage) |>
+      round(1)
+
+    # Calculate bin breaks and midpoints
+    breaks <- seq(floor(x_limits[1]/binwidth)*binwidth, ceiling(x_limits[2]/binwidth)*binwidth, by = binwidth)
+
+    # Manually bin the data
+    binned_data <- data |>
+      mutate(bin = cut(energy_burden,
+                      breaks = breaks,
+                      include.lowest = TRUE,
+                      right = FALSE)) |>
+      group_by(bin, bill_category) |>
+      summarise(count = n(), .groups = "drop") |>
+      # Add bin midpoint for plotting
+      mutate(bin_mid = as.numeric(as.character(
+        sapply(bin, function(b) {
+          # Extract bin boundaries and calculate midpoint
+          vals <- as.numeric(gsub("\\(|\\]|\\[|\\)", "", strsplit(as.character(b), ",")[[1]]))
+          return(mean(vals))
+        })
+      )))
+
+    # Color palette for energy burden categories
+    dark_red <- "#db8b87"        # dark red
+    light_red <- "#eaada9"       # light red
+    light_green <- "#8ebd85"     # light green
+    dark_green <- "#5e8a5e"      # dark green
+
+    # Position the bars at the top and text just below
+    bar_y_pos <- y_limits[2]
+    text_y_pos <- y_limits[2] * 0.90
+
+    # Calculate x positions for percentage labels
+    x_low_energy_burden <- mean(c(0, low_burden_threshold-0.002))
+    x_moderate_energy_burden <- mean(c(low_burden_threshold, moderate_burden_threshold))
+    x_high_energy_burden <- mean(c(moderate_burden_threshold, high_burden_threshold))
+    x_very_high_energy_burden <- mean(c(high_burden_threshold, x_limits[2]))
+
+
+    # # Calculate y_max dynamically based on highest bin count
+    # y_max <- binned_data |>
+    #   group_by(bin_mid) |>
+    #   summarise(total_count = sum(count)) |>
+    #   pull(total_count) |>
+    #   max() |>
+    #   {function(x) ceiling(x/(25000/242.13))*(25000/242.13)}()
+
+    # # Update y_limits with new y_max
+    # y_limits <- c(0, y_max)
+
+    # Set y_max based on plot number
+    if (name == "MLP Baseline") {
+      y_max <- 120000/242.13
+      y_tick_step <- 50000
+    } else {
+      y_max <- 850000/242.13
+      y_tick_step <- 250000
+    }
+
+    y_limits <- c(0, y_max)
+
+    # Recalculate bar and text positions with new y_max
+    bar_y_pos <- y_max
+    text_y_pos <- y_max * 0.90
+
+    # Create the plot
+    plot <- ggplot(binned_data, aes(x = bin_mid, y = count, fill = bill_category)) +
+      # Add vertical dotted lines at the category boundaries
+      geom_vline(xintercept = c(low_burden_threshold, moderate_burden_threshold, high_burden_threshold), linetype = "dotted", color = "gray50", size = 0.5) +
+
+      # Add the bars
+      geom_col(position = "stack", width = binwidth * 0.9) +
+
+      # Set the fill colors
+      scale_fill_manual(
+        values = c(
+          "low_energy_burden" = dark_green,
+          "moderate_energy_burden" = light_green,
+          "high_energy_burden" = light_red,
+          "very_high_energy_burden" = dark_red
+        ),
+        guide = "none"
+      ) +
+
+      # Add horizontal colored lines at the top
+      annotate("segment",
+                x = x_limits[1], xend = low_burden_threshold,
+                y = bar_y_pos, yend = bar_y_pos,
+                color = dark_green, size = 1) +
+
+      annotate("segment",
+                x = low_burden_threshold, xend = moderate_burden_threshold,
+                y = bar_y_pos, yend = bar_y_pos,
+                color = light_green, size = 1) +
+
+      annotate("segment",
+                x = moderate_burden_threshold, xend = high_burden_threshold,
+                y = bar_y_pos, yend = bar_y_pos,
+                color = light_red, size = 1) +
+
+      annotate("segment",
+                x = high_burden_threshold, xend = x_limits[2],
+                y = bar_y_pos, yend = bar_y_pos,
+                color = dark_red, size = 1) +
+
+      # Add percentage labels
+      annotate("text",
+                x = x_low_energy_burden,
+                y = text_y_pos,
+                label = paste0(pct_low_energy_burden, "%"),
+                size = 3,
+                fontface = "bold") +
+
+      annotate("text",
+                x = x_moderate_energy_burden,
+                y = text_y_pos,
+                label = paste0(pct_moderate_energy_burden, "%"),
+                size = 3,
+                fontface = "bold") +
+
+      annotate("text",
+                x = x_high_energy_burden,
+                y = text_y_pos,
+                label = paste0(pct_high_energy_burden, "%"),
+                size = 3,
+                fontface = "bold") +
+
+      annotate("text",
+                x = x_very_high_energy_burden,
+                y = text_y_pos,
+                label = paste0(pct_very_high_energy_burden, "%"),
+                size = 3,
+                fontface = "bold") +
+
+      # Add dataset name on the right
+      annotate("text",
+                x = x_limits[2] * 0.95,
+                y = y_limits[2] * 0.7,
+                label = name,
+                hjust = 1,
+                fontface = "bold",
+                size = 3,
+                color = colors[name]) +
+
+      # Format axes
+      scale_y_continuous(
+        labels = function(x) paste0(round(x * 242.13 * 0.001), "k"),
+        name = "# of Homes",
+        limits = y_limits,
+        breaks = seq(0, y_max*242.13, by = y_tick_step)/242.13
+      ) +
+      scale_x_continuous(
+        labels = scales::percent_format(accuracy = 1),
+        name = "Energy Burden",
+        limits = x_limits,
+        breaks = c(low_burden_threshold, moderate_burden_threshold, high_burden_threshold)
+      ) +
+
+      # Apply theme
+      theme_minimal() +
+      theme(
+        panel.grid.major = element_line(linewidth = 0.2),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 0.15
+      )
+
+    # Configure axes based on position
+    if (!is_last) {
+      plot <- plot +
+        theme(
+          axis.title.x = element_blank(),
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank()
+        )
+    }
+    return(list(plot, category_percentages))
+  }
+
+  # Create each histogram
+  dataset_names <- names(datasets)
+  plots <- list()
+  list_of_category_percentages <- list()
+
+  for (i in 1:length(datasets)) {
+    name <- dataset_names[i]
+    is_first <- (i == 1)
+    is_last <- (i == length(datasets))
+
+    result_single_histogram <- create_single_histogram(
+      data = datasets[[name]],
+      name = name,
+      is_first = is_first,
+      is_last = is_last
+    )
+
+    plots[[i]] <- result_single_histogram[[1]]
+    list_of_category_percentages[[i]] <- result_single_histogram[[2]]
+  }
+
+  # Combine plots with patchwork
+  combined_plot <- plots[[1]]
+  for (i in 2:length(plots)) {
+    combined_plot <- combined_plot / plots[[i]]
+  }
+
+  # Add overall title and formatting
+  final_plot <- combined_plot +
+    plot_layout(heights = rep(1, length(plots))) +
+    plot_annotation(
+      title = "Energy Burden Comparison: EDC vs MLP",
+      subtitle = glue::glue("Medium HP Efficiency | {supply_year} | 100% LI Discount Participation"),
+      theme = theme(
+        plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5, size = 12)
+      )
+    ) &
+    theme(
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_line(linewidth = 0.2, color = "gray90"),
+      panel.grid.major.y = element_line(linewidth = 0.2, color = "gray90")
+    )
+
+  return(list(final_plot, list_of_category_percentages))
+}
+
+
+annual_bills_with_municipal_x <- annual_bills_with_municipal |> filter(bldg_id == bldg_id_for_debugging)
+
+
+annual_bills_edc_baseline <- annual_bills_with_municipal |>
+  filter(bill_type == "annual_bill_energy" &
+          electric_utility %in% c("nationalgrid", "eversource", "unitil") &
+          hvac == hvac_for_utility_bills &
+          version_elec == "baseline")
+annual_bills_edc_hpr_approved <- annual_bills_with_municipal |>
+  filter(bill_type == "annual_bill_energy" &
+          electric_utility %in% c("nationalgrid", "eversource", "unitil") &
+          hvac == hvac_for_utility_bills &
+          version_elec == "hpr_approved")
+annual_bills_edc_hpr_doer <- annual_bills_with_municipal |>
+  filter(bill_type == "annual_bill_energy" &
+          electric_utility %in% c("nationalgrid", "eversource", "unitil") &
+          hvac == hvac_for_utility_bills &
+          version_elec == "hpr_doer")
+annual_bills_mlp_baseline <- annual_bills_with_municipal |>
+  filter(bill_type == "annual_bill_energy" &
+          electric_utility == "municipal" &
+          hvac == hvac_for_utility_bills &
+          version_elec == "baseline")
+
+
+dataset = list(
+  "EDC Baseline" = annual_bills_edc_baseline,
+  "EDC Approved" = annual_bills_edc_hpr_approved,
+  "EDC DOER" = annual_bills_edc_hpr_doer,
+  "MLP Baseline" = annual_bills_mlp_baseline
+)
+
+
+# Actually use the function
+result_edc_mlp_burden_histograms <- plot_edc_mlp_burden_histograms(
+  datasets = dataset,
+  hvac_for_utility_bills = hvac_for_utility_bills
+)
+
+# Extract results
+edc_mlp_combined_plot <- result_edc_mlp_burden_histograms[[1]]
+edc_mlp_list_of_category_percentages <- result_edc_mlp_burden_histograms[[2]]
+
+# Display the plot
+print(edc_mlp_combined_plot)
+
+# Create workspace variables for each dataset and category
+for (i in seq_along(dataset)) {
+  dataset_name <- names(dataset)[i]
+  dataset_name <- tolower(gsub(" ", "_", dataset_name))
+
+  # Get the result for this dataset
+  result <- edc_mlp_list_of_category_percentages[[i]]
+
+  # Use the correct category names from your function
+  for (category in c("low_energy_burden", "moderate_energy_burden", "high_energy_burden", "very_high_energy_burden")) {
+    pct_value <- result |>
+      filter(bill_category == category) |>
+      pull(percentage)
+
+    if (length(pct_value) > 0) {
+      assign(paste0("fig_edc_mlp_burden_histograms_", dataset_name, "_", category),
+             round(pct_value, round_percent))
+    }
+  }
+}
+
+```
+
+
+
+## Historical Supply Rates
+### data-supply-rates
+```{r}
+
+# Load inflation factors
+#inflation_factors <- readRDS("/workspaces/reports/data/fred/inflation_factors.rds")
+
+
+# Load supply rates
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+inflation_factors <- DBI::dbReadTable(con, "inflation_factors")
+supply_rates_elec <- DBI::dbReadTable(con, "supply_rates_elec")
+supply_rates_gas <- DBI::dbReadTable(con, "supply_rates_gas")
+supply_rates_fueloil <- DBI::dbReadTable(con, "supply_rates_fueloil")
+supply_rates_propane <- DBI::dbReadTable(con, "supply_rates_propane")
+DBI::dbDisconnect(con)
+
+# --------------------------
+# Electric
+electric_utilities = c("eversource", "nationalgrid", "unitil")
+weights = c(0.455, 0.431, 0.008)
+weights = weights / sum(weights)
+
+# Create tibble of utility weights
+utility_weights <- tibble(
+  electric_utility = electric_utilities,
+  weight_edc = weights
+)
+
+
+# Create time series plot of supply rates by utility
+supply_rates_elec_weighted_inflated <- supply_rates_elec |>
+  filter(electric_utility %in% electric_utilities) |>
+  left_join(utility_weights, by = "electric_utility") |>
+  left_join(inflation_factors, by = "year") |>
+  mutate(
+    date = lubridate::ymd(paste0(year, "-", month, "-01")),
+    supply_rate_weighted_inflated = supply_rate * weight_edc * inflation_factor
+  ) |>
+  group_by(date) |>
+  summarise(supply_rate = sum(supply_rate_weighted_inflated), inflation_factor = mean(inflation_factor), weight_edc = mean(weight_edc))
+
+
+# --------------------------
+# Gas
+gas_utilities = c("nationalgrid", "eversource", "liberty", "berkshire", "unitil")
+weights_gas = c(0.268, 0.221, 0.002, 0.015, 0.005)
+weights_gas = weights_gas / sum(weights_gas)
+
+# Create tibble of utility weights
+utility_weights_gas <- tibble(
+  gas_utility = gas_utilities,
+  weight_edc = weights_gas
+)
+
+supply_rates_gas_weighted_inflated <- supply_rates_gas |>
+  filter(gas_utility %in% gas_utilities) |>
+  left_join(utility_weights_gas, by = "gas_utility") |>
+  left_join(inflation_factors, by = "year") |>
+  mutate(
+    date = lubridate::ymd(paste0(year, "-", month, "-01")),
+    supply_rate_weighted_inflated = supply_rate * weight_edc * inflation_factor
+  ) |>
+  group_by(date) |>
+  summarise(supply_rate = sum(supply_rate_weighted_inflated), inflation_factor = mean(inflation_factor), weight_edc = mean(weight_edc))
+
+
+# --------------------------
+# Fuel Oil
+# Create tibble of utility weights
+
+supply_rates_fueloil_weighted_inflated <- supply_rates_fueloil |>
+  left_join(inflation_factors, by = "year") |>
+  mutate(
+    date = lubridate::ymd(paste0(year, "-", month, "-01")),
+    supply_rate_weighted_inflated = fuel_oil_dollars_per_kwh * inflation_factor
+  ) |>
+  group_by(date) |>
+  summarise(supply_rate = sum(supply_rate_weighted_inflated), inflation_factor = mean(inflation_factor))
+
+
+```
+
+### fig-historical-supply-rates
+```{r}
+#| label: fig-historical-supply-rates
+#| fig-cap: "Historical supply rates for electric, gas, and fuel oil, inflation adjusted to 2024 dollars. Electricity and gas prices are weighted by utility share."
+
+final_value_elec = supply_rates_elec_weighted_inflated |> filter(date == as.Date("2024-12-01")) |> pull(supply_rate)
+final_value_gas = supply_rates_gas_weighted_inflated |> filter(date == as.Date("2024-12-01")) |> pull(supply_rate)
+final_value_fueloil = supply_rates_fueloil_weighted_inflated |> filter(date == as.Date("2024-12-01")) |> pull(supply_rate)
+
+
+# --------------------------
+# Create supply rate plots
+first_year = 2010
+first_date = as.Date(paste0(first_year, "-01-01"))
+
+last_year = 2024
+last_date = as.Date(paste0(last_year, "-01-01"))
+
+
+supply_plot <- ggplot() +
+  # Electric supply rates
+  geom_line(data = supply_rates_elec_weighted_inflated |> filter(year(date) >= first_year),
+            aes(x = date, y = supply_rate, color = "Electricity"),
+            linewidth = 1) +
+  # Gas supply rates
+  geom_line(data = supply_rates_gas_weighted_inflated |> filter(year(date) >= first_year),
+            aes(x = date, y = supply_rate, color = "Gas"),
+            linewidth = 1) +
+  # Fuel Oil supply rates
+  geom_line(data = supply_rates_fueloil_weighted_inflated |> filter(year(date) >= first_year),
+            aes(x = date, y = supply_rate, color = "Fuel Oil"),
+            linewidth = 1) +
+  # Add grey rectangle for 2024
+  annotate("rect",
+           xmin = as.Date("2024-01-01"),
+           xmax = as.Date("2024-12-31"),
+           ymin = -Inf,
+           ymax = Inf,
+           alpha = 0.2,
+           fill = "grey70") +
+  # Add colored annotations instead of legend
+  annotate("text", x = as.Date("2024-12-31"), y = final_value_elec, label = "Electricity",
+           color = "#E69F00", fontface = "bold", size = 4, hjust = 0) +
+  annotate("text", x = as.Date("2024-12-31"), y = final_value_gas, label = "Gas",
+           color = "#56B4E9", fontface = "bold", size = 4, hjust = 0) +
+  annotate("text", x = as.Date("2024-12-31"), y = final_value_fueloil, label = "Fuel Oil",
+           color = "#009E73", fontface = "bold", size = 4, hjust = 0) +
+  scale_y_continuous(labels = scales::label_dollar(size = 8)) +
+  scale_x_date(
+    limits = c(first_date, as.Date(paste0(last_year, "-12-31"))),
+    breaks = c(as.Date("2010-01-01"), as.Date("2015-01-01"), as.Date("2020-01-01"), as.Date("2025-01-01")),  # Major breaks at 2010, 2015, 2020, 2025
+    minor_breaks = seq(as.Date("2010-01-01"), as.Date("2025-01-01"), by = "1 year"),  # Minor breaks every year
+    date_labels = "%Y",  # Show only year labels
+    expand = expansion(mult = c(0, 0.22))  # Add 15% padding on right side only
+  ) +
+  scale_color_manual(values = c("Electricity" = "#E69F00", "Gas" = "#56B4E9", "Fuel Oil" = "#009E73")) +
+  labs(
+    title = "Historical Supply Rates - Electric, Gas, and Fuel Oil",
+    subtitle = "Weighted by Utility Share | Inflation Adjusted to 2024",
+    x = NULL,
+    y = "Supply Rate [$/kWh]",
+    color = "Fuel Type"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5),
+    panel.grid.major.x = element_line(color = "gray80", linetype = "solid"),
+    panel.grid.minor.x = element_line(color = "gray50", linetype = "dotted"),
+    legend.position = "none"  # Remove the legend
+  )
+
+supply_plot
+
+```
+
+### fig-historical-spark-gap
+```{r}
+#| label: fig-historical-spark-gap
+#| fig-cap: "The 'Spark Gap' is the ratio of electric energy to natural gas energy, and is a key driver of the bill impacts of switching to heat pumps."
+
+# Trim to years > 2010-01-01 and join datasets
+supply_rates_elec_trimmed <- supply_rates_elec_weighted_inflated |>
+  filter(date > as.Date("2010-01-01"))
+
+supply_rates_gas_trimmed <- supply_rates_gas_weighted_inflated |>
+  filter(date > as.Date("2010-01-01"))
+
+supply_rates_fueloil_trimmed <- supply_rates_fueloil_weighted_inflated |>
+  filter(date > as.Date("2010-01-01"))
+
+# Join on date and create ratio column
+supply_rates_combined <- supply_rates_elec_trimmed |>
+  rename(supply_rate_elec = supply_rate) |>
+  left_join(
+    supply_rates_gas_trimmed |> rename(supply_rate_gas = supply_rate),
+    by = "date"
+  ) |>
+  left_join(
+    supply_rates_fueloil_trimmed |> rename(supply_rate_fueloil = supply_rate),
+    by = "date"
+  ) |>
+  mutate(
+    elec_gas_ratio = supply_rate_elec / supply_rate_gas,
+    elec_fueloil_ratio = supply_rate_elec / supply_rate_fueloil
+  )
+
+spark_gap_plot <- ggplot(supply_rates_combined, aes(x = date)) +
+  geom_line(aes(y = elec_gas_ratio, color = "Electric vs Gas"), linewidth = 1) +
+  #geom_line(aes(y = elec_fueloil_ratio, color = "Electric vs Fuel Oil"), linewidth = 1) +
+  scale_y_continuous(labels = scales::label_number(accuracy = 0.1), limits = c(0, 6)) +
+  scale_color_manual(values = c("Electric vs Gas" = "#E69F00", "Electric vs Fuel Oil" = "#009E73")) +
+  labs(
+    title = "Spark Gap - Electric vs Gas",
+    subtitle = "Weighted by Utility Share | Inflation Adjusted to 2024",
+    x = NULL,
+    y = "Spark Gap",
+    color = "Comparison"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5),
+    legend.position = "none"
+  )
+
+spark_gap_plot
+```
+
+
+## Supply Year Sensitivity
+```{r}
+#| label: fig-supply-year-sensitivity
+#| fig-cap: "The relative price of electric energy to natural gas drives the bill impacts of switching to heat pumps."
+
+path_annual_change_db = "/workspaces/reports/data/ma_hp_rates/annual_change.db"
+
+con <- DBI::dbConnect(duckdb::duckdb(), path_annual_change_db)
+annual_change_with_municipal <- DBI::dbReadTable(con, "annual_change_with_municipal")
+DBI::dbDisconnect(con)
+
+categorize_bill_changes_by_utility <- function(data) {
+  data |>
+    filter(bill_type == "annual_bill_change_energy",
+           hvac == hvac_for_utility_bills,
+           version_elec %in% c("baseline", "hpr_approved", "hpr_doer")) |>
+    mutate(category = case_when(
+      annual_bill_change <= -1000 ~ "large_savings",
+      annual_bill_change < 0 ~ "small_savings",
+      annual_bill_change < 1000 ~ "small_increase",
+      TRUE ~ "large_increase"
+    )) |>
+    group_by(version_elec, category, year) |>
+    summarise(count = n(), .groups = "drop") |>
+    group_by(version_elec, year) |>
+    mutate(
+      total = sum(count),
+      percentage = count / total * 100,
+      utility_scenario = paste(version_elec, year, sep = "_")
+    ) |>
+    ungroup()
+}
+
+
+# Apply the function to the data
+supply_year_scenario_bins <- categorize_bill_changes_by_utility(annual_change_with_municipal)
+
+# Set factor levels for correct ordering
+supply_year_scenario_bins <- supply_year_scenario_bins |>
+  mutate(
+    # FIXED: Order for stacking - this controls the visual stacking order
+    # For negative values, the order is visually reversed, so we put large_savings before small_savings
+    category = factor(
+      category,
+      levels = c("large_increase", "small_increase", "large_savings", "small_savings")
+    ),
+    version_elec = factor(
+      version_elec,
+      levels = c("baseline", "hpr_approved", "hpr_doer")
+    ),
+    year = factor(
+      year,
+      levels = c("2019", "2020", "2021", "2022", "2023", "2024")
+    )
+  )
+
+col_width = 0.8
+
+# Create a single faceted plot showing all three scenarios
+faceted_plot <- ggplot(supply_year_scenario_bins, aes(x = year, y = percentage, fill = category)) +
+  # Reference line at 0 (boundary between savings and increases)
+  geom_hline(yintercept = 0, linetype = "solid", color = "gray40", linewidth = 0.5) +
+  # Stacked bars for increases (positive values)
+  geom_col(
+    data = supply_year_scenario_bins |> filter(category %in% c("small_increase", "large_increase")),
+    aes(y = percentage),
+    position = "stack",
+    width = col_width
+    ) +
+  # Stacked bars for savings (negative values)
+  geom_col(
+    data = supply_year_scenario_bins |> filter(category %in% c("small_savings", "large_savings")),
+    aes(y = -percentage),
+    position = "stack",
+    width = col_width
+    ) +
+  # Add percentage labels for savings (negative values)
+  geom_text(
+    data = supply_year_scenario_bins |> filter(category %in% c("large_savings", "small_savings")),
+    aes(y = -percentage, label = paste0(round(percentage, 1), "%")),
+    position = position_stack(vjust = 0.5),
+    color = "white",
+    fontface = "bold",
+    size = 1.5
+  ) +
+  # Add percentage labels for increases (positive values)
+  geom_text(
+    data = supply_year_scenario_bins |> filter(category %in% c("small_increase", "large_increase")),
+    aes(label = paste0(round(percentage, 1), "%")),
+    position = position_stack(vjust = 0.5),
+    color = "white",
+    fontface = "bold",
+    size = 1.5
+  ) +
+  # Facet by version_elec to create separate panels
+  facet_wrap(~ version_elec,
+             labeller = labeller(version_elec = c(
+               "baseline" = "Baseline Rates",
+               "hpr_approved" = "HPR Approved Rates",
+               "hpr_doer" = "HPR DOER Rates"
+             ))) +
+  # Color scheme for categories
+  scale_fill_manual(
+    values = c(
+      "large_increase" = "#db8b87",     # dark red (top)
+      "small_increase" = "#eaada9",     # light red
+      "small_savings" = "#8ebd85",      # light green
+      "large_savings" = "#5e8a5e"       # dark green (bottom)
+    ),
+    labels = c(
+      "large_increase" = ">$1,000 increase",
+      "small_increase" = "$0-$1,000 increase",
+      "small_savings" = "$0-$1,000 savings",
+      "large_savings" = ">$1,000 savings"
+    ),
+    breaks = c("large_increase", "small_increase", "small_savings", "large_savings")
+  ) +
+  scale_y_continuous(
+    labels = function(x) paste0(abs(x), "%")
+  ) +
+  scale_x_discrete(
+    #name = "Supply Year",
+    expand = expansion(mult = c(0.2, 0.2))
+  ) +
+  labs(
+    title = "Heating Bill Changes by Supply Year and Rate Scenario",
+    x = NULL,
+    y = NULL,
+    fill = "Bill Change Category"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    strip.text = element_text(face = "bold"),
+    panel.spacing.x = unit(1.3, "lines")  # Reduce spacing between facet panels
+  )
+
+faceted_plot
+```
+
+## Revenue Impacts
+### fig-stacked-bar-components-supply-on-top
+```{r}
+#| label: fig-stacked-bar-components-supply-on-top
+#| fig-cap: "Median electric bill for Massachusetts homes, with current HVAC vs. mid-efficiency heat pump, under default, 1.0 and 2.0 heat pump rates."
+
+bill_component_colors = c(
+  "annual_gas_bill" = "grey50", # grey
+  "annual_elec_supply_charge" = "#A0AF12",
+  "annual_elec_delivery_charge" = "#023047",
+  "annual_elec_customer_charge" = "#68BED8",
+  "pre_hp_delivery_total" = "#FC9706"
+)
+
+
+stack_order_supply_on_top = c(
+  "annual_gas_bill", # tippy top
+  "annual_elec_supply_charge", # top
+  "annual_elec_delivery_charge", # middle
+  "annual_elec_customer_charge" # bottom
+)
+
+components <- factor(stack_order_supply_on_top, levels = stack_order_supply_on_top)
+
+annual_bills_by_component_plot <- annual_bills_by_component |>
+  arrange(match(charge_type, components))
+
+y_current_baseline_customer_charge <- annual_bills_by_component_plot |> filter(version == "baseline", hvac == "current", charge_type == "annual_elec_customer_charge") |> pull(amount)
+y_current_baseline_delivery_charge <- annual_bills_by_component_plot |> filter(version == "baseline", hvac == "current", charge_type == "annual_elec_delivery_charge") |> pull(amount)
+y_current_baseline_supply_charge <- annual_bills_by_component_plot |> filter(version == "baseline", hvac == "current", charge_type == "annual_elec_supply_charge") |> pull(amount)
+
+y_doer_customer_charge <- annual_bills_by_component_plot |> filter(version == "hpr_doer", hvac == "mid_hp", charge_type == "annual_elec_customer_charge") |> pull(amount)
+y_doer_delivery_charge <- annual_bills_by_component_plot |> filter(version == "hpr_doer", hvac == "mid_hp", charge_type == "annual_elec_delivery_charge") |> pull(amount)
+y_doer_supply_charge <- annual_bills_by_component_plot |> filter(version == "hpr_doer", hvac == "mid_hp", charge_type == "annual_elec_supply_charge") |> pull(amount)
+
+y_annotation_offset <- 0
+x_label_offset <- 4.5
+
+fig_bill_stacked_bar_supply_on_top <- ggplot(annual_bills_by_component_plot |>
+  mutate(charge_type = factor(charge_type, levels = components)),
+       aes(x = interaction(hvac, version), y = amount, fill = charge_type)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Components of Annual Electricity Bill",
+       x = "",
+       y = "Annual Cost ($)",
+       fill = "Charge Type") +
+  scale_fill_manual(values = bill_component_colors) +
+  scale_y_continuous(labels = scales::dollar_format(), limits = c(0, 4500), breaks = seq(0, 5000, by = 1000), expand = c(0,0)) +
+  scale_x_discrete(labels = c("Current HVAC\nCurrent Rates",
+                           "Mid-Efficiency HP\nCurrent Rates",
+                           "Mid-Efficiency HP\n1.0 Rates",
+                           "Mid-Efficiency HP\n2.0 Rates")) +
+  coord_cartesian(clip = "off") +
+  theme(
+    text = element_text(family = "IBM-Plex-Sans"),
+    axis.title.x = element_text(margin = margin(t = 3)),
+    axis.title.y = element_text(margin = margin(r = 3)),
+    legend.position = "none",
+    plot.margin = margin(t = 3, r = 200, b = 0, l = 10, unit = "pt")
+  ) +
+
+  # horizonta line at pre-hp delivery total
+  # geom_hline(
+  #   yintercept = y_current_baseline_customer_charge + y_current_baseline_delivery_charge,
+  #   linetype = "dashed",
+  #   color = bill_component_colors["pre_hp_delivery_total"],
+  #   linewidth = 3
+  # ) +
+
+  # instead of a legend, write annotation for the 3 categories to the right of the right-most bar
+  annotate(
+    "text",
+    x = x_label_offset,
+    y = (y_doer_customer_charge/1.6) + y_annotation_offset,
+    label = "Customer Charge",
+    hjust = 0,
+    family = "IBM-Plex-Sans",
+    color = bill_component_colors["annual_elec_customer_charge"],
+    size = 6,
+    fontface = "bold"
+  ) +
+  annotate(
+    "text",
+    x = x_label_offset,
+    y = (y_doer_delivery_charge/2) + y_doer_customer_charge + y_annotation_offset,
+    label = "Delivery Charge",
+    hjust = 0,
+    family = "IBM-Plex-Sans",
+    color = bill_component_colors["annual_elec_delivery_charge"],
+    size = 6,
+    fontface = "bold"
+  ) +
+  annotate(
+    "text",
+    x = x_label_offset,
+    y = (y_doer_supply_charge/2) + y_doer_delivery_charge + y_doer_customer_charge + y_annotation_offset,
+    label = "Supply Charge",
+    hjust = 0,
+    family = "IBM-Plex-Sans",
+    color = bill_component_colors["annual_elec_supply_charge"],
+    size = 6,
+    fontface = "bold"
+  ) +
+
+  # No legend
+  theme(legend.position = "none")
+
+fig_bill_stacked_bar_supply_on_top
+
+```
+
+
+## Revenue Impact estimate -just volumetric
+## prototype for fig-hists-revenue-impact
+```{r}
+#| label: fig-hists-revenue-impact-prototype
+#| fig-cap: "The revenue impact of the HPR approved rates and HPR DOER rates."
+
+hist_for_single_rate_version <- function(
+  annual_change_table,
+  bill_type,
+  baseline_heating_type_option,
+  hvac,
+  appliances,
+  shell,
+  version_elec,
+  x_limits = c(-3000, 3000),
+  y_limits = c(0, 100),
+  y_step = 10,
+  binwidth = 100,
+  show_category_labels = TRUE
+) {
+
+  # --------------------------------------
+  # Plot parameters
+  x_min <- x_limits[1]
+  x_max <- x_limits[2]
+
+  # Define the breaks for binning
+  breaks <- seq(floor(x_min/binwidth)*binwidth, ceiling(x_max/binwidth)*binwidth, by = binwidth)
+
+  # More balanced color palette with less contrast
+  dark_red <- "#db8b87"        # dark red
+  light_red <- "#eaada9"       # light red
+  light_green <- "#8ebd85"     # light green
+  dark_green <- "#5e8a5e"      # dark green
+  # --------------------------------------
+
+  # Filter data for mid_hp
+  plot_data <- annual_change_table |>
+    filter(hvac == !!hvac, appliances == !!appliances, shell == !!shell, version_elec == !!version_elec) |>
+    filter(bill_type == !!bill_type) |>
+    filter(if (baseline_heating_type_option != "All Fuels") baseline_heating_type == !!baseline_heating_type_option else TRUE) |>
+    # Add category column before binning with new cutoffs
+    mutate(bill_category = case_when(
+      annual_bill_change <= -1000 ~ "large_savings",
+      annual_bill_change < 0 ~ "small_savings",
+      annual_bill_change < 1000 ~ "small_increase",
+      TRUE ~ "large_increase"
+    ))
+
+  # Calculate percentages for each category
+  category_percentages <- plot_data |>
+    group_by(bill_category) |>
+    summarise(count = n(), .groups = "drop") |>
+    mutate(percentage = count / sum(count) * 100)
+
+  # Get percentages for annotation
+  pct_large_savings <- category_percentages |>
+    filter(bill_category == "large_savings") |>
+    pull(percentage) |>
+    round(1)
+  if(length(pct_large_savings) == 0) pct_large_savings <- 0
+
+  pct_small_savings <- category_percentages |>
+    filter(bill_category == "small_savings") |>
+    pull(percentage) |>
+    round(1)
+  if(length(pct_small_savings) == 0) pct_small_savings <- 0
+
+  pct_that_save <- pct_large_savings + pct_small_savings
+
+  pct_small_increase <- category_percentages |>
+    filter(bill_category == "small_increase") |>
+    pull(percentage) |>
+    round(1)
+  if(length(pct_small_increase) == 0) pct_small_increase <- 0
+
+  pct_large_increase <- category_percentages |>
+    filter(bill_category == "large_increase") |>
+    pull(percentage) |>
+    round(1)
+  if(length(pct_large_increase) == 0) pct_large_increase <- 0
+
+  pct_that_lose <- pct_small_increase + pct_large_increase
+
+  # Manually bin the data and calculate counts - this preserves the bill_category
+  binned_data <- plot_data |>
+    mutate(bin = cut(annual_bill_change,
+                     breaks = breaks,
+                     include.lowest = TRUE,
+                     right = FALSE)) |>
+    group_by(bin, bill_category) |>
+    summarise(count = n(), .groups = "drop") |>
+    # Add bin midpoint for plotting
+    mutate(bin_mid = as.numeric(as.character(
+      sapply(bin, function(b) {
+        # Extract bin boundaries and calculate midpoint
+        vals <- as.numeric(gsub("\\(|\\]|\\[|\\)", "", strsplit(as.character(b), ",")[[1]]))
+        return(mean(vals))
+      })
+    )))
+
+  # Position the bars at the very top and text just below
+  bar_y_pos <- y_limits[2]  # Exactly at the top
+  text_y_pos <- y_limits[2] * 0.95  # Just below the colored line
+
+  # Calculate x positions for percentage labels (center of each category)
+  x_large_savings <- mean(c(x_min, -1000))
+  x_small_savings <- mean(c(-1000, 0))
+  x_that_save <- x_min * 0.7
+  x_small_increase <- mean(c(0, 1000))
+  x_large_increase <- mean(c(1000, x_max))
+  x_that_lose <- x_max * 0.7
+
+  # Create the plot using geom_col() with binned data
+  px_hist_by_rate_version <- ggplot(binned_data, aes(x = bin_mid, y = count, fill = bill_category)) +
+    # Add vertical dotted lines at the category boundaries
+    geom_vline(xintercept = c(-1000, 0, 1000), linetype = "dotted", color = "gray50", size = 0.5) +
+
+    # Add the bars
+    geom_col(position = "stack", width = binwidth * 0.9) +
+
+    # Set the fill colors manually with expanded categories
+    scale_fill_manual(
+      values = c(
+        "large_savings" = "#5e8a5e",      # dark green
+        "small_savings" = "#8ebd85",      # light green
+        "small_increase" = "#eaada9",     # light red
+        "large_increase" = "#db8b87"      # dark red
+      ),
+      guide = "none"
+    ) +
+
+    # Add horizontal lines at the very top of the plot
+    # With colors matching their respective categories
+    annotate("segment",
+             x = x_min, xend = -1000,
+             y = bar_y_pos, yend = bar_y_pos,
+             color = dark_green, size = 1) +
+
+    annotate("segment",
+             x = -1000, xend = 0,
+             y = bar_y_pos, yend = bar_y_pos,
+             color = light_green, size = 1) +
+
+    annotate("segment",
+             x = 0, xend = 1000,
+             y = bar_y_pos, yend = bar_y_pos,
+             color = light_red, size = 1) +
+
+    annotate("segment",
+             x = 1000, xend = x_max,
+             y = bar_y_pos, yend = bar_y_pos,
+             color = dark_red, size = 1) +
+
+    # Add percentage labels for each category directly below the lines
+    annotate("text",
+             x = x_large_savings,
+             y = text_y_pos,
+             label = paste0(pct_large_savings, "%"),
+             size = 3,
+             fontface = "bold") +
+
+    annotate("text",
+             x = x_small_savings,
+             y = text_y_pos,
+             label = paste0(pct_small_savings, "%"),
+             size = 3,
+             fontface = "bold") +
+
+    annotate("text",
+             x = x_small_increase,
+             y = text_y_pos,
+             label = paste0(pct_small_increase, "%"),
+             size = 3,
+             fontface = "bold") +
+
+    annotate("text",
+             x = x_large_increase,
+             y = text_y_pos,
+             label = paste0(pct_large_increase, "%"),
+             size = 3,
+             fontface = "bold") +
+
+    # Add the percentage labels for the "that save" and "that lose" categories
+    annotate("text",
+             x = x_that_save,
+             y = text_y_pos*0.8,
+             label = paste0(pct_that_save, "% pay lower electric bills"),
+             size = 3,
+             fontface = "bold") +
+
+    annotate("text",
+             x = x_that_lose,
+             y = text_y_pos*0.8,
+             label = paste0(pct_that_lose, "% pay higher electric bills"),
+             size = 3,
+             fontface = "bold") +
+
+    # Rest of the plot styling
+    labs(
+      title = glue::glue("Change in Total Winter Energy Bills after Switching to Heat Pumps"),
+      x = "Annual Bill Change ($)",
+      y = "# of Homes"
+    ) +
+    scale_y_continuous(
+      labels = function(x) paste0(round(x * 1), ""),
+      name = "# of Homes",
+      limits = y_limits,
+      breaks = seq(0, y_limits[2], by=y_step),
+      expand = expansion(mult = c(0, 0))
+    ) +
+    scale_x_continuous(
+      labels = scales::dollar_format(),
+      limits = x_limits,
+      breaks = seq(x_min, x_max, by = 500),
+      expand = expansion(mult = c(0, 0))
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),
+      panel.grid.major = element_line(linewidth = 0.2),
+      panel.grid.minor = element_blank(),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.position = "none",
+      aspect.ratio = 0.6,
+      margin = margin(0, 0, 0, 0),
+      panel.background = element_rect(fill = "#f2f0eb", color = NA),
+      #plot.background = element_rect(fill = "#FAFAF5", color = NA)
+    ) +
+    {
+      if (show_category_labels) {
+        list(
+          annotate("text", x = x_large_savings,   y = y_limits[2]*0.97,
+                   label = "savings > $1k",  size = 3, fontface = "bold"),
+          annotate("text", x = x_small_savings,   y = y_limits[2]*0.97,
+                   label = "savings $0–1k", size = 3, fontface = "bold"),  # make bold
+          annotate("text", x = x_small_increase,  y = y_limits[2]*0.97,
+                   label = "losses  $0–1k", size = 3, fontface = "bold"),  # make bold
+          annotate("text", x = x_large_increase,  y = y_limits[2]*0.97,
+                   label = "losses  > $1k", size = 3, fontface = "bold")
+        )
+      }
+    } +
+    coord_cartesian(clip = "off")
+
+  return(list(px_hist_by_rate_version, category_percentages))
+}
+
+
+
+plot_elec_bill_change_histograms <- function(
+  annual_change_table,
+  bill_type,
+  baseline_heating_type_option,
+  hvac,
+  appliances,
+  shell,
+  electric_utility_option,
+  supply_year,
+  second_subtitle = NULL,
+  x_limits = c(-2500, 2500),
+  y_limits = c(0, 100),
+  y_step = 10,
+  binwidth = 100
+) {
+
+
+  # Create nicer version labels
+  version_labels <- c(
+    "baseline" = "     Default\n     Rates",
+    "hpr_approved" = "     1.0\n     Rates",
+    "hpr_doer" = "     2.0\n     Rates"
+  )
+
+  # Create three histograms without individual titles
+  result_baseline <- hist_for_single_rate_version(
+    annual_change_table = annual_change_table,
+    bill_type = bill_type,
+    baseline_heating_type_option = baseline_heating_type_option,
+    hvac = hvac,
+    appliances = appliances,
+    shell = shell,
+    version_elec = "baseline",
+    x_limits = x_limits,
+    y_limits = y_limits,
+    y_step = y_step,
+    binwidth = binwidth,
+    show_category_labels = FALSE
+  )
+
+  p1_baseline <- result_baseline[[1]] +
+    labs(title = NULL) +  # Remove title
+    ylab(NULL) +                 # Remove y-axis label
+    theme(
+      axis.title.x = element_blank(),  # Remove x axis title from top two plots
+      axis.text.x = element_blank(),   # Remove x tick labels from top two plots
+      axis.ticks.x = element_blank(),  # Remove x ticks from top two plots
+      plot.margin = margin(5, 5, 0, 5),  # Consistent margins (top, right, bottom, left)
+      axis.title.y = element_blank()     # Remove y title from top plot
+    ) +
+    # Add elegant version label on right side
+    annotate("text",
+             x = Inf,  # Use Inf to position at the right edge of the plot
+             y = y_limits[2] * 0.7,
+             label = version_labels["baseline"],
+             hjust = 0,  # Align to the right edge
+             fontface = "bold",
+             size = 4,
+             color = "black",
+             vjust = 0.5)  # Center text vertically
+
+  result_approved <- hist_for_single_rate_version(
+    annual_change_table = annual_change_table,
+    bill_type = bill_type,
+    baseline_heating_type_option = baseline_heating_type_option,
+    hvac = hvac,
+    appliances = appliances,
+    shell = shell,
+    version_elec = "hpr_approved",
+    x_limits = x_limits,
+    y_limits = y_limits,
+    y_step = y_step,
+    binwidth = binwidth,
+    show_category_labels = FALSE
+  )
+
+  p2_approved <- result_approved[[1]] +
+    labs(title = NULL) +  # Remove title
+    ylab(NULL) +
+    theme(
+      axis.title.x = element_blank(),  # Remove x axis title from top two plots
+      axis.text.x = element_blank(),   # Remove x tick labels from top two plots
+      axis.ticks.x = element_blank(),  # Remove x ticks from top two plots
+      axis.title.y = element_blank(),   # Remove y title from middle plot
+      plot.margin = margin(0, 5, 0, 5)  # Consistent margins (no top/bottom margin)
+    ) +
+    # Add elegant version label on right side
+    annotate("text",
+             x = Inf,  # Use Inf to position at the right edge of the plot
+             y = y_limits[2] * 0.7,
+             label = version_labels["hpr_approved"],
+             hjust = 0,  # Align to the right edge
+             fontface = "bold",
+             size = 4,
+             color = "black",
+             vjust = 0.5)  # Center text vertically
+
+  result_doer <- hist_for_single_rate_version(
+    annual_change_table = annual_change_table,
+    bill_type = bill_type,
+    baseline_heating_type_option = baseline_heating_type_option,
+    hvac = hvac,
+    appliances = appliances,
+    shell = shell,
+    version_elec = "hpr_doer",
+    x_limits = x_limits,
+    y_limits = y_limits,
+    y_step = y_step,
+    binwidth = binwidth,
+    show_category_labels = FALSE
+  )
+
+  p3_doer <- result_doer[[1]] +
+    labs(title = NULL) +  # Remove title
+    ylab(NULL) +
+    theme(
+      axis.title.y = element_blank(),  # Remove y title from bottom plot
+      plot.margin = margin(0, 5, 5, 5),  # Consistent margins
+      axis.title.x = element_text(size = 9),
+    ) +
+    # Add elegant version label on right side
+    annotate("text",
+             x = Inf,  # Use Inf to position at the right edge of the plot
+             y = y_limits[2] * 0.7,
+             label = version_labels["hpr_doer"],
+             hjust = 0,  # Align to the right edge
+             fontface = "bold",
+             size = 4,
+             color = "black",
+             vjust = 0.5)  # Center text vertically
+
+  # Combine plots with shared x and y axes
+  combined_plot <- p1_baseline / p2_approved / p3_doer +
+    plot_layout(heights = c(1, 1, 1)) +  # Equal heights for all plots
+    plot_annotation(
+      title = case_when(
+        bill_type == "annual_bill_change_elec" ~ glue::glue("Switching from {baseline_heating_type_option} to Heat Pump: Change in Annual Electric Bill"),
+        bill_type == "annual_bill_change_energy" ~ glue::glue("Change in Total Winter Energy Bills after Switching to Heat Pump from {baseline_heating_type_option}"),
+        bill_type == "annual_bill_change_gas" ~ glue::glue("Switching from {baseline_heating_type_option} to Heat Pump: Change in Annual Gas Bill"),
+        TRUE ~ "Heat Pump Rate Bill Changes" # Default case
+      ),
+      subtitle = second_subtitle,
+      theme = theme(
+        plot.margin = margin(1,1,5,1),  # top, right, bottom, left
+        plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5, size = 8),
+      )
+    ) &
+    # Apply consistent theming to all plots
+    theme(
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_line(linewidth = 0.2, color = "gray90"),
+      panel.grid.major.y = element_line(linewidth = 0.2, color = "gray90"),
+      aspect.ratio = 0.18,
+      plot.margin = margin(1,25,8,1),  # top, right, bottom, left
+    )
+
+  # Wrap the combined plot to add a shared y-axis label
+  combined_plot <- patchwork::wrap_elements(combined_plot) +
+    labs(tag = "# of Homes") +
+    theme(
+      plot.tag = element_text(angle = 90, vjust = 0.5, hjust = 0.5, face = "plain", size = 9),
+      plot.tag.position = "left"
+    )
+
+  return(list(combined_plot, result_baseline[[2]], result_approved[[2]], result_doer[[2]]))
+}
+```
+
+
+## Revenue Impact estimate - just volumetric
+```{r}
+#| label: data-hist-delivery-revenue-volumetric-estimate
+#| fig-cap: "The electric delivery revenue impact of the HPR approved rates and HPR DOER rates."
+
+default_delivery_rate_eversource = 0.19122
+hpr1_delivery_rate_eversource = 0.12094
+hpr2_delivery_rate_eversource = 0.0702
+
+default_delivery_rate_nationalgrid = 0.18091
+hpr1_delivery_rate_nationalgrid = 0.12669
+hpr2_delivery_rate_nationalgrid = 0.06652
+
+default_delivery_rate_unitil = 0.26493
+hpr1_delivery_rate_unitil = 0.20307
+hpr2_delivery_rate_unitil = 0.09652
+
+
+
+elec_revenue_currrent_hvac <- winter_energy |>
+  filter(hvac == "current") |>
+  filter(fuel == "electricity") |>
+  select(bldg_id, hvac, total_winter_kwh, electric_utility) |>
+  mutate(
+    elec_revenue_default_current =  case_when(
+      electric_utility == "unitil" ~ total_winter_kwh * default_delivery_rate_unitil,
+      electric_utility == "nationalgrid" ~ total_winter_kwh * default_delivery_rate_nationalgrid,
+      electric_utility == "eversource" ~ total_winter_kwh * default_delivery_rate_eversource,
+      TRUE ~ 0
+    )
+  ) |>
+  pivot_longer(
+    cols = starts_with("elec_revenue_"),
+    names_to = "version_elec",
+    values_to = "elec_revenue"
+  ) |>
+  mutate(
+    version_elec = case_when(
+      version_elec == "elec_revenue_default_current" ~ "baseline"
+    )
+  ) |>
+  select(bldg_id, hvac, total_winter_kwh, version_elec, elec_revenue, electric_utility)
+
+
+elec_revenue_mid_hp <- winter_energy |>
+  filter(hvac == "mid_hp") |>
+  filter(fuel == "electricity") |>
+  select(bldg_id, hvac, total_winter_kwh, electric_utility) |>
+  mutate(
+    elec_revenue_default_mid_hp = case_when(
+      electric_utility == "unitil" ~ total_winter_kwh * default_delivery_rate_unitil,
+      electric_utility == "nationalgrid" ~ total_winter_kwh * default_delivery_rate_nationalgrid,
+      electric_utility == "eversource" ~ total_winter_kwh * default_delivery_rate_eversource,
+      TRUE ~ 0
+    ),
+    elec_revenue_hpr1_mid_hp = case_when(
+      electric_utility == "unitil" ~ total_winter_kwh * hpr1_delivery_rate_unitil,
+      electric_utility == "nationalgrid" ~ total_winter_kwh * hpr1_delivery_rate_nationalgrid,
+      electric_utility == "eversource" ~ total_winter_kwh * hpr1_delivery_rate_eversource,
+      TRUE ~ 0
+    ),
+    elec_revenue_hpr2_mid_hp = case_when(
+      electric_utility == "unitil" ~ total_winter_kwh * hpr2_delivery_rate_unitil,
+      electric_utility == "nationalgrid" ~ total_winter_kwh * hpr2_delivery_rate_nationalgrid,
+      electric_utility == "eversource" ~ total_winter_kwh * hpr2_delivery_rate_eversource,
+      TRUE ~ 0
+    )
+  ) |>
+  pivot_longer(
+    cols = starts_with("elec_revenue_"),
+    names_to = "version_elec",
+    values_to = "elec_revenue"
+  ) |>
+  mutate(
+    version_elec = case_when(
+      version_elec == "elec_revenue_default_mid_hp" ~ "baseline",
+      version_elec == "elec_revenue_hpr1_mid_hp" ~ "hpr_approved",
+      version_elec == "elec_revenue_hpr2_mid_hp" ~ "hpr_doer"
+    )
+  ) |>
+  select(bldg_id, hvac, total_winter_kwh, version_elec, elec_revenue, electric_utility)
+
+elec_revenue <- elec_revenue_mid_hp |>
+  bind_rows(elec_revenue_currrent_hvac) |>
+  select(bldg_id, hvac, version_elec, total_winter_kwh, elec_revenue, electric_utility) |>
+  left_join(housing_units |> select(bldg_id, in.sqft, electric_utility, gas_utility, assigned_income, building_type_group, baseline_heating_type), by = c("bldg_id","electric_utility")) |>
+  mutate(
+    shell = "current",
+    appliances = "current",
+    bill_type = "annual_delivery_revenue_elec"
+  )
+
+rm(elec_revenue_currrent_hvac, elec_revenue_mid_hp)
+
+elec_revenue_change <- elec_revenue |>
+  # Get the baseline revenue for each building
+  left_join(
+    elec_revenue |>
+      filter(hvac == "current", version_elec == "baseline") |>
+      select(bldg_id, baseline_revenue = elec_revenue, baseline_total_winter_kwh = total_winter_kwh, electric_utility),
+    by = c("bldg_id", "electric_utility")
+  ) |>
+  # Calculate the change in revenue
+  mutate(
+    bill_type = "annual_delivery_revenue_change_elec",
+    annual_kwh_change = total_winter_kwh - baseline_total_winter_kwh,
+    annual_bill_change = elec_revenue - baseline_revenue
+  ) |>
+  select(-baseline_revenue)
+
+```
+
+
+```{r}
+#| label: stats-annual-elec-revenue-change
+# Stats
+calc_elec_revenue_stats_by_rate_version <- function(annual_change_table, hp_eff_for_stats, print_table = FALSE) {
+  scenario_stats <- annual_change_table |>
+    filter(hvac == hp_eff_for_stats) |>
+    filter(!is.na(annual_bill_change)) |>  # Remove NA values
+    group_by(version_elec) |>
+    summarise(
+      # kWh change
+      median_kwh_change = median(annual_kwh_change),
+
+      # Bill change
+      median_bill_change = median(annual_bill_change),
+      pct_that_save = mean(annual_bill_change < 0) * 100,
+      pct_that_save_big = mean(annual_bill_change < -1000) * 100,
+      pct_that_lose = mean(annual_bill_change > 0) * 100,
+      pct_that_lose_big = mean(annual_bill_change > 1000) * 100,
+      median_bill_savings = median(annual_bill_change[annual_bill_change < 0]),
+      median_bill_loss = median(annual_bill_change[annual_bill_change > 0])
+    )
+
+  if (print_table) {
+    print(knitr::kable(scenario_stats,
+               caption = glue::glue("Summary Statistics by Rate Version (HP Efficiency = {hp_eff_for_stats})"),
+               format = "pipe",
+               digits = 1,
+               col.names = c("Rate Version", "Median Bill Change ($)", "% That Save", "Median Savings ($)", "Median Loss ($)")))
+  }
+
+  return(scenario_stats)
+}
+
+scenario_stats_elec_types_mid_hp <- calc_elec_revenue_stats_by_rate_version(elec_revenue_change, hp_eff_for_stats = "mid_hp", print_table = FALSE)
+
+# Some stats used in the report
+# Baseline
+fig_hists_delivery_revenue_baseline_median_bill_change <- scenario_stats_elec_types_mid_hp |> filter(version_elec == "baseline") |> pull(median_bill_change)
+fig_hists_delivery_revenue_baseline_pct_that_save <- scenario_stats_elec_types_mid_hp |> filter(version_elec == "baseline") |> pull(pct_that_save)
+fig_hists_delivery_revenue_baseline_pct_that_lose <- scenario_stats_elec_types_mid_hp |> filter(version_elec == "baseline") |> pull(pct_that_lose)
+
+# HPR 2.0
+fig_hists_delivery_revenue_hpr2_median_bill_change <- scenario_stats_elec_types_mid_hp |> filter(version_elec == "hpr_doer") |> pull(median_bill_change)
+fig_hists_delivery_revenue_hpr2_median_kwh_change <- scenario_stats_elec_types_mid_hp |> filter(version_elec == "hpr_doer") |> pull(median_kwh_change)
+fig_hists_delivery_revenue_hpr2_pct_that_save <- scenario_stats_elec_types_mid_hp |> filter(version_elec == "hpr_doer") |> pull(pct_that_save)
+fig_hists_delivery_revenue_hpr2_pct_that_lose <- scenario_stats_elec_types_mid_hp |> filter(version_elec == "hpr_doer") |> pull(pct_that_lose)
+
+## Sanity check: median_kwh_change/median_bill_change ~ = $0.20/kWh (rough average of the delivery rates)
+#crude_marginal_delivery_rate_baseline = round(fig_hists_delivery_revenue_baseline_median_bill_change / fig_hists_delivery_revenue_hpr2_median_kwh_change, 3)
+
+#Sanity check: median_kwh_change/median_bill_change[hpr2] ~  ZERO (zero would mean that the total electric revenue doesn't change for this new heat pump household
+#crude_marginal_delivery_rate_hp2 = round(fig_hists_delivery_revenue_hpr2_median_bill_change / fig_hists_delivery_revenue_hpr2_median_kwh_change, 3)
+
+```
+
+### fig-hist-delivery-revenue-volumetric-estimate
+```{r}
+#| label: fig-hists-delivery-revenue-volumetric-estimate
+#| fig-cap: "The distribution of the change in winter electric delivery bills for heat pump households."
+
+elec_revenue_change_plot <- elec_revenue_change |>
+  filter(hvac == "mid_hp")
+
+revenue_hists <- plot_elec_bill_change_histograms(
+  annual_change_table = elec_revenue_change_plot,
+  bill_type = "annual_delivery_revenue_change_elec",
+  baseline_heating_type_option = "All Fuels",
+  hvac = "mid_hp",
+  appliances = "current",
+  shell = "current",
+  electric_utility_option = "all",
+  supply_year = "2024",
+  second_subtitle = "Change in Winter Electric Delivery Bills (Volumetric Component Only)",
+  x_limits = c(-3000, 3000),
+  y_limits = c(0, 3000),
+  y_step = 500,
+  binwidth = 250
+)
+
+print(revenue_hists[[1]])
+```
+
+
+
+## Spark Gap
+### fig-scatter-elec-gas-kwh-changes
+```{r}
+#| label: fig-scatter-elec-gas-kwh-changes
+#| fig-cap: "The relationship between the change in annual gas kwh and the change in annual electric kwh."
+
+# rate_colors = c(
+#   "current" = "#023047",  # sb midnight
+#   "low_hp" = "#68BED8", # sb sky
+#   "mid_hp" = "#FC9706", # sb carrot
+#   "high_hp" = "#009E73" # sb pistachio
+# )
+
+
+# # First calculate the linear model for Natural Gas heated buildings
+# # Calculate linear models for each version
+# # winter_energy_delta_wide <- winter_energy_delta |>
+# #   filter(baseline_heating_type == "Natural Gas") |>
+# #   pivot_wider(
+# #     id_cols = c(bldg_id, hvac),
+# #     names_from = fuel,
+# #     values_from = delta_winter_kwh,
+# #     names_prefix = "delta_winter_kwh_"
+# #   ) |>
+# #   mutate(
+# #     ratio_electricity_to_gas = delta_winter_kwh_electricity / -delta_winter_kwh_gas
+# #   )
+
+
+# lm_models <- winter_energy_delta |>
+#   filter(baseline_heating_type == "Natural Gas") |>
+#   group_by(hvac) |>
+#   pivot_wider(
+#     id_cols = c(bldg_id),
+#     names_from = fuel,
+#     values_from = delta_winter_kwh,
+#     names_prefix = "delta_winter_kwh_"
+#   ) |>
+#   # summarise(
+#   #   model = list(lm(delta_winter_kwh_electricity ~ delta_winter_kwh_gas)),
+#   #   r_squared = summary(model[[1]])$r.squared,
+#   #   slope = coef(model[[1]])[2],
+#   #   intercept = coef(model[[1]])[1]
+#   # ) |>
+#   ungroup()
+
+
+
+# # # Extract coefficients into separate variables for each version
+# # current_slope <- lm_models |> filter(fuel == "electricity") |> pull(slope)
+# # current_intercept <- lm_models |> filter(hvac == "current") |> pull(intercept)
+
+# low_hp_slope <- lm_models |> filter(hvac == "low_hp") |> pull(slope)
+# low_hp_intercept <- lm_models |> filter(hvac == "low_hp") |> pull(intercept)
+
+# mid_hp_slope <- lm_models |> filter(hvac == "mid_hp") |> pull(slope)
+# mid_hp_intercept <- lm_models |> filter(hvac == "mid_hp") |> pull(intercept)
+
+# high_hp_slope <- lm_models |> filter(hvac == "high_hp") |> pull(slope)
+# high_hp_intercept <- lm_models |> filter(hvac == "high_hp") |> pull(intercept)
+
+# # Create the plot
+# xmin = 0
+# xmax = 50000
+# xstep = 5000
+# ymin = 0
+# ymax = 30000
+# ystep = 5000
+
+
+# ggplot(winter_energy_delta, aes(x = delta_winter_kwh_gas,
+#                               y = delta_winter_kwh_electricity,
+#                               color = hvac)) +
+#   scale_color_manual(values = rate_colors) +
+#   geom_point(alpha = 0.3, size = 1) +
+
+#   geom_abline(slope = current_slope, intercept = current_intercept, color = rate_colors["current"]) +
+#   geom_abline(slope = low_hp_slope, intercept = low_hp_intercept, color = rate_colors["low_hp"]) +
+#   geom_abline(slope = mid_hp_slope, intercept = mid_hp_intercept, color = rate_colors["mid_hp"]) +
+#   geom_abline(slope = high_hp_slope, intercept = high_hp_intercept, color = rate_colors["high_hp"]) +
+
+#   annotate("text", x = xmax, y = (current_slope * xmax) + current_intercept,
+#            label = sprintf(" Current: y = %.2fx + %.2f", current_slope, current_intercept),
+#            hjust = 0, size = 3.5, color = rate_colors["current"]) +
+#   annotate("text", x = xmax, y = (low_hp_slope * xmax) + low_hp_intercept,
+#            label = sprintf("Low HP: y = %.2fx + %.2f", low_hp_slope, low_hp_intercept),
+#            hjust = 0, size = 3.5, color = rate_colors["low_hp"]) +
+#   annotate("text", x = xmax, y = (mid_hp_slope * xmax) + mid_hp_intercept,
+#            label = sprintf("Mid HP: y = %.2fx + %.2f", mid_hp_slope, mid_hp_intercept),
+#            hjust = 0, size = 3.5, color = rate_colors["mid_hp"]) +
+#   annotate("text", x = xmax, y = (high_hp_slope * xmax) + high_hp_intercept,
+#            label = sprintf("High HP: y = %.2fx + %.2f", high_hp_slope, high_hp_intercept),
+#            hjust = 0, size = 3.5, color = rate_colors["high_hp"]) +
+#   labs(x = "Annual Natural Gas Energy (kWh) BEFORE Electrification",
+#        y = "Annual Electric Energy (kWh) AFTER Electrification",
+#        title = "Annual Energy Consumption by Heating System") +
+#   scale_x_continuous(labels = scales::comma_format(),
+#                      limits = c(xmin, xmax),
+#                      breaks = seq(xmin, xmax, xstep)) +
+#   scale_y_continuous(labels = scales::comma_format(),
+#                      limits = c(ymin, ymax),
+#                      breaks = seq(ymin, ymax, ystep)) +
+#   coord_cartesian(xlim = c(xmin, xmax+(2*xstep)),
+#                  ylim = c(ymin, ymax)) +
+#   theme_minimal() +
+#   theme(
+#     plot.title = element_text(hjust = 0.5),
+#     axis.text.x = element_text(vjust = 0),
+#     axis.ticks.x = element_line(),
+#     legend.position = "none",
+#     plot.margin = margin(t = 10, r = 100, b = 10, l = 10)
+#   )
+
+
+```
+
+### data-effective-spark-gap
+```{r}
+#| label: data-effective-spark-gap
+
+# con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+
+# # Query annual energy consumption by building and HVAC scenario
+# annual_energy <- tbl(con, "ma_monthly") |>
+#   group_by(bldg_id, hvac) |>
+#   summarise(
+#     total_elec_kwh = sum(total_elec_kwh),
+#     total_gas_kwh = sum(total_gas_kwh),
+#     total_propane_kwh = sum(total_propane_kwh),
+#     total_fuel_oil_kwh = sum(total_fuel_oil_kwh)
+#   ) |>
+#   collect()
+
+# DBI::dbDisconnect(con)
+
+# annual_energy_long <- annual_energy |>
+#   pivot_longer(cols = c(total_elec_kwh, total_gas_kwh, total_propane_kwh, total_fuel_oil_kwh),
+#                names_to = "bill_type",
+#                values_to = "annual_kwh") |>
+#   mutate(
+#     bill_type = case_when(
+#       bill_type == "total_elec_kwh" ~ "annual_bill_elec",
+#       bill_type == "total_gas_kwh" ~ "annual_bill_gas",
+#       bill_type == "total_propane_kwh" ~ "annual_bill_propane",
+#       bill_type == "total_fuel_oil_kwh" ~ "annual_bill_fueloil"
+#     )
+#   )
+
+
+# annual_bills_with_kwh <- annual_bills |>
+#   left_join(annual_energy_long, by = c("bldg_id", "hvac", "bill_type")) |>
+#   mutate(
+#     energy_rate = ifelse(is.na(annual_kwh) | annual_kwh == 0, NA_real_, annual_bill / annual_kwh)
+#   ) |>
+#   select(bldg_id, hvac, bill_type, annual_bill, annual_kwh, energy_rate, version_elec, baseline_heating_type)
+
+```
+
+
+### fig-scatter-effective-spark-gap
+```{r}
+#| label: fig-scatter-effective-spark-gap
+#| fig-cap: "The effective spark gap is the ratio of electric energy to natural gas energy, and is a key driver of the bill impacts of switching to heat pumps."
+
+
+# # --------------------------------------
+# # Create scatter plot of gas vs electric rates
+# # --------------------------------------
+# plot_these_rates <- c("baseline", "hpr_approved", "hpr_doer")
+# annual_bills_with_kwh_plot <- annual_bills_with_kwh |>
+#   filter(
+#     hvac == "mid_hp",
+#     baseline_heating_type == "Natural Gas",
+#     version_elec %in% plot_these_rates
+#   ) |>
+
+#   # Pivot wider to get gas and electric rates in separate columns
+#   select(bldg_id, bill_type, energy_rate, version_elec) |>
+#   filter(energy_rate > 0.01) |>
+#   filter(energy_rate < 0.5) |>
+#   pivot_wider(
+#     id_cols = c(bldg_id, version_elec),
+#     names_from = bill_type,
+#     values_from = energy_rate
+#   ) |>
+#   mutate(
+#     energy_rate_elec = annual_bill_elec,
+#     energy_rate_gas = annual_bill_gas,
+#     energy_rate_fuel_oil = annual_bill_fueloil,
+#     energy_rate_propane = annual_bill_propane
+#   ) |>
+#   mutate(
+#     spark_gap_gas = energy_rate_elec / energy_rate_gas,
+#   )
+
+# #View(annual_bills_with_kwh_plot |> filter(bldg_id == 21))
+
+
+# rate_colors = c(
+#   "baseline" = "#023047",  # sb midnight
+#   "hpr_approved" = "#FC9706", # sb carrot
+#   "hpr_doer" = "#009E73" # sb pistachio
+# )
+
+
+# # First calculate the linear model for Natural Gas heated buildings
+# # Calculate linear models for each version
+# lm_models <- annual_bills_with_kwh_plot |>
+#   group_by(version_elec) |>
+#   summarise(
+#     model = list(lm(energy_rate_elec ~ energy_rate_gas)),
+#     slope_linear = coef(model[[1]])[2],
+#     intercept = coef(model[[1]])[1]
+#   ) |>
+#   ungroup()
+
+# # Extract coefficients into separate variables for each version
+# lm_slope_baseline <- lm_models |> filter(version_elec == "baseline") |> pull(slope_linear)
+# lm_intercept_baseline <- lm_models |> filter(version_elec == "baseline") |> pull(intercept)
+
+# lm_slope_hpr_approved <- lm_models |> filter(version_elec == "hpr_approved") |> pull(slope_linear)
+# lm_intercept_hpr_approved <- lm_models |> filter(version_elec == "hpr_approved") |> pull(intercept)
+
+# lm_slope_hpr_doer <- lm_models |> filter(version_elec == "hpr_doer") |> pull(slope_linear)
+# lm_intercept_hpr_doer <- lm_models |> filter(version_elec == "hpr_doer") |> pull(intercept)
+
+# # Create scatter plot of gas vs electric rates
+# xmin = 0
+# xmax = 0.5
+# ymin = 0
+# ymax = 0.5
+
+# annual_bills_with_kwh_plot |>
+#   # Create scatter plot
+#   ggplot(aes(x = annual_bill_gas, y = annual_bill_elec, color = version_elec)) +
+#   scale_color_manual(values = rate_colors) +
+#   geom_point(alpha = 0.5, size = 1) +
+
+#   #
+#   geom_abline(slope = lm_slope_baseline, intercept = lm_intercept_baseline, color = rate_colors["baseline"]) +
+#   geom_abline(slope = lm_slope_hpr_approved, intercept = lm_intercept_hpr_approved, color = rate_colors["hpr_approved"]) +
+#   geom_abline(slope = lm_slope_hpr_doer, intercept = lm_intercept_hpr_doer, color = rate_colors["hpr_doer"]) +
+
+#   annotate("text", x = .35, y = (lm_slope_baseline * .35) + lm_intercept_baseline,
+#            label = sprintf("Baseline: y = %.2fx + %.2f", lm_slope_baseline, lm_intercept_baseline),
+#            hjust = 0, size = 3.5, color = rate_colors["baseline"]) +
+#   annotate("text", x = .35, y = (lm_slope_hpr_approved * .35) + lm_intercept_hpr_approved,
+#            label = sprintf("HPR Approved: y = %.2fx + %.2f", lm_slope_hpr_approved, lm_intercept_hpr_approved),
+#            hjust = 0, size = 3.5, color = rate_colors["hpr_approved"]) +
+#   annotate("text", x = .35, y = (lm_slope_hpr_doer * .35) + lm_intercept_hpr_doer,
+#            label = sprintf("HPR DOER: y = %.2fx + %.2f", lm_slope_hpr_doer, lm_intercept_hpr_doer),
+#            hjust = 0, size = 3.5, color = rate_colors["hpr_doer"]) +
+
+#   # Add reference line where electric rate equals gas rate (slope=1, intercept=0)
+#   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "darkgrey") +
+
+#   scale_x_continuous(labels = scales::dollar_format(),
+#                      limits = c(xmin, xmax),
+#                      breaks = seq(xmin, xmax, 0.05)) +
+#   scale_y_continuous(labels = scales::dollar_format(),
+#                      limits = c(ymin, ymax),
+#                      breaks = seq(ymin, ymax, 0.05)) +
+#   coord_cartesian(xlim = c(xmin, xmax+0.05),
+#                  ylim = c(ymin, ymax)) +
+#   labs(
+#     x = "Natural Gas Rate ($/kWh)",
+#     y = "Electricity Rate ($/kWh)",
+#     color = "Rate Version",
+#     title = "Effective Spark Gap: Electricity vs. Natural Gas Rates"
+#   ) +
+#   theme_minimal() +
+#   theme(
+#     legend.position = "bottom",
+#     plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),
+#     panel.grid.minor = element_blank(),
+#     margin = margin(t = 10, r = 100, b = 10, l = 10)
+#   )
+
+```
+
+
+# ------------------------------------------------------------------------------
+# Export Data
+# ------------------------------------------------------------------------------
+```{r}
+#| label: save-image
+ save.image(file = "/workspaces/reports/src/ma_hp_rates/cache/report_variables.RData")
+```

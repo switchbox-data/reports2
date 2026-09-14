@@ -1633,6 +1633,112 @@ For comparison, the uniform approach applies δ = `{python} f"{delta_benchmark:.
 every vintage. The per-building approach lets each vintage settle at its own effective
 correction.
 
+## Fitted-ratio correction
+
+The per-building formula above subtracts a **population-average kWh voucher**
+($b \times \text{sqft} \times \Delta\text{ACH50}$) from this house's actual load, then
+floors at zero. That voucher is what the regression says a house of this size and leakiness
+_should_ save. Houses that already sit far below the fitted line — typically low-intensity
+multifamily units — have a smaller bill than the voucher, so the floor fires and heating
+goes to zero.
+
+On the fitted line the two operations are the same. A house with
+$\text{kWh} = (a + b \cdot \text{ACH50}) \times \text{sqft}$ loses exactly
+$b \times \text{sqft} \times \Delta$ kWh, which is also a multiplicative scale by
+$(a + b \cdot \text{ACH50}^{\text{Chan}}) / (a + b \cdot \text{ACH50}^{\text{RS}})$.
+Off the line they diverge. The **fitted-ratio** method always applies that multiplicative
+scale, using the intercept $a$ as well as the slope $b$:
+
+$$\text{kWh}'_i = \text{kWh}_i \times \frac{a_{g,e} + b_{g,e} \cdot \text{ACH50}^{\text{Chan}}_i}{a_{g,e} + b_{g,e} \cdot \text{ACH50}^{\text{RS}}_i}$$
+
+Same per-building $\Delta\text{ACH50}$ as the subtractive method. Every house with the same
+ACH50 in the same group gets the same fraction, whether it used 1,700 kWh or 9,500. The
+ratio cannot exceed a 100% cut as long as $a + b \cdot \text{ACH50}^{\text{RS}} > 0$.
+
+```{python}
+#| label: fitted-ratio-correction
+
+intercept_lookup: dict[tuple[str, str], float] = {}
+for row in reg_df.iter_rows(named=True):
+    intercept_lookup[(row["group"], row["enduse"])] = row["intercept"]
+
+
+def _fitted_ratio_scale(
+    orig: np.ndarray,
+    enduse: str,
+) -> np.ndarray:
+    """Scale each building's load by ê(Chan) / ê(ResStock) from the fitted line."""
+    out = np.copy(orig)
+    for i in range(len(orig)):
+        key = (group_arr[i], enduse)
+        a = intercept_lookup.get(key, 0.0)
+        b = slope_lookup.get(key, 0.0)
+        pred_old = a + b * ach_arr[i]
+        pred_new = a + b * predicted_ach50[i]
+        if pred_old > 1e-9:
+            out[i] = orig[i] * max(pred_new / pred_old, 0.0)
+    return out
+
+
+ratio_heat = _fitted_ratio_scale(heat_kwh, "Elec heating")
+ratio_cool = _fitted_ratio_scale(cool_kwh, "Elec cooling")
+ratio_gas_heat = _fitted_ratio_scale(gas_heat_kwh, "Gas heating")
+ratio_total = ratio_heat + ratio_cool + other_kwh
+ratio_gas_total = ratio_gas_heat + gas_other_kwh
+
+bge = bge.with_columns(
+    pl.Series("ratio_corrected_heat_kwh", ratio_heat),
+    pl.Series("ratio_corrected_cool_kwh", ratio_cool),
+    pl.Series("ratio_corrected_gas_heat_kwh", ratio_gas_heat),
+    pl.Series("ratio_corrected_total_kwh", ratio_total),
+    pl.Series("ratio_corrected_gas_total_kwh", ratio_gas_total),
+)
+
+ratio_elec_gwh = (w_arr * ratio_total).sum() * customer_scale / 1e9
+ratio_gas_gwh = (w_arr * ratio_gas_total).sum() * customer_scale / 1e9
+
+n_heat_zero_sub = int(((heat_kwh > 1) & (pb_heat <= 1e-9)).sum())
+n_heat_zero_ratio = int(((heat_kwh > 1) & (ratio_heat <= 1e-9)).sum())
+n_cool_zero_sub = int(((cool_kwh > 1) & (pb_cool <= 1e-9)).sum())
+n_cool_zero_ratio = int(((cool_kwh > 1) & (ratio_cool <= 1e-9)).sum())
+n_gas_zero_sub = int(((gas_heat_kwh > 1) & (pb_gas_heat <= 1e-9)).sum())
+n_gas_zero_ratio = int(((gas_heat_kwh > 1) & (ratio_gas_heat <= 1e-9)).sum())
+
+# Effective frac on heating (1 - kWh'/kWh), among homes with heating
+heat_pos = heat_kwh > 1
+sub_frac = np.where(heat_pos, 1 - pb_heat / heat_kwh, np.nan)
+ratio_frac = np.where(heat_pos, 1 - ratio_heat / heat_kwh, np.nan)
+
+
+def _wtd_pct(arr: np.ndarray, q: float) -> float:
+    m = np.isfinite(arr)
+    order = np.argsort(arr[m])
+    cw = np.cumsum(w_arr[m][order])
+    cw = cw / cw[-1]
+    return float(arr[m][order][np.searchsorted(cw, q, side="left")])
+
+
+print("Fitted-ratio correction applied (same per-building ΔACH50 as subtract).")
+print()
+print("Homes with original load > 1 kWh driven to ~0:")
+print(f"  {'':16s}  {'Subtract':>10s}  {'Fit-ratio':>10s}")
+print(f"  {'Elec heating':16s}  {n_heat_zero_sub:>10,d}  {n_heat_zero_ratio:>10,d}")
+print(f"  {'Elec cooling':16s}  {n_cool_zero_sub:>10,d}  {n_cool_zero_ratio:>10,d}")
+print(f"  {'Gas heating':16s}  {n_gas_zero_sub:>10,d}  {n_gas_zero_ratio:>10,d}")
+print()
+print("Electric heating frac (1 − kWh'/kWh), homes with heating:")
+print(f"  {'':16s}  {'Subtract':>10s}  {'Fit-ratio':>10s}")
+print(f"  {'median':16s}  {_wtd_pct(sub_frac, 0.50):>10.2f}  {_wtd_pct(ratio_frac, 0.50):>10.2f}")
+print(f"  {'p90':16s}  {_wtd_pct(sub_frac, 0.90):>10.2f}  {_wtd_pct(ratio_frac, 0.90):>10.2f}")
+print(f"  {'p99':16s}  {_wtd_pct(sub_frac, 0.99):>10.2f}  {_wtd_pct(ratio_frac, 0.99):>10.2f}")
+print(f"  {'max':16s}  {np.nanmax(sub_frac):>10.2f}  {np.nanmax(ratio_frac):>10.2f}")
+```
+
+On the line, subtract and fitted-ratio agree. Off the line, subtract takes a larger bite
+from low-intensity homes (to the point of deleting heating) and a smaller bite from
+high-intensity homes. Fitted-ratio keeps the typical home's correction nearly unchanged
+and only rewrites that tail.
+
 ### Overall electric consumption
 
 ```{python}
@@ -1641,23 +1747,28 @@ correction.
 gap_total = original_total_gwh - test_year_gwh
 uniform_closed = original_total_gwh - corrected_gwh_star
 pb_closed = original_total_gwh - pb_elec_gwh
+ratio_closed = original_total_gwh - ratio_elec_gwh
 
-print(f"{'':30s}  {'GWh':>10s}  {'vs test-year':>12s}")
-print(f"{'-'*30}  {'-'*10}  {'-'*12}")
-print(f"{'Original ResStock':30s}  {original_total_gwh:>10.2f}  {(original_total_gwh - test_year_gwh) / test_year_gwh * 100:>+11.1f}%")
-print(f"{'Uniform δ correction':30s}  {corrected_gwh_star:>10.2f}  {(corrected_gwh_star - test_year_gwh) / test_year_gwh * 100:>+11.1f}%")
-print(f"{'Per-building correction':30s}  {pb_elec_gwh:>10.2f}  {(pb_elec_gwh - test_year_gwh) / test_year_gwh * 100:>+11.1f}%")
-print(f"{'Test-year target':30s}  {test_year_gwh:>10.2f}  {'—':>12s}")
+print(f"{'':32s}  {'GWh':>10s}  {'vs test-year':>12s}")
+print(f"{'-'*32}  {'-'*10}  {'-'*12}")
+print(f"{'Original ResStock':32s}  {original_total_gwh:>10.2f}  {(original_total_gwh - test_year_gwh) / test_year_gwh * 100:>+11.1f}%")
+print(f"{'Uniform δ':32s}  {corrected_gwh_star:>10.2f}  {(corrected_gwh_star - test_year_gwh) / test_year_gwh * 100:>+11.1f}%")
+print(f"{'Per-building subtract':32s}  {pb_elec_gwh:>10.2f}  {(pb_elec_gwh - test_year_gwh) / test_year_gwh * 100:>+11.1f}%")
+print(f"{'Per-building fitted-ratio':32s}  {ratio_elec_gwh:>10.2f}  {(ratio_elec_gwh - test_year_gwh) / test_year_gwh * 100:>+11.1f}%")
+print(f"{'Test-year target':32s}  {test_year_gwh:>10.2f}  {'—':>12s}")
 print()
-print(f"Gap closed (uniform δ):      {uniform_closed:.2f} GWh ({uniform_closed / gap_total * 100:.0f}% of gap)")
-print(f"Gap closed (per-building):   {pb_closed:.2f} GWh ({pb_closed / gap_total * 100:.0f}% of gap)")
+print(f"Gap closed (uniform δ):        {uniform_closed:.2f} GWh ({uniform_closed / gap_total * 100:.0f}% of gap)")
+print(f"Gap closed (subtract):         {pb_closed:.2f} GWh ({pb_closed / gap_total * 100:.0f}% of gap)")
+print(f"Gap closed (fitted-ratio):     {ratio_closed:.2f} GWh ({ratio_closed / gap_total * 100:.0f}% of gap)")
 print()
 pb_gas_change = (pb_gas_gwh - original_gas_gwh) / original_gas_gwh * 100
 uniform_gas_change = (corrected_gas_gwh_star - original_gas_gwh) / original_gas_gwh * 100
-print(f"NATURAL GAS (thermal kWh):")
+ratio_gas_change = (ratio_gas_gwh - original_gas_gwh) / original_gas_gwh * 100
+print("NATURAL GAS (thermal kWh):")
 print(f"  Original:              {original_gas_gwh:.2f} GWh")
 print(f"  Uniform δ:             {corrected_gas_gwh_star:.2f} GWh ({uniform_gas_change:+.1f}%)")
-print(f"  Per-building:          {pb_gas_gwh:.2f} GWh ({pb_gas_change:+.1f}%)")
+print(f"  Subtract:              {pb_gas_gwh:.2f} GWh ({pb_gas_change:+.1f}%)")
+print(f"  Fitted-ratio:          {ratio_gas_gwh:.2f} GWh ({ratio_gas_change:+.1f}%)")
 ```
 
 ### Impact by heating-type group
@@ -1665,133 +1776,143 @@ print(f"  Per-building:          {pb_gas_gwh:.2f} GWh ({pb_gas_change:+.1f}%)")
 ```{python}
 #| label: pb-group-impact
 
-print(f"{'Group':<15s}  {'Metric':<15s}  {'Original':>10s}  {'Uniform δ':>10s}  "
-      f"{'Per-bldg':>10s}  {'Δ uniform':>10s}  {'Δ per-bldg':>10s}")
-print(f"{'-'*15}  {'-'*15}  {'-'*10}  {'-'*10}  {'-'*10}  {'-'*10}  {'-'*10}")
+print(f"{'Group':<15s}  {'Metric':<15s}  {'Original':>10s}  {'Uniform':>10s}  "
+      f"{'Subtract':>10s}  {'Fit-ratio':>10s}  {'Δ unif':>8s}  {'Δ sub':>8s}  "
+      f"{'Δ ratio':>8s}")
+print(f"{'-'*15}  {'-'*15}  {'-'*10}  {'-'*10}  {'-'*10}  {'-'*10}  {'-'*8}  "
+      f"{'-'*8}  {'-'*8}")
 
 for g in GROUPS:
     mask = np.array([x == g for x in group_arr])
     w_g = w_arr[mask]
 
-    for label, orig, uniform_corr, pb_corr in [
-        ("Elec total",   total_kwh[mask],    corrected_total_star[mask],     pb_total[mask]),
-        ("Elec heating",  heat_kwh[mask],     corrected_heat_star[mask],      pb_heat[mask]),
-        ("Elec cooling",  cool_kwh[mask],     corrected_cool_star[mask],      pb_cool[mask]),
-        ("Gas heating",   gas_heat_kwh[mask], corrected_gas_heat_star[mask],  pb_gas_heat[mask]),
+    for label, orig, uniform_corr, pb_corr, ratio_corr in [
+        ("Elec total",   total_kwh[mask],    corrected_total_star[mask],     pb_total[mask],     ratio_total[mask]),
+        ("Elec heating",  heat_kwh[mask],     corrected_heat_star[mask],      pb_heat[mask],      ratio_heat[mask]),
+        ("Elec cooling",  cool_kwh[mask],     corrected_cool_star[mask],      pb_cool[mask],      ratio_cool[mask]),
+        ("Gas heating",   gas_heat_kwh[mask], corrected_gas_heat_star[mask],  pb_gas_heat[mask],  ratio_gas_heat[mask]),
     ]:
         orig_avg = (w_g * orig).sum() / w_g.sum()
         if orig_avg < 1:
             continue
         uni_avg = (w_g * uniform_corr).sum() / w_g.sum()
         pb_avg = (w_g * pb_corr).sum() / w_g.sum()
+        ratio_avg = (w_g * ratio_corr).sum() / w_g.sum()
 
         print(f"{g:<15s}  {label:<15s}  {orig_avg:>10,.0f}  {uni_avg:>10,.0f}  "
-              f"{pb_avg:>10,.0f}  {(uni_avg - orig_avg) / orig_avg * 100:>+9.1f}%  "
-              f"{(pb_avg - orig_avg) / orig_avg * 100:>+9.1f}%")
+              f"{pb_avg:>10,.0f}  {ratio_avg:>10,.0f}  "
+              f"{(uni_avg - orig_avg) / orig_avg * 100:>+7.1f}%  "
+              f"{(pb_avg - orig_avg) / orig_avg * 100:>+7.1f}%  "
+              f"{(ratio_avg - orig_avg) / orig_avg * 100:>+7.1f}%")
     print()
 ```
 
 ### RECS kWh/sqft comparison
 
-How close does the per-building correction get to the independent RECS benchmarks, compared
-to the uniform correction?
+How close do the three corrections get to the independent RECS benchmarks?
 
 ```{python}
 #| label: pb-recs-comparison
 
+def _enduse_vals(eu: str, sub_mask: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    if eu == "Elec heating":
+        return (
+            heat_kwh[sub_mask],
+            corrected_heat_star[sub_mask],
+            pb_heat[sub_mask],
+            ratio_heat[sub_mask],
+        )
+    if eu == "Elec cooling":
+        return (
+            cool_kwh[sub_mask],
+            corrected_cool_star[sub_mask],
+            pb_cool[sub_mask],
+            ratio_cool[sub_mask],
+        )
+    if eu == "Gas heating":
+        return (
+            gas_heat_kwh[sub_mask],
+            corrected_gas_heat_star[sub_mask],
+            pb_gas_heat[sub_mask],
+            ratio_gas_heat[sub_mask],
+        )
+    raise ValueError(eu)
+
+
+def _gap_closed(orig_psf: float, new_psf: float, recs: float) -> float:
+    gap = orig_psf - recs
+    if gap <= 0:
+        return 0.0
+    return (orig_psf - new_psf) / gap * 100
+
+
 # --- Against original benchmarks (total sqft) ---
 print("Against RECS benchmarks using total sqft (TOTSQFT_EN):")
-print(f"{'Group':<15s}  {'End-use':<15s}  {'RS orig':>8s}  {'Uniform δ':>10s}  "
-      f"{'Per-bldg':>10s}  {'RECS':>6s}  {'Gap closed':>22s}")
-print(f"{'':30s}  {'':>8s}  {'':>10s}  {'':>10s}  {'':>6s}  {'Uniform':>10s}  {'Per-bldg':>10s}")
-print(f"{'-'*15}  {'-'*15}  {'-'*8}  {'-'*10}  {'-'*10}  {'-'*6}  {'-'*10}  {'-'*10}")
+print(f"{'Group':<15s}  {'End-use':<15s}  {'RS orig':>8s}  {'Uniform':>8s}  "
+      f"{'Subtract':>8s}  {'Fit-ratio':>9s}  {'RECS':>6s}  "
+      f"{'Unif':>6s}  {'Sub':>6s}  {'Ratio':>6s}")
+print(f"{'-'*15}  {'-'*15}  {'-'*8}  {'-'*8}  {'-'*8}  {'-'*9}  {'-'*6}  "
+      f"{'-'*6}  {'-'*6}  {'-'*6}")
 
 for (g, eu), recs_val in RECS_BENCHMARKS.items():
     sub_mask = np.array([x == g for x in group_arr])
     w_g = w_arr[sub_mask]
     sqft_g = sqft_arr[sub_mask]
-
-    if eu == "Elec heating":
-        orig_vals = heat_kwh[sub_mask]
-        uni_vals = corrected_heat_star[sub_mask]
-        pb_vals = pb_heat[sub_mask]
-    elif eu == "Elec cooling":
-        orig_vals = cool_kwh[sub_mask]
-        uni_vals = corrected_cool_star[sub_mask]
-        pb_vals = pb_cool[sub_mask]
-    elif eu == "Gas heating":
-        orig_vals = gas_heat_kwh[sub_mask]
-        uni_vals = corrected_gas_heat_star[sub_mask]
-        pb_vals = pb_gas_heat[sub_mask]
-    else:
-        continue
+    orig_vals, uni_vals, pb_vals, ratio_vals = _enduse_vals(eu, sub_mask)
 
     orig_psf = (w_g * orig_vals / sqft_g).sum() / w_g.sum()
     uni_psf = (w_g * uni_vals / sqft_g).sum() / w_g.sum()
     pb_psf = (w_g * pb_vals / sqft_g).sum() / w_g.sum()
+    ratio_psf = (w_g * ratio_vals / sqft_g).sum() / w_g.sum()
 
-    orig_gap = orig_psf - recs_val
-    uni_closed = (orig_psf - uni_psf) / orig_gap * 100 if orig_gap > 0 else 0
-    pb_closed_pct = (orig_psf - pb_psf) / orig_gap * 100 if orig_gap > 0 else 0
-
-    print(f"{g:<15s}  {eu:<15s}  {orig_psf:>8.2f}  {uni_psf:>10.2f}  "
-          f"{pb_psf:>10.2f}  {recs_val:>6.2f}  {uni_closed:>9.0f}%  {pb_closed_pct:>10.0f}%")
+    print(f"{g:<15s}  {eu:<15s}  {orig_psf:>8.2f}  {uni_psf:>8.2f}  "
+          f"{pb_psf:>8.2f}  {ratio_psf:>9.2f}  {recs_val:>6.2f}  "
+          f"{_gap_closed(orig_psf, uni_psf, recs_val):>5.0f}%  "
+          f"{_gap_closed(orig_psf, pb_psf, recs_val):>5.0f}%  "
+          f"{_gap_closed(orig_psf, ratio_psf, recs_val):>5.0f}%")
 
 # --- Against adjusted benchmarks (conditioned sqft) ---
 print()
 print("Against RECS benchmarks using conditioned sqft (TOTHSQFT / TOTCSQFT):")
-print(f"{'Group':<15s}  {'End-use':<15s}  {'RS orig':>8s}  {'Uniform δ':>10s}  "
-      f"{'Per-bldg':>10s}  {'RECS adj':>8s}  {'Gap closed':>22s}")
-print(f"{'':30s}  {'':>8s}  {'':>10s}  {'':>10s}  {'':>8s}  {'Uniform':>10s}  {'Per-bldg':>10s}")
-print(f"{'-'*15}  {'-'*15}  {'-'*8}  {'-'*10}  {'-'*10}  {'-'*8}  {'-'*10}  {'-'*10}")
+print(f"{'Group':<15s}  {'End-use':<15s}  {'RS orig':>8s}  {'Uniform':>8s}  "
+      f"{'Subtract':>8s}  {'Fit-ratio':>9s}  {'RECS adj':>8s}  "
+      f"{'Unif':>6s}  {'Sub':>6s}  {'Ratio':>6s}")
+print(f"{'-'*15}  {'-'*15}  {'-'*8}  {'-'*8}  {'-'*8}  {'-'*9}  {'-'*8}  "
+      f"{'-'*6}  {'-'*6}  {'-'*6}")
 
 for (g, eu), recs_adj in RECS_BENCHMARKS_ADJUSTED.items():
     sub_mask = np.array([x == g for x in group_arr])
     w_g = w_arr[sub_mask]
     sqft_g = sqft_arr[sub_mask]
-
-    if eu == "Elec heating":
-        orig_vals = heat_kwh[sub_mask]
-        uni_vals = corrected_heat_star[sub_mask]
-        pb_vals = pb_heat[sub_mask]
-    elif eu == "Elec cooling":
-        orig_vals = cool_kwh[sub_mask]
-        uni_vals = corrected_cool_star[sub_mask]
-        pb_vals = pb_cool[sub_mask]
-    elif eu == "Gas heating":
-        orig_vals = gas_heat_kwh[sub_mask]
-        uni_vals = corrected_gas_heat_star[sub_mask]
-        pb_vals = pb_gas_heat[sub_mask]
-    else:
-        continue
+    orig_vals, uni_vals, pb_vals, ratio_vals = _enduse_vals(eu, sub_mask)
 
     orig_psf = (w_g * orig_vals / sqft_g).sum() / w_g.sum()
     uni_psf = (w_g * uni_vals / sqft_g).sum() / w_g.sum()
     pb_psf = (w_g * pb_vals / sqft_g).sum() / w_g.sum()
+    ratio_psf = (w_g * ratio_vals / sqft_g).sum() / w_g.sum()
 
-    adj_gap = orig_psf - recs_adj
-    uni_closed = (orig_psf - uni_psf) / adj_gap * 100 if adj_gap > 0 else 0
-    pb_closed_pct = (orig_psf - pb_psf) / adj_gap * 100 if adj_gap > 0 else 0
-
-    print(f"{g:<15s}  {eu:<15s}  {orig_psf:>8.2f}  {uni_psf:>10.2f}  "
-          f"{pb_psf:>10.2f}  {recs_adj:>8.2f}  {uni_closed:>9.0f}%  {pb_closed_pct:>10.0f}%")
+    print(f"{g:<15s}  {eu:<15s}  {orig_psf:>8.2f}  {uni_psf:>8.2f}  "
+          f"{pb_psf:>8.2f}  {ratio_psf:>9.2f}  {recs_adj:>8.2f}  "
+          f"{_gap_closed(orig_psf, uni_psf, recs_adj):>5.0f}%  "
+          f"{_gap_closed(orig_psf, pb_psf, recs_adj):>5.0f}%  "
+          f"{_gap_closed(orig_psf, ratio_psf, recs_adj):>5.0f}%")
 ```
 
-### Per-building vs. uniform: summary comparison
+### Three-way summary comparison
 
 ```{python}
 #| label: pb-summary
 
-print("=" * 70)
-print("PER-BUILDING vs. UNIFORM ACH50 CORRECTION — COMPARISON")
-print("=" * 70)
+print("=" * 78)
+print("ACH50 CORRECTION — THREE-WAY COMPARISON")
+print("=" * 78)
 print()
-print("Both approaches use the same regression slopes (kWh/sqft per ACH50,")
-print("fitted within ResStock by heating-type group). They differ only in")
-print("how ΔACH50 is determined for each building:")
+print("All three use the same WLS slopes (kWh/sqft per ACH50, by heating-type")
+print("group). They differ in ΔACH50 and in how that Δ becomes a kWh change:")
 print()
-print("  Uniform:      ΔACH50_i = δ × ACH50_RS_i, same δ for all homes")
-print("  Per-building:  ΔACH50_i = ACH50_RS_i − ACH50_Chan_i, per-home target")
+print("  Uniform δ:   ΔACH50_i = δ × ACH50_RS_i, then subtract b×sqft×Δ")
+print("  Subtract:    ΔACH50_i = ACH50_RS_i − ACH50_Chan_i, subtract b×sqft×Δ")
+print("  Fit-ratio:   same per-home ΔACH50, scale by ê(Chan) / ê(ResStock)")
 print()
 print(f"  Uniform δ:                {delta_benchmark:.1%}")
 print(f"  Per-building mean |Δ|:    {(np.abs(delta_ach50_per_bldg) * w_arr).sum() / w_arr.sum():.1f} ACH50")
@@ -1800,21 +1921,22 @@ print()
 
 pb_remaining = (pb_elec_gwh - test_year_gwh) / test_year_gwh * 100
 uni_remaining = (corrected_gwh_star - test_year_gwh) / test_year_gwh * 100
+ratio_remaining = (ratio_elec_gwh - test_year_gwh) / test_year_gwh * 100
 print("ELECTRIC:")
-print(f"  {'':30s}  {'Uniform δ':>10s}  {'Per-bldg':>10s}")
-print(f"  {'Corrected total (GWh)':30s}  {corrected_gwh_star:>10.2f}  {pb_elec_gwh:>10.2f}")
-print(f"  {'Gap to test-year':30s}  {uni_remaining:>+9.1f}%  {pb_remaining:>+9.1f}%")
-print(f"  {'Gap closed':30s}  {uniform_closed / gap_total * 100:>9.0f}%  {pb_closed / gap_total * 100:>9.0f}%")
+print(f"  {'':30s}  {'Uniform':>10s}  {'Subtract':>10s}  {'Fit-ratio':>10s}")
+print(f"  {'Corrected total (GWh)':30s}  {corrected_gwh_star:>10.2f}  {pb_elec_gwh:>10.2f}  {ratio_elec_gwh:>10.2f}")
+print(f"  {'Gap to test-year':30s}  {uni_remaining:>+9.1f}%  {pb_remaining:>+9.1f}%  {ratio_remaining:>+9.1f}%")
+print(f"  {'Gap closed':30s}  {uniform_closed / gap_total * 100:>9.0f}%  {pb_closed / gap_total * 100:>9.0f}%  {ratio_closed / gap_total * 100:>9.0f}%")
+print(f"  {'Heating zeroed (n)':30s}  {'—':>10s}  {n_heat_zero_sub:>10,d}  {n_heat_zero_ratio:>10,d}")
 print()
 print("NATURAL GAS (thermal kWh):")
-print(f"  {'':30s}  {'Uniform δ':>10s}  {'Per-bldg':>10s}")
-print(f"  {'Corrected total (GWh)':30s}  {corrected_gas_gwh_star:>10.2f}  {pb_gas_gwh:>10.2f}")
-print(f"  {'Change from original':30s}  {uniform_gas_change:>+9.1f}%  {pb_gas_change:>+9.1f}%")
+print(f"  {'':30s}  {'Uniform':>10s}  {'Subtract':>10s}  {'Fit-ratio':>10s}")
+print(f"  {'Corrected total (GWh)':30s}  {corrected_gas_gwh_star:>10.2f}  {pb_gas_gwh:>10.2f}  {ratio_gas_gwh:>10.2f}")
+print(f"  {'Change from original':30s}  {uniform_gas_change:>+9.1f}%  {pb_gas_change:>+9.1f}%  {ratio_gas_change:>+9.1f}%")
 print()
-print("The per-building correction targets the ACH50 discrepancy where it")
-print("actually is — concentrated in older vintages — rather than spreading")
-print("it uniformly. Because it uses each home's own Chan-predicted ACH50")
-print("as the target, it also allows corrections in both directions: homes")
-print("with too-tight envelopes get a load increase, while homes with")
-print("overstated infiltration get a load decrease.")
+print("Subtract and fitted-ratio share the same per-home Chan target, so they")
+print("concentrate the correction in older vintages the same way. They differ")
+print("only off the regression line: subtract can delete heating in low-intensity")
+print("homes; fitted-ratio applies the line's percent drop to whatever the home")
+print("actually used.")
 ```

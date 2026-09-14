@@ -1,0 +1,365 @@
+---
+title: eda_muni_rates
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+
+# Context
+
+Massachusetts has many Municipal Light Plants (MLPs), which are quasi-public utilities that own and operate local electricity distribution systems.
+
+Unlike for the investor-owned utilities (IOUs) in the state, we only have data on their supply and deliery rates through the end of 2023, not the 2024 rates used in the analysis.
+
+So we need to extrapolate the 2023 rates to 2024, which we do in this notebook by inflating the 2023 rates by the inflation rate.
+
+# Setup
+
+First, we load the libraries and define the paths.
+```{r load-libraries}
+# Load all required libraries
+library(tidyverse)
+library(scales)
+library(gt)
+library(gtExtras)
+library(readxl)
+library(DBI)
+library(duckdb)
+library(ggridges)
+library(fredr)
+library(tidycensus)
+
+# Source additional functions
+source("/workspaces/reports/lib/ggplot/switchbox_theme.R")
+source("/workspaces/reports/lib/inflation.R")
+```
+
+Here, we define the paths to the dataset we'll be using—the E3's MA Residential Electricity Rates Database, and the ResStock database.
+```{r define-paths}
+# E3's MA Residential Electricity Rates Database - big excel sheet developed by E3, owned by massgov
+# https://www.mass.gov/doc/massachusetts-residential-electricity-rates-database
+path_ma_rates_xlsx <- "/workspaces/reports/data/utility_rates/electric/madpu/residential_electricity_rates_database_20250520.xlsx"
+
+# Path to ResStock database
+path_rs_db <- "/workspaces/reports/data/ResStock/2022_resstock_amy2018_release_1.1/rs_ma_hp_rates_2.db"
+
+```
+
+It's best practice to define all output paths at the top of the notebook.
+```{r define-output-path}
+# Path for saving MLP delivery tariffs
+path_mlp_tariffs_output <- "/workspaces/reports/data/utility_rates/electric/madpu/ma_mlp_delivery_tariffs.rds"
+
+# Path to FRED API key
+path_fred_key <- "/workspaces/reports/.secrets/fred.key"
+```
+
+# Inflation Adjustment
+
+Next, we fetch the inflation time series data from FRED.
+```{r fetch-inflation-data}
+# Load the FRED API key
+get_eci_inflation_factor <- function(input_year, target_year, api_key) {
+  # Set FRED API key
+  fredr_set_key(api_key)
+
+  # Employment Cost Index: Wages & salaries for Private industry workers in Middle Atlantic
+  ECI <- "CIU2020000000212I"
+
+  # Get inflation index for date range
+  start_date <- paste0(input_year, "-01-01")
+  end_date <- paste0(target_year, "-01-01")
+  wage_index <- get_inflation_index(series = ECI,
+                                  start = start_date,
+                                  end = end_date,
+                                  api_key = api_key)
+
+  # Calculate and return inflation factor
+  inflation_adj_factor <- get_inflation_factor(wage_index,
+                                             input_year = input_year,
+                                             target_year = target_year)
+  print(paste0("Inflation factor for ", input_year, " to ", target_year, ": ", inflation_adj_factor))
+  return(inflation_adj_factor)
+}
+
+# Get inflation factor for 2023 to 2024
+FRED_KEY <- file(path_fred_key) |> readLines() # Needs API key
+
+inf_2023_2024 <- get_eci_inflation_factor(2006, 2024, FRED_KEY)
+
+years = seq(2006, 2023)
+result_tibble <- tibble(
+  year = years,
+  inflation_factor = map_dbl(years, ~get_eci_inflation_factor(.x, 2024, FRED_KEY))
+)
+
+# Add row for 2024 (inflation factor = 1.0)
+result_tibble <- bind_rows(
+  result_tibble,
+  tibble(year = 2024, inflation_factor = 1.0),
+  tibble(year = 2025, inflation_factor = 1.0)
+)
+
+file_path <- "/workspaces/reports/data/fred/inflation_factors.rds"
+dir.create(dirname(file_path), recursive = TRUE, showWarnings = FALSE)
+
+# Save the file
+saveRDS(result_tibble, file_path)
+
+#
+inflation_adj_2023_2024 <- get_inflation_factor(wage_index, input_year = 2023, target_year = 2024)
+```
+
+
+```{r}
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+DBI::dbWriteTable(con, "inflation_factors", result_tibble, overwrite = TRUE)
+DBI::dbDisconnect(con)
+```
+
+
+# MLP Customer Charge
+
+In this section, we inflate the MLP customer charge from 2023 to 2024.
+```{r inflate-mlp-customer-charge}
+# Read the E3 rates data
+mlp_customer_charge <- readxl::read_xlsx(
+  path = path_ma_rates_xlsx,
+  sheet = "Summary",
+  range = "C259:E454"
+)
+
+# Get 2023 values and inflate to 2024
+inflation_adj_2023_2024 <- get_inflation_factor(wage_index, input_year = 2023, target_year = 2024)
+mlp_customer_charge_2024 <- mlp_customer_charge |>
+  filter(Year == 2023) |>
+  mutate(
+    Value = Value * inflation_adj_2023_2024,
+    Year = 2024
+  )
+
+# Add the 2024 values back to the original data
+mlp_customer_charge <- bind_rows(
+  mlp_customer_charge,
+  mlp_customer_charge_2024
+)
+
+mlp_customer_charge <- mlp_customer_charge |>
+  mutate(charge_type = "customer_charge")
+```
+
+Let's inspect some summary statistics of the inflated 2024 customer charge we've constructed.
+```{r summary-stats-mlp-customer-charge}
+# Summary statistics
+mlp_customer_charge |>
+  filter(Year == 2024) |>
+  summarise(
+    min = min(`Value`, na.rm = TRUE),
+    max = max(`Value`, na.rm = TRUE),
+    p10 = quantile(`Value`, probs = 0.10, na.rm = TRUE),
+    p25 = quantile(`Value`, probs = 0.25, na.rm = TRUE),
+    p50 = quantile(`Value`, probs = 0.50, na.rm = TRUE),
+    p75 = quantile(`Value`, probs = 0.75, na.rm = TRUE),
+    p90 = quantile(`Value`, probs = 0.90, na.rm = TRUE)
+  )
+```
+
+Now, let's plot the distribution of the customer charge by year, including both the historical and inflated 2024 values, so we sanity check our work.
+
+```{r plot-mlp-customer-charge}
+# Create histogram of delivery charges by year
+# Filter to recent years
+customer_charge_by_year <- mlp_customer_charge |>
+  filter(Year %in% c(2019, 2024)) |>
+  mutate(Year = as.factor(Year))
+
+# Create the plot
+customer_charge_plot <- customer_charge_by_year |>
+  ggplot(aes(x = Value, y = fct_rev(Year), fill = Year)) +
+  geom_density_ridges(
+    alpha = 0.7,
+    rel_min_height = 0.01,
+    scale = 1,
+    color = NA # Remove the outline
+  ) +
+  stat_density_ridges(
+    quantile_lines = TRUE,
+    quantiles = 2,
+    alpha = 0,
+    color = "black",
+    linetype = "dashed",
+    scale = 1
+  ) +
+  geom_text(
+    data = customer_charge_by_year |>
+      group_by(Year) |>
+      summarise(
+        median = median(Value, na.rm = TRUE),
+        y = as.numeric(fct_rev(Year)) + 0.2
+      ),
+    aes(
+      x = median+0.6,
+      y = y,
+      label = paste0(Year, ": $", round(median, 2))
+    ),
+    vjust = -0.5,
+    size = 3
+  ) +
+  scale_x_continuous(
+    limits = c(0, max(mlp_customer_charge |> filter(Year == 2024) |> pull(Value))),
+    labels = scales::label_dollar()
+  ) +
+  scale_y_discrete(expand = expansion(mult = c(0, 0.1))) +
+  scale_fill_manual(values = c("steelblue", "darkred")) +
+  labs(
+    title = "Distribution of MLP Customer Charges by Year",
+    x = "Customer Charge ($)",
+    y = "Year"
+  ) +
+  theme_minimal()
+
+# Display the plot
+customer_charge_plot
+```
+
+# MLP Delivery Charge
+
+In this section, we repeat what we did for the MLP customer charge, but for the MLP delivery charge.
+```{r inflate-mlp-delivery-charge}
+# Read the E3 rates data
+mlp_delivery_rate <- readxl::read_xlsx(
+  path = path_ma_rates_xlsx,
+  sheet = "Summary",
+  range = "C459:E653",
+  col_names = FALSE,
+  col_types = c("text", "numeric", "numeric")
+)
+
+names(mlp_delivery_rate) <- c("Utility","Year", "Value")
+
+# Get 2023 values and inflate to 2024
+mlp_delivery_rate_2024 <- mlp_delivery_rate |>
+  filter(Year == 2023) |>
+  mutate(
+    Value = Value * inflation_adj_2023_2024,
+    Year = 2024
+  )
+
+# Add the 2024 values back to the original data
+mlp_delivery_rate <- bind_rows(
+  mlp_delivery_rate,
+  mlp_delivery_rate_2024
+)
+
+mlp_delivery_rate <- mlp_delivery_rate |>
+  mutate(charge_type = "delivery_rate")
+```
+
+Let's inspect some summary statistics of the inflated 2024 delivery charge we've constructed.
+
+```{r summary-stats-mlp-delivery-charge}
+stats_mlp_delivery_rate_2019 <- mlp_delivery_rate |>
+  filter(Year == 2019) |>
+  summarise(
+    p10 = quantile(`Value`, probs = 0.10, na.rm = TRUE),
+    p25 = quantile(`Value`, probs = 0.25, na.rm = TRUE),
+    p50 = quantile(`Value`, probs = 0.50, na.rm = TRUE),
+    p75 = quantile(`Value`, probs = 0.75, na.rm = TRUE),
+    p90 = quantile(`Value`, probs = 0.90, na.rm = TRUE)
+  )
+
+stats_mlp_delivery_rate_2024 <- mlp_delivery_rate |>
+  filter(Year == 2024) |>
+  summarise(
+    p10 = quantile(`Value`, probs = 0.10, na.rm = TRUE),
+    p25 = quantile(`Value`, probs = 0.25, na.rm = TRUE),
+    p50 = quantile(`Value`, probs = 0.50, na.rm = TRUE),
+    p75 = quantile(`Value`, probs = 0.75, na.rm = TRUE),
+    p90 = quantile(`Value`, probs = 0.90, na.rm = TRUE)
+  )
+
+stats_mlp_delivery_rate_2019
+stats_mlp_delivery_rate_2024
+```
+
+Here again, let's plot sanity check our work by plotting the distribution of the delivery charge by year, including both the historical and inflated 2024 values.
+
+```{r plot-mlp-delivery-rate}
+# Create histogram of delivery charges by year
+# Filter to recent years
+delivery_by_year <- mlp_delivery_rate |>
+  filter(Year %in% c(2019, 2024)) |>
+  mutate(Year = as.factor(Year))
+
+# Create the plot
+delivery_rate_plot <- delivery_by_year |>
+  ggplot(aes(x = Value, y = fct_rev(Year), fill = Year)) +
+  geom_density_ridges(
+    alpha = 0.7,
+    rel_min_height = 0.01,
+    scale = 1,
+    color = NA # Remove the outline
+  ) +
+  stat_density_ridges(
+    quantile_lines = TRUE,
+    quantiles = 2,
+    alpha = 0,
+    color = "black",
+    linetype = "dashed",
+    scale = 1
+  ) +
+  geom_text(
+    data = delivery_by_year |>
+      group_by(Year) |>
+      summarise(
+        median = median(Value, na.rm = TRUE),
+        y = as.numeric(fct_rev(Year)) + 0.02
+      ),
+    aes(
+      x = median+0.01,
+      y = y,
+      label = paste0(Year, ": $", round(median, 3))
+    ),
+    vjust = -0.5,
+    size = 3
+  ) +
+  scale_x_continuous(
+    limits = c(0.075, max(mlp_delivery_rate |> filter(Year == 2024) |> pull(Value))),
+    labels = scales::label_dollar()
+  ) +
+  scale_y_discrete(expand = expansion(mult = c(0, 0.01))) +
+  scale_fill_manual(values = c("steelblue", "darkred")) +
+  labs(
+    title = "Distribution of MLP Delivery Charges by Year",
+    x = "Delivery Charge ($/kWh)",
+    y = "Year"
+  ) +
+  theme_minimal()
+
+# Display the plot
+delivery_rate_plot
+```
+
+# Save MLP delivery tariffs
+
+Finally, we combine the delivery and customer charges and save them as an RDS file, for use in our main analysis.
+
+```{r save-mlp-delivery-tariffs}
+mlp_delivery_tariffs <- bind_rows(
+  mlp_delivery_rate,
+  mlp_customer_charge
+)
+
+# Save MLP delivery tariffs as RDS file
+saveRDS(mlp_delivery_tariffs, path_mlp_tariffs_output)
+```

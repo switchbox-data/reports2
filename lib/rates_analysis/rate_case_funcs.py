@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import math
 import warnings
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from typing import TYPE_CHECKING, cast
 
 import matplotlib.patches as mpatches
@@ -43,8 +43,6 @@ import numpy as np
 import polars as pl
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     import polars as pl
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
@@ -507,6 +505,64 @@ def weighted_pct(df: pl.DataFrame, predicate: pl.Expr | pl.Series, weight_col: s
 # --- Bill-change diff ----------------------------------------------------------
 
 
+def _normalize_bill_months(month: str | Sequence[str]) -> list[str]:
+    """Coerce ``month=`` to a non-empty list of master-bills ``month`` labels."""
+    months = [month] if isinstance(month, str) else list(month)
+    if not months:
+        raise ValueError("month must be a non-empty month name or sequence of month names")
+    if "Annual" in months and len(months) > 1:
+        raise ValueError("Cannot combine 'Annual' with calendar months; pass one or the other")
+    return months
+
+
+def bill_period_phrase(month: str | Sequence[str]) -> str:
+    """Short phrase for chart titles: ``annual``, ``Jan``, or ``Oct-May``."""
+    months = _normalize_bill_months(month)
+    if months == ["Annual"]:
+        return "annual"
+    if len(months) == 1:
+        return months[0]
+    return f"{months[0]}-{months[-1]}"
+
+
+def _month_bills_for_delta(
+    bills: pl.LazyFrame,
+    months: list[str],
+    bill_col: str,
+    *,
+    bill_alias: str,
+    keep_meta: bool,
+    electric_utility: str | None = None,
+) -> pl.LazyFrame:
+    """Filter to *months* and optionally sum them to one row per building."""
+    filtered = bills.filter(pl.col("month").is_in(months))
+    if electric_utility is not None:
+        filtered = filtered.filter(pl.col("sb.electric_utility") == electric_utility)
+
+    if len(months) == 1:
+        cols: list[pl.Expr | str] = ["bldg_id"]
+        if keep_meta:
+            cols.extend(
+                [
+                    "weight",
+                    pl.col("postprocess_group.has_hp").alias("has_hp"),
+                    pl.col("postprocess_group.heating_type_v2").alias("heating_type_v2"),
+                ]
+            )
+        cols.append(pl.col(bill_col).alias(bill_alias))
+        return filtered.select(cols)
+
+    agg: list[pl.Expr] = [pl.col(bill_col).sum().alias(bill_alias)]
+    if keep_meta:
+        agg = [
+            pl.col("weight").first(),
+            pl.col(bill_col).sum().alias(bill_alias),
+            pl.col("postprocess_group.has_hp").first().alias("has_hp"),
+            pl.col("postprocess_group.heating_type_v2").first().alias("heating_type_v2"),
+        ]
+    return filtered.group_by("bldg_id").agg(agg)
+
+
 def bill_delta_between_segments(
     state: str,
     batch: str,
@@ -514,7 +570,7 @@ def bill_delta_between_segments(
     segment_after: str,
     *,
     bill_col: str = "energy_total_bill",
-    month: str = "Annual",
+    month: str | Sequence[str] = "Annual",
     electric_utility: str | None = None,
 ) -> pl.DataFrame:
     """Diff a per-building bill column between any two ``{scenario}_{stage}`` segments.
@@ -528,6 +584,12 @@ def bill_delta_between_segments(
       ``"hp_seasonal_percustomer_passthrough_precalc"``): same population,
       comparing two tariffs.
 
+    *month* selects which master-bills rows to diff. ``"Annual"`` (default) uses
+    the annual total. A calendar month (``"Jan"``) diffs that month alone. A
+    sequence of calendar months (e.g. BGE winter ``Oct``-``May``) sums those
+    months per building before the join — the ``delta`` is then the change over
+    that season, not a scaled annual figure.
+
     Metadata columns (``heating_type_v2``, ``has_hp``) are carried from
     *segment_before* — they are baseline-derived and identical across
     segments/stages for the same population (see rate-design-platform PR #503's
@@ -539,22 +601,21 @@ def bill_delta_between_segments(
     Returns a DataFrame with ``bldg_id``, ``weight``, ``has_hp``,
     ``heating_type_v2``, ``bill_before``, ``bill_after``, ``delta``.
     """
-    import polars as pl
-
-    before = load_master_bills(state, batch, segment_before).filter(pl.col("month") == month)
-    if electric_utility is not None:
-        before = before.filter(pl.col("sb.electric_utility") == electric_utility)
-    before = before.select(
-        "bldg_id",
-        "weight",
-        pl.col(bill_col).alias("bill_before"),
-        pl.col("postprocess_group.has_hp").alias("has_hp"),
-        pl.col("postprocess_group.heating_type_v2").alias("heating_type_v2"),
+    months = _normalize_bill_months(month)
+    before = _month_bills_for_delta(
+        load_master_bills(state, batch, segment_before),
+        months,
+        bill_col,
+        bill_alias="bill_before",
+        keep_meta=True,
+        electric_utility=electric_utility,
     )
-    after = (
-        load_master_bills(state, batch, segment_after)
-        .filter(pl.col("month") == month)
-        .select("bldg_id", pl.col(bill_col).alias("bill_after"))
+    after = _month_bills_for_delta(
+        load_master_bills(state, batch, segment_after),
+        months,
+        bill_col,
+        bill_alias="bill_after",
+        keep_meta=False,
     )
     joined = before.join(after, on="bldg_id", how="inner").with_columns(
         (pl.col("bill_after") - pl.col("bill_before")).alias("delta")
@@ -833,6 +894,7 @@ def plot_bill_change_quadrants(
     bill_col: str = "energy_total_bill",
     rate_name: str = "current rate",
     heating_types: list[str] | None = None,
+    month: str | Sequence[str] = "Annual",
 ) -> ggplot:
     """Stacked horizontal bar chart of bill-change quadrants by baseline heating type.
 
@@ -863,6 +925,12 @@ def plot_bill_change_quadrants(
     "upgrading") and ``"other"`` (heterogeneous/unclassified) — see
     ``DEFAULT_EXCLUDED_HEATING_CODES``.
 
+    *month* is passed through to ``bill_delta_between_segments()``. The default
+    ``"Annual"`` diffs the annual total; pass a sequence of calendar months
+    (e.g. BGE winter ``["Oct", ..., "May"]``) to bin the seasonal sum. Quadrant
+    cutoffs stay at +/- $1,000 of that period's dollar change — they are not
+    scaled to a 12-month equivalent.
+
     Since each bar's quadrant mix can look very different (e.g. an
     electric-resistance row might be almost entirely "savings > $1k" while a
     natural-gas row is split across all four bins), the chart replaces the
@@ -876,7 +944,7 @@ def plot_bill_change_quadrants(
 
     from lib.plotnine import theme_switchbox
 
-    delta = bill_delta_between_segments(state, batch, segment_before, segment_after, bill_col=bill_col)
+    delta = bill_delta_between_segments(state, batch, segment_before, segment_after, bill_col=bill_col, month=month)
     if heating_types is not None:
         delta = delta.filter(pl.col("heating_type_v2").is_in(heating_types))
     else:
@@ -911,9 +979,14 @@ def plot_bill_change_quadrants(
     # type rows.
     seg_label_df = _quadrant_seg_label_df([group_pcts[g] for g in avail_heating])
 
+    n_bars = len(avail_heating)
+    bar_w = 0.7 if n_bars <= 2 else 0.55
+    fig_h = max(2.5, 0.8 + 1.4 * n_bars)
+    x_expand_top = 0.45 if n_bars <= 2 else 0.6
+
     p = (
         plt.ggplot(plot_df, plt.aes(x="heating_label", y="pct", fill="quadrant"))
-        + plt.geom_col(position="stack", width=0.55)
+        + plt.geom_col(position="stack", width=bar_w)
         + plt.geom_text(
             mapping=plt.aes(label="pct"),
             data=plot_df.filter(pl.col("pct") >= 3),
@@ -925,17 +998,20 @@ def plot_bill_change_quadrants(
         )
         + plt.scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
         + plt.scale_y_continuous(expand=(0, 0, 0.04, 0))
-        + plt.scale_x_discrete(expand=(0, 0, 0, 0.6))
+        + plt.scale_x_discrete(expand=(0, 0, 0, x_expand_top))
         + plt.coord_flip()
         + plt.guides(fill=False)
         + plt.labs(
             x="",
             y="% of weighted households",
-            title=f"Change in total annual energy bill after switching to a heat pump, under the {rate_name}",
+            title=(
+                f"Change in total {bill_period_phrase(month)} energy bill after "
+                f"switching to a heat pump, under the {rate_name}"
+            ),
         )
         + theme_switchbox()
         + plt.theme(
-            figure_size=(11.5, max(3.5, 1.0 + 1.4 * len(avail_heating))),
+            figure_size=(11.5, fig_h),
             # The %-of-households scale is redundant with the in-bar labels
             # above, so drop its axis entirely (title/text/ticks/line). Since
             # coord_flip() renders the "x" aesthetic (heating_label) as the
@@ -967,6 +1043,189 @@ def plot_bill_change_quadrants(
     return p
 
 
+def plot_bill_change_quadrant_single(
+    state: str,
+    batch: str,
+    segment_before: str,
+    segment_after: str,
+    *,
+    heating_type: str,
+    bill_col: str = "energy_total_bill",
+    rate_name: str = "current rate",
+    month: str | Sequence[str] = "Annual",
+    title: str | None = None,
+) -> ggplot:
+    """Single horizontal bar of bill-change quadrants for one heating type under one rate.
+
+    .. deprecated::
+        Use ``plot_bill_change_quadrant_rate_comparison()`` with a single
+        ``rates`` entry instead — it produces the same chart with consistent
+        sizing and a right-hand row label.
+
+    Like ``plot_bill_change_quadrants`` but shows only one heating type as a
+    single bar, giving it more visual weight when the analysis discusses each
+    fuel individually rather than comparing them side-by-side.
+
+    Parameters
+    ----------
+    state, batch, segment_before, segment_after
+        Passed through to ``bill_delta_between_segments()``.
+    heating_type
+        A single ``heating_type_v2`` code (e.g. ``"natgas"``,
+        ``"delivered_fuels"``).
+    bill_col
+        Column to diff; defaults to ``"energy_total_bill"``.
+    rate_name
+        Threaded into the default title (e.g. ``"Schedule R"``).
+    month
+        ``"Annual"`` or a sequence of calendar months for seasonal analysis.
+    title
+        Override the auto-generated title.
+
+    Returns
+    -------
+    ggplot
+    """
+    import plotnine as plt
+
+    from lib.plotnine import theme_switchbox
+
+    delta = bill_delta_between_segments(state, batch, segment_before, segment_after, bill_col=bill_col, month=month)
+    delta = delta.filter(pl.col("heating_type_v2") == heating_type)
+    delta = add_heating_label(delta)
+
+    heating_label = delta["heating_label"].unique().to_list()[0]
+
+    pct = quadrant_pcts(delta)
+    records: list[dict[str, object]] = []
+    for q in QUADRANT_ORDER:
+        records.append({"quadrant": q, "pct": pct[q]})
+
+    plot_df = pl.DataFrame(records).with_columns(
+        pl.col("quadrant").cast(pl.Enum(QUADRANT_ORDER)),
+    )
+
+    seg_label_df = _quadrant_seg_label_df([pct])
+
+    chart_title = title or (
+        f"Change in total {bill_period_phrase(month)} energy bill for "
+        f"{heating_label.lower()}-heated homes after switching to a heat pump, "
+        f"under the {rate_name}"
+    )
+
+    p = (
+        plt.ggplot(plot_df, plt.aes(x=1, y="pct", fill="quadrant"))
+        + plt.geom_col(position="stack", width=0.55)
+        + plt.geom_text(
+            mapping=plt.aes(label="pct"),
+            data=plot_df.filter(pl.col("pct") >= 3),
+            position=plt.position_stack(vjust=0.5),
+            format_string="{:.1f}%",
+            color="white",
+            size=11,
+            fontweight="bold",
+        )
+        + plt.scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
+        + plt.scale_y_continuous(expand=(0, 0, 0.04, 0))
+        + plt.scale_x_continuous(expand=(0, 0.35, 0, 1.2))
+        + plt.coord_flip()
+        + plt.guides(fill=False)
+        + plt.labs(x="", y="", title=chart_title)
+        + theme_switchbox()
+        + plt.theme(
+            figure_size=(13.5, 2.6),
+            axis_text=plt.element_blank(),
+            axis_ticks_x=plt.element_blank(),
+            axis_ticks_y=plt.element_blank(),
+            axis_line_x=plt.element_blank(),
+            axis_line_y=plt.element_blank(),
+            panel_grid=plt.element_blank(),
+        )
+    )
+
+    if seg_label_df is not None:
+        for ha_val in seg_label_df["ha"].unique().to_list():
+            sub = seg_label_df.filter(pl.col("ha") == ha_val)
+            p = p + plt.geom_text(
+                mapping=plt.aes(x="x", y="y", label="label", color="color"),
+                data=sub,
+                ha=ha_val,
+                va="bottom",
+                size=10,
+                fontweight="bold",
+                inherit_aes=False,
+                show_legend=False,
+            )
+        p = p + plt.scale_color_identity()
+
+    return p
+
+
+def plot_bill_change_quadrant_rate_comparison(
+    state: str,
+    batch: str,
+    segment_before: str,
+    rates: Sequence[tuple[str, str]],
+    *,
+    heating_type: str,
+    bill_col: str = "energy_total_bill",
+    month: str | Sequence[str] = "Annual",
+    title: str | None = None,
+    title_parts: list[tuple[str, str]] | None = None,
+) -> ggplot | Figure:
+    """Compare bill-change quadrants for one heating type across multiple rate scenarios.
+
+    Convenience wrapper around ``plot_bill_change_quadrant_comparison()`` that
+    handles the ``bill_delta_between_segments()`` calls and filtering
+    internally, so the caller just passes segment names and labels.
+
+    Parameters
+    ----------
+    state, batch, segment_before
+        Passed through to ``bill_delta_between_segments()`` for each rate.
+    rates
+        Sequence of ``(segment_after, bar_label)`` tuples — one per rate
+        scenario, e.g. ``[("default_calibrated", "Schedule R"),
+        ("hp_seasonal_…_calibrated", "Schedule R-HP")]``.
+    heating_type
+        A single ``heating_type_v2`` code (e.g. ``"natgas"``).
+    bill_col
+        Column to diff; defaults to ``"energy_total_bill"``.
+    month
+        ``"Annual"`` or a sequence of calendar months.
+    title
+        Override the auto-generated title string. When *None* (default), a
+        title is built from *heating_type* and *month*.
+    title_parts
+        Optional multi-color title parts (see
+        ``plot_bill_change_quadrant_comparison``).
+
+    Returns
+    -------
+    ggplot | Figure
+        ggplot when *title_parts* is None, Figure when multi-color title is
+        used.
+    """
+    heating_label = HEATING_TYPE_LABELS.get(heating_type, heating_type)
+
+    rows: list[tuple[str, pl.DataFrame]] = []
+    for segment_after, bar_label in rates:
+        delta = bill_delta_between_segments(state, batch, segment_before, segment_after, bill_col=bill_col, month=month)
+        delta = delta.filter(pl.col("heating_type_v2") == heating_type)
+        rows.append((bar_label, delta))
+
+    default_title = (
+        f"How {bill_period_phrase(month)} bills would change for "
+        f"{heating_label.lower()}-heated homes after switching to heat pumps"
+    )
+
+    return plot_bill_change_quadrant_comparison(
+        rows,
+        title=title or default_title,
+        title_parts=title_parts,
+    )
+
+
 def plot_bill_change_quadrant_comparison(
     rows: list[tuple[str, pl.DataFrame]],
     title: str = "How bills would change after switching to heat pumps:",
@@ -995,9 +1254,8 @@ def plot_bill_change_quadrant_comparison(
     string). Otherwise the plain *title* string is used as a standard
     plotnine title.
 
-    Since row labels are drawn as captions rather than axis text (there is no
-    axis at all — see below), a single row renders with no right-hand label;
-    pass at least two rows to see per-row captions.
+    Row labels are drawn as captions past the right end of each bar (there is
+    no axis text); they render for any number of rows, including a single row.
     """
     import plotnine as plt
 
@@ -1030,13 +1288,12 @@ def plot_bill_change_quadrant_comparison(
     # the row label), here the whole axis is blanked below, so row labels
     # (e.g. "Default rate") are drawn as text past the right end of each bar.
     row_label_records: list[dict[str, object]] = []
-    if n_scenarios > 1:
-        for i, (row_label, _) in enumerate(rows):
-            bar_pos = n_scenarios - i
-            row_label_records.append({"x": bar_pos, "y": 101, "label": row_label})
+    for i, (row_label, _) in enumerate(rows):
+        bar_pos = n_scenarios - i
+        row_label_records.append({"x": bar_pos, "y": 101, "label": row_label})
     row_label_df = pl.DataFrame(row_label_records) if row_label_records else None
 
-    top_expand = 0.7 if n_scenarios > 1 else 1.2
+    top_expand = 0.7
     plotnine_title = "" if title_parts else title
 
     p = (
@@ -1059,7 +1316,7 @@ def plot_bill_change_quadrant_comparison(
         + plt.labs(x="", y="", title=plotnine_title)
         + theme_switchbox()
         + plt.theme(
-            figure_size=(13.5, max(2.6, 1.0 + 1.4 * n_scenarios)),
+            figure_size=(13.5, max(3.2, 1.0 + 1.4 * n_scenarios)),
             # No axis at all here: percentages are already captioned in-bar,
             # and row labels are captioned at the right end of each bar (see
             # row_label_df above), so the categorical axis text would be
@@ -1144,6 +1401,7 @@ def plot_weighted_bill_change_hist(
     *,
     bin_width: int = 100,
     show_mean_median: bool = False,
+    x_label: str = "Annual bill change ($)",
 ) -> ggplot:
     """Weighted histogram of annual bill change, colored by quadrant.
 
@@ -1153,6 +1411,9 @@ def plot_weighted_bill_change_hist(
 
     When *show_mean_median* is True, adds dashed vertical lines for the
     weighted mean (carrot) and median (midnight) with text annotations.
+
+    *x_label* overrides the default x-axis label, for callers whose ``delta``
+    column isn't a plain bill change (e.g. incremental revenue minus marginal cost).
     """
     import plotnine as plt
 
@@ -1194,7 +1455,7 @@ def plot_weighted_bill_change_hist(
             labels=lambda xs: [f"${x:,.0f}" if x >= 0 else f"-${abs(x):,.0f}" for x in xs],
         )
         + plt.coord_cartesian(xlim=(hist_x_lo, hist_x_hi))
-        + plt.labs(x="Annual bill change ($)", y="Weighted households", title=title)
+        + plt.labs(x=x_label, y="Weighted households", title=title)
         + plt.guides(fill=False)
         + theme_switchbox()
         + plt.theme(figure_size=(10.5, 4.5))
@@ -1411,10 +1672,12 @@ def plot_mc_heatmap(
     """Render an 8760-hour (day-of-year x hour-of-day) marginal-cost heatmap.
 
     Filters to rows where *value_col* is positive (zero-cost hours are left
-    blank rather than tiled white), draws with plotnine, and rasterizes the
-    tile layer before returning so ``display_svg``/``display_figure`` produces
-    a compact SVG. Expects *df* to already have day-of-year and hour columns
-    (e.g. via ``.dt.ordinal_day()`` / ``.dt.hour()`` on a timestamp column).
+    blank rather than tiled white) and draws with plotnine.  Expects *df* to
+    already have day-of-year and hour columns (e.g. via
+    ``.dt.ordinal_day()`` / ``.dt.hour()`` on a timestamp column).
+
+    The caller should pass the returned ``Figure`` to
+    ``display_figure`` / ``display_svg`` for Quarto embedding.
     """
     import plotnine as plt
 
@@ -1436,11 +1699,7 @@ def plot_mc_heatmap(
         + theme_switchbox()
         + plt.theme(figure_size=figure_size, legend_position="right")
     )
-    fig = p.draw()
-    for ax in fig.get_axes():
-        for img in ax.get_images():
-            img.set_rasterized(True)
-    return fig
+    return p.draw()
 
 
 # --- Energy burden ---------------------------------------------------------------
@@ -2276,6 +2535,7 @@ def plot_decomposed_bill_3bar(
     *,
     third_scenario_label: str,
     title: str,
+    side_labels: dict[str, str] | None = None,
 ) -> tuple[Figure, float, float, float, float]:
     """Three-bar decomposed annual bill chart: natural gas, HP on the default rate, HP on a reform rate.
 
@@ -2411,40 +2671,163 @@ def plot_decomposed_bill_3bar(
         alpha=0.8,
     )
 
+    _labels = side_labels or {}
     side_x = x[2] + w / 2 + 0.15
     d3 = after_reform
     side_specs = [
-        ("Delivery\n(Fixed)", d3["delivery_fixed"] / 2, DECOMPOSED_BILL_LABEL_COLORS["delivery_fixed"]),
         (
-            "Delivery\n(Volumetric)",
+            _labels.get("delivery_fixed", "Delivery\n(Fixed)"),
+            d3["delivery_fixed"] / 2,
+            DECOMPOSED_BILL_LABEL_COLORS["delivery_fixed"],
+        ),
+        (
+            _labels.get("delivery_volumetric", "Delivery\n(Volumetric)"),
             d3["delivery_fixed"] + d3["delivery_volumetric"] / 2,
             DECOMPOSED_BILL_LABEL_COLORS["delivery_volumetric"],
         ),
         (
-            "Supply",
+            _labels.get("supply", "Supply"),
             d3["delivery_fixed"] + d3["delivery_volumetric"] + d3["supply"] / 2,
             DECOMPOSED_BILL_LABEL_COLORS["supply"],
         ),
         (
-            "Gas",
+            _labels.get("gas", "Gas"),
             d3["delivery_fixed"] + d3["delivery_volumetric"] + d3["supply"] + d3["gas"] / 2,
             DECOMPOSED_BILL_LABEL_COLORS["gas"],
         ),
     ]
     for lbl, ym, clr in side_specs:
         ax.plot([x[2] + w / 2 + 0.02, side_x - 0.03], [ym, ym], color=clr, linewidth=0.7, alpha=0.6)
-        ax.text(side_x, ym, lbl, color=clr, ha="left", va="center", fontsize=8.5, fontweight="bold")
+        ax.text(side_x, ym, lbl, color=clr, ha="left", va="center", fontsize=11, fontweight="bold")
 
     ax.set_xticks(x)
     ax.set_xticklabels(scenarios, fontsize=11)
     ax.set_ylabel("Annual energy bill ($)", fontsize=12)
     ax.set_ylim(0, max(totals) * 1.22)
-    ax.set_xlim(-0.5, x[2] + w / 2 + 0.7)
+    ax.set_xlim(x[0] - w / 2 - 0.3, x[2] + w / 2 + 0.7)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.spines["bottom"].set_bounds(-0.5, x[2] + w / 2)
+    ax.spines["bottom"].set_bounds(x[0] - w / 2 - 0.3, x[2] + w / 2)
     fig.tight_layout()
     return fig, savings, pct_savings / 100, totals[1], totals[2]
+
+
+def plot_decomposed_bill_2bar(
+    before: dict[str, float],
+    after: dict[str, float],
+    *,
+    bar_labels: tuple[str, str],
+    title: str,
+    reserve_third: bool = False,
+    side_labels: dict[str, str] | None = None,
+) -> Figure:
+    """Two-bar decomposed annual bill chart: fossil-fuel furnace vs. heat pump.
+
+    Each of *before* and *after* is a dict with keys matching
+    ``DECOMPOSED_BILL_COMPONENT_KEYS`` (``delivery_fixed``,
+    ``delivery_volumetric``, ``supply``, ``gas``).  *bar_labels* names the
+    two bars (e.g. ``("Natural gas\\nfurnace", "Heat pump")``).
+
+    When *reserve_third* is True, the chart reserves space for a third bar
+    slot (matching the layout of ``plot_decomposed_bill_3bar``) so the two
+    charts share identical bar widths and proportions.
+
+    Draws with raw matplotlib for per-segment dollar labels and total
+    annotations.  Returns the ``Figure`` (caller uses ``display_figure``).
+    """
+    scenarios = list(bar_labels)
+    n_slots = 3 if reserve_third else 2
+    x = np.arange(n_slots)
+    w = 0.55
+    comp_keys = DECOMPOSED_BILL_COMPONENT_KEYS
+    bars_data = [before, after]
+
+    figsize = (12, 7) if reserve_third else (10.5, 6)
+    fig, ax = pyplot.subplots(figsize=figsize)
+    ax.set_title(
+        title,
+        fontfamily="GT Planar",
+        fontweight="bold",
+        fontsize=15,
+        loc="left",
+        pad=12,
+    )
+
+    bottoms = [0.0, 0.0]
+    for ck in comp_keys:
+        vals = [bars_data[i][ck] for i in range(2)]
+        ax.bar(x[:2], vals, w, bottom=bottoms, color=DECOMPOSED_BILL_COLORS[ck], edgecolor="none")
+        for i, (v, b) in enumerate(zip(vals, bottoms, strict=False)):
+            if v > 80:
+                ax.text(
+                    x[i],
+                    b + v / 2,
+                    _fmt_dollar(v),
+                    ha="center",
+                    va="center",
+                    color="white",
+                    fontweight="bold",
+                    fontsize=11,
+                    zorder=11,
+                )
+        bottoms = [b + v for b, v in zip(bottoms, vals, strict=False)]
+
+    totals = [sum(bars_data[i][k] for k in comp_keys) for i in range(2)]
+
+    for i in range(2):
+        ax.text(
+            x[i],
+            totals[i] + 40,
+            _fmt_dollar(totals[i]),
+            ha="center",
+            va="bottom",
+            color="#333333",
+            fontweight="bold",
+            fontsize=12,
+        )
+
+    _labels = side_labels or {}
+    side_x = x[1] + w / 2 + 0.15
+    y_cursor = 0.0
+    for key, label in [
+        ("delivery_fixed", _labels.get("delivery_fixed", "Delivery\n(Fixed)")),
+        ("delivery_volumetric", _labels.get("delivery_volumetric", "Delivery\n(Volumetric)")),
+        ("supply", _labels.get("supply", "Supply")),
+        ("gas", _labels.get("gas", "Fossil fuel")),
+    ]:
+        val = after[key]
+        if val > 30:
+            ym = y_cursor + val / 2
+            ax.plot(
+                [x[1] + w / 2 + 0.02, side_x - 0.03],
+                [ym, ym],
+                color=DECOMPOSED_BILL_LABEL_COLORS[key],
+                linewidth=0.7,
+                alpha=0.6,
+            )
+            ax.text(
+                side_x,
+                ym,
+                label,
+                color=DECOMPOSED_BILL_LABEL_COLORS[key],
+                ha="left",
+                va="center",
+                fontsize=11,
+                fontweight="bold",
+            )
+        y_cursor += val
+
+    x_end = x[n_slots - 1] + w / 2
+    ax.set_xticks(x[:2])
+    ax.set_xticklabels(scenarios, fontsize=11)
+    ax.set_ylabel("Annual energy bill ($)", fontsize=12)
+    ax.set_ylim(0, max(totals) * 1.18)
+    ax.set_xlim(x[0] - w / 2 - 0.3, x_end + 0.7)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["bottom"].set_bounds(x[0] - w / 2 - 0.3, x[1] + w / 2)
+    fig.tight_layout()
+    return fig
 
 
 def _cost_breakdown_stack(
@@ -2471,7 +2854,7 @@ def _cost_breakdown_stack(
                 va="center",
                 color=COST_BREAKDOWN_LABEL_COLORS[component],
                 fontweight="bold",
-                fontsize=8.5,
+                fontsize=12,
                 zorder=3,
             )
         bottom += value
@@ -2483,7 +2866,7 @@ def _cost_breakdown_stack(
         va="bottom",
         color="#333333",
         fontweight="bold",
-        fontsize=9,
+        fontsize=13,
     )
     return total, mids
 
@@ -2610,7 +2993,7 @@ def plot_representative_cost_breakdown(
             ax.set_ylim(0, ymax)
             ax.set_xlim(-0.5, 0.5)
             ax.set_xticks([0])
-            ax.set_xticklabels([scenario_label], fontsize=10)
+            ax.set_xticklabels([scenario_label], fontsize=11)
             ax.set_yticks([])
             for spine in ("top", "right", "left"):
                 ax.spines[spine].set_visible(False)
@@ -2624,7 +3007,7 @@ def plot_representative_cost_breakdown(
             group_title,
             ha="center",
             va="bottom",
-            fontsize=11,
+            fontsize=13,
             fontweight="bold",
         )
         group_hp_axes.append((ax_hp, mids_hp))
@@ -2659,7 +3042,7 @@ def plot_representative_cost_breakdown(
                 color=line_color,
                 ha="left",
                 va="center",
-                fontsize=7.5,
+                fontsize=11,
                 fontweight="bold",
                 transform=fig.transFigure,
             )
@@ -2868,7 +3251,7 @@ def _add_monthly_load_side_callouts(fig: Figure, monthly: pl.DataFrame) -> None:
             transform=trans,
             ha="left",
             va="center",
-            fontsize=11,
+            fontsize=13,
             color=color,
             fontweight="bold",
             clip_on=False,
@@ -3039,7 +3422,7 @@ def plot_monthly_load_with_peak(
         transform=trans,
         ha="left",
         va="center",
-        fontsize=11,
+        fontsize=13,
         color=_MONTHLY_LOAD_BEFORE_COLOR,
         fontweight="bold",
         clip_on=False,
@@ -3059,7 +3442,7 @@ def plot_monthly_load_with_peak(
         "Usage during\npeak hours",
         ha="center",
         va="bottom",
-        fontsize=11,
+        fontsize=13,
         color=_MONTHLY_LOAD_PEAK_COLOR,
         fontweight="bold",
         transform=ax.transData,
@@ -3265,7 +3648,7 @@ def plot_monthly_load_before_after(
             label="More efficient cooling\nlowers use",
             ha="center",
             va="bottom",
-            size=11,
+            size=13,
             color=_SAVINGS_LABEL_COLOR,
             fontweight="bold",
         )
@@ -3299,7 +3682,7 @@ def plot_monthly_load_before_after(
                 "Peak-hour usage\nincrease \u2191",
                 ha="center",
                 va="bottom",
-                fontsize=11,
+                fontsize=13,
                 color=_MONTHLY_LOAD_PEAK_COLOR,
                 fontweight="bold",
                 transform=ax.transData,
@@ -3322,7 +3705,7 @@ def plot_monthly_load_before_after(
                 xytext=(dec_x + 1.8, dec_y),
                 ha="left",
                 va="center",
-                fontsize=11,
+                fontsize=13,
                 color=_MONTHLY_LOAD_PEAK_COLOR,
                 fontweight="bold",
                 arrowprops={
@@ -3562,6 +3945,14 @@ def plot_annual_bill_component_stacked(
         .alias("label"),
     )
 
+    bar_totals = (
+        chart_data.group_by("component")
+        .agg(pl.col("value").sum().alias("total"))
+        .with_columns(
+            pl.format("${}", pl.col("total").round(0).cast(pl.Int64)).alias("total_label"),
+        )
+    )
+
     p = (
         ggplot(chart_data, aes(x="component", y="value", fill="fill_key"))
         + geom_col(width=0.6, position=position_stack(reverse=True))
@@ -3572,11 +3963,21 @@ def plot_annual_bill_component_stacked(
             color="white",
             fontweight="bold",
         )
+        + geom_text(
+            mapping=aes(x="component", y="total", label="total_label"),
+            data=bar_totals,
+            va="bottom",
+            size=10,
+            color="#333333",
+            fontweight="bold",
+            nudge_y=5,
+            inherit_aes=False,
+        )
         + scale_fill_manual(values=_BILL_COLORS)
         + scale_x_discrete(limits=_BILL_COMPONENT_ORDER)
         + scale_y_continuous(
             labels=lambda xs: [f"${x:,.0f}" for x in xs],
-            expand=(0, 0, 0.08, 0),
+            expand=(0, 0, 0.10, 0),
         )
         + labs(title=title, x="", y="Annual bill")
         + theme_switchbox()
@@ -3592,11 +3993,19 @@ def plot_annual_bill_component_stacked(
 
 _MC_COMPONENT_ORDER = ["Transmission", "Distribution"]
 _MC_COLORS = {
-    "Distribution": "#68bed8",
-    "Transmission": "#023047",
+    "Distribution": "#A0AF12",
+    "Transmission": "#546800",
 }
-_SUMMER_MONTHS = {"Jun", "Jul", "Aug", "Sep"}
-_SEASON_ORDER = ["Jun-Sep", "Oct-May"]
+_ALL_MONTH_ABBRS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def _season_labels(summer_months: set[str]) -> tuple[str, str]:
+    """Derive ``("May-Sep", "Oct-Apr")``-style labels from a set of summer month abbreviations."""
+    ordered = [m for m in _ALL_MONTH_ABBRS if m in summer_months]
+    winter = [m for m in _ALL_MONTH_ABBRS if m not in summer_months]
+    summer_label = f"{ordered[0]}-{ordered[-1]}"
+    winter_label = f"{winter[0]}-{winter[-1]}"
+    return summer_label, winter_label
 
 
 def plot_monthly_delivery_mc(
@@ -3669,16 +4078,21 @@ def plot_monthly_delivery_mc(
 
 def _aggregate_seasonal_mc(
     monthly_mc: pl.DataFrame,
+    *,
+    summer_months: set[str],
 ) -> dict[str, dict[str, float]]:
-    """Aggregate 12-row monthly MC into Jun-Sep and Oct-May totals.
+    """Aggregate 12-row monthly MC into summer and winter totals.
 
-    Returns ``{"Jun-Sep": {"tx": ..., "dist": ...}, "Oct-May": {...}}``.
+    *summer_months* is a set of 3-letter month abbreviations (e.g.
+    ``{"May", "Jun", "Jul", "Aug", "Sep"}``).  The returned dict is keyed by
+    the derived season labels (e.g. ``{"May-Sep": {...}, "Oct-Apr": {...}}``).
     """
+    summer_label, winter_label = _season_labels(summer_months)
     seasonal = (
         monthly_mc.with_columns(
-            pl.when(pl.col("month_label").cast(pl.String).is_in(_SUMMER_MONTHS))
-            .then(pl.lit("Jun-Sep"))
-            .otherwise(pl.lit("Oct-May"))
+            pl.when(pl.col("month_label").cast(pl.String).is_in(summer_months))
+            .then(pl.lit(summer_label))
+            .otherwise(pl.lit(winter_label))
             .alias("season")
         )
         .group_by("season")
@@ -3761,16 +4175,46 @@ def _draw_seasonal_mc_bar(
     return total
 
 
+def _add_mc_side_callouts(fig: Figure, ax: Axes, dist: float, tx: float, *, bar_x: float, bar_w: float) -> None:
+    """Add 'Distribution' and 'Transmission' side callouts touching the rightmost bar."""
+    bar_right = bar_x + bar_w / 2
+    label_x = bar_right + 0.12
+    callouts = [
+        (dist / 2, "Distribution", _MC_COLORS["Distribution"]),
+        (dist + tx / 2, "Transmission", _MC_COLORS["Transmission"]),
+    ]
+    for y, label, color in callouts:
+        ax.plot(
+            [bar_right + 0.02, label_x - 0.02],
+            [y, y],
+            color=color,
+            linewidth=1.5,
+            clip_on=False,
+        )
+        ax.text(
+            label_x,
+            y,
+            label,
+            ha="left",
+            va="center",
+            fontsize=13,
+            color=color,
+            fontweight="bold",
+            clip_on=False,
+        )
+
+
 def plot_seasonal_delivery_mc(
     monthly_mc: pl.DataFrame,
     *,
+    summer_months: set[str],
     title: str = "",
     figure_size: tuple[float, float] = (10.5, 5),
 ) -> Figure:
     """Two-bar seasonal delivery MC chart (one bar per season).
 
-    Aggregates monthly transmission and distribution costs into Jun-Sep and
-    Oct-May buckets, then draws a stacked bar for each with in-bar component
+    Aggregates monthly transmission and distribution costs into summer and
+    winter buckets, then draws a stacked bar for each with in-bar component
     labels and an above-bar total.
 
     Parameters
@@ -3778,6 +4222,9 @@ def plot_seasonal_delivery_mc(
     monthly_mc
         12-row DataFrame with ``month_label`` (Enum Jan-Dec),
         ``mc_tx_dollars``, and ``mc_dist_dollars``.
+    summer_months
+        Set of 3-letter month abbreviations defining the summer season
+        (e.g. ``{"May", "Jun", "Jul", "Aug", "Sep"}``).
     title
         Chart title.
     figure_size
@@ -3788,28 +4235,38 @@ def plot_seasonal_delivery_mc(
     Figure
         matplotlib Figure; wrap in ``display_figure`` to embed.
     """
-    agg = _aggregate_seasonal_mc(monthly_mc)
+    agg = _aggregate_seasonal_mc(monthly_mc, summer_months=summer_months)
+    season_order = list(reversed(_season_labels(summer_months)))
 
     fig, ax = pyplot.subplots(figsize=figure_size)
     ax.set_title(title, fontfamily="GT Planar", fontweight="bold", fontsize=15, loc="left", pad=12)
 
     w = 0.5
-    positions = [0, 1.2]
+    positions = [0, 0.8]
 
     max_total = 0.0
-    for i, season in enumerate(_SEASON_ORDER):
+    for i, season in enumerate(season_order):
         total = _draw_seasonal_mc_bar(ax, positions[i], agg[season]["tx"], agg[season]["dist"], w)
         max_total = max(max_total, total)
 
     ax.set_xticks(positions)
-    ax.set_xticklabels(_SEASON_ORDER, fontsize=11, fontfamily="IBM Plex Sans")
+    ax.set_xticklabels(season_order, fontsize=11, fontfamily="IBM Plex Sans")
     ax.set_ylabel("Delivery marginal cost ($)", fontsize=12, fontfamily="IBM Plex Sans")
     ax.set_ylim(0, max_total * 1.15)
-    ax.set_xlim(positions[0] - 0.6, positions[-1] + 0.6)
+    ax.set_xlim(positions[0] - w / 2 - 0.3, positions[-1] + 1.2)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+    ax.spines["bottom"].set_bounds(positions[0] - w / 2 - 0.3, positions[-1] + w / 2)
     ax.yaxis.set_major_formatter(lambda x, _: f"${x:,.2f}")
     fig.tight_layout()
+
+    # Side callouts on the tallest bar
+    tallest_idx = 0 if sum(agg[season_order[0]].values()) >= sum(agg[season_order[1]].values()) else 1
+    tallest_season = season_order[tallest_idx]
+    _add_mc_side_callouts(
+        fig, ax, agg[tallest_season]["dist"], agg[tallest_season]["tx"], bar_x=positions[tallest_idx], bar_w=w
+    )
+
     return fig
 
 
@@ -3817,12 +4274,13 @@ def plot_seasonal_delivery_mc_comparison(
     monthly_before: pl.DataFrame,
     monthly_after: pl.DataFrame,
     *,
+    summer_months: set[str],
     title: str = "",
     figure_size: tuple[float, float] = (10.5, 6),
 ) -> Figure:
     """Four-bar seasonal delivery MC chart comparing before and after heat pump.
 
-    Groups bars into two pairs (Jun-Sep and Oct-May), each with a before and
+    Groups bars into two pairs (summer and winter), each with a before and
     after bar.  A hatched rectangle and delta annotation between each pair
     shows the seasonal change, and a bracket across the top shows the net
     annual change.
@@ -3833,6 +4291,9 @@ def plot_seasonal_delivery_mc_comparison(
         12-row monthly MC DataFrame for the pre-HP period.
     monthly_after
         12-row monthly MC DataFrame for the post-HP period.
+    summer_months
+        Set of 3-letter month abbreviations defining the summer season
+        (e.g. ``{"May", "Jun", "Jul", "Aug", "Sep"}``).
     title
         Chart title.
     figure_size
@@ -3845,21 +4306,22 @@ def plot_seasonal_delivery_mc_comparison(
     """
     from lib.plotnine import SB_COLORS
 
-    agg_before = _aggregate_seasonal_mc(monthly_before)
-    agg_after = _aggregate_seasonal_mc(monthly_after)
+    agg_before = _aggregate_seasonal_mc(monthly_before, summer_months=summer_months)
+    agg_after = _aggregate_seasonal_mc(monthly_after, summer_months=summer_months)
+    season_order = list(reversed(_season_labels(summer_months)))
 
     fig, ax = pyplot.subplots(figsize=figure_size)
     ax.set_title(title, fontfamily="GT Planar", fontweight="bold", fontsize=15, loc="left", pad=12)
 
     w = 0.45
     gap_within = 0.55
-    gap_between = 1.5
+    gap_between = 1.1
 
     x = np.array([0, gap_within, gap_between, gap_between + gap_within])
 
     pairs = [
-        (agg_before[_SEASON_ORDER[0]], agg_after[_SEASON_ORDER[0]]),
-        (agg_before[_SEASON_ORDER[1]], agg_after[_SEASON_ORDER[1]]),
+        (agg_before[season_order[0]], agg_after[season_order[0]]),
+        (agg_before[season_order[1]], agg_after[season_order[1]]),
     ]
 
     totals: list[float] = []
@@ -3914,7 +4376,7 @@ def plot_seasonal_delivery_mc_comparison(
     # --- X-axis labels ---
     ax.set_xticks([])
 
-    for group_idx, season_label in enumerate(_SEASON_ORDER):
+    for group_idx, season_label in enumerate(season_order):
         group_center = (x[group_idx * 2] + x[group_idx * 2 + 1]) / 2
         ax.text(
             group_center,
@@ -3942,9 +4404,18 @@ def plot_seasonal_delivery_mc_comparison(
 
     ax.set_ylabel("Delivery marginal cost ($)", fontsize=12, fontfamily="IBM Plex Sans")
     ax.set_ylim(0, max_total * 1.25)
-    ax.set_xlim(x[0] - 0.55, x[-1] + 0.55)
+    ax.set_xlim(x[0] - w / 2 - 0.3, x[-1] + 1.2)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+    ax.spines["bottom"].set_bounds(x[0] - w / 2 - 0.3, x[-1] + w / 2)
     ax.yaxis.set_major_formatter(lambda val, _: f"${val:,.2f}")
     fig.tight_layout()
+
+    # Side callouts on the tallest bar (summer-before is typically tallest)
+    all_bars = [(agg_before[s]["dist"], agg_before[s]["tx"], x[i * 2]) for i, s in enumerate(season_order)] + [
+        (agg_after[s]["dist"], agg_after[s]["tx"], x[i * 2 + 1]) for i, s in enumerate(season_order)
+    ]
+    tallest = max(all_bars, key=lambda t: t[0] + t[1])
+    _add_mc_side_callouts(fig, ax, tallest[0], tallest[1], bar_x=tallest[2], bar_w=w)
+
     return fig

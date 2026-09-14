@@ -33,13 +33,15 @@ from great_tables import GT
 
 from lib.great_tables import get_switchbox_gt_tab_options
 from lib.plotnine import SB_COLORS, theme_switchbox
-from lib.quarto import display_gt
+from lib.quarto import display_figure, display_gt
 from lib.rates_analysis.rate_case_funcs import (
     HEATING_ORDER,
     QUADRANT_COLORS,
     QUADRANT_ORDER,
     add_heating_label,
     bill_delta_between_segments,
+    load_master_bills,
+    plot_decomposed_bill_3bar,
     quadrant_pcts,
     segment_name,
     segment_upgrade,
@@ -303,4 +305,119 @@ _savings_gt = (
     .tab_options(**get_switchbox_gt_tab_options())
 )
 display_gt(_savings_gt)
+```
+
+## Decomposed bill comparison
+
+The histograms and quadrant charts above show _total_ bill changes. The 3-bar
+charts below decompose the average natural-gas-heated home's annual energy bill
+into its components — customer charge, transmission/distribution/EmPOWER,
+generation, and natural gas — under different tariff scenarios. This lets us
+see _which parts_ of the bill drive the differences.
+
+All bars here come from CAIRO master bills (the simulator applies each tariff's
+TOU structure to individual hourly load curves and then we weight-average).
+
+```{python}
+#| label: load-bill-components-for-3bar
+
+# Load annual master bills for the four relevant segments
+SEG_R_PRECALC = SEGMENT_DEFAULT
+SEG_R_CALIBRATED = segment_name(_batch_config["BASELINE_BILL_SCENARIO"], "calibrated")
+SEG_RD_CALIBRATED = SEGMENT_RD
+SEG_RHP_CALIBRATED = segment_name(_batch_config["RHP_BILL_SCENARIO"], "calibrated")
+
+_bill_cols = [
+    "bldg_id", "weight",
+    "heats_with_natgas", "heats_with_oil", "heats_with_propane",
+    "elec_fixed_charge", "elec_delivery_bill", "elec_supply_bill",
+    "gas_total_bill", "oil_total_bill", "propane_total_bill",
+]
+
+
+def _load_annual_natgas(seg: str) -> pl.DataFrame:
+    """Load annual master bills for BGE natural-gas-heated homes."""
+    return cast(
+        pl.DataFrame,
+        load_master_bills(STATE, BATCH, seg)
+        .filter(
+            (pl.col("month") == "Annual")
+            & (pl.col("sb.electric_utility") == UTILITY)
+            & pl.col("heats_with_natgas")
+        )
+        .select(_bill_cols)
+        .collect(),
+    )
+
+
+_r_precalc = _load_annual_natgas(SEG_R_PRECALC)
+_r_calibrated = _load_annual_natgas(SEG_R_CALIBRATED)
+_rd_calibrated = _load_annual_natgas(SEG_RD_CALIBRATED)
+_rhp_calibrated = _load_annual_natgas(SEG_RHP_CALIBRATED)
+
+
+def _weighted_avg_bills(df: pl.DataFrame) -> dict[str, float]:
+    """Weighted-average bill components from master bills."""
+    w = df["weight"]
+    total_w = w.sum()
+    return {
+        "delivery_fixed": (df["elec_fixed_charge"] * w).sum() / total_w,
+        "delivery_volumetric": (df["elec_delivery_bill"] * w).sum() / total_w,
+        "supply": (df["elec_supply_bill"] * w).sum() / total_w,
+        "gas": (df["gas_total_bill"] * w).sum() / total_w,
+    }
+
+
+natgas_before = _weighted_avg_bills(_r_precalc)
+natgas_after = _weighted_avg_bills(_r_calibrated)
+natgas_rd = _weighted_avg_bills(_rd_calibrated)
+natgas_reform = _weighted_avg_bills(_rhp_calibrated)
+
+for label, d in [
+    ("R before HP", natgas_before),
+    ("R after HP", natgas_after),
+    ("RD after HP", natgas_rd),
+    ("R-HP after HP", natgas_reform),
+]:
+    print(f"{label}: " + ", ".join(f"{k}=${v:,.0f}" for k, v in d.items()) + f"  total=${sum(d.values()):,.0f}")
+```
+
+```{python}
+#| label: fig-total-bill-3bar-natgas-r-rd
+#| fig-cap: "Average annual energy bills for BGE natural-gas-heated homes: before heat pumps, after heat pumps under Schedule R, and after heat pumps under Schedule RD. Bill components from CAIRO master bills."
+
+fig_ng_r_rd, _, _, _, _ = plot_decomposed_bill_3bar(
+    natgas_before,
+    natgas_after,
+    natgas_rd,
+    third_scenario_label="Heat pump\n(Schedule RD)",
+    title="Average annual electricity + natural gas bill under Schedule R vs. Schedule RD,\nbefore and after heat pump, for BGE natural-gas-heated homes",
+    side_labels={
+        "delivery_fixed": "Customer\nCharge",
+        "delivery_volumetric": "Transmission,\nDistribution,\nEmPOWER",
+        "supply": "Generation",
+        "gas": "Natural\nGas",
+    },
+)
+display_figure(fig_ng_r_rd)
+```
+
+```{python}
+#| label: fig-total-bill-3bar-natgas-rd-rhp
+#| fig-cap: "Average annual energy bills for BGE natural-gas-heated homes: before heat pumps, after heat pumps under Schedule RD, and after heat pumps under Schedule R-HP. Bill components from CAIRO master bills."
+
+fig_ng_rd_rhp, _, _, _, _ = plot_decomposed_bill_3bar(
+    natgas_before,
+    natgas_rd,
+    natgas_reform,
+    third_scenario_label="Heat pump\n(Schedule R-HP)",
+    title="Average annual electricity + natural gas bill under Schedule RD vs. Schedule R-HP,\nbefore and after heat pump, for BGE natural-gas-heated homes",
+    side_labels={
+        "delivery_fixed": "Customer\nCharge",
+        "delivery_volumetric": "Transmission,\nDistribution,\nEmPOWER",
+        "supply": "Generation",
+        "gas": "Natural\nGas",
+    },
+)
+display_figure(fig_ng_rd_rhp)
 ```

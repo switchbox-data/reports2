@@ -1,0 +1,149 @@
+---
+title: "Press: Winter Bill-Change Bar Charts"
+format: html
+---
+
+Bar charts summarizing the change in total winter energy bills after switching
+to a heat pump from natural gas, for all households in MA. Intended for press
+use — a simplified alternative to the full histograms.
+
+```{python}
+#| label: setup
+import polars as pl
+import plotnine as plt
+
+from lib.plotnine import theme_switchbox
+from lib.rates_analysis.rate_case_funcs import (
+    QUADRANT_COLORS,
+    QUADRANT_ORDER,
+    _quadrant_seg_label_df,
+)
+
+TITLE = (
+    "Change in total winter energy bills after switching to a heat pump\n"
+    "from natural gas, for all households in MA"
+)
+
+ALL_ROWS: list[tuple[str, dict[str, float]]] = [
+    (
+        "Default Rates",
+        {"savings > $1k": 0.6, "savings $0-1k": 23.2, "losses $0-1k": 44.5, "losses > $1k": 31.7},
+    ),
+    (
+        "Current HP Rates",
+        {"savings > $1k": 1.9, "savings $0-1k": 37.3, "losses $0-1k": 37.6, "losses > $1k": 23.2},
+    ),
+    (
+        "Increased HP Rates",
+        {"savings > $1k": 3.8, "savings $0-1k": 46.7, "losses $0-1k": 33.7, "losses > $1k": 15.7},
+    ),
+    (
+        "State's Proposed HP Rates",
+        {"savings > $1k": 8.4, "savings $0-1k": 62.3, "losses $0-1k": 21.5, "losses > $1k": 7.8},
+    ),
+]
+
+
+def plot_quadrant_bars(
+    rows: list[tuple[str, dict[str, float]]],
+    title: str,
+) -> plt.ggplot:
+    """Horizontal stacked bar chart of bill-change quadrants from hardcoded pcts."""
+    records: list[dict[str, object]] = []
+    all_pcts: list[dict[str, float]] = []
+    for row_label, pct in rows:
+        all_pcts.append(pct)
+        for q in QUADRANT_ORDER:
+            records.append({"scenario": row_label, "quadrant": q, "pct": pct[q]})
+
+    scenario_order = [r[0] for r in reversed(rows)]
+    plot_df = pl.DataFrame(records).with_columns(
+        pl.col("quadrant").cast(pl.Enum(QUADRANT_ORDER)),
+        pl.col("scenario").cast(pl.Enum(scenario_order)),
+    )
+
+    n_scenarios = len(rows)
+    seg_label_df = _quadrant_seg_label_df(all_pcts)
+
+    row_label_records: list[dict[str, object]] = []
+    for i, (row_label, _) in enumerate(rows):
+        bar_pos = n_scenarios - i
+        row_label_records.append({"x": bar_pos, "y": 101, "label": row_label})
+    row_label_df = pl.DataFrame(row_label_records)
+
+    p = (
+        plt.ggplot(plot_df, plt.aes(x="scenario", y="pct", fill="quadrant"))
+        + plt.geom_col(position="stack", width=0.55)
+        + plt.geom_text(
+            mapping=plt.aes(label="pct"),
+            data=plot_df.filter(pl.col("pct") >= 3),
+            position=plt.position_stack(vjust=0.5),
+            format_string="{:.1f}%",
+            color="white",
+            size=11,
+            fontweight="bold",
+        )
+        + plt.scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
+        + plt.scale_y_continuous(expand=(0, 0, 0.32, 0))
+        + plt.scale_x_discrete(expand=(0, 0.35, 0, 0.7))
+        + plt.coord_flip()
+        + plt.guides(fill=False)
+        + plt.labs(x="", y="", title=title)
+        + theme_switchbox()
+        + plt.theme(
+            figure_size=(13.5, max(3.2, 1.0 + 1.4 * n_scenarios)),
+            axis_text=plt.element_blank(),
+            axis_ticks_x=plt.element_blank(),
+            axis_ticks_y=plt.element_blank(),
+            axis_line_x=plt.element_blank(),
+            axis_line_y=plt.element_blank(),
+            panel_grid=plt.element_blank(),
+            plot_title=plt.element_text(ha="left", margin={"b": -8, "unit": "pt"}),
+        )
+    )
+
+    if seg_label_df is not None:
+        for ha_val in seg_label_df["ha"].unique().to_list():
+            sub = seg_label_df.filter(pl.col("ha") == ha_val)
+            p = p + plt.geom_text(
+                mapping=plt.aes(x="x", y="y", label="label", color="color"),
+                data=sub,
+                ha=ha_val,
+                va="bottom",
+                size=10,
+                fontweight="bold",
+                inherit_aes=False,
+                show_legend=False,
+            )
+        p = p + plt.scale_color_identity()
+
+    p = p + plt.geom_text(
+        mapping=plt.aes(x="x", y="y", label="label"),
+        data=row_label_df,
+        ha="left",
+        va="center",
+        size=11,
+        fontweight="bold",
+        inherit_aes=False,
+    )
+
+    return p
+```
+
+## Default through Increased HP Rates
+
+```{python}
+#| label: fig-winter-bill-bars-through-increased
+#| fig-cap: "Change in total winter energy bills after switching to a heat pump from natural gas, for all households in MA. Default Rates through Increased HP Rates."
+
+plot_quadrant_bars(ALL_ROWS[:3], title=TITLE)
+```
+
+## Default through State's Proposed HP Rates
+
+```{python}
+#| label: fig-winter-bill-bars-through-proposed
+#| fig-cap: "Change in total winter energy bills after switching to a heat pump from natural gas, for all households in MA. All four rate scenarios."
+
+plot_quadrant_bars(ALL_ROWS, title=TITLE)
+```

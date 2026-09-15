@@ -1,0 +1,646 @@
+---
+title: "Incremental fair-default fixed charge"
+jupyter: python3
+---
+
+This notebook asks what BGE's default residential rate would look like if the
+heat-pump retrofit overpayment documented in `expert_testimony.qmd` were
+corrected by shifting revenue recovery from volumetric charges to the monthly
+fixed charge.
+
+The analysis does **not** estimate an absolute overpayment for homes that
+already have heat pumps. Instead, it compares BGE's actual average residential
+load profiles:
+
+- **Before:** Schedule R and RL customers without electric heating
+- **After:** Schedule RH and RLH customers with electric heating
+
+This is a comparison between customer groups, not a longitudinal comparison of
+the same homes before and after heat-pump adoption. It matches the BGE-actuals
+basis used in `representative_home.qmd` and `expert_testimony.qmd`.
+
+The targeted volumetric charges are distribution, transmission, and EmPOWER
+Maryland. Their fair increase following the retrofit is the increase in
+distribution and transmission marginal cost; the incremental EmPOWER cost is
+zero.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+import pickle
+import io
+from pathlib import Path
+
+import boto3
+import polars as pl
+import yaml
+
+from lib.rdp import fetch_rdp_file
+from lib.rates_analysis.fair_default import fair_default_incremental_fixed_charge
+from lib.rates_analysis.rate_case_funcs import (
+    building_delivery_mc_8760,
+    load_delivery_mc_heatmap,
+    monthly_bill_from_profile,
+)
+
+report_vars: dict = {}
+```
+
+## Parameters
+
+```{python}
+#| label: params
+
+_batch_config = yaml.safe_load(Path("../batch_config.yaml").read_text())
+
+STATE = _batch_config["STATE"]
+BATCH = _batch_config["BATCH"]
+RDP_REF = _batch_config["RDP_REF"]
+UTILITY = "bge"
+MC_YEAR = 2025
+
+print(f"state={STATE}  batch={BATCH}  utility={UTILITY}")
+```
+
+## Import BGE's actual customer counts and loads
+
+BGE supplied monthly customer counts and kWh sales for April 2025 through March
+2026, broken out between its non-electric-heating schedules (R and RL) and
+electric-heating schedules (RH and RLH). Dividing sales by customer counts
+gives the average monthly profiles used to calculate bills.
+
+```{python}
+#| label: import-data
+
+_s3 = boto3.client("s3")
+_monthly_obj = _s3.get_object(
+    Bucket="data.sb",
+    Key=(
+        "bge/"
+        "bge_electric_monthly_residential_customers_kwh_revenues_"
+        "202504_202605.xlsx"
+    ),
+)
+_raw_monthly = pl.read_excel(io.BytesIO(_monthly_obj["Body"].read()))
+
+_month_cols = _raw_monthly.columns[1:13]
+_col_to_month = {
+    1: "Apr",
+    2: "May",
+    3: "Jun",
+    4: "Jul",
+    5: "Aug",
+    6: "Sep",
+    7: "Oct",
+    8: "Nov",
+    9: "Dec",
+    10: "Jan",
+    11: "Feb",
+    12: "Mar",
+}
+_month_to_num = {
+    month: number
+    for number, month in enumerate(
+        [
+            "Jan",
+            "Feb",
+            "Mar",
+            "Apr",
+            "May",
+            "Jun",
+            "Jul",
+            "Aug",
+            "Sep",
+            "Oct",
+            "Nov",
+            "Dec",
+        ],
+        start=1,
+    )
+}
+
+
+def _bge_row(row_index: int) -> list[float]:
+    """Extract the twelve monthly values from a BGE worksheet row."""
+    return [
+        float(_raw_monthly[row_index, column])
+        for column in _month_cols
+    ]
+
+
+_customers_before = [
+    r + rl for r, rl in zip(_bge_row(0), _bge_row(2))
+]
+_customers_after = [
+    rh + rlh for rh, rlh in zip(_bge_row(1), _bge_row(3))
+]
+_kwh_before = [
+    r + rl for r, rl in zip(_bge_row(6), _bge_row(8))
+]
+_kwh_after = [
+    rh + rlh for rh, rlh in zip(_bge_row(7), _bge_row(9))
+]
+
+_customers_class = [
+    before + after
+    for before, after in zip(
+        _customers_before, _customers_after
+    )
+]
+_kwh_class = [
+    before + after
+    for before, after in zip(_kwh_before, _kwh_after)
+]
+
+bge_monthly = pl.DataFrame(
+    {
+        "month_label": [
+            _col_to_month[index + 1] for index in range(12)
+        ],
+        "customers_before": _customers_before,
+        "customers_after": _customers_after,
+        "customers_class": _customers_class,
+        "kwh_before": [
+            kwh / customers
+            for kwh, customers in zip(
+                _kwh_before, _customers_before
+            )
+        ],
+        "kwh_after": [
+            kwh / customers
+            for kwh, customers in zip(
+                _kwh_after, _customers_after
+            )
+        ],
+        "kwh_class": [
+            kwh / customers
+            for kwh, customers in zip(
+                _kwh_class, _customers_class
+            )
+        ],
+    }
+)
+
+mc_8760 = load_delivery_mc_heatmap(STATE, UTILITY, MC_YEAR)
+
+bge_monthly
+```
+
+BGE also supplied aggregate hourly kWh for the four schedules for calendar
+2024. We remove February 29, combine R with RL and RH with RLH, then divide
+each hourly aggregate by that month's customer count. This produces the two
+8760 profiles used to calculate marginal costs.
+
+```{python}
+#| label: hourly-profiles
+
+_hourly_obj = _s3.get_object(
+    Bucket="data.sb",
+    Key="bge/bge_hourly_residential_kwh.xlsx",
+)
+_raw_hourly = pl.read_excel(
+    io.BytesIO(_hourly_obj["Body"].read())
+)
+
+_hourly = (
+    _raw_hourly.select(
+        pl.col("Day")
+        .cast(pl.String)
+        .str.zfill(6)
+        .str.to_datetime("%m%d%y")
+        .alias("date"),
+        pl.col("Hour").cast(pl.Int32),
+        (pl.col("R") + pl.col("RL")).alias("kwh_before"),
+        (pl.col("RH") + pl.col("RLH")).alias("kwh_after"),
+    )
+    .filter(
+        ~(
+            (pl.col("date").dt.month() == 2)
+            & (pl.col("date").dt.day() == 29)
+        )
+    )
+    .with_columns(pl.col("date").dt.month().alias("month_num"))
+)
+assert _hourly.height == 8760
+
+_customers_by_month_before = {
+    _month_to_num[_col_to_month[index + 1]]: customers
+    for index, customers in enumerate(_customers_before)
+}
+_customers_by_month_after = {
+    _month_to_num[_col_to_month[index + 1]]: customers
+    for index, customers in enumerate(_customers_after)
+}
+
+# The marginal-cost timestamps are local EST. The helper expects its load
+# input in UTC and shifts it back five hours before joining.
+_timestamps_utc = mc_8760.sort("timestamp").select(
+    (pl.col("timestamp") + pl.duration(hours=5)).alias(
+        "timestamp"
+    )
+)["timestamp"]
+
+hourly_before = pl.DataFrame(
+    {
+        "timestamp": _timestamps_utc,
+        "kwh": _hourly["kwh_before"]
+        / _hourly["month_num"].replace_strict(
+            _customers_by_month_before,
+            return_dtype=pl.Float64,
+        ),
+    }
+)
+hourly_after = pl.DataFrame(
+    {
+        "timestamp": _timestamps_utc,
+        "kwh": _hourly["kwh_after"]
+        / _hourly["month_num"].replace_strict(
+            _customers_by_month_after,
+            return_dtype=pl.Float64,
+        ),
+    }
+)
+
+print(
+    "Annual kWh before: "
+    f"{bge_monthly['kwh_before'].sum():,.0f}"
+)
+print(
+    "Annual kWh after: "
+    f"{bge_monthly['kwh_after'].sum():,.0f}"
+)
+print(
+    "Annual kWh increase: "
+    f"{(bge_monthly['kwh_after'] - bge_monthly['kwh_before']).sum():,.0f}"
+)
+```
+
+## Load BGE's filed rate components
+
+We use the same filed monthly rates as `representative_home.qmd`. Generation
+is excluded because the testimony does not identify a generation overpayment.
+The redesign uniformly scales distribution, transmission, and EmPOWER rates
+while preserving their monthly shapes.
+
+```{python}
+#| label: load-rates
+
+_rates_raw = fetch_rdp_file(
+    "rate_design/hp_rates/md/config/rev_requirement/top-ups/monthly_rates/"
+    "bge_monthly_rates_2025.yaml",
+    ref=RDP_REF,
+)
+_rates_yaml = yaml.safe_load(_rates_raw)
+
+_drr = _rates_yaml["add_to_drr"]["charges"]
+_already = _rates_yaml["already_in_drr"]["charges"]
+
+
+def _sum_monthly_rates(*charge_dicts: dict) -> dict[str, float]:
+    """Add monthly rates from multiple filed charge components."""
+    result: dict[str, float] = {}
+    for charge in charge_dicts:
+        for month, value in charge["monthly_rates"].items():
+            result[month] = result.get(month, 0.0) + value
+    return result
+
+
+fixed_monthly_rates = _sum_monthly_rates(
+    _already["customer_charge"],
+    _drr["universal_service_charge"],
+)
+fixed_rate_components: dict[str, dict[str, object]] = {
+    "Fixed charge": {
+        "charge_unit": "$/month",
+        "monthly_rates": fixed_monthly_rates,
+    }
+}
+target_rate_components: dict[str, dict[str, object]] = {
+    "Distribution": {
+        "charge_unit": "$/kWh",
+        "monthly_rates": _sum_monthly_rates(
+            _already["core_delivery_rate"],
+            _drr["environmental_surcharge"],
+        ),
+    },
+    "Transmission": {
+        "charge_unit": "$/kWh",
+        "monthly_rates": _drr[
+            "transmission_rate_adjustment"
+        ]["monthly_rates"],
+    },
+    "EmPOWER Maryland": {
+        "charge_unit": "$/kWh",
+        "monthly_rates": _drr[
+            "empower_maryland_charge"
+        ]["monthly_rates"],
+    },
+}
+
+# Weight the filed monthly fixed charges by BGE's actual customer-months.
+_fixed_bill_by_month = monthly_bill_from_profile(
+    bge_monthly.select(
+        "month_label", pl.col("kwh_class").alias("kwh")
+    ),
+    fixed_rate_components,
+).with_columns(
+    pl.col("month_label").cast(pl.String)
+).join(
+    bge_monthly.select("month_label", "customers_class"),
+    on="month_label",
+)
+_class_customer_months = float(
+    bge_monthly["customers_class"].sum()
+)
+base_fixed_charge = float(
+    _fixed_bill_by_month.select(
+        (
+            (pl.col("value") * pl.col("customers_class")).sum()
+            / _class_customer_months
+        )
+    ).item()
+)
+print(f"Average baseline fixed charge: ${base_fixed_charge:.2f}/month")
+```
+
+## Calculate the heating-customer overpayment
+
+First, we calculate the difference in targeted volumetric charges between
+BGE's average non-electric-heating and electric-heating customers. We then
+subtract the difference in their hourly T&D marginal costs:
+
+$$
+X =
+\Delta V_{\text{T\&D + EmPOWER}}
+-
+\Delta MC_{\text{T\&D}}
+$$
+
+```{python}
+#| label: calculate-retrofit-overpayment
+
+
+def _annual_targeted_charge(monthly_kwh: pl.DataFrame) -> float:
+    bills = monthly_bill_from_profile(
+        monthly_kwh, target_rate_components
+    )
+    return float(bills["value"].sum())
+
+
+retrofit_variable_before = _annual_targeted_charge(
+    bge_monthly.select(
+        "month_label", pl.col("kwh_before").alias("kwh")
+    )
+)
+retrofit_variable_after = _annual_targeted_charge(
+    bge_monthly.select(
+        "month_label", pl.col("kwh_after").alias("kwh")
+    )
+)
+retrofit_incremental_variable_charge = (
+    retrofit_variable_after - retrofit_variable_before
+)
+
+_bills_before = monthly_bill_from_profile(
+    bge_monthly.select(
+        "month_label", pl.col("kwh_before").alias("kwh")
+    ),
+    target_rate_components,
+)
+_bills_after = monthly_bill_from_profile(
+    bge_monthly.select(
+        "month_label", pl.col("kwh_after").alias("kwh")
+    ),
+    target_rate_components,
+)
+_charge_deltas = (
+    _bills_after.group_by("component")
+    .agg(pl.col("value").sum().alias("after"))
+    .join(
+        _bills_before.group_by("component").agg(
+            pl.col("value").sum().alias("before")
+        ),
+        on="component",
+    )
+    .with_columns(
+        (pl.col("after") - pl.col("before")).alias("delta")
+    )
+)
+retrofit_incremental_td_charge = float(
+    _charge_deltas.filter(
+        pl.col("component").is_in(
+            ["Distribution", "Transmission"]
+        )
+    )["delta"].sum()
+)
+retrofit_incremental_empower_charge = float(
+    _charge_deltas.filter(
+        pl.col("component") == "EmPOWER Maryland"
+    )["delta"].item()
+)
+
+mc_before = building_delivery_mc_8760(hourly_before, mc_8760)
+mc_after = building_delivery_mc_8760(hourly_after, mc_8760)
+retrofit_mc_before = float(
+    mc_before.select(
+        pl.sum_horizontal(
+            "mc_tx_dollars", "mc_dist_dollars"
+        ).sum()
+    ).item()
+)
+retrofit_mc_after = float(
+    mc_after.select(
+        pl.sum_horizontal(
+            "mc_tx_dollars", "mc_dist_dollars"
+        ).sum()
+    ).item()
+)
+retrofit_incremental_marginal_cost = (
+    retrofit_mc_after - retrofit_mc_before
+)
+retrofit_overpayment = (
+    retrofit_incremental_variable_charge
+    - retrofit_incremental_marginal_cost
+)
+
+pl.DataFrame(
+    {
+        "metric": [
+            "Incremental T&D charges",
+            "Incremental EmPOWER charges",
+            "Incremental T&D + EmPOWER charges",
+            "Incremental T&D marginal cost",
+            "Heating-customer overpayment",
+        ],
+        "dollars_per_customer_year": [
+            retrofit_incremental_td_charge,
+            retrofit_incremental_empower_charge,
+            retrofit_incremental_variable_charge,
+            retrofit_incremental_marginal_cost,
+            retrofit_overpayment,
+        ],
+    }
+)
+```
+
+## Solve for the fixed charge
+
+The same fixed charge applies before and after the retrofit, so it cancels
+from the retrofit bill difference. The volumetric multiplier is therefore:
+
+$$
+\lambda^* =
+\frac{\Delta MC_{\text{T\&D}}}
+{\Delta V_{\text{T\&D + EmPOWER}}}
+$$
+
+The fixed charge then rises enough to replace the class-wide revenue removed
+by that multiplier:
+
+$$
+F^* =
+F_0 +
+\frac{(1-\lambda^*)V_{\text{class}}}
+{12N_{\text{class}}}
+$$
+
+```{python}
+#| label: solve
+
+_class_bill_by_month = monthly_bill_from_profile(
+    bge_monthly.select(
+        "month_label", pl.col("kwh_class").alias("kwh")
+    ),
+    target_rate_components,
+).with_columns(
+    pl.col("month_label").cast(pl.String)
+).join(
+    bge_monthly.select("month_label", "customers_class"),
+    on="month_label",
+)
+class_variable_revenue = float(
+    _class_bill_by_month.select(
+        (pl.col("value") * pl.col("customers_class")).sum()
+    ).item()
+)
+class_customers = _class_customer_months / 12
+class_variable_revenue_per_customer = (
+    class_variable_revenue / class_customers
+)
+
+result = fair_default_incremental_fixed_charge(
+    class_variable_revenue=class_variable_revenue,
+    class_customers=class_customers,
+    retrofit_incremental_variable_charge=(
+        retrofit_incremental_variable_charge
+    ),
+    retrofit_incremental_marginal_cost=(
+        retrofit_incremental_marginal_cost
+    ),
+    base_fixed_charge=base_fixed_charge,
+)
+
+print(f"F* = ${result.fixed_charge:.2f}/month")
+print(f"Change from baseline = ${result.delta:+.2f}/month")
+print(f"Volumetric multiplier = {result.implied_lambda:.4f}")
+print(
+    "Volumetric-rate reduction = "
+    f"{1 - result.implied_lambda:.1%}"
+)
+print(f"Feasible = {result.feasible}")
+```
+
+## Sanity checks
+
+The redesigned tariff must satisfy both conditions: the difference in charges
+between BGE's heating and non-heating customers equals the corresponding
+difference in T&D marginal cost, and total residential-class revenue remains
+unchanged.
+
+```{python}
+#| label: sanity-checks
+
+redesigned_retrofit_increment = (
+    result.implied_lambda
+    * retrofit_incremental_variable_charge
+)
+assert abs(
+    redesigned_retrofit_increment
+    - retrofit_incremental_marginal_cost
+) < 1e-9
+
+baseline_class_revenue = (
+    12 * base_fixed_charge * class_customers
+    + class_variable_revenue
+)
+redesigned_class_revenue = (
+    12 * result.fixed_charge * class_customers
+    + result.implied_lambda * class_variable_revenue
+)
+assert abs(
+    redesigned_class_revenue - baseline_class_revenue
+) < 1e-6
+
+print("Heating-customer overpayment eliminated.")
+print("Residential-class revenue unchanged.")
+```
+
+## Export report variables
+
+```{python}
+#| label: export
+
+report_vars.update(
+    {
+        "fixed_charge": result.fixed_charge,
+        "fixed_charge_delta": result.delta,
+        "implied_lambda": result.implied_lambda,
+        "volumetric_rate_reduction": (
+            1 - result.implied_lambda
+        ),
+        "retrofit_incremental_variable_charge": (
+            retrofit_incremental_variable_charge
+        ),
+        "retrofit_incremental_td_charge": (
+            retrofit_incremental_td_charge
+        ),
+        "retrofit_incremental_empower_charge": (
+            retrofit_incremental_empower_charge
+        ),
+        "retrofit_incremental_marginal_cost": (
+            retrofit_incremental_marginal_cost
+        ),
+        "retrofit_overpayment": retrofit_overpayment,
+        "annual_kwh_before": float(
+            bge_monthly["kwh_before"].sum()
+        ),
+        "annual_kwh_after": float(
+            bge_monthly["kwh_after"].sum()
+        ),
+        "annual_kwh_delta": float(
+            (
+                bge_monthly["kwh_after"]
+                - bge_monthly["kwh_before"]
+            ).sum()
+        ),
+        "class_variable_revenue_per_customer": (
+            class_variable_revenue_per_customer
+        ),
+        "class_customers": class_customers,
+        "feasible": result.feasible,
+    }
+)
+
+cache_dir = Path("../cache")
+cache_dir.mkdir(exist_ok=True)
+cache_path = (
+    cache_dir
+    / "incremental_fair_default_report_variables.pkl"
+)
+cache_path.write_bytes(pickle.dumps(report_vars))
+print(f"Exported {len(report_vars)} variables to {cache_path}")
+```

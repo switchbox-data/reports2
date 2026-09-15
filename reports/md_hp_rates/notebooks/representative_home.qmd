@@ -1671,14 +1671,16 @@ display_figure(fig)
 ## Schedule RD rates
 
 Schedule RD is BGE's time-of-use distribution rate. It charges different delivery
-rates during on-peak and off-peak hours. All other riders — transmission,
-EmPOWER, environmental surcharge — are flat and identical to Schedule R.
+rates during on-peak and off-peak hours. Under Schedule RD, generation and
+transmission are also TOU — both are billed through Rider 1 (Standard Offer
+Service) with seasonal on-peak / off-peak rates. EmPOWER and the environmental
+surcharge remain flat and identical to Schedule R.
 
 The comparison here is the realistic policy scenario: a customer on Schedule R
 (before HP) installs a heat pump and switches to Schedule RD (after HP). The left
 bar (incremental T&D costs caused) is unchanged — marginal costs do not depend on
-the tariff. The right bar replaces R's flat distribution charges with RD's TOU
-distribution charges.
+the tariff. The right bar replaces R's flat distribution and flat transmission
+charges with RD's TOU distribution and TOU transmission charges.
 
 ```{python}
 #| label: rd-tou-schedule
@@ -1693,11 +1695,12 @@ _RD_ON_PEAK_SUMMER_HOURS = {15, 16, 17, 18, 19}
 _RD_ON_PEAK_NONSUMMER_HOURS = {6, 7, 8, 17, 18, 19, 20}
 
 def _classify_tou(df: pl.DataFrame) -> pl.DataFrame:
-    """Add 'is_onpeak' bool column to an 8760-row hourly DataFrame.
+    """Add 'is_onpeak' and 'is_summer' columns to an 8760-row hourly DataFrame.
 
     Timestamps are assumed to be in 'UTC' (mc_8760 local + 5h).  We shift
     back by 5 hours to get the local-time convention used by the URDB JSON
-    and the tariff schedule.
+    and the tariff schedule.  ``is_summer`` is needed because Rider 1 SOS
+    generation and transmission rates are seasonal.
     """
     return df.with_columns(
         (pl.col("timestamp") + pl.duration(hours=-5)).alias("_local_ts"),
@@ -1712,6 +1715,7 @@ def _classify_tou(df: pl.DataFrame) -> pl.DataFrame:
         .then(pl.col("_hour").is_in(_RD_ON_PEAK_SUMMER_HOURS))
         .otherwise(pl.col("_hour").is_in(_RD_ON_PEAK_NONSUMMER_HOURS))
         .alias("is_onpeak"),
+        pl.col("_month").is_in(_RD_SUMMER_MONTHS).alias("is_summer"),
     ).drop("_local_ts", "_month", "_dow", "_hour")
 
 
@@ -1768,9 +1772,23 @@ _RD_RATES = {
     },
 }
 
+# ── Rider 1 SOS rates (generation + transmission, seasonal × TOU) ────────────
+# Source: BGE_Rdr_1_SOS.md (Suppl. 751, effective Jun 1 2026).
+# Generation = Total Generation Rate column; Transmission = Transm. Rate column.
+_RD_RIDER1 = {
+    "generation": {
+        "summer_onpeak": 0.25990, "summer_offpeak": 0.09213,
+        "nonsummer_onpeak": 0.21993, "nonsummer_offpeak": 0.10266,
+    },
+    "transmission": {
+        "summer_onpeak": 0.06766, "summer_offpeak": 0.01114,
+        "nonsummer_onpeak": 0.05773, "nonsummer_offpeak": 0.01163,
+    },
+}
+
 
 def _rd_annual_distribution(hourly_df: pl.DataFrame, rates: dict) -> float:
-    """Compute annual distribution charges under RD TOU rates."""
+    """Compute annual distribution charges under RD TOU rates (non-seasonal)."""
     return float(
         hourly_df.with_columns(
             pl.when(pl.col("is_onpeak"))
@@ -1781,16 +1799,42 @@ def _rd_annual_distribution(hourly_df: pl.DataFrame, rates: dict) -> float:
     )
 
 
+def _rd_annual_seasonal_tou(hourly_df: pl.DataFrame, component: dict) -> float:
+    """Compute annual charges for a seasonal × TOU component (generation or transmission).
+
+    ``component`` is one of the _RD_RIDER1 sub-dicts with keys
+    ``summer_onpeak``, ``summer_offpeak``, ``nonsummer_onpeak``, ``nonsummer_offpeak``.
+    Requires columns ``is_onpeak`` and ``is_summer`` from ``_classify_tou``.
+    """
+    return float(
+        hourly_df.with_columns(
+            pl.when(pl.col("is_summer") & pl.col("is_onpeak"))
+            .then(pl.col("kwh") * component["summer_onpeak"])
+            .when(pl.col("is_summer"))
+            .then(pl.col("kwh") * component["summer_offpeak"])
+            .when(pl.col("is_onpeak"))
+            .then(pl.col("kwh") * component["nonsummer_onpeak"])
+            .otherwise(pl.col("kwh") * component["nonsummer_offpeak"])
+            .alias("_charge")
+        )["_charge"].sum()
+    )
+
+
 # ── Compute for each vintage ─────────────────────────────────────────────────
 # "Before" = Schedule R flat distribution charge (already computed)
 _af_dist_before_r = report_vars["all_fossil_annual_distribution_before"]
 
-# Transmission (unchanged — same rider)
-_af_tx_before = report_vars["all_fossil_annual_transmission_before"]
-_af_tx_after = report_vars["all_fossil_annual_transmission_after"]
-_af_tx_delta = _af_tx_after - _af_tx_before
+# Transmission — TOU via Rider 1 (NOT the same flat rider as Schedule R)
+_af_rd_tx_before = _rd_annual_seasonal_tou(_af_hourly_before, _RD_RIDER1["transmission"])
+_af_rd_tx_after = _rd_annual_seasonal_tou(_af_hourly_after, _RD_RIDER1["transmission"])
+_af_rd_tx_delta = _af_rd_tx_after - _af_rd_tx_before
 
-# EmPOWER (unchanged — same rider)
+# Generation — TOU via Rider 1 (NOT the same flat rate as Schedule R)
+_af_rd_gen_before = _rd_annual_seasonal_tou(_af_hourly_before, _RD_RIDER1["generation"])
+_af_rd_gen_after = _rd_annual_seasonal_tou(_af_hourly_after, _RD_RIDER1["generation"])
+_af_rd_gen_delta = _af_rd_gen_after - _af_rd_gen_before
+
+# EmPOWER (unchanged — same flat rider as Schedule R)
 _af_emp_before = report_vars["all_fossil_annual_empower_maryland_before"]
 _af_emp_after = report_vars["all_fossil_annual_empower_maryland_after"]
 
@@ -1799,33 +1843,54 @@ _af_mc_tx_delta_rd = report_vars["all_fossil_annual_mc_tx_delta"]
 _af_mc_dist_delta_rd = report_vars["all_fossil_annual_mc_dist_delta"]
 _af_mc_delivery_delta_rd = _af_mc_tx_delta_rd + _af_mc_dist_delta_rd
 
+print(f"RD Rider 1 transmission (all_fossil):")
+print(f"  before: ${_af_rd_tx_before:,.2f}  after: ${_af_rd_tx_after:,.2f}  delta: ${_af_rd_tx_delta:+,.2f}")
+print(f"RD Rider 1 generation (all_fossil):")
+print(f"  before: ${_af_rd_gen_before:,.2f}  after: ${_af_rd_gen_after:,.2f}  delta: ${_af_rd_gen_delta:+,.2f}")
+
 for vintage_key, rates in _RD_RATES.items():
     _rd_dist_before = _rd_annual_distribution(_af_hourly_before, rates)
     _rd_dist_after = _rd_annual_distribution(_af_hourly_after, rates)
     _rd_dist_delta = _rd_dist_after - _rd_dist_before
 
-    # T&D charge delta: RD distribution delta + transmission delta (unchanged)
-    _rd_td_charges_delta = _rd_dist_delta + _af_tx_delta
+    # T&D charge delta: RD distribution delta + RD transmission delta (both TOU)
+    _rd_td_charges_delta = _rd_dist_delta + _af_rd_tx_delta
     _rd_overpayment = _rd_td_charges_delta - _af_mc_delivery_delta_rd
 
     report_vars[f"rd_{vintage_key}_annual_distribution_before"] = _rd_dist_before
     report_vars[f"rd_{vintage_key}_annual_distribution_after"] = _rd_dist_after
     report_vars[f"rd_{vintage_key}_distribution_delta"] = _rd_dist_delta
+    report_vars[f"rd_{vintage_key}_annual_transmission_before"] = _af_rd_tx_before
+    report_vars[f"rd_{vintage_key}_annual_transmission_after"] = _af_rd_tx_after
+    report_vars[f"rd_{vintage_key}_transmission_delta"] = _af_rd_tx_delta
+    report_vars[f"rd_{vintage_key}_annual_generation_before"] = _af_rd_gen_before
+    report_vars[f"rd_{vintage_key}_annual_generation_after"] = _af_rd_gen_after
     report_vars[f"rd_{vintage_key}_delivery_charges_delta"] = _rd_td_charges_delta
     report_vars[f"rd_{vintage_key}_overpayment"] = _rd_overpayment
 
     print(f"\n{rates['label']}:")
     print(f"  RD dist before: ${_rd_dist_before:,.2f}  after: ${_rd_dist_after:,.2f}  delta: ${_rd_dist_delta:+,.2f}")
-    print(f"  TX delta (unchanged): ${_af_tx_delta:+,.2f}")
+    print(f"  RD tx delta (TOU): ${_af_rd_tx_delta:+,.2f}")
     print(f"  T&D charges delta: ${_rd_td_charges_delta:+,.2f}")
     print(f"  MC delivery delta: ${_af_mc_delivery_delta_rd:+,.2f}")
     print(f"  Overpayment: ${_rd_overpayment:+,.2f}")
 
-# ── Natgas-specific RD distribution (for the 4-bar bill chart) ────────────────
+# ── Natgas-specific RD components (for the 4-bar bill chart) ─────────────────
+_ng_hourly_before = _classify_tou(hourly_profiles["natgas"]["before"])
 _ng_hourly_after = _classify_tou(hourly_profiles["natgas"]["after"])
+
 _ng_rd_dist_after = _rd_annual_distribution(_ng_hourly_after, _RD_RATES["current"])
+_ng_rd_tx_after = _rd_annual_seasonal_tou(_ng_hourly_after, _RD_RIDER1["transmission"])
+_ng_rd_gen_after = _rd_annual_seasonal_tou(_ng_hourly_after, _RD_RIDER1["generation"])
+
 report_vars["natgas_rd_current_annual_distribution_after"] = _ng_rd_dist_after
-print(f"\nNatgas RD distribution (current filed, after HP): ${_ng_rd_dist_after:,.2f}")
+report_vars["natgas_rd_current_annual_transmission_after"] = _ng_rd_tx_after
+report_vars["natgas_rd_current_annual_generation_after"] = _ng_rd_gen_after
+
+print(f"\nNatgas RD (current filed, after HP):")
+print(f"  distribution: ${_ng_rd_dist_after:,.2f}")
+print(f"  transmission: ${_ng_rd_tx_after:,.2f}")
+print(f"  generation:   ${_ng_rd_gen_after:,.2f}")
 ```
 
 ### Cost-vs-charge charts — Schedule RD
@@ -1836,6 +1901,7 @@ print(f"\nNatgas RD distribution (current filed, after HP): ${_ng_rd_dist_after:
 
 _v = "current"
 _rd_dist_delta_v = report_vars[f"rd_{_v}_distribution_delta"]
+_rd_tx_delta_v = report_vars[f"rd_{_v}_transmission_delta"]
 _rd_td_delta_v = report_vars[f"rd_{_v}_delivery_charges_delta"]
 _rd_overpay_v = report_vars[f"rd_{_v}_overpayment"]
 
@@ -1866,12 +1932,12 @@ else:
         color_dist=_COLOR_DIST_COST, color_tx=_COLOR_TX_COST,
     )
 
-_t2 = _draw_cc_stacked_bar(ax, _pos[1], _af_tx_delta, _rd_dist_delta_v, _w)
+_t2 = _draw_cc_stacked_bar(ax, _pos[1], _rd_tx_delta_v, _rd_dist_delta_v, _w)
 
 _side_x = _pos[1] + _w / 2 + 0.08
 _side_labels = [
     ("Distribution (RD TOU)", _rd_dist_delta_v / 2, _COLOR_DIST),
-    ("Transmission", _rd_dist_delta_v + _af_tx_delta / 2, _COLOR_TX),
+    ("Transmission (RD TOU)", _rd_dist_delta_v + _rd_tx_delta_v / 2, _COLOR_TX),
 ]
 for _lbl, _ym, _clr in _side_labels:
     ax.plot([_pos[1] + _w / 2 + 0.02, _side_x - 0.02], [_ym, _ym],
@@ -1913,6 +1979,7 @@ display_figure(fig)
 
 _v = "proposed"
 _rd_dist_delta_v = report_vars[f"rd_{_v}_distribution_delta"]
+_rd_tx_delta_v = report_vars[f"rd_{_v}_transmission_delta"]
 _rd_td_delta_v = report_vars[f"rd_{_v}_delivery_charges_delta"]
 _rd_overpay_v = report_vars[f"rd_{_v}_overpayment"]
 
@@ -1943,12 +2010,12 @@ else:
         color_dist=_COLOR_DIST_COST, color_tx=_COLOR_TX_COST,
     )
 
-_t2 = _draw_cc_stacked_bar(ax, _pos[1], _af_tx_delta, _rd_dist_delta_v, _w)
+_t2 = _draw_cc_stacked_bar(ax, _pos[1], _rd_tx_delta_v, _rd_dist_delta_v, _w)
 
 _side_x = _pos[1] + _w / 2 + 0.08
 _side_labels = [
     ("Distribution (RD TOU)", _rd_dist_delta_v / 2, _COLOR_DIST),
-    ("Transmission", _rd_dist_delta_v + _af_tx_delta / 2, _COLOR_TX),
+    ("Transmission (RD TOU)", _rd_dist_delta_v + _rd_tx_delta_v / 2, _COLOR_TX),
 ]
 for _lbl, _ym, _clr in _side_labels:
     ax.plot([_pos[1] + _w / 2 + 0.02, _side_x - 0.02], [_ym, _ym],
@@ -2140,14 +2207,16 @@ from lib.rates_analysis.rate_case_funcs import (
 )
 
 _ng_rd_dist_after_val = report_vars["natgas_rd_current_annual_distribution_after"]
+_ng_rd_tx_after_val = report_vars["natgas_rd_current_annual_transmission_after"]
+_ng_rd_gen_after_val = report_vars["natgas_rd_current_annual_generation_after"]
 natgas_rd = {
     "delivery_fixed": natgas_after["delivery_fixed"],
     "delivery_volumetric": (
         _ng_rd_dist_after_val
-        + report_vars["natgas_annual_transmission_after"]
+        + _ng_rd_tx_after_val
         + report_vars["natgas_annual_empower_maryland_after"]
     ),
-    "supply": natgas_after["supply"],
+    "supply": _ng_rd_gen_after_val,
     "gas": natgas_after["gas"],
 }
 

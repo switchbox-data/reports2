@@ -48,6 +48,29 @@ class FairDefaultResult:
     """True when F* >= 0 and lambda* > 0 (the tariff has non-negative components)."""
 
 
+@dataclass(frozen=True, slots=True)
+class IncrementalFairDefaultResult:
+    """Output of a default-rate redesign targeted to retrofit overpayment."""
+
+    fixed_charge: float
+    """F* — the revenue-neutral monthly fixed charge ($/month)."""
+
+    delta: float
+    """F* - F_0 — change from the baseline monthly fixed charge ($/month)."""
+
+    implied_lambda: float
+    """Uniform multiplier applied to the targeted volumetric charges."""
+
+    retrofit_overpayment: float
+    """Current incremental variable charge minus incremental marginal cost."""
+
+    class_revenue_shift: float
+    """Annual class revenue shifted from volumetric to fixed charges."""
+
+    feasible: bool
+    """True when F* >= 0 and lambda* > 0."""
+
+
 def fair_default_fixed_charge_only(
     *,
     class_revenue: float,
@@ -102,5 +125,56 @@ def fair_default_fixed_charge_only(
         fixed_charge=fixed_charge,
         delta=fixed_charge - base_fixed_charge,
         implied_lambda=implied_lambda,
+        feasible=(fixed_charge >= 0.0 and implied_lambda > 0.0),
+    )
+
+
+def fair_default_incremental_fixed_charge(
+    *,
+    class_variable_revenue: float,
+    class_customers: float,
+    retrofit_incremental_variable_charge: float,
+    retrofit_incremental_marginal_cost: float,
+    base_fixed_charge: float,
+) -> IncrementalFairDefaultResult:
+    """Redesign a default rate around paired pre/post-retrofit overpayment.
+
+    The same default tariff applies before and after the retrofit, so its fixed
+    charge cancels from the retrofit bill difference. The required volumetric
+    multiplier is therefore determined directly by:
+
+    ``lambda * delta_variable_charge = delta_marginal_cost``.
+
+    The fixed charge then rises enough to replace the class-wide revenue lost
+    by applying ``lambda`` to the targeted volumetric charges. Inputs may be
+    weighted annual totals; the two retrofit inputs must use the same
+    population and weighting basis.
+    """
+    values = (
+        class_variable_revenue,
+        class_customers,
+        retrofit_incremental_variable_charge,
+        retrofit_incremental_marginal_cost,
+        base_fixed_charge,
+    )
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError("All inputs must be finite.")
+    if class_variable_revenue < 0.0:
+        raise ValueError("class_variable_revenue must be non-negative.")
+    if class_customers <= 0.0:
+        raise ValueError("class_customers must be positive.")
+    if math.isclose(retrofit_incremental_variable_charge, 0.0, abs_tol=ZERO_TOLERANCE):
+        raise ValueError("retrofit_incremental_variable_charge must be non-zero.")
+
+    implied_lambda = retrofit_incremental_marginal_cost / retrofit_incremental_variable_charge
+    class_revenue_shift = (1.0 - implied_lambda) * class_variable_revenue
+    fixed_charge = base_fixed_charge + class_revenue_shift / (MONTHS_PER_YEAR * class_customers)
+
+    return IncrementalFairDefaultResult(
+        fixed_charge=fixed_charge,
+        delta=fixed_charge - base_fixed_charge,
+        implied_lambda=implied_lambda,
+        retrofit_overpayment=retrofit_incremental_variable_charge - retrofit_incremental_marginal_cost,
+        class_revenue_shift=class_revenue_shift,
         feasible=(fixed_charge >= 0.0 and implied_lambda > 0.0),
     )

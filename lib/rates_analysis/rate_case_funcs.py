@@ -391,6 +391,77 @@ def sum_monthly_peak_offpeak_kwh(
     )
 
 
+def normalize_peak_split_to_monthly(
+    peak_split: pl.DataFrame,
+    monthly: pl.DataFrame,
+    *,
+    kwh_col: str = "kwh",
+) -> pl.DataFrame:
+    """Rescale an hourly-derived peak/off-peak split onto monthly billing totals.
+
+    The hourly load file and the monthly billing file can cover different
+    periods (for BGE: calendar 2024 vs. the Apr 2025-Mar 2026 test year), so
+    their monthly totals diverge by as much as 20% even when annual totals
+    agree. All kWh and bill figures derive from the monthly billing data, so
+    chart bar heights must match it; but only the hourly data can say which
+    kWh fall in peak hours. This preserves each month's hourly-derived peak
+    *fraction* and rescales both segments so they sum to the billing total.
+
+    Months with zero hourly total keep a zero split (no fraction to preserve).
+
+    Parameters
+    ----------
+    peak_split
+        12-row DataFrame with ``month_label``, ``kwh_offpeak``, ``kwh_peak``
+        (from :func:`sum_monthly_peak_offpeak_kwh`).
+    monthly
+        12-row DataFrame with ``month_label`` and a total-kWh column — the
+        authoritative monthly billing profile.
+    kwh_col
+        Name of the total-kWh column in ``monthly``.
+
+    Returns
+    -------
+    pl.DataFrame
+        12-row DataFrame with ``month_label``, ``kwh_offpeak``, ``kwh_peak``,
+        where the two columns sum to ``monthly[kwh_col]`` per month.
+    """
+    import polars as pl
+
+    joined = peak_split.select(
+        pl.col("month_label").cast(pl.String),
+        "kwh_offpeak",
+        "kwh_peak",
+    ).join(
+        monthly.select(
+            pl.col("month_label").cast(pl.String),
+            pl.col(kwh_col).alias("_target"),
+        ),
+        on="month_label",
+        how="inner",
+    )
+    if joined.height != peak_split.height:
+        raise ValueError(
+            f"month_label mismatch: {peak_split.height} rows in peak_split, {joined.height} after join with monthly."
+        )
+
+    return (
+        joined.with_columns((pl.col("kwh_offpeak") + pl.col("kwh_peak")).alias("_hourly_total"))
+        .with_columns(
+            pl.when(pl.col("_hourly_total") > 0)
+            .then(pl.col("_target") / pl.col("_hourly_total"))
+            .otherwise(0.0)
+            .alias("_scale")
+        )
+        .select(
+            pl.col("month_label").cast(pl.Enum(MONTH_ORDER)),
+            (pl.col("kwh_offpeak") * pl.col("_scale")).alias("kwh_offpeak"),
+            (pl.col("kwh_peak") * pl.col("_scale")).alias("kwh_peak"),
+        )
+        .sort("month_label")
+    )
+
+
 def building_delivery_mc_8760(
     load_8760: pl.DataFrame,
     mc_8760: pl.DataFrame,
@@ -3546,26 +3617,31 @@ def plot_monthly_load_before_after(
             on="month_label",
         )
 
-        # Per-month segment computation — ONE red wedge per bar.
+        # Per-month segment computation — ONE contiguous red wedge per bar.
         # The red wedge shows after_peak (peak-hour kWh in the post-HP
-        # profile), carved from whichever segment is on top:
-        #   - Winter (after > before): red at top of new-HP saffron
-        #   - Summer (before >= after): red at top of base gold
-        _m = _m.with_columns(
-            pl.min_horizontal("before_kwh", "after_kwh").alias("base_kwh"),
-            (pl.col("before_kwh") - pl.col("after_kwh")).clip(lower_bound=0).alias("savings_kwh"),
-            (pl.col("after_kwh") - pl.col("before_kwh")).clip(lower_bound=0).alias("new_hp_kwh"),
-        ).with_columns(
-            # Savings months: peak carved from base; clamp to base size
-            pl.when(pl.col("new_hp_kwh") > 0)
-            .then(0)
-            .otherwise(pl.min_horizontal("after_peak", "base_kwh"))
-            .alias("peak_in_base"),
-            # New-HP months: peak carved from new-HP; clamp to segment size
-            pl.when(pl.col("new_hp_kwh") > 0)
-            .then(pl.min_horizontal("after_peak", "new_hp_kwh"))
-            .otherwise(0)
-            .alias("peak_in_new"),
+        # profile), carved from the TOP of the bar downward:
+        #   - Growth months (after > before): red consumes light yellow
+        #     first, then spills into dark yellow if peak exceeds the
+        #     increment.
+        #   - Savings months (after <= before): red carved from dark
+        #     yellow (the only solid segment).
+        # This works uniformly because new_hp_kwh == 0 in savings months,
+        # so peak_in_new == 0 and all peak flows into peak_in_base.
+        _m = (
+            _m.with_columns(
+                pl.min_horizontal("before_kwh", "after_kwh").alias("base_kwh"),
+                (pl.col("before_kwh") - pl.col("after_kwh")).clip(lower_bound=0).alias("savings_kwh"),
+                (pl.col("after_kwh") - pl.col("before_kwh")).clip(lower_bound=0).alias("new_hp_kwh"),
+            )
+            .with_columns(
+                pl.min_horizontal("after_peak", "new_hp_kwh").alias("peak_in_new"),
+            )
+            .with_columns(
+                pl.min_horizontal(
+                    (pl.col("after_peak") - pl.col("peak_in_new")).clip(lower_bound=0),
+                    pl.col("base_kwh"),
+                ).alias("peak_in_base"),
+            )
         )
 
         segment_order = [

@@ -341,30 +341,14 @@ target_rate_components: dict[str, dict[str, object]] = {
     },
 }
 
-# Weight the filed monthly fixed charges by BGE's actual customer-months.
-_fixed_bill_by_month = monthly_bill_from_profile(
-    bge_monthly.select(
-        "month_label", pl.col("kwh_class").alias("kwh")
-    ),
-    fixed_rate_components,
-).with_columns(
-    pl.col("month_label").cast(pl.String)
-).join(
-    bge_monthly.select("month_label", "customers_class"),
-    on="month_label",
-)
+# The customer-month-weighted average of the filed monthly fixed charges
+# (customer charge + USC) is about $10.06. Use $10.00 as the baseline so
+# the redesigned charge is stated against a round filed customer charge.
 _class_customer_months = float(
     bge_monthly["customers_class"].sum()
 )
-base_fixed_charge = float(
-    _fixed_bill_by_month.select(
-        (
-            (pl.col("value") * pl.col("customers_class")).sum()
-            / _class_customer_months
-        )
-    ).item()
-)
-print(f"Average baseline fixed charge: ${base_fixed_charge:.2f}/month")
+base_fixed_charge = 10.0
+print(f"Baseline fixed charge: ${base_fixed_charge:.2f}/month")
 ```
 
 ## Calculate the heating-customer overpayment
@@ -596,12 +580,15 @@ print("Residential-class revenue unchanged.")
 
 report_vars.update(
     {
+        "original_fixed_charge": base_fixed_charge,
         "fixed_charge": result.fixed_charge,
         "fixed_charge_delta": result.delta,
         "implied_lambda": result.implied_lambda,
         "volumetric_rate_reduction": (
             1 - result.implied_lambda
         ),
+        "retrofit_variable_before": retrofit_variable_before,
+        "retrofit_variable_after": retrofit_variable_after,
         "retrofit_incremental_variable_charge": (
             retrofit_incremental_variable_charge
         ),
@@ -611,6 +598,8 @@ report_vars.update(
         "retrofit_incremental_empower_charge": (
             retrofit_incremental_empower_charge
         ),
+        "retrofit_mc_before": retrofit_mc_before,
+        "retrofit_mc_after": retrofit_mc_after,
         "retrofit_incremental_marginal_cost": (
             retrofit_incremental_marginal_cost
         ),
@@ -627,10 +616,14 @@ report_vars.update(
                 - bge_monthly["kwh_before"]
             ).sum()
         ),
+        "class_variable_revenue": class_variable_revenue,
         "class_variable_revenue_per_customer": (
             class_variable_revenue_per_customer
         ),
         "class_customers": class_customers,
+        "class_revenue_shift": (
+            (1.0 - result.implied_lambda) * class_variable_revenue
+        ),
         "feasible": result.feasible,
     }
 )

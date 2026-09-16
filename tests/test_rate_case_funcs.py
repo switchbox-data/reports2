@@ -309,3 +309,217 @@ def test_bill_period_phrase() -> None:
     assert bill_period_phrase("Annual") == "annual"
     assert bill_period_phrase("Jan") == "Jan"
     assert bill_period_phrase(["Oct", "Nov", "Dec", "Jan", "Feb", "Mar"]) == "Oct-Mar"
+
+
+# ---------------------------------------------------------------------------
+# normalize_peak_split_to_monthly
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_peak_split_matches_monthly_totals() -> None:
+    """Rescaled segments sum to the monthly billing total, preserving peak share."""
+    peak_split = pl.DataFrame(
+        {
+            "month_label": MONTH_ORDER,
+            "kwh_offpeak": [900.0] * 12,
+            "kwh_peak": [100.0] * 12,
+        }
+    )
+    # Billing totals differ from the hourly-derived 1000/month
+    monthly = pl.DataFrame({"month_label": MONTH_ORDER, "before_kwh": [800.0] * 12})
+
+    out = rate_case_funcs.normalize_peak_split_to_monthly(peak_split, monthly, kwh_col="before_kwh")
+
+    totals = (out["kwh_offpeak"] + out["kwh_peak"]).to_list()
+    assert all(t == pytest.approx(800.0) for t in totals)
+    # Peak fraction preserved at 10%
+    fracs = (out["kwh_peak"] / (out["kwh_offpeak"] + out["kwh_peak"])).to_list()
+    assert all(f == pytest.approx(0.10) for f in fracs)
+
+
+def test_normalize_peak_split_per_month_scaling() -> None:
+    """Each month scales independently by its own ratio."""
+    peak_split = pl.DataFrame(
+        {
+            "month_label": MONTH_ORDER,
+            "kwh_offpeak": [500.0] * 12,
+            "kwh_peak": [500.0] * 12,
+        }
+    )
+    targets = [100.0, 200.0, 300.0, 400.0, 500.0, 600.0, 700.0, 800.0, 900.0, 1000.0, 1100.0, 1200.0]
+    monthly = pl.DataFrame({"month_label": MONTH_ORDER, "kwh": targets})
+
+    out = rate_case_funcs.normalize_peak_split_to_monthly(peak_split, monthly)
+
+    for row, target in zip(out.iter_rows(named=True), targets, strict=True):
+        assert row["kwh_offpeak"] + row["kwh_peak"] == pytest.approx(target)
+        # 50/50 split preserved
+        assert row["kwh_peak"] == pytest.approx(target / 2)
+
+
+def test_normalize_peak_split_zero_hourly_month() -> None:
+    """A month with zero hourly load stays zero rather than dividing by zero."""
+    peak_split = pl.DataFrame(
+        {
+            "month_label": MONTH_ORDER,
+            "kwh_offpeak": [0.0] + [900.0] * 11,
+            "kwh_peak": [0.0] + [100.0] * 11,
+        }
+    )
+    monthly = pl.DataFrame({"month_label": MONTH_ORDER, "kwh": [500.0] * 12})
+
+    out = rate_case_funcs.normalize_peak_split_to_monthly(peak_split, monthly)
+
+    jan = out.row(0, named=True)
+    assert jan["kwh_offpeak"] == pytest.approx(0.0)
+    assert jan["kwh_peak"] == pytest.approx(0.0)
+    feb = out.row(1, named=True)
+    assert feb["kwh_offpeak"] + feb["kwh_peak"] == pytest.approx(500.0)
+
+
+def test_normalize_peak_split_rejects_month_mismatch() -> None:
+    peak_split = pl.DataFrame(
+        {
+            "month_label": MONTH_ORDER,
+            "kwh_offpeak": [900.0] * 12,
+            "kwh_peak": [100.0] * 12,
+        }
+    )
+    monthly = pl.DataFrame({"month_label": MONTH_ORDER[:6], "kwh": [500.0] * 6})
+    with pytest.raises(ValueError, match="month_label mismatch"):
+        rate_case_funcs.normalize_peak_split_to_monthly(peak_split, monthly)
+
+
+# ---------------------------------------------------------------------------
+# plot_monthly_load_before_after — peak wedge stacking
+# ---------------------------------------------------------------------------
+
+
+def _make_peak_stacking_data(
+    before: list[float],
+    after: list[float],
+    peak_after: list[float],
+) -> pl.DataFrame:
+    """Build the internal _m DataFrame that plot_monthly_load_before_after computes.
+
+    Replicates the segment arithmetic without invoking the full plotting
+    function (which needs matplotlib/plotnine).
+    """
+    assert len(before) == len(after) == len(peak_after) == 12
+    _m = (
+        pl.DataFrame(
+            {
+                "month_label": MONTH_ORDER,
+                "before_kwh": before,
+                "after_kwh": after,
+                "after_peak": peak_after,
+            }
+        )
+        .with_columns(
+            pl.min_horizontal("before_kwh", "after_kwh").alias("base_kwh"),
+            (pl.col("before_kwh") - pl.col("after_kwh")).clip(lower_bound=0).alias("savings_kwh"),
+            (pl.col("after_kwh") - pl.col("before_kwh")).clip(lower_bound=0).alias("new_hp_kwh"),
+        )
+        .with_columns(
+            pl.min_horizontal("after_peak", "new_hp_kwh").alias("peak_in_new"),
+        )
+        .with_columns(
+            pl.min_horizontal(
+                (pl.col("after_peak") - pl.col("peak_in_new")).clip(lower_bound=0),
+                pl.col("base_kwh"),
+            ).alias("peak_in_base"),
+        )
+    )
+    return _m
+
+
+def _check_stacking_invariants(m: pl.DataFrame) -> None:
+    """Verify the stacking arithmetic is internally consistent."""
+    for row in m.iter_rows(named=True):
+        base_offpeak = row["base_kwh"] - row["peak_in_base"]
+        new_hp_offpeak = row["new_hp_kwh"] - row["peak_in_new"]
+
+        assert base_offpeak >= -1e-9, f"Negative base off-peak in {row['month_label']}"
+        assert new_hp_offpeak >= -1e-9, f"Negative new HP off-peak in {row['month_label']}"
+        assert row["peak_in_base"] >= -1e-9
+        assert row["peak_in_new"] >= -1e-9
+        assert row["savings_kwh"] >= -1e-9
+
+        total = base_offpeak + row["peak_in_base"] + row["savings_kwh"] + new_hp_offpeak + row["peak_in_new"]
+        expected = max(row["before_kwh"], row["after_kwh"])
+        assert total == pytest.approx(expected, abs=1e-9), f"{row['month_label']}: stack total {total} != {expected}"
+
+        total_red = row["peak_in_base"] + row["peak_in_new"]
+        assert total_red == pytest.approx(row["after_peak"], abs=1e-9), (
+            f"{row['month_label']}: red total {total_red} != after_peak {row['after_peak']}"
+        )
+
+
+def test_peak_stacking_red_within_light_yellow() -> None:
+    """When peak kWh < new HP increment, red stays entirely in light yellow."""
+    before = [700.0] * 12
+    after = [900.0] * 12
+    peak = [100.0] * 12
+
+    m = _make_peak_stacking_data(before, after, peak)
+    _check_stacking_invariants(m)
+
+    row = m.row(0, named=True)
+    assert row["peak_in_new"] == pytest.approx(100.0)
+    assert row["peak_in_base"] == pytest.approx(0.0)
+
+
+def test_peak_stacking_red_overflows_into_dark_yellow() -> None:
+    """When peak kWh > new HP increment, red spills from light into dark yellow."""
+    before = [700.0] * 12
+    after = [900.0] * 12
+    peak = [250.0] * 12
+
+    m = _make_peak_stacking_data(before, after, peak)
+    _check_stacking_invariants(m)
+
+    row = m.row(0, named=True)
+    assert row["new_hp_kwh"] == pytest.approx(200.0)
+    assert row["peak_in_new"] == pytest.approx(200.0)
+    assert row["peak_in_base"] == pytest.approx(50.0)
+
+
+def test_peak_stacking_savings_month() -> None:
+    """Savings months (after < before): all red carved from dark yellow."""
+    before = [800.0] * 12
+    after = [700.0] * 12
+    peak = [40.0] * 12
+
+    m = _make_peak_stacking_data(before, after, peak)
+    _check_stacking_invariants(m)
+
+    row = m.row(0, named=True)
+    assert row["savings_kwh"] == pytest.approx(100.0)
+    assert row["new_hp_kwh"] == pytest.approx(0.0)
+    assert row["peak_in_new"] == pytest.approx(0.0)
+    assert row["peak_in_base"] == pytest.approx(40.0)
+
+
+def test_peak_stacking_mixed_months() -> None:
+    """Mixed scenario: some months grow, some shrink, with varying peak sizes."""
+    before = [800.0, 700.0, 600.0] + [700.0] * 9
+    after = [700.0, 900.0, 900.0] + [700.0] * 9
+    peak = [40.0, 150.0, 350.0] + [0.0] * 9
+
+    m = _make_peak_stacking_data(before, after, peak)
+    _check_stacking_invariants(m)
+
+    jan = m.row(0, named=True)
+    assert jan["savings_kwh"] == pytest.approx(100.0)
+    assert jan["peak_in_base"] == pytest.approx(40.0)
+    assert jan["peak_in_new"] == pytest.approx(0.0)
+
+    feb = m.row(1, named=True)
+    assert feb["new_hp_kwh"] == pytest.approx(200.0)
+    assert feb["peak_in_new"] == pytest.approx(150.0)
+    assert feb["peak_in_base"] == pytest.approx(0.0)
+
+    mar = m.row(2, named=True)
+    assert mar["new_hp_kwh"] == pytest.approx(300.0)
+    assert mar["peak_in_new"] == pytest.approx(300.0)
+    assert mar["peak_in_base"] == pytest.approx(50.0)

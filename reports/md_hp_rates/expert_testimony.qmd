@@ -1206,6 +1206,58 @@ I then multiplied the annualized cost (~$36/kW-year) by each hour's weight to pr
 
 To compute the annual distribution cost caused by each representative home, I multiplied this hourly marginal-cost schedule against the home's hourly electricity consumption profile (from the 2024 BGE residential load shapes described above), and summed across all 8,760 hours. The difference between the "after" and "before" annual totals is the incremental distribution cost attributable to the heat pump.
 
+<br>
+
+**Q.** In Section X, you testified that eliminating the heat pump overpayment within Schedule R would require reducing the distribution, transmission, and EmPOWER Maryland volumetric rates by approximately `{python} pct(fc.volumetric_rate_reduction)` and raising the average monthly fixed charge from `{python} dollar(fc.original_fixed_charge, accuracy=2)` to `{python} dollar(fc.fixed_charge, accuracy=2)`. How did you calculate those figures?
+
+**A.** I solved for the version of Schedule R that satisfies two conditions at the same time.
+
+The first condition is **cost reflectivity**. When a home switches from fossil fuel heating to electric heating, the increase in the volumetric charges it pays must equal the increase in marginal transmission and distribution costs that the switch causes. This is the same before-and-after comparison I described earlier in this section, applied to a alternative, redesigned rate rather than to the rate as filed. I applied the redesign to three volumetric charges — distribution, transmission, and EmPOWER Maryland — and scaled all three by a single uniform factor, which preserves each charge's existing month-to-month shape. I did not change generation charges, because my testimony does not identify a generation overpayment; generation is the component of the bill that is supposed to rise when a customer consumes more electricity, and it remains at the rates the Company filed.
+
+The second condition is **revenue neutrality**. Rate design determines how a class's revenue requirement is collected, not how large it is, so a redesign that simply lowered the Company's recovery would not be a meaningful comparison. The revenue held constant is the revenue collected through the charges the redesign touches: the monthly customer charge plus the three targeted volumetric charges. Generation revenue is unaffected by the redesign and therefore does not enter the calculation on either side. Whatever revenue the reduction in the targeted volumetric rates gives up must come back through the fixed charge.
+
+The calculation therefore asks a deliberately narrow question: holding the structure of the current rate fixed, how far would recovery have to shift out of the targeted volumetric charges and into the fixed charge before the heat pump increment became cost-reflective?
+
+<br>
+
+**Q.** How did you determine the factor by which the targeted volumetric rates would have to fall?
+
+**A.** That factor follows directly from the cost-reflectivity condition, and it does not depend on the fixed charge at all. Because the same default rate applies to the home both before and after it installs a heat pump, the identical fixed charge is paid in both cases and cancels out of the before-and-after bill difference. Only the targeted volumetric charges change.
+
+The inputs are the same figures I presented in Section III. Under the rates as filed, the increase in the representative home's targeted volumetric charges is `{python} dollar(fc.retrofit_incremental_variable_charge)` per year — `{python} dollar(fc.retrofit_incremental_td_charge)` in distribution and transmission charges and `{python} dollar(fc.retrofit_incremental_empower_charge)` in EmPOWER contributions. The increase in marginal T&D cost that the same change in consumption causes is `{python} dollar(fc.retrofit_incremental_marginal_cost)` per year. The difference between the two is the `{python} dollar(fc.retrofit_overpayment)` annual overpayment.
+
+Aligning the two follows directly from those two numbers. Multiplying the monthly volumetric charges by the ratio of the incremental cost to the incremental charges — `{python} dollar(fc.retrofit_incremental_marginal_cost)` divided by `{python} dollar(fc.retrofit_incremental_variable_charge)` — scales the increase down by that same ratio, leaving it equal to the incremental cost. That ratio is therefore the scaling factor the redesign requires:
+
+$$
+\lambda^{*}
+=
+\frac{\Delta MC_{\text{T\&D}}}
+{\Delta V_{\text{T\&D + EmPOWER}}}
+$$
+
+For BGE, that ratio is `{python} pct(fc.implied_lambda, accuracy=1)`. In other words, the targeted volumetric rates would have to be cut to roughly one-tenth of their filed levels — a reduction of approximately `{python} pct(fc.volumetric_rate_reduction)` — before a home switching to electric heating would pay no more than the additional T&D costs it causes.  I apply this ratio only to the T&D and EmPOWER Maryland portion of the bill, leaving generation charges unchanged.
+
+<br>
+
+**Q.** How did you then determine the fixed charge?
+
+**A.** From the revenue neutrality condition. Cutting the three targeted volumetric rates to `{python} pct(fc.implied_lambda, accuracy=1)` of their filed levels leaves the remaining `{python} pct(fc.volumetric_rate_reduction)` of the revenue those charges collect to be recovered elsewhere, and the only remaining place to recover it in this exercise is the fixed charge.
+
+Using BGE's actual residential customer counts and kilowatt-hour sales, the three targeted charges collect approximately `{python} dollar(fc.class_variable_revenue_per_customer)` per residential customer per year across the class as a whole. The redesign removes approximately `{python} dollar(fc.class_variable_revenue_per_customer * fc.volumetric_rate_reduction)` of that amount per customer per year. Spread across twelve monthly bills, replacing it requires raising the fixed charge by `{python} dollar(fc.fixed_charge_delta, accuracy=2)` per month:
+
+$$
+F^{*}
+=
+F_{0}
++
+\frac{\left(1 - \lambda^{*}\right) V_{\text{class}}}
+{12 \, N_{\text{class}}}
+$$
+
+where $F_{0}$ is the current fixed charge, $V_{\text{class}}$ is the annual revenue the targeted volumetric charges collect from the residential class, and $N_{\text{class}}$ is the number of residential customers. Starting from BGE's current Schedule R customer charge of `{python} dollar(fc.original_fixed_charge, accuracy=2)` per month, the result is a fixed charge of `{python} dollar(fc.fixed_charge, accuracy=2)` per month.[^fixed-charge-baseline]
+
+[^fixed-charge-baseline]: I use BGE's filed Schedule R customer charge of $10.00 per month as the starting point. Adding the Universal Service Program charge and weighting by the Company's actual monthly customer counts produces an average fixed charge of approximately $10.06 per month; the distinction does not affect the magnitude of the result.
+
 ## XII. Conclusion
 
 **Q.** Does this conclude your direct testimony?

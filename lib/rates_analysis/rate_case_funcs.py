@@ -4076,11 +4076,18 @@ _ALL_MONTH_ABBRS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep
 
 
 def _season_labels(summer_months: set[str]) -> tuple[str, str]:
-    """Derive ``("May-Sep", "Oct-Apr")``-style labels from a set of summer month abbreviations."""
+    """Derive ``("May-Sep", "Oct-Apr")``-style labels from a set of summer month abbreviations.
+
+    Winter wraps the year boundary, so its label runs from the month after
+    summer ends to the month before summer starts.
+    """
     ordered = [m for m in _ALL_MONTH_ABBRS if m in summer_months]
-    winter = [m for m in _ALL_MONTH_ABBRS if m not in summer_months]
+    if not ordered or len(ordered) == len(_ALL_MONTH_ABBRS):
+        raise ValueError(f"summer_months must be a non-empty, partial subset of months, got {summer_months!r}")
+    first = _ALL_MONTH_ABBRS.index(ordered[0])
+    last = _ALL_MONTH_ABBRS.index(ordered[-1])
     summer_label = f"{ordered[0]}-{ordered[-1]}"
-    winter_label = f"{winter[0]}-{winter[-1]}"
+    winter_label = f"{_ALL_MONTH_ABBRS[(last + 1) % 12]}-{_ALL_MONTH_ABBRS[first - 1]}"
     return summer_label, winter_label
 
 

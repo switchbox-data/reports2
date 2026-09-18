@@ -90,14 +90,18 @@ _batch_config = yaml.safe_load(Path("../batch_config.yaml").read_text())
 STATE = _batch_config["STATE"]
 BATCH = _batch_config["BATCH"]
 RDP_REF = _batch_config["RDP_REF"]
-UTILITY = "bge"
+ELECTRIC_UTILITY = "bge"
+GAS_UTILITY = "bge"
 
 DEFAULT_SCENARIO = _batch_config["BASELINE_BILL_SCENARIO"]
 
 USE_BGE_ACTUALS = True
 SCALE_HEATING_BY_RS_RELEASE_COMP = False
 
-print(f"state={STATE}  batch={BATCH}  rdp_ref={RDP_REF}  utility={UTILITY}")
+print(
+    f"state={STATE}  batch={BATCH}  rdp_ref={RDP_REF}  "
+    f"electric_utility={ELECTRIC_UTILITY}  gas_utility={GAS_UTILITY}"
+)
 print(f"USE_BGE_ACTUALS={USE_BGE_ACTUALS}")
 print(f"SCALE_HEATING_BY_RS_RELEASE_COMP={SCALE_HEATING_BY_RS_RELEASE_COMP}")
 ```
@@ -121,10 +125,14 @@ SEG_CALIBRATED = segment_name(DEFAULT_SCENARIO, "calibrated")
 
 bills_precalc = load_master_bills(STATE, BATCH, SEG_PRECALC)
 
-kwh_8760_precalc = load_billing_kwh_8760(STATE, UTILITY, BATCH, SEG_PRECALC)
-kwh_8760_calibrated = load_billing_kwh_8760(STATE, UTILITY, BATCH, SEG_CALIBRATED)
+kwh_8760_precalc = load_billing_kwh_8760(
+    STATE, ELECTRIC_UTILITY, BATCH, SEG_PRECALC
+)
+kwh_8760_calibrated = load_billing_kwh_8760(
+    STATE, ELECTRIC_UTILITY, BATCH, SEG_CALIBRATED
+)
 
-mc_8760 = load_delivery_mc_heatmap(STATE, UTILITY, 2025)
+mc_8760 = load_delivery_mc_heatmap(STATE, ELECTRIC_UTILITY, 2025)
 print(f"MC 8760: {mc_8760.height} hours, columns: {mc_8760.columns}")
 ```
 
@@ -280,8 +288,11 @@ segment (upgrade 0) since heating fuel is a baseline attribute:
 - **Delivered fuel**: homes that heat with oil or propane
 - **All fossil fuel**: the union of both
 
-The master bills are Hive-partitioned by `sb.electric_utility`, so we filter to
-BGE explicitly.
+The master bills are Hive-partitioned by `sb.electric_utility`. Natural-gas
+homes are further restricted to `sb.gas_utility == GAS_UTILITY` so their gas
+bills are BGE Schedule D, not Washington Gas or UGI. Delivered-fuel homes keep
+the electric-only filter: most oil/propane customers have no gas account
+(`sb.gas_utility` is null), and requiring BGE gas would drop that population.
 
 ```{python}
 #| label: populations
@@ -289,22 +300,31 @@ BGE explicitly.
 _annual_precalc = cast(
     pl.DataFrame,
     bills_precalc.filter(
-        (pl.col("month") == "Annual") & (pl.col("sb.electric_utility") == UTILITY)
+        (pl.col("month") == "Annual")
+        & (pl.col("sb.electric_utility") == ELECTRIC_UTILITY)
     )
     .select(
-        "bldg_id", "weight",
-        "heats_with_natgas", "heats_with_oil", "heats_with_propane",
+        "bldg_id",
+        "weight",
+        "sb.electric_utility",
+        "sb.gas_utility",
+        "heats_with_natgas",
+        "heats_with_oil",
+        "heats_with_propane",
     )
     .collect(),
 )
 
-pop_natgas = _annual_precalc.filter(pl.col("heats_with_natgas"))
+pop_natgas = _annual_precalc.filter(
+    pl.col("heats_with_natgas")
+    & (pl.col("sb.gas_utility") == GAS_UTILITY)
+)
 pop_delivered = _annual_precalc.filter(
     pl.col("heats_with_oil") | pl.col("heats_with_propane")
 )
-pop_all_fossil = _annual_precalc.filter(
-    pl.col("heats_with_natgas") | pl.col("heats_with_oil") | pl.col("heats_with_propane")
-)
+pop_all_fossil = pl.concat(
+    [pop_natgas, pop_delivered]
+).unique(subset=["bldg_id"])
 
 for label, pop in [("Natural gas", pop_natgas), ("Delivered fuel", pop_delivered), ("All fossil fuel", pop_all_fossil)]:
     n = len(pop)
@@ -579,7 +599,9 @@ delivered-fuel homes).
 
 _fossil_cols = ["gas_total_bill", "oil_total_bill", "propane_total_bill"]
 _fossil_select = ["bldg_id", "upgrade", "weight", *_fossil_cols]
-_fossil_filter = (pl.col("month") == "Annual") & (pl.col("sb.electric_utility") == UTILITY)
+_fossil_filter = (pl.col("month") == "Annual") & (
+    pl.col("sb.electric_utility") == ELECTRIC_UTILITY
+)
 
 bills_calibrated = load_master_bills(STATE, BATCH, SEG_CALIBRATED)
 
@@ -1141,7 +1163,7 @@ _pop_elec_heating = cast(
     pl.DataFrame,
     bills_precalc.filter(
         (pl.col("month") == "Annual")
-        & (pl.col("sb.electric_utility") == UTILITY)
+        & (pl.col("sb.electric_utility") == ELECTRIC_UTILITY)
         & pl.col("heats_with_electricity")
     )
     .select("bldg_id", "weight")

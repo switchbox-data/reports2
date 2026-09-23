@@ -1,0 +1,1704 @@
+---
+title: "Representative Home: Monthly Load and Bill Decomposition"
+reference-location: margin
+fig-cap-location: bottom
+execute:
+  warning: false
+  message: false
+---
+
+This notebook constructs a "representative home" for Eversource's natural-gas-heated,
+delivered-fuel-heated, and all-fossil-fuel-heated residential customer
+populations. Rather than picking a single ResStock building, we compute the
+weighted-average monthly electricity profile for each population — before and
+after switching to a heat pump — then apply today's filed rate components to
+produce a per-component bill decomposition.
+
+The outputs are three chart types per population:
+
+1. **Monthly load before/after** — a stacked bar chart showing how monthly
+   electricity consumption changes when a home installs a heat pump.
+2. **Annual bill by component** — a stacked bar chart showing how
+   each bill component (customer charge, distribution, transmission,
+   generation) changes before and after the heat pump.
+3. **Monthly delivery marginal cost** — a stacked bar chart showing the
+   monthly transmission and distribution marginal costs the average home
+   causes, before and after installing a heat pump.
+
+These charts and the associated report variables are used in
+`expert_testimony.qmd` to ground the representative-home argument.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+import pickle
+from pathlib import Path
+from typing import cast
+
+import polars as pl
+import yaml
+from great_tables import GT
+
+from lib.great_tables import get_switchbox_gt_tab_options
+from lib.plotnine import SB_COLORS, theme_switchbox
+from lib.quarto import display_gt, display_figure
+from lib.rdp import fetch_rdp_file
+from plotnine import (
+    aes,
+    geom_col,
+    ggplot,
+    labs,
+    position_dodge,
+    scale_fill_manual,
+    scale_x_discrete,
+    scale_y_continuous,
+    theme,
+)
+from lib.rates_analysis.rate_case_funcs import (
+    MONTH_ORDER,
+    building_delivery_mc_8760,
+    load_billing_kwh_8760,
+    load_delivery_mc_heatmap,
+    load_master_bills,
+    monthly_bill_from_profile,
+    monthly_load_y_max,
+    plot_annual_bill_component_single,
+    plot_annual_bill_component_stacked,
+    plot_decomposed_bill_2bar,
+    plot_decomposed_bill_3bar,
+    plot_monthly_delivery_mc,
+    plot_seasonal_delivery_mc,
+    plot_seasonal_delivery_mc_comparison,
+    plot_monthly_load,
+    plot_monthly_load_before_after,
+    plot_monthly_load_with_peak,
+    normalize_peak_split_to_monthly,
+    segment_name,
+    sum_8760_to_monthly,
+    sum_monthly_peak_offpeak_kwh,
+    weighted_avg_hourly,
+    weighted_avg_monthly,
+    _aggregate_seasonal_mc,
+    _season_labels,
+)
+
+report_vars: dict = {}
+
+SUMMER_MONTHS = {"May", "Jun", "Jul", "Aug", "Sep"}
+```
+
+## Parameters
+
+```{python}
+#| label: params
+
+_batch_config = yaml.safe_load(Path("../batch_config.yaml").read_text())
+
+STATE = _batch_config["STATE"]
+BATCH = _batch_config["BATCH"]
+RDP_REF = _batch_config["RDP_REF"]
+ELECTRIC_UTILITY = "ct_eversource"
+GAS_UTILITY = "yankee_gas"
+UPGRADE_BASE = int(_batch_config["UPGRADE_BASE"])
+UPGRADE_HP = int(_batch_config["UPGRADE_HP"])
+
+DEFAULT_SCENARIO = _batch_config["BASELINE_BILL_SCENARIO"]
+DEFAULT_RATE_YAML = _batch_config["DEFAULT_RATE_YAML"]
+OPTIONAL_RATE_YAML = _batch_config.get("OPTIONAL_RATE_YAML")
+
+UTILITY_LABEL = "Eversource"
+DEFAULT_RATE_LABEL = "Rate 1"
+BILL_COMPONENTS = ["customer_charge", "generation", "distribution", "transmission"]
+
+USE_UTILITY_ACTUALS = False
+SCALE_HEATING_BY_RS_RELEASE_COMP = False
+
+print(
+    f"state={STATE}  batch={BATCH}  rdp_ref={RDP_REF}  electric_utility={ELECTRIC_UTILITY}  "
+    f"gas_utility={GAS_UTILITY}  upgrade_base={UPGRADE_BASE}  upgrade_hp={UPGRADE_HP}"
+)
+print(f"DEFAULT_RATE_YAML={DEFAULT_RATE_YAML}")
+print(f"OPTIONAL_RATE_YAML={OPTIONAL_RATE_YAML}")
+print(f"USE_UTILITY_ACTUALS={USE_UTILITY_ACTUALS}")
+print(f"SCALE_HEATING_BY_RS_RELEASE_COMP={SCALE_HEATING_BY_RS_RELEASE_COMP}")
+```
+
+## Import data
+
+We load two data sources:
+
+- **Master bills** (precalc segment only) — for population metadata: building
+  IDs, sample weights, and heating fuel flags. We do not use `elec_grid_kwh`
+  from master bills; all kWh data comes from the hourly parquets below.
+- **`billing_kwh_8760.parquet`** — CAIRO's hourly grid consumption for each
+  building (post-PV-netting, scaled to match utility sales). One file per
+  segment. This is the same kWh basis CAIRO uses for BAT and bill calculations.
+
+```{python}
+#| label: ingest
+
+SEG_PRECALC = segment_name(DEFAULT_SCENARIO, "precalc")
+SEG_CALIBRATED = segment_name(DEFAULT_SCENARIO, "calibrated")
+
+bills_precalc = load_master_bills(STATE, BATCH, SEG_PRECALC)
+
+kwh_8760_precalc = load_billing_kwh_8760(
+    STATE, ELECTRIC_UTILITY, BATCH, SEG_PRECALC
+)
+kwh_8760_calibrated = load_billing_kwh_8760(
+    STATE, ELECTRIC_UTILITY, BATCH, SEG_CALIBRATED
+)
+
+mc_8760 = load_delivery_mc_heatmap(STATE, ELECTRIC_UTILITY, 2025)
+print(f"MC 8760: {mc_8760.height} hours, columns: {mc_8760.columns}")
+```
+
+When utility-sourced actuals are available (`USE_UTILITY_ACTUALS = True`), we
+load monthly and hourly residential customer data from S3 for ground-truth
+comparison charts.
+
+```{python}
+#| label: ingest-utility-actuals
+
+if USE_UTILITY_ACTUALS:
+    import io
+    import boto3
+
+    _s3 = boto3.client("s3")
+
+    # TODO: Replace with Eversource S3 keys when actuals are available.
+    # Expected layout:
+    #   s3://data.sb/eversource/<monthly_excel_key>
+    #   s3://data.sb/eversource/<hourly_excel_key>
+    # The loader should produce:
+    #   utility_monthly: DataFrame with month_label, non_heating_kwh, heating_kwh
+    #   utility_hourly_non_heating: DataFrame with timestamp, kwh (8760 rows)
+    #   utility_hourly_heating: DataFrame with timestamp, kwh (8760 rows)
+    raise NotImplementedError(
+        "Eversource utility actuals S3 keys not yet configured. "
+        "Set USE_UTILITY_ACTUALS = False until data is available."
+    )
+else:
+    print("USE_UTILITY_ACTUALS is False — skipping utility actuals ingest.")
+```
+
+```{python}
+#| label: load-rs-release-comp-factors
+
+_rs_comp_factors: dict[str, float] = {}
+if SCALE_HEATING_BY_RS_RELEASE_COMP:
+    _pkl_path = Path("../cache/rs_release_comp_monthly_pct_total.pkl")
+    assert _pkl_path.exists(), f"Missing {_pkl_path} — run rs_release_comp.qmd first"
+    _pkl_data = pickle.loads(_pkl_path.read_bytes())
+    _combined_pdf = _pkl_data["populations"]["combined"]
+    _rs_comp_factors = dict(zip(_combined_pdf["month"], _combined_pdf["sb_ach_ratio"]))
+    print("RS release comp monthly scale factors (sb_ach_ratio, combined):")
+    for _m, _f in _rs_comp_factors.items():
+        print(f"  {_m}: {_f:.4f}")
+else:
+    print("SCALE_HEATING_BY_RS_RELEASE_COMP is False — skipping RS release comp pickle.")
+```
+
+Let's confirm the metadata columns we need are present:
+
+```{python}
+#| label: check-columns
+
+_sample = cast(
+    pl.DataFrame,
+    bills_precalc.filter(pl.col("month") == "Annual")
+    .select(
+        "bldg_id", "weight",
+        "heats_with_natgas", "heats_with_oil", "heats_with_propane",
+    )
+    .head(5)
+    .collect(),
+)
+_sample
+```
+
+## Population definitions
+
+We define three populations of Eversource residential customers, all from the precalc
+segment (upgrade 0) since heating fuel is a baseline attribute:
+
+- **Natural gas**: homes that heat with natural gas
+- **Delivered fuel**: homes that heat with oil or propane
+- **All fossil fuel**: the union of both
+
+The master bills are Hive-partitioned by `sb.electric_utility`. Natural-gas
+homes are further restricted to `sb.gas_utility == GAS_UTILITY` (Yankee Gas)
+so their gas bills reflect the correct gas tariff. Delivered-fuel homes keep
+the electric-only filter: most oil/propane customers have no gas account
+(`sb.gas_utility` is null).
+
+```{python}
+#| label: populations
+
+_annual_precalc = cast(
+    pl.DataFrame,
+    bills_precalc.filter(
+        (pl.col("month") == "Annual")
+        & (pl.col("sb.electric_utility") == ELECTRIC_UTILITY)
+    )
+    .select(
+        "bldg_id",
+        "weight",
+        "sb.electric_utility",
+        "sb.gas_utility",
+        "heats_with_natgas",
+        "heats_with_oil",
+        "heats_with_propane",
+    )
+    .collect(),
+)
+
+pop_natgas = _annual_precalc.filter(
+    pl.col("heats_with_natgas")
+    & (pl.col("sb.gas_utility") == GAS_UTILITY)
+)
+pop_delivered = _annual_precalc.filter(
+    pl.col("heats_with_oil") | pl.col("heats_with_propane")
+)
+pop_all_fossil = pl.concat(
+    [pop_natgas, pop_delivered]
+).unique(subset=["bldg_id"])
+
+for label, pop in [("Natural gas", pop_natgas), ("Delivered fuel", pop_delivered), ("All fossil fuel", pop_all_fossil)]:
+    n = len(pop)
+    weighted = pop["weight"].sum()
+    print(f"{label}: {n:,} ResStock buildings → {weighted:,.0f} weighted households")
+```
+
+## Monthly and hourly load profiles
+
+For each population and upgrade, we compute both a monthly kWh profile (for
+load charts and bill computation) and an hourly 8760 profile (for marginal-cost
+multiplication). Both come from `billing_kwh_8760.parquet` — the same scaled kWh
+basis CAIRO uses for BAT and bills.
+
+```{python}
+#| label: compute-profiles
+
+profiles: dict[str, dict[str, pl.DataFrame]] = {}
+hourly_profiles: dict[str, dict[str, pl.DataFrame]] = {}
+
+for pop_label, pop_df in [
+    ("natgas", pop_natgas),
+    ("delivered", pop_delivered),
+    ("all_fossil", pop_all_fossil),
+]:
+    bldg_ids = pop_df["bldg_id"].to_list()
+    weights = pop_df.select("bldg_id", "weight")
+
+    before = weighted_avg_monthly(kwh_8760_precalc, bldg_ids, weights)
+    after = weighted_avg_monthly(kwh_8760_calibrated, bldg_ids, weights)
+    profiles[pop_label] = {"before": before, "after": after}
+
+    before_hourly = weighted_avg_hourly(kwh_8760_precalc, bldg_ids, weights)
+    after_hourly = weighted_avg_hourly(kwh_8760_calibrated, bldg_ids, weights)
+    hourly_profiles[pop_label] = {"before": before_hourly, "after": after_hourly}
+
+    annual_before = before["kwh"].sum()
+    annual_after = after["kwh"].sum()
+    annual_delta = annual_after - annual_before
+    pct_change = annual_delta / annual_before
+
+    report_vars[f"{pop_label}_annual_kwh_before"] = annual_before
+    report_vars[f"{pop_label}_annual_kwh_after"] = annual_after
+    report_vars[f"{pop_label}_annual_kwh_delta"] = annual_delta
+    report_vars[f"{pop_label}_pct_kwh_change"] = pct_change
+
+    print(f"\n{pop_label}:")
+    print(f"  Annual kWh before: {annual_before:,.0f}")
+    print(f"  Annual kWh after:  {annual_after:,.0f}")
+    print(f"  Change: {pct_change:+.1%}")
+
+if USE_UTILITY_ACTUALS:
+    # TODO: Overwrite all_fossil profiles with utility actuals when available.
+    raise NotImplementedError(
+        "Utility actuals overwrite not yet implemented."
+    )
+
+    if SCALE_HEATING_BY_RS_RELEASE_COMP:
+        _report_vars_unscaled = dict(report_vars)
+
+        _month_num_to_label = {i + 1: m for i, m in enumerate(MONTH_ORDER)}
+        profiles["all_fossil"]["after"] = profiles["all_fossil"]["after"].with_columns(
+            pl.col("kwh")
+            * pl.col("month_label")
+            .cast(pl.String)
+            .replace_strict(_rs_comp_factors, return_dtype=pl.Float64),
+        )
+        hourly_profiles["all_fossil"]["after"] = hourly_profiles["all_fossil"]["after"].with_columns(
+            pl.col("kwh")
+            * pl.col("timestamp")
+            .dt.month()
+            .replace_strict(
+                {num: _rs_comp_factors[label] for num, label in _month_num_to_label.items()},
+                return_dtype=pl.Float64,
+            ),
+        )
+
+        _after_scaled = profiles["all_fossil"]["after"]
+        annual_after_scaled = _after_scaled["kwh"].sum()
+        annual_delta_scaled = annual_after_scaled - annual_before
+        pct_change_scaled = annual_delta_scaled / annual_before
+
+        report_vars["all_fossil_annual_kwh_after"] = annual_after_scaled
+        report_vars["all_fossil_annual_kwh_delta"] = annual_delta_scaled
+        report_vars["all_fossil_pct_kwh_change"] = pct_change_scaled
+
+        print("\n[RS RELEASE COMP SCALING] Applied sb_ach_ratio factors to all_fossil after:")
+        print(f"  Annual kWh after (unscaled): {annual_after:,.0f}")
+        print(f"  Annual kWh after (scaled):   {annual_after_scaled:,.0f}")
+        print(f"  Difference: {annual_after_scaled - annual_after:,.0f} ({(annual_after_scaled / annual_after - 1):+.1%})")
+        print(f"  Delta vs before (scaled): {annual_delta_scaled:,.0f} ({pct_change_scaled:+.1%})")
+```
+
+Let's look at the natural-gas monthly profile:
+
+```{python}
+#| label: show-natgas-profiles
+
+profiles["natgas"]["before"].join(
+    profiles["natgas"]["after"].rename({"kwh": "kwh_after"}),
+    on="month_label",
+).with_columns(
+    (pl.col("kwh_after") - pl.col("kwh")).alias("delta"),
+).rename({"kwh": "kwh_before"})
+```
+
+## Rate components
+
+We parse Eversource's filed rate components from the monthly rates YAML in the
+`rate-design-platform` repo. Each component has monthly rates for the rate year
+(January 2025 – December 2025).
+
+```{python}
+#| label: load-rates
+
+_rates_raw = fetch_rdp_file(
+    DEFAULT_RATE_YAML,
+    ref=RDP_REF,
+)
+_rates_yaml = yaml.safe_load(_rates_raw)
+
+# Build the rate_components dict by folding sub-components into display categories
+_drr = _rates_yaml["add_to_drr"]["charges"]
+_already = _rates_yaml["already_in_drr"]["charges"]
+_srr = _rates_yaml["add_to_srr"]["charges"]
+
+
+def _sum_monthly_rates(*charge_dicts: dict) -> dict[str, float]:
+    """Sum monthly_rates across multiple charge dicts, key by key."""
+    result: dict[str, float] = {}
+    for d in charge_dicts:
+        for k, v in d["monthly_rates"].items():
+            result[k] = result.get(k, 0.0) + v
+    return result
+
+
+rate_components = {
+    "Customer Charge": {
+        "charge_unit": "$/month",
+        "monthly_rates": _already["customer_charge"]["monthly_rates"],
+    },
+    "Distribution": {
+        "charge_unit": "$/kWh",
+        "monthly_rates": _sum_monthly_rates(
+            _already["core_delivery_rate"],
+            _drr["electric_system_improvements_esi"],
+            _drr["competitive_transition_assessment_cta"],
+            _drr["non_bypassable_fmcc_nbfmcc"],
+            _drr["conservation_adjustment_mechanism_cam"],
+            _drr["renewable_energy_investment_clean_energy_fund"],
+        ),
+    },
+    "Transmission": {
+        "charge_unit": "$/kWh",
+        "monthly_rates": _drr["transmission_charge"]["monthly_rates"],
+    },
+    "Generation": {
+        "charge_unit": "$/kWh",
+        "monthly_rates": _srr["supply_commodity_bundled"]["monthly_rates"],
+    },
+}
+
+print("Rate components loaded:")
+for name, spec in rate_components.items():
+    unit = spec["charge_unit"]
+    rates = spec["monthly_rates"]
+    vals = list(rates.values())
+    print(f"  {name} ({unit}): {min(vals):.5f} – {max(vals):.5f}")
+```
+
+## Monthly bills
+
+We apply today's filed rates to each population's monthly kWh profile. The
+`monthly_bill_from_profile()` function multiplies volumetric rates by kWh and
+passes through fixed charges, returning a long-form DataFrame.
+
+```{python}
+#| label: compute-bills
+
+bill_results: dict[str, dict[str, pl.DataFrame]] = {}
+
+for pop_label in ["natgas", "delivered", "all_fossil"]:
+    before_kwh = profiles[pop_label]["before"]
+    after_kwh = profiles[pop_label]["after"]
+
+    bills_before = monthly_bill_from_profile(before_kwh, rate_components)
+    bills_after = monthly_bill_from_profile(after_kwh, rate_components)
+
+    bill_results[pop_label] = {"before": bills_before, "after": bills_after}
+
+    # Compute annual totals per component and store as report vars
+    for period, bills_df in [("before", bills_before), ("after", bills_after)]:
+        annual_by_component = bills_df.group_by("component").agg(pl.col("value").sum())
+        for row in annual_by_component.iter_rows(named=True):
+            component_key = row["component"].lower().replace(" ", "_")
+            report_vars[f"{pop_label}_annual_{component_key}_{period}"] = row["value"]
+
+    for component in [c.lower().replace(" ", "_") for c in BILL_COMPONENTS if c != "Customer Charge"]:
+        report_vars[f"{pop_label}_annual_{component}_delta"] = (
+            report_vars[f"{pop_label}_annual_{component}_after"]
+            - report_vars[f"{pop_label}_annual_{component}_before"]
+        )
+    report_vars[f"{pop_label}_annual_delivery_charges_delta"] = (
+        report_vars[f"{pop_label}_annual_distribution_delta"]
+        + report_vars[f"{pop_label}_annual_transmission_delta"]
+    )
+    for period in ["before", "after"]:
+        report_vars[f"{pop_label}_annual_elec_bill_{period}"] = sum(
+            report_vars[f"{pop_label}_annual_{c.lower().replace(' ', '_')}_{period}"]
+            for c in BILL_COMPONENTS
+        )
+    report_vars[f"{pop_label}_annual_elec_bill_delta"] = (
+        report_vars[f"{pop_label}_annual_elec_bill_after"]
+        - report_vars[f"{pop_label}_annual_elec_bill_before"]
+    )
+```
+
+Let's see the annual bill breakdown for natural-gas homes:
+
+```{python}
+#| label: show-natgas-bills
+
+for period in ["before", "after"]:
+    print(f"\n{period.title()} HP:")
+    annual = (
+        bill_results["natgas"][period]
+        .group_by("component")
+        .agg(pl.col("value").sum().alias("annual"))
+        .sort("annual", descending=True)
+    )
+    for row in annual.iter_rows(named=True):
+        print(f"  {row['component']:20s} ${row['annual']:,.2f}")
+    print(f"  {'TOTAL':20s} ${annual['annual'].sum():,.2f}")
+```
+
+## Total energy bills (before/after heat pump)
+
+We now compute the average _total_ energy bill — electricity plus fossil fuel —
+for each population before and after heat pump installation. The electric
+components come from the profile-based bill computation above; the fossil fuel
+bills come from the master bills (CAIRO's full bill calculation, which includes
+gas tariff bills for natgas homes and EIA-price-based oil/propane costs for
+delivered-fuel homes).
+
+```{python}
+#| label: compute-total-energy-bills
+
+_fossil_cols = ["gas_total_bill", "oil_total_bill", "propane_total_bill"]
+_fossil_select = ["bldg_id", "upgrade", "weight", *_fossil_cols]
+_fossil_filter = (pl.col("month") == "Annual") & (
+    pl.col("sb.electric_utility") == ELECTRIC_UTILITY
+)
+
+bills_calibrated = load_master_bills(STATE, BATCH, SEG_CALIBRATED)
+
+_fossil_annual = cast(
+    pl.DataFrame,
+    pl.concat([
+        bills_precalc.filter(_fossil_filter).select(_fossil_select),
+        bills_calibrated.filter(_fossil_filter).select(_fossil_select),
+    ]).collect(),
+)
+
+
+def _weighted_avg_fossil(pop_df: pl.DataFrame, upgrade: int) -> dict[str, float]:
+    """Weighted-average fossil fuel bills for a population at a given upgrade."""
+    joined = (
+        _fossil_annual.filter(pl.col("upgrade") == upgrade)
+        .join(pop_df.select("bldg_id", "weight"), on="bldg_id", suffix="_pop")
+        .with_columns(w=pl.col("weight_pop"))
+    )
+    total_w = joined["w"].sum()
+    if total_w == 0:
+        raise ValueError(
+            f"No overlapping buildings for upgrade={upgrade} "
+            f"(n_pop={len(pop_df)}, n_fossil={_fossil_annual.filter(pl.col('upgrade') == upgrade).height})"
+        )
+    return {
+        col: (joined[col] * joined["w"]).sum() / total_w
+        for col in _fossil_cols
+    }
+
+
+# Natural gas homes
+_ng_fossil_before = _weighted_avg_fossil(pop_natgas, upgrade=UPGRADE_BASE)
+_ng_fossil_after = _weighted_avg_fossil(pop_natgas, upgrade=UPGRADE_HP)
+
+natgas_before = {
+    "delivery_fixed": report_vars["natgas_annual_customer_charge_before"],
+    "delivery_volumetric": (
+        report_vars["natgas_annual_distribution_before"]
+        + report_vars["natgas_annual_transmission_before"]
+    ),
+    "supply": report_vars["natgas_annual_generation_before"],
+    "gas": _ng_fossil_before["gas_total_bill"],
+}
+
+natgas_after = {
+    "delivery_fixed": report_vars["natgas_annual_customer_charge_after"],
+    "delivery_volumetric": (
+        report_vars["natgas_annual_distribution_after"]
+        + report_vars["natgas_annual_transmission_after"]
+    ),
+    "supply": report_vars["natgas_annual_generation_after"],
+    "gas": _ng_fossil_after["gas_total_bill"],
+}
+
+# Delivered fuel homes
+_del_fossil_before = _weighted_avg_fossil(pop_delivered, upgrade=UPGRADE_BASE)
+_del_fossil_after = _weighted_avg_fossil(pop_delivered, upgrade=UPGRADE_HP)
+
+delivered_before = {
+    "delivery_fixed": report_vars["delivered_annual_customer_charge_before"],
+    "delivery_volumetric": (
+        report_vars["delivered_annual_distribution_before"]
+        + report_vars["delivered_annual_transmission_before"]
+    ),
+    "supply": report_vars["delivered_annual_generation_before"],
+    "gas": _del_fossil_before["oil_total_bill"] + _del_fossil_before["propane_total_bill"],
+}
+
+delivered_after = {
+    "delivery_fixed": report_vars["delivered_annual_customer_charge_after"],
+    "delivery_volumetric": (
+        report_vars["delivered_annual_distribution_after"]
+        + report_vars["delivered_annual_transmission_after"]
+    ),
+    "supply": report_vars["delivered_annual_generation_after"],
+    "gas": _del_fossil_after["oil_total_bill"] + _del_fossil_after["propane_total_bill"],
+}
+
+# Store total energy bill report vars
+for pop_label, b, a in [("natgas", natgas_before, natgas_after), ("delivered", delivered_before, delivered_after)]:
+    total_before = sum(b.values())
+    total_after = sum(a.values())
+    report_vars[f"{pop_label}_total_energy_bill_before"] = total_before
+    report_vars[f"{pop_label}_total_energy_bill_after"] = total_after
+    report_vars[f"{pop_label}_total_energy_bill_delta"] = total_after - total_before
+    report_vars[f"{pop_label}_fossil_fuel_bill_before"] = b["gas"]
+    report_vars[f"{pop_label}_fossil_fuel_bill_after"] = a["gas"]
+
+for label, b, a in [("Natural gas", natgas_before, natgas_after), ("Delivered fuel", delivered_before, delivered_after)]:
+    print(f"\n{label}:")
+    print(f"  Before: {sum(b.values()):,.0f}  (elec {sum(v for k, v in b.items() if k != 'gas'):,.0f} + fossil {b['gas']:,.0f})")
+    print(f"  After:  {sum(a.values()):,.0f}  (elec {sum(v for k, v in a.items() if k != 'gas'):,.0f} + fossil {a['gas']:,.0f})")
+```
+
+```{python}
+#| label: fig-total-bill-before-after-natgas
+#| fig-cap: "Average annual energy bills for simulated Eversource-territory natural-gas-heated homes, before and after heat pump installation. Electric and natural gas consumption from NREL ResStock, bills calculated using CAIRO model."
+
+fig_natgas_ba = plot_decomposed_bill_2bar(
+    natgas_before,
+    natgas_after,
+    bar_labels=("Natural gas\nfurnace", "Heat pump"),
+    title=f"Average annual electricity + natural gas bill under {DEFAULT_RATE_LABEL},\nbefore and after heat pump, for simulated {UTILITY_LABEL}-territory natural-gas-heated homes",
+    reserve_third=True,
+    side_labels={
+        "delivery_fixed": "Customer\nCharge",
+        "delivery_volumetric": "Transmission,\nDistribution",
+        "supply": "Generation",
+        "gas": "Natural\nGas",
+    },
+)
+display_figure(fig_natgas_ba)
+```
+
+```{python}
+#| label: fig-total-bill-before-after-delivered
+#| fig-cap: "Average annual energy bills for simulated Eversource-territory delivered-fuel-heated homes, before and after heat pump installation. Electric and delivered fuel consumption from NREL ResStock, bills calculated using CAIRO model."
+
+fig_delivered_ba = plot_decomposed_bill_2bar(
+    delivered_before,
+    delivered_after,
+    bar_labels=("Oil/propane\nfurnace", "Heat pump"),
+    title=f"Average annual electricity + delivered fuel bill under {DEFAULT_RATE_LABEL},\nbefore and after heat pump, for simulated {UTILITY_LABEL}-territory delivered-fuel-heated homes",
+    reserve_third=True,
+    side_labels={
+        "delivery_fixed": "Customer\nCharge",
+        "delivery_volumetric": "Transmission,\nDistribution",
+        "supply": "Generation",
+        "gas": "Oil/\nPropane",
+    },
+)
+display_figure(fig_delivered_ba)
+```
+
+## Chart 1: Monthly load before/after
+
+These charts show how monthly electricity consumption changes when a home
+installs a heat pump. The gold base shows pre-HP electricity use, the
+translucent segment shows months where the HP is more efficient (summer
+cooling), and the saffron segment shows new electricity use from the heat pump
+(primarily winter heating).
+
+### Natural gas homes
+
+```{python}
+#| label: fig-monthly-load-natgas-before
+#| fig-cap: "Average monthly electricity for Eversource natural-gas-heated homes before heat pump installation, with peak-hour usage highlighted."
+
+_natgas_monthly = profiles["natgas"]["before"].join(
+    profiles["natgas"]["after"].rename({"kwh": "after_kwh"}),
+    on="month_label",
+).rename({"kwh": "before_kwh"})
+_natgas_y_max = monthly_load_y_max(
+    before_kwh=_natgas_monthly["before_kwh"],
+    after_kwh=_natgas_monthly["after_kwh"],
+)
+
+_natgas_peak_split = sum_monthly_peak_offpeak_kwh(
+    hourly_profiles["natgas"]["before"], mc_8760
+)
+_SUMMER_MONTH_LABELS = ["May", "Jun", "Jul", "Aug", "Sep"]
+_natgas_total_peak_kwh = float(_natgas_peak_split["kwh_peak"].sum())
+_natgas_summer_peak_kwh = float(
+    _natgas_peak_split.filter(pl.col("month_label").is_in(_SUMMER_MONTH_LABELS))["kwh_peak"].sum()
+)
+report_vars["natgas_annual_peak_kwh"] = _natgas_total_peak_kwh
+report_vars["natgas_pct_kwh_during_peak_hours"] = (
+    _natgas_total_peak_kwh / report_vars["natgas_annual_kwh_before"]
+    if report_vars["natgas_annual_kwh_before"] > 0
+    else 0.0
+)
+report_vars["natgas_pct_peak_kwh_may_sep"] = (
+    _natgas_summer_peak_kwh / _natgas_total_peak_kwh if _natgas_total_peak_kwh > 0 else 0.0
+)
+_fig = plot_monthly_load_with_peak(
+    _natgas_peak_split,
+    title="Average natural-gas-heated home",
+    y_max=_natgas_y_max,
+)
+display_figure(_fig)
+```
+
+```{python}
+#| label: fig-monthly-load-natgas
+#| fig-cap: "Average monthly electricity for Eversource natural-gas-heated homes, before and after heat pump installation, with peak-hour usage highlighted."
+
+_natgas_peak_after = sum_monthly_peak_offpeak_kwh(
+    hourly_profiles["natgas"]["after"], mc_8760
+)
+_OCT_APR_MONTH_LABELS = ["Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr"]
+_MAY_SEP_MONTH_LABELS = ["May", "Jun", "Jul", "Aug", "Sep"]
+_natgas_oct_apr_before = float(
+    _natgas_monthly.filter(pl.col("month_label").is_in(_OCT_APR_MONTH_LABELS))[
+        "before_kwh"
+    ].sum()
+)
+_natgas_oct_apr_after = float(
+    _natgas_monthly.filter(pl.col("month_label").is_in(_OCT_APR_MONTH_LABELS))[
+        "after_kwh"
+    ].sum()
+)
+report_vars["natgas_pct_kwh_change_oct_apr"] = (
+    (_natgas_oct_apr_after - _natgas_oct_apr_before) / _natgas_oct_apr_before
+    if _natgas_oct_apr_before > 0
+    else 0.0
+)
+_natgas_winter_peak_before = float(
+    _natgas_peak_split.filter(pl.col("month_label").is_in(_OCT_APR_MONTH_LABELS))[
+        "kwh_peak"
+    ].sum()
+)
+_natgas_winter_peak_after = float(
+    _natgas_peak_after.filter(pl.col("month_label").is_in(_OCT_APR_MONTH_LABELS))[
+        "kwh_peak"
+    ].sum()
+)
+report_vars["natgas_pct_peak_kwh_change_oct_apr"] = (
+    (_natgas_winter_peak_after - _natgas_winter_peak_before) / _natgas_winter_peak_before
+    if _natgas_winter_peak_before > 0
+    else 0.0
+)
+_natgas_may_sep_before = float(
+    _natgas_monthly.filter(pl.col("month_label").is_in(_MAY_SEP_MONTH_LABELS))[
+        "before_kwh"
+    ].sum()
+)
+_natgas_may_sep_after = float(
+    _natgas_monthly.filter(pl.col("month_label").is_in(_MAY_SEP_MONTH_LABELS))[
+        "after_kwh"
+    ].sum()
+)
+report_vars["natgas_pct_kwh_change_may_sep"] = (
+    (_natgas_may_sep_after - _natgas_may_sep_before) / _natgas_may_sep_before
+    if _natgas_may_sep_before > 0
+    else 0.0
+)
+_natgas_summer_peak_before = float(
+    _natgas_peak_split.filter(pl.col("month_label").is_in(_MAY_SEP_MONTH_LABELS))[
+        "kwh_peak"
+    ].sum()
+)
+_natgas_summer_peak_after = float(
+    _natgas_peak_after.filter(pl.col("month_label").is_in(_MAY_SEP_MONTH_LABELS))[
+        "kwh_peak"
+    ].sum()
+)
+report_vars["natgas_pct_peak_kwh_change_may_sep"] = (
+    (_natgas_summer_peak_after - _natgas_summer_peak_before) / _natgas_summer_peak_before
+    if _natgas_summer_peak_before > 0
+    else 0.0
+)
+_fig = plot_monthly_load_before_after(
+    _natgas_monthly,
+    title="Average natural-gas-heated home",
+    y_max=_natgas_y_max,
+    peak_before=_natgas_peak_split,
+    peak_after=_natgas_peak_after,
+)
+display_figure(_fig)
+```
+
+### Delivered fuel homes
+
+```{python}
+#| label: fig-monthly-load-delivered
+#| fig-cap: "Average monthly electricity for Eversource delivered-fuel-heated homes, before and after heat pump installation."
+
+_delivered_monthly = profiles["delivered"]["before"].join(
+    profiles["delivered"]["after"].rename({"kwh": "after_kwh"}),
+    on="month_label",
+).rename({"kwh": "before_kwh"})
+
+_fig = plot_monthly_load_before_after(
+    _delivered_monthly,
+    title="Average delivered-fuel-heated home",
+)
+display_figure(_fig)
+```
+
+### All fossil fuel homes
+
+```{python}
+#| label: fig-monthly-load-all-fossil-before
+#| fig-cap: "Average monthly electricity for all Eversource fossil-fuel-heated homes before heat pump installation, with peak-hour usage highlighted."
+
+_all_fossil_monthly = profiles["all_fossil"]["before"].join(
+    profiles["all_fossil"]["after"].rename({"kwh": "after_kwh"}),
+    on="month_label",
+).rename({"kwh": "before_kwh"})
+_all_fossil_y_max = monthly_load_y_max(
+    before_kwh=_all_fossil_monthly["before_kwh"],
+    after_kwh=_all_fossil_monthly["after_kwh"],
+)
+
+_all_fossil_peak_split = normalize_peak_split_to_monthly(
+    sum_monthly_peak_offpeak_kwh(hourly_profiles["all_fossil"]["before"], mc_8760),
+    _all_fossil_monthly,
+    kwh_col="before_kwh",
+)
+_all_fossil_total_peak_kwh = float(_all_fossil_peak_split["kwh_peak"].sum())
+_all_fossil_summer_peak_kwh = float(
+    _all_fossil_peak_split.filter(pl.col("month_label").is_in(_SUMMER_MONTH_LABELS))["kwh_peak"].sum()
+)
+report_vars["all_fossil_annual_peak_kwh"] = _all_fossil_total_peak_kwh
+report_vars["all_fossil_pct_kwh_during_peak_hours"] = (
+    _all_fossil_total_peak_kwh / report_vars["all_fossil_annual_kwh_before"]
+    if report_vars["all_fossil_annual_kwh_before"] > 0
+    else 0.0
+)
+report_vars["all_fossil_pct_peak_kwh_may_sep"] = (
+    _all_fossil_summer_peak_kwh / _all_fossil_total_peak_kwh if _all_fossil_total_peak_kwh > 0 else 0.0
+)
+_fig = plot_monthly_load_with_peak(
+    _all_fossil_peak_split,
+    title="Peak hour share of average monthly electricity consumption,\nfor Eversource electricity customer with fossil fuel heating",
+    y_max=_all_fossil_y_max,
+)
+display_figure(_fig)
+```
+
+```{python}
+#| label: fig-monthly-load-all-fossil
+#| fig-cap: "Average monthly electricity for all Eversource fossil-fuel-heated homes, before and after heat pump installation, with peak-hour usage highlighted."
+
+_all_fossil_peak_after = normalize_peak_split_to_monthly(
+    sum_monthly_peak_offpeak_kwh(hourly_profiles["all_fossil"]["after"], mc_8760),
+    _all_fossil_monthly,
+    kwh_col="after_kwh",
+)
+_all_fossil_oct_apr_before = float(
+    _all_fossil_monthly.filter(pl.col("month_label").is_in(_OCT_APR_MONTH_LABELS))[
+        "before_kwh"
+    ].sum()
+)
+_all_fossil_oct_apr_after = float(
+    _all_fossil_monthly.filter(pl.col("month_label").is_in(_OCT_APR_MONTH_LABELS))[
+        "after_kwh"
+    ].sum()
+)
+report_vars["all_fossil_pct_kwh_change_oct_apr"] = (
+    (_all_fossil_oct_apr_after - _all_fossil_oct_apr_before) / _all_fossil_oct_apr_before
+    if _all_fossil_oct_apr_before > 0
+    else 0.0
+)
+report_vars["all_fossil_kwh_oct_apr_before"] = _all_fossil_oct_apr_before
+report_vars["all_fossil_kwh_oct_apr_after"] = _all_fossil_oct_apr_after
+report_vars["all_fossil_kwh_oct_apr_delta"] = _all_fossil_oct_apr_after - _all_fossil_oct_apr_before
+_all_fossil_winter_peak_before = float(
+    _all_fossil_peak_split.filter(pl.col("month_label").is_in(_OCT_APR_MONTH_LABELS))[
+        "kwh_peak"
+    ].sum()
+)
+_all_fossil_winter_peak_after = float(
+    _all_fossil_peak_after.filter(pl.col("month_label").is_in(_OCT_APR_MONTH_LABELS))[
+        "kwh_peak"
+    ].sum()
+)
+report_vars["all_fossil_pct_peak_kwh_change_oct_apr"] = (
+    (_all_fossil_winter_peak_after - _all_fossil_winter_peak_before) / _all_fossil_winter_peak_before
+    if _all_fossil_winter_peak_before > 0
+    else 0.0
+)
+_all_fossil_may_sep_before = float(
+    _all_fossil_monthly.filter(pl.col("month_label").is_in(_MAY_SEP_MONTH_LABELS))[
+        "before_kwh"
+    ].sum()
+)
+_all_fossil_may_sep_after = float(
+    _all_fossil_monthly.filter(pl.col("month_label").is_in(_MAY_SEP_MONTH_LABELS))[
+        "after_kwh"
+    ].sum()
+)
+report_vars["all_fossil_pct_kwh_change_may_sep"] = (
+    (_all_fossil_may_sep_after - _all_fossil_may_sep_before) / _all_fossil_may_sep_before
+    if _all_fossil_may_sep_before > 0
+    else 0.0
+)
+report_vars["all_fossil_kwh_may_sep_before"] = _all_fossil_may_sep_before
+report_vars["all_fossil_kwh_may_sep_after"] = _all_fossil_may_sep_after
+report_vars["all_fossil_kwh_may_sep_delta"] = _all_fossil_may_sep_after - _all_fossil_may_sep_before
+_all_fossil_summer_peak_before = float(
+    _all_fossil_peak_split.filter(pl.col("month_label").is_in(_MAY_SEP_MONTH_LABELS))[
+        "kwh_peak"
+    ].sum()
+)
+_all_fossil_summer_peak_after = float(
+    _all_fossil_peak_after.filter(pl.col("month_label").is_in(_MAY_SEP_MONTH_LABELS))[
+        "kwh_peak"
+    ].sum()
+)
+report_vars["all_fossil_pct_peak_kwh_change_may_sep"] = (
+    (_all_fossil_summer_peak_after - _all_fossil_summer_peak_before) / _all_fossil_summer_peak_before
+    if _all_fossil_summer_peak_before > 0
+    else 0.0
+)
+_fig = plot_monthly_load_before_after(
+    _all_fossil_monthly,
+    title="Peak hour share of average monthly electricity consumption,\nfor Eversource electricity customers with heat pumps",
+    y_max=_all_fossil_y_max,
+    peak_before=_all_fossil_peak_split,
+    peak_after=_all_fossil_peak_after,
+)
+display_figure(_fig)
+```
+
+### Vanilla monthly load charts (no peak overlay)
+
+These are the same monthly load profiles as above but without the peak-hour
+overlay. They are embedded early in the testimony to introduce the seasonal
+pattern before the cost-causation analysis adds peak-hour detail.
+
+```{python}
+#| label: fig-monthly-load-all-fossil-before-vanilla
+#| fig-cap: "Average monthly electricity consumption for Eversource residential electric customers who heat with natural gas, heating oil, or propane."
+
+_fig = plot_monthly_load(
+    profiles["all_fossil"]["before"],
+    title=f"Average monthly electricity consumption,\nfor {UTILITY_LABEL} electricity customer with fossil fuel heating",
+    y_max=_all_fossil_y_max,
+)
+display_figure(_fig)
+```
+
+```{python}
+#| label: fig-monthly-load-all-fossil-vanilla
+#| fig-cap: "Average monthly electricity consumption for Eversource residential electric customers, before (dark yellow: non-electric heating) and after (light yellow: electric heating) heat pump installation."
+
+_fig = plot_monthly_load_before_after(
+    _all_fossil_monthly,
+    title=f"Average monthly electricity consumption,\nfor {UTILITY_LABEL} electricity customers with heat pumps",
+    y_max=_all_fossil_y_max,
+)
+display_figure(_fig)
+```
+
+### Utility ground truth comparison
+
+When utility-sourced actuals are available (`USE_UTILITY_ACTUALS`), we compare
+our simulated monthly profiles against the utility's reported per-customer
+kWh data. This validates the ResStock simulation against real-world data.
+
+```{python}
+#| label: ground-truth-comparison
+
+if USE_UTILITY_ACTUALS:
+    # TODO: Implement Eversource ground-truth comparison charts when actuals
+    # are available. Expected charts:
+    #   1. Simulated vs. actual monthly electricity (before HP)
+    #   2. Simulated vs. actual monthly electricity (after HP / electric heating)
+    #   3. Simulated vs. actual monthly electricity (baseline electric heating)
+    raise NotImplementedError(
+        "Eversource ground-truth comparison not yet implemented."
+    )
+else:
+    print("USE_UTILITY_ACTUALS is False — skipping ground-truth comparison.")
+```
+
+## Chart 2: Annual bill by component
+
+These charts show how each bill component changes when a home installs a heat
+pump. Each bar represents a component, with the pre-HP amount (bottom) and
+the incremental increase after HP installation (top) stacked.
+
+### Natural gas homes
+
+```{python}
+#| label: fig-annual-bill-components-natgas
+#| fig-cap: "Annual electric bill breakdown by component for the average Eversource natural-gas-heated home, before and after heat pump installation."
+
+plot_annual_bill_component_stacked(
+    bill_results["natgas"]["before"],
+    bill_results["natgas"]["after"],
+    title="Average natural-gas-heated home",
+)
+```
+
+### Delivered fuel homes
+
+```{python}
+#| label: fig-annual-bill-components-delivered
+#| fig-cap: "Annual electric bill breakdown by component for the average Eversource delivered-fuel-heated home, before and after heat pump installation."
+
+plot_annual_bill_component_stacked(
+    bill_results["delivered"]["before"],
+    bill_results["delivered"]["after"],
+    title="Average delivered-fuel-heated home",
+)
+```
+
+### All fossil fuel homes
+
+```{python}
+#| label: fig-annual-bill-components-all-fossil-before
+#| fig-cap: "Annual electric bill breakdown by component for fossil-fuel-heated homes in Eversource's territory, before heat pump installation."
+
+_fig = plot_annual_bill_component_single(
+    bill_results["all_fossil"]["before"],
+    title=f"Average annual electric bill by line item,\nfor {UTILITY_LABEL} electric customer with fossil fuel heating",
+    figure_size=(12.5, 5),
+)
+display_figure(_fig)
+```
+
+```{python}
+#| label: fig-annual-bill-components-all-fossil
+#| fig-cap: "Annual electric bill breakdown by component for all Eversource fossil-fuel-heated homes, before and after heat pump installation."
+
+_ = plot_annual_bill_component_stacked(
+    bill_results["all_fossil"]["before"],
+    bill_results["all_fossil"]["after"],
+    title=f"Average annual electric bill by line item, for {UTILITY_LABEL} electric customers with heat pumps",
+    figure_size=(12.5, 5),
+)
+```
+
+## Chart 3: Monthly delivery marginal costs
+
+How much does it actually cost to deliver electricity to the average home each
+month? We multiply each population's hourly load profile against the hourly
+transmission and distribution marginal cost schedules, then sum to monthly
+totals. The result shows the cost the grid incurs to serve that home — before
+and after heat pump installation.
+
+```{python}
+#| label: compute-mc
+
+mc_monthly: dict[str, dict[str, pl.DataFrame]] = {}
+
+for pop_label in ["natgas", "delivered", "all_fossil"]:
+    for period, hourly_df in [
+        ("before", hourly_profiles[pop_label]["before"]),
+        ("after", hourly_profiles[pop_label]["after"]),
+    ]:
+        mc_hourly = building_delivery_mc_8760(hourly_df, mc_8760)
+        mc_tx_monthly = sum_8760_to_monthly(mc_hourly, "mc_tx_dollars")
+        mc_dist_monthly = sum_8760_to_monthly(mc_hourly, "mc_dist_dollars")
+        monthly_combined = mc_tx_monthly.join(
+            mc_dist_monthly, on="month_label"
+        )
+        mc_monthly.setdefault(pop_label, {})[period] = monthly_combined
+
+        annual_tx = float(mc_tx_monthly["mc_tx_dollars"].sum())
+        annual_dist = float(mc_dist_monthly["mc_dist_dollars"].sum())
+        annual_delivery = annual_tx + annual_dist
+
+        report_vars[f"{pop_label}_annual_mc_tx_{period}"] = annual_tx
+        report_vars[f"{pop_label}_annual_mc_dist_{period}"] = annual_dist
+        report_vars[f"{pop_label}_annual_mc_delivery_{period}"] = annual_delivery
+
+        print(f"{pop_label} {period}: TX=${annual_tx:,.2f}  Dist=${annual_dist:,.2f}  Total=${annual_delivery:,.2f}")
+
+    before_total = report_vars[f"{pop_label}_annual_mc_delivery_before"]
+    after_total = report_vars[f"{pop_label}_annual_mc_delivery_after"]
+    report_vars[f"{pop_label}_pct_mc_delivery_change"] = (
+        (after_total - before_total) / before_total if before_total > 0 else 0.0
+    )
+    report_vars[f"{pop_label}_annual_mc_tx_delta"] = (
+        report_vars[f"{pop_label}_annual_mc_tx_after"]
+        - report_vars[f"{pop_label}_annual_mc_tx_before"]
+    )
+    report_vars[f"{pop_label}_annual_mc_dist_delta"] = (
+        report_vars[f"{pop_label}_annual_mc_dist_after"]
+        - report_vars[f"{pop_label}_annual_mc_dist_before"]
+    )
+    # TODO: Determine whether CT Eversource has utility-specific surcharges that
+    # should be included in the overcharge calculation. For now, only T&D delta
+    # is counted.
+    report_vars[f"{pop_label}_annual_total_overcharge"] = (
+        report_vars[f"{pop_label}_annual_delivery_charges_delta"]
+        - (after_total - before_total)
+    )
+    print(f"  → change: {report_vars[f'{pop_label}_pct_mc_delivery_change']:+.1%}\n")
+
+_summer_label, _winter_label = _season_labels(SUMMER_MONTHS)
+_SEASON_VAR_SUFFIX = {_winter_label: "oct_apr", _summer_label: "may_sep"}
+for pop_label in ["natgas", "delivered", "all_fossil"]:
+    for season, suffix in _SEASON_VAR_SUFFIX.items():
+        before_delivery = sum(
+            _aggregate_seasonal_mc(mc_monthly[pop_label]["before"], summer_months=SUMMER_MONTHS)[season].values()
+        )
+        after_delivery = sum(
+            _aggregate_seasonal_mc(mc_monthly[pop_label]["after"], summer_months=SUMMER_MONTHS)[season].values()
+        )
+        delta = after_delivery - before_delivery
+        report_vars[f"{pop_label}_seasonal_mc_delivery_{suffix}_before"] = before_delivery
+        report_vars[f"{pop_label}_seasonal_mc_delivery_{suffix}_after"] = after_delivery
+        report_vars[f"{pop_label}_seasonal_mc_delivery_{suffix}_delta"] = delta
+        report_vars[f"{pop_label}_pct_seasonal_mc_delivery_{suffix}_change"] = (
+            delta / before_delivery if before_delivery > 0 else 0.0
+        )
+```
+
+### Natural gas homes
+
+```{python}
+#| label: fig-seasonal-mc-natgas-before
+#| fig-cap: "Seasonal delivery marginal cost for the average Eversource natural-gas-heated home before heat pump installation."
+
+_fig = plot_seasonal_delivery_mc(
+    mc_monthly["natgas"]["before"],
+    summer_months=SUMMER_MONTHS,
+    title="Average natural-gas-heated home (before heat pump)",
+)
+display_figure(_fig)
+```
+
+```{python}
+#| label: fig-seasonal-mc-natgas-comparison
+#| fig-cap: "Seasonal delivery marginal cost for the average Eversource natural-gas-heated home, before and after heat pump installation."
+
+_fig = plot_seasonal_delivery_mc_comparison(
+    mc_monthly["natgas"]["before"],
+    mc_monthly["natgas"]["after"],
+    summer_months=SUMMER_MONTHS,
+    title="Average natural-gas-heated home",
+)
+display_figure(_fig)
+```
+
+### Delivered fuel homes
+
+```{python}
+#| label: fig-seasonal-mc-delivered-before
+#| fig-cap: "Seasonal delivery marginal cost for the average Eversource delivered-fuel-heated home before heat pump installation."
+
+_fig = plot_seasonal_delivery_mc(
+    mc_monthly["delivered"]["before"],
+    summer_months=SUMMER_MONTHS,
+    title="Average delivered-fuel-heated home (before heat pump)",
+)
+display_figure(_fig)
+```
+
+```{python}
+#| label: fig-seasonal-mc-delivered-after
+#| fig-cap: "Seasonal delivery marginal cost for the average Eversource delivered-fuel-heated home after heat pump installation."
+
+_fig = plot_seasonal_delivery_mc(
+    mc_monthly["delivered"]["after"],
+    summer_months=SUMMER_MONTHS,
+    title="Average delivered-fuel-heated home (after heat pump)",
+)
+display_figure(_fig)
+```
+
+### All fossil fuel homes
+
+```{python}
+#| label: fig-seasonal-mc-all-fossil-before
+#| fig-cap: "Seasonal delivery marginal cost for all Eversource fossil-fuel-heated homes before heat pump installation."
+
+_fig = plot_seasonal_delivery_mc(
+    mc_monthly["all_fossil"]["before"],
+    summer_months=SUMMER_MONTHS,
+    title=f"New T&D costs caused by peak hour usage, by season,\nfor {UTILITY_LABEL} electricity customer with fossil fuel heating",
+    figure_size=(12.5, 5),
+)
+display_figure(_fig)
+```
+
+```{python}
+#| label: fig-seasonal-mc-all-fossil-after
+#| fig-cap: "Seasonal delivery marginal cost for all Eversource fossil-fuel-heated homes after heat pump installation."
+
+_fig = plot_seasonal_delivery_mc(
+    mc_monthly["all_fossil"]["after"],
+    summer_months=SUMMER_MONTHS,
+    title="Average fossil-fuel-heated home (after heat pump)",
+    figure_size=(12.5, 5),
+)
+display_figure(_fig)
+```
+
+```{python}
+#| label: fig-seasonal-mc-all-fossil-comparison
+#| fig-cap: "Seasonal delivery marginal cost for all Eversource fossil-fuel-heated homes, before and after heat pump installation."
+
+_fig = plot_seasonal_delivery_mc_comparison(
+    mc_monthly["all_fossil"]["before"],
+    mc_monthly["all_fossil"]["after"],
+    summer_months=SUMMER_MONTHS,
+    title=f"New T&D costs caused by peak hour usage, by season,\nfor {UTILITY_LABEL} electricity customer with heat pumps",
+    figure_size=(12.5, 6),
+)
+display_figure(_fig)
+```
+
+## Chart 4: Cost vs. charge gap
+
+When a home installs a heat pump, its T&D marginal cost barely changes (the
+costs it _causes_ stay roughly flat), yet its T&D _charges_ jump (because
+volumetric rates × more kWh). The gap between additional costs caused and
+additional charges paid is the overpayment. We build three candidate
+visualizations of this disconnect so the best one can be embedded in the
+expert testimony.
+
+```{python}
+#| label: cost-charge-data
+
+import matplotlib.patches as mpatches
+from matplotlib import pyplot
+
+_mc_tx_before = report_vars["natgas_annual_mc_tx_before"]
+_mc_dist_before = report_vars["natgas_annual_mc_dist_before"]
+_mc_tx_after = report_vars["natgas_annual_mc_tx_after"]
+_mc_dist_after = report_vars["natgas_annual_mc_dist_after"]
+
+_charge_tx_before = report_vars["natgas_annual_transmission_before"]
+_charge_dist_before = report_vars["natgas_annual_distribution_before"]
+_charge_tx_after = report_vars["natgas_annual_transmission_after"]
+_charge_dist_after = report_vars["natgas_annual_distribution_after"]
+
+_mc_delivery_before = _mc_tx_before + _mc_dist_before
+_mc_delivery_after = _mc_tx_after + _mc_dist_after
+_charge_delivery_before = _charge_tx_before + _charge_dist_before
+_charge_delivery_after = _charge_tx_after + _charge_dist_after
+
+_mc_tx_delta = _mc_tx_after - _mc_tx_before
+_mc_dist_delta = _mc_dist_after - _mc_dist_before
+_charge_tx_delta = _charge_tx_after - _charge_tx_before
+_charge_dist_delta = _charge_dist_after - _charge_dist_before
+
+_delivery_charges_delta = _charge_delivery_after - _charge_delivery_before
+_mc_delivery_delta = _mc_delivery_after - _mc_delivery_before
+
+_COLOR_TX = "#023047"
+_COLOR_DIST = "#68bed8"
+_COLOR_TX_COST = "#546800"
+_COLOR_DIST_COST = "#A0AF12"
+_COLOR_GAP = "#fc9706"
+
+def _fmt_cc_dollar(x):
+    if abs(x) < 1:
+        return "$0"
+    sign = "+" if x > 0 else ("-" if x < 0 else "")
+    return f"{sign}${abs(x):,.0f}" if x != abs(x) else f"${x:,.0f}"
+
+def _fmt_cc_dollar_plain(x):
+    if abs(x) < 1:
+        return "$0"
+    return f"${abs(x):,.0f}"
+
+def _draw_cc_stacked_bar(ax, x, tx_val, dist_val, width, *, label_inside=True,
+                         color_dist=_COLOR_DIST, color_tx=_COLOR_TX):
+    """Draw a stacked bar with distribution (bottom) and transmission (top)."""
+    ax.bar(x, dist_val, width, color=color_dist, zorder=3)
+    ax.bar(x, tx_val, width, bottom=dist_val, color=color_tx, zorder=3)
+    total = tx_val + dist_val
+    if label_inside and total > 0:
+        if dist_val / max(total, 1e-9) >= 0.15:
+            ax.text(x, dist_val / 2, _fmt_cc_dollar_plain(dist_val),
+                    ha="center", va="center", color="white",
+                    fontweight="bold", fontsize=11, fontfamily="IBM Plex Sans", zorder=4)
+        if tx_val / max(total, 1e-9) >= 0.15:
+            ax.text(x, dist_val + tx_val / 2, _fmt_cc_dollar_plain(tx_val),
+                    ha="center", va="center", color="white",
+                    fontweight="bold", fontsize=11, fontfamily="IBM Plex Sans", zorder=4)
+    ax.text(x, total + total * 0.02, _fmt_cc_dollar_plain(total),
+            ha="center", va="bottom", fontweight="bold", fontsize=12,
+            fontfamily="IBM Plex Sans", color="#333333", zorder=4)
+    return total
+
+def _cc_legend():
+    return [
+        mpatches.Patch(facecolor=_COLOR_DIST_COST, label="Distribution (cost)"),
+        mpatches.Patch(facecolor=_COLOR_TX_COST, label="Transmission (cost)"),
+        mpatches.Patch(facecolor=_COLOR_DIST, label="Distribution (charge)"),
+        mpatches.Patch(facecolor=_COLOR_TX, label="Transmission (charge)"),
+    ]
+
+print("Cost-vs-charge data ready:")
+print(f"  MC delivery: before={_mc_delivery_before:,.2f}  after={_mc_delivery_after:,.2f}  delta={_mc_delivery_delta:+,.2f}")
+print(f"  Charge delivery: before={_charge_delivery_before:,.2f}  after={_charge_delivery_after:,.2f}  delta={_delivery_charges_delta:+,.2f}")
+```
+
+### Option A: Delta chart
+
+```{python}
+#| label: fig-cost-vs-charge-delta-natgas
+#| fig-cap: "Change in annual T&D costs caused vs. T&D charges paid when a natural-gas-heated home installs a heat pump."
+
+fig, ax = pyplot.subplots(figsize=(12.5, 5))
+ax.set_title("Average natural-gas-heated home",
+             fontfamily="GT Planar", fontweight="bold", fontsize=15, loc="left", pad=12)
+
+_w = 0.5
+_pos = [0, 0.8]
+
+_mc_delta_total = _mc_tx_delta + _mc_dist_delta
+if _mc_delta_total <= 0:
+    ax.bar(_pos[0], 0, _w, color=_COLOR_TX_COST, zorder=3)
+    ax.text(_pos[0], _delivery_charges_delta * 0.03,
+            _fmt_cc_dollar(_mc_delta_total),
+            ha="center", va="bottom", fontweight="bold", fontsize=11,
+            fontfamily="IBM Plex Sans", color="#333333", zorder=4)
+    _t1 = 0.0
+else:
+    _t1 = _draw_cc_stacked_bar(ax, _pos[0], max(_mc_tx_delta, 0), max(_mc_dist_delta, 0), _w,
+                               color_dist=_COLOR_DIST_COST, color_tx=_COLOR_TX_COST)
+
+_t2 = _draw_cc_stacked_bar(ax, _pos[1], _charge_tx_delta, _charge_dist_delta, _w)
+
+# Side labels on the charge bar
+_side_x = _pos[1] + _w / 2 + 0.08
+_side_labels = [
+    ("Distribution", _charge_dist_delta / 2, _COLOR_DIST),
+    ("Transmission", _charge_dist_delta + _charge_tx_delta / 2, _COLOR_TX),
+]
+for _lbl, _ym, _clr in _side_labels:
+    ax.plot([_pos[1] + _w / 2 + 0.02, _side_x - 0.02], [_ym, _ym],
+            color=_clr, linewidth=0.7, alpha=0.6)
+    ax.text(_side_x, _ym, _lbl, color=_clr, ha="left", va="center",
+            fontsize=11, fontweight="bold")
+
+_gap = _delivery_charges_delta - _mc_delivery_delta
+_x_left = _pos[0] + _w / 2
+_x_right = _pos[1] - _w / 2
+ax.plot([_x_left, _x_right], [_t1, _t2],
+        color=_COLOR_GAP, linewidth=2.0, zorder=5)
+_mid_x = (_x_left + _x_right) / 2
+_mid_y = (_t1 + _t2) / 2
+ax.text(_mid_x, _mid_y + _t2 * 0.06,
+        f"Overpays\n{_fmt_cc_dollar_plain(_gap)}/yr",
+        ha="center", va="bottom", fontweight="bold", fontsize=12,
+        color=_COLOR_GAP, fontfamily="IBM Plex Sans")
+
+ax.set_xticks(_pos)
+ax.set_xticklabels(["Additional T&D\ncosts caused", "Additional T&D\ncharges paid"],
+                   fontsize=11, fontfamily="IBM Plex Sans")
+ax.set_ylim(0, _t2 * 1.25)
+ax.spines["top"].set_visible(False)
+ax.spines["right"].set_visible(False)
+ax.spines["bottom"].set_bounds(_pos[0] - _w / 2 - 0.3, _pos[1] + _w / 2)
+ax.yaxis.set_major_formatter(lambda x, _: f"${x:,.0f}")
+ax.set_ylabel("Annual change ($)", fontsize=12, fontfamily="IBM Plex Sans")
+ax.set_xlim(_pos[0] - _w / 2 - 0.3, _pos[1] + _w / 2 + 0.8)
+fig.tight_layout()
+display_figure(fig)
+```
+
+
+### All fossil fuel homes: cost vs. charge gap
+
+```{python}
+#| label: cost-charge-data-all-fossil
+
+_af_mc_tx_before = report_vars["all_fossil_annual_mc_tx_before"]
+_af_mc_dist_before = report_vars["all_fossil_annual_mc_dist_before"]
+_af_mc_tx_after = report_vars["all_fossil_annual_mc_tx_after"]
+_af_mc_dist_after = report_vars["all_fossil_annual_mc_dist_after"]
+
+_af_charge_tx_before = report_vars["all_fossil_annual_transmission_before"]
+_af_charge_dist_before = report_vars["all_fossil_annual_distribution_before"]
+_af_charge_tx_after = report_vars["all_fossil_annual_transmission_after"]
+_af_charge_dist_after = report_vars["all_fossil_annual_distribution_after"]
+
+_af_mc_delivery_before = _af_mc_tx_before + _af_mc_dist_before
+_af_mc_delivery_after = _af_mc_tx_after + _af_mc_dist_after
+_af_charge_delivery_before = _af_charge_tx_before + _af_charge_dist_before
+_af_charge_delivery_after = _af_charge_tx_after + _af_charge_dist_after
+
+_af_mc_tx_delta = _af_mc_tx_after - _af_mc_tx_before
+_af_mc_dist_delta = _af_mc_dist_after - _af_mc_dist_before
+_af_charge_tx_delta = _af_charge_tx_after - _af_charge_tx_before
+_af_charge_dist_delta = _af_charge_dist_after - _af_charge_dist_before
+
+_af_delivery_charges_delta = _af_charge_delivery_after - _af_charge_delivery_before
+_af_mc_delivery_delta = _af_mc_delivery_after - _af_mc_delivery_before
+
+print("All fossil — cost-vs-charge data ready:")
+print(f"  MC delivery: before={_af_mc_delivery_before:,.2f}  after={_af_mc_delivery_after:,.2f}  delta={_af_mc_delivery_delta:+,.2f}")
+print(f"  Charge delivery: before={_af_charge_delivery_before:,.2f}  after={_af_charge_delivery_after:,.2f}  delta={_af_delivery_charges_delta:+,.2f}")
+```
+
+```{python}
+#| label: fig-cost-vs-charge-delta-all-fossil
+#| fig-cap: "Change in annual T&D costs caused vs. T&D charges paid when a fossil-fuel-heated home installs a heat pump."
+
+fig, ax = pyplot.subplots(figsize=(12.5, 5))
+ax.set_title(f"Incremental new T&D costs caused vs. incremental T&D bills paid,\nfor {UTILITY_LABEL} electric customers switching from fossil fuel heating to heat pumps",
+             fontfamily="GT Planar", fontweight="bold", fontsize=15, loc="left", pad=12)
+
+_w = 0.5
+_pos = [0, 0.8]
+
+_af_mc_delta_total = _af_mc_tx_delta + _af_mc_dist_delta
+if _af_mc_delta_total <= 0:
+    ax.bar(_pos[0], 0, _w, color=_COLOR_TX_COST, zorder=3)
+    ax.text(_pos[0], _af_delivery_charges_delta * 0.03,
+            _fmt_cc_dollar(_af_mc_delta_total),
+            ha="center", va="bottom", fontweight="bold", fontsize=11,
+            fontfamily="IBM Plex Sans", color="#333333", zorder=4)
+    _t1 = 0.0
+else:
+    _t1 = _draw_cc_stacked_bar(ax, _pos[0], max(_af_mc_tx_delta, 0), max(_af_mc_dist_delta, 0), _w,
+                               color_dist=_COLOR_DIST_COST, color_tx=_COLOR_TX_COST)
+
+_t2 = _draw_cc_stacked_bar(ax, _pos[1], _af_charge_tx_delta, _af_charge_dist_delta, _w)
+
+# Side labels on the charge bar
+_side_x = _pos[1] + _w / 2 + 0.08
+_side_labels = [
+    ("Distribution", _af_charge_dist_delta / 2, _COLOR_DIST),
+    ("Transmission", _af_charge_dist_delta + _af_charge_tx_delta / 2, _COLOR_TX),
+]
+for _lbl, _ym, _clr in _side_labels:
+    ax.plot([_pos[1] + _w / 2 + 0.02, _side_x - 0.02], [_ym, _ym],
+            color=_clr, linewidth=0.7, alpha=0.6)
+    ax.text(_side_x, _ym, _lbl, color=_clr, ha="left", va="center",
+            fontsize=11, fontweight="bold")
+
+_gap = _af_delivery_charges_delta - _af_mc_delivery_delta
+_x_left = _pos[0] + _w / 2
+_x_right = _pos[1] - _w / 2
+ax.plot([_x_left, _x_right], [_t1, _t2],
+        color=_COLOR_GAP, linewidth=2.0, zorder=5)
+_mid_x = (_x_left + _x_right) / 2
+_mid_y = (_t1 + _t2) / 2
+ax.text(_mid_x, _mid_y + _t2 * 0.06,
+        f"Overpays\n{_fmt_cc_dollar_plain(_gap)}/yr",
+        ha="center", va="bottom", fontweight="bold", fontsize=12,
+        color=_COLOR_GAP, fontfamily="IBM Plex Sans")
+
+ax.set_xticks(_pos)
+ax.set_xticklabels(["Additional T&D\ncosts caused", "Additional T&D\ncharges paid"],
+                   fontsize=11, fontfamily="IBM Plex Sans")
+ax.set_ylim(0, _t2 * 1.25)
+ax.spines["top"].set_visible(False)
+ax.spines["right"].set_visible(False)
+ax.spines["bottom"].set_bounds(_pos[0] - _w / 2 - 0.3, _pos[1] + _w / 2)
+ax.yaxis.set_major_formatter(lambda x, _: f"${x:,.0f}")
+ax.set_ylabel("Annual change ($)", fontsize=12, fontfamily="IBM Plex Sans")
+ax.set_xlim(_pos[0] - _w / 2 - 0.3, _pos[1] + _w / 2 + 0.8)
+fig.tight_layout()
+display_figure(fig)
+```
+
+## Optional rate analysis
+
+When an optional rate is defined in `batch_config.yaml` (`OPTIONAL_RATE_YAML`),
+we compute the same cost-vs-charge analysis under that rate structure and
+produce comparison charts. This section is gated — it only runs when
+`OPTIONAL_RATE_YAML` is set.
+
+```{python}
+#| label: optional-rate-analysis
+
+if OPTIONAL_RATE_YAML:
+    # TODO: Load optional rate YAML, compute TOU or alternative-rate bills,
+    # produce cost-vs-charge comparison charts analogous to the default rate
+    # analysis above. The optional rate is NOT the existing Rate 7 TOU YAML.
+    print(f"Optional rate YAML: {OPTIONAL_RATE_YAML}")
+    raise NotImplementedError("Optional rate analysis not yet implemented.")
+else:
+    print("OPTIONAL_RATE_YAML is not set — skipping optional rate analysis.")
+```
+
+
+## Fair HP rate
+
+We now compute the per-component volumetric rates for a fair heat pump rate.
+The goal is to set rates that eliminate the overpayment documented above — the
+gap between what a heat-pump customer _causes_ in costs and what they _pay_ in
+charges — for the average fossil-fuel-heated home.
+
+The logic differs by component:
+
+- **Transmission and Distribution**: We allow the bill to increase by exactly
+  the marginal-cost increase — the customer pays for the additional costs they
+  cause, but nothing above that.
+- **Generation**: Unchanged — generation charges already track costs fairly.
+
+```{python}
+#| label: compute-fair-hp-rates
+
+# --- Transmission: bill increase = marginal cost increase --------------------
+_tx_before = report_vars["all_fossil_annual_transmission_before"]
+_tx_after = report_vars["all_fossil_annual_transmission_after"]
+_mc_tx_delta = report_vars["all_fossil_annual_mc_tx_delta"]
+_fair_tx_after = _tx_before + _mc_tx_delta
+_lambda_tx = _fair_tx_after / _tx_after
+
+# --- Distribution: bill increase = marginal cost increase --------------------
+_dist_before = report_vars["all_fossil_annual_distribution_before"]
+_dist_after = report_vars["all_fossil_annual_distribution_after"]
+_mc_dist_delta = report_vars["all_fossil_annual_mc_dist_delta"]
+_fair_dist_after = _dist_before + _mc_dist_delta
+_lambda_dist = _fair_dist_after / _dist_after
+
+# --- Average rates (kWh-weighted using the after-HP profile) -----------------
+_kwh_after = report_vars["all_fossil_annual_kwh_after"]
+
+_avg_rate_dist = _dist_after / _kwh_after
+_avg_rate_tx = _tx_after / _kwh_after
+_avg_rate_gen = report_vars["all_fossil_annual_generation_after"] / _kwh_after
+
+_fair_rate_dist = _avg_rate_dist * _lambda_dist
+_fair_rate_tx = _avg_rate_tx * _lambda_tx
+
+# --- Store report vars -------------------------------------------------------
+report_vars["fair_hp_lambda_dist"] = _lambda_dist
+report_vars["fair_hp_lambda_tx"] = _lambda_tx
+
+report_vars["fair_hp_avg_rate_dist"] = _avg_rate_dist
+report_vars["fair_hp_avg_rate_tx"] = _avg_rate_tx
+report_vars["fair_hp_avg_rate_gen"] = _avg_rate_gen
+report_vars["fair_hp_avg_rate_non_gen_total"] = _avg_rate_dist + _avg_rate_tx
+
+report_vars["fair_hp_rate_dist"] = _fair_rate_dist
+report_vars["fair_hp_rate_tx"] = _fair_rate_tx
+report_vars["fair_hp_rate_non_gen_total"] = _fair_rate_dist + _fair_rate_tx
+report_vars["fair_hp_rate_gen"] = _avg_rate_gen
+
+report_vars["fair_hp_pct_change_dist"] = _lambda_dist - 1.0
+report_vars["fair_hp_pct_change_tx"] = _lambda_tx - 1.0
+
+report_vars["fair_hp_fair_tx_bill_after"] = _fair_tx_after
+report_vars["fair_hp_fair_dist_bill_after"] = _fair_dist_after
+
+# --- Print summary -----------------------------------------------------------
+print("Fair HP rate computation (all-fossil homes):\n")
+print(f"{'Component':<20s}  {DEFAULT_RATE_LABEL:>10s}  {'Fair HP':>10s}  {'Change':>8s}  {'λ':>6s}")
+print("-" * 62)
+for _label, _r, _rhp, _pct in [
+    ("Distribution", _avg_rate_dist, _fair_rate_dist, _lambda_dist - 1),
+    ("Transmission", _avg_rate_tx, _fair_rate_tx, _lambda_tx - 1),
+    ("Generation", _avg_rate_gen, _avg_rate_gen, 0.0),
+]:
+    print(f"{_label:<20s}  {_r*100:>9.2f}¢  {_rhp*100:>9.2f}¢  {_pct:>+7.1%}  {_pct+1:>.4f}")
+
+print(f"\nTX: bill before=${_tx_before:,.0f}  after=${_tx_after:,.0f}  "
+      f"MC delta=${_mc_tx_delta:+,.0f}  → fair after=${_fair_tx_after:,.0f}")
+print(f"Dist: bill before=${_dist_before:,.0f}  after=${_dist_after:,.0f}  "
+      f"MC delta=${_mc_dist_delta:+,.0f}  → fair after=${_fair_dist_after:,.0f}")
+```
+
+## 3-bar bill chart: before / HP default rate / HP fair rate
+
+The 3-bar chart adds a third bar showing what happens to the household's
+total energy bill under the fair HP rate. The fair-HP per-kWh rates (computed
+above from all-fossil averages) are applied to each population's
+post-HP annual kWh to produce the fair-HP delivery bill.
+
+```{python}
+#| label: fig-total-bill-3bar-natgas
+#| fig-cap: "Average annual energy bills for simulated Eversource-territory natural-gas-heated homes: before heat pumps, after heat pumps under Rate 1, and after heat pumps under the fair HP rate."
+
+_fair_delivery_vol_natgas = report_vars["natgas_annual_kwh_after"] * (
+    report_vars["fair_hp_rate_dist"]
+    + report_vars["fair_hp_rate_tx"]
+)
+natgas_reform = {
+    "delivery_fixed": natgas_after["delivery_fixed"],
+    "delivery_volumetric": _fair_delivery_vol_natgas,
+    "supply": natgas_after["supply"],
+    "gas": natgas_after["gas"],
+}
+
+fig_natgas_3bar, _ng_savings, _ng_savings_pct, _, _ = plot_decomposed_bill_3bar(
+    natgas_before,
+    natgas_after,
+    natgas_reform,
+    third_scenario_label="Heat pump\n(Fair HP rate)",
+    title=f"Average annual electricity + natural gas bill under {DEFAULT_RATE_LABEL} vs. Fair HP rate,\nbefore and after heat pump, for simulated {UTILITY_LABEL}-territory natural-gas-heated homes",
+    side_labels={
+        "delivery_fixed": "Customer\nCharge",
+        "delivery_volumetric": "Transmission,\nDistribution",
+        "supply": "Generation",
+        "gas": "Natural\nGas",
+    },
+)
+report_vars["natgas_fair_hp_savings_dollar"] = _ng_savings
+report_vars["natgas_fair_hp_savings_pct"] = _ng_savings_pct
+_ng_total_fair = sum(natgas_reform.values())
+_ng_vs_furnace_savings = report_vars["natgas_total_energy_bill_before"] - _ng_total_fair
+report_vars["natgas_fair_hp_total_energy_bill"] = _ng_total_fair
+report_vars["natgas_fair_hp_vs_furnace_savings_dollar"] = _ng_vs_furnace_savings
+report_vars["natgas_fair_hp_vs_furnace_savings_pct"] = (
+    _ng_vs_furnace_savings / report_vars["natgas_total_energy_bill_before"]
+)
+display_figure(fig_natgas_3bar)
+```
+
+```{python}
+#| label: fig-total-bill-4bar-natgas
+#| fig-cap: "Average annual energy bills for Eversource natural-gas-heated homes: before heat pumps, after heat pumps under Rate 1, after heat pumps under the optional rate, and after heat pumps under the fair HP rate."
+
+if OPTIONAL_RATE_YAML:
+    # TODO: Implement 4-bar chart when optional rate is available.
+    # The fourth bar should show the optional rate's bill decomposition.
+    raise NotImplementedError("4-bar chart requires optional rate data.")
+else:
+    print("OPTIONAL_RATE_YAML is not set — skipping 4-bar chart.")
+```
+
+```{python}
+#| label: fig-total-bill-3bar-delivered
+#| fig-cap: "Average annual energy bills for simulated Eversource-territory delivered-fuel-heated homes: before heat pumps, after heat pumps under Rate 1, and after heat pumps under the fair HP rate."
+
+_fair_delivery_vol_delivered = report_vars["delivered_annual_kwh_after"] * (
+    report_vars["fair_hp_rate_dist"]
+    + report_vars["fair_hp_rate_tx"]
+)
+delivered_reform = {
+    "delivery_fixed": delivered_after["delivery_fixed"],
+    "delivery_volumetric": _fair_delivery_vol_delivered,
+    "supply": delivered_after["supply"],
+    "gas": delivered_after["gas"],
+}
+
+fig_delivered_3bar, _del_savings, _del_savings_pct, _, _ = plot_decomposed_bill_3bar(
+    delivered_before,
+    delivered_after,
+    delivered_reform,
+    third_scenario_label="Heat pump\n(Fair HP rate)",
+    title=f"Average annual electricity + delivered fuel bill under {DEFAULT_RATE_LABEL} vs. Fair HP rate,\nbefore and after heat pump, for simulated {UTILITY_LABEL}-territory delivered-fuel-heated homes",
+    side_labels={
+        "delivery_fixed": "Customer\nCharge",
+        "delivery_volumetric": "Transmission,\nDistribution",
+        "supply": "Generation",
+        "gas": "Oil/\nPropane",
+    },
+)
+report_vars["delivered_fair_hp_savings_dollar"] = _del_savings
+report_vars["delivered_fair_hp_savings_pct"] = _del_savings_pct
+_del_total_fair = sum(delivered_reform.values())
+_del_vs_furnace_savings = report_vars["delivered_total_energy_bill_before"] - _del_total_fair
+report_vars["delivered_fair_hp_total_energy_bill"] = _del_total_fair
+report_vars["delivered_fair_hp_vs_furnace_savings_dollar"] = _del_vs_furnace_savings
+report_vars["delivered_fair_hp_vs_furnace_savings_pct"] = (
+    _del_vs_furnace_savings / report_vars["delivered_total_energy_bill_before"]
+)
+display_figure(fig_delivered_3bar)
+```
+
+```{python}
+#| label: rs-release-comp-impact
+
+if SCALE_HEATING_BY_RS_RELEASE_COMP and "_report_vars_unscaled" in dir():
+    _changed = {}
+    for k in sorted(report_vars):
+        v_new = report_vars[k]
+        v_old = _report_vars_unscaled.get(k)
+        if not isinstance(v_new, (int, float)):
+            continue
+        if v_old is None:
+            continue
+        if not isinstance(v_old, (int, float)):
+            continue
+        if abs(v_new - v_old) > 1e-10:
+            _changed[k] = (v_old, v_new)
+
+    print("[RS RELEASE COMP SCALING] Impact on report variables")
+    print(f"{'Variable':<55s} {'Unscaled':>12s} {'Scaled':>12s} {'Δ':>10s} {'%Δ':>8s}")
+    print("-" * 97)
+    for k, (old, new) in _changed.items():
+        delta = new - old
+        pct = (delta / old * 100) if old != 0 else float("inf")
+        print(f"  {k:<53s} {old:>12,.2f} {new:>12,.2f} {delta:>+10,.2f} {pct:>+7.1f}%")
+    print(f"\n  {len(_changed)} variables changed out of {len(report_vars)} total.")
+else:
+    print("RS release comp scaling not applied — no comparison to show.")
+```
+
+
+## Report variables
+
+Export all computed stats for use in `expert_testimony.qmd`.
+
+```{python}
+#| label: export-vars
+
+Path("../cache").mkdir(exist_ok=True)
+Path("../cache/representative_home_vars.pkl").write_bytes(pickle.dumps(report_vars))
+
+print("Exported report variables:")
+for k, v in sorted(report_vars.items()):
+    if isinstance(v, float):
+        print(f"  {k}: {v:,.4f}")
+    else:
+        print(f"  {k}: {v}")
+```

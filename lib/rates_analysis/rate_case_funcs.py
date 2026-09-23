@@ -3192,8 +3192,12 @@ def tariff_month_rate_table(rates_by_label: dict[str, dict]) -> pl.DataFrame:
 
 # --- Representative-home bill decomposition ----------------------------------
 
-# Month keys used in bge_monthly_rates_2025.yaml (Apr-Mar fiscal year).
+# Month keys used in rate YAML files. BGE uses Apr-Mar (2025-04..2026-03);
+# CT Eversource uses Jan-Dec (2025-01..2025-12). Cover both conventions.
 _RATE_YAML_MONTH_TO_LABEL: dict[str, str] = {
+    "2025-01": "Jan",
+    "2025-02": "Feb",
+    "2025-03": "Mar",
     "2025-04": "Apr",
     "2025-05": "May",
     "2025-06": "Jun",
@@ -3206,6 +3210,15 @@ _RATE_YAML_MONTH_TO_LABEL: dict[str, str] = {
     "2026-01": "Jan",
     "2026-02": "Feb",
     "2026-03": "Mar",
+    "2026-04": "Apr",
+    "2026-05": "May",
+    "2026-06": "Jun",
+    "2026-07": "Jul",
+    "2026-08": "Aug",
+    "2026-09": "Sep",
+    "2026-10": "Oct",
+    "2026-11": "Nov",
+    "2026-12": "Dec",
 }
 
 

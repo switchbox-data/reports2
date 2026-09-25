@@ -56,6 +56,43 @@ citation:
 
 ## Data and Methods
 
+### Bulk transmission marginal cost
+
+The Bill Alignment Test requires an hourly marginal cost signal for each of the 8,760 hours of the year. Bulk transmission is one of two delivery-side components (the other is distribution and sub-transmission). This section documents where the annual cost figure comes from, how the hourly load data used to identify peak hours is sourced, and how the annual cost is allocated across hours.
+
+**Annual cost.** The annualized bulk transmission marginal cost is the **avoided Pool Transmission Facility (PTF) cost** from the Avoided Energy Supply Components (AESC) 2024 study:[^cite-aesc]
+
+$$C_{\text{PTF}} = \$69/\text{kW-yr}$$
+
+PTF is a regional (pooled) New England cost, so the same \$69/kW-yr applies to all six New England states. It represents the long-run cost deferred or avoided when a customer reduces peak demand by 1 kW during peak hours. All six New England states use AESC values for energy efficiency program screening.
+
+[^cite-aesc]: The AESC study [@synapse_AvoidedEnergySupply_2024] is the New England standard for [avoided transmission costs](https://www.documentcloud.org/documents/28039756-synapse-2024-avoided-energy-supply-components-in-new-england-2024-repor/#document/p288/a2811325); all six New England states use AESC values for energy efficiency program screening. Hourly bulk-TX MC signals are built by the RDP's [bulk transmission MC generator](https://github.com/switchbox-data/rate-design-platform/blob/main/utils/data_prep/marginal_costs/generate_bulk_tx_mc.py).
+
+**Peak-hour identification.** To allocate the \$69/kW-yr to specific hours, we need an hourly load profile that identifies when the regional grid is under the most stress. We use the **all-New-England system aggregate load** — the hour-by-hour sum of all eight ISO-NE load zones (CT, ME, NH, VT, RI, SEMA, WCMA, NEMA) — sourced from the ISO-NE Web Services API.[^cite-isone-load] We use the NE system aggregate rather than the CT zone load alone because PTF costs are allocated to load-serving entities based on their share of the NE coincident peak: a CT customer reducing load at a NE system peak avoids regional PTF cost regardless of whether CT individually peaks at that hour.
+
+[^cite-isone-load]: Hourly zonal demand from the ISO-NE Web Services API [@isone_ISONEWebServices_2025], endpoint `/realtimehourlydemand/day/{YYYYMMDD}/location/{loc_id}`. All eight ISO-NE load zones (CT location 4004, ME 4001, NH 4002, VT 4003, RI 4005, SEMA 4006, WCMA 4007, NEMA 4008) are fetched and summed hour-by-hour to produce the NE system aggregate load (8,760 hourly values for 2025).
+
+**Hourly allocation.** The \$69/kW-yr is allocated to the top $N = 100$ hours of the NE system aggregate load using **exceedance weighting**. Given the top $N$ hours by load, each hour's exceedance and weight are:
+
+$$e_h = L_h - T, \qquad w_h = \frac{e_h}{\displaystyle\sum_{h'} e_{h'}}$$
+
+where:
+
+- $L_h$ — aggregate all-New-England system load in hour $h$ (MW)
+- $T$ — load threshold: the load of the hour immediately below the $N$-th highest
+- $e_h$ — exceedance of hour $h$ above the threshold (zero for hours outside the top $N$)
+- $w_h$ — normalized weight assigned to hour $h$ (zero outside the top $N$; sums to 1)
+
+Each peak hour's marginal cost is then:
+
+$$MC^{\text{bulk\,tx}}_h = w_h \times C_{\text{PTF}}$$
+
+All other hours receive $MC^{\text{bulk\,tx}}_h = 0$. The result is exactly 100 non-zero hours per year, concentrated around the annual NE system peak (summer-dominated for ISO-NE). For a hypothetical 1 kW constant load, $\sum_h MC^{\text{bulk\,tx}}_h = C_{\text{PTF}} = \$69/\text{kW-yr}$ exactly — this identity is validated at runtime.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-mc-heatmap-bulk-tx >}}
+:::
+
 ## Assumptions
 
 ## References

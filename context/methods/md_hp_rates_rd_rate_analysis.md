@@ -7,18 +7,26 @@ for the Schedule RD cost-vs-charge analysis in the Maryland HP rates testimony
 ## What Schedule RD is
 
 Schedule RD ("Residential Delivery and Energy Time-Of-Use — Electric") is BGE's
-residential TOU distribution rate. It emerged from Public Conference 44 (PC44),
+residential TOU rate. It emerged from Public Conference 44 (PC44),
 the Commission's multi-year rate design investigation into time-varying rates.
 
-Schedule RD defines **one thing**: time-of-use delivery service charges
-(distribution). All other charges — transmission, EmPOWER Maryland, generation
-(SOS), environmental surcharge, customer charge — are separate riders applied
+Schedule RD defines **time-of-use delivery service charges** (distribution) in its
+own tariff sheet. Generation and transmission are billed through **Rider 1 —
+Standard Offer Service**, which applies TOU rates specific to Schedule RD that
+differ from the flat rates applied to Schedule R customers. EmPOWER Maryland,
+the environmental surcharge, and the customer charge are flat riders applied
 identically to Schedule R and Schedule RD customers.
+
+In other words, for Schedule RD, **everything volumetric is TOU**: distribution
+(tariff sheet), generation (Rider 1), and transmission (Rider 1). Only EmPOWER
+and the environmental surcharge remain flat.
 
 **Key confirmation:** The ECOSS treats R and RD as one customer class (Karas
 testimony line 121: "For purposes of the ECOSS, Schedule R includes residential
-customers taking electric service under Schedules EV and RD"). Riders are
-class-level charges and therefore identical across schedules.
+customers taking electric service under Schedules EV and RD"). The flat riders
+(EmPOWER, environmental surcharge, customer charge) are class-level charges and
+therefore identical across schedules — but Rider 1 SOS defines schedule-specific
+TOU generation and transmission rates.
 
 RD is designed to be **revenue-neutral** to Schedule R: the same number of
 customers consuming the same total kWh would produce the same total delivery
@@ -84,19 +92,65 @@ making them an apples-to-apples basis for comparison.
 
 ### URDB JSON (`bge_rd_default.json`)
 
-The URDB JSON bundles **all** rate components (delivery + generation SOS +
-transmission SOS + EmPOWER + environmental surcharge) into a single TOU energy
-rate per month per period. It **cannot** be used for the delivery-only analysis
-that the testimony requires.
+The URDB delivery JSON (`bge_rd_default.json`) bundles distribution TOU +
+transmission TOU + EmPOWER + environmental surcharge into a single TOU energy
+rate per month per period. The URDB all-in JSON (`bge_rd_default_supply.json`)
+adds generation TOU on top. These are what CAIRO uses for per-building bill
+calculation.
+
+Decomposition (verified against Rider 1):
+
+- **Delivery JSON** = distribution (tariff sheet) + transmission (Rider 1) + EmPOWER + env surcharge
+- **All-in JSON** = delivery + generation (Rider 1)
+- **Implied supply** (all-in − delivery) = **generation only** (matches Rider 1 exactly)
 
 The `energyratestructure` contains 18 rate tiers (indices 0-17), organized as
-paired off-peak/on-peak rates for each of the 12 months. Monthly total rates
-range from ~$0.06 (off-peak) to ~$0.17 (on-peak), reflecting the bundled sum
-of all components.
+paired off-peak/on-peak rates for each of the 12 months.
 
 The TOU windows encoded in `energyweekdayschedule` match the current filed /
 Karas proposed windows (3pm-8pm summer, 6am-9am + 5pm-9pm non-summer), not the
 original PC44 pilot windows.
+
+### Rider 1 SOS rates (generation + transmission)
+
+Source: [BGE Rider 1 — Standard Offer Service (P.S.C. Md. E-6, Suppl. 751)](https://azure-na-assets.contentstack.com/v3/assets/blt71bfe6e8a1c2d265/blt970ee32f55c20fde/6a95a29b7935845fd59d7079/Rdr_1_8.pdf),
+filed 05/18/26, effective 06/01/26.
+
+Also saved locally: `context/sources/md_hp_rates/BGE_Rdr_1_SOS.pdf` (and `.md` extract).
+
+**Schedule R** (flat):
+
+| Season     | Generation | Transmission | Total SOS |
+| ---------- | ---------- | ------------ | --------- |
+| Summer     | 12.519¢    | 2.228¢       | 14.747¢   |
+| Non-Summer | 12.995¢    | 2.228¢       | 15.223¢   |
+
+**Schedule RD** (TOU):
+
+| Season     | Period   | Generation | Transmission | Total SOS |
+| ---------- | -------- | ---------- | ------------ | --------- |
+| Summer     | On-Peak  | 25.990¢    | 6.766¢       | 32.756¢   |
+| Summer     | Off-Peak | 9.213¢     | 1.114¢       | 10.327¢   |
+| Non-Summer | On-Peak  | 21.993¢    | 5.773¢       | 27.766¢   |
+| Non-Summer | Off-Peak | 10.266¢    | 1.163¢       | 11.429¢   |
+
+Key finding: for Schedule RD, **both generation and transmission are TOU**. The
+PC44 TOU Rate Design Work Group report confirms this design:
+
+> "Starting from the auction-based SOS rates, the Joint Utilities will add
+> transmission and estimated capacity costs into the peak periods to create the
+> on- to off-peak differential."
+> — `context/sources/md_hp_rates/mdpuc_240945_pc44_tou_rate_design_work_group_report.md`, line 94
+
+The Schedule RD tariff sheet itself states: "Generation and Transmission
+Market-Priced Service Charges can be found on www.bge.com and Rider 1 –
+Standard Offer Service."
+
+**TOU windows for Rider 1 rates:** Rider 1 does not independently define peak
+windows; it labels rates as "On-Peak" and "Off-Peak" by season, deferring to
+each schedule's own TOU window definitions. For Schedule RD, the distribution
+and Rider 1 SOS rates share the same peak/off-peak window definitions from the
+Schedule RD tariff sheet.
 
 ## TOU windows
 
@@ -188,16 +242,19 @@ population used in Section III of the testimony.
 
 ### What changes vs. what stays the same
 
-| Component     | Before HP (Schedule R)        | After HP (Schedule RD)                            |
-| ------------- | ----------------------------- | ------------------------------------------------- |
-| Distribution  | YAML flat rate × monthly kWh  | TOU rates × hourly kWh (classified by TOU)        |
-| Transmission  | YAML flat rate × monthly kWh  | Same YAML flat rate × monthly kWh (**unchanged**) |
-| EmPOWER       | YAML flat rate × monthly kWh  | Same YAML flat rate × monthly kWh (**unchanged**) |
-| Marginal cost | Hourly MC × hourly kWh (8760) | Same computation (**unchanged**)                  |
+| Component     | Before HP (Schedule R)        | After HP (Schedule RD)                              |
+| ------------- | ----------------------------- | --------------------------------------------------- |
+| Distribution  | YAML flat rate × monthly kWh  | TOU rates × hourly kWh (tariff sheet, non-seasonal) |
+| Transmission  | YAML flat rate × monthly kWh  | TOU rates × hourly kWh (Rider 1, seasonal)          |
+| Generation    | YAML flat rate × monthly kWh  | TOU rates × hourly kWh (Rider 1, seasonal)          |
+| EmPOWER       | YAML flat rate × monthly kWh  | Same YAML flat rate × monthly kWh (**unchanged**)   |
+| Marginal cost | Hourly MC × hourly kWh (8760) | Same computation (**unchanged**)                    |
 
-Only the distribution component changes. The left bar (marginal cost) and the
-transmission/EmPOWER components of the right bar are identical to the Schedule R
-chart.
+Distribution, transmission, and generation all change from flat to TOU. The left
+bar of the cost-vs-charge chart (marginal cost) and the EmPOWER component are
+identical to the Schedule R chart. The right bar uses TOU distribution + TOU
+transmission. The 4-bar total bill chart uses TOU generation for the supply
+(orange) segment and TOU transmission in the delivery (blue) segment.
 
 ### Rate vintage consistency
 

@@ -1,4 +1,7 @@
-"""Unit tests for lib.rates_analysis.rate_case_funcs (no-S3 helpers)."""
+"""Unit tests for lib.rates_analysis.rate_case_funcs (no-S3 helpers).
+
+Includes tests for fair_rate_heating_types, FAIR_RATE_POPULATIONS.
+"""
 
 from __future__ import annotations
 
@@ -14,6 +17,7 @@ from lib.rates_analysis.rate_case_funcs import (
     _annual_bill_component_stack_data,
     _normalize_bill_months,
     bill_period_phrase,
+    fair_rate_heating_types,
     load_master_bat_for_utility,
     plot_annual_bill_component_stacked,
     quadrant_pcts,
@@ -523,3 +527,17 @@ def test_peak_stacking_mixed_months() -> None:
     assert mar["new_hp_kwh"] == pytest.approx(300.0)
     assert mar["peak_in_new"] == pytest.approx(300.0)
     assert mar["peak_in_base"] == pytest.approx(50.0)
+
+
+# ---------------------------------------------------------------------------
+# fair_rate_heating_types
+# ---------------------------------------------------------------------------
+
+
+def test_fair_rate_heating_types_all_fossil() -> None:
+    assert fair_rate_heating_types("all_fossil") == ("natgas", "delivered_fuels")
+
+
+def test_fair_rate_heating_types_unknown_raises() -> None:
+    with pytest.raises(ValueError, match="Unknown fair-rate population"):
+        fair_rate_heating_types("bogus_population")

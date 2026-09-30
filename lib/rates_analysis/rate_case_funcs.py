@@ -803,6 +803,28 @@ HEATING_ORDER = ["Natural gas", "Oil/propane", "Electric resistance", "Existing 
 # heterogeneous/unclassified bucket not worth breaking out on its own.
 DEFAULT_EXCLUDED_HEATING_CODES = {"heat_pump", "other"}
 
+# ---------------------------------------------------------------------------
+# Fair-rate population definitions
+# ---------------------------------------------------------------------------
+
+# Maps a named population to the ``heating_type_v2`` codes whose average
+# delivery overpayment defines the fair-rate correction scalar.
+FAIR_RATE_POPULATIONS: dict[str, tuple[str, ...]] = {
+    "all_fossil": ("natgas", "delivered_fuels"),
+}
+
+
+def fair_rate_heating_types(population: str) -> tuple[str, ...]:
+    """Return ``heating_type_v2`` codes whose average overpayment defines the fair rate.
+
+    Raises ``ValueError`` for unknown *population* names.
+    """
+    if population not in FAIR_RATE_POPULATIONS:
+        msg = f"Unknown fair-rate population {population!r}; known: {sorted(FAIR_RATE_POPULATIONS)}"
+        raise ValueError(msg)
+    return FAIR_RATE_POPULATIONS[population]
+
+
 QUADRANT_COLORS: dict[str, str] = {
     "savings > $1k": "#1b5e20",
     "savings $0-1k": "#81c784",

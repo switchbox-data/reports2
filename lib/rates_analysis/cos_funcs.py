@@ -20,17 +20,29 @@ propane).
 Every function is parameterized by ``state``, ``utility``, ``batch``, and
 segment names (never hardcoded to one utility) so the same code works
 across reports.
+
+Primary API
+-----------
+- ``incremental_cost_delta_with_gap`` — per-building incremental delivery
+  revenue, marginal cost, and the gap between them.
+- ``incremental_cost_summary_by_heating_type`` — weighted summary of the
+  above by baseline heating type.
+
+Deprecated aliases (backward-compatible, emit ``DeprecationWarning``):
+- ``bat_component_delta_with_gap``
+- ``bat_component_summary_by_heating_type``
 """
 
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     import polars as pl
 
 
-def bat_component_delta_with_gap(
+def incremental_cost_delta_with_gap(
     state: str,
     utility: str,
     batch: str,
@@ -100,8 +112,8 @@ def bat_component_delta_with_gap(
     return delta
 
 
-def bat_component_summary_by_heating_type(
-    bat_delta: pl.DataFrame,
+def incremental_cost_summary_by_heating_type(
+    cost_delta: pl.DataFrame,
     *,
     revenue_col: str = "annual_bill_delivery",
     marginal_cost_col: str = "economic_burden_delivery",
@@ -111,13 +123,13 @@ def bat_component_summary_by_heating_type(
 ) -> pl.DataFrame:
     """Weighted revenue/marginal-cost/kWh summary by baseline heating type.
 
-    Takes a ``bat_component_delta_with_gap()`` result (all heating types in
-    one frame) and summarizes it one row per *group_col* value, plus a
+    Takes an ``incremental_cost_delta_with_gap()`` result (all heating types
+    in one frame) and summarizes it one row per *group_col* value, plus a
     trailing "All non-HP" total row.
 
-    Precondition: *bat_delta* must already have baseline heat-pump buildings
+    Precondition: *cost_delta* must already have baseline heat-pump buildings
     excluded (e.g. via ``bat_component_delta(exclude_has_hp=True)``, the
-    default that ``bat_component_delta_with_gap()`` goes through) — this
+    default that ``incremental_cost_delta_with_gap()`` goes through) — this
     function trusts that exclusion for the "All non-HP" label rather than
     re-deriving it, and raises ``ValueError`` if any ``has_hp`` row slips
     through.
@@ -143,10 +155,10 @@ def bat_component_summary_by_heating_type(
 
     from lib.rates_analysis.rate_case_funcs import HEATING_ORDER, HEATING_TYPE_LABELS
 
-    if bat_delta["has_hp"].any():
-        n_hp = bat_delta["has_hp"].sum()
+    if cost_delta["has_hp"].any():
+        n_hp = cost_delta["has_hp"].sum()
         raise ValueError(
-            f"bat_component_summary_by_heating_type() assumes has_hp buildings were already "
+            f"incremental_cost_summary_by_heating_type() assumes has_hp buildings were already "
             f"excluded upstream (see bat_component_delta(exclude_has_hp=True)); got {n_hp} rows "
             f"with has_hp=True."
         )
@@ -169,8 +181,8 @@ def bat_component_summary_by_heating_type(
         (weight * pl.col(mc_delta_col)).sum().alias("wsum_mc_delta"),
     ]
 
-    by_group = bat_delta.group_by(group_col).agg(*agg_exprs).rename({group_col: "heating_type"})
-    total_row = bat_delta.select(*agg_exprs).with_columns(pl.lit("All non-HP").alias("heating_type"))
+    by_group = cost_delta.group_by(group_col).agg(*agg_exprs).rename({group_col: "heating_type"})
+    total_row = cost_delta.select(*agg_exprs).with_columns(pl.lit("All non-HP").alias("heating_type"))
     combined = pl.concat([by_group, total_row.select(by_group.columns)], how="vertical")
 
     combined = combined.with_columns(
@@ -209,3 +221,64 @@ def bat_component_summary_by_heating_type(
         row_order = [*non_total["heating_type"].to_list(), "All non-HP"]
 
     return combined.with_columns(pl.col("heating_type").cast(pl.Enum(row_order))).sort("heating_type")
+
+
+# ---------------------------------------------------------------------------
+# Deprecated aliases (backward-compatible)
+# ---------------------------------------------------------------------------
+
+
+def bat_component_delta_with_gap(
+    state: str,
+    utility: str,
+    batch: str,
+    segment_before: str,
+    segment_after: str,
+    *,
+    heating_type: str | None = None,
+    revenue_col: str = "annual_bill_delivery",
+    marginal_cost_col: str = "economic_burden_delivery",
+    kwh_col: str = "annual_kwh_grid",
+) -> pl.DataFrame:
+    """Deprecated: use ``incremental_cost_delta_with_gap`` instead."""
+    warnings.warn(
+        "bat_component_delta_with_gap is deprecated; use incremental_cost_delta_with_gap instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return incremental_cost_delta_with_gap(
+        state,
+        utility,
+        batch,
+        segment_before,
+        segment_after,
+        heating_type=heating_type,
+        revenue_col=revenue_col,
+        marginal_cost_col=marginal_cost_col,
+        kwh_col=kwh_col,
+    )
+
+
+def bat_component_summary_by_heating_type(
+    bat_delta: pl.DataFrame,
+    *,
+    revenue_col: str = "annual_bill_delivery",
+    marginal_cost_col: str = "economic_burden_delivery",
+    kwh_col: str = "annual_kwh_grid",
+    group_col: str = "heating_type_v2",
+    weight_col: str = "weight",
+) -> pl.DataFrame:
+    """Deprecated: use ``incremental_cost_summary_by_heating_type`` instead."""
+    warnings.warn(
+        "bat_component_summary_by_heating_type is deprecated; use incremental_cost_summary_by_heating_type instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return incremental_cost_summary_by_heating_type(
+        bat_delta,
+        revenue_col=revenue_col,
+        marginal_cost_col=marginal_cost_col,
+        kwh_col=kwh_col,
+        group_col=group_col,
+        weight_col=weight_col,
+    )

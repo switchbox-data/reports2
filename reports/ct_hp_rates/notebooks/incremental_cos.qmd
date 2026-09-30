@@ -1,0 +1,370 @@
+---
+title: CT Eversource Incremental Delivery Cost Analysis
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+execute:
+  warning: false
+  message: false
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+
+This notebook examines the per-building delivery overpayment for CT Eversource homes
+switching to heat pumps — the gap between the incremental delivery revenue the utility
+collects and the incremental delivery marginal cost the conversion actually imposes.
+It then shows how each heating type's annual energy bill change looks after correcting
+for that overpayment: once using each building's own overpayment, and once using the
+population-wide mean.
+
+The functions doing the data crunching live in
+[`lib/rates_analysis/cos_funcs.py`](../../../lib/rates_analysis/cos_funcs.py) and
+[`lib/rates_analysis/rate_case_funcs.py`](../../../lib/rates_analysis/rate_case_funcs.py).
+This notebook just calls those with CT Eversource's specific state/batch/scenario values
+from `batch_config.yaml`.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import polars as pl
+import yaml
+from great_tables import GT
+
+from lib.great_tables import get_switchbox_gt_tab_options
+from lib.plotnine import SB_COLORS, theme_switchbox
+from lib.quarto import display_gt
+from lib.rates_analysis.cos_funcs import (
+    incremental_cost_delta_with_gap,
+    incremental_cost_summary_by_heating_type,
+)
+from lib.rates_analysis.rate_case_funcs import (
+    add_heating_label,
+    bill_delta_between_segments,
+    fair_rate_heating_types,
+    plot_weighted_bill_change_hist,
+    segment_name,
+)
+```
+
+## Parameters
+
+Batch identity lives in `batch_config.yaml` alongside this report, not hardcoded here, so
+re-running against a new batch is a one-file change.
+
+```{python}
+#| label: params
+
+_batch_config = yaml.safe_load(Path("../batch_config.yaml").read_text())
+
+STATE = _batch_config["STATE"]
+BATCH = _batch_config["BATCH"]
+DEFAULT_SCENARIO = _batch_config["BASELINE_BILL_SCENARIO"]
+FAIR_RATE_POPULATION = _batch_config["FAIR_RATE_POPULATION"]
+UTILITY = "ct_eversource"
+BILL_COL = "energy_total_bill"
+
+SEG_DEFAULT_PRECALC = segment_name(DEFAULT_SCENARIO, "precalc")
+SEG_DEFAULT_CALIBRATED = segment_name(DEFAULT_SCENARIO, "calibrated")
+
+print(f"state={STATE}  utility={UTILITY}  batch={BATCH}  scenario={DEFAULT_SCENARIO}")
+print(f"fair_rate_population={FAIR_RATE_POPULATION}")
+```
+
+## Incremental delivery revenue vs. marginal cost
+
+When a non-heat-pump home switches to a heat pump, its electricity consumption changes —
+and so does its delivery bill. But does the *revenue* the utility collects from that home
+change by more or less than the *marginal cost* that home actually imposes on the grid?
+
+Per-building delivery overpayment is defined as:
+
+$$\text{overpayment}_i = \Delta \text{revenue}_i - \Delta \text{MC}_i$$
+
+where $\Delta$ is the change from pre-retrofit (upgrade 00) to post-retrofit (upgrade 02).
+CAIRO's `economic_burden_delivery` column stores the per-building marginal cost, which is
+numerically identical to multiplying each building's hourly load by the hourly marginal cost
+schedule — this is the **incremental cost method**.
+
+We fetch every non-HP baseline heating type in one pass rather than filtering to natural gas
+alone, since how the increment behaves differs by heating type.
+
+```{python}
+#| label: cost-delta-data
+
+cost_delta = incremental_cost_delta_with_gap(
+    STATE,
+    UTILITY,
+    BATCH,
+    SEG_DEFAULT_PRECALC,
+    SEG_DEFAULT_CALIBRATED,
+)
+print(f"Buildings: {cost_delta.height:,}")
+print(cost_delta.group_by("heating_type_v2").len().sort("heating_type_v2"))
+```
+
+### Summary by heating type
+
+Not every heating type gains electric load from a heat pump conversion. Homes already
+heating with **electric resistance** typically see grid consumption *fall*, since a heat
+pump is a much more efficient electric appliance replacing a much less efficient one; homes
+switching from **combustion fuels** (natural gas, oil, propane) see grid consumption *rise*.
+
+The table below breaks out average pre-retrofit consumption, the average incremental change,
+and the average percent change in revenue and marginal cost by baseline heating type.
+The $/Δ kWh column is a **weighted-sum ratio** (total incremental dollars ÷ total
+incremental kWh), not an average of each building's own ratio.
+
+```{python}
+#| label: tbl-cost-summary-by-heating-type
+#| tbl-cap: "Average pre-retrofit consumption, incremental kWh, and incremental delivery revenue/marginal cost by baseline heating type after switching to a heat pump (CT Eversource default rate)."
+
+_cost_summary = incremental_cost_summary_by_heating_type(cost_delta)
+_cost_summary_gt = (
+    GT(_cost_summary, rowname_col="heating_type")
+    .fmt_number(columns=["n_weighted", "avg_kwh_before", "avg_kwh_delta"], decimals=0)
+    .fmt_currency(
+        columns=["revenue_avg_before", "revenue_avg_delta", "mc_avg_before", "mc_avg_delta"],
+        decimals=0,
+    )
+    .fmt_percent(columns=["revenue_pct_change", "mc_pct_change"], decimals=1)
+    .fmt_currency(
+        columns=["revenue_dollars_per_incremental_kwh", "mc_dollars_per_incremental_kwh"],
+        decimals=3,
+    )
+    .cols_label(
+        n_weighted="Weighted homes",
+        avg_kwh_before="Avg. grid kWh before",
+        avg_kwh_delta="Avg. Δ grid kWh",
+        revenue_avg_before="Avg. revenue before",
+        revenue_avg_delta="Avg. Δ revenue",
+        revenue_pct_change="Δ revenue %",
+        revenue_dollars_per_incremental_kwh="Revenue $/Δ kWh",
+        mc_avg_before="Avg. MC before",
+        mc_avg_delta="Avg. Δ MC",
+        mc_pct_change="Δ MC %",
+        mc_dollars_per_incremental_kwh="MC $/Δ kWh",
+    )
+    .tab_stubhead(label="Baseline heating type")
+    .tab_spanner(
+        label="Delivery revenue",
+        columns=["revenue_avg_before", "revenue_avg_delta", "revenue_pct_change", "revenue_dollars_per_incremental_kwh"],
+    )
+    .tab_spanner(
+        label="Delivery marginal cost",
+        columns=["mc_avg_before", "mc_avg_delta", "mc_pct_change", "mc_dollars_per_incremental_kwh"],
+    )
+    .tab_source_note(
+        "$/Δ kWh = weighted-sum incremental dollars ÷ weighted-sum incremental kWh for the "
+        "group (not an average of each building's own ratio). MC = marginal cost."
+    )
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+display_gt(_cost_summary_gt)
+```
+
+## Overpayment-corrected bill change
+
+The annual total energy bill change (`energy_total_bill`) includes delivery, supply, and
+gas/oil/propane bills. It captures the full household impact of switching to a heat pump.
+But part of that impact is the delivery overpayment — revenue in excess of marginal cost
+that cross-subsidizes other customers. How much of the bill change is "real" and how much
+is the cross-subsidy?
+
+We answer this by subtracting the overpayment from each building's total energy bill change.
+Two variants:
+
+- **Per-building correction**: subtract each building's own `delta_gap`. This preserves
+  the shape of the distribution — buildings that would have a large overpayment see a larger
+  correction — but requires per-building matching.
+- **Mean correction**: subtract a single scalar — the weighted-average `delta_gap` across
+  the fair-rate population — from every building. This is a uniform shift that answers
+  "what would the bill change look like if the average overpayment were removed?"
+
+The mean overpayment is computed across the **`{python} FAIR_RATE_POPULATION`** population
+(natural gas and oil/propane homes), which excludes electric resistance. The same scalar is
+subtracted from all heating types, including electric resistance.
+
+```{python}
+#| label: compute-mean-overpayment
+
+_fair_rate_hts = fair_rate_heating_types(FAIR_RATE_POPULATION)
+_cost_delta_fair = cost_delta.filter(pl.col("heating_type_v2").is_in(_fair_rate_hts))
+avg_overpayment = float(
+    (_cost_delta_fair["delta_gap"] * _cost_delta_fair["weight"]).sum()
+    / _cost_delta_fair["weight"].sum()
+)
+print(f"Fair-rate population: {FAIR_RATE_POPULATION} → {_fair_rate_hts}")
+print(f"Weighted-average delivery overpayment: ${avg_overpayment:,.0f}/year")
+```
+
+### Natural gas
+
+Natural-gas homes see the largest delivery overpayment because switching from gas to an
+electric heat pump adds the most incremental electric load. After removing the overpayment,
+the remaining bill change reflects supply costs, the eliminated gas bill, and efficiency
+gains.
+
+```{python}
+#| label: bill-delta-natgas
+
+_delta_natgas = bill_delta_between_segments(
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED, bill_col=BILL_COL
+).filter(pl.col("heating_type_v2") == "natgas")
+
+_bldg_gap_natgas = cost_delta.filter(
+    pl.col("heating_type_v2") == "natgas"
+).select("bldg_id", "delta_gap")
+
+_delta_natgas_minus_bldg = (
+    _delta_natgas.join(_bldg_gap_natgas, on="bldg_id")
+    .with_columns((pl.col("delta") - pl.col("delta_gap")).alias("delta"))
+    .drop("delta_gap")
+)
+_delta_natgas_minus_mean = _delta_natgas.with_columns(
+    (pl.col("delta") - avg_overpayment).alias("delta")
+)
+
+print(f"Natural gas buildings: {_delta_natgas.height:,}")
+```
+
+```{python}
+#| label: fig-hist-natgas-minus-bldg
+#| fig-cap: "Distribution of the annual total energy bill change for natural-gas-heated CT Eversource homes switching to a heat pump, after subtracting each building's own delivery overpayment."
+
+plot_weighted_bill_change_hist(
+    _delta_natgas_minus_bldg,
+    "Natural gas: bill change after removing per-building delivery overpayment",
+    show_mean_median=True,
+    x_label="Annual bill change after overpayment correction ($)",
+)
+```
+
+```{python}
+#| label: fig-hist-natgas-minus-mean
+#| fig-cap: "Distribution of the annual total energy bill change for natural-gas-heated CT Eversource homes switching to a heat pump, after subtracting the fossil-fuel-wide mean delivery overpayment."
+
+plot_weighted_bill_change_hist(
+    _delta_natgas_minus_mean,
+    "Natural gas: bill change after removing mean delivery overpayment",
+    show_mean_median=True,
+    x_label="Annual bill change after overpayment correction ($)",
+)
+```
+
+### Electric resistance
+
+Electric-resistance homes are *not* in the fair-rate population for the mean overpayment,
+since their incremental load profile is qualitatively different (grid consumption typically
+*falls* after switching to a more efficient electric heat pump). However, each ER building's
+own `delta_gap` is still a real quantity — its own incremental charge minus its own
+incremental MC — so the per-building correction is meaningful.
+
+```{python}
+#| label: bill-delta-er
+
+_delta_er = bill_delta_between_segments(
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED, bill_col=BILL_COL
+).filter(pl.col("heating_type_v2") == "electrical_resistance")
+
+_bldg_gap_er = cost_delta.filter(
+    pl.col("heating_type_v2") == "electrical_resistance"
+).select("bldg_id", "delta_gap")
+
+_delta_er_minus_bldg = (
+    _delta_er.join(_bldg_gap_er, on="bldg_id")
+    .with_columns((pl.col("delta") - pl.col("delta_gap")).alias("delta"))
+    .drop("delta_gap")
+)
+_delta_er_minus_mean = _delta_er.with_columns(
+    (pl.col("delta") - avg_overpayment).alias("delta")
+)
+
+print(f"Electric resistance buildings: {_delta_er.height:,}")
+```
+
+```{python}
+#| label: fig-hist-elec-resistance-minus-bldg
+#| fig-cap: "Distribution of the annual total energy bill change for electric-resistance-heated CT Eversource homes switching to a heat pump, after subtracting each building's own delivery overpayment."
+
+plot_weighted_bill_change_hist(
+    _delta_er_minus_bldg,
+    "Electric resistance: bill change after removing per-building delivery overpayment",
+    show_mean_median=True,
+    x_label="Annual bill change after overpayment correction ($)",
+)
+```
+
+```{python}
+#| label: fig-hist-elec-resistance-minus-mean
+#| fig-cap: "Distribution of the annual total energy bill change for electric-resistance-heated CT Eversource homes switching to a heat pump, after subtracting the fossil-fuel-wide mean delivery overpayment."
+
+plot_weighted_bill_change_hist(
+    _delta_er_minus_mean,
+    "Electric resistance: bill change after removing mean delivery overpayment",
+    show_mean_median=True,
+    x_label="Annual bill change after overpayment correction ($)",
+)
+```
+
+### Oil/propane (delivered fuels)
+
+```{python}
+#| label: bill-delta-delivered
+
+_delta_delivered = bill_delta_between_segments(
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED, bill_col=BILL_COL
+).filter(pl.col("heating_type_v2") == "delivered_fuels")
+
+_bldg_gap_delivered = cost_delta.filter(
+    pl.col("heating_type_v2") == "delivered_fuels"
+).select("bldg_id", "delta_gap")
+
+_delta_delivered_minus_bldg = (
+    _delta_delivered.join(_bldg_gap_delivered, on="bldg_id")
+    .with_columns((pl.col("delta") - pl.col("delta_gap")).alias("delta"))
+    .drop("delta_gap")
+)
+_delta_delivered_minus_mean = _delta_delivered.with_columns(
+    (pl.col("delta") - avg_overpayment).alias("delta")
+)
+
+print(f"Delivered fuel buildings: {_delta_delivered.height:,}")
+```
+
+```{python}
+#| label: fig-hist-delivered-minus-bldg
+#| fig-cap: "Distribution of the annual total energy bill change for oil/propane-heated CT Eversource homes switching to a heat pump, after subtracting each building's own delivery overpayment."
+
+plot_weighted_bill_change_hist(
+    _delta_delivered_minus_bldg,
+    "Oil/propane: bill change after removing per-building delivery overpayment",
+    show_mean_median=True,
+    x_label="Annual bill change after overpayment correction ($)",
+)
+```
+
+```{python}
+#| label: fig-hist-delivered-minus-mean
+#| fig-cap: "Distribution of the annual total energy bill change for oil/propane-heated CT Eversource homes switching to a heat pump, after subtracting the fossil-fuel-wide mean delivery overpayment."
+
+plot_weighted_bill_change_hist(
+    _delta_delivered_minus_mean,
+    "Oil/propane: bill change after removing mean delivery overpayment",
+    show_mean_median=True,
+    x_label="Annual bill change after overpayment correction ($)",
+)
+```

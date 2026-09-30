@@ -1,0 +1,242 @@
+---
+title: "Distribution Marginal Costs: Sensitivity of Peak-Hour Allocation to Load Year"
+reference-location: margin
+fig-cap-location: bottom
+execute:
+  warning: false
+  message: false
+---
+
+This notebook backs the "Hourly marginal distribution costs" methods section of the CT
+Eversource rate report (`index.qmd`). The distribution and sub-transmission marginal cost
+schedule allocates an annualized $/kW-year cost across the **top 100 load hours** of the
+ISO-NE Connecticut load zone. That allocation depends on which calendar year's load we rank,
+so here we re-run the peak-hour selection for several load years and ask: **in which months
+do the top 100 hours fall, and how much does that shift from year to year?**
+
+The outputs are report variables — the share of peak hours by month for each load year —
+which `index.qmd` reads directly so the table there is never hardcoded.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+import pickle
+from pathlib import Path
+
+import polars as pl
+from great_tables import GT
+
+from lib.great_tables import get_switchbox_gt_tab_options
+from lib.format import pct
+from lib.quarto import display_gt
+
+report_vars: dict = {}
+```
+
+## Parameters
+
+The production schedule uses load year 2025 and the top 100 hours. We test the four most
+recent complete-or-current calendar years of ISO-NE zone load.
+
+```{python}
+#| label: params
+
+ZONE = "CT"
+LOAD_YEARS = [2022, 2023, 2024, 2025]
+N_PEAK_HOURS = 100
+PRODUCTION_LOAD_YEAR = 2025
+
+PATH_ZONE_LOADS = "s3://data.sb/isone/hourly_demand/zones"
+S3_OPTS = {"aws_region": "us-west-2"}
+
+MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+report_vars["load_years"] = LOAD_YEARS
+report_vars["n_peak_hours"] = N_PEAK_HOURS
+report_vars["production_load_year"] = PRODUCTION_LOAD_YEAR
+```
+
+## Import data
+
+ISO-NE publishes hourly real-time demand by load zone. Each row is one hour for one zone;
+`interval_start_et` is the hour beginning, in Eastern time, and `load_mw` is the zone's
+average load over that hour. The CT zone covers both Eversource and United Illuminating
+service territory.
+
+```{python}
+#| label: load-zone-loads
+
+zone_load = (
+    pl.scan_parquet(f"{PATH_ZONE_LOADS}/zone={ZONE}/", storage_options=S3_OPTS)
+    .filter(pl.col("year").is_in(LOAD_YEARS))
+    .select("year", "interval_start_et", "load_mw")
+    .rename({"interval_start_et": "timestamp"})
+    .collect()
+)
+
+zone_load.head()
+```
+
+Let's check we have a full year of hours for each load year. The counts differ slightly from
+8,760 because of the leap day in 2024 and because ISO-NE's Eastern-time timestamps repeat one
+hour in November (DST fall-back) and skip one in March (spring-forward).
+
+```{python}
+#| label: check-hour-counts
+
+zone_load.group_by("year").agg(pl.len().alias("n_hours")).sort("year")
+```
+
+## Data preparation
+
+The fall-back hour appears twice with the same wall-clock timestamp. We collapse duplicates
+to their mean so each timestamp is a single hour, matching how the production pipeline
+normalizes the series before ranking. The skipped spring-forward hour is left missing — it is
+a March hour and cannot be in the summer top 100.
+
+```{python}
+#| label: dedupe-timestamps
+
+zone_load = (
+    zone_load.group_by("year", "timestamp")
+    .agg(pl.col("load_mw").mean())
+    .sort("year", "timestamp")
+)
+
+assert zone_load.group_by("year").len().filter(pl.col("len") < 8759).is_empty()
+```
+
+## Peak-hour selection by load year
+
+For each load year, we rank hours by load and keep the top `{python} N_PEAK_HOURS`. Then we
+count how many of those hours fall in each calendar month and convert to a share of the
+peak-hour set.
+
+```{python}
+#| label: peak-hours-by-month
+
+peak_hours = (
+    zone_load.with_columns(
+        pl.col("load_mw").rank(method="ordinal", descending=True).over("year").alias("rank")
+    )
+    .filter(pl.col("rank") <= N_PEAK_HOURS)
+    .with_columns(pl.col("timestamp").dt.month().alias("month"))
+)
+
+peak_share_by_month = (
+    peak_hours.group_by("year", "month")
+    .agg(pl.len().alias("n_hours"))
+    .with_columns((pl.col("n_hours") / N_PEAK_HOURS).alias("share"))
+    .sort("year", "month")
+)
+
+peak_share_by_month
+```
+
+The report table shows every month that contains at least one peak hour in any load year, so
+its columns come from the data rather than a fixed summer window. We record which months those
+are, and which month carries peak hours in every load year (the one the narrative quotes a
+range for).
+
+```{python}
+#| label: check-summer-only
+
+PEAK_MONTHS = sorted(peak_share_by_month["month"].unique().to_list())
+
+_months_every_year = (
+    peak_share_by_month.group_by("month")
+    .agg(pl.col("year").n_unique().alias("n_years"))
+    .filter(pl.col("n_years") == len(LOAD_YEARS))
+    .sort("month")["month"]
+    .to_list()
+)
+assert len(_months_every_year) == 1, _months_every_year
+ALWAYS_PEAK_MONTH = _months_every_year[0]
+```
+
+Now pivot to one row per load year, one column per month, filling months with no peak hours
+as zero.
+
+```{python}
+#| label: peak-share-table
+
+PEAK_MONTH_COLS = [MONTH_ABBR[m - 1] for m in PEAK_MONTHS]
+
+peak_share_wide = (
+    peak_share_by_month.pivot(values="share", index="year", on="month", sort_columns=True)
+    .fill_null(0.0)
+    .sort("year")
+)
+# Pivot names columns by month number; relabel and add any summer month with no peak hours.
+peak_share_wide = peak_share_wide.rename(
+    {c: MONTH_ABBR[int(c) - 1] for c in peak_share_wide.columns if c != "year"}
+)
+peak_share_wide = peak_share_wide.with_columns(
+    [pl.lit(0.0).alias(c) for c in PEAK_MONTH_COLS if c not in peak_share_wide.columns]
+).select("year", *PEAK_MONTH_COLS)
+
+peak_share_wide
+```
+
+```{python}
+#| label: tbl-peak-hour-share-by-month
+#| tbl-cap: "Share of top-100 peak hours by month, ISO-NE Connecticut zone, by load year."
+
+_gt = (
+    GT(peak_share_wide)
+    .cols_label(year="Load year")
+    .fmt_percent(columns=PEAK_MONTH_COLS, decimals=0)
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+display_gt(_gt)
+```
+
+## Report variables
+
+`index.qmd` renders this table in markdown with inline values, so we export the shares as a
+nested dict keyed by load year then month abbreviation, plus the column order and the share
+range for the one month that has peak hours in every load year.
+
+```{python}
+#| label: report-vars
+
+peak_month_share: dict[int, dict[str, float]] = {
+    int(row["year"]): {c: float(row[c]) for c in PEAK_MONTH_COLS}
+    for row in peak_share_wide.iter_rows(named=True)
+}
+report_vars["peak_month_share"] = peak_month_share
+report_vars["peak_month_cols"] = PEAK_MONTH_COLS
+
+# The one month with peak hours in every load year, and its share range.
+_always = MONTH_ABBR[ALWAYS_PEAK_MONTH - 1]
+report_vars["always_peak_month"] = _always
+_shares = [s[_always] for s in peak_month_share.values()]
+report_vars["always_peak_month_share_min"] = min(_shares)
+report_vars["always_peak_month_share_max"] = max(_shares)
+
+# Which months the production load year's peak hours fall in (for the Step 3 prose).
+report_vars["production_peak_months"] = [
+    m for m, s in peak_month_share[PRODUCTION_LOAD_YEAR].items() if s > 0
+]
+
+# Preformatted cell text per load year, in column order, so index.qmd's table needs no
+# formatting of its own.
+report_vars["peak_share_cells"] = {
+    year: [pct(shares[m]) for m in PEAK_MONTH_COLS] for year, shares in peak_month_share.items()
+}
+
+report_vars
+```
+
+## Export report variables
+
+```{python}
+#| label: export-report-vars
+
+Path("../cache").mkdir(exist_ok=True)
+Path("../cache/marginal_costs_vars.pkl").write_bytes(pickle.dumps(report_vars))
+```

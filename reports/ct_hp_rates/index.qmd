@@ -32,6 +32,19 @@ citation:
 #    href: docs/switchbox_report.pdf
 ---
 
+```{python}
+#| echo: false
+
+import pickle
+from pathlib import Path
+from types import SimpleNamespace
+
+from lib.format import month_list, pct
+
+mc = SimpleNamespace(**pickle.loads(Path("cache/marginal_costs_vars.pkl").read_bytes()))
+```
+
+# Introduction
 # Outline
 
 
@@ -116,6 +129,53 @@ citation:
 ## Alternative designs?
 * BTW TOU doesn't solve this, for when you get AMI.
 
+
+### Hourly marginal distribution costs {#sec-method-dist-mc}
+
+The distribution and sub-transmission marginal cost series shown in @fig-mc-heatmap-dist-sub-tx is an hourly schedule covering all 8,760 hours of 2025, built in four steps.
+
+**Step 1: Annualized marginal capacity cost.** We used the system-wide annualized marginal distribution station and trunkline feeder cost of **$20.17/kW-year** (2026 dollars) from Table 3 of Eversource's marginal cost of service study (MCOS), filed in its 2026 rate case, Docket 26-05-10 [@eversource_Docket260510Exhibit_2026; @eversource_Docket260510Exhibit_2026a] [[p. 7](https://www.documentcloud.org/documents/28540599-exhibit-clp-mcos-2/#document/p7/a2826034)]. This is the system-wide average — Eversource diluted the locational cost in expansion areas ($86.58/kW-year) by the share of system peak load in those areas — and covers upstream distribution only (substations and primary trunkline feeders).
+
+**Step 2: CPI adjustment.** We deflated $20.17/kW-year to 2025 dollars using the Consumer Price Index for All Urban Consumers [@fred_ConsumerPriceIndexAll_2025], yielding **$19.65/kW-year**.[^cpi-2026-partial]
+
+[^cpi-2026-partial]: The 2026 CPI value is a partial-year average; the deflation factor is 0.974.
+
+**Step 3: Peak-hour identification.** We loaded hourly load for the ISO-NE Connecticut load zone for calendar year 2025 [@isone_ISONEWebServices_2025], ranked all 8,760 hours by load, and selected the **top `{python} mc.n_peak_hours` hours** as the constrained hours — all of which fall in `{python} month_list(mc.production_peak_months)`.
+
+**Step 4: Load-weighted allocation.** We allocated the annualized cost across those 100 hours proportional to each hour's share of total load in the peak window:
+
+$$
+w_h = \frac{L_h}{\sum_{k \in \text{top-100}} L_k}
+$$
+
+Multiplying $19.65/kW-year by each hour's weight gives that hour's marginal cost in $/kWh; all remaining hours are zero. The resulting hourly profile is @fig-mc-heatmap-dist-sub-tx.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-mc-heatmap-dist-sub-tx >}}
+:::
+
+**Sensitivity to load year.** The top-`{python} mc.n_peak_hours` allocation is mildly sensitive to the choice of load year. We ran the same peak-hour selection for `{python} min(mc.load_years)` through `{python} max(mc.load_years)` and found that all peak hours fall within `{python} month_list(mc.peak_month_cols)` in every year (@tbl-peak-hour-sensitivity). 
+
+```{python}
+#| echo: false
+#| output: asis
+
+cols = mc.peak_month_cols
+header = "| Load year | " + " | ".join(cols) + " |"
+align = "|----------:|" + "|".join(["----:"] * len(cols)) + "|"
+rows = [
+    "| " + str(year) + " | " + " | ".join(mc.peak_share_cells[year]) + " |"
+    for year in mc.load_years
+]
+caption = (
+    ": Share of top-" + str(mc.n_peak_hours)
+    + " peak hours by month, ISO-NE Connecticut zone, by load year."
+    + " {#tbl-peak-hour-sensitivity}"
+)
+print("\n".join([header, align, *rows, "", caption]))
+```
+
+**Limitation.** The hourly allocation uses the aggregate load of the entire ISO-NE Connecticut zone, which covers both Eversource and United Illuminating. This is not the same as Eversource's own system load: the peak hours and their weights are those of the zone as a whole, not of Eversource's distribution system. We did not find an hourly system-level load series for Eversource alone, so the Connecticut zone was the closest available match. Separately, the hourly schedule applies only to Eversource's distribution system, because the $20.17/kW-year annualized cost it allocates comes from Eversource's own MCOS. United Illuminating has no comparable marginal cost study, so we do not produce a distribution marginal cost schedule for it.
 
 # TODO
 * Look for language on barriers to adoption.

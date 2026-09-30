@@ -60,12 +60,14 @@ from great_tables import GT
 from lib.plotnine import SB_COLORS, theme_switchbox
 from lib.great_tables import get_switchbox_gt_tab_options
 from lib.quarto import display_gt, display_svg
+from lib.rates_analysis.cos_funcs import incremental_cost_delta_with_gap
 from lib.rates_analysis.rate_case_funcs import (
     DECOMPOSED_BILL_COMPONENT_KEYS,
     HEATING_ORDER,
     MONTH_ORDER,
     add_heating_label,
     annual_bill_components,
+    fair_rate_heating_types,
     bat_by_group,
     bill_change_incidence,
     bill_delta_between_segments,
@@ -128,13 +130,15 @@ BILL_COL_BASELINE = "energy_total_bill"
 # this is the column that will be used for all comparisons and plots
 BILL_COL = BILL_COL_BASELINE  # BILL_COL_BASELINE, BILL_COL_LMI_CURRENT, or BILL_COL_LMI_100
 
+# In this batch the default tariff is the proposed Rate Year 1 Rate 1 schedule.
 DEFAULT_SCENARIO = _batch_config["BASELINE_BILL_SCENARIO"]
 SEASONAL_SCENARIO = f"hp_seasonal_{RESIDUAL}_passthrough"
 FLAT_SCENARIO = f"hp_flat_{RESIDUAL}_passthrough"
-DEFAULT_RY1_SCENARIO = "default_ry1_r1_uncalibrated"
-DEFAULT_RY1_R6_SCENARIO = "default_ry1_r6_uncalibrated"
+RATE6_SCENARIO = "default_ry1_r6_uncalibrated"
+FAIR_RATE_POPULATION = _batch_config["FAIR_RATE_POPULATION"]
 
 print(f"state={STATE}  batch={BATCH}  rdp_ref={RDP_REF}  utility={UTILITY}  bill_col={BILL_COL}")
+print(f"fair_rate_population={FAIR_RATE_POPULATION}")
 ```
 
 Batch `ct_20260925_a` has calibrated scenarios for CT Eversource, each run at two stages:
@@ -145,7 +149,8 @@ Batch `ct_20260925_a` has calibrated scenarios for CT Eversource, each run at tw
 
 | Scenario | What it is |
 | --- | --- |
-| `default` | CT Eversource's current default residential tariff (a single rate schedule for all residential customers). |
+| `default` (`default_ry1_r1_uncalibrated`) | The proposed Rate Year 1 Rate 1 schedule — a single flat volumetric delivery rate for all residential customers. This is the batch's baseline tariff. |
+| `rate6` (`default_ry1_r6_uncalibrated`) | The proposed Rate 6 heat-pump-specific tariff — a tiered winter volumetric delivery rate (Block 1 ≤700 kWh, Block 2 >700 kWh at a lower rate) and flat non-winter rate. |
 | `hp_seasonal_percustomer_passthrough` | A subclass-differentiated pair of tariffs, assigned automatically by each building's modeled heating type (`has_hp`), not by customer choice: the heat-pump subclass gets a seasonal volumetric delivery rate (same fixed charge as `default`); the non-heat-pump subclass gets its own separate, recalibrated tariff (`non-hp_base_percustomer_passthrough`) rather than staying on `default`, since the revenue no longer collected from the heat-pump subclass has to be made up somewhere. The residual (non-marginal-cost) revenue requirement is allocated per customer within each subclass. |
 
 Every bill-change comparison in this notebook (every `bill_delta_between_segments()` and
@@ -171,10 +176,8 @@ SEG_SEASONAL_PRECALC = segment_name(SEASONAL_SCENARIO, "precalc")
 SEG_SEASONAL_CALIBRATED = segment_name(SEASONAL_SCENARIO, "calibrated")
 SEG_FLAT_PRECALC = segment_name(FLAT_SCENARIO, "precalc")
 SEG_FLAT_CALIBRATED = segment_name(FLAT_SCENARIO, "calibrated")
-SEG_DEFAULT_RY1_PRECALC = segment_name(DEFAULT_RY1_SCENARIO, "precalc")
-SEG_DEFAULT_RY1_CALIBRATED = segment_name(DEFAULT_RY1_SCENARIO, "calibrated")
-SEG_DEFAULT_RY1_R6_PRECALC = segment_name(DEFAULT_RY1_R6_SCENARIO, "precalc")
-SEG_DEFAULT_RY1_R6_CALIBRATED = segment_name(DEFAULT_RY1_R6_SCENARIO, "calibrated")
+SEG_RATE6_PRECALC = segment_name(RATE6_SCENARIO, "precalc")
+SEG_RATE6_CALIBRATED = segment_name(RATE6_SCENARIO, "calibrated")
 
 bills_default_precalc = load_master_bills(STATE, BATCH, SEG_DEFAULT_PRECALC)
 bills_default_calibrated = load_master_bills(STATE, BATCH, SEG_DEFAULT_CALIBRATED)
@@ -297,9 +300,9 @@ plot_bill_change_quadrants(
 #| fig-cap: "Change in total annual energy bill after switching to a heat pump, by baseline heating type, under CT Eversource''s proposed rate 6."
 
 plot_bill_change_quadrants(
-    STATE, BATCH, SEG_DEFAULT_RY1_PRECALC, SEG_DEFAULT_RY1_R6_CALIBRATED,
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_RATE6_CALIBRATED,
     bill_col=BILL_COL,
-    rate_name="HP flat rate"
+    rate_name="Rate 6"
 )
 ```
 
@@ -672,46 +675,62 @@ path: a seasonal volumetric delivery rate for the heat-pump subclass, paired wit
 recalibrated tariff for the non-heat-pump subclass, with the residual revenue requirement
 allocated per customer within each subclass.
 
-### What the tariff actually changed
+### Proposed delivery rates
 
-We read both tariffs' calibrated URDB JSON directly to see what changed.
+We read the filed Rate 1 and Rate 6 URDB JSON tariffs to compare their delivery rate
+structures. Rate 1 is a single flat volumetric rate for all months. Rate 6 has a tiered
+winter structure: the first 700 kWh per month are charged at the Block 1 rate, and usage
+above 700 kWh in winter months (Nov–Mar) is charged at a lower Block 2 rate.
 
 ```{python}
 #| label: load-tariffs
 
-tariff_default = load_tariff_json(STATE, UTILITY, f"{UTILITY}_default_calibrated", RDP_REF)
-tariff_seasonal = load_tariff_json(STATE, UTILITY, f"{UTILITY}_{SEASONAL_SCENARIO}_calibrated", RDP_REF)
-tariff_flat = load_tariff_json(STATE, UTILITY, f"{UTILITY}_{FLAT_SCENARIO}_calibrated", RDP_REF)
-rates_default = extract_tariff_rates(tariff_default)
-rates_seasonal = extract_tariff_rates(tariff_seasonal)
-rates_flat = extract_tariff_rates(tariff_flat)
-print("default:", rates_default)
-print("seasonal:", rates_seasonal)
-print("flat:", rates_flat)
+tariff_rate1 = load_tariff_json(STATE, UTILITY, f"{UTILITY}_rate1_proposed", RDP_REF)
+tariff_rate6 = load_tariff_json(STATE, UTILITY, f"{UTILITY}_rate6", RDP_REF)
+rates_rate1 = extract_tariff_rates(tariff_rate1)
+rates_rate6 = extract_tariff_rates(tariff_rate6)
+
+# Rate 6 Block 2: second tier exists only in the winter period (period 0).
+_rate6_structure = tariff_rate6["energyratestructure"]
+_rate6_block2_by_period: dict[int, float | None] = {}
+for i, tiers in enumerate(_rate6_structure):
+    _rate6_block2_by_period[i] = tiers[1]["rate"] * 100 if len(tiers) > 1 else None
+
+print("Rate 1:", rates_rate1)
+print("Rate 6 Block 1:", rates_rate6)
+print("Rate 6 Block 2 (¢/kWh by period):", _rate6_block2_by_period)
 ```
 
 ```{python}
 #| label: tbl-tariff-months
-#| tbl-cap: "Volumetric delivery rate by month: today's default rate vs. the seasonal and flat heat-pump rates."
+#| tbl-cap: "Volumetric delivery rate by month: proposed Rate 1 vs. Rate 6 (Block 1 ≤700 kWh, Block 2 >700 kWh winter only)."
 
-_tariff_months = tariff_month_rate_table(
+_rate1_col = "Rate 1 (¢/kWh)"
+_r6b1_col = "Rate 6 Blk 1 (¢/kWh)"
+_r6b2_col = "Rate 6 Blk 2 (¢/kWh)"
+
+_tariff_months = pl.DataFrame(
     {
-        "Default rate (¢/kWh)": rates_default,
-        "Seasonal HP rate (¢/kWh)": rates_seasonal,
-        "Flat HP rate (¢/kWh)": rates_flat,
+        "month": MONTH_ORDER,
+        _rate1_col: [
+            rates_rate1["period_rates"][rates_rate1["month_to_period"][m]] * 100
+            for m in MONTH_ORDER
+        ],
+        _r6b1_col: [
+            rates_rate6["period_rates"][rates_rate6["month_to_period"][m]] * 100
+            for m in MONTH_ORDER
+        ],
+        _r6b2_col: [
+            _rate6_block2_by_period[rates_rate6["month_to_period"][m]]
+            for m in MONTH_ORDER
+        ],
     }
-)
+).with_columns(pl.col("month").cast(pl.Enum(MONTH_ORDER)))
 
 _tariff_months_gt = (
     GT(_tariff_months, rowname_col="month")
-    .fmt_number(
-        columns=[
-            "Default rate (¢/kWh)",
-            "Seasonal HP rate (¢/kWh)",
-            "Flat HP rate (¢/kWh)",
-        ],
-        decimals=2,
-    )
+    .fmt_number(columns=[_rate1_col, _r6b1_col, _r6b2_col], decimals=2)
+    .sub_missing(columns=[_r6b2_col], missing_text="—")
     .tab_stubhead(label="Month")
     .tab_options(**get_switchbox_gt_tab_options())
 )
@@ -721,12 +740,28 @@ display_gt(_tariff_months_gt)
 ```{python}
 #| label: report-vars-tariff-rates
 
-report_vars["tariff_default_fixed_charge"] = rates_default["fixed_charge"]
-report_vars["tariff_seasonal_fixed_charge"] = rates_seasonal["fixed_charge"]
-report_vars["tariff_seasonal_summer_cents"] = rates_seasonal["period_rates"][0] * 100
-report_vars["tariff_seasonal_winter_cents"] = rates_seasonal["period_rates"][1] * 100
+# Rate 1 and Rate 6 rates (from the table above)
+report_vars["tariff_rate1_fixed_charge"] = rates_rate1["fixed_charge"]
+report_vars["tariff_rate1_avg_cents"] = (
+    sum(rates_rate1["period_rates"][rates_rate1["month_to_period"][m]] for m in MONTH_ORDER)
+    / len(MONTH_ORDER)
+    * 100
+)
+
+# Calibrated seasonal/flat HP tariffs — used in the reform-rate callout below.
+_tariff_default_calibrated = load_tariff_json(STATE, UTILITY, f"{UTILITY}_default_calibrated", RDP_REF)
+_tariff_seasonal_calibrated = load_tariff_json(STATE, UTILITY, f"{UTILITY}_{SEASONAL_SCENARIO}_calibrated", RDP_REF)
+_rates_default_calibrated = extract_tariff_rates(_tariff_default_calibrated)
+_rates_seasonal_calibrated = extract_tariff_rates(_tariff_seasonal_calibrated)
+report_vars["tariff_default_fixed_charge"] = _rates_default_calibrated["fixed_charge"]
+report_vars["tariff_seasonal_fixed_charge"] = _rates_seasonal_calibrated["fixed_charge"]
+report_vars["tariff_seasonal_summer_cents"] = _rates_seasonal_calibrated["period_rates"][0] * 100
+report_vars["tariff_seasonal_winter_cents"] = _rates_seasonal_calibrated["period_rates"][1] * 100
 report_vars["tariff_default_avg_cents"] = (
-    sum(rates_default["period_rates"][rates_default["month_to_period"][m]] for m in MONTH_ORDER)
+    sum(
+        _rates_default_calibrated["period_rates"][_rates_default_calibrated["month_to_period"][m]]
+        for m in MONTH_ORDER
+    )
     / len(MONTH_ORDER)
     * 100
 )
@@ -1075,8 +1110,48 @@ display_svg(
 #| label: optional-rate-helpers
 
 delta_natgas_r1_to_r6 = bill_delta_between_segments(
-    STATE, BATCH, SEG_DEFAULT_RY1_PRECALC, SEG_DEFAULT_RY1_R6_CALIBRATED, bill_col=BILL_COL
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_RATE6_CALIBRATED, bill_col=BILL_COL
 ).filter(pl.col("heating_type_v2") == "natgas")
+```
+
+We compute each non-HP building's delivery **overpayment** — the gap between the
+incremental delivery revenue the utility collects and the incremental delivery marginal cost
+the building actually causes — under the proposed Rate 1 tariff. Two corrected bill-change
+distributions follow: one subtracting the weighted-average overpayment across **all fossil
+fuel homes** uniformly (a constant shift), and one subtracting each **natgas building's
+own** overpayment (preserving the distribution shape).
+
+```{python}
+#| label: overpayment-correction-data
+
+cost_delta_all = incremental_cost_delta_with_gap(
+    STATE, UTILITY, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED,
+)
+cost_delta_natgas = cost_delta_all.filter(
+    pl.col("heating_type_v2") == "natgas"
+)
+
+_fair_rate_hts = fair_rate_heating_types(FAIR_RATE_POPULATION)
+_cost_delta_fair = cost_delta_all.filter(pl.col("heating_type_v2").is_in(_fair_rate_hts))
+_avg_overpayment = float(
+    (_cost_delta_fair["delta_gap"] * _cost_delta_fair["weight"]).sum()
+    / _cost_delta_fair["weight"].sum()
+)
+print(f"Fair-rate population: {FAIR_RATE_POPULATION} → {_fair_rate_hts}")
+print(f"Weighted-average delivery overpayment: ${_avg_overpayment:,.0f}")
+print(f"  = avg incremental revenue − avg incremental MC, across {FAIR_RATE_POPULATION} homes")
+
+delta_natgas_minus_avg_overpayment = delta_natgas_default.with_columns(
+    (pl.col("delta") - _avg_overpayment).alias("delta")
+)
+
+delta_natgas_minus_bldg_overpayment = (
+    delta_natgas_default.join(
+        cost_delta_natgas.select("bldg_id", "delta_gap"), on="bldg_id"
+    )
+    .with_columns((pl.col("delta") - pl.col("delta_gap")).alias("delta"))
+    .drop("delta_gap")
+)
 ```
 
 ```{python}
@@ -1086,13 +1161,135 @@ delta_natgas_r1_to_r6 = bill_delta_between_segments(
 display_svg(
     plot_bill_change_quadrant_comparison(
         [
-            ("Default rate", delta_natgas_default),
+            ("Rate 1", delta_natgas_default),
             ("Rate 6", delta_natgas_r1_to_r6),
             ("HP flat rate", delta_natgas_default_to_flat),
         ],
         title_parts=[
             ("How bills would change for ", "#000000"),
             ("natural gas", "#7A8A10"),
+            (" heated homes after switching to ", "#000000"),
+            ("heat pumps", "#c47600"),
+            (", under different rates", "#000000"),
+        ],
+    )
+)
+```
+
+```{python}
+#| label: fig-bill-change-quadrants-natgas-overpayment
+#| fig-cap: "Change in total annual energy bill for natural-gas-heated CT Eversource homes switching to a heat pump, under Rate 1 vs. Rate 6 vs. overpayment-corrected Rate 1."
+
+display_svg(
+    plot_bill_change_quadrant_comparison(
+        [
+            ("Rate 1", delta_natgas_default),
+            ("Rate 6", delta_natgas_r1_to_r6),
+            ("Rate 1 − avg.\noverpayment", delta_natgas_minus_avg_overpayment),
+            ("Rate 1 − per-bldg.\noverpayment", delta_natgas_minus_bldg_overpayment),
+        ],
+        title_parts=[
+            ("How bills would change for ", "#000000"),
+            ("natural gas", "#7A8A10"),
+            (" heated homes after switching to ", "#000000"),
+            ("heat pumps", "#c47600"),
+            (", under different rates", "#000000"),
+        ],
+    )
+)
+```
+
+We replicate the overpayment-corrected chart for each remaining baseline heating type:
+electric resistance, and oil/propane. The average overpayment (`_avg_overpayment`, computed
+across all fossil fuel homes above) is the same scalar for every chart; the per-building
+correction uses each type's own buildings.
+
+```{python}
+#| label: overpayment-by-heating-type
+
+_HEATING_TYPES_EXTRA: list[tuple[str, str, str]] = [
+    ("electrical_resistance", "electric resistance", "#023047"),
+    ("delivered_fuels", "oil/propane", "#fc9706"),
+]
+
+_overpayment_charts: dict[str, dict] = {}
+
+for _htv2, _label, _color in _HEATING_TYPES_EXTRA:
+    _delta_ry1 = bill_delta_between_segments(
+        STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED, bill_col=BILL_COL
+    ).filter(pl.col("heating_type_v2") == _htv2)
+
+    _delta_r6 = bill_delta_between_segments(
+        STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_RATE6_CALIBRATED, bill_col=BILL_COL
+    ).filter(pl.col("heating_type_v2") == _htv2)
+
+    _bldg_gap = cost_delta_all.filter(
+        pl.col("heating_type_v2") == _htv2
+    ).select("bldg_id", "delta_gap")
+
+    _delta_minus_avg = _delta_ry1.with_columns(
+        (pl.col("delta") - _avg_overpayment).alias("delta")
+    )
+
+    _delta_minus_bldg = (
+        _delta_ry1.join(_bldg_gap, on="bldg_id")
+        .with_columns((pl.col("delta") - pl.col("delta_gap")).alias("delta"))
+        .drop("delta_gap")
+    )
+
+    _overpayment_charts[_htv2] = {
+        "label": _label,
+        "color": _color,
+        "delta_ry1": _delta_ry1,
+        "delta_r6": _delta_r6,
+        "delta_minus_avg": _delta_minus_avg,
+        "delta_minus_bldg": _delta_minus_bldg,
+    }
+
+    print(f"{_label}: {_delta_ry1.height} buildings, "
+          f"avg delta=${_delta_ry1['delta'].mean():,.0f}")
+```
+
+```{python}
+#| label: fig-bill-change-quadrants-elec-resistance-overpayment
+#| fig-cap: "Change in total annual energy bill for electric-resistance-heated CT Eversource homes switching to a heat pump, under Rate 1 vs. Rate 6 vs. overpayment-corrected Rate 1."
+
+_c = _overpayment_charts["electrical_resistance"]
+display_svg(
+    plot_bill_change_quadrant_comparison(
+        [
+            ("Rate 1", _c["delta_ry1"]),
+            ("Rate 6", _c["delta_r6"]),
+            ("Rate 1 − avg.\noverpayment", _c["delta_minus_avg"]),
+            ("Rate 1 − per-bldg.\noverpayment", _c["delta_minus_bldg"]),
+        ],
+        title_parts=[
+            ("How bills would change for ", "#000000"),
+            (_c["label"], _c["color"]),
+            (" heated homes after switching to ", "#000000"),
+            ("heat pumps", "#c47600"),
+            (", under different rates", "#000000"),
+        ],
+    )
+)
+```
+
+```{python}
+#| label: fig-bill-change-quadrants-delivered-overpayment
+#| fig-cap: "Change in total annual energy bill for oil/propane-heated CT Eversource homes switching to a heat pump, under Rate 1 vs. Rate 6 vs. overpayment-corrected Rate 1."
+
+_c = _overpayment_charts["delivered_fuels"]
+display_svg(
+    plot_bill_change_quadrant_comparison(
+        [
+            ("Rate 1", _c["delta_ry1"]),
+            ("Rate 6", _c["delta_r6"]),
+            ("Rate 1 − avg.\noverpayment", _c["delta_minus_avg"]),
+            ("Rate 1 − per-bldg.\noverpayment", _c["delta_minus_bldg"]),
+        ],
+        title_parts=[
+            ("How bills would change for ", "#000000"),
+            (_c["label"], _c["color"]),
             (" heated homes after switching to ", "#000000"),
             ("heat pumps", "#c47600"),
             (", under different rates", "#000000"),

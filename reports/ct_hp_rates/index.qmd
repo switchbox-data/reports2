@@ -32,6 +32,18 @@ citation:
 #    href: docs/switchbox_report.pdf
 ---
 
+```{python}
+#| echo: false
+
+import pickle
+from pathlib import Path
+from types import SimpleNamespace
+
+from lib.format import month_list, pct
+
+mc = SimpleNamespace(**pickle.loads(Path("cache/marginal_costs_vars.pkl").read_bytes()))
+```
+
 # Introduction
 
 # Executive Summary
@@ -66,7 +78,7 @@ The distribution and sub-transmission marginal cost series shown in @fig-mc-heat
 
 [^cpi-2026-partial]: The 2026 CPI value is a partial-year average; the deflation factor is 0.974.
 
-**Step 3: Peak-hour identification.** We loaded hourly load for the ISO-NE Connecticut load zone for calendar year 2025 [@isone_ISONEWebServices_2025], ranked all 8,760 hours by load, and selected the **top 100 hours** as the constrained hours — all of which fall in June, July, and August.
+**Step 3: Peak-hour identification.** We loaded hourly load for the ISO-NE Connecticut load zone for calendar year 2025 [@isone_ISONEWebServices_2025], ranked all 8,760 hours by load, and selected the **top `{python} mc.n_peak_hours` hours** as the constrained hours — all of which fall in `{python} month_list(mc.production_peak_months)`.
 
 **Step 4: Load-weighted allocation.** We allocated the annualized cost across those 100 hours proportional to each hour's share of total load in the peak window:
 
@@ -75,6 +87,27 @@ w_h = \frac{L_h}{\sum_{k \in \text{top-100}} L_k}
 $$
 
 Multiplying $19.65/kW-year by each hour's weight gives that hour's marginal cost in $/kWh; all remaining hours are zero. The resulting hourly profile is @fig-mc-heatmap-dist-sub-tx.
+
+**Sensitivity to load year.** The top-`{python} mc.n_peak_hours` allocation is mildly sensitive to the choice of load year. We ran the same peak-hour selection for `{python} min(mc.load_years)` through `{python} max(mc.load_years)` and found that all peak hours fall within `{python} month_list(mc.peak_month_cols)` in every year (@tbl-peak-hour-sensitivity). The month-by-month mix shifts from year to year, but `{python} month_list([mc.always_peak_month])` carries `{python} pct(mc.always_peak_month_share_min)`–`{python} pct(mc.always_peak_month_share_max)` of the peak hours in every year, and the resulting hourly marginal cost profile is qualitatively the same across all four years.
+
+```{python}
+#| echo: false
+#| output: asis
+
+cols = mc.peak_month_cols
+header = "| Load year | " + " | ".join(cols) + " |"
+align = "|----------:|" + "|".join(["----:"] * len(cols)) + "|"
+rows = [
+    "| " + str(year) + " | " + " | ".join(mc.peak_share_cells[year]) + " |"
+    for year in mc.load_years
+]
+caption = (
+    ": Share of top-" + str(mc.n_peak_hours)
+    + " peak hours by month, ISO-NE Connecticut zone, by load year."
+    + " {#tbl-peak-hour-sensitivity}"
+)
+print("\n".join([header, align, *rows, "", caption]))
+```
 
 **Limitation.** The ISO-NE Connecticut zone load covers both Eversource and United Illuminating; no comparable MCOS exists for United Illuminating, so this schedule applies to Eversource only.
 

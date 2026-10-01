@@ -49,11 +49,14 @@ from lib.quarto import display_gt, display_figure
 from lib.rdp import fetch_rdp_file
 from plotnine import (
     aes,
+    coord_cartesian,
+    facet_wrap,
     geom_col,
     ggplot,
     labs,
     position_dodge,
     scale_fill_manual,
+    scale_x_continuous,
     scale_x_discrete,
     scale_y_continuous,
     theme,
@@ -304,6 +307,169 @@ for label, pop in [("Natural gas", pop_natgas), ("Delivered fuel", pop_delivered
     n = len(pop)
     weighted = pop["weight"].sum()
     print(f"{label}: {n:,} ResStock buildings → {weighted:,.0f} weighted households")
+```
+
+## Load distributions
+
+Before computing population-average profiles, we look at how individual
+buildings' electricity consumption varies _within_ each population. For each
+building we take its annual grid kWh (from the master bills' `elec_grid_kwh`
+column, which uses CAIRO's scaled `billing_kwh_8760` basis) and divide by 12 to
+get an average monthly load. The histograms below show the weighted distribution
+of that value across buildings.
+
+```{python}
+#| label: load-dist-data
+
+from lib.rates_analysis.rate_case_funcs import weighted_quantile
+
+_BIN_WIDTH = 50.0
+
+# Per-building annual grid kWh + LIDR tier, upgrade 0, Eversource
+_per_bldg = cast(
+    pl.DataFrame,
+    bills_precalc.filter(
+        (pl.col("month") == "Annual")
+        & (pl.col("sb.electric_utility") == ELECTRIC_UTILITY)
+        & (pl.col("upgrade") == UPGRADE_BASE)
+    )
+    .select(
+        "bldg_id", "weight", "elec_grid_kwh", "elec_lmi_tier",
+        "heats_with_natgas", "heats_with_oil", "heats_with_propane",
+    )
+    .collect(),
+)
+
+_per_bldg = _per_bldg.with_columns(
+    (pl.col("elec_grid_kwh") / 12).alias("avg_monthly_kwh"),
+)
+
+# Heating fuel label
+_per_bldg = _per_bldg.with_columns(
+    pl.when(pl.col("heats_with_natgas"))
+    .then(pl.lit("Natural gas"))
+    .when(pl.col("heats_with_oil") | pl.col("heats_with_propane"))
+    .then(pl.lit("Delivered fuel"))
+    .otherwise(pl.lit("Other"))
+    .alias("heating_fuel"),
+)
+
+# LIDR income tier label — one facet per tier with income range
+_LIDR_TIER_LABELS = {
+    5: "Tier 5\n(<100% FPL)",
+    4: "Tier 4\n(100–125% FPL)",
+    3: "Tier 3\n(125–160% FPL)",
+    2: "Tier 2\n(160–211% FPL)",
+    1: "Tier 1\n(211–275% FPL / 60% SMI)",
+    0: "Non-LMI",
+}
+_per_bldg = _per_bldg.with_columns(
+    pl.col("elec_lmi_tier")
+    .replace_strict(_LIDR_TIER_LABELS, return_dtype=pl.String)
+    .alias("lidr_tier_label"),
+)
+
+# Filter to fossil-fuel-heated homes only (matching pop_all_fossil)
+_per_bldg_fossil = _per_bldg.filter(pl.col("heating_fuel") != "Other")
+
+print(f"Per-building data: {_per_bldg_fossil.height:,} fossil-fuel-heated buildings")
+print(f"  Natural gas: {_per_bldg_fossil.filter(pl.col('heating_fuel') == 'Natural gas').height:,}")
+print(f"  Delivered fuel: {_per_bldg_fossil.filter(pl.col('heating_fuel') == 'Delivered fuel').height:,}")
+print(f"  Median avg monthly kWh: {weighted_quantile(_per_bldg_fossil, 'avg_monthly_kwh', 0.5):,.0f}")
+```
+
+### By heating fuel type
+
+```{python}
+#| label: fig-load-dist-by-fuel
+#| fig-cap: "Distribution of average monthly electricity consumption across Eversource fossil-fuel-heated homes, by heating fuel type. Each building's annual grid kWh is divided by 12."
+
+import math
+from mizani.breaks import breaks_extended
+
+_x_lo = math.floor(weighted_quantile(_per_bldg_fossil, "avg_monthly_kwh", 0.01) / _BIN_WIDTH) * _BIN_WIDTH
+_x_hi = math.ceil(weighted_quantile(_per_bldg_fossil, "avg_monthly_kwh", 0.99) / _BIN_WIDTH) * _BIN_WIDTH
+
+_fuel_order = pl.Enum(["Natural gas", "Delivered fuel"])
+_per_bldg_fuel = _per_bldg_fossil.with_columns(pl.col("heating_fuel").cast(_fuel_order))
+
+_hist_fuel = (
+    _per_bldg_fuel.with_columns(
+        ((pl.col("avg_monthly_kwh") / _BIN_WIDTH).floor() * _BIN_WIDTH + _BIN_WIDTH / 2).alias("bin_center"),
+    )
+    .group_by("bin_center", "heating_fuel")
+    .agg(pl.col("weight").sum().alias("weight_sum"))
+)
+_breaks_fn = breaks_extended(n=8)
+
+_fig = (
+    ggplot(_hist_fuel, aes(x="bin_center", y="weight_sum"))
+    + geom_col(width=_BIN_WIDTH * 0.9, fill=SB_COLORS["sky"])
+    + facet_wrap("heating_fuel", ncol=1, scales="free_y")
+    + coord_cartesian(xlim=(_x_lo, _x_hi))
+    + scale_x_continuous(
+        breaks=lambda _limits, lo=_x_lo, hi=_x_hi: _breaks_fn((lo, hi)),
+        labels=lambda xs: [f"{x:,.0f}" for x in xs],
+    )
+    + labs(
+        x="Average monthly electricity consumption (kWh)",
+        y="Weighted households",
+        title="Distribution of average monthly electricity consumption,\nby heating fuel type",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 5.5))
+)
+display_figure(_fig.draw())
+```
+
+### By income tier
+
+```{python}
+#| label: fig-load-dist-by-income
+#| fig-cap: "Distribution of average monthly electricity consumption across Eversource fossil-fuel-heated homes, by LIDR income tier. Tier 5 (<100% FPL) receives a 50% discount; Tier 1 (60% SMI cap) receives 5%."
+
+_tier_order = pl.Enum([
+    "Tier 5\n(<100% FPL)",
+    "Tier 4\n(100–125% FPL)",
+    "Tier 3\n(125–160% FPL)",
+    "Tier 2\n(160–211% FPL)",
+    "Tier 1\n(211–275% FPL / 60% SMI)",
+    "Non-LMI",
+])
+_per_bldg_tiered = _per_bldg_fossil.with_columns(
+    pl.col("lidr_tier_label").cast(_tier_order)
+)
+
+_x_lo2 = math.floor(weighted_quantile(_per_bldg_tiered, "avg_monthly_kwh", 0.01) / _BIN_WIDTH) * _BIN_WIDTH
+_x_hi2 = math.ceil(weighted_quantile(_per_bldg_tiered, "avg_monthly_kwh", 0.99) / _BIN_WIDTH) * _BIN_WIDTH
+
+_hist_tier = (
+    _per_bldg_tiered.with_columns(
+        ((pl.col("avg_monthly_kwh") / _BIN_WIDTH).floor() * _BIN_WIDTH + _BIN_WIDTH / 2).alias("bin_center"),
+    )
+    .group_by("bin_center", "lidr_tier_label")
+    .agg(pl.col("weight").sum().alias("weight_sum"))
+)
+_breaks_fn2 = breaks_extended(n=8)
+
+_fig = (
+    ggplot(_hist_tier, aes(x="bin_center", y="weight_sum"))
+    + geom_col(width=_BIN_WIDTH * 0.9, fill=SB_COLORS["sky"])
+    + facet_wrap("lidr_tier_label", ncol=2, scales="free_y")
+    + coord_cartesian(xlim=(_x_lo2, _x_hi2))
+    + scale_x_continuous(
+        breaks=lambda _limits, lo=_x_lo2, hi=_x_hi2: _breaks_fn2((lo, hi)),
+        labels=lambda xs: [f"{x:,.0f}" for x in xs],
+    )
+    + labs(
+        x="Average monthly electricity consumption (kWh)",
+        y="Weighted households",
+        title="Distribution of average monthly electricity consumption,\nby LIDR income tier",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 12))
+)
+display_figure(_fig.draw())
 ```
 
 ## Monthly and hourly load profiles

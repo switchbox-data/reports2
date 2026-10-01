@@ -3833,7 +3833,40 @@ def plot_monthly_load_before_after(
 
 # --- Annual bill component stacked chart ------------------------------------
 
-_BILL_COMPONENT_ORDER = [
+_BILL_SEGMENT_ORDER = [
+    "Increment",
+    "Before",
+]
+
+# Default delivery color (midnight) and supply color (carrot/saffron).
+# Components not listed here get the delivery color.
+_BILL_SUPPLY_COMPONENTS = {"Generation"}
+_BILL_DELIVERY_COLOR = "#023047"
+_BILL_DELIVERY_INCREMENT_COLOR = "#5b90a8"
+_BILL_SUPPLY_COLOR = "#fc9706"
+_BILL_SUPPLY_INCREMENT_COLOR = "#ffc729"
+
+
+def _bill_stacked_colors(components: list[str]) -> dict[str, str]:
+    """Build ``fill_key → color`` mapping for the stacked bill chart."""
+    colors: dict[str, str] = {}
+    for c in components:
+        if c in _BILL_SUPPLY_COMPONENTS:
+            colors[f"{c}|Before"] = _BILL_SUPPLY_COLOR
+            colors[f"{c}|Increment"] = _BILL_SUPPLY_INCREMENT_COLOR
+        else:
+            colors[f"{c}|Before"] = _BILL_DELIVERY_COLOR
+            colors[f"{c}|Increment"] = _BILL_DELIVERY_INCREMENT_COLOR
+    return colors
+
+
+def _bill_single_colors(components: list[str]) -> dict[str, str]:
+    """Build ``component → color`` mapping for the single-bar bill chart."""
+    return {c: _BILL_SUPPLY_COLOR if c in _BILL_SUPPLY_COMPONENTS else _BILL_DELIVERY_COLOR for c in components}
+
+
+# Legacy order used by submitted MD testimony — preserved exactly.
+_BILL_COMPONENT_ORDER_MD = [
     "Customer Charge",
     "Distribution",
     "Transmission",
@@ -3841,28 +3874,27 @@ _BILL_COMPONENT_ORDER = [
     "Generation",
 ]
 
-_BILL_SEGMENT_ORDER = [
-    "Increment",
-    "Before",
-]
 
-_BILL_COLORS: dict[str, str] = {
-    "Customer Charge|Before": "#023047",
-    "Customer Charge|Increment": "#023047",
-    "Distribution|Before": "#023047",
-    "Distribution|Increment": "#5b90a8",
-    "Transmission|Before": "#023047",
-    "Transmission|Increment": "#5b90a8",
-    "EmPOWER Maryland|Before": "#023047",
-    "EmPOWER Maryland|Increment": "#5b90a8",
-    "Generation|Before": "#fc9706",
-    "Generation|Increment": "#ffc729",
-}
+def _bill_component_order(bills: pl.DataFrame) -> list[str]:
+    """Derive component display order from data.
+
+    If the data's components match the legacy MD order exactly, return that
+    order (preserving submitted testimony output).  Otherwise, sort delivery
+    components alphabetically then append supply.
+    """
+    components = set(bills["component"].unique().to_list())
+    if components == set(_BILL_COMPONENT_ORDER_MD):
+        return list(_BILL_COMPONENT_ORDER_MD)
+    sorted_components = sorted(components)
+    delivery = [c for c in sorted_components if c not in _BILL_SUPPLY_COMPONENTS]
+    supply = [c for c in sorted_components if c in _BILL_SUPPLY_COMPONENTS]
+    return delivery + supply
 
 
 def _annual_bill_component_stack_data(
     before_bills: pl.DataFrame,
     after_bills: pl.DataFrame,
+    component_order: list[str] | None = None,
 ) -> pl.DataFrame:
     """Reshape annual bill totals into before + increment segments for stacking."""
     import polars as pl
@@ -3882,6 +3914,8 @@ def _annual_bill_component_stack_data(
         msg = f"Annual bill component increments must be non-negative; got negative values for: {details}"
         raise ValueError(msg)
 
+    order = component_order if component_order is not None else _bill_component_order(before_bills)
+
     long = joined.select(
         pl.col("component"),
         pl.lit("Before").alias("segment"),
@@ -3896,18 +3930,9 @@ def _annual_bill_component_stack_data(
 
     return long.with_columns(
         (pl.col("component") + "|" + pl.col("segment")).alias("fill_key"),
-        pl.col("component").cast(pl.Enum(_BILL_COMPONENT_ORDER)),
+        pl.col("component").cast(pl.Enum(order)),
         pl.col("segment").cast(pl.Enum(_BILL_SEGMENT_ORDER)),
     )
-
-
-_BILL_SINGLE_COLORS: dict[str, str] = {
-    "Customer Charge": "#023047",
-    "Distribution": "#023047",
-    "Transmission": "#023047",
-    "EmPOWER Maryland": "#023047",
-    "Generation": "#fc9706",
-}
 
 
 def plot_annual_bill_component_single(
@@ -3916,6 +3941,7 @@ def plot_annual_bill_component_single(
     title: str = "",
     figure_size: tuple[float, float] = (10.5, 5),
     y_max: float | None = None,
+    component_order: list[str] | None = None,
 ) -> Figure:
     """Single-bar chart of annual bills by component (one period only).
 
@@ -3933,6 +3959,9 @@ def plot_annual_bill_component_single(
         plotnine figure size in inches.
     y_max
         Optional y-axis upper limit. Defaults to auto with 8 % headroom.
+    component_order
+        X-axis category order. Defaults to delivery-first order derived from
+        the data (see ``_bill_component_order``).
 
     Returns
     -------
@@ -3955,11 +3984,13 @@ def plot_annual_bill_component_single(
 
     from lib.plotnine import theme_switchbox
 
+    order = component_order if component_order is not None else _bill_component_order(bills)
+
     annual = (
         bills.group_by("component")
         .agg(pl.col("value").sum().alias("value"))
         .with_columns(
-            pl.col("component").cast(pl.Enum(_BILL_COMPONENT_ORDER)),
+            pl.col("component").cast(pl.Enum(order)),
             pl.when(pl.col("value").abs() >= 1.0)
             .then(pl.col("value").round(0).cast(pl.Int64).cast(pl.Utf8).str.replace(r"^(-?\d+)$", "$$$1"))
             .otherwise(pl.lit(""))
@@ -3981,8 +4012,8 @@ def plot_annual_bill_component_single(
             color="white",
             fontweight="bold",
         )
-        + scale_fill_manual(values=_BILL_SINGLE_COLORS)
-        + scale_x_discrete(limits=_BILL_COMPONENT_ORDER)
+        + scale_fill_manual(values=_bill_single_colors(order))
+        + scale_x_discrete(limits=order)
         + scale_y_continuous(
             labels=lambda xs: [f"${x:,.0f}" for x in xs],
             limits=(0, y_upper),
@@ -4002,6 +4033,7 @@ def plot_annual_bill_component_stacked(
     *,
     title: str = "",
     figure_size: tuple[float, float] = (10.5, 5),
+    component_order: list[str] | None = None,
 ) -> Figure:
     """Stacked bar chart of annual bills by component, before vs after HP.
 
@@ -4021,6 +4053,9 @@ def plot_annual_bill_component_stacked(
         Optional chart title.
     figure_size
         plotnine figure size in inches.
+    component_order
+        X-axis category order. Defaults to delivery-first order derived from
+        the data (see ``_bill_component_order``).
 
     Returns
     -------
@@ -4049,7 +4084,9 @@ def plot_annual_bill_component_stacked(
     from lib.plotnine import theme_switchbox
     from lib.quarto import display_figure
 
-    chart_data = _annual_bill_component_stack_data(before_bills, after_bills).with_columns(
+    order = component_order if component_order is not None else _bill_component_order(before_bills)
+
+    chart_data = _annual_bill_component_stack_data(before_bills, after_bills, component_order=order).with_columns(
         pl.when(pl.col("value").abs() >= 1.0)
         .then(pl.col("value").round(0).cast(pl.Int64).cast(pl.Utf8).str.replace(r"^(-?\d+)$", "$$$1"))
         .otherwise(pl.lit(""))
@@ -4084,8 +4121,8 @@ def plot_annual_bill_component_stacked(
             nudge_y=5,
             inherit_aes=False,
         )
-        + scale_fill_manual(values=_BILL_COLORS)
-        + scale_x_discrete(limits=_BILL_COMPONENT_ORDER)
+        + scale_fill_manual(values=_bill_stacked_colors(order))
+        + scale_x_discrete(limits=order)
         + scale_y_continuous(
             labels=lambda xs: [f"${x:,.0f}" for x in xs],
             expand=(0, 0, 0.10, 0),

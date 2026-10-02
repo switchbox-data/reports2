@@ -12,8 +12,8 @@ distribution + sub-transmission capacity — 8,760 hours of 2025 — and answers
 two questions used in the expert testimony:
 
 1. **When do peak hours occur?** We compute what share of each cost
-   component's non-zero hours fall in the summer (May–September) vs. the rest
-   of the year.
+   component's non-zero hours fall in the summer vs. the winter, where the
+   seasons are defined by the RDP period YAML (matching `representative_home`).
 2. **What do peak hours look like?** We render day-of-year × hour-of-day
    heatmaps showing the concentration of marginal costs across the year.
 
@@ -36,9 +36,12 @@ import yaml
 from lib.plotnine import SB_COLORS
 from lib.quarto import display_figure
 from lib.rates_analysis.rate_case_funcs import (
+    MONTH_ORDER,
+    _season_labels,
     load_delivery_mc_heatmap,
     plot_mc_heatmap,
 )
+from lib.rdp import fetch_rdp_file
 
 report_vars: dict = {}
 ```
@@ -51,10 +54,27 @@ report_vars: dict = {}
 _batch_config = yaml.safe_load(Path("../batch_config.yaml").read_text())
 
 STATE = _batch_config["STATE"]
+RDP_REF = _batch_config["RDP_REF"]
 UTILITY = "ct_eversource"
 YEAR = 2025
 
+# --- Seasonal definitions from the period YAML (matching representative_home) -
+_period_yaml = yaml.safe_load(
+    fetch_rdp_file(
+        f"rate_design/hp_rates/{STATE.lower()}/config/periods/{UTILITY}.yaml",
+        ref=RDP_REF,
+    )
+)
+WINTER_MONTHS: list[int] = _period_yaml["winter_months"]
+_SUMMER_MONTH_NUMS: set[int] = {m for m in range(1, 13) if m not in WINTER_MONTHS}
+SUMMER_MONTHS: set[str] = {MONTH_ORDER[m - 1] for m in _SUMMER_MONTH_NUMS}
+_summer_label, _winter_label = _season_labels(SUMMER_MONTHS)
+
+report_vars["summer_season_label"] = _summer_label
+report_vars["winter_season_label"] = _winter_label
+
 print(f"state={STATE}  utility={UTILITY}  year={YEAR}")
+print(f"winter_months={WINTER_MONTHS}  summer={_summer_label}  winter={_winter_label}")
 ```
 
 ## Load marginal cost data
@@ -109,7 +129,7 @@ print(f"  Mean (all hrs): ${mc_df['mc_dist_sub_tx'].mean():.6f}/kWh")
 
 The key question for the testimony: what share of each component's peak hours
 (hours where the marginal cost is positive) fall in the summer months
-(May–September)?
+(`{python} _summer_label`)?
 
 If peak hours are overwhelmingly in summer, then heat pumps — which increase
 winter usage but can decrease summer usage — are not driving significant additional T&D costs.
@@ -118,24 +138,22 @@ This is the foundation of the cost-causation argument.
 ```{python}
 #| label: peak-seasonality
 
-_SUMMER_MONTHS = {5, 6, 7, 8, 9}
-
 
 def _pct_mc_peak_hours_in_summer(mc_col: str) -> float:
-    """Share of non-zero marginal-cost hours that fall in May–September."""
+    """Share of non-zero marginal-cost hours that fall in the YAML-defined summer."""
     peak_hours = mc_df.filter(pl.col(mc_col) > 0)
     if peak_hours.is_empty():
         return 0.0
     summer_peak = peak_hours.filter(
-        pl.col("timestamp").dt.month().is_in(_SUMMER_MONTHS)
+        pl.col("timestamp").dt.month().is_in(_SUMMER_MONTH_NUMS)
     )
     return summer_peak.height / peak_hours.height
 
 
-report_vars["pct_dist_mc_peak_hours_may_sep"] = _pct_mc_peak_hours_in_summer(
+report_vars["pct_dist_mc_peak_hours_summer"] = _pct_mc_peak_hours_in_summer(
     "mc_dist_sub_tx"
 )
-report_vars["pct_bulk_tx_mc_peak_hours_may_sep"] = _pct_mc_peak_hours_in_summer(
+report_vars["pct_bulk_tx_mc_peak_hours_summer"] = _pct_mc_peak_hours_in_summer(
     "mc_bulk_tx"
 )
 
@@ -143,24 +161,24 @@ report_vars["pct_bulk_tx_mc_peak_hours_may_sep"] = _pct_mc_peak_hours_in_summer(
 _delivery_peak_hours = mc_df.filter(
     (pl.col("mc_bulk_tx") > 0) | (pl.col("mc_dist_sub_tx") > 0)
 )
-report_vars["pct_peak_hours_may_sep"] = (
+report_vars["pct_peak_hours_summer"] = (
     _delivery_peak_hours.filter(
-        pl.col("timestamp").dt.month().is_in(_SUMMER_MONTHS)
+        pl.col("timestamp").dt.month().is_in(_SUMMER_MONTH_NUMS)
     ).height
     / _delivery_peak_hours.height
 )
 
 print(
-    f"Distribution peak hours in May-Sep: "
-    f"{report_vars['pct_dist_mc_peak_hours_may_sep']:.1%}"
+    f"Distribution peak hours in {_summer_label}: "
+    f"{report_vars['pct_dist_mc_peak_hours_summer']:.1%}"
 )
 print(
-    f"Bulk TX peak hours in May-Sep:      "
-    f"{report_vars['pct_bulk_tx_mc_peak_hours_may_sep']:.1%}"
+    f"Bulk TX peak hours in {_summer_label}:      "
+    f"{report_vars['pct_bulk_tx_mc_peak_hours_summer']:.1%}"
 )
 print(
-    f"Any delivery peak hours in May-Sep: "
-    f"{report_vars['pct_peak_hours_may_sep']:.1%}"
+    f"Any delivery peak hours in {_summer_label}: "
+    f"{report_vars['pct_peak_hours_summer']:.1%}"
 )
 ```
 

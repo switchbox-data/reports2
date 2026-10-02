@@ -52,6 +52,7 @@ from plotnine import (
     coord_cartesian,
     facet_wrap,
     geom_col,
+    geom_vline,
     ggplot,
     labs,
     position_dodge,
@@ -1208,6 +1209,23 @@ report_vars["all_fossil_pct_kwh_change_summer"] = (
 report_vars["all_fossil_kwh_summer_before"] = _all_fossil_summer_before
 report_vars["all_fossil_kwh_summer_after"] = _all_fossil_summer_after
 report_vars["all_fossil_kwh_summer_delta"] = _all_fossil_summer_after - _all_fossil_summer_before
+
+# Oct–Apr share of incremental kWh (testimony uses this broader heating window,
+# distinct from the Rate 6 heating season Nov–Mar defined by WINTER_MONTHS).
+_OCT_APR_LABELS = [MONTH_ORDER[m - 1] for m in [10, 11, 12, 1, 2, 3, 4]]
+_oct_apr_before = float(
+    _all_fossil_monthly.filter(pl.col("month_label").is_in(_OCT_APR_LABELS))["before_kwh"].sum()
+)
+_oct_apr_after = float(
+    _all_fossil_monthly.filter(pl.col("month_label").is_in(_OCT_APR_LABELS))["after_kwh"].sum()
+)
+_oct_apr_delta = _oct_apr_after - _oct_apr_before
+_annual_delta = report_vars["all_fossil_annual_kwh_delta"]
+report_vars["all_fossil_kwh_oct_apr_delta"] = _oct_apr_delta
+report_vars["all_fossil_pct_incremental_kwh_oct_apr"] = (
+    _oct_apr_delta / _annual_delta if _annual_delta > 0 else 0.0
+)
+
 _all_fossil_summer_peak_before = float(
     _all_fossil_peak_split.filter(pl.col("month_label").is_in(SUMMER_MONTH_LABELS))["kwh_peak"].sum()
 )
@@ -1229,6 +1247,40 @@ _fig = plot_monthly_load_before_after(
 display_figure(_fig)
 ```
 
+#### Cooling coverage share for all-fossil homes
+
+The testimony explains that the small summer load increase is an average across
+homes with full, partial, and no pre-existing air conditioning. We need the
+weighted share of fossil-fuel-heated homes that already have full cooling.
+
+```{python}
+#| label: cooling-coverage-share
+
+from lib.rates_analysis.hh_summary_funcs import load_household_metadata
+
+RESSTOCK_RELEASE = _batch_config["RESSTOCK_RELEASE"]
+_hh_base = load_household_metadata(
+    resstock_release=RESSTOCK_RELEASE,
+    state=STATE,
+    utility=ELECTRIC_UTILITY,
+    columns=[
+        "in.hvac_cooling_partial_space_conditioning",
+        "postprocess_group.heating_type_v2",
+    ],
+)
+
+_fossil_types = {"natgas", "delivered_fuels"}
+_fossil_homes = _hh_base.filter(
+    pl.col("postprocess_group.heating_type_v2").is_in(_fossil_types)
+)
+_total_w = _fossil_homes["weight"].sum()
+_full_cooling_w = _fossil_homes.filter(
+    pl.col("in.hvac_cooling_partial_space_conditioning") == "100% Conditioned"
+)["weight"].sum()
+report_vars["all_fossil_pct_full_cooling"] = _full_cooling_w / _total_w if _total_w > 0 else 0.0
+print(f"All-fossil full cooling coverage: {report_vars['all_fossil_pct_full_cooling']:.1%}")
+```
+
 ### Vanilla monthly load charts (no peak overlay)
 
 These are the same monthly load profiles as above but without the peak-hour
@@ -1237,7 +1289,7 @@ pattern before the cost-causation analysis adds peak-hour detail.
 
 ```{python}
 #| label: fig-monthly-load-all-fossil-before-vanilla
-#| fig-cap: "Average monthly electricity consumption for Eversource residential electric customers who heat with natural gas, heating oil, or propane."
+#| fig-cap: "Average monthly electricity consumption for Eversource CT residential electric customers who heat with natural gas, heating oil, or propane."
 
 _fig = plot_monthly_load(
     profiles["all_fossil"]["before"],
@@ -1317,7 +1369,7 @@ plot_annual_bill_component_stacked(
 
 ```{python}
 #| label: fig-annual-bill-components-all-fossil-before
-#| fig-cap: "Annual electric bill breakdown by component for fossil-fuel-heated homes in Eversource's territory, before heat pump installation."
+#| fig-cap: "Annual electric bill breakdown by component for fossil-fuel-heated homes in Eversource CT's territory, before heat pump installation."
 
 _fig = plot_annual_bill_component_single(
     bill_results["all_fossil"]["before"],
@@ -1399,9 +1451,11 @@ for pop_label in ["natgas", "delivered", "all_fossil"]:
 
 _summer_label, _winter_label = _season_labels(SUMMER_MONTHS)
 _SEASON_VAR_SUFFIX = {
-    _winter_label: _winter_label.lower().replace("-", "_"),
-    _summer_label: _summer_label.lower().replace("-", "_"),
+    _winter_label: "winter",
+    _summer_label: "summer",
 }
+report_vars["summer_season_label"] = _summer_label
+report_vars["winter_season_label"] = _winter_label
 for pop_label in ["natgas", "delivered", "all_fossil"]:
     for season, suffix in _SEASON_VAR_SUFFIX.items():
         before_delivery = sum(

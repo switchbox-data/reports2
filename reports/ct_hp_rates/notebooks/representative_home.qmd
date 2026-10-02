@@ -472,6 +472,134 @@ _fig = (
 display_figure(_fig.draw())
 ```
 
+### After heat pump installation
+
+The two charts above use upgrade 0 (pre-retrofit) kWh from the precalc
+segment. The same buildings, with the same pre-retrofit heating fuel and LIDR
+tier, are plotted again below using annual `elec_grid_kwh` from the calibrated
+segment (`default_ry1_r1_uncalibrated_calibrated`), which holds the upgrade 2
+heat-pump loads.
+
+```{python}
+#| label: load-dist-data-hp
+
+bills_calibrated = load_master_bills(STATE, BATCH, SEG_CALIBRATED)
+
+_hp_kwh = cast(
+    pl.DataFrame,
+    bills_calibrated.filter(
+        (pl.col("month") == "Annual")
+        & (pl.col("sb.electric_utility") == ELECTRIC_UTILITY)
+        & (pl.col("upgrade") == UPGRADE_HP)
+    )
+    .select("bldg_id", "elec_grid_kwh")
+    .collect(),
+)
+
+# Same homes and labels as the upgrade-0 charts; only the kWh changes.
+_per_bldg_fossil_hp = (
+    _per_bldg_fossil.drop("elec_grid_kwh", "avg_monthly_kwh")
+    .join(_hp_kwh, on="bldg_id", how="inner")
+    .with_columns((pl.col("elec_grid_kwh") / 12).alias("avg_monthly_kwh"))
+)
+
+_n_missing = _per_bldg_fossil.height - _per_bldg_fossil_hp.height
+print(f"Upgrade {UPGRADE_HP} per-building data: {_per_bldg_fossil_hp.height:,} buildings")
+print(f"  Missing from calibrated segment: {_n_missing:,}")
+print(
+    f"  Median avg monthly kWh: {weighted_quantile(_per_bldg_fossil_hp, 'avg_monthly_kwh', 0.5):,.0f}"
+)
+```
+
+#### By heating fuel type
+
+```{python}
+#| label: fig-load-dist-by-fuel-hp
+#| fig-cap: "Distribution of average monthly electricity consumption across Eversource fossil-fuel-heated homes after a heat pump retrofit, by pre-retrofit heating fuel. Annual grid kWh from the calibrated (upgrade 2) segment, divided by 12."
+
+_x_lo_hp = (
+    math.floor(weighted_quantile(_per_bldg_fossil_hp, "avg_monthly_kwh", 0.01) / _BIN_WIDTH) * _BIN_WIDTH
+)
+_x_hi_hp = (
+    math.ceil(weighted_quantile(_per_bldg_fossil_hp, "avg_monthly_kwh", 0.99) / _BIN_WIDTH) * _BIN_WIDTH
+)
+
+_per_bldg_fuel_hp = _per_bldg_fossil_hp.with_columns(pl.col("heating_fuel").cast(_fuel_order))
+
+_hist_fuel_hp = (
+    _per_bldg_fuel_hp.with_columns(
+        ((pl.col("avg_monthly_kwh") / _BIN_WIDTH).floor() * _BIN_WIDTH + _BIN_WIDTH / 2).alias("bin_center"),
+    )
+    .group_by("bin_center", "heating_fuel")
+    .agg(pl.col("weight").sum().alias("weight_sum"))
+)
+_breaks_fn_hp = breaks_extended(n=8)
+
+_fig = (
+    ggplot(_hist_fuel_hp, aes(x="bin_center", y="weight_sum"))
+    + geom_col(width=_BIN_WIDTH * 0.9, fill=SB_COLORS["sky"])
+    + facet_wrap("heating_fuel", ncol=1, scales="free_y")
+    + coord_cartesian(xlim=(_x_lo_hp, _x_hi_hp))
+    + scale_x_continuous(
+        breaks=lambda _limits, lo=_x_lo_hp, hi=_x_hi_hp: _breaks_fn_hp((lo, hi)),
+        labels=lambda xs: [f"{x:,.0f}" for x in xs],
+    )
+    + labs(
+        x="Average monthly electricity consumption (kWh)",
+        y="Weighted households",
+        title="Distribution of average monthly electricity consumption\nafter a heat pump, by heating fuel type",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 5.5))
+)
+display_figure(_fig.draw())
+```
+
+#### By income tier
+
+```{python}
+#| label: fig-load-dist-by-income-hp
+#| fig-cap: "Distribution of average monthly electricity consumption across Eversource fossil-fuel-heated homes after a heat pump retrofit, by LIDR income tier. Annual grid kWh from the calibrated (upgrade 2) segment, divided by 12. Tier assignment is pre-retrofit."
+
+_per_bldg_tiered_hp = _per_bldg_fossil_hp.with_columns(pl.col("lidr_tier_label").cast(_tier_order))
+
+_x_lo2_hp = (
+    math.floor(weighted_quantile(_per_bldg_tiered_hp, "avg_monthly_kwh", 0.01) / _BIN_WIDTH) * _BIN_WIDTH
+)
+_x_hi2_hp = (
+    math.ceil(weighted_quantile(_per_bldg_tiered_hp, "avg_monthly_kwh", 0.99) / _BIN_WIDTH) * _BIN_WIDTH
+)
+
+_hist_tier_hp = (
+    _per_bldg_tiered_hp.with_columns(
+        ((pl.col("avg_monthly_kwh") / _BIN_WIDTH).floor() * _BIN_WIDTH + _BIN_WIDTH / 2).alias("bin_center"),
+    )
+    .group_by("bin_center", "lidr_tier_label")
+    .agg(pl.col("weight").sum().alias("weight_sum"))
+)
+_breaks_fn2_hp = breaks_extended(n=8)
+
+_fig = (
+    ggplot(_hist_tier_hp, aes(x="bin_center", y="weight_sum"))
+    + geom_col(width=_BIN_WIDTH * 0.9, fill=SB_COLORS["sky"])
+    + geom_vline(xintercept=700)
+    + facet_wrap("lidr_tier_label", ncol=2, scales="free_y")
+    + coord_cartesian(xlim=(_x_lo2_hp, _x_hi2_hp))
+    + scale_x_continuous(
+        breaks=lambda _limits, lo=_x_lo2_hp, hi=_x_hi2_hp: _breaks_fn2_hp((lo, hi)),
+        labels=lambda xs: [f"{x:,.0f}" for x in xs],
+    )
+    + labs(
+        x="Average monthly electricity consumption (kWh)",
+        y="Weighted households",
+        title="Distribution of average monthly electricity consumption\nafter a heat pump, by LIDR income tier",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 12))
+)
+display_figure(_fig.draw())
+```
+
 ## Monthly and hourly load profiles
 
 For each population and upgrade, we compute both a monthly kWh profile (for

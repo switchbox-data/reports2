@@ -480,159 +480,402 @@ incidence_df = pl.DataFrame(_rows)
 print(incidence_df.to_pandas().to_string(index=False))
 ```
 
-## Overpayment histograms
+## Build all overpayment histograms
 
-Weighted histograms of per-building overpayment for each rate × period ×
-heating type. Zero means the building pays exactly its incremental marginal
-cost; positive means it overpays.
+Pre-build every histogram in one cell, keyed by `(rate_slug, period_slug,
+ht_slug)`, so individual cells below can display them one at a time (needed
+for interactive execution and `{{< embed >}}`).
 
 ```{python}
-#| label: hist-helper
-#| echo: false
+#| label: build-hists
 
 HEATING_GROUPS: list[tuple[str, str, str]] = [
-    ("natgas", "natural gas", "natgas"),
-    ("delivered_fuels", "oil/propane", "delivered_fuels"),
-    ("all_fossil", "all fossil fuel", "all_fossil"),
+    ("natgas", "Natural gas", "natgas"),
+    ("delivered", "Oil/propane", "delivered_fuels"),
+    ("all-fossil", "All fossil fuel", "all_fossil"),
 ]
+
+RATE_SLUGS: dict[str, str] = {
+    "Rate 1": "r1",
+    "Rate 6": "r6",
+    "Rate 6\n(RATE=MC)": "r6-ratemc",
+    "Rate 6\n(FIXED+MC)": "r6-fixedmc",
+    "Rate 1 − avg.\noverpayment": "r1-avg-corr",
+    "Rate 1 − per-bldg.\noverpayment": "r1-bldg-corr",
+}
+
+PERIOD_SLUGS: dict[str, str] = {
+    "Annual": "annual",
+    "Winter": "winter",
+    "Summer": "summer",
+}
 
 def _filter_ht(df: pl.DataFrame, ht_code: str) -> pl.DataFrame:
     if ht_code == "all_fossil":
         return df.filter(pl.col("heating_type_v2").is_in(FAIR_RATE_HTS))
     return df.filter(pl.col("heating_type_v2") == ht_code)
+
+from plotnine import ggplot
+
+figs: dict[tuple[str, str, str], ggplot] = {}
+
+for rate_label in ALL_RATE_LABELS:
+    rate_slug = RATE_SLUGS[rate_label]
+    rate_short = rate_label.replace("\n", " ")
+    for period_label in PERIOD_SLUGS:
+        period_slug = PERIOD_SLUGS[period_label]
+        period_lower = period_label.lower()
+        for ht_slug, ht_name, ht_code in HEATING_GROUPS:
+            df = _filter_ht(all_overpayment[(rate_label, period_label)], ht_code)
+            fig = plot_weighted_bill_change_hist(
+                df,
+                f"{ht_name}: {period_lower} overpayment — {rate_short}",
+                show_mean_median=True,
+                x_label=f"{period_label} delivery overpayment ($)",
+            )
+            figs[(rate_slug, period_slug, ht_slug)] = fig
+
+print(f"Built {len(figs)} histograms")
 ```
 
-### Annual
+### Annual — natural gas
 
 ```{python}
-#| label: fig-hist-annual-natgas
-#| fig-cap: "Annual delivery overpayment for natural-gas-heated homes under each rate."
-
-_period = "Annual"
-for _rate in ALL_RATE_LABELS:
-    _op = _filter_ht(all_overpayment[(_rate, _period)], "natgas")
-    plot_weighted_bill_change_hist(
-        _op,
-        f"Natural gas: annual overpayment — {_rate.replace(chr(10), ' ')}",
-        show_mean_median=True,
-        x_label="Annual delivery overpayment ($)",
-    )
-```
-
-```{python}
-#| label: fig-hist-annual-delivered
-#| fig-cap: "Annual delivery overpayment for oil/propane-heated homes under each rate."
-
-for _rate in ALL_RATE_LABELS:
-    _op = _filter_ht(all_overpayment[(_rate, _period)], "delivered_fuels")
-    plot_weighted_bill_change_hist(
-        _op,
-        f"Oil/propane: annual overpayment — {_rate.replace(chr(10), ' ')}",
-        show_mean_median=True,
-        x_label="Annual delivery overpayment ($)",
-    )
-```
-
-```{python}
-#| label: fig-hist-annual-all-fossil
-#| fig-cap: "Annual delivery overpayment for all fossil-fuel-heated homes under each rate."
-
-for _rate in ALL_RATE_LABELS:
-    _op = _filter_ht(all_overpayment[(_rate, _period)], "all_fossil")
-    plot_weighted_bill_change_hist(
-        _op,
-        f"All fossil fuel: annual overpayment — {_rate.replace(chr(10), ' ')}",
-        show_mean_median=True,
-        x_label="Annual delivery overpayment ($)",
-    )
-```
-
-### Winter
-
-```{python}
-#| label: fig-hist-winter-natgas
-#| fig-cap: "Winter delivery overpayment for natural-gas-heated homes under each rate."
-
-_period = "Winter"
-for _rate in ALL_RATE_LABELS:
-    _op = _filter_ht(all_overpayment[(_rate, _period)], "natgas")
-    plot_weighted_bill_change_hist(
-        _op,
-        f"Natural gas: winter overpayment — {_rate.replace(chr(10), ' ')}",
-        show_mean_median=True,
-        x_label="Winter delivery overpayment ($)",
-    )
+#| label: fig-annual-natgas-r1
+#| fig-cap: "Annual delivery overpayment, natural gas — Rate 1."
+figs[("r1", "annual", "natgas")]
 ```
 
 ```{python}
-#| label: fig-hist-winter-delivered
-#| fig-cap: "Winter delivery overpayment for oil/propane-heated homes under each rate."
-
-for _rate in ALL_RATE_LABELS:
-    _op = _filter_ht(all_overpayment[(_rate, _period)], "delivered_fuels")
-    plot_weighted_bill_change_hist(
-        _op,
-        f"Oil/propane: winter overpayment — {_rate.replace(chr(10), ' ')}",
-        show_mean_median=True,
-        x_label="Winter delivery overpayment ($)",
-    )
+#| label: fig-annual-natgas-r6
+#| fig-cap: "Annual delivery overpayment, natural gas — Rate 6."
+figs[("r6", "annual", "natgas")]
 ```
 
 ```{python}
-#| label: fig-hist-winter-all-fossil
-#| fig-cap: "Winter delivery overpayment for all fossil-fuel-heated homes under each rate."
-
-for _rate in ALL_RATE_LABELS:
-    _op = _filter_ht(all_overpayment[(_rate, _period)], "all_fossil")
-    plot_weighted_bill_change_hist(
-        _op,
-        f"All fossil fuel: winter overpayment — {_rate.replace(chr(10), ' ')}",
-        show_mean_median=True,
-        x_label="Winter delivery overpayment ($)",
-    )
-```
-
-### Summer
-
-```{python}
-#| label: fig-hist-summer-natgas
-#| fig-cap: "Summer delivery overpayment for natural-gas-heated homes under each rate."
-
-_period = "Summer"
-for _rate in ALL_RATE_LABELS:
-    _op = _filter_ht(all_overpayment[(_rate, _period)], "natgas")
-    plot_weighted_bill_change_hist(
-        _op,
-        f"Natural gas: summer overpayment — {_rate.replace(chr(10), ' ')}",
-        show_mean_median=True,
-        x_label="Summer delivery overpayment ($)",
-    )
+#| label: fig-annual-natgas-r6-ratemc
+#| fig-cap: "Annual delivery overpayment, natural gas — Rate 6 (RATE=MC)."
+figs[("r6-ratemc", "annual", "natgas")]
 ```
 
 ```{python}
-#| label: fig-hist-summer-delivered
-#| fig-cap: "Summer delivery overpayment for oil/propane-heated homes under each rate."
-
-for _rate in ALL_RATE_LABELS:
-    _op = _filter_ht(all_overpayment[(_rate, _period)], "delivered_fuels")
-    plot_weighted_bill_change_hist(
-        _op,
-        f"Oil/propane: summer overpayment — {_rate.replace(chr(10), ' ')}",
-        show_mean_median=True,
-        x_label="Summer delivery overpayment ($)",
-    )
+#| label: fig-annual-natgas-r6-fixedmc
+#| fig-cap: "Annual delivery overpayment, natural gas — Rate 6 (FIXED+MC)."
+figs[("r6-fixedmc", "annual", "natgas")]
 ```
 
 ```{python}
-#| label: fig-hist-summer-all-fossil
-#| fig-cap: "Summer delivery overpayment for all fossil-fuel-heated homes under each rate."
+#| label: fig-annual-natgas-r1-avg-corr
+#| fig-cap: "Annual delivery overpayment, natural gas — Rate 1 minus avg. overpayment."
+figs[("r1-avg-corr", "annual", "natgas")]
+```
 
-for _rate in ALL_RATE_LABELS:
-    _op = _filter_ht(all_overpayment[(_rate, _period)], "all_fossil")
-    plot_weighted_bill_change_hist(
-        _op,
-        f"All fossil fuel: summer overpayment — {_rate.replace(chr(10), ' ')}",
-        show_mean_median=True,
-        x_label="Summer delivery overpayment ($)",
-    )
+```{python}
+#| label: fig-annual-natgas-r1-bldg-corr
+#| fig-cap: "Annual delivery overpayment, natural gas — Rate 1 minus per-bldg. overpayment."
+figs[("r1-bldg-corr", "annual", "natgas")]
+```
+
+### Annual — oil/propane
+
+```{python}
+#| label: fig-annual-delivered-r1
+#| fig-cap: "Annual delivery overpayment, oil/propane — Rate 1."
+figs[("r1", "annual", "delivered")]
+```
+
+```{python}
+#| label: fig-annual-delivered-r6
+#| fig-cap: "Annual delivery overpayment, oil/propane — Rate 6."
+figs[("r6", "annual", "delivered")]
+```
+
+```{python}
+#| label: fig-annual-delivered-r6-ratemc
+#| fig-cap: "Annual delivery overpayment, oil/propane — Rate 6 (RATE=MC)."
+figs[("r6-ratemc", "annual", "delivered")]
+```
+
+```{python}
+#| label: fig-annual-delivered-r6-fixedmc
+#| fig-cap: "Annual delivery overpayment, oil/propane — Rate 6 (FIXED+MC)."
+figs[("r6-fixedmc", "annual", "delivered")]
+```
+
+```{python}
+#| label: fig-annual-delivered-r1-avg-corr
+#| fig-cap: "Annual delivery overpayment, oil/propane — Rate 1 minus avg. overpayment."
+figs[("r1-avg-corr", "annual", "delivered")]
+```
+
+```{python}
+#| label: fig-annual-delivered-r1-bldg-corr
+#| fig-cap: "Annual delivery overpayment, oil/propane — Rate 1 minus per-bldg. overpayment."
+figs[("r1-bldg-corr", "annual", "delivered")]
+```
+
+### Annual — all fossil fuel
+
+```{python}
+#| label: fig-annual-all-fossil-r1
+#| fig-cap: "Annual delivery overpayment, all fossil fuel — Rate 1."
+figs[("r1", "annual", "all-fossil")]
+```
+
+```{python}
+#| label: fig-annual-all-fossil-r6
+#| fig-cap: "Annual delivery overpayment, all fossil fuel — Rate 6."
+figs[("r6", "annual", "all-fossil")]
+```
+
+```{python}
+#| label: fig-annual-all-fossil-r6-ratemc
+#| fig-cap: "Annual delivery overpayment, all fossil fuel — Rate 6 (RATE=MC)."
+figs[("r6-ratemc", "annual", "all-fossil")]
+```
+
+```{python}
+#| label: fig-annual-all-fossil-r6-fixedmc
+#| fig-cap: "Annual delivery overpayment, all fossil fuel — Rate 6 (FIXED+MC)."
+figs[("r6-fixedmc", "annual", "all-fossil")]
+```
+
+```{python}
+#| label: fig-annual-all-fossil-r1-avg-corr
+#| fig-cap: "Annual delivery overpayment, all fossil fuel — Rate 1 minus avg. overpayment."
+figs[("r1-avg-corr", "annual", "all-fossil")]
+```
+
+```{python}
+#| label: fig-annual-all-fossil-r1-bldg-corr
+#| fig-cap: "Annual delivery overpayment, all fossil fuel — Rate 1 minus per-bldg. overpayment."
+figs[("r1-bldg-corr", "annual", "all-fossil")]
+```
+
+### Winter — natural gas
+
+```{python}
+#| label: fig-winter-natgas-r1
+#| fig-cap: "Winter delivery overpayment, natural gas — Rate 1."
+figs[("r1", "winter", "natgas")]
+```
+
+```{python}
+#| label: fig-winter-natgas-r6
+#| fig-cap: "Winter delivery overpayment, natural gas — Rate 6."
+figs[("r6", "winter", "natgas")]
+```
+
+```{python}
+#| label: fig-winter-natgas-r6-ratemc
+#| fig-cap: "Winter delivery overpayment, natural gas — Rate 6 (RATE=MC)."
+figs[("r6-ratemc", "winter", "natgas")]
+```
+
+```{python}
+#| label: fig-winter-natgas-r6-fixedmc
+#| fig-cap: "Winter delivery overpayment, natural gas — Rate 6 (FIXED+MC)."
+figs[("r6-fixedmc", "winter", "natgas")]
+```
+
+```{python}
+#| label: fig-winter-natgas-r1-avg-corr
+#| fig-cap: "Winter delivery overpayment, natural gas — Rate 1 minus avg. overpayment."
+figs[("r1-avg-corr", "winter", "natgas")]
+```
+
+```{python}
+#| label: fig-winter-natgas-r1-bldg-corr
+#| fig-cap: "Winter delivery overpayment, natural gas — Rate 1 minus per-bldg. overpayment."
+figs[("r1-bldg-corr", "winter", "natgas")]
+```
+
+### Winter — oil/propane
+
+```{python}
+#| label: fig-winter-delivered-r1
+#| fig-cap: "Winter delivery overpayment, oil/propane — Rate 1."
+figs[("r1", "winter", "delivered")]
+```
+
+```{python}
+#| label: fig-winter-delivered-r6
+#| fig-cap: "Winter delivery overpayment, oil/propane — Rate 6."
+figs[("r6", "winter", "delivered")]
+```
+
+```{python}
+#| label: fig-winter-delivered-r6-ratemc
+#| fig-cap: "Winter delivery overpayment, oil/propane — Rate 6 (RATE=MC)."
+figs[("r6-ratemc", "winter", "delivered")]
+```
+
+```{python}
+#| label: fig-winter-delivered-r6-fixedmc
+#| fig-cap: "Winter delivery overpayment, oil/propane — Rate 6 (FIXED+MC)."
+figs[("r6-fixedmc", "winter", "delivered")]
+```
+
+```{python}
+#| label: fig-winter-delivered-r1-avg-corr
+#| fig-cap: "Winter delivery overpayment, oil/propane — Rate 1 minus avg. overpayment."
+figs[("r1-avg-corr", "winter", "delivered")]
+```
+
+```{python}
+#| label: fig-winter-delivered-r1-bldg-corr
+#| fig-cap: "Winter delivery overpayment, oil/propane — Rate 1 minus per-bldg. overpayment."
+figs[("r1-bldg-corr", "winter", "delivered")]
+```
+
+### Winter — all fossil fuel
+
+```{python}
+#| label: fig-winter-all-fossil-r1
+#| fig-cap: "Winter delivery overpayment, all fossil fuel — Rate 1."
+figs[("r1", "winter", "all-fossil")]
+```
+
+```{python}
+#| label: fig-winter-all-fossil-r6
+#| fig-cap: "Winter delivery overpayment, all fossil fuel — Rate 6."
+figs[("r6", "winter", "all-fossil")]
+```
+
+```{python}
+#| label: fig-winter-all-fossil-r6-ratemc
+#| fig-cap: "Winter delivery overpayment, all fossil fuel — Rate 6 (RATE=MC)."
+figs[("r6-ratemc", "winter", "all-fossil")]
+```
+
+```{python}
+#| label: fig-winter-all-fossil-r6-fixedmc
+#| fig-cap: "Winter delivery overpayment, all fossil fuel — Rate 6 (FIXED+MC)."
+figs[("r6-fixedmc", "winter", "all-fossil")]
+```
+
+```{python}
+#| label: fig-winter-all-fossil-r1-avg-corr
+#| fig-cap: "Winter delivery overpayment, all fossil fuel — Rate 1 minus avg. overpayment."
+figs[("r1-avg-corr", "winter", "all-fossil")]
+```
+
+```{python}
+#| label: fig-winter-all-fossil-r1-bldg-corr
+#| fig-cap: "Winter delivery overpayment, all fossil fuel — Rate 1 minus per-bldg. overpayment."
+figs[("r1-bldg-corr", "winter", "all-fossil")]
+```
+
+### Summer — natural gas
+
+```{python}
+#| label: fig-summer-natgas-r1
+#| fig-cap: "Summer delivery overpayment, natural gas — Rate 1."
+figs[("r1", "summer", "natgas")]
+```
+
+```{python}
+#| label: fig-summer-natgas-r6
+#| fig-cap: "Summer delivery overpayment, natural gas — Rate 6."
+figs[("r6", "summer", "natgas")]
+```
+
+```{python}
+#| label: fig-summer-natgas-r6-ratemc
+#| fig-cap: "Summer delivery overpayment, natural gas — Rate 6 (RATE=MC)."
+figs[("r6-ratemc", "summer", "natgas")]
+```
+
+```{python}
+#| label: fig-summer-natgas-r6-fixedmc
+#| fig-cap: "Summer delivery overpayment, natural gas — Rate 6 (FIXED+MC)."
+figs[("r6-fixedmc", "summer", "natgas")]
+```
+
+```{python}
+#| label: fig-summer-natgas-r1-avg-corr
+#| fig-cap: "Summer delivery overpayment, natural gas — Rate 1 minus avg. overpayment."
+figs[("r1-avg-corr", "summer", "natgas")]
+```
+
+```{python}
+#| label: fig-summer-natgas-r1-bldg-corr
+#| fig-cap: "Summer delivery overpayment, natural gas — Rate 1 minus per-bldg. overpayment."
+figs[("r1-bldg-corr", "summer", "natgas")]
+```
+
+### Summer — oil/propane
+
+```{python}
+#| label: fig-summer-delivered-r1
+#| fig-cap: "Summer delivery overpayment, oil/propane — Rate 1."
+figs[("r1", "summer", "delivered")]
+```
+
+```{python}
+#| label: fig-summer-delivered-r6
+#| fig-cap: "Summer delivery overpayment, oil/propane — Rate 6."
+figs[("r6", "summer", "delivered")]
+```
+
+```{python}
+#| label: fig-summer-delivered-r6-ratemc
+#| fig-cap: "Summer delivery overpayment, oil/propane — Rate 6 (RATE=MC)."
+figs[("r6-ratemc", "summer", "delivered")]
+```
+
+```{python}
+#| label: fig-summer-delivered-r6-fixedmc
+#| fig-cap: "Summer delivery overpayment, oil/propane — Rate 6 (FIXED+MC)."
+figs[("r6-fixedmc", "summer", "delivered")]
+```
+
+```{python}
+#| label: fig-summer-delivered-r1-avg-corr
+#| fig-cap: "Summer delivery overpayment, oil/propane — Rate 1 minus avg. overpayment."
+figs[("r1-avg-corr", "summer", "delivered")]
+```
+
+```{python}
+#| label: fig-summer-delivered-r1-bldg-corr
+#| fig-cap: "Summer delivery overpayment, oil/propane — Rate 1 minus per-bldg. overpayment."
+figs[("r1-bldg-corr", "summer", "delivered")]
+```
+
+### Summer — all fossil fuel
+
+```{python}
+#| label: fig-summer-all-fossil-r1
+#| fig-cap: "Summer delivery overpayment, all fossil fuel — Rate 1."
+figs[("r1", "summer", "all-fossil")]
+```
+
+```{python}
+#| label: fig-summer-all-fossil-r6
+#| fig-cap: "Summer delivery overpayment, all fossil fuel — Rate 6."
+figs[("r6", "summer", "all-fossil")]
+```
+
+```{python}
+#| label: fig-summer-all-fossil-r6-ratemc
+#| fig-cap: "Summer delivery overpayment, all fossil fuel — Rate 6 (RATE=MC)."
+figs[("r6-ratemc", "summer", "all-fossil")]
+```
+
+```{python}
+#| label: fig-summer-all-fossil-r6-fixedmc
+#| fig-cap: "Summer delivery overpayment, all fossil fuel — Rate 6 (FIXED+MC)."
+figs[("r6-fixedmc", "summer", "all-fossil")]
+```
+
+```{python}
+#| label: fig-summer-all-fossil-r1-avg-corr
+#| fig-cap: "Summer delivery overpayment, all fossil fuel — Rate 1 minus avg. overpayment."
+figs[("r1-avg-corr", "summer", "all-fossil")]
+```
+
+```{python}
+#| label: fig-summer-all-fossil-r1-bldg-corr
+#| fig-cap: "Summer delivery overpayment, all fossil fuel — Rate 1 minus per-bldg. overpayment."
+figs[("r1-bldg-corr", "summer", "all-fossil")]
 ```

@@ -73,7 +73,6 @@ from lib.rates_analysis.rate_case_funcs import (
     cost_of_service_by_subclass,
     extract_tariff_rates,
     hp_bat_summary,
-    load_delivery_mc_heatmap,
     load_master_bills,
     load_tariff_json,
     monthly_bill_components,
@@ -81,7 +80,6 @@ from lib.rates_analysis.rate_case_funcs import (
     plot_bill_change_quadrants,
     plot_burden_bar_by_utility,
     plot_decomposed_bill_3bar,
-    plot_mc_heatmap,
     plot_monthly_bill_components,
     plot_ratedesign_cdf,
     plot_ratedesign_monthly_hist,
@@ -570,81 +568,8 @@ revenue is several times larger than marginal cost for every baseline heating ty
 exactly why the residual *allocator* — not the marginal-cost charge — is what mostly
 determines whether a subclass over- or underpays in the table above.
 
-## When are delivery costs actually incurred?
-
-MD BGE's delivery marginal costs — bulk transmission and distribution +
-sub-transmission capacity — are hourly series covering all 8,760 hours of 2025.
-Both are zero most of the year and spike only in a small number of hours, which
-is exactly the timing mismatch a uniform volumetric rate can't reflect.
-
-```{python}
-#| label: load-mc-heatmap-data
-
-mc_heatmap_df = load_delivery_mc_heatmap(STATE, UTILITY, YEAR)
-```
-
-```{python}
-#| label: report-vars-mc-peak-seasonality
-
-_SUMMER_MONTHS = {5, 6, 7, 8, 9}
-
-
-def _pct_mc_peak_hours_in_summer(mc_col: str) -> float:
-    """Share of non-zero marginal-cost hours that fall in May–September."""
-    peak_hours = mc_heatmap_df.filter(pl.col(mc_col) > 0)
-    if peak_hours.is_empty():
-        return 0.0
-    summer_peak = peak_hours.filter(pl.col("timestamp").dt.month().is_in(_SUMMER_MONTHS))
-    return summer_peak.height / peak_hours.height
-
-
-report_vars["pct_dist_mc_peak_hours_may_sep"] = _pct_mc_peak_hours_in_summer("mc_dist_sub_tx")
-report_vars["pct_bulk_tx_mc_peak_hours_may_sep"] = _pct_mc_peak_hours_in_summer("mc_bulk_tx")
-
-_delivery_peak_hours = mc_heatmap_df.filter(
-    (pl.col("mc_bulk_tx") > 0) | (pl.col("mc_dist_sub_tx") > 0)
-)
-report_vars["pct_peak_hours_may_sep"] = (
-    _delivery_peak_hours.filter(pl.col("timestamp").dt.month().is_in(_SUMMER_MONTHS)).height
-    / _delivery_peak_hours.height
-)
-
-_peak_hours = mc_heatmap_df.filter(
-    (pl.col("mc_bulk_tx") > 0) | (pl.col("mc_dist_sub_tx") > 0)
-)
-_dist_peak_hours = _peak_hours.filter(pl.col("mc_dist_sub_tx") > 0)
-_tx_peak_hours = _peak_hours.filter(pl.col("mc_bulk_tx") > 0)
-report_vars["mc_dist_peak_per_kwh_min"] = float(_dist_peak_hours["mc_dist_sub_tx"].min())
-report_vars["mc_dist_peak_per_kwh_max"] = float(_dist_peak_hours["mc_dist_sub_tx"].max())
-report_vars["mc_bulk_tx_peak_per_kwh_min"] = float(_tx_peak_hours["mc_bulk_tx"].min())
-report_vars["mc_bulk_tx_peak_per_kwh_max"] = float(_tx_peak_hours["mc_bulk_tx"].max())
-```
-
-```{python}
-#| label: fig-mc-heatmap-bulk-tx
-#| fig-cap: "Hourly marginal bulk transmission capacity costs, MD BGE, 2025."
-
-display_svg(
-    plot_mc_heatmap(
-        mc_heatmap_df, "mc_bulk_tx",
-        title="Bulk Transmission — Marginal Capacity Cost by Hour",
-        high_color=SB_COLORS["midnight"],
-    )
-)
-```
-
-```{python}
-#| label: fig-mc-heatmap-dist-sub-tx
-#| fig-cap: "Hourly marginal distribution and sub-transmission capacity costs, MD BGE, 2025."
-
-display_svg(
-    plot_mc_heatmap(
-        mc_heatmap_df, "mc_dist_sub_tx",
-        title="Distribution + Sub-Transmission — Marginal Capacity Cost by Hour",
-        high_color=SB_COLORS["carrot"],
-    )
-)
-```
+Peak-hour delivery marginal costs and heatmaps live in
+[`delivery_mc.qmd`](delivery_mc.qmd) (also used by expert testimony).
 
 ## A time-of-use rate doesn't fix it — but we can't show that yet
 

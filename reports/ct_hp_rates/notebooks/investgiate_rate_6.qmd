@@ -1,0 +1,786 @@
+---
+jupyter: python3
+execute:
+  warning: false
+  message: false
+---
+
+# Investigating Rate 6
+
+Rate 6 is Eversource's proposed heat-pump rate. In winter (November–March) it charges
+less for each kWh above 700 in a month than for the first 700. In April–October every kWh
+pays the same rate.
+
+This notebook does two things for Eversource's heat-pump homes (ResStock upgrade 02):
+
+1. It compares annual energy bills under Rate 1, under Rate 6, and under a personalized
+   version of Rate 6. In the personalized version, each home's winter discount starts at
+   its own pre-heat-pump usage instead of at 700 kWh.
+2. It measures how much of each home's extra electricity from switching to a heat pump
+   (upgrade 02 minus upgrade 00) falls under 700 kWh and how much falls above it.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import plotnine as plt
+import polars as pl
+import yaml
+from great_tables import GT
+from mizani.breaks import breaks_extended
+
+from lib.great_tables import get_switchbox_gt_tab_options
+from lib.plotnine import SB_COLORS, theme_switchbox
+from lib.quarto import display_figure, display_gt
+from lib.rates_analysis.rate_case_funcs import (
+    HEATING_ORDER,
+    MONTH_ORDER,
+    add_heating_label,
+    load_master_bills,
+    load_tariff_json,
+    plot_bill_change_quadrant_comparison,
+    segment_name,
+    weighted_quantile,
+)
+```
+
+```{python}
+#| label: params
+
+_batch_config = yaml.safe_load(Path("../batch_config.yaml").read_text())
+
+STATE = _batch_config["STATE"]
+BATCH = _batch_config["BATCH"]
+RDP_REF = _batch_config["RDP_REF"]
+UTILITY = "ct_eversource"
+BILL_COL = "energy_total_bill"
+
+RATE1_SCENARIO = _batch_config["BASELINE_BILL_SCENARIO"]
+RATE6_SCENARIO = "default_ry1_r6_uncalibrated"
+
+# CAIRO's "calibrated" stage is the upgrade-02 (heat pump) run; "precalc" is upgrade 00.
+# These scenarios are uncalibrated, so both stages bill at the filed tariff.
+SEG_RATE1_HP = segment_name(RATE1_SCENARIO, "calibrated")
+SEG_RATE6_HP = segment_name(RATE6_SCENARIO, "calibrated")
+SEG_RATE6_BASE = segment_name(RATE6_SCENARIO, "precalc")
+RELEASE = "res_2024_amy2018_2_sb"
+UPGRADE_BEFORE = "00"
+UPGRADE_AFTER = "02"
+
+# Month numbers, January = 1. One month, or several to average across.
+MONTHS = [1]
+THRESHOLD_KWH = 700.0
+
+KWH_COL = "out.electricity.total.energy_consumption"
+RESSTOCK_ROOT = Path("/ebs/data/nrel/resstock") / RELEASE
+```
+
+`MONTHS` only affects the 700 kWh share analysis at the end. The bill histograms use
+the whole year.
+
+## Annual energy bills after switching to a heat pump
+
+Each bill comes from CAIRO's master bills table, which has one row per building per
+month, plus an `Annual` row. `energy_total_bill` is the annual electricity, gas,
+propane, and oil bill combined. Every histogram is weighted by ResStock's sample
+weight, so the y-axis counts Eversource households, not ResStock buildings.
+
+```{python}
+#| label: load-annual-bills
+
+def annual_bills(segment: str) -> pl.DataFrame:
+    """Annual energy bill and sample weight for every Eversource building in a segment."""
+    return (
+        load_master_bills(STATE, BATCH, segment)
+        .filter((pl.col("sb.electric_utility") == UTILITY) & (pl.col("month") == "Annual"))
+        .select("bldg_id", "weight", "upgrade", BILL_COL)
+        .collect()
+    )
+
+
+bills_rate1 = annual_bills(SEG_RATE1_HP)
+bills_rate6 = annual_bills(SEG_RATE6_HP)
+for label, bills in [("Rate 1", bills_rate1), ("Rate 6", bills_rate6)]:
+    upgrades = bills["upgrade"].unique().to_list()
+    assert upgrades == [2], f"{label}: expected upgrade 2 only, got {upgrades}"
+    print(f"{label}: {bills.height:,} buildings, upgrade {upgrades[0]}")
+bills_rate6.head(5)
+```
+
+All three histograms share the same x-axis, the 1st to 99th weighted percentile of all
+three bill sets together, so they can be compared at a glance. The subtitle gives
+each set's weighted median and mean.
+
+```{python}
+#| label: hist-helper
+
+BIN_WIDTH = 250.0
+
+
+def weighted_mean(df: pl.DataFrame, col: str) -> float:
+    return float((df[col] * df["weight"]).sum() / df["weight"].sum())
+
+
+def plot_annual_bill_hist(
+    df: pl.DataFrame, title: str, x_limits: tuple[float, float]
+) -> plt.ggplot:
+    """Weighted histogram of annual energy bills on a fixed x-axis window."""
+    binned = (
+        df.with_columns(
+            ((pl.col(BILL_COL) / BIN_WIDTH).floor() * BIN_WIDTH + BIN_WIDTH / 2).alias(
+                "bin_center"
+            )
+        )
+        .group_by("bin_center")
+        .agg(pl.col("weight").sum().alias("households"))
+    )
+    lo, hi = x_limits
+    breaks_fn = breaks_extended(n=8)
+    median = weighted_quantile(df, BILL_COL, 0.5)
+    mean = weighted_mean(df, BILL_COL)
+    return (
+        plt.ggplot(binned, plt.aes(x="bin_center", y="households"))
+        + plt.geom_col(width=BIN_WIDTH * 0.9, fill=SB_COLORS["sky"])
+        # coord_cartesian zooms without dropping bills outside the window.
+        + plt.coord_cartesian(xlim=(lo, hi))
+        + plt.scale_x_continuous(
+            breaks=lambda _limits: breaks_fn((lo, hi)),
+            labels=lambda xs: [f"${x:,.0f}" for x in xs],
+        )
+        + plt.scale_y_continuous(labels=lambda ys: [f"{y:,.0f}" for y in ys])
+        + plt.labs(
+            x="Annual energy bill",
+            y="Households (weighted)",
+            title=title,
+            # Escaped: two bare "$" in one string turn on matplotlib mathtext.
+            subtitle=f"Weighted median \\${median:,.0f}, mean \\${mean:,.0f}",
+        )
+        + theme_switchbox()
+        + plt.theme(figure_size=(10.5, 4.5))
+    )
+```
+
+### The personalized threshold
+
+The third bill set is Rate 6 with one change. In the winter months, the block boundary is each home's
+own upgrade-00 electricity use that month instead of 700 kWh:
+
+- **April–October:** unchanged. Every kWh pays the single Block 1 rate.
+- **November–March:** kWh up to the home's pre-heat-pump usage pay the Block 1 rate, and
+  only the incremental kWh above it pay the cheaper Block 2 rate.
+- If a home's winter usage stayed the same or went down (for example, it already heated
+  with electric resistance), every kWh pays the Block 1 rate.
+
+The filed distribution charges are `$0.09431` (Block 1) and `$0.07517` (Block 2) per kWh.
+The tariff CAIRO bills with folds per-kWh riders into both blocks, so its rates are higher.
+The riders are the same in both blocks, so they cancel and only the difference between
+the blocks matters. We read the block rates, the 700 kWh threshold, and the winter months
+directly from the Rate 6 tariff JSON this batch was run with.
+
+```{python}
+#| label: rate6-tariff
+
+tariff_rate6 = load_tariff_json(STATE, UTILITY, f"{UTILITY}_rate6", RDP_REF)
+_structure = tariff_rate6["energyratestructure"]
+WINTER_PERIOD = next(i for i, tiers in enumerate(_structure) if len(tiers) > 1)
+BLOCK1_RATE = float(_structure[WINTER_PERIOD][0]["rate"])
+BLOCK2_RATE = float(_structure[WINTER_PERIOD][1]["rate"])
+RATE6_THRESHOLD_KWH = float(_structure[WINTER_PERIOD][0]["max"])
+WINTER_MONTHS = [
+    MONTH_ORDER[i]
+    for i, row in enumerate(tariff_rate6["energyweekdayschedule"])
+    if row[0] == WINTER_PERIOD
+]
+print(f"Block 1: ${BLOCK1_RATE:.5f}/kWh   Block 2: ${BLOCK2_RATE:.5f}/kWh")
+print(f"Block gap: ${BLOCK1_RATE - BLOCK2_RATE:.5f}/kWh (filed: $0.09431 - $0.07517 = $0.01914)")
+print(f"Threshold: {RATE6_THRESHOLD_KWH:,.0f} kWh   Winter months: {WINTER_MONTHS}")
+```
+
+Rather than rebuild the whole bill, we start from each home's actual Rate 6 bill and
+change only the winter energy charge. For one winter month, let $B$ be upgrade-00 kWh,
+$A$ be upgrade-02 kWh, $r_1$ the Block 1 rate, and $r_2$ the Block 2 rate:
+
+- Rate 6 charges $r_1 \min(A, 700) + r_2 \max(A - 700, 0)$
+- the personalized rate charges $r_1 \min(A, B) + r_2 \max(A - B, 0)$
+
+Their difference simplifies to
+
+$$(r_2 - r_1)\,\big[\max(A - B, 0) - \max(A - 700, 0)\big]$$
+
+We add that difference to the Rate 6 bill for each winter month. Fixed charges, supply,
+gas, and fuel bills stay exactly as CAIRO computed them. kWh comes from `elec_grid_kwh`
+in the upgrade-00 and upgrade-02 Rate 6 runs, the grid consumption CAIRO bills on.
+
+```{python}
+#| label: winter-kwh
+
+def winter_grid_kwh(segment: str, name: str) -> pl.DataFrame:
+    """Monthly grid kWh in the Rate 6 winter months for every Eversource building."""
+    return (
+        load_master_bills(STATE, BATCH, segment)
+        .filter(
+            (pl.col("sb.electric_utility") == UTILITY) & pl.col("month").is_in(WINTER_MONTHS)
+        )
+        .select("bldg_id", "month", pl.col("elec_grid_kwh").alias(name))
+        .collect()
+    )
+
+
+winter_kwh = winter_grid_kwh(SEG_RATE6_BASE, "kwh_before").join(
+    winter_grid_kwh(SEG_RATE6_HP, "kwh_after"), on=["bldg_id", "month"], how="inner"
+)
+assert winter_kwh.height == bills_rate6.height * len(WINTER_MONTHS)
+winter_kwh.head(5)
+```
+
+```{python}
+#| label: personalized-bills
+
+personal_adjustment = (
+    winter_kwh.with_columns(
+        (
+            (BLOCK2_RATE - BLOCK1_RATE)
+            * (
+                (pl.col("kwh_after") - pl.col("kwh_before")).clip(lower_bound=0)
+                - (pl.col("kwh_after") - RATE6_THRESHOLD_KWH).clip(lower_bound=0)
+            )
+        ).alias("adjustment")
+    )
+    .group_by("bldg_id")
+    .agg(pl.col("adjustment").sum())
+)
+bills_personal = bills_rate6.join(personal_adjustment, on="bldg_id", how="left").with_columns(
+    (pl.col(BILL_COL) + pl.col("adjustment")).alias(BILL_COL)
+)
+assert bills_personal["adjustment"].null_count() == 0
+print(
+    bills_personal.select(
+        pl.col("adjustment").mean().alias("mean_change_vs_rate6"),
+        pl.col("adjustment").min().alias("min_change_vs_rate6"),
+        pl.col("adjustment").max().alias("max_change_vs_rate6"),
+        (pl.col("adjustment") > 0).mean().alias("share_paying_more"),
+    )
+)
+```
+
+A positive adjustment means the home pays more than under Rate 6. That happens when its
+pre-heat-pump winter usage was above 700 kWh: its own threshold is higher, so fewer kWh
+get the discount. A negative adjustment means the home used less than 700 kWh before
+switching, so more of its winter load gets the Block 2 rate.
+
+### Histograms
+
+Now we set the shared x-axis across all three bill sets and draw the histograms.
+
+```{python}
+#| label: shared-axis
+
+_all_bills = pl.concat(
+    [b.select(BILL_COL, "weight") for b in (bills_rate1, bills_rate6, bills_personal)]
+)
+X_LIMITS = (
+    weighted_quantile(_all_bills, BILL_COL, 0.01),
+    weighted_quantile(_all_bills, BILL_COL, 0.99),
+)
+print(f"Shared x-axis: ${X_LIMITS[0]:,.0f} to ${X_LIMITS[1]:,.0f}")
+```
+
+```{python}
+#| label: fig-bill-hist-rate1
+#| fig-cap: "Annual energy bill of Eversource homes after switching to heat pumps, under Rate 1."
+
+plot_annual_bill_hist(bills_rate1, "Heat-pump homes on Rate 1", X_LIMITS)
+```
+
+```{python}
+#| label: fig-bill-hist-rate6
+#| fig-cap: "Annual energy bill of Eversource homes after switching to heat pumps, under Rate 6."
+
+plot_annual_bill_hist(bills_rate6, "Heat-pump homes on Rate 6", X_LIMITS)
+```
+
+```{python}
+#| label: fig-bill-hist-rate6-personal
+#| fig-cap: "Annual energy bill of Eversource homes after switching to heat pumps, under Rate 6 with each home's winter threshold set to its own pre-heat-pump usage."
+
+plot_annual_bill_hist(
+    bills_personal, "Heat-pump homes on Rate 6, personalized threshold", X_LIMITS
+)
+```
+
+## Who pays more under the personalized threshold
+
+Each point is one Eversource building. The y-axis is its upgrade-02 annual energy bill
+under the personalized threshold minus its Rate 6 bill: above the dotted line the home
+pays more, below it the home pays less. Electricity on the x-axis is upgrade-00 grid
+consumption, `elec_grid_kwh` from before the heat pump. Winter is November through March.
+Color is the home's heating type before the heat pump, from
+`postprocess_group.heating_type_v2`.
+
+```{python}
+#| label: bill-change-scatter-data
+
+annual_kwh = (
+    load_master_bills(STATE, BATCH, SEG_RATE6_BASE)
+    .filter((pl.col("sb.electric_utility") == UTILITY) & (pl.col("month") == "Annual"))
+    .select(
+        "bldg_id",
+        "upgrade",
+        pl.col("elec_grid_kwh").alias("annual_kwh"),
+        "postprocess_group.heating_type_v2",
+    )
+    .collect()
+)
+assert annual_kwh["upgrade"].unique().to_list() == [0]
+winter_kwh_total = winter_kwh.group_by("bldg_id").agg(pl.col("kwh_before").sum().alias("winter_kwh"))
+# Paul Tol's bright palette. The brand colors sit too close together to separate
+# five heating types on one scatter.
+HEATING_COLORS = {
+    "Natural gas": "#4477AA",
+    "Oil/propane": "#EE6677",
+    "Electric resistance": "#228833",
+    "Existing heat pump": "#AA3377",
+    "Other": "#66CCEE",
+}
+bill_change_scatter = add_heating_label(
+    bills_personal.select(
+        "bldg_id",
+        "weight",
+        pl.col("adjustment").alias("bill_change"),
+        # The adjustment is already the winter-only difference.
+        pl.col("adjustment").alias("winter_bill_change"),
+    )
+    .join(annual_kwh, on="bldg_id", how="inner")
+    .join(winter_kwh_total, on="bldg_id", how="inner"),
+    code_col="postprocess_group.heating_type_v2",
+)
+# Largest heating type first, so the smaller groups are drawn on top.
+_draw_order = (
+    bill_change_scatter["heating_label"]
+    .value_counts()
+    .sort("count", descending=True)["heating_label"]
+    .to_list()
+)
+bill_change_scatter = bill_change_scatter.with_columns(
+    pl.col("heating_label")
+    .replace_strict({label: i for i, label in enumerate(_draw_order)})
+    .alias("_draw"),
+    pl.col("heating_label").cast(pl.Enum(HEATING_ORDER)),
+).sort("_draw")
+assert bill_change_scatter.height == bills_rate6.height
+print(bill_change_scatter["heating_label"].value_counts(sort=False))
+bill_change_scatter.head(5)
+```
+
+```{python}
+#| label: heating-scatter-helper
+
+def plot_heating_scatter(df, x, y, x_label, y_label, title):
+    """Heating-type scatter of a bill change against electricity use."""
+    return (
+        plt.ggplot(df, plt.aes(x=x, y=y, color="heating_label"))
+        + plt.geom_hline(yintercept=0, linetype="dotted", color="gray")
+        + plt.geom_point(alpha=0.75, size=1.5)
+        + plt.scale_color_manual(values=HEATING_COLORS, name="Heating type")
+        + plt.scale_x_log10(labels=lambda values: [f"{value:,.0f}" for value in values])
+        + plt.scale_y_continuous(labels=lambda values: [f"${value:,.0f}" for value in values])
+        + plt.labs(x=x_label, y=y_label, title=title)
+        + theme_switchbox()
+        + plt.theme(figure_size=(10.5, 4.5))
+    )
+```
+
+```{python}
+#| label: fig-bill-change-vs-annual-kwh
+#| fig-cap: "Change in the upgrade-02 annual energy bill from moving Rate 6's 700 kWh winter threshold to each home's own pre-heat-pump usage, against upgrade-00 annual electricity use."
+
+plot_heating_scatter(
+    bill_change_scatter,
+    "annual_kwh",
+    "bill_change",
+    "Annual electricity use before the heat pump (kWh, log scale)",
+    "Bill change, personalized minus Rate 6",
+    "Personalized threshold vs Rate 6, by pre-heat-pump annual use",
+)
+```
+
+On the winter chart, the straight line that lifts off zero near 3,500 kWh is homes whose
+electricity use went up. Past that point their pre-heat-pump winter use is above 700 kWh
+a month, so Rate 6 discounts some of that pre-retrofit load and the personalized rate
+does not. The gap grows by about 1.9 cents for each of those kWh. Electric-resistance and
+existing heat-pump homes sit above the line: their use fell or stayed flat, so they lose
+the Rate 6 discount without gaining a personalized one.
+
+```{python}
+#| label: fig-bill-change-vs-winter-kwh
+#| fig-cap: "Change in the upgrade-02 annual energy bill from moving Rate 6's 700 kWh winter threshold to each home's own pre-heat-pump usage, against upgrade-00 winter electricity use."
+
+plot_heating_scatter(
+    bill_change_scatter,
+    "winter_kwh",
+    "bill_change",
+    "Winter electricity use before the heat pump, November–March (kWh, log scale)",
+    "Bill change, personalized minus Rate 6",
+    "Personalized threshold vs Rate 6, by pre-heat-pump winter use",
+)
+```
+
+### Winter bill change
+
+The dollar difference between the two rates is entirely a winter difference, so this
+chart repeats the one above with the y-axis labeled as the winter bill change.
+
+```{python}
+#| label: fig-winter-bill-change-vs-winter-kwh
+#| fig-cap: "Winter bill change from moving Rate 6's 700 kWh threshold to each home's pre-heat-pump usage, against upgrade-00 winter electricity use."
+
+plot_heating_scatter(
+    bill_change_scatter,
+    "winter_kwh",
+    "winter_bill_change",
+    "Winter electricity use before the heat pump, November–March (kWh, log scale)",
+    "Winter bill change, personalized minus Rate 6",
+    "Winter bill change vs pre-heat-pump winter use",
+)
+```
+
+### Who pays more, and who pays less
+
+A positive bill change means the home pays more under the personalized threshold than
+under Rate 6. A negative change means it pays less. The pies below are the heating-type
+mix of each group, weighted by ResStock's sample weight. Homes whose bill does not
+change are left out of both charts.
+
+```{python}
+#| label: heating-composition
+
+def heating_composition(pays_more: bool) -> pl.DataFrame:
+    """Weighted heating-type shares for homes whose bill goes up, or down."""
+    subset = bill_change_scatter.filter(
+        pl.col("bill_change") > 0 if pays_more else pl.col("bill_change") < 0
+    )
+    total_weight = float(subset["weight"].sum())
+    counted = (
+        subset.with_columns(pl.col("heating_label").cast(pl.String))
+        .group_by("heating_label")
+        .agg(pl.col("weight").sum().alias("weight"), pl.len().alias("n"))
+    )
+    composition = (
+        pl.DataFrame({"heating_label": HEATING_ORDER})
+        .join(counted, on="heating_label", how="left")
+        .with_columns(pl.col("weight").fill_null(0.0), pl.col("n").fill_null(0))
+        .with_columns((pl.col("weight") / total_weight * 100).alias("pct"))
+    )
+    labels = [f"{pct:.1f}%" if pct < 1 else f"{pct:.0f}%" for pct in composition["pct"].to_list()]
+    return composition.with_columns(pl.Series("label", labels))
+
+
+def plot_heating_pie(composition: pl.DataFrame, title: str):
+    """Pie of heating-type shares. Plotnine 0.15 has no polar coordinates."""
+    import matplotlib.pyplot as mpl
+
+    theme_switchbox()  # registers GT Planar and IBM Plex Sans
+    fig, ax = mpl.subplots(figsize=(10.5, 4.5))
+    fig.patch.set_facecolor("white")
+    wedges, _ = ax.pie(
+        composition["pct"].to_list(),
+        colors=[HEATING_COLORS[name] for name in composition["heating_label"].to_list()],
+        startangle=90,
+        counterclock=False,
+        wedgeprops={"edgecolor": "white", "linewidth": 1.5},
+    )
+    ax.legend(
+        wedges,
+        [
+            f"{name}   {label}"
+            for name, label in zip(composition["heating_label"], composition["label"], strict=True)
+        ],
+        title="Heating type",
+        loc="center left",
+        bbox_to_anchor=(0.95, 0.5),
+        frameon=False,
+        prop={"family": "IBM Plex Sans", "size": 11},
+        title_fontproperties={"family": "GT Planar", "size": 13},
+    )
+    ax.set_title(
+        title,
+        loc="left",
+        fontfamily="GT Planar",
+        fontweight="bold",
+        fontsize=15,
+        color="black",
+    )
+    return fig
+
+
+composition_pays_more = heating_composition(pays_more=True)
+composition_pays_less = heating_composition(pays_more=False)
+n_unchanged = bill_change_scatter.filter(pl.col("bill_change") == 0).height
+print(f"{n_unchanged:,} buildings have no bill change and are left out")
+print(composition_pays_more.select("heating_label", "n", "pct"))
+print(composition_pays_less.select("heating_label", "n", "pct"))
+```
+
+```{python}
+#| label: fig-heating-mix-pays-more
+#| fig-cap: "Heating-type mix of Eversource homes whose upgrade-02 bill is higher under the personalized threshold than under Rate 6. Shares are weighted."
+
+display_figure(
+    plot_heating_pie(
+        composition_pays_more,
+        "Homes that pay more under the personalized rate",
+    )
+)
+```
+
+```{python}
+#| label: fig-heating-mix-pays-less
+#| fig-cap: "Heating-type mix of Eversource homes whose upgrade-02 bill is lower under the personalized threshold than under Rate 6. Shares are weighted."
+
+display_figure(
+    plot_heating_pie(
+        composition_pays_less,
+        "Homes that pay less under the personalized rate",
+    )
+)
+```
+
+### Bill change from Rate 6 to the personalized rate
+
+These are the same four bins used in the other heat-pump reports. Green is a lower bill
+under the personalized rate than under Rate 6. Red is a higher bill. A change of exactly
+$0 is counted in the $0–$1,000 loss bin, which is how that chart is defined. Nobody's
+bill moves by $1,000 or more, so the dark-green and dark-red bins are empty. For
+electric-resistance and existing heat-pump homes, much of the red bar is a bill that
+does not change at all: about 30% and 13% of those homes, weighted.
+
+```{python}
+#| label: quadrant-helper
+
+def personalized_quadrant(heating_label: str):
+    """One quadrant bar for the personalized-rate bill minus the Rate 6 bill."""
+    subset = bill_change_scatter.filter(pl.col("heating_label") == heating_label).select(
+        pl.col("bill_change").alias("delta"),
+        "weight",
+    )
+    return plot_bill_change_quadrant_comparison(
+        [(heating_label, subset)],
+        title=f"Bill change from Rate 6 to the personalized rate, {heating_label.lower()}",
+    )
+```
+
+```{python}
+#| label: fig-quadrant-natgas
+#| fig-cap: "Weighted share of natural-gas homes by how their annual bill changes when the Rate 6 winter threshold is replaced with each home's pre-heat-pump usage."
+
+personalized_quadrant("Natural gas")
+```
+
+```{python}
+#| label: fig-quadrant-oil
+#| fig-cap: "Weighted share of oil and propane homes by how their annual bill changes when the Rate 6 winter threshold is replaced with each home's pre-heat-pump usage."
+
+personalized_quadrant("Oil/propane")
+```
+
+```{python}
+#| label: fig-quadrant-resistance
+#| fig-cap: "Weighted share of electric-resistance homes by how their annual bill changes when the Rate 6 winter threshold is replaced with each home's pre-heat-pump usage."
+
+personalized_quadrant("Electric resistance")
+```
+
+```{python}
+#| label: fig-quadrant-hp
+#| fig-cap: "Weighted share of existing heat-pump homes by how their annual bill changes when the Rate 6 winter threshold is replaced with each home's pre-heat-pump usage."
+
+personalized_quadrant("Existing heat pump")
+```
+
+```{python}
+#| label: fig-quadrant-other
+#| fig-cap: "Weighted share of other homes by how their annual bill changes when the Rate 6 winter threshold is replaced with each home's pre-heat-pump usage."
+
+personalized_quadrant("Other")
+```
+
+## Share of incremental load under and above 700 kWh
+
+Change `MONTHS` in the params cell to choose the months. `[1]` is January. A longer list,
+such as `[11, 12, 1, 2, 3]`, averages each building's monthly shares across those months.
+A month with no change in electricity use is left out of that average. The load is
+ResStock's monthly `out.electricity.total.energy_consumption`, in kWh. It is the simulated
+electricity use, not the scaled kWh CAIRO bills.
+
+### Which buildings
+
+Utility assignment lives in its own file. ResStock metadata has no utility column.
+
+```{python}
+#| label: eversource-buildings
+
+utility_assignment = pl.read_parquet(
+    RESSTOCK_ROOT / "metadata_utility" / f"state={STATE}" / "utility_assignment.parquet"
+)
+eversource_ids = (
+    utility_assignment.filter(pl.col("sb.electric_utility") == UTILITY)
+    .get_column("bldg_id")
+    .to_list()
+)
+print(f"{len(eversource_ids):,} buildings with sb.electric_utility = {UTILITY}")
+utility_assignment.filter(pl.col("sb.electric_utility") == UTILITY).head(5)
+```
+
+### Monthly electricity, before and after
+
+Each upgrade directory holds one monthly parquet per building, named
+`{bldg_id}-{upgrade}.parquet`, with one row per month.
+
+```{python}
+#| label: load-monthly
+
+def monthly_kwh(upgrade: str, bldg_ids: list[int], months: list[int]) -> pl.DataFrame:
+    """Monthly total electricity kWh for the requested buildings and months."""
+    upgrade_int = int(upgrade)
+    directory = RESSTOCK_ROOT / "load_curve_monthly" / f"state={STATE}" / f"upgrade={upgrade}"
+    paths = [str(directory / f"{bldg_id}-{upgrade_int}.parquet") for bldg_id in bldg_ids]
+    missing = [path for path in paths if not Path(path).exists()]
+    if missing:
+        raise FileNotFoundError(
+            f"{len(missing):,} monthly files missing under {directory}, e.g. {missing[0]}"
+        )
+    return (
+        pl.scan_parquet(paths)
+        .filter(pl.col("month").is_in(months))
+        .select("bldg_id", "month", pl.col(KWH_COL).alias("kwh"))
+        .collect()
+    )
+
+
+kwh_before = monthly_kwh(UPGRADE_BEFORE, eversource_ids, MONTHS)
+kwh_after = monthly_kwh(UPGRADE_AFTER, eversource_ids, MONTHS)
+print(f"Upgrade {UPGRADE_BEFORE}: {kwh_before.height:,} building-months")
+print(f"Upgrade {UPGRADE_AFTER}: {kwh_after.height:,} building-months")
+kwh_before.head(5)
+```
+
+### Split the incremental kWh at 700
+
+For one building-month, let $B$ be upgrade-00 kWh and $A$ be upgrade-02 kWh.
+The incremental load is $A - B$. Of that increment:
+
+- the part under the threshold is $\min(A, 700) - \min(B, 700)$
+- the part above the threshold is $\max(A - 700, 0) - \max(B - 700, 0)$
+
+Those two parts add up to $A - B$. Each share is that part divided by $A - B$.
+When several months are requested, the building's result is the average of its
+monthly shares. Months with $A = B$ have no incremental load, so they are dropped
+from the average.
+
+```{python}
+#| label: block-shares
+
+def incremental_block_shares(
+    before: pl.DataFrame,
+    after: pl.DataFrame,
+    threshold_kwh: float,
+) -> pl.DataFrame:
+    """Share of incremental kWh under and above `threshold_kwh`, averaged over months."""
+    monthly = (
+        before.rename({"kwh": "kwh_before"})
+        .join(after.rename({"kwh": "kwh_after"}), on=["bldg_id", "month"], how="inner")
+        .with_columns(
+            (pl.col("kwh_after") - pl.col("kwh_before")).alias("incremental_kwh"),
+            (
+                pl.min_horizontal(pl.col("kwh_after"), threshold_kwh)
+                - pl.min_horizontal(pl.col("kwh_before"), threshold_kwh)
+            ).alias("incremental_kwh_under"),
+            (
+                (pl.col("kwh_after") - threshold_kwh).clip(lower_bound=0)
+                - (pl.col("kwh_before") - threshold_kwh).clip(lower_bound=0)
+            ).alias("incremental_kwh_above"),
+        )
+        .with_columns(
+            pl.when(pl.col("incremental_kwh") != 0)
+            .then(pl.col("incremental_kwh_under") / pl.col("incremental_kwh"))
+            .otherwise(None)
+            .alias("share_under"),
+            pl.when(pl.col("incremental_kwh") != 0)
+            .then(pl.col("incremental_kwh_above") / pl.col("incremental_kwh"))
+            .otherwise(None)
+            .alias("share_above"),
+        )
+    )
+    return monthly.group_by("bldg_id").agg(
+        pl.col("share_under").mean().alias("share_under"),
+        pl.col("share_above").mean().alias("share_above"),
+        pl.col("incremental_kwh").sum().alias("incremental_kwh"),
+        pl.col("incremental_kwh_under").sum().alias("incremental_kwh_under"),
+        pl.col("incremental_kwh_above").sum().alias("incremental_kwh_above"),
+        pl.col("share_under").is_not_null().sum().alias("n_months"),
+    )
+
+
+shares = incremental_block_shares(kwh_before, kwh_after, THRESHOLD_KWH).sort("bldg_id")
+n_missing = shares.filter(pl.col("share_under").is_null()).height
+print(
+    f"{shares.height:,} buildings. {n_missing:,} have no electricity change "
+    f"in months {MONTHS}, so their shares are null."
+)
+shares.head(8)
+```
+
+`share_under` and `share_above` are the result: fractions of incremental load, averaging
+to the requested months. The kWh columns are the sums across those months, so you can
+see the loads behind the average.
+
+```{python}
+#| label: tbl-shares
+
+month_label = ", ".join(str(month) for month in MONTHS)
+_shares_gt = (
+    GT(shares.head(20), rowname_col="bldg_id")
+    .fmt_percent(columns=["share_under", "share_above"], decimals=1)
+    .fmt_number(
+        columns=["incremental_kwh", "incremental_kwh_under", "incremental_kwh_above"],
+        decimals=0,
+    )
+    .cols_label(
+        share_under="Under 700 kWh",
+        share_above="Above 700 kWh",
+        incremental_kwh="Incremental kWh",
+        incremental_kwh_under="kWh under",
+        incremental_kwh_above="kWh above",
+        n_months="Months used",
+    )
+    .tab_header(title=f"First 20 Eversource buildings, months {month_label}")
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+display_gt(_shares_gt)
+```
+
+A quick check that the two shares add to 1 wherever the building's electricity changed.
+
+```{python}
+#| label: sanity-check
+
+defined = shares.filter(pl.col("share_under").is_not_null())
+share_gap = (defined["share_under"] + defined["share_above"] - 1).abs().max()
+kwh_gap = (
+    defined["incremental_kwh_under"] + defined["incremental_kwh_above"] - defined["incremental_kwh"]
+).abs().max()
+print(f"Largest |share_under + share_above - 1|: {share_gap:.2e}")
+print(f"Largest |kWh under + kWh above - incremental kWh|: {kwh_gap:.2e}")
+print(
+    defined.select(
+        pl.col("share_under").mean().alias("mean_share_under"),
+        pl.col("share_above").mean().alias("mean_share_above"),
+        pl.col("share_under").median().alias("median_share_under"),
+    )
+)
+```

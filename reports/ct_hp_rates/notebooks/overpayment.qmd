@@ -16,7 +16,7 @@ format:
 This notebook computes per-building delivery **overpayment** — the gap between
 the incremental delivery revenue the utility collects and the incremental
 delivery marginal cost the conversion actually imposes — for CT Eversource homes
-switching to heat pumps, and plots weighted histograms of bill change across
+switching to heat pumps, and plots weighted histograms of overpayment across
 multiple rate scenarios.
 
 Overpayment for building $i$ is:
@@ -49,7 +49,6 @@ import polars as pl
 import yaml
 
 from lib.plotnine import SB_COLORS, theme_switchbox
-from lib.quarto import display_svg
 from lib.rdp import fetch_rdp_file
 from lib.rates_analysis.cos_funcs import incremental_cost_delta_with_gap
 from lib.rates_analysis.rate_case_funcs import (
@@ -59,7 +58,6 @@ from lib.rates_analysis.rate_case_funcs import (
     fair_rate_heating_types,
     load_billing_kwh_8760,
     load_delivery_mc_heatmap,
-    plot_bill_change_quadrant_comparison,
     plot_weighted_bill_change_hist,
     segment_name,
 )
@@ -376,53 +374,75 @@ for period_label, month_arg in PERIODS:
           f"avg overpayment ({FAIR_RATE_POPULATION}) = ${avg_op:,.0f}")
 ```
 
-## Compute all bill deltas
+## Compute overpayment for all rates × periods
 
-For each CAIRO rate × period, we compute `bill_delta_between_segments` using
-the configured `BILL_COL`. Then we derive the two overpayment-corrected
-variants from the Rate 1 delta.
+For each CAIRO rate × period, we compute the bill delta via
+`bill_delta_between_segments`, then subtract the MC delta to get overpayment.
+The MC delta is rate-independent — it's the same for every rate — so the
+difference between rates comes entirely from the bill side.
+
+For the two synthetic rates (Rate 1 − avg / per-bldg overpayment), we first
+adjust the bill delta and then subtract MC, so their overpayment shows how
+much cross-subsidy remains after the correction.
 
 ```{python}
 #| label: compute-deltas
 
-all_deltas: dict[tuple[str, str], pl.DataFrame] = {}
+all_overpayment: dict[tuple[str, str], pl.DataFrame] = {}
+
+SEASON_MAP_DELTAS = {"Annual": "annual", "Winter": "winter", "Summer": "summer"}
 
 for period_label, month_arg in PERIODS:
+    season_key = SEASON_MAP_DELTAS[period_label]
+    mc_period = mc_delta.filter(pl.col("season") == season_key).select(
+        "bldg_id", "delta_mc"
+    )
+
     for rate_label, seg_pre, seg_cal in CAIRO_RATES:
         delta = bill_delta_between_segments(
             STATE, BATCH, seg_pre, seg_cal,
             bill_col=BILL_COL,
             month=month_arg,
         )
-        all_deltas[(rate_label, period_label)] = delta
+        op = (
+            delta.join(mc_period, on="bldg_id", how="inner")
+            .with_columns(
+                (pl.col("delta") - pl.col("delta_mc")).alias("delta")
+            )
+            .drop("delta_mc")
+        )
+        all_overpayment[(rate_label, period_label)] = op
 
-    rate1_delta = all_deltas[("Rate 1", period_label)]
-    op = overpayment_by_period[period_label]
-    avg_op = avg_overpayment_by_period[period_label]
+    rate1_op = all_overpayment[("Rate 1", period_label)]
+    avg_op_val = avg_overpayment_by_period[period_label]
 
-    delta_minus_avg = rate1_delta.with_columns(
-        (pl.col("delta") - avg_op).alias("delta")
+    op_minus_avg = rate1_op.with_columns(
+        (pl.col("delta") - avg_op_val).alias("delta")
     )
-    all_deltas[("Rate 1 − avg.\noverpayment", period_label)] = delta_minus_avg
+    all_overpayment[("Rate 1 − avg.\noverpayment", period_label)] = op_minus_avg
 
-    delta_minus_bldg = (
-        rate1_delta.join(
-            op.select("bldg_id", "overpayment"), on="bldg_id"
+    op_bldg = overpayment_by_period[period_label]
+    op_minus_bldg = (
+        rate1_op.join(
+            op_bldg.select("bldg_id", "overpayment"), on="bldg_id"
         )
         .with_columns((pl.col("delta") - pl.col("overpayment")).alias("delta"))
         .drop("overpayment")
     )
-    all_deltas[("Rate 1 − per-bldg.\noverpayment", period_label)] = delta_minus_bldg
+    all_overpayment[("Rate 1 − per-bldg.\noverpayment", period_label)] = op_minus_bldg
 
-print(f"Total delta DataFrames: {len(all_deltas)}")
-for (rate, period), df in sorted(all_deltas.items(), key=lambda x: (x[0][1], x[0][0])):
-    print(f"  ({period}, {rate.replace(chr(10), ' ')}): {df.height:,} buildings")
+print(f"Total overpayment DataFrames: {len(all_overpayment)}")
+for (rate, period), df in sorted(all_overpayment.items(), key=lambda x: (x[0][1], x[0][0])):
+    _mean = (df["delta"] * df["weight"]).sum() / df["weight"].sum()
+    print(f"  ({period}, {rate.replace(chr(10), ' ')}): "
+          f"{df.height:,} buildings, wtd mean overpayment = ${_mean:,.0f}")
 ```
 
 ## Incidence summary
 
 Before diving into histograms, a compact summary: for each heating type ×
-rate × period, the weighted % of homes that see a bill increase.
+rate × period, the weighted % of homes that overpay (positive) vs. underpay
+(negative).
 
 ```{python}
 #| label: incidence-summary
@@ -436,7 +456,7 @@ ALL_HEATING_CODES = list(FAIR_RATE_HTS) + ["all_fossil"]
 _rows: list[dict] = []
 for period_label, _ in PERIODS:
     for rate_label in ALL_RATE_LABELS:
-        delta = all_deltas[(rate_label, period_label)]
+        delta = all_overpayment[(rate_label, period_label)]
         for ht_code in ALL_HEATING_CODES:
             if ht_code == "all_fossil":
                 filtered = delta.filter(pl.col("heating_type_v2").is_in(FAIR_RATE_HTS))
@@ -450,473 +470,169 @@ for period_label, _ in PERIODS:
                 "rate": rate_label.replace("\n", " "),
                 "heating_type": ht_code,
                 "n_buildings": filtered.height,
-                "pct_increase": inc["pct_increase"],
-                "pct_decrease": inc["pct_decrease"],
-                "mean_delta": inc["mean_delta"],
-                "median_delta": inc["median_delta"],
+                "pct_overpay": inc["pct_increase"],
+                "pct_underpay": inc["pct_decrease"],
+                "mean_overpayment": inc["mean_delta"],
+                "median_overpayment": inc["median_delta"],
             })
 
 incidence_df = pl.DataFrame(_rows)
 print(incidence_df.to_pandas().to_string(index=False))
 ```
 
-## Quadrant comparison charts
+## Overpayment histograms
 
-For each heating type × period, a single chart comparing all 6 rate variants
-side by side. This is the most compact summary.
+Weighted histograms of per-building overpayment for each rate × period ×
+heating type. Zero means the building pays exactly its incremental marginal
+cost; positive means it overpays.
+
+```{python}
+#| label: hist-helper
+#| echo: false
+
+HEATING_GROUPS: list[tuple[str, str, str]] = [
+    ("natgas", "natural gas", "natgas"),
+    ("delivered_fuels", "oil/propane", "delivered_fuels"),
+    ("all_fossil", "all fossil fuel", "all_fossil"),
+]
+
+def _filter_ht(df: pl.DataFrame, ht_code: str) -> pl.DataFrame:
+    if ht_code == "all_fossil":
+        return df.filter(pl.col("heating_type_v2").is_in(FAIR_RATE_HTS))
+    return df.filter(pl.col("heating_type_v2") == ht_code)
+```
 
 ### Annual
 
 ```{python}
-#| label: fig-quadrant-annual-natgas
-#| fig-cap: "Annual bill change for natural-gas-heated homes under 6 rate variants."
+#| label: fig-hist-annual-natgas
+#| fig-cap: "Annual delivery overpayment for natural-gas-heated homes under each rate."
 
 _period = "Annual"
-_ht = "natgas"
-_rows = [
-    (label, all_deltas[(label, _period)].filter(pl.col("heating_type_v2") == _ht))
-    for label in ALL_RATE_LABELS
-]
-display_svg(
-    plot_bill_change_quadrant_comparison(
-        _rows,
-        title_parts=[
-            ("Annual bill change for ", "#000000"),
-            ("natural gas", "#7A8A10"),
-            (" heated homes, by rate", "#000000"),
-        ],
+for _rate in ALL_RATE_LABELS:
+    _op = _filter_ht(all_overpayment[(_rate, _period)], "natgas")
+    plot_weighted_bill_change_hist(
+        _op,
+        f"Natural gas: annual overpayment — {_rate.replace(chr(10), ' ')}",
+        show_mean_median=True,
+        x_label="Annual delivery overpayment ($)",
     )
-)
 ```
 
 ```{python}
-#| label: fig-quadrant-annual-delivered
-#| fig-cap: "Annual bill change for oil/propane-heated homes under 6 rate variants."
+#| label: fig-hist-annual-delivered
+#| fig-cap: "Annual delivery overpayment for oil/propane-heated homes under each rate."
 
-_ht = "delivered_fuels"
-_rows = [
-    (label, all_deltas[(label, _period)].filter(pl.col("heating_type_v2") == _ht))
-    for label in ALL_RATE_LABELS
-]
-display_svg(
-    plot_bill_change_quadrant_comparison(
-        _rows,
-        title_parts=[
-            ("Annual bill change for ", "#000000"),
-            ("oil/propane", "#fc9706"),
-            (" heated homes, by rate", "#000000"),
-        ],
+for _rate in ALL_RATE_LABELS:
+    _op = _filter_ht(all_overpayment[(_rate, _period)], "delivered_fuels")
+    plot_weighted_bill_change_hist(
+        _op,
+        f"Oil/propane: annual overpayment — {_rate.replace(chr(10), ' ')}",
+        show_mean_median=True,
+        x_label="Annual delivery overpayment ($)",
     )
-)
 ```
 
 ```{python}
-#| label: fig-quadrant-annual-all-fossil
-#| fig-cap: "Annual bill change for all fossil-fuel-heated homes under 6 rate variants."
+#| label: fig-hist-annual-all-fossil
+#| fig-cap: "Annual delivery overpayment for all fossil-fuel-heated homes under each rate."
 
-_rows = [
-    (label, all_deltas[(label, _period)].filter(pl.col("heating_type_v2").is_in(FAIR_RATE_HTS)))
-    for label in ALL_RATE_LABELS
-]
-display_svg(
-    plot_bill_change_quadrant_comparison(
-        _rows,
-        title_parts=[
-            ("Annual bill change for ", "#000000"),
-            ("all fossil fuel", "#023047"),
-            (" heated homes, by rate", "#000000"),
-        ],
+for _rate in ALL_RATE_LABELS:
+    _op = _filter_ht(all_overpayment[(_rate, _period)], "all_fossil")
+    plot_weighted_bill_change_hist(
+        _op,
+        f"All fossil fuel: annual overpayment — {_rate.replace(chr(10), ' ')}",
+        show_mean_median=True,
+        x_label="Annual delivery overpayment ($)",
     )
-)
 ```
 
 ### Winter
 
 ```{python}
-#| label: fig-quadrant-winter-natgas
-#| fig-cap: "Winter bill change for natural-gas-heated homes under 6 rate variants."
+#| label: fig-hist-winter-natgas
+#| fig-cap: "Winter delivery overpayment for natural-gas-heated homes under each rate."
 
 _period = "Winter"
-_ht = "natgas"
-_rows = [
-    (label, all_deltas[(label, _period)].filter(pl.col("heating_type_v2") == _ht))
-    for label in ALL_RATE_LABELS
-]
-display_svg(
-    plot_bill_change_quadrant_comparison(
-        _rows,
-        title_parts=[
-            ("Winter bill change for ", "#000000"),
-            ("natural gas", "#7A8A10"),
-            (" heated homes, by rate", "#000000"),
-        ],
+for _rate in ALL_RATE_LABELS:
+    _op = _filter_ht(all_overpayment[(_rate, _period)], "natgas")
+    plot_weighted_bill_change_hist(
+        _op,
+        f"Natural gas: winter overpayment — {_rate.replace(chr(10), ' ')}",
+        show_mean_median=True,
+        x_label="Winter delivery overpayment ($)",
     )
-)
 ```
 
 ```{python}
-#| label: fig-quadrant-winter-delivered
-#| fig-cap: "Winter bill change for oil/propane-heated homes under 6 rate variants."
+#| label: fig-hist-winter-delivered
+#| fig-cap: "Winter delivery overpayment for oil/propane-heated homes under each rate."
 
-_ht = "delivered_fuels"
-_rows = [
-    (label, all_deltas[(label, _period)].filter(pl.col("heating_type_v2") == _ht))
-    for label in ALL_RATE_LABELS
-]
-display_svg(
-    plot_bill_change_quadrant_comparison(
-        _rows,
-        title_parts=[
-            ("Winter bill change for ", "#000000"),
-            ("oil/propane", "#fc9706"),
-            (" heated homes, by rate", "#000000"),
-        ],
+for _rate in ALL_RATE_LABELS:
+    _op = _filter_ht(all_overpayment[(_rate, _period)], "delivered_fuels")
+    plot_weighted_bill_change_hist(
+        _op,
+        f"Oil/propane: winter overpayment — {_rate.replace(chr(10), ' ')}",
+        show_mean_median=True,
+        x_label="Winter delivery overpayment ($)",
     )
-)
 ```
 
 ```{python}
-#| label: fig-quadrant-winter-all-fossil
-#| fig-cap: "Winter bill change for all fossil-fuel-heated homes under 6 rate variants."
+#| label: fig-hist-winter-all-fossil
+#| fig-cap: "Winter delivery overpayment for all fossil-fuel-heated homes under each rate."
 
-_rows = [
-    (label, all_deltas[(label, _period)].filter(pl.col("heating_type_v2").is_in(FAIR_RATE_HTS)))
-    for label in ALL_RATE_LABELS
-]
-display_svg(
-    plot_bill_change_quadrant_comparison(
-        _rows,
-        title_parts=[
-            ("Winter bill change for ", "#000000"),
-            ("all fossil fuel", "#023047"),
-            (" heated homes, by rate", "#000000"),
-        ],
+for _rate in ALL_RATE_LABELS:
+    _op = _filter_ht(all_overpayment[(_rate, _period)], "all_fossil")
+    plot_weighted_bill_change_hist(
+        _op,
+        f"All fossil fuel: winter overpayment — {_rate.replace(chr(10), ' ')}",
+        show_mean_median=True,
+        x_label="Winter delivery overpayment ($)",
     )
-)
 ```
 
 ### Summer
 
 ```{python}
-#| label: fig-quadrant-summer-natgas
-#| fig-cap: "Summer bill change for natural-gas-heated homes under 6 rate variants."
+#| label: fig-hist-summer-natgas
+#| fig-cap: "Summer delivery overpayment for natural-gas-heated homes under each rate."
 
 _period = "Summer"
-_ht = "natgas"
-_rows = [
-    (label, all_deltas[(label, _period)].filter(pl.col("heating_type_v2") == _ht))
-    for label in ALL_RATE_LABELS
-]
-display_svg(
-    plot_bill_change_quadrant_comparison(
-        _rows,
-        title_parts=[
-            ("Summer bill change for ", "#000000"),
-            ("natural gas", "#7A8A10"),
-            (" heated homes, by rate", "#000000"),
-        ],
+for _rate in ALL_RATE_LABELS:
+    _op = _filter_ht(all_overpayment[(_rate, _period)], "natgas")
+    plot_weighted_bill_change_hist(
+        _op,
+        f"Natural gas: summer overpayment — {_rate.replace(chr(10), ' ')}",
+        show_mean_median=True,
+        x_label="Summer delivery overpayment ($)",
     )
-)
 ```
 
 ```{python}
-#| label: fig-quadrant-summer-delivered
-#| fig-cap: "Summer bill change for oil/propane-heated homes under 6 rate variants."
+#| label: fig-hist-summer-delivered
+#| fig-cap: "Summer delivery overpayment for oil/propane-heated homes under each rate."
 
-_ht = "delivered_fuels"
-_rows = [
-    (label, all_deltas[(label, _period)].filter(pl.col("heating_type_v2") == _ht))
-    for label in ALL_RATE_LABELS
-]
-display_svg(
-    plot_bill_change_quadrant_comparison(
-        _rows,
-        title_parts=[
-            ("Summer bill change for ", "#000000"),
-            ("oil/propane", "#fc9706"),
-            (" heated homes, by rate", "#000000"),
-        ],
+for _rate in ALL_RATE_LABELS:
+    _op = _filter_ht(all_overpayment[(_rate, _period)], "delivered_fuels")
+    plot_weighted_bill_change_hist(
+        _op,
+        f"Oil/propane: summer overpayment — {_rate.replace(chr(10), ' ')}",
+        show_mean_median=True,
+        x_label="Summer delivery overpayment ($)",
     )
-)
 ```
 
 ```{python}
-#| label: fig-quadrant-summer-all-fossil
-#| fig-cap: "Summer bill change for all fossil-fuel-heated homes under 6 rate variants."
+#| label: fig-hist-summer-all-fossil
+#| fig-cap: "Summer delivery overpayment for all fossil-fuel-heated homes under each rate."
 
-_rows = [
-    (label, all_deltas[(label, _period)].filter(pl.col("heating_type_v2").is_in(FAIR_RATE_HTS)))
-    for label in ALL_RATE_LABELS
-]
-display_svg(
-    plot_bill_change_quadrant_comparison(
-        _rows,
-        title_parts=[
-            ("Summer bill change for ", "#000000"),
-            ("all fossil fuel", "#023047"),
-            (" heated homes, by rate", "#000000"),
-        ],
+for _rate in ALL_RATE_LABELS:
+    _op = _filter_ht(all_overpayment[(_rate, _period)], "all_fossil")
+    plot_weighted_bill_change_hist(
+        _op,
+        f"All fossil fuel: summer overpayment — {_rate.replace(chr(10), ' ')}",
+        show_mean_median=True,
+        x_label="Summer delivery overpayment ($)",
     )
-)
-```
-
-## Detailed histograms
-
-For each heating type × period, individual weighted histograms for the Rate 1
-baseline and the per-building overpayment-corrected variant, showing the full
-distribution shape (the quadrant charts above compress to 4 bins).
-
-### Annual
-
-```{python}
-#| label: fig-hist-annual-natgas-rate1
-#| fig-cap: "Annual bill change distribution for natural-gas-heated homes under Rate 1."
-
-_delta = all_deltas[("Rate 1", "Annual")].filter(pl.col("heating_type_v2") == "natgas")
-plot_weighted_bill_change_hist(
-    _delta,
-    "Natural gas: annual bill change under Rate 1",
-    show_mean_median=True,
-)
-```
-
-```{python}
-#| label: fig-hist-annual-natgas-corrected
-#| fig-cap: "Annual bill change distribution for natural-gas-heated homes after removing per-building delivery overpayment."
-
-_delta = all_deltas[("Rate 1 − per-bldg.\noverpayment", "Annual")].filter(
-    pl.col("heating_type_v2") == "natgas"
-)
-plot_weighted_bill_change_hist(
-    _delta,
-    "Natural gas: annual bill change after removing per-building overpayment",
-    show_mean_median=True,
-    x_label="Annual bill change after overpayment correction ($)",
-)
-```
-
-```{python}
-#| label: fig-hist-annual-delivered-rate1
-#| fig-cap: "Annual bill change distribution for oil/propane-heated homes under Rate 1."
-
-_delta = all_deltas[("Rate 1", "Annual")].filter(pl.col("heating_type_v2") == "delivered_fuels")
-plot_weighted_bill_change_hist(
-    _delta,
-    "Oil/propane: annual bill change under Rate 1",
-    show_mean_median=True,
-)
-```
-
-```{python}
-#| label: fig-hist-annual-delivered-corrected
-#| fig-cap: "Annual bill change distribution for oil/propane-heated homes after removing per-building delivery overpayment."
-
-_delta = all_deltas[("Rate 1 − per-bldg.\noverpayment", "Annual")].filter(
-    pl.col("heating_type_v2") == "delivered_fuels"
-)
-plot_weighted_bill_change_hist(
-    _delta,
-    "Oil/propane: annual bill change after removing per-building overpayment",
-    show_mean_median=True,
-    x_label="Annual bill change after overpayment correction ($)",
-)
-```
-
-```{python}
-#| label: fig-hist-annual-all-fossil-rate1
-#| fig-cap: "Annual bill change distribution for all fossil-fuel-heated homes under Rate 1."
-
-_delta = all_deltas[("Rate 1", "Annual")].filter(pl.col("heating_type_v2").is_in(FAIR_RATE_HTS))
-plot_weighted_bill_change_hist(
-    _delta,
-    "All fossil fuel: annual bill change under Rate 1",
-    show_mean_median=True,
-)
-```
-
-```{python}
-#| label: fig-hist-annual-all-fossil-corrected
-#| fig-cap: "Annual bill change distribution for all fossil-fuel-heated homes after removing per-building delivery overpayment."
-
-_delta = all_deltas[("Rate 1 − per-bldg.\noverpayment", "Annual")].filter(
-    pl.col("heating_type_v2").is_in(FAIR_RATE_HTS)
-)
-plot_weighted_bill_change_hist(
-    _delta,
-    "All fossil fuel: annual bill change after removing per-building overpayment",
-    show_mean_median=True,
-    x_label="Annual bill change after overpayment correction ($)",
-)
-```
-
-### Winter
-
-```{python}
-#| label: fig-hist-winter-natgas-rate1
-#| fig-cap: "Winter bill change distribution for natural-gas-heated homes under Rate 1."
-
-_delta = all_deltas[("Rate 1", "Winter")].filter(pl.col("heating_type_v2") == "natgas")
-plot_weighted_bill_change_hist(
-    _delta,
-    "Natural gas: winter bill change under Rate 1",
-    show_mean_median=True,
-    x_label="Winter bill change ($)",
-)
-```
-
-```{python}
-#| label: fig-hist-winter-natgas-corrected
-#| fig-cap: "Winter bill change distribution for natural-gas-heated homes after removing per-building delivery overpayment."
-
-_delta = all_deltas[("Rate 1 − per-bldg.\noverpayment", "Winter")].filter(
-    pl.col("heating_type_v2") == "natgas"
-)
-plot_weighted_bill_change_hist(
-    _delta,
-    "Natural gas: winter bill change after removing per-building overpayment",
-    show_mean_median=True,
-    x_label="Winter bill change after overpayment correction ($)",
-)
-```
-
-```{python}
-#| label: fig-hist-winter-delivered-rate1
-#| fig-cap: "Winter bill change distribution for oil/propane-heated homes under Rate 1."
-
-_delta = all_deltas[("Rate 1", "Winter")].filter(pl.col("heating_type_v2") == "delivered_fuels")
-plot_weighted_bill_change_hist(
-    _delta,
-    "Oil/propane: winter bill change under Rate 1",
-    show_mean_median=True,
-    x_label="Winter bill change ($)",
-)
-```
-
-```{python}
-#| label: fig-hist-winter-delivered-corrected
-#| fig-cap: "Winter bill change distribution for oil/propane-heated homes after removing per-building delivery overpayment."
-
-_delta = all_deltas[("Rate 1 − per-bldg.\noverpayment", "Winter")].filter(
-    pl.col("heating_type_v2") == "delivered_fuels"
-)
-plot_weighted_bill_change_hist(
-    _delta,
-    "Oil/propane: winter bill change after removing per-building overpayment",
-    show_mean_median=True,
-    x_label="Winter bill change after overpayment correction ($)",
-)
-```
-
-```{python}
-#| label: fig-hist-winter-all-fossil-rate1
-#| fig-cap: "Winter bill change distribution for all fossil-fuel-heated homes under Rate 1."
-
-_delta = all_deltas[("Rate 1", "Winter")].filter(pl.col("heating_type_v2").is_in(FAIR_RATE_HTS))
-plot_weighted_bill_change_hist(
-    _delta,
-    "All fossil fuel: winter bill change under Rate 1",
-    show_mean_median=True,
-    x_label="Winter bill change ($)",
-)
-```
-
-```{python}
-#| label: fig-hist-winter-all-fossil-corrected
-#| fig-cap: "Winter bill change distribution for all fossil-fuel-heated homes after removing per-building delivery overpayment."
-
-_delta = all_deltas[("Rate 1 − per-bldg.\noverpayment", "Winter")].filter(
-    pl.col("heating_type_v2").is_in(FAIR_RATE_HTS)
-)
-plot_weighted_bill_change_hist(
-    _delta,
-    "All fossil fuel: winter bill change after removing per-building overpayment",
-    show_mean_median=True,
-    x_label="Winter bill change after overpayment correction ($)",
-)
-```
-
-### Summer
-
-```{python}
-#| label: fig-hist-summer-natgas-rate1
-#| fig-cap: "Summer bill change distribution for natural-gas-heated homes under Rate 1."
-
-_delta = all_deltas[("Rate 1", "Summer")].filter(pl.col("heating_type_v2") == "natgas")
-plot_weighted_bill_change_hist(
-    _delta,
-    "Natural gas: summer bill change under Rate 1",
-    show_mean_median=True,
-    x_label="Summer bill change ($)",
-)
-```
-
-```{python}
-#| label: fig-hist-summer-natgas-corrected
-#| fig-cap: "Summer bill change distribution for natural-gas-heated homes after removing per-building delivery overpayment."
-
-_delta = all_deltas[("Rate 1 − per-bldg.\noverpayment", "Summer")].filter(
-    pl.col("heating_type_v2") == "natgas"
-)
-plot_weighted_bill_change_hist(
-    _delta,
-    "Natural gas: summer bill change after removing per-building overpayment",
-    show_mean_median=True,
-    x_label="Summer bill change after overpayment correction ($)",
-)
-```
-
-```{python}
-#| label: fig-hist-summer-delivered-rate1
-#| fig-cap: "Summer bill change distribution for oil/propane-heated homes under Rate 1."
-
-_delta = all_deltas[("Rate 1", "Summer")].filter(pl.col("heating_type_v2") == "delivered_fuels")
-plot_weighted_bill_change_hist(
-    _delta,
-    "Oil/propane: summer bill change under Rate 1",
-    show_mean_median=True,
-    x_label="Summer bill change ($)",
-)
-```
-
-```{python}
-#| label: fig-hist-summer-delivered-corrected
-#| fig-cap: "Summer bill change distribution for oil/propane-heated homes after removing per-building delivery overpayment."
-
-_delta = all_deltas[("Rate 1 − per-bldg.\noverpayment", "Summer")].filter(
-    pl.col("heating_type_v2") == "delivered_fuels"
-)
-plot_weighted_bill_change_hist(
-    _delta,
-    "Oil/propane: summer bill change after removing per-building overpayment",
-    show_mean_median=True,
-    x_label="Summer bill change after overpayment correction ($)",
-)
-```
-
-```{python}
-#| label: fig-hist-summer-all-fossil-rate1
-#| fig-cap: "Summer bill change distribution for all fossil-fuel-heated homes under Rate 1."
-
-_delta = all_deltas[("Rate 1", "Summer")].filter(pl.col("heating_type_v2").is_in(FAIR_RATE_HTS))
-plot_weighted_bill_change_hist(
-    _delta,
-    "All fossil fuel: summer bill change under Rate 1",
-    show_mean_median=True,
-    x_label="Summer bill change ($)",
-)
-```
-
-```{python}
-#| label: fig-hist-summer-all-fossil-corrected
-#| fig-cap: "Summer bill change distribution for all fossil-fuel-heated homes after removing per-building delivery overpayment."
-
-_delta = all_deltas[("Rate 1 − per-bldg.\noverpayment", "Summer")].filter(
-    pl.col("heating_type_v2").is_in(FAIR_RATE_HTS)
-)
-plot_weighted_bill_change_hist(
-    _delta,
-    "All fossil fuel: summer bill change after removing per-building overpayment",
-    show_mean_median=True,
-    x_label="Summer bill change after overpayment correction ($)",
-)
 ```

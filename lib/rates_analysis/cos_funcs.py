@@ -38,6 +38,8 @@ from __future__ import annotations
 import warnings
 from typing import TYPE_CHECKING, cast
 
+import polars as pl
+
 if TYPE_CHECKING:
     import polars as pl
 
@@ -282,3 +284,67 @@ def bat_component_summary_by_heating_type(
         group_col=group_col,
         weight_col=weight_col,
     )
+
+
+def compute_building_seasonal_mc(
+    kwh_8760: pl.LazyFrame,
+    mc_8760: pl.DataFrame,
+    winter_months: list[int],
+    *,
+    utc_offset_hours: int = -5,
+) -> pl.DataFrame:
+    """Per-building seasonal + annual delivery MC from hourly load * hourly MC.
+
+    Pre-filters to hours with non-zero MC (peak hours) before joining, since
+    off-peak hours contribute zero to the sum. Returns a DataFrame with one row
+    per building per season (``"winter"``, ``"summer"``, ``"annual"``).
+
+    Columns: ``bldg_id``, ``season``, ``mc_delivery``.
+    """
+    mc_nonzero = mc_8760.filter((pl.col("mc_bulk_tx") > 0) | (pl.col("mc_dist_sub_tx") > 0)).select(
+        "timestamp", "mc_bulk_tx", "mc_dist_sub_tx"
+    )
+
+    peak_timestamps = mc_nonzero["timestamp"]
+    n_peak = len(peak_timestamps)
+
+    kwh_local = kwh_8760.with_columns((pl.col("timestamp") + pl.duration(hours=utc_offset_hours)).alias("timestamp"))
+    kwh_peak = cast(
+        "pl.DataFrame",
+        kwh_local.join(mc_nonzero.lazy().select("timestamp"), on="timestamp").collect(),
+    )
+
+    joined = kwh_peak.join(mc_nonzero, on="timestamp")
+
+    mc_by_bldg = joined.with_columns(
+        ((pl.col("grid_cons_kwh") * (pl.col("mc_bulk_tx") + pl.col("mc_dist_sub_tx"))).alias("mc_delivery")),
+        pl.when(pl.col("timestamp").dt.month().is_in(pl.lit(pl.Series(winter_months))))
+        .then(pl.lit("winter"))
+        .otherwise(pl.lit("summer"))
+        .alias("season"),
+    )
+
+    seasonal = mc_by_bldg.group_by("bldg_id", "season").agg(pl.col("mc_delivery").sum())
+    annual = (
+        mc_by_bldg.group_by("bldg_id")
+        .agg(pl.col("mc_delivery").sum())
+        .with_columns(pl.lit("annual").alias("season"))
+        .select("bldg_id", "season", "mc_delivery")
+    )
+
+    result = pl.concat([seasonal, annual])
+
+    # Ensure all buildings have rows for both winter and summer (zero if no MC
+    # hours in that season, e.g. winter for a summer-peaking utility).
+    all_bldgs = result.select("bldg_id").unique()
+    all_seasons = pl.DataFrame({"season": ["winter", "summer", "annual"]})
+    full_grid = all_bldgs.join(all_seasons, how="cross")
+    result = full_grid.join(result, on=["bldg_id", "season"], how="left").with_columns(
+        pl.col("mc_delivery").fill_null(0.0)
+    )
+
+    print(f"  Peak hours: {n_peak} of 8760 ({n_peak / 8760 * 100:.1f}%)")
+    print(f"  Joined rows: {joined.height:,} (buildings * peak hours)")
+    seasons_with_mc = seasonal["season"].unique().to_list()
+    print(f"  Seasons with non-zero MC: {sorted(seasons_with_mc) if seasons_with_mc else 'none'}")
+    return result

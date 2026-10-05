@@ -3841,8 +3841,11 @@ _BILL_SEGMENT_ORDER = [
 # Default delivery color (midnight) and supply color (carrot/saffron).
 # Components not listed here get the delivery color.
 _BILL_SUPPLY_COMPONENTS = {"Generation"}
+_BILL_FIXED_COMPONENTS = {"Customer Charge"}
 _BILL_DELIVERY_COLOR = "#023047"
 _BILL_DELIVERY_INCREMENT_COLOR = "#5b90a8"
+_BILL_FIXED_COLOR = "#a0af12"  # pistachio — differentiates fixed from volumetric
+_BILL_FIXED_INCREMENT_COLOR = "#c4cf5e"
 _BILL_SUPPLY_COLOR = "#fc9706"
 _BILL_SUPPLY_INCREMENT_COLOR = "#ffc729"
 
@@ -3854,6 +3857,9 @@ def _bill_stacked_colors(components: list[str]) -> dict[str, str]:
         if c in _BILL_SUPPLY_COMPONENTS:
             colors[f"{c}|Before"] = _BILL_SUPPLY_COLOR
             colors[f"{c}|Increment"] = _BILL_SUPPLY_INCREMENT_COLOR
+        elif c in _BILL_FIXED_COMPONENTS:
+            colors[f"{c}|Before"] = _BILL_FIXED_COLOR
+            colors[f"{c}|Increment"] = _BILL_FIXED_INCREMENT_COLOR
         else:
             colors[f"{c}|Before"] = _BILL_DELIVERY_COLOR
             colors[f"{c}|Increment"] = _BILL_DELIVERY_INCREMENT_COLOR
@@ -3862,7 +3868,15 @@ def _bill_stacked_colors(components: list[str]) -> dict[str, str]:
 
 def _bill_single_colors(components: list[str]) -> dict[str, str]:
     """Build ``component → color`` mapping for the single-bar bill chart."""
-    return {c: _BILL_SUPPLY_COLOR if c in _BILL_SUPPLY_COMPONENTS else _BILL_DELIVERY_COLOR for c in components}
+
+    def _color(c: str) -> str:
+        if c in _BILL_SUPPLY_COMPONENTS:
+            return _BILL_SUPPLY_COLOR
+        if c in _BILL_FIXED_COMPONENTS:
+            return _BILL_FIXED_COLOR
+        return _BILL_DELIVERY_COLOR
+
+    return {c: _color(c) for c in components}
 
 
 # Legacy order used by submitted MD testimony — preserved exactly.

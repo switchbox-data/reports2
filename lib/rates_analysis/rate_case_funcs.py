@@ -3790,7 +3790,7 @@ def plot_monthly_load_before_after(
             ax.text(
                 inc_x,
                 inc_bar_top + 25,
-                "Peak-hour usage\nincrease \u2191",
+                "Usage during\npeak hours",
                 ha="center",
                 va="bottom",
                 fontsize=13,

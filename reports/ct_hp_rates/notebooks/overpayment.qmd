@@ -725,7 +725,17 @@ overpayment distribution is directly visible.
 import plotnine as p9
 from lib.rates_analysis.rate_case_funcs import QUADRANT_COLORS, QUADRANT_ORDER
 
-RATE_COMPARE_LABELS = ["Rate 1", "Rate 6", "Rate 6\n(FIXED+MC)", "Fair flat rate", "Fair seasonal rate"]
+RATE_COMPARE_LABELS = [
+    "Rate 1",
+    "Rate 6",
+    "Rate 6\npersonalized",
+    "Rate 6\n(RATE=MC)",
+    "Rate 6\n(RATE=MC, pers.)",
+    "Rate 6\n(FIXED+MC)",
+    "Rate 6\n(FIXED+MC, pers.)",
+    "Fair flat rate",
+    "Fair seasonal rate",
+]
 
 rate_compare_figs: dict[str, p9.ggplot] = {}
 
@@ -767,15 +777,26 @@ for ht_slug, ht_name, ht_code in HEATING_GROUPS:
         )
     )
 
-    # Per-facet mean/median for vlines
+    # Per-facet mean/median for vlines + text annotations
     stats_rows = []
     for level in RATE_COMPARE_LABELS:
         sub = combined.filter(pl.col("rate") == level)
         w_mean = float((sub["delta"] * sub["weight"]).sum() / sub["weight"].sum())
         w_median = weighted_quantile(sub.select("delta", "weight"), "delta", 0.50)
-        stats_rows.append({"rate": level, "w_mean": w_mean, "w_median": w_median})
+        y_top = float(
+            hist_binned.filter(pl.col("rate") == level)["weight_sum"].max()
+        )
+        stats_rows.append({
+            "rate": level,
+            "w_mean": w_mean,
+            "w_median": w_median,
+            "y_mean": y_top * 0.97,
+            "y_median": y_top * 0.85,
+        })
     stats_df = pl.DataFrame(stats_rows).with_columns(
-        pl.col("rate").cast(pl.Enum(RATE_COMPARE_LABELS))
+        pl.col("rate").cast(pl.Enum(RATE_COMPARE_LABELS)),
+        pl.format("Mean ${}", pl.col("w_mean").round(0).cast(pl.Int64)).alias("mean_label"),
+        pl.format("Median ${}", pl.col("w_median").round(0).cast(pl.Int64)).alias("median_label"),
     )
 
     fig = (
@@ -788,7 +809,7 @@ for ht_slug, ht_name, ht_code in HEATING_GROUPS:
             labels=lambda xs: [f"${x:,.0f}" if x >= 0 else f"-${abs(x):,.0f}" for x in xs],
         )
         + p9.coord_cartesian(xlim=(hist_x_lo, hist_x_hi))
-        + p9.facet_wrap("rate", ncol=1)
+        + p9.facet_wrap("rate", ncol=1, scales="free_x")
         + p9.labs(
             x="Annual delivery overpayment ($)",
             y="Weighted households",
@@ -796,7 +817,7 @@ for ht_slug, ht_name, ht_code in HEATING_GROUPS:
         )
         + p9.guides(fill=False)
         + theme_switchbox()
-        + p9.theme(figure_size=(10.5, 3.2 * len(RATE_COMPARE_LABELS)))
+        + p9.theme(figure_size=(10.5, 2.5 * len(RATE_COMPARE_LABELS)))
         + p9.geom_vline(
             stats_df, p9.aes(xintercept="w_mean"),
             linetype="dashed", color=SB_COLORS["carrot"], size=0.8,
@@ -804,6 +825,20 @@ for ht_slug, ht_name, ht_code in HEATING_GROUPS:
         + p9.geom_vline(
             stats_df, p9.aes(xintercept="w_median"),
             linetype="dashed", color=SB_COLORS["midnight"], size=0.8,
+        )
+        + p9.geom_text(
+            stats_df,
+            p9.aes(x="w_mean", y="y_mean", label="mean_label"),
+            inherit_aes=False,
+            ha="left", va="top", color=SB_COLORS["carrot"],
+            size=9, fontweight="bold", nudge_x=bin_width * 0.4,
+        )
+        + p9.geom_text(
+            stats_df,
+            p9.aes(x="w_median", y="y_median", label="median_label"),
+            inherit_aes=False,
+            ha="left", va="top", color=SB_COLORS["midnight"],
+            size=9, fontweight="bold", nudge_x=bin_width * 0.4,
         )
     )
     rate_compare_figs[ht_slug] = fig

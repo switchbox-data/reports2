@@ -51,6 +51,7 @@ import yaml
 from lib.plotnine import SB_COLORS, theme_switchbox
 from lib.rdp import fetch_rdp_file
 from lib.rates_analysis.cos_funcs import incremental_cost_delta_with_gap, compute_building_seasonal_mc
+from lib.rates_analysis.fair_rate import derive_fair_flat_rate, derive_fair_seasonal_rate
 from lib.rates_analysis.rate_case_funcs import (
     MONTH_ORDER,
     bill_change_incidence,
@@ -60,6 +61,7 @@ from lib.rates_analysis.rate_case_funcs import (
     load_delivery_mc_heatmap,
     plot_weighted_bill_change_hist,
     segment_name,
+    weighted_quantile,
 )
 ```
 
@@ -84,7 +86,8 @@ YEAR = 2025
 
 # --- Bill column toggle -------------------------------------------------------
 # Which bill column to use for the histogram deltas.
-# Overpayment *correction* always uses elec_delivery_bill (delivery concept).
+# Overpayment *correction* always uses elec_delivery_bill (delivery concept),
+# optionally plus elec_fixed_charge — see INCLUDE_FIXED_CHARGE below.
 BILL_COL_LMI_CURRENT = "energy_total_bill_lmi_53"
 BILL_COL_LMI_100 = "energy_total_bill_lmi_100"
 BILL_COL_BASELINE = "energy_total_bill"
@@ -92,8 +95,22 @@ BILL_COL_DELIVERY = "elec_delivery_bill"
 
 BILL_COL = BILL_COL_DELIVERY  # toggle here
 
+# When True, "delivery bill" throughout this notebook means
+# elec_delivery_bill + elec_fixed_charge (volumetric delivery plus the
+# customer charge) instead of elec_delivery_bill alone. Only affects
+# BILL_COL_DELIVERY and the overpayment delivery-bill delta — the
+# LMI/total BILL_COL options already include the fixed charge.
+INCLUDE_FIXED_CHARGE = True  # toggle here
+
 # --- Residual ------------------------------------------------------------------
 RESIDUAL = "percustomer"
+
+# --- Base rate decomposition (Rate 1 proposed, $/kWh) -------------------------
+# From ct_eversource_tariff_summary.yaml and Exhibit CLP-RATES-3.
+BASE_DELIVERY_RATE = 0.16335   # total delivery = distribution + transmission + other_riders
+BASE_DISTRIBUTION = 0.12196    # distribution component
+BASE_TRANSMISSION = 0.05050    # transmission component
+OTHER_RIDERS = -0.00911        # CTA + SBC + CAM + RE + FMCC-Del
 
 # --- Scenario names ------------------------------------------------------------
 RATE6_SCENARIO = "default_ry1_r6_uncalibrated"
@@ -147,7 +164,10 @@ PERIODS: list[tuple[str, str | list[str]]] = [
     ("Summer", SUMMER_MONTH_LABELS),
 ]
 
-print(f"state={STATE}  batch={BATCH}  utility={UTILITY}  bill_col={BILL_COL}")
+print(
+    f"state={STATE}  batch={BATCH}  utility={UTILITY}  bill_col={BILL_COL}  "
+    f"include_fixed_charge={INCLUDE_FIXED_CHARGE}"
+)
 print(f"fair_rate_population={FAIR_RATE_POPULATION} → {FAIR_RATE_HTS}")
 print(f"winter_months={WINTER_MONTHS} → {WINTER_MONTH_LABELS}")
 print(f"summer_months={SUMMER_MONTH_NUMS} → {SUMMER_MONTH_LABELS}")
@@ -251,13 +271,60 @@ else:
     print(f"⚠ Max discrepancy ${_max_disc:,.2f} — check timestamp alignment")
 ```
 
+## Delivery bill helper
+
+`bill_delta_between_segments` diffs one existing master-bills column, so it
+can't take an expression like `elec_delivery_bill + elec_fixed_charge`
+directly. `delivery_bill_delta` wraps it: it always fetches the
+`elec_delivery_bill` delta, and when `INCLUDE_FIXED_CHARGE` is on, it also
+fetches the `elec_fixed_charge` delta and adds the two together so
+`bill_before`/`bill_after`/`delta` reflect the full electric delivery-side
+bill (fixed charge + volumetric delivery, excluding supply and gas).
+
+```{python}
+#| label: delivery-bill-helper
+
+def delivery_bill_delta(
+    state: str,
+    batch: str,
+    seg_pre: str,
+    seg_cal: str,
+    *,
+    month: str | list[str] = "Annual",
+) -> pl.DataFrame:
+    """elec_delivery_bill delta, plus the elec_fixed_charge delta when INCLUDE_FIXED_CHARGE is on."""
+    delta = bill_delta_between_segments(
+        state, batch, seg_pre, seg_cal, bill_col="elec_delivery_bill", month=month,
+    )
+    if not INCLUDE_FIXED_CHARGE:
+        return delta
+    fixed = bill_delta_between_segments(
+        state, batch, seg_pre, seg_cal, bill_col="elec_fixed_charge", month=month,
+    ).select(
+        "bldg_id",
+        pl.col("bill_before").alias("fc_before"),
+        pl.col("bill_after").alias("fc_after"),
+        pl.col("delta").alias("fc_delta"),
+    )
+    return (
+        delta.join(fixed, on="bldg_id", how="inner")
+        .with_columns(
+            (pl.col("bill_before") + pl.col("fc_before")).alias("bill_before"),
+            (pl.col("bill_after") + pl.col("fc_after")).alias("bill_after"),
+            (pl.col("delta") + pl.col("fc_delta")).alias("delta"),
+        )
+        .drop("fc_before", "fc_after", "fc_delta")
+    )
+```
+
 ## Compute per-building overpayment by period
 
 For each period (annual, winter, summer), we compute per-building delivery
 overpayment = delivery bill delta − MC delta. The delivery bill delta always
-uses `elec_delivery_bill` regardless of `BILL_COL`, since overpayment is a
-delivery concept. The per-building overpayment is then used to produce the two
-corrected bill-change variants.
+uses `elec_delivery_bill` (plus `elec_fixed_charge` when `INCLUDE_FIXED_CHARGE`
+is on, via `delivery_bill_delta`) regardless of `BILL_COL`, since overpayment
+is a delivery concept. The per-building overpayment is then used to produce
+the two corrected bill-change variants.
 
 ```{python}
 #| label: compute-overpayment
@@ -270,9 +337,8 @@ avg_overpayment_by_period: dict[str, float] = {}
 for period_label, month_arg in PERIODS:
     season_key = SEASON_MAP[period_label]
 
-    delivery_delta = bill_delta_between_segments(
+    delivery_delta = delivery_bill_delta(
         STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED,
-        bill_col="elec_delivery_bill",
         month=month_arg,
     )
 
@@ -301,16 +367,247 @@ for period_label, month_arg in PERIODS:
           f"avg overpayment ({FAIR_RATE_POPULATION}) = ${avg_op:,.0f}")
 ```
 
+## Fair flat rate (annual r')
+
+The fair flat delivery rate is a single volumetric rate derived so that, for
+the average fossil-fuel-heated building, the delivery bill after installing a
+heat pump equals the delivery bill before the retrofit plus incremental
+delivery marginal cost:
+
+$$r_{\text{new}} \times \overline{kWh_{\text{after}}} = r_{R1} \times \overline{kWh_{\text{before}}} + \overline{\Delta MC}$$
+
+It is applied unchanged to every month — winter and summer get the same
+per-kWh rate. We compute it once here and validate it against
+`derive_fair_flat_rate()` from `lib.rates_analysis.fair_rate`.
+
+```{python}
+#| label: compute-r-prime
+
+# Annual cost deltas are already loaded as cost_delta_bat (from the
+# validate-annual cell).  Filter to the fair-rate population.
+_cost_delta_fair = cost_delta_bat.filter(
+    pl.col("heating_type_v2").is_in(FAIR_RATE_HTS)
+)
+_w_fair = _cost_delta_fair["weight"]
+_w_fair_sum = _w_fair.sum()
+
+_avg_mc_annual = float(
+    (_cost_delta_fair["delta_economic_burden_delivery"] * _w_fair).sum()
+    / _w_fair_sum
+)
+
+# We need avg(kWh_before) and avg(kWh_after) separately — not just the delta.
+# Load the annual grid kWh from the same segments used for bill deltas.
+_kwh_annual = bill_delta_between_segments(
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED,
+    bill_col="elec_grid_kwh", month="Annual",
+).select("bldg_id", pl.col("bill_before").alias("kwh_before"), pl.col("bill_after").alias("kwh_after"))
+
+_kwh_fair = _kwh_annual.join(
+    _cost_delta_fair.select("bldg_id", "weight"), on="bldg_id", how="inner",
+)
+_w_kwh = _kwh_fair["weight"]
+_w_kwh_sum = _w_kwh.sum()
+
+_avg_kwh_before = float((_kwh_fair["kwh_before"] * _w_kwh).sum() / _w_kwh_sum)
+_avg_kwh_after = float((_kwh_fair["kwh_after"] * _w_kwh).sum() / _w_kwh_sum)
+
+r_new = (BASE_DELIVERY_RATE * _avg_kwh_before + _avg_mc_annual) / _avg_kwh_after
+
+print(f"Fair flat rate: r_new = ${r_new:.5f}/kWh")
+print(f"  BASE_DELIVERY_RATE   = ${BASE_DELIVERY_RATE:.5f}/kWh")
+print(f"  avg(kWh_before)      = {_avg_kwh_before:,.0f} kWh/yr")
+print(f"  avg(kWh_after)       = {_avg_kwh_after:,.0f} kWh/yr")
+print(f"  avg(ΔkWh)            = {_avg_kwh_after - _avg_kwh_before:,.0f} kWh/yr")
+print(f"  avg(ΔMC_annual)      = ${_avg_mc_annual:,.2f}/yr")
+
+# Validate: r_new × avg(kWh_after) should equal r_base × avg(kWh_before) + avg(ΔMC)
+_lhs = r_new * _avg_kwh_after
+_rhs = BASE_DELIVERY_RATE * _avg_kwh_before + _avg_mc_annual
+assert abs(_lhs - _rhs) < 0.01, f"Formula check failed: {_lhs:.2f} != {_rhs:.2f}"
+print(f"\n✓ r_new × avg(kWh_after) = ${_lhs:,.2f}  ==  r_base × avg(kWh_before) + avg(ΔMC) = ${_rhs:,.2f}")
+
+# Validate against derive_fair_flat_rate() — the function must produce the
+# same delivery_total from the same inputs.
+_fair_rate_result = derive_fair_flat_rate(
+    avg_delta_mc=_avg_mc_annual,
+    avg_kwh_before=_avg_kwh_before,
+    avg_kwh_after=_avg_kwh_after,
+    base_delivery_rate=BASE_DELIVERY_RATE,
+    base_distribution=BASE_DISTRIBUTION,
+    base_transmission=BASE_TRANSMISSION,
+    other_riders=OTHER_RIDERS,
+)
+assert round(r_new, 8) == round(_fair_rate_result.delivery_total, 8), (
+    f"Inline r_new ({r_new:.8f}) != derive_fair_flat_rate().delivery_total "
+    f"({_fair_rate_result.delivery_total:.8f})"
+)
+print(f"✓ r_new matches derive_fair_flat_rate(): ${_fair_rate_result.delivery_total:.5f}/kWh")
+print(f"  distribution = ${_fair_rate_result.distribution:.5f}/kWh")
+print(f"  transmission = ${_fair_rate_result.transmission:.5f}/kWh")
+print(f"  other_riders = ${_fair_rate_result.other_riders:.5f}/kWh")
+```
+
+## Fair seasonal rate and custom tariff generation
+
+The seasonal variant keeps summer at the base Rate 1 delivery rate and
+concentrates the adjustment in winter. We also need per-season
+`avg(kWh_after)` to derive the winter rate. Once both flat and seasonal
+rates are computed, we write the custom-rate YAMLs and generate the URDB
+JSON tariffs in the rate-design-platform repo.
+
+```{python}
+#| label: compute-fair-seasonal-and-write-tariffs
+
+import subprocess
+
+from lib.rates_analysis.fair_rate import write_custom_rate_yaml
+
+# --- Seasonal kWh: avg(kWh_after) by season for the fair-rate population ------
+_kwh_winter = bill_delta_between_segments(
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED,
+    bill_col="elec_grid_kwh", month=WINTER_MONTH_LABELS,
+).select("bldg_id", pl.col("bill_after").alias("kwh_after_winter"))
+
+_kwh_summer = bill_delta_between_segments(
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED,
+    bill_col="elec_grid_kwh", month=SUMMER_MONTH_LABELS,
+).select("bldg_id", pl.col("bill_after").alias("kwh_after_summer"))
+
+_kwh_seasonal = (
+    _kwh_winter.join(_kwh_summer, on="bldg_id")
+    .join(_cost_delta_fair.select("bldg_id", "weight"), on="bldg_id", how="inner")
+)
+_w_s = _kwh_seasonal["weight"]
+_w_s_sum = _w_s.sum()
+
+_avg_kwh_after_winter = float((_kwh_seasonal["kwh_after_winter"] * _w_s).sum() / _w_s_sum)
+_avg_kwh_after_summer = float((_kwh_seasonal["kwh_after_summer"] * _w_s).sum() / _w_s_sum)
+
+print(f"Seasonal kWh (fair-rate population):")
+print(f"  avg(kWh_after_winter) = {_avg_kwh_after_winter:,.0f}")
+print(f"  avg(kWh_after_summer) = {_avg_kwh_after_summer:,.0f}")
+print(f"  sum = {_avg_kwh_after_winter + _avg_kwh_after_summer:,.0f} (vs avg(kWh_after) = {_avg_kwh_after:,.0f})")
+
+# --- Derive fair seasonal rate ------------------------------------------------
+_fair_seasonal_result = derive_fair_seasonal_rate(
+    avg_delta_mc_annual=_avg_mc_annual,
+    avg_kwh_before_annual=_avg_kwh_before,
+    avg_kwh_after_winter=_avg_kwh_after_winter,
+    avg_kwh_after_summer=_avg_kwh_after_summer,
+    base_delivery_rate=BASE_DELIVERY_RATE,
+    base_distribution=BASE_DISTRIBUTION,
+    base_transmission=BASE_TRANSMISSION,
+    other_riders=OTHER_RIDERS,
+)
+
+# Validate annual constraint
+_bill_after_seasonal = (
+    _fair_seasonal_result.winter_delivery_total * _avg_kwh_after_winter
+    + _fair_seasonal_result.summer_delivery_total * _avg_kwh_after_summer
+)
+_bill_before_plus_mc = BASE_DELIVERY_RATE * _avg_kwh_before + _avg_mc_annual
+assert abs(_bill_after_seasonal - _bill_before_plus_mc) < 0.01, (
+    f"Seasonal constraint failed: {_bill_after_seasonal:.2f} != {_bill_before_plus_mc:.2f}"
+)
+
+print(f"\nFair seasonal rate:")
+print(f"  winter: r_win = ${_fair_seasonal_result.winter_delivery_total:.5f}/kWh")
+print(f"    distribution = ${_fair_seasonal_result.winter_distribution:.5f}/kWh")
+print(f"    transmission = ${_fair_seasonal_result.winter_transmission:.5f}/kWh")
+print(f"  summer: r_base = ${_fair_seasonal_result.summer_delivery_total:.5f}/kWh")
+print(f"    distribution = ${_fair_seasonal_result.summer_distribution:.5f}/kWh")
+print(f"    transmission = ${_fair_seasonal_result.summer_transmission:.5f}/kWh")
+print(f"  other_riders   = ${_fair_seasonal_result.other_riders:.5f}/kWh")
+print(f"\n✓ annual constraint: "
+      f"r_win×kWh_win + r_base×kWh_sum = ${_bill_after_seasonal:,.2f}"
+      f"  ==  r_base×kWh_before + ΔMC = ${_bill_before_plus_mc:,.2f}")
+
+# --- Write custom-rate YAMLs to rate-design-platform --------------------------
+_rdp_root = Path.home() / "rate-design-platform"
+_tariffs_dir = _rdp_root / "rate_design/hp_rates/ct/config/tariffs/electric"
+_custom_rates_dir = _tariffs_dir / "custom_rates"
+
+FIXED_CHARGE = 12.36
+SUPPLY_RATE = 0.10469
+
+_provenance = {
+    "batch": BATCH,
+    "population": FAIR_RATE_POPULATION,
+    "base_tariff": "ct_eversource_rate1_proposed",
+    "rdp_ref": RDP_REF,
+}
+
+_flat_yaml = write_custom_rate_yaml(
+    _custom_rates_dir / "ct_eversource_icos_fair_flat.yaml",
+    _fair_rate_result,
+    label="icos_fair_flat",
+    utility="ct_eversource",
+    fixed_charge=FIXED_CHARGE,
+    supply_rate=SUPPLY_RATE,
+    provenance=_provenance,
+)
+print(f"\n✓ Wrote flat YAML:     {_flat_yaml}")
+
+_seasonal_yaml = write_custom_rate_yaml(
+    _custom_rates_dir / "ct_eversource_icos_fair_seasonal.yaml",
+    _fair_seasonal_result,
+    label="icos_fair_seasonal",
+    utility="ct_eversource",
+    fixed_charge=FIXED_CHARGE,
+    supply_rate=SUPPLY_RATE,
+    winter_months=WINTER_MONTHS,
+    provenance=_provenance,
+)
+print(f"✓ Wrote seasonal YAML: {_seasonal_yaml}")
+
+# --- Generate URDB JSON tariffs -----------------------------------------------
+for yaml_path, script in [
+    (_flat_yaml, "utils/pre/create_custom_flat_tariff.py"),
+    (_seasonal_yaml, "utils/pre/create_custom_seasonal_tariff.py"),
+]:
+    cmd = [
+        "uv", "run", "python", str(_rdp_root / script),
+        "--config", str(yaml_path),
+        "--output-dir", str(_tariffs_dir),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(_rdp_root))
+    if result.returncode != 0:
+        print(f"ERROR generating JSON from {yaml_path.name}:\n{result.stderr}")
+        raise RuntimeError(result.stderr)
+    for line in result.stderr.strip().splitlines():
+        print(f"  {line}")
+
+print(f"\n✓ All custom tariff JSONs written to {_tariffs_dir}")
+```
+
 ## Compute overpayment for all rates × periods
 
-For each CAIRO rate × period, we compute the bill delta via
-`bill_delta_between_segments`, then subtract the MC delta to get overpayment.
-The MC delta is rate-independent — it's the same for every rate — so the
-difference between rates comes entirely from the bill side.
+For each CAIRO rate × period, we compute the bill delta — via
+`delivery_bill_delta` when `BILL_COL` is `elec_delivery_bill` (so the fixed
+charge is folded in whenever `INCLUDE_FIXED_CHARGE` is on), or via
+`bill_delta_between_segments` directly for the LMI/total `BILL_COL` options,
+which already include the fixed charge — then subtract the MC delta to get
+overpayment. The MC delta is rate-independent — it's the same for every rate
+— so the difference between rates comes entirely from the bill side.
 
-For the two synthetic rates (Rate 1 − avg / per-bldg overpayment), we first
+Each frame keeps the pieces behind that overpayment, summed over the same
+period (the annual row, or the winter/summer months):
+
+- `bill_before`, `bill_after`, `bill_delta` — the delivery bill (plus the
+  fixed charge when `BILL_COL == BILL_COL_DELIVERY` and
+  `INCLUDE_FIXED_CHARGE` is on). `delta` is overpayment
+  (`bill_delta − delta_mc`), so a negative `delta` is not by itself a bill
+  decrease.
+- `kwh_before`, `kwh_after` — `elec_grid_kwh` on the default precalc and
+  calibrated segments. That is the retrofit's grid consumption; the tariff
+  does not change it, and it is the same load the seasonal MC is built from.
+- `mc_before`, `mc_after`, `delta_mc` — per-building delivery marginal cost.
+
+For the three synthetic rates (Rate 1 − lump-sum avg / avg rate / per-bldg overpayment), we first
 adjust the bill delta and then subtract MC, so their overpayment shows how
-much cross-subsidy remains after the correction.
+much cross-subsidy remains after the correction. The kWh and MC columns are
+copied through unchanged.
 
 ```{python}
 #| label: compute-deltas
@@ -322,21 +619,42 @@ SEASON_MAP_DELTAS = {"Annual": "annual", "Winter": "winter", "Summer": "summer"}
 for period_label, month_arg in PERIODS:
     season_key = SEASON_MAP_DELTAS[period_label]
     mc_period = mc_delta.filter(pl.col("season") == season_key).select(
-        "bldg_id", "delta_mc"
+        "bldg_id", "mc_before", "mc_after", "delta_mc"
+    )
+    kwh_period = bill_delta_between_segments(
+        STATE,
+        BATCH,
+        SEG_DEFAULT_PRECALC,
+        SEG_DEFAULT_CALIBRATED,
+        bill_col="elec_grid_kwh",
+        month=month_arg,
+    ).select(
+        "bldg_id",
+        pl.col("bill_before").alias("kwh_before"),
+        pl.col("bill_after").alias("kwh_after"),
     )
 
     for rate_label, seg_pre, seg_cal in CAIRO_RATES:
-        delta = bill_delta_between_segments(
-            STATE, BATCH, seg_pre, seg_cal,
-            bill_col=BILL_COL,
-            month=month_arg,
-        )
+        if BILL_COL == BILL_COL_DELIVERY:
+            delta = delivery_bill_delta(
+                STATE, BATCH, seg_pre, seg_cal, month=month_arg,
+            )
+        else:
+            # The LMI/total BILL_COL options already include the fixed
+            # charge (elec_total_bill = elec_fixed_charge + elec_delivery_bill
+            # + elec_supply_bill), so INCLUDE_FIXED_CHARGE is a no-op here.
+            delta = bill_delta_between_segments(
+                STATE, BATCH, seg_pre, seg_cal,
+                bill_col=BILL_COL,
+                month=month_arg,
+            )
         op = (
             delta.join(mc_period, on="bldg_id", how="inner")
+            .join(kwh_period, on="bldg_id", how="left")
             .with_columns(
-                (pl.col("delta") - pl.col("delta_mc")).alias("delta")
+                pl.col("delta").alias("bill_delta"),
+                (pl.col("delta") - pl.col("delta_mc")).alias("delta"),
             )
-            .drop("delta_mc")
         )
         all_overpayment[(rate_label, period_label)] = op
 
@@ -346,7 +664,7 @@ for period_label, month_arg in PERIODS:
     op_minus_avg = rate1_op.with_columns(
         (pl.col("delta") - avg_op_val).alias("delta")
     )
-    all_overpayment[("Rate 1 − avg.\noverpayment", period_label)] = op_minus_avg
+    all_overpayment[("Rate 1 − lump-sum\navg. overpayment", period_label)] = op_minus_avg
 
     op_bldg = overpayment_by_period[period_label]
     op_minus_bldg = (
@@ -358,11 +676,167 @@ for period_label, month_arg in PERIODS:
     )
     all_overpayment[("Rate 1 − per-bldg.\noverpayment", period_label)] = op_minus_bldg
 
+    # Fair flat rate correction: bill_before stays at Rate 1 pricing,
+    # bill_after uses the new fair rate.  The constraint is:
+    #   r_new × avg(kWh_after) = r_base × avg(kWh_before) + avg(ΔMC)
+    # so on an annual basis the weighted-average overpayment is zero.
+    op_cost_rate = rate1_op.with_columns(
+        (pl.lit(BASE_DELIVERY_RATE) * pl.col("kwh_before")).alias("bill_before"),
+        (pl.lit(r_new) * pl.col("kwh_after")).alias("bill_after"),
+    ).with_columns(
+        (pl.col("bill_after") - pl.col("bill_before")).alias("bill_delta"),
+    ).with_columns(
+        (pl.col("bill_delta") - pl.col("delta_mc")).alias("delta"),
+    )
+    all_overpayment[("Rate 1 − avg.\noverpayment rate", period_label)] = op_cost_rate
+
+    # Validation: for the Annual period, r_new should zero out avg overpayment
+    # over the fair-rate population.  For Winter/Summer individually, it won't
+    # be exactly zero — the annual rate redistributes overpayment across
+    # seasons.
+    _check_fair = op_cost_rate.filter(pl.col("heating_type_v2").is_in(FAIR_RATE_HTS))
+    _check_mean = float(
+        (_check_fair["delta"] * _check_fair["weight"]).sum()
+        / _check_fair["weight"].sum()
+    )
+    print(
+        f"  {period_label}: r_new = ${r_new:.5f}/kWh  "
+        f"wtd mean overpayment ({FAIR_RATE_POPULATION}) = ${_check_mean:,.2f}"
+        + (" (expect ~0)" if period_label == "Annual" else "")
+    )
+    if period_label == "Annual":
+        assert abs(_check_mean) < 1.0, f"r_new validation failed: mean overpayment = {_check_mean}"
+
 print(f"Total overpayment DataFrames: {len(all_overpayment)}")
 for (rate, period), df in sorted(all_overpayment.items(), key=lambda x: (x[0][1], x[0][0])):
     _mean = (df["delta"] * df["weight"]).sum() / df["weight"].sum()
     print(f"  ({period}, {rate.replace(chr(10), ' ')}): "
           f"{df.height:,} buildings, wtd mean overpayment = ${_mean:,.0f}")
+```
+
+## Seasonal electricity consumption: before, after, and delta
+
+Weighted-average grid kWh for the fossil fuel population, before and after the
+heat pump retrofit, by season. Both summer and winter consumption increase:
+winter because the heat pump replaces fossil heating with electric; summer
+because many homes gain air conditioning (or upgrade from window units).
+
+```{python}
+#| label: seasonal-kwh-summary
+
+_rate1_key = "Rate 1"
+
+print(f"Population: {FAIR_RATE_POPULATION} → {FAIR_RATE_HTS}")
+print(f"Winter months: {WINTER_MONTHS}  Summer months: {SUMMER_MONTH_NUMS}\n")
+print(f"{'Season':<10} {'kWh before':>12} {'kWh after':>12} {'Δ kWh':>12} {'Δ %':>8}")
+print("-" * 58)
+
+for period_label in ["Annual", "Winter", "Summer"]:
+    df = all_overpayment[(_rate1_key, period_label)]
+    fossil = df.filter(pl.col("heating_type_v2").is_in(FAIR_RATE_HTS))
+    _w = fossil["weight"]
+    _w_sum = _w.sum()
+    kwh_b = float((fossil["kwh_before"] * _w).sum() / _w_sum)
+    kwh_a = float((fossil["kwh_after"] * _w).sum() / _w_sum)
+    d = kwh_a - kwh_b
+    pct = d / kwh_b * 100 if kwh_b else 0
+    print(f"{period_label:<10} {kwh_b:>12,.0f} {kwh_a:>12,.0f} {d:>12,.0f} {pct:>7.1f}%")
+
+print()
+
+# Also break out by heating type
+for ht_code, ht_label, _ in HEATING_TYPES:
+    print(f"\n  {ht_label}:")
+    print(f"  {'Season':<10} {'kWh before':>12} {'kWh after':>12} {'Δ kWh':>12} {'Δ %':>8}")
+    print("  " + "-" * 56)
+    for period_label in ["Annual", "Winter", "Summer"]:
+        df = all_overpayment[(_rate1_key, period_label)]
+        sub = df.filter(pl.col("heating_type_v2") == ht_code)
+        _w = sub["weight"]
+        _w_sum = _w.sum()
+        kwh_b = float((sub["kwh_before"] * _w).sum() / _w_sum)
+        kwh_a = float((sub["kwh_after"] * _w).sum() / _w_sum)
+        d = kwh_a - kwh_b
+        pct = d / kwh_b * 100 if kwh_b else 0
+        print(f"  {period_label:<10} {kwh_b:>12,.0f} {kwh_a:>12,.0f} {d:>12,.0f} {pct:>7.1f}%")
+```
+
+Negative `delta` on Rate 1 is overpayment below zero, which happens whenever
+the delivery-bill increase is smaller than the marginal-cost increase. The
+bill itself can still have gone up. This split uses the new columns to
+separate those cases for natural gas, annually.
+
+```{python}
+#| label: diagnose-bill-decreases
+
+_ng = all_overpayment[("Rate 1", "Annual")].filter(pl.col("heating_type_v2") == "natgas")
+_neg = _ng.filter(pl.col("delta") < 0).with_columns(
+    (pl.col("kwh_after") - pl.col("kwh_before")).alias("delta_kwh"),
+    (pl.col("bill_delta") < 0).alias("bill_fell"),
+    (pl.col("kwh_after") < pl.col("kwh_before")).alias("kwh_fell"),
+)
+
+def _wmean(df: pl.DataFrame, col: str) -> float:
+    return float((df[col] * df["weight"]).sum() / df["weight"].sum())
+
+print(f"Natgas buildings: {_ng.height:,}")
+print(f"  negative overpayment (delta < 0): {_neg.height:,}")
+print(f"    of which the delivery bill fell: {_neg.filter(pl.col('bill_fell')).height:,}")
+print(f"    of which grid kWh fell:          {_neg.filter(pl.col('kwh_fell')).height:,}")
+if _neg.height:
+    print(
+        "  weighted means among delta < 0: "
+        f"bill_delta=${_wmean(_neg, 'bill_delta'):,.0f}, "
+        f"delta_mc=${_wmean(_neg, 'delta_mc'):,.0f}, "
+        f"delta_kwh={_wmean(_neg, 'delta_kwh'):,.0f}, "
+        f"kwh {_wmean(_neg, 'kwh_before'):,.0f} → {_wmean(_neg, 'kwh_after'):,.0f}, "
+        f"MC ${_wmean(_neg, 'mc_before'):,.0f} → ${_wmean(_neg, 'mc_after'):,.0f}"
+    )
+```
+
+Under Rate 6 (FIXED+MC), the after-bill depends on `kwh_after`
+(= `kwh_before` + `kwh_delta`), not on `kwh_before` alone — and `kwh_delta`
+varies a lot across natural-gas homes depending on how much gas heating load
+each one electrifies. A scatter of `bill_delta` against `kwh_before`, colored
+by `kwh_delta` bucket, shows that the vertical spread at a given `kwh_before`
+is explained almost entirely by `kwh_delta`.
+
+```{python}
+#| label: fig-diag-kwh-vs-bill-delta-r6-fixedmc
+#| fig-cap: "Annual delivery bill change vs. baseline grid kWh, colored by incremental kWh, natural gas — Rate 6 (FIXED+MC)."
+
+import plotnine as p9
+
+_diag_df = (
+    all_overpayment[("Rate 6\n(FIXED+MC)", "Annual")]
+    .filter(pl.col("heating_type_v2") == "natgas")
+    .with_columns(
+        (pl.col("kwh_after") - pl.col("kwh_before")).alias("kwh_delta"),
+    )
+    .with_columns(
+        pl.col("kwh_delta")
+        .cut(
+            [2000, 4000, 6000, 8000, 10000],
+            labels=(_kwh_bin_labels := ["<2k", "2–4k", "4–6k", "6–8k", "8–10k", "10k+"]),
+        )
+        .cast(pl.Enum(_kwh_bin_labels))
+        .alias("kwh_delta_bin"),
+    )
+)
+
+(
+    p9.ggplot(_diag_df, p9.aes(x="bill_delta", y="kwh_before"))
+    + p9.geom_point(p9.aes(color="kwh_delta_bin"), alpha=0.8, size=1.2)
+    + p9.geom_vline(xintercept=0, color="gray", linetype="dashed")
+    + p9.scale_color_cmap_d("viridis")
+    + p9.labs(
+        x="Annual delivery bill change ($)",
+        y="Baseline annual grid kWh",
+        color="kWh delta",
+    )
+    + theme_switchbox()
+    + p9.theme(figure_size=(10.5, 4.5))
+)
 ```
 
 ## Incidence summary
@@ -375,7 +849,8 @@ rate × period, the weighted % of homes that overpay (positive) vs. underpay
 #| label: incidence-summary
 
 ALL_RATE_LABELS = [r[0] for r in CAIRO_RATES] + [
-    "Rate 1 − avg.\noverpayment",
+    "Rate 1 − lump-sum\navg. overpayment",
+    "Rate 1 − avg.\noverpayment rate",
     "Rate 1 − per-bldg.\noverpayment",
 ]
 ALL_HEATING_CODES = list(FAIR_RATE_HTS) + ["all_fossil"]
@@ -427,7 +902,8 @@ RATE_SLUGS: dict[str, str] = {
     "Rate 6": "r6",
     "Rate 6\n(RATE=MC)": "r6-ratemc",
     "Rate 6\n(FIXED+MC)": "r6-fixedmc",
-    "Rate 1 − avg.\noverpayment": "r1-avg-corr",
+    "Rate 1 − lump-sum\navg. overpayment": "r1-avg-corr",
+    "Rate 1 − avg.\noverpayment rate": "r1-avg-rate-corr",
     "Rate 1 − per-bldg.\noverpayment": "r1-bldg-corr",
 }
 
@@ -442,6 +918,14 @@ def _filter_ht(df: pl.DataFrame, ht_code: str) -> pl.DataFrame:
         return df.filter(pl.col("heating_type_v2").is_in(FAIR_RATE_HTS))
     return df.filter(pl.col("heating_type_v2") == ht_code)
 
+
+def _auto_bin_width(df: pl.DataFrame, target_bins: int = 20) -> int:
+    """Pick a bin width that yields ~target_bins bins for the 1st–99th pctl range."""
+    _q01 = weighted_quantile(df.select("delta", "weight"), "delta", 0.01)
+    _q99 = weighted_quantile(df.select("delta", "weight"), "delta", 0.99)
+    _range = _q99 - _q01
+    return max(10, round(_range / target_bins / 10) * 10)
+
 from plotnine import ggplot
 
 figs: dict[tuple[str, str, str], ggplot] = {}
@@ -454,15 +938,133 @@ for rate_label in ALL_RATE_LABELS:
         period_lower = period_label.lower()
         for ht_slug, ht_name, ht_code in HEATING_GROUPS:
             df = _filter_ht(all_overpayment[(rate_label, period_label)], ht_code)
+            bw = _auto_bin_width(df)
             fig = plot_weighted_bill_change_hist(
                 df,
                 f"{ht_name}: {period_lower} overpayment — {rate_short}",
+                bin_width=bw,
                 show_mean_median=True,
                 x_label=f"{period_label} delivery overpayment ($)",
             )
             figs[(rate_slug, period_slug, ht_slug)] = fig
 
 print(f"Built {len(figs)} histograms")
+```
+
+### Annual — rate comparison (faceted)
+
+Side-by-side comparison of Rate 1, Rate 6, Rate 6 (FIXED+MC), and
+Rate 1 − avg. overpayment rate on a shared x-axis so the shift in the
+overpayment distribution is directly visible.
+
+```{python}
+#| label: build-rate-compare-hists
+
+import plotnine as p9
+from lib.rates_analysis.rate_case_funcs import QUADRANT_COLORS, QUADRANT_ORDER
+
+RATE_COMPARE_LABELS = ["Rate 1", "Rate 6", "Rate 6\n(FIXED+MC)", "Rate 1 − avg.\noverpayment rate"]
+
+rate_compare_figs: dict[str, p9.ggplot] = {}
+
+for ht_slug, ht_name, ht_code in HEATING_GROUPS:
+    combined = pl.concat([
+        _filter_ht(all_overpayment[(rate_label, "Annual")], ht_code)
+        .select("delta", "weight")
+        .with_columns(pl.lit(rate_label).alias("rate"))
+        for rate_label in RATE_COMPARE_LABELS
+    ])
+
+    bin_width = _auto_bin_width(combined)
+    hist_snap = max(bin_width, 50)
+    import math as _m
+
+    hist_x_lo = _m.floor(weighted_quantile(combined.select("delta", "weight"), "delta", 0.01) / hist_snap) * hist_snap
+    hist_x_hi = _m.ceil(weighted_quantile(combined.select("delta", "weight"), "delta", 0.99) / hist_snap) * hist_snap
+    _range = hist_x_hi - hist_x_lo
+    _tick_step = bin_width if _range <= bin_width * 12 else bin_width * 2
+    _tick_lo = _m.floor(hist_x_lo / _tick_step) * _tick_step
+    _tick_hi = _m.ceil(hist_x_hi / _tick_step) * _tick_step
+
+    hist_binned = (
+        combined.with_columns(
+            ((pl.col("delta") / bin_width).floor() * bin_width + bin_width / 2).alias("bin_center"),
+        )
+        .with_columns(
+            pl.when(pl.col("bin_center") <= -1000).then(pl.lit("savings > $1k"))
+            .when((pl.col("bin_center") > -1000) & (pl.col("bin_center") < 0)).then(pl.lit("savings $0-1k"))
+            .when((pl.col("bin_center") >= 0) & (pl.col("bin_center") < 1000)).then(pl.lit("losses $0-1k"))
+            .otherwise(pl.lit("losses > $1k"))
+            .alias("quadrant"),
+        )
+        .group_by("bin_center", "quadrant", "rate")
+        .agg(pl.col("weight").sum().alias("weight_sum"))
+        .with_columns(
+            pl.col("quadrant").cast(pl.Enum(QUADRANT_ORDER)),
+            pl.col("rate").cast(pl.Enum(RATE_COMPARE_LABELS)),
+        )
+    )
+
+    # Per-facet mean/median for vlines
+    stats_rows = []
+    for level in RATE_COMPARE_LABELS:
+        sub = combined.filter(pl.col("rate") == level)
+        w_mean = float((sub["delta"] * sub["weight"]).sum() / sub["weight"].sum())
+        w_median = weighted_quantile(sub.select("delta", "weight"), "delta", 0.50)
+        stats_rows.append({"rate": level, "w_mean": w_mean, "w_median": w_median})
+    stats_df = pl.DataFrame(stats_rows).with_columns(
+        pl.col("rate").cast(pl.Enum(RATE_COMPARE_LABELS))
+    )
+
+    fig = (
+        p9.ggplot(hist_binned, p9.aes(x="bin_center", y="weight_sum", fill="quadrant"))
+        + p9.geom_col(width=bin_width * 0.9)
+        + p9.geom_vline(xintercept=[-1000, 0, 1000], linetype="dotted", color="gray")
+        + p9.scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
+        + p9.scale_x_continuous(
+            breaks=list(range(_tick_lo, _tick_hi + _tick_step, _tick_step)),
+            labels=lambda xs: [f"${x:,.0f}" if x >= 0 else f"-${abs(x):,.0f}" for x in xs],
+        )
+        + p9.coord_cartesian(xlim=(hist_x_lo, hist_x_hi))
+        + p9.facet_wrap("rate", ncol=1)
+        + p9.labs(
+            x="Annual delivery overpayment ($)",
+            y="Weighted households",
+            title=f"{ht_name}: annual overpayment by rate",
+        )
+        + p9.guides(fill=False)
+        + theme_switchbox()
+        + p9.theme(figure_size=(10.5, 3.2 * len(RATE_COMPARE_LABELS)))
+        + p9.geom_vline(
+            stats_df, p9.aes(xintercept="w_mean"),
+            linetype="dashed", color=SB_COLORS["carrot"], size=0.8,
+        )
+        + p9.geom_vline(
+            stats_df, p9.aes(xintercept="w_median"),
+            linetype="dashed", color=SB_COLORS["midnight"], size=0.8,
+        )
+    )
+    rate_compare_figs[ht_slug] = fig
+
+print(f"Built {len(rate_compare_figs)} rate-comparison histograms")
+```
+
+```{python}
+#| label: fig-annual-natgas-rate-compare
+#| fig-cap: "Annual delivery overpayment, natural gas — Rate 1 vs. Rate 6 vs. Rate 6 (FIXED+MC) vs. Rate 1 − avg. overpayment rate."
+rate_compare_figs["natgas"]
+```
+
+```{python}
+#| label: fig-annual-delivered-rate-compare
+#| fig-cap: "Annual delivery overpayment, oil/propane — Rate 1 vs. Rate 6 vs. Rate 6 (FIXED+MC) vs. Rate 1 − avg. overpayment rate."
+rate_compare_figs["delivered"]
+```
+
+```{python}
+#| label: fig-annual-all-fossil-rate-compare
+#| fig-cap: "Annual delivery overpayment, all fossil fuel — Rate 1 vs. Rate 6 vs. Rate 6 (FIXED+MC) vs. Rate 1 − avg. overpayment rate."
+rate_compare_figs["all-fossil"]
 ```
 
 ### Annual — natural gas
@@ -493,8 +1095,14 @@ figs[("r6-fixedmc", "annual", "natgas")]
 
 ```{python}
 #| label: fig-annual-natgas-r1-avg-corr
-#| fig-cap: "Annual delivery overpayment, natural gas — Rate 1 minus avg. overpayment."
+#| fig-cap: "Annual delivery overpayment, natural gas — Rate 1 minus lump-sum avg. overpayment."
 figs[("r1-avg-corr", "annual", "natgas")]
+```
+
+```{python}
+#| label: fig-annual-natgas-r1-avg-rate-corr
+#| fig-cap: "Annual delivery overpayment, natural gas — Rate 1 avg. overpayment rate."
+figs[("r1-avg-rate-corr", "annual", "natgas")]
 ```
 
 ```{python}
@@ -531,8 +1139,14 @@ figs[("r6-fixedmc", "annual", "delivered")]
 
 ```{python}
 #| label: fig-annual-delivered-r1-avg-corr
-#| fig-cap: "Annual delivery overpayment, oil/propane — Rate 1 minus avg. overpayment."
+#| fig-cap: "Annual delivery overpayment, oil/propane — Rate 1 minus lump-sum avg. overpayment."
 figs[("r1-avg-corr", "annual", "delivered")]
+```
+
+```{python}
+#| label: fig-annual-delivered-r1-avg-rate-corr
+#| fig-cap: "Annual delivery overpayment, oil/propane — Rate 1 avg. overpayment rate."
+figs[("r1-avg-rate-corr", "annual", "delivered")]
 ```
 
 ```{python}
@@ -569,8 +1183,14 @@ figs[("r6-fixedmc", "annual", "all-fossil")]
 
 ```{python}
 #| label: fig-annual-all-fossil-r1-avg-corr
-#| fig-cap: "Annual delivery overpayment, all fossil fuel — Rate 1 minus avg. overpayment."
+#| fig-cap: "Annual delivery overpayment, all fossil fuel — Rate 1 minus lump-sum avg. overpayment."
 figs[("r1-avg-corr", "annual", "all-fossil")]
+```
+
+```{python}
+#| label: fig-annual-all-fossil-r1-avg-rate-corr
+#| fig-cap: "Annual delivery overpayment, all fossil fuel — Rate 1 avg. overpayment rate."
+figs[("r1-avg-rate-corr", "annual", "all-fossil")]
 ```
 
 ```{python}
@@ -607,8 +1227,14 @@ figs[("r6-fixedmc", "winter", "natgas")]
 
 ```{python}
 #| label: fig-winter-natgas-r1-avg-corr
-#| fig-cap: "Winter delivery overpayment, natural gas — Rate 1 minus avg. overpayment."
+#| fig-cap: "Winter delivery overpayment, natural gas — Rate 1 minus lump-sum avg. overpayment."
 figs[("r1-avg-corr", "winter", "natgas")]
+```
+
+```{python}
+#| label: fig-winter-natgas-r1-avg-rate-corr
+#| fig-cap: "Winter delivery overpayment, natural gas — Rate 1 avg. overpayment rate."
+figs[("r1-avg-rate-corr", "winter", "natgas")]
 ```
 
 ```{python}
@@ -645,8 +1271,14 @@ figs[("r6-fixedmc", "winter", "delivered")]
 
 ```{python}
 #| label: fig-winter-delivered-r1-avg-corr
-#| fig-cap: "Winter delivery overpayment, oil/propane — Rate 1 minus avg. overpayment."
+#| fig-cap: "Winter delivery overpayment, oil/propane — Rate 1 minus lump-sum avg. overpayment."
 figs[("r1-avg-corr", "winter", "delivered")]
+```
+
+```{python}
+#| label: fig-winter-delivered-r1-avg-rate-corr
+#| fig-cap: "Winter delivery overpayment, oil/propane — Rate 1 avg. overpayment rate."
+figs[("r1-avg-rate-corr", "winter", "delivered")]
 ```
 
 ```{python}
@@ -683,8 +1315,14 @@ figs[("r6-fixedmc", "winter", "all-fossil")]
 
 ```{python}
 #| label: fig-winter-all-fossil-r1-avg-corr
-#| fig-cap: "Winter delivery overpayment, all fossil fuel — Rate 1 minus avg. overpayment."
+#| fig-cap: "Winter delivery overpayment, all fossil fuel — Rate 1 minus lump-sum avg. overpayment."
 figs[("r1-avg-corr", "winter", "all-fossil")]
+```
+
+```{python}
+#| label: fig-winter-all-fossil-r1-avg-rate-corr
+#| fig-cap: "Winter delivery overpayment, all fossil fuel — Rate 1 avg. overpayment rate."
+figs[("r1-avg-rate-corr", "winter", "all-fossil")]
 ```
 
 ```{python}
@@ -721,8 +1359,14 @@ figs[("r6-fixedmc", "summer", "natgas")]
 
 ```{python}
 #| label: fig-summer-natgas-r1-avg-corr
-#| fig-cap: "Summer delivery overpayment, natural gas — Rate 1 minus avg. overpayment."
+#| fig-cap: "Summer delivery overpayment, natural gas — Rate 1 minus lump-sum avg. overpayment."
 figs[("r1-avg-corr", "summer", "natgas")]
+```
+
+```{python}
+#| label: fig-summer-natgas-r1-avg-rate-corr
+#| fig-cap: "Summer delivery overpayment, natural gas — Rate 1 avg. overpayment rate."
+figs[("r1-avg-rate-corr", "summer", "natgas")]
 ```
 
 ```{python}
@@ -759,8 +1403,14 @@ figs[("r6-fixedmc", "summer", "delivered")]
 
 ```{python}
 #| label: fig-summer-delivered-r1-avg-corr
-#| fig-cap: "Summer delivery overpayment, oil/propane — Rate 1 minus avg. overpayment."
+#| fig-cap: "Summer delivery overpayment, oil/propane — Rate 1 minus lump-sum avg. overpayment."
 figs[("r1-avg-corr", "summer", "delivered")]
+```
+
+```{python}
+#| label: fig-summer-delivered-r1-avg-rate-corr
+#| fig-cap: "Summer delivery overpayment, oil/propane — Rate 1 avg. overpayment rate."
+figs[("r1-avg-rate-corr", "summer", "delivered")]
 ```
 
 ```{python}
@@ -797,8 +1447,14 @@ figs[("r6-fixedmc", "summer", "all-fossil")]
 
 ```{python}
 #| label: fig-summer-all-fossil-r1-avg-corr
-#| fig-cap: "Summer delivery overpayment, all fossil fuel — Rate 1 minus avg. overpayment."
+#| fig-cap: "Summer delivery overpayment, all fossil fuel — Rate 1 minus lump-sum avg. overpayment."
 figs[("r1-avg-corr", "summer", "all-fossil")]
+```
+
+```{python}
+#| label: fig-summer-all-fossil-r1-avg-rate-corr
+#| fig-cap: "Summer delivery overpayment, all fossil fuel — Rate 1 avg. overpayment rate."
+figs[("r1-avg-rate-corr", "summer", "all-fossil")]
 ```
 
 ```{python}

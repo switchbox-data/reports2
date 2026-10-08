@@ -1,25 +1,29 @@
 """Derive fair delivery rates from CAIRO default-run overpayment data.
 
-The "fair rate" sets the delivery volumetric rate so that the weighted-average
-incremental delivery revenue from homes switching to heat pumps equals their
-weighted-average incremental delivery marginal cost.  The fixed (customer)
-charge is unchanged from the base rate.
+The "fair rate" sets the delivery volumetric rate so that, for the average
+fossil-fuel-heated building, the delivery bill after installing a heat pump
+equals the delivery bill before the retrofit plus any incremental delivery
+marginal cost.  The fixed (customer) charge is unchanged from the base rate.
+
+    r_new * avg(kWh_after) = r_base * avg(kWh_before) + avg(delta_MC)
 
 Two variants:
 
 - **Fair flat rate**: a single volumetric rate for all months.
 
-    r' = avg(delta_MC) / avg(delta_kWh)
+    r_new = (r_base * avg(kWh_before) + avg(delta_MC)) / avg(kWh_after)
 
 - **Fair seasonal rate**: summer rate unchanged at the base rate; winter rate
-  set so the *annual* overpayment is zero (the full correction is concentrated
+  set so the *annual* constraint holds (the full adjustment is concentrated
   in winter).
 
-    r_win = (avg(delta_MC_annual) - r_base * avg(delta_kWh_summer))
-            / avg(delta_kWh_winter)
+    r_win = (r_base * avg(kWh_before) + avg(delta_MC_annual)
+             - r_base * avg(kWh_after_summer)) / avg(kWh_after_winter)
 
-Both rates can be decomposed into ``distribution + riders`` following the
-tariff summary convention (riders are a pass-through, unchanged across rates).
+Both rates are decomposed into ``distribution + transmission + other_riders``.
+The discount (difference between the base rate and the fair rate) is applied
+**proportionally** to distribution and transmission, leaving other riders
+(CTA, SBC, CAM, RE, FMCC-Del) unchanged.
 """
 
 from __future__ import annotations
@@ -40,13 +44,16 @@ class FairFlatRate:
     """Result of deriving a fair flat delivery rate."""
 
     delivery_total: float
-    """r' = avg(delta_MC) / avg(delta_kWh), in $/kWh."""
+    """r_new = (r_base * avg(kWh_before) + avg(delta_MC)) / avg(kWh_after), in $/kWh."""
 
     distribution: float
-    """delivery_total - riders, in $/kWh."""
+    """Proportional share of the discountable portion, in $/kWh."""
 
-    riders: float
-    """Pass-through rider total, unchanged from the base rate, in $/kWh."""
+    transmission: float
+    """Proportional share of the discountable portion, in $/kWh."""
+
+    other_riders: float
+    """Non-discountable riders, unchanged from the base rate, in $/kWh."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,19 +61,45 @@ class FairSeasonalRate:
     """Result of deriving a fair seasonal delivery rate."""
 
     winter_delivery_total: float
-    """r_win that zeroes annual overpayment, in $/kWh."""
+    """r_win that satisfies the annual constraint, in $/kWh."""
 
     winter_distribution: float
-    """winter_delivery_total - riders, in $/kWh."""
+    """Proportional share of the winter discountable portion, in $/kWh."""
+
+    winter_transmission: float
+    """Proportional share of the winter discountable portion, in $/kWh."""
 
     summer_delivery_total: float
     """Base rate, unchanged, in $/kWh."""
 
     summer_distribution: float
-    """summer_delivery_total - riders, in $/kWh."""
+    """Base distribution rate, unchanged, in $/kWh."""
 
-    riders: float
-    """Pass-through rider total, unchanged from the base rate, in $/kWh."""
+    summer_transmission: float
+    """Base transmission rate, unchanged, in $/kWh."""
+
+    other_riders: float
+    """Non-discountable riders, unchanged from the base rate, in $/kWh."""
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+
+def _proportional_decomposition(
+    delivery_total: float,
+    base_distribution: float,
+    base_transmission: float,
+    other_riders: float,
+) -> tuple[float, float]:
+    """Split the discountable portion of a delivery rate proportionally.
+
+    Returns (new_distribution, new_transmission).
+    """
+    discountable = delivery_total - other_riders
+    dist_share = base_distribution / (base_distribution + base_transmission)
+    return dist_share * discountable, (1 - dist_share) * discountable
 
 
 # ---------------------------------------------------------------------------
@@ -77,25 +110,39 @@ class FairSeasonalRate:
 def derive_fair_flat_rate(
     *,
     avg_delta_mc: float,
-    avg_delta_kwh: float,
+    avg_kwh_before: float,
+    avg_kwh_after: float,
     base_delivery_rate: float,
-    riders_total: float,
+    base_distribution: float,
+    base_transmission: float,
+    other_riders: float,
 ) -> FairFlatRate:
     """Derive a fair flat delivery volumetric rate.
+
+    The rate is set so that, on average over the fair-rate population:
+
+        r_new * avg(kWh_after) = r_base * avg(kWh_before) + avg(delta_MC)
+
+    The discount relative to the base rate is distributed proportionally
+    across distribution and transmission; other riders pass through unchanged.
 
     Parameters
     ----------
     avg_delta_mc
         Weighted-average incremental delivery marginal cost ($/yr) over the
         fair-rate population (pre-to-post HP retrofit).
-    avg_delta_kwh
-        Weighted-average incremental grid kWh (kWh/yr) over the same
-        population.
+    avg_kwh_before
+        Weighted-average annual grid kWh *before* the HP retrofit.
+    avg_kwh_after
+        Weighted-average annual grid kWh *after* the HP retrofit.
     base_delivery_rate
-        The current (Rate 1) delivery volumetric rate in $/kWh.  Used only for
-        reference — the fair rate is derived independently.
-    riders_total
-        Shared riders total in $/kWh (pass-through, unchanged).
+        The current (Rate 1) total delivery volumetric rate in $/kWh.
+    base_distribution
+        The current (Rate 1) distribution component in $/kWh.
+    base_transmission
+        The current (Rate 1) transmission component in $/kWh.
+    other_riders
+        Non-discountable riders total in $/kWh (pass-through, unchanged).
 
     Returns
     -------
@@ -105,50 +152,70 @@ def derive_fair_flat_rate(
     Raises
     ------
     ValueError
-        If ``avg_delta_kwh`` is zero (no incremental consumption to allocate
-        costs over).
+        If ``avg_kwh_after`` is zero (no post-retrofit consumption to price).
     """
-    if avg_delta_kwh == 0.0:
-        msg = "avg_delta_kwh must be non-zero (no incremental kWh to allocate costs over)"
+    if avg_kwh_after == 0.0:
+        msg = "avg_kwh_after must be non-zero (no post-retrofit consumption to price)"
         raise ValueError(msg)
 
-    r_prime = avg_delta_mc / avg_delta_kwh
+    r_new = (base_delivery_rate * avg_kwh_before + avg_delta_mc) / avg_kwh_after
+    new_dist, new_tx = _proportional_decomposition(
+        r_new,
+        base_distribution,
+        base_transmission,
+        other_riders,
+    )
 
     return FairFlatRate(
-        delivery_total=r_prime,
-        distribution=r_prime - riders_total,
-        riders=riders_total,
+        delivery_total=r_new,
+        distribution=new_dist,
+        transmission=new_tx,
+        other_riders=other_riders,
     )
 
 
 def derive_fair_seasonal_rate(
     *,
     avg_delta_mc_annual: float,
-    avg_delta_kwh_winter: float,
-    avg_delta_kwh_summer: float,
+    avg_kwh_before_annual: float,
+    avg_kwh_after_winter: float,
+    avg_kwh_after_summer: float,
     base_delivery_rate: float,
-    riders_total: float,
+    base_distribution: float,
+    base_transmission: float,
+    other_riders: float,
 ) -> FairSeasonalRate:
     """Derive a fair seasonal delivery rate (summer unchanged, winter adjusted).
 
-    The annual overpayment is recovered entirely in winter: the summer rate
-    stays at the base (Rate 1) level, and the winter rate is set so that
-    ``r_win * avg_delta_kwh_winter + r_base * avg_delta_kwh_summer == avg_delta_mc_annual``.
+    The annual constraint is satisfied entirely via the winter rate: the summer
+    rate stays at the base (Rate 1) level, and the winter rate is set so that:
+
+        r_win * avg(kWh_after_winter) + r_base * avg(kWh_after_summer)
+            = r_base * avg(kWh_before) + avg(delta_MC_annual)
+
+    The discount on the winter rate is distributed proportionally across
+    distribution and transmission; other riders pass through unchanged.
 
     Parameters
     ----------
     avg_delta_mc_annual
         Weighted-average incremental delivery marginal cost ($/yr), annual
         total, over the fair-rate population.
-    avg_delta_kwh_winter
-        Weighted-average incremental grid kWh during winter months (kWh/yr).
-    avg_delta_kwh_summer
-        Weighted-average incremental grid kWh during summer months (kWh/yr).
+    avg_kwh_before_annual
+        Weighted-average annual grid kWh *before* the HP retrofit.
+    avg_kwh_after_winter
+        Weighted-average grid kWh during winter months *after* the retrofit.
+    avg_kwh_after_summer
+        Weighted-average grid kWh during summer months *after* the retrofit.
     base_delivery_rate
         The current (Rate 1) delivery volumetric rate in $/kWh, used as the
         summer rate.
-    riders_total
-        Shared riders total in $/kWh (pass-through, unchanged).
+    base_distribution
+        The current (Rate 1) distribution component in $/kWh.
+    base_transmission
+        The current (Rate 1) transmission component in $/kWh.
+    other_riders
+        Non-discountable riders total in $/kWh (pass-through, unchanged).
 
     Returns
     -------
@@ -158,24 +225,35 @@ def derive_fair_seasonal_rate(
     Raises
     ------
     ValueError
-        If ``avg_delta_kwh_winter`` is zero (cannot concentrate correction in
-        winter with no incremental winter kWh).
+        If ``avg_kwh_after_winter`` is zero (cannot concentrate adjustment in
+        winter with no post-retrofit winter kWh).
     """
-    if avg_delta_kwh_winter == 0.0:
+    if avg_kwh_after_winter == 0.0:
         msg = (
-            "avg_delta_kwh_winter must be non-zero "
-            "(cannot concentrate annual correction in winter with no incremental winter kWh)"
+            "avg_kwh_after_winter must be non-zero "
+            "(cannot concentrate annual adjustment in winter with no post-retrofit winter kWh)"
         )
         raise ValueError(msg)
 
-    r_winter = (avg_delta_mc_annual - base_delivery_rate * avg_delta_kwh_summer) / avg_delta_kwh_winter
+    r_winter = (
+        base_delivery_rate * avg_kwh_before_annual + avg_delta_mc_annual - base_delivery_rate * avg_kwh_after_summer
+    ) / avg_kwh_after_winter
+
+    win_dist, win_tx = _proportional_decomposition(
+        r_winter,
+        base_distribution,
+        base_transmission,
+        other_riders,
+    )
 
     return FairSeasonalRate(
         winter_delivery_total=r_winter,
-        winter_distribution=r_winter - riders_total,
+        winter_distribution=win_dist,
+        winter_transmission=win_tx,
         summer_delivery_total=base_delivery_rate,
-        summer_distribution=base_delivery_rate - riders_total,
-        riders=riders_total,
+        summer_distribution=base_distribution,
+        summer_transmission=base_transmission,
+        other_riders=other_riders,
     )
 
 
@@ -200,6 +278,10 @@ def write_custom_rate_yaml(
     For a :class:`FairFlatRate`, writes a flat custom-rate YAML compatible with
     ``create_custom_flat_tariff.py``.  For a :class:`FairSeasonalRate`, writes a
     seasonal custom-rate YAML compatible with ``create_custom_seasonal_tariff.py``.
+
+    Delivery is decomposed into ``distribution``, ``transmission``, and
+    ``other_riders``.  The downstream tariff scripts sum all ``delivery`` dict
+    values regardless of key names, so this is backward-compatible.
 
     Parameters
     ----------
@@ -240,7 +322,8 @@ def write_custom_rate_yaml(
             "fixed_charge": round(fixed_charge, 2),
             "delivery": {
                 "distribution": round(rate.distribution, 5),
-                "riders": round(rate.riders, 5),
+                "transmission": round(rate.transmission, 5),
+                "other_riders": round(rate.other_riders, 5),
             },
             "supply_rate": round(supply_rate, 5),
         }
@@ -258,14 +341,16 @@ def write_custom_rate_yaml(
                     "months": sorted(winter_months, key=lambda m: (m % 12, m)),
                     "delivery": {
                         "distribution": round(rate.winter_distribution, 5),
-                        "riders": round(rate.riders, 5),
+                        "transmission": round(rate.winter_transmission, 5),
+                        "other_riders": round(rate.other_riders, 5),
                     },
                 },
                 "summer": {
                     "months": sorted(summer_months),
                     "delivery": {
                         "distribution": round(rate.summer_distribution, 5),
-                        "riders": round(rate.riders, 5),
+                        "transmission": round(rate.summer_transmission, 5),
+                        "other_riders": round(rate.other_riders, 5),
                     },
                 },
             },

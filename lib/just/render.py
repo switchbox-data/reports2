@@ -11,12 +11,11 @@ Single-file mode (one argument):
     single-file renders), moves the output into docs/, and inlines SVGs.
     No baseline snapshot is taken.
 
-    Note on ``{{< embed >}}``: Quarto's embed pipeline re-executes the
-    embedded notebook with its own format (ipynb, hardcoded to PNG) and
-    ignores both project-level and ``-M`` fig-format.  Embedded figures
-    will be SVG only if a freeze cache from a prior full project render
-    exists.  If embedded figures appear as PNG, run ``just render`` (no
-    arguments) first to build the cache.
+    Note on ``{{< embed >}}``: Quarto's embed pipeline re-executes
+    embedded notebooks when no freeze cache exists.  If a freeze cache
+    from a prior render exists and the notebook source hasn't changed,
+    cached outputs are reused.  Either way, project-level settings
+    (including ``fig-format``) are respected.
 
     The embed pipeline also maintains its own cache under
     ``.quarto/embed/``.  When rendering a file with ``{{< embed >}}``,
@@ -168,14 +167,6 @@ def _render_single(qmd_path: Path) -> None:
     has_embeds = _has_embeds(qmd_path)
 
     _snapshot_single(qmd_path, docs)
-
-    if has_embeds and not Path(".quarto/_freeze").exists():
-        print(
-            "⚠️  This file embeds figures from other notebooks, but no freeze\n"
-            "   cache exists. Embedded figures will render as PNG instead of SVG.\n"
-            "   Run `just render` (full project) first to build the cache.",
-            file=sys.stderr,
-        )
 
     if has_embeds:
         embed_dir = Path(".quarto/embed")

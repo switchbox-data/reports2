@@ -30,7 +30,7 @@ from pathlib import Path
 import polars as pl
 import yaml
 
-from lib.rdp import fetch_rdp_file, parse_urdb_json
+from lib.rdp import fetch_rdp_file
 from lib.rates_analysis.cos_funcs import incremental_cost_delta_with_gap
 from lib.rates_analysis.fair_rate import (
     derive_fair_flat_rate,
@@ -100,11 +100,18 @@ _tariff_summary = yaml.safe_load(
     )
 )
 riders_total = _tariff_summary["shared_riders"]["total"]
+base_distribution = _tariff_summary["rate1_proposed"]["all_months_all_kwh"]["distribution"]
+base_transmission = _tariff_summary["shared_riders"]["transmission"]
+other_riders = riders_total - base_transmission
+
 supply_jan_jun = _tariff_summary["supply_commodity"]["jan_jun"]
 supply_jul_dec = _tariff_summary["supply_commodity"]["jul_dec"]
 supply_rate_avg = (supply_jan_jun * 6 + supply_jul_dec * 6) / 12
 
-print(f"Riders total:                ${riders_total:.5f}/kWh")
+print(f"Base distribution:           ${base_distribution:.5f}/kWh")
+print(f"Base transmission:           ${base_transmission:.5f}/kWh")
+print(f"Other riders:                ${other_riders:.5f}/kWh")
+print(f"Riders total (tx + other):   ${riders_total:.5f}/kWh")
 print(f"Supply (Jan-Jun):            ${supply_jan_jun:.5f}/kWh")
 print(f"Supply (Jul-Dec):            ${supply_jul_dec:.5f}/kWh")
 print(f"Supply (weighted avg):       ${supply_rate_avg:.5f}/kWh")
@@ -115,7 +122,13 @@ _summary_delivery_total = _rate1_summary["all_months_all_kwh"]["delivery_total"]
 assert abs(base_delivery_rate - _summary_delivery_total) < 1e-6, (
     f"Tariff JSON rate {base_delivery_rate} != summary {_summary_delivery_total}"
 )
-print("\n✓ Tariff JSON and tariff summary delivery rates match.")
+print("✓ Tariff JSON and tariff summary delivery rates match.")
+
+_recon = base_distribution + riders_total
+assert abs(base_delivery_rate - _recon) < 1e-6, (
+    f"distribution + riders = {_recon} != delivery_total {base_delivery_rate}"
+)
+print("✓ distribution + riders = delivery_total.")
 
 # --- Periods YAML (winter/summer months) --------------------------------------
 _period_yaml = yaml.safe_load(
@@ -195,8 +208,8 @@ print(f"Calibrated monthly rows: {bills_calibrated.height:,}")
 
 Compute the weighted averages we need for the derivation:
 
-- **Annual**: `avg_delta_mc` and `avg_delta_kwh` (used by both flat and seasonal)
-- **Seasonal**: `avg_delta_kwh_winter` and `avg_delta_kwh_summer` (used by seasonal only)
+- **Annual**: `avg_delta_mc`, `avg_kwh_before`, `avg_kwh_after` (used by both flat and seasonal)
+- **Seasonal**: `avg_kwh_after_winter` and `avg_kwh_after_summer` (used by seasonal only)
 
 ```{python}
 #| label: aggregate-annual
@@ -208,13 +221,26 @@ _w_sum = _w.sum()
 avg_delta_mc = float(
     (cost_delta_fair["delta_economic_burden_delivery"] * _w).sum() / _w_sum
 )
+avg_kwh_before = float(
+    (cost_delta_fair["annual_kwh_grid_before"] * _w).sum() / _w_sum
+)
+avg_kwh_after = float(
+    (cost_delta_fair["annual_kwh_grid_after"] * _w).sum() / _w_sum
+)
 avg_delta_kwh = float(
     (cost_delta_fair["delta_annual_kwh_grid"] * _w).sum() / _w_sum
 )
 
 print(f"Weighted-average incremental MC (annual):  ${avg_delta_mc:,.2f}/yr")
+print(f"Weighted-average kWh before (annual):      {avg_kwh_before:,.0f} kWh/yr")
+print(f"Weighted-average kWh after (annual):       {avg_kwh_after:,.0f} kWh/yr")
 print(f"Weighted-average incremental kWh (annual): {avg_delta_kwh:,.0f} kWh/yr")
-print(f"Ratio (avg MC / avg kWh):                  ${avg_delta_mc / avg_delta_kwh:.5f}/kWh")
+print(f"Ratio (avg MC / avg delta kWh):            ${avg_delta_mc / avg_delta_kwh:.5f}/kWh")
+
+assert abs((avg_kwh_after - avg_kwh_before) - avg_delta_kwh) < 0.01, (
+    f"kWh after - before = {avg_kwh_after - avg_kwh_before:.2f} != delta {avg_delta_kwh:.2f}"
+)
+print("\n✓ kWh after - before = delta kWh.")
 ```
 
 ```{python}
@@ -253,56 +279,49 @@ def _seasonal_kwh(monthly_bills: pl.DataFrame, month_labels: list[str]) -> pl.Da
     )
 
 kwh_winter_before = _seasonal_kwh(bills_precalc_fair, WINTER_MONTH_LABELS)
-kwh_summer_before = _seasonal_kwh(bills_precalc_fair, SUMMER_MONTH_LABELS)
 kwh_winter_after = _seasonal_kwh(bills_calibrated_fair, WINTER_MONTH_LABELS)
 kwh_summer_after = _seasonal_kwh(bills_calibrated_fair, SUMMER_MONTH_LABELS)
 
-# Per-building seasonal delta kWh
-delta_kwh_winter = (
-    kwh_winter_before.rename({"elec_grid_kwh": "kwh_before"})
-    .join(kwh_winter_after.rename({"elec_grid_kwh": "kwh_after"}), on="bldg_id")
-    .with_columns((pl.col("kwh_after") - pl.col("kwh_before")).alias("delta_kwh_winter"))
-    .select("bldg_id", "delta_kwh_winter")
-)
-delta_kwh_summer = (
-    kwh_summer_before.rename({"elec_grid_kwh": "kwh_before"})
-    .join(kwh_summer_after.rename({"elec_grid_kwh": "kwh_after"}), on="bldg_id")
-    .with_columns((pl.col("kwh_after") - pl.col("kwh_before")).alias("delta_kwh_summer"))
-    .select("bldg_id", "delta_kwh_summer")
-)
-
-# Join seasonal deltas back to cost_delta_fair (for weights)
-seasonal_deltas = (
+# Join per-building seasonal kWh back to cost_delta_fair (for weights + validation)
+seasonal = (
     cost_delta_fair.select("bldg_id", "weight")
-    .join(delta_kwh_winter, on="bldg_id")
-    .join(delta_kwh_summer, on="bldg_id")
+    .join(
+        kwh_winter_before.rename({"elec_grid_kwh": "kwh_before_winter"}),
+        on="bldg_id",
+    )
+    .join(
+        kwh_winter_after.rename({"elec_grid_kwh": "kwh_after_winter"}),
+        on="bldg_id",
+    )
+    .join(
+        kwh_summer_after.rename({"elec_grid_kwh": "kwh_after_summer"}),
+        on="bldg_id",
+    )
+    .with_columns(
+        (pl.col("kwh_after_winter") - pl.col("kwh_before_winter")).alias("delta_kwh_winter"),
+    )
 )
-assert seasonal_deltas.height == _n_cost_delta_bldgs, (
-    f"Seasonal deltas have {seasonal_deltas.height} buildings, "
-    f"expected {_n_cost_delta_bldgs}"
+assert seasonal.height == _n_cost_delta_bldgs, (
+    f"Seasonal frame has {seasonal.height} buildings, expected {_n_cost_delta_bldgs}"
 )
 
-_sw = seasonal_deltas["weight"]
+_sw = seasonal["weight"]
 _sw_sum = _sw.sum()
 
-avg_delta_kwh_winter = float(
-    (seasonal_deltas["delta_kwh_winter"] * _sw).sum() / _sw_sum
-)
-avg_delta_kwh_summer = float(
-    (seasonal_deltas["delta_kwh_summer"] * _sw).sum() / _sw_sum
-)
+avg_kwh_after_winter = float((seasonal["kwh_after_winter"] * _sw).sum() / _sw_sum)
+avg_kwh_after_summer = float((seasonal["kwh_after_summer"] * _sw).sum() / _sw_sum)
 
-print(f"Weighted-average incremental kWh (winter): {avg_delta_kwh_winter:,.0f} kWh/yr")
-print(f"Weighted-average incremental kWh (summer): {avg_delta_kwh_summer:,.0f} kWh/yr")
-print(f"Sum (winter + summer):                     {avg_delta_kwh_winter + avg_delta_kwh_summer:,.0f} kWh/yr")
-print(f"Annual delta kWh (from cost deltas):       {avg_delta_kwh:,.0f} kWh/yr")
+print(f"Weighted-average kWh after (winter):       {avg_kwh_after_winter:,.0f} kWh")
+print(f"Weighted-average kWh after (summer):       {avg_kwh_after_summer:,.0f} kWh")
+print(f"Sum (winter + summer):                     {avg_kwh_after_winter + avg_kwh_after_summer:,.0f} kWh")
+print(f"Annual kWh after (from cost deltas):       {avg_kwh_after:,.0f} kWh")
 
-# Seasonal kWh must match annual kWh exactly (rounded to avoid float noise)
-_seasonal_sum = avg_delta_kwh_winter + avg_delta_kwh_summer
-assert round(_seasonal_sum, 2) == round(avg_delta_kwh, 2), (
-    f"Seasonal kWh sum {_seasonal_sum:.2f} != annual {avg_delta_kwh:.2f}"
+# Seasonal after-kWh must match annual after-kWh
+_seasonal_after_sum = avg_kwh_after_winter + avg_kwh_after_summer
+assert abs(_seasonal_after_sum - avg_kwh_after) < 1.0, (
+    f"Seasonal after-kWh sum {_seasonal_after_sum:.2f} != annual {avg_kwh_after:.2f}"
 )
-print("\n✓ Winter + summer kWh matches annual kWh.")
+print("\n✓ Winter + summer after-kWh matches annual after-kWh.")
 ```
 
 ## Derive fair flat rate
@@ -312,15 +331,19 @@ print("\n✓ Winter + summer kWh matches annual kWh.")
 
 flat_rate = derive_fair_flat_rate(
     avg_delta_mc=avg_delta_mc,
-    avg_delta_kwh=avg_delta_kwh,
+    avg_kwh_before=avg_kwh_before,
+    avg_kwh_after=avg_kwh_after,
     base_delivery_rate=base_delivery_rate,
-    riders_total=riders_total,
+    base_distribution=base_distribution,
+    base_transmission=base_transmission,
+    other_riders=other_riders,
 )
 
 print("Fair flat delivery rate:")
 print(f"  delivery_total:  ${flat_rate.delivery_total:.5f}/kWh")
 print(f"  distribution:    ${flat_rate.distribution:.5f}/kWh")
-print(f"  riders:          ${flat_rate.riders:.5f}/kWh")
+print(f"  transmission:    ${flat_rate.transmission:.5f}/kWh")
+print(f"  other_riders:    ${flat_rate.other_riders:.5f}/kWh")
 print(f"  fixed charge:    ${fixed_charge:.2f}/month (unchanged)")
 print(f"\n  vs. Rate 1:      ${base_delivery_rate:.5f}/kWh")
 print(f"  difference:      ${flat_rate.delivery_total - base_delivery_rate:.5f}/kWh")
@@ -328,31 +351,36 @@ print(f"  difference:      ${flat_rate.delivery_total - base_delivery_rate:.5f}/
 
 ## Derive fair seasonal rate
 
-The summer rate is unchanged at Rate 1. The winter rate is set so the full annual
-overpayment is recovered in winter:
+The summer rate is unchanged at Rate 1. The winter rate is set so the annual constraint
+holds — the full adjustment is concentrated in winter:
 
-$$r_{\text{win}} = \frac{\overline{\Delta MC_{\text{annual}}} - r_{\text{rate1}} \cdot \overline{\Delta \text{kWh}_{\text{summer}}}}{\overline{\Delta \text{kWh}_{\text{winter}}}}$$
+$$r_{\text{win}} = \frac{r_{\text{rate1}} \cdot \overline{\text{kWh}_{\text{before}}} + \overline{\Delta MC_{\text{annual}}} - r_{\text{rate1}} \cdot \overline{\text{kWh}_{\text{after,summer}}}}{\overline{\text{kWh}_{\text{after,winter}}}}$$
 
 ```{python}
 #| label: derive-seasonal
 
 seasonal_rate = derive_fair_seasonal_rate(
     avg_delta_mc_annual=avg_delta_mc,
-    avg_delta_kwh_winter=avg_delta_kwh_winter,
-    avg_delta_kwh_summer=avg_delta_kwh_summer,
+    avg_kwh_before_annual=avg_kwh_before,
+    avg_kwh_after_winter=avg_kwh_after_winter,
+    avg_kwh_after_summer=avg_kwh_after_summer,
     base_delivery_rate=base_delivery_rate,
-    riders_total=riders_total,
+    base_distribution=base_distribution,
+    base_transmission=base_transmission,
+    other_riders=other_riders,
 )
 
 print("Fair seasonal delivery rate:")
 print(f"\n  Winter:")
 print(f"    delivery_total:  ${seasonal_rate.winter_delivery_total:.5f}/kWh")
 print(f"    distribution:    ${seasonal_rate.winter_distribution:.5f}/kWh")
-print(f"    riders:          ${seasonal_rate.riders:.5f}/kWh")
+print(f"    transmission:    ${seasonal_rate.winter_transmission:.5f}/kWh")
+print(f"    other_riders:    ${seasonal_rate.other_riders:.5f}/kWh")
 print(f"\n  Summer:")
 print(f"    delivery_total:  ${seasonal_rate.summer_delivery_total:.5f}/kWh (unchanged)")
 print(f"    distribution:    ${seasonal_rate.summer_distribution:.5f}/kWh (unchanged)")
-print(f"    riders:          ${seasonal_rate.riders:.5f}/kWh")
+print(f"    transmission:    ${seasonal_rate.summer_transmission:.5f}/kWh (unchanged)")
+print(f"    other_riders:    ${seasonal_rate.other_riders:.5f}/kWh")
 print(f"\n  Fixed charge:      ${fixed_charge:.2f}/month (unchanged)")
 print(f"\n  Winter vs. Rate 1: ${seasonal_rate.winter_delivery_total - base_delivery_rate:.5f}/kWh")
 ```
@@ -366,12 +394,16 @@ fair-rate population.
 #| label: validate
 
 # --- Flat rate validation -----------------------------------------------------
-# Under the flat fair rate, each building's overpayment becomes:
-#   (r' - r_rate1) * delta_kwh_i + original_overpayment_i
+# Under the flat fair rate, the new delivery bill for a post-retrofit building
+# is r_new * kwh_after (the rate applies to ALL post-retrofit kWh, not just the
+# increment). The adjusted gap is:
+#   r_new * kwh_after_i - r_base * kwh_before_i - delta_MC_i
+# which equals:
+#   delta_gap_i + (r_new - r_base) * kwh_after_i
 # The weighted mean should be ≈0 by construction.
 _flat_adjusted_gap = (
     cost_delta_fair["delta_gap"]
-    + (flat_rate.delivery_total - base_delivery_rate) * cost_delta_fair["delta_annual_kwh_grid"]
+    + (flat_rate.delivery_total - base_delivery_rate) * cost_delta_fair["annual_kwh_grid_after"]
 )
 _flat_mean_overpayment = float((_flat_adjusted_gap * _w).sum() / _w_sum)
 print(f"Flat rate — weighted-mean residual overpayment: ${_flat_mean_overpayment:.4f}")
@@ -381,19 +413,19 @@ assert abs(_flat_mean_overpayment) < 0.01, (
 print("✓ Flat rate zeroes weighted-mean overpayment.")
 
 # --- Seasonal rate validation -------------------------------------------------
-# Under the seasonal fair rate, each building's delivery adjustment is:
-#   (r_win - r_rate1) * delta_kwh_winter_i + (r_sum - r_rate1) * delta_kwh_summer_i
-# Since r_sum = r_rate1, the summer term vanishes. The weighted mean should be ≈0.
-_seasonal_deltas_with_gap = seasonal_deltas.join(
+# Under the seasonal fair rate, the rate adjustment applies to total after-kWh:
+#   (r_win - r_base) * kwh_after_winter_i + (r_sum - r_base) * kwh_after_summer_i
+# Since r_sum = r_base, the summer term vanishes. The weighted mean should be ≈0.
+_seasonal_with_gap = seasonal.join(
     cost_delta_fair.select("bldg_id", "delta_gap"), on="bldg_id"
 )
 _seasonal_adjusted_gap = (
-    _seasonal_deltas_with_gap["delta_gap"]
-    + (seasonal_rate.winter_delivery_total - base_delivery_rate) * _seasonal_deltas_with_gap["delta_kwh_winter"]
+    _seasonal_with_gap["delta_gap"]
+    + (seasonal_rate.winter_delivery_total - base_delivery_rate) * _seasonal_with_gap["kwh_after_winter"]
 )
 _seasonal_mean_overpayment = float(
-    (_seasonal_adjusted_gap * _seasonal_deltas_with_gap["weight"]).sum()
-    / _seasonal_deltas_with_gap["weight"].sum()
+    (_seasonal_adjusted_gap * _seasonal_with_gap["weight"]).sum()
+    / _seasonal_with_gap["weight"].sum()
 )
 print(f"\nSeasonal rate — weighted-mean residual overpayment: ${_seasonal_mean_overpayment:.4f}")
 assert abs(_seasonal_mean_overpayment) < 0.01, (

@@ -136,10 +136,38 @@ def _has_embeds(qmd_path: Path) -> bool:
         return False
 
 
+def _snapshot_single(qmd_path: Path, docs: Path) -> None:
+    """Copy this file's existing HTML output into the diff baseline.
+
+    Full-project renders snapshot *all* of docs/; this does the same for
+    a single file so that ``just render foo.qmd && just diff`` works.
+    """
+    rel_html = qmd_path.with_suffix(".html")
+    existing_html = docs / rel_html
+    if not existing_html.exists():
+        return
+
+    BASELINE.mkdir(parents=True, exist_ok=True)
+    bl_html = BASELINE / rel_html
+    bl_html.parent.mkdir(parents=True, exist_ok=True)
+    print(f"📸 Snapshotting {existing_html} → {bl_html}")
+    shutil.copy2(str(existing_html), str(bl_html))
+
+    rel_files = qmd_path.with_suffix("").parent / (qmd_path.stem + "_files")
+    existing_files = docs / rel_files
+    if existing_files.is_dir():
+        bl_files = BASELINE / rel_files
+        if bl_files.exists():
+            shutil.rmtree(bl_files)
+        shutil.copytree(str(existing_files), str(bl_files))
+
+
 def _render_single(qmd_path: Path) -> None:
     """Single-file render with fig-format forwarding and move to docs/."""
     docs = Path("docs")
     has_embeds = _has_embeds(qmd_path)
+
+    _snapshot_single(qmd_path, docs)
 
     if has_embeds and not Path(".quarto/_freeze").exists():
         print(

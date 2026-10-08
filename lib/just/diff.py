@@ -87,11 +87,14 @@ def main() -> None:
             ["website_diff", "-o", str(BASELINE), "-n", str(docs_link), "-d", str(diff_dir), "-i", hub],
             check=True,
         )
+        # website_diff produces index.html as a hub for multi-page diffs.
+        # For a single-page diff it emits only that page (no hub).
         index = diff_dir / "index.html"
+        if not index.is_file() and len(common) == 1:
+            index = diff_dir / common[0]
         if not index.is_file():
-            # website_diff catches failures, removes diff_dir, and still exits 0 — treat as error.
             print(
-                f"❌ website_diff did not produce {index} (it may have failed and cleaned up).",
+                f"❌ website_diff did not produce expected output in {diff_dir}.",
                 file=sys.stderr,
             )
             sys.exit(1)

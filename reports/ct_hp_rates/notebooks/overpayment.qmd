@@ -28,8 +28,9 @@ post-retrofit (upgrade 2, calibrated).
 
 The notebook produces histograms for:
 
-- **6 rate variants**: Rate 1, Rate 6, Rate 6 (RATE=MC), Rate 6 (FIXED+MC),
-  Rate 1 minus average overpayment, Rate 1 minus per-building overpayment
+- **10 rate variants**: Rate 1, Rate 6, Rate 6 personalized, Rate 6 (RATE=MC),
+  Rate 6 (RATE=MC) personalized, Rate 6 (FIXED+MC), Rate 6 (FIXED+MC) personalized,
+  Fair flat rate, Fair seasonal rate, Rate 1 minus per-building overpayment
 - **3 heating types**: natural gas, oil/propane (delivered fuels), and all
   fossil fuels combined
 - **3 periods**: annual, winter (from the Rate 6 heating season periods YAML),
@@ -50,6 +51,7 @@ import yaml
 
 from lib.plotnine import SB_COLORS, theme_switchbox
 from lib.rdp import fetch_rdp_file
+from lib.rates_analysis.block_rates import add_adjustment, month_block_rates, personalized_block_adjustment
 from lib.rates_analysis.cos_funcs import incremental_cost_delta_with_gap, compute_building_seasonal_mc
 from lib.rates_analysis.rate_case_funcs import (
     MONTH_ORDER,
@@ -58,6 +60,8 @@ from lib.rates_analysis.rate_case_funcs import (
     fair_rate_heating_types,
     load_billing_kwh_8760,
     load_delivery_mc_heatmap,
+    load_master_bills,
+    load_tariff_json,
     plot_weighted_bill_change_hist,
     segment_name,
     weighted_quantile,
@@ -146,6 +150,15 @@ CAIRO_RATES: list[tuple[str, str, str]] = [
     ("Rate 6\n(FIXED+MC)", SEG_DEFAULT_PRECALC, SEG_RATE6_FIXED_RATEMC_CALIBRATED),
     ("Fair flat rate", SEG_DEFAULT_PRECALC, SEG_FAIR_FLAT_CALIBRATED),
     ("Fair seasonal rate", SEG_DEFAULT_PRECALC, SEG_FAIR_SEASONAL_CALIBRATED),
+]
+
+# Personalized variants are not CAIRO runs. Each starts from the 700 kWh rate above it
+# and moves the winter block boundary to the home's own pre-heat-pump usage.
+# (label, parent label, upgrade-02 segment, delivery tariff stem)
+PERSONALIZED_RATES: list[tuple[str, str, str, str]] = [
+    ("Rate 6\npersonalized", "Rate 6", SEG_RATE6_CALIBRATED, "ct_eversource_rate6"),
+    ("Rate 6\n(RATE=MC, pers.)", "Rate 6\n(RATE=MC)", SEG_RATE6_RATEMC_CALIBRATED, "ct_eversource_rate6_ratemc"),
+    ("Rate 6\n(FIXED+MC, pers.)", "Rate 6\n(FIXED+MC)", SEG_RATE6_FIXED_RATEMC_CALIBRATED, "ct_eversource_rate6_fixed_ratemc"),
 ]
 
 # --- Heating type populations --------------------------------------------------
@@ -391,6 +404,12 @@ For the per-building overpayment correction, we first adjust the bill delta
 and then subtract MC, so its overpayment shows how much cross-subsidy remains
 after the correction. The kWh and MC columns are copied through unchanged.
 
+The three personalized rates start from the matching 700 kWh Rate 6 bill and
+move the winter block boundary from 700 kWh to each home's own pre-heat-pump
+usage. Only the winter delivery energy charge changes, so the summer charts
+match the 700 kWh charts exactly. Marginal cost is the same either way, so the
+dollar adjustment shifts overpayment one-for-one.
+
 ```{python}
 #| label: compute-deltas
 
@@ -451,6 +470,44 @@ for period_label, month_arg in PERIODS:
         .drop("overpayment")
     )
     all_overpayment[("Rate 1 − per-bldg.\noverpayment", period_label)] = op_minus_bldg
+
+
+def _personalized_month_adjustment(segment_after: str, tariff_stem: str) -> pl.DataFrame:
+    """Per building-month delivery-charge change from `personalized_block_adjustment`.
+
+    Marginal cost does not change with the threshold, so adding this to the 700 kWh
+    bill delta shifts overpayment by the same amount. Months outside the period being
+    plotted are dropped by the caller.
+    """
+    rates = month_block_rates(load_tariff_json(STATE, UTILITY, tariff_stem, RDP_REF))
+    before = (
+        load_master_bills(STATE, BATCH, SEG_DEFAULT_PRECALC)
+        .filter(pl.col("month") != "Annual")
+        .select("bldg_id", "month", pl.col("elec_grid_kwh").alias("kwh_before"))
+    )
+    after = (
+        load_master_bills(STATE, BATCH, segment_after)
+        .filter(pl.col("month") != "Annual")
+        .select("bldg_id", "month", pl.col("elec_grid_kwh").alias("kwh_after"))
+    )
+    return personalized_block_adjustment(before.join(after, on=["bldg_id", "month"]), rates)
+
+
+_personalized_monthly = {
+    label: _personalized_month_adjustment(segment_after, stem)
+    for label, _parent, segment_after, stem in PERSONALIZED_RATES
+}
+
+for period_label, month_arg in PERIODS:
+    period_months = month_arg if isinstance(month_arg, list) else None
+    for label, parent, _segment_after, _stem in PERSONALIZED_RATES:
+        monthly = _personalized_monthly[label]
+        if period_months is not None:
+            monthly = monthly.filter(pl.col("month").is_in(period_months))
+        adjustment = monthly.group_by("bldg_id").agg(pl.col("adjustment").sum())
+        all_overpayment[(label, period_label)] = add_adjustment(
+            all_overpayment[(parent, period_label)], adjustment, ["delta"], how="left"
+        )
 
 print(f"Total overpayment DataFrames: {len(all_overpayment)}")
 for (rate, period), df in sorted(all_overpayment.items(), key=lambda x: (x[0][1], x[0][0])):
@@ -546,7 +603,13 @@ rate × period, the weighted % of homes that overpay (positive) vs. underpay
 ```{python}
 #| label: incidence-summary
 
-ALL_RATE_LABELS = [r[0] for r in CAIRO_RATES] + [
+_personalized_of = {parent: label for label, parent, _segment, _stem in PERSONALIZED_RATES}
+ALL_RATE_LABELS: list[str] = []
+for _label, _seg_pre, _seg_cal in CAIRO_RATES:
+    ALL_RATE_LABELS.append(_label)
+    if _label in _personalized_of:
+        ALL_RATE_LABELS.append(_personalized_of[_label])
+ALL_RATE_LABELS += [
     "Rate 1 − per-bldg.\noverpayment",
 ]
 ALL_HEATING_CODES = list(FAIR_RATE_HTS) + ["all_fossil"]
@@ -596,8 +659,11 @@ HEATING_GROUPS: list[tuple[str, str, str]] = [
 RATE_SLUGS: dict[str, str] = {
     "Rate 1": "r1",
     "Rate 6": "r6",
+    "Rate 6\npersonalized": "r6-personal",
     "Rate 6\n(RATE=MC)": "r6-ratemc",
+    "Rate 6\n(RATE=MC, pers.)": "r6-ratemc-personal",
     "Rate 6\n(FIXED+MC)": "r6-fixedmc",
+    "Rate 6\n(FIXED+MC, pers.)": "r6-fixedmc-personal",
     "Fair flat rate": "fair-flat",
     "Fair seasonal rate": "fair-seasonal",
     "Rate 1 − per-bldg.\noverpayment": "r1-bldg-corr",
@@ -778,15 +844,33 @@ figs[("r6", "annual", "natgas")]
 ```
 
 ```{python}
+#| label: fig-annual-natgas-r6-personal
+#| fig-cap: "Annual delivery overpayment, natural gas — Rate 6 personalized."
+figs[("r6-personal", "annual", "natgas")]
+```
+
+```{python}
 #| label: fig-annual-natgas-r6-ratemc
 #| fig-cap: "Annual delivery overpayment, natural gas — Rate 6 (RATE=MC)."
 figs[("r6-ratemc", "annual", "natgas")]
 ```
 
 ```{python}
+#| label: fig-annual-natgas-r6-ratemc-personal
+#| fig-cap: "Annual delivery overpayment, natural gas — Rate 6 (RATE=MC) personalized."
+figs[("r6-ratemc-personal", "annual", "natgas")]
+```
+
+```{python}
 #| label: fig-annual-natgas-r6-fixedmc
 #| fig-cap: "Annual delivery overpayment, natural gas — Rate 6 (FIXED+MC)."
 figs[("r6-fixedmc", "annual", "natgas")]
+```
+
+```{python}
+#| label: fig-annual-natgas-r6-fixedmc-personal
+#| fig-cap: "Annual delivery overpayment, natural gas — Rate 6 (FIXED+MC) personalized."
+figs[("r6-fixedmc-personal", "annual", "natgas")]
 ```
 
 
@@ -823,15 +907,33 @@ figs[("r6", "annual", "delivered")]
 ```
 
 ```{python}
+#| label: fig-annual-delivered-r6-personal
+#| fig-cap: "Annual delivery overpayment, oil/propane — Rate 6 personalized."
+figs[("r6-personal", "annual", "delivered")]
+```
+
+```{python}
 #| label: fig-annual-delivered-r6-ratemc
 #| fig-cap: "Annual delivery overpayment, oil/propane — Rate 6 (RATE=MC)."
 figs[("r6-ratemc", "annual", "delivered")]
 ```
 
 ```{python}
+#| label: fig-annual-delivered-r6-ratemc-personal
+#| fig-cap: "Annual delivery overpayment, oil/propane — Rate 6 (RATE=MC) personalized."
+figs[("r6-ratemc-personal", "annual", "delivered")]
+```
+
+```{python}
 #| label: fig-annual-delivered-r6-fixedmc
 #| fig-cap: "Annual delivery overpayment, oil/propane — Rate 6 (FIXED+MC)."
 figs[("r6-fixedmc", "annual", "delivered")]
+```
+
+```{python}
+#| label: fig-annual-delivered-r6-fixedmc-personal
+#| fig-cap: "Annual delivery overpayment, oil/propane — Rate 6 (FIXED+MC) personalized."
+figs[("r6-fixedmc-personal", "annual", "delivered")]
 ```
 
 
@@ -868,15 +970,33 @@ figs[("r6", "annual", "all-fossil")]
 ```
 
 ```{python}
+#| label: fig-annual-all-fossil-r6-personal
+#| fig-cap: "Annual delivery overpayment, all fossil fuel — Rate 6 personalized."
+figs[("r6-personal", "annual", "all-fossil")]
+```
+
+```{python}
 #| label: fig-annual-all-fossil-r6-ratemc
 #| fig-cap: "Annual delivery overpayment, all fossil fuel — Rate 6 (RATE=MC)."
 figs[("r6-ratemc", "annual", "all-fossil")]
 ```
 
 ```{python}
+#| label: fig-annual-all-fossil-r6-ratemc-personal
+#| fig-cap: "Annual delivery overpayment, all fossil fuel — Rate 6 (RATE=MC) personalized."
+figs[("r6-ratemc-personal", "annual", "all-fossil")]
+```
+
+```{python}
 #| label: fig-annual-all-fossil-r6-fixedmc
 #| fig-cap: "Annual delivery overpayment, all fossil fuel — Rate 6 (FIXED+MC)."
 figs[("r6-fixedmc", "annual", "all-fossil")]
+```
+
+```{python}
+#| label: fig-annual-all-fossil-r6-fixedmc-personal
+#| fig-cap: "Annual delivery overpayment, all fossil fuel — Rate 6 (FIXED+MC) personalized."
+figs[("r6-fixedmc-personal", "annual", "all-fossil")]
 ```
 
 
@@ -913,15 +1033,33 @@ figs[("r6", "winter", "natgas")]
 ```
 
 ```{python}
+#| label: fig-winter-natgas-r6-personal
+#| fig-cap: "Winter delivery overpayment, natural gas — Rate 6 personalized."
+figs[("r6-personal", "winter", "natgas")]
+```
+
+```{python}
 #| label: fig-winter-natgas-r6-ratemc
 #| fig-cap: "Winter delivery overpayment, natural gas — Rate 6 (RATE=MC)."
 figs[("r6-ratemc", "winter", "natgas")]
 ```
 
 ```{python}
+#| label: fig-winter-natgas-r6-ratemc-personal
+#| fig-cap: "Winter delivery overpayment, natural gas — Rate 6 (RATE=MC) personalized."
+figs[("r6-ratemc-personal", "winter", "natgas")]
+```
+
+```{python}
 #| label: fig-winter-natgas-r6-fixedmc
 #| fig-cap: "Winter delivery overpayment, natural gas — Rate 6 (FIXED+MC)."
 figs[("r6-fixedmc", "winter", "natgas")]
+```
+
+```{python}
+#| label: fig-winter-natgas-r6-fixedmc-personal
+#| fig-cap: "Winter delivery overpayment, natural gas — Rate 6 (FIXED+MC) personalized."
+figs[("r6-fixedmc-personal", "winter", "natgas")]
 ```
 
 
@@ -958,15 +1096,33 @@ figs[("r6", "winter", "delivered")]
 ```
 
 ```{python}
+#| label: fig-winter-delivered-r6-personal
+#| fig-cap: "Winter delivery overpayment, oil/propane — Rate 6 personalized."
+figs[("r6-personal", "winter", "delivered")]
+```
+
+```{python}
 #| label: fig-winter-delivered-r6-ratemc
 #| fig-cap: "Winter delivery overpayment, oil/propane — Rate 6 (RATE=MC)."
 figs[("r6-ratemc", "winter", "delivered")]
 ```
 
 ```{python}
+#| label: fig-winter-delivered-r6-ratemc-personal
+#| fig-cap: "Winter delivery overpayment, oil/propane — Rate 6 (RATE=MC) personalized."
+figs[("r6-ratemc-personal", "winter", "delivered")]
+```
+
+```{python}
 #| label: fig-winter-delivered-r6-fixedmc
 #| fig-cap: "Winter delivery overpayment, oil/propane — Rate 6 (FIXED+MC)."
 figs[("r6-fixedmc", "winter", "delivered")]
+```
+
+```{python}
+#| label: fig-winter-delivered-r6-fixedmc-personal
+#| fig-cap: "Winter delivery overpayment, oil/propane — Rate 6 (FIXED+MC) personalized."
+figs[("r6-fixedmc-personal", "winter", "delivered")]
 ```
 
 
@@ -1003,15 +1159,33 @@ figs[("r6", "winter", "all-fossil")]
 ```
 
 ```{python}
+#| label: fig-winter-all-fossil-r6-personal
+#| fig-cap: "Winter delivery overpayment, all fossil fuel — Rate 6 personalized."
+figs[("r6-personal", "winter", "all-fossil")]
+```
+
+```{python}
 #| label: fig-winter-all-fossil-r6-ratemc
 #| fig-cap: "Winter delivery overpayment, all fossil fuel — Rate 6 (RATE=MC)."
 figs[("r6-ratemc", "winter", "all-fossil")]
 ```
 
 ```{python}
+#| label: fig-winter-all-fossil-r6-ratemc-personal
+#| fig-cap: "Winter delivery overpayment, all fossil fuel — Rate 6 (RATE=MC) personalized."
+figs[("r6-ratemc-personal", "winter", "all-fossil")]
+```
+
+```{python}
 #| label: fig-winter-all-fossil-r6-fixedmc
 #| fig-cap: "Winter delivery overpayment, all fossil fuel — Rate 6 (FIXED+MC)."
 figs[("r6-fixedmc", "winter", "all-fossil")]
+```
+
+```{python}
+#| label: fig-winter-all-fossil-r6-fixedmc-personal
+#| fig-cap: "Winter delivery overpayment, all fossil fuel — Rate 6 (FIXED+MC) personalized."
+figs[("r6-fixedmc-personal", "winter", "all-fossil")]
 ```
 
 
@@ -1048,15 +1222,33 @@ figs[("r6", "summer", "natgas")]
 ```
 
 ```{python}
+#| label: fig-summer-natgas-r6-personal
+#| fig-cap: "Summer delivery overpayment, natural gas — Rate 6 personalized."
+figs[("r6-personal", "summer", "natgas")]
+```
+
+```{python}
 #| label: fig-summer-natgas-r6-ratemc
 #| fig-cap: "Summer delivery overpayment, natural gas — Rate 6 (RATE=MC)."
 figs[("r6-ratemc", "summer", "natgas")]
 ```
 
 ```{python}
+#| label: fig-summer-natgas-r6-ratemc-personal
+#| fig-cap: "Summer delivery overpayment, natural gas — Rate 6 (RATE=MC) personalized."
+figs[("r6-ratemc-personal", "summer", "natgas")]
+```
+
+```{python}
 #| label: fig-summer-natgas-r6-fixedmc
 #| fig-cap: "Summer delivery overpayment, natural gas — Rate 6 (FIXED+MC)."
 figs[("r6-fixedmc", "summer", "natgas")]
+```
+
+```{python}
+#| label: fig-summer-natgas-r6-fixedmc-personal
+#| fig-cap: "Summer delivery overpayment, natural gas — Rate 6 (FIXED+MC) personalized."
+figs[("r6-fixedmc-personal", "summer", "natgas")]
 ```
 
 
@@ -1093,15 +1285,33 @@ figs[("r6", "summer", "delivered")]
 ```
 
 ```{python}
+#| label: fig-summer-delivered-r6-personal
+#| fig-cap: "Summer delivery overpayment, oil/propane — Rate 6 personalized."
+figs[("r6-personal", "summer", "delivered")]
+```
+
+```{python}
 #| label: fig-summer-delivered-r6-ratemc
 #| fig-cap: "Summer delivery overpayment, oil/propane — Rate 6 (RATE=MC)."
 figs[("r6-ratemc", "summer", "delivered")]
 ```
 
 ```{python}
+#| label: fig-summer-delivered-r6-ratemc-personal
+#| fig-cap: "Summer delivery overpayment, oil/propane — Rate 6 (RATE=MC) personalized."
+figs[("r6-ratemc-personal", "summer", "delivered")]
+```
+
+```{python}
 #| label: fig-summer-delivered-r6-fixedmc
 #| fig-cap: "Summer delivery overpayment, oil/propane — Rate 6 (FIXED+MC)."
 figs[("r6-fixedmc", "summer", "delivered")]
+```
+
+```{python}
+#| label: fig-summer-delivered-r6-fixedmc-personal
+#| fig-cap: "Summer delivery overpayment, oil/propane — Rate 6 (FIXED+MC) personalized."
+figs[("r6-fixedmc-personal", "summer", "delivered")]
 ```
 
 
@@ -1138,15 +1348,33 @@ figs[("r6", "summer", "all-fossil")]
 ```
 
 ```{python}
+#| label: fig-summer-all-fossil-r6-personal
+#| fig-cap: "Summer delivery overpayment, all fossil fuel — Rate 6 personalized."
+figs[("r6-personal", "summer", "all-fossil")]
+```
+
+```{python}
 #| label: fig-summer-all-fossil-r6-ratemc
 #| fig-cap: "Summer delivery overpayment, all fossil fuel — Rate 6 (RATE=MC)."
 figs[("r6-ratemc", "summer", "all-fossil")]
 ```
 
 ```{python}
+#| label: fig-summer-all-fossil-r6-ratemc-personal
+#| fig-cap: "Summer delivery overpayment, all fossil fuel — Rate 6 (RATE=MC) personalized."
+figs[("r6-ratemc-personal", "summer", "all-fossil")]
+```
+
+```{python}
 #| label: fig-summer-all-fossil-r6-fixedmc
 #| fig-cap: "Summer delivery overpayment, all fossil fuel — Rate 6 (FIXED+MC)."
 figs[("r6-fixedmc", "summer", "all-fossil")]
+```
+
+```{python}
+#| label: fig-summer-all-fossil-r6-fixedmc-personal
+#| fig-cap: "Summer delivery overpayment, all fossil fuel — Rate 6 (FIXED+MC) personalized."
+figs[("r6-fixedmc-personal", "summer", "all-fossil")]
 ```
 
 

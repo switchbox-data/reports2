@@ -60,6 +60,7 @@ from great_tables import GT
 from lib.plotnine import SB_COLORS, theme_switchbox
 from lib.great_tables import get_switchbox_gt_tab_options
 from lib.quarto import display_gt, display_svg
+from lib.rates_analysis.block_rates import add_adjustment, month_block_rates, personalized_block_adjustment
 from lib.rates_analysis.cos_funcs import incremental_cost_delta_with_gap
 from lib.rates_analysis.rate_case_funcs import (
     DECOMPOSED_BILL_COMPONENT_KEYS,
@@ -1015,6 +1016,47 @@ delta_natgas_r1_to_r6_ratemc = bill_delta_between_segments(
 delta_natgas_r1_to_r6_fixed_ratemc = bill_delta_between_segments(
     STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_RATE6_FIXED_RATEMC_CALIBRATED, bill_col=BILL_COL
 ).filter(pl.col("heating_type_v2") == "natgas")
+
+
+def _monthly_kwh(segment: str, name: str) -> pl.LazyFrame:
+    """Monthly grid kWh CAIRO billed, for every building in a segment."""
+    return (
+        load_master_bills(STATE, BATCH, segment)
+        .filter(pl.col("month") != "Annual")
+        .select("bldg_id", "month", pl.col("elec_grid_kwh").alias(name))
+    )
+
+
+def personalized_threshold_adjustment(segment_after: str, tariff_stem: str) -> pl.DataFrame:
+    """Annual $ change from moving the winter threshold to each home's pre-heat-pump kWh.
+
+    The 700 kWh bill is CAIRO's. The dollar change itself is
+    `personalized_block_adjustment`: it reprices only the winter kWh between 700 and the
+    home's own upgrade-00 usage. It is not passed through the LIDR discount, so on
+    `BILL_COL` it slightly overstates the change for discounted LMI homes.
+    """
+    rates = month_block_rates(load_tariff_json(STATE, UTILITY, tariff_stem, RDP_REF))
+    paired = _monthly_kwh(SEG_DEFAULT_PRECALC, "kwh_before").join(
+        _monthly_kwh(segment_after, "kwh_after"), on=["bldg_id", "month"]
+    )
+    return personalized_block_adjustment(paired, rates).group_by("bldg_id").agg(pl.col("adjustment").sum())
+
+
+delta_natgas_r1_to_r6_personal = add_adjustment(
+    delta_natgas_r1_to_r6,
+    personalized_threshold_adjustment(SEG_RATE6_CALIBRATED, "ct_eversource_rate6"),
+    ["bill_after", "delta"],
+)
+delta_natgas_r1_to_r6_ratemc_personal = add_adjustment(
+    delta_natgas_r1_to_r6_ratemc,
+    personalized_threshold_adjustment(SEG_RATE6_RATEMC_CALIBRATED, "ct_eversource_rate6_ratemc"),
+    ["bill_after", "delta"],
+)
+delta_natgas_r1_to_r6_fixed_ratemc_personal = add_adjustment(
+    delta_natgas_r1_to_r6_fixed_ratemc,
+    personalized_threshold_adjustment(SEG_RATE6_FIXED_RATEMC_CALIBRATED, "ct_eversource_rate6_fixed_ratemc"),
+    ["bill_after", "delta"],
+)
 ```
 
 We compare bill-change quadrants across all rate scenarios, including the fair flat and
@@ -1064,6 +1106,14 @@ display_svg(
 )
 ```
 
+The personalized Rate 6 bars use the same bills as the 700 kWh bars — natural-gas homes,
+upgrade 00 on Rate 1 before the heat pump, upgrade 02 on that Rate 6 tariff after — and
+then move the winter block boundary from 700 kWh to each home's own pre-heat-pump usage
+in that month. Only the winter delivery energy charge changes. That change is added
+on top of the LIDR-discounted bill without being discounted itself, so for discounted LMI
+homes it is slightly too large; re-applying the discount moves each quadrant by under one
+percentage point.
+
 ```{python}
 #| label: fig-bill-change-quadrants-natgas-all-rates
 #| fig-cap: "Change in total annual energy bill for natural-gas-heated CT Eversource homes switching to a heat pump, under all rate scenarios."
@@ -1073,8 +1123,11 @@ display_svg(
         [
             ("Rate 1", delta_natgas_default),
             ("Rate 6", delta_natgas_r1_to_r6),
+            ("Rate 6\npersonalized", delta_natgas_r1_to_r6_personal),
             ("Rate 6\n(RATE=MC)", delta_natgas_r1_to_r6_ratemc),
+            ("Rate 6\n(RATE=MC, pers.)", delta_natgas_r1_to_r6_ratemc_personal),
             ("Rate 6\n(FIXED+MC)", delta_natgas_r1_to_r6_fixed_ratemc),
+            ("Rate 6\n(FIXED+MC, pers.)", delta_natgas_r1_to_r6_fixed_ratemc_personal),
             ("Fair flat rate", delta_natgas_default_to_flat),
             ("Fair seasonal rate", delta_natgas_default_to_seasonal),
             ("Rate 1 − per-bldg.\noverpayment", delta_natgas_minus_bldg_overpayment),

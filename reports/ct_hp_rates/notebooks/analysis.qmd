@@ -134,13 +134,15 @@ FLAT_SCENARIO = "default_ry1_icos_fair_flat_uncalibrated"
 RATE6_SCENARIO = "default_ry1_r6_uncalibrated"
 RATE6_RATEMC_SCENARIO = "default_ry1_r6_ratemc_uncalibrated"
 RATE6_FIXED_RATEMC_SCENARIO = "default_ry1_r6_fixed_ratemc_uncalibrated"
+RATE6_RATEMC_TRANS_SCENARIO = "default_ry1_r6_ratemc_trans_uncalibrated"
+RATE6_FIXED_RATEMC_TRANS_SCENARIO = "default_ry1_r6_fixed_ratemc_trans_uncalibrated"
 FAIR_RATE_POPULATION = _batch_config["FAIR_RATE_POPULATION"]
 
 print(f"state={STATE}  batch={BATCH}  rdp_ref={RDP_REF}  utility={UTILITY}  bill_col={BILL_COL}")
 print(f"fair_rate_population={FAIR_RATE_POPULATION}")
 ```
 
-Batch `ct_20260925_a` has calibrated scenarios for CT Eversource, each run at two stages:
+Batch `ct_20261009_a` has calibrated scenarios for CT Eversource, each run at two stages:
 
 - `precalc` — ResStock upgrade 00 (today's mixed heating population), tariff as filed/priced.
 - `calibrated` — ResStock upgrade 02 (same buildings retrofitted to heat pumps), tariff
@@ -152,6 +154,8 @@ Batch `ct_20260925_a` has calibrated scenarios for CT Eversource, each run at tw
 | `rate6` (`default_ry1_r6_uncalibrated`) | The proposed Rate 6 heat-pump-specific tariff — a tiered winter volumetric delivery rate (Block 1 ≤700 kWh, Block 2 >700 kWh at a lower rate) and flat non-winter rate. |
 | `fair_seasonal` (`default_ry1_icos_fair_seasonal_uncalibrated`) | A single tariff applied to all residential customers (not subclass-differentiated): a seasonal volumetric delivery rate calibrated so that the average fossil-fuel-heating customer's incremental delivery bill after a heat pump retrofit equals their incremental delivery marginal cost. Same fixed charge as `default`. |
 | `fair_flat` (`default_ry1_icos_fair_flat_uncalibrated`) | A single flat volumetric delivery rate applied to all residential customers, calibrated with the same incremental-cost-reflectivity constraint as `fair_seasonal` but without seasonal variation. |
+| `rate6_ratemc_trans` (`default_ry1_r6_ratemc_trans_uncalibrated`) | Rate 6 RATE=MC with the winter Block 2 transmission rider replaced by the marginal cost of bulk transmission (AESC 2024 avoided PTF, CPI-inflated to 2026$, ÷8760). |
+| `rate6_fixed_ratemc_trans` (`default_ry1_r6_fixed_ratemc_trans_uncalibrated`) | Rate 6 FIXED+RATE=MC with the same MC-trans substitution on winter Block 2. |
 
 Every bill-change comparison in this notebook (every `bill_delta_between_segments()` and
 `plot_bill_change_quadrants()` call) reads the `BILL_COL` column set in the params cell
@@ -181,6 +185,10 @@ SEG_RATE6_RATEMC_PRECALC = segment_name(RATE6_RATEMC_SCENARIO, "precalc")
 SEG_RATE6_RATEMC_CALIBRATED = segment_name(RATE6_RATEMC_SCENARIO, "calibrated")
 SEG_RATE6_FIXED_RATEMC_PRECALC = segment_name(RATE6_FIXED_RATEMC_SCENARIO, "precalc")
 SEG_RATE6_FIXED_RATEMC_CALIBRATED = segment_name(RATE6_FIXED_RATEMC_SCENARIO, "calibrated")
+SEG_RATE6_RATEMC_TRANS_PRECALC = segment_name(RATE6_RATEMC_TRANS_SCENARIO, "precalc")
+SEG_RATE6_RATEMC_TRANS_CALIBRATED = segment_name(RATE6_RATEMC_TRANS_SCENARIO, "calibrated")
+SEG_RATE6_FIXED_RATEMC_TRANS_PRECALC = segment_name(RATE6_FIXED_RATEMC_TRANS_SCENARIO, "precalc")
+SEG_RATE6_FIXED_RATEMC_TRANS_CALIBRATED = segment_name(RATE6_FIXED_RATEMC_TRANS_SCENARIO, "calibrated")
 
 bills_default_precalc = load_master_bills(STATE, BATCH, SEG_DEFAULT_PRECALC)
 bills_default_calibrated = load_master_bills(STATE, BATCH, SEG_DEFAULT_CALIBRATED)
@@ -1017,6 +1025,14 @@ delta_natgas_r1_to_r6_fixed_ratemc = bill_delta_between_segments(
     STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_RATE6_FIXED_RATEMC_CALIBRATED, bill_col=BILL_COL
 ).filter(pl.col("heating_type_v2") == "natgas")
 
+delta_natgas_r1_to_r6_ratemc_trans = bill_delta_between_segments(
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_RATE6_RATEMC_TRANS_CALIBRATED, bill_col=BILL_COL
+).filter(pl.col("heating_type_v2") == "natgas")
+
+delta_natgas_r1_to_r6_fixed_ratemc_trans = bill_delta_between_segments(
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_RATE6_FIXED_RATEMC_TRANS_CALIBRATED, bill_col=BILL_COL
+).filter(pl.col("heating_type_v2") == "natgas")
+
 
 def _monthly_kwh(segment: str, name: str) -> pl.LazyFrame:
     """Monthly grid kWh CAIRO billed, for every building in a segment."""
@@ -1055,6 +1071,16 @@ delta_natgas_r1_to_r6_ratemc_personal = add_adjustment(
 delta_natgas_r1_to_r6_fixed_ratemc_personal = add_adjustment(
     delta_natgas_r1_to_r6_fixed_ratemc,
     personalized_threshold_adjustment(SEG_RATE6_FIXED_RATEMC_CALIBRATED, "ct_eversource_rate6_fixed_ratemc"),
+    ["bill_after", "delta"],
+)
+delta_natgas_r1_to_r6_ratemc_trans_personal = add_adjustment(
+    delta_natgas_r1_to_r6_ratemc_trans,
+    personalized_threshold_adjustment(SEG_RATE6_RATEMC_TRANS_CALIBRATED, "ct_eversource_rate6_ratemc_trans"),
+    ["bill_after", "delta"],
+)
+delta_natgas_r1_to_r6_fixed_ratemc_trans_personal = add_adjustment(
+    delta_natgas_r1_to_r6_fixed_ratemc_trans,
+    personalized_threshold_adjustment(SEG_RATE6_FIXED_RATEMC_TRANS_CALIBRATED, "ct_eversource_rate6_fixed_ratemc_trans"),
     ["bill_after", "delta"],
 )
 ```
@@ -1128,6 +1154,10 @@ display_svg(
             ("Rate 6\n(RATE=MC, pers.)", delta_natgas_r1_to_r6_ratemc_personal),
             ("Rate 6\n(FIXED+MC)", delta_natgas_r1_to_r6_fixed_ratemc),
             ("Rate 6\n(FIXED+MC, pers.)", delta_natgas_r1_to_r6_fixed_ratemc_personal),
+            ("Rate 6\n(RATE=MC, TX=MC)", delta_natgas_r1_to_r6_ratemc_trans),
+            ("Rate 6\n(RATE=MC, TX=MC, pers.)", delta_natgas_r1_to_r6_ratemc_trans_personal),
+            ("Rate 6\n(FIXED+MC, TX=MC)", delta_natgas_r1_to_r6_fixed_ratemc_trans),
+            ("Rate 6\n(FIXED+MC, TX=MC, pers.)", delta_natgas_r1_to_r6_fixed_ratemc_trans_personal),
             ("Fair flat rate", delta_natgas_default_to_flat),
             ("Fair seasonal rate", delta_natgas_default_to_seasonal),
             ("Rate 1 − per-bldg.\noverpayment", delta_natgas_minus_bldg_overpayment),

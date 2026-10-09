@@ -331,12 +331,16 @@ def sum_monthly_peak_offpeak_kwh(
     mc_8760: pl.DataFrame,
     *,
     utc_offset_hours: int = -5,
+    mc_threshold: float = 0.0,
 ) -> pl.DataFrame:
     """Split hourly kWh into peak vs. off-peak and sum to monthly totals.
 
     An hour is "peak" when either the bulk-transmission or distribution
-    marginal cost is positive (same definition used in
-    ``analysis.qmd::_pct_mc_peak_hours_in_summer``).
+    marginal cost exceeds *mc_threshold* ($/kWh).  The default threshold
+    of ``0.0`` reproduces the original "any positive MC" behaviour.  A
+    threshold of ``0.01`` (1 ¢/kWh) keeps only the hours that carry the
+    bulk of marginal-cost dollars and trims near-zero shoulder-month
+    hours that inflate the peak-hour count without meaningful cost.
 
     Parameters
     ----------
@@ -350,6 +354,9 @@ def sum_monthly_peak_offpeak_kwh(
     utc_offset_hours
         Hours to shift ``load_8760`` timestamps to align with ``mc_8760``.
         Default ``-5`` converts CAIRO's UTC to Eastern Standard Time.
+    mc_threshold
+        Minimum marginal cost ($/kWh) for an hour to count as "peak".
+        Default ``0.0`` flags every hour with any positive MC.
 
     Returns
     -------
@@ -373,7 +380,7 @@ def sum_monthly_peak_offpeak_kwh(
     month_num_to_label = {i + 1: m for i, m in enumerate(MONTH_ORDER)}
     flagged = joined.with_columns(
         pl.col("timestamp").dt.month().alias("_month_num"),
-        ((pl.col("mc_bulk_tx") > 0) | (pl.col("mc_dist_sub_tx") > 0)).alias("_is_peak"),
+        ((pl.col("mc_bulk_tx") > mc_threshold) | (pl.col("mc_dist_sub_tx") > mc_threshold)).alias("_is_peak"),
     )
     return (
         flagged.group_by("_month_num")
@@ -1765,22 +1772,32 @@ def plot_mc_heatmap(
     """Render an 8760-hour (day-of-year x hour-of-day) marginal-cost heatmap.
 
     Filters to rows where *value_col* is positive (zero-cost hours are left
-    blank rather than tiled white) and draws with plotnine.  Expects *df* to
+    blank rather than tiled) and draws with plotnine.  Expects *df* to
     already have day-of-year and hour columns (e.g. via
     ``.dt.ordinal_day()`` / ``.dt.hour()`` on a timestamp column).
+
+    The gradient runs from a light tint of *high_color* to *high_color*
+    itself, so even the smallest non-zero values are visually
+    distinguishable from the blank (white) background.
 
     The caller should pass the returned ``Figure`` to
     ``display_figure`` / ``display_svg`` for Quarto embedding.
     """
     import plotnine as plt
+    from matplotlib.colors import to_rgb
 
     from lib.plotnine import theme_switchbox
+
+    def _tint(hex_color: str, factor: float = 0.15) -> str:
+        """Blend *hex_color* toward white (factor=0 → white, 1 → original)."""
+        r, g, b = to_rgb(hex_color)
+        return f"#{int((r * factor + 1.0 * (1 - factor)) * 255):02x}{int((g * factor + 1.0 * (1 - factor)) * 255):02x}{int((b * factor + 1.0 * (1 - factor)) * 255):02x}"
 
     nz = df.filter(pl.col(value_col) > 0)
     p = (
         plt.ggplot(nz, plt.aes(x=x_col, y=y_col, fill=value_col))
         + plt.geom_tile()
-        + plt.scale_fill_gradient(low="#FFFFFF", high=high_color)
+        + plt.scale_fill_gradient(low=_tint(high_color), high=high_color)
         + plt.scale_x_continuous(
             breaks=[1, 91, 182, 274, 365],
             labels=["Jan", "Apr", "Jul", "Oct", "Dec"],
@@ -3296,6 +3313,7 @@ def monthly_bill_from_profile(
 
 _MONTHLY_LOAD_BEFORE_COLOR = "#C8A200"
 _MONTHLY_LOAD_PEAK_COLOR = "#C85436"
+_MONTHLY_LOAD_PEAK_LIGHT = "#E08A74"
 _MONTHLY_LOAD_X_EXPAND = (0.02, 0, 0.02, 0)
 _MONTHLY_LOAD_PANEL_RIGHT = 0.82
 
@@ -3463,7 +3481,7 @@ def plot_monthly_load_with_peak(
     _PEAK_SEGMENT_ORDER = ["Peak-hour usage", "Off-peak usage"]
     _PEAK_SEGMENT_COLORS = {
         "Off-peak usage": _MONTHLY_LOAD_BEFORE_COLOR,
-        "Peak-hour usage": _MONTHLY_LOAD_PEAK_COLOR,
+        "Peak-hour usage": _MONTHLY_LOAD_PEAK_LIGHT,
     }
 
     total_kwh = monthly["kwh_offpeak"] + monthly["kwh_peak"]
@@ -3549,7 +3567,7 @@ def plot_monthly_load_with_peak(
         ha="center",
         va="bottom",
         fontsize=13,
-        color=_MONTHLY_LOAD_PEAK_COLOR,
+        color=_MONTHLY_LOAD_PEAK_LIGHT,
         fontweight="bold",
         transform=ax.transData,
     )
@@ -3688,7 +3706,7 @@ def plot_monthly_load_before_after(
         ]
         segment_colors: dict[str, str | tuple[float, ...]] = {
             "Base off-peak": _MONTHLY_LOAD_BEFORE_COLOR,
-            "Base peak": _MONTHLY_LOAD_PEAK_COLOR,
+            "Base peak": _MONTHLY_LOAD_PEAK_LIGHT,
             "More efficient cooling": (0.784, 0.635, 0.0, 0.35),
             "New HP off-peak": "#FFC729",
             "New HP peak": _MONTHLY_LOAD_PEAK_COLOR,

@@ -104,7 +104,6 @@ STATE = _batch_config["STATE"]
 BATCH = _batch_config["BATCH"]
 RDP_REF = _batch_config["RDP_REF"]
 ELECTRIC_UTILITY = "ct_eversource"
-GAS_UTILITY = "yankee_gas"
 UPGRADE_BASE = int(_batch_config["UPGRADE_BASE"])
 UPGRADE_HP = int(_batch_config["UPGRADE_HP"])
 
@@ -152,7 +151,7 @@ SUMMER_MONTH_LABELS: list[str] = _month_labels(
 
 print(
     f"state={STATE}  batch={BATCH}  rdp_ref={RDP_REF}  electric_utility={ELECTRIC_UTILITY}  "
-    f"gas_utility={GAS_UTILITY}  upgrade_base={UPGRADE_BASE}  upgrade_hp={UPGRADE_HP}"
+    f"upgrade_base={UPGRADE_BASE}  upgrade_hp={UPGRADE_HP}"
 )
 print(f"DEFAULT_RATE_YAML={DEFAULT_RATE_YAML}")
 print(f"OPTIONAL_RATE_YAML={OPTIONAL_RATE_YAML}")
@@ -266,11 +265,11 @@ segment (upgrade 0) since heating fuel is a baseline attribute:
 - **Delivered fuel**: homes that heat with oil or propane
 - **All fossil fuel**: the union of both
 
-The master bills are Hive-partitioned by `sb.electric_utility`. Natural-gas
-homes are further restricted to `sb.gas_utility == GAS_UTILITY` (Yankee Gas)
-so their gas bills reflect the correct gas tariff. Delivered-fuel homes keep
-the electric-only filter: most oil/propane customers have no gas account
-(`sb.gas_utility` is null).
+The master bills are Hive-partitioned by `sb.electric_utility`. All populations
+are restricted to `ELECTRIC_UTILITY` (Eversource). Gas bills in the master
+bills already reflect each building's assigned gas utility tariff, so no
+gas-utility filter is needed — the weighted averages correctly represent
+all fossil-fuel-heated homes in Eversource's electric territory.
 
 ```{python}
 #| label: populations
@@ -285,7 +284,6 @@ _annual_precalc = cast(
         "bldg_id",
         "weight",
         "sb.electric_utility",
-        "sb.gas_utility",
         "heats_with_natgas",
         "heats_with_oil",
         "heats_with_propane",
@@ -295,7 +293,6 @@ _annual_precalc = cast(
 
 pop_natgas = _annual_precalc.filter(
     pl.col("heats_with_natgas")
-    & (pl.col("sb.gas_utility") == GAS_UTILITY)
 )
 pop_delivered = _annual_precalc.filter(
     pl.col("heats_with_oil") | pl.col("heats_with_propane")
@@ -2066,21 +2063,29 @@ else:
     raise ValueError(f"Unknown RATE_DESIGN: {RATE_DESIGN!r}")
 ```
 
-## 3-bar bill chart: before / HP default rate / HP fair rate
+## 3-bar bill chart: before / HP default rate / HP at marginal cost
 
 The 3-bar chart adds a third bar showing what happens to the household's
-total energy bill under the fair HP rate. The `_fair_delivery_bill()` dispatcher
-(defined above) applies the appropriate rate design — flat or seasonal — to each
-population's post-HP kWh profile, producing the fair-HP delivery volumetric bill.
+total energy bill if the incremental HP load were charged at marginal cost —
+as if a separate meter applied the hourly T&D marginal cost heatmaps to just
+the new electricity consumption from the heat pump. The delivery volumetric
+bill in this scenario is simply the pre-HP delivery bill plus the incremental
+delivery marginal cost: `delivery_before + MC_delta`.
+
 
 ```{python}
 #| label: fig-total-bill-3bar-natgas
-#| fig-cap: "Average annual energy bills for simulated Eversource-territory natural-gas-heated homes: before heat pumps, after heat pumps under Rate 1, and after heat pumps under the fair HP rate."
+#| fig-cap: "Average annual energy bills for simulated Eversource-territory natural-gas-heated homes: before heat pumps, after heat pumps under Rate 1, and after heat pumps with incremental load charged at marginal cost."
 
-_fair_delivery_vol_natgas = _fair_delivery_bill("natgas")
+_mc_delivery_vol_natgas = (
+    report_vars["natgas_annual_distribution_before"]
+    + report_vars["natgas_annual_transmission_before"]
+    + report_vars["natgas_annual_mc_dist_delta"]
+    + report_vars["natgas_annual_mc_tx_delta"]
+)
 natgas_reform = {
     "delivery_fixed": natgas_after["delivery_fixed"],
-    "delivery_volumetric": _fair_delivery_vol_natgas,
+    "delivery_volumetric": _mc_delivery_vol_natgas,
     "supply": natgas_after["supply"],
     "gas": natgas_after["gas"],
 }
@@ -2089,8 +2094,8 @@ fig_natgas_3bar, _ng_savings, _ng_savings_pct, _, _ = plot_decomposed_bill_3bar(
     natgas_before,
     natgas_after,
     natgas_reform,
-    third_scenario_label="Heat pump\n(Fair HP rate)",
-    title=f"Average annual electricity + natural gas bill under {DEFAULT_RATE_LABEL} vs. Fair HP rate,\nbefore and after heat pump, for simulated {UTILITY_LABEL}-territory natural-gas-heated homes",
+    third_scenario_label="Heat pump\n(at marginal cost)",
+    title=f"Average annual electricity + natural gas bill under {DEFAULT_RATE_LABEL} vs. at marginal cost,\nbefore and after heat pump, for simulated {UTILITY_LABEL}-territory natural-gas-heated homes",
     side_labels={
         "delivery_fixed": "Customer\nCharge",
         "delivery_volumetric": "Transmission,\nDistribution",
@@ -2124,12 +2129,17 @@ else:
 
 ```{python}
 #| label: fig-total-bill-3bar-delivered
-#| fig-cap: "Average annual energy bills for simulated Eversource-territory delivered-fuel-heated homes: before heat pumps, after heat pumps under Rate 1, and after heat pumps under the fair HP rate."
+#| fig-cap: "Average annual energy bills for simulated Eversource-territory delivered-fuel-heated homes: before heat pumps, after heat pumps under Rate 1, and after heat pumps with incremental load charged at marginal cost."
 
-_fair_delivery_vol_delivered = _fair_delivery_bill("delivered")
+_mc_delivery_vol_delivered = (
+    report_vars["delivered_annual_distribution_before"]
+    + report_vars["delivered_annual_transmission_before"]
+    + report_vars["delivered_annual_mc_dist_delta"]
+    + report_vars["delivered_annual_mc_tx_delta"]
+)
 delivered_reform = {
     "delivery_fixed": delivered_after["delivery_fixed"],
-    "delivery_volumetric": _fair_delivery_vol_delivered,
+    "delivery_volumetric": _mc_delivery_vol_delivered,
     "supply": delivered_after["supply"],
     "gas": delivered_after["gas"],
 }
@@ -2138,8 +2148,8 @@ fig_delivered_3bar, _del_savings, _del_savings_pct, _, _ = plot_decomposed_bill_
     delivered_before,
     delivered_after,
     delivered_reform,
-    third_scenario_label="Heat pump\n(Fair HP rate)",
-    title=f"Average annual electricity + delivered fuel bill under {DEFAULT_RATE_LABEL} vs. Fair HP rate,\nbefore and after heat pump, for simulated {UTILITY_LABEL}-territory delivered-fuel-heated homes",
+    third_scenario_label="Heat pump\n(at marginal cost)",
+    title=f"Average annual electricity + delivered fuel bill under {DEFAULT_RATE_LABEL} vs. at marginal cost,\nbefore and after heat pump, for simulated {UTILITY_LABEL}-territory delivered-fuel-heated homes",
     side_labels={
         "delivery_fixed": "Customer\nCharge",
         "delivery_volumetric": "Transmission,\nDistribution",

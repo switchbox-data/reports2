@@ -45,6 +45,7 @@ The notebook produces histograms for:
 
 from __future__ import annotations
 
+import pickle
 from pathlib import Path
 from typing import cast
 
@@ -651,6 +652,39 @@ incidence_df = pl.DataFrame(_rows)
 print(incidence_df.to_pandas().to_string(index=False))
 ```
 
+## Report variables
+
+Export key overpayment statistics for use in `expert_testimony.qmd`.
+
+```{python}
+#| label: report-vars
+
+report_vars: dict = {}
+
+for rate_label, _seg_pre, _seg_cal in CAIRO_RATES:
+    rate_slug = rate_label.lower().replace(" ", "_").replace("\n", "_")
+    for ht_code in ["natgas", "delivered_fuels", "all_fossil"]:
+        _inc_row = incidence_df.filter(
+            (pl.col("rate") == rate_label.replace("\n", " "))
+            & (pl.col("period") == "Annual")
+            & (pl.col("heating_type") == ht_code)
+        )
+        if _inc_row.height == 0:
+            continue
+        report_vars[f"overpay_mean_{rate_slug}_{ht_code}"] = float(_inc_row["mean_overpayment"][0])
+
+_r1_mean = report_vars["overpay_mean_rate_1_all_fossil"]
+_r6_mean = report_vars["overpay_mean_rate_6_all_fossil"]
+report_vars["pct_overpayment_remaining_r6"] = _r6_mean / _r1_mean
+
+print(f"Rate 1 mean annual overpayment (all fossil): ${_r1_mean:,.0f}")
+print(f"Rate 6 mean annual overpayment (all fossil): ${_r6_mean:,.0f}")
+print(f"Rate 6 leaves {report_vars['pct_overpayment_remaining_r6']:.1%} of Rate 1 overpayment in place")
+
+Path("../cache/overpayment_report_variables.pkl").write_bytes(pickle.dumps(report_vars))
+print(f"\nExported {len(report_vars)} report vars to cache/overpayment_report_variables.pkl")
+```
+
 ## Build all overpayment histograms
 
 Pre-build every histogram in one cell, keyed by `(rate_slug, period_slug,
@@ -880,6 +914,167 @@ rate_compare_figs["delivered"]
 #| label: fig-annual-all-fossil-rate-compare
 #| fig-cap: "Annual delivery overpayment, all fossil fuel — Rate 1 vs. Rate 6 vs. Rate 6 (FIXED+MC) vs. fair flat rate vs. fair seasonal rate."
 rate_compare_figs["all-fossil"]
+```
+
+### Testimony histograms (shared axes)
+
+Individual standalone histograms with axes matching the rate-comparison faceted
+charts above, so the testimony can embed one at a time and the reader can compare
+them as they progress through the sections. The x-axis range and bin width come
+from the all-rates combined data; the y-axis is fixed to the tallest bar across
+all rates for that heating type, so every histogram occupies the same visual space.
+
+```{python}
+#| label: build-testimony-hists
+
+import math as _m
+
+TESTIMONY_RATE_LABELS = [
+    "Rate 1",
+    "Rate 6",
+    "Rate 6\npersonalized",
+    "Rate 6\n(FIXED+MC)",
+    "Rate 6\n(FIXED+MC, pers.)",
+    "Fair flat rate",
+    "Fair seasonal rate",
+]
+
+testimony_figs: dict[tuple[str, str], p9.ggplot] = {}
+
+for ht_slug, ht_name, ht_code in HEATING_GROUPS:
+    combined = pl.concat([
+        _filter_ht(all_overpayment[(rate_label, "Annual")], ht_code)
+        .select("delta", "weight")
+        .with_columns(pl.lit(rate_label).alias("rate"))
+        for rate_label in TESTIMONY_RATE_LABELS
+    ])
+
+    bin_width = _auto_bin_width(combined)
+    hist_snap = max(bin_width, 50)
+
+    hist_x_lo = _m.floor(weighted_quantile(combined.select("delta", "weight"), "delta", 0.01) / hist_snap) * hist_snap
+    hist_x_hi = _m.ceil(weighted_quantile(combined.select("delta", "weight"), "delta", 0.99) / hist_snap) * hist_snap
+    _range = hist_x_hi - hist_x_lo
+    _tick_step = bin_width if _range <= bin_width * 12 else bin_width * 2
+    _tick_lo = _m.floor(hist_x_lo / _tick_step) * _tick_step
+    _tick_hi = _m.ceil(hist_x_hi / _tick_step) * _tick_step
+
+    y_max = 0.0
+    per_rate_binned: dict[str, pl.DataFrame] = {}
+    per_rate_stats: dict[str, dict] = {}
+
+    for rate_label in TESTIMONY_RATE_LABELS:
+        sub = _filter_ht(all_overpayment[(rate_label, "Annual")], ht_code).select("delta", "weight")
+        binned = (
+            sub.with_columns(
+                ((pl.col("delta") / bin_width).floor() * bin_width + bin_width / 2).alias("bin_center"),
+            )
+            .with_columns(
+                pl.when(pl.col("bin_center") <= -1000).then(pl.lit("savings > $1k"))
+                .when((pl.col("bin_center") > -1000) & (pl.col("bin_center") < 0)).then(pl.lit("savings $0-1k"))
+                .when((pl.col("bin_center") >= 0) & (pl.col("bin_center") < 1000)).then(pl.lit("losses $0-1k"))
+                .otherwise(pl.lit("losses > $1k"))
+                .alias("quadrant"),
+            )
+            .group_by("bin_center", "quadrant")
+            .agg(pl.col("weight").sum().alias("weight_sum"))
+            .with_columns(pl.col("quadrant").cast(pl.Enum(QUADRANT_ORDER)))
+        )
+        y_max = max(y_max, float(binned["weight_sum"].max()))
+        per_rate_binned[rate_label] = binned
+
+        w_mean = float((sub["delta"] * sub["weight"]).sum() / sub["weight"].sum())
+        w_median = weighted_quantile(sub, "delta", 0.50)
+        per_rate_stats[rate_label] = {"w_mean": w_mean, "w_median": w_median}
+
+    for rate_label in TESTIMONY_RATE_LABELS:
+        binned = per_rate_binned[rate_label]
+        stats = per_rate_stats[rate_label]
+        rate_short = rate_label.replace("\n", " ")
+
+        fig = (
+            p9.ggplot(binned, p9.aes(x="bin_center", y="weight_sum", fill="quadrant"))
+            + p9.geom_col(width=bin_width * 0.9)
+            + p9.geom_vline(xintercept=[-1000, 0, 1000], linetype="dotted", color="gray")
+            + p9.scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
+            + p9.scale_x_continuous(
+                breaks=list(range(_tick_lo, _tick_hi + _tick_step, _tick_step)),
+                labels=lambda xs: [f"${x:,.0f}" if x >= 0 else f"-${abs(x):,.0f}" for x in xs],
+            )
+            + p9.coord_cartesian(xlim=(hist_x_lo, hist_x_hi), ylim=(0, y_max * 1.05))
+            + p9.labs(
+                x="Annual delivery overpayment ($)",
+                y="Weighted households",
+                title=f"{ht_name}: annual overpayment — {rate_short}",
+            )
+            + p9.guides(fill=False)
+            + theme_switchbox()
+            + p9.theme(figure_size=(10.5, 4.5))
+            + p9.geom_vline(xintercept=stats["w_mean"], linetype="dashed", color=SB_COLORS["carrot"], size=0.8)
+            + p9.geom_vline(xintercept=stats["w_median"], linetype="dashed", color=SB_COLORS["midnight"], size=0.8)
+            + p9.annotate(
+                "text",
+                x=stats["w_mean"] + bin_width * 0.4,
+                y=y_max * 0.97,
+                label=f"Mean ${stats['w_mean']:,.0f}",
+                ha="left", va="top", color=SB_COLORS["carrot"],
+                size=9, fontweight="bold",
+            )
+            + p9.annotate(
+                "text",
+                x=stats["w_median"] + bin_width * 0.4,
+                y=y_max * 0.85,
+                label=f"Median ${stats['w_median']:,.0f}",
+                ha="left", va="top", color=SB_COLORS["midnight"],
+                size=9, fontweight="bold",
+            )
+        )
+        rate_slug = RATE_SLUGS[rate_label]
+        testimony_figs[(rate_slug, ht_slug)] = fig
+
+print(f"Built {len(testimony_figs)} testimony histograms")
+```
+
+```{python}
+#| label: fig-testimony-annual-all-fossil-r1
+#| fig-cap: "Annual delivery overpayment for all fossil-fuel-heated CT Eversource homes switching to heat pumps, under Rate 1."
+testimony_figs[("r1", "all-fossil")]
+```
+
+```{python}
+#| label: fig-testimony-annual-all-fossil-r6
+#| fig-cap: "Annual delivery overpayment for all fossil-fuel-heated CT Eversource homes switching to heat pumps, under Rate 6."
+testimony_figs[("r6", "all-fossil")]
+```
+
+```{python}
+#| label: fig-testimony-annual-all-fossil-r6-personal
+#| fig-cap: "Annual delivery overpayment for all fossil-fuel-heated CT Eversource homes switching to heat pumps, under Rate 6 personalized."
+testimony_figs[("r6-personal", "all-fossil")]
+```
+
+```{python}
+#| label: fig-testimony-annual-all-fossil-r6-fixedmc
+#| fig-cap: "Annual delivery overpayment for all fossil-fuel-heated CT Eversource homes switching to heat pumps, under Rate 6 (FIXED+MC)."
+testimony_figs[("r6-fixedmc", "all-fossil")]
+```
+
+```{python}
+#| label: fig-testimony-annual-all-fossil-r6-fixedmc-personal
+#| fig-cap: "Annual delivery overpayment for all fossil-fuel-heated CT Eversource homes switching to heat pumps, under Rate 6 (FIXED+MC) personalized."
+testimony_figs[("r6-fixedmc-personal", "all-fossil")]
+```
+
+```{python}
+#| label: fig-testimony-annual-all-fossil-fair-flat
+#| fig-cap: "Annual delivery overpayment for all fossil-fuel-heated CT Eversource homes switching to heat pumps, under the fair flat rate."
+testimony_figs[("fair-flat", "all-fossil")]
+```
+
+```{python}
+#| label: fig-testimony-annual-all-fossil-fair-seasonal
+#| fig-cap: "Annual delivery overpayment for all fossil-fuel-heated CT Eversource homes switching to heat pumps, under the fair seasonal rate."
+testimony_figs[("fair-seasonal", "all-fossil")]
 ```
 
 ### Annual — natural gas

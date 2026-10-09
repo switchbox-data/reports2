@@ -818,8 +818,48 @@ incidence_natgas_seasonal
 
 report_vars["pct_natgas_hp_bill_increase_seasonal"] = incidence_natgas_seasonal["pct_increase"]
 report_vars["pct_natgas_hp_bill_decrease_seasonal"] = incidence_natgas_seasonal["pct_decrease"]
+report_vars["mean_natgas_hp_bill_delta_seasonal"] = incidence_natgas_seasonal["mean_delta"]
+report_vars["median_natgas_hp_bill_delta_seasonal"] = incidence_natgas_seasonal["median_delta"]
 report_vars["pct_pt_improvement_natgas_hp_savings"] = (
     (incidence_natgas_seasonal["pct_decrease"] - incidence_natgas_default["pct_decrease"]) * 100
+)
+
+# Mean savings for savers and mean increase for losers under fair seasonal
+_savers_seasonal = delta_natgas_seasonal.filter(pl.col("delta") < 0)
+_losers_seasonal = delta_natgas_seasonal.filter(pl.col("delta") > 0)
+
+_savers_w = _savers_seasonal["weight"].sum()
+_losers_w = _losers_seasonal["weight"].sum()
+
+report_vars["mean_natgas_hp_savings_among_savers_seasonal"] = (
+    float((_savers_seasonal["delta"] * _savers_seasonal["weight"]).sum() / _savers_w)
+    if _savers_w > 0
+    else 0.0
+)
+report_vars["mean_natgas_hp_increase_among_losers_seasonal"] = (
+    float((_losers_seasonal["delta"] * _losers_seasonal["weight"]).sum() / _losers_w)
+    if _losers_w > 0
+    else 0.0
+)
+```
+
+The two-bar comparison below puts Rate 1 and the fair seasonal rate side by side for
+natural-gas-heated homes, so the testimony can show the effect of removing the overpayment
+on bill outcomes at a glance.
+
+```{python}
+#| label: fig-bill-change-quadrants-r1-vs-fair-seasonal-natgas
+#| fig-cap: "Change in total annual energy bill for natural-gas-heated CT Eversource homes switching to a heat pump, under Rate 1 vs. the fair seasonal rate."
+
+plot_bill_change_quadrant_rate_comparison(
+    STATE, BATCH, SEG_DEFAULT_PRECALC,
+    rates=[
+        (SEG_DEFAULT_CALIBRATED, "Rate 1"),
+        (SEG_SEASONAL_CALIBRATED, "Fair seasonal\nrate"),
+    ],
+    heating_type="natgas",
+    bill_col=BILL_COL,
+    title="Change in annual electricity + gas bills after heat pump,\nfor natural-gas-heated homes: Rate 1 vs. Fair seasonal rate",
 )
 ```
 
@@ -828,6 +868,66 @@ of natural-gas homes would see a bill increase after switching to a heat pump â€
 `{python} f"{report_vars['pct_natgas_hp_bill_increase_default']:.0%}"` under the default rate.
 That's `{python} f"{report_vars['pct_pt_improvement_natgas_hp_savings']:.0f}"` more percentage
 points of natural-gas customers who'd come out ahead switching to a heat pump.
+
+### Delivered fuel: fair seasonal rate incidence
+
+The same comparison for delivered-fuel-heated homes (oil and propane). Under the default
+rate, most delivered-fuel customers already save because heating oil and propane are expensive
+â€” but the overcharge still suppresses their savings. Removing it widens the savings margin
+and pushes the remaining losers closer to breakeven or into savings territory.
+
+```{python}
+#| label: compute-delivered-hp-delta-seasonal
+
+delta_delivered_seasonal = bill_delta_between_segments(
+    STATE, BATCH, SEG_SEASONAL_PRECALC, SEG_SEASONAL_CALIBRATED, bill_col=BILL_COL
+).filter(pl.col("heating_type_v2") == "delivered_fuels")
+
+incidence_delivered_seasonal = bill_change_incidence(delta_delivered_seasonal)
+incidence_delivered_seasonal
+```
+
+```{python}
+#| label: report-vars-delivered-hp-delta-seasonal
+
+report_vars["pct_delivered_hp_bill_increase_seasonal"] = incidence_delivered_seasonal["pct_increase"]
+report_vars["pct_delivered_hp_bill_decrease_seasonal"] = incidence_delivered_seasonal["pct_decrease"]
+report_vars["mean_delivered_hp_bill_delta_seasonal"] = incidence_delivered_seasonal["mean_delta"]
+report_vars["median_delivered_hp_bill_delta_seasonal"] = incidence_delivered_seasonal["median_delta"]
+
+_savers_delivered_seasonal = delta_delivered_seasonal.filter(pl.col("delta") < 0)
+_losers_delivered_seasonal = delta_delivered_seasonal.filter(pl.col("delta") > 0)
+
+_savers_del_w = _savers_delivered_seasonal["weight"].sum()
+_losers_del_w = _losers_delivered_seasonal["weight"].sum()
+
+report_vars["mean_delivered_hp_savings_among_savers_seasonal"] = (
+    float((_savers_delivered_seasonal["delta"] * _savers_delivered_seasonal["weight"]).sum() / _savers_del_w)
+    if _savers_del_w > 0
+    else 0.0
+)
+report_vars["mean_delivered_hp_increase_among_losers_seasonal"] = (
+    float((_losers_delivered_seasonal["delta"] * _losers_delivered_seasonal["weight"]).sum() / _losers_del_w)
+    if _losers_del_w > 0
+    else 0.0
+)
+```
+
+```{python}
+#| label: fig-bill-change-quadrants-r1-vs-fair-seasonal-delivered
+#| fig-cap: "Change in total annual energy bill for delivered-fuel-heated CT Eversource homes switching to a heat pump, under Rate 1 vs. the fair seasonal rate."
+
+plot_bill_change_quadrant_rate_comparison(
+    STATE, BATCH, SEG_DEFAULT_PRECALC,
+    rates=[
+        (SEG_DEFAULT_CALIBRATED, "Rate 1"),
+        (SEG_SEASONAL_CALIBRATED, "Fair seasonal\nrate"),
+    ],
+    heating_type="delivered_fuels",
+    bill_col=BILL_COL,
+    title="Change in annual electricity + delivered fuel bills after heat pump,\nfor delivered-fuel-heated homes: Rate 1 vs. Fair seasonal rate",
+)
+```
 
 ### A representative household's monthly bills, before and after
 

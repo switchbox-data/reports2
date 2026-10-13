@@ -136,6 +136,7 @@ RATE6_RATEMC_SCENARIO = "default_ry1_r6_ratemc_uncalibrated"
 RATE6_FIXED_RATEMC_SCENARIO = "default_ry1_r6_fixed_ratemc_uncalibrated"
 RATE6_RATEMC_TRANS_SCENARIO = "default_ry1_r6_ratemc_trans_uncalibrated"
 RATE6_FIXED_RATEMC_TRANS_SCENARIO = "default_ry1_r6_fixed_ratemc_trans_uncalibrated"
+RATE6_RATEMC_MFC0_TRANS_SCENARIO = "default_ry1_r6_ratemc_mfc0_trans_uncalibrated"
 FAIR_RATE_POPULATION = _batch_config["FAIR_RATE_POPULATION"]
 
 print(f"state={STATE}  batch={BATCH}  rdp_ref={RDP_REF}  utility={UTILITY}  bill_col={BILL_COL}")
@@ -156,6 +157,7 @@ Batch `ct_20261009_a` has calibrated scenarios for CT Eversource, each run at tw
 | `fair_flat` (`default_ry1_icos_fair_flat_uncalibrated`) | A single flat volumetric delivery rate applied to all residential customers, calibrated with the same incremental-cost-reflectivity constraint as `fair_seasonal` but without seasonal variation. |
 | `rate6_ratemc_trans` (`default_ry1_r6_ratemc_trans_uncalibrated`) | Rate 6 RATE=MC with the winter Block 2 transmission rider replaced by the marginal cost of bulk transmission (AESC 2024 avoided PTF, CPI-inflated to 2026$, ÷8760). |
 | `rate6_fixed_ratemc_trans` (`default_ry1_r6_fixed_ratemc_trans_uncalibrated`) | Rate 6 FIXED+RATE=MC with the same MC-trans substitution on winter Block 2. |
+| `rate6_ratemc_mfc0_trans` (`default_ry1_r6_ratemc_mfc0_trans_uncalibrated`) | Rate 6 RATE=MC with winter Block 2's Marginal Facilities Cost dropped entirely (not moved to the fixed charge) and the transmission rider replaced with the marginal cost of bulk transmission. |
 
 Every bill-change comparison in this notebook (every `bill_delta_between_segments()` and
 `plot_bill_change_quadrants()` call) reads the `BILL_COL` column set in the params cell
@@ -189,6 +191,8 @@ SEG_RATE6_RATEMC_TRANS_PRECALC = segment_name(RATE6_RATEMC_TRANS_SCENARIO, "prec
 SEG_RATE6_RATEMC_TRANS_CALIBRATED = segment_name(RATE6_RATEMC_TRANS_SCENARIO, "calibrated")
 SEG_RATE6_FIXED_RATEMC_TRANS_PRECALC = segment_name(RATE6_FIXED_RATEMC_TRANS_SCENARIO, "precalc")
 SEG_RATE6_FIXED_RATEMC_TRANS_CALIBRATED = segment_name(RATE6_FIXED_RATEMC_TRANS_SCENARIO, "calibrated")
+SEG_RATE6_RATEMC_MFC0_TRANS_PRECALC = segment_name(RATE6_RATEMC_MFC0_TRANS_SCENARIO, "precalc")
+SEG_RATE6_RATEMC_MFC0_TRANS_CALIBRATED = segment_name(RATE6_RATEMC_MFC0_TRANS_SCENARIO, "calibrated")
 
 bills_default_precalc = load_master_bills(STATE, BATCH, SEG_DEFAULT_PRECALC)
 bills_default_calibrated = load_master_bills(STATE, BATCH, SEG_DEFAULT_CALIBRATED)
@@ -1133,6 +1137,10 @@ delta_natgas_r1_to_r6_fixed_ratemc_trans = bill_delta_between_segments(
     STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_RATE6_FIXED_RATEMC_TRANS_CALIBRATED, bill_col=BILL_COL
 ).filter(pl.col("heating_type_v2") == "natgas")
 
+delta_natgas_r1_to_r6_ratemc_mfc0_trans = bill_delta_between_segments(
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_RATE6_RATEMC_MFC0_TRANS_CALIBRATED, bill_col=BILL_COL
+).filter(pl.col("heating_type_v2") == "natgas")
+
 
 def _monthly_kwh(segment: str, name: str) -> pl.LazyFrame:
     """Monthly grid kWh CAIRO billed, for every building in a segment."""
@@ -1181,6 +1189,11 @@ delta_natgas_r1_to_r6_ratemc_trans_personal = add_adjustment(
 delta_natgas_r1_to_r6_fixed_ratemc_trans_personal = add_adjustment(
     delta_natgas_r1_to_r6_fixed_ratemc_trans,
     personalized_threshold_adjustment(SEG_RATE6_FIXED_RATEMC_TRANS_CALIBRATED, "ct_eversource_rate6_fixed_ratemc_trans"),
+    ["bill_after", "delta"],
+)
+delta_natgas_r1_to_r6_ratemc_mfc0_trans_personal = add_adjustment(
+    delta_natgas_r1_to_r6_ratemc_mfc0_trans,
+    personalized_threshold_adjustment(SEG_RATE6_RATEMC_MFC0_TRANS_CALIBRATED, "ct_eversource_rate6_ratemc_mfc0_trans"),
     ["bill_after", "delta"],
 )
 ```
@@ -1258,6 +1271,8 @@ display_svg(
             ("Rate 6\n(RATE=MC, TX=MC, pers.)", delta_natgas_r1_to_r6_ratemc_trans_personal),
             ("Rate 6\n(FIXED+MC, TX=MC)", delta_natgas_r1_to_r6_fixed_ratemc_trans),
             ("Rate 6\n(FIXED+MC, TX=MC, pers.)", delta_natgas_r1_to_r6_fixed_ratemc_trans_personal),
+            ("Rate 6\n(RATE=MC, MFC=0, TX=MC)", delta_natgas_r1_to_r6_ratemc_mfc0_trans),
+            ("Rate 6\n(RATE=MC, MFC=0, TX=MC, pers.)", delta_natgas_r1_to_r6_ratemc_mfc0_trans_personal),
             ("Fair flat rate", delta_natgas_default_to_flat),
             ("Fair seasonal rate", delta_natgas_default_to_seasonal),
             ("Rate 1 − per-bldg.\noverpayment", delta_natgas_minus_bldg_overpayment),

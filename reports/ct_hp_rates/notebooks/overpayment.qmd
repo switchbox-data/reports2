@@ -928,6 +928,7 @@ all rates for that heating type, so every histogram occupies the same visual spa
 #| label: build-testimony-hists
 
 import math as _m
+from lib.quarto import display_figure
 
 TESTIMONY_RATE_LABELS = [
     "Rate 1",
@@ -940,6 +941,9 @@ TESTIMONY_RATE_LABELS = [
 ]
 
 testimony_figs: dict[tuple[str, str], p9.ggplot] = {}
+per_rate_binned_by_ht: dict[tuple[str, str], pl.DataFrame] = {}
+per_rate_stats_by_ht: dict[tuple[str, str], dict] = {}
+axis_params_by_ht: dict[str, dict] = {}
 
 for ht_slug, ht_name, ht_code in HEATING_GROUPS:
     combined = pl.concat([
@@ -986,6 +990,19 @@ for ht_slug, ht_name, ht_code in HEATING_GROUPS:
         w_mean = float((sub["delta"] * sub["weight"]).sum() / sub["weight"].sum())
         w_median = weighted_quantile(sub, "delta", 0.50)
         per_rate_stats[rate_label] = {"w_mean": w_mean, "w_median": w_median}
+
+        per_rate_binned_by_ht[(ht_code, rate_label)] = binned
+        per_rate_stats_by_ht[(ht_code, rate_label)] = per_rate_stats[rate_label]
+
+    axis_params_by_ht[ht_code] = {
+        "bin_width": bin_width,
+        "x_lo": hist_x_lo,
+        "x_hi": hist_x_hi,
+        "tick_lo": _tick_lo,
+        "tick_hi": _tick_hi,
+        "tick_step": _tick_step,
+        "y_max": y_max,
+    }
 
     for rate_label in TESTIMONY_RATE_LABELS:
         binned = per_rate_binned[rate_label]
@@ -1039,6 +1056,98 @@ print(f"Built {len(testimony_figs)} testimony histograms")
 #| label: fig-testimony-annual-all-fossil-r1
 #| fig-cap: "Annual delivery overpayment for all fossil-fuel-heated CT Eversource homes switching to heat pumps, under Rate 1."
 testimony_figs[("r1", "all-fossil")]
+```
+
+```{python}
+#| label: fig-testimony-annual-all-fossil-r1-vs-r6
+#| fig-cap: "Annual delivery overpayment for all fossil-fuel-heated CT Eversource homes switching to heat pumps: Rate 1 (top) vs. Rate 6 (bottom)."
+
+_ht_code = "all_fossil"
+_ht_name = "All fossil fuel"
+_facet_rates = ["Rate 1", "Rate 6"]
+
+_facet_binned = pl.concat([
+    per_rate_binned_by_ht[(_ht_code, r)].with_columns(pl.lit(r).alias("rate"))
+    for r in _facet_rates
+]).with_columns(pl.col("rate").cast(pl.Enum(_facet_rates)))
+
+_facet_stats = [
+    {"rate": r, **per_rate_stats_by_ht[(_ht_code, r)]}
+    for r in _facet_rates
+]
+
+_axis = axis_params_by_ht[_ht_code]
+
+_stat_labels = pl.DataFrame([
+    {
+        "x": _s["w_mean"] + _axis["bin_width"] * 0.4,
+        "y": _axis["y_max"] * 0.97,
+        "label": f"Mean ${_s['w_mean']:,.0f}",
+        "rate": _s["rate"],
+        "color": "mean",
+    }
+    for _s in _facet_stats
+] + [
+    {
+        "x": _s["w_median"] + _axis["bin_width"] * 0.4,
+        "y": _axis["y_max"] * 0.85,
+        "label": f"Median ${_s['w_median']:,.0f}",
+        "rate": _s["rate"],
+        "color": "median",
+    }
+    for _s in _facet_stats
+]).cast({"rate": pl.Enum(_facet_rates)})
+
+_vline_data = pl.DataFrame([
+    {"x": _s[stat], "rate": _s["rate"], "stat": stat}
+    for _s in _facet_stats
+    for stat in ("w_mean", "w_median")
+]).cast({"rate": pl.Enum(_facet_rates)})
+
+_fig_facet = (
+    p9.ggplot(_facet_binned, p9.aes(x="bin_center", y="weight_sum", fill="quadrant"))
+    + p9.geom_col(width=_axis["bin_width"] * 0.9)
+    + p9.geom_vline(xintercept=[-1000, 0, 1000], linetype="dotted", color="gray")
+    + p9.geom_vline(
+        p9.aes(xintercept="x"),
+        data=_vline_data.filter(pl.col("stat") == "w_mean"),
+        linetype="dashed", color=SB_COLORS["carrot"], size=0.8,
+    )
+    + p9.geom_vline(
+        p9.aes(xintercept="x"),
+        data=_vline_data.filter(pl.col("stat") == "w_median"),
+        linetype="dashed", color=SB_COLORS["midnight"], size=0.8,
+    )
+    + p9.geom_text(
+        _stat_labels.filter(pl.col("color") == "mean"),
+        p9.aes(x="x", y="y", label="label"),
+        ha="left", va="top", color=SB_COLORS["carrot"],
+        size=9, fontweight="bold", inherit_aes=False,
+    )
+    + p9.geom_text(
+        _stat_labels.filter(pl.col("color") == "median"),
+        p9.aes(x="x", y="y", label="label"),
+        ha="left", va="top", color=SB_COLORS["midnight"],
+        size=9, fontweight="bold", inherit_aes=False,
+    )
+    + p9.scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
+    + p9.scale_x_continuous(
+        breaks=list(range(_axis["tick_lo"], _axis["tick_hi"] + _axis["tick_step"], _axis["tick_step"])),
+        labels=lambda xs: [f"${x:,.0f}" if x >= 0 else f"-${abs(x):,.0f}" for x in xs],
+    )
+    + p9.coord_cartesian(xlim=(_axis["x_lo"], _axis["x_hi"]), ylim=(0, _axis["y_max"] * 1.05))
+    + p9.facet_wrap("rate", ncol=1)
+    + p9.labs(
+        x="Annual delivery overpayment ($)",
+        y="Weighted households",
+        title=f"{_ht_name}: annual overpayment — Rate 1 vs. Rate 6",
+    )
+    + p9.guides(fill=False)
+    + theme_switchbox()
+    + p9.theme(figure_size=(10.5, 8))
+)
+
+display_figure(_fig_facet.draw())
 ```
 
 ```{python}

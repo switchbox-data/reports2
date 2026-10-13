@@ -276,6 +276,14 @@ report_vars["pct_natgas_hp_bill_increase_default"] = incidence_natgas_default["p
 report_vars["pct_natgas_hp_bill_decrease_default"] = incidence_natgas_default["pct_decrease"]
 report_vars["mean_natgas_hp_bill_increase_default"] = incidence_natgas_default["mean_delta"]
 report_vars["median_natgas_hp_bill_increase_default"] = incidence_natgas_default["median_delta"]
+
+_savers_natgas_default = delta_natgas_default.filter(pl.col("delta") < 0)
+_savers_natgas_default_w = _savers_natgas_default["weight"].sum()
+report_vars["mean_natgas_hp_savings_among_savers_default"] = (
+    float((_savers_natgas_default["delta"] * _savers_natgas_default["weight"]).sum() / _savers_natgas_default_w)
+    if _savers_natgas_default_w > 0
+    else 0.0
+)
 ```
 
 **`{python} f"{report_vars['pct_natgas_hp_bill_increase_default']:.0%}"` of natural-gas-heated
@@ -307,6 +315,14 @@ report_vars["pct_delivered_hp_bill_increase_default"] = incidence_delivered_defa
 report_vars["pct_delivered_hp_bill_decrease_default"] = incidence_delivered_default["pct_decrease"]
 report_vars["mean_delivered_hp_bill_increase_default"] = incidence_delivered_default["mean_delta"]
 report_vars["median_delivered_hp_bill_increase_default"] = incidence_delivered_default["median_delta"]
+
+_savers_delivered_default = delta_delivered_default.filter(pl.col("delta") < 0)
+_savers_del_default_w = _savers_delivered_default["weight"].sum()
+report_vars["mean_delivered_hp_savings_among_savers_default"] = (
+    float((_savers_delivered_default["delta"] * _savers_delivered_default["weight"]).sum() / _savers_del_default_w)
+    if _savers_del_default_w > 0
+    else 0.0
+)
 ```
 
 ## Bill change quadrant plots
@@ -1132,7 +1148,141 @@ delta_natgas_r1_to_r6_ratemc_trans = bill_delta_between_segments(
 delta_natgas_r1_to_r6_fixed_ratemc_trans = bill_delta_between_segments(
     STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_RATE6_FIXED_RATEMC_TRANS_CALIBRATED, bill_col=BILL_COL
 ).filter(pl.col("heating_type_v2") == "natgas")
+```
 
+```{python}
+#| label: report-vars-natgas-r6-incidence
+
+incidence_natgas_r6 = bill_change_incidence(delta_natgas_r1_to_r6)
+report_vars["pct_natgas_hp_bill_increase_r6"] = incidence_natgas_r6["pct_increase"]
+report_vars["pct_natgas_hp_bill_decrease_r6"] = incidence_natgas_r6["pct_decrease"]
+report_vars["mean_natgas_hp_bill_delta_r6"] = incidence_natgas_r6["mean_delta"]
+
+_savers_natgas_r6 = delta_natgas_r1_to_r6.filter(pl.col("delta") < 0)
+_savers_natgas_r6_w = _savers_natgas_r6["weight"].sum()
+report_vars["mean_natgas_hp_savings_among_savers_r6"] = (
+    float((_savers_natgas_r6["delta"] * _savers_natgas_r6["weight"]).sum() / _savers_natgas_r6_w)
+    if _savers_natgas_r6_w > 0
+    else 0.0
+)
+incidence_natgas_r6
+```
+
+The per-building overpayment correction subtracts each building's own delivery overpayment
+(incremental delivery revenue − incremental delivery marginal cost) from its Rate 1 bill
+change. This gives the "perfect" counterfactual — what would happen if the overcharge were
+fully eliminated for each customer individually — and cannot be replicated by any single tariff.
+
+```{python}
+#| label: overpayment-correction-data
+
+cost_delta_all = incremental_cost_delta_with_gap(
+    STATE, UTILITY, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED,
+)
+cost_delta_natgas = cost_delta_all.filter(
+    pl.col("heating_type_v2") == "natgas"
+)
+
+delta_natgas_minus_bldg_overpayment = (
+    delta_natgas_default.join(
+        cost_delta_natgas.select("bldg_id", "delta_gap"), on="bldg_id"
+    )
+    .with_columns((pl.col("delta") - pl.col("delta_gap")).alias("delta"))
+    .drop("delta_gap")
+)
+
+incidence_natgas_fair = bill_change_incidence(delta_natgas_minus_bldg_overpayment)
+report_vars["pct_natgas_hp_bill_increase_fair"] = incidence_natgas_fair["pct_increase"]
+report_vars["pct_natgas_hp_bill_decrease_fair"] = incidence_natgas_fair["pct_decrease"]
+report_vars["mean_natgas_hp_bill_delta_fair"] = incidence_natgas_fair["mean_delta"]
+
+_savers_natgas_fair = delta_natgas_minus_bldg_overpayment.filter(pl.col("delta") < 0)
+_savers_natgas_fair_w = _savers_natgas_fair["weight"].sum()
+report_vars["mean_natgas_hp_savings_among_savers_fair"] = (
+    float((_savers_natgas_fair["delta"] * _savers_natgas_fair["weight"]).sum() / _savers_natgas_fair_w)
+    if _savers_natgas_fair_w > 0
+    else 0.0
+)
+incidence_natgas_fair
+```
+
+```{python}
+#| label: fig-bill-change-quadrants-natgas-r1-vs-fair
+#| fig-cap: "Change in total annual energy bill for natural-gas-heated CT Eversource homes switching to a heat pump, under Rate 1 vs. a fair rate that eliminates the overcharge."
+
+display_svg(
+    plot_bill_change_quadrant_comparison(
+        [
+            ("Rate 1", delta_natgas_default),
+            ("Fair rate", delta_natgas_minus_bldg_overpayment),
+        ],
+        title_parts=[
+            ("How bills would change for ", "#000000"),
+            ("natural gas", "#7A8A10"),
+            (" heated homes after switching to ", "#000000"),
+            ("heat pumps", "#c47600"),
+            (": Rate 1 vs. Fair rate", "#000000"),
+        ],
+    )
+)
+```
+
+```{python}
+#| label: fig-bill-change-quadrants-delivered-r1-vs-fair
+#| fig-cap: "Change in total annual energy bill for oil/propane-heated CT Eversource homes switching to a heat pump, under Rate 1 vs. a fair rate that eliminates the overcharge."
+
+_cost_delta_delivered = cost_delta_all.filter(
+    pl.col("heating_type_v2") == "delivered_fuels"
+)
+delta_delivered_minus_bldg_overpayment = (
+    delta_delivered_default.join(
+        _cost_delta_delivered.select("bldg_id", "delta_gap"), on="bldg_id"
+    )
+    .with_columns((pl.col("delta") - pl.col("delta_gap")).alias("delta"))
+    .drop("delta_gap")
+)
+
+display_svg(
+    plot_bill_change_quadrant_comparison(
+        [
+            ("Rate 1", delta_delivered_default),
+            ("Fair rate", delta_delivered_minus_bldg_overpayment),
+        ],
+        title_parts=[
+            ("How bills would change for ", "#000000"),
+            ("oil/propane", "#fc9706"),
+            (" heated homes after switching to ", "#000000"),
+            ("heat pumps", "#c47600"),
+            (": Rate 1 vs. Fair rate", "#000000"),
+        ],
+    )
+)
+```
+
+```{python}
+#| label: fig-bill-change-quadrants-natgas-r1-r6-fair
+#| fig-cap: "Change in total annual energy bill for natural-gas-heated CT Eversource homes switching to a heat pump, under Rate 1 vs. Rate 6 vs. a fair rate that eliminates the overcharge."
+
+display_svg(
+    plot_bill_change_quadrant_comparison(
+        [
+            ("Rate 1", delta_natgas_default),
+            ("Rate 6", delta_natgas_r1_to_r6),
+            ("Fair rate", delta_natgas_minus_bldg_overpayment),
+        ],
+        title_parts=[
+            ("How bills would change for ", "#000000"),
+            ("natural gas", "#7A8A10"),
+            (" heated homes after switching to ", "#000000"),
+            ("heat pumps", "#c47600"),
+            (", under different rates", "#000000"),
+        ],
+    )
+)
+```
+
+```{python}
+#| label: optional-rate-helpers-personalized
 
 def _monthly_kwh(segment: str, name: str) -> pl.LazyFrame:
     """Monthly grid kWh CAIRO billed, for every building in a segment."""
@@ -1182,31 +1332,6 @@ delta_natgas_r1_to_r6_fixed_ratemc_trans_personal = add_adjustment(
     delta_natgas_r1_to_r6_fixed_ratemc_trans,
     personalized_threshold_adjustment(SEG_RATE6_FIXED_RATEMC_TRANS_CALIBRATED, "ct_eversource_rate6_fixed_ratemc_trans"),
     ["bill_after", "delta"],
-)
-```
-
-We compare bill-change quadrants across all rate scenarios, including the fair flat and
-fair seasonal rates derived from CAIRO runs. We also keep the per-building overpayment
-correction — subtracting each building's own delivery overpayment (incremental revenue minus
-incremental marginal cost) from its Rate 1 bill change — because this correction cannot be
-replicated by a CAIRO tariff.
-
-```{python}
-#| label: overpayment-correction-data
-
-cost_delta_all = incremental_cost_delta_with_gap(
-    STATE, UTILITY, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED,
-)
-cost_delta_natgas = cost_delta_all.filter(
-    pl.col("heating_type_v2") == "natgas"
-)
-
-delta_natgas_minus_bldg_overpayment = (
-    delta_natgas_default.join(
-        cost_delta_natgas.select("bldg_id", "delta_gap"), on="bldg_id"
-    )
-    .with_columns((pl.col("delta") - pl.col("delta_gap")).alias("delta"))
-    .drop("delta_gap")
 )
 ```
 
@@ -1325,6 +1450,62 @@ for _htv2, _label, _color in _HEATING_TYPES_EXTRA:
 
     print(f"{_label}: {_delta_ry1.height} buildings, "
           f"avg delta=${_delta_ry1['delta'].mean():,.0f}")
+```
+
+```{python}
+#| label: report-vars-delivered-r6-and-fair-incidence
+
+_c_del = _fair_rate_charts["delivered_fuels"]
+incidence_delivered_r6 = bill_change_incidence(_c_del["delta_r6"])
+report_vars["pct_delivered_hp_bill_increase_r6"] = incidence_delivered_r6["pct_increase"]
+report_vars["pct_delivered_hp_bill_decrease_r6"] = incidence_delivered_r6["pct_decrease"]
+report_vars["mean_delivered_hp_bill_delta_r6"] = incidence_delivered_r6["mean_delta"]
+
+_savers_del_r6 = _c_del["delta_r6"].filter(pl.col("delta") < 0)
+_savers_del_r6_w = _savers_del_r6["weight"].sum()
+report_vars["mean_delivered_hp_savings_among_savers_r6"] = (
+    float((_savers_del_r6["delta"] * _savers_del_r6["weight"]).sum() / _savers_del_r6_w)
+    if _savers_del_r6_w > 0
+    else 0.0
+)
+
+incidence_delivered_fair = bill_change_incidence(_c_del["delta_minus_bldg"])
+report_vars["pct_delivered_hp_bill_increase_fair"] = incidence_delivered_fair["pct_increase"]
+report_vars["pct_delivered_hp_bill_decrease_fair"] = incidence_delivered_fair["pct_decrease"]
+report_vars["mean_delivered_hp_bill_delta_fair"] = incidence_delivered_fair["mean_delta"]
+
+_savers_del_fair = _c_del["delta_minus_bldg"].filter(pl.col("delta") < 0)
+_savers_del_fair_w = _savers_del_fair["weight"].sum()
+report_vars["mean_delivered_hp_savings_among_savers_fair"] = (
+    float((_savers_del_fair["delta"] * _savers_del_fair["weight"]).sum() / _savers_del_fair_w)
+    if _savers_del_fair_w > 0
+    else 0.0
+)
+print("Rate 6:", incidence_delivered_r6)
+print("Fair:", incidence_delivered_fair)
+```
+
+```{python}
+#| label: fig-bill-change-quadrants-delivered-r1-r6-fair
+#| fig-cap: "Change in total annual energy bill for oil/propane-heated CT Eversource homes switching to a heat pump, under Rate 1 vs. Rate 6 vs. a fair rate that eliminates the overcharge."
+
+_c_del = _fair_rate_charts["delivered_fuels"]
+display_svg(
+    plot_bill_change_quadrant_comparison(
+        [
+            ("Rate 1", _c_del["delta_ry1"]),
+            ("Rate 6", _c_del["delta_r6"]),
+            ("Fair rate", _c_del["delta_minus_bldg"]),
+        ],
+        title_parts=[
+            ("How bills would change for ", "#000000"),
+            ("oil/propane", "#fc9706"),
+            (" heated homes after switching to ", "#000000"),
+            ("heat pumps", "#c47600"),
+            (", under different rates", "#000000"),
+        ],
+    )
+)
 ```
 
 ```{python}

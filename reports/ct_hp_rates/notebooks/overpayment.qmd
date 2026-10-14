@@ -1168,6 +1168,135 @@ display_figure(_fig_facet.draw())
 ```
 
 ```{python}
+#| label: fig-testimony-annual-all-fossil-r1-vs-r6-vs-r6mc
+#| fig-cap: "Annual delivery overpayment for all fossil-fuel-heated CT Eversource homes switching to heat pumps: Rate 1 vs. Rate 6 vs. Rate 6 with Block 2 at marginal cost."
+
+_ht_code_3 = "all_fossil"
+_ht_name_3 = "All fossil fuel"
+_facet_rates_3_raw = ["Rate 1", "Rate 6", "Rate 6\n(RATE=MC, MFC=0, TX=MC)"]
+_facet_labels_3 = ["Rate 1", "Rate 6 (as proposed)", "Rate 6 (Block 2 at MC)"]
+_label_map_3 = dict(zip(_facet_rates_3_raw, _facet_labels_3))
+
+_axis_3 = axis_params_by_ht[_ht_code_3]
+
+def _bin_overpayment(rate_label: str, ht_code: str, bin_width: int) -> tuple[pl.DataFrame, dict]:
+    raw = _filter_ht(all_overpayment[(rate_label, "Annual")], ht_code)
+    bins = (
+        raw.with_columns(
+            (pl.col("delta") / bin_width).floor().cast(pl.Int64).alias("bin_idx")
+        )
+        .group_by("bin_idx")
+        .agg(pl.col("weight").sum().alias("weight_sum"))
+        .with_columns(
+            (pl.col("bin_idx") * bin_width + bin_width / 2).alias("bin_center"),
+            pl.when(pl.col("bin_idx") < -1000 // bin_width)
+            .then(pl.lit("< −$1,000"))
+            .when(pl.col("bin_idx") < 0)
+            .then(pl.lit("−$1,000 to $0"))
+            .when(pl.col("bin_idx") < 1000 // bin_width)
+            .then(pl.lit("$0 to $1,000"))
+            .otherwise(pl.lit("> $1,000"))
+            .alias("quadrant"),
+        )
+    )
+    w_total = float(raw["weight"].sum())
+    w_mean = float((raw["delta"] * raw["weight"]).sum() / w_total) if w_total > 0 else 0.0
+    sorted_d = raw.sort("delta")
+    cum = sorted_d["weight"].cum_sum()
+    mid = w_total / 2
+    w_median = float(sorted_d.filter(cum >= mid)["delta"][0]) if w_total > 0 else 0.0
+    return bins, {"w_mean": w_mean, "w_median": w_median}
+
+_bw3 = _axis_3["bin_width"]
+_panels3: list[pl.DataFrame] = []
+_stats3: list[dict] = []
+_y_max3 = 0.0
+for _raw_label, _disp_label in zip(_facet_rates_3_raw, _facet_labels_3):
+    _b, _s = _bin_overpayment(_raw_label, _ht_code_3, _bw3)
+    _b = _b.with_columns(pl.lit(_disp_label).alias("rate"))
+    _panels3.append(_b)
+    _stats3.append({"rate": _disp_label, **_s})
+    _ym = float(_b["weight_sum"].max()) if _b.height > 0 else 0.0
+    _y_max3 = max(_y_max3, _ym)
+
+_facet_binned_3 = pl.concat(_panels3).with_columns(
+    pl.col("rate").cast(pl.Enum(_facet_labels_3)),
+    pl.col("quadrant").cast(pl.Enum(QUADRANT_ORDER)),
+)
+
+_stat_labels_3 = pl.DataFrame([
+    {
+        "x": _s["w_mean"] + _bw3 * 0.4,
+        "y": _y_max3 * 0.97,
+        "label": f"Mean ${_s['w_mean']:,.0f}",
+        "rate": _s["rate"],
+        "color": "mean",
+    }
+    for _s in _stats3
+] + [
+    {
+        "x": _s["w_median"] + _bw3 * 0.4,
+        "y": _y_max3 * 0.85,
+        "label": f"Median ${_s['w_median']:,.0f}",
+        "rate": _s["rate"],
+        "color": "median",
+    }
+    for _s in _stats3
+]).cast({"rate": pl.Enum(_facet_labels_3)})
+
+_vline_data_3 = pl.DataFrame([
+    {"x": _s[stat], "rate": _s["rate"], "stat": stat}
+    for _s in _stats3
+    for stat in ("w_mean", "w_median")
+]).cast({"rate": pl.Enum(_facet_labels_3)})
+
+_fig_facet_3 = (
+    p9.ggplot(_facet_binned_3, p9.aes(x="bin_center", y="weight_sum", fill="quadrant"))
+    + p9.geom_col(width=_bw3 * 0.9)
+    + p9.geom_vline(xintercept=[-1000, 0, 1000], linetype="dotted", color="gray")
+    + p9.geom_vline(
+        p9.aes(xintercept="x"),
+        data=_vline_data_3.filter(pl.col("stat") == "w_mean"),
+        linetype="dashed", color=SB_COLORS["carrot"], size=0.8,
+    )
+    + p9.geom_vline(
+        p9.aes(xintercept="x"),
+        data=_vline_data_3.filter(pl.col("stat") == "w_median"),
+        linetype="dashed", color=SB_COLORS["midnight"], size=0.8,
+    )
+    + p9.geom_text(
+        _stat_labels_3.filter(pl.col("color") == "mean"),
+        p9.aes(x="x", y="y", label="label"),
+        ha="left", va="top", color=SB_COLORS["carrot"],
+        size=9, fontweight="bold", inherit_aes=False,
+    )
+    + p9.geom_text(
+        _stat_labels_3.filter(pl.col("color") == "median"),
+        p9.aes(x="x", y="y", label="label"),
+        ha="left", va="top", color=SB_COLORS["midnight"],
+        size=9, fontweight="bold", inherit_aes=False,
+    )
+    + p9.scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
+    + p9.scale_x_continuous(
+        breaks=list(range(_axis_3["tick_lo"], _axis_3["tick_hi"] + _axis_3["tick_step"], _axis_3["tick_step"])),
+        labels=lambda xs: [f"${x:,.0f}" if x >= 0 else f"-${abs(x):,.0f}" for x in xs],
+    )
+    + p9.coord_cartesian(xlim=(_axis_3["x_lo"], _axis_3["x_hi"]), ylim=(0, _y_max3 * 1.05))
+    + p9.facet_wrap("rate", ncol=1)
+    + p9.labs(
+        x="Annual delivery overpayment ($)",
+        y="Weighted households",
+        title=f"{_ht_name_3}: annual overpayment — Rate 1 vs. Rate 6 vs. Rate 6 (Block 2 at MC)",
+    )
+    + p9.guides(fill=False)
+    + theme_switchbox()
+    + p9.theme(figure_size=(10.5, 11))
+)
+
+display_figure(_fig_facet_3.draw())
+```
+
+```{python}
 #| label: fig-testimony-annual-all-fossil-r6
 #| fig-cap: "Annual delivery overpayment for all fossil-fuel-heated CT Eversource homes switching to heat pumps, under Rate 6."
 testimony_figs[("r6", "all-fossil")]

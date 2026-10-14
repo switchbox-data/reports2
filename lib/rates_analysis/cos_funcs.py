@@ -1,12 +1,20 @@
 """Cost-of-service helpers for incremental revenue vs. marginal-cost analysis.
 
-These wrap ``rate_case_funcs.bat_component_delta()`` to compare each
-building's delivery revenue and delivery marginal-cost allocation between
-two ``{scenario}_{stage}`` segments (typically pre-retrofit ``*_precalc``
-vs. post-retrofit ``*_calibrated``). The resulting ``delta_gap`` —
-incremental revenue minus incremental marginal cost — says whether a heat
-pump conversion is a net contributor or a net cost to the delivery system
-under the rate design in those segments.
+These compare each building's delivery revenue and delivery marginal-cost
+allocation between two ``{scenario}_{stage}`` segments (typically
+pre-retrofit ``*_precalc`` vs. post-retrofit ``*_calibrated``).  The
+resulting ``delta_gap`` — incremental revenue minus incremental marginal
+cost — says whether a heat pump conversion is a net contributor or a net
+cost to the delivery system under the rate design in those segments.
+
+Revenue is read from **master bills** (``load_master_bills``), where
+``elec_delivery_bill`` (volumetric delivery) and ``elec_fixed_charge``
+(customer charge) are separate columns.  Marginal cost is read from
+**master BAT** (``bat_component_delta``), which stores CAIRO's
+``economic_burden_delivery`` — purely load x MC, independent of tariff
+calibration.  This decomposition lets callers choose whether to include the
+fixed charge in the overpayment measure by selecting
+``overpayment_volumetric`` or ``overpayment_volumetric_fc``.
 
 They also join in each building's incremental grid electricity consumption
 (``rate_case_funcs.load_billing_kwh_annual()``) so revenue/marginal-cost
@@ -24,7 +32,7 @@ across reports.
 Primary API
 -----------
 - ``incremental_cost_delta_with_gap`` — per-building incremental delivery
-  revenue, marginal cost, and the gap between them.
+  revenue (decomposed), marginal cost, and the gap between them.
 - ``incremental_cost_summary_by_heating_type`` — weighted summary of the
   above by baseline heating type.
 
@@ -52,21 +60,31 @@ def incremental_cost_delta_with_gap(
     segment_after: str,
     *,
     heating_type: str | None = None,
-    revenue_col: str = "annual_bill_delivery",
     marginal_cost_col: str = "economic_burden_delivery",
     kwh_col: str = "annual_kwh_grid",
 ) -> pl.DataFrame:
     """Per-building delta of delivery revenue, marginal cost, and grid kWh, plus the revenue/MC gap.
 
-    Calls ``rate_case_funcs.bat_component_delta()`` (filtered to *utility*)
-    for *revenue_col* and *marginal_cost_col*, then adds ``delta_gap`` =
-    ``delta_{revenue_col} - delta_{marginal_cost_col}``.
+    Revenue comes from **master bills** (``elec_delivery_bill`` and
+    ``elec_fixed_charge`` as separate columns), so the fixed-charge
+    contribution to overpayment is always visible.  The composite
+    ``annual_bill_delivery`` column (= ``elec_delivery_bill +
+    elec_fixed_charge``) is included for backward compatibility and for
+    ``incremental_cost_summary_by_heating_type()``, which uses it by
+    default.
 
-    Also loads CAIRO's raw per-building kWh export
-    (``rate_case_funcs.load_billing_kwh_annual()``) at both *segment_before*
-    and *segment_after*, and joins on ``bldg_id`` to add ``{kwh_col}_before``,
-    ``{kwh_col}_after``, and ``delta_{kwh_col}`` — the incremental grid
-    consumption driving each building's revenue/marginal-cost change.
+    Marginal cost comes from **master BAT** via
+    ``bat_component_delta(components=[marginal_cost_col])``.
+
+    Grid kWh come from ``load_billing_kwh_annual()``.
+
+    Two named overpayment columns are always present:
+
+    - ``overpayment_volumetric`` — excludes the fixed charge:
+      ``delta_elec_delivery_bill - delta_{marginal_cost_col}``
+    - ``overpayment_volumetric_fc`` — includes the fixed charge:
+      ``delta_annual_bill_delivery - delta_{marginal_cost_col}``
+      (identical to ``delta_gap``)
 
     When *heating_type* is set, filters to that ``heating_type_v2`` code
     (e.g. ``"natgas"``). Baseline heat-pump buildings are already dropped
@@ -76,19 +94,86 @@ def incremental_cost_delta_with_gap(
     """
     import polars as pl
 
-    from lib.rates_analysis.rate_case_funcs import bat_component_delta, load_billing_kwh_annual
+    from lib.rates_analysis.rate_case_funcs import (
+        bat_component_delta,
+        load_billing_kwh_annual,
+        load_master_bills,
+    )
 
-    delta = bat_component_delta(
+    # --- MC from master BAT (metadata comes along for the ride) ---------------
+    mc_delta = bat_component_delta(
         state,
         batch,
         segment_before,
         segment_after,
-        components=[revenue_col, marginal_cost_col],
+        components=[marginal_cost_col],
         utility=utility,
-    ).with_columns(
-        (pl.col(f"delta_{revenue_col}") - pl.col(f"delta_{marginal_cost_col}")).alias("delta_gap"),
     )
 
+    # --- Revenue from master bills (decomposed) -------------------------------
+    _bill_cols = ["bldg_id", "elec_delivery_bill", "elec_fixed_charge"]
+
+    bills_before = cast(
+        "pl.DataFrame",
+        load_master_bills(state, batch, segment_before)
+        .filter((pl.col("month") == "Annual") & (pl.col("sb.electric_utility") == utility))
+        .select(_bill_cols)
+        .collect(),
+    )
+    bills_after = cast(
+        "pl.DataFrame",
+        load_master_bills(state, batch, segment_after)
+        .filter((pl.col("month") == "Annual") & (pl.col("sb.electric_utility") == utility))
+        .select(_bill_cols)
+        .collect(),
+    )
+
+    revenue = (
+        bills_before.rename(
+            {
+                "elec_delivery_bill": "elec_delivery_bill_before",
+                "elec_fixed_charge": "elec_fixed_charge_before",
+            }
+        )
+        .join(
+            bills_after.rename(
+                {
+                    "elec_delivery_bill": "elec_delivery_bill_after",
+                    "elec_fixed_charge": "elec_fixed_charge_after",
+                }
+            ),
+            on="bldg_id",
+            how="inner",
+            validate="1:1",
+        )
+        .with_columns(
+            (pl.col("elec_delivery_bill_after") - pl.col("elec_delivery_bill_before")).alias(
+                "delta_elec_delivery_bill"
+            ),
+            (pl.col("elec_fixed_charge_after") - pl.col("elec_fixed_charge_before")).alias("delta_elec_fixed_charge"),
+            (pl.col("elec_delivery_bill_before") + pl.col("elec_fixed_charge_before")).alias(
+                "annual_bill_delivery_before"
+            ),
+            (pl.col("elec_delivery_bill_after") + pl.col("elec_fixed_charge_after")).alias(
+                "annual_bill_delivery_after"
+            ),
+        )
+        .with_columns(
+            (pl.col("annual_bill_delivery_after") - pl.col("annual_bill_delivery_before")).alias(
+                "delta_annual_bill_delivery"
+            ),
+        )
+    )
+
+    # --- Join MC + revenue on bldg_id -----------------------------------------
+    mc_col_delta = f"delta_{marginal_cost_col}"
+    delta = mc_delta.join(revenue, on="bldg_id", how="inner", validate="1:1").with_columns(
+        (pl.col("delta_annual_bill_delivery") - pl.col(mc_col_delta)).alias("delta_gap"),
+        (pl.col("delta_elec_delivery_bill") - pl.col(mc_col_delta)).alias("overpayment_volumetric"),
+        (pl.col("delta_annual_bill_delivery") - pl.col(mc_col_delta)).alias("overpayment_volumetric_fc"),
+    )
+
+    # --- kWh from billing export ----------------------------------------------
     kwh_before = cast(
         "pl.DataFrame",
         load_billing_kwh_annual(state, utility, batch, segment_before)
@@ -242,23 +327,55 @@ def bat_component_delta_with_gap(
     marginal_cost_col: str = "economic_burden_delivery",
     kwh_col: str = "annual_kwh_grid",
 ) -> pl.DataFrame:
-    """Deprecated: use ``incremental_cost_delta_with_gap`` instead."""
+    """Deprecated: use ``incremental_cost_delta_with_gap`` instead.
+
+    Frozen to the old BAT-only code path so that callers (e.g. MD notebooks)
+    using this alias are unaffected by the master-bills decomposition added
+    to ``incremental_cost_delta_with_gap``.
+    """
     warnings.warn(
         "bat_component_delta_with_gap is deprecated; use incremental_cost_delta_with_gap instead.",
         DeprecationWarning,
         stacklevel=2,
     )
-    return incremental_cost_delta_with_gap(
+    import polars as pl
+
+    from lib.rates_analysis.rate_case_funcs import bat_component_delta, load_billing_kwh_annual
+
+    delta = bat_component_delta(
         state,
-        utility,
         batch,
         segment_before,
         segment_after,
-        heating_type=heating_type,
-        revenue_col=revenue_col,
-        marginal_cost_col=marginal_cost_col,
-        kwh_col=kwh_col,
+        components=[revenue_col, marginal_cost_col],
+        utility=utility,
+    ).with_columns(
+        (pl.col(f"delta_{revenue_col}") - pl.col(f"delta_{marginal_cost_col}")).alias("delta_gap"),
     )
+
+    kwh_before = cast(
+        "pl.DataFrame",
+        load_billing_kwh_annual(state, utility, batch, segment_before)
+        .select("bldg_id", pl.col(kwh_col).alias(f"{kwh_col}_before"))
+        .collect(),
+    )
+    kwh_after = cast(
+        "pl.DataFrame",
+        load_billing_kwh_annual(state, utility, batch, segment_after)
+        .select("bldg_id", pl.col(kwh_col).alias(f"{kwh_col}_after"))
+        .collect(),
+    )
+    delta = (
+        delta.join(kwh_before, on="bldg_id", how="inner", validate="1:1")
+        .join(kwh_after, on="bldg_id", how="inner", validate="1:1")
+        .with_columns(
+            (pl.col(f"{kwh_col}_after") - pl.col(f"{kwh_col}_before")).alias(f"delta_{kwh_col}"),
+        )
+    )
+
+    if heating_type is not None:
+        delta = delta.filter(pl.col("heating_type_v2") == heating_type)
+    return delta
 
 
 def bat_component_summary_by_heating_type(

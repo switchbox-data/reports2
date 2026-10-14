@@ -42,7 +42,8 @@ from typing import cast
 import polars as pl
 import yaml
 from great_tables import GT
-
+import matplotlib.patches as mpatches
+from matplotlib import pyplot
 from lib.great_tables import get_switchbox_gt_tab_options
 from lib.plotnine import SB_COLORS, theme_switchbox
 from lib.quarto import display_gt, display_figure
@@ -125,6 +126,9 @@ SCALE_HEATING_BY_RS_RELEASE_COMP = False
 
 RATE_DESIGN: str = "seasonal"  # "flat", "seasonal"; future: "tiered"
 
+INCLUDE_FIXED_CHARGE = True
+OVERPAYMENT_COL = "overpayment_volumetric_fc" if INCLUDE_FIXED_CHARGE else "overpayment_volumetric"
+
 # --- Seasonal definitions from the period YAML (Rate 6 heating season) -------
 # Winter is November–March, matching Eversource's Rate 6 heating season
 # (Exhibit CLP-RATES-1, CLF-010). This is NOT the MCOS winter (Oct–May), which
@@ -158,6 +162,7 @@ print(f"OPTIONAL_RATE_YAML={OPTIONAL_RATE_YAML}")
 print(f"USE_UTILITY_ACTUALS={USE_UTILITY_ACTUALS}")
 print(f"SCALE_HEATING_BY_RS_RELEASE_COMP={SCALE_HEATING_BY_RS_RELEASE_COMP}")
 print(f"RATE_DESIGN={RATE_DESIGN}")
+print(f"INCLUDE_FIXED_CHARGE={INCLUDE_FIXED_CHARGE}  OVERPAYMENT_COL={OVERPAYMENT_COL}")
 print(f"WINTER_MONTHS={WINTER_MONTHS}  →  {WINTER_MONTH_LABELS}")
 print(f"SUMMER_MONTHS={sorted(SUMMER_MONTHS)}  →  {SUMMER_MONTH_LABELS}")
 ```
@@ -806,6 +811,10 @@ for pop_label in ["natgas", "delivered", "all_fossil"]:
             report_vars[f"{pop_label}_annual_{component}_after"]
             - report_vars[f"{pop_label}_annual_{component}_before"]
         )
+    report_vars[f"{pop_label}_annual_customer_charge_delta"] = (
+        report_vars[f"{pop_label}_annual_customer_charge_after"]
+        - report_vars[f"{pop_label}_annual_customer_charge_before"]
+    )
     report_vars[f"{pop_label}_annual_delivery_charges_delta"] = (
         report_vars[f"{pop_label}_annual_distribution_delta"]
         + report_vars[f"{pop_label}_annual_transmission_delta"]
@@ -1463,20 +1472,77 @@ for pop_label in ["natgas", "delivered", "all_fossil"]:
     )
     # TODO: Determine whether CT Eversource has utility-specific surcharges that
     # should be included in the overcharge calculation. For now, only T&D delta
-    # is counted.
+    # (plus customer charge delta when INCLUDE_FIXED_CHARGE is on) is counted.
+    _revenue_delta = report_vars[f"{pop_label}_annual_delivery_charges_delta"]
+    if INCLUDE_FIXED_CHARGE:
+        _revenue_delta += report_vars[f"{pop_label}_annual_customer_charge_delta"]
     report_vars[f"{pop_label}_annual_total_overcharge"] = (
-        report_vars[f"{pop_label}_annual_delivery_charges_delta"]
-        - (after_total - before_total)
+        _revenue_delta - (after_total - before_total)
     )
     _delivery_after = (
         report_vars[f"{pop_label}_annual_distribution_after"]
         + report_vars[f"{pop_label}_annual_transmission_after"]
     )
+    if INCLUDE_FIXED_CHARGE:
+        _delivery_after += report_vars[f"{pop_label}_annual_customer_charge_after"]
     report_vars[f"{pop_label}_annual_delivery_charges_after"] = _delivery_after
     report_vars[f"{pop_label}_pct_overcharge_of_delivery_total"] = (
         report_vars[f"{pop_label}_annual_total_overcharge"] / _delivery_after
     )
     print(f"  → change: {report_vars[f'{pop_label}_pct_mc_delivery_change']:+.1%}\n")
+```
+
+### Cross-check against shared function
+
+The representative home computes overcharge from the population-weighted-average
+building's bills and hourly MC. As a sanity check, we verify that the weighted-average
+overcharge across the same population matches what `incremental_cost_delta_with_gap`
+returns (which reads master bills and BAT). The two computations use different data
+sources — representative home assembles bills from a tariff model applied to a synthetic
+weighted-average load profile, while the shared function reads CAIRO's per-building
+master bills and BAT — so exact agreement is not expected, but the order of magnitude
+and sign should match.
+
+```{python}
+#| label: validate-representative-vs-shared
+
+from lib.rates_analysis.cos_funcs import incremental_cost_delta_with_gap
+
+_seg_precalc = segment_name(DEFAULT_SCENARIO, "precalc")
+_seg_calibrated = segment_name(DEFAULT_SCENARIO, "calibrated")
+
+_cost_delta_shared = incremental_cost_delta_with_gap(
+    STATE, ELECTRIC_UTILITY, BATCH, _seg_precalc, _seg_calibrated,
+)
+
+for pop_label, pop_df in [
+    ("natgas", pop_natgas),
+    ("delivered", pop_delivered),
+    ("all_fossil", pop_all_fossil),
+]:
+    _pop_bldg_ids = pop_df["bldg_id"].to_list()
+    _pop_shared = _cost_delta_shared.filter(pl.col("bldg_id").is_in(_pop_bldg_ids))
+    _w = _pop_shared["weight"]
+    _shared_avg = float((_pop_shared[OVERPAYMENT_COL] * _w).sum() / _w.sum())
+    _local_overcharge = report_vars[f"{pop_label}_annual_total_overcharge"]
+    _match = round(_shared_avg) == round(_local_overcharge)
+    _icon = "✓" if _match else "⚠"
+    print(
+        f"{_icon} {pop_label}: shared_avg=${_shared_avg:,.2f}  "
+        f"local_representative=${_local_overcharge:,.2f}"
+    )
+    if not _match:
+        import warnings
+        warnings.warn(
+            f"{pop_label}: representative-home overcharge (${_local_overcharge:,.0f}) "
+            f"differs from shared function (${_shared_avg:,.0f}) by "
+            f"${abs(_shared_avg - _local_overcharge):,.2f}",
+            stacklevel=1,
+        )
+```
+
+```{python}
+#| label: seasonal-mc-summary
 
 _summer_label, _winter_label = _season_labels(SUMMER_MONTHS)
 _SEASON_VAR_SUFFIX = {
@@ -1608,9 +1674,6 @@ expert testimony.
 
 ```{python}
 #| label: cost-charge-data
-
-import matplotlib.patches as mpatches
-from matplotlib import pyplot
 
 _mc_tx_before = report_vars["natgas_annual_mc_tx_before"]
 _mc_dist_before = report_vars["natgas_annual_mc_dist_before"]

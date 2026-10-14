@@ -108,6 +108,7 @@ BILL_COL = BILL_COL_DELIVERY  # toggle here
 # BILL_COL_DELIVERY and the overpayment delivery-bill delta — the
 # LMI/total BILL_COL options already include the fixed charge.
 INCLUDE_FIXED_CHARGE = True  # toggle here
+OVERPAYMENT_COL = "overpayment_volumetric_fc" if INCLUDE_FIXED_CHARGE else "overpayment_volumetric"
 
 # --- Residual ------------------------------------------------------------------
 RESIDUAL = "percustomer"
@@ -193,7 +194,7 @@ PERIODS: list[tuple[str, str | list[str]]] = [
 
 print(
     f"state={STATE}  batch={BATCH}  utility={UTILITY}  bill_col={BILL_COL}  "
-    f"include_fixed_charge={INCLUDE_FIXED_CHARGE}"
+    f"include_fixed_charge={INCLUDE_FIXED_CHARGE}  overpayment_col={OVERPAYMENT_COL}"
 )
 print(f"fair_rate_population={FAIR_RATE_POPULATION} → {FAIR_RATE_HTS}")
 print(f"winter_months={WINTER_MONTHS} → {WINTER_MONTH_LABELS}")
@@ -260,20 +261,23 @@ for _s in ["annual", "winter", "summer"]:
 
 As a sanity check, we compare the seasonal MC computation (winter + summer)
 against the annual `economic_burden_delivery` from CAIRO's master BAT table,
-accessed via `incremental_cost_delta_with_gap`.
+accessed via `incremental_cost_delta_with_gap`. We also verify that the
+delivery revenue computed from master bills (volumetric + fixed charge)
+matches the BAT-sourced `annual_bill_delivery`.
 
 ```{python}
 #| label: validate-annual
 
-cost_delta_bat = incremental_cost_delta_with_gap(
+cost_delta_annual = incremental_cost_delta_with_gap(
     STATE, UTILITY, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED,
 )
 
+# --- MC validation: seasonal hourly vs. BAT annual ---
 mc_annual_from_seasonal = mc_delta.filter(pl.col("season") == "annual").select(
     "bldg_id", pl.col("delta_mc").alias("delta_mc_hourly")
 )
 
-bat_mc = cost_delta_bat.select(
+bat_mc = cost_delta_annual.select(
     "bldg_id",
     (pl.col("delta_economic_burden_delivery")).alias("delta_mc_bat"),
 )
@@ -286,7 +290,7 @@ validation = validation.with_columns(
 _max_disc = validation["discrepancy"].abs().max()
 _mean_disc = validation["discrepancy"].abs().mean()
 _n_matched = validation.height
-_n_bat = cost_delta_bat.height
+_n_bat = cost_delta_annual.height
 
 print(f"Matched buildings: {_n_matched:,} (BAT has {_n_bat:,})")
 print(f"Max |discrepancy|: ${_max_disc:,.4f}")
@@ -296,17 +300,33 @@ if _max_disc < 1.0:
     print("✓ Seasonal MC matches BAT annual MC (max discrepancy < $1)")
 else:
     print(f"⚠ Max discrepancy ${_max_disc:,.2f} — check timestamp alignment")
+
+# --- Revenue validation: master bills (vol + FC) vs. BAT annual_bill_delivery ---
+# annual_bill_delivery in the output is computed from master bills as
+# elec_delivery_bill + elec_fixed_charge. The BAT-sourced value should match.
+_rev_check = cost_delta_annual.select(
+    "bldg_id",
+    (pl.col("elec_delivery_bill_before") + pl.col("elec_fixed_charge_before")).alias("bills_sum_before"),
+    "annual_bill_delivery_before",
+    (pl.col("elec_delivery_bill_after") + pl.col("elec_fixed_charge_after")).alias("bills_sum_after"),
+    "annual_bill_delivery_after",
+)
+_rev_disc_before = (_rev_check["bills_sum_before"] - _rev_check["annual_bill_delivery_before"]).abs().max()
+_rev_disc_after = (_rev_check["bills_sum_after"] - _rev_check["annual_bill_delivery_after"]).abs().max()
+print(f"\nRevenue decomposition check (vol + FC == annual_bill_delivery):")
+print(f"  Max |before discrepancy|: ${_rev_disc_before:,.4f}")
+print(f"  Max |after discrepancy|: ${_rev_disc_after:,.4f}")
+assert _rev_disc_before < 0.01 and _rev_disc_after < 0.01, "Revenue decomposition mismatch"
+print("✓ Master bills decomposition matches annual_bill_delivery")
 ```
 
 ## Delivery bill helper
 
-`bill_delta_between_segments` diffs one existing master-bills column, so it
-can't take an expression like `elec_delivery_bill + elec_fixed_charge`
-directly. `delivery_bill_delta` wraps it: it always fetches the
-`elec_delivery_bill` delta, and when `INCLUDE_FIXED_CHARGE` is on, it also
-fetches the `elec_fixed_charge` delta and adds the two together so
-`bill_before`/`bill_after`/`delta` reflect the full electric delivery-side
-bill (fixed charge + volumetric delivery, excluding supply and gas).
+For winter and summer periods — and for the multi-rate comparison loop below —
+we need per-building delivery bill deltas from master bills. The shared
+function (`incremental_cost_delta_with_gap`) only computes annual values for
+the default rate, so we use `bill_delta_between_segments` directly, adding
+`elec_fixed_charge` when `INCLUDE_FIXED_CHARGE` is on.
 
 ```{python}
 #| label: delivery-bill-helper
@@ -319,7 +339,7 @@ def delivery_bill_delta(
     *,
     month: str | list[str] = "Annual",
 ) -> pl.DataFrame:
-    """elec_delivery_bill delta, plus the elec_fixed_charge delta when INCLUDE_FIXED_CHARGE is on."""
+    """elec_delivery_bill delta, plus elec_fixed_charge delta when INCLUDE_FIXED_CHARGE is on."""
     delta = bill_delta_between_segments(
         state, batch, seg_pre, seg_cal, bill_col="elec_delivery_bill", month=month,
     )
@@ -347,11 +367,15 @@ def delivery_bill_delta(
 ## Compute per-building overpayment by period
 
 For each period (annual, winter, summer), we compute per-building delivery
-overpayment = delivery bill delta − MC delta. The delivery bill delta always
-uses `elec_delivery_bill` (plus `elec_fixed_charge` when `INCLUDE_FIXED_CHARGE`
-is on, via `delivery_bill_delta`) regardless of `BILL_COL`, since overpayment
-is a delivery concept. The per-building overpayment is then used to produce
-the two corrected bill-change variants.
+overpayment = delivery bill delta − MC delta.
+
+For the **annual** period, overpayment comes directly from the shared
+`incremental_cost_delta_with_gap()` output — either `overpayment_volumetric`
+or `overpayment_volumetric_fc` depending on `INCLUDE_FIXED_CHARGE`.
+
+For **winter** and **summer**, we compute seasonal delivery bill deltas from
+master bills and seasonal MC from the hourly 8760 data (the shared function
+only computes annual values).
 
 ```{python}
 #| label: compute-overpayment
@@ -363,22 +387,26 @@ overpayment_by_period: dict[str, pl.DataFrame] = {}
 for period_label, month_arg in PERIODS:
     season_key = SEASON_MAP[period_label]
 
-    delivery_delta = delivery_bill_delta(
-        STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED,
-        month=month_arg,
-    )
-
-    mc_period = mc_delta.filter(pl.col("season") == season_key).select(
-        "bldg_id", "delta_mc"
-    )
-
-    overpayment = (
-        delivery_delta.select("bldg_id", "weight", "heating_type_v2", pl.col("delta").alias("delivery_bill_delta"))
-        .join(mc_period, on="bldg_id", how="inner")
-        .with_columns(
-            (pl.col("delivery_bill_delta") - pl.col("delta_mc")).alias("overpayment")
+    if period_label == "Annual":
+        overpayment = cost_delta_annual.select(
+            "bldg_id", "weight", "heating_type_v2",
+            pl.col(OVERPAYMENT_COL).alias("overpayment"),
         )
-    )
+    else:
+        delivery_delta = delivery_bill_delta(
+            STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED,
+            month=month_arg,
+        )
+        mc_period = mc_delta.filter(pl.col("season") == season_key).select(
+            "bldg_id", "delta_mc"
+        )
+        overpayment = (
+            delivery_delta.select("bldg_id", "weight", "heating_type_v2", pl.col("delta").alias("delivery_bill_delta"))
+            .join(mc_period, on="bldg_id", how="inner")
+            .with_columns(
+                (pl.col("delivery_bill_delta") - pl.col("delta_mc")).alias("overpayment")
+            )
+        )
 
     fair_pop = overpayment.filter(pl.col("heating_type_v2").is_in(FAIR_RATE_HTS))
     avg_op = float(

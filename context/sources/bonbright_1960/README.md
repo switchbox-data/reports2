@@ -1,0 +1,77 @@
+# Bonbright — Principles of Public Utility Rates (1960)
+
+James C. Bonbright, _Principles of Public Utility Rates_ (New York: Columbia University Press, 1961). Written October 1960; first edition published 1961.
+
+This is the foundational treatise on public utility rate theory. It develops the economic principles underlying regulated utility pricing — cost of service, value of service, fair return, rate base determination, marginal cost, fully distributed cost, discrimination, and rate structure design. Bonbright's framework remains the conceptual backbone of modern rate regulation and is cited extensively in rate cases, PUC proceedings, and academic literature on utility economics.
+
+The text was extracted from the original PDF via OCR and manual correction, split into per-chapter markdown files for agent reference.
+
+## Chapter index
+
+| File                            | Ch.   | Title                                                   | Pages   | Key topics                                                                                                                                                                                 |
+| ------------------------------- | ----- | ------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `00_front_matter.md`            | —     | Front matter                                            | i–xii   | Title, preface, table of contents                                                                                                                                                          |
+| `01_public_utility_concept.md`  | I     | The Public Utility Concept                              | 3–25    | Natural monopoly, affected with public interest, franchise, duty to serve, economies of scale, common carrier, regulation rationale                                                        |
+| `02_public_interest.md`         | II    | The Public Interest as the Assumed Goal of Rate Making  | 26–41   | Social welfare, functional approach, capital-attraction function, use-rationing function, welfare economics, interest conflicts, consumer sovereignty                                      |
+| `03_role_of_rates.md`           | III   | The Role of Public Utility Rates                        | 42–65   | Price system, resource allocation, income distribution, capital attraction, consumer rationing, rate functions, optimum pricing, subsidy vs. pricing                                       |
+| `04_cost_of_service.md`         | IV    | Cost of Service as the Basic Standard of Reasonableness | 66–81   | Cost principle, marginal cost vs. average cost, sunk cost, out-of-pocket cost, overhead cost, joint cost, historical cost, replacement cost, cost definitions                              |
+| `05_value_of_service.md`        | V     | Value of Service as an Ancillary Standard               | 82–92   | Value of service, demand elasticity, price discrimination, market-clearing price, monopoly profit, benefit principle, willingness to pay                                                   |
+| `06_competitive_price.md`       | VI    | Competitive Price as a Norm of Rate Regulation          | 93–108  | Competitive pricing, replacement cost, pure vs. workable competition, marginal-cost pricing, long-run vs. short-run, natural monopoly pricing                                              |
+| `07_social_principles.md`       | VII   | Social Principles of Rate Making                        | 109–120 | Lifeline rates, promotional rates, conservation, resource allocation, social welfare, externalities, taxation-by-regulation, subsidized service                                            |
+| `08_fairness_vs_efficiency.md`  | VIII  | Fairness versus Functional Efficiency                   | 121–134 | Equity vs. efficiency, fairness criteria, cost-causation, benefit principle, reasonable rates, functional efficiency, distributional justice                                               |
+| `09_rate_level_vs_structure.md` | IX    | Rate-Level Standards and Rate-Structure Standards       | 135–146 | Rate level vs. rate structure, fair return as constraint, revenue requirements, railroad vs. utility regulation, rate discrimination, competitive traffic                                  |
+| `10_fair_return_criteria.md`    | X     | Criteria of a Fair Return                               | 147–158 | Fair return, capital attraction, Hope Natural Gas case, Smyth v. Ames, confiscation, operating ratio, revenue requirements, regulatory lag                                                 |
+| `11_rate_base_cost_or_value.md` | XI    | The Rate Base: Cost or Value                            | 159–171 | Rate base, original cost, fair value, reproduction cost, prudent investment, Smyth v. Ames, Hope Natural Gas, property valuation                                                           |
+| `12_rate_base_actual_cost.md`   | XII   | The Rate Base: Actual Cost vs. Prudent Investment       | 172–191 | Actual cost, prudent investment, Brandeis doctrine, book cost, sunk cost, capital attraction, price inflation, stock watering                                                              |
+| `13_depreciation.md`            | XIII  | Allowances for Depreciation                             | 192–223 | Depreciation, rate base deductions, straight-line vs. sinking-fund, service life, retirement accounting, depreciation reserve, operating expense, accrued depreciation                     |
+| `14_replacement_cost.md`        | XIV   | Replacement Cost as Alternative Standard                | 224–237 | Reproduction cost, fair value, replacement cost new, present value, technological obsolescence, modern substitute plant, going-concern value                                               |
+| `15_fair_rate_of_return.md`     | XV    | The Fair Rate of Return                                 | 238–286 | Fair rate of return, cost of capital, weighted average, debt/equity ratio, earnings-price ratio, capital structure, inflation protection, comparable earnings, Bluefield doctrine          |
+| `16_sound_rate_structure.md`    | XVI   | Criteria of a Sound Rate Structure                      | 287–316 | Rate structure criteria, simplicity, stability, cost allocation, customer/demand/energy classification, block rates, demand charges, two-part tariffs, peak responsibility                 |
+| `17_marginal_costs.md`          | XVII  | Marginal Costs, Short-Run and Long-Run                  | 317–336 | Marginal cost, short-run vs. long-run, incremental cost, peak vs. off-peak, capacity cost, energy cost, peak responsibility method, time-of-use pricing                                    |
+| `18_fully_distributed_costs.md` | XVIII | Fully Distributed Costs                                 | 337–368 | Fully distributed cost, embedded cost, cost allocation methods, customer/demand/energy costs, joint costs, railroad cost analysis, peak responsibility, coincident vs. non-coincident peak |
+| `19_discrimination.md`          | XIX   | Discrimination, Due and Undue                           | 369–385 | Price discrimination, undue discrimination, cross-subsidy, personal discrimination, rate differentials, cost justification, Robinson-Patman, value of service, competitive harm            |
+| `20_marginal_cost_pricing.md`   | XX    | The Philosophy of Marginal-Cost Pricing                 | 386–406 | Marginal-cost pricing, Hotelling, decreasing costs, subsidy, Dupuit, optimal resource allocation, second-best, public ownership, utility taxation, European practice                       |
+| `21_back_matter.md`             | —     | Back matter                                             | 407–435 | Publications cited, table of cases, index                                                                                                                                                  |
+
+## Quick topic lookup
+
+| Concept                                  | Primary chapter(s) | Notes                                                                                                              |
+| ---------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| Cost of service                          | IV, XVI, XVIII     | Ch IV introduces the principle; XVI applies it to rate structure; XVIII covers fully distributed cost methods      |
+| Value of service                         | V, XIX             | Ch V defines the principle; XIX examines it as discrimination                                                      |
+| Fair return                              | X, XV              | Ch X defines criteria; XV develops the percentage rate of return                                                   |
+| Rate base                                | XI, XII, XIV       | XI frames cost vs. value debate; XII argues for actual cost; XIV examines replacement cost                         |
+| Depreciation                             | XIII               | Comprehensive: rate base deduction, operating expense, reserve mechanics                                           |
+| Marginal cost                            | IV, XVII, XX       | IV introduces cost concepts; XVII develops short-run and long-run marginal cost; XX proposes marginal-cost pricing |
+| Fully distributed costs                  | XVIII              | Embedded cost studies, cost allocation methods, customer/demand/energy classification                              |
+| Cross-subsidy / discrimination           | XIX, IX            | XIX is the primary treatment; IX discusses fair-return vs. rate-structure conflicts                                |
+| Natural monopoly                         | I, VI              | Ch I defines the public utility concept; VI examines competitive-price norms                                       |
+| Rate structure                           | XVI, XVII, XVIII   | XVI lists desirable criteria; XVII–XVIII provide the cost foundations                                              |
+| Peak responsibility                      | XVII, XVIII        | Peak vs. off-peak cost allocation, coincident vs. non-coincident demand                                            |
+| Customer / demand / energy costs         | XVI, XVIII         | The three-way cost classification used in utility cost studies                                                     |
+| Joint costs                              | IV, XVII, XVIII    | IV defines the concept; XVII–XVIII apply it to peak/off-peak and multiproduct utilities                            |
+| Replacement cost                         | XII, XIV           | XII critiques it from the actual-cost standpoint; XIV presents it as an alternative                                |
+| Prudent investment                       | XII                | Brandeis doctrine, actual-cost rate base, capital-attraction effectiveness                                         |
+| Public interest                          | II                 | Social welfare, functional approach, welfare economics, interest conflicts                                         |
+| Fairness vs. efficiency                  | VIII               | Equity criteria vs. functional-efficiency criteria in rate making                                                  |
+| Social welfare                           | II, VII, XX        | II frames welfare economics; VII covers social/promotional pricing; XX discusses optimum pricing                   |
+| Competitive pricing                      | VI                 | Hypothetical competitive price as regulatory norm, workable competition                                            |
+| Capital attraction                       | III, X, XV         | Rate functions (III), fair-return criteria (X), cost-of-capital methods (XV)                                       |
+| Earnings-price ratio                     | XV                 | Market-based measures of fair rate of return, comparable-earnings tests                                            |
+| Resource allocation                      | III, XX            | Price-system role (III), marginal-cost pricing and optimum allocation (XX)                                         |
+| Promotional rates                        | VII                | Rates below fully distributed cost to expand consumption, social pricing                                           |
+| Conservation                             | VII                | Rate design to conserve exhaustible resources (natural gas)                                                        |
+| Subsidy                                  | VII, XX            | Tax-financed subsidy under marginal-cost pricing; promotional/lifeline pricing                                     |
+| Two-part tariffs / block rates           | XVI                | Multi-part pricing, declining-block rates, demand charges                                                          |
+| Regulatory lag                           | X                  | Incentive effects of delayed rate adjustment                                                                       |
+| Hope Natural Gas case                    | II, X, XI          | The landmark 1944 Supreme Court case on fair return and rate base                                                  |
+| Smyth v. Ames                            | X, XI, XIV         | The 1898 fair-value doctrine and its legacy                                                                        |
+| Second-best                              | XX                 | When optimal pricing is infeasible, what compromises are justified                                                 |
+| Utility taxation                         | XX                 | Tax burden on utility services, misallocation effects, public vs. private ownership                                |
+| Price inflation / price-level adjustment | XII, XIII, XV      | Impact on rate base, depreciation, and fair rate of return                                                         |
+| Sunk cost                                | IV, XII            | Why historical costs are irrelevant to future pricing decisions (and why they matter anyway)                       |
+| Economies of scale / decreasing costs    | I, XVII, XX        | Natural monopoly (I), pricing under declining average costs (XVII, XX)                                             |
+| Out-of-pocket cost                       | IV, XVII           | Minimum price floor, short-run marginal cost                                                                       |
+| Going-concern value                      | XIV                | Claimed rate-base enhancement above physical asset value                                                           |
+| Time-of-use pricing                      | XVI, XVII          | Peak vs. off-peak rate differentiation                                                                             |
+| Operating ratio                          | X                  | Alternative to rate-base/rate-of-return method for motor carriers                                                  |

@@ -331,12 +331,16 @@ def sum_monthly_peak_offpeak_kwh(
     mc_8760: pl.DataFrame,
     *,
     utc_offset_hours: int = -5,
+    mc_threshold: float = 0.0,
 ) -> pl.DataFrame:
     """Split hourly kWh into peak vs. off-peak and sum to monthly totals.
 
     An hour is "peak" when either the bulk-transmission or distribution
-    marginal cost is positive (same definition used in
-    ``analysis.qmd::_pct_mc_peak_hours_in_summer``).
+    marginal cost exceeds *mc_threshold* ($/kWh).  The default threshold
+    of ``0.0`` reproduces the original "any positive MC" behaviour.  A
+    threshold of ``0.01`` (1 ¢/kWh) keeps only the hours that carry the
+    bulk of marginal-cost dollars and trims near-zero shoulder-month
+    hours that inflate the peak-hour count without meaningful cost.
 
     Parameters
     ----------
@@ -350,6 +354,9 @@ def sum_monthly_peak_offpeak_kwh(
     utc_offset_hours
         Hours to shift ``load_8760`` timestamps to align with ``mc_8760``.
         Default ``-5`` converts CAIRO's UTC to Eastern Standard Time.
+    mc_threshold
+        Minimum marginal cost ($/kWh) for an hour to count as "peak".
+        Default ``0.0`` flags every hour with any positive MC.
 
     Returns
     -------
@@ -373,7 +380,7 @@ def sum_monthly_peak_offpeak_kwh(
     month_num_to_label = {i + 1: m for i, m in enumerate(MONTH_ORDER)}
     flagged = joined.with_columns(
         pl.col("timestamp").dt.month().alias("_month_num"),
-        ((pl.col("mc_bulk_tx") > 0) | (pl.col("mc_dist_sub_tx") > 0)).alias("_is_peak"),
+        ((pl.col("mc_bulk_tx") > mc_threshold) | (pl.col("mc_dist_sub_tx") > mc_threshold)).alias("_is_peak"),
     )
     return (
         flagged.group_by("_month_num")
@@ -802,6 +809,28 @@ HEATING_ORDER = ["Natural gas", "Oil/propane", "Electric resistance", "Existing 
 # customers already have a heat pump (not "upgrading" to one), and "other" is a
 # heterogeneous/unclassified bucket not worth breaking out on its own.
 DEFAULT_EXCLUDED_HEATING_CODES = {"heat_pump", "other"}
+
+# ---------------------------------------------------------------------------
+# Fair-rate population definitions
+# ---------------------------------------------------------------------------
+
+# Maps a named population to the ``heating_type_v2`` codes whose average
+# delivery overpayment defines the fair-rate correction scalar.
+FAIR_RATE_POPULATIONS: dict[str, tuple[str, ...]] = {
+    "all_fossil": ("natgas", "delivered_fuels"),
+}
+
+
+def fair_rate_heating_types(population: str) -> tuple[str, ...]:
+    """Return ``heating_type_v2`` codes whose average overpayment defines the fair rate.
+
+    Raises ``ValueError`` for unknown *population* names.
+    """
+    if population not in FAIR_RATE_POPULATIONS:
+        msg = f"Unknown fair-rate population {population!r}; known: {sorted(FAIR_RATE_POPULATIONS)}"
+        raise ValueError(msg)
+    return FAIR_RATE_POPULATIONS[population]
+
 
 QUADRANT_COLORS: dict[str, str] = {
     "savings > $1k": "#1b5e20",
@@ -1743,22 +1772,32 @@ def plot_mc_heatmap(
     """Render an 8760-hour (day-of-year x hour-of-day) marginal-cost heatmap.
 
     Filters to rows where *value_col* is positive (zero-cost hours are left
-    blank rather than tiled white) and draws with plotnine.  Expects *df* to
+    blank rather than tiled) and draws with plotnine.  Expects *df* to
     already have day-of-year and hour columns (e.g. via
     ``.dt.ordinal_day()`` / ``.dt.hour()`` on a timestamp column).
+
+    The gradient runs from a light tint of *high_color* to *high_color*
+    itself, so even the smallest non-zero values are visually
+    distinguishable from the blank (white) background.
 
     The caller should pass the returned ``Figure`` to
     ``display_figure`` / ``display_svg`` for Quarto embedding.
     """
     import plotnine as plt
+    from matplotlib.colors import to_rgb
 
     from lib.plotnine import theme_switchbox
+
+    def _tint(hex_color: str, factor: float = 0.15) -> str:
+        """Blend *hex_color* toward white (factor=0 → white, 1 → original)."""
+        r, g, b = to_rgb(hex_color)
+        return f"#{int((r * factor + 1.0 * (1 - factor)) * 255):02x}{int((g * factor + 1.0 * (1 - factor)) * 255):02x}{int((b * factor + 1.0 * (1 - factor)) * 255):02x}"
 
     nz = df.filter(pl.col(value_col) > 0)
     p = (
         plt.ggplot(nz, plt.aes(x=x_col, y=y_col, fill=value_col))
         + plt.geom_tile()
-        + plt.scale_fill_gradient(low="#FFFFFF", high=high_color)
+        + plt.scale_fill_gradient(low=_tint(high_color), high=high_color)
         + plt.scale_x_continuous(
             breaks=[1, 91, 182, 274, 365],
             labels=["Jan", "Apr", "Jul", "Oct", "Dec"],
@@ -3274,6 +3313,7 @@ def monthly_bill_from_profile(
 
 _MONTHLY_LOAD_BEFORE_COLOR = "#C8A200"
 _MONTHLY_LOAD_PEAK_COLOR = "#C85436"
+_MONTHLY_LOAD_PEAK_LIGHT = "#E08A74"
 _MONTHLY_LOAD_X_EXPAND = (0.02, 0, 0.02, 0)
 _MONTHLY_LOAD_PANEL_RIGHT = 0.82
 
@@ -3441,7 +3481,7 @@ def plot_monthly_load_with_peak(
     _PEAK_SEGMENT_ORDER = ["Peak-hour usage", "Off-peak usage"]
     _PEAK_SEGMENT_COLORS = {
         "Off-peak usage": _MONTHLY_LOAD_BEFORE_COLOR,
-        "Peak-hour usage": _MONTHLY_LOAD_PEAK_COLOR,
+        "Peak-hour usage": _MONTHLY_LOAD_PEAK_LIGHT,
     }
 
     total_kwh = monthly["kwh_offpeak"] + monthly["kwh_peak"]
@@ -3527,7 +3567,7 @@ def plot_monthly_load_with_peak(
         ha="center",
         va="bottom",
         fontsize=13,
-        color=_MONTHLY_LOAD_PEAK_COLOR,
+        color=_MONTHLY_LOAD_PEAK_LIGHT,
         fontweight="bold",
         transform=ax.transData,
     )
@@ -3666,7 +3706,7 @@ def plot_monthly_load_before_after(
         ]
         segment_colors: dict[str, str | tuple[float, ...]] = {
             "Base off-peak": _MONTHLY_LOAD_BEFORE_COLOR,
-            "Base peak": _MONTHLY_LOAD_PEAK_COLOR,
+            "Base peak": _MONTHLY_LOAD_PEAK_LIGHT,
             "More efficient cooling": (0.784, 0.635, 0.0, 0.35),
             "New HP off-peak": "#FFC729",
             "New HP peak": _MONTHLY_LOAD_PEAK_COLOR,
@@ -3768,7 +3808,7 @@ def plot_monthly_load_before_after(
             ax.text(
                 inc_x,
                 inc_bar_top + 25,
-                "Peak-hour usage\nincrease \u2191",
+                "Usage during\npeak hours",
                 ha="center",
                 va="bottom",
                 fontsize=13,
@@ -3811,7 +3851,54 @@ def plot_monthly_load_before_after(
 
 # --- Annual bill component stacked chart ------------------------------------
 
-_BILL_COMPONENT_ORDER = [
+_BILL_SEGMENT_ORDER = [
+    "Increment",
+    "Before",
+]
+
+# Default delivery color (midnight) and supply color (carrot/saffron).
+# Components not listed here get the delivery color.
+_BILL_SUPPLY_COMPONENTS = {"Generation"}
+_BILL_FIXED_COMPONENTS = {"Customer Charge"}
+_BILL_DELIVERY_COLOR = "#023047"
+_BILL_DELIVERY_INCREMENT_COLOR = "#5b90a8"
+_BILL_FIXED_COLOR = "#a0af12"  # pistachio — differentiates fixed from volumetric
+_BILL_FIXED_INCREMENT_COLOR = "#c4cf5e"
+_BILL_SUPPLY_COLOR = "#fc9706"
+_BILL_SUPPLY_INCREMENT_COLOR = "#ffc729"
+
+
+def _bill_stacked_colors(components: list[str]) -> dict[str, str]:
+    """Build ``fill_key → color`` mapping for the stacked bill chart."""
+    colors: dict[str, str] = {}
+    for c in components:
+        if c in _BILL_SUPPLY_COMPONENTS:
+            colors[f"{c}|Before"] = _BILL_SUPPLY_COLOR
+            colors[f"{c}|Increment"] = _BILL_SUPPLY_INCREMENT_COLOR
+        elif c in _BILL_FIXED_COMPONENTS:
+            colors[f"{c}|Before"] = _BILL_FIXED_COLOR
+            colors[f"{c}|Increment"] = _BILL_FIXED_INCREMENT_COLOR
+        else:
+            colors[f"{c}|Before"] = _BILL_DELIVERY_COLOR
+            colors[f"{c}|Increment"] = _BILL_DELIVERY_INCREMENT_COLOR
+    return colors
+
+
+def _bill_single_colors(components: list[str]) -> dict[str, str]:
+    """Build ``component → color`` mapping for the single-bar bill chart."""
+
+    def _color(c: str) -> str:
+        if c in _BILL_SUPPLY_COMPONENTS:
+            return _BILL_SUPPLY_COLOR
+        if c in _BILL_FIXED_COMPONENTS:
+            return _BILL_FIXED_COLOR
+        return _BILL_DELIVERY_COLOR
+
+    return {c: _color(c) for c in components}
+
+
+# Legacy order used by submitted MD testimony — preserved exactly.
+_BILL_COMPONENT_ORDER_MD = [
     "Customer Charge",
     "Distribution",
     "Transmission",
@@ -3819,28 +3906,27 @@ _BILL_COMPONENT_ORDER = [
     "Generation",
 ]
 
-_BILL_SEGMENT_ORDER = [
-    "Increment",
-    "Before",
-]
 
-_BILL_COLORS: dict[str, str] = {
-    "Customer Charge|Before": "#023047",
-    "Customer Charge|Increment": "#023047",
-    "Distribution|Before": "#023047",
-    "Distribution|Increment": "#5b90a8",
-    "Transmission|Before": "#023047",
-    "Transmission|Increment": "#5b90a8",
-    "EmPOWER Maryland|Before": "#023047",
-    "EmPOWER Maryland|Increment": "#5b90a8",
-    "Generation|Before": "#fc9706",
-    "Generation|Increment": "#ffc729",
-}
+def _bill_component_order(bills: pl.DataFrame) -> list[str]:
+    """Derive component display order from data.
+
+    If the data's components match the legacy MD order exactly, return that
+    order (preserving submitted testimony output).  Otherwise, sort delivery
+    components alphabetically then append supply.
+    """
+    components = set(bills["component"].unique().to_list())
+    if components == set(_BILL_COMPONENT_ORDER_MD):
+        return list(_BILL_COMPONENT_ORDER_MD)
+    sorted_components = sorted(components)
+    delivery = [c for c in sorted_components if c not in _BILL_SUPPLY_COMPONENTS]
+    supply = [c for c in sorted_components if c in _BILL_SUPPLY_COMPONENTS]
+    return delivery + supply
 
 
 def _annual_bill_component_stack_data(
     before_bills: pl.DataFrame,
     after_bills: pl.DataFrame,
+    component_order: list[str] | None = None,
 ) -> pl.DataFrame:
     """Reshape annual bill totals into before + increment segments for stacking."""
     import polars as pl
@@ -3860,6 +3946,8 @@ def _annual_bill_component_stack_data(
         msg = f"Annual bill component increments must be non-negative; got negative values for: {details}"
         raise ValueError(msg)
 
+    order = component_order if component_order is not None else _bill_component_order(before_bills)
+
     long = joined.select(
         pl.col("component"),
         pl.lit("Before").alias("segment"),
@@ -3874,18 +3962,9 @@ def _annual_bill_component_stack_data(
 
     return long.with_columns(
         (pl.col("component") + "|" + pl.col("segment")).alias("fill_key"),
-        pl.col("component").cast(pl.Enum(_BILL_COMPONENT_ORDER)),
+        pl.col("component").cast(pl.Enum(order)),
         pl.col("segment").cast(pl.Enum(_BILL_SEGMENT_ORDER)),
     )
-
-
-_BILL_SINGLE_COLORS: dict[str, str] = {
-    "Customer Charge": "#023047",
-    "Distribution": "#023047",
-    "Transmission": "#023047",
-    "EmPOWER Maryland": "#023047",
-    "Generation": "#fc9706",
-}
 
 
 def plot_annual_bill_component_single(
@@ -3894,6 +3973,7 @@ def plot_annual_bill_component_single(
     title: str = "",
     figure_size: tuple[float, float] = (10.5, 5),
     y_max: float | None = None,
+    component_order: list[str] | None = None,
 ) -> Figure:
     """Single-bar chart of annual bills by component (one period only).
 
@@ -3911,6 +3991,9 @@ def plot_annual_bill_component_single(
         plotnine figure size in inches.
     y_max
         Optional y-axis upper limit. Defaults to auto with 8 % headroom.
+    component_order
+        X-axis category order. Defaults to delivery-first order derived from
+        the data (see ``_bill_component_order``).
 
     Returns
     -------
@@ -3933,11 +4016,13 @@ def plot_annual_bill_component_single(
 
     from lib.plotnine import theme_switchbox
 
+    order = component_order if component_order is not None else _bill_component_order(bills)
+
     annual = (
         bills.group_by("component")
         .agg(pl.col("value").sum().alias("value"))
         .with_columns(
-            pl.col("component").cast(pl.Enum(_BILL_COMPONENT_ORDER)),
+            pl.col("component").cast(pl.Enum(order)),
             pl.when(pl.col("value").abs() >= 1.0)
             .then(pl.col("value").round(0).cast(pl.Int64).cast(pl.Utf8).str.replace(r"^(-?\d+)$", "$$$1"))
             .otherwise(pl.lit(""))
@@ -3959,8 +4044,8 @@ def plot_annual_bill_component_single(
             color="white",
             fontweight="bold",
         )
-        + scale_fill_manual(values=_BILL_SINGLE_COLORS)
-        + scale_x_discrete(limits=_BILL_COMPONENT_ORDER)
+        + scale_fill_manual(values=_bill_single_colors(order))
+        + scale_x_discrete(limits=order)
         + scale_y_continuous(
             labels=lambda xs: [f"${x:,.0f}" for x in xs],
             limits=(0, y_upper),
@@ -3980,6 +4065,7 @@ def plot_annual_bill_component_stacked(
     *,
     title: str = "",
     figure_size: tuple[float, float] = (10.5, 5),
+    component_order: list[str] | None = None,
 ) -> Figure:
     """Stacked bar chart of annual bills by component, before vs after HP.
 
@@ -3999,6 +4085,9 @@ def plot_annual_bill_component_stacked(
         Optional chart title.
     figure_size
         plotnine figure size in inches.
+    component_order
+        X-axis category order. Defaults to delivery-first order derived from
+        the data (see ``_bill_component_order``).
 
     Returns
     -------
@@ -4027,7 +4116,9 @@ def plot_annual_bill_component_stacked(
     from lib.plotnine import theme_switchbox
     from lib.quarto import display_figure
 
-    chart_data = _annual_bill_component_stack_data(before_bills, after_bills).with_columns(
+    order = component_order if component_order is not None else _bill_component_order(before_bills)
+
+    chart_data = _annual_bill_component_stack_data(before_bills, after_bills, component_order=order).with_columns(
         pl.when(pl.col("value").abs() >= 1.0)
         .then(pl.col("value").round(0).cast(pl.Int64).cast(pl.Utf8).str.replace(r"^(-?\d+)$", "$$$1"))
         .otherwise(pl.lit(""))
@@ -4062,8 +4153,8 @@ def plot_annual_bill_component_stacked(
             nudge_y=5,
             inherit_aes=False,
         )
-        + scale_fill_manual(values=_BILL_COLORS)
-        + scale_x_discrete(limits=_BILL_COMPONENT_ORDER)
+        + scale_fill_manual(values=_bill_stacked_colors(order))
+        + scale_x_discrete(limits=order)
         + scale_y_continuous(
             labels=lambda xs: [f"${x:,.0f}" for x in xs],
             expand=(0, 0, 0.10, 0),

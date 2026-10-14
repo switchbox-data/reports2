@@ -1,0 +1,1780 @@
+---
+title: "Direct Testimony of Juan-Pablo Velez"
+subtitle: "On Behalf of Conservation Law Foundation and Sierra Club — PURA Docket 26-01-03"
+date: today
+author:
+  - name: Juan-Pablo Velez
+    email: jpv@switch.box
+    affiliations:
+      - Switchbox
+toc: false
+notebook-links: false
+bibliography: ../references.bib
+execute:
+  echo: false
+format:
+  html:
+    page-layout: article
+    smooth-scroll: true
+    theme:
+      - ../.style/switchbox.scss
+---
+
+```{python}
+#| echo: false
+
+import pickle
+from pathlib import Path
+from types import SimpleNamespace
+
+class _Placeholder:
+    """Numeric-like sentinel for not-yet-computed report vars.
+
+    Supports arithmetic, formatting, and comparison so that ``dollar(b.some_var)``
+    or ``f"{b.x:,.0f}"`` renders as ``⟨TBD⟩`` instead of crashing.
+    """
+
+    def __format__(self, _spec: str) -> str:
+        return "⟨TBD⟩"
+
+    def __str__(self) -> str:
+        return "⟨TBD⟩"
+
+    def __repr__(self) -> str:
+        return "⟨TBD⟩"
+
+    # Arithmetic — return self so chained ops stay placeholders
+    def __add__(self, _o):
+        return self
+
+    def __radd__(self, _o):
+        return self
+
+    def __sub__(self, _o):
+        return self
+
+    def __rsub__(self, _o):
+        return self
+
+    def __mul__(self, _o):
+        return self
+
+    def __rmul__(self, _o):
+        return self
+
+    def __truediv__(self, _o):
+        return self
+
+    def __rtruediv__(self, _o):
+        return self
+
+    def __neg__(self):
+        return self
+
+    def __abs__(self):
+        return self
+
+    def __float__(self):
+        return 0.0
+
+    def __int__(self):
+        return 0
+
+    # Comparison (for conditionals)
+    def __lt__(self, _o):
+        return False
+
+    def __le__(self, _o):
+        return False
+
+    def __gt__(self, _o):
+        return False
+
+    def __ge__(self, _o):
+        return False
+
+
+class _FallbackNS:
+    """Wraps a SimpleNamespace (or None) and returns _Placeholder() for
+    any attribute that doesn't exist yet, so partially-built testimony can
+    render with ⟨TBD⟩ placeholders instead of crashing."""
+
+    def __init__(self, ns):
+        object.__setattr__(self, "_ns", ns)
+
+    def __getattr__(self, name: str):
+        ns = object.__getattribute__(self, "_ns")
+        if ns is not None and hasattr(ns, name):
+            return getattr(ns, name)
+        return _Placeholder()
+
+
+def _load_ns(path: str):
+    p = Path(path)
+    if p.exists():
+        return SimpleNamespace(**pickle.loads(p.read_bytes()))
+    return None
+
+
+r = _FallbackNS(_load_ns("cache/representative_home_vars.pkl"))
+m = _FallbackNS(_load_ns("cache/delivery_mc_vars.pkl"))
+a = _FallbackNS(_load_ns("cache/report_variables.pkl"))
+b = _FallbackNS(_load_ns("cache/bills_only_report_variables.pkl"))
+fc = _FallbackNS(_load_ns("cache/incremental_fair_default_report_variables.pkl"))
+op = _FallbackNS(_load_ns("cache/overpayment_report_variables.pkl"))
+
+
+def dollar(x, accuracy=0):
+    return f"${x:,.{accuracy}f}"
+
+
+def million(x, digits=1):
+    """Whole-dollar amounts as e.g. ``$1.4 million`` for narrative testimony."""
+    return f"${x / 1e6:.{digits}f} million"
+
+
+def dollar_m(x, digits=1):
+    """Large revenue totals as ``$159.4`` (millions of dollars, default one decimal)."""
+    return f"${x / 1e6:.{digits}f}"
+
+
+def pct(x, accuracy=0):
+    return f"{x * 100:,.{accuracy}f}%"
+
+
+def _subclass_delivery_row(ns, label):
+    return next(r for r in ns.testimony_subclass_delivery_rows if r["subclass"] == label)
+
+
+def _hp_subclass_delivery_row(ns):
+    return _subclass_delivery_row(ns, "Heat pump")
+
+
+def subclass_pct_of_residential_customers(ns, label, *, accuracy=1):
+    return pct(_subclass_delivery_row(ns, label)["pct_customers_display"], accuracy)
+
+
+def hp_pct_of_residential_customers(ns, *, accuracy=1):
+    return pct(_hp_subclass_delivery_row(ns)["pct_customers_display"], accuracy)
+
+
+def hp_pct_of_residential_delivery_revenue(ns, *, accuracy=1):
+    return pct(_hp_subclass_delivery_row(ns)["pct_all_revenue"], accuracy)
+
+
+def hp_pct_of_total_delivery_cos(ns, *, accuracy=1):
+    t = float(ns.cos_subclass_total_cos)
+    if t <= 0:
+        return pct(0.0, accuracy)
+    return pct(float(ns.cos_default_hp_group_cos) / t, accuracy)
+
+
+def hp_pct_of_total_delivery_revenue(ns, *, accuracy=1):
+    t = float(ns.cos_subclass_total_delivery_rev)
+    if t <= 0:
+        return pct(0.0, accuracy)
+    return pct(float(ns.cos_default_hp_group_rev) / t, accuracy)
+
+
+def ng_delivery_rev_as_pct_of_subclass_cos(ns, *, accuracy=1):
+    cos = float(ns.cos_default_ng_group_cos)
+    if cos <= 0:
+        return pct(0.0, accuracy)
+    return pct(float(ns.cos_default_ng_group_rev) / cos, accuracy)
+
+
+def df_delivery_rev_as_pct_of_subclass_cos(ns, *, accuracy=1):
+    cos = float(ns.cos_default_df_group_cos)
+    if cos <= 0:
+        return pct(0.0, accuracy)
+    return pct(float(ns.cos_default_df_group_rev) / cos, accuracy)
+
+
+def comma(x, accuracy=0):
+    return f"{x:,.{accuracy}f}"
+
+
+def billion(x, digits=1):
+    return f"{x / 1e9:.{digits}f} billion"
+
+
+def cents(x, accuracy=1):
+    return f"{abs(x) * 100:,.{accuracy}f}"
+
+
+```
+
+<!-- COMMENTED OUT: Sections I–II (re-enable when all notebooks are ready)
+
+## I. Introduction
+
+
+**Q.** Please state your name, business address, and occupation.
+
+**A.** My name is Juan-Pablo Velez, and my business address is 461 W 126th St #5W, New York, NY 10027. I am the Founder and Executive Director of Switchbox.
+
+<br>
+
+**Q.** Please describe Switchbox.
+
+**A.** Switchbox is a research non-profit that produces quantitative evidence on the impact of state clean energy policies, with expertise in economics, energy modeling, and regulatory issues. Our clients have included Environmental Defense Fund, National Resources Defense Council, Earthjustice, Acadia Center, Green Energy Consumers Alliance, Rewiring America, and others. Our reports have been covered by numerous national and local press outlets.
+
+<br>
+
+**Q.** Please summarize your education and professional experience.
+
+**A.** I have a BA in Sociology from the University of Chicago. I took post-graduate math courses in probability theory, mathematical statistics, and vector calculus at Columbia University and NYU.
+
+Before founding Switchbox, I was a staff machine learning engineer at Spotify, where I helped build some of the company's large-scale AI systems. Before that, I worked as a data scientist for a boutique data science consultancy called Polynumeral.
+
+I founded and have led Switchbox for the past four years, where I have authored reports covering heat pump rates, building electrification and weatherization incentive programs, green hydrogen blending, non-pipeline alternatives, the economics and grid impacts of all-electric new construction mandates, and other topics. Our reports are based on quantitative economics and engineering models, implemented in software.
+
+I have presented our work on heat pump rate design at Northeast Energy Efficiency Partnership’s annual Heating Electrification Workshop and before the Illinois Commerce Commission.
+
+<br>
+
+**Q.** Have you previously testified before the Connecticut Public Utilities Regulatory Authority?
+
+**A.** No.
+
+<br>
+
+**Q.** Have you previously testified in regulatory proceedings before other state Public Utilities Commissions?
+
+**A.** Yes. I submitted expert testimony to the Connecticut Public Service Commission (MDPSC) on heat pump rates in September 2026 (Case 9888), the Rhode Island Public Utilities Commission (RIPUC) on heat pump rates in March 2026 (Case 25-45-GE), and to the Illinois Commerce Commission (ICC) on Non-Pipeline Alternatives in May 2026 (Case 26-0065).
+
+In addition, Switchbox's reports have been submitted as evidence by intervenors in regulatory proceedings across multiple states, including:
+
+- Case No. 24-E-0165 before the New York State Public Service Commission (NYPSC), on heat pump rates
+- Case No. 25-08 before the Massachusetts Department of Public Utilities (DPU), on heat pump rates
+- Case No. 24-15 before the DPU, on tiered low-and-moderate income (LMI) discounts
+- Case No. 24-194 before the DPU, on National Grid's targeted electrification pilot proposal
+- Case No. GR23030102 before the New Jersey Board of Public Utilities, on green hydrogen blending in gas distribution
+- Case No. 24-0158 before the Illinois Commerce Commission (ICC), the state's Future of Gas proceeding
+- The People's Gas Non-Pipeline Alternatives workshop resulting from the ICC's order in Case No. 24-0081
+- Case No. 18-M-0084 before the NYPSC, on the state's energy efficiency programs
+- Case No. 25-M-0149 before the NYPSC, on the state's implementation of the All-Electric Building Act
+
+<br>
+
+**Q.** On whose behalf are you testifying in this proceeding?
+
+**A.** I am testifying on behalf of Conservation Law Foundation and Sierra Club.
+
+
+<br>
+
+**Q.** What is the purpose of your testimony?
+
+**A.** To demonstrate that the Company's R1 residential rates are overcharging heat pump customers in violation of cost causation principles and the state's policy goals; to critique the Company's proposed rate for heat pump customers, R6; and to propose an alternative rate design for heat pump customers, Rate HP, that eliminates the overcharge by lowering volumetric rates for distribution and transmission.
+
+<br>
+
+**Q.** How is your testimony organized?
+
+**A.** My testimony is organized into the following sections:
+
+- **Section I** introduces my qualifications and the scope of my testimony.
+- **Section II** summarizes my findings and recommendations to the Commission.
+- **Section III** documents how CL&P's current residential rates overcharge heat pump customers relative to their cost-causation, creating a cross-subsidy within the residential class. I show that generation charges track costs fairly, but distribution and transmission charges do not.
+- **Section IV** shows how this overcharge undermines Connecticut's building electrification goals. Under current rates, the average natural-gas-heated household — the largest group of fossil-fuel-heated customers — would see its total energy bills _increase_ after switching to a heat pump, turning what should be a savings opportunity into an operating cost penalty.
+- **Section V** critiques the Company's proposed Rate 6 heat pump rate, arguing that its discount is too low, and that its block rate design disadvantages low-income and natural gas customers.
+- **Section VI** presents my proposed remedy: Rate HP, a new residential rate schedule for heat pump customers that eliminates the overcharge by lowering volumetric rates for distribution and transmission.
+- **Section VII** shows the impact of Rate HP on heat pump customers' energy bills.
+- **Section VIII** describes how customers would be enrolled in Rate HP through automatic enrollment.
+- **Section IX** explains why CL&P's existing time-of-use rate, Rate 7, does not solve the overcharge — because the problem is volumetric overcollection, not the absence of time-varying prices.
+- **Section X** discusses alternative rate designs and explains why I recommend a flat volumetric reduction over redesigning the default rate, raising the fixed charge, or layering on time-of-use price signals.
+- **Section XI** describes the data sources and methodology used in my analysis.
+- **Section XII** concludes my testimony.
+
+<br>
+
+## II. Summary and Recommendations
+
+**Q.** Please summarize your findings to the Commission.
+
+**A.** I demonstrate that the volumetric rates associated with the Company's default residential tariff (Rate 1) are overcharging heat pump customers relative to costs they cause when adopting a heat pump. This creates a substantial cross-subsidy _within_ the residential customer class, which flows from electric customers that heat with heat pumps to those that heat with fossil fuels.
+
+To establish this, I provide evidence that CL&P's electric customers with heat pumps are overcharged by an average of `{python} dollar(r.all_fossil_annual_total_overcharge)` per year on distribution and transmission — far in excess of any marginal infrastructure costs their heat pumps actually cause.
+
+Charging heat pump customers far in excess of their cost-causation has two serious consequences: first, it violates intra-class equity, one of the key principles of cost-of-service ratemaking. Second, it undermines the state's ambitious building policy goals: as a direct result of being overcharged, only TK of CL&P's electricity customers that heat with fossil fuels can currently lower their energy bills by switching to heat pumps.
+
+To stop overcharging heat pump customers, I propose that the Company create a new rate schedule for heat pump customers, Rate HP, with lower volumetric rates for distribution and transmission during the winter months. The purpose of lowering these rates is to decrease the total revenue collected from heat pump customers for distribution and transmission, in order to bring the incremental revenue collected from customers installing heat pumps in line with the incremental marginal costs they cause.
+
+By better aligning rates for heat pump customers with their actual cost-causation, this proposal would eliminate the significant cross-subsidy that exists between heat pump and fossil-heating electric residential customers, thus making the Company's rates more fair. As our analysis shows, this proposal would also make it cheaper to heat with heat pumps than fossil fuels for `{python} pct(b.pct_all_fossil_hp_bill_decrease_rhp)` of Connecticut households, thus eliminating a key obstacle to the state's building electrification goals.
+
+<br>
+
+**Q.** Please summarize your recommendations to the Commission.
+
+**A.** I recommend that the Commission:
+
+1. Create a new residential rate schedule, Rate HP, for Company electric customers who use a heat pump for heating and cooling.
+2. Set a lower Distribution Service Rate for Rate HP (compared with Rate 1). The rate should be set at a level that reflects the distribution cost-of-service of heat pump customers, and ends cost over-recovery from these customers. At present, we estimate that this rate should be `{python} pct(abs(r.rhp_pct_change_dist))` lower than Rate 1's Distribution Service Rate.
+3. Set a lower Transmission Service Rate under the Transmission Adjustment Clause for Rate HP (compared with Rate 1). The rate should be set at a level that reflects the bulk transmission cost-of-service of heat pump customers, and ends cost over-recovery from these customers. At present, we estimate that this rate should be `{python} pct(abs(r.rhp_pct_change_tx))` lower than Rate 1's Transmission Service Rate.
+5. Auto-enroll all electric customers newly installing heat pumps into schedule Rate HP, at the time of installation. Customers would be identified through any existing or new programs that track heat pump adoption, while also offering an attestation and certification option for installation that may happen outside of these programs.
+6. Auto-enroll all known electric customers that have previously installed heat pumps into schedule Rate HP.
+7. Recalibrate the delivery service and transmission rates associated with Rate HP in subsequent rate cases or relevant proceedings, to reflect the evolving marginal distribution and transmission costs associated with heat pump customers as adoption grows and grid conditions change.
+
+<br>
+
+**Q.** Have you prepared exhibits to accompany your testimony?
+
+**A.** Yes. I have prepared Exhibit JPV-1 through JPV-TK:
+
+- **JPV-1:**
+
+
+
+<br>
+
+END COMMENTED OUT: Sections I–II -->
+
+## III. How the Company is overcharging heat pump customers
+
+**Q.** How much electricity do the Company's residential customers that heat with fossil fuels consume over the course of the year?
+
+**A.** Residential customers that heat with fossil fuels consume an average of `{python} f"{r.all_fossil_annual_kwh_before:,.0f}"` kWh of electricity per year.[^source-load-vanilla] @fig-monthly-load-all-fossil-before-vanilla shows this consumption broken down by month.
+
+[^source-load-vanilla]: Average monthly consumption was calculated from a sample of TK residential load profiles collected from NREL's 2024 ResStock residential building energy simulations. ResStock homes in sample are statistically representative of Connecticut's building stock, geographically filtered to Eversource's service territory. See @sec-method-profiles.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/representative_home.qmd#fig-monthly-load-all-fossil-before-vanilla >}}
+:::
+
+On average, residential customers that heat with fossil fuels use slightly more electricity in the summer — primarily for air conditioning.
+
+**Q.** How much do the Company's residential customers that heat with fossil fuels pay for this electricity per year?
+
+@fig-annual-bill-components-all-fossil-before shows the average annual bill for residential customers on Rate 1 that heat with fossil fuels, broken down by charge type.[^source-bill-components]
+
+[^source-bill-components]: Electricity bills computed by applying Eversource's filed Rate 1 tariff to a representative sample of residential load profiels from ResStock 2024. See @sec-method-profiles.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/representative_home.qmd#fig-annual-bill-components-all-fossil-before >}}
+:::
+
+On average, they pay a total of `{python} dollar(r.all_fossil_annual_elec_bill_before)` per year, broken down as follows:
+
+- `{python} dollar(r.all_fossil_annual_customer_charge_before)` in fixed monthly customer charges.
+- `{python} dollar(r.all_fossil_annual_distribution_before)` for distribution, collected by the Distribution Service Rate and its associated riders (ESI, RDM, CTA, FMCC, CAM, REI, and SBC) in Rate 1,
+- `{python} dollar(r.all_fossil_annual_transmission_before)` for transmission, collected by the Transmission Charge under the Transmission Adjustment Clause in Rate 1, and
+- `{python} dollar(r.all_fossil_annual_generation_before)` for generation, collected by the Generation Service Charge in Rate 1,
+
+<br>
+
+**Q.** When residential customers that heat with fossil fuels install heat pumps, how does their electricity consumption change?
+
+**A.** When these customers install heat pumps, they shift their primary heating fuel from fossil fuels to electricity, leading to a significant change in their monthly load shape. @fig-monthly-load-all-fossil-vanilla shows the result. [^source-load-vanilla-after]
+
+[^source-load-vanilla-after]: Same data sources as @fig-monthly-load-all-fossil-before-vanilla: ResStock 2024.2 modeled load profiles for Eversource's service territory. "Before" is the baseline (pre-retrofit) population; "after" is the same buildings retrofitted with high-efficiency cold-climate air-source heat pumps with electric resistance backup — variable speed, 90% capacity retention at 5°F, SEER2 19 / HSPF2 9.4 (ducted) or SEER2 20 / HSPF2 9.9 (ductless) (Upgrade 2 in the ResStock 2024.2 release). See @sec-method-profiles.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/representative_home.qmd#fig-monthly-load-all-fossil-vanilla >}}
+:::
+
+On average, their electricity usage grows by `{python} f"{r.all_fossil_annual_kwh_delta:,.0f}"` kWh per year (`{python} pct(r.all_fossil_pct_kwh_change)`) after replacing their fossil heating system with a heat pump, from `{python} f"{r.all_fossil_annual_kwh_before:,.0f}"` to `{python} f"{r.all_fossil_annual_kwh_after:,.0f}"` kWh per year. `{python} pct(r.all_fossil_pct_incremental_kwh_oct_apr)` of this incremental usage occurs between October and April, due to the electrification of their heating load.
+
+The smaller increase between May and September reflects the fact that not all of these homes currently have full air conditioning. Installing a heat pump provides cooling capacity to 100% of the home, so homes that previously had partial or no air conditioning see a modest increase in summer electricity use.
+
+[^average-caveat]: Because only `{python} pct(r.all_fossil_pct_full_cooling)` of the Company's fossil-fuel-heated customers currently have full cooling coverage,[^source-cooling-coverage] the chart above shows the average change in summer usage, post-heat pump installation, across a representative sample of homes that already had full AC, homes that had partial coverage (e.g., window units in some rooms), and homes that had no cooling at all — each of which sees a different summer increase.
+
+[^source-cooling-coverage]: Derived from NREL's ResStock 2024.2 building stock dataset [@nrel_ResStock20242Release_2024], which assigns cooling equipment characteristics to each simulated dwelling based on probability distributions drawn from the EIA's 2020 Residential Energy Consumption Survey (RECS) and other federal surveys. The sample is geographically filtered to Eversource CT's service territory.
+
+The bottom line: on average, when homes in the Company's territory that heat with fossil fuels install heat pumps, they experience a very minor increase in summer electricity usage, from additional cooling, and a major increase in winter electricity usage, from the full electrification of their heating.
+
+
+<br>
+
+**Q.** How do these customers' electricity bills change after installing heat pumps?
+
+**A.** Because the Company recovers most costs through volumetric per-kWh charges, the increase in electricity consumption leads to higher annual bills across every line item. @fig-annual-bill-components-all-fossil shows the result.[^source-bill-components-after]
+
+[^source-bill-components-after]: Same data sources as @fig-annual-bill-components-all-fossil-before: monthly kWh from ResStock 2024.2 applied to filed Schedule R rates (Arcadia). See @sec-method-profiles.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/representative_home.qmd#fig-annual-bill-components-all-fossil >}}
+:::
+
+After customers that heat with fossil fuels install a heat pump, their average annual electricity bill rises by `{python} dollar(r.all_fossil_annual_elec_bill_delta)` (`{python} pct(r.all_fossil_annual_elec_bill_delta / r.all_fossil_annual_elec_bill_before)`), from `{python} dollar(r.all_fossil_annual_elec_bill_before)` to a total of `{python} dollar(r.all_fossil_annual_elec_bill_after)` per year. The increases break down as follows:
+
+- The Customer Charge stays at `{python} dollar(r.all_fossil_annual_customer_charge_before)` per year — it is a fixed monthly charge that does not vary with usage
+- Distribution increases by `{python} dollar(r.all_fossil_annual_distribution_delta)` (`{python} pct(r.all_fossil_annual_distribution_delta / r.all_fossil_annual_distribution_before)`) per year, from `{python} dollar(r.all_fossil_annual_distribution_before)` to `{python} dollar(r.all_fossil_annual_distribution_after)`
+- Transmission increases by `{python} dollar(r.all_fossil_annual_transmission_delta)` (`{python} pct(r.all_fossil_annual_transmission_delta / r.all_fossil_annual_transmission_before)`) per year, from `{python} dollar(r.all_fossil_annual_transmission_before)` to `{python} dollar(r.all_fossil_annual_transmission_after)`
+- Generation increases by `{python} dollar(r.all_fossil_annual_generation_delta)` (`{python} pct(r.all_fossil_annual_generation_delta / r.all_fossil_annual_generation_before)`) per year, from `{python} dollar(r.all_fossil_annual_generation_before)` to `{python} dollar(r.all_fossil_annual_generation_after)`
+
+The question my testimony addresses is whether all of these bill increases are consistent with cost-causation.
+
+
+<br>
+
+**Q.** What is the principle of cost causation?
+
+**A.** Cost causation is a foundational principle of sound rate design: a utility's costs should be borne by the customers on whose behalf the costs are incurred.[^bonbright] In other words, if a customer's usage causes a cost, that customer should be charged for it — and if it does not, they should not be charged as though it does.
+
+[^bonbright]: The cost-causation principle originates in the sixth of the eight [Bonbright principles](https://www.raponline.org/wp-content/uploads/2023/09/powellgoldstein-bonbright-principlesofpublicutilityrates-1960-10-10.pdf) of a sound rate structure: *"Fairness of the specific rates in the apportionment of total costs of service among the different consumers."* [@bonbright_PrinciplesPublicUtility_1961].
+
+<br>
+
+**Q.** Is the bill increase that customers pay for generation after installing heat pumps consistent with the cost-causation principle?
+
+**A.** Yes. When fossil-fuel-heated residential customers install heat pumps, their annual electricity consumption increases by an average of `{python} f"{r.all_fossil_annual_kwh_delta:,.0f}"` kWh. Every one of those new kWh requires the Company to procure additional electricity supply on the customer's behalf. In other words, the incremental usage resulting from heat pump adoption directly causes new generation costs: if the customer had not consumed that extra electricity, the Company would not have had to incur the cost of procuring it. Therefore, to satisfy the cost-causation principle, these customers should indeed be charged an additional `{python} dollar(r.all_fossil_annual_generation_delta)` per year, on average, to cover these marginal generation costs.
+
+<br>
+
+**Q.** Is the bill increase that customers pay for distribution and transmission after installing heat pumps consistent with the cost-causation principle?
+
+**A.** No. The Company is currently overcharging heat pump customers for distribution and transmission costs. I will demonstrate this in the following questions.
+
+<br>
+
+**Q.** You testified that every kWh of electricity consumption causes generation costs. Does every kWh also cause transmission and distribution (T&D) costs?
+
+**A.** No.
+
+For generation, every kWh a customer consumes causes a generation cost: someone has to generate the electricity that customer is consuming, and the Company has to pay for it. This is true at every hour of the year — a kWh consumed at 3 a.m. in February costs money to generate, as does a kWh consumed at 5 p.m. in August.
+
+In terms of cost causation, transmission and distribution are fundamentally different: very few of the kWh a customer consumes causes a T&D cost.
+
+Distribution and transmission are networks of existing infrastructure that deliver electricity to customers. When a customer uses electricity, it flows over this existing infrastructure. The vast majority of the time, this flow _causes no costs_: the infrastructure is already there, and it has the capacity to deliver the load, without the need for capacity upgrades. (And while this existing infrastructure does need to be paid for, those are _sunk_ costs tied to old investments, not _marginal_ costs caused by customer usage in the present.)
+
+So when does customer usage actually cause new distribution and transmission costs? When the grid is **constrained**: during the small number of peak hours that customer's demand pushes their local distribution feeder/substation, or the upstream bulk transmission system, near its capacity limits. This triggers the need for capacity upgrades — larger transformers, reconductored feeders, etc. — whose costs, according to the cost causation principle, should be borne by the customers who caused them.
+
+Bottom line: unlike generation, only usage during **peak hours** causes marginal T&D costs to be incurred by the Company. Usage outside of peak hours simply flows over existing infrastructure, without triggering any new investment.
+
+<br>
+
+**Q.** You testified that customer usage only causes new T&D costs when it occurs during peak hours. When do the Company's distribution peak hours occur?
+
+**A.** To answer this, I estimated the marginal cost of distribution capacity for every hour of the year. I took the Company's own system-wide marginal upstream distribution cost for Rate 1 ($20.17/kW-year) and allocated it across the Company's top 100 load hours using a probability-of-peak analysis, so that each hour's share of the annualized system-wide marginal upstream distribution cost reflects how likely that hour is to trigger new capacity investment (the full methodology is described in Section XI).[^on-mcs]
+
+[^on-mcs]: As part of this rate case, the Company's filed an MCOS study that quantifies three categories of marginal distribution cost [@eversource_Docket260510Exhibit_2026; @eversource_Docket260510Exhibit_2026a]: (1) individual customer-related costs ($28.98/month for Rate 1), covering meters, service drops, billing, and customer accounts; (2) local distribution facilities costs ($24.51/customer-month for Rate 1), covering lateral primary conductors, transformers, and secondary conductors sized to the design demand of a small set of neighboring customers; and (3) upstream distribution costs ($20.17/kW-year, system-wide), covering bulk-to-local transmission substations, local transmission lines, local-transmission-to-distribution substations, and trunkline primary feeders whose expansion is driven by growth in peak load. To calculate marginal T&D costs, I use only the third category — upstream distribution costs — because the scenario at issue is an existing customer who installs a heat pump, not a new customer connecting to the grid. Customer-related and local facilities costs are incurred when a customer first takes service; they do not change when an existing customer increases their usage. We assume fossil-fuel-heated customers already pay for customer-related and local facilities costs through their monthly bills. The only _marginal_ distribution cost that an existing customer's incremental load can trigger, then, is the upstream cost — the cost of expanding substation and feeder capacity when peak demand grows.
+
+@fig-mc-heatmap-dist-sub-tx show the results.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/delivery_mc.qmd#fig-mc-heatmap-dist-sub-tx >}}
+:::
+
+Each cell in these charts represents one hour during the year. Cells with colors indicate **peak hours**, when additional customer load would trigger the need for new capacity investment, causing new distribution costs. White cells are non-peak hours, when the system has spare capacity and additional load causes no new costs.
+
+**Q.** When do the Company's transmission peak hours occur?
+
+**A.** To answer this, I used a similar methodology to estimate the marginal cost of bulk transmission capacity for every hour of the year. For this component, I used the AESC 2024 avoided Pool Transmission Facility (PTF) cost of $69/kW-year and allocated it across the top 100 ISO-NE system load hours using the same probability-of-peak analysis. @fig-mc-heatmap-bulk-tx shows the result.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/delivery_mc.qmd#fig-mc-heatmap-bulk-tx >}}
+:::
+
+Distribution and transmission marginal costs display the same seasonal pattern: they are concentrated entirely in the summer.
+
+<br>
+
+**Q.** How many new T&D costs does the average fossil-fuel-heated home cause per year, before installing a heat pump?
+
+**A.** I've established that customer usage only causes new T&D costs during peak hours. Every residential customer that consumes electricity during those hours causes new T&D costs — not just heat pump customers. How much does the average fossil-fuel-heated home cause per year?
+
+To answer this, I first identified how many kWh fossil-heated customers consume during peak hours every year. @fig-monthly-load-all-fossil-before revisits these customers' monthly electricity consumption, with the portion consumed during peak hours highlighted in red.[^source-peak-overlay-before]
+
+[^source-peak-overlay-before]: Weighted-average hourly load from CAIRO's ResStock building-stock simulation of CL&P residential customers. An hour is classified as "peak" when it carries a positive distribution or bulk transmission marginal cost. See @sec-method-profiles and @sec-method-mc.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/representative_home.qmd#fig-monthly-load-all-fossil-before >}}
+:::
+
+In total, these customers consume an average of `{python} f"{r.all_fossil_annual_peak_kwh:,.0f}"` kWh during peak hours — just `{python} pct(r.all_fossil_pct_kwh_during_peak_hours)` of their total annual usage. As @fig-monthly-load-all-fossil-before shows, `{python} pct(r.all_fossil_pct_peak_kwh_summer)` of this peak hour usage occurs during the summer.
+
+What marginal T&D cost is caused by _each_ of those peak-hour kWh? On average, each peak-hour kWh causes approximately `{python} cents(m.mc_dist_peak_per_kwh_avg)`¢ of new distribution costs and `{python} cents(m.mc_bulk_tx_peak_per_kwh_avg)`¢ of new transmission costs.[^peak-kwh-mc-range]
+
+[^peak-kwh-mc-range]: The per-kWh cost varies by hour: distribution ranges from `{python} cents(m.mc_dist_peak_per_kwh_min)`¢ to `{python} cents(m.mc_dist_peak_per_kwh_max)`¢, and transmission from `{python} cents(m.mc_bulk_tx_peak_per_kwh_min)`¢ to `{python} cents(m.mc_bulk_tx_peak_per_kwh_max)`¢. Marginal costs are higher during the most constrained hours. The full methodology for how I derived these hourly costs is described in Section XI.
+
+We now have both ingredients: the number of peak-hour kWh each fossil-fuel-heated customer consumes, on average, and the marginal T&D cost of each one. Multiplying them together — hour by hour, across the full year — gives us the total marginal T&D costs that the average fossil-fuel-heated home causes per year. @fig-seasonal-mc-all-fossil-before shows the result, broken down by season.[^source-seasonal-mc-before]
+
+[^source-seasonal-mc-before]: Weighted-average hourly load from CAIRO's ResStock simulation multiplied by the hourly marginal-cost schedule derived in @sec-method-mc, summed by season. See @sec-method-incremental.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/representative_home.qmd#fig-seasonal-mc-all-fossil-before >}}
+:::
+
+The `{python} f"{r.all_fossil_annual_peak_kwh:,.0f}"` kWh consumed during peak hours by the average fossil-fuel-heated customer cause a total of `{python} dollar(r.all_fossil_annual_mc_dist_before)` in new distribution costs and `{python} dollar(r.all_fossil_annual_mc_tx_before)` in new transmission costs, per year. As @fig-seasonal-mc-all-fossil-before shows, this combined marginal T&D cost of `{python} dollar(r.all_fossil_annual_mc_delivery_before)` is caused entirely by peak hour usage during the summer.
+
+This is the status quo of T&D cost causation for fossil-fuel-heated homes. The key question is: after these homes install heat pumps, do they start causing _more_ than `{python} dollar(r.all_fossil_annual_mc_delivery_before)` in new T&D costs per year? If so, under the cost-causation principle, their T&D bills should increase by that increment — their _incremental_ marginal T&D cost — and no more.[^define-incremental-mc]
+
+[^define-incremental-mc]: By "incremental marginal T&D cost," I mean the _increase_ in a customer's annual marginal T&D costs that results from installing a heat pump — not the total marginal T&D cost. Every residential customer already causes some marginal T&D cost from summer peak-hour usage. The question is how much _more_ a heat pump adds.
+
+
+<br>
+
+**Q.** What additional new transmission and distribution costs does the average fossil-fuel-heated customer cause per year after installing a heat pump? Do their incremental marginal T&D costs increase?
+
+**A.** As previously established, only usage during peak hours causes new T&D costs. Before installing a heat pump, the average fossil-fuel-heated customer consumed `{python} f"{r.all_fossil_annual_peak_kwh:,.0f}"` kWh during summer peak hours every year, causing a total of `{python} dollar(r.all_fossil_annual_mc_delivery_before)` in T&D costs per year.
+
+After installing the heat pump, these customers add thousands of kWh in winter — but as I showed in the preceding questions, winter kWh carry zero marginal T&D cost. The only incremental peak-hour usage comes from a modest increase in summer cooling, as some homes gain full air conditioning for the first time. That amounts to just `{python} f"{r.all_fossil_annual_peak_kwh_delta:,.0f}"` additional peak-hour kWh per year, on average.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/representative_home.qmd#fig-monthly-load-all-fossil >}}
+:::
+
+@fig-monthly-load-all-fossil makes this visible. When fossil-fuel-heated customers install heat pumps, `{python} pct(r.all_fossil_pct_incremental_kwh_oct_apr)` of their incremental load falls between October and April — when there are no peak hours and therefore zero marginal T&D cost. Of the thousands of new kWh these customers add each year, only `{python} f"{r.all_fossil_annual_peak_kwh_delta:,.0f}"` coincide with peak hours (shown in red) — less than `{python} pct(r.all_fossil_pct_incremental_kwh_during_peak, accuracy=1)` of the total.
+
+So what do those `{python} f"{r.all_fossil_annual_peak_kwh_delta:,.0f}"` additional kWh of peak-hour usage do to these customers' marginal T&D costs? @fig-seasonal-mc-all-fossil-comparison shows the answer.[^source-seasonal-mc-comparison]
+
+[^source-seasonal-mc-comparison]: Same data sources as @fig-seasonal-mc-all-fossil-before, showing both the fossil-heated and heat pump profiles.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/representative_home.qmd#fig-seasonal-mc-all-fossil-comparison >}}
+:::
+
+Before adopting heat pumps, fossil-fuel-heated customers caused _zero_ new T&D costs in winter, and that remains the case after they electrify their heating. In summer, their marginal T&D costs barely move: `{python} dollar(r.all_fossil_seasonal_mc_delivery_summer_after)`, up from `{python} dollar(r.all_fossil_seasonal_mc_delivery_summer_before)`.
+
+Their **incremental marginal T&D cost** is therefore just `{python} dollar(r.all_fossil_seasonal_mc_delivery_summer_delta)` per year, on average.
+
+<br>
+
+**Q.**  Is the bill increase that customers pay for distribution and transmission after installing heat pumps under Rate 1 justified by the additional T&D costs they cause after making this transition?
+
+**A.** No, these customers are being overcharged.
+
+Under the cost-causation principle, these customers should pay for that additional `{python} dollar(r.all_fossil_seasonal_mc_delivery_summer_delta)` in new T&D costs they cause, on average — but no more. Yet under Rate 1, their distribution and transmission charges increase by `{python} dollar(r.all_fossil_annual_delivery_charges_delta)` per year — roughly `{python} f"{r.all_fossil_annual_delivery_charges_delta / (r.all_fossil_annual_mc_delivery_after - r.all_fossil_annual_mc_delivery_before):.0f}"` times the new T&D costs they actually cause.
+
+@fig-cost-vs-charge-delta-all-fossil shows the gap between the incremental T&D charges that the average fossil-fuel-heated customer pays after installing heat pumps, and the incremental marginal T&D costs they cause.[^source-cost-vs-charge]
+
+[^source-cost-vs-charge]: Charges computed by applying Eversource's filed Rate 1 tariff to the same representative sample of residential load profiles. Costs from the hourly marginal-cost schedule described in @sec-method-mc. See @sec-method-incremental for the full methodology.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/representative_home.qmd#fig-cost-vs-charge-delta-all-fossil >}}
+:::
+
+At present, fossil-fuel-heated customers that install heat pumps overpay by an average of `{python} dollar(r.all_fossil_annual_total_overcharge)` a year — an amount equal to `{python} pct(r.all_fossil_pct_overcharge_of_delivery_total)` of their entire post-heat-pump T&D bill.[^overcharge-calc]
+
+This is a gratuitous surcharge that penalizes customers who electrify their heating, in order to lower the bills of customers who continue to heat with fossil fuels. (See next question for an explanation of how this transfer occurs.)
+
+[^overcharge-calc]: `{python} dollar(r.all_fossil_annual_total_overcharge)` overcharge ÷ `{python} dollar(r.all_fossil_annual_delivery_charges_after)` total post-heat-pump T&D bill = `{python} pct(r.all_fossil_pct_overcharge_of_delivery_total)`.
+
+<br>
+
+**Q.** You've shown that fossil-fuel-heated customers are overpaying for T&D by `{python} dollar(r.all_fossil_annual_total_overcharge)` a year—on average. Does the vary by customer?
+
+**A.** Yes, it varies significantly. @fig-testimony-annual-all-fossil-r1 shows the entire distribution of annual T&D overpayments across all fossil-fuel-heated customers in the Company's territory after switching to heat pumps, under the current Rate 1 tariff.[^overpayment-hist-source]
+
+Overpayments are defined as each customer's incremental T&D charges (from Rate 1 being applied to their heat pump's incremental load), minus their incremental T&D marginal cost (the _additional_ new T&D costs caused by that incremental load during peak hours).
+
+[^overpayment-hist-source]: Per-building overpayment = incremental delivery revenue − incremental delivery marginal cost. Positive values indicate the customer is being overcharged; negative values indicate the customer is being undercharged. See @sec-method-incremental.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/overpayment.qmd#fig-testimony-annual-all-fossil-r1 >}}
+:::
+
+The overpayment here is calculated as their total delivery bill after they install heat pumps, minus the sum of the incremental marginal costs caused by the installation, plus their total delivery bill before the installation. Positive values indicate overpayment—that customer is being charge above their marginal incremental margina cost—negative values indicate underpayment. 0 indicates a customer whose post-heat pump bill only increases by the costs they cause due to the heat pump, their incremental marginal costs. Under a perfectly fair rate (from a cost-causation perspective), all customers would be at 0.
+
+@fig-testimony-annual-all-fossil-r1 confirms that overcharging is the norm, not the exception: virtually all fossil-fuel-heated homes that switch to heat pumps are being overcharged for transmission and distribution, with most overpaying between several hundred and well over a thousand dollars per year.
+
+The overpayment distribution is right-skewed — some homes overpay far more than the average — because homes with larger heating loads add more incremental kWh, and each of those kWh is charged at the full volumetric rate regardless of whether it causes new infrastructure costs.
+
+
+<br>
+
+**Q.** Why do fossil-fuel-heated customers who install heat pumps end up being overcharged for T&D under Rate 1?
+
+**A.** Under the cost-causation principle, if a customer's usage does not cause new costs, they should not be charged as though it does. Rate 1 does exactly that: it charges the same volumetric rate for every kWh — whether that kWh flows over the grid at 2 a.m. in January, when the system has abundant spare capacity, or at 5 p.m. on the hottest day of the year, when the system is strained.
+
+When a customer installs a heat pump and adds `{python} f"{r.all_fossil_annual_kwh_delta:,.0f}"` kWh per year, the tariff treats every one of those kWh as though it triggers new infrastructure investment. But `{python} pct(r.all_fossil_pct_incremental_kwh_oct_apr)` of those new kWh fall between October and April, when there are no peak hours and therefore zero marginal T&D cost. The tariff does not distinguish — it charges the same rate regardless.
+
+<br>
+
+**Q.** Is the Company aware that fossil-fuel-heated customers who adopt heat pumps are being overcharged under Rate 1?
+
+**A.** Yes. The large gap between the incremental revenue that Rate 1 extracts from heat pump customers, and the incremental cost those customers actually impose on the grid, is precisely the basis on which the Company justifies its proposed Rate 6.
+
+When asked how it determined the level of the Rate 6 discount, the Company responded: "The discounted rate is set to cover the incremental cost of serving the additional load the converting customer adds, which establishes the floor; the standard residential rate establishes the reference point above it. The discount is the space between those two, and it is sized to be no deeper than that space."[^cite-003b]
+
+In other words, the Company is claiming that the discount could legitimately be set anywhere within the gap between the incremental revenue produced by applying Rate 1 to incremental heat pump load, and the incremental marginal T&D cost associated with that load. (As will be shown in Section TK, the Company's proposed Rate 6 sets the discount far closer to the "ceiling" than the "floor".)
+
+Why does the Company see incremental marginal T&D cost as the floor? Because it guarantees that the discount does not shift costs to non-heat pump customers: "A Rate 6 customer pays to cover the incremental cost of serving that customer, such that no portion of that customer's cost of service is redistributed to non-adopting customers."[^cite-003b]
+
+[^cite-003b]: Response to CLF-SC-003(b), Docket No. 26-05-10 (Sept. 3, 2026).
+
+The implication is clear: everything that Rate 1 collects from a heat pump customer's incremental load _above_ that customer's incremental cost of service is revenue in excess of what cost causation requires—an overpayment, in our terminology. The Company could eliminate all of the entire overpayment — discount the rate all the way down to the floor — and customers newly installing heat pumps would still be paying their full incremental cost of service, still satisfying cost causation, without negatively affecting the bills of non-heat-pump customers.
+
+[^cite-003a]: Response to CLF-SC-003(a), Docket No. 26-05-10 (Sept. 3, 2026).
+
+<br>
+
+**Q.** What is a cross-subsidy, and how do volumetric rates create one within the residential customer class?
+
+**A.** A cross-subsidy within a rate class arises when one identifiable group of customers systematically pays more than their cost of service, and that excess revenue allows the customers of another identifiable group to pay less than their cost of service.
+
+The mechanism is straightforward: when fixed costs — like the embedded costs of the transmission and distribution system — are predominantly recovered through volumetric charges, customers with higher-than-average usage pay a greater share of those fixed costs, effectively subsidizing the customers with lower-than-average usage.[^cross-subsidy-authority]
+
+[^cross-subsidy-authority]: This principle is well established in the cost-of-service and rate-design literature. Bonbright explains that a uniform per-kWh rate, "in treating the total cost of the business as if it varied directly with changes in the kilowatt-hour output of energy — a grossly false assumption — violates the most widely accepted canon of fair pricing, the principle of service at cost," because many costs (capacity and customer costs) are not a function of kWh output. James C. Bonbright, *Principles of Public Utility Rates* (Columbia Univ. Press, 1961), at 304–305, 345–346 (Ch. XVI and XVIII). The NARUC cost allocation manual establishes the foundational framework, classifying transmission and distribution costs as primarily **demand-related** (varying with kW peak demand, not kWh consumption), so that recovering them through volumetric energy charges violates cost-causation principles. NARUC, *Electric Utility Cost Allocation Manual* (1992), Ch. 2 §V, Ch. 6. Most directly, the RAP manual identifies this as "essentially a question of a potential intraclass cross-subsidy between types of residential customers" — specifically between electric-heating and non-heating customers — and notes that "seasonally differentiated rates, if based appropriately on cost causation, can achieve the same distributional impact as separate rate classes." Jim Lazar, Paul Chernick & William Marcus, *Electric Cost Allocation for a New Era: A Manual* (RAP, 2020), §5.2; *see also* §6.1.2, Ch. 28.
+
+The Company's own MCOS witness, Amparo Nieto, addresses how volumetric cost recovery creates cross-subsidies, noting that current rate structure produces "existing cross-subsidies within the class (higher usage customers disproportionally paying more than cost of service)" and recommending that the Company "reduce the over-reliance of fixed distribution cost recovery through usage charges" in order to "increase equity across customers within the class." [^nieto-cross-subsidy] (We address the relationship between intra-class cross-subsidies and intra-class equity below.)
+
+[^nieto-cross-subsidy]: Direct Testimony of Amparo Nieto, Exhibit CLP-MCOS-1 at p. 8 [@eversource_Docket260510Exhibit_2026].
+
+<br>
+
+**Q.** You've established that heat pump customers are overpaying for T&D. Why do these overpayments contribute to a cross-subsidy within the residential customer class?
+
+**A.** The fossil-fuel-heated homes that install heat pumps become higher-usage customers, on average, because they effectively shift their largest energy load — space heating — from fossil fuels to electricity.
+
+With their significantly higher kWh, volumetric T&D rates lead these customers to pay significantly higher T&D bills — `{python} dollar(r.all_fossil_annual_delivery_charges_delta)` more per year, on average.
+
+If these higher bills equaled the new T&D costs they were causing after switching to heat pumps — `{python} dollar(r.all_fossil_annual_mc_delivery_after - r.all_fossil_annual_mc_delivery_before)` per year — not only would the cost-causation principle be satisfied, but these higher bills would not contribute to a cross-subsidy: their incremental T&D bills of customers installing heat pumps would simply be covering the incremental T&D costs caused by that transition.
+
+However, as I have established, heat pump customers are actually overpaying for T&D by `{python} dollar(r.all_fossil_annual_delivery_charges_delta - (r.all_fossil_annual_mc_delivery_after - r.all_fossil_annual_mc_delivery_before))`, creating excess revenue. And this excess revenue contributes directly to a cross-subsidy to electric customers that heat with fossil fuels, via the exact mechanism describe in the preceding question.
+
+<br>
+
+**Q.** Why is the cross-subsidy associated with heat pump adoption a problem that the Commission should address?
+
+**A.** Because it represents a significant violation of intra-class equity, and directly undermines Connecticut's building electrification policies. I will address each in turn.
+
+<br>
+
+**Q.** Why does the cross-subsidy you've identified represent a significant violation of intra-class equity?
+
+It is true that under any volumetric rate, some customers subsidize others.
+
+But the cross-subsidy I have identified is not incidental, it is _systematic_. Installing a heat pump means shifting a home's largest energy load — space heating — from fossil fuels to electricity. This is a fundamental transformation of a customer's load shape, and it virtually guarantees that the heat pump customer is now subsidizing electricity customers who heat with fossil fuels.
+
+The cross-subsidy is also _substantial_. Because space heating is the single largest residential energy end use, the overpayment per household is not marginal — it is hundreds of dollars per year.
+
+Finally, the cross-subsidy _grows with electrification itself_. The overpayment is not limited to a few customers making unusual choices — it is a built-in consequence of a retrofit that the State of Connecticut is asking every fossil-fuel-heated household to undertake over the next couple of decades. Every household that embraces clean heat by installing a heat pump overpays, and will continue to overpay, for as long as Rate 1 remains structured this way.
+
+In summary, the cross-subsidy I have identified is not a random distribution of small over- and underpayments. It is a large and growing flow of excess revenue from one identifiable group of customers to another — a systematic and substantial transfer that grows with every heat pump adopted, at a time when the state is gearing up to accelerate adoption.
+
+While the overpayments heat pump customers experience violate the cost-causation principle, the cross-subsidy they produce violates **intra-class equity** — a rate design objective that the Company's own witnesses identify as foundational. Witness Nieto lists "ensuring equitable rates or mitigating intra-class cross-subsidies" as one of "the major ratemaking objectives,"[^nieto-objectives] and ACOS witness Manuel identifies "intra-class equity" as a core rate design objective.[^manuel-equity] Yet one identifiable group within the residential class — the very customers undertaking the transition Connecticut's climate policies depend on — is systematically subsidizing another.
+
+[^nieto-objectives]: Direct Testimony of Amparo Nieto, Exhibit CLP-MCOS-1 at p. 5 [@eversource_Docket260510Exhibit_2026].
+
+[^manuel-equity]: Direct Testimony of Witness Manuel, Exhibit CLP-ACOS-1 at p. TK [@_Docket260510Exhibit_g].
+
+<br>
+
+**Q.** Is the Company aware that overpayments from heat pump customers contribute to a cross-subsidy within the residential customer class which violates intra-class equity?
+
+**A.** Yes. The Company demonstrates an acute awareness of cross-subsidy risk, from heat pump to non-heat pump customers, as well as in the other direction. But it only discusses the latter risk, despite the fact that the former is the overwhelming reality at under Rate 1.
+
+The Company designed Rate 6 so that the discounted rate never falls below the incremental marginal T&D cost of customers installing heat pumps. Its rate witness explains: "The discounted rate is set to cover the incremental cost of serving the additional load the converting customer adds, which establishes the floor."[^company-discount-cost-causation] It further states that "a Rate 6 customer pays to cover the incremental cost of serving that customer, such that no portion of that customer's cost of service is redistributed to non-adopting customers."[^company-no-redistribute] And in explaining why summer kWh receive no discount at all, the Company states: "such customers need to pay the full rate so other customers are not subsidizing the rate, which would be at cross-purposes from an affordability perspective."[^company-summer-no-subsidy]
+
+The Company is clearly worried about creating a cross-subsidy running _from_ non-heat-pump customers _to_ heat pump customers — about the discount "overshooting" the incremental marginal costs associated with heat pump installations.
+
+But the Company never explicitly acknowledges the cross-subsidy that already exists, and runs in precisely the opposite direction, _from_ heat-pump customers _to_ non-heat pump customers. Nevertheless, the Company is clearly aware of it: Rate 6 keeps "incremental load priced above the marginal cost of serving it" because "spreading fixed costs over a larger sales base places downward pressure on average rates for all customers over time,"[^company-above-mc] which is precisely the mechanism through which a cross-subsidy originating from heat pump customers produces lower bills for non-heat pump customers.
+
+In fact, the word "cross-subsidy" appears in the Company's testimony only as a danger to be guarded against in designing Rate 6 — never as a description of what Rate 1 is already doing.
+
+This emphasis is curious: as proposed, Rate 6's discount is nowhere close to falling below incremental marginal cost — the level below which it would begin to create a cross-subsidy from non-heat-pump to heat pump customers. Meanwhile, precisely _because_ the discount stays so far above that floor, Rate 6 leaves `{python} pct(op.pct_overpayment_remaining_r6)` of the existing cross-subsidy running in the other direction firmly in place. The Company appears highly concerned about a cross-subsidy risk that is not remotely close to materializing, while consciously perpetuating a cross-subsidy that is already here: a cross-subsidy running _from_ heat pump customers _to_ non-heat pump customers, which represents a fundamental violation of intra-class equity.
+
+[^company-summer-no-subsidy]: Exhibit CLP-RATES-1, Direct Testimony of Edward A. Davis and Kimberly R. Parsons, p. 33, Docket No. 26-05-10.
+
+<br>
+
+**Q.** Why does the cross-subsidy you've identified directly undermine Connecticut's building electrification policies?
+
+**A.** By raising the bills of heat pump customers in order to lower the bills of fossil-fuel-heated customers, the cross-subsidy significantly inflates heat pump operating costs, creating an economic barrier to the very adoption that Connecticut's climate policies are designed to accelerate. I address this problem in detail in the following section.
+
+
+<br>
+
+## IV. Overcharging Heat Pump Customers Undermines Connecticut's Building Electrification Goals
+
+**Q.** What are Connecticut's building electrification targets?
+
+**A.** Connecticut law requires the state to reduce economy-wide greenhouse gas (GHG) emissions at least 45% below 2001 levels by 2030, 65% below 2001 levels by 2040, and to achieve economy-wide net-zero emissions by 2050.[^gwsa] The Connecticut Department of Energy and Environmental Protection's (DEEP) most recent Greenhouse Gas Emissions Inventory finds that the state is not on track to meet these targets: at current trends, Connecticut will achieve approximately a 40% reduction from 2001 levels by 2030 — about 5 percentage points short of the statutory goal.[^ghg-inventory-progress]
+
+[^gwsa]: Conn. Gen. Stat. § 22a-200a, as amended by Public Act 08-98 (2008), Public Act 18-82 (2018), and Public Act 25-125 (2025). The 2008 Global Warming Solutions Act established the 2020 and 2050 targets; the 2018 amendment added the 2030 interim target; and PA 25-125 added the 2040 target and clarified the 2050 target as economy-wide net-zero.
+[^ghg-inventory-progress]: Connecticut DEEP, *Connecticut Greenhouse Gas Emissions Inventory: 1990–2023* (August 2025), p. 7 ("emissions are declining, but not yet at a rate that would meet the 2030 goal") and p. 17 ("A linear best fit for emissions between the years 2001 … indicates the state is not on track to meet those targets. If the current rate of emissions decline were to hold to 2050, the state would emit over 5.6 MMTCO2e more than the statutory targets").
+
+Reducing emissions from buildings is central to meeting these GHG reduction targets. Residential and commercial buildings together account for roughly one-third of Connecticut's greenhouse gas emissions.  [^ghg-inventory-buildings] In DEEP's own assessment, reducing residential building emissions at the pace required by the 2030 target will require the average rate of emission reductions in the residential sector to increase nearly threefold between 2023 and 2030.[^ghg-inventory-residential] DEEP has identified the electrification of building heating through heat pumps as a primary strategy for reducing these building-sector emissions, and the state's 2025–2027 Conservation and Load Management Plan describes heat pump technologies as "a staple component of the Companies' decarbonization strategies."[^clm-plan-quote]
+
+[^ghg-inventory-buildings]: Connecticut DEEP, *Connecticut Greenhouse Gas Emissions Inventory: 1990–2023* (August 2025), pp. 9–11. In 2023, residential buildings emitted 6.7 MMTCO2e and commercial buildings 4.3 MMTCO2e, out of 35.0 MMTCO2e economy-wide.
+[^clm-plan-quote]: Cadeo-DNV, *Heat Pump and Electrification Market Study* (May 2025), p. 1, quoting the Companies' 2025–2027 C&LM Plan [@_HeatPumpElectrification_2025].
+
+Connecticut has also committed, through the New England Heat Pump Accelerator, to a target of heat pumps comprising 65% of residential HVAC and water heating equipment sales by 2030 and 90% by 2040.[^accelerator-targets]
+
+[^ghg-inventory-residential]: Connecticut DEEP, *Connecticut Greenhouse Gas Emissions Inventory: 1990–2023* (August 2025), pp. 19–20 ("the average rate of reductions must increase nearly threefold between 2023 and 2030 to be consistent with the 2030 emissions reduction goal").
+[^accelerator-targets]: U.S. EPA, *Climate Pollution Reduction Grants: New England Heat Pump Accelerator* (awarded July 2024). The grant agreement between EPA and Connecticut DEEP commits the five-state coalition to "an increase in heat pump adoption such that heat pumps comprise 65% of heating, ventilation, and air conditioning (HVAC) and water heater sales by 2030 and 90% of sales by 2040." See also Connecticut DEEP, *New England Heat Pump Accelerator* (portal.ct.gov/deep/energy/new-england-heat-pump-accelerator).
+
+<br>
+
+**Q.** What building electrification policies has Connecticut put in place to achieve these targets?
+
+**A.** Connecticut is actively driving heat pump adoption through two main vehicles: a ratepayer-funded incentive program and a major new federal grant that significantly expands it.
+
+The state's primary tool is the **Conservation and Load Management (C&LM) program**, administered by Eversource and United Illuminating through EnergizeCT. The C&LM program currently offers residential heat pump rebates of up to $1,000 per ton — up to $10,000 per home — for customers replacing natural gas, oil, propane, or electric resistance heating with a qualifying heat pump. Enhanced incentives of $1,500 per ton are available for low-and-moderate-income customers and for customers replacing electric resistance (baseboard) heating.[^clm-rebates]
+
+[^clm-rebates]: EnergizeCT, *Residential Energy Optimization Incentive Details* (2026), available at energizect.com/rebates-incentives/heating-cooling/heat-pumps/residential-energy-optimization. Enhanced incentives of $1,500 per ton took effect April 1, 2026.
+
+In July 2024, the C&LM program received a major boost: Connecticut led a five-state coalition — including Massachusetts, Rhode Island, Maine, and New Hampshire — that secured a $450 million grant from the U.S. Environmental Protection Agency's Climate Pollution Reduction Grant program to create the **New England Heat Pump Accelerator**, the largest regional heat pump deployment effort in the country.[^accelerator-grant] Connecticut DEEP serves as the lead implementing agency. Midstream incentives through the Accelerator launched in early 2026, and DEEP is developing a state heat pump pilot funded by the grant.[^accelerator-status]
+
+[^accelerator-grant]: U.S. EPA, *Climate Pollution Reduction Grants: States of Connecticut, Maine, Massachusetts, New Hampshire, and Rhode Island* (July 2024), available at epa.gov/inflation-reduction-act/states-connecticut-maine-massachusetts-new-hampshire-and-rhode-island. Connecticut DEEP finalized the five-year grant agreement with EPA in October 2024.
+[^accelerator-status]: Connecticut DEEP, *DEEP Update to Energy Efficiency Board* (September 9, 2026): "VEIC is under contract with DEEP as the program implementer." Midstream heat pump incentives launched in early 2026, with spending exceeding $4 million per month by September 2026. DEEP issued a Request for Information on the state heat pump pilot design in November 2025, and as of September 2026, Connecticut will implement its pilot through an approved sole-source procurement.
+
+The General Assembly has also directed DEEP to develop a statewide plan for the deployment of heat pumps, with a report due to the legislature by January 1, 2027.[^pa-25-125-hp-plan]
+
+[^pa-25-125-hp-plan]: Public Act 25-125, § 9 (effective October 1, 2025), requiring the Commissioner of Energy and Environmental Protection to "develop a plan for the installation of efficient heat pumps for affordable heating and cooling systems in the state" and report to the Environment and Energy and Technology committees by January 1, 2027.
+
+In short, Connecticut has binding climate targets that require large-scale building electrification, and the state is actively spending hundreds of millions of dollars to drive heat pump adoption. But as I show below, the Company's default residential rate is actively working against these ambitions.
+
+<br>
+
+**Q.** Under the Company's proposed Rate 1, what happens to a household's total annual energy bills when they switch from fossil fuel heating to a heat pump?
+
+**A.** The answer depends significantly on whether the household currently heats with natural gas, or with delivered fuels like heating oil or propane.
+
+<br>
+
+**Q.** Under the Company's proposed Rate 1, what happens to the average natural-gas-heated household's total annual energy bills when they switch to a heat pump?
+
+**A.** Approximately `{python} pct(a.pct_customers_natgas)` of the Company's residential customers heat with natural gas.[^natgas-share]
+
+As shown in @fig-total-bill-before-after-natgas, I find that under the Company's Rate 1 and the various residential gas rates of the gas utilities serving the Company's electrical customers, the average natural-gas-heated household would see its total annual energy bill — electricity plus natural gas — change from `{python} dollar(r.natgas_total_energy_bill_before)` before the heat pump to `{python} dollar(r.natgas_total_energy_bill_after)` after, an increase of `{python} dollar(r.natgas_total_energy_bill_delta)` per year.[^source-total-bill-natgas]
+
+[^source-total-bill-natgas]: Electric and natural gas consumption from NREL ResStock 2024.2 simulation (weighted average of CL&P-territory natural-gas-heated buildings), bills calculated using CAIRO model with filed Rate 1 electric rates and the filed residential gas rates of the gas utility serving each home (CT Natural Gas, Southern CT Gas, Yankee Gas, or Norwich Public Utilities). See @sec-method-profiles.
+
+[^natgas-share]: Computed from NREL's ResStock 2024 building stock model for Connecticut, restricted to buildings assigned to CL&P's service territory based on their approximate location [@nrel_EndUseLoadProfiles_2024]. Each sampled building carries a statistical weight representing the number of actual customers it stands for; the share is the weighted fraction of buildings whose baseline heating system is a natural gas furnace or boiler.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/representative_home.qmd#fig-total-bill-before-after-natgas >}}
+:::
+
+The heat pump eliminates most of the household's natural gas bill — replacing it with additional electricity consumption for space heating. (The remaining gas bill is for hot water and cooking.) But due to the overpayment problem documented in Section III, the `{python} dollar(r.natgas_annual_delivery_charges_delta)` increase in transmission and distribution bills more than offsets the gas bill savings, causing the customer's total annual energy bills to increase.
+
+This means the average natural-gas-heated customer does not experience lower energy bills after switching to a heat pump under the Company's Rate 1.
+
+<br>
+
+
+**Q.** You've shown bill impact outcomes for the _average_ natural-gas-heated households. How do bill impacts vary across the full population of the Company's residential electric customers that heat with natural gas?
+
+**A.** The overpayment problem documented in Section III affects all customers switching to heat pumps, so it is instructive to analyze the average impact these overpayments have on household energy bills post-installation.
+
+That said, the Company serves a diverse residential housing stock — homes across its territory vary in size, insulation quality, and baseline energy consumption — so there is a wide distribution of bill impacts around that average. To understand this full range, I performed the same before-and-after analysis for a statistically representative sample of homes from the Company's territory[^resstock] — `{python} f"{a.n_resstock_bldgs:,}"` buildings, representing the Company's approximately `{python} f"{a.n_utility_customers:,.0f}"` residential electricity customers.
+
+[^resstock]: NREL’s ResStock 2024 building stock model for Connecticut, restricted to buildings assigned to CL&P’s service territory based on their approximate location.  [@nrel_EndUseLoadProfiles_2024]
+
+@fig-bill-change-quadrants-default-natgas shows the full range of bill outcomes for natural-gas-heated customers installing heat pumps under the Company's Rate 1.[^source-quadrants-default] Each bar shows the share of customers whose total annual energy bill would increase or decrease after switching to a heat pump, under the Company's Rate 1 and the applicable gas utility's residential rates.
+
+[^source-quadrants-default]: Population-level bill calculations from NREL ResStock 2024.2 and CAIRO rate simulation, using CL&P's filed Rate 1 electric tariff and the filed residential gas tariff of the gas utility serving each home. Each building carries a statistical weight; the chart shows weighted shares.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-bill-change-quadrants-default-natgas >}}
+:::
+
+Under current rates, only `{python} pct(a.pct_natgas_hp_bill_decrease_default)` of the Company's residential electricity customers that heat with natural gas would lower their total annual energy bills after switching to a heat pump. These are homes where the avoided gas costs outweigh the inflated electric delivery charges. The remainder would see higher total energy bills after switching to a heat pump, which creates a significant barrier to heat pump adoption in the Company's territory.
+
+@fig-bill-change-quadrants-default-delivered shows the same analysis for delivered-fuel-heated homes.[^source-quadrants-default-delivered]
+
+[^source-quadrants-default-delivered]: Same methodology as @fig-bill-change-quadrants-default-natgas; delivered-fuel bills use EIA residential heating oil and propane prices.
+
+**Q.** If the Company stopped overcharging heat pump customers, what would happen to the energy bills of the average natural-gas-heated customer after switching to a heat pump?
+
+**A.** The difference is dramatic. Under the Company's proposed Rate 1, the average natural-gas-heated customer installing a heat pump is overcharged approximately `{python} dollar(r.natgas_annual_total_overcharge)` per year in transmission and distribution costs — they pay `{python} dollar(r.natgas_annual_total_overcharge)` more in T&D charges than the cost they actually impose on the grid. (The average overpayment figure I gave in Section III — `{python} dollar(r.all_fossil_annual_total_overcharge)` per year — is for the entire population of fossil-fuel-heated customers, both natural and delivered fuels. The Company's customers who heat with natural gas have lower heating loads, on average, so their mean overpayment is also lower.)
+
+Because of overcharge, the average natural-gas-heated customer's total annual energy bills increases by `{python} dollar(r.natgas_total_energy_bill_delta)` after switching to heat pumps. But if the overcharge were removed, their total annual energy bill would actually decrease by `{python} dollar(r.natgas_fair_hp_vs_furnace_savings_dollar)` after making the switch, as shown by @fig-total-bill-3bar-natgas.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/representative_home.qmd#fig-total-bill-3bar-natgas >}}
+:::
+
+Under a perfectly fair rate—where each customer that install a heat pump is only incrementally charged for the new T&D costs actually caused by that heat pumps—the average natural-gas customer's total annual energy bill would fall from `{python} dollar(r.natgas_total_energy_bill_before)` with a gas furnace to `{python} dollar(r.natgas_fair_hp_total_energy_bill)` with a heat pump — a savings of `{python} dollar(r.natgas_fair_hp_vs_furnace_savings_dollar)` per year.[^fair-rate-method]
+
+[^fair-rate-method]: The third bar shows what happens if each customer's incremental heat pump load were charged at marginal T&D cost — as if a separate meter applied the hourly transmission and distribution marginal cost to just the new electricity from the heat pump. Generation charges are unchanged. See @sec-method-fair-rate.
+
+This is precisely the outcome a well-designed rate should produce: a customer who switches from a gas furnace to an efficient heat pump should see lower energy bills, because efficient electrification reduces the total cost of energy. The Company's Rate 1 turns what should be savings into losses by overcharging heat pump customers for transmission and distribution.
+
+<br
+
+**Q.** You've shown that if the Company stopped overcharging heat pump customers, the _average_ natural-gas customer installing heat pumps would cut their energy bills by switching. How prevalent is savings outcome across the entire population of natural-gas-heated customers?
+
+**A.** @fig-bill-change-quadrants-natgas-r1-vs-fair compares the change in total annual home energy bills for natural-gas-heated homes switching to a heat pump under Rate 1 versus a fair rate that eliminates each customer's delivery overcharge entirely.[^source-quadrants-fair]
+
+[^source-quadrants-fair]: Same methodology as @fig-bill-change-quadrants-default-natgas. The "fair rate" removes each building's incremental delivery overcharge (incremental delivery revenue minus incremental delivery marginal cost) from the Rate 1 bill change — the theoretical outcome if no customer were overcharged. See @sec-method-incremental.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-bill-change-quadrants-natgas-r1-vs-fair >}}
+:::
+
+The transformation is stark. Under Rate 1, only `{python} pct(a.pct_natgas_hp_bill_decrease_default)` of natural-gas-heated customers would see lower total energy bills after switching to a heat pump. Under a fair rate that eliminates the overcharge, **`{python} pct(a.pct_natgas_hp_bill_decrease_fair)`** would save.
+
+In other words, the overcharge produced by the Company's proposed Rate 1 is the single largest barrier to favorable bill outcomes for natural-gas-heated customers considering heat pumps. Remove it, and the economics flip: a large majority of natural-gas customers would save money by switching. Keep it, and the majority lose money.
+
+
+**Q.** Why does the Company exclude natural-gas-heated customers from their proposed Rate 6?
+
+**A.** When asked by CLF intervenors why the proposed Rate 6 is not available to customers converting from natural gas, the Company responded that it "designed the rate to avoid encouraging conversions that would likely result in higher customer household energy."[^company-avoid-higher-bills] The Company explained that "for customers heating with natural gas, conversion to a heat pump typically increases the household's total energy bill at current prices,"[^company-gas-bills-up] and that therefore "while natural gas conversions may produce emissions benefits, Rate 6 is designed to deliver bill savings, and eligibility was scoped accordingly."[^company-affordability-measure]
+
+[^company-avoid-higher-bills]: Response to CLF-SC-002(b), Docket No. 26-05-10 (Sept. 3, 2026).
+[^company-gas-bills-up]: Response to CLF-SC-002(b), Docket No. 26-05-10 (Sept. 3, 2026).
+[^company-affordability-measure]: Response to CLF-SC-002(b), Docket No. 26-05-10 (Sept. 3, 2026).
+
+**Q.** Is the Company's reasoning for excluding natural-gas customers sound?
+
+**A.** No. The Company's reasoning is circular. As I have just shown, the reason natural-gas customers' total energy bills typically increase after switching to a heat pump is the overcharge documented in Section III — the gap between what these customers pay in incremental T&D charges and what their heat pumps actually cost to serve. Under a fair rate that eliminates the overcharge, `{python} pct(a.pct_natgas_hp_bill_decrease_fair)` of natural-gas-heated customers would save money by switching.
+
+The Company is aware of this overcharge — it is the entire basis on which it justifies Rate 6. Yet it uses the _consequences_ of the overcharge — higher bills for natural-gas customers who switch — as the reason not to stop overcharging them. In effect, the Company is saying: we cannot stop overcharging these customers, because if we did, it would encourage them to switch to heat pumps, and switching to heat pumps raises their bills — because we overcharge them.
+
+In other words: the Company has identified a problem (the gap between Rate 1 and marginal cost) created by status-quo rates, proposed an insuffucient fix (Rate 6), and then excluded the customers most harmed by the problem from the fix — on the grounds that the problem harms them. If instead the Company followed its own premises to their conclusions — that the discount can legitimately extend to the marginal-cost floor, for _both_ transmission and distribution, without shifting costs to other customers (indeed, by simply unwinding an unfair cost-shift that exists in the other direction) — it could a rate to heat pump customers that still makes them pay for any additional costs they impose on the system. And it turns out that by making rates fair, the Company could transform heat pumps into reliable way to cut heating bills for the vast majority of natural-gas customers, too.
+
+<br>
+
+**Q.** Under the Company's proposed Rate 1, what happens to the average delivered-fuel-heated household's total annual energy bills when they switch to a heat pump?
+
+**A.** Approximately `{python} pct(a.pct_customers_delivered)` of the Company's residential customers heat with delivered fuels like heating oil or propane.[^delivered-share]
+
+[^delivered-share]: This figure was derived using the same methodology as for natural gas: the weighted fraction of CL&P-territory ResStock buildings whose baseline heating system uses heating oil or propane.
+
+Unlike with natural gas, the average delivered-fuel-heated customer does see a reduction in its total energy bills after switching to a heat pump under the Company's Rate 1, because heating oil and propane are substantially more expensive per unit of useful heat than natural gas. As shown in @fig-total-bill-before-after-delivered, the average delivered-fuel-heated customer sees its total annual energy bill decrease from `{python} dollar(r.delivered_total_energy_bill_before)` to `{python} dollar(r.delivered_total_energy_bill_after)` after installing heat pumps under Rate 1, a net decrease of `{python} dollar(abs(r.delivered_total_energy_bill_delta))` per year.[^source-total-bill-delivered]
+
+[^source-total-bill-delivered]: Electric and delivered fuel consumption from NREL ResStock 2024.2 simulation (weighted average of CL&P-territory delivered-fuel-heated buildings), bills calculated using CAIRO model with filed Schedule R rates and EIA oil/propane prices. See @sec-method-profiles.
+
+
+:::{.column-page-inset-right}
+{{< embed notebooks/representative_home.qmd#fig-total-bill-before-after-delivered >}}
+:::
+
+<br>
+
+**Q.** You've shown bill impact outcomes for the _average_ delivered-fuel-heated household. How do bill impacts vary across the full population of the Company's residential electric customers that heat with delivered fuels?
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-bill-change-quadrants-default-delivered >}}
+:::
+
+Residential electricity customers that heat with delivered fuels fare better overall when switching to heat pumps than those that heat with natural gas: the savings from eliminating expensive delivered fuels more than offset the inflated electric prices for the vast majority of these homes. `{python} pct(a.pct_delivered_hp_bill_decrease_default)` of delivered-fuel-heated households would see their total energy bills decrease after switching to a heat pump, even under the Company's current Schedule R rates.
+
+However, the fact that these households save money overall does not mean they are being fairly charged for electricity. The same overpayment documented in Section III of my testimony applies to delivered-fuel customers just as it does to natural-gas customers:  these households are still paying more for distribution and transmission than cost-causation would dictate. If delivered fuel customers were not being overcharged, their savings would be larger, and the incentive to adopt a heat pump correspondingly stronger.
+
+<br>
+
+**Q.** How would delivered-fuel-heated customers' bill outcomes change if the overcharge were removed?
+
+**A.** Delivered-fuel customers already tend to save money on net after switching to a heat pump under Rate 1, because heating oil and propane are expensive fuels. But the overcharge suppresses those savings below what they should be.
+
+@fig-total-bill-3bar-delivered adds a third bar to the delivered-fuel bill comparison: under a rate that fully eliminates the overcharge, the average delivered-fuel customer's total annual energy bill would fall from `{python} dollar(r.delivered_total_energy_bill_before)` with an oil or propane furnace to `{python} dollar(r.delivered_fair_hp_total_energy_bill)` with a heat pump — a savings of `{python} dollar(r.delivered_fair_hp_vs_furnace_savings_dollar)` (`{python} pct(r.delivered_fair_hp_vs_furnace_savings_pct)`) per year, compared to savings of only `{python} dollar(abs(r.delivered_total_energy_bill_delta))` (`{python} pct(abs(r.delivered_total_energy_bill_delta / r.delivered_total_energy_bill_before))`) under Rate 1.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/representative_home.qmd#fig-total-bill-3bar-delivered >}}
+:::
+
+This is a meaningful difference: an annual energy bill savings of `{python} pct(r.delivered_fair_hp_vs_furnace_savings_pct)` is significantly more likely to induce a customer to switch to a heat pump than a savings of `{python} pct(abs(r.delivered_total_energy_bill_delta / r.delivered_total_energy_bill_before))`, all else equal.
+
+@fig-bill-change-quadrants-delivered-r1-vs-fair shows the population-level comparison.[^source-quadrants-fair-delivered]
+
+[^source-quadrants-fair-delivered]: Same methodology as @fig-bill-change-quadrants-natgas-r1-vs-fair; delivered-fuel bills use EIA residential heating oil and propane prices.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-bill-change-quadrants-delivered-r1-vs-fair >}}
+:::
+
+Under Rate 1, `{python} pct(a.pct_delivered_hp_bill_decrease_default)` of delivered-fuel-heated customers would save. Under a fair rate that eliminates the overcharge, **`{python} pct(a.pct_delivered_hp_bill_decrease_fair)`** would save.
+
+In summary: the overcharge paid by delivered fuel customers under Rate 1 does not prevent most of them from saving money by switching, but it meaningfully reduces how much they save. Larger savings create a stronger financial incentive to switch — the difference between a customer who considers a heat pump and one who acts on it.
+
+<br>
+
+**Q.** Can you summarize why the overcharging of heat pump customers under Rate 1 undermines Connecticut's building electrification policies?
+
+**A.** Connecticut's building electrification policies are aimed at increasing the rate of heat pump adoption. As demonstrated in this section, the Company's overcharge of heat pump customers under Rate 1 is largely responsible for poor bill outcomes when customers switch to heat pumps. Poor bill outcomes, in turn, undermine heat pump adoption through two distinct mechanisms.
+
+**First, Rate 1 turns what should be savings into losses.** Under the Company's proposed Rate 1, `{python} pct(a.pct_natgas_hp_bill_increase_default)` of natural-gas-heated customers would see their total energy bills _increase_ after switching to a heat pump. When customers learn that their bills would go up — or when their neighbors report that theirs did — they are much less likely to switch, regardless of available rebates or incentives. This is the most direct barrier that overcharging creates to adoption: the overcharge makes heat pumps look like a bad deal for the majority of natural-gas customers, when in fact, without this arbitrary penalty, most gas-heated customers would actually save money by switching.
+
+**Second, even for customers who would save money, the overcharge suppresses savings below the level needed to overcome inertia.** Switching from a familiar heating system to a heat pump involves real and perceived costs — the hassle of installation, unfamiliarity with the technology, and uncertainty about performance. For customers to act on potential savings, those savings need to be large enough to overcome inertia and status quo bias. The overcharge shrinks these savings: natural-gas customers who do save under current rates would save more under fairer rates. Delivered-fuel customers, most of whom already save under Rate 1, would see meaningfully larger savings — making the case for switching from oil or propane to a heat pump that much more compelling.
+
+In both cases, the overcharge creates a drag on adoption by reducing the financial incentive below what it would otherwise be.
+
+<br>
+<!--
+# QUOTES
+ Its own marginal cost witness, Amparo Nieto, testifies that "marginal-cost based tariffs help prevent increases in inter and intra-class cross subsidies as individual customers change their consumption."[^nieto-cross-subsidy] She further testifies that marginal-cost-based rate designs "can largely mitigate increasingly affordability concerns of customers who wish to actively support decarbonization by acquiring electric vehicles or adopting efficient heat pumps for electric space heating and would otherwise be disproportionally burdened."[^nieto-disproportionate] And she warns that "when rates are not appropriately structured to mirror marginal cost, it is more likely that these customers ultimately shoulder the Company net revenue losses."[^nieto-revenue-losses]
+
+[^nieto-cross-subsidy]: Exhibit CLP-MCOS-1, Direct Testimony of Amparo Nieto, p. 3, Docket No. 26-05-10.
+
+[^nieto-disproportionate]: Exhibit CLP-MCOS-1, Direct Testimony of Amparo Nieto, p. 3, Docket No. 26-05-10.
+
+[^nieto-revenue-losses]: Exhibit CLP-MCOS-1, Direct Testimony of Amparo Nieto, p. 3, Docket No. 26-05-10.
+
+Ms. Nieto also testifies that "customers are currently paying significantly more than the underlying marginal per-kW and per-kWh costs across the board" and that "the large differential suggests an excessive incentive to conserve that can be moderated to bring rates closer to optimal, more efficient price signals."[^nieto-paying-more] She concludes that the Company's rate proposals "will help avoid intra-class cross subsidies."[^nieto-avoid-cross-sub]
+
+[^nieto-paying-more]: Exhibit CLP-MCOS-1, Direct Testimony of Amparo Nieto, p. 14, Docket No. 26-05-10.
+
+[^nieto-avoid-cross-sub]: Exhibit CLP-MCOS-1, Direct Testimony of Amparo Nieto, p. 14, Docket No. 26-05-10.
+
+Ms. Nieto further testifies that rates should "ensure that all customers pay no less than marginal cost plus an equitable share of existing (sunk) costs."[^nieto-no-less-than-mc]
+
+[^nieto-no-less-than-mc]: Exhibit CLP-MCOS-1, Direct Testimony of Amparo Nieto, p. 7, Docket No. 26-05-10.
+
+
+[^company-discount-cost-causation]: Response to CLF-SC-003(b), Docket No. 26-05-10 (Sept. 3, 2026).
+
+[^company-no-redistribute]: Response to CLF-SC-003(b), Docket No. 26-05-10 (Sept. 3, 2026).
+
+
+
+
+[^company-discount-cost-causation]: The Company describes the discount as grounded in cost causation: "The discounted rate is set to cover the incremental cost of serving the additional load the converting customer adds, which establishes the floor; the standard residential rate establishes the reference point above it. The discount is the space between those two." Response to CLF-SC-003(b), Docket No. 26-05-10 (Sept. 3, 2026).
+
+"The Company determined the level of the effective discount by reference to cost causation. The discounted rate is set to cover the incremental cost of serving the additional load the converting customer adds, which establishes the floor; the standard residential rate establishes the reference point above it."
+
+"marginal-cost based tariffs help prevent increases in inter and intra-class cross subsidies as individual customers change their consumption"
+
+""all customers pay no less than marginal cost plus an equitable share of existing (sunk) costs"
+
+" "customers who wish to actively support decarbonization by... adopting efficient heat pumps for electric space heating... would otherwise be disproportionally burdened" -->
+
+
+## V. Critique of the Company's Proposed Rate 6
+
+
+**Q.** Do the Company agree with your diagnosis of the problem?
+
+**A.** TK
+
+they do, because of what i said above, but also because of the nature of their rate design: they're targetting incremental laod, and moving th price "towrads" marginal cost, if not enough. that's still the design.
+
+<br>
+
+**Q.** Does the Company agree with your approach to solving the problem via tech-specific rate that targets incremental load etc?
+
+**A.** TK
+
+<br>
+
+**Q.** What heat pump rate has the Company proposed in this proceeding?
+
+**A.** The Company has proposed Rate 6, an Optional Residential Space Heating Rate. As proposed, Rate 6 would be available to residential customers who heated with a delivered fuel (oil, propane, or natural gas) and have installed air-source heat pumps on or after January 1, 2026, as well as new homes built after July 1, 2027 with heat pumps. Enrollment is voluntary; eligible customers may remain on Rate 1 if they choose.
+
+|                                                              | Rate 1         | Rate 6 — Block 1 (≤ 700 kWh, winter; all kWh, summer) | Rate 6 — Block 2 (> 700 kWh, winter only) |
+| ------------------------------------------------------------ | :------------: | :-----------------------------------------------------: | :----------------------------------------: |
+| **Distribution** — Customer Charge ($/month)                 | $12.36         | $30.95                                                  | —                                          |
+| **Distribution** — Energy Charge (¢/kWh)                     | 12.196         | 9.431                                                   | 7.517                                      |
+| **Transmission** — Transmission Service Rate (¢/kWh)         | 5.050          | 5.050                                                   | 5.050                                      |
+| **Total delivery volumetric** (distribution + transmission + riders, ¢/kWh) | 16.335         | 13.570                                                  | 11.656                                     |
+
+: Rate 1 vs. Rate 6 distribution and transmission rates {#tbl-r1-vs-r6}
+
+
+Rate 6 raises Rate 1's monthly customer charge from $12.36 to $30.95, and the added fixed charge revenue allows the Company to lower the volumetric distribution rate from 12.2 to 9.4 c / kWh. In effect, Rate 6 starts by shifting some of Rate 1's cost recovery from variable to fixed charges.
+
+Next, Rate 6 tries to charge the heat pump's incremental load a lower rate than 9.4 c/kWh, by introducing a two-block structure in winter months (November through March): the first 700 kWh in a month are billed 9.4 c/kWh, and any kWh above 700 are billed at a lower Block 2 rate of 7.5 c/kWh. (In non-winter months (April through October), all kWh are billed 9.4 c/kWh, without any discount.)
+
+Public benefits, generation, and transmission rates are identical to Rate 1—despite the fact that heat pump customers are also overpaying for transmission, so it should also be discounted.
+
+<br>
+
+**Q.** Does Rate 6 provide a large enough discount to eliminate the overcharge I documented in Section III?
+
+**A.** No. Under Rate 1, the average fossil-fuel-heated customer switching to a heat pump is overcharged `{python} dollar(op.overpay_mean_rate_1_all_fossil)` per year in delivery costs; under Rate 6, that overcharge falls to `{python} dollar(op.overpay_mean_rate_6_all_fossil)` — still a substantial surcharge above the customer's incremental marginal cost. In other words, Rate 6 eliminates only `{python} pct(1 - op.pct_overpayment_remaining_r6)` of the average annual overpayment I documented in Section III.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/overpayment.qmd#fig-testimony-annual-all-fossil-r1-vs-r6 >}}
+:::
+
+@fig-testimony-annual-all-fossil-r1-vs-r6 compares the distribution of annual delivery overpayments under Rate 1 (top) and Rate 6 (bottom), using the same methodology as @fig-testimony-annual-all-fossil-r1 in Section III.
+
+The entire histogram shifts left — confirming that Rate 6 does provide some relief — but the bulk of the distribution remains well above zero. As designed, Rate 6 narrows the overcharge; it does not come close to eliminating it.
+
+
+<br>
+
+**Q.** Does Rate 6's modest reduction in the overcharge improve bill outcomes for natural-gas-heated customers who switch to heat pumps?
+
+**A.** Rate 6 barely moves the needle. @fig-bill-change-quadrants-natgas-r1-r6-fair compares the bill outcomes for natural-gas-heated homes installing heat pumps under three scenarios: Rate 1 (the status quo), Rate 6 (the Company's proposal), and a fair rate that fully eliminates the delivery overcharge.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-bill-change-quadrants-natgas-r1-r6-fair >}}
+:::
+
+Under Rate 1, only `{python} pct(a.pct_natgas_hp_bill_decrease_default)` of natural-gas-heated customers would see lower total energy bills after switching to a heat pump; those who do save would save an average of `{python} dollar(abs(a.mean_natgas_hp_savings_among_savers_default))` per year. Under a fair rate that fully eliminates the overcharge, `{python} pct(a.pct_natgas_hp_bill_decrease_fair)` would save, with average savings of `{python} dollar(abs(a.mean_natgas_hp_savings_among_savers_fair))` per year among savers.
+
+Rate 6 captures only a sliver of that potential: `{python} pct(a.pct_natgas_hp_bill_decrease_r6)` would save, with average savings of `{python} dollar(abs(a.mean_natgas_hp_savings_among_savers_r6))` per year — a `{python} pct(a.pct_natgas_hp_bill_decrease_r6 - a.pct_natgas_hp_bill_decrease_default)` point improvement over Rate 1, compared to the `{python} pct(a.pct_natgas_hp_bill_decrease_fair - a.pct_natgas_hp_bill_decrease_default)` point improvement that fully eliminating the overcharge would deliver. The Company's own stated goal is to "deliver bill savings" to customers who electrify their heating — but Rate 6's discount is too small to deliver that outcome for the vast majority of natural-gas customers.
+
+<br>
+
+**Q.** What is the impact of Rate 6 for delivered-fuel-heated customers who switch to heat pumps?
+
+**A.** The pattern is the same, though the starting point is more favorable because delivered fuels are more expensive than natural gas. @fig-bill-change-quadrants-delivered-r1-r6-fair shows the same three-way comparison for oil- and propane-heated homes.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-bill-change-quadrants-delivered-r1-r6-fair >}}
+:::
+
+Under Rate 1, `{python} pct(a.pct_delivered_hp_bill_decrease_default)` of delivered-fuel-heated customers would see lower total energy bills after switching to a heat pump; those who save would save an average of `{python} dollar(abs(a.mean_delivered_hp_savings_among_savers_default))` per year. Under a fair rate that fully eliminates the overcharge, `{python} pct(a.pct_delivered_hp_bill_decrease_fair)` would save, with average savings of `{python} dollar(abs(a.mean_delivered_hp_savings_among_savers_fair))` per year among savers.
+
+Rate 6 captures only a fraction of that improvement: `{python} pct(a.pct_delivered_hp_bill_decrease_r6)` would save, with average savings of `{python} dollar(abs(a.mean_delivered_hp_savings_among_savers_r6))` per year — a `{python} pct(a.pct_delivered_hp_bill_decrease_r6 - a.pct_delivered_hp_bill_decrease_default)` point improvement over Rate 1, compared to the `{python} pct(a.pct_delivered_hp_bill_decrease_fair - a.pct_delivered_hp_bill_decrease_default)` point improvement that a fair rate would deliver. Even for the population where heat pumps already tend to pencil out, Rate 6 leaves savings on the table that a cost-reflective rate would deliver.
+
+<br>
+
+**Q.** Can you walk through how the Company arrived at the rate design for Rate 6?
+
+**A.** Yes. The Company's derivation is documented in Exhibit CLP-RATES-6, the Rate 6 Rate Design Worksheet. It proceeds in two steps: first, raise the fixed charge; second, set the volumetric rates.
+
+**Step 1 — Increased customer charge.** The Company's MCOS study found that customer-related costs— service lines, meters, billing, and customer accounts — are $28.98 per customer per month. Rate 1's customer charge of $12.36 per month recovers less than half of that amount. The Company set Rate 6's customer charge at $30.95 per month — $28.98 grossed up by the 6.8% Gross Earnings Tax —  in a bid to recover (marginal) customer-related costs entirely through the fixed charge.
+
+**Step 2 — Lowered volumetric rate.** Raising the customer charge from $12.36 to $30.95 collects an additional $233 million in fixed-charge revenue across the rate class. That reduces the amount that needs to be collected through the volumetric energy charge from approximately $1.03 billion to $796 million. The Company recalculated the volumetric energy charge at 9.431 ¢/kWh — down from Rate 1's 12.196 ¢/kWh. Effectively, the Company's starting point was to redesign Rate 1 to rely less on volumetric energy charges to recover costs, and more on fixed charges. This part of Rate 6 is designed to be revenue neutral within the residential rate class—if all Rate 1 customers (given their existing heating systems) were charged $30.95 per month (instead of $12.36) and 9.431 c/kWh for all kWh (instead of 12.196 c/kWh), the Company would collect the same amount of total revenue from this rate class.
+
+**Step 3 — Targeting incremental load with a discounted rate.** Steps 1 and 2 redesign the rate structure but do not yet provide a discount for heat pump customers — they simply shift how the same revenue is collected. The discount comes from the block rate structure the Company layered on top. In winter months (November through March), the first 700 kWh are billed at the Block 1 rate of 9.431 ¢/kWh, and consumption above 700 kWh — which the Company treats as a proxy for the heat pump's incremental load — is billed at a lower Block 2 rate of 7.517 ¢/kWh. In non-winter months, all kWh are billed at 9.431 ¢/kWh with no discount.
+
+To arrive at the Block 2 rate, the Company decomposed the 9.431 ¢/kWh distribution energy charge into two sub-charges, as shown in @tbl-rate-6-block-2-decomposition. The rate is the sum of two distinct cost categories from the MCOS study:
+
+- A **local facilities charge** (3.894 ¢/kWh), which recovers the cost of local distribution infrastructure sized to serve individual customers — lateral primary conductors, transformers, and secondary conductors. This is derived from the MCOS marginal facilities cost of $24.51 per customer per month [@eversource_Docket260510Exhibit_2026], spread across all billed kilowatt-hours for all Rate 1 customers.
+
+- An **upstream distribution charge** (5.537 ¢/kWh), which recovers the cost of shared upstream distribution infrastructure — substations, trunkline primary feeders, etc. — whose expansion is driven by growth in system peak load.
+
+|                                          | Block 1 (¢/kWh) | Block 2 (¢/kWh) | MC floor (¢/kWh) | Discounted? |
+| ---------------------------------------- | :--------------: | :--------------: | :---------------: | :---------: |
+| Local facilities                         |      3.894       |      3.894       |         —         |     No      |
+| Upstream distribution                    |      5.537       |      3.623       |       0.258       |   Partially |
+| **Distribution energy charge**           |    **9.431**     |    **7.517**     |         —         |      —      |
+
+: Rate 6 Block 2 distribution charge decomposition (Source: Exhibit CLP-RATES-6) {#tbl-rate-6-block-2-decomposition}
+
+The Company did not discount the local facilities charge at all — it remains at 3.894 ¢/kWh in both Block 1 and Block 2.
+
+Only the upstream distribution charge was discounted, by 1.914 ¢/kWh. We discuss why this discount is insufficient below.
+
+from 5.537 ¢/kWh in Block 1 to 3.623 ¢/kWh in Block 2. The Company had a choice of how much to discount it, and they chose to discount it by 1.914 ¢/kWh, only 36% of the maximum possible discount of 5.279 ¢/kWh. Since the Company' MCOS study puts the marginal cost of upstream distribution at just 0.258 ¢/kWh, the Company applied only 36% of the maximum available discount of 5.279 ¢/kWh.
+
+
+**Q.** What problems do you see with the design of Rate 6 as proposed?
+
+**A.** I propose that the Company should aim to eliminate overpayments for all customers who choose to switch to heat pumps. From that perspective, I see three problems with the Company's Rate 6 design:
+
+1. The current discount on the volumetric upstream distribution rate is too small.
+2. Volumetric local facilities and transmission rates contribute to overpayments, but are not being discounted at all.
+3. The one-size-fits-all 700 kWh threshold is biased against natural-gas-heated customers and low-income customers.
+
+I will address each of these in turn.
+
+<br>
+
+**Q.** Why is the proposed discount on the volumetric upstream distribution rate too small?
+
+**A.** Heat pump customers are overpaying for upstream distribution costs. The Company has a choice about how much of this overpayment to remove, and therefore how much of the cross-subsidy to eliminate.
+
+As the Company sees it, the Block 2 discount could be set anywhere between "the incremental cost of serving the additional load the converting customer adds, which establishes the floor" and the Block 1 upstream distribution rate which "establishes the reference point above it."[^cite-003b] The Company's MCOS study puts that floor — the marginal cost of upstream distribution — at just 0.258 ¢/kWh, for any given hour of the year.[^static-vs-dynamic-mc]
+
+In other words, the Company could have set the Block 2 upstream distribution charge anywhere between 0.258 ¢/kWh (the marginal cost floor) and 5.537 ¢/kWh (the Block 1 rate, i.e. no discount). The Company chose to set it at 3.623 ¢/kWh — only 36% of the way from the ceiling to the floor.
+
+The Company explains why they didn't set the discount at the floor: it wants to keep "incremental load priced above the marginal cost of serving it" because "spreading fixed costs over a larger sales base places downward pressure on average rates for all customers over time."[^company-above-mc] In other words, as established in Section IV, Rate 6 explicitly aims to preserve some of the cross-subsidy from heat pump to non-heat pump customers.
+
+But the Company's testimony and interrogatory responses do not state or justify why they chose to keep the discount so close to the ceiling. Given the magnitude of overpayment under Rate 1, and the severity of inter-class equity and operating cost problems that result, I do not think this is a defensible choice. Even if the Company wants to set the volumetric upstream distribution rate higher than the marginal upstream distribution cost, the rate should be set much closer to the floor than the Company has done.
+
+In fact, even on the Company's own logic, the current discount may be self-defeating. The Company's stated rationale for keeping rates above marginal cost is that heat pump customers' incremental load, priced above cost, generates surplus revenue that puts downward pressure on rates for everyone. But that mechanism depends on adoption: it only works if customers actually install heat pumps and enroll in Rate 6. As I demonstrated earlier in this section, Rate 6 as designed fails to deliver bill savings for the vast majority of natural-gas-heated customers. A rate that does not make heat pumps pencil out will not drive meaningful adoption — and a rate that does not drive adoption cannot generate the incremental load the Company is counting on to put downward pressure on rates. A deeper discount would make heat pumps economically attractive to far more customers, drive substantially more adoption, and generate more total surplus revenue from incremental load — even at a lower per-kWh margin — than the current design.
+
+[^company-above-mc]: Response to CLF-SC-003(a), Docket No. 26-05-10 (Sept. 3, 2026).
+
+
+[^static-vs-dynamic-mc]: This 0.258 ¢/kWh is a static, class-average marginal cost from the MCOS — a single number applied uniformly to every kWh regardless of when it is consumed. A dynamic marginal cost, by contrast, varies by hour: a kWh consumed during a winter peak hour imposes far higher upstream distribution costs than a kWh consumed on a mild spring afternoon. The hourly marginal cost analysis I present in Section III uses the Company's own upstream distribution cost figure allocated dynamically across peak hours. The static MCOS figure is nonetheless the relevant benchmark here, because it is the number the Company used in its own Rate 6 worksheet to determine the Block 2 discount.
+
+
+<br>
+
+DIST=MC in block 2, threshold = 700kWh
+(edited)
+[3:02 PM]"you discount for dist upstream costs isn't high enough"
+[3:02 PM]2. DIST=MC + TRANS=MC + MFC=0 in block 2, treshhold = 700kWh (edited) 
+[3:03 PM]"but also you forgot to discount two other volumetric rates that people are also overpaying for!!"
+[3:03 PM]3. DIST=MC + TRANS=MC + MFC=0 in block 2, treshhold = personalized
+[3:03 PM]"oh and by the way, even for those discount levels, using a 700kWh threshold is biased against nat gas and low income people"
+
+<!-- COMMENTED OUT: Sections IV–XII (re-enable when all notebooks are ready)
+
+<!-- ============================================================
+  SECTION VI: PROPOSED RATE — the remedy
+  Purpose: present Schedule R-HP, current rates table, proposed
+  rates (TBD), and the revenue-neutrality argument.
+  ============================================================ -->
+
+## VI. Proposed Rate Design: Schedule R-HP
+
+**Q.** What do you propose to address the overcharging of heat pump customers?
+
+**A.** I recommend that CL&P create a new rate schedule, Schedule R-HP, for residential customers with heat pumps. Schedule R-HP would lower the volumetric rates for delivery service (distribution), transmission (Rider 1), and energy efficiency (Rider 8 / EmPOWER Maryland). The rates would be set at a level that eliminates the overpayment I documented in Section III. Generation rates would be **unchanged**, because generation charges already fairly track costs, as I established in Section III.
+
+<br>
+
+**Q.** What are CL&P's residential volumetric rates under Schedule R?
+
+**A.** The following table summarizes CL&P's test-year volumetric rates, under Schedule R, for distribution, transmission, and energy efficiency. For reference, it also shows the average rate for generation, which would remain unchanged under Schedule R-HP.
+
+| Service                             | Current Charge                  |      Schedule R rate       |
+| ----------------------------------- | ------------------------------- | :----------------------------------: |
+| Distribution                        | Core Delivery Service           | `{python} cents(r.rhp_avg_rate_dist)` ¢/kWh |
+| Transmission                        | Rider 1 Transmission Charge     | `{python} cents(r.rhp_avg_rate_tx)` ¢/kWh |
+| Energy Efficiency                   | Rider 8 EmPOWER charge          | `{python} cents(r.rhp_avg_rate_empower)` ¢/kWh |
+| **Total non-generation volumetric** | **---**                         | **`{python} cents(r.rhp_avg_rate_non_gen_total)` ¢/kWh** |
+| Generation                          | Rider 1 Generation Charge       | `{python} cents(r.rhp_avg_rate_gen)` ¢/kWh |
+
+Since these rates changed slightly over the course of the test year, the $/kWh charges shown above are averages of their test-year values.
+
+<br>
+
+**Q.** What would CL&P's residential volumetric rates be under the proposed Schedule R-HP?
+
+**A.** Schedule R-HP would reduce the flat volumetric rates for distribution, transmission, and energy efficiency by component-specific percentages, each calibrated to eliminate the overpayment that the Company currently collects from heat pump customers for that component. The following table contains the proposed Schedule R-HP rates, alongside the existing Schedule R rates for comparison.
+
+| Service                             | Charge                          | Schedule R rate                  | Schedule R-HP rate               | Change                          |
+| ----------------------------------- | ------------------------------- | :--------------------------------: | :--------------------------------: | :-----------------------------: |
+| Distribution                        | Core Delivery Service           | `{python} cents(r.rhp_avg_rate_dist)` ¢/kWh | `{python} cents(r.rhp_rate_dist)` ¢/kWh | `{python} pct(r.rhp_pct_change_dist)` |
+| Transmission                        | Rider 1 Transmission Charge     | `{python} cents(r.rhp_avg_rate_tx)` ¢/kWh | `{python} cents(r.rhp_rate_tx)` ¢/kWh | `{python} pct(r.rhp_pct_change_tx)` |
+| Energy Efficiency                   | Rider 8 EmPOWER charge          | `{python} cents(r.rhp_avg_rate_empower)` ¢/kWh | `{python} cents(r.rhp_rate_empower)` ¢/kWh | `{python} pct(r.rhp_pct_change_empower)` |
+| **Total non-generation volumetric** | **---**                         | **`{python} cents(r.rhp_avg_rate_non_gen_total)` ¢/kWh** | **`{python} cents(r.rhp_rate_non_gen_total)` ¢/kWh** | **`{python} pct(r.rhp_rate_non_gen_total / r.rhp_avg_rate_non_gen_total - 1)`** |
+| Generation                          | Rider 1 Generation Charge       | `{python} cents(r.rhp_avg_rate_gen)` ¢/kWh | `{python} cents(r.rhp_rate_gen)` ¢/kWh | `{python} pct(0)` |
+
+<br>
+
+**Q.** How did you determine the reduction for each component?
+
+**A.** For **EmPOWER Maryland**, I set the rate so that the average fossil-fuel-heated customer's annual EmPOWER bill stays flat after heat pump installation: the average customer would pay approximately the same dollar amount they paid before—`{python} dollar(r.all_fossil_annual_empower_maryland_before)`—spread across their higher post-installation kWh.
+
+For **distribution and transmission**, I lowered each $/kWh rate until the point where multiplying the rate by the customer's new, higher post-heat-pump kWh usage yields the right annual bill — specifically, their pre-installation bill plus the small increment of new T&D costs their heat pump actually causes.
+
+Take distribution as an example. Before installing a heat pump, the average fossil-fuel-heated home pays `{python} dollar(r.all_fossil_annual_distribution_before)` per year in distribution charges. After installation, their heat pump causes `{python} dollar(r.all_fossil_annual_mc_dist_delta)` in additional distribution costs. Under cost-causation principles, their post-installation distribution bill should be `{python} dollar(r.rhp_fair_dist_bill_after)`: everything they were paying before, plus the new costs they cause, and nothing more. To achieve that result, I divide `{python} dollar(r.rhp_fair_dist_bill_after)` by their new annual consumption of `{python} f"{r.all_fossil_annual_kwh_after:,.0f}"` kWh, which gives a rate of `{python} cents(r.rhp_rate_dist)`¢/kWh. The same logic applies to transmission.
+
+Even though the average fossil-fuel-heated home would pay slightly more per year for transmission and distribution under Schedule R-HP after installing heat pumps than before, Schedule R-HP's rates look lower than Schedule R's rates because they are applied to a much larger number of kWh. Nevertheless, the customer is still paying for the same fixed infrastructure costs they paid for before they got the heat pump, as well as for the new infrastructure costs their heat pump actually causes. The lower T&D rates simply ensure the customer is no longer being overcharged for costs they do _not_ cause.
+
+<br>
+
+
+## VII. Impact of Schedule R-HP on Heat Pump Operating Costs
+
+**Q.** Under the proposed Schedule R-HP rates, what would happen to the average natural-gas-heated household’s total annual energy bills when they switch to a heat pump, compared with Schedule R?
+
+**A.** After getting heat pumps, the average natural-gas-heated household's total annual energy bill under schedule R-HP would be `{python} dollar(r.natgas_rhp_savings_dollar)` (`{python} pct(r.natgas_rhp_savings_pct)`) less than if they switched to a heat pump under schedule R.[^source-3bar-natgas]
+
+[^source-3bar-natgas]: Electric and natural gas consumption from NREL ResStock 2024.2 simulation (CL&P-territory natural-gas-heated buildings), bills calculated using CAIRO model with filed Schedule R rates (bars 1–2) and proposed Schedule R-HP rates (bar 3; see @sec-method-rhp). See @sec-method-profiles.
+
+:::{.column-page-inset-right}
+DISABLED: embed notebooks/representative_home.qmd#fig-total-bill-3bar-natgas
+:::
+
+As @fig-total-bill-3bar-natgas shows, under Schedule R-HP, the distribution, transmission, and EmPOWER components of the post-heat-pump electricity bill would shrink — reflecting the lower, cost-causation-based rates described above.
+
+And this bill reduction makes a decisive difference: with access to fair rates, the average natural-gas-heated household in CL&P's territory could save `{python} dollar(r.natgas_rhp_vs_furnace_savings_dollar)` (`{python} pct(r.natgas_rhp_vs_furnace_savings_pct)`) per year by switching to a heat pump, instead of losing `{python} dollar(r.natgas_total_energy_bill_delta)` per year.
+
+**Q.** How would Schedule R-HP affect the average bills of delivered-fuel-heated homes?
+
+**A.** Delivered-fuel-heated households would also see greater post-heat-pump savings. @fig-total-bill-3bar-delivered shows that the average oil- or propane-heated home's total annual energy bill after switching to a heat pump under Schedule R-HP would be `{python} dollar(r.delivered_rhp_savings_dollar)` (`{python} pct(r.delivered_rhp_savings_pct)`) less than if they switched to a heat pump under Schedule R.[^source-3bar-delivered]
+
+[^source-3bar-delivered]: Same methodology as @fig-total-bill-3bar-natgas; delivered fuel consumption from NREL ResStock, bills calculated using CAIRO model with EIA oil/propane prices.
+
+
+:::{.column-page-inset-right}
+DISABLED: embed notebooks/representative_home.qmd#fig-total-bill-3bar-delivered
+:::
+
+Once they stop being overcharged, the average delivered-fuel-heated customer today could save `{python} dollar(r.delivered_rhp_vs_furnace_savings_dollar)` (`{python} pct(r.delivered_rhp_vs_furnace_savings_pct)`) per year by switching to a heat pump.
+
+<br>
+
+**Q.** Under the proposed Schedule R-HP rates, how would post-heat-pump bill impacts vary across the full population of CL&P’s residential customers?
+
+**A.** @fig-bill-change-quadrants-rate-comparison-natgas compares the bill outcomes for natural-gas-heated homes switching to a heat pump under Schedule R versus Schedule R-HP.[^source-quadrants-rate-comparison]
+
+[^source-quadrants-rate-comparison]: NREL ResStock 2024.2 and CAIRO rate simulation, using CL&P's filed Schedule R and proposed Schedule R-HP rates. Gas tariff: Schedule D. See @sec-method-rhp for rate derivation.
+
+<!-- TODO: create CT analysis_bills_only.qmd and re-enable
+:::{.column-page-inset-right}
+DISABLED: embed notebooks/analysis_bills_only.qmd#fig-bill-change-quadrants-rate-comparison-natgas >}}
+::: -->
+
+Under current Schedule R rates, only `{python} pct(b.pct_natgas_hp_bill_decrease_default)` of natural-gas-heated households could lower their total annual energy bills by switching to a heat pump.
+
+Under Schedule R-HP, `{python} pct(b.pct_natgas_hp_bill_decrease_rhp)` would save by switching, and those that still see a bill increase would only lose `{python} dollar(b.mean_natgas_hp_bill_among_increasers_rhp)` on average.
+
+In other words, allowing heat pump customers to stop overpaying would transform the economics of electrification for the `{python} pct(b.pct_customers_natgas)` of CL&P's customers that heat with natural gas. Under Schedule R, installing a heat pump is a coin flip at best: most natural-gas-heated households lose money. Under fair rates, heat pumps become a reliable affordability strategy. The message to homeowners changes from "there's a good chance you're going to pay more if you switch" to "get a heat pump, cut your bills."
+
+
+**Q.** What about delivered-fuel-heated households?
+
+**A.** @fig-bill-change-quadrants-rate-comparison-delivered shows the same comparison for delivered-fuel-heated homes.[^source-quadrants-rate-comparison-delivered]
+
+[^source-quadrants-rate-comparison-delivered]: Same methodology as @fig-bill-change-quadrants-rate-comparison-natgas; delivered-fuel bills use EIA residential heating oil and propane prices.
+
+<!-- TODO: create CT analysis_bills_only.qmd and re-enable
+:::{.column-page-inset-right}
+DISABLED: embed notebooks/analysis_bills_only.qmd#fig-bill-change-quadrants-rate-comparison-delivered >}}
+::: -->
+
+Delivered-fuel households already benefit significantly from switching even under current rates: `{python} pct(b.pct_delivered_hp_bill_decrease_default)` would save, with median annual savings of `{python} dollar(abs(b.median_delivered_hp_bill_increase_default))`. Under Schedule R-HP, those savings grow by an additional `{python} dollar(r.delivered_rhp_savings_dollar)` per year, on average — turning what is already a strong financial case into an overwhelming one. For households heating with oil or propane, a heat pump under Schedule R-HP is not just a climate measure; it is the single largest thing they could do to cut their energy bills.
+
+
+<br>
+
+## VIII. Enrollment: How Customers Get onto Schedule R-HP
+
+**Q.** How would customers be enrolled in the proposed Schedule R-HP?
+
+**A.** I recommend two enrollment channels, both automatic.
+
+**Going forward**, every customer that installs a heat pump should be auto-enrolled in Schedule R-HP at the time of installation. The primary identification mechanism is EmPOWER Maryland, which already funds and tracks heat pump installations. Every customer receiving a heat pump incentive through EmPOWER should be placed on Schedule R-HP automatically upon installation. For installations that happen outside of EmPOWER — for example, self-funded purchases — CL&P should provide an attestation and certification pathway: a simple form the installer or customer submits to confirm a qualifying heat pump was installed.
+
+**For existing heat pump customers**, CL&P should auto-enroll all known electric customers who have previously installed heat pumps. These customers are being overcharged right now. Since the day they installed their heat pump, they have been paying far more than the T&D costs caused by their new load. And these customers are readily identifiable by CL&P particularly in the context of the EmPOWER programs that have made the utilities identify past heat pump incentive recipients. There is no reason to delay correcting this.
+
+
+Both channels should be opt-out, not opt-in. The customer is placed on Schedule R-HP by default and may return to Schedule R if they choose.
+
+<br>
+
+**Q.** Why do you recommend automatic enrollment rather than an opt-in rate?
+
+**A.** Because opt-in rates fail. They require customers to know the rate exists, understand that it would save them money, and take affirmative action to enroll. Most customers never do.
+
+This is not a theoretical concern. Maine's Central Maine Power offered a seasonal heat pump rate on an opt-in basis. Enrollment never exceeded 2% of eligible customers.[^cmp_pilot]
+
+[^cmp_pilot]: Shah, Wagner & Teener, "Designing Better Rates for Heat Pump Customers,"
+RMI (June 17, 2026) [@Designing_better_rates_shah_2026]. CMP's seasonal heat pump rate launched January 2023 with a 5,000-
+customer enrollment cap. Maine had approximately 143,000 heat pumps installed statewide
+by the end of 2024. Even with active marketing, only about 2,100 enrolled.
+
+New York's experience is even more striking. Con Edison has facilitated more than 43,000 heat pump installations through its Clean Heat program, yet as of December 2025, only about 500 households — barely 1% — had enrolled in the utility's opt-in Steady Use Rate, which is designed to save a typical heat pump customer roughly $500 per year.[^coned_steady_use] That is $131 million in cumulative bill savings left on the table over the rate period, simply because customers did not know the rate existed or found the enrollment process confusing.
+
+[^coned_steady_use]: Environmental Defense Fund, Rewiring America & Alliance for a Green Economy, "Con Edison Heat Pump Customers Missing Out on $131 Million in Bill Savings" (July 9, 2025) [@edfrewiringagree_ConEdisonHeat_2025]. Enrollment figure of ~500 as of December 2025 reported in Mona Zhang, "How NY heat pump users got stuck with higher bills," E&E News (March 3, 2026) [@HowNYHeatPumpUsersGotStuckWithHigherBills_Zhang_2026].
+
+The goal of offering heat pump rates by creating Schedule R-HP is to eliminate the existing cross-subsidy between heat pump customers and fossil-heating customers, and to prevent customers newly installing heat pumps from overpaying in the first place. But creating a new rate schedule does not solve the problem — it has to be adopted at scale.
+
+Massachusetts avoided the opt-in trap entirely by building auto-enrollment into its heat pump rate from the start. In DPU 25-08, the Massachusetts Department of Public Utilities approved a lower heat pump rate for the state's three investor-owned electric utilities — Eversource, Unitil, and National Grid.[^ma_hp_rate] Customers who install heat pumps through Mass Save — the state's ratepayer-funded efficiency program — are automatically enrolled at the time of installation. For customers who installed heat pumps before the program existed, Massachusetts uses an attestation process.
+
+[^ma_hp_rate]: The Massachusetts DPU maintains an overview of the seasonal heat pump rates and enrollment procedures for all three IOUs at @dpu_ResidentialElectricSeasonal_2025.
+
+We know that opt-in rates get low enrollment; the Company can and must design a better enrollment mechanism: automatic enrollment through EmPOWER. Every heat pump customer who is _not_ enrolled continues to be overcharged by the full amount every year.
+
+<br>
+
+**Q.** Could automatic enrollment cause some heat pump customers to see higher bills?
+
+**A.** No, because Schedule R-HP is designed so that every heat pump customer pays less than they would under Schedule R. By simply lowering Schedule R's existing flat rates, no heat pump customer would be made worse off by being placed on R-HP.
+
+This is the key link between rate design and enrollment. A rate that only _lowers_ charges can be safely applied to all heat pump customers without risk of adverse bill impacts. If the rate raised some charges and lowered others — for example, a higher fixed charge paired with a lower volumetric rate — some customers could see higher bills in certain months. The flat volumetric reduction avoids this entirely: there are no structural losers.
+
+A rate design that only lowers charges unlocks auto-enrollment, but it necessarily constrains eligibility: it must be a tech-specific rate, rather than one available to all residential customers. A lower rate is justified for heat pump customers: as covered in section III, they are structural "high-usage" customers who would otherwise overpay. A lower rate available to all customers would simply lower the bills of anyone who enrolled, which would create a revenue shortfall under heavy enrollment.
+
+I believe this is the right trade-off. A rate that can be safely auto-enrolled to every eligible customer, even if restricted to a defined population, will reach far more people and thus have a fundamentally bigger impact than an optional rate with a revenue-neutral design (like a high fixed charge) that is available to all customers but requires them to discover it, evaluate it, and opt in.
+
+<br>
+
+**Q.** Why is it important to auto-enroll existing heat pump customers, not just new ones?
+
+**A.** Because enrolling only new customers stops the cross-subsidy from getting bigger, but it does not fix it for the customers who are already bearing it.
+
+If the Commission only enrolls new heat pump customers going forward, every customer who has _already_ installed a heat pump continues to be overcharged by the full amount, indefinitely — unless they opt in on their own, which as I have discussed, many of them will not. The per-household stakes are substantial: `{python} dollar(r.all_fossil_annual_total_overcharge)` per year in combined T&D and EmPOWER overcharges. These are real dollars being transferred from heat pump customers to fossil-heating customers every year, and they have been accumulating since the day each customer installed their heat pump.
+
+CL&P and EmPOWER have records of past heat pump incentive recipients. For customers who installed heat pumps outside of incentive programs, an attestation process — as Massachusetts uses — can identify them. Auto-enrollment of existing heat pump customers is what makes this proposal a genuine fix rather than a half-measure.
+
+
+<br>
+
+## IX. Why Schedule RD Does Not Solve the Problem
+
+**Q.** CL&P already offers a time-of-use rate (TOU), Schedule RD. What is Schedule RD, and why was it created?
+
+**A.** Schedule RD is CL&P's residential time-of-use distribution rate. It emerged from Public Conference 44 ("PC44"), the Commission's multi-year rate design investigation into time-varying rates. The core idea is straightforward: electricity is cheaper to generate during off-peak hours, and grid infrastructure is sized to meet peak demand — so if customers can be induced to shift consumption away from peak hours, they can access cheaper energy _and_ defer expensive capacity investments in generation, transmission and distribution. TOU rates incentivized this load shifting through price signals: higher rates during a daily block of on-peak hours, lower rates off-peak. CL&P piloted Schedule RD from 2019 to 2021, and the Commission subsequently made it available to all residential customers with a smart meter on an opt-in basis.[^pc44-origin]
+
+
+Schedule RD's on-peak periods are weekdays from 3pm to 8pm in summer (June–September) and weekdays from 6am to 9am and 5pm to 9pm in winter (October–May). All other hours — nights, weekends, and holidays — are off-peak.
+
+In this rate case, CL&P proposes the following delivery rates:[^karas-rd]
+
+| | Customer Charge | Delivery Rate |
+|---|---|---|
+| **Schedule R** (flat) | $11.00/month | $0.05699/kWh (all hours) |
+| **Schedule RD** (on-peak) | $11.00/month | $0.10733/kWh |
+| **Schedule RD** (off-peak) | | $0.04291/kWh |
+
+Unlike Schedule RL, the Company's legacy time-of-use rate, which only time-varied generation and transmission charges, schedule RD also includes distribution.
+
+Schedule RD's distribution rates are designed to be revenue-neutral to Schedule R's: the same number of customers consuming the same total kWh would produce the same total distribution revenue under either schedule. The time-varying prices simply redistribute the collection across hours.
+
+[^pc44-origin]: The PC44 Rate Design workgroup report was filed January 31, 2018 (Maillog No. 218934) [@sergici_PC44TimeUse_]. The Brattle Group's evaluation of the two-year CL&P pilot, filed October 4, 2021, found that participating customers reduced summer weekday peaks by 9.3% and winter weekday peaks by 4.9%.
+
+[^karas-rd]: Direct Testimony of Julia A. Karas, CL&P Exhibit JAK-1, Sheet E-13 [@karas_Docket988Direct_2026]. Schedule RD rates use a 60/40 split of primary distribution system costs into the on-peak and off-peak periods, consistent with Commission Order No. 91917.
+
+<br>
+
+**Q.** Why might some expect time-of-use rates like Schedule RD to solve the overcharge on heat pump customers?
+
+**A.** The overcharge I documented in Section III arises because heat pump customers' incremental T&D bills exceed their incremental new T&D costs. This happens because new T&D costs are only caused by usage during a small number of peak hours, but flat volumetric T&D rates charge usage in every kWh the same — as if every hour contributed equally to infrastructure costs. So a customer who adds many kWh, most of them during non-peak hours, overpays.
+
+By charging a higher rate during the on-peak period—the times of day that peak hours are more likely to occur — and a lower rate off-peak, it seems that a time-of-use rate like Schedule RD _should_ narrow the gap between what heat pump customers pay and the costs they actually impose. But as I will show, it does not.
+
+
+<br>
+
+**Q.** Does Schedule RD eliminate the T&D overcharge on heat pump customers?
+
+**A.** No. I established in Section III that the fossil-fuel-heated home installing a heat pump causes an average of `{python} dollar(r.all_fossil_annual_mc_delivery_after - r.all_fossil_annual_mc_delivery_before)` in new T&D costs per year, but pays `{python} dollar(r.all_fossil_annual_delivery_charges_delta)` more in T&D charges under Schedule R — an overpayment of `{python} dollar(r.all_fossil_annual_delivery_charges_delta - (r.all_fossil_annual_mc_delivery_after - r.all_fossil_annual_mc_delivery_before))` per year. @fig-cost-vs-charge-delta-all-fossil-rd-current shows what happens when the same home switches to Schedule RD instead.[^source-rd-cost-vs-charge]
+
+[^source-rd-cost-vs-charge]: CL&P hourly residential kWh (CCANDR 1-11, Attachment 1) applied to filed Schedule RD distribution rates and Rider 1 TOU transmission rates. Marginal costs from the same hourly MC schedule as Section III. See @sec-method-mc and @sec-method-incremental.
+
+:::{.column-page-inset-right}
+DISABLED: embed notebooks/representative_home.qmd#fig-cost-vs-charge-delta-all-fossil-rd-current
+:::
+
+Under Schedule RD, the overpayment falls by only `{python} pct(1 - r.rd_current_overpayment / (r.all_fossil_annual_delivery_charges_delta - (r.all_fossil_annual_mc_delivery_after - r.all_fossil_annual_mc_delivery_before)))` compared to Schedule R — from `{python} dollar(r.all_fossil_annual_delivery_charges_delta - (r.all_fossil_annual_mc_delivery_after - r.all_fossil_annual_mc_delivery_before))` to `{python} dollar(r.rd_current_overpayment)` per year.
+
+Because the overpayment largely remains in place, Schedule RD suffers from the same problem as Schedule R: it maintains the cross-subsidy between heat pump customers and fossil-fuel-heated customers, which continues to violate intra-class equity, and it causes fossil-heating customers to lose money (or save less money than they should) by switching, which hurts heat pump adoption and therefore undermines the state's building decarbonization policies.
+
+<!--
+
+:::{.column-page-inset-right}
+DISABLED: embed notebooks/representative_home.qmd#fig-total-bill-4bar-natgas
+:::
+
+@fig-bill-change-quadrants-rd-vs-r-natgas compares the distribution of bill changes for natural-gas-heated homes switching to a heat pump under Schedule RD versus Schedule R. The baseline for both bars is the same: the household's total annual energy bill under Schedule R before the retrofit.
+
+:::{.column-page-inset-right}
+DISABLED: embed notebooks/analysis_bills_only.qmd#fig-bill-change-quadrants-rd-vs-r-natgas >}}
+:::
+
+@fig-bill-change-quadrants-rd-vs-r-delivered shows the same comparison for delivered-fuel-heated homes.
+
+:::{.column-page-inset-right}
+DISABLED: embed notebooks/analysis_bills_only.qmd#fig-bill-change-quadrants-rd-vs-r-delivered >}}
+:::
+
+@fig-bill-change-quadrants-rd-vs-rhp-natgas compares Schedule RD to the proposed Schedule R-HP for natural-gas-heated homes.
+
+:::{.column-page-inset-right}
+DISABLED: embed notebooks/analysis_bills_only.qmd#fig-bill-change-quadrants-rd-vs-rhp-natgas >}}
+:::
+
+@fig-bill-change-quadrants-rd-vs-rhp-delivered shows the same RD versus R-HP comparison for delivered-fuel-heated homes.
+
+:::{.column-page-inset-right}
+DISABLED: embed notebooks/analysis_bills_only.qmd#fig-bill-change-quadrants-rd-vs-rhp-delivered >}}
+::: -->
+
+<br>
+
+**Q.** Why does Schedule RD not eliminate the overcharge, even though it charges less during the hours of the day when peak costs are less likely to occur?
+
+**A.** Because being more cost-reflective on _time_ does not solve overcollection on _volume_.
+
+To explain, consider that TOU rates and heat pump rates solve fundamentally different problems:
+
+1. TOU rates address **economic efficiency**: they give customers price signals that incentivize shifting consumption away from hours when energy is expensive and capacity investment is most likely to be triggered. That is a valuable goal, and Schedule RD is designed to pursue it. But it is not the problem I have identified in this testimony.
+
+2. The overcharge on heat pump customers is an **intra-class equity** problem. It arises because fixed infrastructure costs — specifically, distribution and transmission capacity — are recovered through volumetric rates that charge every kWh as though it contributed equally to those costs. High-usage customers overpay; low-usage customers underpay. That structural problem persists whether the volumetric rate is flat or time-varying.
+
+To see why, consider what Schedule RD's on-peak period actually contains. The on-peak window is 5 hours per weekday in summer and 7 hours per weekday in winter (split across a morning and evening block). Over a full year, that is roughly 1,650 on-peak hours — but the grid's actual capacity constraint — the peak hours that drive new distribution and transmission investment — binds during perhaps 50 to 100 of those hours per year. Schedule RD charges $0.10733/kWh for _every_ on-peak kWh, treating a kWh consumed at 3pm on a mild September Wednesday the same as a kWh consumed at 5pm on the hottest day of the year. Only the latter drives capacity investment.
+
+The result is that Schedule RD, like Schedule R, spreads capacity costs across far more kWh than actually cause those costs. A customer who adds many on-peak kWh — most of which fall in non-constraining hours — still overpays for the capacity embedded in the on-peak rate, just as they would overpay under a flat rate. The overcollection is redistributed across fewer hours, but it is not eliminated.
+
+Heat pump customers are exactly these customers. Their winter electricity consumption adds many kWh during the winter on-peak window (weekdays 6am–9am), but as I showed in Section III, there are very few peak hours in winter that drive distribution or transmission capacity costs. The on-peak rate charges them for every one of those hours as if they were causing new T&D costs, when they are not.
+
+This is the same structural problem that Company witness Karas identified: volumetric rates overcollect from high-usage customers when the costs being recovered are capacity-driven rather than energy-driven. Varying the volumetric rate by time of day does not fix that — it rearranges _which_ hours bear the overcollection, but the total overcollection from high-usage customers, and therefore from heat pump customers as a class, remains.
+
+<br>
+
+**Q.** Is it possible to design a TOU rate that would eliminate the overcharge on heat pump customers?
+
+**A.** In principle, yes, but there are only two paths:
+
+The first path is to raise the fixed charge high enough that volumetric T&D rates no longer need to recover as much fixed infrastructure cost. If the customer charge absorbed most of the T&D-related revenue requirement, the volumetric rate would carry far less of the fixed-cost burden, and the overcollection on high-usage customers would shrink. But as I discuss in Section X, the required increase in the fixed charge would be substantial — affecting every residential customer, not just heat pump customers — and would be regressive without income-graduated protections.
+
+The second path shares the same general approach as Schedule R-HP: lower the volumetric T&D rates for heat pump customers specifically, through a tech-specific rate. Instead of lowering a flat rate, one could lower the on-peak and off-peak TOU rates proportionally. The mechanism is the same — reduce per-kWh charges so that high-usage customers are no longer overcollected from — and the restriction to heat pump customers is the same, in order to avoid a revenue shortfall from lower-usage customers joining the rate, and because heat pump customers face a structural overcharge that justifies the lower rates.
+
+As discussed in Section X, we recommend that the Commission fix the intra-class equity problem now with whatever tech-specific rate they feel comfortable auto-enrolling heat pump customers onto. A flat heat pump rate with lower volumetric charges (for transmission, distribution, and EmPOWER) is easy for customers to understand and accept, and would guarantee bill savings for 100% of heat pump customers. A time-of-use heat pump rate with lower time-varying volumetric charges (for those same line items) would be superior in the sense that it could simultaneously address economic efficiency and intra-class equity, but it would be more complex to understand, and a small share of heat pump customers might see higher bills than under Schedule R (if they have unusually high usage during the on-peak period).
+
+<br>
+
+## X. Discussion of Alternative Rate Designs
+
+**Q.** The heat pump rate you propose in Schedule R-HP is a flat design, simply lowering transmission, distribution, and EmPOWER rates at all hours of the year. Are there other rate designs that can eliminate the cross-subsidy?
+
+**A.** Yes, and I considered several before arriving at this recommendation. But any viable solution must solve two problems simultaneously: the **overpayment problem** — by stopping the overcollection of transmission/distribution/EmPOWER revenue from heat pump customers — and the **enrollment problem** — ensure that the customers who are actually being overcharged are actually on the rate that fixes it. These two constraints significantly narrow the design space.
+
+There are two broad categories of solutions: **default rate redesign**, which changes Schedule R for all residential customers, and **tech-specific rates**, which create a new schedule for heat pump customers only. Each approach has different strengths and weaknesses on the overpayment and enrollment dimensions. I will discuss each in turn.
+
+<br>
+
+**Q.** Could the cross-subsidy be eliminated by redesigning Schedule R?
+
+**A.** The main virtue of this approach is that it solves the enrollment problem directly: if you managed to eliminate the overpayment by redesigning Schedule R, the vast majority of residential customers are already on this rate, so you would fix the problem at scale without requiring anyone to change anything.
+
+The difficulty is that the main lever for reducing the overpayment within Schedule R is raising the fixed charge. Raising the customer charge shifts revenue recovery away from volumetric rates, which reduces the per-kWh overcollection on high-usage customers. This is not a new idea — it follows directly from Company witness Karas's own testimony that "[i]ntra-class inequities are created when fixed costs are not recovered through fixed charges."[^karas-intra-class-2]
+
+The problem is magnitude. To eliminate the heat pump overpayment by redesigning Schedule R, the volumetric rates for distribution, transmission, and EmPOWER Connecticut would have to be scaled down until the increase in those charges after a home switches to electric heating matches the increase in T&D costs the home actually causes. That requires reducing those volumetric rates by `{python} pct(fc.volumetric_rate_reduction)`. To keep residential-class revenue unchanged, the average monthly fixed charge would then have to rise from `{python} dollar(fc.original_fixed_charge, accuracy=2)` to `{python} dollar(fc.fixed_charge, accuracy=2)` — an increase of `{python} dollar(fc.fixed_charge_delta, accuracy=2)` per month.
+
+This is a massive change that would affect every residential customer, not just heat pump customers, and would be regressive to low-income households unless paired with an income-graduated structure.
+
+To put that in perspective, the Company's own ECOSS supports a customer charge of $19.55 per month for Schedule R, yet in this case the Company proposes moving it from $10.00 to just $11.00 — a $1.00 step toward a $9.55 gap, in the name of gradualism.[^karas-cc] At that pace, the fixed charge would not approach the level needed to eliminate the heat pump cross-subsidy for many decades to come.
+
+[^karas-cc]: Direct Testimony of Julia A. Karas, Company Exhibit JAK-1 [@karas_Docket988Direct_2026]. The ECOSS-supported customer-related cost of `$19.55` is from the combined R/RL class in the 2024 ECOSS (Manuel Direct).
+
+
+[^karas-intra-class-2]: Direct Testimony of Julia A. Karas, Company Exhibit JAK-0 [@karas_Docket988Direct_2026] Lines 8:13-14. Full quote reproduced in Section III of this testimony.
+
+<br>
+
+**Q.** What about the tech-specific approach? What design levers does it offer, and why?
+
+**A.** A tech-specific rate opens an additional lever that the default rate does not have: simply lowering volumetric charges for a defined population. Within the default rate, the only way to reduce overcollection is to raise the fixed charge, shifting revenue recovery away from per-kWh rates. That approach would also work for a rate that would only be accessible to heat pump customers.
+
+Within a tech-specific rate, there is a second option: keep the customer charge the same and simply lower the per-kWh delivery rates for heat pump customers. If the overcollection problem arises from the application of volumetric rates _designed for the average electric customer_ to a subclass of residential customers with structurally _above-average_ usage, then simply lowering the volumetric rates for that population reduces overcollection from that population. Put another way, instead of fundamentally changing the rate design for Schedule R, you can simply recalibrate it, by designing the volumetric rate component for the average heat pump customer, rather than the average electric customer.
+
+<br>
+
+**Q.** How does the choice between these two kinds of tech-specific rates affect how they can solve the enrollment problem?
+
+**A.** Unlike redesigning Schedule R, a tech-specific rate does not solve enrollment automatically — customers must enroll onto it. And as I showed in Section VIII, auto-enrollment is a realistic solution to reaching meaningful participation.
+
+I am working under the assumption that the Commission is more likely to approve auto-enrollment if the rate design guarantees that no enrolled customer is made worse off.
+
+A version of Schedule R-HP with a very high fixed charge would cause a minority of heat pump customers — particularly lower-usage ones — to see higher bills in certain months. Lower volumetric rates guarantee the opposite: every enrolled customer either saves or pays the same in a given month, depending on the design, but no customer pays more in any month.
+
+In other words, tech-specific heat pump rates with lower volumetric charges would allow the Commission to achieve the benefits of auto-enrollment without paying the cost of creating structural losers.
+
+<br>
+
+**Q.** Are there different ways to structure the lower volumetric charges under a tech-specific rate?
+
+**A.** Yes. There are three main designs, each of which can eliminate the overpayment (if properly calibrated):
+
+1. **Flat** — lower all non-generation volumetric rates by whatever percentage is needed to eliminate the annual overpayment. The rates would still be flat, so they would be the same for every hour of the year. This is what I propose.
+2. **Seasonal** — leave the summer rate unchanged and lower only the winter rate, or lower them both but by different amounts. This is how Massachusetts has designed their heat pump rates.
+3. **Time-of-use** — lower both on-peak and off-peak rates from their levels under Schedule RD, layering TOU price signals onto the tech-specific reduction.
+
+All three solve the overpayment problem as long as the resulting per-kWh rates are set low enough to stop overcollecting from the average heat pump customer.
+
+
+I'll discuss the costs and benefits of each design in turn.
+
+<br>
+
+**Q.** Given these options, why do you propose a flat tech-specific rate?
+
+**A.** Because it solves both the overpayment and enrollment problems with the simplest available design. It eliminates the overcharge, guarantees savings for every enrolled customer, and is simple enough that customers, the Commission, and the Company can all verify that it works.
+
+<br>
+
+**Q.** Would you support a seasonal tech-specific rate if the Commission prefers it?
+
+I would support a seasonal design if the Commission prefers it. A seasonal rate has two main benefits:
+
+1. Seasonal rates are targeted: as we saw in Section III, most of the overcollection occurs during winter. Lowering rates in winter reduces overcollection from the season where most of it occurs, rather than year round.
+2. Seasonal rates promote bill stability: winter is when new heat pump customers see their electric bills rise most sharply — the heat pump replaces a gas furnace, so electricity consumption increases significantly during heating months. A seasonal rate concentrates the bill relief in exactly those months, smoothing out the seasonal bill shock that might otherwise discourage adoption or cause customers to question whether the heat pump was a good investment (even if they are saving money by switching overall).
+
+Designing a seasonal heat pump rate correctly requires satisfying three conditions:
+
+1. The seasonal rate must _lower_ what heat pump customers pay annually. Some seasonal designs try to maintain revenue-neutrality for heat pump customers by lowering the winter rate but raising the summer rate, which merely shifts overcollection between seasons.
+2. The seasonal rate must lower what heat pump customers pay annually _by a sufficient amount to eliminate the overpayment_. Reducing the winter rate by 1 c/kWh, for example, would be a half-measure.
+3. While rates in both seasons can be lowered—the reduced revenue collection doesn't all have to concentrate in winter—neither season's rates should be set higher than that in Schedule R, as that could produce structural losers, thus complicating auto-enrollment, even if the rate satisfies the first two conditions.
+
+
+
+<br>
+
+**Q.** Why do you not recommend the other approaches you discussed?
+
+**A.** While each of the alternatives I have discussed in this section could eliminate the overpayment problem in theory, in practice their costs create a significant risk of producing a symbolic outcome that leaves the cross-subsidy largely intact.
+
+A **redesigned Schedule R** would require raising the fixed charge by an amount I do not believe the Commission is prepared to approve in this case, particularly without introducing income-graduation to avoid regressive impacts.
+
+A **tech-specific rate with a high fixed charge** could strike customers as unfamiliar and would create structural losers among lower-usage heat pump customers, complicating auto-enrollment. And without auto-enrollment, creating an optional heat pump rate (that almost no customers opt into) risks allowing stakeholders to claim victory without having any meaningful impact on the problem.
+
+A **tech-specific TOU rate** does not solve the overcollection problem on its own, as I demonstrated in Section IX — it would need significantly lower volumetric rates than Schedule RD (or higher fixed charges) to actually eliminate the overcharge. The TOU option would also add complexity and may create structural losers. Unless the Commission is prepared to create a properly designed tech-specific TOU rate with rates low enough to eliminate the overcharge, auto-enroll all heat pump customers onto it, and do so in a timely fashion, this route risks allowing the perfect to become the enemy of the good.
+
+<br>
+
+## XI. Data Sources
+
+**Q.** What data sources did you rely on for the analysis in this testimony?
+
+**A.** My analysis draws on five categories of data:
+
+1. **Company data.** Hourly and monthly residential electricity consumption provided by CL&P in discovery, which I used to construct the representative-home load profiles, bill calculations, and cost-of-service comparisons for a typical fossil-fuel-heated customer before and after installing a heat pump.
+2. **Filed electric rates.** CL&P's currently filed Schedule R, Schedule RD, and Rider 1 Standard Offer Service tariffs, which I applied to the consumption data to compute electricity bills under each rate structure.
+3. **Hourly transmission and distribution cost inputs.** The annualized cost of new bulk transmission and distribution capacity, allocated to specific hours of the year using a probability-of-peak methodology, which I used to identify when customer consumption drives new infrastructure investment.
+4. **NREL ResStock building simulations.** A statistically representative sample of residential buildings in CL&P's service territory, modeled under both current heating systems and a heat pump retrofit. I applied two load curve corrections before billing (see load curve adjustments below), then computed electricity bills from each building's hourly load profile using CAIRO (described below), and used the results for the population-level bill-change analysis.
+5. **Fossil fuel prices.** CL&P's gas Schedule D tariff and the U.S. Energy Information Administration's monthly residential heating oil and propane prices, which I used to compute the non-electric portions of households' total energy bills.
+
+<br>
+
+**Q.** What Company data did you use, and which figures did it produce?
+
+**A.** CL&P provided residential electricity consumption data in two discovery responses, broken down by electric-heating and non-electric-heating customers. I used the non-electric-heating consumption as the "before" profile (representing a typical fossil-fuel-heated home) and the electric-heating consumption as the "after" profile (representing a home after installing a heat pump). The methodology section below describes how I constructed these profiles and the approximations involved.
+
+I relied on two Company data sources:
+
+- **Hourly consumption.** CCANDR 1-11, Attachment 1, which provides hourly metered kWh for calendar year 2024.[^ccandr111] I used this data to determine the hourly pattern of residential consumption — specifically, to identify how much of each month's consumption falls during the peak hours that drive new transmission and distribution costs.
+- **Monthly consumption.** CCANDR 1-04, Attachment 1, which contains monthly kWh sales for the test year April 2025 through March 2026, broken down by heating and non-heating customers for Schedules R and RL.[^ccandr104] I used these monthly totals for the bill calculations and monthly load profile charts throughout my testimony.
+
+[^ccandr104]: CCANDR01-04 requested residential customer counts, total electricity consumption, and total electric delivery revenue by heating source for the test year. The Company provided this data for its heating and non-heating subclass designations for Schedules R and RL.
+
+[^ccandr111]: The Company was unable to provide hourly interval data for 2025 or 2026, stating that "study-quality load data requires multiple processing and validation steps" that "are performed exclusively for the development of cost of service studies," with "2024 being the most recent calendar year for which these processes were performed." The Company directed us to CCANDR01-11 Attachment 1, which provides the hourly data for calendar year 2024.
+
+This Company data is the consumption basis for the representative-home analysis in Sections III through VIII. The monthly sales from CCANDR 1-04 produce the bar heights in the monthly load profile charts (@fig-monthly-load-all-fossil-before-vanilla, @fig-monthly-load-all-fossil-vanilla, @fig-monthly-load-all-fossil-before, and @fig-monthly-load-all-fossil) and the bill calculations in the bill component breakdowns (@fig-annual-bill-components-all-fossil-before and @fig-annual-bill-components-all-fossil) and the cost-versus-charge comparisons (@fig-cost-vs-charge-delta-all-fossil and @fig-cost-vs-charge-delta-all-fossil-rd-current). The hourly data from CCANDR 1-11 produces the peak-hour overlays in @fig-monthly-load-all-fossil-before and @fig-monthly-load-all-fossil, and underlies the seasonal marginal cost charts (@fig-seasonal-mc-all-fossil-before and @fig-seasonal-mc-all-fossil-comparison).
+
+Because the Company did not provide hourly metered data for the test year, my analysis draws on two consumption bases from the Company data. The monthly sales (test year, April 2025 through March 2026) are the basis for bill calculations, in which monthly kWh is multiplied by the Company's filed volumetric rates. The hourly metered data (calendar year 2024) is the basis for identifying peak hours and computing household level marginal transmission and distribution costs, which require hourly resolution.
+
+<br>
+
+**Q.** What rate data did you use?
+
+**A.** All rate inputs to my analysis are from CL&P's currently filed tariffs.
+
+For **Schedule R**, I used the component rates (customer charge, distribution, transmission, EmPOWER surcharge, generation, and environmental surcharge) as published for the rate year April 2025 through March 2026, retrieved from the Arcadia (formerly Genability) tariff database.[^genability]
+
+[^genability]: Arcadia Signal API, CL&P Schedule R (masterTariffId 674). Arcadia maintains a continuously updated database of U.S. electric utility tariffs sourced from utility filings.
+
+For **Schedule RD**, I used the currently filed distribution rates — on-peak at `$0.08874`/kWh and off-peak at `$0.03736`/kWh (Rate Year 3, effective January 1, 2026) — from CL&P's tariff book, P.S.C. Md. — E-6, Schedule RD, Sheet 37 (Supplement 749).[^sched-rd-tariff]
+
+[^sched-rd-tariff]: CL&P tariff, P.S.C. Md. — E-6, Schedule RD, Sheet 37 (Supplement 749, filed April 16, 2026, effective June 1, 2026).
+
+For the **supply component** of Schedule RD bills, I used the time-of-use generation and transmission rates from CL&P's filed Rider 1 Standard Offer Service tariff, Sheet 77-A (Supplement 751, effective June 1, 2026).[^rider1-sos]
+
+[^rider1-sos]: CL&P tariff, P.S.C. Md. — E-6, Rider 1, Sheet 77-A (Supplement 751, filed May 18, 2026, effective June 1, 2026).
+
+<br>
+
+**Q.** What data did you use for the hourly transmission and distribution costs?
+
+**A.** I constructed hourly marginal delivery costs from two inputs:
+
+For **distribution**, I used the Brattle Group's avoided distribution cost of `$32`/kW-year (in 2022 dollars), as reported in CL&P's direct testimony in Case No. 9692 [@CL&P_Docket9692Direct_2023].[^brattle-dist] I adjusted this figure to 2025 dollars using the Consumer Price Index [@fred_ConsumerPriceIndexAll_2025].
+
+[^brattle-dist]: See [p. 138](https://www.documentcloud.org/documents/28269392-001-2-CL&P-myp-2-case-direct-testimony-final-w-att/#document/p138/a2821808) of CL&P's direct testimony, Case No. 9692.
+
+For **bulk transmission**, I used the PJM Network Integration Transmission Service (NITS) rate for the CL&P zone [@pjm_NetworkIntegrationTransmission_2025].
+
+I allocated each annualized cost to the specific hours of the year most likely to drive new capacity investment, using a probability-of-peak approach. For bulk transmission, costs are concentrated in the top 150 hours of highest PJM system load in the CL&P zone, following the Peak Capacity Allocation Factor (PCAF) framework described in E3's *ICC-VDER Report* [@debenedictis_ValueCompensationDistributed_2025].[^e3-pcaf] For distribution, costs are concentrated in the top 100 hours of highest local load using the same load-weighted allocation method. The hourly PJM zonal load data used for both allocations comes from PJM's Data Miner 2 [@pjm_DataMiner2Metered_2025].
+
+[^e3-pcaf]: The PCAF methodology allocates capacity costs to the top hours of system load, weighted by probability of being the peak hour. See also PJM, *Manual 27: Open Access Transmission Tariff Accounting*, which describes PJM's NITS rate calculation and zonal load data.
+
+The resulting hourly cost profiles are shown in @fig-mc-heatmap-bulk-tx (bulk transmission) and @fig-mc-heatmap-dist-sub-tx (distribution). These hourly costs also underlie the peak-hour overlays and seasonal cost breakdowns in @fig-monthly-load-all-fossil-before through @fig-cost-vs-charge-delta-all-fossil, and in @fig-cost-vs-charge-delta-all-fossil-rd-current.
+
+<br>
+
+**Q.** What is ResStock, and which figures did it produce?
+
+**A.** ResStock is the End-Use Load Profiles dataset produced by the National Renewable Energy Laboratory (NREL), the U.S. Department of Energy's primary laboratory for energy efficiency and renewable energy research [@nrel_EndUseLoadProfiles_2024; @nrel_ResStock20242Release_2024]. I used the 2024.2 release of the dataset.
+
+ResStock models a statistically representative sample of the U.S. housing stock. Each modeled dwelling has physical characteristics — square footage, insulation levels, HVAC equipment, and local climate — drawn from federal survey data. Its energy consumption is simulated hour-by-hour using the DOE's EnergyPlus building energy simulation engine. For each home, ResStock provides a baseline scenario (with the home's existing heating system) and a heat pump retrofit scenario (in which the home is equipped with a cold-climate air-source heat pump), each with a complete 8,760-hour energy consumption profile covering electricity, natural gas, heating oil, and propane.
+
+Before running the bill analysis, I applied two corrections to ResStock's simulated load curves.
+
+First, a **multifamily non-HVAC electricity correction.** ResStock systematically overstates electricity consumption for multifamily buildings, driven by inflated non-HVAC end uses (plug loads, lighting, appliances). The overstatement grows with a utility's share of multifamily housing. I corrected this by scaling each multifamily building's non-HVAC electricity consumption to match the single-family per-square-foot benchmark for each end use. HVAC loads were left unchanged.
+
+Second, an **air-leakage (ACH50) infiltration correction.** ResStock assigns building air-leakage rates from a database that systematically overestimates infiltration relative to field measurements, inflating simulated heating and cooling loads.[^chan-ach50] I corrected this by benchmarking each building's assigned air-leakage rate against the empirical regression of Chan et al., which predicts expected leakage from housing characteristics (vintage, climate zone, floor area, building height), and scaling HVAC loads proportionally within each heating-type group (heat pump, electric resistance, natural gas, delivered fuels). The correction applies to electric heating, gas heating, and electric cooling loads. Non-HVAC loads were unaffected.
+
+[^chan-ach50]: [@chan_AnalysisAirLeakage_2013a].
+
+I used ResStock for the population-level bill-change analysis, in which I computed total energy bills for each of the `{python} f"{b.n_resstock_bldgs:,}"` CL&P-territory buildings, under both their baseline heating system and a heat pump retrofit, and reported the share of households whose bills would increase or decrease. These results appear in @fig-bill-change-quadrants-default-natgas, @fig-bill-change-quadrants-default-delivered, @fig-bill-change-quadrants-rate-comparison-natgas, and @fig-bill-change-quadrants-rate-comparison-delivered. I used CAIRO — the Customer Affordability, Incentives, and Rates Optimization model, a rate simulation engine developed by the National Laboratory of the Rockies (formerly NREL)[^cite-cairo] — to compute each building's electricity bills. CAIRO takes a building's hourly electricity load profile and a tariff structure as inputs, and computes the resulting bill, including fixed charges, volumetric charges, and demand charges where applicable.
+
+[^cite-cairo]: [@nrel_CustomerAffordabilityIncentives_2026].
+
+For the natural gas and delivered subpopulation charts (@fig-total-bill-before-after-natgas, @fig-total-bill-before-after-delivered, @fig-total-bill-3bar-natgas, and @fig-total-bill-3bar-delivered), both the electric and fossil fuel portions derive from ResStock consumption data, with bills computed by CAIRO. The representative-home analysis in Section III uses the Company data described above.
+
+<br>
+
+**Q.** What fossil fuel price data did you use?
+
+**A.** For natural gas, I applied the rates from CL&P's gas Schedule D tariff to each household's monthly gas consumption from ResStock. For heating oil and propane, I used the U.S. Energy Information Administration's monthly residential price series [@eia_HeatingOilPropanePrices_2024]. These fuel prices appear in all figures that show total energy bills: @fig-total-bill-before-after-natgas and @fig-total-bill-3bar-natgas (natural gas component), @fig-total-bill-before-after-delivered and @fig-total-bill-3bar-delivered (oil and propane components), and the population bill-change charts @fig-bill-change-quadrants-default-natgas, @fig-bill-change-quadrants-default-delivered, @fig-bill-change-quadrants-rate-comparison-natgas, and @fig-bill-change-quadrants-rate-comparison-delivered.
+
+
+### Methodology
+
+#### Representative home profiles {#sec-method-profiles}
+
+<br>
+
+**Q.** How did you construct the before-and-after electricity consumption profiles used in Section III?
+
+**A.** I used CL&P's residential electricity consumption data, provided in discovery, which contains hourly and monthly kWh broken down by electric-heating and non-electric-heating customers.
+
+For the **"before" profile** — representing a typical home that heats with fossil fuels — I computed a representative home by averaging the electricity consumption of CL&P's non-electric-heating residential customers (Schedules R and RL, excluding the electric-heating subpopulation). This population includes all residential customers whose primary heating system is natural gas, oil, propane, or another non-electric fuel.
+
+For the **"after" profile** — representing a typical home after installing a heat pump — I computed a representative home by averaging the electricity consumption of CL&P's electric-heating residential customers (Schedules RH and RLH).
+
+These profiles are averages across two different customer populations, not measurements of the same homes tracked before and after a retrofit. I am comparing the typical electricity consumption pattern of fossil-fuel-heated customers to the typical electricity consumption pattern of electrically heated customers. This is a proxy for the change in load associated with electrifying a home's heating system, not a perfectly isolated measurement of the effect of heat pump adoption on a single home.
+
+I used heating versus non-heating subclass data because that is the finest granularity the Company could provide. CL&P's residential subclass designations distinguish only "heating" from "non-heating" loads — they do not identify which customers have heat pumps.[^ccandr-heating-only] The Company confirmed in discovery that it "does not track customers by known heat source" and has not performed any analysis of heat pump customer costs or load profiles.[^ccandr-no-hp-tracking] The electric-heating subclass (Schedules RH and RLH) therefore includes both heat pump and electric resistance customers. This means the "after" profile reflects a mix of heating technologies, not heat pumps alone.
+
+[^ccandr-heating-only]: CCANDR01-01: "These designations are only at the heating/non-heating level and do not indicate if a customer has a heat pump or indicate a heat pump type."
+
+[^ccandr-no-hp-tracking]: CCANDR01-03, CCANDR01-08, CCANDR01-09 (CL&P "does not track customers by known heat source"); CCANDR01-01, CCANDR01-05, CCANDR01-07 (CL&P has not analyzed heat pump customer costs or load profiles).
+
+For the monthly consumption totals that drive the bill calculations and monthly load profile charts, I used CL&P's monthly residential customer counts and kilowatt-hour sales for the test year April 2025 through March 2026. For the hourly consumption patterns, I used CL&P's hourly residential kilowatt-hour data for calendar year 2024 (from CCANDR 1-11, Attachment 1), which was the most recent year for which the Company could provide study-quality hourly data.
+
+#### Hourly marginal delivery costs {#sec-method-mc}
+
+<br>
+
+**Q.** Can you walk through how you computed the hourly bulk transmission marginal costs shown in @fig-mc-heatmap-bulk-tx?
+
+**A.** Yes. The calculation has four steps.
+
+**Step 1: Annual transmission cost per kilowatt.** I used the PJM Network Integration Transmission Service (NITS) rate for the CL&P transmission zone [@pjm_NetworkIntegrationTransmission_2025]. The NITS rate is the zone's Annual Transmission Revenue Requirement divided by its billing determinants, and it is what every load-serving entity in the CL&P zone actually pays PJM for each kilowatt of network service. For 2025, CL&P's zonal revenue requirement was approximately `$358` million as of January 1 and approximately `$400` million as of June 1, producing NITS rates of `$55.85`/kW-year and `$59.07`/kW-year respectively [@pjm_NetworkIntegrationTransmission_2025].
+
+**Step 2: Day-weighted blending.** PJM published two NITS rates for 2025, one effective January 1 and one effective June 1, so neither rate covers the full calendar year. I weighted each by the number of days it was in effect — 151 days at the January rate and 214 days at the June rate — giving a 2025 effective rate of approximately `$57.74`/kW-year. No inflation adjustment is required, because the NITS rate is already stated in current-year dollars.
+
+The NITS rate is an embedded average cost — it reflects the revenue requirement on PJM's existing transmission plant, not a purely forward-looking long-run marginal cost. I use it because no better estimate is available. E3 used the same rate as its transmission capacity value in the avoided-cost study the Illinois Commerce Commission commissioned, after both PJM and MISO advised that they could not provide a more accurate marginal cost for transmission capacity and lacked the data infrastructure to support an independent calculation [@debenedictis_ValueCompensationDistributed_2025].[^e3-nits-proxy]
+
+[^e3-nits-proxy]: E3, *ICC-VDER Report*, § 6.1.2: the Network Transmission Service rates used as a proxy for transmission avoided costs "are more indicative of an average cost of capacity rather than a marginal cost," a limitation both RTOs acknowledged while confirming they had no better estimate to offer.
+
+**Step 3: Peak-hour identification.** Additional consumption drives new transmission investment only when the system is near its limits, so the annual cost belongs in those hours and not in the rest of the year. I loaded CL&P zonal hourly load for calendar year 2025 from PJM Data Miner 2 [@pjm_DataMiner2Metered_2025], ranked all 8,760 hours by load, and selected the top 150 hours as the constrained hours. I used 150 hours, and applied no seasonal restriction, to follow E3's ICC-VDER methodology, which allocates transmission and distribution capacity costs across the top 150 load hours of the full year [@debenedictis_ValueCompensationDistributed_2025].
+
+**Step 4: Load-weighted allocation.** I allocated the annual cost across those 150 hours in proportion to each hour's load, using the Peak Capacity Allocation Factor described in Appendix C of E3's ICC-VDER report: each hour's factor is its "share of load in each of these hours divided by the total load across these 150 top load hours" [@debenedictis_ValueCompensationDistributed_2025]:
+
+$$
+PCAF_h = \frac{L_h}{\sum_{k \in \text{top-150}} L_k}
+$$
+
+Multiplying the `$57.74`/kW-year figure by each hour's factor produces that hour's marginal cost in dollars per kilowatt-hour. The remaining 8,610 hours receive a marginal cost of zero. The hourly values sum to the annual rate, which I verified programmatically. The resulting hourly profile is @fig-mc-heatmap-bulk-tx.
+
+<br>
+
+**Q.** Can you walk through how you computed the hourly distribution marginal costs shown in @fig-mc-heatmap-dist-sub-tx?
+
+**A.** Yes. The calculation follows the same four steps, with a different cost input and a narrower peak window:
+
+**Step 1: Annualized avoided cost.** I started with the Brattle Group's avoided distribution cost of $32/kW-year (in 2022 dollars), from CL&P's direct testimony in Case No. 9692.[^brattle-dist] This figure represents the per-kilowatt replacement value of CL&P's distribution system — including 34 kV sub-transmission, 13 kV primary, and secondary voltage levels — levelized with a 12% economic carrying charge. It captures the forward-looking cost of distribution capacity: the annual cost of adding one kilowatt of new distribution capacity to serve incremental load.
+
+**Step 2: CPI inflation.** I adjusted the 2022-dollar figure to 2025 dollars using the Consumer Price Index [@fred_ConsumerPriceIndexAll_2025], yielding approximately $36/kW-year.
+
+**Step 3: Peak-hour identification.** I loaded CL&P's hourly demand profile for calendar year 2025 from PJM Data Miner 2 [@pjm_DataMiner2Metered_2025], ranked all 8,760 hours by CL&P zone load in descending order, and selected the top 100 hours as the constrained hours — the hours during which additional demand is most likely to trigger new distribution capacity investment.
+
+**Step 4: Load-weighted allocation.** For each of the 100 peak hours, I computed a weight equal to that hour's load divided by the sum of load across all 100 peak hours:
+
+$$
+PCAF_h = \frac{L_h}{\sum_{k \in \text{top-100}} L_k}
+$$
+
+I then multiplied the annualized cost (~$36/kW-year) by each hour's weight to produce a $/kWh marginal cost for that hour. All non-peak hours receive a marginal cost of zero. The sum of all 8,760 hourly values equals the original $/kW-year figure — a property I verified programmatically. The resulting hourly profile is @fig-mc-heatmap-dist-sub-tx.
+
+#### Incremental cost and overpayment {#sec-method-incremental}
+
+<br>
+
+**Q.** How did you compute the incremental T&D cost of heat pump adoption?
+
+**A.** By "new T&D costs," I mean the forward-looking marginal costs that the transmission and distribution system incurs because of the customer's heat pump installation — the cost of capacity expansion triggered by additional consumption during the constrained hours identified in the preceding answer.
+
+I multiplied the representative home's hourly electricity consumption by the hourly marginal-cost schedule described above, and summed across all 8,760 hours to get the total annual marginal T&D cost for that home. I performed this calculation for both the "before" and "after" consumption profiles. The difference between the two annual totals is the incremental marginal T&D cost attributable to the shift from fossil fuel heating to electric heating — the `{python} dollar(r.all_fossil_annual_mc_delivery_after - r.all_fossil_annual_mc_delivery_before)` figure I cited in Section III.
+
+<br>
+
+**Q.** How do you define the overpayment caused by heat pump adoption?
+
+**A.** Overpayment is the increase in a customer's payments that exceeds the increase in costs caused by the customer's heat pump adoption.
+
+For transmission and distribution, I calculate the change in the customer's annual T&D charges (the charges paid using the "after" consumption profile minus the charges paid using the "before" profile) and subtract the incremental T&D cost described above. The remainder is the **T&D overpayment**:
+
+$$
+\text{T\&D overpayment}
+=
+\text{increase in T\&D charges}
+-
+\text{increase in marginal T\&D costs}.
+$$
+
+I also include the increase in EmPOWER contributions. As I established in Section III, EmPOWER costs are unrelated to customer usage, so the customer's entire increase in EmPOWER payments is included in the overpayment.
+
+The total overpayment is therefore:
+
+$$
+\text{total overpayment}
+=
+\left(
+\text{increase in T\&D charges}
+-
+\text{increase in marginal T\&D costs}
+\right)
++
+\text{increase in EmPOWER contributions}.
+$$
+
+For the representative home in my analysis, the result is an annual overpayment of `{python} dollar(r.all_fossil_annual_total_overcharge)`.
+
+#### Schedule R-HP rate derivation {#sec-method-rhp}
+
+<br>
+
+**Q.** How did you derive the proposed Schedule R-HP rates shown in Section VI?
+
+**A.** For each bill component — distribution, transmission, and EmPOWER Connecticut — I first computed the representative home's annual bill under CL&P's filed monthly rates, for both the "before" and "after" consumption profiles. The bill calculations use the Company's actual filed monthly rates (which vary slightly across the test year), applied to each profile's monthly kWh.
+
+I then defined the **fair annual bill** for each component — the amount the customer should pay after installing a heat pump:
+
+- For **distribution and transmission**, the fair annual bill equals the pre-installation bill plus the incremental marginal cost caused by the heat pump: $\text{fair bill} = \text{bill}_{\text{before}} + \Delta MC$. This allows the customer's bill to increase by exactly the amount of new T&D costs their heat pump causes, and no more.
+- For **EmPOWER Maryland**, the fair annual bill equals the pre-installation bill: $\text{fair bill} = \text{bill}_{\text{before}}$. The customer's EmPOWER contributions stay flat.
+- **Generation** is unchanged.
+
+The Schedule R-HP rate for each component is then a derived quantity: I divided the fair annual bill by the representative home's post-installation annual kWh to obtain a cents-per-kWh rate:
+
+$$
+\text{rate}_{\text{R-HP}} = \frac{\text{fair bill}}{\text{kWh}_{\text{after}}}
+$$
+
+The cents/kWh figures in the rate comparison table in Section VI are annual-average effective rates — each component's annual bill divided by annual kWh — not filed tariff line items. The underlying bill calculations use CL&P's actual filed monthly rates.
+
+This is a representative-home calculation. It determines the rate at which the average fossil-fuel-heated home, after installing a heat pump, would pay no more than its cost of service for each component.
+
+#### Fixed-charge alternative {#sec-method-fixed-charge}
+
+<br>
+
+**Q.** In Section X, you testified that eliminating the heat pump overpayment within Schedule R would require reducing the distribution, transmission, and EmPOWER Connecticut volumetric rates by approximately `{python} pct(fc.volumetric_rate_reduction)` and raising the average monthly fixed charge from `{python} dollar(fc.original_fixed_charge, accuracy=2)` to `{python} dollar(fc.fixed_charge, accuracy=2)`. How did you calculate those figures?
+
+**A.** I solved for the version of Schedule R that satisfies two conditions at the same time.
+
+The first condition is **cost reflectivity**. When a home switches from fossil fuel heating to electric heating, the increase in the volumetric charges it pays must equal the increase in marginal transmission and distribution costs that the switch causes. I applied the redesign to three volumetric charges — distribution, transmission, and EmPOWER Connecticut — and scaled all three by a single uniform factor, which preserves each charge's existing month-to-month shape. I did not change generation charges.
+
+The second condition is **revenue neutrality**. The revenue held constant is the revenue collected through the charges the redesign touches: the monthly customer charge plus the three targeted volumetric charges. Generation revenue is unaffected by the redesign and therefore does not enter the calculation on either side. Whatever revenue the reduction in the targeted volumetric rates gives up must come back through the fixed charge.
+
+<br>
+
+**Q.** How did you determine the factor by which the targeted volumetric rates would have to fall?
+
+**A.** That factor follows directly from the cost-reflectivity condition, and it does not depend on the fixed charge at all. Because the same default rate applies to the home both before and after it installs a heat pump, the identical fixed charge is paid in both cases and cancels out of the before-and-after bill difference. Only the targeted volumetric charges change.
+
+The inputs are the same figures I presented in Section III. Under the rates as filed, the increase in the representative home's targeted volumetric charges is `{python} dollar(fc.retrofit_incremental_variable_charge)` per year — `{python} dollar(fc.retrofit_incremental_td_charge)` in distribution and transmission charges and `{python} dollar(fc.retrofit_incremental_empower_charge)` in EmPOWER contributions. The increase in marginal T&D cost that the same change in consumption causes is `{python} dollar(fc.retrofit_incremental_marginal_cost)` per year. The difference between the two is the `{python} dollar(fc.retrofit_overpayment)` annual overpayment.
+
+Aligning the two follows directly from those two numbers. Multiplying the monthly volumetric charges by the ratio of the incremental cost to the incremental charges — `{python} dollar(fc.retrofit_incremental_marginal_cost)` divided by `{python} dollar(fc.retrofit_incremental_variable_charge)` — scales the increase down by that same ratio, leaving it equal to the incremental cost. That ratio is therefore the scaling factor the redesign requires:
+
+$$
+\lambda^{*}
+=
+\frac{\Delta MC_{\text{T\&D}}}
+{\Delta V_{\text{T\&D + EmPOWER}}}
+$$
+
+For CL&P, that ratio is `{python} pct(fc.implied_lambda, accuracy=1)`. In other words, the targeted volumetric rates would have to be cut to roughly one-tenth of their filed levels — a reduction of approximately `{python} pct(fc.volumetric_rate_reduction)` — before a home switching to electric heating would pay no more than the additional T&D costs it causes. I apply this ratio only to the T&D and EmPOWER Connecticut portion of the bill, leaving generation charges unchanged.
+
+<br>
+
+**Q.** How did you then determine the fixed charge?
+
+**A.** From the revenue neutrality condition. Cutting the three targeted volumetric rates to `{python} pct(fc.implied_lambda, accuracy=1)` of their filed levels leaves the remaining `{python} pct(fc.volumetric_rate_reduction)` of the revenue those charges collect to be recovered elsewhere, and the only remaining place to recover it in this exercise is the fixed charge.
+
+Using CL&P's actual residential customer counts and kilowatt-hour sales, the three targeted charges collect approximately `{python} dollar(fc.class_variable_revenue_per_customer)` per residential customer per year across the class as a whole. The redesign removes approximately `{python} dollar(fc.class_variable_revenue_per_customer * fc.volumetric_rate_reduction)` of that amount per customer per year. Spread across twelve monthly bills, replacing it requires raising the fixed charge by `{python} dollar(fc.fixed_charge_delta, accuracy=2)` per month:
+
+$$
+F^{*}
+=
+F_{0}
++
+\frac{\left(1 - \lambda^{*}\right) V_{\text{class}}}
+{12 \, N_{\text{class}}}
+$$
+
+where $F_{0}$ is the current fixed charge, $V_{\text{class}}$ is the annual revenue the targeted volumetric charges collect from the residential class, and $N_{\text{class}}$ is the number of residential customers. Starting from CL&P's current Schedule R customer charge of `{python} dollar(fc.original_fixed_charge, accuracy=2)` per month, the result is a fixed charge of `{python} dollar(fc.fixed_charge, accuracy=2)` per month.[^fixed-charge-baseline]
+
+[^fixed-charge-baseline]: I use CL&P's filed Schedule R customer charge of $10.00 per month as the starting point. Adding the Universal Service Program charge and weighting by the Company's actual monthly customer counts produces an average fixed charge of approximately $10.06 per month; the distinction does not affect the magnitude of the result.
+
+## XII. Conclusion
+
+**Q.** Does this conclude your direct testimony?
+
+**A.**  Yes, it does. And in light of the pending motions to compel CL&P to respond to CCAN’s discovery requests, I reserve the right to amend or supplement the testimony as may be needed.
+
+
+## References
+
+:::{#refs}
+:::
+
+END COMMENTED OUT: Sections IV–XII -->

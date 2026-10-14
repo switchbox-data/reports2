@@ -1,0 +1,344 @@
+---
+title: Eversource hourly class loads vs ResStock
+jupyter: python3
+execute:
+  warning: false
+  message: false
+---
+
+This notebook compares Connecticut Light and Power's 2025 average-customer hourly
+loads with the weighted-average grid consumption CAIRO bills for the same
+Eversource buildings.
+
+The company file is an Excel workbook of class-average loads, one column each for
+Rate 1, Rate 5, and Rate 7. We use 2025 only. Rate 1 is compared with homes whose
+baseline heating type is natural gas, delivered fuel, or other. Rate 5 is compared
+with electric-resistance and heat-pump homes. Rate 7 is not used.
+
+Grid consumption is `grid_cons_kwh` from the `default_precalc` delivery run. Each
+ResStock profile is the sample-weighted mean across buildings in that group. The
+company series is interval-ending Eastern Standard Time with no daylight-saving
+skip, so we shift it back one hour and line the two series up by hour of the year.
+ResStock is an AMY weather year, not calendar 2025, so the join is by position.
+
+A positive difference means the company's average customer uses more electricity
+in that hour than the ResStock average home. Percent difference divides that gap
+by the ResStock value.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+from datetime import datetime
+from pathlib import Path
+
+import openpyxl
+import polars as pl
+from google.auth.transport.requests import AuthorizedSession
+from great_tables import GT
+from plotnine import aes, facet_wrap, geom_hline, geom_line, ggplot, labs, scale_x_datetime, theme
+
+from lib.data.gsheets import get_gspread_client
+from lib.great_tables import get_switchbox_gt_tab_options
+from lib.plotnine import SB_COLORS, theme_switchbox
+from lib.quarto import display_gt
+from lib.rates_analysis.rate_case_funcs import (
+    MONTH_ORDER,
+    load_billing_kwh_8760,
+    load_master_bills,
+    weighted_avg_hourly,
+)
+```
+
+```{python}
+#| label: params
+
+STATE = "CT"
+BATCH = "ct_20260925_a"
+UTILITY = "ct_eversource"
+SEGMENT = "default_precalc"
+SHEET_ID = "1qvuF7t5H8C-KW5Ogq9wZB9Ze1XH7HH3v"
+SHEET_YEAR = "2025 "
+N_HOURS = 8760
+
+RATE_1_HEATING = ["natgas", "delivered_fuels", "other"]
+RATE_5_HEATING = ["electrical_resistance", "heat_pump"]
+
+CACHE_XLSX = Path("../cache/clp_average_hourly_rate_class_loads.xlsx")
+```
+
+## Company hourly loads
+
+The workbook is an uploaded Excel file, so the Sheets API will not open it. We
+download the bytes through Drive and read the `2025 ` tab. Row 6 holds the
+company's own annual totals. Hourly values start at row 10, in kW for the hour
+ending at the timestamp, which equals kWh for that hour.
+
+```{python}
+#| label: download-company-workbook
+
+def download_company_workbook(path: Path) -> Path:
+    """Cache the class-load workbook locally. Drive hosts it as xlsx, not a Sheet."""
+    if path.exists():
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    gc, _ = get_gspread_client()
+    session = AuthorizedSession(gc.http_client.auth)
+    resp = session.get(
+        f"https://www.googleapis.com/drive/v3/files/{SHEET_ID}",
+        params={"alt": "media"},
+    )
+    resp.raise_for_status()
+    path.write_bytes(resp.content)
+    return path
+
+
+xlsx_path = download_company_workbook(CACHE_XLSX)
+print(f"Workbook: {xlsx_path} ({xlsx_path.stat().st_size:,} bytes)")
+```
+
+```{python}
+#| label: load-company-2025
+
+def load_company_2025(path: Path) -> tuple[pl.DataFrame, dict[str, float]]:
+    """Hour-beginning 2025 loads for Rate 1 and Rate 5, plus stated annual totals."""
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    ws = wb[SHEET_YEAR]
+    stated: dict[str, float] = {}
+    records: list[dict[str, datetime | float]] = []
+    for i, row in enumerate(ws.iter_rows(values_only=True), start=1):
+        if i == 6 and row[0] == "Total Usage":
+            stated = {"rate_1": float(row[1]), "rate_5": float(row[2])}
+        if i >= 10 and row[0] is not None:
+            records.append(
+                {
+                    "interval_ending": row[0],
+                    "rate_1_kw": float(row[1]),
+                    "rate_5_kw": float(row[2]),
+                }
+            )
+    wb.close()
+    if len(records) != N_HOURS:
+        raise ValueError(f"Expected {N_HOURS} hourly rows, found {len(records)}")
+    hourly = (
+        pl.DataFrame(records)
+        .with_columns((pl.col("interval_ending") - pl.duration(hours=1)).alias("timestamp"))
+        .with_row_index("hour_index")
+        .select("hour_index", "timestamp", "rate_1_kw", "rate_5_kw")
+    )
+    return hourly, stated
+
+
+company_hourly, stated_annual = load_company_2025(xlsx_path)
+print("Stated annual kWh:", stated_annual)
+print(
+    f"Hour-beginning span: {company_hourly['timestamp'].min()} → {company_hourly['timestamp'].max()}"
+)
+company_hourly.head(3)
+```
+
+The Rate 1 and Rate 5 columns should sum to the Total Usage row on the sheet.
+
+```{python}
+#| label: check-company-annual
+
+company_annual = {
+    "rate_1": float(company_hourly["rate_1_kw"].sum()),
+    "rate_5": float(company_hourly["rate_5_kw"].sum()),
+}
+for rate, total in company_annual.items():
+    stated = stated_annual[rate]
+    gap = total - stated
+    print(f"{rate}: summed hourly {total:,.2f} kWh, sheet total {stated:,.2f}, gap {gap:+.4f}")
+    if abs(gap) > 1:
+        raise ValueError(f"{rate} hourly sum differs from the sheet total by {gap:.2f} kWh")
+```
+
+## ResStock populations
+
+Heating type comes from the `default_precalc` master bills, the same classification
+used for the monthly median comparison. Weights are ResStock sample weights.
+
+```{python}
+#| label: load-populations
+
+meta = (
+    load_master_bills(STATE, BATCH, SEGMENT)
+    .filter((pl.col("month") == "Annual") & (pl.col("sb.electric_utility") == UTILITY))
+    .select(
+        "bldg_id",
+        "weight",
+        pl.col("postprocess_group.heating_type_v2").alias("heating_type_v2"),
+    )
+    .collect()
+)
+
+pop_rate_1 = meta.filter(pl.col("heating_type_v2").is_in(RATE_1_HEATING))
+pop_rate_5 = meta.filter(pl.col("heating_type_v2").is_in(RATE_5_HEATING))
+
+for label, pop in [("Rate 1 (gas, delivered fuel, other)", pop_rate_1), ("Rate 5 (electric heat)", pop_rate_5)]:
+    print(
+        f"{label}: {pop.height:,} buildings, {float(pop['weight'].sum()):,.0f} weighted households"
+    )
+    print(pop.group_by("heating_type_v2").agg(n=pl.len(), weight=pl.col("weight").sum()).sort("heating_type_v2"))
+```
+
+`billing_kwh_8760.parquet` on the delivery run is the grid consumption CAIRO uses
+for bills. We take the weighted mean of `grid_cons_kwh` at each timestamp.
+
+```{python}
+#| label: resstock-hourly-profiles
+
+kwh_8760 = load_billing_kwh_8760(STATE, UTILITY, BATCH, SEGMENT)
+
+rs_rate_1 = weighted_avg_hourly(
+    kwh_8760, pop_rate_1["bldg_id"].to_list(), pop_rate_1.select("bldg_id", "weight")
+).with_row_index("hour_index").rename({"kwh": "resstock_kwh"})
+rs_rate_5 = weighted_avg_hourly(
+    kwh_8760, pop_rate_5["bldg_id"].to_list(), pop_rate_5.select("bldg_id", "weight")
+).with_row_index("hour_index").rename({"kwh": "resstock_kwh"})
+
+for label, profile in [("Rate 1", rs_rate_1), ("Rate 5", rs_rate_5)]:
+    if profile.height != N_HOURS:
+        raise ValueError(f"{label} ResStock profile has {profile.height} hours, expected {N_HOURS}")
+    print(f"{label} ResStock annual kWh: {float(profile['resstock_kwh'].sum()):,.1f}")
+```
+
+## Hourly difference
+
+`delta_kwh` is the company value minus ResStock. `pct_diff` divides that gap by
+the ResStock hour.
+
+```{python}
+#| label: hourly-delta
+
+def hourly_comparison(company: pl.DataFrame, company_col: str, resstock: pl.DataFrame) -> pl.DataFrame:
+    """Align a company rate column to a ResStock profile by hour-of-year index."""
+    joined = company.select("hour_index", "timestamp", pl.col(company_col).alias("company_kwh")).join(
+        resstock.select("hour_index", "resstock_kwh"),
+        on="hour_index",
+        how="inner",
+    )
+    if joined.height != N_HOURS:
+        raise ValueError(f"Joined profile has {joined.height} hours, expected {N_HOURS}")
+    return joined.with_columns(
+        (pl.col("company_kwh") - pl.col("resstock_kwh")).alias("delta_kwh"),
+    ).with_columns(
+        (pl.col("delta_kwh") / pl.col("resstock_kwh")).alias("pct_diff"),
+    )
+
+
+hourly_rate_1 = hourly_comparison(company_hourly, "rate_1_kw", rs_rate_1)
+hourly_rate_5 = hourly_comparison(company_hourly, "rate_5_kw", rs_rate_5)
+
+def headline(label: str, hourly: pl.DataFrame) -> None:
+    annual_delta = float(hourly["delta_kwh"].sum())
+    mae = float(hourly["delta_kwh"].abs().mean())
+    peak = hourly.sort(pl.col("delta_kwh").abs(), descending=True).row(0, named=True)
+    print(
+        f"{label}: annual delta {annual_delta:+,.0f} kWh, "
+        f"mean absolute hourly delta {mae:.3f} kWh, "
+        f"largest gap {peak['delta_kwh']:+.3f} kWh "
+        f"({peak['pct_diff']:+.1%}) at {peak['timestamp']}"
+    )
+
+
+headline("Rate 1", hourly_rate_1)
+headline("Rate 5", hourly_rate_5)
+hourly_rate_1.head(3)
+```
+
+```{python}
+#| label: fig-hourly-delta
+#| fig-cap: "Hourly difference between Eversource's 2025 class-average customer and the ResStock weighted-average home. Positive values mean the company customer uses more electricity that hour."
+
+plot_df = pl.concat(
+    [
+        hourly_rate_1.select("timestamp", "delta_kwh", pl.lit("Rate 1").alias("comparison")),
+        hourly_rate_5.select("timestamp", "delta_kwh", pl.lit("Rate 5").alias("comparison")),
+    ]
+).with_columns(pl.col("comparison").cast(pl.Enum(["Rate 1", "Rate 5"])))
+
+(
+    ggplot(plot_df, aes("timestamp", "delta_kwh"))
+    + geom_hline(yintercept=0, color=SB_COLORS["midnight_text"], size=0.4)
+    + geom_line(color=SB_COLORS["sky"], size=0.3)
+    + facet_wrap("comparison", ncol=1)
+    + scale_x_datetime(date_breaks="2 months", date_labels="%b")
+    + labs(
+        title="Company average customer minus ResStock average home",
+        x="",
+        y="kWh",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 7))
+)
+```
+
+## Monthly summary
+
+Each month sums the hourly kWh first. The percent difference is the gap between
+those monthly totals divided by the ResStock monthly total, not the average of
+the hourly percents. The annual row is the same calculation over all 8,760 hours.
+
+```{python}
+#| label: monthly-summary
+
+_month_labels = {i + 1: name for i, name in enumerate(MONTH_ORDER)}
+_month_labels[13] = "Annual"
+_month_order = [*MONTH_ORDER, "Annual"]
+
+
+def monthly_summary(hourly: pl.DataFrame) -> pl.DataFrame:
+    """Company, ResStock, kWh gap, and percent difference by month, plus annual."""
+    by_month = (
+        hourly.group_by(pl.col("timestamp").dt.month().alias("month_num"))
+        .agg(pl.col("company_kwh").sum(), pl.col("resstock_kwh").sum())
+        .with_columns(pl.col("month_num").cast(pl.Int32))
+        .sort("month_num")
+    )
+    annual = pl.DataFrame(
+        {
+            "month_num": pl.Series([13], dtype=pl.Int32),
+            "company_kwh": [float(by_month["company_kwh"].sum())],
+            "resstock_kwh": [float(by_month["resstock_kwh"].sum())],
+        }
+    )
+    return (
+        pl.concat([by_month, annual])
+        .with_columns((pl.col("company_kwh") - pl.col("resstock_kwh")).alias("delta_kwh"))
+        .with_columns((pl.col("delta_kwh") / pl.col("resstock_kwh")).alias("pct_diff"))
+        .with_columns(pl.col("month_num").replace_strict(_month_labels).alias("month"))
+        .with_columns(pl.col("month").cast(pl.Enum(_month_order)))
+        .sort("month")
+        .select("month", "company_kwh", "resstock_kwh", "delta_kwh", "pct_diff")
+    )
+
+
+monthly_rate_1 = monthly_summary(hourly_rate_1)
+monthly_rate_5 = monthly_summary(hourly_rate_5)
+
+
+def show_monthly(title: str, monthly: pl.DataFrame) -> None:
+    table = (
+        GT(monthly, rowname_col="month")
+        .tab_header(title=title)
+        .fmt_number(columns=["company_kwh", "resstock_kwh", "delta_kwh"], decimals=0)
+        .fmt_percent(columns=["pct_diff"], decimals=1)
+        .cols_label(
+            company_kwh="Company kWh",
+            resstock_kwh="ResStock kWh",
+            delta_kwh="Difference",
+            pct_diff="Percent difference",
+        )
+        .tab_options(**get_switchbox_gt_tab_options())
+    )
+    display_gt(table)
+
+
+show_monthly("Rate 1 vs gas, delivered-fuel, and other homes", monthly_rate_1)
+show_monthly("Rate 5 vs electric-resistance and heat-pump homes", monthly_rate_5)
+```

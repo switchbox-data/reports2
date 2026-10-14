@@ -278,8 +278,8 @@ incidence_natgas_default
 
 report_vars["pct_natgas_hp_bill_increase_default"] = incidence_natgas_default["pct_increase"]
 report_vars["pct_natgas_hp_bill_decrease_default"] = incidence_natgas_default["pct_decrease"]
-report_vars["mean_natgas_hp_bill_increase_default"] = incidence_natgas_default["mean_delta"]
-report_vars["median_natgas_hp_bill_increase_default"] = incidence_natgas_default["median_delta"]
+report_vars["mean_natgas_hp_bill_delta_default"] = incidence_natgas_default["mean_delta"]
+report_vars["median_natgas_hp_bill_delta_default"] = incidence_natgas_default["median_delta"]
 
 _savers_natgas_default = delta_natgas_default.filter(pl.col("delta") < 0)
 _savers_natgas_default_w = _savers_natgas_default["weight"].sum()
@@ -292,8 +292,8 @@ report_vars["mean_natgas_hp_savings_among_savers_default"] = (
 
 **`{python} f"{report_vars['pct_natgas_hp_bill_increase_default']:.0%}"` of natural-gas-heated
 CT Eversource homes would see their total annual energy bill go up** after switching to a heat
-pump under today's rate — a mean increase of `{python} f"${report_vars['mean_natgas_hp_bill_increase_default']:,.0f}"`
-a year (median `{python} f"${report_vars['median_natgas_hp_bill_increase_default']:,.0f}"`).
+pump under today's rate — a mean increase of `{python} f"${report_vars['mean_natgas_hp_bill_delta_default']:,.0f}"`
+a year (median `{python} f"${report_vars['median_natgas_hp_bill_delta_default']:,.0f}"`).
 The rest see a decrease, mostly from avoided gas costs outweighing the added electric load.
 
 ## Bill-increase incidence switching from delivered fuels to a heat pump, under today's rate
@@ -317,8 +317,8 @@ incidence_delivered_default
 
 report_vars["pct_delivered_hp_bill_increase_default"] = incidence_delivered_default["pct_increase"]
 report_vars["pct_delivered_hp_bill_decrease_default"] = incidence_delivered_default["pct_decrease"]
-report_vars["mean_delivered_hp_bill_increase_default"] = incidence_delivered_default["mean_delta"]
-report_vars["median_delivered_hp_bill_increase_default"] = incidence_delivered_default["median_delta"]
+report_vars["mean_delivered_hp_bill_delta_default"] = incidence_delivered_default["mean_delta"]
+report_vars["median_delivered_hp_bill_delta_default"] = incidence_delivered_default["median_delta"]
 
 _savers_delivered_default = delta_delivered_default.filter(pl.col("delta") < 0)
 _savers_del_default_w = _savers_delivered_default["weight"].sum()
@@ -1173,6 +1173,12 @@ report_vars["mean_natgas_hp_savings_among_savers_r6"] = (
     if _savers_natgas_r6_w > 0
     else 0.0
 )
+
+incidence_natgas_r6_mfc0_trans = bill_change_incidence(delta_natgas_r1_to_r6_ratemc_mfc0_trans)
+report_vars["pct_natgas_hp_bill_increase_r6_mfc0_trans"] = incidence_natgas_r6_mfc0_trans["pct_increase"]
+report_vars["pct_natgas_hp_bill_decrease_r6_mfc0_trans"] = incidence_natgas_r6_mfc0_trans["pct_decrease"]
+report_vars["mean_natgas_hp_bill_delta_r6_mfc0_trans"] = incidence_natgas_r6_mfc0_trans["mean_delta"]
+
 incidence_natgas_r6
 ```
 
@@ -1211,6 +1217,12 @@ report_vars["mean_natgas_hp_savings_among_savers_fair"] = (
     if _savers_natgas_fair_w > 0
     else 0.0
 )
+
+report_vars["gap_closure_natgas_r6"] = (
+    (report_vars["mean_natgas_hp_bill_delta_r6"] - report_vars["mean_natgas_hp_bill_delta_default"])
+    / (report_vars["mean_natgas_hp_bill_delta_fair"] - report_vars["mean_natgas_hp_bill_delta_default"])
+)
+
 incidence_natgas_fair
 ```
 
@@ -1496,8 +1508,29 @@ report_vars["mean_delivered_hp_savings_among_savers_fair"] = (
     if _savers_del_fair_w > 0
     else 0.0
 )
+
+report_vars["gap_closure_delivered_r6"] = (
+    (report_vars["mean_delivered_hp_bill_delta_r6"] - report_vars["mean_delivered_hp_bill_delta_default"])
+    / (report_vars["mean_delivered_hp_bill_delta_fair"] - report_vars["mean_delivered_hp_bill_delta_default"])
+)
+
 print("Rate 6:", incidence_delivered_r6)
 print("Fair:", incidence_delivered_fair)
+```
+
+```{python}
+#| label: report-vars-delivered-r6-mfc0-trans-incidence
+
+delta_delivered_r1_to_r6_mfc0_trans = bill_delta_between_segments(
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_RATE6_RATEMC_MFC0_TRANS_CALIBRATED, bill_col=BILL_COL
+).filter(pl.col("heating_type_v2") == "delivered_fuels")
+
+incidence_delivered_r6_mfc0_trans = bill_change_incidence(delta_delivered_r1_to_r6_mfc0_trans)
+report_vars["pct_delivered_hp_bill_increase_r6_mfc0_trans"] = incidence_delivered_r6_mfc0_trans["pct_increase"]
+report_vars["pct_delivered_hp_bill_decrease_r6_mfc0_trans"] = incidence_delivered_r6_mfc0_trans["pct_decrease"]
+report_vars["mean_delivered_hp_bill_delta_r6_mfc0_trans"] = incidence_delivered_r6_mfc0_trans["mean_delta"]
+
+incidence_delivered_r6_mfc0_trans
 ```
 
 ```{python}
@@ -1511,6 +1544,50 @@ display_svg(
             ("Rate 1", _c_del["delta_ry1"]),
             ("Rate 6", _c_del["delta_r6"]),
             ("Fair rate", _c_del["delta_minus_bldg"]),
+        ],
+        title_parts=[
+            ("How bills would change for ", "#000000"),
+            ("oil/propane", "#fc9706"),
+            (" heated homes after switching to ", "#000000"),
+            ("heat pumps", "#c47600"),
+            (", under different rates", "#000000"),
+        ],
+    )
+)
+```
+
+```{python}
+#| label: fig-bill-change-quadrants-natgas-r1-r6-r6mfc0trans
+#| fig-cap: "Change in total annual energy bill for natural-gas-heated CT Eversource homes switching to a heat pump, under Rate 1 vs. Rate 6 vs. Rate 6 with Block 2 at marginal cost."
+
+display_svg(
+    plot_bill_change_quadrant_comparison(
+        [
+            ("Rate 1", delta_natgas_default),
+            ("Rate 6", delta_natgas_r1_to_r6),
+            ("Rate 6\n(Block 2 at MC)", delta_natgas_r1_to_r6_ratemc_mfc0_trans),
+        ],
+        title_parts=[
+            ("How bills would change for ", "#000000"),
+            ("natural gas", "#7A8A10"),
+            (" heated homes after switching to ", "#000000"),
+            ("heat pumps", "#c47600"),
+            (", under different rates", "#000000"),
+        ],
+    )
+)
+```
+
+```{python}
+#| label: fig-bill-change-quadrants-delivered-r1-r6-r6mfc0trans
+#| fig-cap: "Change in total annual energy bill for oil/propane-heated CT Eversource homes switching to a heat pump, under Rate 1 vs. Rate 6 vs. Rate 6 with Block 2 at marginal cost."
+
+display_svg(
+    plot_bill_change_quadrant_comparison(
+        [
+            ("Rate 1", _c_del["delta_ry1"]),
+            ("Rate 6", _c_del["delta_r6"]),
+            ("Rate 6\n(Block 2 at MC)", delta_delivered_r1_to_r6_mfc0_trans),
         ],
         title_parts=[
             ("How bills would change for ", "#000000"),

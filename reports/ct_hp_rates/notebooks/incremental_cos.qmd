@@ -83,11 +83,17 @@ BILL_COL_DELIVERY = "elec_delivery_bill"
 
 BILL_COL = BILL_COL_LMI_CURRENT  # "energy_total_bill"
 
+# When True, overpayment includes both volumetric delivery charges and the
+# customer/fixed charge.  When False, only volumetric delivery charges.
+INCLUDE_FIXED_CHARGE = True
+OVERPAYMENT_COL = "overpayment_volumetric_fc" if INCLUDE_FIXED_CHARGE else "overpayment_volumetric"
+
 SEG_DEFAULT_PRECALC = segment_name(DEFAULT_SCENARIO, "precalc")
 SEG_DEFAULT_CALIBRATED = segment_name(DEFAULT_SCENARIO, "calibrated")
 
 print(f"state={STATE}  utility={UTILITY}  batch={BATCH}  scenario={DEFAULT_SCENARIO}")
 print(f"fair_rate_population={FAIR_RATE_POPULATION}")
+print(f"include_fixed_charge={INCLUDE_FIXED_CHARGE}  overpayment_col={OVERPAYMENT_COL}")
 ```
 
 ## Incremental delivery revenue vs. marginal cost
@@ -193,10 +199,10 @@ is the cross-subsidy?
 We answer this by subtracting the overpayment from each building's total energy bill change.
 Two variants:
 
-- **Per-building correction**: subtract each building's own `delta_gap`. This preserves
+- **Per-building correction**: subtract each building's own overpayment. This preserves
   the shape of the distribution — buildings that would have a large overpayment see a larger
   correction — but requires per-building matching.
-- **Mean correction**: subtract a single scalar — the weighted-average `delta_gap` across
+- **Mean correction**: subtract a single scalar — the weighted-average overpayment across
   the fair-rate population — from every building. This is a uniform shift that answers
   "what would the bill change look like if the average overpayment were removed?"
 
@@ -210,7 +216,7 @@ subtracted from all heating types, including electric resistance.
 _fair_rate_hts = fair_rate_heating_types(FAIR_RATE_POPULATION)
 _cost_delta_fair = cost_delta.filter(pl.col("heating_type_v2").is_in(_fair_rate_hts))
 avg_overpayment = float(
-    (_cost_delta_fair["delta_gap"] * _cost_delta_fair["weight"]).sum()
+    (_cost_delta_fair[OVERPAYMENT_COL] * _cost_delta_fair["weight"]).sum()
     / _cost_delta_fair["weight"].sum()
 )
 print(f"Fair-rate population: {FAIR_RATE_POPULATION} → {_fair_rate_hts}")
@@ -233,12 +239,12 @@ _delta_natgas = bill_delta_between_segments(
 
 _bldg_gap_natgas = cost_delta.filter(
     pl.col("heating_type_v2") == "natgas"
-).select("bldg_id", "delta_gap")
+).select("bldg_id", OVERPAYMENT_COL)
 
 _delta_natgas_minus_bldg = (
     _delta_natgas.join(_bldg_gap_natgas, on="bldg_id")
-    .with_columns((pl.col("delta") - pl.col("delta_gap")).alias("delta"))
-    .drop("delta_gap")
+    .with_columns((pl.col("delta") - pl.col(OVERPAYMENT_COL)).alias("delta"))
+    .drop(OVERPAYMENT_COL)
 )
 _delta_natgas_minus_mean = _delta_natgas.with_columns(
     (pl.col("delta") - avg_overpayment).alias("delta")
@@ -288,12 +294,12 @@ _delta_er = bill_delta_between_segments(
 
 _bldg_gap_er = cost_delta.filter(
     pl.col("heating_type_v2") == "electrical_resistance"
-).select("bldg_id", "delta_gap")
+).select("bldg_id", OVERPAYMENT_COL)
 
 _delta_er_minus_bldg = (
     _delta_er.join(_bldg_gap_er, on="bldg_id")
-    .with_columns((pl.col("delta") - pl.col("delta_gap")).alias("delta"))
-    .drop("delta_gap")
+    .with_columns((pl.col("delta") - pl.col(OVERPAYMENT_COL)).alias("delta"))
+    .drop(OVERPAYMENT_COL)
 )
 _delta_er_minus_mean = _delta_er.with_columns(
     (pl.col("delta") - avg_overpayment).alias("delta")
@@ -337,12 +343,12 @@ _delta_delivered = bill_delta_between_segments(
 
 _bldg_gap_delivered = cost_delta.filter(
     pl.col("heating_type_v2") == "delivered_fuels"
-).select("bldg_id", "delta_gap")
+).select("bldg_id", OVERPAYMENT_COL)
 
 _delta_delivered_minus_bldg = (
     _delta_delivered.join(_bldg_gap_delivered, on="bldg_id")
-    .with_columns((pl.col("delta") - pl.col("delta_gap")).alias("delta"))
-    .drop("delta_gap")
+    .with_columns((pl.col("delta") - pl.col(OVERPAYMENT_COL)).alias("delta"))
+    .drop(OVERPAYMENT_COL)
 )
 _delta_delivered_minus_mean = _delta_delivered.with_columns(
     (pl.col("delta") - avg_overpayment).alias("delta")

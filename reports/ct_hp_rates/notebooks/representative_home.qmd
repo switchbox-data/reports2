@@ -1520,15 +1520,25 @@ for pop_label, pop_df in [
     ("delivered", pop_delivered),
     ("all_fossil", pop_all_fossil),
 ]:
-    _pop_bldg_ids = pop_df["bldg_id"]
+    _pop_bldg_ids = pop_df["bldg_id"].to_list()
     _pop_shared = _cost_delta_shared.filter(pl.col("bldg_id").is_in(_pop_bldg_ids))
     _w = _pop_shared["weight"]
     _shared_avg = float((_pop_shared[OVERPAYMENT_COL] * _w).sum() / _w.sum())
     _local_overcharge = report_vars[f"{pop_label}_annual_total_overcharge"]
+    _match = round(_shared_avg) == round(_local_overcharge)
+    _icon = "✓" if _match else "⚠"
     print(
-        f"{pop_label}: shared_avg=${_shared_avg:,.2f}  "
+        f"{_icon} {pop_label}: shared_avg=${_shared_avg:,.2f}  "
         f"local_representative=${_local_overcharge:,.2f}"
     )
+    if not _match:
+        import warnings
+        warnings.warn(
+            f"{pop_label}: representative-home overcharge (${_local_overcharge:,.0f}) "
+            f"differs from shared function (${_shared_avg:,.0f}) by "
+            f"${abs(_shared_avg - _local_overcharge):,.2f}",
+            stacklevel=1,
+        )
 ```
 
 ```{python}

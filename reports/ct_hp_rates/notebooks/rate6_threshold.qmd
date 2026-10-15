@@ -1,0 +1,424 @@
+---
+title: "Rate 6 Block Threshold Analysis"
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+execute:
+  warning: false
+  message: false
+
+format:
+  html:
+    page-layout: full
+---
+
+How well does the 700 kWh block threshold in Eversource's proposed Rate 6 match
+actual pre-heat-pump monthly electricity use? Rate 6 assumes that all homes consume
+roughly 700 kWh per month during the winter heating season (November–March), and
+charges a lower Block 2 rate only on kWh above that threshold. If a home's baseline
+usage is well below 700, the discount never kicks in — even after a heat pump is
+installed, most of the incremental load lands in Block 1 at the full rate. If a home's
+baseline usage is well above 700, the discount applies to kWh that are not actually
+incremental heat pump load.
+
+This notebook visualizes the distribution of pre-heat-pump monthly electricity
+consumption during winter months across CT Eversource homes to assess how
+representative the 700 kWh threshold is.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+import pickle
+from pathlib import Path
+
+import plotnine as plt
+import polars as pl
+import yaml
+
+from lib.plotnine import SB_COLORS, theme_switchbox
+from lib.quarto import display_svg
+from lib.rates_analysis.rate_case_funcs import (
+    MONTH_ORDER,
+    add_heating_label,
+    fair_rate_heating_types,
+    load_master_bills,
+    segment_name,
+    weighted_quantile,
+)
+from lib.rdp import fetch_rdp_file
+```
+
+```{python}
+#| label: params
+
+_batch_config = yaml.safe_load(Path("../batch_config.yaml").read_text())
+
+STATE = _batch_config["STATE"]
+BATCH = _batch_config["BATCH"]
+RDP_REF = _batch_config["RDP_REF"]
+UTILITY = "ct_eversource"
+FAIR_RATE_POPULATION = _batch_config["FAIR_RATE_POPULATION"]
+DEFAULT_SCENARIO = _batch_config["BASELINE_BILL_SCENARIO"]
+
+SEG_DEFAULT_PRECALC = segment_name(DEFAULT_SCENARIO, "precalc")
+
+THRESHOLD_KWH = 700.0
+
+# Winter months from the periods YAML
+_period_yaml = yaml.safe_load(
+    fetch_rdp_file(
+        f"rate_design/hp_rates/{STATE.lower()}/config/periods/{UTILITY}.yaml",
+        ref=RDP_REF,
+    )
+)
+WINTER_MONTHS: list[int] = _period_yaml["winter_months"]
+WINTER_MONTH_LABELS: list[str] = [
+    MONTH_ORDER[m - 1] for m in sorted(WINTER_MONTHS, key=lambda m: (m % 12, m))
+]
+FAIR_RATE_HTS = fair_rate_heating_types(FAIR_RATE_POPULATION)
+
+print(f"state={STATE}  batch={BATCH}  utility={UTILITY}")
+print(f"winter_months={WINTER_MONTHS} → {WINTER_MONTH_LABELS}")
+print(f"threshold={THRESHOLD_KWH} kWh")
+```
+
+## Load pre-heat-pump monthly electricity
+
+We load monthly `elec_grid_kwh` from the upgrade-0 (pre-heat-pump) precalc segment,
+restricted to Eversource buildings and winter months only. This is the consumption
+that Rate 6's 700 kWh block threshold is meant to approximate.
+
+```{python}
+#| label: load-monthly-kwh
+
+monthly_winter = (
+    load_master_bills(STATE, BATCH, SEG_DEFAULT_PRECALC)
+    .filter(
+        (pl.col("sb.electric_utility") == UTILITY)
+        & (pl.col("month").is_in(WINTER_MONTH_LABELS))
+    )
+    .select(
+        "bldg_id",
+        "weight",
+        "month",
+        pl.col("elec_grid_kwh").alias("monthly_kwh"),
+        "postprocess_group.heating_type_v2",
+    )
+    .collect()
+)
+
+monthly_winter = add_heating_label(
+    monthly_winter, code_col="postprocess_group.heating_type_v2"
+)
+
+print(f"{monthly_winter.height:,} building-months")
+print(f"{monthly_winter['bldg_id'].n_unique():,} unique buildings")
+monthly_winter.head(10)
+```
+
+Let's see what heating types we have and how many buildings fall in each.
+
+```{python}
+#| label: heating-type-counts
+
+ht_counts = (
+    monthly_winter.group_by("heating_label")
+    .agg(
+        pl.col("bldg_id").n_unique().alias("n_buildings"),
+        pl.col("weight").first().sum().alias("weighted_count"),
+    )
+    .sort("n_buildings", descending=True)
+)
+ht_counts
+```
+
+For the faceted histogram we group into two populations: natural gas and delivered
+fuels (oil/propane). These are the populations Rate 6 is designed for — homes
+switching from fossil heating to heat pumps.
+
+```{python}
+#| label: fuel-group
+
+fuel_group_map = {
+    "Natural gas": "Natural gas",
+    "Oil/propane": "Oil/propane",
+}
+
+monthly_fossil = monthly_winter.filter(
+    pl.col("postprocess_group.heating_type_v2").is_in(FAIR_RATE_HTS)
+).with_columns(
+    pl.col("heating_label")
+    .replace_strict(fuel_group_map, default="Other")
+    .alias("fuel_group")
+).filter(pl.col("fuel_group") != "Other")
+
+print(f"{monthly_fossil.height:,} building-months across fossil-heated homes")
+print(f"{monthly_fossil['bldg_id'].n_unique():,} unique buildings")
+monthly_fossil["fuel_group"].value_counts(sort=True)
+```
+
+## Dispersion statistics
+
+Before plotting, let's compute the weighted mean, median, standard deviation,
+and key percentiles of monthly winter kWh across all fossil-fuel-heated homes.
+
+```{python}
+#| label: dispersion-stats
+
+def weighted_stats(df: pl.DataFrame, col: str = "monthly_kwh") -> dict:
+    """Compute weighted summary statistics for a column."""
+    w = df["weight"]
+    x = df[col]
+    total_w = w.sum()
+    w_mean = float((x * w).sum() / total_w)
+    w_var = float(((x - w_mean) ** 2 * w).sum() / total_w)
+    w_std = w_var**0.5
+    w_median = weighted_quantile(df.select(pl.col(col), "weight"), col, 0.5)
+    w_p10 = weighted_quantile(df.select(pl.col(col), "weight"), col, 0.10)
+    w_p25 = weighted_quantile(df.select(pl.col(col), "weight"), col, 0.25)
+    w_p75 = weighted_quantile(df.select(pl.col(col), "weight"), col, 0.75)
+    w_p90 = weighted_quantile(df.select(pl.col(col), "weight"), col, 0.90)
+    pct_below = float((df.filter(pl.col(col) < THRESHOLD_KWH)["weight"].sum()) / total_w)
+    pct_above = float((df.filter(pl.col(col) >= THRESHOLD_KWH)["weight"].sum()) / total_w)
+    return {
+        "mean": w_mean,
+        "median": w_median,
+        "std": w_std,
+        "p10": w_p10,
+        "p25": w_p25,
+        "p75": w_p75,
+        "p90": w_p90,
+        "pct_below_threshold": pct_below,
+        "pct_above_threshold": pct_above,
+        "cv": w_std / w_mean if w_mean else 0,
+    }
+
+
+stats_all = weighted_stats(monthly_fossil)
+stats_natgas = weighted_stats(monthly_fossil.filter(pl.col("fuel_group") == "Natural gas"))
+stats_delivered = weighted_stats(monthly_fossil.filter(pl.col("fuel_group") == "Oil/propane"))
+
+for label, s in [("All fossil", stats_all), ("Natural gas", stats_natgas), ("Oil/propane", stats_delivered)]:
+    print(f"\n--- {label} ---")
+    print(f"  Mean:   {s['mean']:,.0f} kWh")
+    print(f"  Median: {s['median']:,.0f} kWh")
+    print(f"  Std:    {s['std']:,.0f} kWh")
+    print(f"  CV:     {s['cv']:.2f}")
+    print(f"  P10:    {s['p10']:,.0f} kWh")
+    print(f"  P25:    {s['p25']:,.0f} kWh")
+    print(f"  P75:    {s['p75']:,.0f} kWh")
+    print(f"  P90:    {s['p90']:,.0f} kWh")
+    print(f"  Below {THRESHOLD_KWH:.0f} kWh: {s['pct_below_threshold']:.1%}")
+    print(f"  At or above {THRESHOLD_KWH:.0f} kWh: {s['pct_above_threshold']:.1%}")
+```
+
+## Histogram: all fossil-heated homes
+
+The histogram shows the distribution of monthly electricity consumption during winter
+months (November–March) for all fossil-fuel-heated CT Eversource homes, *before*
+switching to a heat pump. The vertical dashed line at 700 kWh marks Rate 6's block
+threshold — everything to the left is billed at the full Block 1 rate under Rate 6.
+
+```{python}
+#| label: fig-winter-kwh-hist-all
+#| fig-cap: "Distribution of pre-heat-pump monthly electricity consumption during winter months (November–March) for all fossil-fuel-heated CT Eversource homes. Dashed line at 700 kWh marks Rate 6's block threshold."
+
+_xlim_lo = weighted_quantile(monthly_fossil.select("monthly_kwh", "weight"), "monthly_kwh", 0.005)
+_xlim_hi = weighted_quantile(monthly_fossil.select("monthly_kwh", "weight"), "monthly_kwh", 0.995)
+
+_mean_all = stats_all["mean"]
+
+p = (
+    plt.ggplot(monthly_fossil, plt.aes(x="monthly_kwh", weight="weight"))
+    + plt.geom_histogram(binwidth=50, fill=SB_COLORS["sky"], color="white", alpha=0.85)
+    + plt.geom_vline(xintercept=THRESHOLD_KWH, linetype="dashed", color=SB_COLORS["carrot"], size=1)
+    + plt.annotate(
+        "text",
+        x=THRESHOLD_KWH + 20,
+        y=float("inf"),
+        label=f"{THRESHOLD_KWH:.0f} kWh",
+        va="top",
+        ha="left",
+        color=SB_COLORS["carrot"],
+        size=11,
+        fontweight="bold",
+    )
+    + plt.geom_vline(xintercept=_mean_all, linetype="solid", color=SB_COLORS["midnight"], size=0.8)
+    + plt.annotate(
+        "text",
+        x=_mean_all - 20,
+        y=float("inf"),
+        label=f"Mean: {_mean_all:,.0f} kWh",
+        va="top",
+        ha="right",
+        color=SB_COLORS["midnight"],
+        size=11,
+        fontweight="bold",
+    )
+    + plt.scale_x_continuous(
+        labels=lambda vals: [f"{v:,.0f}" for v in vals],
+    )
+    + plt.scale_y_continuous(
+        labels=lambda vals: [f"{v:,.0f}" for v in vals],
+    )
+    + plt.coord_cartesian(xlim=(_xlim_lo, _xlim_hi))
+    + plt.labs(
+        x="Monthly electricity (kWh)",
+        y="Weighted building-months",
+        title="Pre-heat-pump winter electricity use vs. Rate 6's 700 kWh threshold",
+        subtitle=f"Fossil-fuel-heated homes, Nov–Mar · Mean: {stats_all['mean']:,.0f} kWh · Median: {stats_all['median']:,.0f} kWh · {stats_all['pct_below_threshold']:.0%} below threshold",
+    )
+    + theme_switchbox()
+    + plt.theme(figure_size=(10.5, 5))
+)
+display_svg(p.draw())
+```
+
+## Histogram: faceted by fuel type
+
+The same distribution, faceted by baseline heating fuel. Natural-gas-heated homes
+and oil/propane-heated homes may have very different baseline electricity use,
+which affects how well the 700 kWh threshold discriminates between base load and
+incremental heat pump load for each group.
+
+```{python}
+#| label: fig-winter-kwh-hist-by-fuel
+#| fig-cap: "Distribution of pre-heat-pump monthly electricity consumption during winter months, faceted by baseline heating fuel. Dashed line at 700 kWh marks Rate 6's block threshold."
+
+_fuel_order = pl.Enum(["Natural gas", "Oil/propane"])
+_df_facet = monthly_fossil.with_columns(
+    pl.col("fuel_group").cast(_fuel_order)
+)
+
+_subtitle_parts = []
+for fg, s in [("Natural gas", stats_natgas), ("Oil/propane", stats_delivered)]:
+    _subtitle_parts.append(
+        f"{fg}: mean {s['mean']:,.0f}, median {s['median']:,.0f}, {s['pct_below_threshold']:.0%} below"
+    )
+_subtitle = " · ".join(_subtitle_parts)
+
+_facet_means = pl.DataFrame({
+    "fuel_group": ["Natural gas", "Oil/propane"],
+    "mean_kwh": [stats_natgas["mean"], stats_delivered["mean"]],
+}).with_columns(pl.col("fuel_group").cast(_fuel_order))
+
+_facet_labels = _facet_means.with_columns(
+    (
+        pl.lit("Mean: ")
+        + pl.col("mean_kwh").round(0).cast(pl.Int64).cast(pl.Utf8)
+        + pl.lit(" kWh")
+    ).alias("label"),
+    pl.when(pl.col("mean_kwh") >= THRESHOLD_KWH)
+    .then(pl.col("mean_kwh") + 20)
+    .otherwise(pl.col("mean_kwh") - 20)
+    .alias("label_x"),
+)
+_labels_left = _facet_labels.filter(pl.col("mean_kwh") < THRESHOLD_KWH)
+_labels_right = _facet_labels.filter(pl.col("mean_kwh") >= THRESHOLD_KWH)
+
+_mean_layers: list = [
+    plt.geom_vline(
+        _facet_means,
+        plt.aes(xintercept="mean_kwh"),
+        linetype="solid",
+        color=SB_COLORS["midnight"],
+        size=0.8,
+        inherit_aes=False,
+    ),
+]
+if _labels_left.height > 0:
+    _mean_layers.append(
+        plt.geom_text(
+            _labels_left,
+            plt.aes(x="label_x", label="label"),
+            y=float("inf"),
+            va="top",
+            ha="right",
+            color=SB_COLORS["midnight"],
+            size=11,
+            fontweight="bold",
+            inherit_aes=False,
+        )
+    )
+if _labels_right.height > 0:
+    _mean_layers.append(
+        plt.geom_text(
+            _labels_right,
+            plt.aes(x="label_x", label="label"),
+            y=float("inf"),
+            va="top",
+            ha="left",
+            color=SB_COLORS["midnight"],
+            size=11,
+            fontweight="bold",
+            inherit_aes=False,
+        )
+    )
+
+p_facet = (
+    plt.ggplot(_df_facet, plt.aes(x="monthly_kwh", weight="weight"))
+    + plt.geom_histogram(binwidth=50, fill=SB_COLORS["sky"], color="white", alpha=0.85)
+    + plt.geom_vline(xintercept=THRESHOLD_KWH, linetype="dashed", color=SB_COLORS["carrot"], size=1)
+    + plt.annotate(
+        "text",
+        x=THRESHOLD_KWH + 20,
+        y=float("inf"),
+        label=f"{THRESHOLD_KWH:.0f} kWh",
+        va="top",
+        ha="left",
+        color=SB_COLORS["carrot"],
+        size=11,
+        fontweight="bold",
+    )
+    + _mean_layers
+    + plt.facet_wrap("fuel_group", ncol=1, scales="free_y")
+    + plt.scale_x_continuous(
+        labels=lambda vals: [f"{v:,.0f}" for v in vals],
+    )
+    + plt.scale_y_continuous(
+        labels=lambda vals: [f"{v:,.0f}" for v in vals],
+    )
+    + plt.coord_cartesian(xlim=(_xlim_lo, _xlim_hi))
+    + plt.labs(
+        x="Monthly electricity (kWh)",
+        y="Weighted building-months",
+        title="Pre-heat-pump winter electricity by heating fuel vs. Rate 6's 700 kWh threshold",
+        subtitle=_subtitle,
+    )
+    + theme_switchbox()
+    + plt.theme(figure_size=(10.5, 7.5))
+)
+display_svg(p_facet.draw())
+```
+
+## Export report variables
+
+```{python}
+#| label: export-report-vars
+
+report_vars: dict = {}
+
+report_vars["threshold_kwh"] = THRESHOLD_KWH
+
+for label, s in [("all_fossil", stats_all), ("natgas", stats_natgas), ("delivered", stats_delivered)]:
+    report_vars[f"winter_kwh_mean_{label}"] = s["mean"]
+    report_vars[f"winter_kwh_median_{label}"] = s["median"]
+    report_vars[f"winter_kwh_std_{label}"] = s["std"]
+    report_vars[f"winter_kwh_cv_{label}"] = s["cv"]
+    report_vars[f"winter_kwh_p10_{label}"] = s["p10"]
+    report_vars[f"winter_kwh_p25_{label}"] = s["p25"]
+    report_vars[f"winter_kwh_p75_{label}"] = s["p75"]
+    report_vars[f"winter_kwh_p90_{label}"] = s["p90"]
+    report_vars[f"winter_kwh_pct_below_{label}"] = s["pct_below_threshold"]
+    report_vars[f"winter_kwh_pct_above_{label}"] = s["pct_above_threshold"]
+
+Path("../cache").mkdir(exist_ok=True)
+Path("../cache/rate6_threshold_report_variables.pkl").write_bytes(pickle.dumps(report_vars))
+print(f"Exported {len(report_vars)} report vars to cache/rate6_threshold_report_variables.pkl")
+report_vars
+```

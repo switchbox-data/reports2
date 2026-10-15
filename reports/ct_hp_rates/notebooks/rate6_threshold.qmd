@@ -36,6 +36,10 @@ from __future__ import annotations
 import pickle
 from pathlib import Path
 
+import matplotlib
+import matplotlib.pyplot as mplt
+import matplotlib.ticker as ticker
+import numpy as np
 import plotnine as plt
 import polars as pl
 import yaml
@@ -66,8 +70,16 @@ FAIR_RATE_POPULATION = _batch_config["FAIR_RATE_POPULATION"]
 DEFAULT_SCENARIO = _batch_config["BASELINE_BILL_SCENARIO"]
 
 SEG_DEFAULT_PRECALC = segment_name(DEFAULT_SCENARIO, "precalc")
+SEG_DEFAULT_CALIBRATED = segment_name(DEFAULT_SCENARIO, "calibrated")
 
 THRESHOLD_KWH = 700.0
+
+# Rate 6 block rates (from ct_eversource_rate6 tariff JSON)
+BLOCK1_RATE = 0.13570  # $/kWh — delivery volumetric, all kWh up to 700 in winter
+BLOCK2_RATE = 0.11656  # $/kWh — delivery volumetric, kWh above 700 in winter
+BLOCK_DISCOUNT = BLOCK1_RATE - BLOCK2_RATE  # intended discount per HP kWh
+
+N_BANDS = 50  # percentile bands for ribbon charts
 
 # Winter months from the periods YAML
 _period_yaml = yaml.safe_load(
@@ -396,6 +408,510 @@ p_facet = (
 display_svg(p_facet.draw())
 ```
 
+## Load post-heat-pump monthly electricity
+
+To build ribbon charts showing how the 700 kWh threshold classifies each home's
+load, we need both pre-HP and post-HP monthly kWh. The post-HP data comes from the
+calibrated segment (upgrade 2 = heat pump retrofit).
+
+```{python}
+#| label: load-post-hp-kwh
+
+monthly_post = (
+    load_master_bills(STATE, BATCH, SEG_DEFAULT_CALIBRATED)
+    .filter(
+        (pl.col("sb.electric_utility") == UTILITY)
+        & (pl.col("upgrade") == 2)
+        & (pl.col("month").is_in(WINTER_MONTH_LABELS))
+    )
+    .select(
+        "bldg_id",
+        "month",
+        pl.col("elec_grid_kwh").alias("post_kwh"),
+    )
+    .collect()
+)
+
+print(f"{monthly_post.height:,} post-HP building-months")
+print(f"{monthly_post['bldg_id'].n_unique():,} unique buildings")
+```
+
+Join pre-HP and post-HP monthly kWh, keeping only fossil-fuel-heated homes. Then
+compute per-building winter averages and threshold classification metrics.
+
+```{python}
+#| label: build-bldg-threshold
+
+monthly_joined = (
+    monthly_fossil.join(monthly_post, on=["bldg_id", "month"], how="inner")
+    .with_columns(
+        (pl.col("post_kwh") - pl.col("monthly_kwh")).clip(lower_bound=0).alias("incr_kwh"),
+        pl.when(pl.col("post_kwh") > THRESHOLD_KWH)
+        .then(
+            pl.col("post_kwh")
+            - pl.max_horizontal("monthly_kwh", pl.lit(THRESHOLD_KWH))
+        )
+        .otherwise(0.0)
+        .alias("hp_b2"),
+        pl.when(pl.col("monthly_kwh") > THRESHOLD_KWH)
+        .then(pl.col("monthly_kwh") - THRESHOLD_KWH)
+        .otherwise(0.0)
+        .alias("base_b2"),
+    )
+)
+
+bldg_threshold = (
+    monthly_joined.group_by(
+        "bldg_id", "weight", "postprocess_group.heating_type_v2", "fuel_group"
+    )
+    .agg(
+        pl.col("monthly_kwh").mean().alias("avg_pre"),
+        pl.col("post_kwh").mean().alias("avg_post"),
+        pl.col("incr_kwh").mean().alias("avg_incr"),
+        pl.col("hp_b2").mean().alias("avg_hp_b2"),
+        pl.col("base_b2").mean().alias("avg_base_b2"),
+    )
+    .filter(pl.col("avg_post") > pl.col("avg_pre"))
+    .with_columns(
+        pl.when(pl.col("avg_incr") > 0)
+        .then((pl.col("avg_hp_b2") / pl.col("avg_incr")).clip(0, 1))
+        .otherwise(1.0)
+        .alias("capture_rate"),
+        pl.when(pl.col("avg_pre") > 0)
+        .then((pl.col("avg_base_b2") / pl.col("avg_pre")).clip(0, 1))
+        .otherwise(0.0)
+        .alias("windfall_rate"),
+    )
+)
+
+print(f"{bldg_threshold.height:,} buildings with threshold metrics")
+bldg_threshold.head(5)
+```
+
+Filter to delivered-fuel homes only (Rate 6's target population) and load income
+data for the regressivity analysis.
+
+```{python}
+#| label: df-income
+
+bldg_df = bldg_threshold.filter(pl.col("fuel_group") == "Oil/propane")
+
+income_col = (
+    load_master_bills(STATE, BATCH, SEG_DEFAULT_PRECALC)
+    .filter(
+        (pl.col("sb.electric_utility") == UTILITY)
+        & (pl.col("upgrade") == 0)
+        & (pl.col("month") == "Annual")
+    )
+    .select("bldg_id", "in.representative_income")
+    .collect()
+)
+
+bldg_df = bldg_df.join(income_col, on="bldg_id", how="left")
+
+# Weighted income terciles
+_sorted = bldg_df.sort("in.representative_income")
+_cum_w = _sorted["weight"].cum_sum()
+_total_w = _sorted["weight"].sum()
+_sorted = _sorted.with_columns(
+    pl.when(_cum_w / _total_w <= 1 / 3)
+    .then(pl.lit("Low income"))
+    .when(_cum_w / _total_w <= 2 / 3)
+    .then(pl.lit("Middle income"))
+    .otherwise(pl.lit("High income"))
+    .alias("income_tercile")
+)
+bldg_df = _sorted
+
+# Tercile income breakpoints
+_low = bldg_df.filter(pl.col("income_tercile") == "Low income")
+_mid = bldg_df.filter(pl.col("income_tercile") == "Middle income")
+_hi = bldg_df.filter(pl.col("income_tercile") == "High income")
+_break_low_mid = float(_low["in.representative_income"].max())
+_break_mid_high = float(_mid["in.representative_income"].max())
+
+print(f"Delivered-fuel homes: {bldg_df.height:,}")
+print(f"Income tercile breaks: ${_break_low_mid:,.0f} / ${_break_mid_high:,.0f}")
+for t in ["Low income", "Middle income", "High income"]:
+    sub = bldg_df.filter(pl.col("income_tercile") == t)
+    sw = sub["weight"].sum()
+    med_inc = weighted_quantile(
+        sub.select(pl.col("in.representative_income").alias("v"), "weight"), "v", 0.5
+    )
+    print(f"  {t}: {sub.height} bldgs, median income ${med_inc:,.0f}")
+```
+
+## Ribbon chart helper
+
+The ribbon chart ranks homes by pre-HP winter electricity on the x-axis, then shows
+pre-HP and post-HP consumption as lines. Three colored regions classify how the 700
+kWh threshold interacts with each home's load:
+
+- **Sky blue**: Incremental HP load correctly in Block 2 (discounted)
+- **Carrot orange**: Incremental HP load trapped in Block 1 (full rate)
+- **Saffron yellow**: Pre-existing base load in Block 2 (windfall discount)
+
+```{python}
+#| label: ribbon-helper
+
+def make_ribbon(
+    ax: matplotlib.axes.Axes,
+    sub: pl.DataFrame,
+    threshold: float,
+    title: str,
+    *,
+    subtitle: str | None = None,
+    show_legend: bool = False,
+    show_post: bool = True,
+    y_max_override: float | None = None,
+) -> None:
+    """Draw a ribbon chart on the given axes."""
+    sub = sub.sort("avg_pre").with_columns(
+        (pl.col("weight").cum_sum() / pl.col("weight").sum() * 100).alias("pctile"),
+        (
+            (pl.col("weight").cum_sum() / pl.col("weight").sum() * N_BANDS)
+            .floor()
+            .clip(upper_bound=N_BANDS - 1)
+        )
+        .cast(pl.Int32)
+        .alias("band"),
+    )
+    bands = (
+        sub.group_by("band")
+        .agg(
+            (pl.col("pctile") * pl.col("weight")).sum() / pl.col("weight").sum(),
+            (pl.col("avg_pre") * pl.col("weight")).sum() / pl.col("weight").sum(),
+            (pl.col("avg_post") * pl.col("weight")).sum() / pl.col("weight").sum(),
+        )
+        .sort("band")
+    )
+
+    x = bands["pctile"].to_numpy()
+    pre_y = bands["avg_pre"].to_numpy()
+    post_y = bands["avg_post"].to_numpy()
+    thr = np.full_like(x, threshold)
+
+    if show_post:
+        ax.fill_between(
+            x,
+            np.maximum(pre_y, thr),
+            np.maximum(post_y, thr),
+            where=(np.maximum(post_y, thr) > np.maximum(pre_y, thr)),
+            color=SB_COLORS["sky"],
+            alpha=0.45,
+            label="HP load in Block 2 (discounted)" if show_legend else None,
+            linewidth=0,
+        )
+        ax.fill_between(
+            x,
+            pre_y,
+            np.minimum(post_y, thr),
+            where=(pre_y < thr) & (np.minimum(post_y, thr) > pre_y),
+            color=SB_COLORS["carrot"],
+            alpha=0.55,
+            label="HP load in Block 1 (full rate)" if show_legend else None,
+            linewidth=0,
+        )
+        ax.fill_between(
+            x,
+            thr,
+            pre_y,
+            where=(pre_y > thr),
+            color=SB_COLORS["saffron"],
+            alpha=0.45,
+            label="Base load in Block 2 (windfall)" if show_legend else None,
+            linewidth=0,
+        )
+        ax.plot(
+            x, post_y, color="#2196F3", linewidth=2,
+            label="Post-HP consumption" if show_legend else None, zorder=5,
+        )
+
+    ax.plot(
+        x, pre_y, color=SB_COLORS["midnight"], linewidth=2,
+        label="Pre-HP consumption" if show_legend else None, zorder=5,
+    )
+    ax.axhline(
+        y=threshold, color=SB_COLORS["carrot"], linestyle="--", linewidth=1.5, zorder=4,
+    )
+    ax.annotate(
+        f"{threshold:.0f} kWh",
+        xy=(1, threshold + 25),
+        fontsize=10,
+        fontweight="bold",
+        color=SB_COLORS["carrot"],
+    )
+
+    if y_max_override is not None:
+        y_max = y_max_override
+    elif show_post:
+        y_max = max(post_y) * 1.08
+    else:
+        y_max = max(pre_y) * 1.15
+    ax.set_xlim(0, 100)
+    ax.set_ylim(0, y_max)
+    ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: f"{v:,.0f}"))
+    ax.set_title(title, fontsize=13, fontweight="bold", pad=6)
+    ax.set_ylabel("Avg monthly kWh", fontsize=11)
+
+    if subtitle:
+        ax.annotate(
+            subtitle,
+            xy=(50, y_max * 0.92),
+            fontsize=10,
+            ha="center",
+            fontstyle="italic",
+            color="#555555",
+        )
+    if show_legend:
+        ax.legend(loc="upper left", fontsize=9, framealpha=0.9)
+```
+
+We compute a shared y-axis maximum so the base-load-only and full classification
+ribbon charts are visually comparable.
+
+```{python}
+#| label: ribbon-y-max
+
+_ribbon_y_max = float(bldg_df["avg_post"].max() * 1.08)
+print(f"Shared ribbon y-max: {_ribbon_y_max:,.0f} kWh")
+```
+
+## Ribbon: delivered-fuel base load only
+
+This chart shows just the pre-HP electricity use for delivered-fuel homes, ranked
+from lowest to highest. The 700 kWh threshold line makes it easy to see how many
+homes fall above and below. No post-HP data is shown yet — just base load and
+the threshold. This establishes the dispersion visually before adding the
+classification analysis.
+
+```{python}
+#| label: fig-ribbon-df-base-only
+#| fig-cap: "Pre-heat-pump winter electricity use for delivered-fuel homes, ranked by consumption. Dashed line at 700 kWh marks Rate 6's block threshold."
+
+fig, ax = mplt.subplots(figsize=(10.5, 5.5))
+make_ribbon(
+    ax,
+    bldg_df,
+    THRESHOLD_KWH,
+    "Delivered-fuel homes: pre-HP winter electricity vs. Rate 6 threshold",
+    subtitle=(
+        f"Mean: {stats_delivered['mean']:,.0f} kWh · "
+        f"Median: {stats_delivered['median']:,.0f} kWh · "
+        f"IQR: {stats_delivered['p25']:,.0f}–{stats_delivered['p75']:,.0f} kWh"
+    ),
+    show_legend=False,
+    show_post=False,
+    y_max_override=_ribbon_y_max,
+)
+ax.axhline(y=600, color="#CCCCCC", linestyle=":", linewidth=1, zorder=3)
+ax.axhline(y=800, color="#CCCCCC", linestyle=":", linewidth=1, zorder=3)
+ax.set_xlabel(
+    "Homes ranked by pre-HP winter electricity (weighted percentile)", fontsize=11,
+)
+fig.tight_layout()
+display_svg(fig)
+```
+
+## Ribbon: delivered-fuel full classification
+
+Now we add the post-HP consumption and color the three classification regions.
+Each home's incremental heat pump load is either correctly discounted (blue),
+trapped in Block 1 (orange), or a windfall on pre-existing base load (saffron).
+
+```{python}
+#| label: fig-ribbon-df-full
+#| fig-cap: "How Rate 6's 700 kWh threshold classifies each delivered-fuel home's load. Blue: HP load correctly in Block 2. Orange: HP load trapped in Block 1. Yellow: base load getting Block 2 windfall."
+
+fig, ax = mplt.subplots(figsize=(10.5, 5.5))
+make_ribbon(
+    ax,
+    bldg_df,
+    THRESHOLD_KWH,
+    "Rate 6 threshold classification: delivered-fuel homes",
+    show_legend=True,
+    show_post=True,
+    y_max_override=_ribbon_y_max,
+)
+ax.set_xlabel(
+    "Homes ranked by pre-HP winter electricity (weighted percentile)", fontsize=11,
+)
+fig.tight_layout()
+display_svg(fig)
+```
+
+## Incidence and severity statistics
+
+How many delivered-fuel homes are affected by each classification error, and how
+severe is the misclassification for the typical affected home?
+
+```{python}
+#| label: incidence-severity
+
+def incidence_severity(
+    df: pl.DataFrame,
+) -> dict:
+    """Compute incidence and severity of threshold misclassification."""
+    sw = df["weight"].sum()
+
+    has_orange = df.filter(pl.col("capture_rate") < 1.0)
+    has_yellow = df.filter(pl.col("windfall_rate") > 0)
+
+    pct_any_orange = float(has_orange["weight"].sum() / sw)
+    pct_any_yellow = float(has_yellow["weight"].sum() / sw)
+
+    orange_kwh = has_orange.with_columns(
+        (pl.col("avg_incr") - pl.col("avg_hp_b2")).alias("trapped_kwh")
+    )
+    med_trapped = (
+        weighted_quantile(
+            orange_kwh.select(pl.col("trapped_kwh").alias("v"), "weight"), "v", 0.5
+        )
+        if has_orange.height > 0
+        else 0.0
+    )
+    med_windfall = (
+        weighted_quantile(
+            has_yellow.select(pl.col("avg_base_b2").alias("v"), "weight"), "v", 0.5
+        )
+        if has_yellow.height > 0
+        else 0.0
+    )
+
+    mean_capture = float((df["capture_rate"] * df["weight"]).sum() / sw)
+
+    return {
+        "pct_any_orange": pct_any_orange,
+        "pct_any_yellow": pct_any_yellow,
+        "median_trapped_kwh": med_trapped,
+        "median_windfall_kwh": med_windfall,
+        "mean_capture": mean_capture,
+    }
+
+
+is_all = incidence_severity(bldg_df)
+
+print("=== All delivered-fuel homes ===")
+print(f"  % with any HP load trapped (orange):  {is_all['pct_any_orange']:.1%}")
+print(f"  % with any base-load windfall (yellow): {is_all['pct_any_yellow']:.1%}")
+print(f"  Median trapped kWh/mo (if affected):  {is_all['median_trapped_kwh']:,.0f}")
+print(f"  Median windfall kWh/mo (if affected): {is_all['median_windfall_kwh']:,.0f}")
+print(f"  Mean capture rate: {is_all['mean_capture']:.1%}")
+```
+
+## Effective discount and regressivity metrics
+
+For each home, the effective rate on incremental HP load is a weighted average of
+Block 1 and Block 2 rates, depending on how much HP load lands in each block. The
+percent of the intended discount received is then
+`(Block1 - effective_rate) / (Block1 - Block2)`.
+
+```{python}
+#| label: effective-discount
+
+def _effective_discount_pct(df: pl.DataFrame) -> float:
+    """Weighted mean percent of intended discount received."""
+    sw = df["weight"].sum()
+    df2 = df.with_columns(
+        pl.when(pl.col("avg_incr") > 0)
+        .then(
+            (
+                (pl.col("avg_incr") - pl.col("avg_hp_b2")) * BLOCK1_RATE
+                + pl.col("avg_hp_b2") * BLOCK2_RATE
+            )
+            / pl.col("avg_incr")
+        )
+        .otherwise(BLOCK1_RATE)
+        .alias("eff_rate"),
+    )
+    mean_eff = float((df2["eff_rate"] * df2["weight"]).sum() / sw)
+    return (BLOCK1_RATE - mean_eff) / BLOCK_DISCOUNT
+
+
+# Income–base-load correlation
+def _weighted_corr(df: pl.DataFrame, col_x: str, col_y: str) -> float:
+    x = df[col_x].to_numpy().astype(float)
+    y = df[col_y].to_numpy().astype(float)
+    w = df["weight"].to_numpy().astype(float)
+    mask = np.isfinite(x) & np.isfinite(y)
+    x, y, w = x[mask], y[mask], w[mask]
+    sw = w.sum()
+    mx = (x * w).sum() / sw
+    my = (y * w).sum() / sw
+    cov_xy = (w * (x - mx) * (y - my)).sum() / sw
+    sx = np.sqrt((w * (x - mx) ** 2).sum() / sw)
+    sy = np.sqrt((w * (y - my) ** 2).sum() / sw)
+    return float(cov_xy / (sx * sy)) if sx > 0 and sy > 0 else 0.0
+
+
+income_base_corr = _weighted_corr(bldg_df, "in.representative_income", "avg_pre")
+print(f"Income–base-load correlation (DF): {income_base_corr:.3f}")
+
+print(f"\nBlock 1 rate: {BLOCK1_RATE * 100:.3f} ¢/kWh")
+print(f"Block 2 rate: {BLOCK2_RATE * 100:.3f} ¢/kWh")
+print(f"Intended discount: {BLOCK_DISCOUNT * 100:.3f} ¢/kWh")
+print()
+
+for tercile in ["Low income", "Middle income", "High income"]:
+    sub = bldg_df.filter(pl.col("income_tercile") == tercile)
+    pct = _effective_discount_pct(sub)
+    _is = incidence_severity(sub)
+    print(
+        f"{tercile}: {pct:.0%} of discount received, "
+        f"{_is['pct_any_orange']:.0%} with trapped HP, "
+        f"{_is['pct_any_yellow']:.0%} with windfall"
+    )
+```
+
+## Ribbon: delivered-fuel homes by income tercile
+
+We split delivered-fuel homes into three income groups (weighted thirds) and draw a
+ribbon chart for each. This reveals whether the threshold's classification errors
+are correlated with income.
+
+```{python}
+#| label: fig-ribbon-df-by-income
+#| fig-cap: "Rate 6 threshold classification for delivered-fuel homes, by income tercile. Low-income homes (top) bear more orange (trapped HP load); high-income homes (bottom) receive more yellow (windfall discount)."
+
+_tercile_order = ["Low income", "Middle income", "High income"]
+
+fig, axes = mplt.subplots(3, 1, figsize=(10.5, 13), sharex=True)
+
+for i, tercile in enumerate(_tercile_order):
+    sub = bldg_df.filter(pl.col("income_tercile") == tercile)
+    med_inc = weighted_quantile(
+        sub.select(pl.col("in.representative_income").alias("v"), "weight"), "v", 0.5
+    )
+    _sub_subtitle = (
+        f"Median income: ${med_inc / 1000:,.0f}k · "
+        f"Median pre-HP: "
+        f"{weighted_quantile(sub.select(pl.col('avg_pre').alias('v'), 'weight'), 'v', 0.5):,.0f}"
+        f" kWh · "
+        f"Discount received: {_effective_discount_pct(sub):.0%}"
+    )
+    make_ribbon(
+        axes[i],
+        sub,
+        THRESHOLD_KWH,
+        f"{tercile} delivered-fuel homes",
+        subtitle=_sub_subtitle,
+        show_legend=(i == 0),
+        show_post=True,
+    )
+
+axes[2].set_xlabel(
+    "Homes ranked by pre-HP winter electricity (weighted percentile)", fontsize=11,
+)
+fig.suptitle(
+    "Rate 6's 700 kWh threshold by income: delivered-fuel homes",
+    fontsize=15,
+    fontweight="bold",
+    y=0.99,
+)
+fig.tight_layout(rect=[0, 0, 1, 0.97])
+display_svg(fig)
+```
+
 ## Export report variables
 
 ```{python}
@@ -405,7 +921,11 @@ report_vars: dict = {}
 
 report_vars["threshold_kwh"] = THRESHOLD_KWH
 
-for label, s in [("all_fossil", stats_all), ("natgas", stats_natgas), ("delivered", stats_delivered)]:
+for label, s in [
+    ("all_fossil", stats_all),
+    ("natgas", stats_natgas),
+    ("delivered", stats_delivered),
+]:
     report_vars[f"winter_kwh_mean_{label}"] = s["mean"]
     report_vars[f"winter_kwh_median_{label}"] = s["median"]
     report_vars[f"winter_kwh_std_{label}"] = s["std"]
@@ -417,8 +937,83 @@ for label, s in [("all_fossil", stats_all), ("natgas", stats_natgas), ("delivere
     report_vars[f"winter_kwh_pct_below_{label}"] = s["pct_below_threshold"]
     report_vars[f"winter_kwh_pct_above_{label}"] = s["pct_above_threshold"]
 
+# Threshold proximity stats (delivered-fuel, per-building avg)
+_df_dists = bldg_df.with_columns(
+    (pl.col("avg_pre") - THRESHOLD_KWH).abs().alias("dist_from_threshold")
+)
+_df_total_w = bldg_df["weight"].sum()
+report_vars["pct_within_50_of_threshold_df"] = float(
+    bldg_df.filter(
+        (pl.col("avg_pre") >= THRESHOLD_KWH - 50)
+        & (pl.col("avg_pre") <= THRESHOLD_KWH + 50)
+    )["weight"].sum()
+    / _df_total_w
+)
+report_vars["median_dist_from_threshold_df"] = weighted_quantile(
+    _df_dists.select(pl.col("dist_from_threshold").alias("v"), "weight"), "v", 0.5
+)
+_p10_df = weighted_quantile(
+    bldg_df.select(pl.col("avg_pre").alias("v"), "weight"), "v", 0.10
+)
+_p90_df = weighted_quantile(
+    bldg_df.select(pl.col("avg_pre").alias("v"), "weight"), "v", 0.90
+)
+report_vars["winter_kwh_p10_delivered_bldg"] = _p10_df
+report_vars["winter_kwh_p90_delivered_bldg"] = _p90_df
+
+# Block rate values
+report_vars["block1_rate_cents"] = BLOCK1_RATE * 100
+report_vars["block2_rate_cents"] = BLOCK2_RATE * 100
+report_vars["block_discount_cents"] = BLOCK_DISCOUNT * 100
+
+# Incidence and severity (all DF)
+report_vars["pct_any_orange_df"] = is_all["pct_any_orange"]
+report_vars["pct_any_yellow_df"] = is_all["pct_any_yellow"]
+report_vars["median_trapped_kwh_df"] = is_all["median_trapped_kwh"]
+report_vars["median_windfall_kwh_df"] = is_all["median_windfall_kwh"]
+report_vars["mean_capture_df"] = is_all["mean_capture"]
+
+# Income–base-load correlation
+report_vars["income_base_load_corr_df"] = income_base_corr
+
+# Income tercile breakpoints
+report_vars["income_tercile_break_low_mid"] = _break_low_mid
+report_vars["income_tercile_break_mid_high"] = _break_mid_high
+
+# Per-tercile stats
+for tercile, key in [
+    ("Low income", "low"),
+    ("Middle income", "mid"),
+    ("High income", "high"),
+]:
+    sub = bldg_df.filter(pl.col("income_tercile") == tercile)
+    _is_t = incidence_severity(sub)
+    report_vars[f"pct_discount_df_{key}"] = _effective_discount_pct(sub)
+    _sw_t = sub["weight"].sum()
+    _tbr = sub.with_columns(
+        pl.when(pl.col("avg_incr") > 0)
+        .then((pl.col("avg_hp_b2") + pl.col("avg_base_b2")) / pl.col("avg_incr"))
+        .otherwise(0.0)
+        .alias("tbr"),
+    )
+    report_vars[f"total_benefit_ratio_df_{key}"] = float(
+        (_tbr["tbr"] * _tbr["weight"]).sum() / _sw_t
+    )
+    report_vars[f"pct_any_orange_df_{key}"] = _is_t["pct_any_orange"]
+    report_vars[f"pct_any_yellow_df_{key}"] = _is_t["pct_any_yellow"]
+    report_vars[f"median_trapped_kwh_df_{key}"] = _is_t["median_trapped_kwh"]
+    report_vars[f"median_windfall_kwh_df_{key}"] = _is_t["median_windfall_kwh"]
+    _med_inc = weighted_quantile(
+        sub.select(pl.col("in.representative_income").alias("v"), "weight"), "v", 0.5
+    )
+    report_vars[f"median_income_df_{key}"] = _med_inc
+    report_vars[f"income_lo_df_{key}"] = float(sub["in.representative_income"].min())
+    report_vars[f"income_hi_df_{key}"] = float(sub["in.representative_income"].max())
+
 Path("../cache").mkdir(exist_ok=True)
-Path("../cache/rate6_threshold_report_variables.pkl").write_bytes(pickle.dumps(report_vars))
+Path("../cache/rate6_threshold_report_variables.pkl").write_bytes(
+    pickle.dumps(report_vars)
+)
 print(f"Exported {len(report_vars)} report vars to cache/rate6_threshold_report_variables.pkl")
 report_vars
 ```

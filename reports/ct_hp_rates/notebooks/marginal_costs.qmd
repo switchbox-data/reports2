@@ -1,0 +1,371 @@
+---
+title: "Distribution Marginal Costs: OCC-863 Month-Hour Schedule on the 2025 Calendar"
+reference-location: margin
+fig-cap-location: bottom
+execute:
+  warning: false
+  message: false
+---
+
+This notebook builds the hourly distribution marginal-cost schedule used for Connecticut
+Eversource (CL&P) in the rate report and the expert testimony. The schedule is not a new
+allocation of an annual cost onto a load curve. Eversource already did that allocation in
+its response to OCC-863, Attachment 2, in PURA Docket 26-05-10.
+
+Attachment 2 starts from the loss-adjusted annual upstream distribution cost,
+**$21.22/kW-year** at secondary voltage, and spreads it across month, hour, and day type.
+This notebook takes those `$/kWh` values as given, places them on every hour of the 2025
+analysis calendar, and multiplies the resulting 8,760 by one factor so the year sums back
+to $21.22/kW-year.
+
+The numbers exported at the end are what `index.qmd` and `expert_testimony.qmd` quote.
+They are not hardcoded in the narrative.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+import calendar
+import pickle
+from datetime import date, datetime, timedelta
+from pathlib import Path
+
+import polars as pl
+from great_tables import GT
+
+from lib.format import pct
+from lib.great_tables import get_switchbox_gt_tab_options
+from lib.quarto import display_gt
+
+report_vars: dict = {}
+```
+
+## Parameters
+
+Table 3 of Exhibit CLP-MCOS-2 states the system-wide marginal distribution station and
+trunkline cost as **$20.17/kW-year**, before losses. Attachment 2, page 1, cell N3, is the
+secondary loss factor. Cell J3 multiplies the two. Rounded to the cent, that product is the
+**$21.22/kW-year** this schedule is scaled to. Both figures are in the MCOS study's 2026
+dollars. The analysis calendar is 2025, the year CAIRO's residential loads are aligned to.
+
+```{python}
+#| label: params
+
+UTILITY = "ct_eversource"
+CALENDAR_YEAR = 2025
+
+# Exhibit CLP-MCOS-2, Table 3. Upstream distribution, system-wide, before losses.
+TABLE3_MC_KW_YR = 20.17
+# OCC-863 Attachment 2, page 1, cell N3. Secondary service.
+SECONDARY_LOSS_FACTOR = 1.051845136935937
+# Rounded product, and the annual total the 8760 is scaled to.
+TARGET_MC_KW_YR = 21.22
+DOLLAR_YEAR = 2026
+
+PATH_OCC863 = (
+    "s3://data.sb/switchbox/sources/ct/eversource/docket-26-05-10/occ-863/parquet"
+)
+S3_OPTS = {"aws_region": "us-west-2"}
+
+SHEET_MC_KW_YR = TABLE3_MC_KW_YR * SECONDARY_LOSS_FACTOR
+
+report_vars["table3_mc_kw_yr"] = TABLE3_MC_KW_YR
+report_vars["secondary_loss_factor"] = SECONDARY_LOSS_FACTOR
+report_vars["sheet_mc_kw_yr"] = SHEET_MC_KW_YR
+report_vars["target_mc_kw_yr"] = TARGET_MC_KW_YR
+report_vars["dollar_year"] = DOLLAR_YEAR
+report_vars["calendar_year"] = CALENDAR_YEAR
+```
+
+## Import data
+
+Attachment 2, page 1, is secondary service. It holds a weekday `$/kWh` matrix and a weekend
+and public-holiday `$/kWh` matrix. Each has one row per month and hour, the day count behind
+that month (`num_days`), and the marginal cost. Page 3 holds the probability of peak those
+costs were built from.
+
+```{python}
+#| label: load-occ863-tables
+
+def _read_occ863(name: str) -> pl.DataFrame:
+    return pl.read_parquet(f"{PATH_OCC863}/{name}", storage_options=S3_OPTS)
+
+
+weekday_mc = _read_occ863("month_hour_marginal_costs_weekday_secondary.parquet")
+weekend_mc = _read_occ863("month_hour_marginal_costs_weekend_holidays_secondary.parquet")
+weekday_pop = _read_occ863("month_hour_probability_of_peak_weekday.parquet")
+weekend_pop = _read_occ863("month_hour_probability_of_peak_weekend_holidays.parquet")
+
+weekday_mc.head()
+```
+
+Each table is a complete month-by-hour grid: 12 months times 24 hours.
+
+```{python}
+#| label: check-table-shape
+
+for label, frame in [("weekday", weekday_mc), ("weekend", weekend_mc)]:
+    assert frame.height == 12 * 24, label
+    assert frame.select("month", "hour").n_unique() == frame.height, label
+    assert set(frame.columns) >= {"month", "hour", "num_days", "mc_total_per_kwh"}
+```
+
+## What the sheet already did
+
+Eversource's own formula, on every nonzero cell, is the loss-adjusted annual cost times that
+cell's probability of peak, divided by the number of days of that type in the month:
+
+$$
+P_{m,h,d} = \frac{20.17 \times 1.051845136935937 \times \mathrm{PoP}_{m,h,d}}{N_{m,d}}
+$$
+
+The product in the numerator is $21.2157…/kW-year, which the Company rounds to
+$21.22/kW-year. We check that every nonzero cell of both matrices recovers that unrounded
+product, and that a zero probability is a zero cost.
+
+```{python}
+#| label: check-sheet-allocation
+
+def _implied_annual(mc: pl.DataFrame, pop: pl.DataFrame) -> pl.DataFrame:
+    return mc.join(pop.select("month", "hour", "probability_of_peak"), on=["month", "hour"])
+
+
+def _check_allocation(mc: pl.DataFrame, pop: pl.DataFrame, label: str) -> None:
+    joined = _implied_annual(mc, pop)
+    zeros = joined.filter(pl.col("probability_of_peak") == 0)
+    assert zeros.filter(pl.col("mc_total_per_kwh") != 0).is_empty(), label
+    implied = joined.filter(pl.col("probability_of_peak") > 0).select(
+        (
+            pl.col("mc_total_per_kwh") * pl.col("num_days") / pl.col("probability_of_peak")
+        ).alias("implied_kw_yr")
+    )
+    gap = (implied["implied_kw_yr"] - SHEET_MC_KW_YR).abs().max()
+    assert gap < 1e-4, (label, gap)
+
+
+_check_allocation(weekday_mc, weekday_pop, "weekday")
+_check_allocation(weekend_mc, weekend_pop, "weekend")
+
+pop_total = (
+    weekday_pop["probability_of_peak"].sum() + weekend_pop["probability_of_peak"].sum()
+)
+assert abs(pop_total - 1.0) < 1e-8, pop_total
+
+report_vars["probability_of_peak_total"] = float(pop_total)
+```
+
+## Map the tables onto the 2025 calendar
+
+The two matrices are averages for a type of day, not a list of clock hours. We assign each
+hour of 2025 to one of them.
+
+Saturday and Sunday take the weekend-and-holiday table. So do the federal holidays in
+5 U.S.C. § 6103, observed the way Attachment 2's day counts are: a fixed-date holiday on
+Saturday is observed the Friday before, and one on Sunday is observed the Monday after.
+Every other Monday through Friday takes the weekday table.
+
+2025 is both the day-type calendar and the year stamped on the timestamps. CAIRO copies this
+file onto the run by position, and the residential loads have already been rotated so that
+2025's Mondays hold Monday load. A leap year would drop December 31 so the series stays
+8,760 hours. 2025 is not a leap year.
+
+```{python}
+#| label: federal-holidays
+
+def _nth_weekday(year: int, month: int, weekday: int, n: int) -> date:
+    """The nth weekday of a month. Monday is 0. n of -1 is the last."""
+    if n > 0:
+        first = date(year, month, 1)
+        shift = (weekday - first.weekday()) % 7
+        return first + timedelta(days=shift + 7 * (n - 1))
+    last = date(year, month, calendar.monthrange(year, month)[1])
+    return last - timedelta(days=(last.weekday() - weekday) % 7)
+
+
+def _observe(day: date) -> date:
+    if day.weekday() == 5:
+        return day - timedelta(days=1)
+    if day.weekday() == 6:
+        return day + timedelta(days=1)
+    return day
+
+
+def us_federal_holidays(year: int) -> set[date]:
+    fixed = [
+        date(year, 1, 1),
+        date(year, 6, 19),
+        date(year, 7, 4),
+        date(year, 11, 11),
+        date(year, 12, 25),
+        date(year + 1, 1, 1),  # New Year's Day, observed in this year if it falls on Sunday
+    ]
+    floating = [
+        _nth_weekday(year, 1, 0, 3),   # MLK Day
+        _nth_weekday(year, 2, 0, 3),   # Washington's Birthday
+        _nth_weekday(year, 5, 0, -1),  # Memorial Day
+        _nth_weekday(year, 9, 0, 1),   # Labor Day
+        _nth_weekday(year, 10, 0, 2),  # Columbus Day
+        _nth_weekday(year, 11, 3, 4),  # Thanksgiving
+    ]
+    observed = {_observe(day) for day in fixed + floating}
+    return {day for day in observed if day.year == year}
+
+
+HOLIDAYS = us_federal_holidays(CALENDAR_YEAR)
+report_vars["n_observed_holidays"] = len(HOLIDAYS)
+sorted(HOLIDAYS)
+```
+
+```{python}
+#| label: expand-to-calendar
+
+assert not calendar.isleap(CALENDAR_YEAR)
+
+clock = pl.DataFrame(
+    {
+        "timestamp": pl.datetime_range(
+            datetime(CALENDAR_YEAR, 1, 1),
+            datetime(CALENDAR_YEAR, 12, 31, 23),
+            interval="1h",
+            eager=True,
+        )
+    }
+).with_columns(
+    pl.col("timestamp").dt.month().alias("month"),
+    pl.col("timestamp").dt.hour().alias("hour"),
+    # Polars weekday is ISO: Monday is 1, Sunday is 7.
+    (pl.col("timestamp").dt.weekday() >= 6).alias("is_weekend"),
+    pl.col("timestamp").dt.date().is_in(sorted(HOLIDAYS)).alias("is_holiday"),
+)
+assert clock.height == 8760
+
+weekday_rates = weekday_mc.select(
+    "month", "hour", pl.col("mc_total_per_kwh").alias("weekday_mc")
+)
+weekend_rates = weekend_mc.select(
+    "month", "hour", pl.col("mc_total_per_kwh").alias("weekend_mc")
+)
+
+looked_up = (
+    clock.join(weekday_rates, on=["month", "hour"], how="left")
+    .join(weekend_rates, on=["month", "hour"], how="left")
+    .with_columns(
+        pl.when(pl.col("is_weekend") | pl.col("is_holiday"))
+        .then(pl.col("weekend_mc"))
+        .otherwise(pl.col("weekday_mc"))
+        .alias("mc_total_per_kwh")
+    )
+)
+assert looked_up["mc_total_per_kwh"].null_count() == 0
+
+sum_before_scale = float(looked_up["mc_total_per_kwh"].sum())
+n_nonzero = looked_up.filter(pl.col("mc_total_per_kwh") > 0).height
+report_vars["n_hours"] = looked_up.height
+report_vars["n_nonzero_hours"] = n_nonzero
+report_vars["sum_before_scale"] = sum_before_scale
+```
+
+Placing the workbook's average `$/kWh` on every actual 2025 hour of that type does not
+recover $21.22/kW-year. The workbook divides by its own day count for that month, and 2025
+does not have exactly that many days of each type. The looked-up year is the sum printed
+below.
+
+```{python}
+#| label: show-sum-before-scale
+
+sum_before_scale
+```
+
+## Scale back to $21.22/kW-year
+
+One factor multiplies every hour, including the zeros:
+
+$$
+\mathrm{scale} = \frac{21.22}{\sum_h P_h}
+$$
+
+A zero hour stays zero, and the ratio between any two hours is unchanged. There is no CPI
+adjustment. $21.22 is already the filed 2026-dollar figure, and that is the dollar year we
+keep.
+
+```{python}
+#| label: scale-to-annual
+
+scale_factor = TARGET_MC_KW_YR / sum_before_scale
+hourly_mc = looked_up.with_columns(
+    (pl.col("mc_total_per_kwh") * scale_factor).alias("mc_total_per_kwh")
+).select(
+    "timestamp",
+    pl.lit(UTILITY).alias("utility"),
+    pl.lit(CALENDAR_YEAR).cast(pl.Int32).alias("year"),
+    "mc_total_per_kwh",
+)
+
+sum_after_scale = float(hourly_mc["mc_total_per_kwh"].sum())
+assert abs(sum_after_scale - TARGET_MC_KW_YR) < 1e-8, sum_after_scale
+assert hourly_mc.filter(pl.col("mc_total_per_kwh") > 0).height == n_nonzero
+
+report_vars["scale_factor"] = scale_factor
+report_vars["sum_after_scale"] = sum_after_scale
+```
+
+```{python}
+#| label: tbl-dist-mc-reconciliation
+#| tbl-cap: "How the OCC-863 secondary schedule becomes an 8,760 that sums to $21.22/kW-year."
+
+reconciliation = pl.DataFrame(
+    {
+        "step": [
+            "Table 3, before losses",
+            "Loss-adjusted value embedded in Attachment 2",
+            "Attachment 2 placed on the 2025 calendar",
+            "After scaling to the rounded annual total",
+        ],
+        "kw_yr": [
+            TABLE3_MC_KW_YR,
+            SHEET_MC_KW_YR,
+            sum_before_scale,
+            sum_after_scale,
+        ],
+    }
+)
+
+_gt = (
+    GT(reconciliation)
+    .cols_label(step="Step", kw_yr="$/kW-year")
+    .fmt_currency(columns="kw_yr", decimals=2)
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+display_gt(_gt)
+```
+
+The scale factor itself is slightly below one. Expressed as how far the unscaled calendar
+year sits from the target:
+
+```{python}
+#| label: report-scale-gap
+
+report_vars["scale_factor_gap"] = 1.0 - scale_factor
+pct(report_vars["scale_factor_gap"], accuracy=2)
+```
+
+## Report variables
+
+```{python}
+#| label: report-vars
+
+report_vars["peak_share_of_year"] = n_nonzero / looked_up.height
+report_vars
+```
+
+## Export report variables
+
+```{python}
+#| label: export-report-vars
+
+Path("../cache").mkdir(exist_ok=True)
+Path("../cache/marginal_costs_vars.pkl").write_bytes(pickle.dumps(report_vars))
+```

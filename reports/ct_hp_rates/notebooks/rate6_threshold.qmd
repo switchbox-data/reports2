@@ -79,6 +79,17 @@ BLOCK1_RATE = 0.13570  # $/kWh — delivery volumetric, all kWh up to 700 in win
 BLOCK2_RATE = 0.11656  # $/kWh — delivery volumetric, kWh above 700 in winter
 BLOCK_DISCOUNT = BLOCK1_RATE - BLOCK2_RATE  # intended discount per HP kWh
 
+# Modified Rate 6: Block 2 at marginal cost for all three delivery+tx components
+# (upstream dist, local dist, transmission). See testimony @tbl-rate-6-block-2-at-mc.
+BLOCK1_RATE_MOD = BLOCK1_RATE + 0.05050  # add transmission (Rider 1) to block structure
+BLOCK2_RATE_MOD = (
+    BLOCK1_RATE - 0.05537 - 0.03894  # strip upstream dist + local dist from delivery
+    + 0.00258  # upstream dist at MC
+    + 0.00000  # local dist at MC
+    + 0.00788  # transmission at MC
+)
+BLOCK_DISCOUNT_MOD = BLOCK1_RATE_MOD - BLOCK2_RATE_MOD
+
 N_BANDS = 50  # percentile bands for ribbon charts
 
 # Winter months from the periods YAML
@@ -912,6 +923,123 @@ fig.tight_layout(rect=[0, 0, 1, 0.97])
 display_svg(fig)
 ```
 
+## Fuel-group bias: natural gas vs. delivered fuel
+
+The analysis so far has focused on delivered-fuel homes — Rate 6's stated target.
+But natural-gas-heated homes also install heat pumps, and the threshold's impact
+on them is even worse. Natural gas homes have much lower base loads (mean
+`{python} f"{stats_natgas['mean']:,.0f}"` kWh vs `{python} f"{stats_delivered['mean']:,.0f}"` kWh for delivered fuel),
+so the 700 kWh threshold sits well *above* most natural gas homes' pre-HP
+consumption. Nearly all of their incremental HP load lands in Block 1.
+
+```{python}
+#| label: fuel-group-threshold-stats
+
+bldg_ng = bldg_threshold.filter(pl.col("fuel_group") == "Natural gas")
+bldg_ng = bldg_ng.join(income_col, on="bldg_id", how="left")
+
+is_ng = incidence_severity(bldg_ng)
+is_df = incidence_severity(bldg_df)
+
+print("=== Natural gas homes @ 700 kWh threshold ===")
+print(f"  Buildings: {bldg_ng.height:,}")
+print(f"  Mean base load: {stats_natgas['mean']:,.0f} kWh")
+print(f"  % with trapped HP load (orange): {is_ng['pct_any_orange']:.1%}")
+print(f"  % with windfall (yellow): {is_ng['pct_any_yellow']:.1%}")
+print(f"  Mean capture rate: {is_ng['mean_capture']:.1%}")
+print(f"  Effective discount pct: {_effective_discount_pct(bldg_ng):.1%}")
+
+_sw_ng = bldg_ng["weight"].sum()
+_tbr_ng = bldg_ng.with_columns(
+    pl.when(pl.col("avg_incr") > 0)
+    .then((pl.col("avg_hp_b2") + pl.col("avg_base_b2")) / pl.col("avg_incr"))
+    .otherwise(0.0)
+    .alias("tbr"),
+)
+tbr_ng_700 = float((_tbr_ng["tbr"] * _tbr_ng["weight"]).sum() / _sw_ng)
+print(f"  Total benefit ratio: {tbr_ng_700:.1%}")
+print(f"  Effective bill reduction (current): {tbr_ng_700 * BLOCK_DISCOUNT / BLOCK1_RATE:.1%}")
+print(f"  Effective bill reduction (modified): {tbr_ng_700 * BLOCK_DISCOUNT_MOD / BLOCK1_RATE_MOD:.1%}")
+
+print(f"\n=== Delivered-fuel homes @ 700 kWh threshold (recap) ===")
+_sw_df = bldg_df["weight"].sum()
+_tbr_df = bldg_df.with_columns(
+    pl.when(pl.col("avg_incr") > 0)
+    .then((pl.col("avg_hp_b2") + pl.col("avg_base_b2")) / pl.col("avg_incr"))
+    .otherwise(0.0)
+    .alias("tbr"),
+)
+tbr_df_700 = float((_tbr_df["tbr"] * _tbr_df["weight"]).sum() / _sw_df)
+print(f"  Total benefit ratio: {tbr_df_700:.1%}")
+```
+
+### Alternative thresholds
+
+What if the threshold were set at the midpoint between the two fuel groups' means,
+or at the natural gas mean? We recompute the block classification for each
+alternative threshold and see whether any single number works for both populations.
+
+```{python}
+#| label: alt-threshold-stats
+
+def reclassify_at_threshold(df: pl.DataFrame, t: float) -> pl.DataFrame:
+    """Recompute block classification columns for a given threshold."""
+    return df.with_columns(
+        pl.when(pl.col("avg_post") > t)
+        .then(pl.col("avg_post") - pl.max_horizontal("avg_pre", pl.lit(t)))
+        .otherwise(0.0)
+        .alias("avg_hp_b2"),
+        pl.when(pl.col("avg_pre") > t)
+        .then(pl.col("avg_pre") - t)
+        .otherwise(0.0)
+        .alias("avg_base_b2"),
+    ).with_columns(
+        pl.when(pl.col("avg_incr") > 0)
+        .then((pl.col("avg_hp_b2") / pl.col("avg_incr")).clip(0, 1))
+        .otherwise(1.0)
+        .alias("capture_rate"),
+        pl.when(pl.col("avg_pre") > 0)
+        .then((pl.col("avg_base_b2") / pl.col("avg_pre")).clip(0, 1))
+        .otherwise(0.0)
+        .alias("windfall_rate"),
+    )
+
+
+def total_benefit_ratio(df: pl.DataFrame) -> float:
+    sw = df["weight"].sum()
+    t = df.with_columns(
+        pl.when(pl.col("avg_incr") > 0)
+        .then((pl.col("avg_hp_b2") + pl.col("avg_base_b2")) / pl.col("avg_incr"))
+        .otherwise(0.0)
+        .alias("tbr"),
+    )
+    return float((t["tbr"] * t["weight"]).sum() / sw)
+
+
+THRESHOLD_MID = round((stats_natgas["mean"] + stats_delivered["mean"]) / 2)
+THRESHOLD_NG = round(stats_natgas["mean"])
+
+print(f"Alternative thresholds: midpoint={THRESHOLD_MID} kWh, nat gas mean={THRESHOLD_NG} kWh")
+print(f"Current threshold: {THRESHOLD_KWH:.0f} kWh\n")
+
+for t_label, t_kwh in [
+    ("700 (current)", THRESHOLD_KWH),
+    (f"{THRESHOLD_MID} (midpoint)", THRESHOLD_MID),
+    (f"{THRESHOLD_NG} (nat gas mean)", THRESHOLD_NG),
+]:
+    ng_t = reclassify_at_threshold(bldg_ng, t_kwh)
+    df_t = reclassify_at_threshold(bldg_df, t_kwh)
+    is_ng_t = incidence_severity(ng_t)
+    is_df_t = incidence_severity(df_t)
+    tbr_ng_t = total_benefit_ratio(ng_t)
+    tbr_df_t = total_benefit_ratio(df_t)
+
+    print(f"=== Threshold: {t_label} kWh ===")
+    print(f"  Nat gas:      TBR={tbr_ng_t:.0%}, orange={is_ng_t['pct_any_orange']:.0%}, yellow={is_ng_t['pct_any_yellow']:.0%}")
+    print(f"  Delivered:    TBR={tbr_df_t:.0%}, orange={is_df_t['pct_any_orange']:.0%}, yellow={is_df_t['pct_any_yellow']:.0%}")
+    print()
+```
+
 ## Export report variables
 
 ```{python}
@@ -965,6 +1093,13 @@ report_vars["winter_kwh_p90_delivered_bldg"] = _p90_df
 report_vars["block1_rate_cents"] = BLOCK1_RATE * 100
 report_vars["block2_rate_cents"] = BLOCK2_RATE * 100
 report_vars["block_discount_cents"] = BLOCK_DISCOUNT * 100
+report_vars["block_discount_pct"] = BLOCK_DISCOUNT / BLOCK1_RATE
+
+# Modified Rate 6 block rates
+report_vars["block1_rate_mod_cents"] = BLOCK1_RATE_MOD * 100
+report_vars["block2_rate_mod_cents"] = BLOCK2_RATE_MOD * 100
+report_vars["block_discount_mod_cents"] = BLOCK_DISCOUNT_MOD * 100
+report_vars["block_discount_mod_pct"] = BLOCK_DISCOUNT_MOD / BLOCK1_RATE_MOD
 
 # Incidence and severity (all DF)
 report_vars["pct_any_orange_df"] = is_all["pct_any_orange"]
@@ -999,6 +1134,12 @@ for tercile, key in [
     report_vars[f"total_benefit_ratio_df_{key}"] = float(
         (_tbr["tbr"] * _tbr["weight"]).sum() / _sw_t
     )
+    report_vars[f"effective_bill_reduction_df_{key}"] = (
+        report_vars[f"total_benefit_ratio_df_{key}"] * BLOCK_DISCOUNT / BLOCK1_RATE
+    )
+    report_vars[f"effective_bill_reduction_mod_df_{key}"] = (
+        report_vars[f"total_benefit_ratio_df_{key}"] * BLOCK_DISCOUNT_MOD / BLOCK1_RATE_MOD
+    )
     report_vars[f"pct_any_orange_df_{key}"] = _is_t["pct_any_orange"]
     report_vars[f"pct_any_yellow_df_{key}"] = _is_t["pct_any_yellow"]
     report_vars[f"median_trapped_kwh_df_{key}"] = _is_t["median_trapped_kwh"]
@@ -1009,6 +1150,41 @@ for tercile, key in [
     report_vars[f"median_income_df_{key}"] = _med_inc
     report_vars[f"income_lo_df_{key}"] = float(sub["in.representative_income"].min())
     report_vars[f"income_hi_df_{key}"] = float(sub["in.representative_income"].max())
+
+# --- Natural gas homes @ 700 kWh threshold ---
+report_vars["pct_any_orange_ng"] = is_ng["pct_any_orange"]
+report_vars["pct_any_yellow_ng"] = is_ng["pct_any_yellow"]
+report_vars["median_trapped_kwh_ng"] = is_ng["median_trapped_kwh"]
+report_vars["median_windfall_kwh_ng"] = is_ng["median_windfall_kwh"]
+report_vars["mean_capture_ng"] = is_ng["mean_capture"]
+report_vars["total_benefit_ratio_ng"] = tbr_ng_700
+report_vars["effective_bill_reduction_ng"] = tbr_ng_700 * BLOCK_DISCOUNT / BLOCK1_RATE
+report_vars["effective_bill_reduction_mod_ng"] = (
+    tbr_ng_700 * BLOCK_DISCOUNT_MOD / BLOCK1_RATE_MOD
+)
+
+# --- Alternative thresholds ---
+report_vars["threshold_mid_kwh"] = float(THRESHOLD_MID)
+report_vars["threshold_ng_kwh"] = float(THRESHOLD_NG)
+
+for t_suffix, t_kwh in [
+    ("mid", THRESHOLD_MID),
+    ("ng_mean", THRESHOLD_NG),
+]:
+    _ng_t = reclassify_at_threshold(bldg_ng, t_kwh)
+    _df_t = reclassify_at_threshold(bldg_df, t_kwh)
+    _is_ng_t = incidence_severity(_ng_t)
+    _is_df_t = incidence_severity(_df_t)
+    _tbr_ng_t = total_benefit_ratio(_ng_t)
+    _tbr_df_t = total_benefit_ratio(_df_t)
+    report_vars[f"tbr_ng_at_{t_suffix}"] = _tbr_ng_t
+    report_vars[f"tbr_df_at_{t_suffix}"] = _tbr_df_t
+    report_vars[f"pct_any_orange_ng_at_{t_suffix}"] = _is_ng_t["pct_any_orange"]
+    report_vars[f"pct_any_yellow_ng_at_{t_suffix}"] = _is_ng_t["pct_any_yellow"]
+    report_vars[f"pct_any_orange_df_at_{t_suffix}"] = _is_df_t["pct_any_orange"]
+    report_vars[f"pct_any_yellow_df_at_{t_suffix}"] = _is_df_t["pct_any_yellow"]
+    report_vars[f"ebr_ng_at_{t_suffix}"] = _tbr_ng_t * BLOCK_DISCOUNT / BLOCK1_RATE
+    report_vars[f"ebr_df_at_{t_suffix}"] = _tbr_df_t * BLOCK_DISCOUNT / BLOCK1_RATE
 
 Path("../cache").mkdir(exist_ok=True)
 Path("../cache/rate6_threshold_report_variables.pkl").write_bytes(

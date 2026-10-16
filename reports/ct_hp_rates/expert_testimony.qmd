@@ -1248,35 +1248,72 @@ Both misallocation problems are prevalent. **Discount leakage** (orange) affects
 
 Among low-income delivered-fuel homes, `{python} pct(th.pct_any_orange_df_low)` experience discount leakage — their base load is below 700 kWh, so much of their HP load is trapped in Block 1 at the full rate. Only `{python} pct(th.pct_any_yellow_df_low)` receive a windfall. Among high-income homes, the picture reverses: only `{python} pct(th.pct_any_orange_df_high)` experience discount leakage, while `{python} pct(th.pct_any_yellow_df_high)` receive a windfall on pre-existing base load.
 
-Because of discount leakage, a low-income delivered-fuel customer receives only `{python} pct(th.pct_discount_df_low)` of the intended `{python} f"{th.block_discount_cents:.1f}"` ¢/kWh discount on their heat pump load, while a high-income customer receives `{python} pct(th.pct_discount_df_high)`. And the windfall compounds the inequity: among the `{python} pct(th.pct_any_yellow_df_high)` of high-income homes that receive a windfall, the median home gets the Block 2 discount on `{python} f"{th.median_windfall_kwh_df_high:,.0f}"` kWh per month of pre-existing base load — electricity that has nothing to do with their heat pump.
-
-<br>
-
-**Q.** Low-income homes lose some of the intended discount through leakage, but they may also receive some windfall. On net, does the windfall make up for the leakage?
-
-**A.** No. For each home, I computed each customer's *total benefit ratio* under Rate 6: the total Block 2 savings the home receives — on both heat pump load and any windfall base load — divided by the savings it *would* receive if only its incremental heat pump load got the discount (which is what Rate 6 intends). A ratio of 100% means the threshold is working exactly as designed; below 100% means the home is receiving less benefit than intended, even after accounting for any windfall; above 100% means the home is receiving *more* benefit than Rate 6 intended. I then averaged these ratios within each income bucket:
-
-- **Low-income** delivered-fuel homes (`{python} dollar(th.income_lo_df_low)`–`{python} dollar(th.income_hi_df_low)`) receive **`{python} pct(th.total_benefit_ratio_df_low)`** of Rate 6's intended benefit.
-- **Middle-income** homes (`{python} dollar(th.income_lo_df_mid)`–`{python} dollar(th.income_hi_df_mid)`) receive **`{python} pct(th.total_benefit_ratio_df_mid)`**.
-- **High-income** homes (`{python} dollar(th.income_lo_df_high)`–`{python} dollar(th.income_hi_df_high)`) receive **`{python} pct(th.total_benefit_ratio_df_high)`** — more than Rate 6 designed for, because of windfall.
-
-Even after factoring in discount windfalls, low-income homes receive barely half of the benefit they would receive if Rate 6 correctly targeted the discount to incremental heat pump load. Because high-income homes largely avoid discount leakage, and because `{python} pct(th.pct_any_yellow_df_high)` of them receive a windfall, this group receives _more_ than intended, on average.
-
-The `{python} f"{th.block_discount_cents:.1f}"` ¢/kWh discount that is nominally the same for all customers functions, in practice, as a smaller discount for poorer households and a larger-than-intended discount for wealthier ones.
+Rate 6's Block 2 discount is designed to reduce every customer's incremental heat pump bill by `{python} pct(th.block_discount_pct, 1)`, because it lowers the price charged for each of those kWh by `{python} pct(th.block_discount_pct, 1)` — from `{python} f"{th.block1_rate_cents:.3f}"` ¢/kWh to `{python} f"{th.block2_rate_cents:.3f}"` ¢/kWh. Because of discount leakage, low-income delivered-fuel homes see their incremental HP bills reduced by only `{python} pct(th.effective_bill_reduction_df_low, 1)` on average (even after including the `{python} pct(th.pct_any_yellow_df_low)` of low-income homes that receive a windfall.) High-income homes see a {python} pct(th.effective_bill_reduction_df_high, 1) reduction in their incremental HP bills — more than intended, because most of them get the full discount on their heat pump load, and many get an additional windfall on pre-existing base load.
 
 <br>
 
 **Q.** Does Rate 6's block design have a regressive impact?
 
-**A.** Yes. A rate design feature is regressive when lower-income households receive a smaller share of its benefit than higher-income households — that is, when the benefit is positively correlated with income. Rate 6's block threshold meets this definition: the share of the _intended_ discount that a delivered-fuel home actually receives increases monotonically with income, from `{python} pct(th.pct_discount_df_low)` for the lowest-income third of homes to `{python} pct(th.pct_discount_df_high)` for the highest-income third.
+**A.** Yes. A rate design feature is regressive when it delivers a larger benefit to higher-income customers than to lower-income customers. In this case, the benefit is a **proportional bill discount**: Rate 6 intends to give all delivered-fuel customers a `{python} pct(th.block_discount_pct, 1)` on their heat pump bill, because it lowers the all-in Block 2 rate by `{python} pct(th.block_discount_pct, 1)`. But Rate 6's does not delivery proportional bill discounts to all customers. Instead, the percent reduction in incremental heat pump bills increases with income — `{python} pct(th.effective_bill_reduction_df_low, 1)` for the lowest-income third of delivered-fuel homes, `{python} pct(th.effective_bill_reduction_df_mid, 1)` for the middle third, and `{python} pct(th.effective_bill_reduction_df_high, 1)` for the highest-income third — against a design target of `{python} pct(th.block_discount_pct, 1)` for all.
 
-This regressivity is a direct consequence of the fixed 700 kWh threshold. Higher-income homes have higher base loads, which pushes them above the threshold and into Block 2 more often. Lower-income homes have lower base loads, which keeps them in Block 1 even after they install a heat pump. The threshold converts the correlation between income and base load into a correlation between income and benefit — exactly the pattern that defines a regressive rate design.
+Ultimately, the reason Rate 6's block design is regressive is straightforward: higher-income homes have higher base loads, which places them above the 700 kWh threshold; lower-income homes have lower base loads, which keeps them below it. The threshold converts the correlation between income and base load into a correlation between income and savings.
 
-This is a structural problem with any fixed block threshold, not just 700 kWh. Moving the threshold lower would reduce leakage but increase windfall; moving it higher would do the reverse. In fact, 700 kWh is close to the threshold that minimizes total misallocation.[^threshold-optimum] But even at this optimum, the misallocations remain large, because base loads vary so widely across homes.
+<br>
 
-Importantly, this structural problem is also independent of the discount size: even if the Rate 6's Block 2 rate were lowered to marginal cost, the block design would still distribute the (larger) benefit regressively.
+**Q.** In Section IV, I showed that Rate 6's discount is far smaller than it could be. If the discount were set at the marginal cost floor (as in modified Rate 6), would the regressive impact of the block design go away — since all customers would be getting a much larger benefit?
 
-[^threshold-optimum]: This is because 700 kWh is near the mean base load of delivered-fuel homes, and at that point leakage and windfall are roughly equal.
+**A.** No — it gets worse. As I showed above, the threshold systematically gives low-income homes only `{python} pct(th.total_benefit_ratio_df_low)` of their intended savings, while high-income homes get `{python} pct(th.total_benefit_ratio_df_high)`.[^intended-savings] These _percentages_ arise from the threshold, and do not change with the discount size. However, a bigger discount applied through the same percentages produces a bigger gap in what customers actually receive.[^lockstep]
+
+[^intended-savings]: A customer's "intended savings" is what they would receive if the threshold perfectly separated their base load from their heat pump load — that is, if every kWh of incremental HP consumption landed in Block 2 and none of their base load did. The ratio shown (e.g. `{python} pct(th.total_benefit_ratio_df_low)` for low-income homes) is the each customers's actual savings divided by their intended savings, averaged across the customers in an income group. A home with mostly leakage might capture only 20%; a home with a large windfall might capture 150%. The group average tells you whether the threshold delivers the right amount of savings to that population on balance — and for low-income homes, even after including homes that receive windfalls, the answer is barely more than half.
+
+[^lockstep]: The arithmetic: low-income homes capture `{python} pct(th.total_benefit_ratio_df_low)` of their intended savings, so their effective bill reduction is `{python} pct(th.total_benefit_ratio_df_low)` × `{python} pct(th.block_discount_mod_pct)` = `{python} pct(th.effective_bill_reduction_mod_df_low)`. High-income homes capture `{python} pct(th.total_benefit_ratio_df_high)`, so theirs is `{python} pct(th.total_benefit_ratio_df_high)` × `{python} pct(th.block_discount_mod_pct)` = `{python} pct(th.effective_bill_reduction_mod_df_high)`. The same ratios that produced an `{python} f"{(th.effective_bill_reduction_df_high - th.effective_bill_reduction_df_low)*100:.0f}"` percentage-point gap under a `{python} pct(th.block_discount_pct)` discount produce a `{python} f"{(th.effective_bill_reduction_mod_df_high - th.effective_bill_reduction_mod_df_low)*100:.0f}"` percentage-point gap under a `{python} pct(th.block_discount_mod_pct)` discount.
+
+Under Rate 6 as proposed, the Block 2 discount is `{python} f"{th.block_discount_cents:.1f}"` ¢/kWh, or `{python} pct(th.block_discount_pct)` of the Block 1 rate. As I showed above, low-income homes see an effective bill reduction of only `{python} pct(th.effective_bill_reduction_df_low)`, while high-income homes see `{python} pct(th.effective_bill_reduction_df_high)` — a `{python} f"{(th.effective_bill_reduction_df_high - th.effective_bill_reduction_df_low)*100:.0f}"` percentage-point gap, driven entirely by the threshold's inability to consistently separate base load from heat pump load.
+
+Under the modified Rate 6 I presented in Section IV — with Block 2 rates for upstream distribution, local distribution, and transmission all set at marginal cost — the discount grows to `{python} f"{th.block_discount_mod_cents:.1f}"` ¢/kWh, or `{python} pct(th.block_discount_mod_pct)` of the Block 1 rate. If the threshold worked perfectly, every customer's incremental heat pump bill would fall by `{python} pct(th.block_discount_mod_pct)`. But the same threshold imprecision applies: low-income homes would see only a `{python} pct(th.effective_bill_reduction_mod_df_low)` reduction, while high-income homes would see `{python} pct(th.effective_bill_reduction_mod_df_high)` — a `{python} f"{(th.effective_bill_reduction_mod_df_high - th.effective_bill_reduction_mod_df_low)*100:.0f}"` percentage-point gap.[^lockstep]
+
+In other words, fixing Problem 1 (the discount being too small) without fixing Problem 2 (the block structure misallocating the discount) actually makes the regressivity _five times worse_ in absolute terms.
+
+<br>
+
+**Q.** The regressivity analysis above focused on delivered-fuel homes. Does Rate 6's block design also affect natural-gas-heated homes that install heat pumps?
+
+**A.** Yes, and the impact is worse. The 700 kWh threshold is set near the mean base load of delivered-fuel homes (`{python} f"{th.winter_kwh_mean_delivered:,.0f}"` kWh). But natural-gas-heated homes have much lower base loads — `{python} f"{th.winter_kwh_mean_natgas:,.0f}"` kWh on average, nearly `{python} f"{th.winter_kwh_mean_delivered - th.winter_kwh_mean_natgas:,.0f}"` kWh below the threshold. `{python} pct(th.winter_kwh_pct_below_natgas)` of natural-gas homes have a base load below 700 kWh, compared to `{python} pct(th.winter_kwh_pct_below_delivered)` of delivered-fuel homes.
+
+Because most natural-gas homes sit well below the threshold, nearly all of their incremental heat pump load lands in Block 1 at the full rate. `{python} pct(th.pct_any_orange_ng)` of natural-gas homes have at least some HP load trapped in Block 1, and on average they capture only `{python} pct(th.total_benefit_ratio_ng)` of their intended savings. Under Rate 6 as proposed, this translates to an effective bill reduction of just `{python} pct(th.effective_bill_reduction_ng)` — compared to the `{python} pct(th.block_discount_pct)` that a perfectly targeted threshold would deliver.
+
+This helps explain a result from Section IV: even when I set Block 2 rates at marginal cost (the modified Rate 6), more than half of natural-gas customers would still see _higher_ total energy bills after switching to a heat pump. The block structure simply cannot deliver a meaningful discount to homes whose base load is far below the threshold.
+
+<br>
+
+**Q.** Could the Company fix both the regressive impact and the bias against natural-gas homes by adjusting the threshold?
+
+**A.** No. The two fuel populations have fundamentally different base-load distributions, and no single threshold can serve both.
+
+Lowering the threshold to `{python} f"{th.threshold_mid_kwh:.0f}"` kWh — the midpoint between the natural gas and delivered-fuel means — improves the natural-gas savings ratio from `{python} pct(th.total_benefit_ratio_ng)` to `{python} pct(th.tbr_ng_at_mid)`, but `{python} pct(th.pct_any_yellow_df_at_mid)` of delivered-fuel homes would now receive a windfall (up from `{python} pct(th.pct_any_yellow_df)` at 700 kWh), and their savings ratio rises to `{python} pct(th.tbr_df_at_mid)` — meaning the delivered-fuel population as a whole receives more discount than intended.
+
+Lowering it further to `{python} f"{th.threshold_ng_kwh:.0f}"` kWh — the natural-gas mean — pushes natural-gas homes to `{python} pct(th.tbr_ng_at_ng_mean)`, but now `{python} pct(th.pct_any_yellow_df_at_ng_mean)` of delivered-fuel homes receive a windfall and their savings ratio balloons to `{python} pct(th.tbr_df_at_ng_mean)`.
+
+In other words, every threshold that helps natural-gas customers sends excess discount to delivered-fuel customers — worsening the very windfall problem that drives the regressivity within the delivered-fuel population. And the current 700 kWh threshold, which is close to optimal for delivered-fuel homes, largely shuts natural-gas homes out of the discount entirely.
+
+<br>
+
+**Q.** Is there any way to design a block rate that avoids these problems?
+
+**A.** The only way would be to use per-customer thresholds — estimating each home's base load individually, rather than applying a single number to every customer. There are three possible approaches.
+
+The most accurate would be **separately metering** the heat pump. In addition to cost, that would add significant friction to customer enrollment, and rule out auto-enrollment entirely. (As I will discuss in Section TK, auto-enrollment is essential to the success of the rate.)
+
+Another option would be **circuit-level energy monitors** such as Sense or Emporia Vue (often called non-invasive submeters in regulatory contexts). These would be lower cost, and may be compatible with auto-enrollment of customers installing heat pumps: contractors installing heat pumps under EnergizeCT already interact with each home, and opt-out energy monitor installation could be folded into the installation process. But auto-enrollment of the Company's _existing_ heat pump customers would remain impractical. And while these monitors could accurately measure incremental heat pump load, they likely would not integrate into the Company's billing software. Savings would need to be delivered as credits administered by a third party, rather than lower rates on the customer's bill.[^ev-managed-charging]
+
+[^ev-managed-charging]: This is essentially the model that utilities already use for EV managed charging. Con Edison's SmartCharge New York program (administered by ev.energy) pays EV drivers via Venmo or PayPal for off-peak charging. WeaveGrid administers similar programs for BGE, Pepco, Delmarva, Potomac Edison, and Orange & Rockland, delivering incentives via Venmo, gift cards, or bill credits. In all cases, the third party manages the device telemetry and delivers savings outside the utility's billing system.
+
+The cheapest and most frictionless option would be a **software-based solution**. The Company could estimate per-customer thresholds from their meter data: for instance, by averaging each calendar month's consumption over the past 3–5 years (the average of January 2024, January 2025, and January 2026 becomes the January threshold, and so on). The Company would then subtract the threshold from each month's post-installation consumption to estimate incremental heat pump load, apply the Block 2 rate to that load, and generate the bill. This could be done within the billing system itself — Rate 6 already uses a block threshold as a billing determinant, and making that determinant customer-specific rather than class-wide is standard functionality in utility billing platforms.[^billing-system] Alternatively, a third party could perform the baseline estimation and load separation, and deliver the resulting savings as a credit outside the bill.
+
+[^billing-system]: Utility billing platforms such as SAP IS-U and Oracle CC&B already support customer-specific billing determinants — demand ratchets, for example, are set per meter. A per-customer block threshold would be implemented the same way: stored as a customer attribute and referenced by the rate calculation engine each billing cycle.
+
+All three approaches add complexity — whether in hardware, software, or administration. None is insurmountable, but all represent a significant departure from a simple rate that applies uniformly to every kWh on the meter. In Section TK, I will present exactly such a rate.
+
 
 
 

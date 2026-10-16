@@ -31,17 +31,17 @@ class _Placeholder:
     """Numeric-like sentinel for not-yet-computed report vars.
 
     Supports arithmetic, formatting, and comparison so that ``dollar(b.some_var)``
-    or ``f"{b.x:,.0f}"`` renders as ``⟨TBD⟩`` instead of crashing.
+    or ``f"{b.x:,.0f}"`` renders as ``(TBD)`` instead of crashing.
     """
 
     def __format__(self, _spec: str) -> str:
-        return "⟨TBD⟩"
+        return "(TBD)"
 
     def __str__(self) -> str:
-        return "⟨TBD⟩"
+        return "(TBD)"
 
     def __repr__(self) -> str:
-        return "⟨TBD⟩"
+        return "(TBD)"
 
     # Arithmetic — return self so chained ops stay placeholders
     def __add__(self, _o):
@@ -97,7 +97,7 @@ class _Placeholder:
 class _FallbackNS:
     """Wraps a SimpleNamespace (or None) and returns _Placeholder() for
     any attribute that doesn't exist yet, so partially-built testimony can
-    render with ⟨TBD⟩ placeholders instead of crashing."""
+    render with (TBD) placeholders instead of crashing."""
 
     def __init__(self, ns):
         object.__setattr__(self, "_ns", ns)
@@ -118,6 +118,7 @@ def _load_ns(path: str):
 
 r = _FallbackNS(_load_ns("cache/representative_home_vars.pkl"))
 m = _FallbackNS(_load_ns("cache/delivery_mc_vars.pkl"))
+mc = _FallbackNS(_load_ns("cache/marginal_costs_vars.pkl"))
 a = _FallbackNS(_load_ns("cache/report_variables.pkl"))
 b = _FallbackNS(_load_ns("cache/bills_only_report_variables.pkl"))
 fc = _FallbackNS(_load_ns("cache/incremental_fair_default_report_variables.pkl"))
@@ -455,7 +456,7 @@ Bottom line: unlike generation, only usage during **peak hours** causes marginal
 
 **Q.** You testified that customer usage only causes new T&D costs when it occurs during peak hours. When do the Company's distribution peak hours occur?
 
-**A.** To answer this, I estimated the marginal cost of distribution capacity for every hour of the year. I took the Company's own system-wide marginal upstream distribution cost for Rate 1 ($20.17/kW-year) and allocated it across the Company's top 100 load hours using a probability-of-peak analysis, so that each hour's share of the annualized system-wide marginal upstream distribution cost reflects how likely that hour is to trigger new capacity investment (the full methodology is described in Section XI).[^on-mcs]
+**A.** To answer this, I used the hourly marginal distribution costs the Company provided in its response to OCC-863. Those costs start from the Company's system-wide marginal upstream distribution cost of `{python} f"${mc.table3_mc_kw_yr:,.2f}"`/kW-year, grossed up for secondary losses to `{python} f"${mc.target_mc_kw_yr:,.2f}"`/kW-year, and assign that annual amount to each month, hour, and day type. I placed that schedule on the `{python} mc.calendar_year` calendar and scaled it so the year totals `{python} f"${mc.target_mc_kw_yr:,.2f}"`/kW-year [@Eversource_response_OCC_863]. The full methodology is described in Section XI.[^on-mcs]
 
 [^on-mcs]: As part of this rate case, the Company's filed an MCOS study that quantifies three categories of marginal distribution cost [@eversource_Docket260510Exhibit_2026; @eversource_Docket260510Exhibit_2026a]: (1) individual customer-related costs ($28.98/month for Rate 1), covering meters, service drops, billing, and customer accounts; (2) local distribution facilities costs ($24.51/customer-month for Rate 1), covering lateral primary conductors, transformers, and secondary conductors sized to the design demand of a small set of neighboring customers; and (3) upstream distribution costs ($20.17/kW-year, system-wide), covering bulk-to-local transmission substations, local transmission lines, local-transmission-to-distribution substations, and trunkline primary feeders whose expansion is driven by growth in peak load. To calculate marginal T&D costs, I use only the third category — upstream distribution costs — because the scenario at issue is an existing customer who installs a heat pump, not a new customer connecting to the grid. Customer-related and local facilities costs are incurred when a customer first takes service; they do not change when an existing customer increases their usage. We assume fossil-fuel-heated customers already pay for customer-related and local facilities costs through their monthly bills. The only _marginal_ distribution cost that an existing customer's incremental load can trigger, then, is the upstream cost — the cost of expanding substation and feeder capacity when peak demand grows.
 
@@ -471,7 +472,7 @@ Each cell in these charts represents one hour during the year. Cells with colors
 
 **Q.** When do the Company's transmission peak hours occur?
 
-**A.** To answer this, I used a similar methodology to estimate the marginal cost of bulk transmission capacity for every hour of the year. For this component, I used the AESC 2024 avoided Pool Transmission Facility (PTF) cost of $69/kW-year and allocated it across the top 100 ISO-NE system load hours using the same probability-of-peak analysis. @fig-mc-heatmap-bulk-tx shows the result.
+**A.** To answer this, I estimated the marginal cost of bulk transmission capacity for every hour of the year. The annual cost is the avoided Pool Transmission Facility cost of $69/kW-year (2024 dollars) from the 2024 Avoided Energy Supply Components study [@synapse_AvoidedEnergySupply_2024], inflated to 2026 dollars [@fred_ConsumerPriceIndexAll_2025]. I spread that cost across hours using the probability-of-peak method the Company's witness Amparo Nieto described in the response to OCC-733 [@eversource_OCC733_response], applied to New England system load for 2022 through 2025 [@isone_ISONEWebServices_2025a]. The full methodology is described in Section XI. @fig-mc-heatmap-bulk-tx shows the result.
 
 :::{.column-page-inset-right}
 {{< embed notebooks/delivery_mc.qmd#fig-mc-heatmap-bulk-tx >}}
@@ -1125,7 +1126,7 @@ Put another way, when an existing residential customer installs a heat pump, the
 
 The "Block 2 at MC" column shows what each component would be if the Company charged only the marginal cost that a heat pump customer's incremental consumption actually imposes on the system. For local facilities, the floor is 0 ¢/kWh: when an existing customer installs a heat pump, they connect to poles and wires that already exist. For upstream distribution, the floor is 0.258 ¢/kWh from the Company's own MCOS. For transmission, the floor is 0.788 ¢/kWh: the same AESC 2024 avoided PTF cost of $69/kW-year that I used to produce the hourly bulk transmission marginal cost heatmap in @fig-mc-heatmap-bulk-tx, divided by 8,760 hours to yield a flat per-kWh equivalent.[^tx-mc-floor]
 
-[^tx-mc-floor]: The heatmap in @fig-mc-heatmap-bulk-tx allocates the $69/kW-year across the top 100 ISO-NE system peak hours, producing a marginal cost that is very high during those hours and zero the rest of the year. Dividing by 8,760 instead yields the flat per-kWh rate that would recover the same annual cost — 0.788 ¢/kWh — which is the appropriate benchmark for a flat volumetric rate like Rider 1. Either way, the current 5.050 ¢/kWh rider charges more than six times the marginal cost.
+[^tx-mc-floor]: The heatmap in @fig-mc-heatmap-bulk-tx spreads the AESC cost across hours by probability of peak, producing a marginal cost that is high in summer afternoons and zero in most other hours. Dividing by 8,760 instead yields the flat per-kWh rate that would recover the same annual cost — 0.788 ¢/kWh — which is the appropriate benchmark for a flat volumetric rate like Rider 1. Either way, the current 5.050 ¢/kWh rider charges more than six times the marginal cost.
 
 In other words, the all-in Block 2 rate for these three cost components would fall from **12.567 ¢/kWh** under the Company's proposed Rate 6 to approximately **1.046 ¢/kWh** — a 92% reduction. The Company's current Block 2 rate of 12.567 ¢/kWh is twelve times the marginal cost these customers actually impose on the delivery and transmission system.
 
@@ -1790,15 +1791,10 @@ For the **supply component** of Schedule RD bills, I used the time-of-use genera
 
 **A.** I constructed hourly marginal delivery costs from two inputs:
 
-For **distribution**, I used the Brattle Group's avoided distribution cost of `$32`/kW-year (in 2022 dollars), as reported in CL&P's direct testimony in Case No. 9692 [@CL&P_Docket9692Direct_2023].[^brattle-dist] I adjusted this figure to 2025 dollars using the Consumer Price Index [@fred_ConsumerPriceIndexAll_2025].
+For **distribution**, I used the month-hour marginal costs the Company filed in response to OCC-863, Attachment 2 [@Eversource_response_OCC_863]. Those costs take Table 3's `{python} f"${mc.table3_mc_kw_yr:,.2f}"`/kW-year, gross it up for secondary losses to `{python} f"${mc.target_mc_kw_yr:,.2f}"`/kW-year, and assign that annual amount to each month, hour, and day type. I placed that schedule on the `{python} mc.calendar_year` calendar and scaled it so the year totals `{python} f"${mc.target_mc_kw_yr:,.2f}"`/kW-year. The steps are in @sec-method-mc.
 
-[^brattle-dist]: See [p. 138](https://www.documentcloud.org/documents/28269392-001-2-CL&P-myp-2-case-direct-testimony-final-w-att/#document/p138/a2821808) of CL&P's direct testimony, Case No. 9692.
+For **bulk transmission**, I used the avoided Pool Transmission Facility cost of $69/kW-year, in 2024 dollars, from the 2024 Avoided Energy Supply Components study [@synapse_AvoidedEnergySupply_2024]. I inflated it to 2026 dollars [@fred_ConsumerPriceIndexAll_2025] and spread it with the probability-of-peak method described in the Company's response to OCC-733 [@eversource_OCC733_response], fit on New England system load for 2022 through 2025 [@isone_ISONEWebServices_2025a]. The steps are in @sec-method-mc.
 
-For **bulk transmission**, I used the PJM Network Integration Transmission Service (NITS) rate for the CL&P zone [@pjm_NetworkIntegrationTransmission_2025].
-
-I allocated each annualized cost to the specific hours of the year most likely to drive new capacity investment, using a probability-of-peak approach. For bulk transmission, costs are concentrated in the top 150 hours of highest PJM system load in the CL&P zone, following the Peak Capacity Allocation Factor (PCAF) framework described in E3's *ICC-VDER Report* [@debenedictis_ValueCompensationDistributed_2025].[^e3-pcaf] For distribution, costs are concentrated in the top 100 hours of highest local load using the same load-weighted allocation method. The hourly PJM zonal load data used for both allocations comes from PJM's Data Miner 2 [@pjm_DataMiner2Metered_2025].
-
-[^e3-pcaf]: The PCAF methodology allocates capacity costs to the top hours of system load, weighted by probability of being the peak hour. See also PJM, *Manual 27: Open Access Transmission Tariff Accounting*, which describes PJM's NITS rate calculation and zonal load data.
 
 The resulting hourly cost profiles are shown in @fig-mc-heatmap-bulk-tx (bulk transmission) and @fig-mc-heatmap-dist-sub-tx (distribution). These hourly costs also underlie the peak-hour overlays and seasonal cost breakdowns in @fig-monthly-load-all-fossil-before through @fig-cost-vs-charge-delta-all-fossil, and in @fig-cost-vs-charge-delta-all-fossil-rd-current.
 
@@ -1861,45 +1857,44 @@ For the monthly consumption totals that drive the bill calculations and monthly 
 
 **Q.** Can you walk through how you computed the hourly bulk transmission marginal costs shown in @fig-mc-heatmap-bulk-tx?
 
-**A.** Yes. The calculation has four steps.
+**A.** Yes. The annual cost is a regional avoided-cost figure for New England. The hourly shape comes from the probability-of-peak method the Company's witness Amparo Nieto described in the response to OCC-733, which underlies the Company's distribution marginal costs in OCC-863 Attachment 2 [@eversource_OCC733_response; @Eversource_response_OCC_863]. I applied that method to New England system load, then placed the resulting rates on the analysis year's calendar the same way I placed the distribution schedule. The calculation has three steps.
 
-**Step 1: Annual transmission cost per kilowatt.** I used the PJM Network Integration Transmission Service (NITS) rate for the CL&P transmission zone [@pjm_NetworkIntegrationTransmission_2025]. The NITS rate is the zone's Annual Transmission Revenue Requirement divided by its billing determinants, and it is what every load-serving entity in the CL&P zone actually pays PJM for each kilowatt of network service. For 2025, CL&P's zonal revenue requirement was approximately `$358` million as of January 1 and approximately `$400` million as of June 1, producing NITS rates of `$55.85`/kW-year and `$59.07`/kW-year respectively [@pjm_NetworkIntegrationTransmission_2025].
+**Step 1: Annual bulk transmission cost.** Pool Transmission Facility cost is the cost of the regional transmission network that ISO New England plans and that every load-serving entity in New England pays for through Regional Network Service [@isone_OATT_section2, sec. II.21.1]. The Avoided Energy Supply Components study for 2024 estimates the long-run cost of that network, avoided when peak demand falls by one kilowatt, at $69/kW-year in 2024 dollars. The same figure applies in all six New England states, because the network is pooled [@synapse_AvoidedEnergySupply_2024].
 
-**Step 2: Day-weighted blending.** PJM published two NITS rates for 2025, one effective January 1 and one effective June 1, so neither rate covers the full calendar year. I weighted each by the number of days it was in effect — 151 days at the January rate and 214 days at the June rate — giving a 2025 effective rate of approximately `$57.74`/kW-year. No inflation adjustment is required, because the NITS rate is already stated in current-year dollars.
+I inflated $69/kW-year from 2024 dollars to 2026 dollars [@fred_ConsumerPriceIndexAll_2025]. 2026 is the dollar year of the Company's marginal cost study, so the transmission and distribution schedules are in the same dollars [@eversource_Docket260510Exhibit_2026a].
+**Step 2: Probability of peak, following OCC-733.** OCC-733 describes how the Company turned four years of hourly load into a probability that the peak falls in each month, hour, and day type [@eversource_OCC733_response]. I followed those steps, using ISO New England's historical system load for 2022 through 2025, summed across the eight load zones [@isone_ISONEWebServices_2025a]. These are the same four years the Company used for its own probability of peak. I used regional load because that is the load the AESC cost is measured against. AESC derives the $69/kW-year from ISO New England's estimate of the transmission investment needed to serve New England's peak load growth, and it directs that the value be applied to a measure's impact on the regional annual system peak, because the Pool Transmission Facilities are built to meet that peak [@synapse_AvoidedEnergySupply_2024, pp. 283–284].
 
-The NITS rate is an embedded average cost — it reflects the revenue requirement on PJM's existing transmission plant, not a purely forward-looking long-run marginal cost. I use it because no better estimate is available. E3 used the same rate as its transmission capacity value in the avoided-cost study the Illinois Commerce Commission commissioned, after both PJM and MISO advised that they could not provide a more accurate marginal cost for transmission capacity and lacked the data infrastructure to support an independent calculation [@debenedictis_ValueCompensationDistributed_2025].[^e3-nits-proxy]
+The steps are:
 
-[^e3-nits-proxy]: E3, *ICC-VDER Report*, § 6.1.2: the Network Transmission Service rates used as a proxy for transmission avoided costs "are more indicative of an average cost of capacity rather than a marginal cost," a limitation both RTOs acknowledged while confirming they had no better estimate to offer.
+1. **Day type.** Each hour is labeled by month, hour beginning, and day type: weekday, or weekend-and-holiday. Saturday, Sunday, and the federal holidays take the weekend-and-holiday category.
+2. **Normalize.** I divided each hour by the average hourly load of its own calendar year, which removes year-to-year load growth.
+3. **Delimiter.** For each year, I took the highest month, hour, and day-type average of the normalized load, and averaged it over 2022 through 2025. An hour above this delimiter counts as a peak hour.
+4. **Density in each cell.** For each of the 576 month, hour, and day-type cells, I fit a truncated Gaussian kernel density to the normalized loads in that cell [@eversource_OCC733_response].
+5. **Probability of peak weighting.** The probability of peak for a cell is the share of its density above the delimiter. I divided those shares by their sum, so the 576 cells add to one.
 
-**Step 3: Peak-hour identification.** Additional consumption drives new transmission investment only when the system is near its limits, so the annual cost belongs in those hours and not in the rest of the year. I loaded CL&P zonal hourly load for calendar year 2025 from PJM Data Miner 2 [@pjm_DataMiner2Metered_2025], ranked all 8,760 hours by load, and selected the top 150 hours as the constrained hours. I used 150 hours, and applied no seasonal restriction, to follow E3's ICC-VDER methodology, which allocates transmission and distribution capacity costs across the top 150 load hours of the full year [@debenedictis_ValueCompensationDistributed_2025].
-
-**Step 4: Load-weighted allocation.** I allocated the annual cost across those 150 hours in proportion to each hour's load, using the Peak Capacity Allocation Factor described in Appendix C of E3's ICC-VDER report: each hour's factor is its "share of load in each of these hours divided by the total load across these 150 top load hours" [@debenedictis_ValueCompensationDistributed_2025]:
+**Step 3: Place the probabilities on the analysis calendar.** Following the Company's approach in OCC-863 Attachment 2 [@Eversource_response_OCC_863], for each month and day type I divided the cell's probability by the number of days of that type in the analysis year, and multiplied by the inflated annual cost:
 
 $$
-PCAF_h = \frac{L_h}{\sum_{k \in \text{top-150}} L_k}
+MC_{m,d,h} = C \times \frac{\mathrm{PoP}_{m,d,h}}{N_{m,d}}
 $$
 
-Multiplying the `$57.74`/kW-year figure by each hour's factor produces that hour's marginal cost in dollars per kilowatt-hour. The remaining 8,610 hours receive a marginal cost of zero. The hourly values sum to the annual rate, which I verified programmatically. The resulting hourly profile is @fig-mc-heatmap-bulk-tx.
+$C$ is the inflated $/kW-year. $N_{m,d}$ is the number of days of that type in that month. Each hour of 2025 then takes the weekday rate or the weekend-and-holiday rate, by the same rule as Step 2. This is the same last step as the distribution schedule: an annual cost, times a probability, divided by a day count, laid onto the calendar the residential loads are aligned to. A flat one-kilowatt load over the year pays back the inflated annual cost, which I verified. Hours whose probability is zero stay at zero. The resulting profile is @fig-mc-heatmap-bulk-tx.
 
 <br>
 
 **Q.** Can you walk through how you computed the hourly distribution marginal costs shown in @fig-mc-heatmap-dist-sub-tx?
 
-**A.** Yes. The calculation follows the same four steps, with a different cost input and a narrower peak window:
+**A.** Yes. I used the month-hour marginal costs the Company filed in response to OCC-863, Attachment 2 [@Eversource_response_OCC_863], and placed them on the `{python} mc.calendar_year` analysis calendar. The calculation has three steps.
 
-**Step 1: Annualized avoided cost.** I started with the Brattle Group's avoided distribution cost of $32/kW-year (in 2022 dollars), from CL&P's direct testimony in Case No. 9692.[^brattle-dist] This figure represents the per-kilowatt replacement value of CL&P's distribution system — including 34 kV sub-transmission, 13 kV primary, and secondary voltage levels — levelized with a 12% economic carrying charge. It captures the forward-looking cost of distribution capacity: the annual cost of adding one kilowatt of new distribution capacity to serve incremental load.
+**Step 1: The Company's month-hour allocation.** Table 3 of Exhibit CLP-MCOS-2 states the system-wide marginal cost of distribution stations and trunkline feeders as `{python} f"${mc.table3_mc_kw_yr:,.2f}"`/kW-year, before losses, in `{python} mc.dollar_year` dollars [@eversource_Docket260510Exhibit_2026a]. In its response to OCC-863, Attachment 2, page 1, the Company multiplies `{python} f"${mc.table3_mc_kw_yr:,.2f}"` by the secondary loss factor in cell N3, `{python} f"{mc.secondary_loss_factor:.6f}"` which rounds to `{python} f"${mc.target_mc_kw_yr:,.2f}"`/kW-year [@Eversource_response_OCC_863].
 
-**Step 2: CPI inflation.** I adjusted the 2022-dollar figure to 2025 dollars using the Consumer Price Index [@fred_ConsumerPriceIndexAll_2025], yielding approximately $36/kW-year.
+Attachment 2 then assigns that loss-adjusted annual cost to each month, hour, and day type. Page 3 is the probability that the distribution peak falls in that month, hour, and day type, measured on the Company's substation loads [@Eversource_response_OCC_863]. Each cell on page 1 is that probability times the loss-adjusted annual cost, divided by the number of days of that type in the month. Weekdays are one table. Weekends and public holidays are the other. I used those secondary `$/kWh` values as the Company calculated them to represent the residential customers' marginal costs at each hour.
 
-**Step 3: Peak-hour identification.** I loaded CL&P's hourly demand profile for calendar year 2025 from PJM Data Miner 2 [@pjm_DataMiner2Metered_2025], ranked all 8,760 hours by CL&P zone load in descending order, and selected the top 100 hours as the constrained hours — the hours during which additional demand is most likely to trigger new distribution capacity investment.
+**Step 2: Place the tables on the analysis calendar.** Attachment 2 is a set of average rates, not an 8,760 for any specific calendar year. For each hour of `{python} mc.calendar_year` I looked up the month and the hour. Saturday, Sunday, and the federal holidays take the weekend-and-holiday rate. A holiday that falls on Saturday is observed the Friday before, and one that falls on Sunday is observed the Monday after. Every other weekday takes the weekday rate. Those are the day types behind Attachment 2's own weekend-and-holiday day counts, so the lookup reproduces the Company's categories. I used `{python} mc.calendar_year` because that is the calendar the residential load profiles are aligned to: a Monday in the marginal-cost file is a Monday in the load file.
 
-**Step 4: Load-weighted allocation.** For each of the 100 peak hours, I computed a weight equal to that hour's load divided by the sum of load across all 100 peak hours:
+**Step 3: Scale the year back to `{python} f"${mc.target_mc_kw_yr:,.2f}"`/kW-year.** The day counts in Attachment 2 are not the exact number of each day type in `{python} mc.calendar_year`, so the looked-up 8,760 sums to `{python} f"${mc.sum_before_scale:,.2f}"`/kW-year rather than `{python} f"${mc.target_mc_kw_yr:,.2f}"`. I multiplied every hour by `{python} f"{mc.scale_factor:.4f}"`. Hours that were zero stay zero, and the ratio between any two hours is unchanged. After that scaling, the `{python} f"{mc.n_hours:,}"` hours sum to `{python} f"${mc.sum_after_scale:,.2f}"`/kW-year. I applied no CPI adjustment. The `{python} f"${mc.target_mc_kw_yr:,.2f}"` figure is already in the study's `{python} mc.dollar_year` dollars, and I used it as filed.
 
-$$
-PCAF_h = \frac{L_h}{\sum_{k \in \text{top-100}} L_k}
-$$
-
-I then multiplied the annualized cost (~$36/kW-year) by each hour's weight to produce a $/kWh marginal cost for that hour. All non-peak hours receive a marginal cost of zero. The sum of all 8,760 hourly values equals the original $/kW-year figure — a property I verified programmatically. The resulting hourly profile is @fig-mc-heatmap-dist-sub-tx.
+The resulting hourly profile is @fig-mc-heatmap-dist-sub-tx. `{python} f"{mc.n_nonzero_hours:,}"` hours carry a positive distribution marginal cost. The rest of the year is zero.
 
 #### Incremental cost and overpayment {#sec-method-incremental}
 

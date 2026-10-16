@@ -32,6 +32,17 @@ citation:
 #    href: docs/switchbox_report.pdf
 ---
 
+```{python}
+#| echo: false
+
+import pickle
+from pathlib import Path
+from types import SimpleNamespace
+
+mc = SimpleNamespace(**pickle.loads(Path("cache/marginal_costs_vars.pkl").read_bytes()))
+```
+
+# Introduction
 # Outline
 
 
@@ -116,6 +127,24 @@ citation:
 ## Alternative designs?
 * BTW TOU doesn't solve this, for when you get AMI.
 
+
+### Hourly marginal distribution costs {#sec-method-dist-mc}
+
+The distribution marginal-cost series in @fig-mc-heatmap-dist-sub-tx is an hourly schedule for all `{python} f"{mc.n_hours:,}"` hours of `{python} mc.calendar_year`. It uses the month-hour costs Eversource filed in response to OCC-863 [@Eversource_response_OCC_863], placed on that calendar and scaled so the year totals **`{python} f"${mc.target_mc_kw_yr:,.2f}"`**/kW-year.
+
+**Step 1: Eversource's own month-hour allocation.** Table 3 of the marginal cost of service study states a system-wide upstream distribution cost of **`{python} f"${mc.table3_mc_kw_yr:,.2f}"`**/kW-year, before losses [@eversource_Docket260510Exhibit_2026; @eversource_Docket260510Exhibit_2026a]. OCC-863 Attachment 2, page 1, grosses that figure up by the secondary loss factor in cell N3 (`{python} f"{mc.secondary_loss_factor:.6f}"`) [@Eversource_response_OCC_863]. The unrounded product, **`{python} f"${mc.sheet_mc_kw_yr:,.2f}"`**/kW-year, is what the workbook then assigns to each month, hour, and day type: that annual cost, times the cell's probability of peak, divided by the number of days of that type in the month. Weekdays are one table. Weekends and public holidays are the other. We use the secondary tables because residential customers take service at secondary voltage. We use those `$/kWh` values as Eversource calculated them.
+
+**Step 2: Place the tables on the analysis calendar.** Each hour of `{python} mc.calendar_year` looks up its month and hour. Saturday, Sunday, and observed federal holidays take the weekend-and-holiday rate. Every other weekday takes the weekday rate. `{python} mc.calendar_year` is the calendar CAIRO's residential loads are aligned to, so a Monday in the marginal-cost file is a Monday in the load file.
+
+**Step 3: Scale to `{python} f"${mc.target_mc_kw_yr:,.2f}"`/kW-year.** The workbook's day counts are not the exact count of each day type in `{python} mc.calendar_year`, so the looked-up year sums to **`{python} f"${mc.sum_before_scale:,.2f}"`**/kW-year rather than `{python} f"${mc.target_mc_kw_yr:,.2f}"`. One factor, `{python} f"{mc.scale_factor:.4f}"`, multiplies every hour. Zero hours stay zero, and the ratio between any two hours is unchanged. The scaled year sums to **`{python} f"${mc.sum_after_scale:,.2f}"`**/kW-year. There is no CPI adjustment: `{python} f"${mc.target_mc_kw_yr:,.2f}"` is the filed `{python} mc.dollar_year`-dollar figure, used as filed.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/marginal_costs.qmd#tbl-dist-mc-reconciliation >}}
+:::
+
+:::{.column-page-inset-right}
+{{< embed notebooks/analysis.qmd#fig-mc-heatmap-dist-sub-tx >}}
+:::
 
 # TODO
 * Look for language on barriers to adoption.

@@ -684,7 +684,7 @@ ribbon charts are visually comparable.
 ```{python}
 #| label: ribbon-y-max
 
-_ribbon_y_max = float(bldg_df["avg_post"].max() * 1.08)
+_ribbon_y_max = 4_000.0
 print(f"Shared ribbon y-max: {_ribbon_y_max:,.0f} kWh")
 ```
 
@@ -717,6 +717,8 @@ make_ribbon(
 )
 ax.axhline(y=600, color="#CCCCCC", linestyle=":", linewidth=1, zorder=3)
 ax.axhline(y=800, color="#CCCCCC", linestyle=":", linewidth=1, zorder=3)
+ax.text(1.01, 600, "600 kWh", transform=ax.get_yaxis_transform(), va="center", ha="left", fontsize=9, color="#999999")
+ax.text(1.01, 800, "800 kWh", transform=ax.get_yaxis_transform(), va="center", ha="left", fontsize=9, color="#999999")
 ax.set_xlabel(
     "Homes ranked by pre-HP winter electricity (weighted percentile)", fontsize=11,
 )
@@ -973,6 +975,74 @@ tbr_df_700 = float((_tbr_df["tbr"] * _tbr_df["weight"]).sum() / _sw_df)
 print(f"  Total benefit ratio: {tbr_df_700:.1%}")
 ```
 
+### Ribbon chart: natural gas homes
+
+The same visualization we built for delivered-fuel homes, now applied to natural gas.
+The difference is stark: the threshold sits well above most natural gas homes' base
+load, so nearly all of their incremental HP load lands in Block 1 (orange).
+
+```{python}
+#| label: fig-ribbon-ng-full
+#| fig-cap: "How Rate 6's 700 kWh threshold classifies each natural-gas home's load. Blue: HP load correctly in Block 2. Orange: HP load trapped in Block 1. Yellow: base load getting Block 2 windfall."
+
+fig, ax = mplt.subplots(figsize=(10.5, 5.5))
+make_ribbon(
+    ax,
+    bldg_ng,
+    THRESHOLD_KWH,
+    "Rate 6 threshold classification: natural-gas homes",
+    show_legend=True,
+    show_post=True,
+    y_max_override=_ribbon_y_max,
+)
+ax.set_xlabel(
+    "Homes ranked by pre-HP winter electricity (weighted percentile)", fontsize=11,
+)
+fig.tight_layout()
+display_svg(fig)
+```
+
+### Side-by-side comparison
+
+The contrast between the two fuel groups is clearest when displayed side by side with the same y-axis.
+
+```{python}
+#| label: fig-ribbon-fuel-comparison
+#| fig-cap: "How Rate 6's 700 kWh threshold classifies load for delivered-fuel homes (left) vs. natural-gas homes (right). Blue: HP load in Block 2 (discounted). Orange: HP load trapped in Block 1 (full rate). Yellow: base load getting Block 2 windfall."
+
+fig, (ax_df, ax_ng) = mplt.subplots(1, 2, figsize=(10.5, 5), sharey=True)
+
+make_ribbon(
+    ax_df,
+    bldg_df,
+    THRESHOLD_KWH,
+    "Delivered-fuel homes",
+    show_legend=False,
+    show_post=True,
+    y_max_override=_ribbon_y_max,
+)
+ax_df.set_xlabel(
+    "Homes ranked by pre-HP winter electricity\n(weighted percentile)", fontsize=10,
+)
+
+make_ribbon(
+    ax_ng,
+    bldg_ng,
+    THRESHOLD_KWH,
+    "Natural-gas homes",
+    show_legend=True,
+    show_post=True,
+    y_max_override=_ribbon_y_max,
+)
+ax_ng.set_xlabel(
+    "Homes ranked by pre-HP winter electricity\n(weighted percentile)", fontsize=10,
+)
+ax_ng.set_ylabel("")
+
+fig.tight_layout()
+display_svg(fig)
+```
+
 ### Alternative thresholds
 
 What if the threshold were set at the midpoint between the two fuel groups' means,
@@ -1070,10 +1140,10 @@ _df_dists = bldg_df.with_columns(
     (pl.col("avg_pre") - THRESHOLD_KWH).abs().alias("dist_from_threshold")
 )
 _df_total_w = bldg_df["weight"].sum()
-report_vars["pct_within_50_of_threshold_df"] = float(
+report_vars["pct_within_100_of_threshold_df"] = float(
     bldg_df.filter(
-        (pl.col("avg_pre") >= THRESHOLD_KWH - 50)
-        & (pl.col("avg_pre") <= THRESHOLD_KWH + 50)
+        (pl.col("avg_pre") >= THRESHOLD_KWH - 100)
+        & (pl.col("avg_pre") <= THRESHOLD_KWH + 100)
     )["weight"].sum()
     / _df_total_w
 )

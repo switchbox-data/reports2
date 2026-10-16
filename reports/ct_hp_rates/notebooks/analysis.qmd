@@ -116,6 +116,8 @@ RDP_REF = _batch_config["RDP_REF"]
 UTILITY = "ct_eversource"
 YEAR = 2025
 
+RUN_BAT = False # Set to False to skip BAT method calcs for overpayment. When using incremental method, avoids producing contradictory report vars.
+
 # residual
 RESIDUAL = "percustomer"  # percustomer or epmc
 
@@ -138,9 +140,12 @@ RATE6_RATEMC_TRANS_SCENARIO = "default_ry1_r6_ratemc_trans_uncalibrated"
 RATE6_FIXED_RATEMC_TRANS_SCENARIO = "default_ry1_r6_fixed_ratemc_trans_uncalibrated"
 RATE6_RATEMC_MFC0_TRANS_SCENARIO = "default_ry1_r6_ratemc_mfc0_trans_uncalibrated"
 FAIR_RATE_POPULATION = _batch_config["FAIR_RATE_POPULATION"]
+INCLUDE_FIXED_CHARGE = True
+OVERPAYMENT_COL = "overpayment_volumetric_fc" if INCLUDE_FIXED_CHARGE else "overpayment_volumetric"
 
 print(f"state={STATE}  batch={BATCH}  rdp_ref={RDP_REF}  utility={UTILITY}  bill_col={BILL_COL}")
 print(f"fair_rate_population={FAIR_RATE_POPULATION}")
+print(f"include_fixed_charge={INCLUDE_FIXED_CHARGE}  overpayment_col={OVERPAYMENT_COL}")
 ```
 
 Batch `ct_20261009_a` has calibrated scenarios for CT Eversource, each run at two stages:
@@ -278,8 +283,8 @@ incidence_natgas_default
 
 report_vars["pct_natgas_hp_bill_increase_default"] = incidence_natgas_default["pct_increase"]
 report_vars["pct_natgas_hp_bill_decrease_default"] = incidence_natgas_default["pct_decrease"]
-report_vars["mean_natgas_hp_bill_increase_default"] = incidence_natgas_default["mean_delta"]
-report_vars["median_natgas_hp_bill_increase_default"] = incidence_natgas_default["median_delta"]
+report_vars["mean_natgas_hp_bill_delta_default"] = incidence_natgas_default["mean_delta"]
+report_vars["median_natgas_hp_bill_delta_default"] = incidence_natgas_default["median_delta"]
 
 _savers_natgas_default = delta_natgas_default.filter(pl.col("delta") < 0)
 _savers_natgas_default_w = _savers_natgas_default["weight"].sum()
@@ -292,8 +297,8 @@ report_vars["mean_natgas_hp_savings_among_savers_default"] = (
 
 **`{python} f"{report_vars['pct_natgas_hp_bill_increase_default']:.0%}"` of natural-gas-heated
 CT Eversource homes would see their total annual energy bill go up** after switching to a heat
-pump under today's rate — a mean increase of `{python} f"${report_vars['mean_natgas_hp_bill_increase_default']:,.0f}"`
-a year (median `{python} f"${report_vars['median_natgas_hp_bill_increase_default']:,.0f}"`).
+pump under today's rate — a mean increase of `{python} f"${report_vars['mean_natgas_hp_bill_delta_default']:,.0f}"`
+a year (median `{python} f"${report_vars['median_natgas_hp_bill_delta_default']:,.0f}"`).
 The rest see a decrease, mostly from avoided gas costs outweighing the added electric load.
 
 ## Bill-increase incidence switching from delivered fuels to a heat pump, under today's rate
@@ -317,8 +322,8 @@ incidence_delivered_default
 
 report_vars["pct_delivered_hp_bill_increase_default"] = incidence_delivered_default["pct_increase"]
 report_vars["pct_delivered_hp_bill_decrease_default"] = incidence_delivered_default["pct_decrease"]
-report_vars["mean_delivered_hp_bill_increase_default"] = incidence_delivered_default["mean_delta"]
-report_vars["median_delivered_hp_bill_increase_default"] = incidence_delivered_default["median_delta"]
+report_vars["mean_delivered_hp_bill_delta_default"] = incidence_delivered_default["mean_delta"]
+report_vars["median_delivered_hp_bill_delta_default"] = incidence_delivered_default["median_delta"]
 
 _savers_delivered_default = delta_delivered_default.filter(pl.col("delta") < 0)
 _savers_del_default_w = _savers_delivered_default["weight"].sum()
@@ -338,6 +343,7 @@ baseline heating type.
 
 ```{python}
 #| label: fig-bill-change-quadrants-default-all
+#| eval: false
 #| fig-cap: "Change in total annual energy bill after switching to a heat pump, by baseline heating type, under CT Eversource's default rate."
 
 plot_bill_change_quadrants(
@@ -379,18 +385,18 @@ plot_bill_change_quadrant_rate_comparison(
 
 ```{python}
 #| label: fig-bill-change-quadrants-seasonal
-#| fig-cap: "Change in total annual energy bill after switching to a heat pump, by baseline heating type, under CT Eversource's Fair seasonal rate."
+#| eval: false
+#| fig-cap: "Change in total annual energy bill after switching to a heat pump, by baseline heating type, under proposed heat pump-seasonal rate."
 
 plot_bill_change_quadrants(
-    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_SEASONAL_CALIBRATED,
-    bill_col=BILL_COL,
-    rate_name="Fair seasonal rate"
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_SEASONAL_CALIBRATED, bill_col=BILL_COL, rate_name="seasonal heat pump rate"
 )
 ```
 
 
 ```{python}
 #| label: fig-bill-change-quadrants-flat
+#| eval: false
 #| fig-cap: "Change in total annual energy bill after switching to a heat pump, by baseline heating type, under CT Eversource's Fair flat rate."
 
 plot_bill_change_quadrants(
@@ -403,6 +409,7 @@ plot_bill_change_quadrants(
 
 ```{python}
 #| label: fig-bill-change-quadrants-r6
+#| eval: false
 #| fig-cap: "Change in total annual energy bill after switching to a heat pump, by baseline heating type, under CT Eversource''s proposed rate 6."
 
 plot_bill_change_quadrants(
@@ -419,6 +426,7 @@ before/after-retrofit comparisons.
 
 ```{python}
 #| label: natgas-bill-change-histogram-helpers
+#| eval: false
 
 delta_natgas_default_to_seasonal = bill_delta_between_segments(
     STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_SEASONAL_CALIBRATED, bill_col=BILL_COL
@@ -436,6 +444,7 @@ one population is directly comparable in a single chart.
 
 ```{python}
 #| label: fig-bill-change-quadrants-natgas-by-rate
+#| eval: false
 #| fig-cap: "Change in total annual energy bill for natural-gas-heated CT Eversource homes switching to a heat pump, under the default rate vs. the Fair seasonal rate vs. the Fair flat rate."
 
 display_svg(
@@ -458,6 +467,7 @@ display_svg(
 
 ```{python}
 #| label: fig-hist-natgas-bill-change-default
+#| eval: false
 #| fig-cap: "Distribution of the annual total energy bill change for natural-gas-heated CT Eversource homes after switching to a heat pump, under the default rate."
 
 plot_weighted_bill_change_hist(
@@ -468,6 +478,7 @@ plot_weighted_bill_change_hist(
 
 ```{python}
 #| label: fig-hist-natgas-bill-change-seasonal
+#| eval: false
 #| fig-cap: "Distribution of the annual total energy bill change for natural-gas-heated CT Eversource homes after switching to a heat pump, under the Fair seasonal rate."
 
 plot_weighted_bill_change_hist(
@@ -478,6 +489,7 @@ plot_weighted_bill_change_hist(
 
 ```{python}
 #| label: fig-hist-natgas-bill-change-flat
+#| eval: false
 #| fig-cap: "Distribution of the annual total energy bill change for natural-gas-heated CT Eversource homes after switching to a heat pump, under the Fair flat rate."
 
 plot_weighted_bill_change_hist(
@@ -501,102 +513,106 @@ measure even though the bills themselves are correct there.
 
 ```{python}
 #| label: hp-bat-summary-default
-
-bat_default_hp = hp_bat_summary(STATE, BATCH, DEFAULT_SCENARIO, bat_col=f"BAT_{RESIDUAL}_delivery")
-bat_default_hp
+if RUN_BAT:
+    bat_default_hp = hp_bat_summary(STATE, BATCH, DEFAULT_SCENARIO, bat_col=f"BAT_{RESIDUAL}_delivery")
+    bat_default_hp
+else:
+    pass
 ```
 
 ```{python}
 #| label: report-vars-hp-bat-default
-
-report_vars["hp_overpay_mean_default"] = bat_default_hp["mean_per_year"]
-report_vars["hp_overpay_total_millions_default"] = bat_default_hp["total_per_year_millions"]
-report_vars["hp_share_of_households_default"] = bat_default_hp["n_weighted"] / n_utility_customers
+if RUN_BAT:
+    report_vars["hp_overpay_mean_default"] = bat_default_hp["mean_per_year"]
+    report_vars["hp_overpay_total_millions_default"] = bat_default_hp["total_per_year_millions"]
+    report_vars["hp_share_of_households_default"] = bat_default_hp["n_weighted"] / n_utility_customers
+else:
+    pass
 ```
 
-**Heat pump customers on the default rate overpay for delivery by an average of
-`{python} f"${report_vars['hp_overpay_mean_default']:,.0f}"` a year** — `{python} f"${report_vars['hp_overpay_total_millions_default']:.1f}"`
-million a year in total across CT Eversource's roughly `{python} f"{report_vars['hp_share_of_households_default']:.0%}"`
-heat-pump-heated residential population. That overpayment isn't unique to heat pumps — it's
-a feature of CT Eversource's uniform volumetric delivery rate. The same table, split by
-baseline heating type, shows every all-electric subclass overpaying and every fossil-fuel
-subclass underpaying relative to their delivery cost of service:
+
 
 ```{python}
 #| label: tbl-bat-by-heating-type
 #| tbl-cap: "Average delivery revenue, cost of service, and over/underpayment by baseline heating type (CT Eversource, default rate)."
 
-_bat_by_type = (
-    add_heating_label(
-        bat_by_group(
-            STATE,
-            BATCH,
-            DEFAULT_SCENARIO,
-            bat_col=f"BAT_{RESIDUAL}_delivery",
-            residual=RESIDUAL,
-        ),
-        code_col="postprocess_group.heating_type_v2",
-    )
-    .drop("postprocess_group.heating_type_v2")
-    .with_columns(
-        pl.col("heating_label").cast(pl.Enum(HEATING_ORDER)),
-        (pl.col("revenue_per_customer") / pl.col("cost_of_service_per_customer")).alias(
-            "revenue_over_cos"
-        ),
-    )
-    .sort("heating_label")
-    .select(
-        "heating_label",
-        "revenue_per_customer",
-        "residual_per_customer",
-        "marginal_cost_per_customer",
-        "cost_of_service_per_customer",
-        "revenue_over_cos",
-        "mean_per_year",
-        "n_weighted",
-    )
-)
-_bat_by_type_gt = (
-    GT(_bat_by_type, rowname_col="heating_label")
-    .fmt_currency(
-        columns=[
+if RUN_BAT:
+    _bat_by_type = (
+        add_heating_label(
+            bat_by_group(
+                STATE,
+                BATCH,
+                DEFAULT_SCENARIO,
+                bat_col=f"BAT_{RESIDUAL}_delivery",
+                residual=RESIDUAL,
+            ),
+            code_col="postprocess_group.heating_type_v2",
+        )
+        .drop("postprocess_group.heating_type_v2")
+        .with_columns(
+            pl.col("heating_label").cast(pl.Enum(HEATING_ORDER)),
+            (pl.col("revenue_per_customer") / pl.col("cost_of_service_per_customer")).alias(
+                "revenue_over_cos"
+            ),
+        )
+        .sort("heating_label")
+        .select(
+            "heating_label",
             "revenue_per_customer",
             "residual_per_customer",
             "marginal_cost_per_customer",
             "cost_of_service_per_customer",
+            "revenue_over_cos",
             "mean_per_year",
-        ],
-        decimals=0,
+            "n_weighted",
+        )
     )
-    .fmt_number(columns="revenue_over_cos", decimals=2)
-    .fmt_number(columns="n_weighted", decimals=0)
-    .cols_label(
-        revenue_per_customer="Avg. revenue",
-        residual_per_customer="Avg. residual cost",
-        marginal_cost_per_customer="Avg. marginal cost",
-        cost_of_service_per_customer="Avg. cost of service",
-        revenue_over_cos="Avg. revenue / COS",
-        mean_per_year="Avg. over/underpayment",
-        n_weighted="Weighted customers",
+    _bat_by_type_gt = (
+        GT(_bat_by_type, rowname_col="heating_label")
+        .fmt_currency(
+            columns=[
+                "revenue_per_customer",
+                "residual_per_customer",
+                "marginal_cost_per_customer",
+                "cost_of_service_per_customer",
+                "mean_per_year",
+            ],
+            decimals=0,
+        )
+        .fmt_number(columns="revenue_over_cos", decimals=2)
+        .fmt_number(columns="n_weighted", decimals=0)
+        .cols_label(
+            revenue_per_customer="Avg. revenue",
+            residual_per_customer="Avg. residual cost",
+            marginal_cost_per_customer="Avg. marginal cost",
+            cost_of_service_per_customer="Avg. cost of service",
+            revenue_over_cos="Avg. revenue / COS",
+            mean_per_year="Avg. over/underpayment",
+            n_weighted="Weighted customers",
+        )
+        .tab_stubhead(label="Baseline heating type")
+        .tab_source_note(f"Positive over/underpayment = overpaying delivery cost of service; negative = underpaying. Per-customer figures are weight-averaged. Residual allocator = {RESIDUAL}.")
+        .tab_options(**get_switchbox_gt_tab_options())
     )
-    .tab_stubhead(label="Baseline heating type")
-    .tab_source_note(f"Positive over/underpayment = overpaying delivery cost of service; negative = underpaying. Per-customer figures are weight-averaged. Residual allocator = {RESIDUAL}.")
-    .tab_options(**get_switchbox_gt_tab_options())
-)
-display_gt(_bat_by_type_gt)
+    display_gt(_bat_by_type_gt)
+
+else:
+    pass
 ```
 
 ```{python}
 #| label: report-vars-bat-by-heating-type
-
-for label, key in [
-    ("Natural gas", "natgas_mean_delivery_bat"),
-    ("Oil/propane", "oil_propane_mean_delivery_bat"),
-    ("Existing heat pump", "hp_mean_delivery_bat"),
-]:
-    rows = _bat_by_type.filter(pl.col("heating_label") == label)
-    if rows.height:
-        report_vars[key] = float(rows["mean_per_year"][0])
+if RUN_BAT:
+    for label, key in [
+        ("Natural gas", "natgas_mean_delivery_bat"),
+        ("Oil/propane", "oil_propane_mean_delivery_bat"),
+        ("Existing heat pump", "hp_mean_delivery_bat"),
+    ]:
+        rows = _bat_by_type.filter(pl.col("heating_label") == label)
+        if rows.height:
+            report_vars[key] = float(rows["mean_per_year"][0])
+else:
+    pass
 ```
 
 CAIRO also exports each building's actual annual kWh consumption (`billing_kwh_annual.parquet`,
@@ -607,6 +623,7 @@ over/underpayment above.
 
 ```{python}
 #| label: tbl-cos-by-subclass
+#| eval: false
 #| tbl-cap: "Delivery revenue, cost of service, and cross-subsidy by heating-type subclass (CT Eversource, default rate)."
 
 cos_tbl = cost_of_service_by_subclass(
@@ -660,34 +677,31 @@ not just by how much.
 ```{python}
 #| label: fig-revenue-requirement-breakdown
 #| fig-cap: "CT Eversource's residential delivery revenue requirement, split into marginal cost recovery and residual, by baseline heating-type subclass."
-
-revreq_breakdown = revenue_requirement_breakdown_by_subclass(STATE, BATCH, UTILITY, DEFAULT_SCENARIO)
-plot_revenue_requirement_breakdown(revreq_breakdown)
+if RUN_BAT:
+    revreq_breakdown = revenue_requirement_breakdown_by_subclass(STATE, BATCH, UTILITY, DEFAULT_SCENARIO)
+    plot_revenue_requirement_breakdown(revreq_breakdown)
+else:
+    pass
 ```
 
 ```{python}
 #| label: report-vars-revenue-requirement-breakdown
-
-_revreq_total = revreq_breakdown.filter(pl.col("subclass") == "All customers")
-report_vars["revreq_marginal_cost_millions"] = (
-    _revreq_total.filter(pl.col("component") == "Marginal cost")["value"][0] / 1e6
-)
-report_vars["revreq_residual_millions"] = (
-    _revreq_total.filter(pl.col("component") == "Residual")["value"][0] / 1e6
-)
-report_vars["revreq_pct_residual"] = report_vars["revreq_residual_millions"] / (
-    report_vars["revreq_marginal_cost_millions"] + report_vars["revreq_residual_millions"]
-)
+if RUN_BAT:
+    _revreq_total = revreq_breakdown.filter(pl.col("subclass") == "All customers")
+    report_vars["revreq_marginal_cost_millions"] = (
+        _revreq_total.filter(pl.col("component") == "Marginal cost")["value"][0] / 1e6
+    )
+    report_vars["revreq_residual_millions"] = (
+        _revreq_total.filter(pl.col("component") == "Residual")["value"][0] / 1e6
+    )
+    report_vars["revreq_pct_residual"] = report_vars["revreq_residual_millions"] / (
+            report_vars["revreq_marginal_cost_millions"] + report_vars["revreq_residual_millions"]
+        )
+else:
+    pass
 ```
 
-Across all of CT Eversource's residential customers, `{python} f"${report_vars['revreq_marginal_cost_millions']:.1f}"`
-million a year of the delivery revenue requirement recovers marginal cost, while
-`{python} f"${report_vars['revreq_residual_millions']:.1f}"` million —
-`{python} f"{report_vars['revreq_pct_residual']:.0%}"` of the total — is residual. That
-imbalance holds within every subclass too (@fig-revenue-requirement-breakdown): residual
-revenue is several times larger than marginal cost for every baseline heating type, which is
-exactly why the residual *allocator* — not the marginal-cost charge — is what mostly
-determines whether a subclass over- or underpays in the table above.
+
 
 Peak-hour delivery marginal costs and heatmaps live in
 [`delivery_mc.qmd`](delivery_mc.qmd) (also used by expert testimony).
@@ -738,6 +752,7 @@ print("Rate 6 Block 2 (¢/kWh by period):", _rate6_block2_by_period)
 
 ```{python}
 #| label: tbl-tariff-months
+#| eval: false
 #| tbl-cap: "Volumetric delivery rate by month: proposed Rate 1 vs. Rate 6 (Block 1 ≤700 kWh, Block 2 >700 kWh winter only)."
 
 _rate1_col = "Rate 1 (¢/kWh)"
@@ -869,6 +884,7 @@ on bill outcomes at a glance.
 
 ```{python}
 #| label: fig-bill-change-quadrants-r1-vs-fair-seasonal-natgas
+#| eval: false
 #| fig-cap: "Change in total annual energy bill for natural-gas-heated CT Eversource homes switching to a heat pump, under Rate 1 vs. the fair seasonal rate."
 
 plot_bill_change_quadrant_rate_comparison(
@@ -935,6 +951,7 @@ report_vars["mean_delivered_hp_increase_among_losers_seasonal"] = (
 
 ```{python}
 #| label: fig-bill-change-quadrants-r1-vs-fair-seasonal-delivered
+#| eval: false
 #| fig-cap: "Change in total annual energy bill for delivered-fuel-heated CT Eversource homes switching to a heat pump, under Rate 1 vs. the fair seasonal rate."
 
 plot_bill_change_quadrant_rate_comparison(
@@ -973,6 +990,7 @@ print(f"Representative natural-gas-heated building: bldg_id={median_natgas_bldg_
 
 ```{python}
 #| label: fig-monthly-bill-representative
+#| eval: false
 #| fig-cap: "A representative CT Eversource home's monthly electric bill after switching to a heat pump, under the fair seasonal rate."
 
 plot_monthly_bill_components(
@@ -982,6 +1000,7 @@ plot_monthly_bill_components(
 ```
 ```{python}
 #| label: fig-monthly-bill-representative-default
+#| eval: false
 #| fig-cap: "A representative CT Eversource home's monthly electric bill after switching to a heat pump, under the default rate."
 
 plot_monthly_bill_components(
@@ -1090,6 +1109,7 @@ charge get no incremental split — both are flat, per-customer costs that, unde
 
 ```{python}
 #| label: fig-cost-breakdown-representative-default
+#| eval: false
 #| fig-cap: "Annual kWh, cost of service, and delivery bill for the representative CT Eversource natural-gas home, before and after switching to a heat pump, under the default rate."
 
 cost_breakdown_default = representative_cost_data(
@@ -1110,6 +1130,7 @@ marginal cost and delivery bill.
 
 ```{python}
 #| label: fig-cost-breakdown-representative-flat
+#| eval: false
 #| fig-cap: "Annual kWh, cost of service, and delivery bill for the representative CT Eversource natural-gas home, before and after switching to a heat pump, under the fair flat rate."
 
 cost_breakdown_flat = representative_cost_data(
@@ -1173,6 +1194,12 @@ report_vars["mean_natgas_hp_savings_among_savers_r6"] = (
     if _savers_natgas_r6_w > 0
     else 0.0
 )
+
+incidence_natgas_r6_mfc0_trans = bill_change_incidence(delta_natgas_r1_to_r6_ratemc_mfc0_trans)
+report_vars["pct_natgas_hp_bill_increase_r6_mfc0_trans"] = incidence_natgas_r6_mfc0_trans["pct_increase"]
+report_vars["pct_natgas_hp_bill_decrease_r6_mfc0_trans"] = incidence_natgas_r6_mfc0_trans["pct_decrease"]
+report_vars["mean_natgas_hp_bill_delta_r6_mfc0_trans"] = incidence_natgas_r6_mfc0_trans["mean_delta"]
+
 incidence_natgas_r6
 ```
 
@@ -1193,10 +1220,10 @@ cost_delta_natgas = cost_delta_all.filter(
 
 delta_natgas_minus_bldg_overpayment = (
     delta_natgas_default.join(
-        cost_delta_natgas.select("bldg_id", "delta_gap"), on="bldg_id"
+        cost_delta_natgas.select("bldg_id", OVERPAYMENT_COL), on="bldg_id"
     )
-    .with_columns((pl.col("delta") - pl.col("delta_gap")).alias("delta"))
-    .drop("delta_gap")
+    .with_columns((pl.col("delta") - pl.col(OVERPAYMENT_COL)).alias("delta"))
+    .drop(OVERPAYMENT_COL)
 )
 
 incidence_natgas_fair = bill_change_incidence(delta_natgas_minus_bldg_overpayment)
@@ -1211,6 +1238,27 @@ report_vars["mean_natgas_hp_savings_among_savers_fair"] = (
     if _savers_natgas_fair_w > 0
     else 0.0
 )
+
+report_vars["gap_closure_natgas_r6"] = (
+    (report_vars["mean_natgas_hp_bill_delta_r6"] - report_vars["mean_natgas_hp_bill_delta_default"])
+    / (report_vars["mean_natgas_hp_bill_delta_fair"] - report_vars["mean_natgas_hp_bill_delta_default"])
+)
+
+report_vars["gap_closure_natgas_r6_mfc0_trans"] = (
+    (report_vars["mean_natgas_hp_bill_delta_r6_mfc0_trans"] - report_vars["mean_natgas_hp_bill_delta_default"])
+    / (report_vars["mean_natgas_hp_bill_delta_fair"] - report_vars["mean_natgas_hp_bill_delta_default"])
+)
+
+report_vars["pct_save_gap_closure_natgas_r6"] = (
+    (report_vars["pct_natgas_hp_bill_decrease_r6"] - report_vars["pct_natgas_hp_bill_decrease_default"])
+    / (report_vars["pct_natgas_hp_bill_decrease_fair"] - report_vars["pct_natgas_hp_bill_decrease_default"])
+)
+
+report_vars["pct_save_gap_closure_natgas_r6_mfc0_trans"] = (
+    (report_vars["pct_natgas_hp_bill_decrease_r6_mfc0_trans"] - report_vars["pct_natgas_hp_bill_decrease_default"])
+    / (report_vars["pct_natgas_hp_bill_decrease_fair"] - report_vars["pct_natgas_hp_bill_decrease_default"])
+)
+
 incidence_natgas_fair
 ```
 
@@ -1244,10 +1292,10 @@ _cost_delta_delivered = cost_delta_all.filter(
 )
 delta_delivered_minus_bldg_overpayment = (
     delta_delivered_default.join(
-        _cost_delta_delivered.select("bldg_id", "delta_gap"), on="bldg_id"
+        _cost_delta_delivered.select("bldg_id", OVERPAYMENT_COL), on="bldg_id"
     )
-    .with_columns((pl.col("delta") - pl.col("delta_gap")).alias("delta"))
-    .drop("delta_gap")
+    .with_columns((pl.col("delta") - pl.col(OVERPAYMENT_COL)).alias("delta"))
+    .drop(OVERPAYMENT_COL)
 )
 
 display_svg(
@@ -1350,6 +1398,7 @@ delta_natgas_r1_to_r6_ratemc_mfc0_trans_personal = add_adjustment(
 
 ```{python}
 #| label: fig-bill-change-quadrants-natgas-r1-vs-r6
+#| eval: false
 #| fig-cap: "Change in total annual energy bill for natural-gas-heated CT Eversource homes switching to a heat pump, under Rate 1 vs. Rate 6 vs. the Fair flat rate."
 
 display_svg(
@@ -1380,6 +1429,7 @@ percentage point.
 
 ```{python}
 #| label: fig-bill-change-quadrants-natgas-all-rates
+#| eval: false
 #| fig-cap: "Change in total annual energy bill for natural-gas-heated CT Eversource homes switching to a heat pump, under all rate scenarios."
 
 display_svg(
@@ -1445,12 +1495,12 @@ for _htv2, _label, _color in _HEATING_TYPES_EXTRA:
 
     _bldg_gap = cost_delta_all.filter(
         pl.col("heating_type_v2") == _htv2
-    ).select("bldg_id", "delta_gap")
+    ).select("bldg_id", OVERPAYMENT_COL)
 
     _delta_minus_bldg = (
         _delta_ry1.join(_bldg_gap, on="bldg_id")
-        .with_columns((pl.col("delta") - pl.col("delta_gap")).alias("delta"))
-        .drop("delta_gap")
+        .with_columns((pl.col("delta") - pl.col(OVERPAYMENT_COL)).alias("delta"))
+        .drop(OVERPAYMENT_COL)
     )
 
     _fair_rate_charts[_htv2] = {
@@ -1496,8 +1546,44 @@ report_vars["mean_delivered_hp_savings_among_savers_fair"] = (
     if _savers_del_fair_w > 0
     else 0.0
 )
+
+report_vars["gap_closure_delivered_r6"] = (
+    (report_vars["mean_delivered_hp_bill_delta_r6"] - report_vars["mean_delivered_hp_bill_delta_default"])
+    / (report_vars["mean_delivered_hp_bill_delta_fair"] - report_vars["mean_delivered_hp_bill_delta_default"])
+)
+
+report_vars["pct_save_gap_closure_delivered_r6"] = (
+    (report_vars["pct_delivered_hp_bill_decrease_r6"] - report_vars["pct_delivered_hp_bill_decrease_default"])
+    / (report_vars["pct_delivered_hp_bill_decrease_fair"] - report_vars["pct_delivered_hp_bill_decrease_default"])
+)
+
 print("Rate 6:", incidence_delivered_r6)
 print("Fair:", incidence_delivered_fair)
+```
+
+```{python}
+#| label: report-vars-delivered-r6-mfc0-trans-incidence
+
+delta_delivered_r1_to_r6_mfc0_trans = bill_delta_between_segments(
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_RATE6_RATEMC_MFC0_TRANS_CALIBRATED, bill_col=BILL_COL
+).filter(pl.col("heating_type_v2") == "delivered_fuels")
+
+incidence_delivered_r6_mfc0_trans = bill_change_incidence(delta_delivered_r1_to_r6_mfc0_trans)
+report_vars["pct_delivered_hp_bill_increase_r6_mfc0_trans"] = incidence_delivered_r6_mfc0_trans["pct_increase"]
+report_vars["pct_delivered_hp_bill_decrease_r6_mfc0_trans"] = incidence_delivered_r6_mfc0_trans["pct_decrease"]
+report_vars["mean_delivered_hp_bill_delta_r6_mfc0_trans"] = incidence_delivered_r6_mfc0_trans["mean_delta"]
+
+report_vars["gap_closure_delivered_r6_mfc0_trans"] = (
+    (report_vars["mean_delivered_hp_bill_delta_r6_mfc0_trans"] - report_vars["mean_delivered_hp_bill_delta_default"])
+    / (report_vars["mean_delivered_hp_bill_delta_fair"] - report_vars["mean_delivered_hp_bill_delta_default"])
+)
+
+report_vars["pct_save_gap_closure_delivered_r6_mfc0_trans"] = (
+    (report_vars["pct_delivered_hp_bill_decrease_r6_mfc0_trans"] - report_vars["pct_delivered_hp_bill_decrease_default"])
+    / (report_vars["pct_delivered_hp_bill_decrease_fair"] - report_vars["pct_delivered_hp_bill_decrease_default"])
+)
+
+incidence_delivered_r6_mfc0_trans
 ```
 
 ```{python}
@@ -1524,7 +1610,100 @@ display_svg(
 ```
 
 ```{python}
+#| label: fig-bill-change-quadrants-natgas-r1-r6-r6mfc0trans
+#| eval: false
+#| fig-cap: "Change in total annual energy bill for natural-gas-heated CT Eversource homes switching to a heat pump, under Rate 1 vs. Rate 6 vs. Rate 6 with Block 2 at marginal cost."
+
+display_svg(
+    plot_bill_change_quadrant_comparison(
+        [
+            ("Rate 1", delta_natgas_default),
+            ("Rate 6", delta_natgas_r1_to_r6),
+            ("Rate 6\n(Block 2 at MC)", delta_natgas_r1_to_r6_ratemc_mfc0_trans),
+        ],
+        title_parts=[
+            ("How bills would change for ", "#000000"),
+            ("natural gas", "#7A8A10"),
+            (" heated homes after switching to ", "#000000"),
+            ("heat pumps", "#c47600"),
+            (", under different rates", "#000000"),
+        ],
+    )
+)
+```
+
+```{python}
+#| label: fig-bill-change-quadrants-delivered-r1-r6-r6mfc0trans
+#| eval: false
+#| fig-cap: "Change in total annual energy bill for oil/propane-heated CT Eversource homes switching to a heat pump, under Rate 1 vs. Rate 6 vs. Rate 6 with Block 2 at marginal cost."
+
+display_svg(
+    plot_bill_change_quadrant_comparison(
+        [
+            ("Rate 1", _c_del["delta_ry1"]),
+            ("Rate 6", _c_del["delta_r6"]),
+            ("Rate 6\n(Block 2 at MC)", delta_delivered_r1_to_r6_mfc0_trans),
+        ],
+        title_parts=[
+            ("How bills would change for ", "#000000"),
+            ("oil/propane", "#fc9706"),
+            (" heated homes after switching to ", "#000000"),
+            ("heat pumps", "#c47600"),
+            (", under different rates", "#000000"),
+        ],
+    )
+)
+```
+
+```{python}
+#| label: fig-bill-change-quadrants-natgas-r1-r6-r6mc-fair
+#| fig-cap: "Change in total annual energy bill for natural-gas-heated CT Eversource homes switching to a heat pump, under Rate 1 vs. Rate 6 vs. Rate 6 with Block 2 at marginal cost vs. a fair rate."
+
+display_svg(
+    plot_bill_change_quadrant_comparison(
+        [
+            ("Rate 1", delta_natgas_default),
+            ("Rate 6", delta_natgas_r1_to_r6),
+            ("Rate 6\n(Block 2 at MC)", delta_natgas_r1_to_r6_ratemc_mfc0_trans),
+            ("Fair rate", delta_natgas_minus_bldg_overpayment),
+        ],
+        title_parts=[
+            ("How bills would change for ", "#000000"),
+            ("natural gas", "#7A8A10"),
+            (" heated homes after switching to ", "#000000"),
+            ("heat pumps", "#c47600"),
+            (", under different rates", "#000000"),
+        ],
+    )
+)
+```
+
+```{python}
+#| label: fig-bill-change-quadrants-delivered-r1-r6-r6mc-fair
+#| fig-cap: "Change in total annual energy bill for oil/propane-heated CT Eversource homes switching to a heat pump, under Rate 1 vs. Rate 6 vs. Rate 6 with Block 2 at marginal cost vs. a fair rate."
+
+display_svg(
+    plot_bill_change_quadrant_comparison(
+        [
+            ("Rate 1", _c_del["delta_ry1"]),
+            ("Rate 6", _c_del["delta_r6"]),
+            ("Rate 6\n(Block 2 at MC)", delta_delivered_r1_to_r6_mfc0_trans),
+            ("Fair rate", _c_del["delta_minus_bldg"]),
+        ],
+        title_parts=[
+            ("How bills would change for ", "#000000"),
+            ("oil/propane", "#fc9706"),
+            (" heated homes after switching to ", "#000000"),
+            ("heat pumps", "#c47600"),
+            (", under different rates", "#000000"),
+        ],
+    )
+)
+```
+
+```{python}
 #| label: fig-bill-change-quadrants-elec-resistance-fair-rates
+#| eval: false
 #| fig-cap: "Change in total annual energy bill for electric-resistance-heated CT Eversource homes switching to a heat pump, under Rate 1 vs. Rate 6 vs. fair rates."
 
 _c = _fair_rate_charts["electrical_resistance"]
@@ -1550,6 +1729,7 @@ display_svg(
 
 ```{python}
 #| label: fig-bill-change-quadrants-delivered-fair-rates
+#| eval: false
 #| fig-cap: "Change in total annual energy bill for oil/propane-heated CT Eversource homes switching to a heat pump, under Rate 1 vs. Rate 6 vs. fair rates."
 
 _c = _fair_rate_charts["delivered_fuels"]

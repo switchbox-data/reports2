@@ -39,7 +39,6 @@ from lib.rates_analysis.fair_rate import (
 )
 from lib.rates_analysis.rate_case_funcs import (
     MONTH_ORDER,
-    fair_rate_heating_types,
     load_master_bills,
     load_tariff_json,
     segment_name,
@@ -71,6 +70,10 @@ SEG_DEFAULT_CALIBRATED = segment_name(DEFAULT_SCENARIO, "calibrated")
 print(f"state={STATE}  batch={BATCH}  rdp_ref={RDP_REF}  utility={UTILITY}")
 print(f"fair_rate_population={FAIR_RATE_POPULATION}")
 print(f"base_rate_tariff={BASE_RATE_TARIFF_STEM}")
+
+INCLUDE_FIXED_CHARGE = True
+OVERPAYMENT_COL = "overpayment_volumetric_fc" if INCLUDE_FIXED_CHARGE else "overpayment_volumetric"
+print(f"include_fixed_charge={INCLUDE_FIXED_CHARGE}  overpayment_col={OVERPAYMENT_COL}")
 ```
 
 ## Load config
@@ -165,11 +168,27 @@ cost_delta_all = incremental_cost_delta_with_gap(
     STATE, UTILITY, BATCH, SEG_DEFAULT_PRECALC, SEG_DEFAULT_CALIBRATED,
 )
 
-# Filter to the fair-rate population (fossil fuel homes)
-fair_rate_hts = fair_rate_heating_types(FAIR_RATE_POPULATION)
-cost_delta_fair = cost_delta_all.filter(pl.col("heating_type_v2").is_in(fair_rate_hts))
+# --- Define the fair-rate population using fuel flags from master bills --------
+# This matches representative_home.qmd's population definition: filter on
+# heats_with_natgas / heats_with_oil / heats_with_propane directly, rather than
+# the heating_type_v2 cascade.  The two approaches produce identical populations
+# in this batch (fuel flags are mutually exclusive), but using the same filter
+# schema keeps the notebooks aligned.
+_precalc_annual = (
+    load_master_bills(STATE, BATCH, SEG_DEFAULT_PRECALC)
+    .filter(
+        (pl.col("month") == "Annual")
+        & (pl.col("sb.electric_utility") == UTILITY)
+    )
+    .select("bldg_id", "heats_with_natgas", "heats_with_oil", "heats_with_propane")
+    .collect()
+)
+_fair_rate_bldg_ids = _precalc_annual.filter(
+    pl.col("heats_with_natgas") | pl.col("heats_with_oil") | pl.col("heats_with_propane")
+)["bldg_id"]
+cost_delta_fair = cost_delta_all.filter(pl.col("bldg_id").is_in(_fair_rate_bldg_ids))
 
-print(f"Fair-rate population: {FAIR_RATE_POPULATION} → {fair_rate_hts}")
+print(f"Fair-rate population: {FAIR_RATE_POPULATION} (fuel-flag filter)")
 print(f"Buildings in population: {cost_delta_fair.height:,}")
 print(f"Weighted count: {cost_delta_fair['weight'].sum():,.0f}")
 ```
@@ -399,10 +418,10 @@ fair-rate population.
 # increment). The adjusted gap is:
 #   r_new * kwh_after_i - r_base * kwh_before_i - delta_MC_i
 # which equals:
-#   delta_gap_i + (r_new - r_base) * kwh_after_i
+#   overpayment_i + (r_new - r_base) * kwh_after_i
 # The weighted mean should be ≈0 by construction.
 _flat_adjusted_gap = (
-    cost_delta_fair["delta_gap"]
+    cost_delta_fair[OVERPAYMENT_COL]
     + (flat_rate.delivery_total - base_delivery_rate) * cost_delta_fair["annual_kwh_grid_after"]
 )
 _flat_mean_overpayment = float((_flat_adjusted_gap * _w).sum() / _w_sum)
@@ -417,10 +436,10 @@ print("✓ Flat rate zeroes weighted-mean overpayment.")
 #   (r_win - r_base) * kwh_after_winter_i + (r_sum - r_base) * kwh_after_summer_i
 # Since r_sum = r_base, the summer term vanishes. The weighted mean should be ≈0.
 _seasonal_with_gap = seasonal.join(
-    cost_delta_fair.select("bldg_id", "delta_gap"), on="bldg_id"
+    cost_delta_fair.select("bldg_id", OVERPAYMENT_COL), on="bldg_id"
 )
 _seasonal_adjusted_gap = (
-    _seasonal_with_gap["delta_gap"]
+    _seasonal_with_gap[OVERPAYMENT_COL]
     + (seasonal_rate.winter_delivery_total - base_delivery_rate) * _seasonal_with_gap["kwh_after_winter"]
 )
 _seasonal_mean_overpayment = float(

@@ -718,14 +718,151 @@ _r6_mfc0_mean = report_vars.get(_r6_mfc0_key, 0.0)
 report_vars["overpay_mean_r6_mfc0_trans_all_fossil"] = _r6_mfc0_mean
 report_vars["pct_overpayment_remaining_r6_mfc0_trans"] = _r6_mfc0_mean / _r1_mean if _r1_mean else 0.0
 
+# Clean alias for the fair seasonal rate
+_fair_seasonal_key = "overpay_mean_fair_seasonal_rate_all_fossil"
+_fair_seasonal_mean = report_vars.get(_fair_seasonal_key, 0.0)
+report_vars["overpay_mean_fair_seasonal_all_fossil"] = _fair_seasonal_mean
+report_vars["pct_overpayment_remaining_fair_seasonal"] = _fair_seasonal_mean / _r1_mean if _r1_mean else 0.0
+
 print(f"Rate 1 mean annual overpayment (all fossil): ${_r1_mean:,.0f}")
 print(f"Rate 6 mean annual overpayment (all fossil): ${_r6_mean:,.0f}")
 print(f"Rate 6 leaves {report_vars['pct_overpayment_remaining_r6']:.1%} of Rate 1 overpayment in place")
 print(f"Rate 6 (MC/0/MC) mean annual overpayment (all fossil): ${_r6_mfc0_mean:,.0f}")
 print(f"Rate 6 (MC/0/MC) leaves {report_vars['pct_overpayment_remaining_r6_mfc0_trans']:.1%} of Rate 1 overpayment")
+print(f"Fair seasonal mean annual overpayment (all fossil): ${_fair_seasonal_mean:,.0f}")
+print(f"Fair seasonal leaves {report_vars['pct_overpayment_remaining_fair_seasonal']:.1%} of Rate 1 overpayment")
+
+# --- Rate HP residual spread and bias stats ---
+_seasonal_op = all_overpayment[("Fair seasonal rate", "Annual")]
+_fossil_seasonal = _seasonal_op.filter(pl.col("heating_type_v2").is_in(list(FAIR_RATE_HTS)))
+
+_total_weight = _fossil_seasonal["weight"].sum()
+_within_200_weight = _fossil_seasonal.filter(pl.col("delta").abs() <= 200)["weight"].sum()
+report_vars["pct_within_200_seasonal"] = _within_200_weight / _total_weight
+print(f"\nRate HP: {report_vars['pct_within_200_seasonal']:.1%} of fossil-fuel customers within $200 of zero overpayment")
+
+# Bias by heating fuel: pct overpaying (delta > 0) for natgas vs delivered
+for _ht_code, _ht_label in [("natgas", "Natural gas"), ("delivered_fuels", "Delivered fuels")]:
+    if _ht_code == "delivered_fuels":
+        _sub = _fossil_seasonal.filter(pl.col("heating_type_v2") != "natgas")
+    else:
+        _sub = _fossil_seasonal.filter(pl.col("heating_type_v2") == _ht_code)
+    _w_total = _sub["weight"].sum()
+    _w_overpay = _sub.filter(pl.col("delta") > 0)["weight"].sum()
+    _pct_overpay = _w_overpay / _w_total if _w_total > 0 else 0.0
+    report_vars[f"pct_overpaying_seasonal_{_ht_code}"] = _pct_overpay
+    print(f"Rate HP: {_pct_overpay:.1%} of {_ht_label} customers overpay (delta > 0)")
+
+# Bias by LMI status: pct overpaying for LMI vs non-LMI
+_lmi = (
+    load_master_bills(STATE, BATCH, SEG_DEFAULT_PRECALC)
+    .filter(pl.col("month") == "Annual")
+    .select("bldg_id", "is_lmi_elec")
+    .collect()
+)
+_fossil_with_lmi = _fossil_seasonal.join(_lmi, on="bldg_id", how="left")
+for _lmi_val, _lmi_label, _lmi_key in [(True, "LMI", "lmi"), (False, "Non-LMI", "non_lmi")]:
+    _sub = _fossil_with_lmi.filter(pl.col("is_lmi_elec") == _lmi_val)
+    _w_total = _sub["weight"].sum()
+    _w_overpay = _sub.filter(pl.col("delta") > 0)["weight"].sum()
+    _pct_overpay = _w_overpay / _w_total if _w_total > 0 else 0.0
+    report_vars[f"pct_overpaying_seasonal_{_lmi_key}"] = _pct_overpay
+    print(f"Rate HP: {_pct_overpay:.1%} of {_lmi_label} customers overpay (delta > 0)")
 
 Path("../cache/overpayment_report_variables.pkl").write_bytes(pickle.dumps(report_vars))
 print(f"\nExported {len(report_vars)} report vars to cache/overpayment_report_variables.pkl")
+```
+
+## Diagnostic: Rate HP residual overpayment by income and fuel
+
+The fair seasonal rate (Rate HP) zeroes overpayment on average, but individual
+buildings still have residual over/underpayments. Check whether these residuals
+are correlated with income (LMI status) or baseline heating fuel type.
+
+```{python}
+#| label: diag-seasonal-residual-by-income-fuel
+#| eval: false
+
+_seasonal_op = all_overpayment[("Fair seasonal rate", "Annual")]
+
+_lmi = (
+    load_master_bills(STATE, BATCH, SEG_DEFAULT_PRECALC)
+    .filter(pl.col("month") == "Annual")
+    .select("bldg_id", "is_lmi_elec", "in.representative_income")
+    .collect()
+)
+
+_seasonal_with_income = _seasonal_op.join(_lmi, on="bldg_id", how="left")
+_fossil_only = _seasonal_with_income.filter(
+    pl.col("heating_type_v2").is_in(list(FAIR_RATE_HTS))
+)
+
+print("=== Rate HP residual overpayment by LMI status ===")
+_by_lmi = (
+    _fossil_only
+    .group_by("is_lmi_elec")
+    .agg(
+        (pl.col("delta") * pl.col("weight")).sum().alias("w_sum_delta"),
+        pl.col("weight").sum().alias("total_weight"),
+        pl.col("delta").count().alias("n_buildings"),
+    )
+    .with_columns(
+        (pl.col("w_sum_delta") / pl.col("total_weight")).alias("w_mean_overpayment"),
+    )
+    .sort("is_lmi_elec")
+)
+print(_by_lmi)
+
+print("\n=== Rate HP residual overpayment by heating fuel ===")
+_by_fuel = (
+    _fossil_only
+    .group_by("heating_type_v2")
+    .agg(
+        (pl.col("delta") * pl.col("weight")).sum().alias("w_sum_delta"),
+        pl.col("weight").sum().alias("total_weight"),
+    )
+    .with_columns(
+        (pl.col("w_sum_delta") / pl.col("total_weight")).alias("w_mean_overpayment"),
+    )
+    .sort("heating_type_v2")
+)
+print(_by_fuel)
+
+print("\n=== Rate HP residual overpayment by heating fuel × LMI ===")
+_by_fuel_lmi = (
+    _fossil_only
+    .group_by("heating_type_v2", "is_lmi_elec")
+    .agg(
+        (pl.col("delta") * pl.col("weight")).sum().alias("w_sum_delta"),
+        pl.col("weight").sum().alias("total_weight"),
+        pl.col("delta").count().alias("n_buildings"),
+    )
+    .with_columns(
+        (pl.col("w_sum_delta") / pl.col("total_weight")).alias("w_mean_overpayment"),
+    )
+    .sort("heating_type_v2", "is_lmi_elec")
+)
+print(_by_fuel_lmi)
+
+print("\n=== Correlation: overpayment vs. income ===")
+_valid_income = _fossil_only.filter(pl.col("in.representative_income").is_not_null())
+_corr = _valid_income.select(
+    pl.corr("delta", "in.representative_income").alias("corr_overpay_income"),
+)
+print(_corr)
+
+print("\n=== Overpayment by income quintile ===")
+_vs = _valid_income.sort("in.representative_income").with_columns(
+    (pl.col("weight").cum_sum() / pl.col("weight").sum()).alias("cum_pct")
+)
+for q, (lo, hi) in enumerate([(0, 0.2), (0.2, 0.4), (0.4, 0.6), (0.6, 0.8), (0.8, 1.01)], 1):
+    sub = _vs.filter((pl.col("cum_pct") > lo) & (pl.col("cum_pct") <= hi))
+    if sub.height == 0:
+        continue
+    w_mean = (sub["delta"] * sub["weight"]).sum() / sub["weight"].sum()
+    inc_lo = sub["in.representative_income"].min()
+    inc_hi = sub["in.representative_income"].max()
+    print(f"  Q{q} (${inc_lo:,.0f}-${inc_hi:,.0f}): w_mean_overpay=${w_mean:,.0f}, n={sub.height}")
 ```
 
 ## Build all overpayment histograms
@@ -1336,6 +1473,107 @@ _fig_facet_3 = (
 )
 
 display_figure(_fig_facet_3.draw())
+```
+
+```{python}
+#| label: fig-testimony-annual-all-fossil-r1-vs-r6-vs-r6mc-vs-seasonal
+#| fig-cap: "Annual delivery overpayment for all fossil-fuel-heated CT Eversource homes switching to heat pumps: Rate 1 vs. Rate 6 vs. Rate 6 (Block 2 at MC) vs. Rate HP."
+
+_ht_code_4 = "all_fossil"
+_ht_name_4 = "All fossil fuel"
+_facet_rates_4_raw = ["Rate 1", "Rate 6", "Rate 6\n(RATE=MC, MFC=0, TX=MC)", "Fair seasonal rate"]
+_facet_labels_4 = ["Rate 1", "Rate 6 (as proposed)", "Rate 6 (Block 2 at MC)", "Rate HP"]
+_label_map_4 = dict(zip(_facet_rates_4_raw, _facet_labels_4))
+
+_axis_4 = axis_params_by_ht[_ht_code_4]
+_bw4 = _axis_4["bin_width"]
+
+_panels4: list[pl.DataFrame] = []
+_stats4: list[dict] = []
+_y_max4 = 0.0
+for _raw_label, _disp_label in zip(_facet_rates_4_raw, _facet_labels_4):
+    _b, _s = _bin_overpayment(_raw_label, _ht_code_4, _bw4)
+    _b = _b.with_columns(pl.lit(_disp_label).alias("rate"))
+    _panels4.append(_b)
+    _stats4.append({"rate": _disp_label, **_s})
+    _ym = float(_b["weight_sum"].max()) if _b.height > 0 else 0.0
+    _y_max4 = max(_y_max4, _ym)
+
+_facet_binned_4 = pl.concat(_panels4).with_columns(
+    pl.col("rate").cast(pl.Enum(_facet_labels_4)),
+    pl.col("quadrant").cast(pl.Enum(QUADRANT_ORDER)),
+)
+
+_stat_labels_4 = pl.DataFrame([
+    {
+        "x": _s["w_mean"] + _bw4 * 0.4,
+        "y": _y_max4 * 0.97,
+        "label": f"Mean ${_s['w_mean']:,.0f}",
+        "rate": _s["rate"],
+        "color": "mean",
+    }
+    for _s in _stats4
+] + [
+    {
+        "x": _s["w_median"] + _bw4 * 0.4,
+        "y": _y_max4 * 0.85,
+        "label": f"Median ${_s['w_median']:,.0f}",
+        "rate": _s["rate"],
+        "color": "median",
+    }
+    for _s in _stats4
+]).cast({"rate": pl.Enum(_facet_labels_4)})
+
+_vline_data_4 = pl.DataFrame([
+    {"x": _s[stat], "rate": _s["rate"], "stat": stat}
+    for _s in _stats4
+    for stat in ("w_mean", "w_median")
+]).cast({"rate": pl.Enum(_facet_labels_4)})
+
+_fig_facet_4 = (
+    p9.ggplot(_facet_binned_4, p9.aes(x="bin_center", y="weight_sum", fill="quadrant"))
+    + p9.geom_col(width=_bw4 * 0.9)
+    + p9.geom_vline(xintercept=[-1000, 0, 1000], linetype="dotted", color="gray")
+    + p9.geom_vline(
+        p9.aes(xintercept="x"),
+        data=_vline_data_4.filter(pl.col("stat") == "w_mean"),
+        linetype="dashed", color=SB_COLORS["carrot"], size=0.8,
+    )
+    + p9.geom_vline(
+        p9.aes(xintercept="x"),
+        data=_vline_data_4.filter(pl.col("stat") == "w_median"),
+        linetype="dashed", color=SB_COLORS["midnight"], size=0.8,
+    )
+    + p9.geom_text(
+        _stat_labels_4.filter(pl.col("color") == "mean"),
+        p9.aes(x="x", y="y", label="label"),
+        ha="left", va="top", color=SB_COLORS["carrot"],
+        size=9, fontweight="bold", inherit_aes=False,
+    )
+    + p9.geom_text(
+        _stat_labels_4.filter(pl.col("color") == "median"),
+        p9.aes(x="x", y="y", label="label"),
+        ha="left", va="top", color=SB_COLORS["midnight"],
+        size=9, fontweight="bold", inherit_aes=False,
+    )
+    + p9.scale_fill_manual(values=QUADRANT_COLORS, breaks=QUADRANT_ORDER)
+    + p9.scale_x_continuous(
+        breaks=list(range(_axis_4["tick_lo"], _axis_4["tick_hi"] + _axis_4["tick_step"], _axis_4["tick_step"])),
+        labels=lambda xs: [f"${x:,.0f}" if x >= 0 else f"-${abs(x):,.0f}" for x in xs],
+    )
+    + p9.coord_cartesian(xlim=(_axis_4["x_lo"], _axis_4["x_hi"]), ylim=(0, _y_max4 * 1.05))
+    + p9.facet_wrap("rate", ncol=1)
+    + p9.labs(
+        x="Annual delivery overpayment ($)",
+        y="Weighted households",
+        title=f"{_ht_name_4}: annual overpayment — Rate 1 vs. Rate 6 vs. Rate 6 (Block 2 at MC) vs. Rate HP",
+    )
+    + p9.guides(fill=False)
+    + theme_switchbox()
+    + p9.theme(figure_size=(10.5, 14))
+)
+
+display_figure(_fig_facet_4.draw())
 ```
 
 ```{python}

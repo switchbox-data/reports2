@@ -884,11 +884,11 @@ are correlated with income.
 
 ```{python}
 #| label: fig-ribbon-df-by-income
-#| fig-cap: "Rate 6 threshold classification for delivered-fuel homes, by income tercile. Low-income homes (top) bear more orange (trapped HP load); high-income homes (bottom) receive more yellow (windfall discount)."
+#| fig-cap: "Rate 6 threshold classification for delivered-fuel homes, by income tercile. Low-income homes (left) bear more orange (trapped HP load); high-income homes (right) receive more yellow (windfall discount)."
 
 _tercile_order = ["Low income", "Middle income", "High income"]
 
-fig, axes = mplt.subplots(3, 1, figsize=(10.5, 13), sharex=True)
+fig, axes = mplt.subplots(1, 3, figsize=(15.75, 5), sharey=True)
 
 for i, tercile in enumerate(_tercile_order):
     sub = bldg_df.filter(pl.col("income_tercile") == tercile)
@@ -906,22 +906,30 @@ for i, tercile in enumerate(_tercile_order):
         axes[i],
         sub,
         THRESHOLD_KWH,
-        f"{tercile} delivered-fuel homes",
+        f"{tercile} delivered\u2011fuel homes",
         subtitle=_sub_subtitle,
         show_legend=(i == 0),
         show_post=True,
     )
+    axes[i].set_xlabel(
+        "Homes ranked by pre\u2011HP winter electricity\n(weighted percentile)",
+        fontsize=10,
+    )
+    if i > 0:
+        axes[i].set_ylabel("")
 
-axes[2].set_xlabel(
-    "Homes ranked by pre-HP winter electricity (weighted percentile)", fontsize=11,
-)
+handles, labels = axes[0].get_legend_handles_labels()
+axes[0].get_legend().remove()
+fig.legend(handles, labels, loc="upper center", ncol=5, fontsize=9, framealpha=0.9,
+           bbox_to_anchor=(0.5, 0.97))
+
 fig.suptitle(
     "Rate 6's 700 kWh threshold by income: delivered-fuel homes",
     fontsize=15,
     fontweight="bold",
-    y=0.99,
+    y=1.02,
 )
-fig.tight_layout(rect=[0, 0, 1, 0.97])
+fig.tight_layout(rect=[0, 0, 1, 0.93])
 display_svg(fig)
 ```
 
@@ -1110,6 +1118,61 @@ for t_label, t_kwh in [
     print()
 ```
 
+The following chart compares what happens when the threshold is lowered from 700 kWh
+to the natural-gas mean (`{python} f"{THRESHOLD_NG:.0f}"` kWh). Each column shows one
+fuel group; the top row is the current 700 kWh threshold, and the bottom row is the
+lowered threshold.
+
+```{python}
+#| label: fig-ribbon-threshold-comparison
+#| fig-cap: "Current 700 kWh threshold (top) vs. a threshold set at the natural-gas mean (bottom). Lowering the threshold helps natural-gas homes (more blue, right column) but sends windfall discount to delivered-fuel homes (more yellow, left column)."
+
+_ng_at_ng_mean = reclassify_at_threshold(bldg_ng, THRESHOLD_NG)
+_df_at_ng_mean = reclassify_at_threshold(bldg_df, THRESHOLD_NG)
+
+_y_max_comp = _ribbon_y_max
+
+fig, axes = mplt.subplots(2, 2, figsize=(10.5, 9), sharey=True, sharex=True)
+
+make_ribbon(axes[0, 0], bldg_df, THRESHOLD_KWH, "Delivered\u2011fuel homes",
+            show_legend=False, show_post=True, y_max_override=_y_max_comp)
+make_ribbon(axes[0, 1], bldg_ng, THRESHOLD_KWH, "Natural\u2011gas homes",
+            show_legend=True, show_post=True, y_max_override=_y_max_comp)
+make_ribbon(axes[1, 0], _df_at_ng_mean, THRESHOLD_NG,
+            "Delivered\u2011fuel homes",
+            show_legend=False, show_post=True, y_max_override=_y_max_comp)
+make_ribbon(axes[1, 1], _ng_at_ng_mean, THRESHOLD_NG,
+            "Natural\u2011gas homes",
+            show_legend=False, show_post=True, y_max_override=_y_max_comp)
+
+for ax in axes[1]:
+    ax.set_xlabel(
+        "Homes ranked by pre\u2011HP winter electricity\n(weighted percentile)",
+        fontsize=10,
+    )
+for ax in axes[:, 1]:
+    ax.set_ylabel("")
+
+handles, labels = axes[0, 1].get_legend_handles_labels()
+axes[0, 1].get_legend().remove()
+fig.legend(handles, labels, loc="upper center", ncol=5, fontsize=9, framealpha=0.9,
+           bbox_to_anchor=(0.5, 0.98))
+
+fig.text(0.02, 0.73, f"700 kWh\n(current)", fontsize=11, fontweight="bold",
+         ha="center", va="center", rotation=90, color="#555")
+fig.text(0.02, 0.30, f"{THRESHOLD_NG:.0f} kWh\n(nat\u2011gas mean)", fontsize=11,
+         fontweight="bold", ha="center", va="center", rotation=90, color="#555")
+
+fig.suptitle(
+    "Lowering the threshold: the trade-off between fuel groups",
+    fontsize=15,
+    fontweight="bold",
+    y=1.01,
+)
+fig.tight_layout(rect=[0.04, 0, 1, 0.94])
+display_svg(fig)
+```
+
 ## Export report variables
 
 ```{python}
@@ -1232,6 +1295,25 @@ report_vars["effective_bill_reduction_ng"] = tbr_ng_700 * BLOCK_DISCOUNT / BLOCK
 report_vars["effective_bill_reduction_mod_ng"] = (
     tbr_ng_700 * BLOCK_DISCOUNT_MOD / BLOCK1_RATE_MOD
 )
+
+# --- Median capture rate and severity distribution (fuel group comparison) ---
+_design_pct = BLOCK_DISCOUNT / BLOCK1_RATE
+
+for _fg_label, _fg_filter, _fg_key in [
+    ("Delivered fuel", "Oil/propane", "df"),
+    ("Natural gas", "Natural gas", "ng"),
+]:
+    _fg_sub = bldg_threshold.filter(pl.col("fuel_group") == _fg_filter)
+    _fg_sw = _fg_sub["weight"].sum()
+    _med_cap = weighted_quantile(
+        _fg_sub.select(pl.col("capture_rate").alias("v"), "weight"), "v", 0.5
+    )
+    report_vars[f"median_capture_rate_{_fg_key}"] = _med_cap
+    report_vars[f"median_effective_bill_reduction_{_fg_key}"] = _med_cap * _design_pct
+    for _cut_label, _cut in [("05", 0.05), ("10", 0.10), ("25", 0.25), ("50", 0.50)]:
+        report_vars[f"pct_capture_below_{_cut_label}_{_fg_key}"] = float(
+            _fg_sub.filter(pl.col("capture_rate") < _cut)["weight"].sum() / _fg_sw
+        )
 
 # --- Alternative thresholds ---
 report_vars["threshold_mid_kwh"] = float(THRESHOLD_MID)

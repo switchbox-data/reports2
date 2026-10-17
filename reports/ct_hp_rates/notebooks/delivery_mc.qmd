@@ -128,8 +128,12 @@ print(f"  Mean (all hrs): ${mc_df['mc_dist_sub_tx'].mean():.6f}/kWh")
 ## Peak-hour seasonality
 
 The key question for the testimony: what share of each component's peak hours
-(hours where the marginal cost is positive) fall in the summer months
-(`{python} _summer_label`)?
+fall in the summer months (`{python} _summer_label`)?
+
+We define "peak hours" as hours where the marginal capacity cost exceeds
+0.5¢/kWh (`MC_PEAK_THRESHOLD`). This excludes a small number of hours with
+de minimis probability-of-peak allocations (primarily in winter) while
+retaining over 99% of total annual marginal cost dollars.
 
 If peak hours are overwhelmingly in summer, then heat pumps — which increase
 winter usage but can decrease summer usage — are not driving significant additional T&D costs.
@@ -138,10 +142,11 @@ This is the foundation of the cost-causation argument.
 ```{python}
 #| label: peak-seasonality
 
+MC_PEAK_THRESHOLD = 0.005  # $/kWh (0.5¢/kWh)
 
 def _pct_mc_peak_hours_in_summer(mc_col: str) -> float:
-    """Share of non-zero marginal-cost hours that fall in the YAML-defined summer."""
-    peak_hours = mc_df.filter(pl.col(mc_col) > 0)
+    """Share of peak-hour marginal-cost hours that fall in the YAML-defined summer."""
+    peak_hours = mc_df.filter(pl.col(mc_col) > MC_PEAK_THRESHOLD)
     if peak_hours.is_empty():
         return 0.0
     summer_peak = peak_hours.filter(
@@ -157,9 +162,9 @@ report_vars["pct_bulk_tx_mc_peak_hours_summer"] = _pct_mc_peak_hours_in_summer(
     "mc_bulk_tx"
 )
 
-# Combined: hours where *either* component has a non-zero MC
+# Combined: hours where *either* component exceeds the peak threshold
 _delivery_peak_hours = mc_df.filter(
-    (pl.col("mc_bulk_tx") > 0) | (pl.col("mc_dist_sub_tx") > 0)
+    (pl.col("mc_bulk_tx") > MC_PEAK_THRESHOLD) | (pl.col("mc_dist_sub_tx") > MC_PEAK_THRESHOLD)
 )
 report_vars["pct_peak_hours_summer"] = (
     _delivery_peak_hours.filter(
@@ -192,8 +197,8 @@ customer causes during peak hours.
 ```{python}
 #| label: mc-per-kwh-ranges
 
-_dist_peak = mc_df.filter(pl.col("mc_dist_sub_tx") > 0)
-_tx_peak = mc_df.filter(pl.col("mc_bulk_tx") > 0)
+_dist_peak = mc_df.filter(pl.col("mc_dist_sub_tx") > MC_PEAK_THRESHOLD)
+_tx_peak = mc_df.filter(pl.col("mc_bulk_tx") > MC_PEAK_THRESHOLD)
 
 report_vars["mc_dist_peak_per_kwh_min"] = float(_dist_peak["mc_dist_sub_tx"].min())
 report_vars["mc_dist_peak_per_kwh_max"] = float(_dist_peak["mc_dist_sub_tx"].max())

@@ -18,6 +18,7 @@ format:
     smooth-scroll: true
     theme:
       - ../.style/switchbox.scss
+    include-in-header: expert_testimony_header.html
 ---
 
 ```{python}
@@ -142,6 +143,16 @@ def dollar_m(x, digits=1):
 
 def pct(x, accuracy=0):
     return f"{x * 100:,.{accuracy}f}%"
+
+
+# Filed Rate 1 component rates (from Company exhibits, matching @tbl-r1-vs-r6).
+# CAIRO's "distribution" lumps the Energy Charge with distribution riders,
+# so its average (11.285) differs from the filed Energy Charge (12.196).
+# Total delivery (16.335) matches both; the rider offset reconciles the split.
+FILED_DIST_EC = 0.12196   # Distribution — Energy Charge (¢/kWh)
+FILED_TX = 0.05050         # Transmission Service Rate (¢/kWh)
+FILED_TOTAL_DEL = 0.16335  # Total delivery volumetric (dist + tx + riders)
+FILED_RIDERS = FILED_TOTAL_DEL - FILED_DIST_EC - FILED_TX  # ≈ -0.00911
 
 
 def _subclass_delivery_row(ns, label):
@@ -316,8 +327,8 @@ By better aligning rates for heat pump customers with their actual cost-causatio
 **A.** I recommend that the Commission:
 
 1. Create a new residential rate schedule, Rate HP, for Company electric customers who use a heat pump for heating and cooling.
-2. Set a lower Distribution Service Rate for Rate HP **during the winter months** (November through March), compared with Rate 1. The rate should be set at a level that reflects the distribution cost-of-service of heat pump customers, and ends cost over-recovery from these customers. At present, we estimate that the winter distribution rate should be `{python} pct(abs(r.fair_hp_winter_rate_dist / r.fair_hp_avg_rate_dist - 1))` lower than Rate 1's Distribution Service Rate.
-3. Set a lower Transmission Service Rate under the Transmission Adjustment Clause for Rate HP **during the winter months**, compared with Rate 1. The rate should be set at a level that reflects the bulk transmission cost-of-service of heat pump customers, and ends cost over-recovery from these customers. At present, we estimate that the winter transmission rate should be `{python} pct(abs(r.fair_hp_winter_rate_tx / r.fair_hp_avg_rate_tx - 1))` lower than Rate 1's Transmission Service Rate.
+2. Set a lower Distribution Energy Charge for Rate HP **during the winter months** (November through March), compared with Rate 1. The rate should be set at a level that reflects the distribution cost-of-service of heat pump customers, and ends cost over-recovery from these customers. At present, we estimate that the winter Distribution Energy Charge should be `{python} pct(abs((r.fair_hp_winter_rate_dist - FILED_RIDERS) / FILED_DIST_EC - 1))` lower than Rate 1's Distribution Energy Charge.
+3. Set a lower Transmission Service Rate under the Transmission Adjustment Clause for Rate HP **during the winter months**, compared with Rate 1. The rate should be set at a level that reflects the bulk transmission cost-of-service of heat pump customers, and ends cost over-recovery from these customers. At present, we estimate that the winter Transmission Service Rate should be `{python} pct(abs(r.fair_hp_winter_rate_tx / FILED_TX - 1))` lower than Rate 1's Transmission Service Rate.
 5. Auto-enroll all electric customers newly installing heat pumps into schedule Rate HP, at the time of installation. Customers would be identified through any existing or new programs that track heat pump adoption, while also offering an attestation and certification option for installation that may happen outside of these programs.
 6. Auto-enroll all known electric customers that have previously installed heat pumps into schedule Rate HP.
 7. Recalibrate the delivery service and transmission rates associated with Rate HP in subsequent rate cases or relevant proceedings, to reflect the evolving marginal distribution and transmission costs associated with heat pump customers as adoption grows and grid conditions change.
@@ -488,7 +499,7 @@ Distribution and transmission marginal costs display the same seasonal pattern: 
 
 To answer this, I first identified how many kWh fossil-heated customers consume during peak hours every year. @fig-monthly-load-all-fossil-before revisits these customers' monthly electricity consumption, with the portion consumed during peak hours highlighted in red.[^source-peak-overlay-before]
 
-[^source-peak-overlay-before]: Weighted-average hourly load from CAIRO's ResStock building-stock simulation of CL&P residential customers. An hour is classified as "peak" when it carries a positive distribution or bulk transmission marginal cost. See @sec-method-profiles and @sec-method-mc.
+[^source-peak-overlay-before]: Average hourly load from CAIRO's ResStock building-stock simulation of CL&P residential customers. An hour is classified as "peak" when it carries a marginal distribution or bulk transmission capacity cost exceeding 0.5¢/kWh. This de minimis threshold excludes hours with trace probability-of-peak allocations  that collectively account for less than 1% of total annual marginal capacity cost. See @sec-method-profiles and @sec-method-mc.
 
 :::{.column-page-inset-right}
 {{< embed notebooks/representative_home.qmd#fig-monthly-load-all-fossil-before >}}
@@ -1141,7 +1152,7 @@ But in reality, the Company's fossil-fuel-heated customers vary far too widely i
 1. **Discount leakage**: when a customer's base load is *below* the threshold, some of their incremental heat pump electricity lands in Block 1 at the full rate, and they receive less discount than intended.
 2. **Windfall discount**: when a customer's base load is *above* the threshold, some of their pre-existing consumption — unrelated to the heat pump — gets the Block 2 discount as an unintended windfall.
 
-These **misallocations** are not specific to the 700 kWh threshold — they are inherent to any block design with a fixed cutoff applied to a heterogeneous population.
+These **misallocations** are not specific to the 700 kWh threshold — they are to any block design with a fixed cutoff applied to a heterogeneous population.
 
 And as I will show, these misallocations produce two concrete **harms**: 1. the block design is regressive, because lower-income customers have lower base loads; and 2. it is systematically biased against natural-gas customers, who also have lower base loads. (The seasonal rate I propose in Section IX avoids these two harms entirely, and ultimately does a better job of delivering a discount that is proportional to each customer's incremental heat pump load.)
 
@@ -1215,6 +1226,18 @@ Ultimately, the reason Rate 6's block design is regressive is straightforward: h
 
 <br>
 
+**Q.** Could Rate 6's regressive impact be avoided by choosing a different threshold?
+
+**A.** No. Regressivity is an inherent problem of _any_ block rate with a one-size-fits-all threshold, not just 700 kWh.
+
+Moving the threshold lower would reduce leakage but increase windfall; moving it higher would do the reverse. In fact, 700 kWh is close to the threshold that minimizes total misallocation.[^threshold-optimum]
+
+But even when they are misallocations are minimized, they are far from eliminated, because base loads vary so widely across homes. And the fact that this variation in base load is correlated with income ensures that lower-income people will tend to get discount leaks, and higher-income people will tend to get windfalls—even if the "best" threshold is chosen.
+
+[^threshold-optimum]: This is because 700 kWh is near the mean base load of delivered-fuel homes, and at that point leakage and windfall are roughly equal.
+
+<br>
+
 **Q.** In Section IV, I showed that Rate 6's discount is far smaller than it could be. If the discount were set at the marginal cost floor (as in modified Rate 6), would the regressive impact of the block design go away — since all customers would be getting a much larger benefit?
 
 **A.** No — it gets worse. As I showed above, the threshold systematically gives low-income homes only `{python} pct(th.total_benefit_ratio_df_low)` of their intended savings, while high-income homes get `{python} pct(th.total_benefit_ratio_df_high)`.[^intended-savings] These _percentages_ arise from the threshold, and do not change with the discount size. However, a bigger discount applied through the same percentages produces a bigger gap in what customers actually receive.[^lockstep]
@@ -1238,14 +1261,14 @@ In other words, fixing Problem 1 (the discount being too small) without fixing P
 **A.** The 700 kWh threshold systematically disadvantages natural-gas-heated customers who install heat pumps. This is a distinct problem from regressivity: the threshold is set at a level that largely excludes natural-gas homes from the discount.
 
 <br>
-TK REVIEW
+
 **Q.** Why does the threshold disadvantage natural-gas customers?
 
 **A.** Because natural-gas-heated homes use much less electricity before installing a heat pump than delivered-fuel-heated homes. The average pre-HP winter base load for natural-gas homes is `{python} f"{th.winter_kwh_mean_natgas:,.0f}"` kWh per month — nearly `{python} f"{th.winter_kwh_mean_delivered - th.winter_kwh_mean_natgas:,.0f}"` kWh below the 700 kWh threshold. By contrast, delivered-fuel homes average `{python} f"{th.winter_kwh_mean_delivered:,.0f}"` kWh, close to the threshold itself.
 
-This is likely by design, as the Company intends Rate 6 to only be available to delivered fuel customers. As explained in Section TK, their justification for not reducing the overpayments experienced by natural-gas-heated customers who install heat pumps—their total energy bills might go up—ignores the fact that the predominant reason bills go up is that these customers are being overcharged.
+This is likely by design, as the Company intends Rate 6 to only be available to delivered fuel customers. As explained in Section IV, their justification for not reducing the overpayments experienced by natural-gas-heated customers who install heat pumps—their total energy bills might go up—ignores the fact that the main reason bills go up _is_ that these customers are being overcharged.
 
-I advocate for the Company's heat pump rate to be available to all customers installing heat pumps, including those who currently heat with natural gas. So let's examine how the current threshold would affect these customers, and whether it can be improved.
+I advocate for the Company's heat pump rate to be available to all customers installing heat pumps, including those who currently heat with natural gas. So let's examine how the current 700 kWh threshold would affect these customers, and whether it can be improved.
 
 @fig-ribbon-fuel-comparison compares how Rate 6's 700 kWh threshold classifies load for the two fuel groups side by side.
 
@@ -1253,49 +1276,47 @@ I advocate for the Company's heat pump rate to be available to all customers ins
 {{< embed notebooks/rate6_threshold.qmd#fig-ribbon-fuel-comparison >}}
 :::
 
-The contrast is stark. For delivered-fuel homes (left panel), the threshold sits near the middle of the base-load distribution, so a substantial share of incremental HP load lands in Block 2 (blue). For natural-gas homes (right panel), the threshold sits well above virtually every home's base load — orange dominates, meaning nearly all HP load is trapped in Block 1 at the full rate. Specifically, `{python} pct(th.pct_any_orange_ng)` of natural-gas homes have at least some HP load trapped in Block 1, compared to `{python} pct(th.pct_any_orange_df)` for delivered-fuel homes. And on average, natural-gas homes capture only `{python} pct(th.total_benefit_ratio_ng)` of the discount benefit that a perfectly targeted threshold would deliver, versus `{python} pct(th.mean_capture_df)` for delivered-fuel homes.
+The key question is: of a home's incremental heat pump load, what share actually lands in Block 2 and receives the discount? If the threshold worked perfectly, the answer would be 100% for every home — all incremental load would be blue. For the median delivered-fuel home, it is `{python} pct(th.median_capture_rate_df)`. In other words, the threshold largely works for over half of these customers. (It does not work for everyone: roughly a third of delivered-fuel homes lose a fifth or more of their intended discount, and as the income analysis above established, these are disproportionately lower-income homes.)
+
+For the median natural-gas home, however, only `{python} pct(th.median_capture_rate_ng)` of incremental HP load receives the discount — the threshold fails. And `{python} pct(th.pct_capture_below_05_ng)` of natural-gas homes — nearly 1 in 4 — would receive essentially no discount at all, because their post-HP consumption never reaches 700 kWh. Among delivered-fuel homes, only `{python} pct(th.pct_capture_below_05_df)` fare that poorly.
 
 <br>
 
 **Q.** What does this mean in practice for a natural-gas customer who installs a heat pump under Rate 6?
 
-**A.** It means nearly all of their incremental heat pump load lands in Block 1 at the full rate. `{python} pct(th.pct_any_orange_ng)` of natural-gas homes have at least some HP load trapped in Block 1. On average, natural-gas homes capture only `{python} pct(th.total_benefit_ratio_ng)` of their intended savings — meaning that for every dollar of discount the threshold _should_ deliver, they actually receive about 59 cents. Under Rate 6 as proposed, this translates to an effective bill reduction of just `{python} pct(th.effective_bill_reduction_ng)`, compared to the `{python} pct(th.block_discount_pct)` that a perfectly targeted threshold would deliver.
+**A.** Rate 6's Block 2 discount is designed to reduce every customer's incremental heat pump bill by `{python} pct(th.block_discount_pct, 1)`. For customers that used to heat with natural gas, the 700 kWh threshold traps so much heat pump load in Block 1, that these customers would see their incremental heat pump bill reduced by only **`{python} pct(th.median_effective_bill_reduction_ng, 1)`**, on average — roughly half of the intended discount. The typical delivered-fuel home, by contrast, would see a **`{python} pct(th.median_effective_bill_reduction_df, 1)`** reduction, on average, much closer to the intended `{python} pct(th.block_discount_pct, 1)` bill reduction.
+
+This is the underlying reason why Rate 6 doesn't significantly move the needle for post-heat pump bill outcomes. Even with Block 2 rates set at the marginal cost floor, natural-gas customers receive roughly half the intended discount — and that is why more than half of them would still face higher total energy bills after switching to a heat pump.
 
 <br>
-TK WEAVE THIS TOGETHER
-**Q.** Does this help explain the poor outcomes for natural-gas customers that you showed in Section IV?
 
-**A.** Yes. In Section IV, I showed that even under the modified Rate 6 — with Block 2 rates set at the marginal cost floor — more than half of natural-gas customers would still see _higher_ total energy bills after switching to a heat pump. The regressivity analysis explains part of this: the threshold misallocates the discount within any population. But the natural-gas bias is a separate, compounding problem: the threshold is set so far above natural-gas base loads that it cannot deliver a meaningful discount to these customers regardless of how large that discount is.
-
-<br>
-TK MAYBE ADD THE RIBBON CHART TO SHOW THE DYNAMIC
 **Q.** Could the Company lower the threshold so it works better for natural-gas customers?
 
-**A.** Lowering the threshold helps natural-gas homes, but at the direct expense of delivered-fuel homes. (+not EXPENSE)
+**A.** Lowering the threshold helps natural-gas homes, but it sends windfall discount to delivered-fuel homes. @fig-ribbon-threshold-comparison illustrates the trade-off. The top row shows the current 700 kWh threshold; the bottom row lowers it to `{python} f"{th.threshold_ng_kwh:.0f}"` kWh — the natural-gas mean base load.
 
-Lowering the threshold to `{python} f"{th.threshold_mid_kwh:.0f}"` kWh — the midpoint between the natural gas and delivered-fuel means — improves the natural-gas capture rate from `{python} pct(th.total_benefit_ratio_ng)` to `{python} pct(th.tbr_ng_at_mid)`, but `{python} pct(th.pct_any_yellow_df_at_mid)` of delivered-fuel homes would now receive a windfall (up from `{python} pct(th.pct_any_yellow_df)` at 700 kWh), and their capture rate rises to `{python} pct(th.tbr_df_at_mid)` — meaning the delivered-fuel population as a whole receives more discount than intended.
+:::{.column-page-inset-right}
+{{< embed notebooks/rate6_threshold.qmd#fig-ribbon-threshold-comparison >}}
+:::
 
-Lowering it further to `{python} f"{th.threshold_ng_kwh:.0f}"` kWh — the natural-gas mean — pushes natural-gas homes to `{python} pct(th.tbr_ng_at_ng_mean)`, but now `{python} pct(th.pct_any_yellow_df_at_ng_mean)` of delivered-fuel homes receive a windfall and their capture rate balloons to `{python} pct(th.tbr_df_at_ng_mean)`.
-
-<br>
-TK RESTORE THE REGRESSIVITY THING AND SHOW THAT FUNDAMEDNTALLY YOU CANT FIX A BLOCK CHARGE WITYH A ONE SIDZE FITS ALL FOR EITHER PREBL
-**Q.** Could the Company fix Rate 6's the regressive impact and the bias against natural-gas homes by adjusting the threshold?
-
-**A.** No. The two fuel populations have fundamentally different base-load distributions, and no single threshold can serve both.
-
-The current 700 kWh threshold, which is close to optimal for delivered-fuel homes, largely shuts natural-gas homes out of the discount entirely. And any threshold that helps natural-gas customers sends excess discount to delivered-fuel customers.
-
-The natural-gas bias operates through the same mechanism as the regressivity, just between fuel groups rather than within one. Among delivered-fuel homes, lower-income customers have lower base loads, so the threshold gives them less discount than higher-income customers — that is the regressive dynamic. Among fuel groups, natural-gas customers have lower base loads than delivered-fuel customers, so the same threshold gives them less discount than delivered-fuel customers — that is the bias. In both cases, the block design converts variation in base load into variation in the effective discount. And because no single threshold can sit near the center of both fuel groups' base-load distributions simultaneously, no adjustment to the threshold can fix one problem without worsening the other.
+The bottom-right panel shows the improvement for natural-gas homes: much more blue, meaning their heat pump load now reaches Block 2. Their capture rate rises from `{python} pct(th.total_benefit_ratio_ng)` to `{python} pct(th.tbr_ng_at_ng_mean)`. But the bottom-left panel shows the cost: `{python} pct(th.pct_any_yellow_df_at_ng_mean)` of delivered-fuel homes now receive a windfall (yellow), and their capture rate balloons to `{python} pct(th.tbr_df_at_ng_mean)` — meaning the delivered-fuel population as a whole receives far more discount than intended, despite the fact that this population needs _less_ help than that switching from natural gas, from a bill savings standpoint.
 
 <br>
 
-**Q.** Can the block rate design be fixed at all — through per-customer thresholds, submetering, or other means?
+**Q.** Are block rates with one-size-fits-all thresholds inherently biased against natural-gas-heated and lower-income customers switching to heat pumps?
 
-**A.** There are three possible approaches, all of which involve per-customer thresholds rather than a single class-wide number.
+**A.**. Yes. For any given threshold that is chosen, block rates will deliver smaller-than-intended savings to the customer groups that need them most—lower income and natural-gas-heating customers—and larger-than-intended savings to the customer groups that need them least—higher income and deliver-fuel-heating customers.
 
-The most accurate would be **separately metering** the heat pump. In addition to cost, that would add significant friction to customer enrollment, and rule out auto-enrollment entirely. (As I will discuss in Section TK, auto-enrollment is essential to the success of the rate.)
+This is trade-off is inescapable: the only way to increase the savings received by lower income and natural-gas-heated customers is to lower the threshold, which in turn delivers even larger savings to higher income and delivered fuel customers.
 
-Another option would be **circuit-level energy monitors** such as Sense or Emporia Vue (often called non-invasive submeters in regulatory contexts). These would be lower cost, and may be compatible with auto-enrollment of customers installing heat pumps: contractors installing heat pumps under EnergizeCT already interact with each home, and opt-out energy monitor installation could be folded into the installation process. But auto-enrollment of the Company's _existing_ heat pump customers would remain impractical. And while these monitors could accurately measure incremental heat pump load, they likely would not integrate into the Company's billing software. Savings would need to be delivered as credits administered by a third party, rather than lower rates on the customer's bill.[^ev-managed-charging]
+<br>
+
+**Q.** Is it possible to design a block rate that avoids these biases?
+
+**A.** Yes, by moving to per-customer thresholds, rather than a single residential class-wide number. There are at least three ways to implement per-customer thresholds.
+
+The most accurate would be **separately metering** the heat pump. In addition to the cost, this approach would add significant friction to customer enrollment, and rule out auto-enrollment entirely, of both existing and new heat pump customers. (As I will discuss in Section TK, auto-enrollment is essential to the success of the rate.)
+
+Another option would be **circuit-level energy monitors** such as Sense or Emporia Vue (often called non-invasive submeters, in regulatory contexts). These would be lower cost, and may be compatible with auto-enrollment of new heat pump customers: contractors installing heat pumps under EnergizeCT already interact with each home, and opt-out energy monitor installation and Rate 6 enrollment could become part of the installation process. Auto-enrollment of the Company's _existing_ heat pump customers would remain impractical, however. And while these monitors could accurately measure incremental heat pump load, they likely would not integrate into the Company's billing software. Savings would need to be delivered as credits administered by a third party, rather than lower rates on the customer's bill.[^ev-managed-charging]
 
 [^ev-managed-charging]: This is essentially the model that utilities already use for EV managed charging. Con Edison's SmartCharge New York program (administered by ev.energy) pays EV drivers via Venmo or PayPal for off-peak charging. WeaveGrid administers similar programs for BGE, Pepco, Delmarva, Potomac Edison, and Orange & Rockland, delivering incentives via Venmo, gift cards, or bill credits. In all cases, the third party manages the device telemetry and delivers savings outside the utility's billing system.
 
@@ -1303,77 +1324,84 @@ The cheapest and most frictionless option would be a **software-based solution**
 
 [^billing-system]: Utility billing platforms such as SAP IS-U and Oracle CC&B already support customer-specific billing determinants — demand ratchets, for example, are set per meter. A per-customer block threshold would be implemented the same way: stored as a customer attribute and referenced by the rate calculation engine each billing cycle.
 
-All three approaches add complexity — whether in hardware, software, or administration. None is insurmountable, but all represent a significant departure from a simple rate that applies uniformly to every kWh on the meter. In Section TK, I will present exactly such a rate.
+All three approaches add complexity — whether in hardware, software, or administration. The first two make auto-enrollment difficult to impossible, which would lead to single-digit rate enrollment and leave the cross-subsidy largely in place.
 
+In short: in order to achieve a block rate with per-customer thresholds that heat pump customers could be auto-enrolled into, the Company would either need to commit to a software-based solution, or to EnergizeCT contractors installing circuit-level energy monitors whenever they install heat pumps.
 
+However, a simpler alternative to per-customer thresholds exists that achieves largely the same result: a seasonal rate design that lowers volumetric charges for heat pump customers in winter, without relying on a block threshold at all. I present exactly such a rate in the next section.
 
-
-
-<!-- COMMENTED OUT: Sections IV–XII (re-enable when all notebooks are ready)
-
-<!-- ============================================================
-  SECTION VI: PROPOSED RATE — the remedy
-  Purpose: present Schedule R-HP, current rates table, proposed
-  rates (TBD), and the revenue-neutrality argument.
-  ============================================================ -->
-
-## VI. Proposed Rate Design: Rate HP
+## IX. Proposed Rate Design: Rate HP
 
 <br>
 
 **Q.** What do you propose to address the overcharging of heat pump customers?
 
-**A.** I recommend that the Company create a new rate schedule, Rate HP, for residential customers with heat pumps. Rate HP would lower the volumetric rates for distribution and transmission during the winter months (November through March), when the incremental heat pump load occurs. Summer rates, generation rates, and the fixed customer charge would be **unchanged**.
+**A.** I recommend that the Company create a new rate schedule, Rate HP, for residential customers with heat pumps. Rate HP would lower the volumetric rates for distribution and transmission during the winter months (November through March), when the incremental heat pump load occurs. Rate 1's summer rates, generation rates, and the fixed customer charge would be **unchanged**.
 
-The purpose of lowering winter rates is to bring the incremental revenue the Company collects from customers installing heat pumps in line with the incremental marginal costs those heat pumps actually cause. As I showed in Section III, heat pump customers are overcharged because volumetric rates collect far more per incremental kWh than the marginal T&D cost that kWh causes. Rate HP corrects this by reducing the winter delivery rates — the season when heat pump load is concentrated — to a level consistent with cost-causation.
-
-<br>
-
-**Q.** What are the Company's current volumetric rates under Rate 1?
-
-**A.** The following table summarizes the Company's average test-year volumetric rates under Rate 1 for distribution, transmission, and generation.
-
-| Component                            | Charge                                                  |    Rate 1 (¢/kWh)    |
-| ------------------------------------ | ------------------------------------------------------- | :------------------: |
-| Distribution                         | Distribution Service Rate and associated riders          | `{python} f"{r.fair_hp_avg_rate_dist*100:.3f}"` |
-| Transmission                         | Transmission Charge (Transmission Adjustment Clause)     | `{python} f"{r.fair_hp_avg_rate_tx*100:.3f}"` |
-| **Total delivery (dist + tx)**       | **—**                                                    | **`{python} f"{r.fair_hp_avg_rate_non_gen_total*100:.3f}"` ** |
-| Generation                           | Generation Service Charge                                | `{python} f"{r.fair_hp_avg_rate_gen*100:.3f}"` |
-
-Since rates changed slightly over the course of the test year, the ¢/kWh charges shown above are averages of their test-year values.
+The purpose of lowering winter rates is to bring the incremental revenue the Company collects from customers installing heat pumps in line with the incremental marginal costs those heat pumps actually cause (while preserving the revenue associated with their base load). As I showed in Section III, heat pump customers are overcharged because volumetric rates collect far more per incremental kWh than the marginal T&D cost that kWh causes. Rate HP corrects this by reducing volumetric delivery rates in winter, the season when incremental heat pump load is concentrated, in order to achieve bills consistent with cost-causation: that is, bills that get as close possible to each customer's pre-heat pump T&D bill, plus their incremental marginal T&D cost caused by the heat pump.
 
 <br>
 
 **Q.** What would the Company's volumetric rates be under the proposed Rate HP?
 
-**A.** Rate HP would reduce distribution and transmission rates during the winter months only. Summer rates remain at Rate 1 levels. The following table compares the filed winter-average rates under Rate 1 with the proposed Rate HP winter rates.
+**A.** Rate HP would reduce distribution and transmission rates during the winter months only. Summer rates remain at proposed Rate 1 levels. The following table compares the proposed Rate 1 rates with the proposed Rate HP winter rates.
 
-| Component                         | Rate 1 Winter (¢/kWh)   | Rate HP Winter (¢/kWh)   | Change        |
-| --------------------------------- | :----------------------: | :----------------------: | :-----------: |
-| Distribution                      | `{python} f"{r.fair_hp_avg_rate_dist*100:.3f}"` | `{python} f"{r.fair_hp_winter_rate_dist*100:.3f}"` | `{python} pct(r.fair_hp_winter_rate_dist / r.fair_hp_avg_rate_dist - 1)` |
-| Transmission                      | `{python} f"{r.fair_hp_avg_rate_tx*100:.3f}"` | `{python} f"{r.fair_hp_winter_rate_tx*100:.3f}"` | `{python} pct(r.fair_hp_winter_rate_tx / r.fair_hp_avg_rate_tx - 1)` |
+|                                                                             | Proposed Rate 1 (¢/kWh) | Rate HP Winter (¢/kWh) | Change |
+| --------------------------------------------------------------------------- | :---------------------: | :--------------------: | :----: |
+| **Distribution** — Energy Charge (¢/kWh)                                    | `{python} f"{FILED_DIST_EC*100:.3f}"` | `{python} f"{(r.fair_hp_winter_rate_dist - FILED_RIDERS)*100:.3f}"` | `{python} pct((r.fair_hp_winter_rate_dist - FILED_RIDERS) / FILED_DIST_EC - 1)` |
+| **Transmission** — Transmission Service Rate (¢/kWh)                        | `{python} f"{FILED_TX*100:.3f}"` | `{python} f"{r.fair_hp_winter_rate_tx*100:.3f}"` | `{python} pct(r.fair_hp_winter_rate_tx / FILED_TX - 1)` |
+| **Total delivery volumetric** (distribution + transmission + riders, ¢/kWh) | `{python} f"{FILED_TOTAL_DEL*100:.3f}"` | `{python} f"{(r.fair_hp_winter_rate_dist + r.fair_hp_winter_rate_tx)*100:.3f}"` | `{python} pct((r.fair_hp_winter_rate_dist + r.fair_hp_winter_rate_tx) / FILED_TOTAL_DEL - 1)` |
+| **Generation** — Generation Service Charge (¢/kWh)                          | `{python} f"{r.fair_hp_avg_rate_gen*100:.3f}"` | `{python} f"{r.fair_hp_avg_rate_gen*100:.3f}"` | — |
 
 : Rate HP winter rates compared to Rate 1 {#tbl-rate-hp-winter}
 
-Generation rates, summer distribution and transmission rates, and the monthly customer charge are unchanged under Rate HP.
+Generation rates, summer distribution and transmission rates, the monthly customer charge, and all distribution riders remain the same as under Rate 1.[^riders]
+
+[^riders]: Distribution riders include the Competitive Transition Assessment (CTA), Systems Benefits Charge (SBC), Conservation Adjustment Mechanism (CAM), Renewable Energy Investment/Clean Energy Fund, and the non-bypassable Federally Mandated Congestion Charge (FMCC). These total `{python} f"{FILED_RIDERS*100:.3f}"` ¢/kWh under the Company's proposed rates and are unchanged under Rate HP. The total delivery rate shown in the table includes these riders.
 
 <br>
 
 **Q.** Why are the rate reductions concentrated in winter?
 
-**A.** Because the incremental electricity consumption from heat pumps is concentrated in winter. Heat pumps replace fossil-fuel furnaces and boilers, which run primarily during the heating season. In summer, heat pumps provide air conditioning — a service most homes already had — so summer electricity consumption changes little after installation.
+**A.** Because the incremental electricity consumption from heat pumps is concentrated in winter. Heat pumps replace fossil-fuel furnaces and boilers, which run primarily during the heating season. In summer, heat pumps provide air conditioning — a service most homes already have to some extent — so summer electricity consumption changes little after installation.
 
-By concentrating the rate reduction in the months when incremental HP load occurs, Rate HP avoids giving a discount on summer kWh that are not caused by the heat pump. This is more precisely targeted than a year-round flat reduction, and it means the total annual revenue reduction needed to eliminate the overcharge is achieved with a deeper winter cut rather than a shallow year-round cut.
+By concentrating the rate reduction in the months when incremental HP load occurs, Rate HP avoids giving a discount to base load. This is more precisely targeted than a year-round flat reduction, but it means the total annual revenue reduction needed to eliminate the overcharge is achieved with a deeper winter rate reduction rather than a shallow year-round rate reduction.
 
 <br>
 
 **Q.** How did you determine the winter rate reductions for each component?
 
-**A.** For each component — distribution and transmission — I calculated the annual overpayment as the difference between what heat pump customers are currently billed and what cost-causation principles say they should pay (their pre-installation bill plus the marginal T&D costs their heat pump actually causes). I then subtracted that overpayment entirely from the winter bills, leaving summer bills unchanged.
+**A.** For each component — distribution and transmission — I asked: what uniform reduction in the winter volumetric rate would make the _average_ fossil-fuel-heated customer's annual overpayment equal to zero? In other words, I found the single winter ¢/kWh rate that, applied to all Rate HP customers, produces a population-average delivery bill equal to the customer's old base-load delivery revenue plus the incremental marginal T&D cost of serving the new heating load.
 
-Take distribution as an example. Before installing a heat pump, the average fossil-fuel-heated home pays `{python} dollar(r.all_fossil_annual_distribution_before)` per year in distribution charges. After installation, their heat pump causes `{python} dollar(r.all_fossil_annual_mc_dist_delta)` in additional distribution costs. Under cost-causation principles, their post-installation distribution bill should be `{python} dollar(r.fair_hp_fair_dist_bill_after)`: everything they were paying before, plus the new costs they cause, and nothing more. The entire gap between what they would pay under Rate 1 and what they should pay is removed from the winter months, yielding a winter distribution rate of `{python} f"{r.fair_hp_winter_rate_dist*100:.3f}"` ¢/kWh. The same logic applies to transmission.
+Take distribution as an example. The average fossil-fuel-heated home pays `{python} dollar(r.all_fossil_annual_distribution_before)` per year in distribution charges before installing a heat pump, and its heat pump causes `{python} dollar(r.all_fossil_annual_mc_dist_delta)` in additional distribution costs. A cost-reflective post-installation bill would therefore be `{python} dollar(r.fair_hp_fair_dist_bill_after)` — the old base-load bill plus the new costs. Under Rate 1, the average post-installation bill would be higher than that, so I took the difference and subtracted it entirely from the winter months — leaving summer rates unchanged — yielding a winter Distribution Energy Charge of `{python} f"{(r.fair_hp_winter_rate_dist - FILED_RIDERS)*100:.3f}"` ¢/kWh, or a net winter distribution rate of `{python} f"{r.fair_hp_winter_rate_dist*100:.3f}"` ¢/kWh inclusive of riders. The same logic applies to transmission.
 
-The resulting winter rates are lower than Rate 1's annual average because they bear the entire correction. But the annual bill is fair: heat pump customers still pay for all the infrastructure costs they paid for before the heat pump, plus the new costs their heat pump actually causes.
+The resulting winter rates are lower than Rate 1's annual average because they bear the entire correction. Because this is a single rate applied to all customers, it zeroes out overpayment _on average_ — individual customers with different load shapes will still have residual over- or underpayments. I address the distribution of those residual overpayments below.
+
+<br>
+
+**Q.** A `{python} pct(abs((r.fair_hp_winter_rate_dist - FILED_RIDERS) / FILED_DIST_EC - 1))` winter reduction seems large. Why does the winter rate have to fall so steeply?
+
+**A.** Heat pumps roughly quadruple winter electricity consumption, but cause only `{python} dollar(r.all_fossil_annual_mc_dist_delta + r.all_fossil_annual_mc_tx_delta)` in incremental marginal T&D cost per year, on average. To satisfy cost-causation, the customer's T&D bill should stay close to what it was before the heat pump, so the winter rate has to drop by roughly the same factor that winter load goes up. Four times the kWh at a only slightly higher total bill means roughly one-quarter the rate per kWh — a ~75% reduction.
+
+<br>
+
+**Q.** You said Rate HP makes the _average_ overpayment zero, but does not guarantee that every individual customer's overpayment is zero. How close does it get?
+
+**A.** As close as possible without per-customer block rates.
+
+Under a perfectly fair rate, each customer's post-installation delivery bill would equal their base-load bill plus only the incremental marginal T&D costs their heat pump actually causes — eliminating every individual overpayment entirely. That would require implementing per-customer thresholds, and charging incremental loads at marginal cost.
+
+Rate HP uses a single winter rate for all customers, which is simple, practical, and performs better than the Company's one-size-fits-all block rate—though it does mean some customers will still overpay, and others will underpay, even if the two wash out on average.
+
+@fig-testimony-annual-all-fossil-r1-vs-r6-vs-r6mc-vs-seasonal shows the overpayment distribution across four scenarios. Under Rate 1 (top panel), the overpayment distribution is centered far to the right of zero — virtually every heat pump customer overpays. Under Rate 6 as proposed (second panel), the distribution shifts modestly leftward, but the mean overpayment remains `{python} dollar(op.overpay_mean_rate_6_all_fossil)` per year. Under the modified Rate 6 with Block 2 rates set at marginal cost (third panel), the shift is larger — mean overpayment falls to `{python} dollar(op.overpay_mean_r6_mfc0_trans_all_fossil)`. Under Rate HP (bottom panel), the distribution is centered on zero: the mean overpayment is `{python} dollar(op.overpay_mean_fair_seasonal_all_fossil)`.
+
+:::{.column-page-inset-right}
+{{< embed notebooks/overpayment.qmd#fig-testimony-annual-all-fossil-r1-vs-r6-vs-r6mc-vs-seasonal >}}
+:::
+
+Individual customers still have residual over- or underpayments — an inherent limitation of any single-rate schedule — but `{python} pct(op.pct_within_200_seasonal)` of fossil-fuel customers are within $200 of zero. Just as importantly, nearly all of the systematic bias is removed: natural-gas customers are almost as likely to be underpaying as overpaying (`{python} pct(op.pct_overpaying_seasonal_natgas)` overpay, vs. `{python} pct(op.pct_overpaying_seasonal_delivered_fuels)` of oil/propane customers), and LMI customers see a similar balance (`{python} pct(op.pct_overpaying_seasonal_lmi)` overpay, vs. `{python} pct(op.pct_overpaying_seasonal_non_lmi)` of non-LMI customers).
+
+In short, Rate HP does what a practical rate design can do: unlike even modified Rate 6, it eliminates the overcharge that Rate 1 imposes on heat pump customers _on average_, leaving a residual spread that is modest and doesn't systematically disadvantage natural-gas-heated and low income customers.
 
 <br>
 

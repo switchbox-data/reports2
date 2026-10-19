@@ -136,7 +136,7 @@ This exhibit describes the data sources and methodology behind the analysis pres
 1. The data sources I relied on.
 2. How I constructed the representative home's before-and-after electricity consumption profiles.
 3. How I computed the hourly marginal costs of bulk transmission and distribution.
-4. How I computed the incremental T&D cost of heat pump adoption and the resulting overpayment.
+4. How I defined and computed the incremental cost, incremental revenue, fair annual bill, and overpayment of heat pump adoption.
 5. How I derived the proposed Rate HP rates.
 6. How I computed the fixed-charge alternative discussed in Section IX of my Direct Testimony.
 
@@ -294,43 +294,107 @@ Attachment 2 then assigns that loss-adjusted annual cost to each month, hour, an
 
 The resulting hourly profile is the distribution heatmap in Section III of my Direct Testimony. `{python} f"{mc.n_nonzero_hours:,}"` hours carry a positive distribution marginal cost. The rest of the year is zero.
 
-## 4. Incremental cost and overpayment
+## 4. Incremental cost, incremental revenue, and overpayment
 
 <br>
 
-**Q.** How did you compute the incremental T&D cost of heat pump adoption?
+**Q.** What do you mean by the incremental cost of heat pump adoption?
 
-**A.** By "new T&D costs," I mean the forward-looking marginal costs that the transmission and distribution system incurs because of the customer's heat pump installation — the cost of capacity expansion triggered by additional consumption during the constrained hours identified in Section 3 of this exhibit.
+**A.** The **incremental cost** is the change in the forward-looking marginal T&D costs that the transmission and distribution system incurs because of the customer's heat pump installation — the cost of capacity expansion triggered by consumption during the constrained hours identified in Section 3 of this exhibit.
 
-I multiplied the representative home's hourly electricity consumption by the hourly marginal-cost schedule described in Section 3, and summed across all 8,760 hours to get the total annual marginal T&D cost for that home. I performed this calculation for both the "before" and "after" consumption profiles. The difference between the two annual totals is the incremental marginal T&D cost attributable to the shift from fossil fuel heating to electric heating — the `{python} dollar(r.all_fossil_annual_mc_delivery_after - r.all_fossil_annual_mc_delivery_before)` figure I cited in Section III of my Direct Testimony.
+I multiplied the representative home's hourly electricity consumption by the hourly marginal-cost schedule described in Section 3, and summed across all 8,760 hours to get the total annual marginal T&D cost for that home. I performed this calculation for both the "before" and "after" consumption profiles. The incremental cost is the difference between the two annual totals:
+
+$$
+\text{incremental cost}
+=
+\text{marginal T\&D cost after}
+-
+\text{marginal T\&D cost before}.
+$$
+
+For the representative home, the incremental cost is the `{python} dollar(r.all_fossil_annual_mc_delivery_after - r.all_fossil_annual_mc_delivery_before)` figure I cited in Section III of my Direct Testimony.
+
+Because the marginal cost of every off-peak hour is zero, only consumption during the peak hours identified in Section 3 contributes to this total. Consumption in any other hour has no effect on it.
+
+This is the same concept the Company uses as the floor for Rate 6's discount: the discounted rate "is set to cover the incremental cost of serving the additional load the converting customer adds."[^cite-003b] The Company does not report a dollar value for this incremental cost of the representative home. The figure above is my own estimate, computed as described in this section.
+
+[^cite-003b]: Response to CLF-SC-003(b), Docket No. 26-05-10 (Sept. 3, 2026).
+
+<br>
+
+**Q.** What do you mean by incremental revenue?
+
+**A.** The **incremental revenue** is the change in the customer's annual delivery bill when it installs a heat pump: the delivery bill after installation minus the delivery bill before.
+
+$$
+\text{incremental revenue}
+=
+\text{delivery bill after}
+-
+\text{delivery bill before}.
+$$
+
+The delivery bill includes three components: the fixed monthly customer charge, the distribution charges (the Distribution Energy Charge and its associated riders), and the transmission charges. It excludes generation charges, which are outside the scope of my overpayment analysis. The incremental revenue is therefore:
+
+$$
+\text{incremental revenue}
+=
+\text{change in customer charge}
++
+\text{change in distribution charges}
++
+\text{change in transmission charges}.
+$$
+
+Under Rate 1, the customer charge is the same before and after a customer installs a heat pump, so the incremental revenue comes entirely from the change in distribution and transmission charges. Including the customer charge matters when I evaluate a rate with a different customer charge. In every comparison, the "before" bill is the customer's pre-installation bill under Rate 1. So when I evaluate Rate 6, which raises the customer charge from `{python} dollar(a.tariff_rate1_fixed_charge, accuracy=2)` to `{python} dollar(a.tariff_rate6_fixed_charge, accuracy=2)` per month, the difference in customer charges counts toward the incremental revenue, just as a change in volumetric charges would.
+
+<br>
+
+**Q.** What is the fair annual bill?
+
+**A.** The **fair annual bill** is what a customer should pay for delivery service after installing a heat pump: the delivery bill it paid before the installation, plus the incremental cost.
+
+$$
+\text{fair annual bill}
+=
+\text{delivery bill before}
++
+\text{incremental cost}.
+$$
+
+This is the standard of cost causation. A customer installing a heat pump is an existing customer, already paying its pre-installation bill toward the system's existing costs. Its bill should change by exactly the change in T&D costs its new load profile causes.
 
 <br>
 
 **Q.** How do you define the overpayment caused by heat pump adoption?
 
-**A.** Overpayment is the increase in a customer's payments that exceeds the increase in costs caused by the customer's heat pump adoption.
-
-For transmission and distribution, I calculate the change in the customer's annual T&D charges (the charges paid using the "after" consumption profile minus the charges paid using the "before" profile) and subtract the incremental T&D cost described above. The remainder is the **T&D overpayment**:
+**A.** Overpayment is the difference between a customer's delivery bill after installing a heat pump and its fair annual bill. Equivalently, it is the incremental revenue minus the incremental cost:
 
 $$
-\text{T\&D overpayment}
+\text{overpayment}
 =
-\text{increase in T\&D charges}
+\text{delivery bill after}
 -
-\text{increase in marginal T\&D costs}.
-$$
-
-The total overpayment is therefore:
-
-$$
-\text{total overpayment}
+\text{fair annual bill}
 =
-\text{increase in T\&D charges}
+\text{incremental revenue}
 -
-\text{increase in marginal T\&D costs}.
+\text{incremental cost}.
 $$
 
-For the representative home in my analysis, the result is an annual overpayment of `{python} dollar(r.all_fossil_annual_total_overcharge)`.
+A positive overpayment means the customer is overpaying: its bill changed by more than the costs its heat pump causes. A negative value means the customer is underpaying. Under a perfectly cost-reflective rate, every customer's overpayment would be zero.
+
+<br>
+
+**Q.** For which customers did you compute the overpayment?
+
+**A.** I computed it in two ways, using the same formula.
+
+For the **representative home** in Section III of my Direct Testimony, I applied the formula to the average fossil-fuel-heated home's before-and-after consumption profiles described in Section 2. For that home, the result is an annual overpayment of `{python} dollar(r.all_fossil_annual_total_overcharge)`.
+
+For the **distributions of overpayment** shown in Sections III, V, and VI of my Direct Testimony, I applied the formula to each fossil-fuel-heated ResStock building in the Company's territory — homes heated with natural gas, heating oil, or propane — individually. For each building, the "before" bill is CAIRO's annual bill under Rate 1 for the building with its existing heating system, and the "after" bill is CAIRO's annual bill under the rate being evaluated for the same building with a heat pump. Each building's incremental revenue is the difference between those two bills. Its incremental cost is computed in exactly the same way as for the representative home: its own hourly grid consumption times the hourly marginal-cost schedule from Section 3, summed over the year, after minus before. I verified that this matches CAIRO's per-building marginal-cost totals to within $1 per building. Averages across buildings use ResStock's sample weights.
+
+The representative home applies the formula to an average consumption profile, while the distributions average the result of applying it to each home.
 
 ## 5. Rate HP derivation
 

@@ -120,6 +120,7 @@ def _load_ns(path: str):
 r = _FallbackNS(_load_ns("cache/representative_home_vars.pkl"))
 mc = _FallbackNS(_load_ns("cache/marginal_costs_vars.pkl"))
 a = _FallbackNS(_load_ns("cache/report_variables.pkl"))
+op = _FallbackNS(_load_ns("cache/overpayment_report_variables.pkl"))
 fc = _FallbackNS(_load_ns("cache/incremental_fair_default_report_variables.pkl"))
 
 
@@ -402,22 +403,57 @@ The representative home applies the formula to an average consumption profile, w
 
 **Q.** How did you derive the proposed Rate HP rates shown in Section VI of your Direct Testimony?
 
-**A.** For each bill component — distribution and transmission — I first computed the representative home's annual bill under CL&P's filed monthly rates, for both the "before" and "after" consumption profiles. The bill calculations use the Company's actual filed monthly rates (which vary slightly across the test year), applied to each profile's monthly kWh.
+**A.** Rate HP changes only two charges: the distribution and transmission volumetric rates during the winter months (November through March). The customer charge, the distribution riders, the generation rate, and the summer (April through October) distribution and transmission rates all stay at their proposed Rate 1 levels.
 
-I then defined the **fair annual bill** for each component — the amount the customer should pay after installing a heat pump:
-
-- For **distribution and transmission**, the fair annual bill equals the pre-installation bill plus the incremental marginal cost caused by the heat pump: $\text{fair bill} = \text{bill}_{\text{before}} + \Delta MC$. This allows the customer's bill to increase by exactly the amount of new T&D costs their heat pump causes, and no more.
-- **Generation** is unchanged.
-
-The Rate HP rate for each component is then a derived quantity: I divided the fair annual bill by the representative home's post-installation annual kWh to obtain a cents-per-kWh rate:
+For each of the two components, I solved for the single winter rate at which the average fossil-fuel-heated customer's overpayment, as defined in Section 4, is zero. In other words, the winter rate at which the representative home's post-installation bill for that component equals its fair annual bill:
 
 $$
-\text{rate}_{\text{R-HP}} = \frac{\text{fair bill}}{\text{kWh}_{\text{after}}}
+\text{fair annual bill}
+=
+\text{bill before}
++
+\text{incremental cost},
 $$
 
-The cents/kWh figures in the rate comparison table in Section VI of my Direct Testimony are annual-average effective rates — each component's annual bill divided by annual kWh — not filed tariff line items. The underlying bill calculations use CL&P's actual filed monthly rates.
+where the bill before is computed under Rate 1, and the incremental cost is that component's share of the incremental cost: the change in distribution marginal costs for distribution, and the change in bulk transmission marginal costs for transmission, using the hourly schedules in Section 3.
 
-This is a representative-home calculation. It determines the rate at which the average fossil-fuel-heated home, after installing a heat pump, would pay no more than its cost of service for each component.
+Under Rate HP, the representative home's post-installation bill for each component is its summer consumption at the Rate 1 rate, plus its winter consumption at the Rate HP winter rate:
+
+$$
+\text{bill after}_{\text{R-HP}}
+=
+r_{\text{Rate 1}} \cdot \text{kWh}_{\text{after, summer}}
++
+r_{\text{winter}} \cdot \text{kWh}_{\text{after, winter}}.
+$$
+
+Setting this equal to the fair annual bill and solving for the winter rate gives:
+
+$$
+r_{\text{winter}}
+=
+\frac{\text{fair annual bill} - r_{\text{Rate 1}} \cdot \text{kWh}_{\text{after, summer}}}
+{\text{kWh}_{\text{after, winter}}}.
+$$
+
+Because the summer rate is unchanged, the entire correction falls on winter consumption. Equivalently, the winter rate is Rate 1's winter bill for the post-installation profile, minus the overpayment under Rate 1, spread over the post-installation winter kWh. For the representative home, the result is a winter distribution rate of `{python} f"{r.fair_hp_winter_rate_dist*100:.3f}"` ¢/kWh (including riders) and a winter transmission rate of `{python} f"{r.fair_hp_winter_rate_tx*100:.3f}"` ¢/kWh. Because the riders are unchanged, the winter Distribution Energy Charge shown in the Rate HP table in Section VI of my Direct Testimony is the winter distribution rate minus the riders.
+
+The customer charge does not enter this calculation. It is the same before and after installation, and the same under Rate 1 and Rate HP, so it contributes nothing to the incremental revenue.
+
+<br>
+
+**Q.** How did you evaluate Rate HP across all fossil-fuel-heated customers?
+
+**A.** To produce the distribution of overpayments under Rate HP shown in Section VI of my Direct Testimony, I simulated Rate HP in CAIRO for every fossil-fuel-heated ResStock building in the Company's territory. The tariff used in that simulation was derived with the same formula, applied to the combined delivery rate (distribution, riders, and transmission together) rather than to each component separately:
+
+$$
+r_{\text{winter}}
+=
+\frac{r_{\text{Rate 1}} \cdot \overline{\text{kWh}}_{\text{before}} + \overline{\text{incremental cost}} - r_{\text{Rate 1}} \cdot \overline{\text{kWh}}_{\text{after, summer}}}
+{\overline{\text{kWh}}_{\text{after, winter}}},
+$$
+
+where each bar denotes a weighted average across all fossil-fuel-heated buildings, using ResStock's sample weights, and each building's incremental cost is computed as described in Section 4. The resulting combined winter delivery rate is `{python} f"{a.tariff_seasonal_winter_cents:.3f}"` ¢/kWh. The summer delivery rate and the customer charge are unchanged from Rate 1.
 
 ## 6. Fixed-charge alternative
 

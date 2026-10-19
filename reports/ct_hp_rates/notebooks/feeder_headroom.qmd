@@ -1,0 +1,365 @@
+---
+title: "Feeder Headroom Analysis"
+---
+
+This notebook analyzes distribution feeder capacity headroom on Eversource
+Connecticut's system, using circuit-level peak loading data provided by the
+Company in response to System Data Requirement No. 2 in PURA Docket 26-01-03.
+
+The Company provided peak and minimum loading data for 2021–2025 alongside each
+circuit's rated capacity. We use this data to compute utilization ratios and
+characterize how much spare capacity — headroom — exists across the distribution
+system.
+
+### Imports
+
+```{python}
+import io
+import pickle
+from pathlib import Path
+
+import polars as pl
+from plotnine import (
+    ggplot,
+    aes,
+    annotate,
+    geom_hline,
+    geom_point,
+    labs,
+    scale_x_continuous,
+    scale_y_continuous,
+    theme,
+)
+
+from lib.plotnine import SB_COLORS, theme_switchbox
+from lib.quarto import display_figure
+```
+
+### Parameters
+
+```{python}
+FEEDER_LOADS_S3_BUCKET = "data.sb"
+FEEDER_LOADS_S3_KEY = "eversource/feeder_loads_20261019.xlsx"
+
+PEAK_YEAR = 2025
+FALLBACK_YEAR = 2024
+```
+
+### Load data from S3
+
+```{python}
+import boto3
+
+s3 = boto3.client("s3")
+_xlsx_bytes = s3.get_object(Bucket=FEEDER_LOADS_S3_BUCKET, Key=FEEDER_LOADS_S3_KEY)[
+    "Body"
+].read()
+print(f"Downloaded {len(_xlsx_bytes):,} bytes from s3://{FEEDER_LOADS_S3_BUCKET}/{FEEDER_LOADS_S3_KEY}")
+```
+
+The workbook contains one sheet ("Comparison") with circuit-level data. The first
+two rows are headers; data starts at row 3. Key columns:
+
+| Column | Description |
+| --- | --- |
+| `SUBSTATION` | Substation name |
+| `CIRCUIT` | Circuit identifier |
+| `CAPACITY (KVA)` | Rated feeder capacity in KVA |
+| `2025 MAX LOADING (KVA)` | Peak demand during 2025 in KVA |
+| `2024 MAX LOADING (KVA)` | Peak demand during 2024 in KVA |
+| `2025 MIN LOADING (KVA)` | Minimum demand during 2025 in KVA |
+| `2024 MIN LOADING (KVA)` | Minimum demand during 2024 in KVA |
+| `Customer Count` | Number of customers served by the circuit |
+
+```{python}
+df_raw = pl.read_excel(
+    io.BytesIO(_xlsx_bytes),
+    sheet_name="Comparison",
+    engine="calamine",
+    has_header=False,
+)
+
+header_row_idx = None
+for i in range(min(10, df_raw.height)):
+    if str(df_raw.row(i)[0]).strip() == "SUBSTATION":
+        header_row_idx = i
+        break
+
+assert header_row_idx is not None, "Could not find header row"
+
+header = [str(v).strip() if v is not None else f"col_{i}" for i, v in enumerate(df_raw.row(header_row_idx))]
+```
+
+Now we find the "Total" row to bound the main data table, then parse each
+circuit's capacity and peak/min loading.
+
+```{python}
+total_row_idx = None
+for i in range(header_row_idx + 1, df_raw.height):
+    val = df_raw.row(i)[0]
+    if val is not None and str(val).strip() == "Total":
+        total_row_idx = i
+        break
+
+assert total_row_idx is not None, "Could not find Total row"
+print(f"Header at row {header_row_idx}, Total at row {total_row_idx}, data rows: {total_row_idx - header_row_idx - 1}")
+```
+
+```{python}
+def _col_idx(name_fragment: str) -> int:
+    """Find the column index whose header contains the given fragment (case-insensitive)."""
+    for i, h in enumerate(header):
+        if name_fragment.lower() in h.lower():
+            return i
+    raise ValueError(f"No column matching '{name_fragment}' in {header}")
+
+
+_idx_substation = _col_idx("SUBSTATION")
+_idx_circuit = _col_idx("CIRCUIT")
+_idx_capacity = _col_idx("CAPACITY")
+_idx_max_2025 = _col_idx("2025 MAX")
+_idx_max_2024 = _col_idx("2024 MAX")
+_idx_min_2025 = _col_idx("2025 MIN")
+_idx_min_2024 = _col_idx("2024 MIN")
+_idx_customers = _col_idx("Customer Count")
+
+
+def _parse_num(val) -> float | None:
+    if val is None:
+        return None
+    s = str(val).strip().replace(",", "").replace('"', "")
+    try:
+        v = float(s)
+        return v if v > 0 else None
+    except (ValueError, TypeError):
+        return None
+
+
+rows = []
+for i in range(header_row_idx + 1, total_row_idx):
+    r = df_raw.row(i)
+    substation = str(r[_idx_substation]).strip() if r[_idx_substation] else None
+    circuit = str(r[_idx_circuit]).strip() if r[_idx_circuit] else None
+    if not substation or not circuit:
+        continue
+
+    capacity = _parse_num(r[_idx_capacity])
+    max_2025 = _parse_num(r[_idx_max_2025])
+    max_2024 = _parse_num(r[_idx_max_2024])
+    min_2025 = _parse_num(r[_idx_min_2025])
+    min_2024 = _parse_num(r[_idx_min_2024])
+    customers = _parse_num(r[_idx_customers])
+
+    if capacity is None or capacity <= 0:
+        continue
+
+    peak = max_2025 if max_2025 else max_2024
+    min_load = min_2025 if min_2025 else min_2024
+
+    rows.append({
+        "substation": substation,
+        "circuit": circuit,
+        "feeder_id": f"{substation} {circuit}",
+        "capacity_kva": capacity,
+        "peak_kva": peak if peak else 0.0,
+        "min_kva": min_load if min_load else 0.0,
+        "customers": int(customers) if customers else 0,
+    })
+
+df_feeders = pl.DataFrame(rows)
+print(f"Parsed {df_feeders.height} feeders")
+df_feeders.head(10)
+```
+
+### Compute utilization and headroom
+
+For each feeder, we compute the demand-to-capacity (D/C) ratio using the most
+recent peak loading available (2025 if reported, otherwise 2024). Feeders with
+no peak data are excluded from the analysis.
+
+```{python}
+df_feeders = df_feeders.with_columns(
+    (pl.col("peak_kva") / pl.col("capacity_kva")).alias("peak_utilization"),
+    (pl.col("min_kva") / pl.col("capacity_kva")).alias("min_utilization"),
+    (1 - pl.col("peak_kva") / pl.col("capacity_kva")).alias("peak_headroom"),
+    (1 - pl.col("min_kva") / pl.col("capacity_kva")).alias("min_headroom"),
+)
+
+df_with_peak = df_feeders.filter(pl.col("peak_kva") > 0)
+df_with_min = df_feeders.filter(pl.col("min_kva") > 0)
+
+n_total = df_feeders.height
+n_with_peak = df_with_peak.height
+n_with_min = df_with_min.height
+print(f"Total feeders: {n_total}, with peak data: {n_with_peak}, with min data: {n_with_min}")
+```
+
+### Summary statistics
+
+```{python}
+import statistics as stats
+
+peak_utils = df_with_peak["peak_utilization"].to_list()
+min_utils = df_with_min["min_utilization"].to_list()
+
+total_capacity_kva = df_feeders["capacity_kva"].sum()
+total_peak_kva = df_feeders["peak_kva"].sum()
+total_min_kva = df_feeders["min_kva"].sum()
+
+print(f"Total capacity: {total_capacity_kva:,.0f} KVA ({total_capacity_kva / 1000:,.0f} MVA)")
+print(f"Total peak loading: {total_peak_kva:,.0f} KVA ({total_peak_kva / 1000:,.0f} MVA)")
+print(f"System-wide peak utilization: {total_peak_kva / total_capacity_kva:.1%}")
+print()
+print(f"Peak D/C — mean: {stats.mean(peak_utils):.1%}, median: {stats.median(peak_utils):.1%}")
+print(f"Min  D/C — mean: {stats.mean(min_utils):.1%}, median: {stats.median(min_utils):.1%}")
+print()
+
+n_over_95 = df_with_peak.filter(pl.col("peak_utilization") > 0.95).height
+n_over_100 = df_with_peak.filter(pl.col("peak_utilization") > 1.0).height
+print(f"Feeders > 95% utilization at peak: {n_over_95} ({n_over_95 / n_with_peak:.1%})")
+print(f"Feeders > 100% utilization at peak: {n_over_100} ({n_over_100 / n_with_peak:.1%})")
+print()
+
+n_below_50_peak = df_with_peak.filter(pl.col("peak_utilization") <= 0.50).height
+print(f"Feeders at or below 50% utilization at peak: {n_below_50_peak} ({n_below_50_peak / n_with_peak:.1%})")
+
+peak_headrooms = df_with_peak["peak_headroom"].to_list()
+min_headrooms = df_with_min["min_headroom"].to_list()
+print(f"\nPeak headroom — median: {stats.median(peak_headrooms):.1%}")
+print(f"Min headroom — median: {stats.median(min_headrooms):.1%}")
+print(f"Min headroom > 50%: {len([h for h in min_headrooms if h > 0.50]) / len(min_headrooms):.0%}")
+```
+
+### Feeder headroom rank curve
+
+We rank every feeder from most to least utilized and plot peak demand as a
+percentage of capacity. This shows how much spare capacity (headroom) exists
+across the system — the gap between each dot and the 100% line.
+
+```{python}
+df_peak_ranked = (
+    df_with_peak.sort("peak_utilization", descending=True)
+    .with_row_index("rank", offset=1)
+    .with_columns(pl.col("rank").cast(pl.Int32))
+)
+
+df_over_100 = df_peak_ranked.filter(pl.col("peak_utilization") > 1.0)
+n_over = df_over_100.height
+pct_over = n_over / n_with_peak
+```
+
+```{python}
+#| label: fig-feeder-headroom-rank
+#| fig-cap: "Peak demand as a percentage of rated capacity for every feeder on Eversource CT's distribution system, ranked from most to least utilized. The gray line marks 100% of rated capacity. Source: Eversource response to System Data Requirement No. 2."
+
+DARK_GREEN = "#2d6a2e"
+
+_p = (
+    ggplot(df_peak_ranked, aes("rank", "peak_utilization"))
+    + geom_point(color=SB_COLORS["carrot"], size=1.2)
+    + geom_point(
+        df_over_100,
+        aes("rank", "peak_utilization"),
+        color=DARK_GREEN,
+        size=1.8,
+        inherit_aes=False,
+    )
+    + geom_hline(yintercept=1.0, linetype="solid", color="#999999", size=0.5)
+    + scale_x_continuous(expand=(0.02, 0))
+    + scale_y_continuous(
+        breaks=[0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6],
+        labels=lambda l: [f"{v:.0%}" for v in l],
+    )
+    + labs(
+        x="Feeders (ranked by peak load as % of capacity)",
+        y="Peak load (% of rated capacity)",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 6.5), legend_position="none")
+)
+
+_fig = _p.draw()
+_ax = _fig.axes[0]
+
+_ax.set_title("")
+x = 0.0
+for text, color in [
+    ("Eversource's feeders have ", "black"),
+    ("massive headroom", SB_COLORS["carrot"]),
+    (f" — only {pct_over:.0%} exceed capacity at peak", "black"),
+]:
+    t = _ax.text(
+        x,
+        1.07,
+        text,
+        color=color,
+        fontfamily="GT Planar",
+        fontweight="bold",
+        fontsize=15,
+        transform=_ax.transAxes,
+        va="bottom",
+    )
+    _fig.canvas.draw()
+    bb = t.get_window_extent(renderer=_fig.canvas.get_renderer())
+    x += bb.transformed(_ax.transAxes.inverted()).width
+
+if df_over_100.height > 0:
+    _over_max_rank = df_over_100["rank"].max()
+    _over_mid_util = df_over_100["peak_utilization"].median()
+    _ax.annotate(
+        f"{pct_over:.1%} exceed rated capacity",
+        xy=(_over_max_rank + 15, _over_mid_util + 0.02),
+        ha="left",
+        va="center",
+        fontsize=9,
+        color=DARK_GREEN,
+        fontweight="bold",
+    )
+
+median_util = stats.median(peak_utils)
+median_rank = n_with_peak // 2
+_ax.annotate(
+    f"Median utilization: {median_util:.0%}",
+    xy=(median_rank, median_util - 0.04),
+    ha="center",
+    va="top",
+    fontsize=9,
+    color="#333333",
+    fontweight="bold",
+)
+
+display_figure(_fig)
+```
+
+### Report variables
+
+```{python}
+feeder_vars = {
+    "n_feeders": n_with_peak,
+    "n_feeders_total": n_total,
+    "n_feeders_over_100": n_over_100,
+    "n_feeders_over_95": n_over_95,
+    "pct_feeders_over_100": pct_over,
+    "pct_feeders_over_95": n_over_95 / n_with_peak,
+    "median_peak_utilization": stats.median(peak_utils),
+    "median_peak_headroom": stats.median(peak_headrooms),
+    "median_min_headroom": stats.median(min_headrooms),
+    "pct_feeders_below_50_at_peak": n_below_50_peak / n_with_peak,
+    "pct_min_headroom_gt_50": len([h for h in min_headrooms if h > 0.50]) / len(min_headrooms),
+    "total_capacity_mva": total_capacity_kva / 1000,
+    "total_peak_mva": total_peak_kva / 1000,
+    "system_wide_peak_utilization": total_peak_kva / total_capacity_kva,
+    "n_customers_total": df_feeders["customers"].sum(),
+    "n_customers_on_over_100": int(
+        df_with_peak.filter(pl.col("peak_utilization") > 1.0)["customers"].sum()
+    ),
+    "pct_customers_on_over_100": int(
+        df_with_peak.filter(pl.col("peak_utilization") > 1.0)["customers"].sum()
+    )
+    / df_feeders["customers"].sum(),
+}
+
+Path("../cache/feeder_headroom_vars.pkl").write_bytes(pickle.dumps(feeder_vars))
+print(f"Exported {len(feeder_vars)} feeder headroom variables")
+feeder_vars
+```

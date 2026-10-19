@@ -1,0 +1,296 @@
+---
+title: "Incremental fair-default fixed charge"
+jupyter: python3
+execute:
+  warning: false
+  message: false
+---
+
+This notebook asks what CL&P's default residential rate (Rate 1) would look
+like if the heat-pump retrofit overpayment were corrected by shifting revenue
+recovery from volumetric charges to the monthly fixed charge.
+
+The analysis uses the weighted-average fossil-fuel customer load profiles
+already computed by `representative_home.qmd`. It compares:
+
+- **Before:** the average fossil-fuel-heated residential customer (pre-retrofit)
+- **After:** the same customer after switching to a heat pump (post-retrofit)
+
+The targeted volumetric charges are **distribution + transmission** — every
+volumetric delivery charge in CL&P's filed Rate 1, including the core delivery
+rate and all riders (ESI, RDM, CTA, FMCC, CAM, clean energy fund, SBC). These
+are the same charges that `representative_home.qmd` groups into its
+"Distribution" and "Transmission" components. Generation charges are unchanged.
+
+The notebook solves for the uniform scaling factor λ\* that makes the increase
+in targeted volumetric charges equal the increase in T&D marginal cost, then
+computes the fixed charge F\* needed to keep class-level revenue neutral.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+import pickle
+from pathlib import Path
+from types import SimpleNamespace
+
+import polars as pl
+import yaml
+
+from lib.rates_analysis.fair_default import fair_default_incremental_fixed_charge
+from lib.rdp import fetch_rdp_file
+
+report_vars: dict = {}
+```
+
+## Parameters
+
+```{python}
+#| label: params
+
+_batch_config = yaml.safe_load(Path("../batch_config.yaml").read_text())
+
+STATE = _batch_config["STATE"]
+BATCH = _batch_config["BATCH"]
+RDP_REF = _batch_config["RDP_REF"]
+DEFAULT_RATE_YAML = _batch_config["DEFAULT_RATE_YAML"]
+
+POPULATION = "all_fossil"
+```
+
+Class-level billing determinants from Exhibit CLP-RATES-2 (Rate Year,
+Proposed+GET). These are the only jurisdiction-specific constants in this
+notebook.
+
+- **Average # Bills Rendered**: 1,076,695.40 per month (Rate Year)
+- **Billing Months (annual bills)**: 12,920,344.76
+- **Billed Sales**: 8,716,958.14 MWh
+
+Source: `context/sources/ct_hp_rates/exhibit_clp_rates_2_residential.md`,
+Rate Year build (tab 3, Page 3 of 75).
+
+```{python}
+#| label: class-params
+
+CLASS_ANNUAL_BILLS = 12_920_344.76
+CLASS_BILLED_MWH = 8_716_958.14
+CLASS_CUSTOMERS = CLASS_ANNUAL_BILLS / 12
+
+BASE_FIXED_CHARGE = 12.36
+
+print(f"Class customers (annual avg): {CLASS_CUSTOMERS:,.0f}")
+print(f"Class billed sales: {CLASS_BILLED_MWH:,.0f} MWh")
+print(f"Base fixed charge: ${BASE_FIXED_CHARGE:.2f}/month")
+```
+
+## Load representative-home report variables
+
+The `representative_home.qmd` notebook computes the weighted-average monthly
+load profiles, filed-rate bill components, and hourly marginal costs for each
+fossil-fuel population. We read its cached report variables to get the
+per-customer incremental charges and marginal costs.
+
+```{python}
+#| label: load-rep-home
+
+_rep_home_path = Path("../cache/representative_home_vars.pkl")
+assert _rep_home_path.exists(), (
+    f"Missing {_rep_home_path} — run representative_home.qmd first"
+)
+r = SimpleNamespace(**pickle.loads(_rep_home_path.read_bytes()))
+
+retrofit_incremental_distribution = getattr(
+    r, f"{POPULATION}_annual_distribution_delta"
+)
+retrofit_incremental_transmission = getattr(
+    r, f"{POPULATION}_annual_transmission_delta"
+)
+retrofit_incremental_variable_charge = (
+    retrofit_incremental_distribution + retrofit_incremental_transmission
+)
+
+retrofit_mc_before = getattr(r, f"{POPULATION}_annual_mc_delivery_before")
+retrofit_mc_after = getattr(r, f"{POPULATION}_annual_mc_delivery_after")
+retrofit_incremental_marginal_cost = retrofit_mc_after - retrofit_mc_before
+
+retrofit_overpayment = (
+    retrofit_incremental_variable_charge - retrofit_incremental_marginal_cost
+)
+
+print(f"Population: {POPULATION}")
+print(f"Incremental distribution charges: ${retrofit_incremental_distribution:,.2f}")
+print(f"Incremental transmission charges: ${retrofit_incremental_transmission:,.2f}")
+print(f"Incremental targeted volumetric charges: ${retrofit_incremental_variable_charge:,.2f}")
+print(f"Incremental T&D marginal cost: ${retrofit_incremental_marginal_cost:,.2f}")
+print(f"Retrofit overpayment: ${retrofit_overpayment:,.2f}")
+```
+
+## Compute class-level targeted revenue
+
+We load the same filed rate YAML that `representative_home.qmd` uses and
+compute the annual revenue the targeted volumetric charges (distribution +
+transmission) collect from the entire residential class.
+
+Rather than hard-coding revenue figures from the exhibit, we apply the filed
+per-kWh rates to the class billed MWh. Because the filed rates are constant
+across months for most charges, we use a flat monthly kWh allocation (class
+MWh / 12) as the billing basis. This is an approximation — actual monthly
+sales vary seasonally — but any error is small because the total annual kWh
+is exact and the relevant rates are not seasonally differentiated in the
+exhibit.
+
+```{python}
+#| label: compute-class-revenue
+
+_rates_raw = fetch_rdp_file(DEFAULT_RATE_YAML, ref=RDP_REF)
+_rates_yaml = yaml.safe_load(_rates_raw)
+
+_drr = _rates_yaml["add_to_drr"]["charges"]
+_already = _rates_yaml["already_in_drr"]["charges"]
+
+
+def _sum_monthly_rates(*charge_dicts: dict) -> dict[str, float]:
+    """Sum monthly_rates across multiple charge dicts, key by key."""
+    result: dict[str, float] = {}
+    for d in charge_dicts:
+        for k, v in d["monthly_rates"].items():
+            result[k] = result.get(k, 0.0) + v
+    return result
+
+
+_dist_sub_charges = {
+    "core_delivery_rate": _already["core_delivery_rate"],
+    "electric_system_improvements_esi": _drr["electric_system_improvements_esi"],
+    "revenue_decoupling_mechanism_rdm": _drr["revenue_decoupling_mechanism_rdm"],
+    "competitive_transition_assessment_cta": _drr["competitive_transition_assessment_cta"],
+    "non_bypassable_fmcc_delivery": _drr["non_bypassable_fmcc_delivery"],
+    "conservation_adjustment_mechanism_cam": _drr["conservation_adjustment_mechanism_cam"],
+    "renewable_energy_investment_clean_energy_fund": _drr["renewable_energy_investment_clean_energy_fund"],
+    "system_benefits_charge_sbc": _drr["system_benefits_charge_sbc"],
+}
+
+distribution_monthly_rates = _sum_monthly_rates(*_dist_sub_charges.values())
+transmission_monthly_rates = _drr["transmission_charge"]["monthly_rates"]
+
+class_monthly_kwh = CLASS_BILLED_MWH * 1000 / 12
+
+class_distribution_revenue = sum(
+    rate * class_monthly_kwh for rate in distribution_monthly_rates.values()
+)
+class_transmission_revenue = sum(
+    rate * class_monthly_kwh for rate in transmission_monthly_rates.values()
+)
+class_variable_revenue = class_distribution_revenue + class_transmission_revenue
+class_variable_revenue_per_customer = class_variable_revenue / CLASS_CUSTOMERS
+
+print(f"Class distribution revenue: ${class_distribution_revenue:,.0f}")
+print(f"Class transmission revenue: ${class_transmission_revenue:,.0f}")
+print(f"Class targeted volumetric revenue: ${class_variable_revenue:,.0f}")
+print(f"Per customer: ${class_variable_revenue_per_customer:,.0f}/year")
+```
+
+## Solve for the fixed charge
+
+The fixed charge cancels from the before-and-after bill difference (the same
+rate applies pre- and post-retrofit), so the volumetric multiplier λ\* is
+determined directly:
+
+$$
+\lambda^{*} = \frac{\Delta MC_{\text{T\&D}}}{\Delta V_{\text{targeted}}}
+$$
+
+The fixed charge then rises enough to replace the class-wide revenue removed
+by that multiplier:
+
+$$
+F^{*} = F_0 + \frac{(1 - \lambda^{*}) \, V_{\text{class}}}{12 \, N_{\text{class}}}
+$$
+
+```{python}
+#| label: solve
+
+result = fair_default_incremental_fixed_charge(
+    class_variable_revenue=class_variable_revenue,
+    class_customers=CLASS_CUSTOMERS,
+    retrofit_incremental_variable_charge=retrofit_incremental_variable_charge,
+    retrofit_incremental_marginal_cost=retrofit_incremental_marginal_cost,
+    base_fixed_charge=BASE_FIXED_CHARGE,
+)
+
+print(f"λ* = {result.implied_lambda:.4f}")
+print(f"Volumetric rate reduction = {1 - result.implied_lambda:.1%}")
+print(f"F* = ${result.fixed_charge:.2f}/month")
+print(f"ΔF = ${result.delta:+.2f}/month")
+print(f"Feasible = {result.feasible}")
+```
+
+## Sanity checks
+
+The redesigned tariff must satisfy both conditions: (1) the difference in
+targeted volumetric charges between pre- and post-retrofit equals the
+difference in T&D marginal cost, and (2) total residential-class revenue
+is unchanged.
+
+```{python}
+#| label: sanity-checks
+
+redesigned_retrofit_increment = (
+    result.implied_lambda * retrofit_incremental_variable_charge
+)
+assert abs(
+    redesigned_retrofit_increment - retrofit_incremental_marginal_cost
+) < 1e-6, (
+    f"Cost reflectivity failed: λ*·ΔV = {redesigned_retrofit_increment:.2f} "
+    f"≠ ΔMC = {retrofit_incremental_marginal_cost:.2f}"
+)
+
+baseline_class_revenue = (
+    12 * BASE_FIXED_CHARGE * CLASS_CUSTOMERS + class_variable_revenue
+)
+redesigned_class_revenue = (
+    12 * result.fixed_charge * CLASS_CUSTOMERS
+    + result.implied_lambda * class_variable_revenue
+)
+assert abs(redesigned_class_revenue - baseline_class_revenue) < 1e-3, (
+    f"Revenue neutrality failed: baseline={baseline_class_revenue:,.2f} "
+    f"≠ redesigned={redesigned_class_revenue:,.2f}"
+)
+
+print("✓ Cost reflectivity: retrofit increment matches marginal cost")
+print("✓ Revenue neutrality: class revenue unchanged")
+```
+
+## Export report variables
+
+```{python}
+#| label: export
+
+report_vars.update(
+    {
+        "original_fixed_charge": BASE_FIXED_CHARGE,
+        "fixed_charge": result.fixed_charge,
+        "fixed_charge_delta": result.delta,
+        "implied_lambda": result.implied_lambda,
+        "volumetric_rate_reduction": 1 - result.implied_lambda,
+        "retrofit_incremental_distribution": retrofit_incremental_distribution,
+        "retrofit_incremental_transmission": retrofit_incremental_transmission,
+        "retrofit_incremental_variable_charge": retrofit_incremental_variable_charge,
+        "retrofit_incremental_marginal_cost": retrofit_incremental_marginal_cost,
+        "retrofit_overpayment": retrofit_overpayment,
+        "class_variable_revenue": class_variable_revenue,
+        "class_variable_revenue_per_customer": class_variable_revenue_per_customer,
+        "class_customers": CLASS_CUSTOMERS,
+        "class_revenue_shift": result.class_revenue_shift,
+        "feasible": result.feasible,
+    }
+)
+
+cache_dir = Path("../cache")
+cache_dir.mkdir(exist_ok=True)
+cache_path = cache_dir / "incremental_fair_default_report_variables.pkl"
+cache_path.write_bytes(pickle.dumps(report_vars))
+print(f"Exported {len(report_vars)} variables to {cache_path}")
+```

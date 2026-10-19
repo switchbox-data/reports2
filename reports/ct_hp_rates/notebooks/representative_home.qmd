@@ -66,9 +66,11 @@ from plotnine import (
 from lib.rates_analysis.rate_case_funcs import (
     MONTH_ORDER,
     building_delivery_mc_8760,
+    extract_tariff_rates,
     load_billing_kwh_8760,
     load_delivery_mc_heatmap,
     load_master_bills,
+    load_tariff_json,
     monthly_bill_from_profile,
     monthly_load_y_max,
     plot_annual_bill_component_single,
@@ -125,6 +127,9 @@ USE_UTILITY_ACTUALS = False
 SCALE_HEATING_BY_RS_RELEASE_COMP = False
 
 RATE_DESIGN: str = "seasonal"  # "flat", "seasonal"; future: "tiered"
+# CAIRO's ICOS fair seasonal tariff (derived in rate-design-platform from the same
+# population and formula). Used to cross-check the representative-home winter rate.
+FAIR_SEASONAL_TARIFF = f"{ELECTRIC_UTILITY}_icos_fair_seasonal"
 
 INCLUDE_FIXED_CHARGE = True
 OVERPAYMENT_COL = "overpayment_volumetric_fc" if INCLUDE_FIXED_CHARGE else "overpayment_volumetric"
@@ -2076,6 +2081,21 @@ def _compute_fair_rates_seasonal() -> None:
         f"TX identity check failed: {_check_tx:.2f} != {_fair_tx_after:.2f}"
     )
 
+    # Cross-check against the CAIRO ICOS tariff used in overpayment.qmd / analysis.qmd.
+    # That tariff solves the same winter-rate equation on the combined delivery rate
+    # (dist + riders + tx) over the same fossil-fuel population, so dist + tx here must
+    # equal its winter rate. A mismatch means the testimony's Rate HP table and the
+    # Rate HP overpayment distribution describe different rates.
+    _icos_rates = extract_tariff_rates(load_tariff_json(STATE, ELECTRIC_UTILITY, FAIR_SEASONAL_TARIFF, RDP_REF))
+    _icos_winter_rate = min(_icos_rates["period_rates"].values())
+    _rep_home_winter_rate = _winter_rate_dist + _winter_rate_tx
+    assert abs(_rep_home_winter_rate - _icos_winter_rate) < 1e-5, (
+        f"Representative-home winter delivery rate {_rep_home_winter_rate:.6f} $/kWh "
+        f"(dist {_winter_rate_dist:.6f} + tx {_winter_rate_tx:.6f}) does not match the "
+        f"CAIRO ICOS tariff winter rate {_icos_winter_rate:.6f} $/kWh in {FAIR_SEASONAL_TARIFF} @ {RDP_REF}"
+    )
+    report_vars["fair_hp_icos_winter_rate"] = _icos_winter_rate
+
     report_vars["fair_hp_winter_rate_dist"] = _winter_rate_dist
     report_vars["fair_hp_winter_rate_tx"] = _winter_rate_tx
     report_vars["fair_hp_summer_bill_dist"] = _summer_bill_dist
@@ -2096,6 +2116,10 @@ def _compute_fair_rates_seasonal() -> None:
     print(f"\n  Dist overpayment: ${_overpayment_dist:,.0f}  (spread over {_winter_kwh:,.0f} winter kWh)")
     print(f"  TX overpayment:   ${_overpayment_tx:,.0f}")
     print(f"  Summer dist+tx bill (unchanged): ${_summer_bill_dist + _summer_bill_tx:,.0f}")
+    print(
+        f"\n  Cross-check: dist+tx winter rate {_rep_home_winter_rate*100:.4f}¢ "
+        f"== CAIRO ICOS tariff winter rate {_icos_winter_rate*100:.4f}¢ ✓"
+    )
 
 
 def _fair_delivery_bill(pop_label: str) -> float:

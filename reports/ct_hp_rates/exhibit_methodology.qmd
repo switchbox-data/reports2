@@ -1,0 +1,523 @@
+---
+title: "Exhibit JPV-2: Data Sources and Methodology"
+subtitle: "Direct Testimony of Juan-Pablo Velez on Behalf of Conservation Law Foundation and Sierra Club — PURA Docket 26-01-03"
+date: today
+exhibit: "Exhibit JPV-2"
+author:
+  - name: Juan-Pablo Velez
+    email: jpv@switch.box
+    affiliations:
+      - Switchbox
+toc: false
+notebook-links: false
+bibliography: ../references.bib
+execute:
+  echo: false
+format:
+  html:
+    page-layout: article
+    smooth-scroll: true
+    theme:
+      - ../.style/switchbox.scss
+---
+
+```{python}
+#| echo: false
+
+import pickle
+from pathlib import Path
+from types import SimpleNamespace
+
+class _Placeholder:
+    """Numeric-like sentinel for not-yet-computed report vars.
+
+    Supports arithmetic, formatting, and comparison so that ``dollar(b.some_var)``
+    or ``f"{b.x:,.0f}"`` renders as ``(TBD)`` instead of crashing.
+    """
+
+    def __format__(self, _spec: str) -> str:
+        return "(TBD)"
+
+    def __str__(self) -> str:
+        return "(TBD)"
+
+    def __repr__(self) -> str:
+        return "(TBD)"
+
+    # Arithmetic — return self so chained ops stay placeholders
+    def __add__(self, _o):
+        return self
+
+    def __radd__(self, _o):
+        return self
+
+    def __sub__(self, _o):
+        return self
+
+    def __rsub__(self, _o):
+        return self
+
+    def __mul__(self, _o):
+        return self
+
+    def __rmul__(self, _o):
+        return self
+
+    def __truediv__(self, _o):
+        return self
+
+    def __rtruediv__(self, _o):
+        return self
+
+    def __neg__(self):
+        return self
+
+    def __abs__(self):
+        return self
+
+    def __float__(self):
+        return 0.0
+
+    def __int__(self):
+        return 0
+
+    # Comparison (for conditionals)
+    def __lt__(self, _o):
+        return False
+
+    def __le__(self, _o):
+        return False
+
+    def __gt__(self, _o):
+        return False
+
+    def __ge__(self, _o):
+        return False
+
+
+class _FallbackNS:
+    """Wraps a SimpleNamespace (or None) and returns _Placeholder() for
+    any attribute that doesn't exist yet, so partially-built testimony can
+    render with (TBD) placeholders instead of crashing."""
+
+    def __init__(self, ns):
+        object.__setattr__(self, "_ns", ns)
+
+    def __getattr__(self, name: str):
+        ns = object.__getattribute__(self, "_ns")
+        if ns is not None and hasattr(ns, name):
+            return getattr(ns, name)
+        return _Placeholder()
+
+
+def _load_ns(path: str):
+    p = Path(path)
+    if p.exists():
+        return SimpleNamespace(**pickle.loads(p.read_bytes()))
+    return None
+
+
+r = _FallbackNS(_load_ns("cache/representative_home_vars.pkl"))
+mc = _FallbackNS(_load_ns("cache/marginal_costs_vars.pkl"))
+a = _FallbackNS(_load_ns("cache/report_variables.pkl"))
+op = _FallbackNS(_load_ns("cache/overpayment_report_variables.pkl"))
+fc = _FallbackNS(_load_ns("cache/incremental_fair_default_report_variables.pkl"))
+
+
+def dollar(x, accuracy=0):
+    return f"${x:,.{accuracy}f}"
+
+
+def pct(x, accuracy=0):
+    return f"{x * 100:,.{accuracy}f}%"
+```
+
+This exhibit describes the data sources and methodology behind the analysis presented in my Direct Testimony. It covers six topics:
+
+1. The data sources I relied on.
+2. How I constructed the representative home's before-and-after electricity consumption profiles.
+3. How I computed the hourly marginal costs of bulk transmission and distribution.
+4. How I defined and computed the incremental cost, incremental revenue, fair annual bill, and overpayment of heat pump adoption.
+5. How I derived the proposed Rate HP rates.
+6. How I computed the fixed-charge alternative discussed in Section IX of my Direct Testimony.
+
+## 1. Data sources
+
+<br>
+
+**Q.** What data sources did you rely on for the analysis in your Direct Testimony?
+
+**A.** My analysis draws on five categories of data:
+
+1. **Company data.** Hourly and monthly residential electricity consumption provided by CL&P in discovery, which I used to construct the representative-home load profiles, bill calculations, and cost-of-service comparisons for a typical fossil-fuel-heated customer before and after installing a heat pump.
+2. **Filed electric rates.** CL&P's currently filed Rate 1, Schedule RD, and Rider 1 Standard Offer Service tariffs, which I applied to the consumption data to compute electricity bills under each rate structure.
+3. **Hourly transmission and distribution cost inputs.** The annualized cost of new bulk transmission and distribution capacity, allocated to specific hours of the year using a probability-of-peak methodology, which I used to identify when customer consumption drives new infrastructure investment.
+4. **NREL ResStock building simulations.** A statistically representative sample of residential buildings in CL&P's service territory, modeled under both current heating systems and a heat pump retrofit. I applied two load curve corrections before billing (see load curve adjustments below), then computed electricity bills from each building's hourly load profile using CAIRO (described below), and used the results for the population-level bill-change analysis.
+5. **Fossil fuel prices.** CL&P's gas Schedule D tariff and the U.S. Energy Information Administration's monthly residential heating oil and propane prices, which I used to compute the non-electric portions of households' total energy bills.
+
+<br>
+
+**Q.** What Company data did you use, and which figures did it produce?
+
+**A.** CL&P provided residential electricity consumption data in two discovery responses, broken down by electric-heating and non-electric-heating customers. I used the non-electric-heating consumption as the "before" profile (representing a typical fossil-fuel-heated home) and the electric-heating consumption as the "after" profile (representing a home after installing a heat pump). Section 2 of this exhibit describes how I constructed these profiles and the approximations involved.
+
+I relied on two Company data sources:
+
+- **Hourly consumption.** CCANDR 1-11, Attachment 1, which provides hourly metered kWh for calendar year 2024.[^ccandr111] I used this data to determine the hourly pattern of residential consumption — specifically, to identify how much of each month's consumption falls during the peak hours that drive new transmission and distribution costs.
+- **Monthly consumption.** CCANDR 1-04, Attachment 1, which contains monthly kWh sales for the test year April 2025 through March 2026, broken down by heating and non-heating customers for Schedules R and RL.[^ccandr104] I used these monthly totals for the bill calculations and monthly load profile charts throughout my Direct Testimony.
+
+[^ccandr104]: CCANDR01-04 requested residential customer counts, total electricity consumption, and total electric delivery revenue by heating source for the test year. The Company provided this data for its heating and non-heating subclass designations for Schedules R and RL.
+
+[^ccandr111]: The Company was unable to provide hourly interval data for 2025 or 2026, stating that "study-quality load data requires multiple processing and validation steps" that "are performed exclusively for the development of cost of service studies," with "2024 being the most recent calendar year for which these processes were performed." The Company directed us to CCANDR01-11 Attachment 1, which provides the hourly data for calendar year 2024.
+
+This Company data is the consumption basis for the representative-home analysis in Sections III through VIII of my Direct Testimony. The monthly sales from CCANDR 1-04 produce the bar heights in the monthly load profile charts, the bill calculations in the annual bill component breakdowns, and the cost-versus-charge comparison in Section III. The hourly data from CCANDR 1-11 produces the peak-hour overlays in the monthly load profile charts, and underlies the seasonal marginal cost charts in Section III.
+
+Because the Company did not provide hourly metered data for the test year, my analysis draws on two consumption bases from the Company data. The monthly sales (test year, April 2025 through March 2026) are the basis for bill calculations, in which monthly kWh is multiplied by the Company's filed volumetric rates. The hourly metered data (calendar year 2024) is the basis for identifying peak hours and computing household level marginal transmission and distribution costs, which require hourly resolution.
+
+<br>
+
+**Q.** What rate data did you use?
+
+**A.** All rate inputs to my analysis are from CL&P's currently filed tariffs.
+
+For **Rate 1**, I used the component rates (customer charge, distribution, transmission, generation, and environmental surcharge) as published for the rate year April 2025 through March 2026, retrieved from the Arcadia (formerly Genability) tariff database.[^genability]
+
+[^genability]: Arcadia Signal API, CL&P Rate 1 (masterTariffId 674). Arcadia maintains a continuously updated database of U.S. electric utility tariffs sourced from utility filings.
+
+For **Rate 6**, I used the distribution rates filed by the Company in Exhibit CLP-RATES-6 — a flat delivery rate of `$TK`/kWh for the first block and `$TK`/kWh for incremental consumption above the threshold.[^sched-r6-tariff]
+
+[^sched-r6-tariff]: Exhibit CLP-RATES-6, Docket No. 26-05-10.
+
+For the **supply component** of Rate 6 bills, I used the same generation and transmission rates as Rate 1, consistent with the Company's filing.
+<br>
+
+**Q.** What data did you use for the hourly transmission and distribution costs?
+
+**A.** I constructed hourly marginal delivery costs from two inputs:
+
+For **distribution**, I used the month-hour marginal costs the Company filed in response to OCC-863, Attachment 2 [@Eversource_response_OCC_863]. Those costs take Table 3's `{python} f"${mc.table3_mc_kw_yr:,.2f}"`/kW-year, gross it up for secondary losses to `{python} f"${mc.target_mc_kw_yr:,.2f}"`/kW-year, and assign that annual amount to each month, hour, and day type. I placed that schedule on the `{python} mc.calendar_year` calendar and scaled it so the year totals `{python} f"${mc.target_mc_kw_yr:,.2f}"`/kW-year. The steps are in Section 3 of this exhibit.
+
+For **bulk transmission**, I used the avoided Pool Transmission Facility cost of $69/kW-year, in 2024 dollars, from the 2024 Avoided Energy Supply Components study [@synapse_AvoidedEnergySupply_2024]. I inflated it to 2026 dollars [@fred_ConsumerPriceIndexAll_2025] and spread it with the probability-of-peak method described in the Company's response to OCC-733 [@eversource_OCC733_response], fit on New England system load for 2022 through 2025 [@isone_ISONEWebServices_2025a]. The steps are in Section 3 of this exhibit.
+
+
+The resulting hourly cost profiles are shown in the bulk transmission and distribution marginal cost heatmaps in Section III of my Direct Testimony. These hourly costs also underlie the peak-hour overlays, seasonal marginal cost charts, and cost-versus-charge comparison in Section III.
+
+<br>
+
+**Q.** What is ResStock, and which figures did it produce?
+
+**A.** ResStock is the End-Use Load Profiles dataset produced by the National Renewable Energy Laboratory (NREL), the U.S. Department of Energy's primary laboratory for energy efficiency and renewable energy research [@nrel_EndUseLoadProfiles_2024; @nrel_ResStock20242Release_2024]. I used the 2024.2 release of the dataset.
+
+ResStock models a statistically representative sample of the U.S. housing stock. Each modeled dwelling has physical characteristics — square footage, insulation levels, HVAC equipment, and local climate — drawn from federal survey data. Its energy consumption is simulated hour-by-hour using the DOE's EnergyPlus building energy simulation engine. For each home, ResStock provides a baseline scenario (with the home's existing heating system) and a heat pump retrofit scenario (in which the home is equipped with a cold-climate air-source heat pump), each with a complete 8,760-hour energy consumption profile covering electricity, natural gas, heating oil, and propane.
+
+Before running the bill analysis, I applied two corrections to ResStock's simulated load curves.
+
+First, a **multifamily non-HVAC electricity correction.** ResStock systematically overstates electricity consumption for multifamily buildings, driven by inflated non-HVAC end uses (plug loads, lighting, appliances). The overstatement grows with a utility's share of multifamily housing. I corrected this by scaling each multifamily building's non-HVAC electricity consumption to match the single-family per-square-foot benchmark for each end use. HVAC loads were left unchanged.
+
+Second, a **natural gas calibration.** I scaled every building's hourly natural gas consumption by a single statewide factor, applied the same way to the baseline and the heat pump retrofit, so that ResStock's weighted total matches the U.S. Energy Information Administration's reported residential natural gas deliveries for Connecticut [@eia_EIA176NaturalGasDeliveries_2018].
+
+I used ResStock for the population-level bill-change analysis, in which I computed total energy bills for each of the `{python} f"{a.n_resstock_bldgs:,}"` CL&P-territory buildings, under both their baseline heating system and a heat pump retrofit, and reported the share of households whose bills would increase or decrease. These results appear in the bill-change charts for natural-gas-heated and delivered-fuel-heated homes in Sections IV and VII of my Direct Testimony. I used CAIRO — the Customer Affordability, Incentives, and Rates Optimization model, a rate simulation engine developed by the National Laboratory of the Rockies (formerly NREL)[^cite-cairo] — to compute each building's electricity bills. CAIRO takes a building's hourly electricity load profile and a tariff structure as inputs, and computes the resulting bill, including fixed charges, volumetric charges, and demand charges where applicable.
+
+[^cite-cairo]: [@nrel_CustomerAffordabilityIncentives_2026].
+
+For the annual energy bill charts for natural-gas-heated and delivered-fuel-heated homes in Sections IV and VII of my Direct Testimony, both the electric and fossil fuel portions derive from ResStock consumption data, with bills computed by CAIRO. The representative-home analysis in Section III of my Direct Testimony uses the Company data described above.
+
+<br>
+
+**Q.** What fossil fuel price data did you use?
+
+**A.** For natural gas, I applied the rates from CL&P's gas Schedule D tariff to each household's monthly gas consumption from ResStock. For heating oil and propane, I used the U.S. Energy Information Administration's monthly residential price series [@eia_HeatingOilPropanePrices_2024]. These fuel prices appear in every figure in my Direct Testimony that shows total energy bills: the natural gas, heating oil, and propane components of the annual energy bill charts, and the population bill-change charts.
+
+## 2. Representative home profiles
+
+<br>
+
+**Q.** How did you construct the before-and-after electricity consumption profiles used in Section III of your Direct Testimony?
+
+**A.** I used CL&P's residential electricity consumption data, provided in discovery, which contains hourly and monthly kWh broken down by electric-heating and non-electric-heating customers.
+
+For the **"before" profile** — representing a typical home that heats with fossil fuels — I computed a representative home by averaging the electricity consumption of CL&P's non-electric-heating residential customers (Schedules R and RL, excluding the electric-heating subpopulation). This population includes all residential customers whose primary heating system is natural gas, oil, propane, or another non-electric fuel.
+
+For the **"after" profile** — representing a typical home after installing a heat pump — I computed a representative home by averaging the electricity consumption of CL&P's electric-heating residential customers (Schedules RH and RLH).
+
+These profiles are averages across two different customer populations, not measurements of the same homes tracked before and after a retrofit. I am comparing the typical electricity consumption pattern of fossil-fuel-heated customers to the typical electricity consumption pattern of electrically heated customers. This is a proxy for the change in load associated with electrifying a home's heating system, not a perfectly isolated measurement of the effect of heat pump adoption on a single home.
+
+I used heating versus non-heating subclass data because that is the finest granularity the Company could provide. CL&P's residential subclass designations distinguish only "heating" from "non-heating" loads — they do not identify which customers have heat pumps.[^ccandr-heating-only] The Company confirmed in discovery that it "does not track customers by known heat source" and has not performed any analysis of heat pump customer costs or load profiles.[^ccandr-no-hp-tracking] The electric-heating subclass (Schedules RH and RLH) therefore includes both heat pump and electric resistance customers. This means the "after" profile reflects a mix of heating technologies, not heat pumps alone.
+
+[^ccandr-heating-only]: CCANDR01-01: "These designations are only at the heating/non-heating level and do not indicate if a customer has a heat pump or indicate a heat pump type."
+
+[^ccandr-no-hp-tracking]: CCANDR01-03, CCANDR01-08, CCANDR01-09 (CL&P "does not track customers by known heat source"); CCANDR01-01, CCANDR01-05, CCANDR01-07 (CL&P has not analyzed heat pump customer costs or load profiles).
+
+For the monthly consumption totals that drive the bill calculations and monthly load profile charts, I used CL&P's monthly residential customer counts and kilowatt-hour sales for the test year April 2025 through March 2026. For the hourly consumption patterns, I used CL&P's hourly residential kilowatt-hour data for calendar year 2024 (from CCANDR 1-11, Attachment 1), which was the most recent year for which the Company could provide study-quality hourly data.
+
+## 3. Hourly marginal delivery costs
+
+<br>
+
+**Q.** Can you walk through how you computed the hourly bulk transmission marginal costs shown in Section III of your Direct Testimony?
+
+**A.** Yes. The annual cost is a regional avoided-cost figure for New England. The hourly shape comes from the probability-of-peak method the Company's witness Amparo Nieto described in the response to OCC-733, which underlies the Company's distribution marginal costs in OCC-863 Attachment 2 [@eversource_OCC733_response; @Eversource_response_OCC_863]. I applied that method to New England system load, then placed the resulting rates on the analysis year's calendar the same way I placed the distribution schedule. The calculation has three steps.
+
+**Step 1: Annual bulk transmission cost.** Pool Transmission Facility cost is the cost of the regional transmission network that ISO New England plans and that every load-serving entity in New England pays for through Regional Network Service [@isone_OATT_section2, sec. II.21.1]. The Avoided Energy Supply Components study for 2024 estimates the long-run cost of that network, avoided when peak demand falls by one kilowatt, at $69/kW-year in 2024 dollars. The same figure applies in all six New England states, because the network is pooled [@synapse_AvoidedEnergySupply_2024].
+
+I inflated $69/kW-year from 2024 dollars to 2026 dollars [@fred_ConsumerPriceIndexAll_2025]. 2026 is the dollar year of the Company's marginal cost study, so the transmission and distribution schedules are in the same dollars [@eversource_Docket260510Exhibit_2026a].
+**Step 2: Probability of peak, following OCC-733.** OCC-733 describes how the Company turned four years of hourly load into a probability that the peak falls in each month, hour, and day type [@eversource_OCC733_response]. I followed those steps, using ISO New England's historical system load for 2022 through 2025, summed across the eight load zones [@isone_ISONEWebServices_2025a]. These are the same four years the Company used for its own probability of peak. I used regional load because that is the load the AESC cost is measured against. AESC derives the $69/kW-year from ISO New England's estimate of the transmission investment needed to serve New England's peak load growth, and it directs that the value be applied to a measure's impact on the regional annual system peak, because the Pool Transmission Facilities are built to meet that peak [@synapse_AvoidedEnergySupply_2024, pp. 283–284].
+
+The steps are:
+
+1. **Day type.** Each hour is labeled by month, hour beginning, and day type: weekday, or weekend-and-holiday. Saturday, Sunday, and the federal holidays take the weekend-and-holiday category.
+2. **Normalize.** I divided each hour by the average hourly load of its own calendar year, which removes year-to-year load growth.
+3. **Delimiter.** For each year, I took the highest month, hour, and day-type average of the normalized load, and averaged it over 2022 through 2025. An hour above this delimiter counts as a peak hour.
+4. **Density in each cell.** For each of the 576 month, hour, and day-type cells, I fit a truncated Gaussian kernel density to the normalized loads in that cell [@eversource_OCC733_response].
+5. **Probability of peak weighting.** The probability of peak for a cell is the share of its density above the delimiter. I divided those shares by their sum, so the 576 cells add to one.
+
+**Step 3: Place the probabilities on the analysis calendar.** Following the Company's approach in OCC-863 Attachment 2 [@Eversource_response_OCC_863], for each month and day type I divided the cell's probability by the number of days of that type in the analysis year, and multiplied by the inflated annual cost:
+
+$$
+MC_{m,d,h} = C \times \frac{\mathrm{PoP}_{m,d,h}}{N_{m,d}}
+$$
+
+$C$ is the inflated $/kW-year. $N_{m,d}$ is the number of days of that type in that month. Each hour of 2025 then takes the weekday rate or the weekend-and-holiday rate, by the same rule as Step 2. This is the same last step as the distribution schedule: an annual cost, times a probability, divided by a day count, laid onto the calendar the residential loads are aligned to. A flat one-kilowatt load over the year pays back the inflated annual cost, which I verified. Hours whose probability is zero stay at zero. The resulting profile is the bulk transmission heatmap in Section III of my Direct Testimony.
+
+<br>
+
+**Q.** Can you walk through how you computed the hourly distribution marginal costs shown in Section III of your Direct Testimony?
+
+**A.** Yes. I used the month-hour marginal costs the Company filed in response to OCC-863, Attachment 2 [@Eversource_response_OCC_863], and placed them on the `{python} mc.calendar_year` analysis calendar. The calculation has three steps.
+
+**Step 1: The Company's month-hour allocation.** Table 3 of Exhibit CLP-MCOS-2 states the system-wide marginal cost of distribution stations and trunkline feeders as `{python} f"${mc.table3_mc_kw_yr:,.2f}"`/kW-year, before losses, in `{python} mc.dollar_year` dollars [@eversource_Docket260510Exhibit_2026a]. In its response to OCC-863, Attachment 2, page 1, the Company multiplies `{python} f"${mc.table3_mc_kw_yr:,.2f}"` by the secondary loss factor in cell N3, `{python} f"{mc.secondary_loss_factor:.6f}"` which rounds to `{python} f"${mc.target_mc_kw_yr:,.2f}"`/kW-year [@Eversource_response_OCC_863].
+
+Attachment 2 then assigns that loss-adjusted annual cost to each month, hour, and day type. Page 3 is the probability that the distribution peak falls in that month, hour, and day type, measured on the Company's substation loads [@Eversource_response_OCC_863]. Each cell on page 1 is that probability times the loss-adjusted annual cost, divided by the number of days of that type in the month. Weekdays are one table. Weekends and public holidays are the other. I used those secondary `$/kWh` values as the Company calculated them to represent the residential customers' marginal costs at each hour.
+
+**Step 2: Place the tables on the analysis calendar.** Attachment 2 is a set of average rates, not an 8,760 for any specific calendar year. For each hour of `{python} mc.calendar_year` I looked up the month and the hour. Saturday, Sunday, and the federal holidays take the weekend-and-holiday rate. A holiday that falls on Saturday is observed the Friday before, and one that falls on Sunday is observed the Monday after. Every other weekday takes the weekday rate. Those are the day types behind Attachment 2's own weekend-and-holiday day counts, so the lookup reproduces the Company's categories. I used `{python} mc.calendar_year` because that is the calendar the residential load profiles are aligned to: a Monday in the marginal-cost file is a Monday in the load file.
+
+**Step 3: Scale the year back to `{python} f"${mc.target_mc_kw_yr:,.2f}"`/kW-year.** The day counts in Attachment 2 are not the exact number of each day type in `{python} mc.calendar_year`, so the looked-up 8,760 sums to `{python} f"${mc.sum_before_scale:,.2f}"`/kW-year rather than `{python} f"${mc.target_mc_kw_yr:,.2f}"`. I multiplied every hour by `{python} f"{mc.scale_factor:.4f}"`. Hours that were zero stay zero, and the ratio between any two hours is unchanged. After that scaling, the `{python} f"{mc.n_hours:,}"` hours sum to `{python} f"${mc.sum_after_scale:,.2f}"`/kW-year. I applied no CPI adjustment. The `{python} f"${mc.target_mc_kw_yr:,.2f}"` figure is already in the study's `{python} mc.dollar_year` dollars, and I used it as filed.
+
+The resulting hourly profile is the distribution heatmap in Section III of my Direct Testimony. `{python} f"{mc.n_nonzero_hours:,}"` hours carry a positive distribution marginal cost. The rest of the year is zero.
+
+## 4. Incremental cost, incremental revenue, and overpayment
+
+<br>
+
+**Q.** What do you mean by the incremental cost of heat pump adoption?
+
+**A.** The **incremental cost** is the change in the forward-looking marginal T&D costs that the transmission and distribution system incurs because of the customer's heat pump installation — the cost of capacity expansion triggered by consumption during the constrained hours identified in Section 3 of this exhibit.
+
+I multiplied the representative home's hourly electricity consumption by the hourly marginal-cost schedule described in Section 3, and summed across all 8,760 hours to get the total annual marginal T&D cost for that home. I performed this calculation for both the "before" and "after" consumption profiles. The incremental cost is the difference between the two annual totals:
+
+$$
+\text{incremental cost}
+=
+\text{marginal T\&D cost after}
+-
+\text{marginal T\&D cost before}.
+$$
+
+For the representative home, the incremental cost is the `{python} dollar(r.all_fossil_annual_mc_delivery_after - r.all_fossil_annual_mc_delivery_before)` figure I cited in Section III of my Direct Testimony.
+
+Because the marginal cost of every off-peak hour is zero, only consumption during the peak hours identified in Section 3 contributes to this total. Consumption in any other hour has no effect on it.
+
+This is the same concept the Company uses as the floor for Rate 6's discount: the discounted rate "is set to cover the incremental cost of serving the additional load the converting customer adds."[^cite-003b] The Company does not report a dollar value for this incremental cost of the representative home. The figure above is my own estimate, computed as described in this section.
+
+[^cite-003b]: Response to CLF-SC-003(b), Docket No. 26-05-10 (Sept. 3, 2026).
+
+<br>
+
+**Q.** What do you mean by incremental revenue?
+
+**A.** The **incremental revenue** is the change in the customer's annual delivery bill when it installs a heat pump: the delivery bill after installation minus the delivery bill before.
+
+$$
+\text{incremental revenue}
+=
+\text{delivery bill after}
+-
+\text{delivery bill before}.
+$$
+
+The delivery bill includes three components: the fixed monthly customer charge, the distribution charges (the Distribution Energy Charge and its associated riders), and the transmission charges. It excludes generation charges, which are outside the scope of my overpayment analysis. The incremental revenue is therefore:
+
+$$
+\text{incremental revenue}
+=
+\text{change in customer charge}
++
+\text{change in distribution charges}
++
+\text{change in transmission charges}.
+$$
+
+Under Rate 1, the customer charge is the same before and after a customer installs a heat pump, so the incremental revenue comes entirely from the change in distribution and transmission charges. Including the customer charge matters when I evaluate a rate with a different customer charge. In every comparison, the "before" bill is the customer's pre-installation bill under Rate 1. So when I evaluate Rate 6, which raises the customer charge from `{python} dollar(a.tariff_rate1_fixed_charge, accuracy=2)` to `{python} dollar(a.tariff_rate6_fixed_charge, accuracy=2)` per month, the difference in customer charges counts toward the incremental revenue, just as a change in volumetric charges would.
+
+<br>
+
+**Q.** What is the fair annual bill?
+
+**A.** The **fair annual bill** is what a customer should pay for delivery service after installing a heat pump: the delivery bill it paid before the installation, plus the incremental cost.
+
+$$
+\text{fair annual bill}
+=
+\text{delivery bill before}
++
+\text{incremental cost}.
+$$
+
+This is the standard of cost causation. A customer installing a heat pump is an existing customer, already paying its pre-installation bill toward the system's existing costs. Its bill should change by exactly the change in T&D costs its new load profile causes.
+
+<br>
+
+**Q.** How do you define the overpayment caused by heat pump adoption?
+
+**A.** Overpayment is the difference between a customer's delivery bill after installing a heat pump and its fair annual bill. Equivalently, it is the incremental revenue minus the incremental cost:
+
+$$
+\text{overpayment}
+=
+\text{delivery bill after}
+-
+\text{fair annual bill}
+=
+\text{incremental revenue}
+-
+\text{incremental cost}.
+$$
+
+A positive overpayment means the customer is overpaying: its bill changed by more than the costs its heat pump causes. A negative value means the customer is underpaying. Under a perfectly cost-reflective rate, every customer's overpayment would be zero.
+
+<br>
+
+**Q.** For which customers did you compute the overpayment?
+
+**A.** I computed it in two ways, using the same formula.
+
+For the **representative home** in Section III of my Direct Testimony, I applied the formula to the average fossil-fuel-heated home's before-and-after consumption profiles described in Section 2. For that home, the result is an annual overpayment of `{python} dollar(r.all_fossil_annual_total_overcharge)`.
+
+For the **distributions of overpayment** shown in Sections III, V, and VI of my Direct Testimony, I applied the formula to each fossil-fuel-heated ResStock building in the Company's territory — homes heated with natural gas, heating oil, or propane — individually. For each building, the "before" bill is CAIRO's annual bill under Rate 1 for the building with its existing heating system, and the "after" bill is CAIRO's annual bill under the rate being evaluated for the same building with a heat pump. Each building's incremental revenue is the difference between those two bills. Its incremental cost is computed in exactly the same way as for the representative home: its own hourly grid consumption times the hourly marginal-cost schedule from Section 3, summed over the year, after minus before. I verified that this matches CAIRO's per-building marginal-cost totals to within $1 per building. Averages across buildings use ResStock's sample weights.
+
+The representative home applies the formula to an average consumption profile, while the distributions average the result of applying it to each home.
+
+## 5. Rate HP derivation
+
+<br>
+
+**Q.** How did you derive the proposed Rate HP rates shown in Section VI of your Direct Testimony?
+
+**A.** Rate HP changes only two charges: the distribution and transmission volumetric rates during the winter months (November through March). The customer charge, the distribution riders, the generation rate, and the summer (April through October) distribution and transmission rates all stay at their proposed Rate 1 levels.
+
+For each of the two components, I solved for the single winter rate at which the average fossil-fuel-heated customer's overpayment, as defined in Section 4, is zero. In other words, the winter rate at which the representative home's post-installation bill for that component equals its fair annual bill:
+
+$$
+\text{fair annual bill}
+=
+\text{bill before}
++
+\text{incremental cost},
+$$
+
+where the bill before is computed under Rate 1, and the incremental cost is that component's share of the incremental cost: the change in distribution marginal costs for distribution, and the change in bulk transmission marginal costs for transmission, using the hourly schedules in Section 3.
+
+Under Rate HP, the representative home's post-installation bill for each component is its summer consumption at the Rate 1 rate, plus its winter consumption at the Rate HP winter rate:
+
+$$
+\text{bill after}_{\text{R-HP}}
+=
+r_{\text{Rate 1}} \cdot \text{kWh}_{\text{after, summer}}
++
+r_{\text{winter}} \cdot \text{kWh}_{\text{after, winter}}.
+$$
+
+Setting this equal to the fair annual bill and solving for the winter rate gives:
+
+$$
+r_{\text{winter}}
+=
+\frac{\text{fair annual bill} - r_{\text{Rate 1}} \cdot \text{kWh}_{\text{after, summer}}}
+{\text{kWh}_{\text{after, winter}}}.
+$$
+
+Because the summer rate is unchanged, the entire correction falls on winter consumption. Equivalently, the winter rate is Rate 1's winter bill for the post-installation profile, minus the overpayment under Rate 1, spread over the post-installation winter kWh. For the representative home, the result is a winter distribution rate of `{python} f"{r.fair_hp_winter_rate_dist*100:.3f}"` ¢/kWh (including riders) and a winter transmission rate of `{python} f"{r.fair_hp_winter_rate_tx*100:.3f}"` ¢/kWh. Because the riders are unchanged, the winter Distribution Energy Charge shown in the Rate HP table in Section VI of my Direct Testimony is the winter distribution rate minus the riders.
+
+The customer charge does not enter this calculation. It is the same before and after installation, and the same under Rate 1 and Rate HP, so it contributes nothing to the incremental revenue.
+
+<br>
+
+**Q.** How did you evaluate Rate HP across all fossil-fuel-heated customers?
+
+**A.** To produce the distribution of overpayments under Rate HP shown in Section VI of my Direct Testimony, I simulated Rate HP in CAIRO for every fossil-fuel-heated ResStock building in the Company's territory. The tariff used in that simulation was derived with the same formula, applied to the combined delivery rate (distribution, riders, and transmission together) rather than to each component separately:
+
+$$
+r_{\text{winter}}
+=
+\frac{r_{\text{Rate 1}} \cdot \overline{\text{kWh}}_{\text{before}} + \overline{\text{incremental cost}} - r_{\text{Rate 1}} \cdot \overline{\text{kWh}}_{\text{after, summer}}}
+{\overline{\text{kWh}}_{\text{after, winter}}},
+$$
+
+where each bar denotes a weighted average across all fossil-fuel-heated buildings, using ResStock's sample weights, and each building's incremental cost is computed as described in Section 4. The resulting combined winter delivery rate is `{python} f"{a.tariff_seasonal_winter_cents:.3f}"` ¢/kWh. The summer delivery rate and the customer charge are unchanged from Rate 1.
+
+## 6. Fixed-charge alternative
+
+<br>
+
+**Q.** In Section IX of your Direct Testimony, you testified that eliminating the heat pump overpayment by redesigning Rate 1 would require raising the monthly customer charge from `{python} dollar(fc.original_fixed_charge, accuracy=2)` to `{python} dollar(fc.fixed_charge, accuracy=2)`. How did you calculate that figure?
+
+**A.** This is a redesign of Rate 1 itself, applied to every residential customer. It is not Rate HP. Rate HP, described in Section 5, keeps the customer charge at Rate 1 and lowers only the winter distribution and transmission rates, and only for heat pump customers. The alternative in Section IX instead keeps a single default rate for the whole residential class and moves revenue from volumetric delivery charges onto the customer charge.
+
+I solved for the version of Rate 1 that satisfies two conditions at the same time, for the representative fossil-fuel-heated home defined in Section 2.
+
+The first condition is **cost reflectivity**. After the redesign, that home's incremental revenue from the targeted volumetric charges must equal its incremental cost, so its overpayment, as defined in Section 4, is zero. The targeted charges are distribution (the Distribution Energy Charge and its riders) and transmission. I scaled both by one factor, the same in every month. I did not change generation charges.
+
+The second condition is **revenue neutrality** for the residential class. The revenue held constant is the revenue collected through the charges the redesign touches: the monthly customer charge plus the targeted volumetric charges. Generation revenue is outside the redesign. Whatever revenue the lower volumetric rates give up must come back through the customer charge.
+
+<br>
+
+**Q.** How did you determine the factor by which the targeted volumetric rates would have to fall?
+
+**A.** The factor does not depend on the customer charge. The redesigned rate applies both before and after a customer installs a heat pump, so the customer charge — whatever its level — is paid in both cases and contributes nothing to the incremental revenue. Only the targeted volumetric charges change. Setting the overpayment to zero therefore requires:
+
+$$
+\lambda^{*} \times \text{incremental revenue}
+=
+\text{incremental cost},
+$$
+
+where the incremental revenue is the change in the representative home's distribution and transmission charges under filed Rate 1, and the incremental cost is the change in its marginal T&D cost, both as defined in Section 4. Solving for the factor:
+
+$$
+\lambda^{*}
+=
+\frac{\text{incremental cost}}
+{\text{incremental revenue}}.
+$$
+
+Under filed Rate 1, the representative home's incremental revenue from the targeted charges is `{python} dollar(fc.retrofit_incremental_variable_charge)` per year — `{python} dollar(fc.retrofit_incremental_distribution)` in distribution charges and `{python} dollar(fc.retrofit_incremental_transmission)` in transmission charges. Its incremental cost is `{python} dollar(fc.retrofit_incremental_marginal_cost)` per year. The difference is the `{python} dollar(fc.retrofit_overpayment)` annual overpayment I cited in Section III of my Direct Testimony.
+
+For CL&P, the factor is `{python} pct(fc.implied_lambda, accuracy=1)`. The targeted volumetric rates would have to be cut by approximately `{python} pct(fc.volumetric_rate_reduction)`, to `{python} pct(fc.implied_lambda, accuracy=1)` of their filed levels. At that level, the representative home's post-installation distribution and transmission bill equals its fair annual bill for those charges. Generation charges are unchanged.
+
+<br>
+
+**Q.** How did you then determine the fixed charge?
+
+**A.** From the revenue-neutrality condition. Cutting the targeted volumetric rates to `{python} pct(fc.implied_lambda, accuracy=1)` of their filed levels leaves `{python} pct(fc.volumetric_rate_reduction)` of the revenue those charges collect from the residential class to be recovered through the customer charge.
+
+I computed that class revenue from the Company's Rate Year residential billing determinants in Exhibit CLP-RATES-2: `{python} f"{fc.class_customers:,.0f}"` residential customers, on average, and the class's billed residential sales.[^fixed-charge-baseline] I applied the filed distribution and transmission rates — which do not vary by month — to those sales. The two targeted charges collect approximately `{python} dollar(fc.class_variable_revenue_per_customer)` per residential customer per year. The redesign removes approximately `{python} dollar(fc.class_variable_revenue_per_customer * fc.volumetric_rate_reduction)` of that amount per customer per year. Spread across twelve monthly bills, replacing it requires raising the customer charge by `{python} dollar(fc.fixed_charge_delta, accuracy=2)` per month:
+
+$$
+F^{*}
+=
+F_{0}
++
+\frac{\left(1 - \lambda^{*}\right) V_{\text{class}}}
+{12 \, N_{\text{class}}}
+$$
+
+where $F_{0}$ is the proposed Rate 1 customer charge, $V_{\text{class}}$ is the annual revenue the targeted volumetric charges collect from the residential class, and $N_{\text{class}}$ is the number of residential customers. Starting from `{python} dollar(fc.original_fixed_charge, accuracy=2)` per month, the result is a customer charge of `{python} dollar(fc.fixed_charge, accuracy=2)` per month.
+
+Raising the customer charge does not itself reduce the overpayment. Because every customer pays the new charge both before and after installing a heat pump, it still contributes nothing to the incremental revenue. The charge rises only to keep the residential class's delivery revenue unchanged after the volumetric rates are cut.
+
+[^fixed-charge-baseline]: Exhibit CLP-RATES-2, Rate Year build: `{python} f"{fc.class_annual_bills:,.2f}"` annual bills rendered and `{python} f"{fc.class_billed_mwh:,.2f}"` MWh of billed residential sales. The customer count is the annual bills divided by twelve. The starting customer charge is CL&P's proposed Rate 1 charge, including the 6.8% Gross Earnings Tax.
+
+## References
+
+:::{#refs}
+:::

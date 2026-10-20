@@ -2319,8 +2319,9 @@ for k, v in sorted(report_vars.items()):
 ### Intermediate load profiles
 
 The weighted-average fossil-fuel home's electricity consumption, before and after
-the heat pump, written to an Excel workbook for review. `cache/` is gitignored,
-so the workbook is not committed.
+the heat pump, written to an Excel workbook and uploaded to the
+[shared Drive folder](https://drive.google.com/drive/folders/1h5mhnz0ZXMo59kkCIHAErJAaVn78N4IU).
+The file is built in `cache/` only long enough to upload, then removed.
 
 CAIRO's hourly timestamps are UTC, while the marginal-cost schedule is local
 time. The hourly sheets are shifted by the same `utc_offset_hours` the
@@ -2480,9 +2481,13 @@ change under Rate 1, so it is not part of either bar.
 ```{python}
 #| label: export-bills
 
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
+
+from lib.data.gsheets import get_gspread_client
 
 
 def _month_rate(charges: dict, key: str, month_num: int) -> float:
@@ -2654,7 +2659,31 @@ _wsb.cell(_over_row, 1, "Overpayment (right bar − left bar)").font = Font(bold
 _wsb.cell(_over_row, 4, f"=D{_note + 4}-D{_note + 7}").font = Font(bold=True)
 
 _wb_bills.save(_xlsx_path)
-print(f"Added bills sheet to {_xlsx_path.resolve()}")
+
+_DRIVE_FOLDER_ID = "1h5mhnz0ZXMo59kkCIHAErJAaVn78N4IU"
+_DRIVE_NAME = _xlsx_path.name
+_gc, _ = get_gspread_client()
+_drive = build("drive", "v3", credentials=_gc.http_client.auth, cache_discovery=False)
+_existing = _drive.files().list(
+    q=f"name = '{_DRIVE_NAME}' and '{_DRIVE_FOLDER_ID}' in parents and trashed = false",
+    fields="files(id, name)",
+    supportsAllDrives=True,
+    includeItemsFromAllDrives=True,
+).execute()
+for _old in _existing.get("files", []):
+    _drive.files().update(fileId=_old["id"], body={"trashed": True}, supportsAllDrives=True).execute()
+_uploaded = _drive.files().create(
+    body={"name": _DRIVE_NAME, "parents": [_DRIVE_FOLDER_ID]},
+    media_body=MediaFileUpload(
+        str(_xlsx_path),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        resumable=True,
+    ),
+    fields="id, webViewLink",
+    supportsAllDrives=True,
+).execute()
+_xlsx_path.unlink()
+print(f"Uploaded {_DRIVE_NAME}: {_uploaded['webViewLink']}")
 print(f"  Rate 1 T&D charges before ${_charge('before', 'dist', 'riders', 'tx'):,.2f}")
 print(f"  Rate 1 T&D charges after  ${_charge('after', 'dist', 'riders', 'tx'):,.2f}")
 print(f"  Charge change (right bar) ${_charge_delta:,.2f}")

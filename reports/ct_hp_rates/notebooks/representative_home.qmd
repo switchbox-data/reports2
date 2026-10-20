@@ -2314,3 +2314,350 @@ for k, v in sorted(report_vars.items()):
     else:
         print(f"  {k}: {v}")
 ```
+
+## Excel workbook exports
+### Intermediate load profiles
+
+The weighted-average fossil-fuel home's electricity consumption, before and after
+the heat pump, written to an Excel workbook for review. `cache/` is gitignored,
+so the workbook is not committed.
+
+CAIRO's hourly timestamps are UTC, while the marginal-cost schedule is local
+time. The hourly sheets are shifted by the same `utc_offset_hours` the
+marginal-cost joins use (`building_delivery_mc_8760`,
+`sum_monthly_peak_offpeak_kwh`), so their timestamps line up with `mc_8760`
+hour for hour. The monthly sheet is unshifted: it is the same UTC-month
+bucketing that `weighted_avg_monthly` feeds into the bill calculations.
+
+`marginal_cost` holds the hourly bulk-transmission and distribution marginal
+costs. `hourly_marginal_cost` multiplies those rates by the two load profiles
+with cell formulas, and sums the 8,760 hours — again with formulas — into the
+annual totals and the before-to-after difference.
+
+```{python}
+#| label: export-load-profiles
+
+from openpyxl import Workbook
+
+_UTC_OFFSET_HOURS = -5  # matches the default in building_delivery_mc_8760
+
+
+def _to_local(df: pl.DataFrame) -> pl.DataFrame:
+    out = df.with_columns((pl.col("timestamp") + pl.duration(hours=_UTC_OFFSET_HOURS)).alias("timestamp"))
+    if out["timestamp"].dtype.time_zone is not None:
+        out = out.with_columns(pl.col("timestamp").dt.replace_time_zone(None))
+    return out
+
+
+_hourly_before = _to_local(hourly_profiles["all_fossil"]["before"])
+_hourly_after = _to_local(hourly_profiles["all_fossil"]["after"])
+assert _hourly_before["timestamp"].to_list() == mc_8760["timestamp"].to_list(), (
+    "Shifted load timestamps do not match mc_8760 timestamps"
+)
+
+_monthly = (
+    profiles["all_fossil"]["before"]
+    .rename({"kwh": "kwh_before"})
+    .join(
+        profiles["all_fossil"]["after"].rename({"kwh": "kwh_after"}),
+        on="month_label",
+    )
+    .with_columns(pl.col("month_label").cast(pl.String))
+    .select("month_label", "kwh_before", "kwh_after")
+)
+
+assert _hourly_before.height == 8760, _hourly_before.height
+assert _hourly_after.height == 8760, _hourly_after.height
+assert _monthly.height == 12, _monthly.height
+assert abs(float(_hourly_before["kwh"].sum()) - report_vars["all_fossil_annual_kwh_before"]) < 1e-4
+assert abs(float(_hourly_after["kwh"].sum()) - report_vars["all_fossil_annual_kwh_after"]) < 1e-4
+assert abs(float(_monthly["kwh_before"].sum()) - report_vars["all_fossil_annual_kwh_before"]) < 1e-4
+assert abs(float(_monthly["kwh_after"].sum()) - report_vars["all_fossil_annual_kwh_after"]) < 1e-4
+
+
+def _write_sheet(wb: Workbook, name: str, df: pl.DataFrame) -> None:
+    ws = wb.create_sheet(name)
+    ws.append(df.columns)
+    for row in df.iter_rows():
+        ws.append(list(row))
+
+
+_mc = mc_8760.sort("timestamp").select("timestamp", "mc_bulk_tx", "mc_dist_sub_tx")
+assert _mc["timestamp"].to_list() == _hourly_before["timestamp"].to_list()
+
+# The formulas below compute exactly this. Check it against the notebook's totals.
+_check = (
+    _hourly_before.rename({"kwh": "kwh_before"})
+    .join(_hourly_after.rename({"kwh": "kwh_after"}), on="timestamp")
+    .join(_mc, on="timestamp")
+)
+for _period, _kwh in [("before", "kwh_before"), ("after", "kwh_after")]:
+    _tx = float((_check[_kwh] * _check["mc_bulk_tx"]).sum())
+    _dist = float((_check[_kwh] * _check["mc_dist_sub_tx"]).sum())
+    assert abs(_tx - report_vars[f"all_fossil_annual_mc_tx_{_period}"]) < 1e-4, _period
+    assert abs(_dist - report_vars[f"all_fossil_annual_mc_dist_{_period}"]) < 1e-4, _period
+
+_wb = Workbook()
+_wb.remove(_wb.active)
+_write_sheet(_wb, "hourly_before", _hourly_before)
+_write_sheet(_wb, "hourly_after", _hourly_after)
+_write_sheet(_wb, "monthly", _monthly)
+_write_sheet(_wb, "marginal_cost", _mc)
+
+_n = _hourly_before.height
+_last = _n + 1  # header is row 1
+_ws = _wb.create_sheet("hourly_marginal_cost")
+_ws.append(
+    [
+        "timestamp",
+        "kwh_before",
+        "kwh_after",
+        "mc_bulk_tx_per_kwh",
+        "mc_dist_sub_tx_per_kwh",
+        "bulk_tx_dollars_before",
+        "dist_sub_tx_dollars_before",
+        "total_mc_dollars_before",
+        "bulk_tx_dollars_after",
+        "dist_sub_tx_dollars_after",
+        "total_mc_dollars_after",
+    ]
+)
+for _i, _ts in enumerate(_hourly_before["timestamp"].to_list(), start=2):
+    _ws.append(
+        [
+            _ts,
+            f"=hourly_before!B{_i}",
+            f"=hourly_after!B{_i}",
+            f"=marginal_cost!B{_i}",
+            f"=marginal_cost!C{_i}",
+            f"=B{_i}*D{_i}",
+            f"=B{_i}*E{_i}",
+            f"=F{_i}+G{_i}",
+            f"=C{_i}*D{_i}",
+            f"=C{_i}*E{_i}",
+            f"=I{_i}+J{_i}",
+        ]
+    )
+
+# Annual totals, each a sum of the hourly formulas, with the difference beside them.
+_ws["M1"] = "Component"
+_ws["N1"] = "Before ($)"
+_ws["O1"] = "After ($)"
+_ws["P1"] = "After − before ($)"
+_summary = [
+    ("Bulk transmission", f"=SUM(F2:F{_last})", f"=SUM(I2:I{_last})"),
+    ("Distribution and sub-transmission", f"=SUM(G2:G{_last})", f"=SUM(J2:J{_last})"),
+    ("Total", f"=SUM(H2:H{_last})", f"=SUM(K2:K{_last})"),
+]
+for _row, (_label, _before, _after) in enumerate(_summary, start=2):
+    _ws[f"M{_row}"] = _label
+    _ws[f"N{_row}"] = _before
+    _ws[f"O{_row}"] = _after
+    _ws[f"P{_row}"] = f"=O{_row}-N{_row}"
+
+_xlsx_path = Path("../cache/representative_home_load_profiles.xlsx")
+_wb.save(_xlsx_path)
+print(f"Wrote {_xlsx_path.resolve()}")
+print(f"  hourly_before: {_hourly_before.height:,} hours, {float(_hourly_before['kwh'].sum()):,.1f} kWh")
+print(f"  hourly_after:  {_hourly_after.height:,} hours, {float(_hourly_after['kwh'].sum()):,.1f} kWh")
+print(f"  monthly:       {_monthly.height} months")
+print(f"  marginal_cost: {_mc.height:,} hours")
+print("  hourly_marginal_cost: 8,760 formula rows, annual totals in columns N-P")
+```
+
+### Bills
+
+`bills` applies proposed Rate 1 to this home's monthly kWh — the `monthly` sheet,
+which is what `monthly_bill_from_profile` bills — before and after the retrofit.
+
+The distribution charge in @fig-cost-vs-charge-delta-all-fossil folds the riders
+into distribution. The sheet keeps them separate, and the block under the monthly
+table rebuilds that figure: distribution energy plus riders, transmission, the
+matching marginal-cost changes from `hourly_marginal_cost`, and the overpayment,
+which is the charge change minus the cost change. The customer charge does not
+change under Rate 1, so it is not part of either bar.
+
+```{python}
+#| label: export-bills
+
+from openpyxl import load_workbook
+from openpyxl.styles import Alignment, Font
+from openpyxl.utils import get_column_letter
+
+
+def _month_rate(charges: dict, key: str, month_num: int) -> float:
+    return float(charges[key]["monthly_rates"][f"2025-{month_num:02d}"])
+
+
+def _rider_rate(month_num: int) -> float:
+    return sum(
+        _month_rate(_drr, key, month_num) for key in _dist_sub_charges if key != "core_delivery_rate"
+    )
+
+
+_months: list[dict[str, float]] = []
+for _n, _label in enumerate(MONTH_ORDER, start=1):
+    _months.append(
+        {
+            "month": _label,
+            "customer": _month_rate(_already, "customer_charge", _n),
+            "dist": _month_rate(_already, "core_delivery_rate", _n),
+            "riders": _rider_rate(_n),
+            "tx": _month_rate(_drr, "transmission_charge", _n),
+            "gen": _month_rate(_srr, "supply_commodity_bundled", _n),
+        }
+    )
+
+# Reproduce the notebook's Rate 1 bills from the same monthly kWh, with riders split out.
+_kwh = {
+    _row["month_label"]: _row
+    for _row in profiles["all_fossil"]["before"]
+    .rename({"kwh": "before"})
+    .join(profiles["all_fossil"]["after"].rename({"kwh": "after"}), on="month_label")
+    .iter_rows(named=True)
+}
+_calc: dict[str, dict[str, float]] = {"before": {}, "after": {}}
+for _period, _kwh_key in [("before", "before"), ("after", "after")]:
+    _totals = {"customer": 0.0, "dist": 0.0, "riders": 0.0, "tx": 0.0, "gen": 0.0}
+    for _m in _months:
+        _k = float(_kwh[_m["month"]][_kwh_key])
+        _totals["customer"] += _m["customer"]
+        _totals["dist"] += _k * _m["dist"]
+        _totals["riders"] += _k * _m["riders"]
+        _totals["tx"] += _k * _m["tx"]
+        _totals["gen"] += _k * _m["gen"]
+    _calc[_period] = _totals
+
+
+def _charge(period: str, *keys: str) -> float:
+    return sum(_calc[period][key] for key in keys)
+
+
+for _period in ("before", "after"):
+    assert abs(_charge(_period, "dist", "riders") - report_vars[f"all_fossil_annual_distribution_{_period}"]) < 1e-4
+    assert abs(_calc[_period]["tx"] - report_vars[f"all_fossil_annual_transmission_{_period}"]) < 1e-4
+    assert abs(_calc[_period]["gen"] - report_vars[f"all_fossil_annual_generation_{_period}"]) < 1e-4
+    assert abs(_calc[_period]["customer"] - report_vars[f"all_fossil_annual_customer_charge_{_period}"]) < 1e-4
+    assert abs(sum(_calc[_period].values()) - report_vars[f"all_fossil_annual_elec_bill_{_period}"]) < 1e-4
+_charge_delta = _charge("after", "dist", "riders", "tx") - _charge("before", "dist", "riders", "tx")
+_mc_delta = (
+    report_vars["all_fossil_annual_mc_delivery_after"] - report_vars["all_fossil_annual_mc_delivery_before"]
+)
+# The figure's two bars. The customer charge does not change, so leaving it out
+# of the charge bar still matches the testimony's overcharge.
+assert abs(_calc["after"]["customer"] - _calc["before"]["customer"]) < 1e-4
+assert abs(_charge_delta - report_vars["all_fossil_annual_delivery_charges_delta"]) < 1e-4
+assert abs(_charge_delta - _mc_delta - report_vars["all_fossil_annual_total_overcharge"]) < 1e-4
+assert abs(
+    (_charge("after", "dist", "riders") - _charge("before", "dist", "riders"))
+    - report_vars["all_fossil_annual_distribution_delta"]
+) < 1e-4
+assert abs(_calc["after"]["tx"] - _calc["before"]["tx"] - report_vars["all_fossil_annual_transmission_delta"]) < 1e-4
+
+_wb_bills = load_workbook(_xlsx_path)
+if "bills" in _wb_bills.sheetnames:
+    del _wb_bills["bills"]
+_wsb = _wb_bills.create_sheet("bills")
+_groups = [
+    (1, 3, "Monthly consumption, representative fossil-fuel home"),
+    (4, 9, "Rate 1, pre-retrofit"),
+    (10, 15, "Rate 1, post-retrofit"),
+]
+for _start, _end, _title in _groups:
+    _wsb.merge_cells(start_row=1, start_column=_start, end_row=1, end_column=_end)
+    _wsb.cell(1, _start, _title).font = Font(bold=True)
+_headers = [
+    "month",
+    "kwh_pre_retrofit",
+    "kwh_post_retrofit",
+    "customer_charge_$",
+    "distribution_energy_$",
+    "riders_$",
+    "transmission_$",
+    "generation_$",
+    "total_bill_$",
+    "customer_charge_$",
+    "distribution_energy_$",
+    "riders_$",
+    "transmission_$",
+    "generation_$",
+    "total_bill_$",
+]
+for _col, _header in enumerate(_headers, start=1):
+    _cell = _wsb.cell(2, _col, _header)
+    _cell.font = Font(bold=True)
+    _cell.alignment = Alignment(wrap_text=True)
+
+# Per-month rates sit to the right. Bill cells are formulas against these and the monthly sheet.
+_rate_col = 17
+_rate_keys = ["customer", "dist", "riders", "tx", "gen"]
+_wsb.cell(1, _rate_col, "Rate 1 rates used by the formulas").font = Font(bold=True)
+for _col, _header in enumerate(
+    ["customer_$/month", "distribution_$/kwh", "riders_$/kwh", "transmission_$/kwh", "generation_$/kwh"],
+    start=_rate_col,
+):
+    _wsb.cell(2, _col, _header).font = Font(bold=True)
+
+_first = 3
+for _i, _m in enumerate(_months):
+    _row = _first + _i
+    _src = _i + 2  # monthly sheet data starts on row 2
+    _wsb.cell(_row, 1, f"=monthly!A{_src}")
+    _wsb.cell(_row, 2, f"=monthly!B{_src}")
+    _wsb.cell(_row, 3, f"=monthly!C{_src}")
+    for _offset, _key in enumerate(_rate_keys):
+        _wsb.cell(_row, _rate_col + _offset, _m[_key])
+    _r = {name: get_column_letter(_rate_col + offset) for offset, name in enumerate(_rate_keys)}
+    for _base, _kwh_cell in ((4, f"B{_row}"), (10, f"C{_row}")):
+        _wsb.cell(_row, _base, f"={_r['customer']}{_row}")
+        _wsb.cell(_row, _base + 1, f"={_kwh_cell}*{_r['dist']}{_row}")
+        _wsb.cell(_row, _base + 2, f"={_kwh_cell}*{_r['riders']}{_row}")
+        _wsb.cell(_row, _base + 3, f"={_kwh_cell}*{_r['tx']}{_row}")
+        _wsb.cell(_row, _base + 4, f"={_kwh_cell}*{_r['gen']}{_row}")
+        _wsb.cell(_row, _base + 5, f"=SUM({get_column_letter(_base)}{_row}:{get_column_letter(_base + 4)}{_row})")
+
+_annual = _first + len(_months)
+_wsb.cell(_annual, 1, "Annual").font = Font(bold=True)
+for _col in range(2, 16):
+    _letter = get_column_letter(_col)
+    _wsb.cell(_annual, _col, f"=SUM({_letter}{_first}:{_letter}{_annual - 1})")
+
+# The two bars of fig-cost-vs-charge-delta-all-fossil, and the gap between them.
+_note = _annual + 2
+_wsb.cell(
+    _note,
+    1,
+    "Figure: incremental T&D costs caused vs. incremental T&D charges paid, Rate 1",
+).font = Font(bold=True)
+for _col, _header in enumerate(["Component", "Pre-retrofit", "Post-retrofit", "Change (post − pre)"], start=1):
+    _wsb.cell(_note + 1, _col, _header).font = Font(bold=True)
+_fig_rows = [
+    ("Distribution energy + riders (figure's distribution bar)", f"=E{_annual}+F{_annual}", f"=K{_annual}+L{_annual}"),
+    ("Transmission (figure's transmission bar)", f"=G{_annual}", f"=M{_annual}"),
+    ("T&D charges paid (right bar)", f"=B{_note + 2}+B{_note + 3}", f"=C{_note + 2}+C{_note + 3}"),
+    (
+        "Distribution and sub-transmission marginal cost",
+        "=hourly_marginal_cost!N3",
+        "=hourly_marginal_cost!O3",
+    ),
+    ("Bulk transmission marginal cost", "=hourly_marginal_cost!N2", "=hourly_marginal_cost!O2"),
+    ("T&D costs caused (left bar)", "=hourly_marginal_cost!N4", "=hourly_marginal_cost!O4"),
+]
+for _offset, (_label, _pre, _post) in enumerate(_fig_rows):
+    _row = _note + 2 + _offset
+    _wsb.cell(_row, 1, _label)
+    _wsb.cell(_row, 2, _pre)
+    _wsb.cell(_row, 3, _post)
+    _wsb.cell(_row, 4, f"=C{_row}-B{_row}")
+_over_row = _note + 2 + len(_fig_rows)
+_wsb.cell(_over_row, 1, "Overpayment (right bar − left bar)").font = Font(bold=True)
+_wsb.cell(_over_row, 4, f"=D{_note + 4}-D{_note + 7}").font = Font(bold=True)
+
+_wb_bills.save(_xlsx_path)
+print(f"Added bills sheet to {_xlsx_path.resolve()}")
+print(f"  Rate 1 T&D charges before ${_charge('before', 'dist', 'riders', 'tx'):,.2f}")
+print(f"  Rate 1 T&D charges after  ${_charge('after', 'dist', 'riders', 'tx'):,.2f}")
+print(f"  Charge change (right bar) ${_charge_delta:,.2f}")
+print(f"  Cost change (left bar)    ${_mc_delta:,.2f}")
+print(f"  Overpayment               ${_charge_delta - _mc_delta:,.2f}")
+```

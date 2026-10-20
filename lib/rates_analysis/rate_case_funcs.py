@@ -2646,13 +2646,17 @@ def plot_decomposed_bill_3bar(
     third_scenario_label: str,
     title: str,
     side_labels: dict[str, str] | None = None,
+    first_scenario_label: str = "Natural gas\nfurnace",
 ) -> tuple[Figure, float, float, float, float]:
-    """Three-bar decomposed annual bill chart: natural gas, HP on the default rate, HP on a reform rate.
+    """Three-bar decomposed annual bill chart: fossil furnace, HP on the default rate, HP on a reform rate.
 
     Each of *before*, *after_default*, *after_reform* is an
     ``annual_bill_components()``-shaped dict (``delivery_fixed``,
     ``delivery_volumetric``, ``supply``, ``gas``). *third_scenario_label*
     names the reform bar (e.g. ``"Heat pump\\n(seasonal rate)"``).
+    *first_scenario_label* names the baseline fossil-furnace bar; it
+    defaults to ``"Natural gas\\nfurnace"`` but should be overridden for
+    delivered-fuel figures (e.g. ``"Oil/propane\\nfurnace"``).
 
     Draws with raw matplotlib (not plotnine) for the per-segment $ labels,
     the dashed "today's delivery cost" reference line, and the bracketed
@@ -2664,7 +2668,7 @@ def plot_decomposed_bill_3bar(
     """
     from lib.plotnine import SB_COLORS
 
-    scenarios = ["Natural gas\nfurnace", "Heat pump\n(default rate)", third_scenario_label]
+    scenarios = [first_scenario_label, "Heat pump\n(default rate)", third_scenario_label]
     x = np.arange(len(scenarios))
     w = 0.55
     comp_keys = DECOMPOSED_BILL_COMPONENT_KEYS

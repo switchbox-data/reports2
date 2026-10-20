@@ -2456,7 +2456,7 @@ for _row, (_label, _before, _after) in enumerate(_summary, start=2):
     _ws[f"O{_row}"] = _after
     _ws[f"P{_row}"] = f"=O{_row}-N{_row}"
 
-_xlsx_path = Path("../cache/representative_home_load_profiles.xlsx")
+_xlsx_path = Path("../cache/JPV3-representative_home_load_profiles.xlsx")
 _wb.save(_xlsx_path)
 print(f"Wrote {_xlsx_path.resolve()}")
 print(f"  hourly_before: {_hourly_before.height:,} hours, {float(_hourly_before['kwh'].sum()):,.1f} kWh")
@@ -2689,4 +2689,253 @@ print(f"  Rate 1 T&D charges after  ${_charge('after', 'dist', 'riders', 'tx'):,
 print(f"  Charge change (right bar) ${_charge_delta:,.2f}")
 print(f"  Cost change (left bar)    ${_mc_delta:,.2f}")
 print(f"  Overpayment               ${_charge_delta - _mc_delta:,.2f}")
+```
+
+### Rate HP derivation
+
+A second workbook, `JPV4-rate_hp_derivation.xlsx`, rebuilds the seasonal
+Rate HP rates from `compute-fair-hp-rates` and uploads them to the same Drive
+folder. It has three sheets:
+
+- `monthly`: the home's monthly kWh before and after the retrofit, the season of
+  each month, the Rate 1 rates, and the resulting distribution (riders included),
+  transmission and generation charges. Below the table are annual, winter and
+  summer totals.
+- `marginal_cost`: the annual distribution/sub-transmission and bulk-transmission
+  marginal costs before and after the retrofit. The values come from the
+  `hourly_marginal_cost` sheet of the load-profiles workbook.
+- `rate_hp`: for distribution and transmission, the charge change, the cost
+  change and the overpayment. Next, the winter rate that removes the overpayment
+  while summer charges stay at Rate 1. Then the Rate HP table as it appears in
+  the testimony.
+
+Every derivation cell is an Excel formula. The cell first recomputes each step
+in Python and asserts it against the values this notebook exports to the
+testimony.
+
+```{python}
+#| label: export-rate-hp
+
+assert RATE_DESIGN == "seasonal", f"The Rate HP workbook expects the seasonal design, got {RATE_DESIGN!r}"
+
+# The testimony's Rate HP table shows a single Rate 1 rate per delivery component.
+for _key in ("dist", "riders", "tx"):
+    _values = {_m[_key] for _m in _months}
+    assert len(_values) == 1, f"Rate 1 {_key} rate varies by month: {_values}"
+_rate1 = {_key: _months[0][_key] for _key in ("dist", "riders", "tx")}
+
+_season = {_label: "Winter" for _label in WINTER_MONTH_LABELS} | {
+    _label: "Summer" for _label in SUMMER_MONTH_LABELS
+}
+assert set(_season) == set(MONTH_ORDER), "Winter and summer months must cover the year"
+
+# Each step of the derivation, recomputed from the monthly rates and kWh.
+_hp: dict[str, dict[str, float]] = {}
+for _comp, _rate_of in [
+    ("dist", lambda m: m["dist"] + m["riders"]),
+    ("tx", lambda m: m["tx"]),
+]:
+    _s: dict[str, float] = {"before": 0.0, "after": 0.0, "winter_after": 0.0, "summer_after": 0.0}
+    for _m in _months:
+        _row = _kwh[_m["month"]]
+        _s["before"] += float(_row["before"]) * _rate_of(_m)
+        _s["after"] += float(_row["after"]) * _rate_of(_m)
+        _s[f"{_season[_m['month']].lower()}_after"] += float(_row["after"]) * _rate_of(_m)
+    _hp[_comp] = _s
+_winter_kwh_check = sum(float(_kwh[_label]["after"]) for _label in WINTER_MONTH_LABELS)
+_gen_after = sum(float(_kwh[_m["month"]]["after"]) * _m["gen"] for _m in _months)
+
+_names = {"dist": "distribution", "tx": "transmission"}
+for _comp, _s in _hp.items():
+    _mc_d = report_vars[f"all_fossil_annual_mc_{_comp}_delta"]
+    _s["mc_delta"] = _mc_d
+    _s["overpayment"] = (_s["after"] - _s["before"]) - _mc_d
+    _s["fair_after"] = _s["before"] + _mc_d
+    _s["winter_rate"] = (_s["winter_after"] - _s["overpayment"]) / _winter_kwh_check
+    assert abs(_s["before"] - report_vars[f"all_fossil_annual_{_names[_comp]}_before"]) < 1e-4, _comp
+    assert abs(_s["after"] - report_vars[f"all_fossil_annual_{_names[_comp]}_after"]) < 1e-4, _comp
+    assert abs(
+        _mc_d
+        - (report_vars[f"all_fossil_annual_mc_{_comp}_after"] - report_vars[f"all_fossil_annual_mc_{_comp}_before"])
+    ) < 1e-4, _comp
+    assert abs(_s["summer_after"] - report_vars[f"fair_hp_summer_bill_{_comp}"]) < 1e-4, _comp
+    assert abs(_s["fair_after"] - report_vars[f"fair_hp_fair_{_comp}_bill_after"]) < 1e-4, _comp
+    assert abs(_s["winter_rate"] - report_vars[f"fair_hp_winter_rate_{_comp}"]) < 1e-10, _comp
+    assert abs(_s["summer_after"] + _s["winter_rate"] * _winter_kwh_check - _s["fair_after"]) < 1e-4, _comp
+assert abs(_winter_kwh_check - report_vars["fair_hp_winter_kwh"]) < 1e-4
+assert abs(_gen_after / report_vars["all_fossil_annual_kwh_after"] - report_vars["fair_hp_avg_rate_gen"]) < 1e-10
+_winter_total = _hp["dist"]["winter_rate"] + _hp["tx"]["winter_rate"]
+assert abs(_winter_total - report_vars["fair_hp_icos_winter_rate"]) < 1e-5
+
+_wb_hp = Workbook()
+_wb_hp.remove(_wb_hp.active)
+
+# --- monthly -----------------------------------------------------------------
+_wsm = _wb_hp.create_sheet("monthly")
+_m_headers = [
+    "month",
+    "season",
+    "kwh_pre_retrofit",
+    "kwh_post_retrofit",
+    "rate1_distribution_energy_$/kwh",
+    "rate1_riders_$/kwh",
+    "rate1_transmission_$/kwh",
+    "rate1_generation_$/kwh",
+    "distribution_incl_riders_pre_$",
+    "transmission_pre_$",
+    "distribution_incl_riders_post_$",
+    "transmission_post_$",
+    "generation_post_$",
+]
+for _col, _header in enumerate(_m_headers, start=1):
+    _cell = _wsm.cell(1, _col, _header)
+    _cell.font = Font(bold=True)
+    _cell.alignment = Alignment(wrap_text=True)
+for _i, _m in enumerate(_months):
+    _row = _i + 2
+    _wsm.cell(_row, 1, _m["month"])
+    _wsm.cell(_row, 2, _season[_m["month"]])
+    _wsm.cell(_row, 3, float(_kwh[_m["month"]]["before"]))
+    _wsm.cell(_row, 4, float(_kwh[_m["month"]]["after"]))
+    _wsm.cell(_row, 5, _m["dist"])
+    _wsm.cell(_row, 6, _m["riders"])
+    _wsm.cell(_row, 7, _m["tx"])
+    _wsm.cell(_row, 8, _m["gen"])
+    _wsm.cell(_row, 9, f"=C{_row}*(E{_row}+F{_row})")
+    _wsm.cell(_row, 10, f"=C{_row}*G{_row}")
+    _wsm.cell(_row, 11, f"=D{_row}*(E{_row}+F{_row})")
+    _wsm.cell(_row, 12, f"=D{_row}*G{_row}")
+    _wsm.cell(_row, 13, f"=D{_row}*H{_row}")
+_m_last = len(_months) + 1
+_m_annual, _m_winter, _m_summer = _m_last + 1, _m_last + 2, _m_last + 3
+_summed_cols = [3, 4, 9, 10, 11, 12, 13]
+for _row, _label, _crit in [(_m_annual, "Annual", None), (_m_winter, "Winter", "Winter"), (_m_summer, "Summer", "Summer")]:
+    _wsm.cell(_row, 1, _label).font = Font(bold=True)
+    for _col in _summed_cols:
+        _l = get_column_letter(_col)
+        _wsm.cell(
+            _row,
+            _col,
+            f"=SUM({_l}2:{_l}{_m_last})"
+            if _crit is None
+            else f'=SUMIF($B$2:$B${_m_last},"{_crit}",{_l}2:{_l}{_m_last})',
+        )
+
+# --- marginal_cost -----------------------------------------------------------
+_wsc = _wb_hp.create_sheet("marginal_cost")
+_wsc["A1"] = (
+    "Annual marginal T&D cost of the representative home "
+    "(hourly_marginal_cost sheet of JPV3-representative_home_load_profiles.xlsx)"
+)
+_wsc["A1"].font = Font(bold=True)
+for _col, _header in enumerate(["Component", "Pre-retrofit ($)", "Post-retrofit ($)", "Change ($)"], start=1):
+    _wsc.cell(2, _col, _header).font = Font(bold=True)
+for _row, (_label, _comp) in enumerate(
+    [("Distribution and sub-transmission", "dist"), ("Bulk transmission", "tx")], start=3
+):
+    _wsc.cell(_row, 1, _label)
+    _wsc.cell(_row, 2, report_vars[f"all_fossil_annual_mc_{_comp}_before"])
+    _wsc.cell(_row, 3, report_vars[f"all_fossil_annual_mc_{_comp}_after"])
+    _wsc.cell(_row, 4, f"=C{_row}-B{_row}")
+_wsc.cell(5, 1, "Total").font = Font(bold=True)
+for _col in "BCD":
+    _wsc[f"{_col}5"] = f"={_col}3+{_col}4"
+
+# --- rate_hp -----------------------------------------------------------------
+_wsr = _wb_hp.create_sheet("rate_hp")
+_wsr["A1"] = "Rate HP winter rates: remove the Rate 1 overpayment, keep summer charges at Rate 1"
+_wsr["A1"].font = Font(bold=True)
+for _col, _header in enumerate(
+    ["Step", "Distribution (incl. riders)", "Transmission", "Total", "How it is computed"], start=1
+):
+    _wsr.cell(2, _col, _header).font = Font(bold=True)
+_steps = [
+    ("Rate 1 charges, pre-retrofit ($/yr)", f"=monthly!I{_m_annual}", f"=monthly!J{_m_annual}", "Annual totals, monthly sheet"),
+    ("Rate 1 charges, post-retrofit ($/yr)", f"=monthly!K{_m_annual}", f"=monthly!L{_m_annual}", "Annual totals, monthly sheet"),
+    ("Charge change ($/yr)", "=B4-B3", "=C4-C3", "Post − pre"),
+    ("Marginal cost change ($/yr)", "=marginal_cost!D3", "=marginal_cost!D4", "marginal_cost sheet"),
+    ("Overpayment ($/yr)", "=B5-B6", "=C5-C6", "Charge change − cost change"),
+    ("Fair post-retrofit charges ($/yr)", "=B3+B6", "=C3+C6", "Pre-retrofit charges + cost change"),
+    ("Post-retrofit summer charges, unchanged ($)", f"=monthly!K{_m_summer}", f"=monthly!L{_m_summer}", "Summer totals, monthly sheet"),
+    ("Post-retrofit winter charges under Rate 1 ($)", f"=monthly!K{_m_winter}", f"=monthly!L{_m_winter}", "Winter totals, monthly sheet"),
+    ("Post-retrofit winter kWh", f"=monthly!D{_m_winter}", f"=monthly!D{_m_winter}", "Winter totals, monthly sheet"),
+    ("Rate HP winter rate ($/kWh)", "=(B10-B7)/B11", "=(C10-C7)/C11", "(Rate 1 winter charges − overpayment) / winter kWh"),
+    ("Check: summer charges + winter rate × winter kWh ($)", "=B9+B12*B11", "=C9+C12*C11", "Equals fair post-retrofit charges"),
+    ("Check: difference from fair charges ($)", "=B13-B8", "=C13-C8", "Should be 0"),
+]
+for _offset, (_label, _dist, _tx, _how) in enumerate(_steps):
+    _row = 3 + _offset
+    _wsr.cell(_row, 1, _label)
+    _wsr.cell(_row, 2, _dist)
+    _wsr.cell(_row, 3, _tx)
+    _wsr.cell(_row, 4, f"=B{_row}+C{_row}" if _offset != 8 else f"=B{_row}")
+    _wsr.cell(_row, 5, _how)
+_wsr["A12"].font = Font(bold=True)
+
+_t = 17
+_wsr.cell(_t, 1, "Rate HP table (Direct Testimony, Section X)").font = Font(bold=True)
+for _col, _header in enumerate(
+    ["Component", "Rate 1 ($/kWh)", "Rate HP summer ($/kWh)", "Rate HP winter ($/kWh)", "Winter change vs. Rate 1"],
+    start=1,
+):
+    _wsr.cell(_t + 1, _col, _header).font = Font(bold=True)
+_table = [
+    ("Riders (unchanged)", "=monthly!F2", "=monthly!F2", "=monthly!F2"),
+    ("Distribution Energy Charge", "=monthly!E2", "=monthly!E2", f"=B12-B{_t + 2}"),
+    ("Transmission Service Rate", "=monthly!G2", "=monthly!G2", "=C12"),
+    ("Total delivery volumetric", f"=B{_t + 2}+B{_t + 3}+B{_t + 4}", f"=C{_t + 2}+C{_t + 3}+C{_t + 4}", "=D12"),
+    (
+        "Generation (kWh-weighted average, post-retrofit)",
+        f"=monthly!M{_m_annual}/monthly!D{_m_annual}",
+        f"=monthly!M{_m_annual}/monthly!D{_m_annual}",
+        f"=monthly!M{_m_annual}/monthly!D{_m_annual}",
+    ),
+]
+for _offset, (_label, _r1, _summer, _winter) in enumerate(_table):
+    _row = _t + 2 + _offset
+    _wsr.cell(_row, 1, _label)
+    _wsr.cell(_row, 2, _r1)
+    _wsr.cell(_row, 3, _summer)
+    _wsr.cell(_row, 4, _winter)
+    if _label.startswith(("Distribution", "Transmission", "Total")):
+        _wsr.cell(_row, 5, f"=D{_row}/B{_row}-1")
+
+for _ws_fmt in (_wsm, _wsc, _wsr):
+    _ws_fmt.column_dimensions["A"].width = 52 if _ws_fmt is not _wsm else 10
+_wsr.column_dimensions["E"].width = 50
+for _col in "BCD":
+    _wsr.column_dimensions[_col].width = 22
+
+_xlsx_hp_path = Path("../cache/JPV4-rate_hp_derivation.xlsx")
+_wb_hp.save(_xlsx_hp_path)
+
+_existing_hp = _drive.files().list(
+    q=f"name = '{_xlsx_hp_path.name}' and '{_DRIVE_FOLDER_ID}' in parents and trashed = false",
+    fields="files(id, name)",
+    supportsAllDrives=True,
+    includeItemsFromAllDrives=True,
+).execute()
+for _old in _existing_hp.get("files", []):
+    _drive.files().update(fileId=_old["id"], body={"trashed": True}, supportsAllDrives=True).execute()
+_uploaded_hp = _drive.files().create(
+    body={"name": _xlsx_hp_path.name, "parents": [_DRIVE_FOLDER_ID]},
+    media_body=MediaFileUpload(
+        str(_xlsx_hp_path),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        resumable=True,
+    ),
+    fields="id, webViewLink",
+    supportsAllDrives=True,
+).execute()
+_xlsx_hp_path.unlink()
+print(f"Uploaded {_xlsx_hp_path.name}: {_uploaded_hp['webViewLink']}")
+for _comp, _label in (("dist", "Distribution (incl. riders)"), ("tx", "Transmission")):
+    _s = _hp[_comp]
+    print(
+        f"  {_label}: overpayment ${_s['overpayment']:,.2f}, "
+        f"winter rate {_s['winter_rate'] * 100:.4f}¢/kWh"
+    )
+print(f"  Distribution Energy Charge, winter: {(_hp['dist']['winter_rate'] - _rate1['riders']) * 100:.4f}¢/kWh")
+print(f"  Total winter delivery rate: {_winter_total * 100:.4f}¢/kWh "
+      f"(CAIRO tariff {report_vars['fair_hp_icos_winter_rate'] * 100:.4f}¢/kWh)")
 ```

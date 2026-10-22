@@ -1,0 +1,1139 @@
+---
+title: "National Grid MA: Representative Home Rate Comparison"
+format:
+  html:
+    page-layout: full
+    toc: true
+    theme: ../../.style/switchbox.scss
+---
+
+This notebook computes electric-only bill decompositions for a representative
+fossil-fuel-heated home, using weighted-average monthly electricity profiles
+from Eversource CT's CAIRO simulation. We apply two utilities' rate
+structures and show annual and seasonal (winter vs summer) breakdowns:
+
+1. **MA National Grid** — D.P.U. 26-71 seasonal HP rate (distribution +
+   transmission discount, Nov–Apr). Supply from NGrid 2025 basic service.
+2. **CMP (Maine)** — Rate A-Seasonal with near-zero winter delivery and a
+   higher fixed charge (`$41.24`/mo vs `$29.88`/mo). All rates from primary
+   sources (Oct 2025 effective).
+
+```{python}
+#| label: setup
+
+import polars as pl
+
+from lib.quarto import display_figure
+from lib.rates_analysis.rate_case_funcs import (
+    MONTH_ORDER,
+    load_billing_kwh_8760,
+    load_master_bills,
+    monthly_bill_from_profile,
+    plot_decomposed_bill_3bar,
+    segment_name,
+    weighted_avg_monthly,
+)
+
+# --- Seasonal definitions ---
+WINTER_MONTHS = ["Nov", "Dec", "Jan", "Feb", "Mar", "Apr"]
+SUMMER_MONTHS = ["May", "Jun", "Jul", "Aug", "Sep", "Oct"]
+```
+
+## Load CT profiles
+
+We reuse the CT CAIRO simulation's weighted-average monthly kWh profiles.
+These represent the average Eversource CT natural-gas-heated home before
+and after a heat pump retrofit.
+
+```{python}
+#| label: load-ct-profiles
+
+# --- CT batch parameters (from ct_hp_rates/batch_config.yaml) ---
+CT_STATE = "CT"
+CT_BATCH = "ct_20261015_a"
+CT_UTILITY = "ct_eversource"
+CT_SCENARIO = "default_ry1_r1_uncalibrated"
+CT_UPGRADE_BASE = 0
+CT_UPGRADE_HP = 2
+
+SEG_PRECALC = segment_name(CT_SCENARIO, "precalc")
+SEG_CALIBRATED = segment_name(CT_SCENARIO, "calibrated")
+
+# Load master bills (precalc) to identify the natgas population and weights
+bills_precalc = load_master_bills(CT_STATE, CT_BATCH, SEG_PRECALC)
+
+_pop_annual = pl.DataFrame(
+    bills_precalc.filter(
+        (pl.col("month") == "Annual")
+        & (pl.col("sb.electric_utility") == CT_UTILITY)
+        & (pl.col("upgrade") == CT_UPGRADE_BASE)
+        & (pl.col("heats_with_natgas") == True)
+    )
+    .select("bldg_id", "weight")
+    .collect()
+)
+
+print(f"Natural gas population: {_pop_annual.height:,} buildings")
+
+# Load 8760 billing kWh
+kwh_8760_precalc = load_billing_kwh_8760(CT_STATE, CT_UTILITY, CT_BATCH, SEG_PRECALC)
+kwh_8760_calibrated = load_billing_kwh_8760(CT_STATE, CT_UTILITY, CT_BATCH, SEG_CALIBRATED)
+
+# Weighted-average monthly profiles
+bldg_ids = _pop_annual["bldg_id"].to_list()
+weights = _pop_annual.select("bldg_id", "weight")
+
+profile_before = weighted_avg_monthly(kwh_8760_precalc, bldg_ids, weights)
+profile_after = weighted_avg_monthly(kwh_8760_calibrated, bldg_ids, weights)
+
+print("Monthly kWh profiles:")
+print(
+    profile_before.join(
+        profile_after.rename({"kwh": "kwh_after"}),
+        on="month_label",
+    ).with_columns(
+        (pl.col("kwh_after") - pl.col("kwh")).alias("delta"),
+    ).rename({"kwh": "kwh_before"})
+)
+```
+
+## MA National Grid rates
+
+Delivery rates from D.P.U. 26-71 (Exhibit 3). The heat pump rate applies a
+seasonal adjustment to base distribution and transmission charges during the
+winter heating season (November–April). All riders are unchanged.
+
+```{python}
+#| label: define-rates
+
+# --- National Grid delivery rates (D.P.U. 26-71) ---
+
+# Default R-1 (flat, year-round)
+NGRID_CUSTOMER_CHARGE = 10.00  # $/month
+NGRID_DISTRIBUTION_DEFAULT = 0.11028  # $/kWh (base dist + all riders)
+NGRID_TRANSMISSION_DEFAULT = 0.05464  # $/kWh
+
+# Heat pump rate (seasonal, Nov-Apr winter discount)
+NGRID_DISTRIBUTION_HP_WINTER = 0.06826  # $/kWh (discounted base + same riders)
+NGRID_TRANSMISSION_HP_WINTER = 0.01998  # $/kWh
+# Summer (May-Oct) reverts to default
+NGRID_DISTRIBUTION_HP_SUMMER = NGRID_DISTRIBUTION_DEFAULT
+NGRID_TRANSMISSION_HP_SUMMER = NGRID_TRANSMISSION_DEFAULT
+
+WINTER_MONTHS = ["Nov", "Dec", "Jan", "Feb", "Mar", "Apr"]
+SUMMER_MONTHS = ["May", "Jun", "Jul", "Aug", "Sep", "Oct"]
+
+# --- Supply / generation rate (National Grid fixed-price basic service, 2025) ---
+# Jan: $0.16029 (Nov 2024 – Jan 2025 term)
+# Feb–Jul: $0.14672 (Feb – Jul 2025 term)
+# Aug–Dec: $0.15484 (Aug 2025 – Jan 2026 term)
+# Weighted avg: $0.1512/kWh
+# Source: nationalgridus.com residential basic service rate table
+NGRID_SUPPLY_RATE = 0.1512  # $/kWh (2025 fixed-price weighted average)
+
+def _monthly_rates_flat(rate: float) -> dict[str, float]:
+    """12-entry dict with the same rate every month, keyed YYYY-MM."""
+    return {f"2025-{m:02d}": rate for m in range(1, 13)}
+
+
+def _monthly_rates_seasonal(
+    winter_rate: float,
+    summer_rate: float,
+) -> dict[str, float]:
+    """12-entry dict with winter/summer seasonal rates, keyed YYYY-MM."""
+    rates = {}
+    for m in range(1, 13):
+        label = MONTH_ORDER[m - 1]
+        rates[f"2025-{m:02d}"] = winter_rate if label in WINTER_MONTHS else summer_rate
+    return rates
+
+
+# ---- Rate scenario: DEFAULT ----
+rate_components_default = {
+    "Customer Charge": {
+        "charge_unit": "$/month",
+        "monthly_rates": _monthly_rates_flat(NGRID_CUSTOMER_CHARGE),
+    },
+    "Distribution": {
+        "charge_unit": "$/kWh",
+        "monthly_rates": _monthly_rates_flat(NGRID_DISTRIBUTION_DEFAULT),
+    },
+    "Transmission": {
+        "charge_unit": "$/kWh",
+        "monthly_rates": _monthly_rates_flat(NGRID_TRANSMISSION_DEFAULT),
+    },
+    "Generation": {
+        "charge_unit": "$/kWh",
+        "monthly_rates": _monthly_rates_flat(NGRID_SUPPLY_RATE),
+    },
+}
+
+# ---- Rate scenario: HEAT PUMP RATE (D.P.U. 26-71) ----
+rate_components_hp = {
+    "Customer Charge": {
+        "charge_unit": "$/month",
+        "monthly_rates": _monthly_rates_flat(NGRID_CUSTOMER_CHARGE),
+    },
+    "Distribution": {
+        "charge_unit": "$/kWh",
+        "monthly_rates": _monthly_rates_seasonal(
+            NGRID_DISTRIBUTION_HP_WINTER, NGRID_DISTRIBUTION_HP_SUMMER
+        ),
+    },
+    "Transmission": {
+        "charge_unit": "$/kWh",
+        "monthly_rates": _monthly_rates_seasonal(
+            NGRID_TRANSMISSION_HP_WINTER, NGRID_TRANSMISSION_HP_SUMMER
+        ),
+    },
+    "Generation": {
+        "charge_unit": "$/kWh",
+        "monthly_rates": _monthly_rates_flat(NGRID_SUPPLY_RATE),
+    },
+}
+
+# --- CMP (Maine) rates (effective Oct 1, 2025) ---
+
+# Default Rate A: $29.88/month with first 50 kWh included (flat, year-round)
+CMP_CUSTOMER_CHARGE_DEFAULT = 29.88       # $/month
+CMP_FIRST_KWH_INCLUDED = 50              # kWh/month bundled into customer charge
+CMP_DISTRIBUTION_DEFAULT = 0.083266      # $/kWh (delivery $0.131239 minus transmission)
+CMP_TRANSMISSION_DEFAULT = 0.047973      # $/kWh (Section 44.1, Jan 2025)
+CMP_SUPPLY_RATE = 0.106128               # $/kWh (Standard Offer, flat Jan–Dec 2025)
+
+# HP Rate A-Seasonal (7th Rev, Oct 1, 2025): higher fixed charge, NO first-50-kWh
+CMP_CUSTOMER_CHARGE_HP = 41.24           # $/month (no kWh inclusion)
+CMP_DISTRIBUTION_HP_WINTER = 0.008244    # $/kWh (Nov–Apr)
+CMP_DISTRIBUTION_HP_SUMMER = 0.164681    # $/kWh (May–Oct)
+CMP_TRANSMISSION_HP_WINTER = 0.000000    # $/kWh (Nov–Apr — zero)
+CMP_TRANSMISSION_HP_SUMMER = 0.110929    # $/kWh (May–Oct)
+
+# CMP uses the same winter/summer months as National Grid
+# Winter: Nov 1 – Apr 30, Summer: May 1 – Oct 31
+
+# ---- Rate scenario: CMP DEFAULT (Rate A) ----
+rate_components_cmp_default = {
+    "Customer Charge": {
+        "charge_unit": "$/month",
+        "monthly_rates": _monthly_rates_flat(CMP_CUSTOMER_CHARGE_DEFAULT),
+    },
+    "Distribution": {
+        "charge_unit": "$/kWh",
+        "monthly_rates": _monthly_rates_flat(CMP_DISTRIBUTION_DEFAULT),
+    },
+    "Transmission": {
+        "charge_unit": "$/kWh",
+        "monthly_rates": _monthly_rates_flat(CMP_TRANSMISSION_DEFAULT),
+    },
+    "Generation": {
+        "charge_unit": "$/kWh",
+        "monthly_rates": _monthly_rates_flat(CMP_SUPPLY_RATE),
+    },
+}
+
+# ---- Rate scenario: CMP HP RATE (A-Seasonal) ----
+rate_components_cmp_hp = {
+    "Customer Charge": {
+        "charge_unit": "$/month",
+        "monthly_rates": _monthly_rates_flat(CMP_CUSTOMER_CHARGE_HP),
+    },
+    "Distribution": {
+        "charge_unit": "$/kWh",
+        "monthly_rates": _monthly_rates_seasonal(
+            CMP_DISTRIBUTION_HP_WINTER, CMP_DISTRIBUTION_HP_SUMMER
+        ),
+    },
+    "Transmission": {
+        "charge_unit": "$/kWh",
+        "monthly_rates": _monthly_rates_seasonal(
+            CMP_TRANSMISSION_HP_WINTER, CMP_TRANSMISSION_HP_SUMMER
+        ),
+    },
+    "Generation": {
+        "charge_unit": "$/kWh",
+        "monthly_rates": _monthly_rates_flat(CMP_SUPPLY_RATE),
+    },
+}
+
+def _print_rate_scenarios(scenarios: list[tuple[str, dict]]) -> None:
+    for name, rc in scenarios:
+        print(f"\n  {name}:")
+        for comp, spec in rc.items():
+            vals = list(spec["monthly_rates"].values())
+            lo, hi = min(vals), max(vals)
+            unit = spec["charge_unit"]
+            if lo == hi:
+                print(f"    {comp}: {lo:.5f} {unit}")
+            else:
+                print(f"    {comp}: {lo:.5f}–{hi:.5f} {unit}")
+
+
+print("National Grid MA:")
+_print_rate_scenarios([
+    ("Default (R-1)", rate_components_default),
+    ("HP rate (D.P.U. 26-71)", rate_components_hp),
+])
+
+print("\n\nCMP (Maine):")
+_print_rate_scenarios([
+    ("Default (Rate A)", rate_components_cmp_default),
+    ("HP rate (A-Seasonal)", rate_components_cmp_hp),
+])
+print(f"\n  Note: Rate A includes first {CMP_FIRST_KWH_INCLUDED} kWh/month in customer charge."
+      f"\n  A-Seasonal does NOT — all kWh are volumetric.")
+```
+
+## Compute bills
+
+```{python}
+#| label: compute-bills
+
+# --- Monthly bills for all scenarios ---
+bills_ngrid_before = monthly_bill_from_profile(profile_before, rate_components_default)
+bills_ngrid_after_default = monthly_bill_from_profile(profile_after, rate_components_default)
+bills_ngrid_after_hp = monthly_bill_from_profile(profile_after, rate_components_hp)
+
+bills_cmp_before = monthly_bill_from_profile(profile_before, rate_components_cmp_default)
+bills_cmp_after_default = monthly_bill_from_profile(profile_after, rate_components_cmp_default)
+bills_cmp_after_hp = monthly_bill_from_profile(profile_after, rate_components_cmp_hp)
+
+ELEC_COMP_KEYS = ["delivery_fixed", "delivery_volumetric", "supply"]
+MONTHLY_COMP_ORDER = ["delivery_fixed", "supply", "delivery_volumetric"]
+
+
+def _elec_totals(
+    bills_df: pl.DataFrame,
+    months: list[str] | None = None,
+) -> dict[str, float]:
+    """Electric-only bill totals, optionally filtered to specific months."""
+    df = bills_df
+    if months is not None:
+        df = df.filter(pl.col("month_label").is_in(months))
+    annual = df.group_by("component").agg(pl.col("value").sum())
+    by_comp = {row["component"]: row["value"] for row in annual.iter_rows(named=True)}
+    return {
+        "delivery_fixed": by_comp.get("Customer Charge", 0.0),
+        "delivery_volumetric": by_comp.get("Distribution", 0.0) + by_comp.get("Transmission", 0.0),
+        "supply": by_comp.get("Generation", 0.0),
+    }
+
+
+# --- Annual electric-only totals ---
+ngrid_before = _elec_totals(bills_ngrid_before)
+ngrid_after_default = _elec_totals(bills_ngrid_after_default)
+ngrid_after_hp = _elec_totals(bills_ngrid_after_hp)
+
+cmp_before = _elec_totals(bills_cmp_before)
+cmp_after_default = _elec_totals(bills_cmp_after_default)
+cmp_after_hp = _elec_totals(bills_cmp_after_hp)
+
+# CMP Rate A first-50-kWh adjustment (delivery only, 12 months)
+_first_50_credit = CMP_FIRST_KWH_INCLUDED * 12 * (CMP_DISTRIBUTION_DEFAULT + CMP_TRANSMISSION_DEFAULT)
+cmp_before["delivery_volumetric"] -= _first_50_credit
+cmp_after_default["delivery_volumetric"] -= _first_50_credit
+
+# --- Seasonal electric-only totals ---
+ngrid_before_w = _elec_totals(bills_ngrid_before, WINTER_MONTHS)
+ngrid_before_s = _elec_totals(bills_ngrid_before, SUMMER_MONTHS)
+ngrid_default_w = _elec_totals(bills_ngrid_after_default, WINTER_MONTHS)
+ngrid_default_s = _elec_totals(bills_ngrid_after_default, SUMMER_MONTHS)
+ngrid_hp_w = _elec_totals(bills_ngrid_after_hp, WINTER_MONTHS)
+ngrid_hp_s = _elec_totals(bills_ngrid_after_hp, SUMMER_MONTHS)
+
+cmp_before_w = _elec_totals(bills_cmp_before, WINTER_MONTHS)
+cmp_before_s = _elec_totals(bills_cmp_before, SUMMER_MONTHS)
+cmp_default_w = _elec_totals(bills_cmp_after_default, WINTER_MONTHS)
+cmp_default_s = _elec_totals(bills_cmp_after_default, SUMMER_MONTHS)
+cmp_hp_w = _elec_totals(bills_cmp_after_hp, WINTER_MONTHS)
+cmp_hp_s = _elec_totals(bills_cmp_after_hp, SUMMER_MONTHS)
+
+# CMP Rate A first-50-kWh adjustment (6 months per season)
+_first_50_credit_season = CMP_FIRST_KWH_INCLUDED * 6 * (CMP_DISTRIBUTION_DEFAULT + CMP_TRANSMISSION_DEFAULT)
+cmp_before_w["delivery_volumetric"] -= _first_50_credit_season
+cmp_before_s["delivery_volumetric"] -= _first_50_credit_season
+cmp_default_w["delivery_volumetric"] -= _first_50_credit_season
+cmp_default_s["delivery_volumetric"] -= _first_50_credit_season
+
+print("Annual electric bills (no gas):")
+for label, t in [
+    ("NGrid before", ngrid_before),
+    ("NGrid default", ngrid_after_default),
+    ("NGrid HP rate", ngrid_after_hp),
+    ("CMP before", cmp_before),
+    ("CMP default", cmp_after_default),
+    ("CMP A-Seasonal", cmp_after_hp),
+]:
+    print(f"  {label}: ${sum(t.values()):,.0f}")
+```
+
+## Chart helpers
+
+```{python}
+#| label: chart-helpers
+
+import matplotlib as mpl
+import numpy as np
+from matplotlib import pyplot as plt
+from lib.plotnine import SB_COLORS
+from lib.plotnine.switchbox_theme import _register_fonts
+
+_register_fonts()
+mpl.rcParams["hatch.linewidth"] = 4.5
+
+COMP_COLORS = {
+    "delivery_fixed": SB_COLORS["midnight"],
+    "delivery_volumetric": SB_COLORS["sky"],
+    "supply": SB_COLORS["carrot"],
+}
+COMP_COLORS_LIGHT = {
+    "delivery_fixed": "#4d7a8f",
+    "delivery_volumetric": "#b8dfe9",
+    "supply": "#fdc468",
+}
+COMP_LABELS = {
+    "delivery_fixed": "Delivery (Fixed)",
+    "delivery_volumetric": "Delivery (Volumetric)",
+    "supply": "Supply",
+}
+SAVINGS_COLOR = "#f5e6a3"
+
+
+def _draw_seasonal_bar(
+    ax: plt.Axes,
+    x: float,
+    data: dict[str, float],
+    bar_w: float,
+    prev_data: dict[str, float] | None = None,
+    baseline_data: dict[str, float] | None = None,
+    label_min: float = 40.0,
+) -> float:
+    """Draw one stacked bar for the seasonal chart. Returns the bar total.
+
+    *prev_data*: previous scenario's data for the same season — enables
+    hatching on increases and ghost regions on decreases.
+    *baseline_data*: first scenario's data — draws a saffron dashed line
+    showing the baseline delivery volumetric level.
+    """
+    bottom = 0.0
+    total = sum(data[k] for k in MONTHLY_COMP_ORDER)
+
+    for key in MONTHLY_COMP_ORDER:
+        val = data[key]
+        color = COMP_COLORS[key]
+
+        if prev_data is None:
+            ax.bar(x, val, bottom=bottom, width=bar_w,
+                   color=color, edgecolor="none", linewidth=0)
+        else:
+            prev_val = prev_data[key]
+            solid = min(val, prev_val)
+            ax.bar(x, solid, bottom=bottom, width=bar_w,
+                   color=color, edgecolor="none", linewidth=0)
+            if val > prev_val:
+                inc = val - prev_val
+                ax.bar(x, inc, bottom=bottom + solid, width=bar_w,
+                       color=COMP_COLORS_LIGHT[key], edgecolor="white",
+                       linewidth=0.5)
+                ax.bar(x, inc, bottom=bottom + solid, width=bar_w,
+                       facecolor="none", edgecolor=color,
+                       linewidth=0, hatch="//")
+
+        if val >= label_min:
+            ax.text(x, bottom + val / 2, f"${val:,.0f}",
+                    ha="center", va="center", fontsize=10,
+                    fontfamily="IBM Plex Sans", fontweight="bold",
+                    color="white", zorder=5)
+        bottom += val
+
+    # Ghost + savings annotation
+    if prev_data is not None:
+        prev_total = sum(prev_data[k] for k in MONTHLY_COMP_ORDER)
+        if prev_total > total:
+            ghost_h = prev_total - total
+            ax.bar(x, ghost_h, bottom=total, width=bar_w,
+                   color=SAVINGS_COLOR, edgecolor="#cccccc",
+                   linewidth=1.0, alpha=0.45)
+            sav_pct = ghost_h / prev_total * 100
+            ax.text(x, prev_total + 20, f"−{sav_pct:.0f}%",
+                    ha="center", va="bottom", fontsize=10,
+                    fontfamily="GT Planar", fontweight="bold",
+                    color=SB_COLORS["saffron"])
+            ghost_mid = total + ghost_h / 2
+            total_label_top = total + 75
+            safe_mid = (total_label_top + prev_total) / 2
+            dollar_y = max(ghost_mid, safe_mid)
+            ax.text(x, dollar_y, f"−${ghost_h:,.0f}",
+                    ha="center", va="center", fontsize=10,
+                    fontfamily="IBM Plex Sans", fontweight="bold",
+                    color=SB_COLORS["saffron"])
+
+    # Baseline delivery reference line
+    if baseline_data is not None:
+        base_del_vol = baseline_data["delivery_volumetric"]
+        del_vol_bottom = data["delivery_fixed"] + data["supply"]
+        ref_y = del_vol_bottom + base_del_vol
+        if abs(ref_y - total) > 2:
+            ax.plot([x - bar_w / 2, x + bar_w / 2], [ref_y, ref_y],
+                    color=SB_COLORS["saffron"], linestyle=(0, (3, 2)),
+                    linewidth=1.3, zorder=2)
+
+    ax.text(x, bottom + 30, f"${total:,.0f}", ha="center", va="bottom",
+            fontsize=11, fontfamily="IBM Plex Sans", fontweight="bold", color="#333333")
+    return total
+
+
+def plot_seasonal_comparison(
+    scenarios: list[tuple[str, dict[str, float], dict[str, float]]],
+    title: str,
+) -> plt.Figure:
+    """Grouped stacked bar chart: each scenario is a pair of summer/winter bars.
+
+    Scenario 0 is the baseline (solid). Scenarios 1+ get hatching on
+    component increases and ghost regions on decreases vs. the previous
+    scenario. The last scenario also gets a baseline delivery reference line.
+    """
+    n = len(scenarios)
+    bar_w = 0.38
+    pair_gap = 0.12
+    group_gap = 0.7
+
+    fig, ax = plt.subplots(figsize=(12, 7))
+    ax.set_title(title, fontfamily="GT Planar", fontweight="bold", fontsize=15, loc="left", pad=12)
+
+    x_centers = [i * (2 * bar_w + pair_gap + group_gap) for i in range(n)]
+    all_totals: list[float] = []
+
+    baseline_winter = scenarios[0][1]
+    baseline_summer = scenarios[0][2]
+
+    for i, (label, winter, summer) in enumerate(scenarios):
+        xc = x_centers[i]
+        x_l = xc - (bar_w + pair_gap) / 2
+        x_r = xc + (bar_w + pair_gap) / 2
+
+        prev_summer = scenarios[i - 1][2] if i > 0 else None
+        prev_winter = scenarios[i - 1][1] if i > 0 else None
+        base_s = baseline_summer if i == n - 1 else None
+        base_w = baseline_winter if i == n - 1 else None
+
+        for bx, data, season_label, prev, base in [
+            (x_l, summer, "Summer", prev_summer, base_s),
+            (x_r, winter, "Winter", prev_winter, base_w),
+        ]:
+            t = _draw_seasonal_bar(ax, bx, data, bar_w,
+                                   prev_data=prev, baseline_data=base)
+            all_totals.append(t)
+            ax.text(bx, -60, season_label, ha="center", va="top",
+                    fontsize=10, fontfamily="IBM Plex Sans", color="#666666")
+
+        ax.text(xc, -130, label, ha="center", va="top",
+                fontsize=12, fontfamily="GT Planar", fontweight="bold")
+
+    # Side labels on the last scenario's winter bar (rightmost bar)
+    last_winter = scenarios[-1][1]
+    last_xc = x_centers[-1]
+    last_x_r = last_xc + (bar_w + pair_gap) / 2
+    side_x = last_x_r + bar_w / 2 + 0.15
+
+    label_colors = {
+        "delivery_fixed": SB_COLORS["midnight"],
+        "delivery_volumetric": SB_COLORS["sky"],
+        "supply": SB_COLORS["carrot"],
+    }
+    label_names = {
+        "delivery_fixed": "Delivery\n(Fixed)",
+        "delivery_volumetric": "Delivery\n(Volumetric)",
+        "supply": "Supply",
+    }
+    y_cursor = 0.0
+    for key in MONTHLY_COMP_ORDER:
+        val = last_winter[key]
+        ym = y_cursor + val / 2
+        clr = label_colors[key]
+        ax.plot([last_x_r + bar_w / 2 + 0.02, side_x - 0.03],
+                [ym, ym], color=clr, linewidth=0.7, alpha=0.6)
+        ax.text(side_x, ym, label_names[key], color=clr, ha="left",
+                va="center", fontsize=11, fontfamily="IBM Plex Sans",
+                fontweight="bold")
+        y_cursor += val
+
+    y_max = max(all_totals) * 1.25
+    ax.set_ylabel("Electric bill ($)", fontfamily="GT Planar", fontsize=13, color="#333333")
+    ax.set_xlim(x_centers[0] - 0.8, side_x + 1.2)
+    ax.set_ylim(0, y_max)
+    ax.set_xticks([])
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["bottom"].set_visible(False)
+    ax.tick_params(axis="y", labelsize=11)
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"${v:,.0f}"))
+    fig.subplots_adjust(bottom=0.15)
+    return fig
+```
+
+## Annual electric bill charts
+
+Electric bill only (no gas), before and after heat pump, under each rate design.
+
+```{python}
+#| label: fig-annual-ngrid
+#| fig-cap: "Annual electric bill for a representative home in National Grid MA territory, before and after heat pump installation."
+
+fig_ngrid, savings_ngrid, pct_ngrid, _, _ = plot_decomposed_bill_3bar(
+    {**ngrid_before, "gas": 0.0},
+    {**ngrid_after_default, "gas": 0.0},
+    {**ngrid_after_hp, "gas": 0.0},
+    third_scenario_label="Heat pump\n(HP rate)",
+    title="National Grid MA: Annual electric bill,\nheat pump customer",
+)
+display_figure(fig_ngrid)
+```
+
+```{python}
+#| label: fig-annual-cmp
+#| fig-cap: "Annual electric bill for a representative home under CMP rates, before and after heat pump installation."
+
+fig_cmp, savings_cmp, pct_cmp, _, _ = plot_decomposed_bill_3bar(
+    {**cmp_before, "gas": 0.0},
+    {**cmp_after_default, "gas": 0.0},
+    {**cmp_after_hp, "gas": 0.0},
+    third_scenario_label="Heat pump\n(A-Seasonal)",
+    title="CMP (Maine): Annual electric bill,\nheat pump customer",
+)
+display_figure(fig_cmp)
+```
+
+## Seasonal electric bill charts
+
+Same three scenarios, split into winter (Nov–Apr) and summer (May–Oct) to
+show where the HP rate savings come from.
+
+```{python}
+#| label: fig-seasonal-ngrid
+#| fig-cap: "Seasonal electric bill breakdown for a representative home in National Grid MA territory, before and after heat pump installation."
+
+fig_ngrid_s = plot_seasonal_comparison(
+    [
+        ("Before HP\n(default rate)", ngrid_before_w, ngrid_before_s),
+        ("After HP\n(default rate)", ngrid_default_w, ngrid_default_s),
+        ("After HP\n(HP rate)", ngrid_hp_w, ngrid_hp_s),
+    ],
+    title="National Grid MA: Electric bill by season,\nheat pump customer",
+)
+display_figure(fig_ngrid_s)
+```
+
+```{python}
+#| label: fig-seasonal-cmp
+#| fig-cap: "Seasonal electric bill breakdown for a representative home under CMP rates, before and after heat pump installation."
+
+fig_cmp_s = plot_seasonal_comparison(
+    [
+        ("Before HP\n(Rate A)", cmp_before_w, cmp_before_s),
+        ("After HP\n(Rate A)", cmp_default_w, cmp_default_s),
+        ("After HP\n(A-Seasonal)", cmp_hp_w, cmp_hp_s),
+    ],
+    title="CMP (Maine): Electric bill by season,\nheat pump customer",
+)
+display_figure(fig_cmp_s)
+```
+
+## Monthly electric bill charts
+
+Three vertically-stacked panels for each utility showing how the electric
+bill breaks down month-by-month under each scenario.
+
+```{python}
+#| label: monthly-helpers
+
+COMP_MAP = {
+    "Customer Charge": "delivery_fixed",
+    "Distribution": "delivery_volumetric",
+    "Transmission": "delivery_volumetric",
+    "Generation": "supply",
+}
+
+
+def _monthly_components(
+    bills_df: pl.DataFrame,
+    first_kwh_credit_per_month: float = 0.0,
+) -> pl.DataFrame:
+    """Aggregate long-form bills into monthly component totals.
+
+    Returns a DataFrame with columns: month_label, component, value
+    where component is one of ELEC_COMP_KEYS.
+    """
+    mapped = bills_df.with_columns(
+        pl.col("component").replace_strict(COMP_MAP).alias("comp_key")
+    )
+    agg = (
+        mapped
+        .group_by("month_label", "comp_key")
+        .agg(pl.col("value").sum())
+        .rename({"comp_key": "component"})
+    )
+    if first_kwh_credit_per_month > 0:
+        agg = agg.with_columns(
+            pl.when(pl.col("component") == "delivery_volumetric")
+            .then(pl.col("value") - first_kwh_credit_per_month)
+            .otherwise(pl.col("value"))
+            .alias("value")
+        )
+    return agg
+
+
+def _pivot_monthly(df: pl.DataFrame) -> pl.DataFrame:
+    """Pivot a monthly-component DataFrame into one row per month."""
+    month_enum = pl.Enum(MONTH_ORDER)
+    return (
+        df
+        .with_columns(pl.col("month_label").cast(month_enum))
+        .sort("month_label")
+        .pivot(on="component", index="month_label", values="value")
+        .fill_null(0.0)
+    )
+
+
+def plot_monthly_faceted(
+    scenarios: list[tuple[str, pl.DataFrame]],
+    title: str,
+) -> plt.Figure:
+    """Vertically-faceted monthly stacked bar chart with delta annotations.
+
+    Panel 1 is the baseline (solid bars only). Panels 2+ compare to the
+    previous panel: increases are hatched, decreases are shown as a
+    faded savings ghost region.
+    """
+    n = len(scenarios)
+    bar_w = 0.7
+    fig, axes = plt.subplots(n, 1, figsize=(10.5, 3.2 * n + 0.8), sharex=True, sharey=True)
+    if n == 1:
+        axes = [axes]
+
+    pivoted_list = [_pivot_monthly(df) for _, df in scenarios]
+    months = pivoted_list[0]["month_label"].to_list()
+    x = np.arange(len(months))
+
+    for panel_idx, (ax, (label, _)) in enumerate(zip(axes, scenarios)):
+        cur = pivoted_list[panel_idx]
+        prev = pivoted_list[panel_idx - 1] if panel_idx > 0 else None
+
+        bottom = np.zeros(len(months))
+        for key in MONTHLY_COMP_ORDER:
+            cur_vals = cur.get_column(key).to_numpy()
+            color = COMP_COLORS[key]
+
+            if prev is None:
+                ax.bar(x, cur_vals, bottom=bottom, width=bar_w,
+                       color=color, edgecolor="none", linewidth=0)
+            else:
+                prev_vals = prev.get_column(key).to_numpy()
+                solid = np.minimum(cur_vals, prev_vals)
+
+                ax.bar(x, solid, bottom=bottom, width=bar_w,
+                       color=color, edgecolor="none", linewidth=0)
+
+                for j in range(len(months)):
+                    if cur_vals[j] > prev_vals[j]:
+                        inc = cur_vals[j] - prev_vals[j]
+                        ax.bar(x[j], inc, bottom=bottom[j] + solid[j],
+                               width=bar_w, color=COMP_COLORS_LIGHT[key],
+                               edgecolor="none", linewidth=0)
+                        ax.bar(x[j], inc, bottom=bottom[j] + solid[j],
+                               width=bar_w, facecolor="none", edgecolor=color,
+                               linewidth=0, hatch="//")
+
+            for j, v in enumerate(cur_vals):
+                if v >= 30:
+                    ax.text(x[j], bottom[j] + v / 2, f"${v:,.0f}",
+                            ha="center", va="center", fontsize=8,
+                            fontfamily="IBM Plex Sans", fontweight="bold",
+                            color="white", zorder=5)
+            bottom += cur_vals
+
+        # Ghost: show where the previous total bar used to reach
+        if prev is not None:
+            prev_totals = np.zeros(len(months))
+            for key in MONTHLY_COMP_ORDER:
+                prev_totals += prev.get_column(key).to_numpy()
+            for j in range(len(months)):
+                if prev_totals[j] > bottom[j]:
+                    ghost_h = prev_totals[j] - bottom[j]
+                    ax.bar(x[j], ghost_h, bottom=bottom[j], width=bar_w,
+                           color=SAVINGS_COLOR, edgecolor="#cccccc",
+                           linewidth=1.0, alpha=0.45)
+                    sav_pct = ghost_h / prev_totals[j] * 100
+                    ax.text(x[j], prev_totals[j] + 8, f"−{sav_pct:.0f}%",
+                            ha="center", va="bottom", fontsize=8,
+                            fontfamily="GT Planar", fontweight="bold",
+                            color=SB_COLORS["saffron"])
+                    ghost_mid = bottom[j] + ghost_h / 2
+                    total_label_top = bottom[j] + 28
+                    safe_mid = (total_label_top + prev_totals[j]) / 2
+                    dollar_y = max(ghost_mid, safe_mid)
+                    ax.text(x[j], dollar_y, f"−${ghost_h:,.0f}",
+                            ha="center", va="center", fontsize=7,
+                            fontfamily="IBM Plex Sans", fontweight="bold",
+                            color=SB_COLORS["saffron"])
+
+        # Baseline delivery reference line on the last panel
+        if panel_idx == n - 1:
+            baseline = pivoted_list[0]
+            base_del_vol = baseline.get_column("delivery_volumetric").to_numpy()
+            cur_del_fixed = cur.get_column("delivery_fixed").to_numpy()
+            cur_supply = cur.get_column("supply").to_numpy()
+            del_vol_bottom = cur_del_fixed + cur_supply
+            for j in range(len(months)):
+                ref_y = del_vol_bottom[j] + base_del_vol[j]
+                if abs(ref_y - bottom[j]) > 2:
+                    ax.plot(
+                        [x[j] - bar_w / 2, x[j] + bar_w / 2],
+                        [ref_y, ref_y],
+                        color=SB_COLORS["saffron"],
+                        linestyle=(0, (3, 2)),
+                        linewidth=1.3, zorder=2,
+                    )
+
+        for j in range(len(months)):
+            ax.text(x[j], bottom[j] + 8, f"${bottom[j]:,.0f}",
+                    ha="center", va="bottom", fontsize=8,
+                    fontfamily="IBM Plex Sans", fontweight="bold",
+                    color="#333333")
+
+        ax.set_xticks(x)
+        ax.set_xticklabels(months, fontsize=10, fontfamily="IBM Plex Sans")
+        ax.set_ylabel(label, fontsize=12, fontfamily="GT Planar",
+                      fontweight="bold", color="#333333", labelpad=10)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.tick_params(axis="y", labelsize=10)
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"${v:,.0f}"))
+
+        for j, m in enumerate(months):
+            if m in WINTER_MONTHS:
+                ax.axvspan(j - 0.42, j + 0.42, color="#e8e8e8", alpha=0.35, zorder=0)
+
+    legend_order = list(reversed(MONTHLY_COMP_ORDER))
+    handles = [plt.Rectangle((0, 0), 1, 1, facecolor=COMP_COLORS[k]) for k in legend_order]
+    axes[0].legend(handles, [COMP_LABELS[k] for k in legend_order],
+                   loc="upper right", frameon=False, fontsize=10,
+                   prop={"family": "IBM Plex Sans"})
+
+    fig.suptitle(title, fontfamily="GT Planar", fontweight="bold",
+                 fontsize=15, ha="left", x=0.08, y=0.98)
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    return fig
+```
+
+```{python}
+#| label: fig-monthly-ngrid
+#| fig-cap: "Monthly electric bill by component for a representative home in National Grid MA territory."
+
+mc_ngrid_before = _monthly_components(bills_ngrid_before)
+mc_ngrid_default = _monthly_components(bills_ngrid_after_default)
+mc_ngrid_hp = _monthly_components(bills_ngrid_after_hp)
+
+fig_m_ngrid = plot_monthly_faceted(
+    [
+        ("Before HP\n(default rate)", mc_ngrid_before),
+        ("After HP\n(default rate)", mc_ngrid_default),
+        ("After HP\n(HP rate)", mc_ngrid_hp),
+    ],
+    title="National Grid MA: Monthly electric bill, heat pump customer",
+)
+display_figure(fig_m_ngrid)
+```
+
+```{python}
+#| label: fig-monthly-cmp
+#| fig-cap: "Monthly electric bill by component for a representative home under CMP rates."
+
+_cmp_first50_credit = CMP_FIRST_KWH_INCLUDED * (CMP_DISTRIBUTION_DEFAULT + CMP_TRANSMISSION_DEFAULT)
+mc_cmp_before = _monthly_components(bills_cmp_before, first_kwh_credit_per_month=_cmp_first50_credit)
+mc_cmp_default = _monthly_components(bills_cmp_after_default, first_kwh_credit_per_month=_cmp_first50_credit)
+mc_cmp_hp = _monthly_components(bills_cmp_after_hp)
+
+fig_m_cmp = plot_monthly_faceted(
+    [
+        ("Before HP\n(Rate A)", mc_cmp_before),
+        ("After HP\n(Rate A)", mc_cmp_default),
+        ("After HP\n(A-Seasonal)", mc_cmp_hp),
+    ],
+    title="CMP (Maine): Monthly electric bill, heat pump customer",
+)
+display_figure(fig_m_cmp)
+```
+
+## Rate structure diagrams
+
+Proportionally-sized rectangles for supply and delivery rates. Heights are
+on the same scale across both utilities so the rectangles are visually
+comparable.
+
+```{python}
+#| label: rate-diagram-helper
+
+from matplotlib.patches import Rectangle as Rect
+
+SCALE_MAX = 30.0  # ¢/kWh — visual ceiling; keeps both utilities comparable
+
+SUPPLY_FILL = "#fc9706"
+SUPPLY_ACCENT = "#e08805"
+DELIVERY_FILL = "#68bed8"
+DELIVERY_ACCENT = "#3ea8c6"
+
+
+def _rate_label(
+    ax: plt.Axes, x: float, y: float, rate: float, color: str,
+) -> None:
+    """Draw '¢X.X/kWh' centered above a bar."""
+    ax.text(x, y, f"¢{rate:.1f}/kWh", ha="center", va="bottom",
+            fontfamily="GT Planar", fontweight="bold", fontsize=20, color=color)
+
+
+def plot_rate_diagram(
+    supply_rate: float,
+    delivery_default: float,
+    delivery_hp_summer: float,
+    delivery_hp_winter: float,
+    title: str,
+) -> plt.Figure:
+    """Two-row diagram: supply (orange, top) and delivery (blue, bottom).
+
+    All bars are the same width. Heights are proportional to the rate (¢/kWh)
+    on a shared SCALE_MAX so utilities are visually comparable.
+    Left = default (flat year-round). Right = HP rate (summer | winter split
+    with a gray divider).
+    """
+    bar_w = 2.0
+    bar_gap = 0.12
+    row_gap = SCALE_MAX * 0.45
+
+    # X positions
+    default_x = 1.5
+    summer_x = 6.0
+    winter_x = summer_x + bar_w + bar_gap
+    divider_x = summer_x + bar_w + bar_gap / 2
+
+    # Y bases (supply on top)
+    delivery_base = 0.0
+    supply_base = SCALE_MAX + row_gap
+
+    fig, ax = plt.subplots(figsize=(10.5, 7))
+    ax.set_xlim(0, winter_x + bar_w + 1.0)
+    ax.set_ylim(-SCALE_MAX * 0.10, supply_base + SCALE_MAX + SCALE_MAX * 0.12)
+
+    def draw_bar(x, y_base, h, fill, accent):
+        ax.add_patch(Rect((x, y_base), bar_w, h, fc=fill, ec="none"))
+        ax.hlines(y_base, x, x + bar_w, colors=accent, linewidths=3,
+                  capstyle="butt")
+
+    # --- Supply row (top, orange) ---
+    draw_bar(default_x, supply_base, supply_rate, SUPPLY_FILL, SUPPLY_ACCENT)
+    _rate_label(ax, default_x + bar_w / 2, supply_base + supply_rate + 0.4,
+                supply_rate, SUPPLY_ACCENT)
+
+    draw_bar(summer_x, supply_base, supply_rate, SUPPLY_FILL, SUPPLY_ACCENT)
+    _rate_label(ax, summer_x + bar_w / 2, supply_base + supply_rate + 0.4,
+                supply_rate, SUPPLY_ACCENT)
+
+    draw_bar(winter_x, supply_base, supply_rate, SUPPLY_FILL, SUPPLY_ACCENT)
+    _rate_label(ax, winter_x + bar_w / 2, supply_base + supply_rate + 0.4,
+                supply_rate, SUPPLY_ACCENT)
+
+    # --- Delivery row (bottom, blue) ---
+    draw_bar(default_x, delivery_base, delivery_default, DELIVERY_FILL, DELIVERY_ACCENT)
+    _rate_label(ax, default_x + bar_w / 2, delivery_base + delivery_default + 0.4,
+                delivery_default, DELIVERY_ACCENT)
+
+    draw_bar(summer_x, delivery_base, delivery_hp_summer, DELIVERY_FILL, DELIVERY_ACCENT)
+    _rate_label(ax, summer_x + bar_w / 2, delivery_base + delivery_hp_summer + 0.4,
+                delivery_hp_summer, DELIVERY_ACCENT)
+
+    draw_bar(winter_x, delivery_base, delivery_hp_winter, DELIVERY_FILL, DELIVERY_ACCENT)
+    _rate_label(ax, winter_x + bar_w / 2, delivery_base + delivery_hp_winter + 0.4,
+                delivery_hp_winter, DELIVERY_ACCENT)
+
+    # Gray divider line between summer and winter columns
+    div_bot = delivery_base - SCALE_MAX * 0.03
+    div_top = supply_base + max(supply_rate, SCALE_MAX * 0.5) + SCALE_MAX * 0.06
+    ax.vlines(divider_x, div_bot, div_top, colors="#bbbbbb", linewidths=1.5)
+
+    # Arrows (between default and summer columns)
+    arrow_kw = dict(arrowstyle="->,head_width=0.25,head_length=0.18",
+                    color="#aaaaaa", lw=2.5)
+    for base, rate in [(supply_base, supply_rate), (delivery_base, delivery_default)]:
+        mid_y = base + rate / 2
+        ax.annotate("", xy=(summer_x - 0.3, mid_y),
+                    xytext=(default_x + bar_w + 0.3, mid_y),
+                    arrowprops=arrow_kw)
+
+    # Season labels (below delivery bars)
+    season_y = delivery_base - SCALE_MAX * 0.06
+    ax.text(summer_x + bar_w / 2, season_y, "Summer", ha="center", va="top",
+            fontfamily="IBM Plex Sans", fontsize=11, color="#888888")
+    ax.text(winter_x + bar_w / 2, season_y, "Winter", ha="center", va="top",
+            fontfamily="IBM Plex Sans", fontsize=11, color="#888888")
+
+    # Column headers
+    header_y = supply_base + SCALE_MAX + SCALE_MAX * 0.08
+    ax.text(default_x + bar_w / 2, header_y, "Default rate", ha="center", va="bottom",
+            fontfamily="GT Planar", fontweight="bold", fontsize=13, color="#333333")
+    hp_mid = (summer_x + winter_x + bar_w) / 2
+    ax.text(hp_mid, header_y, "HP rate", ha="center", va="bottom",
+            fontfamily="GT Planar", fontweight="bold", fontsize=13, color="#333333")
+
+    ax.set_title(title, fontfamily="GT Planar", fontweight="bold",
+                 fontsize=15, loc="left", pad=16)
+    ax.axis("off")
+    fig.tight_layout()
+    return fig
+```
+
+```{python}
+#| label: fig-diagram-ngrid
+#| fig-cap: "National Grid MA rate structure: default vs. heat pump rate."
+
+fig_d_ngrid = plot_rate_diagram(
+    supply_rate=NGRID_SUPPLY_RATE * 100,
+    delivery_default=(NGRID_DISTRIBUTION_DEFAULT + NGRID_TRANSMISSION_DEFAULT) * 100,
+    delivery_hp_summer=(NGRID_DISTRIBUTION_DEFAULT + NGRID_TRANSMISSION_DEFAULT) * 100,
+    delivery_hp_winter=(NGRID_DISTRIBUTION_HP_WINTER + NGRID_TRANSMISSION_HP_WINTER) * 100,
+    title="National Grid MA",
+)
+display_figure(fig_d_ngrid)
+```
+
+```{python}
+#| label: fig-diagram-cmp
+#| fig-cap: "CMP (Maine) rate structure: default Rate A vs. A-Seasonal."
+
+fig_d_cmp = plot_rate_diagram(
+    supply_rate=CMP_SUPPLY_RATE * 100,
+    delivery_default=(CMP_DISTRIBUTION_DEFAULT + CMP_TRANSMISSION_DEFAULT) * 100,
+    delivery_hp_summer=(CMP_DISTRIBUTION_HP_SUMMER + CMP_TRANSMISSION_HP_SUMMER) * 100,
+    delivery_hp_winter=(CMP_DISTRIBUTION_HP_WINTER + CMP_TRANSMISSION_HP_WINTER) * 100,
+    title="CMP (Maine)",
+)
+display_figure(fig_d_cmp)
+```
+
+### Fixed charge (customer charge)
+
+```{python}
+#| label: fig-diagram-fc-ngrid
+#| fig-cap: "National Grid MA customer charge: default vs. heat pump rate."
+
+FC_FILL = SB_COLORS["midnight"]
+FC_ACCENT = "#1a5a7a"
+FC_SCALE = 45.0  # $/month — visual ceiling
+
+
+def _fc_label(ax: plt.Axes, x: float, y: float, val: float) -> None:
+    """Draw '$X.XX/mo' centered above a bar."""
+    ax.text(x, y, f"${val:.2f}/mo", ha="center", va="bottom",
+            fontfamily="GT Planar", fontweight="bold", fontsize=20,
+            color=FC_ACCENT)
+
+
+def plot_fc_diagram(
+    fc_default: float,
+    fc_hp: float,
+    title: str,
+) -> plt.Figure:
+    """Fixed-charge diagram matching the volumetric diagram layout.
+
+    Three columns: default | summer | winter (same value in both seasonal
+    columns since the fixed charge is not seasonal — but the columns are
+    present so the diagram lines up vertically with the volumetric one).
+    """
+    bar_w = 2.0
+    bar_gap = 0.12
+    default_x = 1.5
+    summer_x = 6.0
+    winter_x = summer_x + bar_w + bar_gap
+    divider_x = summer_x + bar_w + bar_gap / 2
+
+    fig, ax = plt.subplots(figsize=(10.5, 3))
+    ax.set_xlim(0, winter_x + bar_w + 1.0)
+    ax.set_ylim(-FC_SCALE * 0.12, FC_SCALE + FC_SCALE * 0.18)
+
+    def draw_bar(x, h):
+        ax.add_patch(Rect((x, 0), bar_w, h, fc=FC_FILL, ec="none"))
+        ax.hlines(0, x, x + bar_w, colors=FC_ACCENT, linewidths=3,
+                  capstyle="butt")
+
+    draw_bar(default_x, fc_default)
+    _fc_label(ax, default_x + bar_w / 2, fc_default + 0.3, fc_default)
+
+    draw_bar(summer_x, fc_hp)
+    _fc_label(ax, summer_x + bar_w / 2, fc_hp + 0.3, fc_hp)
+
+    draw_bar(winter_x, fc_hp)
+    _fc_label(ax, winter_x + bar_w / 2, fc_hp + 0.3, fc_hp)
+
+    # Gray divider
+    div_top = max(fc_default, fc_hp) + FC_SCALE * 0.08
+    ax.vlines(divider_x, -FC_SCALE * 0.03, div_top,
+              colors="#bbbbbb", linewidths=1.5)
+
+    # Arrow
+    mid_y = max(fc_default, fc_hp) / 2
+    ax.annotate("", xy=(summer_x - 0.3, mid_y),
+                xytext=(default_x + bar_w + 0.3, mid_y),
+                arrowprops=dict(arrowstyle="->,head_width=0.25,head_length=0.18",
+                                color="#aaaaaa", lw=2.5))
+
+    # Season labels
+    ax.text(summer_x + bar_w / 2, -FC_SCALE * 0.06, "Summer",
+            ha="center", va="top", fontfamily="IBM Plex Sans",
+            fontsize=11, color="#888888")
+    ax.text(winter_x + bar_w / 2, -FC_SCALE * 0.06, "Winter",
+            ha="center", va="top", fontfamily="IBM Plex Sans",
+            fontsize=11, color="#888888")
+
+    # Column headers
+    header_y = FC_SCALE + FC_SCALE * 0.10
+    ax.text(default_x + bar_w / 2, header_y, "Default rate",
+            ha="center", va="bottom", fontfamily="GT Planar",
+            fontweight="bold", fontsize=13, color="#333333")
+    hp_mid = (summer_x + winter_x + bar_w) / 2
+    ax.text(hp_mid, header_y, "HP rate",
+            ha="center", va="bottom", fontfamily="GT Planar",
+            fontweight="bold", fontsize=13, color="#333333")
+
+    ax.set_title(title, fontfamily="GT Planar", fontweight="bold",
+                 fontsize=15, loc="left", pad=16)
+    ax.axis("off")
+    fig.tight_layout()
+    return fig
+
+
+fig_fc_ngrid = plot_fc_diagram(
+    NGRID_CUSTOMER_CHARGE, NGRID_CUSTOMER_CHARGE,
+    title="National Grid MA — Customer charge",
+)
+display_figure(fig_fc_ngrid)
+```
+
+```{python}
+#| label: fig-diagram-fc-cmp
+#| fig-cap: "CMP customer charge: default Rate A vs. A-Seasonal."
+
+fig_fc_cmp = plot_fc_diagram(
+    CMP_CUSTOMER_CHARGE_DEFAULT, CMP_CUSTOMER_CHARGE_HP,
+    title="CMP (Maine) — Customer charge",
+)
+display_figure(fig_fc_cmp)
+```
+
+## Sources
+
+- **NGrid delivery rates**: D.P.U. 26-71, Exhibit 3 (rate design workbook)
+- **NGrid supply rate**: nationalgridus.com residential basic service rate
+  table, 2025 fixed-price option (weighted average of three 6-month terms)
+- **CMP delivery rates**: Rate Bulletin A-SEASONAL, 7th Rev (Oct 1, 2025);
+  Section 44.1 Terms & Conditions (Jan 2025) for transmission
+- **CMP supply rate**: MPUC Docket 2024-00165 Standard Offer, flat Jan–Dec 2025
+- **Load profiles**: CT CAIRO simulation (Eversource territory,
+  `ct_20261015_a`), weighted-average monthly kWh for natgas-heated homes

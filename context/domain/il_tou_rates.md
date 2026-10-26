@@ -2,19 +2,20 @@
 
 Reference for agents working on Illinois heat pump rate design, testimony, or CAIRO inputs that touch time-of-use (TOU) rates. It consolidates what the Illinois sources in `context/sources/il_hp_rates/tou/` say about the TOU rates that exist (or were ordered) in Illinois, in a form you can look facts up in without re-reading ~1 MB of orders and tariffs.
 
-**How to use this file.** Section 1 is a fact sheet (tables and one YAML block) you can lift values from. Sections 2–5 explain each offering and why it is designed the way it is. Section 6 lists what is **not** in the sources, so you do not invent it. Every number below is tagged with its source file; if a value is derived or inferred rather than quoted, the text says so. Do not treat illustrative rates (Section 4.4) as tariffed rates.
+**How to use this file.** Section 1 is a fact sheet (tables, tariffed prices and one YAML block) you can lift values from. Sections 2–6 explain each offering and why it is designed the way it is. Section 7 lists what is **not** in the sources, so you do not invent it. Every number below is tagged with its source file; if a value is derived or inferred rather than quoted, the text says so. Do not treat illustrative rates (Section 4.4) as tariffed rates.
 
 **Source files** (all under `context/sources/il_hp_rates/tou/`):
 
-| Short name         | File                                                                     | What it is                                                                                 |
-| ------------------ | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| Statute            | `il_statute_220_ilcs_5_16-107_8_time_of_use_pricing.md`                  | Statute requiring utilities to offer a market-based TOU supply rate                        |
-| Final Order        | `icc_24-0378_final_order_part_1.md`, `icc_24-0378_final_order_part_2.md` | ICC Docket 24-0378 order (Jan 16, 2025); Part 2 §VI.E is the DTOU, §VI.F the STOU question |
-| Order on Rehearing | `icc_24-0378_order_on_rehearing.md`                                      | Approves ComEd Rate BEST (Jul 17, 2025)                                                    |
-| McCann Ex. 1.0     | `icc_24-0378_direct_testimony_cub_edf_mccann_ex_1_0.md`                  | CUB/EDF direct on DTOU design (Jul 24, 2024)                                               |
-| McCann Ex. 4.0     | `icc_24-0378_rehearing_testimony_cub_edf_mccann_ex_4_0.md`               | CUB/EDF rehearing testimony on STOU design (Apr 29, 2025)                                  |
-| Ameren filing      | `icc_erm_26-175_ameren_rider_stou_compliance_tariff.md`                  | Ameren Illinois Rider STOU compliance tariff (filed Sep 29, 2026)                          |
-| ComEd filing       | `icc_erm_26-176_comed_rate_best_nonresidential_compliance_tariff.md`     | ComEd Rate BEST nonresidential-availability tariff sheets (filed Sep 29, 2026)             |
+| Short name         | File                                                                     | What it is                                                                                    |
+| ------------------ | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| Statute            | `il_statute_220_ilcs_5_16-107_8_time_of_use_pricing.md`                  | Statute requiring utilities to offer a market-based TOU supply rate                           |
+| Final Order        | `icc_24-0378_final_order_part_1.md`, `icc_24-0378_final_order_part_2.md` | ICC Docket 24-0378 order (Jan 16, 2025); Part 2 §VI.E is the DTOU, §VI.F the STOU question    |
+| Order on Rehearing | `icc_24-0378_order_on_rehearing.md`                                      | Approves ComEd Rate BEST (Jul 17, 2025)                                                       |
+| McCann Ex. 1.0     | `icc_24-0378_direct_testimony_cub_edf_mccann_ex_1_0.md`                  | CUB/EDF direct on DTOU design (Jul 24, 2024)                                                  |
+| McCann Ex. 4.0     | `icc_24-0378_rehearing_testimony_cub_edf_mccann_ex_4_0.md`               | CUB/EDF rehearing testimony on STOU design (Apr 29, 2025)                                     |
+| Ameren filing      | `icc_erm_26-175_ameren_rider_stou_compliance_tariff.md`                  | Ameren Illinois Rider STOU compliance tariff (filed Sep 29, 2026)                             |
+| ComEd filing       | `icc_erm_26-176_comed_rate_best_nonresidential_compliance_tariff.md`     | ComEd Rate BEST nonresidential-availability tariff sheets (filed Sep 29, 2026)                |
+| ComEd price sheets | `comed/md/*.md` (index: `comed/README.md`)                               | Tariffed residential Rate BEST, DTOU and flat-default (Rate BES) price sheets, CUB fact sheet |
 
 ---
 
@@ -45,11 +46,11 @@ History of the period boundaries: ComEd first proposed Overnight 11 p.m.–6 a.m
 
 ### 1.3 Seasons
 
-| Utility                          | Summer                                                                     | Non-summer    | Notes                                                                                                                                                                                                                                                                                                                      |
-| -------------------------------- | -------------------------------------------------------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ComEd (DTOU)                     | none                                                                       | none          | The DTOU has **no seasonal variation**; the Commission rejected CUB/EDF's seasonal proposal "in the interest of simplicity and fairness"                                                                                                                                                                                   |
-| ComEd (Rate BEST supply charges) | defined in ComEd's General Terms and Conditions (**not in these sources**) | same          | Electricity Charges (MPEC, MDPPEC, EPEC, OPEC) are set separately for summer and non-summer, but the **ordering of periods is the same in both seasons** (Mid-Day Peak highest, Overnight lowest). CUB/EDF testimony uses summer = June–September, non-summer = October–May; assume ComEd matches, but this is unconfirmed |
-| Ameren (Rider STOU)              | June – September                                                           | October – May | Defined in the tariff; MISO Planning Year runs June 1 for 12 months                                                                                                                                                                                                                                                        |
+| Utility                          | Summer                                                              | Non-summer    | Notes                                                                                                                                                                                                                                                                                                              |
+| -------------------------------- | ------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| ComEd (DTOU)                     | none                                                                | none          | The DTOU has **no seasonal variation**; the Commission rejected CUB/EDF's seasonal proposal "in the interest of simplicity and fairness"                                                                                                                                                                           |
+| ComEd (Rate BEST supply charges) | June, July, August, September billing months (Info Sheet 70 note 6) | October–May   | Electricity Charges (MPEC, MDPPEC, EPEC, OPEC) are set separately for summer and non-summer, but the **ordering of periods is the same in both seasons** (Mid-Day Peak highest, Overnight lowest). Flat Rate BES PECs use the same summer months (Info Sheet 1 note 5). Delivery (DTOU and flat DFC) has no season |
+| Ameren (Rider STOU)              | June – September                                                    | October – May | Defined in the tariff; MISO Planning Year runs June 1 for 12 months                                                                                                                                                                                                                                                |
 
 ### 1.4 Quick-reference YAML
 
@@ -94,9 +95,64 @@ ameren_rider_stou:
   requires_interval_meter: true
 ```
 
-### 1.5 Price points found in the sources
+### 1.5 Tariffed ComEd prices (residential), Jun 2026–May 2027
 
-These are the only dollar values in the sources. **None is the final tariffed Rate BEST or Rider STOU rate** (those are in informational sheets not in the sources; see Section 6).
+Source: the ComEd informational sheets extracted under `context/sources/il_hp_rates/tou/comed/md/` (index and caveats in `comed/README.md`). All values are ¢/kWh, single-family without electric heat where delivery is class-specific. **Supply sheets were revised during the rate year; the October 2026–May 2027 column is the current one.** There is no tariffed Ameren Rider STOU price in the sources (Section 7).
+
+**Supply: Rate BEST (time-of-use)**
+
+| Charge                                                               | First published (May 2026), Jun 2026–May 2027 | Current (Sep 2026 on; PJM/Misc from Oct 2026) | Source file                                                                                      |
+| -------------------------------------------------------------------- | --------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Morning (MPEC), summer / nonsummer                                   | 3.778 / 4.768                                 | 3.778 / 4.656                                 | `icc_399143_info_sheet_70_bestec.md`; `comed_ratebook_2026_supply_info_sheets_sep2026_update.md` |
+| Mid-Day Peak (MDPPEC), summer / nonsummer                            | 16.594 / 14.699                               | 16.596 / 14.700                               | same                                                                                             |
+| Evening (EPEC), summer / nonsummer                                   | 5.793 / 6.009                                 | 5.793 / 6.009                                 | same                                                                                             |
+| Overnight (OPEC), summer / nonsummer                                 | 2.829 / 3.394                                 | 2.830 / 3.394                                 | same                                                                                             |
+| PJM Services and Misc. Procurement Components (flat, Rate BEST only) | 1.875                                         | 2.039 from Oct 2026 (1.875 in Sep)            | `icc_399143_info_sheet_72_pjm_misc.md`; ratebook-update file                                     |
+| TPEA (monthly)                                                       | 0.000 (Jun, Jul 2026)                         | 0.000 Sep; 0.110 Oct 2026                     | `icc_399956_info_sheet_03_pea_bes_and_71_tpea.md`; ratebook-update file                          |
+
+**Supply: flat default (Rate BES)**
+
+| Charge                              | First published (May 2026), Jun 2026–May 2027 | Current                                                                                                                                                                                    | Source file                                                 |
+| ----------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
+| PEC residential, summer / nonsummer | 8.677 / 8.241                                 | Sep 2026: 8.678 / 8.241; Oct 2026–May 2027: nonsummer 8.413 (summer PEC applies only Jun–Sep; the 8.739 printed on the sheet is not billed in this window and is not yet set for Jun 2027) | `icc_399143_info_sheet_01_pec_bes.md`; ratebook-update file |
+| PSC residential                     | 1.722                                         | Sep 2026: 1.723; Oct 2026–May 2027: 1.690                                                                                                                                                  | `icc_399143_info_sheet_02_psc_bes.md`; ratebook-update file |
+| PEA (monthly)                       | 0.230 Jun; 0.247 Jul 2026                     | (0.087) Sep; (1.551) Oct 2026                                                                                                                                                              | `icc_399956_...`; ratebook-update file                      |
+
+**Delivery (DFC) by class, 2026**: base = tariff value before adjustment factors; billed = after, Oct 2026 factors.
+
+| Class                           | Flat DFC base | Flat DFC billed | TOU DFC base: Morning / Mid-Day / Evening / Overnight | TOU DFC billed                                                                               |
+| ------------------------------- | ------------- | --------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Single-family, no electric heat | 5.698         | 6.340           | 4.009 / 10.712 / 3.747 / 2.984                        | 4.479 / 11.864 / 4.189 / 3.349                                                               |
+| Multi-family, no electric heat  | 4.354         | 4.877           | 3.073 / 8.689 / 2.856 / 2.251                         | 3.460 / 9.670 / 3.219 / 2.403 (ComEd table omits TPAF in the last cell; about 2.550 with it) |
+| Single-family, electric heat    | 2.712         | 3.218           | 1.999 / 5.329 / 1.890 / 1.550                         | 2.389 / 6.264 / 2.262 / 1.867                                                                |
+| Multi-family, electric heat     | 2.576         | 3.046           | 1.925 / 4.975 / 1.823 / 1.512                         | 2.292 / 5.826 / 2.174 / 1.814                                                                |
+
+Sources: `icc_388395_delivery_service_charges_flat_dfc_2026_2027.md`, `icc_388395_tou_dfc_charges_2026_2027.md`, `comed_guide_billed_delivery_service_charges_oct2026.md`. 2027 base values are in the same files (single-family no heat: flat 5.906; TOU 4.250 / 11.183 / 3.747 / 2.984).
+
+**Pitfalls when quoting these numbers:**
+
+- 1.875 (now 2.039) is a **Rate BEST-only** supply line. The flat default has a separate PSC (1.722, now 1.690).
+- The **CUB fact sheet** (`cub_comed_delivery_tod_fact_sheet_mar2026.md`) shows flat "Standard" DFC 6.228 next to TOU 10.712. 6.228 is a billed rate (after adjustment factors); 10.712 is a base rate. Compare 5.698 with 10.712 (base) or 6.340 with 11.864 (billed). See `comed/README.md`.
+- Staff's "Fixed DFC" of 5.568 in the Final Order (below) was a pre-compliance figure; the tariffed 2026 flat base DFC is 5.698.
+- Summer = June–September **billing months** for supply (Info Sheet notes); delivery has no season. Summer 2027 supply prices do not exist yet.
+
+### 1.6 TOU vs flat default, current rates (single-family, no electric heat, nonsummer Oct 2026–May 2027)
+
+Volumetric ¢/kWh only: supply (+ Rate BEST's PJM/Misc line) plus billed DFC; excludes fixed charges, IEDT, monthly PEA/TPEA and riders.
+
+|                         | Supply                         | Delivery (billed) | Total  |
+| ----------------------- | ------------------------------ | ----------------- | ------ |
+| Flat default, all hours | 10.103 (PEC 8.413 + PSC 1.690) | 6.340             | 16.443 |
+| Rate BEST Morning       | 6.695 (4.656 + 2.039)          | 4.479             | 11.174 |
+| Rate BEST Mid-Day Peak  | 16.739 (14.700 + 2.039)        | 11.864            | 28.603 |
+| Rate BEST Evening       | 8.048 (6.009 + 2.039)          | 4.189             | 12.237 |
+| Rate BEST Overnight     | 5.433 (3.394 + 2.039)          | 3.349             | 8.782  |
+
+Mid-Day Peak is 74% above the flat total and 3.3 times Overnight. A perfectly flat load (weights 7, 6, 2, 9 of 24 hours) would pay 14.723 on Rate BEST, about 10% below flat; this is arithmetic on published prices, not a cost-of-service or revenue-neutrality test. Whether a given customer group (for example heat pump homes) pays more than the cost it causes depends on its hourly load and marginal costs, which the tariff sheets do not contain. The as-first-published summer comparison and its worked numbers are in `comed/README.md`.
+
+### 1.7 Price points found in the case record (illustrative or pre-compliance)
+
+These come from the Order and testimony, not the tariff sheets. **Prefer Section 1.5 for tariffed values.**
 
 | Item                                                                            | Value                                                                | Source and caveat                                                                      |
 | ------------------------------------------------------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
@@ -315,8 +371,8 @@ The capacity formula divides by **peak-period** kWh, so capacity cost is evident
 ## 7. What is not in the sources (do not guess)
 
 - **Ameren STOU period hours and rates.** Only the formula and the three period names are filed; the hours and ¢/kWh values are in the informational filing, which is not in `context/`.
-- **ComEd's final tariffed Rate BEST ¢/kWh values** by period and season, and the final **DTOU rates for classes other than single-family, no electric space heat** (multi-family and the two electric-space-heat classes). McCann's tables are illustrative only.
-- **ComEd's own definition of summer and non-summer** for Rate BEST (it is in ComEd's General Terms and Conditions).
+- **ComEd's workpapers** behind the tariffed Rate BEST prices: the illustrative participant load profile, the $A$ adjustment terms and the PJM price series. ComEd's transmittal letters say these went to ICC Staff only. The prices themselves (Section 1.5) are in the sources, but they cannot be re-derived from them.
+- **ComEd supply prices after October 2026**: PEA and TPEA for November 2026 onward, and summer 2027 BESTEC/PEC (set in June 2027).
 - **Whether the January 2028 transmission change in sheet 492 applies to residential customers.**
 - Any **enrollment counts or bill-impact estimates** for either utility; ComEd's only quantified DTOU savings figure is the 2.31 dollars per month cited in the record.
 - The **Staff report** on supply/delivery cost allocation (due January 2026) and any resulting changes to Rate BEST.

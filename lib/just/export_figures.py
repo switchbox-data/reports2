@@ -17,6 +17,10 @@ Examples::
     # Custom output and DPI:
     uv run python -m lib.just.export_figures expert_testimony.qmd --output-dir exhibits --dpi 600
 
+    # "Figure 1.png" names that match the rendered document, one file per
+    # embed instance (so numbers line up with the DOCX for manual replacement):
+    uv run python -m lib.just.export_figures expert_testimony.qmd --name-style word --no-dedup
+
 The script expects a prior ``just render`` so that rendered outputs exist
 in ``docs/<stem>_files/figure-html/``.
 
@@ -48,10 +52,17 @@ EMBED_PATTERN = re.compile(
 )
 
 
-def parse_embeds(qmd_path: Path) -> list[dict[str, str]]:
+def parse_embeds(qmd_path: Path, *, dedup: bool = True) -> list[dict[str, str]]:
     """Extract embed references in document order.
 
     Returns a list of dicts with keys: notebook, label, prefix (fig or tbl).
+
+    With ``dedup=True`` (default) each label is emitted once, at its first
+    appearance.  With ``dedup=False`` every ``{{< embed >}}`` instance is
+    emitted, so a chart embedded twice yields two entries — this makes the
+    per-type counter match Quarto's own float numbering (and therefore the
+    numbers in the rendered DOCX/HTML), since Quarto numbers each embed
+    instance separately.
     """
     embeds: list[dict[str, str]] = []
     seen: set[str] = set()
@@ -59,7 +70,7 @@ def parse_embeds(qmd_path: Path) -> list[dict[str, str]]:
 
     for m in EMBED_PATTERN.finditer(text):
         label = m.group("label")
-        if label in seen:
+        if dedup and label in seen:
             continue
         seen.add(label)
 
@@ -136,11 +147,26 @@ def svg_to_png(svg_path: Path, png_path: Path, *, dpi: int = 300) -> None:
     )
 
 
+def format_output_name(kind: str, n: int, *, name_style: str) -> str:
+    """Build the output filename for a figure/table number.
+
+    ``name_style="numbered"`` → ``Figure_01.png`` (zero-padded, underscore);
+    ``name_style="word"`` → ``Figure 1.png`` (spaced, unpadded) to match the
+    "Figure N" / "Table N" labels in the rendered document, so the files drop
+    straight into a Word document during manual replacement.
+    """
+    if name_style == "word":
+        return f"{kind} {n}.png"
+    return f"{kind}_{n:02d}.png"
+
+
 def export_figures(
     qmd_path: Path,
     output_dir: Path,
     *,
     dpi: int = 300,
+    name_style: str = "numbered",
+    dedup: bool = True,
 ) -> None:
     """Export all embedded figures/tables as numbered PNGs."""
     qmd_path = qmd_path.resolve()
@@ -153,7 +179,7 @@ def export_figures(
         print("       Run 'just render' first to generate figure outputs.")
         sys.exit(1)
 
-    embeds = parse_embeds(qmd_path)
+    embeds = parse_embeds(qmd_path, dedup=dedup)
     if not embeds:
         print(f"No {{{{< embed >}}}} directives found in {qmd_path.name}")
         return
@@ -181,10 +207,10 @@ def export_figures(
 
         if prefix == "fig":
             fig_counter += 1
-            out_name = f"Figure_{fig_counter:02d}.png"
+            out_name = format_output_name("Figure", fig_counter, name_style=name_style)
         else:
             tbl_counter += 1
-            out_name = f"Table_{tbl_counter:02d}.png"
+            out_name = format_output_name("Table", tbl_counter, name_style=name_style)
 
         out_path = output_dir / out_name
 
@@ -238,6 +264,25 @@ def main() -> None:
         default=300,
         help="DPI for SVG-to-PNG conversion (default: 300)",
     )
+    parser.add_argument(
+        "--name-style",
+        choices=["numbered", "word"],
+        default="numbered",
+        help=(
+            "Output filename style: 'numbered' → Figure_01.png (default); "
+            "'word' → 'Figure 1.png' to match the rendered document's labels."
+        ),
+    )
+    parser.add_argument(
+        "--no-dedup",
+        action="store_true",
+        help=(
+            "Emit one file per {{< embed >}} instance instead of one per unique "
+            "label, so the counter matches Quarto's float numbering (a chart "
+            "embedded twice gets two files under its two numbers). Recommended "
+            "with --name-style word for Word manual-replacement workflows."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -256,7 +301,13 @@ def main() -> None:
     if not output_dir.is_absolute():
         output_dir = Path.cwd() / output_dir
 
-    export_figures(qmd_path, output_dir, dpi=args.dpi)
+    export_figures(
+        qmd_path,
+        output_dir,
+        dpi=args.dpi,
+        name_style=args.name_style,
+        dedup=not args.no_dedup,
+    )
 
 
 if __name__ == "__main__":

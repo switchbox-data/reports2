@@ -1486,6 +1486,14 @@ def plot_bill_change_quadrant_comparison(
                 fontfamily="GT Planar",
                 va="bottom",
             )
+            # Each segment's x-position is baked from matplotlib's font metrics.
+            # When the figure is saved as text-as-text SVG and later rasterized
+            # by a converter that lacks the GT Planar font (e.g. rsvg-convert in
+            # the figure-export pipeline), the substituted font reflows each
+            # segment and the baked positions collide. Rasterizing the title
+            # text embeds matplotlib's exact layout as an image, immune to
+            # downstream font substitution; HTML/DOCX renders are unaffected.
+            t.set_rasterized(True)
             bb = t.get_window_extent()
             x_pos = bb.transformed(fig.transFigure.inverted()).x1
             if i < len(title_parts) - 1:

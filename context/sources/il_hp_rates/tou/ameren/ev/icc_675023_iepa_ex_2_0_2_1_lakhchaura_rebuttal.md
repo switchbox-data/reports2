@@ -1,6 +1,6 @@
 # Rebuttal Testimony of Megha Lakhchaura (Illinois EPA Ex. 2.0) and Illinois EPA Responses to Ameren Data Requests (Ex. 2.1)
 
-**Source**: `icc_675023_iepa_ex_2_0_2_1_lakhchaura_rebuttal.pdf` (ICC e-docket file id 675023, document 383420)
+**Source**: `icc_675023_iepa_ex_2_0_2_1_lakhchaura_rebuttal.pdf` (original PDF not stored in the repo) (ICC e-docket file id 675023, document 383420)
 **Pages**: 35 PDF pages (notice of filing, cover, table of contents, 11 pages of Ex. 2.0 testimony at PDF pp. 4–14, Ex. 2.1 data-request responses at PDF pp. 15–34, certificate of service at p. 35)
 **Date**: July 9, 2026 (Ex. 2.0); data-request responses dated June 2, 2026 (Ex. 2.1)
 **Docket**: ICC Docket No. 26-0051 (Ameren Illinois Company d/b/a Ameren Illinois, Petition for Approval of Multi-Year Integrated Grid Plan pursuant to 220 ILCS 5/16-105.17; ICC e-docket id P2026-0051)

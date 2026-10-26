@@ -1,6 +1,6 @@
 # Revised Appendix X: 2029–2031 BE Portfolio Detail (Ameren Ex. 42.1) — Adds ChargeReady; Revised ChargeSmart and FlexCharge Budgets
 
-**Source**: `icc_676625_ameren_ex_42_1_appendix_x_be_portfolio_detail_revised.pdf` (ICC e-docket file id 676625, document 384171)
+**Source**: `icc_676625_ameren_ex_42_1_appendix_x_be_portfolio_detail_revised.pdf` (original PDF not stored in the repo) (ICC e-docket file id 676625, document 384171)
 **Pages**: 10 PDF pages (printed "Page N of 10")
 **Date**: July 28, 2026 (filed with Ameren Ex. 42.0; the date is not printed on the exhibit)
 **Docket**: ICC Docket No. 26-0051 (Ameren Illinois Company d/b/a Ameren Illinois, Petition for Approval of Multi-Year Integrated Grid Plan pursuant to 220 ILCS 5/16-105.17; ICC e-docket id P2026-0051)

@@ -1,6 +1,6 @@
 # Appendix X: 2029–2031 BE Portfolio Detail (Ameren Ex. 9.1) — ChargeSmart and FlexCharge Program Descriptions and Budgets
 
-**Source**: `icc_663577_ameren_ex_9_1_appendix_x_be_portfolio_detail.pdf` (ICC e-docket file id 663577, document 378447, filed as "Appendix X")
+**Source**: `icc_663577_ameren_ex_9_1_appendix_x_be_portfolio_detail.pdf` (original PDF not stored in the repo) (ICC e-docket file id 663577, document 378447, filed as "Appendix X")
 **Pages**: 6 PDF pages (printed "Page N of 6")
 **Date**: March 31, 2026 (filed with the supplemental direct testimony; the date is not printed on the exhibit)
 **Docket**: ICC Docket No. 26-0051 (Ameren Illinois Company d/b/a Ameren Illinois, Petition for Approval of Multi-Year Integrated Grid Plan pursuant to 220 ILCS 5/16-105.17; ICC e-docket id P2026-0051)

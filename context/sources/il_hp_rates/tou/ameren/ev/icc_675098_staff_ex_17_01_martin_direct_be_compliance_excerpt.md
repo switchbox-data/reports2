@@ -1,6 +1,6 @@
 # Direct Testimony of Robert Martin (Staff Ex. 1.0, adopted as Staff Ex. 17.01) — Beneficial Electrification Compliance Review, Section 16-105.17(f)(2)(M)
 
-**Source**: `icc_675098_staff_ex_17_0_hamidu_rebuttal.pdf` (ICC e-docket file id 675098, document 383445; this excerpt is PDF pp. 53–66 of 240)
+**Source**: `icc_675098_staff_ex_17_0_hamidu_rebuttal.pdf` (original PDF not stored in the repo) (ICC e-docket file id 675098, document 383445; this excerpt is PDF pp. 53–66 of 240)
 **Pages**: Excerpt of 14 PDF pages (Ex. 17.01 pages 15–28 of 202): the summary of conclusions and Section II "Statutory Requirements: Beneficial Electrification" through Martin's conclusion. The rest of Ex. 17.01 (202 pages of Martin's other topics, plus attachments such as Ameren data-request responses) is not extracted
 **Date**: May 7, 2026 (original direct testimony); attached to Staff Ex. 17.0 filed July 9, 2026
 **Docket**: ICC Docket No. 26-0051 (Ameren Illinois Company d/b/a Ameren Illinois, Petition for Approval of Multi-Year Integrated Grid Plan pursuant to 220 ILCS 5/16-105.17; ICC e-docket id P2026-0051)

@@ -1,6 +1,6 @@
 # Supplemental Direct Testimony of Eric Sackett (Ameren Ex. 15.0) — 2029–2031 Beneficial Electrification (ChargeSmart / FlexCharge) Portfolio
 
-**Source**: `icc_663585_ameren_ex_15_0_sackett_supplemental_direct.pdf` (ICC e-docket file id 663585, document 378447)
+**Source**: `icc_663585_ameren_ex_15_0_sackett_supplemental_direct.pdf` (original PDF not stored in the repo) (ICC e-docket file id 663585, document 378447)
 **Pages**: 25 PDF pages (cover, table of contents, 22 numbered pages of testimony, 1 page statement of qualifications)
 **Date**: March 31, 2026
 **Docket**: ICC Docket No. 26-0051 (Ameren Illinois Company d/b/a Ameren Illinois, Petition for Approval of Multi-Year Integrated Grid Plan pursuant to 220 ILCS 5/16-105.17; ICC e-docket id P2026-0051)

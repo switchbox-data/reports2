@@ -1,6 +1,6 @@
 # Ameren Illinois — Rider EVCP (Optional Electric Vehicle Charging Program), Sheets 21 through 21.012
 
-**Source**: `icc_rider_evcp_sheets_21_ameren_tariff_aug2026.pdf`, downloaded from Ameren's rate site: [Rider EVCP PDF](https://www.ameren.com/-/media/rates/illinois/residential/electric-rates/distribution-delivery/aiel21rdevcp.ashx)
+**Source**: `icc_rider_evcp_sheets_21_ameren_tariff_aug2026.pdf` (original PDF not stored in the repo), downloaded from Ameren's rate site: [Rider EVCP PDF](https://www.ameren.com/-/media/rates/illinois/residential/electric-rates/distribution-delivery/aiel21rdevcp.ashx)
 **Pages**: 13 (one tariff sheet per page)
 **Date**: Composite of sheets filed on four different dates (see the sheet table below); the newest sheets were filed June 30, 2026 and are effective August 14, 2026
 **Author(s)**: Tariff issued by L.P. Singh, Chairman & President (sheets filed 2023 and Dec 2025) and P.E. Smith, Chairman & President (sheets filed Jun 2026)

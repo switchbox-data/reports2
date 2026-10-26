@@ -1,6 +1,6 @@
 # Rebuttal Testimony of Leonard Hamidu (Staff Ex. 17.0) — Staff Review of Ameren's BE Portfolio, Including the Time-of-Use Rate (Section 16-105.17(f)(2)(M)(ii))
 
-**Source**: `icc_675098_staff_ex_17_0_hamidu_rebuttal.pdf` (ICC e-docket file id 675098, document 383445; testimony at PDF pp. 1–38 of 240)
+**Source**: `icc_675098_staff_ex_17_0_hamidu_rebuttal.pdf` (original PDF not stored in the repo) (ICC e-docket file id 675098, document 383445; testimony at PDF pp. 1–38 of 240)
 **Pages**: Testimony extracted from PDF pp. 1–38 (cover, table of contents, attachments list, 35 numbered pages). PDF pp. 39–240 are Attachment Staff Ex. 17.01 (the adopted direct testimony of Robert Martin, Staff Ex. 1.0) and its exhibits; only the beneficial-electrification section of Ex. 17.01 is extracted separately (see `icc_675098_staff_ex_17_01_...`)
 **Date**: July 9, 2026
 **Docket**: ICC Docket No. 26-0051 (Ameren Illinois Company d/b/a Ameren Illinois, Petition for Approval of Multi-Year Integrated Grid Plan pursuant to 220 ILCS 5/16-105.17; ICC e-docket id P2026-0051)

@@ -1,6 +1,6 @@
 # Revised Rebuttal Testimony of Eric Sackett (Ameren Ex. 23.0 Rev.) — Response to Staff, IEPA, JNGO, IIEC-CUB on the BE Portfolio
 
-**Source**: `icc_676418_ameren_ex_23_0_rev_sackett_revised_rebuttal.pdf` (ICC e-docket file id 676418, document 384073)
+**Source**: `icc_676418_ameren_ex_23_0_rev_sackett_revised_rebuttal.pdf` (original PDF not stored in the repo) (ICC e-docket file id 676418, document 384073)
 **Pages**: 44 PDF pages (cover, table of contents, 42 numbered pages of testimony)
 **Date**: July 23, 2026 (revised; the original rebuttal was filed June 10, 2026 as Ameren Ex. 23.0, file id 671750, and is not reproduced here)
 **Docket**: ICC Docket No. 26-0051 (Ameren Illinois Company d/b/a Ameren Illinois, Petition for Approval of Multi-Year Integrated Grid Plan pursuant to 220 ILCS 5/16-105.17; ICC e-docket id P2026-0051)

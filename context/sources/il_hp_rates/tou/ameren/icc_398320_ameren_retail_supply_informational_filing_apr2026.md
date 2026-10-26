@@ -1,6 +1,6 @@
 # Ameren Illinois — Retail Supply Informational Filing, 119th Informational Sheet (Effective May 2026)
 
-**Source**: `icc_398320_ameren_retail_supply_informational_filing_apr2026.pdf` (ICC filing file `398320.pdf`)
+**Source**: `icc_398320_ameren_retail_supply_informational_filing_apr2026.pdf` (original PDF not stored in the repo) (ICC filing file `398320.pdf`)
 **Pages**: 2 (1-page transmittal letter + 1-page Informational Sheet)
 **Date**: Filed April 20, 2026; Informational Sheet effective May 2026
 **Author(s)**: Brice A. Sheriff, Senior Director, Regulatory Affairs and Energy Supply, Ameren Illinois Company (bsheriff@ameren.com, 217.535.5229)

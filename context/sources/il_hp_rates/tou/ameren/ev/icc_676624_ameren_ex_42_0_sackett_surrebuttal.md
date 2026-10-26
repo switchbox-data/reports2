@@ -1,6 +1,6 @@
 # Surrebuttal Testimony of Eric Sackett (Ameren Ex. 42.0) — Revised 2029–2031 BE Portfolio Including the New ChargeReady Program
 
-**Source**: `icc_676624_ameren_ex_42_0_sackett_surrebuttal.pdf` (ICC e-docket file id 676624, document 384171)
+**Source**: `icc_676624_ameren_ex_42_0_sackett_surrebuttal.pdf` (original PDF not stored in the repo) (ICC e-docket file id 676624, document 384171)
 **Pages**: 36 PDF pages (cover, table of contents, 34 numbered pages of testimony)
 **Date**: July 28, 2026
 **Docket**: ICC Docket No. 26-0051 (Ameren Illinois Company d/b/a Ameren Illinois, Petition for Approval of Multi-Year Integrated Grid Plan pursuant to 220 ILCS 5/16-105.17; ICC e-docket id P2026-0051)

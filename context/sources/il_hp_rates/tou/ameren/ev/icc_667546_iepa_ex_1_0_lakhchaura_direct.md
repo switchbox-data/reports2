@@ -1,6 +1,6 @@
 # Direct Testimony of Megha Lakhchaura (Illinois EPA Ex. 1.0) — Critique of Ameren's 2029–2031 BE Portfolio: Make-Ready, ChargeSmart Rate Design, FlexCharge
 
-**Source**: `icc_667546_iepa_ex_1_0_lakhchaura_direct.pdf` (ICC e-docket file id 667546, document 380274)
+**Source**: `icc_667546_iepa_ex_1_0_lakhchaura_direct.pdf` (original PDF not stored in the repo) (ICC e-docket file id 667546, document 380274)
 **Pages**: 24 PDF pages (notice of filing, cover, table of contents, 20 numbered pages of testimony, certificate of service)
 **Date**: May 7, 2026
 **Docket**: ICC Docket No. 26-0051 (Ameren Illinois Company d/b/a Ameren Illinois, Petition for Approval of Multi-Year Integrated Grid Plan pursuant to 220 ILCS 5/16-105.17; ICC e-docket id P2026-0051)

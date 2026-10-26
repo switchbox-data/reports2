@@ -1,6 +1,6 @@
 # ComEd — Rate BES Info Sheet 1 (Purchased Electricity Charges, PEC; flat default supply energy), Jan–May 2026 and Jun 2026–May 2027
 
-**Source**: `comed/pdfs/icc_399143_info_sheet_70_bestec.pdf` p. 4 (ICC e-docket file `399143.pdf`, ERM #26-082)
+**Source**: `icc_399143_info_sheet_70_bestec.pdf` p. 4 (ICC e-docket file `399143.pdf`, ERM #26-082)
 **Pages**: 1 (p. 4 of the 12-page filing package)
 **Date**: Filed May 15, 2026; effective May 16, 2026
 **Author(s)**: Issued by David R. Perez, EVP and COO

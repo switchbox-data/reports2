@@ -1,6 +1,6 @@
 # ComEd — Monthly Purchased Electricity Adjustment Factors: PEA (Rate BES, Info Sheet 3), HPEA (Info Sheet 7) and TPEA (Rate BEST, Info Sheet 71), June–July 2026
 
-**Source**: `comed/pdfs/icc_399956_info_sheet_71_tpea.pdf` (ICC e-docket file `399956.pdf`)
+**Source**: `icc_399956_info_sheet_71_tpea.pdf` (ICC e-docket file `399956.pdf`)
 **Pages**: 5 (2-page transmittal letter, 3 informational sheets)
 **Date**: Filed June 18, 2026; sheets effective June 19, 2026
 **Author(s)**: John L. Leick, Senior Manager Retail Rates, ComEd, (779) 231-2375; sheets issued by David R. Perez, EVP and COO

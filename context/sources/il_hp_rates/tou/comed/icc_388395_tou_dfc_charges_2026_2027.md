@@ -1,6 +1,6 @@
 # ComEd — Residential Time-of-Use Distribution Facilities Charges (DTOU) for 2026 and 2027, and the Tariff Text That Creates the Option (Jan 30, 2025 Compliance Filing)
 
-**Source**: `comed/pdfs/icc_388395_compliance_dtou_charges_jan2025.pdf` (ICC e-docket file `388395.pdf`), **subset**: pp. 5, 8, 40, 41, 42, 51, 52, 53. Flat residential delivery charges (Info Sheet 64.1) and the transmittal letter are in the companion file `icc_388395_delivery_service_charges_flat_dfc_2026_2027.md`.
+**Source**: `icc_388395_compliance_dtou_charges_jan2025.pdf` (ICC e-docket file `388395.pdf`), **subset**: pp. 5, 8, 40, 41, 42, 51, 52, 53. Flat residential delivery charges (Info Sheet 64.1) and the transmittal letter are in the companion file `icc_388395_delivery_service_charges_flat_dfc_2026_2027.md`.
 **Pages extracted here**: 8 of 53
 **Date**: Filed January 30, 2025; effective February 6, 2025 (TOU charges apply from the **January 2026** billing period)
 **Author(s)**: Issued by David R. Perez, EVP and COO

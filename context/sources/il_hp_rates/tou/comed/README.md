@@ -1,6 +1,6 @@
 # ComEd Rate BEST + DTOU (ICC Docket 24-0378): source corpus and index
 
-This directory is the ComEd-specific source corpus for **ICC Docket 24-0378** (ComEd's residential time-of-use offerings): **Rate BEST** (bundled supply TOU) and **DTOU** (delivery TOU, the time-differentiated Distribution Facilities Charge, DFC), compared against the **flat default** (Rate BES supply plus the flat DFC). It holds the tariffs, information sheets, ComEd testimony and exhibits, the illustrative workpapers that set the prices, and the published price sheets, each as a verified PDF (`pdfs/`) plus a markdown extract (`md/`) with exact numbers.
+This directory is the ComEd-specific source corpus for **ICC Docket 24-0378** (ComEd's residential time-of-use offerings): **Rate BEST** (bundled supply TOU) and **DTOU** (delivery TOU, the time-differentiated Distribution Facilities Charge, DFC), compared against the **flat default** (Rate BES supply plus the flat DFC). It holds the tariffs, information sheets, ComEd testimony and exhibits, the illustrative workpapers that set the prices, and the published price sheets, each as a markdown extract with exact numbers. The original PDFs are not stored in the repo; `MANIFEST.csv` records each one's filename, page count, SHA256 and download URL so it can be re-fetched and verified.
 
 It is built to answer four questions:
 
@@ -37,7 +37,7 @@ The policy background (what the ICC approved and why) is in the parent directory
 
 ## Contents
 
-Tiers: **1** = core rate design documents (tariff, info sheets, compliance); **2** = ComEd testimony; **3** = exhibits, workpapers and data requests; **4** = context (brief, petition, statute filing); **P** = published price lookups. In `pdfs/` and `md/`, files share a basename (`<stem>.pdf`, `<stem>.md`) unless noted. `MANIFEST.csv` has the same list with bytes, pages, SHA256, source URL and status.
+Tiers: **1** = core rate design documents (tariff, info sheets, compliance); **2** = ComEd testimony; **3** = exhibits, workpapers and data requests; **4** = context (brief, petition, statute filing); **P** = published price lookups. Each stem below is a markdown file in this directory (`<stem>.md`). **The source PDFs are not stored in the repo**: each file's `**Source**` line names the PDF it was extracted from, and `MANIFEST.csv` (columns `source_pdf`, `md_path`, bytes, pages, SHA256, source URL, status) lets you re-download a PDF and verify it against the recorded SHA256.
 
 ### Tier 1: tariff, information sheets, compliance
 
@@ -94,7 +94,7 @@ Derived data (not PDFs): `workbooks/icc_639690_ex_19_02_rtoupp_hourly_profile.cs
 
 These were assembled for price lookups and are described in the sections below ([Published prices](#published-prices-residential-kwh)).
 
-| Document                                                                                                                  | PDF (`pdfs/`)                                                                  | Markdown (`md/`)                                                                         | Use for                                                                |
+| Document                                                                                                                  | Original PDF (not stored)                                                      | Markdown                                                                                 | Use for                                                                |
 | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
 | ICC ERM 26-082 (May 15, 2026): transmittal letter and Rate BEST Info Sheet 70 (BESTEC, original Jun 2026–May 2027 values) | `icc_399143_info_sheet_70_bestec.pdf` (whole 12-page package)                  | `icc_399143_info_sheet_70_bestec.md` (whole package)                                     | Rate BEST supply, as first published; what ComEd said about workpapers |
 | Same filing: Info Sheet 72 (PJM Services and Misc. Procurement Components Charge, 1.875 ¢/kWh)                            | same PDF p. 12; `comed_info_sheet_72_pjm_misc_mirror.pdf` is a ComEd-site copy | `icc_399143_info_sheet_72_pjm_misc.md`                                                   | Rate BEST flat supply line                                             |
@@ -124,7 +124,7 @@ Two of the Tier 1 PDFs (`icc_399143_...`, `icc_388395_...`) have both a whole-do
 
 Four periods, every day, Central Prevailing Time: **Morning** 6 a.m.–1 p.m., **Mid-Day Peak** 1–7 p.m., **Evening** 7–9 p.m., **Overnight** 9 p.m.–6 a.m. A **flat default** customer pays one Rate BES supply price (PEC + PSC + monthly PEA) and one flat DFC for their delivery class. A **DTOU** customer keeps the flat supply but pays four DFCs by period. A **Rate BEST** customer pays four supply prices (BESTEC) **plus** a flat PJM/Misc line (Info Sheet 72) **plus** the monthly TPEA, **and** the four DTOU DFCs. Supply prices differ by season (summer = June–September billing months); delivery prices have no season. Delivery has four residential classes (single/multi-family, with/without electric space heat).
 
-Where each element lives in the compliance tariff (`md/icc_393626_rate_best_compliance_tariff.md`):
+Where each element lives in the compliance tariff (icc_393626_rate_best_compliance_tariff.md`):
 
 | Element                                                                          | Sheet                | Note                                                                                        |
 | -------------------------------------------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------- |
@@ -209,7 +209,7 @@ Switchbox arithmetic from the Info Sheets and the Oct 2026 billed DFCs below. It
 
 ## EPON excerpt index
 
-Every extracted `md/` file carries invisible HTML comments of the form `<!-- EPON: tag, tag — description -->`. Tags: `profile`, `midday-peak`, `capacity-mdppec`, `tmc`, `bundling`, `lockout`, `bill-comparison`, `stacking`, `fixed-vs-volumetric`, `ev-hp`, `goal`. Find all passages with, for example, `rg "EPON:.*capacity-mdppec" md/`. Most useful passages:
+Every extracted markdown file carries invisible HTML comments of the form `<!-- EPON: tag, tag — description -->`. Tags: `profile`, `midday-peak`, `capacity-mdppec`, `tmc`, `bundling`, `lockout`, `bill-comparison`, `stacking`, `fixed-vs-volumetric`, `ev-hp`, `goal`. Find all passages with, for example, `rg "EPON:.*capacity-mdppec" .`. Most useful passages:
 
 | Topic                                             | File and locator                                                                         | What it shows                                                                                                                                    |
 | ------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -273,7 +273,7 @@ Base charges ("& ADJ" on the sheets) are the tariff values before adjustment fac
 
 2027 TOU DFC base (Morning / Mid-Day / Evening / Overnight): single-family no heat 4.250 / 11.183 / 3.747 / 2.984; multi-family no heat 3.258 / 9.063 / 2.856 / 2.251; single-family heat 2.121 / 5.567 / 1.890 / 1.550; multi-family heat 2.041 / 5.194 / 1.823 / 1.512. Evening and Overnight do not change from 2026 to 2027; only Morning and Mid-Day rise. Fixed monthly charges (customer charge, metering charge) are the same on flat and TOU delivery. The \$2/month EV credit (Info Sheet 68) applies for up to 24 months.
 
-**Note on the guide**: the multi-family no-heat Overnight billed value (2.403) omits the TPAF amount that every other row includes; with it the figure would be about 2.550. See `md/comed_guide_billed_delivery_service_charges_oct2026.md`.
+**Note on the guide**: the multi-family no-heat Overnight billed value (2.403) omits the TPAF amount that every other row includes; with it the figure would be about 2.550. See `comed_guide_billed_delivery_service_charges_oct2026.md`.
 
 ### Reconciling the CUB fact sheet
 
@@ -320,14 +320,14 @@ Adding the October monthly factors: flat 14.892 (PEA is a 1.551 credit), Rate BE
 
 ## Suggested reading order
 
-1. [`md/icc_393626_rate_best_compliance_tariff.md`](md/icc_393626_rate_best_compliance_tariff.md): Sheets 483–484, 489–495. The rules as filed.
-2. [`md/icc_399143_info_sheet_70_bestec.md`](md/icc_399143_info_sheet_70_bestec.md): the live posted prices and what ComEd said about workpapers.
-3. [`md/icc_639688_ex_19_0_kremer_rehearing_rebuttal_compromise.md`](md/icc_639688_ex_19_0_kremer_rehearing_rebuttal_compromise.md): the adopted design and ComEd's rationale.
-4. [`md/icc_639690_ex_19_02_compromise_bestec_illustrative_charges.md`](md/icc_639690_ex_19_02_compromise_bestec_illustrative_charges.md): p. 2 for the capacity adder derivation; pp. 4–119 for the profile.
-5. [`md/icc_636686_ex_17_0_kremer_rehearing_direct_strawman.md`](md/icc_636686_ex_17_0_kremer_rehearing_direct_strawman.md): pp. 26–29, Figs. 12–13, ComEd's own analysis of kWh-based capacity recovery.
-6. [`md/icc_636692_ex_17_06_pjm_comed_peak_dates.md`](md/icc_636692_ex_17_06_pjm_comed_peak_dates.md): when the capacity-causing peaks happen.
-7. [`md/icc_613753_ex_3_0_kremer_direct_rdi.md`](md/icc_613753_ex_3_0_kremer_direct_rdi.md): DTOU design, class shapes (Tables 10–11), revenue neutrality.
-8. [`md/icc_639684_ex_18_0_perkins_rehearing_rebuttal.md`](md/icc_639684_ex_18_0_perkins_rehearing_rebuttal.md) and [`md/icc_636685_ex_16_0_perkins_rehearing_direct.md`](md/icc_636685_ex_16_0_perkins_rehearing_direct.md): goals, limits and marketing.
+1. [`icc_393626_rate_best_compliance_tariff.md`](icc_393626_rate_best_compliance_tariff.md): Sheets 483–484, 489–495. The rules as filed.
+2. [`icc_399143_info_sheet_70_bestec.md`](icc_399143_info_sheet_70_bestec.md): the live posted prices and what ComEd said about workpapers.
+3. [`icc_639688_ex_19_0_kremer_rehearing_rebuttal_compromise.md`](icc_639688_ex_19_0_kremer_rehearing_rebuttal_compromise.md): the adopted design and ComEd's rationale.
+4. [`icc_639690_ex_19_02_compromise_bestec_illustrative_charges.md`](icc_639690_ex_19_02_compromise_bestec_illustrative_charges.md): p. 2 for the capacity adder derivation; pp. 4–119 for the profile.
+5. [`icc_636686_ex_17_0_kremer_rehearing_direct_strawman.md`](icc_636686_ex_17_0_kremer_rehearing_direct_strawman.md): pp. 26–29, Figs. 12–13, ComEd's own analysis of kWh-based capacity recovery.
+6. [`icc_636692_ex_17_06_pjm_comed_peak_dates.md`](icc_636692_ex_17_06_pjm_comed_peak_dates.md): when the capacity-causing peaks happen.
+7. [`icc_613753_ex_3_0_kremer_direct_rdi.md`](icc_613753_ex_3_0_kremer_direct_rdi.md): DTOU design, class shapes (Tables 10–11), revenue neutrality.
+8. [`icc_639684_ex_18_0_perkins_rehearing_rebuttal.md`](icc_639684_ex_18_0_perkins_rehearing_rebuttal.md) and [`icc_636685_ex_16_0_perkins_rehearing_direct.md`](icc_636685_ex_16_0_perkins_rehearing_direct.md): goals, limits and marketing.
 9. [`../icc_24-0378_order_on_rehearing.md`](../icc_24-0378_order_on_rehearing.md): the Commission's reasoning.
 10. [`context/domain/il_tou_rates.md`](../../../../domain/il_tou_rates.md): synthesis, statute, and the nonresidential extension.
 
@@ -336,4 +336,4 @@ Adding the October monthly factors: flat 14.892 (PEA is a 1.551 credit), Rate BE
 1. Search the ICC e-docket (`icc.illinois.gov`) for ComEd "Informational Filing for Charges Determined by Formulae – Purchased Electricity Adjustment Factors" (filed mid-month; the June 2026 one is ERM 26-102) for the newest PEA/HPEA/TPEA.
 2. For revisions of the supply sheets, download the current `2026_Ratebook.pdf` (link in `MANIFEST.csv`, sheet 1 is on the page whose heading is "Purchased Electricity Charges") and re-excerpt Info Sheets 1, 2, 3, 20, 70, 71 and 72.
 3. ICC docket pages are blocked to scripted fetches by a CAPTCHA. Tariff and informational filings download from `https://icc.illinois.gov/downloads/public/filing/4/<id>.pdf`; docket exhibits download from `https://icc.illinois.gov/downloads/public/edocket/<id>.pdf`. Non-PDF attachments return HTTP 500.
-4. Add any new PDF to `MANIFEST.csv`, extract it per `.cursor/commands/extract-pdf-to-markdown.md` (in the rate-design-platform repo), and add rows to `context/README.md`.
+4. Add any new PDF to `MANIFEST.csv` (record its SHA256 and URL, but do not commit the PDF itself), extract it per `.cursor/commands/extract-pdf-to-markdown.md` (in the rate-design-platform repo), and add rows to `context/README.md`.

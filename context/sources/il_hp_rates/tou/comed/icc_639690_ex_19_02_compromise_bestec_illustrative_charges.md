@@ -17,7 +17,7 @@
 - **Differences from the shard description / what is NOT in pp. 4–119**: the PJM-price, loss-factor, adjusted-supply-price and revenue columns appear **only on p. 120 and only for the first 102 hours (1/1/2023 Hour01 – 1/5/2023 Hour06)**; pp. 4–119 carry only Date, Data, Category, Month, Summer-or-Nonsummer, Interval and RTOUPP Load. The column header is printed once (p. 4); it is **not** repeated on later pages.
 - Cell shading in the source (yellow = Morning, pink = Mid-Day, light blue = Evening, green = Overnight; green-highlighted cells = input parameters; orange = blank adjustment input cells) is not reproduced except where noted.
 - Dollar signs are escaped as `\$` in prose/tables.
-- **Companion data files** (agent-generated, not source text): `../workbooks/icc_639690_ex_19_02_rtoupp_hourly_profile.csv` (the full 8,760-row table from pp. 4–119) and `../workbooks/icc_639690_ex_19_02_p120_first_102_hours_with_pjm_prices.csv` (the 102 rows printed on p. 120 with the price/revenue columns).
+- **Companion data files** (agent-generated, not source text): `workbooks/icc_639690_ex_19_02_rtoupp_hourly_profile.csv` (the full 8,760-row table from pp. 4–119) and `workbooks/icc_639690_ex_19_02_p120_first_102_hours_with_pjm_prices.csv` (the 102 rows printed on p. 120 with the price/revenue columns).
 
 ---
 
@@ -111,7 +111,7 @@ Italic label "Illustrative Example".
 
 ## Sheets 4–119 (PDF pp. 4–119): Hourly RTOUPP load profile — "12 Months of Data for 1,858 participants"
 
-<!-- EPON: profile — THE illustrative profile: aggregate hourly kWh of 1,858 RTOUPP (residential TOU pilot) participants, calendar 2023, total 18,265,086 kWh; Formula 1/2 weighting for every Rate BEST customer comes from this single aggregate shape -->
+<!-- EPON: profile — THE illustrative profile: aggregate hourly kWh of 1,858 RTOUPP (residential TOU pilot) participants, calendar 2023, total 18,265,086 kWh; per the Rate BEST tariff (Sheets 489–490, not this workpaper), Formula 1/2 weight prices by this single aggregate shape -->
 
 ### Structure (verbatim description of what the pages contain)
 
@@ -165,7 +165,7 @@ Italic label "Illustrative Example".
 | 1/1/2023 | Hour23 | Overnight | 1     | N                   | 23       | 2,371.85    |
 | 1/1/2023 | Hour24 | Overnight | 1     | N                   | 24       | 2,266.30    |
 
-**Full table**: all 8,760 rows are in [`../workbooks/icc_639690_ex_19_02_rtoupp_hourly_profile.csv`](../workbooks/icc_639690_ex_19_02_rtoupp_hourly_profile.csv). Columns: `date` (ISO yyyy-mm-dd; printed as m/d/yyyy in the source), `data` (Hour01…Hour24 as printed), `category` (as printed), `month`, `summer_or_nonsummer` (`S`/`N`), `interval` (as printed), `rtoupp_load` (kWh per hour, aggregate of 1,858 participants; empty for the one row printed "-"), `source_flag` (empty except for the two anomaly rows above). These are exactly the seven printed columns plus `source_flag`. Page of origin: PDF page = 4 for the first 70 rows, then 5 + floor((row index − 70) / 76) for later rows (row index 0-based).
+**Full table**: all 8,760 rows are in [`workbooks/icc_639690_ex_19_02_rtoupp_hourly_profile.csv`](workbooks/icc_639690_ex_19_02_rtoupp_hourly_profile.csv). Columns: `date` (ISO yyyy-mm-dd; printed as m/d/yyyy in the source), `data` (Hour01…Hour24 as printed), `category` (as printed), `month`, `summer_or_nonsummer` (`S`/`N`), `interval` (as printed), `rtoupp_load` (kWh per hour, aggregate of 1,858 participants; empty for the one row printed "-"), `source_flag` (empty except for the two anomaly rows above). These are exactly the seven printed columns plus `source_flag`. Page of origin: PDF page = 4 for the first 70 rows, then 5 + floor((row index − 70) / 76) for later rows (row index 0-based).
 
 ### Validation of the parse (agent-computed; not source text)
 
@@ -190,9 +190,9 @@ Red label at top left: "**This Workpaper is set to print Page 1 only**"; italic 
 
 **Column headings (left block)**: `Date` | `Data` | `Category` | `Month` | `Summer or Nonsummer` | `Interval` | `RTOUPP Load` | `PJM Price` | `Weighted Residential Distribution Loss Factor to Add` | `Adjusted Hourly Supply Price` | `Total Estimated Revenue`.
 
-<!-- EPON: profile,midday-peak — shows how the base energy charge is built: hourly PJM (ComEd Zone) price x (1 + weighted residential DLF 0.0522) x hourly participant load; summed within each TOU period and divided by that period's kWh gives the ARBREV price (e.g. Mid-Day summer 4.702 ¢/kWh before capacity adder) -->
+<!-- EPON: profile,midday-peak — shows how the base energy charge is built: hourly PJM price (ComEd Zone per Rate BEST Formula 1; the workpaper itself does not label the zone) x (1 + weighted residential DLF 0.0522) x hourly participant load; summed within each TOU period and divided by that period's kWh gives the ARBREV price (e.g. Mid-Day summer 4.702 ¢/kWh before capacity adder) -->
 
-First rows as printed (units: `PJM Price` is the hourly PJM real-time residual LMP value as shown, in \$/MWh per the tariff definition of HLMP; `Adjusted Hourly Supply Price` in \$/kWh; `Total Estimated Revenue` in whole dollars shown with a "\$" sign):
+First rows (`Adjusted Hourly Supply Price` is rounded here to 6 decimals; the PDF prints more digits. Units: `PJM Price` is the hourly PJM price value as shown, with no unit label in the workpaper, although the tariff defines HLMP in \$/MWh; `Adjusted Hourly Supply Price` in \$/kWh; `Total Estimated Revenue` in whole dollars shown with a "\$" sign):
 
 | Date     | Data   | Category  | Month | S/N | Interval | RTOUPP Load | PJM Price | Weighted Residential Distribution Loss Factor to Add | Adjusted Hourly Supply Price | Total Estimated Revenue |
 | -------- | ------ | --------- | ----- | --- | -------- | ----------- | --------- | ---------------------------------------------------- | ---------------------------- | ----------------------- |
@@ -205,7 +205,7 @@ First rows as printed (units: `PJM Price` is the hourly PJM real-time residual L
 | 1/1/2023 | Hour07 | Morn      | 1     | N   | 7        | 1,645.70    | 17.68     | 0.05220                                              | 0.0186                       | \$ 31                   |
 | 1/1/2023 | Hour08 | Morn      | 1     | N   | 8        | 1,614.79    | 20.39     | 0.05220                                              | 0.02145                      | \$ 35                   |
 
-All 102 printed rows are in [`../workbooks/icc_639690_ex_19_02_p120_first_102_hours_with_pjm_prices.csv`](../workbooks/icc_639690_ex_19_02_p120_first_102_hours_with_pjm_prices.csv). Agent checks on those rows: RTOUPP Load and labels equal the corresponding rows of the full profile; Total Estimated Revenue = RTOUPP Load × Adjusted Hourly Supply Price (rounded to whole \$) on all 102 rows; Adjusted Hourly Supply Price ≈ PJM Price × (1 + 0.0522) / 1,000 (max difference 6 × 10⁻⁶ \$/kWh, consistent with rounding of the displayed PJM prices). PJM Price units are not labelled on the page.
+All 102 printed rows are in [`workbooks/icc_639690_ex_19_02_p120_first_102_hours_with_pjm_prices.csv`](workbooks/icc_639690_ex_19_02_p120_first_102_hours_with_pjm_prices.csv). Agent checks on those rows: RTOUPP Load and labels equal the corresponding rows of the full profile; Total Estimated Revenue = RTOUPP Load × Adjusted Hourly Supply Price (rounded to whole \$) on all 102 rows; Adjusted Hourly Supply Price ≈ PJM Price × (1 + 0.0522) / 1,000 (max difference 6 × 10⁻⁶ \$/kWh, consistent with rounding of the displayed PJM prices). PJM Price units are not labelled on the page.
 
 **Right-hand tables:**
 
@@ -278,6 +278,8 @@ All figures below are computed by code from the 8,760-row table in the CSV (one 
 | Evening (HE 20–21)          | 730      | 734,676    | 1,023,637     | 1,758,313  | 9.63%           | 8.33%             |
 | Overnight (HE 22–24, 01–06) | 3,285    | 2,869,278  | 4,707,327     | 7,576,604  | 41.48%          | 37.50%            |
 | **Total**                   | 8,760    | 7,222,455  | 11,042,631    | 18,265,086 | 100.00%         | 100.00%           |
+
+_Rounding note (extractor): the printed period subtotals for summer kWh add to 7,222,456; 7,222,455 is the sum of the unrounded hourly rows._
 
 (The Summer Mid-Day total computes to 2,012,552.49 kWh; the source prints 2,012,553.)
 

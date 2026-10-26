@@ -1,6 +1,6 @@
 # ComEd — Supply Info Sheets as Revised Through September 2026: PEC, PSC, PEA (Rate BES), BESTEC, TPEA, PJM/Misc Charge (Rate BEST) and Uncollectible Factors
 
-**Source**: `comed/pdfs/comed_ratebook_2026_supply_info_sheets_excerpt_sep2026.pdf` — a 7-page excerpt (ratebook pp. 782, 783, 784, 801, 872, 873, 874) of ComEd's "Schedule of Rates for Electric Service" (`2026_Ratebook.pdf`, 885 pages), downloaded October 26, 2026 from `https://www.comed.com/cdn/assets/v3/assets/blt3ebb3fed6084be2a/blt86ebee5fe6ed02f8/6ab16afb15d5b73190b00e59/2026_Ratebook.pdf`. The newest sheet in this excerpt was filed September 18, 2026 (extractor has not checked whether the full ratebook contains later sheets).
+**Source**: `comed_ratebook_2026_supply_info_sheets_excerpt_sep2026.pdf` — a 7-page excerpt (ratebook pp. 782, 783, 784, 801, 872, 873, 874) of ComEd's "Schedule of Rates for Electric Service" (`2026_Ratebook.pdf`, 885 pages), downloaded October 26, 2026 from `https://www.comed.com/cdn/assets/v3/assets/blt3ebb3fed6084be2a/blt86ebee5fe6ed02f8/6ab16afb15d5b73190b00e59/2026_Ratebook.pdf`. The newest sheet in this excerpt was filed September 18, 2026 (extractor has not checked whether the full ratebook contains later sheets).
 **Pages extracted here**: 7 (excerpt p. 1–7, in the order listed in the table below)
 **Date**: Sheets filed between August 20 and September 18, 2026; the values extend through the May 2027 billing period
 **Author(s)**: Issued by David R. Perez, EVP and COO

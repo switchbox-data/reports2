@@ -265,7 +265,7 @@ For example, a non-legacy NM customer on Rate BEST who had total excess generati
 
 **A.** Yes. ComEd wants customers to be aware of their use of discretionary electric load during the Mid-Day Peak Period. This is because certain charges based on an individual customer’s usage are typically determined at this time of day. Figures 3 and 4, below, which reflect PJM and ComEd peaks, show that these peaks have historically occurred in the Mid-Day Peak Period. These peaks could also occur on a weekend, as was the case in 2019, where one of the five peaks on ComEd’s system occurred on Saturday at 3:00 p.m. See ComEd Ex. 17.06.
 
-<!-- EPON: midday-peak,capacity-mdppec — 2024 PJM five coincident peaks (capacity PLC hours): all at hour ending 5 p.m., 6/21–8/28 -->
+<!-- EPON: midday-peak,capacity-mdppec — 2024 PJM five coincident peaks (capacity PLC hours): all at hour ending 5 p.m., 6/18–8/28 (Ex. 17.06 lists 7/16/24 instead of 6/18/24; source inconsistency) -->
 
 **Figure 3 – PJM System Peak Hours**
 

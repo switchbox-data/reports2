@@ -1,6 +1,6 @@
 # ComEd — Guide to the Retail Customers' Billed Delivery Service Charges: Residential Flat and Time-of-Use DFC, Base Charge to Billed Charge (bills beginning October 2026)
 
-**Source**: `comed/pdfs/comed_guide_billed_delivery_service_charges_oct2026.pdf` (downloaded from `https://azure-na-assets.contentstack.com/v3/assets/blt3ebb3fed6084be2a/blt7904befea93c3525/AGuideToTheRetailCustomersBilledDeliveryServiceCharges.pdf`). The file is not an ICC filing; it is ComEd's own explanatory table on comed.com, and the PDF carries no filing date. The factor values it applies are labelled "beginning with Oct. 2026 bill".
+**Source**: `comed_guide_billed_delivery_service_charges_oct2026.pdf` (downloaded from `https://azure-na-assets.contentstack.com/v3/assets/blt3ebb3fed6084be2a/blt7904befea93c3525/AGuideToTheRetailCustomersBilledDeliveryServiceCharges.pdf`). The file is not an ICC filing; it is ComEd's own explanatory table on comed.com, and the PDF carries no filing date. The factor values it applies are labelled "beginning with Oct. 2026 bill".
 **Pages extracted here**: 2 of 4 (pp. 1–2: residential flat and residential time-of-use). Pages 3–4 (nonresidential delivery classes, lighting) are not extracted.
 **Date**: Applies to bills beginning October 2026
 **Author(s)**: Commonwealth Edison Company (no individual author)

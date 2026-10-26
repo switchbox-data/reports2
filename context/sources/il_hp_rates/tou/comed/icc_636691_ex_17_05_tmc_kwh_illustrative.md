@@ -1,22 +1,27 @@
-# ComEd Ex. 19.03 — Transmission and Miscellaneous Component kWh Charge (TMC kWh Charge) Determination, Compromise Proposal (Rehearing Rebuttal)
+# ComEd Ex. 17.05 — Transmission and Miscellaneous Component kWh Charge and kW Charge Determination, Strawman Proposal (Rehearing Direct)
 
-**Source**: `icc_639691_ex_19_03_tmc_kwh_illustrative.pdf` (ICC e-docket file id / filing id 639691)
-**Pages**: 6 (spreadsheet-rendered workbook, landscape)
-**Date**: May 12, 2025 (date of ComEd Ex. 19.0, with which this exhibit was filed; no date is printed on the exhibit itself)
+**Source**: `icc_636691_ex_17_05_tmc_kwh_illustrative.pdf` (ICC e-docket file id / filing id 636691)
+**Pages**: 7 (spreadsheet-rendered workbook, landscape)
+**Date**: April 4, 2025 (date of ComEd Ex. 17.0, the rehearing direct testimony with which this exhibit was filed; no date is printed on the exhibit itself)
 **Docket**: ICC Docket No. 24-0378 (Commonwealth Edison Co., revenue-neutral tariff changes related to rate design — Rate BEST / DTOU), On Rehearing
 **Author(s)**: ComEd (sponsored by Kathleen E. Kremer, Principal Rate Analyst, Retail Rates)
 **Document type**: Illustrative exhibit (spreadsheet workpaper printout)
-**ComEd exhibit no.**: ComEd Ex. 19.03
+**ComEd exhibit no.**: ComEd Ex. 17.05
 **Extraction method**: Embedded PDF text (PyMuPDF), tables verified against rendered page images
 **Extraction notes**:
 
 - _Minor typographical errors in the source have been corrected for readability. Substantive corrections are annotated inline._
-- The printed header block on every page ("ICC Docket No. 24-0378 (onRehearing) / ComEd Ex. 19.03 / Page N of 6") is omitted; page boundaries are marked **`[p. N]`**. The "Illustrative Example" label, the "Commonwealth Edison Company" title line, and the placeholder dates "MONTH 20XX" are kept where they appear.
+- The printed header block on every page ("ICC Docket No. 24-0378 (On Rehearing) / ComEd Ex. 17.05 / Page N of 7") is omitted; page boundaries are marked **`[p. N]`**. The "Illustrative Example" label, the "Commonwealth Edison Company" title line, and the placeholder dates "MONTH 20XX" are kept where they appear.
 - Column letters / line letters (`a`, `c = a * b`, …) and every spreadsheet footnote are reproduced as printed. Spreadsheet footnotes are given as a "Notes" block directly under each table (no markdown footnote syntax is used). Cell shading and blue "input" font colors are not transcribed.
-- Page references printed inside this exhibit's notes do not all match this 6-page version (it was evidently trimmed from a longer workbook, cf. the 7-page strawman Ex. 17.05): the notes cite "Page 7 of this work paper" for the NSPL/sales table that is on page 6, and page 4 says "See Page 6 for notes pertaining to Page 5". These are annotated `[source says "…"]` where they occur.
-- Arithmetic cross-checks performed during extraction: line `j` on page 2 = 7,621+398+576+4,341+4,811+1,618+1,101+175+12 = \$20,653 ✓; line `n` = 20,653 − 9,955 − 9,579 + 3,337 + 7,707 = \$12,163 ✓; page 4 total = 11,503+2,107+188,855+18,526−3,105−2,479−361 = \$215,046 ✓; \$215,046 ÷ 19,219 MWh = \$11.19/MWh ✓; × 1.0517 ÷ 10 = 1.177 ¢/kWh ✓; 0.066 + 1.177 = 1.243 ✓; 1.243 × 1.0128 = 1.259 ✓; 1.259 × 1.0053 = 1.266 ✓. On page 2, \$12,163 ÷ 19,219 × 1.0517 ÷ 10 computes to 0.0666 ¢/kWh; the source prints 0.066 (presumably from unrounded inputs). On page 6, the printed column totals (19,526 / 19,219 / 18,265) differ by ±1 from the sum of the printed monthly rows (19,525 / 19,219 / 18,266), consistent with rounding.
+- Pages 2, 3, 6 and 7 of this exhibit are text-identical (apart from page numbers) to pages 2, 3, 5 and 6 of the compromise exhibit Ex. 19.03; they are nevertheless transcribed in full below. Page references inside the notes (e.g. "Page 7", "page seven (7)", "See Page 6 for notes pertaining to Page 5") are correct in this 7-page version.
+- Arithmetic cross-checks: page 5 total = 11,503+2,107+188,855+18,526−3,105−2,479−361 = \$215,046 ✓; (\$215,046 ÷ 1,789) × 365 ÷ 12 ÷ 1,000 = \$3.656/kW-month ✓; 3.656 × 1.0128 = 3.703 ✓; 3.703 × 1.0053 = 3.723 ✓. Page 1: 0.066 × 1.0128 = 0.067 ✓; × 1.0053 = 0.067 ✓. Page 2 arithmetic as in Ex. 19.03 (line j \$20,653 ✓, line n \$12,163 ✓). On page 7, the printed column totals (19,526 / 19,219 / 18,265) differ by ±1 from the sum of the printed monthly rows (19,525 / 19,219 / 18,266), consistent with rounding.
 
-**Differences vs strawman exhibit**: This is the compromise's single flat kWh TMC charge. Versus the strawman Ex. 17.05: (i) page 1 here = **1.243 → 1.259 → 1.266 ¢/kWh** (transmission 1.177 + miscellaneous 0.066, all in one kWh rate) vs strawman page 1 = 0.066 → 0.067 → 0.067 ¢/kWh (miscellaneous procurement only); (ii) the strawman had a separate **TMC kW charge of 3.656 → 3.703 → 3.723 \$/kW-month** (Ex. 17.05 pages 4–5) for the NSPL-based transmission services, which the compromise converts to kWh on page 4 here (\$215,046 ÷ 19,219 MWh × 1.0517 = 1.177 ¢/kWh). The underlying dollars (\$215,046 transmission; \$12,163 misc.) and the NSPL / sales table are identical in both.
+**Differences vs compromise exhibit** (verified by line-by-line comparison of this exhibit's text with Ex. 19.03, and by viewing the rendered pages):
+
+- **Page 1 — kWh charge**: strawman TMC kWh charge is **0.066 → 0.067 → 0.067 ¢/kWh** (miscellaneous procurement only: PJM admin/NERC/RFC/Schedule 1A/ancillary services, loss and balancing credits, supply administration, working capital = \$12,163). The compromise (Ex. 19.03 page 1) is **1.243 → 1.259 → 1.266 ¢/kWh**.
+- **Pages 4–5 — extra kW charge (strawman only)**: the strawman charges transmission-service costs (reactive supply, black start, NITS, Schedule 12 TEC and adjustment, firm/non-firm PTP credits; total \$215,046) as a separate **TMC kW charge of \$3.656 → \$3.703 → \$3.723 per kW-month** (= \$215,046 ÷ 1,789 MW-days × 365 ÷ 12 ÷ 1,000). In the compromise (Ex. 19.03 page 4) the same \$215,046 is instead divided by 19,219 MWh of energy sales plus distribution losses and multiplied by the 1.0517 expansion factor, giving **1.177 ¢/kWh**, added to the 0.066 ¢/kWh miscellaneous component to make the single 1.243 ¢/kWh (1.266 ¢/kWh after uncollectible factors).
+- **Unchanged**: all dollar inputs on page 2 (\$12,163 miscellaneous total) and page 5 (\$215,046 transmission total), the 22,467 MW zonal NSPL, 1,789 MW-day and 19,219 MWh forecasts, the expansion factor 1.0517, SBUF 1.0128 and ISUF 1.0053, and the monthly NSPL/sales table (page 7 here, page 6 of Ex. 19.03). The page count is 7 here vs 6 in the compromise because the kW charge needs its own summary page (page 4) and determination page (page 5).
+- This exhibit does not show the billing determinant (e.g. customer NSPL or peak-load contribution) to which the \$/kW-month TMC charge would be applied.
 
 ---
 
@@ -24,13 +29,13 @@
 
 ## Page 1 — TMC kWh Charge Determination (summary)
 
-**Commonwealth Edison Company — Transmission and Miscellaneous Component kWh Charge Determination — Applicable to Retail Customers Served Under Rate BEST — _Illustrative Example_ — For Application Beginning with the MONTH 20XX Monthly Billing Period and Extending Through the MONTH 20XX Monthly Billing Period**
+**Commonwealth Edison Company — Transmission and Miscellaneous Component kWh Charge Determination — Applicable to Retail Customers Served Under Rate BEST — For Application Beginning with the MONTH 20XX Monthly Billing Period and Extending Through the MONTH 20XX Monthly Billing Period** (_Illustrative Example_)
 
-<!-- EPON: tmc — the compromise's single flat TMC kWh charge: 1.266 ¢/kWh after uncollectible factors (1.243 before), applied to all kWh in all four periods -->
+<!-- EPON: tmc — strawman TMC kWh charge is only the miscellaneous-procurement piece: 0.067 ¢/kWh after uncollectible factors (transmission services are in the separate kW charge, pages 4–5) -->
 
 | a: Transmission and Miscellaneous Component kWh Charge (TMC kWh Charge) Prior to Including Uncollectible Factors (cents/kWh) (1) (6) | b: SBUF (2) | c = a * b: TMC kWh Charge w/SBUF (cents/kWh) (3) (6) | d: ISUF (4) | e = c * d: TMC kWh Charge (cents/kWh) (5) (6) |
 | -----------------------------------------------------------------------------------------------------------------------------------: | ----------: | ---------------------------------------------------: | ----------: | --------------------------------------------: |
-|                                                                                                                                1.243 |      1.0128 |                                                1.259 |      1.0053 |                                     **1.266** |
+|                                                                                                                                0.066 |      1.0128 |                                                0.067 |      1.0053 |                                     **0.067** |
 
 Notes:
 
@@ -49,7 +54,7 @@ _Illustrative Example._ **Commonwealth Edison Company — Determination of the T
 
 Expected expenses for the applicable PJM component services required for retail customers taking service under Rate BEST. Layout in the source: description (with note marker) · dollar amount · line letter and formula.
 
-<!-- EPON: tmc — miscellaneous-procurement half of the TMC kWh charge: \$12,163 expected annual expense spread over 19,219 MWh (energy sales plus distribution losses) gives 0.066 ¢/kWh before uncollectibles; PJM per-MWh rates are applied to forecast Rate BEST volumes, not to individual customer load shape -->
+<!-- EPON: tmc — in the strawman this miscellaneous-procurement block is the ENTIRE TMC kWh charge: \$12,163 expected annual expense spread over 19,219 MWh (energy sales plus distribution losses) gives 0.066 ¢/kWh before uncollectibles; PJM per-MWh rates are applied to forecast Rate BEST volumes, not to individual customer load shape -->
 
 | Line                                                            | Item                                                                                           |       Amount | Formula                       |
 | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | -----------: | ----------------------------- |
@@ -81,8 +86,8 @@ See Page 3 for notes pertaining to Page 2 of this Work Paper.
 
 _Illustrative Example._ **Commonwealth Edison Company — Notes for Page 2 of this Work Paper**
 
-1. The result of multiplying the per MWh rate for each service obtained from the PJM Interconnection, L.L.C. (PJM), by 19,526 MWhs. The per MWh rate for each service is determined based on PJM Open Access Transmission Tariff (OATT) and historical PJM bill analysis provided by ComEd's Energy Acquisition (EA) Department. The amount, 19,526 MWhs, is from the "Total" row under the "Energy Sales plus T&D Losses (in MWh)" column on Page 7 [source says "Page 7"; the table is on page 6 of this exhibit] of this work paper. It is the amount of energy sales to retail customers expected to take service under Rate BEST beginning with the MONTH 20XX monthly billing period and extending through the MONTH 20XX billing period, including Transmission and Distribution (T&D) losses.
-2. The result of multiplying the per MWh rate for each service obtained from the PJM Interconnection, L.L.C. (PJM), by 19,219 MWhs. The per MWh rate for each service is determined based on PJM Open Access Transmission Tariff (OATT), PJM Operating Agreement, and historical PJM bill analysis provided by ComEd's EA Department. The amount, 19,219 MWhs, is from the "Total" row under the "Energy Sales plus Distribution Losses (in MWh)" column on Page 7 [source says "Page 7"; the table is on page 6 of this exhibit] of this work paper. It is the amount of energy sales to customers expected to take service under Rate BEST beginning with the MONTH 20XX monthly billing period and extending through the MONTH 20XX monthly billing period, including distribution losses.
+1. The result of multiplying the per MWh rate for each service obtained from the PJM Interconnection, L.L.C. (PJM), by 19,526 MWhs. The per MWh rate for each service is determined based on PJM Open Access Transmission Tariff (OATT) and historical PJM bill analysis provided by ComEd's Energy Acquisition (EA) Department. The amount, 19,526 MWhs, is from the "Total" row under the "Energy Sales plus T&D Losses (in MWh)" column on Page 7 of this work paper. It is the amount of energy sales to retail customers expected to take service under Rate BEST beginning with the MONTH 20XX monthly billing period and extending through the MONTH 20XX billing period, including Transmission and Distribution (T&D) losses.
+2. The result of multiplying the per MWh rate for each service obtained from the PJM Interconnection, L.L.C. (PJM), by 19,219 MWhs. The per MWh rate for each service is determined based on PJM Open Access Transmission Tariff (OATT), PJM Operating Agreement, and historical PJM bill analysis provided by ComEd's EA Department. The amount, 19,219 MWhs, is from the "Total" row under the "Energy Sales plus Distribution Losses (in MWh)" column on Page 7 of this work paper. It is the amount of energy sales to customers expected to take service under Rate BEST beginning with the MONTH 20XX monthly billing period and extending through the MONTH 20XX monthly billing period, including distribution losses.
 3. The per MWh rate is determined based on the PJM Operating Agreement and historical PJM bill analysis provided by ComEd's EA Department. Please see Note (2) for the description of the amount, 19,219 MWhs.
 4. Provided by ComEd's EA Department. The total of the costs allocated to BEST customers based on forecasted energy sales plus distribution losses.
 5. Please see Note (2) for the description of the amount, 19,219 MWhs.
@@ -90,13 +95,34 @@ _Illustrative Example._ **Commonwealth Edison Company — Notes for Page 2 of th
 
 [p. 4]
 
-## Page 4 — Transmission (kW-related) costs converted to a kWh charge
+## Page 4 — TMC kW Charge Determination (summary)
 
-_Illustrative Example._ **Commonwealth Edison Company — Determination of the Transmission and Miscellaneous Component kW-Related Costs Prior to Applying Uncollectibles.** The TMC kW-Related Charges prior to applying uncollectibles is determined pursuant to Rate BEST - Basic Electric Service Time-of-Use (Rate BEST). For Application Beginning with the MONTH 20XX Monthly Billing Period and Extending Through the MONTH 20XX Monthly Billing Period.
+**Commonwealth Edison Company — Transmission and Miscellaneous Component kW Charge Determination — Applicable to Retail Customers Served Under Rate BEST — _Illustrative Example_ — For Application Beginning with the MONTH 20XX Monthly Billing Period and Extending Through the MONTH 20XX Monthly Billing Period**
+
+<!-- EPON: tmc — strawman kW-based TMC charge for transmission services: 3.723 \$/kW-month after uncollectible factors (removed in the compromise, which converts this cost to 1.177 ¢/kWh) -->
+
+| a: Transmission and Miscellaneous Component kW Charge (TMC kW Charge) Prior to Including Uncollectible Factors (\$/kW-month) (1) (6) | b: SBUF (2) | c = a * b: TMC kW Charge w/SBUF (\$/kW-month) (3) (6) | d: ISUF (4) | e = c * d: TMC kW Charge (\$/kW-month) (5) (6) |
+| -----------------------------------------------------------------------------------------------------------------------------------: | ----------: | ----------------------------------------------------: | ----------: | ---------------------------------------------: |
+|                                                                                                                                3.656 |      1.0128 |                                                 3.703 |      1.0053 |                                      **3.723** |
+
+Notes:
+
+1. Determined pursuant to Rate BEST - Rate Basic Electric Service Time-Of-Use. See Page 5 for determination.
+2. Residential Supply Base Uncollectible Cost Factor (SBUF<sub>R</sub>) listed in Informational Sheet No. 21.
+3. SBUF<sub>R</sub> applied pursuant to Rate BEST.
+4. Residential Incremental Supply Uncollectible Cost Factor (ISUF<sub>R</sub>) listed in Informational Sheet No. 20.
+5. ISUF<sub>R</sub> applied pursuant to Rate BEST.
+6. Subject to rounding.
+
+[p. 5]
+
+## Page 5 — TMC kW Charge Determination (transmission-service costs)
+
+_Illustrative Example._ **Commonwealth Edison Company — Determination of the Transmission and Miscellaneous Component kW Charge (TMC kW Charge) Prior to Applying Uncollectibles.** The TMC kW Charge prior to applying uncollectibles is determined pursuant to Rate BEST - Basic Electric Service Time-of-Use (Rate BEST). For Application Beginning with the MONTH 20XX Monthly Billing Period and Extending Through the MONTH 20XX Monthly Billing Period.
 
 Expected expenses for the applicable PJM component services required for retail customers taking service under Rate BEST. Layout in the source: description (with note marker) · dollar amount · line letter and formula.
 
-<!-- EPON: tmc, capacity-mdppec — transmission service costs (NITS \$188,855 etc., previously a kW-based/NSPL charge in the strawman) are now divided by Rate BEST energy sales (19,219 MWh) and recovered as a flat 1.177 ¢/kWh across all periods; the expected-load basis is the forecast "Rate BEST" population -->
+<!-- EPON: tmc — strawman: \$215,046 of transmission-service cost converted to \$/kW-month using 1,789 MW-days of expected Rate BEST NSPL (4.90 MW daily × 365), 365 days, 12 months -->
 
 | Line | Item                                                                        |        Amount | Formula                                                                      |
 | ---- | --------------------------------------------------------------------------- | ------------: | ---------------------------------------------------------------------------- |
@@ -108,22 +134,20 @@ Expected expenses for the applicable PJM component services required for retail 
 | f    | Firm Point-To-Point (PTP) Transmission Revenue Credit (6)                   |     (\$2,479) | f = (\$1.3855) * 1,789                                                       |
 | g    | Non-Firm PTP Transmission Revenue Credit (7)                                |       (\$361) | g = (\$0.2016) * 1,789                                                       |
 | h    | **Total Expected Expenses**                                                 | **\$215,046** | h = Sum of a through f [sic; the total includes line g as well: a through g] |
-| i    | Total Energy Sales plus Distribution Losses in MWh (5)                      |        19,219 | i                                                                            |
-| j    | **TMC kWh Charge, in \$/MWh**                                               |   **\$11.19** | j = h / i                                                                    |
-| k    | Expansion Factor (6)                                                        |        1.0517 | k                                                                            |
-| l    | **TMC kWh Charge (cents per kWh) prior to applying Uncollectible Factors**  |     **1.177** | l = j * k * (1/1,000)*(100/1)                                                |
+| i    | Sum of Daily NSPL in MW-days (8)                                            |         1,789 | i                                                                            |
+| j    | Days in the Year                                                            |           365 | j                                                                            |
+| k    | Monthly Billing Periods in a Year                                           |            12 | k                                                                            |
+| l    | **Total Expected TMC kW Charge in \$/kW-month**                             |   **\$3.656** | l = (h / i) * j / k / 1000                                                   |
 
-See Page 6 [source says "Page 6"; the notes for this page are on page 5] for notes pertaining to Page 5 [source says "Page 5"; this is page 4] of this Work Paper.
+See Page 6 for notes pertaining to Page 5 of this Work Paper.
 
-(Note markers (5) and (6) on the "Total Energy Sales" and "Expansion Factor" lines of this page coincide with the page-2 note numbering — see page 3 notes (5) and (6) — whereas the page-5 notes numbered (5) and (6) describe the Transmission Enhancement Charge credit and the Firm PTP credit. The page-5 notes have no separate entry for "Total Energy Sales" or "Expansion Factor"; page-5 note (8) is the note for 1,789 MW.)
+[p. 6]
 
-[p. 5]
+## Page 6 — Notes for Page 5 of this Work Paper
 
-## Page 5 — Notes for Page 5 of this Work Paper
+_Illustrative Example._ **Commonwealth Edison Company — Notes for Page 5 of this Work Paper**
 
-_Illustrative Example._ **Commonwealth Edison Company — Notes for Page 5 of this Work Paper** [source says "Page 5"; these are the notes to the page-4 table of this exhibit]
-
-1. The result of multiplying the daily per MW charge of \$6.4301 by 1,789 MW. The daily per MW charge rate, \$6.4301, for the Reactive Supply and Voltage Control from Generation Sources Service is determined based on a \$52,730,002 annual revenue requirement for this service for the ComEd Zone as shown in PJM's September 6, 2024 posting of Reactive Supply and Voltage Control Revenue Requirements and 22,467 MW of daily Network Service Peak Load (NSPL) for the ComEd Zone. The 22,467 MW of daily NSPL for the ComEd Zone is found on the PJM website. The amount, 1,789 MW, is from the "Total" row under the "Sum of Daily NSPL (in MW)" column on page seven (7) [source says "page seven (7)"; the table is on page 6 of this exhibit] of this workpaper. It is the sum of the daily NSPL for retail customers expected to take service under Rate BEST for the period beginning with the MONTH 20XX monthly billing period and extending through the MONTH 20XX billing period.
+1. The result of multiplying the daily per MW charge of \$6.4301 by 1,789 MW. The daily per MW charge rate, \$6.4301, for the Reactive Supply and Voltage Control from Generation Sources Service is determined based on a \$52,730,002 annual revenue requirement for this service for the ComEd Zone as shown in PJM's September 6, 2024 posting of Reactive Supply and Voltage Control Revenue Requirements and 22,467 MW of daily Network Service Peak Load (NSPL) for the ComEd Zone. The 22,467 MW of daily NSPL for the ComEd Zone is found on the PJM website. The amount, 1,789 MW, is from the "Total" row under the "Sum of Daily NSPL (in MW)" column on page seven (7) of this workpaper. It is the sum of the daily NSPL for retail customers expected to take service under Rate BEST for the period beginning with the MONTH 20XX monthly billing period and extending through the MONTH 20XX billing period.
 2. The result of multiplying the daily per MW charge of \$1.1778 by 1,789 MW. The daily per MW charge rate, \$1.1778, for the Black Start Service is determined based on a \$9,658,313 annual revenue requirement for this service in the ComEd Zone as shown in PJM's September 6, 2024 posting of Black Start Revenue Requirements, and 22,467 MW of daily NSPL for the ComEd Zone. Please see Note (1) for the description of the amounts, 22,467 MW and 1,789 MW.
 3. The result of multiplying the per MW Network Integration Transmission Services (NITS) charge of \$105.5648 by 1,789 MW. The daily charge rate of \$105.5648 per MW is the result of dividing the annual Transmission Revenue Requirement of \$865,679,148 by the product of the zonal NSPL of 22,467 MW and 365 days, subject to rounding. The \$865,679,148 is stated in the documents filed on April 24, 2024 with the Federal Energy Regulatory Commission (FERC) in Docket No. ER09-1145-000. Please see Note (1) for the description of the amounts, 22,467 MW and 1,789 MW.
 4. The result of multiplying the daily per MW Transmission Enhancement Charge of \$10.3553 by 1,789 MW. The daily Transmission Enhancement Charge rate is an estimated amount based on \$84.9 million expected annual amount for the ComEd Zone for the MONTH 20XX through MONTH 20XX period and 22,467 MW of daily Network Service Peak Load (NSPL) for the ComEd Zone. The \$84.9 million expected amount is based on a monthly revenue requirement of \$7.1 million from PJM's June 7, 2024 posting of Transmission Enhancements allocated to the ComEd Zone. Please see Note (1) for the description of the amounts, 22,467 MW and 1,789 MW.
@@ -132,13 +156,13 @@ _Illustrative Example._ **Commonwealth Edison Company — Notes for Page 5 of th
 7. The result of multiplying the daily per MW Non-Firm PTP credit of \$0.2016 by 1,789 MW. The daily per MW Non-Firm PTP credit rate is determined based on \$1.4 million expected annual credit amount for the ComEd Zone and 22,467 MW of daily NSPL for the ComEd Zone. The \$1.4 million expected amount is provided by ComEd's EA Department. Please see Note (1) for the description of the amounts, 22,467 MW and 1,789 MW.
 8. Please see Note (1) for the description of the 1,789 MW.
 
-[p. 6]
+[p. 7]
 
-## Page 6 — Expected NSPL and energy sales for Rate BEST customers
+## Page 7 — Expected NSPL and energy sales for Rate BEST customers
 
 _Illustrative Example._ **Commonwealth Edison Company — Expected Network Service Peak Load (NSPL), electric energy sales plus T&D Losses, electric energy sales plus Distribution Losses, and electric energy sales without losses for retail customers expected to be taking service under Rate Basic Electric Service Time-Of-Use (Rate BEST), Beginning with the MONTH 20XX Monthly Billing Period and Extending Through the MONTH 20XX Monthly Billing Period.**
 
-<!-- EPON: profile, tmc — forecast Rate BEST participant volumes by month (Jun-24 to May-25): 18,265 MWh energy sales and a flat 4.90 MW daily NSPL for the whole population; monthly sales are heavily summer-weighted (Jul/Aug highest); these totals are the denominators for the TMC kWh charge -->
+<!-- EPON: profile, tmc — forecast Rate BEST participant volumes (same table as the compromise; the 1,789 MW-day total is the divisor of the strawman's kW-based TMC charge) by month (Jun-24 to May-25): 18,265 MWh energy sales and a flat 4.90 MW daily NSPL for the whole population; monthly sales are moderately summer-weighted (Jul/Aug highest); these totals are the denominators for the TMC kWh charge -->
 
 | Month     | a: Expected Daily NSPL (in MW) (1) | b: Number of Days in the Month | c = a * b: Sum of Daily NSPL (in MW) | d: Energy Sales plus T&D Losses (in MWh) (1) | e: Energy Sales plus Distribution Losses (in MWh) (1) | f: Energy Sales without Losses (in MWh) (1) |
 | --------- | ---------------------------------: | -----------------------------: | -----------------------------------: | -------------------------------------------: | ----------------------------------------------------: | ------------------------------------------: |

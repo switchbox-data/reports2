@@ -20,18 +20,18 @@
 
 ---
 
-## Key values at a glance (Rate BEST, residential; effective June 2026 – May 2027)
+## Key values at a glance (Rate BEST, residential; effective June 2026 – May 2027; extractor summary, not source text)
 
 All BESTEC values below are in ¢/kWh, include the Residential Supply Base Uncollectible Cost Factor (SBUF<sub>R</sub>, IS 21) and incorporate the Residential Incremental Supply Uncollectible Cost Factor (ISUF<sub>R</sub>, IS 20). Time periods are Central Prevailing Time (CPT), every day. Summer = June, July, August and September monthly billing periods.
 
 **Informational Sheet No. 70 — Basic Electric Service Time of Use Electricity Charges (BESTECs), effective with the June 2026 monthly billing period through the May 2027 monthly billing period (BESTECs "Effective Prior to the June 2026 Monthly Billing Period" are "N/A")**
 
-| TOU period (CPT)                                            | Charge | Summer BESTEC (¢/kWh) | Nonsummer BESTEC (¢/kWh) |
-| ----------------------------------------------------------- | ------ | --------------------- | ------------------------ |
-| Morning, 6:00 a.m.–1:00 p.m.                                | MPEC   | 3.778                 | 4.768                    |
-| Mid-Day Peak, 1:00 p.m.–7:00 p.m. (includes Capacity Costs) | MDPPEC | 16.594                | 14.699                   |
-| Evening, 7:00 p.m.–9:00 p.m.                                | EPEC   | 5.793                 | 6.009                    |
-| Overnight, 9:00 p.m.–6:00 a.m.                              | OPEC   | 2.829                 | 3.394                    |
+| TOU period (CPT)                  | Charge | Summer BESTEC (¢/kWh) | Nonsummer BESTEC (¢/kWh) |
+| --------------------------------- | ------ | --------------------- | ------------------------ |
+| Morning, 6:00 a.m.–1:00 p.m.      | MPEC   | 3.778                 | 4.768                    |
+| Mid-Day Peak, 1:00 p.m.–7:00 p.m. | MDPPEC | 16.594                | 14.699                   |
+| Evening, 7:00 p.m.–9:00 p.m.      | EPEC   | 5.793                 | 6.009                    |
+| Overnight, 9:00 p.m.–6:00 a.m.    | OPEC   | 2.829                 | 3.394                    |
 
 **Informational Sheet No. 72 — PJM Services and Miscellaneous Procurement Components Charge (TMC), flat kWh charge on every kWh in every period**
 
@@ -98,7 +98,7 @@ The charges and factors provided in the informational sheets are determined as f
 
 (g) the Transmission Services Adjustment (TSA) Factor and Miscellaneous Procurement Components Adjustment (MPCA) Factor listed in Informational Sheet No. 35 are determined in accordance with Rider MSS – Market Settlement Service (Rider MSS);
 
-<!-- EPON: profile — The BESTECs on IS 70 are described as "determined in accordance with Rate BEST" (Formula 1 / Formula 2 on the aggregate illustrative profile); work papers for the BESTECs and TMC go only to ICC Staff -->
+<!-- EPON: profile — The BESTECs on IS 70 are described as "determined in accordance with Rate BEST" (per the Rate BEST tariff, Sheets 489–490, that means Formula 1 / Formula 2 on the aggregate illustrative profile; this info sheet does not say so); work papers for the BESTECs and TMC go only to ICC Staff -->
 
 (h) the Basic Electric Service Time of Use Electricity Charges (BESTECs) listed in Informational Sheet No. 70 are determined in accordance with Rate BEST – Basic Electric Service Time-Of-Use Pricing (Rate BEST);
 
@@ -204,7 +204,7 @@ NOTES:
 
 **Supplement to Rate BESH and Rider PPO (1)**
 
-<!-- EPON: capacity-mdppec — The Rate BESH/PPO Monthly Capacity Charge (MCC) is a \$/kW-month demand-based capacity charge (10.11236 \$/kW-Month for June 2026-May 2027), the kW-based alternative to Rate BEST's recovery of Capacity Costs inside the per-kWh Mid-Day Peak charge -->
+<!-- EPON: capacity-mdppec — The Rate BESH/PPO Monthly Capacity Charge (MCC) is a \$/kW-month demand-based capacity charge (10.11236 \$/kW-Month for June 2026-May 2027), a kW-based capacity charge; for contrast, the Rate BEST tariff (Sheet 484) recovers capacity inside the Mid-Day Peak kWh charge -->
 
 | Item                                                                                                                                                              | Value                |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
@@ -336,7 +336,7 @@ NOTE:
 | Evening Period Electricity Charge (EPEC)        | ¢/kWh | N/A               | N/A              |
 | Overnight Period Electricity Charge (OPEC)      | ¢/kWh | N/A               | N/A              |
 
-<!-- EPON: midday-peak,capacity-mdppec,profile — THE posted Rate BEST supply prices for June 2026-May 2027: MDPPEC 16.594 summer / 14.699 nonsummer ¢/kWh vs. MPEC 3.778 / 4.768, EPEC 5.793 / 6.009, OPEC 2.829 / 3.394; the Mid-Day Peak price carries PJM Capacity Costs and the aggregate-profile LMP weighting (Formula 1/2). Mid-Day Peak is ~4.4x the summer Morning price and ~3.1x the nonsummer Morning price (16.594/3.778; 14.699/4.768), and ~5.9x the summer Overnight price -->
+<!-- EPON: midday-peak,capacity-mdppec,profile — THE posted Rate BEST supply prices for June 2026-May 2027: MDPPEC 16.594 summer / 14.699 nonsummer ¢/kWh vs. MPEC 3.778 / 4.768, EPEC 5.793 / 6.009, OPEC 2.829 / 3.394; per the Rate BEST tariff (Sheets 484, 489) the Mid-Day Peak price carries PJM Capacity Costs and the aggregate-profile LMP weighting; this info sheet states neither. Mid-Day Peak is ~4.4x the summer Morning price and ~3.1x the nonsummer Morning price (16.594/3.778; 14.699/4.768), and ~5.9x the summer Overnight price -->
 
 **Table 2 — BESTECs Effective Beginning with the June 2026 Monthly Billing Period and Extending Through the May 2027 Monthly Billing Period (3) (4) (5)**
 

@@ -1,6 +1,6 @@
 # ComEd — Flat Residential Delivery Service Charges (Info Sheet 64.1) for 2025, 2026 and 2027, from the DTOU Compliance Filing of January 30, 2025
 
-**Source**: `comed/pdfs/icc_388395_compliance_dtou_charges_jan2025.pdf` (ICC e-docket file `388395.pdf`), **subset**: pp. 1–2 (transmittal letter) and p. 43 (4th Revised Informational Sheet No. 64.1). The rest of the 53-page filing is not delivery-pricing material for this corpus; see "What is not extracted" below. The TOU DFC sheets and the tariff text that creates the TOU option are in the companion file `icc_388395_tou_dfc_charges_2026_2027.md`.
+**Source**: `icc_388395_compliance_dtou_charges_jan2025.pdf` (ICC e-docket file `388395.pdf`), **subset**: pp. 1–2 (transmittal letter) and p. 43 (4th Revised Informational Sheet No. 64.1). The rest of the 53-page filing is not delivery-pricing material for this corpus; see "What is not extracted" below. The TOU DFC sheets and the tariff text that creates the TOU option are in the companion file `icc_388395_tou_dfc_charges_2026_2027.md`.
 **Pages extracted here**: 3 of 53
 **Date**: Filed January 30, 2025; effective February 6, 2025
 **Author(s)**: John L. Leick, Senior Manager Retail Rates, ComEd, (779) 231-2375; sheet issued by David R. Perez, EVP and COO

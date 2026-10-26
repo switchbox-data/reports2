@@ -457,7 +457,7 @@ _6th Revised Sheet No. 25 (canceling 5th Revised Sheet No. 25). Continued from S
 
 **TERM OF SERVICE (CONTINUED).**
 
-<!-- EPON: lockout — existing six-billing-period minimum stay on BES for a customer returning from a RES; shown for contrast with BEST switching rules -->
+<!-- EPON: lockout — a customer that moved from a particular RES (under Rate RDS) to BES must stay on BES at least six billing periods before returning to that same RES; this is not a general BES minimum stay, and it is the existing rule that the Rate BEST 12-period lockout is contrasted with -->
 
 **Termination of Service (Continued)**
 
@@ -467,7 +467,7 @@ In the event that a DASR submitted to the Company pertains to an election of ser
 
 A retail customer may elect to terminate service hereunder and obtain service under Rate BESH, provided such retail customer fulfills all prerequisites of service under Rate BESH.
 
-<!-- EPON: lockout — a BES customer may elect to move to Rate BEST provided it fulfils all Rate BEST prerequisites of service (switching rule; BEST prerequisites are on the unfiled/Part 2 sheets) -->
+<!-- EPON: lockout — a BES customer may elect to move to Rate BEST provided it fulfils all Rate BEST prerequisites of service -->
 
 [*] A retail customer may elect to terminate service hereunder and obtain service under Rate BEST, provided that such retail customer fulfills all prerequisites of service under Rate BEST.
 
@@ -1326,8 +1326,6 @@ For the calendar year 2023 and beyond, the value of the ETAC determined in accor
 ---
 
 <!-- PART 2: PDF PAGES 60-81 -->
-
-<!-- Part-2 conventions (for the assembler): Sheets 483-497 (PDF pp. 60-74) are "1st Revised" sheets effective August 29, 2025, each carrying the standard header ("Commonwealth Edison Company / ELECTRICITY / ILL. C. C. No. 10", sheet number, "(Canceling Original Sheet No. N)", title "RATE BEST / BASIC ELECTRIC SERVICE TIME OF USE PRICING", "(Continued from/on Sheet No. …)") and the standard footer ("Filed with the Illinois Commerce Commission on August 21, 2025. Issued pursuant to the Illinois Commerce Commission Order on Rehearing dated July 17, 2025, in Docket No. 24-0378. / Date Effective: August 29, 2025 / Issued by David R. Perez, EVP and COO / Post Office Box 805379, Chicago, Illinois 60680-5379 / Asterisk (*) indicates change."); both are stated once here and omitted below. The "RECEIVED Aug 21 2025 ERM #25-142" stamp is omitted. On every Rate BEST sheet (483-497) the only change asterisk sits in the left margin beside the sheet title, i.e. the whole sheet is marked as changed; this is shown as **[\*]** (header change marker) in each sheet heading. Sheet 485, 491 and 494 are present in this PDF (unlike in the 26-176 filing). Dollar signs are escaped as \$. -->
 
 ---
 

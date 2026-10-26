@@ -15,7 +15,7 @@ Reference for agents working on Illinois heat pump rate design, testimony, or CA
 | McCann Ex. 4.0     | `icc_24-0378_rehearing_testimony_cub_edf_mccann_ex_4_0.md`               | CUB/EDF rehearing testimony on STOU design (Apr 29, 2025)                                     |
 | Ameren filing      | `icc_erm_26-175_ameren_rider_stou_compliance_tariff.md`                  | Ameren Illinois Rider STOU compliance tariff (filed Sep 29, 2026)                             |
 | ComEd filing       | `icc_erm_26-176_comed_rate_best_nonresidential_compliance_tariff.md`     | ComEd Rate BEST nonresidential-availability tariff sheets (filed Sep 29, 2026)                |
-| ComEd price sheets | `comed/md/*.md` (index: `comed/README.md`)                               | Tariffed residential Rate BEST, DTOU and flat-default (Rate BES) price sheets, CUB fact sheet |
+| ComEd price sheets | `comed/*.md` (index: `comed/README.md`)                                  | Tariffed residential Rate BEST, DTOU and flat-default (Rate BES) price sheets, CUB fact sheet |
 
 ---
 
@@ -97,7 +97,7 @@ ameren_rider_stou:
 
 ### 1.5 Tariffed ComEd prices (residential), Jun 2026–May 2027
 
-Source: the ComEd informational sheets extracted under `context/sources/il_hp_rates/tou/comed/md/` (index and caveats in `comed/README.md`). All values are ¢/kWh, single-family without electric heat where delivery is class-specific. **Supply sheets were revised during the rate year; the October 2026–May 2027 column is the current one.** There is no tariffed Ameren Rider STOU price in the sources (Section 7).
+Source: the ComEd informational sheets extracted under `context/sources/il_hp_rates/tou/comed/` (index and caveats in `comed/README.md`). All values are ¢/kWh, single-family without electric heat where delivery is class-specific. **Supply sheets were revised during the rate year; the October 2026–May 2027 column is the current one.** There is no tariffed Ameren Rider STOU price in the sources (Section 7).
 
 **Supply: Rate BEST (time-of-use)**
 

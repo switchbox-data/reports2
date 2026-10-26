@@ -1,6 +1,6 @@
 # CUB — ComEd's Delivery Time-of-Day (TOD) Program Fact Sheet (March 2026)
 
-**Source**: `comed/pdfs/cub_comed_delivery_tod_fact_sheet_mar2026.pdf` (downloaded from `https://www.citizensutilityboard.org/wp-content/uploads/2025/12/ComEdDeliveryTOD.pdf`)
+**Source**: `cub_comed_delivery_tod_fact_sheet_mar2026.pdf` (downloaded from `https://www.citizensutilityboard.org/wp-content/uploads/2025/12/ComEdDeliveryTOD.pdf`)
 **Pages**: 2
 **Date**: March 2026
 **Author(s)**: Citizens Utility Board (CUB), CitizensUtilityBoard.org, 1-800-669-5556

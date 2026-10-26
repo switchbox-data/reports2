@@ -125,7 +125,7 @@ Second, in the Compromise Proposal, the transmission and miscellaneous procureme
 
 ComEd Ex. 19.03 for the Transmission & Miscellaneous Procurement Charge.[^1] See ComEd Exs. 19.02; 19.03.
 
-<!-- EPON: capacity-mdppec, midday-peak, tmc, profile — the compromise illustrative rates: Mid-Day Peak 18.219 ¢/kWh summer / 16.814 nonsummer (includes 100% of capacity); TMC 1.266 ¢/kWh flat; computed from the aggregate illustrative profile -->
+<!-- EPON: capacity-mdppec, midday-peak, tmc, profile — the compromise illustrative rates: Mid-Day Peak 18.219 ¢/kWh summer / 16.814 nonsummer (includes 100% of capacity); TMC 1.266 ¢/kWh flat -->
 
 **Figure 1: ComEd Rate BEST Compromise Proposal Illustrative Rates**
 

@@ -1,10 +1,13 @@
 """Versioned batch writes to the Zotero group library, with a log that makes them resumable and reversible.
 
-Every object sent carries the item's ``version`` from the snapshot, so Zotero rejects (412) any
+For bulk edits (a cleanup pass, creating items in bulk): take a ``snapshot`` first, build one
+:func:`entry` per item, preview, then :func:`write`. ``just zotero-rollback`` undoes a log.
+
+Every object sent carries the item's ``version`` as read, so Zotero rejects (412) any
 item edited since then instead of overwriting the edit. Batch ``POST`` has ``PATCH`` semantics:
 only the fields sent change. Each item's outcome goes to a JSONL log as soon as its batch
-returns, with the fields written and their snapshot values, so a rerun skips finished items and
-``rollback`` can put back exactly what was changed.
+returns, with the fields written and their previous values, so a rerun skips finished items and
+a rollback puts back exactly what was changed.
 """
 
 from __future__ import annotations
@@ -13,14 +16,13 @@ import json
 import os
 import time
 from collections import Counter
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import requests
 
-from lib.sources import org_apply
 from lib.sources import zotero as zotero_client
 
 API = "https://api.zotero.org"
@@ -29,16 +31,23 @@ BATCH = 50  # the API's maximum objects per write request
 Post = Callable[[list[dict[str, Any]]], dict[str, Any]]
 
 
-def changes(plan: Mapping[str, Any], before: Mapping[str, Any]) -> dict[str, Any]:
-    """The fields to send for one plan entry: changed fields for an update, ``deleted`` for the trash."""
-    if plan["action"] in ("delete", "duplicate"):
-        return {"deleted": 1}
-    after = org_apply.target_data(plan) or {}
-    return {f: v for f, v in after.items() if f not in ("key", "version") and before.get(f) != v}
+def entry(item: Mapping[str, Any], after: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """One write for ``item`` (as read from Zotero or a snapshot): its new ``data``, or ``None`` to trash it.
+
+    Only changed fields are sent. Returns ``None`` when nothing changes.
+    """
+    before = item["data"]
+    if after is None:
+        fields: dict[str, Any] = {"deleted": 1}
+    else:
+        fields = {f: v for f, v in after.items() if f not in ("key", "version") and before.get(f) != v}
+    if not fields:
+        return None
+    return {"item": item["key"], "version": item["version"], "fields": fields, "restore": restore(fields, before)}
 
 
 def restore(fields: Mapping[str, Any], before: Mapping[str, Any]) -> dict[str, Any]:
-    """The snapshot values of ``fields``, to undo a write."""
+    """The previous values of ``fields``, to undo a write."""
     out: dict[str, Any] = {}
     for f, v in fields.items():
         if f == "deleted":
@@ -165,23 +174,6 @@ def _outcome(result: Mapping[str, Any], i: int) -> tuple[str, str]:
             v = result[status][str(i)]
             return status, json.dumps(v)[:300] if status == "failed" else ""
     return "failed", "not in the response"
-
-
-def entries_from_plan(plans: Iterable[Mapping[str, Any]], snap: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """One write per plan entry that changes something; trash last, so a partial run leaves no dangling keys."""
-    items = {it["key"]: it for it in snap["items"]}
-    out = []
-    for p in plans:
-        it = items[p["item"]]
-        fields = changes(p, it["data"])
-        if fields:
-            out.append({
-                "item": p["item"],
-                "version": it["version"],
-                "fields": fields,
-                "restore": restore(fields, it["data"]),
-            })  # fmt: skip
-    return sorted(out, key=lambda e: "deleted" in e["fields"])
 
 
 def entries_to_undo(path_log: Path) -> list[dict[str, Any]]:

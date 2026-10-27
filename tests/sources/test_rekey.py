@@ -17,15 +17,6 @@ def test_rewrite_renames_citations_only() -> None:
     assert n == 4
 
 
-def test_renames_from_plan_sends_duplicates_to_the_kept_item() -> None:
-    plans = [
-        {"item": "A", "action": "update", "key": "a_New_2020", "old_keys": ["a_Old_2020"]},
-        {"item": "B", "action": "duplicate", "duplicate_of": "A", "key": None, "old_keys": ["b_Old_2020"]},
-        {"item": "C", "action": "update", "key": "c_Same_2020", "old_keys": ["c_Same_2020"]},
-    ]
-    assert rekey.renames_from_plan(plans) == {"a_Old_2020": "a_New_2020", "b_Old_2020": "a_New_2020"}
-
-
 def test_table_skips_ambiguous_keys_so_reruns_are_safe(tmp_path) -> None:
     renames = {"k_2025": "k_2025a", "k_2025a": "k_2025", "old_X_2020": "new_X_2020"}
     path = tmp_path / "renames.csv"

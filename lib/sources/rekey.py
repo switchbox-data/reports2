@@ -12,24 +12,10 @@ it is cited, to be checked by hand.
 from __future__ import annotations
 
 import csv
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
 
 from lib.sources import citations
-
-
-def renames_from_plan(plans: Iterable[Mapping[str, Any]]) -> dict[str, str]:
-    """Old key -> new key; keys of trashed duplicates go to the item they duplicate."""
-    by_item = {p["item"]: p for p in plans}
-    out: dict[str, str] = {}
-    for p in by_item.values():
-        target = p if p["action"] == "update" else by_item.get(p.get("duplicate_of") or "")
-        key = (target or {}).get("key")
-        for old in p["old_keys"]:
-            if key and old != key:
-                out[old] = key
-    return out
 
 
 def ambiguous(renames: Mapping[str, str]) -> set[str]:

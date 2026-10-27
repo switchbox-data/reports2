@@ -81,12 +81,6 @@ def test_order_does_not_depend_on_api_order():
     assert forward == backward == ["V1ITEM", "V2ITEM"]
 
 
-def test_include_unpinned_uses_native_key():
-    result = bib.build_references(ITEMS, include_unpinned=True)
-    assert "x_UnpinnedItem_nd" in [r["id"] for r in result.records]
-    assert result.unpinned == []
-
-
 def _write(tmp_path: Path) -> Path:
     path = tmp_path / "references.yaml"
     bib.write_references_yaml(bib.build_references(ITEMS), path, 42, REPO_ROOT)

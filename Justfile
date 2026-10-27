@@ -55,57 +55,17 @@ sync-bib checks="warn" path_output=path_references *flags="":
 check-citekeys path_references=path_references path_reports=path_reports:
     uv run python -m lib.sources.cli check-citekeys --path-references {{ path_references }} --path-reports {{ path_reports }}
 
-# Library cleanup, step 1: back up the whole Zotero library (local + S3) and write today's key map
-orgs-snapshot path_work_dir="":
-    uv run python -m lib.sources.cli orgs-snapshot --path-work-dir "{{ path_work_dir }}"
-
-# Library cleanup, step 2: extract organization names from the snapshot, link candidates, batch for the agent pass
-orgs-extract path_work_dir="":
-    uv run python -m lib.sources.cli orgs-extract --path-work-dir "{{ path_work_dir }}"
-
-# Print Zotero items' metadata and the opening of their documents' text (for the reconcile-orgs agent pass)
-orgs-evidence +items:
-    uv run python -m lib.sources.cli orgs-evidence {{ items }}
-
-# Library cleanup, step 3: validate the reconcile-orgs proposals and merge them into clusters (batch: one batch only)
-orgs-proposals batch="" path_work_dir="":
-    uv run python -m lib.sources.cli orgs-proposals --batch "{{ batch }}" --path-work-dir "{{ path_work_dir }}"
-
-# Apply the clusters (and any reviewed decisions and fixes) to every item; compute keys from scratch (read-only)
-orgs-plan path_work_dir="":
-    uv run python -m lib.sources.cli orgs-plan --path-work-dir "{{ path_work_dir }}"
-
-# Write the plan to Zotero: previews unless confirm=--confirm; resumable from its log
-orgs-apply confirm="" limit="0" path_work_dir="":
-    uv run python -m lib.sources.cli orgs-apply {{ confirm }} --limit {{ limit }} --path-work-dir "{{ path_work_dir }}"
-
-# Undo the apply's writes: previews unless confirm=--confirm
-orgs-rollback confirm="" path_work_dir="":
-    uv run python -m lib.sources.cli orgs-rollback {{ confirm }} --path-work-dir "{{ path_work_dir }}"
-
 # Rename old citation keys in every report, from reports/citekey_renames.csv (safe to rerun)
 rekey-refs:
     uv run python -m lib.sources.cli rekey-refs
 
-# Render every report's citations before and after the plan and diff them (read-only)
-orgs-dry-run path_work_dir="":
-    uv run python -m lib.sources.cli orgs-dry-run --path-work-dir "{{ path_work_dir }}"
+# Back up the whole Zotero library (local + S3); take one before any bulk write
+zotero-snapshot:
+    uv run python -m lib.sources.cli zotero-snapshot
 
-# Write batches of items that still need an author, date or title, for the fix-items agent pass
-orgs-fix-batches path_work_dir="":
-    uv run python -m lib.sources.cli orgs-fix-batches --path-work-dir "{{ path_work_dir }}"
-
-# Create or refresh the cleanup review Google Sheet (and CSV copies in the work folder)
-orgs-sheet-push path_work_dir="":
-    uv run python -m lib.sources.cli orgs-sheet-push --path-work-dir "{{ path_work_dir }}"
-
-# Read the reviewer's answers back from the review sheet into decisions.json and answers.json
-orgs-sheet-pull path_work_dir="":
-    uv run python -m lib.sources.cli orgs-sheet-pull --path-work-dir "{{ path_work_dir }}"
-
-# Validate the fix-items agent pass (one batch, or all)
-orgs-fixes batch="" path_work_dir="":
-    uv run python -m lib.sources.cli orgs-fixes --batch "{{ batch }}" --path-work-dir "{{ path_work_dir }}"
+# Undo the Zotero writes recorded in a zotero_write log: previews unless confirm=--confirm
+zotero-rollback path_log confirm="":
+    uv run python -m lib.sources.cli zotero-rollback --path-log {{ path_log }} {{ confirm }}
 
 # Regenerate the Switchbox CSL style from pandoc's default Chicago author-date style
 make-csl path_output=path_csl:

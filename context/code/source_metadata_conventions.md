@@ -1,6 +1,6 @@
 # Source metadata conventions (Zotero)
 
-How items in the Switchbox Zotero group library are named and keyed. `reports/references.yaml` is a faithful mirror of the **Reports** collection (see the Bibliography section of `AGENTS.md`), so anything wrong in a citation is fixed here, in Zotero, and regenerated with `just sync-bib`. The library cleanup (`just orgs-*`) and source ingest both follow this document; the citation-key rule is implemented once, in `lib/sources/citekeys.py`.
+How items in the Switchbox Zotero group library are named and keyed. `reports/references.yaml` is a faithful mirror of the **Reports** collection (see the Bibliography section of `AGENTS.md`), so anything wrong in a citation is fixed here, in Zotero, and regenerated with `just sync-bib`. Source ingest and any bulk library edit follow this document; the citation-key rule is implemented once, in `lib/sources/citekeys.py`.
 
 ## Storage
 

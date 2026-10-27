@@ -1,7 +1,6 @@
 """The canonical citation-key rule: ``{author}_{title}_{year}{suffix}``.
 
-Single implementation shared by ``just sync-bib`` checks, the one-time library cleanup and
-source ingest. Functions take a Zotero item's ``data`` dict (``creators``, ``title``,
+Single implementation shared by ``just sync-bib`` checks, source ingest and bulk library edits. Functions take a Zotero item's ``data`` dict (``creators``, ``title``,
 ``shortTitle``, ``date``, ``extra``, ``key``) and need no Zotero access.
 
 - **Author part.** First creator (authors, then editors, then other types). An organization

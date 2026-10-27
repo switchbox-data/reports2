@@ -15,17 +15,23 @@ BEFORE = {
 }
 
 
-def _plan(action: str = "update", **after: Any) -> dict[str, Any]:
-    return {"item": "AAAA1111", "action": action, "key": "org_NewTitle_2020", "after": {**BEFORE, **after}}
+ITEM = {"key": "AAAA1111", "version": 7, "data": BEFORE}
 
 
-def test_changes_sends_only_changed_fields_and_pins_the_key() -> None:
-    got = zotero_write.changes(_plan(title="New Title"), BEFORE)
-    assert got == {"title": "New Title", "extra": "Citation Key: org_NewTitle_2020", "citationKey": ""}
+def test_entry_sends_only_changed_fields() -> None:
+    got = zotero_write.entry(ITEM, {**BEFORE, "title": "New Title", "citationKey": ""})
+    assert got == {
+        "item": "AAAA1111",
+        "version": 7,
+        "fields": {"title": "New Title", "citationKey": ""},
+        "restore": {"title": "OLD TITLE", "citationKey": "old_Key_2020"},
+    }
 
 
-def test_changes_trashes_duplicates() -> None:
-    assert zotero_write.changes(_plan("duplicate"), BEFORE) == {"deleted": 1}
+def test_entry_trashes_on_none_and_skips_no_ops() -> None:
+    trash = zotero_write.entry(ITEM, None)
+    assert trash is not None and trash["fields"] == {"deleted": 1}
+    assert zotero_write.entry(ITEM, dict(BEFORE)) is None
 
 
 def test_restore_gives_snapshot_values() -> None:
@@ -68,19 +74,3 @@ def test_write_logs_outcomes_resumes_and_rolls_back(tmp_path: Path) -> None:
     assert len(undo) == 60
     assert undo[0] == {"item": "K0000000", "version": 11, "fields": {"title": "old"}, "restore": {"title": "T0"}}
     assert all(json.loads(line)["restore"] == {"title": "old"} for line in log.open())
-
-
-def test_entries_from_plan_skips_no_ops_and_trashes_last() -> None:
-    snap = {
-        "items": [
-            {"key": "AAAA1111", "version": 7, "data": BEFORE},
-            {"key": "BBBB2222", "version": 3, "data": {**BEFORE, "key": "BBBB2222"}},
-        ]
-    }
-    plans = [
-        {**_plan("duplicate"), "item": "AAAA1111"},
-        {**_plan(), "item": "BBBB2222", "key": "", "after": {**BEFORE, "key": "BBBB2222", "citationKey": ""}},
-    ]
-    got = zotero_write.entries_from_plan(plans, snap)
-    assert [e["item"] for e in got] == ["BBBB2222", "AAAA1111"]
-    assert got[1]["fields"] == {"deleted": 1} and got[1]["version"] == 7

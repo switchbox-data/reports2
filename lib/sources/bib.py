@@ -86,18 +86,14 @@ def build_record(item: Mapping[str, Any], key: str) -> tuple[dict[str, Any], dic
     return csl, literal_dates
 
 
-def build_references(items: Iterable[Mapping[str, Any]], *, include_unpinned: bool = False) -> BuildResult:
-    """CSL records for every bibliographic item with a pinned key, sorted by ``id``.
-
-    ``include_unpinned`` falls back to Zotero's native ``citationKey`` field for items with
-    no pinned key. It exists only to compare against the pre-cleanup bibliography.
-    """
+def build_references(items: Iterable[Mapping[str, Any]]) -> BuildResult:
+    """CSL records for every bibliographic item with a pinned key, sorted by ``id``."""
     result = BuildResult(records=[])
     for item in sorted(items, key=lambda it: it["key"]):
         data = item["data"]
         if data["itemType"] in ("attachment", "note", "annotation"):
             continue
-        key = pinned_key(data) or (data.get("citationKey") if include_unpinned else None)
+        key = pinned_key(data)
         if not key:
             result.unpinned.append({"zotero_item": item["key"], "title": data.get("title", "")})
             continue

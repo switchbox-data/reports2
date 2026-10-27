@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from lib.sources import citekeys
 
-GENERIC_AGENCY = frozenset({"dpu", "psc", "puc", "dep", "dec", "dps", "bpu", "dpuc", "pura"})
+GENERIC_AGENCY = frozenset({"dpu", "psc", "puc", "dep", "dec", "dps", "bpu", "dpuc"})
 
 
 class Evidence(BaseModel):

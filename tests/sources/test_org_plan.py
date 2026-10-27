@@ -169,6 +169,20 @@ def test_build_applies_fixes_and_decisions() -> None:
     assert (plans["A"].key or "").startswith("dpuma_")
 
 
+def test_rulings_override_clusters_and_fixes() -> None:
+    snap, mentions, groups, merged, key_rows = _setup()
+    rulings = {
+        "A": {"reason": "Q05", "creators": ["Gannett Fleming"], "fields": {"institution": "MA DPU"}},
+        "B": {"reason": "dup", "action": "duplicate", "duplicate_of": "A"},
+        "E": {"reason": "people", "creators": [{"lastName": "Vu", "firstName": "Tiffany"}]},
+    }
+    plans = {p.item: p for p in org_plan.build(snap, mentions, groups, merged, key_rows, rulings=rulings)}
+    assert plans["A"].key == "gannettfleming_GasRateStudy_2024"
+    assert plans["A"].after["institution"] == "MA DPU"
+    assert plans["B"].action == "duplicate" and plans["B"].key is None
+    assert plans["E"].key == "vu_Testimony_2024"
+
+
 def test_item_fix_validation() -> None:
     ev = [{"quote": "q", "source": "s"}]
     with pytest.raises(ValueError):

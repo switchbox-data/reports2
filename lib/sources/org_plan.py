@@ -228,7 +228,11 @@ def build(
     decisions: Mapping[str, Mapping[str, Any]] | None = None,
     fixes: Mapping[str, ItemFix] | None = None,
     today: tuple[int, int, int] = (9999, 12, 31),
+    rulings: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> list[ItemPlan]:
+    """``rulings`` (item key -> reviewer ruling) beat everything else: ``creators`` (names, or
+    ``{"firstName", "lastName"}``), ``fields`` (Zotero field -> value) and ``action``
+    (``delete``, or ``duplicate`` with ``duplicate_of``)."""
     resolved = resolve(merged, decisions)
     shorts = short_forms(resolved)
     norm_to_group = {g["norm"]: g["id"] for g in groups}
@@ -340,6 +344,29 @@ def build(
             if v and v.casefold() in org_names:
                 after[f] = ""
                 p.changes.append(f"{f}: {v!r} removed (repeats the author)")
+
+        if (rule := (rulings or {}).get(item_key)) is not None:
+            why = rule.get("reason", "reviewer ruling")
+            if rule.get("action") in ("delete", "duplicate"):
+                p.action = rule["action"]
+                p.duplicate_of = rule.get("duplicate_of")
+                p.changes.append(f"{p.action}{f' (of {p.duplicate_of})' if p.duplicate_of else ''} [{why}]")
+                plans.append(p)
+                continue
+            if "creators" in rule:
+                ctype = PRIMARY_CREATOR.get(data["itemType"], "author")
+                new = [
+                    {"creatorType": ctype, "name": c} if isinstance(c, str) else {"creatorType": ctype, **c}
+                    for c in rule["creators"]
+                ]
+                p.changes.append(
+                    f"authors {[orgs.classify_creator(c)[0] for c in creators]} -> "
+                    f"{[orgs.classify_creator(c)[0] for c in new]} [{why}]"
+                )
+                creators = new
+            for f, v in rule.get("fields", {}).items():
+                p.changes.append(f"{f}: {after.get(f)!r} -> {v!r} [{why}]")
+                after[f] = v
 
         if creators != data.get("creators", []):
             after["creators"] = creators

@@ -321,12 +321,22 @@ def cmd_orgs_plan(args: argparse.Namespace) -> int:
     ]
     key_rows = json.loads((work_dir / "key_map.json").read_text(encoding="utf-8"))
     path_decisions = work_dir / "decisions.json"
-    decisions = json.loads(path_decisions.read_text(encoding="utf-8")) if path_decisions.exists() else None
+    decisions = json.loads(path_decisions.read_text(encoding="utf-8")) if path_decisions.exists() else {}
+    rulings = review_sheet.load_json(work_dir / "rulings.json", {})
+    decisions = {**rulings.get("clusters", {}), **decisions}
     fixes_dir = work_dir / "item_fixes"
     fixes, _ = item_fixes.load(fixes_dir.glob("batch_*.json"), {})
     today = date.today()
     plans = org_plan.build(
-        snap, mentions, groups, merged, key_rows, decisions, fixes, (today.year, today.month, today.day)
+        snap,
+        mentions,
+        groups,
+        merged,
+        key_rows,
+        decisions,
+        fixes,
+        (today.year, today.month, today.day),
+        rulings.get("items", {}),
     )
     (work_dir / "plan.json").write_text(
         json.dumps([asdict(p) for p in plans], ensure_ascii=False, indent=1), encoding="utf-8"

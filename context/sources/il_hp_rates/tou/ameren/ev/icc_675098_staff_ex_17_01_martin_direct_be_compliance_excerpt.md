@@ -1,9 +1,9 @@
 # Direct Testimony of Robert Martin (Staff Ex. 1.0, adopted as Staff Ex. 17.01) — Beneficial Electrification Compliance Review, Section 16-105.17(f)(2)(M)
 
-**Source**: `icc_675098_staff_ex_17_0_hamidu_rebuttal.pdf` (original PDF not stored in the repo) (ICC e-docket file id 675098, document 383445; this excerpt is PDF pp. 53–66 of 240)
+**Source**: `icc_675098_staff_ex_17_0_hamidu_rebuttal.pdf` (this excerpt is PDF pp. 53–66 of the 240-page file; the original PDF is not stored in the repo)
 **Pages**: Excerpt of 14 PDF pages (Ex. 17.01 pages 15–28 of 202): the summary of conclusions and Section II "Statutory Requirements: Beneficial Electrification" through Martin's conclusion. The rest of Ex. 17.01 (202 pages of Martin's other topics, plus attachments such as Ameren data-request responses) is not extracted
 **Date**: May 7, 2026 (original direct testimony); attached to Staff Ex. 17.0 filed July 9, 2026
-**Docket**: ICC Docket No. 26-0051 (Ameren Illinois Company d/b/a Ameren Illinois, Petition for Approval of Multi-Year Integrated Grid Plan pursuant to 220 ILCS 5/16-105.17; ICC e-docket id P2026-0051)
+**Docket**: ICC Docket No. 26-0051
 **Author(s)**: Robert L. Martin, Utility Rate Analyst, Integrated Distribution Planning Division (adopted by Leonard Hamidu)
 **Author affiliations**: Illinois Commerce Commission (ICC Staff)
 **Document type**: Direct testimony (Staff Ex. 1.0), reproduced as Attachment Staff Ex. 17.01. The excerpt covers Staff's compliance review of Ameren's BE portfolio against 220 ILCS 5/16-105.17(f)(2)(M)(i)–(iii), including the ChargeSmart / FlexCharge time-of-use assessment (item (ii)).
@@ -11,15 +11,19 @@
 
 **Extraction notes**:
 
+- _Extractor note (not source text):_ the ICC e-docket file id (675098) and document id (383445), the docket petition title and e-docket id (P2026-0051), the title suffix "Beneficial Electrification Compliance Review, Section 16-105.17(f)(2)(M)" and the "Document type" description are supplied by the extractor from the e-docket page and the excerpt's contents; they are not printed on the PDF.
+- The source prints no "A." label on one answer ("Yes. The Company proposes…", PDF p. 59, line 374); it is shown here as a separate paragraph after its question.
+- **Page-marker convention**: a paragraph that straddles a page break is kept whole and the marker for the next page follows it, so the paragraph immediately above a marker may end on the page the marker names (for example, lines 265–267 of the answer above the p. 17 marker are printed on p. 17). The tag _(paragraph continues from previous page)_ marks a marker where this happens.
+- `[p. N, …]` uses the page number of the 202-page Ex. 17.01 (printed internal Staff Ex. 1.0 page = N − 2).
 - Each PDF page carries a two-line header ("Docket No. 26-0051 / Staff Ex. 17.01 / Page N of 202") and a second header ("Docket No. 26-0051 / Staff Ex. 1.0"); both are omitted. A **`[p. N, lines a–b]`** marker appears at each page break, where N is the page of the 202-page Ex. 17.01 (the internal Staff Ex. 1.0 page number, printed at the bottom of each page, is N − 2). Line numbers are those of the original Staff Ex. 1.0.
 - Page 15 also carries a table listing other Staff witnesses (Staff Ex. 11.0–16.0); it is not related to this topic and is omitted.
 - The statutory text of 220 ILCS 5/16-105.17(f)(2)(M) is quoted in the testimony and reproduced below. The Ameren data-request responses that follow Martin's conclusion (PDF pp. 67 onward) are not extracted.
 
 ---
 
-[p. 15 of Ex. 17.01, lines 234–242]
+[p. 15, lines 234–242]
 
-### G. Summary of Conclusions and Recommendations
+## G. Summary of Conclusions and Recommendations
 
 **Q.** Please summarize your conclusions and recommendations for the issues you have reviewed.
 
@@ -35,17 +39,23 @@
 
 [p. 17, lines 265–296] _(paragraph continues from previous page)_
 
-(M) For plans that include a time period that is after January 1, 2029, a description of efforts to support transportation electrification through the following:
+> (M) For plans that include a time period that is after January 1, 2029, a description of efforts to support transportation electrification through the following:
+>
+> (i) make-ready investments and other programs to facilitate the rapid deployment of charging equipment throughout this State, especially deployment that targets medium-duty and heavy-duty vehicle electrification and multi-unit buildings;
+>
+> (ii) the development and implementation of (1) time-of-use rates and their benefit for electric vehicle users and for all customers, (2) optimized charging programs to achieve identified savings, and (3) new contracts and compensation for services in the optimized charging programs, through signals that allow electric vehicle charging to respond to local system conditions, manage critical peak periods, serve as a demand response or peak resource, and maximize renewable energy use and integration into the grid; and
+>
+> (iii) commercial tariffs utilizing alternatives to traditional demand-based rate structures that facilitate charging for light-duty, heavy-duty, and fleet electric vehicles.
+>
+> For items (i) through (iii), the utility shall demonstrate methods of minimizing ratepayer impacts and exempting or minimizing, to the extent possible, low-income ratepayers from the costs associated with facilitating the expansion of electric vehicle charging. Investments, programs, and activities proposed to meet the obligations of this subparagraph (M) shall be evaluated and approved by the Commission using the same standards of cost-effectiveness, as described in paragraph (7) of subsection (d), and not be subject to evaluation standards applied to other investments, programs, and activities, such as energy efficiency programs.
 
-(i) make-ready investments and other programs to facilitate the rapid deployment of charging equipment throughout this State, especially deployment that targets medium-duty and heavy-duty vehicle electrification and multi-unit buildings; (ii) the development and implementation of (1) time-of-use rates and their benefit for electric vehicle users and for all customers, (2) optimized charging programs to achieve identified savings, and (3) new contracts and compensation for services in the optimized charging programs, through signals that allow electric vehicle charging to respond to local system conditions, manage critical peak periods, serve as a demand response or peak resource, and maximize renewable energy use and integration into the grid; and (iii) commercial tariffs utilizing alternatives to traditional demand-based rate structures that facilitate charging for light-duty, heavy-duty, and fleet electric vehicles.
+220 ILCS 5/16-105.17(f)(2)(M).
 
-For items (i) through (iii), the utility shall demonstrate methods of minimizing ratepayer impacts and exempting or minimizing, to the extent possible, low-income ratepayers from the costs associated with facilitating the expansion of electric vehicle charging. Investments, programs, and activities proposed to meet the obligations of this subparagraph (M) shall be evaluated and approved by the Commission using the same standards of cost-effectiveness, as described in paragraph (7) of subsection (d), and not be subject to evaluation standards applied to other investments, programs, and activities, such as energy efficiency programs.
+[p. 18, lines 297–318]
 
-220 ILCS 5/16-105.17(f)(2)(M). CRGA also made changes to the Electric Vehicle (“EV”) Act (20 ILCS 627/45) that eliminated the large electric utilities from having to file beneficial electrification (“BE”) plans, and instead the only remaining beneficial electrification requirements for electric utilities are those set forth in the Grid Plan statute as quoted above. It is my understanding that the last year of the Company’s BE Plan 2 approved by the Commission in Docket Nos. 24-0494/24-0578, 2028, will be governed by the Electric Vehicle Act (20 ILCS 627/45), whereas years 2029-2031 will be governed by the statutory requirements for the Grid Plan set forth in new Section 16-105.17(f)(2)(M) of the Act. (Ameren Ex. 15.0, 2.) It is these new statutory requirements covering the 2029-2031 time period that I focus my testimony on.
+CRGA also made changes to the Electric Vehicle (“EV”) Act (20 ILCS 627/45) that eliminated the large electric utilities from having to file beneficial electrification (“BE”) plans, and instead the only remaining beneficial electrification requirements for electric utilities are those set forth in the Grid Plan statute as quoted above. It is my understanding that the last year of the Company’s BE Plan 2 approved by the Commission in Docket Nos. 24-0494/24-0578, 2028, will be governed by the Electric Vehicle Act (20 ILCS 627/45), whereas years 2029-2031 will be governed by the statutory requirements for the Grid Plan set forth in new Section 16-105.17(f)(2)(M) of the Act. (Ameren Ex. 15.0, 2.) It is these new statutory requirements covering the 2029-2031 time period that I focus my testimony on.
 
-[p. 18, lines 297–318] _(paragraph continues from previous page)_
-
-1. Section 16-105.17(f)(2)(M)(i)
+### 1. Section 16-105.17(f)(2)(M)(i)
 
 **Q.** What does Section 16-105.17(f)(2)(M)(i) require?
 
@@ -57,7 +67,7 @@ For items (i) through (iii), the utility shall demonstrate methods of minimizing
 
 [p. 19, lines 319–338] _(paragraph continues from previous page)_
 
-[^1]: In its first BE Plan, Ameren originally proposed only covering utility-side make-ready and the Commission rejected that approach and directed Ameren expand to cover customer-side make ready, finding it may increase participation in Ameren’s Rider EVCP.” Ameren Ill. Co., ICC Final Order, Docket Nos. 22-0431/22- 0443, 58 (March 23, 2023).
+[^1]: In its first BE Plan, Ameren originally proposed only covering utility-side make-ready and the Commission rejected that approach and directed Ameren expand to cover customer-side make ready, finding it may increase participation in Ameren’s Rider EVCP.” Ameren Ill. Co., ICC Final Order, Docket Nos. 22-0431/22-0443, 58 (March 23, 2023).
 
 **Q.** How does the Company propose to use this line extension policy to reduce make-ready costs for customers?
 
@@ -75,7 +85,9 @@ For items (i) through (iii), the utility shall demonstrate methods of minimizing
 
 [p. 21, lines 361–382] _(paragraph continues from previous page)_
 
-**Q.** Are there other things the Company should address in rebuttal testimony? Yes. The Company proposes to address medium-duty and heavy-duty vehicles and multi-unit buildings through education and outreach efforts; however, the Company’s approach relies on future, undefined activities to address key statutory components and those efforts are not yet developed. (Ameren Ex. 15.0, 19.) As described in witness Sackett’s testimony, education and outreach efforts appear to play a central role in the Company’s overall approach to utilizing its existing line extension policy as the framework for make-ready investments. Id. The Company states “while these education and outreach efforts have not been developed, they will build upon the efforts highlighted in the BE annual reports.” Id. However, the Company has not explained how customers will be informed of or encouraged to utilize make-ready opportunities under its existing line extension policy. Id. This is particularly relevant given that prior BE Plans included customer-facing incentives that may have driven participation.
+**Q.** Are there other things the Company should address in rebuttal testimony?
+
+Yes. The Company proposes to address medium-duty and heavy-duty vehicles and multi-unit buildings through education and outreach efforts; however, the Company’s approach relies on future, undefined activities to address key statutory components and those efforts are not yet developed. (Ameren Ex. 15.0, 19.) As described in witness Sackett’s testimony, education and outreach efforts appear to play a central role in the Company’s overall approach to utilizing its existing line extension policy as the framework for make-ready investments. Id. The Company states “while these education and outreach efforts have not been developed, they will build upon the efforts highlighted in the BE annual reports.” Id. However, the Company has not explained how customers will be informed of or encouraged to utilize make-ready opportunities under its existing line extension policy. Id. This is particularly relevant given that prior BE Plans included customer-facing incentives that may have driven participation.
 
 [p. 22, lines 383–404] _(paragraph continues from previous page)_
 
@@ -83,13 +95,15 @@ For items (i) through (iii), the utility shall demonstrate methods of minimizing
 
 **A.** I recommend that in rebuttal testimony, the Company provide a developed and transparent plan specifically for make-ready investments demonstrating how using its existing line extension policy will support facilitation of EV infrastructure deployment in the post-2028 BE period. This should include, at a minimum, reasonable estimates of the scale of EV deployment, such as the number of customers expected to utilize make-ready infrastructure and level of investment. Additionally in rebuttal testimony, Ameren should develop and clearly describe its education and outreach strategy for this new make-ready investments program including: defined program elements, target customer segments, and an explanation of how those efforts will be implemented to support deployment, particularly for medium-duty and heavy-duty vehicles and multi-unit dwellings. The Company should also identify how these education and outreach efforts will be supported, including any associated budget, and how those efforts are expected to drive participation in make-ready opportunities.
 
-2. Section 16-105.17(f)(2)(M)(ii)
+### 2. Section 16-105.17(f)(2)(M)(ii)
 
 **Q.** What does Section 16-105.17(f)(2)(M)(ii) require?
 
 [p. 23, lines 405–428]
 
-**A.** Section 16-105.17(f)(2)(M)(ii) requires the Company to include the development and implementation of (1) time-of-use rates and their benefit for electric vehicle users and for all customers, (2) optimized charging programs to achieve identified savings, and (3) new contracts and compensation for services in the optimized charging programs, through signals that allow electric vehicle charging to respond to local system conditions, manage critical peak periods, serve as a demand response or peak resource, and maximize renewable energy use and integration into the grid.
+**A.** Section 16-105.17(f)(2)(M)(ii) requires the Company to include
+
+> the development and implementation of (1) time-of-use rates and their benefit for electric vehicle users and for all customers, (2) optimized charging programs to achieve identified savings, and (3) new contracts and compensation for services in the optimized charging programs, through signals that allow electric vehicle charging to respond to local system conditions, manage critical peak periods, serve as a demand response or peak resource, and maximize renewable energy use and integration into the grid.
 
 220 ILCS 5/16-105.17(M)(ii).
 
@@ -105,11 +119,13 @@ For items (i) through (iii), the utility shall demonstrate methods of minimizing
 
 **Q.** Do you recommend any modifications to the Company’s approach to Section 16-105.17(f)(2)(M)(ii)?
 
-**A.** At this time, I do not recommend modifications to the overall structure of the Company’s proposed programs under Section 16-105.17(f)(2)(M)(ii), as the ChargeSmart and FlexCharge programs align with the types of activities contemplated by the statute. However, Staff recommends that the Company provide additional explanation regarding how expected participation levels will translate into system benefits, including load shifting and peak demand reduction in rebuttal testimony. Providing this information would support a more complete evaluation of the expected outcomes associated with the proposed programs. In addition, in my opinion, there are sufficient time-of-use offerings on the horizon. In particular, the Commission required the Company to collaborate with Staff and Stakeholders while creating a strawman distribution time-of-use (“DTOU”) rate to be filed as a compliance filing within 180 days of the Final Order from Ameren’s recent Rate Design Investigation (“RDI”). Ameren Illinois Co., ICC Final Order, Docket No. 25-0083, 74 (Aug. 7, 2025). Following this Commission Order, Ameren held a series of DTOU workshops with Staff and Stakeholders and filed the compliance filing on Feb. 3, 2026. (Staff Ex. 1.04.) Lastly, CRGA requires Ameren to develop a supply time of use rate in the new Section 16-107.8 of the Act. This supply time-of-use rate is required to be filed no later than 120 days after June 1, 2026, effectively September 29, 2026.
+**A.** At this time, I do not recommend modifications to the overall structure of the Company’s proposed programs under Section 16-105.17(f)(2)(M)(ii), as the ChargeSmart and FlexCharge programs align with the types of activities contemplated by the statute. However, Staff recommends that the Company provide additional explanation regarding how expected participation levels will translate into system benefits, including load shifting and peak demand reduction in rebuttal testimony. Providing this information would support a more complete evaluation of the expected outcomes associated with the proposed programs.
 
-[p. 25, lines 450–470] _(paragraph continues from previous page)_
+[p. 25, lines 450–470]
 
-3. Section 16-105.17(f)(2)(M)(iii)
+In addition, in my opinion, there are sufficient time-of-use offerings on the horizon. In particular, the Commission required the Company to collaborate with Staff and Stakeholders while creating a strawman distribution time-of-use (“DTOU”) rate to be filed as a compliance filing within 180 days of the Final Order from Ameren’s recent Rate Design Investigation (“RDI”). Ameren Illinois Co., ICC Final Order, Docket No. 25-0083, 74 (Aug. 7, 2025). Following this Commission Order, Ameren held a series of DTOU workshops with Staff and Stakeholders and filed the compliance filing on Feb. 3, 2026. (Staff Ex. 1.04.) Lastly, CRGA requires Ameren to develop a supply time of use rate in the new Section 16-107.8 of the Act. This supply time-of-use rate is required to be filed no later than 120 days after June 1, 2026, effectively September 29, 2026.
+
+### 3. Section 16-105.17(f)(2)(M)(iii)
 
 **Q.** What does Section 16-105.17(f)(2)(M)(iii) require?
 
@@ -125,11 +141,11 @@ For items (i) through (iii), the utility shall demonstrate methods of minimizing
 
 **A.** No. The ChargeSmart program includes rate design elements that align with the requirements of the statute. I would also note that the ChargeSmart program reflects a continuation of rate structures previously reviewed and approved in prior Beneficial Electrification Plans through Rider EVCP. Ameren Ill. Co d/b/a Ameren Ill., ICC Final Order, Docket Nos. 24-0494/24-0578 (Cons.), 58 (Mar. 27, 2025). Based on my review, the Company has not proposed material changes to these rate design elements that would warrant a different conclusion regarding their alignment with Section 16-105.17(f)(2)(M)(iii).
 
-4. Section 16-105.17(f)(2)(M)
+### 4. Section 16-105.17(f)(2)(M)
 
 **Q.** Please summarize your understanding of the last paragraph of Section 16-105.17(f)(2)(M).
 
-**A.** I understand this cost-effectiveness requirement to mean that these Section 16-105.17(f)(2)(M) BE programs should be evaluated under Ameren’s grid plan cost- effectiveness framework and utilize the same discount rate used for grid plan investments when performing a BCA.
+**A.** I understand this cost-effectiveness requirement to mean that these Section 16-105.17(f)(2)(M) BE programs should be evaluated under Ameren’s grid plan cost-effectiveness framework and utilize the same discount rate used for grid plan investments when performing a BCA.
 
 [p. 27, lines 493–513] _(paragraph continues from previous page)_
 

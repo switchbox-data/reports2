@@ -1,6 +1,6 @@
 # Ameren Illinois — Retail Supply Informational Filing, 118th Informational Sheet (Effective April 2026)
 
-**Source**: `icc_396837_ameren_retail_supply_informational_filing_mar2026.pdf` (original PDF not stored in the repo) (ICC filing file `396837.pdf`)
+**Source**: `icc_396837_ameren_retail_supply_informational_filing_mar2026.pdf` (original PDF not stored in the repo) (ICC filing file `396837.pdf`, as named by the extractor)
 **Pages**: 2 (1-page transmittal letter + 1-page Informational Sheet)
 **Date**: Filed March 20, 2026; Informational Sheet effective April 2026
 **Author(s)**: Brice A. Sheriff, Senior Director, Regulatory Affairs and Energy Supply, Ameren Illinois Company (bsheriff@ameren.com, 217.535.5229)
@@ -10,11 +10,10 @@
 
 **Extraction notes**:
 
-- _Minor typographical errors in the source have been corrected for readability. Substantive corrections are annotated inline._
 - The "RECEIVED / Mar 20 2026 / ERM #26-042 / CHIEF CLERK'S OFFICE / ILLINOIS COMMERCE COMMISSION" stamp is omitted from the body (recorded above in the metadata).
-- Values shown in parentheses are negatives. The source prints negative values and some changed components in red; the color is not reproduced here.
+- Values shown in parentheses are negatives. The source prints negative values, "October 2025" and the docket numbers in red; the color is not reproduced here.
 - Page 2 is a spreadsheet-style form. Empty cells are left blank. The "Non-Summer" rows carry values only for the columns shown; there is no "Summer" row on this sheet.
-- Why this file matters: this is the **template** for the informational filings that Rider STOU (Supply Time-of-Use) will use to publish its rates and TOU periods. The transmittal letter states that the **supporting workpapers go to ICC Staff separately** and are not part of the public filing.
+- Extractor comment (not part of the filing): why this file matters: this is the **template** for the informational filings that Rider STOU (Supply Time-of-Use) will use to publish its rates and TOU periods. The transmittal letter states that the **supporting workpapers go to ICC Staff separately** and are not part of the public filing.
 
 ---
 
@@ -22,13 +21,13 @@
 
 March 20, 2026
 
-Ms. Stephanie Cook, Chief Clerk
-Illinois Commerce Commission
-527 East Capitol Avenue
+Ms. Stephanie Cook, Chief Clerk\
+Illinois Commerce Commission\
+527 East Capitol Avenue\
 Springfield, IL 62701
 
-**RE:** Ameren Illinois Company d/b/a Ameren Illinois
-Retail Supply Informational Filing
+**RE:** Ameren Illinois Company d/b/a Ameren Illinois\
+Retail Supply Informational Filing\
 Electric Service Schedule Ill. C. C. No. 1
 
 Dear Ms. Cook:
@@ -48,9 +47,9 @@ Regulatory Affairs and Energy Supply
 
 BAS/sar
 Attachments
-xc: Rick Bridal - ICC - w/attachments
-Sam McClerren - ICC - w/attachments
-Torsten Clausen - ICC - w/attachments
+xc: Rick Bridal - ICC - w/attachments\
+Sam McClerren - ICC - w/attachments\
+Torsten Clausen - ICC - w/attachments\
 Rochelle Phipps – ICC – w/attachments
 
 ---
@@ -66,13 +65,15 @@ Effective April 2026
 
 ### Rider Basic Generation Service (BGS) and Rider Real Time Pricing (RTP)
 
-**Retail Purchased Electricity Charges** (¢/kWh). BGS-1 is a single secondary-voltage column with a two-step usage block; BGS-2 has three delivery voltages; BGS-5 has one "All" column.
+**Retail Purchased Electricity Charges** (¢/kWh).
 
-| Row                             | BGS-1 Secondary | BGS-2 Secondary | BGS-2 Primary | BGS-2 High Voltage | BGS-5 All |
-| ------------------------------- | --------------- | --------------- | ------------- | ------------------ | --------- |
-| Non-Summer\* (BGS-2, BGS-5)     |                 | 7.109           | 6.958         | 6.865              | 6.888     |
-| Non-Summer\*, 0–800 kWh (BGS-1) | 5.927           |                 |               |                    |           |
-| Non-Summer\*, > 800 kWh (BGS-1) | 5.008           |                 |               |                    |           |
+_Extractor note: the source prints the BGS-1 sub-rows as "0-800" and "> 800" with no unit (kWh is implied by the ¢/kWh header). BGS-1 is a single secondary-voltage column with a two-step usage block; BGS-2 has three delivery voltages; BGS-5 has one "All" column._
+
+| Row                         | BGS-1 Secondary | BGS-2 Secondary | BGS-2 Primary | BGS-2 High Voltage | BGS-5 All |
+| --------------------------- | --------------- | --------------- | ------------- | ------------------ | --------- |
+| Non-Summer\* (BGS-2, BGS-5) |                 | 7.109           | 6.958         | 6.865              | 6.888     |
+| Non-Summer\*, 0–800 (BGS-1) | 5.927           |                 |               |                    |           |
+| Non-Summer\*, > 800 (BGS-1) | 5.008           |                 |               |                    |           |
 
 **Charges applicable to all kWh for BGS and RTP** (¢/kWh):
 
@@ -114,7 +115,7 @@ Notes:
 
 | Component                                  | Value                          |
 | ------------------------------------------ | ------------------------------ |
-| Locational Marginal Price (LMP)            | Price posted at www.ameren.com |
+| Locational Marginal Price (LMP)            | Price Posted at www.ameren.com |
 | Ancillary Services Energy Cost (¢/kWh)\*\* | 0.016                          |
 | Market Settlement Cost (¢/kWh)             | (0.016)                        |
 | **Total Energy Charge**                    | Sum of Energy Charges Above    |
@@ -123,14 +124,16 @@ Notes:
 
 **Supply Cost Adjustment:**
 
-| Component                                            | DS-3 / DS-6\*\*\*\*\* | DS-4 / DS-6\*\*\*\*\* | Unit                                                                                                                        |
-| ---------------------------------------------------- | --------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Supply Cost Adj. – Procurement Charge\*\*\*          | 0.022                 | 0.022                 | ¢/kWh                                                                                                                       |
-| Supply Cost Adj. – Cash Working Capital Factor\*\*\* | 0.704%                | 0.704%                | of Supplier Charge, Energy Charge and Supply Cost Adj. – Procurement charge                                                 |
-| Supply Cost Adj. – Uncollectible Factor\*\*\*        | 0.481%                | 0.045%                | of Supplier Charge, Energy Charge, Supply Cost Adj. – Procurement charge and Supply Cost Adj. – Cash Working Capital Factor |
-| Supply Cost Adj. – Rider EUA\*\*\*\*                 | (0.014)               | (0.014)               | ¢/kWh                                                                                                                       |
+Supply Cost Adj. – Procurement Charge\*\*\*: 0.022 (¢/kWh)
 
-_Layout note_: in the source, the Procurement Charge and Cash Working Capital Factor each show one value centered across both DS-3/DS-6 and DS-4/DS-6 columns; it is repeated in both columns above. Only the Uncollectible Factor and Rider EUA rows have separate per-column entries.
+Supply Cost Adj. – Cash Working Capital Factor\*\*\*: 0.704% of Supplier Charge, Energy Charge and Supply Cost Adj. – Procurement charge
+
+| Component                                     | DS-3 / DS-6\*\*\*\*\* | DS-4 / DS-6\*\*\*\*\* | Unit                                                                                                                        |
+| --------------------------------------------- | --------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Supply Cost Adj. – Uncollectible Factor\*\*\* | 0.481%                | 0.045%                | of Supplier Charge, Energy Charge, Supply Cost Adj. – Procurement charge and Supply Cost Adj. – Cash Working Capital Factor |
+| Supply Cost Adj. – Rider EUA\*\*\*\*          | (0.014)               | (0.014)               |                                                                                                                             |
+
+_Layout note_: in the source, the Procurement Charge and Cash Working Capital Factor are printed once, as single values above the DS-3/DS-6 and DS-4/DS-6 column headers, so they are shown here as standalone lines. The headers sit above the Uncollectible Factor and Rider EUA rows only. No unit is printed for the Rider EUA row; the Unit cell is left blank.
 
 Notes:
 

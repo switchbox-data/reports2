@@ -1,20 +1,24 @@
 # Direct Testimony of Megha Lakhchaura (Illinois EPA Ex. 1.0) — Critique of Ameren's 2029–2031 BE Portfolio: Make-Ready, ChargeSmart Rate Design, FlexCharge
 
-**Source**: `icc_667546_iepa_ex_1_0_lakhchaura_direct.pdf` (original PDF not stored in the repo) (ICC e-docket file id 667546, document 380274)
+**Source**: `icc_667546_iepa_ex_1_0_lakhchaura_direct.pdf` (ICC e-docket file id 667546, document 380274)
 **Pages**: 24 PDF pages (notice of filing, cover, table of contents, 20 numbered pages of testimony, certificate of service)
 **Date**: May 7, 2026
 **Docket**: ICC Docket No. 26-0051 (Ameren Illinois Company d/b/a Ameren Illinois, Petition for Approval of Multi-Year Integrated Grid Plan pursuant to 220 ILCS 5/16-105.17; ICC e-docket id P2026-0051)
 **Author(s)**: Megha Lakhchaura, Electric Vehicle Coordinator, State of Illinois
 **Author affiliations**: Illinois Environmental Protection Agency (IEPA)
 **Document type**: Direct testimony (Illinois EPA Ex. 1.0) of the state EV coordinator, intervenor. Section II.C ("Rate Design") discusses the ChargeSmart rate, including its demand charge.
-**Extraction method**: Embedded PDF text (pdfplumber; superscript footnote references detected from font size), tables extracted from ruled cells and checked against rendered page images
+**Extraction method**: Embedded PDF text (pdfplumber; superscript footnote references detected from font size), table of contents rebuilt as a markdown table (it has no ruled cells), footnote hyperlink targets read from the PDF link annotations, and paragraph breaks checked against vertical spacing on rendered pages
 
 **Extraction notes**:
 
-- The repeated page header ("Illinois EPA Exhibit 1.0") and footer ("Page N of 22") are omitted and replaced by a **`[p. N, lines a–b]`** marker at each page break (N = the printed page number, which counts the notice of filing as page 1; PDF page = N + 1). Line numbers are the numbered lines printed in the left margin of the source. A marker followed by _(paragraph continues from previous page)_ means the paragraph above it runs across the page break; the marker is placed after the whole paragraph.
-- The notice of filing (pp. 1–2: Gina Roccaforte, Assistant Counsel, May 7, 2026) and the cover are condensed into this front matter; the certificate of service is condensed at the end.
+- The H1 subtitle after the em dash is supplied by the extractor and is not printed on the PDF. Paragraph breaks were verified against vertical spacing on the rendered pages.
+- Bibliographic details that are not printed in this PDF are supplied by the extractor from the ICC e-docket page and the sibling exhibits: the docket petition title and e-docket id (P2026-0051), the document id, and the "Document type" description.
+- The question "How could ChargeSmart be improved…" is printed in bold with an "A." label before it, followed by a plain "A." before the answer; both are kept as printed.
+- Many footnotes are only a document title or file name that is hyperlinked in the PDF (for example the ilga.gov bill text, Ameren web pages, the ICC docket file 663577); the printed label is kept and wrapped as a markdown link to the PDF's hyperlink target. Where the PDF prints a full URL it is given as printed. Footnote 31 ("Ibid page 710") has no link of its own.
+- The repeated page header ("Illinois EPA Exhibit 1.0") and footer ("Page N of 22") are omitted and replaced by a **`[p. N, lines a–b]`** marker at each page break (N = the printed page number; the table of contents is printed "Page 2 of 22" and the notice of filing and cover are unnumbered, so PDF page = N + 1). Line numbers are the numbered lines printed in the left margin of the source. A marker followed by _(paragraph continues from previous page)_ means the paragraph above it runs across the page break; the marker is placed after the whole paragraph.
+- The notice of filing (PDF p. 1: Gina Roccaforte, Assistant Counsel, May 7, 2026) and the cover (PDF p. 2) are condensed into this front matter; the certificate of service is condensed at the end.
 - The table of contents (13 entries) is reproduced as a table below.
-- Footnotes are reproduced as `[^n]` and placed directly after the paragraph that cites them. Two quirks of the source are kept: (1) footnote 18 is cited twice on the same page (once for the CRGA definition of make-ready, once after a quotation from Ameren Ex. 15.0), with one footnote text printed; (2) a superscript "14" after "…not currently open for enrollment" has no footnote text on its page and is shown as <sup>14</sup>.
+- Footnotes are reproduced as `[^n]` and placed directly after the paragraph that cites them. Two quirks of the source are kept: (1) footnote 18 is cited twice on the same page (once for the CRGA definition of make-ready, once after a quotation from Ameren Ex. 15.0), with one footnote text printed; (2) the same footnote number 14 is printed a second time, after "…not currently open for enrollment" on printed p. 19, with no footnote text on that page; the only text printed for footnote 14 is on p. 7 and is given as `[^14]`, while the p. 19 reference is shown as <sup>14</sup>.
 - Bulleted recommendations are kept as bullets.
 
 ---
@@ -27,7 +31,7 @@
 
 | Section                                                            | Page |
 | ------------------------------------------------------------------ | ---- |
-| Illinois EPA Exhibit 1.0 I. INTRODUCTION, BACKGROUND, AND SUMMARY  | 3    |
+| I. INTRODUCTION, BACKGROUND, AND SUMMARY                           | 3    |
 | A. Witness Identification                                          | 3    |
 | B. Background and Qualifications                                   | 3    |
 | C. Purpose of Direct Testimony                                     | 4    |
@@ -77,39 +81,47 @@ I also use the title State EV Officer. In my current role I work with various st
 
 **A.** The purpose of my testimony is to address the proposed investments proposed by Ameren Illinois Company (“Ameren”) to support transportation electrification that covers the years 2029-2031. The Clean and Reliable Grid Affordability Act (“CRGA”) specifically directs utilities to submit plans detailing these transportation electrification investments as part of their Multi-Year Integrated Grid Plans.[^1] I discuss how the proposed plan aligns with the requirements outlined in the 2026 Clean and Reliable Grid Affordability Act (“CRGA”). I also address how the proposed plan could be improved to better advance electric vehicle adoption and growth in Illinois.
 
-[^1]: 10400SB0025enr, Page 81
+[^1]: [10400SB0025enr](https://www.ilga.gov/documents/legislation/104/SB/PDF/10400SB0025enr.pdf), Page 81
 
 ### D. Status of EV Programs and Deployment Nationally and in Illinois
 
 **Q.** What is the present state of EV deployment and supporting charging infrastructure in Illinois, and how has it been funded?
 
-**A.** As of April 15, 2026, there are 167,971 battery electric vehicles (“BEVs”) registered in Illinois. Over the past 12 months, the state added 32,489 BEV registrations. The total number of electric vehicles in Illinois is higher than this figure suggests, as these data do not include plug-in hybrid electric vehicles (“PHEVs”). In addition, Illinois has approximately 491,292 registered hybrid vehicles, a category that includes an unspecified number of PHEVs.[^2] The number of public charging stations continues to grow nationwide. As of the end of March 2026, there were approximately 173,000 Level 2 chargers and over 71,000 Direct Current (“DC”) fast chargers deployed across the United States.[^3] Of these, 3,036 level 2 chargers and 2,482 DC fast chargers are in Illinois.
+**A.** As of April 15, 2026, there are 167,971 battery electric vehicles (“BEVs”) registered in Illinois. Over the past 12 months, the state added 32,489 BEV registrations. The total number of electric vehicles in Illinois is higher than this figure suggests, as these data do not include plug-in hybrid electric vehicles (“PHEVs”). In addition, Illinois has approximately 491,292 registered hybrid vehicles, a category that includes an unspecified number of PHEVs.[^2]
+
+The number of public charging stations continues to grow nationwide. As of the end of March 2026, there were approximately 173,000 Level 2 chargers and over 71,000 Direct Current (“DC”) fast chargers deployed across the United States.[^3] Of these, 3,036 level 2 chargers and 2,482 DC fast chargers are in Illinois.
 
 [^2]: https://www.ilsos.gov/departments/vehicles/statistics.html
 
 [^3]: https://afdc.energy.gov/stations/states
 
-Illinois has relied on a combination of state, federal, utility, and private funding sources to support the deployment of electric vehicle charging infrastructure. At the state level, the Climate and Equitable Jobs Act (“CEJA”) provided approximately $70 million to the IEPA to administer charging and vehicle incentive programs.[^4] In addition, Illinois has been allocated approximately $148 million under the federal National Electric Vehicle Infrastructure (“NEVI”) program to support the buildout of a statewide charging network.[^5] The state has also secured additional federal funding through programs such as the Charging and Fueling Infrastructure (“CFI”)[^6] and Climate Pollution Reduction Grants (“CPRG”).[^7] Utilities have played a significant role through Beneficial Electrification Plans, which provide make-ready incentives and other support for charging infrastructure across residential, commercial, and fleet applications. Private investment has also been a key contributor, particularly from charging developers, site hosts, and fleet operators who co-invest alongside public programs.
+Illinois has relied on a combination of state, federal, utility, and private funding sources to support the deployment of electric vehicle charging infrastructure.
+
+At the state level, the Climate and Equitable Jobs Act (“CEJA”) provided approximately $70 million to the IEPA to administer charging and vehicle incentive programs.[^4] In addition, Illinois has been allocated approximately $148 million under the federal National Electric Vehicle Infrastructure (“NEVI”) program to support the buildout of a statewide charging network.[^5] The state has also secured additional federal funding through programs such as the Charging and Fueling Infrastructure (“CFI”)[^6] and Climate Pollution Reduction Grants (“CPRG”).[^7]
 
 [p. 5, lines 63–89] _(paragraph continues from previous page)_
 
 [^4]: https://www.ilga.gov/Documents/Legislation/PublicActs/102/PDF/102-0662.pdf
 
-[^5]: https://idot.illinois.gov/content/dam/soi/en/web/idot/documents/transportation-system/planning/drive- electric/ROUND%202_%20IDOT_NEVI_NOFO_VF%2012.4.2025.pdf
+[^5]: https://idot.illinois.gov/content/dam/soi/en/web/idot/documents/transportation-system/planning/drive-electric/ROUND%202_%20IDOT_NEVI_NOFO_VF%2012.4.2025.pdf
 
-[^6]: CFI
+[^6]: [CFI](https://idot.illinois.gov/programs-and-projects/environment/drive-electric0/cfi.html)
 
-[^7]: Climate Pollution Reduction Grants
+[^7]: [Climate Pollution Reduction Grants](https://epa.illinois.gov/topics/climate/climate-pollution-reduction-grants.html)
+
+Utilities have played a significant role through Beneficial Electrification Plans, which provide make-ready incentives and other support for charging infrastructure across residential, commercial, and fleet applications. Private investment has also been a key contributor, particularly from charging developers, site hosts, and fleet operators who co-invest alongside public programs.
 
 Finally, Illinois has used settlement funds from the Volkswagen Environmental Mitigation Trust to support the deployment of electric school buses and transit buses, as well as associated charging infrastructure.
 
 **Q.** To what extent has EV market growth moderated, and should this influence continued support for charging infrastructure?
 
-**A.** Illinois has experienced strong growth in the EV market, with BEV registrations increasing by approximately 32 percent year-over-year in 2025.[^8] While sales growth has slowed in 2026, reflecting broader national trends, this slowdown should be understood as a maturing market rather than a decline in long-term demand. Globally, electric vehicles now account for approximately 25 percent of new car sales,[^9] underscoring the continued momentum of transportation electrification. Although growth in the United States has been comparatively slow, EV adoption is expected to continue expanding as vehicle availability increases, costs decline, and charging infrastructure improves.
+**A.** Illinois has experienced strong growth in the EV market, with BEV registrations increasing by approximately 32 percent year-over-year in 2025.[^8] While sales growth has slowed in 2026, reflecting broader national trends, this slowdown should be understood as a maturing market rather than a decline in long-term demand.
 
-[^8]: www.ilsos.gov
+Globally, electric vehicles now account for approximately 25 percent of new car sales,[^9] underscoring the continued momentum of transportation electrification. Although growth in the United States has been comparatively slow, EV adoption is expected to continue expanding as vehicle availability increases, costs decline, and charging infrastructure improves.
 
-[^9]: Global EV Sales Continue to Surge in 2025 - The EV Report
+[^8]: [www.ilsos.gov](https://www.ilsos.gov/departments/vehicles/license-plate-guide/electric-vehicle.html)
+
+[^9]: [Global EV Sales Continue to Surge in 2025 - The EV Report](https://theevreport.com/global-ev-sales-hit-historic-milestone-in-2025-a-country-by-country-breakdown)
 
 In addition, the market is evolving with the introduction of new EV models[^10] across multiple price points, while the used EV market is expanding in the near term. This growth in the availability of both new and used vehicles is expected to improve affordability and broaden access to electric vehicles for a wider range of consumers.
 
@@ -125,23 +137,27 @@ Therefore, temporary fluctuations in growth, whether slowdowns or periods of acc
 
 **A.** Prior to 2025, EV adoption was significantly supported by federal incentives and tax credits. However, the federal policy landscape has shifted rapidly. The Inflation Reduction Act Section 30C Alternative Fuel Vehicle Refueling Property Credit[^11] is scheduled to sunset after June 30, 2026. This credit has historically allowed commercial projects to offset up to 30 percent of eligible infrastructure costs, significantly improving project economics and supporting the deployment of EV charging infrastructure.
 
-[^11]: Alternative Fuel Vehicle Refueling Property Credit | Internal Revenue Service
+[^11]: [Alternative Fuel Vehicle Refueling Property Credit | Internal Revenue Service](https://www.irs.gov/credits-deductions/alternative-fuel-vehicle-refueling-property-credit)
 
 In addition, under NEVI,[^12] a $5 billion initiative to build EV charging along major highway corridors has faced delays, pauses, cuts, and uncertainty regarding implementation and disbursement. Similarly, funding awarded through the CFI Program, including approximately $100 million awarded to Illinois, intended to support the deployment of 14 truck charging sites across the state, has also been paused.
 
 [^12]: https://www.fhwa.dot.gov/environment/nevi/
 
-On a more positive note, the State of Illinois was awarded approximately $95 million under the Clean Ports Program and is currently administering these funds. This grant will support the deployment of zero-emission equipment at major river ports, advancing the electrification of port operations and reducing emissions in key freight and logistics hubs. Likewise, Illinois has been awarded $30 million in CPRG funding to deploy 500 medium- and heavy-duty chargers. The Illinois CPRG award also includes $20 million for medium- and heavy-duty electric trucks that will be paired with a charger.[^13] As these federal supports dissipate, states and utilities are increasingly required to assume a greater role in driving continued EV market growth and ensuring the timely deployment of essential charging infrastructure.
+On a more positive note, the State of Illinois was awarded approximately $95 million under the Clean Ports Program and is currently administering these funds. This grant will support the deployment of zero-emission equipment at major river ports, advancing the electrification of port operations and reducing emissions in key freight and logistics hubs. Likewise, Illinois has been awarded $30 million in CPRG funding to deploy 500 medium- and heavy-duty chargers. The Illinois CPRG award also includes $20 million for medium- and heavy-duty electric trucks that will be paired with a charger.[^13]
 
 [p. 7, lines 122–151] _(paragraph continues from previous page)_
 
-[^13]: soi-cprg-implementation-grant.pdf
+[^13]: [soi-cprg-implementation-grant.pdf](https://epa.illinois.gov/content/dam/soi/en/web/epa/topics/climate/documents/soi-cprg-implementation-grant.pdf)
+
+As these federal supports dissipate, states and utilities are increasingly required to assume a greater role in driving continued EV market growth and ensuring the timely deployment of essential charging infrastructure.
 
 **Q.** What is the role of the IEPA in supporting electric vehicle adoption in Illinois?
 
-**A.** The IEPA runs the Electric Vehicle Rebate Program under the CEJA, offering rebates to residents who buy new or used all-electric vehicles. These rebates make EV ownership more affordable and help accelerate consumer adoption. Priority is often given to low-income applicants. As of April 10, 2026, the IEPA has provided 12,836 rebates, 2,986 of which went to low-income residents.[^14] The Illinois EPA offers grants through programs such as Driving a Cleaner Illinois[^15] and CEJA-authorized funding rounds to install publicly accessible EV charging stations, including both Level 2 and DC fast chargers. These grants aim to expand the statewide charging network and reduce barriers to EV usage.
+**A.** The IEPA runs the Electric Vehicle Rebate Program under the CEJA, offering rebates to residents who buy new or used all-electric vehicles. These rebates make EV ownership more affordable and help accelerate consumer adoption. Priority is often given to low-income applicants. As of April 10, 2026, the IEPA has provided 12,836 rebates, 2,986 of which went to low-income residents.[^14]
 
-<sup>14</sup> _(this superscript is printed in the source but has no footnote text on its page; footnote 14 elsewhere is an unrelated note)_: Electric Vehicle Rebate Program - Climate and Equitable Jobs Act
+The Illinois EPA offers grants through programs such as Driving a Cleaner Illinois[^15] and CEJA-authorized funding rounds to install publicly accessible EV charging stations, including both Level 2 and DC fast chargers. These grants aim to expand the statewide charging network and reduce barriers to EV usage.
+
+[^14]: [Electric Vehicle Rebate Program - Climate and Equitable Jobs Act](https://epa.illinois.gov/topics/ceja/electric-vehicle-rebates.html)
 
 [^15]: https://epa.illinois.gov/topics/air-quality/driving-a-cleaner-illinois.html
 
@@ -151,13 +167,17 @@ On a more positive note, the State of Illinois was awarded approximately $95 mil
 
 **Q.** What responsibilities do IEPA and utilities have under the 2026 Clean and Reliable Grid Affordability Act (“CRGA”) to support transportation electrification?
 
-**A.** CEJA significantly expanded and clarified the role of electric utilities in advancing beneficial electrification. Pursuant to the directives of the legislation, ComEd and Ameren filed Beneficial Electrification (BE) Plan 1 (2023-25) and Plan 2 (2026-28), which included multi-year initiatives designed to accelerate EV adoption in Illinois. CRGA, signed into law by Governor Pritzker on January 8, 2026, clearly defined complementary but distinct roles in adopting EV adoption for the IEPA and electric utilities such as ComEd and Ameren.
+**A.** CEJA significantly expanded and clarified the role of electric utilities in advancing beneficial electrification. Pursuant to the directives of the legislation, ComEd and Ameren filed Beneficial Electrification (BE) Plan 1 (2023-25) and Plan 2 (2026-28), which included multi-year initiatives designed to accelerate EV adoption in Illinois.
 
-CRGA provides that utility-administered BE programs terminate on December 31, 2028. Beginning January 1, 2029, the IEPA is responsible for administering grants and other financial assistance to support the electrification of the transportation sector. These programs include grants and rebates that support a broad range of applications, including electric passenger vehicles, school buses, transit buses, medium- and heavy-duty trucks, and electric vehicle charging infrastructure. In addition, IEPA is tasked with implementing customer education and outreach initiatives to increase awareness of available programs and the benefits of transportation electrification.[^16] CRGA also clearly defines the utility role. Beginning January 1, 2029, utilities will continue to support transportation electrification through:
+CRGA, signed into law by Governor Pritzker on January 8, 2026, clearly defined complementary but distinct roles in adopting EV adoption for the IEPA and electric utilities such as ComEd and Ameren.
+
+CRGA provides that utility-administered BE programs terminate on December 31, 2028. Beginning January 1, 2029, the IEPA is responsible for administering grants and other financial assistance to support the electrification of the transportation sector. These programs include grants and rebates that support a broad range of applications, including electric passenger vehicles, school buses, transit buses, medium- and heavy-duty trucks, and electric vehicle charging infrastructure. In addition, IEPA is tasked with implementing customer education and outreach initiatives to increase awareness of available programs and the benefits of transportation electrification.[^16]
 
 [p. 8, lines 152–184] _(paragraph continues from previous page)_
 
-[^16]: 10400SB0025enr (Page 955)
+[^16]: [10400SB0025enr](https://www.ilga.gov/documents/legislation/104/SB/PDF/10400SB0025enr.pdf) (Page 955)
+
+CRGA also clearly defines the utility role. Beginning January 1, 2029, utilities will continue to support transportation electrification through:
 
 - Make-ready investments to accelerate deployment of charging infrastructure, particularly for multi-unit buildings and medium- and heavy-duty vehicles;
 
@@ -171,7 +191,7 @@ The legislation appropriately recognizes that the IEPA does not have responsibil
 
 **Q.** What investments and programs has Ameren proposed under Beneficial Electrification Portfolio in its Grid Plan filing?
 
-**A.** While CRGA terminated the utility Beneficial Electrification plans effective December 31, 2028, it directed utilities to continue transportation electrification investments through their respective Multi-Year Integrated Grid Plans for the 2029– 2031 period. Accordingly, Ameren uses the term “BE Portfolio” to refer to transportation electrification investments for 2029–2031. Ameren Illinois’ proposed BE Portfolio investments for 2029-2031 include funding in three areas:
+**A.** While CRGA terminated the utility Beneficial Electrification plans effective December 31, 2028, it directed utilities to continue transportation electrification investments through their respective Multi-Year Integrated Grid Plans for the 2029–2031 period. Accordingly, Ameren uses the term “BE Portfolio” to refer to transportation electrification investments for 2029–2031. Ameren Illinois’ proposed BE Portfolio investments for 2029-2031 include funding in three areas:
 
 [p. 9, lines 185–215] _(paragraph continues from previous page)_
 
@@ -181,11 +201,13 @@ The legislation appropriately recognizes that the IEPA does not have responsibil
 
 - Portfolio Costs (approximately $1.8 million a year): Supports overall program implementation.[^17]
 
-[^17]: 663577.pdf
+[^17]: [663577.pdf](https://www.icc.illinois.gov/docket/P2026-0051/documents/378447/files/663577.pdf)
 
 **Q.** Given the scale of EV adoption required, is the current budget and program design sufficient to achieve the State’s transportation electrification goals?
 
-**A.** No. The proposal is inadequate and contains several significant shortcomings. BE Portfolio is largely a reduction of existing programs, with limited innovations that do not reflect changes in the policy landscape, demand, and the passing of CRGA. Ameren has largely focused on incremental modifications to the BE 2.0 framework, rather than taking a forward-looking approach aligned with projected EV adoption growth and the associated infrastructure needs.
+**A.** No. The proposal is inadequate and contains several significant shortcomings. BE Portfolio is largely a reduction of existing programs, with limited innovations that do not reflect changes in the policy landscape, demand, and the passing of CRGA.
+
+Ameren has largely focused on incremental modifications to the BE 2.0 framework, rather than taking a forward-looking approach aligned with projected EV adoption growth and the associated infrastructure needs.
 
 CRGA specifically directs utilities to prioritize make-ready investments that accelerate the deployment of charging infrastructure, with an emphasis on multi-unit buildings and medium- and heavy-duty vehicle electrification. However, Ameren’s B.E Portfolio does not include any dedicated make-ready funding, representing a decreased investment compared to previous BE plans. As a result, the plan does not fully reflect the scale, segmentation, or infrastructure focus required to meet Illinois’ long-term transportation electrification goals.
 
@@ -197,15 +219,15 @@ CRGA specifically directs utilities to prioritize make-ready investments that ac
 
 [p. 10, lines 216–247] _(paragraph continues from previous page)_
 
-For the State of Illinois, the term “make-ready” is clearly defined in CRGA.
+For the State of Illinois, the term “make-ready” is clearly defined in CRGA. Specifically, “make-ready infrastructure” is defined as the electrical and construction work necessary between the distribution circuit and the connection point of the charging equipment[^18]. This definition clearly encompasses both front-of-the-meter and behind-the-meter infrastructure. Accordingly, utility make-ready programs should be designed to provide incentives that cover both sides of the meter, ensuring that all necessary upgrades required to enable EV charging deployment are addressed.
 
-Specifically, “make-ready infrastructure” is defined as the electrical and construction work necessary between the distribution circuit and the connection point of the charging equipment[^18]. This definition clearly encompasses both front-of-the-meter and behind-the-meter infrastructure. Accordingly, utility make-ready programs should be designed to provide incentives that cover both sides of the meter, ensuring that all necessary upgrades required to enable EV charging deployment are addressed.
-
-[^18]: 10400SB0025enr (Page 67)
+[^18]: [10400SB0025enr](https://www.ilga.gov/documents/legislation/104/SB/PDF/10400SB0025enr.pdf) (Page 67)
 
 **Q.** How does Ameren define “make-ready” and does this align with the definition of make-ready in CRGA?
 
-**A.** In the supplemental direct testimony of Eric Sackett, filed under this docket on March 31, 2026, make-ready is said to refer to “the distribution system facilities, service extensions, and related equipment to serve electric vehicle charging load up to the point of interconnection with the customer's facilities.”[^18] Likewise, this testimony suggests that Ameren Illinois’ current line extension policy functions as a make-ready program because it can reduce or fully offset utility-side, or in-front-of-the-meter infrastructure costs. However, a line extension program is not equivalent to a dedicated make-ready program. A line extension program has a different scope, is not specific to EV customers, and does not cover customer-side make-ready costs.
+**A.** In the supplemental direct testimony of Eric Sackett, filed under this docket on March 31, 2026, make-ready is said to refer to “the distribution system facilities, service extensions, and related equipment to serve electric vehicle charging load up to the point of interconnection with the customer's facilities.”[^18]
+
+Likewise, this testimony suggests that Ameren Illinois’ current line extension policy functions as a make-ready program because it can reduce or fully offset utility-side, or in-front-of-the-meter infrastructure costs. However, a line extension program is not equivalent to a dedicated make-ready program. A line extension program has a different scope, is not specific to EV customers, and does not cover customer-side make-ready costs.
 
 CRGA clearly defines make-ready infrastructure to include all equipment and upgrades necessary up to the point of connection for the charging equipment. By excluding customer-side, behind-the-meter costs from its make-ready definition, Ameren fails to account for the complete scope of costs associated with a make-ready program. Ameren Illinois should revise its definition of "make-ready" to align with the statutory definition established in the CRGA. Additionally, the grid plan should be updated to include a program that covers both utility-side and customer-side costs, consistent with the intent and requirements of the law.
 
@@ -215,11 +237,13 @@ CRGA clearly defines make-ready infrastructure to include all equipment and upgr
 
 **A.** The goal of a successful make-ready program is to reduce upfront expenses, making it easier for businesses, residents, and municipalities to invest in EV charging. States that have established ambitious electric vehicle adoption targets have consistently paired those goals with strong make-ready programs and significant infrastructure investments.
 
-For example, in September 2024, the New York Public Service Commission approved an approximately $855 million make-ready program proposed by the state’s joint utilities.[^19] This investment supports New York’s broader policy goal of achieving 100 percent zero-emission new light-duty vehicle sales by 2035. Similarly, the Colorado Public Utilities Commission approved Xcel Energy’s 2024–2026 Transportation Electrification Plan[^20], which includes $120 million in make-ready funding, of which $100 million is for commercial make-ready and $20 million is dedicated to disadvantaged communities. This program is aligned with Colorado’s goal of reaching approximately 940,000 light-duty electric vehicles on the road by 2030 and supports the broader electrification of cars, buses, and trucks.[^21] These examples demonstrate that sustained and adequately scaled make-ready investments are a key driver of EV adoption. In comparison, lower funding levels risk slowing infrastructure deployment and limiting progress toward transportation electrification goals.
+For example, in September 2024, the New York Public Service Commission approved an approximately $855 million make-ready program proposed by the state’s joint utilities.[^19] This investment supports New York’s broader policy goal of achieving 100 percent zero-emission new light-duty vehicle sales by 2035. Similarly, the Colorado Public Utilities Commission approved Xcel Energy’s 2024–2026 Transportation Electrification Plan[^20], which includes $120 million in make-ready funding, of which $100 million is for commercial make-ready and $20 million is dedicated to disadvantaged communities. This program is aligned with Colorado’s goal of reaching approximately 940,000 light-duty electric vehicles on the road by 2030 and supports the broader electrification of cars, buses, and trucks.[^21]
 
-[^19]: https://documents.dps.ny.gov/public/Common/ViewDoc.aspx?DocRefId=%7b6057D98B-0000-C912-9B64- A2D769C4790D%7d
+These examples demonstrate that sustained and adequately scaled make-ready investments are a key driver of EV adoption. In comparison, lower funding levels risk slowing infrastructure deployment and limiting progress toward transportation electrification goals.
 
-[^20]: Proceeding Detail (Proceeding No. 23A-0242E), Decision No. C24-0223)
+[^19]: https://documents.dps.ny.gov/public/Common/ViewDoc.aspx?DocRefId=%7b6057D98B-0000-C912-9B64-A2D769C4790D%7d
+
+[^20]: [Proceeding Detail (Proceeding No. 23A-0242E)](https://www.dora.state.co.us/pls/efi/EFI.Show_Docket?p_session_id=&p_docket_id=23A-0242E), Decision No. C24-0223)
 
 [^21]: https://energyoffice.colorado.gov/transportation/ev-education-resources/2023-colorado-ev-plan
 
@@ -231,13 +255,13 @@ Illinois has established a goal of deploying one million electric vehicles by 20
 
 [p. 12, lines 277–307] _(paragraph continues from previous page)_
 
-[^22]: Despite Improvements in Reliability and Availability, Public Charging Remains Top Stumbling Block to EV Adoption | JD Power
+[^22]: [Despite Improvements in Reliability and Availability, Public Charging Remains Top Stumbling Block to EV Adoption | JD Power](https://www.jdpower.com/business/resources/despite-improvements-reliability-and-availability-public-charging-remains-top)
 
 [^23]: https://experience.arcgis.com/experience/1b71ab7f02cd424581ede5cdf28b37f6
 
 In addition, Illinois has been awarded approximately $95 million under the Clean Ports Program,[^24] which will support the deployment of zero-emission equipment at major river ports and advance the electrification of freight and logistics operations. Two of the four Illinois ports involved in the Clean Ports Program are located in the Ameren service territory.
 
-[^24]: https://www.epa.gov/newsreleases/epa-announces-more-95-million-clean-ports-investments-illinois- environmental
+[^24]: https://www.epa.gov/newsreleases/epa-announces-more-95-million-clean-ports-investments-illinois-environmental
 
 Likewise, the State of Illinois has also been awarded $30 million in funding for medium- and heavy-duty chargers through the CPRG program. Beyond this, the State has additional CPRG funding to support the deployment of 100 heavy-duty trucks, 200 medium-duty trucks, and 896 forklifts, each of which will need charging equipment and infrastructure. Together, these funds make up the State’s Clean Trucks Program. These investments, along with related Clean Trucks initiatives, are focused on medium- and heavy-duty applications that require high-capacity charging infrastructure.
 
@@ -247,9 +271,11 @@ Accordingly, Ameren must ensure that its make-ready programs are adequately fund
 
 **Q.** Can you identify the specific ways Ameren’s BE Portfolio proposal falls short of meeting statutory and market needs for make-ready programs?
 
-**A.** Because the existing line extension policy does not cover customer-side, behind-the-meter costs, it does not cover all of the make-ready costs as defined under CRGA. Additionally, by relying on an existing line-extension policy and not proposing a dedicated make-ready program, Ameren Illinois fails to target medium-duty and heavy-duty electrification and multi-unit buildings with its make-ready programs, as outlined in CRGA.
+**A.** Because the existing line extension policy does not cover customer-side, behind-the-meter costs, it does not cover all of the make-ready costs as defined under CRGA.
 
-[p. 13, lines 308–341] _(paragraph continues from previous page)_
+[p. 13, lines 308–341]
+
+Additionally, by relying on an existing line-extension policy and not proposing a dedicated make-ready program, Ameren Illinois fails to target medium-duty and heavy-duty electrification and multi-unit buildings with its make-ready programs, as outlined in CRGA.
 
 As such, Ameren Illinois should include the following in its BE Plan:
 
@@ -265,13 +291,15 @@ As such, Ameren Illinois should include the following in its BE Plan:
 
 There is a strong demand for charging infrastructure in the Ameren service territory. While ComEd may have more customers, Ameren serves a larger geographic portion of the state. A robust public charging network across the state is critical to enabling all residents and visitors to confidently drive electric vehicles throughout the state. As such, a significant investment in public and commercial make-ready funding is needed across the Ameren service territory.
 
-Existing deployment trends further indicate a strong demand for public charging in the Amren service territory. Of the 390 public EV charging sites funded by the IEPA through CEJA, 163 locations, approximately 42 percent, are located in the Ameren service territory.[^25] In addition, 75 percent of all NEVI stations in Illinois are designated to be in Ameren's territory.[^26] As the state continues to fund public chargers through programs such as NEVI and CPRG, it is expected that there will be a similar demand in the Ameren territory. To support the successful deployment of both publicly funded and privately financed charging infrastructure, significant investment in make-ready infrastructure will be necessary across the region.
+Existing deployment trends further indicate a strong demand for public charging in the Amren service territory. Of the 390 public EV charging sites funded by the IEPA through CEJA, 163 locations, approximately 42 percent, are located in the Ameren service territory.[^25] In addition, 75 percent of all NEVI stations in Illinois are designated to be in Ameren's territory.[^26]
 
 [p. 14, lines 342–371] _(paragraph continues from previous page)_
 
-[^25]: Driving a Cleaner Illinois - Driving a Cleaner Illinois
+As the state continues to fund public chargers through programs such as NEVI and CPRG, it is expected that there will be a similar demand in the Ameren territory. To support the successful deployment of both publicly funded and privately financed charging infrastructure, significant investment in make-ready infrastructure will be necessary across the region.
 
-[^26]: https://idot.illinois.gov/content/dam/soi/en/web/idot/documents/transportation-system/planning/drive- electric/Illinois%20State%20Electric%20Vehicle%20Plan.pdf (Illinois EV Infrastructure Deployment Plan, Page 25)
+[^25]: [Driving a Cleaner Illinois - Driving a Cleaner Illinois](https://epa.illinois.gov/topics/air-quality/driving-a-cleaner-illinois.html)
+
+[^26]: https://idot.illinois.gov/content/dam/soi/en/web/idot/documents/transportation-system/planning/drive-electric/Illinois%20State%20Electric%20Vehicle%20Plan.pdf (Illinois EV Infrastructure Deployment Plan, Page 25)
 
 The consequences of underinvestment are particularly acute for small businesses and site hosts, who require certainty and predictability to make capital investment decisions. A stable and predictable funding stream would enable businesses, fleet owners, property owners, and developers to plan effectively and proceed with EV charging installations.
 
@@ -279,13 +307,19 @@ Accordingly, Ameren should increase make-ready funding levels and commit to a co
 
 **Q.** Why should Ameren prioritize multi-unit buildings in its EV programs?
 
-**A.** While Ameren may have fewer multi-unit buildings in its service territory than ComEd, multi-unit dwellings still face unique structural barriers to EV charging deployment. Unlike single-family homes, residents in these buildings typically lack access to private garages or dedicated electrical capacity. In addition, property owners must often make substantial upfront investments in electrical infrastructure upgrades, such as panel capacity, conduit, and wiring. These challenges create a classic split-incentive problem between property owners and tenants, where property owners make the investment, but tenants reap the immediate benefits. Multi-family properties face distinct, more complex barriers than other customer segments. As a result, simply allowing participation within broader programs does not adequately address the needs of this sector. A successful multi-unit EV charging strategy requires both increased funding and a dedicated program design. These projects require specialized advisory and technical support. Property owners and managers often lack the expertise needed to navigate site design, utility interconnection, load management, and tenant access considerations, and without dedicated advisory services, many otherwise viable projects will not move forward. For these reasons, Ameren should establish a targeted multi-unit make-ready program that includes higher funding levels, tailored incentives, and dedicated customer support, rather than relying solely on general program eligibility.
+**A.** While Ameren may have fewer multi-unit buildings in its service territory than ComEd, multi-unit dwellings still face unique structural barriers to EV charging deployment. Unlike single-family homes, residents in these buildings typically lack access to private garages or dedicated electrical capacity. In addition, property owners must often make substantial upfront investments in electrical infrastructure upgrades, such as panel capacity, conduit, and wiring. These challenges create a classic split-incentive problem between property owners and tenants, where property owners make the investment, but tenants reap the immediate benefits.
+
+Multi-family properties face distinct, more complex barriers than other customer segments. As a result, simply allowing participation within broader programs does not adequately address the needs of this sector. A successful multi-unit EV charging strategy requires both increased funding and a dedicated program design. These projects require specialized advisory and technical support. Property owners and managers often lack the expertise needed to navigate site design, utility interconnection, load management, and tenant access considerations, and without dedicated advisory services, many otherwise viable projects will not move forward.
+
+For these reasons, Ameren should establish a targeted multi-unit make-ready program that includes higher funding levels, tailored incentives, and dedicated customer support, rather than relying solely on general program eligibility.
 
 [p. 15, lines 372–404] _(paragraph continues from previous page)_
 
 **Q.** What level of investment is required for make-ready programs to effectively enable transportation electrification at scale?
 
-**A.** Ameren’s proposal to only address make-ready needs through its existing line extension policy is grossly insufficient to meet the scale of anticipated demand. It is therefore recommended that Ameren dedicate at least $20 million a year to commercial make-ready programs and an additional $5 million a year to residential make-ready programs, including both multi-unit and single-family homes.
+**A.** Ameren’s proposal to only address make-ready needs through its existing line extension policy is grossly insufficient to meet the scale of anticipated demand.
+
+It is therefore recommended that Ameren dedicate at least $20 million a year to commercial make-ready programs and an additional $5 million a year to residential make-ready programs, including both multi-unit and single-family homes.
 
 This adjustment is necessary to address the significant and growing unmet demand for electric vehicle charging infrastructure. Commercial sites, fleet depots, and multi-unit housing developments face persistent barriers related to high upfront electrical upgrade and make-ready costs, which remain a primary constraint to deployment.
 
@@ -295,7 +329,9 @@ This adjustment is necessary to address the significant and growing unmet demand
 
 Truck depot electrification requires deploying high-power direct-current fast-charging infrastructure, typically ranging from 360 kilowatts to over 1 megawatt, to reliably support medium- and heavy-duty electric trucks. Even at a relatively small scale, these installations require substantial upfront capital investment.
 
-Similarly, for public charging, particularly high-power direct current fast charging— make-ready costs are often substantial and highly variable. In many cases, make-ready investments are the determining factor in a project's financial viability. Importantly, the need for make-ready support extends beyond heavy-duty applications. Workplace charging and light-duty fleet electrification also require associated infrastructure investments. Access to workplace charging is a well-documented driver of electric vehicle adoption, particularly for drivers who may not have access to home charging.
+Similarly, for public charging, particularly high-power direct current fast charging— make-ready costs are often substantial and highly variable. In many cases, make-ready investments are the determining factor in a project's financial viability.
+
+Importantly, the need for make-ready support extends beyond heavy-duty applications. Workplace charging and light-duty fleet electrification also require associated infrastructure investments. Access to workplace charging is a well-documented driver of electric vehicle adoption, particularly for drivers who may not have access to home charging.
 
 [p. 16, lines 405–436] _(paragraph continues from previous page)_
 
@@ -323,13 +359,13 @@ These improvements would enhance program effectiveness, promote equitable outcom
 
 - “Commercial tariffs that utilize alternatives to traditional demand-based rate structures to facilitate charging for light-duty, heavy-duty, and fleet electric vehicles.” [^27]
 
-[^27]: 10400SB0025enr (Pages 81-82)
+[^27]: [10400SB0025enr](https://www.ilga.gov/documents/legislation/104/SB/PDF/10400SB0025enr.pdf) (Pages 81-82)
 
 **Q.** How has Ameren Illinois proposed to comply with the statutory CRGA requirements related to time-of-use rates?
 
 **A.** Ameren Illinois has proposed that its BE Portfolio plan for 2029-2031 meets the CRGA statutory requirements through its ChargeSmart program. This program offers a credit towards electric delivery service for every kilowatt-hour of energy used between 11 p.m. and 7 a.m. The program discourages electricity use between 11a.m. and 7 p.m. by adding a demand charge based on the highest one-hour period of total household usage during a billing period. [^28]
 
-[^28]: ChargeSmart - Ameren.com
+[^28]: [ChargeSmart - Ameren.com](https://www.ameren.com/electric-vehicles/charging/chargesmart)
 
 **A.** How could ChargeSmart be improved to better support EV adoption?
 
@@ -337,7 +373,9 @@ These improvements would enhance program effectiveness, promote equitable outcom
 
 Commercial customers are generally better equipped to understand and manage demand charge exposure by shifting or scheduling load to avoid peak demand events. In contrast, residential customers face challenges in actively managing demand in real time, particularly without robust outreach, education, and enabling technologies. As a result, demand charges in the residential context can lead to bill volatility and higher-than-expected costs, which may discourage participation in EV-specific rate programs.
 
-Including three separate components in a single rate —a monthly participation credit for 12 months, a per-kWh delivery credit during preferred charging periods, and a peak-period demand charge during non-preferred hours—makes the overall impact of the ChargeSmart rate difficult for residential customers to understand. Adopting an electric vehicle and installing at-home charging already involves a learning curve for new customers. Introducing a more complex rate structure on top of this can add confusion and increase perceived bill uncertainty, which may discourage participation among new EV owners
+Including three separate components in a single rate —a monthly participation credit for 12 months, a per-kWh delivery credit during preferred charging periods, and a peak-period demand charge during non-preferred hours—makes the overall impact of the ChargeSmart rate difficult for residential customers to understand.
+
+Adopting an electric vehicle and installing at-home charging already involves a learning curve for new customers. Introducing a more complex rate structure on top of this can add confusion and increase perceived bill uncertainty, which may discourage participation among new EV owners
 
 [p. 18, lines 468–498]
 
@@ -361,7 +399,7 @@ There is a subset of residential customers who are interested in actively managi
 
 [p. 19, lines 499–528]
 
-[^29]: 10400SB0025enr (Pages 81-82)
+[^29]: [10400SB0025enr](https://www.ilga.gov/documents/legislation/104/SB/PDF/10400SB0025enr.pdf) (Pages 81-82)
 
 **Q.** How has Ameren proposed to comply with the statutory CRGA requirements related to optimized charging?
 
@@ -369,7 +407,7 @@ There is a subset of residential customers who are interested in actively managi
 
 **Q.** What information is currently publicly available on the FlexCharge Program?
 
-**A.** The FlexCharge Program is set to be launched as part of Ameren Illinois’ BE 2.0 plan that covers the years 2026-2028. There is currently limited information on the details of how FlexCharge will be implemented. As of April 17, 2026, the FlexCharge webpage indicates that the program is coming soon but is not currently open for enrollment.[^14]
+**A.** The FlexCharge Program is set to be launched as part of Ameren Illinois’ BE 2.0 plan that covers the years 2026-2028. There is currently limited information on the details of how FlexCharge will be implemented. As of April 17, 2026, the FlexCharge webpage indicates that the program is coming soon but is not currently open for enrollment.<sup>14</sup>
 
 **Q.** What should Ameren consider while developing the Optimized Charging Program?
 
@@ -401,11 +439,13 @@ Submetering is the practice of measuring electricity consumption downstream of t
 
 **A.** As EV adoption in Illinois accelerates, bidirectional charging is expected to play an increasingly important role in supporting the grid. Ameren should ensure that bidirectional charging is explicitly considered and supported within its make-ready infrastructure programs, including eligibility for funding.
 
-CRGA orders “no later than June 30, 2026, the Commission shall establish a scheduled dispatch virtual power plant program in which customers that own or operate an energy storage system that receive a rebate for the distributed storage portion…are required to participate.”[^30] CRGA also orders the utilities to modify their tariffs to allow net metering for both energy storage systems and vehicle storage systems. [^31] To participate in net metering and virtual power plant (“VPP”) programs, EV charging equipment must support bidirectional power flow. Ameren should ensure that bidirectional-capable chargers are eligible under its make-ready and related programs, as this functionality enables EVs to both draw power from and export power back to the grid.
+CRGA orders “no later than June 30, 2026, the Commission shall establish a scheduled dispatch virtual power plant program in which customers that own or operate an energy storage system that receive a rebate for the distributed storage portion…are required to participate.”[^30] CRGA also orders the utilities to modify their tariffs to allow net metering for both energy storage systems and vehicle storage systems. [^31]
+
+To participate in net metering and virtual power plant (“VPP”) programs, EV charging equipment must support bidirectional power flow. Ameren should ensure that bidirectional-capable chargers are eligible under its make-ready and related programs, as this functionality enables EVs to both draw power from and export power back to the grid.
 
 [p. 21, lines 560–590] _(paragraph continues from previous page)_
 
-[^30]: 10400SB0025enr (page 731)
+[^30]: [10400SB0025enr](https://www.ilga.gov/documents/legislation/104/SB/PDF/10400SB0025enr.pdf) (page 731)
 
 [^31]: Ibid page 710
 
@@ -415,7 +455,7 @@ Additionally, bidirectional charging technologies should be integrated into the 
 
 **A.** Submetering is no longer in a pilot phase and is already being implemented by several utilities as a standard approach for measuring EV charging energy.[^32] Ameren should consider submetering as an eligible method for measuring vehicle energy consumption, particularly in multi-unit dwellings. In these settings, requiring revenue-grade metering at each individual charger may be unnecessarily costly and operationally burdensome. Submetering technologies offer a lower-cost alternative that enables more accurate, usage-based billing for each customer.
 
-[^32]: CPUC Decision Makes California First State in the Nation To Allow Submetering of Electric Vehicles
+[^32]: [CPUC Decision Makes California First State in the Nation To Allow Submetering of Electric Vehicles](https://www.cpuc.ca.gov/news-and-updates/all-news/cpuc-decision-makes-california-first-state-in-the-nation-to-allow-submetering-of-electric-vehicles)
 
 This approach also helps avoid scenarios in which residents in multi-unit buildings are either required to install expensive revenue-grade meters at every charging point or forced to share costs equally despite varying levels of charger usage.
 

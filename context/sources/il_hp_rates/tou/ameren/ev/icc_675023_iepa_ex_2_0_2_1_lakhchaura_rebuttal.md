@@ -1,6 +1,6 @@
 # Rebuttal Testimony of Megha Lakhchaura (Illinois EPA Ex. 2.0) and Illinois EPA Responses to Ameren Data Requests (Ex. 2.1)
 
-**Source**: `icc_675023_iepa_ex_2_0_2_1_lakhchaura_rebuttal.pdf` (original PDF not stored in the repo) (ICC e-docket file id 675023, document 383420)
+**Source**: `icc_675023_iepa_ex_2_0_2_1_lakhchaura_rebuttal.pdf` (ICC e-docket file id 675023, document 383420)
 **Pages**: 35 PDF pages (notice of filing, cover, table of contents, 11 pages of Ex. 2.0 testimony at PDF pp. 4–14, Ex. 2.1 data-request responses at PDF pp. 15–34, certificate of service at p. 35)
 **Date**: July 9, 2026 (Ex. 2.0); data-request responses dated June 2, 2026 (Ex. 2.1)
 **Docket**: ICC Docket No. 26-0051 (Ameren Illinois Company d/b/a Ameren Illinois, Petition for Approval of Multi-Year Integrated Grid Plan pursuant to 220 ILCS 5/16-105.17; ICC e-docket id P2026-0051)
@@ -11,6 +11,11 @@
 
 **Extraction notes**:
 
+- The "ICC e-docket" ids and the "Document type" gloss are supplied by the extractor and is not printed on the PDF. The italic "See," signals in the source are not carried over.
+- Bibliographic details that are not printed in this PDF are supplied by the extractor from the ICC e-docket page and the sibling exhibits: the docket petition title and e-docket id (P2026-0051), the document id, the witness's job title and middle initial when the cover prints only a name, and the "Document type" description.
+- The certificate of service for Ex. 2.0 is the same PDF page as the certificate that closes the file (PDF p. 35); it is reproduced once, at the end.
+- The link target of the "Ameren Illinois Electric Service Schedule Ill. C. C. No. 1" line (PDF p. 29) is taken from the PDF hyperlink; the printed URL carries a tracking suffix (`?utm_source=chatgpt.com`) that is dropped here. Footnote 5 (a Brattle report) is a hyperlinked title; its target is taken from the PDF link annotation.
+- Where the source prints an answer after a "Q." without an "A." label, the extractor adds **A.** (PDF pp. 6, 8, 9, 10, 12 and 13; seven answers). Source italics on "See," and on the quoted phrases in AIC-IEPA 1.12 are not carried over.
 - The repeated page header ("Illinois EPA Exhibit 2.0") and footer ("Page N of 13") are omitted and replaced by a **`[p. N, lines a–b]`** marker at each page break (N = the printed page number, which counts the notice of filing as page 1; PDF page = N + 1). Line numbers are the numbered lines printed in the left margin of the source. A marker followed by _(paragraph continues from previous page)_ means the paragraph above it runs across the page break; the marker is placed after the whole paragraph.
 - The notice of filing (pp. 1–2) and the cover are condensed into this front matter. The testimony (Ex. 2.0) has line numbers; the data-request responses (Ex. 2.1) do not, so they carry `[PDF p. N]` markers instead.
 - The table of contents (6 entries, Ex. 2.0 only) is reproduced as a table below.
@@ -27,7 +32,7 @@
 
 | Section                                                                                         | Page |
 | ----------------------------------------------------------------------------------------------- | ---- |
-| Illinois EPA Exhibit 2.0 I. INTRODUCTION, BACKGROUND, AND SUMMARY                               | 3    |
+| I. INTRODUCTION, BACKGROUND, AND SUMMARY                                                        | 3    |
 | A. Witness Identification                                                                       | 3    |
 | II. PURPOSE OF TESTIMONY                                                                        | 3    |
 | A. Purpose, Scope, and Identification of Exhibit                                                | 3    |
@@ -86,7 +91,9 @@ Furthermore, I responded to an extensive data request served by AIC that I am at
 
 **Q.** Please describe your disagreement with AIC’s approach to transportation electrification in this proceeding.
 
-**A.** I disagree with AIC’s overall approach to transportation electrification, as set forth in its proposal and reinforced in Mr. Sackett’s Rebuttal Testimony. AIC has failed to present a budget or investment level to support transportation electrification initiatives beyond 2028. It has not proposed a make-ready program, has expressed limited support for medium- and heavy-duty vehicle electrification, and has dismissed the need for targeted programs serving residents of multi-family housing. In addition, AIC adopts an unduly narrow interpretation of make-ready infrastructure by excluding customer-side electrical infrastructure costs. This interpretation is inconsistent with the intent and language of CRGA, which sets forth utility responsibility for the infrastructure necessary to enable transportation electrification.
+**A.** I disagree with AIC’s overall approach to transportation electrification, as set forth in its proposal and reinforced in Mr. Sackett’s Rebuttal Testimony. AIC has failed to present a budget or investment level to support transportation electrification initiatives beyond 2028. It has not proposed a make-ready program, has expressed limited support for medium- and heavy-duty vehicle electrification, and has dismissed the need for targeted programs serving residents of multi-family housing.
+
+In addition, AIC adopts an unduly narrow interpretation of make-ready infrastructure by excluding customer-side electrical infrastructure costs. This interpretation is inconsistent with the intent and language of CRGA, which sets forth utility responsibility for the infrastructure necessary to enable transportation electrification.
 
 Taken together, these positions reflect a broader reluctance to support the transportation electrification objectives established by CRGA. Rather than proposing programs and investments that advance the State’s goals for vehicle electrification and grid modernization, AIC’s proposal largely seeks to minimize utility involvement and investment in transportation electrification. As a result, the proposal falls short of the legislative direction provided by CRGA and does not adequately support Illinois’ long-term transportation electrification goals.
 
@@ -94,7 +101,7 @@ Taken together, these positions reflect a broader reluctance to support the tran
 
 **Q.** Do you agree with Mr Sackett’s characterization of make-ready investments in CRGA?
 
-I disagree with Mr. Sackett's characterization of CRGA. His testimony dismisses the statutory requirements enacted by the Illinois General Assembly and ignores the broader state policies and goals that are driving transportation electrification. Mr. Sackett states:
+**A.** I disagree with Mr. Sackett's characterization of CRGA. His testimony dismisses the statutory requirements enacted by the Illinois General Assembly and ignores the broader state policies and goals that are driving transportation electrification. Mr. Sackett states:
 
 "I do not agree that make-ready investments should have a designated program. While I am not an attorney, my understanding is that CRGA does not require the Company to provide a standalone make-ready program. Rather, CRGA requires that the Company provide, in the 2028 Grid Plan, a description of efforts the utility is taking to support transportation electrification through make-ready investments and other programs." (Ameren Exhibit 23.0 at 5)
 
@@ -130,17 +137,19 @@ Mr. Sackett's interpretation would effectively narrow the statutory definition b
 
 **Q.** How do you respond to AIC’s assertion that data accuracy and completeness issues identified in its EV submetering pilot justify not advancing a broader submetering program or rate structure?
 
-Mr. Sackett states:
+**A.** Mr. Sackett states:
 
 “The Company implemented an EV Submetering pilot in 2024 that assessed an EV submetering function across residential and non-residential applications. Following a comprehensive evaluation of pilot results, the Company noted a lack of adequate data accuracy, quality, and completeness. This influenced the Company’s decision to forego scaling the submetering function in the context of an EV program or rate structure.” (Ameren Exhibit 23.0 at 27)
 
-AIC's experience is inconsistent with the experience of states, regulators, and utilities that have made a meaningful effort to implement EV submetering programs. In August 2022, the California Public Utilities Commission approved a decision to authorize EV owners to measure vehicle electricity consumption independently from a customer's primary utility meter through submetering. This decision followed a multi-year regulatory proceeding that evaluated the technical feasibility, accuracy standards, and consumer protections associated with EV submetering. California's framework recognizes that modern EV charging equipment is capable of providing billing-quality energy measurements. Utilities and third-party providers can rely on these measurements to support EV-specific rates, incentives, and demand-response programs without requiring installation of a second utility meter.
+AIC's experience is inconsistent with the experience of states, regulators, and utilities that have made a meaningful effort to implement EV submetering programs.
+
+In August 2022, the California Public Utilities Commission approved a decision to authorize EV owners to measure vehicle electricity consumption independently from a customer's primary utility meter through submetering. This decision followed a multi-year regulatory proceeding that evaluated the technical feasibility, accuracy standards, and consumer protections associated with EV submetering. California's framework recognizes that modern EV charging equipment is capable of providing billing-quality energy measurements. Utilities and third-party providers can rely on these measurements to support EV-specific rates, incentives, and demand-response programs without requiring installation of a second utility meter.
 
 In addition, the California Independent System Operator permits submetered EV charging[^1] resources to participate in wholesale electricity markets. Submetered EV charging loads can be aggregated and registered as Proxy Demand Resources[^2], allowing customers to receive compensation for reducing, shifting, or managing charging during periods of system stress.
 
 [p. 8, lines 160–189] _(paragraph continues from previous page)_
 
-[^1]: https://www.ferc.gov/sites/default/files/2022- 12/2022%20Assessment%20of%20Demand%20Response%20and%20Advanced%20Metering_0.pdf
+[^1]: https://www.ferc.gov/sites/default/files/2022-12/2022%20Assessment%20of%20Demand%20Response%20and%20Advanced%20Metering_0.pdf
 
 [^2]: https://www.caiso.com/documents/pdr_rdrrparticipationoverviewpresentation.pdf
 
@@ -148,42 +157,44 @@ The widespread use of revenue-grade metering standards in EV charging equipment 
 
 **Q.** How do you respond to AIC’s rejection of IEPA’s recommendation that Ameren invest $20 million annually in commercial make-ready programs and $5 million annually in residential make-ready programs?
 
-IEPA recommends that AIC dedicate at least $20 million annually to commercial make-ready programs and an additional $5 million annually to residential make-ready programs, including both multi-unit and single-family housing. These recommended investment levels are consistent with prior Beneficial Electrification Plans and represent a conservative enhancement of transportation electrification efforts across AIC territory that encompasses a significant portion of Illinois. The recommended investment is modest in the context of previous Commission approved budgets. In March 2025, the Commission approved AIC’s three-year proposed Beneficial Electrification Plan budget at $86.7 million.[^3] By comparison, IEPA's recommended annual make-ready investment is less than the total funding authorized under BE Plan 2 and reflects a reasonable continuation of transportation electrification investments rather than a dramatic expansion.
+**A.** IEPA recommends that AIC dedicate at least $20 million annually to commercial make-ready programs and an additional $5 million annually to residential make-ready programs, including both multi-unit and single-family housing. These recommended investment levels are consistent with prior Beneficial Electrification Plans and represent a conservative enhancement of transportation electrification efforts across AIC territory that encompasses a significant portion of Illinois. The recommended investment is modest in the context of previous Commission approved budgets. In March 2025, the Commission approved AIC’s three-year proposed Beneficial Electrification Plan budget at $86.7 million.[^3] By comparison, IEPA's recommended annual make-ready investment is less than the total funding authorized under BE Plan 2 and reflects a reasonable continuation of transportation electrification investments rather than a dramatic expansion.
 
 [^3]: https://icc.illinois.gov/docket/P2024-0494/documents/363210/files/636045.pdf (order approving Ameren BE Plan 2, March 7, 2025)
 
 **Q.** Why does AIC reject IEPA’s recommendation?
 
-AIC dismisses this recommendation, stating:
+**A.** AIC dismisses this recommendation, stating:
 
-“The level of funding recommended by Ms. Lakhchaura would be above and beyond the current standard line extension policy, and the existing framework does not provide an appropriate mechanism to recover those costs.” (Ameren Exhibit 23.0 at 18) Ameren further argues that the recommended investment produces a negative result under its cost-effectiveness sensitivity analysis.
+“The level of funding recommended by Ms. Lakhchaura would be above and beyond the current standard line extension policy, and the existing framework does not provide an appropriate mechanism to recover those costs.” (Ameren Exhibit 23.0 at 18)
+
+Ameren further argues that the recommended investment produces a negative result under its cost-effectiveness sensitivity analysis.
 
 [p. 9, lines 190–210] _(paragraph continues from previous page)_
 
 AIC presented a benefit-cost analysis in its supplemental testimony for its proposed portfolio, which did not include a make-ready program. (Ameren Ex. 11.0 at 10)
 
-| Program                   | Total Benefits 2029-2031 BE Portfolio | Total Costs 2029 2031 BE Portfolio | Total Net Benefits 2029- 2031 BE Portfolio | Total BCR 2029 2031 BE Portfolio |
-| ------------------------- | ------------------------------------- | ---------------------------------- | ------------------------------------------ | -------------------------------- |
-| ChargeSmart               | $9,253,602                            | $3,069,497                         | $6,184,105                                 | 3.01                             |
-| FlexCharge                | $6,842,429                            | $4,703,873                         | $2,138,555                                 | 1.45                             |
-| Portfolio Non- Incentives | -                                     | $5,462,539                         | -$5,462,539                                | -                                |
-| Total Portfolio           | $16,096,030                           | $13,235,910                        | $2,860,121                                 | 1.22                             |
+| Program                  | Total Benefits 2029-2031 BE Portfolio | Total Costs 2029 2031 BE Portfolio | Total Net Benefits 2029-2031 BE Portfolio | Total BCR 2029 2031 BE Portfolio |
+| ------------------------ | ------------------------------------- | ---------------------------------- | ----------------------------------------- | -------------------------------- |
+| ChargeSmart              | $9,253,602                            | $3,069,497                         | $6,184,105                                | 3.01                             |
+| FlexCharge               | $6,842,429                            | $4,703,873                         | $2,138,555                                | 1.45                             |
+| Portfolio Non-Incentives | -                                     | $5,462,539                         | -$5,462,539                               | -                                |
+| Total Portfolio          | $16,096,030                           | $13,235,910                        | $2,860,121                                | 1.22                             |
 
 AIC also presented a sensitivity analysis evaluating the inclusion of IEPA's proposed $25 million annual make-ready program in its portfolio. (Ameren Ex. 19.0 at 27)
 
-| Program                  | Total Net Benefits 2029- 2031 BE Portfolio | Total BCR 2029 2031 BE Portfolio |
-| ------------------------ | ------------------------------------------ | -------------------------------- |
-| Make-Ready Program       | ($3,069,497)                               | -                                |
-| ChargeSmart              | $6,184,105                                 | 3.01                             |
-| FlexCharge               | $2,041,305                                 | 1.43                             |
-| Portfolio Non-Incentives | ($12,598,652)                              | -                                |
-| Total Portfolio          | ($7,442,739)                               | 0.68                             |
+| Program                  | Total Net Benefits 2029-2031 BE Portfolio | Total BCR 2029 2031 BE Portfolio |
+| ------------------------ | ----------------------------------------- | -------------------------------- |
+| Make-Ready Program       | ($3,069,497)                              | -                                |
+| ChargeSmart              | $6,184,105                                | 3.01                             |
+| FlexCharge               | $2,041,305                                | 1.43                             |
+| Portfolio Non-Incentives | ($12,598,652)                             | -                                |
+| Total Portfolio          | ($7,442,739)                              | 0.68                             |
 
 Based on its sensitivity analysis, AIC concludes that incorporating IEPA's recommended make-ready program into its proposed portfolio would reduce the portfolio's net benefits and result in a benefit-cost ratio of less than 1.0. (Ameren Ex. 19.0 at 27)
 
 **Q.** What is your response to AIC’s sensitivity analysis of IEPA’s proposed make ready investment?
 
-While I am not offering expert testimony regarding cost-effectiveness methodology, I have several observations regarding AIC’s analysis. Based on the record before the Commission, it is difficult to determine whether Ameren's conclusion is robust or simply the product of a particular set of modeling assumptions.
+**A.** While I am not offering expert testimony regarding cost-effectiveness methodology, I have several observations regarding AIC’s analysis. Based on the record before the Commission, it is difficult to determine whether Ameren's conclusion is robust or simply the product of a particular set of modeling assumptions.
 
 First, Ameren assumes that make-ready investments produce no quantifiable benefits whatsoever. AIC witness Andrew Cottrell states: "A make-ready program would only have costs associated with the program within the cost effectiveness framework. A make-ready program does not directly incentivize any measures or behaviors that change customer charging behavior. Therefore, there are no quantifiable benefits associated with a make-ready program. The only cost-effectiveness component from a make-ready program included in an analysis is the non-incentive costs associated with administering the program." (Ameren Ex. 19.0 at 9)
 
@@ -203,13 +214,13 @@ Finally, AIC has not identified any alternative level of make-ready investment t
 
 **Q.** Are there examples of other jurisdictions that evaluate transportation electrification investments using broader benefit-cost frameworks than the one employed by AIC?
 
-Other jurisdictions evaluate the costs and benefits of transportation electrification using broader frameworks than the one employed by AIC. For example, the benefit-cost analysis conducted by the New York State Energy Research and Development Authority evaluates transportation electrification from multiple perspectives, including societal and participant perspectives. That analysis includes benefits such as reduced vehicle operating and maintenance costs, avoided gasoline expenditures, reductions in greenhouse gas emissions, reductions in criteria pollutant emissions, and other public benefits associated with increased EV adoption. [^4] Similarly, Colorado relies on a Societal Cost Test, which incorporates a broader range of benefits including vehicle fuel savings, avoided emissions, and other societal benefits associated with transportation electrification. [^5] These examples demonstrate that evaluating the cost-effectiveness of transportation electrification investments requires recognizing benefits extending beyond direct utility system impacts.
+**A.** Other jurisdictions evaluate the costs and benefits of transportation electrification using broader frameworks than the one employed by AIC. For example, the benefit-cost analysis conducted by the New York State Energy Research and Development Authority evaluates transportation electrification from multiple perspectives, including societal and participant perspectives. That analysis includes benefits such as reduced vehicle operating and maintenance costs, avoided gasoline expenditures, reductions in greenhouse gas emissions, reductions in criteria pollutant emissions, and other public benefits associated with increased EV adoption. [^4] Similarly, Colorado relies on a Societal Cost Test, which incorporates a broader range of benefits including vehicle fuel savings, avoided emissions, and other societal benefits associated with transportation electrification. [^5] These examples demonstrate that evaluating the cost-effectiveness of transportation electrification investments requires recognizing benefits extending beyond direct utility system impacts.
 
 [p. 12, lines 278–311] _(paragraph continues from previous page)_
 
-[^4]: https://www.nyserda.ny.gov/-/media/Project/Nyserda/Files/Publications/Research/Transportation/19-07- Benefit-Cost-Analysis-EV-Deployment-NYS.pdf (Page 43)
+[^4]: https://www.nyserda.ny.gov/-/media/Project/Nyserda/Files/Publications/Research/Transportation/19-07-Benefit-Cost-Analysis-EV-Deployment-NYS.pdf (Page 43)
 
-[^5]: Transportation Electrification Cost-Benefit Analysis for Public Service Company of Colorado
+[^5]: [Transportation Electrification Cost-Benefit Analysis for Public Service Company of Colorado](https://www.brattle.com/wp-content/uploads/2023/09/Transportation-Electrification-Cost-Benefit-Analysis-for-Public-Service-Company-of-Colorado.pdf)
 
 Ameren witness Mr. Cottrell states that the Company applies a societal cost test to evaluate its Beneficial Electrification programs for the 2029–2031 period:
 
@@ -217,7 +228,9 @@ Ameren witness Mr. Cottrell states that the Company applies a societal cost test
 
 However, despite characterizing its analysis as a societal cost test, AIC's benefit framework appears to be limited primarily to utility system benefits, such as avoided generation capacity costs, transmission and distribution cost savings, reduced energy costs, and avoided emissions associated with shifted charging load. It does not appear to account for many of the broader societal benefits associated with transportation electrification that are recognized in jurisdictions such as New York and Colorado, including reduced vehicle operating costs, avoided gasoline expenditures, and broader environmental and public health benefits. As a result, AIC's analysis may not fully capture the benefits associated with transportation electrification investments.
 
-**Q.** Is the Commission required to rely solely on AIC’s cost-benefit analysis in evaluating proposed transportation electrification investments under CRGA? Given the statutory objectives for transportation electrification, the Commission should not rely solely on AIC’s cost-benefit analysis or unsupported assertions. Rather, it is the Commission’s responsibility to evaluate and approve make-ready investments, using the criteria established by CRGA. Specifically, the Public Utilities Act provides:
+**Q.** Is the Commission required to rely solely on AIC’s cost-benefit analysis in evaluating proposed transportation electrification investments under CRGA?
+
+**A.** Given the statutory objectives for transportation electrification, the Commission should not rely solely on AIC’s cost-benefit analysis or unsupported assertions. Rather, it is the Commission’s responsibility to evaluate and approve make-ready investments, using the criteria established by CRGA. Specifically, the Public Utilities Act provides:
 
 “Investments, programs, and activities proposed to meet the obligations of this subparagraph (M) shall be evaluated and approved by the Commission using the same standards of cost-effectiveness, as described in paragraph (7) of subsection (d), and not be subject to evaluation standards applied to other investments, programs, and activities, such as energy efficiency programs.” 220 ILCS 5/16-105.17(f)(2)(M).
 
@@ -229,13 +242,9 @@ Section 45(d) of the Electric Vehicle Act provides that the Commission must dete
 
 Accordingly, the relevant question is not whether the recommended investments fit within AIC's existing line extension policy or align with its preferred level of spending. Nor is the question whether AIC's preferred cost-benefit analysis produces a favorable result based on its own assumptions. Rather, the Commission's responsibility under CRGA, including the Electric Vehicle Act and Public Utilities Act, is to determine whether the proposed investments satisfy the applicable statutory standards. Specifically, the Commission must determine whether the proposed investments are evaluated using an appropriate cost-effectiveness methodology, are cost-beneficial and in the public interest, and are reasonably expected to support efficient electric vehicle charging operations in a manner that advances the transportation electrification objectives established by the General Assembly.
 
-## Certificate of Service (Ex. 2.0)
-
-Illinois EPA counsel Gina Roccaforte certifies service of the Rebuttal Testimony of Megha Lakhchaura on the ICC service list by e-mail on July 9, 2026 (PDF p. 35, reproduced here in condensed form).
-
 ---
 
-## Illinois EPA Exhibit 2.1 — Illinois EPA's Responses to Ameren Illinois Company's 1st Set of Data Requests (AIC-IEPA 1.01 through 1.xx)
+## Illinois EPA Exhibit 2.1 — Illinois EPA's Responses to Ameren Illinois Company's 1st Set of Data Requests (AIC-IEPA 1.01 through 1.28)
 
 Caption: State of Illinois, Illinois Commerce Commission, Ameren Illinois Company d/b/a Ameren Illinois, Docket No. 26-0051. Signed by Gina Roccaforte, Assistant Counsel, Illinois EPA, dated June 2, 2026 (PDF p. 34). This exhibit is unnumbered by line; `[PDF p. N]` markers give PDF page numbers.
 
@@ -255,7 +264,7 @@ Infrastructure (“CFI”) and Climate Pollution Reduction Grants (“CPRG”)."
 
 a. How many “Charging and Fueling Infrastructure” and “Climate Pollution Reduction Grants” funded charging projects are operational today in Ameren Illinois' service territory?
 
-**Illinois EPA Response:** The data that Ameren Illinois is requesting is already publicly available through existing state reporting systems, to which Ms. Lakhchaura cited in her testimony. By including this data request, Ameren Illinois is creating unnecessary burdens on state resources and requiring additional time and effort from state employees to compile information that is readily accessible through public channels. This request is duplicative rather than necessary for regulatory or operational purposes. Illinois EPA shares the status of all state and federal EV charging projects on its website, which was included as a source in the testimony. See, https://experience.arcgis.com/experience/1b71ab7f02cd424581e de5cdf28b37f6/page/Page?views=Basemap-Gallery One of the CFI Round 1 locations is online in Ameren Illinois’ service territory.
+**Illinois EPA Response:** The data that Ameren Illinois is requesting is already publicly available through existing state reporting systems, to which Ms. Lakhchaura cited in her testimony. By including this data request, Ameren Illinois is creating unnecessary burdens on state resources and requiring additional time and effort from state employees to compile information that is readily accessible through public channels. This request is duplicative rather than necessary for regulatory or operational purposes. Illinois EPA shares the status of all state and federal EV charging projects on its website, which was included as a source in the testimony. See, https://experience.arcgis.com/experience/1b71ab7f02cd424581ede5cdf28b37f6/page/Page?views=Basemap-Gallery One of the CFI Round 1 locations is online in Ameren Illinois’ service territory.
 
 Illinois EPA has not disbursed any CPRG-funded award at this time. Ms. Lakhchaura’s testimony clearly indicates that this funding is intended to support future projects. Before any awards can be made, Illinois EPA must first issue Notices of Funding Opportunity (“NOFOs”).
 
@@ -279,7 +288,7 @@ a. Please provide the Year Over Year BEV registrations for 2023 and 2024.
 
 **Illinois EPA Response:** The data that Ameren Illinois is requesting is already publicly available through existing state reporting systems, to which Ms. Lakhchaura cited in her testimony. By including this data request, Ameren Illinois is creating unnecessary burdens on state resources and requiring additional time and effort from state employees to compile information that is readily accessible through public channels.
 
-This information is publicly available on the Secretary of State website, which was included a source in the testimony. See, https://www.ilsos.gov/departments/vehicles/statistics/electric.htm l According to the Secretary of State database, BEV registration grew by 34.3% in 2024 and by 59.6% in 2023.
+This information is publicly available on the Secretary of State website, which was included a source in the testimony. See, https://www.ilsos.gov/departments/vehicles/statistics/electric.html According to the Secretary of State database, BEV registration grew by 34.3% in 2024 and by 59.6% in 2023.
 
 **AIC-IEPA 1.05** In Ms. Lakhchaura's direct testimony, page 5, Ms. Lakhchaura states, "Although growth in the United States has been comparatively slow, EV
 
@@ -359,7 +368,7 @@ a. Please provide the number of projects funded, the amount funded, and the numb
 
 **Illinois EPA Response:** The data that Ameren Illinois is requesting is already publicly available through existing state reporting systems, to which Ms. Lakhchaura cited in her testimony. By including this data request, Ameren Illinois is creating unnecessary burdens on state resources and requiring additional time and effort from state employees to compile information that is readily accessible through public channels.
 
-Illinois EPA shares the status of all state and federal EV charging projects on its website and included the source in the testimony. See, https://experience.arcgis.com/experience/1b71ab7f02cd424581ed e5cdf28b37f6/page/Page?views=Basemap-Gallery There are 105 Ameren Illinois site locations which fall under the CEJA grant program. The total Illinois EPA grant amount awarded to these sites is $18,040,000.
+Illinois EPA shares the status of all state and federal EV charging projects on its website and included the source in the testimony. See, https://experience.arcgis.com/experience/1b71ab7f02cd424581ede5cdf28b37f6/page/Page?views=Basemap-Gallery There are 105 Ameren Illinois site locations which fall under the CEJA grant program. The total Illinois EPA grant amount awarded to these sites is $18,040,000.
 
 **AIC-IEPA 1.12** In Ms. Lakhchaura's direct testimony, page 8, Ms. Lakhchaura states, "Make-ready investments to accelerate deployment of charging infrastructure, particularly for multi-unit buildings and medium- and heavy-duty vehicles;"
 
@@ -419,11 +428,11 @@ b. Out of the 550 charging locations referenced, please provide the number of lo
 
 Illinois EPA shares the status of all state and federal EV charging projects on its website, which was included as a source in the testimony.
 
-See, https://experience.arcgis.com/experience/1b71ab7f02cd424581ed
+See, https://experience.arcgis.com/experience/1b71ab7f02cd424581ede5cdf28b37f6/page/Page?views=Basemap-Gallery
 
 [PDF p. 25]
 
-e5cdf28b37f6/page/Page?views=Basemap-Gallery Of the 550+ charging sites funded across Illinois, 243 EV charging site locations are within the Ameren Illinois utility territory.
+Of the 550+ charging sites funded across Illinois, 243 EV charging site locations are within the Ameren Illinois utility territory.
 
 Currently, 90 of those site locations are online and energized. The sites are considered operational on the date they are energized. The utility is in a better position to provide information regarding the specific energization dates, as these sites are Ameren Illinois customers. Accordingly, it is, again, overly burdensome, for Ameren Illinois to request this information within its possession from Illinois EPA.
 
@@ -439,11 +448,11 @@ b. Please provide the number of EVs, licensed to drive on Illinois roadways, tha
 
 **Illinois EPA Response:** As stated by the USEPA, the goals of the Clean Ports Program are to:
 
-• Build a foundation for the port sector to continue making progress in reducing air pollution from operations, positioning ports to lead air quality improvements across the freight sector.
+- Build a foundation for the port sector to continue making progress in reducing air pollution from operations, positioning ports to lead air quality improvements across the freight sector.
 
-• Reduce diesel pollution in and around ports.
+- Reduce diesel pollution in and around ports.
 
-• Ensure that meaningful stakeholder engagement and emissions
+- Ensure that meaningful stakeholder engagement and emissions
 
 [PDF p. 26]
 
@@ -513,29 +522,35 @@ a. Please provide data and/or analysis supporting your conclusion that Ameren Il
 
 Ms. Lakhchaura referred to Ameren Illinois’ Electric Service Schedule Ill. C. C. No. 1, which includes the Standards and Qualifications for Electric Service:
 
-Ameren Illinois Electric Service Schedule Ill. C. C. No. 1 In Ms. Lakhchaura’s opinion, the formulas used to calculate extension costs for both residential and non-residential customers are complex and may create uncertainty for businesses. If a business knows the amount of make-ready support available upfront, rather than relying on a complicated formula, it can more accurately estimate project costs and make informed decisions regarding charging infrastructure investments.
+[Ameren Illinois Electric Service Schedule Ill. C. C. No. 1](https://www.ameren.com/-/media/rates/illinois/non-residential/electric-rates/general-information/aiel4otsq.ashx)
 
-Under the schedule, the extension cost is calculated as follows: EC = DL + IL + ES + PBT + OH + M + SH + T + CC Where:
+In Ms. Lakhchaura’s opinion, the formulas used to calculate extension costs for both residential and non-residential customers are complex and may create uncertainty for businesses. If a business knows the amount of make-ready support available upfront, rather than relying on a complicated formula, it can more accurately estimate project costs and make informed decisions regarding charging infrastructure investments.
 
-• EC = Extension cost
+Under the schedule, the extension cost is calculated as follows:
 
-• DL = Direct labor
+$$EC = DL + IL + ES + PBT + OH + M + SH + T + CC$$
 
-• IL = Indirect labor, including paid absences and travel time
+Where:
 
-• ES = Direct supervision, engineering, and support
+- EC = Extension cost
 
-• PBT = Pensions, benefits, and taxes
+- DL = Direct labor
 
-• OH = General engineering and G&A overheads
+- IL = Indirect labor, including paid absences and travel time
 
-• M = Materials
+- ES = Direct supervision, engineering, and support
 
-• SH = Stores handling
+- PBT = Pensions, benefits, and taxes
 
-• T = State use tax on directly purchased materials
+- OH = General engineering and G&A overheads
 
-• CC = Contractor costs, if incurred
+- M = Materials
+
+- SH = Stores handling
+
+- T = State use tax on directly purchased materials
+
+- CC = Contractor costs, if incurred
 
 **AIC-IEPA 1.22** In Ms. Lakhchaura's direct testimony, page 15, Ms. Lakhchaura states, "It is therefore recommended that Ameren dedicate at least $20 million a year to commercial make-ready programs and an additional $5 million a year to residential make-ready programs, including both multi-unit and single-family homes."
 

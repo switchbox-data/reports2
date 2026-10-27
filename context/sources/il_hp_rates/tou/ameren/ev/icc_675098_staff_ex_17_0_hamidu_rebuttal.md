@@ -1,19 +1,22 @@
 # Rebuttal Testimony of Leonard Hamidu (Staff Ex. 17.0) — Staff Review of Ameren's BE Portfolio, Including the Time-of-Use Rate (Section 16-105.17(f)(2)(M)(ii))
 
-**Source**: `icc_675098_staff_ex_17_0_hamidu_rebuttal.pdf` (original PDF not stored in the repo) (ICC e-docket file id 675098, document 383445; testimony at PDF pp. 1–38 of 240)
+**Source**: `icc_675098_staff_ex_17_0_hamidu_rebuttal.pdf` (ICC e-docket file id 675098, document 383445; testimony at PDF pp. 1–38 of 240)
 **Pages**: Testimony extracted from PDF pp. 1–38 (cover, table of contents, attachments list, 35 numbered pages). PDF pp. 39–240 are Attachment Staff Ex. 17.01 (the adopted direct testimony of Robert Martin, Staff Ex. 1.0) and its exhibits; only the beneficial-electrification section of Ex. 17.01 is extracted separately (see `icc_675098_staff_ex_17_01_...`)
 **Date**: July 9, 2026
 **Docket**: ICC Docket No. 26-0051 (Ameren Illinois Company d/b/a Ameren Illinois, Petition for Approval of Multi-Year Integrated Grid Plan pursuant to 220 ILCS 5/16-105.17; ICC e-docket id P2026-0051)
 **Author(s)**: Leonard Hamidu, Rate Analyst II, Integrated Distribution Planning Division
 **Author affiliations**: Illinois Commerce Commission (ICC Staff)
-**Document type**: Rebuttal testimony (Staff Ex. 17.0). Section IV is the Staff review of Ameren's ChargeSmart time-of-use rate; Sections III, V–VII cover make-ready, commercial EV tariffs, cost-effectiveness and the BE budget. Sections II covers the regression analysis (not EV-related).
-**Extraction method**: Embedded PDF text (pdfplumber; superscript footnote references detected from font size), tables extracted from ruled cells and checked against rendered page images
+**Document type**: Rebuttal testimony (Staff Ex. 17.0). Section IV is the Staff review of Ameren's ChargeSmart time-of-use rate; Sections III, V–VII cover make-ready, commercial EV tariffs, cost-effectiveness and the BE budget. Section II covers the regression analysis (not EV-related).
+**Extraction method**: Embedded PDF text (pdfplumber; superscript footnote references detected from font size), the table of contents (a dotted-leader list in the PDF) rebuilt as a markdown table and checked against the rendered page
 
 **Extraction notes**:
 
+- The H1 subtitle after the em dash is supplied by the extractor and is not printed on the PDF cover. Source typos ("filling", "gid plans", "220 ILCS 6/…", "Id at 41") are preserved verbatim.
+- Bibliographic details that are not printed in this PDF are supplied by the extractor from the ICC e-docket page and the sibling exhibits: the docket petition title and e-docket id (P2026-0051), the document id, the witness's job title and middle initial when the cover prints only a name, and the "Document type" description.
+- Underlined text in the source ("Id.", case names) is not italicized here. Indented passages that Staff quotes from Ameren, JNGO and Commission orders are marked with `>`.
 - The repeated page header ("Docket No. 26-0051" / "Staff Ex. 17.0") is omitted. A **`[p. N, lines a–b]`** marker appears at each page break (N = the printed page number at the bottom of the page; PDF page = N + 3). Line numbers are the numbered lines printed in the left margin. A marker followed by _(paragraph continues from previous page)_ means the paragraph above it runs across the page break; the marker is placed after the whole paragraph.
 - The table of contents (27 entries) is reproduced as a table below. The attachments page lists one attachment: Staff Ex. 17.01, "Staff Ex. 1.0, The Direct Testimony of Robert L. Martin" (adopted by this witness except Martin's lines 1–56).
-- No footnotes or data tables appear in this testimony.
+- The testimony has one footnote (printed p. 10) and one figure (printed p. 9, described below); the table of contents is the only table.
 
 ---
 
@@ -29,7 +32,7 @@ Staff Exhibit 17.01 — Staff Ex. 1.0, the Direct Testimony of Robert L. Martin.
 
 | Section                                                                   | Page |
 | ------------------------------------------------------------------------- | ---- |
-| Docket No. 26-0051 Staff Ex. 17.0 I. Introduction                         | 1    |
+| I. Introduction                                                           | 1    |
 | A. Witness Identification                                                 | 1    |
 | B. Purpose of Testimony                                                   | 1    |
 | C. Summary of Conclusions and Recommendations                             | 2    |
@@ -105,9 +108,11 @@ Additionally, subject to the approval of the Administrative Law Judges, it is my
 
 7. For the ChargeSmart program, Ameren should use the net to gross results as used in the BE plan 1 evaluation.
 
-8. I recommend in surrebuttal, Ameren provide justification for the specific elements of its portfolio costs which it states it will need to deliver its make-ready programs. (Ameren Ex. 23.0, 42.). 9. The Commission directs Ameren to engage a stakeholder group to gather feedback and share information on its beneficial electrification programs during implementation.
+8. I recommend in surrebuttal, Ameren provide justification for the specific elements of its portfolio costs which it states it will need to deliver its make-ready programs. (Ameren Ex. 23.0, 42.).
 
-[p. 4, lines 68–88] _(paragraph continues from previous page)_
+[p. 4, lines 68–88]
+
+9. The Commission directs Ameren to engage a stakeholder group to gather feedback and share information on its beneficial electrification programs during implementation.
 
 10. The Commission direct Ameren to continue to provide annual grid plan reporting during this grid plan.
 
@@ -129,7 +134,9 @@ Additionally, subject to the approval of the Administrative Law Judges, it is my
 
 **Q.** Did any of the Intervenors make recommendations about regression analysis?
 
-**A.** Yes. JNGO witness Boratha Tan recommended … that Ameren confirm that it will continue using regression analysis, as currently run by the Company in its Grid Access Report, to monitor and understand reliability for customers and how it can help inform the Company on its future grid investments.
+**A.** Yes. JNGO witness Boratha Tan recommended
+
+> … that Ameren confirm that it will continue using regression analysis, as currently run by the Company in its Grid Access Report, to monitor and understand reliability for customers and how it can help inform the Company on its future grid investments.
 
 (JNGO Ex. 4.0, 22.)
 
@@ -141,13 +148,19 @@ Yes. In my direct testimony, I similarly recommended the Commission direct the C
 
 **Q.** How did the Company respond to the recommendation you and JNGO made to continue regression?
 
-**A.** Ameren stated that it agrees with JNGO’s and my request to continue to provide regression analysis in future grid plans. (Ameren Ex. 28.0, 31.) Ameren stated that, the Company agrees with Mr. Hamidu in terms of running the regression analysis with each grid plan cycle, which aligns with JNGO's witness Tan's recommendations. This may help to inform grid investments that are proposed in future grid plan filings. The Company is willing to work with Mr. Hamidu and other interested parties to confirm what the timeframe or data sets should be to be able to rerun the regression analysis for the 2032-2035 grid plan filing.
+**A.** Ameren stated that it agrees with JNGO’s and my request to continue to provide regression analysis in future grid plans. (Ameren Ex. 28.0, 31.) Ameren stated that,
+
+> the Company agrees with Mr. Hamidu in terms of running the regression analysis with each grid plan cycle, which aligns with JNGO's witness Tan's recommendations. This may help to inform grid investments that are proposed in future grid plan filings. The Company is willing to work with Mr. Hamidu and other interested parties to confirm what the timeframe or data sets should be to be able to rerun the regression analysis for the 2032-2035 grid plan filing.
 
 Id. at 30
 
 **Q.** Did Ameren make any changes to address the recommendation you made about updating the data in the regression analysis?
 
-**A.** No. Ameren stated it disagrees with my recommendation to update its current regression analysis to include data up to 2025 to reflect recent outcomes about the relationship between reliability variables and equity variables in this grid plan proceeding. (Ameren Ex. 28.0, 30.) Ameren explained that, running the analysis takes significant time and resources in terms of gathering the data, analyzing the data, cleaning the data for anomalies and consistency, updating any of the necessary supporting data, and then actually conducting the analysis. The Company believes there is not sufficient time or settled variable during the testimony window to accurately rerun the analysis with data through 2025. Id.
+**A.** No. Ameren stated it disagrees with my recommendation to update its current regression analysis to include data up to 2025 to reflect recent outcomes about the relationship between reliability variables and equity variables in this grid plan proceeding. (Ameren Ex. 28.0, 30.) Ameren explained that,
+
+> running the analysis takes significant time and resources in terms of gathering the data, analyzing the data, cleaning the data for anomalies and consistency, updating any of the necessary supporting data, and then actually conducting the analysis. The Company believes there is not sufficient time or settled variable during the testimony window to accurately rerun the analysis with data through 2025.
+
+Id.
 
 [p. 7, lines 140–161] _(paragraph continues from previous page)_
 
@@ -173,9 +186,15 @@ I do not think it is proper for Ameren to present analysis in 2026 and only use 
 
 **A.** Ameren defined its utility side make-ready infrastructure as “the distribution system facilities, service extensions, and related equipment to serve electric vehicle charging load up to the point of interconnection with the customer's facilities.” (Ameren Ex. 15.0, 12.) Ameren states it provides utility side make-ready through its standard line extension policy to comply with CRGA. (Ameren Ex. 15.0, 12.) Ameren states its standard line extension policy reduces or fully offsets upfront utility side make-ready costs, “through the application of a revenue-based allowance tied to the newly connected electric vehicle load.” (Ameren Ex. 15.0, 12.)
 
-In its BE plan 2, Ameren included a supplemental line extension program for the customer side, in addition to the utility side. (Staff Ex. 1.02, 62.) Ameren explained the customer side supplemental line extension program as an allowance that covers customer-owned electric infrastructure necessary to connect an EV charger. This infrastructure is downstream from the Point of Delivery and can include conductors, metering equipment, trenching for service lines, and labor costs. This excludes costs for the charging equipment and electric vehicle. Id. Ameren also explained the distinction between the customer side and the utility side supplemental line extension program through a visual presentation which demonstrates where the utility side ends and where the customer side starts. Id. That representation is reproduced below.
+In its BE plan 2, Ameren included a supplemental line extension program for the customer side, in addition to the utility side. (Staff Ex. 1.02, 62.) Ameren explained the customer side supplemental line extension program as an allowance that
+
+> covers customer-owned electric infrastructure necessary to connect an EV charger. This infrastructure is downstream from the Point of Delivery and can include conductors, metering equipment, trenching for service lines, and labor costs. This excludes costs for the charging equipment and electric vehicle.
+
+Id. Ameren also explained the distinction between the customer side and the utility side supplemental line extension program through a visual presentation which demonstrates where the utility side ends and where the customer side starts. Id. That representation is reproduced below.
 
 [p. 9, lines 186–199] _(paragraph continues from previous page)_
+
+**[Figure, printed p. 9 (PDF p. 12), reproduced from Ameren by Staff; no caption.]** An illustration of where the utility-side allowance ends and the customer-side allowance begins. A green bracket labeled "Utility Side Allowance" spans the left half, covering "Utility Service" (a utility pole with a service drop) and "Utility Transformer" (a pad-mounted transformer). A blue bracket labeled "Customer Side Allowance" spans the right half, covering "Electric Meter," "Electric Panel," and "Wiring Up to Charger" (an EV charger). A vertical line labeled "Point of Delivery" separates the two halves, between the transformer and the meter. A dotted line labeled "Service Line" runs from the utility service through the transformer to the meter, panel and charger. [→ See original PDF p. 12]
 
 Id.
 
@@ -197,9 +216,13 @@ In BE Plan 2, Ameren allowed customers to apply any leftover allowance from the 
 
 **Q.** How did Ameren respond to Staff’s request for standalone make-ready program in this grid plan?
 
-**A.** Ameren stated that it does not agree with Staff that the Company should have a separate standalone make-ready program. Ameren stated that while I am not an attorney, my understanding is that CRGA does not require the Company to provide a standalone make-ready program. Rather, CRGA requires that Company provide, in the 2028 Grid Plan, a description of efforts the utility is taking to support transportation electrification through make-ready investments and other programs. (Ameren Ex. 23.0, 5.)
+**A.** Ameren stated that it does not agree with Staff that the Company should have a separate standalone make-ready program. Ameren stated that
+
+> while I am not an attorney, my understanding is that CRGA does not require the Company to provide a standalone make-ready program. Rather, CRGA requires that Company provide, in the 2028 Grid Plan, a description of efforts the utility is taking to support transportation electrification through make-ready investments and other programs.
 
 [p. 12, lines 244–265] _(paragraph continues from previous page)_
+
+(Ameren Ex. 23.0, 5.)
 
 Ameren stated that the reason it is not moving forward with the make-ready program like it proposed in the BE Plan 2 is because the program failed the cost effectiveness test. (Ameren Ex. 23.0, 6.) Ameren stated that it lacked quantifiable benefits associated with providing a customer-side make-ready program. Ameren stated it concluded that it will not have quantifiable benefits that exceeds the cost of expanding the program in the net benefit analysis. (Ameren Ex. 23.0, 6.) With regard to Staff’s request for Ameren to develop and clearly describe its education and outreach strategy for its new make-ready investments program, Ameren stated that it is not able to provide the information Staff requested because this information will be available only if the Company has a standalone make-ready program, which it does not have. (Ameren Ex. 23.0, 6.)
 
@@ -223,11 +246,17 @@ Ameren stated that the reason it is not moving forward with the make-ready progr
 
 **Q.** Do you have any concerns about Ameren’s current utility side make-ready program?
 
-**A.** Yes. I support reinstating customer side make-ready program as offered by Ameren in its BE plan 1 and 2 rather than only covering utility-side make-ready. Ameren provided both utility-side and customer-side make-ready investments to comply with the EV Act in BE plan 2. Ameren Ill. Co. d/b/a Ameren Ill., ICC Final Order, Docket Nos. 24-0494/24-0578 (Consol.) 47 (March 27, 2025) (“BE Plan 2 Final Order”). Ameren stated that The BE Plan 2 includes supplemental line extension credits and rebates for charging equipment installation for various customer types that deploy light, medium, and/or heavy-duty fleets. The BE Plan 2 offers a Fleet Assessment Program to educate, provide an economic assessment, and provide technical support to our customers looking to electrify their fleets. The Trade Ally Program will also provide a vetted list of qualified electrification experts to support fleet electrification. Ameren Illinois Company d/b/a Ameren Illinois, Docket No. 24-0494/24-0578 (Consol.), Ameren Ex. 2.0, 13 (July 1, 2024).
+**A.** Yes. I support reinstating customer side make-ready program as offered by Ameren in its BE plan 1 and 2 rather than only covering utility-side make-ready. Ameren provided both utility-side and customer-side make-ready investments to comply with the EV Act in BE plan 2. Ameren Ill. Co. d/b/a Ameren Ill., ICC Final Order, Docket Nos. 24-0494/24-0578 (Consol.) 47 (March 27, 2025) (“BE Plan 2 Final Order”). Ameren stated that
+
+> The BE Plan 2 includes supplemental line extension credits and rebates for charging equipment installation for various customer types that deploy light, medium, and/or heavy-duty fleets. The BE Plan 2 offers a Fleet Assessment Program to educate, provide an economic assessment, and provide technical support to our customers looking to electrify their fleets. The Trade Ally Program will also provide a vetted list of qualified electrification experts to support fleet electrification.
+
+Ameren Illinois Company d/b/a Ameren Illinois, Docket No. 24-0494/24-0578 (Consol.), Ameren Ex. 2.0, 13 (July 1, 2024).
 
 [p. 15, lines 314–335] _(paragraph continues from previous page)_
 
-In this grid plan, Ameren is proposing only utility side make-ready, compared to both utility and customer side make-ready provided in its BE Plan to comply with requirements for make-ready investments. CRGA asked for “make-ready investments and other programs to facilitate the rapid deployment of charging equipment throughout this State.” 220 ILCS 6/16-105.17(f)(2)(M)(i). The provision did not put a limit on which side of the meter make-ready infrastructure should be incentivized by the Company and it is not clear to me why the Company decided to limit its definition of make-ready to utility side other than its citing of cost-effectiveness concerns. The statute only states “other programs”. While I am not a lawyer, I understand “other programs” as used in this context to be expansive rather than restrictive. I do not think the provision requires Ameren to limit make-ready programs to only utility side and remove customer side make-ready programs. Ameren explained that, There is no separately allocated specific budget for utility-side make-ready infrastructure related to EV charging projects within the 2029-2031 Grid Plan period. Instead, these projects are treated as standard new business investments and therefore utilize Ameren’s standard line extension policy.
+In this grid plan, Ameren is proposing only utility side make-ready, compared to both utility and customer side make-ready provided in its BE Plan to comply with requirements for make-ready investments. CRGA asked for “make-ready investments and other programs to facilitate the rapid deployment of charging equipment throughout this State.” 220 ILCS 6/16-105.17(f)(2)(M)(i). The provision did not put a limit on which side of the meter make-ready infrastructure should be incentivized by the Company and it is not clear to me why the Company decided to limit its definition of make-ready to utility side other than its citing of cost-effectiveness concerns. The statute only states “other programs”. While I am not a lawyer, I understand “other programs” as used in this context to be expansive rather than restrictive. I do not think the provision requires Ameren to limit make-ready programs to only utility side and remove customer side make-ready programs. Ameren explained that,
+
+> There is no separately allocated specific budget for utility-side make-ready infrastructure related to EV charging projects within the 2029-2031 Grid Plan period. Instead, these projects are treated as standard new business investments and therefore utilize Ameren’s standard line extension policy.
 
 (Staff Ex. 1.01, 1.) Ameren is proposing to comply with CRGA with only utility side make-ready investments.
 
@@ -247,9 +276,11 @@ IEPA similarly raises concerns with Ameren’s lack of a customer-side make-read
 
 **Q.** How does Ameren respond to IEPA?
 
-**A.** Ameren states that IEPA made this recommendation without considering cost effectiveness and that IEPA’s recommendation needs to be cost effective in order to be included in Ameren’s grid plan. (Ameren Ex. 23.0, 16.) Ameren also states that IEPA’s recommendation will likely increase non-incentive costs to support customer side make-ready, which IEPA’s recommendation does not consider. Id. Ameren states it performed a sensitivity analysis for a customer side make ready total budget of $22 million in response to IEPA’s proposed $25 million a year budget, which would total $75 million in three years (2029-2031.) Ameren notes its proposed total budget of $22 million from its sensitivity analysis over 3 years (far less than the IEPA proposes), is expected to produce a net loss of about $7.4 million with a benefit cost ratio (“BCR”) of 0.68. Id. at 17. The proposed budget of $22 million from Ameren’s sensitivity analysis would include incentives for both utility and customer side make-ready, similar to what Ameren has in its BE Plan 2 ChargeReady program. Id. at 17. According to Ameren, the additional budget will cover incentives for Residential, Multifamily, Education Facility, Transit Facility, Public Charging, Facility, and Fleet Facility customers. (Ameren Ex. 23.0, 17; Ameren Ex. 19.0, 27.) Ameren added that, if the Commission were to direct them to include the customer side incentives in its grid plan, Ameren reserves the right to recover the cost of this investment. (Ameren Ex. 23.0, 18.) Specifically, Ameren states that, [i]f, however, the Commission were to direct the Company to include such investments in the 2028 Grid Plan, the Company reserves its right to seek cost-recovery of these investments in the appropriate forum, and the Company would request the Commission to approve cost-recovery consistent with the Public Utilities Act.
+**A.** Ameren states that IEPA made this recommendation without considering cost effectiveness and that IEPA’s recommendation needs to be cost effective in order to be included in Ameren’s grid plan. (Ameren Ex. 23.0, 16.) Ameren also states that IEPA’s recommendation will likely increase non-incentive costs to support customer side make-ready, which IEPA’s recommendation does not consider. Id. Ameren states it performed a sensitivity analysis for a customer side make ready total budget of $22 million in response to IEPA’s proposed $25 million a year budget, which would total $75 million in three years (2029-2031.) Ameren notes its proposed total budget of $22 million from its sensitivity analysis over 3 years (far less than the IEPA proposes), is expected to produce a net loss of about $7.4 million with a benefit cost ratio (“BCR”) of 0.68. Id. at 17. The proposed budget of $22 million from Ameren’s sensitivity analysis would include incentives for both utility and customer side make-ready, similar to what Ameren has in its BE Plan 2 ChargeReady program. Id. at 17. According to Ameren, the additional budget will cover incentives for Residential, Multifamily, Education Facility, Transit Facility, Public Charging, Facility, and Fleet Facility customers. (Ameren Ex. 23.0, 17; Ameren Ex. 19.0, 27.) Ameren added that, if the Commission were to direct them to include the customer side incentives in its grid plan, Ameren reserves the right to recover the cost of this investment. (Ameren Ex. 23.0, 18.) Specifically, Ameren states that,
 
 [p. 18, lines 382–405] _(paragraph continues from previous page)_
+
+> [i]f, however, the Commission were to direct the Company to include such investments in the 2028 Grid Plan, the Company reserves its right to seek cost-recovery of these investments in the appropriate forum, and the Company would request the Commission to approve cost-recovery consistent with the Public Utilities Act.
 
 (Ameren Ex. 23.0, 18.)
 
@@ -261,7 +292,7 @@ However the sensitivity analysis showed a net loss of about $7 million and a BCR
 
 [p. 19, lines 406–431] _(paragraph continues from previous page)_
 
-For the four other projects challenged by IFCUP, the Commission finds that Marseilles, Pinckneyville, Heyworth, and Tilden are supported by Ameren’s Cost Effectiveness Framework and are appropriately categorized as Category 3. Marseilles, Pinckneyville, Heyworth, and Tilden have a BCR of less than one but are supplemented by achieving at least half of Ameren’s qualitative objectives. IFCUP Ex. 2.00 RGP/RRP at 21 Table CTF-4.
+> For the four other projects challenged by IFCUP, the Commission finds that Marseilles, Pinckneyville, Heyworth, and Tilden are supported by Ameren’s Cost Effectiveness Framework and are appropriately categorized as Category 3. Marseilles, Pinckneyville, Heyworth, and Tilden have a BCR of less than one but are supplemented by achieving at least half of Ameren’s qualitative objectives. IFCUP Ex. 2.00 RGP/RRP at 21 Table CTF-4.
 
 Ameren Ill. Co. d/b/a Ameren Ill., ICC Final Order on Refiling, Docket Nos. 22-0487/23-0082/24-0238 (Cons.) 174 (March 27, 2025) (“MYIGP Final Order on Refiling”). I believe the BE make-ready budget has additional benefits which are qualitative in nature and should be approved.
 
@@ -275,7 +306,7 @@ Ameren Ill. Co. d/b/a Ameren Ill., ICC Final Order on Refiling, Docket Nos. 22-0
 
 **Q.** Please summarize the recommendations JNGO made in Direct Testimony with respect to Fleet Assessment program.
 
-**A.** JNGO notes that Ameren proposes to remove its Fleet Assessment program which was approved in BE plan 2 from this grid plan and recommends that Ameren continue its Fleet Assessment program as approved in BE plan 2. (JNGO Ex. 8.0, 21.) JNGO states that Ameren’s proposals to remove its fleet assessment program does not adequately meet CRGA medium-duty and heavy- duty vehicle (“MHDV”) requirement. (JNGO Ex. 8.0, 23.) JNGO states that the fleet assessment program aligns with “other programs” stated in CRGA. Id. JNGO added that though CRGA charges IEPA to conduct customer education, it does not remove Ameren’s responsibility to provide customer education to improve the effectiveness of its programs. Id. JNGO states that it will be beneficial to have fleet assessment services because Ameren’s line extension policy is inadequate and its “education and outreach” is not well explained. Id. at 24. JNGO also recommended that Ameren maintain the small fleet program that Ameren agreed to in the BE plan 2. Id. JNGO states that Ameren should retain the small fleet budget targets it agreed to as part of its BE Plan 2 which allocates 30% of Ameren’s make-ready incentives to support small fleet. Id. at 24-25.
+**A.** JNGO notes that Ameren proposes to remove its Fleet Assessment program which was approved in BE plan 2 from this grid plan and recommends that Ameren continue its Fleet Assessment program as approved in BE plan 2. (JNGO Ex. 8.0, 21.) JNGO states that Ameren’s proposals to remove its fleet assessment program does not adequately meet CRGA medium-duty and heavy-duty vehicle (“MHDV”) requirement. (JNGO Ex. 8.0, 23.) JNGO states that the fleet assessment program aligns with “other programs” stated in CRGA. Id. JNGO added that though CRGA charges IEPA to conduct customer education, it does not remove Ameren’s responsibility to provide customer education to improve the effectiveness of its programs. Id. JNGO states that it will be beneficial to have fleet assessment services because Ameren’s line extension policy is inadequate and its “education and outreach” is not well explained. Id. at 24. JNGO also recommended that Ameren maintain the small fleet program that Ameren agreed to in the BE plan 2. Id. JNGO states that Ameren should retain the small fleet budget targets it agreed to as part of its BE Plan 2 which allocates 30% of Ameren’s make-ready incentives to support small fleet. Id. at 24-25.
 
 [p. 21, lines 454–476] _(paragraph continues from previous page)_
 
@@ -393,7 +424,9 @@ I believe these explanations address IEPA’s requests for information. However,
 
 **Q.** What is Ameren reply to Staff
 
-**A.** Ameren explained that its BE plan will result in a lower cost to residential customers compared to what they were doing before. (Ameren Exhibit 23.0, 12.) Ameren added that it reviewed its BE plan and determined that it allocated a smaller amount of its BE plan budget to its residential class. Id. Ameren stated that it addressed this issue in its revenue neutral rate design case where the Commission approved a new allocation method for Ameren’s BE plan cost which resulted in a reduced BE plan costs allocation to residential customers from 61%-30%. Id. Rebuttal Testimony Recommendation
+**A.** Ameren explained that its BE plan will result in a lower cost to residential customers compared to what they were doing before. (Ameren Exhibit 23.0, 12.) Ameren added that it reviewed its BE plan and determined that it allocated a smaller amount of its BE plan budget to its residential class. Id. Ameren stated that it addressed this issue in its revenue neutral rate design case where the Commission approved a new allocation method for Ameren’s BE plan cost which resulted in a reduced BE plan costs allocation to residential customers from 61%-30%. Id.
+
+### Rebuttal Testimony Recommendation
 
 **Q.** What is your recommendation related to Ratepayer Impacts?
 
@@ -411,7 +444,7 @@ I believe these explanations address IEPA’s requests for information. However,
 
 Ameren stated that it applied a default net-to-gross ratio of 80% for its ChargeSmart and FlexCharge programs. Ameren also indicated that its FlexCharge program was not included in the BE Plan 1 evaluation it performed so it applied the default 80% net to gross. Ameren added that ChargeSmart was included in the evaluation, and the evaluation included an assessment of how the ChargeSmart program influenced customer's decision to adopt the EV’s. Ameren added that the costs and benefits of vehicle adoption were not included in its 2029-2031 cost-effectiveness analysis, so the Company also defaulted to using 80% for the ChargeSmart program. (Ameren Ex. 23.0, 40.)
 
-Rebuttal Testimony Recommendation
+### Rebuttal Testimony Recommendation
 
 **Q.** What is your recommendation related to net-to-gross?
 

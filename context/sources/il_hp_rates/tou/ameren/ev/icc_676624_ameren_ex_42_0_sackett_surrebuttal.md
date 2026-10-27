@@ -1,16 +1,20 @@
 # Surrebuttal Testimony of Eric Sackett (Ameren Ex. 42.0) — Revised 2029–2031 BE Portfolio Including the New ChargeReady Program
 
-**Source**: `icc_676624_ameren_ex_42_0_sackett_surrebuttal.pdf` (original PDF not stored in the repo) (ICC e-docket file id 676624, document 384171)
+**Source**: `icc_676624_ameren_ex_42_0_sackett_surrebuttal.pdf` (original PDF not stored in the repo)
 **Pages**: 36 PDF pages (cover, table of contents, 34 numbered pages of testimony)
 **Date**: July 28, 2026
-**Docket**: ICC Docket No. 26-0051 (Ameren Illinois Company d/b/a Ameren Illinois, Petition for Approval of Multi-Year Integrated Grid Plan pursuant to 220 ILCS 5/16-105.17; ICC e-docket id P2026-0051)
-**Author(s)**: Eric E. Sackett, Senior Manager, Beneficial Electrification and Business Development
+**Docket**: ICC Docket No. 26-0051
+**Author(s)**: Eric Sackett
 **Author affiliations**: Ameren Illinois Company d/b/a Ameren Illinois
-**Document type**: Surrebuttal testimony (Ameren Ex. 42.0). Adds a customer-side make-ready program ("ChargeReady"); attachment Ameren Ex. 42.1 is the revised Appendix X (see `icc_676625_...`)
+**Document type**: Surrebuttal testimony (Ameren Ex. 42.0), submitted on behalf of Ameren Illinois Company d/b/a Ameren Illinois
 **Extraction method**: Embedded PDF text (pdfplumber; superscript footnote references detected from font size), tables extracted from ruled cells and checked against rendered page images
 
 **Extraction notes**:
 
+- _Extractor note (not source text):_ the ICC e-docket file id (676624), document id (384171) and e-docket id (P2026-0051), the docket petition title ("Petition for Approval of Multi-Year Integrated Grid Plan pursuant to 220 ILCS 5/16-105.17"), the witness's middle initial and job title ("Eric E. Sackett, Senior Manager, Beneficial Electrification and Business Development", taken from sibling exhibits) and the description of Ex. 42.0 as adding the ChargeReady program with Ex. 42.1 as its revised Appendix X (`icc_676625_...`) come from the ICC e-docket page and sibling exhibits; the PDF cover prints only "Ameren Exhibit 42.0 / ILLINOIS COMMERCE COMMISSION / DOCKET 26-0051 / SURREBUTTAL TESTIMONY OF ERIC SACKETT / Submitted on Behalf of Ameren Illinois Company d/b/a Ameren Illinois / July 28, 2026".
+- The source subsection lettering skips D (C is followed by E, "Revised Rebuttal Testimony", which is not in the table of contents).
+- The printed "A." label of many answers is drawn in the PDF but is missing from its text layer; it is restored here from the rendered pages (checked on several pages).
+- The source numbers its last subsection "E." although there is no "D."; it is kept as printed.
 - The repeated page header ("Ameren Exhibit 42.0" / "Page N of 34") is omitted and replaced by a **`[p. N, lines a–b]`** marker at each page break (N = the printed testimony page number; PDF page = N + 2). Line numbers are the numbered lines printed in the left margin of the source. A marker followed by _(paragraph continues from previous page)_ means the paragraph above it runs across the page break; the marker is placed after the whole paragraph.
 - The cover page and the cover block repeated on testimony page 1 are condensed into this front matter.
 - The table of contents (23 entries) is reproduced as a table below.
@@ -27,7 +31,7 @@
 
 | Section                                                          | Page |
 | ---------------------------------------------------------------- | ---- |
-| Ameren Exhibit 42.0 I. INTRODUCTION                              | 1    |
+| I. INTRODUCTION                                                  | 1    |
 | A. Witness Identification                                        | 1    |
 | B. Purpose, Scope, and Identification of Exhibits                | 1    |
 | II. Surrebuttal PROPOSAL OVERVIEW                                | 2    |
@@ -93,40 +97,15 @@
 
 **A.** The updated portfolio would include three programs: 1) ChargeReady, 2) ChargeSmart, and 3) FlexCharge. ChargeReady would be a new addition to the Portfolio, while ChargeSmart and FlexCharge have already been proposed and discussed at length in my supplemental direct and revised rebuttal testimonies (Ameren Ex. 15.0, 23.0 (Rev.)). Table 1 details these programs.
 
-**Table 1. 2029-2031 BE Program Descriptions**
-
 [p. 3, lines 46–49] _(paragraph continues from previous page)_
 
-| Program     | Sub Program      | Description                                          | Relevant CRGA Provision  |
-| ----------- | ---------------- | ---------------------------------------------------- | ------------------------ |
-| ChargeReady | Residential/Non- | For residential customers, the ChargeReady           | 220 ILCS 5/16-           |
-| (NEW)       | residential      | Program provides support for the upfront costs of    | 105.17(f)(2)(M)(i)       |
-|             |                  | charging infrastructure installation through make-   |                          |
-|             |                  | ready incentives.                                    |                          |
-|             |                  | For non-residential customers, the ChargeReady       |                          |
-|             |                  | Program encourages charging infrastructure           |                          |
-|             |                  | installation through a make-ready incentives         |                          |
-|             |                  | (excluding chargers) for eligible EIEC and non-      |                          |
-|             |                  | EIEC areas.                                          |                          |
-| ChargeSmart | Residential/Non- | For residential DS-1 customers and non-              | 220 ILCS 5/16-           |
-|             | residential      | residential DS-2 customers, an optional EV time      | 105.17(f)(2)(M)(i)-(iii) |
-|             |                  | of use rate that encourages charging at times        |                          |
-|             |                  | better for the grid with a Preferred Charging        |                          |
-|             |                  | Delivery Credit, and a monthly EV Bill Credit        |                          |
-|             |                  | (EVCP Tariff). For non-residential DS3/DS4           |                          |
-|             |                  | facilities, demand charges will not be billed        |                          |
-|             |                  | during off-peak periods and a rate limiter credit is |                          |
-|             |                  | applicable for public charging facilities. (EVCP     |                          |
-|             |                  | Tariff).                                             |                          |
-| FlexCharge  | Residential      | Managed Charging program that aims to enhance        | 220 ILCS 5/16-           |
-|             |                  | grid reliability and optimize energy resources       | 105.17(f)(2)(M)(ii)      |
-|             |                  | through effective management of EV charging          |                          |
-|             |                  | activities within the Ameren Illinois service        |                          |
-|             |                  | territory. Customers will be given an upfront        |                          |
-|             |                  | incentive and ongoing incentives based on their      |                          |
-|             |                  | participation in the program. Pending review of      |                          |
-|             |                  | multi-unit renter properties may expand target       |                          |
-|             |                  | market.                                              |                          |
+**Table 1. 2029-2031 BE Program Descriptions**
+
+| Program             | Sub Program                 | Description                                                                                                                                                                                                                                                                                                                                                                                                                              | Relevant CRGA Provision                |
+| ------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| ChargeReady _(NEW)_ | Residential/Non-residential | For residential customers, the ChargeReady Program provides support for the upfront costs of charging infrastructure installation through make-ready incentives. For non-residential customers, the ChargeReady Program encourages charging infrastructure installation through a make-ready incentives (excluding chargers) for eligible EIEC and non-EIEC areas.                                                                       | 220 ILCS 5/16-105.17(f)(2)(M)(i)       |
+| ChargeSmart         | Residential/Non-residential | For residential DS-1 customers and non-residential DS-2 customers, an optional EV time of use rate that encourages charging at times better for the grid with a Preferred Charging Delivery Credit, and a monthly EV Bill Credit (EVCP Tariff). For non-residential DS3/DS4 facilities, demand charges will not be billed during off-peak periods and a rate limiter credit is applicable for public charging facilities. (EVCP Tariff). | 220 ILCS 5/16-105.17(f)(2)(M)(i)-(iii) |
+| FlexCharge          | Residential                 | Managed Charging program that aims to enhance grid reliability and optimize energy resources through effective management of EV charging activities within the Ameren Illinois service territory. Customers will be given an upfront incentive and ongoing incentives based on their participation in the program. Pending review of multi-unit renter properties may expand target market.                                              | 220 ILCS 5/16-105.17(f)(2)(M)(ii)      |
 
 [p. 4, lines 50–70]
 
@@ -188,11 +167,9 @@
 
 **A.** The list below provides a high-level summary of the changes that would accommodate an expanded ChargeReady program. Details of these revisions are reflected in BE Plan 2029-2031 Model_Make Ready Cat. 4_Surrebuttal Workpaper and included Ameren Ex. 42.1, the Company's updated Appendix X. Please refer to Ameren Ex. 38.0, the surrebuttal testimony of Andrew Cottrell, for more details on the cost-effectiveness and modeling approach. Additional details can also be found in BE Plan 2029-2031 Model_Make Ready Cat. 4 Vehicle Switching_Surrebuttal Workpaper.
 
-- Addition of ChargeReady offering for residential and non-residential
+- Addition of ChargeReady offering for residential and non-residential customers with expanded make-ready incentives for customer-side equipment.
 
-> customers with expanded make-ready incentives for customer-side equipment. - Introduction of cost-effectiveness calculations related to vehicle switching
-
-> from ChargeReady efforts. Structure and calculations for this component align with those used in BE Plan 2 with updates made to selected inputs and data sources where appropriate.
+- Introduction of cost-effectiveness calculations related to vehicle switching from ChargeReady efforts. Structure and calculations for this component align with those used in BE Plan 2 with updates made to selected inputs and data sources where appropriate.
 
 - Revised assumed IT portfolio costs from 2.5% of total program costs to 1%.
 
@@ -273,13 +250,16 @@
 
 **Table 4: Proposed ChargeReady Program Investment**
 
-|                        | Total Electric Budget |             |             |              |
-| ---------------------- | --------------------- | ----------- | ----------- | ------------ |
-| ChargeReady Program    | 2029                  | 2030        | 2031        | 3-Year Total |
-| Res. ChargeReady       | $3,483,357            | $3,492,348  | $3,501,520  | $10,477,225  |
-| Non-Res. ChargeReady   | $16,475,810           | $16,496,791 | $16,518,191 | $49,490,791  |
-| Total ChargeReady      | $19,959,166           | $19,989,139 | $20,019,711 | $59,968,016  |
-| [p. 12, lines 207–227] |                       |             |             |              |
+|                      | Total Electric Budget |             |             |              |
+| -------------------- | --------------------- | ----------- | ----------- | ------------ |
+| ChargeReady Program  | 2029                  | 2030        | 2031        | 3-Year Total |
+| Res. ChargeReady     | $3,483,357            | $3,492,348  | $3,501,520  | $10,477,225  |
+| Non-Res. ChargeReady | $16,475,810           | $16,496,791 | $16,518,191 | $49,490,791  |
+| Total ChargeReady    | $19,959,166           | $19,989,139 | $20,019,711 | $59,968,016  |
+
+_Extractor note (not source text):_ source arithmetic discrepancies, values kept as printed: Non-Res. ChargeReady components 16,475,810 + 16,496,791 + 16,518,191 sum to $49,490,792 (printed $49,490,791); 2029 Res. + Non-Res. 3,483,357 + 16,475,810 sum to $19,959,167 (printed $19,959,166).
+
+[p. 12, lines 207–227]
 
 **Q.** How did the Company develop the budget and participation levels for the proposed ChargeReady Program?
 
@@ -357,7 +337,7 @@ the applicable $300/kW or $500/kW incentive cap. The customer would be responsib
 
 **Q.** Does the Company offer alternatives to traditional demand-based rates to charging customers other than public charging?
 
-**A.** Yes, while it is true that the rate limiter as approved by the Commission only applies to public charging customers, Rider EVCP (ChargeSmart) also states that "A Customer that has installed or installs a new EV Charging Station shall be billed a Distribution Delivery Charge based only on the maximum Demand in kW occurring during the On-Peak period of the Billing Period, as applicable. Maximum Demand during Off-Peak periods will not be billed." This means that DS-3 and DS-4 charging customers enrolled in ChargeSmart can charge an EV while paying no demand charge at all, so long as that charging occurs in off-peak hours, rather than paying traditional demand charges in those periods. This both incentivizes an efficient use of the grid and EV adoption and applies to any DS-3 or DS-4 charging customer, not just public charging.
+**A.** Yes, while it is true that the rate limiter as approved by the Commission only applies to public charging customers, Rider EVCP (ChargeSmart) also states that "A Customer that has installed or installs a new EV Charging Station shall be billed a Distribution Delivery Charge based only on the maximum Demand in kW occurring during the On-Peak period of the Billing Period, as applicable. Maximum Demand during Off-Peak periods will not be billed." This means that DS-3 and DS-4 charging customers enrolled in ChargeSmart can charge an EV while paying _no_ demand charge at all, so long as that charging occurs in off-peak hours, rather than paying traditional demand charges in those periods. This both incentivizes an efficient use of the grid and EV adoption and applies to any DS-3 or DS-4 charging customer, not just public charging.
 
 **Q.** Do you believe this satisfies Section 16-105.17(f)(2)(M)(iii)?
 
@@ -389,9 +369,7 @@ the applicable $300/kW or $500/kW incentive cap. The customer would be responsib
 
 **Q.** What is a Fleet Assessment program?
 
-**A.** A Fleet Assessment program is an advisory and planning tool intended to help non-residential customers evaluate opportunities to transition vehicle fleets from internal combustion engine vehicles to electric vehicles. Fleet assessments generally include: (1) an evaluation of the customer's existing fleet operations and vehicle usage patterns; (2) identification of potential EV replacement vehicles; (3) analysis of charging requirements; (4) a recommendation to electrify or not; (5) financial analyses such as total cost of ownership, payback period, and other fleet electrification economics; (6) evaluation of potential emissions reductions; and (7)
-
-recommendations regarding available grants, rebates, and fleet electrification strategies (if available). The assessment is designed to provide customers with information to support decisions regarding future vehicle purchases and fleet electrification planning.
+**A.** A Fleet Assessment program is an advisory and planning tool intended to help non-residential customers evaluate opportunities to transition vehicle fleets from internal combustion engine vehicles to electric vehicles. Fleet assessments generally include: (1) an evaluation of the customer's existing fleet operations and vehicle usage patterns; (2) identification of potential EV replacement vehicles; (3) analysis of charging requirements; (4) a recommendation to electrify or not; (5) financial analyses such as total cost of ownership, payback period, and other fleet electrification economics; (6) evaluation of potential emissions reductions; and (7) recommendations regarding available grants, rebates, and fleet electrification strategies (if available). The assessment is designed to provide customers with information to support decisions regarding future vehicle purchases and fleet electrification planning.
 
 **Q.** Do you agree with the recommendation and comments from witnesses regarding the inclusion of a Fleet Assessment program?
 
@@ -583,13 +561,9 @@ Based on these findings, Ameren Illinois concluded that the technologies evaluat
 
 **A.** For 2029-2031, the Company would mirror some budget flexibility conditions from BE Plan 1 and BE Plan 2. Specifically, the Company would adopt the following budget flexibility conditions:
 
-- The Company would not shift funds from non-portfolio budget to portfolio budget;
+- The Company would not shift funds from non-portfolio budget to portfolio budget; and
 
-and
-
-- The Company's overall plan period spend would need to be equal to or less than the
-
-> overall plan period budget approved by the Commission. Incentives reserved to benefit equity investment eligible and/or low-income customers would not be able to be shifted to activities that benefit non-equity investment eligible and/or non-low-income customers.
+- The Company's overall plan period spend would need to be equal to or less than the overall plan period budget approved by the Commission. Incentives reserved to benefit equity investment eligible and/or low-income customers would not be able to be shifted to activities that benefit non-equity investment eligible and/or non-low-income customers.
 
 [p. 33, lines 637–656]
 
@@ -603,7 +577,9 @@ and
 
 **A.** Yes. In order to accommodate potential changes in EV adoptions and other unforeseen market circumstances over the 2029-2031 Grid Plan period, the Company would propose having the ability to shift budget dollars among programs (subject to the aforementioned conditions) and from year to year or otherwise to better support the State's transportation electrification goals.
 
-E. Revised Rebuttal Testimony Q: Can you provide context on the revised rebuttal testimony that you filed on July 23, 2026?
+### E. Revised Rebuttal Testimony
+
+**Q.** Can you provide context on the revised rebuttal testimony that you filed on July 23, 2026?
 
 **A.** Yes. I wanted to clarify that the sensitivity analysis introduced in my rebuttal testimony reflected $22 million per year from 2029-2031, and not $22 million total over that three-year time period.
 

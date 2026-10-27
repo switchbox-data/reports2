@@ -1,20 +1,22 @@
 # Ameren Illinois — Rider EVCP (Optional Electric Vehicle Charging Program), Sheets 21 through 21.012
 
-**Source**: `icc_rider_evcp_sheets_21_ameren_tariff_aug2026.pdf` (original PDF not stored in the repo), downloaded from Ameren's rate site: [Rider EVCP PDF](https://www.ameren.com/-/media/rates/illinois/residential/electric-rates/distribution-delivery/aiel21rdevcp.ashx)
+**Source**: `icc_rider_evcp_sheets_21_ameren_tariff_aug2026.pdf` (original PDF not stored in the repo), download location supplied by the extractor: [Rider EVCP PDF](https://www.ameren.com/-/media/rates/illinois/residential/electric-rates/distribution-delivery/aiel21rdevcp.ashx)
 **Pages**: 13 (one tariff sheet per page)
 **Date**: Composite of sheets filed on four different dates (see the sheet table below); the newest sheets were filed June 30, 2026 and are effective August 14, 2026
 **Author(s)**: Tariff issued by L.P. Singh, Chairman & President (sheets filed 2023 and Dec 2025) and P.E. Smith, Chairman & President (sheets filed Jun 2026)
 **Author affiliations**: Ameren Illinois Company d/b/a Ameren Illinois, 10 Richard Mark Way, Collinsville, IL 62234
-**Document type**: Tariff rider, Electric Service Schedule Ill. C.C. No. 1. Marketed to customers as **ChargeSmart**. DS-1 is the residential delivery-side EV time-of-use program; DS-2, DS-3 and DS-4 cover non-residential EV charging facilities.
+**Document type**: Tariff rider, Electric Service Schedule Ill. C.C. No. 1.
 **Extraction method**: Embedded PDF text; page 8's equation read from the rendered page image because the text layer is garbled.
 
 **Extraction notes**:
 
-- _Minor typographical errors in the source have been corrected for readability. Substantive corrections are annotated inline._
 - Every sheet carries the same header and footer block, stated once here and omitted below: header "Ameren Illinois Company d/b/a Ameren Illinois, Electric Service Schedule Ill. C. C. No. 1" with sheet number and cancelled sheet number (given in each sheet heading below), and the title "RIDER EVCP – OPTIONAL ELECTRIC VEHICLE CHARGING PROGRAM"; footer with that sheet's Date of Filing, Date Effective, the ICC order under which it was filed, issuer, address, and "\*Asterisk denotes change". The per-sheet footer values are tabulated next.
+- _Extractor note (not source text):_ Ameren's Ex. 9.1 in Docket 26-0051 names this program "ChargeSmart"; the tariff text does not use that name. DS-1 is the residential charging program; DS-2, DS-3 and DS-4 cover non-residential EV charging facilities.
+- The body text is verbatim, including source quirks ("Customers bill", "Customers Peak", "Rate DS-2 Standard Charges", "Qualifying Electric Vehicle Facilities Specifications"); no typos were corrected.
+- Two layout re-expressions: the Preferred Charging Period credit lines on sheets 21.004 and 21.005 (PDF pp. 5–6), printed as plain lines in the tariff, are shown as small tables; and where a definition term is printed as a heading and then repeated as "X means …", the two are merged into `**X**: means …`. Section labels such as PURPOSE, AVAILABILITY and MONTHLY CHARGES are bold paragraphs; DEFINITIONS and OPTIONAL PROGRAMS are H3 and the DS-1/DS-2/DS-3 & DS-4 programs H4 under the sheet H2 banners.
 - **Change markers**: the source marks changed text with an asterisk in the left margin. These are preserved as **`[*]`** at the start of the affected heading or paragraph.
 - Dollar signs in units are escaped as `\$`.
-- **All DS-1 charging-program values here are delivery-side only.** The rider changes delivery charges (a per-kWh credit in the Preferred Charging Period, a monthly bill credit, and a charge on the single highest non-preferred hour). It does not change the supply price.
+- _Extractor comment (not in the tariff):_ **all DS-1 charging-program values here are delivery-side only.** The rider changes delivery charges (a per-kWh credit in the Preferred Charging Period, a monthly bill credit, and a charge on the single highest non-preferred hour). It does not change the supply price.
 
 ### Sheet filing history (from each sheet's footer)
 
@@ -30,11 +32,11 @@
 | 8        | 5th Revised 21.007 | 4th Revised 21.007 | June 30, 2026     | August 14, 2026 | 25-0083                                   |
 | 9        | 2nd Revised 21.008 | 1st Revised 21.008 | December 19, 2025 | January 1, 2026 | 24-0494/24-0578                           |
 | 10       | 2nd Revised 21.009 | 1st Revised 21.009 | December 19, 2025 | January 1, 2026 | 24-0494/24-0578                           |
-| 11       | 1st Revised 21.010 | Original 21.010    | December 19, 2025 | January 1, 2026 | 24-0494/24-0578                           |
+| 11       | 2nd Revised 21.010 | 1st Revised 21.010 | December 19, 2025 | January 1, 2026 | 24-0494/24-0578                           |
 | 12       | 1st Revised 21.011 | Original 21.011    | December 19, 2025 | January 1, 2026 | 24-0494/24-0578                           |
 | 13       | 1st Revised 21.012 | Original 21.012    | December 19, 2025 | January 1, 2026 | 24-0494/24-0578                           |
 
-The DS-1 charging program (sheet 21.004) is unchanged since it was filed May 31, 2023 under Docket 22-0431/22-0443.
+_Extractor observation, derived from the table above (not stated in the tariff):_ sheet 21.004, which carries the DS-1 charging program, shows no later filing than May 31, 2023 (Docket 22-0431/22-0443).
 
 ---
 
@@ -44,7 +46,7 @@ The DS-1 charging program (sheet 21.004) is unchanged since it was filed May 31,
 
 The purpose of this tariff is to encourage Customers to adopt electric transportation technologies and encourage efficient use of the distribution system consistent with Section 45 of the Electric Vehicle Act. The provisions within this tariff are intended to encourage Customers to adopt electric transportation technologies, install appropriate charging infrastructure to support further adoption, and encourage efficient use of the distribution system.
 
-## DEFINITIONS
+### DEFINITIONS
 
 Generally, definitions of terms used in this Rider are provided in the Definitions part of the Customer Terms and Conditions of the Company's Electric Schedule of Rates. The following definitions are for use specifically in this Rider:
 
@@ -82,11 +84,11 @@ Generally, definitions of terms used in this Rider are provided in the Definitio
 
 **Multi-Family Facility**: means one or more buildings used for Residential purposes with two or more Residential units located on the Premises.
 
-**Non-Preferred Charging Period (NPCP)**: means the hours from **11 A.M. until 7 P.M.** Central Prevailing Time (CPT), including all holidays and weekends, for Customers on Rate DS-1 or DS-2.
+**Non-Preferred Charging Period (NPCP)**: means the hours from 11 A.M. until 7 P.M. Central Prevailing Time (CPT), including all holidays and weekends, for Customers on Rate DS-1 or DS-2.
 
 **[\*] Peak Non-Preferred Charging Period Usage**: means the Customer's highest hourly energy consumption measured in kilowatt-hours (kWh) during NPCP hours during the Billing Period, for Customers on Rate DS-1 or DS-2.
 
-**Preferred Charging Period (PCP)**: means the hours from **11 P.M. until 7 A.M.** Central Prevailing Time (CPT), including all holidays and weekends, for Customers on Rate DS-1 or DS-2.
+**Preferred Charging Period (PCP)**: means the hours from 11 P.M. until 7 A.M. Central Prevailing Time (CPT), including all holidays and weekends, for Customers on Rate DS-1 or DS-2.
 
 ## 3rd Revised Sheet No. 21.003 (p. 4)
 
@@ -98,9 +100,9 @@ Generally, definitions of terms used in this Rider are provided in the Definitio
 
 ## 2nd Revised Sheet No. 21.004 (p. 5)
 
-## OPTIONAL PROGRAMS
+### OPTIONAL PROGRAMS
 
-### DS-1 CHARGING PROGRAM
+#### DS-1 CHARGING PROGRAM
 
 **AVAILABILITY**
 
@@ -127,7 +129,7 @@ Customer must comply with the Qualifying Electric Vehicle Facilities Specificati
 
 ## 4th Revised Sheet No. 21.005 (p. 6)
 
-### DS-2 CHARGING PROGRAM
+#### DS-2 CHARGING PROGRAM
 
 **AVAILABILITY**
 
@@ -150,13 +152,13 @@ Customer must comply with the Qualifying Electric Vehicle Facilities Specificati
 
 ## 4th Revised Sheet No. 21.006 (p. 7)
 
-**TERMS AND CONDITIONS** (DS-2 Charging Program, continued)
+**TERMS AND CONDITIONS**
 
 Service under this Program is only available to Customers that install a new separately metered EV Charging Station, renovate an existing EV Charging Station, or add EVSE to an existing service point, in all cases where non-EVSE connected kW load will be equivalent to 10% or less of the total connected kW load.
 
 A Customer must take service under this Program for a minimum of 12 consecutive Billing Periods. Thereafter, Customer will remain on this Program until Customer requests to be removed from the Program or Customer no longer qualifies for service under Program.
 
-### DS-3 & DS-4 CHARGING PROGRAM
+#### DS-3 & DS-4 CHARGING PROGRAM
 
 **AVAILABILITY**
 
@@ -224,6 +226,6 @@ As the adoption of EVs continues to increase, Customers will need to be educated
 
 The Qualifying Electric Vehicle Facility Specifications associated with service under this Rider shall be filed with the ICC for informational purposes in the form of an Informational Sheet. The specifications shall be updated on an "as required" basis and filed no later than the 20th of the month prior to the month they shall be effective. An Informational Sheet filing submitted after that date, but prior to the effective date of the filing, will be accepted only if it corrects an error or errors from a timely filed Informational Sheet for the same effective date. Any other Informational Sheet submitted after that date shall be accepted only if submitted as a Special Permission request under the provision of Section 9-201(a) of the Act.
 
-## 1st Revised Sheets No. 21.010, 21.011 and 21.012 (pp. 11–13)
+## Sheets No. 21.010 (2nd Revised), 21.011 and 21.012 (1st Revised) (pp. 11–13)
 
 Each of these three sheets contains only the heading and the text **[\*] FOR FUTURE USE**.

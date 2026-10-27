@@ -1,21 +1,23 @@
 # Revised Rebuttal Testimony of Eric Sackett (Ameren Ex. 23.0 Rev.) — Response to Staff, IEPA, JNGO, IIEC-CUB on the BE Portfolio
 
-**Source**: `icc_676418_ameren_ex_23_0_rev_sackett_revised_rebuttal.pdf` (original PDF not stored in the repo) (ICC e-docket file id 676418, document 384073)
+**Source**: `icc_676418_ameren_ex_23_0_rev_sackett_revised_rebuttal.pdf` (ICC e-docket file id 676418, document 384073)
 **Pages**: 44 PDF pages (cover, table of contents, 42 numbered pages of testimony)
-**Date**: July 23, 2026 (revised; the original rebuttal was filed June 10, 2026 as Ameren Ex. 23.0, file id 671750, and is not reproduced here)
-**Docket**: ICC Docket No. 26-0051 (Ameren Illinois Company d/b/a Ameren Illinois, Petition for Approval of Multi-Year Integrated Grid Plan pursuant to 220 ILCS 5/16-105.17; ICC e-docket id P2026-0051)
-**Author(s)**: Eric E. Sackett, Senior Manager, Beneficial Electrification and Business Development
+**Date**: July 23, 2026 (printed). Extractor note, not printed: revised; the original rebuttal was filed June 10, 2026 as Ameren Ex. 23.0, file id 671750, and is not reproduced here.
+**Docket**: ICC Docket No. 26-0051 (printed). Extractor note, not printed: Ameren Illinois Company d/b/a Ameren Illinois, Petition for Approval of Multi-Year Integrated Grid Plan pursuant to 220 ILCS 5/16-105.17; ICC e-docket id P2026-0051
+**Author(s)**: Eric Sackett (printed). Extractor note, not printed: full name Eric E. Sackett, Senior Manager, Beneficial Electrification and Business Development
 **Author affiliations**: Ameren Illinois Company d/b/a Ameren Illinois
-**Document type**: Revised rebuttal testimony (Ameren Ex. 23.0 Rev.). Sackett's surrebuttal (Ameren Ex. 42.0) says the revision corrects the sensitivity analysis to $22 million **per year** for 2029–2031, not $22 million in total.
+**Document type**: Revised rebuttal testimony (Ameren Ex. 23.0 Rev.). Extractor note, not printed: Sackett's surrebuttal (Ameren Ex. 42.0) says the revision corrects the sensitivity analysis to $22 million **per year** for 2029–2031, not $22 million in total.
 **Extraction method**: Embedded PDF text (pdfplumber; superscript footnote references detected from font size), tables extracted from ruled cells and checked against rendered page images
 
 **Extraction notes**:
 
+- The H1 subtitle, the witness middle initial and title, the original filing details (June 10, 2026, file id 671750) and the remark about Ameren Ex. 42.0 are supplied by the extractor and are not printed on the PDF. The table of contents row for Section D keeps the source typo "16105.17"; the body heading is corrected (see below).
+- Bibliographic details that are not printed in this PDF are supplied by the extractor from the ICC e-docket page and the sibling exhibits: the docket petition title and e-docket id (P2026-0051), the document id, the witness's job title and middle initial when the cover prints only a name, and the "Document type" description. The original filing date and file id (June 10, 2026; 671750) and the Ex. 42.0 remark about the revision come from the docket page and Ex. 42.0.
 - The repeated page header ("Ameren Exhibit 23.0 (Rev.)" / "Page N of 42") is omitted and replaced by a **`[p. N, lines a–b]`** marker at each page break (N = the printed testimony page number; PDF page = N + 2). Line numbers are the numbered lines printed in the left margin of the source. A marker followed by _(paragraph continues from previous page)_ means the paragraph above it runs across the page break; the marker is placed after the whole paragraph.
 - The cover page and the cover block repeated on testimony page 1 are condensed into this front matter.
-- The table of contents (24 entries) is reproduced as a table below.
+- The table of contents (24 entries) is reproduced as a table below. The page-36 budget table is an embedded image in the PDF and was transcribed from the rendered page; IT Services, Administration and Customer Education are the sub-rows of Portfolio Costs (indented in the source).
 - Footnotes are reproduced as `[^n]` and placed directly after the paragraph that cites them. Statute and witness quotations set off in the source are marked with `>`.
-- Source typos corrected: the heading "Section 16105.17(f)(2)(M)(iii) Compliance" is printed "16105.17" in the source and is given as "16-105.17"; an answer printed as "A. A. In her direct testimony" is given as a single "A."
+- Source typos corrected: the heading "Section 16105.17(f)(2)(M)(iii) Compliance" is printed "16105.17" in the source and is given as "16-105.17" in the body (the table of contents keeps the printed "16105.17"); an answer printed as "A. A. In her direct testimony" is given as a single "A."
 - The only exhibit attached to this testimony is Ameren Ex. 23.1 (see `icc_671751_...`).
 
 ---
@@ -28,7 +30,7 @@
 
 | Section                                           | Page |
 | ------------------------------------------------- | ---- |
-| Ameren Exhibit 23.0 (Rev.) I. INTRODUCTION        | 1    |
+| I. INTRODUCTION                                   | 1    |
 | A. Witness Identification                         | 1    |
 | B. Purpose, Scope, and Identification of Exhibits | 1    |
 | II. RESPONSE TO STAFF WITNESS MARTIN              | 2    |
@@ -73,14 +75,9 @@
 
 **Q.** What is the purpose of your rebuttal testimony in this proceeding?
 
-**A.** The purpose of my rebuttal testimony is to respond to issues raised by Staff and Intervenors in their direct testimony regarding Ameren Illinois Company’s (Ameren Illinois or the Company) proposed 2029-2031 Beneficial Electrification portfolio (2029-2031 BE Portfolio), including claims related to program scope, make-ready infrastructure, cost-effectiveness, and portfolio design. I specifically respond to the rebuttal testimonies of Staff witness Robert Martin (Staff Exhibit 1.0), Illinois Environmental Protection Agency (IEPA) witness Megha Lakhchaura (IEPA Exhibit 1.0), Environmental Defense Fund, Environmental
+**A.** The purpose of my rebuttal testimony is to respond to issues raised by Staff and Intervenors in their direct testimony regarding Ameren Illinois Company’s (Ameren Illinois or the Company) proposed 2029-2031 Beneficial Electrification portfolio (2029-2031 BE Portfolio), including claims related to program scope, make-ready infrastructure, cost-effectiveness, and portfolio design. I specifically respond to the rebuttal testimonies of Staff witness Robert Martin (Staff Exhibit 1.0), Illinois Environmental Protection Agency (IEPA) witness Megha Lakhchaura (IEPA Exhibit 1.0), Environmental Defense Fund, Environmental Law & Policy Center, Natural Resources Defense Council, Union of Concerned Scientists and Vote Solar (JNGO) joint witnesses Muhammed Patel (JNGO Exhibit 6.0) and Brian Urbaszewski (JNGO Exhibit 8.0), and Illinois Industrial Energy Consumers and Citizens Utility Board joint witness Colin Fitzhenry (IIEC-CUB Ex. 1.0).
 
-[p. 2, lines 24–52]
-
-{{RAW p4}}
-| Ameren Exhibit 23.0 (Rev.)
-
-Law & Policy Center, Natural Resources Defense Council, Union of Concerned Scientists and Vote Solar (JNGO) joint witnesses Muhammed Patel (JNGO Exhibit 6.0) and Brian Urbaszewski (JNGO Exhibit 8.0), and Illinois Industrial Energy Consumers and Citizens Utility Board joint witness Colin Fitzhenry (IIEC-CUB Ex. 1.0).
+[p. 2, lines 24–52] _(paragraph continues from previous page)_
 
 **Q.** Are you sponsoring any exhibits with your rebuttal testimony?
 
@@ -102,16 +99,9 @@ Law & Policy Center, Natural Resources Defense Council, Union of Concerned Scien
 
 > (i) make-ready investments and other programs to facilitate the rapid deployment of charging equipment throughout this State, especially deployment that targets medium-duty and heavy-duty vehicle electrification and multi-unit buildings;
 
-(ii) the development and implementation of (1)
+> (ii) the development and implementation of (1) time-of-use rates and their benefit for electric vehicle users and for all customers, (2) optimized charging programs to achieve identified savings, and (3) new contracts and compensation for services in the optimized charging programs, through signals that allow electric vehicle charging to respond to local system conditions, manage critical peak periods, serve as a demand response or peak resource, and maximize renewable energy use and integration into the grid; and
 
-> time-of-use rates and their benefit for electric vehicle users and for all customers, (2) optimized charging programs to achieve identified savings, and (3) new contracts and compensation for services in the optimized charging programs,
-
-[p. 3, lines 53–87]
-
-{{RAW p5}}
-| Ameren Exhibit 23.0 (Rev.)
-
-> through signals that allow electric vehicle charging to respond to local system conditions, manage critical peak periods, serve as a demand response or peak resource, and maximize renewable energy use and integration into the grid; and
+[p. 3, lines 53–87] _(paragraph continues from previous page)_
 
 > (iii) Commercial tariffs utilizing alternatives to traditional demand-based rate structures that facilitate charging for light-duty, heavy-duty, and fleet electric vehicles.
 
@@ -127,9 +117,6 @@ Law & Policy Center, Natural Resources Defense Council, Union of Concerned Scien
 
 [p. 4, lines 88–109]
 
-{{RAW p6}}
-| Ameren Exhibit 23.0 (Rev.)
-
 ### B. Section 16-105.17(f)(2)(M)(i) Compliance
 
 **Q.** What specific comments and recommendations does Mr. Martin make regarding compliance with Section 16-105.17(f)(2)(M)(i), regarding make-ready investments?
@@ -142,28 +129,17 @@ Law & Policy Center, Natural Resources Defense Council, Union of Concerned Scien
 
 [^4]: Staff Ex. 1.0 at 19.
 
-- Provide a program plan with defined investment levels, measurable goals, and
+- Provide a program plan with defined investment levels, measurable goals, and expected project outcomes.
 
-expected project outcomes.
+- Provide a customer education and outreach strategy to support participation and adoption.
 
-- Provide a customer education and outreach strategy to support participation and
-
-adoption.
-
-- Discuss if the Company evaluated alternative approaches that could strengthen
-
-and accelerate EV infrastructure deployment.
+- Discuss if the Company evaluated alternative approaches that could strengthen and accelerate EV infrastructure deployment.
 
 **Q.** Do you agree with how Mr. Martin characterizes the Company's proposal for compliance with Section 16-105.17(f)(2)(M)(i)?
 
-**A.** I do not agree with the characterizations. Ameren Illinois’ proposal satisfies the Section 16-105.17(f)(2)(M)(i) requirement of continuing to support transportation electrification with make-ready investments and other programs that facilitate the rapid deployment of charging equipment. The standard line extension policy reduces the upfront customer cost for the electric vehicle make-ready infrastructure on the utility side of the meter. In BE Plan 2, the Commission
+**A.** I do not agree with the characterizations. Ameren Illinois’ proposal satisfies the Section 16-105.17(f)(2)(M)(i) requirement of continuing to support transportation electrification with make-ready investments and other programs that facilitate the rapid deployment of charging equipment. The standard line extension policy reduces the upfront customer cost for the electric vehicle make-ready infrastructure on the utility side of the meter. In BE Plan 2, the Commission ordered the Company to expand the framework to cover customer-side make-ready which was predicated on the expanded framework remaining cost-beneficial. Here, expanding the program to cover customer-side make-ready would not meet the cost-effectiveness requirements of the Act, as amended by CRGA (CRGA).
 
-[p. 5, lines 110–129]
-
-{{RAW p7}}
-| Ameren Exhibit 23.0 (Rev.)
-
-ordered the Company to expand the framework to cover customer-side make-ready which was predicated on the expanded framework remaining cost-beneficial. Here, expanding the program to cover customer-side make-ready would not meet the cost-effectiveness requirements of the Act, as amended by CRGA (CRGA).
+[p. 5, lines 110–129] _(paragraph continues from previous page)_
 
 **Q.** Do you agree with Mr. Martin's comment that make-ready investments should have their own designated program?
 
@@ -171,16 +147,11 @@ ordered the Company to expand the framework to cover customer-side make-ready wh
 
 **Q.** Can you provide further details on the standard line extension policy?
 
-**A.** Yes. When the Company refers to the standard line extension policy, the Company refers to "Standards and Qualifications for Electric Service,"[^5] which governs how Ameren Illinois extends its distribution system to serve new customer load. Under this policy, a revenue test is used to calculate a cost reduction or allowance applied to the utility-side infrastructure costs associated with serving the new load. Specifically, when a customer submits a new project, Ameren Illinois internally calculates an allowance based on the projected revenue expected to be
+**A.** Yes. When the Company refers to the standard line extension policy, the Company refers to "Standards and Qualifications for Electric Service,"[^5] which governs how Ameren Illinois extends its distribution system to serve new customer load. Under this policy, a revenue test is used to calculate a cost reduction or allowance applied to the utility-side infrastructure costs associated with serving the new load. Specifically, when a customer submits a new project, Ameren Illinois internally calculates an allowance based on the projected revenue expected to be generated by the new load over a seven-year period. This allowance is applied to offset the upfront utility-side costs of the project.
 
-[p. 6, lines 130–151]
+[p. 6, lines 130–151] _(paragraph continues from previous page)_
 
 [^5]: https://www.ameren.com/-/media/rates/illinois/non-residential/electric-rates/general-information/aiel4otsq.ashx.
-
-{{RAW p8}}
-| Ameren Exhibit 23.0 (Rev.)
-
-generated by the new load over a seven-year period. This allowance is applied to offset the upfront utility-side costs of the project.
 
 **Q.** On page 19 of his direct testimony, Mr. Martin requested that the Company provide a "detailed education and outreach strategy, measurable goals including estimated costs per project and the number of customer projects expected to be delivered as well as identifying additional efforts that will work in concert with the make-ready policy to facilitate deployment of infrastructure." How do you respond?
 
@@ -188,14 +159,9 @@ generated by the new load over a seven-year period. This allowance is applied to
 
 **Q.** Can you provide additional information on how the standard line extension policy will support the utility owned and customer owned make-ready?
 
-**A.** Yes. Ameren Illinois' existing standard line extension policy will provide incentives for the utility owned customer make-ready as part of the normal course of utility business. Because
+**A.** Yes. Ameren Illinois' existing standard line extension policy will provide incentives for the utility owned customer make-ready as part of the normal course of utility business. Because it is no longer cost beneficial to do so, the Company does not feel it is appropriate to allow customers to apply left over standard line extension policy funding to support the customer owned customer make-ready. Per CRGA, the IEPA administers grants and other forms of financial assistance to support the electrification of the transportation sector and electric vehicle charging infrastructure.[^6] Electric vehicle charging infrastructure includes both the EV charger and the associated customer owned customer make-ready work.
 
-[p. 7, lines 152–167]
-
-{{RAW p9}}
-| Ameren Exhibit 23.0 (Rev.)
-
-it is no longer cost beneficial to do so, the Company does not feel it is appropriate to allow customers to apply left over standard line extension policy funding to support the customer owned customer make-ready. Per CRGA, the IEPA administers grants and other forms of financial assistance to support the electrification of the transportation sector and electric vehicle charging infrastructure.[^6] Electric vehicle charging infrastructure includes both the EV charger and the associated customer owned customer make-ready work.
+[p. 7, lines 152–167] _(paragraph continues from previous page)_
 
 [^6]: Clean and Reliable Grid Affordability Act, P.A. 104-0458, 2026 Ill. Laws (S.B. 25), pg. 955.
 
@@ -204,9 +170,6 @@ it is no longer cost beneficial to do so, the Company does not feel it is approp
 **A.** Ameren Illinois did consider, through a qualitative review process, alternative approaches outside of what the Company proposed in the original filing. The Company considered the continuation of the make-ready structure included in BE Plan 2 but concluded that the current structure of the line extension policy met the requirements and did not duplicate administrative efforts to deliver customer benefits. Ultimately, the Company concluded that the lack of quantifiable benefits that the Company could claim associated with delivering a customer make-ready program in the net benefits analysis would not outweigh the costs to deliver the expanded program.
 
 [p. 8, lines 168–188]
-
-{{RAW p10}}
-| Ameren Exhibit 23.0 (Rev.)
 
 **Q.** What comments does Mr. Martin make regarding medium-heavy duty vehicle (MHDV) participation?
 
@@ -222,14 +185,9 @@ it is no longer cost beneficial to do so, the Company does not feel it is approp
 
 **Q.** What specific comments does Mr. Martin make regarding compliance with Section 16-105.17(f)(2)(M)(ii) concerning time-of-use rates?
 
-**A.** Mr. Martin is supportive and finds no compliance issue with Section 16-105.17(f)(2)(M)(ii). However, Mr. Martin does recommend that the Company provide additional
+**A.** Mr. Martin is supportive and finds no compliance issue with Section 16-105.17(f)(2)(M)(ii). However, Mr. Martin does recommend that the Company provide additional explanation regarding how expected participation levels will translate into system benefits, including load shifting and peak demand reduction.
 
-[p. 9, lines 189–207]
-
-{{RAW p11}}
-| Ameren Exhibit 23.0 (Rev.)
-
-explanation regarding how expected participation levels will translate into system benefits, including load shifting and peak demand reduction.
+[p. 9, lines 189–207] _(paragraph continues from previous page)_
 
 **Q.** Is the Company able to address Mr. Martin’s request to explain how participation levels are expected to translate to system benefits, including load shifting and peak demand reduction?
 
@@ -242,9 +200,6 @@ explanation regarding how expected participation levels will translate into syst
 [p. 10, lines 208–227]
 
 [^8]: Staff Ex 1.0 at 23.
-
-{{RAW p12}}
-| Ameren Exhibit 23.0 (Rev.)
 
 **Q.** Does the Company agree with Mr. Martin’s statement about the additional time-of use opportunities?
 
@@ -262,16 +217,11 @@ explanation regarding how expected participation levels will translate into syst
 
 **Q.** What comments does Staff witness Martin make regarding the overall compliance of the 2029-2031 BE Portfolio relative to Section 16-105.17(f)(2)(M) regarding cost-effectiveness and minimizing ratepayer impact?
 
-**A.** Mr. Martin states that the Company has provided the data required for a cost-effectiveness evaluation as defined by CRGA.[^10] Mr. Martin also recommends that the Company
+**A.** Mr. Martin states that the Company has provided the data required for a cost-effectiveness evaluation as defined by CRGA.[^10] Mr. Martin also recommends that the Company provide the net benefits broken out by customer sector and explain how a make-ready program would fit into the cost-effectiveness framework.
 
-[p. 11, lines 228–248]
+[p. 11, lines 228–248] _(paragraph continues from previous page)_
 
 [^10]: Staff Ex. 1.0 at 26.
-
-{{RAW p13}}
-| Ameren Exhibit 23.0 (Rev.)
-
-provide the net benefits broken out by customer sector and explain how a make-ready program would fit into the cost-effectiveness framework.
 
 **Q.** Is the Company able to meet Mr. Martin's request to provide net benefits by customer segment?
 
@@ -285,14 +235,9 @@ provide the net benefits broken out by customer sector and explain how a make-re
 
 **Q.** Can you provide more information on how the 2029-2031 BE Portfolio minimizes impacts for the broader customer base?
 
-**A.** Yes. I note that the Company addressed this issue in its recently concluded revenue-neutral rate design proceeding (Docket 25-0083). The Company made a compliance filing on October 3, 2025, focusing on its efforts around low-income customers, but also addressing reductions for all residential customers. I will summarize those efforts here. Because BE charges are embedded in base delivery service rates, the 2029-2031 BE Portfolio deals only with costs, not the recovery of those costs. As such, the Company could only address these costs in delivery service rates, and a rate design proceeding provided the appropriate forum to address this issue. In assessing its historical rate design allocations, the Company noted that nearly all BE plan costs were recorded to FERC Account 588. Under historical allocation methods, approximately 61%
+**A.** Yes. I note that the Company addressed this issue in its recently concluded revenue-neutral rate design proceeding (Docket 25-0083). The Company made a compliance filing on October 3, 2025, focusing on its efforts around low-income customers, but also addressing reductions for all residential customers. I will summarize those efforts here. Because BE charges are embedded in base delivery service rates, the 2029-2031 BE Portfolio deals only with costs, not the recovery of those costs. As such, the Company could only address these costs in delivery service rates, and a rate design proceeding provided the appropriate forum to address this issue. In assessing its historical rate design allocations, the Company noted that nearly all BE plan costs were recorded to FERC Account 588. Under historical allocation methods, approximately 61% of costs in that account were assigned to the residential class. However, those allocations were developed before the existence of the BE Plan and thus did not consider how BE Plan dollars were spent. The Company reviewed the BE Plan budgets and determined that a much smaller percentage of BE plan spend was actually budgeted to be spent on the residential class. As a result of that proceeding, the Commission approved new allocation methods for BE Plan costs, which reduced the allocation of BE Plan costs to residential customers from about 61% to 30%.
 
-[p. 12, lines 249–271]
-
-{{RAW p14}}
-| Ameren Exhibit 23.0 (Rev.)
-
-of costs in that account were assigned to the residential class. However, those allocations were developed before the existence of the BE Plan and thus did not consider how BE Plan dollars were spent. The Company reviewed the BE Plan budgets and determined that a much smaller percentage of BE plan spend was actually budgeted to be spent on the residential class. As a result of that proceeding, the Commission approved new allocation methods for BE Plan costs, which reduced the allocation of BE Plan costs to residential customers from about 61% to 30%.
+[p. 12, lines 249–271] _(paragraph continues from previous page)_
 
 In his direct testimony, Mr. Martin cites a decrease in monthly charges related to the BE Plan from approximately $1.56/month to $0.77/month. This decrease is the result of these allocation changes, and applies to all residential customers, not just low-income customers. The compliance filing further explained that under Rider ESDA, low-income customers specifically would receive further discounts, as their bill is discounted according to their income level. In the examples shown, a customer at 200% of the federal poverty level (FPL) would see these charges reduced to $0.62/month, a customer at 100% of FPL would pay $0.31/month and a customer at 50% of FPL would pay $0.16/month.
 
@@ -306,9 +251,6 @@ In his direct testimony, Mr. Martin cites a decrease in monthly charges related 
 
 [p. 13, lines 272–292]
 
-{{RAW p15}}
-| Ameren Exhibit 23.0 (Rev.)
-
 **Q.** Does the Company anticipate continued collaboration with the IEPA on EV related initiatives?
 
 **A.** Yes. The Company recognizes that both the IEPA and the Company have a shared interest in advancing the State’s beneficial/transportation electrification and emissions reduction goals as expressed in CRGA. The Company values continued coordination with the state agency and stakeholders to help ensure EV programs are aligned, effective, and responsive to customer needs. Accordingly, the Company intends to continue corresponding and collaborating with the IEPA as the agency further develops its plans and initiatives in response to CRGA. The Company believes ongoing engagement and partnership will help identify opportunities for coordination, improve information sharing, and support the efficient advancement of the State’s policy objectives including working towards the goal of one million EV’s in Illinois by 2030.
@@ -321,18 +263,13 @@ In his direct testimony, Mr. Martin cites a decrease in monthly charges related 
 
 [^12]: IEPA Ex. 1.0 at 10.
 
-[^13]: Id.
+[^13]: _Id._
 
 **Q.** Do you agree with Ms. Lakhchaura’s definition of make-ready?
 
-**A.** We generally align with Ms. Lakhchaura's understanding of make-ready as encompassing the electrical and construction work between the distribution system and the
+**A.** We generally align with Ms. Lakhchaura's understanding of make-ready as encompassing the electrical and construction work between the distribution system and the charging equipment. As I explained in my supplemental direct testimony (Ameren Exhibit 15.0), the Company's focus is on reducing upfront costs associated with make-ready infrastructure on the utility side of the meter. There are, however, CRGA-specific considerations. CRGA requires beneficial electrification investments, programs, and activities to be cost-effective, and extending the approach to the customer-side make-ready infrastructure is not cost-effective. Therefore, the Company's efforts appropriately focus on the utility side of the meter investments to address CRGA's requirement under (M)(i) while also satisfying CRGA's requirement that beneficial electrification investments, programs, and activities be cost-effective. Please see my response to Staff witness Martin for more information on compliance.
 
-[p. 14, lines 293–314]
-
-{{RAW p16}}
-| Ameren Exhibit 23.0 (Rev.)
-
-charging equipment. As I explained in my supplemental direct testimony (Ameren Exhibit 15.0), the Company's focus is on reducing upfront costs associated with make-ready infrastructure on the utility side of the meter. There are, however, CRGA-specific considerations. CRGA requires beneficial electrification investments, programs, and activities to be cost-effective, and extending the approach to the customer-side make-ready infrastructure is not cost-effective. Therefore, the Company's efforts appropriately focus on the utility side of the meter investments to address CRGA's requirement under (M)(i) while also satisfying CRGA's requirement that beneficial electrification investments, programs, and activities be cost-effective. Please see my response to Staff witness Martin for more information on compliance.
+[p. 14, lines 293–314] _(paragraph continues from previous page)_
 
 **Q.** Should the make-ready incentives offered by Ameren Illinois cover all of the expenses related to the installation of charging equipment?
 
@@ -340,14 +277,9 @@ charging equipment. As I explained in my supplemental direct testimony (Ameren E
 
 **Q.** How have the make-ready offerings changed between BE Plan 2 and the 2029-2031 BE Portfolio?
 
-**A.** The Company provided expanded incentives in BE Plan 1 and BE Plan 2; however, the change in statute and information in the BE Plan 1 evaluation led to a change in the 2029-2031 BE Portfolio. In the BE Plan 2 proceeding, the Commission ordered Ameren Illinois to allow customers the opportunity to use the standard line extension policy toward all make-ready costs, to the extent the budget allows, to remain under the rate cap and be cost-beneficial. However, a
+**A.** The Company provided expanded incentives in BE Plan 1 and BE Plan 2; however, the change in statute and information in the BE Plan 1 evaluation led to a change in the 2029-2031 BE Portfolio. In the BE Plan 2 proceeding, the Commission ordered Ameren Illinois to allow customers the opportunity to use the standard line extension policy toward all make-ready costs, to the extent the budget allows, to remain under the rate cap and be cost-beneficial. However, a different standard applies to beneficial electrification investments under the 2028 Grid Plan. In previous utility-led BE Plans under the Clean Energy Jobs Act (CEJA), cost-effectiveness was evaluated at the portfolio level. Under CRGA, however, individual BE investments must be cost-effective, and Ameren Illinois has determined that providing incentives for the customer-owned electric vehicle charging infrastructure is not cost-effective under the Company's Category 4 net benefits analysis. As explained by Mr. Cottrell in his rebuttal testimony,[^14] a make-ready program does not have any quantifiable benefits associated with the program.
 
-[p. 15, lines 315–334]
-
-{{RAW p17}}
-| Ameren Exhibit 23.0 (Rev.)
-
-different standard applies to beneficial electrification investments under the 2028 Grid Plan. In previous utility-led BE Plans under the Clean Energy Jobs Act (CEJA), cost-effectiveness was evaluated at the portfolio level. Under CRGA, however, individual BE investments must be cost-effective, and Ameren Illinois has determined that providing incentives for the customer-owned electric vehicle charging infrastructure is not cost-effective under the Company's Category 4 net benefits analysis. As explained by Mr. Cottrell in his rebuttal testimony,[^14] a make-ready program does not have any quantifiable benefits associated with the program.
+[p. 15, lines 315–334] _(paragraph continues from previous page)_
 
 [^14]: Ameren Ex. 19.0 at 12.
 
@@ -359,14 +291,11 @@ different standard applies to beneficial electrification investments under the 2
 
 **Q.** Does Ms. Lakhchaura provide any cost-effectiveness analysis supporting her recommended funding levels of make-ready investment?
 
-**A.** Based on my review of Ms. Lakhchaura's direct testimony, I did not see an analysis using the Company's Commission-approved cost-effectiveness framework to justify the recommended funding levels for make-ready investments. While I agree with the importance of providing robust customer-facing programs, the Company considered a broader range of priorities when designing the 2029-2031 BE Portfolio.
+**A.** Based on my review of Ms. Lakhchaura's direct testimony, I did not see an analysis using the Company's Commission-approved cost-effectiveness framework to justify the recommended funding levels for make-ready investments. While I agree with the importance of providing robust customer-facing programs, the Company considered a broader range of priorities when designing the 2029-2031 BE Portfolio. The Company agrees with Ms. Lakhchaura that EV state goals and the evolution of BE
 
-[p. 16, lines 335–354]
+[p. 16, lines 335–354] _(paragraph continues from previous page)_
 
-{{RAW p18}}
-| Ameren Exhibit 23.0 (Rev.)
-
-The Company agrees with Ms. Lakhchaura that EV state goals and the evolution of BE offerings are important. However, the recommendation does not consider cost-effectiveness and the broader impact on the Ameren Illinois customer rate base. The Company appreciates Ms. Lakhchaura's recommendations designed to address customer-side make-ready costs, but the IEPA's recommended BE investments, as I understand it, must be cost-effective in order to be included in the Company's Grid Plan. Additionally, the IEPA's recommendation was limited to incentives only, and it is likely that there would be an increase in non-incentives needed to support implementation. Non-incentives are defined in my supplemental direct testimony in Table 3[^16] and include the following categories: Program Administration, Program Vendor Delivery, Program Marketing, Portfolio Level Administration, Portfolio Level IT, and Customer Education. My response to Mr. Martin above as well as Mr. Cottrell’s rebuttal testimony on make-ready and the cost-effectiveness framework provide a further response.[^17]
+offerings are important. However, the recommendation does not consider cost-effectiveness and the broader impact on the Ameren Illinois customer rate base. The Company appreciates Ms. Lakhchaura's recommendations designed to address customer-side make-ready costs, but the IEPA's recommended BE investments, as I understand it, must be cost-effective in order to be included in the Company's Grid Plan. Additionally, the IEPA's recommendation was limited to incentives only, and it is likely that there would be an increase in non-incentives needed to support implementation. Non-incentives are defined in my supplemental direct testimony in Table 3[^16] and include the following categories: Program Administration, Program Vendor Delivery, Program Marketing, Portfolio Level Administration, Portfolio Level IT, and Customer Education. My response to Mr. Martin above as well as Mr. Cottrell’s rebuttal testimony on make-ready and the cost-effectiveness framework provide a further response.[^17]
 
 [^16]: Ameren Ex.15.0 at 18.
 
@@ -378,37 +307,23 @@ The Company agrees with Ms. Lakhchaura that EV state goals and the evolution of 
 
 [p. 17, lines 355–378]
 
-{{RAW p19}}
-| Ameren Exhibit 23.0 (Rev.)
-
 **Q.** Please describe the development of the sensitivity analysis and program design in further detail.
 
 **A.** The sensitivity analysis was developed in response to the $25 million recommendation by Ms. Lakhchaura. The Company wanted to explore the impact of such a recommendation on the 2029-2031 BE Portfolio's cost-effectiveness. As Mr. Cottrell explains in his rebuttal testimony, the modeling was consistent with the proposed portfolio included in my direct testimony. The analysis was built from the bottom up using a combination of the BE Plan 2 make-ready design structure and updated participation and budget assumptions to align with current market conditions. The additional budget amount included in the supplemental analysis reflects what the Company considers to be a realistic reflection of the expected participation and budget needed to incentivize those participants. The sensitivity analysis includes the following program design elements:
 
 - Total three-year additional budget of $22 million per year over three years.
 
-- Additional budget includes incentives for utility and customer side make-ready
+- Additional budget includes incentives for utility and customer side make-ready that align with the BE Plan 2 ChargeReady offering.
 
-that align with the BE Plan 2 ChargeReady offering.
+- Additional budget covers incentives for the following customer segments Residential, Multifamily, Education Facility, Transit Facility, Public Charging Facility, and Fleet Facility.
 
-- Additional budget covers incentives for the following customer segments
-
-> Residential, Multifamily, Education Facility, Transit Facility, Public Charging Facility, and Fleet Facility.
-
-- Additional budget also includes the following non-incentive budgets to support
-
-> additional implementation: trade ally support and additional IT/digital to support maintenance of a continued program.
+- Additional budget also includes the following non-incentive budgets to support additional implementation: trade ally support and additional IT/digital to support maintenance of a continued program.
 
 **Q.** What are the net benefit results from the sensitivity analysis?
 
-**A.** The addition of an expanded make ready program results in -$7,442,739 of net benefits and a net benefit ratio of 0.68 over the three-year portfolio. Based on the results, the additional
+**A.** The addition of an expanded make ready program results in -$7,442,739 of net benefits and a net benefit ratio of 0.68 over the three-year portfolio. Based on the results, the additional make-ready budget is not cost-effective. Please see Mr. Cottrell’s rebuttal testimony for additional details on the sensitivity analysis results.[^18]
 
-[p. 18, lines 379–398]
-
-{{RAW p20}}
-| Ameren Exhibit 23.0 (Rev.)
-
-make-ready budget is not cost-effective. Please see Mr. Cottrell’s rebuttal testimony for additional details on the sensitivity analysis results.[^18]
+[p. 18, lines 379–398] _(paragraph continues from previous page)_
 
 [^18]: Ameren Ex. 19.0 at 25-27.
 
@@ -426,20 +341,11 @@ make-ready budget is not cost-effective. Please see Mr. Cottrell’s rebuttal te
 
 [p. 19, lines 399–420]
 
-{{RAW p21}}
-| Ameren Exhibit 23.0 (Rev.)
+- Improve transparency by providing regular, publicly available updates on remaining programs.
 
-- Improve transparency by providing regular, publicly available updates on
+- Establish clear eligibility requirements and make changes to administratively complex programs.
 
-remaining programs.
-
-- Establish clear eligibility requirements and make changes to administratively
-
-complex programs.
-
-- Dedicate a point of contact for customer questions and provide a streamlined step
-
-by step utility process guide for customers.
+- Dedicate a point of contact for customer questions and provide a streamlined step by step utility process guide for customers.
 
 - Establish a targeted program for multi-unit buildings.
 
@@ -449,16 +355,11 @@ by step utility process guide for customers.
 
 **Q.** Do you agree with Ms. Lakhchaura’s other recommendations for make-ready efforts, specifically the eligibility requirements, transparency, and point of contact?
 
-**A.** Ameren Illinois does not fully agree with Ms. Lakhchaura’s recommendations in these areas. Her testimony does not provide specific evidence to substantiate the concerns raised about alleged administrative complexity, customer or developer uncertainty, or a lack of transparency in the Company’s programs. In contrast, non-residential make-ready participants are highly satisfied with the program across multiple dimensions, including installation support, standard
+**A.** Ameren Illinois does not fully agree with Ms. Lakhchaura’s recommendations in these areas. Her testimony does not provide specific evidence to substantiate the concerns raised about alleged administrative complexity, customer or developer uncertainty, or a lack of transparency in the Company’s programs. In contrast, non-residential make-ready participants are highly satisfied with the program across multiple dimensions, including installation support, standard line extension policy, and their reduced demand chargers.[^19] Ms. Lakhchaura offers a number of recommendations aimed at improving efficiency, customer experience, process streamlining, transparency, funding consistency, and program design, but these suggestions are presented at a high level and are not accompanied by supporting evidence demonstrating that they are needed, would lead to improved outcomes, or would address the identified concerns. Additionally, feedback from participating customers suggests that the programs are already viewed as transparent, and there has been general support for the current first-come, first-served structure.
 
-[p. 20, lines 421–437]
+[p. 20, lines 421–437] _(paragraph continues from previous page)_
 
-{{RAW p22}}
-| Ameren Exhibit 23.0 (Rev.)
-
-line extension policy, and their reduced demand chargers.[^19] Ms. Lakhchaura offers a number of recommendations aimed at improving efficiency, customer experience, process streamlining, transparency, funding consistency, and program design, but these suggestions are presented at a high level and are not accompanied by supporting evidence demonstrating that they are needed, would lead to improved outcomes, or would address the identified concerns. Additionally, feedback from participating customers suggests that the programs are already viewed as transparent, and there has been general support for the current first-come, first-served structure.
-
-[^19]: 2026 BE Annual Report at page 50. Docket 22-0431 https://icc.illinois.gov/docket/P2022- 0431/documents/378477/files/663669.pdf.
+[^19]: 2026 BE Annual Report at page 50. Docket 22-0431 https://icc.illinois.gov/docket/P2022-0431/documents/378477/files/663669.pdf.
 
 ### C. Section 16-105.17(f)(2)(M)(ii) - ChargeSmart
 
@@ -474,9 +375,6 @@ line extension policy, and their reduced demand chargers.[^19] Ms. Lakhchaura of
 
 [p. 21, lines 438–456]
 
-{{RAW p23}}
-| Ameren Exhibit 23.0 (Rev.)
-
 **Q.** Has the residential ChargeSmart rate structure been previously approved and/or litigated by the Commission?
 
 **A.** Yes, it is my understanding that the rate structure has been approved in BE Plan 1 (ICC Docket 22-0431) and BE Plan 2 (ICC Docket 24-0490), and the proposed 2029-2031 ChargeSmart program is consistent with those approved time-of-use rate structures. Additionally, the rate structure as a whole was discussed in the Company’s revenue neutral rate design investigation conducted under 16-105.5 of the Act. The Commission declined to make adjustments in their order issued in August 2025. Rider EVCP contains residential delivery service price incentives to encourage off-peak charging. Eliminating one component of the rate structure without considering the other components of the rate would result in a revenue imbalance that would have to be made up by other customers. Revenue neutral rate design proceedings occur every three years. Thus, this issue could be further explored in the next rate design proceeding.
@@ -486,9 +384,6 @@ line extension policy, and their reduced demand chargers.[^19] Ms. Lakhchaura of
 **A.** Yes. The ChargeSmart program satisfies the applicable requirements under CRGA by providing a time-of-use rate structure that encourages EV charging during off-peak periods and discourages charging during peak periods which supports grid optimization and customer benefits.
 
 [p. 22, lines 457–478]
-
-{{RAW p24}}
-| Ameren Exhibit 23.0 (Rev.)
 
 **Q.** Do other witnesses find ChargeSmart in compliance with Section 16-105.17(f)(2)(M)(ii)?
 
@@ -506,30 +401,17 @@ line extension policy, and their reduced demand chargers.[^19] Ms. Lakhchaura of
 
 [^21]: IEPA Ex.1.0 at 19.
 
-1. Define how the program will respond to local system conditions, manage critical
-
-> peak periods, function as a demand response resource, and maximize renewable energy integration, consistent with statutory direction.
+> 1. Define how the program will respond to local system conditions, manage critical peak periods, function as a demand response resource, and maximize renewable energy integration, consistent with statutory direction.
 
 [p. 23, lines 479–505]
 
-{{RAW p25}}
-| Ameren Exhibit 23.0 (Rev.)
+> 2. Outline a concrete strategy for achieving a targeted number of participating customers, including outreach and enrollment mechanisms.
 
-2. Outline a concrete strategy for achieving a targeted number of participating
+> 3. Establish a structured customer engagement and feedback process, including an annual public report detailing program participation, attrition rates, and reasons for drop-off, average incentive levels, and total kilowatt hours of energy managed or shifted through the program.
 
-customers, including outreach and enrollment mechanisms.
+> 4. Ensure that telematics-based participation is eligible alongside charger-based participation. Enabling telematics expands market access and increases the number of vehicles that can participate in managed charging programs.
 
-3. Establish a structured customer engagement and feedback process, including an
-
-> annual public report detailing program participation, attrition rates, and reasons for drop-off, average incentive levels, and total kilowatt hours of energy managed or shifted through the program.
-
-4. Ensure that telematics-based participation is eligible alongside charger-based
-
-> participation. Enabling telematics expands market access and increases the number of vehicles that can participate in managed charging programs.
-
-5. Evaluate mechanisms to automatically enroll customers receiving make-ready
-
-> incentives or other program funding into the optimized charging program, with appropriate opt-out provisions.
+> 5. Evaluate mechanisms to automatically enroll customers receiving make-ready incentives or other program funding into the optimized charging program, with appropriate opt-out provisions.
 
 **Q.** Is Ameren Illinois currently implementing and projected to continue any of the above recommendations regarding FlexCharge?
 
@@ -537,14 +419,9 @@ customers, including outreach and enrollment mechanisms.
 
 **Q.** Can you provide more detail on how FlexCharge includes vehicle telematics and charger participation pathways?
 
-**A.** Yes. As designed in BE Plan 2, FlexCharge includes engagement with customers directly through the charger as well as vehicle telematics. The program ensures that both telematics-based and charger-based participation pathways are supported, enabling broader customer eligibility and flexibility. These capabilities are administered through the Company’s contracted implementation vendor, which manages the integration of both vehicle- and charger-based technologies. The vendor maintains an evolving technology roadmap that incorporates new
+**A.** Yes. As designed in BE Plan 2, FlexCharge includes engagement with customers directly through the charger as well as vehicle telematics. The program ensures that both telematics-based and charger-based participation pathways are supported, enabling broader customer eligibility and flexibility. These capabilities are administered through the Company’s contracted implementation vendor, which manages the integration of both vehicle- and charger-based technologies. The vendor maintains an evolving technology roadmap that incorporates new original equipment manufacturer (OEM) and charging provider partnerships as they become available, thereby potentially expanding participation options over time.
 
-[p. 24, lines 506–527]
-
-{{RAW p26}}
-| Ameren Exhibit 23.0 (Rev.)
-
-original equipment manufacturer (OEM) and charging provider partnerships as they become available, thereby potentially expanding participation options over time.
+[p. 24, lines 506–527] _(paragraph continues from previous page)_
 
 **Q.** Can you provide more details on how FlexCharge already incorporates a customer acquisition strategy?
 
@@ -556,14 +433,9 @@ original equipment manufacturer (OEM) and charging provider partnerships as they
 
 **Q.** Are any of Ms. Lakhchaura's recommendations provided above not applicable for Ameren Illinois?
 
-**A.** Yes, one of the recommendations is not applicable. Ameren Illinois does not have the ability to auto enroll customers in FlexCharge. Participation requires customers to complete an
+**A.** Yes, one of the recommendations is not applicable. Ameren Illinois does not have the ability to auto enroll customers in FlexCharge. Participation requires customers to complete an enrollment process and provide affirmative consent to enable communication with their vehicle or charging equipment. As such, enrollment is structured as an opt-in process, and this consideration is not applicable to the program framework.
 
-[p. 25, lines 528–549]
-
-{{RAW p27}}
-| Ameren Exhibit 23.0 (Rev.)
-
-enrollment process and provide affirmative consent to enable communication with their vehicle or charging equipment. As such, enrollment is structured as an opt-in process, and this consideration is not applicable to the program framework.
+[p. 25, lines 528–549] _(paragraph continues from previous page)_
 
 Additionally, at this time, Ameren Illinois is not proposing make-ready support beyond what was included in the original proposal. Ameren Illinois expects to rely on the standard Grid Plan annual reporting process, as described in my direct testimony, rather than implementing additional reporting elements.
 
@@ -573,14 +445,9 @@ Additionally, at this time, Ameren Illinois is not proposing make-ready support 
 
 **Q.** Please explain.
 
-**A.** First, the FlexCharge program design is structured to maximize the utilization of renewable energy resources, such as wind generation, by aligning EV charging activity with off-peak hours, specifically within the designated charging window of 11:00 p.m. to 7:00 a.m. Additionally, FlexCharge has an optional user setting that allows customers with rooftop solar to prioritize maximizing solar utilization and still charge off peak. Next, the majority of Ameren
+**A.** First, the FlexCharge program design is structured to maximize the utilization of renewable energy resources, such as wind generation, by aligning EV charging activity with off-peak hours, specifically within the designated charging window of 11:00 p.m. to 7:00 a.m. Additionally, FlexCharge has an optional user setting that allows customers with rooftop solar to prioritize maximizing solar utilization and still charge off peak. Next, the majority of Ameren Illinois’ distribution feeders are summer load peaking, and the program's structure moves load outside of the peak periods to off peak. FlexCharge will further manage critical peak periods by optimizing how EVs charge during the off-peak time to minimize stress to local systems during that period. This alignment supports greater reliance on overnight and renewable generation while concurrently mitigating strain on the electrical system by shifting EV load away from critical peak demand periods and protecting local system conditions. The selected vendor retains the capability to implement emergency curtailment and support demand response events, as required. However, the pilot demonstrated that EVs currently provide limited incremental value as a dispatchable demand response resource during peak periods, primarily due to overlapping impacts from Ameren Illinois' ChargeSmart program. Accordingly, this capability remains in place to support system operations and may be utilized as appropriate. The Company will continue to evaluate its application as system needs and customer participation evolve.
 
-[p. 26, lines 550–571]
-
-{{RAW p28}}
-| Ameren Exhibit 23.0 (Rev.)
-
-Illinois’ distribution feeders are summer load peaking, and the program's structure moves load outside of the peak periods to off peak. FlexCharge will further manage critical peak periods by optimizing how EVs charge during the off-peak time to minimize stress to local systems during that period. This alignment supports greater reliance on overnight and renewable generation while concurrently mitigating strain on the electrical system by shifting EV load away from critical peak demand periods and protecting local system conditions. The selected vendor retains the capability to implement emergency curtailment and support demand response events, as required. However, the pilot demonstrated that EVs currently provide limited incremental value as a dispatchable demand response resource during peak periods, primarily due to overlapping impacts from Ameren Illinois' ChargeSmart program. Accordingly, this capability remains in place to support system operations and may be utilized as appropriate. The Company will continue to evaluate its application as system needs and customer participation evolve.
+[p. 26, lines 550–571] _(paragraph continues from previous page)_
 
 **Q.** Do you have any other comments in this regard?
 
@@ -592,9 +459,6 @@ Illinois’ distribution feeders are summer load peaking, and the program's stru
 
 [p. 27, lines 572–588]
 
-{{RAW p29}}
-| Ameren Exhibit 23.0 (Rev.)
-
 **Q.** Do you agree with Ms. Lakhchaura’s recommendations related to bidirectional chargers and submetering?
 
 **A.** I do not. Bidirectional charging is allowed as an eligible component of the proposed in the comprehensive VPP design. EV customers with bidirectional chargers are also eligible to participate in net metering in the new CRGA provisions. Ameren Illinois completed submetering testing/analysis as part of BE Plan 1. Submetering for EV billing is not being used going forward based on unreliable results of previous pilot efforts. Ameren witness Andrew Parker’s testimony, Ameren Exhibit 28.0, provides additional detail on the role of bidirectional charging within the 2029-2031 BE Portfolio.
@@ -604,9 +468,6 @@ Illinois’ distribution feeders are summer load peaking, and the program's stru
 **A.** The Company implemented an EV Submetering pilot in 2024 that assessed an EV Submetering function across residential and non-residential applications. Following a comprehensive evaluation of pilot results, the Company noted a lack of adequate data accuracy, quality, and completeness. This influenced the Company’s decision to forego scaling the submetering function in the context of an EV program or rate structure.
 
 [p. 28, lines 589–607]
-
-{{RAW p30}}
-| Ameren Exhibit 23.0 (Rev.)
 
 ## IV. RESPONSE TO JNGO WITNESS MUHAMMED PATEL
 
@@ -630,12 +491,9 @@ Illinois’ distribution feeders are summer load peaking, and the program's stru
 
 [^23]: JNGO Ex. 6.0 at 6.
 
-[^24]: Id.
+[^24]: _Id._
 
 [^25]: JNGO Ex. 6.0 at 9.
-
-{{RAW p31}}
-| Ameren Exhibit 23.0 (Rev.)
 
 **Q.** Do you agree with Mr. Patel’s characterization of the future application of the revenue test?
 
@@ -651,14 +509,9 @@ Illinois’ distribution feeders are summer load peaking, and the program's stru
 
 **Q.** How does the Company’s approach apply to EIECs?
 
-**A.** EIECs customers are fully included in the standard line extension policy. There are no limitations or exclusions for EIEC communities when applying the revenue test. These projects
+**A.** EIECs customers are fully included in the standard line extension policy. There are no limitations or exclusions for EIEC communities when applying the revenue test. These projects receive the same upfront cost reduction framework as any other project based on the installed charging capacity.
 
-[p. 30, lines 629–648]
-
-{{RAW p32}}
-| Ameren Exhibit 23.0 (Rev.)
-
-receive the same upfront cost reduction framework as any other project based on the installed charging capacity.
+[p. 30, lines 629–648] _(paragraph continues from previous page)_
 
 **Q.** Does Mr. Patel provide recommendations for the 2029-2031 BE Portfolio regarding make-ready investments?
 
@@ -674,16 +527,11 @@ receive the same upfront cost reduction framework as any other project based on 
 
 **Q.** What comments does Mr. Patel make regarding Ameren Illinois' compliance with Section 16-105.17(f)(2)(M)(iii) regarding demand-based rates?
 
-**A.** Mr. Patel does not believe that the Company’s proposal meets the CRGA requirements.[^27] Mr. Patel expresses concern that that rate limiter is scheduled to sunset and that it only applies to
+**A.** Mr. Patel does not believe that the Company’s proposal meets the CRGA requirements.[^27] Mr. Patel expresses concern that that rate limiter is scheduled to sunset and that it only applies to public charging. Thus, Mr. Patel argues that the application of the demand charge for those non-public customers can still “undermine the economics,” even if applied in certain times, for the business case to electrify.
 
-[p. 31, lines 649–669]
+[p. 31, lines 649–669] _(paragraph continues from previous page)_
 
 [^27]: JNGO Ex 6.0 at 10.
-
-{{RAW p33}}
-| Ameren Exhibit 23.0 (Rev.)
-
-public charging. Thus, Mr. Patel argues that the application of the demand charge for those non-public customers can still “undermine the economics,” even if applied in certain times, for the business case to electrify.
 
 **Q.** Do you agree with Mr. Patel's characterization of Ameren Illinois' compliance with Section 16-105.17(f)(2)(M)(iii) through ChargeSmart?
 
@@ -697,14 +545,9 @@ public charging. Thus, Mr. Patel argues that the application of the demand charg
 
 **Q.** What recommendations does Mr. Patel make regarding ChargeSmart?
 
-**A.** Mr. Patel recommends that the Commission should require the Company to either “modify its current ChargeSmart offer or propose new commercial rates that include alternatives
+**A.** Mr. Patel recommends that the Commission should require the Company to either “modify its current ChargeSmart offer or propose new commercial rates that include alternatives to demand charges for all commercial charging applications informed by industry best practices.”[^29]
 
-[p. 32, lines 670–684]
-
-{{RAW p34}}
-| Ameren Exhibit 23.0 (Rev.)
-
-to demand charges for all commercial charging applications informed by industry best practices.”[^29]
+[p. 32, lines 670–684] _(paragraph continues from previous page)_
 
 [^29]: JNGO Ex. 6.0 at 12.
 
@@ -718,9 +561,6 @@ to demand charges for all commercial charging applications informed by industry 
 
 [p. 33, lines 685–706]
 
-{{RAW p35}}
-| Ameren Exhibit 23.0 (Rev.)
-
 ## V. RESPONSE TO JNGO WITNESS BRIAN URBASZEWSKI
 
 ### A. Portfolio Costs
@@ -733,22 +573,15 @@ to demand charges for all commercial charging applications informed by industry 
 
 - Reduce total portfolio program costs.
 
-- Provide additional justification for the specific elements within its portfolio
+- Provide additional justification for the specific elements within its portfolio program.
 
-program.
-
-- Provide a high-level overview of the IT/Digital budget and specific
-
-roles/responsibilities for the FTEs requested in the budget.
+- Provide a high-level overview of the IT/Digital budget and specific roles/responsibilities for the FTEs requested in the budget.
 
 **Q.** Do you agree with Mr. Urbaszewski's comments about the amount of portfolio level costs?
 
 **A.** I do not. The proposed amount of portfolio level costs is justified and still results in a cost-effective portfolio. Each portfolio non-incentive cost category in the proposed portfolio is in alignment with historic spending levels to date and itemized build-ups where applicable. For instance, the portfolio administration cost was developed on an average full-time employee (FTE) basis with an average FTE cost and an estimated number of FTEs needed to administer the portfolio. Supporting details for the portfolio level costs are included in the Program Development tab of the workpaper "Supplemental – IGPWP113 – App X – BE Plan 2029-2031 Model," which was provided to Staff and Intervenors shortly after the Company's filing in this proceeding.
 
 [p. 34, lines 707–726]
-
-{{RAW p36}}
-| Ameren Exhibit 23.0 (Rev.)
 
 **Q.** Why is the proposed amount of portfolio level costs necessary to support the implementation of the portfolio?
 
@@ -760,16 +593,13 @@ In practical terms, someone must design, manage, administer, and support these p
 
 [p. 35, lines 727–744]
 
-{{RAW p37}}
-| Ameren Exhibit 23.0 (Rev.)
-
 **Q.** Does Mr. Urbaszewski make any other comments about the portfolio level costs?
 
 **A.** Yes. Mr. Urbaszewski expresses concern that there is “no breakdown of portfolio costs between portfolio administration and other categories.”[^31] Mr. Urbaszewski cites specific concern about the IT/Digital costs in light of the Commission's BE Plan 2 final order directive to “provide a high-level overview of proposed IT/Digital costs for future IT/Digital Services budgets upon filing future BE plans.”[^32] Mr. Urbaszewski additionally stated that “adequate justification” was not provided for portfolio level administration.
 
 [^31]: JNGO Ex. 8.0 at 28.
 
-[^32]: Id.
+[^32]: _Id._
 
 **Q.** Do you agree with Mr. Urbaszewski's characterization of the information provided on portfolio level costs?
 
@@ -777,10 +607,19 @@ In practical terms, someone must design, manage, administer, and support these p
 
 [p. 36, lines 745–756]
 
-[^33]: Ameren Ex. 15.0 at 16.
+_Table at the top of this page, an embedded image in the source (no caption is printed):_
 
-{{RAW p38}}
-| Ameren Exhibit 23.0 (Rev.)
+| Budget Category    | 2029       | 2030                                                                                                        | 2031       |
+| ------------------ | ---------- | ----------------------------------------------------------------------------------------------------------- | ---------- |
+| ChargeSmart        | $1,023,166 | $1,023,166                                                                                                  | $1,023,166 |
+| FlexCharge         | $2,466,468 | $2,612,098                                                                                                  | $2,957,728 |
+| Portfolio Costs    | $1,801,887 | $1,819,009                                                                                                  | $1,841,643 |
+| IT Services        | $159,387   | $176,509                                                                                                    | $199,143   |
+| Administration     | $1,512,500 | $1,512,500                                                                                                  | $1,512,500 |
+| Customer Education | $130,000   | $130,000                                                                                                    | $130,000   |
+| Total Budget       | $5,291,521 | $5,454,272 [source discrepancy: the printed components 1,023,166 + 2,612,098 + 1,819,009 sum to $5,454,273] | $5,822,537 |
+
+[^33]: Ameren Ex. 15.0 at 16.
 
 **Q.** Are the BE Plan 2 Final Order requirements applicable for the 2028-2031 Grid Plan filing for BE?
 
@@ -791,9 +630,6 @@ In practical terms, someone must design, manage, administer, and support these p
 **A.** While I am not an attorney, I understand that Ameren Illinois is not subject to previous BE Plan final order directives with regard to future BE investments.
 
 [p. 37, lines 757–773]
-
-{{RAW p39}}
-| Ameren Exhibit 23.0 (Rev.)
 
 **Q.** Can the Company provide any additional information to address Mr. Urbaszewski’s request on IT/Digital costs?
 
@@ -811,9 +647,6 @@ In practical terms, someone must design, manage, administer, and support these p
 
 [^35]: JNGO Ex. 8.0 at 24.
 
-{{RAW p40}}
-| Ameren Exhibit 23.0 (Rev.)
-
 **Q.** Does Mr. Urbaszewski provide any analysis or modeling to support the recommendations provided?
 
 **A.** No, Mr. Urbaszewski does not provide any quantitative analysis associated with his recommendations nor any concrete recommendation for the size of the added programs.
@@ -829,9 +662,6 @@ In practical terms, someone must design, manage, administer, and support these p
 **A.** I do not. Regarding make-ready incentives, please see my response above to Mr. Martin and Ms. Lakhchaura. Regarding a fleet assessment program, the Company does not agree with Mr. Urbaszewski's interpretation that the “other programs” language cited in CRGA includes fleet assessments. Instead, the Company believes that fleet assessments are customer education efforts, which would fall under the IEPA's purview.
 
 [p. 39, lines 794–810]
-
-{{RAW p41}}
-| Ameren Exhibit 23.0 (Rev.)
 
 **Q.** Do customer education programs fall under the responsibility of the Company to administer?
 
@@ -850,9 +680,6 @@ In practical terms, someone must design, manage, administer, and support these p
 [p. 40, lines 811–825]
 
 [^37]: JNGO Ex. 8.0 at 29.
-
-{{RAW p42}}
-| Ameren Exhibit 23.0 (Rev.)
 
 **Q.** Has Ameren Illinois completed the required portfolio evaluation directed in the BE Plan 1 Final Order?
 
@@ -874,9 +701,6 @@ FlexCharge was not included in the BE Plan 1 evaluation. ChargeSmart was include
 
 [^39]: Ameren Ex. 19.0 at 23.
 
-{{RAW p43}}
-| Ameren Exhibit 23.0 (Rev.)
-
 ## VI. RESPONSE TO IIEC-CUB WITNESS COLIN FITZHENRY
 
 ### A. Portfolio Costs
@@ -896,9 +720,6 @@ FlexCharge was not included in the BE Plan 1 evaluation. ChargeSmart was include
 [^41]: Ameren Ex. 15.0 at 18.
 
 [^42]: Ameren Ex. 23 at 34-35.
-
-{{RAW p44}}
-| Ameren Exhibit 23.0 (Rev.)
 
 **Q.** How does the transition of several BE programs and activities impact the portfolio levels?
 

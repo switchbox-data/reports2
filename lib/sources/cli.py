@@ -544,6 +544,9 @@ def cmd_orgs_sheet_pull(args: argparse.Namespace) -> int:
         return 1
     tabs = review_sheet.pull(meta["spreadsheet_id"])
     decisions, other = review_sheet.answers_from(tabs)
+    previous = review_sheet.load_json(work_dir / "answers.json", {})
+    for section in ("short_forms", "long_key_comments"):
+        other[section] = {**previous.get(section, {}), **other[section]}
     (work_dir / "decisions.json").write_text(json.dumps(decisions, ensure_ascii=False, indent=1), encoding="utf-8")
     (work_dir / "answers.json").write_text(json.dumps(other, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"{len(decisions)} cluster decisions, {len(other['items'])} item verdicts, ", end="")

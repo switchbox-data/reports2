@@ -152,6 +152,25 @@ def short_forms(resolved: Mapping[str, Resolved]) -> dict[str, str | None]:
     return out
 
 
+def table_short_forms(markdown: str) -> dict[str, str]:
+    """Full name -> short form from the conventions doc's subsidiary table ("(none)" rows skipped)."""
+    out: dict[str, str] = {}
+    header: list[str] | None = None
+    for line in markdown.splitlines():
+        cells = [c.strip() for c in line.strip().strip("|").split("|")] if line.lstrip().startswith("|") else []
+        if not cells or set("".join(cells)) <= set("-: "):
+            header = header if cells else None
+            continue
+        if header is None:
+            header = cells
+            continue
+        row = dict(zip(header, cells, strict=False))
+        short = row.get("short form", "").removesuffix("(verify)").strip()
+        if row.get("full name") and short and short != "(none)":
+            out[row["full name"]] = short
+    return out
+
+
 def joined_short(forms: list[str]) -> str:
     """Chicago-style join: "A", "A and B", "A, B and C", "A et al." for four or more."""
     if len(forms) >= 4:

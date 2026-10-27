@@ -41,6 +41,7 @@ from lib.sources import (
 REPO_ROOT = zotero.REPO_ROOT
 DEFAULT_REFERENCES = REPO_ROOT / "reports" / "references.yaml"
 REPORTS_DIR = REPO_ROOT / "reports"
+CONVENTIONS_DOC = REPO_ROOT / "context" / "code" / "source_metadata_conventions.md"
 COLLECTION = "Reports"
 
 
@@ -346,6 +347,7 @@ def cmd_orgs_plan(args: argparse.Namespace) -> int:
             for d in json.loads(path.read_text(encoding="utf-8"))["items"]
         },
         {
+            **org_plan.table_short_forms(CONVENTIONS_DOC.read_text(encoding="utf-8")),
             **rulings.get("short_forms", {}),
             **review_sheet.load_json(work_dir / "answers.json", {}).get("short_forms", {}),
         },

@@ -261,3 +261,14 @@ def test_carry_answers_keeps_reviewer_columns_by_id() -> None:
     saved = review_sheet.answers_as_tabs({}, {"questions": {"Q1": "keep"}, "items": {}})
     got = review_sheet.carry_answers(review_sheet.carry_answers(tabs, previous), saved)
     assert got["Questions"] == [["id", "question", "your_answer"], ["Q1", "new text", "keep"], ["Q2", "b", "yes"]]
+
+
+def test_table_short_forms_reads_subsidiary_table() -> None:
+    md = """
+| legal company | parent | full name | short form | key part |
+| --- | --- | --- | --- | --- |
+| The Connecticut Light and Power Company | Eversource | Eversource Connecticut | CL&P | `clp` |
+| New England Power Company | National Grid | New England Power | NEP (verify) | `nep` |
+| Eversource Energy | | Eversource | (none) | `eversource` |
+"""
+    assert org_plan.table_short_forms(md) == {"Eversource Connecticut": "CL&P", "New England Power": "NEP"}

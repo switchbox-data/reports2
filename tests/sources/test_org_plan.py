@@ -231,3 +231,25 @@ def test_duplicate_sets_and_review_round_trip() -> None:
     decisions, other = review_sheet.answers_from(tabs)
     assert decisions == {row[0]: {"short_form": ""}}
     assert other["items"] == {}
+
+
+@pytest.mark.parametrize(
+    ("key", "creator", "extra_text", "expected"),
+    [
+        (
+            "nyseg_Order_2024",
+            {"name": "New York State Electric & Gas"},
+            "tex.shortauthor: NYSEG",
+            "organization; short form",
+        ),
+        ("eversourceconnecticut_X_2026", {"name": "Eversource Connecticut"}, "", "organization without a short form"),
+        ("ghafri_X_2020", {"firstName": "Saif ZS Al", "lastName": "Ghafri"}, "", "person: check"),
+        ("villanueva_X_2024", {"firstName": "Sen Celina", "lastName": "Villanueva"}, "", "person: check"),
+        ("henchen_X_2025", {"firstName": "Mike", "lastName": "Henchen"}, "", "long surname"),
+        ("vu_X_2025", {"firstName": "Tiffany", "lastName": "Vu"}, "", ""),
+    ],
+)
+def test_key_check(key: str, creator: dict, extra_text: str, expected: str) -> None:
+    plan = {"key": key, "after": {"creators": [{"creatorType": "author", **creator}], "extra": extra_text}}
+    got = review_sheet.key_check(plan)
+    assert got.startswith(expected) and (bool(got) == bool(expected))

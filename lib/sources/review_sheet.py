@@ -10,9 +10,12 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
+
+from lib.sources import citekeys, extra
 
 Rows = list[list[Any]]
 
@@ -22,10 +25,15 @@ CLUSTER_COLS = [
     "your_full_name", "your_short_form", "your_kind", "your_comment",
 ]  # fmt: skip
 ITEM_COLS = [
-    "item", "scope", "cited_as", "old_keys", "new_key", "action", "authors_before", "authors_after", "changes",
-    "flags", "title", "your_verdict", "your_comment",
+    "item", "scope", "cited_as", "old_keys", "new_key", "short_form", "key_check", "action", "authors_before",
+    "authors_after", "changes", "flags", "title", "your_verdict", "your_comment",
 ]  # fmt: skip
-KEY_COLS = ["item", "old_keys", "new_key", "key_changes", "cited_as", "title"]
+KEY_COLS = ["item", "old_keys", "new_key", "short_form", "key_check", "key_changes", "cited_as", "title"]
+LONG_KEY_COLS = [
+    "author_part", "check", "first_author", "short_form", "n_items", "n_cited", "example_keys", "items",
+    "your_short_form", "your_comment",
+]  # fmt: skip
+LONG_AUTHOR_PART = 4
 QUESTION_COLS = ["id", "question", "options", "comes_up_in", "your_answer"]
 CLEANUP_COLS = ["id", "type", "items", "description", "proposed_action", "your_answer"]
 YOURS = ("your_full_name", "your_short_form", "your_kind", "your_comment", "your_verdict", "your_answer")
@@ -46,6 +54,41 @@ def _authors(creators: Iterable[Mapping[str, str]]) -> str:
         name = c.get("name") or ", ".join(x for x in (c.get("lastName"), c.get("firstName")) if x)
         out.append(f"{name} ({c.get('creatorType', 'author')})")
     return "\n".join(out)
+
+
+def short_form(p: Mapping[str, Any]) -> str:
+    try:
+        return extra.get(p["after"].get("extra"), extra.SHORTAUTHOR) or ""
+    except extra.ExtraError:
+        return ""
+
+
+def _first_author(p: Mapping[str, Any]) -> Mapping[str, str] | None:
+    ordered = citekeys._ordered_creators(p["after"].get("creators", []))
+    return ordered[0] if ordered else None
+
+
+def key_check(p: Mapping[str, Any]) -> str:
+    """Why a key's author part is longer than four characters, or "" if it isn't."""
+    if not p["key"] or len(p["key"].split("_", 1)[0]) <= LONG_AUTHOR_PART:
+        return ""
+    first = _first_author(p)
+    if first is None:
+        return "long author part"
+    if citekeys._is_org(first):
+        sf = short_form(p)
+        return f"organization; short form {sf!r} is long" if sf else "organization without a short form"
+    given, last = (first.get("firstName") or "").strip(), (first.get("lastName") or "").strip()
+    if not given or " " in last or _MISSPLIT_GIVEN.search(given) or f"{given} {last}".casefold() in _ORG_AS_PERSON:
+        return "person: check the name is split into first and last"
+    return "long surname (probably fine)"
+
+
+# A surname particle left in the given name ("Saif Al" + "Ghafri"), or a title ("Sen. Celina").
+_MISSPLIT_GIVEN = re.compile(
+    r"(?i)(?:\s(?:al|el|van|von|der|de|da|di|du|la|le|bin|ibn|st\.?)$)|^(?:sen|rep|dr|hon|mr|mrs|ms|prof)\.?\s"
+)
+_ORG_AS_PERSON = frozenset({"con edison"})
 
 
 def cluster_rows(
@@ -95,7 +138,7 @@ def item_rows(plans: Sequence[Mapping[str, Any]]) -> Rows:
     shown.sort(key=lambda p: (not p["flags"], not p["cited"], p["item"]))
     for p in shown:
         rows.append([
-            p["item"], p["scope"], p["cited"], p["old_keys"], p["key"] or "", p["action"],
+            p["item"], p["scope"], p["cited"], p["old_keys"], p["key"] or "", short_form(p), key_check(p), p["action"],
             _authors(p["before"].get("creators", [])), _authors(p["after"].get("creators", [])),
             p["changes"], p["flags"], p["after"].get("title") or p["before"].get("title") or "", "", "",
         ])  # fmt: skip
@@ -106,7 +149,33 @@ def key_rows(plans: Sequence[Mapping[str, Any]]) -> Rows:
     rows: Rows = [KEY_COLS]
     for p in sorted(plans, key=lambda p: (not p["cited"], p["key"] or "")):
         changed = "same" if p["key"] in p["old_keys"] else ("no key yet" if not p["key"] else "new")
-        rows.append([p["item"], p["old_keys"], p["key"] or "", changed, p["cited"], p["after"].get("title") or ""])
+        rows.append([
+            p["item"], p["old_keys"], p["key"] or "", short_form(p), key_check(p), changed, p["cited"],
+            p["after"].get("title") or "",
+        ])  # fmt: skip
+    return rows
+
+
+def long_key_rows(plans: Sequence[Mapping[str, Any]]) -> Rows:
+    """One row per author part over four characters, organizations without a short form first."""
+    groups: dict[str, list[Mapping[str, Any]]] = {}
+    for p in plans:
+        if key_check(p):
+            groups.setdefault(p["key"].split("_", 1)[0], []).append(p)
+    order = ["organization without a short form", "person: check", "organization; short form", "long"]
+
+    def rank(item: tuple[str, list[Mapping[str, Any]]]) -> tuple[int, int, str]:
+        check = key_check(item[1][0])
+        return (next(i for i, o in enumerate(order) if check.startswith(o)), -len(item[1]), item[0])
+
+    rows: Rows = [LONG_KEY_COLS]
+    for part, ps in sorted(groups.items(), key=rank):
+        first = _first_author(ps[0]) or {}
+        name = first.get("name") or ", ".join(x for x in (first.get("lastName"), first.get("firstName")) if x)
+        rows.append([
+            part, key_check(ps[0]), name, short_form(ps[0]), len(ps), sum(bool(p["cited"]) for p in ps),
+            [p["key"] for p in ps[:3]], [p["item"] for p in ps], "", "",
+        ])  # fmt: skip
     return rows
 
 
@@ -141,6 +210,9 @@ def summary_rows(
         ["3. Items: every item whose metadata or key changes. your_verdict = reject to leave an item alone."],
         ["4. Citation keys: every new key, from scratch. Cited keys are rewritten in reports by rekey-refs."],
         ["5. Cleanup: duplicates, deletions and other one-off fixes."],
+        [
+            "6. Long keys: keys whose author part is over four characters. Give an organization a short form in your_short_form (it applies to all its items); for a person, say in your_comment if the name is split wrong."
+        ],
         [""],
         ["items in Reports and Inbox", len(plans)],
         ["items with metadata changes", sum(bool(p["changes"]) for p in plans)],
@@ -171,6 +243,7 @@ def build_tabs(
         "Clusters": cluster_rows(merged, groups, conflicts),
         "Items": item_rows(plans),
         "Citation keys": key_rows(plans),
+        "Long keys": long_key_rows(plans),
         "Cleanup": cleanup_rows(cleanup),
     }
     return {name: [[_cell(v) for v in row] for row in rows] for name, rows in tabs.items()}
@@ -272,6 +345,16 @@ def answers_from(tabs: Mapping[str, Rows]) -> tuple[dict[str, dict[str, Any]], d
         },
         "questions": {r["id"]: r["your_answer"] for r in _records(tabs["Questions"]) if r["your_answer"]},
         "cleanup": {r["id"]: r["your_answer"] for r in _records(tabs["Cleanup"]) if r["your_answer"]},
+        "short_forms": {
+            r["first_author"]: str(r["your_short_form"]).strip()
+            for r in _records(tabs.get("Long keys", [LONG_KEY_COLS]))
+            if str(r["your_short_form"]).strip()
+        },
+        "long_key_comments": {
+            r["author_part"]: r["your_comment"]
+            for r in _records(tabs.get("Long keys", [LONG_KEY_COLS]))
+            if r["your_comment"]
+        },
     }
     return decisions, other
 

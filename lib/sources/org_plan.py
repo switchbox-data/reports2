@@ -272,14 +272,18 @@ def build(
     rulings: Mapping[str, Mapping[str, Any]] | None = None,
     not_people_names: Iterable[str] = (),
     dockets: Mapping[str, Mapping[str, Any]] | None = None,
+    short_form_names: Mapping[str, str] | None = None,
 ) -> list[ItemPlan]:
     """``rulings`` (item key -> reviewer ruling) beat everything else: ``creators`` (names, or
     ``{"firstName", "lastName"}``), ``fields`` (Zotero field -> value) and ``action``
     (``delete``, or ``duplicate`` with ``duplicate_of``). ``not_people_names`` are single-field
     organizations whose names look like people's. ``dockets`` (item key -> ``{"docket", "title"}``)
-    are researched docket numbers for proceeding documents whose metadata has none."""
+    are researched docket numbers for proceeding documents whose metadata has none.
+    ``short_form_names`` (organization full name -> short form) are the reviewer's short forms for
+    organizations that have none, including ones outside any cluster."""
     resolved = resolve(merged, decisions)
     shorts = short_forms(resolved)
+    shorts.update({name.casefold(): sf for name, sf in (short_form_names or {}).items()})
     norm_to_group = {g["norm"]: g["id"] for g in groups}
     group_cluster = {g: m.id for m in merged for g in m.groups}
     overrides: dict[tuple[str, str], list[tuple[str, ItemOverride]]] = defaultdict(list)

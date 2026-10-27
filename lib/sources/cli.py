@@ -345,6 +345,10 @@ def cmd_orgs_plan(args: argparse.Namespace) -> int:
             for path in sorted((work_dir / "docket_titles").glob("batch_*.json"))
             for d in json.loads(path.read_text(encoding="utf-8"))["items"]
         },
+        {
+            **rulings.get("short_forms", {}),
+            **review_sheet.load_json(work_dir / "answers.json", {}).get("short_forms", {}),
+        },
     )
     (work_dir / "plan.json").write_text(
         json.dumps([asdict(p) for p in plans], ensure_ascii=False, indent=1), encoding="utf-8"

@@ -28,9 +28,11 @@ from lib.sources import (
     cleanup,
     extra,
     item_fixes,
+    org_apply,
     org_plan,
     org_proposals,
     orgs,
+    render_diff,
     review_sheet,
     snapshot,
     zotero,
@@ -337,6 +339,7 @@ def cmd_orgs_plan(args: argparse.Namespace) -> int:
         fixes,
         (today.year, today.month, today.day),
         rulings.get("items", {}),
+        rulings.get("not_people", []),
     )
     (work_dir / "plan.json").write_text(
         json.dumps([asdict(p) for p in plans], ensure_ascii=False, indent=1), encoding="utf-8"
@@ -353,6 +356,52 @@ def cmd_orgs_plan(args: argparse.Namespace) -> int:
     cited_changed = sum(1 for p in keyed if p.cited and p.key not in p.old_keys)
     print(f"  cited items whose key changes: {cited_changed}")
     print(f"  wrote {work_dir / 'plan.json'}")
+    return 0
+
+
+def cmd_orgs_dry_run(args: argparse.Namespace) -> int:
+    """Render every report's citations before and after the plan, and write the differences. Read-only."""
+    work_dir = Path(args.path_work_dir) if args.path_work_dir else snapshot.default_work_dir()
+    snaps = sorted(work_dir.glob("snapshot_v*.json"), key=lambda p: int(p.stem.removeprefix("snapshot_v")))
+    snap = snapshot.load(snaps[-1])
+    plans = {p["item"]: p for p in json.loads((work_dir / "plan.json").read_text(encoding="utf-8"))}
+    items = [it for it in snap["items"] if it["key"] in plans]
+    after_items = []
+    for it in items:
+        p = plans[it["key"]]
+        if (data := org_apply.target_data(p)) is not None:
+            csl = org_apply.preview_csl(it["csljson"], p["before"], p["after"])
+            after_items.append({**it, "data": data, "csljson": csl})
+    out_dir = work_dir / "dry_run"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    paths = {}
+    for name, its, unpinned in (("before", items, True), ("after", after_items, False)):
+        paths[name] = out_dir / f"references_{name}.yaml"
+        result = bib.build_references(its, include_unpinned=unpinned)
+        paths[name].write_text(bib.to_yaml(result, snap["library_version"]), encoding="utf-8")
+    renames = {}
+    for p in plans.values():
+        key = p["key"] if p["action"] == "update" else (plans.get(p["duplicate_of"] or "") or {}).get("key")
+        for old in p["old_keys"]:
+            if key and old != key:
+                renames[old] = key
+    csl_path = REPORTS_DIR / "chicago-author-date-switchbox.csl"
+    rows = []
+    for report in sorted(d for d in REPORTS_DIR.iterdir() if d.is_dir() and d.name != "templates"):
+        keys = sorted(_cited_keys(report))
+        if not keys:
+            continue
+        diff = render_diff.compare(keys, (paths["before"], csl_path), (paths["after"], csl_path), renames)
+        rows += [{"report": report.name, **r} for r in diff]
+        print(
+            f"{report.name}: {len(diff)} cited, "
+            f"{sum(r['in_text_before'] != r['in_text_after'] for r in diff)} in-text changes, "
+            f"{sum(r['bibliography_before'] != r['bibliography_after'] for r in diff)} bibliography changes, "
+            f"{sum(r['in_text_after'] == '(missing)' for r in diff)} missing after "
+            f"({sum(r['in_text_before'] == '(missing)' for r in diff)} missing before)"
+        )
+    render_diff.write_csv(rows, out_dir / "render_diff.csv")
+    print(f"wrote {out_dir / 'render_diff.csv'}")
     return 0
 
 
@@ -525,6 +574,9 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("orgs-plan", help="apply clusters to every item and compute citation keys from scratch")
     p.add_argument("--path-work-dir", default="")
     p.set_defaults(func=cmd_orgs_plan)
+    p = sub.add_parser("orgs-dry-run", help="render every report's citations before and after the plan")
+    p.add_argument("--path-work-dir", default="")
+    p.set_defaults(func=cmd_orgs_dry_run)
     p = sub.add_parser("orgs-fix-batches", help="write batches of items that still need an author, date or title")
     p.add_argument("--batch-size", type=int, default=23)
     p.add_argument("--path-work-dir", default="")

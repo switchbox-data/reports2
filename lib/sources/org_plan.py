@@ -219,6 +219,47 @@ def _names_for(
     return None, None
 
 
+def _person_split(name: str, known: Mapping[str, tuple[str, str]], comma_only: bool) -> tuple[str, str] | None:
+    """(first, last) for a person stored as one field: "Last, First", or "First [Middle] Last"
+    unless ``comma_only``."""
+    if (hit := known.get(name.casefold())) is not None:
+        return hit
+    if name.count(",") == 1:
+        last, first = (s.strip() for s in name.split(","))
+        if first and last and orgs.classify_creator({"firstName": first, "lastName": last})[1] == "person":
+            return first, last
+        return None
+    if comma_only or orgs.classify_creator({"name": name})[1] != "person" or " " not in name:
+        return None
+    first, last = name.rsplit(" ", 1)
+    return first, last
+
+
+def canonical_creator(
+    c: Mapping[str, str],
+    org_names: Mapping[str, str],
+    known_people: Mapping[str, tuple[str, str]],
+    *,
+    from_zotero: bool,
+    not_people: frozenset[str] = frozenset(),
+) -> dict[str, str]:
+    """A creator with a known organization's reviewed full name, or a single-field person split in two.
+
+    Only names already in Zotero are split on looks alone; names the cleanup assigned are
+    organizations unless written "Last, First".
+    """
+    if "name" not in c:
+        return dict(c)
+    name = c["name"].strip()
+    if (full := org_names.get(orgs.normalize(name))) is not None:
+        return {"creatorType": c["creatorType"], "name": full}
+    if name.casefold() in not_people:
+        return dict(c)
+    if (split := _person_split(name, known_people, comma_only=not from_zotero)) is not None:
+        return {"creatorType": c["creatorType"], "firstName": split[0], "lastName": split[1]}
+    return dict(c)
+
+
 def build(
     snap: snapshot.Snapshot,
     mentions: Iterable[Mapping[str, Any]],
@@ -229,10 +270,12 @@ def build(
     fixes: Mapping[str, ItemFix] | None = None,
     today: tuple[int, int, int] = (9999, 12, 31),
     rulings: Mapping[str, Mapping[str, Any]] | None = None,
+    not_people_names: Iterable[str] = (),
 ) -> list[ItemPlan]:
     """``rulings`` (item key -> reviewer ruling) beat everything else: ``creators`` (names, or
     ``{"firstName", "lastName"}``), ``fields`` (Zotero field -> value) and ``action``
-    (``delete``, or ``duplicate`` with ``duplicate_of``)."""
+    (``delete``, or ``duplicate`` with ``duplicate_of``). ``not_people_names`` are single-field
+    organizations whose names look like people's."""
     resolved = resolve(merged, decisions)
     shorts = short_forms(resolved)
     norm_to_group = {g["norm"]: g["id"] for g in groups}
@@ -247,6 +290,23 @@ def build(
         by_item[mt["item"]].append(mt)
     rows = {r["item"]: r for r in key_rows}
     items = {it["key"]: it["data"] for it in snap["items"]}
+    org_names = {
+        g["norm"]: r.full_name
+        for g in groups
+        if (cid := group_cluster.get(g["id"])) and (r := resolved[cid]).kind == "organization" and r.full_name
+    }
+    for m in merged:
+        r = resolved[m.id]
+        if r.kind == "organization" and r.full_name:
+            for name in [r.full_name] + [p.canonical_full_name for p in m.proposals if p.canonical_full_name]:
+                org_names[orgs.normalize(name)] = r.full_name
+    not_people = frozenset(n.casefold() for n in not_people_names)
+    known_people: dict[str, tuple[str, str]] = {}
+    people_sources = [c for r in (rulings or {}).values() for c in r.get("creators", []) if isinstance(c, dict)]
+    people_sources += [c for d in items.values() for c in d.get("creators", [])]
+    for c in people_sources:
+        if c.get("firstName") and c.get("lastName") and orgs.classify_creator(c)[1] == "person":
+            known_people.setdefault(f"{c['firstName']} {c['lastName']}".casefold(), (c["firstName"], c["lastName"]))
 
     plans: list[ItemPlan] = []
     for item_key, row in rows.items():
@@ -338,10 +398,10 @@ def build(
                 creators = [{"creatorType": ctype, "name": n} for n in names]
                 p.changes.append(f"author (from old key {ka['text']!r}): {names} [{why}]")
 
-        org_names = {c["name"].casefold() for c in creators if "name" in c}
+        author_names = {c["name"].casefold() for c in creators if "name" in c}
         for f in orgs.ORG_FIELDS:
             v = (after.get(f) or "").strip()
-            if v and v.casefold() in org_names:
+            if v and v.casefold() in author_names:
                 after[f] = ""
                 p.changes.append(f"{f}: {v!r} removed (repeats the author)")
 
@@ -367,6 +427,16 @@ def build(
             for f, v in rule.get("fields", {}).items():
                 p.changes.append(f"{f}: {after.get(f)!r} -> {v!r} [{why}]")
                 after[f] = v
+
+        originals = data.get("creators", [])
+        normalized = [
+            canonical_creator(c, org_names, known_people, from_zotero=c in originals, not_people=not_people)
+            for c in creators
+        ]
+        for old, new in zip(creators, normalized, strict=True):
+            if old != new:
+                p.changes.append(f"creator {orgs.classify_creator(old)[0]!r} -> {new}")
+        creators = normalized
 
         if creators != data.get("creators", []):
             after["creators"] = creators

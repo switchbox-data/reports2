@@ -75,6 +75,10 @@ orgs-proposals batch="" path_work_dir="":
 orgs-plan path_work_dir="":
     uv run python -m lib.sources.cli orgs-plan --path-work-dir "{{ path_work_dir }}"
 
+# Render every report's citations before and after the plan and diff them (read-only)
+orgs-dry-run path_work_dir="":
+    uv run python -m lib.sources.cli orgs-dry-run --path-work-dir "{{ path_work_dir }}"
+
 # Write batches of items that still need an author, date or title, for the fix-items agent pass
 orgs-fix-batches path_work_dir="":
     uv run python -m lib.sources.cli orgs-fix-batches --path-work-dir "{{ path_work_dir }}"

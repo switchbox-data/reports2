@@ -183,6 +183,28 @@ def test_rulings_override_clusters_and_fixes() -> None:
     assert plans["E"].key == "vu_Testimony_2024"
 
 
+@pytest.mark.parametrize(
+    ("creator", "from_zotero", "expected"),
+    [
+        ({"name": "Roderick Go"}, True, {"firstName": "Roderick", "lastName": "Go"}),
+        ({"name": "Roderick Go"}, False, {"name": "Roderick Go"}),
+        ({"name": "Pigman, Margaret"}, False, {"firstName": "Margaret", "lastName": "Pigman"}),
+        ({"name": "Kristin George Bagdanov"}, True, {"firstName": "Kristin", "lastName": "George Bagdanov"}),
+        ({"name": "Gannett Fleming"}, True, {"name": "GFT"}),
+        ({"name": "Potomac Edison"}, True, {"name": "Potomac Edison"}),
+    ],
+)
+def test_canonical_creator(creator: dict, from_zotero: bool, expected: dict) -> None:
+    got = org_plan.canonical_creator(
+        {"creatorType": "author", **creator},
+        {"gannett fleming": "GFT"},
+        {"kristin george bagdanov": ("Kristin", "George Bagdanov")},
+        from_zotero=from_zotero,
+        not_people=frozenset({"potomac edison"}),
+    )
+    assert got == {"creatorType": "author", **expected}
+
+
 def test_item_fix_validation() -> None:
     ev = [{"quote": "q", "source": "s"}]
     with pytest.raises(ValueError):

@@ -500,7 +500,7 @@ def cmd_orgs_sheet_push(args: argparse.Namespace) -> int:
     snaps = sorted(work_dir.glob("snapshot_v*.json"), key=lambda p: int(p.stem.removeprefix("snapshot_v")))
     snap = snapshot.load(snaps[-1])
     plans = rd(work_dir / "plan.json", [])
-    known = {k for p in plans for k in p["old_keys"]}
+    known = {k for p in plans for k in p["old_keys"]} | {p["key"] for p in plans if p.get("key")}
     unresolved = [k for k in _cited_keys(REPORTS_DIR) if k not in known]
     actions = cleanup.actions(snap, plans, unresolved, snapshot.summarize(snap))
     (work_dir / "cleanup.json").write_text(json.dumps(actions, ensure_ascii=False, indent=1), encoding="utf-8")

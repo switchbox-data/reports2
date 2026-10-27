@@ -55,6 +55,22 @@ sync-bib checks="warn" path_output=path_references *flags="":
 check-citekeys path_references=path_references path_reports=path_reports:
     uv run python -m lib.sources.cli check-citekeys --path-references {{ path_references }} --path-reports {{ path_reports }}
 
+# Library cleanup, step 1: back up the whole Zotero library (local + S3) and write today's key map
+orgs-snapshot path_work_dir="":
+    uv run python -m lib.sources.cli orgs-snapshot --path-work-dir "{{ path_work_dir }}"
+
+# Library cleanup, step 2: extract organization names from the snapshot, link candidates, batch for the agent pass
+orgs-extract path_work_dir="":
+    uv run python -m lib.sources.cli orgs-extract --path-work-dir "{{ path_work_dir }}"
+
+# Print Zotero items' metadata and the opening of their documents' text (for the reconcile-orgs agent pass)
+orgs-evidence +items:
+    uv run python -m lib.sources.cli orgs-evidence {{ items }}
+
+# Library cleanup, step 3: validate the reconcile-orgs proposals and merge them into clusters (batch: one batch only)
+orgs-proposals batch="" path_work_dir="":
+    uv run python -m lib.sources.cli orgs-proposals --batch "{{ batch }}" --path-work-dir "{{ path_work_dir }}"
+
 # Regenerate the Switchbox CSL style from pandoc's default Chicago author-date style
 make-csl path_output=path_csl:
     uv run python -m lib.sources.make_csl --path-output {{ path_output }}

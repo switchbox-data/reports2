@@ -181,13 +181,14 @@ def joined_short(forms: list[str]) -> str:
 
 
 def item_shortauthor(creators: Sequence[Mapping[str, str]], shorts: Mapping[str, str | None]) -> str | None:
-    """The item's short form: its primary creators' short forms, joined; none if any is a person."""
+    """The item's short form: its primary organizations' short forms, joined.
+
+    None when the first primary creator is a person. Named people listed after an organization
+    (witnesses on a utility's testimony) don't count: the item is cited by the organization."""
     ordered = citekeys._ordered_creators(creators)
-    if not ordered:
+    if not ordered or not citekeys._is_org(ordered[0]):
         return None
-    primary = [c for c in ordered if c.get("creatorType") == ordered[0].get("creatorType")]
-    if any(not citekeys._is_org(c) for c in primary):
-        return None
+    primary = [c for c in ordered if c.get("creatorType") == ordered[0].get("creatorType") and citekeys._is_org(c)]
     names = [c.get("name") or "" for c in primary]
     forms = [shorts.get(n.casefold()) for n in names]
     if not any(forms):

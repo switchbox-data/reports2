@@ -125,8 +125,9 @@ def test_joined_short_and_item_shortauthor() -> None:
         {"creatorType": "author", "name": "Rochester Gas and Electric"},
     ]
     assert org_plan.item_shortauthor(orgs_only, shorts) == "NYSEG and RG&E"
-    with_person = [*orgs_only, {"creatorType": "author", "firstName": "Ann", "lastName": "Smith"}]
-    assert org_plan.item_shortauthor(with_person, shorts) is None
+    smith = {"creatorType": "author", "firstName": "Ann", "lastName": "Smith"}
+    assert org_plan.item_shortauthor([*orgs_only, smith], shorts) == "NYSEG and RG&E"
+    assert org_plan.item_shortauthor([smith, *orgs_only], shorts) is None
 
 
 def test_build_applies_clusters_overrides_and_keys_from_scratch() -> None:

@@ -15,7 +15,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from lib.sources import citekeys, extra, orgs, snapshot
+from lib.sources import citekeys, docket_titles, extra, orgs, snapshot
 from lib.sources.item_fixes import ItemFix
 from lib.sources.org_proposals import ItemOverride, MergedCluster
 
@@ -271,11 +271,13 @@ def build(
     today: tuple[int, int, int] = (9999, 12, 31),
     rulings: Mapping[str, Mapping[str, Any]] | None = None,
     not_people_names: Iterable[str] = (),
+    dockets: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> list[ItemPlan]:
     """``rulings`` (item key -> reviewer ruling) beat everything else: ``creators`` (names, or
     ``{"firstName", "lastName"}``), ``fields`` (Zotero field -> value) and ``action``
     (``delete``, or ``duplicate`` with ``duplicate_of``). ``not_people_names`` are single-field
-    organizations whose names look like people's."""
+    organizations whose names look like people's. ``dockets`` (item key -> ``{"docket", "title"}``)
+    are researched docket numbers for proceeding documents whose metadata has none."""
     resolved = resolve(merged, decisions)
     shorts = short_forms(resolved)
     norm_to_group = {g["norm"]: g["id"] for g in groups}
@@ -427,6 +429,16 @@ def build(
             for f, v in rule.get("fields", {}).items():
                 p.changes.append(f"{f}: {after.get(f)!r} -> {v!r} [{why}]")
                 after[f] = v
+
+        tf = next((f for f in TITLE_FIELDS if f in data), "title")
+        if (found := (dockets or {}).get(item_key)) and found.get("docket"):
+            new_title = f"Docket {found['docket']}: {found.get('title') or after.get(tf) or ''}".strip()
+            if new_title != after.get(tf):
+                p.changes.append(f"{tf}: {after.get(tf)!r} -> {new_title!r} (docket found, {found.get('confidence')})")
+                after[tf] = new_title
+        if (docket := docket_titles.docket_title(after.get(tf) or "", after)) is not None:
+            p.changes.append(f"{tf}: {after.get(tf)!r} -> {docket!r} (docket title)")
+            after[tf] = docket
 
         originals = data.get("creators", [])
         normalized = [

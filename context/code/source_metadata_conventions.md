@@ -98,6 +98,15 @@ Separate legal companies stay separate, in the full name and the short form. The
 
 Report prose is not changed when an organization is renamed; only citations change.
 
+## Titles
+
+- **Utility-commission proceeding documents** (testimony, exhibits, orders, petitions, applications, comments, briefs, data responses, joint proposals, compliance filings, staff reports, notices, workpapers) are titled **`Docket <number>: <title>`**: "Docket 22-E-0317: Direct Testimony of Revenue Requirements Panel", "Docket 25-08: Order on Seasonal Heat Pump Rates".
+- The number is the commission's own, **without** "Case", "D.P.U.", "No." or the state: `22-E-0317` (NY), `25-08` (MA), `26-05-10` (CT), `4770` and `25-45-GE` (RI), `25-0084` (IL), `9648` (MD), `CI-23-117` (MN). The label is always "Docket", whatever the commission calls it.
+- A document filed in **several dockets** uses the first one listed on the document.
+- The rest of the title is the document's own title, in title case, with the docket reference removed from it ("(Case 23-G-0627)", "for 25-E-0072", "D.P.U. 25-08"). A note that followed the number moves to the end: "Docket CI-23-117: Order Establishing Framework … (Gas IRP)".
+- Tariff sheets, annual reports, SEC filings and other documents not filed in a proceeding keep their own titles. A tariff's own number ("R.I.P.U.C. No. 2096", "PSC No. 10") is not a docket.
+- `lib/sources/docket_titles.py` (`docket_title`) applies this to any title or number field that carries a docket reference.
+
 ## Citation keys
 
 Format: `{author}_{title}_{year}{suffix}`, implemented in `lib/sources/citekeys.py` (`propose_key`, `assign_keys`).

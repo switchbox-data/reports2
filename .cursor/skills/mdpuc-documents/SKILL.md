@@ -181,7 +181,7 @@ Extract quality:
 
 **Do not:**
 
-- Edit `reports/references.bib` (Zotero-managed)
+- Edit `reports/references.yaml` (generated from Zotero; see AGENTS.md "Bibliography")
 - Add working plans or agent artifacts under `context/`
 - Commit large PDFs without user request (PDFs in `context/sources/` are OK when part of the corpus)
 

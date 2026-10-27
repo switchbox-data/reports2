@@ -11,6 +11,7 @@ None of these write to Zotero.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import sys
 from collections import Counter
@@ -526,6 +527,11 @@ def cmd_orgs_sheet_push(args: argparse.Namespace) -> int:
         questions=rd(work_dir / "questions.json", []),
         cleanup=actions,
     )
+    path_diff = work_dir / "dry_run" / "render_diff.csv"
+    if path_diff.exists():
+        with path_diff.open(encoding="utf-8") as f:
+            diff = list(csv.reader(f))
+        tabs["Render diff"] = [diff[0], *(r for r in diff[1:] if r[-1] == "True")]
     path_meta = work_dir / "review_sheet.json"
     meta = rd(path_meta, {})
     if meta.get("spreadsheet_id") and not args.csv_only:

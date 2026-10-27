@@ -15,7 +15,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from lib.sources import citekeys, docket_titles, extra, orgs, snapshot
+from lib.sources import citekeys, docket_titles, extra, orgs, snapshot, title_case
 from lib.sources.item_fixes import ItemFix
 from lib.sources.org_proposals import ItemOverride, MergedCluster
 
@@ -303,6 +303,10 @@ def build(
             for name in [r.full_name] + [p.canonical_full_name for p in m.proposals if p.canonical_full_name]:
                 org_names[orgs.normalize(name)] = r.full_name
     not_people = frozenset(n.casefold() for n in not_people_names)
+    title_names = {r.full_name for r in resolved.values() if r.full_name} | {
+        c["name"] for d in items.values() for c in d.get("creators", []) if c.get("name")
+    }
+    title_acronyms = {r.short_form for r in resolved.values() if r.short_form and " " not in r.short_form}
     known_people: dict[str, tuple[str, str]] = {}
     people_sources = [c for r in (rulings or {}).values() for c in r.get("creators", []) if isinstance(c, dict)]
     people_sources += [c for d in items.values() for c in d.get("creators", [])]
@@ -436,6 +440,9 @@ def build(
             if new_title != after.get(tf):
                 p.changes.append(f"{tf}: {after.get(tf)!r} -> {new_title!r} (docket found, {found.get('confidence')})")
                 after[tf] = new_title
+        if (uncapped := title_case.uncap_title(after.get(tf) or "", title_names, title_acronyms)) is not None:
+            p.changes.append(f"{tf}: {after.get(tf)!r} -> {uncapped!r} (was all caps)")
+            after[tf] = uncapped
         if (docket := docket_titles.docket_title(after.get(tf) or "", after)) is not None:
             p.changes.append(f"{tf}: {after.get(tf)!r} -> {docket!r} (docket title)")
             after[tf] = docket

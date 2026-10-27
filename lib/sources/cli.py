@@ -18,6 +18,7 @@ from collections import Counter
 from dataclasses import asdict
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -37,6 +38,7 @@ from lib.sources import (
     review_sheet,
     snapshot,
     zotero,
+    zotero_write,
 )
 
 REPO_ROOT = zotero.REPO_ROOT
@@ -379,6 +381,77 @@ def cmd_orgs_plan(args: argparse.Namespace) -> int:
     return 0
 
 
+def _apply_inputs(work_dir: Path) -> tuple[snapshot.Snapshot, list[dict[str, Any]]]:
+    snaps = sorted(work_dir.glob("snapshot_v*.json"), key=lambda p: int(p.stem.removeprefix("snapshot_v")))
+    return snapshot.load(snaps[-1]), review_sheet.load_json(work_dir / "plan.json", [])
+
+
+def _print_preview(entries: list[dict[str, Any]], path: Path) -> None:
+    with path.open("w", encoding="utf-8") as f:
+        for e in entries:
+            f.write(json.dumps(e, ensure_ascii=False) + "\n")
+    fields = Counter(k for e in entries for k in e["fields"])
+    print(f"  {len(entries)} items to write: {sum('deleted' in e['fields'] for e in entries)} to the trash")
+    print("  fields written: " + ", ".join(f"{k} {n}" for k, n in fields.most_common()))
+    print(f"  wrote {path}")
+
+
+def cmd_orgs_apply(args: argparse.Namespace) -> int:
+    """Write the plan to Zotero (with --confirm); otherwise preview the writes."""
+    work_dir = Path(args.path_work_dir) if args.path_work_dir else snapshot.default_work_dir()
+    snap, plans = _apply_inputs(work_dir)
+    entries = zotero_write.entries_from_plan(plans, snap)
+    apply_dir = work_dir / "apply"
+    apply_dir.mkdir(exist_ok=True)
+    path_log = apply_dir / "apply_log.jsonl"
+    _print_preview(entries, apply_dir / "preview.jsonl")
+    now = zotero.library_version()
+    resuming = path_log.exists()
+    print(f"  library version {now}; snapshot {snap['library_version']}{'; resuming from the log' if resuming else ''}")
+    if now != snap["library_version"] and not resuming:
+        print("  the library changed since the snapshot: take a new snapshot and rebuild the plan first")
+        return 1
+    if not args.confirm:
+        print("  preview only; nothing written (add --confirm to write)")
+        return 0
+    if args.limit:
+        skip = zotero_write.done_items(path_log)
+        entries = [e for e in entries if e["item"] not in skip][: args.limit]
+    counts = zotero_write.write(
+        entries, path_log, zotero_write.web_post(), lambda n, c: print(f"  {n} sent: {dict(c)}", flush=True)
+    )
+    print(f"  done: {counts}; log {path_log}")
+    written = [e for e in entries if e["item"] in zotero_write.done_items(path_log)]
+    bad = zotero_write.mismatches(written)
+    print(f"  read back {len(written)} items: {len(bad)} fields differ from what was sent {bad[:20]}")
+    return 0 if not counts.get("failed") and not bad else 1
+
+
+def cmd_orgs_rollback(args: argparse.Namespace) -> int:
+    """Undo every write in the apply log (with --confirm); otherwise preview."""
+    work_dir = Path(args.path_work_dir) if args.path_work_dir else snapshot.default_work_dir()
+    path_log = work_dir / "apply" / "apply_log.jsonl"
+    if not path_log.exists():
+        print(f"no apply log at {path_log}")
+        return 1
+    entries = zotero_write.entries_to_undo(path_log)
+    now = zotero_write.current_versions([e["item"] for e in entries])
+    edited = [e["item"] for e in entries if now.get(e["item"]) != e["version"]]
+    if edited:
+        print(f"  {len(edited)} items were edited after the apply and are left alone: {edited[:20]}")
+    entries = [e for e in entries if e["item"] not in edited]
+    _print_preview(entries, work_dir / "apply" / "rollback_preview.jsonl")
+    if not args.confirm:
+        print("  preview only; nothing written (add --confirm to write)")
+        return 0
+    path_rlog = work_dir / "apply" / "rollback_log.jsonl"
+    counts = zotero_write.write(
+        entries, path_rlog, zotero_write.web_post(), lambda n, c: print(f"  {n} sent: {dict(c)}", flush=True)
+    )
+    print(f"  done: {counts}; log {path_rlog}")
+    return 0 if not counts.get("failed") else 1
+
+
 def cmd_orgs_dry_run(args: argparse.Namespace) -> int:
     """Render every report's citations before and after the plan, and write the differences. Read-only."""
     work_dir = Path(args.path_work_dir) if args.path_work_dir else snapshot.default_work_dir()
@@ -612,6 +685,15 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("orgs-plan", help="apply clusters to every item and compute citation keys from scratch")
     p.add_argument("--path-work-dir", default="")
     p.set_defaults(func=cmd_orgs_plan)
+    for name, func, what in (
+        ("orgs-apply", cmd_orgs_apply, "write the plan to Zotero"),
+        ("orgs-rollback", cmd_orgs_rollback, "undo the apply log's writes"),
+    ):
+        p = sub.add_parser(name, help=f"{what} (preview unless --confirm)")
+        p.add_argument("--path-work-dir", default="")
+        p.add_argument("--confirm", action="store_true", help="actually write to Zotero")
+        p.add_argument("--limit", type=int, default=0, help="write at most this many items (the rest resume later)")
+        p.set_defaults(func=func)
     p = sub.add_parser("orgs-dry-run", help="render every report's citations before and after the plan")
     p.add_argument("--path-work-dir", default="")
     p.set_defaults(func=cmd_orgs_dry_run)

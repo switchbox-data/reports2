@@ -75,6 +75,14 @@ orgs-proposals batch="" path_work_dir="":
 orgs-plan path_work_dir="":
     uv run python -m lib.sources.cli orgs-plan --path-work-dir "{{ path_work_dir }}"
 
+# Write the plan to Zotero: previews unless confirm=--confirm; resumable from its log
+orgs-apply confirm="" limit="0" path_work_dir="":
+    uv run python -m lib.sources.cli orgs-apply {{ confirm }} --limit {{ limit }} --path-work-dir "{{ path_work_dir }}"
+
+# Undo the apply's writes: previews unless confirm=--confirm
+orgs-rollback confirm="" path_work_dir="":
+    uv run python -m lib.sources.cli orgs-rollback {{ confirm }} --path-work-dir "{{ path_work_dir }}"
+
 # Render every report's citations before and after the plan and diff them (read-only)
 orgs-dry-run path_work_dir="":
     uv run python -m lib.sources.cli orgs-dry-run --path-work-dir "{{ path_work_dir }}"

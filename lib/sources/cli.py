@@ -512,9 +512,15 @@ def cmd_orgs_sheet_push(args: argparse.Namespace) -> int:
         questions=rd(work_dir / "questions.json", []),
         cleanup=actions,
     )
-    review_sheet.write_csvs(tabs, work_dir / "review_csv")
     path_meta = work_dir / "review_sheet.json"
     meta = rd(path_meta, {})
+    if meta.get("spreadsheet_id") and not args.csv_only:
+        tabs = review_sheet.carry_answers(tabs, review_sheet.pull(meta["spreadsheet_id"]))
+    tabs = review_sheet.carry_answers(
+        tabs,
+        review_sheet.answers_as_tabs(rd(work_dir / "decisions.json", {}), rd(work_dir / "answers.json", {})),
+    )
+    review_sheet.write_csvs(tabs, work_dir / "review_csv")
     if args.csv_only:
         print(f"wrote {work_dir / 'review_csv'}")
         return 0

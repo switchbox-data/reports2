@@ -253,3 +253,11 @@ def test_key_check(key: str, creator: dict, extra_text: str, expected: str) -> N
     plan = {"key": key, "after": {"creators": [{"creatorType": "author", **creator}], "extra": extra_text}}
     got = review_sheet.key_check(plan)
     assert got.startswith(expected) and (bool(got) == bool(expected))
+
+
+def test_carry_answers_keeps_reviewer_columns_by_id() -> None:
+    tabs = {"Questions": [["id", "question", "your_answer"], ["Q1", "new text", ""], ["Q2", "b", ""]]}
+    previous = {"Questions": [["id", "question", "your_answer"], ["Q2", "b", "yes"], ["Q9", "gone", "x"]]}
+    saved = review_sheet.answers_as_tabs({}, {"questions": {"Q1": "keep"}, "items": {}})
+    got = review_sheet.carry_answers(review_sheet.carry_answers(tabs, previous), saved)
+    assert got["Questions"] == [["id", "question", "your_answer"], ["Q1", "new text", "keep"], ["Q2", "b", "yes"]]

@@ -249,6 +249,57 @@ def build_tabs(
     return {name: [[_cell(v) for v in row] for row in rows] for name, rows in tabs.items()}
 
 
+def carry_answers(tabs: Mapping[str, Rows], previous: Mapping[str, Rows]) -> dict[str, Rows]:
+    """``tabs`` with the reviewer columns filled from ``previous`` rows that have the same ID (first column)."""
+    out: dict[str, Rows] = {}
+    for name, rows in tabs.items():
+        old = _records(previous[name]) if previous.get(name) else []
+        by_id = {str(r[rows[0][0]]): r for r in old if rows[0][0] in r}
+        header, *body = rows
+        mine = [i for i, col in enumerate(header) if col in YOURS]
+        new_body = []
+        for row in body:
+            row = row + [""] * (len(header) - len(row))
+            prev = by_id.get(str(row[0]), {})
+            for i in mine:
+                if not str(row[i]).strip() and str(prev.get(header[i], "")).strip():
+                    row[i] = prev[header[i]]
+            new_body.append(row)
+        out[name] = [header, *new_body]
+    return out
+
+
+def answers_as_tabs(decisions: Mapping[str, Mapping[str, Any]], other: Mapping[str, Any]) -> dict[str, Rows]:
+    """The inverse of ``answers_from``: saved answers as minimal tabs, for ``carry_answers``."""
+    clusters = set(decisions) | set(other.get("cluster_comments", {}))
+    long_keys = set(other.get("long_key_comments", {}))
+    return {
+        "Clusters": [
+            ["cluster", "your_full_name", "your_short_form", "your_kind", "your_comment"],
+            *(
+                [
+                    c,
+                    decisions.get(c, {}).get("full_name", ""),
+                    decisions.get(c, {}).get("short_form", ""),
+                    decisions.get(c, {}).get("kind", ""),
+                    other.get("cluster_comments", {}).get(c, ""),
+                ]
+                for c in sorted(clusters)
+            ),
+        ],
+        "Items": [
+            ["item", "your_verdict", "your_comment"],
+            *([i, v.get("verdict", ""), v.get("comment", "")] for i, v in other.get("items", {}).items()),
+        ],
+        "Questions": [["id", "your_answer"], *([k, v] for k, v in other.get("questions", {}).items())],
+        "Cleanup": [["id", "your_answer"], *([k, v] for k, v in other.get("cleanup", {}).items())],
+        "Long keys": [
+            ["author_part", "your_comment"],
+            *([k, other["long_key_comments"][k]] for k in sorted(long_keys)),
+        ],
+    }
+
+
 def write_csvs(tabs: Mapping[str, Rows], out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     for name, rows in tabs.items():

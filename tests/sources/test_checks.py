@@ -110,3 +110,9 @@ def test_chicago_join():
         == "Nicor Gas, Peoples Gas, and North Shore Gas"
     )
     assert checks.chicago_join(["A", "B", "C", "D"]) == "A et al."
+
+
+def test_legal_acronym_names_are_not_abbreviations():
+    data = {"creators": [{"creatorType": "author", "name": "RMI"}], "title": "T", "date": "2024"}
+    codes = {f.code for f in checks.run_checks([("rmi_T_2024", data)])}
+    assert "AUTHOR_IS_ABBREVIATION" not in codes

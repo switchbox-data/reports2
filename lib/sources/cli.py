@@ -34,6 +34,7 @@ from lib.sources import (
     org_plan,
     org_proposals,
     orgs,
+    rekey,
     render_diff,
     review_sheet,
     snapshot,
@@ -133,7 +134,7 @@ def cmd_sync_bib(args: argparse.Namespace) -> int:
 def cmd_check_citekeys(args: argparse.Namespace) -> int:
     """Every key cited in reports/**/*.qmd and *.md must exist in references.yaml."""
     ids = _bibliography_ids(Path(args.path_references))
-    cited = _cited_keys(Path(args.path_reports))
+    cited = _cited_keys(Path(args.path_reports).resolve())
     missing = {k: v for k, v in sorted(cited.items()) if k not in ids}
     for key, uses in missing.items():
         where = ", ".join(f"{c.path.relative_to(REPO_ROOT)}:{c.line}" for c in uses[:3])
@@ -452,6 +453,28 @@ def cmd_orgs_rollback(args: argparse.Namespace) -> int:
     return 0 if not counts.get("failed") else 1
 
 
+def cmd_rekey_refs(args: argparse.Namespace) -> int:
+    """Rename cited keys in every report from citekey_renames.csv (or, once, from the applied plan)."""
+    path_renames = Path(args.path_renames)
+    if args.from_plan:
+        work_dir = Path(args.path_work_dir) if args.path_work_dir else snapshot.default_work_dir()
+        renames = rekey.renames_from_plan(review_sheet.load_json(work_dir / "plan.json", []))
+        rekey.write_renames(renames, path_renames)
+        unchecked: set[str] = set()
+    else:
+        renames = rekey.read_renames(path_renames)
+        unchecked = rekey.read_ambiguous(path_renames)
+    changed = rekey.rewrite_reports(REPORTS_DIR, renames)
+    for path, n in sorted(changed.items()):
+        print(f"  {path.relative_to(REPO_ROOT)}: {n}")
+    print(f"  {sum(changed.values())} citations renamed in {len(changed)} files")
+    for key, uses in sorted(_cited_keys(REPORTS_DIR).items()):
+        if key in unchecked:
+            where = ", ".join(f"{c.path.relative_to(REPO_ROOT)}:{c.line}" for c in uses)
+            print(f"  check by hand: @{key} is an old key and also a new one ({where})")
+    return 0
+
+
 def cmd_orgs_dry_run(args: argparse.Namespace) -> int:
     """Render every report's citations before and after the plan, and write the differences. Read-only."""
     work_dir = Path(args.path_work_dir) if args.path_work_dir else snapshot.default_work_dir()
@@ -472,12 +495,7 @@ def cmd_orgs_dry_run(args: argparse.Namespace) -> int:
         paths[name] = out_dir / f"references_{name}.yaml"
         result = bib.build_references(its, include_unpinned=unpinned)
         paths[name].write_text(bib.to_yaml(result, snap["library_version"]), encoding="utf-8")
-    renames = {}
-    for p in plans.values():
-        key = p["key"] if p["action"] == "update" else (plans.get(p["duplicate_of"] or "") or {}).get("key")
-        for old in p["old_keys"]:
-            if key and old != key:
-                renames[old] = key
+    renames = rekey.renames_from_plan(plans.values())
     csl_path = REPORTS_DIR / "chicago-author-date-switchbox.csl"
     rows = []
     for report in sorted(d for d in REPORTS_DIR.iterdir() if d.is_dir() and d.name != "templates"):
@@ -685,6 +703,11 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("orgs-plan", help="apply clusters to every item and compute citation keys from scratch")
     p.add_argument("--path-work-dir", default="")
     p.set_defaults(func=cmd_orgs_plan)
+    p = sub.add_parser("rekey-refs", help="rename cited keys in reports from the applied plan")
+    p.add_argument("--path-work-dir", default="")
+    p.add_argument("--path-renames", default=str(REPORTS_DIR / "citekey_renames.csv"))
+    p.add_argument("--from-plan", action="store_true", help="build the table from plan.json (the cleanup's own run)")
+    p.set_defaults(func=cmd_rekey_refs)
     for name, func, what in (
         ("orgs-apply", cmd_orgs_apply, "write the plan to Zotero"),
         ("orgs-rollback", cmd_orgs_rollback, "undo the apply log's writes"),

@@ -15,7 +15,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from lib.sources import citekeys, docket_titles, extra, orgs, snapshot, title_case
+from lib.sources import checks, citekeys, docket_titles, extra, orgs, snapshot, title_case
 from lib.sources.item_fixes import ItemFix
 from lib.sources.org_proposals import ItemOverride, MergedCluster
 
@@ -172,12 +172,8 @@ def table_short_forms(markdown: str) -> dict[str, str]:
 
 
 def joined_short(forms: list[str]) -> str:
-    """Chicago-style join: "A", "A and B", "A, B and C", "A et al." for four or more."""
-    if len(forms) >= 4:
-        return f"{forms[0]} et al."
-    if len(forms) <= 2:
-        return " and ".join(forms)
-    return f"{', '.join(forms[:-1])} and {forms[-1]}"
+    """Chicago-style join: "A", "A and B", "A, B, and C", "A et al." for four or more."""
+    return checks.chicago_join(forms)
 
 
 def item_shortauthor(creators: Sequence[Mapping[str, str]], shorts: Mapping[str, str | None]) -> str | None:

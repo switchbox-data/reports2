@@ -117,7 +117,7 @@ def test_normalize_date(raw: str, iso: str | None) -> None:
 
 
 def test_joined_short_and_item_shortauthor() -> None:
-    assert org_plan.joined_short(["A", "B", "C"]) == "A, B and C"
+    assert org_plan.joined_short(["A", "B", "C"]) == "A, B, and C"
     assert org_plan.joined_short(["A", "B", "C", "D"]) == "A et al."
     shorts = {"new york state electric & gas": "NYSEG", "rochester gas and electric": "RG&E"}
     orgs_only = [

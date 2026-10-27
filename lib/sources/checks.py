@@ -25,6 +25,8 @@ ORG_CUES = re.compile(
     r"society|committee|services|operator|economics|research|cooperative|america|project|initiative)\b",
     re.IGNORECASE,
 )
+# Organizations whose legal name is itself an acronym (RMI, formerly Rocky Mountain Institute).
+LEGAL_ACRONYM_NAMES = frozenset({"DNV", "GFT", "HEET", "ICF", "RMI"})
 _BARE_ABBREVIATION = re.compile(r"^[A-Z0-9&.\-/ ]{2,10}$")
 _PERSON_NAME = re.compile(r"^[A-Z][a-z'\u2019\-]+(?: [A-Z]\.?)?(?: [A-Z][a-z'\u2019\-]+){1,2}$")
 # pandoc reads a bibliography id as Markdown: "_Foo_" becomes emphasis and can't be cited.
@@ -103,6 +105,8 @@ def run_checks(
         creators = data.get("creators", [])
         orgs, short = _orgs(data), _short(data)
         for name in orgs:
+            if name in LEGAL_ACRONYM_NAMES:
+                continue
             if _BARE_ABBREVIATION.match(name) or name in all_shorts:
                 add("error", "AUTHOR_IS_ABBREVIATION", key, f"author {name!r} looks like an abbreviation")
             elif _PERSON_NAME.match(name) and not ORG_CUES.search(name):

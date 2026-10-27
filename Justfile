@@ -83,6 +83,10 @@ orgs-apply confirm="" limit="0" path_work_dir="":
 orgs-rollback confirm="" path_work_dir="":
     uv run python -m lib.sources.cli orgs-rollback {{ confirm }} --path-work-dir "{{ path_work_dir }}"
 
+# Rename old citation keys in every report, from reports/citekey_renames.csv (safe to rerun)
+rekey-refs:
+    uv run python -m lib.sources.cli rekey-refs
+
 # Render every report's citations before and after the plan and diff them (read-only)
 orgs-dry-run path_work_dir="":
     uv run python -m lib.sources.cli orgs-dry-run --path-work-dir "{{ path_work_dir }}"

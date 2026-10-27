@@ -1,7 +1,7 @@
 """Versioned batch writes to the Zotero group library, with a log that makes them resumable and reversible.
 
-For bulk edits (a cleanup pass, creating items in bulk): take a ``snapshot`` first, build one
-:func:`entry` per item, preview, then :func:`write`. ``just zotero-rollback`` undoes a log.
+For bulk edits of existing items (see "Bulk edits" in AGENTS.md): take a ``snapshot`` first, build
+one :func:`entry` per item, preview, then :func:`write`. ``just zotero-rollback`` undoes a log.
 
 Every object sent carries the item's ``version`` as read, so Zotero rejects (412) any
 item edited since then instead of overwriting the edit. Batch ``POST`` has ``PATCH`` semantics:

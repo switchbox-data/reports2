@@ -885,7 +885,7 @@ R libraries under `lib/` are sourced the traditional way (e.g. `source("lib/ggpl
 
 `reports/references.yaml` is the **single shared bibliography** used by every report (each report's YAML front matter points to it via `bibliography: ../references.yaml`, and to the shared style via `csl: ../chicago-author-date-switchbox.csl`). It is a [CSL-YAML](https://pandoc.org/MANUAL.html#citations) file: a `references:` list of CSL items, the native data model of the citeproc engine Quarto uses. Entries are sorted by `id` (the citation key). Like any pandoc YAML bibliography, string values are parsed as Markdown, so they are written with Markdown escaping (e.g. `\_`). The `id` is the exception: pandoc reads it without unescaping, so it is written raw, and a key whose underscores pair up as Markdown emphasis (e.g. `_Foo_`) can't be cited at all.
 
-The file is **generated** by `just sync-bib` from the "Reports" collection (recursive) of the Switchbox Zotero group library, and is never hand-edited. It is a faithful mirror of Zotero's CSL-JSON export: the only transformations are the `id` (the item's pinned citation key), `author-short` (from a `tex.shortauthor:` line in the item's Extra field), excluding items without a pinned key, and serialization (pandoc's CSL-YAML writer, then `yamlfmt`). There is no data repair: to fix an entry, fix the item in Zotero and rerun `just sync-bib`. On a merge conflict in this file, take `main`'s version and rerun `just sync-bib`. `sync-bib` prints consistency findings (`just sync-bib strict` refuses to write while errors remain), skips regeneration when the Zotero library hasn't changed, and refuses to drop a key that a report still cites. `just check-citekeys` confirms that every key cited in `reports/**/*.qmd` and `*.md` exists in the bibliography; `just zotero-verify` is a read-only check of the Zotero connection. None of these recipes write to Zotero. For a bulk edit, take a backup with `just zotero-snapshot` first and write through `lib.sources.zotero_write`, whose log `just zotero-rollback <log>` can undo. They need `ZOTERO_API_KEY` and `ZOTERO_GROUP_ID` in `.env`. Code lives in `lib/sources/`. `reports/references.bib` is gitignored so a stray Zotero biblatex export can't be committed by mistake. Changes only reach others once pushed to `main`.
+The file is **generated** by `just sync-bib` from the "Reports" collection (recursive) of the Switchbox Zotero group library, and is never hand-edited. It is a faithful mirror of Zotero's CSL-JSON export: the only transformations are the `id` (the item's pinned citation key), `author-short` (from a `tex.shortauthor:` line in the item's Extra field), excluding items without a pinned key, and serialization (pandoc's CSL-YAML writer, then `yamlfmt`). There is no data repair: to fix an entry, fix the item in Zotero and rerun `just sync-bib`. On a merge conflict in this file, take `main`'s version and rerun `just sync-bib`. `sync-bib` prints consistency findings (`just sync-bib strict` refuses to write while errors remain), skips regeneration when the Zotero library hasn't changed, and refuses to drop a key that a report still cites. `just check-citekeys` confirms that every key cited in `reports/**/*.qmd` and `*.md` exists in the bibliography; `just zotero-verify` is a read-only check of the Zotero connection. These recipes only read Zotero; to change many items at once, see "Bulk edits" below. Code lives in `lib/sources/`. `reports/references.bib` is gitignored so a stray Zotero biblatex export can't be committed by mistake. Changes only reach others once pushed to `main`.
 
 The style `reports/chicago-author-date-switchbox.csl` is pandoc's default Chicago author-date style with one change: an organization with an abbreviation (`author-short`) is cited by it in text ("MA DPU (2024)") and listed with it in the bibliography ("Massachusetts Department of Public Utilities (MA DPU). 2024. ..."). Regenerate it with `just make-csl` after a Quarto upgrade.
 
@@ -898,6 +898,31 @@ Citation key format: `{author}_{title}_{year}` (e.g., `adams_BeingRebuffedRegula
 A key is **pinned** as a `Citation Key: ...` line in the item's Extra field (Zotero's native citation-key field stays empty), and only pinned items enter the bibliography. A pinned key is **locked**: it is never regenerated, even if the title or author is later edited, so a key that doesn't match the rule is only a `sync-bib` warning.
 
 `reports/citekey_renames.csv` maps every key retired by the October 2026 library cleanup to its replacement. On a branch that predates the cleanup, merge `main` and run `just rekey-refs`: it renames old keys in every report source and is safe to rerun. A few old keys are also new keys of other items (suffix swaps such as `isone_ISONEWebServices_2025` / `_2025a`); the table marks them `ambiguous`, `rekey-refs` leaves them alone, and it lists where they are cited, so check those citations by hand against `references.yaml`.
+
+**Setup.** The tooling reads `ZOTERO_API_KEY` and `ZOTERO_GROUP_ID` from `reports2/.env` (gitignored). Create the key at [zotero.org/settings/keys](https://www.zotero.org/settings/keys) with access to the Switchbox group library: read-only is enough for `sync-bib`, `check-citekeys` and `zotero-verify`; bulk edits and `zotero-rollback` need **write access** to the group. `just zotero-verify` prints the key's group access. Never print or commit the key.
+
+#### Bulk edits
+
+For changing or trashing many existing Zotero items at once (a cleanup pass, fixing a field across the library). New items come in through ingest, not this. Every write is versioned (Zotero refuses, with a 412, any item edited since it was read), logged with each field's previous value, resumable, and reversible.
+
+1. **Back up:** `just zotero-snapshot` writes the whole library to `~/.cache/switchbox_sources/zotero_snapshots/` and `s3://data.sb/switchbox/zotero/snapshots/`.
+2. **Build one entry per item** from the item as read (from the snapshot or a fresh read), with its new `data`, or `None` to trash it. Only changed fields are sent.
+3. **Preview** the entries (which fields change, on how many items) and get the change reviewed before writing.
+4. **Write and read back:**
+
+   ```python
+   from pathlib import Path
+   from lib.sources import zotero, zotero_write
+
+   items = zotero.client().items(itemKey="JJPSB4JI,UA797ETK")
+   entries = [e for it in items if (e := zotero_write.entry(it, {**it["data"], "date": "2023-11-30"}))]
+   log = Path.home() / ".cache/switchbox_sources/zotero_writes/20261027_nydps_dates.jsonl"
+   print(zotero_write.write(entries, log, zotero_write.web_post()))  # batches of 50; a rerun resumes from the log
+   print(zotero_write.mismatches(entries))  # fields that differ from what was sent; should be []
+   ```
+
+5. **Rebuild:** `just sync-bib strict` and `just check-citekeys`. Pinned keys don't change when an item's author or title does; to rename a key, edit its `Citation Key:` line in the same write, add an `old_key,new_key` row to `reports/citekey_renames.csv`, and run `just rekey-refs`.
+6. **Keep the log:** copy it to `s3://data.sb/switchbox/zotero/write_logs/<YYYYMMDD>_<what>.jsonl` and mention it in the PR. To undo, download it and run `just zotero-rollback <log>` (a preview), then `just zotero-rollback <log> confirm=--confirm`. Rollback skips items edited since the write; undo several logs newest first.
 
 ## When to use R vs Python
 

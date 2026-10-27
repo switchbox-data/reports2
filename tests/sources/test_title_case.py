@@ -27,9 +27,22 @@ NAMES = ["The Brooklyn Union Gas Company", "Connecticut Light and Power Company"
             "Selected Annual Federal Poverty Level and State Median Income Guidelines",
         ),
         ("LIHEAP Summary RI 2024", None),
+        ("GAAP FINANCIAL STATEMENTS AND FERC FORM 1", "GAAP Financial Statements and FERC Form 1"),
+        ("CLCPA PANEL EXHIBITS", "CLCPA Panel Exhibits"),
+        ("NIAGARA MOHAWK POWER CORPORATION Direct Testimony", "Niagara Mohawk Power Corporation Direct Testimony"),
+        ("Heat Pump Key Product Criteria | ENERGY STAR", None),
         ("Docket 25-08: Order on Seasonal Heat Pump Rates", None),
         ("SMART-DS", None),
     ],
 )
 def test_uncap_title(title: str, expected: str | None) -> None:
     assert uncap_title(title, NAMES, ["PURA"]) == expected
+
+
+def test_library_acronyms() -> None:
+    from lib.sources.title_case import library_acronyms
+
+    assert library_acronyms(["Gas Long-Term Plan (LTP) for NFGDC", "RATE RSH SERVICE", "Criteria | ENERGY STAR"]) == {
+        "LTP",
+        "NFGDC",
+    }

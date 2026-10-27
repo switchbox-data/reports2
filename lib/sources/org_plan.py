@@ -307,6 +307,9 @@ def build(
         c["name"] for d in items.values() for c in d.get("creators", []) if c.get("name")
     }
     title_acronyms = {r.short_form for r in resolved.values() if r.short_form and " " not in r.short_form}
+    title_acronyms |= title_case.library_acronyms(
+        d.get(f) or "" for d in items.values() for f in TITLE_FIELDS if isinstance(d.get(f), str)
+    )
     known_people: dict[str, tuple[str, str]] = {}
     people_sources = [c for r in (rulings or {}).values() for c in r.get("creators", []) if isinstance(c, dict)]
     people_sources += [c for d in items.values() for c in d.get("creators", [])]

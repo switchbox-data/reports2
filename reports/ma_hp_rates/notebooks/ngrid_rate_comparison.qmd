@@ -864,6 +864,469 @@ fig_m_cmp = plot_monthly_faceted(
 display_figure(fig_m_cmp)
 ```
 
+## Monthly bill breakout (supply vs delivery)
+
+```{python}
+#| label: monthly-breakout-helper
+
+HEATING_HATCH = "#e3785b"
+HEATING_HATCH_LIGHT = "#f2bfb0"
+COOLING_HATCH = "#4ca86a"
+COOLING_HATCH_LIGHT = "#a8d8b8"
+SUMMER_COOLING_MONTHS = {"Jul", "Aug"}
+
+
+HEATING_HATCH_MONTHS = set(WINTER_MONTHS) | {"Oct"}
+
+
+def _seasonal_hatch_colors(month: str) -> tuple[str, str]:
+    """Return (hatch_color, light_fill) based on season."""
+    if month in HEATING_HATCH_MONTHS:
+        return HEATING_HATCH, HEATING_HATCH_LIGHT
+    if month in SUMMER_COOLING_MONTHS:
+        return COOLING_HATCH, COOLING_HATCH_LIGHT
+    return COMP_COLORS["delivery_volumetric"], COMP_COLORS_LIGHT["delivery_volumetric"]
+
+
+def plot_monthly_breakout(
+    mc_before: pl.DataFrame,
+    mc_after: pl.DataFrame,
+    mc_hp: pl.DataFrame,
+    title: str,
+) -> plt.Figure:
+    """Six-panel monthly bill breakout: supply before/after, delivery before/after,
+    color-coded delivery, and HP-rate delivery with ghosts.
+
+    Panel 1: Supply before HP (solid)
+    Panel 2: Supply after HP (solid base + hatched increment)
+    Panel 3: Delivery before HP (stacked fixed + volumetric, solid)
+    Panel 4: Delivery after HP (stacked, hatched increments in component colors)
+    Panel 5: Delivery after HP (same as 4, but hatching colored by season)
+    Panel 6: Delivery after HP on HP rate (ghosts for winter savings, red for summer surcharge)
+    """
+    piv_before = _pivot_monthly(mc_before)
+    piv_after = _pivot_monthly(mc_after)
+    piv_hp = _pivot_monthly(mc_hp)
+    months = piv_before["month_label"].to_list()
+    x = np.arange(len(months))
+    bar_w = 0.7
+
+    fig, axes = plt.subplots(6, 1, figsize=(10.5, 3.2 * 6 + 0.8), sharex=True)
+
+    sup_before = piv_before.get_column("supply").to_numpy()
+    sup_after = piv_after.get_column("supply").to_numpy()
+    df_before = piv_before.get_column("delivery_fixed").to_numpy()
+    dv_before = piv_before.get_column("delivery_volumetric").to_numpy()
+    df_after = piv_after.get_column("delivery_fixed").to_numpy()
+    dv_after = piv_after.get_column("delivery_volumetric").to_numpy()
+
+    hp_fixed = piv_hp.get_column("delivery_fixed").to_numpy()
+    hp_vol = piv_hp.get_column("delivery_volumetric").to_numpy()
+
+    del_total_before = df_before + dv_before
+    del_total_after = df_after + dv_after
+    hp_total = hp_fixed + hp_vol
+    sup_max = max(sup_before.max(), sup_after.max()) * 1.20
+    del_max = max(del_total_before.max(), del_total_after.max(), hp_total.max()) * 1.35
+
+    # ---- Panel 1: Supply before HP ----
+    ax = axes[0]
+    ax.bar(x, sup_before, width=bar_w, color=COMP_COLORS["supply"],
+           edgecolor="none", linewidth=0)
+    for j, v in enumerate(sup_before):
+        ax.text(x[j], v + sup_max * 0.02, f"${v:,.0f}",
+                ha="center", va="bottom", fontsize=8,
+                fontfamily="IBM Plex Sans", fontweight="bold", color="#333333")
+    ax.set_ylim(0, sup_max)
+    ax.set_ylabel("Supply\n(before HP)", fontsize=12, fontfamily="GT Planar",
+                  fontweight="bold", color="#333333", labelpad=10)
+
+    # ---- Panel 2: Supply after HP (base solid + increment hatched) ----
+    ax = axes[1]
+    base_s = np.minimum(sup_before, sup_after)
+    inc_s = sup_after - base_s
+    ax.bar(x, base_s, width=bar_w, color=COMP_COLORS["supply"],
+           edgecolor="none", linewidth=0)
+    for j in range(len(months)):
+        if inc_s[j] > 0:
+            ax.bar(x[j], inc_s[j], bottom=base_s[j], width=bar_w,
+                   color=COMP_COLORS_LIGHT["supply"], edgecolor="none", linewidth=0)
+            ax.bar(x[j], inc_s[j], bottom=base_s[j], width=bar_w,
+                   facecolor="none", edgecolor=COMP_COLORS["supply"],
+                   linewidth=0, hatch="//")
+    for j in range(len(months)):
+        ax.text(x[j], sup_after[j] + sup_max * 0.02, f"${sup_after[j]:,.0f}",
+                ha="center", va="bottom", fontsize=8,
+                fontfamily="IBM Plex Sans", fontweight="bold", color="#333333")
+    ax.set_ylim(0, sup_max)
+    ax.set_ylabel("Supply\n(after HP)", fontsize=12, fontfamily="GT Planar",
+                  fontweight="bold", color="#333333", labelpad=10)
+
+    # ---- Panel 3: Delivery before HP (stacked: fixed + volumetric) ----
+    ax = axes[2]
+    ax.bar(x, df_before, width=bar_w, color=COMP_COLORS["delivery_fixed"],
+           edgecolor="none", linewidth=0)
+    ax.bar(x, dv_before, bottom=df_before, width=bar_w,
+           color=COMP_COLORS["delivery_volumetric"], edgecolor="none", linewidth=0)
+    for j, v in enumerate(df_before):
+        if v >= 20:
+            ax.text(x[j], v / 2, f"${v:,.0f}",
+                    ha="center", va="center", fontsize=8,
+                    fontfamily="IBM Plex Sans", fontweight="bold",
+                    color="white", zorder=5)
+    for j in range(len(months)):
+        v = dv_before[j]
+        if v >= 20:
+            ax.text(x[j], df_before[j] + v / 2, f"${v:,.0f}",
+                    ha="center", va="center", fontsize=8,
+                    fontfamily="IBM Plex Sans", fontweight="bold",
+                    color="white", zorder=5)
+    for j in range(len(months)):
+        total = del_total_before[j]
+        ax.text(x[j], total + del_max * 0.02, f"${total:,.0f}",
+                ha="center", va="bottom", fontsize=8,
+                fontfamily="IBM Plex Sans", fontweight="bold", color="#333333")
+    ax.set_ylim(0, del_max)
+    ax.set_ylabel("Delivery\n(before HP)", fontsize=12, fontfamily="GT Planar",
+                  fontweight="bold", color="#333333", labelpad=10)
+
+    # ---- Panel 4: Delivery after HP (stacked with hatching on increments) ----
+    ax = axes[3]
+    for key, before_vals, after_vals, bottom_before, bottom_after in [
+        ("delivery_fixed", df_before, df_after, np.zeros(len(months)), np.zeros(len(months))),
+        ("delivery_volumetric", dv_before, dv_after, df_before, df_after),
+    ]:
+        solid = np.minimum(before_vals, after_vals)
+        color = COMP_COLORS[key]
+
+        ax.bar(x, solid, bottom=bottom_after, width=bar_w,
+               color=color, edgecolor="none", linewidth=0)
+        for j in range(len(months)):
+            inc = after_vals[j] - solid[j]
+            if inc > 0:
+                ax.bar(x[j], inc, bottom=bottom_after[j] + solid[j], width=bar_w,
+                       color=COMP_COLORS_LIGHT[key], edgecolor="none", linewidth=0)
+                ax.bar(x[j], inc, bottom=bottom_after[j] + solid[j], width=bar_w,
+                       facecolor="none", edgecolor=color, linewidth=0, hatch="//")
+        for j in range(len(months)):
+            v = after_vals[j]
+            if v >= 20:
+                ax.text(x[j], bottom_after[j] + v / 2, f"${v:,.0f}",
+                        ha="center", va="center", fontsize=8,
+                        fontfamily="IBM Plex Sans", fontweight="bold",
+                        color="white", zorder=5)
+
+    for j in range(len(months)):
+        total = del_total_after[j]
+        ax.text(x[j], total + del_max * 0.02, f"${total:,.0f}",
+                ha="center", va="bottom", fontsize=8,
+                fontfamily="IBM Plex Sans", fontweight="bold", color="#333333")
+    ax.set_ylim(0, del_max)
+    ax.set_ylabel("Delivery\n(after HP)", fontsize=12, fontfamily="GT Planar",
+                  fontweight="bold", color="#333333", labelpad=10)
+
+    # ---- Panel 5: Delivery after HP, color-coded by season ----
+    ax = axes[4]
+    for key, before_vals, after_vals, bottom_after in [
+        ("delivery_fixed", df_before, df_after, np.zeros(len(months))),
+        ("delivery_volumetric", dv_before, dv_after, df_after),
+    ]:
+        solid = np.minimum(before_vals, after_vals)
+        color = COMP_COLORS[key]
+        ax.bar(x, solid, bottom=bottom_after, width=bar_w,
+               color=color, edgecolor="none", linewidth=0)
+
+        if key == "delivery_volumetric":
+            for j in range(len(months)):
+                inc = after_vals[j] - solid[j]
+                if inc > 0:
+                    hatch_c, light_c = _seasonal_hatch_colors(months[j])
+                    ax.bar(x[j], inc, bottom=bottom_after[j] + solid[j], width=bar_w,
+                           color=light_c, edgecolor="none", linewidth=0)
+                    ax.bar(x[j], inc, bottom=bottom_after[j] + solid[j], width=bar_w,
+                           facecolor="none", edgecolor=hatch_c, linewidth=0, hatch="//")
+        else:
+            for j in range(len(months)):
+                inc = after_vals[j] - solid[j]
+                if inc > 0:
+                    ax.bar(x[j], inc, bottom=bottom_after[j] + solid[j], width=bar_w,
+                           color=COMP_COLORS_LIGHT[key], edgecolor="none", linewidth=0)
+                    ax.bar(x[j], inc, bottom=bottom_after[j] + solid[j], width=bar_w,
+                           facecolor="none", edgecolor=color, linewidth=0, hatch="//")
+
+        for j in range(len(months)):
+            v = after_vals[j]
+            if v >= 20:
+                ax.text(x[j], bottom_after[j] + v / 2, f"${v:,.0f}",
+                        ha="center", va="center", fontsize=8,
+                        fontfamily="IBM Plex Sans", fontweight="bold",
+                        color="white", zorder=5)
+
+    for j in range(len(months)):
+        total = del_total_after[j]
+        ax.text(x[j], total + del_max * 0.02, f"${total:,.0f}",
+                ha="center", va="bottom", fontsize=8,
+                fontfamily="IBM Plex Sans", fontweight="bold", color="#333333")
+    ax.set_ylim(0, del_max)
+    ax.set_ylabel("Delivery\n(after HP)\nby driver", fontsize=12, fontfamily="GT Planar",
+                  fontweight="bold", color="#333333", labelpad=10)
+
+    # ---- Panel 6: Delivery after HP on HP rate (diff vs panel 5) ----
+    ax = axes[5]
+
+    # Fixed charge: solid for shared portion, red hatch for increase
+    fc_solid = np.minimum(df_after, hp_fixed)
+    ax.bar(x, fc_solid, width=bar_w, color=COMP_COLORS["delivery_fixed"],
+           edgecolor="none", linewidth=0)
+    for j in range(len(months)):
+        fc_inc = hp_fixed[j] - df_after[j]
+        if fc_inc > 0:
+            ax.bar(x[j], fc_inc, bottom=fc_solid[j], width=bar_w,
+                   color=HEATING_HATCH_LIGHT, edgecolor="none", linewidth=0)
+            ax.bar(x[j], fc_inc, bottom=fc_solid[j], width=bar_w,
+                   facecolor="none", edgecolor=HEATING_HATCH, linewidth=0, hatch="//")
+
+    # Volumetric delivery with diff logic
+    for j in range(len(months)):
+        vol_bottom = hp_fixed[j]
+        vol_before_j = dv_before[j]
+        vol_default_j = dv_after[j]
+        vol_hp_j = hp_vol[j]
+        if vol_hp_j <= 0:
+            continue
+
+        if vol_hp_j <= vol_before_j:
+            # CMP winter: HP rate cuts below pre-HP level → all solid
+            ax.bar(x[j], vol_hp_j, bottom=vol_bottom, width=bar_w,
+                   color=COMP_COLORS["delivery_volumetric"], edgecolor="none", linewidth=0)
+            if vol_hp_j >= 20:
+                ax.text(x[j], vol_bottom + vol_hp_j / 2, f"${vol_hp_j:,.0f}",
+                        ha="center", va="center", fontsize=8,
+                        fontfamily="IBM Plex Sans", fontweight="bold",
+                        color="white", zorder=5)
+
+        elif vol_hp_j <= vol_default_j:
+            # MA winter: reduced increment, some seasonal hatching remains
+            ax.bar(x[j], vol_before_j, bottom=vol_bottom, width=bar_w,
+                   color=COMP_COLORS["delivery_volumetric"], edgecolor="none", linewidth=0)
+            remaining = vol_hp_j - vol_before_j
+            if remaining > 0:
+                hatch_c, light_c = _seasonal_hatch_colors(months[j])
+                ax.bar(x[j], remaining, bottom=vol_bottom + vol_before_j, width=bar_w,
+                       color=light_c, edgecolor="none", linewidth=0)
+                ax.bar(x[j], remaining, bottom=vol_bottom + vol_before_j, width=bar_w,
+                       facecolor="none", edgecolor=hatch_c, linewidth=0, hatch="//")
+            if vol_hp_j >= 20:
+                ax.text(x[j], vol_bottom + vol_hp_j / 2, f"${vol_hp_j:,.0f}",
+                        ha="center", va="center", fontsize=8,
+                        fontfamily="IBM Plex Sans", fontweight="bold",
+                        color="white", zorder=5)
+
+        else:
+            # Summer / shoulder: HP rate increases cost beyond default
+            ax.bar(x[j], vol_before_j, bottom=vol_bottom, width=bar_w,
+                   color=COMP_COLORS["delivery_volumetric"], edgecolor="none", linewidth=0)
+            # Keep panel 5's seasonal hatching
+            green_inc = vol_default_j - vol_before_j
+            if green_inc > 0:
+                if months[j] in SUMMER_COOLING_MONTHS:
+                    g_light, g_hatch = COOLING_HATCH_LIGHT, COOLING_HATCH
+                else:
+                    g_light = COMP_COLORS_LIGHT["delivery_volumetric"]
+                    g_hatch = COMP_COLORS["delivery_volumetric"]
+                ax.bar(x[j], green_inc, bottom=vol_bottom + vol_before_j, width=bar_w,
+                       color=g_light, edgecolor="none", linewidth=0)
+                ax.bar(x[j], green_inc, bottom=vol_bottom + vol_before_j, width=bar_w,
+                       facecolor="none", edgecolor=g_hatch, linewidth=0, hatch="//")
+            # Red hatching for HP rate surcharge
+            red_inc = vol_hp_j - vol_default_j
+            if red_inc > 0:
+                red_bottom = vol_bottom + vol_default_j
+                ax.bar(x[j], red_inc, bottom=red_bottom, width=bar_w,
+                       color=HEATING_HATCH_LIGHT, edgecolor="none", linewidth=0)
+                ax.bar(x[j], red_inc, bottom=red_bottom, width=bar_w,
+                       facecolor="none", edgecolor=HEATING_HATCH, linewidth=0, hatch="//")
+            if vol_hp_j >= 20:
+                ax.text(x[j], vol_bottom + vol_hp_j / 2, f"${vol_hp_j:,.0f}",
+                        ha="center", va="center", fontsize=8,
+                        fontfamily="IBM Plex Sans", fontweight="bold",
+                        color="white", zorder=5)
+
+    # Ghost: where default-rate delivery exceeds HP-rate delivery
+    for j in range(len(months)):
+        if del_total_after[j] > hp_total[j]:
+            ghost_h = del_total_after[j] - hp_total[j]
+            ax.bar(x[j], ghost_h, bottom=hp_total[j], width=bar_w,
+                   color=SAVINGS_COLOR, edgecolor="#cccccc", linewidth=1.0, alpha=0.45)
+            sav_pct = ghost_h / del_total_after[j] * 100
+            ax.text(x[j], del_total_after[j] + del_max * 0.015, f"−{sav_pct:.0f}%",
+                    ha="center", va="bottom", fontsize=8,
+                    fontfamily="GT Planar", fontweight="bold",
+                    color=SB_COLORS["saffron"])
+            ghost_mid = hp_total[j] + ghost_h / 2
+            total_label_top = hp_total[j] + 28
+            safe_mid = (total_label_top + del_total_after[j]) / 2
+            dollar_y = max(ghost_mid, safe_mid)
+            ax.text(x[j], dollar_y, f"−${ghost_h:,.0f}",
+                    ha="center", va="center", fontsize=7,
+                    fontfamily="IBM Plex Sans", fontweight="bold",
+                    color=SB_COLORS["saffron"])
+
+    # Dashed baseline reference line (pre-HP delivery total)
+    for j in range(len(months)):
+        ref_y = del_total_before[j]
+        if abs(ref_y - hp_total[j]) > 2:
+            ax.plot([x[j] - bar_w / 2, x[j] + bar_w / 2], [ref_y, ref_y],
+                    color=SB_COLORS["saffron"], linestyle=(0, (3, 2)),
+                    linewidth=1.3, zorder=2)
+
+    # Total labels
+    for j in range(len(months)):
+        ax.text(x[j], hp_total[j] + del_max * 0.02, f"${hp_total[j]:,.0f}",
+                ha="center", va="bottom", fontsize=8,
+                fontfamily="IBM Plex Sans", fontweight="bold", color="#333333")
+    ax.set_ylim(0, del_max)
+    ax.set_ylabel("Delivery\n(HP rate)", fontsize=12, fontfamily="GT Planar",
+                  fontweight="bold", color="#333333", labelpad=10)
+
+    # ---- Shared formatting ----
+    for ax in axes:
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.tick_params(axis="y", labelsize=10)
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"${v:,.0f}"))
+        for j, m in enumerate(months):
+            if m in WINTER_MONTHS:
+                ax.axvspan(j - 0.42, j + 0.42, color="#e8e8e8", alpha=0.35, zorder=0)
+
+    axes[-1].set_xticks(x)
+    axes[-1].set_xticklabels(months, fontsize=10, fontfamily="IBM Plex Sans")
+
+    fig.suptitle(title, fontfamily="GT Planar", fontweight="bold",
+                 fontsize=15, ha="left", x=0.08, y=0.98)
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    return fig
+```
+
+```{python}
+#| label: fig-breakout-ngrid
+#| fig-cap: "Monthly supply and delivery bills broken out for a representative home in National Grid MA territory."
+
+fig_bo_ngrid = plot_monthly_breakout(
+    mc_ngrid_before, mc_ngrid_default, mc_ngrid_hp,
+    title="National Grid MA: Monthly bill breakout, heat pump customer",
+)
+display_figure(fig_bo_ngrid)
+```
+
+```{python}
+#| label: fig-breakout-cmp
+#| fig-cap: "Monthly supply and delivery bills broken out for a representative home under CMP rates."
+
+_cmp_first50_credit_bo = CMP_FIRST_KWH_INCLUDED * (CMP_DISTRIBUTION_DEFAULT + CMP_TRANSMISSION_DEFAULT)
+fig_bo_cmp = plot_monthly_breakout(
+    _monthly_components(bills_cmp_before, first_kwh_credit_per_month=_cmp_first50_credit_bo),
+    _monthly_components(bills_cmp_after_default, first_kwh_credit_per_month=_cmp_first50_credit_bo),
+    _monthly_components(bills_cmp_after_hp),
+    title="CMP (Maine): Monthly bill breakout, heat pump customer",
+)
+display_figure(fig_bo_cmp)
+```
+
+## Monthly consumption
+
+```{python}
+#| label: monthly-consumption-helper
+
+KWH_COLOR = "#efcb65"
+KWH_COLOR_LIGHT = "#f5e2a0"
+KWH_HATCH_COLOR = "#d4a830"
+
+
+def plot_monthly_consumption(
+    profile_before: pl.DataFrame,
+    profile_after: pl.DataFrame,
+    title: str,
+) -> plt.Figure:
+    """Two-facet monthly kWh chart: before HP and after HP with incremental hatched."""
+    fig, axes = plt.subplots(2, 1, figsize=(10.5, 3.2 * 2 + 0.8), sharex=True, sharey=True)
+
+    months = profile_before["month_label"].to_list()
+    kwh_before = profile_before["kwh"].to_numpy()
+    kwh_after = profile_after["kwh"].to_numpy()
+    x = np.arange(len(months))
+    bar_w = 0.7
+
+    # --- Panel 1: Before HP (solid bars) ---
+    ax = axes[0]
+    ax.bar(x, kwh_before, width=bar_w, color=KWH_COLOR, edgecolor="none", linewidth=0)
+    for j, v in enumerate(kwh_before):
+        ax.text(x[j], v + 15, f"{v:,.0f}",
+                ha="center", va="bottom", fontsize=8,
+                fontfamily="IBM Plex Sans", fontweight="bold", color="#333333")
+
+    ax.set_ylabel("Before HP", fontsize=12, fontfamily="GT Planar",
+                  fontweight="bold", color="#333333", labelpad=10)
+
+    # --- Panel 2: After HP (base + incremental hatched) ---
+    ax = axes[1]
+    base = np.minimum(kwh_before, kwh_after)
+    inc = kwh_after - base
+
+    ax.bar(x, base, width=bar_w, color=KWH_COLOR, edgecolor="none", linewidth=0)
+    ax.bar(x, inc, bottom=base, width=bar_w,
+           color=KWH_COLOR_LIGHT, edgecolor="none", linewidth=0)
+    ax.bar(x, inc, bottom=base, width=bar_w,
+           facecolor="none", edgecolor=KWH_HATCH_COLOR, linewidth=0, hatch="//")
+
+    for j in range(len(months)):
+        ax.text(x[j], kwh_after[j] + 15, f"{kwh_after[j]:,.0f}",
+                ha="center", va="bottom", fontsize=8,
+                fontfamily="IBM Plex Sans", fontweight="bold", color="#333333")
+
+    ax.set_ylabel("After HP", fontsize=12, fontfamily="GT Planar",
+                  fontweight="bold", color="#333333", labelpad=10)
+
+    # --- Shared formatting ---
+    for ax in axes:
+        ax.set_xticks(x)
+        ax.set_xticklabels(months, fontsize=10, fontfamily="IBM Plex Sans")
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.tick_params(axis="y", labelsize=10)
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:,.0f}"))
+        for j, m in enumerate(months):
+            if m in WINTER_MONTHS:
+                ax.axvspan(j - 0.42, j + 0.42, color="#e8e8e8", alpha=0.35, zorder=0)
+
+    fig.suptitle(title, fontfamily="GT Planar", fontweight="bold",
+                 fontsize=15, ha="left", x=0.08, y=0.98)
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    return fig
+```
+
+```{python}
+#| label: fig-consumption-ngrid
+#| fig-cap: "Monthly electricity consumption for a representative home in National Grid MA territory, before and after heat pump installation."
+
+fig_kwh_ngrid = plot_monthly_consumption(
+    profile_before, profile_after,
+    title="National Grid MA: Monthly electricity consumption (kWh)",
+)
+display_figure(fig_kwh_ngrid)
+```
+
+```{python}
+#| label: fig-consumption-cmp
+#| fig-cap: "Monthly electricity consumption for a representative home under CMP rates, before and after heat pump installation."
+
+fig_kwh_cmp = plot_monthly_consumption(
+    profile_before, profile_after,
+    title="CMP (Maine): Monthly electricity consumption (kWh)",
+)
+display_figure(fig_kwh_cmp)
+```
+
 ## Rate structure diagrams
 
 Proportionally-sized rectangles for supply and delivery rates. Heights are

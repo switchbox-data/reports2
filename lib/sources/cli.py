@@ -327,6 +327,14 @@ def cmd_orgs_plan(args: argparse.Namespace) -> int:
     decisions = json.loads(path_decisions.read_text(encoding="utf-8")) if path_decisions.exists() else {}
     rulings = review_sheet.load_json(work_dir / "rulings.json", {})
     decisions = {**rulings.get("clusters", {}), **decisions}
+    in_scope = {r["item"] for r in key_rows}
+    for it in snap["items"]:
+        d = it["data"]
+        if d["key"] in rulings.get("items", {}) and d["key"] not in in_scope and d.get("citationKey"):
+            key_rows.append({
+                "item": d["key"], "key": d["citationKey"], "source": "native", "old_keys": [d["citationKey"]],
+                "scope": "neither", "cited": [],
+            })  # fmt: skip
     fixes_dir = work_dir / "item_fixes"
     fixes, _ = item_fixes.load(fixes_dir.glob("batch_*.json"), {})
     today = date.today()

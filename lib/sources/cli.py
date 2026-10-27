@@ -14,11 +14,27 @@ import argparse
 import json
 import sys
 from collections import Counter
+from dataclasses import asdict
+from datetime import date
 from pathlib import Path
 
 import yaml
 
-from lib.sources import bib, checks, citations, extra, org_proposals, orgs, snapshot, zotero
+from lib.sources import (
+    bib,
+    checks,
+    citations,
+    citekeys,
+    cleanup,
+    extra,
+    item_fixes,
+    org_plan,
+    org_proposals,
+    orgs,
+    review_sheet,
+    snapshot,
+    zotero,
+)
 
 REPO_ROOT = zotero.REPO_ROOT
 DEFAULT_REFERENCES = REPO_ROOT / "reports" / "references.yaml"
@@ -271,18 +287,190 @@ def cmd_orgs_proposals(args: argparse.Namespace) -> int:
     proposals, problems = org_proposals.load_batches(paths)
     merged, merge_problems = org_proposals.merge(proposals, expected)
     problems += merge_problems
+    found = org_proposals.conflicts(merged)
     if not args.batch:
         (work_dir / "clusters.json").write_text(
             json.dumps([m.model_dump() for m in merged], ensure_ascii=False, indent=1), encoding="utf-8"
         )
-    kinds = Counter(p.kind for m in merged for p in m.proposals[:1])
+        (work_dir / "conflicts.json").write_text(
+            json.dumps([c.model_dump() for c in found], ensure_ascii=False, indent=1), encoding="utf-8"
+        )
+    kinds = Counter("split" if m.split_into else m.proposals[0].kind for m in merged)
     conf = Counter(p.confidence for m in merged for p in m.proposals[:1])
     print(f"{len(paths)} proposal files, {len(merged)} clusters ({dict(kinds)}); confidence {dict(conf)}")
     print(f"  needs your decision: {sum(any(p.needs_decision for p in m.proposals) for m in merged)}")
+    for c in found:
+        print(f"  for the review sheet: {c.cluster} {c.field}: {' | '.join(c.options)}")
     for msg in problems:
         print(f"  problem: {msg}")
     print("OK" if not problems else f"{len(problems)} problems")
     return 1 if problems else 0
+
+
+def cmd_orgs_plan(args: argparse.Namespace) -> int:
+    """Apply the merged clusters to every in-scope item and compute keys from scratch. Read-only."""
+    work_dir = Path(args.path_work_dir) if args.path_work_dir else snapshot.default_work_dir()
+    snaps = sorted(work_dir.glob("snapshot_v*.json"), key=lambda p: int(p.stem.removeprefix("snapshot_v")))
+    snap = snapshot.load(snaps[-1])
+    extract_dir = work_dir / "extract"
+    mentions = [json.loads(line) for line in (extract_dir / "mentions.jsonl").open(encoding="utf-8")]
+    groups = json.loads((extract_dir / "groups.json").read_text(encoding="utf-8"))
+    merged = [
+        org_proposals.MergedCluster.model_validate(m)
+        for m in json.loads((work_dir / "clusters.json").read_text(encoding="utf-8"))
+    ]
+    key_rows = json.loads((work_dir / "key_map.json").read_text(encoding="utf-8"))
+    path_decisions = work_dir / "decisions.json"
+    decisions = json.loads(path_decisions.read_text(encoding="utf-8")) if path_decisions.exists() else None
+    fixes_dir = work_dir / "item_fixes"
+    fixes, _ = item_fixes.load(fixes_dir.glob("batch_*.json"), {})
+    today = date.today()
+    plans = org_plan.build(
+        snap, mentions, groups, merged, key_rows, decisions, fixes, (today.year, today.month, today.day)
+    )
+    (work_dir / "plan.json").write_text(
+        json.dumps([asdict(p) for p in plans], ensure_ascii=False, indent=1), encoding="utf-8"
+    )
+    changed = sum(bool(p.changes) for p in plans)
+    keyed = [p for p in plans if p.key]
+    same = sum(p.key in p.old_keys for p in keyed)
+    print(f"{len(plans)} items: {changed} with metadata changes, {sum(bool(p.flags) for p in plans)} flagged")
+    print(
+        f"  keys: {len(keyed)} assigned ({same} unchanged, {len(keyed) - same} new); {len(plans) - len(keyed)} need an author"
+    )
+    cited_changed = sum(1 for p in keyed if p.cited and p.key not in p.old_keys)
+    print(f"  cited items whose key changes: {cited_changed}")
+    print(f"  wrote {work_dir / 'plan.json'}")
+    return 0
+
+
+def _needs_fix(p: dict) -> list[str]:
+    """What an item in plan.json still lacks: author, date or a real title."""
+    after = p["after"]
+    title = citekeys.item_title(after) or ""
+    out = []
+    if not p["key"]:
+        out.append("author")
+    if citekeys.parse_date(citekeys.item_date(after)) is None:
+        out.append("date")
+    if not title.strip() or org_plan.looks_like_filename(title):
+        out.append("title")
+    return out
+
+
+def cmd_orgs_fix_batches(args: argparse.Namespace) -> int:
+    """Write input batches for the second agent pass (authors, dates, titles). Read-only."""
+    work_dir = Path(args.path_work_dir) if args.path_work_dir else snapshot.default_work_dir()
+    plans = json.loads((work_dir / "plan.json").read_text(encoding="utf-8"))
+    merged = json.loads((work_dir / "clusters.json").read_text(encoding="utf-8"))
+    names = sorted(
+        {
+            (p["canonical_full_name"], p["short_form"] or "")
+            for m in merged
+            for p in m["proposals"][:1]
+            if p["canonical_full_name"] and not m["split_into"]
+        }
+    )
+    todo = [(p, need) for p in plans if (need := _needs_fix(p))]
+    out = work_dir / "item_fixes" / "inputs"
+    out.mkdir(parents=True, exist_ok=True)
+    for old in out.glob("batch_*.json"):
+        old.unlink()
+    n = 0
+    for i in range(0, len(todo), args.batch_size):
+        n += 1
+        chunk = todo[i : i + args.batch_size]
+        payload = {
+            "batch": f"F{n:02d}",
+            "organizations": [{"full_name": f, "short_form": s} for f, s in names],
+            "items": [
+                {
+                    "item": p["item"],
+                    "needs": need,
+                    "cited_as": p["cited"],
+                    "item_type": p["item_type"],
+                    "current": {
+                        k: v for k, v in p["after"].items() if v and k not in ("relations", "collections", "tags")
+                    },
+                }
+                for p, need in chunk
+            ],
+        }
+        (out / f"batch_{n:02d}.json").write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(f"{len(todo)} items need an author, date or title: {dict(Counter(x for _, need in todo for x in need))}")
+    print(f"  {n} batches in {out}")
+    return 0
+
+
+def cmd_orgs_fixes(args: argparse.Namespace) -> int:
+    """Validate the second agent pass's fix files. Read-only."""
+    work_dir = Path(args.path_work_dir) if args.path_work_dir else snapshot.default_work_dir()
+    fixes_dir = work_dir / "item_fixes"
+    expected = {}
+    for p in sorted((fixes_dir / "inputs").glob("batch_*.json")):
+        b = json.loads(p.read_text(encoding="utf-8"))
+        expected[b["batch"]] = {it["item"] for it in b["items"]}
+    paths = sorted(fixes_dir.glob("batch_*.json"))
+    if args.batch:
+        paths = [p for p in paths if p.stem == f"batch_{int(args.batch):02d}"]
+        expected = {k: v for k, v in expected.items() if k == f"F{int(args.batch):02d}"}
+    fixes, problems = item_fixes.load(paths, expected)
+    print(f"{len(paths)} fix files, {len(fixes)} items: {dict(Counter(f.action for f in fixes.values()))}")
+    print(f"  confidence {dict(Counter(f.confidence for f in fixes.values()))}")
+    for msg in problems:
+        print(f"  problem: {msg}")
+    print("OK" if not problems else f"{len(problems)} problems")
+    return 1 if problems else 0
+
+
+def cmd_orgs_sheet_push(args: argparse.Namespace) -> int:
+    """Build the review tabs, save CSV copies and create or refresh the Google Sheet. No Zotero access."""
+    work_dir = Path(args.path_work_dir) if args.path_work_dir else snapshot.default_work_dir()
+    rd = review_sheet.load_json
+    snaps = sorted(work_dir.glob("snapshot_v*.json"), key=lambda p: int(p.stem.removeprefix("snapshot_v")))
+    snap = snapshot.load(snaps[-1])
+    plans = rd(work_dir / "plan.json", [])
+    known = {k for p in plans for k in p["old_keys"]}
+    unresolved = [k for k in _cited_keys(REPORTS_DIR) if k not in known]
+    actions = cleanup.actions(snap, plans, unresolved, snapshot.summarize(snap))
+    (work_dir / "cleanup.json").write_text(json.dumps(actions, ensure_ascii=False, indent=1), encoding="utf-8")
+    tabs = review_sheet.build_tabs(
+        plans=plans,
+        merged=rd(work_dir / "clusters.json", []),
+        groups=rd(work_dir / "extract" / "groups.json", []),
+        conflicts=rd(work_dir / "conflicts.json", []),
+        questions=rd(work_dir / "questions.json", []),
+        cleanup=actions,
+    )
+    review_sheet.write_csvs(tabs, work_dir / "review_csv")
+    path_meta = work_dir / "review_sheet.json"
+    meta = rd(path_meta, {})
+    if args.csv_only:
+        print(f"wrote {work_dir / 'review_csv'}")
+        return 0
+    url = review_sheet.push(tabs, args.title, meta.get("spreadsheet_id"))
+    meta = {"spreadsheet_id": url.rstrip("/").split("/d/")[1].split("/")[0], "url": url}
+    path_meta.write_text(json.dumps(meta, indent=1), encoding="utf-8")
+    for name, rows in tabs.items():
+        print(f"  {name}: {len(rows) - 1} rows")
+    print(f"Review sheet: {url}")
+    return 0
+
+
+def cmd_orgs_sheet_pull(args: argparse.Namespace) -> int:
+    """Read the reviewer's answers into decisions.json and answers.json. No Zotero access."""
+    work_dir = Path(args.path_work_dir) if args.path_work_dir else snapshot.default_work_dir()
+    meta = review_sheet.load_json(work_dir / "review_sheet.json", {})
+    if not meta:
+        print("no review sheet yet; run orgs-sheet-push first")
+        return 1
+    tabs = review_sheet.pull(meta["spreadsheet_id"])
+    decisions, other = review_sheet.answers_from(tabs)
+    (work_dir / "decisions.json").write_text(json.dumps(decisions, ensure_ascii=False, indent=1), encoding="utf-8")
+    (work_dir / "answers.json").write_text(json.dumps(other, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(f"{len(decisions)} cluster decisions, {len(other['items'])} item verdicts, ", end="")
+    print(f"{len(other['questions'])} question answers, {len(other['cleanup'])} cleanup answers")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -322,6 +510,25 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--batch", default="", help="validate one batch only (e.g. 3)")
     p.add_argument("--path-work-dir", default="")
     p.set_defaults(func=cmd_orgs_proposals)
+    p = sub.add_parser("orgs-plan", help="apply clusters to every item and compute citation keys from scratch")
+    p.add_argument("--path-work-dir", default="")
+    p.set_defaults(func=cmd_orgs_plan)
+    p = sub.add_parser("orgs-fix-batches", help="write batches of items that still need an author, date or title")
+    p.add_argument("--batch-size", type=int, default=23)
+    p.add_argument("--path-work-dir", default="")
+    p.set_defaults(func=cmd_orgs_fix_batches)
+    p = sub.add_parser("orgs-fixes", help="validate the author/date/title agent pass")
+    p.add_argument("--batch", default="")
+    p.add_argument("--path-work-dir", default="")
+    p.set_defaults(func=cmd_orgs_fixes)
+    p = sub.add_parser("orgs-sheet-push", help="create or refresh the cleanup review Google Sheet")
+    p.add_argument("--title", default="Zotero cleanup review")
+    p.add_argument("--csv-only", action="store_true", help="only write the CSV copies")
+    p.add_argument("--path-work-dir", default="")
+    p.set_defaults(func=cmd_orgs_sheet_push)
+    p = sub.add_parser("orgs-sheet-pull", help="read the reviewer's answers from the review sheet")
+    p.add_argument("--path-work-dir", default="")
+    p.set_defaults(func=cmd_orgs_sheet_pull)
     args = parser.parse_args(argv)
     return args.func(args)
 

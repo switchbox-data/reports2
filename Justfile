@@ -71,6 +71,26 @@ orgs-evidence +items:
 orgs-proposals batch="" path_work_dir="":
     uv run python -m lib.sources.cli orgs-proposals --batch "{{ batch }}" --path-work-dir "{{ path_work_dir }}"
 
+# Apply the clusters (and any reviewed decisions and fixes) to every item; compute keys from scratch (read-only)
+orgs-plan path_work_dir="":
+    uv run python -m lib.sources.cli orgs-plan --path-work-dir "{{ path_work_dir }}"
+
+# Write batches of items that still need an author, date or title, for the fix-items agent pass
+orgs-fix-batches path_work_dir="":
+    uv run python -m lib.sources.cli orgs-fix-batches --path-work-dir "{{ path_work_dir }}"
+
+# Create or refresh the cleanup review Google Sheet (and CSV copies in the work folder)
+orgs-sheet-push path_work_dir="":
+    uv run python -m lib.sources.cli orgs-sheet-push --path-work-dir "{{ path_work_dir }}"
+
+# Read the reviewer's answers back from the review sheet into decisions.json and answers.json
+orgs-sheet-pull path_work_dir="":
+    uv run python -m lib.sources.cli orgs-sheet-pull --path-work-dir "{{ path_work_dir }}"
+
+# Validate the fix-items agent pass (one batch, or all)
+orgs-fixes batch="" path_work_dir="":
+    uv run python -m lib.sources.cli orgs-fixes --batch "{{ batch }}" --path-work-dir "{{ path_work_dir }}"
+
 # Regenerate the Switchbox CSL style from pandoc's default Chicago author-date style
 make-csl path_output=path_csl:
     uv run python -m lib.sources.make_csl --path-output {{ path_output }}

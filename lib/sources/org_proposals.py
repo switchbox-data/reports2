@@ -8,6 +8,7 @@ review sheet. Nothing here touches Zotero.
 from __future__ import annotations
 
 import json
+import re
 from collections import defaultdict
 from collections.abc import Iterable
 from pathlib import Path
@@ -73,6 +74,46 @@ class MergedCluster(BaseModel):
     groups: list[str]
     batches: list[str]
     proposals: list[Cluster]
+    split_into: list[str] = Field(
+        default_factory=list, description="full names, when the name strings list several organizations"
+    )
+
+
+_JOINER_RE = re.compile(r"^(?:;\s*|,\s*(?:and\s+)?|\s+and\s+|\s*&\s*)")
+
+
+def segment_names(name: str, known: Iterable[str]) -> list[str] | None:
+    """Split ``name`` into two or more ``known`` full names joined by ';', ',', 'and' or '&'.
+
+    Names may themselves contain "and" ("Rochester Gas and Electric"), so this matches known
+    names rather than splitting on separators. Returns the canonical spellings, or None.
+
+    >>> segment_names("NYSEG and Rochester Gas and Electric", ["NYSEG", "Rochester Gas and Electric"])
+    ['NYSEG', 'Rochester Gas and Electric']
+    """
+    by_fold = {k.casefold(): k for k in known}
+    longest_first = sorted(by_fold, key=lambda k: -len(k))
+
+    def seg(s: str) -> list[str] | None:
+        for k in longest_first:
+            if not s.startswith(k):
+                continue
+            rest = s[len(k) :]
+            if not rest:
+                return [by_fold[k]]
+            if (m := _JOINER_RE.match(rest)) and (tail := seg(rest[m.end() :])):
+                return [by_fold[k], *tail]
+        return None
+
+    parts = seg(name.casefold().strip())
+    return parts if parts and len(parts) > 1 else None
+
+
+class Conflict(BaseModel):
+    cluster: str
+    field: Literal["canonical_full_name", "short_form"]
+    options: list[str]
+    batches: list[str]
 
 
 def load_batches(paths: Iterable[Path]) -> tuple[list[BatchProposal], list[str]]:
@@ -114,6 +155,17 @@ def merge(
     for batch in sorted(set(expected_groups) - {bp.batch for bp in proposals}):
         problems.append(f"{batch}: no proposal file")
 
+    # A name that lists several known organizations is a split instruction, not an organization.
+    known = {c.canonical_full_name for _, c in clusters if c.kind == "organization" and c.canonical_full_name}
+    split: dict[int, tuple[str, ...]] = {}
+    for idx, (_, c) in enumerate(clusters):
+        if c.kind != "organization" or not c.canonical_full_name:
+            continue
+        if ";" in c.canonical_full_name:
+            split[idx] = tuple(p.strip() for p in c.canonical_full_name.split(";") if p.strip())
+        elif parts := segment_names(c.canonical_full_name, known - {c.canonical_full_name}):
+            split[idx] = tuple(parts)
+
     parent = list(range(len(clusters)))
 
     def find(x: int) -> int:
@@ -122,13 +174,14 @@ def merge(
             x = parent[x]
         return x
 
-    by_name: dict[str, int] = {}
+    by_name: dict[str | tuple[str, ...], int] = {}
     for idx, (_, c) in enumerate(clusters):
         for g in c.same_as_groups:
             for _, other in assigned.get(g, []):
-                parent[find(idx)] = find(other)
+                if split.get(idx) == split.get(other):
+                    parent[find(idx)] = find(other)
         if c.kind == "organization" and c.canonical_full_name:
-            name = c.canonical_full_name.casefold()
+            name: str | tuple[str, ...] = split.get(idx) or c.canonical_full_name.casefold()
             if name in by_name:
                 parent[find(idx)] = find(by_name[name])
             else:
@@ -145,21 +198,38 @@ def merge(
                 groups=sorted({g for p in props for g in p.groups}),
                 batches=sorted({clusters[i][0] for i in members}),
                 proposals=props,
+                split_into=list(split.get(members[0], ())),
             )
         )
     merged.sort(key=lambda m: m.groups[0])
     for i, m in enumerate(merged, 1):
         m.id = f"C{i:03d}"
-        names = {p.canonical_full_name for p in m.proposals if p.canonical_full_name}
-        shorts = {p.short_form for p in m.proposals if p.short_form}
-        if len({n.casefold() for n in names}) > 1 or len(shorts) > 1:
-            problems.append(f"{m.id}: merged proposals disagree: names {sorted(names)}, short forms {sorted(shorts)}")
+    owners: dict[str, list[str]] = defaultdict(list)
+    for m in merged:
+        for g in m.groups:
+            owners[g].append(m.id)
+    for g, ids in sorted(owners.items()):
+        if len(ids) > 1:
+            problems.append(f"group {g} ended up in several clusters: {', '.join(ids)}")
+    return merged, problems
+
+
+def conflicts(merged: list[MergedCluster]) -> list[Conflict]:
+    """Disagreements for the review sheet: names or short forms that batches proposed differently."""
+    out: list[Conflict] = []
     short_owner: dict[str, set[str]] = defaultdict(set)
     for m in merged:
-        for p in m.proposals:
-            if p.short_form:
-                short_owner[p.short_form].add(m.id)
-    for s, owners in sorted(short_owner.items()):
-        if len(owners) > 1:
-            problems.append(f"short form {s!r} proposed for several clusters: {', '.join(sorted(owners))}")
-    return merged, problems
+        if m.split_into:
+            continue
+        names = sorted({p.canonical_full_name for p in m.proposals if p.canonical_full_name})
+        if len({n.casefold() for n in names}) > 1:
+            out.append(Conflict(cluster=m.id, field="canonical_full_name", options=names, batches=m.batches))
+        shorts = sorted({p.short_form for p in m.proposals if p.short_form})
+        if len(shorts) > 1:
+            out.append(Conflict(cluster=m.id, field="short_form", options=shorts, batches=m.batches))
+        for s in shorts:
+            short_owner[s].add(m.id)
+    for s, ids in sorted(short_owner.items()):
+        if len(ids) > 1:
+            out.append(Conflict(cluster=", ".join(sorted(ids)), field="short_form", options=[s], batches=[]))
+    return out

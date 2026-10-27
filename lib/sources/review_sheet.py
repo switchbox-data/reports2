@@ -35,7 +35,7 @@ LONG_KEY_COLS = [
 ]  # fmt: skip
 LONG_AUTHOR_PART = 4
 QUESTION_COLS = ["id", "question", "options", "comes_up_in", "your_answer"]
-CLEANUP_COLS = ["id", "type", "items", "description", "proposed_action", "your_answer"]
+CLEANUP_COLS = ["id", "needs_you", "type", "items", "description", "proposed_action", "your_answer"]
 YOURS = ("your_full_name", "your_short_form", "your_kind", "your_comment", "your_verdict", "your_answer")
 _CELL_MAX = 45_000  # Sheets rejects cells over 50,000 characters
 
@@ -189,7 +189,15 @@ def question_rows(questions: Sequence[Mapping[str, Any]]) -> Rows:
 def cleanup_rows(actions: Sequence[Mapping[str, Any]]) -> Rows:
     rows: Rows = [CLEANUP_COLS]
     for a in actions:
-        rows.append([a["id"], a["type"], a.get("items", []), a["description"], a.get("proposed_action", ""), ""])
+        rows.append([
+            a["id"],
+            "yes" if a.get("needs_you") else "",
+            a["type"],
+            a.get("items", []),
+            a["description"],
+            a.get("proposed_action", ""),
+            "",
+        ])  # fmt: skip
     return rows
 
 

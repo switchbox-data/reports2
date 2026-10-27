@@ -505,6 +505,10 @@ def cmd_orgs_sheet_push(args: argparse.Namespace) -> int:
     known = {k for p in plans for k in p["old_keys"]} | {p["key"] for p in plans if p.get("key")}
     unresolved = [k for k in _cited_keys(REPORTS_DIR) if k not in known]
     actions = cleanup.actions(snap, plans, unresolved, snapshot.summarize(snap))
+    notes = rd(work_dir / "cleanup_notes.json", {})
+    for a in actions:
+        a.update(notes.get("rows", {}).get(a["id"], {}))
+    actions += notes.get("extra", [])
     (work_dir / "cleanup.json").write_text(json.dumps(actions, ensure_ascii=False, indent=1), encoding="utf-8")
     tabs = review_sheet.build_tabs(
         plans=plans,

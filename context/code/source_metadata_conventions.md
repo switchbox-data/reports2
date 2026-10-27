@@ -29,7 +29,7 @@ How items in the Switchbox Zotero group library are named and keyed. `reports/re
 2. **Common usage** where it clearly serves readers better (ConEd).
 3. **A state prefix** for generic agency abbreviations (DPU, PSC, PUC, DEP, DEC, DPS, BPU): "<state> <abbreviation>" with a space, as in MA DPU, NY PSC, RI PUC, MD PSC, NJ BPU, NY DEC. Distinctive names keep their own form (NYSERDA, NYISO, CT DEEP, ISO-NE). Bare "DPU", "PSC", "PUC", "DEC" and "DPS" are never valid. An agency's own state-bearing abbreviation beats the rule: RIPUC, PURA (Connecticut) and CPUC, not RI PUC, CT PURA or CA PUC.
 4. **No short form** if the organization doesn't use one. Never invent one ("BGC" and "BUG" fail this test).
-5. A short form may be a **short name** rather than an acronym ("Nicor Gas", "Peoples Gas", "National Fuel").
+5. A short form may be a **short name** rather than an acronym ("Boston Gas", "Nantucket Electric", "Chicago").
 6. **One short form, one full name.** `sync-bib`'s checks enforce this.
 
 ## Sub-units, several organizations, organizations with people
@@ -44,51 +44,52 @@ How items in the Switchbox Zotero group library are named and keyed. `reports/re
 
 Separate legal companies stay separate, in the full name and the short form. The parent is the author only of its own documents (10-Ks, corporate sites, investor material). Joint filings by two companies get one creator per company. "(verify)" means the short form still needs evidence from a filing or the company's website.
 
-| legal company                                                         | parent                         | full name                                           | short form             | key part                        |
-| --------------------------------------------------------------------- | ------------------------------ | --------------------------------------------------- | ---------------------- | ------------------------------- |
-| Niagara Mohawk Power Corporation                                      | National Grid                  | National Grid Upstate                               | NiMo                   | `nimo`                          |
-| The Brooklyn Union Gas Company                                        | National Grid                  | National Grid New York                              | KEDNY                  | `kedny`                         |
-| KeySpan Gas East Corporation                                          | National Grid                  | National Grid Long Island                           | KEDLI                  | `kedli`                         |
-| Massachusetts Electric Company                                        | National Grid                  | National Grid Massachusetts Electric                | Mass. Electric         | `masselectric`                  |
-| Nantucket Electric Company                                            | National Grid                  | National Grid Nantucket Electric                    | Nantucket Electric     | `nantucketelectric`             |
-| Boston Gas Company (incl. former Colonial Gas)                        | National Grid                  | National Grid Massachusetts Gas                     | Boston Gas             | `bostongas`                     |
-| New England Power Company                                             | National Grid                  | New England Power                                   | NEP (verify)           | `nep`                           |
-| The Narragansett Electric Company                                     | PPL (National Grid until 2022) | Rhode Island Energy                                 | RIE                    | `rie`                           |
-| National Grid USA, National Grid plc                                  |                                | National Grid                                       | (none)                 | `nationalgrid`                  |
-| The Connecticut Light and Power Company                               | Eversource                     | Eversource Connecticut                              | CL&P                   | `clp`                           |
-| Yankee Gas Services Company                                           | Eversource                     | Eversource Connecticut Gas                          | Yankee Gas             | `yankeegas`                     |
-| NSTAR Electric Company                                                | Eversource                     | Eversource Massachusetts                            | NSTAR Electric         | `nstarelectric`                 |
-| NSTAR Gas Company                                                     | Eversource                     | Eversource Eastern Massachusetts Gas                | NSTAR Gas              | `nstargas`                      |
-| Eversource Gas Company of Massachusetts (formerly Columbia Gas of MA) | Eversource                     | Eversource Gas Company of Massachusetts             | EGMA                   | `egma`                          |
-| Eversource Energy                                                     |                                | Eversource                                          | (none)                 | `eversource`                    |
-| Consolidated Edison Company of New York                               | Consolidated Edison            | Consolidated Edison Company of New York             | ConEd                  | `coned`                         |
-| Orange and Rockland Utilities                                         | Consolidated Edison            | Orange and Rockland Utilities                       | O&R                    | `or`                            |
-| Consolidated Edison, Inc.                                             |                                | Consolidated Edison                                 | (none)                 | `consolidatededison`            |
-| New York State Electric & Gas Corporation                             | Avangrid                       | New York State Electric & Gas                       | NYSEG                  | `nyseg`                         |
-| Rochester Gas and Electric Corporation                                | Avangrid                       | Rochester Gas and Electric                          | RG&E                   | `rge`                           |
-| Central Maine Power Company                                           | Avangrid                       | Central Maine Power                                 | CMP                    | `cmp`                           |
-| The United Illuminating Company                                       | Avangrid                       | United Illuminating Company                         | UI                     | `ui`                            |
-| Connecticut Natural Gas Corporation                                   | Avangrid                       | Connecticut Natural Gas                             | CNG                    | `cng`                           |
-| The Southern Connecticut Gas Company                                  | Avangrid                       | Southern Connecticut Gas Company                    | SCG                    | `scg`                           |
-| The Berkshire Gas Company                                             | Avangrid                       | Berkshire Gas Company                               | Berkshire Gas (verify) | `berkshiregas`                  |
-| Avangrid, Inc.                                                        | Iberdrola                      | Avangrid                                            | (none)                 | `avangrid`                      |
-| Public Service Electric and Gas Company                               | PSEG                           | Public Service Electric and Gas Company             | PSE&G                  | `pseg`                          |
-| PSEG Long Island LLC                                                  | PSEG                           | PSEG Long Island                                    | PSEG LI (verify)       | `psegli`                        |
-| Public Service Enterprise Group                                       |                                | Public Service Enterprise Group                     | PSEG                   | `pseg`                          |
-| Baltimore Gas and Electric Company                                    | Exelon                         | Baltimore Gas and Electric Company                  | BGE                    | `bge`                           |
-| Potomac Electric Power Company                                        | Exelon                         | Potomac Electric Power Company                      | Pepco                  | `pepco`                         |
-| The Potomac Edison Company                                            | FirstEnergy                    | Potomac Edison Company                              | Potomac Edison         | `potomacedison`                 |
-| Central Hudson Gas & Electric Corporation                             | Fortis                         | Central Hudson Gas & Electric                       | Central Hudson         | `centralhudson`                 |
-| Northern Illinois Gas Company                                         | Southern Company Gas           | Northern Illinois Gas Company                       | Nicor Gas              | `nicorgas`                      |
-| The Peoples Gas Light and Coke Company                                | WEC Energy Group               | Peoples Gas Light and Coke Company                  | Peoples Gas            | `peoplesgas`                    |
-| North Shore Gas Company                                               | WEC Energy Group               | North Shore Gas Company                             | North Shore Gas        | `northshoregas`                 |
-| Ameren Illinois Company                                               | Ameren                         | Ameren Illinois                                     | AIC                    | `aic`                           |
-| National Fuel Gas Distribution Corporation                            | National Fuel Gas Company      | National Fuel Gas Distribution Corporation          | National Fuel          | `nationalfuel`                  |
-| National Fuel Gas Company                                             |                                | National Fuel Gas Company                           | NFG                    | `nfg`                           |
-| Liberty Utilities (St. Lawrence Gas) Corp.                            | Algonquin (Liberty)            | Liberty Utilities (St. Lawrence Gas)                | (none)                 | `libertyutilitiesstlawrencegas` |
-| Liberty Utilities (New England Natural Gas Company) Corp.             | Algonquin (Liberty)            | Liberty Utilities (New England Natural Gas Company) | NEGC                   | `negc`                          |
-| Fitchburg Gas and Electric Light Company                              | Unitil                         | Unitil Massachusetts                                | FG&E                   | `fge`                           |
-| Unitil Corporation                                                    |                                | Unitil                                              | (none)                 | `unitil`                        |
+| legal company                                                         | parent                         | full name                                           | short form       | key part                        |
+| --------------------------------------------------------------------- | ------------------------------ | --------------------------------------------------- | ---------------- | ------------------------------- |
+| Niagara Mohawk Power Corporation                                      | National Grid                  | National Grid Upstate                               | NiMo             | `nimo`                          |
+| The Brooklyn Union Gas Company                                        | National Grid                  | National Grid New York                              | KEDNY            | `kedny`                         |
+| KeySpan Gas East Corporation                                          | National Grid                  | National Grid Long Island                           | KEDLI            | `kedli`                         |
+| Massachusetts Electric Company                                        | National Grid                  | National Grid Massachusetts Electric                | MECo             | `meco`                          |
+| Nantucket Electric Company                                            | National Grid                  | National Grid Nantucket Electric                    | NanCo            | `nanco`                         |
+| Boston Gas Company (incl. former Colonial Gas)                        | National Grid                  | National Grid Massachusetts Gas                     | Boston Gas       | `bostongas`                     |
+| New England Power Company                                             | National Grid                  | New England Power                                   | NEP (verify)     | `nep`                           |
+| The Narragansett Electric Company                                     | PPL (National Grid until 2022) | Rhode Island Energy                                 | RIE              | `rie`                           |
+| National Grid USA, National Grid plc                                  |                                | National Grid                                       | (none)           | `nationalgrid`                  |
+| The Connecticut Light and Power Company                               | Eversource                     | Eversource Connecticut                              | CL&P             | `clp`                           |
+| Yankee Gas Services Company                                           | Eversource                     | Eversource Connecticut Gas                          | YGC              | `ygc`                           |
+| NSTAR Electric Company                                                | Eversource                     | Eversource Massachusetts                            | NSTAR Electric   | `nstarelectric`                 |
+| NSTAR Gas Company                                                     | Eversource                     | Eversource Eastern Massachusetts Gas                | NSTAR Gas        | `nstargas`                      |
+| Eversource Gas Company of Massachusetts (formerly Columbia Gas of MA) | Eversource                     | Eversource Gas Company of Massachusetts             | EGMA             | `egma`                          |
+| Eversource Energy                                                     |                                | Eversource                                          | (none)           | `eversource`                    |
+| Consolidated Edison Company of New York                               | Consolidated Edison            | Consolidated Edison Company of New York             | ConEd            | `coned`                         |
+| Orange and Rockland Utilities                                         | Consolidated Edison            | Orange and Rockland Utilities                       | O&R              | `or`                            |
+| Consolidated Edison, Inc.                                             |                                | Consolidated Edison                                 | (none)           | `consolidatededison`            |
+| New York State Electric & Gas Corporation                             | Avangrid                       | New York State Electric & Gas                       | NYSEG            | `nyseg`                         |
+| Rochester Gas and Electric Corporation                                | Avangrid                       | Rochester Gas and Electric                          | RG&E             | `rge`                           |
+| Central Maine Power Company                                           | Avangrid                       | Central Maine Power                                 | CMP              | `cmp`                           |
+| The United Illuminating Company                                       | Avangrid                       | United Illuminating Company                         | UI               | `ui`                            |
+| Connecticut Natural Gas Corporation                                   | Avangrid                       | Connecticut Natural Gas                             | CNG              | `cng`                           |
+| The Southern Connecticut Gas Company                                  | Avangrid                       | Southern Connecticut Gas Company                    | SCG              | `scg`                           |
+| The Berkshire Gas Company                                             | Avangrid                       | Berkshire Gas Company                               | BGC              | `bgc`                           |
+| Avangrid, Inc.                                                        | Iberdrola                      | Avangrid                                            | (none)           | `avangrid`                      |
+| Public Service Electric and Gas Company                               | PSEG                           | Public Service Electric and Gas Company             | PSE&G            | `pseg`                          |
+| PSEG Long Island LLC                                                  | PSEG                           | PSEG Long Island                                    | PSEG LI (verify) | `psegli`                        |
+| Public Service Enterprise Group                                       |                                | Public Service Enterprise Group                     | PSEG             | `pseg`                          |
+| Baltimore Gas and Electric Company                                    | Exelon                         | Baltimore Gas and Electric Company                  | BG&E             | `bge`                           |
+| Potomac Electric Power Company                                        | Exelon                         | Potomac Electric Power Company                      | PEPCO            | `pepco`                         |
+| The Potomac Edison Company                                            | FirstEnergy                    | Potomac Edison Company                              | PE               | `pe`                            |
+| Central Hudson Gas & Electric Corporation                             | Fortis                         | Central Hudson Gas & Electric                       | CHG&E            | `chge`                          |
+| Northern Illinois Gas Company                                         | Southern Company Gas           | Northern Illinois Gas Company                       | NICOR            | `nicor`                         |
+| The Peoples Gas Light and Coke Company                                | WEC Energy Group               | Peoples Gas Light and Coke Company                  | PGL              | `pgl`                           |
+| North Shore Gas Company                                               | WEC Energy Group               | North Shore Gas Company                             | NSG              | `nsg`                           |
+| Ameren Illinois Company                                               | Ameren                         | Ameren Illinois                                     | AIC              | `aic`                           |
+| National Fuel Gas Distribution Corporation                            | National Fuel Gas Company      | National Fuel Gas Distribution Corporation          | NFGDC            | `nfgdc`                         |
+| National Fuel Gas Company                                             |                                | National Fuel Gas Company                           | NFG              | `nfg`                           |
+| Corning Natural Gas Corporation                                       | Corning Natural Gas Holding    | Corning Natural Gas Corporation                     | CNGC             | `cngc`                          |
+| Liberty Utilities (St. Lawrence Gas) Corp.                            | Algonquin (Liberty)            | Liberty Utilities (St. Lawrence Gas)                | (none)           | `libertyutilitiesstlawrencegas` |
+| Liberty Utilities (New England Natural Gas Company) Corp.             | Algonquin (Liberty)            | Liberty Utilities (New England Natural Gas Company) | NEGC             | `negc`                          |
+| Fitchburg Gas and Electric Light Company                              | Unitil                         | Unitil Massachusetts                                | FG&E             | `fge`                           |
+| Unitil Corporation                                                    |                                | Unitil                                              | (none)           | `unitil`                        |
 
 ## Renamed organizations
 

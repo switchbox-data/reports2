@@ -286,6 +286,9 @@ def build(
                 p.changes.append(f"{f}: {value!r} -> {new_value!r} [{why}]")
 
         fix = (fixes or {}).get(item_key)
+        if fix is not None and fix.action == "duplicate_of" and fix.duplicate_of not in rows:
+            p.flags.append(f"duplicate of {fix.duplicate_of}, which is outside Reports and Inbox; kept this copy")
+            fix = fix.model_copy(update={"action": "fix"})
         if fix is not None and fix.action != "fix":
             p.action = "delete" if fix.action == "delete" else "duplicate"
             p.duplicate_of = fix.duplicate_of
@@ -297,13 +300,13 @@ def build(
             suggested = [{"creatorType": ctype, "name": n} for n in fix.organizations] + [
                 {"creatorType": ctype, "firstName": pp.first, "lastName": pp.last} for pp in fix.people
             ]
+            names = [orgs.classify_creator(c)[0] for c in suggested]
             if creators:
-                p.flags.append(f"agent suggested a different author ({suggested}); kept the current one")
+                old = [orgs.classify_creator(c)[0] for c in creators]
+                p.changes.append(f"authors {old} -> {names} (researched, {fix.confidence}): {fix.notes}")
             else:
-                creators = suggested
-                p.changes.append(
-                    f"author (researched, {fix.confidence}): {[orgs.classify_creator(c)[0] for c in suggested]}"
-                )
+                p.changes.append(f"author (researched, {fix.confidence}): {names}")
+            creators = suggested
         if fix is not None and fix.title:
             tf = next((f for f in TITLE_FIELDS if f in data), "title")
             p.changes.append(f"{tf}: {data.get(tf)!r} -> {fix.title!r} (researched, {fix.confidence})")

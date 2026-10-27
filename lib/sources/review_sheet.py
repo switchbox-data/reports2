@@ -150,7 +150,8 @@ def summary_rows(
         ["keys assigned", len(keyed)],
         ["keys unchanged", sum(p["key"] in p["old_keys"] for p in keyed)],
         ["cited items whose key changes", sum(1 for p in keyed if p["cited"] and p["key"] not in p["old_keys"])],
-        ["items still without an author (no key)", len(plans) - len(keyed)],
+        ["items to the trash (duplicates, empty)", sum(p["action"] != "update" for p in plans)],
+        ["items still without an author (no key)", sum(p["action"] == "update" and not p["key"] for p in plans)],
         ["questions", n_questions],
         ["cleanup actions", n_cleanup],
     ]

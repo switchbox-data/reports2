@@ -336,7 +336,9 @@ def cmd_orgs_plan(args: argparse.Namespace) -> int:
     same = sum(p.key in p.old_keys for p in keyed)
     print(f"{len(plans)} items: {changed} with metadata changes, {sum(bool(p.flags) for p in plans)} flagged")
     print(
-        f"  keys: {len(keyed)} assigned ({same} unchanged, {len(keyed) - same} new); {len(plans) - len(keyed)} need an author"
+        f"  keys: {len(keyed)} assigned ({same} unchanged, {len(keyed) - same} new); "
+        f"{sum(p.action != 'update' for p in plans)} to the trash; "
+        f"{sum(p.action == 'update' and not p.key for p in plans)} still need an author"
     )
     cited_changed = sum(1 for p in keyed if p.cited and p.key not in p.old_keys)
     print(f"  cited items whose key changes: {cited_changed}")

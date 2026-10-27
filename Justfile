@@ -34,6 +34,32 @@ test:
     uv run python -m pytest --doctest-modules tests/
 
 # =============================================================================
+# 📚 BIBLIOGRAPHY
+# =============================================================================
+# reports/references.yaml is generated from the Zotero "Reports" collection.
+# None of these recipes write to Zotero.
+
+path_references := "reports/references.yaml"
+path_reports := "reports"
+path_csl := "reports/chicago-author-date-switchbox.csl"
+
+# Read-only check of the Zotero API key, the Reports collection and its data shapes
+zotero-verify:
+    uv run python -m lib.sources.cli zotero-verify
+
+# Regenerate reports/references.yaml from Zotero (checks: warn or strict)
+sync-bib checks="warn" path_output=path_references *flags="":
+    uv run python -m lib.sources.cli sync-bib --checks {{ checks }} --path-output {{ path_output }} {{ flags }}
+
+# Confirm every citation key used in reports exists in references.yaml
+check-citekeys path_references=path_references path_reports=path_reports:
+    uv run python -m lib.sources.cli check-citekeys --path-references {{ path_references }} --path-reports {{ path_reports }}
+
+# Regenerate the Switchbox CSL style from pandoc's default Chicago author-date style
+make-csl path_output=path_csl:
+    uv run python -m lib.sources.make_csl --path-output {{ path_output }}
+
+# =============================================================================
 # 🏗️  NEW QUARTO REPORT
 # =============================================================================
 

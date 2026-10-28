@@ -54,7 +54,8 @@ These came out of the research and are scattered in the entries; the most import
 - NEEP's NJ and NY "PTR" rows (ACE, PSE&G, ConEd and others) are device-based direct load control or demand response programs, not peak-time rebates; no tariff uses that term. NEEP's WV Appalachian Power "Peak Time Rebate" was not found in the tariff.
 - NY: "Care&Share" is National Grid's, ConEd's is EnergyShare; "PSE&G Long Island" should be PSEG Long Island; RG&E SC 4 is a non-seasonal TOU, not "seasonal TOU for 1000 kWh users"; NEEP understates EAP coverage and omits National Grid EV managed charging and several NYSEG/RG&E/O&R EV TOU delivery rates.
 - GMP Rates 9 and 14 trace to Vermont Docket 8525 (Final Order March 24, 2016), not "Docket 8794" as one search synthesis said. NEEP's GMP "EV PTR" is not a peak-time rebate; only Rate 72 (off-peak/managed charging) was found.
-- **PECO base rate docket:** our heat pump file uses R-2024-3046931 for PECO electric, but the PUC document the research retrieved was captioned R-2024-3046932. Check which is the electric docket before relying on either.
+- **PECO base rate docket:** R-2024-3046931 is the electric case and R-2024-3046932 is the gas case (confirmed in the Duquesne/PECO follow-up research). The heat pump file was right.
+- **Unitil D.P.U. 23-81** is Unitil's gas rate case, not part of the electric heat pump rate; the defining docket is 23-80. JCP&L RGT has a new rate-design docket, ER26080420. Duquesne Rate RA dates to the 1997 restructuring case R-00974104, not 2014.
 
 ## Open items by region
 
@@ -155,7 +156,7 @@ Items below are NOT FOUND, UNVERIFIED or INFERRED. None was filled from memory.
 - NEEP omits: ACE's TOU option (QO23120871), JCP&L EV Driven (EO21030630), PPL's EV TOU Charging Rebate (R-2025-3057164) and PPL's OnTrack CAP (Appendix C shows PPL's percent-of-income plan as "None").
 - NEEP lists Duquesne's TOU as a "Pilot". The PUC approved it as a regular default-service option on Dec 5, 2024 (P-2024-3048592).
 - NEEP's NJ "PTR" rows for ACE and PSE&G appear to be device-based demand response (direct load control, FlexPower), not peak time rebates. I found no tariff using that term.
-- PECO's electric base-rate case is R-2024-3046931 in the local HP file, but the PUC document I retrieved is captioned R-2024-3046932. Check which is the electric docket.
+- (Resolved) PECO's electric base-rate case is R-2024-3046931; R-2024-3046932 is gas.
 - PA TOU is mostly supply-side default service TOU created in DSP (P-) dockets. NEEP does not make that distinction.
 
 #### Maryland, DC, Delaware, West Virginia

@@ -56,7 +56,7 @@ The DocumentCloud upload starts before the Zotero file upload and is waited on a
 
 - **DocumentCloud** (`python-documentcloud`): default for PDFs unless the source has a DOI, is a web page, or is a workbook; the card can override. Documents are tagged with the citation key as `data_citekey`, so a lost ID is recoverable.
 - **Google Drive** (v3, user OAuth): workbooks only; files get `appProperties` (citekey, md5) so a re-run finds them; sharing is anyone-reader; the folder is `GDRIVE_PUBLIC_FOLDER_ID` (shared drives need `supportsAllDrives`). Auth reuses the OAuth app (`G_*`) and cached token of `lib/data/gsheets.py` through `get_user_credentials()`, which refreshes the token and never opens a browser (no token raises `GoogleLoginRequired`: run `just google-login` once). Uploads run as the teammate running ingest; because the folder is in a shared drive, Switchbox (not that teammate) owns the files. Requirements: the Workspace admin must allow "anyone with the link" sharing for the shared drive, and if the OAuth consent screen is External with publishing status Testing, refresh tokens expire every 7 days (an Internal app avoids this).
-- **Wayback SPN2:** POST `https://web.archive.org/save`; poll status; failures matching known blockers are reported as "blocked", not retried.
+- **Wayback SPN2:** POST `https://web.archive.org/save` (without `capture_all`, so SPN2 refuses 4xx/5xx pages with `error:not-found` and similar); poll status; failures matching known blockers are reported as "blocked", not retried. A capture whose page answered 4xx/5xx (`http_status` in the status response, or the status Wayback replays for the snapshot when that field is missing, as on the anonymous legacy endpoint) is a failure, not a block.
 - **Web capture:** Playwright Chromium renders the PDF and HTML; the HTML is converted to markdown for the extract.
 
 ## Short links
@@ -72,7 +72,7 @@ The DocumentCloud upload starts before the Zotero file upload and is waited on a
 
 ## Session-start reminder
 
-`.cursor/hooks.json` registers a `sessionStart` hook running `.cursor/hooks/sources-pending.sh`, which calls `cli pending --hook`. It prints JSON `{"additional_context": "..."}` when items are pending, and nothing otherwise (no credentials, no network, nothing pending). The hook output format follows Cursor's hooks documentation; AGENTS.md tells agents to mention the reminder once and not to ingest without being asked.
+`.cursor/hooks.json` registers a `sessionStart` hook running `.cursor/hooks/sources-pending.sh`, which calls `cli pending --hook`. It prints JSON `{"additional_context": "..."}` when items are pending, and `{}` otherwise (no credentials, no network, no `.venv`, nothing pending), and always exits 0. Cursor's hooks documentation lists `env` and `additional_context` as the `sessionStart` outputs and runs the hook fire-and-forget, so it cannot block a session. The script drains the JSON Cursor sends on stdin, and runs `uv run --no-sync` so a stale `.venv` never starts a sync (which would outlast the 15 s timeout); it takes 2-3 s with a few pending items, up to ~11 s at the 200-item page cap. AGENTS.md tells agents to mention the reminder once and not to ingest without being asked.
 
 ## Migration tooling (phase 5)
 

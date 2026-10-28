@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -41,6 +43,16 @@ def test_pending_hook_emits_additional_context_json(monkeypatch, capsys):
     cli.main(["pending", "--hook"])
     payload = json.loads(capsys.readouterr().out)
     assert set(payload) == {"additional_context"} and "ingest-source" in payload["additional_context"]
+
+
+def test_session_start_hook_script_answers_empty_json_without_a_venv(tmp_path):
+    hook = tmp_path / ".cursor" / "hooks" / "sources-pending.sh"
+    hook.parent.mkdir(parents=True)
+    shutil.copy2(Path(__file__).parents[2] / ".cursor" / "hooks" / "sources-pending.sh", hook)
+    stdin = json.dumps({"session_id": "s", "is_background_agent": False, "composer_mode": "agent"})
+    done = subprocess.run([str(hook)], input=stdin, capture_output=True, text=True, timeout=10)
+    assert done.returncode == 0 and json.loads(done.stdout) == {}
+    assert not (tmp_path / ".venv").exists()
 
 
 def test_fetch_downloads_next_to_the_extract(world, tmp_path, monkeypatch, capsys, repo):

@@ -916,7 +916,7 @@ Credentials in `reports2/.env` (gitignored; never print or commit them): `ZOTERO
 
 **Source index rule.** Every file under `context/sources/` has exactly one row in the global `## sources/` table of `context/README.md`, keyed by its path; a folder with a `(directory)` row covers its files, and a folder README's `File` table gets a row too. Ingest writes these rows from the card; if you add or move a source file by hand, add or update the row yourself.
 
-**Session-start reminder.** The `sessionStart` hook (`.cursor/hooks/sources-pending.sh`, running `just sources-pending --brief`) tells you when Zotero items have been saved but not ingested. When the reminder appears, mention it to the user once at a natural point and offer to ingest them with the `ingest-source` skill; do not start ingesting without their say-so. The hook is silent when nothing is pending, credentials are missing, or Zotero is unreachable.
+**Session-start reminder.** The `sessionStart` hook (`.cursor/hooks/sources-pending.sh`, running `lib.sources.cli pending --hook`; `just sources-pending --brief` prints the same line) tells you when Zotero items have been saved but not ingested. When the reminder appears, mention it to the user once at a natural point and offer to ingest them with the `ingest-source` skill; do not start ingesting without their say-so. The hook is silent when nothing is pending, credentials are missing, or Zotero is unreachable.
 
 ## When to use R vs Python
 

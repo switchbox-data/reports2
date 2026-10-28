@@ -3,25 +3,20 @@
     uv run python -m lib.sources.cli zotero-verify
     uv run python -m lib.sources.cli sync-bib [--checks warn|strict] [--force]
     uv run python -m lib.sources.cli check-citekeys
-    uv run python -m lib.sources.cli rekey-refs
-    uv run python -m lib.sources.cli zotero-snapshot [--no-s3]
-    uv run python -m lib.sources.cli zotero-rollback --path-log LOG [--confirm]
 
-Only ``zotero-rollback --confirm`` writes to Zotero.
+None of these write to Zotero.
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from collections import Counter
 from pathlib import Path
-from typing import Any
 
 import yaml
 
-from lib.sources import bib, checks, citations, extra, rekey, snapshot, zotero, zotero_write
+from lib.sources import bib, checks, citations, extra, zotero
 
 REPO_ROOT = zotero.REPO_ROOT
 DEFAULT_REFERENCES = REPO_ROOT / "reports" / "references.yaml"
@@ -121,65 +116,6 @@ def cmd_check_citekeys(args: argparse.Namespace) -> int:
     return 1 if missing else 0
 
 
-def cmd_rekey_refs(args: argparse.Namespace) -> int:
-    """Rename old cited keys in every report from citekey_renames.csv."""
-    path_renames = Path(args.path_renames)
-    changed = rekey.rewrite_reports(REPORTS_DIR, rekey.read_renames(path_renames))
-    for path, n in sorted(changed.items()):
-        print(f"  {path.relative_to(REPO_ROOT)}: {n}")
-    print(f"  {sum(changed.values())} citations renamed in {len(changed)} files")
-    unchecked = rekey.read_ambiguous(path_renames)
-    for key, uses in sorted(_cited_keys(REPORTS_DIR).items()):
-        if key in unchecked:
-            where = ", ".join(f"{c.path.relative_to(REPO_ROOT)}:{c.line}" for c in uses)
-            print(f"  check by hand: @{key} is an old key and also a new one ({where})")
-    return 0
-
-
-def cmd_zotero_snapshot(args: argparse.Namespace) -> int:
-    """Back up the whole library locally and to S3, before a bulk write. Read-only."""
-    snap = snapshot.fetch()
-    path = snapshot.write(snap, Path(args.path_output_dir) if args.path_output_dir else snapshot.default_dir())
-    n = sum(1 for it in snap["items"] if it["data"]["itemType"] not in zotero.NON_BIB_TYPES)
-    print(f"Library version {snap['library_version']}: {len(snap['items'])} items ({n} bibliographic)")
-    print(f"  wrote {path} ({path.stat().st_size / 1e6:.1f} MB)")
-    if not args.no_s3:
-        uri = snapshot.s3_uri(snap)
-        snapshot.upload(path, uri)
-        print(f"  copied to {uri}")
-    return 0
-
-
-def _write_preview(entries: list[dict[str, Any]], path: Path) -> None:
-    with path.open("w", encoding="utf-8") as f:
-        for e in entries:
-            f.write(json.dumps(e, ensure_ascii=False) + "\n")
-    fields = Counter(k for e in entries for k in e["fields"])
-    print(f"  {len(entries)} items to write; fields: " + ", ".join(f"{k} {n}" for k, n in fields.most_common()))
-    print(f"  wrote {path}")
-
-
-def cmd_zotero_rollback(args: argparse.Namespace) -> int:
-    """Undo every write recorded in a zotero_write log (with --confirm); otherwise preview."""
-    path_log = Path(args.path_log)
-    entries = zotero_write.entries_to_undo(path_log)
-    now = zotero_write.current_versions([e["item"] for e in entries])
-    edited = [e["item"] for e in entries if now.get(e["item"]) != e["version"]]
-    if edited:
-        print(f"  {len(edited)} items were edited after the write and are left alone: {edited[:20]}")
-    entries = [e for e in entries if e["item"] not in edited]
-    _write_preview(entries, path_log.with_name(f"{path_log.stem}_rollback_preview.jsonl"))
-    if not args.confirm:
-        print("  preview only; nothing written (add --confirm to write)")
-        return 0
-    path_rlog = path_log.with_name(f"{path_log.stem}_rollback.jsonl")
-    counts = zotero_write.write(
-        entries, path_rlog, zotero_write.web_post(), lambda n, c: print(f"  {n} sent: {dict(c)}", flush=True)
-    )
-    print(f"  done: {counts}; log {path_rlog}")
-    return 0 if not counts.get("failed") else 1
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="lib.sources.cli", description=(__doc__ or "").split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -194,17 +130,6 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--path-references", default=str(DEFAULT_REFERENCES))
     p.add_argument("--path-reports", default=str(REPORTS_DIR))
     p.set_defaults(func=cmd_check_citekeys)
-    p = sub.add_parser("rekey-refs", help="rename old cited keys in reports from citekey_renames.csv")
-    p.add_argument("--path-renames", default=str(REPORTS_DIR / "citekey_renames.csv"))
-    p.set_defaults(func=cmd_rekey_refs)
-    p = sub.add_parser("zotero-snapshot", help="back up the whole Zotero library (local + S3)")
-    p.add_argument("--path-output-dir", default="", help="default: ~/.cache/switchbox_sources/zotero_snapshots")
-    p.add_argument("--no-s3", action="store_true", help="skip the S3 copy")
-    p.set_defaults(func=cmd_zotero_snapshot)
-    p = sub.add_parser("zotero-rollback", help="undo the writes in a zotero_write log (preview unless --confirm)")
-    p.add_argument("--path-log", required=True)
-    p.add_argument("--confirm", action="store_true", help="actually write to Zotero")
-    p.set_defaults(func=cmd_zotero_rollback)
     args = parser.parse_args(argv)
     return args.func(args)
 

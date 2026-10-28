@@ -41,7 +41,6 @@ test:
 
 path_references := "reports/references.yaml"
 path_reports := "reports"
-path_csl := "reports/chicago-author-date-switchbox.csl"
 
 # Read-only check of the Zotero API key, the Reports collection and its data shapes
 zotero-verify:
@@ -54,22 +53,6 @@ sync-bib checks="warn" path_output=path_references *flags="":
 # Confirm every citation key used in reports exists in references.yaml
 check-citekeys path_references=path_references path_reports=path_reports:
     uv run python -m lib.sources.cli check-citekeys --path-references {{ path_references }} --path-reports {{ path_reports }}
-
-# Rename old citation keys in every report, from reports/citekey_renames.csv (safe to rerun)
-rekey-refs:
-    uv run python -m lib.sources.cli rekey-refs
-
-# Back up the whole Zotero library (local + S3); take one before any bulk write
-zotero-snapshot:
-    uv run python -m lib.sources.cli zotero-snapshot
-
-# Undo the Zotero writes recorded in a zotero_write log: previews unless confirm=--confirm
-zotero-rollback path_log confirm="":
-    uv run python -m lib.sources.cli zotero-rollback --path-log {{ path_log }} {{ confirm }}
-
-# Regenerate the Switchbox CSL style from pandoc's default Chicago author-date style
-make-csl path_output=path_csl:
-    uv run python -m lib.sources.make_csl --path-output {{ path_output }}
 
 # =============================================================================
 # 🏗️  NEW QUARTO REPORT

@@ -1,12 +1,10 @@
-"""The committed Switchbox CSL style: up to date with pandoc's default, and rendering abbreviations."""
+"""The committed Switchbox CSL style renders organization abbreviations."""
 
 import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
-
-from lib.sources import make_csl
 
 pytestmark = pytest.mark.skipif(shutil.which("quarto") is None, reason="quarto not installed")
 CSL = Path(__file__).resolve().parents[2] / "reports" / "chicago-author-date-switchbox.csl"
@@ -34,10 +32,6 @@ BIB = """references:
     title: Designing Better Rates
     type: report
 """
-
-
-def test_committed_csl_matches_generator():
-    assert CSL.read_text(encoding="utf-8") == make_csl.make_csl(make_csl.default_csl())
 
 
 def test_abbreviation_in_text_and_bibliography(tmp_path):

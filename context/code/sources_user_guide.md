@@ -144,7 +144,7 @@ From there, the agent does the following.
    It prints one line per document. If something fails (a network error, a service down), the same command can be rerun: it picks up where it stopped and never makes duplicates.
 
 4. **Extracts and validates PDFs, then reruns ingest.**
-   - **Extract:** the [`/extract-pdf-to-markdown`](../../.cursor/commands/extract-pdf-to-markdown.md) command turns the PDF into markdown at the card's `extract_path`, keeping headings, tables, footnotes and equations, and describing figures in words.
+   - **Extract:** the [`/extract-pdf-to-markdown`](../../.cursor/commands/extract-pdf-to-markdown.md) command turns the PDF into markdown at the card's `extract_path`, keeping headings, tables, footnotes and equations, and describing figures in words. The agent hands each PDF to its own subagent on Sonnet, and they all run in parallel; validation and everything else stay with the main agent. Run your session on Opus, since the card and the validation are judgment calls, while extraction is transcription that Sonnet does faster and more cheaply.
    - **Validate:** the [`/validate-pdf-to-markdown-extraction`](../../.cursor/commands/validate-pdf-to-markdown-extraction.md) command compares the extract with the PDF and replies with a report. It grades eleven categories (equations, citations, headings, figures, tables, footnotes, lists, formatting, front matter, back matter, other) from A (complete and accurate) to D (missing or wrong), gives an overall score (Excellent, Good, Adequate or Needs work), and ends with a short summary, for example:
 
      > **Overall score: Good.** All categories A or B; tables and footnotes match the source.

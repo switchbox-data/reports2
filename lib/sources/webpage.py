@@ -147,6 +147,27 @@ def _spn_error(body: dict[str, Any]) -> WaybackResult:
     return WaybackResult(False, None, blocked, f"{message} ({ext})" if ext else message)
 
 
+def _playback_status(http: Any, snapshot: str) -> int | None:
+    """The HTTP status Wayback replays for ``snapshot``: the captured page's own status (``None`` if unknown).
+
+    Only a replay (``X-Archive-Src`` header) counts; Wayback's own "not archived yet" page is also a 404.
+    """
+    try:
+        r = http.head(snapshot, headers={"User-Agent": USER_AGENT}, allow_redirects=True, timeout=60)
+    except requests.RequestException:
+        return None
+    return r.status_code if r.headers.get("x-archive-src") else None
+
+
+def _captured(snapshot: str, http_status: int | None) -> WaybackResult:
+    """Success, unless the page Wayback captured was itself an error page (4xx/5xx)."""
+    if http_status is not None and http_status >= 400:
+        return WaybackResult(
+            False, snapshot, False, f"the page answered HTTP {http_status} when captured, check the URL ({snapshot})"
+        )
+    return WaybackResult(True, snapshot, False, "")
+
+
 def _wayback_save_anonymous(url: str, http: Any, timeout_seconds: float) -> WaybackResult:
     """Legacy ``GET /save/<url>``: the only capture route without keys (SPN2's POST API answers 401)."""
     r = http.get(
@@ -159,7 +180,8 @@ def _wayback_save_anonymous(url: str, http: Any, timeout_seconds: float) -> Wayb
     if snapshot.startswith("/"):
         snapshot = f"https://web.archive.org{snapshot}"
     if r.status_code in (200, 301, 302) and "/web/" in snapshot:
-        return WaybackResult(True, snapshot, False, "")
+        # The legacy response does not carry the captured status; playback of the snapshot does.
+        return _captured(snapshot, _playback_status(http, snapshot))
     return WaybackResult(False, None, False, f"anonymous Wayback save failed ({r.status_code})")
 
 
@@ -173,7 +195,8 @@ def wayback_save(
     """Request a capture and wait for it (typically 15-90 s; SPN queues jobs when it is busy).
 
     Without ``IA_ACCESS_KEY``/``IA_SECRET_KEY`` this falls back to the legacy anonymous endpoint. Blocked sites
-    return ``blocked=True`` so the card can say so. Polling faster than ~10 s risks archive.org's per-IP rate
+    return ``blocked=True`` so the card can say so. A capture of an error page (4xx/5xx) is a failure, not a
+    block, and keeps the snapshot in ``url`` for reference. Polling faster than ~10 s risks archive.org's per-IP rate
     limit, which shows up as refused connections for several minutes.
     """
     http = session or requests
@@ -184,7 +207,8 @@ def wayback_save(
         r = http.post(
             SPN_SAVE,
             headers=headers,
-            data={"url": url, "capture_all": "1", "if_not_archived_within": "1d"},
+            # No ``capture_all``: without it SPN2 refuses 4xx/5xx pages (``error:not-found`` and so on).
+            data={"url": url, "if_not_archived_within": "1d"},
             timeout=60,
         )
         if r.status_code in (401, 403, 429):
@@ -201,7 +225,10 @@ def wayback_save(
             status = http.get(SPN_STATUS.format(job_id=job_id), headers=headers, timeout=60).json()
             if status.get("status") == "success":
                 original = status.get("original_url") or url
-                return WaybackResult(True, f"https://web.archive.org/web/{status['timestamp']}/{original}", False, "")
+                snapshot = f"https://web.archive.org/web/{status['timestamp']}/{original}"
+                # ``http_status`` is in live responses but not in the SPN2 docs, so replay the snapshot without it.
+                code = status.get("http_status")
+                return _captured(snapshot, int(code) if code is not None else _playback_status(http, snapshot))
             if status.get("status") == "error":
                 return _spn_error(status)
             sleep(poll_seconds)

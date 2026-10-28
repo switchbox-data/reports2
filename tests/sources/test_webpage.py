@@ -51,8 +51,13 @@ def test_page_metadata():
 
 
 class FakeSession:
-    def __init__(self, post, statuses):
+    def __init__(self, post, statuses, playback=None):
         self._post, self._statuses, self.requests = post, list(statuses), []
+        self._playback = playback or SimpleNamespace(status_code=200, headers={"x-archive-src": "spn2.warc.gz"})
+
+    def head(self, url, headers=None, allow_redirects=True, timeout=None):
+        self.requests.append(("head", url, headers, None))
+        return self._playback
 
     def post(self, url, headers=None, data=None, timeout=None):
         self.requests.append(("post", url, headers, data))
@@ -88,12 +93,65 @@ def test_wayback_success_after_polling(keys):
         response(body={"job_id": "j1"}),
         [
             {"status": "pending"},
-            {"status": "success", "timestamp": "20261028120000", "original_url": "https://x.org/a"},
+            {"status": "success", "timestamp": "20261028120000", "original_url": "https://x.org/a", "http_status": 200},
         ],
     )
     result = webpage.wayback_save("https://x.org/a", session=cast(Any, session), sleep=lambda _: None)
     assert result.ok and result.url == "https://web.archive.org/web/20261028120000/https://x.org/a"
     assert session.requests[0][2]["Authorization"] == "LOW ak:sk"  # authenticated when keys are set
+    assert "capture_all" not in session.requests[0][3]  # SPN2 then refuses error pages itself
+    assert not [r for r in session.requests if r[0] == "head"]  # http_status was enough
+
+
+SNAPSHOT_404 = "https://web.archive.org/web/20261028182451/https://x.org/gone"
+
+
+@pytest.mark.parametrize("code", [404, 410, 500, 503])
+def test_wayback_capture_of_an_error_page_is_a_failure(keys, code):
+    # Live SPN2 answers status "success" with the captured page's status in http_status.
+    status = {
+        "status": "success",
+        "timestamp": "20261028182451",
+        "original_url": "https://x.org/gone",
+        "http_status": code,
+    }
+    session = FakeSession(response(body={"job_id": "j1"}), [status])
+    result = webpage.wayback_save("https://x.org/gone", session=cast(Any, session), sleep=lambda _: None)
+    assert not result.ok and not result.blocked
+    assert result.url == SNAPSHOT_404 and f"HTTP {code}" in result.message and SNAPSHOT_404 in result.message
+
+
+@pytest.mark.parametrize(
+    ("playback", "ok"),
+    [
+        (SimpleNamespace(status_code=404, headers={"x-archive-src": "spn2.warc.gz"}), False),  # replayed 404
+        (SimpleNamespace(status_code=404, headers={}), True),  # Wayback's own "not archived yet" page
+        (SimpleNamespace(status_code=200, headers={"x-archive-src": "spn2.warc.gz"}), True),
+    ],
+)
+def test_wayback_without_http_status_checks_the_replay(keys, playback, ok):
+    status = {"status": "success", "timestamp": "20261028182451", "original_url": "https://x.org/gone"}
+    session = FakeSession(response(body={"job_id": "j1"}), [status], playback=playback)
+    result = webpage.wayback_save("https://x.org/gone", session=cast(Any, session), sleep=lambda _: None)
+    assert result.ok is ok and not result.blocked and result.url == SNAPSHOT_404
+    assert session.requests[-1][:2] == ("head", SNAPSHOT_404)
+
+
+def test_wayback_anonymous_capture_of_an_error_page_is_a_failure(no_keys):
+    playback = SimpleNamespace(status_code=404, headers={"x-archive-src": "spn2.warc.gz"})
+    session = FakeSession(response(), [response(302, headers={"Location": SNAPSHOT_404})], playback=playback)
+    result = webpage.wayback_save("https://x.org/gone", session=cast(Any, session), sleep=lambda _: None)
+    assert not result.ok and not result.blocked and result.url == SNAPSHOT_404 and "HTTP 404" in result.message
+
+
+def test_wayback_unreachable_replay_does_not_fail_the_capture(no_keys):
+    class NoReplay(FakeSession):
+        def head(self, *args, **kwargs):
+            raise requests.ConnectionError("Connection refused")
+
+    session = NoReplay(response(), [response(302, headers={"Location": SNAPSHOT_404})])
+    result = webpage.wayback_save("https://x.org/gone", session=cast(Any, session), sleep=lambda _: None)
+    assert result.ok and result.url == SNAPSHOT_404
 
 
 def test_wayback_anonymous_uses_the_legacy_endpoint(no_keys):
@@ -104,6 +162,7 @@ def test_wayback_anonymous_uses_the_legacy_endpoint(no_keys):
     method, url, headers, _ = session.requests[0]
     assert (method, url) == ("get", "https://web.archive.org/save/https://x.org/a")
     assert "Authorization" not in headers
+    assert session.requests[1][:2] == ("head", snapshot)  # the replay gives the captured page's status
 
 
 def test_wayback_anonymous_failure(no_keys):

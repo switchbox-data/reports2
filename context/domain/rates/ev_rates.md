@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-10-27. **Scope:** residential EV time-of-use rates, separately metered EV rates, off-peak charging rebates, managed-charging programs, and the commercial EV demand-charge relief rates that sit alongside them, at utilities from Maine to West Virginia. Commercial and public-charging rates are included when a utility's EV offering is mostly commercial, so a reader knows it is not a residential option.
 
-This file answers three questions for each offering: what is it, **which docket defined it**, and **how do we know**. It starts from the NEEP survey ([`../../sources/neep_modern_rate_design.md`](../../sources/neep_modern_rate_design.md), Appendix A and E) and goes to primary documents where it could. See also [`time_varying_rates.md`](time_varying_rates.md) (whole-home TOU rates that EV owners can also use) and [`electric_heating_and_heat_pump_rates.md`](electric_heating_and_heat_pump_rates.md).
+This file answers three questions for each offering: what is it, **which docket defined it**, and **how do we know**. It starts from the NEEP survey ([`../../sources/general_reference/neep_modern_rate_design.md`](../../sources/general_reference/neep_modern_rate_design.md), Appendix A and E) and goes to primary documents where it could. See also [`time_varying_rates.md`](time_varying_rates.md) (whole-home TOU rates that EV owners can also use) and [`electric_heating_and_heat_pump_rates.md`](electric_heating_and_heat_pump_rates.md).
 
 ## How to read this catalog
 

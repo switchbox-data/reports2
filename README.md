@@ -14,6 +14,7 @@ This repository contains Switchbox's reports. We use a modern stack that uses bo
 - [Creating a New Report](#-creating-a-new-report)
 - [Development Workflow](#-development-workflow)
 - [Understanding Quarto Reports](#-understanding-quarto-reports)
+- [Managing Sources](#-managing-sources)
 - [Publishing Web Reports](#-publishing-web-reports)
 - [Managing Dependencies](#-managing-dependencies)
 - [When to Use Python vs. R](#-when-to-use-python-vs-r)
@@ -463,6 +464,19 @@ just typeset   # Generate ICML for creating typeset PDFs in InDesign
 - **ICML** (`just typeset`): Professional typesetting in Adobe InDesign for PDF export
 
 The template automatically configures these formats with our stylesheets and branding.
+
+## 📚 Managing Sources
+
+Every source our reports rely on (commission orders, testimony, studies, papers, Excel workbooks, web pages) lives in **Zotero**, our shared reference library. Zotero holds each source's original file and its citation details. A script exports those details to [`reports/references.yaml`](reports/references.yaml), the bibliography every report uses, so citing a source in Quarto is one line: `@madpu_Docket2508Order_2026` cites the Massachusetts DPU's June 2026 order on seasonal heat pump rates.
+
+**AI does the data entry.** An agent in Cursor can search for sources on a topic. Whether it found a document or you did, the agent reads it and drafts its Zotero entry following our naming conventions (title, authors, date, item type, citation key). You approve the entry, and one command creates it.
+
+Beyond Zotero, every source gets two more things:
+
+- **A markdown extract** in [`context/sources/`](context/sources/), so agents can read the source as context while helping with analysis and writing.
+- **A public copy with a short link**, so every source we cite is open to anyone: PDFs go to DocumentCloud, workbooks to Google Drive, and web pages to the Wayback Machine. The citation links to a short link of the form `https://pub.switch.box/<citation key>`, which forwards to that copy.
+
+For details, see the [source library user guide](context/code/sources_user_guide.md).
 
 ## 🌐 Publishing Web Reports
 

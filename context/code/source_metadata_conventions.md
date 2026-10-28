@@ -119,3 +119,52 @@ Format: `{author}_{title}_{year}{suffix}`, implemented in `lib/sources/citekeys.
 - **Collisions:** items with the same base key are ordered by date (missing dates last), then title, then Zotero item key, and take the base, then `a`, `b`, ..., `z`, `aa`. Once keys are locked, a new item takes the next free key; existing keys never shift.
 
 The cleanup computed every key from scratch from the reviewed metadata, then locked it. After that, a key changes only by a deliberate edit of its `Citation Key:` line, with every citation of it updated in the same commit.
+
+## Item types
+
+Choose the Zotero item type by the kind of document. The library today (excluding attachments, notes and annotations) is mostly `document` (440), `report` (316), `journalArticle` (212), `webpage` (94), `newspaperArticle` (50) and `dataset` (30), with a few `blogPost`, `preprint`, `presentation`, `book` and `thesis`; ingest files new sources under the types in this table (`lib/sources/metadata.py`, `ITEM_TYPES`).
+
+| Document class                                                                                                                    | Item type                                                    | Publisher field (card `publisher`)                    |
+| --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------- |
+| Commission orders, testimony, exhibits, petitions, briefs, comments, data responses, compliance filings, tariffs, joint proposals | `document`                                                   | `publisher` (rarely needed)                           |
+| Studies and consultant reports, marginal cost of service studies, agency and lab reports, annual reports                          | `report`                                                     | `institution`                                         |
+| Workpaper workbooks (`.xlsx`, `.xlsm`) and data files that are sources                                                            | `dataset`                                                    | `repository`                                          |
+| Journal articles                                                                                                                  | `journalArticle`                                             | `publisher` (journal in `container`)                  |
+| Working papers, arXiv and SSRN preprints                                                                                          | `preprint`                                                   | `repository`                                          |
+| Books; theses; conference papers; presentations                                                                                   | `book`; `thesis`; `conferencePaper`; `presentation`          | `publisher`; `university`; `publisher`; `meetingName` |
+| Web pages, blog posts, news and magazine articles                                                                                 | `webpage`, `blogPost`, `newspaperArticle`, `magazineArticle` | `publisher` (site in `container`)                     |
+
+Orders, testimony, exhibits and tariffs are `document` (not `report`) because they are items in a proceeding, not standalone publications. A study filed in a docket (an MCOS study attached to testimony) is still a `report`: the docket goes in its title and the `Docket:` Extra line. A workbook is `dataset` even when it is an exhibit of a filing; a workbook that is the only form of an exhibit is still a `dataset`.
+
+## Which date to use
+
+The date on the card is the date the document **took its present form**, as printed on it:
+
+- **Orders, decisions, notices:** the issue date, not the date the proceeding opened.
+- **Testimony, exhibits, petitions, comments, data responses:** the filing date (or the document's own date if no filing date is printed).
+- **Tariffs:** the effective date printed on the sheet.
+- **Studies and reports:** the publication date; for a report with a revision, the date of the revision cited.
+- **Papers:** the date of the published version (not the preprint's).
+- **Web pages:** the page's own published or last-updated date, if printed; `access_date` records when it was captured. If neither is printed, leave `date` empty (the citation key then ends in `nd`) and say so on the card.
+
+Use `YYYY-MM-DD` when the day is printed, else `YYYY-MM` or `YYYY`. Never take a date from a filename or the Zotero "added" time.
+
+## Docket field
+
+The docket number goes in the **title** for every proceeding document (`Docket 25-55: ...`; see Titles). Beyond the title:
+
+- Every item type also stores it the same way, as a `Docket: <number>` line in Extra (the card's `docket` field fills it). Zotero has no docket field shared by `document`, `report` and `dataset`, and `reportNumber` would print the number a second time in the bibliography, so Extra is the one consistent, searchable place. `sync-bib` strips the line, so it never reaches `references.yaml`.
+- The extract's front matter (`docket:`) and a workbook's stub repeat it for agents reading the repo.
+- A card with `docket` set must have a title that starts `Docket <that number>:`; ingest refuses a card where they disagree.
+
+## Project placement
+
+A **project** is a report folder (`reports/<project_code>/`), its Zotero collection (a subcollection of `Reports`, named the same, snake_case), and its source folder (`context/sources/<project_code>/`). The card lists the projects a source belongs to; ingest puts the item in each collection and the extract in the first project's folder. A source that serves no single report (a textbook, a cost-allocation manual, a general method paper) goes in the `general_reference` project: the `Reports > general_reference` collection and `context/sources/general_reference/` (one subfolder per multi-part work, like `bonbright_1960/`). If a report cites it, add that report's project too. A project that does not exist yet needs `new_project: true` and a person's confirmation, because it creates a collection and a folder. The top-level `Inbox` collection is not a project. Some existing subcollections are not snake_case; ingest only creates snake_case names and leaves the others alone.
+
+## Workbooks
+
+A workbook is a source with a file but usually no readable prose: the item type is `dataset` (or `document`/`report` if the card says so), the file is attached to the Zotero item, and a public copy is placed in Google Drive (never DocumentCloud). The title follows the proceeding-document rule (`Docket 25-55: Workpaper ES-HP-2, Rate Design Model`). The repo keeps the workbook only when it is under 600 KB (the hook's limit; the card's `workbook_in_repo` records the choice); the stub markdown beside it has the front matter and a few lines saying what each sheet holds. Agents read workbooks with polars or openpyxl.
+
+## Web pages
+
+Web pages change, so the record is a snapshot: ingest captures the page with a headless browser (a PDF attached to the Zotero item, plus the HTML converted to markdown for the extract), saves it to the Wayback Machine, and stores the live URL as the `url` link attachment. The item type is `webpage` (or `blogPost` / `newspaperArticle` / `magazineArticle`), the site name goes in `container`, the organization that runs the site is the author, `access_date` is the capture date, and the `date` is the page's own date or empty. The citation URL is the short link, which forwards to the Wayback snapshot, so readers see the page as we cited it even after it changes or disappears. Only when the site blocks the Wayback Machine does the short link forward to the live page.

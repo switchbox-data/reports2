@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-10-27. **Scope:** residential electric bill discounts, percentage-of-income payment plans, arrearage management, budget billing, customer-relief (hardship) funds, and state energy assistance (including LIHEAP) at utilities from Maine to West Virginia. It is the equivalent of NEEP's Appendix C, with dockets and primary sources added.
 
-This file answers three questions for each program: what is it, **which docket (or statute) defined it**, and **how do we know**. It starts from the NEEP survey ([`../../sources/neep_modern_rate_design.md`](../../sources/neep_modern_rate_design.md), Appendix C and E). Many of these programs are statutory or run by a state agency outside the utility commission, so "docket" can mean a rulemaking, a statute, or a legislative appropriation. For how LMI discounts work in general, see the other files in [`../`](../) (for example the LMI and discount-rate documents in `context/domain/charges/`).
+This file answers three questions for each program: what is it, **which docket (or statute) defined it**, and **how do we know**. It starts from the NEEP survey ([`../../sources/general_reference/neep_modern_rate_design.md`](../../sources/general_reference/neep_modern_rate_design.md), Appendix C and E). Many of these programs are statutory or run by a state agency outside the utility commission, so "docket" can mean a rulemaking, a statute, or a legislative appropriation. For how LMI discounts work in general, see the other files in [`../`](../) (for example the LMI and discount-rate documents in `context/domain/charges/`).
 
 ## How to read this catalog
 

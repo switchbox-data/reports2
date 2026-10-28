@@ -29,10 +29,10 @@ develops solutions, and gets them approved and funded.
 
 **Primary sources:**
 
-- `context/sources/rie_distribution_planning_guide.md` — The planning
+- `context/sources/ri_hp_rates/rie_distribution_planning_guide.md` — The planning
   criteria document (Feb 2011). Defines equipment ratings, N-1 contingency
   rules, load-at-risk thresholds, and project prioritization.
-- `context/sources/rie_distribution_planning_study_process.md` — The
+- `context/sources/ri_hp_rates/rie_distribution_planning_study_process.md` — The
   integrated planning study process (Nov 2020). Defines annual screening,
   area study milestones, stakeholder consultation, and documentation
   requirements.
@@ -236,7 +236,7 @@ The forecast is designed for a 1-in-20-year extreme weather scenario. As of
 the 2020 study process update, the forecast incorporates separate inputs for
 base load, energy efficiency, distributed generation, EVs, heat
 electrification, demand response, and energy storage. See
-`context/sources/rie_2024_peak_forecast_2025-2039.md` for the 2024 edition
+`context/sources/ri_hp_rates/rie_2024_peak_forecast_2025-2039.md` for the 2024 edition
 of the 15-year peak forecast and its scenario assumptions.
 
 **The spreadsheet.** With clean peaks, a tie list, and a forecast in hand,
@@ -264,7 +264,7 @@ When the annual screening flags a component (load at risk exceeds the MWh
 threshold), it enters the planning pipeline for an **Integrated Area Study**.
 The area study is the mechanism by which the flagged concern turns into a
 funded capital project — or a non-wires alternative. The full study process
-is documented in `context/sources/rie_distribution_planning_study_process.md`.
+is documented in `context/sources/ri_hp_rates/rie_distribution_planning_study_process.md`.
 
 Completed area studies are publicly available at RIE's
 [System Data Portal](https://portalconnect.rienergy.com/RI/s/article/Rhode-Island-System-Data-Portal).

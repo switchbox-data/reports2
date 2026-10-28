@@ -1,4 +1,4 @@
-"""Consistency checks on the bibliography's organization names, dates and citation keys.
+"""Consistency checks on the bibliography's organization and person names, dates and citation keys.
 
 Checks only report; nothing is repaired. Fix the item in Zotero and regenerate. ``sync-bib``
 runs them in ``warn`` mode (print and continue) or ``strict`` mode (errors block writing).
@@ -14,7 +14,7 @@ from typing import Any, Literal
 
 from rapidfuzz import fuzz, process
 
-from lib.sources import citekeys, extra
+from lib.sources import citekeys, extra, people
 
 Level = Literal["error", "warning"]
 
@@ -162,6 +162,12 @@ def run_checks(
             if other != name and score >= FUZZY_THRESHOLD and len(other) >= 6 and pair not in seen:
                 seen.add(pair)
                 add("warning", "SIMILAR_ORG_NAMES", "", f"{name!r} ~ {other!r} ({score:.0f})")
+
+    people_names = {
+        (c["lastName"], c.get("firstName", "")) for _, d in entries for c in d.get("creators", []) if c.get("lastName")
+    }
+    for a, b in people.variant_spellings(people_names):
+        add("warning", "SIMILAR_PERSON_NAMES", "", f"{a!r} ~ {b!r} (same person? check the documents)")
     return findings
 
 

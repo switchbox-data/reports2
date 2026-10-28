@@ -124,6 +124,8 @@ def whoami() -> dict[str, Any]:
     c = client()
     user = c.users.get(c.user_id)
     org = user.organization
+    if isinstance(org, int):  # the users endpoint returns the organization as a bare ID
+        org = c.organizations.get(org)
     return {
         "user": getattr(user, "name", None),
         "organization": getattr(org, "name", None),

@@ -99,3 +99,16 @@ def test_missing_credentials_name_the_variables(monkeypatch):
     monkeypatch.setattr(documentcloud.env, "load_env", lambda: None)
     with pytest.raises(Exception, match="DOCUMENTCLOUD_USERNAME"):
         documentcloud.client()
+
+
+def test_whoami_resolves_an_organization_id(client):
+    org = SimpleNamespace(name="Switchbox", verified_journalist=True)
+    c = client(
+        SimpleNamespace(
+            user_id=3,
+            users=SimpleNamespace(get=lambda i: SimpleNamespace(name="Pipeline", organization=9)),
+            organizations=SimpleNamespace(get=lambda i: org if i == 9 else None),
+        )
+    )
+    assert documentcloud.whoami() == {"user": "Pipeline", "organization": "Switchbox", "verified": True}
+    assert c.user_id == 3

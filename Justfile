@@ -55,6 +55,45 @@ check-citekeys path_references=path_references path_reports=path_reports:
     uv run python -m lib.sources.cli check-citekeys --path-references {{ path_references }} --path-reports {{ path_reports }}
 
 # =============================================================================
+# 📥 SOURCE INGEST
+# =============================================================================
+# Sources (PDFs, workbooks, web pages) enter the library through ingest. Agents draft a details card, you
+# approve it, then `sources-ingest` writes to Zotero, DocumentCloud / Google Drive and pub.switch.box.
+# See context/code/sources_user_guide.md. Run `just sources-doctor` after setting credentials in .env.
+
+# Ingest approved cards (YAML) into Zotero, public hosts, short links and the repo; prints one JSON object per document
+sources-ingest +path_cards:
+    uv run python -m lib.sources.cli ingest {{ path_cards }}
+
+# Ingest one card, adopting an item you saved to Zotero by hand (e.g. from the Inbox)
+sources-ingest-item path_card zotero_item:
+    uv run python -m lib.sources.cli ingest {{ path_card }} --zotero-item {{ zotero_item }}
+
+# Download a source's original file from Zotero next to its extract (prints the path)
+fetch-source citekey:
+    uv run python -m lib.sources.cli fetch {{ citekey }}
+
+# List Zotero items waiting for ingest (add --brief for one line)
+sources-pending *flags="":
+    uv run python -m lib.sources.cli pending {{ flags }}
+
+# Step checklist for one or more citation keys (green means done)
+sources-status +citekeys:
+    uv run python -m lib.sources.cli status {{ citekeys }}
+
+# Is this file or URL already in the repo or the Zotero library? e.g. just sources-dedupe --path-file x.pdf
+sources-dedupe *flags:
+    uv run python -m lib.sources.cli dedupe {{ flags }}
+
+# Existing spellings and short forms of an organization, e.g. just sources-org "Massachusetts DPU"
+sources-org name:
+    uv run python -m lib.sources.cli org "{{ name }}"
+
+# Check credentials, Zotero write access, collections, tools and push access to the short-link repo
+sources-doctor:
+    uv run python -m lib.sources.cli doctor
+
+# =============================================================================
 # 🏗️  NEW QUARTO REPORT
 # =============================================================================
 
@@ -74,6 +113,8 @@ new-report:
 install:
     @echo "🚀 Setting up development environment\n"
     @.devcontainer/install-python-deps.sh .
+    @echo "🚀 Installing Playwright Chromium (web-page capture for source ingest)"
+    @uv run playwright install chromium
     @.devcontainer/install-r-deps.sh ./DESCRIPTION
     @.devcontainer/install-prek.sh
     @.devcontainer/install-prek-deps.sh

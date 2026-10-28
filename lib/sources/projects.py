@@ -3,9 +3,9 @@
 A source belongs to a project, and the project name is the same in all three places. ``list_projects`` is the
 union of folder names in ``reports/`` (excluding ``templates``) and subcollections of Zotero's Reports
 collection, plus ``context/sources/`` folders that match one of those or are clearly a planned report.
-General-reference folders (``bonbright_1960`` and the like) are never projects; their Zotero items go into each
-citing project's subcollection. ``ensure_project`` creates the Zotero subcollection and the source folder, and
-only when a card sets ``new_project``.
+``general_reference`` (textbooks and manuals that serve no single report) is an ordinary project with a Zotero
+collection and a source folder but no report folder. ``ensure_project`` creates the Zotero subcollection and the
+source folder, and only when a card sets ``new_project``.
 """
 
 from __future__ import annotations
@@ -17,7 +17,6 @@ from pathlib import Path
 from lib.sources import env
 
 PLANNED = frozenset({"il_hp_rates", "me_hp_rates", "nj_hp_rates", "pa_hp_rates"})
-GENERAL_REFERENCES = frozenset({"bonbright_1960", "kahn_1970", "naruc_1992", "rap_cost_allocation_2020"})
 
 
 @dataclass(frozen=True)
@@ -52,7 +51,6 @@ def list_projects(
     zotero = set(zotero_projects or ())
     names = reports | zotero | {n for n in sources if n in PLANNED}
     names |= {n for n in sources if n in reports or n in zotero}
-    names -= GENERAL_REFERENCES
     return [
         Project(
             n, n in reports, n in zotero, n in sources, planned=n in PLANNED and n not in reports and n not in zotero

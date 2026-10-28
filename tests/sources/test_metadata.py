@@ -70,7 +70,7 @@ def test_publisher_must_not_repeat_the_author():
 def test_projects_are_snake_case_and_required():
     assert any("snake_case" in p for p in problems(make_card(projects=["MA HP Rates"])))
     assert any("every source belongs to a project" in p for p in problems(make_card(projects=[])))
-    assert not any("belongs to a project" in p for p in problems(make_card(projects=[], general_reference=True)))
+    assert not any("belongs to a project" in p for p in problems(make_card(projects=["general_reference"])))
 
 
 def test_dates_and_dois_are_checked():

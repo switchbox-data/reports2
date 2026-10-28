@@ -308,7 +308,7 @@ class Ingest:
         known = extra.get(self._item_extra(), zotero.DRIVE_ID)
         path = self.local_file()
         md5 = self.md5 or zotero.file_md5(path)
-        project = meta.projects[0] if meta.projects else "general_reference"
+        project = meta.projects[0]
         result = gdrive.upload(path, project, meta.citekey, md5, file_id=known)
         if known != result.id:
             zotero.set_extra_fields(self.item_key, {zotero.DRIVE_ID: result.id})

@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-10-27. **Scope:** residential time-of-use (TOU), seasonal-only, demand-charge, critical peak pricing, peak-time-rebate, and related rates and programs at investor-owned utilities from Maine to West Virginia, plus a few co-ops and municipals found along the way. It also lists legacy rates that NEEP files under time-varying (controlled water heating, battery demand response) and records "none found" where NEEP lists a rate we could not confirm.
 
-This file answers three questions for each rate: what is it, **which docket defined it**, and **how do we know**. It starts from the NEEP survey ([`../../sources/neep_modern_rate_design.md`](../../sources/neep_modern_rate_design.md), Appendix A and E) but goes to the primary documents where it could. Electric heating and heat pump rates are in [`electric_heating_and_heat_pump_rates.md`](electric_heating_and_heat_pump_rates.md); some rows here (for example BGE Schedule RL, ConEd Rate III) also appear there. EV rates are in [`ev_rates.md`](ev_rates.md).
+This file answers three questions for each rate: what is it, **which docket defined it**, and **how do we know**. It starts from the NEEP survey ([`../../sources/general_reference/neep_modern_rate_design.md`](../../sources/general_reference/neep_modern_rate_design.md), Appendix A and E) but goes to the primary documents where it could. Electric heating and heat pump rates are in [`electric_heating_and_heat_pump_rates.md`](electric_heating_and_heat_pump_rates.md); some rows here (for example BGE Schedule RL, ConEd Rate III) also appear there. EV rates are in [`ev_rates.md`](ev_rates.md).
 
 ## How to read this catalog
 

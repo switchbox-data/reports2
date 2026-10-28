@@ -126,7 +126,6 @@ class SourceMetadata(BaseModel):
     docket: str | None = None
     projects: list[str] = Field(default_factory=list)
     new_project: bool = False
-    general_reference: bool = False
     extract_path: str | None = None  # repo-relative; the extract's (or workbook stub's) path
     source_file: str | None = None  # the original file's name
     source_url: str | None = None
@@ -265,8 +264,8 @@ class SourceMetadata(BaseModel):
         for p in self.projects:
             if not PROJECT_RE.match(p):
                 out.append(f"project {p!r} must be lowercase snake_case")
-        if not self.projects and not self.general_reference:
-            out.append("every source belongs to a project (or is flagged general_reference)")
+        if not self.projects:
+            out.append("every source belongs to a project (use general_reference for sources that serve no report)")
         if self.new_project and not self.projects:
             out.append("new_project is set but no project is named")
         if self.date and not DATE_RE.match(self.date):

@@ -1,7 +1,7 @@
 """Index rows for ingested sources: the global ``context/README.md`` table and a folder ``README.md`` table.
 
 Rows are keyed by file path, so rerunning an ingest replaces its row rather than adding a second one. A
-folder that already has a one-row directory entry in the global table (``` `bonbright_1960/` (directory) ```)
+folder that already has a one-row directory entry in the global table (``` `general_reference/bonbright_1960/` (directory) ```)
 is covered by it and gets no per-file row; the folder's own README table, when it has one, still does.
 """
 

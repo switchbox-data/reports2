@@ -7,16 +7,20 @@ def test_projects_are_the_union_of_report_folders_zotero_and_source_folders(tmp_
     reports, sources = tmp_path / "reports", tmp_path / "sources"
     for name in ("ri_hp_rates", "templates", "docs", ".hidden"):
         (reports / name).mkdir(parents=True)
-    for name in ("ri_hp_rates", "ma_hp_rates", "il_hp_rates", "bonbright_1960", "random_notes"):
+    for name in ("ri_hp_rates", "ma_hp_rates", "il_hp_rates", "general_reference", "random_notes"):
         (sources / name).mkdir(parents=True)
-    (sources / "neep_modern_rate_design.md").write_text("x")
-    found = {p.name: p for p in projects.list_projects(reports, sources, ["ma_hp_rates", "ny_aeba", "bonbright_1960"])}
+    (sources / "loose_extract.md").write_text("x")
+    found = {
+        p.name: p for p in projects.list_projects(reports, sources, ["ma_hp_rates", "ny_aeba", "general_reference"])
+    }
     assert set(found) == {
         "ri_hp_rates",
         "ma_hp_rates",
         "il_hp_rates",
         "ny_aeba",
-    }  # no templates, general reference or loose folders
+        "general_reference",
+    }  # no templates or loose folders and files
+    assert found["general_reference"].complete and not found["general_reference"].report_folder
     assert (
         found["ri_hp_rates"].report_folder
         and found["ri_hp_rates"].source_folder

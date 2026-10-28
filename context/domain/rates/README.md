@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-10-27. This directory is our central knowledge base of retail electric rates and programs across the Northeast and Mid-Atlantic (Maine to West Virginia). For each rate or program it records what it is, **which docket defined it**, and **where we learned about it**. The goal is to let us find the defining docket for any rate and pull the workbooks and filings from it.
 
-The starting point was NEEP's survey, [_Modern Rate Design in the Northeast_](../../sources/neep_modern_rate_design.md) (Appendix A, C, and E). NEEP gives almost no docket numbers, so the catalogs go to the orders, tariffs, and testimony themselves where we could reach them, and flag where we could not.
+The starting point was NEEP's survey, [_Modern Rate Design in the Northeast_](../../sources/general_reference/neep_modern_rate_design.md) (Appendix A, C, and E). NEEP gives almost no docket numbers, so the catalogs go to the orders, tariffs, and testimony themselves where we could reach them, and flag where we could not.
 
 ## Files
 

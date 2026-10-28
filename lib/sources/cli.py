@@ -268,7 +268,7 @@ def cmd_pending(args: argparse.Namespace) -> int:
         return 1
     if args.brief or args.hook:
         if items:
-            shown = "; ".join(f"{i.author[:40]} {i.year}" for i in items[:4])
+            shown = "; ".join(f"{i.author[:40]} {i.year}".strip() for i in items[:4])
             more = f" (+{len(items) - 4} more)" if len(items) > 4 else ""
             line = f"{len(items)} source(s) in Zotero waiting for ingest: {shown}{more}"
             if args.hook:

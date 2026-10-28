@@ -195,6 +195,63 @@ def test_adopting_an_inbox_item(world, repo, pdf_file, extract_file):
     assert extra.get(data["extra"], extra.CITATION_KEY) == make_card().citekey
 
 
+def add_raw_file(world: World, pdf: Path, **data) -> str:
+    key = world.add_item(
+        {
+            "itemType": "attachment",
+            "linkMode": "imported_file",
+            "title": pdf.name,
+            "filename": pdf.name,
+            "md5": zotero.file_md5(pdf),
+            "contentType": "application/pdf",
+            "collections": ["COL_INBOX"],
+            **data,
+        }
+    )
+    world.files[key] = pdf.read_bytes()
+    return key
+
+
+def test_adopting_a_raw_file_creates_the_item_and_moves_the_file_under_it(world, repo, pdf_file, extract_file):
+    raw = add_raw_file(world, pdf_file)
+    report = run(world, repo, make_card(), None, zotero_item=raw)
+    assert report.ok, report.to_dict()
+    item = only_item(world)
+    assert item["data"]["itemType"] == "document" and item["data"]["collections"] == ["COL_MA"]
+    assert [c["key"] for c in world.children[item["key"]] if c["linkMode"] == "imported_file"] == [raw]
+    assert "moved file" in next(s.detail for s in report.steps if s.name == "zotero_item")
+
+    again = run(world, repo, make_card(), None, zotero_item=raw)
+    assert again.ok, again.to_dict()
+    assert world.calls["create_item"] == 1 and world.calls["adopt_raw_file"] == 1
+
+
+def test_raw_file_adoption_resumes_after_a_failed_move(world, repo, pdf_file, extract_file):
+    raw = add_raw_file(world, pdf_file)
+    world.fail_next("adopt_raw_file")
+    first = run(world, repo, make_card(), None, zotero_item=raw)
+    assert statuses(first)["zotero_item"] == "failed"
+    report = run(world, repo, make_card(), None, zotero_item=raw)
+    assert report.ok, report.to_dict()
+    assert world.calls["create_item"] == 1
+    assert raw in {c["key"] for c in world.children[only_item(world)["key"]]}
+
+
+def test_no_public_copy_and_no_source_url_fails_the_short_link(world, repo, pdf_file, extract_file):
+    card = make_card(upload_documentcloud=False, source_url=None)
+    report = run(world, repo, card, pdf_file)
+    assert statuses(report)["short_link"] == "failed"
+    assert "nothing for the short link" in next(s.detail for s in report.steps if s.name == "short_link")
+    assert not report.processed
+
+
+def test_a_linked_attachment_cannot_be_adopted(world, repo, extract_file):
+    link = world.add_item({"itemType": "attachment", "linkMode": "linked_url", "url": "https://example.org/x"})
+    report = run(world, repo, make_card(), None, zotero_item=link)
+    assert statuses(report)["validate"] == "failed"
+    assert "not a stored file" in report.steps[0].detail
+
+
 def test_doi_item_has_no_short_link_and_no_documentcloud(world, repo, pdf_file, extract_file, pub_remote, tmp_path):
     card = make_card(
         item_type="journalArticle",

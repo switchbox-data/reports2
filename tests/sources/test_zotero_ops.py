@@ -233,6 +233,41 @@ def test_pending_items_reports_each_reason_and_ignores_old_items(fake):
     }
 
 
+def raw_file(key, added, **data):
+    return {
+        "key": key,
+        "data": {
+            "itemType": "attachment",
+            "linkMode": "imported_file",
+            "title": f"{key}.pdf",
+            "filename": f"{key}.pdf",
+            "dateAdded": added,
+            "tags": [],
+            "collections": [],
+            **data,
+        },
+    }
+
+
+def test_pending_items_include_raw_files_wherever_they_are(fake):
+    fake.client._collections = collections_fixture()
+    fake.client._top = [
+        raw_file("RAW_PROJECT", "2026-10-28T09:00:00Z", collections=["MA"]),
+        raw_file("RAW_LOOSE", "2026-10-28T08:00:00Z"),
+        raw_file("LINK", "2026-10-28T07:00:00Z", linkMode="linked_url"),
+        top_item("NOTE", "2026-10-28T06:00:00Z", itemType="note"),
+    ]
+    fake.client._inbox_items = [raw_file("RAW_INBOX", "2026-08-01T00:00:00Z", collections=["INBOX"])]
+    pending = {p.key: p for p in zotero.pending_items(since="2026-10-28")}
+    assert {k: p.reason for k, p in pending.items()} == {
+        "RAW_PROJECT": "file with no item",
+        "RAW_LOOSE": "file with no item",
+        "RAW_INBOX": "file with no item",
+    }
+    assert pending["RAW_PROJECT"].author == "RAW_PROJECT.pdf"
+    assert pending["RAW_PROJECT"].projects == ("ma_hp_rates",)
+
+
 def test_pending_items_without_an_inbox_does_not_crash(fake):
     fake.client._collections = collections_fixture(with_inbox=False)
     fake.client._top = []

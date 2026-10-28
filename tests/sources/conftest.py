@@ -142,7 +142,13 @@ class World:
             }
 
         def get_item(key: str) -> dict[str, Any]:
-            return copy.deepcopy(w.items[key])
+            if key in w.items:
+                return copy.deepcopy(w.items[key])
+            for parent, kids in w.children.items():
+                for kid in kids:
+                    if kid["key"] == key:
+                        return {"key": key, "version": 1, "data": {**copy.deepcopy(kid), "parentItem": parent}}
+            raise KeyError(key)
 
         def create_item(data: dict[str, Any], write_token: str | None = None) -> str:
             w._call("create_item")
@@ -219,6 +225,12 @@ class World:
             path.write_bytes(w.files[att["key"]])
             return path
 
+        def adopt_raw_file(attachment_key: str, parent_key: str) -> None:
+            w._call("adopt_raw_file")
+            raw = w.items.pop(attachment_key)
+            w.children.pop(attachment_key, None)
+            w.children[parent_key].append({**raw["data"], "key": attachment_key, "collections": []})
+
         real_find = zotero.find_duplicates
 
         def find_duplicates_fake(md5=None, url=None, doi=None, title=None, items=None):
@@ -235,6 +247,7 @@ class World:
             "set_extra_fields": set_extra_fields,
             "mark_processed": mark_processed,
             "download_attachment": download_attachment,
+            "adopt_raw_file": adopt_raw_file,
             "find_duplicates": find_duplicates_fake,
             "project_collections": lambda cols=None: dict(w.collections),
             "inbox_key": lambda cols=None: w.inbox,

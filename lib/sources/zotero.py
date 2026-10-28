@@ -34,6 +34,7 @@ INBOX = "Inbox"
 PROCESSED_TAG = "processed"
 # Items added before this date are not "pending" until the backfill tags them (see sources_architecture.md).
 PENDING_SINCE = "2026-10-28"
+RAW_FILE_REASON = "file with no item"
 # Extra lines that record where the public copies of an item live; ``bib`` keeps them out of the bibliography.
 DOCUMENTCLOUD_ID = extra.DOCUMENTCLOUD_ID
 DRIVE_ID = extra.DRIVE_ID
@@ -168,6 +169,24 @@ def children(item_key: str) -> list[dict[str, Any]]:
     return client().everything(client().children(item_key))
 
 
+STORED_LINK_MODES = ("imported_file", "imported_url")
+
+
+def is_raw_file(data: Mapping[str, Any]) -> bool:
+    """Whether ``data`` is a stored file with no parent item (a PDF dragged into Zotero that got no item)."""
+    return (
+        data.get("itemType") == "attachment"
+        and not data.get("parentItem")
+        and data.get("linkMode") in STORED_LINK_MODES
+        and not data.get("deleted")
+    )
+
+
+def adopt_raw_file(attachment_key: str, parent_key: str) -> None:
+    """Move a raw file under ``parent_key``. Child items cannot be in collections, so its collections are cleared."""
+    _patch(attachment_key, lambda _: {"parentItem": parent_key, "collections": []})
+
+
 def _norm_title(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", title.casefold()).strip()
 
@@ -288,7 +307,7 @@ def stored_attachments(item_key: str) -> list[dict[str, Any]]:
     return [
         c
         for c in children(item_key)
-        if c["data"]["itemType"] == "attachment" and c["data"].get("linkMode") in ("imported_file", "imported_url")
+        if c["data"]["itemType"] == "attachment" and c["data"].get("linkMode") in STORED_LINK_MODES
     ]
 
 
@@ -441,8 +460,15 @@ def create_project_collection(name: str) -> str:
 
 
 def download_attachment(item_key: str, dest_dir: Path) -> Path:
-    """Download the item's original stored file (not a web snapshot) into ``dest_dir``; return its path."""
+    """Download the item's original stored file (not a web snapshot) into ``dest_dir``; return its path.
+
+    ``item_key`` may also be a stored file itself (such as a raw file with no item), which is then downloaded.
+    """
     candidates = stored_attachments(item_key)
+    if not candidates:
+        own = get_item(item_key)
+        stored = own["data"]["itemType"] == "attachment" and own["data"].get("linkMode") in STORED_LINK_MODES
+        candidates = [own] if stored else []
     if not candidates:
         raise FileNotFoundError(f"Zotero item {item_key} has no stored file; attach the PDF in Zotero")
 
@@ -472,7 +498,7 @@ class PendingItem:
 
     def label(self) -> str:
         where = ", ".join(self.projects) or "no project"
-        return f"{self.author} {self.year} ({where})"
+        return f"{' '.join(filter(None, (self.author, self.year)))} ({where})"
 
 
 def _first_author(data: Mapping[str, Any]) -> str:
@@ -481,21 +507,22 @@ def _first_author(data: Mapping[str, Any]) -> str:
     return "Unknown"
 
 
+def _waits_for_ingest(data: Mapping[str, Any]) -> bool:
+    """A top-level library entry that could need ingest: a bibliographic item, or a raw file with no item."""
+    if data.get("deleted"):
+        return False
+    return data["itemType"] not in NON_BIB_TYPES or is_raw_file(data)
+
+
 def _recent_items(z: zotero.Zotero, since: str, page: int = 25, max_pages: int = 8) -> list[dict[str, Any]]:
-    """Bibliographic items added on or after ``since``, newest first, fetched a page at a time.
+    """Bibliographic items and raw files added on or after ``since``, newest first, fetched a page at a time.
 
     One large page is much slower than several small ones, and most sessions need only the first.
     """
     out: list[dict[str, Any]] = []
     for n in range(max_pages):
         batch = z.top(limit=page, start=n * page, sort="dateAdded", direction="desc", include="data")
-        out += [
-            it
-            for it in batch
-            if it["data"]["itemType"] not in NON_BIB_TYPES
-            and not it["data"].get("deleted")
-            and it["data"]["dateAdded"][:10] >= since
-        ]
+        out += [it for it in batch if _waits_for_ingest(it["data"]) and it["data"]["dateAdded"][:10] >= since]
         if len(batch) < page or batch[-1]["data"]["dateAdded"][:10] < since:
             break
     return out
@@ -507,6 +534,8 @@ def pending_items(since: str | None = None) -> list[PendingItem]:
     1. Items under Reports added on or after ``since`` with no pinned key or no ``processed`` tag.
     2. Everything in the top-level Inbox.
     3. Recently added items that are in no Reports subcollection.
+
+    Raw files (a PDF dragged in without an item) count wherever they are; ingest adopts them with ``--zotero-item``.
     """
     since = since or os.environ.get("SOURCES_PENDING_SINCE") or PENDING_SINCE
     z = client()
@@ -520,14 +549,15 @@ def pending_items(since: str | None = None) -> list[PendingItem]:
 
     def add(it: Mapping[str, Any], reason: str) -> None:
         d = it["data"]
+        raw = is_raw_file(d)
         pending.setdefault(
             it["key"],
             PendingItem(
                 it["key"],
                 d.get("title", ""),
-                _first_author(d),
-                (d.get("date") or "")[:4] or "n.d.",
-                reason,
+                (d.get("filename") or d.get("title") or "file") if raw else _first_author(d),
+                "" if raw else (d.get("date") or "")[:4] or "n.d.",
+                RAW_FILE_REASON if raw else reason,
                 tuple(sorted(names[c] for c in d.get("collections", []) if c in names)),
             ),
         )
@@ -539,7 +569,9 @@ def pending_items(since: str | None = None) -> list[PendingItem]:
         cols_of = set(d.get("collections") or [])
         if inbox and inbox in cols_of:
             continue  # reported below
-        if cols_of & tree:
+        if is_raw_file(d):
+            add(it, RAW_FILE_REASON)
+        elif cols_of & tree:
             pinned = extra.get(d.get("extra"), extra.CITATION_KEY)
             if not pinned:
                 add(it, "no citation key")
@@ -549,7 +581,7 @@ def pending_items(since: str | None = None) -> list[PendingItem]:
             add(it, "not in any project")
     if inbox:
         for it in z.everything(z.collection_items_top(inbox, include="data")):
-            if it["data"]["itemType"] not in NON_BIB_TYPES and not it["data"].get("deleted"):
+            if _waits_for_ingest(it["data"]):
                 add(it, "in Inbox")
     return sorted(pending.values(), key=lambda p: p.key)
 

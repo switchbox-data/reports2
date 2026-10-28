@@ -138,6 +138,7 @@ class Ingest:
         self.capture: webpage.Capture | None = None
         self._local: Path | None = self.source
         self._dc_id: int | None = None
+        self.raw_file: str | None = None
 
     # --- plumbing ---------------------------------------------------------------------------------
 
@@ -174,6 +175,8 @@ class Ingest:
         taken = zotero.pinned_keys()
         own = taken.get(self.meta.citekey)
         if self.zotero_item:
+            self.zotero_item = self._resolve_zotero_item(self.zotero_item)
+        if self.zotero_item:
             if own and own != self.zotero_item:
                 raise IngestError(f"citekey {self.meta.citekey} already belongs to Zotero item {own}")
             self.item_key = self.zotero_item
@@ -197,6 +200,22 @@ class Ingest:
             raise metadata.MetadataError(problems)
         return DONE, "card valid" + (f"; resuming item {self.item_key}" if self.item_key else "")
 
+    def _resolve_zotero_item(self, key: str) -> str | None:
+        """The item to adopt for ``--zotero-item key``; ``None`` when ``key`` is a raw file still needing an item.
+
+        A file already moved under an item (by an earlier run) resolves to that item. A raw file is remembered in
+        ``raw_file``, and ``ensure_item`` moves it under the item it creates (or the one pinned to this citekey).
+        """
+        data = zotero.get_item(key)["data"]
+        if data["itemType"] != "attachment":
+            return key
+        if data.get("parentItem"):
+            return data["parentItem"]
+        if not zotero.is_raw_file(data):
+            raise IngestError(f"Zotero attachment {key} is a link, not a stored file; attach the file in Zotero")
+        self.raw_file = key
+        return None
+
     def _same_document(self, item_key: str) -> bool:
         """Whether the item already pinned to this key is this card's document (a rerun), not a collision."""
         have = zotero.get_item(item_key)["data"].get("title") or ""
@@ -218,6 +237,14 @@ class Ingest:
         return SKIPPED, "no local file; using the Zotero attachment"
 
     def ensure_item(self) -> tuple[str, str]:
+        status, detail = self._ensure_item()
+        if self.raw_file:
+            assert self.item_key
+            zotero.adopt_raw_file(self.raw_file, self.item_key)
+            return DONE, f"{detail}; moved file {self.raw_file} under it"
+        return status, detail
+
+    def _ensure_item(self) -> tuple[str, str]:
         cols = zotero.project_collections()
         keys = [cols[p] for p in self.meta.projects]
         data = self.meta.zotero_data(keys)
@@ -338,10 +365,10 @@ class Ingest:
 
     def short_link(self) -> tuple[str, str]:
         meta = self.meta
+        if meta.doi:
+            return SKIPPED, "DOI item: Zotero's url is the doi.org link"
         target = meta.short_link_target
         if target is None:
-            return SKIPPED, "DOI item: Zotero's url is the doi.org link"
-        if not meta.source_url and not (meta.documentcloud_url or meta.drive_url):
             raise IngestError("no public copy and no source_url: nothing for the short link to forward to")
         if self.links is None:
             raise IngestError("no short-link batch supplied")

@@ -47,7 +47,7 @@ The `discover-sources` skill searches the web, downloads candidates to a scratch
 ### Find them yourself
 
 - **On the web:** in the Zotero app, select the project's collection (for example `Reports > ma_hp_rates`), or the top-level **Inbox** if you're not sure where it belongs, then click the Zotero browser button. It saves the details and the PDF, including paywalled PDFs you can open.
-- **A file you already have:** drag it into that Zotero collection or the Inbox, or just keep it on your machine and hand it to the agent (next section).
+- **A file you already have:** drag it into that Zotero collection or the Inbox, or just keep it on your machine and hand it to the agent (next section). A dragged-in file doesn't need an item: the agent sees it as pending and creates the item when it ingests it.
 
 Items you save in Zotero this way aren't citable yet: they have no locked citation key, so `just sync-bib` leaves them out of `references.yaml`. When you next start a chat in Cursor, the agent tells you they're waiting, with an opening line like:
 

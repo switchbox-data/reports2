@@ -139,42 +139,72 @@ def _spn_headers() -> dict[str, str]:
     return headers
 
 
+def _spn_error(body: dict[str, Any]) -> WaybackResult:
+    # ``error:blocked-client-ip`` is about us, not the site.
+    ext = body.get("status_ext") or ""
+    message = body.get("message") or ext or "capture failed"
+    blocked = bool(re.search(r"blocked|robots|no-access|forbidden", ext, re.I)) and "client-ip" not in ext
+    return WaybackResult(False, None, blocked, f"{message} ({ext})" if ext else message)
+
+
+def _wayback_save_anonymous(url: str, http: Any, timeout_seconds: float) -> WaybackResult:
+    """Legacy ``GET /save/<url>``: the only capture route without keys (SPN2's POST API answers 401)."""
+    r = http.get(
+        f"{SPN_SAVE}/{url}",
+        headers={"User-Agent": USER_AGENT},
+        allow_redirects=False,
+        timeout=(30, timeout_seconds),
+    )
+    snapshot = r.headers.get("Location") or r.headers.get("Content-Location") or ""
+    if snapshot.startswith("/"):
+        snapshot = f"https://web.archive.org{snapshot}"
+    if r.status_code in (200, 301, 302) and "/web/" in snapshot:
+        return WaybackResult(True, snapshot, False, "")
+    return WaybackResult(False, None, False, f"anonymous Wayback save failed ({r.status_code})")
+
+
 def wayback_save(
     url: str,
     session: requests.Session | None = None,
-    poll_seconds: float = 5.0,
+    poll_seconds: float = 10.0,
     timeout_seconds: float = 300.0,
     sleep: Callable[[float], None] = time.sleep,
 ) -> WaybackResult:
-    """Request a capture and wait for it. Anonymous requests work but are rate-limited harder.
+    """Request a capture and wait for it (typically 15-90 s; SPN queues jobs when it is busy).
 
-    Blocked sites (``robots``/``blocked`` status extensions) return ``blocked=True`` so the card can say so.
+    Without ``IA_ACCESS_KEY``/``IA_SECRET_KEY`` this falls back to the legacy anonymous endpoint. Blocked sites
+    return ``blocked=True`` so the card can say so. Polling faster than ~10 s risks archive.org's per-IP rate
+    limit, which shows up as refused connections for several minutes.
     """
     http = session or requests
-    r = http.post(
-        SPN_SAVE,
-        headers=_spn_headers(),
-        data={"url": url, "capture_all": "1", "if_not_archived_within": "1d"},
-        timeout=60,
-    )
-    if r.status_code in (401, 403, 429):
-        return WaybackResult(False, None, False, f"Wayback refused the request ({r.status_code})")
-    r.raise_for_status()
-    body = r.json()
-    job_id = body.get("job_id")
-    if not job_id:
-        return WaybackResult(False, None, False, body.get("message") or "no job id in the Wayback response")
-    deadline = time.monotonic() + timeout_seconds
-    while time.monotonic() < deadline:
-        status = http.get(SPN_STATUS.format(job_id=job_id), headers=_spn_headers(), timeout=60).json()
-        if status.get("status") == "success":
-            original = status.get("original_url") or url
-            return WaybackResult(True, f"https://web.archive.org/web/{status['timestamp']}/{original}", False, "")
-        if status.get("status") == "error":
-            ext = status.get("status_ext") or ""
-            message = status.get("message") or ext or "capture failed"
-            return WaybackResult(
-                False, None, bool(re.search(r"blocked|robots|forbidden", ext + message, re.I)), message
-            )
-        sleep(poll_seconds)
+    headers = _spn_headers()
+    try:
+        if "Authorization" not in headers:
+            return _wayback_save_anonymous(url, http, timeout_seconds)
+        r = http.post(
+            SPN_SAVE,
+            headers=headers,
+            data={"url": url, "capture_all": "1", "if_not_archived_within": "1d"},
+            timeout=60,
+        )
+        if r.status_code in (401, 403, 429):
+            return WaybackResult(False, None, False, f"Wayback refused the request ({r.status_code})")
+        r.raise_for_status()
+        body = r.json()
+        if body.get("status") == "error":
+            return _spn_error(body)
+        job_id = body.get("job_id")
+        if not job_id:
+            return WaybackResult(False, None, False, body.get("message") or "no job id in the Wayback response")
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            status = http.get(SPN_STATUS.format(job_id=job_id), headers=headers, timeout=60).json()
+            if status.get("status") == "success":
+                original = status.get("original_url") or url
+                return WaybackResult(True, f"https://web.archive.org/web/{status['timestamp']}/{original}", False, "")
+            if status.get("status") == "error":
+                return _spn_error(status)
+            sleep(poll_seconds)
+    except requests.RequestException as e:
+        return WaybackResult(False, None, False, f"could not reach the Wayback Machine: {type(e).__name__}")
     return WaybackResult(False, None, False, f"capture still pending after {timeout_seconds:.0f}s (job {job_id})")

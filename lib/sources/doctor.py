@@ -44,7 +44,7 @@ def check_env() -> list[Check]:
         "documentcloud": "use the shared DocumentCloud login from the password manager",
         "gdrive": "set the ID of the public folder in the shared drive (see context/code/sources_user_guide.md)",
         "google_oauth": "copy the G_* OAuth app variables from the team password manager (same ones lib/data/gsheets.py uses)",
-        "wayback": "create archive.org S3-style keys at https://archive.org/account/s3.php (anonymous capture works but is rate-limited)",
+        "wayback": "create archive.org S3-style keys at https://archive.org/account/s3.php (without them, capture falls back to the slower legacy anonymous endpoint)",
         "contact": "set a monitored e-mail (Crossref and Unpaywall polite pools)",
     }
     for service, names in env.VARIABLES.items():

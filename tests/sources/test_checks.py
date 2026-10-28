@@ -47,6 +47,19 @@ def test_name_shape_errors():
     assert ("PERSON_IN_ONE_FIELD", "eldringhoff_Testimony_2026") in found
 
 
+def test_known_organizations_are_not_taken_for_people():
+    entries = [
+        ("aic_Response_2025", org_item("Ameren Illinois", "AIC", title="Response", date="2025")),
+        # No short form on this item, but the name has one elsewhere in the library.
+        ("bgc_Report_2025", {"creators": [{"creatorType": "author", "name": "Ameren Illinois"}], "title": "Report"}),
+        ("fge_Tariff_2024", org_item("Unitil Massachusetts", title="Tariff", date="2024")),  # in the subsidiary table
+        ("cra_Study_2025", org_item("Charles River Associates", title="Study", date="2025")),
+        ("clc_Plan_2025", org_item("Cape Light Compact", title="Plan", date="2025")),
+        ("thegrio_Story_2022", org_item("The Grio", title="Story", date="2022")),
+    ]
+    assert not [f for f in checks.run_checks(entries) if f.code == "PERSON_IN_ONE_FIELD"]
+
+
 def test_publisher_repeating_author_and_duplicate_keys():
     item = org_item("ISO New England", "ISO-NE", publisher="ISO New England", title="Regulation Clearing", date="2025")
     found = codes(checks.run_checks([("isone_RegulationClearing_2025", item), ("isone_RegulationClearing_2025", item)]))

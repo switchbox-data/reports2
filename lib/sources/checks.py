@@ -22,7 +22,8 @@ ORG_CUES = re.compile(
     r"\b(company|corporation|corp|inc|llc|commission|department|authority|agency|administration|association|"
     r"institute|council|coalition|fund|board|bureau|office|university|laboratory|lab|group|utilities|utility|"
     r"energy|gas|electric|power|grid|state|city|county|foundation|center|centre|network|partners|alliance|"
-    r"society|committee|services|operator|economics|research|cooperative|america|project|initiative)\b",
+    r"society|committee|services|operator|economics|research|cooperative|america|project|initiative|associates|"
+    r"compact|data|technologies|calculator)\b|^the\s",
     re.IGNORECASE,
 )
 # Organizations whose legal name is itself an acronym (RMI, formerly Rocky Mountain Institute).
@@ -51,6 +52,12 @@ def _short(data: Mapping[str, Any]) -> str | None:
         return extra.get(data.get("extra"), extra.SHORTAUTHOR)
     except extra.ExtraError:
         return None
+
+
+def _subsidiary_names() -> set[str]:
+    from lib.sources import organizations  # organizations imports this module
+
+    return {row["full"] for row in organizations.subsidiary_table()}
 
 
 def chicago_join(parts: list[str]) -> str:
@@ -88,6 +95,8 @@ def run_checks(
             single_org_short[orgs[0]].add(short)
             short_to_names[short].add(orgs[0])
     all_shorts = set(short_to_names)
+    # An organization with a short form, or in the conventions doc's subsidiary table, is not a misfiled person.
+    known_orgs = set(single_org_short) | _subsidiary_names()
 
     for name, shorts in sorted(single_org_short.items()):
         if len(shorts) > 1:
@@ -109,7 +118,7 @@ def run_checks(
                 continue
             if _BARE_ABBREVIATION.match(name) or name in all_shorts:
                 add("error", "AUTHOR_IS_ABBREVIATION", key, f"author {name!r} looks like an abbreviation")
-            elif _PERSON_NAME.match(name) and not ORG_CUES.search(name):
+            elif _PERSON_NAME.match(name) and not ORG_CUES.search(name) and name not in known_orgs:
                 add("warning", "PERSON_IN_ONE_FIELD", key, f"single-field creator {name!r} looks like a person")
         for c in creators:
             if "lastName" in c:

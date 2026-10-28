@@ -119,6 +119,19 @@ def test_citation_url_is_the_doi_link_or_the_short_link():
     assert make_card(doi="10.1234/abc", upload_documentcloud=True).should_upload_documentcloud
 
 
+def test_pdf_host_picks_documentcloud_or_drive(monkeypatch):
+    monkeypatch.delenv("SOURCES_PDF_HOST")
+    assert metadata.PDF_HOST == "gdrive"
+    card = make_card()
+    assert card.should_upload_drive and not card.should_upload_documentcloud
+    assert not make_card(doi="10.1234/abc").should_upload_drive
+    monkeypatch.setenv("SOURCES_PDF_HOST", "documentcloud")
+    assert card.should_upload_documentcloud and not card.should_upload_drive
+    monkeypatch.setenv("SOURCES_PDF_HOST", "dropbox")
+    with pytest.raises(ValueError, match="SOURCES_PDF_HOST"):
+        _ = card.should_upload_drive
+
+
 def test_public_url_prefers_documentcloud_then_drive():
     card = make_card()
     assert card.public_url == card.source_url

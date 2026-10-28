@@ -7,7 +7,7 @@ How to get a document into Switchbox's source library, and what happens when you
 Every source (a commission order, testimony, a study, a paper, a workpaper workbook, a web page) ends up as:
 
 - **A Zotero item** in the Switchbox group library, with the original file attached (the `.pdf`, the `.xlsx`, a `.pdf` snapshot of a web page, and so on). Zotero is the source of truth for all of our source files and their metadata. `reports/references.yaml` is a one-to-one export of Zotero's metadata that makes it easy to cite Zotero items from Quarto reports.
-- **A public copy** readers can open: DocumentCloud for PDFs, Google Drive for workbooks, a Wayback Machine snapshot for web pages. Sources with a DOI link to the DOI instead.
+- **A public copy** readers can open: DocumentCloud for PDFs (Google Drive for now, see below), Google Drive for workbooks, a Wayback Machine snapshot for web pages. Sources with a DOI link to the DOI instead.
 - **A short link**, `https://pub.switch.box/<citation_key>`, that forwards to the public copy. This is the link in citations, so it never changes even if the copy moves.
 - **A markdown extract** in `context/sources/<project>/` that agents read as context (PDFs and web pages; workbooks get a short stub instead), listed in the sources index in `context/README.md`.
 
@@ -22,7 +22,7 @@ In other words, every source ends up:
 1. `just install` (it also installs the Chromium browser used to capture web pages).
 2. Put the credentials in `reports2/.env` (gitignored). They have most likely been created already: ask a teammate for the values rather than making new ones.
    - **Zotero:** `ZOTERO_API_KEY` (a key with **write and file access** to the group library; a new one can be made at [zotero.org/settings/keys](https://www.zotero.org/settings/keys)) and `ZOTERO_GROUP_ID`.
-   - **DocumentCloud:** `DOCUMENTCLOUD_USERNAME` and `DOCUMENTCLOUD_PASSWORD` (the pipeline account).
+   - **DocumentCloud:** `DOCUMENTCLOUD_USERNAME` and `DOCUMENTCLOUD_PASSWORD` (the pipeline account). Not needed while PDFs are hosted on Google Drive; doctor only warns if they're missing.
    - **Google Drive:** the Google OAuth app variables `G_CLIENT_ID`, `G_CLIENT_SECRET`, `G_PROJECT_ID`, `G_AUTH_URI` and `G_TOKEN_URI` (the same ones `lib/data/gsheets.py` uses), and `GDRIVE_PUBLIC_FOLDER_ID` (the ID of the public folder in the shared drive).
    - **Wayback Machine:** `IA_ACCESS_KEY` and `IA_SECRET_KEY` (optional; without them, captures use a slower anonymous route).
    - **Contact email:** `SOURCES_CONTACT_EMAIL` (your email, used for polite access to Crossref and Unpaywall when looking up DOIs).
@@ -136,7 +136,7 @@ From there, the agent does the following.
 
    Then, by type:
 
-   - **PDF:** uploads a public copy to DocumentCloud, and the short link points to it.
+   - **PDF:** uploads a public copy to DocumentCloud, and the short link points to it. **For now, PDFs go to the shared Google Drive folder instead** (the same one workbooks use, with "anyone with the link" access), because DocumentCloud blocks uploads from our cloud servers. `PDF_HOST` in `lib/sources/metadata.py` switches it back. PDFs ingested in the meantime keep their Drive copy; re-ingesting one after the switch adds a DocumentCloud copy and repoints its short link, while the citation link (the short link) stays the same.
    - **Any source with a DOI** (most often a paper, but not only): skips DocumentCloud and the short link; the Zotero item's URL is the `https://doi.org/` link, which always resolves to the publisher's copy.
    - **Web page:** captures the page in Chromium as a PDF snapshot plus its HTML (both attached in Zotero), and asks the Wayback Machine to archive a snapshot of the page, getting back the snapshot's permanent URL. The short link points to that snapshot, so readers see the page as it was when we cited it, even if it later changes or disappears. (If the site blocks the Wayback Machine, the short link points to the live page instead, and ingest says so.) It writes the markdown extract from the captured HTML.
    - **Excel workbook:** uploads it to the shared Google Drive folder with "anyone with the link" access, and the short link points there. It copies the workbook into `context/sources/<project>/` if it's under the 600 KB limit (bigger ones only if you said so on the card). Next to it, it writes a stub `.md` with the same name: a workbook can't carry front matter or be read like prose, so the stub holds the front matter that points back to Zotero, lists each sheet with its size and column headers, and is what the sources index links to. An agent that needs the numbers opens the workbook itself.
@@ -160,7 +160,7 @@ From there, the agent does the following.
        source_file: madpu_25-08_order_seasonal_heat_pump_rates.pdf
        citekey: madpu_Docket2508Order_2026
        zotero_item: "ABCD1234"
-       public_url: https://www.documentcloud.org/documents/12345678
+       public_url: https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/view
        short_url: https://pub.switch.box/madpu_Docket2508Order_2026
        md5: "0320b78d428b697bb4401a3ecd6234b2"
        validated: 2026-10-28
@@ -214,7 +214,7 @@ Original files are not stored in git. `just fetch-source <citation_key>` downloa
 
 - **A step says `failed`.** Read its message, fix the cause, run the same ingest command again. Nothing needs undoing.
 - **"possible duplicate".** The library already has something that matches. Use the existing key, or re-run with `--force` only if it is truly a different document.
-- **DocumentCloud takes a long time.** Large PDFs are processed after upload; ingest waits, and a re-run resumes the wait.
+- **DocumentCloud takes a long time** (once it hosts PDFs again). Large PDFs are processed after upload; ingest waits, and a re-run resumes the wait.
 - **The short link gives "not found".** GitHub Pages updates a minute or two after the push. If it persists, `just sources-status <citation_key>` shows whether the link was recorded.
 - **A bad write to Zotero.** Every write is logged in `~/.cache/switchbox_sources/logs/zotero_writes.jsonl` with the previous value, so an agent can restore it.
 - **Web page capture is blocked.** Some sites refuse automated capture and the Wayback Machine; ingest reports the site as blocked. Save the page as a PDF by hand and ingest that file instead.

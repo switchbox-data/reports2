@@ -9,6 +9,7 @@ not repeat the author, and project names are snake_case.
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 from typing import Any, Literal
@@ -19,6 +20,18 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from lib.sources import checks, citekeys, docket_titles, extra, title_case
 
 SHORT_LINK_BASE = "https://pub.switch.box"
+# Where PDFs' public copies go. Google Drive stands in while DocumentCloud blocks our servers; set back to
+# "documentcloud" once it doesn't. SOURCES_PDF_HOST overrides it for one run.
+PDF_HOST: Literal["documentcloud", "gdrive"] = "gdrive"
+
+
+def pdf_host() -> str:
+    host = os.environ.get("SOURCES_PDF_HOST") or PDF_HOST
+    if host not in ("documentcloud", "gdrive"):
+        raise ValueError(f"SOURCES_PDF_HOST must be documentcloud or gdrive, not {host!r}")
+    return host
+
+
 PROJECT_RE = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
 DATE_RE = re.compile(r"^\d{4}(?:-\d{2}(?:-\d{2})?)?$")
 DOI_RE = re.compile(r"^10\.\d{4,9}/\S+$")
@@ -149,16 +162,23 @@ class SourceMetadata(BaseModel):
         return self.item_type == "webpage"
 
     @property
-    def should_upload_documentcloud(self) -> bool:
-        """Default: upload PDFs unless the source has a DOI or is a web page; the card can override.
-
-        Workbooks never go to DocumentCloud (they are hosted on Google Drive).
-        """
+    def needs_pdf_copy(self) -> bool:
+        """Whether a PDF gets a public copy: yes unless it has a DOI or is a web page; the card can override."""
         if self.is_workbook:
             return False
         if self.upload_documentcloud is not None:
             return self.upload_documentcloud
         return not (self.doi or self.is_web_page)
+
+    @property
+    def should_upload_documentcloud(self) -> bool:
+        """PDFs go to DocumentCloud when it is the PDF host (see :data:`PDF_HOST`); workbooks never do."""
+        return self.needs_pdf_copy and pdf_host() == "documentcloud"
+
+    @property
+    def should_upload_drive(self) -> bool:
+        """Workbooks always go to Google Drive; PDFs do while Drive is the PDF host."""
+        return self.is_workbook or (self.needs_pdf_copy and pdf_host() == "gdrive")
 
     @property
     def public_url(self) -> str | None:

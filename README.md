@@ -474,7 +474,7 @@ Every source our reports rely on (commission orders, testimony, studies, papers,
 Beyond Zotero, every source gets two more things:
 
 - **A markdown extract** in [`context/sources/`](context/sources/), so agents can read the source as context while helping with analysis and writing.
-- **A public copy with a short link**, so every source we cite is open to anyone: PDFs go to DocumentCloud, workbooks to Google Drive, and web pages to the Wayback Machine. The citation links to a short link of the form `https://pub.switch.box/<citation key>`, which forwards to that copy.
+- **A public copy with a short link**, so every source we cite is open to anyone: PDFs go to DocumentCloud (Google Drive for now), workbooks to Google Drive, and web pages to the Wayback Machine. The citation links to a short link of the form `https://pub.switch.box/<citation key>`, which forwards to that copy.
 
 For details, see the [source library user guide](context/code/sources_user_guide.md).
 

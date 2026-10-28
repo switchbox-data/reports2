@@ -37,6 +37,12 @@ def _guard(name: str, fn: Callable[[], Check], hint: str) -> Check:
         return Check(name, FAIL, f"{type(e).__name__}: {e}"[:300], hint)
 
 
+def _documentcloud_hosts() -> bool:
+    from lib.sources import metadata
+
+    return metadata.pdf_host() == "documentcloud"
+
+
 def check_env() -> list[Check]:
     out = []
     hints = {
@@ -49,7 +55,8 @@ def check_env() -> list[Check]:
     }
     for service, names in env.VARIABLES.items():
         for name in names:
-            level = OK if env.get(name) else (WARN if service in ("wayback", "contact") else FAIL)
+            optional = service in ("wayback", "contact") or (service == "documentcloud" and not _documentcloud_hosts())
+            level = OK if env.get(name) else (WARN if optional else FAIL)
             out.append(Check(f"{name} set", level, "" if level == OK else "not set", hints[service]))
     return out
 
@@ -213,7 +220,11 @@ def run_all() -> list[Check]:
     if env.get("ZOTERO_API_KEY"):
         checks += check_zotero()
     if env.get("DOCUMENTCLOUD_USERNAME") and env.get("DOCUMENTCLOUD_PASSWORD"):
-        checks += check_documentcloud()
+        dc = check_documentcloud()
+        if not _documentcloud_hosts():
+            note = "PDFs are hosted on Google Drive for now"
+            dc = [Check(c.name, WARN, f"{c.detail}; {note}".lstrip("; "), c.hint) if c.level == FAIL else c for c in dc]
+        checks += dc
     if env.get("G_CLIENT_ID"):
         checks += check_gdrive()
     checks += check_tools() + check_pub()

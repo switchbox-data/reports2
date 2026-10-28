@@ -41,6 +41,12 @@ def _git(*args: str, cwd: Path | None = None) -> None:
     subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True)
 
 
+@pytest.fixture(autouse=True)
+def pdf_host_documentcloud(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Most tests exercise the DocumentCloud path; Drive-hosted PDFs are tested by setting the host explicitly."""
+    monkeypatch.setenv("SOURCES_PDF_HOST", "documentcloud")
+
+
 @pytest.fixture
 def cache_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     path = tmp_path / "cache"

@@ -4,7 +4,7 @@ The file is a faithful mirror of Zotero's own CSL-JSON export of each item in th
 collection. Its only transformations are:
 
 1. ``id`` is the item's pinned citation key (``Citation Key:`` in Extra); the key lines
-   (``Citation Key:``, ``tex.shortauthor:``) are removed from ``note``, and the duplicate
+   (``Citation Key:``, ``tex.shortauthor:``, and the public-copy lines ingest writes) are removed from ``note``, and the duplicate
    ``citation-key`` variable is dropped.
 2. ``author-short`` comes from ``tex.shortauthor:`` in Extra.
 3. Items without a pinned key are excluded (reported as "not yet processed").
@@ -73,7 +73,7 @@ def build_record(item: Mapping[str, Any], key: str) -> tuple[dict[str, Any], dic
     data, csl = item["data"], copy.deepcopy(item["csljson"])
     csl["id"] = key
     csl.pop("citation-key", None)
-    note = extra.remove_fields(csl.get("note"), (extra.CITATION_KEY, extra.SHORTAUTHOR))
+    note = extra.remove_fields(csl.get("note"), extra.MANAGED)
     if note:
         csl["note"] = note
     else:

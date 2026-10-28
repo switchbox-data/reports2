@@ -5,6 +5,8 @@ Zotero stores free-form metadata in Extra, one entry per line. Two lines matter 
 - ``Citation Key: <key>`` pins an item's citation key.
 - ``tex.shortauthor: <short form>`` holds an organization's abbreviation.
 
+The public-copy lines (``DocumentCloud ID``, ``Google Drive ID``, ``Wayback URL``) are written by ingest.
+
 Every other line (and any free text) is preserved verbatim and in order.
 """
 
@@ -14,6 +16,11 @@ import re
 
 CITATION_KEY = "Citation Key"
 SHORTAUTHOR = "tex.shortauthor"
+# Lines ingest writes to record where an item's public copies live; they never belong in the bibliography.
+DOCUMENTCLOUD_ID = "DocumentCloud ID"
+DRIVE_ID = "Google Drive ID"
+WAYBACK_URL = "Wayback URL"
+MANAGED = (CITATION_KEY, SHORTAUTHOR, DOCUMENTCLOUD_ID, DRIVE_ID, WAYBACK_URL)
 
 _FIELD_RE = re.compile(r"^\s*([^:\n]+?)\s*:\s?(.*)$")
 

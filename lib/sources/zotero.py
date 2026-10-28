@@ -301,9 +301,12 @@ def attach_file(item_key: str, path: Path, title: str | None = None) -> str:
             return c["key"]
     result = client().attachment_both([(title or path.name, str(path))], parentid=item_key)
     invalidate()
-    for bucket in ("success", "unchanged"):
+    for bucket in ("success", "unchanged"):  # "unchanged": the file was already on the server, the item is new
         if result.get(bucket):
-            return result[bucket][0]["key"]
+            made = result[bucket][0]
+            version = made.get("version") or get_item(made["key"])["version"]
+            zotero_write.log_created(made["key"], version, f"uploaded {path.name}")
+            return made["key"]
     raise zotero_write.WriteError(f"Zotero did not accept the upload of {path.name}: {result.get('failure')}")
 
 

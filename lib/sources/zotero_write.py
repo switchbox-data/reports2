@@ -97,6 +97,8 @@ def web_post(write_token: str | None = None) -> Post:
                 continue
             if wait := r.headers.get("Backoff"):
                 time.sleep(int(wait))
+            if r.status_code == 412 and write_token:
+                raise WriteError("Zotero already accepted a create with this write token; look the item up", 412)
             r.raise_for_status()
             return r.json()
         raise WriteError(f"Zotero kept refusing the write ({r.status_code if r is not None else '?'})")
@@ -254,15 +256,22 @@ def create_item(
         )
     created = result["successful"]["0"]
     key = created["key"]
+    log_created(key, created.get("version"), path_log=path_log)
+    return key
+
+
+def log_created(key: str, version: int | None, detail: str = "created", path_log: Path | None = None) -> None:
+    """Record a new item (one made here or by a file upload) so a rollback trashes it."""
+    path_log = path_log or log_path()
+    path_log.parent.mkdir(parents=True, exist_ok=True)
     with path_log.open("a", encoding="utf-8") as log:
         _record(
             log,
             {"item": key, "version": 0, "fields": {"created": True}, "restore": {"deleted": 1}},
             "successful",
-            "created",
-            created.get("version"),
+            detail,
+            version,
         )
-    return key
 
 
 def log_event(kind: str, detail: Mapping[str, Any], path_log: Path | None = None) -> None:

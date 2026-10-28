@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -94,6 +95,16 @@ def test_create_returns_the_key_and_logs_a_creation(tmp_path):
     key = zotero_write.create_item({"itemType": "document", "title": "T"}, post=server, path_log=tmp_path / "w.jsonl")
     assert key == "NEW1"
     assert json.loads((tmp_path / "w.jsonl").read_text())["detail"] == "created"
+
+
+def test_a_reused_write_token_raises_a_412_write_error(monkeypatch):
+    monkeypatch.setenv("ZOTERO_API_KEY", "k")
+    monkeypatch.setenv("ZOTERO_GROUP_ID", "1")
+    response = SimpleNamespace(status_code=412, headers={})
+    monkeypatch.setattr(zotero_write.requests, "post", lambda *a, **kw: response)
+    with pytest.raises(zotero_write.WriteError) as e:
+        zotero_write.web_post(write_token="t")([{"itemType": "document"}])
+    assert e.value.code == 412
 
 
 def test_create_failure_raises(tmp_path):

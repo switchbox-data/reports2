@@ -30,7 +30,7 @@ class FakeClient:
 
     def attachment_both(self, files, parentid=None):
         self.uploaded.append((files, parentid))
-        return {"success": [{"key": "ATT_NEW"}], "unchanged": [], "failure": []}
+        return {"success": [{"key": "ATT_NEW", "version": 7}], "unchanged": [], "failure": []}
 
     def collections(self):
         return self._collections
@@ -116,6 +116,14 @@ def test_attach_file_skips_when_the_same_md5_is_already_stored(fake, tmp_path):
     other = tmp_path / "b.pdf"
     other.write_bytes(b"%PDF two")
     assert zotero.attach_file("K1", other) == "ATT_NEW" and fake.client.uploaded[0][1] == "K1"
+
+
+def test_an_uploaded_attachment_is_logged_so_rollback_trashes_it(fake, tmp_path):
+    pdf = tmp_path / "a.pdf"
+    pdf.write_bytes(b"%PDF one")
+    zotero.attach_file("K1", pdf)
+    undo = zotero_write.entries_to_undo(tmp_path / "w.jsonl")
+    assert undo == [{"item": "ATT_NEW", "version": 7, "fields": {"deleted": 1}, "restore": {"created": True}}]
 
 
 def test_attach_link_skips_an_existing_url(fake):

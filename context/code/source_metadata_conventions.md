@@ -38,6 +38,7 @@ How items in the Switchbox Zotero group library are named and keyed. `reports/re
 - **Organization plus named people** (a utility's testimony listing its witnesses): the item takes the organization's short form; the witnesses still appear in the bibliography. An item whose first author is a person has no short form.
 - **Several organizations:** one creator per organization. The item's short form joins theirs Chicago-style ("NYSEG and RG&E"; "NYSERDA et al." for four or more).
 - **Organizations plus people** (mostly testimony): normalize the organization's name and set no short form.
+- **Testimony** names the witness as the person author and the party they testify for as `publisher`: the utility for a utility witness ("Baltimore Gas and Electric Company" for BGE's Jennifer A. Karas), the intervenor for an intervenor witness. A consultant testifying for a utility still gets the utility as publisher, not the consulting firm, so readers see whose case it is. The commission is not the publisher; the `Docket <number>:` title already places the document in its proceeding.
 - **Known collisions:** MA DPU versus RI DPUC; NY PSC versus MD PSC; "MPSC" means Maryland here and Michigan elsewhere (use MD PSC).
 
 ## Subsidiaries

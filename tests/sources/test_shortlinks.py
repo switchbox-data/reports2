@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
 import subprocess
 
 import pytest
@@ -73,6 +75,95 @@ def test_batch_is_one_commit_and_one_push(pub_remote, tmp_path):
         ["git", "--git-dir", str(pub_remote), "show", "main:404.html"], capture_output=True, text=True, check=True
     ).stdout
     assert embedded_links(html) == links
+
+
+TRAILER = "Co-authored-by: Cursor <cursoragent@cursor.com>"
+
+
+def inject_trailers(repo, tmp_path, monkeypatch):
+    """Every route that adds a trailer to ``git commit``: a hook, and a PATH wrapper doing what Cursor's
+    agent shell does (rewriting ``git commit`` to ``git commit --trailer ...``)."""
+    hook = repo / ".git" / "hooks" / "prepare-commit-msg"
+    hook.write_text(f'#!/bin/sh\nprintf "\\n{TRAILER}\\n" >> "$1"\n')
+    hook.chmod(0o755)
+    wrapper_dir = tmp_path / "bin"
+    wrapper_dir.mkdir()
+    real_git = shutil.which("git")
+    wrapper = wrapper_dir / "git"
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        f'for a in "$@"; do [ "$a" = commit ] && exec {real_git} "$@" --trailer "{TRAILER}"; done\n'
+        f'exec {real_git} "$@"\n'
+    )
+    wrapper.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{wrapper_dir}:{os.environ['PATH']}")
+    probe = tmp_path / "probe"
+    _git("init", "-q", str(probe))
+    _git("commit", "-q", "--allow-empty", "-m", "probe", cwd=probe)
+    assert (
+        TRAILER
+        in subprocess.run(
+            ["git", "-C", str(probe), "log", "-1", "--format=%B"], capture_output=True, text=True, check=True
+        ).stdout
+    )  # the simulation works on a plain git commit
+
+
+def remote_messages(bare):
+    return subprocess.run(
+        ["git", "--git-dir", str(bare), "log", "--format=%B%x00", "main"], capture_output=True, text=True, check=True
+    ).stdout
+
+
+def test_published_commits_carry_no_co_author_trailer(pub_remote, tmp_path, monkeypatch):
+    batch = shortlinks.Batch()
+    assert batch.repo is not None
+    inject_trailers(batch.repo, tmp_path, monkeypatch)
+    batch.add("k_a_2025", "https://a.example.org/")
+    assert batch.publish() is True
+    messages = remote_messages(pub_remote)
+    assert "Add 1 short link: k_a_2025\n" in messages and "Co-authored-by" not in messages
+    assert (
+        subprocess.run(
+            ["git", "-C", str(batch.repo), "status", "--porcelain"], capture_output=True, text=True, check=True
+        ).stdout
+        == ""
+    )  # index and work tree match the new commit
+
+
+def test_replayed_commit_after_a_rejected_push_carries_no_trailer(pub_remote, tmp_path, monkeypatch):
+    batch = shortlinks.Batch()
+    assert batch.repo is not None
+    other = tmp_path / "other"
+    subprocess.run(["git", "clone", str(pub_remote), str(other)], check=True, capture_output=True)
+    shortlinks.save_links(other, {**shortlinks.load_links(other), "theirs_2025": "https://theirs.example.org/"})
+    _git("add", ".", cwd=other)
+    _git("commit", "-m", "theirs", cwd=other)
+    _git("push", cwd=other)
+    inject_trailers(batch.repo, tmp_path, monkeypatch)
+    batch.add("mine_2025", "https://mine.example.org/")
+    assert batch.publish() is True
+    assert "Co-authored-by" not in remote_messages(pub_remote)
+    assert set(remote_links(pub_remote, tmp_path)) >= {"theirs_2025", "mine_2025"}
+
+
+def test_files_written_but_not_committed_are_published_by_a_rerun(pub_remote, tmp_path, monkeypatch):
+    real = shortlinks._git
+
+    def broken_commit(repo_path, *args, **kwargs):
+        if args[:1] == ("commit-tree",):
+            raise subprocess.CalledProcessError(1, "git commit-tree")
+        return real(repo_path, *args, **kwargs)
+
+    batch = shortlinks.Batch()
+    batch.add("k_a_2025", "https://a.example.org/")
+    monkeypatch.setattr(shortlinks, "_git", broken_commit)
+    with pytest.raises(subprocess.CalledProcessError):
+        batch.publish()
+    monkeypatch.setattr(shortlinks, "_git", real)
+    rerun = shortlinks.Batch()
+    assert rerun.add("k_a_2025", "https://a.example.org/") is False  # already in the written links.json
+    assert rerun.publish() is True
+    assert "k_a_2025" in remote_links(pub_remote, tmp_path)
 
 
 def test_publish_with_nothing_new_does_not_commit(pub_remote):

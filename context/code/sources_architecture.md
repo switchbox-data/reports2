@@ -61,7 +61,7 @@ The DocumentCloud upload starts before the Zotero file upload and is waited on a
 
 ## Short links
 
-`switchbox-data/pub` serves GitHub Pages at `pub.switch.box`. `links.json` is the source of truth; `404.html` is generated from it (the map is embedded as a `var LINKS = {...};` line, values escaped for safe JS, forwarding with `location.replace`, no `innerHTML` with link data). `shortlinks.py` works on a local clone in `~/.cache/switchbox_sources/pub`, pulls before editing, and makes **one commit and one push per batch**. A key already pointing elsewhere is not overwritten unless the card repoints it. `SOURCES_PUB_REMOTE` replaces the remote (tests use a local bare repo).
+`switchbox-data/pub` serves GitHub Pages at `pub.switch.box`. `links.json` is the source of truth; `404.html` is generated from it (the map is embedded as a `var LINKS = {...};` line, values escaped for safe JS, forwarding with `location.replace`, no `innerHTML` with link data). `shortlinks.py` works on a local clone in `~/.cache/switchbox_sources/pub`, pulls before editing, and makes **one commit and one push per batch**. Commits are built with `git commit-tree` and `git update-ref` rather than `git commit`, so no hook, template or `--trailer` can add attribution (Cursor's agent shell rewrites a typed `git commit` to append `Co-authored-by: Cursor`). A key already pointing elsewhere is not overwritten unless the card repoints it. `SOURCES_PUB_REMOTE` replaces the remote (tests use a local bare repo).
 
 ## Repo-side files
 

@@ -98,14 +98,32 @@ def remote_url() -> str:
     return os.environ.get("SOURCES_PUB_REMOTE", DEFAULT_REMOTE)
 
 
-def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=check)
+def _git(repo: Path, *args: str, check: bool = True, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["git", "-C", str(repo), *args], input=stdin, capture_output=True, text=True, check=check)
+
+
+def _commit(repo: Path, message: str) -> None:
+    """Commit the index with exactly ``message``.
+
+    Plumbing (``commit-tree`` + ``update-ref``) runs no hooks and applies no template, ``--trailer`` or
+    ``trailer.*`` config, so nothing can append attribution such as the ``Co-authored-by: Cursor`` trailer
+    that Cursor's agent shell adds to ``git commit``.
+    """
+    tree = _git(repo, "write-tree").stdout.strip()
+    parent = _git(repo, "rev-parse", "--verify", "-q", "HEAD", check=False).stdout.strip()
+    sha = _git(repo, "commit-tree", tree, *(["-p", parent] if parent else []), stdin=message + "\n").stdout.strip()
+    _git(repo, "update-ref", "-m", f"commit: {message.splitlines()[0]}", "HEAD", sha, *([parent] if parent else []))
 
 
 def _unpushed(repo: Path) -> bool:
     """Whether the clone has commits its upstream lacks."""
     out = _git(repo, "rev-list", "--count", "@{upstream}..HEAD", check=False)
     return out.returncode == 0 and int(out.stdout.strip() or 0) > 0
+
+
+def _uncommitted(repo: Path) -> bool:
+    """Whether ``links.json`` or ``404.html`` differ from HEAD (an earlier run wrote them but did not commit)."""
+    return bool(_git(repo, "status", "--porcelain", "--", "links.json", "404.html").stdout.strip())
 
 
 def ensure_clone(path: Path | None = None) -> Path:
@@ -191,14 +209,15 @@ class Batch:
     def publish(self) -> bool:
         """Write both files, commit and push once. Returns False when there was nothing to commit or push.
 
-        Commits left unpushed by an earlier failed run are pushed too, so a rerun finishes the job.
+        Files left uncommitted or commits left unpushed by an earlier failed run are published too, so a rerun
+        finishes the job.
         """
         repo = self.repo
         assert repo is not None
-        changed = save_links(repo, self._links)
+        changed = save_links(repo, self._links) or _uncommitted(repo)
         if changed:
             _git(repo, "add", "links.json", "404.html")
-            _git(repo, "commit", "-m", self.message or self._default_message())
+            _commit(repo, self.message or self._default_message())
         elif not _unpushed(repo):
             return False
         pushed = _git(repo, "push", check=False)
@@ -212,7 +231,7 @@ class Batch:
             self._links = links
             if save_links(repo, links):
                 _git(repo, "add", "links.json", "404.html")
-                _git(repo, "commit", "-m", self.message or self._default_message())
+                _commit(repo, self.message or self._default_message())
             _git(repo, "push")
         return True
 

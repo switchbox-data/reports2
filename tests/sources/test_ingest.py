@@ -132,10 +132,10 @@ def test_publish_failure_is_finished_by_rerun(world, repo, pdf_file, extract_fil
     card = make_card()
     real = shortlinks._git
 
-    def broken_push(repo_path, *args, check=True):
+    def broken_push(repo_path, *args, **kwargs):
         if args[:1] == ("push",):
             raise RuntimeError("network down")
-        return real(repo_path, *args, check=check)
+        return real(repo_path, *args, **kwargs)
 
     monkeypatch.setattr(shortlinks, "_git", broken_push)
     first = run(world, repo, card, pdf_file)

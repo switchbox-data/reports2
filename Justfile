@@ -89,6 +89,10 @@ sources-dedupe *flags:
 sources-org name:
     uv run python -m lib.sources.cli org "{{ name }}"
 
+# One-time Google login (opens a browser) that caches the token ingest uses for Drive uploads; same login as the Sheets helpers
+google-login:
+    uv run python -m lib.data.gsheets
+
 # Check credentials, Zotero write access, collections, tools and push access to the short-link repo
 sources-doctor:
     uv run python -m lib.sources.cli doctor

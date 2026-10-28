@@ -42,7 +42,8 @@ def check_env() -> list[Check]:
     hints = {
         "zotero": "create a Zotero API key with write and file access (https://www.zotero.org/settings/keys) and set it in .env",
         "documentcloud": "use the shared DocumentCloud login from the password manager",
-        "gdrive": "set the service-account key path and the public folder ID (see context/code/sources_user_guide.md)",
+        "gdrive": "set the ID of the public folder in the shared drive (see context/code/sources_user_guide.md)",
+        "google_oauth": "copy the G_* OAuth app variables from the team password manager (same ones lib/data/gsheets.py uses)",
         "wayback": "create archive.org S3-style keys at https://archive.org/account/s3.php (anonymous capture works but is rate-limited)",
         "contact": "set a monitored e-mail (Crossref and Unpaywall polite pools)",
     }
@@ -113,14 +114,56 @@ def check_documentcloud() -> list[Check]:
 
 
 def check_gdrive() -> list[Check]:
+    """Google login checks: cached token present, scopes include Drive, token refreshable, folder reachable."""
+    from lib.data import gsheets
     from lib.sources import gdrive
 
-    def run() -> Check:
-        who = gdrive.whoami()
-        return Check("Google Drive public folder", OK, f"{who.get('folder')}")
+    login_hint = "run `just google-login` once (on a laptop if this machine has no browser, then copy the token file)"
+    out: list[Check] = []
+    token = gsheets.load_cached_token()
+    token_path = gsheets._gspread_token_path()
+    if token is None:
+        return [Check("Google login token cached", FAIL, f"no token at {token_path}", login_hint)]
+    out.append(Check("Google login token cached", OK, str(token_path)))
+    scopes = set(token.get("scopes") or [])
+    has_drive = gdrive.SCOPES[0] in scopes
+    out.append(
+        Check(
+            "Google token has Drive scope",
+            OK if has_drive else FAIL,
+            "" if has_drive else f"granted: {sorted(scopes) or 'none recorded'}",
+            "delete the token file and run `just google-login` (the login asks for Drive access)",
+        )
+    )
 
-    hint = "share the public folder with the service account's e-mail as Content manager"
-    return [_guard("Google Drive public folder", run, hint)]
+    def refresh() -> Check:
+        gsheets.get_user_credentials(gdrive.SCOPES)
+        return Check("Google token refreshable", OK, str(token.get("account") or ""))
+
+    refreshed = _guard(
+        "Google token refreshable",
+        refresh,
+        "tokens expire after 7 days when the OAuth consent screen is External+Testing; run `just google-login` again",
+    )
+    out.append(refreshed)
+    if refreshed.level != OK or not env.get("GDRIVE_PUBLIC_FOLDER_ID"):
+        return out
+
+    def folder() -> Check:
+        who = gdrive.whoami()
+        where = "shared drive" if who.get("shared_drive") else "NOT in a shared drive (files would belong to you)"
+        return Check(
+            "Google Drive public folder", OK if who.get("shared_drive") else WARN, f"{who.get('folder')} ({where})"
+        )
+
+    out.append(
+        _guard(
+            "Google Drive public folder",
+            folder,
+            "check GDRIVE_PUBLIC_FOLDER_ID, and that your Google account is a member of the shared drive",
+        )
+    )
+    return out
 
 
 def check_tools() -> list[Check]:
@@ -171,7 +214,7 @@ def run_all() -> list[Check]:
         checks += check_zotero()
     if env.get("DOCUMENTCLOUD_USERNAME") and env.get("DOCUMENTCLOUD_PASSWORD"):
         checks += check_documentcloud()
-    if env.get("GDRIVE_SERVICE_ACCOUNT_JSON"):
+    if env.get("G_CLIENT_ID"):
         checks += check_gdrive()
     checks += check_tools() + check_pub()
     return checks

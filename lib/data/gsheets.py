@@ -51,6 +51,25 @@ def save_cached_token(authorized_user: dict | str) -> None:
         token_path.write_text(str(authorized_user), encoding="utf-8")
 
 
+class GoogleLoginRequired(RuntimeError):
+    """Raised when no cached Google OAuth token exists; fixed by running ``just google-login`` once."""
+
+
+def _app_credentials() -> dict[str, Any]:
+    """The OAuth app ("installed application") config from the ``G_*`` env vars (optionally from ``.env``)."""
+    load_dotenv()
+    return {
+        "installed": {
+            "client_id": os.getenv("G_CLIENT_ID"),
+            "client_secret": os.getenv("G_CLIENT_SECRET"),
+            "project_id": os.getenv("G_PROJECT_ID"),
+            "auth_uri": os.getenv("G_AUTH_URI"),
+            "token_uri": os.getenv("G_TOKEN_URI"),
+            "redirect_uris": ["http://localhost"],
+        }
+    }
+
+
 def get_gspread_client():
     """Return a gspread client using env credentials and cached token when possible.
 
@@ -62,17 +81,7 @@ def get_gspread_client():
         Tuple of (gc, authorized_user) where gc is the gspread Client and
         authorized_user is the token dict/str returned by gspread (for persistence).
     """
-    load_dotenv()
-    app_creds = {
-        "installed": {
-            "client_id": os.getenv("G_CLIENT_ID"),
-            "client_secret": os.getenv("G_CLIENT_SECRET"),
-            "project_id": os.getenv("G_PROJECT_ID"),
-            "auth_uri": os.getenv("G_AUTH_URI"),
-            "token_uri": os.getenv("G_TOKEN_URI"),
-            "redirect_uris": ["http://localhost"],
-        }
-    }
+    app_creds = _app_credentials()
     saved_token = load_cached_token()
     if saved_token is not None:
         gc, authorized_user = gspread.oauth_from_dict(credentials=app_creds, authorized_user_info=saved_token)
@@ -81,6 +90,39 @@ def get_gspread_client():
     if authorized_user:
         save_cached_token(authorized_user)
     return gc, authorized_user
+
+
+def get_user_credentials(scopes: list[str] | None = None) -> Any:
+    """``google.oauth2.credentials.Credentials`` for the cached login, refreshed and ready for a Google API client.
+
+    Uses the same OAuth app and cached token as :func:`get_gspread_client`, but never opens a browser: when no
+    token is cached it raises :class:`GoogleLoginRequired` (run ``just google-login`` once). ``scopes`` defaults
+    to gspread's (Sheets + full Drive), which is what the cached token was granted.
+    """
+    from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
+    from gspread.auth import DEFAULT_SCOPES
+
+    saved_token = load_cached_token()
+    if saved_token is None:
+        raise GoogleLoginRequired(
+            f"No cached Google login at {_gspread_token_path()}. Run `just google-login` once "
+            "(it opens a browser; on a headless machine run it on a laptop and copy the file here)."
+        )
+    creds = Credentials.from_authorized_user_info(saved_token, scopes or DEFAULT_SCOPES)
+    if not creds.valid:
+        creds.refresh(Request())
+    return creds
+
+
+def login() -> Path:
+    """Run the browser login (first run only) so the token is cached; returns the token path."""
+    get_gspread_client()
+    return _gspread_token_path()
+
+
+if __name__ == "__main__":
+    print(f"Google login cached at {login()}")
 
 
 def open_sheet_by_id(spreadsheet_id: str) -> gspread.Spreadsheet:

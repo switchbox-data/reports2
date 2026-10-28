@@ -55,4 +55,5 @@ Read `context/code/source_metadata_conventions.md` before drafting (names, title
 - Never invent a short form, DOI, docket number or date. Leave a field out and say it is missing.
 - Never edit `reports/references.yaml` by hand and never create Zotero items with the Zotero tools directly.
 - One citation key per document. If dedupe finds a match, reuse it.
+- Drive uploads run as the signed-in user via the cached Google login. If ingest reports no cached Google login or an expired one, tell the user to run `just google-login` themselves (it needs a browser); never try to log in from the agent.
 - Several documents at once: write one card each and pass all of them to a single `just sources-ingest` so the short links go out in one push.

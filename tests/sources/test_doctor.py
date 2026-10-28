@@ -98,3 +98,47 @@ def test_tools_check_reports_missing_binaries(monkeypatch):
 def test_pub_check_runs_a_dry_run_push(pub_remote):
     results = doctor.check_pub()
     assert results[0].level == doctor.OK
+
+
+def drive_token(scopes=("https://www.googleapis.com/auth/drive",)):
+    return {"refresh_token": "r", "scopes": list(scopes), "account": "a@switch.box"}
+
+
+def test_drive_checks_pass_with_token_scope_refresh_and_shared_folder(monkeypatch):
+    from lib.data import gsheets
+    from lib.sources import gdrive
+
+    monkeypatch.setenv("GDRIVE_PUBLIC_FOLDER_ID", "ROOT")
+    monkeypatch.setattr(env, "load_env", lambda: None)
+    monkeypatch.setattr(gsheets, "load_cached_token", drive_token)
+    monkeypatch.setattr(gsheets, "get_user_credentials", lambda scopes=None: object())
+    monkeypatch.setattr(gdrive, "whoami", lambda: {"folder": "Public", "id": "ROOT", "shared_drive": True})
+    results = doctor.check_gdrive()
+    assert [r.level for r in results] == [doctor.OK] * 4
+
+
+def test_drive_checks_fail_without_a_cached_token(monkeypatch):
+    from lib.data import gsheets
+
+    monkeypatch.setattr(gsheets, "load_cached_token", lambda: None)
+    (only,) = doctor.check_gdrive()
+    assert only.level == doctor.FAIL and "just google-login" in only.hint
+
+
+def test_drive_checks_flag_missing_scope_and_failed_refresh(monkeypatch):
+    from lib.data import gsheets
+
+    def boom(scopes=None):
+        raise RuntimeError("invalid_grant")
+
+    monkeypatch.setattr(
+        gsheets, "load_cached_token", lambda: drive_token(("https://www.googleapis.com/auth/spreadsheets",))
+    )
+    monkeypatch.setattr(gsheets, "get_user_credentials", boom)
+    results = by_name(doctor.check_gdrive())
+    assert results["Google token has Drive scope"].level == doctor.FAIL
+    assert (
+        results["Google token refreshable"].level == doctor.FAIL
+        and "7 days" in results["Google token refreshable"].hint
+    )
+    assert "Google Drive public folder" not in results

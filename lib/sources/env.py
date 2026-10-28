@@ -19,7 +19,8 @@ REFERENCES_YAML = REPORTS_DIR / "references.yaml"
 VARIABLES: dict[str, tuple[str, ...]] = {
     "zotero": ("ZOTERO_API_KEY", "ZOTERO_GROUP_ID"),
     "documentcloud": ("DOCUMENTCLOUD_USERNAME", "DOCUMENTCLOUD_PASSWORD"),
-    "gdrive": ("GDRIVE_SERVICE_ACCOUNT_JSON", "GDRIVE_PUBLIC_FOLDER_ID"),
+    "google_oauth": ("G_CLIENT_ID", "G_CLIENT_SECRET", "G_PROJECT_ID", "G_AUTH_URI", "G_TOKEN_URI"),
+    "gdrive": ("GDRIVE_PUBLIC_FOLDER_ID",),
     "wayback": ("IA_ACCESS_KEY", "IA_SECRET_KEY"),
     "contact": ("SOURCES_CONTACT_EMAIL",),
 }

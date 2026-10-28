@@ -1,8 +1,11 @@
-"""Public hosting of Excel workbooks on a Google shared drive (Drive API v3, service-account auth).
+"""Public hosting of Excel workbooks on a Google shared drive (Drive API v3, the teammate's Google login).
 
 Workbooks are uploaded unconverted to ``<GDRIVE_PUBLIC_FOLDER_ID>/<project>/`` and shared as "anyone with the
 link can view". Each file carries ``appProperties`` (``citekey``, ``md5``) so a rerun finds an existing upload
 instead of creating a second one. Drive's md5 is compared with the local file's before a copy is trusted.
+
+Auth is the user OAuth login that ``lib.data.gsheets`` already caches (``just google-login`` once); uploads run
+as whoever runs ingest, and because the folder is on a shared drive the files belong to the shared drive.
 """
 
 from __future__ import annotations
@@ -35,13 +38,12 @@ def view_url(file_id: str) -> str:
 
 @cache
 def service() -> Any:
-    """Drive v3 service built from the service-account key file named by ``GDRIVE_SERVICE_ACCOUNT_JSON``."""
-    from google.oauth2 import service_account
+    """Drive v3 service using the cached Google user login (see :func:`lib.data.gsheets.get_user_credentials`)."""
     from googleapiclient.discovery import build
 
-    env.require("GDRIVE_SERVICE_ACCOUNT_JSON")
-    creds = service_account.Credentials.from_service_account_file(env.get("GDRIVE_SERVICE_ACCOUNT_JSON"), scopes=SCOPES)
-    return build("drive", "v3", credentials=creds, cache_discovery=False)
+    from lib.data import gsheets
+
+    return build("drive", "v3", credentials=gsheets.get_user_credentials(SCOPES), cache_discovery=False)
 
 
 def _q(value: str) -> str:
@@ -117,7 +119,8 @@ def upload(path: Path, project: str, citekey: str, md5: str, file_id: str | None
 
 
 def whoami() -> dict[str, Any]:
-    """The service account and whether it can see the public folder, for ``doctor``."""
+    """The signed-in account and whether it can see the public folder, for ``doctor``."""
+    env.require("GDRIVE_PUBLIC_FOLDER_ID")
     root = env.get("GDRIVE_PUBLIC_FOLDER_ID") or ""
-    f = service().files().get(fileId=root, fields="id, name, mimeType", supportsAllDrives=True).execute()
-    return {"folder": f.get("name"), "id": f.get("id")}
+    f = service().files().get(fileId=root, fields="id, name, mimeType, driveId", supportsAllDrives=True).execute()
+    return {"folder": f.get("name"), "id": f.get("id"), "shared_drive": bool(f.get("driveId"))}

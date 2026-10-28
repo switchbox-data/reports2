@@ -55,7 +55,7 @@ The DocumentCloud upload starts before the Zotero file upload and is waited on a
 ## Public hosts
 
 - **DocumentCloud** (`python-documentcloud`): default for PDFs unless the source has a DOI, is a web page, or is a workbook; the card can override. Documents are tagged with the citation key as `data_citekey`, so a lost ID is recoverable.
-- **Google Drive** (v3, service account): workbooks only; files get `appProperties` (citekey, md5) so a re-run finds them; sharing is anyone-reader; the folder is `GDRIVE_PUBLIC_FOLDER_ID` (shared drives need `supportsAllDrives`).
+- **Google Drive** (v3, user OAuth): workbooks only; files get `appProperties` (citekey, md5) so a re-run finds them; sharing is anyone-reader; the folder is `GDRIVE_PUBLIC_FOLDER_ID` (shared drives need `supportsAllDrives`). Auth reuses the OAuth app (`G_*`) and cached token of `lib/data/gsheets.py` through `get_user_credentials()`, which refreshes the token and never opens a browser (no token raises `GoogleLoginRequired`: run `just google-login` once). Uploads run as the teammate running ingest; because the folder is in a shared drive, Switchbox (not that teammate) owns the files. Requirements: the Workspace admin must allow "anyone with the link" sharing for the shared drive, and if the OAuth consent screen is External with publishing status Testing, refresh tokens expire every 7 days (an Internal app avoids this).
 - **Wayback SPN2:** POST `https://web.archive.org/save`; poll status; failures matching known blockers are reported as "blocked", not retried.
 - **Web capture:** Playwright Chromium renders the PDF and HTML; the HTML is converted to markdown for the extract.
 

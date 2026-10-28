@@ -294,6 +294,29 @@ def test_workbook_gets_drive_copy_and_stub(world, repo, tmp_path):
     assert extra.get(only_item(world)["data"]["extra"], zotero.DRIVE_ID) == "DRV1"
 
 
+def test_pdf_goes_to_drive_while_drive_is_the_pdf_host(
+    world, repo, pdf_file, extract_file, pub_remote, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("SOURCES_PDF_HOST", "gdrive")
+    card = make_card()
+    report = run(world, repo, card, pdf_file)
+    assert report.ok, report.to_dict()
+    assert report.processed
+    assert world.calls["dc_start_upload"] == 0 and world.calls["drive_upload"] == 1
+    assert statuses(report)["documentcloud_start"] == "skipped"
+    item = only_item(world)
+    assert extra.get(item["data"]["extra"], zotero.DRIVE_ID) == "DRV1"
+    assert extra.get(item["data"]["extra"], zotero.DOCUMENTCLOUD_ID) is None
+    assert ingest.DRIVE_TITLE in {c["title"] for c in world.attachments_of(item["key"])}
+    assert remote_links(pub_remote, tmp_path)[card.citekey] == "https://drive.google.com/file/d/DRV1/view"
+    assert frontmatter.parse(extract_file.read_text(encoding="utf-8"))["public_url"].startswith(
+        "https://drive.google.com/file/d/"
+    )
+    # A rerun reuses the Drive copy.
+    again = run(world, repo, card, pdf_file)
+    assert again.ok and world.calls["drive_upload"] == 2 and len(world.drive) == 1
+
+
 def test_large_workbook_needs_a_decision(world, repo, tmp_path):
     book = tmp_path / "big.xlsx"
     book.write_bytes(b"x" * (601 * 1024))

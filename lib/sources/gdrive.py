@@ -1,6 +1,6 @@
-"""Public hosting of Excel workbooks on a Google shared drive (Drive API v3, the teammate's Google login).
+"""Public hosting of Excel workbooks (and, while DocumentCloud is unavailable, PDFs) on a Google shared drive.
 
-Workbooks are uploaded unconverted to ``<GDRIVE_PUBLIC_FOLDER_ID>/<project>/`` and shared as "anyone with the
+Uses Drive API v3 with the teammate's Google login. Files are uploaded unconverted to ``<GDRIVE_PUBLIC_FOLDER_ID>/<project>/`` and shared as "anyone with the
 link can view". Each file carries ``appProperties`` (``citekey``, ``md5``) so a rerun finds an existing upload
 instead of creating a second one. Drive's md5 is compared with the local file's before a copy is trusted.
 
@@ -20,6 +20,7 @@ from lib.sources import env
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 FOLDER_MIME = "application/vnd.google-apps.folder"
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+PDF_MIME = "application/pdf"
 _LIST_ARGS = {"supportsAllDrives": True, "includeItemsFromAllDrives": True, "corpora": "allDrives"}
 
 
@@ -103,7 +104,8 @@ def upload(path: Path, project: str, citekey: str, md5: str, file_id: str | None
             raise RuntimeError("Set GDRIVE_PUBLIC_FOLDER_ID in .env")
         parent = ensure_folder(project, root)
         body = {"name": Path(path).name, "parents": [parent], "appProperties": {"citekey": citekey, "md5": md5}}
-        media = MediaFileUpload(str(path), mimetype=XLSX_MIME, resumable=True)
+        mime = PDF_MIME if Path(path).suffix.lower() == ".pdf" else XLSX_MIME
+        media = MediaFileUpload(str(path), mimetype=mime, resumable=True)
         created = (
             service()
             .files()

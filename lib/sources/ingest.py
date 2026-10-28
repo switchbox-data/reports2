@@ -289,6 +289,8 @@ class Ingest:
     def documentcloud_start(self) -> tuple[str, str]:
         meta = self.meta
         if not meta.should_upload_documentcloud:
+            if meta.needs_pdf_copy:
+                return SKIPPED, "PDFs are hosted on Google Drive for now"
             return SKIPPED, "not uploaded (DOI, web page, or card says no)"
         assert self.item_key
         known = extra.get(self._item_extra(), zotero.DOCUMENTCLOUD_ID)
@@ -329,8 +331,8 @@ class Ingest:
 
     def drive(self) -> tuple[str, str]:
         meta = self.meta
-        if not meta.is_workbook:
-            return SKIPPED, "not a workbook"
+        if not meta.should_upload_drive:
+            return SKIPPED, "not a workbook, and PDFs are not hosted on Drive"
         assert self.item_key
         known = extra.get(self._item_extra(), zotero.DRIVE_ID)
         path = self.local_file()

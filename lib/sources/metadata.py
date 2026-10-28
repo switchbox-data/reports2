@@ -196,7 +196,9 @@ class SourceMetadata(BaseModel):
 
     def extra_text(self) -> str:
         text = extra.set_field("", extra.CITATION_KEY, self.citekey)
-        return extra.set_field(text, extra.SHORTAUTHOR, self.abbreviation) if self.abbreviation else text
+        if self.abbreviation:
+            text = extra.set_field(text, extra.SHORTAUTHOR, self.abbreviation)
+        return extra.set_field(text, extra.DOCKET, self.docket) if self.docket else text
 
     def zotero_data(self, collection_keys: list[str] | None = None) -> dict[str, Any]:
         """The item as Zotero JSON (key and version omitted), ready to create."""
@@ -218,8 +220,6 @@ class SourceMetadata(BaseModel):
             data[PUBLISHER_FIELD[self.item_type]] = self.publisher
         if self.container and (field := CONTAINER_FIELD.get(self.item_type)):
             data[field] = self.container
-        if self.docket and self.item_type == "report":
-            data["reportNumber"] = self.docket
         if self.access_date:
             data["accessDate"] = self.access_date
         return data

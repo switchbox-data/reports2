@@ -10,6 +10,7 @@ EXTRA = (
     "DocumentCloud ID: 12345\n"
     "Google Drive ID: 1AbC\n"
     "Wayback URL: https://web.archive.org/web/2026/https://x.org\n"
+    "Docket: 25-55\n"
     "_eprint: 2410.04540"
 )
 

@@ -26,7 +26,8 @@ Read `context/code/source_metadata_conventions.md` before drafting (names, title
 6. **Draft the card.** Write it to `/tmp/<citekey-or-slug>.yaml` (not into the repo). Fields:
 
    ```yaml
-   item_type: document
+   item_type: document # one of: document, report, dataset, webpage, journalArticle, preprint, book, thesis,
+   #   conferencePaper, presentation, blogPost, magazineArticle, newspaperArticle, hearing
    title: "Docket 25-55: Order on Seasonal Heat Pump Rates"
    creators:
      - name: Massachusetts Department of Public Utilities
@@ -43,11 +44,11 @@ Read `context/code/source_metadata_conventions.md` before drafting (names, title
    ```
 
    Then `uv run python -m lib.sources.cli key /tmp/<card>.yaml` prints the citation key the rule gives; put it in `citekey`. `uv run python -m lib.sources.cli check-card /tmp/<card>.yaml` validates the card (titles, keys, organizations, duplicates) with no writes; fix everything it lists. A PDF with a DOI is not uploaded to DocumentCloud; override with `upload_documentcloud` only when the user asks. Workbooks that exceed the 600 KB file limit need `workbook_in_repo: false`.
-7. **Show the card and wait for approval.** Present, in plain words: the Zotero title and creators, the citation key, the project(s), the item type and date, the DOI (and where you found it), how the file will be shared (DocumentCloud, Drive, the live page), the short link it will get, and the index row. List anything you were unsure about. **Do not ingest until the user approves.** Apply their corrections to the YAML.
+7. **Show the card and wait for approval.** Present, in plain words: the Zotero title and creators, the citation key, the project(s), the item type (and that the user can pick another from the list in the card template) and date, the DOI (and where you found it), how the file will be shared (DocumentCloud, Drive, the live page), the short link it will get, and the index row. List anything you were unsure about. **Do not ingest until the user approves.** Apply their corrections to the YAML.
 8. **Ingest.** `just sources-ingest /tmp/<card>.yaml --path-source <file>`; for a Zotero Inbox item `just sources-ingest-item /tmp/<card>.yaml <ZOTERO_ITEM_KEY>`. For a web page, the CLI captures it (PDF and HTML) and saves it to the Wayback Machine. The command prints one JSON object per document. If it reports a problem, fix the cause and run the same command again; do not work around it by hand.
-9. **Extract.** For PDFs and web pages, produce the markdown extract with `/extract-pdf-to-markdown <citekey>` at the card's `extract_path`, then `/validate-pdf-to-markdown-extraction` on it. Workbooks get a short stub (written by ingest) and are read with polars or openpyxl; do not extract them to markdown.
+9. **Extract.** For PDFs and web pages, produce the markdown extract with `/extract-pdf-to-markdown <citekey>` at the card's `extract_path`, then `/validate-pdf-to-markdown-extraction` on it, then run the same ingest command again: the first run leaves the front matter step pending until the extract exists, and the rerun writes it, adds the index row and tags the item `processed`. (Web-page extracts are written by ingest from the captured HTML.) Workbooks are not extracted: markdown would lose their formulas and structure. Ingest writes a short stub `.md` next to them (front matter plus what each sheet holds), and an agent that needs the numbers opens the workbook itself with polars (values) or openpyxl (formulas).
 10. **Verify.** `just sources-status <citekey>` must be all green. Ingest tags the Zotero item `processed` only after its own verification passes.
-11. **Refresh the bibliography** if any report cites it: `just sync-bib`. Commit the extract, index rows and `references.yaml` together; never commit the PDF (gitignored).
+11. **Refresh the bibliography:** `just sync-bib`, so `references.yaml` matches Zotero. Then tell the user which files changed (the extract or stub, any workbook copy, the index rows, `references.yaml`) so they can commit them. **Never commit or push yourself**; the user always commits. Originals (PDFs) are gitignored and never committed.
 
 ## Rules
 

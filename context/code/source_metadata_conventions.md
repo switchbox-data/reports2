@@ -134,7 +134,7 @@ Choose the Zotero item type by the kind of document. The library today (excludin
 | Books; theses; conference papers; presentations                                                                                   | `book`; `thesis`; `conferencePaper`; `presentation`          | `publisher`; `university`; `publisher`; `meetingName` |
 | Web pages, blog posts, news and magazine articles                                                                                 | `webpage`, `blogPost`, `newspaperArticle`, `magazineArticle` | `publisher` (site in `container`)                     |
 
-Orders, testimony, exhibits and tariffs are `document` (not `report`) because they are items in a proceeding, not standalone publications. A study filed in a docket (an MCOS study attached to testimony) is still a `report`: the docket goes in its title and `reportNumber`. A workbook is `dataset` even when it is an exhibit of a filing; a workbook that is the only form of an exhibit is still a `dataset`.
+Orders, testimony, exhibits and tariffs are `document` (not `report`) because they are items in a proceeding, not standalone publications. A study filed in a docket (an MCOS study attached to testimony) is still a `report`: the docket goes in its title and the `Docket:` Extra line. A workbook is `dataset` even when it is an exhibit of a filing; a workbook that is the only form of an exhibit is still a `dataset`.
 
 ## Which date to use
 
@@ -153,8 +153,8 @@ Use `YYYY-MM-DD` when the day is printed, else `YYYY-MM` or `YYYY`. Never take a
 
 The docket number goes in the **title** for every proceeding document (`Docket 25-55: ...`; see Titles). Beyond the title:
 
-- `report` items also store it in `reportNumber` (the card's `docket` field fills this).
-- `document` and `dataset` items have no docket field in Zotero; the number lives in the extract's front matter (`docket:`) and, for a workbook, in its stub.
+- Every item type also stores it the same way, as a `Docket: <number>` line in Extra (the card's `docket` field fills it). Zotero has no docket field shared by `document`, `report` and `dataset`, and `reportNumber` would print the number a second time in the bibliography, so Extra is the one consistent, searchable place. `sync-bib` strips the line, so it never reaches `references.yaml`.
+- The extract's front matter (`docket:`) and a workbook's stub repeat it for agents reading the repo.
 - A card with `docket` set must have a title that starts `Docket <that number>:`; ingest refuses a card where they disagree.
 
 ## Project placement

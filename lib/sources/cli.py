@@ -241,8 +241,20 @@ def cmd_fetch(args: argparse.Namespace) -> int:
                 print(existing.resolve())
                 return 0
     path = zotero.download_attachment(item_key, out_dir)
+    if not args.path_output_dir and extract and not _git_ignored(path):
+        cache = env.cache_dir() / "fetched" / args.citekey
+        cache.mkdir(parents=True, exist_ok=True)
+        path = path.replace(cache / path.name)
     print(path.resolve())
     return 0
+
+
+def _git_ignored(path: Path) -> bool:
+    """Whether git ignores ``path``; a fetched original must never become committable by accident."""
+    import subprocess
+
+    done = subprocess.run(["git", "check-ignore", "-q", str(path)], cwd=path.parent, capture_output=True)
+    return done.returncode == 0
 
 
 def cmd_pending(args: argparse.Namespace) -> int:

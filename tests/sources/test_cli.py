@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from lib.sources import cli, frontmatter, metadata, zotero
+from lib.sources import cli, env, frontmatter, metadata, zotero
 from tests.sources.conftest import make_card, use_repo_env
 
 
@@ -63,9 +63,26 @@ def test_fetch_downloads_next_to_the_extract(world, tmp_path, monkeypatch, capsy
     pdf = tmp_path / "order.pdf"
     pdf.write_bytes(b"%PDF data")
     zotero.attach_file(key, pdf)
+    monkeypatch.setattr(cli, "_git_ignored", lambda path: True)
     assert cli.main(["fetch", "madpu_X_2025"]) == 0
     out = Path(capsys.readouterr().out.strip())
     assert out == (extract.parent / "order.pdf").resolve() and out.read_bytes() == b"%PDF data"
+
+
+def test_fetch_moves_files_git_would_track_to_the_cache(world, tmp_path, monkeypatch, capsys, repo):
+    use_repo_env(monkeypatch, repo)
+    monkeypatch.setattr(env, "cache_dir", lambda: tmp_path / "cache")
+    monkeypatch.setattr(cli, "_git_ignored", lambda path: False)
+    extract = repo / "context" / "sources" / "ma_hp_rates" / "workbook.md"
+    extract.write_text("---\ncitekey: madpu_W_2025\nmd5: abc\n---\n\nStub\n")
+    key = world.add_item({"itemType": "dataset", "title": "W", "extra": "Citation Key: madpu_W_2025"})
+    xlsx = tmp_path / "model.xlsx"
+    xlsx.write_bytes(b"PK workbook")
+    zotero.attach_file(key, xlsx)
+    assert cli.main(["fetch", "madpu_W_2025"]) == 0
+    out = Path(capsys.readouterr().out.strip())
+    assert out == (tmp_path / "cache" / "fetched" / "madpu_W_2025" / "model.xlsx").resolve()
+    assert not (extract.parent / "model.xlsx").exists()
 
 
 def test_fetch_unknown_key(world, capsys):

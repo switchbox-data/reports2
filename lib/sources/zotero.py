@@ -416,7 +416,7 @@ def update_from_card(item_key: str, data: Mapping[str, Any], project_keys: Itera
     def change(current: Mapping[str, Any]) -> dict[str, Any]:
         fields = {k: v for k, v in data.items() if k not in ("extra", "collections", "tags", "relations")}
         text = current.get("extra") or ""
-        for name in (extra.CITATION_KEY, extra.SHORTAUTHOR):
+        for name in (extra.CITATION_KEY, extra.SHORTAUTHOR, extra.DOCKET):
             if value := extra.get(card_extra, name):
                 text = extra.set_field(text, name, value)
         fields["extra"] = text

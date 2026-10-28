@@ -131,7 +131,8 @@ def test_public_url_prefers_documentcloud_then_drive():
 def test_zotero_data_maps_item_type_fields():
     report = make_card(item_type="report", publisher="Commonwealth of Massachusetts")
     data = report.zotero_data(["COL1"])
-    assert data["institution"] == "Commonwealth of Massachusetts" and data["reportNumber"] == "25-55"
+    assert data["institution"] == "Commonwealth of Massachusetts" and "reportNumber" not in data
+    assert "Docket: 25-55" in data["extra"]
     assert data["collections"] == ["COL1"] and "Citation Key: " + report.citekey in data["extra"]
     assert "tex.shortauthor: MA DPU" in data["extra"]
     page = make_card(

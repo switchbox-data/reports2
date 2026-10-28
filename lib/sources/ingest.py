@@ -350,17 +350,19 @@ class Ingest:
         assert self.item_key and meta.source_url
         known = extra.get(self._item_extra(), zotero.WAYBACK_URL)
         if known:
+            meta.wayback_url = known
             return ALREADY, known
         result = webpage.wayback_save(meta.source_url)
         if result.blocked:
             self.report.notes.append(
-                f"Wayback is blocked for {meta.source_url}: only the live page and the PDF capture exist"
+                f"Wayback is blocked for {meta.source_url}: the short link points to the live page; the PDF capture is in Zotero"
             )
             return SKIPPED, "blocked by the site"
         if not result.ok or not result.url:
             raise IngestError(f"Wayback save failed: {result.message}")
         zotero.set_extra_fields(self.item_key, {zotero.WAYBACK_URL: result.url})
         zotero.attach_link(self.item_key, result.url, WAYBACK_TITLE)
+        meta.wayback_url = result.url
         return DONE, result.url
 
     def short_link(self) -> tuple[str, str]:

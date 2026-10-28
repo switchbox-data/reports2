@@ -344,10 +344,16 @@ def test_web_page_is_captured_archived_and_extracted(world, repo, pub_remote, tm
     extract = repo / "context" / "sources" / "ma_hp_rates" / "example_heat_pump_rates.md"
     text = extract.read_text(encoding="utf-8")
     assert "Hello world." in text and "menu" not in text
-    assert remote_links(pub_remote, tmp_path)[card.citekey] == "https://example.org/heat-pump-rates"
+    snapshot = "https://web.archive.org/web/20261028000000/https://example.org/heat-pump-rates"
+    assert remote_links(pub_remote, tmp_path)[card.citekey] == snapshot
+    assert frontmatter.read(extract)["public_url"] == snapshot
+    again = run(world, repo, card, None)
+    assert again.ok, again.to_dict()
+    assert statuses(again)["short_link"] == "already"
+    assert world.calls["wayback"] == 1
 
 
-def test_wayback_blocked_is_noted_not_failed(world, repo, tmp_path):
+def test_wayback_blocked_is_noted_not_failed(world, repo, tmp_path, pub_remote):
     world.wayback_blocked = True
     card = make_card(
         item_type="webpage",
@@ -362,6 +368,7 @@ def test_wayback_blocked_is_noted_not_failed(world, repo, tmp_path):
     report = run(world, repo, card, None)
     assert report.ok, report.to_dict()
     assert any("blocked" in n.lower() for n in report.notes)
+    assert remote_links(pub_remote, tmp_path)[card.citekey] == "https://example.org/blocked"
 
 
 def test_batch_makes_one_short_link_commit_and_survives_one_failure(

@@ -140,6 +140,7 @@ class SourceMetadata(BaseModel):
     # Filled in by ingest as the public copies come into existence; not part of the approved card.
     documentcloud_url: str | None = None
     drive_url: str | None = None
+    wayback_url: str | None = None
 
     # --- derived -------------------------------------------------------------------------------
 
@@ -161,13 +162,16 @@ class SourceMetadata(BaseModel):
 
     @property
     def public_url(self) -> str | None:
-        """The copy readers reach: DocumentCloud, Drive, the live page, or doi.org."""
+        """The copy readers reach: DocumentCloud, Drive, a web page's Wayback snapshot, or doi.org.
+
+        A web page whose site blocks the Wayback Machine falls back to the live page.
+        """
         if self.documentcloud_url:
             return self.documentcloud_url
         if self.drive_url:
             return self.drive_url
-        if self.is_web_page and self.source_url:
-            return self.source_url
+        if self.is_web_page and (self.wayback_url or self.source_url):
+            return self.wayback_url or self.source_url
         if self.doi:
             return f"https://doi.org/{self.doi}"
         return self.source_url
@@ -307,6 +311,6 @@ def load(path: Path) -> SourceMetadata:
 
 def dump(meta: SourceMetadata, path: Path) -> None:
     """Write a card as YAML (without the fields ingest fills in)."""
-    body = meta.model_dump(exclude_none=True, exclude={"documentcloud_url", "drive_url"})
+    body = meta.model_dump(exclude_none=True, exclude={"documentcloud_url", "drive_url", "wayback_url"})
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     Path(path).write_text(yaml.safe_dump(body, sort_keys=False, allow_unicode=True, width=120), encoding="utf-8")

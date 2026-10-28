@@ -3,7 +3,7 @@
 Read-only (never write to Zotero or any public host):
 
     zotero-verify, sync-bib [--checks warn|strict] [--force], check-citekeys,
-    pending [--brief], status, dedupe, org, doctor (read-only checks), fetch, projects, key,
+    pending [--brief], status, dedupe, org, person, doctor (read-only checks), fetch, projects, key,
     check-card, find-doi, draft-cards, convert-frontmatter (dry run unless --apply)
 
 Writing (after the person approves the details card):
@@ -314,6 +314,15 @@ def cmd_org(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_person(args: argparse.Namespace) -> int:
+    """Existing spellings of a person."""
+    from lib.sources import people
+
+    items = None if args.no_zotero else zotero.bib_items()
+    print(people.describe(args.name, people.find_person(args.name, items=items)))
+    return 0
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     """Per-step checklist for each citation key, or for every row of a provenance CSV."""
     from lib.sources import frontmatter, migrate, status
@@ -477,6 +486,10 @@ def main(argv: list[str] | None = None) -> int:
         help="skip the Zotero library (references.yaml and the conventions doc only)",
     )
     p.set_defaults(func=cmd_org)
+    p = sub.add_parser("person", help="existing spellings of a person")
+    p.add_argument("name", help='"Family, Given" or "Given Family"')
+    p.add_argument("--no-zotero", action="store_true", help="search references.yaml only")
+    p.set_defaults(func=cmd_person)
     p = sub.add_parser("status", help="step checklist per citation key")
     p.add_argument("citekeys", nargs="*")
     p.add_argument("--path-provenance-csv", help="check the extract of every row")

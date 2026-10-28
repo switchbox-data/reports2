@@ -42,7 +42,7 @@ Ask in Cursor, for example:
 - "Find sources on seasonal heat pump rates for the ma_hp_rates project."
 - "Find PURA's final decision in the Eversource rate case and any related compliance filings."
 
-The `discover-sources` skill searches the web, downloads candidates to a scratch folder on your machine (`~/.cache/switchbox_sources/inbox/<date>_<topic>/`, never the repo), checks each one against the library, and replies with a table like this:
+The [`discover-sources`](../../.cursor/skills/discover-sources/SKILL.md) skill searches the web, downloads candidates to a scratch folder on your machine (`~/.cache/switchbox_sources/inbox/<date>_<topic>/`, never the repo), checks each one against the library, and replies with a table like this:
 
 | # | Title                                                       | Issuer        | Date       | Docket | Relevance                                                          | Recommendation                                       |
 | - | ----------------------------------------------------------- | ------------- | ---------- | ------ | ------------------------------------------------------------------ | ---------------------------------------------------- |
@@ -60,10 +60,12 @@ You found the document yourself (a link someone sent, a PDF on your machine). At
 
 You can also put a source straight into Zotero. There are two choices to make.
 
-**Where it goes:**
+**Where it goes:** one of two places, and only these two.
 
-- **The project's collection** (for example `Reports > ma_hp_rates`, or `Reports > general_reference` for sources that serve no single report). Prefer this when you know the project.
-- **The top-level Inbox**, when you're not sure where it belongs.
+- **A project subcollection under `Reports`** (for example `Reports > ma_hp_rates`, or `Reports > general_reference` for sources that serve no single report). Prefer this when you know the project.
+- **The top-level `Inbox` collection**, when you're not sure which project it belongs to.
+
+Anywhere else in Zotero (another top-level collection, or no collection at all) is general reading: the pipeline ignores it, and it never becomes a source.
 
 **How it gets there:**
 
@@ -113,7 +115,7 @@ From there, the agent does the following.
    - **Duplicates first.** Before drafting anything, it checks the library for the same file (by its hash), URL, DOI or title, and stops if the source is already there.
    - **Authors.** For each author, it decides from the document (cover page, letterhead, "prepared by" line) whether it's a person or an organization. For a consultant's report, the consultant is the author and the client goes in as the institution.
      - **Organizations** are looked up in the library (in `references.yaml` and Zotero), by full name and by abbreviation, so the same agency never ends up with two spellings. If it finds a match, it reuses that exact full name and abbreviation. If not, it proposes a new name and abbreviation following the conventions doc, and flags it **NEW ORGANIZATION** on the card with where the abbreviation came from. Check that line carefully: once approved, it shows up in every citation of that organization.
-     - **People** are entered as printed (family name, given name). There is no library lookup for people yet.
+     - **People** are looked up too (`just sources-person "Walsh, Michael"`), matching the family name and a compatible given name, so "M. Walsh" finds "Walsh, Michael" and "Walsh, Michael J." but not "Walsh, Jane". If the person is already in the library and the document confirms it's the same person, the card reuses the library's spelling (the fullest one the document supports). Otherwise the name is entered as printed (family name, given name). A shared family name alone is never treated as the same person. `just sync-bib` warns about people the library spells two ways.
    - **Title.** The document's own title, in title case (never all caps). Documents filed in a utility proceeding start with the docket: `Docket 25-08: Order on Seasonal Heat Pump Rates`, with the commission's own number and no "D.P.U." or "Case". See [Titles](source_metadata_conventions.md#titles).
    - **Item type.** Chosen by the kind of document: commission documents (orders, testimony, exhibits, tariffs) are `document`, studies are `report`, workbooks are `dataset`, papers are `journalArticle` or `preprint`, web pages are `webpage`. The full list is in [Item types](source_metadata_conventions.md#item-types).
    - **Date.** The date the document took its present form, as printed on it: an order's issue date, testimony's filing date, a tariff's effective date, a report's publication date. It's written `YYYY-MM-DD` when the day is printed, else `YYYY-MM` or `YYYY`, and never taken from a filename. See [Which date to use](source_metadata_conventions.md#which-date-to-use).
@@ -199,13 +201,14 @@ Original files are not stored in git. `just fetch-source <citation_key>` downloa
 
 ## Checking and cleaning up
 
-| Task                                                                | Command                                                                  |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Is everything in place for a source?                                | `just sources-status <citation_key> [...]`                               |
-| Is this source already in the library?                              | `just sources-dedupe --path-file x.pdf` (or `--url`, `--doi`, `--title`) |
-| Is this a known organization, and what's its name and abbreviation? | `just sources-org "Massachusetts DPU"`                                   |
-| Check credentials, access and tools                                 | `just sources-doctor`                                                    |
-| What is waiting to be ingested?                                     | `just sources-pending`                                                   |
+| Task                                                                  | Command                                                                  |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Is everything in place for a source?                                  | `just sources-status <citation_key> [...]`                               |
+| Is this source already in the library?                                | `just sources-dedupe --path-file x.pdf` (or `--url`, `--doi`, `--title`) |
+| Is this a known organization, and what's its name and abbreviation?   | `just sources-org "Massachusetts DPU"`                                   |
+| Is this person already in the library, and how is their name spelled? | `just sources-person "Walsh, Michael"`                                   |
+| Check credentials, access and tools                                   | `just sources-doctor`                                                    |
+| What is waiting to be ingested?                                       | `just sources-pending`                                                   |
 
 ## When something goes wrong
 

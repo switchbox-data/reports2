@@ -89,6 +89,10 @@ sources-dedupe *flags:
 sources-org name:
     uv run python -m lib.sources.cli org "{{ name }}"
 
+# Existing spellings of a person, e.g. just sources-person "Walsh, Michael"
+sources-person name:
+    uv run python -m lib.sources.cli person "{{ name }}"
+
 # One-time Google login (opens a browser) that caches the token ingest uses for Drive uploads; same login as the Sheets helpers
 google-login:
     uv run python -m lib.data.gsheets

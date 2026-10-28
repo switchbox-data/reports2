@@ -192,10 +192,17 @@ def find_doi(
 
 
 def open_access_pdf(doi: str, fetch: Fetch | None = None) -> str | None:
-    """URL of a free PDF for ``doi`` from Unpaywall, if one exists."""
+    """URL of a free PDF for ``doi`` from Unpaywall, if one exists.
+
+    Unpaywall's best location is often a landing page with no PDF link; then the other locations are tried,
+    published versions first.
+    """
     mail = env.get("SOURCES_CONTACT_EMAIL")
     if not mail:
         return None
-    data = _get_json(f"{UNPAYWALL}/{quote(doi, safe='/')}", {"email": mail}, fetch)
-    best = (data or {}).get("best_oa_location") or {}
-    return best.get("url_for_pdf") or None
+    data = _get_json(f"{UNPAYWALL}/{quote(doi, safe='/')}", {"email": mail}, fetch) or {}
+    best = data.get("best_oa_location") or {}
+    if best.get("url_for_pdf"):
+        return best["url_for_pdf"]
+    others = sorted(data.get("oa_locations") or [], key=lambda loc: loc.get("version") != "publishedVersion")
+    return next((loc["url_for_pdf"] for loc in others if loc.get("url_for_pdf")), None)

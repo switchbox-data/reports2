@@ -410,7 +410,7 @@ class Ingest:
             )
         elif self._local is not None and workbook.too_large(self._local):
             self.report.notes.append(f"commit the large workbook with {workbook.SKIP_HINT}")
-        workbook.write_stub(path, ids, meta.title, meta.index_row or meta.title)
+        workbook.write_stub(path, ids, meta.title, meta.index_row or meta.title, self._local)
         return DONE, f"stub {path.name}; workbook {'in repo' if in_repo else 'Zotero only'}"
 
     def index_rows(self) -> tuple[str, str]:

@@ -60,6 +60,38 @@ def test_convert_frontmatter_is_a_dry_run_by_default(tmp_path):
     assert migrate.convert_frontmatter(tmp_path) == []
 
 
+def test_convert_frontmatter_quotes_values_that_are_not_valid_yaml(tmp_path):
+    legacy = (
+        "---\nsource: b.pdf\nwhy_here: the only testimony in the case: derivation of the rate\n"
+        "filer: Jo's Utility # a comment\noriginal_pdf_path: /stage/b.pdf\n---\n\nBody\n"
+    )
+    (tmp_path / "b.md").write_text(legacy)
+    changes = migrate.convert_frontmatter(tmp_path)
+    assert [c.detail for c in changes] == ["converted source, original_pdf_path; quoted why_here"]
+    migrate.convert_frontmatter(tmp_path, dry_run=False)
+    assert frontmatter.read(tmp_path / "b.md") == {
+        "source_file": "b.pdf",
+        "why_here": "the only testimony in the case: derivation of the rate",
+        "filer": "Jo's Utility",
+    }
+
+
+def test_manifest_folder_adds_front_matter_and_uses_the_first_row_per_extract(tmp_path):
+    folder = tmp_path / "tou"
+    folder.mkdir()
+    (folder / "doc.md").write_text("# Doc\n\nBody\n")
+    (folder / "MANIFEST.csv").write_text(
+        "source_pdf,source_url,md_path,status\n"
+        "doc.pdf,https://x.org/doc.pdf,doc.md,extracted\n"
+        "workbooks/doc_table.csv,https://x.org/doc.pdf,doc.md,extracted\n"
+    )
+    changes = migrate.convert_manifest_folder(folder, dry_run=False)
+    assert len(changes) == 1
+    assert frontmatter.read(folder / "doc.md") == {"source_file": "doc.pdf", "source_url": "https://x.org/doc.pdf"}
+    assert (folder / "doc.md").read_text().endswith("---\n\n# Doc\n\nBody\n")
+    assert migrate.convert_manifest_folder(folder, dry_run=False) == []
+
+
 def test_manifest_folder_fills_front_matter(tmp_path):
     folder = tmp_path / "tou"
     folder.mkdir()

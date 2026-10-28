@@ -78,29 +78,68 @@ class Change:
     detail: str
 
 
+def _parses(lines: list[str]) -> bool:
+    try:
+        yaml.safe_load("\n".join(lines))
+    except yaml.YAMLError:
+        return False
+    return True
+
+
+def quote_invalid_values(text: str) -> tuple[str, list[str]]:
+    """``text`` with each one-line value that is not valid YAML (e.g. a plain value containing ``: ``) single-quoted.
+
+    Returns the new text and the fields that were quoted.
+    """
+    front, rest = frontmatter.split(text)
+    if front is None or _parses(front):
+        return text, []
+    quoted = []
+    out = []
+    for line in front:
+        m = frontmatter._KEY_LINE.match(line)
+        if m and not _parses([line]):
+            value = line[m.end() :].strip()
+            line = f"{m.group(1)}: '{value.replace(chr(39), chr(39) * 2)}'"
+            quoted.append(m.group(1))
+        out.append(line)
+    return frontmatter._join(out, rest), quoted
+
+
 def convert_frontmatter(root: Path | None = None, dry_run: bool = True) -> list[Change]:
-    """Rename ``source`` to ``source_file`` and drop ``original_pdf_path`` in every legacy extract under ``root``."""
+    """Rename ``source`` to ``source_file`` and drop ``original_pdf_path`` in every legacy extract under ``root``.
+
+    Legacy fields are found from the front matter's lines rather than a YAML parse, because some legacy blocks are
+    not valid YAML; those values are quoted so the converted block parses.
+    """
     changes = []
     for path in frontmatter.iter_extracts(root):
         text = path.read_text(encoding="utf-8")
         front, _ = frontmatter.split(text)
         if front is None:
             continue
-        data = frontmatter.parse(text)
-        if "original_pdf_path" not in data and "source" not in data:
+        keys = {b.key for b in frontmatter._blocks(front)}
+        what = [f for f in ("source", "original_pdf_path") if f in keys]
+        if not what:
             continue
-        new = frontmatter.to_flat(text)
+        new, quoted = quote_invalid_values(frontmatter.to_flat(text))
         if new == text:
             continue
         if not dry_run:
             path.write_text(new, encoding="utf-8")
-        what = [f for f in ("source", "original_pdf_path") if f in data]
-        changes.append(Change(path, "converted " + ", ".join(what)))
+        detail = "converted " + ", ".join(what)
+        if quoted:
+            detail += "; quoted " + ", ".join(quoted)
+        changes.append(Change(path, detail))
     return changes
 
 
 def convert_manifest_folder(folder: Path, dry_run: bool = True) -> list[Change]:
-    """Copy each ``MANIFEST.csv`` row's facts into its extract's front matter (columns as in the legacy manifests)."""
+    """Copy each ``MANIFEST.csv`` row's facts into its extract's front matter (columns as in the legacy manifests).
+
+    An extract without front matter gets a new block. When several rows name the same extract (a PDF and the
+    workbook CSVs pulled from it), the first row is the source.
+    """
     folder = Path(folder)
     manifest = folder / "MANIFEST.csv"
     if not manifest.exists():
@@ -108,10 +147,12 @@ def convert_manifest_folder(folder: Path, dry_run: bool = True) -> list[Change]:
     changes = []
     with manifest.open(newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
+    seen: set[Path] = set()
     for row in rows:
-        extract = folder / row["md_path"] if row.get("md_path") else None
-        if extract is None or not extract.exists():
+        extract = (folder / row["md_path"]).resolve() if row.get("md_path") else None
+        if extract is None or not extract.exists() or extract in seen:
             continue
+        seen.add(extract)
         fields: dict[str, Any] = {"source_file": Path(row["source_pdf"]).name}
         if row.get("source_url"):
             fields["source_url"] = row["source_url"]
@@ -120,8 +161,10 @@ def convert_manifest_folder(folder: Path, dry_run: bool = True) -> list[Change]:
             fields["md5"] = zotero.file_md5(pdf)
         text = extract.read_text(encoding="utf-8")
         if frontmatter.split(text)[0] is None:
-            continue
-        new = frontmatter.to_flat(text, fields)
+            text_with_block = frontmatter._join([], "---\n\n" + text.lstrip("\n"))
+            new = frontmatter.to_flat(text_with_block, fields)
+        else:
+            new = frontmatter.to_flat(text, fields)
         if new != text:
             if not dry_run:
                 extract.write_text(new, encoding="utf-8")

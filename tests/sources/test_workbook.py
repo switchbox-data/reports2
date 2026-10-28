@@ -30,3 +30,21 @@ def test_stub_is_written_once_and_front_matter_refreshed(tmp_path):
     text = stub.read_text()
     assert text.endswith("# Model\n\nRate design model.\n")
     assert frontmatter.parse(text)["repo_file"] == "not in repo: fetch from Zotero"
+
+
+def test_stub_lists_the_sheets(tmp_path):
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Rates"
+    ws.append([None, None, None])
+    ws.append(["month", "rate", "kwh"])
+    ws.append(["Jan", 0.21, 600])
+    wb.create_sheet("Empty")
+    wb.save(tmp_path / "m.xlsx")
+    stub = tmp_path / "m.md"
+    workbook.write_stub(stub, {"citekey": "k_M_2025"}, "Model", "Rate design model.", tmp_path / "m.xlsx")
+    assert stub.read_text().endswith(
+        "Rate design model.\n\n## Sheets\n\n- **Rates** (3 rows x 3 columns): month, rate, kwh\n- **Empty** (1 rows x 1 columns)\n"
+    )

@@ -10,6 +10,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 from typing import Any
+from zipfile import BadZipFile
 
 from lib.sources import frontmatter
 
@@ -38,13 +39,46 @@ def copy_into_repo(src: Path, dest: Path) -> bool:
     return True
 
 
-def write_stub(path: Path, fields: dict[str, Any], title: str, description: str) -> None:
-    """Write (or refresh the front matter of) the stub next to a workbook; keeps an existing description."""
+def sheet_summary(path: Path, max_columns: int = 12) -> str:
+    """A markdown list of the workbook's sheets: name, size, and the first non-empty row (usually the headers).
+
+    Empty when openpyxl cannot read the file (an ``.xls`` or a damaged workbook).
+    """
+    from openpyxl import load_workbook
+    from openpyxl.utils.exceptions import InvalidFileException
+
+    try:
+        wb = load_workbook(path, read_only=True, data_only=True)
+    except (InvalidFileException, BadZipFile, KeyError, OSError):
+        return ""
+    lines = []
+    try:
+        for ws in wb.worksheets:
+            first = next((row for row in ws.iter_rows(values_only=True) if any(v is not None for v in row)), ())
+            cells = [str(v) for v in first if v is not None]
+            shown = ", ".join(cells[:max_columns]) + (", ..." if len(cells) > max_columns else "")
+            line = f"- **{ws.title}** ({ws.max_row or 0} rows x {ws.max_column or 0} columns)"
+            lines.append(f"{line}: {shown}" if shown else line)
+    finally:
+        wb.close()
+    return "\n".join(lines)
+
+
+def write_stub(
+    path: Path, fields: dict[str, Any], title: str, description: str, workbook_path: Path | None = None
+) -> None:
+    """Write (or refresh the front matter of) the stub next to a workbook; keeps an existing body.
+
+    With ``workbook_path``, a new stub lists the sheets so a reader knows what the workbook holds before opening it.
+    """
     path = Path(path)
     if path.exists():
         frontmatter.update(path, fields)
         return
     body = f"# {title}\n\n{description.strip()}\n"
+    sheets = sheet_summary(workbook_path) if workbook_path is not None else ""
+    if sheets:
+        body += f"\n## Sheets\n\n{sheets}\n"
     frontmatter.write(path, fields, body)
 
 

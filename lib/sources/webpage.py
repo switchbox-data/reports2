@@ -7,6 +7,7 @@ Playwright is imported only where a capture runs, so the rest of the tooling wor
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import re
 import time
@@ -62,8 +63,13 @@ class Capture:
     pdf_md5: str
 
 
-def capture(url: str, out_dir: Path, stem: str, timeout_ms: int = 60_000) -> Capture:
-    """Render ``url`` in headless Chromium and save ``<stem>.pdf`` and ``<stem>.html`` in ``out_dir``."""
+def capture(url: str, out_dir: Path, stem: str, timeout_ms: int = 60_000, settle_ms: int = 10_000) -> Capture:
+    """Render ``url`` in headless Chromium and save ``<stem>.pdf`` and ``<stem>.html`` in ``out_dir``.
+
+    Waits for the ``load`` event, then up to ``settle_ms`` for the network to go idle so late content renders.
+    Idle is not required: pages with analytics or polling never reach it.
+    """
+    from playwright.sync_api import TimeoutError as PlaywrightTimeout
     from playwright.sync_api import sync_playwright
 
     out_dir = Path(out_dir)
@@ -73,7 +79,9 @@ def capture(url: str, out_dir: Path, stem: str, timeout_ms: int = 60_000) -> Cap
         browser = p.chromium.launch()
         try:
             page = browser.new_page(user_agent=USER_AGENT)
-            page.goto(url, wait_until="networkidle", timeout=timeout_ms)
+            page.goto(url, wait_until="load", timeout=timeout_ms)
+            with contextlib.suppress(PlaywrightTimeout):
+                page.wait_for_load_state("networkidle", timeout=settle_ms)
             html_path.write_text(page.content(), encoding="utf-8")
             title, final_url = page.title(), page.url
             page.pdf(path=str(pdf_path), format="Letter", print_background=True)

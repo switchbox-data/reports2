@@ -135,3 +135,19 @@ def test_open_access_copy_via_unpaywall(monkeypatch):
     monkeypatch.delenv("SOURCES_CONTACT_EMAIL")
     monkeypatch.setattr(doi.env, "load_env", lambda: None)
     assert doi.open_access_pdf(OWN, fetch) is None
+
+
+def test_open_access_falls_back_to_other_locations(monkeypatch):
+    monkeypatch.setenv("SOURCES_CONTACT_EMAIL", "team@example.org")
+    body = {
+        "best_oa_location": {"url_for_pdf": None, "version": "publishedVersion"},
+        "oa_locations": [
+            {"url_for_pdf": None, "version": "publishedVersion"},
+            {"url_for_pdf": "https://repo.example.org/preprint.pdf", "version": "submittedVersion"},
+            {"url_for_pdf": "https://repo.example.org/published.pdf", "version": "publishedVersion"},
+        ],
+    }
+    fetch = lambda url, params=None, **_: SimpleNamespace(status_code=200, json=lambda: body)  # noqa: E731
+    assert doi.open_access_pdf(OWN, fetch) == "https://repo.example.org/published.pdf"
+    body["oa_locations"] = body["oa_locations"][:1]
+    assert doi.open_access_pdf(OWN, fetch) is None

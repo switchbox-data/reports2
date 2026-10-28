@@ -244,7 +244,8 @@ class Batch:
         if moved:
             parts.append(f"repoint {len(moved)}")
         detail = ", ".join((added + moved)[:3]) + (" ..." if len(added + moved) > 3 else "")
-        return f"{' and '.join(parts) or 'Regenerate 404.html'}: {detail}".rstrip(": ")
+        summary = " and ".join(parts) or "Regenerate 404.html"
+        return f"{summary[0].upper()}{summary[1:]}: {detail}".rstrip(": ")
 
 
 def resolve(key: str, repo: Path | None = None) -> str | None:

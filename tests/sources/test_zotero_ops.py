@@ -141,6 +141,7 @@ def collections_fixture(with_inbox=True):
     cols = [
         {"key": "REP", "data": {"name": "Reports", "parentCollection": False}},
         {"key": "MA", "data": {"name": "ma_hp_rates", "parentCollection": "REP"}},
+        {"key": "GEN", "data": {"name": "Heat pumps", "parentCollection": False}},
     ]
     if with_inbox:
         cols.append({"key": "INBOX", "data": {"name": "Inbox", "parentCollection": False}})
@@ -220,7 +221,8 @@ def test_pending_items_reports_each_reason_and_ignores_old_items(fake):
             extra="Citation Key: k_B_2025",
             tags=[{"tag": "processed"}],
         ),
-        top_item("LOOSE", "2026-10-28T06:00:00Z", collections=[]),
+        top_item("UNFILED", "2026-10-28T06:00:00Z", collections=[]),
+        top_item("GENERAL", "2026-10-28T05:00:00Z", collections=["GEN"]),
         top_item("OLD", "2026-09-01T00:00:00Z", collections=["MA"]),
     ]
     fake.client._inbox_items = [top_item("INBOXED", "2026-08-01T00:00:00Z", collections=["INBOX"])]
@@ -228,7 +230,6 @@ def test_pending_items_reports_each_reason_and_ignores_old_items(fake):
     assert pending == {
         "NOKEY": "no citation key",
         "UNTAGGED": "not marked processed",
-        "LOOSE": "not in any project",
         "INBOXED": "in Inbox",
     }
 
@@ -249,19 +250,19 @@ def raw_file(key, added, **data):
     }
 
 
-def test_pending_items_include_raw_files_wherever_they_are(fake):
+def test_pending_items_include_raw_files_in_reports_and_the_inbox_only(fake):
     fake.client._collections = collections_fixture()
     fake.client._top = [
         raw_file("RAW_PROJECT", "2026-10-28T09:00:00Z", collections=["MA"]),
-        raw_file("RAW_LOOSE", "2026-10-28T08:00:00Z"),
-        raw_file("LINK", "2026-10-28T07:00:00Z", linkMode="linked_url"),
-        top_item("NOTE", "2026-10-28T06:00:00Z", itemType="note"),
+        raw_file("RAW_UNFILED", "2026-10-28T08:00:00Z"),
+        raw_file("RAW_GENERAL", "2026-10-28T08:00:00Z", collections=["GEN"]),
+        raw_file("LINK", "2026-10-28T07:00:00Z", linkMode="linked_url", collections=["MA"]),
+        top_item("NOTE", "2026-10-28T06:00:00Z", itemType="note", collections=["MA"]),
     ]
     fake.client._inbox_items = [raw_file("RAW_INBOX", "2026-08-01T00:00:00Z", collections=["INBOX"])]
     pending = {p.key: p for p in zotero.pending_items(since="2026-10-28")}
     assert {k: p.reason for k, p in pending.items()} == {
         "RAW_PROJECT": "file with no item",
-        "RAW_LOOSE": "file with no item",
         "RAW_INBOX": "file with no item",
     }
     assert pending["RAW_PROJECT"].author == "RAW_PROJECT.pdf"

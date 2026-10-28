@@ -487,7 +487,7 @@ def download_attachment(item_key: str, dest_dir: Path) -> Path:
 
 @dataclass(frozen=True)
 class PendingItem:
-    """An item that still needs ingest: no pinned key, no ``processed`` tag, in the Inbox, or in no project."""
+    """An item that still needs ingest: no pinned key, no ``processed`` tag, or in the Inbox."""
 
     key: str
     title: str
@@ -533,9 +533,9 @@ def pending_items(since: str | None = None) -> list[PendingItem]:
 
     1. Items under Reports added on or after ``since`` with no pinned key or no ``processed`` tag.
     2. Everything in the top-level Inbox.
-    3. Recently added items that are in no Reports subcollection.
 
-    Raw files (a PDF dragged in without an item) count wherever they are; ingest adopts them with ``--zotero-item``.
+    Nothing else counts: items only in other collections, or in none, are general reading, not report sources.
+    Raw files (a PDF dragged in without an item) count in both places; ingest adopts them with ``--zotero-item``.
     """
     since = since or os.environ.get("SOURCES_PENDING_SINCE") or PENDING_SINCE
     z = client()
@@ -564,21 +564,15 @@ def pending_items(since: str | None = None) -> list[PendingItem]:
 
     for it in recent:
         d = it["data"]
-        if d["dateAdded"][:10] < since:
-            continue
         cols_of = set(d.get("collections") or [])
-        if inbox and inbox in cols_of:
-            continue  # reported below
+        if d["dateAdded"][:10] < since or not cols_of & tree or (inbox and inbox in cols_of):
+            continue  # Inbox items are reported below; items outside Reports are not sources
         if is_raw_file(d):
             add(it, RAW_FILE_REASON)
-        elif cols_of & tree:
-            pinned = extra.get(d.get("extra"), extra.CITATION_KEY)
-            if not pinned:
-                add(it, "no citation key")
-            elif not is_processed(d):
-                add(it, "not marked processed")
-        else:
-            add(it, "not in any project")
+        elif not extra.get(d.get("extra"), extra.CITATION_KEY):
+            add(it, "no citation key")
+        elif not is_processed(d):
+            add(it, "not marked processed")
     if inbox:
         for it in z.everything(z.collection_items_top(inbox, include="data")):
             if _waits_for_ingest(it["data"]):

@@ -49,7 +49,7 @@ The DocumentCloud upload starts before the Zotero file upload and is waited on a
 - **Pinned key:** `Citation Key:` line in Extra; `tex.shortauthor:` for the short form. Managed lines `DocumentCloud ID`, `Google Drive ID` and `Wayback URL` are stripped from the CSL `note` in `bib.py`, so they never reach `references.yaml`.
 - **Writes** go through `zotero_write`: versioned (`If-Unmodified-Since-Version`), one retry on 412 with a re-read, a JSONL log of every write with the prior value (`~/.cache/switchbox_sources/logs/zotero_writes.jsonl`), rollback from the log (`entries_to_undo`), and a write token derived from the citation key (sha256, 32 characters) so a retried create cannot duplicate.
 - **Library cache:** the whole library is cached on disk and refreshed incrementally by library version, so lookups (duplicates, pinned keys, organizations) cost one request.
-- **Pending:** items in the group library added since `PENDING_SINCE` (`SOURCES_PENDING_SINCE` overrides it) that lack the `processed` tag, and are not attachments or notes. Fetched in pages of 25 to keep the session-start hook fast.
+- **Pending:** everything in the top-level `Inbox`, plus items under `Reports` added since `PENDING_SINCE` (`SOURCES_PENDING_SINCE` overrides it) that lack a pinned key or the `processed` tag. Notes and child attachments never count; raw files (stored files with no parent item) do. Items only in other top-level collections, or in none, are general reading and never count. Recent items are fetched in pages of 25 to keep the session-start hook fast.
 - **Collections:** projects are subcollections of `Reports`. A top-level `Inbox` collection is where hand-saved items land; `doctor` reports it when it is missing rather than failing.
 
 ## Public hosts

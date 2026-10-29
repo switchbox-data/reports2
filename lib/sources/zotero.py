@@ -423,11 +423,12 @@ def add_to_projects(item_key: str, projects: Iterable[str]) -> None:
     _patch(item_key, change)
 
 
-def update_from_card(item_key: str, data: Mapping[str, Any], project_keys: Iterable[str]) -> None:
+def update_from_card(item_key: str, data: Mapping[str, Any], project_keys: Iterable[str]) -> dict[str, Any]:
     """Make an existing item (say, one added by hand to the Inbox) match the card's ``zotero_data``.
 
     Sets the card's fields, merges its ``Citation Key`` / ``tex.shortauthor`` lines into the item's Extra
     without touching other lines, and moves the item from the Inbox into the project subcollections.
+    Returns the item as read after the write (unchanged, and no write sent, when it already matches).
     """
     inbox = inbox_key()
     card_extra = data.get("extra") or ""
@@ -443,7 +444,7 @@ def update_from_card(item_key: str, data: Mapping[str, Any], project_keys: Itera
         fields["collections"] = sorted({*kept, *project_keys})
         return fields
 
-    _patch(item_key, change)
+    return _patch(item_key, change)
 
 
 def create_project_collection(name: str) -> str:

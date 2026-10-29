@@ -165,9 +165,10 @@ class World:
                 w.tokens[write_token] = key
             return key
 
-        def update_from_card(item_key: str, data: dict[str, Any], project_keys: list[str]) -> None:
+        def update_from_card(item_key: str, data: dict[str, Any], project_keys: list[str]) -> dict[str, Any]:
             w._call("update_from_card")
             current = w.items[item_key]["data"]
+            before = copy.deepcopy(current)
             for k, v in data.items():
                 if k not in ("extra", "collections", "tags", "relations"):
                     current[k] = v
@@ -175,6 +176,9 @@ class World:
                 if value := extra.get(data.get("extra"), name):
                     current["extra"] = extra.set_field(current.get("extra"), name, value)
             current["collections"] = sorted({c for c in current["collections"] if c != w.inbox} | set(project_keys))
+            if current != before:
+                w.items[item_key]["version"] += 1
+            return copy.deepcopy(w.items[item_key])
 
         def stored_attachments(item_key: str) -> list[dict[str, Any]]:
             return [{"key": c["key"], "data": c} for c in w.children[item_key] if c["linkMode"] == "imported_file"]

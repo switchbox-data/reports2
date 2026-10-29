@@ -258,9 +258,11 @@ class Ingest:
                     raise IngestError(f"possible duplicates ({listing}). Rerun with --zotero-item KEY to adopt one")
             self.item_key = zotero.create_item(data, write_token=write_token(self.meta.citekey))
             return DONE, f"created {self.item_key}"
-        current = zotero.get_item(self.item_key)["data"]
-        if self.zotero_item and extra.get(current.get("extra"), extra.CITATION_KEY) != self.meta.citekey:
-            zotero.update_from_card(self.item_key, data, keys)
+        if self.zotero_item:
+            before = zotero.get_item(self.item_key)["version"]
+            after = zotero.update_from_card(self.item_key, data, keys)
+            if after["version"] == before:
+                return ALREADY, f"item {self.item_key} already matches the card"
             return DONE, f"updated {self.item_key} from the card"
         return ALREADY, f"item {self.item_key}"
 

@@ -195,6 +195,20 @@ def test_adopting_an_inbox_item(world, repo, pdf_file, extract_file):
     assert extra.get(data["extra"], extra.CITATION_KEY) == make_card().citekey
 
 
+def test_adopting_an_item_that_already_has_the_key_still_applies_the_card(world, repo, pdf_file, extract_file):
+    card = make_card()
+    key = world.add_item(
+        {"itemType": "document", "title": card.title, "date": "2024-06-24", "extra": f"Citation Key: {card.citekey}"}
+    )
+    report = run(world, repo, card, pdf_file, zotero_item=key)
+    assert report.ok, report.to_dict()
+    assert world.items[key]["data"]["date"] == card.date
+    assert statuses(report)["zotero_item"] == "done"
+
+    again = run(world, repo, card, pdf_file, zotero_item=key)
+    assert statuses(again)["zotero_item"] == "already"
+
+
 def add_raw_file(world: World, pdf: Path, **data) -> str:
     key = world.add_item(
         {

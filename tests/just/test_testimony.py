@@ -406,3 +406,11 @@ def test_missing_fields_stop_the_render_before_quarto_runs(
         draft_module.draft(Path("t.qmd"), testimony=True)
     assert exc.value.code == 2
     assert "no `testimony:` block" in capsys.readouterr().err
+
+
+def test_render_subcommand_reports_missing_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """`just testimony` runs `testimony render`; a bad path fails cleanly, before Quarto."""
+    with pytest.raises(SystemExit) as exc:
+        tm.main(["render", str(tmp_path / "nope.qmd")])
+    assert exc.value.code == 1
+    assert "File not found" in capsys.readouterr().err

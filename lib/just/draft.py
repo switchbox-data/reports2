@@ -13,18 +13,16 @@ Handles the full pipeline that ``just draft`` needs:
 4. Runs ``quarto render`` with ``--to docx``, ``fig-dpi:300``, and
    ``fig-format:png`` for print-quality output.
 
-The ``--testimony`` flag (``just testimony``) renders an expert testimony in
-the single testimony Word format (``lib/just/templates``): Times New Roman
-12 pt, double-spaced, per-page line numbers, a witness running header and a
-generated cover page. The docket details come from the ``testimony:`` block
-in the .qmd frontmatter (see ``lib/just/testimony.py``); they are validated
-first, so a missing field stops the render with a plain-English message.
+Expert testimony uses the same pipeline with ``testimony=True`` (called by
+``just testimony`` via ``lib/just/testimony.py``): the single testimony Word
+format (``lib/just/templates``) with a generated cover page, running header
+and per-page line numbers. The ``testimony:`` frontmatter is validated first,
+so a missing field stops the render with a plain-English message.
 
 Usage (from a report directory)::
 
     uv run python -m lib.just.draft                       # index.qmd
     uv run python -m lib.just.draft expert_testimony.qmd  # specific file
-    uv run python -m lib.just.draft --testimony foo.qmd   # testimony format
 """
 
 from __future__ import annotations
@@ -43,7 +41,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 from lib.just.quarto_env import quarto_env
-from lib.just.testimony import Testimony, TestimonyError, parse_file
+from lib.just.testimony import Testimony, TestimonyError, parse_file, print_problems
 
 # Word model file for expert testimony (Times New Roman 12 pt, double-spaced,
 # per-page line numbers, witness header). Built by templates/build_expert_testimony.py.
@@ -152,9 +150,7 @@ def draft(qmd_path: Path, *, testimony: bool = False) -> None:
         try:
             fields = parse_file(qmd_path)
         except TestimonyError as err:
-            print(f"💥 {qmd_path}: the `testimony:` fields need attention:", file=sys.stderr)
-            for line in err.problems:
-                print(f"   {line}", file=sys.stderr)
+            print_problems(err, qmd_path)
             sys.exit(2)
 
     print(f"📄 Drafting {qmd_path} → {output_name}", flush=True)
@@ -215,21 +211,12 @@ def draft(qmd_path: Path, *, testimony: bool = False) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Render a Quarto report to DOCX (with optional expert-testimony formatting)."
-    )
+    parser = argparse.ArgumentParser(description="Render a Quarto report to DOCX for content review.")
     parser.add_argument(
         "qmd_path",
         nargs="?",
         default="index.qmd",
         help="Path to the .qmd file to render (default: index.qmd).",
-    )
-    parser.add_argument(
-        "--testimony",
-        action="store_true",
-        help="Render in the expert-testimony Word format (Times New Roman 12pt, double-spaced, "
-        "per-page line numbers, running header, generated cover page). Requires a `testimony:` "
-        "block in the frontmatter; see `just new-testimony`.",
     )
     args = parser.parse_args()
 
@@ -238,7 +225,7 @@ def main() -> None:
         print(f"File not found: {qmd_path}", file=sys.stderr)
         sys.exit(1)
 
-    draft(qmd_path, testimony=args.testimony)
+    draft(qmd_path)
 
 
 if __name__ == "__main__":

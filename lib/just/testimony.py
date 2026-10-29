@@ -31,6 +31,7 @@ Usage::
 
     uv run python -m lib.just.testimony new reports/xx/expert_testimony.qmd
     uv run python -m lib.just.testimony check expert_testimony.qmd
+    uv run python -m lib.just.testimony render expert_testimony.qmd   # = just testimony
 """
 
 from __future__ import annotations
@@ -382,14 +383,14 @@ def write_scaffold(path: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def _print_problems(err: TestimonyError, qmd_path: Path) -> None:
+def print_problems(err: TestimonyError, qmd_path: Path) -> None:
     print(f"💥 {qmd_path}: the `testimony:` fields need attention:", file=sys.stderr)
     for line in err.problems:
         print(f"   {line}", file=sys.stderr)
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Create or check the `testimony:` fields of a testimony .qmd.")
+    parser = argparse.ArgumentParser(description="Create, check or render an expert-testimony .qmd.")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_new = sub.add_parser("new", help="Write a new testimony .qmd with every field in place.")
@@ -397,6 +398,9 @@ def main(argv: list[str] | None = None) -> None:
 
     p_check = sub.add_parser("check", help="Validate the `testimony:` fields without rendering.")
     p_check.add_argument("path_qmd", help="The testimony .qmd to check.")
+
+    p_render = sub.add_parser("render", help="Render the testimony to Word in the standard testimony format.")
+    p_render.add_argument("path_qmd", help="The testimony .qmd to render.")
 
     args = parser.parse_args(argv)
     path = Path(args.path_qmd)
@@ -415,10 +419,17 @@ def main(argv: list[str] | None = None) -> None:
     if not path.exists():
         print(f"💥 File not found: {path}", file=sys.stderr)
         sys.exit(1)
+
+    if args.command == "render":
+        from lib.just.draft import draft  # imported here: draft.py imports this module
+
+        draft(path, testimony=True)
+        return
+
     try:
         t = parse_file(path)
     except TestimonyError as err:
-        _print_problems(err, path)
+        print_problems(err, path)
         sys.exit(2)
     print(f"✅ {path}: testimony fields OK ({t.type} testimony of {t.witness}, {t.case_number}, {t.date_long}).")
 

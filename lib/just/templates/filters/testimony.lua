@@ -1,8 +1,7 @@
 --! Pandoc Lua filter for expert-testimony Word output.
 --!
---! Applied by ``lib.just.draft`` when rendering with ``--testimony``
---! (``just testimony``).  There is one testimony format for every docket
---! (see ``build_expert_testimony.py`` for the measurements); the only
+--! Applied by ``lib.just.draft`` when ``just testimony`` renders.  There
+--! is one testimony format for every docket (see ``build_expert_testimony.py`` for the measurements); the only
 --! things that change per filing are the ``testimony:`` fields in the
 --! QMD frontmatter, which this filter turns into the cover page.
 --!

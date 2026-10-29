@@ -208,7 +208,7 @@ def pct(x, accuracy=0):
 
 From the report directory:
 
-- `just testimony` — Renders `expert_testimony.qmd` to the standard testimony Word file: cover page, running header, per-page line numbers, Times New Roman 12 pt, double-spaced Q/A. (`just draft --testimony expert_testimony.qmd` is an alias.)
+- `just testimony` — Renders `expert_testimony.qmd` to the standard testimony Word file: cover page, running header, per-page line numbers, Times New Roman 12 pt, double-spaced Q/A.
 - `just typeset expert_testimony.qmd` — Renders to ICML for InDesign.
 
 There is **one** testimony format for every commission; only the docket details change. Those details live in a `testimony:` block in the `.qmd` frontmatter. `just testimony` checks the block first and stops with a plain-English list of anything missing, misspelled, or still a `[PLACEHOLDER]`.

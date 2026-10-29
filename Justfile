@@ -117,6 +117,20 @@ new-report:
     QUARTO_TEMPLATE_TRUST=true quarto use template switchbox-data/report_template --no-prompt
 
 # =============================================================================
+# ⚖️  EXPERT TESTIMONY
+# =============================================================================
+# Every testimony renders to Word in one standard format. Only the docket details change; they live in
+# the `testimony:` block of the testimony .qmd. Render with `just testimony` from the report folder.
+
+# Create a new testimony .qmd with every `testimony:` field in place, e.g. just new-testimony reports/md_hp_rates/expert_testimony.qmd
+new-testimony path_qmd:
+    uv run python -m lib.just.testimony new {{ path_qmd }}
+
+# Check a testimony's `testimony:` fields without rendering, e.g. just check-testimony reports/md_hp_rates/expert_testimony.qmd
+check-testimony path_qmd:
+    uv run python -m lib.just.testimony check {{ path_qmd }}
+
+# =============================================================================
 # 🏗️  DEVELOPMENT ENVIRONMENT SETUP
 # =============================================================================
 # These commands help you set up your development environment

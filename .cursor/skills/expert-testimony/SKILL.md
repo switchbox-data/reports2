@@ -208,7 +208,31 @@ def pct(x, accuracy=0):
 
 From the report directory:
 
-- `just draft expert_testimony.qmd` — Renders to DOCX with testimony formatting (TNR 12pt, double-spaced, line numbering, Q/A paragraph styles).
+- `just testimony` — Renders `expert_testimony.qmd` to the standard testimony Word file: cover page, running header, per-page line numbers, Times New Roman 12 pt, double-spaced Q/A. (`just draft --testimony expert_testimony.qmd` is an alias.)
 - `just typeset expert_testimony.qmd` — Renders to ICML for InDesign.
 
-The `--testimony` flag in `just draft` applies `lib/just/templates/filters/testimony.lua` (Pandoc Lua filter) and the testimony reference DOCX built by `lib/just/templates/build_expert_testimony.py`.
+There is **one** testimony format for every commission; only the docket details change. Those details live in a `testimony:` block in the `.qmd` frontmatter. `just testimony` checks the block first and stops with a plain-English list of anything missing, misspelled, or still a `[PLACEHOLDER]`.
+
+```yaml
+testimony:
+  commission: Maryland Public Service Commission # cover page, in caps
+  commission_short: Maryland PSC # running header
+  case_number: "Case No. 9888"
+  caption: # cover-page caption lines
+    - IN THE MATTER OF THE APPLICATION OF
+    - BALTIMORE GAS & ELECTRIC COMPANY
+    - FOR ADJUSTMENTS TO ITS ELECTRIC BASE RATES
+  type: Direct # Direct, Rebuttal, Surrebuttal, Rejoinder, Supplemental Direct, Supplemental Rebuttal
+  and_exhibits: true # optional: "AND EXHIBITS" on the cover
+  witness: Juan-Pablo Velez
+  witness_title: Executive Director, Switchbox # optional
+  on_behalf_of: Chesapeake Climate Action Network
+  date: 2026-09-22
+  # version_label: PUBLIC VERSION        # optional
+```
+
+To start a new testimony, run `just new-testimony <path>.qmd` from the repo root: it writes a file with every field present as a `[PLACEHOLDER]`. `just check-testimony <path>.qmd` validates without rendering.
+
+Write headings with typed numerals (`## I. Introduction`, `### A. Subtopic`); the filter underlines only the words, not the numeral. Questions and answers are `**Q.**` / `**A.**` paragraphs.
+
+Implementation: `lib/just/testimony.py` (fields and validation), `lib/just/templates/filters/testimony.lua` (cover page and Q/A layout), and the model Word file built by `lib/just/templates/build_expert_testimony.py` (rebuild with `uv run python -m lib.just.templates.build_expert_testimony` after changing it, and commit the `.docx`).

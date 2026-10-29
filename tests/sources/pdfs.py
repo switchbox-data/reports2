@@ -9,8 +9,35 @@ def _escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
 
 
+def make_numbered_pdf(pages: list[list[str]], path: Path, footer: list[str] | None = None) -> Path:
+    """Pleading-paper pages: each line numbered 1, 2, ... in the left margin, with an optional footer per page."""
+    streams = []
+    for i, lines in enumerate(pages):
+        ops = ["BT", "/F1 11 Tf"]
+        for n, line in enumerate(lines, start=1):
+            y = 740 - 20 * n
+            ops.append(f"1 0 0 1 40 {y} Tm ({n}) Tj")
+            ops.append(f"1 0 0 1 80 {y} Tm ({_escape(line)}) Tj")
+        if footer:
+            ops.append(f"1 0 0 1 300 40 Tm ({_escape(footer[i])}) Tj")
+        ops.append("ET")
+        streams.append("\n".join(ops))
+    return _write(streams, path)
+
+
 def make_pdf(pages: list[list[str]], path: Path, info: dict[str, str] | None = None) -> Path:
     """Write ``pages`` (each a list of text lines, top to bottom) to ``path``; ``info`` goes in the Info dict."""
+    streams = []
+    for lines in pages:
+        ops = ["BT", "/F1 11 Tf", "14 TL", "50 750 Td"]
+        for line in lines:
+            ops.append(f"({_escape(line)}) Tj T*")
+        ops.append("ET")
+        streams.append("\n".join(ops))
+    return _write(streams, path, info)
+
+
+def _write(streams: list[str], path: Path, info: dict[str, str] | None = None) -> Path:
     objects: list[bytes] = []
 
     def add(body: str | bytes) -> int:
@@ -21,12 +48,7 @@ def make_pdf(pages: list[list[str]], path: Path, info: dict[str, str] | None = N
     pages_obj = add("")
     font = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
     page_ids = []
-    for lines in pages:
-        ops = ["BT", "/F1 11 Tf", "14 TL", "50 750 Td"]
-        for line in lines:
-            ops.append(f"({_escape(line)}) Tj T*")
-        ops.append("ET")
-        stream = "\n".join(ops)
+    for stream in streams:
         content = add(f"<< /Length {len(stream)} >>\nstream\n{stream}\nendstream")
         page_ids.append(
             add(

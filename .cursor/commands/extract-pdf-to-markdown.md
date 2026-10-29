@@ -27,6 +27,30 @@ For source PDFs longer than ~30 pages, **maintain the same fidelity throughout t
 
 ## Extraction Instructions
 
+### Page and Line Citations (mandatory)
+
+Extracts are cited in testimony and reports by page, and for documents with numbered lines by page and line ("Velez Direct at 14:5-7"), by agents that never open the PDF. So every extract carries the PDF's own pagination and line numbering, taken from the PDF's text layer rather than from your reading.
+
+- **Start from the skeleton.** Run `just sources-page-skeleton <pdf> /tmp/<citekey>_skeleton.md`. It writes the PDF's text with a page marker at every page and `{n}` on every line that has a margin line number, and prints the `citation_scheme` to use. Transcribe into that scaffold: fix the text, add headings, emphasis, tables and figure descriptions, but keep every marker and line number where the skeleton put them.
+- **Page markers.** `[PDF p. 17 | printed p. 14]` where each PDF page begins: the PDF page (1-based, counting every page of the file) and the page number printed on that page, as printed (`14`, `ii`, `A-3`). Leave out `| printed p. …` when the page prints no number. The skeleton guesses the printed number from the header or footer; confirm every guess against the page (a page can carry both a file stamp and its own number) and never leave a `?`. When a page break falls mid-sentence, put the marker inline exactly where the break falls; the words before it belong to the previous page.
+- **Pages left out** of a partial extract get one marker per run: `[PDF pp. 91-300 not transcribed: Schedules JPV-1 to JPV-7, RIE planning documents and data responses]`. Name what is in them. Every PDF page is either marked or inside such a run.
+- **`citation_scheme`** in the front matter: `page_line` when the PDF prints line numbers in the margin (pleading paper: testimony, transcripts, many briefs and orders), else `page`.
+- **Line numbers (`page_line`).** One source line per markdown line, never reflowed or merged, each starting with its number: `{4} **A.** My name is …`. The number comes first after any markdown prefix: `## {1} I. INTRODUCTION`, `- {7} item`, `> {3} quoted text`. Markdown joins consecutive lines into one paragraph, so the extract still renders as prose. A word hyphenated across two lines stays split as printed. A numbered line with no text may be left out. Text the source prints without a number (footnotes, captions, unnumbered block quotes) has no prefix. A table or figure that occupies numbered lines gets the range on the line before it: `{12-18}` followed by the table or `[DIAGRAM DESCRIPTION: …]`.
+- **Running headers and footers** (witness name, docket, "Page 26 of 85", the page number itself) are left out; the page marker records them.
+- **Footnote definitions go on the page they are printed on**, after that page's text and before the next page marker, not in a section at the end. A footnote that runs onto the next page keeps one definition, with the next page's marker inline where the break falls.
+- **Check before you finish.** `just sources-check-pages <extract.md> <pdf>` must report no errors: it compares every page marker and numbered line with the PDF and flags a missing, extra, out-of-order or mismatched one. Review its warnings (page text or a footnote that seems to sit on the wrong page).
+- Agents cite a passage with `just sources-cite <extract.md> "<quoted words>"`, which prints `14:5-7 (PDF p. 17)`, `14:22-15:3 (PDF pp. 17-18)`, or `p. 14 n. 3 (PDF p. 17)`.
+
+#### Adding markers to an older extract
+
+Extracts made before these rules have no page markers (no `citation_scheme` in the front matter; `sources-cite` says so). When an agent needs to cite one, it repairs the extract first, then carries on with what it was doing:
+
+1. `just fetch-source <citekey>` (the `citekey` in the extract's front matter) downloads the original PDF from Zotero beside the extract. If the extract has no `citekey`, or Zotero has no PDF for it, stop and tell the user; cite without a page rather than guess one.
+2. `just sources-page-skeleton <pdf> /tmp/<citekey>_skeleton.md` gives the pages and numbered lines.
+3. Edit the existing extract in place; do not re-transcribe it. Insert a page marker at each page break, mark pages it never covered as `not transcribed`, and for `page_line` documents split each paragraph back into its source lines with their `{n}` numbers. Move footnote definitions onto their pages, and drop any old ad hoc page notes (`[PDF page 3]`, `**[PDF page 3]** — printed page label: …`) in favor of the standard marker. Keep the extract's headings, tables, figure descriptions and notes. Where the skeleton shows the old text was wrong or missing (a dropped line, a misread number), fix it from the PDF and add an extractor note saying so.
+4. Set `citation_scheme`, update the extractor notes to describe the markers (and remove any note saying page or line numbers were omitted), and run `just sources-check-pages <extract.md>` until it reports no errors.
+5. Tell the user the extract changed, so they can commit it with the rest of the work. Never commit it yourself.
+
 ### Structure & Hierarchy
 
 - Preserve all heading levels (H1→H2→H3, etc.)
@@ -141,7 +165,7 @@ Extracts are used as citable source context, so a reader must always be able to 
 
 ### Footnotes & Endnotes
 
-- **Locate and preserve every footnote** in the source. Do not drop footnote text, definitions, or URLs. Output each footnote either as a markdown footnote (`[^n]` in body with `[^n]: content` in a **Footnotes** section) or inlined at the reference point; in either case, the full content (including any URLs, citations, or definitions) must appear in the extract.
+- **Locate and preserve every footnote** in the source. Do not drop footnote text, definitions, or URLs. Output each footnote either as a markdown footnote (`[^n]` in body with `[^n]: content` at the end of the page it is printed on; see Page and Line Citations) or inlined at the reference point; in either case, the full content (including any URLs, citations, or definitions) must appear in the extract.
 - Keep footnote text **verbatim**, including closing pointers such as "For more information, please refer to …"; do not paraphrase or shorten it.
 - Preserve ALL footnote content—nothing drops. If a footnote reference triggers a linter (e.g. "unused reference definition"), you may **inline the footnote content** into the body at the reference point and remove the footnote definition, provided no content is lost.
 - Keep numbering/order from original (or renumber from 1 if the source uses different numbering).
@@ -184,6 +208,7 @@ filer: <organization that filed or issued it>
 document_type: <order | testimony | exhibit | tariff | report | paper | ...>
 pages_total: <N>
 extraction_scope: <full | partial: what is covered>
+citation_scheme: <page_line if the PDF prints margin line numbers, else page>
 context: <why it exists: who made it, for whom, what it responds to or sets in motion>
 contents: <what is in it, broadly>
 why_here: <what we might use it for: the question it answers for us>
@@ -212,6 +237,7 @@ When the source PDF contains them, include short back-matter sections such as **
 
 ### Quality Checklist
 
+- [ ] **Page and line markers (mandatory)**: every PDF page has a `[PDF p. N | printed p. M]` marker (or sits in a `not transcribed` run), printed page numbers confirmed, `citation_scheme` set, every numbered line kept with its `{n}`, footnote definitions on their own page, and `just sources-check-pages` reports no errors
 - [ ] All heading levels preserved (H1, H2, H3, etc.)
 - [ ] Text formatting (bold, italics, code, links) matches original emphasis
 - [ ] **ALL tables extracted to markdown table format**
@@ -263,7 +289,7 @@ The PDF file path or citation key is provided as: **$ARGUMENTS**
 
 0. **Get the PDF.** If the argument is a citation key (e.g. `madpu_Docket2555Order_2025`), run `just fetch-source <citekey>`; it downloads the original from Zotero next to where the extract belongs and prints the path. If the argument is a file path, use it as given. If the source has not been ingested yet, ask the user to run the ingest-source skill first, so the extract gets its citation key.
 
-1. Examine PDF structure first (TOC, sections, page count). From the first page, extract author affiliations and correspondence if present. If the document has a TOC, note the section numbers and page mapping so the extract’s heading numbers match (e.g. last numbered section = last TOC entry).
+1. Run `just sources-page-skeleton <pdf> /tmp/<citekey>_skeleton.md` and work from that scaffold (see Page and Line Citations). Examine PDF structure first (TOC, sections, page count). From the first page, extract author affiliations and correspondence if present. If the document has a TOC, note the section numbers and page mapping so the extract’s heading numbers match (e.g. last numbered section = last TOC entry).
 2. Preserve structure exactly in markdown (include **Author affiliations** in metadata when available). Verify section numbers against the TOC before finalizing.
 3. Extract section by section, applying all rules (inline math in prose, markdown lists for inline-numbered lists, equation labels).
 4. For visual elements: stop and write detailed description
@@ -271,6 +297,6 @@ The PDF file path or citation key is provided as: **$ARGUMENTS**
 6. Build complete References section
 7. Do final quality check against checklist
 8. Output complete markdown as ready-to-use document
-9. **Save the file** under `context/sources/<project>/` using the **same base name as the PDF** (e.g. `foo.pdf` → `context/sources/<project>/foo.md`). Write the flat front matter above, then run `just sources-status <citekey>`: it reports the extract's front matter and index rows as done or missing.
+9. **Save the file** under `context/sources/<project>/` using the **same base name as the PDF** (e.g. `foo.pdf` → `context/sources/<project>/foo.md`). Write the flat front matter above, run `just sources-check-pages <extract.md> <pdf>` and fix every error it lists, then run `just sources-status <citekey>`: it reports the extract's front matter and index rows as done or missing.
 
 **Save the extract in full with the matching filename, ready to commit.**

@@ -132,6 +132,10 @@ First reference establishes the short name:
 
 Subsequent references: `Gorman Direct, p. 39, lines 17–19.`
 
+**Every citation to a document gets a pinpoint** (page, and page and lines for testimony and transcripts) whenever the source has them: other witnesses, orders, data responses with numbered pages, studies. Take them from the extract, never from memory or by counting: `just sources-cite <extract.md> "<quoted words>"` prints the printed page and lines, e.g. `39:17-19 (PDF p. 42)`, which you write as `p. 39, lines 17–19`. Cite the printed page; use "PDF p." only when the page prints no number.
+
+If the extract has no page markers (`sources-cite` says so), repair it from its Zotero PDF before citing, following "Adding markers to an older extract" in `.cursor/commands/extract-pdf-to-markdown.md`, then continue drafting. Only when there is no PDF to repair from, cite without a pinpoint and list the citation for the user to fill in.
+
 **Prior docket orders:** Full citation on first use, then short name.
 
 **Statutes:** Cite by section (e.g., `R.I. Gen. Laws § 39-1-1(b)`).

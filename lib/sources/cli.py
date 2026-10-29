@@ -5,7 +5,7 @@ Read-only (never write to Zotero or any public host):
     zotero-verify, sync-bib [--checks warn|strict] [--force], check-citekeys,
     pending [--brief], status, dedupe, org, person, doctor (read-only checks), fetch, projects, key,
     check-card, find-doi, draft-cards, convert-frontmatter (dry run unless --apply),
-    backfill-links (dry run unless --apply)
+    backfill-links (dry run unless --apply), page-skeleton, check-pages, cite
 
 Writing (after the person approves the details card):
 
@@ -434,6 +434,80 @@ def cmd_backfill_links(args: argparse.Namespace) -> int:
     return 1 if failures else 0
 
 
+def _extract_pdf(path_md: Path, path_pdf: str | None) -> Path | None:
+    """The original PDF for an extract: as given, else the front matter's ``source_file`` beside the extract."""
+    from lib.sources import frontmatter
+
+    if path_pdf:
+        return Path(path_pdf)
+    name = frontmatter.read(path_md).get("source_file")
+    beside = path_md.parent / str(name) if name else None
+    return beside if beside and beside.is_file() else None
+
+
+def cmd_page_skeleton(args: argparse.Namespace) -> int:
+    """The PDF's text with page markers and margin line numbers, as a scaffold for the extractor."""
+    from lib.sources import pagelines
+
+    pages = pagelines.read_pdf(Path(args.path_pdf))
+    text = pagelines.skeleton(pages)
+    if args.path_output:
+        Path(args.path_output).write_text(text, encoding="utf-8")
+        scheme = "page_line" if pagelines.has_line_numbers(pages) else "page"
+        unlabeled = [p.index for p in pages if not p.printed_label]
+        print(f"Wrote {args.path_output}: {len(pages)} pages, citation_scheme: {scheme}")
+        if unlabeled:
+            print(f"No printed page number found on PDF page(s) {pagelines.page_ranges(unlabeled)}; check them.")
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
+def cmd_check_pages(args: argparse.Namespace) -> int:
+    """Compare an extract's page markers and line numbers with its PDF."""
+    from lib.sources import frontmatter, pagelines
+
+    path_md = Path(args.path_md)
+    path_pdf = _extract_pdf(path_md, args.path_pdf)
+    if path_pdf is None:
+        key = frontmatter.read(path_md).get("citekey", "<citekey>")
+        print(f"No PDF found beside the extract; run `just fetch-source {key}` or pass --path-pdf.", file=sys.stderr)
+        return 1
+    errors, warnings = pagelines.check(path_md.read_text(encoding="utf-8"), pagelines.read_pdf(path_pdf))
+    for e in errors:
+        print(f"ERROR   {e}")
+    for w in warnings:
+        print(f"WARNING {w}")
+    if not errors and not warnings:
+        print("page and line markers match the PDF")
+    return 1 if errors else 0
+
+
+def cmd_cite(args: argparse.Namespace) -> int:
+    """Where a quote sits in an extract, by PDF page, printed page and line (or footnote)."""
+    from lib.sources import frontmatter, pagelines
+
+    path_md = Path(args.path_md)
+    text = path_md.read_text(encoding="utf-8")
+    if not pagelines.parse_extract(text).markers:
+        key = frontmatter.parse(text).get("citekey", "<citekey>")
+        print(
+            "This extract has no page markers, so it cannot give a page or line. Repair it first: "
+            f"`just fetch-source {key}`, then follow 'Adding markers to an older extract' in "
+            ".cursor/commands/extract-pdf-to-markdown.md, then cite again.",
+            file=sys.stderr,
+        )
+        return 2
+    hits = pagelines.cite(text, args.quote)
+    if not hits:
+        print("quote not found in the extract", file=sys.stderr)
+        return 1
+    key = frontmatter.read(path_md).get("citekey", "")
+    for h in hits:
+        print(f"{key}\t{h}" if key else str(h))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="lib.sources.cli", description=(__doc__ or "").split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -528,6 +602,18 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("backfill-links", help="doi.org urls and pub.switch.box short links for old items")
     p.add_argument("--apply", action="store_true", help="write to Zotero and pub (default: dry run)")
     p.set_defaults(func=cmd_backfill_links)
+    p = sub.add_parser("page-skeleton", help="a PDF's text with page markers and line numbers, to extract into")
+    p.add_argument("path_pdf", metavar="PATH_PDF")
+    p.add_argument("--path-output", help="write here instead of stdout")
+    p.set_defaults(func=cmd_page_skeleton)
+    p = sub.add_parser("check-pages", help="compare an extract's page and line markers with its PDF")
+    p.add_argument("path_md", metavar="PATH_MD")
+    p.add_argument("--path-pdf", help="the original PDF (default: the front matter's source_file beside the extract)")
+    p.set_defaults(func=cmd_check_pages)
+    p = sub.add_parser("cite", help="page and line citation of a quote in an extract")
+    p.add_argument("path_md", metavar="PATH_MD")
+    p.add_argument("quote")
+    p.set_defaults(func=cmd_cite)
     args = parser.parse_args(argv)
     return args.func(args)
 

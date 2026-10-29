@@ -972,10 +972,12 @@ def _rdp_exists(rel: str) -> bool:
 INTRO = f"""\
 This document lists every figure, table and calculated number in the Direct Testimony of
 Juan-Pablo Velez (Docket No. 26-05-10), and links each one to the code that produced it.
+Figures, tables and numbers each have their own table, in the order they appear in the testimony.
 
-- **Location** gives the page and line number in the testimony as filed. Numbers that appear
+- **Location** gives the page and line number in the testimony as filed. Items that appear
   more than once are listed once, with every place they appear.
-- **What it is** gives the figure or table title, or a short quote with the number in bold.
+- The second column gives the figure or table title, or for numbers, a short quote with the
+  number in bold.
 - **Where it's generated** links to the block of code that produces the item. Our analysis is
   written as notebooks: documents that explain each step in plain language next to the code
   that carries it out. Each link opens the exact lines on GitHub, frozen at the version used for
@@ -1031,15 +1033,25 @@ def write_markdown(rows: list[Row], used: set[str], path_md: Path) -> None:
         "",
         *[f"- {s}" for s in rdp_links()],
         "",
-        "## Figures, tables and numbers",
-        "",
-        "| Type | Location | What it is | Where it's generated |",
-        "|------|----------------|----------------------------------------------|----------------------------|",
     ]
-    for r in rows:
-        link = f"[{md_escape(r.link.text)}]({r.link.url})" if r.link else ""
-        out.append(f"| {r.type} | {format_locations(r.locations)} | {r.what} | {link} |")
-    path_md.write_text("\n".join(out) + "\n")
+    for heading, row_type, what in (
+        ("Figures", "Figure", "Figure"),
+        ("Tables", "Table", "Table"),
+        ("Numbers", "Number", "Quote (number in bold)"),
+    ):
+        out += [
+            f"## {heading}",
+            "",
+            f"| Location | {what} | Where it's generated |",
+            "|------------------|--------------------------------------------------|------------------------------|",
+        ]
+        for r in rows:
+            if r.type != row_type:
+                continue
+            link = f"[{md_escape(r.link.text)}]({r.link.url})" if r.link else ""
+            out.append(f"| {format_locations(r.locations)} | {r.what} | {link} |")
+        out.append("")
+    path_md.write_text("\n".join(out))
 
 
 def landscape_reference(path_ref: Path) -> Path:

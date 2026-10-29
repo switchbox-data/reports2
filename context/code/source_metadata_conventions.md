@@ -27,7 +27,7 @@ How items in the Switchbox Zotero group library are named and keyed. `reports/re
 
 1. **The organization's own abbreviation**: its website, or the term the document defines ("Niagara Mohawk Power Corporation d/b/a National Grid ("NiMo" or the "Company")"). Record the evidence.
 2. **Common usage** where it clearly serves readers better (ConEd).
-3. **A state prefix** for generic agency abbreviations (DPU, PSC, PUC, DEP, DEC, DPS, BPU): "<state> <abbreviation>" with a space, as in MA DPU, NY PSC, RI PUC, MD PSC, NJ BPU, NY DEC. Distinctive names keep their own form (NYSERDA, NYISO, CT DEEP, ISO-NE). Bare "DPU", "PSC", "PUC", "DEC" and "DPS" are never valid. An agency's own state-bearing abbreviation beats the rule: RIPUC, PURA (Connecticut) and CPUC, not RI PUC, CT PURA or CA PUC.
+3. **A state prefix** for generic agency abbreviations (DPU, PSC, PUC, DEP, DEC, DPS, BPU): "<state> <abbreviation>" with a space, as in MA DPU, NY PSC, RI PUC, MD PSC, NJ BPU, NY DEC. Distinctive names keep their own form (NYSERDA, NYISO, CT DEEP, ISO-NE). Bare "DPU", "PSC", "PUC", "DEC" and "DPS" are never valid. An agency's own state-bearing abbreviation beats the rule: RIPUC, PURA (Connecticut) and CPUC, not RI PUC, CT PURA or CA PUC. An agency whose name many states share also takes the state in its full name: "Pennsylvania Office of Consumer Advocate" (PA OCA).
 4. **No short form** if the organization doesn't use one. Never invent one ("BGC" and "BUG" fail this test).
 5. A short form may be a **short name** rather than an acronym ("Boston Gas", "Nantucket Electric", "Chicago").
 6. **One short form, one full name.** `sync-bib`'s checks enforce this.
@@ -38,7 +38,9 @@ How items in the Switchbox Zotero group library are named and keyed. `reports/re
 - **Organization plus named people** (a utility's testimony listing its witnesses): the item takes the organization's short form; the witnesses still appear in the bibliography. An item whose first author is a person has no short form.
 - **Several organizations:** one creator per organization. The item's short form joins theirs Chicago-style ("NYSEG and RG&E"; "NYSERDA et al." for four or more).
 - **Organizations plus people** (mostly testimony): normalize the organization's name and set no short form.
-- **Testimony** names the witness as the person author and the party they testify for as `publisher`: the utility for a utility witness ("Baltimore Gas and Electric Company" for BGE's Jennifer A. Karas), the intervenor for an intervenor witness. A consultant testifying for a utility still gets the utility as publisher, not the consulting firm, so readers see whose case it is. The commission is not the publisher; the `Docket <number>:` title already places the document in its proceeding.
+- **Testimony** names the witness as the person author and the party they testify for as `publisher`: the utility for a utility witness ("Baltimore Gas and Electric Company" for BGE's Jennifer A. Karas), the intervenor for an intervenor witness. A consultant testifying for a utility still gets the utility as publisher, not the consulting firm, so readers see whose case it is. The commission is not the publisher; the `Docket <number>:` title already places the document in its proceeding. Panel testimony lists every witness on the panel. Testimony filed jointly by two companies lists both in `publisher`, separated by a semicolon.
+- **Combined multi-witness files** (a petition bundling a dozen witnesses' testimony, an omnibus exhibit file of every party's testimony) have the filing company, or whoever compiled the file, as the author; the key witnesses are named in the index row. A witness's separately filed testimony still names the witness.
+- **Information-request responses** are authored by the company that answered; the person who prepared the response is named in the index row, not as a creator.
 - **Known collisions:** MA DPU versus RI DPUC; NY PSC versus MD PSC; "MPSC" means Maryland here and Michigan elsewhere (use MD PSC).
 
 ## Subsidiaries
@@ -107,6 +109,7 @@ Report prose is not changed when an organization is renamed; only citations chan
 - The number is the commission's own, **without** "Case", "D.P.U.", "No." or the state: `22-E-0317` (NY), `25-08` (MA), `26-05-10` (CT), `4770` and `25-45-GE` (RI), `25-0084` (IL), `9648` (MD), `CI-23-117` (MN). The label is always "Docket", whatever the commission calls it.
 - A document filed in **several dockets** uses the first one listed on the document.
 - The rest of the title is the document's own title, in title case, with the docket reference removed from it ("(Case 23-G-0627)", "for 25-E-0072", "D.P.U. 25-08"). A note that followed the number moves to the end: "Docket CI-23-117: Order Establishing Framework … (Gas IRP)".
+- An exhibit or information-request response with no title of its own gets one built from its label: "Docket 23-80: Response to DPU-Common 3-5", "Docket 25-55: Exhibit ES-HP-2, Heat Pump Rate Design Model".
 - Tariff sheets, annual reports, SEC filings and other documents not filed in a proceeding keep their own titles. A tariff's own number ("R.I.P.U.C. No. 2096", "PSC No. 10") is not a docket.
 - **No titles in ALL CAPS.** A title typed in capitals (as on many filings and tariff sheets) is written in title case: "Rate RSH (Residential Service Heating)", "Supplemental Filing of The Brooklyn Union Gas Company d/b/a National Grid NY …". Acronyms and codes stay in capitals (GAAP, FERC, PURA, NY, LIHEAP, RSH, R-3: a built-in list, organizations' short forms, and any word the library writes in capitals inside an otherwise lower-case title), as do brands written that way (ENERGY STAR), and a run of three or more words in capitals inside a mixed title is rewritten too, organization names keep their own spelling (KeySpan), "d/b/a" stays lower case, and short words (of, and, the, for, to, into) are lower case except first or after a colon.
 
@@ -143,7 +146,8 @@ The date on the card is the date the document **took its present form**, as prin
 
 - **Orders, decisions, notices:** the issue date, not the date the proceeding opened.
 - **Testimony, exhibits, petitions, comments, data responses:** the filing date (or the document's own date if no filing date is printed).
-- **Tariffs:** the effective date printed on the sheet.
+- **Tariffs and compliance tariffs:** the effective date printed on the sheet, not the filing date.
+- **Workbooks:** they print no date, so the filing date, or the date of the information-request response they are attached to.
 - **Studies and reports:** the publication date; for a report with a revision, the date of the revision cited.
 - **Papers:** the date of the published version (not the preprint's).
 - **Web pages:** the page's own published or last-updated date, if printed; `access_date` records when it was captured. If neither is printed, leave `date` empty (the citation key then ends in `nd`) and say so on the card.
@@ -157,6 +161,7 @@ The docket number goes in the **title** for every proceeding document (`Docket 2
 - Every item type also stores it the same way, as a `Docket: <number>` line in Extra (the card's `docket` field fills it). Zotero has no docket field shared by `document`, `report` and `dataset`, and `reportNumber` would print the number a second time in the bibliography, so Extra is the one consistent, searchable place. `sync-bib` strips the line, so it never reaches `references.yaml`.
 - The extract's front matter (`docket:`) and a workbook's stub repeat it for agents reading the repo.
 - A card with `docket` set must have a title that starts `Docket <that number>:`; ingest refuses a card where they disagree.
+- A document that doesn't print its docket number, or prints it incompletely, takes it from the commission's filing-system listing for that document; the card says so.
 
 ## Index rows and descriptions
 

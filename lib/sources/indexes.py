@@ -1,6 +1,8 @@
 """Index rows for ingested sources: the global ``context/README.md`` table and a folder ``README.md`` table.
 
-Rows are keyed by file path, so rerunning an ingest replaces its row rather than adding a second one. A
+Rows are keyed by file path, so rerunning an ingest replaces its row rather than adding a second one. An existing
+row is found anywhere in the README (any section or table), and a workbook stub ``x.md`` also matches an older
+row naming ``x.xlsx``; only a file with no row gets a new one, in the sources section or first file table. A
 folder that already has a one-row directory entry in the global table (``` `general_reference/bonbright_1960/` (directory) ```)
 is covered by it and gets no per-file row; the folder's own README table, when it has one, still does.
 """
@@ -19,8 +21,26 @@ SECTION = "## sources/"
 _DIR_SUFFIX = re.compile(r"\s*\(directory\)\s*$")
 
 
+WORKBOOK_SUFFIXES = (".xlsx", ".xlsm", ".xls")
+
+
 def _cell_key(cell: str) -> str:
     return _DIR_SUFFIX.sub("", cell.strip()).strip("` ").strip()
+
+
+def _names(key: str) -> set[str]:
+    """``key`` and, for a workbook stub ``x.md``, the workbook ``x.xlsx`` an older row may name instead."""
+    if not key.endswith(".md"):
+        return {key}
+    return {key} | {key[: -len(".md")] + s for s in WORKBOOK_SUFFIXES}
+
+
+def _find_row(lines: Sequence[str], key: str, start: int = 0, end: int | None = None) -> int | None:
+    names = _names(key)
+    for i in range(start, len(lines) if end is None else end):
+        if _is_row(lines[i]) and not _is_separator(lines[i]) and _cell_key(_split_row(lines[i])[0]) in names:
+            return i
+    return None
 
 
 def _split_row(line: str) -> list[str]:
@@ -45,17 +65,16 @@ def _row(cells: Sequence[str]) -> str:
 
 
 def _upsert(lines: list[str], start: int, end: int, key: str, row: str) -> bool:
-    """Replace the row for ``key`` within ``lines[start:end]`` or add it after the last row of the table."""
-    last_row = None
-    for i in range(start, end):
-        if not _is_row(lines[i]) or _is_separator(lines[i]):
-            continue
-        last_row = i
-        if _cell_key(_split_row(lines[i])[0]) == key:
-            if lines[i] == row:
-                return False
-            lines[i] = row
-            return True
+    """Replace the row for ``key`` anywhere in ``lines``, or add it after the last row in ``lines[start:end]``."""
+    found = _find_row(lines, key)
+    if found is not None:
+        if lines[found] == row:
+            return False
+        lines[found] = row
+        return True
+    last_row = next(
+        (i for i in range(end - 1, start - 1, -1) if _is_row(lines[i]) and not _is_separator(lines[i])), None
+    )
     if last_row is None:
         raise ValueError("no table found in the index section")
     lines.insert(last_row + 1, row)
@@ -83,13 +102,7 @@ def covered_by_directory_row(rel_path: str, text: str) -> str | None:
 def has_global_row(rel_path: str, path: Path | None = None) -> bool:
     """Whether ``rel_path`` has a row in the global index, or a directory row covers it."""
     text = Path(path or GLOBAL_README).read_text(encoding="utf-8")
-    lines = text.split("\n")
-    start, end = _section_bounds(lines, SECTION)
-    has_row = any(
-        _is_row(line) and not _is_separator(line) and _cell_key(_split_row(line)[0]) == rel_path
-        for line in lines[start:end]
-    )
-    return has_row or covered_by_directory_row(rel_path, text) is not None
+    return _find_row(text.split("\n"), rel_path) is not None or covered_by_directory_row(rel_path, text) is not None
 
 
 def upsert_global_row(rel_path: str, description: str, path: Path | None = None) -> str:
@@ -103,10 +116,7 @@ def upsert_global_row(rel_path: str, description: str, path: Path | None = None)
         return "covered"
     lines = text.split("\n")
     start, end = _section_bounds(lines, SECTION)
-    existed = any(
-        _is_row(line) and not _is_separator(line) and _cell_key(_split_row(line)[0]) == rel_path
-        for line in lines[start:end]
-    )
+    existed = _find_row(lines, rel_path) is not None
     changed = _upsert(lines, start, end, rel_path, _row([rel_path, description]))
     if changed:
         readme.write_text("\n".join(lines), encoding="utf-8")
@@ -134,10 +144,7 @@ def upsert_folder_row(readme: Path, filename: str, cells: Sequence[str]) -> str:
     if len(cells) > width - 1 and width > 1:
         rest[-1] = " ".join([rest[-1], *cells[width - 1 :]])
     rest += [""] * (width - 1 - len(rest))
-    existed = any(
-        _is_row(line) and not _is_separator(line) and _cell_key(_split_row(line)[0]) == filename
-        for line in lines[header + 2 : end]
-    )
+    existed = _find_row(lines, filename) is not None
     changed = _upsert(lines, header, end, filename, _row([f"`{filename}`", *rest]))
     if changed:
         readme.write_text("\n".join(lines), encoding="utf-8")

@@ -88,6 +88,32 @@ def test_folder_row_matches_the_tables_columns(tmp_path):
     assert "| `short.md` | only-one |  |" in text or "| `short.md` | only-one |  |" in path.read_text()
 
 
+def test_global_row_in_another_section_is_replaced_not_duplicated(readme):
+    readme.write_text(GLOBAL + "\n## dockets/\n\n| File | Use |\n| ---- | ---- |\n| ma_hp_rates/x.md | Old. |\n")
+    assert indexes.upsert_global_row("ma_hp_rates/x.md", "New.", readme) == "updated"
+    text = readme.read_text()
+    assert text.count("ma_hp_rates/x.md") == 1 and "| ma_hp_rates/x.md | New. |" in text
+
+
+def test_workbook_stub_replaces_the_row_naming_the_workbook(readme):
+    readme.write_text(GLOBAL.replace("ma_hp_rates/older.md", "ma_hp_rates/older.xlsx"))
+    assert indexes.upsert_global_row("ma_hp_rates/older.md", "Model.", readme) == "updated"
+    text = readme.read_text()
+    assert "older.xlsx" not in text and "| ma_hp_rates/older.md | Model. |" in text
+
+
+def test_folder_row_in_a_later_file_table_is_replaced(tmp_path):
+    path = tmp_path / "README.md"
+    path.write_text(
+        FOLDER + "\n### Orders\n\n| File | Docket / filed | What |\n| ---- | ---- | ---- |\n| `order.md` | 1 | Old. |\n"
+    )
+    assert indexes.upsert_folder_row(path, "order.md", ["1", "New."]) == "updated"
+    assert indexes.upsert_folder_row(path, "older.md", ["25-55; 2025-04-17", "Model."]) == "updated"
+    text = path.read_text()
+    assert text.count("`order.md`") == 1 and "| `order.md` | 1 | New. |" in text
+    assert "older.xlsx" not in text and text.count("`older.md`") == 1
+
+
 def test_folder_without_a_file_table_is_an_error(tmp_path):
     path = tmp_path / "README.md"
     path.write_text("# Nothing here\n")

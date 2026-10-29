@@ -106,7 +106,10 @@ From there, the agent does the following.
    source_file: madpu_25-08_order_seasonal_heat_pump_rates.pdf
    source_url: https://eeaonline.eea.state.ma.us/DPU/Fileroom/dockets/bynumber/25-08
    extract_path: context/sources/ma_hp_rates/madpu_25-08_order_seasonal_heat_pump_rates.md
-   index_row: Massachusetts DPU order on seasonal heat pump rates (June 1, 2026); read for the winter transmission charge directive.
+   index_row: >-
+     The DPU's order closing its 25-08 inquiry into seasonal heat pump rates, ruling on the utilities' proposals.
+     Sets the rate design principles and directs each utility to file compliance rates. Read for the winter
+     transmission charge directive.
    citekey: madpu_Docket2508Order_2026
    ```
 
@@ -123,7 +126,7 @@ From there, the agent does the following.
    - **Citation key.** Built by the pipeline from the card, not by Zotero: the author's short form, the first three significant words of the title, and the year. `madpu` + `Docket2508Order` + `2026` gives `madpu_Docket2508Order_2026`. If that key is taken, it adds `a`, `b`, and so on. Once ingested, the key is locked in Zotero and never changes. See [Citation keys](source_metadata_conventions.md#citation-keys).
    - **Project.** It maps the source to an existing project. A project exists in three places with the same name: the report folder (`reports/ma_hp_rates/`), the Zotero collection (`Reports > ma_hp_rates`) and the source folder (`context/sources/ma_hp_rates/`). If none fits, it suggests a new project for you to confirm, or `general_reference` for sources that serve no single report.
    - **Short link.** Derived from the citation key: `https://pub.switch.box/madpu_Docket2508Order_2026`. Sources with a DOI don't get one; they link to `https://doi.org/<doi>`.
-   - **Index row.** One sentence on what the source is and when to read it. It becomes the source's row in `context/README.md` (see step 4).
+   - **Index row.** Two or three sentences (at most 70 words) answering, in order: the document's context (why it exists: who made it, for whom, what it responds to or sets in motion), its contents (what is in it, broadly), and why it's here (what we might use it for). It becomes the source's row in `context/README.md` (see step 4). The extract's front matter repeats these as `context`, `contents` and `why_here`. The agent works out the first two from the document; for the third, it uses the purpose recorded when an agent found the source, and otherwise proposes a guess and asks you to confirm it. See [Index rows and descriptions](source_metadata_conventions.md#index-rows-and-descriptions).
 
 2. **Shows you the card** in plain words: title, authors, citation key, project, item type, date, DOI, where the public copy will live, the short link, and the index row. **Read it; this is the only checkpoint.** Tell the agent what to change.
 

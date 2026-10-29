@@ -66,7 +66,7 @@ The DocumentCloud upload starts before the Zotero file upload and is waited on a
 
 ## Repo-side files
 
-- **Front matter** (flat): `source_file`, `citekey`, `zotero_item`, `public_url`, `short_url`, `source_url`, `md5`, `validated`, then descriptive fields (`docket`, `utility`, `filing_date`, `filer`, `document_type`, `pages_total`, `extraction_scope`, `why_here`). `original_pdf_path` is dropped and the legacy `source` is `source_file`.
+- **Front matter** (flat): `source_file`, `citekey`, `zotero_item`, `public_url`, `short_url`, `source_url`, `md5`, `validated`, then descriptive fields (`docket`, `utility`, `filing_date`, `filer`, `document_type`, `pages_total`, `extraction_scope`, `context`, `contents`, `why_here`). `original_pdf_path` is dropped and the legacy `source` is `source_file`.
 - **Index:** one row per file in the `## sources/` table of `context/README.md`, keyed by path. A `(directory)` row covers files in that folder; a folder README's `File` table gets a row too.
 - **Workbooks:** `.xlsx` files under 600 KB can stay in the repo (the pre-commit size hook is the limit); larger ones are fetched from Zotero on demand. The markdown next to a workbook is a stub.
 - **PDFs** are gitignored (`context/sources/**/*.pdf`); `just fetch-source` restores them.

@@ -184,7 +184,9 @@ filer: <organization that filed or issued it>
 document_type: <order | testimony | exhibit | tariff | report | paper | ...>
 pages_total: <N>
 extraction_scope: <full | partial: what is covered>
-why_here: <one line on why this source is in the repo>
+context: <why it exists: who made it, for whom, what it responds to or sets in motion>
+contents: <what is in it, broadly>
+why_here: <what we might use it for: the question it answers for us>
 ---
 
 # [Document Title]

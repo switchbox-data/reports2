@@ -39,13 +39,33 @@ Read `context/code/source_metadata_conventions.md` before drafting (names, title
    source_file: order.pdf
    source_url: https://example.org/files/order.pdf
    extract_path: context/sources/ma_hp_rates/madpu_25-55_order.md
-   index_row: One sentence: what it is and when to read it.
-   front_matter: { docket: "25-55", pages_total: 12, extraction_scope: full }
+   index_row: >- # context (why it exists), contents, why it's here: 2-3 sentences, at most 70 words
+     The DPU's order closing the first phase of 25-55, ruling on Eversource's proposed seasonal heat pump
+     rate and the DOER and AGO objections. Sets the approved winter rates and orders a compliance filing.
+     Read for which design choices the DPU accepted and why.
+   front_matter:
+     docket: "25-55"
+     pages_total: 12
+     extraction_scope: full
+     context: Order closing phase one, ruling on Eversource's petition and the DOER and AGO objections.
+     contents: Approves the seasonal heat pump rate with changes to the winter transmission charge.
+     why_here: Which design choices the DPU accepted, and the compliance directive.
    citekey: placeholder
    ```
 
+   **Every source** gets an index row (2-3 sentences, at most 70 words) answering three questions in order, plus the same three answers as `context`, `contents` and `why_here` in `front_matter`:
+   1. **Context:** why the document exists: who made it, for whom, and what prompted it (what it responds to or sets in motion). For a docket document, read the docket around it (the filings it cites or answers, the IR set, the order it complies with) and name them; for a study, who commissioned it and why; for a paper, the question and the debate it joins.
+   2. **Contents:** what is in it, broadly.
+   3. **Why it's here:** what we might use it for in our work.
+
+   Work out context and contents yourself from the document and the record around it. **Why it's here is the one you usually cannot know on your own:**
+   - Found by an agent (the `discover-sources` skill, or a research brief like `hp_rate_docket_staging/BRIEF.md`): take it from that run's `PURPOSE.md` and the candidate's `why_relevant`, or from the discovery chat if it is this one.
+   - Uploaded by hand, saved to Zotero, or found with no recorded purpose: **ask**. Propose your best guess from what you can infer (the project, the report it would serve, what the document uniquely shows), mark it as a guess on the card, and ask the user to confirm or correct it when you present the card. For a batch, ask once per group of related sources, not per document. Never present an inferred purpose as settled.
+
+   Rules and examples: [Index rows and descriptions](../../../context/code/source_metadata_conventions.md#index-rows-and-descriptions).
+
    Then `uv run python -m lib.sources.cli key /tmp/<card>.yaml` prints the citation key the rule gives; put it in `citekey`. `uv run python -m lib.sources.cli check-card /tmp/<card>.yaml` validates the card (titles, keys, organizations, duplicates) with no writes; fix everything it lists. A PDF with a DOI is not uploaded to DocumentCloud; override with `upload_documentcloud` only when the user asks. Workbooks that exceed the 600 KB file limit need `workbook_in_repo: false`.
-7. **Show the card and wait for approval.** Present, in plain words: the Zotero title and creators, the citation key, the project(s), the item type (and that the user can pick another from the list in the card template) and date, the DOI (and where you found it), how the file will be shared (DocumentCloud, Drive, or a Wayback snapshot for web pages), the short link it will get, and the index row. List anything you were unsure about. **Do not ingest until the user approves.** Apply their corrections to the YAML.
+7. **Show the card and wait for approval.** Present, in plain words: the Zotero title and creators, the citation key, the project(s), the item type (and that the user can pick another from the list in the card template) and date, the DOI (and where you found it), how the file will be shared (DocumentCloud, Drive, or a Wayback snapshot for web pages), the short link it will get, and the index row. Say where "why it's here" came from (a discovery run's purpose, or your guess that needs their confirmation). List anything you were unsure about. **Do not ingest until the user approves.** Apply their corrections to the YAML.
 8. **Ingest.** `just sources-ingest /tmp/<card>.yaml --path-source <file>`; for a Zotero Inbox item `just sources-ingest-item /tmp/<card>.yaml <ZOTERO_ITEM_KEY>`. For a web page, the CLI captures it (PDF and HTML) and saves it to the Wayback Machine. The command prints one JSON object per document. If it reports a problem, fix the cause and run the same command again; do not work around it by hand.
 9. **Extract.** Only PDFs need this step: ingest writes web-page extracts from the captured HTML, and workbooks are not extracted (markdown would lose their formulas and structure; ingest writes a short stub `.md` next to them, and an agent that needs the numbers opens the workbook itself with polars for values or openpyxl for formulas).
    - **Delegate, one subagent per PDF.** By default, launch one subagent per PDF with the Task tool on the latest Sonnet model available (for example `claude-sonnet-5-5-high`), all in a single message so they run in parallel. Never split one PDF across agents. Delegate even a single PDF, which keeps the main context small. Extraction is mechanical transcription, where Sonnet is faster and cheaper; this split is a starting point, not a benchmarked result. If subagents are unavailable, extract the PDFs yourself, one after another.
@@ -61,5 +81,5 @@ Read `context/code/source_metadata_conventions.md` before drafting (names, title
 - Never edit `reports/references.yaml` by hand and never create Zotero items with the Zotero tools directly.
 - One citation key per document. If dedupe finds a match, reuse it.
 - Drive uploads run as the signed-in user via the cached Google login. If ingest reports no cached Google login or an expired one, tell the user to run `just google-login` themselves (it needs a browser); never try to log in from the agent.
-- Several documents at once: draft the cards yourself, one at a time, so keys and organization spellings stay consistent, and have the user approve them together. Pass all of them to a single `just sources-ingest` so the short links go out in one push. Only extraction runs in parallel (step 9).
+- Several documents at once: draft the cards yourself, one at a time, so keys and organization spellings stay consistent, and have the user approve them together. For a large batch (dozens of documents), you may delegate drafting to Sonnet subagents, one per folder or docket, but only after you have settled the organizations yourself: run `sources-org` and `sources-person` for every filer, write the agreed names and short forms to a shared table, and tell every subagent to use only those. Then check every returned card with `check-card` and reconcile keys across folders before review. For review, put the cards in a Google Sheet (an Organizations tab, then one row per document with a citation preview and a column flagging judgment calls) and read the user's edits back into the YAML. Pass all of them to a single `just sources-ingest` so the short links go out in one push. Only extraction runs in parallel (step 9).
 - Recommend running the main session on Opus: drafting cards and validating extracts are judgment calls that get locked into Zotero and citations.

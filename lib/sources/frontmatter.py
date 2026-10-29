@@ -6,7 +6,8 @@ they were. New identifying fields are inserted in canonical order.
 
 Flat schema: ``source_file``, ``citekey``, ``zotero_item``, ``public_url``, ``short_url``, ``source_url``,
 ``md5``, ``validated`` come first, then the descriptive fields (``docket``, ``utility``, ``filing_date``,
-``filer``, ``document_type``, ``pages_total``, ``extraction_scope``, ``why_here``). ``original_pdf_path`` is
+``filer``, ``document_type``, ``pages_total``, ``extraction_scope``, ``context``, ``contents``,
+``why_here``). ``original_pdf_path`` is
 dropped and the legacy ``source`` is renamed ``source_file``.
 """
 
@@ -34,6 +35,8 @@ DESCRIPTIVE_FIELDS = (
     "document_type",
     "pages_total",
     "extraction_scope",
+    "context",
+    "contents",
     "why_here",
 )
 LEGACY_RENAMES = {"source": "source_file"}

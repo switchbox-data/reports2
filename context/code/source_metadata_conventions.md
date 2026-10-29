@@ -158,6 +158,25 @@ The docket number goes in the **title** for every proceeding document (`Docket 2
 - The extract's front matter (`docket:`) and a workbook's stub repeat it for agents reading the repo.
 - A card with `docket` set must have a title that starts `Docket <that number>:`; ingest refuses a card where they disagree.
 
+## Index rows and descriptions
+
+The card's `index_row` becomes the source's row in `context/README.md`; `folder_row` fills the folder README's cells after the file name (its "What it is and why it is here" cell carries the same text as `index_row`).
+
+Every source's index row answers three questions, in this order, in two or three sentences and at most 70 words (figures, page ranges and party lists go in the front matter's `contents`, not the row). A document rarely makes sense on its own: someone made it for a reason, for someone, often in answer to something else.
+
+1. **Context: why it exists.** Who made it, for whom, and what prompted it: what it responds to or sets in motion.
+   - A docket document: who filed it and what it answers, naming the sub-conversation (the IR set, the rebuttal round, the compliance step after an order) and the document it answers, by exhibit or IR number when there is one. "Eversource's answer to DOER's first information request (DOER-1-2), which asked for the rate model rerun with summer held at R-1 rates", not "Alternate run of the rate model".
+   - A study or report: who commissioned it and why (a legislative mandate, a program evaluation, a utility's planning requirement).
+   - A paper: the question it set out to answer and the debate it joins.
+   - A dataset or web page: who publishes it, for what purpose.
+2. **Contents: what is in it, broadly.** The sections, sheets, exhibits or tables that matter, and their scope.
+3. **Why it's here: what we might use it for.** Infer this from what Switchbox does (heat pump rate design, cost allocation, bill impacts, rate case testimony) and from why the source was collected; for the 2026 heat pump rate docket collection, that is how other utilities actually designed their heat pump rates and identified or sized heat pump customers (see `hp_rate_docket_staging/BRIEF.md`). Say what question the document answers ("the only place the gas-therm-to-heat-pump-kWh conversion is shown with live formulas"), not that it is "relevant".
+   - Context and contents can be read from the document and its record. Why it's here usually cannot: it is the intent of whoever wanted the source. When an agent found the source, that intent is recorded with the discovery run (`PURPOSE.md` and `why_relevant` in the inbox folder, or a research brief). When a person uploaded a file or saved it to Zotero, the agent proposes its best inference and asks the person to confirm or correct it before ingest.
+
+The extract's front matter (or a workbook stub's) carries the same three answers as separate fields, so agents reading the file get them without the index: `context`, `contents` and `why_here`. The card sets them in `front_matter`.
+
+Only state what the document and the record around it show. If what a document responds to cannot be found in what we have, say so ("responds to an IR set not in our collection") rather than guessing.
+
 ## Project placement
 
 A **project** is a report folder (`reports/<project_code>/`), its Zotero collection (a subcollection of `Reports`, named the same, snake_case), and its source folder (`context/sources/<project_code>/`). The card lists the projects a source belongs to; ingest puts the item in each collection and the extract in the first project's folder. A source that serves no single report (a textbook, a cost-allocation manual, a general method paper) goes in the `general_reference` project: the `Reports > general_reference` collection and `context/sources/general_reference/` (one subfolder per multi-part work, like `bonbright_1960/`). If a report cites it, add that report's project too. A project that does not exist yet needs `new_project: true` and a person's confirmation, because it creates a collection and a folder. The top-level `Inbox` collection is not a project. Some existing subcollections are not snake_case; ingest only creates snake_case names and leaves the others alone.

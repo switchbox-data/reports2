@@ -66,7 +66,7 @@ Switchbox uses the **NERI label-only style** (bold Q./A. prefix, plain text):
 **A.** The purpose of my testimony is to...
 ```
 
-Pick one style and be consistent throughout the filing. Use `<br>` between Q&A pairs for visual spacing in HTML output.
+Pick one style and be consistent throughout the filing. Leave an extra blank line between Q&A pairs in the source for readability; do not use `<br>` (the Word output spaces pairs itself, and `<br>` adds an empty paragraph).
 
 ### Opening sequence (canned questions)
 

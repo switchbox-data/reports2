@@ -109,7 +109,7 @@ Everything below the form is the testimony itself, written in plain text (Markdo
 
 - Bold only the `Q.` and `A.`; the question and answer text is plain.
 - Leave a blank line between paragraphs. If an answer has several paragraphs, just write them one after another; the later paragraphs line up under the first.
-- You do not need blank markers or `<br>` lines between questions. (Older testimony files use `<br>` for spacing on the web preview. It is harmless; the Word file ignores it and spaces the pairs itself.)
+- Put one extra blank line between question-and-answer pairs in the file, so each pair is visually set apart while you edit. Don't use `<br>` for spacing: the Word file spaces the pairs itself, and a `<br>` line would add an empty paragraph.
 - Start with the usual opening questions (name and address, background, prior testimony, who you testify for, purpose, summary of recommendations, exhibits) and end with "Does this conclude your direct testimony?" The style guide lists them.
 
 ### Headings

@@ -240,6 +240,16 @@ def test_adopting_a_raw_file_creates_the_item_and_moves_the_file_under_it(world,
     assert world.calls["create_item"] == 1 and world.calls["adopt_raw_file"] == 1
 
 
+def test_rerun_takes_an_adopted_item_out_of_the_inbox(world, repo, pdf_file, extract_file):
+    raw = add_raw_file(world, pdf_file)
+    run(world, repo, make_card(), None, zotero_item=raw)
+    item = only_item(world)
+    item["data"]["collections"].append("COL_INBOX")  # Zotero files the parent where the adopted file was
+    report = run(world, repo, make_card(), None, zotero_item=raw)
+    assert report.ok, report.to_dict()
+    assert item["data"]["collections"] == ["COL_MA"]
+
+
 def test_raw_file_adoption_resumes_after_a_failed_move(world, repo, pdf_file, extract_file):
     raw = add_raw_file(world, pdf_file)
     world.fail_next("adopt_raw_file")

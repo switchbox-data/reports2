@@ -93,6 +93,18 @@ sources-org name:
 sources-person name:
     uv run python -m lib.sources.cli person "{{ name }}"
 
+# A PDF's text with [PDF p. N | printed p. M] markers and {n} margin line numbers: the scaffold an extract is written into
+sources-page-skeleton path_pdf path_output:
+    uv run python -m lib.sources.cli page-skeleton "{{ path_pdf }}" --path-output "{{ path_output }}"
+
+# Check an extract's page markers and line numbers against its PDF (default: the source_file beside the extract)
+sources-check-pages path_md path_pdf="":
+    uv run python -m lib.sources.cli check-pages "{{ path_md }}" {{ if path_pdf != "" { "--path-pdf \"" + path_pdf + "\"" } else { "" } }}
+
+# Page and line citation of a quote in an extract, e.g. just sources-cite context/sources/x.md "the quoted words"
+sources-cite path_md quote:
+    uv run python -m lib.sources.cli cite {{ quote(path_md) }} {{ quote(quote) }}
+
 # Give old items doi.org urls (DOI) or pub.switch.box short links (DocumentCloud); dry run unless --apply
 sources-backfill-links *flags:
     uv run python -m lib.sources.cli backfill-links {{ flags }}

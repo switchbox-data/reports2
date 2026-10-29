@@ -27,7 +27,8 @@ Evaluate the extract against the PDF for **every** category below. Use the guida
 8. **Text formatting** – Bold/italic/code used to mirror source emphasis; variable names and short math in prose use inline math `$...$` where the extraction command requests it; abbreviations and key terms consistent.
 9. **Front matter** – Title, authors, **author affiliations** (correspondence, institutions, addresses), abstract, keywords, date/source/version if present. Check that affiliations were not omitted when present in the PDF.
 10. **Back matter** – Funding, author contributions, data statement, acknowledgments, appendices. All present and complete.
-11. **Other** – En/em dashes, symbols (e.g. ÷), equation numbers in labels, URLs wrapped or linked; no stray PDF artifacts (e.g. page numbers in body).
+11. **Other** – En/em dashes, symbols (e.g. ÷), equation numbers in labels, URLs wrapped or linked; no stray PDF artifacts (running headers and footers, or page numbers left in body text instead of in page markers).
+12. **Page and line markers** – Run `just sources-check-pages <extract.md> <pdf>` and report its errors and warnings: every PDF page marked (or inside a `not transcribed` run), printed page numbers resolved, `citation_scheme` matching the PDF, every margin-numbered line kept with its `{n}` and matching the PDF line. Then spot-check three passages yourself: pick a sentence from an early, a middle and a late page, run `just sources-cite <extract.md> "<sentence>"`, and confirm the page and line it prints against the PDF. Footnote definitions must sit on the page they are printed on. Any checker error is a **C** or worse: the extract cannot be cited until it is fixed.
 
 ---
 
@@ -68,19 +69,20 @@ Produce your assessment **exactly** in the following structure. Use the headings
 
 ## 2. Category-by-Category Assessment
 
-| Category             | Verdict | Notes         |
-| -------------------- | ------- | ------------- |
-| Equations            | A/B/C/D | [Brief note.] |
-| Citations            | A/B/C/D | [Brief note.] |
-| Headings and nesting | A/B/C/D | [Brief note.] |
-| Figures and diagrams | A/B/C/D | [Brief note.] |
-| Tables               | A/B/C/D | [Brief note.] |
-| Footnotes            | A/B/C/D | [Brief note.] |
-| Lists                | A/B/C/D | [Brief note.] |
-| Text formatting      | A/B/C/D | [Brief note.] |
-| Front matter         | A/B/C/D | [Brief note.] |
-| Back matter          | A/B/C/D | [Brief note.] |
-| Other                | A/B/C/D | [Brief note.] |
+| Category              | Verdict | Notes                                     |
+| --------------------- | ------- | ----------------------------------------- |
+| Equations             | A/B/C/D | [Brief note.]                             |
+| Citations             | A/B/C/D | [Brief note.]                             |
+| Headings and nesting  | A/B/C/D | [Brief note.]                             |
+| Figures and diagrams  | A/B/C/D | [Brief note.]                             |
+| Tables                | A/B/C/D | [Brief note.]                             |
+| Footnotes             | A/B/C/D | [Brief note.]                             |
+| Lists                 | A/B/C/D | [Brief note.]                             |
+| Text formatting       | A/B/C/D | [Brief note.]                             |
+| Front matter          | A/B/C/D | [Brief note.]                             |
+| Back matter           | A/B/C/D | [Brief note.]                             |
+| Other                 | A/B/C/D | [Brief note.]                             |
+| Page and line markers | A/B/C/D | [Checker result; spot-checked citations.] |
 
 ### Detail (optional)
 
@@ -96,6 +98,7 @@ Summarize how the extract fared on categories that are often hard to get right:
 - **Figures/diagrams** – Were all figures covered with useful descriptions? Any too terse or missing?
 - **Footnotes** – All content preserved? Any linter-driven inlining or link conversion that changed behavior?
 - **Front matter (affiliations)** – If the PDF had an affiliation block, was it extracted?
+- **Page and line markers** – Did `sources-check-pages` pass, and did the spot-checked citations land on the right page and line?
 
 [2–4 sentences total.]
 

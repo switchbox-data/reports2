@@ -69,7 +69,7 @@ testimony:
 | ------------------ | -------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
 | `commission`       | yes      | The commission's full name, e.g. `Maryland Public Service Commission`                                            | Cover page, in capitals, under "BEFORE THE"           |
 | `commission_short` | yes      | A short name, e.g. `Maryland PSC` or `RIPUC`                                                                     | Page header, with the case number                     |
-| `case_number`      | yes      | The docket exactly as it should print, e.g. `"Case No. 9888"` or `"Docket No. 26-01-03"`. Keep the quotes.       | Cover page caption, and page header                   |
+| `case_number`      | yes      | The docket exactly as it should print, e.g. `"Case No. 9888"` or `"Docket No. 26-05-10"`. Keep the quotes.       | Cover page caption, and page header                   |
 | `caption`          | yes      | A list of lines naming the applicant and the subject of the proceeding. Copy them from the docket's own filings. | Left side of the cover-page caption, in capitals      |
 | `type`             | yes      | One of `Direct`, `Rebuttal`, `Surrebuttal`, `Rejoinder`, `Supplemental Direct`, `Supplemental Rebuttal`          | Cover title ("DIRECT TESTIMONY OF …") and page header |
 | `witness`          | yes      | The witness's name                                                                                               | Cover page, and page header                           |

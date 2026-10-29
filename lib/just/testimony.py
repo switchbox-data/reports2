@@ -338,8 +338,17 @@ format:
   html:
     page-layout: article
     smooth-scroll: true
+    toc: true
+    toc-location: left
+    toc-title: Sections
+    toc-depth: 3
+    reference-location: margin
+    citation-location: margin
     theme:
       - ../.style/switchbox.scss
+      - ../.style/testimony.scss
+    filters:
+      - ../../lib/quarto_extensions/testimony_qa/testimony_qa.lua
 
 # Fill in every field below. They become the Word cover page and the running
 # header; nothing else needs to be typed by hand. `just testimony` stops and

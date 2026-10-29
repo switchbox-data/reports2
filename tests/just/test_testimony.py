@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import subprocess
 import xml.etree.ElementTree as ET
 import zipfile
 from datetime import date
@@ -414,3 +415,39 @@ def test_render_subcommand_reports_missing_file(tmp_path: Path, capsys: pytest.C
         tm.main(["render", str(tmp_path / "nope.qmd")])
     assert exc.value.code == 1
     assert "File not found" in capsys.readouterr().err
+
+
+def test_scaffold_html_preview_is_scoped_to_html() -> None:
+    """The writing preview (sections list, margin footnotes) must not leak into the Word file,
+    where a top-level `toc: true` would add a contents page to the filing."""
+    meta = _meta(tm.SCAFFOLD)
+    assert meta["toc"] is False
+    html = meta["format"]["html"]
+    assert html["toc"] is True and html["reference-location"] == "margin"
+    assert "../.style/testimony.scss" in html["theme"]
+
+
+def test_html_filter_marks_only_questions() -> None:
+    """The HTML preview filter wraps each `**Q.**` paragraph, and nothing else, in `.qa-question`."""
+    markdown = (
+        "## I. Introduction\n\n"
+        "**Q.** What is your name?\n\n"
+        "**A.** Juan-Pablo.\n\n"
+        "**Bold lead-in.** Not a question.\n\n"
+        "A second paragraph of the answer.\n\n"
+        "**Q.** And your title?\n\n"
+        "**A.** Executive Director.\n"
+    )
+    filter_path = Path(__file__).parents[2] / "lib/quarto_extensions/testimony_qa/testimony_qa.lua"
+    result = subprocess.run(
+        [*builder._pandoc_cmd(), "-f", "markdown", "-t", "html", "--lua-filter", str(filter_path)],
+        input=markdown,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    html = result.stdout
+    assert html.count('class="qa-question"') == 2
+    assert '<div class="qa-question">\n<p><strong>Q.</strong> What is your name?</p>\n</div>' in html
+    assert "<strong>A.</strong>" in html and 'class="qa-answer"' not in html
+    assert html.count("<div") == 2  # nothing but the two questions is wrapped

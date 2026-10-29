@@ -1,16 +1,23 @@
 ---
-source: madpu_23-150_20240930_ng_order_rate_case_final.pdf
-docket: "D.P.U. 23-150 (as printed on every page)"
-utility: Massachusetts Electric Company and Nantucket Electric Company, each d/b/a National Grid (as printed)
-rate: "Residential heat pump rate for Rates R-1 and R-2 (ordered in this Order); National Grid's proposed 'Electrification Pricing' option for Rate R-1 (rejected). Extractor note (not source text): the R-1/R-2 heat pump rate itself is to be filed later as a compliance filing."
-filing_date: "September 30, 2024 (as printed on the cover page)"
-filer: "Department of Public Utilities, Commonwealth of Massachusetts (order); PDF file metadata author: Smegal, Sarah (DPU)"
+source_file: madpu_23-150_20240930_ng_order_rate_case_final.pdf
+citekey: madpu_Docket23150Order_2024
+zotero_item: "99N9ALSG"
+public_url: https://www.documentcloud.org/documents/25940109-ma-dpu-docket-23-150-order-2024/
+short_url: https://pub.switch.box/madpu_Docket23150Order_2024
+docket: 23-150
+utility: National Grid
+rate: Heat Pump Rate (R-1/R-2)
+filing_date: 2024-09-30
+filer: DPU
 document_type: order
 pages_total: 674
 extraction_scope: "PARTIAL. PDF pages 1-21 (cover/appearances, table of contents, Summary); 72-74 (Section IV.B.3.f, from the heading through the sentence ending 'rate design structure'); 510-531 (Section XV.C, 'Residential Electrification Rate', printed pp. 492-513, complete); 545-554 (Section XV.E.1-2, Rate R-1/R-2 residential delivery service, from the 'E. Rate-by-Rate Analysis' heading through the end of E.2); 571-573 (Section XV.F.4 'Analysis and Findings' on revenue decoupling, from its heading through the end of that section). See 'Omitted pages index' at the end."
 source_url: "https://fileservice.eea.comacloud.net/V3.1.0/FileService.Api/file/ihdfjeee?uQH2WiXifTjLom2QVxtyi8EmiDhMBXK0ednWT8WFP5Ok9v9pxUxyG6LkaCeWBSjqbmMlNqhcSkxPf0qUr1gASPKrYE1qejvebf677PtCVStUdHoHpEGELGLGjR+ZpYgt"
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/ma_national_grid/madpu_23-150_20240930_ng_order_rate_case_final.pdf
-why_here: "DPU rate case order (HP section printed pp. 492-513) rejecting 'Electrification Pricing' and ordering a Unitil-style seasonal heat pump rate."
+md5: "de9bbe887e88001254d1b4e4cae09875"
+validated: 2026-10-29
+why_here: 'The decision that created National Grid''s heat pump rate: why the DPU preferred a Unitil-style seasonal rate to a fixed charge, and the tracking it required.'
+context: The DPU's final order of September 30, 2024 on National Grid's petition for a general increase in base distribution rates in D.P.U. 23-150. In Section XV.C it rules on the Electrification Pricing proposal and the Attorney General, DOER, EDF/CLF and Low-Income Network objections to it.
+contents: A 674-page order, of which we extracted the cover and summary and the heat pump section (printed pp. 492 to 513). The DPU rejects Electrification Pricing and directs an interim heat pump rate for R-1 and R-2 modeled on Unitil's, eligible to customers with a heat pump heating all or part of the home, with tracking and reporting as for Unitil and an explanation of how National Grid will track summer peak increases. It orders a compliance filing within 45 days.
 ---
 
 # D.P.U. 23-150: Massachusetts Electric Company and Nantucket Electric Company, each d/b/a National Grid, Order (September 30, 2024) (partial extract)

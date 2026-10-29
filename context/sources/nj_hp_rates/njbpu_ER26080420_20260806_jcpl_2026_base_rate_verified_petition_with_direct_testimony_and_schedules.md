@@ -1,17 +1,24 @@
 ---
-source: njbpu_ER26080420_20260806_jcpl_2026_base_rate_verified_petition_with_direct_testimony_and_schedules.pdf
+source_file: njbpu_ER26080420_20260806_jcpl_2026_base_rate_verified_petition_with_direct_testimony_and_schedules.pdf
+citekey: jcpl_DocketER26080420Verified_2026
+zotero_item: "FGX8ZRZ8"
+public_url: https://drive.google.com/file/d/1Fj5VM6e5yv5iJBDYze9Pk09r7qlFS5LN/view
+short_url: https://pub.switch.box/jcpl_DocketER26080420Verified_2026
 title: "JCP&L 2026 Base Rate Filing - Verified Petition with Direct Testimony, Exhibits JC-01..JC-13 and Schedules (BPU No. 15 proposed tariff)"
 docket: ER26080420
 utility: JCP&L
-rate: RGT (Residential Geothermal & Heat Pump Service)
+rate: RGT (Residential Geothermal & Heat Pump)
 filing_date: 2026-08-06
-filer: "JCP&L (Jersey Central Power & Light Company); counsel Saul Ewing LLP (cover letter by Courtney L. Schultz). Witnesses include T. Lyons (JC-09, cost of service study) and Y. Peng (JC-10, tariff and rate design)"
+filer: JCP&L (Saul Ewing counsel); witnesses incl. T. Lyons (JC-09 COSS), Y. Peng (JC-10 rate design)
 document_type: testimony
 pages_total: 1432
 extraction_scope: "PDF pages 1-2, 17, 20-21, 25-27, 81-83, 554-575, 586, 597-599, 779-803, 834, 876-879, 881-885, 922, 928, 949-950, 979, 1016-1019, 1021-1024, 1059, 1065, 1083-1084, 1092-1094, 1096-1097, 1108, 1111, 1119 of 1432 (partial; see Omitted pages index)"
-source_url: "https://www.firstenergycorp.com/content/dam/customer/OpCoHome/files/JCPLRegulatory/2026-08-06-JCPL-Verified-Petition.pdf"
-original_pdf_path: "/ebs/home/jpv_switch_box/hp_rate_docket_staging/nj_jcpl_rgt/njbpu_ER26080420_20260806_jcpl_2026_base_rate_verified_petition_with_direct_testimony_and_schedules.pdf"
-why_here: "2026 base rate petition with testimony: RGT combined with RT in the cost study, proposed RGT winter rate set equal to RS; the newest and fullest RGT rate design."
+source_url: https://publicaccess.bpu.state.nj.us/DocumentHandler.ashx?document_id=1433286
+md5: "0f8d65581494e4d9f3e29dd43a3eed3d"
+validated: 2026-10-29
+why_here: Newest and fullest record of how JCP&L prices its heat pump rate with no stand-alone cost study, and of equipment-only eligibility (geothermal EER 13.0 or higher, heat pump SEER 11.0 or higher, no electric-resistance primary heat) rather than metered data.
+context: JCP&L's opening filing in its 2026 base rate case, including the proposed BPU No. 15 tariff; nothing earlier or later in the docket is in our collection (the docket listing shows a testimony entry of 2026-09-17, not retrieved).
+contents: 'Verified petition with twelve direct testimonies and schedules. Lyons (JC-09) combines RGT with RT in the class cost study; Peng (JC-10) raises RT and RGT customer charges equally and sets the RGT winter distribution charge equal to RS (customer charge $8.07 to $8.28; October-May rate $0.033061 to $0.045584 per kWh, with sales tax). RGT proof of revenue and bill impacts: Schedules YP-02 to YP-06.'
 ---
 
 > **Extractor note (not source text):** This file is a partial, verbatim extraction of a 1,432-page omnibus filing. The `source_url` front-matter value is the URL recorded in the staging manifest (a FirstEnergy-hosted copy); the BPU public-access copy is https://publicaccess.bpu.state.nj.us/DocumentHandler.ashx?document_id=1433286. The top-level headings below (# ...) are extractor-added navigation labels, not source text; headings at ## level and below are source headings unless marked. Only the pages that bear on Service Classification RGT (Residential Geothermal & Heat Pump Service) and its comparison classes RS and RT are extracted: the cover letter and petition paragraphs on the Time-of-Use pilot, the customer notice, Witness Reed's TOU pilot testimony, Witness Lyons's class cost of service testimony (RT and RGT are combined into one class in the cost study) with the redacted Schedule TSL-01 summary pages, Witness Peng's rate design testimony in full, and the RS, RT and RGT current and proposed tariff sheets with the schedules (YP-02 to YP-06) that prove the RT/RGT revenues and bill impacts. PDF page numbers appear in `<!-- PDF page N -->` markers; where the printed page number differs it follows after a bar. Footnotes are labelled by witness (lyons-N, peng-N, reed-N); 'reed-5' keeps the original footnote number in the Reed testimony. Rates on the tariff sheets include SUT (6.625%) unless stated otherwise. Everything not marked as an extractor note is source text. Items omitted are listed in the 'Omitted pages index' at the end.

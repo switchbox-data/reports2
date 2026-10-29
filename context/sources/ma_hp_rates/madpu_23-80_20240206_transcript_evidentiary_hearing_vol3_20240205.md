@@ -1,16 +1,23 @@
 ---
-source: madpu_23-80_20240206_transcript_evidentiary_hearing_vol3_20240205.pdf (title as filed per manifest: feb05dpu238081unitilvol3miniin.pdf)
-docket: "DPU 23-80, DPU 23-81 (printed on the transcript cover)"
-utility: Fitchburg Gas and Electric Light Company d/b/a Unitil
-rate: HP-RES and HP-RES LI (proposed heat pump rates; discussed at Tr. pp. 199-216, see extractor note); the hearing also covers the base rate case generally
-filing_date: "Hearing held February 5, 2024 (printed on the cover); filing date 2024-02-06 per download manifest, not printed on the PDF"
-filer: "Transcript prepared by Alan H. Brock, RDR, CRR, Farmer Arsenault Brock LLC, for the Department of Public Utilities"
-document_type: transcript (evidentiary hearing, Volume 3, Pages 144-321; mini-transcript format, four transcript pages per PDF page, followed by a word index)
+source_file: madpu_23-80_20240206_transcript_evidentiary_hearing_vol3_20240205.pdf
+citekey: madpu_Docket2380Evidentiary_2024
+zotero_item: "WD2SGVXD"
+public_url: https://drive.google.com/file/d/1do0t4wt1mP5eJhbogDpSq-pHVosJ5W2t/view
+short_url: https://pub.switch.box/madpu_Docket2380Evidentiary_2024
+docket: 23-80
+utility: Unitil (Fitchburg G&E)
+rate: HP-RES / HP-RES LI
+filing_date: 2024-02-05
+filer: DPU
+document_type: transcript
 pages_total: 66
 extraction_scope: full (PDF pp. 1-46 transcript, including cover, appearances, testimony and the record-request index; PDF pp. 47-66 word index reproduced in compact form)
 source_url: https://fileservice.eea.comacloud.net/V3.1.0/FileService.Api/file/ibibefcj?skfBYu4dCLfNZZK5mgbjLmFJ0ioKRMXdZYr4j7j/42qk9v9pxUxyG6LkaCeWBSjqbmMlNqhcSkxPf0qUr1gASPKrYE1qejvebf677PtCVStUdHoHpEGELGLGjR+ZpYgt
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/ma_unitil/madpu_23-80_20240206_transcript_evidentiary_hearing_vol3_20240205.pdf
-why_here: Hearing transcript; at Tr. pp. 199-216 Unitil witnesses say they lack peak-demand data for existing heat pump customers.
+md5: "cd18db880ee36b1868e99be91f852fa4"
+validated: 2026-10-29
+why_here: Sworn testimony that no heat pump interval or peak data was available when the rate was designed, and the origin of the winter transmission and all-riders record requests.
+context: Volume 3 (Tr. pp. 144-321) of the Feb 5, 2024 evidentiary hearing before Hearing Officer Marc Tassone in 23-80 and 23-81, held after the Dec 2023 and Jan 2024 information request responses and before the March and April 2024 briefs. Cross-examination of Unitil witnesses by DPU staff and DOER produced Record Requests DOER-1 and DOER-2.
+contents: At Tr. pp. 199-206 DPU staff question witness Carroll and Taylor on DOER 2-02 Attachments 2 and 3 (pre/post usage data and the comparison with the design); at Tr. pp. 207-216 DOER's counsel questions Taylor and Goulding on the heat pump rate. Taylor says it is unclear what peak demand data exists for the small set of existing heat pump customers (Tr. 209), and Goulding that Unitil lacks data on when heat pumps are used (Tr. 215). The rest of the volume covers other rate case topics.
 ---
 
 # Evidentiary Hearing Transcript, DPU 23-80 / DPU 23-81 (Unitil), Volume 3, February 5, 2024

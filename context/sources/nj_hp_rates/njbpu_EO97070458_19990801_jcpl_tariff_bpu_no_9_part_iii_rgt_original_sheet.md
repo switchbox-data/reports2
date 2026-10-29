@@ -1,16 +1,23 @@
 ---
-source: njbpu_EO97070458_19990801_jcpl_tariff_bpu_no_9_part_iii_rgt_original_sheet.pdf
-docket: "EO97070458 / EO97070459 / EO97070460 (per the tariff's own filing legend: 'Filed pursuant to Order of Board of Public Utilities in Docket Nos. EO97070458, EO97070459, EO97070460 dated May 24, 1999')"
-utility: Jersey Central Power & Light Company d/b/a GPU Energy (New Jersey)
-rate: Service Classification RGT - Residential Geothermal & Heat Pump Service (Original Sheet Nos. 8-9)
-filing_date: "Issued July 6, 1999; effective August 1, 1999 (as printed)"
-filer: "Issued by Charles A. Mascari, Vice President-Finance and Rates, Comptroller, c/o Michael J. Filippone, 300 Madison Avenue, Morristown, NJ 07962-1911 (as printed)"
+source_file: njbpu_EO97070458_19990801_jcpl_tariff_bpu_no_9_part_iii_rgt_original_sheet.pdf
+citekey: jcpl_DocketEO97070458Tariff_1999
+zotero_item: "IEE5JCJB"
+public_url: https://drive.google.com/file/d/1sBAHqZAe5SWZikmtl1z3PmvB4w1B2dLL/view
+short_url: https://pub.switch.box/jcpl_DocketEO97070458Tariff_1999
+docket: EO97070458
+utility: JCP&L
+rate: RGT (Residential Geothermal & Heat Pump)
+filing_date: 1999-08-01
+filer: GPU Energy / JCP&L
 document_type: tariff
 pages_total: 66
 extraction_scope: "PDF pages 1-11 of 66 (partial; cover, table of contents, Service Classifications RS, RT, RGT, and the first sheet of GS, which cross-references RGT; see Omitted pages index)"
 source_url: https://www.firstenergycorp.com/content/dam/customer/Customer%20Choice/Files/New%20Jersey/tariffs/tariff_iii_eff080199.pdf  # download URL from our manifest, not text from the PDF
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/nj_jcpl_rgt/njbpu_EO97070458_19990801_jcpl_tariff_bpu_no_9_part_iii_rgt_original_sheet.pdf
-why_here: Earliest RGT tariff text we could find (1999): equipment-based eligibility and the original rates; evidence that RGT predates the online record.
+md5: "7e09d3b122d043025157406d43bcdb1d"
+validated: 2026-10-29
+why_here: 'Earliest RGT tariff text we found: shows equipment attestation rather than metered data as the eligibility test, the original rates, and that RGT predates the online BPU record.'
+context: Compliance tariff issued July 6, 1999 under the Board's May 24, 1999 order in JCP&L's restructuring dockets EO97070458, EO97070459 and EO97070460; it re-issued the whole tariff as BPU No. 9 (every sheet reads "Original"), unbundled existing rates and does not say when RGT was created.
+contents: Part III service classifications and riders, BPU No. 9. RGT (Original Sheet Nos. 8-9) gives the equipment eligibility test (geothermal EER 13.0 or higher, heat pump SEER 11.0 or higher plus the federal HSPF standard, room heat pump EER 9.5 or higher, no electric-resistance primary heat) and seasonal time-of-day delivery rates, with RS and RT for comparison.
 ---
 
 # Jersey Central Power & Light Company d/b/a GPU Energy: Tariff for Service, BPU No. 9 Electric, Part III (Service Classifications and Riders), Original Title Sheet and Original Sheet Nos. 1-10

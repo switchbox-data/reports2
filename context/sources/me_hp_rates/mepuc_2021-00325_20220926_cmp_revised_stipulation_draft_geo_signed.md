@@ -1,16 +1,23 @@
 ---
-source: mepuc_2021-00325_20220926_2022_09_22_cmp_revised_stipulation_draft_geo_signed.pdf
-docket: "2021-00325 (printed: Docket No. 2021-00325; Investigation into Transmission and Distribution Utility Rate Design to Promote State Policies)"
-utility: Central Maine Power Company (CMP)
-rate: Rate A-LM, Rate A-TOU-OPTS, Rate B-DCFC/B-CPT revisions and the new pilot residential heat pump rate (para. 9; later Rate A-Seasonal)
-filing_date: "September __, 2022 as printed on the document (the draft is undated; extractor note: the Governor's Energy Office signature block is dated September 26, 2022, and our manifest records 2022-09-26)"
-filer: "Stipulating Parties to the proceeding; document as filed by Central Maine Power Company per our manifest (this copy is an unsigned draft carrying only the Governor's Energy Office signature)"
-document_type: filing (Revised Stipulation on CMP Issues; draft copy signed by GEO only)
+source_file: mepuc_2021-00325_20220926_2022_09_22_cmp_revised_stipulation_draft_geo_signed.pdf
+citekey: cmp_Docket202100325Revised_2022
+zotero_item: "6FJAQXF7"
+public_url: https://drive.google.com/file/d/1VmN5D-LTpPaLGVnUxin4bbVKhi6slWn3/view
+short_url: https://pub.switch.box/cmp_Docket202100325Revised_2022
+docket: 2021-00325
+utility: Central Maine Power
+rate: A-Seasonal / ET rates
+filing_date: 2022-09-26
+filer: CENTRAL MAINE POWER COMPANY
+document_type: filing
 pages_total: 11
 extraction_scope: full
-source_url: "https://mpuc-cms.maine.gov/CQM.Public.WebUI/MatterManagement/MatterFilingItem.aspx?FilingSeq=116692&CaseNumber=2021-00325 (doc {8586D7CB-1ACE-42D1-951F-178CB81677F3}) -- download URL recorded in our manifest, not text from the PDF"
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/me_cmp_versant/mepuc_2021-00325_20220926_2022_09_22_cmp_revised_stipulation_draft_geo_signed.pdf
-why_here: "Revised stipulation; para. 9 creates the pilot heat pump rate."
+source_url: https://mpuc-cms.maine.gov/CQM.Public.WebUI/MatterManagement/MatterFilingItem.aspx?FilingSeq=116692&CaseNumber=2021-00325
+md5: "21e827edeae4b63b943a584d6842d279"
+validated: 2026-10-29
+why_here: 'The stipulation hook for A-Seasonal: where the seasonal heat pump rate came from, next to IECG''s argument for summer allocation of T&D costs.'
+context: Revised stipulation among CMP and the other parties in Docket 2021-00325, filed Sept. 23, 2022 after IECG opposed the Aug. 22 stipulation; approved Sept. 27, 2022. This copy is an unsigned draft dated 'September __, 2022'; a signed version is in our collection.
+contents: 'Eleven pages: Paragraph 6 restates the earlier terms (Rate A-LM opened to any technology; A-TOU-OPTS repriced with a marginal-cost service charge and equal kWh charges in all hours, sunsetting Oct. 31, 2024; B-DCFC; marginal cost study); Paragraph 8 records IECG''s summer-allocation heat pump proposal; Paragraph 9 commits CMP to a pilot residential heat pump rate, tariff due Oct. 7, 2022.'
 ---
 
 # Revised Stipulation on CMP Issues (Docket No. 2021-00325)

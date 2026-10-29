@@ -1,17 +1,24 @@
 ---
-source: "Board of Public Utilities, State of New Jersey — Decision and Order Adopting Initial Decision and Stipulation, In the Matter of the Verified Petition of Jersey Central Power & Light Company for Review and Approval of Increases in, and Other Adjustments to, Its Rates and Charges for Electric Service ... (\"JCP&L 2023 Base Rate Filing\"), with the Initial Decision (Settlement), the Stipulation of Settlement, and Attachments 1-6"
-docket: "BPU Docket No. ER23030144; OAL Docket No. PUC 03346-23 (cover also prints PUC 3346-23)"
-utility: "Jersey Central Power & Light Company (JCP&L)"
-rate: "RT and RGT (Residential Time-of-Day; Residential Geothermal & Heat Pump) — settled 2024 rates"
+source_file: njbpu_ER23030144_20240214_bpu_order_approving_stipulation_jcpl_base_rate_case.pdf
+citekey: njbpu_DocketER23030144Decision_2024
+zotero_item: "PRHWWU3G"
+public_url: https://drive.google.com/file/d/1upGcLpUlzQLQdZrlMMOm3N-ZDIZV8q_I/view
+short_url: https://pub.switch.box/njbpu_DocketER23030144Decision_2024
+docket: ER23030144
+utility: JCP&L
+rate: RGT (Residential Geothermal & Heat Pump)
 filing_date: "2024-02-14"
-filer: "New Jersey Board of Public Utilities (Agenda Date 2/14/24, Agenda Item 2B)"
+filer: NJ BPU (Agenda 2/14/24)
 document_type: "order"
 pages_total: 418
 extraction_scope: "PARTIAL. Extracted: Board Decision and Order PDF pp. 1-10 (pp. 11-13 service list omitted); OAL Initial Decision pp. 14-19 (incl. Cozen O'Connor transmittal letter, p. 19; pp. 20-24 service list omitted); Stipulation of Settlement pp. 25-44 in full; Attachment 1 (Schedules YP-3 and YP-4) pp. 45-50 and 47 summary (YP-4 pp. 5-14 for GS/GST/GP/GT/lighting omitted); Attachment 2 (clean tariff) the RS/RT/RGT sheets and Part III table of contents (pp. 119-128), Part II sheet 14 (p. 84), and the riders that carry RT/RGT rates (pp. 160, 161, 166, 168, 186-188); Attachment 3 (redline tariff) the RS/RT/RGT sheets (pp. 305-314). All other pages are listed in the Omitted pages index at the end."
-source_url: "https://publicaccess.bpu.state.nj.us/DocumentHandler.ashx?document_id=1329639 (from the docket manifest; not printed in the PDF)"
-original_pdf_path: "/ebs/home/jpv_switch_box/hp_rate_docket_staging/nj_jcpl_rgt/njbpu_ER23030144_20240214_bpu_order_approving_stipulation_jcpl_base_rate_case.pdf"
-why_here: "BPU order approving the 2024 settlement with the settled RT/RGT rates (current rates before the 2026 case). (Value from the docket manifest, not from the PDF.)"
+source_url: https://publicaccess.bpu.state.nj.us/DocumentHandler.ashx?document_id=1329639
+md5: "4aa3098d1ebc834205fa2122894108ae"
+validated: 2026-10-29
+why_here: Fixes the RGT rates in effect from June 2024 until the 2026 filing and shows the settlement kept RT and RGT as one class.
 title_as_filed: "Board Decision and Order Adopting Stipulation (JCP&L 2023 base rate case) with attachments (title from the docket manifest)"
+context: The Board's order resolving ER23030144 by adopting the initial decision and the Stipulation of Settlement (2024-02-02) signed by JCP&L, Rate Counsel, Board Staff, CMC, NJLEUC and DOD/FEA; the last step before JCP&L's May 2024 compliance tariff.
+contents: 'Board order, OAL initial decision, Stipulation of Settlement and Attachments 1-6: $85 million increase, interclass allocation, RGT proof of revenues (6,457 billing units, distribution revenue up $55,341 or 13.3%, customer charge $6.61 to $7.57 before tax) and the settled RT/RGT tariff sheets.'
 ---
 
 # NJ BPU Decision and Order Adopting Initial Decision and Stipulation — JCP&L 2023 base rate case (ER23030144), with Stipulation and rate attachments (partial extraction)

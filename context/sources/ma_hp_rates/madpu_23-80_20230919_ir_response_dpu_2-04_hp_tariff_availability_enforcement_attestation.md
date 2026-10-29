@@ -1,16 +1,23 @@
 ---
-source: madpu_23-80_20230919_ir_response_dpu_2-04_hp_tariff_availability_enforcement_attestation.pdf
-docket: "D.P.U. 23-80 (printed); joint with 23-81 per download manifest"
-utility: Fitchburg Gas and Electric Light Company d/b/a Unitil
-rate: HP-RES and HP-RES LI (Residential Heat Pump Service; Low-Income Residential Heat Pump Service)
-filing_date: "September 19, 2023 (printed in the response)"
-filer: Fitchburg Gas and Electric Light Company d/b/a Unitil; Person Responsible C. Goulding / D. Nawazelski
-document_type: IR response (DPU 2-04, Department's Second Set of Information Requests)
+source_file: madpu_23-80_20230919_ir_response_dpu_2-04_hp_tariff_availability_enforcement_attestation.pdf
+citekey: fge_Docket2380Response_2023
+zotero_item: "XKS6RSBQ"
+public_url: https://drive.google.com/file/d/1tcZuc-prJI-ysOZdAYYXV8qbnx8vauYa/view
+short_url: https://pub.switch.box/fge_Docket2380Response_2023
+docket: 23-80
+utility: Unitil (Fitchburg G&E)
+rate: HP-RES / HP-RES LI
+filing_date: 2023-09-19
+filer: Fitchburg Gas and Electric Light Company d/b/a Unitil
+document_type: IR_response
 pages_total: 1
 extraction_scope: full
 source_url: https://fileservice.eea.comacloud.net/V3.1.0/FileService.Api/file/hiijgeij?RtVmqYxzi0rXSrQyspvQlGFJ0ioKRMXdZYr4j7j/42qk9v9pxUxyG6LkaCeWBSjqbmMlNqhcSkxPf0qUr1gASPKrYE1qejvebf677PtCVStUdHoHpEGELGLGjR+ZpYgt
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/ma_unitil/madpu_23-80_20230919_ir_response_dpu_2-04_hp_tariff_availability_enforcement_attestation.pdf
-why_here: "How eligibility is enforced: customer attestation with an annual usage review."
+md5: "fa7587b148b85a736196135d1918bd69"
+validated: 2026-10-29
+why_here: 'The lightest-touch eligibility screen on record: attestation plus an annual usage check, with no list of heat pump customers and no sizing test, and the DPU later declined the Attorney General''s proposal to limit the rate to whole-home sizing.'
+context: Unitil's Sept 19, 2023 response to the DPU's second set of information requests (DPU 2-04), which asked how Unitil would enforce the availability clauses of the proposed HP-RES and HP-RES LI tariffs.
+contents: Service is contingent on a customer 'affirming ownership of a heat pump installed at the service location'; Unitil will accept a customer's attestation that a cold-climate heat pump is installed, sized to fully heat the home or supplement another source, and will review each customer's usage annually for consistency with heat pump use.
 ---
 
 # Fitchburg Gas and Electric Light Company d/b/a Unitil, D.P.U. 23-80: Response to DPU 2-04

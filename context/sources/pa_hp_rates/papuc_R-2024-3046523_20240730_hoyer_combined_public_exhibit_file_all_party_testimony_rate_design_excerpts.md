@@ -1,16 +1,23 @@
 ---
-source: papuc_R-2024-3046523_20240730_hoyer_combined_public_exhibit_file_all_party_testimony.pdf
+source_file: papuc_R-2024-3046523_20240730_hoyer_combined_public_exhibit_file_all_party_testimony.pdf
+citekey: papuc_DocketR20243046523Public_2024
+zotero_item: "KV2FHVZJ"
+public_url: https://drive.google.com/file/d/1m6rRwnBBjuu4LZhcF6bRLwmCgO_BHReT/view
+short_url: https://pub.switch.box/papuc_DocketR20243046523Public_2024
 docket: R-2024-3046523
-utility: Duquesne Light Company
-rate: RA / RH
-filing_date: 2024-07-30 (hearing exhibit file; printed dates vary by section)
-filer: DLC, OCA, OSBA, BIE, CAUSE-PA, Walmart
+utility: Duquesne Light
+rate: Rate RA / RH
+filing_date: 2024-07-30
+filer: Compiled for the Commission (Deputy Chief ALJ Mark A. Hoyer's hearing record); contains testimony and exhibits of Duquesne Light, I&E (BIE), OCA, OSBA, CAUSE-PA, PWPTF and Walmart
 document_type: exhibit
 pages_total: 6941
 extraction_scope: "partial: PDF pp. 1-15 (cover, exhibit index), 383-401, 460-463, 1603-1627, 1653, 1671-1672, 1772, 4785-4803, 4808-4809, 4837-4838, 4973-4976, 6063, 6083, 6090-6111, 6260-6262, 6365-6367, 6443-6448, 6468-6471, 6513-6514, 6526-6529, 6533, 6571-6572, 6574, 6578, 6820-6821, 6839-6842, 6873-6874, 6876-6877, 6903-6905"
 source_url: https://www.puc.pa.gov/pcdocs/1843135.pdf
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/pa_duquesne_ra/papuc_R-2024-3046523_20240730_hoyer_combined_public_exhibit_file_all_party_testimony.pdf
-why_here: "Omnibus file of every party's testimony; only the rate-design excerpts are extracted (Ogden, DFR IV-C RH/RA bill frequency, proof of revenue, OCA Watkins, OSBA Knecht on RA cost to serve, CAUSE-PA Geller, and rebuttal/surrebuttal passages). The only place rebuttal and surrebuttal testimony appears."
+md5: "3a2dcffe81b5ce8e53e275192228fee5"
+validated: 2026-10-29
+why_here: 'The only source for the rebuttal rounds and the other parties'' views on RA. Duquesne''s answers to CAUSE-PA-VII-5 and VII-6: no de facto heat classification, screening by winter usage over 1,000 kWh in one month, and moving customers served through its low-income program (not RA enrollment generally) from RS to RA.'
+context: The hearing record compiled by the Commission after the July 30, 2024 evidentiary hearing, between the rejoinder testimony and the August 16 settlement; contains all parties' served testimony and exhibits.
+contents: '6,941-page omnibus of seven parties'' testimony and exhibits. RA-relevant: Ogden''s direct, rebuttal (14-R) and rejoinder (14-RJ); RH and RA bill frequency attachments; OCA''s Watkins (agrees with sunsetting RA; test-year customers 7,504 RA, 51,660 RH, 491,669 RS); OSBA''s Knecht (RA cost to serve modestly below RS); CAUSE-PA''s Geller.'
 ---
 
 # Duquesne Light Company rate case (R-2024-3046523): rate design excerpts from the combined hearing exhibit file

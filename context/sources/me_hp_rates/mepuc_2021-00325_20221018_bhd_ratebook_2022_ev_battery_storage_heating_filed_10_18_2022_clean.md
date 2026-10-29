@@ -1,16 +1,23 @@
 ---
-source: BHD - Ratebook 2022 - EV Battery Storage  Heating Filed 10.18.2022 - Clean.pdf (staging filename: mepuc_2021-00325_20221018_bhd_ratebook_2022_ev_battery_storage_heating_filed_10_18_2022_clean.pdf)
-docket: "2021-00325 (printed on each tariff sheet as 'DOCKET(S) 2021-00325')"
-utility: Versant Power, Bangor Hydro District
-rate: A-20 Home Heating Eco Rate (also contains A-4, A-1, B-1, B-2, B-3, B-5, M-1, M-2, D-4)
-filing_date: "2022-10-18 (filing date from our manifest, not printed in the PDF; sheets print effective dates of November 1, 2022 and April 1, 2023)"
-filer: Versant Power (tariff sheets signed John Flynn, President)
+source_file: mepuc_2021-00325_20221018_bhd_ratebook_2022_ev_battery_storage_heating_filed_10_18_2022_clean.pdf
+citekey: bhdmpd_Docket202100325Bangor_2022
+zotero_item: "NWK42WRZ"
+public_url: https://drive.google.com/file/d/1-5rej0ggYsnzLe7rAceZMd9yAG8DaU9q/view
+short_url: https://pub.switch.box/bhdmpd_Docket202100325Bangor_2022
+docket: 2021-00325
+utility: Versant Power
+rate: A-20 Home Heating Eco rate
+filing_date: 2022-10-18
+filer: VERSANT POWER
 document_type: tariff
 pages_total: 15
 extraction_scope: full
-source_url: "https://mpuc-cms.maine.gov/CQM.Public.WebUI/MatterManagement/MatterFilingItem.aspx?FilingSeq=116957&CaseNumber=2021-00325 (doc {CD1F73E5-BE80-416A-AD70-342DA9F3FC9D}); download URL from our manifest, not text from the PDF"
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/me_cmp_versant/mepuc_2021-00325_20221018_bhd_ratebook_2022_ev_battery_storage_heating_filed_10_18_2022_clean.pdf
-why_here: Bangor Hydro District rate book with the A-20 tariff text.
+source_url: https://mpuc-cms.maine.gov/CQM.Public.WebUI/MatterManagement/MatterFilingItem.aspx?FilingSeq=116957&CaseNumber=2021-00325
+md5: "971bc0f6c52c76ebd6bc4337224d82e3"
+validated: 2026-10-29
+why_here: The A-20 tariff wording and price points as first filed under the stipulation.
+context: Versant's Oct. 18, 2022 Bangor Hydro District tariff sheets complying with the Aug. 1, 2022 stipulation in Docket 2021-00325; superseded by Versant's Nov. 22, 2022 corrected compliance filing, approved Dec. 13, 2022 (the Nov. 22 filings are in our collection, not extracted).
+contents: Fifteen tariff sheets, one per page (A-4, A-20, A-1, B-1, B-2, B-3, B-5, M-1, M-2, D-4); A-20 Home Heating Eco Rate is open to premises whose resistance, heat pump, heat pump water heater or storage heating can heat 50% or more of the premises, with distribution at `$0.07475` per kWh for the next 600 kWh and `$0.03228` above 700 kWh in October-April.
 ---
 
 # Versant Power, Bangor Hydro District: Rate Book Sheets (EV, Battery Storage, Heating) Filed 10/18/2022 (Clean)

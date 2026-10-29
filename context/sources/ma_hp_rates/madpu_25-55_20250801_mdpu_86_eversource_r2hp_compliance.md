@@ -1,16 +1,23 @@
 ---
-source: madpu_25-55_20250801_nstar_electric_compa_mdpu_86_eversource_r2hp_compliance.pdf
-docket: D.P.U. 25-55 (not printed on the tariff sheets; extractor note: docket taken from our download manifest/assignment)
-utility: NSTAR Electric Company d/b/a Eversource Energy
-rate: Rate R-2HP (Residential Assistance Heat Pump Service), M.D.P.U. No. 86
-filing_date: August 1, 2025 (printed as "Filed"); effective November 1, 2025 (printed)
-filer: NSTAR Electric Company d/b/a Eversource Energy; issued by Douglas W. Foley, President (printed)
+source_file: madpu_25-55_20250801_nstar_electric_compa_mdpu_86_eversource_r2hp_compliance.pdf
+citekey: nstarelectric_Docket2555Compliance_2025
+zotero_item: "QMW6W4W2"
+public_url: https://drive.google.com/file/d/1hx5A_YPb9FpFizyB7isR4NFonrS3jsY7/view
+short_url: https://pub.switch.box/nstarelectric_Docket2555Compliance_2025
+docket: 25-55
+utility: Eversource (NSTAR Electric)
+rate: R2HP
+filing_date: 2025-08-01
+filer: NSTAR Electric Company d/b/a Eversource Energy
 document_type: tariff
 pages_total: 3
 extraction_scope: full
 source_url: https://fileservice.eea.comacloud.net/V3.1.0/FileService.Api/file/aeehbgbbe?/fOHPBuRjx+5GGs6ZFvHR5JCYDN/DiDbHsUFX+Vfig6PcSxI+blU344Khxm+qpOeg0hKFj9M9l/xQR8+/8GqPvdGgrFe6XR6ngIfa80wd3rxFD8G4j981M2Rna9aVTXA
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/ma_eversource/madpu_25-55_20250801_nstar_electric_compa_mdpu_86_eversource_r2hp_compliance.pdf
-why_here: Compliance tariff for the low-income R2HP variant, same availability clause.
+md5: "d13591aa91604d4c7cdeb103018913a8"
+validated: 2026-10-29
+why_here: Shows how the low-income heat pump rate adds an income test and annual recertification to the same heat pump eligibility clause.
+context: Compliance tariff filed 8/1/25 under the DPU's 7/29/25 order in D.P.U. 25-55; effective 11/1/2025.
+contents: Rate R-2HP availability (R-2 customers affirming ownership of a heat pump), rate components by reference to M.D.P.U. No. 1, 42 percent total bill discount, and special provisions limiting eligibility to LIHEAP or means-tested benefit recipients at or below 200 percent of the federal poverty level, with annual recertification.
 ---
 
 # Compliance Tariff: Residential Assistance Heat Pump Service, Rate R-2HP (M.D.P.U. No. 86)

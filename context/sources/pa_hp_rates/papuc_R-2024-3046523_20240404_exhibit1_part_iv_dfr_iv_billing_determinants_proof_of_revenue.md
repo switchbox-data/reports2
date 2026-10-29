@@ -1,16 +1,23 @@
 ---
-source: papuc_R-2024-3046523_20240404_dlc_exhibit1_part_iv_dfr_iv_billing_determinants_proof_of_revenue.pdf
+source_file: papuc_R-2024-3046523_20240404_dlc_exhibit1_part_iv_dfr_iv_billing_determinants_proof_of_revenue.pdf
+citekey: dlc_DocketR20243046523Exhibit_2024
+zotero_item: "R9EZBGI9"
+public_url: https://drive.google.com/file/d/1319Oknh74QgAQOY6wZnklRMfEQWPirOb/view
+short_url: https://pub.switch.box/dlc_DocketR20243046523Exhibit_2024
 docket: R-2024-3046523
-utility: Duquesne Light Company (DLC), Pennsylvania
-rate: Rate RH (Residential Service Heating) and Rate RA (Residential Service Add-On Heat Pump)
-filing_date: 2024-04-04 (from our download manifest / filename; no filing date is printed on the extracted pages)
-filer: Duquesne Light Company; sponsoring witnesses printed on the pages are David Ogden (Statement No. 14, DFR IV-A, IV-B, IV-C, IV-D, IV-E-2) and Howard Gorman (DFR IV-E-1)
-document_type: exhibit (workbook printouts: filing-requirement responses DFR IV, Exhibit 1 Part IV)
+utility: Duquesne Light
+rate: Rate RA / RH
+filing_date: 2024-04-04
+filer: Duquesne Light
+document_type: exhibit
 pages_total: 202
 extraction_scope: "PARTIAL. PDF pages 1-13 (DFR IV-A, IV-B, IV-C intro and revenue summaries), 21-31 (Rate RH and Rate RA bill frequency distributions, Attachment DFR IV-C Parts 2 and 3), 88-93 (proof of revenue for RS, RH, RA), 128-143 (DFR IV-D-1 residential bill comparisons RS, RH, RA), 175-176 (DFR IV-E-1 and IV-E-2 text). All other pages omitted; see Omitted pages index."
 source_url: https://www.puc.pa.gov/pcdocs/1823422.pdf  # download URL recorded in our manifest, not text from the PDF
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/pa_duquesne_ra/papuc_R-2024-3046523_20240404_dlc_exhibit1_part_iv_dfr_iv_billing_determinants_proof_of_revenue.pdf  # kept outside the repo
-why_here: "RH/RA bill frequency distributions and proof of revenue (PDF printouts of the workbooks): the nearest thing to rate design workpapers on the docket."
+md5: "4f63bf4d0027bc042605d498dc9d7d68"
+validated: 2026-10-29
+why_here: 'The nearest thing on this docket to rate design workpapers: the billing determinants and revenue proof behind the RA and RH winter and summer rates. No Excel versions are on the e-docket, and it says nothing about how RA customers are identified.'
+context: 'Part of Duquesne Light''s March 2024 rate increase filing (Exhibit 1, Part IV): its responses to the DFR IV filing requirements on rate effects, billing analysis and bill comparisons; posted on the e-docket April 4, 2024.'
+contents: Sponsored by Ogden (Gorman for IV-E-1). Class revenue summaries (DFR IV-A; RH and RA are lines 2 and 3); bill frequency distributions for Rate RH (DFR IV-C Part 2) and Rate RA (Part 3) for the 12 months ended December 31, 2023; proof of revenue for RS, RH and RA (DFR IV-C-Proof); residential bill comparisons (DFR IV-D-1). PDF printouts of workbooks.
 ---
 
 # Duquesne Light Company — Exhibit 1, Part IV: DFR IV Billing Determinants and Proof of Revenue (Rate RH and Rate RA pages)

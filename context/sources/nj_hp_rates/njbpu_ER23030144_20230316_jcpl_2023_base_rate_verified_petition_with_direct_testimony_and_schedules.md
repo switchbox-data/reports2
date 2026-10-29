@@ -1,16 +1,23 @@
 ---
-source: njbpu_ER23030144_20230316_jcpl_2023_base_rate_verified_petition_with_direct_testimony_and_schedules.pdf
-docket: "ER23030144 (manifest-derived; the cover letter and petition print a blank 'BPU Docket No.', but the number appears in a PDF bookmark title for the April 10, 2023 transmittal letter)"
-utility: Jersey Central Power & Light Company (JCP&L), New Jersey
-rate: "RGT (Residential Geothermal & Heat Pump Service) and RT (Residential Time-of-Day Service); class cost-of-service study combines RGT with RT"
+source_file: njbpu_ER23030144_20230316_jcpl_2023_base_rate_verified_petition_with_direct_testimony_and_schedules.pdf
+citekey: jcpl_DocketER23030144Verified_2023
+zotero_item: "9I4RMHRH"
+public_url: https://drive.google.com/file/d/18jcI3mGEyYl2qX7LHzTldtezpDWuzVqx/view
+short_url: https://pub.switch.box/jcpl_DocketER23030144Verified_2023
+docket: ER23030144
+utility: JCP&L
+rate: RGT (Residential Geothermal & Heat Pump)
 filing_date: "2023-03-16"
-filer: "JCP&L, by Cozen O'Connor, P.C. (Gregory Eisenstark); witnesses extracted here: Timothy S. Lyons (Exhibit JC-8, class cost of service study) and Yongmei Peng (Exhibit JC-9, tariff revisions and rate design)"
+filer: JCP&L (Cozen O'Connor counsel); witnesses incl. T. Lyons (JC-8 COSS), Y. Peng (JC-9 rate design)
 document_type: testimony
 pages_total: 1362
 extraction_scope: "PARTIAL. PDF pp. 1-2 (cover letter); 15-16, 18-19 (petition: rate-change summary, tariff changes, witness/exhibit list); 513-521, 534-536, 541-542 (Exhibit JC-8, Lyons: cover, TOC, class definitions incl. RGT/RT combination, Figures 1-6, Complied vs Alternative COSS); 547-548 and 633-634 (Schedules TSL-1/TSL-2 COSS summary pages 1-2, GT-D column omitted); 729-747 (Exhibit JC-9, Peng: complete testimony); 807, 812-815 and 938, 943-946 (Schedule YP-1: current and proposed Part III table of contents and RT/RGT tariff sheets); 1010-1012, 1014-1015 (Schedules YP-2, YP-3, YP-4 pp. 1, 3, 4); 1026, 1028-1029 (Schedule YP-5 pp. 1, 3, 4). See 'Omitted pages index' at end."
 source_url: https://www.firstenergycorp.com/content/dam/customer/OpCoHome/files/JCPLRegulatory/JCPL-2023-Base-Rate-Case-Incl-REV-Exh-10.pdf
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/nj_jcpl_rgt/njbpu_ER23030144_20230316_jcpl_2023_base_rate_verified_petition_with_direct_testimony_and_schedules.pdf
-why_here: "2023 petition: RT/RGT raised uniformly at the class increase; same cost-study treatment."
+md5: "60fa1fc239b08020424879cf48975cbe"
+validated: 2026-10-29
+why_here: Shows RGT priced as part of the RT class with a class-level uniform increase and no stand-alone cost study, the starting point of the 2023-2024 rate design.
+context: JCP&L's opening filing in its 2023 base rate case, in the FirstEnergy-hosted copy that includes a revised Exhibit JC-10; updated in August 2023 (12+0 update) and settled in February 2024, both separate documents in our collection.
+contents: Verified petition, direct testimonies and schedules requesting about $184.95 million. Lyons (JC-8) combines RGT with RT in the class cost study; Peng (JC-9) raises RT and RGT customer and distribution charges uniformly at the class increase of 28.8% (same as RS and the overall distribution increase), with the RT/RGT proofs of revenue in Schedules YP-2 to YP-5.
 ---
 
 # JCP&L 2023 Base Rate Filing - Verified Petition with Direct Testimony, Exhibits and Schedules (FirstEnergy copy incl. revised Exh JC-10): RGT/RT extracts

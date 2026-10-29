@@ -1,16 +1,23 @@
 ---
-source: papuc_R-2024-3046523_20241209_dlc_compliance_tariff_supp85_to_pa_puc_25.pdf
+source_file: papuc_R-2024-3046523_20241209_dlc_compliance_tariff_supp85_to_pa_puc_25.pdf
+citekey: dlc_DocketR20243046523Compliance_2024
+zotero_item: "CPSAZDU8"
+public_url: https://drive.google.com/file/d/1X_fFh9ABjp-k6OZkWjXDwF4P2v-PH1D3/view
+short_url: https://pub.switch.box/dlc_DocketR20243046523Compliance_2024
 docket: R-2024-3046523
-utility: Duquesne Light Company (DLC), Pennsylvania
-rate: Rate RH (Residential Service Heating) and Rate RA (Residential Service Add-On Heat Pump); also Rider 4 (EV TOU), Rider 5 (USC) and Rider 7 as they apply to RS, RH and RA
-filing_date: 2024-12-09 (printed on the cover letter and as "ISSUED: December 9, 2024" on every tariff page; effective December 20, 2024)
-filer: Michael Brechlin, Assistant General Counsel, Regulatory, Duquesne Light Company (signatory of the cover letter); tariff issued by Kevin E. Walker, President and CEO
-document_type: compliance tariff (Supplement No. 85 to Tariff Electric Pa. P.U.C. No. 25, filed in compliance with the Commission's November 7, 2024 Rate Case Order), with the cover letter, a redline Appendix B and an Appendix C proof of revenue
+utility: Duquesne Light
+rate: Rate RA (Residential Add-On Heat Pump)
+filing_date: 2024-12-20
+filer: Duquesne Light
+document_type: tariff
 pages_total: 193
 extraction_scope: "PARTIAL. PDF pages 1 and 4-18 (cover letter, Appendix A divider, tariff cover, List of Modifications, Table of Contents), 37-40 (Rate RH and Rate RA tariff sheets), 59-66 (Rider Matrix, Riders 4, 5 and 7), 74-76 (Rider 23 and Appendix A Transmission Service Charges, first page), 152-153 (Appendix C divider and Summary of Proof of Revenue), 156-159 (Appendix C proof of revenue for Rate RH and Rate RA, current and proposed settlement rates). All other pages omitted; see Omitted pages index."
-source_url: https://www.puc.pa.gov/pcdocs/1859015.pdf (from our download manifest; not printed in the PDF)
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/pa_duquesne_ra/papuc_R-2024-3046523_20241209_dlc_compliance_tariff_supp85_to_pa_puc_25.pdf
-why_here: "Final RA and RH tariff sheets in effect from Dec 20, 2024: add-on heat pump definition, 40 F thermostat lockout, winter/summer energy charges, closing of RA to new customers from Jan 1, 2025, plus the proof of revenue. RA sheets are PDF pp. 39-40 (printed pp. 43 and 45)."
+source_url: https://www.puc.pa.gov/pcdocs/1859015.pdf
+md5: "8c840043931d98115ba6f533db796267"
+validated: 2026-10-29
+why_here: 'The final, controlling RA tariff text: eligibility by equipment (add-on heat pump for space heating, supplemental heat thermostatically controlled to run only below 40 F, permanently installed Company-approved equipment) rather than usage, and the winter and summer RA energy charges.'
+context: Duquesne Light's compliance tariff filed under the Commission's November 7, 2024 order approving the settlement, the step that put the settled rates, including the Rate RA closure, into effect on December 20, 2024.
+contents: 'Supplement No. 85 (issued December 9, effective December 20, 2024): cover letter, clean tariff (Appendix A), redline against the settlement tariff (B), proof of revenue (C). Rate RA sheets (PDF pp. 39-40): add-on heat pump availability, closure to new customers from January 1, 2025, $13.00 customer charge, winter 3.4662 and summer 8.2479 cents per kWh.'
 ---
 
 # Duquesne Light Company, Supplement No. 85 to Electric Pa. P.U.C. No. 25 (compliance tariff), Docket R-2024-3046523

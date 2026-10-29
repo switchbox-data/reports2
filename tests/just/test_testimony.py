@@ -414,3 +414,13 @@ def test_render_subcommand_reports_missing_file(tmp_path: Path, capsys: pytest.C
         tm.main(["render", str(tmp_path / "nope.qmd")])
     assert exc.value.code == 1
     assert "File not found" in capsys.readouterr().err
+
+
+def test_scaffold_html_preview_is_scoped_to_html() -> None:
+    """The writing preview (sections list, margin footnotes) must not leak into the Word file,
+    where a top-level `toc: true` would add a contents page to the filing."""
+    meta = _meta(tm.SCAFFOLD)
+    assert meta["toc"] is False
+    html = meta["format"]["html"]
+    assert html["toc"] is True and html["reference-location"] == "margin"
+    assert "../.style/testimony.scss" in html["theme"]

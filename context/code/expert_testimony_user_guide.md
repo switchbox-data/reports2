@@ -165,7 +165,7 @@ To render a differently named file, give its name: `just testimony my_rebuttal.q
 
 The result is a Word file named after the testimony and the day you ran it, in the same folder, for example `expert_testimony_20260922.docx`. It is a build output, so don't commit it.
 
-For a quick look at the text on the web without producing Word, run `just render expert_testimony.qmd` instead; it makes an HTML page.
+To read what you've written while you write it, run `just render expert_testimony.qmd` instead; it makes an HTML page in `docs/`. The page is set up for working, not filing: a Sections list on the left (click to jump), slightly smaller text, and each footnote and citation in the right margin next to the line that cites it. It has no line numbers or page breaks, since those only exist in the Word file. The styling is in `reports/.style/testimony.scss`; the settings are the `toc` and `reference-location` lines under `format: html:` at the top of the file, and `just new-testimony` includes them.
 
 ## What the Word file looks like
 

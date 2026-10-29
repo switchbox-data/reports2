@@ -13,8 +13,8 @@ from collections.abc import Mapping
 from typing import Any
 
 # A docket number: NY "22-E-0317", MA "25-55", CT "26-05-10", RI "4770" / "25-45-GE",
-# IL "25-0084", MN "CI-23-117", ME "2022-00152".
-_NUM = r"(?:[A-Z]{1,3}-)?\d{1,5}(?:-(?:[A-Z]{1,3}|\d{1,5}))*"
+# IL "25-0084", MN "CI-23-117", ME "2022-00152", PA "R-2024-3046523" / "R-00974104".
+_NUM = r"(?:[A-Z]{1,3}-)?\d{1,8}(?:-(?:[A-Z]{1,3}|\d{1,8}))*"
 # "Rate Case 25-E-0072" keeps "Case": there it is part of the title, not the docket label.
 _INTRO = r"(?i:Dockets?|(?<!Rate )Cases?|D\.\s?P\.\s?U\.|DPU)(?:\s+(?i:Nos?)\.?)?"
 _REF = re.compile(rf"\b{_INTRO}\s*:?\s*(?P<num>{_NUM})\b")

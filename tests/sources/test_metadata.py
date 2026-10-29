@@ -62,6 +62,12 @@ def test_docket_titles_follow_the_rule():
     assert any("Docket 25-55:" in p for p in problems(make_card(title="Order on Seasonal Heat Pump Rates")))
 
 
+def test_long_pennsylvania_docket_numbers_are_read_whole():
+    for docket in ("R-2024-3046523", "R-00974104"):
+        card = make_card(title=f"Docket {docket}: Direct Testimony on Rate Design", docket=docket)
+        assert not any("Docket <number>" in p or "needs the title" in p for p in problems(card))
+
+
 def test_publisher_must_not_repeat_the_author():
     assert any("repeats the author" in p for p in problems(make_card(publisher="MA DPU")))
     assert not any("repeats the author" in p for p in problems(make_card(publisher="Commonwealth of Massachusetts")))

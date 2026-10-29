@@ -1,0 +1,2947 @@
+---
+jupyter: python3
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+# Investigate ResStock against EIA and Census
+
+This **state-agnostic** template notebook checks whether a ResStock release looks like
+the real housing stock and the real utility sales for a state. It always reads **both**
+the raw NREL release and Switchbox's `_sb` companion, so we can see how much
+post-processing (multifamily electricity scaling, heat-pump approximation, optional
+gas scaling) moves the comparison.
+
+It answers, in order:
+
+1. Do ResStock sample weights match EIA-861 residential **customer counts**, statewide and then
+   by electric utility?
+2. Does ResStock **electricity** match EIA-861 residential sales — statewide, then by utility —
+   for both the raw release and `_sb`? By utility, the same rows are shown four ways:
+   each utility's own customer scaling, one statewide customer-count scaling, one statewide
+   kWh scaling, and no scaling.
+3. Does ResStock **natural gas** match EIA-176 residential deliveries (sales + transportation),
+   statewide and then by gas utility? By utility, gas is shown two ways: one statewide kWh
+   scaling, and no scaling. Gas is never scaled by customer counts: EIA-176 counts meters,
+   ResStock counts dwellings.
+4. How many buildings in `_sb` upgrades 01/02 received the heat-pump **approximation**, and why?
+5. Heating **fuel** (ResStock vs ACS and vs RECS) and heating **equipment** (ResStock vs RECS
+   `EQUIPM`: heat pump vs furnace vs boiler vs electric resistance).
+6. Building type, year built, and floor area against ACS and/or RECS. ACH50 is
+   ResStock `in.infiltration` versus Chan et al. (2013) predicted ACH50.
+
+> **Demonstration state**: CT / `res_2024_amy2018_2`.
+> **To run for another state**, change `STATE` and **replace both utility-id maps** in
+> Parameters (they are CT-only as written), then restart the kernel.
+
+---
+
+## How to use
+
+1. Set `STATE` and `RESSTOCK_RELEASE` (the **raw**, non-`_sb` name) in Parameters.
+2. Leave `UPGRADE` at `"00"` for the EIA comparisons — those are a check against the
+   existing stock in the weather year, not a heat-pump scenario.
+3. Replace the two **state-specific** maps. CT is filled in; other states will not
+   match those EIA ids to `sb.electric_utility` / `sb.gas_utility`.
+   - `EIA_UTILITY_ID_TO_STD_NAME`: EIA-861 `utility_id_eia` → `sb.electric_utility`.
+     Required for the per-utility **and** statewide electricity tables (those use
+     mapped distribution utilities only, not competitive suppliers). Copy from
+     `rate-design-platform/utils/utility_codes.py` (`get_eia_utility_id_to_std_name`).
+   - `GAS_OPERATORS`: EIA-176 `operator_id_eia` → `sb.gas_utility`. Required only
+     for the **per-utility** gas table. Statewide gas uses every operator in the
+     state and still runs if this dict is empty. Source:
+     `rate-design-platform/utils/post/compare_resstock_eia176_gas.py`
+     (`GAS_OPERATORS_BY_STATE`); only CT is listed there today.
+4. Restart the kernel and run all cells.
+
+---
+
+## Data sources
+
+| Input | Where |
+|-------|--------|
+| Metadata, raw | `s3://data.sb/nrel/resstock/<release>/metadata/state=<ST>/upgrade=<uu>/metadata.parquet` |
+| Metadata, `_sb` | `…/<release>_sb/metadata/…/metadata-sb.parquet` |
+| Utility assignment | `…/<release>_sb/metadata_utility/state=<ST>/utility_assignment.parquet` (Switchbox-only) |
+| Annual loads, raw and `_sb` | `…/load_curve_annual/state=<ST>/upgrade=<uu>/<ST>_upgrade<uu>_metadata_and_annual_results.parquet` |
+| EIA-861 electric sales | `s3://data.sb/eia/861/electric_utility_stats/year=<year>/state=<ST>/data.parquet` |
+| EIA-176 gas deliveries | PUDL `core_eia176__yearly_gas_disposition_by_consumer` (HTTPS) |
+| ACS PUMS housing | `s3://data.sb/census/pums/{survey}/{end_year}/housing/state=<ST>/data.parquet` |
+| RECS 2020 microdata | EIA public CSV (`recs2020_public_v7.csv`), cached locally on first run |
+| `_sb` provenance | `s3://data.sb/nrel/resstock/<release>_sb/manifest.yaml` |
+
+Utility assignment never toggles: it has no raw-release counterpart. Annual electricity is
+`out.electricity.total.energy_consumption.kwh`; annual gas is
+`out.natural_gas.total.energy_consumption.kwh`. Sample `weight` comes from metadata.
+
+---
+
+## Notebook sections
+
+| Section | What it covers |
+|---------|----------------|
+| **1 — `_sb` modifications** | Which Switchbox steps the manifest says were run for this state |
+| **2 — Electricity** | Statewide electricity, then by utility: own-customer scaling, statewide customer scaling, statewide kWh scaling, raw totals |
+| **3 — Gas** | Statewide gas, then by utility: statewide kWh scaling and raw totals |
+| **4 — Heat-pump approximation** | One table per upgrade (01, 02), then heating-electricity box plots by floor-area bin for buildings that already had a heat pump and buildings that were approximated |
+| **5 — Heating systems** | Mix by utility; heating fuel vs ACS and RECS; heating equipment vs RECS `EQUIPM` |
+| **6 — Other stock checks** | Building type and year built vs ACS and RECS; floor area vs RECS; ACH50 vs Chan |
+| **7 — Assumptions** | Year alignment, residential-only EIA, ACS electricity ≠ heat pump |
+
+```{python}
+#| label: setup
+#| include: false
+
+from __future__ import annotations
+
+import urllib.request
+from pathlib import Path
+
+import boto3
+import yaml
+from collections.abc import Mapping, Sequence
+from typing import Any, cast
+
+import matplotlib.pyplot as plt
+import polars as pl
+from great_tables import GT
+from plotnine import (
+    aes,
+    element_text,
+    facet_wrap,
+    geom_boxplot,
+    geom_col,
+    geom_histogram,
+    geom_vline,
+    ggplot,
+    labs,
+    position_dodge,
+    scale_fill_manual,
+    theme,
+)
+
+from lib.great_tables import get_switchbox_gt_tab_options
+from lib.plotnine import SB_COLORS, theme_switchbox
+from lib.quarto import display_figure, display_gt
+```
+
+## Parameters
+
+Change `STATE` and `RESSTOCK_RELEASE` here. The two utility-id maps below are **state-specific**
+and must be replaced when `STATE` is not `"ct"`.
+
+```{python}
+#| label: params
+#| include: false
+
+# ── Change these to investigate a different state or release ──────────────────
+STATE = "ct"  # lowercase state abbreviation
+RESSTOCK_RELEASE = "res_2024_amy2018_2"  # raw (non-_sb) release name
+UPGRADE = "00"  # EIA comparisons should stay on the baseline stock
+EIA_YEAR = 2018  # EIA-861 / EIA-176 year; 2018 aligns with ResStock AMY 2018
+ACS_SURVEY = "acs5"
+ACS_END_YEAR = 2023  # latest 5-year PUMS on S3; later than AMY 2018 — see assumptions
+HP_APPROX_UPGRADES = ["01", "02"]  # _sb upgrades that receive the HP approximation
+# ──────────────────────────────────────────────────────────────────────────────
+
+STATE_UPPER = STATE.upper()
+RESSTOCK_RELEASE_RAW = RESSTOCK_RELEASE.removesuffix("_sb")
+RESSTOCK_RELEASE_SB = f"{RESSTOCK_RELEASE_RAW}_sb"
+
+S3_RESSTOCK = "s3://data.sb/nrel/resstock"
+S3_EIA861 = "s3://data.sb/eia/861/electric_utility_stats"
+S3_PUMS = "s3://data.sb/census/pums"
+PUDL_VERSION = "v2026.2.0"
+PUDL_BASE = f"https://s3.us-west-2.amazonaws.com/pudl.catalyst.coop/{PUDL_VERSION}"
+EIA176_BY_CONSUMER = f"{PUDL_BASE}/core_eia176__yearly_gas_disposition_by_consumer.parquet"
+EIA176_DISPOSITION = f"{PUDL_BASE}/core_eia176__yearly_gas_disposition.parquet"
+
+BLDG_ID = "bldg_id"
+ELEC_UTILITY_COL = "sb.electric_utility"
+GAS_UTILITY_COL = "sb.gas_utility"
+WEIGHT_COL = "weight"
+ANNUAL_ELEC_COL = "out.electricity.total.energy_consumption.kwh"
+ANNUAL_GAS_COL = "out.natural_gas.total.energy_consumption.kwh"
+KWH_PER_MMBTU = 1_000_000 / 3412.141633
+
+# utility_id_eia → sb.electric_utility, for STATE = "ct".
+# Source: rate-design-platform/utils/utility_codes.py (state="CT").
+EIA_UTILITY_ID_TO_STD_NAME: dict[int, str] = {
+    4176: "ct_eversource",
+    19497: "ct_ui",
+    6207: "frp",
+    13831: "norwich_muni",
+    2089: "bozrah_muni",
+    9734: "jewett_muni",
+    17569: "south_norwalk_muni",
+    7716: "groton_muni",
+    49826: "mohegan_tribal",
+    13825: "norwalk_third_taxing",
+    20038: "wallingford_muni",
+}
+
+# EIA-176 operator_id_eia → sb.gas_utility, for STATE = "ct".
+# Source: rate-design-platform/utils/post/compare_resstock_eia176_gas.py
+GAS_OPERATORS: dict[str, str] = {
+    "17602792CT": "yankee_gas",
+    "17619018CT": "ct_natural_gas",
+    "17619865CT": "southern_ct_gas",
+    "17610359CT": "norwich_muni",
+}
+
+PATH_METADATA_RAW = (
+    f"{S3_RESSTOCK}/{RESSTOCK_RELEASE_RAW}/metadata/state={STATE_UPPER}/upgrade={UPGRADE}/metadata.parquet"
+)
+PATH_METADATA_SB = (
+    f"{S3_RESSTOCK}/{RESSTOCK_RELEASE_SB}/metadata/state={STATE_UPPER}/upgrade={UPGRADE}/metadata-sb.parquet"
+)
+PATH_UTILITY_ASSIGNMENT = (
+    f"{S3_RESSTOCK}/{RESSTOCK_RELEASE_SB}/metadata_utility/state={STATE_UPPER}/utility_assignment.parquet"
+)
+PATH_ANNUAL_RAW = (
+    f"{S3_RESSTOCK}/{RESSTOCK_RELEASE_RAW}/load_curve_annual/"
+    f"state={STATE_UPPER}/upgrade={UPGRADE}/"
+    f"{STATE_UPPER}_upgrade{UPGRADE}_metadata_and_annual_results.parquet"
+)
+PATH_ANNUAL_SB = (
+    f"{S3_RESSTOCK}/{RESSTOCK_RELEASE_SB}/load_curve_annual/"
+    f"state={STATE_UPPER}/upgrade={UPGRADE}/"
+    f"{STATE_UPPER}_upgrade{UPGRADE}_metadata_and_annual_results.parquet"
+)
+PATH_EIA861 = f"{S3_EIA861}/year={EIA_YEAR}/state={STATE_UPPER}/data.parquet"
+PATH_PUMS = f"{S3_PUMS}/{ACS_SURVEY}/{ACS_END_YEAR}/housing/state={STATE_UPPER}/data.parquet"
+RECS_URL = "https://www.eia.gov/consumption/residential/data/2020/csv/recs2020_public_v7.csv"
+RECS_FILENAME = "recs2020_public_v7.csv"
+
+if UPGRADE != "00":
+    raise ValueError(
+        f"UPGRADE={UPGRADE!r} is not the baseline stock. "
+        "EIA-861/176 comparisons will not match the weather-year existing stock."
+    )
+```
+
+```{python}
+#| label: helpers
+#| include: false
+
+
+def load_parquet(path: str) -> pl.DataFrame:
+    """Collect a parquet file (or Hive directory) from S3, HTTPS, or local disk."""
+    return cast(pl.DataFrame, pl.scan_parquet(path).collect())
+
+
+def require_cols(name: str, df: pl.DataFrame, key_cols: list[str]) -> None:
+    """Raise if a loaded table is missing columns later cells depend on."""
+    missing = [c for c in key_cols if c not in df.columns]
+    if missing:
+        raise ValueError(f"{name} is missing required columns: {missing}")
+
+
+def _gt_cols(names: Sequence[str] | None, available: set[str]) -> list[str]:
+    return [c for c in (names or []) if c in available]
+
+
+def gt_table(
+    df: pl.DataFrame,
+    title: str,
+    subtitle: str | None = None,
+    *,
+    labels: Mapping[str, str] | None = None,
+    stub: str | None = None,
+    integer_cols: Sequence[str] | None = None,
+    percent_cols: Sequence[str] | None = None,
+    ratio_cols: Sequence[str] | None = None,
+    decimals: Mapping[str, int] | None = None,
+    spanners: Sequence[tuple[str, Sequence[str]]] | None = None,
+    source_note: str | None = None,
+) -> None:
+    """Render a Polars frame as a Switchbox Great Table with readable labels."""
+    float_cols = [c for c, dt in df.schema.items() if dt in (pl.Float32, pl.Float64)]
+    if float_cols:
+        df = df.with_columns(
+            [
+                pl.when(pl.col(c).is_infinite()).then(None).otherwise(pl.col(c)).alias(c)
+                for c in float_cols
+            ]
+        )
+    available = set(df.columns)
+    table = GT(df.to_pandas(), rowname_col=stub) if stub and stub in available else GT(df.to_pandas())
+    table = table.tab_header(title=title, subtitle=subtitle) if subtitle else table.tab_header(title=title)
+    if labels:
+        body_labels = {k: v for k, v in labels.items() if k in available and k != stub}
+        if body_labels:
+            table = table.cols_label(**body_labels)
+        if stub and stub in labels:
+            table = table.tab_stubhead(label=labels[stub])
+    for col in _gt_cols(integer_cols, available):
+        table = table.fmt_number(columns=col, decimals=0, use_seps=True)
+    for col in _gt_cols(percent_cols, available):
+        table = table.fmt_number(columns=col, decimals=1, pattern="{x}%")
+    for col in _gt_cols(ratio_cols, available):
+        table = table.fmt_number(columns=col, decimals=2)
+    for col, n_dec in (decimals or {}).items():
+        if col in available:
+            table = table.fmt_number(columns=col, decimals=n_dec, use_seps=True)
+    for spanner_label, spanner_cols in spanners or []:
+        cols_ok = _gt_cols(spanner_cols, available)
+        if cols_ok:
+            table = table.tab_spanner(label=spanner_label, columns=cols_ok)
+    table = table.sub_missing(missing_text="—")
+    if source_note:
+        table = table.tab_source_note(source_note=source_note)
+    display_gt(table.tab_options(**get_switchbox_gt_tab_options()))
+
+
+def annual_by_utility(
+    annual: pl.DataFrame,
+    metadata: pl.DataFrame,
+    assignment: pl.DataFrame,
+    utility_col: str,
+    kwh_col: str,
+) -> pl.DataFrame:
+    """Weighted customer counts and kWh by utility. Drops null utility assignments."""
+    joined = (
+        annual.select(BLDG_ID, kwh_col)
+        .join(metadata.select(BLDG_ID, WEIGHT_COL), on=BLDG_ID, how="inner", validate="1:1")
+        .join(assignment.select(BLDG_ID, utility_col), on=BLDG_ID, how="inner", validate="1:1")
+        .filter(pl.col(utility_col).is_not_null())
+    )
+    return (
+        joined.group_by(utility_col)
+        .agg(
+            pl.len().alias("buildings"),
+            pl.col(WEIGHT_COL).sum().alias("resstock_customers"),
+            (pl.col(kwh_col).fill_null(0) * pl.col(WEIGHT_COL)).sum().alias("resstock_total_kwh"),
+        )
+        .rename({utility_col: "utility_code"})
+        .sort("resstock_total_kwh", descending=True)
+    )
+
+
+def customer_normalized_comparison(
+    resstock: pl.DataFrame,
+    eia: pl.DataFrame,
+    eia_kwh_col: str,
+    eia_customers_col: str,
+) -> pl.DataFrame:
+    """Join on utility_code and scale ResStock kWh to EIA's customer count.
+
+    Use this for electricity, where EIA-861 residential customers are close to
+    dwelling units. Do not use it for gas: EIA-176 consumers are meters.
+    """
+    joined = resstock.join(eia, on="utility_code", how="inner")
+    return (
+        joined.filter((pl.col(eia_customers_col) > 0) & (pl.col("resstock_customers") > 0))
+        .with_columns(
+            (pl.col("resstock_customers") / pl.col(eia_customers_col)).alias("customers_ratio"),
+            (
+                pl.col("resstock_total_kwh") * pl.col(eia_customers_col) / pl.col("resstock_customers")
+            ).alias("resstock_kwh_normalized"),
+        )
+        .with_columns(
+            (pl.col("resstock_kwh_normalized") / pl.col(eia_kwh_col)).alias("kwh_ratio"),
+            (
+                (pl.col("resstock_kwh_normalized") - pl.col(eia_kwh_col)) / pl.col(eia_kwh_col) * 100
+            ).alias("kwh_pct_diff"),
+            (
+                (pl.col("resstock_customers") - pl.col(eia_customers_col)) / pl.col(eia_customers_col) * 100
+            ).alias("customers_pct_diff"),
+        )
+    )
+
+
+def total_kwh_comparison(
+    resstock: pl.DataFrame,
+    eia: pl.DataFrame,
+    eia_kwh_col: str,
+    *,
+    positive_customers: bool = False,
+    eia_customers_col: str = "eia_residential_customers",
+) -> pl.DataFrame:
+    """Join on utility_code and compare weighted kWh totals with no scaling."""
+    joined = resstock.join(eia, on="utility_code", how="inner")
+    keep = pl.col(eia_kwh_col).is_not_null()
+    if positive_customers:
+        keep = keep & (pl.col(eia_customers_col) > 0) & (pl.col("resstock_customers") > 0)
+    return joined.filter(keep).with_columns(
+        (pl.col("resstock_total_kwh") / pl.col(eia_kwh_col)).alias("kwh_ratio"),
+        (
+            (pl.col("resstock_total_kwh") - pl.col(eia_kwh_col)) / pl.col(eia_kwh_col) * 100
+        ).alias("kwh_pct_diff"),
+    )
+
+
+def scaled_total_comparison(
+    resstock: pl.DataFrame,
+    eia: pl.DataFrame,
+    eia_kwh_col: str,
+    scale: float,
+    *,
+    positive_customers: bool = False,
+    eia_customers_col: str = "eia_residential_customers",
+) -> pl.DataFrame:
+    """Multiply every utility's ResStock kWh by one constant, then compare to EIA."""
+    joined = resstock.join(eia, on="utility_code", how="inner")
+    keep = pl.col(eia_kwh_col).is_not_null()
+    if positive_customers:
+        keep = keep & (pl.col(eia_customers_col) > 0) & (pl.col("resstock_customers") > 0)
+    return (
+        joined.filter(keep)
+        .with_columns((pl.col("resstock_total_kwh") * scale).alias("resstock_kwh_scaled"))
+        .with_columns(
+            (
+                (pl.col("resstock_kwh_scaled") - pl.col(eia_kwh_col)) / pl.col(eia_kwh_col) * 100
+            ).alias("kwh_pct_diff"),
+        )
+    )
+
+
+def join_release_kwh(raw: pl.DataFrame, sb: pl.DataFrame, value_col: str) -> pl.DataFrame:
+    """Pair raw and _sb utility kWh, with percent gaps versus the same EIA column."""
+    return (
+        raw.select(
+            "utility_code",
+            pl.col(value_col).alias("raw_kwh"),
+            "eia_residential_kwh",
+            pl.col("kwh_pct_diff").alias("raw_kwh_pct_diff"),
+        )
+        .join(
+            sb.select(
+                "utility_code",
+                pl.col(value_col).alias("sb_kwh"),
+                pl.col("kwh_pct_diff").alias("sb_kwh_pct_diff"),
+            ),
+            on="utility_code",
+            how="inner",
+        )
+        .with_columns((pl.col("sb_kwh_pct_diff") - pl.col("raw_kwh_pct_diff")).alias("sb_minus_raw_pp"))
+        .sort("eia_residential_kwh", descending=True)
+    )
+
+
+def show_utility_kwh(
+    df: pl.DataFrame,
+    *,
+    title: str,
+    subtitle: str,
+    kwh_spanner: str,
+    source_note: str,
+    eia_label: str,
+) -> None:
+    """Render a raw-vs-_sb utility kWh table. ``df`` comes from ``join_release_kwh``."""
+    gt_table(
+        df,
+        title=title,
+        subtitle=subtitle,
+        labels={
+            "utility_code": "Utility",
+            "raw_kwh": "Raw",
+            "sb_kwh": "_sb",
+            "eia_residential_kwh": eia_label,
+            "raw_kwh_pct_diff": "Raw vs EIA",
+            "sb_kwh_pct_diff": "_sb vs EIA",
+            "sb_minus_raw_pp": "_sb − raw",
+        },
+        stub="utility_code",
+        integer_cols=["raw_kwh", "sb_kwh", "eia_residential_kwh"],
+        percent_cols=["raw_kwh_pct_diff", "sb_kwh_pct_diff", "sb_minus_raw_pp"],
+        spanners=[
+            (kwh_spanner, ["raw_kwh", "sb_kwh", "eia_residential_kwh"]),
+            ("Difference from EIA", ["raw_kwh_pct_diff", "sb_kwh_pct_diff", "sb_minus_raw_pp"]),
+        ],
+        source_note=source_note,
+    )
+
+
+def statewide_energy(
+    annual: pl.DataFrame,
+    metadata: pl.DataFrame,
+    kwh_col: str,
+    *,
+    customers_where_positive: bool = False,
+) -> dict[str, float]:
+    """Statewide weighted customers and kWh. No utility-assignment filter.
+
+    ``customers_where_positive`` is for gas: EIA-176 counts residential gas
+    meters, so ResStock customers should be dwellings with gas kWh > 0, not
+    every building. Electricity uses all dwellings (every ResStock unit is on
+    the electric grid). kWh totals always include zeros; they do not change
+    the energy sum.
+    """
+    joined = annual.select(BLDG_ID, kwh_col).join(
+        metadata.select(BLDG_ID, WEIGHT_COL), on=BLDG_ID, how="inner", validate="1:1"
+    ).with_columns(pl.col(kwh_col).fill_null(0))
+    if customers_where_positive:
+        customers = float(joined.filter(pl.col(kwh_col) > 0)[WEIGHT_COL].sum())
+    else:
+        customers = float(joined[WEIGHT_COL].sum())
+    return {
+        "buildings": float(joined.height),
+        "resstock_customers": customers,
+        "resstock_total_kwh": float((joined[kwh_col] * joined[WEIGHT_COL]).sum()),
+    }
+
+
+def statewide_comparison_row(
+    label: str,
+    resstock_customers: float,
+    resstock_kwh_raw: float,
+    resstock_kwh_sb: float,
+    eia_customers: float,
+    eia_kwh: float,
+    *,
+    normalize_kwh: bool = True,
+) -> dict[str, Any]:
+    """One statewide row: customer ratio and kWh, raw and _sb.
+
+    ``normalize_kwh`` scales ResStock kWh to EIA's customer count. That is
+    appropriate for electricity. For gas, pass ``False`` and compare totals:
+    EIA-176 consumers are meters, not dwellings.
+    """
+    customers_ratio = resstock_customers / eia_customers if eia_customers else None
+    if normalize_kwh:
+        raw_kwh = (
+            resstock_kwh_raw * eia_customers / resstock_customers if resstock_customers else None
+        )
+        sb_kwh = (
+            resstock_kwh_sb * eia_customers / resstock_customers if resstock_customers else None
+        )
+        raw_key, sb_key = "raw_kwh_normalized", "sb_kwh_normalized"
+    else:
+        raw_kwh = resstock_kwh_raw
+        sb_kwh = resstock_kwh_sb
+        raw_key, sb_key = "raw_kwh", "sb_kwh"
+    raw_pct = (raw_kwh - eia_kwh) / eia_kwh * 100 if eia_kwh and raw_kwh is not None else None
+    sb_pct = (sb_kwh - eia_kwh) / eia_kwh * 100 if eia_kwh and sb_kwh is not None else None
+    return {
+        "comparison": label,
+        "resstock_customers": resstock_customers,
+        "eia_customers": eia_customers,
+        "customers_ratio": customers_ratio,
+        raw_key: raw_kwh,
+        sb_key: sb_kwh,
+        "eia_kwh": eia_kwh,
+        "raw_kwh_pct_diff": raw_pct,
+        "sb_kwh_pct_diff": sb_pct,
+    }
+
+
+def weighted_pct(df: pl.DataFrame, group_col: str, weight_col: str, pct_name: str) -> pl.DataFrame:
+    """Weighted percent share by group_col."""
+    weighted_name = pct_name.replace("_pct", "_weighted")
+    return (
+        df.group_by(group_col)
+        .agg(pl.col(weight_col).sum().alias(weighted_name))
+        .with_columns((pl.col(weighted_name) / pl.col(weighted_name).sum() * 100).alias(pct_name))
+    )
+
+
+SHARE_PIE_COLORS: dict[str, str] = {
+    "Natural gas (utility)": SB_COLORS["sky"],
+    "Fuel oil": SB_COLORS["midnight"],
+    "Propane (bottled / tank / LP)": SB_COLORS["saffron"],
+    "Electricity (HP + resistance)": SB_COLORS["carrot"],
+    "Other / none": "#CCCCCC",
+    "Heat pump": SB_COLORS["pistachio"],
+    "Furnace": SB_COLORS["sky"],
+    "Boiler": SB_COLORS["midnight"],
+    "Electric resistance": SB_COLORS["carrot"],
+    "Other": "#CCCCCC",
+    "Single-family": SB_COLORS["sky"],
+    "Multifamily": SB_COLORS["carrot"],
+    "Mobile home": SB_COLORS["saffron"],
+}
+
+
+def share_pies(
+    panels: list[tuple[str, pl.DataFrame, str, str]],
+    *,
+    title: str,
+    color_map: dict[str, str],
+    category_order: list[str] | None = None,
+) -> None:
+    """One pie per source. *panels* is (title, frame, category col, percent col)."""
+    n = len(panels)
+    fig, axes = plt.subplots(1, n, figsize=(min(4.4 * n, 12.5), 5.0))
+    if n == 1:
+        axes = [axes]
+    legend_handles = None
+    legend_labels: list[str] = []
+    for ax, (name, df, cat_col, pct_col) in zip(axes, panels, strict=True):
+        d = df.filter(pl.col(pct_col).is_not_null() & (pl.col(pct_col) > 0) & pl.col(cat_col).is_not_null())
+        if category_order:
+            present = [c for c in category_order if c in d[cat_col].to_list()]
+            if present:
+                d = d.with_columns(pl.col(cat_col).cast(pl.Enum(present))).sort(cat_col)
+        labels = d[cat_col].to_list()
+        sizes = [float(x) for x in d[pct_col].to_list()]
+        colors = [color_map.get(str(lab), "#CCCCCC") for lab in labels]
+        _wedges, _texts, autotexts = ax.pie(
+            sizes,
+            colors=colors,
+            autopct=lambda p: f"{p:.0f}%" if p >= 4 else "",
+            textprops={"fontsize": 11, "fontfamily": "IBM Plex Sans"},
+            pctdistance=0.62,
+            startangle=90,
+        )
+        for t in autotexts:
+            t.set_color("white")
+            t.set_fontweight("bold")
+        ax.set_title(name, fontsize=13, fontfamily="GT Planar", color="#333333", loc="left")
+        if legend_handles is None:
+            legend_handles = _wedges
+            legend_labels = [str(lab) for lab in labels]
+    fig.suptitle(title, fontsize=15, fontweight="bold", fontfamily="GT Planar", x=0.01, ha="left")
+    if legend_handles:
+        fig.legend(
+            legend_handles,
+            legend_labels,
+            loc="lower center",
+            ncol=min(len(legend_labels), 5),
+            frameon=False,
+            fontsize=11,
+            prop={"family": "IBM Plex Sans", "size": 11},
+        )
+        fig.subplots_adjust(top=0.82, bottom=0.18)
+    display_figure(fig)
+
+
+def recs_csv_path() -> Path:
+    """Local cache path for the RECS 2020 public microdata CSV."""
+    candidates = [
+        Path("cache") / RECS_FILENAME,
+        Path("../cache") / RECS_FILENAME,
+        Path("../../md_hp_rates/cache") / RECS_FILENAME,
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+    dest = Path("../cache") / RECS_FILENAME if Path("../cache").is_dir() else Path("cache") / RECS_FILENAME
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    return dest
+
+
+def load_recs_state() -> pl.DataFrame | None:
+    """Load RECS 2020 microdata for STATE, downloading the public CSV on first use."""
+    path = recs_csv_path()
+    if not path.exists():
+        try:
+            urllib.request.urlretrieve(RECS_URL, path)
+        except Exception:
+            return None
+    recs_all = pl.read_csv(path, infer_schema_length=20000)
+    recs_state = recs_all.filter(pl.col("state_postal") == STATE_UPPER)
+    return recs_state
+```
+
+```{python}
+#| label: load-resstock
+#| include: false
+
+metadata_raw = load_parquet(PATH_METADATA_RAW)
+require_cols("metadata raw", metadata_raw, [BLDG_ID, WEIGHT_COL])
+
+metadata_sb = load_parquet(PATH_METADATA_SB)
+require_cols("metadata _sb", metadata_sb, [BLDG_ID, WEIGHT_COL])
+
+utility_assignment = load_parquet(PATH_UTILITY_ASSIGNMENT)
+require_cols("utility_assignment", utility_assignment, [BLDG_ID, ELEC_UTILITY_COL, GAS_UTILITY_COL])
+
+annual_raw = load_parquet(PATH_ANNUAL_RAW).select(BLDG_ID, ANNUAL_ELEC_COL, ANNUAL_GAS_COL)
+require_cols("annual raw", annual_raw, [BLDG_ID, ANNUAL_ELEC_COL, ANNUAL_GAS_COL])
+
+annual_sb = load_parquet(PATH_ANNUAL_SB).select(BLDG_ID, ANNUAL_ELEC_COL, ANNUAL_GAS_COL)
+require_cols("annual _sb", annual_sb, [BLDG_ID, ANNUAL_ELEC_COL, ANNUAL_GAS_COL])
+```
+
+```{python}
+#| label: align-ids
+#| include: false
+
+meta_ids = set(metadata_raw[BLDG_ID].to_list()) & set(metadata_sb[BLDG_ID].to_list())
+ua_ids = set(utility_assignment[BLDG_ID].to_list())
+annual_ids = set(annual_raw[BLDG_ID].to_list()) & set(annual_sb[BLDG_ID].to_list())
+shared_ids = meta_ids & ua_ids & annual_ids
+shared_list = list(shared_ids)
+
+metadata_raw = metadata_raw.filter(pl.col(BLDG_ID).is_in(shared_list))
+metadata_sb = metadata_sb.filter(pl.col(BLDG_ID).is_in(shared_list))
+utility_assignment = utility_assignment.filter(pl.col(BLDG_ID).is_in(shared_list))
+annual_raw = annual_raw.filter(pl.col(BLDG_ID).is_in(shared_list))
+annual_sb = annual_sb.filter(pl.col(BLDG_ID).is_in(shared_list))
+assert (
+    metadata_raw.height
+    == metadata_sb.height
+    == utility_assignment.height
+    == annual_raw.height
+    == annual_sb.height
+)
+```
+
+```{python}
+#| label: load-eia-861
+#| include: false
+
+eia861_raw = load_parquet(PATH_EIA861)
+require_cols(
+    "eia861",
+    eia861_raw,
+    ["utility_id_eia", "utility_code", "residential_sales_mwh", "residential_customers"],
+)
+
+eia861 = (
+    eia861_raw.with_columns(
+        pl.coalesce(
+            pl.col("utility_code"),
+            pl.col("utility_id_eia").replace_strict(EIA_UTILITY_ID_TO_STD_NAME, default=None),
+        ).alias("utility_code")
+    )
+    .filter(pl.col("utility_code").is_not_null())
+    .group_by("utility_code")
+    .agg(
+        (pl.col("residential_sales_mwh").sum() * 1000).alias("eia_residential_kwh"),
+        pl.col("residential_customers").sum().alias("eia_residential_customers"),
+    )
+)
+```
+
+EIA Form 176 (*Annual Report of Natural and Supplemental Gas Supply and Disposition*)
+asks each gas company to report residential deliveries in two **revenue classes**:
+
+- **Sales** — the utility sells the gas *and* delivers it. Traditional bundled service.
+- **Transportation** (PUDL `revenue_class = "transport"`) — the household buys the
+  commodity from a competitive marketer, and the utility only moves it through the pipes.
+  This is common in retail-choice states. It is **not** vehicle / CNG fuel; vehicle gas
+  would be a different `customer_class`.
+
+ResStock models the gas a building burns, regardless of who billed for the commodity.
+Counting only sales would drop every choice customer. Sales + transportation is the gas
+that physically reached residential meters. Volumes are Mcf, converted to kWh with that
+company's delivered-gas heat content.
+
+```{python}
+#| label: load-eia-176
+#| include: false
+
+eia176: pl.DataFrame | None = None
+eia176_state: dict[str, float] | None = None
+try:
+    deliveries_all = (
+        pl.scan_parquet(EIA176_BY_CONSUMER)
+        .filter(
+            (pl.col("operating_state") == STATE_UPPER)
+            & (pl.col("report_year") == EIA_YEAR)
+            & (pl.col("customer_class") == "residential")
+            & pl.col("revenue_class").cast(pl.String).is_in(["sales", "transport"])
+        )
+        .group_by("operator_id_eia")
+        .agg(
+            pl.col("volume_mcf").sum().alias("volume_mcf"),
+            pl.col("consumers").sum().alias("eia_residential_customers"),
+        )
+        .collect()
+    )
+    heat_all = (
+        pl.scan_parquet(EIA176_DISPOSITION)
+        .filter((pl.col("operating_state") == STATE_UPPER) & (pl.col("report_year") == EIA_YEAR))
+        .select("operator_id_eia", "delivered_gas_heat_content_mmbtu_per_mcf")
+        .collect()
+    )
+    joined_all = deliveries_all.join(heat_all, on="operator_id_eia", how="left")
+    if joined_all["delivered_gas_heat_content_mmbtu_per_mcf"].null_count() > 0:
+        raise ValueError("EIA-176 is missing delivered-gas heat content for some operators.")
+    joined_all = joined_all.with_columns(
+        (
+            pl.col("volume_mcf")
+            * pl.col("delivered_gas_heat_content_mmbtu_per_mcf")
+            * KWH_PER_MMBTU
+        ).alias("eia_residential_kwh")
+    )
+    eia176_state = {
+        "eia_residential_kwh": float(joined_all["eia_residential_kwh"].sum()),
+        "eia_residential_customers": float(joined_all["eia_residential_customers"].sum()),
+    }
+    if GAS_OPERATORS:
+        operator_ids = list(GAS_OPERATORS)
+        mapping = pl.DataFrame(
+            {
+                "operator_id_eia": operator_ids,
+                "utility_code": [GAS_OPERATORS[i] for i in operator_ids],
+            }
+        )
+        eia176 = (
+            joined_all.filter(pl.col("operator_id_eia").is_in(operator_ids))
+            .join(mapping, on="operator_id_eia", how="left")
+            .select("utility_code", "eia_residential_kwh", "eia_residential_customers")
+        )
+        require_cols(
+            "eia176 (mapped operators)",
+            eia176,
+            ["utility_code", "eia_residential_kwh", "eia_residential_customers"],
+        )
+except Exception:
+    eia176 = None
+    eia176_state = None
+```
+
+ACS PUMS housing microdata is occupied housing units, weighted by `wgtp`. Heating fuel
+is `hfl`, units in structure is `bld`, year built is `yrblt`. Vacant units have null `hfl`;
+group quarters (`typehugq` ≠ `"1"`) are dropped.
+
+```{python}
+#| label: load-acs-pums
+#| include: false
+
+pums = (
+    load_parquet(PATH_PUMS)
+    .filter((pl.col("typehugq") == "1") & pl.col("hfl").is_not_null())
+    .select("puma", "hfl", "bld", "yrblt", "wgtp")
+)
+require_cols("acs pums (occupied housing units)", pums, ["hfl", "bld", "wgtp"])
+```
+
+RECS 2020 is EIA's household energy survey (~18,500 respondents nationally, a few hundred
+in a small state). It is the source for heating *equipment* (`EQUIPM`), heating *fuel*
+(`FUELHEAT`), housing type (`TYPEHUQ`), year-built range (`YEARMADERANGE`), and
+conditioned floor area (`TOTSQFT_EN`). The public CSV is downloaded to `cache/` on first
+run (~56 MB).
+
+```{python}
+#| label: load-recs
+#| include: false
+
+recs = load_recs_state()
+if recs is not None:
+    recs_cols = ["NWEIGHT", "FUELHEAT", "EQUIPM", "TYPEHUQ", "YEARMADERANGE", "TOTSQFT_EN"]
+    require_cols("RECS 2020", recs, recs_cols)
+```
+
+## Section 1: Switchbox modifications on this release
+
+The `_sb` files are the raw NREL release plus whichever Switchbox steps were turned on
+when that release was built. Each pipeline run appends a record to `manifest.yaml`
+beside the release. The table is the latest **completed** run that includes this
+state. That run is what was uploaded; earlier runs for the same state are not the
+files this notebook reads.
+
+```{python}
+#| label: sb-manifest
+
+_SB_MODIFICATIONS: list[tuple[str, str]] = [
+    ("identify_hp_customers", "Identify heat-pump customers"),
+    ("identify_heating_type", "Identify heating type"),
+    ("identify_natgas_connection", "Identify natural-gas connection"),
+    ("add_vulnerability_columns", "Add vulnerability columns"),
+    ("approximate_non_hp_load", "Approximate non-heat-pump loads"),
+    ("adjust_mf_electricity", "Scale multifamily electricity"),
+    ("adjust_gas_usage", "Scale natural gas to EIA-176"),
+    ("assign_utility", "Assign utility"),
+    ("add_monthly_loads", "Build monthly loads"),
+    ("add_annual_loads", "Build annual loads"),
+]
+_METADATA_FLAGS = {
+    "identify_hp_customers",
+    "identify_heating_type",
+    "identify_natgas_connection",
+}
+
+
+def _read_s3_text(uri: str) -> str:
+    path = uri.removeprefix("s3://")
+    bucket, key = path.split("/", 1)
+    body = boto3.client("s3").get_object(Bucket=bucket, Key=key)["Body"].read()
+    return body.decode("utf-8")
+
+
+def _flag_for_state(value: Any, state: str) -> bool:
+    """True when a manifest arg is on for this state. Dict args are per-state."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if str(key).upper() == state.upper():
+                return bool(item)
+        return False
+    return bool(value)
+
+
+def _manifest_step(run: dict[str, Any], name: str) -> dict[str, Any] | None:
+    for step in run.get("steps") or []:
+        if step.get("step") == name:
+            return step
+    return None
+
+
+def _latest_completed_run(manifest: dict[str, Any], state: str) -> dict[str, Any] | None:
+    chosen: dict[str, Any] | None = None
+    for run in manifest.get("runs") or []:
+        if run.get("status") != "completed":
+            continue
+        states = [str(s).upper() for s in (run.get("args") or {}).get("states") or []]
+        if state.upper() in states:
+            chosen = run
+    return chosen
+
+
+def _modification_ran(run: dict[str, Any], key: str, state: str) -> bool:
+    args = run.get("args") or {}
+    if not _flag_for_state(args.get(key), state):
+        return False
+    if key in _METADATA_FLAGS:
+        transforms = ((_manifest_step(run, "modify_metadata") or {}).get("details") or {}).get("transforms") or []
+        return key in transforms
+    if key in ("add_monthly_loads", "add_annual_loads"):
+        return _manifest_step(run, key) is not None or _manifest_step(run, "add_aggregate_loads") is not None
+    return _manifest_step(run, key) is not None
+
+
+def _modification_detail(run: dict[str, Any], key: str, state: str) -> str | None:
+    args = run.get("args") or {}
+    if _flag_for_state(args.get(key), state) and not _modification_ran(run, key, state):
+        return "Flag was set, but the step did not complete"
+    step = _manifest_step(run, key) or {}
+    details = step.get("details") or {}
+    upgrades = details.get("upgrades") or []
+    upgrade_text = ", ".join(str(u).zfill(2) for u in upgrades) if upgrades else None
+    if key in ("approximate_non_hp_load", "adjust_mf_electricity") and upgrade_text:
+        return f"Upgrades {upgrade_text}"
+    if key == "adjust_gas_usage" and _modification_ran(run, key, state):
+        factors = details.get("scale_factors") or {}
+        factor = next((v for k, v in factors.items() if str(k).upper() == state.upper()), None)
+        year = details.get("eia_year") or args.get("gas_usage_eia_year")
+        bits = []
+        if year is not None:
+            bits.append(f"EIA {year}")
+        if factor is not None:
+            bits.append(f"scale {float(factor):.3f}")
+        if upgrade_text:
+            bits.append(f"upgrades {upgrade_text}")
+        return "; ".join(bits) if bits else None
+    return None
+
+
+path_manifest = f"{S3_RESSTOCK}/{RESSTOCK_RELEASE_SB}/manifest.yaml"
+try:
+    sb_manifest = yaml.safe_load(_read_s3_text(path_manifest)) or {}
+except Exception as exc:
+    sb_manifest = None
+    print(f"Could not read {path_manifest}: {type(exc).__name__}: {exc}")
+
+sb_run = _latest_completed_run(sb_manifest, STATE_UPPER) if sb_manifest else None
+if sb_run is None:
+    print(f"No completed manifest run for {STATE_UPPER} in {path_manifest}.")
+else:
+    _args = sb_run.get("args") or {}
+    _upgrades = ", ".join(str(u).zfill(2) for u in (_args.get("upgrade_ids") or []))
+    _finished = str(sb_run.get("completed_at") or "")[:10]
+    _sample = _args.get("sample") or 0
+    _sample_note = f"Sampled to {_sample} buildings." if _sample else "Full population, not a sample."
+    manifest_table = pl.DataFrame(
+        [
+            {
+                "modification": label,
+                "ran": "Yes" if _modification_ran(sb_run, key, STATE_UPPER) else "No",
+                "detail": _modification_detail(sb_run, key, STATE_UPPER),
+            }
+            for key, label in _SB_MODIFICATIONS
+        ]
+    )
+    gt_table(
+        manifest_table,
+        title=f"Switchbox steps on {RESSTOCK_RELEASE_SB}, {STATE_UPPER}",
+        subtitle=f"Run {sb_run.get('run_id')} finished {_finished}. Upgrades {_upgrades}. {_sample_note}",
+        labels={"modification": "Modification", "ran": "Ran", "detail": "Detail"},
+        stub="modification",
+        source_note=(
+            f"{path_manifest}. Yes means the flag was on for {STATE_UPPER} and the step completed. "
+            "An earlier completed run for this state is not what is on S3."
+        ),
+    )
+```
+
+## Section 2: Electric customers and electricity use
+
+ResStock `weight` is the sample expansion factor — each simulated dwelling stands in for
+roughly 250 real ones. Summing weights is the ResStock customer count. EIA-861 residential
+customers are the corresponding census of residential accounts. Statewide first, then
+by electric utility.
+
+### Statewide electricity
+
+Statewide electricity is a customer-normalized comparison. EIA is the sum of mapped
+**distribution** utilities. We do not sum every EIA-861 row in the state file: in a
+retail-choice state those rows include competitive suppliers, and adding them to the
+IOU delivery totals would double-count. The ResStock side is every building in the
+state (no utility-assignment filter).
+
+```{python}
+#| label: elec-statewide
+
+elec_st_raw = statewide_energy(annual_raw, metadata_raw, ANNUAL_ELEC_COL)
+elec_st_sb = statewide_energy(annual_sb, metadata_sb, ANNUAL_ELEC_COL)
+eia_elec_customers = float(eia861["eia_residential_customers"].sum())
+eia_elec_kwh = float(eia861["eia_residential_kwh"].sum())
+elec_statewide = pl.DataFrame(
+    [
+        statewide_comparison_row(
+            f"Electricity, {STATE_UPPER} statewide",
+            elec_st_sb["resstock_customers"],
+            elec_st_raw["resstock_total_kwh"],
+            elec_st_sb["resstock_total_kwh"],
+            eia_elec_customers,
+            eia_elec_kwh,
+        )
+    ]
+).drop("comparison")
+gt_table(
+    elec_statewide,
+    title=f"Statewide residential electricity, {STATE_UPPER} {EIA_YEAR}",
+    subtitle="EIA is the sum of mapped distribution utilities. kWh is customer-normalized.",
+    labels={
+        "resstock_customers": "ResStock",
+        "eia_customers": "EIA-861",
+        "customers_ratio": "Ratio",
+        "raw_kwh_normalized": "Raw",
+        "sb_kwh_normalized": "_sb",
+        "eia_kwh": "EIA-861",
+        "raw_kwh_pct_diff": "Raw vs EIA",
+        "sb_kwh_pct_diff": "_sb vs EIA",
+    },
+    integer_cols=["resstock_customers", "eia_customers", "raw_kwh_normalized", "sb_kwh_normalized", "eia_kwh"],
+    ratio_cols=["customers_ratio"],
+    percent_cols=["raw_kwh_pct_diff", "sb_kwh_pct_diff"],
+    spanners=[
+        ("Customers", ["resstock_customers", "eia_customers", "customers_ratio"]),
+        ("Customer-normalized kWh", ["raw_kwh_normalized", "sb_kwh_normalized", "eia_kwh"]),
+        ("Difference from EIA", ["raw_kwh_pct_diff", "sb_kwh_pct_diff"]),
+    ],
+    source_note="Positive differences mean ResStock is high relative to EIA-861.",
+)
+```
+
+### Customer counts by electric utility
+
+A ratio near 1 means the sample expansion matches the utility's reported residential
+accounts. Ratios far from 1 mean the later kWh comparison must be customer-normalized,
+or we are looking at a territory-assignment problem.
+
+```{python}
+#| label: elec-customers
+
+elec_raw = annual_by_utility(annual_raw, metadata_raw, utility_assignment, ELEC_UTILITY_COL, ANNUAL_ELEC_COL)
+elec_sb = annual_by_utility(annual_sb, metadata_sb, utility_assignment, ELEC_UTILITY_COL, ANNUAL_ELEC_COL)
+
+customers_elec = (
+    elec_sb.select("utility_code", "buildings", "resstock_customers")
+    .join(eia861.select("utility_code", "eia_residential_customers"), on="utility_code", how="left")
+    .with_columns(
+        (pl.col("resstock_customers") / pl.col("eia_residential_customers")).alias("customers_ratio"),
+        (
+            (pl.col("resstock_customers") - pl.col("eia_residential_customers"))
+            / pl.col("eia_residential_customers")
+            * 100
+        ).alias("customers_pct_diff"),
+    )
+    .sort("resstock_customers", descending=True)
+)
+
+gt_table(
+    customers_elec,
+    title=f"Residential electric customers, {STATE_UPPER} {EIA_YEAR}",
+    subtitle="ResStock customers are the sum of sample weights. Weights are the same in the raw and _sb releases.",
+    labels={
+        "utility_code": "Utility",
+        "buildings": "Buildings",
+        "resstock_customers": "ResStock",
+        "eia_residential_customers": "EIA-861",
+        "customers_ratio": "Ratio",
+        "customers_pct_diff": "Difference",
+    },
+    stub="utility_code",
+    integer_cols=["buildings", "resstock_customers", "eia_residential_customers"],
+    ratio_cols=["customers_ratio"],
+    percent_cols=["customers_pct_diff"],
+    source_note="EIA-861 Form 861 residential customers. Ratio = ResStock / EIA. Difference = (ResStock − EIA) / EIA. Utilities with no residential accounts show —.",
+)
+```
+
+A mapped utility with zero EIA residential customers is usually a real Form 861 value,
+not a join failure. Form 861 includes industrial-only and commercial-only utilities.
+HIFLD still draws a service-territory polygon for those companies, so ResStock can
+assign dwellings to them even though they have no residential accounts.
+Customer-normalized kWh is undefined for those rows (division by zero), so they are
+omitted from every electricity-use table below. The four tables use the same utilities.
+
+### Electricity use by electric utility
+
+The same utility rows, four ways. Raw and `_sb` are both shown. On upgrade 00 the gap
+between them is almost entirely the multifamily non-HVAC electricity adjustment.
+
+The two statewide scalars use every ResStock dwelling and the sum of mapped
+distribution-utility EIA totals — the same totals as the statewide table. One number
+is applied to every utility. Utilities with no EIA residential customers are left out
+of the table, but their ResStock kWh is still in that statewide total.
+
+#### Per-utility customer normalization
+
+Each utility is scaled by **its own** EIA customers / ResStock customers. This is a
+per-customer intensity comparison. A utility that was assigned too many dwellings is
+scaled down before its kWh is judged.
+
+```{python}
+#| label: elec-kwh
+
+elec_kwh = join_release_kwh(
+    customer_normalized_comparison(elec_raw, eia861, "eia_residential_kwh", "eia_residential_customers"),
+    customer_normalized_comparison(elec_sb, eia861, "eia_residential_kwh", "eia_residential_customers"),
+    "resstock_kwh_normalized",
+)
+show_utility_kwh(
+    elec_kwh,
+    title=f"Electricity by utility, own customer scaling, {STATE_UPPER} {EIA_YEAR}",
+    subtitle="Each utility: ResStock kWh × (that utility's EIA customers / that utility's ResStock customers).",
+    kwh_spanner="Per-utility customer-normalized kWh",
+    eia_label="EIA-861",
+    source_note="Difference = (scaled ResStock − EIA) / EIA. Positive means ResStock is high. Utilities with no EIA residential customers are omitted.",
+)
+```
+
+```{python}
+#| label: fig-elec-kwh
+#| fig-cap: "Percent difference in per-utility customer-normalized residential electricity, raw ResStock and _sb, versus EIA-861."
+
+elec_long = elec_kwh.unpivot(
+    index="utility_code",
+    on=["raw_kwh_pct_diff", "sb_kwh_pct_diff"],
+    variable_name="release",
+    value_name="kwh_pct_diff",
+).with_columns(
+    pl.col("release").replace({"raw_kwh_pct_diff": "raw NREL", "sb_kwh_pct_diff": "_sb"})
+)
+fig_elec = (
+    ggplot(elec_long, aes("utility_code", "kwh_pct_diff", fill="release"))
+    + geom_col(position=position_dodge(width=0.8), width=0.7)
+    + scale_fill_manual(values=[SB_COLORS["midnight"], SB_COLORS["sky"]])
+    + labs(
+        title="Residential kWh vs EIA-861, per-utility customer scaling",
+        subtitle=f"{STATE_UPPER}, upgrade {UPGRADE}, EIA {EIA_YEAR}",
+        x="",
+        y="% difference (ResStock − EIA) / EIA",
+        fill="",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4.5), axis_text_x=element_text(angle=40, ha="right"))
+)
+display_figure(fig_elec.draw())
+```
+
+#### Statewide customer-count scaling
+
+Every utility is multiplied by the **same** ratio: statewide EIA customers / statewide
+ResStock customers. This removes the overall headcount gap and leaves the per-utility
+mix. It does not force any one utility's customer count to match EIA.
+
+```{python}
+#| label: elec-kwh-state-customers
+
+elec_customer_scale = eia_elec_customers / elec_st_sb["resstock_customers"]
+elec_kwh_state_customers = join_release_kwh(
+    scaled_total_comparison(
+        elec_raw, eia861, "eia_residential_kwh", elec_customer_scale, positive_customers=True
+    ),
+    scaled_total_comparison(
+        elec_sb, eia861, "eia_residential_kwh", elec_customer_scale, positive_customers=True
+    ),
+    "resstock_kwh_scaled",
+)
+show_utility_kwh(
+    elec_kwh_state_customers,
+    title=f"Electricity by utility, statewide customer scaling, {STATE_UPPER} {EIA_YEAR}",
+    subtitle=(
+        f"Every utility: ResStock kWh × {elec_customer_scale:.3f} "
+        "(statewide EIA customers / statewide ResStock customers)."
+    ),
+    kwh_spanner="Statewide customer-scaled kWh",
+    eia_label="EIA-861",
+    source_note="One customer-count ratio for the whole state, applied to raw and _sb. Positive differences mean scaled ResStock is high relative to EIA-861.",
+)
+```
+
+#### Statewide kWh scaling
+
+Raw is multiplied by statewide EIA kWh / statewide raw kWh. `_sb` is multiplied by
+statewide EIA kWh / statewide `_sb` kWh. After this, the **state** total matches EIA.
+The table shows which utilities sit above or below EIA once that single gap is removed.
+
+```{python}
+#| label: elec-kwh-state-kwh
+
+elec_kwh_scale_raw = eia_elec_kwh / elec_st_raw["resstock_total_kwh"]
+elec_kwh_scale_sb = eia_elec_kwh / elec_st_sb["resstock_total_kwh"]
+elec_kwh_state_kwh = join_release_kwh(
+    scaled_total_comparison(
+        elec_raw, eia861, "eia_residential_kwh", elec_kwh_scale_raw, positive_customers=True
+    ),
+    scaled_total_comparison(
+        elec_sb, eia861, "eia_residential_kwh", elec_kwh_scale_sb, positive_customers=True
+    ),
+    "resstock_kwh_scaled",
+)
+show_utility_kwh(
+    elec_kwh_state_kwh,
+    title=f"Electricity by utility, statewide kWh scaling, {STATE_UPPER} {EIA_YEAR}",
+    subtitle=(
+        f"Raw × {elec_kwh_scale_raw:.3f}, _sb × {elec_kwh_scale_sb:.3f} "
+        "(statewide EIA kWh / that release's statewide ResStock kWh)."
+    ),
+    kwh_spanner="Statewide kWh-scaled kWh",
+    eia_label="EIA-861",
+    source_note="Each release is scaled so its statewide total matches EIA-861. Row-level gaps are what is left after that one adjustment. Positive means scaled ResStock is high.",
+)
+```
+
+#### No normalization
+
+Weighted ResStock kWh against EIA sales, with no scaling. This mixes customer-count
+error and per-customer use into one gap.
+
+```{python}
+#| label: elec-kwh-raw
+
+elec_kwh_unscaled = join_release_kwh(
+    total_kwh_comparison(elec_raw, eia861, "eia_residential_kwh", positive_customers=True),
+    total_kwh_comparison(elec_sb, eia861, "eia_residential_kwh", positive_customers=True),
+    "resstock_total_kwh",
+)
+show_utility_kwh(
+    elec_kwh_unscaled,
+    title=f"Electricity by utility, no scaling, {STATE_UPPER} {EIA_YEAR}",
+    subtitle="Weighted ResStock kWh versus EIA-861 sales. No customer or kWh adjustment.",
+    kwh_spanner="Unscaled kWh",
+    eia_label="EIA-861",
+    source_note="Difference = (ResStock − EIA) / EIA. Positive means ResStock is high. Utilities with no EIA residential customers are omitted.",
+)
+```
+
+## Section 3: Gas customers and gas use
+
+EIA-176 is the gas analog of EIA-861: residential deliveries and customer counts by
+gas company. Annual gas is `out.natural_gas.total.energy_consumption.kwh` (space heat
+plus water heat, cooking, and miscellaneous). Statewide first, then by gas utility.
+
+**Do not customer-normalize gas kWh.** EIA-176 `consumers` are meters, not dwelling
+units. Form 176 counts a master-metered apartment building as one residential customer;
+ResStock has one row per dwelling. Scaling ResStock kWh by EIA meters / ResStock
+dwellings mixes that metering difference into the energy comparison and can make a
+matching statewide total look tens of percent low. Per-utility gas is shown two ways:
+scaled by one statewide kWh factor so the state total matches EIA-176, and unscaled.
+
+NREL's EULP validation compared ResStock statewide totals to EIA-176 the same way
+(Wilson et al. 2022). Switchbox's `_adjust_gas_usage` step scales `_sb` gas so the
+statewide weighted upgrade-00 total matches EIA-176. If that step ran, `_sb` statewide
+kWh should sit on top of EIA. Raw NREL is usually a few percent below (calibrated to
+monthly EIA-176, not forced onto the annual total). Per-utility totals can still
+differ because of territory assignment.
+
+Customer counts are still shown. A ratio well above 1 is expected where master-metered
+multifamily is common; it is not a reason to rescale kWh.
+
+### Statewide gas
+
+Statewide gas uses **all EIA-176 operators in the state** (not only `GAS_OPERATORS`)
+and all ResStock buildings with positive gas use. That is the same total the `_sb`
+pipeline's optional `_adjust_gas_usage` scaler is aiming at. kWh is **not**
+customer-normalized.
+
+```{python}
+#| label: gas-statewide
+
+gas_kwh: pl.DataFrame | None = None
+gas_raw: pl.DataFrame | None = None
+gas_sb: pl.DataFrame | None = None
+if eia176_state is None:
+    print("Skipping statewide gas comparison (no EIA-176 table).")
+    gas_statewide: pl.DataFrame | None = None
+else:
+    gas_st_raw = statewide_energy(
+        annual_raw, metadata_raw, ANNUAL_GAS_COL, customers_where_positive=True
+    )
+    gas_st_sb = statewide_energy(
+        annual_sb, metadata_sb, ANNUAL_GAS_COL, customers_where_positive=True
+    )
+    gas_statewide = pl.DataFrame(
+        [
+            statewide_comparison_row(
+                f"Natural gas, {STATE_UPPER} statewide",
+                gas_st_sb["resstock_customers"],
+                gas_st_raw["resstock_total_kwh"],
+                gas_st_sb["resstock_total_kwh"],
+                eia176_state["eia_residential_customers"],
+                eia176_state["eia_residential_kwh"],
+                normalize_kwh=False,
+            )
+        ]
+    ).drop("comparison")
+    gt_table(
+        gas_statewide,
+        title=f"Statewide residential gas, {STATE_UPPER} {EIA_YEAR}",
+        subtitle="Unnormalized kWh. EIA-176 is all operators, residential sales plus transportation.",
+        labels={
+            "resstock_customers": "ResStock dwellings",
+            "eia_customers": "EIA-176 meters",
+            "customers_ratio": "Ratio",
+            "raw_kwh": "Raw",
+            "sb_kwh": "_sb",
+            "eia_kwh": "EIA-176",
+            "raw_kwh_pct_diff": "Raw vs EIA",
+            "sb_kwh_pct_diff": "_sb vs EIA",
+        },
+        integer_cols=["resstock_customers", "eia_customers", "raw_kwh", "sb_kwh", "eia_kwh"],
+        ratio_cols=["customers_ratio"],
+        percent_cols=["raw_kwh_pct_diff", "sb_kwh_pct_diff"],
+        spanners=[
+            ("Customers (dwellings vs meters)", ["resstock_customers", "eia_customers", "customers_ratio"]),
+            ("Total kWh (not customer-normalized)", ["raw_kwh", "sb_kwh", "eia_kwh"]),
+            ("Difference from EIA", ["raw_kwh_pct_diff", "sb_kwh_pct_diff"]),
+        ],
+        source_note="ResStock customers are dwellings with gas kWh > 0. EIA-176 consumers are meters, including master-metered multifamily as one customer. kWh is not scaled by that ratio. Positive differences mean ResStock is high relative to EIA-176.",
+    )
+```
+
+### Customer counts by gas utility
+
+ResStock counts dwellings with a gas-utility assignment. EIA-176 counts residential
+meters. The ratio is a metering / assignment check, not an intensity check.
+
+```{python}
+#| label: gas-customers
+
+if eia176 is None:
+    print("Skipping gas comparison (no EIA-176 table).")
+else:
+    gas_raw = annual_by_utility(annual_raw, metadata_raw, utility_assignment, GAS_UTILITY_COL, ANNUAL_GAS_COL)
+    gas_sb = annual_by_utility(annual_sb, metadata_sb, utility_assignment, GAS_UTILITY_COL, ANNUAL_GAS_COL)
+    gas_customers = (
+        gas_sb.select("utility_code", "buildings", "resstock_customers")
+        .join(eia176.select("utility_code", "eia_residential_customers"), on="utility_code", how="left")
+        .with_columns(
+            (pl.col("resstock_customers") / pl.col("eia_residential_customers")).alias("customers_ratio"),
+            (
+                (pl.col("resstock_customers") - pl.col("eia_residential_customers"))
+                / pl.col("eia_residential_customers")
+                * 100
+            ).alias("customers_pct_diff"),
+        )
+        .sort("resstock_customers", descending=True)
+    )
+    gt_table(
+        gas_customers,
+        title=f"Residential gas customers, {STATE_UPPER} {EIA_YEAR}",
+        subtitle="ResStock is dwellings with a gas-utility assignment. EIA-176 is meters, including master-metered multifamily.",
+        labels={
+            "utility_code": "Utility",
+            "buildings": "Buildings",
+            "resstock_customers": "ResStock",
+            "eia_residential_customers": "EIA-176",
+            "customers_ratio": "Ratio",
+            "customers_pct_diff": "Difference",
+        },
+        stub="utility_code",
+        integer_cols=["buildings", "resstock_customers", "eia_residential_customers"],
+        ratio_cols=["customers_ratio"],
+        percent_cols=["customers_pct_diff"],
+        source_note="EIA-176 residential meters, not dwelling units. Ratio = ResStock dwellings / EIA meters. A ratio well above 1 is expected where master-metered multifamily is common.",
+    )
+```
+
+### Gas use by gas utility
+
+Two comparisons. Neither divides by the meter count. If `_adjust_gas_usage` ran, the
+`_sb` statewide factor is 1 and the two `_sb` columns match.
+
+#### Statewide kWh scaling
+
+Raw is multiplied by statewide EIA kWh / statewide raw kWh. `_sb` is multiplied by
+statewide EIA kWh / statewide `_sb` kWh. The state total then matches EIA-176. What
+is left in each row is territory assignment.
+
+```{python}
+#| label: gas-kwh-state
+
+gas_kwh_state: pl.DataFrame | None = None
+if eia176 is None or gas_raw is None or gas_sb is None or eia176_state is None:
+    print("Skipping statewide-scaled gas comparison (no EIA-176 table).")
+else:
+    gas_kwh_scale_raw = eia176_state["eia_residential_kwh"] / gas_st_raw["resstock_total_kwh"]
+    gas_kwh_scale_sb = eia176_state["eia_residential_kwh"] / gas_st_sb["resstock_total_kwh"]
+    gas_kwh_state = join_release_kwh(
+        scaled_total_comparison(gas_raw, eia176, "eia_residential_kwh", gas_kwh_scale_raw),
+        scaled_total_comparison(gas_sb, eia176, "eia_residential_kwh", gas_kwh_scale_sb),
+        "resstock_kwh_scaled",
+    )
+    show_utility_kwh(
+        gas_kwh_state,
+        title=f"Gas by utility, statewide kWh scaling, {STATE_UPPER} {EIA_YEAR}",
+        subtitle=(
+            f"Raw × {gas_kwh_scale_raw:.3f}, _sb × {gas_kwh_scale_sb:.3f} "
+            "(statewide EIA kWh / that release's statewide ResStock kWh)."
+        ),
+        kwh_spanner="Statewide kWh-scaled kWh",
+        eia_label="EIA-176",
+        source_note="Each release is scaled so its statewide total matches EIA-176 sales plus transportation. Not scaled by meters. Positive differences mean scaled ResStock is high.",
+    )
+```
+
+#### No normalization
+
+Weighted ResStock kWh against EIA-176 deliveries, with no scaling.
+
+```{python}
+#| label: gas-kwh
+
+gas_kwh: pl.DataFrame | None = None
+if eia176 is None or gas_raw is None or gas_sb is None:
+    print("Skipping gas-use comparison (no EIA-176 table).")
+else:
+    gas_kwh = join_release_kwh(
+        total_kwh_comparison(gas_raw, eia176, "eia_residential_kwh"),
+        total_kwh_comparison(gas_sb, eia176, "eia_residential_kwh"),
+        "resstock_total_kwh",
+    )
+    show_utility_kwh(
+        gas_kwh,
+        title=f"Gas by utility, no scaling, {STATE_UPPER} {EIA_YEAR}",
+        subtitle="Weighted ResStock kWh versus EIA-176. No customer or kWh adjustment.",
+        kwh_spanner="Unscaled kWh",
+        eia_label="EIA-176",
+        source_note="Mcf converted to kWh with each company's reported heat content. Not scaled by the dwelling-to-meter ratio. Positive differences mean ResStock is high relative to EIA-176.",
+    )
+```
+
+```{python}
+#| label: fig-gas-kwh
+#| fig-cap: "Percent difference in residential gas use (unnormalized totals), raw ResStock and _sb, versus EIA-176."
+
+if gas_kwh is None or gas_kwh.height == 0:
+    print("No gas comparison to plot.")
+else:
+    gas_long = gas_kwh.unpivot(
+        index="utility_code",
+        on=["raw_kwh_pct_diff", "sb_kwh_pct_diff"],
+        variable_name="release",
+        value_name="kwh_pct_diff",
+    ).with_columns(
+        pl.col("release").replace({"raw_kwh_pct_diff": "raw NREL", "sb_kwh_pct_diff": "_sb"})
+    )
+    fig_gas = (
+        ggplot(gas_long, aes("utility_code", "kwh_pct_diff", fill="release"))
+        + geom_col(position=position_dodge(width=0.8), width=0.7)
+        + scale_fill_manual(values=[SB_COLORS["midnight"], SB_COLORS["carrot"]])
+        + labs(
+            title="Residential gas vs EIA-176, unnormalized totals",
+            subtitle=f"{STATE_UPPER}, upgrade {UPGRADE}, EIA {EIA_YEAR}",
+            x="",
+            y="% difference (ResStock − EIA) / EIA",
+            fill="",
+        )
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 4.5), axis_text_x=element_text(angle=40, ha="right"))
+    )
+    display_figure(fig_gas.draw())
+```
+
+## Section 4: Heat-pump approximation
+
+ResStock HVAC upgrades are not applied to every dwelling. Measure package 2 (cold-climate
+ASHP, upgrade 02) and the related upgrade 01 skip high-rise shared-HVAC buildings and
+some fuel types. The `_sb` pipeline then **approximates** a heat-pump load for those
+buildings: it finds 15 same-weather-station neighbors whose heating-load shape is closest
+by RMSE, copies their HVAC columns, and sets `approximated_hp_load = True`.
+
+The targeting logic in `utils/pre/approximate_non_hp_load.py` is two groups, concatenated:
+
+1. **Non-HP multifamily** — `postprocess_group.has_hp` is false and
+   `in.geometry_building_type_height` contains `"Multifamily"`. That is **all** multifamily,
+   not only 8+ story high-rises. High-rise is the usual reason NREL skipped the upgrade,
+   but low-rise MF that also failed to convert is in this group too.
+2. **Other fuel types** — not HP, and none of `heats_with_electricity / natgas / oil / propane`.
+   In practice this is wood, coal, and similar `Other Fuel` homes, including single-family.
+
+"Didn't have a proper ducted heating system" is **not** its own targeting rule. Shared HVAC
+and non-ducted equipment are why NREL skipped the upgrade; we recover them here as
+characteristics of the approximated set, using the **raw** upgrade metadata (the `_sb` file
+overwrites HVAC labels after the swap).
+
+```{python}
+#| label: hp-approx
+
+
+def load_approx_upgrade(upgrade_id: str) -> pl.DataFrame:
+    """Join _sb approximated_hp_load to raw HVAC/geometry for one upgrade."""
+    path_sb = (
+        f"{S3_RESSTOCK}/{RESSTOCK_RELEASE_SB}/metadata/state={STATE_UPPER}/"
+        f"upgrade={upgrade_id}/metadata-sb.parquet"
+    )
+    path_raw = (
+        f"{S3_RESSTOCK}/{RESSTOCK_RELEASE_RAW}/metadata/state={STATE_UPPER}/"
+        f"upgrade={upgrade_id}/metadata.parquet"
+    )
+    sb = load_parquet(path_sb)
+    if "approximated_hp_load" not in sb.columns:
+        raise ValueError(f"{path_sb} has no approximated_hp_load column")
+    raw = load_parquet(path_raw)
+    raw_cols = [
+        c
+        for c in [
+            BLDG_ID,
+            "in.geometry_building_type_height",
+            "in.geometry_building_type_recs",
+            "in.geometry_story_bin",
+            "in.hvac_heating_type",
+            "in.hvac_heating_type_and_fuel",
+            "in.heating_fuel",
+        ]
+        if c in raw.columns
+    ]
+    sb_cols = [BLDG_ID, WEIGHT_COL, "approximated_hp_load", "postprocess_group.has_hp"]
+    for _extra in ("in.sqft", "in.geometry_floor_area"):
+        if _extra in sb.columns:
+            sb_cols.append(_extra)
+    return (
+        sb.select(sb_cols)
+        .join(raw.select(raw_cols), on=BLDG_ID, how="inner")
+        .with_columns(pl.lit(upgrade_id).alias("upgrade"))
+    )
+
+
+approx_frames: list[pl.DataFrame] = []
+for _uid in HP_APPROX_UPGRADES:
+    try:
+        approx_frames.append(load_approx_upgrade(_uid))
+    except Exception as exc:
+        print(f"Skipping upgrade {_uid}: {type(exc).__name__}: {exc}")
+
+if not approx_frames:
+    raise RuntimeError("No HP-approximation metadata loaded. Check HP_APPROX_UPGRADES and S3 paths.")
+
+approx_all = pl.concat(approx_frames, how="diagonal")
+```
+
+### Approximated buildings by upgrade
+
+Next we split each upgrade's approximated buildings by the two targeting groups. A
+building can meet both rules (a multifamily building heated with other fuel), so the
+table separates the overlap from each group alone. The last three rows are mutually
+exclusive and sum to the first.
+
+```{python}
+#| label: hp-approx-classify
+
+approx_tagged = approx_all.with_columns(
+    pl.col("in.geometry_building_type_height").str.contains("Multifamily").fill_null(False).alias("is_multifamily"),
+    pl.col("in.heating_fuel").is_in(["Other Fuel", "None"]).fill_null(False).alias("is_other_fuel"),
+)
+
+APPROX_ROWS: list[tuple[str, pl.Expr]] = [
+    ("Total approximated, any reason", pl.lit(True)),
+    ("Non-HP multifamily and other fuel type", pl.col("is_multifamily") & pl.col("is_other_fuel")),
+    ("Non-HP multifamily only (not other fuel)", pl.col("is_multifamily") & ~pl.col("is_other_fuel")),
+    ("Other fuel type only (not multifamily)", ~pl.col("is_multifamily") & pl.col("is_other_fuel")),
+]
+
+
+def approx_summary_for(upgrade_id: str) -> pl.DataFrame:
+    df = approx_tagged.filter(pl.col("upgrade") == upgrade_id)
+    flagged = df.filter(pl.col("approximated_hp_load"))
+    n_upgrade, n_approx = df.height, flagged.height
+    unclassified = flagged.filter(~pl.col("is_multifamily") & ~pl.col("is_other_fuel")).height
+    if unclassified:
+        print(f"Upgrade {upgrade_id}: {unclassified} approximated buildings match neither targeting rule.")
+    rows = []
+    for group, expr in APPROX_ROWS:
+        sub = flagged.filter(expr)
+        rows.append(
+            {
+                "group": group,
+                "buildings": sub.height,
+                "pct_of_upgrade": 100.0 * sub.height / n_upgrade if n_upgrade else 0.0,
+                "pct_of_approximated": 100.0 * sub.height / n_approx if n_approx else 0.0,
+                "weighted_dwellings": float(sub[WEIGHT_COL].sum()) if sub.height else 0.0,
+            }
+        )
+    return pl.DataFrame(rows)
+
+
+for _uid in sorted(approx_tagged["upgrade"].unique().to_list()):
+    _n_upgrade = approx_tagged.filter(pl.col("upgrade") == _uid).height
+    gt_table(
+        approx_summary_for(_uid),
+        title=f"Heat-pump approximation, upgrade {_uid}",
+        subtitle=f"{STATE_UPPER}, {RESSTOCK_RELEASE_SB}. {_n_upgrade:,} buildings in the upgrade.",
+        labels={
+            "group": "Group",
+            "buildings": "Buildings",
+            "pct_of_upgrade": "Share of upgrade",
+            "pct_of_approximated": "Share of approximated",
+            "weighted_dwellings": "Dwellings",
+        },
+        stub="group",
+        integer_cols=["buildings", "weighted_dwellings"],
+        percent_cols=["pct_of_upgrade", "pct_of_approximated"],
+        source_note="The last three rows are mutually exclusive and sum to the first. Share of upgrade is the building count divided by every building in the upgrade; share of approximated is divided by only the approximated buildings.",
+    )
+```
+
+### Heating electricity versus floor area
+
+Heating electricity is the annual `_sb` total of four end uses: the heat pump
+(`out.electricity.heating`), its fans and pumps (`heating_fans_pumps`), backup heat
+(`heating_hp_bkup`), and the backup fan (`heating_hp_bkup_fa`). Each building counts
+once; the boxes are not expanded by `weight`.
+
+`in.sqft` only takes a few dozen prototype sizes, and several of those sizes sit
+within a few square feet of each other, so a scatter collapses onto vertical lines.
+The comparison that still works is the **distribution** of heating electricity inside
+each size group. These plots use ResStock's own `in.geometry_floor_area` bins. The
+line in each box is the median, the box is the middle half of buildings, and the
+whiskers extend to 1.5 times that spread. Outliers are omitted so they do not
+restack on the whiskers.
+
+On these upgrades the `_sb` metadata marks every dwelling as a heat pump. Buildings
+with `approximated_hp_load` are the ones Switchbox filled in. The rest already
+received a heat pump from the ResStock upgrade.
+
+```{python}
+#| label: hp-heat-sqft
+#| include: false
+
+HEATING_ELEC_KWH_COLS = [
+    "out.electricity.heating.energy_consumption.kwh",
+    "out.electricity.heating_fans_pumps.energy_consumption.kwh",
+    "out.electricity.heating_hp_bkup.energy_consumption.kwh",
+    "out.electricity.heating_hp_bkup_fa.energy_consumption.kwh",
+]
+HP_SQFT_GROUP_ORDER = ["Already had a heat pump", "Approximated"]
+HP_SQFT_COLORS = {
+    "Already had a heat pump": SB_COLORS["sky"],
+    "Approximated": SB_COLORS["carrot"],
+}
+FLOOR_AREA_ORDER = [
+    "0-499",
+    "500-749",
+    "750-999",
+    "1000-1499",
+    "1500-1999",
+    "2000-2499",
+    "2500-2999",
+    "3000-3999",
+    "4000+",
+]
+
+
+def heating_elec_vs_sqft(upgrade_id: str) -> pl.DataFrame:
+    """Annual heating electricity (heat pump + fans + backup) and floor area."""
+    path = (
+        f"{S3_RESSTOCK}/{RESSTOCK_RELEASE_SB}/load_curve_annual/"
+        f"state={STATE_UPPER}/upgrade={upgrade_id}/"
+        f"{STATE_UPPER}_upgrade{upgrade_id}_metadata_and_annual_results.parquet"
+    )
+    annual = pl.scan_parquet(path).select(BLDG_ID, *HEATING_ELEC_KWH_COLS).collect()
+    meta = approx_all.filter(pl.col("upgrade") == upgrade_id).select(
+        BLDG_ID, "in.geometry_floor_area", "approximated_hp_load"
+    )
+    if "in.geometry_floor_area" not in meta.columns:
+        raise ValueError(f"Upgrade {upgrade_id} metadata has no in.geometry_floor_area column.")
+    return (
+        annual.join(meta, on=BLDG_ID, how="inner")
+        .with_columns(
+            pl.sum_horizontal([pl.col(c).fill_null(0) for c in HEATING_ELEC_KWH_COLS]).alias("heating_kwh"),
+            pl.when(pl.col("approximated_hp_load"))
+            .then(pl.lit("Approximated"))
+            .otherwise(pl.lit("Already had a heat pump"))
+            .alias("group"),
+            pl.col("in.geometry_floor_area").cast(pl.Enum(FLOOR_AREA_ORDER)).alias("floor_area"),
+        )
+        .with_columns(pl.col("group").cast(pl.Enum(HP_SQFT_GROUP_ORDER)))
+    )
+
+
+def plot_heating_elec_vs_sqft(upgrade_id: str):
+    """Box plots of heating kWh by floor-area bin, dodged by heat-pump source."""
+    df = heating_elec_vs_sqft(upgrade_id)
+    return (
+        ggplot(df, aes("floor_area", "heating_kwh", fill="group"))
+        + geom_boxplot(position=position_dodge(width=0.8), width=0.7, outlier_alpha=0)
+        + scale_fill_manual(values=HP_SQFT_COLORS, limits=HP_SQFT_GROUP_ORDER)
+        + labs(
+            title=f"Heating electricity by floor area, upgrade {upgrade_id}",
+            subtitle=f"{STATE_UPPER}, {RESSTOCK_RELEASE_SB}. Heat pump, fans, and backup.",
+            x="Floor area (sqft)",
+            y="Heating electricity (kWh)",
+            fill="",
+        )
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 5), axis_text_x=element_text(angle=30, ha="right"))
+    )
+```
+
+```{python}
+#| label: fig-hp-heat-sqft-01
+#| fig-cap: "Upgrade 01. Annual heating electricity (heat pump, fans and pumps, backup heat, and backup fan) by floor-area bin. Sky boxes already received a heat pump from the ResStock upgrade. Carrot boxes are the Switchbox approximation. The line is the median and the box is the middle half of buildings."
+
+display_figure(plot_heating_elec_vs_sqft("01").draw())
+```
+
+```{python}
+#| label: fig-hp-heat-sqft-02
+#| fig-cap: "Upgrade 02. Annual heating electricity (heat pump, fans and pumps, backup heat, and backup fan) by floor-area bin. Sky boxes already received a heat pump from the ResStock upgrade. Carrot boxes are the Switchbox approximation. The line is the median and the box is the middle half of buildings."
+
+display_figure(plot_heating_elec_vs_sqft("02").draw())
+```
+
+## Section 5: Heating-system mix
+
+### Heating mix by electric utility
+
+On the `_sb` baseline (upgrade 00) we have `in.heating_fuel`, `in.hvac_heating_type`,
+and the `heats_with_*` / `postprocess_group.has_hp` flags. That is enough to report,
+for each electric utility, the weighted share of dwellings that heat with natural gas,
+oil, propane, electric resistance, or a heat pump.
+
+```{python}
+#| label: heating-mix-resstock
+
+heating = (
+    metadata_sb.select(
+        BLDG_ID,
+        WEIGHT_COL,
+        "in.heating_fuel",
+        "in.hvac_heating_type",
+        "postprocess_group.has_hp",
+        "heats_with_electricity",
+        "heats_with_natgas",
+        "heats_with_oil",
+        "heats_with_propane",
+    )
+    .join(utility_assignment.select(BLDG_ID, ELEC_UTILITY_COL), on=BLDG_ID, how="inner")
+    .filter(pl.col(ELEC_UTILITY_COL).is_not_null())
+    .with_columns(
+        pl.when(pl.col("postprocess_group.has_hp"))
+        .then(pl.lit("Heat pump"))
+        .when(pl.col("heats_with_natgas"))
+        .then(pl.lit("Natural gas"))
+        .when(pl.col("heats_with_oil"))
+        .then(pl.lit("Fuel oil"))
+        .when(pl.col("heats_with_propane"))
+        .then(pl.lit("Propane"))
+        .when(pl.col("heats_with_electricity"))
+        .then(pl.lit("Electric resistance"))
+        .otherwise(pl.col("in.heating_fuel").fill_null("Unknown"))
+        .alias("heating_system")
+    )
+)
+
+heating_by_utility = (
+    heating.group_by(ELEC_UTILITY_COL, "heating_system")
+    .agg(pl.col(WEIGHT_COL).sum().alias("weighted"))
+    .with_columns(
+        (pl.col("weighted") / pl.col("weighted").sum().over(ELEC_UTILITY_COL) * 100).alias("pct")
+    )
+    .rename({ELEC_UTILITY_COL: "utility_code"})
+    .sort("utility_code", "heating_system")
+)
+
+heating_wide = (
+    heating_by_utility.pivot(on="heating_system", index="utility_code", values="pct", aggregate_function="first")
+    .fill_null(0)
+    .sort("utility_code")
+)
+_heat_cols = [c for c in heating_wide.columns if c != "utility_code"]
+gt_table(
+    heating_wide,
+    title=f"Heating systems by electric utility, {STATE_UPPER}",
+    subtitle=f"Weighted share of dwellings. Baseline upgrade {UPGRADE}, {RESSTOCK_RELEASE_SB}.",
+    labels={"utility_code": "Utility"},
+    stub="utility_code",
+    percent_cols=_heat_cols,
+    source_note="Heat pump is postprocess_group.has_hp. Remaining electric heat is labeled resistance.",
+)
+```
+
+```{python}
+#| label: fig-heating-mix
+#| fig-cap: "Weighted share of ResStock dwellings by heating system and electric utility, baseline _sb release."
+
+_heat_order = ["Natural gas", "Fuel oil", "Propane", "Heat pump", "Electric resistance"]
+_heat_colors = {
+    "Natural gas": SB_COLORS["sky"],
+    "Fuel oil": SB_COLORS["midnight"],
+    "Propane": SB_COLORS["saffron"],
+    "Heat pump": SB_COLORS["pistachio"],
+    "Electric resistance": SB_COLORS["carrot"],
+}
+_plot_heat = heating_by_utility.filter(pl.col("heating_system").is_in(_heat_order))
+fig_heat = (
+    ggplot(_plot_heat, aes("utility_code", "pct", fill="heating_system"))
+    + geom_col()
+    + scale_fill_manual(values=_heat_colors)
+    + labs(
+        title="Heating-system mix by electric utility (ResStock)",
+        subtitle=f"{STATE_UPPER}, {RESSTOCK_RELEASE_SB} upgrade {UPGRADE}",
+        x="",
+        y="Weighted % of dwellings",
+        fill="",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 5.0), axis_text_x=element_text(angle=40, ha="right"))
+)
+display_figure(fig_heat.draw())
+```
+
+### Can EIA, RECS, or ACS check this?
+
+**EIA-861 cannot.** Form 861 is residential *electricity* sales, revenue, and customer
+counts by utility. It has no heating-fuel or heating-equipment field. EIA-176 is the
+same for gas deliveries: it counts gas customers, not how electric customers heat.
+
+**ACS can check fuel, not equipment. RECS can check both, statewide only.** RECS has
+no utility identifier, and ResStock is itself calibrated to RECS at the state /
+census-division level, so a ResStock-vs-RECS check is partly a check of NREL's
+sampling targets.
+
+### Heating fuel: ResStock vs ACS and RECS
+
+ACS Table B25040 and PUMS `hfl` report occupied-unit heating *fuel*. RECS `FUELHEAT`
+is the main heating fuel. In both, electricity lumps heat pumps and resistance
+together, so ResStock's heat-pump and electric-resistance homes are combined here.
+
+```{python}
+#| label: heating-fuel-statewide
+
+HFL_MAP = {
+    "1": "Natural gas (utility)",
+    "2": "Propane (bottled / tank / LP)",
+    "3": "Electricity (HP + resistance)",
+    "4": "Fuel oil",
+    "5": "Coal",
+    "6": "Wood",
+    "7": "Solar",
+    "8": "Other fuel",
+    "9": "No fuel",
+}
+RECS_FUELHEAT_MAP = {
+    1: "Natural gas (utility)",
+    2: "Propane (bottled / tank / LP)",
+    3: "Fuel oil",
+    5: "Electricity (HP + resistance)",
+    7: "Other / none",
+    99: "Other / none",
+    -3: "Other / none",
+    -4: "Other / none",
+}
+
+resstock_fuel = heating.with_columns(
+    pl.when(pl.col("heating_system").is_in(["Heat pump", "Electric resistance"]))
+    .then(pl.lit("Electricity (HP + resistance)"))
+    .when(pl.col("heating_system") == "Natural gas")
+    .then(pl.lit("Natural gas (utility)"))
+    .when(pl.col("heating_system") == "Propane")
+    .then(pl.lit("Propane (bottled / tank / LP)"))
+    .when(pl.col("heating_system") == "Fuel oil")
+    .then(pl.lit("Fuel oil"))
+    .otherwise(pl.lit("Other / none"))
+    .alias("fuel")
+)
+rs_fuel_share = weighted_pct(resstock_fuel, "fuel", WEIGHT_COL, "resstock_pct")
+
+pums_fuel = pums.with_columns(
+    pl.col("hfl").replace_strict(HFL_MAP, default="Other / none").alias("fuel")
+).with_columns(
+    pl.when(pl.col("fuel").is_in(["Coal", "Wood", "Solar", "Other fuel", "No fuel"]))
+    .then(pl.lit("Other / none"))
+    .otherwise(pl.col("fuel"))
+    .alias("fuel")
+)
+acs_fuel_share = weighted_pct(pums_fuel, "fuel", "wgtp", "acs_pct")
+
+fuel_cmp = rs_fuel_share.join(acs_fuel_share, on="fuel", how="full", coalesce=True)
+if recs is not None:
+    recs_fuel = recs.with_columns(
+        pl.col("FUELHEAT").replace_strict(RECS_FUELHEAT_MAP, default="Other / none").alias("fuel")
+    )
+    recs_fuel_share = weighted_pct(recs_fuel, "fuel", "NWEIGHT", "recs_pct")
+    fuel_cmp = fuel_cmp.join(recs_fuel_share, on="fuel", how="full", coalesce=True)
+else:
+    fuel_cmp = fuel_cmp.with_columns(pl.lit(None).cast(pl.Float64).alias("recs_weighted"), pl.lit(None).cast(pl.Float64).alias("recs_pct"))
+
+fuel_cmp = fuel_cmp.with_columns(
+    (pl.col("resstock_pct") - pl.col("acs_pct")).alias("pp_vs_acs"),
+    (pl.col("resstock_pct") - pl.col("recs_pct")).alias("pp_vs_recs"),
+).sort("acs_weighted", descending=True, nulls_last=True)
+
+gt_table(
+    fuel_cmp,
+    title=f"Heating fuel, {STATE_UPPER}",
+    subtitle="Statewide shares of occupied dwellings. Electricity lumps heat pumps and resistance.",
+    labels={
+        "fuel": "Fuel",
+        "resstock_weighted": "Dwellings",
+        "resstock_pct": "Share",
+        "acs_weighted": "Dwellings",
+        "acs_pct": "Share",
+        "recs_weighted": "Dwellings",
+        "recs_pct": "Share",
+        "pp_vs_acs": "vs ACS",
+        "pp_vs_recs": "vs RECS",
+    },
+    stub="fuel",
+    integer_cols=["resstock_weighted", "acs_weighted", "recs_weighted"],
+    percent_cols=["resstock_pct", "acs_pct", "recs_pct"],
+    decimals={"pp_vs_acs": 1, "pp_vs_recs": 1},
+    spanners=[
+        ("ResStock", ["resstock_weighted", "resstock_pct"]),
+        ("ACS PUMS", ["acs_weighted", "acs_pct"]),
+        ("RECS 2020", ["recs_weighted", "recs_pct"]),
+        ("Difference (pp)", ["pp_vs_acs", "pp_vs_recs"]),
+    ],
+    source_note=f"ACS PUMS {ACS_SURVEY} {ACS_END_YEAR} (hfl). RECS 2020 FUELHEAT. Difference is ResStock share minus the comparison source, in percentage points.",
+)
+```
+
+```{python}
+#| label: fig-heating-fuel
+#| fig-cap: "Statewide heating-fuel shares: ResStock versus ACS PUMS and RECS 2020."
+
+_fuel_plot_cols = [c for c in ("resstock_pct", "acs_pct", "recs_pct") if c in fuel_cmp.columns]
+_fuel_plot_labels = {"resstock_pct": "ResStock", "acs_pct": "ACS PUMS", "recs_pct": "RECS 2020"}
+fuel_long = (
+    fuel_cmp.filter(pl.col("fuel").is_not_null())
+    .unpivot(index="fuel", on=_fuel_plot_cols, variable_name="source", value_name="pct")
+    .drop_nulls("pct")
+    .with_columns(pl.col("source").replace(_fuel_plot_labels))
+)
+fig_fuel = (
+    ggplot(fuel_long, aes("fuel", "pct", fill="source"))
+    + geom_col(position=position_dodge(width=0.8), width=0.7)
+    + scale_fill_manual(values=[SB_COLORS["sky"], SB_COLORS["midnight"], SB_COLORS["carrot"]])
+    + labs(
+        title="Heating fuel: ResStock vs ACS vs RECS",
+        subtitle=f"{STATE_UPPER}",
+        x="",
+        y="Weighted % of dwellings",
+        fill="",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4.5), axis_text_x=element_text(angle=25, ha="right"))
+)
+display_figure(fig_fuel.draw())
+```
+
+```{python}
+#| label: fig-heating-fuel-pies
+#| fig-cap: "Statewide heating-fuel mix as pies: ResStock, ACS PUMS, and RECS 2020."
+
+_fuel_pie_order = [
+    "Natural gas (utility)",
+    "Fuel oil",
+    "Electricity (HP + resistance)",
+    "Propane (bottled / tank / LP)",
+    "Other / none",
+]
+_fuel_pie_panels: list[tuple[str, pl.DataFrame, str, str]] = [
+    ("ResStock", fuel_cmp, "fuel", "resstock_pct"),
+    ("ACS PUMS", fuel_cmp, "fuel", "acs_pct"),
+]
+if recs is not None:
+    _fuel_pie_panels.append(("RECS 2020", fuel_cmp, "fuel", "recs_pct"))
+share_pies(
+    _fuel_pie_panels,
+    title=f"Heating fuel, {STATE_UPPER}",
+    color_map=SHARE_PIE_COLORS,
+    category_order=_fuel_pie_order,
+)
+```
+
+### Heating equipment: ResStock vs RECS
+
+ACS has no equipment field, so this comparison is RECS only. `EQUIPM` is the main
+heating equipment: central furnace (3), steam/hot-water boiler (2), central heat pump
+(4), ductless heat pump (13), built-in electric (5), portable electric (10), gas/oil
+room heater (6), wood/pellet stove (8). A small state has only a few hundred
+respondents — the heat-pump cell is often suppressed (`Q`) in published 2020 state
+tables — so treat these shares as noisy.
+
+On the ResStock side we use `postprocess_group.has_hp` for heat pumps and
+`in.hvac_heating_type_and_fuel` for furnace / boiler / baseboard. Shared-heating
+multifamily buildings have no RECS analog and are grouped as Other.
+
+```{python}
+#| label: heating-equip-recs
+
+EQUIP_ORDER = ["Heat pump", "Furnace", "Boiler", "Electric resistance", "Other"]
+
+rs_equip = (
+    metadata_sb.select(BLDG_ID, WEIGHT_COL, "postprocess_group.has_hp", "in.hvac_heating_type_and_fuel")
+    .with_columns(
+        pl.when(pl.col("postprocess_group.has_hp"))
+        .then(pl.lit("Heat pump"))
+        .when(pl.col("in.hvac_heating_type_and_fuel").str.contains("Furnace"))
+        .then(pl.lit("Furnace"))
+        .when(pl.col("in.hvac_heating_type_and_fuel").str.contains("Boiler"))
+        .then(pl.lit("Boiler"))
+        .when(pl.col("in.hvac_heating_type_and_fuel").str.contains("Baseboard"))
+        .then(pl.lit("Electric resistance"))
+        .otherwise(pl.lit("Other"))
+        .alias("equipment")
+    )
+)
+rs_equip_share = weighted_pct(rs_equip, "equipment", WEIGHT_COL, "resstock_pct")
+
+if recs is None:
+    print("Skipping RECS EQUIPM comparison (no RECS microdata).")
+else:
+    recs_equip = recs.with_columns(
+        pl.when(pl.col("EQUIPM").is_in([4, 13]))
+        .then(pl.lit("Heat pump"))
+        .when(pl.col("EQUIPM") == 3)
+        .then(pl.lit("Furnace"))
+        .when(pl.col("EQUIPM") == 2)
+        .then(pl.lit("Boiler"))
+        .when(pl.col("EQUIPM").is_in([5, 10]))
+        .then(pl.lit("Electric resistance"))
+        .otherwise(pl.lit("Other"))
+        .alias("equipment")
+    )
+    recs_equip_share = weighted_pct(recs_equip, "equipment", "NWEIGHT", "recs_pct")
+    equip_cmp = (
+        rs_equip_share.join(recs_equip_share, on="equipment", how="full", coalesce=True)
+        .with_columns(
+            pl.col("equipment").cast(pl.Enum(EQUIP_ORDER)),
+            (pl.col("resstock_pct") - pl.col("recs_pct")).alias("pp_diff"),
+        )
+        .sort("equipment")
+    )
+    gt_table(
+        equip_cmp,
+        title=f"Heating equipment, {STATE_UPPER}",
+        subtitle="Statewide shares. ACS has no equipment field; this comparison is RECS only.",
+        labels={
+            "equipment": "Equipment",
+            "resstock_weighted": "Dwellings",
+            "resstock_pct": "Share",
+            "recs_weighted": "Dwellings",
+            "recs_pct": "Share",
+            "pp_diff": "vs RECS",
+        },
+        stub="equipment",
+        integer_cols=["resstock_weighted", "recs_weighted"],
+        percent_cols=["resstock_pct", "recs_pct"],
+        decimals={"pp_diff": 1},
+        spanners=[
+            ("ResStock", ["resstock_weighted", "resstock_pct"]),
+            ("RECS 2020", ["recs_weighted", "recs_pct"]),
+            ("Difference (pp)", ["pp_diff"]),
+        ],
+        source_note="RECS EQUIPM: heat pump = 4/13, furnace = 3, boiler = 2, resistance = 5/10. ResStock Other includes shared-heating multifamily. Small-state RECS cells are noisy.",
+    )
+```
+
+```{python}
+#| label: fig-heating-equip
+#| fig-cap: "Statewide heating-equipment shares: ResStock versus RECS 2020 EQUIPM."
+
+if recs is None:
+    print("No RECS EQUIPM figure.")
+else:
+    equip_long = (
+        equip_cmp.filter(pl.col("equipment").is_not_null())
+        .unpivot(
+            index="equipment",
+            on=["resstock_pct", "recs_pct"],
+            variable_name="source",
+            value_name="pct",
+        )
+        .with_columns(pl.col("source").replace({"resstock_pct": "ResStock", "recs_pct": "RECS 2020"}))
+    )
+    fig_equip = (
+        ggplot(equip_long, aes("equipment", "pct", fill="source"))
+        + geom_col(position=position_dodge(width=0.8), width=0.7)
+        + scale_fill_manual(values=[SB_COLORS["sky"], SB_COLORS["carrot"]])
+        + labs(
+            title="Heating equipment: ResStock vs RECS EQUIPM",
+            subtitle=f"{STATE_UPPER}",
+            x="",
+            y="Weighted % of dwellings",
+            fill="",
+        )
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 4.5))
+    )
+    display_figure(fig_equip.draw())
+```
+
+```{python}
+#| label: fig-heating-equip-pies
+#| fig-cap: "Statewide heating-equipment mix as pies: ResStock versus RECS 2020 EQUIPM."
+
+if recs is None:
+    print("No RECS EQUIPM pies.")
+else:
+    share_pies(
+        [
+            ("ResStock", equip_cmp, "equipment", "resstock_pct"),
+            ("RECS 2020", equip_cmp, "equipment", "recs_pct"),
+        ],
+        title=f"Heating equipment, {STATE_UPPER}",
+        color_map=SHARE_PIE_COLORS,
+        category_order=EQUIP_ORDER,
+    )
+```
+
+## Section 6: Other stock characteristics
+
+ResStock dwellings carry physical detail that rate design rarely uses but that we can
+check against Census and RECS.
+
+| Characteristic | ResStock column | EIA | ACS | RECS 2020 |
+|----------------|-----------------|-----|-----|-----------|
+| Units in structure | `in.geometry_building_type_acs` / `_recs` | No | Yes — B25024 / `bld` | Yes — `TYPEHUQ` (same 5 RECS categories ResStock already stores) |
+| Year built | `in.vintage`, `in.vintage_acs` | No | Yes — B25034 / `yrblt` | Yes — `YEARMADERANGE` (decade-ish bins, not a year) |
+| Floor area | `in.sqft` | No | **No** | Yes — `TOTSQFT_EN` (energy-consuming sqft, rounded to 10) |
+| Air leakage (ACH50) | `in.infiltration` (LBNL ResDB) | No | **No** | No. Benchmark is Chan et al. (2013) predicted ACH50 from vintage, climate, floor area, height |
+
+ACS 5-year tables go to PUMA / tract, so building type and vintage *could* be allocated
+to utilities the same way we assign ResStock buildings. Floor area cannot come from ACS.
+
+### Units in structure
+
+```{python}
+#| label: building-type
+
+BLD_MAP = {
+    "01": "Mobile Home",
+    "02": "Single-Family Detached",
+    "03": "Single-Family Attached",
+    "04": "2 Unit",
+    "05": "3 or 4 Unit",
+    "06": "5 to 9 Unit",
+    "07": "10 to 19 Unit",
+    "08": "20 to 49 Unit",
+    "09": "50 or more Unit",
+    "10": "Boat / RV / other",
+}
+
+rs_bld = (
+    metadata_sb.select(WEIGHT_COL, "in.geometry_building_type_acs")
+    .group_by("in.geometry_building_type_acs")
+    .agg(pl.col(WEIGHT_COL).sum().alias("resstock_weighted"))
+    .rename({"in.geometry_building_type_acs": "building_type"})
+    .with_columns((pl.col("resstock_weighted") / pl.col("resstock_weighted").sum() * 100).alias("resstock_pct"))
+)
+acs_bld = (
+    pums.filter(pl.col("bld").is_not_null())
+    .with_columns(pl.col("bld").replace_strict(BLD_MAP, default="Other").alias("building_type"))
+    .group_by("building_type")
+    .agg(pl.col("wgtp").sum().alias("acs_weighted"))
+    .with_columns((pl.col("acs_weighted") / pl.col("acs_weighted").sum() * 100).alias("acs_pct"))
+)
+bld_cmp = (
+    rs_bld.join(acs_bld, on="building_type", how="full", coalesce=True)
+    .with_columns((pl.col("resstock_pct") - pl.col("acs_pct")).alias("pp_diff"))
+    .sort("acs_weighted", descending=True, nulls_last=True)
+)
+gt_table(
+    bld_cmp,
+    title=f"Units in structure, {STATE_UPPER}",
+    subtitle=f"ResStock vs ACS PUMS {ACS_SURVEY} {ACS_END_YEAR}.",
+    labels={
+        "building_type": "Building type",
+        "resstock_weighted": "Dwellings",
+        "resstock_pct": "Share",
+        "acs_weighted": "Dwellings",
+        "acs_pct": "Share",
+        "pp_diff": "vs ACS",
+    },
+    stub="building_type",
+    integer_cols=["resstock_weighted", "acs_weighted"],
+    percent_cols=["resstock_pct", "acs_pct"],
+    decimals={"pp_diff": 1},
+    spanners=[
+        ("ResStock", ["resstock_weighted", "resstock_pct"]),
+        ("ACS PUMS", ["acs_weighted", "acs_pct"]),
+        ("Difference (pp)", ["pp_diff"]),
+    ],
+    source_note="ResStock in.geometry_building_type_acs uses the ACS legend. Boat/RV is ACS-only.",
+)
+```
+
+### Single-family vs multifamily
+
+Collapse to single-family vs multifamily vs mobile — the comparison that ACS, RECS
+`TYPEHUQ`, and ResStock `in.geometry_building_type_recs` can all make. RECS codes:
+1 mobile, 2 SF detached, 3 SF attached, 4 apartment 2–4 units, 5 apartment 5+ units.
+
+```{python}
+#| label: building-type-collapsed
+
+SF_MF_ORDER = ["Single-family", "Multifamily", "Mobile home"]
+
+
+def collapse_sf_mf(col: pl.Expr, *, style: str) -> pl.Expr:
+    if style == "acs":
+        return (
+            pl.when(col.is_in(["Single-Family Detached", "Single-Family Attached"]))
+            .then(pl.lit("Single-family"))
+            .when(col == "Mobile Home")
+            .then(pl.lit("Mobile home"))
+            .otherwise(pl.lit("Multifamily"))
+        )
+    if style == "recs_rs":
+        return (
+            pl.when(col.is_in(["Single-Family Detached", "Single-Family Attached"]))
+            .then(pl.lit("Single-family"))
+            .when(col == "Mobile Home")
+            .then(pl.lit("Mobile home"))
+            .otherwise(pl.lit("Multifamily"))
+        )
+    raise ValueError(style)
+
+
+rs_sfmf = weighted_pct(
+    metadata_sb.select(WEIGHT_COL, "in.geometry_building_type_recs").with_columns(
+        collapse_sf_mf(pl.col("in.geometry_building_type_recs"), style="recs_rs").alias("building_class")
+    ),
+    "building_class",
+    WEIGHT_COL,
+    "resstock_pct",
+)
+acs_sfmf = weighted_pct(
+    pums.filter(pl.col("bld").is_not_null())
+    .with_columns(pl.col("bld").replace_strict(BLD_MAP, default="Other").alias("building_type"))
+    .with_columns(
+        pl.when(pl.col("building_type").is_in(["Single-Family Detached", "Single-Family Attached"]))
+        .then(pl.lit("Single-family"))
+        .when(pl.col("building_type") == "Mobile Home")
+        .then(pl.lit("Mobile home"))
+        .otherwise(pl.lit("Multifamily"))
+        .alias("building_class")
+    ),
+    "building_class",
+    "wgtp",
+    "acs_pct",
+)
+sfmf_cmp = rs_sfmf.join(acs_sfmf, on="building_class", how="full", coalesce=True)
+if recs is not None:
+    recs_sfmf = weighted_pct(
+        recs.with_columns(
+            pl.when(pl.col("TYPEHUQ").is_in([2, 3]))
+            .then(pl.lit("Single-family"))
+            .when(pl.col("TYPEHUQ") == 1)
+            .then(pl.lit("Mobile home"))
+            .otherwise(pl.lit("Multifamily"))
+            .alias("building_class")
+        ),
+        "building_class",
+        "NWEIGHT",
+        "recs_pct",
+    )
+    sfmf_cmp = sfmf_cmp.join(recs_sfmf, on="building_class", how="full", coalesce=True)
+else:
+    sfmf_cmp = sfmf_cmp.with_columns(
+        pl.lit(None).cast(pl.Float64).alias("recs_weighted"),
+        pl.lit(None).cast(pl.Float64).alias("recs_pct"),
+    )
+sfmf_cmp = (
+    sfmf_cmp.with_columns(
+        pl.col("building_class").cast(pl.Enum(SF_MF_ORDER)),
+        (pl.col("resstock_pct") - pl.col("acs_pct")).alias("pp_vs_acs"),
+        (pl.col("resstock_pct") - pl.col("recs_pct")).alias("pp_vs_recs"),
+    )
+    .sort("building_class")
+)
+gt_table(
+    sfmf_cmp,
+    title=f"Single-family vs multifamily, {STATE_UPPER}",
+    subtitle="Single-family is detached plus attached. Multifamily is two or more units.",
+    labels={
+        "building_class": "Building class",
+        "resstock_weighted": "Dwellings",
+        "resstock_pct": "Share",
+        "acs_weighted": "Dwellings",
+        "acs_pct": "Share",
+        "recs_weighted": "Dwellings",
+        "recs_pct": "Share",
+        "pp_vs_acs": "vs ACS",
+        "pp_vs_recs": "vs RECS",
+    },
+    stub="building_class",
+    integer_cols=["resstock_weighted", "acs_weighted", "recs_weighted"],
+    percent_cols=["resstock_pct", "acs_pct", "recs_pct"],
+    decimals={"pp_vs_acs": 1, "pp_vs_recs": 1},
+    spanners=[
+        ("ResStock", ["resstock_weighted", "resstock_pct"]),
+        ("ACS PUMS", ["acs_weighted", "acs_pct"]),
+        ("RECS 2020", ["recs_weighted", "recs_pct"]),
+        ("Difference (pp)", ["pp_vs_acs", "pp_vs_recs"]),
+    ],
+    source_note="RECS TYPEHUQ 4–5 is apartment buildings.",
+)
+```
+
+```{python}
+#| label: fig-sf-mf
+#| fig-cap: "Statewide single-family vs multifamily vs mobile-home shares, ResStock versus ACS PUMS and RECS 2020."
+
+_sfmf_cols = [c for c in ("resstock_pct", "acs_pct", "recs_pct") if c in sfmf_cmp.columns]
+sfmf_long = (
+    sfmf_cmp.filter(pl.col("building_class").is_not_null())
+    .unpivot(index="building_class", on=_sfmf_cols, variable_name="source", value_name="pct")
+    .drop_nulls("pct")
+    .with_columns(pl.col("source").replace({"resstock_pct": "ResStock", "acs_pct": "ACS PUMS", "recs_pct": "RECS 2020"}))
+)
+fig_sfmf = (
+    ggplot(sfmf_long, aes("building_class", "pct", fill="source"))
+    + geom_col(position=position_dodge(width=0.8), width=0.7)
+    + scale_fill_manual(values=[SB_COLORS["sky"], SB_COLORS["midnight"], SB_COLORS["carrot"]])
+    + labs(
+        title="Building class: ResStock vs ACS vs RECS",
+        subtitle=f"{STATE_UPPER}",
+        x="",
+        y="Weighted % of dwellings",
+        fill="",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(8.5, 4.5))
+)
+display_figure(fig_sfmf.draw())
+```
+
+```{python}
+#| label: fig-sf-mf-pies
+#| fig-cap: "Statewide single-family vs multifamily vs mobile-home mix as pies: ResStock, ACS PUMS, and RECS 2020."
+
+_sfmf_pie_panels: list[tuple[str, pl.DataFrame, str, str]] = [
+    ("ResStock", sfmf_cmp, "building_class", "resstock_pct"),
+    ("ACS PUMS", sfmf_cmp, "building_class", "acs_pct"),
+]
+if recs is not None:
+    _sfmf_pie_panels.append(("RECS 2020", sfmf_cmp, "building_class", "recs_pct"))
+share_pies(
+    _sfmf_pie_panels,
+    title=f"Building class, {STATE_UPPER}",
+    color_map=SHARE_PIE_COLORS,
+    category_order=SF_MF_ORDER,
+)
+```
+
+```{python}
+#| label: fig-building-type
+#| fig-cap: "Statewide building-type shares, ResStock versus ACS PUMS occupied housing units."
+
+bld_long = (
+    bld_cmp.filter(pl.col("building_type").is_not_null())
+    .unpivot(
+        index="building_type",
+        on=["resstock_pct", "acs_pct"],
+        variable_name="source",
+        value_name="pct",
+    )
+    .with_columns(pl.col("source").replace({"resstock_pct": "ResStock", "acs_pct": "ACS PUMS"}))
+)
+fig_bld = (
+    ggplot(bld_long, aes("building_type", "pct", fill="source"))
+    + geom_col(position=position_dodge(width=0.8), width=0.7)
+    + scale_fill_manual(values=[SB_COLORS["sky"], SB_COLORS["midnight"]])
+    + labs(
+        title="Building type: ResStock vs ACS PUMS",
+        subtitle=f"{STATE_UPPER}, ACS {ACS_SURVEY} {ACS_END_YEAR}",
+        x="",
+        y="Weighted % of dwellings",
+        fill="",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4.5), axis_text_x=element_text(angle=40, ha="right"))
+)
+display_figure(fig_bld.draw())
+```
+
+### Year built
+
+Year built is compared on bins all three sources can share. ResStock `in.vintage` is
+decade labels (`<1940`, `1940s`, …). ACS PUMS `yrblt` is a year. RECS `YEARMADERANGE`
+is already binned (1 = before 1950, 2 = 1950–59, …, 8–9 = 2010–2020). Common bins:
+
+Before 1950 · 1950–59 · 1960–79 · 1980–99 · 2000–09 · 2010+.
+
+```{python}
+#| label: vintage
+
+VINTAGE_ORDER = ["Before 1950", "1950-59", "1960-79", "1980-99", "2000-09", "2010+"]
+
+
+def vintage_from_resstock(col: pl.Expr) -> pl.Expr:
+    return (
+        pl.when(col.is_in(["<1940", "1940s"]))
+        .then(pl.lit("Before 1950"))
+        .when(col == "1950s")
+        .then(pl.lit("1950-59"))
+        .when(col.is_in(["1960s", "1970s"]))
+        .then(pl.lit("1960-79"))
+        .when(col.is_in(["1980s", "1990s"]))
+        .then(pl.lit("1980-99"))
+        .when(col.is_in(["2000s", "2000-09"]))
+        .then(pl.lit("2000-09"))
+        .otherwise(pl.lit("2010+"))
+    )
+
+
+def vintage_from_year(col: pl.Expr) -> pl.Expr:
+    y = col.cast(pl.Int32, strict=False)
+    return (
+        pl.when(y < 1950)
+        .then(pl.lit("Before 1950"))
+        .when(y < 1960)
+        .then(pl.lit("1950-59"))
+        .when(y < 1980)
+        .then(pl.lit("1960-79"))
+        .when(y < 2000)
+        .then(pl.lit("1980-99"))
+        .when(y < 2010)
+        .then(pl.lit("2000-09"))
+        .otherwise(pl.lit("2010+"))
+    )
+
+
+def vintage_from_recs(col: pl.Expr) -> pl.Expr:
+    return (
+        pl.when(col == 1)
+        .then(pl.lit("Before 1950"))
+        .when(col == 2)
+        .then(pl.lit("1950-59"))
+        .when(col.is_in([3, 4]))
+        .then(pl.lit("1960-79"))
+        .when(col.is_in([5, 6]))
+        .then(pl.lit("1980-99"))
+        .when(col == 7)
+        .then(pl.lit("2000-09"))
+        .otherwise(pl.lit("2010+"))
+    )
+
+
+rs_vin = weighted_pct(
+    metadata_sb.select(WEIGHT_COL, "in.vintage").with_columns(
+        vintage_from_resstock(pl.col("in.vintage")).alias("vintage")
+    ),
+    "vintage",
+    WEIGHT_COL,
+    "resstock_pct",
+)
+acs_vin = weighted_pct(
+    pums.filter(pl.col("yrblt").is_not_null()).with_columns(
+        vintage_from_year(pl.col("yrblt")).alias("vintage")
+    ),
+    "vintage",
+    "wgtp",
+    "acs_pct",
+)
+vin_cmp = rs_vin.join(acs_vin, on="vintage", how="full", coalesce=True)
+if recs is not None:
+    recs_vin = weighted_pct(
+        recs.with_columns(vintage_from_recs(pl.col("YEARMADERANGE")).alias("vintage")),
+        "vintage",
+        "NWEIGHT",
+        "recs_pct",
+    )
+    vin_cmp = vin_cmp.join(recs_vin, on="vintage", how="full", coalesce=True)
+else:
+    vin_cmp = vin_cmp.with_columns(
+        pl.lit(None).cast(pl.Float64).alias("recs_weighted"),
+        pl.lit(None).cast(pl.Float64).alias("recs_pct"),
+    )
+vin_cmp = (
+    vin_cmp.with_columns(
+        pl.col("vintage").cast(pl.Enum(VINTAGE_ORDER)),
+        (pl.col("resstock_pct") - pl.col("acs_pct")).alias("pp_vs_acs"),
+        (pl.col("resstock_pct") - pl.col("recs_pct")).alias("pp_vs_recs"),
+    )
+    .sort("vintage")
+)
+gt_table(
+    vin_cmp,
+    title=f"Year built, {STATE_UPPER}",
+    subtitle="Common vintage bins across ResStock, ACS PUMS, and RECS 2020.",
+    labels={
+        "vintage": "Vintage",
+        "resstock_weighted": "Dwellings",
+        "resstock_pct": "Share",
+        "acs_weighted": "Dwellings",
+        "acs_pct": "Share",
+        "recs_weighted": "Dwellings",
+        "recs_pct": "Share",
+        "pp_vs_acs": "vs ACS",
+        "pp_vs_recs": "vs RECS",
+    },
+    stub="vintage",
+    integer_cols=["resstock_weighted", "acs_weighted", "recs_weighted"],
+    percent_cols=["resstock_pct", "acs_pct", "recs_pct"],
+    decimals={"pp_vs_acs": 1, "pp_vs_recs": 1},
+    spanners=[
+        ("ResStock", ["resstock_weighted", "resstock_pct"]),
+        ("ACS PUMS", ["acs_weighted", "acs_pct"]),
+        ("RECS 2020", ["recs_weighted", "recs_pct"]),
+        ("Difference (pp)", ["pp_vs_acs", "pp_vs_recs"]),
+    ],
+    source_note="ACS 2010+ includes years after the ResStock AMY 2018 stock. RECS YEARMADERANGE 8–9 is 2010–2020.",
+)
+```
+
+```{python}
+#| label: fig-vintage
+#| fig-cap: "Statewide year-built shares, ResStock versus ACS PUMS and RECS 2020."
+
+_vin_cols = [c for c in ("resstock_pct", "acs_pct", "recs_pct") if c in vin_cmp.columns]
+vin_long = (
+    vin_cmp.filter(pl.col("vintage").is_not_null())
+    .unpivot(index="vintage", on=_vin_cols, variable_name="source", value_name="pct")
+    .drop_nulls("pct")
+    .with_columns(pl.col("source").replace({"resstock_pct": "ResStock", "acs_pct": "ACS PUMS", "recs_pct": "RECS 2020"}))
+)
+fig_vin = (
+    ggplot(vin_long, aes("vintage", "pct", fill="source"))
+    + geom_col(position=position_dodge(width=0.8), width=0.7)
+    + scale_fill_manual(values=[SB_COLORS["sky"], SB_COLORS["midnight"], SB_COLORS["carrot"]])
+    + labs(
+        title="Year built: ResStock vs ACS vs RECS",
+        subtitle=f"{STATE_UPPER}",
+        x="",
+        y="Weighted % of dwellings",
+        fill="",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4.5))
+)
+display_figure(fig_vin.draw())
+```
+
+```{python}
+#| label: fig-vintage-hist
+#| fig-cap: "Histogram of year-built shares on the common vintage bins, one panel per source."
+
+_vin_hist_cols = [c for c in ("resstock_pct", "acs_pct", "recs_pct") if c in vin_cmp.columns]
+vin_hist = (
+    vin_cmp.filter(pl.col("vintage").is_not_null())
+    .unpivot(index="vintage", on=_vin_hist_cols, variable_name="source", value_name="pct")
+    .drop_nulls("pct")
+    .with_columns(pl.col("source").replace({"resstock_pct": "ResStock", "acs_pct": "ACS PUMS", "recs_pct": "RECS 2020"}))
+)
+fig_vin_hist = (
+    ggplot(vin_hist, aes("vintage", "pct"))
+    + geom_col(fill=SB_COLORS["sky"], width=0.9)
+    + facet_wrap("source", ncol=3)
+    + labs(
+        title="Year built histogram",
+        subtitle=f"{STATE_UPPER}. Same bins as the comparison table. ACS 2010+ includes years after AMY 2018.",
+        x="",
+        y="Weighted % of dwellings",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4.0), axis_text_x=element_text(angle=35, ha="right"))
+)
+display_figure(fig_vin_hist.draw())
+```
+
+### Floor area
+
+ACS PUMS has **no** floor-area variable. RECS does: `TOTSQFT_EN` is total
+energy-consuming square footage (living areas, basements, heated/cooled/finished
+attics, heated/cooled garages), derived and rounded to the nearest 10 sqft. That is
+the state-level check for ResStock `in.sqft`.
+
+```{python}
+#| label: floor-area
+
+
+def weighted_sqft_stats(values: pl.Series, weights: pl.Series) -> dict[str, float]:
+    order = values.arg_sort()
+    x_s, w_s = values[order], weights[order]
+    cw = w_s.cum_sum()
+    total_w = float(weights.sum())
+
+    def _q(p: float) -> float:
+        return float(x_s[int((cw >= p * total_w).arg_max())])
+
+    return {
+        "mean": float((values * weights).sum() / total_w),
+        "p25": _q(0.25),
+        "median": _q(0.50),
+        "p75": _q(0.75),
+    }
+
+
+sqft = metadata_sb.select(WEIGHT_COL, "in.sqft").filter(pl.col("in.sqft").is_not_null())
+rs_sqft = weighted_sqft_stats(sqft["in.sqft"], sqft[WEIGHT_COL])
+sqft_rows = [
+    {
+        "source": "ResStock",
+        "mean": rs_sqft["mean"],
+        "p25": rs_sqft["p25"],
+        "median": rs_sqft["median"],
+        "p75": rs_sqft["p75"],
+    }
+]
+if recs is not None:
+    recs_sqft_df = recs.filter(pl.col("TOTSQFT_EN").is_not_null())
+    recs_sqft = weighted_sqft_stats(recs_sqft_df["TOTSQFT_EN"].cast(pl.Float64), recs_sqft_df["NWEIGHT"])
+    sqft_rows.append(
+        {
+            "source": "RECS 2020",
+            "mean": recs_sqft["mean"],
+            "p25": recs_sqft["p25"],
+            "median": recs_sqft["median"],
+            "p75": recs_sqft["p75"],
+        }
+    )
+sqft_cmp = pl.DataFrame(sqft_rows)
+gt_table(
+    sqft_cmp,
+    title=f"Floor area, {STATE_UPPER}",
+    subtitle="Weighted square feet. ACS has no floor-area variable.",
+    labels={
+        "source": "Source",
+        "mean": "Mean",
+        "p25": "25th percentile",
+        "median": "Median",
+        "p75": "75th percentile",
+    },
+    stub="source",
+    integer_cols=["mean", "p25", "median", "p75"],
+    source_note="RECS TOTSQFT_EN is energy-consuming area, rounded to 10 sqft.",
+)
+```
+
+```{python}
+#| label: fig-floor-area-hist
+#| fig-cap: "Weighted histogram of floor area: ResStock in.sqft versus RECS 2020 TOTSQFT_EN. Each source is scaled to its own dwelling share so the shapes can be compared."
+
+_sqft_hist_frames = [
+    sqft.select(
+        pl.col("in.sqft").cast(pl.Float64).alias("sqft"),
+        (pl.col(WEIGHT_COL) / pl.col(WEIGHT_COL).sum()).alias("w_share"),
+        pl.lit("ResStock").alias("source"),
+    )
+]
+if recs is not None:
+    _sqft_hist_frames.append(
+        recs_sqft_df.select(
+            pl.col("TOTSQFT_EN").cast(pl.Float64).alias("sqft"),
+            (pl.col("NWEIGHT") / pl.col("NWEIGHT").sum()).alias("w_share"),
+            pl.lit("RECS 2020").alias("source"),
+        )
+    )
+sqft_hist = pl.concat(_sqft_hist_frames).filter((pl.col("sqft") > 0) & (pl.col("sqft") <= 6000))
+_sqft_hist_colors = [SB_COLORS["sky"], SB_COLORS["carrot"]][: sqft_hist["source"].n_unique()]
+fig_sqft_hist = (
+    ggplot(sqft_hist, aes("sqft", weight="w_share", fill="source"))
+    + geom_histogram(bins=30, alpha=0.55, position="identity")
+    + scale_fill_manual(values=_sqft_hist_colors)
+    + labs(
+        title="Floor area histogram",
+        subtitle=f"{STATE_UPPER}. Truncated at 6,000 sqft. Weights are shares within each source.",
+        x="Square feet",
+        y="Share of dwellings",
+        fill="",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4.5))
+)
+display_figure(fig_sqft_hist.draw())
+```
+
+### ACH50: ResStock vs Chan et al. (2013)
+
+Chan predicted ACH50 is a closed-form regression on vintage,
+climate zone, floor area, and height — one row of metadata per building, no hourly
+files. The costly ACH50 *load* correction (rescaling 8760 HVAC series) is a separate
+pipeline step and is not run here.
+
+ResStock `in.infiltration` comes from LBNL's Residential Diagnostics Database (values
+like `"15 ACH50"`). Chan et al. predict normalized leakage from ~134,000 blower-door
+tests, then convert to ACH50. Positive Difference = ResStock minus Chan means ResStock
+is leakier than the field regression. The Chan model was fit on single-family detached
+homes; we still score every building, capping stories at 3, which is what the
+rate-design-platform correction does.
+
+```{python}
+#| label: ach50-chan
+
+# Chan, Joh & Sherman (2013) Table 1 betas. Same constants as
+# rate-design-platform/data/resstock/config/chan_2013_coefficients.yaml
+# and predict_ach50_chan() in correct_ach50_infiltration.py.
+CHAN_YEAR_BETA = {
+    "before_1960": -0.250,
+    "1960_69": -0.433,
+    "1970_79": -0.452,
+    "1980_89": -0.654,
+    "1990_99": -0.915,
+    "2000_and_after": -1.058,
+}
+CHAN_CZ_BETA = {
+    "A_1_2": 0.473,
+    "A_3": 0.253,
+    "A_4": 0.326,
+    "A_5": 0.112,
+    "A_6_7": 0.0,
+    "B_2_3": -0.038,
+    "B_4_5": -0.009,
+    "B_6": 0.019,
+    "C_3": 0.048,
+    "C_4": 0.258,
+    "AK_7": 0.026,
+    "AK_8": -0.512,
+}
+CHAN_VINTAGE = {
+    "<1940": "before_1960",
+    "1940s": "before_1960",
+    "1950s": "before_1960",
+    "1960s": "1960_69",
+    "1970s": "1970_79",
+    "1980s": "1980_89",
+    "1990s": "1990_99",
+    "2000s": "2000_and_after",
+    "2010s": "2000_and_after",
+}
+IECC_TO_CHAN_CZ = {
+    "1A": "A_1_2",
+    "2A": "A_1_2",
+    "3A": "A_3",
+    "4A": "A_4",
+    "5A": "A_5",
+    "6A": "A_6_7",
+    "7A": "A_6_7",
+    "2B": "B_2_3",
+    "3B": "B_2_3",
+    "4B": "B_4_5",
+    "5B": "B_4_5",
+    "6B": "B_6",
+    "3C": "C_3",
+    "4C": "C_4",
+    "7": "AK_7",
+    "8": "AK_8",
+}
+CHAN_BETA_AREA = -0.00208
+CHAN_BETA_HEIGHT = 0.064
+CHAN_NL_TO_ACH50 = 3.0**0.7 / 0.055  # ≈ 39.3; Chan Section 5 at H=3 m
+
+_ach_cols = [
+    WEIGHT_COL,
+    "in.infiltration",
+    "in.sqft",
+    "in.vintage",
+    "in.geometry_stories",
+    "in.ashrae_iecc_climate_zone_2004",
+]
+_ach_missing = [c for c in _ach_cols if c not in metadata_sb.columns]
+if _ach_missing:
+    print(f"Skipping ACH50 vs Chan: metadata is missing {_ach_missing}")
+    ach50 = None
+else:
+    ach50 = (
+        metadata_sb.select(_ach_cols)
+        .with_columns(
+            pl.col("in.infiltration")
+            .cast(pl.String)
+            .str.replace(" ACH50", "")
+            .cast(pl.Float64, strict=False)
+            .alias("ach50_rs"),
+            pl.col("in.sqft").cast(pl.Float64, strict=False).alias("sqft"),
+            pl.col("in.vintage").replace_strict(CHAN_VINTAGE, default=None).alias("chan_year"),
+            pl.col("in.ashrae_iecc_climate_zone_2004")
+            .cast(pl.String)
+            .str.to_uppercase()
+            .replace_strict(IECC_TO_CHAN_CZ, default=None)
+            .alias("chan_cz"),
+            pl.col("in.geometry_stories").cast(pl.Int32, strict=False).clip(1, 3).alias("stories_capped"),
+        )
+        .with_columns(
+            pl.col("chan_year").replace_strict(CHAN_YEAR_BETA, default=None).alias("beta_year"),
+            pl.col("chan_cz").replace_strict(CHAN_CZ_BETA, default=None).alias("beta_cz"),
+            (2.5 * pl.col("stories_capped") + 0.5).alias("height_m"),
+            (pl.col("sqft") / 10.764).alias("area_m2"),
+        )
+        .with_columns(
+            (
+                CHAN_NL_TO_ACH50
+                * (
+                    pl.col("beta_year")
+                    + pl.col("beta_cz")
+                    + CHAN_BETA_AREA * pl.col("area_m2")
+                    + CHAN_BETA_HEIGHT * pl.col("height_m")
+                ).exp()
+                / pl.col("height_m").pow(0.7)
+            ).alias("ach50_chan")
+        )
+        .with_columns((pl.col("ach50_rs") - pl.col("ach50_chan")).alias("delta_ach50"))
+        .filter(pl.col("ach50_rs").is_finite() & pl.col("ach50_chan").is_finite())
+    )
+    w = ach50[WEIGHT_COL]
+    total_w = float(w.sum())
+
+    def _wmean(col: str) -> float:
+        return float((ach50[col] * w).sum() / total_w)
+
+    def _wmedian(col: str) -> float:
+        order = ach50[col].arg_sort()
+        x_s, w_s = ach50[col][order], w[order]
+        cw = w_s.cum_sum()
+        return float(x_s[int((cw >= 0.5 * total_w).arg_max())])
+
+    n_over = ach50.filter(pl.col("delta_ach50") > 0).height
+    w_over = float(ach50.filter(pl.col("delta_ach50") > 0)[WEIGHT_COL].sum())
+    ach50_stats = pl.DataFrame(
+        [
+            {
+                "series": "ResStock",
+                "weighted_mean": _wmean("ach50_rs"),
+                "weighted_median": _wmedian("ach50_rs"),
+            },
+            {
+                "series": "Chan predicted",
+                "weighted_mean": _wmean("ach50_chan"),
+                "weighted_median": _wmedian("ach50_chan"),
+            },
+            {
+                "series": "Difference (ResStock − Chan)",
+                "weighted_mean": _wmean("delta_ach50"),
+                "weighted_median": _wmedian("delta_ach50"),
+            },
+        ]
+    )
+    gt_table(
+        ach50_stats,
+        title=f"ACH50, {STATE_UPPER}",
+        subtitle="ResStock assigned infiltration versus Chan et al. (2013) predicted ACH50.",
+        labels={
+            "series": "Series",
+            "weighted_mean": "Weighted mean",
+            "weighted_median": "Weighted median",
+        },
+        stub="series",
+        decimals={"weighted_mean": 2, "weighted_median": 2},
+        source_note=(
+            f"{ach50.height:,} buildings. "
+            f"{100.0 * n_over / ach50.height:.0f}% of buildings "
+            f"({100.0 * w_over / total_w:.0f}% of dwellings) have ResStock leakier than Chan."
+        ),
+    )
+```
+
+```{python}
+#| label: fig-ach50-overlay
+#| fig-cap: "Weighted histogram of ResStock assigned ACH50 versus Chan et al. (2013) predicted ACH50. ResStock values are discrete (5 ACH50 steps), so the sky series is peakier."
+
+if ach50 is None:
+    print("No ACH50 overlay.")
+else:
+    ach_long = pl.concat(
+        [
+            ach50.select(
+                pl.col("ach50_rs").cast(pl.Float64).alias("ach50"),
+                (pl.col(WEIGHT_COL) / pl.col(WEIGHT_COL).sum()).alias("w_share"),
+                pl.lit("ResStock").alias("source"),
+            ),
+            ach50.select(
+                pl.col("ach50_chan").cast(pl.Float64).alias("ach50"),
+                (pl.col(WEIGHT_COL) / pl.col(WEIGHT_COL).sum()).alias("w_share"),
+                pl.lit("Chan predicted").alias("source"),
+            ),
+        ]
+    ).filter((pl.col("ach50") >= 0) & (pl.col("ach50") <= 50))
+    fig_ach = (
+        ggplot(ach_long, aes("ach50", weight="w_share", fill="source"))
+        + geom_histogram(bins=25, alpha=0.55, position="identity")
+        + scale_fill_manual(values=[SB_COLORS["sky"], SB_COLORS["carrot"]])
+        + labs(
+            title="ACH50: ResStock vs Chan predicted",
+            subtitle=f"{STATE_UPPER}, upgrade {UPGRADE}. Metadata only; no hourly rescaling.",
+            x="ACH50",
+            y="Share of dwellings",
+            fill="",
+        )
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 4.5))
+    )
+    display_figure(fig_ach.draw())
+```
+
+```{python}
+#| label: fig-ach50-delta
+#| fig-cap: "Weighted histogram of ResStock ACH50 minus Chan predicted ACH50. Positive values mean ResStock is leakier than the field regression."
+
+if ach50 is None:
+    print("No ACH50 delta histogram.")
+else:
+    ach_delta = ach50.select(
+        "delta_ach50",
+        (pl.col(WEIGHT_COL) / pl.col(WEIGHT_COL).sum()).alias("w_share"),
+    ).filter(pl.col("delta_ach50").is_between(-20, 40))
+    fig_ach_delta = (
+        ggplot(ach_delta, aes("delta_ach50", weight="w_share"))
+        + geom_histogram(bins=30, fill=SB_COLORS["midnight"], alpha=0.85)
+        + geom_vline(xintercept=0, linetype="dashed", color=SB_COLORS["carrot"])
+        + labs(
+            title="ACH50 difference (ResStock − Chan)",
+            subtitle=f"{STATE_UPPER}. Dashed line is zero. Positive = ResStock overestimates leakage.",
+            x="Δ ACH50",
+            y="Share of dwellings",
+        )
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 4.5))
+    )
+    display_figure(fig_ach_delta.draw())
+```
+
+## Section 7: Assumptions and limitations
+
+- **Weather year.** ResStock `res_2024_amy2018_2` is simulated on AMY 2018. EIA-861 and
+  EIA-176 are asked for 2018 so sales and deliveries line up with that weather. A later
+  EIA year will mix stock change with weather.
+- **Residential only.** EIA-861 residential sales exclude commercial meters in mixed-use
+  buildings. ResStock is a residential sample. Some mismatch at municipal utilities is
+  expected.
+- **Statewide EIA-861 is mapped distribution utilities**, not every row in the state
+  file. Competitive suppliers and the EIA adjustment row would double-count retail-choice
+  sales if they were added to IOU delivery totals.
+- **EIA-176 sales + transportation.** Sales is bundled commodity + delivery.
+  Transportation is delivery for marketer-supplied gas. Together they are residential
+  gas that reached meters. Not vehicle fuel.
+- **Customer-count normalization (electricity only).** Scaling ResStock kWh by
+  EIA/ResStock customers assumes the missing (or extra) customers look like the ones
+  we have. If the weight gap is really a territory-assignment error concentrated in
+  one building type, the kWh comparison will still be biased. **Do not apply this
+  scaling to gas.** EIA-176 `consumers` are meters; Form 176 counts a master-metered
+  apartment building as one residential customer. ResStock counts dwellings. The
+  dwelling-to-meter ratio is often ~1.4, which would make a matching statewide gas
+  total look ~30% low after "customer-normalization." Electricity utility tables also
+  show one statewide customer-count scalar, one statewide kWh scalar, and the unscaled
+  totals. Gas utility tables show the statewide kWh scalar and the unscaled totals.
+- **`_sb` vs raw, upgrade 00.** Electricity differences are the multifamily non-HVAC
+  scaling. Gas differences are the optional statewide EIA-176 scaler, if it was run.
+  The heat-pump approximation does not touch upgrade 00.
+- **ACS year.** Default PUMS is ACS 5-year 2023. That stock is newer than AMY 2018, so
+  vintage and heat-pump-in-electricity will not match exactly. Set `ACS_END_YEAR` to
+  2018 if that partition is on S3 and you want a closer stock year.
+- **ACS electricity ≠ heat pump.** Statewide fuel comparison is the right ACS check.
+  Equipment (HP vs furnace vs boiler vs resistance) uses RECS `EQUIPM`.
+- **RECS sample.** A few hundred households in a small state. Published tables may
+  suppress heat pumps (`Q`). ResStock is calibrated to RECS at state / division scale,
+  so agreement is partly by construction.
+- **ACH50 vs Chan.** Predicted ACH50 uses the main Chan regression (year, climate,
+  floor area, height) only — not the residual foundation/duct add-ons. Stories above 3
+  are capped at 3 because Chan was estimated on single-family homes. This notebook does
+  not rescale hourly HVAC loads.
+- **Utility-level ACS** is possible via PUMA-overlap weights (already computed during
+  ResStock utility assignment) but is not wired in this template. Statewide is the
+  comparison that does not need extra GIS files.
+- **Gas operator map.** `GAS_OPERATORS` is filled in for Connecticut and is required
+  for the *per-utility* gas table. Statewide EIA-176 uses every operator in the state
+  and does not need that map.

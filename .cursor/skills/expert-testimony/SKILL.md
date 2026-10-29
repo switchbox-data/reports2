@@ -231,6 +231,8 @@ testimony:
   # version_label: PUBLIC VERSION        # optional
 ```
 
+For a plain-language walkthrough aimed at the person writing the testimony, see [`context/tools/expert_testimony_user_guide.md`](../../../context/tools/expert_testimony_user_guide.md).
+
 To start a new testimony, run `just new-testimony <path>.qmd` from the repo root: it writes a file with every field present as a `[PLACEHOLDER]`. `just check-testimony <path>.qmd` validates without rendering.
 
 Write headings with typed numerals (`## I. Introduction`, `### A. Subtopic`); the filter underlines only the words, not the numeral. Questions and answers are `**Q.**` / `**A.**` paragraphs.

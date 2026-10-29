@@ -2,7 +2,15 @@
 
 Reference docs, bug reports, and working notes for agents. **When you add or remove a file under `context/`, update this index.**
 
-See **AGENTS.md → Reference context** for conventions. Top-level dirs: **tools/** (Quarto/plotting/tooling knowledge and known bugs).
+See **AGENTS.md → Reference context** for conventions. Top-level dirs: **tools/** (user guides and how-to docs for Switchbox tooling).
+
+## tools/
+
+User guides for tooling we run ourselves. Documents that answer **"How do I use this?"** in plain language, for people who are not familiar with the underlying stack.
+
+| File                                 | Use when working on …                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| tools/expert_testimony_user_guide.md | Writing expert testimony and rendering it to the standard filing Word format: creating the file (`just new-testimony`), the `testimony:` fields to fill in (commission, caption, case number, type, witness, date), Q&A and heading conventions, `just testimony`, what the Word file contains, and hand-off. Links the writing skill and the style guide. |
 
 ## domain/
 

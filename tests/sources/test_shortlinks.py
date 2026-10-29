@@ -41,7 +41,7 @@ def test_404_forwards_only_http_urls_and_ignores_prototype_keys():
     assert "hasOwnProperty.call(LINKS, key)" in html
 
 
-@pytest.mark.parametrize("key", ["", "a/b", "../x", "has space", "-lead"])
+@pytest.mark.parametrize("key", ["", "a/b", "../x", "has space", "-lead", "index.html", "links.json"])
 def test_bad_keys_are_rejected(key):
     with pytest.raises(shortlinks.ShortLinkError):
         shortlinks.check_key(key)

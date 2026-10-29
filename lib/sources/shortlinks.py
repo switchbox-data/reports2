@@ -23,6 +23,8 @@ from lib.sources import env
 
 DEFAULT_REMOTE = "https://github.com/switchbox-data/pub.git"
 KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+# Files the pub site serves as real pages (index.html lists every link); a short link there would never forward.
+RESERVED_KEYS = frozenset({"index.html", "links.json", "404.html", "CNAME", "README.md"})
 
 _TEMPLATE = """<!doctype html>
 <html lang="en">
@@ -71,6 +73,8 @@ class ShortLinkError(ValueError):
 def check_key(key: str) -> None:
     if not KEY_RE.match(key):
         raise ShortLinkError(f"short-link key {key!r} may only contain letters, digits, '_', '.' and '-'")
+    if key in RESERVED_KEYS:
+        raise ShortLinkError(f"short-link key {key!r} is a page of the pub site, not a link")
 
 
 def check_target(target: str) -> None:

@@ -1,16 +1,23 @@
 ---
-source: exhibitngpp1.pdf
-docket: "D.P.U. 23-150 (printed on the exhibit)"
-utility: Massachusetts Electric Company and Nantucket Electric Company, each d/b/a National Grid
-rate: "Electrification Pricing option for Rate R-1 (the proposal the DPU rejected; see extractor note below)"
-filing_date: November 16, 2023
-filer: "Melissa A. Little and Howard S. Gorman, Pricing Panel, on behalf of National Grid (Exhibit NG-PP-1; hearing officer H.O. Tassone)"
-document_type: testimony (pre-filed direct testimony)
+source_file: madpu_23-150_20231116_ng_pricing_panel_little_gorman_direct_testimony_exh_ng_pp_1.pdf
+citekey: little_Docket23150Exhibit_2023
+zotero_item: "JV7MBE74"
+public_url: https://drive.google.com/file/d/17AZaV52rdyrYX3oxfNs8_mctzY6Cv1Rd/view
+short_url: https://pub.switch.box/little_Docket23150Exhibit_2023
+docket: 23-150
+utility: National Grid
+rate: Electrification pricing (rejected)
+filing_date: 2023-11-16
+filer: Melissa A. Little & Howard S. Gorman (NG Pricing Panel)
+document_type: testimony
 pages_total: 55
 extraction_scope: full
 source_url: https://fileservice.eea.comacloud.net/V3.1.0/FileService.Api/file/iaadagde?1YuQAG98En1vI6LOO8trLMEmiDhMBXK0ednWT8WFP5Ok9v9pxUxyG6LkaCeWBSjqbmMlNqhcSkxPf0qUr1gASPKrYE1qejvebf677PtCVStUdHoHpEGELGLGjR+ZpYgt  # download URL from our manifest, not text from the PDF
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/ma_national_grid/madpu_23-150_20231116_ng_pricing_panel_little_gorman_direct_testimony_exh_ng_pp_1.pdf
-why_here: "Pricing Panel direct testimony for the original 'Electrification Pricing' proposal the DPU rejected (fixed monthly charge replacing the volumetric kWh charge for opt-in R-1 customers, shortfall recovered through decoupling). The $37.68 figure appears in the DPU order, not in this PDF."
+md5: "f242c38861c52f9d2a7ec1f47c86bd67"
+validated: 2026-10-29
+why_here: 'National Grid''s first answer to heat pump rate design: a technology-neutral fixed-charge option, not a heat pump rate. Read with the rebuttal and the DPU order to follow how it became a Unitil-style rate.'
+context: The Pricing Panel's direct testimony in National Grid's November 16, 2023 base rate filing in D.P.U. 23-150, from Melissa A. Little (National Grid USA Service Company) and Howard S. Gorman (HSG Group, Inc.), testifying for the two companies. It opens the rate design record that led the DPU to order a heat pump rate.
+contents: Fifty-five pages covering the allocated cost of service study, proposed rate design, bill impacts and tariffs. Printed pages 25 to 30 propose an opt-in Electrification Pricing option for R-1, a fixed monthly distribution charge in place of the per kWh charge aimed at heat pump and electric vehicle owners, with the resulting revenue shortfall recovered through the revenue decoupling mechanism.
 ---
 
 # Pre-Filed Direct Testimony of Melissa A. Little and Howard S. Gorman, Pricing Panel (Exhibit NG-PP-1, D.P.U. 23-150)

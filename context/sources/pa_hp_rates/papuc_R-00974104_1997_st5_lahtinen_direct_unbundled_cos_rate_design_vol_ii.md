@@ -1,16 +1,23 @@
 ---
-source: papuc_R-00974104_1997_dlc_st5_lahtinen_direct_unbundled_cos_rate_design_vol_ii.pdf
-docket: R-00974104 (printed on the cover)
-utility: Duquesne Light Company (printed)
-rate: "Rate RH (Residential Service Heating) and Rate RA (Residential Service Add-On Heat Pump), with Rate RS (Residential Service) for comparison; the proposed unbundled tariff names them RHD and RAD (Rate RHD - Residential Service Heating Delivery; Rate RAD - Residential Service Add-On Heat Pump Delivery), as printed in Exhibit JAL-12"
-filing_date: "1997 (from our assignment manifest). The cover page carries stamps reading RECEIVED DEC 18 1997 (PA Public Utility Commission, Prothonotary's Office) and DOCKETED DEC 23 1997; the tariff pages in Exhibit JAL-12 are dated ISSUED July 31, 1997, EFFECTIVE January 1, 1999."
-filer: "James A. Lahtinen (Duquesne Light Company); filer as listed in our assignment manifest, and the witness named on the cover"
-document_type: "Direct testimony (Duquesne Statement No. 5, Volume II) with exhibits JAL-1 to JAL-13, including the proposed Electric Delivery - PA. P.U.C. No. 1 tariff (Exhibit JAL-12)"
+source_file: papuc_R-00974104_1997_dlc_st5_lahtinen_direct_unbundled_cos_rate_design_vol_ii.pdf
+citekey: lahtinen_DocketR00974104Direct_1997
+zotero_item: "BA72XED3"
+public_url: https://drive.google.com/file/d/1qCEhPCOm7IutKfVIIYsoJ84zCpexRXKR/view
+short_url: https://pub.switch.box/lahtinen_DocketR00974104Direct_1997
+docket: R-00974104
+utility: Duquesne Light
+rate: Rate RA (Residential Add-On Heat Pump)
+filing_date: 1997-12-18
+filer: James A. Lahtinen (Duquesne Light)
+document_type: testimony
 pages_total: 250
 extraction_scope: "PARTIAL. Extracted: PDF pp. 1-2 (cover, table of contents); testimony pp. 26-28, 45, 49-54, 66-68, 86 and the exhibit list p. 91; Exhibit JAL-3 pp. 168-169; Exhibit JAL-4 pp. 170-174; Exhibit JAL-6 p. 190; Exhibit JAL-9 p. 193; Exhibit JAL-12 pp. 198-200 and 224-234 (Rates RSD, RHD, RAD). All other pages are omitted; see the Omitted pages index at the end. The PDF is a scanned image with an OCR text layer; narrative text was taken from the OCR layer and checked against page images for PDF pp. 1-2, 27, 45, 49, 54, 66-68 and 86 (spot checks elsewhere); exhibit tables were read from page images."
-source_url: "https://www.puc.pa.gov/pcdocs/1206462.pdf (download URL recorded in our manifest; not text from the PDF)"
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/pa_duquesne_ra/papuc_R-00974104_1997_dlc_st5_lahtinen_direct_unbundled_cos_rate_design_vol_ii.pdf
-why_here: "1997 restructuring testimony: earliest online record showing RA as its own class with the same add-on rules. (From our assignment.)"
+source_url: https://www.puc.pa.gov/pcdocs/1206462.pdf
+md5: "941ee6871e1c44eaff5f653627cf0d68"
+validated: 2026-10-29
+why_here: The oldest evidence that RA already existed as an equipment-defined add-on heat pump class with the 40 F thermostat rule, and how its delivery rate was first derived from allocated cost of service. It does not say why RA was created (Ogden's 2024 testimony does).
+context: Direct testimony in Duquesne Light's 1997 restructuring case (Vol. II of the Company's filing), the earliest electronically available record of Rate RA; later steps in this docket (1998 compliance filing, 2000 compliance tariffs) are in the staging folder but not in these cards.
+contents: 'Unbundled allocated cost of service, rate design and competitive transition charges by class. Exhibits: JAL-3 (1996 class cost and revenue for RA, RS, RH), JAL-4 and JAL-9 (bundled against unbundled usage rates), JAL-12 (proposed unbundled tariff; Rate RAD, Residential Service Add-On Heat Pump Delivery, tariff pp. 34-37).'
 ---
 
 # Direct Testimony of James A. Lahtinen (Duquesne Statement No. 5, Volume II): Unbundled Cost of Service, Rate Design, and Calculation of Competitive Transition Charges, Duquesne Light Company, Docket No. R-00974104

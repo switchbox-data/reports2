@@ -1,16 +1,23 @@
 ---
-source: madpu_23-80_20240628_final_order_rate_case_heat_pump_rate_pp399_409.pdf
-docket: "D.P.U. 23-80 (electric division) and D.P.U. 23-81 (gas division), as printed on every page"
-utility: Fitchburg Gas and Electric Light Company d/b/a Unitil (Electric Division and Gas Division) (as printed)
-rate: "Residential heat-pump rates (proposed Schedule HP-RES and Schedule HP-RES-LI, as named in the Order), Electric Division, for customers in Rates RD-1 and RD-2"
-filing_date: "June 28, 2024 (as printed on the cover page)"
-filer: "Department of Public Utilities, Commonwealth of Massachusetts (order); PDF file metadata author: Smegal, Sarah (DPU)"
+source_file: madpu_23-80_20240628_final_order_rate_case_heat_pump_rate_pp399_409.pdf
+citekey: madpu_Docket2380Order_2024
+zotero_item: "53S27D87"
+public_url: https://www.documentcloud.org/documents/25940112-ma-dpu-docket-23-80-order-2024/
+short_url: https://pub.switch.box/madpu_Docket2380Order_2024
+docket: 23-80
+utility: Unitil (Fitchburg G&E)
+rate: HP-RES / HP-RES LI
+filing_date: 2024-06-28
+filer: DPU
 document_type: order
 pages_total: 549
 extraction_scope: "PARTIAL. PDF pages 1-16 (cover/appearances, table of contents, Summary); 413-423 (Section XII.E 'Heat-Pump Rates - Electric Division', printed pp. 399-409, complete; PDF page 423 also carries the heading and first sentence of XII.F); 429-433 (Section XII.F.4 'Analysis and Findings' on revenue decoupling, from its heading through the end of XII.F; it contains a statement of the heat pump rate approval); 433-435 (Section XII.G.1-2: Electric Rate-by-Rate Analysis introduction and Rates RD-1 and RD-2 residential delivery service). See 'Omitted pages index' at the end."
 source_url: "https://fileservice.eea.comacloud.net/V3.1.0/FileService.Api/file/ifdjeibj?gSEiNpeKfi+M9T4Q6eLlpmFJ0ioKRMXdZYr4j7j/42qk9v9pxUxyG6LkaCeWBSjqbmMlNqhcSkxPf0qUr1gASPKrYE1qejvebf677PtCVStUdHoHpEGELGLGjR+ZpYgt"
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/ma_unitil/madpu_23-80_20240628_final_order_rate_case_heat_pump_rate_pp399_409.pdf
-why_here: "Excerpt of the Jun 28, 2024 rate case order (printed pp. 399-409): the DPU decision approving the rate and ordering annual reporting."
+md5: "de31f6b1cfbf02fa164aadec8f51d154"
+validated: 2026-10-29
+why_here: The decision on who may take the rate (anyone who installs and uses a heat pump, with no sizing test) and what enrollment and usage data Unitil must report, which the 2025 to 2026 inquiry in 25-08 builds on.
+context: The DPU's Jun 28, 2024 order deciding the electric (23-80) and gas (23-81) rate cases and performance-based ratemaking plans of Fitchburg Gas and Electric Light Company d/b/a Unitil, after the Feb 2024 hearing, record requests and March to May 2024 briefs. Section XII.E, 'Heat-Pump Rates - Electric Division' (printed pp. 399-409), rules on HP-RES and HP-RES LI; our extract is partial (549 pages in all).
+contents: Approves the heat pump rate for all RD-1 and RD-2 customers who install and use heat pumps in all or part of their homes, declines the Attorney General's proposed limit to heat pumps sized to heat the entire home and DOER's request to seasonalize reconciling mechanisms, and directs Unitil to report annually the customers opting into and off the rate, 12 months of pre- and post-installation monthly kWh, monthly peak kW if possible, and counts of Mass Save rebate recipients who did and did not opt in.
 ---
 
 # D.P.U. 23-80 / D.P.U. 23-81: Fitchburg Gas and Electric Light Company d/b/a Unitil, Order (June 28, 2024) (partial extract)

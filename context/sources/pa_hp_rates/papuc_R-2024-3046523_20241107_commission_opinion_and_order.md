@@ -1,16 +1,23 @@
 ---
-source: papuc_R-2024-3046523_20241107_commission_opinion_and_order.pdf
-docket: R-2024-3046523 (Pennsylvania Public Utility Commission v. Duquesne Light Company; consolidated complaints C-2024-3047779, C-2024-3048171, C-2024-3048340, C-2024-3049302, C-2024-3049624)
-utility: Duquesne Light Company
-rate: Rate RA (Residential Add-On Heat Pump) / Rate RH (not named in this order; see extractor note)
-filing_date: November 7, 2024 (order adopted and entered)
-filer: Pennsylvania Public Utility Commission (by Rosemary Chiavetta, Secretary)
+source_file: papuc_R-2024-3046523_20241107_commission_opinion_and_order.pdf
+citekey: papuc_DocketR20243046523Order_2024
+zotero_item: "PVFTW6A4"
+public_url: https://drive.google.com/file/d/1ZYnmXpIxLwRthn5Tl-_VDvIF7gPv6jv9/view
+short_url: https://pub.switch.box/papuc_DocketR20243046523Order_2024
+docket: R-2024-3046523
+utility: Duquesne Light
+rate: Rate RA / RH
+filing_date: 2024-11-07
+filer: Commission
 document_type: order
 pages_total: 3
 extraction_scope: full
 source_url: https://www.puc.pa.gov/pcdocs/1855536.pdf  # from our download manifest, not text from the PDF
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/pa_duquesne_ra/papuc_R-2024-3046523_20241107_commission_opinion_and_order.pdf
-why_here: "Commission order adopting the Recommended Decision and approving the settlement in full. Contains no RA or heat pump text itself; the RA closure terms are in the settlement and the compliance tariff."
+md5: "64fdcca5d51ec9e8f138b197769331df"
+validated: 2026-10-29
+why_here: The decision of record that makes the settlement terms, including the Rate RA closure and sunset, binding; the RA terms themselves are in the settlement and the compliance tariff.
+context: The Commission's final order in the Duquesne Light base rate case, adopting the ALJ's Recommended Decision and the August 16, 2024 settlement and authorizing the compliance tariff.
+contents: 'Three-page order: caption and ordering paragraphs adopting the Recommended Decision and settlement in full, allowing a tariff supplement effective December 20, 2024, dismissing three individual customer complaints and deeming the OCA and OSBA complaints satisfied; no Rate RA or heat pump text.'
 ---
 
 # Pennsylvania Public Utility Commission, Order, Public Meeting held November 7, 2024

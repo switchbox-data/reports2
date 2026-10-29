@@ -1,16 +1,23 @@
 ---
-source: madpu_25-55_20250417_nstar_electric_compa_exh_es_hp_1_testimony_final.pdf
-docket: D.P.U. 25-55 (printed on the exhibit)
-utility: NSTAR Electric Company d/b/a Eversource Energy
-rate: Rate R-1HP / Rate R-2HP (seasonal heat pump rate)
-filing_date: April 17, 2025 (printed on the exhibit)
-filer: Richard D. Chin, on behalf of NSTAR Electric Company d/b/a Eversource Energy (Exhibit ES-HP-1)
+source_file: madpu_25-55_20250417_nstar_electric_compa_exh_es_hp_1_testimony_final.pdf
+citekey: chin_Docket2555Direct_2025
+zotero_item: "QUWILWCV"
+public_url: https://drive.google.com/file/d/1nB2ETItmwwmDbmUh_ddF9H7gFmEq5PxY/view
+short_url: https://pub.switch.box/chin_Docket2555Direct_2025
+docket: 25-55
+utility: Eversource (NSTAR Electric)
+rate: R1HP / R2HP
+filing_date: 2025-04-17
+filer: NSTAR Electric Company d/b/a Eversource Energy
 document_type: testimony
 pages_total: 22
 extraction_scope: full
 source_url: https://fileservice.eea.comacloud.net/V3.1.0/FileService.Api/file/iidebgdj?WCBnPV6xYE3Tr6ik3BUisGFJ0ioKRMXdZYr4j7j/42qk9v9pxUxyG6LkaCeWBSjqbmMlNqhcSkxPf0qUr1gASPKrYE1qejvebf677PtCVStUdHoHpEGELGLGjR+ZpYgt
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/ma_eversource/madpu_25-55_20250417_nstar_electric_compa_exh_es_hp_1_testimony_final.pdf
-why_here: Richard Chin's direct testimony, the only sworn testimony in the case: derivation of the seasonal rate, transmission treatment and eligibility.
+md5: "a7f6cf0960ff0fca83dc3a4b93988d4b"
+validated: 2026-10-29
+why_here: The company's own account of how it designed a heat pump rate and who qualifies, without sizing or usage screens and without data on actual heat pump customers.
+context: Eversource's direct testimony opening D.P.U. 25-55, answering the DPU's 3/21/25 order in D.P.U. 25-08 directing a revenue-neutral heat pump rate after reviewing DOER's petition. Chin, Manager of Rates, is the company's only witness; no other sworn testimony in the docket.
+contents: 'Chin''s explanation of the R-1HP/R-2HP design: gas-load-to-kWh adjustment, summer rate solved first and winter as residual, seasonal transmission, a 15% bill reduction against R-1, eligibility for any R-1/R-2 customer using a heat pump in all or part of the home, and the proposed tariffs.'
 ---
 
 # Direct Testimony of Richard D. Chin — Seasonal Heat Pump Rate (Exhibit ES-HP-1)

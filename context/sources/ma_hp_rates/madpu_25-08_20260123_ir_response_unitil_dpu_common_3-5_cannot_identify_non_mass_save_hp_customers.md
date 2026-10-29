@@ -1,16 +1,23 @@
 ---
-source: DPU 25-08 DPU-Common 3-5.pdf (staged as madpu_25-08_20260123_ir_response_unitil_dpu_common_3-5_cannot_identify_non_mass_save_hp_customers.pdf)
-docket: "D.P.U. 25-08"
-utility: Fitchburg Gas and Electric Light Company d/b/a Unitil
-rate: Seasonal heat pump rate ("Heat Pump Rate"); rate code not printed in this response
-filing_date: "January 23, 2026 (printed in the response)"
-filer: Fitchburg Gas and Electric Light Company d/b/a Unitil; Person Responsible Cindy Carroll
-document_type: IR response (DPU-Common 3-5, Department's Third Set of Common Document and Information Requests)
+source_file: madpu_25-08_20260123_ir_response_unitil_dpu_common_3-5_cannot_identify_non_mass_save_hp_customers.pdf
+citekey: fge_Docket2508Response_2026
+zotero_item: "NSE42JWP"
+public_url: https://drive.google.com/file/d/19KMbmt5Bt_oSgyR_sRs4VkPBwzlJiBet/view
+short_url: https://pub.switch.box/fge_Docket2508Response_2026
+docket: 25-08
+utility: Unitil (Fitchburg G&E)
+rate: HP-RES / HP-RES LI
+filing_date: 2026-01-23
+filer: Fitchburg Gas and Electric Light Company d/b/a Unitil
+document_type: IR_response
 pages_total: 1
 extraction_scope: full
 source_url: https://fileservice.eea.comacloud.net/V3.1.0/FileService.Api/file/aeidgagjj?mBKhbQXzU6NHmnpr/pdgEzYOTJIXb74KK+K98p2SnvmPcSxI+blU344Khxm+qpOeg0hKFj9M9l/xQR8+/8GqPvdGgrFe6XR6ngIfa80wd3rxFD8G4j981M2Rna9aVTXA
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/ma_unitil/madpu_25-08_20260123_ir_response_unitil_dpu_common_3-5_cannot_identify_non_mass_save_hp_customers.pdf
-why_here: Unitil states it cannot identify heat pump customers who installed outside Mass Save.
+md5: "bd64b9f8ae36971c0b25f4f605ed3ad6"
+validated: 2026-10-29
+why_here: A utility's own statement of the limit of heat pump customer identification, and that it enrolls and reports on the customers it can identify rather than all who qualify.
+context: Unitil's Jan 23, 2026 response to the DPU's third set of common information requests (DPU-Common 3-5) in the inquiry into seasonal heat pump rates opened after DOER's January 2025 petition (D.P.U. 25-08); the request refers to the reporting template filed as Exhibit D to the petition.
+contents: Asked whether it collects the data to report the share of eligible customers enrolled, Unitil says it auto-enrolls Mass Save heat pump rebate customers and enrolls others on contact, but 'will not be able to identify customers who adopted a heat pump outside of the MassSave energy efficiency programs who did not opt into' the rate, so it cannot report that percentage.
 ---
 
 # Fitchburg Gas and Electric Light Company d/b/a Unitil, D.P.U. 25-08: Response to DPU-Common 3-5

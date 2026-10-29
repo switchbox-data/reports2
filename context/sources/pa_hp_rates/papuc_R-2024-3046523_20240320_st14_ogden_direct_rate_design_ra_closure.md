@@ -1,16 +1,23 @@
 ---
-source: papuc_R-2024-3046523_20240320_dlc_st14_ogden_direct_rate_design_ra_closure.pdf
+source_file: papuc_R-2024-3046523_20240320_dlc_st14_ogden_direct_rate_design_ra_closure.pdf
+citekey: ogden_DocketR20243046523Direct_2024
+zotero_item: "J659DW46"
+public_url: https://drive.google.com/file/d/1HmMfLkiAJIIra8YPzO5OK8ADszbzox48/view
+short_url: https://pub.switch.box/ogden_DocketR20243046523Direct_2024
 docket: R-2024-3046523
-utility: Duquesne Light Company
-rate: Rates RS, RH and RA (Residential Service Add-On Heat Pump); closure of Rate RA to new customers from January 1, 2025
-filing_date: March 20, 2024
-filer: David B. Ogden, Manager, Rates and Tariff Services, Duquesne Light Company (Duquesne Light Statement No. 14)
-document_type: testimony (direct) with tariff exhibits DBO-1, DBO-2, DBO-3
+utility: Duquesne Light
+rate: Rate RA (Residential Add-On Heat Pump)
+filing_date: 2024-03-20
+filer: David B. Ogden (Duquesne Light)
+document_type: testimony
 pages_total: 179
 extraction_scope: "PDF pages 1-46 (full direct testimony) plus selected exhibit pages: DBO-1 PDF pp. 47, 51, 54, 56, 68-70, 91-93; DBO-2 (redline) PDF pp. 127-129; DBO-3 PDF pp. 165-167, 170, 178 (partial; see Omitted pages index)"
 source_url: https://www.puc.pa.gov/pcdocs/1823418.pdf  # from our download manifest, not text from the PDF
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/pa_duquesne_ra/papuc_R-2024-3046523_20240320_dlc_st14_ogden_direct_rate_design_ra_closure.pdf
-why_here: Rate design witness Ogden on RH/RA design, the origin of RA ('legacy rate ... nuclear'), and its closure and customer protection (pp. 13-14).
+md5: "36a7cfd0628c71bb46c1a6061b46c6ab"
+validated: 2026-10-29
+why_here: Duquesne's own rationale for an add-on heat pump rate (a legacy rate added decades ago after the nuclear build-out), how RA is priced against RH and RS, and why it is being closed. DBO-1 p. 43 gives the equipment-based RA eligibility rules; the testimony does not say how RA customers are identified.
+context: Duquesne Light's direct case in its March 2024 base rate filing, from the rate design witness; the starting point that the other parties' testimony and the August 2024 settlement respond to.
+contents: 'Revenue allocation and rate design for Rates RS, RH and RA (pp. 12-14): RH and RA discount the November-April energy charge; RA would close to new customers January 1, 2025, with six years of protection for existing ones. Exhibits: DBO-1 proposed tariff (Supplement No. 71), DBO-2 redline, DBO-3 digest (p. 6 compares current and proposed RS, RH, RA rates).'
 ---
 
 # Before the Pennsylvania Public Utility Commission — Docket No. R-2024-3046523 — Duquesne Light Company Statement No. 14 — Direct Testimony of David B. Ogden

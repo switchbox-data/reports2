@@ -1,16 +1,23 @@
 ---
-source: papuc_R-2024-3046523_20240816_joint_petition_for_settlement_with_appendices.pdf
-docket: "R-2024-3046523 (printed on p.4 with consolidated complaint dockets C-2024-3047779, C-2024-3048171, C-2024-3048340, C-2024-3049302, C-2024-3049624)"
-utility: Duquesne Light Company (printed)
-rate: "Rate RH (Residential Service Heating) and Rate RA (Residential Service Add-On Heat Pump), with Rate RS (Residential Service) for comparison; rate names as printed in the tariff pages in Appendix A. The assignment label for this row was 'Rate RA / RH'."
-filing_date: August 16, 2024 (printed on the cover letter, p.1)
-filer: "Duquesne Light Company (Post & Schell, P.C.; cover letter signed by Megan E. Rulli) on behalf of the Joint Petitioners: Duquesne Light, I&E, OCA, OSBA, CAUSE-PA, PWPTF and Walmart (printed p.4). The assignment manifest lists the filers as 'DLC, OCA, OSBA, BIE, others'."
-document_type: "Joint Petition for Approval of Settlement, with Appendices A-L (settlement, tariff supplement, proofs of revenue, bill impacts, proposed findings, statements in support)"
+source_file: papuc_R-2024-3046523_20240816_joint_petition_for_settlement_with_appendices.pdf
+citekey: dlc_DocketR20243046523Joint_2024
+zotero_item: "637F4WMP"
+public_url: https://drive.google.com/file/d/1pJ0qwbH7z3hZ2f-7ils4cDPyhqMU3dOq/view
+short_url: https://pub.switch.box/dlc_DocketR20243046523Joint_2024
+docket: R-2024-3046523
+utility: Duquesne Light
+rate: Rate RA / RH
+filing_date: 2024-08-16
+filer: Duquesne Light Company, I&E, OCA, OSBA, CAUSE-PA, PWPTF and Walmart (the Joint Petitioners)
+document_type: filing
 pages_total: 370
 extraction_scope: "PARTIAL. Full: PDF pages 1-35 (cover letter, certificate of service, caption, entire Joint Petition body with signature pages, Appendix A divider). Selected appendix pages: Appendix A (tariff supplement) PDF pp. 36, 41-42, 45, 48, 66, 68-71, 92-94 and the Exhibit DBO-1 redline pp. 109, 139, 141, 143; Appendix B pp. 183-189; Appendix C p. 225; Appendix D p. 227; Appendix E p. 241; Appendix F pp. 263-264; Appendix G pp. 282-283; Appendix H pp. 304-305, 312-314; Appendix I pp. 324-328; Appendix J pp. 355-357; Appendix K pp. 362-364 (scanned; transcribed from images). All other pages omitted; see Omitted pages index at the end."
-source_url: "https://www.puc.pa.gov/pcdocs/1845175.pdf (download URL recorded in our manifest; not text from the PDF)"
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/pa_duquesne_ra/papuc_R-2024-3046523_20240816_joint_petition_for_settlement_with_appendices.pdf
-why_here: "Settlement terms: 11.7% distribution increase for RH and RA versus 7.5% for RS, with appendices. (From our assignment; the 11.7% / 7.5% figures are stated in the OCA Statement in Support, Appendix H, PDF p.313, not in the Joint Petition body.)"
+source_url: https://www.puc.pa.gov/pcdocs/1845175.pdf
+md5: "7f0369c4fe327e981092bc4b6c3c7d62"
+validated: 2026-10-29
+why_here: What was finally agreed on Rate RA and RH and how the settling parties justified it, including the revenue allocation behind the 11.7% RH and RA increase; the RA closure terms that the compliance tariff implements.
+context: Settlement of all issues in the Duquesne Light rate case, signed by seven parties after the July 2024 testimony rounds and hearing; adopted without modification by the ALJ's October 1, 2024 Recommended Decision and the Commission's November 7, 2024 order.
+contents: 'Paragraph 81: Rate RA closed to new customers, frozen for existing customers, sunset by 2030; paragraph 80: $13.00 customer charge for RS, RA and RH. Appendices A-L: tariff supplement, proofs of revenue, present and settled rates, bill impacts, proposed findings, party statements (OCA, H: 11.7% RH and RA against 7.5% RS increase; CAUSE-PA, J: no position on the RA sunset).'
 ---
 
 # Joint Petition for Approval of Settlement (with Appendices), Duquesne Light Company base rate case, Docket No. R-2024-3046523

@@ -1,16 +1,23 @@
 ---
-source: dpu23150responsestodpuquestion.pdf
-docket: "D.P.U. 23-150 (printed on the letter)"
-utility: Massachusetts Electric Company and Nantucket Electric Company each d/b/a National Grid
-rate: "Residential Heat Pump Rate (proposed Rate R-1/R-2 heat pump rate; Exhibit HP-1-Revised/HP-2-Revised/HP-3-Revised enclosed)"
-filing_date: January 10, 2025
-filer: National Grid, by Stacey M. Donnelly, Senior Counsel (letter to Mark D. Marini, Secretary, Department of Public Utilities)
-document_type: IR response (letter responding to DPU questions dated January 8, 2025)
+source_file: madpu_23-150_20250110_ng_responses_to_dpu_questions_hp_rate.pdf
+citekey: meco_Docket23150Responses_2025
+zotero_item: "EESZMH7Q"
+public_url: https://drive.google.com/file/d/1slAJUQPtyowYqdemJYSGH-XyFimjDl1D/view
+short_url: https://pub.switch.box/meco_Docket23150Responses_2025
+docket: 23-150
+utility: National Grid
+rate: Heat Pump Rate (R-1/R-2)
+filing_date: 2025-01-10
+filer: National Grid (Stacey Donnelly)
+document_type: IR_response
 pages_total: 2
 extraction_scope: full
 source_url: https://fileservice.eea.comacloud.net/V3.1.0/FileService.Api/file/iidjhefe?zPlF9QlohigTcMR52KJC0cEmiDhMBXK0ednWT8WFP5Ok9v9pxUxyG6LkaCeWBSjqbmMlNqhcSkxPf0qUr1gASPKrYE1qejvebf677PtCVStUdHoHpEGELGLGjR+ZpYgt  # download URL from our manifest, not text from the PDF
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/ma_national_grid/madpu_23-150_20250110_ng_responses_to_dpu_questions_hp_rate.pdf
-why_here: "Response showing the 2.8x multiplier was lifted from Unitil's Exhibit JDT-6."
+md5: "dc24dd823f344e824a26d6a2b653b9e6"
+validated: 2026-10-29
+why_here: The admission that the heat pump multiplier was taken from Unitil's model, not derived from National Grid customer data. It prompted the DPU's January 13 follow-up and the Exhibit NG-4 replication.
+context: 'National Grid''s January 10, 2025 letter answering two questions the DPU sent on January 8, 2025 about the December 30, 2024 heat pump rate compliance filing in D.P.U. 23-150: why the winter period ran October to March rather than Unitil''s November to April, and where the 2.8 factor comes from. It encloses the revised Exhibits HP-1, HP-2 and HP-3.'
+contents: Two pages from National Grid's counsel, Stacey M. Donnelly. National Grid moves the winter period to November to April, with no change to the rate, and says it computed the 2.8 factor from Exhibit Unitil-JDT-6 in D.P.U. 23-80 by dividing row 4 (distribution charge) by row 22 (volumetric fixed cost recovery charge), which gives 2.800873.
 ---
 
 # National Grid Responses to Questions of the Department of Public Utilities Regarding Residential Heat Pump Rate Filing (D.P.U. 23-150)

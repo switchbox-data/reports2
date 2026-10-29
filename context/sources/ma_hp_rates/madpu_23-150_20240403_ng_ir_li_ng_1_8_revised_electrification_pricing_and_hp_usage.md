@@ -1,16 +1,23 @@
 ---
-source: ling18revised_final.pdf
-docket: "D.P.U. 23-150 (printed on the document)"
-utility: Massachusetts Electric Company and Nantucket Electric Company each d/b/a National Grid
-rate: "Electrification Pricing Proposal (the optional rate proposal the DPU later rejected in favor of a Unitil-style heat pump rate; the later rejection is not stated in this PDF)"
-filing_date: April 3, 2024
-filer: "National Grid; response prepared by or under the supervision of Lauri Mancinelli; hearing officer H.O. Tassone"
-document_type: IR response (Information Request LI-NG-1-8 Revised)
+source_file: madpu_23-150_20240403_ng_ir_li_ng_1_8_revised_electrification_pricing_and_hp_usage.pdf
+citekey: meco_Docket23150Information_2024
+zotero_item: "RQWSFMZZ"
+public_url: https://drive.google.com/file/d/1w2BEkD6vjdU380ndaRUkNufS_qavi_oN/view
+short_url: https://pub.switch.box/meco_Docket23150Information_2024
+docket: 23-150
+utility: National Grid
+rate: Heat Pump Rate (R-1/R-2)
+filing_date: 2024-04-03
+filer: Lauri Mancinelli (NG)
+document_type: IR_response
 pages_total: 4
 extraction_scope: full
 source_url: https://fileservice.eea.comacloud.net/V3.1.0/FileService.Api/file/idcgcbij?qdpCMa24DolD/eN9I+RtXGFJ0ioKRMXdZYr4j7j/42qk9v9pxUxyG6LkaCeWBSjqbmMlNqhcSkxPf0qUr1gASPKrYE1qejvebf677PtCVStUdHoHpEGELGLGjR+ZpYgt  # download URL from our manifest, not text from the PDF
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/ma_national_grid/madpu_23-150_20240403_ng_ir_li_ng_1_8_revised_electrification_pricing_and_hp_usage.pdf
-why_here: "Discovery response stating National Grid 'does not track customers using electric resistance heat' and describing the heat pump usage data it has."
+md5: "ef96d6b95ba0faa3779945435e1907df"
+validated: 2026-10-29
+why_here: Shows what heat pump data National Grid held before the DPU ordered the rate (program enrollment averages, no resistance-heat tracking) and its stated reasons for avoiding a heat pump-specific rate.
+context: National Grid's April 3, 2024 revised response to information request LI-NG-1-8 in the D.P.U. 23-150 rate case, which asked for bill comparisons and average monthly usage of customers with air source heat pumps and with electric resistance heat under the proposed Electrification Pricing option. The revision corrects the revenue decoupling calculations in Attachment LI-NG-1-8-1; the original response of January 30, 2024 is not in our files. Prepared under the supervision of Lauri Mancinelli.
+contents: 'Four pages. Part (b) points to Attachment LI-NG-1-8-2 (usage of customers enrolled in National Grid''s 2019 to 2020 air source heat pump program, January 2021 to December 2023), says the company ''does not track customers using electric resistance heat,'' and footnotes that non-enrolled averages may include heat pump customers. Parts (c) and (d) explain why Electrification Pricing is technology neutral: technology-specific rates need verification of eligible technologies and submetering.'
 ---
 
 # Information Request LI-NG-1-8 Revised (D.P.U. 23-150)

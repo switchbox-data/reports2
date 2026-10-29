@@ -1,16 +1,23 @@
 ---
-source: papuc_R-2024-3046523_20240320_dlc_st15_coleman_direct_ev_tou_rates_rs_rh_ra.pdf
+source_file: papuc_R-2024-3046523_20240320_dlc_st15_coleman_direct_ev_tou_rates_rs_rh_ra.pdf
+citekey: coleman_DocketR20243046523Direct_2024
+zotero_item: "DFCX3WIH"
+public_url: https://drive.google.com/file/d/1Uc9HKUB_xFtd63ZWfQcBy0GrrKo4KiPG/view
+short_url: https://pub.switch.box/coleman_DocketR20243046523Direct_2024
 docket: R-2024-3046523
-utility: Duquesne Light Company
-rate: Proposed Rates RS, RH and RA non-TOU volumetric distribution rates, and the EV Time-of-Use Distribution Rate Pilot (Rider No. 4) layered on RS/RH/RA
-filing_date: March 20, 2024
-filer: David C. Coleman, Partner, The NorthBridge Group, Inc., for Duquesne Light Company (Duquesne Light Statement No. 15)
-document_type: testimony (direct)
+utility: Duquesne Light
+rate: Rate RA / RH
+filing_date: 2024-03-20
+filer: David Coleman (Duquesne Light)
+document_type: testimony
 pages_total: 26
 extraction_scope: full
 source_url: https://www.puc.pa.gov/pcdocs/1823419.pdf  # from our download manifest, not text from the PDF
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/pa_duquesne_ra/papuc_R-2024-3046523_20240320_dlc_st15_coleman_direct_ev_tou_rates_rs_rh_ra.pdf
-why_here: Coleman testimony comparing proposed RA, RH and RS rates (RA winter 3.5598 cents versus RH 7.5466 cents) and the TOU pilot.
+md5: "8c2a2bca72ad853a5c99246a378d4ccd"
+validated: 2026-10-29
+why_here: Shows the proposed pre-settlement RA winter and summer rates beside RH and RS, and how a TOU layer would sit on the seasonal RA structure. Its rates were updated in rebuttal (Statement 15-R, in the combined exhibit file); it does not discuss heat pumps or how RA customers are identified.
+context: Duquesne Light's direct testimony in its March 2024 rate filing on the EV time-of-use distribution rate pilot (Rider No. 4), companion to Ogden's Statement No. 14 on base rates.
+contents: Design and calculation of the EV TOU distribution rates for RS, RH and RA. Table 1 (p. 6) lists the proposed non-TOU volumetric rates (RA winter 3.5598 c/kWh against RH 7.5466 and RS 8.4662; summer 8.4662 for all three); Tables 2-4 derive the whole-home and EV-only TOU rates for each class.
 ---
 
 # Before the Pennsylvania Public Utility Commission — Docket No. R-2024-3046523 — Duquesne Light Company Statement No. 15 — Direct Testimony of David Coleman

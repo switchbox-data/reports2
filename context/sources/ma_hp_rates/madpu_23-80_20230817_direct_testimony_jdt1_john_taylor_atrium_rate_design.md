@@ -1,16 +1,23 @@
 ---
-source: madpu_23-80_20230817_direct_testimony_jdt1_john_taylor_atrium_rate_design.pdf (title as filed per manifest: 1exhunitiljdt1electricfinal817.pdf)
-docket: "D.P.U. 23-80 (printed); joint with 23-81 per download manifest"
-utility: Fitchburg Gas and Electric Light Company d/b/a Unitil (Electric Division)
-rate: HP-RES and HP-RES LI (proposed Residential Heat Pump Service; the PDF's printed text names "Schedule HP-RES and HP-RES-LI")
-filing_date: August 17, 2023 (printed on the cover)
-filer: John D. Taylor, Managing Partner, Atrium Economics, LLC, on behalf of Fitchburg Gas and Electric Light Company d/b/a Unitil (Electric Division)
-document_type: testimony (direct testimony, Exhibit Unitil-JDT-1)
+source_file: madpu_23-80_20230817_direct_testimony_jdt1_john_taylor_atrium_rate_design.pdf
+citekey: taylor_Docket2380Direct_2023
+zotero_item: "E7PM3G38"
+public_url: https://drive.google.com/file/d/1B8wRxzr9xcGusew4g0JVWtD-U50jKSA7/view
+short_url: https://pub.switch.box/taylor_Docket2380Direct_2023
+docket: 23-80
+utility: Unitil (Fitchburg G&E)
+rate: HP-RES / HP-RES LI
+filing_date: 2023-08-17
+filer: Fitchburg Gas and Electric Light Company d/b/a Unitil
+document_type: testimony
 pages_total: 29
 extraction_scope: full
 source_url: https://fileservice.eea.comacloud.net/V3.1.0/FileService.Api/file/hibciahe?Vqk7bO//kOqYuzKp1si43MEmiDhMBXK0ednWT8WFP5Ok9v9pxUxyG6LkaCeWBSjqbmMlNqhcSkxPf0qUr1gASPKrYE1qejvebf677PtCVStUdHoHpEGELGLGjR+ZpYgt
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/ma_unitil/madpu_23-80_20230817_direct_testimony_jdt1_john_taylor_atrium_rate_design.pdf
-why_here: John Taylor's direct testimony; printed pp. 23-25 explain the heat pump rate design and why an end-use rate was rejected.
+md5: "7b8f3de02d0f0860c27d8dc18f866f62"
+validated: 2026-10-29
+why_here: Unitil's own account of how the heat pump rate was designed and why it avoided an end-use-specific rate that would require identifying heat pump customers.
+context: Direct testimony filed with Unitil's Aug 17, 2023 petition in the electric rate case D.P.U. 23-80 (decided jointly with gas rate case 23-81), by its rate design consultant (Atrium Economics, LLC). It introduces Exhibits Unitil-JDT-3 to JDT-9, including the heat pump rate exhibit JDT-6, and is the starting point for the DPU and DOER information requests that followed.
+contents: Atrium's allocated cost of service, revenue apportionment and rate design testimony; printed pp. 23-25 explain why Unitil proposed a residential heat pump rate (HP-RES, HP-RES LI) instead of an end-use-specific rate, how gas-heating customers' normal use was converted to heat pump kWh, and how the winter volumetric charge was set revenue neutral at 36 percent of the RD-1 rate.
 ---
 
 # Direct Testimony of John D. Taylor, Atrium Economics, LLC (Exhibit Unitil-JDT-1)

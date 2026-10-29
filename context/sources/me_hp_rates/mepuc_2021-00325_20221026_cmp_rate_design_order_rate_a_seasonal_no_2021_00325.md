@@ -1,16 +1,23 @@
 ---
-source: mepuc_2021-00325_20221026_cmp_rate_design_order_rate_a_seasonal_no_2021_00325.pdf
-docket: "2021-00325 (printed: Investigation into Transmission and Distribution Utility Rate Design to Promote State Policies)"
-utility: Central Maine Power Company (CMP)
-rate: Rate A-Seasonal (pilot residential heat pump rate)
-filing_date: "October 26, 2022 (order date)"
-filer: "Maine Public Utilities Commission (order signed by Harry Lanphear, Administrative Director; Commissioners Bartlett, Chair, Davis and Scully voting for)"
+source_file: mepuc_2021-00325_20221026_cmp_rate_design_order_rate_a_seasonal_no_2021_00325.pdf
+citekey: mepuc_Docket202100325Order_2022a
+zotero_item: "5ZV6GUJ6"
+public_url: https://drive.google.com/file/d/1p5-0mMRnZVcRUXXwd-JefeBmmoC2B939/view
+short_url: https://pub.switch.box/mepuc_Docket202100325Order_2022a
+docket: 2021-00325
+utility: Central Maine Power
+rate: A-Seasonal heat pump rate
+filing_date: 2022-10-26
+filer: COMMISSION, MPUC
 document_type: order
 pages_total: 3
 extraction_scope: full
-source_url: "https://mpuc-cms.maine.gov/CQM.Public.WebUI/MatterManagement/MatterFilingItem.aspx?FilingSeq=117031&CaseNumber=2021-00325 (doc {6334203C-0A27-415C-96AF-4793FB476FB5}) -- download URL recorded in our manifest, not text from the PDF"
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/me_cmp_versant/mepuc_2021-00325_20221026_cmp_rate_design_order_rate_a_seasonal_no_2021_00325.pdf
-why_here: "Commission order approving A-Seasonal (the defining order)."
+source_url: https://mpuc-cms.maine.gov/CQM.Public.WebUI/MatterManagement/MatterFilingItem.aspx?FilingSeq=117031&CaseNumber=2021-00325
+md5: "df82435dd7e61601a0cafa729a4115b7"
+validated: 2026-10-29
+why_here: The defining order for the seasonal heat pump rate and what the Commission relied on to approve it.
+context: Commission order approving CMP's Oct. 11, 2022 request for Rate A-Seasonal in Docket 2021-00325; IECG supported the rate and no party opposed.
+contents: 'Three pages: background, the proposed pilot rate and its terms (`$31.67` monthly fee, `$0.161867` per kWh May-October and `$0.003478` otherwise, revenue neutral against revised A-TOU-OPTS, 5,000-customer cap, ending by Oct. 31, 2024), and a one-paragraph decision approving Rate A-Seasonal for residential customers who have installed heat pumps.'
 ---
 
 # Order Approving Seasonal Rate (Docket No. 2021-00325)

@@ -1,16 +1,23 @@
 ---
-source: madpu_25-55_20250801_nstar_electric_compa_mdpu_85_eversource_r1hp_compliance.pdf
-docket: D.P.U. 25-55 (not printed on the tariff sheets; extractor note: docket taken from our download manifest/assignment)
-utility: NSTAR Electric Company d/b/a Eversource Energy
-rate: Rate R-1HP (Residential Heat Pump Service), M.D.P.U. No. 85
-filing_date: August 1, 2025 (printed as "Filed"); effective November 1, 2025 (printed)
-filer: NSTAR Electric Company d/b/a Eversource Energy; issued by Douglas W. Foley, President (printed)
+source_file: madpu_25-55_20250801_nstar_electric_compa_mdpu_85_eversource_r1hp_compliance.pdf
+citekey: nstarelectric_Docket2555Compliance_2025a
+zotero_item: "S2EMZSIK"
+public_url: https://drive.google.com/file/d/125VXhBXlWbYMrz9KXW3QNR6KPHhCKROK/view
+short_url: https://pub.switch.box/nstarelectric_Docket2555Compliance_2025a
+docket: 25-55
+utility: Eversource (NSTAR Electric)
+rate: R1HP
+filing_date: 2025-08-01
+filer: NSTAR Electric Company d/b/a Eversource Energy
 document_type: tariff
 pages_total: 2
 extraction_scope: full
 source_url: https://fileservice.eea.comacloud.net/V3.1.0/FileService.Api/file/aeehbgagj?5X9KcnQ+oV8j7Mi+B3gVnmsLVPSl7NdqNUTTiLCXtaiPcSxI+blU344Khxm+qpOeg0hKFj9M9l/xQR8+/8GqPvdGgrFe6XR6ngIfa80wd3rxFD8G4j981M2Rna9aVTXA
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/ma_eversource/madpu_25-55_20250801_nstar_electric_compa_mdpu_85_eversource_r1hp_compliance.pdf
-why_here: Compliance tariff for R1HP with the 'affirming ownership of a heat pump' availability clause.
+md5: "4b96794ffd7cfc577189753924afcdf0"
+validated: 2026-10-29
+why_here: 'The operative eligibility clause for the heat pump rate: self-affirmed heat pump ownership.'
+context: Compliance tariff filed 8/1/25 under the DPU's 7/29/25 order in D.P.U. 25-55; effective 11/1/2025.
+contents: Rate R-1HP availability (customers who qualify for R-1 and have a heat pump heating all or part of the home, 'contingent on the Customer affirming ownership of a heat pump installed at the service location'), rate components by reference to M.D.P.U. No. 1, minimum charge and rate adjustments.
 ---
 
 # Compliance Tariff: Residential Heat Pump Service, Rate R-1HP (M.D.P.U. No. 85)

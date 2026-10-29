@@ -1,16 +1,23 @@
 ---
-source: madpu_23-80_20231227_ir_response_doer_2-02_mass_save_ashp_tracking_and_pre_post_usage.pdf
-docket: "D.P.U. 23-80 (printed); joint with 23-81 per download manifest"
-utility: Fitchburg Gas and Electric Light Company d/b/a Unitil
-rate: HP-RES and HP-RES LI (heat pump rates proposed in D.P.U. 23-80)
-filing_date: "December 27, 2023 (printed in the response)"
-filer: Fitchburg Gas and Electric Light Company d/b/a Unitil; Person Responsible C. Carroll / J. Taylor
-document_type: IR response (DOER 2-02, Department of Energy Resources' Second Set of Information Requests)
+source_file: madpu_23-80_20231227_ir_response_doer_2-02_mass_save_ashp_tracking_and_pre_post_usage.pdf
+citekey: fge_Docket2380Response_2023a
+zotero_item: "SQW3B82K"
+public_url: https://drive.google.com/file/d/1ULaeCjJC56AwDdi4mK3gn3Gq-sNi2MjU/view
+short_url: https://pub.switch.box/fge_Docket2380Response_2023a
+docket: 23-80
+utility: Unitil (Fitchburg G&E)
+rate: HP-RES / HP-RES LI
+filing_date: 2023-12-27
+filer: Fitchburg Gas and Electric Light Company d/b/a Unitil
+document_type: IR_response
 pages_total: 2
 extraction_scope: full
 source_url: https://fileservice.eea.comacloud.net/V3.1.0/FileService.Api/file/iaifhcbe?cCcvOCbM/HPc1LFf8GxIHsEmiDhMBXK0ednWT8WFP5Ok9v9pxUxyG6LkaCeWBSjqbmMlNqhcSkxPf0qUr1gASPKrYE1qejvebf677PtCVStUdHoHpEGELGLGjR+ZpYgt
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/ma_unitil/madpu_23-80_20231227_ir_response_doer_2-02_mass_save_ashp_tracking_and_pre_post_usage.pdf
-why_here: Explains how Unitil tracks heat pump customers (Mass Save measure IDs) and reports the pre/post usage comparison.
+md5: "03bbbca2ab8e0672c709fe6792c2217f"
+validated: 2026-10-29
+why_here: The most direct answer in the collection to how a utility finds heat pump customers (rebate measure codes) and sanity-checks a proxy-based rate against measured pre/post usage.
+context: Unitil's Dec 27, 2023 response to DOER's second set of information requests (DOER 2-02), asking how Unitil tracks Mass Save heat pump customers, for their pre- and post-installation usage, and for a comparison with the Exhibit Unitil-JDT rate design model. Attachments 1 to 3 are separate files; DPU staff questioned Unitil's witness on them at the Feb 5, 2024 hearing.
+contents: 'Part (a): Mass Save Measure IDs, collected by the rebate vendor with account, name and address and loaded into the eTrack+ tracking system, identify each heat pump and whether it fully or partly displaces the old heating source. Part (c): measured average annual increase of 3,471 kWh (standard deviation 2,932; weighted 3,962) against the 5,927 kWh design assumption. Part (d): Unitil will compare actual HP-RES usage to the assumption and propose changes in its next base rate case.'
 ---
 
 # Fitchburg Gas and Electric Light Company d/b/a Unitil, D.P.U. 23-80: Response to DOER 2-02

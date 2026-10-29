@@ -1,16 +1,23 @@
 ---
-source: mepuc_2021-00325_20221011_2022_10_11_cmp_request_for_approval_of_rate_a_seasonal_final.pdf
-docket: "2021-00325 (printed on the letter: Investigation into Transmission and Distribution Utility Rate Design to Promote State Policies - Docket No. 2021-00325)"
-utility: Central Maine Power Company (CMP)
-rate: Rate A - Seasonal (pilot residential heat pump rate)
-filing_date: "October 11, 2022 (letter date)"
-filer: "Richard P. Hevey, Senior Counsel, Central Maine Power Company"
-document_type: filing (cover letter requesting approval of a proposed rate schedule)
+source_file: mepuc_2021-00325_20221011_2022_10_11_cmp_request_for_approval_of_rate_a_seasonal_final.pdf
+citekey: cmp_Docket202100325Request_2022
+zotero_item: "C75CJ6GG"
+public_url: https://drive.google.com/file/d/1upB569_toyy6S-6Pzxn52xQ_Nbv_HISD/view
+short_url: https://pub.switch.box/cmp_Docket202100325Request_2022
+docket: 2021-00325
+utility: Central Maine Power
+rate: A-Seasonal heat pump rate
+filing_date: 2022-10-11
+filer: CENTRAL MAINE POWER COMPANY
+document_type: filing
 pages_total: 2
 extraction_scope: full
-source_url: "https://mpuc-cms.maine.gov/CQM.Public.WebUI/MatterManagement/MatterFilingItem.aspx?FilingSeq=116874&CaseNumber=2021-00325 (doc {770122B1-7B53-40BB-91C5-784DCF42D887}) -- download URL recorded in our manifest, not text from the PDF"
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/me_cmp_versant/mepuc_2021-00325_20221011_2022_10_11_cmp_request_for_approval_of_rate_a_seasonal_final.pdf
-why_here: "CMP's filing: price points, revenue neutrality against A-TOU-OPTS, the 5,000 cap and 'verbally affirming heat pump ownership' eligibility."
+source_url: https://mpuc-cms.maine.gov/CQM.Public.WebUI/MatterManagement/MatterFilingItem.aspx?FilingSeq=116874&CaseNumber=2021-00325
+md5: "68a7682c2ec8330e5aed5848aef5fb3a"
+validated: 2026-10-29
+why_here: 'CMP''s original design statement for the seasonal heat pump rate: revenue neutrality against A-TOU-OPTS, with heat pump customers identified by their own verbal affirmation of ownership.'
+context: CMP's Oct. 11, 2022 request in Docket 2021-00325 for approval of the pilot heat pump rate that Paragraph 9 of the Revised Stipulation (approved Sept. 27, 2022) told CMP to file; the Commission approved it Oct. 26, 2022.
+contents: 'Two-page letter: `$31.67` monthly service fee, kWh charges of `$0.161867` (May-October) and `$0.003478` (November-April), revenue neutrality against revised Rate A-TOU-OPTS, a 5,000-customer cap, a 12-month commitment and an Oct. 31, 2024 sunset. The proposed tariff is an attachment not in this PDF.'
 ---
 
 # CMP Request for Approval of Rate A - Seasonal (Docket No. 2021-00325)

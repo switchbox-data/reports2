@@ -1,16 +1,23 @@
 ---
-source: mepuc_2012-00343_20141120_emera_maine_heat_pump_pilot_final_report_111714.pdf
+source_file: mepuc_2012-00343_20141120_emera_maine_heat_pump_pilot_final_report_111714.pdf
+citekey: emi_Docket201200343Emera_2014
+zotero_item: "ICPCGAQ3"
+public_url: https://drive.google.com/file/d/1wI38sjGFvUnzKaXZg5M061P-BiLEUgWU/view
+short_url: https://pub.switch.box/emi_Docket201200343Emera_2014
 docket: "2012-00343"
-utility: Emera Maine (Bangor Hydro District and Maine Public Service District; now Versant Power)
-rate: Heat Pump Pilot Program ($600 rebate and optional on-bill financing for ductless heat pumps; not a rate schedule)
-filing_date: "2014-11-20 (from our manifest; the report itself is dated September 30, 2014 and revised November 17, 2014)"
-filer: Emera Maine (report prepared by EMI Consulting for Kathy Billings, Emera Maine)
-document_type: final evaluation report (impact, process and market evaluation)
+utility: Versant Power (Emera Maine / Bangor Hydro)
+rate: Heat pump pilot (2012-00343)
+filing_date: 2014-11-20
+filer: VERSANT POWER
+document_type: filing
 pages_total: 65
 extraction_scope: full
-source_url: "https://mpuc-cms.maine.gov/CQM.Public.WebUI/MatterManagement/MatterFilingItem.aspx?FilingSeq=84222&CaseNumber=2012-00343 (doc {B6957B51-CF0C-488B-A5D8-AF7BA05B7A6D}); download URL from our manifest, not text from the PDF"
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/me_cmp_versant/mepuc_2012-00343_20141120_emera_maine_heat_pump_pilot_final_report_111714.pdf
-why_here: Evaluation of the earlier Bangor Hydro heat pump pilot that Versant cites as the origin of its heat pump rate experience.
+source_url: https://mpuc-cms.maine.gov/CQM.Public.WebUI/MatterManagement/MatterFilingItem.aspx?FilingSeq=84222&CaseNumber=2012-00343
+md5: "4fa4b0dbce4d54beb5d29910b1c53d13"
+validated: 2026-10-29
+why_here: 'The utility''s earlier heat pump experience (a program, not a rate; up to 500 customers per utility): participants were 908 residential enrollees, with billing data pulled for a sample of 64 and hourly meter data for a subsample, and measured winter peak impact of ductless heat pumps.'
+context: EMI Consulting's final evaluation for Emera Maine (now Versant Power) of the heat pump rebate and on-bill financing pilot approved in Docket 2012-00343 (Sept. 2012 order); the Sept. 30, 2014 report was revised Nov. 17 and filed Nov. 20, 2014, after a Nov. 2013 interim report (both in our collection). The report does not print the docket number.
+contents: '65 pages: impact evaluation (average heating cost savings of `$622` per participant, net CO2 reduction of 4,212 lbs a year, +0.35 kW winter and +0.14 kW summer on-peak demand), process and market evaluation, conclusions and recommendations.'
 ---
 
 # Emera Maine Heat Pump Pilot Program, Final Report (Docket No. 2012-00343)

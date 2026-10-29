@@ -1,16 +1,23 @@
 ---
-source: njbpu_ER23030144_20230807_jcpl_supplemental_testimony_12_plus_0_update_with_schedules.pdf
-docket: "ER23030144 (manifest-derived; the docket number is not printed on the extracted pages, whose tariff sheets show a blank 'Docket No.   dated')"
-utility: Jersey Central Power & Light Company (JCP&L), New Jersey
-rate: "RGT (Residential Geothermal & Heat Pump Service) and RT (Residential Time-of-Day Service); the class cost-of-service study combines RGT with RT (class label 'RT/RGT' on Schedule YP-4 p. 1 and YP-5 p. 1)"
-filing_date: "2023-08-07 (manifest-derived; the PDF is a compilation of the 12+0 update exhibits and its metadata creation date is 2023-08-07)"
-filer: "JCP&L (Cozen O'Connor counsel, per manifest); witnesses on extracted pages: Mark A. Mader (Exhibit JC-2 Supplemental No. 1), Carol A. Pittavino (Exhibit JC-3 Supplemental No. 1); schedules from Exhibit JC-8 (Lyons, COSS) and Exhibit JC-9 (Peng, rate design)"
+source_file: njbpu_ER23030144_20230807_jcpl_supplemental_testimony_12_plus_0_update_with_schedules.pdf
+citekey: jcpl_DocketER23030144Supplemental_2023
+zotero_item: "FAG27N9V"
+public_url: https://drive.google.com/file/d/1LTAoxM5j6amaGu2DfBcXUhKa0c3Lqz3_/view
+short_url: https://pub.switch.box/jcpl_DocketER23030144Supplemental_2023
+docket: ER23030144
+utility: JCP&L
+rate: RGT (Residential Geothermal & Heat Pump)
+filing_date: 2023-08-07
+filer: JCP&L (Cozen O'Connor counsel)
 document_type: testimony
 pages_total: 394
 extraction_scope: "PARTIAL. PDF pp. 1-4 (Exhibit JC-2 Supplemental No. 1, Mader, complete); 7-11 (Exhibit JC-3 Supplemental No. 1, Pittavino, complete); 56-57, 142-143, 228-230 (Exhibit JC-8 Schedules TSL-1/TSL-2 12+0 COSS summary pages, GT-D column omitted; TSL-2 Rate Changes (Prop) and Revenue Requirements by Cost Classification (Proposed Rates)); 289-291, 295-298 (Schedule YP-1: proposed BPU No. 14 Part III title sheet, table of contents, RT and RGT tariff sheets); 362-364, 366-367 (Schedules YP-2, YP-3, YP-4 pp. 1, 3, 4); 378, 380-381 (Schedule YP-5 pp. 1, 3, 4). See 'Omitted pages index' at end."
 source_url: https://publicaccess.bpu.state.nj.us/DocumentHandler.ashx?document_id=1310243
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/nj_jcpl_rgt/njbpu_ER23030144_20230807_jcpl_supplemental_testimony_12_plus_0_update_with_schedules.pdf
-why_here: "Supplemental testimony with updated RT/RGT rates and RGT bill-impact schedules."
+md5: "9eb2b93e810fb3653bbe6b455f3b0041"
+validated: 2026-10-29
+why_here: The final pre-settlement RT/RGT proposal and RGT bill impacts, showing how the rate design moved from the original petition; the rates the Board adopted are in the February 2024 order.
+context: 'JCP&L''s last data update to its March 2023 petition in ER23030144, before the February 2024 settlement; it also supersedes the June 2 "9+3" update (not in our collection) and trims the request to about $192.2 million. No cover letter: counsel and filing date come from the staging manifest and the Board order.'
+contents: Supplemental testimony of Mader (JC-2) and Pittavino (JC-3) and 12+0 schedules from Lyons (TSL-1, TSL-2) and Peng (YP-1 to YP-5), including updated RT/RGT proposed rates (RGT winter distribution rate up 24.8%, summer rates up 30.1%) and the RGT bill-impact schedules.
 ---
 
 # JCP&L 2023 Base Rate Case (ER23030144) - Supplemental Testimony and 12+0 Update Schedules (Aug. 7, 2023): RGT/RT extracts

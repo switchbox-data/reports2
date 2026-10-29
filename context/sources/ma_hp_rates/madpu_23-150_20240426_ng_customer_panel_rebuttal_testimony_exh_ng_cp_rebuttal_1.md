@@ -1,16 +1,23 @@
 ---
-source: exhibitngcprebuttal142624final.pdf
-docket: "D.P.U. 23-150 (printed on the exhibit)"
-utility: Massachusetts Electric Company and Nantucket Electric Company, each d/b/a National Grid
-rate: "Electrification Pricing option for Rate R-1 (the optional rate proposal the DPU rejected; see Section V of the testimony)"
-filing_date: April 26, 2024
-filer: "National Grid Customer Panel: Morgan Steacy, Rasheeda Davis, Karsten Barde, and Lauri Mancinelli (Exhibit NG-CP-Rebuttal-1; hearing officer H.O. Tassone)"
-document_type: testimony (rebuttal testimony)
+source_file: madpu_23-150_20240426_ng_customer_panel_rebuttal_testimony_exh_ng_cp_rebuttal_1.pdf
+citekey: steacy_Docket23150Exhibit_2024
+zotero_item: "ZJVECXE5"
+public_url: https://drive.google.com/file/d/1ZqyuD8lEkRJ4Gd57NF0KaCmSIMVfbR-4/view
+short_url: https://pub.switch.box/steacy_Docket23150Exhibit_2024
+docket: 23-150
+utility: National Grid
+rate: Electrification pricing (rejected)
+filing_date: 2024-04-26
+filer: NG Customer Panel
+document_type: testimony
 pages_total: 62
 extraction_scope: full
 source_url: https://fileservice.eea.comacloud.net/V3.1.0/FileService.Api/file/idibbiej?TYSkc3oHWFSYwy0e3cWoDGFJ0ioKRMXdZYr4j7j/42qk9v9pxUxyG6LkaCeWBSjqbmMlNqhcSkxPf0qUr1gASPKrYE1qejvebf677PtCVStUdHoHpEGELGLGjR+ZpYgt  # download URL from our manifest, not text from the PDF
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/ma_national_grid/madpu_23-150_20240426_ng_customer_panel_rebuttal_testimony_exh_ng_cp_rebuttal_1.pdf
-why_here: "Why National Grid argued against a heat-pump-specific rate; useful as the utility objection that the DPU overruled."
+md5: "9d5ffee08f631e5cac5b23b2535c3d2f"
+validated: 2026-10-29
+why_here: National Grid's stated reasons for not proposing a heat pump rate, the verification and definition objections the DPU then overruled; useful for anticipating the same arguments from other utilities.
+context: The Customer Panel's rebuttal testimony of April 26, 2024 in D.P.U. 23-150, for the two companies, answering the Attorney General, DOER, EDF/CLF and TEC witnesses who urged the DPU to reject Electrification Pricing or replace it with a seasonal rate, a heat pump discount or delivered-fuel electrification.
+contents: Sixty-two pages, mostly on low-income proposals and customer account management. Section V (printed pp. 41 to 59) defends Electrification Pricing and explains why National Grid ruled out a heat pump-specific rate or discount (heat pump ownership would need verification, eligible technologies would need defining, the discount level would be arbitrary, and costs do not follow end use). It adds that National Grid would support a rate-adjacent discount program if the DPU wants one, and that the lack of interval metering ruled out demand charges.
 ---
 
 # Rebuttal Testimony of the Customer Panel (Exhibit NG-CP-Rebuttal-1, D.P.U. 23-150)

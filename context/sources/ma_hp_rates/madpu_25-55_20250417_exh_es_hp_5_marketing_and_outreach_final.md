@@ -1,16 +1,23 @@
 ---
-source: madpu_25-55_20250417_nstar_electric_compa_exh_es_hp_5_marketing_and_outreach_final.pdf
-docket: D.P.U. 25-55 (printed on the exhibit)
-utility: NSTAR Electric Company d/b/a Eversource Energy
-rate: Rate R-1HP / Rate R-2HP (seasonal heat pump rate)
-filing_date: April 17, 2025 (printed on the exhibit)
-filer: NSTAR Electric Company d/b/a Eversource Energy (Exhibit ES-HP-5; submitted to the Massachusetts Department of Public Utilities)
+source_file: madpu_25-55_20250417_nstar_electric_compa_exh_es_hp_5_marketing_and_outreach_final.pdf
+citekey: nstarelectric_Docket2555Residential_2025
+zotero_item: "9WQI6F2H"
+public_url: https://drive.google.com/file/d/1y7M0kRkkd3YWe2MBwyCFZVLmoDu0rMBh/view
+short_url: https://pub.switch.box/nstarelectric_Docket2555Residential_2025
+docket: 25-55
+utility: Eversource (NSTAR Electric)
+rate: R1HP / R2HP
+filing_date: 2025-04-17
+filer: NSTAR Electric Company d/b/a Eversource Energy
 document_type: exhibit
 pages_total: 8
 extraction_scope: full
 source_url: https://fileservice.eea.comacloud.net/V3.1.0/FileService.Api/file/iidebgej?3X7PrIpduJ6bnSeObty2PmFJ0ioKRMXdZYr4j7j/42qk9v9pxUxyG6LkaCeWBSjqbmMlNqhcSkxPf0qUr1gASPKrYE1qejvebf677PtCVStUdHoHpEGELGLGjR+ZpYgt
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/ma_eversource/madpu_25-55_20250417_nstar_electric_compa_exh_es_hp_5_marketing_and_outreach_final.pdf
-why_here: Implementation plan: Mass Save auto-enrollment plus proof-based verification, i.e. how Eversource identifies heat pump customers.
+md5: "7fd103cdc89ecfac1b8989445261b112"
+validated: 2026-10-29
+why_here: How Eversource planned to identify and enroll heat pump customers without usage data or sizing rules.
+context: Exhibit ES-HP-5 to Eversource's 4/17/25 petition in D.P.U. 25-55; the DPU's 7/29/25 order approved it subject to a revised plan filed with compliance (clean and redline versions of 8/1 and 8/7/25 are in staging, not carded).
+contents: 'Sec. 1.2: opt-out auto-enrollment of accounts with a Mass Save heat pump rebate since 1/1/2022, and applications verified by serial-number photos, proof of purchase or contractor invoice, with a right to audit. Secs. 2-3: tracking and reporting (including pooled electrification model rebate data), outreach and marketing.'
 ---
 
 # Residential Heat Pump Rate Implementation Plan (Exhibit ES-HP-5)

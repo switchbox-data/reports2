@@ -1,16 +1,23 @@
 ---
-source: mepuc_2021-00325_20221213_versant_rate_design_order_no_2021_00325.pdf
+source_file: mepuc_2021-00325_20221213_versant_rate_design_order_no_2021_00325.pdf
+citekey: mepuc_Docket202100325Order_2022b
+zotero_item: "UEMSFQI7"
+public_url: https://drive.google.com/file/d/10OZX9VmpxYndG3zBVbufCJyUhoN_TlKO/view
+short_url: https://pub.switch.box/mepuc_Docket202100325Order_2022b
 docket: "2021-00325"
-utility: Versant Power (Bangor Hydro District and Maine Public District)
-rate: A-20 Home Heating Eco Rate (BHD) and A-H / A-HN Home Heating Eco Rate (MPD), with related Eco rates A-4, B-1, B-2, B-3, C
+utility: Versant Power
+rate: A-20 Home Heating Eco rate
 filing_date: "2022-12-13"
-filer: Maine Public Utilities Commission (Bartlett, Chair; Davis and Scully, Commissioners)
+filer: COMMISSION, MPUC
 document_type: order
 pages_total: 4
 extraction_scope: full
-source_url: "https://mpuc-cms.maine.gov/CQM.Public.WebUI/MatterManagement/MatterFilingItem.aspx?FilingSeq=117492&CaseNumber=2021-00325 (doc {C7783E4E-F7B4-4747-8189-1DEB8A4B5746}); download URL from our manifest, not text from the PDF"
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/me_cmp_versant/mepuc_2021-00325_20221213_versant_rate_design_order_no_2021_00325.pdf
-why_here: Commission order on Versant's rate design (approval of the heating rate changes).
+source_url: https://mpuc-cms.maine.gov/CQM.Public.WebUI/MatterManagement/MatterFilingItem.aspx?FilingSeq=117492&CaseNumber=2021-00325
+md5: "59eb3c9da61988ffe002c42d0f653846"
+validated: 2026-10-29
+why_here: Confirms which Versant heating rate sheets (A-20, A-H, A-HN) took effect and when.
+context: Commission order approving Versant's Nov. 22, 2022 corrected compliance filing in Docket 2021-00325, following the Sept. 27, 2022 order approving the Versant stipulation and Versant's Oct. 18 tariff filing.
+contents: 'Four pages: lists the tariff sheets approved effective Nov. 30, 2022 for the Bangor Hydro District (A-4, A-20, B-1, B-2, B-3) and the Maine Public District (A-H, A-HN, C), records Versant''s ''Eco Rates'' naming, and approves them.'
 ---
 
 # Order Approving Rate Design Compliance Filing (Maine PUC, Docket No. 2021-00325)

@@ -1,16 +1,23 @@
 ---
-source: madpu_23-80_20230817_exhibit_jdt6_residential_heat_pump_rate_design.pdf
-docket: "D.P.U. 23-80 (joint with 23-81); printed on the exhibit as D.P.U. 23-80"
-utility: Fitchburg Gas and Electric Light Company (Unitil, Electric Division)
-rate: HP-RES (Residential Heat Pump Service); HP-RES LI is not on this exhibit
-filing_date: "2023-08-17 (from download manifest; not printed on the exhibit)"
-filer: Fitchburg Gas and Electric Light Company d/b/a Unitil; sponsoring witness not printed on the exhibit (the file name and manifest attribute it to John Taylor, JDT)
+source_file: madpu_23-80_20230817_exhibit_jdt6_residential_heat_pump_rate_design.pdf
+citekey: taylor_Docket2380Exhibit_2023
+zotero_item: "R55KJ3UE"
+public_url: https://drive.google.com/file/d/1ttaZa8kyuMCCusqy0ULvIrkED2iXzpkV/view
+short_url: https://pub.switch.box/taylor_Docket2380Exhibit_2023
+docket: 23-80
+utility: Unitil (Fitchburg G&E)
+rate: HP-RES / HP-RES LI
+filing_date: 2023-08-17
+filer: Fitchburg Gas and Electric Light Company d/b/a Unitil
 document_type: exhibit
 pages_total: 1
 extraction_scope: full
 source_url: https://fileservice.eea.comacloud.net/V3.1.0/FileService.Api/file/hibcibae?Wl8mojQzvz/0KAQrEB1JOcEmiDhMBXK0ednWT8WFP5Ok9v9pxUxyG6LkaCeWBSjqbmMlNqhcSkxPf0qUr1gASPKrYE1qejvebf677PtCVStUdHoHpEGELGLGjR+ZpYgt
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/ma_unitil/madpu_23-80_20230817_exhibit_jdt6_residential_heat_pump_rate_design.pdf
-why_here: Exhibit JDT-6 printing the step-by-step derivation (gas therms to kWh, winter rate at 36% of RD-1).
+md5: "2dd7bdea7c26dfc4d83db53417f5e614"
+validated: 2026-10-29
+why_here: 'The printable derivation of the heat pump rate: what the gas-proxy usage assumption produced and how it turns into a winter charge.'
+context: One-page exhibit filed with Unitil's Aug 17, 2023 petition in the electric rate case D.P.U. 23-80 (decided jointly with 23-81), listed among the exhibits to John Taylor's direct testimony (Exhibit Unitil-JDT-1). It prints the 'Heat Pump Rate Design' sheet of Unitil's confidential rate design model; DPU 2-3 and 2-5 and DOER 2-02 and 2-03 later asked about how it was built.
+contents: Monthly RD-1 average use and fixed-cost recovery, average monthly use with a heat pump (12,383 kWh a year against 6,456 for RD-1, with the increase falling in November to April), the derivation of the winter volumetric charge ($348.44 divided by winter heat pump kWh gives $0.03779), and the resulting HP-RES rates (customer charge $8.50, winter $0.03779, summer $0.10585 per kWh).
 ---
 
 # Exhibit Unitil-JDT-6: Residential Heat Pump Rate Design

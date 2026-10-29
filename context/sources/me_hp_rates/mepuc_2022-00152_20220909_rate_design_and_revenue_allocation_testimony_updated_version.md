@@ -1,16 +1,23 @@
 ---
-source: mepuc_2022-00152_20220909_2022_09_09_rate_design_and_revenue_allocation_testimony_updated_version.pdf
-docket: "2022-00152 (printed: State of Maine Public Utilities Commission, Docket No. 2022-00152; Central Maine Power Company 2022 Distribution Rate Case)"
-utility: Central Maine Power Company (CMP)
-rate: "Optional beneficial-electrification rates for the residential and SGS classes (EV / heat pump whole-house rate), redesigned residential TOU; see RD-16 to RD-19"
-filing_date: "September 9, 2022 (printed on cover: 'Updated to Reflect 8/1/2023 Rate Effective Date')"
-filer: "Rate Design and Revenue Allocation Panel on behalf of Central Maine Power Company: Mark Marini, Mary Alice Laiho, Dr. Jason Rauch, Weston Smith"
-document_type: testimony (panel direct testimony; the exhibits RD-1 to RD-7 are listed but are not in this PDF)
+source_file: mepuc_2022-00152_20220909_2022_09_09_rate_design_and_revenue_allocation_testimony_updated_version.pdf
+citekey: marini_Docket202200152Rate_2022
+zotero_item: "AKZTBXKU"
+public_url: https://drive.google.com/file/d/1gMNm-b5RDYT1SOOPWCkObIZcV63T5fR-/view
+short_url: https://pub.switch.box/marini_Docket202200152Rate_2022
+docket: 2022-00152
+utility: Central Maine Power
+rate: A-Seasonal / ET rates
+filing_date: 2022-09-09
+filer: CENTRAL MAINE POWER COMPANY
+document_type: testimony
 pages_total: 37
 extraction_scope: full
-source_url: "https://mpuc-cms.maine.gov/CQM.Public.WebUI/MatterManagement/MatterFilingItem.aspx?FilingSeq=116567&CaseNumber=2022-00152 (doc {EF7C4730-F559-43BE-B9BD-BB2E5B0B4556}) -- download URL recorded in our manifest, not text from the PDF"
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/me_cmp_versant/mepuc_2022-00152_20220909_2022_09_09_rate_design_and_revenue_allocation_testimony_updated_version.pdf
-why_here: "CMP's only sworn testimony on the optional beneficial-electrification rates (pp. RD-16 to RD-19)."
+source_url: https://mpuc-cms.maine.gov/CQM.Public.WebUI/MatterManagement/MatterFilingItem.aspx?FilingSeq=116567&CaseNumber=2022-00152
+md5: "0ade0350ba931243550d8d9af83b8fb4"
+validated: 2026-10-29
+why_here: CMP's only testimony on the logic of optional heat pump rate design (marginal-cost fixed charge, minimized cross-subsidy, no heat pump required on the whole-house rate); a different design from A-Seasonal.
+context: CMP's panel testimony in its 2022 distribution rate case (Docket 2022-00152), the Sept. 9, 2022 update of the Aug. 11, 2022 filing. A-Seasonal itself was designed in Docket 2021-00325 and later extended in this docket's follow-on rate design proceeding.
+contents: '37 pages (cover, table of contents, RD-1 to RD-35; exhibits not included). Section VI.A (RD-16 to RD-19) proposes optional residential and SGS beneficial-electrification rates: fixed monthly charge near marginal fixed costs plus a peak demand charge for transmission, whole-house or separately metered, targeted for Oct. 1, 2024.'
 ---
 
 # CMP 2022 Distribution Rate Case: Rate Design and Revenue Allocation (Updated to Reflect 8/1/2023 Rate Effective Date)

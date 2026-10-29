@@ -1,16 +1,23 @@
 ---
-source: exhibithp1heatpumprateimplemen.pdf
-docket: "D.P.U. 23-150 (printed on the exhibit)"
-utility: Massachusetts Electric Company and Nantucket Electric Company, each d/b/a National Grid
-rate: "Residential Heat-Pump Rate (optional winter-discounted rate for Rate R-1 and Rate R-2 customers)"
-filing_date: December 30, 2024
-filer: "National Grid (Exhibit HP-1; hearing officer H.O. Tassone; individual witness not named on the exhibit)"
-document_type: exhibit (compliance filing; Residential Heat-Pump Rate Implementation Plan)
+source_file: madpu_23-150_20241230_ng_hp_rate_compliance_exh_hp_1_implementation.pdf
+citekey: meco_Docket23150Exhibit_2024
+zotero_item: "PDLFTLF9"
+public_url: https://www.documentcloud.org/documents/25514893-national-grid-heat-pump-rate-implementation-plan-2024/
+short_url: https://pub.switch.box/meco_Docket23150Exhibit_2024
+docket: 23-150
+utility: National Grid
+rate: Heat Pump Rate (R-1/R-2)
+filing_date: 2024-12-30
+filer: National Grid
+document_type: exhibit
 pages_total: 17
 extraction_scope: full
 source_url: https://fileservice.eea.comacloud.net/V3.1.0/FileService.Api/file/iidjdccj?U0wqf7Mx6n0PpVPWI9alemFJ0ioKRMXdZYr4j7j/42qk9v9pxUxyG6LkaCeWBSjqbmMlNqhcSkxPf0qUr1gASPKrYE1qejvebf677PtCVStUdHoHpEGELGLGjR+ZpYgt  # download URL from our manifest, not text from the PDF
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/ma_national_grid/madpu_23-150_20241230_ng_hp_rate_compliance_exh_hp_1_implementation.pdf
-why_here: "15-page implementation exhibit: method, 2.8x multiplier, eligibility, Mass Save auto-enrollment, verification, and the 'does not have sufficient data' statement."
+md5: "e7878c69b2e68871ae5237614b9c306d"
+validated: 2026-10-29
+why_here: The one document that ties how the rate was priced to how heat pump customers are identified (rebate lists, then attestation with proof), including National Grid's admission that it could not size the heat pump population yet filed the rate anyway.
+context: National Grid's Exhibit HP-1, filed December 30, 2024 as the compliance filing required by the DPU's September 30, 2024 order in D.P.U. 23-150, which rejected Electrification Pricing and directed a Unitil-style heat pump rate for R-1 and R-2. It travels with the tariffs (Exhibit HP-2) and rate calculations (Exhibit HP-3), and was revised on January 10, 2025.
+contents: 'Seventeen pages: the rate methodology (Unitil''s approach, a 2.8x winter usage multiplier), participant bill savings and revenue shift (National Grid says it lacks the data to estimate how many heat pumps are on its system, so the under-collection goes to the revenue decoupling mechanism), implementation timeline and costs, the opt-in process (auto-enrollment of Mass Save heat pump rebate recipients since 2019, otherwise proof of equipment with audit rights), tracking and reporting, and outreach.'
 ---
 
 # Residential Heat-Pump Rate Implementation Plan (Exhibit HP-1, D.P.U. 23-150)

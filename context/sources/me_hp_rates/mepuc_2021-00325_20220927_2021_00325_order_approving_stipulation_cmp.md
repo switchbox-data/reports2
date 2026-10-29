@@ -1,16 +1,23 @@
 ---
-source: mepuc_2021-00325_20220927_2021_00325_order_approving_stipulation_cmp.pdf
-docket: "2021-00325 (printed: Investigation into Transmission and Distribution Utility Rate Design to Promote State Policies)"
-utility: Central Maine Power Company (CMP)
-rate: Rate A-TOU-OPTS, Rate A-LM, Rate B-DCFC revisions and the residential heat pump pilot (later Rate A-Seasonal)
-filing_date: "September 27, 2022 (order date)"
-filer: "Maine Public Utilities Commission (order signed by Harry Lanphear, Administrative Director; Commissioners Bartlett, Chair, Davis and Scully voting for)"
+source_file: mepuc_2021-00325_20220927_2021_00325_order_approving_stipulation_cmp.pdf
+citekey: mepuc_Docket202100325Order_2022
+zotero_item: "8W4QF6P9"
+public_url: https://drive.google.com/file/d/1kcXSgH0j6QdrD8MYnvafeDzGxorX6JIt/view
+short_url: https://pub.switch.box/mepuc_Docket202100325Order_2022
+docket: 2021-00325
+utility: Central Maine Power
+rate: A-Seasonal / ET rates
+filing_date: 2022-09-27
+filer: COMMISSION, MPUC
 document_type: order
 pages_total: 7
 extraction_scope: full
-source_url: "https://mpuc-cms.maine.gov/CQM.Public.WebUI/MatterManagement/MatterFilingItem.aspx?FilingSeq=116697&CaseNumber=2021-00325 (doc {D21EBEC6-4D60-4795-8287-0EDB8E2D34FD}) -- download URL recorded in our manifest, not text from the PDF"
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/me_cmp_versant/mepuc_2021-00325_20220927_2021_00325_order_approving_stipulation_cmp.pdf
-why_here: "Sept 27, 2022 order approving CMP's stipulation in the rate design investigation (opens the pilot)."
+source_url: https://mpuc-cms.maine.gov/CQM.Public.WebUI/MatterManagement/MatterFilingItem.aspx?FilingSeq=116697&CaseNumber=2021-00325
+md5: "add2b437d27ad772fa946fc19b563a4a"
+validated: 2026-10-29
+why_here: Shows the Commission accepting a marginal-cost service charge for A-TOU-OPTS as an interim whole-house rate and the commitment to a heat pump pilot rate that became A-Seasonal.
+context: Commission order approving CMP's Revised Stipulation (filed Sept. 23, 2022) in Docket 2021-00325, the CMP half of the rate design investigation; CMP's Oct. 11, 2022 request for A-Seasonal followed.
+contents: 'Seven pages: statutory background, procedural history from the Oct. 22, 2021 Notice of Investigation, the stipulated changes (Rates A-LM, A-TOU-OPTS and B-DCFC, a marginal cost study, a residential heat pump pilot rate with a tariff due Oct. 7, 2022, embedded metering), and the four-part legal standard for approving a stipulation.'
 ---
 
 # Order Approving Stipulation (CMP) (Docket No. 2021-00325)

@@ -1,16 +1,23 @@
 ---
-source: mepuc_2026-00248_20260904_2025_12_05_dsa_final_report_et_and_hp_rates.pdf
-docket: "2022-152 as printed on every page header ('Docket No. 2022-152, Attachment 6, Page n of 41' for PDF pages 1-41 and 'Docket No. 2022-152, Attachment 7, Page n of 7' for PDF pages 42-48); extractor note: our manifest records this file as a 2026-09-04 filing in docket 2026-00248, and the PDF's embedded title is '2025-12-05 CMP Final Report and Attachments 2025 (2022-152) (1).pdf'"
-utility: Central Maine Power Company (CMP)
-rate: "Electric Technology (ET) rate and Seasonal Heat Pump (SHP) rate (A-Seasonal); both optional residential delivery rates"
-filing_date: "Report dated December 2025 (printed on cover); filed 2026-09-04 per our manifest (not printed in the PDF)"
-filer: "Prepared for Central Maine Power by Demand Side Analytics, LLC (DSA); filing party per our manifest: Efficiency Maine Trust (not printed in the PDF)"
-document_type: "exhibit (impact evaluation report, PDF pages 1-41, printed 'Attachment 6'; followed by PDF pages 42-48, printed 'Attachment 7': CMP Alternative Rates Survey instrument)"
+source_file: mepuc_2026-00248_20260904_2025_12_05_dsa_final_report_et_and_hp_rates.pdf
+citekey: dsa_Docket202200152Impact_2025
+zotero_item: "9X32UE5T"
+public_url: https://drive.google.com/file/d/1YGhnisgPaRKecEBl8RLNphdpp4b9GO3Q/view
+short_url: https://pub.switch.box/dsa_Docket202200152Impact_2025
+docket: 2022-00152
+utility: Central Maine Power
+rate: A-Seasonal / ET rates
+filing_date: 2026-09-04
+filer: EFFICIENCY MAINE TRUST
+document_type: exhibit
 pages_total: 48
 extraction_scope: full
-source_url: "https://mpuc-cms.maine.gov/CQM.Public.WebUI/MatterManagement/MatterFilingItem.aspx?FilingSeq=136224&CaseNumber=2026-00248 (doc {40BA6DA0-0000-C172-B975-A2DE17C9D710}) -- download URL recorded in our manifest, not text from the PDF"
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/me_cmp_versant/mepuc_2026-00248_20260904_2025_12_05_dsa_final_report_et_and_hp_rates.pdf
-why_here: "Demand Side Analytics evaluation: what data CMP had (rebate data held only by the evaluator, plus interval data) and the bill and load results."
+source_url: https://mpuc-cms.maine.gov/CQM.Public.WebUI/MatterManagement/MatterFilingItem.aspx?FilingSeq=136224&CaseNumber=2026-00248
+md5: "795115081e47db525d0aa0b8e07d35e2"
+validated: 2026-10-29
+why_here: What data existed to identify heat pump homes on the seasonal rate (CMP interval data for enrolled accounts and a Rate A control pool; Efficiency Maine rebate records used only to choose heat pump controls and flag recent installs) and what the rate did to loads and bills.
+context: DSA's evaluation prepared for CMP, Attachment 6 (survey instrument Attachment 7) to CMP's Dec. 5, 2025 final report in Docket 2022-00152; Efficiency Maine Trust filed this copy in Docket 2026-00248 on Sept. 4, 2026 with its motion to suspend CMP's request to reinstate A-Seasonal. Every page prints 'Docket No. 2022-152'.
+contents: A 41-page impact evaluation (rates, enrollment, data sources, matched comparison and difference-in-differences method, energy, peak and bill results; +1.3% annual consumption on the heat pump rate) plus a 7-page customer survey instrument.
 ---
 
 # Impact Evaluation of Central Maine Power's Electric Technology and Seasonal Heat Pump Delivery Rates: Final Report

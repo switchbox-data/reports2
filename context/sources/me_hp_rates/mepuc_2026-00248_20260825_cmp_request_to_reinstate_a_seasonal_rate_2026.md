@@ -1,16 +1,23 @@
 ---
-source: mepuc_2026-00248_20260825_2026_08_25_cmp_request_to_reinstate_a_seasonal_rate_2026.pdf
-docket: "2026-00### as printed on the letter (docket number not yet assigned when the letter was drafted; extractor note: our manifest records this filing under docket 2026-00248)"
-utility: Central Maine Power Company (CMP)
-rate: A-Seasonal (Heat Pump) Rate
-filing_date: "August 25, 2026 (letter date)"
-filer: "Mary Alice Laiho, Director, Regulatory, Central Maine Power Company"
-document_type: filing (cover letter requesting reinstatement of a rate)
+source_file: mepuc_2026-00248_20260825_2026_08_25_cmp_request_to_reinstate_a_seasonal_rate_2026.pdf
+citekey: cmp_Docket202600248Request_2026
+zotero_item: "EXBZHN37"
+public_url: https://drive.google.com/file/d/1Ej69U20eqbSQ_lk4s0RwdvtE6NQ6CuU1/view
+short_url: https://pub.switch.box/cmp_Docket202600248Request_2026
+docket: 2026-00248
+utility: Central Maine Power
+rate: A-Seasonal heat pump rate
+filing_date: 2026-08-25
+filer: CENTRAL MAINE POWER COMPANY
+document_type: filing
 pages_total: 2
 extraction_scope: full
-source_url: "https://mpuc-cms.maine.gov/CQM.Public.WebUI/MatterManagement/MatterFilingItem.aspx?FilingSeq=136014&CaseNumber=2026-00248 (doc {E01C3AA0-0000-C51C-AD10-163521FF7EDD}) -- download URL recorded in our manifest, not text from the PDF"
-original_pdf_path: /ebs/home/jpv_switch_box/hp_rate_docket_staging/me_cmp_versant/mepuc_2026-00248_20260825_2026_08_25_cmp_request_to_reinstate_a_seasonal_rate_2026.pdf
-why_here: "CMP's own account of the design logic in asking to reinstate the cancelled rate."
+source_url: https://mpuc-cms.maine.gov/CQM.Public.WebUI/MatterManagement/MatterFilingItem.aspx?FilingSeq=136014&CaseNumber=2026-00248
+md5: "ee01d6d0ead1024eda09d11759e6dd3d"
+validated: 2026-10-29
+why_here: CMP's own account of how the seasonal heat pump rate was designed and that eligibility stays a verbal affirmation of heat pump ownership; read with the Attachment 1 workbook for the numbers.
+context: CMP's Aug. 25, 2026 request in Docket 2026-00248 to reinstate A-Seasonal; EMT moved for a suspension order on Sept. 4, and EMT, OPA, AARP, Acadia Center, NRCM and IECG commented. The letter prints the placeholder docket '2026-00###'.
+contents: 'Two pages: history of the rate from the Docket 2021-00325 stipulation to its Feb. 1, 2026 cancellation, the design logic (all T&D kWh charges May-October, none November-April; ELP, EMT and stranded cost components year-round), and the proposal to drop the termination date, with July 1, 2026 pricing. Tariff pages and Attachment 1 are separate files.'
 ---
 
 # CMP Request to Reinstate A-Seasonal (Heat Pump) Rate

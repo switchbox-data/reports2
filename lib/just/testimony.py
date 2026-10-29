@@ -69,7 +69,7 @@ ALL_FIELDS: tuple[str, ...] = REQUIRED_FIELDS + OPTIONAL_FIELDS
 FIELD_HELP: dict[str, str] = {
     "commission": 'full commission name on the cover, e.g. "Maryland Public Service Commission"',
     "commission_short": 'short commission name for the page header, e.g. "Maryland PSC"',
-    "case_number": 'docket as it should print, e.g. "Case No. 9888" or "Docket No. 26-01-03"',
+    "case_number": 'docket as it should print, e.g. "Case No. 9888" or "Docket No. 26-05-10"',
     "caption": "list of caption lines naming the applicant and the subject of the proceeding",
     "type": "Direct, Rebuttal, Surrebuttal, ...",
     "witness": "witness name",
@@ -347,7 +347,7 @@ format:
 testimony:
   commission: "[COMMISSION NAME]"          # cover page, e.g. Maryland Public Service Commission
   commission_short: "[COMMISSION SHORT NAME]"  # page header, e.g. Maryland PSC
-  case_number: "[CASE NUMBER]"             # e.g. Case No. 9888 or Docket No. 26-01-03
+  case_number: "[CASE NUMBER]"             # e.g. Case No. 9888 or Docket No. 26-05-10
   caption:                                 # left side of the docket caption, one line per item
     - "[IN THE MATTER OF THE APPLICATION OF]"
     - "[APPLICANT NAME]"

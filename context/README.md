@@ -2,15 +2,7 @@
 
 Reference docs, bug reports, and working notes for agents. **When you add or remove a file under `context/`, update this index.**
 
-See **AGENTS.md → Reference context** for conventions. Top-level dirs: **tools/** (user guides and how-to docs for Switchbox tooling).
-
-## tools/
-
-User guides for tooling we run ourselves. Documents that answer **"How do I use this?"** in plain language, for people who are not familiar with the underlying stack.
-
-| File                                 | Use when working on …                                                                                                                                                                                                                                                                                                                                      |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| tools/expert_testimony_user_guide.md | Writing expert testimony and rendering it to the standard filing Word format: creating the file (`just new-testimony`), the `testimony:` fields to fill in (commission, caption, case number, type, witness, date), Q&A and heading conventions, `just testimony`, what the Word file contains, and hand-off. Links the writing skill and the style guide. |
+See **AGENTS.md → Reference context** for conventions. Top-level dirs: **code/** (tooling knowledge, user guides and known bugs), **domain/**, **methods/**, **sources/**.
 
 ## domain/
 
@@ -60,6 +52,7 @@ Documents that answer **"How does this tool work? What are its pitfalls and work
 | source_metadata_conventions.md     | Adding or fixing Zotero items for `reports/references.yaml`: how organizations are named (subsidiary table, short forms, renamed organizations), who the author is (consultant reports, testimony, joint filings), proceeding-document titles, title case, the citation-key rule, item types per document class, which date to use, the docket field, project placement, workbooks and web pages. |
 | sources_user_guide.md              | Adding, finding, fetching and checking sources: setup (`.env`, `just sources-doctor`), the details-card approval flow, `just sources-ingest`, pending items, what to do when a step fails.                                                                                                                                                                                                        |
 | sources_architecture.md            | How source ingest works: card vs CLI, re-runnable steps and their resume checks, Zotero writes and logs, DocumentCloud / Drive / Wayback / short links, front matter and index rules, session-start hook, migration tooling.                                                                                                                                                                      |
+| expert_testimony_user_guide.md     | Writing expert testimony and rendering it to the standard filing Word format: creating the file (`just new-testimony`), the `testimony:` fields to fill in (commission, caption, case number, type, witness, date), Q&A and heading conventions, `just testimony`, what the Word file contains, and hand-off. Links the writing skill and the style guide.                                        |
 
 ## sources/
 

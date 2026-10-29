@@ -231,7 +231,7 @@ testimony:
   # version_label: PUBLIC VERSION        # optional
 ```
 
-For a plain-language walkthrough aimed at the person writing the testimony, see [`context/tools/expert_testimony_user_guide.md`](../../../context/tools/expert_testimony_user_guide.md).
+For a plain-language walkthrough aimed at the person writing the testimony, see [`context/code/expert_testimony_user_guide.md`](../../../context/code/expert_testimony_user_guide.md).
 
 To start a new testimony, run `just new-testimony <path>.qmd` from the repo root: it writes a file with every field present as a `[PLACEHOLDER]`. `just check-testimony <path>.qmd` validates without rendering.
 

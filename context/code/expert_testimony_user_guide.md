@@ -65,19 +65,19 @@ testimony:
   date: 2026-09-22
 ```
 
-| Field | Required | What to put | Where it shows up |
-| --- | --- | --- | --- |
-| `commission` | yes | The commission's full name, e.g. `Maryland Public Service Commission` | Cover page, in capitals, under "BEFORE THE" |
-| `commission_short` | yes | A short name, e.g. `Maryland PSC` or `RIPUC` | Page header, with the case number |
-| `case_number` | yes | The docket exactly as it should print, e.g. `"Case No. 9888"` or `"Docket No. 26-01-03"`. Keep the quotes. | Cover page caption, and page header |
-| `caption` | yes | A list of lines naming the applicant and the subject of the proceeding. Copy them from the docket's own filings. | Left side of the cover-page caption, in capitals |
-| `type` | yes | One of `Direct`, `Rebuttal`, `Surrebuttal`, `Rejoinder`, `Supplemental Direct`, `Supplemental Rebuttal` | Cover title ("DIRECT TESTIMONY OF …") and page header |
-| `witness` | yes | The witness's name | Cover page, and page header |
-| `on_behalf_of` | yes | The party you testify for, e.g. `Conservation Law Foundation` | Cover page, and page header |
-| `date` | yes | The filing date, written `2026-09-22` or `September 22, 2026` | Bottom of the cover page |
-| `and_exhibits` | no | `true` if exhibits are filed with the testimony. Defaults to no. | Adds "AND EXHIBITS" to the cover title |
-| `witness_title` | no | A line under the witness name, e.g. `Executive Director, Switchbox`. Delete the line if you do not want one. | Cover page |
-| `version_label` | no | An extra cover line such as `PUBLIC VERSION` | Cover page |
+| Field              | Required | What to put                                                                                                      | Where it shows up                                     |
+| ------------------ | -------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `commission`       | yes      | The commission's full name, e.g. `Maryland Public Service Commission`                                            | Cover page, in capitals, under "BEFORE THE"           |
+| `commission_short` | yes      | A short name, e.g. `Maryland PSC` or `RIPUC`                                                                     | Page header, with the case number                     |
+| `case_number`      | yes      | The docket exactly as it should print, e.g. `"Case No. 9888"` or `"Docket No. 26-01-03"`. Keep the quotes.       | Cover page caption, and page header                   |
+| `caption`          | yes      | A list of lines naming the applicant and the subject of the proceeding. Copy them from the docket's own filings. | Left side of the cover-page caption, in capitals      |
+| `type`             | yes      | One of `Direct`, `Rebuttal`, `Surrebuttal`, `Rejoinder`, `Supplemental Direct`, `Supplemental Rebuttal`          | Cover title ("DIRECT TESTIMONY OF …") and page header |
+| `witness`          | yes      | The witness's name                                                                                               | Cover page, and page header                           |
+| `on_behalf_of`     | yes      | The party you testify for, e.g. `Conservation Law Foundation`                                                    | Cover page, and page header                           |
+| `date`             | yes      | The filing date, written `2026-09-22` or `September 22, 2026`                                                    | Bottom of the cover page                              |
+| `and_exhibits`     | no       | `true` if exhibits are filed with the testimony. Defaults to no.                                                 | Adds "AND EXHIBITS" to the cover title                |
+| `witness_title`    | no       | A line under the witness name, e.g. `Executive Director, Switchbox`. Delete the line if you do not want one.     | Cover page                                            |
+| `version_label`    | no       | An extra cover line such as `PUBLIC VERSION`                                                                     | Cover page                                            |
 
 Tips:
 
@@ -137,7 +137,7 @@ If the analysis has not been run on your machine, the testimony will fail to ren
 - **Tables** go in the text, introduced by a sentence that tells the reader what to look for. They print single-spaced so they stay compact.
 - **Figures** are drawn from the analysis notebook and inserted at print resolution. Use them sparingly in testimony; put the full set in an exhibit.
 - **Footnotes** become real Word footnotes at the bottom of the page, in a smaller size. Use them for citations and side points, never for the main argument.
-- **Citations** written as `@citation_key` are resolved against the shared bibliography and listed at the end of the document. Citation keys and how to add a source to the library are in [`sources_user_guide.md`](../code/sources_user_guide.md).
+- **Citations** written as `@citation_key` are resolved against the shared bibliography and listed at the end of the document. Citation keys and how to add a source to the library are in [`sources_user_guide.md`](sources_user_guide.md).
 - Don't use margin notes (`{.column-margin}`) or side-by-side layouts. A filed document has no margin column, so that content is placed in the body instead.
 
 ### Exhibits
@@ -191,13 +191,13 @@ The format follows the Maryland PSC filing, and is the same for every commission
 
 ## If something goes wrong
 
-| What you see | What it means | What to do |
-| --- | --- | --- |
-| "the `testimony:` fields need attention" | The form is incomplete or has a typo | Fix the fields it lists and run again |
-| "File not found: … .pkl" | The analysis results the testimony reads aren't on your machine | Run the analysis notebook that creates them, or ask a teammate |
-| "File not found" for the `.qmd` | Wrong folder or file name | Run from the report's folder, or pass the file name |
-| "Quarto render failed" | An error in the text or the code cells, shown above that line | Read the first error above the message; it points to the line |
-| The cover looks wrong | A field on the form is wrong | Fix the form and re-render |
+| What you see                             | What it means                                                   | What to do                                                     |
+| ---------------------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------- |
+| "the `testimony:` fields need attention" | The form is incomplete or has a typo                            | Fix the fields it lists and run again                          |
+| "File not found: … .pkl"                 | The analysis results the testimony reads aren't on your machine | Run the analysis notebook that creates them, or ask a teammate |
+| "File not found" for the `.qmd`          | Wrong folder or file name                                       | Run from the report's folder, or pass the file name            |
+| "Quarto render failed"                   | An error in the text or the code cells, shown above that line   | Read the first error above the message; it points to the line  |
+| The cover looks wrong                    | A field on the form is wrong                                    | Fix the form and re-render                                     |
 
 ## Where the pieces live
 

@@ -1,5 +1,7 @@
 # Filing Expert Testimony in Rhode Island: A Practical Guide
 
+> To create, fill in and render a testimony file, see the [expert testimony user guide](../code/expert_testimony_user_guide.md).
+
 Based on direct testimony from RIPUC Docket 4770 (National Grid's 2018 distribution rate case): Rábago (NERI, 75 pp), LeBel (Acadia, 28 pp), Athas (Division, 17 pp), Tillman (Walmart, 44 pp).
 
 ---

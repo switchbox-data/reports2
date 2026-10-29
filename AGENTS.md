@@ -41,9 +41,9 @@ Working knowledge lives in `context/` so agents can use it without hunting throu
 
 **Conventions:**
 
-- **`context/tools/`** — Quarto/plotting/tooling knowledge and known bugs: rendering pipelines, sizing mechanics, Quarto Manuscript embed workarounds, report-specific design decisions. Documents that answer "how does this tool work, and what are its pitfalls?"
+- **`context/code/`** — Quarto/plotting/tooling knowledge and known bugs: rendering pipelines, sizing mechanics, Quarto Manuscript embed workarounds, report-specific design decisions. Documents that answer "how does this tool work, and what are its pitfalls?"
 
-**When working on Quarto rendering, figure embedding, plotnine sizing, or report-specific design choices, read the relevant file(s) in `context/`.** In particular, read `context/tools/quarto_manuscript_embed_bug.md` before using `{{< embed >}}` with non-plotnine outputs (GT tables, matplotlib figures) — the workarounds are mandatory.
+**When working on Quarto rendering, figure embedding, plotnine sizing, or report-specific design choices, read the relevant file(s) in `context/`.** In particular, read `context/code/quarto_manuscript_embed_bug.md` before using `{{< embed >}}` with non-plotnine outputs (GT tables, matplotlib figures) — the workarounds are mandatory.
 
 For the current list of files and when to use each, see **`context/README.md`**.
 
@@ -1024,6 +1024,8 @@ just diff my-label                  # Diff with a label (archived under .diff/di
 ```
 
 `just draft` is implemented by `lib/just/draft.py` (centralized logic — Justfiles just call `uv run python -m lib.just.draft`). It clears the freeze cache so embedded notebooks re-execute with raster settings, sets `SWITCHBOX_GT_AS_IMAGE=1` for high-res GT tables and plotnine figures, and renders to DOCX at 300 DPI. For non-article files in Manuscript projects (e.g. `expert_testimony.qmd`), it temporarily hides `_quarto.yml` so Quarto renders standalone.
+
+`just testimony` (reports with expert testimony) renders a testimony `.qmd` to Word in the one standard testimony format (cover page, running header, per-page line numbers, Times New Roman 12 pt, Q/A layout); there is no per-commission variant. The docket details come from a `testimony:` block in the `.qmd` frontmatter, validated before rendering. `just new-testimony <path>` (repo root) scaffolds the block and `just check-testimony <path>` validates it. Logic: `lib/just/testimony.py`, `lib/just/templates/filters/testimony.lua`, `lib/just/templates/build_expert_testimony.py`. See `.cursor/skills/expert-testimony/SKILL.md` and the user guide `context/code/expert_testimony_user_guide.md`.
 
 `just typeset` is implemented by `lib/just/typeset.py` (centralized logic — Justfiles just call `uv run python -m lib.just.typeset`). It renders to ICML, moves math SVGs to `docs/math/`, and converts footnotes to sidenotes. Requires TinyTeX (for LaTeX math → SVG rendering via the `icml_math` filter) and `ghostscript` (system package). Both are pre-installed in the devcontainer and on EC2. See `context/code/icml_filters.md` for details.
 

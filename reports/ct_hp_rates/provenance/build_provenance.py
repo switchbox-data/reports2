@@ -38,6 +38,8 @@ MC_TAGS = {
     "dist_and_sub_tx": ("mc/92366c905831", "utils/data_prep/marginal_costs/generate_utility_tx_dx_mc.py"),
     "bulk_tx": ("mc/1b1b329be68f", "utils/data_prep/marginal_costs/bulk_tx/generate_bulk_tx_mc.py"),
 }
+# The MC methodology docs at TAG misstate the bulk-tx dollar year; this commit on RDP main corrects them.
+RDP_MC_DOCS_REF = "979af55635436ed27b829457fcced7c9ad43d34e"
 BATCH_PREFIX = "switchbox/cairo/outputs/hp_rates/ct/ct_eversource/ct_20261015_a/"
 S3_BUCKET = "data.sb"
 
@@ -993,10 +995,10 @@ def rdp_links() -> list[str]:
     bulk_tag, bulk_path = MC_TAGS["bulk_tx"]
     return [
         "**Hourly cost of new distribution capacity**: "
-        f"[explanation]({blob(TAG, 'context/methods/marginal_costs/ct_eversource_dist_mc_methodology.md')}), "
+        f"[explanation]({blob(RDP_MC_DOCS_REF, 'context/methods/marginal_costs/ct_eversource_dist_mc_methodology.md')}), "
         f"[code]({blob(dist_tag, dist_path)}).",
         "**Hourly cost of new bulk transmission capacity**: "
-        f"[explanation]({blob(TAG, 'context/methods/marginal_costs/ct_bulk_transmission_marginal_cost.md')}), "
+        f"[explanation]({blob(RDP_MC_DOCS_REF, 'context/methods/marginal_costs/ct_bulk_transmission_marginal_cost.md')}), "
         f"[code]({blob(bulk_tag, bulk_path)}).",
         f"**Bill simulation for every modeled home**: [code]({blob(TAG, 'rate_design/hp_rates/run_scenario.py')}).",
         "**The rates we simulated** (Rate 1, Rate 6 and Rate HP): "

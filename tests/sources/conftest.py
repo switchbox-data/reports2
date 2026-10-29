@@ -242,7 +242,14 @@ class World:
         def find_duplicates_fake(md5=None, url=None, doi=None, title=None, items=None):
             return real_find(md5=md5, url=url, doi=doi, title=title, items=w.library())
 
+        def set_url(item_key: str, url: str) -> None:
+            w._call("set_url")
+            w.items[item_key]["data"]["url"] = url
+
         patches = {
+            "set_url": set_url,
+            "all_items": lambda refresh=False: w.library(),
+            "collection_tree": lambda name, cols=None: list(w.collections.values()),
             "pinned_keys": pinned_keys,
             "get_item": get_item,
             "create_item": create_item,

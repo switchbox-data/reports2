@@ -4,7 +4,8 @@ Read-only (never write to Zotero or any public host):
 
     zotero-verify, sync-bib [--checks warn|strict] [--force], check-citekeys,
     pending [--brief], status, dedupe, org, person, doctor (read-only checks), fetch, projects, key,
-    check-card, find-doi, draft-cards, convert-frontmatter (dry run unless --apply)
+    check-card, find-doi, draft-cards, convert-frontmatter (dry run unless --apply),
+    backfill-links (dry run unless --apply)
 
 Writing (after the person approves the details card):
 
@@ -420,6 +421,19 @@ def cmd_convert_frontmatter(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_backfill_links(args: argparse.Namespace) -> int:
+    """doi.org urls for DOI items and short links for DocumentCloud items. Dry run unless ``--apply``."""
+    from lib.sources import backfill
+
+    plan, failures = backfill.run(apply=args.apply)
+    print(backfill.report(plan, apply=args.apply))
+    if not args.apply:
+        print("\nDry run: nothing was written (pass --apply).")
+    for f in failures:
+        print(f"FAILED: {f}")
+    return 1 if failures else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="lib.sources.cli", description=(__doc__ or "").split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -511,6 +525,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--path-root")
     p.add_argument("--apply", action="store_true")
     p.set_defaults(func=cmd_convert_frontmatter)
+    p = sub.add_parser("backfill-links", help="doi.org urls and pub.switch.box short links for old items")
+    p.add_argument("--apply", action="store_true", help="write to Zotero and pub (default: dry run)")
+    p.set_defaults(func=cmd_backfill_links)
     args = parser.parse_args(argv)
     return args.func(args)
 

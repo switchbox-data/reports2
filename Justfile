@@ -93,6 +93,10 @@ sources-org name:
 sources-person name:
     uv run python -m lib.sources.cli person "{{ name }}"
 
+# Give old items doi.org urls (DOI) or pub.switch.box short links (DocumentCloud); dry run unless --apply
+sources-backfill-links *flags:
+    uv run python -m lib.sources.cli backfill-links {{ flags }}
+
 # One-time Google login (opens a browser) that caches the token ingest uses for Drive uploads; same login as the Sheets helpers
 google-login:
     uv run python -m lib.data.gsheets

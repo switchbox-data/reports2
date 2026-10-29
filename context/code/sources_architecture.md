@@ -77,7 +77,7 @@ The DocumentCloud upload starts before the Zotero file upload and is waited on a
 
 ## Migration tooling (phase 5)
 
-`draft-cards` turns the staging provenance CSV into pre-filled draft cards (project from the repo path, item type from the document type, docket title from the CSV) that an agent completes and a person approves. `ingest --extract` reuses an existing extract instead of re-extracting; `--path-provenance-csv` finds each original by extract path. `convert-frontmatter` rewrites legacy front matter to the flat schema (dry run unless `--apply`); folders with a `MANIFEST.csv` fill `source_url` and `md5` from it. None of this runs automatically.
+`draft-cards` turns the staging provenance CSV into pre-filled draft cards (project from the repo path, item type from the document type, docket title from the CSV) that an agent completes and a person approves. `ingest --extract` reuses an existing extract instead of re-extracting; `--path-provenance-csv` finds each original by extract path. `convert-frontmatter` rewrites legacy front matter to the flat schema (dry run unless `--apply`); folders with a `MANIFEST.csv` fill `source_url` and `md5` from it. `backfill-links` (`just sources-backfill-links [--apply]`, `lib/sources/backfill.py`) gives old items what ingest gives new ones: `https://doi.org/<doi>` as `url` for DOI items, and for items with a DocumentCloud link a `pub.switch.box` short link (one commit to `pub` per run), the `DocumentCloud ID` line in Extra, and the old `url` kept as a link attachment. A DOI wins over DocumentCloud for `url` and gets no short link. It dry-runs by default and a second run writes nothing. None of this runs automatically.
 
 ## Testing
 

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from lib.sources import pagelines
-from tests.sources.pdfs import make_numbered_pdf, make_pdf
+from tests.sources.pdfs import make_footnoted_pdf, make_numbered_pdf, make_pdf
 
 PAGE_1 = [
     "Q. Please state your name and business address.",
@@ -52,6 +52,17 @@ def test_read_pdf_finds_margin_numbers_and_printed_labels(testimony: list[pageli
     assert testimony[0].numbered[2].startswith("A. My name is Jane Witness")
     assert sorted(testimony[1].numbered) == [1, 2, 3]
     assert pagelines.has_line_numbers(testimony)
+
+
+def test_footnote_numbers_are_not_margin_line_numbers(tmp_path: Path) -> None:
+    pdf = make_footnoted_pdf(
+        ["The Commission accepts the tariffs.", "The pilots are denied as filed."],
+        ["Maillog No. 320089.", "Id. at 3.", "PUA 7-1001(d).", "See Order No. 91218 at 2."],
+        tmp_path / "order.pdf",
+    )
+    pages = pagelines.read_pdf(pdf)
+    assert not pages[0].numbered
+    assert not pagelines.has_line_numbers(pages)
 
 
 def test_skeleton_is_a_valid_extract(testimony: list[pagelines.PdfPage]) -> None:

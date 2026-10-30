@@ -25,6 +25,19 @@ def make_numbered_pdf(pages: list[list[str]], path: Path, footer: list[str] | No
     return _write(streams, path)
 
 
+def make_footnoted_pdf(body: list[str], footnotes: list[str], path: Path) -> Path:
+    """One page of body text, then footnotes numbered 1, 2, ... in small superscript type at the left edge."""
+    ops = ["BT", "/F1 12 Tf"]
+    for n, line in enumerate(body):
+        ops.append(f"1 0 0 1 90 {740 - 20 * n} Tm ({_escape(line)}) Tj")
+    for n, note in enumerate(footnotes, start=1):
+        y = 200 - 12 * n
+        ops.append(f"/F1 6.5 Tf 1 0 0 1 90 {y + 4} Tm ({n}) Tj")
+        ops.append(f"/F1 10 Tf 1 0 0 1 100 {y} Tm ({_escape(note)}) Tj")
+    ops.append("ET")
+    return _write(["\n".join(ops)], path)
+
+
 def make_pdf(pages: list[list[str]], path: Path, info: dict[str, str] | None = None) -> Path:
     """Write ``pages`` (each a list of text lines, top to bottom) to ``path``; ``info`` goes in the Info dict."""
     streams = []

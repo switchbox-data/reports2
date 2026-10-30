@@ -38,6 +38,7 @@ _BARE_LABEL = re.compile(r"^(?:-\s*)?([0-9]{1,4}|[ivxlcdm]{1,7})(?:\s*-)?$", re.
 
 _MARGIN_FRACTION = 0.16  # line numbers sit in the outer 16% of the page width
 _SAME_LINE_TOL = 3.0  # points between word tops on one printed line
+_MIN_NUMBER_SIZE = 0.7  # margin line numbers are set near body size; footnote superscripts are far smaller
 _LINE_SIMILARITY = 0.6  # below this, an extract line probably does not match the PDF line it is numbered as
 _PAGE_OVERLAP = 0.6  # share of an extract page's words that must appear on that PDF page
 
@@ -74,13 +75,30 @@ def _group_lines(words: list[dict]) -> list[list[dict]]:
     return [sorted(r, key=lambda w: w["x0"]) for r in rows]
 
 
-def _margin_numbers(words: list[dict], width: float) -> set[int]:
-    """Ids of the words that are margin line numbers: one column of integers counting up by one, top to bottom."""
+def _word_size(word: dict, chars: list[dict]) -> float:
+    sizes = [
+        float(c["size"])
+        for c in chars
+        if c["x0"] >= word["x0"] - 0.5 and c["x1"] <= word["x1"] + 0.5 and abs(c["top"] - word["top"]) <= _SAME_LINE_TOL
+    ]
+    return max(sizes, default=0.0)
+
+
+def _margin_numbers(words: list[dict], width: float, chars: list[dict] | None = None) -> set[int]:
+    """Ids of the words that are margin line numbers: one column of integers counting up by one, top to bottom.
+
+    Footnote numbers at the left edge of a footnote block also count up by one, but they are superscripts, so
+    integers set much smaller than the page's body text are not line numbers.
+    """
     candidates = [
         w
         for w in words
         if w["text"].isdigit() and (w["x1"] < width * _MARGIN_FRACTION or w["x0"] > width * (1 - _MARGIN_FRACTION))
     ]
+    if chars:
+        sizes = sorted(float(c["size"]) for c in chars if c["text"].strip())
+        body_size = sizes[len(sizes) // 2]
+        candidates = [w for w in candidates if _word_size(w, chars) >= body_size * _MIN_NUMBER_SIZE]
     columns: dict[int, list[dict]] = {}
     for w in candidates:
         columns.setdefault(round(w["x1"] / 3), []).append(w)
@@ -121,7 +139,7 @@ def read_pdf(path: Path) -> list[PdfPage]:
     with pdfplumber.open(str(path)) as pdf:
         for i, page in enumerate(pdf.pages, start=1):
             words = page.extract_words(keep_blank_chars=False, use_text_flow=False)
-            margin = _margin_numbers(words, float(page.width))
+            margin = _margin_numbers(words, float(page.width), page.chars)
             lines: list[PdfLine] = []
             numbers = {id(w): int(w["text"]) for w in words if id(w) in margin}
             for row in _group_lines(words):

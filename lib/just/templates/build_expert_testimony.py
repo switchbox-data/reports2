@@ -401,6 +401,18 @@ def _build_styles_xml() -> str:
             rpr='<w:vertAlign w:val="superscript"/>',
         )
     )
+    # Pandoc tags every link run with this style; without it, links render as plain text.
+    add(
+        _style(
+            "Hyperlink",
+            "Hyperlink",
+            based_on="DefaultParagraphFont",
+            kind="character",
+            qformat=False,
+            priority=99,
+            rpr='<w:color w:val="0563C1"/><w:u w:val="single"/>',
+        )
+    )
 
     # --- Header, footer, cover -------------------------------------------
     hf_tabs = '<w:tabs><w:tab w:val="center" w:pos="4680"/><w:tab w:val="right" w:pos="9360"/></w:tabs>'

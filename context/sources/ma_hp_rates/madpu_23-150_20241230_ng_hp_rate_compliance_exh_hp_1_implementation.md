@@ -18,6 +18,7 @@ validated: 2026-10-29
 why_here: The one document that ties how the rate was priced to how heat pump customers are identified (rebate lists, then attestation with proof), including National Grid's admission that it could not size the heat pump population yet filed the rate anyway.
 context: National Grid's Exhibit HP-1, filed December 30, 2024 as the compliance filing required by the DPU's September 30, 2024 order in D.P.U. 23-150, which rejected Electrification Pricing and directed a Unitil-style heat pump rate for R-1 and R-2. It travels with the tariffs (Exhibit HP-2) and rate calculations (Exhibit HP-3), and was revised on January 10, 2025.
 contents: 'Seventeen pages: the rate methodology (Unitil''s approach, a 2.8x winter usage multiplier), participant bill savings and revenue shift (National Grid says it lacks the data to estimate how many heat pumps are on its system, so the under-collection goes to the revenue decoupling mechanism), implementation timeline and costs, the opt-in process (auto-enrollment of Mass Save heat pump rebate recipients since 2019, otherwise proof of equipment with audit rights), tracking and reporting, and outreach.'
+citation_scheme: page
 ---
 
 # Residential Heat-Pump Rate Implementation Plan (Exhibit HP-1, D.P.U. 23-150)
@@ -31,9 +32,13 @@ _Extractor note (not source text): The text below is verbatim from the PDF; no t
 
 ---
 
-<!-- PDF page 1 (cover; no printed page number) -->
+[PDF p. 1]
 
-Massachusetts Electric Company
+Massachusetts
+
+[PDF p. 2]
+
+Electric Company
 Nantucket Electric Company
 each d/b/a National Grid
 D.P.U. 23-150
@@ -50,8 +55,6 @@ Docket No. D.P.U. 23-150
 
 Submitted to:
 Massachusetts Department of Public Utilities
-
-<!-- PDF page 2 (table of contents; no printed page number) -->
 
 ## Contents
 
@@ -72,7 +75,7 @@ Massachusetts Department of Public Utilities
 | 4.      | Tracking and Reporting Requirements                  | 12   |
 | 5.      | Outreach and Marketing                               | 15   |
 
-<!-- PDF page 3 (printed page 1 of 15) -->
+[PDF p. 3 | printed p. 1]
 
 ## 1. Overview of D.P.U. 23-150 Requirements
 
@@ -80,7 +83,9 @@ In its final decision issued on September 30, 2024 in D.P.U. 23-150 ("Order"), t
 
 As part of the Company's compliance filing to propose the residential heat-pump rate, the Department directed the Company to provide (1) the time required to implement the heat-pump rate offering; (2) the tracking and reporting requirements articulated in D.P.U. 23-80/D.P.U. 23-81, at 408;[^1] and (3) a description of the outreach and marketing efforts the Company will
 
-<!-- PDF page 4 (printed page 2 of 15) -->
+[^1]: The Department directed Unitil to provide as part of its annual reconciliation filing the number of customer opting into (and off) the new tariffs; 12 months of pre- and post-installation monthly kWh use; and monthly peak kW use, if possible. The Department also required Unitil to include the number of customers, by rate class, opting into the heat-pump rate who received a rebate through the Mass Save program, as well as the number of customers who received a rebate through the Mass Save program, but have not opted into the heat-pump rate. Order at 500 n.229 (citing, D.P.U. 23-80/D.P.U. 23-81, at 408).
+
+[PDF p. 4 | printed p. 2]
 
 undertake. Order at 513. In addition, the Department required the Company to further explain how it will track potential increases in summer peak demand due to heat-pump penetration, as recommended by the Office of the Attorney General ("AGO" or the "Attorney General"). Id. (citing AGO Br. at 146, 151). The Department ordered a compliance filing consistent with the directives related to the heat-pump rate to be submitted no later than 45 days following the issuance of the Order. Id. at 513.
 
@@ -90,7 +95,7 @@ On December 6, 2024, the Company proposed in D.P.U. 24-194 that participants in 
 
 In addition to this Residential Heat-Pump Rate Implementation Plan provided as Exhibit HP-1, the Company is providing revised Residential R-1 and R-2 Retail Delivery Service tariffs, and a revised Revenue Decoupling Mechanism Provision tariff, as Exhibit HP-2; and the Heat-Pump Rate calculations for the kWh charge and estimated customer bill impacts as Exhibit HP-3.
 
-<!-- PDF page 5 (printed page 3 of 15) -->
+[PDF p. 5 | printed p. 3]
 
 ## 2. Heat-Pump Rate
 
@@ -102,7 +107,7 @@ The Heat-Pump Rate calculation is included in Exhibit HP-3, page 1. Heat-Pump Ra
 
 During the winter (October through March), the Heat-Pump Rate will be $0.02337 per kWh. This rate is computed by taking the remainder of the Rate R-1 and Rate R-2 target revenue computed in the Company's Second Amended Compliance Filing submitted on December 10,
 
-<!-- PDF page 6 (printed page 4 of 15) -->
+[PDF p. 6 | printed p. 4]
 
 2024, of $672,818,120, deducting the amounts expected to be collected from the customer charge and summer kWh charge, and dividing by residential heat-pump kWh winter usage. The residential heat-pump kWh winter usage is estimated to be 2.8 times the average Rate R-1 and Rate R-2 winter usage.
 
@@ -112,7 +117,7 @@ As calculated in Exhibit HP-3, at pages 2-5, the Heat-Pump Rate will provide par
 
 The revenue under-collection (shortage) resulting from the Heat-Pump Rate will be included in the Company's Revenue Decoupling Mechanism ("RDM"). The Company is currently unable to estimate the amount of the under-collection because the Company does not have sufficient data to support an estimate of the total number of existing heat-pumps currently operated by residential customers within its service territory.
 
-<!-- PDF page 7 (printed page 5 of 15) -->
+[PDF p. 7 | printed p. 5]
 
 ### 2.3 Limitations
 
@@ -122,7 +127,7 @@ It is important to set a firm ending date for the Heat-Pump Rate. The Company's 
 
 The Company also anticipates that the transition off of the Heat-Pump Rate and onto any other rates in effect for Rate R-1 and Rate R-2 customers when the Heat-Pump Rate is retired will likely represent a bill increase for customers accustomed to receiving the winter discount under the Heat-Pump Rate. In contrast, time-varying and demand-based rates, which the
 
-<!-- PDF page 8 (printed page 6 of 15) -->
+[PDF p. 8 | printed p. 6]
 
 Company hopes to have available when the Heat-Pump Rate is retired, will provide customers with opportunities to manage their bills, but potential savings may be lower than those experienced under the Heat-Pump Rate for many customers. Programmatic mechanisms may be necessary to transition customers off of the Heat-Pump Rate depending on the expected size of the bill increase and the number of customers affected.
 
@@ -145,7 +150,7 @@ The Company anticipates making the necessary changes to its billing system (CSS)
 
 The newly established Heat-Pump Rate will be available to all Rate R-1 and Rate R-2 customers who use electric heat-pumps for space heating in all or part of their home. This includes the following groups of the Company's customers:
 
-<!-- PDF page 9 (printed page 7 of 15) -->
+[PDF p. 9 | printed p. 7]
 
 - Customers with existing heat-pumps who did not receive a Mass Save incentive;
 - Customers with existing heat-pumps switching from delivered fuels and who received a Mass Save incentive associated with their electric account;
@@ -162,7 +167,7 @@ All other customers will be required to proactively apply for the Heat-Pump Rate
 
 The Company proposes two intake avenues for enrolling customers into the Heat-Pump Rate within its customer billing system, as set forth below:
 
-<!-- PDF page 10 (printed page 8 of 15) -->
+[PDF p. 10 | printed p. 8]
 
 1. Auto-enrollment from accounts participating in Mass Save energy efficiency heat-pump incentive programs where the incentive was paid either by the Company or by Boston Gas. Additionally, on a roll-forward basis, any new customers who receive Mass Save heat-pump rebates through either the Company, Boston Gas, or through the proposed electrification pooling mechanism currently before the Department in D.P.U. 24-140 through D.P.U. 24-149 after the Heat-Pump Rate is established will be auto-enrolled. This proposal will limit reliance on contact center in-bound calls and processing time within the back-office, and provide a seamless customer experience, while eliminating the need for two intake verifications for new heat-pump customers.
 
@@ -170,9 +175,9 @@ The Company proposes two intake avenues for enrolling customers into the Heat-Pu
 
 2. Intake via contact center and back-office processing. This offering is available for customers wishing to enroll into the Heat-Pump Rate via inbound calling or through self-service applications via the Company's website and mobile application portals, such as in
 
-<!-- PDF page 11 (printed page 9 of 15) -->
+[PDF p. 11 | printed p. 9]
 
-    response to marketing campaigns and outreach. This solution will be available to all qualifying customers. Any intake and enrollment will be subject to providing verification information as part of the application.
+response to marketing campaigns and outreach. This solution will be available to all qualifying customers. Any intake and enrollment will be subject to providing verification information as part of the application.
 
 #### 3.2.2 Verification
 
@@ -186,7 +191,7 @@ For inbound phone calls, the response from the Company will be to send a solutio
 
 For intake through the Company's website, customers will be directed to a portal that includes the same requirements as the solutions email. In both cases, a workflow will be triggered to the Company's back-office team to review submitted applications and subsequently
 
-<!-- PDF page 12 (printed page 10 of 15) -->
+[PDF p. 12 | printed p. 10]
 
 update CSS with the Heat-Pump Rate. When the Heat-Pump Rate application is processed by the back-office, enrollment confirmation or denial will be provided to the customer.
 
@@ -209,7 +214,7 @@ A preliminary estimate of the costs for Heat-Pump Rate implementation and ongoin
 
 **Contact Center:** The total estimated costs related to contact center are $840,000, which includes hiring one to two full-time equivalents ("FTEs") to manage the intake process via phone calls.
 
-<!-- PDF page 13 (printed page 11 of 15) -->
+[PDF p. 13 | printed p. 11]
 
 **Web Application and App Portal:** The Company will explore opportunities to build a web and phone application intake process, where customers can upload a copy of their receipt or picture of the heat-pump to provide a more seamless experience. This will be a new functionality that will require incremental time and resources, the estimated costs of which are not yet available.
 
@@ -217,7 +222,7 @@ A preliminary estimate of the costs for Heat-Pump Rate implementation and ongoin
 
 **Back-Office Customer Account Maintenance:** The total incremental labor cost for the back-office (Account Maintenance) to support the Heat-Pump Rate implementation and on-going support while the rate is available is estimated at approximately $660,000 (including burdens). This estimate is based on the assumption of hiring two incremental FTEs to support the back-office for the design and maintenance of the Heat-Pump Rate. Back-office resources will need to be hired prior to Heat-Pump Rate going into effect – with a target hiring date by April 1, 2025 – to ensure the requirements of rate design and implementation are met systematically prior to the estimated go-live date of October 1, 2025. Any new rate structure changes will require additional updates and testing due to all of the anticipated variations of the new program. Due to the complexity of the proposed program design, enrollment process, and on-going maintenance for the new rate classification, the back-office not only will need to maintain the new program, which includes rate structure changes and reporting, but also will need to have the resources to oversee the new program. It is necessary that the back-office has additional resources to maximize the positive customer experience and to avoid the potential negative
 
-<!-- PDF page 14 (printed page 12 of 15) -->
+[PDF p. 14 | printed p. 12]
 
 impact of the changes to customers.
 
@@ -238,7 +243,7 @@ In accordance with the Department's directives, in its annual RDM reconciliation
 
 However, the Company currently is not able to provide the monthly peak kW use by customer because the Company does not have the capability to meter residential customer peak
 
-<!-- PDF page 15 (printed page 13 of 15) -->
+[PDF p. 15 | printed p. 13]
 
 demand at this time.
 
@@ -246,7 +251,7 @@ Additionally, the Company cannot report on all customers opting into (or custome
 
 As part of the 2025 to 2027 Three-Year Energy Efficiency Plan filings in D.P.U. 24-140 through D.P.U. 24-149, the PAs have jointly proposed a pooled electrification model for paying and tracking incentives delivered through prescriptive, or retail, pathways. Should this mechanism be approved by the Department, each PA would have access to data about every prescriptive heat-pump rebate paid within both the PA's gas and electric service territories in Massachusetts, independent of which heating fuel the heat-pump would be displacing. This would afford the Company, on a going-forward basis, access to information on the significant
 
-<!-- PDF page 16 (printed page 14 of 15) -->
+[PDF p. 16 | printed p. 14]
 
 majority of residential heat-pump incentives paid through Mass Save energy efficiency programs, including those displacing natural gas consumption within the Company's electric service territory. Under the proposed approach, heat-pumps installed to displace natural gas heating through the residential turnkey services or income-eligible program delivery pathways would continue to be supported by the natural gas PAs and, therefore, remain unavailable to the Company in situations where the gas PA is owned by a different holding company.
 
@@ -254,7 +259,7 @@ In summary, in its annual reconciliation filing, the Company currently will be a
 
 In addition, the Order directed the Company to explain how it will track potential increases in summer peak demand due to heat-pump penetration, as recommended by the Attorney General. Order at 513 (citing, AGO Br. at 146, 151). Although the Company currently estimates heat-pump penetration as part of its load forecasting methodology, actual heat-pump penetration and its impact on peak demand cannot be tracked completely, because the Company does not have data on the total number of new and existing heat-pumps or other cooling technologies installed in its service territory beyond those customers who have participated in Company energy efficiency programs. Further, the Company is not able to track the impact of heat-pump usage on individual customers' peak demand in the absence of interval meter data both pre- and post-installation of a heat pump.
 
-<!-- PDF page 17 (printed page 15 of 15) -->
+[PDF p. 17 | printed p. 15]
 
 ## 5. Outreach and Marketing
 
@@ -263,9 +268,3 @@ The Company will provide awareness and adoption of the new Heat-Pump Rate throug
 The Company will also update all existing mandated bill inserts that list available rate plans to include the new Heat-Pump Rate. Education may include an offer of the new pricing option accompanied by an estimate of bill savings potential. The Company tracks its customer accounts that have received incentives for heat-pumps through its Mass Save energy efficiency programs. The Company will also conduct targeted outreach to electric customers who have received a heat-pump rebate from either the Company or Boston Gas within the last three to five years from Mass Save.
 
 The Company will also include the new rate offering as a benefit to purchasing electric heat-pumps. For customers considering heat-pump installation, information on the heat-pump rate pricing may be included in marketing materials, such as webpages and advertisements, that are related to the heat-pump incentive programs for which the Company or Boston Gas is the relevant PA, as delivered through the Mass Save program. Additionally, information on the Heat-Pump Rate may be made available through the heat-pump installation contractor network (referred to as the "Heat Pump Installer Network," or "HPIN"), as well as through the lead vendors who deliver electrification through the Company's residential turnkey services and income-eligible energy efficiency programs under the Mass Save brand.
-
----
-
-## Footnotes
-
-[^1]: The Department directed Unitil to provide as part of its annual reconciliation filing the number of customer opting into (and off) the new tariffs; 12 months of pre- and post-installation monthly kWh use; and monthly peak kW use, if possible. The Department also required Unitil to include the number of customers, by rate class, opting into the heat-pump rate who received a rebate through the Mass Save program, as well as the number of customers who received a rebate through the Mass Save program, but have not opted into the heat-pump rate. Order at 500 n.229 (citing, D.P.U. 23-80/D.P.U. 23-81, at 408).

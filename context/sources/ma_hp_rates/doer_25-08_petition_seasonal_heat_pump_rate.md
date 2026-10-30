@@ -1,9 +1,18 @@
+---
+citekey: doer_Docket2508Petition_2025
+citation_scheme: page
+---
+
 # DOER Petition Requesting DPU Open an Investigation into a Seasonal Heat Pump Rate
 
 **Source**: DOER Seasonal Heat Pump Rate Petition (January 31 2025).pdf
 **Pages**: 9
 **Date**: January 31, 2025
-**Docket**: D.P.U. 25-08 (filed as D.P.U. 25-xx; docket number assigned later)
+**Docket**: D.P.U. 25-08 (filed as
+
+[PDF p. 1 | printed p. 1]
+
+D.P.U. 25-xx; docket number assigned later)
 **Author**: Colin P. Carroll, Esq., Department of Energy Resources
 **Filing type**: Petition pursuant to M.G.L. chapters 25, 30A, and 220 C.M.R. 1.04(1)
 
@@ -13,7 +22,11 @@
 
 Pursuant to M.G.L. chapters 25, 30A, and 220 C.M.R. 1.04(1), the Massachusetts Department of Energy Resources (DOER or Petitioner) requests that the Department of Public Utilities (Department) take certain action pursuant to this Petition regarding opening an investigation into a seasonal heat pump electric rate. DOER is committed to advancing rate design and ratemaking that aligns with the Commonwealth's decarbonization goals while simultaneously prioritizing affordability. To address this need, the Petitioner, along with the Massachusetts Clean Energy Center (MassCEC), the Office of the Attorney General (AGO), and the Executive Office of Energy and Environmental Affairs (EEA) established an Interagency Rates Working Group (IRWG) tasked with advancing near- and long-term rate solutions and innovations. This Petition requests the Department find it appropriate to open an investigation on seasonal heat pump rates that will direct the electric distribution companies (EDCs or Companies) to:
 
-1. Establish, or modify, an optional seasonal heat pump rate for residential customers with seasonally differentiated volumetric delivery rates, inclusive of each Companies' base distribution charge and all reconciling mechanisms[^1] to reduce energy burden for customers transitioning to electric heat pumps;
+1. Establish, or modify, an optional seasonal heat pump rate for residential customers with seasonally differentiated volumetric delivery rates, inclusive of each Companies' base distribution charge and all reconciling mechanisms[^1]
+
+[PDF p. 2 | printed p. 2]
+
+to reduce energy burden for customers transitioning to electric heat pumps;
 
 2. Prepare, or revise, a seasonal heat pump rate tariff for residential customers;
 
@@ -23,13 +36,17 @@ Pursuant to M.G.L. chapters 25, 30A, and 220 C.M.R. 1.04(1), the Massachusetts D
 
 5. Report on enrollment, customer outcomes, energy usage, and bill impacts consistent with IRWG recommendations, expanding on the Department's existing reporting requirements established in approving Unitil and National Grid's seasonal heat pump rates.[^2]
 
-[^1]: G.L. c. 25, §§ 19 (a) and 20 (a) establishes a requirement for the Companies to charge all customers 2.5 mills per kilowatt-hour for energy efficiency programs and 0.5 mill per kilowatt-hour for the development and promotion of renewable energy projects, respectively. DOER recognizes that these two reconciling mechanisms may not be differentiated but supports the differentiation of all other reconciling mechanisms.
+In support of this Petition, the Petitioner states the following:
+
+1. The IRWG, consisting of representatives from EEA, DOER, MassCEC, and the AGO, was formed to advance near- and long-term electric rate design and ratemaking that aligns with the Commonwealth's decarbonization
 
 [^2]: _Petition of Massachusetts Electric Company and Nantucket Electric Company, each d/b/a National Grid for Approval of a General Increase in Base Distribution Rates for Electric Service and a Performance-Based Ratemaking Plan_, D.P.U. 23-150, Order at 509-513; _Petition of Fitchburg Gas and Electric Light Company d/b/a Unitil for Approval of a General Increase in Base Distribution Rates for Electric and Gas Service and a Performance-Based Ratemaking Plan_, D.P.U. 23-80/81, Order at 406-409.
 
-In support of this Petition, the Petitioner states the following:
+[^1]: G.L. c. 25, §§ 19 (a) and 20 (a) establishes a requirement for the Companies to charge all customers 2.5 mills per kilowatt-hour for energy efficiency programs and 0.5 mill per kilowatt-hour for the development and promotion of renewable energy projects, respectively. DOER recognizes that these two reconciling mechanisms may not be differentiated but supports the differentiation of all other reconciling mechanisms.
 
-1. The IRWG, consisting of representatives from EEA, DOER, MassCEC, and the AGO, was formed to advance near- and long-term electric rate design and ratemaking that aligns with the Commonwealth's decarbonization mandates and affordability priorities. The IRWG recognizes the need for new approaches to electric rate design that can support an affordable clean energy transition while preserving the core purpose of rates to recover electric system costs.
+[PDF p. 3 | printed p. 3]
+
+mandates and affordability priorities. The IRWG recognizes the need for new approaches to electric rate design that can support an affordable clean energy transition while preserving the core purpose of rates to recover electric system costs.
 
 2. The IRWG studied barriers and opportunities for electric rates to support the Commonwealth's energy transition and identified existing electricity rates as a barrier to widespread electrification and achieving the Commonwealth's decarbonization mandates while prioritizing affordability.
 
@@ -41,6 +58,8 @@ In support of this Petition, the Petitioner states the following:
 
 [^3]: D.P.U. 23-150, Order at 510.
 
+[PDF p. 4 | printed p. 4]
+
 6. The IRWG conducted a robust stakeholder engagement strategy over the course of 2024 that included more than 10 stakeholder sessions that leveraged presentations, listening sessions, dialogue-based workshops, open office hours, and several opportunities for public comment. The IRWG considered stakeholder perspectives from consumer and advocacy organizations, EDCs, municipal light plants, electricity suppliers, distributed energy resource providers, distributed generation providers, and the general public.
 
 7. Through this robust stakeholder engagement, the IRWG identified broad support for the seasonal heat pump rates. Stakeholder support for the seasonal heat pump rates is further detailed in Exhibit B.
@@ -49,19 +68,25 @@ In support of this Petition, the Petitioner states the following:
 
 9. The seasonal heat pump rate will lower winter charges when the electric grid is less strained and additional usage does not increase system costs, thereby promoting customer affordability, while minimizing incremental grid costs until the transition from summer-peaking to winter-peaking occurs.
 
-10. The optional seasonal heat pump rate can be set on a revenue neutral basis (i.e., minimizing cost-shifting to non-participating customers), such that based on the expected higher winter usage for heat pump customers, the rate will still recover the same level of costs as from an average non-participating residential customer. Previously, the Department found that a heat pump rate does not constitute an explicit subsidy, nor an explicit grant or gift of monies from other rate classes to those taking service under the heat pump rates.[^4]
+10. The optional seasonal heat pump rate can be set on a revenue neutral basis (i.e., minimizing cost-shifting to non-participating customers), such that
 
-[^4]: Id. at 511.
+[PDF p. 5 | printed p. 5]
+
+based on the expected higher winter usage for heat pump customers, the rate will still recover the same level of costs as from an average non-participating residential customer. Previously, the Department found that a heat pump rate does not constitute an explicit subsidy, nor an explicit grant or gift of monies from other rate classes to those taking service under the heat pump rates.[^4]
 
 11. In 2024, the Department found that seasonal heat pump rates are "a reasonable, cost-efficient solution to mitigate the potential high bills associated with heat-pump implementation faced by residential and low-income customers within the context of current rate structures, while maintaining a rate structure that accurately reflects the cost to serve customers during this stage of electrification."[^5]
 
-[^5]: Id. at 510.
-
 12. The Department declined to direct Unitil and National Grid to modify reconciling mechanisms as DOER recommended and indicated that "further investigation is required to analyze the range of potential bill impacts, as well as additional annual administrative costs, that would result from such a modification."[^6]
+
+13. The IRWG determined there are important modifications to the seasonal heat pump rates the Department approved for Unitil and National Grid that are necessary to ensure the rates can reduce energy burden for customers switching from natural gas to heat pumps, as further detailed in Exhibit A.
+
+[^4]: Id. at 511.
+
+[^5]: Id. at 510.
 
 [^6]: D.P.U. 23-80/81, Order at 407-408; D.P.U. 23-150, Order at 513.
 
-13. The IRWG determined there are important modifications to the seasonal heat pump rates the Department approved for Unitil and National Grid that are necessary to ensure the rates can reduce energy burden for customers switching from natural gas to heat pumps, as further detailed in Exhibit A.
+[PDF p. 6 | printed p. 6]
 
 14. Seasonal heat pump rates must include larger winter differentiation than the currently approved rates provide to ensure customers' heating costs do not increase so much as to become a barrier to transitioning from gas heating to electric heat pumps.
 
@@ -70,6 +95,8 @@ In support of this Petition, the Petitioner states the following:
 [^7]: Massachusetts Executive Office of Energy and Environmental Affairs, [Clean Energy and Climate Plan, Workbook of Energy Modeling Results](https://www.mass.gov/doc/massachusetts-workbook-of-energy-modeling-results/download) (Aug. 2023).
 
 [^8]: Mass Save, [Massachusetts 2025-2027 Three-Year Energy Efficiency and Decarbonization Plan](https://ma-eeac.org/wp-content/uploads/Exhibit-1-2025-2027-Three-Year-Plan.pdf) (Oct. 31, 2024).
+
+[PDF p. 7 | printed p. 7]
 
 16. The AGO supports DOER's request and intends to actively participate in any proceeding in response to this Petition.
 
@@ -84,6 +111,8 @@ In support of this Petition, the Petitioner states the following:
     d. **Exhibit D: Seasonal Heat Pump Rate Reporting Template** provides a template for reporting key measures the IRWG recommended tracking and monitoring.
 
 18. Petitioner respectfully requests, pursuant to M.G.L. chapters 25, 30A, and 220 C.M.R. 1.04(1) the Department open an investigation on seasonal heat pump rates as described above.
+
+[PDF p. 8 | printed p. 8]
 
 DOER respectfully requests the Department approve this petition as described herein.
 
@@ -101,6 +130,8 @@ colin.carroll@mass.gov
 January 31, 2025
 
 ---
+
+[PDF p. 9 | printed p. 9]
 
 ## APPEARANCES OF COUNSEL
 

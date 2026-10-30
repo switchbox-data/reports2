@@ -1,5 +1,12 @@
 ---
+source_file: Karas - PREPARED DIRECT TESTIMONY.pdf
 citekey: karas_Docket9888Direct_2026
+zotero_item: "NA2M9BKE"
+public_url: https://drive.google.com/file/d/1iup8ig3upib90K3kFCGU1_M861hsmcxm/view
+short_url: https://pub.switch.box/karas_Docket9888Direct_2026
+source_url: https://webpscxb.psc.state.md.us/DMS/maillogpdfview/MailLog/0/0/331766/0
+md5: "534b5fef079bbbb941b6aa7b7518e1c0"
+validated: 2026-10-30
 citation_scheme: page_line
 docket: '9888'
 utility: Baltimore Gas and Electric Company
@@ -8,6 +15,10 @@ filer: Baltimore Gas and Electric Company
 document_type: testimony
 pages_total: 128
 extraction_scope: partial
+maillog: '331766'
+context: BGE's rate design testimony filed with its July 2, 2026 application for electric base rate adjustments (Case No. 9888).
+contents: Revenue apportionment, customer charges, proposed rates for all classes, Schedule RD TOU design, bill impacts; Company Exhibits JAK-1 to JAK-4.
+why_here: BGE's own statements on smart meter deployment across the residential class, cost causation and intra-class equity, cited in CCAN's direct and surrebuttal testimony.
 ---
 
 # Prepared Direct Testimony of Jennifer A. Karas

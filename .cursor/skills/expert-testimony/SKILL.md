@@ -124,25 +124,17 @@ If an answer exceeds ~250 words, break it into multiple Q&A pairs. The questions
 
 ### Citations
 
-**Other witnesses in the same docket:**
+**Before writing or editing any footnote, read [`citations.md`](citations.md) and follow it.** It sets out the citation conventions our paralegal applied to the filed Maryland testimony, for every kind of source: witness testimony, exhibits, data responses, orders, tariffs, statutes, studies and web pages, plus signals, _Id._, parentheticals, dates and citation keys. They apply to every testimony in every docket. In short:
 
-First reference establishes the short name:
+> Direct Testimony of Jennifer A. Karas on behalf of Baltimore Gas and Electric Company ("Karas Direct"), at 4:13–14 (July 2, 2026).
 
-> See Pre-filed Direct Testimony of Howard S. Gorman ("Gorman Direct"), p. 25, lines 8–11.
+Later: `Karas Direct at 8:18–22, 9:1–3.`
 
-Subsequent references: `Gorman Direct, p. 39, lines 17–19.`
+**Every citation to a document gets a pinpoint** (page, and page and lines for testimony and transcripts) whenever the source has them: other witnesses, orders, data responses with numbered pages, studies. Take them from the extract, never from memory or by counting: `just sources-cite <extract.md> "<quoted words>"` prints the printed page and lines, e.g. `39:17-19 (PDF p. 42)`, which you write as `at 39:17–19`. Cite the printed page. When a page prints no number, cite the sheet, attachment or section it belongs to; testimony never cites "PDF p.".
 
-**Every citation to a document gets a pinpoint** (page, and page and lines for testimony and transcripts) whenever the source has them: other witnesses, orders, data responses with numbered pages, studies. Take them from the extract, never from memory or by counting: `just sources-cite <extract.md> "<quoted words>"` prints the printed page and lines, e.g. `39:17-19 (PDF p. 42)`, which you write as `p. 39, lines 17–19`. Cite the printed page; use "PDF p." only when the page prints no number.
+Run `sources-cite` for every pinpoint; a section or exhibit-sheet reference is not a substitute for a page. If the extract has no page markers (`sources-cite` says so), repair it from its Zotero PDF before citing, however long it is, and look up a missing `citekey` in `reports/references.yaml` before concluding there is no PDF, following "Adding markers to an older extract" in `.cursor/commands/extract-pdf-to-markdown.md`, then continue drafting. Only when there is no PDF to repair from, cite without a pinpoint and list the citation for the user to fill in.
 
-If the extract has no page markers (`sources-cite` says so), repair it from its Zotero PDF before citing, following "Adding markers to an older extract" in `.cursor/commands/extract-pdf-to-markdown.md`, then continue drafting. Only when there is no PDF to repair from, cite without a pinpoint and list the citation for the user to fill in.
-
-**Prior docket orders:** Full citation on first use, then short name.
-
-**Statutes:** Cite by section (e.g., `R.I. Gen. Laws § 39-1-1(b)`).
-
-**External sources:** Go in footnotes, not body text.
-
-**Data request responses:** `Company response to CLF 2-9` (format: `[Responding party] response to [Requesting party] [Set]-[Question]`).
+**External sources:** Go in footnotes, not body text, written out in full; the Word export drops `[@key]` tags, so a footnote must read completely without them.
 
 ### Exhibits
 

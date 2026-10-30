@@ -27,6 +27,10 @@
 --!   6. Keep table cells single-spaced (bullets need double-spaced "Compact").
 --!   7. Drop legacy ``<!-- testimony-body-start -->`` / ``testimony-toc``
 --!      markers from older QMDs.
+--!   8. Drop ``[@key]`` citations and the reference list.  Testimony writes
+--!      every citation out in full in its footnotes
+--!      (``.cursor/skills/expert-testimony/citations.md``); the keys are
+--!      only for the bibliography tooling and the HTML preview.
 
 local text = pandoc.text
 
@@ -114,6 +118,7 @@ end
 --! Strip Quarto ``column-*`` div wrappers; keep Divs that carry an explicit
 --! ``custom-style`` (they carry styling intent).
 function Div(d)
+  if d.identifier == "refs" then return {} end
   if d.attr.attributes and d.attr.attributes["custom-style"] then return nil end
   for _, c in ipairs(d.attr.classes) do
     if c:match("^column%-") then return d.content end
@@ -412,6 +417,18 @@ local function is_legacy_marker(blk)
     return false
   end
   return txt:find("testimony%-body%-start") ~= nil or txt:find("testimony%-toc") ~= nil
+end
+
+function Inlines(inlines)
+  local out = pandoc.Inlines({})
+  for _, el in ipairs(inlines) do
+    if el.t == "Cite" then
+      if #out > 0 and out[#out].t == "Space" then out:remove(#out) end
+    else
+      out:insert(el)
+    end
+  end
+  return out
 end
 
 function Pandoc(doc)

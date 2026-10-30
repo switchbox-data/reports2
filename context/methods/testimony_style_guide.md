@@ -29,7 +29,7 @@ Based on direct testimony from RIPUC Docket 4770 (National Grid's 2018 distribut
 
 Pick one and be consistent. The NERI style (bold Q./A. prefix, plain text) is the most modern and readable.
 
-**Line numbers on every page.** The filed PDF has numbered lines in the left margin. Cross-references cite by page and line: "See Gorman Direct, p. 25, lines 8–11." This is standard for all PUC testimony nationwide. Your attorney or a formatting tool handles this at the end.
+**Line numbers on every page.** The filed PDF has numbered lines in the left margin. Cross-references cite by page and line: "_See_ Gorman Direct at 25:8–11." This is standard for all PUC testimony nationwide. Your attorney or a formatting tool handles this at the end.
 
 **Table of Contents.** All but the shortest testimonies include one. Use numbered sections with page numbers. Include a separate list of exhibits.
 
@@ -144,41 +144,11 @@ The closing is always:
 
 ## How to cite things
 
-**Other witnesses in the same docket (the most common citation):**
+Switchbox testimony follows one set of citation conventions in every docket: `.cursor/skills/expert-testimony/citations.md`, taken from the paralegal-formatted filing in Maryland PSC Case No. 9888. The Rhode Island exemplars above cite differently ("Gorman Direct, p. 39, lines 17–19"); do not copy their citation format. In short:
 
-First reference establishes the short name:
+> Direct Testimony of Jennifer A. Karas on behalf of Baltimore Gas and Electric Company ("Karas Direct"), at 4:13–14 (July 2, 2026).
 
-> See Pre-filed Direct Testimony of Howard S. Gorman ("Gorman Direct"), p. 25, lines 8–11.
-
-Subsequent references use the short name:
-
-> Gorman Direct, p. 39, lines 17–19.
-
-For repeat citations on the same page:
-
-> _Id._ at 42.
-
-**Prior docket orders:**
-
-> Commission Report and Order 22851, In Re: Investigation into the Changing Electric Distribution System, Docket No. 4600, at pp. 10–11 (Jul. 31, 2017).
-
-After the first full cite:
-
-> Order 22851 at 15.
-
-**Statutes:**
-
-> R.I. Gen. Laws § 39-1-1(b).
-
-**Data request responses:**
-
-> Company response to CLF 2-9.
-
-Format: `[Responding party] response to [Requesting party abbreviation] [Set#]-[Question#]`.
-
-**External sources (go in footnotes):**
-
-> M. Whited, T. Woolf, J. Daniel, "Caught in a Fix: The Problem with Fixed Charges for Electricity," prepared for Consumers Union (Feb. 9, 2016).
+Later: `Karas Direct at 8:18–22, 9:1–3.` Repeat: `_Id._ at 9:4.`
 
 ---
 

@@ -43,13 +43,15 @@ Extracts are cited in testimony and reports by page, and for documents with numb
 
 #### Adding markers to an older extract
 
-Extracts made before these rules have no page markers (no `citation_scheme` in the front matter; `sources-cite` says so). When an agent needs to cite one, it repairs the extract first, then carries on with what it was doing:
+Extracts made before these rules have no page markers (no `citation_scheme` in the front matter; `sources-cite` says so). Every page, line, section or exhibit-sheet citation to an extract goes through `sources-cite`; never write a pinpoint by hand, and never substitute a section or sheet reference for a page. When `sources-cite` reports no markers, the agent repairs the extract first, whatever its length, then carries on with what it was doing:
 
-1. `just fetch-source <citekey>` (the `citekey` in the extract's front matter) downloads the original PDF from Zotero beside the extract. If the extract has no `citekey`, or Zotero has no PDF for it, stop and tell the user; cite without a page rather than guess one.
+1. `just fetch-source <citekey>` (the `citekey` in the extract's front matter) downloads the original PDF from Zotero beside the extract. If the front matter has no `citekey`, look the item up by title in `reports/references.yaml` or Zotero, and add the `citekey` to the front matter when you find it. Only if Zotero truly has no PDF, stop: cite without a page rather than guess one, and tell the user which citations lack pages.
 2. `just sources-page-skeleton <pdf> /tmp/<citekey>_skeleton.md` gives the pages and numbered lines.
 3. Edit the existing extract in place; do not re-transcribe it. Insert a page marker at each page break, mark pages it never covered as `not transcribed`, and for `page_line` documents split each paragraph back into its source lines with their `{n}` numbers. Move footnote definitions onto their pages, and drop any old ad hoc page notes (`[PDF page 3]`, `**[PDF page 3]** — printed page label: …`) in favor of the standard marker. Keep the extract's headings, tables, figure descriptions and notes. Where the skeleton shows the old text was wrong or missing (a dropped line, a misread number), fix it from the PDF and add an extractor note saying so.
 4. Set `citation_scheme`, update the extractor notes to describe the markers (and remove any note saying page or line numbers were omitted), and run `just sources-check-pages <extract.md>` until it reports no errors.
 5. Tell the user the extract changed, so they can commit it with the rest of the work. Never commit it yourself.
+
+Any helper script written for a repair lives in `/tmp` (or the session scratch directory) and is deleted when the repair is done. Never add one to the repo.
 
 ### Structure & Hierarchy
 

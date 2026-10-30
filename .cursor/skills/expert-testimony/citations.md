@@ -2,7 +2,7 @@
 
 These are the conventions our paralegal applied to the filed version of Switchbox's direct testimony in Maryland PSC Case No. 9888 (`context/sources/md_hp_rates/mdpuc_9888_direct_testimony_velez.md`, footnotes 1–71). Use them for every citation in every testimony, in every docket, unless the commission's rules require otherwise. Where the filed testimony was inconsistent, the rule below takes the form it used most often; those cases are marked _(standardized)_.
 
-The examples are real citations from the filed testimony or the Case No. 9888 surrebuttal. Copy their punctuation exactly: commas, the word "at", en dashes in ranges, and where the parentheses go.
+The examples are real citations. Copy their punctuation exactly: commas, the word "at", en dashes in ranges, and where the parentheses go.
 
 ## Pinpoints
 
@@ -100,6 +100,21 @@ Sentences that comment on the source come after the citation, as ordinary prose.
 ## Dates
 
 Abbreviate months as `Jan.`, `Feb.`, `Mar.`, `Apr.`, `Aug.`, `Sep.`, `Oct.`, `Nov.`, `Dec.`; write out `May`, `June` and `July`. Examples: `(Dec. 27, 2024)`, `(Sep. 1, 2026)`, `(July 2, 2026)`.
+
+## Links
+
+Link every citation of a library source to its public copy through the source's short link, `https://pub.switch.box/<citekey>` (the extract's `short_url` front matter, or the source's `url` in `reports/references.yaml`). Link the document's name, and keep the pinpoint, date and parenthetical outside the link:
+
+> [Rebuttal Testimony of Jennifer A. Karas on behalf of Baltimore Gas and Electric Company](https://pub.switch.box/karas_Docket9888Prepared_2026) ("Karas Rebuttal"), at 22:1–2 (Oct. 16, 2026).
+
+> [Karas Rebuttal](https://pub.switch.box/karas_Docket9888Prepared_2026) at 22:6–8.
+
+> [BGE Response to CCAN DR 1-8](https://pub.switch.box/bge_Docket9888Response_2026) (BGE "does not track customers by known heat source").
+
+- Short links redirect to the whole document, so they cannot carry the page; the pinpoint does that.
+- Link later citations and `_Id._` too, so a reader can open the source from any footnote.
+- A source with no short link has no public copy yet. Ingest it first (the `ingest-source` skill) rather than linking to a filing portal or a private file; if that has to wait, mark the footnote for the user.
+- A source's own URL (a statute on the legislature's site, a web page) is fine when the source is not in the library.
 
 ## Citation keys
 

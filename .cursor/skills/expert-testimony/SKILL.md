@@ -136,6 +136,8 @@ Run `sources-cite` for every pinpoint; a section or exhibit-sheet reference is n
 
 **External sources:** Go in footnotes, not body text, written out in full; the Word export drops `[@key]` tags, so a footnote must read completely without them.
 
+**Links:** Link each cited document's name to its short link, `https://pub.switch.box/<citekey>`, with the pinpoint outside the link: `[Karas Rebuttal](https://pub.switch.box/karas_Docket9888Prepared_2026) at 22:6–8.` A source with no short link gets ingested first. See "Links" in `citations.md`.
+
 ### Exhibits
 
 Naming convention: witness initials + number (`JPV-1`, `JPV-2`, etc.).

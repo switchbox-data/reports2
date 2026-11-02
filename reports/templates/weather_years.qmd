@@ -1,0 +1,2215 @@
+---
+title: "Weather years"
+subtitle: "How historical weather years affect rate-design analysis"
+jupyter: python3
+format:
+  html:
+    toc: true
+    code-fold: false
+    fig-format: svg
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+This **state-agnostic** notebook asks whether the weather year behind our analysis
+is typical, mild, or extreme — and whether that choice would move the findings
+we take to PUCs.
+
+Every HP-rate testimony in this repo hangs on the same claim: **new T&D costs
+are caused in a small set of peak hours, and those hours are overwhelmingly
+summer.** Heat pumps add most of their incremental kWh in winter, when
+marginal T&D cost is near zero, so a flat volumetric delivery rate overcharges
+them. That claim is a statement about *a year*. A colder winter, or a year
+whose system peak flipped into January, would move the May–September share of
+peak hours, the incremental peak-hour kWh, the MC heatmaps, and the bills.
+
+We currently run CAIRO on NREL ResStock **AMY 2018** (actual meteorological
+year 2018).
+
+> **Demonstration**: the `STATE_PROFILE` below is filled in for Connecticut.
+> **This notebook is meant to be copied.** For another state, duplicate the
+> file and replace that one profile.
+
+---
+
+## How to use
+
+1. Copy this file. In Parameters, replace `STATE_PROFILE` with the new state's
+   system-load URI, GHCN stations, marginal-cost utility, and (for the dollar
+   comparison) the CAIRO batch.
+2. `YEARS` defaults to **2018–2025**. Edit the list to add or drop years.
+   A short system-load file is kept for the temperature charts and dropped
+   from the top-N peak split.
+3. Optional: `N_PEAK_HOURS` (default 100; MD bulk-tx testimony uses 150).
+4. Re-render (`quarto render weather_years.qmd`) or restart the kernel and run
+   all cells. GHCN is cached under `cache/`; loads and marginal costs come from S3.
+
+ISO-NE's CT zone file for **2018 starts in July**. Peak-hour shares are only
+computed for years with at least 8,700 hours; 2018 still appears in the
+temperature charts and in the ResStock overlay.
+
+---
+
+## Why weather year matters
+
+Two clocks run in the CAIRO pipeline and they are easy to mix up:
+
+| Clock | Typical value | What it controls |
+|-------|---------------|------------------|
+| **Weather year** | AMY **2018** | EnergyPlus weather that shaped ResStock heating, cooling, and HP COP |
+| **Run / calendar year** | **2025** | Weekdays and holidays the 8,760 is rotated onto; MC timestamps; tariff year |
+| **MC load year** | often **2025** (sometimes 2018) | Which year's ISO/utility load identifies the top-N peak hours |
+| **Price / dollar year** | 2024–2026 | LBMP/ICAP, AESC `$`/kW-yr, CPI, fuel prices |
+
+CAIRO does **not** join marginal cost to building load by calendar date. It
+aligns the two 8,760s **by position** after rotating AMY 2018 so Monday maps
+to Monday of `year_run`. Changing the weather year without rebuilding ResStock
+does nothing. Changing `year_run` without rebuilding month-hour / holiday-aware
+MC misaligns day types.
+
+NREL ResStock **2024.2** publishes only **AMY 2018** and **TMY3** (same building
+models). **AMY 2012** exists only in the older 2022.1 release. This notebook
+therefore compares **observed** weather and **observed** system load across
+calendar years, and overlays ResStock's AMY 2018 outdoor temperature on 2018
+GHCN. It does not re-run CAIRO.
+
+---
+
+## Data sources
+
+| Series | What it is | Where it comes from |
+|--------|------------|---------------------|
+| **Weather** | Daily temperature, HDD, CDD | Weighted mean of the GHCN stations in `STATE_PROFILE` (weights are ResStock building counts in the CT example; not NOAA nClimDiv, which is monthly) |
+| **System load** | Hourly MW for the whole zone or utility, not ResStock homes | The `load_uri` you paste. See the comment on that field: rate-design-platform does not use one hive shape for every state |
+| **ResStock weather check** | EnergyPlus outdoor dry-bulb | A sample of upgrade-00 hourly files. Each building has its own EPW (`in.weather_file_city`); there is no single ResStock station |
+| **Representative load** | Weighted-average hourly kWh of fossil-heated homes, pre-HP and post-HP | Same construction as `representative_home.qmd`: master bills for weights, `billing_kwh_8760` for the shape |
+| **Marginal cost** | Filed dist and bulk-tx `$`/kWh, plus a top-N reallocation of those annual scalars onto each system-load year | `s3://data.sb/switchbox/marginal_costs/…` usually has one run year. Year-to-year dollar differences below are that scalar moved onto each year's peak hours |
+
+---
+
+## Notebook sections
+
+| Section | What it covers |
+|---------|----------------|
+| **1 — Outdoor temperature** | GHCN daily mean, HDD/CDD; how extreme 2018's winter and summer were |
+| **2 — System electricity** | Zone/utility 8760, monthly energy, annual peak; incomplete years flagged |
+| **3 — Top-N peak hours** | Share in May–Sep vs Oct–Apr (the testimony split) |
+| **4 — 2018 among its neighbors** | Rank 2018 on HDD, CDD, summer-peak share, winter/summer peak ratio |
+| **5 — ResStock vs GHCN 2018** | Sample of AMY 2018 outdoor temp against the airport series |
+| **6 — Load-weighted PoP and a KDE year** | Top-100 load-weighted weights by year, for the dist series and the bulk-tx series, then one analysis-year 8760 from a KDE trained on those years |
+| **7 — Marginal cost on a representative load** | Filed schedule, then the same home and the same `$`/kW-yr allocated with each year's load-weighted top 100, including the heat-pump increment |
+
+```{python}
+#| label: setup
+from __future__ import annotations
+
+import contextlib
+import io
+import sys
+import urllib.request
+from pathlib import Path
+from collections.abc import Sequence
+from typing import Any, cast
+
+import polars as pl
+from great_tables import GT
+from IPython.display import Markdown, display
+from plotnine import (
+    aes,
+    expand_limits,
+    facet_wrap,
+    geom_col,
+    geom_hline,
+    geom_line,
+    geom_text,
+    geom_tile,
+    ggplot,
+    labs,
+    scale_color_manual,
+    scale_fill_gradient,
+    scale_fill_manual,
+    scale_x_continuous,
+    scale_x_discrete,
+    scale_y_continuous,
+    scale_y_discrete,
+    theme,
+)
+
+from lib.data.s3 import list_s3_subdirs
+from lib.great_tables import get_switchbox_gt_tab_options
+from lib.plotnine import SB_COLORS, theme_switchbox
+from lib.quarto import display_figure, display_gt
+from lib.rates_analysis.rate_case_funcs import (
+    load_billing_kwh_8760,
+    load_delivery_mc_heatmap,
+    load_master_bills,
+    plot_mc_heatmap,
+    segment_name,
+    weighted_avg_hourly,
+)
+```
+
+```{python}
+#| label: params
+# ── Copy this notebook and replace STATE_PROFILE for the new state ───────────
+# YEARS is the default window. Narrow or extend it here.
+YEARS: list[int] = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
+N_PEAK_HOURS = 100  # dist PoP default; set 150 to match MD bulk-tx testimony
+
+# One profile. Nothing else in this file knows about other states.
+#
+# load_uri — the hourly MW series whose peaks you want to compare. Paste the
+# hive the marginal-cost pipeline actually ranks, with `{year}` in the path.
+# rate-design-platform does not use one pattern:
+#   - NY, RI, MD, and CT's `pop_isone_zone` rank the *utility* hive
+#     `.../hourly_demand/utilities/utility=<slug>/year={year}/`.
+#   - MD's slug is `bge` under `s3://data.sb/pjm/hourly_demand/utilities/`.
+#     The PJM zone file is `zone=BC`, not `zone=MD`, which is why an MD run
+#     does not look like `zone=CT`.
+#   - ISO-NE `utility=ct_eversource` is the CT *zone* total (both CT utilities),
+#     and that partition currently starts in 2022. The raw zone hive
+#     `s3://data.sb/isone/hourly_demand/zones/zone=CT/year={year}/` covers
+#     2018–2025, so this demonstration uses the zone. Swap in the utility URI
+#     if you only need 2022–2025 and want the exact PoP input.
+#   - CT's current dist method (`pop_occ863` or month-hour) does not rank either
+#     hive. It uses the OCC-863 substation file. Bulk TX there is a KDE on
+#     several years of ISO-NE load, not a single-year top 100.
+#   - Timestamp column is `interval_start_et` on ISO-NE and `timestamp` on
+#     PJM and NYISO.
+# ghcn_stations — (GHCN id, name, weight). Weight here is the ResStock
+# building count on that EPW city (upgrade 00), so the daily mean is the
+# weather the housing stock actually sits in, not one airport and not NOAA
+# nClimDiv. For a new state, count `in.weather_file_city` and paste those
+# stations. Use weight 1 for an equal-weight mean. CT also has Waterbury
+# Oxford (722 buildings); no GHCN id is wired for it yet.
+# batch / scenario — CAIRO run for the representative-home kWh profile.
+# Leave batch as "" to skip the dollar section.
+STATE_PROFILE: dict[str, Any] = {
+    "state": "ct",
+    "load_label": "ISO-NE Connecticut zone",
+    "load_uri": "s3://data.sb/isone/hourly_demand/zones/zone=CT/year={year}/",
+    "ts_col": "interval_start_et",
+    "load_col": "load_mw",
+    "ghcn_stations": [
+        ("USW00054788", "Meriden Markham", 3616),
+        ("USW00014752", "Hartford Brainard", 3092),
+        ("USW00094702", "Bridgeport", 3010),
+        ("USW00054767", "Windham", 1892),
+    ],
+    "mc_utility": "ct_eversource",
+    "mc_year": 2025,
+    "electric_utility": "ct_eversource",
+    "batch": "ct_20261015_a",
+    "scenario": "default_ry1_r1_uncalibrated",
+    # Bulk TX often ranks a different series than distribution.
+    # bulk_zones set: sum those ISO-NE zones (New England system, which is
+    # what CT's default bulk-tx KDE is fit on). bulk_zones empty: read
+    # bulk_load_uri with {year} only (PJM utility=bge, a NYISO zone, …).
+    # Dist PoP uses load_uri above. CT's filed dist method is OCC-863 or a
+    # month-hour table, not this hive; the zone is the ISO-NE fallback.
+    "bulk_load_label": "ISO-NE New England system",
+    "bulk_zone_s3_base": "s3://data.sb/isone/hourly_demand/zones/",
+    "bulk_zones": ["CT", "ME", "NEMA", "NH", "RI", "SEMA", "VT", "WCMA"],
+    "bulk_load_uri": "",
+    "bulk_ts_col": "interval_start_et",
+    "bulk_load_col": "load_mw",
+    "bulk_n_peak_hours": 100,
+    # Years the KDE is trained on, and the calendar the 8760 is laid onto.
+    # CT bulk tx uses 2022–2025. Incomplete years are dropped.
+    "kde_years": [2022, 2023, 2024, 2025],
+    "analysis_year": 2025,
+    "rdp_root": "/ebs/home/lee_switch_box/rate-design-platform",
+}
+# ─────────────────────────────────────────────────────────────────────────────
+
+S3_OPTS = {"aws_region": "us-west-2"}
+CACHE_DIR = Path("cache")
+CACHE_DIR.mkdir(exist_ok=True)
+
+# May–September is the window MD/CT/RI testimony calls "summer peak hours".
+# October–April is the heating season where incremental HP kWh land.
+SUMMER_MONTHS = (5, 6, 7, 8, 9)
+HEATING_MONTHS = (10, 11, 12, 1, 2, 3, 4)
+# Same de minimis CT testimony uses to drop trace PoP hours (0.5¢/kWh).
+MC_PEAK_THRESHOLD = 0.005
+HDD_BASE_F = 65.0
+MIN_HOURS_COMPLETE = 8700  # leap years have 8,784; skip peak shares below this
+
+# A short system-load year (ISO-NE CT 2018 starts in July) stays in the
+# temperature charts and is dropped from the top-N peak split.
+RESSTOCK_WEATHER_YEAR = 2018
+STATE = str(STATE_PROFILE["state"])
+profile = STATE_PROFILE
+RESSTOCK_HOURLY_DIR = Path(
+    f"/ebs/data/nrel/resstock/res_2024_amy2018_2/load_curve_hourly/state={STATE.upper()}/upgrade=00"
+)
+RESSTOCK_METADATA = Path(
+    f"/ebs/data/nrel/resstock/res_2024_amy2018_2/metadata/state={STATE.upper()}/upgrade=00"
+)
+OUTDOOR_TEMP_C = "out.outdoor_air_dryblub_temp.c"
+N_RESSTOCK_SAMPLE = 25
+WEATHER_LABEL = "statewide GHCN mean"
+
+station_names = ", ".join(row[1] for row in profile["ghcn_stations"])
+display(
+    Markdown(
+        f"**{STATE.upper()}** · {profile['load_label']}  \n"
+        f"Weather: {WEATHER_LABEL} ({station_names})  \n"
+        f"Years: {min(YEARS)}–{max(YEARS)} · top {N_PEAK_HOURS} hours"
+    )
+)
+```
+
+```{python}
+#| label: helpers
+MONTH_ABBR = {
+    1: "Jan",
+    2: "Feb",
+    3: "Mar",
+    4: "Apr",
+    5: "May",
+    6: "Jun",
+    7: "Jul",
+    8: "Aug",
+    9: "Sep",
+    10: "Oct",
+    11: "Nov",
+    12: "Dec",
+}
+
+# A qualitative palette long enough for eight years; 2018 (AMY) is carrot.
+YEAR_COLORS = {
+    2018: SB_COLORS["carrot"],
+    2019: "#8d99ae",
+    2020: "#6c757d",
+    2021: SB_COLORS["pistachio"],
+    2022: SB_COLORS["saffron"],
+    2023: SB_COLORS["sky"],
+    2024: SB_COLORS["midnight"],
+    2025: "#9b5de5",
+}
+
+
+def year_color_scale(years: list[int]):
+    return scale_color_manual(
+        values={str(y): YEAR_COLORS.get(y, "#888888") for y in years}
+    )
+
+
+def year_fill_scale(years: list[int]):
+    return scale_fill_manual(
+        values={str(y): YEAR_COLORS.get(y, "#888888") for y in years}
+    )
+
+
+def quiet(fn, *args, **kwargs):
+    """Run `fn` with stdout discarded. RDP loaders print DST housekeeping."""
+    with contextlib.redirect_stdout(io.StringIO()):
+        return fn(*args, **kwargs)
+
+
+def show_gt(
+    df: pl.DataFrame,
+    title: str,
+    subtitle: str | None = None,
+    *,
+    labels: dict[str, str] | None = None,
+    int_cols: Sequence[str] = (),
+    num_cols: Sequence[str] = (),
+    num_decimals: int = 1,
+) -> None:
+    table = GT(df.to_pandas())
+    table = (
+        table.tab_header(title=title, subtitle=subtitle)
+        if subtitle
+        else table.tab_header(title=title)
+    )
+    if labels:
+        table = table.cols_label(**labels)
+    if int_cols:
+        table = table.fmt_integer(columns=list(int_cols))
+    if num_cols:
+        table = table.fmt_number(columns=list(num_cols), decimals=num_decimals)
+    display_gt(table.tab_options(**get_switchbox_gt_tab_options()))
+```
+
+## Section 1: Outdoor temperature
+
+Daily max and min from NOAA GHCN at every station in `ghcn_stations`. Mean
+daily temperature at a station is `(TMAX + TMIN) / 2` when TAVG is blank.
+The **statewide** series is the weighted mean of those stations on each
+day. The weight is the third field on each station (ResStock building count
+in the demonstration). HDD and CDD use a 65 °F base on that mean.
+
+This is not NOAA nClimDiv (that product is monthly and area-weighted) and it
+is not the EPW ResStock simulated. Section 5 checks whether AMY 2018's
+building dry-bulb tracks this statewide mean.
+
+```{python}
+#| label: load-ghcn
+
+def fetch_ghcn(station: str, years: list[int]) -> pl.DataFrame:
+    start, end = min(years), max(years)
+    cache_path = CACHE_DIR / f"ghcn_{station}_{start}_{end}.parquet"
+    if cache_path.exists():
+        return pl.read_parquet(cache_path)
+    url = (
+        "https://www.ncei.noaa.gov/access/services/data/v1"
+        f"?dataset=daily-summaries&stations={station}"
+        f"&startDate={start}-01-01&endDate={end}-12-31"
+        "&dataTypes=TMAX,TMIN,TAVG&units=standard&format=csv"
+    )
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "Switchbox weather-years notebook (https://switch.box/)"},
+    )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        csv_bytes = resp.read()
+    raw = pl.read_csv(csv_bytes, infer_schema_length=0)
+    # NCEI sends TMAX/TMIN as strings; units=standard is Fahrenheit.
+    parsed = (
+        raw.rename({c: c.lower() for c in raw.columns})
+        .with_columns(
+            pl.col("date").str.to_date(),
+            pl.col("tmax").cast(pl.Float64, strict=False),
+            pl.col("tmin").cast(pl.Float64, strict=False),
+            (
+                pl.col("tavg").cast(pl.Float64, strict=False)
+                if "tavg" in [c.lower() for c in raw.columns]
+                else pl.lit(None, dtype=pl.Float64)
+            ).alias("tavg_reported"),
+        )
+        .with_columns(
+            pl.coalesce(
+                pl.col("tavg_reported"),
+                (pl.col("tmax") + pl.col("tmin")) / 2,
+            ).alias("tavg_f")
+        )
+        .select("date", "tmax", "tmin", "tavg_f")
+        .drop_nulls("tavg_f")
+        .with_columns(
+            pl.col("date").dt.year().alias("year"),
+            pl.col("date").dt.month().alias("month"),
+            pl.col("date").dt.ordinal_day().alias("day_of_year"),
+            (HDD_BASE_F - pl.col("tavg_f")).clip(lower_bound=0).alias("hdd"),
+            (pl.col("tavg_f") - HDD_BASE_F).clip(lower_bound=0).alias("cdd"),
+        )
+    )
+    parsed.write_parquet(cache_path)
+    return parsed
+
+
+station_frames = []
+for row in profile["ghcn_stations"]:
+    station_id, station_name = row[0], row[1]
+    weight = float(row[2]) if len(row) > 2 else 1.0
+    one = fetch_ghcn(station_id, YEARS).with_columns(
+        pl.lit(station_id).alias("station_id"),
+        pl.lit(station_name).alias("station"),
+        pl.lit(weight).alias("weight"),
+    )
+    station_frames.append(one)
+stations = pl.concat(station_frames, how="vertical_relaxed").filter(pl.col("year").is_in(YEARS))
+wx = (
+    stations.group_by("date")
+    .agg(
+        ((pl.col("tmax") * pl.col("weight")).sum() / pl.col("weight").sum()).alias("tmax"),
+        ((pl.col("tmin") * pl.col("weight")).sum() / pl.col("weight").sum()).alias("tmin"),
+        ((pl.col("tavg_f") * pl.col("weight")).sum() / pl.col("weight").sum()).alias("tavg_f"),
+        pl.len().alias("n_stations"),
+    )
+    .with_columns(
+        pl.col("date").dt.year().alias("year"),
+        pl.col("date").dt.month().alias("month"),
+        pl.col("date").dt.ordinal_day().alias("day_of_year"),
+        (HDD_BASE_F - pl.col("tavg_f")).clip(lower_bound=0).alias("hdd"),
+        (pl.col("tavg_f") - HDD_BASE_F).clip(lower_bound=0).alias("cdd"),
+    )
+    .sort("date")
+)
+show_gt(
+    wx.group_by("year")
+    .agg(
+        pl.len().alias("Days"),
+        pl.col("n_stations").mean().round(1).alias("Stations"),
+    )
+    .sort("year")
+    .rename({"year": "Year"}),
+    title="Days in the statewide mean",
+    subtitle="A station with a missing day drops out of that day's mean only.",
+    int_cols=["Days"],
+    num_cols=["Stations"],
+    num_decimals=1,
+)
+display_gt(
+    GT(
+        stations.group_by("station", "weight")
+        .agg(
+            pl.len().alias("Days"),
+            pl.col("tavg_f").mean().round(1).alias("mean_f"),
+        )
+        .sort("weight", descending=True)
+        .to_pandas()
+    )
+    .tab_header(
+        title="GHCN stations in the statewide mean",
+        subtitle="Weights are ResStock building counts. A station with a missing day drops out of that day only.",
+    )
+    .cols_label(station="Station", weight="Buildings", mean_f="Mean °F")
+    .fmt_integer(columns=["weight", "Days"])
+    .fmt_number(columns=["mean_f"], decimals=1)
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+```
+
+```{python}
+#| label: fig-daily-temp
+#| fig-cap: "Seven-day rolling mean of the statewide GHCN temperature, by year. 2018 (ResStock AMY) is in carrot."
+
+daily_roll = wx.sort("date").with_columns(
+    pl.col("tavg_f")
+    .rolling_mean(window_size=7, min_samples=4)
+    .over("year")
+    .alias("tavg_roll7"),
+    pl.col("year").cast(pl.String),
+)
+years_present = sorted(int(y) for y in daily_roll["year"].unique())
+p = (
+    ggplot(daily_roll, aes("day_of_year", "tavg_roll7", color="year"))
+    + geom_line(alpha=0.85, size=0.6)
+    + year_color_scale(years_present)
+    + labs(
+        title=f"Outdoor temperature, {WEATHER_LABEL}",
+        subtitle="7-day rolling mean, °F. Weighted by the station weights above.",
+        x="",
+        y="°F",
+        color="Year",
+    )
+    + scale_x_continuous(
+        breaks=[1, 91, 182, 274, 365],
+        labels=["Jan", "Apr", "Jul", "Oct", "Dec"],
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4.5))
+)
+display_figure(p.draw())
+```
+
+```{python}
+#| label: tbl-hdd-cdd
+#| tbl-cap: "Annual heating and cooling degree-days (65 °F base) at the GHCN station."
+
+deg_days = (
+    wx.group_by("year")
+    .agg(
+        pl.len().alias("days"),
+        pl.col("tavg_f").mean().round(1).alias("mean_f"),
+        pl.col("tmin").min().round(1).alias("min_f"),
+        pl.col("tmax").max().round(1).alias("max_f"),
+        pl.col("hdd").sum().round(0).cast(pl.Int64).alias("hdd65"),
+        pl.col("cdd").sum().round(0).cast(pl.Int64).alias("cdd65"),
+    )
+    .sort("year")
+)
+display_gt(
+    GT(deg_days.to_pandas())
+    .tab_header(
+        title=f"Degree-days, {WEATHER_LABEL}",
+        subtitle="HDD/CDD base 65 °F. 2018 is the ResStock AMY weather year.",
+    )
+    .cols_label(
+        year="Year",
+        days="Days",
+        mean_f="Mean °F",
+        min_f="Min °F",
+        max_f="Max °F",
+        hdd65="HDD (65 °F)",
+        cdd65="CDD (65 °F)",
+    )
+    .fmt_number(columns=["mean_f", "min_f", "max_f"], decimals=1)
+    .fmt_integer(columns=["days", "hdd65", "cdd65"])
+    .tab_options(**get_switchbox_gt_tab_options())
+)
+```
+
+A year with more HDD than 2018 is a *colder* heating season: ResStock AMY 2018
+would understate HP heating kWh relative to that year. More CDD means a
+hotter cooling season, which moves *both* the pre-HP air-conditioning load and
+the system summer peak.
+
+### How extreme was 2018?
+
+ResStock's weather file is one calendar year. The question for rate design is
+whether that year's **winter** and **summer** were typical of the window we
+compare against. A colder October–April means more heat-pump kWh than AMY 2018
+shows. A hotter May–September means more pre-HP cooling load and a higher
+system peak than AMY 2018 shows.
+
+Heating and cooling seasons here are October–April and May–September of the
+*same* calendar year — the same 12-month window as the AMY file, not a winter
+that straddles two years.
+
+```{python}
+#| label: 2018-extremes
+
+season_wx = (
+    wx.with_columns(
+        pl.when(pl.col("month").is_in(list(HEATING_MONTHS)))
+        .then(pl.col("hdd"))
+        .otherwise(0.0)
+        .alias("hdd_heat"),
+        pl.when(pl.col("month").is_in(list(SUMMER_MONTHS)))
+        .then(pl.col("cdd"))
+        .otherwise(0.0)
+        .alias("cdd_cool"),
+    )
+    .group_by("year")
+    .agg(
+        pl.col("hdd_heat").sum().round(0).cast(pl.Int64).alias("heating_hdd"),
+        pl.col("cdd_cool").sum().round(0).cast(pl.Int64).alias("cooling_cdd"),
+        pl.col("tavg_f")
+        .filter(pl.col("month").is_in(list(HEATING_MONTHS)))
+        .mean()
+        .alias("heat_mean_f"),
+        pl.col("tavg_f")
+        .filter(pl.col("month").is_in(list(SUMMER_MONTHS)))
+        .mean()
+        .alias("cool_mean_f"),
+    )
+    .sort("year")
+)
+y0 = RESSTOCK_WEATHER_YEAR
+row = season_wx.filter(pl.col("year") == y0)
+others = season_wx.filter(pl.col("year") != y0)
+
+
+def _rank_high(frame: pl.DataFrame, col: str, year: int) -> tuple[int, int]:
+    ordered = frame.sort(col, descending=True)
+    place = ordered["year"].to_list().index(year) + 1
+    return place, ordered.height
+
+
+hdd_place, hdd_n = _rank_high(season_wx, "heating_hdd", y0)
+cdd_place, cdd_n = _rank_high(season_wx, "cooling_cdd", y0)
+heat_2018 = float(row["heat_mean_f"][0])
+cool_2018 = float(row["cool_mean_f"][0])
+heat_other = float(others["heat_mean_f"].mean())
+cool_other = float(others["cool_mean_f"].mean())
+winter_delta = heat_2018 - heat_other
+summer_delta = cool_2018 - cool_other
+winter_phrase = (
+    f"{abs(winter_delta):.1f} °F colder than the mean of the other years"
+    if winter_delta < 0
+    else f"{abs(winter_delta):.1f} °F warmer than the mean of the other years"
+)
+summer_phrase = (
+    f"{abs(summer_delta):.1f} °F hotter than the mean of the other years"
+    if summer_delta > 0
+    else f"{abs(summer_delta):.1f} °F cooler than the mean of the other years"
+)
+both_severe = winter_delta < 0 and summer_delta > 0
+tail = (
+    "Both tails were on the severe side of this window: a colder winter raises "
+    "heat-pump kWh relative to a typical year, and a hotter summer raises "
+    "pre-HP cooling load and the system peak."
+    if both_severe
+    else "The monthly anomaly chart shows which months drove that."
+)
+display(
+    Markdown(
+        f"**{y0} heating season** (Oct–Apr) was {winter_phrase} "
+        f"({hdd_place} of {hdd_n} for HDD). "
+        f"**{y0} cooling season** (May–Sep) was {summer_phrase} "
+        f"({cdd_place} of {cdd_n} for CDD). {tail}"
+    )
+)
+```
+
+Negative bars in the chart below are months that were **colder** than the mean
+of the other years; positive bars are **warmer**. Look at October–April for
+the heating-season story and May–September for the cooling-season story.
+
+```{python}
+#| label: fig-2018-monthly-anomaly
+#| fig-cap: "2018 monthly mean temperature minus the mean of the other years. Negative is colder than typical."
+
+monthly_t = wx.group_by("year", "month").agg(pl.col("tavg_f").mean().alias("tavg_f"))
+other_month = (
+    monthly_t.filter(pl.col("year") != RESSTOCK_WEATHER_YEAR)
+    .group_by("month")
+    .agg(pl.col("tavg_f").mean().alias("other_mean_f"))
+)
+anomaly = (
+    monthly_t.filter(pl.col("year") == RESSTOCK_WEATHER_YEAR)
+    .join(other_month, on="month")
+    .with_columns(
+        (pl.col("tavg_f") - pl.col("other_mean_f")).alias("anomaly_f"),
+        pl.col("month").replace_strict(MONTH_ABBR).alias("month_abbr"),
+    )
+    .with_columns(
+        pl.when(pl.col("anomaly_f") >= 0)
+        .then(pl.lit("Warmer than typical"))
+        .otherwise(pl.lit("Colder than typical"))
+        .alias("sign")
+    )
+    .sort("month")
+)
+month_order = list(MONTH_ABBR.values())
+p = (
+    ggplot(anomaly, aes("month_abbr", "anomaly_f", fill="sign"))
+    + geom_col()
+    + geom_hline(yintercept=0, color="#333333", size=0.4)
+    + scale_fill_manual(
+        values={
+            "Warmer than typical": SB_COLORS["carrot"],
+            "Colder than typical": SB_COLORS["sky"],
+        }
+    )
+    + scale_x_discrete(limits=month_order)
+    + labs(
+        title=f"{RESSTOCK_WEATHER_YEAR} vs the other years, by month",
+        subtitle=f"°F relative to the {min(y for y in YEARS if y != RESSTOCK_WEATHER_YEAR)}–{max(y for y in YEARS if y != RESSTOCK_WEATHER_YEAR)} monthly mean",
+        x="",
+        y="°F anomaly",
+        fill="",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4.5))
+)
+display_figure(p.draw())
+```
+
+Annual degree-days make the same split in one number per season. 2018 is the
+carrot bar; the dashed line is the mean of the other years.
+
+```{python}
+#| label: fig-hdd-cdd-by-year
+#| fig-cap: "Heating-season HDD and cooling-season CDD by year. 2018 is carrot; the dashed line is the mean of the other years."
+
+_metric_order = [
+    "Heating season HDD (Oct–Apr)",
+    "Cooling season CDD (May–Sep)",
+]
+dd_long = (
+    season_wx.select("year", "heating_hdd", "cooling_cdd")
+    .unpivot(
+        index="year",
+        on=["heating_hdd", "cooling_cdd"],
+        variable_name="metric",
+        value_name="degree_days",
+    )
+    .with_columns(
+        pl.col("metric")
+        .replace_strict(
+            {
+                "heating_hdd": "Heating season HDD (Oct–Apr)",
+                "cooling_cdd": "Cooling season CDD (May–Sep)",
+            }
+        )
+        .cast(pl.Enum(_metric_order)),
+        pl.when(pl.col("year") == RESSTOCK_WEATHER_YEAR)
+        .then(pl.lit("2018 (AMY)"))
+        .otherwise(pl.lit("Other years"))
+        .alias("highlight"),
+    )
+    .sort("year")
+    .with_columns(pl.col("year").cast(pl.String))
+)
+dd_means = (
+    season_wx.filter(pl.col("year") != RESSTOCK_WEATHER_YEAR)
+    .select(
+        pl.col("heating_hdd").mean().alias("Heating season HDD (Oct–Apr)"),
+        pl.col("cooling_cdd").mean().alias("Cooling season CDD (May–Sep)"),
+    )
+    .unpivot(variable_name="metric", value_name="other_mean")
+    .with_columns(pl.col("metric").cast(pl.Enum(_metric_order)))
+)
+dd_long = dd_long.join(dd_means, on="metric")
+p = (
+    ggplot(dd_long, aes("year", "degree_days", fill="highlight"))
+    + geom_col()
+    + geom_hline(
+        aes(yintercept="other_mean"),
+        linetype="dashed",
+        color="#333333",
+        size=0.5,
+    )
+    + facet_wrap("metric", ncol=2, scales="free_y")
+    + expand_limits(y=0)
+    + scale_fill_manual(
+        values={
+            "2018 (AMY)": SB_COLORS["carrot"],
+            "Other years": SB_COLORS["sky"],
+        }
+    )
+    + labs(
+        title="Degree-days by year, heating vs cooling season",
+        subtitle="Dashed line is the mean of the years other than 2018.",
+        x="",
+        y="Degree-days",
+        fill="",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4.8))
+)
+display_figure(p.draw())
+```
+
+## Section 2: System electricity
+
+These are the zonal (or utility) 8,760s the marginal-cost pipelines rank to
+place `$`/kW-yr onto peak hours. For CT that is ISO-NE's CT zone; for MD, BGE's
+PJM-zone utility load; for RI, the ISO-NE RI zone. We are not using ResStock
+here — we want the *system's* weather-driven peak calendar, which is what
+testimony means by "peak hours."
+
+Monthly energy (GWh) and the annual peak MW include everything on the zone —
+C&I, EVs, losses — not just ResStock residential. That is the right series
+for "when is the system constrained?"
+
+A year with fewer than 8,700 hours is dropped from the peak-hour tables so a
+missing January cannot masquerade as a winter-peaking system. It still appears
+in the temperature charts above. Coverage is in the annual table.
+
+```{python}
+#| label: load-iso
+
+def load_iso_year(year: int) -> pl.DataFrame | None:
+    uri = profile["load_uri"].format(year=year)
+    ts_col = profile["ts_col"]
+    load_col = profile["load_col"]
+    try:
+        raw = cast(
+            pl.DataFrame,
+            pl.scan_parquet(uri, storage_options=S3_OPTS, hive_partitioning=True).collect(),
+        )
+    except Exception:
+        return None
+    if ts_col not in raw.columns or load_col not in raw.columns:
+        raise ValueError(
+            f"{year}: missing {ts_col!r} or {load_col!r}; columns={raw.columns}"
+        )
+    return (
+        raw.select(
+            pl.col(ts_col).alias("timestamp"),
+            pl.col(load_col).cast(pl.Float64).alias("load_mw"),
+        )
+        .drop_nulls()
+        .unique(subset=["timestamp"])
+        .sort("timestamp")
+        .with_columns(
+            pl.lit(year).alias("year"),
+            pl.col("timestamp").dt.month().alias("month"),
+            pl.col("timestamp").dt.ordinal_day().alias("day_of_year"),
+            pl.col("timestamp").dt.hour().alias("hour"),
+        )
+    )
+
+
+iso_years: list[pl.DataFrame] = []
+for year in YEARS:
+    frame = load_iso_year(year)
+    if frame is not None:
+        iso_years.append(frame)
+
+if not iso_years:
+    raise FileNotFoundError(
+        f"No system-load years loaded for {STATE}. Check load_uri in STATE_PROFILE."
+    )
+
+iso = pl.concat(iso_years, how="vertical_relaxed")
+iso_complete_years = sorted(
+    iso.group_by("year")
+    .len()
+    .filter(pl.col("len") >= MIN_HOURS_COMPLETE)["year"]
+    .to_list()
+)
+```
+
+```{python}
+#| label: fig-monthly-load
+#| fig-cap: "Monthly zone energy by year. Incomplete years are included and will look low."
+
+monthly_gwh = (
+    iso.group_by("year", "month")
+    .agg((pl.col("load_mw").sum() / 1000).alias("gwh"))
+    .with_columns(pl.col("year").cast(pl.String))
+    .sort("year", "month")
+)
+p = (
+    ggplot(monthly_gwh, aes("month", "gwh", color="year"))
+    + geom_line()
+    + year_color_scale(sorted(int(y) for y in monthly_gwh["year"].unique()))
+    + labs(
+        title=f"Monthly energy, {profile['load_label']}",
+        x="",
+        y="GWh",
+        color="Year",
+    )
+    + scale_x_continuous(breaks=list(range(1, 13)), labels=list(MONTH_ABBR.values()))
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4.5))
+)
+display_figure(p.draw())
+```
+
+```{python}
+#| label: tbl-annual-load
+#| tbl-cap: "Annual energy, annual peak, and the month the peak fell in."
+
+annual_load = (
+    iso.group_by("year")
+    .agg(
+        pl.len().alias("hours"),
+        (pl.col("load_mw").sum() / 1000).round(0).alias("gwh"),
+        pl.col("load_mw").max().round(0).alias("peak_mw"),
+        pl.col("timestamp").filter(pl.col("load_mw") == pl.col("load_mw").max()).first().alias("peak_at"),
+    )
+    .with_columns(
+        pl.col("peak_at").dt.strftime("%b %d %H:00").alias("peak_at"),
+        pl.when(pl.col("hours") >= MIN_HOURS_COMPLETE)
+        .then(pl.lit("Complete"))
+        .otherwise(pl.lit("Incomplete"))
+        .alias("coverage"),
+    )
+    .sort("year")
+)
+show_gt(
+    annual_load,
+    title=f"Annual load, {profile['load_label']}",
+    labels={
+        "year": "Year",
+        "hours": "Hours on file",
+        "gwh": "Energy (GWh)",
+        "peak_mw": "Annual peak (MW)",
+        "peak_at": "When the peak hit",
+        "coverage": "Coverage",
+    },
+    int_cols=["hours", "gwh", "peak_mw"],
+)
+```
+
+## Section 3: Top-N peak hours, summer vs winter
+
+For each complete year, take the `N_PEAK_HOURS` hours of highest load — the
+same "top 100" rule the dist PoP allocator uses (MD bulk tx uses 150; change
+`N_PEAK_HOURS`). Then split those hours into May–September vs October–April.
+
+If May–September's share is stable across years, the testimony's summer-peak
+claim is not an artifact of 2018 or of a single recent year. If a cold year
+drops that share a lot, the claim needs a caveat.
+
+```{python}
+#| label: peak-hours
+
+def peak_table(loads: pl.DataFrame, n_hours: int) -> pl.DataFrame:
+    rows = []
+    for year, part in loads.group_by("year"):
+        y = int(year[0]) if isinstance(year, tuple) else int(year)
+        if part.height < MIN_HOURS_COMPLETE:
+            continue
+        top = part.sort("load_mw", descending=True).head(n_hours).with_columns(
+            pl.when(pl.col("month").is_in(list(SUMMER_MONTHS)))
+            .then(pl.lit("May–Sep"))
+            .when(pl.col("month").is_in(list(HEATING_MONTHS)))
+            .then(pl.lit("Oct–Apr"))
+            .otherwise(pl.lit("other"))
+            .alias("season")
+        )
+        n = top.height
+        n_summer = top.filter(pl.col("season") == "May–Sep").height
+        n_heating = top.filter(pl.col("season") == "Oct–Apr").height
+        summer_peak = part.filter(pl.col("month").is_in(list(SUMMER_MONTHS)))["load_mw"].max()
+        winter_peak = part.filter(pl.col("month").is_in([12, 1, 2]))["load_mw"].max()
+        rows.append(
+            {
+                "year": y,
+                "n_peak_hours": n,
+                "n_may_sep": n_summer,
+                "pct_may_sep": round(100 * n_summer / n, 1),
+                "n_oct_apr": n_heating,
+                "pct_oct_apr": round(100 * n_heating / n, 1),
+                "summer_peak_mw": round(float(summer_peak), 0),
+                "winter_peak_mw": round(float(winter_peak), 0),
+                "winter_over_summer": round(float(winter_peak) / float(summer_peak), 2)
+                if summer_peak
+                else None,
+            }
+        )
+    return pl.DataFrame(rows).sort("year")
+
+
+peaks = peak_table(iso, N_PEAK_HOURS)
+show_gt(
+    peaks,
+    title=f"Top {N_PEAK_HOURS} hours by season, {profile['load_label']}",
+    subtitle="May–Sep is the testimony summer window. Winter peak is the highest December–February MW; summer peak is the highest May–September MW.",
+    labels={
+        "year": "Year",
+        "n_peak_hours": "Top hours",
+        "n_may_sep": "Hours in May–Sep",
+        "pct_may_sep": "Share in May–Sep (%)",
+        "n_oct_apr": "Hours in Oct–Apr",
+        "pct_oct_apr": "Share in Oct–Apr (%)",
+        "summer_peak_mw": "May–Sep peak (MW)",
+        "winter_peak_mw": "Dec–Feb peak (MW)",
+        "winter_over_summer": "Winter/summer peak ratio",
+    },
+    int_cols=["n_peak_hours", "n_may_sep", "n_oct_apr", "summer_peak_mw", "winter_peak_mw"],
+    num_cols=["pct_may_sep", "pct_oct_apr"],
+    num_decimals=1,
+)
+```
+
+```{python}
+#| label: fig-peak-season
+#| fig-cap: "Share of top-N system hours falling in May–September. The dashed line is 80%, the MD testimony ballpark."
+
+peak_plot = peaks.with_columns(pl.col("year").cast(pl.String))
+p = (
+    ggplot(peak_plot, aes("year", "pct_may_sep", fill="year"))
+    + geom_col(width=0.7, show_legend=False)
+    + geom_hline(yintercept=80, linetype="dashed", color="#666666")
+    + year_fill_scale(peaks["year"].to_list())
+    + labs(
+        title=f"May–Sep share of top {N_PEAK_HOURS} hours",
+        subtitle=profile["load_label"],
+        x="",
+        y="Percent of peak hours",
+    )
+    + scale_y_continuous(limits=(0, 100))
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 4.0))
+)
+display_figure(p.draw())
+```
+
+```{python}
+#| label: fig-peak-month
+#| fig-cap: "How many of the top-N system hours fall in each month. Each row is a complete year; a blank cell is zero."
+
+peak_months = []
+for year, part in iso.group_by("year"):
+    y = int(year[0]) if isinstance(year, tuple) else int(year)
+    if part.height < MIN_HOURS_COMPLETE:
+        continue
+    counts = (
+        part.sort("load_mw", descending=True)
+        .head(N_PEAK_HOURS)
+        .group_by("month")
+        .len()
+        .rename({"len": "n_hours"})
+        .with_columns(pl.lit(y).alias("year"))
+    )
+    peak_months.append(counts)
+year_rows = [str(y) for y in iso_complete_years]
+month_grid = pl.DataFrame({"year": iso_complete_years}).join(
+    pl.DataFrame({"month": list(range(1, 13))}),
+    how="cross",
+)
+peak_month_df = (
+    month_grid.join(pl.concat(peak_months), on=["year", "month"], how="left")
+    .with_columns(pl.col("n_hours").fill_null(0))
+    .with_columns(
+        pl.col("year").cast(pl.String),
+        pl.col("month").replace_strict(MONTH_ABBR).alias("month_abbr"),
+        pl.when(pl.col("n_hours") > 0)
+        .then(pl.col("n_hours").cast(pl.String))
+        .otherwise(pl.lit(""))
+        .alias("label"),
+    )
+)
+p = (
+    ggplot(peak_month_df, aes("month_abbr", "year", fill="n_hours"))
+    + geom_tile(color="white", size=0.4)
+    + geom_text(aes(label="label"), size=9, color="#222222")
+    + scale_x_discrete(limits=list(MONTH_ABBR.values()))
+    + scale_y_discrete(limits=list(reversed(year_rows)))
+    + scale_fill_gradient(low="#F4F4F4", high=SB_COLORS["midnight"])
+    + labs(
+        title=f"Month of the top {N_PEAK_HOURS} hours",
+        subtitle=profile["load_label"],
+        x="",
+        y="",
+        fill="Hours",
+    )
+    + theme_switchbox()
+    + theme(figure_size=(10.5, 5.4))
+)
+display_figure(p.draw())
+```
+
+The winter/summer peak *ratio* is the system-level analogue of RI's "winter"
+feeder peak ≈ 70% of summer" planning assumption. A ratio above 1 in any year
+would mean that year was winter-peaking on this zone.
+
+## Section 4: Where 2018 sits
+
+Join degree-days to the peak-hour table and rank 2018 among complete load
+years. Temperature ranks still include 2018 even when ISO load is incomplete.
+
+```{python}
+#| label: tbl-2018-rank
+#| tbl-cap: "Where 2018 ranks on weather and on the system peak calendar."
+
+wx_annual = deg_days.select("year", "hdd65", "cdd65", "mean_f")
+cmp = wx_annual.join(peaks, on="year", how="left").sort("year")
+y0 = RESSTOCK_WEATHER_YEAR
+incomplete_note = "Not ranked — ISO load is incomplete"
+
+
+def _ordinal(n: int) -> str:
+    if 10 <= n % 100 <= 20:
+        tail = "th"
+    else:
+        tail = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{tail}"
+
+
+def standing(
+    frame: pl.DataFrame,
+    col: str,
+    year: int,
+    *,
+    high_adj: str,
+    value_fmt: str,
+) -> tuple[str, str]:
+    row = frame.filter(pl.col("year") == year)
+    if row.height == 0 or row[col].null_count() == row.height:
+        return "—", incomplete_note
+    ordered = frame.drop_nulls(col).sort(col, descending=True)
+    place = ordered["year"].to_list().index(year) + 1
+    n = ordered.height
+    value = float(row[col][0])
+    return value_fmt.format(value), f"{_ordinal(place)}-{high_adj} of {n} years"
+
+
+hdd_val, hdd_stand = standing(cmp, "hdd65", y0, high_adj="coldest", value_fmt="{:,.0f}")
+cdd_val, cdd_stand = standing(cmp, "cdd65", y0, high_adj="hottest", value_fmt="{:,.0f}")
+share_val, share_stand = standing(
+    cmp, "pct_may_sep", y0, high_adj="most summer-peaking", value_fmt="{:.1f}%"
+)
+ratio_val, ratio_stand = standing(
+    cmp, "winter_over_summer", y0, high_adj="highest winter/summer ratio", value_fmt="{:.2f}"
+)
+show_gt(
+    pl.DataFrame(
+        {
+            "Metric": [
+                "Annual heating degree-days",
+                "Annual cooling degree-days",
+                "Share of top hours in May–Sep",
+                "Winter/summer peak ratio",
+            ],
+            "2018": [hdd_val, cdd_val, share_val, ratio_val],
+            "Standing": [hdd_stand, cdd_stand, share_stand, ratio_stand],
+        }
+    ),
+    title=f"Where {y0} sits among {min(YEARS)}–{max(YEARS)}",
+    subtitle="Degree-days include 2018 even when ISO load is incomplete. Peak-hour ranks do not.",
+)
+show_gt(
+    cmp.select(
+        "year",
+        "hdd65",
+        "cdd65",
+        "mean_f",
+        "pct_may_sep",
+        "winter_over_summer",
+    ),
+    title=f"{y0} versus every requested year",
+    labels={
+        "year": "Year",
+        "hdd65": "HDD",
+        "cdd65": "CDD",
+        "mean_f": "Mean °F",
+        "pct_may_sep": "May–Sep share of top hours (%)",
+        "winter_over_summer": "Winter/summer peak ratio",
+    },
+    int_cols=["hdd65", "cdd65"],
+    num_cols=["mean_f", "pct_may_sep"],
+    num_decimals=1,
+)
+```
+
+Read the ranks before drawing a conclusion. A *mild* 2018 (low HDD, high
+May–Sep peak share) would mean our HP bill *increases* are conservative
+relative to a colder year, and our "peaks stay in summer" claim is *easier*
+in 2018 than in a winter-peaking year. A *harsh* 2018 would be the opposite.
+
+## Section 5: ResStock AMY 2018 vs the statewide mean
+
+ResStock does not use one weather station. Each building is assigned an EPW
+file, stored as `in.weather_file_city` on the metadata. The hourly file writes
+that file's outdoor dry-bulb as `out.outdoor_air_dryblub_temp.c` (NREL's
+spelling). CAIRO never reads the column.
+
+The overlay is the median daily mean across a stride sample of upgrade-00
+files, compared with the statewide GHCN mean from Section 1 — not with
+Hartford, Bridgeport, or any other single airport. The table under the chart
+lists which EPW cities the whole state uses, when local metadata is present.
+
+```{python}
+#| label: fig-resstock-vs-ghcn
+#| fig-cap: "Daily mean outdoor temperature in 2018: statewide GHCN mean vs median of a ResStock AMY 2018 sample."
+
+def sample_resstock_daily_temp(
+    hourly_dir: Path, n: int
+) -> tuple[pl.DataFrame | None, int, int]:
+    if not hourly_dir.is_dir():
+        return None, 0, 0
+    files = sorted(hourly_dir.glob("*.parquet"))
+    if not files:
+        return None, 0, 0
+    stride = max(1, len(files) // n)
+    picked = files[::stride][:n]
+    daily_parts = []
+    for path in picked:
+        raw = pl.scan_parquet(str(path))
+        names = raw.collect_schema().names()
+        if OUTDOOR_TEMP_C not in names or "timestamp" not in names:
+            continue
+        daily_parts.append(
+            raw.select("timestamp", pl.col(OUTDOOR_TEMP_C).alias("temp_c"))
+            .drop_nulls()
+            .with_columns(pl.col("timestamp").dt.date().alias("date"))
+            .group_by("date")
+            .agg(pl.col("temp_c").mean())
+            .collect()
+        )
+    if not daily_parts:
+        return None, len(picked), len(files)
+    daily = (
+        pl.concat(daily_parts)
+        .group_by("date")
+        .agg(pl.col("temp_c").median().alias("temp_c"))
+        .with_columns((pl.col("temp_c") * 9 / 5 + 32).alias("tavg_f"))
+        .sort("date")
+    )
+    return daily, len(picked), len(files)
+
+
+rs_daily, n_rs_sample, n_rs_files = sample_resstock_daily_temp(
+    RESSTOCK_HOURLY_DIR, N_RESSTOCK_SAMPLE
+)
+if rs_daily is not None:
+    ghcn_2018 = wx.filter(pl.col("year") == RESSTOCK_WEATHER_YEAR).select(
+        "date", pl.col("tavg_f").alias("ghcn_f")
+    )
+    overlay = (
+        ghcn_2018.join(rs_daily.select("date", pl.col("tavg_f").alias("resstock_f")), on="date", how="inner")
+        .with_columns(pl.col("date").dt.ordinal_day().alias("day_of_year"))
+        .unpivot(
+            index=["date", "day_of_year"],
+            on=["ghcn_f", "resstock_f"],
+            variable_name="series",
+            value_name="tavg_f",
+        )
+        .with_columns(
+            pl.col("series").replace_strict(
+                {"ghcn_f": WEATHER_LABEL, "resstock_f": "ResStock AMY 2018 (sample median)"}
+            )
+        )
+    )
+    p = (
+        ggplot(overlay, aes("day_of_year", "tavg_f", color="series"))
+        + geom_line(alpha=0.9, size=0.6)
+        + scale_color_manual(values={WEATHER_LABEL: SB_COLORS["midnight"], "ResStock AMY 2018 (sample median)": SB_COLORS["carrot"]})
+        + labs(
+            title="2018 outdoor temperature: GHCN vs ResStock AMY",
+            x="",
+            y="°F",
+            color="",
+        )
+        + scale_x_continuous(
+            breaks=[1, 91, 182, 274, 365],
+            labels=["Jan", "Apr", "Jul", "Oct", "Dec"],
+        )
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 4.5))
+    )
+    display_figure(p.draw())
+```
+
+```{python}
+#| label: tbl-resstock-mean
+
+if rs_daily is not None:
+    means = (
+        overlay.group_by("series")
+        .agg(pl.col("tavg_f").mean().round(1).alias("mean_f"))
+        .sort("series")
+    )
+    ghcn_mean = float(means.filter(pl.col("series") == WEATHER_LABEL)["mean_f"][0])
+    rs_mean = float(
+        means.filter(pl.col("series") == "ResStock AMY 2018 (sample median)")["mean_f"][0]
+    )
+    display(
+        Markdown(
+            f"The overlay is the median daily temperature of **{n_rs_sample}** "
+            f"buildings sampled from **{n_rs_files:,}** upgrade-00 hourly files. "
+            f"The ResStock sample averages **{rs_mean - ghcn_mean:+.1f} °F** "
+            f"versus the statewide GHCN mean."
+        )
+    )
+    show_gt(
+        means,
+        title="2018 mean outdoor temperature",
+        labels={"series": "Series", "mean_f": "Mean °F"},
+        num_cols=["mean_f"],
+        num_decimals=1,
+    )
+elif n_rs_files == 0:
+    display(Markdown("Skipping the ResStock overlay: hourly files are not on this machine."))
+else:
+    display(Markdown("Skipping the ResStock overlay: none of the sampled files had outdoor dry-bulb."))
+```
+
+```{python}
+#| label: tbl-resstock-epw
+#| tbl-cap: "EPW cities ResStock assigns inside this state. The sample above is a subset of these, not one station."
+
+if RESSTOCK_METADATA.is_dir():
+    meta = pl.scan_parquet(str(RESSTOCK_METADATA), hive_partitioning=True)
+    names = meta.collect_schema().names()
+    if "in.weather_file_city" in names:
+        cities = (
+            meta.group_by("in.weather_file_city")
+            .agg(pl.len().alias("buildings"))
+            .sort("buildings", descending=True)
+            .collect()
+            .rename({"in.weather_file_city": "epw_city"})
+        )
+        show_gt(
+            cities,
+            title=f"ResStock EPW cities, {STATE.upper()}",
+            subtitle="The overlay sample is drawn from these cities; it is not one airport.",
+            labels={"epw_city": "EPW city", "buildings": "Buildings"},
+            int_cols=["buildings"],
+        )
+    else:
+        display(
+            Markdown(
+                "Metadata has no `in.weather_file_city` column, so the EPW city table is skipped."
+            )
+        )
+else:
+    display(Markdown("No local ResStock metadata on this machine, so the EPW city table is skipped."))
+```
+
+A level offset is expected: the GHCN mean is a handful of airports, and
+ResStock's buildings sit on several EPW cities. Cold snaps should still line
+up, because AMY 2018 is calendar-year 2018.
+
+## Section 6: Load-weighted peak hours, and one KDE year
+
+**Load-weighted top 100, one map per year.** This is how distribution PoP
+works in rate-design-platform (`calculate_pop_weights`): take the top
+`N_PEAK_HOURS` hours of that year and give each a weight `MW / sum(MW of
+those hours)`. The weights sum to 1. An equal split would give every peak
+hour `1/100`. The earlier top-N chart only said whether an hour was in the
+set. These maps say how much of the annual `$`/kW-yr that hour would carry.
+
+Distribution uses `load_uri`. Bulk transmission uses `bulk_zones` (summed)
+or `bulk_load_uri` when that list is empty. For this Connecticut file,
+distribution is the CT zone and bulk transmission is the New England system,
+which is the series CT's bulk-tx KDE is fit on. They are not the same 8760.
+
+**One analysis-year 8760 from a KDE.** This is CT's bulk-tx default
+(`probability_of_peak` in rate-design-platform): normalize each training year
+by its own average load, fit a truncated Gaussian KDE in each month ×
+weekday-or-weekend × hour cell, and turn the tail above the delimiter into a
+probability. That probability is laid onto `analysis_year`'s weekdays and
+holidays as `$`/kWh, using the filed schedule's annual `$`/kW-yr so a flat
+1 kW load pays that scalar back. The same fit is run twice: once on the
+distribution load series, once on bulk transmission. It is not a claim that
+the state's filed distribution method is a KDE. It is that method, applied
+to the history in `kde_years`.
+
+The KDE puts a **trace** of probability on January and February, so those
+tiles appear on the heatmap. They carry almost none of the annual dollars.
+CT testimony drops hours under 0.5¢/kWh; after that cut, 100% of peak hours
+are May–September. Titles report the **dollar share**, not the hour count.
+
+```{python}
+#| label: load-weighted-pop
+
+def naive_wall(df: pl.DataFrame) -> pl.DataFrame:
+    """Hour-beginning Eastern wall time, timezone-naive, for the KDE."""
+    tz = getattr(df.schema["timestamp"], "time_zone", None)
+    if tz is None:
+        expr = pl.col("timestamp")
+    elif tz == "America/New_York":
+        expr = pl.col("timestamp").dt.replace_time_zone(None)
+    else:
+        expr = (
+            pl.col("timestamp")
+            .dt.convert_time_zone("America/New_York")
+            .dt.replace_time_zone(None)
+        )
+    return (
+        df.with_columns(expr.alias("timestamp"))
+        .group_by("timestamp")
+        .agg(pl.col("load_mw").mean())
+        .sort("timestamp")
+    )
+
+
+def load_weighted_top(df: pl.DataFrame, n: int, year: int) -> pl.DataFrame:
+    top = df.sort("load_mw", descending=True).head(n)
+    total = float(top["load_mw"].sum())
+    return top.with_columns(
+        (pl.col("load_mw") / total).alias("pop_weight"),
+        pl.col("timestamp").dt.ordinal_day().alias("day_of_year"),
+        pl.col("timestamp").dt.hour().alias("hour"),
+        pl.lit(str(year)).alias("year"),
+        pl.col("timestamp").dt.month().alias("month"),
+    )
+
+
+def plot_weighted_pop(weights: pl.DataFrame, title: str):
+    p = (
+        ggplot(weights, aes("day_of_year", "hour", fill="pop_weight"))
+        + geom_tile()
+        + facet_wrap("year", ncol=4)
+        + scale_fill_gradient(low="#f8e3c4", high=SB_COLORS["carrot"])
+        + scale_x_continuous(
+            breaks=[1, 91, 182, 274, 365],
+            labels=["Jan", "Apr", "Jul", "Oct", "Dec"],
+        )
+        + scale_y_continuous(breaks=[0, 6, 12, 18, 23])
+        + labs(title=title, x="", y="Hour", fill="Weight")
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 6.5))
+    )
+    display_figure(p.draw())
+
+
+def load_bulk_year(year: int) -> pl.DataFrame | None:
+    zones = list(profile.get("bulk_zones") or [])
+    if zones:
+        rdp = str(profile["rdp_root"])
+        if rdp not in sys.path:
+            sys.path.insert(0, rdp)
+        from utils.data_prep.marginal_costs.supply.supply_capacity_isone import (
+            load_isone_zone_loads,
+        )
+
+        return quiet(
+            load_isone_zone_loads,
+            str(profile["bulk_zone_s3_base"]),
+            zones,
+            year,
+            S3_OPTS,
+        )
+    uri = str(profile.get("bulk_load_uri") or "")
+    if not uri:
+        return None
+    raw = cast(
+        pl.DataFrame,
+        pl.scan_parquet(
+            uri.format(year=year),
+            storage_options=S3_OPTS,
+            hive_partitioning=True,
+        ).collect(),
+    )
+    ts, load = str(profile["bulk_ts_col"]), str(profile["bulk_load_col"])
+    return naive_wall(
+        raw.select(
+            pl.col(ts).alias("timestamp"),
+            pl.col(load).cast(pl.Float64).alias("load_mw"),
+        )
+    )
+
+
+kde_years = [int(y) for y in profile["kde_years"]]
+dist_pop_parts: list[pl.DataFrame] = []
+for year in kde_years:
+    part = iso.filter(pl.col("year") == year)
+    if part.height < MIN_HOURS_COMPLETE:
+        continue
+    dist_pop_parts.append(load_weighted_top(naive_wall(part), N_PEAK_HOURS, year))
+
+dist_pop = pl.concat(dist_pop_parts) if dist_pop_parts else None
+if dist_pop is not None:
+    plot_weighted_pop(
+        dist_pop,
+        f"Load-weighted top {N_PEAK_HOURS}, {profile['load_label']}",
+    )
+
+bulk_by_year: dict[int, pl.DataFrame] = {}
+bulk_pop_parts: list[pl.DataFrame] = []
+n_bulk = int(profile.get("bulk_n_peak_hours") or N_PEAK_HOURS)
+for year in kde_years:
+    try:
+        bulk_year = load_bulk_year(year)
+    except Exception as exc:
+        continue
+    if bulk_year is None or bulk_year.height < MIN_HOURS_COMPLETE:
+        continue
+    bulk_by_year[year] = bulk_year
+    bulk_pop_parts.append(load_weighted_top(bulk_year, n_bulk, year))
+
+bulk_pop = pl.concat(bulk_pop_parts) if bulk_pop_parts else None
+if bulk_pop is not None:
+    plot_weighted_pop(
+        bulk_pop,
+        f"Load-weighted top {n_bulk}, {profile['bulk_load_label']}",
+    )
+
+
+def season_share(weights: pl.DataFrame, series: str) -> pl.DataFrame:
+    return (
+        weights.group_by("year")
+        .agg(
+            pl.col("pop_weight")
+            .filter(pl.col("month").is_in(list(SUMMER_MONTHS)))
+            .sum()
+            .alias("may_sep")
+        )
+        .with_columns(pl.lit(series).alias("series"))
+        .sort("year")
+    )
+
+
+share_parts = []
+if dist_pop is not None:
+    share_parts.append(season_share(dist_pop, profile["load_label"]))
+if bulk_pop is not None:
+    share_parts.append(season_share(bulk_pop, str(profile["bulk_load_label"])))
+if share_parts:
+    show_gt(
+        pl.concat(share_parts)
+        .select("series", "year", "may_sep")
+        .with_columns(
+            pl.col("year").cast(pl.Int64),
+            (pl.col("may_sep") * 100).round(1).alias("may_sep_pct"),
+        )
+        .drop("may_sep"),
+        title="Share of load-weighted top-N weight in May–September",
+        subtitle="The rest of the weight is October–April. Weights sum to 1 within each year.",
+        labels={
+            "series": "Load series",
+            "year": "Year",
+            "may_sep_pct": "May–Sep share (%)",
+        },
+        num_cols=["may_sep_pct"],
+        num_decimals=1,
+    )
+```
+
+```{python}
+#| label: kde-helpers
+
+rdp = str(profile["rdp_root"])
+if rdp not in sys.path:
+    sys.path.insert(0, rdp)
+from utils.data_prep.marginal_costs.probability_of_peak import (
+    allocate_annual_cost_by_pop,
+    probability_of_peak,
+)
+
+analysis_year = int(profile["analysis_year"])
+scalars = {"Distribution": 1.0, "Transmission": 1.0}
+try:
+    mc_for_scalar = load_delivery_mc_heatmap(
+        STATE, str(profile["mc_utility"]), analysis_year
+    )
+    scalars["Distribution"] = float(mc_for_scalar["mc_dist_sub_tx"].sum())
+    scalars["Transmission"] = float(mc_for_scalar["mc_bulk_tx"].sum())
+except Exception:
+    mc_for_scalar = None
+
+
+def _month_expr(df: pl.DataFrame) -> pl.Expr:
+    return pl.col("month") if "month" in df.columns else pl.col("timestamp").dt.month()
+
+
+def mc_season_stats(df: pl.DataFrame, col: str) -> dict[str, float]:
+    """Dollar share vs hour count in May–Sep. Dollar share is what the titles use."""
+    month = _month_expr(df)
+    total = float(df[col].sum())
+    summer_dollars = float(df.filter(month.is_in(list(SUMMER_MONTHS)))[col].sum())
+    nz = df.filter(pl.col(col) > 0)
+    n_nz = nz.height
+    n_summer = nz.filter(_month_expr(nz).is_in(list(SUMMER_MONTHS))).height
+    peak = df.filter(pl.col(col) > MC_PEAK_THRESHOLD)
+    n_peak = peak.height
+    n_peak_summer = peak.filter(_month_expr(peak).is_in(list(SUMMER_MONTHS))).height
+    return {
+        "dollar_share": (summer_dollars / total) if total else 0.0,
+        "hour_share": (n_summer / n_nz) if n_nz else 0.0,
+        "peak_hour_share": (n_peak_summer / n_peak) if n_peak else 0.0,
+        "annual": total,
+    }
+
+
+def mc_heatmap_title(component: str, extra: str, stats: dict[str, float]) -> str:
+    dollar = float(stats["dollar_share"])
+    hour = float(stats["hour_share"])
+    base = f"{component} · {extra} · {dollar:.2%} of annual $ in May–Sep"
+    if abs(dollar - hour) >= 0.02:
+        return f"{base} ({hour:.0%} of hours with any MC)"
+    return base
+
+
+def kde_8760(history: pl.DataFrame, scalar: float, component: str, load_label: str) -> None:
+    years_used = sorted(history["timestamp"].dt.year().unique().to_list())
+    pop = probability_of_peak(naive_wall(history))
+    hourly = allocate_annual_cost_by_pop(
+        pop.cells, scalar, analysis_year, value_col="mc_per_kwh"
+    ).with_columns(
+        pl.col("timestamp").dt.ordinal_day().alias("day_of_year"),
+        pl.col("timestamp").dt.hour().alias("hour"),
+        pl.col("timestamp").dt.month().alias("month"),
+    )
+    stats = mc_season_stats(hourly, "mc_per_kwh")
+    year_lo, year_hi = min(years_used), max(years_used)
+    display_figure(
+        plot_mc_heatmap(
+            hourly,
+            "mc_per_kwh",
+            title=mc_heatmap_title(
+                component,
+                f"KDE on {load_label}, {year_lo}–{year_hi}",
+                stats,
+            ),
+            high_color=SB_COLORS["carrot"],
+        )
+    )
+
+
+dist_frames = []
+for year in kde_years:
+    part = iso.filter(pl.col("year") == year)
+    if part.height < MIN_HOURS_COMPLETE:
+        continue
+    dist_frames.append(naive_wall(part))
+```
+
+```{python}
+#| label: fig-kde-dist
+#| fig-cap: "Distribution KDE on the zone/utility load. Winter tiles, if any, are trace probability of peak."
+
+if dist_frames:
+    kde_8760(
+        pl.concat(dist_frames),
+        scalars["Distribution"],
+        "Distribution",
+        str(profile["load_label"]),
+    )
+else:
+    display(Markdown("No complete distribution-load years in `kde_years`, so the dist KDE is skipped."))
+```
+
+```{python}
+#| label: fig-kde-bulk
+#| fig-cap: "Bulk transmission KDE on the bulk-tx load series. January and February tiles are real and almost empty."
+
+if bulk_by_year:
+    kde_8760(
+        pl.concat(list(bulk_by_year.values())),
+        scalars["Transmission"],
+        "Bulk transmission",
+        str(profile["bulk_load_label"]),
+    )
+else:
+    display(Markdown("No complete bulk-transmission years in `kde_years`, so the bulk-tx KDE is skipped."))
+```
+
+## Section 7: Marginal cost by year, on a representative load
+
+The **filed schedule** is the hourly `$`/kWh parquet CAIRO billed
+(`year=2025` on S3). It is a calendar, not a weather year. Connecticut
+currently has only that one file.
+
+Two units:
+
+- **System `$`/kW-year** — what a flat 1 kW load would pay. For CT that is
+  `$21.22`/kW-yr of distribution (OCC-863, loss-adjusted) and `$72.87`/kW-yr
+  of bulk transmission (AESC `$69` in 2024 dollars, CPI to 2026).
+- **Household `$`/year** — that schedule times the representative home's
+  hourly kWh.
+
+Then three separate questions, each with its own table or chart:
+
+1. **What did CAIRO bill this pre-HP home?** The filed 8760 — OCC-863 for
+   distribution, a KDE for bulk transmission — times the pre-HP load.
+2. **Would another weather year's peaks change that?** Same pre-HP (or
+   incremental) kWh 8760, same annual `$`/kW-yr, placed with that year's
+   load-weighted top 100 — the usual PoP rule, `MW / sum(MW of those
+   hours)`, not an equal `1/100`. Distribution ranks the CT zone. Bulk
+   transmission ranks the New England system. The 2025 row is this
+   allocation. It is **not** a second read of the filed file. The two 2025
+   numbers differ because OCC-863 and the KDE spread the same annual
+   dollars across many unequal hours, while PoP uses that year's top 100.
+3. **How much extra MC does the heat pump cause?** After minus before.
+   That is the small figure in the CT testimony.
+
+Leave `batch` blank to skip the representative-home dollars and keep the
+heatmaps of whatever MC years are on S3.
+
+```{python}
+#| label: mc-years
+
+def mc_years_on_s3(kind: str) -> list[int]:
+    prefix = (
+        f"s3://data.sb/switchbox/marginal_costs/{STATE}/{kind}/"
+        f"utility={profile['mc_utility']}/"
+    )
+    years = []
+    for path in list_s3_subdirs(prefix):
+        leaf = path.rstrip("/").split("/")[-1]
+        if leaf.startswith("year="):
+            years.append(int(leaf.split("=", 1)[1]))
+    return sorted(years)
+
+
+dist_years = mc_years_on_s3("dist_and_sub_tx")
+bulk_years = mc_years_on_s3("bulk_tx")
+```
+
+```{python}
+#| label: load-filed-mc
+
+uploaded: dict[int, pl.DataFrame] = {}
+for year in sorted(set(dist_years) & set(bulk_years)):
+    try:
+        uploaded[year] = load_delivery_mc_heatmap(STATE, str(profile["mc_utility"]), year)
+    except Exception:
+        continue
+```
+
+```{python}
+#| label: fig-mc-filed-dist
+#| fig-cap: "Filed distribution schedule CAIRO billed. Blank hours have zero capacity cost."
+
+scalar_rows: list[dict[str, Any]] = []
+for year, mc in uploaded.items():
+    stats = mc_season_stats(mc, "mc_dist_sub_tx")
+    scalar_rows.append(
+        {
+            "year": year,
+            "component": "Distribution",
+            "annual": float(stats["annual"]),
+            "may_sep_pct": 100 * float(stats["dollar_share"]),
+        }
+    )
+    display_figure(
+        plot_mc_heatmap(
+            mc,
+            "mc_dist_sub_tx",
+            title=mc_heatmap_title("Distribution", f"filed {year} schedule", stats),
+            high_color=SB_COLORS["carrot"],
+        )
+    )
+```
+
+```{python}
+#| label: fig-mc-filed-bulk
+#| fig-cap: "Filed bulk-transmission schedule CAIRO billed. January and February tiles are trace PoP; they are below the 0.5¢/kWh peak threshold."
+
+for year, mc in uploaded.items():
+    stats = mc_season_stats(mc, "mc_bulk_tx")
+    scalar_rows.append(
+        {
+            "year": year,
+            "component": "Bulk transmission",
+            "annual": float(stats["annual"]),
+            "may_sep_pct": 100 * float(stats["dollar_share"]),
+        }
+    )
+    display_figure(
+        plot_mc_heatmap(
+            mc,
+            "mc_bulk_tx",
+            title=mc_heatmap_title("Bulk transmission", f"filed {year} schedule", stats),
+            high_color=SB_COLORS["midnight"],
+        )
+    )
+```
+
+```{python}
+#| label: tbl-system-mc-kw
+#| tbl-cap: "System annual marginal cost. What a flat 1 kW load would pay — not the household dollars below."
+
+if scalar_rows:
+    show_gt(
+        pl.DataFrame(scalar_rows).with_columns(
+            pl.col("year").cast(pl.Int64),
+            pl.col("annual").round(2),
+            pl.col("may_sep_pct").round(2),
+        ),
+        title="System annual marginal cost, $ per kW-year",
+        subtitle="A flat 1 kW load would pay these amounts. The representative-home table is kWh × this schedule.",
+        labels={
+            "year": "Calendar year",
+            "component": "Component",
+            "annual": "Annual ($/kW-yr)",
+            "may_sep_pct": "May–Sep share of $ (%)",
+        },
+        num_cols=["annual", "may_sep_pct"],
+        num_decimals=2,
+    )
+```
+
+```{python}
+#| label: representative-load
+
+COMPONENTS = (
+    ("Distribution", "mc_dist_sub_tx"),
+    ("Bulk transmission", "mc_bulk_tx"),
+)
+
+
+def shift_est(df: pl.DataFrame) -> pl.DataFrame:
+    """CAIRO billing kWh is naive UTC. Filed MC uses a fixed −5h clock.
+
+    That is the alignment `building_delivery_mc_8760` uses. It is not civil
+    daylight time: a July hour stays five hours behind UTC.
+    """
+    return df.with_columns(pl.col("timestamp").dt.offset_by("-5h"))
+
+
+def shift_civil(df: pl.DataFrame) -> pl.DataFrame:
+    """UTC billing kWh onto America/New_York wall time, DST included.
+
+    ISO `interval_start_et` is this clock. Use it when joining to historical
+    system-load hours. Do not use it to join the filed MC file.
+    """
+    tz = getattr(df.schema["timestamp"], "time_zone", None)
+    expr = pl.col("timestamp") if tz else pl.col("timestamp").dt.replace_time_zone("UTC")
+    return df.with_columns(
+        expr.dt.convert_time_zone("America/New_York").dt.replace_time_zone(None).alias("timestamp")
+    )
+
+
+def fossil_hourly_profiles() -> tuple[pl.DataFrame | None, pl.DataFrame | None]:
+    batch = str(profile.get("batch") or "")
+    if not batch:
+        display(Markdown("No CAIRO `batch` in the profile, so the representative-home dollars are skipped."))
+        return None, None
+    utility = str(profile["electric_utility"])
+    seg_before = segment_name(str(profile["scenario"]), "precalc")
+    annual = cast(
+        pl.DataFrame,
+        load_master_bills(STATE, batch, seg_before)
+        .filter(
+            (pl.col("month") == "Annual")
+            & (pl.col("sb.electric_utility") == utility)
+            & (
+                pl.col("heats_with_natgas")
+                | pl.col("heats_with_oil")
+                | pl.col("heats_with_propane")
+            )
+        )
+        .select("bldg_id", "weight")
+        .collect(),
+    )
+    ids = annual["bldg_id"].to_list()
+    kwh_before = load_billing_kwh_8760(STATE, utility, batch, seg_before)
+    before = weighted_avg_hourly(kwh_before, ids, annual)
+    after: pl.DataFrame | None = None
+    try:
+        seg_after = segment_name(str(profile["scenario"]), "calibrated")
+        kwh_after = load_billing_kwh_8760(STATE, utility, batch, seg_after)
+        after = weighted_avg_hourly(kwh_after, ids, annual)
+        after_note = " Post-retrofit uses the same buildings' upgrade-02 load."
+    except Exception:
+        after_note = " Post-retrofit load was not available, so the incremental charts are skipped."
+    display(
+        Markdown(
+            f"The representative load is the weighted-average hourly kWh of "
+            f"**{annual.height:,}** fossil homes "
+            f"(survey weight {annual['weight'].sum():,.0f}) on {utility}."
+            f"{after_note}"
+        )
+    )
+    return before, after
+
+
+load_before, load_after = fossil_hourly_profiles()
+```
+
+```{python}
+#| label: household-mc-helpers
+
+def civil_keys(df: pl.DataFrame) -> pl.DataFrame:
+    return shift_civil(df).with_columns(
+        pl.col("timestamp").dt.month().alias("month"),
+        pl.col("timestamp").dt.day().alias("day"),
+        pl.col("timestamp").dt.hour().alias("hour"),
+    )
+
+
+def seasonal_dollars(paid: pl.DataFrame) -> dict[str, float]:
+    summer = float(paid.filter(pl.col("month").is_in(list(SUMMER_MONTHS)))["dollars"].sum())
+    heating = float(paid.filter(pl.col("month").is_in(list(HEATING_MONTHS)))["dollars"].sum())
+    return {"may_sep": summer, "oct_apr": heating, "annual": summer + heating}
+
+
+def price_filed(load: pl.DataFrame, ref: pl.DataFrame, col: str) -> dict[str, float]:
+    paid = (
+        shift_est(load)
+        .join(ref.select("timestamp", col), on="timestamp", how="inner")
+        .with_columns(
+            pl.col("timestamp").dt.month().alias("month"),
+            (pl.col("kwh") * pl.col(col)).alias("dollars"),
+        )
+    )
+    return seasonal_dollars(paid)
+
+
+def topn_rate(year_load: pl.DataFrame, n: int, scalar: float) -> pl.DataFrame:
+    """Load-weighted PoP: top n hours, weight = MW / sum(MW), $/kWh = scalar × weight.
+
+    A November fallback can put two timestamps on one wall-clock hour. Summing
+    those weights keeps the annual $/kW-yr on the hour the home is billed for.
+    """
+    top = year_load.sort("load_mw", descending=True).head(n)
+    total = float(top["load_mw"].sum())
+    rates = top.with_columns((pl.col("load_mw") / total).alias("pop_weight")).select(
+        pl.col("timestamp").dt.month().alias("month"),
+        pl.col("timestamp").dt.day().alias("day"),
+        pl.col("timestamp").dt.hour().alias("hour"),
+        pl.col("pop_weight"),
+        (pl.lit(scalar) * pl.col("pop_weight")).alias("mc_per_kwh"),
+        pl.col("timestamp").dt.ordinal_day().alias("day_of_year"),
+        pl.col("timestamp").dt.hour().alias("hour_of_day"),
+    )
+    return rates.group_by("month", "day", "hour").agg(
+        pl.col("mc_per_kwh").sum(),
+        pl.col("pop_weight").sum(),
+        pl.col("day_of_year").first(),
+        pl.col("hour_of_day").first(),
+    )
+
+
+def peak_series(component: str, year: int) -> tuple[pl.DataFrame | None, int]:
+    """The load 8760 this component's PoP usually ranks, for one weather year."""
+    use_bulk = component == "Bulk transmission" and (
+        profile.get("bulk_zones") or profile.get("bulk_load_uri")
+    )
+    if use_bulk:
+        if year not in bulk_by_year:
+            try:
+                frame = load_bulk_year(year)
+            except Exception:
+                frame = None
+            if frame is not None and frame.height >= MIN_HOURS_COMPLETE:
+                bulk_by_year[year] = frame
+        return bulk_by_year.get(year), int(profile.get("bulk_n_peak_hours") or N_PEAK_HOURS)
+    part = iso.filter(pl.col("year") == year)
+    if part.height < MIN_HOURS_COMPLETE:
+        return None, N_PEAK_HOURS
+    return part, N_PEAK_HOURS
+
+
+def price_topn(
+    load: pl.DataFrame, year_load: pl.DataFrame, n: int, scalar: float
+) -> dict[str, float]:
+    rates = topn_rate(year_load, n, scalar)
+    paid = (
+        civil_keys(load)
+        .join(
+            rates.select("month", "day", "hour", "mc_per_kwh"),
+            on=["month", "day", "hour"],
+            how="left",
+        )
+        .with_columns(
+            pl.col("mc_per_kwh").fill_null(0.0),
+            (pl.col("kwh") * pl.col("mc_per_kwh")).alias("dollars"),
+        )
+    )
+    return seasonal_dollars(paid)
+
+
+def load_delta(before: pl.DataFrame, after: pl.DataFrame) -> pl.DataFrame:
+    return (
+        before.rename({"kwh": "kwh_before"})
+        .join(after.rename({"kwh": "kwh_after"}), on="timestamp")
+        .with_columns((pl.col("kwh_after") - pl.col("kwh_before")).alias("kwh"))
+        .select("timestamp", "kwh")
+    )
+
+
+def household_rows(
+    load: pl.DataFrame, ref: pl.DataFrame
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    filed_rows: list[dict[str, Any]] = []
+    year_rows: list[dict[str, Any]] = []
+    for component, col in COMPONENTS:
+        filed_rows.append({"component": component, **price_filed(load, ref, col)})
+        scalar = float(ref[col].sum())
+        for year in iso_complete_years:
+            series, n_hours = peak_series(component, year)
+            if series is None:
+                continue
+            year_rows.append(
+                {
+                    "year": str(year),
+                    "component": component,
+                    **price_topn(load, series, n_hours, scalar),
+                }
+            )
+    return pl.DataFrame(filed_rows), pl.DataFrame(year_rows)
+
+
+def show_household_gt(df: pl.DataFrame, title: str, subtitle: str) -> None:
+    show_gt(
+        df.with_columns(
+            pl.col("may_sep").round(2),
+            pl.col("oct_apr").round(2),
+            pl.col("annual").round(2),
+        ),
+        title=title,
+        subtitle=subtitle,
+        labels={
+            "component": "Component",
+            "may_sep": "May–Sep ($/year)",
+            "oct_apr": "Oct–Apr ($/year)",
+            "annual": "Annual ($/year)",
+        },
+        num_cols=["may_sep", "oct_apr", "annual"],
+        num_decimals=2,
+    )
+
+
+def show_year_gt(df: pl.DataFrame, title: str, subtitle: str) -> None:
+    order = pl.Enum([name for name, _ in COMPONENTS])
+    show_gt(
+        df.with_columns(pl.col("component").cast(order))
+        .sort("component", "year")
+        .with_columns(pl.col("component").cast(pl.String))
+        .with_columns(
+            pl.col("year").cast(pl.Int64),
+            pl.col("may_sep").round(2),
+            pl.col("oct_apr").round(2),
+            pl.col("annual").round(2),
+        ),
+        title=title,
+        subtitle=subtitle,
+        labels={
+            "year": "Weather year",
+            "component": "Component",
+            "may_sep": "May–Sep ($/year)",
+            "oct_apr": "Oct–Apr ($/year)",
+            "annual": "Annual ($/year)",
+        },
+        num_cols=["may_sep", "oct_apr", "annual"],
+        num_decimals=2,
+    )
+
+
+def plot_year_mc(year_df: pl.DataFrame, title: str) -> None:
+    long = (
+        year_df.select("year", "component", "may_sep", "oct_apr")
+        .unpivot(index=["year", "component"], variable_name="season", value_name="dollars")
+        .with_columns(
+            pl.col("season").replace_strict({"may_sep": "May–Sep", "oct_apr": "Oct–Apr"}),
+            pl.col("component").cast(pl.Enum([name for name, _ in COMPONENTS])),
+        )
+    )
+    year_order = year_df["year"].unique(maintain_order=True).to_list()
+    p = (
+        ggplot(long, aes("year", "dollars", fill="season"))
+        + geom_col()
+        + scale_x_discrete(limits=year_order)
+        + facet_wrap("component", ncol=1)
+        + scale_fill_manual(
+            values={"May–Sep": SB_COLORS["carrot"], "Oct–Apr": SB_COLORS["sky"]}
+        )
+        + labs(title=title, x="", y="$ / year", fill="")
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 6.0))
+    )
+    display_figure(p.draw())
+```
+
+```{python}
+#| label: tbl-filed-prehp
+#| tbl-cap: "What CAIRO billed: filed 8760 times the pre-HP fossil load. This is not a weather-year row."
+
+mc_ref_year = int(profile["mc_year"])
+filed_prehp: pl.DataFrame | None = None
+years_prehp: pl.DataFrame | None = None
+filed_delta: pl.DataFrame | None = None
+years_delta: pl.DataFrame | None = None
+
+if mc_ref_year not in uploaded or load_before is None:
+    display(
+        Markdown(
+            "The household dollar comparison needs both the filed MC year and a representative load; it is skipped."
+        )
+    )
+else:
+    ref = uploaded[mc_ref_year]
+    filed_prehp, years_prehp = household_rows(load_before, ref)
+    show_household_gt(
+        filed_prehp,
+        title="Pre-HP home, filed schedule, $ per year",
+        subtitle="OCC-863 (distribution) and KDE (bulk tx) 8760 × pre-HP kWh. Many unequal hours, not a top-100 split.",
+    )
+    if load_after is not None:
+        filed_delta, years_delta = household_rows(load_delta(load_before, load_after), ref)
+```
+
+```{python}
+#| label: tbl-two-2025
+#| tbl-cap: "Same home, same 2025 annual $/kW-yr, two allocations. This is why the filed number is not the 2025 bar below."
+
+if filed_prehp is not None and years_prehp is not None:
+    topn_2025 = years_prehp.filter(pl.col("year") == str(mc_ref_year)).select(
+        "component", pl.col("annual").alias("topn")
+    )
+    compare = (
+        filed_prehp.select("component", pl.col("annual").alias("filed"))
+        .join(topn_2025, on="component")
+        .with_columns(
+            pl.col("filed").round(2),
+            pl.col("topn").round(2),
+            (pl.col("topn") - pl.col("filed")).round(2).alias("difference"),
+        )
+    )
+    show_gt(
+        compare,
+        title=f"Two ways to place {mc_ref_year}'s annual cost on the pre-HP home",
+        subtitle=(
+            "Filed 8760 = OCC-863 / KDE. "
+            f"Top {N_PEAK_HOURS} = load-weighted PoP "
+            f"({profile['load_label']} for distribution, "
+            f"{profile['bulk_load_label']} for bulk transmission)."
+        ),
+        labels={
+            "component": "Component",
+            "filed": "Filed 8760 ($/year)",
+            "topn": f"{mc_ref_year} load-weighted top {N_PEAK_HOURS} ($/year)",
+            "difference": "Difference ($/year)",
+        },
+        num_cols=["filed", "topn", "difference"],
+        num_decimals=2,
+    )
+```
+
+```{python}
+#| label: tbl-pop-prehp
+#| tbl-cap: "Same pre-HP 8760 and the same annual $/kW-yr, allocated with each weather year's load-weighted top 100. This is not the filed schedule."
+
+POP_SUBTITLE = (
+    f"Weight = MW / sum(MW of the top {N_PEAK_HOURS}). "
+    f"Distribution ranks {profile['load_label']}. "
+    f"Bulk transmission ranks {profile['bulk_load_label']}. "
+    "The home's hourly kWh does not change."
+)
+
+if years_prehp is not None:
+    show_year_gt(
+        years_prehp,
+        title=f"Pre-HP home, load-weighted top {N_PEAK_HOURS}, $ per year",
+        subtitle=POP_SUBTITLE,
+    )
+```
+
+```{python}
+#| label: pop-weight-helper
+
+def plot_pop_weights(component: str, high: str) -> None:
+    rows: list[pl.DataFrame] = []
+    for year in iso_complete_years:
+        series, n_hours = peak_series(component, year)
+        if series is None:
+            continue
+        rows.append(
+            topn_rate(series, n_hours, 1.0)
+            .select("day_of_year", "hour_of_day", "pop_weight")
+            .with_columns(pl.lit(str(year)).alias("year"))
+        )
+    if not rows:
+        return
+    heat = pl.concat(rows)
+    p = (
+        ggplot(heat, aes("day_of_year", "hour_of_day", fill="pop_weight"))
+        + geom_tile()
+        + facet_wrap("year", ncol=4)
+        + scale_fill_gradient(low="#f8e3c4", high=high)
+        + scale_x_continuous(
+            breaks=[1, 91, 182, 274, 365],
+            labels=["Jan", "Apr", "Jul", "Oct", "Dec"],
+        )
+        + scale_y_continuous(breaks=[0, 6, 12, 18, 23])
+        + labs(title=component, x="", y="Hour", fill="Weight")
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 4.2))
+    )
+    display_figure(p.draw())
+
+
+```
+
+```{python}
+#| label: fig-mc-pop-dist
+#| fig-cap: "Distribution PoP hours: load-weighted top 100 of the CT zone. Darker tiles carry more of the annual $/kW-yr."
+
+if years_prehp is not None:
+    plot_pop_weights("Distribution", SB_COLORS["carrot"])
+```
+
+```{python}
+#| label: fig-mc-pop-bulk
+#| fig-cap: "Bulk-transmission PoP hours: load-weighted top 100 of the New England system. Darker tiles carry more of the annual $/kW-yr."
+
+if years_prehp is not None:
+    plot_pop_weights("Bulk transmission", SB_COLORS["midnight"])
+```
+
+```{python}
+#| label: fig-mc-prehp-years
+#| fig-cap: "The pre-HP dollar table as a chart. 2025 is the load-weighted PoP allocation, not the filed schedule."
+
+if years_prehp is not None:
+    plot_year_mc(
+        years_prehp,
+        f"Pre-HP home · load-weighted top {N_PEAK_HOURS} each year",
+    )
+```
+
+```{python}
+#| label: tbl-filed-incremental
+#| tbl-cap: "Incremental MC of the heat pump under the filed schedule: after minus before. This is the testimony figure."
+
+if filed_delta is not None:
+    show_household_gt(
+        filed_delta,
+        title="Heat-pump increment, filed schedule, $ per year",
+        subtitle="After − before on the filed 8760. Winter kWh miss the peaks, so the increment is small and almost all summer cooling.",
+    )
+else:
+    display(Markdown("Incremental MC is skipped because the post-retrofit load was not available."))
+```
+
+```{python}
+#| label: tbl-pop-incremental
+#| tbl-cap: "Heat-pump increment (after − before) on the same kWh 8760, with each weather year's load-weighted top 100 carrying the filed $/kW-yr."
+
+if years_delta is not None:
+    show_year_gt(
+        years_delta,
+        title=f"Heat-pump increment, load-weighted top {N_PEAK_HOURS}, $ per year",
+        subtitle=POP_SUBTITLE,
+    )
+```
+
+```{python}
+#| label: fig-mc-incremental-years
+#| fig-cap: "The incremental dollar table as a chart. After minus before, load-weighted top 100, same annual $/kW-yr every year."
+
+if years_delta is not None:
+    plot_year_mc(
+        years_delta,
+        f"Heat-pump increment · load-weighted top {N_PEAK_HOURS} each year",
+    )
+```
+
+

@@ -2455,3 +2455,75 @@ for k, v in sorted(report_vars.items()):
     else:
         print(f"  {k}: {v}")
 ```
+
+## Surrebuttal workbook: BGE subclass
+
+Table 1 in `surrebuttal_testimony.qmd` cites this average customer in the column
+"BGE customer data." The subclass totals and customer counts are inputs. Per-customer
+kWh, bills, marginal cost, the overcharge, and the Schedule R-HP reductions are formulas.
+The file is uploaded to the surrebuttal Drive folder.
+
+```{python}
+#| label: export-surrebuttal-workbook
+
+from lib.data.gsheets import upload_xlsx
+from lib.workbooks.representative_overcharge import build_representative_overcharge_workbook
+
+assert USE_BGE_ACTUALS, "This workbook is the surrebuttal's BGE-subclass column"
+
+_kwh_before_by_month = {_MONTH_TO_NUM[_BGE_COL_TO_MONTH[i + 1]]: _kwh_non_heating[i] for i in range(12)}
+_kwh_after_by_month = {_MONTH_TO_NUM[_BGE_COL_TO_MONTH[i + 1]]: _kwh_heating[i] for i in range(12)}
+_subclass_monthly = pl.DataFrame(
+    {
+        "month_label": MONTH_ORDER,
+        "customers_before": [_bge_cust_by_month_non_heating[m] for m in range(1, 13)],
+        "kwh_total_before": [_kwh_before_by_month[m] for m in range(1, 13)],
+        "customers_after": [_bge_cust_by_month_heating[m] for m in range(1, 13)],
+        "kwh_total_after": [_kwh_after_by_month[m] for m in range(1, 13)],
+    }
+)
+# The customer count uses the month of the metered hour, paired positionally with the
+# marginal-cost timestamps the same way the hourly profile above was built.
+_month_label = _hourly["month_num"].replace_strict({i + 1: name for i, name in enumerate(MONTH_ORDER)})
+_hourly_aggregate = pl.DataFrame(
+    {
+        "timestamp": bge_hourly_non_heating["timestamp"],
+        "month": _month_label,
+        "agg_kwh_before": _hourly["agg_non_heating_kwh"],
+        "agg_kwh_after": _hourly["agg_heating_kwh"],
+    }
+)
+_note = (
+    "Surrebuttal Table 1, column 'BGE customer data (direct testimony)'. "
+    "One average customer. Before is Schedules R and RL (non-heating). "
+    "After is Schedules RH and RLH (electric heating). "
+    "Per-customer kWh divides the subclass total kWh by its customer count. "
+    "Monthly bills use the monthly discovery file (April 2025-March 2026). "
+    "Marginal costs use the hourly discovery file (calendar 2024), divided by "
+    "that month's customer count from the monthly file. Those two files are different "
+    "extracts, so their annual kWh are not the same number. "
+    "Distribution includes the core delivery rate and the environmental surcharge. "
+    "The customer charge includes the universal service charge. "
+    "Transmission is the transmission rate adjustment. EmPOWER is the EmPOWER Maryland "
+    "charge. Generation is bundled supply. Hourly timestamps are Eastern Standard Time, "
+    "shifted 5 hours from the UTC stamps used to line the load up with marginal cost."
+)
+_path = Path("../cache/surrebuttal_table1_bge_subclass.xlsx")
+build_representative_overcharge_workbook(
+    _path,
+    monthly_before=profiles["all_fossil"]["before"],
+    monthly_after=profiles["all_fossil"]["after"],
+    hourly_before=hourly_profiles["all_fossil"]["before"],
+    hourly_after=hourly_profiles["all_fossil"]["after"],
+    mc=mc_8760,
+    rate_components=rate_components,
+    report_vars=report_vars,
+    source_name="BGE customer data",
+    note=_note,
+    subclass_monthly=_subclass_monthly,
+    hourly_aggregate=_hourly_aggregate,
+)
+_link = upload_xlsx(_path, "1r6870cEtWFnMgZpucxgQIPezBHLMhQ5P")
+_path.unlink()
+print(_link)
+```

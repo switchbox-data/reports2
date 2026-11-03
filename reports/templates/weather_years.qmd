@@ -70,10 +70,11 @@ does nothing. Changing `year_run` without rebuilding month-hour / holiday-aware
 MC misaligns day types.
 
 NREL ResStock **2024.2** publishes only **AMY 2018** and **TMY3** (same building
-models). **AMY 2012** exists only in the older 2022.1 release. This notebook
-therefore compares **observed** weather and **observed** system load across
-calendar years, and overlays ResStock's AMY 2018 outdoor temperature on 2018
-GHCN. It does not re-run CAIRO.
+models). **AMY 2012** exists only in the older 2022.1 release. Section 6
+compares those two ResStock weather years on the same buildings. The rest of
+this notebook compares **observed** weather and **observed** system load
+across calendar years, and overlays ResStock's AMY 2018 outdoor temperature
+on 2018 GHCN. It does not re-run CAIRO.
 
 ---
 
@@ -84,6 +85,7 @@ GHCN. It does not re-run CAIRO.
 | **Weather** | Daily temperature, HDD, CDD | Weighted mean of the GHCN stations in `STATE_PROFILE` (weights are ResStock building counts in the CT example; not NOAA nClimDiv, which is monthly) |
 | **System load** | Hourly MW for the whole zone or utility, not ResStock homes | The `load_uri` you paste. See the comment on that field: rate-design-platform does not use one hive shape for every state |
 | **ResStock weather check** | EnergyPlus outdoor dry-bulb | A sample of upgrade-00 hourly files. Each building has its own EPW (`in.weather_file_city`); there is no single ResStock station |
+| **AMY 2018 vs TMY3** | Stock-weighted outdoor dry-bulb | One series per EPW city, weighted by the sum of `weight` on the shared `bldg_id`s. Local `res_2024_amy2018_2` and `res_2024_tmy3_2` when that state is mirrored; otherwise the public OEDI release |
 | **Representative load** | Weighted-average hourly kWh of fossil-heated homes, pre-HP and post-HP | Same construction as `representative_home.qmd`: master bills for weights, `billing_kwh_8760` for the shape |
 | **Marginal cost** | Filed dist and bulk-tx `$`/kWh, plus a top-N reallocation of those annual scalars onto each system-load year | `s3://data.sb/switchbox/marginal_costs/…` usually has one run year. Year-to-year dollar differences below are that scalar moved onto each year's peak hours |
 
@@ -98,8 +100,9 @@ GHCN. It does not re-run CAIRO.
 | **3 — Top-N peak hours** | Share in May–Sep vs Oct–Apr (the testimony split) |
 | **4 — 2018 among its neighbors** | Rank 2018 on HDD, CDD, summer-peak share, winter/summer peak ratio |
 | **5 — ResStock vs GHCN 2018** | Sample of AMY 2018 outdoor temp against the airport series |
-| **6 — Load-weighted PoP and a KDE year** | Top-100 load-weighted weights by year, for the dist series and the bulk-tx series, then one analysis-year 8760 from a KDE trained on those years |
-| **7 — Marginal cost on a representative load** | Filed schedule, then the same home and the same `$`/kW-yr allocated with each year's load-weighted top 100, including the heat-pump increment |
+| **6 — AMY 2018 vs TMY3** | Same buildings; EPW-city temperature weighted by `weight`. HDD, CDD, and peaks |
+| **7 — Load-weighted PoP and a KDE year** | Top-100 load-weighted weights by year, for the dist series and the bulk-tx series, then one analysis-year 8760 from a KDE trained on those years |
+| **8 — Marginal cost on a representative load** | Filed schedule, then the same home and the same `$`/kW-yr allocated with each year's load-weighted top 100, including the heat-pump increment |
 
 ```{python}
 #| label: setup
@@ -1303,7 +1306,441 @@ A level offset is expected: the GHCN mean is a handful of airports, and
 ResStock's buildings sit on several EPW cities. Cold snaps should still line
 up, because AMY 2018 is calendar-year 2018.
 
-## Section 6: Load-weighted peak hours, and one KDE year
+## Section 6: AMY 2018 vs TMY3
+
+Section 5 asks whether AMY 2018's buildings track the GHCN year. This section
+asks a different question: how the weather ResStock actually simulated
+differs between **AMY 2018** and **TMY3**.
+
+The two releases use the same building models. Each release assigns its own
+`in.weather_file_city`, and every building on a city shares one outdoor
+dry-bulb (`out.outdoor_air_dryblub_temp.c`). The statewide series is one
+series per city, weighted by the sum of the ResStock `weight` column on the
+**bldg_ids that exist in both releases**. A building present in only one
+release is left out of both averages.
+
+Degree-days use the same rule as Section 1: daily mean of that hourly
+series, base 65 °F. Peaks are the minimum and maximum of the hourly series
+itself. Both releases are stamped on a non-leap year, so October–April is
+the same set of days in each. A 15-minute OEDI file is averaged to the hour
+(the mean of the four intervals) before it is weighted. That is how the
+local hourly release is built.
+
+```{python}
+#| label: amy-tmy-compare
+
+OEDI_RELEASE = (
+    "https://oedi-data-lake.s3.amazonaws.com/nrel-pds-building-stock/"
+    "end-use-load-profiles-for-us-building-stock/2024"
+)
+WX_COMPARE_OK = False
+
+
+def _release_meta(release: str, weather: str) -> pl.DataFrame:
+    cache_path = CACHE_DIR / f"resstock_wx_meta_{release}_{STATE}.parquet"
+    if cache_path.exists():
+        return pl.read_parquet(cache_path)
+    local = Path(
+        f"/ebs/data/nrel/resstock/{release}/metadata/state={STATE.upper()}/upgrade=00/metadata.parquet"
+    )
+    if local.exists():
+        df = pl.read_parquet(local, columns=["bldg_id", "weight", "in.weather_file_city"])
+    else:
+        url = f"{OEDI_RELEASE}/resstock_{weather}_release_2/metadata/baseline.parquet"
+        df = (
+            pl.scan_parquet(url)
+            .filter(pl.col("in.state") == STATE.upper())
+            .select("bldg_id", "weight", "in.weather_file_city")
+            .collect()
+        )
+    df.write_parquet(cache_path)
+    return df
+
+
+def _to_hourly(raw: pl.DataFrame) -> pl.DataFrame:
+    """Hour-beginning mean. OEDI quarter-hours are labeled at interval end."""
+    raw = raw.sort("timestamp")
+    if raw.height == 35_040:
+        raw = (
+            raw.with_columns(
+                (pl.col("timestamp") - pl.duration(minutes=15))
+                .dt.truncate("1h")
+                .alias("timestamp")
+            )
+            .group_by("timestamp")
+            .agg(pl.col("temp_c").mean())
+            .sort("timestamp")
+        )
+    if raw.height != 8760:
+        raise ValueError(f"expected 8,760 hours, got {raw.height}")
+    return raw.with_columns(pl.col("timestamp").cast(pl.Datetime("us")))
+
+
+def _outdoor_hourly(weather: str, bldg_id: int) -> pl.DataFrame:
+    release = f"res_2024_{weather}_2"
+    cache_path = CACHE_DIR / f"outdoor_{release}_{STATE}_{bldg_id}.parquet"
+    if cache_path.exists():
+        return pl.read_parquet(cache_path)
+    local = Path(
+        f"/ebs/data/nrel/resstock/{release}/load_curve_hourly/"
+        f"state={STATE.upper()}/upgrade=00/{bldg_id}-0.parquet"
+    )
+    src = (
+        str(local)
+        if local.exists()
+        else (
+            f"{OEDI_RELEASE}/resstock_{weather}_release_2/"
+            f"timeseries_individual_buildings/by_state/upgrade=0/"
+            f"state={STATE.upper()}/{bldg_id}-0.parquet"
+        )
+    )
+    raw = (
+        pl.scan_parquet(src)
+        .select("timestamp", pl.col(OUTDOOR_TEMP_C).alias("temp_c"))
+        .collect()
+    )
+    out = _to_hourly(raw)
+    out.write_parquet(cache_path)
+    return out
+
+
+def _stock_temperature(meta: pl.DataFrame, weather: str) -> tuple[pl.DataFrame, pl.DataFrame]:
+    stations = (
+        meta.group_by("in.weather_file_city")
+        .agg(
+            pl.col("weight").sum().alias("weight"),
+            pl.len().alias("buildings"),
+            pl.col("bldg_id").min().alias("bldg_id"),
+        )
+        .sort("weight", descending=True)
+    )
+    parts: list[pl.DataFrame] = []
+    for row in stations.iter_rows(named=True):
+        parts.append(
+            _outdoor_hourly(weather, int(row["bldg_id"]))
+            .select("timestamp", "temp_c")
+            .with_columns(pl.lit(float(row["weight"])).alias("weight"))
+        )
+    hourly = (
+        pl.concat(parts)
+        .group_by("timestamp")
+        .agg(
+            ((pl.col("temp_c") * pl.col("weight")).sum() / pl.col("weight").sum()).alias(
+                "temp_c"
+            )
+        )
+        .sort("timestamp")
+        .with_columns((pl.col("temp_c") * 9 / 5 + 32).alias("temp_f"))
+    )
+    return hourly, stations
+
+
+def _daily_means(hourly: pl.DataFrame) -> pl.DataFrame:
+    return (
+        hourly.with_columns(
+            pl.col("timestamp").dt.date().alias("date"),
+            pl.col("timestamp").dt.month().alias("month"),
+            pl.col("timestamp").dt.ordinal_day().alias("day_of_year"),
+        )
+        .group_by("date", "month", "day_of_year")
+        .agg(pl.col("temp_f").mean().alias("tavg_f"))
+        .sort("date")
+        .with_columns(
+            (HDD_BASE_F - pl.col("tavg_f")).clip(lower_bound=0).alias("hdd"),
+            (pl.col("tavg_f") - HDD_BASE_F).clip(lower_bound=0).alias("cdd"),
+        )
+    )
+
+
+def _wx_stats(hourly: pl.DataFrame, daily: pl.DataFrame) -> dict[str, float]:
+    heat = daily.filter(pl.col("month").is_in(list(HEATING_MONTHS)))
+    cool = daily.filter(pl.col("month").is_in(list(SUMMER_MONTHS)))
+    return {
+        "mean_f": float(hourly["temp_f"].mean()),
+        "min_f": float(hourly["temp_f"].min()),
+        "max_f": float(hourly["temp_f"].max()),
+        "hdd": float(daily["hdd"].sum()),
+        "cdd": float(daily["cdd"].sum()),
+        "heating_hdd": float(heat["hdd"].sum()),
+        "cooling_cdd": float(cool["cdd"].sum()),
+    }
+
+
+try:
+    amy_meta_raw = _release_meta("res_2024_amy2018_2", "amy2018")
+    tmy_meta_raw = _release_meta("res_2024_tmy3_2", "tmy3")
+    shared_ids = amy_meta_raw.select("bldg_id").join(
+        tmy_meta_raw.select("bldg_id"), on="bldg_id", how="inner"
+    )
+    n_shared = shared_ids.height
+    n_amy_only = amy_meta_raw.height - n_shared
+    n_tmy_only = tmy_meta_raw.height - n_shared
+    amy_meta = amy_meta_raw.join(shared_ids, on="bldg_id", how="semi")
+    tmy_meta = tmy_meta_raw.join(shared_ids, on="bldg_id", how="semi")
+    weight_gap = float(
+        (
+            amy_meta.select("bldg_id", "weight")
+            .join(
+                tmy_meta.select("bldg_id", pl.col("weight").alias("weight_tmy")),
+                on="bldg_id",
+            )
+            .select((pl.col("weight") - pl.col("weight_tmy")).abs().max())
+            .item()
+        )
+        or 0.0
+    )
+    amy_hourly, amy_stations = _stock_temperature(amy_meta, "amy2018")
+    tmy_hourly, tmy_stations = _stock_temperature(tmy_meta, "tmy3")
+    amy_daily = _daily_means(amy_hourly)
+    tmy_daily = _daily_means(tmy_hourly)
+    amy_wx = _wx_stats(amy_hourly, amy_daily)
+    tmy_wx = _wx_stats(tmy_hourly, tmy_daily)
+    WX_COMPARE_OK = True
+except Exception as exc:
+    display(Markdown(f"Skipping AMY 2018 vs TMY3: `{type(exc).__name__}: {exc}`"))
+
+if WX_COMPARE_OK:
+    def _r0(value: float) -> int:
+        return int(round(value))
+
+    def _more_fewer(delta: int, noun: str) -> str:
+        word = "more" if delta >= 0 else "fewer"
+        return f"**{abs(delta):,}** {word} {noun}"
+
+    def _only_clause(n: int, release: str) -> str:
+        noun = "building is" if n == 1 else "buildings are"
+        return f"**{n:,}** {noun} only in {release}"
+
+    omitted = [_only_clause(n, name) for n, name in ((n_amy_only, "AMY 2018"), (n_tmy_only, "TMY3")) if n]
+    omit_word = "it" if n_amy_only + n_tmy_only == 1 else "them"
+    only = (
+        (" " + " and ".join(omitted) + f", so both averages omit {omit_word}.")
+        if omitted
+        else ""
+    )
+    weights = (
+        "Sample weights match across the two releases, so the gap is the weather file and which EPW city each building sits on."
+        if weight_gap < 0.05
+        else "Each average uses that release's own `weight`."
+    )
+    d_heat = _r0(tmy_wx["heating_hdd"]) - _r0(amy_wx["heating_hdd"])
+    d_cool = _r0(tmy_wx["cooling_cdd"]) - _r0(amy_wx["cooling_cdd"])
+    d_hdd = _r0(tmy_wx["hdd"]) - _r0(amy_wx["hdd"])
+    d_cdd = _r0(tmy_wx["cdd"]) - _r0(amy_wx["cdd"])
+    shoulder = ""
+    if (d_hdd >= 0) != (d_heat >= 0):
+        shoulder = (
+            " Annual HDD and heating-season HDD move in opposite directions: "
+            f"HDD outside October–April is **{_r0(tmy_wx['hdd']) - _r0(tmy_wx['heating_hdd']):,}** "
+            f"in TMY3 and **{_r0(amy_wx['hdd']) - _r0(amy_wx['heating_hdd']):,}** in AMY 2018."
+        )
+    display(
+        Markdown(
+            f"The comparison covers **{n_shared:,}** buildings in {STATE.upper()}.{only} {weights} "
+            f"The stock-weighted year averages **{amy_wx['mean_f']:.1f} °F** under AMY 2018 and "
+            f"**{tmy_wx['mean_f']:.1f} °F** under TMY3. "
+            f"TMY3 has {_more_fewer(d_heat, 'heating-season HDD')} and "
+            f"{_more_fewer(d_cool, 'cooling-season CDD')} than AMY 2018. "
+            f"Annual HDD differs by **{d_hdd:+,}** and annual CDD by **{d_cdd:+,}**.{shoulder} "
+            f"The coldest hour is **{amy_wx['min_f']:.1f} °F** in AMY 2018 and "
+            f"**{tmy_wx['min_f']:.1f} °F** in TMY3. The hottest hour is "
+            f"**{amy_wx['max_f']:.1f} °F** in AMY 2018 and **{tmy_wx['max_f']:.1f} °F** in TMY3."
+        )
+    )
+```
+
+```{python}
+#| label: fig-amy-vs-tmy
+#| fig-cap: "Stock-weighted daily mean outdoor temperature, AMY 2018 versus TMY3. Weights are ResStock building weights on the shared bldg_ids."
+
+if WX_COMPARE_OK:
+    overlay = (
+        pl.concat(
+            [
+                amy_daily.select(
+                    "day_of_year",
+                    pl.col("tavg_f"),
+                    pl.lit("AMY 2018").alias("series"),
+                ),
+                tmy_daily.select(
+                    "day_of_year",
+                    pl.col("tavg_f"),
+                    pl.lit("TMY3").alias("series"),
+                ),
+            ]
+        )
+    )
+    p = (
+        ggplot(overlay, aes("day_of_year", "tavg_f", color="series"))
+        + geom_line(alpha=0.9, size=0.5)
+        + scale_color_manual(
+            values={"AMY 2018": SB_COLORS["carrot"], "TMY3": SB_COLORS["sky"]}
+        )
+        + labs(
+            title=f"Outdoor temperature, {STATE.upper()} stock-weighted",
+            subtitle="Daily mean of the EPW-city average. Weight is the ResStock sample weight.",
+            x="",
+            y="°F",
+            color="",
+        )
+        + scale_x_continuous(
+            breaks=[1, 91, 182, 274, 365],
+            labels=["Jan", "Apr", "Jul", "Oct", "Dec"],
+        )
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 4.5))
+    )
+    display_figure(p.draw())
+```
+
+```{python}
+#| label: tbl-amy-vs-tmy
+#| tbl-cap: "Stock-weighted temperature, degree-days, and peaks. TMY3 minus AMY 2018."
+
+if WX_COMPARE_OK:
+    def _pair(keys: list[str], names: list[str], as_int: bool) -> pl.DataFrame:
+        amy_vals = []
+        tmy_vals = []
+        deltas = []
+        for key in keys:
+            amy_v = amy_wx[key]
+            tmy_v = tmy_wx[key]
+            if as_int:
+                amy_v = int(round(amy_v))
+                tmy_v = int(round(tmy_v))
+                delta = tmy_v - amy_v
+            else:
+                amy_v = round(amy_v, 1)
+                tmy_v = round(tmy_v, 1)
+                delta = round(tmy_v - amy_v, 1)
+            amy_vals.append(amy_v)
+            tmy_vals.append(tmy_v)
+            deltas.append(delta)
+        return pl.DataFrame(
+            {
+                "metric": names,
+                "amy": amy_vals,
+                "tmy": tmy_vals,
+                "delta": deltas,
+            }
+        )
+
+    labels = {
+        "metric": "Metric",
+        "amy": "AMY 2018",
+        "tmy": "TMY3",
+        "delta": "TMY3 − AMY",
+    }
+    show_gt(
+        _pair(
+            ["mean_f", "min_f", "max_f"],
+            ["Mean temperature (°F)", "Coldest hour (°F)", "Hottest hour (°F)"],
+            as_int=False,
+        ),
+        title=f"Stock-weighted temperature, {STATE.upper()}",
+        subtitle="Coldest and hottest hour are the min and max of the weighted hourly series.",
+        labels=labels,
+        num_cols=["amy", "tmy", "delta"],
+        num_decimals=1,
+    )
+    show_gt(
+        _pair(
+            ["hdd", "cdd", "heating_hdd", "cooling_cdd"],
+            [
+                "Annual HDD (65 °F)",
+                "Annual CDD (65 °F)",
+                "Heating-season HDD (Oct–Apr)",
+                "Cooling-season CDD (May–Sep)",
+            ],
+            as_int=True,
+        ),
+        title=f"Stock-weighted degree-days, {STATE.upper()}",
+        subtitle="Daily mean of the weighted hourly temperature, base 65 °F.",
+        labels=labels,
+        int_cols=["amy", "tmy", "delta"],
+    )
+```
+
+TMY3 assigns those same buildings to its own EPW cities. A city can sit
+outside the state: ResStock uses the nearest weather file, and the weight
+still belongs to the buildings inside the state.
+
+```{python}
+#| label: tbl-amy-tmy-stations
+#| tbl-cap: "EPW cities behind the stock-weighted temperature. Share of weight is the weight in the average."
+
+if WX_COMPARE_OK:
+    def _station_rows(stations: pl.DataFrame, release: str) -> pl.DataFrame:
+        total = float(stations["weight"].sum())
+        return stations.select(
+            pl.lit(release).alias("release"),
+            pl.col("in.weather_file_city")
+            .str.replace_all(r"\s+", " ")
+            .alias("station"),
+            pl.col("buildings"),
+            pl.col("weight").round(0).cast(pl.Int64).alias("weight"),
+            (pl.col("weight") / total * 100).round(1).alias("share_pct"),
+        )
+
+    show_gt(
+        pl.concat(
+            [
+                _station_rows(amy_stations, "AMY 2018"),
+                _station_rows(tmy_stations, "TMY3"),
+            ]
+        ),
+        title=f"EPW cities in the {STATE.upper()} average",
+        subtitle="Same bldg_ids. The average uses the weight column.",
+        labels={
+            "release": "Release",
+            "station": "EPW city",
+            "buildings": "Buildings",
+            "weight": "Weight",
+            "share_pct": "Share of weight (%)",
+        },
+        int_cols=["buildings", "weight"],
+        num_cols=["share_pct"],
+        num_decimals=1,
+    )
+```
+
+```{python}
+#| label: fig-amy-tmy-delta
+#| fig-cap: "Seven-day rolling mean of TMY3 minus AMY 2018 stock-weighted daily temperature. Above zero, TMY3 is warmer."
+
+if WX_COMPARE_OK:
+    delta_daily = (
+        amy_daily.select("date", "day_of_year", pl.col("tavg_f").alias("amy"))
+        .join(tmy_daily.select("date", pl.col("tavg_f").alias("tmy")), on="date")
+        .sort("date")
+        .with_columns((pl.col("tmy") - pl.col("amy")).alias("delta_f"))
+        .with_columns(
+            pl.col("delta_f")
+            .rolling_mean(window_size=7, min_samples=4)
+            .alias("delta_roll7")
+        )
+    )
+    p = (
+        ggplot(delta_daily, aes("day_of_year", "delta_roll7"))
+        + geom_hline(yintercept=0, linetype="dashed", color="#bbbbbb")
+        + geom_line(color=SB_COLORS["midnight"], size=0.7)
+        + labs(
+            title="TMY3 minus AMY 2018",
+            subtitle="7-day rolling mean of the daily stock-weighted temperature, °F.",
+            x="",
+            y="°F",
+        )
+        + scale_x_continuous(
+            breaks=[1, 91, 182, 274, 365],
+            labels=["Jan", "Apr", "Jul", "Oct", "Dec"],
+        )
+        + theme_switchbox()
+        + theme(figure_size=(10.5, 4.5))
+    )
+    display_figure(p.draw())
+```
+
+## Section 7: Load-weighted peak hours, and one KDE year
 
 **Load-weighted top 100, one map per year.** This is how distribution PoP
 works in rate-design-platform (`calculate_pop_weights`): take the top
@@ -1619,7 +2056,7 @@ else:
     display(Markdown("No complete bulk-transmission years in `kde_years`, so the bulk-tx KDE is skipped."))
 ```
 
-## Section 7: Marginal cost by year, on a representative load
+## Section 8: Marginal cost by year, on a representative load
 
 The **filed schedule** is the hourly `$`/kWh parquet CAIRO billed
 (`year=2025` on S3). It is a calendar, not a weather year. Connecticut
@@ -2211,5 +2648,3 @@ if years_delta is not None:
         f"Heat-pump increment · load-weighted top {N_PEAK_HOURS} each year",
     )
 ```
-
-

@@ -1305,6 +1305,7 @@ Do **not** put skills under `context/` — skills are operational guides; `conte
 
 | Skill                | Path                               | Use when …                                                                                                                                                          |
 | -------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **calculation-workbook** | `.cursor/skills/calculation-workbook/` | Exporting intermediate calculations and cited results to an Excel workbook with formulas intact, then uploading it to Google Drive.                              |
 | **copy-edit**        | `.cursor/skills/copy-edit/`        | Copy editing or proofreading a report `index.qmd` (Chicago/CMOS + Switchbox house style).                                                                           |
 | **expert-testimony** | `.cursor/skills/expert-testimony/` | Writing or editing expert testimony in Q&A format for regulatory proceedings (PUC/PSC/ICC rate cases, docket filings).                                              |
 | **ingest-source**    | `.cursor/skills/ingest-source/`    | Adding a source (PDF, workbook, web page) to the library: draft the details card, get approval, run `just sources-ingest`, extract, verify. Also for pending items. |

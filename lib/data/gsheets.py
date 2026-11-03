@@ -513,3 +513,65 @@ def apply_sheet_formatting(
 
     if requests:
         worksheet.spreadsheet.batch_update({"requests": requests})
+
+
+_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def upload_xlsx(path: str | Path, folder_id: str) -> str:
+    """Upload an Excel workbook to a Drive folder, trashing any file of the same name.
+
+    The uploaded file stays an ``.xlsx``. Opening it in Google Sheets keeps the
+    formulas, and so does downloading it again.
+
+    Args:
+        path: Local ``.xlsx`` to upload. The Drive file uses this file's name.
+        folder_id: Drive folder id (the string in the folder URL).
+
+    Returns:
+        ``webViewLink`` of the uploaded file.
+
+    Raises:
+        GoogleLoginRequired: No cached login. Run ``just google-login`` once.
+    """
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaFileUpload
+
+    workbook = Path(path)
+    creds = get_user_credentials()
+    drive = build("drive", "v3", credentials=creds, cache_discovery=False)
+    safe_name = workbook.name.replace("\\", "\\\\").replace("'", "\\'")
+    query = f"name = '{safe_name}' and '{folder_id}' in parents and trashed = false"
+    existing: list[dict[str, Any]] = []
+    page_token: str | None = None
+    while True:
+        list_kwargs: dict[str, Any] = {
+            "q": query,
+            "fields": "nextPageToken, files(id, name)",
+            "supportsAllDrives": True,
+            "includeItemsFromAllDrives": True,
+            "pageSize": 100,
+        }
+        if page_token is not None:
+            list_kwargs["pageToken"] = page_token
+        listed = drive.files().list(**list_kwargs).execute()
+        existing.extend(listed.get("files", []))
+        page_token = listed.get("nextPageToken")
+        if not page_token:
+            break
+    for old in existing:
+        drive.files().update(fileId=old["id"], body={"trashed": True}, supportsAllDrives=True).execute()
+    uploaded = (
+        drive.files()
+        .create(
+            body={"name": workbook.name, "parents": [folder_id]},
+            media_body=MediaFileUpload(str(workbook), mimetype=_XLSX_MIME, resumable=True),
+            fields="id, webViewLink",
+            supportsAllDrives=True,
+        )
+        .execute()
+    )
+    link = uploaded.get("webViewLink")
+    if isinstance(link, str) and link:
+        return link
+    return f"https://drive.google.com/file/d/{uploaded['id']}/view"

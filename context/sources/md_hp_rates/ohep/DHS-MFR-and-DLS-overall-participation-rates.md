@@ -8,17 +8,17 @@
 
 ## Sources pulled
 
-| Document | URL |
-| -------- | --- |
+| Document            | URL                                                                                                                        |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | DLS FY2020 N00I0006 | https://mgaleg.maryland.gov/pubs/budgetfiscal/2020fy-budget-docs-operating-N00I0006-DHS-Office-of-Home-Energy-Programs.pdf |
 | DLS FY2021 N00I0006 | https://mgaleg.maryland.gov/pubs/budgetfiscal/2021fy-budget-docs-operating-N00I0006-DHS-Office-of-Home-Energy-Programs.pdf |
 | DLS FY2022 N00I0006 | https://mgaleg.maryland.gov/pubs/budgetfiscal/2022fy-budget-docs-operating-N00I0006-DHS-Office-of-Home-Energy-Programs.pdf |
 | DLS FY2023 N00I0006 | https://mgaleg.maryland.gov/pubs/budgetfiscal/2023fy-budget-docs-operating-N00I0006-DHS-Office-of-Home-Energy-Programs.pdf |
 | DLS FY2024 N00I0006 | https://mgaleg.maryland.gov/pubs/budgetfiscal/2024fy-budget-docs-operating-N00I0006-DHS-Office-of-Home-Energy-Programs.pdf |
-| DHS MFR FY2023 | https://dbm.maryland.gov/Documents/MFR_documents/2023/Department-of-Human-Services-MFR.pdf |
-| DHS MFR FY2024 | https://dbm.maryland.gov/Documents/MFR_documents/2024/Department-of-Human-Services-MFR.pdf |
-| DHS MFR FY2025 | https://dbm.maryland.gov/Documents/MFR_documents/2025/Department-of-Human-Services-MFR.pdf |
-| DHS MFR FY2026 | https://dbm.maryland.gov/Documents/MFR_documents/2026/Department-of-Human-Services-MFR.pdf |
+| DHS MFR FY2023      | https://dbm.maryland.gov/Documents/MFR_documents/2023/Department-of-Human-Services-MFR.pdf                                 |
+| DHS MFR FY2024      | https://dbm.maryland.gov/Documents/MFR_documents/2024/Department-of-Human-Services-MFR.pdf                                 |
+| DHS MFR FY2025      | https://dbm.maryland.gov/Documents/MFR_documents/2025/Department-of-Human-Services-MFR.pdf                                 |
+| DHS MFR FY2026      | https://dbm.maryland.gov/Documents/MFR_documents/2026/Department-of-Human-Services-MFR.pdf                                 |
 
 Later DLS books (FY2025–FY2027) remain useful for **vulnerable-population** MFR rates and for noting that the **overall** by-program rate dropped out of the FY2027 MFR submission (DHS has concurred to restore it in FY2028 MFR for FY2026).
 
@@ -32,12 +32,12 @@ These are the clearest “share of eligible households receiving MEAP / EUSP” 
 
 APPRISE estimated **>380,000** income-eligible OHEP households; about **one-quarter** received assistance.
 
-| Income band | EUSP | MEAP |
-| ----------- | ---: | ---: |
-| 0–75% FPL | 29% | 29% |
-| 76–110% FPL | 31% | 31% |
-| 111–150% FPL | 24% | 24% |
-| 151–175% FPL | 14% | 15% |
+| Income band             |    EUSP |    MEAP |
+| ----------------------- | ------: | ------: |
+| 0–75% FPL               |     29% |     29% |
+| 76–110% FPL             |     31% |     31% |
+| 111–150% FPL            |     24% |     24% |
+| 151–175% FPL            |     14% |     15% |
 | **All income-eligible** | **25%** | **26%** |
 
 Jurisdiction extremes (same report / DLS FY2020): Allegany & Garrett **46%** (both programs); Montgomery **15% MEAP / 14% EUSP**.
@@ -68,16 +68,16 @@ DHS MFR Obj. 2.5 reports **“Percent of OHEP unified applications received and 
 
 | Year | Unified apps processed from eligible households |
 | ---- | ----------------------------------------------: |
-| 2017 | 40.0% |
-| 2018 | 40.0% |
-| 2019 | 39.9% |
-| 2020 | 38.0% |
-| 2021 | 40.7% |
-| 2022 | **65.0%** |
-| 2023 | 41.0% |
-| 2024 | 39.0% |
+| 2017 |                                           40.0% |
+| 2018 |                                           40.0% |
+| 2019 |                                           39.9% |
+| 2020 |                                           38.0% |
+| 2021 |                                           40.7% |
+| 2022 |                                       **65.0%** |
+| 2023 |                                           41.0% |
+| 2024 |                                           39.0% |
 
-(MFR FY2026 also lists FY2024 MEAP enrollments **94,195** and EUSP **110,146**, with FY2025/FY2026 *estimates* of 250k–270k — planning figures, not realized.)
+(MFR FY2026 also lists FY2024 MEAP enrollments **94,195** and EUSP **110,146**, with FY2025/FY2026 _estimates_ of 250k–270k — planning figures, not realized.)
 
 ---
 

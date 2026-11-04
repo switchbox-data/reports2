@@ -1,0 +1,101 @@
+
+```{python}
+import pandas as pd
+import numpy as np
+import duckdb
+
+from datetime import datetime
+import re
+import warnings
+warnings.filterwarnings('ignore')  # Suppress all warnings
+
+path_delivered_fuels =  "/workspaces/reports/data/fuel_costs/propane/eia_weekly_heatingoil_propane_prices_MA_20250411.xls"
+delivered_fuels = pd.read_excel(path_delivered_fuels, sheet_name="Data 1", skiprows=2)
+
+# Split the Date column into year, month, day
+delivered_fuels['year'] = pd.to_datetime(delivered_fuels['Date']).dt.year.astype(int)
+delivered_fuels['month'] = pd.to_datetime(delivered_fuels['Date']).dt.month.astype(int)
+delivered_fuels['day'] = pd.to_datetime(delivered_fuels['Date']).dt.day.astype(int)
+
+print([col for col in delivered_fuels.columns])
+
+# Propane: 27kWh per gallon (https://www.propane101.com/propanevselectricity.htm)
+delivered_fuels['propane_dollars_per_kwh'] = delivered_fuels['Weekly Massachusetts Propane Residential Price  (Dollars per Gallon)'] / 27
+
+# Fuel Oil: 145.945 MJ per gallon (https://www.eia.gov/energyexplained/units-and-calculators/energy-conversion-calculators.php)
+# 40.2778 kWh/gallon
+delivered_fuels['fuel_oil_dollars_per_kwh'] = delivered_fuels['Weekly Massachusetts No. 2 Heating Oil Residential Price  (Dollars per Gallon)'] / 40.2778
+
+# Group by year and month and calculate mean prices
+delivered_fuels_monthly = delivered_fuels.groupby(['year', 'month']).agg({
+    'propane_dollars_per_kwh': 'mean',
+    'fuel_oil_dollars_per_kwh': 'mean'
+}).reset_index()
+
+
+
+# PROPANE
+propane_supply_rates = delivered_fuels_monthly[['year', 'month', 'propane_dollars_per_kwh']]
+propane_supply_rates.to_csv("/workspaces/reports/data/fuel_costs/propane/ma_propane_supply_rates.csv", index=False)
+
+# Write to database
+# con = duckdb.connect('/workspaces/reports/data/ResStock/2022_resstock_amy2018_release_1.1/rs_ma_hp_rates_2.db')
+# con.execute("DROP TABLE IF EXISTS supply_rates_propane")
+# con.execute("CREATE TABLE supply_rates_propane AS SELECT * FROM propane_supply_rates")
+# con.close()
+
+# FUEL OIL
+fuel_oil_supply_rates = delivered_fuels_monthly[['year', 'month', 'fuel_oil_dollars_per_kwh']]
+fuel_oil_supply_rates.to_csv("/workspaces/reports/data/fuel_costs/fuel_oil/ma_fuel_oil_supply_rates.csv", index=False)
+
+# con = duckdb.connect('/workspaces/reports/data/ResStock/2022_resstock_amy2018_release_1.1/rs_ma_hp_rates.db')
+# con = duckdb.connect('/workspaces/reports/data/ResStock/2022_resstock_amy2018_release_1.1/rs_ma_hp_rates_2.db')
+# con.execute("DROP TABLE IF EXISTS supply_rates_fueloil")
+# con.execute("CREATE TABLE supply_rates_fueloil AS SELECT * FROM fuel_oil_supply_rates")
+# con.close()
+
+```
+
+```{python}
+import plotly.express as px
+
+# Create datetime column with first day of each month
+# Drop unnecessary columns
+delivered_fuels_monthly = delivered_fuels.drop(['Weekly Massachusetts No. 2 Heating Oil Wholesale/Resale Price  (Dollars per Gallon)', 'day', 'Date'], axis=1)
+
+delivered_fuels_monthly['Date'] = pd.to_datetime(
+    delivered_fuels_monthly[['year', 'month']].assign(day=1),
+    format='%Y-%m-%d'
+)
+
+# Create figure with both lines
+fig = px.line(delivered_fuels_monthly,
+              x='Date',
+              y=['propane_dollars_per_kwh', 'fuel_oil_dollars_per_kwh'],
+              title='Delivered Fuel Prices Over Time',
+              labels={
+                  'value': 'Price ($/kWh)',
+                  'variable': 'Fuel Type',
+                  'Date': 'Date'
+              })
+
+# Update the legend labels to be more readable
+fig.update_traces(
+    name='Propane',
+    selector=dict(name='propane_dollars_per_kwh')
+)
+fig.update_traces(
+    name='Fuel Oil',
+    selector=dict(name='fuel_oil_dollars_per_kwh')
+)
+
+# Customize layout
+fig.update_layout(
+    showlegend=True,
+    hovermode='x unified',
+    yaxis_title='Price ($/kWh)'
+)
+
+fig.show()
+
+```

@@ -1,0 +1,1193 @@
+---
+title: rates_prototype
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+# R Boilerploate
+```{r}
+library(tidyverse)
+library(scales)
+
+library(gt)
+library(gtExtras)
+library(jsonlite)
+library(RSQLite)
+
+library(patchwork)
+
+source("/workspaces/reports/lib/ggplot/switchbox_theme.R")
+source("/workspaces/reports/lib/utility_mapping.R")
+source("/workspaces/reports/lib/rates_analysis/heat_pump_rate_funcs.R")
+```
+
+
+# Gather Delivery Tariffs and Supply Rates
+## Supply Rates
+### MA Electric Supply Rates
+```{r}
+supply_rates_elec_ma_monthly <- read_csv("/workspaces/reports/data/utility_rates/electric/madpu/ma_supply_rates_monthly_20250329.csv")
+
+con <- DBI::dbConnect(duckdb::duckdb(), "/workspaces/reports/data/ResStock/2022_resstock_amy2018_release_1.1/rs_20250227.db")
+# Write the supply rates to the database
+DBI::dbWriteTable(
+  con,
+  "supply_rates_elec_ma_monthly",
+  supply_rates_elec_ma_monthly,
+  overwrite = TRUE
+)
+DBI::dbDisconnect(con)
+```
+
+### MA Gas Supply Rates
+```{r}
+resi_codes <- c("R-1", "R-1 ", "Residential", "All Residential")
+
+# Read in the gas supply rates CSV
+supply_rates_gas_ma_monthly <- read_csv("/workspaces/reports/data/utility_rates/gas/ma/madpu/gas_supply_rates_tidy_filled.csv") |>
+  as_tibble() |>
+  #filter(utility %in% c("liberty_blackstone", "liberty_north_attleboro")) |>
+  filter(rate_class %in% resi_codes)
+
+save_path <- "/workspaces/reports/src/ma_hp_rates/img/gas_supply_rates.png"
+plot_gas_supply_rates(supply_rates_gas_ma_monthly, save_path)
+```
+
+```{r}
+# plot Eversource's gas and electric supply rates
+library(lubridate)
+first_year <- 2017
+# First create the date column for both datasets
+supply_rates_elec <- supply_rates_elec_ma_monthly |>
+  filter(electric_utility %in% c("eversource_nstar", "eversource_wmeco")) |>
+  filter(year >= first_year) |>
+  mutate(
+    date = ymd(paste(year, month, "01", sep = "-")),
+    type = "electricity"
+  ) |>
+  arrange(electric_utility, date)  # This will put nstar before wmeco alphabetically
+
+supply_rates_gas <- supply_rates_gas_ma_monthly |>
+  filter(gas_utility %in% c("eversource_nstar","eversource_bay_state")) |>
+  filter(year >= first_year) |>
+  mutate(
+    date = ymd(paste(year, month, "01", sep = "-")),
+    type = "gas"
+  ) |>
+  arrange(gas_utility, date)  # This will put nstar before bay_state alphabetically
+
+
+show_elec = FALSE
+show_gas = TRUE
+# Create the plot
+ggplot() +
+  # Electric supply rates
+  if (show_elec) {
+    geom_line(data = supply_rates_elec,
+              aes(x = date, y = supply_rate,
+                  color = paste(electric_utility, "Electric")),
+              linewidth = 0.5) +
+    geom_point(data = supply_rates_elec,
+              aes(x = date, y = supply_rate,
+                  color = paste(electric_utility, "Electric")),
+              size = 0.2)
+  } +
+
+  # Gas supply rates
+  geom_line(data = supply_rates_gas,
+            aes(x = date, y = gaf,
+                color = paste(gas_utility, "Gas")),
+            linewidth = 0.5) +
+  geom_point(data = supply_rates_gas,
+             aes(x = date, y = gaf,
+                 color = paste(gas_utility, "Gas")),
+             size = 0.2) +
+
+  # Single color scale for all utilities
+  scale_color_manual(
+    values = c(
+      "eversource_nstar Electric" = "#023047",    # midnight
+      "eversource_wmeco Electric" = "#FC9706",    # carrot
+      "eversource_nstar Gas" = "#023047",         # midnight
+      "eversource_bay_state Gas" = "#68BED8"      # sky
+    ),
+    labels = c(
+      "eversource_nstar Electric" = "Eversource NStar Electric",
+      "eversource_wmeco Electric" = "Eversource WMeCo Electric",
+      "eversource_nstar Gas" = "Eversource NStar Gas",
+      "eversource_bay_state Gas" = "Eversource Bay State Gas"
+    ),
+    breaks = c(
+      "eversource_nstar Electric",
+      "eversource_wmeco Electric",
+      "eversource_nstar Gas",
+      "eversource_bay_state Gas"
+    ),
+    name = "Utility"
+  ) +
+
+  # Axes and labels
+  scale_y_continuous(
+    name = "Supply Rate ($/unit)",
+    labels = scales::dollar_format()
+  ) +
+  scale_x_date(
+    date_breaks = "1 year",
+    date_labels = "%Y"
+  ) +
+
+  # Title and theme
+  labs(
+    title = "Eversource Energy Supply Rates",
+    x = "Date"
+  ) +
+  guides(
+    color = guide_legend(nrow = 2, ncol = 2)
+  ) +
+  theme(
+    legend.position = c(0.02, 0.98),  # Position in the upper left
+    legend.justification = c(0, 1),    # Anchor point at top left
+    legend.box = "vertical",
+    legend.background = element_rect(fill = "grey90", color = NA),
+    legend.spacing.y = unit(0.02, "cm"),  # Reduce vertical spacing between legend items
+    legend.key.height = unit(0.3, "lines"),  # Reduce height of legend keys
+    panel.grid.minor = element_blank(),
+    panel.background = element_rect(fill = "white", color = "white"),
+    axis.line = element_line(linewidth = 0.5),
+    axis.ticks = element_line(color = "black")
+  )
+
+save_path <- "/workspaces/reports/src/ma_hp_rates/img/eversource_supply_rates.png"
+ggsave(save_path,
+      width = 5,
+      height = 4,
+      dpi = 300,
+      bg = "white")
+
+```
+
+
+```{r}
+# for eversource_nstar, plot the "spark gap" ... = [p_elec/p_gas]
+
+supply_rates_eversource_nstar <- supply_rates_gas |>
+  filter(gas_utility == "eversource_nstar") |>
+  select(date, gaf) |>
+  inner_join(
+    supply_rates_elec |>
+      filter(electric_utility == "eversource_nstar"),
+      select(date, supply_rate),
+    by = "date"
+  ) |>
+  mutate(spark_gap = supply_rate / gaf) |>
+  pivot_longer(
+    cols = c(supply_rate, gaf, spark_gap),
+    names_to = "rate_type",
+    values_to = "rate"
+  )
+
+ggplot(
+  supply_rates_eversource_nstar |> filter(rate_type == "spark_gap"),
+  aes(x = date, y = rate)
+) +
+  geom_line(color = "green") +
+  geom_point(color = "green") +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+  labs(
+    title = "Eversource NStar Spark Gap",
+    x = "Date",
+    y = "Spark Gap [Electric kWh / Gas kWh]"
+  ) +
+  theme(
+    legend.position = "none"
+  )
+
+
+ggplot(
+  supply_rates_eversource_nstar |> filter(rate_type == "spark_gap"),
+  aes(x = date, y = rate)
+) +
+  geom_line(color = "#023047", linewidth = 0.5) +
+  geom_point(color = "#023047", size = 0.3) +
+  #geom_smooth(method = "lm", se = FALSE, color = "red", linetype = "dashed") +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+  scale_y_continuous(limits = c(0, 30)) +
+  labs(
+    title = "Eversource NStar Spark Gap",
+    x = "Date",
+    y = "Spark Gap [Electric kWh / Gas kWh]"
+  ) +
+  theme(
+    legend.position = "none",
+    panel.grid.minor = element_blank(),
+  )
+
+save_path <- "/workspaces/reports/src/ma_hp_rates/img/eversource_nstar_spark_gap.png"
+ggsave(save_path,
+      width = 5,
+      height = 4,
+      dpi = 300,
+      bg = "white")
+
+```
+
+
+
+## MA Electric Delivery Tariffs
+```{r}
+library(googlesheets4)
+
+url_sheet_delivery_tariffs_elec_ma <- "https://docs.google.com/spreadsheets/d/1efE96zgziHTaLX-lPV1vRKVZze9gcKuD-nJyB-QFOQY/edit?gid=658606865#gid=658606865"
+googlesheets4::gs4_deauth()
+tariffs_elec_raw <- read_sheet(url_sheet_delivery_tariffs_elec_ma, sheet = "tariffs") |>
+  mutate(tariff_id = paste0(electric_utility, "_", version)) |>
+  select(-source)
+
+summer_months <- c(5,6,7,8,9,10)
+winter_months <- c(11,12,1,2,3,4)
+
+# The tariffs are specified by season, so we need to expand them out to the monthly grid
+delivery_tariffs_elec <- tariffs_elec_raw |>
+  mutate(
+    month = if_else(season == "summer",
+                    list(summer_months),
+                    list(winter_months))
+  ) |>
+  select(-season) |>
+  unnest(month) |>
+  arrange(electric_utility, month)
+
+con <- DBI::dbConnect(duckdb::duckdb(), "/workspaces/reports/data/ResStock/2022_resstock_amy2018_release_1.1/rs_20250227.db")
+DBI::dbWriteTable(
+  con,
+  "ma_elec_delivery_tariffs",
+  delivery_tariffs_elec,
+  overwrite = TRUE
+)
+DBI::dbDisconnect(con)
+```
+
+
+## MA Gas Delivery Tariffs
+- MADPU has a page for each utility (link)[https://www.mass.gov/info-details/natural-gas-tariffs-and-delivery-rates#current-natural-gas-tariffs-and-delivery-rates-]
+-
+
+```{r}
+library(googlesheets4)
+
+url_sheet_delivery_tariffs_gas_ma <- "https://docs.google.com/spreadsheets/d/1ikBwsX3UF4RheRrEoQzAHFqwXbI07Z-iXEiIEYraFNI/edit?gid=0#gid=0"
+googlesheets4::gs4_deauth()
+tariffs_gas_raw <- read_sheet(url_sheet_delivery_tariffs_gas_ma, sheet = "delivery_tariffs_gas_ma") |>
+  mutate(tariff_id = paste0(gas_utility, "_", tariff_name)) |>
+
+  # 1 therm = 29.3 kWh...ResStock data is in kWh
+  mutate(
+    value = if_else(billing_unit == "therm", value / 29.3, value)
+  ) |>
+  select(-source)
+
+summer_months <- c(5,6,7,8,9,10)
+winter_months <- c(11,12,1,2,3,4)
+
+# The tariffs are specified by season, so we need to expand them out to the monthly grid
+delivery_tariffs_gas <- tariffs_gas_raw |>
+  mutate(
+    month = if_else(season == "summer",
+                    list(summer_months),
+                    list(winter_months))
+  ) |>
+  select(-season) |>
+  unnest(month) |>
+  arrange(gas_utility, month)
+
+```
+
+
+# Calculate Bills
+
+## Loads
+```{r}
+
+# -------------
+electric_utility = 'eversource'
+gas_utility = 'eversource'
+gas_supply_year <- 2024
+# -------------
+
+
+path_to_database <- "/workspaces/reports/data/ResStock/2022_resstock_amy2018_release_1.1/rs_20250329.db"
+con <- DBI::dbConnect(duckdb::duckdb(), path_to_database)
+
+# Mapping bldg_ids to utilities
+ma_hh_utilities <- read_csv("/workspaces/reports/data/ResStock/utility_lookups/MA_hh_utilities.csv")
+#get a count of bldg_ids by electric_utility
+ma_hh_utilities |>
+  group_by(electric_utility) |>
+  summarize(n_bldgs = n_distinct(bldg_id))
+
+# get a count of bldg_ids by gas_utility
+ma_hh_utilities |>
+  group_by(gas_utility) |>
+  summarize(n_bldgs = n_distinct(bldg_id))
+
+# get a count of bldg_ids that have both {electric_utility} electric and {gas_utility} gas
+ma_hh_utilities |>
+  filter(electric_utility == !!electric_utility & gas_utility == !!gas_utility) |>
+  summarize(n_bldgs = n_distinct(bldg_id)) |>
+  pull(n_bldgs)
+
+
+
+all_bldg_ids <- ma_hh_utilities |>
+    filter(electric_utility == !!electric_utility & gas_utility == !!gas_utility) |>
+    pull(bldg_id)
+
+static_sample_bldg_ids <- c(349309, 353457, 374636, 168141, 210903, 93188, 39967, 47874, 515247, 16373)
+
+
+use_subset <- FALSE
+if (use_subset) {
+  if (new_sample) {
+    sample_bldg_ids <- all_bldg_ids |>
+      sample(10)
+  } else {
+    sample_bldg_ids <- static_sample_bldg_ids
+  }
+} else {
+  sample_bldg_ids <- all_bldg_ids
+}
+
+
+# ---------
+#### Electricity
+# to-do: use dyplyer!!!!!
+# make it a function
+# probably all these can be into one giant long table
+
+
+monthly_load_elec_baseline <- DBI::dbGetQuery(
+  con,
+  sprintf(
+    "SELECT bldg_id, month, upgrade, \"sum_out.electricity.total.energy_consumption\" as elec_consumption
+     FROM ma_monthly
+     WHERE upgrade IN (0) AND bldg_id IN ('%s')",
+    paste(sample_bldg_ids, collapse = "','")
+  )
+)
+monthly_load_elec_baseline <- monthly_load_elec_baseline |>
+  left_join(ma_hh_utilities, by = "bldg_id")
+#View(monthly_load_elec_baseline)
+
+monthly_load_elec_upgrade4 <- DBI::dbGetQuery(
+  con,
+  sprintf(
+    "SELECT bldg_id, month, upgrade, \"sum_out.electricity.total.energy_consumption\" as elec_consumption
+     FROM ma_monthly
+     WHERE upgrade IN (4) AND bldg_id IN ('%s')",
+    paste(sample_bldg_ids, collapse = "','")
+  )
+)
+monthly_load_elec_upgrade4 <- monthly_load_elec_upgrade4 |>
+  left_join(ma_hh_utilities, by = "bldg_id")
+#View(monthly_load_elec_upgrade4)
+
+# ---------
+#### Gas
+monthly_load_gas_baseline <- DBI::dbGetQuery(
+  con,
+  sprintf(
+    "SELECT bldg_id, month, upgrade, \"sum_out.natural_gas.total.energy_consumption\" as gas_consumption
+     FROM ma_monthly
+     WHERE upgrade IN (0) AND bldg_id IN ('%s')",
+    paste(sample_bldg_ids, collapse = "','")
+  )
+)
+monthly_load_gas_baseline <- monthly_load_gas_baseline |>
+  left_join(ma_hh_utilities, by = "bldg_id")
+#View(monthly_load_gas_baseline)
+
+monthly_load_gas_upgrade4 <- DBI::dbGetQuery(
+  con,
+  sprintf(
+    "SELECT bldg_id, month, upgrade, \"sum_out.natural_gas.total.energy_consumption\" as gas_consumption
+     FROM ma_monthly
+     WHERE upgrade IN (4) AND bldg_id IN ('%s')",
+    paste(sample_bldg_ids, collapse = "','")
+  )
+)
+monthly_load_gas_upgrade4 <- monthly_load_gas_upgrade4 |>
+  left_join(ma_hh_utilities, by = "bldg_id")
+#View(monthly_load_gas_upgrade4)
+
+# ---------
+# Disconnect from the database
+DBI::dbDisconnect(con)
+
+```
+
+
+## Monthly Electricity Bills
+```{r}
+
+calculate_elec_bills_monthly <- function(monthly_elec_load, delivery_tariffs, supply_rates) {
+  monthly_elec_load |>
+    select(bldg_id, month, elec_consumption, electric_utility) |>
+
+    # Part 1: Delivery Tariffs -> 3 joins for customer_charge, delivery_rate, sales_tax
+    left_join(
+      delivery_tariffs |>
+        filter(type == "customer_charge") |>
+        select(month, electric_utility, value, version, tariff_id) |>
+        rename(customer_charge = value),
+        by = c("month" = "month", "electric_utility" = "electric_utility")  # Explicit join
+    ) |>
+    left_join(
+      delivery_tariffs |>
+        filter(type == "delivery_rate") |>
+        select(month, electric_utility, value, version, tariff_id) |>
+        rename(delivery_rate = value),
+        by = c("month" = "month", "electric_utility" = "electric_utility", "version" = "version", "tariff_id" = "tariff_id")  # Explicit join
+    ) |>
+    left_join(
+      delivery_tariffs |>
+        filter(type == "sales_tax_rate") |>
+        select(month, electric_utility, value, version, tariff_id) |>
+        rename(sales_tax_rate = value),
+        by = c("month" = "month", "electric_utility" = "electric_utility", "version" = "version", "tariff_id" = "tariff_id")  # Explicit join
+    ) |>
+
+    # Part 2: Supply rates -> join on utility and month
+    left_join(
+      supply_rates |>
+        select(-year),
+      by = c("month" = "month", "electric_utility" = "electric_utility")  # Explicit join
+    ) |>
+
+    # Part 3: Calculate monthly bill
+    mutate(
+      delivery_charge = elec_consumption * delivery_rate,
+      supply_charge = elec_consumption * supply_rate,
+      total_pretax_bill = supply_charge + delivery_charge + customer_charge,
+      sales_tax_charge = total_pretax_bill * sales_tax_rate,
+      total_bill = total_pretax_bill + sales_tax_charge
+    ) |>
+    arrange(bldg_id, month, electric_utility, version, tariff_id)
+}
+
+
+# Explicity choose the supply year
+monthly_elec_bills_baseline_2018 <- calculate_elec_bills_monthly(
+                                      monthly_load_elec_baseline |> filter(electric_utility == !!electric_utility),
+                                      delivery_tariffs_elec,
+                                      supply_rates_elec_ma_monthly |> filter(year == 2018)
+                                      )
+monthly_elec_bills_baseline_2024 <- calculate_elec_bills_monthly(
+                                      monthly_load_elec_baseline |> filter(electric_utility == !!electric_utility),
+                                      delivery_tariffs_elec,
+                                      supply_rates_elec_ma_monthly |> filter(year == 2024)
+                                      )
+#View(monthly_elec_bills_baseline_2024)
+
+
+monthly_elec_bills_upgrade4_2018 <- calculate_elec_bills_monthly(
+                                      monthly_load_elec_upgrade4 |> filter(electric_utility == !!electric_utility),
+                                      delivery_tariffs_elec,
+                                      supply_rates_elec_ma_monthly |> filter(year == 2018)
+                                      )
+monthly_elec_bills_upgrade4_2024 <- calculate_elec_bills_monthly(
+                                      monthly_load_elec_upgrade4 |> filter(electric_utility == !!electric_utility),
+                                      delivery_tariffs_elec,
+                                      supply_rates_elec_ma_monthly |> filter(year == 2024)
+                                      )
+#View(monthly_elec_bills_upgrade4_2024)
+```
+
+
+## Monthly Gas Bills
+```{r}
+
+calculate_gas_bills_monthly <- function(monthly_gas_load, delivery_tariffs, supply_rates) {
+  monthly_gas_load |>
+    select(bldg_id, month, gas_consumption, gas_utility) |>
+
+    # Part 1: Delivery Tariffs -> 3 joins for customer_charge, delivery_rate, sales_tax
+    left_join(
+      delivery_tariffs |>
+        filter(type == "customer_charge") |>
+        select(month, gas_utility, value, version, tariff_id) |>
+        rename(customer_charge = value),
+        by = c("month" = "month", "gas_utility" = "gas_utility")  # Explicit join
+    ) |>
+    left_join(
+      delivery_tariffs |>
+        filter(type == "distribution_rate") |>
+        select(month, gas_utility, value, version, tariff_id) |>
+        rename(distribution_rate = value),
+        by = c("month" = "month", "gas_utility" = "gas_utility", "version" = "version", "tariff_id" = "tariff_id")  # Explicit join
+    ) |>
+    left_join(
+      delivery_tariffs |>
+        filter(type == "sales_tax_rate") |>
+        select(month, gas_utility, value, version, tariff_id) |>
+        rename(sales_tax_rate = value),
+        by = c("month" = "month", "gas_utility" = "gas_utility", "version" = "version", "tariff_id" = "tariff_id")  # Explicit join
+    ) |>
+
+    # Part 2: Supply rates -> join on utility and month
+    left_join(
+      supply_rates |>
+        select(-year),
+      by = c("month" = "month", "gas_utility" = "gas_utility")  # Explicit join
+    ) |>
+
+    # Part 3: Calculate monthly bill
+    mutate(
+      distribution_charge = gas_consumption * distribution_rate,
+      supply_charge = gas_consumption * gaf,
+      total_pretax_bill = supply_charge + distribution_charge + customer_charge,
+      sales_tax_charge = total_pretax_bill * sales_tax_rate,
+      total_bill = total_pretax_bill + sales_tax_charge
+    ) |>
+    arrange(bldg_id, month, gas_utility, tariff_id)
+}
+
+monthly_gas_bills_baseline_2018 <- calculate_gas_bills_monthly(monthly_load_gas_baseline |> filter(gas_utility == !!gas_utility),
+                                                              delivery_tariffs_gas |> filter(tariff_name == "r3_resi_heat"),
+                                                              supply_rates_gas_ma_monthly |> filter(year == 2018))
+
+monthly_gas_bills_upgrade4_2018 <- calculate_gas_bills_monthly(monthly_load_gas_upgrade4 |> filter(gas_utility == !!gas_utility),
+                                                              delivery_tariffs_gas |> filter(tariff_name == "r1_resi_nonheat"),
+                                                              supply_rates_gas_ma_monthly |> filter(year == 2018))
+
+monthly_gas_bills_baseline_2024 <- calculate_gas_bills_monthly(monthly_load_gas_baseline |> filter(gas_utility == !!gas_utility),
+                                                              delivery_tariffs_gas |> filter(tariff_name == "r3_resi_heat"),
+                                                              supply_rates_gas_ma_monthly |> filter(year == 2024))
+
+monthly_gas_bills_upgrade4_2024 <- calculate_gas_bills_monthly(monthly_load_gas_upgrade4 |> filter(gas_utility == !!gas_utility),
+                                                              delivery_tariffs_gas |> filter(tariff_name == "r1_resi_nonheat"),
+                                                              supply_rates_gas_ma_monthly |> filter(year == 2024))
+
+
+#View(monthly_gas_bills_baseline_2018)
+#View(monthly_gas_bills_upgrade4_2018)
+#View(monthly_gas_bills_baseline_2024)
+#View(monthly_gas_bills_upgrade4_2024)
+```
+
+
+
+## Annual Bills
+```{r}
+
+calculate_annual_elec_bills_from_monthly <- function(monthly_bills) {
+  monthly_bills   |>
+    group_by(bldg_id, electric_utility, version, tariff_id) |>
+    summarize(
+      annual_bill = sum(total_bill)
+    ) |>
+    ungroup()
+}
+
+annual_elec_bills_baseline_2018 <- calculate_annual_elec_bills_from_monthly(monthly_elec_bills_baseline_2018)
+annual_elec_bills_upgrade4_2018 <- calculate_annual_elec_bills_from_monthly(monthly_elec_bills_upgrade4_2018)
+
+annual_elec_bills_baseline_2024 <- calculate_annual_elec_bills_from_monthly(monthly_elec_bills_baseline_2024)
+annual_elec_bills_upgrade4_2024 <- calculate_annual_elec_bills_from_monthly(monthly_elec_bills_upgrade4_2024)
+
+
+calculate_annual_gas_bills_from_monthly <- function(monthly_bills) {
+  monthly_bills   |>
+    group_by(bldg_id, gas_utility, version, tariff_id) |>
+    summarize(
+      annual_bill = sum(total_bill)
+    ) |>
+    ungroup()
+}
+
+annual_gas_bills_baseline_2018 <- calculate_annual_gas_bills_from_monthly(monthly_gas_bills_baseline_2018)
+annual_gas_bills_upgrade4_2018 <- calculate_annual_gas_bills_from_monthly(monthly_gas_bills_upgrade4_2018)
+
+annual_gas_bills_baseline_2024 <- calculate_annual_gas_bills_from_monthly(monthly_gas_bills_baseline_2024)
+annual_gas_bills_upgrade4_2024 <- calculate_annual_gas_bills_from_monthly(monthly_gas_bills_upgrade4_2024)
+
+```
+
+
+# Analysis
+## Annual Bills
+```{r}
+
+#pre-electrification
+annual_bills_baseline_2018_pre <- annual_gas_bills_baseline_2018 |>
+  rename(annual_gas_bill = annual_bill, tariff_id_gas = tariff_id, version_gas = version) |>
+  left_join(
+    annual_elec_bills_baseline_2018 |>
+      rename(annual_elec_bill = annual_bill, tariff_id_elec = tariff_id, version_elec = version),
+    by = c("bldg_id")
+  ) |>
+  mutate(
+    annual_total_bill = annual_elec_bill + annual_gas_bill
+  ) |>
+  filter(version_elec == "baseline")
+
+# Post-electrification (upgrade 4)
+annual_bills_upgrade4_2018_post <- annual_gas_bills_upgrade4_2018 |>
+  rename(annual_gas_bill = annual_bill, tariff_id_gas = tariff_id, version_gas = version) |>
+  left_join(
+    annual_elec_bills_upgrade4_2018 |>
+      rename(annual_elec_bill = annual_bill, tariff_id_elec = tariff_id, version_elec = version),
+    by = c("bldg_id")
+  ) |>
+  mutate(
+    annual_total_bill = annual_elec_bill + annual_gas_bill
+  ) |>
+  filter(version_elec == "baseline")
+
+
+annual_bills_upgrade4_2018_hpr_approved <- annual_gas_bills_upgrade4_2018 |>
+  rename(annual_gas_bill = annual_bill, tariff_id_gas = tariff_id, version_gas = version) |>
+  left_join(
+    annual_elec_bills_upgrade4_2018 |>
+      rename(annual_elec_bill = annual_bill, tariff_id_elec = tariff_id, version_elec = version),
+    by = c("bldg_id")
+  ) |>
+  mutate(
+    annual_total_bill = annual_elec_bill + annual_gas_bill
+  ) |>
+  filter(version_elec == "hpr_approved")
+
+
+annual_bills_upgrade4_2018_hpr_doer <- annual_gas_bills_upgrade4_2018 |>
+  rename(annual_gas_bill = annual_bill, tariff_id_gas = tariff_id, version_gas = version) |>
+  left_join(
+    annual_elec_bills_upgrade4_2018 |>
+      rename(annual_elec_bill = annual_bill, tariff_id_elec = tariff_id, version_elec = version),
+    by = c("bldg_id")
+  ) |>
+  mutate(
+    annual_total_bill = annual_elec_bill + annual_gas_bill
+  ) |>
+  filter(version_elec == "hpr_doer")
+
+
+
+# Check input table sizes
+cat("Baseline pre rows:", nrow(annual_bills_baseline_2018_pre), "\n")
+cat("Baseline post rows:", nrow(annual_bills_upgrade4_2018_post), "\n")
+cat("HPR approved rows:", nrow(annual_bills_upgrade4_2018_hpr_approved), "\n")
+  cat("HPR DOER rows:", nrow(annual_bills_upgrade4_2018_hpr_doer), "\n")
+
+annual_bills_2022_all_scenarios <- bind_rows(
+  annual_bills_baseline_2018_pre |> mutate(scenario = "baseline_pre"),
+  annual_bills_upgrade4_2018_post |> mutate(scenario = "baseline_post"),
+  annual_bills_upgrade4_2018_hpr_approved |> mutate(scenario = "hpr_approved"),
+  annual_bills_upgrade4_2018_hpr_doer |> mutate(scenario = "hpr_doer")
+)
+
+cat("\nCombined table rows:", nrow(annual_bills_2022_all_scenarios), "\n")
+View(annual_bills_2022_all_scenarios)
+
+
+# -----------------------
+# Print medians of annual total bills for each scenario
+cat("Pre-Electrification median annual bill 2018: $",
+    format(round(median(annual_bills_baseline_2018_pre$annual_total_bill), 2),
+           big.mark=","), "\n")
+
+cat("Post-Electrification median annual bill 2018: $",
+    format(round(median(annual_bills_upgrade4_2018_post$annual_total_bill), 2),
+           big.mark=","), "\n")
+
+cat("HPR Approved median annual bill 2018: $",
+    format(round(median(annual_bills_upgrade4_2018_hpr_approved$annual_total_bill), 2),
+           big.mark=","), "\n")
+
+cat("HPR DOER median annual bill 2018: $",
+    format(round(median(annual_bills_upgrade4_2018_hpr_doer$annual_total_bill), 2),
+           big.mark=","), "\n")
+
+# -----------------------
+# Savings
+
+annual_bills_2018 <- annual_bills_baseline_2018_pre |>
+  select(bldg_id, annual_total_bill) |>
+  rename(baseline_pre_bill = annual_total_bill) |>
+  left_join(
+    annual_bills_upgrade4_2018_post |>
+      select(bldg_id, annual_total_bill) |>
+      rename(baseline_post_bill = annual_total_bill),
+    by = "bldg_id"
+  ) |>
+  left_join(
+    annual_bills_upgrade4_2018_hpr_approved |>
+      select(bldg_id, annual_total_bill) |>
+      rename(hpr_approved_bill = annual_total_bill),
+    by = "bldg_id"
+  ) |>
+  left_join(
+    annual_bills_upgrade4_2018_hpr_doer |>
+      select(bldg_id, annual_total_bill) |>
+      rename(hpr_doer_bill = annual_total_bill),
+    by = "bldg_id"
+  ) |>
+  mutate(
+    post_savings = baseline_post_bill - baseline_pre_bill,
+    post_savings_pct = post_savings / baseline_pre_bill,
+    approved_savings = hpr_approved_bill - baseline_pre_bill,
+    approved_savings_pct = approved_savings / baseline_pre_bill,
+    doer_savings = hpr_doer_bill - baseline_pre_bill,
+    doer_savings_pct = doer_savings / baseline_pre_bill
+  ) |>
+  mutate(
+    supply_year = 2018
+  )
+
+View(annual_bills_2018)
+```
+
+```{r}
+
+#pre-electrification
+annual_bills_baseline_2024_pre <- annual_gas_bills_baseline_2024 |>
+  rename(annual_gas_bill = annual_bill, tariff_id_gas = tariff_id, version_gas = version) |>
+  left_join(
+    annual_elec_bills_baseline_2024 |>
+      rename(annual_elec_bill = annual_bill, tariff_id_elec = tariff_id, version_elec = version),
+    by = c("bldg_id")
+  ) |>
+  mutate(
+    annual_total_bill = annual_elec_bill + annual_gas_bill
+  ) |>
+  filter(version_elec == "baseline")
+# Post-electrification (upgrade 4)
+annual_bills_upgrade4_2024_post <- annual_gas_bills_upgrade4_2024 |>
+  rename(annual_gas_bill = annual_bill, tariff_id_gas = tariff_id, version_gas = version) |>
+  left_join(
+    annual_elec_bills_upgrade4_2024 |>
+      rename(annual_elec_bill = annual_bill, tariff_id_elec = tariff_id, version_elec = version),
+    by = c("bldg_id")
+  ) |>
+  mutate(
+    annual_total_bill = annual_elec_bill + annual_gas_bill
+  ) |>
+  filter(version_elec == "baseline")
+
+annual_bills_upgrade4_2024_hpr_approved <- annual_gas_bills_upgrade4_2024 |>
+  rename(annual_gas_bill = annual_bill, tariff_id_gas = tariff_id, version_gas = version) |>
+  left_join(
+    annual_elec_bills_upgrade4_2024 |>
+      rename(annual_elec_bill = annual_bill, tariff_id_elec = tariff_id, version_elec = version),
+    by = c("bldg_id")
+  ) |>
+  mutate(
+    annual_total_bill = annual_elec_bill + annual_gas_bill
+  ) |>
+  filter(version_elec == "hpr_approved")
+
+annual_bills_upgrade4_2024_hpr_doer <- annual_gas_bills_upgrade4_2024 |>
+  rename(annual_gas_bill = annual_bill, tariff_id_gas = tariff_id, version_gas = version) |>
+  left_join(
+    annual_elec_bills_upgrade4_2024 |>
+      rename(annual_elec_bill = annual_bill, tariff_id_elec = tariff_id, version_elec = version),
+    by = c("bldg_id")
+  ) |>
+  mutate(
+    annual_total_bill = annual_elec_bill + annual_gas_bill
+  ) |>
+  filter(version_elec == "hpr_doer")
+
+# Check input table sizes
+cat("Baseline pre rows:", nrow(annual_bills_baseline_2024_pre), "\n")
+cat("Baseline post rows:", nrow(annual_bills_upgrade4_2024_post), "\n")
+cat("HPR approved rows:", nrow(annual_bills_upgrade4_2024_hpr_approved), "\n")
+  cat("HPR DOER rows:", nrow(annual_bills_upgrade4_2024_hpr_doer), "\n")
+
+annual_bills_2022_all_scenarios <- bind_rows(
+  annual_bills_baseline_2024_pre |> mutate(scenario = "baseline_pre"),
+  annual_bills_upgrade4_2024_post |> mutate(scenario = "baseline_post"),
+  annual_bills_upgrade4_2024_hpr_approved |> mutate(scenario = "hpr_approved"),
+  annual_bills_upgrade4_2024_hpr_doer |> mutate(scenario = "hpr_doer")
+)
+
+cat("\nCombined table rows:", nrow(annual_bills_2022_all_scenarios), "\n")
+
+
+# -----------------------
+# Print medians of annual total bills for each scenario
+cat("Pre-Electrification median annual bill 2024: $",
+    format(round(median(annual_bills_baseline_2024_pre$annual_total_bill), 2),
+           big.mark=","), "\n")
+
+cat("Post-Electrification median annual bill 2024: $",
+    format(round(median(annual_bills_upgrade4_2024_post$annual_total_bill), 2),
+           big.mark=","), "\n")
+
+cat("HPR Approved median annual bill 2024: $",
+    format(round(median(annual_bills_upgrade4_2024_hpr_approved$annual_total_bill), 2),
+           big.mark=","), "\n")
+
+cat("HPR DOER median annual bill 2024: $",
+    format(round(median(annual_bills_upgrade4_2024_hpr_doer$annual_total_bill), 2),
+           big.mark=","), "\n")
+
+# -----------------------
+# Savings
+median_baseline_pre_2024 <- median(annual_bills_baseline_2024_pre$annual_total_bill)
+print(median_baseline_pre_2024)
+
+annual_bills_2024 <- annual_bills_baseline_2024_pre |>
+  select(bldg_id, annual_total_bill) |>
+  rename(baseline_pre_bill = annual_total_bill) |>
+  left_join(
+    annual_bills_upgrade4_2024_post |>
+      select(bldg_id, annual_total_bill) |>
+      rename(baseline_post_bill = annual_total_bill),
+    by = "bldg_id"
+  ) |>
+  left_join(
+    annual_bills_upgrade4_2024_hpr_approved |>
+      select(bldg_id, annual_total_bill) |>
+      rename(hpr_approved_bill = annual_total_bill),
+    by = "bldg_id"
+  ) |>
+  left_join(
+    annual_bills_upgrade4_2024_hpr_doer |>
+      select(bldg_id, annual_total_bill) |>
+      rename(hpr_doer_bill = annual_total_bill),
+    by = "bldg_id"
+  ) |>
+  mutate(
+    post_savings = baseline_post_bill - baseline_pre_bill,
+    post_savings_pct = post_savings / baseline_pre_bill,
+    approved_savings = hpr_approved_bill - baseline_pre_bill,
+    approved_savings_pct = approved_savings / baseline_pre_bill,
+    doer_savings = hpr_doer_bill - baseline_pre_bill,
+    doer_savings_pct = doer_savings / baseline_pre_bill
+  ) |>
+  mutate(
+    supply_year = 2024
+  ) |>
+  filter(post_savings >= 0) |>
+  filter(approved_savings >= 0) |>
+  filter(doer_savings >= 0)
+
+
+cat("Median annual bill impact (post-electrification): $",
+    format(round(median(annual_bills_2024$post_savings), 2),
+           big.mark=","), "\n")
+
+cat("Median annual bill impact (HPR Approved): $",
+    format(round(median(annual_bills_2024$approved_savings), 2),
+           big.mark=","), "\n")
+
+cat("Median annual bill impact (HPR DOER): $",
+    format(round(median(annual_bills_2024$doer_savings), 2),
+           big.mark=","), "\n")
+
+```
+
+
+# Plots (for sanity checking)
+## 4 bars x 2 years
+```{r}
+annual_bills_all <- bind_rows(
+  annual_bills_2018,
+  annual_bills_2024
+) |>
+  mutate(
+    supply_year = as.factor(supply_year)
+  )
+
+annual_bills_all |>
+  pivot_longer(
+    cols = c(baseline_pre_bill, baseline_post_bill, hpr_approved_bill, hpr_doer_bill),
+    names_to = "rate_type",
+    values_to = "annual_bill"
+  ) |>
+  mutate(
+    rate_type = factor(rate_type,
+                      levels = c("baseline_pre_bill", "baseline_post_bill",
+                               "hpr_approved_bill", "hpr_doer_bill"),
+                      labels = c("Pre HP Install\nBaseline Rates",
+                               "Post HP Install\nBaseline Rates",
+                               "Post HP Install\nApproved HP Rates",
+                               "Post HP Install\nDOER HP Rates"))
+  ) |>
+  group_by(rate_type, supply_year) |>
+  summarize(median_bill = median(annual_bill)) |>
+  ggplot(aes(x = rate_type, y = median_bill, fill = supply_year)) +
+  geom_col(position = "dodge") +
+  scale_y_continuous(labels = scales::dollar_format()) +
+  labs(
+    title = "Median Annual Bills by Rate Type and Supply Year",
+    x = NULL,
+    y = "Median Annual Bill",
+    fill = "Supply Year"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(hjust = 0.5)
+  )
+
+ggsave(
+  "src/ma_hp_rates/img/annual_bills_4bars.png",
+  width = 5,
+  height = 4,
+  dpi = 300,
+  bg = "white"
+)
+
+```
+
+
+
+
+
+
+## 4 Histograms: baseline, hpr_approved, hpr_doer
+```{r}
+library(patchwork)  # Add this at the top with other library imports
+
+median_hpr_doer_2018 <- median(annual_bills_2018_hpr_doer$annual_total_bill)
+median_hpr_approved_2018 <- median(annual_bills_2018_hpr_approved$annual_total_bill)
+median_baseline_pre_2018 <- median(annual_bills_2018_baseline_pre$annual_total_bill)
+median_baseline_post_2018 <- median(annual_bills_2018_baseline_post$annual_total_bill)
+
+
+# Get the overall x-axis limits from all data
+min_bill <- 0
+max_bill <- 7500
+median_bump <- 200
+y_max = 125
+y_limits <- c(0, y_max)
+
+y_median <- y_max*0.90
+binwidth <- 250
+
+p1 <- annual_bills_2018_hpr_doer |>
+  ggplot(aes(x = annual_total_bill)) +
+  geom_histogram(fill = "#68BED8", alpha = 0.8, binwidth = binwidth) +
+  geom_vline(aes(xintercept = median(annual_total_bill)), color = "black", linetype = "solid") +
+  annotate("text",
+           x = median(annual_bills_2018_hpr_doer$annual_total_bill) + median_bump, # offset text to the right
+           y = y_median,
+           label = paste0("Median Annual Bill: $", round(median(annual_bills_2018_hpr_doer$annual_total_bill), 0)),
+           hjust = 0) +
+  labs(title = paste0("Post HP Install, DOER HP Rates"), x = NULL, y = "Homes Count") +
+  scale_y_continuous(labels = scales::comma, limits = y_limits) +
+  scale_x_continuous(
+    labels = scales::dollar_format(),
+    limits = c(min_bill, max_bill)
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.major = element_line(linewidth = 0.2),
+    panel.grid.minor = element_blank()
+  )
+
+p2 <- annual_bills_2018_hpr_approved |>
+  ggplot(aes(x = annual_total_bill)) +
+  geom_histogram(fill = "#FC9706", alpha = 0.8, binwidth = binwidth) +
+  geom_vline(aes(xintercept = median(annual_total_bill)), color = "black", linetype = "solid") +
+  annotate("text",
+           x = median(annual_bills_2018_hpr_approved$annual_total_bill) + median_bump,
+           y = y_median,
+           label = paste0("Median Annual Bill: $", round(median(annual_bills_2018_hpr_approved$annual_total_bill), 0)),
+           hjust = 0) +
+  labs(title = paste0("Post HP Install, Approved HP Rates"), x = NULL, y = "Homes Count") +
+  scale_y_continuous(labels = scales::comma, limits = y_limits) +
+  scale_x_continuous(
+    labels = scales::dollar_format(),
+    limits = c(min_bill, max_bill)
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.major = element_line(linewidth = 0.2),
+    panel.grid.minor = element_blank()
+  )
+
+p3 <- annual_bills_2018_baseline_post |>
+  ggplot(aes(x = annual_total_bill)) +
+  geom_histogram(fill = "#023047", alpha = 0.8, binwidth = binwidth) +
+  geom_vline(aes(xintercept = median(annual_total_bill)), color = "black", linetype = "solid") +
+  annotate("text",
+           x = median(annual_bills_2018_baseline_post$annual_total_bill) + median_bump,
+           y = y_median,
+           label = paste0("Median Annual Bill: $", round(median(annual_bills_2018_baseline_post$annual_total_bill), 0)),
+           hjust = 0) +
+  labs(title = paste0("Post HP Install, Default Rates"), x = NULL, y = "Homes Count" ) +
+  scale_y_continuous(labels = scales::comma, limits = y_limits) +
+  scale_x_continuous(
+    labels = scales::dollar_format(),
+    limits = c(min_bill, max_bill)
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.major = element_line(linewidth = 0.2),
+    panel.grid.minor = element_blank()
+  )
+
+p4 <- annual_bills_2018_baseline_pre |>
+  ggplot(aes(x = annual_total_bill)) +
+  geom_histogram(fill = "grey80", alpha = 0.8, binwidth = binwidth) +
+  geom_vline(aes(xintercept = median(annual_total_bill)), color = "black", linetype = "solid") +
+  annotate("text",
+           x = median(annual_bills_2018_baseline_pre$annual_total_bill) + median_bump,
+           y = y_median,
+           label = paste0("Median Annual Bill: $", round(median(annual_bills_2018_baseline_pre$annual_total_bill), 0)),
+           hjust = 0) +
+  labs(title = paste0("Pre HP Install, Default Rates"), x = "Annual Bill ($)", y = "Homes Count" ) +
+  scale_y_continuous(labels = scales::comma, limits = y_limits) +
+  scale_x_continuous(
+    labels = scales::dollar_format(),
+    limits = c(min_bill, max_bill)
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.major = element_line(linewidth = 0.2),
+    panel.grid.minor = element_blank()
+  )
+
+# Combine plots vertically using patchwork
+p1 / p2 / p3 / p4 +
+  plot_layout(heights = c(1, 1, 1, 1)) +
+  plot_annotation(
+    title = "Heat Pump (HP) Rate Impacts on Total Household Bills",
+    subtitle = glue::glue("Electric Utility: {electric_utility} | Gas Utility: {gas_utility} | 2024 Gas Supply Rates"),
+    theme = theme(
+      plot.margin = margin(3, 3, 3, 3),
+      plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+      plot.subtitle = element_text(hjust = 0.5, size = 12)
+    )
+  )
+
+# Display the plot
+# print(p1 / p2 / p3 +
+#   plot_layout(heights = c(1, 1, 1)) +
+#   plot_annotation(
+#     theme = theme(plot.margin = margin(10, 10, 10, 10))
+#   ))
+
+
+ggsave(
+  "src/ma_hp_rates/img/annual_bills_4hists.png",
+  width = 5,
+  height = 4,
+  dpi = 300,
+  bg = "white"
+)
+
+
+```
+
+
+## Plot: Baseline_post vs Baseline_pre, HPR Approved vs Baseline_pre, HPR DOER vs Baseline_pre
+```{r}
+pct_below_zero <- function(x) {
+  mean(x < 0) * 100
+}
+data.frame(
+  rate_type = c("DOER", "Approved", "Post"),
+  pct_negative = c(
+    pct_below_zero(annual_bills_2018$doer_savings),
+    pct_below_zero(annual_bills_2018$approved_savings),
+    pct_below_zero(annual_bills_2018$post_savings)
+  )
+) |>
+  print()
+
+
+
+
+x_axis_limits <- c(-3000, 3000)
+y_max = 175
+y_axis_limits <- c(0, y_max)
+median_bump <- 200
+
+# Create the two histograms
+p1 <- ggplot(annual_bills_2024, aes(x = doer_savings)) +
+  geom_histogram(fill = "#68BED8", alpha = 0.8, binwidth = 100) +
+  #geom_vline(aes(xintercept = median(doer_savings)), color = "black", linetype = "solid") +
+  # annotate("text",
+  #          x = median(annual_bills_2018$doer_savings) + median_bump,
+  #          y = Inf,
+  #          label = paste0("Median Annual Bill Impact: $", round(median(annual_bills_2018$doer_savings), 0)),
+  #          hjust = 0,
+  #          vjust = 2) +
+  labs(title = paste0("Post HP Install, DOER Rates"), x = NULL, y= "Homes Count") +
+  scale_x_continuous(labels = scales::dollar_format(), limits = x_axis_limits) +
+  scale_y_continuous(labels = scales::comma, limits = y_axis_limits) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.major = element_line(linewidth = 0.2),
+    panel.grid.minor = element_blank()
+  )
+
+p2 <- ggplot(annual_bills_2024, aes(x = approved_savings)) +
+  geom_histogram(fill = "#FC9706", alpha = 0.8, binwidth = 100) +
+  #geom_vline(aes(xintercept = median(approved_savings)), color = "black", linetype = "solid") +
+  # annotate("text",
+  #          x = median(annual_bills_2018$approved_savings) + median_bump,
+  #          y = Inf,
+  #          label = paste0("Median Annual Bill Impact: $", round(median(annual_bills_2018$approved_savings), 0)),
+  #          hjust = 0,
+  #          vjust = 2) +
+  labs(title = paste0("Post HP Install, Approved Rates"), x = NULL, y= "Homes Count") +
+  scale_x_continuous(labels = scales::dollar_format(), limits = x_axis_limits) +
+  scale_y_continuous(labels = scales::comma, limits = y_axis_limits) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.major = element_line(linewidth = 0.2),
+    panel.grid.minor = element_blank()
+  )
+
+p3 <- ggplot(annual_bills_2024, aes(x = post_savings)) +
+  geom_histogram(fill = "#023047", alpha = 0.8, binwidth = 100) +
+  #geom_vline(aes(xintercept = median(post_savings)), color = "black", linetype = "solid") +
+  # annotate("text",
+  #          x = median(annual_bills_2018$post_savings) + median_bump,
+  #          y = Inf,
+  #          label = paste0("Median Annual Bill Impact: $", round(median(annual_bills_2018$post_savings), 0)),
+  #          hjust = 0,
+  #          vjust = 2) +
+  labs(title = paste0("Post HP Install, Default Rates"), x = "Impact on Annual Bill ($)", y= "Homes Count") +
+  scale_x_continuous(labels = scales::dollar_format(), limits = x_axis_limits) +
+  scale_y_continuous(labels = scales::comma, limits = y_axis_limits) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.major = element_line(linewidth = 0.2),
+    panel.grid.minor = element_blank()
+  )
+
+# Combine plots vertically using patchwork
+p1 / p2 / p3 +
+  plot_layout(heights = c(1, 1, 1)) +
+  plot_annotation(
+    title = "Heat Pump Rate Impacts on Total Household Bills",
+    subtitle = glue::glue("Electric Utility: {electric_utility} | Gas Utility: {gas_utility} | 2024 Supply Rates"),
+    theme = theme(
+      plot.margin = margin(3, 3, 3, 3),
+      plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+      plot.subtitle = element_text(hjust = 0.5, size = 12)
+    )
+  )
+
+# Save the plot
+ggsave(
+  "src/ma_hp_rates/img/annual_savings_hists.png",
+  width = 4.5,
+  height = 4,
+  dpi = 300,
+  bg = "white"
+)
+```

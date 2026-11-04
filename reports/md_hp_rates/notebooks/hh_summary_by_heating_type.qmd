@@ -1,0 +1,261 @@
+---
+title: MD BGE Household Summary by Heating Type
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+execute:
+  warning: false
+  message: false
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+
+This notebook builds the per-building base table for summarizing MD BGE's ResStock
+population by heating type: ResStock's own building attributes (heating/fuel
+classification, cooling equipment, income, and federal poverty level) joined to the
+`is_lmi_any` LMI-eligibility flag CAIRO's post-processing computes onto the master bills
+table. It's the data-loading step for a `hh_summary_by_heating_type`-style summary
+(counts/shares by heating type), with one summary -- cooling coverage by heating type --
+built out below. Further slices (income, LMI status, etc.) are a follow-up.
+
+The loading and joining logic lives in
+[`lib/rates_analysis/hh_summary_funcs.py`](../../../lib/rates_analysis/hh_summary_funcs.py),
+parameterized by state/batch/release so any `<state>_hp_rates` report can reuse it as a
+template, not just MD BGE.
+
+## Setup
+
+```{python}
+#| label: setup
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import yaml
+import polars as pl
+
+from lib.rates_analysis.hh_summary_funcs import (
+    HH_SUMMARY_COLS,
+    bill_delta_direction_by_cooling_coverage,
+    cooling_coverage_share_by_heating_type,
+    load_household_summary_base,
+    plot_bill_delta_direction_by_cooling_coverage,
+    plot_cooling_coverage_by_heating_type,
+    scan_cooling_columns,
+)
+from lib.rates_analysis.rate_case_funcs import bill_delta_between_segments, segment_name
+```
+
+## Parameters
+
+Batch identity lives in `batch_config.yaml` alongside this report, not hardcoded here, so
+re-running against a new batch -- or copying this notebook as a template for a different
+state -- is a one-file or one-cell change.
+
+```{python}
+#| label: params
+
+_batch_config = yaml.safe_load(Path("../batch_config.yaml").read_text())
+
+STATE = _batch_config["STATE"]
+BATCH = _batch_config["BATCH"]
+RESSTOCK_RELEASE = _batch_config["RESSTOCK_RELEASE"]
+DEFAULT_SCENARIO = _batch_config["BASELINE_BILL_SCENARIO"]
+UTILITY = "bge"
+
+# Same {scenario}_{stage} segment-naming convention as analysis.qmd, needed below to pull
+# the HP flat-rate bill-delta dataset.
+RESIDUAL = "percustomer"
+FLAT_SCENARIO = f"hp_flat_{RESIDUAL}_passthrough"
+SEG_DEFAULT_PRECALC = segment_name(DEFAULT_SCENARIO, "precalc")
+SEG_FLAT_CALIBRATED = segment_name(FLAT_SCENARIO, "calibrated")
+
+print(f"state={STATE}  batch={BATCH}  resstock_release={RESSTOCK_RELEASE}  scenario={DEFAULT_SCENARIO}")
+```
+
+## The three HVAC cooling columns
+
+ResStock's metadata has several columns with "cooling" in the name, but most describe
+thermostat schedules (`in.cooling_setpoint*`), not the cooling system itself. The three we
+care about here describe the cooling *equipment* each home has, per the [ResStock 2024 data
+dictionary](../../../lib/resstock/2024/data_dictionary_2024_labeled.csv):
+
+| Column | What it captures | Categories |
+| --- | --- | --- |
+| `in.hvac_cooling_type` | Presence and type of cooling system | Central AC, Ducted Heat Pump, Non-Ducted Heat Pump, Room AC, None |
+| `in.hvac_cooling_efficiency` | Presence and efficiency of cooling system | AC (SEER 8/10/13/15), Room AC (EER 8.5/9.8/10.7/12.0), Ducted/Non-Ducted Heat Pump, Shared Cooling, None |
+| `in.hvac_cooling_partial_space_conditioning` | Fraction of finished floor area the cooling system conditions | 100%, 80%, 60%, 40%, 20%, <10%, None |
+
+Before folding these into the household summary table, let's look at the actual
+distribution of each for MD BGE's ResStock population, rather than assume the categories
+above are exhaustive for this state's building stock. `metadata-sb.parquet` covers all of
+MD's utilities, so we restrict to BGE via `utility` -- `scan_cooling_columns()` semi-joins
+against `utility_assignment.parquet` to do this (ResStock metadata itself carries no
+utility column).
+
+```{python}
+#| label: scan-cooling
+
+cooling_meta = scan_cooling_columns(RESSTOCK_RELEASE, STATE, utility=UTILITY).collect()
+print(f"cooling_meta ({UTILITY}): {cooling_meta.height:,} buildings")
+```
+
+```{python}
+#| label: cooling-type-counts
+
+cooling_meta["in.hvac_cooling_type"].value_counts().sort("count", descending=True)
+```
+
+```{python}
+#| label: cooling-efficiency-counts
+
+cooling_meta["in.hvac_cooling_efficiency"].value_counts().sort("count", descending=True)
+```
+
+```{python}
+#| label: cooling-partial-conditioning-counts
+
+cooling_meta["in.hvac_cooling_partial_space_conditioning"].value_counts().sort("count", descending=True)
+```
+
+## Load ResStock metadata + LMI flag
+
+The household summary table combines two sources:
+
+- **ResStock metadata** (`metadata-sb.parquet`, upgrade 00 -- today's mixed heating
+  population): the heating/fuel attributes CAIRO's post-processing already carries onto
+  every master-bills row (`postprocess_group.has_hp`, `postprocess_group.heating_type_v2`,
+  the `heats_with_*` fuel flags), the three cooling columns above, income (`in.income`
+  banded and `in.representative_income` continuous), and `in.federal_poverty_level`.
+- **`is_lmi_any`**: whether the building is eligible for MD's OHEP low-income discount
+  (MEAP + EUSP combined). This isn't a raw ResStock column -- it's computed by CAIRO's
+  post-processing onto the master bills table -- so it has to be joined in separately
+  rather than read directly off metadata.
+
+Both are restricted to `{python} UTILITY` buildings, same as the cooling-column scan above.
+
+`load_household_summary_base()` does both steps -- metadata (utility-filtered) + LMI join --
+in one call. The exact metadata columns it pulls:
+
+```{python}
+#| label: show-column-list
+
+HH_SUMMARY_COLS
+```
+
+```{python}
+#| label: load-hh-base
+
+hh_base = load_household_summary_base(RESSTOCK_RELEASE, STATE, BATCH, DEFAULT_SCENARIO, utility=UTILITY)
+print(f"hh_base ({UTILITY}): {hh_base.height:,} buildings, {len(hh_base.columns)} columns")
+hh_base.columns
+```
+
+## Sanity checks
+
+Two things could silently break this table: duplicate `bldg_id`s (a bad join fan-out) or
+buildings missing an `is_lmi_any` flag (metadata rows the master-bills join didn't cover).
+
+```{python}
+#| label: sanity-checks
+
+n_dupe_bldgs = hh_base.height - hh_base["bldg_id"].n_unique()
+assert n_dupe_bldgs == 0, f"{n_dupe_bldgs} duplicate bldg_id rows in hh_base"
+
+n_missing_lmi = hh_base["is_lmi_any"].null_count()
+pct_missing_lmi = n_missing_lmi / hh_base.height
+print(f"Buildings missing is_lmi_any: {n_missing_lmi:,} ({pct_missing_lmi:.1%})")
+```
+
+A preview of the final table:
+
+```{python}
+#| label: preview-hh-base
+
+hh_base.head()
+```
+
+## Cooling coverage by heating type
+
+`in.hvac_cooling_partial_space_conditioning` tells us how much of a home's floor area its
+cooling system actually conditions -- anywhere from `None` up to `100% Conditioned`. Does
+that vary by baseline heating type? `cooling_coverage_share_by_heating_type()` answers this
+with *shares*, not raw counts, so natural-gas homes (the largest group) and, say,
+oil/propane homes (a much smaller group) are directly comparable: each heating type's
+segments sum to 100% of that heating type's population, weighted by ResStock's sample
+`weight` rather than counted as a raw number of sampled buildings. It groups by
+`postprocess_group.heating_type_v2` and relabels its codes (`natgas`, `delivered_fuels`,
+`electrical_resistance`, `heat_pump`, `other`) using the same `HEATING_TYPE_LABELS`/
+`HEATING_ORDER` lookup [`analysis.qmd`](analysis.qmd) uses, so the categories read the same
+way as every other heating-type breakdown in this report.
+
+```{python}
+#| label: cooling-coverage-share
+
+cooling_share = cooling_coverage_share_by_heating_type(hh_base)
+cooling_share
+```
+
+Heat pumps in ResStock always ship with 100% cooling coverage -- they're a combined
+heating-and-cooling system by construction. Every other heating type is more of a mixed
+bag: most homes have full-coverage central AC, but a meaningful minority have only partial
+coverage (window units, ductless mini-splits covering part of the home) or no cooling at
+all.
+
+```{python}
+#| label: fig-cooling-coverage-by-heating-type
+#| fig-cap: "Weighted share of cooling coverage by baseline heating type, MD BGE"
+
+plot_cooling_coverage_by_heating_type(cooling_share)
+```
+
+## Bill impact of switching to a heat pump, by cooling coverage
+
+`analysis.qmd`'s bill-change comparisons all restrict to natural-gas-heated homes -- the
+population actually facing a fuel-switching decision -- and diff each building's annual bill
+between `default_precalc` (today's gas furnace, today's tariff) and a post-retrofit segment
+using `bill_delta_between_segments()`. We reuse that same comparison here
+(`default_precalc` -> `hp_flat_percustomer_passthrough_calibrated`, MD BGE's HP flat rate,
+the same pairing behind `analysis.qmd`'s `delta_natgas_default_to_flat`) and ask a new
+question: does the bill outcome -- up or down -- depend on how much cooling the home already
+has? A home with full-coverage central AC already has ductwork a heat pump can reuse; a home
+with little or no cooling gains a new AC system (and its electric load) on top of the heating
+retrofit.
+
+```{python}
+#| label: bill-delta-natgas-flat
+
+delta_natgas_default_to_flat = bill_delta_between_segments(
+    STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_FLAT_CALIBRATED
+).filter(pl.col("heating_type_v2") == "natgas")
+print(f"{delta_natgas_default_to_flat.height:,} natural-gas-heated {UTILITY} buildings")
+```
+
+`bill_delta_direction_by_cooling_coverage()` joins this per-building delta to the
+cooling-coverage attribute in `hh_base` and, within each coverage level, runs the same
+`bill_change_incidence()` logic `analysis.qmd` uses for every other bill-change stat --
+weighted shares of `delta > 0` (bill increase), `delta < 0` (bill decrease), and `delta == 0`
+(no change).
+
+```{python}
+#| label: bill-delta-direction-by-cooling
+
+bill_delta_direction = bill_delta_direction_by_cooling_coverage(hh_base, delta_natgas_default_to_flat)
+bill_delta_direction
+```
+
+```{python}
+#| label: fig-bill-delta-direction-by-cooling-coverage
+#| fig-cap: "Share of natural-gas-heated MD BGE homes with a higher vs. lower annual energy bill after switching to a heat pump under the HP flat rate, by cooling coverage"
+
+plot_bill_delta_direction_by_cooling_coverage(bill_delta_direction)
+```

@@ -1,0 +1,86 @@
+---
+title: ma_delivery_tariffs_gas
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+# MA Electric Delivery Tariffs
+Still to-do:
+- Berkshire has variable LDAF and revenue adjustment factors (https://www.berkshiregas.com/account/understandyourbill/other_rates_information)
+
+```{r}
+library(tidyverse)
+library(scales)
+library(gt)
+library(gtExtras)
+library(jsonlite)
+library(RSQLite)
+library(readxl)
+
+source("/workspaces/reports/lib/ggplot/switchbox_theme.R")
+
+library(tidyverse)
+library(googlesheets4)
+
+url_sheet_delivery_tariffs_gas_ma <- "https://docs.google.com/spreadsheets/d/1ikBwsX3UF4RheRrEoQzAHFqwXbI07Z-iXEiIEYraFNI/edit?gid=0#gid=0"
+googlesheets4::gs4_deauth()
+tariffs_gas_raw <- read_sheet(url_sheet_delivery_tariffs_gas_ma, sheet = "delivery_tariffs_gas_ma") |>
+  mutate(tariff_id = paste0(gas_utility, "_", tariff_name)) |>
+
+  # 1 therm = 29.3 kWh...ResStock data is in kWh
+  mutate(
+    value = if_else(billing_unit == "therm", value / 29.3, value)
+  ) |>
+  select(-source)
+
+summer_months <- c(5,6,7,8,9,10)
+winter_months <- c(11,12,1,2,3,4)
+
+# The tariffs are specified by season, so we need to expand them out to the monthly grid
+delivery_tariffs_gas <- tariffs_gas_raw |>
+  mutate(
+    month = if_else(season == "summer",
+                    list(summer_months),
+                    list(winter_months))
+  ) |>
+  select(-season) |>
+  unnest(month) |>
+  arrange(gas_utility, month)
+
+# Collapse distribution_rate, adjustment_rate, and ldac into a single delivery_rate
+delivery_tariffs_gas <- delivery_tariffs_gas |>
+  group_by(class, gas_utility, customer_class, version, tariff_name, month, tariff_id) |>
+  mutate(
+    type = case_when(
+      type %in% c("distribution_rate", "adjustment_rate", "ldac") ~ "delivery_rate",
+      TRUE ~ type
+    )
+  ) |>
+  group_by(class, gas_utility, customer_class, version, tariff_name, month, tariff_id, type) |>
+  summarise(
+    value = sum(value),
+    .groups = "drop"
+  ) |>
+  arrange(gas_utility, month)
+
+
+#path_rs_db <- "data/ResStock/2022_resstock_amy2018_release_1.1/rs_ma_hp_rates.db"
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+DBI::dbWriteTable(
+  con,
+  "delivery_tariffs_gas",
+  delivery_tariffs_gas,
+  overwrite = TRUE
+)
+DBI::dbDisconnect(con)
+```

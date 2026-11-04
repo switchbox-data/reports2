@@ -1,0 +1,1234 @@
+---
+title: analysis - MA HP Rates
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+
+```{r}
+library(lubridate)
+library(patchwork)
+library(tidyverse)
+
+# Switchbox Libraries
+source("lib/ggplot/switchbox_theme.R")
+source("lib/rates_analysis/heat_pump_rate_funcs.R")
+
+path_rs_db <- "data/ResStock/2022_resstock_amy2018_release_1.1/rs_ma_hp_targeted.db"
+
+# Choose county
+county = 'Suffolk'
+electric_utility = 'national_grid'
+gas_utility = 'nationalgrid'
+
+county_code_rs <- case_when(
+  county == 'Suffolk' ~ "G2500250", # Winthrop
+  county == 'Worcester' ~ "G2500270" # Leominster
+)
+```
+
+
+### --------------------------------------------------------------------------
+# County Metadata
+### --------------------------------------------------------------------------
+
+## Houshold Heating Types
+```{r}
+# Make a copy of the housing_units table
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+DBI::dbExecute(con, "CREATE TABLE IF NOT EXISTS housing_units_original AS SELECT * FROM housing_units")
+DBI::dbDisconnect(con)
+
+
+# 1. trim to our counties of interest
+#counties_of_interest <- c("G2500250", "G2500270")
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+DBI::dbExecute(con, sprintf("
+  CREATE OR REPLACE TABLE housing_units AS
+  SELECT *
+  FROM housing_units_original
+  WHERE \"in.county\" IN ('%s')
+", paste(county_code_rs, collapse = "','")))
+DBI::dbDisconnect(con)
+
+# 2. Force all gas utilities to be nationalgrid
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+DBI::dbExecute(con, "
+  UPDATE housing_units
+  SET gas_utility = 'nationalgrid',
+      electric_utility = 'national_grid'
+")
+DBI::dbDisconnect(con)
+
+
+# 3. add a column to the housing_units table that is the baseline heating type (like in.heating_fuel but splits electricity into resistance and heat pump)
+add_baseline_heating_type(path_rs_db)
+
+# 4. add a column to the housing_units table that is the income in dollars
+add_income_dollars(path_rs_db)
+
+```
+
+```{r}
+# --------------------------------------------------------------------------
+# Get some summary counts
+# Heating Type Counts
+heating_type_counts <- get_housing_units_column_counts("baseline_heating_type", county_code_rs)
+print("Heating Type Counts")
+print(heating_type_counts)
+
+# Gas Utility Counts
+gas_utility_counts <- get_housing_units_column_counts("gas_utility", county_code_rs)
+print("Gas Utility Counts")
+print(gas_utility_counts)
+
+# Electric Utility Counts
+electric_utility_counts <- get_housing_units_column_counts("electric_utility", county_code_rs)
+print("Electric Utility Counts")
+print(electric_utility_counts)
+
+# City Counts
+city_counts <- get_housing_units_column_counts("\"in.city\"", county_code_rs)
+print("City Counts")
+print(city_counts)
+
+# County Counts
+county_counts <- get_housing_units_column_counts("\"in.county\"", county_code_rs)
+print("County Counts")
+print(county_counts)
+
+# Housing Types Counts
+housing_types_counts <- get_housing_units_column_counts("\"in.geometry_building_type_acs\"", county_code_rs)
+print("Housing Types Counts")
+print(housing_types_counts)
+```
+
+## Heating Type Bar Chart
+```{r}
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+housing_units <- DBI::dbReadTable(con, "housing_units")
+DBI::dbDisconnect(con)
+
+heating_fuel_counts <- housing_units |>
+  group_by(baseline_heating_type) |>
+  summarize(count = n()) |>
+  mutate(percentage = count / sum(count) * 100) |>
+  arrange(desc(count)) |>
+  # Convert to factor with levels in reverse order for bottom-to-top stacking
+  mutate(baseline_heating_type = factor(baseline_heating_type, levels = rev(baseline_heating_type)))
+
+# Then create the plot
+ggplot(heating_fuel_counts, aes(x = fct_rev(baseline_heating_type), y = count)) +
+  geom_bar(stat = "identity", fill = sb_colors["midnight"], width = 0.7) +
+  geom_text(aes(label = sprintf("%.1f%%", percentage), y = count + max(count)*0.05),
+            size = 10) +
+  labs(
+    title = "Distribution of Primary Heating Types",
+    subtitle = glue::glue("{county} County"),
+    x = "Heating Type",
+    y = "Number of Buildings"
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 14),
+    axis.text.x = element_text(angle = 0, hjust = 0.5, size = 16),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+
+ggsave(
+  "/workspaces/reports/src/ma_hp_rates/img/heating_fuel_counts.png",
+  width = 3,
+  height = 3,
+  dpi = 300,
+  bg = "white"
+)
+```
+
+## Income Brackets Bar Chart
+```{r}
+# con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+# housing_units <- DBI::dbReadTable(con, "housing_units")
+# DBI::dbDisconnect(con)
+
+# # Create two dataframes filtered by occupants
+# income_small_household <- housing_units |>
+#   filter(in.occupants <= 3) |>
+#   group_by(income_dollars) |>
+#   summarize(count = n()) |>
+#   mutate(percentage = count / sum(count) * 100) |>
+#   filter(!is.na(income_dollars)) |>
+#   arrange(desc(income_dollars)) |>
+#   mutate(income_dollars = factor(income_dollars, levels = income_dollars))
+
+# income_large_household <- housing_units |>
+#   filter(in.occupants >= 4) |>
+#   group_by(income_dollars) |>
+#   summarize(count = n()) |>
+#   mutate(percentage = count / sum(count) * 100) |>
+#   filter(!is.na(income_dollars)) |>
+#   arrange(desc(income_dollars)) |>
+#   mutate(income_dollars = factor(income_dollars, levels = income_dollars))
+
+# # Create the two plots
+# p1 <- ggplot(income_small_household, aes(x = fct_rev(income_dollars), y = count)) +
+#   geom_bar(stat = "identity", fill = sb_colors["midnight"], width = 0.7) +
+#   geom_text(aes(label = sprintf("%.1f%%", percentage), y = count + max(count)*0.05),
+#             size = 10) +
+#   labs(
+#     title = "Income Distribution (1-3 Occupants)",
+#     subtitle = glue::glue("{county} County"),
+#     x = "Income ($)",
+#     y = "Number of Buildings"
+#   ) +
+#   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+#   theme(
+#     plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),
+#     plot.subtitle = element_text(hjust = 0.5, size = 14),
+#     axis.text.x = element_text(angle = 45, hjust = 1, size = 16),
+#     panel.grid.major.x = element_blank(),
+#     panel.grid.minor = element_blank()
+#   )
+
+# p2 <- ggplot(income_large_household, aes(x = fct_rev(income_dollars), y = count)) +
+#   geom_bar(stat = "identity", fill = sb_colors["midnight"], width = 0.7) +
+#   geom_text(aes(label = sprintf("%.1f%%", percentage), y = count + max(count)*0.05),
+#             size = 10) +
+#   labs(
+#     title = "Income Distribution (4+ Occupants)",
+#     subtitle = glue::glue("{county} County"),
+#     x = "Income ($)",
+#     y = "Number of Buildings"
+#   ) +
+#   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+#   theme(
+#     plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),
+#     plot.subtitle = element_text(hjust = 0.5, size = 14),
+#     axis.text.x = element_text(angle = 45, hjust = 1, size = 16),
+#     panel.grid.major.x = element_blank(),
+#     panel.grid.minor = element_blank()
+#   )
+
+# # Combine plots using patchwork
+# combined_plot <- p1 / p2
+
+# # Save the combined plot
+# ggsave(
+#   "/workspaces/reports/src/ma_hp_rates/img/income_by_occupants.png",
+#   combined_plot,
+#   width = 12,
+#   height = 8,
+#   dpi = 300,
+#   bg = "white"
+# )
+
+# # Display the combined plot
+# combined_plot
+
+
+
+
+
+```
+
+## Housing Types Bar Chart
+```{r}
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+housing_units <- DBI::dbReadTable(con, "housing_units")
+DBI::dbDisconnect(con)
+
+single_family <- c("Single-Family Detached", "Single-Family Attached")
+multi_family <- c("2 Unit", "3 or 4 Unit", "5 to 9 Unit", "10 to 19 Unit", "20 to 49 Unit", "50 or more Unit")
+order = c(single_family, multi_family)
+
+housing_types_counts <- housing_units |>
+  filter(`in.geometry_building_type_acs` %in% order) |>
+  group_by(`in.geometry_building_type_acs`) |>
+  summarize(count = n()) |>
+  arrange(order) |>
+  mutate(percentage = count / sum(count) * 100) |>
+  mutate(`in.geometry_building_type_acs` = factor(`in.geometry_building_type_acs`))
+
+
+# First create a new dataframe with housing category
+housing_types_grouped <- housing_types_counts |>
+  mutate(
+    housing_category = case_when(
+      `in.geometry_building_type_acs` %in% single_family ~ "Single Family",
+      `in.geometry_building_type_acs` %in% multi_family ~ "Multi Family"
+    )
+  )
+
+ggplot(housing_types_grouped,
+       aes(x = housing_category,
+           y = count,
+           fill = factor(`in.geometry_building_type_acs`, levels = rev(order)))) +
+  geom_bar(stat = "identity", position = "stack", width = 0.7) +
+  # Add text for each building type segment
+  geom_text(data = housing_types_grouped,
+            aes(label = `in.geometry_building_type_acs`,
+                y = count),
+            position = position_stack(vjust = 0.5),  # Center text in each segment
+            color = "white",  # Make text white for better visibility
+            size = 3) +  # Smaller text size for building types
+  # Keep existing percentage labels at the top
+  geom_text(data = housing_types_grouped |>
+              group_by(housing_category) |>
+              summarize(total = sum(count)) |>
+              mutate(pct = total/sum(total)*100),
+            aes(x = housing_category,
+                y = total + max(total)*0.05,
+                label = sprintf("%.1f%%", pct)),
+            inherit.aes = FALSE,
+            size = 10) +
+  labs(
+    title = "Distribution of Housing Types",
+    subtitle = glue::glue("{county} County"),
+    x = "Housing Category",
+    y = "Number of Buildings",
+    fill = "Building Type"
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  scale_fill_manual(values = colorRampPalette(c(sb_colors["midnight"], sb_colors["sky"]))(length(order))) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 14),
+    axis.text.x = element_text(angle = 0, hjust = 0.5, size = 16),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = "right"
+  )
+
+ggsave(
+  "/workspaces/reports/src/ma_hp_rates/img/housing_types_counts.png",
+  width = 3,
+  height = 3,
+)
+```
+
+
+### --------------------------------------------------------------------------
+# Calculate Bills
+### --------------------------------------------------------------------------
+
+# Electric Bills
+## Electric Delivery Tariffs
+```{r}
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+delivery_tariffs_elec <- DBI::dbReadTable(con, "delivery_tariffs_elec")
+DBI::dbDisconnect(con)
+
+```
+
+## Electric Supply Rates
+```{r}
+source("lib/rates_analysis/heat_pump_rate_funcs.R")
+# path_to_supply_rates <- "/workspaces/reports/data/utility_rates/electric/ConEd/coned_supply_rates.csv"
+# supply_rates <- read_csv(path_to_supply_rates)
+
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+supply_rates_elec <- DBI::dbReadTable(con, "supply_rates_elec")
+DBI::dbDisconnect(con)
+
+# Monthly Supply Rates are used parts of the bill calculation
+supply_monthly_2024 <- get_supply_rates_monthly(supply_rates_elec, target_year = 2024, type = "all_hours", zone = "everywhere")
+
+```
+
+### Electric Supply Plots
+```{r}
+# plot each year as a separate line against 12 months
+spaghetti_plot <- plot_supply_rates_12_months(supply_rates_monthly_long = supply_rates_elec,
+                  electric_utility = "national_grid",
+                  highlight_years = c("2020", "2024"))
+print(spaghetti_plot)
+```
+
+
+## Compute Monthly Electric Bills
+```{r}
+source("lib/rates_analysis/heat_pump_rate_funcs.R")
+#monthly_bills_elec_2014 <- get_monthly_bills_elec(path_rs_db, 2014)
+#monthly_bills_elec_2018 <- get_monthly_bills_elec(path_rs_db, 2018)
+monthly_bills_elec_2024 <- get_monthly_bills_elec(path_rs_db, 2024)
+
+#monthly_bills_elec <- bind_rows(monthly_bills_elec_2014, monthly_bills_elec_2018, monthly_bills_elec_2024)
+monthly_bills_elec <- monthly_bills_elec_2024
+
+head(monthly_bills_elec)
+
+annual_elec_bills <- calc_annual_bills_from_monthly(monthly_bills_elec, "electricity")
+```
+
+
+# Gas Bills
+## Gas Delivery Tariffs
+```{r}
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+delivery_tariffs_gas <- DBI::dbReadTable(con, "delivery_tariffs_gas")
+DBI::dbDisconnect(con)
+```
+
+## Gas Supply Rates
+```{r}
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+supply_rates_gas <- DBI::dbReadTable(con, "supply_rates_gas")
+DBI::dbDisconnect(con)
+
+# Print unique rate classes in supply_rates_gas
+unique_rate_classes <- unique(supply_rates_gas$rate_class)
+print("Unique rate classes in supply_rates_gas:")
+print(unique_rate_classes)
+```
+
+## Compute Gas Bills
+```{r}
+source("lib/rates_analysis/heat_pump_rate_funcs.R")
+
+monthly_bills_gas_2014 <- get_monthly_bills_gas(path_rs_db, year = 2014)
+monthly_bills_gas_2018 <- get_monthly_bills_gas(path_rs_db, year = 2018)
+monthly_bills_gas_2024 <- get_monthly_bills_gas(path_rs_db, year = 2024)
+
+#monthly_bills_gas <- bind_rows(monthly_bills_gas_2014, monthly_bills_gas_2018, monthly_bills_gas_2024)
+monthly_bills_gas <- monthly_bills_gas_2024
+
+annual_gas_bills <- calc_annual_bills_from_monthly(monthly_bills_gas, "gas")
+```
+
+
+
+# Fuel Oil Bills
+```{r}
+source("lib/rates_analysis/heat_pump_rate_funcs.R")
+monthly_bills_fueloil_2024 <- get_monthly_bills_fueloil(path_rs_db, year = 2024)
+monthly_bills_fueloil <- monthly_bills_fueloil_2024
+
+annual_fueloil_bills <- calc_annual_bills_from_monthly(monthly_bills_fueloil, "fueloil")
+```
+
+# Propane Bills
+```{r}
+source("lib/rates_analysis/heat_pump_rate_funcs.R")
+monthly_bills_propane_2024 <- get_monthly_bills_propane(path_rs_db, year = 2024)
+monthly_bills_propane <- monthly_bills_propane_2024
+
+annual_propane_bills <- calc_annual_bills_from_monthly(monthly_bills_propane, "propane")
+```
+
+# Annual Bills (All Fuels)
+```{r}
+source("lib/rates_analysis/heat_pump_rate_funcs.R")
+annual_bills_all <- annual_elec_bills |>
+  left_join(annual_gas_bills, by = c("bldg_id", "year", "upgrade"), suffix = c("_elec", "_gas"))|>
+  left_join(annual_fueloil_bills, by = c("bldg_id", "year", "upgrade"), suffix = c("_gas", "_fueloil"))|>
+  left_join(annual_propane_bills, by = c("bldg_id", "year", "upgrade"), suffix = c("_fueloil", "_propane"))|>
+  mutate(annual_bill_energy = annual_bill_gas + annual_bill_elec + annual_bill_fueloil + annual_bill_propane) |>
+  pivot_longer(cols = c(annual_bill_elec, annual_bill_gas, annual_bill_fueloil, annual_bill_propane, annual_bill_energy), names_to = "bill_type", values_to = "annual_bill")
+
+
+  # filter down to just 4 cases
+  # baseline: upgrade==0, version_elec=="baseline"
+  # upgrade with baseline rates: upgrade==4, version_elec=="baseline"
+  # upgrade with approved rates: upgrade==4, version_elec=="hpr_approved"
+  # upgrade with doer rates: upgrade==4, version_elec=="hpr_doer"
+annual_bills <- annual_bills_all |> filter(
+
+    # Baseline Cases
+    # Case 0: baseline pre-HP
+    (upgrade == 0 & version_elec == "baseline") |
+    # Case 7: Whole-home electrification, min-efficiency
+    (upgrade == 7 & version_elec == "baseline") |
+    # Case 8: Whole-home electrification, high efficiency
+    (upgrade == 8 & version_elec == "baseline") |
+    # Case 9: Whole-home electrification, high efficiency ​+ basic enclosure package
+    (upgrade == 9 & version_elec == "baseline") |
+
+    # Approached HPR Cases
+    (upgrade == 0 & version_elec == "hpr_approved") |
+    # Case 7: Whole-home electrification, min-efficiency
+    (upgrade == 7 & version_elec == "hpr_approved") |
+    # Case 8: Whole-home electrification, high efficiency
+    (upgrade == 8 & version_elec == "hpr_approved") |
+    # Case 9: Whole-home electrification, high efficiency ​+ basic enclosure package
+    (upgrade == 9 & version_elec == "hpr_approved")
+  ) |>
+  filter(bill_type %in% c("annual_bill_elec", "annual_bill_gas", "annual_bill_energy"))
+
+annual_bills <- annual_bills |> filter(year == 2024)
+
+annual_bills_x = annual_bills |> filter(bldg_id == 182)
+```
+
+```{r}
+
+# Calculate savings by comparing to baseline version
+annual_change <- annual_bills |>
+  # First get baseline values to compare against
+  filter(upgrade == 0 & version_elec == "baseline") |>
+  select(bldg_id, year, electric_utility, bill_type, annual_bill) |>
+  rename(baseline_bill = annual_bill) |>
+  # Join back to full dataset
+  right_join(annual_bills |> filter(upgrade %in% c(4, 7, 8, 9, 10)),
+            by = c("bldg_id", "year", "electric_utility", "bill_type")) |>
+  # Calculate savings
+  mutate(
+    annual_bill_change = annual_bill - baseline_bill,
+    bill_type = case_when(
+      bill_type == "annual_bill_elec" ~ "annual_bill_change_elec",
+      bill_type == "annual_bill_gas" ~ "annual_bill_change_gas",
+      bill_type == "annual_bill_energy" ~ "annual_bill_change_energy"
+    )
+  ) |>
+  select(-baseline_bill, -annual_bill)
+```
+
+
+
+# Annual Change Statistics
+```{r}
+source("lib/rates_analysis/heat_pump_rate_funcs.R")
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Parameters
+year_to_plot <- 2024
+baseline_heating_fuel <- "Natural Gas"
+electric_utility_option <- "national_grid"
+bill_type <- "annual_bill_change_energy"
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# Get bldg_ids that start with Natural Gas
+bldgs_by_heating_fuel <- get_bldgs_by_heating_fuel(path_rs_db, baseline_heating_fuel)
+
+building_types <- c("Single-Family Attached", "Single-Family Detached", "2 Unit", "3 or 4 Unit")
+bldgs_by_building_type <- get_bldgs_by_building_type(path_rs_db, building_types)
+
+# Filter to just bldg_ids that start with Natural Gas
+annual_change_to_plot <- annual_change |>
+  filter(
+    !is.na(annual_bill_change) & is.finite(annual_bill_change),
+    year == year_to_plot,
+    bldg_id %in% bldgs_by_heating_fuel$bldg_id,
+    bldg_id %in% bldgs_by_building_type$bldg_id
+  )
+
+
+# --------------------------------------------------------------------------
+# Transformations and Summary Statistics
+# --------------------------------------------------------------------------
+get_scenario_stats <- function(annual_change_to_plot, upgrade, electric_utility_option, bill_type, version_elec) {
+  # Filter data for scenario
+  annual_change_scenario <- annual_change_to_plot |>
+    filter(
+      upgrade == !!upgrade,
+      if (electric_utility_option != "statewide") electric_utility == !!electric_utility_option else TRUE,
+      bill_type == !!bill_type,
+      version_elec == !!version_elec
+    )
+
+  # Calculate summary statistics
+  scenario_stats <- annual_change_scenario |>
+    summarise(
+      median_change = median(annual_bill_change),
+      pct_that_save = mean(annual_bill_change < 0) * 100,
+      median_savings = median(annual_bill_change[annual_bill_change < 0]),
+      median_loss = median(annual_bill_change[annual_bill_change > 0])
+    )
+
+  return(list(
+    annual_change_scenario = annual_change_scenario,
+    scenario_stats = scenario_stats
+  ))
+}
+
+# Baseline
+# Upgrade 7 Change
+upgrade7_baseline_results <- get_scenario_stats(annual_change_to_plot, 7, electric_utility_option, bill_type, 'baseline')
+annual_change_upgrade7_baseline <- upgrade7_baseline_results$annual_change_scenario
+upgrade7_baseline_stats <- upgrade7_baseline_results$scenario_stats
+
+# Upgrade 8 Change
+upgrade8_baseline_results <- get_scenario_stats(annual_change_to_plot, 8, electric_utility_option, bill_type, 'baseline')
+annual_change_upgrade8_baseline <- upgrade8_baseline_results$annual_change_scenario
+upgrade8_baseline_stats <- upgrade8_baseline_results$scenario_stats
+
+# Upgrade 9 Change
+upgrade9_baseline_results <- get_scenario_stats(annual_change_to_plot, 9, electric_utility_option, bill_type, 'baseline')
+annual_change_upgrade9_baseline <- upgrade9_baseline_results$annual_change_scenario
+upgrade9_baseline_stats <- upgrade9_baseline_results$scenario_stats
+
+# HPR Approved
+# Upgrade 7 Change
+upgrade7_approved_results <- get_scenario_stats(annual_change_to_plot, 7, electric_utility_option, bill_type, 'hpr_approved')
+annual_change_upgrade7_approved <- upgrade7_approved_results$annual_change_scenario
+upgrade7_approved_stats <- upgrade7_approved_results$scenario_stats
+
+# Upgrade 8 Change
+upgrade8_approved_results <- get_scenario_stats(annual_change_to_plot, 8, electric_utility_option, bill_type, 'hpr_approved')
+annual_change_upgrade8_approved <- upgrade8_approved_results$annual_change_scenario
+upgrade8_approved_stats <- upgrade8_approved_results$scenario_stats
+
+# Upgrade 9 Change
+upgrade9_approved_results <- get_scenario_stats(annual_change_to_plot, 9, electric_utility_option, bill_type, 'hpr_approved')
+annual_change_upgrade9_approved <- upgrade9_approved_results$annual_change_scenario
+upgrade9_approved_stats <- upgrade9_approved_results$scenario_stats
+
+
+# Combine stats into single table
+stats_combined <- bind_rows(
+  upgrade7_baseline_stats |> mutate(upgrade = "Upgrade 7 - Baseline"),
+  upgrade8_baseline_stats |> mutate(upgrade = "Upgrade 8 - Baseline"),
+  upgrade9_baseline_stats |> mutate(upgrade = "Upgrade 9 - Baseline"),
+  upgrade7_approved_stats |> mutate(upgrade = "Upgrade 7 - Approved"),
+  upgrade8_approved_stats |> mutate(upgrade = "Upgrade 8 - Approved"),
+  upgrade9_approved_stats |> mutate(upgrade = "Upgrade 9 - Approved")
+) |>
+  pivot_longer(
+    cols = c(median_change, pct_that_save, median_savings, median_loss),
+    names_to = "metric"
+  ) |>
+  pivot_wider(
+    names_from = upgrade,
+    values_from = value
+  )
+# Round all numeric columns to 2 decimal places
+stats_combined <- stats_combined |>
+  mutate(across(where(is.numeric), ~round(., 2)))
+
+# Print table
+print(stats_combined)
+
+# Save stats_combined to CSV
+write.csv(stats_combined, file = glue::glue("/workspaces/reports/src/ma_hp_rates/notebooks/{county}_stats_combined.csv"), row.names = FALSE)
+```
+
+## Bar chart by income
+```{r}
+con <- DBI::dbConnect(duckdb::duckdb(), path_rs_db)
+housing_units <- DBI::dbReadTable(con, "housing_units")
+DBI::dbDisconnect(con)
+
+
+# Get bldg_ids where annual_bill_change > 0
+upgrade <- 8
+version_elec <- "baseline"
+bill_type <- "annual_bill_change_energy"
+
+high_bill_bldgs <- annual_change_to_plot |>
+  filter(upgrade == !!upgrade,
+         version_elec == !!version_elec,
+         bill_type == !!bill_type,
+         annual_bill_change > 10) |>
+  pull(bldg_id)
+
+housing_units_high_bill <- housing_units |>
+  filter(bldg_id %in% high_bill_bldgs)
+
+# Create histogram of income distribution for high bill buildings
+ggplot(housing_units_high_bill, aes(x = as.numeric(income_dollars))) +
+  geom_histogram(binwidth = 10000, fill = sb_colors["midnight"]) +
+  labs(
+    title = "Income Distribution of Buildings with Bill Increases",
+    subtitle = glue::glue("Upgrade {upgrade} | {version_elec} tariffs | {county} County"),
+    x = "Annual Income ($)",
+    y = "Number of Buildings"
+  ) +
+  scale_x_continuous(labels = scales::dollar_format()) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 14),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
+
+## Bar chart by building type
+- stacks by upgrade_that_saves
+```{r}
+#upgrade <- 9
+version_elec <- "hpr_approved"
+bill_type <- "annual_bill_change_energy"
+
+bill_changes_with_data <- annual_change_to_plot |>
+  filter(bill_type == !!bill_type) |>
+  left_join(housing_units, by = "bldg_id") |>
+  mutate(income_dollars = as.numeric(income_dollars)) |>
+  mutate(package_that_saves = ifelse(annual_bill_change < 0, upgrade, NA))
+
+
+# Calculate counts for each building type and bill change category
+bill_change_counts <- bill_changes_with_data |>
+  group_by(bldg_id, version_elec, `in.geometry_building_type_acs`, income_dollars) |>
+  summarize(
+    first_saving_package = min(package_that_saves, na.rm = TRUE)
+  )  |>
+  mutate(package_description = case_when(
+    first_saving_package == 7 ~ "Minimum Efficiency Appliances",
+    first_saving_package == 8 ~ "High Efficiency Appliances",
+    first_saving_package == 9 ~ "Weatherization",
+    is.na(first_saving_package) ~ "No Savings"
+  ))|>
+  filter(version_elec == "hpr_approved")
+
+
+# --------------------------------------------------------------------------
+# Print some summary stats
+# Calculate summary statistics by group
+summary_stats <- bill_changes_with_data |>
+  group_by(upgrade, `in.geometry_building_type_acs`, version_elec) |>
+  summarize(
+    n_buildings = n(),
+    pct_with_savings = mean(annual_bill_change < 0, na.rm = TRUE) * 100,
+    median_savings = median(annual_bill_change[annual_bill_change < 0], na.rm = TRUE),
+    median_increase = median(annual_bill_change[annual_bill_change > 0], na.rm = TRUE)
+  ) |>
+  ungroup()
+
+# Print formatted results
+print("Summary Statistics by Group:")
+print("----------------------------")
+summary_stats |>
+  mutate(
+    pct_with_savings = round(pct_with_savings, 1),
+    median_savings = round(median_savings, 2),
+    median_increase = round(median_increase, 2)
+  ) |>
+  arrange(upgrade, `in.geometry_building_type_acs`, version_elec) |>
+  print(n = Inf)
+
+
+
+
+
+
+# --------------------------------------------------------------------------
+# Plot
+# --------------------------------------------------------------------------
+single_family <- c("Single-Family Attached", "Single-Family Detached")
+multi_family <- c("2 Unit", "3 or 4 Unit", "5 to 9 Unit", "10 to 19 Unit", "20 to 49 Unit", "50 or more Unit")
+order = c(single_family, multi_family)
+
+tariff_aliases <- c(
+  "baseline" = "Default (R-1)",
+  "hpr_approved" = "Approved (64% Distribution Charge Discount)",
+  "hpr_doer" = "DOER Proposal"
+)
+
+# Then modify the plot to match exactly
+ggplot(bill_change_counts,
+       aes(x = factor(`in.geometry_building_type_acs`, levels = order),
+           fill = factor(package_description,
+                        levels = c("No Savings",  "Weatherization", "High Efficiency Appliances", "Minimum Efficiency Appliances")))) +
+  geom_bar(position = "stack") +
+  scale_fill_manual(
+    values = c("No Savings" = "#023047",
+               "Weatherization" = "#87CEEB",
+               "High Efficiency Appliances" = "#FF8C00",
+               "Minimum Efficiency Appliances" = "#A0AF12"
+               ),
+    name = "First Package with Savings"
+  ) +
+  labs(
+    title = "Bill Savings by Building Type",
+    subtitle = glue::glue("Tariff: {tariff_aliases[version_elec]} | {county} County"),
+    x = "Building Type",
+    y = "Number of Buildings"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 14),
+    axis.text.x = element_text(angle = 0, hjust = 0.5)
+  )
+
+ggsave(glue::glue("/workspaces/reports/src/ma_hp_rates/img/{county}_bill_savings_by_building_type.png"), width = 6, height = 3, dpi = 300)
+
+
+```
+
+## Box-and-whisker: Bill change by housing unit type
+```{r}
+bill_changes_with_data <- annual_change_upgrade9_approved |>
+  left_join(housing_units, by = "bldg_id") |>
+  mutate(income_dollars = as.numeric(income_dollars))
+
+# Create box plot of bill changes by building type
+ggplot(bill_changes_with_data, aes(x = `in.geometry_building_type_acs`, y = annual_bill_change)) +
+  geom_boxplot(fill = sb_colors["midnight"], alpha = 0.6) +
+  labs(
+    title = "Annual Bill Change Distribution by Building Type",
+    subtitle = glue::glue("{county} County"),
+    x = "Building Type",
+    y = "Annual Bill Change ($)"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 14),
+    axis.text.x = element_text(angle = 90, hjust = 1)
+  ) +
+  scale_y_continuous(labels = scales::dollar_format())
+
+
+
+```
+
+
+## Scatter sqft vs bill change
+```{r}
+
+# Join annual bill changes with housing unit data
+bill_changes_with_data <- annual_change_upgrade8_baseline |>
+  left_join(housing_units, by = "bldg_id") |>
+  mutate(income_dollars = as.numeric(income_dollars))
+
+# Create scatter plot
+ggplot(bill_changes_with_data, aes(x = `in.sqft`, y = annual_bill_change, color = income_dollars)) +
+  geom_point(alpha = 0.6) +
+  scale_color_viridis_c(labels = scales::dollar_format()) +
+  labs(
+    title = "Annual Bill Change vs Building Square Footage",
+    subtitle = glue::glue("{county} County"),
+    x = "Building Square Footage",
+    y = "Annual Bill Change ($)",
+    color = "Annual Income"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 14),
+    legend.position = "right"
+  )
+
+
+
+
+```
+
+
+# Plots
+## 3 Hists = Baseline
+```{r}
+# --------------------------------------------------------------------------
+# Plotting
+# --------------------------------------------------------------------------
+# Set up common parameters
+max_change <- 3000
+min_change <- -max_change
+binwidth <- 100
+
+# --------------------------------------
+# y_max calculation
+
+# Create the histograms first
+p7 <- annual_change_upgrade7 |>
+  ggplot(aes(x = annual_bill_change)) +
+  geom_histogram(binwidth = binwidth)
+
+p8 <- annual_change_upgrade8 |>
+  ggplot(aes(x = annual_bill_change)) +
+  geom_histogram(binwidth = binwidth)
+
+p9 <- annual_change_upgrade9 |>
+  ggplot(aes(x = annual_bill_change)) +
+  geom_histogram(binwidth = binwidth)
+
+# Get the maximum bin height across all three histograms
+y_max <- ceiling(max(
+  ggplot_build(p7)$data[[1]]$count,
+  ggplot_build(p8)$data[[1]]$count,
+  ggplot_build(p9)$data[[1]]$count,
+  ggplot_build(p10)$data[[1]]$count
+) / 25) * 25
+
+y_limits <- c(0, y_max)
+# --------------------------------------
+
+
+# Create the three plots
+p7 <- annual_change_upgrade7 |>
+  ggplot(aes(x = annual_bill_change)) +
+  geom_histogram(
+    binwidth = binwidth, position = "identity",
+    fill = sb_colors["midnight"]
+  ) +
+  geom_vline(
+    data = . %>% summarise(median = median(annual_bill_change)),
+    aes(xintercept = upgrade7_stats$median_savings),
+    color = sb_colors["midnight"],
+    linetype = "dashed",
+    linewidth = .75,
+    alpha = 0.8
+  ) +
+  # geom_vline(xintercept = 0, color = "grey40", linetype = "solid") +
+  labs(title = "Bill Change with Package 7 (Minimum Efficiency All-Electric Appliances)", x = NULL, y = "Homes Count") +
+  scale_y_continuous(labels = scales::comma, limits = y_limits) +
+  scale_x_continuous(
+    labels = scales::dollar_format(),
+    limits = c(min_change, max_change),
+    breaks = seq(min_change, max_change, by = 1000)
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.major = element_line(linewidth = 0.2),
+    panel.grid.minor = element_blank(),
+    legend.position = "none"
+  )
+
+p8 <- annual_change_upgrade8 |>
+  ggplot(aes(x = annual_bill_change)) +
+  geom_histogram(
+    binwidth = binwidth, position = "identity",
+    fill = sb_colors["carrot"]
+  ) +
+  geom_vline(
+    data = . %>% summarise(median = median(annual_bill_change)),
+    aes(xintercept = upgrade8_stats$median_savings),
+    color = sb_colors["carrot"],
+    linetype = "dashed",
+    linewidth = .75,
+    alpha = 0.8
+  ) +
+  # geom_vline(xintercept = 0, color = "grey40", linetype = "solid") +
+  labs(title = "Bill Change with Package 8 (High Efficiency All-Electric Appliances)", x = NULL, y = "Homes Count") +
+  scale_y_continuous(labels = scales::comma, limits = y_limits) +
+  scale_x_continuous(
+    labels = scales::dollar_format(),
+    limits = c(min_change, max_change),
+    breaks = seq(min_change, max_change, by = 1000)
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.major = element_line(linewidth = 0.2),
+    panel.grid.minor = element_blank(),
+    legend.position = "none"
+  )
+
+p9 <- annual_change_upgrade9 |>
+  ggplot(aes(x = annual_bill_change)) +
+  geom_histogram(
+    binwidth = binwidth, position = "identity",
+    fill = sb_colors["sky"]
+  ) +
+  geom_vline(
+    data = . %>% summarise(median = median(annual_bill_change)),
+    aes(xintercept = upgrade9_stats$median_savings),
+    color = sb_colors["sky"],
+    linetype = "dashed",
+    linewidth = .75,
+    alpha = 0.8
+  ) +
+  # geom_vline(xintercept = 0, color = "grey40", linetype = "solid") +
+  labs(title = "Bill Change with Package 9 (High Efficiency Appliances+ Basic Weatherization)", x = "Annual Bill Change ($)", y = "Homes Count") +
+  scale_y_continuous(labels = scales::comma, limits = y_limits) +
+  scale_x_continuous(
+    labels = scales::dollar_format(),
+    limits = c(min_change, max_change),
+    breaks = seq(min_change, max_change, by = 1000)
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.major = element_line(linewidth = 0.2),
+    panel.grid.minor = element_blank(),
+    legend.position = "none"
+  )
+
+p10 <- annual_change_upgrade10 |>
+  ggplot(aes(x = annual_bill_change)) +
+  geom_histogram(
+    binwidth = binwidth, position = "identity",
+    fill = sb_colors["pistachio"]
+  ) +
+  geom_vline(
+    data = . %>% summarise(median = median(annual_bill_change)),
+    aes(xintercept = upgrade10_stats$median_savings),
+    color = sb_colors["pistachio"],
+    linetype = "dashed",
+    linewidth = .75,
+    alpha = 0.8
+  ) +
+  # geom_vline(xintercept = 0, color = "grey40", linetype = "solid") +
+  labs(title = "Bill Change with Package 10 (High Efficiency Appliances + Enhanced Weatherization)", x = "Annual Bill Change ($)", y = "Homes Count") +
+  scale_y_continuous(labels = scales::comma, limits = y_limits) +
+  scale_x_continuous(
+    labels = scales::dollar_format(),
+    limits = c(min_change, max_change),
+    breaks = seq(min_change, max_change, by = 1000)
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.major = element_line(linewidth = 0.2),
+    panel.grid.minor = element_blank(),
+    legend.position = "none"
+  )
+
+# Combine plots vertically using patchwork
+p9 / p8 / p7 +
+  plot_layout(heights = c(1, 1, 1)) +
+  plot_annotation(
+    title = case_when(
+      bill_type == "annual_bill_change_elec" ~ glue::glue("Switching from {baseline_heating_fuel} to Heat Pump: Change in Annual Electric Bill"),
+      bill_type == "annual_bill_change_energy" ~ glue::glue("Switching from {baseline_heating_fuel} to Heat Pump: Change in Annual Total Energy Bill"),
+      bill_type == "annual_bill_change_gas" ~ glue::glue("Switching from {baseline_heating_fuel} to Heat Pump: Change in Annual Gas Bill"),
+      TRUE ~ "Heat Pump Rate Bill Changes" # Default case
+    ),
+    subtitle = glue::glue("{county} County  | Electric Utility: {electric_utility_option} | Supply Year: {year_to_plot}"),
+    theme = theme(
+      plot.margin = margin(3, 3, 3, 3),
+      plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+      plot.subtitle = element_text(hjust = 0.5, size = 12)
+    )
+  )
+
+# Save the plot
+ggsave(
+  "/workspaces/reports/src/ma_hp_rates/img/annual_change_3hists_baseline.png",
+  width = 4,
+  height = 5,
+  dpi = 300,
+  bg = "white"
+)
+```
+
+## 3 Hists x2 = Baseline + HPR Approved
+```{r}
+# --------------------------------------------------------------------------
+# Plotting
+# --------------------------------------------------------------------------
+# Set up common parameters
+max_change <- 3000
+min_change <- -max_change
+binwidth <- 100
+
+# --------------------------------------
+# y_max calculation
+
+# Create the histograms first
+p7<- annual_change_upgrade7_baseline |>
+  ggplot(aes(x = annual_bill_change)) +
+  geom_histogram(binwidth = binwidth)
+
+p8 <- annual_change_upgrade8_baseline |>
+  ggplot(aes(x = annual_bill_change)) +
+  geom_histogram(binwidth = binwidth)
+
+p9 <- annual_change_upgrade9_baseline |>
+  ggplot(aes(x = annual_bill_change)) +
+  geom_histogram(binwidth = binwidth)
+
+# Get the maximum bin height across all three histograms
+y_max <- ceiling(max(
+  ggplot_build(p7)$data[[1]]$count,
+  ggplot_build(p8)$data[[1]]$count,
+  ggplot_build(p9)$data[[1]]$count
+) / 25) * 25
+
+y_limits <- c(0, y_max)
+# --------------------------------------
+
+
+# Create the three plots
+p7 <- annual_change_upgrade7_baseline |>
+  ggplot(aes(x = annual_bill_change)) +
+  geom_histogram(binwidth = binwidth, position = "identity",
+                fill = sb_colors["midnight"], alpha = 0.3) +
+  geom_histogram(data = annual_change_upgrade7_approved,
+                binwidth = binwidth, position = "identity",
+                fill = sb_colors["pistachio"], alpha = 0.7) +
+  geom_vline(data = . %>% summarise(median = median(annual_bill_change)),
+             aes(xintercept = upgrade7_baseline_stats$median_savings),
+             color = sb_colors["pistachio"],
+             linetype = "dashed",
+             linewidth = .75,
+             alpha = 0.8) +
+  #geom_vline(xintercept = 0, color = "grey40", linetype = "solid") +
+
+  labs(title = "Bill Change with Package 9 (High Efficiency Appliances+ Basic Weatherization)", x = "Annual Bill Change ($)", y = "Homes Count") +
+  scale_y_continuous(labels = scales::comma, limits = y_limits) +
+  scale_x_continuous(
+    labels = scales::dollar_format(),
+    limits = c(min_change, max_change)
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.major = element_line(linewidth = 0.2),
+    panel.grid.minor = element_blank(),
+    legend.position = "none"
+  )
+
+p8 <- annual_change_upgrade8_baseline |>
+  ggplot(aes(x = annual_bill_change)) +
+
+  geom_histogram(binwidth = binwidth, position = "identity",
+                fill = sb_colors["midnight"], alpha = 0.3) +
+  geom_histogram(data = annual_change_upgrade8_approved,
+                binwidth = binwidth, position = "identity",
+                fill = sb_colors["carrot"], alpha = 0.7) +
+  geom_vline(data = . %>% summarise(median = median(annual_bill_change)),
+             aes(xintercept = upgrade8_baseline_stats$median_savings),
+             color = sb_colors["carrot"],
+             linetype = "dashed",
+             linewidth = .75,
+             alpha = 0.8) +
+  #geom_vline(xintercept = 0, color = "grey40", linetype = "solid") +
+  labs(title = "Bill Change with Package 8 (High Efficiency All-Electric Appliances)", x = NULL, y = "Homes Count") +
+
+  scale_y_continuous(labels = scales::comma, limits = y_limits) +
+  scale_x_continuous(
+    labels = scales::dollar_format(),
+    limits = c(min_change, max_change)
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.major = element_line(linewidth = 0.2),
+    panel.grid.minor = element_blank(),
+    legend.position = "none"
+  )
+
+p9 <- annual_change_upgrade9_baseline |>
+  ggplot(aes(x = annual_bill_change)) +
+
+  geom_histogram(binwidth = binwidth, position = "identity",
+                fill = sb_colors["midnight"], alpha = 0.3) +
+  geom_histogram(data = annual_change_upgrade9_approved,
+                binwidth = binwidth, position = "identity",
+                fill = sb_colors["sky"], alpha = 0.7) +
+  geom_vline(data = . %>% summarise(median = median(annual_bill_change)),
+             aes(xintercept = upgrade9_baseline_stats$median_savings),
+             color = sb_colors["sky"],
+             linetype = "dashed",
+             linewidth = .75,
+             alpha = 0.8) +
+  #geom_vline(xintercept = 0, color = "grey40", linetype = "solid") +
+  labs(title = "Bill Change with Package 7 (Minimum Efficiency All-Electric Appliances)", x = NULL, y = "Homes Count") +
+  scale_y_continuous(labels = scales::comma, limits = y_limits) +
+  scale_x_continuous(
+    labels = scales::dollar_format(),
+    limits = c(min_change, max_change)
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.major = element_line(linewidth = 0.2),
+    panel.grid.minor = element_blank(),
+    legend.position = "none"
+  )
+
+# Combine plots vertically using patchwork
+p9 / p8 / p7 +
+  plot_layout(heights = c(1, 1, 1)) +
+  plot_annotation(
+    title = case_when(
+      bill_type == "annual_bill_change_elec" ~ glue::glue("Switching from {baseline_heating_fuel} to Heat Pump: Change in Annual Electric Bill"),
+      bill_type == "annual_bill_change_energy" ~ glue::glue("Switching from {baseline_heating_fuel} to Heat Pump: Change in Annual Total Energy Bill"),
+      bill_type == "annual_bill_change_gas" ~ glue::glue("Switching from {baseline_heating_fuel} to Heat Pump: Change in Annual Gas Bill"),
+      TRUE ~ "Heat Pump Rate Bill Changes" # Default case
+    ),
+    subtitle = glue::glue("{county} County  | Electric Utility: {electric_utility_option} | Supply Year: {year_to_plot}"),
+    theme = theme(
+      plot.margin = margin(3, 3, 3, 3),
+      plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+      plot.subtitle = element_text(hjust = 0.5, size = 12)
+    )
+  )
+
+#Save the plot
+ggsave(
+  "/workspaces/reports/src/ma_hp_rates/img/annual_change_3hists_baseline.png",
+  width = 4,
+  height = 5,
+  dpi = 300,
+  bg = "white"
+)# HPR Approved
+```
+
+
+### --------------------------------------------------------------------------
+# Sanity Checks
+```{r}
+#| label: sanity_check_fitchburg_data
+# data from https://www.documentcloud.org/documents/25555039-electric-rate-case-impacts-july-1-2024/
+rd1 <- data.frame(
+  label = paste0("rd1-",c("10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%")),
+  res_average_monthly_kwh = c(70.1, 162.9, 262.3, 335.3, 410.3, 493.6, 593.3, 715.5, 928.9, 1650.9),
+  current_rates_total_rev = c(36.48, 83.91, 117.28, 147.97, 179.50, 214.45, 256.43, 309.60, 397.53, 701.06)
+)
+rd2 <- data.frame(
+  label = paste0("rd2-",c("10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%")),
+  res_average_monthly_kwh = c(70.1, 182.9, 262.3, 335.3, 410.3, 493.5, 593.3, 724.6, 928.9, 1650.9),
+  current_rates_total_rev = c(23.89, 54.95, 76.81, 96.91, 117.57, 140.46, 167.82, 204.91, 260.37, 459.19)
+)
+
+fitchburg_data <- bind_rows(rd1, rd2)
+
+```
+
+## Plot Monthly Bills vs Monthly Usage
+```{r}
+monthly_bills_elec_october <- monthly_bills_elec |>
+  filter(electric_utility == "national_grid") |>
+  filter(year == 2024) |>
+  filter(month %in% c(10))
+
+
+# Fit linear model
+# From "Exhibit HP-3 - Heat Pump Rate Design and Customer Bill Impact - Final", slope should be $0.34/kWh and intercept should be $10
+lm_fit <- lm(total_bill ~ elec_consumption, data = monthly_bills_elec_october)
+slope <- round(coef(lm_fit)[2], 3)
+intercept <- round(coef(lm_fit)[1], 0)
+
+# given points
+# Create data frame with reference points
+# added reference point from malkani_NearTermRateDesign_2024, pg 9
+reference_points <- data.frame(
+  x = c(841, 2269, 841, 2269, 1127, 3341, 1127, 3341, 600),
+  y = c(296.94, 784.18, 261.55, 688.68, 394.54, 1149.96, 347.10, 1009.34, 225),
+  label = c(
+    "october_3ton_gas", "january_3ton_gas",
+    "october_3ton_hp", "january_3ton_hp",
+    "october_5ton_gas", "january_5ton_gas",
+    "october_5ton_hp", "january_5ton_hp", "malkani_monthly_avg"
+  )
+)
+
+# Plot with reference points
+monthly_bills_elec_october |>
+  ggplot(aes(x = elec_consumption, y = total_bill, color = factor(month))) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  geom_point(data = reference_points, aes(x = x, y = y), color = "red", size = 3) +
+  geom_point(data = fitchburg_data, aes(x = res_average_monthly_kwh, y = current_rates_total_rev), color = "blue", size = 3) +
+  geom_text(
+    data = reference_points,
+    aes(x = x, y = y, label = label),
+    hjust = -0.1,
+    vjust = -0.1,
+    color = "black",
+    size = 3
+  ) +
+  geom_text(
+    data = fitchburg_data,
+    aes(x = res_average_monthly_kwh, y = current_rates_total_rev, label = label),
+    hjust = -0.1,
+    vjust = -0.1,
+    color = "black",
+    size = 3
+  ) +
+  annotate("text",
+    x = min(monthly_bills_elec_october$elec_consumption),
+    y = max(monthly_bills_elec_october$total_bill),
+    label = sprintf("y = %.3fx + %.0f", slope, intercept),
+    hjust = 0,
+    vjust = 1
+  ) +
+  labs(
+    title = "Monthly Bills vs Monthly Usage",
+    x = "Electricity Consumption (kWh)",
+    y = "Total Bill ($)"
+  )
+
+```

@@ -20,7 +20,6 @@ Usage (from a report directory)::
 
 from __future__ import annotations
 
-import os
 import re
 import shutil
 import subprocess
@@ -29,6 +28,7 @@ from datetime import date
 from pathlib import Path
 
 from lib.just import icml_crossrefs, icml_sidenotes
+from lib.just.quarto_env import quarto_env
 
 INDESIGN_MAX_WIDTH_PT = 504.0
 
@@ -204,7 +204,7 @@ def typeset(qmd_path: Path) -> None:
 
     _clear_notebook_cache()
 
-    env = {**os.environ, "SWITCHBOX_TYPESET": "1"}
+    env = quarto_env(SWITCHBOX_TYPESET="1")
     cmd = [
         "quarto",
         "render",

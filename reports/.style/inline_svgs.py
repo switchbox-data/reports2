@@ -170,6 +170,14 @@ _IMG_SVG_RE = re.compile(
 )
 
 
+# Quarto occasionally emits two SRI hashes in one integrity="" attribute (breaks Chromium webviews).
+_MALFORMED_SRI_RE = re.compile(r'integrity="(sha(?:256|384|512)-[^"]+?)\s+sha(?:256|384|512)-[^"]+"')
+
+
+def _fix_malformed_sri(html_text: str) -> str:
+    return _MALFORMED_SRI_RE.sub(r'integrity="\1"', html_text)
+
+
 def inline_svgs_in_html(html_path: Path) -> int:
     """Replace <img src="...svg"> with inline <svg> in a single HTML file.
 
@@ -179,6 +187,10 @@ def inline_svgs_in_html(html_path: Path) -> int:
     Returns the number of replacements made.
     """
     html_text = html_path.read_text(encoding="utf-8")
+    fixed_sri = _fix_malformed_sri(html_text)
+    if fixed_sri != html_text:
+        html_text = fixed_sri
+        html_path.write_text(html_text, encoding="utf-8")
     html_dir = html_path.parent
     count = 0
 

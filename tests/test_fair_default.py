@@ -18,7 +18,10 @@ import math
 
 import pytest
 
-from lib.rates_analysis.fair_default import fair_default_fixed_charge_only
+from lib.rates_analysis.fair_default import (
+    fair_default_fixed_charge_only,
+    fair_default_incremental_fixed_charge,
+)
 
 MONTHS = 12.0
 
@@ -148,3 +151,57 @@ def test_degenerate_raises() -> None:
             subclass_cross_subsidy=0.0,
             base_fixed_charge=0.0,
         )
+
+
+def test_incremental_fixed_charge_satisfies_both_constraints() -> None:
+    """The retrofit target and class revenue neutrality both hold."""
+    result = fair_default_incremental_fixed_charge(
+        class_variable_revenue=1_200_000.0,
+        class_customers=10_000.0,
+        retrofit_incremental_variable_charge=500_000.0,
+        retrofit_incremental_marginal_cost=100_000.0,
+        base_fixed_charge=11.0,
+    )
+
+    assert result.implied_lambda == pytest.approx(0.2)
+    assert result.fixed_charge == pytest.approx(19.0)
+    assert result.delta == pytest.approx(8.0)
+    assert result.retrofit_overpayment == pytest.approx(400_000.0)
+    assert result.class_revenue_shift == pytest.approx(960_000.0)
+    assert result.feasible
+
+    assert result.implied_lambda * 500_000.0 == pytest.approx(100_000.0)
+    baseline_revenue = 12 * 11.0 * 10_000.0 + 1_200_000.0
+    redesigned_revenue = 12 * result.fixed_charge * 10_000.0 + result.implied_lambda * 1_200_000.0
+    assert redesigned_revenue == pytest.approx(baseline_revenue)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        (
+            {
+                "class_variable_revenue": 100.0,
+                "class_customers": 0.0,
+                "retrofit_incremental_variable_charge": 10.0,
+                "retrofit_incremental_marginal_cost": 2.0,
+                "base_fixed_charge": 11.0,
+            },
+            "class_customers must be positive",
+        ),
+        (
+            {
+                "class_variable_revenue": 100.0,
+                "class_customers": 10.0,
+                "retrofit_incremental_variable_charge": 0.0,
+                "retrofit_incremental_marginal_cost": 2.0,
+                "base_fixed_charge": 11.0,
+            },
+            "retrofit_incremental_variable_charge must be non-zero",
+        ),
+    ],
+)
+def test_incremental_fixed_charge_rejects_invalid_inputs(kwargs: dict[str, float], message: str) -> None:
+    """Invalid population totals fail with a useful message."""
+    with pytest.raises(ValueError, match=message):
+        fair_default_incremental_fixed_charge(**kwargs)

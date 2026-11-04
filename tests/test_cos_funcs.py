@@ -5,7 +5,12 @@ from __future__ import annotations
 import polars as pl
 import pytest
 
-from lib.rates_analysis.cos_funcs import bat_component_delta_with_gap, bat_component_summary_by_heating_type
+from lib.rates_analysis.cos_funcs import (
+    bat_component_delta_with_gap,
+    bat_component_summary_by_heating_type,
+    incremental_cost_delta_with_gap,
+    incremental_cost_summary_by_heating_type,
+)
 
 
 def _delta_frame() -> pl.DataFrame:
@@ -145,3 +150,121 @@ def test_bat_component_summary_by_heating_type_rejects_has_hp_rows() -> None:
 
     with pytest.raises(ValueError, match="has_hp"):
         bat_component_summary_by_heating_type(bat_delta)
+
+
+# ---------------------------------------------------------------------------
+# Tests for the new primary names (same logic, verifies the rename works)
+# ---------------------------------------------------------------------------
+
+
+def test_incremental_cost_delta_with_gap_matches_old_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The new primary name reads revenue from master bills and MC from BAT."""
+
+    def _fake_delta(
+        state: str,
+        batch: str,
+        segment_before: str,
+        segment_after: str,
+        *,
+        components: list[str] | None = None,
+        utility: str | None = None,
+    ) -> pl.DataFrame:
+        return _delta_frame()
+
+    def _fake_load_kwh(state: str, utility: str, batch: str, segment: str) -> pl.LazyFrame:
+        if segment == "default_precalc":
+            return pl.DataFrame({"bldg_id": [1, 2], "annual_kwh_grid": [500.0, 600.0]}).lazy()
+        return pl.DataFrame({"bldg_id": [1, 2], "annual_kwh_grid": [800.0, 1000.0]}).lazy()
+
+    def _fake_load_master_bills(state: str, batch: str, segment: str) -> pl.LazyFrame:
+        if "precalc" in segment:
+            return pl.DataFrame(
+                {
+                    "bldg_id": [1, 2],
+                    "month": ["Annual", "Annual"],
+                    "sb.electric_utility": ["bge", "bge"],
+                    "elec_delivery_bill": [90.0, 190.0],
+                    "elec_fixed_charge": [10.0, 10.0],
+                }
+            ).lazy()
+        return pl.DataFrame(
+            {
+                "bldg_id": [1, 2],
+                "month": ["Annual", "Annual"],
+                "sb.electric_utility": ["bge", "bge"],
+                "elec_delivery_bill": [140.0, 210.0],
+                "elec_fixed_charge": [10.0, 10.0],
+            }
+        ).lazy()
+
+    monkeypatch.setattr("lib.rates_analysis.rate_case_funcs.bat_component_delta", _fake_delta)
+    monkeypatch.setattr("lib.rates_analysis.rate_case_funcs.load_billing_kwh_annual", _fake_load_kwh)
+    monkeypatch.setattr("lib.rates_analysis.rate_case_funcs.load_master_bills", _fake_load_master_bills)
+
+    result = incremental_cost_delta_with_gap(
+        "MD",
+        "bge",
+        "md_test",
+        "default_precalc",
+        "default_calibrated",
+    )
+    assert result.height == 2
+    # delta_gap = delta_annual_bill_delivery - delta_economic_burden_delivery
+    # annual_bill_delivery = elec_delivery_bill + elec_fixed_charge
+    # bldg 1: (140+10) - (90+10) = 50; MC delta = 30; gap = 20
+    # bldg 2: (210+10) - (190+10) = 20; MC delta = 10; gap = 10
+    assert "delta_gap" in result.columns
+    assert result.filter(pl.col("bldg_id") == 1)["delta_gap"][0] == pytest.approx(20.0)
+    assert result.filter(pl.col("bldg_id") == 2)["delta_gap"][0] == pytest.approx(10.0)
+
+    # New decomposed columns
+    assert "elec_delivery_bill_before" in result.columns
+    assert "elec_fixed_charge_before" in result.columns
+    assert "overpayment_volumetric" in result.columns
+    assert "overpayment_volumetric_fc" in result.columns
+
+    # overpayment_volumetric = delta_elec_delivery_bill - delta_MC
+    # bldg 1: (140 - 90) - 30 = 20; bldg 2: (210 - 190) - 10 = 10
+    assert result.filter(pl.col("bldg_id") == 1)["overpayment_volumetric"][0] == pytest.approx(20.0)
+    assert result.filter(pl.col("bldg_id") == 2)["overpayment_volumetric"][0] == pytest.approx(10.0)
+
+    # overpayment_volumetric_fc == delta_gap (by construction)
+    assert result.filter(pl.col("bldg_id") == 1)["overpayment_volumetric_fc"][0] == pytest.approx(20.0)
+    assert result.filter(pl.col("bldg_id") == 2)["overpayment_volumetric_fc"][0] == pytest.approx(10.0)
+
+
+def test_incremental_cost_summary_by_heating_type_matches_old_name() -> None:
+    """The new primary name produces the same result as the deprecated alias."""
+    tbl = incremental_cost_summary_by_heating_type(_delta_frame_with_kwh_by_group())
+    assert tbl["heating_type"].to_list() == ["Natural gas", "Electric resistance", "All non-HP"]
+    natgas = tbl.filter(pl.col("heating_type") == "Natural gas")
+    assert natgas["revenue_avg_delta"][0] == pytest.approx(35.0)
+
+
+def test_deprecated_aliases_emit_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Deprecated aliases still work but emit DeprecationWarning."""
+
+    def _fake_delta(
+        state: str,
+        batch: str,
+        segment_before: str,
+        segment_after: str,
+        *,
+        components: list[str] | None = None,
+        utility: str | None = None,
+    ) -> pl.DataFrame:
+        return _delta_frame()
+
+    def _fake_load_kwh(state: str, utility: str, batch: str, segment: str) -> pl.LazyFrame:
+        if segment == "default_precalc":
+            return pl.DataFrame({"bldg_id": [1, 2], "annual_kwh_grid": [500.0, 600.0]}).lazy()
+        return pl.DataFrame({"bldg_id": [1, 2], "annual_kwh_grid": [800.0, 1000.0]}).lazy()
+
+    monkeypatch.setattr("lib.rates_analysis.rate_case_funcs.bat_component_delta", _fake_delta)
+    monkeypatch.setattr("lib.rates_analysis.rate_case_funcs.load_billing_kwh_annual", _fake_load_kwh)
+
+    with pytest.warns(DeprecationWarning, match="incremental_cost_delta_with_gap"):
+        bat_component_delta_with_gap("MD", "bge", "md_test", "default_precalc", "default_calibrated")
+
+    with pytest.warns(DeprecationWarning, match="incremental_cost_summary_by_heating_type"):
+        bat_component_summary_by_heating_type(_delta_frame_with_kwh_by_group())

@@ -1,0 +1,92 @@
+---
+title: ANALYSIS TEMPLATE
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+
+```{r}
+library(tidyverse)
+library(scales)
+
+library(gt)
+library(gtExtras)
+library(jsonlite)
+library(RSQLite)
+
+source("/workspaces/reports/lib/ggplot/switchbox_theme.R")
+
+```
+
+```{r}
+path_metadata_u0 <- "/workspaces/reports/data/resstock/2022_resstock_amy2018_release_1.1/MA_baseline_metadata_and_annual_results.csv"
+
+columns_to_keep <- c(
+  "bldg_id",
+  "in.sqft",
+  "in.city",
+  "in.county",
+  "in.heating_fuel",
+  "in.hvac_has_ducts",
+  "in.hvac_cooling_type",
+  "in.hvac_cooling_efficiency",
+  "in.hvac_heating_efficiency",
+  "in.hvac_heating_type",
+  "in.hvac_heating_type_and_fuel",
+  "in.hvac_secondary_heating_efficiency",
+  "in.hvac_secondary_heating_type_and_fuel",
+  "in.income",
+  "in.vintage"
+)
+
+meta_u0 <- read_csv(
+  path_metadata_u0,
+  show_col_types = FALSE,
+  col_select = all_of(columns_to_keep)
+)
+
+```
+
+
+```{r}
+
+# Filter for heat pump systems (those with HSPF efficiency ratings)
+meta_u0_hp <- meta_u0 |>
+  filter(str_detect(in.hvac_heating_efficiency, "HSPF"))
+# Extract HSPF values from efficiency string
+meta_u0_hp <- meta_u0_hp |>
+  mutate(
+    hspf = as.numeric(str_extract(in.hvac_heating_efficiency, "\\d+\\.\\d+(?=\\s*HSPF)"))
+  )
+
+View(meta_u0_hp)
+
+# Create bar chart of HSPF values
+ggplot(meta_u0_hp, aes(x = factor(hspf))) +
+  geom_bar(fill = sb_colors["midnight"], width = 0.7) +
+  labs(
+    title = "Distribution of Heat Pump HSPF Values",
+    x = "HSPF Rating",
+    y = "Count"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),
+    axis.text.x = element_text(angle = 0, hjust = 0.5, size = 12),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank()
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1)))
+
+
+
+```

@@ -73,14 +73,13 @@ from lib.rates_analysis.rate_case_funcs import (
     cost_of_service_by_subclass,
     extract_tariff_rates,
     hp_bat_summary,
-    load_delivery_mc_heatmap,
     load_master_bills,
     load_tariff_json,
     monthly_bill_components,
+    plot_bill_change_quadrant_comparison,
     plot_bill_change_quadrants,
     plot_burden_bar_by_utility,
     plot_decomposed_bill_3bar,
-    plot_mc_heatmap,
     plot_monthly_bill_components,
     plot_ratedesign_cdf,
     plot_ratedesign_monthly_hist,
@@ -240,14 +239,14 @@ incidence_natgas_default
 
 report_vars["pct_natgas_hp_bill_increase_default"] = incidence_natgas_default["pct_increase"]
 report_vars["pct_natgas_hp_bill_decrease_default"] = incidence_natgas_default["pct_decrease"]
-report_vars["mean_natgas_hp_bill_increase_default"] = incidence_natgas_default["mean_delta"]
-report_vars["median_natgas_hp_bill_increase_default"] = incidence_natgas_default["median_delta"]
+report_vars["mean_natgas_hp_bill_delta_default"] = incidence_natgas_default["mean_delta"]
+report_vars["median_natgas_hp_bill_delta_default"] = incidence_natgas_default["median_delta"]
 ```
 
 **`{python} f"{report_vars['pct_natgas_hp_bill_increase_default']:.0%}"` of natural-gas-heated
 MD BGE homes would see their total annual energy bill go up** after switching to a heat
-pump under today's rate — a mean increase of `{python} f"${report_vars['mean_natgas_hp_bill_increase_default']:,.0f}"`
-a year (median `{python} f"${report_vars['median_natgas_hp_bill_increase_default']:,.0f}"`).
+pump under today's rate — a mean increase of `{python} f"${report_vars['mean_natgas_hp_bill_delta_default']:,.0f}"`
+a year (median `{python} f"${report_vars['median_natgas_hp_bill_delta_default']:,.0f}"`).
 The rest see a decrease, mostly from avoided gas costs outweighing the added electric load.
 
 ## Bill change quadrant plots
@@ -307,6 +306,33 @@ delta_natgas_default_to_seasonal = bill_delta_between_segments(
 delta_natgas_default_to_flat = bill_delta_between_segments(
     STATE, BATCH, SEG_DEFAULT_PRECALC, SEG_FLAT_CALIBRATED, bill_col=BILL_COL
 ).filter(pl.col("heating_type_v2") == "natgas")
+```
+
+The three quadrant charts above each fix the rate and vary the baseline heating type;
+`plot_bill_change_quadrant_comparison()` flips that around, fixing natural gas as the baseline
+heating type and putting the three rates side by side, so the effect of rate design on this
+one population is directly comparable in a single chart.
+
+```{python}
+#| label: fig-bill-change-quadrants-natgas-by-rate
+#| fig-cap: "Change in total annual energy bill for natural-gas-heated MD BGE homes switching to a heat pump, under the default rate vs. the HP seasonal rate vs. the HP flat rate."
+
+display_svg(
+    plot_bill_change_quadrant_comparison(
+        [
+            ("Default rate", delta_natgas_default),
+            ("HP seasonal rate", delta_natgas_default_to_seasonal),
+            ("HP flat rate", delta_natgas_default_to_flat),
+        ],
+        title_parts=[
+            ("How bills would change for ", "#000000"),
+            ("natural gas", "#7A8A10"),
+            (" heated homes after switching to ", "#000000"),
+            ("heat pumps", "#c47600"),
+            (", under different rates", "#000000"),
+        ],
+    )
+)
 ```
 
 ```{python}
@@ -439,6 +465,19 @@ _bat_by_type_gt = (
 display_gt(_bat_by_type_gt)
 ```
 
+```{python}
+#| label: report-vars-bat-by-heating-type
+
+for label, key in [
+    ("Natural gas", "natgas_mean_delivery_bat"),
+    ("Oil/propane", "oil_propane_mean_delivery_bat"),
+    ("Existing heat pump", "hp_mean_delivery_bat"),
+]:
+    rows = _bat_by_type.filter(pl.col("heating_label") == label)
+    if rows.height:
+        report_vars[key] = float(rows["mean_per_year"][0])
+```
+
 CAIRO also exports each building's actual annual kWh consumption (`billing_kwh_annual.parquet`,
 alongside the standard master bills/BAT tables but only in the raw per-run output, not yet
 promoted to a master table), so we can show the full delivery revenue / cost of service /
@@ -529,40 +568,8 @@ revenue is several times larger than marginal cost for every baseline heating ty
 exactly why the residual *allocator* — not the marginal-cost charge — is what mostly
 determines whether a subclass over- or underpays in the table above.
 
-## When are delivery costs actually incurred?
-
-MD BGE's delivery marginal costs — bulk transmission and distribution +
-sub-transmission capacity — are hourly series covering all 8,760 hours of 2025.
-Both are zero most of the year and spike only in a small number of hours, which
-is exactly the timing mismatch a uniform volumetric rate can't reflect.
-
-```{python}
-#| label: load-mc-heatmap-data
-
-mc_heatmap_df = load_delivery_mc_heatmap(STATE, UTILITY, YEAR)
-```
-
-```{python}
-#| label: fig-mc-heatmap-bulk-tx
-#| fig-cap: "Hourly marginal bulk transmission capacity costs, MD BGE, 2025."
-
-plot_mc_heatmap(
-    mc_heatmap_df, "mc_bulk_tx",
-    title="Bulk Transmission — Marginal Capacity Cost by Hour",
-    high_color=SB_COLORS["midnight"],
-)
-```
-
-```{python}
-#| label: fig-mc-heatmap-dist-sub-tx
-#| fig-cap: "Hourly marginal distribution and sub-transmission capacity costs, MD BGE, 2025."
-
-plot_mc_heatmap(
-    mc_heatmap_df, "mc_dist_sub_tx",
-    title="Distribution + Sub-Transmission — Marginal Capacity Cost by Hour",
-    high_color=SB_COLORS["carrot"],
-)
-```
+Peak-hour delivery marginal costs and heatmaps live in
+[`delivery_mc.qmd`](delivery_mc.qmd) (also used by expert testimony).
 
 ## A time-of-use rate doesn't fix it — but we can't show that yet
 
@@ -589,7 +596,7 @@ We read both tariffs' calibrated URDB JSON directly to see what changed.
 
 ```{python}
 #| label: load-tariffs
-
+tariff_fixed = load_tariff_json(STATE, UTILITY, f"{UTILITY}_default", RDP_REF)
 tariff_default = load_tariff_json(STATE, UTILITY, f"{UTILITY}_default_calibrated", RDP_REF)
 tariff_seasonal = load_tariff_json(STATE, UTILITY, f"{UTILITY}_{SEASONAL_SCENARIO}_calibrated", RDP_REF)
 tariff_flat = load_tariff_json(STATE, UTILITY, f"{UTILITY}_{FLAT_SCENARIO}_calibrated", RDP_REF)
@@ -608,6 +615,7 @@ print("flat:", rates_flat)
 _tariff_months = tariff_month_rate_table(
     {
         "Default rate (¢/kWh)": rates_default,
+        "Default fixed rate (¢/kWh)": rates_fixed,
         "Seasonal HP rate (¢/kWh)": rates_seasonal,
         "Flat HP rate (¢/kWh)": rates_flat,
     }
@@ -961,21 +969,21 @@ than the default tariff does — so the same incremental load translates into a 
 split between marginal cost and delivery bill.
 
 ```{python}
-#| label: fig-cost-breakdown-representative-seasonal
-#| fig-cap: "Annual kWh, cost of service, and delivery bill for the representative MD BGE natural-gas home, before and after switching to a heat pump, under the seasonal reform rate."
+#| label: fig-cost-breakdown-representative-flat
+#| fig-cap: "Annual kWh, cost of service, and delivery bill for the representative MD BGE natural-gas home, before and after switching to a heat pump, under the flat reform rate."
 
-cost_breakdown_seasonal = representative_cost_data(
+cost_breakdown_flat = representative_cost_data(
     STATE,
     UTILITY,
     BATCH,
     median_natgas_bldg_id,
-    SEG_SEASONAL_CALIBRATED,
+    SEG_FLAT_CALIBRATED,
     residual=RESIDUAL,
 )
 display_svg(
     plot_representative_cost_breakdown(
-        cost_breakdown_seasonal,
-        title="Switching to a heat pump raises usage, marginal cost, and delivery bill — under the seasonal reform rate",
+        cost_breakdown_flat,
+        title="Switching to a heat pump raises usage, marginal cost, and delivery bill — under the flat reform rate",
     )
 )
 ```

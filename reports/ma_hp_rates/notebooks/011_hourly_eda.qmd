@@ -1,0 +1,119 @@
+---
+title: ANALYSIS TEMPLATE
+
+toc: true
+reference-location: margin
+fig-cap-location: bottom
+
+appendix-style: default
+citation-location: document
+citation:
+  container-title: Switchbox
+
+format:
+  html:
+    page-layout: full
+---
+
+```{r}
+library(tidyverse)
+library(scales)
+
+library(gt)
+library(gtExtras)
+library(jsonlite)
+library(RSQLite)
+
+source("/workspaces/reports/lib/ggplot/switchbox_theme.R")
+
+```
+
+
+
+# Hourly Results
+```{r}
+
+
+con <- dbConnect(duckdb::duckdb(), "/workspaces/reports/data/ResStock/2022_resstock_amy2018_release_1.1/rs_20250307_37M.db")
+
+# Read only the electricity consumption column from monthly_2022 table
+#monthly_2022 <- dbGetQuery(con, "SELECT bldg_id, month, upgrade, \"sum_out.electricity.total.energy_consumption\" FROM monthly_2022 WHERE upgrade IN (3,4)")
+n_buildings <- dbGetQuery(con, "SELECT COUNT(DISTINCT bldg_id) as count FROM hourly_2022 WHERE upgrade = 4")$count
+
+# Disconnect from database
+dbDisconnect(con)
+
+
+print(paste0("Number of unique buildings: ", n_buildings))
+
+
+```
+
+
+
+##
+
+```{r}
+
+# Connect to the DuckDB database
+# Replace 'path/to/your/database.duckdb' with your actual database path
+con <- dbConnect(duckdb::duckdb(), "/workspaces/reports/data/ResStock/2022_resstock_amy2018_release_1.1/rs_20250307_37M.db")
+
+
+# Query the database for January data
+# Filter for month = 1 (January)
+query <- "
+SELECT
+  COUNT(bldg_id) as count
+FROM
+  hourly_2022
+WHERE
+  month = 1
+"
+
+# Execute the query
+january_data <- dbGetQuery(con, query)
+
+# Disconnect from the database
+dbDisconnect(con)
+
+# Calculate mean energy consumption by day and hour
+daily_hourly_mean <- january_data %>%
+  group_by(day, hour) %>%
+  summarize(mean_energy = mean(energy, na.rm = TRUE), .groups = 'drop')
+
+# Create a datetime variable for proper plotting
+daily_hourly_mean <- daily_hourly_mean %>%
+  mutate(datetime = ymd_h(paste0("2025-01-", day, " ", hour)))
+
+
+# Create the plot
+energy_plot <- ggplot(daily_hourly_mean, aes(x = datetime, y = mean_energy)) +
+  geom_line(color = "#2C7FB8", size = 1) +
+  geom_point(color = "#2C7FB8", size = 2, alpha = 0.7) +
+  labs(
+    title = "Mean Home Energy Consumption in January",
+    subtitle = "Hourly average across all buildings",
+    x = "Date",
+    y = "Mean Energy Consumption",
+    caption = "Data source: DuckDB database with 262M rows"
+  ) +
+  scale_x_datetime(
+    date_labels = "%d %b %H:00",
+    date_breaks = "3 days"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.minor = element_blank()
+  )
+
+print(energy_plot)
+
+
+
+
+
+```

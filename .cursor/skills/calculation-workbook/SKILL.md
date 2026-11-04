@@ -31,7 +31,7 @@ Do not add a note that restates the workbook: which schedules, which riders, whi
 
 1. List each cited number and the notebook variable it comes from.
 2. One workbook per data source. A testimony table with two columns becomes two workbooks.
-3. Recompute each formula step in Python from the same inputs. Assert it against the report variable the narrative prints. Write the file only after the asserts pass.
+3. Assert the formula steps against the report variables before writing. After writing, read the workbook back. Assert the stored inputs against the notebook frames, and assert each intermediate evaluated from those stored cells against the notebook variable. Those asserts live in the notebook. Upload only after they pass.
 4. Upload with `upload_xlsx` from `lib.data.gsheets`. That trashes any file of the same name in the folder and uploads an Excel file, so the formulas survive download. `xlsx_to_gsheet` writes into a native Google Sheet; do not use it for this.
 5. Print the Drive link. Delete the local cache copy only after the upload succeeds.
 

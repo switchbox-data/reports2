@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import polars as pl
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font
 from openpyxl.worksheet.worksheet import Worksheet
 
@@ -67,6 +67,12 @@ def build_bill_decrease_share_workbook(
     last = _write_buildings(wb.create_sheet("buildings"), frame)
     _write_share(wb.create_sheet("share"), note, last)
     wb.save(out)
+    assert_bill_decrease_share_workbook(
+        out,
+        buildings,
+        expected_pct_decrease=expected_pct_decrease,
+        expected_pct_increase=expected_pct_increase,
+    )
     return out
 
 
@@ -89,6 +95,86 @@ def _write_buildings(ws: Worksheet, frame: pl.DataFrame) -> int:
     for col in "CDEF":
         ws.column_dimensions[col].width = 16
     return frame.height + 1
+
+
+def assert_bill_decrease_share_workbook(
+    path: str | Path,
+    buildings: pl.DataFrame,
+    *,
+    expected_pct_decrease: float,
+    expected_pct_increase: float,
+) -> dict[str, float]:
+    """Read a saved workbook and check each building row and the weighted shares.
+
+    Returns the shares and the weight sums evaluated from the stored bills.
+    """
+    needed = ["bldg_id", "heating_type_v2", "weight", "bill_before", "bill_after"]
+    frame = buildings.select(needed).sort("bldg_id")
+    wb = load_workbook(path, data_only=False)
+    ws = wb["buildings"]
+    weight_decrease = 0.0
+    weight_increase = 0.0
+    weight_unchanged = 0.0
+    for index, expected in enumerate(frame.iter_rows(named=True)):
+        excel_row = 2 + index
+        bldg_id = expected["bldg_id"]
+        expected_id = int(bldg_id) if isinstance(bldg_id, int) else bldg_id
+        if ws.cell(excel_row, 1).value != expected_id:
+            raise AssertionError(
+                f"row {excel_row} bldg_id: sheet has {ws.cell(excel_row, 1).value}, notebook has {expected_id}"
+            )
+        if ws.cell(excel_row, 2).value != str(expected["heating_type_v2"]):
+            raise AssertionError(f"row {excel_row} heating type")
+        weight = _stored_number(ws.cell(excel_row, 3).value, f"row {excel_row} weight")
+        bill_before = _stored_number(ws.cell(excel_row, 4).value, f"row {excel_row} bill before")
+        bill_after = _stored_number(ws.cell(excel_row, 5).value, f"row {excel_row} bill after")
+        _close(weight, float(expected["weight"]), _TOL, f"row {excel_row} weight")
+        _close(bill_before, float(expected["bill_before"]), _TOL, f"row {excel_row} bill before")
+        _close(bill_after, float(expected["bill_after"]), _TOL, f"row {excel_row} bill after")
+        if ws.cell(excel_row, 6).value != f"=E{excel_row}-D{excel_row}":
+            raise AssertionError(f"row {excel_row} delta is not a formula")
+        delta = bill_after - bill_before
+        if delta < 0:
+            weight_decrease += weight
+        elif delta > 0:
+            weight_increase += weight
+        else:
+            weight_unchanged += weight
+    last = frame.height + 1
+    if (
+        wb["share"]["B8"].value != "=B4/B7"
+        or wb["share"]["B4"].value != f'=SUMIF(buildings!F2:F{last},"<0",buildings!C2:C{last})'
+    ):
+        raise AssertionError("share cells are not the expected formulas")
+    total = weight_decrease + weight_increase + weight_unchanged
+    pct_decrease = weight_decrease / total
+    pct_increase = weight_increase / total
+    if abs(pct_decrease - expected_pct_decrease) > _TOL or abs(pct_increase - expected_pct_increase) > _TOL:
+        raise AssertionError(
+            f"sheet shares are {pct_decrease:.10g} and {pct_increase:.10g}, "
+            f"report variables are {expected_pct_decrease:.10g} and {expected_pct_increase:.10g}"
+        )
+    return {
+        "pct_all_fossil_hp_bill_decrease_rhp": pct_decrease,
+        "pct_all_fossil_hp_bill_increase_rhp": pct_increase,
+        "weight_decrease": weight_decrease,
+        "weight_increase": weight_increase,
+        "weight_unchanged": weight_unchanged,
+        "n_buildings": float(frame.height),
+    }
+
+
+def _stored_number(value: object, where: str) -> float:
+    if isinstance(value, str):
+        raise AssertionError(f"{where} is a formula, expected a stored input")
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise AssertionError(f"{where} is {value!r}, expected a number")
+    return float(value)
+
+
+def _close(actual: float, expected: float, tol: float, where: str) -> None:
+    if abs(actual - expected) > tol:
+        raise AssertionError(f"{where}: sheet has {actual:.10g}, notebook has {expected:.10g}")
 
 
 def _note_text(note: str, boilerplate: str) -> str:

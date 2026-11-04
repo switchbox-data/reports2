@@ -10,7 +10,10 @@ from openpyxl import Workbook, load_workbook
 
 from lib.rates_analysis.rate_case_funcs import MONTH_ORDER
 from lib.workbooks.bill_decrease_share import build_bill_decrease_share_workbook
-from lib.workbooks.representative_overcharge import build_representative_overcharge_workbook
+from lib.workbooks.representative_overcharge import (
+    assert_representative_overcharge_workbook,
+    build_representative_overcharge_workbook,
+)
 
 _KWH_BEFORE = 0.1
 _KWH_AFTER = 0.2
@@ -176,6 +179,25 @@ def test_representative_home_workbook_uses_formulas_after_the_average(tmp_path) 
     assert wb["testimony"]["B8"].value == "=schedule_rhp!B9"
     assert wb["population"]["B4"].value == 100
     assert wb["population"]["B5"].value == 500.0
+
+
+def test_read_back_rejects_a_changed_monthly_kwh(tmp_path) -> None:
+    path = _build(tmp_path / "resstock.xlsx", None, None)
+    wb = load_workbook(path)
+    wb["monthly"]["B2"] = 999.0
+    wb.save(path)
+    before, after, hourly_before, hourly_after, mc, kwh_before, kwh_after = _load_base(None, None)
+    with pytest.raises(AssertionError, match="Jan kWh before"):
+        assert_representative_overcharge_workbook(
+            path,
+            monthly_before=before,
+            monthly_after=after,
+            hourly_before=hourly_before,
+            hourly_after=hourly_after,
+            mc=mc,
+            rate_components=_rates(),
+            report_vars=_report_vars(kwh_before, kwh_after),
+        )
 
 
 def test_subclass_workbook_divides_totals_by_customer_count(tmp_path) -> None:

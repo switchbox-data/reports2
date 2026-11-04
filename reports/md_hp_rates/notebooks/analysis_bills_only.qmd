@@ -588,16 +588,33 @@ report_vars
 #| label: export-surrebuttal-bill-share
 
 from lib.data.gsheets import upload_xlsx
-from lib.workbooks.bill_decrease_share import build_bill_decrease_share_workbook
+from lib.workbooks.bill_decrease_share import (
+    assert_bill_decrease_share_workbook,
+    build_bill_decrease_share_workbook,
+)
 
+_buildings = delta_all_fossil_rhp.select("bldg_id", "heating_type_v2", "weight", "bill_before", "bill_after")
 _path = Path("../cache/surrebuttal_rhp_bill_decrease_share.xlsx")
 build_bill_decrease_share_workbook(
     _path,
-    delta_all_fossil_rhp.select("bldg_id", "heating_type_v2", "weight", "bill_before", "bill_after"),
+    _buildings,
     expected_pct_decrease=report_vars["pct_all_fossil_hp_bill_decrease_rhp"],
     expected_pct_increase=report_vars["pct_all_fossil_hp_bill_increase_rhp"],
     note="",
 )
+_sheet = assert_bill_decrease_share_workbook(
+    _path,
+    _buildings,
+    expected_pct_decrease=report_vars["pct_all_fossil_hp_bill_decrease_rhp"],
+    expected_pct_increase=report_vars["pct_all_fossil_hp_bill_increase_rhp"],
+)
+assert abs(_sheet["pct_all_fossil_hp_bill_decrease_rhp"] - report_vars["pct_all_fossil_hp_bill_decrease_rhp"]) <= 1e-10
+assert abs(_sheet["pct_all_fossil_hp_bill_increase_rhp"] - report_vars["pct_all_fossil_hp_bill_increase_rhp"]) <= 1e-10
+_weight_down = float(_buildings.filter(pl.col("bill_after") < pl.col("bill_before"))["weight"].sum())
+_weight_up = float(_buildings.filter(pl.col("bill_after") > pl.col("bill_before"))["weight"].sum())
+assert abs(_sheet["weight_decrease"] - _weight_down) <= 1e-6
+assert abs(_sheet["weight_increase"] - _weight_up) <= 1e-6
+assert _sheet["n_buildings"] == _buildings.height
 _link = upload_xlsx(_path, "1r6870cEtWFnMgZpucxgQIPezBHLMhQ5P")
 _path.unlink()
 print(_link)

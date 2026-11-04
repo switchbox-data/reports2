@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import polars as pl
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font
 from openpyxl.worksheet.worksheet import Worksheet
 
@@ -179,6 +179,21 @@ def build_representative_overcharge_workbook(
     _write_schedule_rhp(wb.create_sheet("schedule_rhp"))
     _write_testimony(wb.create_sheet("testimony"), source_name)
     wb.save(out)
+    assert_representative_overcharge_workbook(
+        out,
+        monthly_before=monthly_before,
+        monthly_after=monthly_after,
+        hourly_before=hourly_before,
+        hourly_after=hourly_after,
+        mc=mc,
+        rate_components=rate_components,
+        report_vars=report_vars,
+        subclass_monthly=subclass_monthly,
+        hourly_aggregate=hourly_aggregate,
+        n_buildings=n_buildings,
+        weight_sum=weight_sum,
+        utc_offset_hours=utc_offset_hours,
+    )
     return out
 
 
@@ -354,16 +369,22 @@ def _annual_from_inputs(
     )
 
 
+def report_var_tolerance(key: str) -> float:
+    """Absolute tolerance for comparing a workbook figure to a report variable."""
+    if "kwh" in key:
+        return _KWH_TOL
+    if any(part in key for part in ("lambda", "pct_change", "_rate_")):
+        return _RATE_TOL
+    return _DOLLAR_TOL
+
+
 def _assert_close(actual: float, report_vars: dict[str, Any], key: str, tol: float) -> None:
     expected = float(report_vars[key])
     if abs(actual - expected) > tol:
         raise AssertionError(f"{key}: inputs produce {actual:.10g}, report variable is {expected:.10g}")
 
 
-def _assert_report_vars(annual: _Annual, report_vars: dict[str, Any]) -> None:
-    _assert_close(annual.kwh_before, report_vars, "all_fossil_annual_kwh_before", _KWH_TOL)
-    _assert_close(annual.kwh_after, report_vars, "all_fossil_annual_kwh_after", _KWH_TOL)
-    _assert_close(annual.kwh_delta, report_vars, "all_fossil_annual_kwh_delta", _KWH_TOL)
+def _figures(annual: _Annual) -> dict[str, float]:
     pairs = [
         ("customer", "customer_charge"),
         ("dist", "distribution"),
@@ -371,49 +392,222 @@ def _assert_report_vars(annual: _Annual, report_vars: dict[str, Any]) -> None:
         ("empower", "empower_maryland"),
         ("gen", "generation"),
     ]
+    figures = {
+        "all_fossil_annual_kwh_before": annual.kwh_before,
+        "all_fossil_annual_kwh_after": annual.kwh_after,
+        "all_fossil_annual_kwh_delta": annual.kwh_delta,
+    }
     for key, var in pairs:
-        _assert_close(getattr(annual, f"{key}_before"), report_vars, f"all_fossil_annual_{var}_before", _DOLLAR_TOL)
-        _assert_close(getattr(annual, f"{key}_after"), report_vars, f"all_fossil_annual_{var}_after", _DOLLAR_TOL)
-    _assert_close(annual.delivery_charges_delta, report_vars, "all_fossil_annual_delivery_charges_delta", _DOLLAR_TOL)
-    _assert_close(annual.empower_delta, report_vars, "all_fossil_annual_empower_maryland_delta", _DOLLAR_TOL)
-    _assert_close(annual.mc_tx_before, report_vars, "all_fossil_annual_mc_tx_before", _DOLLAR_TOL)
-    _assert_close(annual.mc_tx_after, report_vars, "all_fossil_annual_mc_tx_after", _DOLLAR_TOL)
-    _assert_close(annual.mc_dist_before, report_vars, "all_fossil_annual_mc_dist_before", _DOLLAR_TOL)
-    _assert_close(annual.mc_dist_after, report_vars, "all_fossil_annual_mc_dist_after", _DOLLAR_TOL)
-    _assert_close(
-        annual.mc_tx_before + annual.mc_dist_before,
-        report_vars,
-        "all_fossil_annual_mc_delivery_before",
-        _DOLLAR_TOL,
+        figures[f"all_fossil_annual_{var}_before"] = getattr(annual, f"{key}_before")
+        figures[f"all_fossil_annual_{var}_after"] = getattr(annual, f"{key}_after")
+    figures["all_fossil_annual_delivery_charges_delta"] = annual.delivery_charges_delta
+    figures["all_fossil_annual_empower_maryland_delta"] = annual.empower_delta
+    figures["all_fossil_annual_mc_tx_before"] = annual.mc_tx_before
+    figures["all_fossil_annual_mc_tx_after"] = annual.mc_tx_after
+    figures["all_fossil_annual_mc_dist_before"] = annual.mc_dist_before
+    figures["all_fossil_annual_mc_dist_after"] = annual.mc_dist_after
+    figures["all_fossil_annual_mc_delivery_before"] = annual.mc_tx_before + annual.mc_dist_before
+    figures["all_fossil_annual_mc_delivery_after"] = annual.mc_tx_after + annual.mc_dist_after
+    figures["all_fossil_annual_total_overcharge"] = annual.overcharge
+    figures["rhp_lambda_dist"] = annual.lambda_dist
+    figures["rhp_lambda_tx"] = annual.lambda_tx
+    figures["rhp_lambda_empower"] = annual.lambda_empower
+    figures["rhp_pct_change_dist"] = annual.lambda_dist - 1.0
+    figures["rhp_pct_change_tx"] = annual.lambda_tx - 1.0
+    figures["rhp_pct_change_empower"] = annual.lambda_empower - 1.0
+    figures["rhp_fair_dist_bill_after"] = annual.dist_before + (annual.mc_dist_after - annual.mc_dist_before)
+    figures["rhp_fair_tx_bill_after"] = annual.tx_before + (annual.mc_tx_after - annual.mc_tx_before)
+    figures["rhp_avg_rate_dist"] = annual.dist_after / annual.kwh_after
+    figures["rhp_avg_rate_tx"] = annual.tx_after / annual.kwh_after
+    figures["rhp_avg_rate_empower"] = annual.empower_after / annual.kwh_after
+    figures["rhp_rate_dist"] = annual.dist_after / annual.kwh_after * annual.lambda_dist
+    figures["rhp_rate_tx"] = annual.tx_after / annual.kwh_after * annual.lambda_tx
+    figures["rhp_rate_empower"] = annual.empower_after / annual.kwh_after * annual.lambda_empower
+    return figures
+
+
+def _assert_report_vars(annual: _Annual, report_vars: dict[str, Any]) -> None:
+    for key, actual in _figures(annual).items():
+        _assert_close(actual, report_vars, key, report_var_tolerance(key))
+
+
+def _stored_number(value: object, where: str) -> float:
+    if isinstance(value, str):
+        raise AssertionError(f"{where} is a formula, expected a stored input")
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise AssertionError(f"{where} is {value!r}, expected a number")
+    return float(value)
+
+
+def _close(actual: float, expected: float, tol: float, where: str) -> None:
+    if abs(actual - expected) > tol:
+        raise AssertionError(f"{where}: sheet has {actual:.10g}, notebook has {expected:.10g}")
+
+
+def _same_timestamp(actual: object, expected: object, where: str) -> None:
+    if not isinstance(actual, datetime) or not isinstance(expected, datetime):
+        raise AssertionError(f"{where}: sheet has {actual!r}, notebook has {expected!r}")
+    if actual.replace(tzinfo=None) != expected.replace(tzinfo=None):
+        raise AssertionError(f"{where}: sheet has {actual}, notebook has {expected}")
+
+
+def assert_representative_overcharge_workbook(
+    path: str | Path,
+    *,
+    monthly_before: pl.DataFrame,
+    monthly_after: pl.DataFrame,
+    hourly_before: pl.DataFrame,
+    hourly_after: pl.DataFrame,
+    mc: pl.DataFrame,
+    rate_components: dict[str, dict[str, Any]],
+    report_vars: dict[str, Any],
+    subclass_monthly: pl.DataFrame | None = None,
+    hourly_aggregate: pl.DataFrame | None = None,
+    n_buildings: int | None = None,
+    weight_sum: float | None = None,
+    utc_offset_hours: int = _UTC_OFFSET_HOURS,
+) -> dict[str, float]:
+    """Read a saved workbook and check it against the notebook that wrote it.
+
+    Stored inputs are compared to the frames. Bills, marginal cost, the overcharge,
+    and the Schedule R-HP rates are evaluated from those stored inputs and compared
+    to ``report_vars``. Returns that evaluated mapping.
+    """
+    rates = _rates_by_month(rate_components)
+    kwh_before = _month_kwh(monthly_before)
+    kwh_after = _month_kwh(monthly_after)
+    aligned = _align_hourly(hourly_before, hourly_after, mc, utc_offset_hours)
+    wb = load_workbook(path, data_only=False)
+
+    pop = wb["population"]
+    row = 4
+    if n_buildings is not None:
+        if pop.cell(row, 2).value != n_buildings:
+            raise AssertionError(
+                f"population buildings: sheet has {pop.cell(row, 2).value}, notebook has {n_buildings}"
+            )
+        row += 1
+    if weight_sum is not None:
+        _close(_stored_number(pop.cell(row, 2).value, "population weight"), weight_sum, _KWH_TOL, "population weight")
+
+    sheet_rates: dict[str, dict[str, float]] = {}
+    rate_keys = ["customer", "dist", "tx", "empower", "gen"]
+    for index, month in enumerate(MONTH_ORDER):
+        excel_row = _MONTH_FIRST + index
+        if wb["rates"].cell(excel_row, 1).value != month:
+            raise AssertionError(f"rates row {excel_row} month")
+        sheet_rates[month] = {}
+        for offset, key in enumerate(rate_keys):
+            stored = _stored_number(wb["rates"].cell(excel_row, 2 + offset).value, f"rates {month} {key}")
+            _close(stored, rates[month][key], _RATE_TOL, f"rates {month} {key}")
+            sheet_rates[month][key] = stored
+
+    customers: dict[str, tuple[float, float]] = {}
+    sheet_kwh_before: dict[str, float] = {}
+    sheet_kwh_after: dict[str, float] = {}
+    if subclass_monthly is not None:
+        frame = _ordered_subclass(subclass_monthly)
+        for index, month in enumerate(MONTH_ORDER):
+            excel_row = _MONTH_FIRST + index
+            sub = wb["subclass_monthly"]
+            expected = frame.row(index, named=True)
+            if sub.cell(excel_row, 1).value != month:
+                raise AssertionError(f"subclass_monthly row {excel_row} month")
+            stored_customers_before = _stored_number(sub.cell(excel_row, 2).value, f"{month} customers before")
+            stored_total_before = _stored_number(sub.cell(excel_row, 3).value, f"{month} kWh before")
+            stored_customers_after = _stored_number(sub.cell(excel_row, 4).value, f"{month} customers after")
+            stored_total_after = _stored_number(sub.cell(excel_row, 5).value, f"{month} kWh after")
+            _close(stored_customers_before, float(expected["customers_before"]), _KWH_TOL, f"{month} customers before")
+            _close(stored_total_before, float(expected["kwh_total_before"]), _KWH_TOL, f"{month} kWh total before")
+            _close(stored_customers_after, float(expected["customers_after"]), _KWH_TOL, f"{month} customers after")
+            _close(stored_total_after, float(expected["kwh_total_after"]), _KWH_TOL, f"{month} kWh total after")
+            if sub.cell(excel_row, 6).value != f"=C{excel_row}/B{excel_row}":
+                raise AssertionError(f"{month} per-customer kWh is not a formula")
+            customers[month] = (stored_customers_before, stored_customers_after)
+            sheet_kwh_before[month] = stored_total_before / stored_customers_before
+            sheet_kwh_after[month] = stored_total_after / stored_customers_after
+            _close(sheet_kwh_before[month], kwh_before[month], _KWH_TOL, f"{month} kWh before")
+            _close(sheet_kwh_after[month], kwh_after[month], _KWH_TOL, f"{month} kWh after")
+            if wb["monthly"].cell(excel_row, 2).value != f"=subclass_monthly!F{excel_row}":
+                raise AssertionError(f"monthly {month} kWh is not the subclass formula")
+    else:
+        for index, month in enumerate(MONTH_ORDER):
+            excel_row = _MONTH_FIRST + index
+            sheet_kwh_before[month] = _stored_number(wb["monthly"].cell(excel_row, 2).value, f"{month} kWh before")
+            sheet_kwh_after[month] = _stored_number(wb["monthly"].cell(excel_row, 3).value, f"{month} kWh after")
+            _close(sheet_kwh_before[month], kwh_before[month], _KWH_TOL, f"{month} kWh before")
+            _close(sheet_kwh_after[month], kwh_after[month], _KWH_TOL, f"{month} kWh after")
+
+    joined_agg = None
+    if hourly_aggregate is not None:
+        agg = _drop_time_zone(_shift(hourly_aggregate, utc_offset_hours))
+        joined_agg = aligned.select("timestamp").join(
+            agg.select("timestamp", pl.col("month").cast(pl.Utf8), "agg_kwh_before", "agg_kwh_after"),
+            on="timestamp",
+        )
+        if joined_agg.height != _HOURS:
+            raise AssertionError("hourly aggregate timestamps do not match the load profile")
+
+    sheet_hourly_before: list[float] = []
+    sheet_hourly_after: list[float] = []
+    sheet_mc_tx: list[float] = []
+    sheet_mc_dist: list[float] = []
+    hourly_ws = wb["hourly"]
+    mc_ws = wb["marginal_cost"]
+    for index, expected in enumerate(aligned.iter_rows(named=True)):
+        excel_row = _HOUR_FIRST + index
+        _same_timestamp(hourly_ws.cell(excel_row, 1).value, expected["timestamp"], f"hourly row {excel_row}")
+        _same_timestamp(mc_ws.cell(excel_row, 1).value, expected["timestamp"], f"marginal_cost row {excel_row}")
+        tx = _stored_number(mc_ws.cell(excel_row, 2).value, f"marginal_cost row {excel_row} bulk tx")
+        dist = _stored_number(mc_ws.cell(excel_row, 3).value, f"marginal_cost row {excel_row} distribution")
+        _close(tx, float(expected["mc_bulk_tx"]), _RATE_TOL, f"marginal_cost row {excel_row} bulk tx")
+        _close(dist, float(expected["mc_dist_sub_tx"]), _RATE_TOL, f"marginal_cost row {excel_row} distribution")
+        if joined_agg is not None:
+            agg_row = joined_agg.row(index, named=True)
+            month = str(hourly_ws.cell(excel_row, 2).value)
+            if month != str(agg_row["month"]):
+                raise AssertionError(
+                    f"hourly row {excel_row} month: sheet has {month}, notebook has {agg_row['month']}"
+                )
+            agg_before = _stored_number(hourly_ws.cell(excel_row, 3).value, f"hourly row {excel_row} aggregate before")
+            agg_after = _stored_number(hourly_ws.cell(excel_row, 4).value, f"hourly row {excel_row} aggregate after")
+            _close(agg_before, float(agg_row["agg_kwh_before"]), _KWH_TOL, f"hourly row {excel_row} aggregate before")
+            _close(agg_after, float(agg_row["agg_kwh_after"]), _KWH_TOL, f"hourly row {excel_row} aggregate after")
+            if hourly_ws.cell(excel_row, 7).value != f"=C{excel_row}/E{excel_row}":
+                raise AssertionError(f"hourly row {excel_row} per-customer kWh is not a formula")
+            kwh_b = agg_before / customers[month][0]
+            kwh_a = agg_after / customers[month][1]
+        else:
+            kwh_b = _stored_number(hourly_ws.cell(excel_row, 2).value, f"hourly row {excel_row} kWh before")
+            kwh_a = _stored_number(hourly_ws.cell(excel_row, 3).value, f"hourly row {excel_row} kWh after")
+        _close(kwh_b, float(expected["kwh_before"]), _KWH_TOL, f"hourly row {excel_row} kWh before")
+        _close(kwh_a, float(expected["kwh_after"]), _KWH_TOL, f"hourly row {excel_row} kWh after")
+        sheet_hourly_before.append(kwh_b)
+        sheet_hourly_after.append(kwh_a)
+        sheet_mc_tx.append(tx)
+        sheet_mc_dist.append(dist)
+
+    if wb["bills"]["E3"].value != "=B3*rates!C2" or wb["overcharge"]["D13"].value != "=D5-D11+D6":
+        raise AssertionError("bill or overcharge cells are not the expected formulas")
+    if wb["schedule_rhp"]["B9"].value != "=-B8" or wb["schedule_rhp"]["B13"].value != "=B12*B7":
+        raise AssertionError("Schedule R-HP cells are not the expected formulas")
+    for offset, (_, formula, _) in enumerate(_TESTIMONY_ROWS):
+        if wb["testimony"].cell(3 + offset, 2).value != formula:
+            raise AssertionError(f"testimony row {3 + offset} is not {formula}")
+
+    sheet_aligned = pl.DataFrame(
+        {
+            "kwh_before": sheet_hourly_before,
+            "kwh_after": sheet_hourly_after,
+            "mc_bulk_tx": sheet_mc_tx,
+            "mc_dist_sub_tx": sheet_mc_dist,
+        }
     )
-    _assert_close(
-        annual.mc_tx_after + annual.mc_dist_after,
-        report_vars,
-        "all_fossil_annual_mc_delivery_after",
-        _DOLLAR_TOL,
-    )
-    _assert_close(annual.overcharge, report_vars, "all_fossil_annual_total_overcharge", _DOLLAR_TOL)
-    _assert_close(annual.lambda_dist, report_vars, "rhp_lambda_dist", _RATE_TOL)
-    _assert_close(annual.lambda_tx, report_vars, "rhp_lambda_tx", _RATE_TOL)
-    _assert_close(annual.lambda_empower, report_vars, "rhp_lambda_empower", _RATE_TOL)
-    _assert_close(annual.lambda_dist - 1.0, report_vars, "rhp_pct_change_dist", _RATE_TOL)
-    _assert_close(annual.lambda_tx - 1.0, report_vars, "rhp_pct_change_tx", _RATE_TOL)
-    _assert_close(annual.lambda_empower - 1.0, report_vars, "rhp_pct_change_empower", _RATE_TOL)
-    fair_dist = annual.dist_before + (annual.mc_dist_after - annual.mc_dist_before)
-    fair_tx = annual.tx_before + (annual.mc_tx_after - annual.mc_tx_before)
-    _assert_close(fair_dist, report_vars, "rhp_fair_dist_bill_after", _DOLLAR_TOL)
-    _assert_close(fair_tx, report_vars, "rhp_fair_tx_bill_after", _DOLLAR_TOL)
-    _assert_close(annual.dist_after / annual.kwh_after, report_vars, "rhp_avg_rate_dist", _RATE_TOL)
-    _assert_close(annual.tx_after / annual.kwh_after, report_vars, "rhp_avg_rate_tx", _RATE_TOL)
-    _assert_close(annual.empower_after / annual.kwh_after, report_vars, "rhp_avg_rate_empower", _RATE_TOL)
-    _assert_close(annual.dist_after / annual.kwh_after * annual.lambda_dist, report_vars, "rhp_rate_dist", _RATE_TOL)
-    _assert_close(annual.tx_after / annual.kwh_after * annual.lambda_tx, report_vars, "rhp_rate_tx", _RATE_TOL)
-    _assert_close(
-        annual.empower_after / annual.kwh_after * annual.lambda_empower,
-        report_vars,
-        "rhp_rate_empower",
-        _RATE_TOL,
-    )
+    annual = _annual_from_inputs(sheet_kwh_before, sheet_kwh_after, sheet_rates, sheet_aligned)
+    figures = _figures(annual)
+    for key, actual in figures.items():
+        _assert_close(actual, report_vars, key, report_var_tolerance(key))
+    return figures
 
 
 def _header(ws: Worksheet, row: int, headers: list[str]) -> None:

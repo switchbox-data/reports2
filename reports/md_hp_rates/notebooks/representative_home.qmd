@@ -2455,3 +2455,71 @@ for k, v in sorted(report_vars.items()):
     else:
         print(f"  {k}: {v}")
 ```
+
+## Surrebuttal workbook: BGE subclass
+
+```{python}
+#| label: export-surrebuttal-workbook
+
+from lib.data.gsheets import upload_xlsx
+from lib.workbooks.representative_overcharge import (
+    assert_representative_overcharge_workbook,
+    build_representative_overcharge_workbook,
+    report_var_tolerance,
+)
+
+assert USE_BGE_ACTUALS
+
+_kwh_before_by_month = {_MONTH_TO_NUM[_BGE_COL_TO_MONTH[i + 1]]: _kwh_non_heating[i] for i in range(12)}
+_kwh_after_by_month = {_MONTH_TO_NUM[_BGE_COL_TO_MONTH[i + 1]]: _kwh_heating[i] for i in range(12)}
+_subclass_monthly = pl.DataFrame(
+    {
+        "month_label": MONTH_ORDER,
+        "customers_before": [_bge_cust_by_month_non_heating[m] for m in range(1, 13)],
+        "kwh_total_before": [_kwh_before_by_month[m] for m in range(1, 13)],
+        "customers_after": [_bge_cust_by_month_heating[m] for m in range(1, 13)],
+        "kwh_total_after": [_kwh_after_by_month[m] for m in range(1, 13)],
+    }
+)
+_month_label = _hourly["month_num"].replace_strict({i + 1: name for i, name in enumerate(MONTH_ORDER)})
+_hourly_aggregate = pl.DataFrame(
+    {
+        "timestamp": bge_hourly_non_heating["timestamp"],
+        "month": _month_label,
+        "agg_kwh_before": _hourly["agg_non_heating_kwh"],
+        "agg_kwh_after": _hourly["agg_heating_kwh"],
+    }
+)
+_path = Path("../cache/surrebuttal_table1_bge_subclass.xlsx")
+build_representative_overcharge_workbook(
+    _path,
+    monthly_before=profiles["all_fossil"]["before"],
+    monthly_after=profiles["all_fossil"]["after"],
+    hourly_before=hourly_profiles["all_fossil"]["before"],
+    hourly_after=hourly_profiles["all_fossil"]["after"],
+    mc=mc_8760,
+    rate_components=rate_components,
+    report_vars=report_vars,
+    source_name="BGE customer data",
+    note="",
+    subclass_monthly=_subclass_monthly,
+    hourly_aggregate=_hourly_aggregate,
+)
+_sheet = assert_representative_overcharge_workbook(
+    _path,
+    monthly_before=profiles["all_fossil"]["before"],
+    monthly_after=profiles["all_fossil"]["after"],
+    hourly_before=hourly_profiles["all_fossil"]["before"],
+    hourly_after=hourly_profiles["all_fossil"]["after"],
+    mc=mc_8760,
+    rate_components=rate_components,
+    report_vars=report_vars,
+    subclass_monthly=_subclass_monthly,
+    hourly_aggregate=_hourly_aggregate,
+)
+for _key, _value in _sheet.items():
+    assert abs(_value - float(report_vars[_key])) <= report_var_tolerance(_key), _key
+_link = upload_xlsx(_path, "1r6870cEtWFnMgZpucxgQIPezBHLMhQ5P")
+_path.unlink()
+print(_link)
+```

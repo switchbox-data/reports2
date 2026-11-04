@@ -17,17 +17,15 @@ The narrative file (testimony or `index.qmd`) only loads finished variables. Exp
 
 Before writing one 8,760-hour profile per building, or any other file of that size, stop and ask the user.
 
-The usual answer is the weighted-average representative home: one 8,760 before and one 8,760 after. Say on the sheet that the average across buildings was computed in the notebook, and that those hourly kWh are inputs.
+The usual answer is the weighted-average representative home: one 8,760 before and one 8,760 after. Record the building count and the weight sum. Do not describe the sample on the sheet.
 
 A weighted share (the percent of homes whose bill falls) is a different file: one row per building, with annual bills as inputs and the share as a formula. Still ask before writing that, unless the user has already asked for it.
 
 ## What is an input, and what is a formula
 
-Source data is values: metered kWh, a tariff's rates, an hourly marginal-cost schedule, a CAIRO annual bill.
+Source data is values: metered kWh, a tariff's rates, an hourly marginal-cost schedule, a CAIRO annual bill. Ratios, sums, products, deltas, and rates derived from those are formulas.
 
-Every step a reviewer would recompute is an Excel formula: a ratio, a sum, a product, a delta, a rate derived from those.
-
-When a step cannot be a formula, say so in a note on the sheet. A weighted average over a building sample is the usual case. The sheet then starts from that average.
+Do not add a note that restates the workbook: which schedules, which riders, which files, or how timestamps were aligned. The notebook prose should not explain the workbook either. A sheet note is one sentence, and only when a step cannot be a formula.
 
 ## Steps
 

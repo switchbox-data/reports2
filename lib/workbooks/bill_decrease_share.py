@@ -91,13 +91,21 @@ def _write_buildings(ws: Worksheet, frame: pl.DataFrame) -> int:
     return frame.height + 1
 
 
+def _note_text(note: str, boilerplate: str) -> str:
+    note = note.strip()
+    if not note:
+        return boilerplate
+    return f"{note}\n\n{boilerplate}"
+
+
 def _write_share(ws: Worksheet, note: str, last: int) -> None:
     ws["A1"] = "Share of fossil-fuel-heated homes whose annual bill falls under Schedule R-HP"
     ws["A1"].font = Font(bold=True)
     ws.merge_cells("A2:B2")
-    ws["A2"] = note.rstrip() + "\n\nAnnual bills are inputs. delta and the shares are Excel formulas."
+    text = _note_text(note, "Annual bills are inputs. delta and the shares are Excel formulas.")
+    ws["A2"] = text
     ws["A2"].alignment = Alignment(wrap_text=True, vertical="top")
-    ws.row_dimensions[2].height = 72
+    ws.row_dimensions[2].height = 36 if "\n\n" not in text else 72
     weight = f"buildings!C2:C{last}"
     delta = f"buildings!F2:F{last}"
     rows = [

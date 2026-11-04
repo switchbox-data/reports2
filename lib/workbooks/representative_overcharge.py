@@ -429,6 +429,13 @@ def _excel_timestamp(value: object) -> datetime:
     raise TypeError(f"Expected a datetime, got {type(value).__name__}")
 
 
+def _note_text(note: str, boilerplate: str) -> str:
+    note = note.strip()
+    if not note:
+        return boilerplate
+    return f"{note}\n\n{boilerplate}"
+
+
 def _write_population(
     ws: Worksheet,
     source_name: str,
@@ -438,11 +445,11 @@ def _write_population(
 ) -> None:
     ws["A1"] = source_name
     ws["A1"].font = Font(bold=True)
-    text = note.rstrip() + "\n\nValues are inputs. Every later step is an Excel formula."
+    text = _note_text(note, "Values are inputs. Every later step is an Excel formula.")
     ws.merge_cells("A2:F2")
     ws["A2"] = text
     ws["A2"].alignment = Alignment(wrap_text=True, vertical="top")
-    ws.row_dimensions[2].height = 96
+    ws.row_dimensions[2].height = 36 if "\n\n" not in text else 96
     row = 4
     if n_buildings is not None:
         ws.cell(row, 1, "Buildings in the average")

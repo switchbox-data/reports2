@@ -47,6 +47,8 @@ def write_markdown(cfg: ProvenanceConfig, rows: list[Row], path_md: Path) -> Non
         ("Tables", "Table", "Table"),
         ("Numbers", "Number", "Quote (number in bold)"),
     ):
+        if not any(r.type == row_type for r in rows):
+            continue
         out += [
             f"## {heading}",
             "",

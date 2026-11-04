@@ -84,6 +84,10 @@ def classify_page(page: PdfPage, printed: int, next_fn: int) -> tuple[list[dict[
     A footnote starts with the next footnote number below the page's last numbered line; captions and
     footnotes continue onto following unnumbered lines within ``WRAP_GAP`` below the previous line and
     within ``WRAP_INDENT`` of the body text's left margin.
+
+    A caption printed on numbered lines stays body text and is also recorded as a ``numbered_caption``.
+    It continues onto the following numbered lines within ``WRAP_GAP`` until it ends with a period, and
+    ends at any unnumbered line, so the rows of a table under it are never appended.
     """
     lines: list[PdfLine] = [
         ln for ln in page.lines if ln.text.strip() and not (ln.number is None and ln.text.strip() == str(printed))
@@ -97,28 +101,45 @@ def classify_page(page: PdfPage, printed: int, next_fn: int) -> tuple[list[dict[
     for ln in lines:
         text = ln.text.strip()
         if ln.number is not None:
+            if current is not None and current["kind"] == "numbered_caption" and ln.top - prev_top <= WRAP_GAP:
+                current["text"] += " " + normalize_pdf_text(text)
+            elif m := CAPTION_RE.match(text):
+                current = {
+                    "kind": "numbered_caption",
+                    "caption_type": m.group(1),
+                    "number": int(m.group(2)),
+                    "text": normalize_pdf_text(m.group(3)),
+                    "line": ln.number,
+                }
+                out.append(current)
+            else:
+                current = None
+            if current is not None and current["text"].endswith("."):
+                current = None
             out.append({"kind": "body", "line": ln.number, "text": normalize_pdf_text(text)})
-            current = None
-        elif m := CAPTION_RE.match(text):
-            current = {
-                "kind": "caption",
-                "caption_type": m.group(1),
-                "number": int(m.group(2)),
-                "text": normalize_pdf_text(m.group(3)),
-            }
-            out.append(current)
-        elif (m := FOOTNOTE_RE.match(text)) and int(m.group(1)) == next_fn and ln.top > last_body_top:
-            current = {"kind": "footnote", "number": next_fn, "text": normalize_pdf_text(m.group(2))}
-            out.append(current)
-            next_fn += 1
-        elif current is not None and ln.top - prev_top <= WRAP_GAP and ln.x0 <= left + WRAP_INDENT:
-            current["text"] += " " + normalize_pdf_text(text)
         else:
-            current = None
-            out.append({"kind": "other", "text": normalize_pdf_text(text)})
+            if current is not None and current["kind"] == "numbered_caption":
+                current = None
+            if m := CAPTION_RE.match(text):
+                current = {
+                    "kind": "caption",
+                    "caption_type": m.group(1),
+                    "number": int(m.group(2)),
+                    "text": normalize_pdf_text(m.group(3)),
+                }
+                out.append(current)
+            elif (m := FOOTNOTE_RE.match(text)) and int(m.group(1)) == next_fn and ln.top > last_body_top:
+                current = {"kind": "footnote", "number": next_fn, "text": normalize_pdf_text(m.group(2))}
+                out.append(current)
+                next_fn += 1
+            elif current is not None and ln.top - prev_top <= WRAP_GAP and ln.x0 <= left + WRAP_INDENT:
+                current["text"] += " " + normalize_pdf_text(text)
+            else:
+                current = None
+                out.append({"kind": "other", "text": normalize_pdf_text(text)})
         prev_top = ln.top
     for pl in out:
-        if pl["kind"] in ("caption", "footnote"):
+        if pl["kind"] in ("caption", "numbered_caption", "footnote"):
             pl["text"] = normalize_pdf_text(re.sub(r"(?<=[A-Za-z])\s*-\s+(?=[a-z])", "-", pl["text"]))
         pl["page"] = printed
         pl["pdf_page"] = page.index
@@ -144,7 +165,7 @@ def index_pdf(path_pdf: Path, pages: list[PdfPage] | None = None) -> PdfIndex:
                 n = pl["number"]
                 idx.footnote_pages[n] = printed
                 idx.footnotes[n] = [PdfToken(t, printed, None, n) for t in pl["text"].split(" ")]
-            elif pl["kind"] == "caption":
+            elif pl["kind"] in ("caption", "numbered_caption"):
                 idx.captions.append(
                     {"type": pl["caption_type"], "number": pl["number"], "text": pl["text"], "page": printed}
                 )

@@ -11,14 +11,14 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import subprocess
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from lib.provenance.resolve import git_show
+from lib.provenance.resolve import git, git_show
+from lib.provenance.review import Review, flag
 
 S3_BUCKET = "data.sb"
 
@@ -68,8 +68,7 @@ def _rdp_rel(local_path: str | None) -> str | None:
 
 
 def _rdp_exists(path_rdp: Path, rdp_pin: str, rel: str) -> bool:
-    r = subprocess.run(["git", "-C", str(path_rdp), "cat-file", "-e", f"{rdp_pin}:{rel}"], capture_output=True)
-    return r.returncode == 0
+    return git(path_rdp, "cat-file", "-e", f"{rdp_pin}:{rel}", check=False).returncode == 0
 
 
 def _precalc_uncalibrated(run_name: str) -> bool:
@@ -77,7 +76,7 @@ def _precalc_uncalibrated(run_name: str) -> bool:
 
 
 def check_runs(
-    review: list[dict[str, str]],
+    review: Review,
     *,
     batch_prefix: str,
     path_rdp: Path,
@@ -110,7 +109,7 @@ def check_runs(
         first_run_time = min(first_run_time or run_time, run_time)
         settings = _s3_json(s3, bucket, run + "scenario_settings.json")
         if settings is None:
-            review.append({"check": "run_record_missing", "item": run_name, "detail": "no scenario_settings.json"})
+            flag(review, "run_record_missing", run_name, "no scenario_settings.json")
             continue
         used = _s3_json(s3, bucket, run + "marginal_costs_used.json")
         if used is None:
@@ -124,14 +123,14 @@ def check_runs(
         for path_key in ("path_tariff_maps_electric", "path_tariff_maps_gas"):
             rel = _rdp_rel(settings.get(path_key))
             if rel and not _rdp_exists(path_rdp, rdp_pin, rel):
-                review.append({"check": "run_file_missing", "item": run_name, "detail": f"{rel} not at {rdp_pin}"})
+                flag(review, "run_file_missing", run_name, f"{rel} not at {rdp_pin}")
         if not compare_tariffs(run_name):
             continue
         final = _s3_json(s3, bucket, run + "tariff_final_config.json") or {}
         for key, local_path in settings.get("path_tariffs_electric", {}).items():
             rel = _rdp_rel(local_path)
             if not rel or not _rdp_exists(path_rdp, rdp_pin, rel):
-                review.append({"check": "run_file_missing", "item": run_name, "detail": f"{rel} not at {rdp_pin}"})
+                flag(review, "run_file_missing", run_name, f"{rel} not at {rdp_pin}")
                 continue
             if key not in final:
                 continue
@@ -139,25 +138,19 @@ def check_runs(
             ran = _cairo_rates(final[key])
             n_tariffs += 1
             if abs(pinned[0] - ran[0]) > 1e-6 or pinned[1] != ran[1]:
-                review.append(
-                    {
-                        "check": "run_tariff_vs_pin",
-                        "item": run_name,
-                        "detail": f"{rel}: pinned fixed/rates {pinned} vs run {ran}",
-                    }
-                )
+                flag(review, "run_tariff_vs_pin", run_name, f"{rel}: pinned fixed/rates {pinned} vs run {ran}")
     for mc_type, hashes in mc_seen.items():
         if len(hashes) != 1:
-            review.append({"check": "mc_hash", "item": mc_type, "detail": f"runs used {len(hashes)} different files"})
+            flag(review, "mc_hash", mc_type, f"runs used {len(hashes)} different files")
             continue
         path = mc_paths[mc_type]
         b, key = path.removeprefix("s3://").split("/", 1)
         live = hashlib.sha256(s3.get_object(Bucket=b, Key=key)["Body"].read()).hexdigest()
         if live != next(iter(hashes)):
-            review.append({"check": "mc_hash", "item": mc_type, "detail": f"live {live} vs run {next(iter(hashes))}"})
+            flag(review, "mc_hash", mc_type, f"live {live} vs run {next(iter(hashes))}")
     for mc_type, paths in sorted(mc_unhashed.items()):
         if len(paths) != 1:
-            review.append({"check": "mc_unrecorded", "item": mc_type, "detail": f"runs read {sorted(paths)}"})
+            flag(review, "mc_unrecorded", mc_type, f"runs read {sorted(paths)}")
             continue
         path = next(iter(paths))
         b, key = path.removeprefix("s3://").split("/", 1)
@@ -165,19 +158,17 @@ def check_runs(
         modified: datetime = head["LastModified"]
         sha = hashlib.sha256(s3.get_object(Bucket=b, Key=key)["Body"].read()).hexdigest()
         unchanged = first_run_time is not None and modified < first_run_time
-        review.append(
-            {
-                "check": "mc_unrecorded" if not unchanged else "mc_unchanged_since_runs",
-                "item": mc_type,
-                "detail": f"{path} (no run hash record); last modified {modified.isoformat()}, "
-                f"first run {first_run_time.isoformat() if first_run_time else '?'}; sha256 {sha[:12]}",
-            }
+        flag(
+            review,
+            "mc_unrecorded" if not unchanged else "mc_unchanged_since_runs",
+            mc_type,
+            f"{path} (no run hash record); last modified {modified.isoformat()}, "
+            f"first run {first_run_time.isoformat() if first_run_time else '?'}; sha256 {sha[:12]}",
         )
-    review.append(
-        {
-            "check": "runs_checked",
-            "item": str(len(runs)),
-            "detail": f"run directories; {n_tariffs} precalc tariffs compared to {rdp_pin}; "
-            f"MC files hashed: {sorted(mc_seen)}; MC files dated: {sorted(mc_unhashed)}",
-        }
+    flag(
+        review,
+        "runs_checked",
+        str(len(runs)),
+        f"run directories; {n_tariffs} precalc tariffs compared to {rdp_pin}; "
+        f"MC files hashed: {sorted(mc_seen)}; MC files dated: {sorted(mc_unhashed)}",
     )

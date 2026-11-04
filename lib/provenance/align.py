@@ -9,7 +9,7 @@ from rapidfuzz import fuzz
 
 from lib.provenance.pdf_index import PdfIndex, PdfToken
 from lib.provenance.qmd import QmdDoc, QToken
-from lib.provenance.text import norm_tok
+from lib.provenance.text import find_runs, norm_tok
 
 CONTEXT = 6  # qmd tokens on each side compared when a value has to be searched for
 MIN_CONTEXT_OVERLAP = 2
@@ -36,9 +36,7 @@ def _search_value(qn: list[str], s: int, e: int, pn: list[str], estimate: int | 
         return None
     q_ctx = {t for t in qn[max(0, s - CONTEXT) : s] + qn[e : e + CONTEXT] if t}
     best: tuple[int, int, int] | None = None
-    for j in range(len(pn) - n + 1):
-        if pn[j : j + n] != value:
-            continue
+    for j in find_runs(pn, value):
         p_ctx = set(pn[max(0, j - CONTEXT - 2) : j] + pn[j + n : j + n + CONTEXT + 2])
         overlap = len(q_ctx & p_ctx)
         dist = abs(j - estimate) if estimate is not None else 0

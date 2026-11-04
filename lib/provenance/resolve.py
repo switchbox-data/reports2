@@ -10,10 +10,12 @@ from pathlib import Path
 from lib.provenance.config import Link, ProvenanceConfig, Resolver
 
 
+def git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["git", "-C", str(repo), *args], check=check, capture_output=True, text=True)
+
+
 def git_show(rev: str, path: str, repo: Path) -> str:
-    return subprocess.run(
-        ["git", "-C", str(repo), "show", f"{rev}:{path}"], check=True, capture_output=True, text=True
-    ).stdout
+    return git(repo, "show", f"{rev}:{path}").stdout
 
 
 @dataclass
@@ -99,6 +101,9 @@ class Resolution:
 
 def resolve_expr(cfg: ProvenanceConfig, code: str, notebooks: dict[str, Notebook], testimony: Notebook) -> Resolution:
     found = var_regex(cfg).findall(code)
+    if (included := cfg.include_namespaces) is not None:
+        # Included namespaces first, so the link goes to the new notebook rather than the earlier one.
+        found.sort(key=lambda pv: pv[0] not in included)
     for prefix, var in found:
         nb = notebooks[cfg.namespaces[prefix]]
         line = find_var_line(nb, var)

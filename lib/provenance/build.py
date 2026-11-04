@@ -6,7 +6,6 @@ import argparse
 import hashlib
 import json
 import re
-import subprocess
 import zipfile
 from collections import defaultdict
 from datetime import UTC, datetime
@@ -15,50 +14,38 @@ from pathlib import Path
 from lib.provenance.config import ProvenanceConfig
 from lib.provenance.document import rows_for_csv, write_csv, write_docx, write_markdown
 from lib.provenance.extract_check import check_against_extract
+from lib.provenance.links import check_links, find_urls
 from lib.provenance.pdf_index import index_pdf
 from lib.provenance.qmd import QmdDoc, evaluate_exprs, parse_qmd
-from lib.provenance.resolve import git_show
+from lib.provenance.resolve import git, git_show
+from lib.provenance.review import Review, flag
 from lib.provenance.rows import build_rows
 from lib.sources import frontmatter
 
 CACHE_PATH_RE = re.compile(r"""["']((?:\.\./)*cache/[^"']+\.pkl)["']""")
 
 
-def _git(repo: Path, *args: str) -> str:
-    return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True).stdout.strip()
-
-
-def check_cache(cfg: ProvenanceConfig, doc: QmdDoc, path_exec_dir: Path, review: list[dict[str, str]]) -> None:
+def check_cache(cfg: ProvenanceConfig, doc: QmdDoc, path_exec_dir: Path, review: Review) -> None:
     """Record which cache files the numbers came from, and flag ones written after the tag by other code."""
-    tag_commit = _git(cfg.path_repo, "rev-parse", f"{cfg.tag}^{{commit}}")
-    tag_time = datetime.fromisoformat(_git(cfg.path_repo, "show", "-s", "--format=%cI", tag_commit))
-    try:
-        exec_head = _git(path_exec_dir, "rev-parse", "HEAD")
-    except subprocess.CalledProcessError:
-        exec_head = ""
+    tag_commit = git(cfg.path_repo, "rev-parse", f"{cfg.tag}^{{commit}}").stdout.strip()
+    tag_time = datetime.fromisoformat(git(cfg.path_repo, "show", "-s", "--format=%cI", tag_commit).stdout.strip())
+    exec_head = git(path_exec_dir, "rev-parse", "HEAD", check=False).stdout.strip()
     from_tag = exec_head == tag_commit
     for rel in sorted(set(CACHE_PATH_RE.findall(doc.setup_code))):
         path = path_exec_dir / rel
         if not path.exists():
-            review.append({"check": "cache_missing", "item": rel, "detail": str(path)})
+            flag(review, "cache_missing", rel, str(path))
             continue
         mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
         sha = hashlib.sha256(path.read_bytes()).hexdigest()
-        review.append(
-            {
-                "check": "cache_file",
-                "item": rel,
-                "detail": f"sha256 {sha[:12]}; written {mtime.isoformat(timespec='seconds')}",
-            }
-        )
+        flag(review, "cache_file", rel, f"sha256 {sha[:12]}; written {mtime.isoformat(timespec='seconds')}")
         if not from_tag and mtime > tag_time:
-            review.append(
-                {
-                    "check": "cache_not_from_tag",
-                    "item": rel,
-                    "detail": f"written after {cfg.tag} by a checkout at {exec_head[:8] or '?'}; "
-                    "render the notebooks at the tag and set path_exec_dir to that checkout",
-                }
+            flag(
+                review,
+                "cache_not_from_tag",
+                rel,
+                f"written after {cfg.tag} by a checkout at {exec_head[:8] or '?'}; "
+                "render the notebooks at the tag and set path_exec_dir to that checkout",
             )
 
 
@@ -79,6 +66,11 @@ def main(cfg: ProvenanceConfig, default_output_dir: Path, description: str) -> N
         help="report directory whose cache/ the testimony setup reads (e.g. a worktree rendered at the tag)",
     )
     ap.add_argument("--path-pdf", type=Path, default=None, help="the testimony as filed (overrides the config)")
+    ap.add_argument(
+        "--check-links",
+        action="store_true",
+        help="check that every GitHub link resolves (needs `gh`; run after pushing tags)",
+    )
     args = ap.parse_args()
     out_dir: Path = args.path_output_dir
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -105,7 +97,7 @@ def main(cfg: ProvenanceConfig, default_output_dir: Path, description: str) -> N
     path_exec_dir = cfg.path_exec_dir or cfg.path_report
     evaluate_exprs(doc, path_exec_dir, cfg.qmd_name)
 
-    review: list[dict[str, str]] = []
+    review: Review = []
     baseline = _docx_text(cfg.path_baseline_docx) if cfg.path_baseline_docx else None
     rows = build_rows(cfg, doc, idx, review, baseline)
     if cfg.path_extract is not None:
@@ -114,10 +106,12 @@ def main(cfg: ProvenanceConfig, default_output_dir: Path, description: str) -> N
     if not args.skip_s3 and cfg.run_checks is not None:
         cfg.run_checks(review)
 
-    write_csv(out_dir / "provenance.csv", rows_for_csv(rows))
-    write_csv(out_dir / "provenance_review.csv", review)
     path_md = out_dir / "provenance.md"
     write_markdown(cfg, rows, path_md)
+    if args.check_links:
+        check_links([*(r.link.url for r in rows if r.link), *find_urls(path_md.read_text())], review)
+    write_csv(out_dir / "provenance.csv", rows_for_csv(rows))
+    write_csv(out_dir / "provenance_review.csv", review)
     write_docx(path_md, out_dir / cfg.docx_name)
     counts: dict[str, int] = defaultdict(int)
     for r in rows:

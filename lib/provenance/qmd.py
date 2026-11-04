@@ -167,7 +167,12 @@ def _render_lines(doc: QmdDoc, start: int, plines: list[str]) -> list[QToken]:
 
 
 def evaluate_exprs(doc: QmdDoc, path_exec_dir: Path, qmd_name: str) -> dict[str, Any]:
-    """Run the qmd's setup cell in ``path_exec_dir`` (where its relative cache paths resolve)."""
+    """Evaluate every inline expression and splice its value into the token streams.
+
+    Runs the qmd's setup cell (which loads the cached report variables) with the working directory
+    temporarily set to ``path_exec_dir``, so its relative ``cache/`` paths resolve, and returns the
+    setup cell's namespace. An expression that fails to evaluate gets ``<error: ...>`` as its value.
+    """
     ns: dict[str, Any] = {}
     cwd = Path.cwd()
     os.chdir(path_exec_dir)

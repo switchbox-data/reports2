@@ -148,8 +148,9 @@ KNOWN_DIFFERENCES = [
     KnownDifference(
         "$359",
         "$365",
-        "edited in Word after rendering; the code and the filed Figure 12 give $365 ($1,018 - $653); "
-        "the source of $359 is not known",
+        "edited in Word after rendering; the code and the filed Figure 12 give $365 ($1,018 - $653), the "
+        "natural gas home's added distribution, transmission and EmPOWER charges; $359 is the all-fossil "
+        "average overcharge from p. 5",
     ),
 ]
 

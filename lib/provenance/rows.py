@@ -5,15 +5,17 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
+from typing import Any
 
 from rapidfuzz import fuzz
 
 from lib.provenance.align import Occurrence, align_stream, match_footnotes
 from lib.provenance.config import Link, ProvenanceConfig
 from lib.provenance.pdf_index import PdfIndex, PdfToken
-from lib.provenance.qmd import QmdDoc, clean_markdown
+from lib.provenance.qmd import Expr, QmdDoc, clean_markdown
 from lib.provenance.resolve import Notebook, cell_for_line, fig_caption, find_label_line, load_notebook, resolve_expr
-from lib.provenance.text import join_tokens, md_escape, norm_tok, split_word
+from lib.provenance.review import Review, flag
+from lib.provenance.text import find_runs, join_tokens, md_escape, norm_tok, norm_words
 
 TABLE_HEADER_MIN_SCORE = 80
 TABLE_HEADER_MAX_LINES = 3
@@ -123,10 +125,6 @@ def location_of(occ: Occurrence) -> tuple[int, int, str]:
     return (t.page, t.line, "line")
 
 
-def _split_norm(s: str) -> list[str]:
-    return [norm_tok(p) for w in s.split() for p, _ in split_word(w)]
-
-
 def _known_difference(cfg: ProvenanceConfig, pdf_value: str, cache_value: str) -> str | None:
     for kd in cfg.known_differences:
         if norm_tok(pdf_value) == norm_tok(kd.pdf_value) and norm_tok(cache_value) == norm_tok(kd.cache_value):
@@ -145,12 +143,12 @@ def _rescue_known_difference(cfg: ProvenanceConfig, occ: Occurrence, cache_value
     for kd in cfg.known_differences:
         if norm_tok(cache_value) != norm_tok(kd.cache_value):
             continue
-        val = _split_norm(kd.pdf_value)
+        val = norm_words(kd.pdf_value)
         lo, hi = max(0, occ.start - len(val)), min(len(occ.stream), occ.end + len(val))
-        sn = [norm_tok(t.text) for t in occ.stream]
-        for j in range(lo, hi - len(val) + 1):
-            if sn[j : j + len(val)] == val:
-                return Occurrence(occ.expr_id, occ.stream[j : j + len(val)], occ.stream, j, j + len(val), "exact")
+        runs = find_runs([norm_tok(t.text) for t in occ.stream[lo:hi]], val)
+        if runs:
+            j = lo + runs[0]
+            return Occurrence(occ.expr_id, occ.stream[j : j + len(val)], occ.stream, j, j + len(val), "exact")
     return None
 
 
@@ -160,7 +158,7 @@ def _number_rows(
     idx: PdfIndex,
     notebooks: dict[str, Notebook],
     testimony: Notebook,
-    review: list[dict[str, str]],
+    review: Review,
     baseline_text: str | None,
 ) -> list[Row]:
     rows: list[Row] = []
@@ -170,12 +168,16 @@ def _number_rows(
         if not any(t.expr_id is not None for t in doc.footnotes[label]):
             continue
         if matches[0][1] < 80:
-            review.append({"check": "footnote_match", "item": label, "detail": f"best score {matches[0][1]:.0f}"})
+            flag(review, "footnote_match", label, f"best score {matches[0][1]:.0f}")
         for n, _ in matches:
             occs.extend(align_stream(doc.footnotes[label], idx.footnotes[n]))
 
     by_code: dict[str, list[Occurrence]] = defaultdict(list)
+    excluded: set[str] = set()
     for occ in occs:
+        if not cfg.includes_code(doc.exprs[occ.expr_id].code):
+            excluded.add(doc.exprs[occ.expr_id].code)
+            continue
         if occ.confidence == "low":
             occ = _rescue_known_difference(cfg, occ, doc.exprs[occ.expr_id].value) or occ
         by_code[doc.exprs[occ.expr_id].code].append(occ)
@@ -184,30 +186,28 @@ def _number_rows(
         for o in group:
             expr = doc.exprs[o.expr_id]
             if o.confidence in ("missing", "low"):
-                review.append(
-                    {
-                        "check": f"match_{o.confidence}",
-                        "item": code,
-                        "detail": f"qmd line {expr.qmd_line}; value {expr.value!r}"
-                        + (f"; pdf {join_tokens(o.tokens)!r}" if o.tokens else ""),
-                    }
+                flag(
+                    review,
+                    f"match_{o.confidence}",
+                    code,
+                    f"qmd line {expr.qmd_line}; value {expr.value!r}"
+                    + (f"; pdf {join_tokens(o.tokens)!r}" if o.tokens else ""),
                 )
                 continue
             pdf_value = join_tokens(o.tokens)
             if o.confidence == "fallback":
-                review.append(
-                    {
-                        "check": "match_fallback",
-                        "item": code,
-                        "detail": f"{format_locations([location_of(o)])}: found {pdf_value!r} by value search "
-                        f"(qmd line {expr.qmd_line}); confirm it is the right occurrence",
-                    }
+                flag(
+                    review,
+                    "match_fallback",
+                    code,
+                    f"{format_locations([location_of(o)])}: found {pdf_value!r} by value search "
+                    f"(qmd line {expr.qmd_line}); confirm it is the right occurrence",
                 )
             if norm_tok(pdf_value) != norm_tok(clean_markdown(expr.value)):
                 explanation = _known_difference(cfg, pdf_value, expr.value)
                 detail = f"{format_locations([location_of(o)])}: pdf {pdf_value!r} vs cache {expr.value!r}"
                 if explanation:
-                    review.append({"check": "known_difference", "item": code, "detail": f"{detail}; {explanation}"})
+                    flag(review, "known_difference", code, f"{detail}; {explanation}")
                 else:
                     if baseline_text is not None:
                         in_baseline = clean_markdown(expr.value) in baseline_text
@@ -216,53 +216,50 @@ def _number_rows(
                             if in_baseline
                             else ("; pre-filing render lacks the cache value")
                         )
-                    review.append({"check": "pdf_vs_cache", "item": code, "detail": detail})
+                    flag(review, "pdf_vs_cache", code, detail)
         if not found:
             continue
         res = resolve_expr(cfg, code, notebooks, testimony)
         if res.link is None:
-            review.append({"check": "unresolved", "item": code, "detail": res.why})
+            flag(review, "unresolved", code, res.why)
         if res.other_cells:
-            review.append(
-                {
-                    "check": "multi_cell",
-                    "item": code,
-                    "detail": f"linked to {res.link.text if res.link else '?'}; also uses "
-                    + "; ".join(res.other_cells),
-                }
+            flag(
+                review,
+                "multi_cell",
+                code,
+                f"linked to {res.link.text if res.link else '?'}; also uses " + "; ".join(res.other_cells),
             )
         first = min(found, key=lambda o: location_of(o)[:2])
         md, plain = quote_for(first)
         rows.append(Row("Number", [location_of(o) for o in found], md, plain, res.link, found))
+    if excluded:
+        flag(
+            review,
+            "excluded_prior_testimony",
+            str(len(excluded)),
+            "inline expressions left out (no included namespace, or in exclude_codes): " + "; ".join(sorted(excluded)),
+        )
     return rows
 
 
-def _hardcoded_rows(cfg: ProvenanceConfig, idx: PdfIndex, review: list[dict[str, str]]) -> list[Row]:
+def _hardcoded_rows(cfg: ProvenanceConfig, idx: PdfIndex, review: Review) -> list[Row]:
     rows: list[Row] = []
     streams = [idx.body, *idx.footnotes.values()]
     for hc in cfg.hardcoded:
-        ctx, val = _split_norm(hc.context), _split_norm(hc.value)
-        offset = next((k for k in range(len(ctx) - len(val) + 1) if ctx[k : k + len(val)] == val), None)
-        if offset is None:
+        ctx, val = norm_words(hc.context), norm_words(hc.value)
+        offsets = find_runs(ctx, val)
+        if not offsets:
             raise ValueError(f"hardcoded context {hc.context!r} does not contain {hc.value!r}")
         found: list[Occurrence] = []
         for stream in streams:
-            sn = [norm_tok(t.text) for t in stream]
-            for j in range(len(sn) - len(ctx) + 1):
-                if sn[j : j + len(ctx)] == ctx:
-                    s = j + offset
-                    found.append(Occurrence(-1, stream[s : s + len(val)], stream, s, s + len(val), "exact"))
+            for j in find_runs([norm_tok(t.text) for t in stream], ctx):
+                s = j + offsets[0]
+                found.append(Occurrence(-1, stream[s : s + len(val)], stream, s, s + len(val), "exact"))
         if not found:
-            review.append({"check": "hardcoded_missing", "item": hc.value, "detail": f"context {hc.context!r}"})
+            flag(review, "hardcoded_missing", hc.value, f"context {hc.context!r}")
             continue
         if hc.review_note:
-            review.append(
-                {
-                    "check": "hardcoded_note",
-                    "item": hc.value,
-                    "detail": f"{format_locations([location_of(found[0])])}: {hc.review_note}",
-                }
-            )
+            flag(review, "hardcoded_note", hc.value, f"{format_locations([location_of(found[0])])}: {hc.review_note}")
         first = min(found, key=lambda o: location_of(o)[:2])
         md, plain = quote_for(first)
         rows.append(Row("Number", [location_of(o) for o in found], md, plain, hc.link, found))
@@ -270,34 +267,33 @@ def _hardcoded_rows(cfg: ProvenanceConfig, idx: PdfIndex, review: list[dict[str,
 
 
 def _figure_rows(
-    cfg: ProvenanceConfig, doc: QmdDoc, idx: PdfIndex, notebooks: dict[str, Notebook], review: list[dict[str, str]]
+    cfg: ProvenanceConfig, doc: QmdDoc, idx: PdfIndex, notebooks: dict[str, Notebook], review: Review
 ) -> list[Row]:
     rows: list[Row] = []
     fig_caps = sorted((c for c in idx.captions if c["type"] == "Figure"), key=lambda c: c["number"])
     if len(fig_caps) != len(doc.embeds):
-        review.append(
-            {"check": "figure_count", "item": "", "detail": f"{len(doc.embeds)} embeds vs {len(fig_caps)} PDF figures"}
-        )
+        flag(review, "figure_count", "", f"{len(doc.embeds)} embeds vs {len(fig_caps)} PDF figures")
     fig_rows: dict[str, Row] = {}
     for emb, cap in zip(doc.embeds, fig_caps, strict=False):
+        if not cfg.includes_notebook(emb["notebook"]):
+            continue
         nb = notebooks.get(emb["notebook"])
         if nb is None:
             nb = notebooks[emb["notebook"]] = load_notebook(cfg, emb["notebook"])
         label_line = find_label_line(nb, emb["label"])
         link = None
         if label_line is None:
-            review.append({"check": "unresolved", "item": emb["label"], "detail": f"label not in {nb.name}.qmd"})
+            flag(review, "unresolved", emb["label"], f"label not in {nb.name}.qmd")
         else:
             link = cfg.notebook_link(nb.name, *cell_for_line(nb, label_line))
             nb_cap = clean_markdown(fig_caption(nb, label_line))
             score = fuzz.partial_ratio(norm_tok(nb_cap.lower()), norm_tok(cap["text"].lower()))
             if score < 80:
-                review.append(
-                    {
-                        "check": "caption_mismatch",
-                        "item": f"Figure {cap['number']} ({emb['label']})",
-                        "detail": f"score {score:.0f}: notebook {nb_cap!r} vs pdf {cap['text']!r}",
-                    }
+                flag(
+                    review,
+                    "caption_mismatch",
+                    f"Figure {cap['number']} ({emb['label']})",
+                    f"score {score:.0f}: notebook {nb_cap!r} vs pdf {cap['text']!r}",
                 )
         loc = (cap["page"], 0, "page")
         title = f"Figure {cap['number']}: {cap['text']}"
@@ -318,13 +314,13 @@ def _locate_table(header: list[str], idx: PdfIndex, start: int) -> tuple[int, in
     Header cells often wrap onto two or three PDF lines, so windows of up to three lines are
     scored. Returns the page and the index of the window's last line.
     """
-    target = " ".join(_split_norm(" ".join(header)))
+    target = " ".join(norm_words(" ".join(header)))
     best: tuple[float, int, int] | None = None
     for k in range(start, len(idx.lines)):
         for w in range(1, TABLE_HEADER_MAX_LINES + 1):
             if k + w > len(idx.lines):
                 break
-            text = " ".join(_split_norm(" ".join(ln["text"] for ln in idx.lines[k : k + w])))
+            text = " ".join(norm_words(" ".join(ln["text"] for ln in idx.lines[k : k + w])))
             score = fuzz.token_sort_ratio(target, text)
             if score >= TABLE_HEADER_MIN_SCORE and (best is None or score > best[0]):
                 best = (score, k, k + w - 1)
@@ -333,33 +329,36 @@ def _locate_table(header: list[str], idx: PdfIndex, start: int) -> tuple[int, in
     return idx.lines[best[1]]["page"], best[2]
 
 
-def _table_rows(cfg: ProvenanceConfig, doc: QmdDoc, idx: PdfIndex, review: list[dict[str, str]]) -> list[Row]:
-    rows: list[Row] = []
-    testimony = cfg.testimony_key
+def _table_exprs(doc: QmdDoc, tbl: dict[str, Any]) -> list[Expr]:
+    return [e for e in doc.exprs if e.in_table is not None and tbl["qmd_line"] <= e.qmd_line <= tbl["end_line"]]
+
+
+def _table_rows(cfg: ProvenanceConfig, doc: QmdDoc, idx: PdfIndex, review: Review) -> list[Row]:
+    located: list[tuple[dict[str, Any], int, str]] = []  # (table, page, title)
     tbl_caps = sorted((c for c in idx.captions if c["type"] == "Table"), key=lambda c: c["number"])
     if tbl_caps:
         if len(tbl_caps) != len(doc.tables):
-            review.append(
-                {"check": "table_count", "item": "", "detail": f"{len(doc.tables)} qmd tables vs {len(tbl_caps)} PDF"}
-            )
+            flag(review, "table_count", "", f"{len(doc.tables)} qmd tables vs {len(tbl_caps)} PDF")
         for tbl, cap in zip(doc.tables, tbl_caps, strict=False):
-            title = f"Table {cap['number']}: {cap['text']}"
-            link = cfg.notebook_link(testimony, tbl["qmd_line"], tbl["end_line"])
-            rows.append(Row("Table", [(cap["page"], 0, "page")], md_escape(title), title, link))
-        return rows
-    # Uncaptioned tables: number them in order and find each by its header row.
-    pos = -1
-    for k, tbl in enumerate(doc.tables, 1):
-        hit = _locate_table(tbl["header"], idx, pos + 1)
-        title = f"Table {k}: " + " / ".join(tbl["header"])
-        if hit is None:
-            review.append({"check": "table_not_found", "item": title, "detail": f"qmd line {tbl['qmd_line']}"})
+            located.append((tbl, cap["page"], f"Table {cap['number']}: {cap['text']}"))
+    else:
+        # Uncaptioned tables: number them in order and find each by its header row.
+        pos = -1
+        for k, tbl in enumerate(doc.tables, 1):
+            hit = _locate_table(tbl["header"], idx, pos + 1)
+            title = f"Table {k}: " + " / ".join(tbl["header"])
+            if hit is None:
+                flag(review, "table_not_found", title, f"qmd line {tbl['qmd_line']}")
+                continue
+            page, pos = hit
+            flag(review, "table_title", title, f"uncaptioned table on p. {page}; review the wording")
+            located.append((tbl, page, title))
+    rows: list[Row] = []
+    for tbl, page, title in located:
+        exprs = _table_exprs(doc, tbl)
+        if cfg.include_namespaces is not None and not any(cfg.includes_code(e.code) for e in exprs):
             continue
-        page, pos = hit
-        review.append(
-            {"check": "table_title", "item": title, "detail": f"uncaptioned table on p. {page}; review the wording"}
-        )
-        link = cfg.notebook_link(testimony, tbl["qmd_line"], tbl["end_line"])
+        link = cfg.notebook_link(cfg.testimony_key, tbl["qmd_line"], tbl["end_line"])
         rows.append(Row("Table", [(page, 0, "page")], md_escape(title), title, link))
     return rows
 
@@ -368,7 +367,7 @@ def build_rows(
     cfg: ProvenanceConfig,
     doc: QmdDoc,
     idx: PdfIndex,
-    review: list[dict[str, str]],
+    review: Review,
     baseline_text: str | None = None,
 ) -> list[Row]:
     notebooks = {name: load_notebook(cfg, name) for name in cfg.namespaces.values()}

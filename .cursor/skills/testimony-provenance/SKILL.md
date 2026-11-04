@@ -47,8 +47,12 @@ and where its code is. Every internal check (mismatches, cache dates, run verifi
    PDF's md5 against the extract's.
 2. **Fix the tag.** Ask the user which commit the filed testimony was rendered from. Create an annotated
    tag there in reports2 (`git tag -a <name> <commit> -m ...`), and one with the same name in
-   rate-design-platform on the commit pinned by the runs (`RDP_REF` in the batch config). **Do not push
-   tags without the user's approval.** Every permalink points at the tag, so it must not move.
+   rate-design-platform on the commit pinned by the runs (`RDP_REF` in the batch config). Check the name
+   is free in both repos, locally and on GitHub (`git tag -l <name>`, `git ls-remote --tags origin <name>`);
+   a later testimony on the same runs reuses the earlier rate-design-platform tag (the MD surrebuttal links
+   to `md_bge_submission` there). **Do not push tags without the user's approval.** Every permalink points
+   at the tag, so it must not move. The links 404 until both tags are pushed (`git push origin <name>` in
+   each repo); after pushing, rerun the build with `--check-links`.
 3. **Render the cache at the tag.** The setup cell reads `cache/*.pkl`; a later render gives later numbers.
    Make a worktree at the tag, `uv sync --frozen`, render the notebooks the setup cell loads, and pass that
    report directory as `--path-exec-dir` (see the MD script's docstring for the commands).
@@ -64,8 +68,16 @@ and where its code is. Every internal check (mismatches, cache dates, run verifi
    document by hand.
 6. **Ask, don't guess.** When a number differs from the code, a value is hardcoded with no source, or a
    run check fails, report it to the user with the evidence and ask how to record it.
-7. **Deliver.** Run `just check` and `just test`, open the `.docx` to spot-check a few links, and hand
-   it over with a short summary of the review items that needed a decision.
+7. **Deliver.** Rerun the build with `--check-links` (every GitHub link must resolve; see `link_missing`),
+   run `just check` and `just test`, open the `.docx` to spot-check a few links, and hand it over with a short summary of the review items that needed a decision.
+
+**Rebuttal and surrebuttal.** When only the new analysis needs provenance (numbers already in the direct
+testimony are covered by its document), set `include_namespaces` to the new notebook's namespace. An
+inline expression is kept when it names an included namespace, so one that mixes namespaces but prints the
+earlier testimony's value (e.g. `min(d.x, s.x)`) has to be listed in `exclude_codes`, verbatim as in the
+qmd. A table is kept as one row when any of its values uses an included namespace. Check the
+`excluded_prior_testimony` review item for everything left out. Example:
+`reports/md_hp_rates/provenance/surrebuttal/`.
 
 ## Reuse, don't rebuild
 

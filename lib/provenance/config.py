@@ -8,10 +8,13 @@ document, and optional hooks for the parts that don't follow a template.
 
 from __future__ import annotations
 
+import ast
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from lib.provenance.review import Review
 
 if TYPE_CHECKING:
     from lib.provenance.resolve import Notebook
@@ -59,7 +62,7 @@ class KnownDifference:
 
 
 Resolver = Callable[[str, "Notebook", "ProvenanceConfig"], Link | None]
-RunChecks = Callable[[list[dict[str, str]]], None]
+RunChecks = Callable[[Review], None]
 
 
 @dataclass
@@ -98,6 +101,12 @@ class ProvenanceConfig:
     """Extra ways to link an inline expression when no namespace variable matches."""
     hardcoded: list[Hardcoded] = field(default_factory=list)
     known_differences: list[KnownDifference] = field(default_factory=list)
+    include_namespaces: frozenset[str] | None = None
+    """Only list numbers, tables and figures that use one of these prefixes (e.g. a later testimony's new
+    analysis, leaving out what it repeats from an earlier one); ``None`` lists everything."""
+    exclude_codes: frozenset[str] = frozenset()
+    """Inline expressions to leave out even though they use an included namespace, e.g.
+    ``min(d.x, s.x)`` that prints the earlier testimony's value."""
     run_checks: RunChecks | None = None
 
     @property
@@ -107,6 +116,21 @@ class ProvenanceConfig:
     @property
     def testimony_key(self) -> str:
         return Path(self.qmd_name).stem
+
+    def includes_code(self, code: str) -> bool:
+        """Whether an inline expression is listed: it uses an included namespace (as ``s.x`` or a bare
+        ``f(s)``) and isn't in ``exclude_codes``."""
+        if code in self.exclude_codes:
+            return False
+        if self.include_namespaces is None:
+            return True
+        names = {n.id for n in ast.walk(ast.parse(code, mode="eval")) if isinstance(n, ast.Name)}
+        return bool(names & self.include_namespaces)
+
+    def includes_notebook(self, name: str) -> bool:
+        if self.include_namespaces is None:
+            return True
+        return any(self.namespaces.get(p) == name for p in self.include_namespaces)
 
     def notebook_path(self, name: str) -> str:
         """Path of a notebook relative to the report directory."""

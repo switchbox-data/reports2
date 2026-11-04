@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 
 from lib.provenance.align import Occurrence
+from lib.provenance.review import Review, flag
 from lib.provenance.rows import Row, format_locations, location_of
 from lib.provenance.text import join_tokens
 from lib.sources.pagelines import Citation, cite
@@ -43,7 +44,7 @@ def _citations(md_text: str, occ: Occurrence) -> tuple[str, list[Citation]]:
     return quote, []
 
 
-def check_against_extract(rows: list[Row], path_extract: Path, review: list[dict[str, str]]) -> None:
+def check_against_extract(rows: list[Row], path_extract: Path, review: Review) -> None:
     md_text = path_extract.read_text()
     checked = agree = 0
     for row in rows:
@@ -53,21 +54,14 @@ def check_against_extract(rows: list[Row], path_extract: Path, review: list[dict
             quote, hits = _citations(md_text, occ)
             checked += 1
             if not hits:
-                review.append({"check": "extract_not_found", "item": row.what_plain, "detail": f"{where}: {quote!r}"})
+                flag(review, "extract_not_found", row.what_plain, f"{where}: {quote!r}")
             elif any(_covers(c, page, key, kind) for c in hits):
                 agree += 1
             else:
-                review.append(
-                    {
-                        "check": "extract_location",
-                        "item": row.what_plain,
-                        "detail": f"{where} here; extract has {quote!r} at " + "; ".join(str(c) for c in hits),
-                    }
+                flag(
+                    review,
+                    "extract_location",
+                    row.what_plain,
+                    f"{where} here; extract has {quote!r} at " + "; ".join(str(c) for c in hits),
                 )
-    review.append(
-        {
-            "check": "extract_checked",
-            "item": str(checked),
-            "detail": f"number locations; {agree} agree with {path_extract.name}",
-        }
-    )
+    flag(review, "extract_checked", str(checked), f"number locations; {agree} agree with {path_extract.name}")

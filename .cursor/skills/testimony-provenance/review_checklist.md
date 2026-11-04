@@ -4,25 +4,28 @@ Each row is `check, item, detail`. Work top to bottom; anything not resolved goe
 
 ## Placement
 
-| Check                        | Meaning                                                    | What to do                                                                                                |
-| ---------------------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `match_missing`, `match_low` | A rendered value was not found in the PDF, or only weakly  | Find it in the PDF. Edited in Word: add a `KnownDifference`. Cut from the filing: nothing. Otherwise ask. |
-| `match_fallback`             | Found by searching for the value near similar words        | Confirm the page and line; `extract_location` would flag a wrong one.                                     |
-| `pdf_vs_cache`               | The PDF shows a different value than the cache at the tag  | Says whether the pre-filing render had the cache value. Ask the user, then record a `KnownDifference`.    |
-| `known_difference`           | A recorded difference was seen                             | Nothing; confirms the explanation applies.                                                                |
-| `extract_not_found`          | The words around a number are not in the validated extract | Usually extract layout (a figure description in between). Check by hand.                                  |
-| `extract_location`           | The extract places the number elsewhere                    | Trust the extract unless it is wrong; fix the alignment or ask.                                           |
-| `extract_checked`            | Count of locations checked and agreeing                    | All should agree.                                                                                         |
-| `footnote_match`             | A qmd footnote matched its PDF footnote weakly             | Check the footnote numbering.                                                                             |
+| Check                        | Meaning                                                                | What to do                                                                                                |
+| ---------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `match_missing`, `match_low` | A rendered value was not found in the PDF, or only weakly              | Find it in the PDF. Edited in Word: add a `KnownDifference`. Cut from the filing: nothing. Otherwise ask. |
+| `match_fallback`             | Found by searching for the value near similar words                    | Confirm the page and line; `extract_location` would flag a wrong one.                                     |
+| `pdf_vs_cache`               | The PDF shows a different value than the cache at the tag              | Says whether the pre-filing render had the cache value. Ask the user, then record a `KnownDifference`.    |
+| `known_difference`           | A recorded difference was seen                                         | Nothing; confirms the explanation applies.                                                                |
+| `extract_not_found`          | The words around a number are not in the validated extract             | Usually extract layout (a figure description in between). Check by hand.                                  |
+| `extract_location`           | The extract places the number elsewhere                                | Trust the extract unless it is wrong; fix the alignment or ask.                                           |
+| `extract_checked`            | Count of locations checked and agreeing                                | All should agree.                                                                                         |
+| `footnote_match`             | A qmd footnote matched its PDF footnote weakly                         | Check the footnote numbering.                                                                             |
+| `excluded_prior_testimony`   | Inline expressions left out by `include_namespaces` or `exclude_codes` | Confirm each one repeats an earlier testimony's number.                                                   |
 
 ## Links
 
-| Check               | Meaning                                          | What to do                                                               |
-| ------------------- | ------------------------------------------------ | ------------------------------------------------------------------------ |
-| `unresolved`        | No cell found for an expression or figure label  | Add a namespace, a resolver, or fix the label.                           |
-| `multi_cell`        | The expression uses variables from several cells | Linked to the first; usually fine. Check the link is the meaningful one. |
-| `hardcoded_missing` | A `Hardcoded` context string is not in the PDF   | Fix the context to match the filed wording.                              |
-| `hardcoded_note`    | A review note on a hardcoded number              | Tell the user (e.g. a methodology doc that rounds differently).          |
+| Check               | Meaning                                                        | What to do                                                               |
+| ------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `unresolved`        | No cell found for an expression or figure label                | Add a namespace, a resolver, or fix the label.                           |
+| `multi_cell`        | The expression uses variables from several cells               | Linked to the first; usually fine. Check the link is the meaningful one. |
+| `hardcoded_missing` | A `Hardcoded` context string is not in the PDF                 | Fix the context to match the filed wording.                              |
+| `hardcoded_note`    | A review note on a hardcoded number                            | Tell the user (e.g. a methodology doc that rounds differently).          |
+| `link_missing`      | A GitHub link does not resolve (`--check-links`)               | Push the tag (with approval), or fix the path.                           |
+| `links_checked`     | Count of files and folders linked, and how many were not found | None should be missing.                                                  |
 
 ## Figures and tables
 

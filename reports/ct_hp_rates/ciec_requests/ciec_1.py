@@ -269,14 +269,13 @@ def enrollment_table(
 
 
 def td_reduction_table(
-    floor: Sequence[tuple[int, int]],
-    ceiling: Sequence[tuple[int, int]],
+    enrolled: Sequence[tuple[int, int]],
     dec_dist: float,
     dec_tx: float,
     *,
     first_label: str = "Existing",
 ) -> str:
-    """Annual revenue reduction for each enrollment point, floor and ceiling.
+    """Annual revenue reduction for one enrollment path.
 
     Each row is that year's enrolled customers times the one-customer
     distribution and transmission reductions, rounded to the dollar. The first
@@ -284,29 +283,21 @@ def td_reduction_table(
     distribution plus transmission.
     """
     body: list[str] = []
-    for label, floor_n, ceiling_n in _enrollment_rows(floor, ceiling, first_label):
-        floor_rev = group_revenue(floor_n, dec_dist, dec_tx)
-        ceiling_rev = group_revenue(ceiling_n, dec_dist, dec_tx)
+    for i, (_year, customers) in enumerate(enrolled):
+        label = first_label if i == 0 else str(_year)
+        rev = group_revenue(customers, dec_dist, dec_tx)
         cells = [
             label,
-            f"{floor_n:,}",
-            money(floor_rev["distribution"], 0),
-            money(floor_rev["transmission"], 0),
-            money(floor_rev["distribution"] + floor_rev["transmission"], 0),
-            f"{ceiling_n:,}",
-            money(ceiling_rev["distribution"], 0),
-            money(ceiling_rev["transmission"], 0),
-            money(ceiling_rev["distribution"] + ceiling_rev["transmission"], 0),
+            f"{customers:,}",
+            money(rev["distribution"], 0),
+            money(rev["transmission"], 0),
+            money(rev["distribution"] + rev["transmission"], 0),
         ]
         body.append("| " + " | ".join(cells) + " |")
-    header = (
-        "| Year | Floor customers | Floor distribution | Floor transmission | Floor T&D | "
-        "Ceiling customers | Ceiling distribution | Ceiling transmission | Ceiling T&D |"
-    )
     return "\n".join(
         [
-            header,
-            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+            "| Year | Customers | Distribution | Transmission | T&D |",
+            "| --- | ---: | ---: | ---: | ---: |",
             *body,
         ]
     )

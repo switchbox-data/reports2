@@ -74,9 +74,12 @@ def test_enrollment_table_labels_the_starting_stock() -> None:
 
 
 def test_td_reduction_table_scales_each_years_customers() -> None:
-    table = td_reduction_table([(2026, 10), (2027, 12)], [(2026, 20), (2027, 25)], dec_dist=2.0, dec_tx=1.0)
-    assert r"| Existing | 10 | \$20 | \$10 | \$30 | 20 | \$40 | \$20 | \$60 |" in table
-    assert r"| 2027 | 12 | \$24 | \$12 | \$36 | 25 | \$50 | \$25 | \$75 |" in table
+    floor = td_reduction_table([(2026, 10), (2027, 12)], dec_dist=2.0, dec_tx=1.0)
+    ceiling = td_reduction_table([(2026, 20), (2027, 25)], dec_dist=2.0, dec_tx=1.0)
+    assert r"| Existing | 10 | \$20 | \$10 | \$30 |" in floor
+    assert r"| 2027 | 12 | \$24 | \$12 | \$36 |" in floor
+    assert r"| Existing | 20 | \$40 | \$20 | \$60 |" in ceiling
+    assert r"| 2027 | 25 | \$50 | \$25 | \$75 |" in ceiling
 
 
 def test_makeup_increase_is_the_annual_adder_over_delivery_only() -> None:

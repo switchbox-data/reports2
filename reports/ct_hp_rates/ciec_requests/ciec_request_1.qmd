@@ -26,14 +26,30 @@ from pathlib import Path
 
 import yaml
 import polars as pl
+from ciec_1 import (
+    annual_bill,
+    bill_table,
+    bounds_table,
+    combine_revenue,
+    dollar,
+    existing_customers_table,
+    group_revenue,
+    makeup_increase,
+    makeup_table,
+    new_enrollment_path,
+    num,
+    pct,
+    presented_bills,
+    subclass_weights,
+    sum_monthly_rates,
+    with_winter_rates,
+)
 from lib.rdp import fetch_rdp_file
-from lib.rates_analysis.hh_summary_funcs import resstock_metadata_path, scan_utility_bldg_ids
 from lib.rates_analysis.rate_case_funcs import (
     extract_tariff_rates,
     load_billing_kwh_8760,
     load_billing_kwh_annual,
     load_tariff_json,
-    monthly_bill_from_profile,
     segment_name,
     segment_upgrade,
     weighted_avg_monthly,
@@ -68,66 +84,6 @@ NEW_FLOOR = [3_460, 3_460, 3_460, 3_460, 3_460]
 NEW_CEILING = [6_272, 7_056, 7_840, 9_408, 10_976]
 YEARS = [2027, 2028, 2029, 2030, 2031]
 
-
-def dollar(x: float, accuracy: int = 0) -> str:
-    return f"${x:,.{accuracy}f}"
-
-
-def num(x: float, accuracy: int = 0) -> str:
-    return f"{x:,.{accuracy}f}"
-
-
-def pct(x: float, accuracy: int = 2) -> str:
-    return f"{x * 100:,.{accuracy}f}%"
-
-
-def _sum_monthly_rates(*charge_dicts: dict) -> dict[str, float]:
-    result: dict[str, float] = {}
-    for charge in charge_dicts:
-        for month, rate in charge["monthly_rates"].items():
-            result[month] = result.get(month, 0.0) + rate
-    return result
-
-
-def _with_winter_rates(rate_components: dict, dist: float, tx: float) -> dict:
-    adjusted = {}
-    for name, spec in rate_components.items():
-        rates = dict(spec["monthly_rates"])
-        if name == "Distribution":
-            for month in WINTER_KEYS:
-                rates[month] = dist
-        elif name == "Transmission":
-            for month in WINTER_KEYS:
-                rates[month] = tx
-        adjusted[name] = {"charge_unit": spec["charge_unit"], "monthly_rates": rates}
-    return adjusted
-
-
-def _annual_bill(monthly_kwh: pl.DataFrame, rate_components: dict) -> dict[str, float]:
-    bills = monthly_bill_from_profile(monthly_kwh, rate_components)
-    totals = {
-        row["component"]: float(row["value"])
-        for row in bills.group_by("component").agg(pl.col("value").sum()).iter_rows(named=True)
-    }
-    totals["Total"] = sum(totals.values())
-    return totals
-
-
-def _subclass_weights(upgrade: str, *, has_hp: bool) -> pl.DataFrame:
-    path = resstock_metadata_path(RELEASE, STATE, upgrade)
-    return (
-        pl.scan_parquet(path)
-        .select("bldg_id", "weight", pl.col("postprocess_group.has_hp").alias("has_hp"))
-        .join(scan_utility_bldg_ids(RELEASE, STATE, UTILITY), on="bldg_id", how="semi")
-        .filter(pl.col("has_hp") == has_hp)
-        .collect()
-    )
-
-
-def _hp_weights(upgrade: str) -> pl.DataFrame:
-    return _subclass_weights(upgrade, has_hp=True)
-
-
 _rates_yaml = yaml.safe_load(
     fetch_rdp_file(
         "rate_design/hp_rates/ct/config/rev_requirement/top-ups/monthly_rates/"
@@ -153,7 +109,7 @@ rate1 = {
         "charge_unit": "$/month",
         "monthly_rates": _already["customer_charge"]["monthly_rates"],
     },
-    "Distribution": {"charge_unit": "$/kWh", "monthly_rates": _sum_monthly_rates(*_dist_sub_charges)},
+    "Distribution": {"charge_unit": "$/kWh", "monthly_rates": sum_monthly_rates(*_dist_sub_charges)},
     "Transmission": {
         "charge_unit": "$/kWh",
         "monthly_rates": _drr["transmission_charge"]["monthly_rates"],
@@ -163,7 +119,7 @@ rate1 = {
         "monthly_rates": _srr["supply_commodity_bundled"]["monthly_rates"],
     },
 }
-rate_hp = _with_winter_rates(rate1, WINTER_DIST, WINTER_TX)
+rate_hp = with_winter_rates(rate1, WINTER_DIST, WINTER_TX, WINTER_KEYS)
 
 _icos = extract_tariff_rates(
     load_tariff_json(STATE, UTILITY, "ct_eversource_icos_fair_seasonal", RDP_REF)
@@ -195,7 +151,7 @@ _segment = segment_name(SCENARIO, _STAGE[UPGRADE])
 _found = segment_upgrade(STATE, BATCH, _segment)
 if _found != int(UPGRADE):
     raise RuntimeError(f"Segment {_segment} is upgrade {_found}, expected {int(UPGRADE)}")
-_weights = _hp_weights(UPGRADE)
+_weights = subclass_weights(RELEASE, STATE, UTILITY, UPGRADE, has_hp=True)
 _kwh = load_billing_kwh_8760(STATE, UTILITY, BATCH, _segment)
 _id_dtype = _kwh.select("bldg_id").head(1).collect()["bldg_id"].dtype
 _weights = _weights.with_columns(pl.col("bldg_id").cast(_id_dtype))
@@ -204,35 +160,15 @@ home = {
     "n_buildings": _weights.height,
     "annual_kwh": float(_monthly["kwh"].sum()),
     "winter_kwh": float(_monthly.filter(pl.col("month_label").is_in(WINTER_MONTHS))["kwh"].sum()),
-    "rate1": _annual_bill(_monthly, rate1),
-    "rate_hp": _annual_bill(_monthly, rate_hp),
+    "rate1": annual_bill(_monthly, rate1),
+    "rate_hp": annual_bill(_monthly, rate_hp),
 }
 
-def _cents(x: float) -> float:
-    return round(x, 2)
-
-
-def _presented_bills(source: dict) -> dict[str, dict[str, float]]:
-    """Cent-rounded component bills. The total row is the sum of those cents, so the table adds."""
-    presented = {"rate1": {}, "rate_hp": {}, "decrease": {}}
-    for component in BILL_ORDER:
-        if component == "Total":
-            continue
-        rate1_bill = _cents(source["rate1"][component])
-        rate_hp_bill = _cents(source["rate_hp"][component])
-        presented["rate1"][component] = rate1_bill
-        presented["rate_hp"][component] = rate_hp_bill
-        presented["decrease"][component] = _cents(rate1_bill - rate_hp_bill)
-    for key in ("rate1", "rate_hp", "decrease"):
-        presented[key]["Total"] = _cents(sum(presented[key][c] for c in BILL_ORDER if c != "Total"))
-    return presented
-
-
-bills = _presented_bills(home)
+bills = presented_bills(home, BILL_ORDER)
 assert bills["decrease"]["Customer Charge"] == 0.0
 assert bills["decrease"]["Generation"] == 0.0
-assert bills["decrease"]["Total"] == _cents(
-    bills["decrease"]["Distribution"] + bills["decrease"]["Transmission"]
+assert bills["decrease"]["Total"] == round(
+    bills["decrease"]["Distribution"] + bills["decrease"]["Transmission"], 2
 )
 
 n_bldg = home["n_buildings"]
@@ -247,83 +183,10 @@ upgrade_who = {
 }[UPGRADE]
 
 
-def _money(x: float, accuracy: int) -> str:
-    """Dollar text for a markdown table. The backslash keeps Quarto from treating it as math."""
-    return f"\\${x:,.{accuracy}f}"
+bill_table_md = bill_table(bills, BILL_ORDER)
 
-
-def _bill_row(component: str) -> str:
-    return "| " + " | ".join(
-        [
-            component,
-            _money(bills["rate1"][component], 2),
-            _money(bills["rate_hp"][component], 2),
-            _money(bills["decrease"][component], 2),
-        ]
-    ) + " |"
-
-
-bill_table_md = "\n".join(
-    [
-        "| Component | Rate 1 | Rate HP | Decrease |",
-        "| --- | ---: | ---: | ---: |",
-        *[_bill_row(component) for component in BILL_ORDER],
-    ]
-)
-
-
-def _group_revenue(customers: int) -> dict[str, float]:
-    """Annual revenue reduction for a fixed group, and the same amount in each of five years."""
-    dist = round(customers * dec_dist)
-    tx = round(customers * dec_tx)
-    return {
-        "customers": customers,
-        "distribution": dist,
-        "transmission": tx,
-        "distribution_5": dist * 5,
-        "transmission_5": tx * 5,
-    }
-
-
-def _new_enrollment_path(annual_new: list[int]) -> list[dict[str, float]]:
-    """Customers are counted from the year they enroll, and they stay enrolled."""
-    rows = []
-    enrolled = 0
-    for year, new in zip(YEARS, annual_new, strict=True):
-        enrolled += new
-        dist = round(enrolled * dec_dist)
-        tx = round(enrolled * dec_tx)
-        rows.append(
-            {
-                "year": year,
-                "customers": enrolled,
-                "distribution": dist,
-                "transmission": tx,
-                "total": dist + tx,
-            }
-        )
-    return rows
-
-
-def _combine(existing: dict[str, float], new_years: list[dict[str, float]]) -> list[dict[str, float]]:
-    rows = []
-    for new in new_years:
-        dist = existing["distribution"] + new["distribution"]
-        tx = existing["transmission"] + new["transmission"]
-        rows.append(
-            {
-                "year": new["year"],
-                "customers": existing["customers"] + new["customers"],
-                "distribution": dist,
-                "transmission": tx,
-                "total": dist + tx,
-            }
-        )
-    return rows
-
-
-exist_floor = _group_revenue(EXISTING_FLOOR)
-exist_ceiling = _group_revenue(EXISTING_CEILING)
+exist_floor = group_revenue(EXISTING_FLOOR, dec_dist, dec_tx)
+exist_ceiling = group_revenue(EXISTING_CEILING, dec_dist, dec_tx)
 exist_floor_dist = exist_floor["distribution"]
 exist_floor_tx = exist_floor["transmission"]
 exist_floor_dist_5 = exist_floor["distribution_5"]
@@ -333,15 +196,15 @@ exist_ceil_tx = exist_ceiling["transmission"]
 exist_ceil_dist_5 = exist_ceiling["distribution_5"]
 exist_ceil_tx_5 = exist_ceiling["transmission_5"]
 
-new_floor_years = _new_enrollment_path(NEW_FLOOR)
-new_ceiling_years = _new_enrollment_path(NEW_CEILING)
+new_floor_years = new_enrollment_path(NEW_FLOOR, YEARS, dec_dist, dec_tx)
+new_ceiling_years = new_enrollment_path(NEW_CEILING, YEARS, dec_dist, dec_tx)
 new_floor_dist_5 = sum(row["distribution"] for row in new_floor_years)
 new_floor_tx_5 = sum(row["transmission"] for row in new_floor_years)
 new_ceil_dist_5 = sum(row["distribution"] for row in new_ceiling_years)
 new_ceil_tx_5 = sum(row["transmission"] for row in new_ceiling_years)
 
-floor_years = _combine(exist_floor, new_floor_years)
-ceiling_years = _combine(exist_ceiling, new_ceiling_years)
+floor_years = combine_revenue(exist_floor, new_floor_years)
+ceiling_years = combine_revenue(exist_ceiling, new_ceiling_years)
 floor_dist_5 = exist_floor_dist_5 + new_floor_dist_5
 floor_tx_5 = exist_floor_tx_5 + new_floor_tx_5
 floor_total_5 = floor_dist_5 + floor_tx_5
@@ -355,7 +218,7 @@ _nonhp_segment = segment_name(SCENARIO, _STAGE["00"])
 _nonhp_found = segment_upgrade(STATE, BATCH, _nonhp_segment)
 if _nonhp_found != 0:
     raise RuntimeError(f"Segment {_nonhp_segment} is upgrade {_nonhp_found}, expected 0")
-_nonhp_weights = _subclass_weights("00", has_hp=False)
+_nonhp_weights = subclass_weights(RELEASE, STATE, UTILITY, "00", has_hp=False)
 _nonhp_annual = load_billing_kwh_annual(STATE, UTILITY, BATCH, _nonhp_segment)
 _nonhp_id = _nonhp_annual.select("bldg_id").head(1).collect()["bldg_id"].dtype
 _nonhp_weights = _nonhp_weights.with_columns(pl.col("bldg_id").cast(_nonhp_id))
@@ -380,110 +243,20 @@ new_floor_total_5 = new_floor_dist_5 + new_floor_tx_5
 new_ceil_total_5 = new_ceil_dist_5 + new_ceil_tx_5
 
 
-def _makeup(dollars_5: float) -> dict[str, float]:
-    """Annual increase per non-HP kWh, and that increase as a share of the Rate 1 delivery rate."""
-    increase = dollars_5 / 5 / nonhp_kwh
-    return {"increase": increase, "pct": increase / rate1_delivery}
+makeup_exist_floor = makeup_increase(exist_floor_total_5, nonhp_kwh, rate1_delivery)
+makeup_exist_ceiling = makeup_increase(exist_ceil_total_5, nonhp_kwh, rate1_delivery)
+makeup_new_floor = makeup_increase(new_floor_total_5, nonhp_kwh, rate1_delivery)
+makeup_new_ceiling = makeup_increase(new_ceil_total_5, nonhp_kwh, rate1_delivery)
 
-
-makeup_exist_floor = _makeup(exist_floor_total_5)
-makeup_exist_ceiling = _makeup(exist_ceil_total_5)
-makeup_new_floor = _makeup(new_floor_total_5)
-makeup_new_ceiling = _makeup(new_ceil_total_5)
-
-
-def _revenue_row(
-    floor: dict[str, float],
-    ceiling: dict[str, float],
-    label: str | None = None,
-    *,
-    customers: bool = True,
-) -> str:
-    year = label if label is not None else str(int(floor["year"]))
-    floor_customers = f"{int(floor['customers']):,}" if customers else "—"
-    ceiling_customers = f"{int(ceiling['customers']):,}" if customers else "—"
-    cells = [
-        year,
-        floor_customers,
-        _money(floor["distribution"], 0),
-        _money(floor["transmission"], 0),
-        ceiling_customers,
-        _money(ceiling["distribution"], 0),
-        _money(ceiling["transmission"], 0),
-    ]
-    return "| " + " | ".join(cells) + " |"
-
-
-def _bounds_table(floor_rows: list[dict[str, float]], ceiling_rows: list[dict[str, float]]) -> str:
-    total_floor = {
-        "year": 0,
-        "customers": 0,
-        "distribution": sum(row["distribution"] for row in floor_rows),
-        "transmission": sum(row["transmission"] for row in floor_rows),
-    }
-    total_ceiling = {
-        "year": 0,
-        "customers": 0,
-        "distribution": sum(row["distribution"] for row in ceiling_rows),
-        "transmission": sum(row["transmission"] for row in ceiling_rows),
-    }
-    return "\n".join(
-        [
-            "| Year | Floor customers | Floor distribution | Floor transmission | Ceiling customers | Ceiling distribution | Ceiling transmission |",
-            "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
-            *[
-                _revenue_row(floor, ceiling)
-                for floor, ceiling in zip(floor_rows, ceiling_rows, strict=True)
-            ],
-            _revenue_row(total_floor, total_ceiling, label="Five-year total", customers=False),
-        ]
-    )
-
-
-def _existing_row(label: str, row: dict[str, float]) -> str:
-    return "| " + " | ".join(
-        [
-            label,
-            f"{int(row['customers']):,}",
-            _money(row["distribution"], 0),
-            _money(row["transmission"], 0),
-            _money(row["distribution_5"], 0),
-            _money(row["transmission_5"], 0),
-        ]
-    ) + " |"
-
-
-existing_table_md = "\n".join(
+existing_table_md = existing_customers_table(exist_floor, exist_ceiling)
+new_table_md = bounds_table(new_floor_years, new_ceiling_years)
+revenue_table_md = bounds_table(floor_years, ceiling_years)
+makeup_table_md = makeup_table(
     [
-        "| Bound | Customers | Annual distribution | Annual transmission | Five-year distribution | Five-year transmission |",
-        "| --- | ---: | ---: | ---: | ---: | ---: |",
-        _existing_row("Floor", exist_floor),
-        _existing_row("Ceiling", exist_ceiling),
-    ]
-)
-new_table_md = _bounds_table(new_floor_years, new_ceiling_years)
-revenue_table_md = _bounds_table(floor_years, ceiling_years)
-
-
-def _makeup_row(group: str, bound: str, row: dict[str, float]) -> str:
-    return "| " + " | ".join(
-        [
-            group,
-            bound,
-            _money(row["increase"], 6),
-            pct(row["pct"]),
-        ]
-    ) + " |"
-
-
-makeup_table_md = "\n".join(
-    [
-        "| Group | Bound | Increase (\\$/kWh) | Change |",
-        "| --- | --- | ---: | ---: |",
-        _makeup_row("Existing", "Floor", makeup_exist_floor),
-        _makeup_row("Existing", "Ceiling", makeup_exist_ceiling),
-        _makeup_row("New", "Floor", makeup_new_floor),
-        _makeup_row("New", "Ceiling", makeup_new_ceiling),
+        ("Existing", "Floor", makeup_exist_floor),
+        ("Existing", "Ceiling", makeup_exist_ceiling),
+        ("New", "Floor", makeup_new_floor),
+        ("New", "Ceiling", makeup_new_ceiling),
     ]
 )
 ```

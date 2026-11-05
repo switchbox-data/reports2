@@ -1318,6 +1318,7 @@ Do **not** put skills under `context/` — skills are operational guides; `conte
 | **mdpuc-documents**        | `.cursor/skills/mdpuc-documents/`        | Fetching or extracting **Maryland PSC (MDPUC)** filings — MailLog search, `psc.maryland.gov` uploads, markdown extracts under `context/sources/md_hp_rates/`.                                                              |
 | **ctpura-documents**       | `.cursor/skills/ctpura-documents/`       | Finding and fetching **Connecticut PURA** docket filings (`dpuc.state.ct.us`): filing pages, interrogatories and responses, merged response sets for `ingest-source`.                                                      |
 | **testimony-provenance**   | `.cursor/skills/testimony-provenance/`   | Building a provenance document for filed testimony: every figure, table and number with its page/line and a permalink to the code that produced it (e.g. CT CIEC-1).                                                       |
+| **render-preview**         | `.cursor/skills/render-preview/`         | Rendering a `.qmd` with `just render` into gitignored `docs/`, serving it locally, and opening it for the user.                                                                                                            |
 
 More **PUC document skills** for other jurisdictions (e.g. RI PUC, ICC) may be added alongside `mdpuc-documents` and `ctpura-documents` as those corpora grow. Each jurisdiction gets its own skill when fetch paths and conventions differ materially.
 

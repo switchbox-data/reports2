@@ -1,17 +1,23 @@
 ---
 source_file: ml218796_bge_2017_q3q4_empower.pdf
 citekey: bge_Docket9154BGEs_2018
+zotero_item: "VF56KXS2"
+public_url: https://drive.google.com/file/d/1axOlgS8UjJ75ZTQE0j-UdOjzhzwySIV8/view
+short_url: https://pub.switch.box/bge_Docket9154BGEs_2018
+source_url: https://webpscxb.pscmaryland.com/DMS/maillogpdfview/MailLog/0/0/218796/0
+md5: "0a320a3462b97a4fa0eff9c6c197cc9d"
+validated: 2026-11-05
 docket: "9154"
 utility: Baltimore Gas and Electric Company (BGE)
 filing_date: 2018-01-31
 filer: Baltimore Gas and Electric Company (BGE)
 document_type: report
 pages_total: 127
-extraction_scope: "partial: cover letter and executive summary (PDF pp. 1-16, including the table of contents); Residential Appliance Rebate (heat pump water heaters), Quick Home Energy Check-Up, Home Performance with ENERGY STAR and Residential HVAC program sections (PDF pp. 21-22, 25-33, 37-39); the HVAC and appliance-rebate rows of the Appendix A savings tables (PDF pp. 69-82); and the residential parts of Appendix J (PDF pp. 119-122, 124-125). Lighting, appliance recycling, new construction, commercial and industrial, demand response, behavioral and DHCD programs, cost, entity and contractor appendices are not transcribed (see the not-transcribed markers)"
+extraction_scope: partial
 citation_scheme: page
-context: "Extractor note (not source text): BGE's semi-annual EmPOWER Maryland report for the third and fourth quarters of 2017 (full year 2017, 2015-2017 cycle-to-date and program-to-date results), filed with the Maryland Public Service Commission in Case No. 9154."
-contents: "Extractor note (not source text): Cover letter and executive summary; program-by-program narrative and result tables for residential and commercial energy efficiency, demand response and behavioral programs; Appendix A savings tables, cost, entity, pilot, contractor, codes and assumptions appendices."
-why_here: "Extractor note (not source text): BGE's 2017 heat pump, central air conditioner, ductless mini-split, geothermal heat pump and heat pump water heater rebate counts, incentives and savings under EmPOWER Maryland (Residential HVAC and Appliance Rebate programs)."
+context: BGE's semi-annual EmPOWER Maryland report for July 1 through December 31, 2017, filed January 31, 2018 in Case No. 9154. It reports full-year 2017, 2015-2017 cycle, and program-to-date results.
+contents: Cover letter, executive summary, and the residential appliance, Home Performance, and HVAC sections, including air-source, ductless, and geothermal heat pump counts and the HVAC and appliance rows of the Appendix A savings tables. Commercial programs are marked not transcribed.
+why_here: BGE's 2017 heat pump, central air conditioner, and heat pump water heater installation counts under EmPOWER.
 ---
 
 # Q3 and Q4 2017 Semi-Annual EmPOWER Maryland Report of the Baltimore Gas and Electric Company
@@ -27,7 +33,7 @@ _Extractor note (not source text): The text on the pages transcribed here follow
 
 [PDF p. 1]
 
-*[Letterhead: BGE, An Exelon Company (logo).]*
+_[Letterhead: BGE, An Exelon Company (logo).]_
 
 Kimberly A. Curry
 Assistant General Counsel
@@ -43,7 +49,7 @@ kimberly.a.curry@bge.com
 
 January 31, 2018
 
-*Via Electronic Filing*
+_Via Electronic Filing_
 
 David J. Collins, Executive Secretary
 Maryland Public Service Commission
@@ -71,10 +77,11 @@ representing 55% of combined traditional energy efficiency savings during 2017. 
 Savings from Smart Energy Manager®, BGE's residential behavioral energy efficiency program, contributed energy savings of over 145,000 MWh (160% of target) for the year and the CVR or Conservation Voltage Reduction program savings added nearly 138,000 MWh (135% of target). Total energy savings from all programs for 2017, as illustrated below, were over 668,000 MWh. This equates to 2.05% of 2013 weather normalized gross wholesale retail sales.
 
 | Utilty [sic] | 2017 Reported Savings (MWh)[^p2-1] | 2013 Energy Sales[^p2-2] | Percent of Sales | Interim 2017 Goal |
-| --- | --- | --- | --- | --- |
-| BGE | 668,340 | 32,602,459 | 2.05% | 1.94% |
+| ------------ | ---------------------------------- | ------------------------ | ---------------- | ----------------- |
+| BGE          | 668,340                            | 32,602,459               | 2.05%            | 1.94%             |
 
 [^p2-1]: 2017 Reported Savings are at the gross wholesale level.
+
 [^p2-2]: 2013 Energy Sales are reported at gross wholesale levels and weather-normalized.
 
 As of December 31, 2017, the potential and installed capacity demand reduction from all BGE programs was 1,294 MW. Of this total, Energy Efficiency and PeakRewards℠ programs accounted for 511 MW and 357 MW, respectively and the Smart Energy Rewards®, BGE's peak time rebate program, contributed 330 MW with an additional 97 MW from other programs.
@@ -154,7 +161,7 @@ A three-dimensional pie chart titled "Q3/Q4 2017 EE Costs by Category". Slices b
 
 [→ See original PDF page 5 for visual rendering]
 
-*Note – Does not include costs associated with implementation of the Limited Income Energy Efficiency Program (LIEEP) managed by the Maryland Department of Housing & Community Development.*
+_Note – Does not include costs associated with implementation of the Limited Income Energy Efficiency Program (LIEEP) managed by the Maryland Department of Housing & Community Development._
 
 [PDF p. 6 | printed p. 6]
 
@@ -230,12 +237,12 @@ BGE's customers can also breathe a little easier knowing that, combined, the ele
 
 In concert with the electric and gas savings, BGE's Smart Energy Savers Program® provides tangible economic benefits to BGE customers. From 2008 through the end of 2017, BGE's programs have created nearly $5 billion in such benefits for our customers:
 
-| Benefit | Amount |
-| --- | --- |
-| Direct rebates paid to customers for energy efficiency measures | $505,000,000 |
+| Benefit                                                              | Amount         |
+| -------------------------------------------------------------------- | -------------- |
+| Direct rebates paid to customers for energy efficiency measures      | $505,000,000   |
 | Lifecycle savings over the useful life of energy efficiency measures | $4,200,000,000 |
-| PeakRewards℠ customer credits and signing bonuses paid to customers | $227,000,000 |
-| SER program credits paid to customers | $46,000,000 |
+| PeakRewards℠ customer credits and signing bonuses paid to customers  | $227,000,000   |
+| SER program credits paid to customers                                | $46,000,000    |
 
 The Summary Tables accompanying this report include additional Commission approved incentives to programs and transfers between programs with any related corresponding savings approved reflecting the success of BGE's programs in driving customer participation.
 
@@ -282,37 +289,37 @@ BGE will continue to refine and enhance the evaluation and reporting for Smart T
 
 Table title: **BGE Smart Thermostat Programs** — **RESIDENTIAL** (four columns). Column headings as printed, each stacked over two or three lines.
 
-| | Demand Response / Energy Efficiency / Optimization | Demand Response / Energy Efficiency | Energy Efficiency / Optimization | Energy Efficiency |
-| --- | --- | --- | --- | --- |
-| One-Time Sign On Bonus | $75-$125 | $50-$100 | Up to $25 | $0 |
-| *Bonus depends on cycling level selected* (spans the first two columns) | | | | |
-| Annual Customer Bill Credits | $50-$100 | $50-$100 | $0 | $0 |
-| *Bill credits depend on cycling level selected* (spans the first two columns) | | | | |
-| Participate in Demand Response (*Utility controls A/C and customer manages other electric use on event days*) | Yes | Yes | No | No |
-| Cost of thermostat | No additional cost | No additional cost | Retail Cost | Retail Cost |
-| Rebate for qualifying thermostat | N/A | N/A | Up to $100 | Up to $100 |
-| Customer directly acquires thermostat | Not Applicable | Not Applicable | Retail outlet | Retail outlet |
-| *Applicable rebate to customer* | | | On-line purchase | On-line purchase |
-| Third party acquires thermostat: *Applicable rebate to customer* | BGE-PeakRewardsSM Direct Install | BGE-PeakRewardsSM Direct Install | BGE New Construction | BGE New Construction |
-| *Applicable rebate to builder/contractor* | BGE - QHEC Direct Install | BGE - QHEC Direct Install | HVAC Contractor; HPwES Contractor | HVAC Contractor; HPwES Contractor |
-| Small Business Energy Solutions Incentives | Not Applicable | Not Applicable | Not Applicable | Not Applicable |
-| Smart Thermostat Information/Education | bgesmartenergy.com; BGE QHEC; BGE HPwES; BGE HVAC Program; BGE New Homes Concierge; BGESavings.com | bgesmartenergy.com; BGE QHEC; BGE HPwES; BGE HVAC Program; BGE New Homes Concierge; BGESavings.com | bgesmartenergy.com; BGE QHEC; BGE HPwES; BGE HVAC Program; BGE New Homes Concierge | bgesmartenergy.com; BGE QHEC; BGE HPwES; BGE HVAC Program; BGE New Homes Concierge |
+|                                                                                                               | Demand Response / Energy Efficiency / Optimization                                                 | Demand Response / Energy Efficiency                                                                | Energy Efficiency / Optimization                                                   | Energy Efficiency                                                                  |
+| ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| One-Time Sign On Bonus                                                                                        | $75-$125                                                                                           | $50-$100                                                                                           | Up to $25                                                                          | $0                                                                                 |
+| _Bonus depends on cycling level selected_ (spans the first two columns)                                       |                                                                                                    |                                                                                                    |                                                                                    |                                                                                    |
+| Annual Customer Bill Credits                                                                                  | $50-$100                                                                                           | $50-$100                                                                                           | $0                                                                                 | $0                                                                                 |
+| _Bill credits depend on cycling level selected_ (spans the first two columns)                                 |                                                                                                    |                                                                                                    |                                                                                    |                                                                                    |
+| Participate in Demand Response (_Utility controls A/C and customer manages other electric use on event days_) | Yes                                                                                                | Yes                                                                                                | No                                                                                 | No                                                                                 |
+| Cost of thermostat                                                                                            | No additional cost                                                                                 | No additional cost                                                                                 | Retail Cost                                                                        | Retail Cost                                                                        |
+| Rebate for qualifying thermostat                                                                              | N/A                                                                                                | N/A                                                                                                | Up to $100                                                                         | Up to $100                                                                         |
+| Customer directly acquires thermostat                                                                         | Not Applicable                                                                                     | Not Applicable                                                                                     | Retail outlet                                                                      | Retail outlet                                                                      |
+| _Applicable rebate to customer_                                                                               |                                                                                                    |                                                                                                    | On-line purchase                                                                   | On-line purchase                                                                   |
+| Third party acquires thermostat: _Applicable rebate to customer_                                              | BGE-PeakRewardsSM Direct Install                                                                   | BGE-PeakRewardsSM Direct Install                                                                   | BGE New Construction                                                               | BGE New Construction                                                               |
+| _Applicable rebate to builder/contractor_                                                                     | BGE - QHEC Direct Install                                                                          | BGE - QHEC Direct Install                                                                          | HVAC Contractor; HPwES Contractor                                                  | HVAC Contractor; HPwES Contractor                                                  |
+| Small Business Energy Solutions Incentives                                                                    | Not Applicable                                                                                     | Not Applicable                                                                                     | Not Applicable                                                                     | Not Applicable                                                                     |
+| Smart Thermostat Information/Education                                                                        | bgesmartenergy.com; BGE QHEC; BGE HPwES; BGE HVAC Program; BGE New Homes Concierge; BGESavings.com | bgesmartenergy.com; BGE QHEC; BGE HPwES; BGE HVAC Program; BGE New Homes Concierge; BGESavings.com | bgesmartenergy.com; BGE QHEC; BGE HPwES; BGE HVAC Program; BGE New Homes Concierge | bgesmartenergy.com; BGE QHEC; BGE HPwES; BGE HVAC Program; BGE New Homes Concierge |
 
 [PDF p. 13 | printed p. 13]
 
 Table continued from the previous page: **SMALL BUSINESS** — Energy Efficiency (one column).
 
-| | SMALL BUSINESS: Energy Efficiency |
-| --- | --- |
-| One-Time Sign On Bonus | Not Applicable |
-| Annual Customer Bill Credits | Not Applicable |
-| Participate in Demand Response (*Utility controls A/C and customer manages other electric use on event days*) | Not Applicable |
-| Cost of thermostat | Retail Cost |
-| Rebate for qualifying thermostat | Up to 70% of installation costs |
-| Customer directly acquires thermostat: *Applicable rebate to customer* | Not Applicable |
-| Third party acquires thermostat: *Applicable rebate to customer*; *Applicable rebate to builder/contractor* | Not applicable |
-| Small Business Energy Solutions Incentives | Paid to the BGE Small Business Energy Solutions Contractor for installation |
-| Smart Thermostat Information/Education | bgesmartenergy.com; BGE Small Business Energy Solutions |
+|                                                                                                               | SMALL BUSINESS: Energy Efficiency                                           |
+| ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| One-Time Sign On Bonus                                                                                        | Not Applicable                                                              |
+| Annual Customer Bill Credits                                                                                  | Not Applicable                                                              |
+| Participate in Demand Response (_Utility controls A/C and customer manages other electric use on event days_) | Not Applicable                                                              |
+| Cost of thermostat                                                                                            | Retail Cost                                                                 |
+| Rebate for qualifying thermostat                                                                              | Up to 70% of installation costs                                             |
+| Customer directly acquires thermostat: _Applicable rebate to customer_                                        | Not Applicable                                                              |
+| Third party acquires thermostat: _Applicable rebate to customer_; _Applicable rebate to builder/contractor_   | Not applicable                                                              |
+| Small Business Energy Solutions Incentives                                                                    | Paid to the BGE Small Business Energy Solutions Contractor for installation |
+| Smart Thermostat Information/Education                                                                        | bgesmartenergy.com; BGE Small Business Energy Solutions                     |
 
 **Certification**
 
@@ -320,7 +327,7 @@ Pursuant to Maryland Public Utilities Article § 7-211(h)(6), BGE hereby certifi
 
 Respectfully submitted,
 
-*[Signature]* Kimberly A. Curry
+_[Signature]_ Kimberly A. Curry
 
 KAC:lmb
 
@@ -335,55 +342,55 @@ Q3 and Q4 2017 Semi-Annual EmPOWER Maryland Report of the Baltimore Gas and Elec
 
 **Table of Contents**
 
-| Section | Page |
-| --- | --- |
-| Semi Annual Report for Third and Fourth Quarters 2017 | 4 |
-| Program Specifics | 4 |
-| Programs in Ramp-Up Phase | 4 |
-| Implemented Residential and Commercial Programs | 4 |
-| Residential Lighting Program | 4 |
-| Residential Appliance Rebate Program | 8 |
-| Residential Appliance Recycling Program | 9 |
-| Residential Quick Home Energy Check-Up (QHEC) Program | 13 |
-| Residential Home Performance with ENERGY STAR® (HPwES) Program | 16 |
-| Residential New Construction Program | 21 |
-| Residential HVAC Program | 24 |
-| Commercial & Industrial (C&I) Summary | 27 |
-| Small Business Energy Solutions Program | 27 |
-| Energy Solutions for Business (Prescriptive/Custom) Program | 29 |
-| Partnering with Service Providers | 31 |
-| C&I Building Tune-Up (formerly Retrocommissioning) Program | 33 |
-| Combined Heat & Power (CHP) Program | 34 |
-| C&I Midstream Lighting Program | 34 |
-| Master-Metered Multi-Family Quick Home Energy Check-Up Program | 35 |
-| C&I Overall Marketing Outreach | 36 |
-| Behavioral and Demand Response Programs | 42 |
-| Peak Rewards | 42 |
-| Lag Times Between Enrollment and Installation | 43 |
-| Other Programs | 47 |
-| Conservation Voltage Reduction (CVR) | 47 |
-| BGE Smart Energy Rewards® (SER) Program | 47 |
-| BGE Smart Energy Manager® (SEM) Program | 50 |
-| Department of Housing and Community Development Portfolio | 53 |
-| Limited Income Energy Efficiency Program (LIEEP) | 53 |
+| Section                                                        | Page |
+| -------------------------------------------------------------- | ---- |
+| Semi Annual Report for Third and Fourth Quarters 2017          | 4    |
+| Program Specifics                                              | 4    |
+| Programs in Ramp-Up Phase                                      | 4    |
+| Implemented Residential and Commercial Programs                | 4    |
+| Residential Lighting Program                                   | 4    |
+| Residential Appliance Rebate Program                           | 8    |
+| Residential Appliance Recycling Program                        | 9    |
+| Residential Quick Home Energy Check-Up (QHEC) Program          | 13   |
+| Residential Home Performance with ENERGY STAR® (HPwES) Program | 16   |
+| Residential New Construction Program                           | 21   |
+| Residential HVAC Program                                       | 24   |
+| Commercial & Industrial (C&I) Summary                          | 27   |
+| Small Business Energy Solutions Program                        | 27   |
+| Energy Solutions for Business (Prescriptive/Custom) Program    | 29   |
+| Partnering with Service Providers                              | 31   |
+| C&I Building Tune-Up (formerly Retrocommissioning) Program     | 33   |
+| Combined Heat & Power (CHP) Program                            | 34   |
+| C&I Midstream Lighting Program                                 | 34   |
+| Master-Metered Multi-Family Quick Home Energy Check-Up Program | 35   |
+| C&I Overall Marketing Outreach                                 | 36   |
+| Behavioral and Demand Response Programs                        | 42   |
+| Peak Rewards                                                   | 42   |
+| Lag Times Between Enrollment and Installation                  | 43   |
+| Other Programs                                                 | 47   |
+| Conservation Voltage Reduction (CVR)                           | 47   |
+| BGE Smart Energy Rewards® (SER) Program                        | 47   |
+| BGE Smart Energy Manager® (SEM) Program                        | 50   |
+| Department of Housing and Community Development Portfolio      | 53   |
+| Limited Income Energy Efficiency Program (LIEEP)               | 53   |
 
 [PDF p. 16 | printed p. 3]
 
-| Section | Page |
-| --- | --- |
-| MEEHA | 53 |
-| Appendices | 54 |
-| Appendix A: Net and Gross Wholesale Savings Table | 55 |
-| Appendix B: Cost Program Detail | 56 |
-| Appendix C: Entities Detail | 57 |
-| Appendix D: Pilot Program | 58 |
-| Appendix E: Budget/New Program Requests | 59 |
-| Appendix F: Annual Program Wrap-Up | 60 |
-| Appendix G: Contractor List | 61 |
-| Appendix H: Codes and Standards | 62 |
-| Appendix I: Forecasted Cost Update | 63 |
-| Appendix J: Notes and Assumptions | 64 |
-| Attachment 1: BGE SESP Contractor List Q4 2017 | |
+| Section                                           | Page |
+| ------------------------------------------------- | ---- |
+| MEEHA                                             | 53   |
+| Appendices                                        | 54   |
+| Appendix A: Net and Gross Wholesale Savings Table | 55   |
+| Appendix B: Cost Program Detail                   | 56   |
+| Appendix C: Entities Detail                       | 57   |
+| Appendix D: Pilot Program                         | 58   |
+| Appendix E: Budget/New Program Requests           | 59   |
+| Appendix F: Annual Program Wrap-Up                | 60   |
+| Appendix G: Contractor List                       | 61   |
+| Appendix H: Codes and Standards                   | 62   |
+| Appendix I: Forecasted Cost Update                | 63   |
+| Appendix J: Notes and Assumptions                 | 64   |
+| Attachment 1: BGE SESP Contractor List Q4 2017    |      |
 
 _Extractor note (not source text): the page numbers in the table of contents are the report's own printed footer numbers, not PDF page numbers (printed p. N = PDF p. N+13 for the report proper through printed p. 72)._
 
@@ -438,28 +445,28 @@ The Appliance Recycling program achieved 93% of the measure goal and 67% of its 
 
 Table title: **Q3/4 2017 Appliances & Recycling**. Columns: Measures; Reported Measure Quantity; Reported Annualized Energy Savings (MWh); Reported Peak Demand Reduction (MW). Rows with no printed values are shown with empty cells.
 
-| Measures | Reported Measure Quantity | Reported Annualized Energy Savings (MWh) | Reported Peak Demand Reduction (MW) |
-| --- | --- | --- | --- |
-| **Residential Appliances** | | | |
-| *Clothes Washers* | 2,516 | 285 | 0.031 |
-| Tier 1 | | | |
-| Tier 2 | 372 | 39 | 0.004 |
-| Tier 3 | 2,144 | 246 | 0.027 |
-| Energy Star Clothes Dryers | 2,203 | 277 | 0.027 |
-| Heat Pump Water Heaters | 323 | 378 | 0.038 |
-| Pool Pump (2 Speed) | | | |
-| Pool Pump (Variable Speed) | 602 | 255 | 0.100 |
-| *Refrigerators* | 222 | 21 | 0.003 |
-| Tier 1 | | | |
-| Tier 2 | 220 | 20 | 0.003 |
-| Tier 3 | 2 | 0 | 0.000 |
-| Room Air Conditioners | | | |
-| **Recycling:** | 5,686 | 2,318 | 0.401 |
-| Dehumidifiers | 541 | 105 | 0.025 |
-| Freezers | 1,016 | 341 | 0.053 |
-| Refrigerators | 3,599 | 1,830 | 0.282 |
-| Room Air Conditioners | 530 | 41 | 0.041 |
-| **Appliances Total** | 11,552 | 3,534 | 0.600 |
+| Measures                   | Reported Measure Quantity | Reported Annualized Energy Savings (MWh) | Reported Peak Demand Reduction (MW) |
+| -------------------------- | ------------------------- | ---------------------------------------- | ----------------------------------- |
+| **Residential Appliances** |                           |                                          |                                     |
+| _Clothes Washers_          | 2,516                     | 285                                      | 0.031                               |
+| Tier 1                     |                           |                                          |                                     |
+| Tier 2                     | 372                       | 39                                       | 0.004                               |
+| Tier 3                     | 2,144                     | 246                                      | 0.027                               |
+| Energy Star Clothes Dryers | 2,203                     | 277                                      | 0.027                               |
+| Heat Pump Water Heaters    | 323                       | 378                                      | 0.038                               |
+| Pool Pump (2 Speed)        |                           |                                          |                                     |
+| Pool Pump (Variable Speed) | 602                       | 255                                      | 0.100                               |
+| _Refrigerators_            | 222                       | 21                                       | 0.003                               |
+| Tier 1                     |                           |                                          |                                     |
+| Tier 2                     | 220                       | 20                                       | 0.003                               |
+| Tier 3                     | 2                         | 0                                        | 0.000                               |
+| Room Air Conditioners      |                           |                                          |                                     |
+| **Recycling:**             | 5,686                     | 2,318                                    | 0.401                               |
+| Dehumidifiers              | 541                       | 105                                      | 0.025                               |
+| Freezers                   | 1,016                     | 341                                      | 0.053                               |
+| Refrigerators              | 3,599                     | 1,830                                    | 0.282                               |
+| Room Air Conditioners      | 530                       | 41                                       | 0.041                               |
+| **Appliances Total**       | 11,552                    | 3,534                                    | 0.600                               |
 
 [PDF p. 26 | printed p. 13]
 
@@ -471,13 +478,13 @@ Table title: **Q3/4 2017 Appliances & Recycling**. Columns: Measures; Reported M
 
   2015-2017 Program cycle goals, as depicted in the following chart:
 
-  | | 2017 Percent to Goal | 2015-2017 Cycle Percent to Goal |
-  | --- | --- | --- |
-  | **Incentives** | 94% | 100% |
-  | **Participants** | 107% | 103% |
-  | **Measures** | 122% | 108% |
-  | **MWh Saved(Net)** | 115% | 104% |
-  | **MW Saved(Net)** | 125% | 106% |
+  |                    | 2017 Percent to Goal | 2015-2017 Cycle Percent to Goal |
+  | ------------------ | -------------------- | ------------------------------- |
+  | **Incentives**     | 94%                  | 100%                            |
+  | **Participants**   | 107%                 | 103%                            |
+  | **Measures**       | 122%                 | 108%                            |
+  | **MWh Saved(Net)** | 115%                 | 104%                            |
+  | **MW Saved(Net)**  | 125%                 | 106%                            |
 
 - Over 95,000 QHECs were delivered during the 2015-2017 program cycle and over 253,000 since the program began in 2009 achieving an overall 97% customer satisfaction rating.
 - The Single Family QHEC Program remained consistent throughout 2017, served 25% more customers than in any previous year.
@@ -513,36 +520,36 @@ Three marketing images. Left, a web banner with the BGE Smart Energy Savers Prog
 
 Table title: **Q3/4 2017 Quick Home Check-Up**.
 
-| Item | Value |
-| --- | --- |
-| Total Number of Check-ups | 20,459 |
-| Total Number of Measures | 269,260 |
-| Average Number of Implemented Measures | 13.2 |
-| Average Savings Per Check-up (MWh) | 0.34 |
+| Item                                   | Value   |
+| -------------------------------------- | ------- |
+| Total Number of Check-ups              | 20,459  |
+| Total Number of Measures               | 269,260 |
+| Average Number of Implemented Measures | 13.2    |
+| Average Savings Per Check-up (MWh)     | 0.34    |
 
 **Measures Delivered on Average**
 
-| Measure | Percentage of Customers Accepting Measure |
-| --- | --- |
-| CFLs | 0% |
-| Efficient Flow Showerheads | 58% |
-| Electric Smart Strips | 39% |
-| Faucet Aerators | 34% |
-| LEDs | 98% |
-| Water Heater Turndowns | 1% |
-| Water Pipe Insulation | 18% |
-| Water Tank Heat Wraps | N/A |
+| Measure                    | Percentage of Customers Accepting Measure |
+| -------------------------- | ----------------------------------------- |
+| CFLs                       | 0%                                        |
+| Efficient Flow Showerheads | 58%                                       |
+| Electric Smart Strips      | 39%                                       |
+| Faucet Aerators            | 34%                                       |
+| LEDs                       | 98%                                       |
+| Water Heater Turndowns     | 1%                                        |
+| Water Pipe Insulation      | 18%                                       |
+| Water Tank Heat Wraps      | N/A                                       |
 
 **QHEC Mobile Tool Data**
 
 | Recommended Program | Participating Customers |
-| --- | --- |
-| Lighting | N/A |
-| Appliance Rebate | 1,302 |
-| Appliance Recycling | 1,481 |
-| HPwES Audit | 3,082 |
-| HPwES Job | 848 |
-| HVAC Rebate | 1611 |
+| ------------------- | ----------------------- |
+| Lighting            | N/A                     |
+| Appliance Rebate    | 1,302                   |
+| Appliance Recycling | 1,481                   |
+| HPwES Audit         | 3,082                   |
+| HPwES Job           | 848                     |
+| HVAC Rebate         | 1611                    |
 
 [PDF p. 29 | printed p. 16]
 
@@ -559,12 +566,12 @@ Table title: **Q3/4 2017 Quick Home Check-Up**.
 
 - The HPwES Program instituted a significant overhaul in the incentive structure for the second half of 2017. Moving from a percentage of cost based incentive structure to a performance based incentive (PBI) structure allowed for more comprehensive work-scopes by removing the project SIR requirement. As a result of performance based incentives, customer job costs and measures increased by 41% and 22%, respectively. [Source discrepancy: the cover letter (PDF p. 10) reports "131% and 123%" for the same change.]
 
-| 2017 Projects | Job Cost Average | Measure Quantity Average | Customer Incentive Average | kWh Savings Average |
-| --- | --- | --- | --- | --- |
-| All Projects | $4,987 | 9 | $2,124 | 1,444 |
-| PBI Projects | $6,188 | 10 | $2,394 | 1,944 |
-| Non-PBI Projects | $4,402 | 8 | $1,992 | 1,201 |
-| PBI Increase | 41% | 22% | 20% | 62% |
+| 2017 Projects    | Job Cost Average | Measure Quantity Average | Customer Incentive Average | kWh Savings Average |
+| ---------------- | ---------------- | ------------------------ | -------------------------- | ------------------- |
+| All Projects     | $4,987           | 9                        | $2,124                     | 1,444               |
+| PBI Projects     | $6,188           | 10                       | $2,394                     | 1,944               |
+| Non-PBI Projects | $4,402           | 8                        | $1,992                     | 1,201               |
+| PBI Increase     | 41%              | 22%                      | 20%                        | 62%                 |
 
 **PBI True Up Evaluation Update:**
 
@@ -592,6 +599,7 @@ Table title: **Q3/4 2017 Quick Home Check-Up**.
 - Two direct mail letters dropped the weeks of July 5, 2017 and July 17, 2017 reaching 16,781 customers with a resulting bounce rate of only 37.5%, 2.62 pages per sessions and an excellent session duration averaging more than 3 minutes.
 
 [^p31-2]: For example, the evaluation team has produced preliminary results that analyze program performance across the following dimensions: Home characteristics (e.g., annual energy use, # floors, single-family, townhouse), Heating fuel type, Measures installed (i.e., air sealing, insulation, HVAC, duct sealing), and Contractor who completed the project.
+
 [^p31-3]: Program stakeholders include the utilities, their HPwES program implementers, the Independent Evaluator, and the HPwES Work Group.
 
 [PDF p. 32 | printed p. 19]
@@ -608,41 +616,41 @@ Three marketing images. Top left, a web banner with the BGE Smart Energy Savers 
 
 Table title: **Q3/4 2017 Home Performance with ENERGY STAR®**.
 
-| **Direct Install Measures (Audits)** | |
-| --- | --- |
-| Reported Annualized Energy Savings (MWh) | 301 |
-| Reported Peak Demand Reduction (MW) | 0.037 |
-| Total Number of Measures Installed | 19,950 |
-| Average Number of Measures Installed Per Audit | 10.68 |
-| Total Audits that Refused Measures | 227 |
-| Average Savings Per Audit (MWh) | 0.16 |
-| **Rebated Measures (Jobs)** | |
-| Reported Annualized Energy Savings (MWh) | 753 |
-| Reported Peak Demand Reduction (MW) | 0.268 |
-| Total Number of Measures Installed | 2,570 |
-| Average Number of Measures Installed Per Audit | 1.38 |
-| Average Savings Per Audit (MWh) | 0.40 |
-| **HVAC Measures Rebated Under HPwES** | |
-| Reported Annualized Energy Savings (MWh) | 89 |
-| Reported Peak Demand Reduction (MW) | 0.032 |
-| Total Number of Measures Installed | 144 |
+| **Direct Install Measures (Audits)**           |        |
+| ---------------------------------------------- | ------ |
+| Reported Annualized Energy Savings (MWh)       | 301    |
+| Reported Peak Demand Reduction (MW)            | 0.037  |
+| Total Number of Measures Installed             | 19,950 |
+| Average Number of Measures Installed Per Audit | 10.68  |
+| Total Audits that Refused Measures             | 227    |
+| Average Savings Per Audit (MWh)                | 0.16   |
+| **Rebated Measures (Jobs)**                    |        |
+| Reported Annualized Energy Savings (MWh)       | 753    |
+| Reported Peak Demand Reduction (MW)            | 0.268  |
+| Total Number of Measures Installed             | 2,570  |
+| Average Number of Measures Installed Per Audit | 1.38   |
+| Average Savings Per Audit (MWh)                | 0.40   |
+| **HVAC Measures Rebated Under HPwES**          |        |
+| Reported Annualized Energy Savings (MWh)       | 89     |
+| Reported Peak Demand Reduction (MW)            | 0.032  |
+| Total Number of Measures Installed             | 144    |
 
 **Measures Delivered on Average**
 
-| Measure | Percentage of Customers Accepting Measures |
-| --- | --- |
-| CFLs* | N/A |
-| LEDs* | 81% |
-| Efficient Flow Showerheads* | 18% |
-| Electric Smart Strips* | 38% |
-| Faucet Aerators* | 8% |
-| Water Heater Tank Wraps* | N/A |
-| Water Pipe Insulation* | 21% |
-| Air Sealing | 91% |
-| Attic Insulation | 90% |
-| HVAC & Duct Sealing | 21% |
-| Wall Insulation | 17% |
-| Windows | 1% |
+| Measure                     | Percentage of Customers Accepting Measures |
+| --------------------------- | ------------------------------------------ |
+| CFLs*                       | N/A                                        |
+| LEDs*                       | 81%                                        |
+| Efficient Flow Showerheads* | 18%                                        |
+| Electric Smart Strips*      | 38%                                        |
+| Faucet Aerators*            | 8%                                         |
+| Water Heater Tank Wraps*    | N/A                                        |
+| Water Pipe Insulation*      | 21%                                        |
+| Air Sealing                 | 91%                                        |
+| Attic Insulation            | 90%                                        |
+| HVAC & Duct Sealing         | 21%                                        |
+| Wall Insulation             | 17%                                        |
+| Windows                     | 1%                                         |
 
 _Extractor note (not source text): the asterisks after the first six measure names are printed in the PDF; no footnote text explaining them is printed on this page._
 
@@ -684,26 +692,26 @@ Two web banner ads with the BGE Smart Energy Savers Program logo, each showing a
 
 Table title: **Q3/4 2017 Residential HVAC**. Columns: Measure; Reported Measure Quantity Installed; Reported Annualized Savings (MWh); Reported Peak Demand Reduction (MW). Rows with no printed values are shown with empty cells.
 
-| Measure | Reported Measure Quantity Installed | Reported Annualized Savings (MWh) | Reported Peak Demand Reduction (MW) |
-| --- | --- | --- | --- |
-| *Air Source Heat Pumps* | 1,867 | 1,612 | 0.411 |
-| Tier 1 | | | |
-| Tier 2 | | | |
-| Tier 3 | 1,220 | 871 | 0.253 |
-| Tier 4 | 647 | 742 | 0.158 |
-| *Central Air Conditioners* | 3,489 | 1,315 | 0.667 |
-| Tier 1 | | | |
-| Tier 2 | 2,896 | 1,027 | 0.536 |
-| Tier 3 | 593 | 289 | 0.130 |
-| Tier 4 | | | |
-| Diagnostic Tune-ups | | | |
-| *Ductless mini-split Heat Pumps* | 242 | 143 | 0.024 |
-| Tier 1 | 1 | 0 | 0.000 |
-| Tier 2 | 241 | 143 | 0.024 |
-| Gas Furnaces | 1,500 | 201 | 0.000 |
-| Geothermal Heat Pumps | 63 | 109 | 0.046 |
-| Multi Zone Ductless Mini-Split Heat Pumps | 143 | 124 | 0.026 |
-| **Total** | **7,304** | **3,504** | **1.173** |
+| Measure                                   | Reported Measure Quantity Installed | Reported Annualized Savings (MWh) | Reported Peak Demand Reduction (MW) |
+| ----------------------------------------- | ----------------------------------- | --------------------------------- | ----------------------------------- |
+| _Air Source Heat Pumps_                   | 1,867                               | 1,612                             | 0.411                               |
+| Tier 1                                    |                                     |                                   |                                     |
+| Tier 2                                    |                                     |                                   |                                     |
+| Tier 3                                    | 1,220                               | 871                               | 0.253                               |
+| Tier 4                                    | 647                                 | 742                               | 0.158                               |
+| _Central Air Conditioners_                | 3,489                               | 1,315                             | 0.667                               |
+| Tier 1                                    |                                     |                                   |                                     |
+| Tier 2                                    | 2,896                               | 1,027                             | 0.536                               |
+| Tier 3                                    | 593                                 | 289                               | 0.130                               |
+| Tier 4                                    |                                     |                                   |                                     |
+| Diagnostic Tune-ups                       |                                     |                                   |                                     |
+| _Ductless mini-split Heat Pumps_          | 242                                 | 143                               | 0.024                               |
+| Tier 1                                    | 1                                   | 0                                 | 0.000                               |
+| Tier 2                                    | 241                                 | 143                               | 0.024                               |
+| Gas Furnaces                              | 1,500                               | 201                               | 0.000                               |
+| Geothermal Heat Pumps                     | 63                                  | 109                               | 0.046                               |
+| Multi Zone Ductless Mini-Split Heat Pumps | 143                                 | 124                               | 0.026                               |
+| **Total**                                 | **7,304**                           | **3,504**                         | **1.173**                           |
 
 [PDF pp. 40-66 not transcribed: Commercial & Industrial (C&I) summary and programs (Small Business Energy Solutions, Energy Solutions for Business prescriptive/custom, service providers, building tune-up, CHP, midstream lighting, master-metered multi-family QHEC, C&I marketing outreach), including their Q3/4 2017 result tables with commercial HVAC measure rows (PDF pp. 42 and 45); the PeakRewards demand response program, enrollment-to-installation lag times and demand response call log (PDF pp. 55-59); and the Conservation Voltage Reduction, Smart Energy Rewards, Smart Energy Manager and Department of Housing and Community Development (LIEEP, MEEHA) sections (PDF pp. 60-66)]
 
@@ -713,30 +721,32 @@ Table title: **Q3/4 2017 Residential HVAC**. Columns: Measure; Reported Measure 
 
 A. Net and Gross Wholesale Program Savings Table
 B. Cost Program Detail
-   a. Provide in the following order:
-      1. EE&C Cost Program Detail
-      2. DR Cost Program Detail
-C. Entities Detail
-D. Pilot Program
+a. Provide in the following order:
+
+1. EE&C Cost Program Detail
+2. DR Cost Program Detail
+   C. Entities Detail
+   D. Pilot Program
    a. Include any informational updates or conclusions regarding Commission approved pilots
-E. Budget/New Program Requests
-F. Annual Program Wrap-Up
+   E. Budget/New Program Requests
+   F. Annual Program Wrap-Up
    a. Report the Annual data using the Semi-Annual Utility Reporting Templates
-G. Contractor List
+   G. Contractor List
    a. Provide a list of contractors/entities/retailers/vendors that work with the programs, first by service territory then by location. Indicate which businesses are minority owned, women owned, and/or veteran owned.
-H. Codes and Standards
+   H. Codes and Standards
    a. Outline any expected changes to the codes and standards used for assumptions in determining the amount of savings offered by each program.
-I. Forecasted Cost Update
+   I. Forecasted Cost Update
    a. Provide any updated version of forecasted cost for the upcoming year. These costs should be more specific than dividing the plan's forecasted cost by 3 and then by 4 to determine quarterly costs.
-J. Notes and Assumptions
+   J. Notes and Assumptions
 
 [PDF p. 68 | printed p. 55]
 
 **Appendix A - Net and Gross Wholesale Program Savings Tables**
 
 a. Provided in the following order are:
-   1. Net Wholesale Program Summary Tables
-   2. Gross Wholesale Program Summary Tables
+
+1. Net Wholesale Program Summary Tables
+2. Gross Wholesale Program Summary Tables
 
 \* Please note that non-bill credit related smart grid expenditures (SER and SEM) are combined and reported under the row in the Appendix A template entitled "Smart Grid (BGE Smart Energy Manager). Bill credit expenditures for SER are reported under row entitled "Dynamic Pricing (BGE Smart Energy Rewards).
 
@@ -748,10 +758,10 @@ _Extractor note (not source text): PDF pp. 69-82 are the Appendix A Net Wholesal
 
 **2017 Q4 Quarter Forecasted and Reported**
 
-| Program | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Appliance Rebates | 2,663 | 3,139 | 2,663 | 3,139 | $1,034,473 | $828,345 | 468 | 635 | 0.065 | 0.088 | 8,327 | $1,198,783 |  |  |
-| HVAC Rebates | 4,044 | 2,343 | 3,480 | 3,031 | $2,248,471 | $1,787,715 | 2,595 | 1,441 | 1.186 | 0.473 | 25,939 | $3,734,108 | 24,267 | 46,488 |
+| Program           | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
+| ----------------- | ----------------------- | --------------------- | --------------------------- | ------------------------- | --------------------------------------- | --------------------------------------- | ------------------------------------------ | ---------------------------------------- | ------------------------------------------------ | ---------------------------------------------- | --------------------------------------- | ------------------------------------- | --------------------------------------------- | ------------------------------------------- |
+| Appliance Rebates | 2,663                   | 3,139                 | 2,663                       | 3,139                     | $1,034,473                              | $828,345                                | 468                                        | 635                                      | 0.065                                            | 0.088                                          | 8,327                                   | $1,198,783                            |                                               |                                             |
+| HVAC Rebates      | 4,044                   | 2,343                 | 3,480                       | 3,031                     | $2,248,471                              | $1,787,715                              | 2,595                                      | 1,441                                    | 1.186                                            | 0.473                                          | 25,939                                  | $3,734,108                            | 24,267                                        | 46,488                                      |
 
 [PDF p. 70]
 
@@ -759,10 +769,10 @@ _Extractor note (not source text): PDF pp. 69-82 are the Appendix A Net Wholesal
 
 **2017 Year-to-Date Forecast vs. YTD Reported**
 
-| Program | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Appliance Rebates | 11,175 | 10,638 | 11,175 | 10,638 | $4,341,847 | $2,819,648 | 1,966 | 2,145 | 0.274 | 0.337 | 27,691 | $3,986,328 |  |  |
-| HVAC Rebates | 17,167 | 10,019 | 14,774 | 12,854 | $9,546,018 | $8,027,964 | 9,610 | 5,645 | 4.097 | 2.116 | 101,607 | $14,626,841 | 103,028 | 174,313 |
+| Program           | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
+| ----------------- | ----------------------- | --------------------- | --------------------------- | ------------------------- | --------------------------------------- | --------------------------------------- | ------------------------------------------ | ---------------------------------------- | ------------------------------------------------ | ---------------------------------------------- | --------------------------------------- | ------------------------------------- | --------------------------------------------- | ------------------------------------------- |
+| Appliance Rebates | 11,175                  | 10,638                | 11,175                      | 10,638                    | $4,341,847                              | $2,819,648                              | 1,966                                      | 2,145                                    | 0.274                                            | 0.337                                          | 27,691                                  | $3,986,328                            |                                               |                                             |
+| HVAC Rebates      | 17,167                  | 10,019                | 14,774                      | 12,854                    | $9,546,018                              | $8,027,964                              | 9,610                                      | 5,645                                    | 4.097                                            | 2.116                                          | 101,607                                 | $14,626,841                           | 103,028                                       | 174,313                                     |
 
 [PDF p. 71]
 
@@ -770,10 +780,10 @@ _Extractor note (not source text): PDF pp. 69-82 are the Appendix A Net Wholesal
 
 **Full Year 2017 Forecast vs. YTD Reported**
 
-| Program | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Appliance Rebates | 11,175 | 10,638 | 11,175 | 10,638 | $4,341,847 | $2,819,648 | 1,966 | 2,145 | 0.274 | 0.337 | 27,691 | $3,986,328 |  |  |
-| HVAC Rebates | 17,167 | 10,019 | 14,774 | 12,854 | $9,546,018 | $8,027,964 | 9,610 | 5,645 | 4.097 | 2.116 | 101,607 | $14,626,841 | 103,028 | 174,313 |
+| Program           | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
+| ----------------- | ----------------------- | --------------------- | --------------------------- | ------------------------- | --------------------------------------- | --------------------------------------- | ------------------------------------------ | ---------------------------------------- | ------------------------------------------------ | ---------------------------------------------- | --------------------------------------- | ------------------------------------- | --------------------------------------------- | ------------------------------------------- |
+| Appliance Rebates | 11,175                  | 10,638                | 11,175                      | 10,638                    | $4,341,847                              | $2,819,648                              | 1,966                                      | 2,145                                    | 0.274                                            | 0.337                                          | 27,691                                  | $3,986,328                            |                                               |                                             |
+| HVAC Rebates      | 17,167                  | 10,019                | 14,774                      | 12,854                    | $9,546,018                              | $8,027,964                              | 9,610                                      | 5,645                                    | 4.097                                            | 2.116                                          | 101,607                                 | $14,626,841                           | 103,028                                       | 174,313                                     |
 
 [PDF p. 72]
 
@@ -781,10 +791,10 @@ _Extractor note (not source text): PDF pp. 69-82 are the Appendix A Net Wholesal
 
 **2015-2017 Program Cycle-to-Date Forecast vs. Cycle-to-Date Reported**
 
-| Program | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Appliance Rebates | 25,540 | 27,358 | 25,540 | 27,358 | $11,632,547 | $7,944,685 | 4,117 | 5,349 | 0.590 | 0.823 | 66,828 | $9,620,182 |  | 22,979 |
-| HVAC Rebates | 39,201 | 30,042 | 39,201 | 37,817 | $30,454,771 | $28,241,015 | 19,618 | 16,142 | 8.059 | 6.572 | 290,551 | $41,826,316 | 293,237 | 507,788 |
+| Program           | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
+| ----------------- | ----------------------- | --------------------- | --------------------------- | ------------------------- | --------------------------------------- | --------------------------------------- | ------------------------------------------ | ---------------------------------------- | ------------------------------------------------ | ---------------------------------------------- | --------------------------------------- | ------------------------------------- | --------------------------------------------- | ------------------------------------------- |
+| Appliance Rebates | 25,540                  | 27,358                | 25,540                      | 27,358                    | $11,632,547                             | $7,944,685                              | 4,117                                      | 5,349                                    | 0.590                                            | 0.823                                          | 66,828                                  | $9,620,182                            |                                               | 22,979                                      |
+| HVAC Rebates      | 39,201                  | 30,042                | 39,201                      | 37,817                    | $30,454,771                             | $28,241,015                             | 19,618                                     | 16,142                                   | 8.059                                            | 6.572                                          | 290,551                                 | $41,826,316                           | 293,237                                       | 507,788                                     |
 
 [PDF p. 73]
 
@@ -792,10 +802,10 @@ _Extractor note (not source text): PDF pp. 69-82 are the Appendix A Net Wholesal
 
 **2015-2017 Full Program Cycle Forecast vs. Cycle-to-Date Reported**
 
-| Program | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Appliance Rebates | 25,540 | 27,358 | 25,540 | 27,358 | $11,632,547 | $7,944,685 | 4,117 | 5,349 | 0.590 | 0.823 | 66,828 | $9,620,182 |  | 22,979 |
-| HVAC Rebates | 39,201 | 30,042 | 39,201 | 37,817 | $30,454,771 | $28,241,015 | 19,618 | 16,142 | 8.059 | 6.572 | 290,551 | $41,826,316 | 293,237 | 507,788 |
+| Program           | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
+| ----------------- | ----------------------- | --------------------- | --------------------------- | ------------------------- | --------------------------------------- | --------------------------------------- | ------------------------------------------ | ---------------------------------------- | ------------------------------------------------ | ---------------------------------------------- | --------------------------------------- | ------------------------------------- | --------------------------------------------- | ------------------------------------------- |
+| Appliance Rebates | 25,540                  | 27,358                | 25,540                      | 27,358                    | $11,632,547                             | $7,944,685                              | 4,117                                      | 5,349                                    | 0.590                                            | 0.823                                          | 66,828                                  | $9,620,182                            |                                               | 22,979                                      |
+| HVAC Rebates      | 39,201                  | 30,042                | 39,201                      | 37,817                    | $30,454,771                             | $28,241,015                             | 19,618                                     | 16,142                                   | 8.059                                            | 6.572                                          | 290,551                                 | $41,826,316                           | 293,237                                       | 507,788                                     |
 
 [PDF p. 74]
 
@@ -803,10 +813,10 @@ _Extractor note (not source text): PDF pp. 69-82 are the Appendix A Net Wholesal
 
 **Program-to-Date**
 
-| Program | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Appliance Rebates | 199,474 | 280,174 | 242,108 | 282,370 |  |  | 32,780 | 29,420 | 6.560 | 4.146 | 400,198 | $53,069,686 | 242,235 | 330,458 |
-| HVAC Rebates | 121,827 | 91,037 | 133,778 | 110,739 | $66,368,536 | $67,728,004 | 59,477 | 46,759 | 24.018 | 19.061 | 804,505 | $116,495,013 | 1,059,640 | 1,561,934 |
+| Program           | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
+| ----------------- | ----------------------- | --------------------- | --------------------------- | ------------------------- | --------------------------------------- | --------------------------------------- | ------------------------------------------ | ---------------------------------------- | ------------------------------------------------ | ---------------------------------------------- | --------------------------------------- | ------------------------------------- | --------------------------------------------- | ------------------------------------------- |
+| Appliance Rebates | 199,474                 | 280,174               | 242,108                     | 282,370                   |                                         |                                         | 32,780                                     | 29,420                                   | 6.560                                            | 4.146                                          | 400,198                                 | $53,069,686                           | 242,235                                       | 330,458                                     |
+| HVAC Rebates      | 121,827                 | 91,037                | 133,778                     | 110,739                   | $66,368,536                             | $67,728,004                             | 59,477                                     | 46,759                                   | 24.018                                           | 19.061                                         | 804,505                                 | $116,495,013                          | 1,059,640                                     | 1,561,934                                   |
 
 [PDF p. 75]
 
@@ -814,10 +824,10 @@ _Extractor note (not source text): PDF pp. 69-82 are the Appendix A Net Wholesal
 
 **Second Half of the Year 2017**
 
-| Program | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Appliance Rebates | 5,784 | 5,866 | 5,784 | 5,866 | $2,247,105 | $1,521,125 | 1,018 | 1,216 | 0.142 | 0.199 | 15,589 | $2,244,084 |  | - |
-| HVAC Rebates | 9,943 | 5,735 | 8,557 | 7,304 | $5,528,813 | $3,894,916 | 5,189 | 3,504 | 2.373 | 1.173 | 63,077 | $9,080,298 | 59,671 | 96,770 |
+| Program           | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
+| ----------------- | ----------------------- | --------------------- | --------------------------- | ------------------------- | --------------------------------------- | --------------------------------------- | ------------------------------------------ | ---------------------------------------- | ------------------------------------------------ | ---------------------------------------------- | --------------------------------------- | ------------------------------------- | --------------------------------------------- | ------------------------------------------- |
+| Appliance Rebates | 5,784                   | 5,866                 | 5,784                       | 5,866                     | $2,247,105                              | $1,521,125                              | 1,018                                      | 1,216                                    | 0.142                                            | 0.199                                          | 15,589                                  | $2,244,084                            |                                               | -                                           |
+| HVAC Rebates      | 9,943                   | 5,735                 | 8,557                       | 7,304                     | $5,528,813                              | $3,894,916                              | 5,189                                      | 3,504                                    | 2.373                                            | 1.173                                          | 63,077                                  | $9,080,298                            | 59,671                                        | 96,770                                      |
 
 [PDF p. 76]
 
@@ -825,10 +835,10 @@ _Extractor note (not source text): PDF pp. 69-82 are the Appendix A Net Wholesal
 
 **2017 Q4 Quarter Forecasted and Reported**
 
-| Program | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Appliance Rebates | 2,663 | 3,139 | 2,663 | 3,139 | $1,034,473 | $828,345 | 749 | 978 | 0.104 | 0.136 | 12,812 | $1,844,281 |  |  |
-| HVAC Rebates | 4,044 | 2,343 | 3,480 | 3,031 | $2,248,471 | $1,787,715 | 3,486 | 2,324 | 1.241 | 0.762 | 41,838 | $6,022,755 | 33,705 | 74,980 |
+| Program           | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
+| ----------------- | ----------------------- | --------------------- | --------------------------- | ------------------------- | --------------------------------------- | --------------------------------------- | ------------------------------------------ | ---------------------------------------- | ------------------------------------------------ | ---------------------------------------------- | --------------------------------------- | ------------------------------------- | --------------------------------------------- | ------------------------------------------- |
+| Appliance Rebates | 2,663                   | 3,139                 | 2,663                       | 3,139                     | $1,034,473                              | $828,345                                | 749                                        | 978                                      | 0.104                                            | 0.136                                          | 12,812                                  | $1,844,281                            |                                               |                                             |
+| HVAC Rebates      | 4,044                   | 2,343                 | 3,480                       | 3,031                     | $2,248,471                              | $1,787,715                              | 3,486                                      | 2,324                                    | 1.241                                            | 0.762                                          | 41,838                                  | $6,022,755                            | 33,705                                        | 74,980                                      |
 
 [PDF p. 77]
 
@@ -836,10 +846,10 @@ _Extractor note (not source text): PDF pp. 69-82 are the Appendix A Net Wholesal
 
 **2017 Year-to-Date Forecast vs. YTD Reported**
 
-| Program | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Appliance Rebates | 11,175 | 10,638 | 11,175 | 10,638 | $4,341,847 | $2,819,648 | 3,144 | 3,301 | 0.437 | 0.518 | 42,602 | $6,132,812 |  |  |
-| HVAC Rebates | 17,167 | 10,019 | 14,774 | 12,854 | $9,546,018 | $8,027,964 | 12,914 | 9,105 | 4.286 | 3.413 | 163,882 | $23,591,679 | 143,095 | 281,150 |
+| Program           | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
+| ----------------- | ----------------------- | --------------------- | --------------------------- | ------------------------- | --------------------------------------- | --------------------------------------- | ------------------------------------------ | ---------------------------------------- | ------------------------------------------------ | ---------------------------------------------- | --------------------------------------- | ------------------------------------- | --------------------------------------------- | ------------------------------------------- |
+| Appliance Rebates | 11,175                  | 10,638                | 11,175                      | 10,638                    | $4,341,847                              | $2,819,648                              | 3,144                                      | 3,301                                    | 0.437                                            | 0.518                                          | 42,602                                  | $6,132,812                            |                                               |                                             |
+| HVAC Rebates      | 17,167                  | 10,019                | 14,774                      | 12,854                    | $9,546,018                              | $8,027,964                              | 12,914                                     | 9,105                                    | 4.286                                            | 3.413                                          | 163,882                                 | $23,591,679                           | 143,095                                       | 281,150                                     |
 
 [PDF p. 78]
 
@@ -847,10 +857,10 @@ _Extractor note (not source text): PDF pp. 69-82 are the Appendix A Net Wholesal
 
 **Full Year 2017 Forecast vs. YTD Reported**
 
-| Program | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Appliance Rebates | 11,175 | 10,638 | 11,175 | 10,638 | $4,341,847 | $2,819,648 | 3,144 | 3,301 | 0.437 | 0.518 | 42,602 | $6,132,812 |  |  |
-| HVAC Rebates | 17,167 | 10,019 | 14,774 | 12,854 | $9,546,018 | $8,027,964 | 12,914 | 9,105 | 4.286 | 3.413 | 163,882 | $23,591,679 | 143,095 | 281,150 |
+| Program           | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
+| ----------------- | ----------------------- | --------------------- | --------------------------- | ------------------------- | --------------------------------------- | --------------------------------------- | ------------------------------------------ | ---------------------------------------- | ------------------------------------------------ | ---------------------------------------------- | --------------------------------------- | ------------------------------------- | --------------------------------------------- | ------------------------------------------- |
+| Appliance Rebates | 11,175                  | 10,638                | 11,175                      | 10,638                    | $4,341,847                              | $2,819,648                              | 3,144                                      | 3,301                                    | 0.437                                            | 0.518                                          | 42,602                                  | $6,132,812                            |                                               |                                             |
+| HVAC Rebates      | 17,167                  | 10,019                | 14,774                      | 12,854                    | $9,546,018                              | $8,027,964                              | 12,914                                     | 9,105                                    | 4.286                                            | 3.413                                          | 163,882                                 | $23,591,679                           | 143,095                                       | 281,150                                     |
 
 [PDF p. 79]
 
@@ -858,10 +868,10 @@ _Extractor note (not source text): PDF pp. 69-82 are the Appendix A Net Wholesal
 
 **2015-2017 Program Cycle-to-Date Forecast vs. Cycle-to-Date Reported**
 
-| Program | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Appliance Rebates | 25,540 | 27,358 | 25,540 | 27,358 | $11,632,547 | $7,944,685 | 7,768 | 8,503 | 1.112 | 1.296 | 106,344 | $15,308,792 |  | 39,277 |
-| HVAC Rebates | 39,201 | 30,042 | 39,201 | 37,817 | $30,454,771 | $28,241,015 | 26,362 | 26,416 | 8.430 | 10.740 | 475,495 | $68,449,834 | 407,273 | 830,416 |
+| Program           | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
+| ----------------- | ----------------------- | --------------------- | --------------------------- | ------------------------- | --------------------------------------- | --------------------------------------- | ------------------------------------------ | ---------------------------------------- | ------------------------------------------------ | ---------------------------------------------- | --------------------------------------- | ------------------------------------- | --------------------------------------------- | ------------------------------------------- |
+| Appliance Rebates | 25,540                  | 27,358                | 25,540                      | 27,358                    | $11,632,547                             | $7,944,685                              | 7,768                                      | 8,503                                    | 1.112                                            | 1.296                                          | 106,344                                 | $15,308,792                           |                                               | 39,277                                      |
+| HVAC Rebates      | 39,201                  | 30,042                | 39,201                      | 37,817                    | $30,454,771                             | $28,241,015                             | 26,362                                     | 26,416                                   | 8.430                                            | 10.740                                         | 475,495                                 | $68,449,834                           | 407,273                                       | 830,416                                     |
 
 [PDF p. 80]
 
@@ -869,10 +879,10 @@ _Extractor note (not source text): PDF pp. 69-82 are the Appendix A Net Wholesal
 
 **2015-2017 Full Program Cycle Forecast vs. Cycle-to-Date Reported**
 
-| Program | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Appliance Rebates | 25,540 | 27,358 | 25,540 | 27,358 | $11,632,547 | $7,944,685 | 7,768 | 8,503 | 1.112 | 1.296 | 106,344 | $15,308,792 |  | 39,277 |
-| HVAC Rebates | 39,201 | 30,042 | 39,201 | 37,817 | $30,454,771 | $28,241,015 | 26,362 | 26,416 | 8.430 | 10.740 | 475,495 | $68,449,834 | 407,273 | 830,416 |
+| Program           | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
+| ----------------- | ----------------------- | --------------------- | --------------------------- | ------------------------- | --------------------------------------- | --------------------------------------- | ------------------------------------------ | ---------------------------------------- | ------------------------------------------------ | ---------------------------------------------- | --------------------------------------- | ------------------------------------- | --------------------------------------------- | ------------------------------------------- |
+| Appliance Rebates | 25,540                  | 27,358                | 25,540                      | 27,358                    | $11,632,547                             | $7,944,685                              | 7,768                                      | 8,503                                    | 1.112                                            | 1.296                                          | 106,344                                 | $15,308,792                           |                                               | 39,277                                      |
+| HVAC Rebates      | 39,201                  | 30,042                | 39,201                      | 37,817                    | $30,454,771                             | $28,241,015                             | 26,362                                     | 26,416                                   | 8.430                                            | 10.740                                         | 475,495                                 | $68,449,834                           | 407,273                                       | 830,416                                     |
 
 [PDF p. 81]
 
@@ -880,10 +890,10 @@ _Extractor note (not source text): PDF pp. 69-82 are the Appendix A Net Wholesal
 
 **Program-to-Date**
 
-| Program | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Appliance Rebates | 199,474 | 280,174 | 242,108 | 282,370 |  |  | 64,044 | 55,645 | 11.612 | 7.798 | 759,427 | $102,281,760 | 302,794 | 598,473 |
-| HVAC Rebates | 121,827 | 91,037 | 133,778 | 110,739 | $66,368,536 | $67,728,004 | 79,312 | 76,123 | 32.386 | 31.679 | 1,320,065 | $195,308,622 | 1,408,131 | 2,622,372 |
+| Program           | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
+| ----------------- | ----------------------- | --------------------- | --------------------------- | ------------------------- | --------------------------------------- | --------------------------------------- | ------------------------------------------ | ---------------------------------------- | ------------------------------------------------ | ---------------------------------------------- | --------------------------------------- | ------------------------------------- | --------------------------------------------- | ------------------------------------------- |
+| Appliance Rebates | 199,474                 | 280,174               | 242,108                     | 282,370                   |                                         |                                         | 64,044                                     | 55,645                                   | 11.612                                           | 7.798                                          | 759,427                                 | $102,281,760                          | 302,794                                       | 598,473                                     |
+| HVAC Rebates      | 121,827                 | 91,037                | 133,778                     | 110,739                   | $66,368,536                             | $67,728,004                             | 79,312                                     | 76,123                                   | 32.386                                           | 31.679                                         | 1,320,065                               | $195,308,622                          | 1,408,131                                     | 2,622,372                                   |
 
 [PDF p. 82]
 
@@ -891,10 +901,10 @@ _Extractor note (not source text): PDF pp. 69-82 are the Appendix A Net Wholesal
 
 **Second Half of the Year 2017**
 
-| Program | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Appliance Rebates | 5,784 | 5,866 | 5,784 | 5,866 | $2,247,105 | $1,521,125 | 1,627 | 1,871 | 0.226 | 0.306 | 23,983 | $3,452,437 |  |  |
-| HVAC Rebates | 9,943 | 5,735 | 8,557 | 7,304 | $5,528,813 | $3,894,916 | 6,973 | 5,652 | 2.482 | 1.891 | 101,738 | $14,645,642 | 82,877 | 156,080 |
+| Program           | Forecasted Participants | Reported Participants | Forecasted Measure Quantity | Reported Measure Quantity | Budgeted Total Program Expenditures ($) | Reported Total Program Expenditures ($) | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Forecasted Coincident Peak Demand Reduction (MW) | Reported Coincident Peak Demand Reduction (MW) | Reported Lifecycle Energy Savings (MWh) | Reported Lifecycle Energy Savings ($) | Forecasted Annualized Energy Savings (Therms) | Reported Annualized Energy Savings (Therms) |
+| ----------------- | ----------------------- | --------------------- | --------------------------- | ------------------------- | --------------------------------------- | --------------------------------------- | ------------------------------------------ | ---------------------------------------- | ------------------------------------------------ | ---------------------------------------------- | --------------------------------------- | ------------------------------------- | --------------------------------------------- | ------------------------------------------- |
+| Appliance Rebates | 5,784                   | 5,866                 | 5,784                       | 5,866                     | $2,247,105                              | $1,521,125                              | 1,627                                      | 1,871                                    | 0.226                                            | 0.306                                          | 23,983                                  | $3,452,437                            |                                               |                                             |
+| HVAC Rebates      | 9,943                   | 5,735                 | 8,557                       | 7,304                     | $5,528,813                              | $3,894,916                              | 6,973                                      | 5,652                                    | 2.482                                            | 1.891                                          | 101,738                                 | $14,645,642                           | 82,877                                        | 156,080                                     |
 
 [PDF pp. 83-93 not transcribed: Appendix B cost program detail tables (EE&C and DR cost by program), Appendix C entities detail (number of participating entities per program), Appendix D pilot programs (refers back to the QHEC/PeakRewards pilot), Appendix E budget/program requests ("None"), Appendix F annual program wrap-up, and the Appendix G contractor list introduction with demand response, behavioral and vendor descriptions]
 
@@ -914,41 +924,41 @@ The most recent realization rates and Net To Gross Ratio (NTG) assumptions used 
 
 **Gross Wholesale — Impacts of Revised Realization Rates - June 2015 to May 2017**
 
-| | With Old Realization Rates | With Revised Realization Rates | Change |
-| --- | --- | --- | --- |
-| **Energy Savings (MWh)** | | | |
-| Residential | 338,142 | 364,774 | 26,632 |
-| Commercial | 451,578 | 436,724 | (14,854) |
-| (total, no row label printed) | 789,719 | 801,498 | 11,779 |
-| **Demand Savings (MW)** | | | |
-| Residential | 57.525 | 62.528 | 5.003 |
-| Commercial | 79.835 | 74.379 | (5.456) |
-| (total, no row label printed) | 137.360 | 136.907 | (0.454) |
+|                               | With Old Realization Rates | With Revised Realization Rates | Change   |
+| ----------------------------- | -------------------------- | ------------------------------ | -------- |
+| **Energy Savings (MWh)**      |                            |                                |          |
+| Residential                   | 338,142                    | 364,774                        | 26,632   |
+| Commercial                    | 451,578                    | 436,724                        | (14,854) |
+| (total, no row label printed) | 789,719                    | 801,498                        | 11,779   |
+| **Demand Savings (MW)**       |                            |                                |          |
+| Residential                   | 57.525                     | 62.528                         | 5.003    |
+| Commercial                    | 79.835                     | 74.379                         | (5.456)  |
+| (total, no row label printed) | 137.360                    | 136.907                        | (0.454)  |
 
 Following is a summary of the EM&V adjustments applied to BGE's results effective June 1, 2017:
 
 Table columns are three groups of kWh, kW and NTG values: EY6 RR ( 6/1/2014 - 5/31/2015 ); Draft Final Unverified EY7 ( 6/1/2015 - 5/31/2016 ); Preliminary EY8 RR ( 6/1/2016 - 5/31/2017 ).
 
-| BGE | EY6 RR kWh | EY6 RR kW | EY6 RR NTG | EY7 kWh | EY7 kW | EY7 NTG | EY8 RR kWh | EY8 RR kW | EY8 RR NTG |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| C&I Prescriptive | 0.92 | 0.77 | 0.76 | 0.98 | 0.92 | 0.76 | 0.95 | 0.70 | 0.76 |
-| C&I Small Business | 0.82 | 0.50 | 0.92 | 0.89 | 0.73 | 0.92 | 0.99 | 0.83 | 0.92 |
-| C&I Custom | 0.77 | 0.76 | 0.67 | 0.80 | 1.04 | 0.78 | 0.78 | 0.90 | 0.78 |
-| C&I RCx | 0.74 | 0.61 | 0.67 | 0.60 | 0.31 | 0.76 | 0.78 | 0.43 | 0.76 |
-| CHP | 0.70 | 0.56 | 0.67 | 0.70 | 0.56 | 0.67 | 0.82 | 0.66 | 0.73 |
-| MMMF | 1.00 | 1.00 | 0.93 | 0.97 | 0.90 | 0.80 | 0.97 | 0.90 | 0.80 |
-| C&I Midstream Lighting | 1.00 | 1.00 | 0.90 | 0.89 | 0.83 | 0.85 | 0.89 | 0.83 | 0.85 |
-| C&I Building Operator Certification | 1.00 | 1.00 | 0.90 | 1.00 | 1.00 | 0.85 | 1.00 | 1.00 | 0.85 |
-| Res. Lighting | 0.79 | 1.08 | 0.60 | 1.44 | 1.81 | 0.60 | 1.26 | 1.37 | 0.61 |
-| Res. Appliances | 1.33 | 1.11 | 0.53 | 1.10 | 1.02 | 0.64 | 1.03 | 0.98 | 0.65 |
-| Res. Appliance Recycling | 1.08 | 1.16 | 0.46 | 1.00 | 1.16 | 0.46 | 0.95 | 0.96 | 0.46 |
-| Res. HVAC | 0.98 | 1.13 | 0.57 | 0.87 | 1.13 | 0.61 | 0.84 | 1.04 | 0.62 |
-| Res. Retrofit - QHEC | 0.63 | 0.72 | 0.83 | 0.95 | 0.95 | 0.80 | 0.92 | 0.93 | 0.81 |
-| Res. Retrofit - HPwES Audit | 0.45 | 0.52 | 0.69 | 0.82 | 0.90 | 0.72 | 0.96 | 1.04 | 0.72 |
-| Res. Retrofit - HPwES Jobs | 0.94 | 1.01 | 0.87 | 0.97 | 1.11 | 0.89 | 1.01 | 1.22 | 0.89 |
-| Res NC | 1.12 | 1.01 | 0.87 | 1.14 | 0.86 | 0.87 | 1.16 | 0.75 | 0.87 |
-| Res. Gas Connection | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
-| Res. Limited Income | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+| BGE                                 | EY6 RR kWh | EY6 RR kW | EY6 RR NTG | EY7 kWh | EY7 kW | EY7 NTG | EY8 RR kWh | EY8 RR kW | EY8 RR NTG |
+| ----------------------------------- | ---------- | --------- | ---------- | ------- | ------ | ------- | ---------- | --------- | ---------- |
+| C&I Prescriptive                    | 0.92       | 0.77      | 0.76       | 0.98    | 0.92   | 0.76    | 0.95       | 0.70      | 0.76       |
+| C&I Small Business                  | 0.82       | 0.50      | 0.92       | 0.89    | 0.73   | 0.92    | 0.99       | 0.83      | 0.92       |
+| C&I Custom                          | 0.77       | 0.76      | 0.67       | 0.80    | 1.04   | 0.78    | 0.78       | 0.90      | 0.78       |
+| C&I RCx                             | 0.74       | 0.61      | 0.67       | 0.60    | 0.31   | 0.76    | 0.78       | 0.43      | 0.76       |
+| CHP                                 | 0.70       | 0.56      | 0.67       | 0.70    | 0.56   | 0.67    | 0.82       | 0.66      | 0.73       |
+| MMMF                                | 1.00       | 1.00      | 0.93       | 0.97    | 0.90   | 0.80    | 0.97       | 0.90      | 0.80       |
+| C&I Midstream Lighting              | 1.00       | 1.00      | 0.90       | 0.89    | 0.83   | 0.85    | 0.89       | 0.83      | 0.85       |
+| C&I Building Operator Certification | 1.00       | 1.00      | 0.90       | 1.00    | 1.00   | 0.85    | 1.00       | 1.00      | 0.85       |
+| Res. Lighting                       | 0.79       | 1.08      | 0.60       | 1.44    | 1.81   | 0.60    | 1.26       | 1.37      | 0.61       |
+| Res. Appliances                     | 1.33       | 1.11      | 0.53       | 1.10    | 1.02   | 0.64    | 1.03       | 0.98      | 0.65       |
+| Res. Appliance Recycling            | 1.08       | 1.16      | 0.46       | 1.00    | 1.16   | 0.46    | 0.95       | 0.96      | 0.46       |
+| Res. HVAC                           | 0.98       | 1.13      | 0.57       | 0.87    | 1.13   | 0.61    | 0.84       | 1.04      | 0.62       |
+| Res. Retrofit - QHEC                | 0.63       | 0.72      | 0.83       | 0.95    | 0.95   | 0.80    | 0.92       | 0.93      | 0.81       |
+| Res. Retrofit - HPwES Audit         | 0.45       | 0.52      | 0.69       | 0.82    | 0.90   | 0.72    | 0.96       | 1.04      | 0.72       |
+| Res. Retrofit - HPwES Jobs          | 0.94       | 1.01      | 0.87       | 0.97    | 1.11   | 0.89    | 1.01       | 1.22      | 0.89       |
+| Res NC                              | 1.12       | 1.01      | 0.87       | 1.14    | 0.86   | 0.87    | 1.16       | 0.75      | 0.87       |
+| Res. Gas Connection                 | 1.00       | 1.00      | 1.00       | 1.00    | 1.00   | 1.00    | 1.00       | 1.00      | 1.00       |
+| Res. Limited Income                 | 1.00       | 1.00      | 1.00       | 1.00    | 1.00   | 1.00    | 1.00       | 1.00      | 1.00       |
 
 [PDF p. 120 | printed p. 65]
 

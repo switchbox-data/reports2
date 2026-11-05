@@ -12,9 +12,7 @@ citation_scheme: page
 context: "BGE's filing, made in compliance with Maryland PSC Order No. 92522, of its proposed 2027-2029 (Cycle 7) EmPOWER Maryland energy efficiency, electrification and demand response portfolio, in a High and a Low GHG-goal scenario. It is preceded by a joint Exelon utilities comment piece on near-term affordability and the Utility RELIEF Act."
 contents: "Transmittal letter; Summary Recommendations on affordability; BGE Case 9890 filing (executive summary, legislation, portfolio design, residential, non-residential, demand response, pilots); Attachment 1 executive-summary tables (High and Low Scenarios); Attachment 2 incentive matrices; Attachment 3 avoided-cost inputs; Attachments 4-6 EmPOWER surcharge and bill-impact sheets."
 why_here: "What BGE proposes for residential heat pump, HPWH, central AC and midstream HVAC incentives, electrification budgets and participation under the High and Low Scenarios, and how BGE frames the EmPOWER surcharge and bill affordability around them."
-
 ---
-
 
 # Baltimore Gas and Electric Company: 2027-2029 EmPOWER Maryland Program Filing (Case No. 9890)
 
@@ -77,6 +75,7 @@ Attachments
 [PDF p. 2 | printed p. 1]
 
 ## Summary Recommendations
+
 As part of the EmPOWER Maryland planning process, the Commission is required
 to consider multiple factors, including cost effectiveness, non-energy benefits, impacts on
 jobs, the environment, greenhouse gas reduction goals, and “the impact on rates of each
@@ -124,11 +123,11 @@ Utility RELIEF Act, from 2.5% to 1.75%), and to determine whether plans proposed
 meet those goals are “adequate and cost-effective.”
 
 [^c2]: The Maryland Department of Legislative Services’ fiscal analysis of the Act found that “electric and gas
-utility rates decrease”, and specifically, that the Act is expected to have a meaningful effect on rates in the
-near term through lowering the EmPOWER surcharge by: (1) directing that $100 Million in certain State
-special funds be used to lower the surcharge in 2027; and (2) decreasing GHG reduction targets, which is
-expected to “significantly reduce the EmPOWER surcharge for those customers relative to what it otherwise
-would have been.” Fiscal and Policy Note, House Bill 1532, at pages 11-12.
+    utility rates decrease”, and specifically, that the Act is expected to have a meaningful effect on rates in the
+    near term through lowering the EmPOWER surcharge by: (1) directing that $100 Million in certain State
+    special funds be used to lower the surcharge in 2027; and (2) decreasing GHG reduction targets, which is
+    expected to “significantly reduce the EmPOWER surcharge for those customers relative to what it otherwise
+    would have been.” Fiscal and Policy Note, House Bill 1532, at pages 11-12.
 
 [^c3]: The Maryland Department of Legislative Services, Major Issues Review, 2023-2026, at H12 and H19.
 
@@ -157,8 +156,8 @@ greenhouse gas savings goals for the next program cycle and in deciding on plans
 budgets for meeting those goals, the Joint Exelon Utilities again urge the Commission to
 
 [^c4]: Per Md. Code, Section 7-225(D)(3) of the Public Utilities Article, the Commission is to decide whether to
-approve, modify, or deny a plan of a utility to meet the GHG goals set by the Commission, and in doing so,
-is to consider, among other things, “the impact on rates of each ratepayer class.”
+    approve, modify, or deny a plan of a utility to meet the GHG goals set by the Commission, and in doing so,
+    is to consider, among other things, “the impact on rates of each ratepayer class.”
 
 [PDF p. 5 | printed p. 4]
 
@@ -408,11 +407,12 @@ alignment and the most value to customers. With the temporary reduction in utili
 for this three-year period, the plans for programming are less reliant on low-impact
 measures, high-cost measures, and those with higher evaluation, measurement, and
 verification (EM&V) risk, such as advanced power strips or energy efficiency kits. This
+
 [^f1]: The EmPower 2026 surcharges reflected larger imbalances. The 2026 imbalance accounted for about $43 for an average combined electric
-and gas customer in 2026.
+    and gas customer in 2026.
 
 [^f2]: Gov Wes Moore, Senate President Bill Ferguson, and House Speaker Joseline Peña-Melnyk at a joint press conference held on April 13, 2026
-to announce an agreement to advance the Utility RELIEF Act.
+    to announce an agreement to advance the Utility RELIEF Act.
 
 [PDF p. 14 | printed p. 4]
 
@@ -465,6 +465,7 @@ customers have come to expect or our commitment to reducing GHG emissions.
 #### 1.1.1 Commission Requests
 
 ##### Budget Extension Request
+
 On February 18, 2020, the Joint Maryland Utilities submitted a request to allow the
 allocation of commercial and industrial incentive budget expenditures beyond 2023 in
 their 2021-2023 EmPOWER Maryland program cycle proposals.[^f3] In Order No. 89563,
@@ -490,13 +491,17 @@ budget to complete any remaining incentive obligations through December 31, 2028
 eligible non-CHP projects pre-approved by December 31, 2026.
 
 [^f3]: Additional Information Joint Utilities to Allow Allocation for C&I Incentive Budget Expenditures beyond 2023, February 18, 2020 - ML 228660
+
 [^f4]: ORDER NO. 89563, June 2, 2020 - ML 230426
+
 [^f5]: ORDER NO. 89563, June 2, 2020 - ML 230426
+
 [^f6]: ORDER NO. 92522, July 10, 2026 – ML 332009
 
 [PDF p. 16 | printed p. 6]
 
 ##### Request for Reconsideration of Non-Residential Lighting Evaluation Methodology
+
 BGE respectfully requests that the Commission order the Independent Evaluator to
 reconsider its non-residential lighting savings methodology to ensure alignment with the
 Maryland-specific market.
@@ -560,17 +565,17 @@ Table 1: BGE 2027–2029 EmPOWER Portfolio Summary – High Scenario
 
 2027-2029 Portfolio Summary
 
-| Total Portfolio | 2027 | 2028 | 2029 | Total |
-| --- | ---: | ---: | ---: | ---: |
-| Lifecycle GHG Reduction | 1,703,681 | 1,671,224 | 1,671,263 | 5,046,167 |
-| Annual MWh Savings | 413,897 | 415,144 | 415,654 | 1,244,695 |
-| Annual MW Savings | 376 | 382 | 383 | 524 |
-| Incentive Costs | $182,327,586 | $186,269,841 | $192,652,174 | $561,249,602 |
-| Non-Incentive Costs | $71,391,500 | $75,355,505 | $78,118,276 | $224,865,281 |
-| Total Program Costs | $253,719,086 | $261,625,346 | $270,770,451 | $786,114,883 |
-| MJST Ratio | 2.2 | | | |
-The portfolio summary in Table 2 shows the forecasted results for BGE’s 2027–2029
-EmPOWER Plan in the Low Scenario.
+| Total Portfolio                                                                   |         2027 |         2028 |         2029 |        Total |
+| --------------------------------------------------------------------------------- | -----------: | -----------: | -----------: | -----------: |
+| Lifecycle GHG Reduction                                                           |    1,703,681 |    1,671,224 |    1,671,263 |    5,046,167 |
+| Annual MWh Savings                                                                |      413,897 |      415,144 |      415,654 |    1,244,695 |
+| Annual MW Savings                                                                 |          376 |          382 |          383 |          524 |
+| Incentive Costs                                                                   | $182,327,586 | $186,269,841 | $192,652,174 | $561,249,602 |
+| Non-Incentive Costs                                                               |  $71,391,500 |  $75,355,505 |  $78,118,276 | $224,865,281 |
+| Total Program Costs                                                               | $253,719,086 | $261,625,346 | $270,770,451 | $786,114,883 |
+| MJST Ratio                                                                        |          2.2 |              |              |              |
+| The portfolio summary in Table 2 shows the forecasted results for BGE’s 2027–2029 |              |              |              |              |
+| EmPOWER Plan in the Low Scenario.                                                 |              |              |              |              |
 
 [PDF p. 18 | printed p. 8]
 
@@ -578,15 +583,15 @@ Table 2: BGE 2027–2029 EmPOWER Portfolio Summary – Low Scenario
 
 2027-2029 Portfolio Summary
 
-| Total Portfolio | 2027 | 2028 | 2029 | Total |
-| --- | ---: | ---: | ---: | ---: |
-| Lifecycle GHG Reduction | 1,506,071 | 1,453,809 | 1,430,974 | 4,390,854 |
-| Annual MWh Savings | 391,843 | 392,935 | 393,740 | 1,178,518 |
-| Annual MW Savings | 367 | 372 | 372 | 494 |
-| Incentive Costs | $149,957,288 | $153,864,295 | $158,253,137 | $462,074,719 |
-| Non-Incentive Costs | $65,284,506 | $69,094,505 | $71,667,276 | $206,046,287 |
-| Total Program Costs | $215,241,793 | $222,958,800 | $229,920,413 | $668,121,006 |
-| MJST Ratio | 2.2 | | | |
+| Total Portfolio         |         2027 |         2028 |         2029 |        Total |
+| ----------------------- | -----------: | -----------: | -----------: | -----------: |
+| Lifecycle GHG Reduction |    1,506,071 |    1,453,809 |    1,430,974 |    4,390,854 |
+| Annual MWh Savings      |      391,843 |      392,935 |      393,740 |    1,178,518 |
+| Annual MW Savings       |          367 |          372 |          372 |          494 |
+| Incentive Costs         | $149,957,288 | $153,864,295 | $158,253,137 | $462,074,719 |
+| Non-Incentive Costs     |  $65,284,506 |  $69,094,505 |  $71,667,276 | $206,046,287 |
+| Total Program Costs     | $215,241,793 | $222,958,800 | $229,920,413 | $668,121,006 |
+| MJST Ratio              |          2.2 |              |              |              |
 
 ### 1.3 Portfolio Structure
 
@@ -673,13 +678,14 @@ including:
 - Removal of gas utilities from EmPOWER in the Utility RELIEF Act
 
 - The Strategic Energy Investment Fund (SEIF) paying down a portion of the
-residential surcharge in 2027 only
+  residential surcharge in 2027 only
 
 - The Maryland Department of Housing and Community Development (DHCD)
 
 budgets included within each utility’s EmPOWER surcharge
+
 [^f7]: The EmPower 2026 surcharges reflected larger imbalances. The 2026 imbalance accounted for about $43 for an average combined electric
-and gas customer in 2026.
+    and gas customer in 2026.
 
 [PDF p. 20 | printed p. 10]
 
@@ -726,27 +732,27 @@ Figure 1: DHCD Budget vs Spend 2021-2026
 
 Table 3: BGE and DHCD Cycle 6 Budget vs High Scenario & Low Scenario
 
-| Sector | Cycle 6 Budget ($) | High Scenario Cycle Budget ($) | Low Scenario Cycle Budget ($) |
-| --- | ---: | ---: | ---: |
-| BGE Residential | $348,600,837 | $328,808,220 | $230,675,280 |
-| BGE Commercial | $434,786,643 | $294,771,102 | $280,910,165 |
-| BGE Demand Response | $163,335,864 | $156,535,560 | $156,535,560 |
-| BGE PIDD | $9,466,542 | $6,000,000 | $0 |
-| **BGE Subtotal** | **$956,189,886** | **$786,114,883** | **$668,121,006** |
-| DHCD Residential | $179,866,858 | $153,858,414 | $153,858,414 |
-| DHCD Commercial | $4,562,274 | $20,389,623 | $20,389,623 |
-| **DHCD Subtotal** | **$184,429,132** | **$174,248,037** | **$174,248,037** |
-| **Grand Total** | **$1,140,619,018** | **$960,362,920** | **$842,369,043** |
-EmPOWER program costs, both for utility programming and DHCD programming, are
-recovered through the EmPOWER surcharge on customers’ bills in the year that they are
-accrued. BGE does not earn a return on program administration, and those costs
-recovered from customers only cover the expected program costs for that year. BGE’s
-EmPOWER programs are market driven, meaning that some programs may exceed their
-initial forecasts detailed in this plan while others may fall below their initial forecasts
-depending on demand for the program in the market. The budget numbers presented in
-this filing are up-to amounts, providing a cap to the program budgets. Throughout the
-program cycle, BGE actively manages program spend in response to the market through
-a multitude of levers to balance the budget across each sub-portfolio. If any funds
+| Sector                                                                                      | Cycle 6 Budget ($) | High Scenario Cycle Budget ($) | Low Scenario Cycle Budget ($) |
+| ------------------------------------------------------------------------------------------- | -----------------: | -----------------------------: | ----------------------------: |
+| BGE Residential                                                                             |       $348,600,837 |                   $328,808,220 |                  $230,675,280 |
+| BGE Commercial                                                                              |       $434,786,643 |                   $294,771,102 |                  $280,910,165 |
+| BGE Demand Response                                                                         |       $163,335,864 |                   $156,535,560 |                  $156,535,560 |
+| BGE PIDD                                                                                    |         $9,466,542 |                     $6,000,000 |                            $0 |
+| **BGE Subtotal**                                                                            |   **$956,189,886** |               **$786,114,883** |              **$668,121,006** |
+| DHCD Residential                                                                            |       $179,866,858 |                   $153,858,414 |                  $153,858,414 |
+| DHCD Commercial                                                                             |         $4,562,274 |                    $20,389,623 |                   $20,389,623 |
+| **DHCD Subtotal**                                                                           |   **$184,429,132** |               **$174,248,037** |              **$174,248,037** |
+| **Grand Total**                                                                             | **$1,140,619,018** |               **$960,362,920** |              **$842,369,043** |
+| EmPOWER program costs, both for utility programming and DHCD programming, are               |                    |                                |                               |
+| recovered through the EmPOWER surcharge on customers’ bills in the year that they are       |                    |                                |                               |
+| accrued. BGE does not earn a return on program administration, and those costs              |                    |                                |                               |
+| recovered from customers only cover the expected program costs for that year. BGE’s         |                    |                                |                               |
+| EmPOWER programs are market driven, meaning that some programs may exceed their             |                    |                                |                               |
+| initial forecasts detailed in this plan while others may fall below their initial forecasts |                    |                                |                               |
+| depending on demand for the program in the market. The budget numbers presented in          |                    |                                |                               |
+| this filing are up-to amounts, providing a cap to the program budgets. Throughout the       |                    |                                |                               |
+| program cycle, BGE actively manages program spend in response to the market through         |                    |                                |                               |
+| a multitude of levers to balance the budget across each sub-portfolio. If any funds         |                    |                                |                               |
 
 [PDF p. 22 | printed p. 12]
 
@@ -762,32 +768,32 @@ calculations. BGE has developed the two proposed scenarios with the same overarc
 program structure. The differentiating factors are how offerings and incentives are scaled.
 Table 4: High and Low Portfolio Scenario Comparison
 
-| Program Name | High Scenario Budget | Low Scenario Budget | Budget Difference | Description of Budget Change |
-| --- | ---: | ---: | ---: | --- |
-| **Residential Programs** | | | | |
-| Appliance Rebates | $31,768,824 | $26,431,782 | $5,337,041 | -Removed kits<br>-Reduced electrification |
-| Appliance Recycling | $8,728,985 | $0 | $8,728,985 | -Removed program |
-| Home Upgrade | $118,473,983 | $88,509,149 | $29,964,834 | -Reduced QHEC projects |
-| HVAC Midstream | $140,784,671 | $86,682,592 | $54,102,080 | -Reduced electrification |
-| New Construction | $13,564,757 | $13,564,757 | $0 | n/a |
-| Smart Energy Manager Residential | $14,212,000 | $14,212,000 | $0 | n/a |
-| DHCD Coordination | $1,275,000 | $1,275,000 | $0 | n/a |
-| **Commercial Programs** | | | | |
-| Small Business Energy Solutions | $70,199,968 | $64,462,669 | $5,737,299 | -Reduced lighting<br>-Reduced electrification |
-| Prescriptive | $105,084,919 | $99,463,677 | $5,621,242 | -Reduced lighting<br>-Reduced electrification |
-| Custom | $36,640,765 | $36,640,765 | $0 | n/a |
-| Building Tune-up (RCx) | $48,311,902 | $48,311,902 | $0 | n/a |
-| Instant Discounts | $33,012,547 | $30,510,152 | $2,502,396 | -Reduced lighting<br>-Reduced electrification |
-| Business Energy Manager Program | $1,521,000 | $1,521,000 | $0 | n/a |
-| **Demand Response Programs** | | | | |
-| Residential Peak Rewards (Non-BYOD) | $70,481,914 | $70,481,914 | $0 | n/a |
-| Residential Connected Rewards (BYOD) | $68,483,891 | $68,483,891 | $0 | n/a |
-| Energy Savings Days (formerly Smart Energy Rewards) | $16,041,756 | $16,041,756 | $0 | n/a |
-| Commercial Connected Rewards (BYOD) | $1,528,000 | $1,528,000 | $0 | n/a |
-| **Other & PIDD** | | | | |
-| Interconnected Solar | $0 | $0 | $0 | n/a |
-| Unidentified PIDD | $6,000,000 | $0 | $6,000,000 | -Removed program |
-| **Total Portfolio** | **$786,114,883** | **$668,121,006** | **$117,993,876** | |
+| Program Name                                        | High Scenario Budget | Low Scenario Budget | Budget Difference | Description of Budget Change                  |
+| --------------------------------------------------- | -------------------: | ------------------: | ----------------: | --------------------------------------------- |
+| **Residential Programs**                            |                      |                     |                   |                                               |
+| Appliance Rebates                                   |          $31,768,824 |         $26,431,782 |        $5,337,041 | -Removed kits<br>-Reduced electrification     |
+| Appliance Recycling                                 |           $8,728,985 |                  $0 |        $8,728,985 | -Removed program                              |
+| Home Upgrade                                        |         $118,473,983 |         $88,509,149 |       $29,964,834 | -Reduced QHEC projects                        |
+| HVAC Midstream                                      |         $140,784,671 |         $86,682,592 |       $54,102,080 | -Reduced electrification                      |
+| New Construction                                    |          $13,564,757 |         $13,564,757 |                $0 | n/a                                           |
+| Smart Energy Manager Residential                    |          $14,212,000 |         $14,212,000 |                $0 | n/a                                           |
+| DHCD Coordination                                   |           $1,275,000 |          $1,275,000 |                $0 | n/a                                           |
+| **Commercial Programs**                             |                      |                     |                   |                                               |
+| Small Business Energy Solutions                     |          $70,199,968 |         $64,462,669 |        $5,737,299 | -Reduced lighting<br>-Reduced electrification |
+| Prescriptive                                        |         $105,084,919 |         $99,463,677 |        $5,621,242 | -Reduced lighting<br>-Reduced electrification |
+| Custom                                              |          $36,640,765 |         $36,640,765 |                $0 | n/a                                           |
+| Building Tune-up (RCx)                              |          $48,311,902 |         $48,311,902 |                $0 | n/a                                           |
+| Instant Discounts                                   |          $33,012,547 |         $30,510,152 |        $2,502,396 | -Reduced lighting<br>-Reduced electrification |
+| Business Energy Manager Program                     |           $1,521,000 |          $1,521,000 |                $0 | n/a                                           |
+| **Demand Response Programs**                        |                      |                     |                   |                                               |
+| Residential Peak Rewards (Non-BYOD)                 |          $70,481,914 |         $70,481,914 |                $0 | n/a                                           |
+| Residential Connected Rewards (BYOD)                |          $68,483,891 |         $68,483,891 |                $0 | n/a                                           |
+| Energy Savings Days (formerly Smart Energy Rewards) |          $16,041,756 |         $16,041,756 |                $0 | n/a                                           |
+| Commercial Connected Rewards (BYOD)                 |           $1,528,000 |          $1,528,000 |                $0 | n/a                                           |
+| **Other & PIDD**                                    |                      |                     |                   |                                               |
+| Interconnected Solar                                |                   $0 |                  $0 |                $0 | n/a                                           |
+| Unidentified PIDD                                   |           $6,000,000 |                  $0 |        $6,000,000 | -Removed program                              |
+| **Total Portfolio**                                 |     **$786,114,883** |    **$668,121,006** |  **$117,993,876** |                                               |
 
 [PDF p. 23 | printed p. 13]
 
@@ -917,33 +923,33 @@ Mountain Institute (RMI), and The Sierra Club. The outreach engagements included
 Some key themes and feedback from the stakeholder meetings included:
 
 - Acknowledgement and appreciation for the success of the BGE programs and a
-strong desire for the programs to continue.
+  strong desire for the programs to continue.
 
 - A desire to add incentives for window heat pumps.
 
 - Reinforcement of the importance of ensuring EmPOWER programs serve and
-reach more low to moderate income customers.
+  reach more low to moderate income customers.
 
 - Emphasis on the importance of providing a better customer experience to meet
-customers where they are.
+  customers where they are.
 
 - Contractors expressed support for EmPOWER, but shared concerns around
-reduced goals under the Utility RELIEF Act and reduced budgets for the
-programs that they were involved in such as HVAC Midstream and Home
-Performance.
+  reduced goals under the Utility RELIEF Act and reduced budgets for the
+  programs that they were involved in such as HVAC Midstream and Home
+  Performance.
 
 - Lack of clear understanding of some program elements and offerings that were
-part of BGE’s current EmPOWER Portfolio.
+  part of BGE’s current EmPOWER Portfolio.
 
 - Suggestions on opportunities to further align BGE’s EmPOWER offerings with
-other external initiatives such as non-profit grants that could further expand the
-reach of benefits to customers.
+  other external initiatives such as non-profit grants that could further expand the
+  reach of benefits to customers.
 
 - Acknowledgement of the quality work BGE has done to partner with DHCD, and
-an expressed a desire for more work to be done to help customers most in need.
+  an expressed a desire for more work to be done to help customers most in need.
 
 - Appreciation of BGE’s Moderate Income Offer, but a desire to serve more
-moderate income customers and pursue greater promotion of the offer.
+  moderate income customers and pursue greater promotion of the offer.
 
 Through the stakeholder engagement process it became clear that stakeholders aren’t
 necessarily looking for expanded measures or new technologies to be included in the
@@ -956,41 +962,41 @@ The BGE team sought to incorporate the stakeholder feedback received during outr
 meetings into our portfolio development wherever feasible. This included:
 
 - Expanding the moderate income offering to increase participation. BGE
-acknowledges the initial offer that put forth in Cycle 6 was purposefully launched
-in a more conservative way to be able to ensure very close coordination with
-DHCD and test the design of the offer.
+  acknowledges the initial offer that put forth in Cycle 6 was purposefully launched
+  in a more conservative way to be able to ensure very close coordination with
+  DHCD and test the design of the offer.
 
 - Developing a new approach in collaboration with DHCD, called the Multifamily
-Customer Navigation Service, to help our renter population and multifamily
-building owners access BGE EmPOWER and DHCD EmPOWER offerings more
-seamlessly and direct customers to the appropriate program based on eligibility.
+  Customer Navigation Service, to help our renter population and multifamily
+  building owners access BGE EmPOWER and DHCD EmPOWER offerings more
+  seamlessly and direct customers to the appropriate program based on eligibility.
 
 [PDF p. 30 | printed p. 20]
 
 - Continuing and building on a strong partnership with DHCD, which includes
-increasing the coordination efforts to support DHCD in lead generation and co-branding marketing materials and joint outreach opportunities.
+  increasing the coordination efforts to support DHCD in lead generation and co-branding marketing materials and joint outreach opportunities.
 
 - Improving how customers access and navigate BGE’s residential and non-residential programs, through more streamlined, program entry points that
-reduce barriers to participation.
+  reduce barriers to participation.
 
 - Including window heat pumps in the program measure list.
 
 - Collaborating with stakeholders on initiatives outside of EmPOWER, including
-but not limited to initiatives by State Agencies, Counties, as well as local non-profit organizations. This could include:
+  but not limited to initiatives by State Agencies, Counties, as well as local non-profit organizations. This could include:
 
   - Further coordination with MDE on the Maryland Building Energy
-Performance Standards (BEPS) and connecting customers subject to
-BEPS with BGE’s reporting tools and programs.
+    Performance Standards (BEPS) and connecting customers subject to
+    BEPS with BGE’s reporting tools and programs.
 
   - Work with Maryland Energy Administration (MEA) on their Residential
-Energy Equity Heat Pump Rebate Program.
+    Energy Equity Heat Pump Rebate Program.
 
   - Engaging with Counties on current and planned initiatives which could
-expand the reach and awareness of BGE’s EmPOWER Programs, an
-example being the Baltimore City Energy Challenge initiative.
+    expand the reach and awareness of BGE’s EmPOWER Programs, an
+    example being the Baltimore City Energy Challenge initiative.
 
   - Engagement with non-profits on initiatives that could combine EmPOWER
-incentives with grants funding to enhance benefits to customers.
+    incentives with grants funding to enhance benefits to customers.
 
 The BGE team looks forward to continuing ongoing stakeholder engagement, after the
 Plan is filed and throughout Cycle 7. To continue delivering leading programs to our
@@ -1009,10 +1015,10 @@ limited-income customers. These activities include:
 - BGE identifying and sending customer referrals to DHCD.
 
 - Sending lead lists on a regular cadence to DHCD of limited-income customers
-with high energy use and reconnects.
+  with high energy use and reconnects.
 
 - Inclusion of educational materials about DHCD programs in outreach and
-marketing.
+  marketing.
 
 - Joint attendance at community events.
 
@@ -1021,13 +1027,13 @@ marketing.
 - Joint trainings for contractors and trade partners.
 
 - Coordination with DHCD in designing and implementing program-specific offers
-and special promotions, such as no-cost smart thermostats.
+  and special promotions, such as no-cost smart thermostats.
 
 - Joint content creation for marketing campaigns targeted to limited-income
-customers.
+  customers.
 
 - Bill messages and insert space in utility bills to drive awareness and participation
-in DHCD programs.
+  in DHCD programs.
 
 BGE includes DHCD in discussions that involve the EmPOWER programs and activities
 that benefit limited-income customers to ensure consistent messaging and alignment of
@@ -1354,7 +1360,7 @@ BGE is proposing to offer the following programs during Cycle 7 (2027–2029 cyc
 
 [PDF p. 45 | printed p. 35]
 
-  - Home Upgrade
+- Home Upgrade
 
 - Residential New Construction
 
@@ -1500,28 +1506,28 @@ well as the labor-intensive administration of the service.
 
 Table 5: Scenario Comparison – Appliance Recycling
 
-| Residential Appliance Recycling Scenarios | Total Budget | Total Lifecycle GHG |
-| --- | ---: | ---: |
-| High Scenario | $8,728,985 | 32,886 |
-| Low Scenario | $0 | 0 |
-| Difference | $8,728,985 | 32,886 |
-| | 100% | 100% |
-In the Low Scenario, the Appliance Rebates offer will no longer include non-profit kits and
-targets a reduced quantity of electrification measures. Because the lower goal of the Low
-Scenario allows us to focus on the programs and measures that provide the most GHG
-savings at the lowest cost, we were able to eliminate non-profit kits, which have come
-with significant evaluation risk in past cycles, from the Appliance Rebates offer. Because
-more GHG emissions savings were needed in the High Scenario, the kits remain in the
-Appliance Rebates plan and additional water heating electrification measures were
-included, despite uncertainty around demand for these measures in the market.
-Table 6: Scenario Comparison – Appliance Rebates
+| Residential Appliance Recycling Scenarios                                                   | Total Budget | Total Lifecycle GHG |
+| ------------------------------------------------------------------------------------------- | -----------: | ------------------: |
+| High Scenario                                                                               |   $8,728,985 |              32,886 |
+| Low Scenario                                                                                |           $0 |                   0 |
+| Difference                                                                                  |   $8,728,985 |              32,886 |
+|                                                                                             |         100% |                100% |
+| In the Low Scenario, the Appliance Rebates offer will no longer include non-profit kits and |              |                     |
+| targets a reduced quantity of electrification measures. Because the lower goal of the Low   |              |                     |
+| Scenario allows us to focus on the programs and measures that provide the most GHG          |              |                     |
+| savings at the lowest cost, we were able to eliminate non-profit kits, which have come      |              |                     |
+| with significant evaluation risk in past cycles, from the Appliance Rebates offer. Because  |              |                     |
+| more GHG emissions savings were needed in the High Scenario, the kits remain in the         |              |                     |
+| Appliance Rebates plan and additional water heating electrification measures were           |              |                     |
+| included, despite uncertainty around demand for these measures in the market.               |              |                     |
+| Table 6: Scenario Comparison – Appliance Rebates                                            |              |                     |
 
 | Residential Appliance Rebates Scenarios | Total Budget | Total Lifecycle GHG |
-| --- | ---: | ---: |
-| High Scenario | $31,768,824 | 407,989 |
-| Low Scenario | $26,431,782 | 311,545 |
-| Difference | $5,337,041 | 96,444 |
-| | 17% | 24% |
+| --------------------------------------- | -----------: | ------------------: |
+| High Scenario                           |  $31,768,824 |             407,989 |
+| Low Scenario                            |  $26,431,782 |             311,545 |
+| Difference                              |   $5,337,041 |              96,444 |
+|                                         |          17% |                 24% |
 
 [PDF p. 49 | printed p. 39]
 
@@ -1603,14 +1609,14 @@ continued program success. The marketing strategy includes sustained year-round
 advertising coupled with seasonal marketing pushes during three key periods:
 
 - Spring: Customers are engaged in spring cleaning and home improvements.
-They are motivated to declutter.
+  They are motivated to declutter.
 
 - Early Summer: This is another typically high-volume season when customers
-may be noticing room air conditioners, dehumidifiers, or other appliances that are
-in need of replacement ahead of summer heat and humidity.
+  may be noticing room air conditioners, dehumidifiers, or other appliances that are
+  in need of replacement ahead of summer heat and humidity.
 
 - Late Summer: Participation spikes again in September, with back-to-school
-organization and preparation.
+  organization and preparation.
 
 Apart from seasonal marketing pushes, consistent presence at retail locations with
 in-store POP signage and brochures also drives program participation, either through
@@ -1688,11 +1694,11 @@ program.
 Table 7: Scenario Comparison - Residential HVAC Midstream
 
 | Residential HVAC Midstream Scenarios | Total Budget | Total Lifecycle GHG |
-| --- | ---: | ---: |
-| High Scenario | $140,784,671 | 1,108,841 |
-| Low Scenario | $86,682,592 | 830,274 |
-| Difference | $54,102,080 | 278,567 |
-| | 38% | 25% |
+| ------------------------------------ | -----------: | ------------------: |
+| High Scenario                        | $140,784,671 |           1,108,841 |
+| Low Scenario                         |  $86,682,592 |             830,274 |
+| Difference                           |  $54,102,080 |             278,567 |
+|                                      |          38% |                 25% |
 
 #### 4.3.3 Target Market
 
@@ -1892,11 +1898,11 @@ emissions reductions per dollar spent as more comprehensive retrofit measures.
 Table 8: Scenario Comparison – Residential Home Upgrade
 
 | Residential Home Upgrade Scenarios | Total Budget | Total Lifecycle GHG |
-| --- | ---: | ---: |
-| High Scenario | $118,473,983 | 335,528 |
-| Low Scenario | $88,509,149 | 271,325 |
-| Difference | $29,964,834 | 64,202 |
-| | 25% | 19% |
+| ---------------------------------- | -----------: | ------------------: |
+| High Scenario                      | $118,473,983 |             335,528 |
+| Low Scenario                       |  $88,509,149 |             271,325 |
+| Difference                         |  $29,964,834 |              64,202 |
+|                                    |          25% |                 19% |
 
 #### 4.4.3 Target Market
 
@@ -1923,18 +1929,18 @@ with offerings by DHCD, and also to ensure that customers were directed to the p
 that was appropriate for them.
 
 - We are seeking opportunities to increase participation among moderate-income
-households in Cycle 7 by onboarding additional in-network contractors for BGE
-and DHCD, as well as expanding program visibility through more integrated
-marketing with the larger Home Upgrade Program offerings. This includes
-integration with the website as well as other promotional materials.
+  households in Cycle 7 by onboarding additional in-network contractors for BGE
+  and DHCD, as well as expanding program visibility through more integrated
+  marketing with the larger Home Upgrade Program offerings. This includes
+  integration with the website as well as other promotional materials.
 
 - The MIO is not a subprogram, but an offering within the Home Upgrade Program.
-It is essentially an enhanced measure level incentives that are offered to qualified
-customers. BGE will work with OPC and other stakeholders on relevant MIO
-metrics to report in Cycle 7.
+  It is essentially an enhanced measure level incentives that are offered to qualified
+  customers. BGE will work with OPC and other stakeholders on relevant MIO
+  metrics to report in Cycle 7.
 
 - BGE remains open to continued stakeholder discussions regarding expanded
-income thresholds, program design considerations, and coordination with DHCD-and MEA-administered offerings throughout the Cycle 7 period.
+  income thresholds, program design considerations, and coordination with DHCD-and MEA-administered offerings throughout the Cycle 7 period.
 
 #### 4.4.4 Market Analysis and Trends
 
@@ -2065,7 +2071,7 @@ Eligible measures and services include:
 - Combustion safety measures
 
 - Other building performance improvements supported by program requirements
-and measures required by industry-recognized building performance standards
+  and measures required by industry-recognized building performance standards
 
 #### 4.4.6 Customer Incentives
 
@@ -2115,13 +2121,13 @@ months leading to peak seasonal discomfort to maintain year-round program
 participation. Thus, the strategic key time periods for marketing pushes are:
 
 - Mid-January to mid-February: Customers experience late winter discomfort and
-begin early spring home improvement.
+  begin early spring home improvement.
 
 - Mid-May to late July: Customers experience peak summer heat discomfort and
-higher utility bills due to high energy use.
+  higher utility bills due to high energy use.
 
 - October to November: Seasonal home improvement projects occur prior to the
-holidays.
+  holidays.
 
 BGE will employ a variety of marketing tactics, including broadcast television, streaming
 audio and video, digital marketing, social media, content marketing, print magazine ads,
@@ -2230,11 +2236,11 @@ There are no changes to this program between the two scenarios.
 Table 9: Scenario Comparison – Residential New Construction
 
 | Residential New Construction Scenarios | Total Budget | Total Lifecycle GHG |
-| --- | ---: | ---: |
-| High Scenario | $13,564,757 | 459,105 |
-| Low Scenario | $13,564,757 | 459,105 |
-| Difference | $0 | 0 |
-| | 0% | 0% |
+| -------------------------------------- | -----------: | ------------------: |
+| High Scenario                          |  $13,564,757 |             459,105 |
+| Low Scenario                           |  $13,564,757 |             459,105 |
+| Difference                             |           $0 |                   0 |
+|                                        |           0% |                  0% |
 
 #### 4.5.3 Target Market
 
@@ -2441,11 +2447,11 @@ There are no changes to this program between the two scenarios.
 Table 10: Scenario Comparison – Residential Smart Energy Manager
 
 | Smart Energy Manager Scenarios | Total Budget | Total Lifecycle GHG |
-| --- | ---: | ---: |
-| High Scenario | $14,212,000 | 340,474 |
-| Low Scenario | $14,212,000 | 340,474 |
-| Difference | $0 | 0 |
-| | 0% | 0% |
+| ------------------------------ | -----------: | ------------------: |
+| High Scenario                  |  $14,212,000 |             340,474 |
+| Low Scenario                   |  $14,212,000 |             340,474 |
+| Difference                     |           $0 |                   0 |
+|                                |           0% |                  0% |
 
 [PDF p. 71 | printed p. 61]
 
@@ -2535,7 +2541,7 @@ program cycle:
 
 [PDF p. 73 | printed p. 63]
 
-  - Custom and New Construction
+- Custom and New Construction
 
 - Instant Discounts (Midstream)
 
@@ -2605,7 +2611,7 @@ cases for the offering in Cycle 7.
 - Attachment 2 – Residential and Non-Residential Incentive Matrix
 
 - Attachment 3 – Avoided Cost and Benefit Assumptions (e.g., non-energy
-benefits, discount rates, line loss factors, etc.).
+  benefits, discount rates, line loss factors, etc.).
 
 - Attachment 4 – Gas Residential Efficiency Charges
 
@@ -2617,595 +2623,593 @@ benefits, discount rates, line loss factors, etc.).
 
 _Extractor note (not source text): PDF pp. 121-130 are Attachment 1 for the High Scenario and PDF pp. 131-140 are the Low Scenario; only the heat pump, HVAC and electrification rows and the portfolio total are transcribed (see the note at the top of this file)._
 
-
-**Table ES-1 Gross 2027 to 2029 Plan - High Scenario** 
+**Table ES-1 Gross 2027 to 2029 Plan - High Scenario**
 _EmPOWER Maryland Energy Efficiency, Conservation, and Demand Response Programs Forecasted Metrics for 2028-2029 Plan [sic; the other ES tables print 2027-2029]_
 
 **2027 Forecasted Metrics**
 
-| Program (category) | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | 351,346 | 40,667 | 374,033 | 9.650 | 4.241 | 99.521 | 154,537 |
-| Appliance Rebates - EE (EE) | 344,393 | 34,749 | 346,983 | 8.146 | 3.747 | 91.727 | 141,864 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | 86,159 | (10,420) | (338,406) | 10.174 | (16.783) | 158.901 | 436,645 |
-| Home Upgrade - Electrification (Electrification) | 320 | (780) | (13,268) | (0.619) | (0.568) | (10.521) | 13,034 |
-| HVAC - EE (EE) | 10,713 | 7,475 | 131,814 | 5.063 | 4.685 | 92.055 | 39,839 |
-| HVAC - Electrification (Electrification) | 5,449 | (30,950) | (618,899) | 1.193 | (24.766) | 23.874 | 285,521 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | 5,769 | (31,731) | (632,167) | 0.574 | (25.334) | 13.354 | 298,556 |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | 2,128,121 | 413,897 | 3,364,017 | 376.323 | 52.118 | 1,629.574 | 1,703,681 |
+| Program (category)                                                     | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
+| ---------------------------------------------------------------------- | -----------------: | ------------------------------------: | -----------------------------: | ---------------------------------------------: | ---------------------------------------------: | ----------------------------: | ---------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |            351,346 |                                40,667 |                        374,033 |                                          9.650 |                                          4.241 |                        99.521 |                      154,537 |
+| Appliance Rebates - EE (EE)                                            |            344,393 |                                34,749 |                        346,983 |                                          8.146 |                                          3.747 |                        91.727 |                      141,864 |
+| Appliance Rebates - Electrification (Electrification)                  |                  - |                                     - |                              - |                                              - |                                              - |                             - |                            - |
+| Home Optimization and Retrofit (EE & Electrification)                  |             86,159 |                              (10,420) |                      (338,406) |                                         10.174 |                                       (16.783) |                       158.901 |                      436,645 |
+| Home Upgrade - Electrification (Electrification)                       |                320 |                                 (780) |                       (13,268) |                                        (0.619) |                                        (0.568) |                      (10.521) |                       13,034 |
+| HVAC - EE (EE)                                                         |             10,713 |                                 7,475 |                        131,814 |                                          5.063 |                                          4.685 |                        92.055 |                       39,839 |
+| HVAC - Electrification (Electrification)                               |              5,449 |                              (30,950) |                      (618,899) |                                          1.193 |                                       (24.766) |                        23.874 |                      285,521 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |              5,769 |                              (31,731) |                      (632,167) |                                          0.574 |                                       (25.334) |                        13.354 |                      298,556 |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |          2,128,121 |                               413,897 |                      3,364,017 |                                        376.323 |                                         52.118 |                     1,629.574 |                    1,703,681 |
 
 **2028 Forecasted Metrics**
 
-| Program (category) | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | 368,564 | 42,402 | 391,357 | 10.057 | 4.428 | 104.103 | 146,156 |
-| Appliance Rebates - EE (EE) | 361,611 | 36,485 | 364,307 | 8.553 | 3.934 | 96.309 | 135,340 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | 87,623 | (12,922) | (390,655) | 10.579 | (19.055) | 166.155 | 479,848 |
-| Home Upgrade - Electrification (Electrification) | 368 | (898) | (15,261) | (0.712) | (0.654) | (12.101) | 15,376 |
-| HVAC - EE (EE) | 11,248 | 7,849 | 138,399 | 5.316 | 4.919 | 96.666 | 38,340 |
-| HVAC - Electrification (Electrification) | 5,977 | (34,056) | (681,029) | 1.313 | (27.252) | 26.273 | 330,116 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | 6,345 | (34,954) | (696,290) | 0.601 | (27.906) | 14.172 | 345,492 |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | 2,106,031 | 415,144 | 3,347,776 | 381.718 | 49.820 | 1,650.441 | 1,671,224 |
+| Program (category)                                                     | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
+| ---------------------------------------------------------------------- | -----------------: | ------------------------------------: | -----------------------------: | ---------------------------------------------: | ---------------------------------------------: | ----------------------------: | ---------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |            368,564 |                                42,402 |                        391,357 |                                         10.057 |                                          4.428 |                       104.103 |                      146,156 |
+| Appliance Rebates - EE (EE)                                            |            361,611 |                                36,485 |                        364,307 |                                          8.553 |                                          3.934 |                        96.309 |                      135,340 |
+| Appliance Rebates - Electrification (Electrification)                  |                  - |                                     - |                              - |                                              - |                                              - |                             - |                            - |
+| Home Optimization and Retrofit (EE & Electrification)                  |             87,623 |                              (12,922) |                      (390,655) |                                         10.579 |                                       (19.055) |                       166.155 |                      479,848 |
+| Home Upgrade - Electrification (Electrification)                       |                368 |                                 (898) |                       (15,261) |                                        (0.712) |                                        (0.654) |                      (12.101) |                       15,376 |
+| HVAC - EE (EE)                                                         |             11,248 |                                 7,849 |                        138,399 |                                          5.316 |                                          4.919 |                        96.666 |                       38,340 |
+| HVAC - Electrification (Electrification)                               |              5,977 |                              (34,056) |                      (681,029) |                                          1.313 |                                       (27.252) |                        26.273 |                      330,116 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |              6,345 |                              (34,954) |                      (696,290) |                                          0.601 |                                       (27.906) |                        14.172 |                      345,492 |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |          2,106,031 |                               415,144 |                      3,347,776 |                                        381.718 |                                         49.820 |                     1,650.441 |                    1,671,224 |
 
 **2029 Forecasted Metrics**
 
-| Program (category) | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | 386,646 | 44,227 | 409,570 | 10.485 | 4.624 | 108.917 | 140,181 |
-| Appliance Rebates - EE (EE) | 379,693 | 38,309 | 382,520 | 8.981 | 4.131 | 101.124 | 130,785 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | 89,190 | (15,699) | (448,481) | 11.001 | (21.558) | 173.711 | 527,876 |
-| Home Upgrade - Electrification (Electrification) | 423 | (1,032) | (17,542) | (0.818) | (0.751) | (13.910) | 18,054 |
-| HVAC - EE (EE) | 11,810 | 8,240 | 145,290 | 5.581 | 5.164 | 101.477 | 37,218 |
-| HVAC - Electrification (Electrification) | 6,558 | (37,457) | (749,038) | 1.444 | (29.971) | 28.905 | 377,807 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | 6,981 | (38,489) | (766,580) | 0.626 | (30.722) | 14.995 | 395,861 |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | 2,067,372 | 415,654 | 3,318,620 | 383.449 | 47.099 | 1,668.699 | 1,671,263 |
+| Program (category)                                                     | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
+| ---------------------------------------------------------------------- | -----------------: | ------------------------------------: | -----------------------------: | ---------------------------------------------: | ---------------------------------------------: | ----------------------------: | ---------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |            386,646 |                                44,227 |                        409,570 |                                         10.485 |                                          4.624 |                       108.917 |                      140,181 |
+| Appliance Rebates - EE (EE)                                            |            379,693 |                                38,309 |                        382,520 |                                          8.981 |                                          4.131 |                       101.124 |                      130,785 |
+| Appliance Rebates - Electrification (Electrification)                  |                  - |                                     - |                              - |                                              - |                                              - |                             - |                            - |
+| Home Optimization and Retrofit (EE & Electrification)                  |             89,190 |                              (15,699) |                      (448,481) |                                         11.001 |                                       (21.558) |                       173.711 |                      527,876 |
+| Home Upgrade - Electrification (Electrification)                       |                423 |                               (1,032) |                       (17,542) |                                        (0.818) |                                        (0.751) |                      (13.910) |                       18,054 |
+| HVAC - EE (EE)                                                         |             11,810 |                                 8,240 |                        145,290 |                                          5.581 |                                          5.164 |                       101.477 |                       37,218 |
+| HVAC - Electrification (Electrification)                               |              6,558 |                              (37,457) |                      (749,038) |                                          1.444 |                                       (29.971) |                        28.905 |                      377,807 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |              6,981 |                              (38,489) |                      (766,580) |                                          0.626 |                                       (30.722) |                        14.995 |                      395,861 |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |          2,067,372 |                               415,654 |                      3,318,620 |                                        383.449 |                                         47.099 |                     1,668.699 |                    1,671,263 |
 
 **2027-2029 Forecasted Metrics**
 
-| Program (category) | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | 1,106,556 | 127,296 | 1,174,961 | 30.192 | 13.293 | 312.541 | 440,875 |
-| Appliance Rebates - EE (EE) | 1,085,697 | 109,543 | 1,093,810 | 25.680 | 11.812 | 289.160 | 407,989 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | 262,971 | (39,040) | (1,177,542) | 31.755 | (57.396) | 498.767 | 1,444,369 |
-| Home Upgrade - Electrification (Electrification) | 1,111 | (2,710) | (46,071) | (2.149) | (1.974) | (36.532) | 46,465 |
-| HVAC - EE (EE) | 33,771 | 23,564 | 415,502 | 15.961 | 14.768 | 290.198 | 115,397 |
-| HVAC - Electrification (Electrification) | 17,984 | (102,464) | (2,048,965) | 3.951 | (81.989) | 79.053 | 993,444 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | 19,095 | (105,174) | (2,095,037) | 1.802 | (83.963) | 42.521 | 1,039,909 |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | 2,987,438 | 1,244,695 | 10,030,413 | 524.110 | 20.260 | 4,331.334 | 5,046,167 |
+| Program (category)                                                     | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
+| ---------------------------------------------------------------------- | -----------------: | ------------------------------------: | -----------------------------: | ---------------------------------------------: | ---------------------------------------------: | ----------------------------: | ---------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |          1,106,556 |                               127,296 |                      1,174,961 |                                         30.192 |                                         13.293 |                       312.541 |                      440,875 |
+| Appliance Rebates - EE (EE)                                            |          1,085,697 |                               109,543 |                      1,093,810 |                                         25.680 |                                         11.812 |                       289.160 |                      407,989 |
+| Appliance Rebates - Electrification (Electrification)                  |                  - |                                     - |                              - |                                              - |                                              - |                             - |                            - |
+| Home Optimization and Retrofit (EE & Electrification)                  |            262,971 |                              (39,040) |                    (1,177,542) |                                         31.755 |                                       (57.396) |                       498.767 |                    1,444,369 |
+| Home Upgrade - Electrification (Electrification)                       |              1,111 |                               (2,710) |                       (46,071) |                                        (2.149) |                                        (1.974) |                      (36.532) |                       46,465 |
+| HVAC - EE (EE)                                                         |             33,771 |                                23,564 |                        415,502 |                                         15.961 |                                         14.768 |                       290.198 |                      115,397 |
+| HVAC - Electrification (Electrification)                               |             17,984 |                             (102,464) |                    (2,048,965) |                                          3.951 |                                       (81.989) |                        79.053 |                      993,444 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |             19,095 |                             (105,174) |                    (2,095,037) |                                          1.802 |                                       (83.963) |                        42.521 |                    1,039,909 |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |          2,987,438 |                             1,244,695 |                     10,030,413 |                                        524.110 |                                         20.260 |                     4,331.334 |                    5,046,167 |
 
 [PDF p. 122]
 
-**Table ES-1 Net 2027 to 2029 Plan - High Scenario** 
+**Table ES-1 Net 2027 to 2029 Plan - High Scenario**
 _EmPOWER Maryland Energy Efficiency, Conservation, and Demand Response Programs Forecasted Metrics for 2027-2029 Plan_
 
 **2027 Forecasted Metrics**
 
-| Program (category) | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | 351,346 | 20,835 | 176,339 | 5.652 | 2.628 | 55.395 | 75,313 |
-| Appliance Rebates - EE (EE) | 344,393 | 18,655 | 165,378 | 4.764 | 2.507 | 50.408 | 70,325 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | 86,159 | (3,189) | (168,630) | 6.666 | (8.965) | 97.961 | 274,992 |
-| Home Upgrade - Electrification (Electrification) | 320 | (562) | (9,553) | (0.446) | (0.409) | (7.575) | 9,601 |
-| HVAC - EE (EE) | 10,713 | 4,516 | 77,015 | 2.941 | 2.761 | 51.701 | 23,572 |
-| HVAC - Electrification (Electrification) | 5,449 | (17,966) | (358,737) | 0.696 | (14.299) | 13.852 | 167,782 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | 5,769 | (18,528) | (368,290) | 0.250 | (14.708) | 6.277 | 177,383 |
+| Program (category)                                                     | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
+| ---------------------------------------------------------------------- | -----------------: | ------------------------------------: | -----------------------------: | ---------------------------------------------: | ---------------------------------------------: | ----------------------------: | ---------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |            351,346 |                                20,835 |                        176,339 |                                          5.652 |                                          2.628 |                        55.395 |                       75,313 |
+| Appliance Rebates - EE (EE)                                            |            344,393 |                                18,655 |                        165,378 |                                          4.764 |                                          2.507 |                        50.408 |                       70,325 |
+| Appliance Rebates - Electrification (Electrification)                  |                  - |                                     - |                              - |                                              - |                                              - |                             - |                            - |
+| Home Optimization and Retrofit (EE & Electrification)                  |             86,159 |                               (3,189) |                      (168,630) |                                          6.666 |                                        (8.965) |                        97.961 |                      274,992 |
+| Home Upgrade - Electrification (Electrification)                       |                320 |                                 (562) |                        (9,553) |                                        (0.446) |                                        (0.409) |                       (7.575) |                        9,601 |
+| HVAC - EE (EE)                                                         |             10,713 |                                 4,516 |                         77,015 |                                          2.941 |                                          2.761 |                        51.701 |                       23,572 |
+| HVAC - Electrification (Electrification)                               |              5,449 |                              (17,966) |                      (358,737) |                                          0.696 |                                       (14.299) |                        13.852 |                      167,782 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |              5,769 |                              (18,528) |                      (368,290) |                                          0.250 |                                       (14.708) |                         6.277 |                      177,383 |
 
 **2028 Forecasted Metrics**
 
-| Program (category) | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | 368,564 | 21,767 | 184,591 | 5.890 | 2.754 | 57.912 | 71,038 |
-| Appliance Rebates - EE (EE) | 361,611 | 19,587 | 173,629 | 5.002 | 2.632 | 52.925 | 66,749 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | 87,623 | (4,595) | (198,403) | 6.909 | (10.276) | 102.124 | 300,002 |
-| Home Upgrade - Electrification (Electrification) | 368 | (646) | (10,988) | (0.513) | (0.471) | (8.713) | 11,317 |
-| HVAC - EE (EE) | 11,248 | 4,741 | 80,857 | 3.088 | 2.900 | 54.289 | 22,670 |
-| HVAC - Electrification (Electrification) | 5,977 | (19,769) | (394,742) | 0.765 | (15.734) | 15.243 | 193,867 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | 6,345 | (20,415) | (405,730) | 0.253 | (16.205) | 6.530 | 205,184 |
+| Program (category)                                                     | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
+| ---------------------------------------------------------------------- | -----------------: | ------------------------------------: | -----------------------------: | ---------------------------------------------: | ---------------------------------------------: | ----------------------------: | ---------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |            368,564 |                                21,767 |                        184,591 |                                          5.890 |                                          2.754 |                        57.912 |                       71,038 |
+| Appliance Rebates - EE (EE)                                            |            361,611 |                                19,587 |                        173,629 |                                          5.002 |                                          2.632 |                        52.925 |                       66,749 |
+| Appliance Rebates - Electrification (Electrification)                  |                  - |                                     - |                              - |                                              - |                                              - |                             - |                            - |
+| Home Optimization and Retrofit (EE & Electrification)                  |             87,623 |                               (4,595) |                      (198,403) |                                          6.909 |                                       (10.276) |                       102.124 |                      300,002 |
+| Home Upgrade - Electrification (Electrification)                       |                368 |                                 (646) |                       (10,988) |                                        (0.513) |                                        (0.471) |                       (8.713) |                       11,317 |
+| HVAC - EE (EE)                                                         |             11,248 |                                 4,741 |                         80,857 |                                          3.088 |                                          2.900 |                        54.289 |                       22,670 |
+| HVAC - Electrification (Electrification)                               |              5,977 |                              (19,769) |                      (394,742) |                                          0.765 |                                       (15.734) |                        15.243 |                      193,867 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |              6,345 |                              (20,415) |                      (405,730) |                                          0.253 |                                       (16.205) |                         6.530 |                      205,184 |
 
 **2029 Forecasted Metrics**
 
-| Program (category) | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | 386,646 | 22,746 | 193,270 | 6.140 | 2.885 | 60.558 | 67,970 |
-| Appliance Rebates - EE (EE) | 379,693 | 20,566 | 182,309 | 5.252 | 2.763 | 55.571 | 64,221 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | 89,190 | (6,160) | (231,405) | 7.161 | (11.722) | 106.443 | 328,107 |
-| Home Upgrade - Electrification (Electrification) | 423 | (743) | (12,630) | (0.589) | (0.541) | (10.015) | 13,284 |
-| HVAC - EE (EE) | 11,810 | 4,977 | 84,883 | 3.242 | 3.044 | 56.993 | 21,998 |
-| HVAC - Electrification (Electrification) | 6,558 | (21,743) | (434,156) | 0.842 | (17.303) | 16.769 | 221,773 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | 6,981 | (22,486) | (446,786) | 0.253 | (17.844) | 6.754 | 235,057 |
+| Program (category)                                                     | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
+| ---------------------------------------------------------------------- | -----------------: | ------------------------------------: | -----------------------------: | ---------------------------------------------: | ---------------------------------------------: | ----------------------------: | ---------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |            386,646 |                                22,746 |                        193,270 |                                          6.140 |                                          2.885 |                        60.558 |                       67,970 |
+| Appliance Rebates - EE (EE)                                            |            379,693 |                                20,566 |                        182,309 |                                          5.252 |                                          2.763 |                        55.571 |                       64,221 |
+| Appliance Rebates - Electrification (Electrification)                  |                  - |                                     - |                              - |                                              - |                                              - |                             - |                            - |
+| Home Optimization and Retrofit (EE & Electrification)                  |             89,190 |                               (6,160) |                      (231,405) |                                          7.161 |                                       (11.722) |                       106.443 |                      328,107 |
+| Home Upgrade - Electrification (Electrification)                       |                423 |                                 (743) |                       (12,630) |                                        (0.589) |                                        (0.541) |                      (10.015) |                       13,284 |
+| HVAC - EE (EE)                                                         |             11,810 |                                 4,977 |                         84,883 |                                          3.242 |                                          3.044 |                        56.993 |                       21,998 |
+| HVAC - Electrification (Electrification)                               |              6,558 |                              (21,743) |                      (434,156) |                                          0.842 |                                       (17.303) |                        16.769 |                      221,773 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |              6,981 |                              (22,486) |                      (446,786) |                                          0.253 |                                       (17.844) |                         6.754 |                      235,057 |
 
 **2027-2029 Forecasted Metrics**
 
-| Program (category) | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | 1,106,556 | 65,348 | 554,201 | 17.681 | 8.267 | 173.866 | 214,320 |
-| Appliance Rebates - EE (EE) | 1,085,697 | 58,807 | 521,316 | 15.017 | 7.902 | 158.905 | 201,295 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | 262,971 | (13,944) | (598,437) | 20.737 | (30.963) | 306.527 | 903,102 |
-| Home Upgrade - Electrification (Electrification) | 1,111 | (1,951) | (33,171) | (1.547) | (1.421) | (26.303) | 34,202 |
-| HVAC - EE (EE) | 33,771 | 14,235 | 242,755 | 9.270 | 8.705 | 162.983 | 68,240 |
-| HVAC - Electrification (Electrification) | 17,984 | (59,478) | (1,187,635) | 2.303 | (47.336) | 45.864 | 583,422 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | 19,095 | (61,429) | (1,220,806) | 0.756 | (48.757) | 19.562 | 617,624 |
+| Program (category)                                                     | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
+| ---------------------------------------------------------------------- | -----------------: | ------------------------------------: | -----------------------------: | ---------------------------------------------: | ---------------------------------------------: | ----------------------------: | ---------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |          1,106,556 |                                65,348 |                        554,201 |                                         17.681 |                                          8.267 |                       173.866 |                      214,320 |
+| Appliance Rebates - EE (EE)                                            |          1,085,697 |                                58,807 |                        521,316 |                                         15.017 |                                          7.902 |                       158.905 |                      201,295 |
+| Appliance Rebates - Electrification (Electrification)                  |                  - |                                     - |                              - |                                              - |                                              - |                             - |                            - |
+| Home Optimization and Retrofit (EE & Electrification)                  |            262,971 |                              (13,944) |                      (598,437) |                                         20.737 |                                       (30.963) |                       306.527 |                      903,102 |
+| Home Upgrade - Electrification (Electrification)                       |              1,111 |                               (1,951) |                       (33,171) |                                        (1.547) |                                        (1.421) |                      (26.303) |                       34,202 |
+| HVAC - EE (EE)                                                         |             33,771 |                                14,235 |                        242,755 |                                          9.270 |                                          8.705 |                       162.983 |                       68,240 |
+| HVAC - Electrification (Electrification)                               |             17,984 |                              (59,478) |                    (1,187,635) |                                          2.303 |                                       (47.336) |                        45.864 |                      583,422 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |             19,095 |                              (61,429) |                    (1,220,806) |                                          0.756 |                                       (48.757) |                        19.562 |                      617,624 |
 
 [PDF p. 123]
 
-**Table ES-2 2027 to 2029 Plan - High Scenario** 
+**Table ES-2 2027 to 2029 Plan - High Scenario**
 _EmPOWER Maryland Energy Efficiency, Conservation, and Demand Response Programs Forecasted Metrics for 2027-2029 Plan_
 
 **2027 Forecasted Metrics**
 
-| Program (category) | Annual Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Water (gallons) | Natural Gas (Therms) | Lifecycle CO2e (Metric Tons) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | 40,667 | 9.650 | 4.241 | 205,450 | 310,454 | 154,537 |
-| Appliance Rebates - EE (EE) | 34,749 | 8.146 | 3.747 | 205,450 | 310,454 | 141,864 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | (10,420) | 10.174 | (16.783) | 167,649 | 3,049,375 | 436,645 |
-| Home Upgrade - Electrification (Electrification) | (780) | (0.619) | (0.568) | - | 84,280 | 13,034 |
-| HVAC - EE (EE) | 7,475 | 5.063 | 4.685 | - | 8,533 | 39,839 |
-| HVAC - Electrification (Electrification) | (30,950) | 1.193 | (24.766) | - | 2,540,318 | 285,521 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | (31,731) | 0.574 | (25.334) | - | 2,624,598 | 298,556 |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | 413,897 | 376.323 | 52.118 | 373,100 | 5,664,372 | 1,703,681 |
+| Program (category)                                                     | Annual Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Water (gallons) | Natural Gas (Therms) | Lifecycle CO2e (Metric Tons) |
+| ---------------------------------------------------------------------- | --------------------------: | ---------------------------------------------: | ---------------------------------------------: | --------------: | -------------------: | ---------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |                      40,667 |                                          9.650 |                                          4.241 |         205,450 |              310,454 |                      154,537 |
+| Appliance Rebates - EE (EE)                                            |                      34,749 |                                          8.146 |                                          3.747 |         205,450 |              310,454 |                      141,864 |
+| Appliance Rebates - Electrification (Electrification)                  |                           - |                                              - |                                              - |               - |                    - |                            - |
+| Home Optimization and Retrofit (EE & Electrification)                  |                    (10,420) |                                         10.174 |                                       (16.783) |         167,649 |            3,049,375 |                      436,645 |
+| Home Upgrade - Electrification (Electrification)                       |                       (780) |                                        (0.619) |                                        (0.568) |               - |               84,280 |                       13,034 |
+| HVAC - EE (EE)                                                         |                       7,475 |                                          5.063 |                                          4.685 |               - |                8,533 |                       39,839 |
+| HVAC - Electrification (Electrification)                               |                    (30,950) |                                          1.193 |                                       (24.766) |               - |            2,540,318 |                      285,521 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |                    (31,731) |                                          0.574 |                                       (25.334) |               - |            2,624,598 |                      298,556 |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |                     413,897 |                                        376.323 |                                         52.118 |         373,100 |            5,664,372 |                    1,703,681 |
 
 **2028 Forecasted Metrics**
 
-| Program (category) | Annual Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Water (gallons) | Natural Gas (Therms) | Lifecycle CO2e (Metric Tons) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | 42,402 | 10.057 | 4.428 | 215,724 | 325,983 | 146,156 |
-| Appliance Rebates - EE (EE) | 36,485 | 8.553 | 3.934 | 215,724 | 325,983 | 135,340 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | (12,922) | 10.579 | (19.055) | 167,649 | 3,326,742 | 479,848 |
-| Home Upgrade - Electrification (Electrification) | (898) | (0.712) | (0.654) | - | 96,848 | 15,376 |
-| HVAC - EE (EE) | 7,849 | 5.316 | 4.919 | - | 8,966 | 38,340 |
-| HVAC - Electrification (Electrification) | (34,056) | 1.313 | (27.252) | - | 2,794,270 | 330,116 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | (34,954) | 0.601 | (27.906) | - | 2,891,119 | 345,492 |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | 415,144 | 381.718 | 49.820 | 383,373 | 6,012,621 | 1,671,224 |
+| Program (category)                                                     | Annual Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Water (gallons) | Natural Gas (Therms) | Lifecycle CO2e (Metric Tons) |
+| ---------------------------------------------------------------------- | --------------------------: | ---------------------------------------------: | ---------------------------------------------: | --------------: | -------------------: | ---------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |                      42,402 |                                         10.057 |                                          4.428 |         215,724 |              325,983 |                      146,156 |
+| Appliance Rebates - EE (EE)                                            |                      36,485 |                                          8.553 |                                          3.934 |         215,724 |              325,983 |                      135,340 |
+| Appliance Rebates - Electrification (Electrification)                  |                           - |                                              - |                                              - |               - |                    - |                            - |
+| Home Optimization and Retrofit (EE & Electrification)                  |                    (12,922) |                                         10.579 |                                       (19.055) |         167,649 |            3,326,742 |                      479,848 |
+| Home Upgrade - Electrification (Electrification)                       |                       (898) |                                        (0.712) |                                        (0.654) |               - |               96,848 |                       15,376 |
+| HVAC - EE (EE)                                                         |                       7,849 |                                          5.316 |                                          4.919 |               - |                8,966 |                       38,340 |
+| HVAC - Electrification (Electrification)                               |                    (34,056) |                                          1.313 |                                       (27.252) |               - |            2,794,270 |                      330,116 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |                    (34,954) |                                          0.601 |                                       (27.906) |               - |            2,891,119 |                      345,492 |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |                     415,144 |                                        381.718 |                                         49.820 |         383,373 |            6,012,621 |                    1,671,224 |
 
 **2029 Forecasted Metrics**
 
-| Program (category) | Annual Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Water (gallons) | Natural Gas (Therms) | Lifecycle CO2e (Metric Tons) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | 44,227 | 10.485 | 4.624 | 226,511 | 342,284 | 140,181 |
-| Appliance Rebates - EE (EE) | 38,309 | 8.981 | 4.131 | 226,511 | 342,284 | 130,785 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | (15,699) | 11.001 | (21.558) | 167,649 | 3,631,759 | 527,876 |
-| Home Upgrade - Electrification (Electrification) | (1,032) | (0.818) | (0.751) | - | 111,265 | 18,054 |
-| HVAC - EE (EE) | 8,240 | 5.581 | 5.164 | - | 9,421 | 37,218 |
-| HVAC - Electrification (Electrification) | (37,457) | 1.444 | (29.971) | - | 3,073,418 | 377,807 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | (38,489) | 0.626 | (30.722) | - | 3,184,682 | 395,861 |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | 415,654 | 383.449 | 47.099 | 394,160 | 6,488,235 | 1,671,263 |
+| Program (category)                                                     | Annual Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Water (gallons) | Natural Gas (Therms) | Lifecycle CO2e (Metric Tons) |
+| ---------------------------------------------------------------------- | --------------------------: | ---------------------------------------------: | ---------------------------------------------: | --------------: | -------------------: | ---------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |                      44,227 |                                         10.485 |                                          4.624 |         226,511 |              342,284 |                      140,181 |
+| Appliance Rebates - EE (EE)                                            |                      38,309 |                                          8.981 |                                          4.131 |         226,511 |              342,284 |                      130,785 |
+| Appliance Rebates - Electrification (Electrification)                  |                           - |                                              - |                                              - |               - |                    - |                            - |
+| Home Optimization and Retrofit (EE & Electrification)                  |                    (15,699) |                                         11.001 |                                       (21.558) |         167,649 |            3,631,759 |                      527,876 |
+| Home Upgrade - Electrification (Electrification)                       |                     (1,032) |                                        (0.818) |                                        (0.751) |               - |              111,265 |                       18,054 |
+| HVAC - EE (EE)                                                         |                       8,240 |                                          5.581 |                                          5.164 |               - |                9,421 |                       37,218 |
+| HVAC - Electrification (Electrification)                               |                    (37,457) |                                          1.444 |                                       (29.971) |               - |            3,073,418 |                      377,807 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |                    (38,489) |                                          0.626 |                                       (30.722) |               - |            3,184,682 |                      395,861 |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |                     415,654 |                                        383.449 |                                         47.099 |         394,160 |            6,488,235 |                    1,671,263 |
 
 **2027-2029 Forecasted Metrics**
 
-| Program (category) | Annual Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Water (gallons) | Natural Gas (Therms) | Lifecycle CO2e (Metric Tons) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | 127,296 | 30.192 | 13.293 | 647,686 | 978,721 | 440,875 |
-| Appliance Rebates - EE (EE) | 109,543 | 25.680 | 11.812 | 647,686 | 978,721 | 407,989 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | (39,040) | 31.755 | (57.396) | 502,947 | 10,007,876 | 1,444,369 |
-| Home Upgrade - Electrification (Electrification) | (2,710) | (2.149) | (1.974) | - | 292,393 | 46,465 |
-| HVAC - EE (EE) | 23,564 | 15.961 | 14.768 | - | 26,920 | 115,397 |
-| HVAC - Electrification (Electrification) | (102,464) | 3.951 | (81.989) | - | 8,408,005 | 993,444 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | (105,174) | 1.802 | (83.963) | - | 8,700,399 | 1,039,909 |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | 1,244,695 | 524.110 | 20.260 | 1,150,633 | 18,165,228 | 5,046,167 |
+| Program (category)                                                     | Annual Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Water (gallons) | Natural Gas (Therms) | Lifecycle CO2e (Metric Tons) |
+| ---------------------------------------------------------------------- | --------------------------: | ---------------------------------------------: | ---------------------------------------------: | --------------: | -------------------: | ---------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |                     127,296 |                                         30.192 |                                         13.293 |         647,686 |              978,721 |                      440,875 |
+| Appliance Rebates - EE (EE)                                            |                     109,543 |                                         25.680 |                                         11.812 |         647,686 |              978,721 |                      407,989 |
+| Appliance Rebates - Electrification (Electrification)                  |                           - |                                              - |                                              - |               - |                    - |                            - |
+| Home Optimization and Retrofit (EE & Electrification)                  |                    (39,040) |                                         31.755 |                                       (57.396) |         502,947 |           10,007,876 |                    1,444,369 |
+| Home Upgrade - Electrification (Electrification)                       |                     (2,710) |                                        (2.149) |                                        (1.974) |               - |              292,393 |                       46,465 |
+| HVAC - EE (EE)                                                         |                      23,564 |                                         15.961 |                                         14.768 |               - |               26,920 |                      115,397 |
+| HVAC - Electrification (Electrification)                               |                   (102,464) |                                          3.951 |                                       (81.989) |               - |            8,408,005 |                      993,444 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |                   (105,174) |                                          1.802 |                                       (83.963) |               - |            8,700,399 |                    1,039,909 |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |                   1,244,695 |                                        524.110 |                                         20.260 |       1,150,633 |           18,165,228 |                    5,046,167 |
 
 [PDF p. 124]
 
-**Table ES-3A 2027 to 2029 Plan - High Scenario** 
+**Table ES-3A 2027 to 2029 Plan - High Scenario**
 _EmPOWER Maryland Energy Efficiency, Conservation, and Demand Response Forecasted Total Program Costs by Category for 2027-2029 Plan_
 
-| Program (category) | Capital Costs | Operations and Maintenance Costs | Utility Administration Costs | Outside Services Costs | Marketing Costs | Evaluation, Monitoring and Verification Costs | Total Non-incentive Costs | Customer Incentives | Total Program Costs |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) |  |  | $368,000 | $4,019,515 | $2,146,479 | $195,000 | $6,728,994 | $6,227,583 | $12,956,577 |
-| Appliance Rebates - EE (EE) |  |  | $303,000 | $2,783,000 | $1,500,000 | $152,000 | $4,738,000 | $5,386,919 | $10,124,919 |
-| Appliance Rebates - Electrification (Electrification) |  |  | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) |  |  | $2,336,000 | $4,713,000 | $4,210,000 | $1,246,000 | $12,505,000 | $70,375,837 | $82,880,837 |
-| Home Upgrade - Electrification (Electrification) |  |  | - | - | - | - | - | $2,226,697 | $2,226,697 |
-| HVAC - EE (EE) |  |  | $1,140,000 | $2,850,000 | $2,480,000 | $674,000 | $7,144,000 | $12,849,542 | $19,993,542 |
-| HVAC - Electrification (Electrification) |  |  | - | - | - | - | - | $24,876,888 | $24,876,888 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | - | - | - | - | - | - | - | $27,103,585 | $27,103,585 |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | $3,998,393 | $5,304,877 | $6,182,593 | $35,960,158 | $16,346,479 | $3,599,000 | $71,391,500 | $182,327,586 | $253,719,086 |
+| Program (category)                                                     | Capital Costs | Operations and Maintenance Costs | Utility Administration Costs | Outside Services Costs | Marketing Costs | Evaluation, Monitoring and Verification Costs | Total Non-incentive Costs | Customer Incentives | Total Program Costs |
+| ---------------------------------------------------------------------- | ------------: | -------------------------------: | ---------------------------: | ---------------------: | --------------: | --------------------------------------------: | ------------------------: | ------------------: | ------------------: |
+| Energy Efficient Products (EE & Electrification)                       |               |                                  |                     $368,000 |             $4,019,515 |      $2,146,479 |                                      $195,000 |                $6,728,994 |          $6,227,583 |         $12,956,577 |
+| Appliance Rebates - EE (EE)                                            |               |                                  |                     $303,000 |             $2,783,000 |      $1,500,000 |                                      $152,000 |                $4,738,000 |          $5,386,919 |         $10,124,919 |
+| Appliance Rebates - Electrification (Electrification)                  |               |                                  |                            - |                      - |               - |                                             - |                         - |                   - |                   - |
+| Home Optimization and Retrofit (EE & Electrification)                  |               |                                  |                   $2,336,000 |             $4,713,000 |      $4,210,000 |                                    $1,246,000 |               $12,505,000 |         $70,375,837 |         $82,880,837 |
+| Home Upgrade - Electrification (Electrification)                       |               |                                  |                            - |                      - |               - |                                             - |                         - |          $2,226,697 |          $2,226,697 |
+| HVAC - EE (EE)                                                         |               |                                  |                   $1,140,000 |             $2,850,000 |      $2,480,000 |                                      $674,000 |                $7,144,000 |         $12,849,542 |         $19,993,542 |
+| HVAC - Electrification (Electrification)                               |               |                                  |                            - |                      - |               - |                                             - |                         - |         $24,876,888 |         $24,876,888 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |             - |                                - |                            - |                      - |               - |                                             - |                         - |         $27,103,585 |         $27,103,585 |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |    $3,998,393 |                       $5,304,877 |                   $6,182,593 |            $35,960,158 |     $16,346,479 |                                    $3,599,000 |               $71,391,500 |        $182,327,586 |        $253,719,086 |
 
 [PDF p. 125]
 
-**Table ES-3B 2027 to 2029 Plan - High Scenario** 
+**Table ES-3B 2027 to 2029 Plan - High Scenario**
 _EmPOWER Maryland Energy Efficiency, Conservation, and Demand Response Forecasted Total Program Costs by Category for 2027-2029 Plan_
 
-| Program (category) | Capital Costs | Operations and Maintenance Costs | Utility Administration Costs | Outside Services Costs | Marketing Costs | Evaluation, Monitoring and Verification Costs | Total Non-incentive Costs | Customer Incentives | Total Program Costs |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) |  |  | $381,000 | $4,180,000 | $2,232,000 | $203,000 | $6,996,000 | $6,495,871 | $13,491,871 |
-| Appliance Rebates - EE (EE) |  |  | $315,000 | $2,894,000 | $1,560,000 | $159,000 | $4,928,000 | $5,655,207 | $10,583,207 |
-| Appliance Rebates - Electrification (Electrification) |  |  | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) |  |  | $2,433,000 | $4,902,000 | $4,378,000 | $1,287,000 | $13,000,000 | $72,713,695 | $85,713,695 |
-| Home Upgrade - Electrification (Electrification) |  |  | - | - | - | - | - | $2,626,625 | $2,626,625 |
-| HVAC - EE (EE) |  |  | $1,199,000 | $2,964,000 | $2,579,000 | $694,000 | $7,436,000 | $13,492,046 | $20,928,046 |
-| HVAC - Electrification (Electrification) |  |  | - | - | - | - | - | $25,312,345 | $25,312,345 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | - | - | - | - | - | - | - | $27,938,970 | $27,938,970 |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | $4,180,055 | $6,693,072 | $6,449,053 | $37,457,325 | $16,840,000 | $3,736,000 | $75,355,505 | $186,269,841 | $261,625,346 |
+| Program (category)                                                     | Capital Costs | Operations and Maintenance Costs | Utility Administration Costs | Outside Services Costs | Marketing Costs | Evaluation, Monitoring and Verification Costs | Total Non-incentive Costs | Customer Incentives | Total Program Costs |
+| ---------------------------------------------------------------------- | ------------: | -------------------------------: | ---------------------------: | ---------------------: | --------------: | --------------------------------------------: | ------------------------: | ------------------: | ------------------: |
+| Energy Efficient Products (EE & Electrification)                       |               |                                  |                     $381,000 |             $4,180,000 |      $2,232,000 |                                      $203,000 |                $6,996,000 |          $6,495,871 |         $13,491,871 |
+| Appliance Rebates - EE (EE)                                            |               |                                  |                     $315,000 |             $2,894,000 |      $1,560,000 |                                      $159,000 |                $4,928,000 |          $5,655,207 |         $10,583,207 |
+| Appliance Rebates - Electrification (Electrification)                  |               |                                  |                            - |                      - |               - |                                             - |                         - |                   - |                   - |
+| Home Optimization and Retrofit (EE & Electrification)                  |               |                                  |                   $2,433,000 |             $4,902,000 |      $4,378,000 |                                    $1,287,000 |               $13,000,000 |         $72,713,695 |         $85,713,695 |
+| Home Upgrade - Electrification (Electrification)                       |               |                                  |                            - |                      - |               - |                                             - |                         - |          $2,626,625 |          $2,626,625 |
+| HVAC - EE (EE)                                                         |               |                                  |                   $1,199,000 |             $2,964,000 |      $2,579,000 |                                      $694,000 |                $7,436,000 |         $13,492,046 |         $20,928,046 |
+| HVAC - Electrification (Electrification)                               |               |                                  |                            - |                      - |               - |                                             - |                         - |         $25,312,345 |         $25,312,345 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |             - |                                - |                            - |                      - |               - |                                             - |                         - |         $27,938,970 |         $27,938,970 |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |    $4,180,055 |                       $6,693,072 |                   $6,449,053 |            $37,457,325 |     $16,840,000 |                                    $3,736,000 |               $75,355,505 |        $186,269,841 |        $261,625,346 |
 
 [PDF p. 126]
 
-**Table ES-3C 2027 to 2029 Plan - High Scenario** 
+**Table ES-3C 2027 to 2029 Plan - High Scenario**
 _EmPOWER Maryland Energy Efficiency, Conservation, and Demand Response Forecasted Total Program Costs by Category for 2027-2029 Plan_
 
-| Program (category) | Capital Costs | Operations and Maintenance Costs | Utility Administration Costs | Outside Services Costs | Marketing Costs | Evaluation, Monitoring and Verification Costs | Total Non-incentive Costs | Customer Incentives | Total Program Costs |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) |  |  | $392,000 | $4,347,000 | $2,321,000 | $211,000 | $7,271,000 | $6,778,360 | $14,049,360 |
-| Appliance Rebates - EE (EE) |  |  | $325,000 | $3,010,000 | $1,622,000 | $166,000 | $5,123,000 | $5,937,697 | $11,060,697 |
-| Appliance Rebates - Electrification (Electrification) |  |  | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) |  |  | $2,541,000 | $5,099,000 | $4,553,000 | $1,362,000 | $13,555,000 | $77,109,122 | $90,664,122 |
-| Home Upgrade - Electrification (Electrification) |  |  | - | - | - | - | - | $3,020,011 | $3,020,011 |
-| HVAC - EE (EE) |  |  | $1,263,000 | $3,083,000 | $2,682,000 | $746,000 | $7,774,000 | $14,163,876 | $21,937,876 |
-| HVAC - Electrification (Electrification) |  |  | - | - | - | - | - | $27,735,975 | $27,735,975 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | - | - | - | - | - | - | - | $30,755,986 | $30,755,986 |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | $4,094,499 | $7,073,472 | $6,694,114 | $39,019,191 | $17,353,000 | $3,884,000 | $78,118,276 | $192,652,174 | $270,770,451 |
+| Program (category)                                                     | Capital Costs | Operations and Maintenance Costs | Utility Administration Costs | Outside Services Costs | Marketing Costs | Evaluation, Monitoring and Verification Costs | Total Non-incentive Costs | Customer Incentives | Total Program Costs |
+| ---------------------------------------------------------------------- | ------------: | -------------------------------: | ---------------------------: | ---------------------: | --------------: | --------------------------------------------: | ------------------------: | ------------------: | ------------------: |
+| Energy Efficient Products (EE & Electrification)                       |               |                                  |                     $392,000 |             $4,347,000 |      $2,321,000 |                                      $211,000 |                $7,271,000 |          $6,778,360 |         $14,049,360 |
+| Appliance Rebates - EE (EE)                                            |               |                                  |                     $325,000 |             $3,010,000 |      $1,622,000 |                                      $166,000 |                $5,123,000 |          $5,937,697 |         $11,060,697 |
+| Appliance Rebates - Electrification (Electrification)                  |               |                                  |                            - |                      - |               - |                                             - |                         - |                   - |                   - |
+| Home Optimization and Retrofit (EE & Electrification)                  |               |                                  |                   $2,541,000 |             $5,099,000 |      $4,553,000 |                                    $1,362,000 |               $13,555,000 |         $77,109,122 |         $90,664,122 |
+| Home Upgrade - Electrification (Electrification)                       |               |                                  |                            - |                      - |               - |                                             - |                         - |          $3,020,011 |          $3,020,011 |
+| HVAC - EE (EE)                                                         |               |                                  |                   $1,263,000 |             $3,083,000 |      $2,682,000 |                                      $746,000 |                $7,774,000 |         $14,163,876 |         $21,937,876 |
+| HVAC - Electrification (Electrification)                               |               |                                  |                            - |                      - |               - |                                             - |                         - |         $27,735,975 |         $27,735,975 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |             - |                                - |                            - |                      - |               - |                                             - |                         - |         $30,755,986 |         $30,755,986 |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |    $4,094,499 |                       $7,073,472 |                   $6,694,114 |            $39,019,191 |     $17,353,000 |                                    $3,884,000 |               $78,118,276 |        $192,652,174 |        $270,770,451 |
 
 [PDF p. 127]
 
-**Table ES-3D 2027 to 2029 Plan - High Scenario** 
+**Table ES-3D 2027 to 2029 Plan - High Scenario**
 _EmPOWER Maryland Energy Efficiency, Conservation, and Demand Response Forecasted Total Program Costs by Category for 2027-2029 Plan_
 
-| Program (category) | Capital Costs | Operations and Maintenance Costs | Utility Administration Costs | Outside Services Costs | Marketing Costs | Evaluation, Monitoring and Verification Costs | Total Non-incentive Costs | Customer Incentives | Total Program Costs |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) |  |  | $1,141,000 | $12,546,515 | $6,699,479 | $609,000 | $20,995,994 | $19,501,814 | $40,497,808 |
-| Appliance Rebates - EE (EE) |  |  | $943,000 | $8,687,000 | $4,682,000 | $477,000 | $14,789,000 | $16,979,824 | $31,768,824 |
-| Appliance Rebates - Electrification (Electrification) |  |  | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) |  |  | $7,310,000 | $14,714,000 | $13,141,000 | $3,895,000 | $39,060,000 | $220,198,655 | $259,258,655 |
-| Home Upgrade - Electrification (Electrification) |  |  | - | - | - | - | - | $7,873,333 | $7,873,333 |
-| HVAC - EE (EE) |  |  | $3,602,000 | $8,897,000 | $7,741,000 | $2,114,000 | $22,354,000 | $40,505,463 | $62,859,463 |
-| HVAC - Electrification (Electrification) |  |  | - | - | - | - | - | $77,925,208 | $77,925,208 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | - | - | - | - | - | - | - | $85,798,541 | $85,798,541 |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | $12,272,947 | $19,071,421 | $19,325,760 | $112,436,674 | $50,539,479 | $11,219,000 | $224,865,281 | $561,249,602 | $786,114,883 |
+| Program (category)                                                     | Capital Costs | Operations and Maintenance Costs | Utility Administration Costs | Outside Services Costs | Marketing Costs | Evaluation, Monitoring and Verification Costs | Total Non-incentive Costs | Customer Incentives | Total Program Costs |
+| ---------------------------------------------------------------------- | ------------: | -------------------------------: | ---------------------------: | ---------------------: | --------------: | --------------------------------------------: | ------------------------: | ------------------: | ------------------: |
+| Energy Efficient Products (EE & Electrification)                       |               |                                  |                   $1,141,000 |            $12,546,515 |      $6,699,479 |                                      $609,000 |               $20,995,994 |         $19,501,814 |         $40,497,808 |
+| Appliance Rebates - EE (EE)                                            |               |                                  |                     $943,000 |             $8,687,000 |      $4,682,000 |                                      $477,000 |               $14,789,000 |         $16,979,824 |         $31,768,824 |
+| Appliance Rebates - Electrification (Electrification)                  |               |                                  |                            - |                      - |               - |                                             - |                         - |                   - |                   - |
+| Home Optimization and Retrofit (EE & Electrification)                  |               |                                  |                   $7,310,000 |            $14,714,000 |     $13,141,000 |                                    $3,895,000 |               $39,060,000 |        $220,198,655 |        $259,258,655 |
+| Home Upgrade - Electrification (Electrification)                       |               |                                  |                            - |                      - |               - |                                             - |                         - |          $7,873,333 |          $7,873,333 |
+| HVAC - EE (EE)                                                         |               |                                  |                   $3,602,000 |             $8,897,000 |      $7,741,000 |                                    $2,114,000 |               $22,354,000 |         $40,505,463 |         $62,859,463 |
+| HVAC - Electrification (Electrification)                               |               |                                  |                            - |                      - |               - |                                             - |                         - |         $77,925,208 |         $77,925,208 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |             - |                                - |                            - |                      - |               - |                                             - |                         - |         $85,798,541 |         $85,798,541 |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |   $12,272,947 |                      $19,071,421 |                  $19,325,760 |           $112,436,674 |     $50,539,479 |                                   $11,219,000 |              $224,865,281 |        $561,249,602 |        $786,114,883 |
 
 [PDF p. 128]
 
-**Table ES-4 2027 to 2029 Plan - High Scenario** 
+**Table ES-4 2027 to 2029 Plan - High Scenario**
 _EmPOWER Maryland Energy Efficiency, Conservation, and Demand Response Plan and Programmatic Cost Effectiveness for 2027-2029 Plan_
 
-| Program (category) | MD Jurisdictional Cost Test (MJCT): NPV Costs ($1,000s) | MD Jurisdictional Cost Test (MJCT): NPV Benefits ($1,000s) | MD Jurisdictional Cost Test (MJCT): Ratio | All Ratepayers Test (TRC): NPV Costs ($1,000s) | All Ratepayers Test (TRC): NPV Benefits ($1,000s) | All Ratepayers Test (TRC): Ratio | Utility/Administrator Test: NPV Costs ($1,000s) | Utility/Administrator Test: NPV Benefits ($1,000s) | Utility/Administrator Test: Ratio | Participants Test: NPV Costs ($1,000s) | Participants Test: NPV Benefits ($1,000s) | Participants Test: Ratio | Ratepayer Impact Test (RIM): NPV Costs ($1,000s) | Ratepayer Impact Test (RIM): NPV Benefits ($1,000s) | Ratepayer Impact Test (RIM): Ratio |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | $67,039 | $173,465 | 2.6 | $64,485 | $85,487 | 1.3 | $35,526 | $85,487 | 2.4 | $46,065 | $50,877 | 1.1 | $35,526 | $56,322 | 1.6 |
-| Appliance Rebates - EE (EE) | $60,303 | $161,885 | 2.68 | $58,005 | $79,370 | 1.4 | $27,864 | $79,370 | 2.8 | $45,031 | $46,424 | 1.0 | $27,864 | $52,136 | 1.9 |
-| Appliance Rebates - Electrification (Electrification) | - | - | 0.0 | - | - | 0.0 | - | - | 0.0 | - | - | 0.0 | - | - | 0.0 |
-| Home Optimization and Retrofit (EE & Electrification) | $216,201 | $414,769 | 1.9 | $207,930 | $102,328 | 0.5 | $227,387 | $91,056 | 0.4 | $173,665 | $177,671 | 1.0 | $227,387 | $114,571 | 0.5 |
-| Home Upgrade - Electrification (Electrification) | $9,130 | $5,889 | 0.6 | $8,771 | $(4,609) | -0.5 | $6,873 | $(6,099) | -0.9 | $8,771 | $6,609 | 0.8 | $6,873 | $(4,572) | -0.7 |
-| HVAC - EE (EE) | $83,554 | $82,223 | 1.0 | $80,369 | $50,403 | 0.6 | $55,128 | $50,398 | 0.9 | $60,761 | $48,013 | 0.8 | $55,128 | $39,524 | 0.7 |
-| HVAC - Electrification (Electrification) | $42,235 | $178,499 | 4.2 | $40,600 | $(6,339) | -0.2 | $68,317 | $(15,229) | -0.2 | $40,600 | $18,183 | 0.4 | $68,317 | $36,301 | 0.5 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | $51,365 | $184,388 | 3.6 | $49,371 | $(10,947) | -0.2 | $75,190 | $(21,328) | -0.3 | $49,371 | $24,792 | 0.5 | $75,190 | $31,730 | 0.4 |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | $852,069 | $1,893,811 | 2.2 | $819,697 | $815,423 | 1.0 | $684,574 | $799,422 | 1.2 | $626,261 | $731,853 | 1.2 | $684,574 | $604,460 | 0.9 |
+| Program (category)                                                     | MD Jurisdictional Cost Test (MJCT): NPV Costs ($1,000s) | MD Jurisdictional Cost Test (MJCT): NPV Benefits ($1,000s) | MD Jurisdictional Cost Test (MJCT): Ratio | All Ratepayers Test (TRC): NPV Costs ($1,000s) | All Ratepayers Test (TRC): NPV Benefits ($1,000s) | All Ratepayers Test (TRC): Ratio | Utility/Administrator Test: NPV Costs ($1,000s) | Utility/Administrator Test: NPV Benefits ($1,000s) | Utility/Administrator Test: Ratio | Participants Test: NPV Costs ($1,000s) | Participants Test: NPV Benefits ($1,000s) | Participants Test: Ratio | Ratepayer Impact Test (RIM): NPV Costs ($1,000s) | Ratepayer Impact Test (RIM): NPV Benefits ($1,000s) | Ratepayer Impact Test (RIM): Ratio |
+| ---------------------------------------------------------------------- | ------------------------------------------------------: | ---------------------------------------------------------: | ----------------------------------------: | ---------------------------------------------: | ------------------------------------------------: | -------------------------------: | ----------------------------------------------: | -------------------------------------------------: | --------------------------------: | -------------------------------------: | ----------------------------------------: | -----------------------: | -----------------------------------------------: | --------------------------------------------------: | ---------------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |                                                 $67,039 |                                                   $173,465 |                                       2.6 |                                        $64,485 |                                           $85,487 |                              1.3 |                                         $35,526 |                                            $85,487 |                               2.4 |                                $46,065 |                                   $50,877 |                      1.1 |                                          $35,526 |                                             $56,322 |                                1.6 |
+| Appliance Rebates - EE (EE)                                            |                                                 $60,303 |                                                   $161,885 |                                      2.68 |                                        $58,005 |                                           $79,370 |                              1.4 |                                         $27,864 |                                            $79,370 |                               2.8 |                                $45,031 |                                   $46,424 |                      1.0 |                                          $27,864 |                                             $52,136 |                                1.9 |
+| Appliance Rebates - Electrification (Electrification)                  |                                                       - |                                                          - |                                       0.0 |                                              - |                                                 - |                              0.0 |                                               - |                                                  - |                               0.0 |                                      - |                                         - |                      0.0 |                                                - |                                                   - |                                0.0 |
+| Home Optimization and Retrofit (EE & Electrification)                  |                                                $216,201 |                                                   $414,769 |                                       1.9 |                                       $207,930 |                                          $102,328 |                              0.5 |                                        $227,387 |                                            $91,056 |                               0.4 |                               $173,665 |                                  $177,671 |                      1.0 |                                         $227,387 |                                            $114,571 |                                0.5 |
+| Home Upgrade - Electrification (Electrification)                       |                                                  $9,130 |                                                     $5,889 |                                       0.6 |                                         $8,771 |                                          $(4,609) |                             -0.5 |                                          $6,873 |                                           $(6,099) |                              -0.9 |                                 $8,771 |                                    $6,609 |                      0.8 |                                           $6,873 |                                            $(4,572) |                               -0.7 |
+| HVAC - EE (EE)                                                         |                                                 $83,554 |                                                    $82,223 |                                       1.0 |                                        $80,369 |                                           $50,403 |                              0.6 |                                         $55,128 |                                            $50,398 |                               0.9 |                                $60,761 |                                   $48,013 |                      0.8 |                                          $55,128 |                                             $39,524 |                                0.7 |
+| HVAC - Electrification (Electrification)                               |                                                 $42,235 |                                                   $178,499 |                                       4.2 |                                        $40,600 |                                          $(6,339) |                             -0.2 |                                         $68,317 |                                          $(15,229) |                              -0.2 |                                $40,600 |                                   $18,183 |                      0.4 |                                          $68,317 |                                             $36,301 |                                0.5 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |                                                 $51,365 |                                                   $184,388 |                                       3.6 |                                        $49,371 |                                         $(10,947) |                             -0.2 |                                         $75,190 |                                          $(21,328) |                              -0.3 |                                $49,371 |                                   $24,792 |                      0.5 |                                          $75,190 |                                             $31,730 |                                0.4 |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |                                                $852,069 |                                                 $1,893,811 |                                       2.2 |                                       $819,697 |                                          $815,423 |                              1.0 |                                        $684,574 |                                           $799,422 |                               1.2 |                               $626,261 |                                  $731,853 |                      1.2 |                                         $684,574 |                                            $604,460 |                                0.9 |
 
 [PDF p. 129]
 
-**Table ES-5 Gross 2027 to 2029 Plan - High Scenario** 
+**Table ES-5 Gross 2027 to 2029 Plan - High Scenario**
 _EmPOWER Maryland Energy Efficiency, Conservation, and Demand Response Forecasted Lifecycle Net Present Value Cost to Achieve for 2027-2029 Plan_
 
-| Program (category) | 2027: Forecasted Lifecycle Cost per kWh Saved ($) | 2027: Forecasted Lifecycle Cost per kW Demand Reduced ($) | 2028: Forecasted Lifecycle Cost per kWh Saved ($) | 2028: Forecasted Lifecycle Cost per kW Demand Reduced ($) | 2029: Forecasted Lifecycle Cost per kWh Saved ($) | 2029: Forecasted Lifecycle Cost per kW Demand Reduced ($) | 2027-2029: Forecasted Lifecycle Cost per kWh Saved ($) | 2027-2029: Forecasted Lifecycle Cost per kW Demand Reduced ($) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | $14.02102 | $0.00378 | $14.56634 | $0.00392 | $15.13963 | $0.00408 | $43.72699 | $0.01178 |
-| Appliance Rebates - EE (EE) | $10.92213 | $0.00289 | $11.46744 | $0.00303 | $12.04073 | $0.00318 | $34.43030 | $0.00910 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | $(6.06616) | $0.00092 | $(6.96406) | $0.00084 | $(7.96653) | $0.00074 | $(20.99676) | $0.00249 |
-| Home Upgrade - Electrification (Electrification) | $(1.68516) | $(0.00134) | $(1.93834) | $(0.00154) | $(2.22807) | $(0.00177) | $(5.85156) | $(0.00464) |
-| HVAC - EE (EE) | $2.09696 | $0.00146 | $2.20171 | $0.00154 | $2.31135 | $0.00161 | $6.61002 | $0.00462 |
-| HVAC - Electrification (Electrification) | $(7.94222) | $0.00031 | $(8.73952) | $0.00034 | $(9.61227) | $0.00037 | $(26.29400) | $0.00101 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | $(9.62737) | $(0.00103) | $(10.67785) | $(0.00120) | $(11.84034) | $(0.00140) | $(32.14556) | $(0.00363) |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | $56.78117 | $0.04350 | $54.38308 | $0.04399 | $49.79759 | $0.04477 | $160.96184 | $0.07075 |
+| Program (category)                                                     | 2027: Forecasted Lifecycle Cost per kWh Saved ($) | 2027: Forecasted Lifecycle Cost per kW Demand Reduced ($) | 2028: Forecasted Lifecycle Cost per kWh Saved ($) | 2028: Forecasted Lifecycle Cost per kW Demand Reduced ($) | 2029: Forecasted Lifecycle Cost per kWh Saved ($) | 2029: Forecasted Lifecycle Cost per kW Demand Reduced ($) | 2027-2029: Forecasted Lifecycle Cost per kWh Saved ($) | 2027-2029: Forecasted Lifecycle Cost per kW Demand Reduced ($) |
+| ---------------------------------------------------------------------- | ------------------------------------------------: | --------------------------------------------------------: | ------------------------------------------------: | --------------------------------------------------------: | ------------------------------------------------: | --------------------------------------------------------: | -----------------------------------------------------: | -------------------------------------------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |                                         $14.02102 |                                                  $0.00378 |                                         $14.56634 |                                                  $0.00392 |                                         $15.13963 |                                                  $0.00408 |                                              $43.72699 |                                                       $0.01178 |
+| Appliance Rebates - EE (EE)                                            |                                         $10.92213 |                                                  $0.00289 |                                         $11.46744 |                                                  $0.00303 |                                         $12.04073 |                                                  $0.00318 |                                              $34.43030 |                                                       $0.00910 |
+| Appliance Rebates - Electrification (Electrification)                  |                                                 - |                                                         - |                                                 - |                                                         - |                                                 - |                                                         - |                                                      - |                                                              - |
+| Home Optimization and Retrofit (EE & Electrification)                  |                                        $(6.06616) |                                                  $0.00092 |                                        $(6.96406) |                                                  $0.00084 |                                        $(7.96653) |                                                  $0.00074 |                                            $(20.99676) |                                                       $0.00249 |
+| Home Upgrade - Electrification (Electrification)                       |                                        $(1.68516) |                                                $(0.00134) |                                        $(1.93834) |                                                $(0.00154) |                                        $(2.22807) |                                                $(0.00177) |                                             $(5.85156) |                                                     $(0.00464) |
+| HVAC - EE (EE)                                                         |                                          $2.09696 |                                                  $0.00146 |                                          $2.20171 |                                                  $0.00154 |                                          $2.31135 |                                                  $0.00161 |                                               $6.61002 |                                                       $0.00462 |
+| HVAC - Electrification (Electrification)                               |                                        $(7.94222) |                                                  $0.00031 |                                        $(8.73952) |                                                  $0.00034 |                                        $(9.61227) |                                                  $0.00037 |                                            $(26.29400) |                                                       $0.00101 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |                                        $(9.62737) |                                                $(0.00103) |                                       $(10.67785) |                                                $(0.00120) |                                       $(11.84034) |                                                $(0.00140) |                                            $(32.14556) |                                                     $(0.00363) |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |                                         $56.78117 |                                                  $0.04350 |                                         $54.38308 |                                                  $0.04399 |                                         $49.79759 |                                                  $0.04477 |                                             $160.96184 |                                                       $0.07075 |
 
 [PDF p. 130]
 
-**Table ES-5 Net 2027 to 2029 Plan - High Scenario** 
+**Table ES-5 Net 2027 to 2029 Plan - High Scenario**
 _EmPOWER Maryland Energy Efficiency, Conservation, and Demand Response Forecasted Lifecycle Net Present Value Cost to Achieve for 2027-2029 Plan_
 
-| Program (category) | 2027: Forecasted Lifecycle Cost per kWh Saved ($) | 2027: Forecasted Lifecycle Cost per kW Demand Reduced ($) | 2028: Forecasted Lifecycle Cost per kWh Saved ($) | 2028: Forecasted Lifecycle Cost per kW Demand Reduced ($) | 2029: Forecasted Lifecycle Cost per kWh Saved ($) | 2029: Forecasted Lifecycle Cost per kW Demand Reduced ($) | 2027-2029: Forecasted Lifecycle Cost per kWh Saved ($) | 2027-2029: Forecasted Lifecycle Cost per kW Demand Reduced ($) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | $6.46144 | $0.00216 | $6.72117 | $0.00224 | $6.99437 | $0.00232 | $20.17699 | $0.00672 |
-| Appliance Rebates - EE (EE) | $5.20567 | $0.00159 | $5.46540 | $0.00167 | $5.73860 | $0.00175 | $16.40967 | $0.00500 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | $(3.48282) | $0.00040 | $(4.03146) | $0.00033 | $(4.64539) | $0.00024 | $(12.15966) | $0.00096 |
-| Home Upgrade - Electrification (Electrification) | $(1.21331) | $(0.00096) | $(1.39560) | $(0.00111) | $(1.60421) | $(0.00127) | $(4.21313) | $(0.00334) |
-| HVAC - EE (EE) | $1.22520 | $0.00082 | $1.28632 | $0.00086 | $1.35036 | $0.00091 | $3.86187 | $0.00259 |
-| HVAC - Electrification (Electrification) | $(4.60361) | $0.00018 | $(5.06565) | $0.00020 | $(5.57144) | $0.00022 | $(15.24070) | $0.00059 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | $(5.81692) | $(0.00078) | $(6.46126) | $(0.00091) | $(7.17565) | $(0.00106) | $(19.45383) | $(0.00275) |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | $45.92988 | $0.03986 | $44.84647 | $0.04037 | $41.91703 | $0.04119 | $132.69337 | $0.05990 |
+| Program (category)                                                     | 2027: Forecasted Lifecycle Cost per kWh Saved ($) | 2027: Forecasted Lifecycle Cost per kW Demand Reduced ($) | 2028: Forecasted Lifecycle Cost per kWh Saved ($) | 2028: Forecasted Lifecycle Cost per kW Demand Reduced ($) | 2029: Forecasted Lifecycle Cost per kWh Saved ($) | 2029: Forecasted Lifecycle Cost per kW Demand Reduced ($) | 2027-2029: Forecasted Lifecycle Cost per kWh Saved ($) | 2027-2029: Forecasted Lifecycle Cost per kW Demand Reduced ($) |
+| ---------------------------------------------------------------------- | ------------------------------------------------: | --------------------------------------------------------: | ------------------------------------------------: | --------------------------------------------------------: | ------------------------------------------------: | --------------------------------------------------------: | -----------------------------------------------------: | -------------------------------------------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |                                          $6.46144 |                                                  $0.00216 |                                          $6.72117 |                                                  $0.00224 |                                          $6.99437 |                                                  $0.00232 |                                              $20.17699 |                                                       $0.00672 |
+| Appliance Rebates - EE (EE)                                            |                                          $5.20567 |                                                  $0.00159 |                                          $5.46540 |                                                  $0.00167 |                                          $5.73860 |                                                  $0.00175 |                                              $16.40967 |                                                       $0.00500 |
+| Appliance Rebates - Electrification (Electrification)                  |                                                 - |                                                         - |                                                 - |                                                         - |                                                 - |                                                         - |                                                      - |                                                              - |
+| Home Optimization and Retrofit (EE & Electrification)                  |                                        $(3.48282) |                                                  $0.00040 |                                        $(4.03146) |                                                  $0.00033 |                                        $(4.64539) |                                                  $0.00024 |                                            $(12.15966) |                                                       $0.00096 |
+| Home Upgrade - Electrification (Electrification)                       |                                        $(1.21331) |                                                $(0.00096) |                                        $(1.39560) |                                                $(0.00111) |                                        $(1.60421) |                                                $(0.00127) |                                             $(4.21313) |                                                     $(0.00334) |
+| HVAC - EE (EE)                                                         |                                          $1.22520 |                                                  $0.00082 |                                          $1.28632 |                                                  $0.00086 |                                          $1.35036 |                                                  $0.00091 |                                               $3.86187 |                                                       $0.00259 |
+| HVAC - Electrification (Electrification)                               |                                        $(4.60361) |                                                  $0.00018 |                                        $(5.06565) |                                                  $0.00020 |                                        $(5.57144) |                                                  $0.00022 |                                            $(15.24070) |                                                       $0.00059 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |                                        $(5.81692) |                                                $(0.00078) |                                        $(6.46126) |                                                $(0.00091) |                                        $(7.17565) |                                                $(0.00106) |                                            $(19.45383) |                                                     $(0.00275) |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |                                         $45.92988 |                                                  $0.03986 |                                         $44.84647 |                                                  $0.04037 |                                         $41.91703 |                                                  $0.04119 |                                             $132.69337 |                                                       $0.05990 |
 
 [PDF p. 131]
 
-**Table ES-1 Gross 2027 to 2029 Plan - Low Scenario** 
+**Table ES-1 Gross 2027 to 2029 Plan - Low Scenario**
 _EmPOWER Maryland Energy Efficiency, Conservation, and Demand Response Programs Forecasted Metrics for 2027-2029 Plan_
 
 **2027 Forecasted Metrics**
 
-| Program (category) | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | 244,403 | 29,185 | 302,734 | 6.924 | 1.753 | 81.964 | 109,362 |
-| Appliance Rebates - EE (EE) | 244,403 | 29,185 | 302,734 | 6.924 | 1.753 | 81.964 | 109,362 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | 36,924 | (8,749) | (245,825) | 8.079 | (12.952) | 132.924 | 343,652 |
-| Home Upgrade - Electrification (Electrification) | 320 | (780) | (13,268) | (0.619) | (0.568) | (10.521) | 13,034 |
-| HVAC - EE (EE) | 9,676 | 6,779 | 119,397 | 4.563 | 4.227 | 82.940 | 36,095 |
-| HVAC - Electrification (Electrification) | 4,240 | (23,698) | (473,630) | 0.921 | (18.727) | 18.393 | 219,279 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | 4,560 | (24,479) | (486,898) | 0.302 | (19.295) | 7.873 | 232,313 |
+| Program (category)                                                     | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
+| ---------------------------------------------------------------------- | -----------------: | ------------------------------------: | -----------------------------: | ---------------------------------------------: | ---------------------------------------------: | ----------------------------: | ---------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |            244,403 |                                29,185 |                        302,734 |                                          6.924 |                                          1.753 |                        81.964 |                      109,362 |
+| Appliance Rebates - EE (EE)                                            |            244,403 |                                29,185 |                        302,734 |                                          6.924 |                                          1.753 |                        81.964 |                      109,362 |
+| Appliance Rebates - Electrification (Electrification)                  |                  - |                                     - |                              - |                                              - |                                              - |                             - |                            - |
+| Home Optimization and Retrofit (EE & Electrification)                  |             36,924 |                               (8,749) |                      (245,825) |                                          8.079 |                                       (12.952) |                       132.924 |                      343,652 |
+| Home Upgrade - Electrification (Electrification)                       |                320 |                                 (780) |                       (13,268) |                                        (0.619) |                                        (0.568) |                      (10.521) |                       13,034 |
+| HVAC - EE (EE)                                                         |              9,676 |                                 6,779 |                        119,397 |                                          4.563 |                                          4.227 |                        82.940 |                       36,095 |
+| HVAC - Electrification (Electrification)                               |              4,240 |                              (23,698) |                      (473,630) |                                          0.921 |                                       (18.727) |                        18.393 |                      219,279 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |              4,560 |                              (24,479) |                      (486,898) |                                          0.302 |                                       (19.295) |                         7.873 |                      232,313 |
 
 **2028 Forecasted Metrics**
 
-| Program (category) | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | 256,621 | 30,642 | 317,846 | 7.269 | 1.840 | 86.058 | 103,307 |
-| Appliance Rebates - EE (EE) | 256,621 | 30,642 | 317,846 | 7.269 | 1.840 | 86.058 | 103,307 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | 38,017 | (9,370) | (260,297) | 8.386 | (13.691) | 138.246 | 366,832 |
-| Home Upgrade - Electrification (Electrification) | 368 | (898) | (15,261) | (0.712) | (0.654) | (12.101) | 15,376 |
-| HVAC - EE (EE) | 10,159 | 7,117 | 125,360 | 4.791 | 4.438 | 87.087 | 34,735 |
-| HVAC - Electrification (Electrification) | 4,450 | (24,889) | (497,362) | 0.968 | (19.657) | 19.322 | 241,980 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | 4,818 | (25,787) | (512,623) | 0.256 | (20.311) | 7.221 | 257,356 |
+| Program (category)                                                     | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
+| ---------------------------------------------------------------------- | -----------------: | ------------------------------------: | -----------------------------: | ---------------------------------------------: | ---------------------------------------------: | ----------------------------: | ---------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |            256,621 |                                30,642 |                        317,846 |                                          7.269 |                                          1.840 |                        86.058 |                      103,307 |
+| Appliance Rebates - EE (EE)                                            |            256,621 |                                30,642 |                        317,846 |                                          7.269 |                                          1.840 |                        86.058 |                      103,307 |
+| Appliance Rebates - Electrification (Electrification)                  |                  - |                                     - |                              - |                                              - |                                              - |                             - |                            - |
+| Home Optimization and Retrofit (EE & Electrification)                  |             38,017 |                               (9,370) |                      (260,297) |                                          8.386 |                                       (13.691) |                       138.246 |                      366,832 |
+| Home Upgrade - Electrification (Electrification)                       |                368 |                                 (898) |                       (15,261) |                                        (0.712) |                                        (0.654) |                      (12.101) |                       15,376 |
+| HVAC - EE (EE)                                                         |             10,159 |                                 7,117 |                        125,360 |                                          4.791 |                                          4.438 |                        87.087 |                       34,735 |
+| HVAC - Electrification (Electrification)                               |              4,450 |                              (24,889) |                      (497,362) |                                          0.968 |                                       (19.657) |                        19.322 |                      241,980 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |              4,818 |                              (25,787) |                      (512,623) |                                          0.256 |                                       (20.311) |                         7.221 |                      257,356 |
 
 **2029 Forecasted Metrics**
 
-| Program (category) | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | 269,453 | 32,174 | 333,735 | 7.633 | 1.932 | 90.360 | 98,876 |
-| Appliance Rebates - EE (EE) | 269,453 | 32,174 | 333,735 | 7.633 | 1.932 | 90.360 | 98,876 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | 39,175 | (10,043) | (275,850) | 8.701 | (14.483) | 143.703 | 391,115 |
-| Home Upgrade - Electrification (Electrification) | 423 | (1,032) | (17,542) | (0.818) | (0.751) | (13.910) | 18,054 |
-| HVAC - EE (EE) | 10,667 | 7,472 | 131,620 | 5.031 | 4.660 | 91.450 | 33,722 |
-| HVAC - Electrification (Electrification) | 4,675 | (26,149) | (522,466) | 1.017 | (20.642) | 20.304 | 264,464 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | 5,098 | (27,181) | (540,009) | 0.199 | (21.393) | 6.394 | 282,518 |
+| Program (category)                                                     | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
+| ---------------------------------------------------------------------- | -----------------: | ------------------------------------: | -----------------------------: | ---------------------------------------------: | ---------------------------------------------: | ----------------------------: | ---------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |            269,453 |                                32,174 |                        333,735 |                                          7.633 |                                          1.932 |                        90.360 |                       98,876 |
+| Appliance Rebates - EE (EE)                                            |            269,453 |                                32,174 |                        333,735 |                                          7.633 |                                          1.932 |                        90.360 |                       98,876 |
+| Appliance Rebates - Electrification (Electrification)                  |                  - |                                     - |                              - |                                              - |                                              - |                             - |                            - |
+| Home Optimization and Retrofit (EE & Electrification)                  |             39,175 |                              (10,043) |                      (275,850) |                                          8.701 |                                       (14.483) |                       143.703 |                      391,115 |
+| Home Upgrade - Electrification (Electrification)                       |                423 |                               (1,032) |                       (17,542) |                                        (0.818) |                                        (0.751) |                      (13.910) |                       18,054 |
+| HVAC - EE (EE)                                                         |             10,667 |                                 7,472 |                        131,620 |                                          5.031 |                                          4.660 |                        91.450 |                       33,722 |
+| HVAC - Electrification (Electrification)                               |              4,675 |                              (26,149) |                      (522,466) |                                          1.017 |                                       (20.642) |                        20.304 |                      264,464 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |              5,098 |                              (27,181) |                      (540,009) |                                          0.199 |                                       (21.393) |                         6.394 |                      282,518 |
 
 **2027-2029 Forecasted Metrics**
 
-| Program (category) | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | 770,477 | 92,000 | 954,316 | 21.826 | 5.526 | 258.381 | 311,545 |
-| Appliance Rebates - EE (EE) | 770,477 | 92,000 | 954,316 | 21.826 | 5.526 | 258.381 | 311,545 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | 114,117 | (28,162) | (781,972) | 25.166 | (41.126) | 414.874 | 1,101,599 |
-| Home Upgrade - Electrification (Electrification) | 1,111 | (2,710) | (46,071) | (2.149) | (1.974) | (36.532) | 46,465 |
-| HVAC - EE (EE) | 30,503 | 21,368 | 376,377 | 14.384 | 13.326 | 261.477 | 104,552 |
-| HVAC - Electrification (Electrification) | 13,365 | (74,737) | (1,493,458) | 2.906 | (59.026) | 58.019 | 725,722 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | 14,476 | (77,447) | (1,539,529) | 0.757 | (60.999) | 21.488 | 772,187 |
+| Program (category)                                                     | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
+| ---------------------------------------------------------------------- | -----------------: | ------------------------------------: | -----------------------------: | ---------------------------------------------: | ---------------------------------------------: | ----------------------------: | ---------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |            770,477 |                                92,000 |                        954,316 |                                         21.826 |                                          5.526 |                       258.381 |                      311,545 |
+| Appliance Rebates - EE (EE)                                            |            770,477 |                                92,000 |                        954,316 |                                         21.826 |                                          5.526 |                       258.381 |                      311,545 |
+| Appliance Rebates - Electrification (Electrification)                  |                  - |                                     - |                              - |                                              - |                                              - |                             - |                            - |
+| Home Optimization and Retrofit (EE & Electrification)                  |            114,117 |                              (28,162) |                      (781,972) |                                         25.166 |                                       (41.126) |                       414.874 |                    1,101,599 |
+| Home Upgrade - Electrification (Electrification)                       |              1,111 |                               (2,710) |                       (46,071) |                                        (2.149) |                                        (1.974) |                      (36.532) |                       46,465 |
+| HVAC - EE (EE)                                                         |             30,503 |                                21,368 |                        376,377 |                                         14.384 |                                         13.326 |                       261.477 |                      104,552 |
+| HVAC - Electrification (Electrification)                               |             13,365 |                              (74,737) |                    (1,493,458) |                                          2.906 |                                       (59.026) |                        58.019 |                      725,722 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |             14,476 |                              (77,447) |                    (1,539,529) |                                          0.757 |                                       (60.999) |                        21.488 |                      772,187 |
 
 [PDF p. 132]
 
-**Table ES-1 Net 2027 to 2029 Plan - Low Scenario** 
+**Table ES-1 Net 2027 to 2029 Plan - Low Scenario**
 _EmPOWER Maryland Energy Efficiency, Conservation, and Demand Response Programs Forecasted Metrics for 2027-2029 Plan_
 
 **2027 Forecasted Metrics**
 
-| Program (category) | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | 244,403 | 15,548 | 139,083 | 4.078 | 1.358 | 44.580 | 53,004 |
-| Appliance Rebates - EE (EE) | 244,403 | 15,548 | 139,083 | 4.078 | 1.358 | 44.580 | 53,004 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | 36,924 | (3,477) | (124,951) | 5.156 | (7.146) | 80.572 | 215,488 |
-| Home Upgrade - Electrification (Electrification) | 320 | (562) | (9,553) | (0.446) | (0.409) | (7.575) | 9,601 |
-| HVAC - EE (EE) | 9,676 | 4,115 | 70,078 | 2.653 | 2.496 | 46.621 | 21,455 |
-| HVAC - Electrification (Electrification) | 4,240 | (13,778) | (274,852) | 0.539 | (10.807) | 10.709 | 129,197 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | 4,560 | (14,339) | (284,404) | 0.094 | (11.217) | 3.134 | 138,798 |
+| Program (category)                                                     | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
+| ---------------------------------------------------------------------- | -----------------: | ------------------------------------: | -----------------------------: | ---------------------------------------------: | ---------------------------------------------: | ----------------------------: | ---------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |            244,403 |                                15,548 |                        139,083 |                                          4.078 |                                          1.358 |                        44.580 |                       53,004 |
+| Appliance Rebates - EE (EE)                                            |            244,403 |                                15,548 |                        139,083 |                                          4.078 |                                          1.358 |                        44.580 |                       53,004 |
+| Appliance Rebates - Electrification (Electrification)                  |                  - |                                     - |                              - |                                              - |                                              - |                             - |                            - |
+| Home Optimization and Retrofit (EE & Electrification)                  |             36,924 |                               (3,477) |                      (124,951) |                                          5.156 |                                        (7.146) |                        80.572 |                      215,488 |
+| Home Upgrade - Electrification (Electrification)                       |                320 |                                 (562) |                        (9,553) |                                        (0.446) |                                        (0.409) |                       (7.575) |                        9,601 |
+| HVAC - EE (EE)                                                         |              9,676 |                                 4,115 |                         70,078 |                                          2.653 |                                          2.496 |                        46.621 |                       21,455 |
+| HVAC - Electrification (Electrification)                               |              4,240 |                              (13,778) |                      (274,852) |                                          0.539 |                                       (10.807) |                        10.709 |                      129,197 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |              4,560 |                              (14,339) |                      (284,404) |                                          0.094 |                                       (11.217) |                         3.134 |                      138,798 |
 
 **2028 Forecasted Metrics**
 
-| Program (category) | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | 256,621 | 16,324 | 146,019 | 4.281 | 1.426 | 46.806 | 49,752 |
-| Appliance Rebates - EE (EE) | 256,621 | 16,324 | 146,019 | 4.281 | 1.426 | 46.806 | 49,752 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | 38,017 | (3,797) | (132,909) | 5.343 | (7.573) | 83.636 | 229,283 |
-| Home Upgrade - Electrification (Electrification) | 368 | (646) | (10,988) | (0.513) | (0.471) | (8.713) | 11,317 |
-| HVAC - EE (EE) | 10,159 | 4,320 | 73,572 | 2.785 | 2.621 | 48.951 | 20,632 |
-| HVAC - Electrification (Electrification) | 4,450 | (14,474) | (288,693) | 0.567 | (11.344) | 11.258 | 142,548 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | 4,818 | (15,121) | (299,681) | 0.055 | (11.814) | 2.546 | 153,865 |
+| Program (category)                                                     | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
+| ---------------------------------------------------------------------- | -----------------: | ------------------------------------: | -----------------------------: | ---------------------------------------------: | ---------------------------------------------: | ----------------------------: | ---------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |            256,621 |                                16,324 |                        146,019 |                                          4.281 |                                          1.426 |                        46.806 |                       49,752 |
+| Appliance Rebates - EE (EE)                                            |            256,621 |                                16,324 |                        146,019 |                                          4.281 |                                          1.426 |                        46.806 |                       49,752 |
+| Appliance Rebates - Electrification (Electrification)                  |                  - |                                     - |                              - |                                              - |                                              - |                             - |                            - |
+| Home Optimization and Retrofit (EE & Electrification)                  |             38,017 |                               (3,797) |                      (132,909) |                                          5.343 |                                        (7.573) |                        83.636 |                      229,283 |
+| Home Upgrade - Electrification (Electrification)                       |                368 |                                 (646) |                       (10,988) |                                        (0.513) |                                        (0.471) |                       (8.713) |                       11,317 |
+| HVAC - EE (EE)                                                         |             10,159 |                                 4,320 |                         73,572 |                                          2.785 |                                          2.621 |                        48.951 |                       20,632 |
+| HVAC - Electrification (Electrification)                               |              4,450 |                              (14,474) |                      (288,693) |                                          0.567 |                                       (11.344) |                        11.258 |                      142,548 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |              4,818 |                              (15,121) |                      (299,681) |                                          0.055 |                                       (11.814) |                         2.546 |                      153,865 |
 
 **2029 Forecasted Metrics**
 
-| Program (category) | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | 269,453 | 17,140 | 153,318 | 4.495 | 1.497 | 49.146 | 47,357 |
-| Appliance Rebates - EE (EE) | 269,453 | 17,140 | 153,318 | 4.495 | 1.497 | 49.146 | 47,357 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | 39,175 | (4,146) | (141,506) | 5.533 | (8.030) | 86.758 | 243,914 |
-| Home Upgrade - Electrification (Electrification) | 423 | (743) | (12,630) | (0.589) | (0.541) | (10.015) | 13,284 |
-| HVAC - EE (EE) | 10,667 | 4,536 | 77,243 | 2.924 | 2.752 | 51.402 | 20,021 |
-| HVAC - Electrification (Electrification) | 4,675 | (15,212) | (303,348) | 0.597 | (11.911) | 11.840 | 155,793 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | 5,098 | (15,955) | (315,978) | 0.008 | (12.452) | 1.825 | 169,077 |
+| Program (category)                                                     | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
+| ---------------------------------------------------------------------- | -----------------: | ------------------------------------: | -----------------------------: | ---------------------------------------------: | ---------------------------------------------: | ----------------------------: | ---------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |            269,453 |                                17,140 |                        153,318 |                                          4.495 |                                          1.497 |                        49.146 |                       47,357 |
+| Appliance Rebates - EE (EE)                                            |            269,453 |                                17,140 |                        153,318 |                                          4.495 |                                          1.497 |                        49.146 |                       47,357 |
+| Appliance Rebates - Electrification (Electrification)                  |                  - |                                     - |                              - |                                              - |                                              - |                             - |                            - |
+| Home Optimization and Retrofit (EE & Electrification)                  |             39,175 |                               (4,146) |                      (141,506) |                                          5.533 |                                        (8.030) |                        86.758 |                      243,914 |
+| Home Upgrade - Electrification (Electrification)                       |                423 |                                 (743) |                       (12,630) |                                        (0.589) |                                        (0.541) |                      (10.015) |                       13,284 |
+| HVAC - EE (EE)                                                         |             10,667 |                                 4,536 |                         77,243 |                                          2.924 |                                          2.752 |                        51.402 |                       20,021 |
+| HVAC - Electrification (Electrification)                               |              4,675 |                              (15,212) |                      (303,348) |                                          0.597 |                                       (11.911) |                        11.840 |                      155,793 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |              5,098 |                              (15,955) |                      (315,978) |                                          0.008 |                                       (12.452) |                         1.825 |                      169,077 |
 
 **2027-2029 Forecasted Metrics**
 
-| Program (category) | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | 770,477 | 49,012 | 438,420 | 12.854 | 4.281 | 140.533 | 150,113 |
-| Appliance Rebates - EE (EE) | 770,477 | 49,012 | 438,420 | 12.854 | 4.281 | 140.533 | 150,113 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | 114,117 | (11,420) | (399,366) | 16.031 | (22.749) | 250.966 | 688,685 |
-| Home Upgrade - Electrification (Electrification) | 1,111 | (1,951) | (33,171) | (1.547) | (1.421) | (26.303) | 34,202 |
-| HVAC - EE (EE) | 30,503 | 12,972 | 220,893 | 8.362 | 7.869 | 146.974 | 62,107 |
-| HVAC - Electrification (Electrification) | 13,365 | (43,464) | (866,893) | 1.703 | (34.062) | 33.807 | 427,538 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | 14,476 | (45,415) | (900,064) | 0.156 | (35.483) | 7.505 | 461,740 |
+| Program (category)                                                     | Total Participants | Total Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Lifecycle Demand Savings (MW) | Lifecycle CO2e (Metric Tons) |
+| ---------------------------------------------------------------------- | -----------------: | ------------------------------------: | -----------------------------: | ---------------------------------------------: | ---------------------------------------------: | ----------------------------: | ---------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |            770,477 |                                49,012 |                        438,420 |                                         12.854 |                                          4.281 |                       140.533 |                      150,113 |
+| Appliance Rebates - EE (EE)                                            |            770,477 |                                49,012 |                        438,420 |                                         12.854 |                                          4.281 |                       140.533 |                      150,113 |
+| Appliance Rebates - Electrification (Electrification)                  |                  - |                                     - |                              - |                                              - |                                              - |                             - |                            - |
+| Home Optimization and Retrofit (EE & Electrification)                  |            114,117 |                              (11,420) |                      (399,366) |                                         16.031 |                                       (22.749) |                       250.966 |                      688,685 |
+| Home Upgrade - Electrification (Electrification)                       |              1,111 |                               (1,951) |                       (33,171) |                                        (1.547) |                                        (1.421) |                      (26.303) |                       34,202 |
+| HVAC - EE (EE)                                                         |             30,503 |                                12,972 |                        220,893 |                                          8.362 |                                          7.869 |                       146.974 |                       62,107 |
+| HVAC - Electrification (Electrification)                               |             13,365 |                              (43,464) |                      (866,893) |                                          1.703 |                                       (34.062) |                        33.807 |                      427,538 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |             14,476 |                              (45,415) |                      (900,064) |                                          0.156 |                                       (35.483) |                         7.505 |                      461,740 |
 
 [PDF p. 133]
 
-**Table ES-2 2027 to 2029 Plan - Low Scenario** 
+**Table ES-2 2027 to 2029 Plan - Low Scenario**
 _EmPOWER Maryland Energy Efficiency, Conservation, and Demand Response Programs Forecasted Metrics for 2027-2029 Plan_
 
 **2027 Forecasted Metrics**
 
-| Program (category) | Annual Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Water (gallons) | Natural Gas (Therms) | Lifecycle CO2e (Metric Tons) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | 29,185 | 6.924 | 1.753 | - | 38,519 | 109,362 |
-| Appliance Rebates - EE (EE) | 29,185 | 6.924 | 1.753 | - | 38,519 | 109,362 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | (8,749) | 8.079 | (12.952) | 41,917 | 2,317,008 | 343,652 |
-| Home Upgrade - Electrification (Electrification) | (780) | (0.619) | (0.568) | - | 84,280 | 13,034 |
-| HVAC - EE (EE) | 6,779 | 4.563 | 4.227 | - | 7,680 | 36,095 |
-| HVAC - Electrification (Electrification) | (23,698) | 0.921 | (18.727) | - | 1,950,592 | 219,279 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | (24,479) | 0.302 | (19.295) | - | 2,034,872 | 232,313 |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | 391,843 | 367.069 | 53.462 | 41,917 | 4,667,341 | 1,506,071 |
+| Program (category)                                                     | Annual Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Water (gallons) | Natural Gas (Therms) | Lifecycle CO2e (Metric Tons) |
+| ---------------------------------------------------------------------- | --------------------------: | ---------------------------------------------: | ---------------------------------------------: | --------------: | -------------------: | ---------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |                      29,185 |                                          6.924 |                                          1.753 |               - |               38,519 |                      109,362 |
+| Appliance Rebates - EE (EE)                                            |                      29,185 |                                          6.924 |                                          1.753 |               - |               38,519 |                      109,362 |
+| Appliance Rebates - Electrification (Electrification)                  |                           - |                                              - |                                              - |               - |                    - |                            - |
+| Home Optimization and Retrofit (EE & Electrification)                  |                     (8,749) |                                          8.079 |                                       (12.952) |          41,917 |            2,317,008 |                      343,652 |
+| Home Upgrade - Electrification (Electrification)                       |                       (780) |                                        (0.619) |                                        (0.568) |               - |               84,280 |                       13,034 |
+| HVAC - EE (EE)                                                         |                       6,779 |                                          4.563 |                                          4.227 |               - |                7,680 |                       36,095 |
+| HVAC - Electrification (Electrification)                               |                    (23,698) |                                          0.921 |                                       (18.727) |               - |            1,950,592 |                      219,279 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |                    (24,479) |                                          0.302 |                                       (19.295) |               - |            2,034,872 |                      232,313 |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |                     391,843 |                                        367.069 |                                         53.462 |          41,917 |            4,667,341 |                    1,506,071 |
 
 **2028 Forecasted Metrics**
 
-| Program (category) | Annual Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Water (gallons) | Natural Gas (Therms) | Lifecycle CO2e (Metric Tons) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | 30,642 | 7.269 | 1.840 | - | 40,451 | 103,307 |
-| Appliance Rebates - EE (EE) | 30,642 | 7.269 | 1.840 | - | 40,451 | 103,307 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | (9,370) | 8.386 | (13.691) | 41,917 | 2,439,196 | 366,832 |
-| Home Upgrade - Electrification (Electrification) | (898) | (0.712) | (0.654) | - | 96,848 | 15,376 |
-| HVAC - EE (EE) | 7,117 | 4.791 | 4.438 | - | 8,067 | 34,735 |
-| HVAC - Electrification (Electrification) | (24,889) | 0.968 | (19.657) | - | 2,049,412 | 241,980 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | (25,787) | 0.256 | (20.311) | - | 2,146,260 | 257,356 |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | 392,935 | 371.512 | 52.597 | 41,917 | 4,846,814 | 1,453,809 |
+| Program (category)                                                     | Annual Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Water (gallons) | Natural Gas (Therms) | Lifecycle CO2e (Metric Tons) |
+| ---------------------------------------------------------------------- | --------------------------: | ---------------------------------------------: | ---------------------------------------------: | --------------: | -------------------: | ---------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |                      30,642 |                                          7.269 |                                          1.840 |               - |               40,451 |                      103,307 |
+| Appliance Rebates - EE (EE)                                            |                      30,642 |                                          7.269 |                                          1.840 |               - |               40,451 |                      103,307 |
+| Appliance Rebates - Electrification (Electrification)                  |                           - |                                              - |                                              - |               - |                    - |                            - |
+| Home Optimization and Retrofit (EE & Electrification)                  |                     (9,370) |                                          8.386 |                                       (13.691) |          41,917 |            2,439,196 |                      366,832 |
+| Home Upgrade - Electrification (Electrification)                       |                       (898) |                                        (0.712) |                                        (0.654) |               - |               96,848 |                       15,376 |
+| HVAC - EE (EE)                                                         |                       7,117 |                                          4.791 |                                          4.438 |               - |                8,067 |                       34,735 |
+| HVAC - Electrification (Electrification)                               |                    (24,889) |                                          0.968 |                                       (19.657) |               - |            2,049,412 |                      241,980 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |                    (25,787) |                                          0.256 |                                       (20.311) |               - |            2,146,260 |                      257,356 |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |                     392,935 |                                        371.512 |                                         52.597 |          41,917 |            4,846,814 |                    1,453,809 |
 
 **2029 Forecasted Metrics**
 
-| Program (category) | Annual Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Water (gallons) | Natural Gas (Therms) | Lifecycle CO2e (Metric Tons) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | 32,174 | 7.633 | 1.932 | - | 42,473 | 98,876 |
-| Appliance Rebates - EE (EE) | 32,174 | 7.633 | 1.932 | - | 42,473 | 98,876 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | (10,043) | 8.701 | (14.483) | 41,917 | 2,568,929 | 391,115 |
-| Home Upgrade - Electrification (Electrification) | (1,032) | (0.818) | (0.751) | - | 111,265 | 18,054 |
-| HVAC - EE (EE) | 7,472 | 5.031 | 4.660 | - | 8,477 | 33,722 |
-| HVAC - Electrification (Electrification) | (26,149) | 1.017 | (20.642) | - | 2,153,320 | 264,464 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | (27,181) | 0.199 | (21.393) | - | 2,264,585 | 282,518 |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | 393,740 | 372.387 | 51.482 | 41,917 | 5,132,866 | 1,430,974 |
+| Program (category)                                                     | Annual Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Water (gallons) | Natural Gas (Therms) | Lifecycle CO2e (Metric Tons) |
+| ---------------------------------------------------------------------- | --------------------------: | ---------------------------------------------: | ---------------------------------------------: | --------------: | -------------------: | ---------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |                      32,174 |                                          7.633 |                                          1.932 |               - |               42,473 |                       98,876 |
+| Appliance Rebates - EE (EE)                                            |                      32,174 |                                          7.633 |                                          1.932 |               - |               42,473 |                       98,876 |
+| Appliance Rebates - Electrification (Electrification)                  |                           - |                                              - |                                              - |               - |                    - |                            - |
+| Home Optimization and Retrofit (EE & Electrification)                  |                    (10,043) |                                          8.701 |                                       (14.483) |          41,917 |            2,568,929 |                      391,115 |
+| Home Upgrade - Electrification (Electrification)                       |                     (1,032) |                                        (0.818) |                                        (0.751) |               - |              111,265 |                       18,054 |
+| HVAC - EE (EE)                                                         |                       7,472 |                                          5.031 |                                          4.660 |               - |                8,477 |                       33,722 |
+| HVAC - Electrification (Electrification)                               |                    (26,149) |                                          1.017 |                                       (20.642) |               - |            2,153,320 |                      264,464 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |                    (27,181) |                                          0.199 |                                       (21.393) |               - |            2,264,585 |                      282,518 |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |                     393,740 |                                        372.387 |                                         51.482 |          41,917 |            5,132,866 |                    1,430,974 |
 
 **2027-2029 Forecasted Metrics**
 
-| Program (category) | Annual Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Water (gallons) | Natural Gas (Therms) | Lifecycle CO2e (Metric Tons) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | 92,000 | 21.826 | 5.526 | - | 121,443 | 311,545 |
-| Appliance Rebates - EE (EE) | 92,000 | 21.826 | 5.526 | - | 121,443 | 311,545 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | (28,162) | 25.166 | (41.126) | 125,750 | 7,325,133 | 1,101,599 |
-| Home Upgrade - Electrification (Electrification) | (2,710) | (2.149) | (1.974) | - | 292,393 | 46,465 |
-| HVAC - EE (EE) | 21,368 | 14.384 | 13.326 | - | 24,224 | 104,552 |
-| HVAC - Electrification (Electrification) | (74,737) | 2.906 | (59.026) | - | 6,153,324 | 725,722 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | (77,447) | 0.757 | (60.999) | - | 6,445,717 | 772,187 |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | 1,178,518 | 493.589 | 28.763 | 125,750 | 14,647,021 | 4,390,854 |
+| Program (category)                                                     | Annual Energy Savings (MWh) | Coincident Peak Demand Reduction (MW) - Summer | Coincident Peak Demand Reduction (MW) - Winter | Water (gallons) | Natural Gas (Therms) | Lifecycle CO2e (Metric Tons) |
+| ---------------------------------------------------------------------- | --------------------------: | ---------------------------------------------: | ---------------------------------------------: | --------------: | -------------------: | ---------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |                      92,000 |                                         21.826 |                                          5.526 |               - |              121,443 |                      311,545 |
+| Appliance Rebates - EE (EE)                                            |                      92,000 |                                         21.826 |                                          5.526 |               - |              121,443 |                      311,545 |
+| Appliance Rebates - Electrification (Electrification)                  |                           - |                                              - |                                              - |               - |                    - |                            - |
+| Home Optimization and Retrofit (EE & Electrification)                  |                    (28,162) |                                         25.166 |                                       (41.126) |         125,750 |            7,325,133 |                    1,101,599 |
+| Home Upgrade - Electrification (Electrification)                       |                     (2,710) |                                        (2.149) |                                        (1.974) |               - |              292,393 |                       46,465 |
+| HVAC - EE (EE)                                                         |                      21,368 |                                         14.384 |                                         13.326 |               - |               24,224 |                      104,552 |
+| HVAC - Electrification (Electrification)                               |                    (74,737) |                                          2.906 |                                       (59.026) |               - |            6,153,324 |                      725,722 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |                    (77,447) |                                          0.757 |                                       (60.999) |               - |            6,445,717 |                      772,187 |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |                   1,178,518 |                                        493.589 |                                         28.763 |         125,750 |           14,647,021 |                    4,390,854 |
 
 [PDF p. 134]
 
-**Table ES-3A 2027 to 2029 Plan - Low Scenario** 
+**Table ES-3A 2027 to 2029 Plan - Low Scenario**
 _EmPOWER Maryland Energy Efficiency, Conservation, and Demand Response Forecasted Total Program Costs by Category for 2027-2029 Plan_
 
-| Program (category) | Capital Costs | Operations and Maintenance Costs | Utility Administration Costs | Outside Services Costs | Marketing Costs | Evaluation, Monitoring and Verification Costs | Total Non-incentive Costs | Customer Incentives | Total Program Costs |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) |  |  | $296,000 | $2,483,000 | $1,300,000 | $127,000 | $4,206,000 | $4,220,536 | $8,426,536 |
-| Appliance Rebates - EE (EE) |  |  | $296,000 | $2,483,000 | $1,300,000 | $127,000 | $4,206,000 | $4,220,536 | $8,426,536 |
-| Appliance Rebates - Electrification (Electrification) |  |  | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) |  |  | $2,099,000 | $4,191,000 | $3,810,000 | $835,000 | $10,935,000 | $44,597,898 | $55,532,898 |
-| Home Upgrade - Electrification (Electrification) |  |  | - | - | - | - | - | $2,226,697 | $2,226,697 |
-| HVAC - EE (EE) |  |  | $1,119,000 | $2,328,000 | $2,080,000 | $414,000 | $5,941,000 | $9,742,070 | $15,683,070 |
-| HVAC - Electrification (Electrification) |  |  | - | - | - | - | - | $11,840,032 | $11,840,032 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | - | - | - | - | - | - | - | $14,066,729 | $14,066,729 |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | $3,998,393 | $5,304,877 | $5,750,593 | $32,567,643 | $14,661,000 | $3,002,000 | $65,284,506 | $149,957,288 | $215,241,793 |
+| Program (category)                                                     | Capital Costs | Operations and Maintenance Costs | Utility Administration Costs | Outside Services Costs | Marketing Costs | Evaluation, Monitoring and Verification Costs | Total Non-incentive Costs | Customer Incentives | Total Program Costs |
+| ---------------------------------------------------------------------- | ------------: | -------------------------------: | ---------------------------: | ---------------------: | --------------: | --------------------------------------------: | ------------------------: | ------------------: | ------------------: |
+| Energy Efficient Products (EE & Electrification)                       |               |                                  |                     $296,000 |             $2,483,000 |      $1,300,000 |                                      $127,000 |                $4,206,000 |          $4,220,536 |          $8,426,536 |
+| Appliance Rebates - EE (EE)                                            |               |                                  |                     $296,000 |             $2,483,000 |      $1,300,000 |                                      $127,000 |                $4,206,000 |          $4,220,536 |          $8,426,536 |
+| Appliance Rebates - Electrification (Electrification)                  |               |                                  |                            - |                      - |               - |                                             - |                         - |                   - |                   - |
+| Home Optimization and Retrofit (EE & Electrification)                  |               |                                  |                   $2,099,000 |             $4,191,000 |      $3,810,000 |                                      $835,000 |               $10,935,000 |         $44,597,898 |         $55,532,898 |
+| Home Upgrade - Electrification (Electrification)                       |               |                                  |                            - |                      - |               - |                                             - |                         - |          $2,226,697 |          $2,226,697 |
+| HVAC - EE (EE)                                                         |               |                                  |                   $1,119,000 |             $2,328,000 |      $2,080,000 |                                      $414,000 |                $5,941,000 |          $9,742,070 |         $15,683,070 |
+| HVAC - Electrification (Electrification)                               |               |                                  |                            - |                      - |               - |                                             - |                         - |         $11,840,032 |         $11,840,032 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |             - |                                - |                            - |                      - |               - |                                             - |                         - |         $14,066,729 |         $14,066,729 |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |    $3,998,393 |                       $5,304,877 |                   $5,750,593 |            $32,567,643 |     $14,661,000 |                                    $3,002,000 |               $65,284,506 |        $149,957,288 |        $215,241,793 |
 
 [PDF p. 135]
 
-**Table ES-3B 2027 to 2029 Plan - Low Scenario** 
+**Table ES-3B 2027 to 2029 Plan - Low Scenario**
 _EmPOWER Maryland Energy Efficiency, Conservation, and Demand Response Forecasted Total Program Costs by Category for 2027-2029 Plan_
 
-| Program (category) | Capital Costs | Operations and Maintenance Costs | Utility Administration Costs | Outside Services Costs | Marketing Costs | Evaluation, Monitoring and Verification Costs | Total Non-incentive Costs | Customer Incentives | Total Program Costs |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) |  |  | $308,000 | $2,582,000 | $1,352,000 | $133,000 | $4,375,000 | $4,430,499 | $8,805,499 |
-| Appliance Rebates - EE (EE) |  |  | $308,000 | $2,582,000 | $1,352,000 | $133,000 | $4,375,000 | $4,430,499 | $8,805,499 |
-| Appliance Rebates - Electrification (Electrification) |  |  | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) |  |  | $2,198,000 | $4,359,000 | $3,962,000 | $877,000 | $11,396,000 | $46,958,833 | $58,354,833 |
-| Home Upgrade - Electrification (Electrification) |  |  | - | - | - | - | - | $2,626,625 | $2,626,625 |
-| HVAC - EE (EE) |  |  | $1,171,000 | $2,421,000 | $2,163,000 | $434,000 | $6,189,000 | $10,228,600 | $16,417,600 |
-| HVAC - Electrification (Electrification) |  |  | - | - | - | - | - | $12,454,541 | $12,454,541 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | - | - | - | - | - | - | - | $15,081,166 | $15,081,166 |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | $4,180,055 | $6,693,072 | $6,018,053 | $33,968,325 | $15,099,000 | $3,136,000 | $69,094,505 | $153,864,295 | $222,958,800 |
+| Program (category)                                                     | Capital Costs | Operations and Maintenance Costs | Utility Administration Costs | Outside Services Costs | Marketing Costs | Evaluation, Monitoring and Verification Costs | Total Non-incentive Costs | Customer Incentives | Total Program Costs |
+| ---------------------------------------------------------------------- | ------------: | -------------------------------: | ---------------------------: | ---------------------: | --------------: | --------------------------------------------: | ------------------------: | ------------------: | ------------------: |
+| Energy Efficient Products (EE & Electrification)                       |               |                                  |                     $308,000 |             $2,582,000 |      $1,352,000 |                                      $133,000 |                $4,375,000 |          $4,430,499 |          $8,805,499 |
+| Appliance Rebates - EE (EE)                                            |               |                                  |                     $308,000 |             $2,582,000 |      $1,352,000 |                                      $133,000 |                $4,375,000 |          $4,430,499 |          $8,805,499 |
+| Appliance Rebates - Electrification (Electrification)                  |               |                                  |                            - |                      - |               - |                                             - |                         - |                   - |                   - |
+| Home Optimization and Retrofit (EE & Electrification)                  |               |                                  |                   $2,198,000 |             $4,359,000 |      $3,962,000 |                                      $877,000 |               $11,396,000 |         $46,958,833 |         $58,354,833 |
+| Home Upgrade - Electrification (Electrification)                       |               |                                  |                            - |                      - |               - |                                             - |                         - |          $2,626,625 |          $2,626,625 |
+| HVAC - EE (EE)                                                         |               |                                  |                   $1,171,000 |             $2,421,000 |      $2,163,000 |                                      $434,000 |                $6,189,000 |         $10,228,600 |         $16,417,600 |
+| HVAC - Electrification (Electrification)                               |               |                                  |                            - |                      - |               - |                                             - |                         - |         $12,454,541 |         $12,454,541 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |             - |                                - |                            - |                      - |               - |                                             - |                         - |         $15,081,166 |         $15,081,166 |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |    $4,180,055 |                       $6,693,072 |                   $6,018,053 |            $33,968,325 |     $15,099,000 |                                    $3,136,000 |               $69,094,505 |        $153,864,295 |        $222,958,800 |
 
 [PDF p. 136]
 
-**Table ES-3C 2027 to 2029 Plan - Low Scenario** 
+**Table ES-3C 2027 to 2029 Plan - Low Scenario**
 _EmPOWER Maryland Energy Efficiency, Conservation, and Demand Response Forecasted Total Program Costs by Category for 2027-2029 Plan_
 
-| Program (category) | Capital Costs | Operations and Maintenance Costs | Utility Administration Costs | Outside Services Costs | Marketing Costs | Evaluation, Monitoring and Verification Costs | Total Non-incentive Costs | Customer Incentives | Total Program Costs |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) |  |  | $319,000 | $2,685,000 | $1,406,000 | $138,000 | $4,548,000 | $4,651,747 | $9,199,747 |
-| Appliance Rebates - EE (EE) |  |  | $319,000 | $2,685,000 | $1,406,000 | $138,000 | $4,548,000 | $4,651,747 | $9,199,747 |
-| Appliance Rebates - Electrification (Electrification) |  |  | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) |  |  | $2,306,000 | $4,534,000 | $4,121,000 | $921,000 | $11,882,000 | $49,422,010 | $61,304,010 |
-| Home Upgrade - Electrification (Electrification) |  |  | - | - | - | - | - | $3,020,011 | $3,020,011 |
-| HVAC - EE (EE) |  |  | $1,218,000 | $2,518,000 | $2,250,000 | $455,000 | $6,441,000 | $10,739,800 | $17,180,800 |
-| HVAC - Electrification (Electrification) |  |  | - | - | - | - | - | $13,106,549 | $13,106,549 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | - | - | - | - | - | - | - | $16,126,560 | $16,126,560 |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | $4,094,499 | $7,073,472 | $6,263,114 | $35,430,191 | $15,555,000 | $3,251,000 | $71,667,276 | $158,253,137 | $229,920,413 |
+| Program (category)                                                     | Capital Costs | Operations and Maintenance Costs | Utility Administration Costs | Outside Services Costs | Marketing Costs | Evaluation, Monitoring and Verification Costs | Total Non-incentive Costs | Customer Incentives | Total Program Costs |
+| ---------------------------------------------------------------------- | ------------: | -------------------------------: | ---------------------------: | ---------------------: | --------------: | --------------------------------------------: | ------------------------: | ------------------: | ------------------: |
+| Energy Efficient Products (EE & Electrification)                       |               |                                  |                     $319,000 |             $2,685,000 |      $1,406,000 |                                      $138,000 |                $4,548,000 |          $4,651,747 |          $9,199,747 |
+| Appliance Rebates - EE (EE)                                            |               |                                  |                     $319,000 |             $2,685,000 |      $1,406,000 |                                      $138,000 |                $4,548,000 |          $4,651,747 |          $9,199,747 |
+| Appliance Rebates - Electrification (Electrification)                  |               |                                  |                            - |                      - |               - |                                             - |                         - |                   - |                   - |
+| Home Optimization and Retrofit (EE & Electrification)                  |               |                                  |                   $2,306,000 |             $4,534,000 |      $4,121,000 |                                      $921,000 |               $11,882,000 |         $49,422,010 |         $61,304,010 |
+| Home Upgrade - Electrification (Electrification)                       |               |                                  |                            - |                      - |               - |                                             - |                         - |          $3,020,011 |          $3,020,011 |
+| HVAC - EE (EE)                                                         |               |                                  |                   $1,218,000 |             $2,518,000 |      $2,250,000 |                                      $455,000 |                $6,441,000 |         $10,739,800 |         $17,180,800 |
+| HVAC - Electrification (Electrification)                               |               |                                  |                            - |                      - |               - |                                             - |                         - |         $13,106,549 |         $13,106,549 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |             - |                                - |                            - |                      - |               - |                                             - |                         - |         $16,126,560 |         $16,126,560 |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |    $4,094,499 |                       $7,073,472 |                   $6,263,114 |            $35,430,191 |     $15,555,000 |                                    $3,251,000 |               $71,667,276 |        $158,253,137 |        $229,920,413 |
 
 [PDF p. 137]
 
-**Table ES-3D 2027 to 2029 Plan - Low Scenario** 
+**Table ES-3D 2027 to 2029 Plan - Low Scenario**
 _EmPOWER Maryland Energy Efficiency, Conservation, and Demand Response Forecasted Total Program Costs by Category for 2027-2029 Plan_
 
-| Program (category) | Capital Costs | Operations and Maintenance Costs | Utility Administration Costs | Outside Services Costs | Marketing Costs | Evaluation, Monitoring and Verification Costs | Total Non-incentive Costs | Customer Incentives | Total Program Costs |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) |  |  | $923,000 | $7,750,000 | $4,058,000 | $398,000 | $13,129,000 | $13,302,782 | $26,431,782 |
-| Appliance Rebates - EE (EE) |  |  | $923,000 | $7,750,000 | $4,058,000 | $398,000 | $13,129,000 | $13,302,782 | $26,431,782 |
-| Appliance Rebates - Electrification (Electrification) |  |  | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) |  |  | $6,603,000 | $13,084,000 | $11,893,000 | $2,633,000 | $34,213,000 | $140,978,741 | $175,191,741 |
-| Home Upgrade - Electrification (Electrification) |  |  | - | - | - | - | - | $7,873,333 | $7,873,333 |
-| HVAC - EE (EE) |  |  | $3,508,000 | $7,267,000 | $6,493,000 | $1,303,000 | $18,571,000 | $30,710,470 | $49,281,470 |
-| HVAC - Electrification (Electrification) |  |  | - | - | - | - | - | $37,401,122 | $37,401,122 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | - | - | - | - | - | - | - | $45,274,455 | $45,274,455 |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | $12,272,947 | $19,071,421 | $18,031,760 | $101,966,159 | $45,315,000 | $9,389,000 | $206,046,287 | $462,074,719 | $668,121,006 |
+| Program (category)                                                     | Capital Costs | Operations and Maintenance Costs | Utility Administration Costs | Outside Services Costs | Marketing Costs | Evaluation, Monitoring and Verification Costs | Total Non-incentive Costs | Customer Incentives | Total Program Costs |
+| ---------------------------------------------------------------------- | ------------: | -------------------------------: | ---------------------------: | ---------------------: | --------------: | --------------------------------------------: | ------------------------: | ------------------: | ------------------: |
+| Energy Efficient Products (EE & Electrification)                       |               |                                  |                     $923,000 |             $7,750,000 |      $4,058,000 |                                      $398,000 |               $13,129,000 |         $13,302,782 |         $26,431,782 |
+| Appliance Rebates - EE (EE)                                            |               |                                  |                     $923,000 |             $7,750,000 |      $4,058,000 |                                      $398,000 |               $13,129,000 |         $13,302,782 |         $26,431,782 |
+| Appliance Rebates - Electrification (Electrification)                  |               |                                  |                            - |                      - |               - |                                             - |                         - |                   - |                   - |
+| Home Optimization and Retrofit (EE & Electrification)                  |               |                                  |                   $6,603,000 |            $13,084,000 |     $11,893,000 |                                    $2,633,000 |               $34,213,000 |        $140,978,741 |        $175,191,741 |
+| Home Upgrade - Electrification (Electrification)                       |               |                                  |                            - |                      - |               - |                                             - |                         - |          $7,873,333 |          $7,873,333 |
+| HVAC - EE (EE)                                                         |               |                                  |                   $3,508,000 |             $7,267,000 |      $6,493,000 |                                    $1,303,000 |               $18,571,000 |         $30,710,470 |         $49,281,470 |
+| HVAC - Electrification (Electrification)                               |               |                                  |                            - |                      - |               - |                                             - |                         - |         $37,401,122 |         $37,401,122 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |             - |                                - |                            - |                      - |               - |                                             - |                         - |         $45,274,455 |         $45,274,455 |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |   $12,272,947 |                      $19,071,421 |                  $18,031,760 |           $101,966,159 |     $45,315,000 |                                    $9,389,000 |              $206,046,287 |        $462,074,719 |        $668,121,006 |
 
 [PDF p. 138]
 
-**Table ES-4 2027 to 2029 Plan - Low Scenario** 
+**Table ES-4 2027 to 2029 Plan - Low Scenario**
 _EmPOWER Maryland Energy Efficiency, Conservation, and Demand Response Plan and Programmatic Cost Effectiveness for 2027-2029 Plan_
 
-| Program (category) | MD Jurisdictional Cost Test (MJCT): NPV Costs ($1,000s) | MD Jurisdictional Cost Test (MJCT): NPV Benefits ($1,000s) | MD Jurisdictional Cost Test (MJCT): Ratio | All Ratepayers Test (TRC): NPV Costs ($1,000s) | All Ratepayers Test (TRC): NPV Benefits ($1,000s) | All Ratepayers Test (TRC): Ratio | Utility/Administrator Test: NPV Costs ($1,000s) | Utility/Administrator Test: NPV Benefits ($1,000s) | Utility/Administrator Test: Ratio | Participants Test: NPV Costs ($1,000s) | Participants Test: NPV Benefits ($1,000s) | Participants Test: Ratio | Ratepayer Impact Test (RIM): NPV Costs ($1,000s) | Ratepayer Impact Test (RIM): NPV Benefits ($1,000s) | Ratepayer Impact Test (RIM): Ratio |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Appliance Rebates - EE (EE) | $55,437 | $128,951 | 2.3 | $53,324 | $66,218 | 1.2 | $23,183 | $66,218 | 2.9 | $41,806 | $37,945 | 0.9 | $23,183 | $43,489 | 1.9 |
-| Appliance Rebates - Electrification (Electrification) | - | - | 0.0 | - | - | 0.0 | - | - | 0.0 | - | - | 0.0 | - | - | 0.0 |
-| Home Optimization and Retrofit (EE & Electrification) | $188,811 | $322,198 | 1.7 | $181,604 | $83,217 | 0.5 | $153,625 | $74,392 | 0.5 | $151,593 | $114,294 | 0.8 | $153,625 | $90,326 | 0.6 |
-| Home Upgrade - Electrification (Electrification) | $9,130 | $5,889 | 0.6 | $8,771 | $(4,609) | -0.5 | $6,873 | $(6,099) | -0.9 | $8,771 | $6,609 | 0.8 | $6,873 | $(4,572) | -0.7 |
-| HVAC - EE (EE) | $73,894 | $74,518 | 1.0 | $71,077 | $45,603 | 0.6 | $43,222 | $45,599 | 1.1 | $54,786 | $38,307 | 0.7 | $43,222 | $35,696 | 0.8 |
-| HVAC - Electrification (Electrification) | $31,263 | $130,749 | 4.2 | $30,070 | $(4,475) | -0.1 | $32,795 | $(10,924) | -0.3 | $30,070 | $(3,830) | -0.1 | $32,795 | $26,680 | 0.8 |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | $788,925 | $1,725,834 | 2.2 | $758,964 | $761,638 | 1.0 | $586,291 | $748,083 | 1.3 | $578,261 | $637,386 | 1.1 | $586,291 | $558,528 | 1.0 |
+| Program (category)                                              | MD Jurisdictional Cost Test (MJCT): NPV Costs ($1,000s) | MD Jurisdictional Cost Test (MJCT): NPV Benefits ($1,000s) | MD Jurisdictional Cost Test (MJCT): Ratio | All Ratepayers Test (TRC): NPV Costs ($1,000s) | All Ratepayers Test (TRC): NPV Benefits ($1,000s) | All Ratepayers Test (TRC): Ratio | Utility/Administrator Test: NPV Costs ($1,000s) | Utility/Administrator Test: NPV Benefits ($1,000s) | Utility/Administrator Test: Ratio | Participants Test: NPV Costs ($1,000s) | Participants Test: NPV Benefits ($1,000s) | Participants Test: Ratio | Ratepayer Impact Test (RIM): NPV Costs ($1,000s) | Ratepayer Impact Test (RIM): NPV Benefits ($1,000s) | Ratepayer Impact Test (RIM): Ratio |
+| --------------------------------------------------------------- | ------------------------------------------------------: | ---------------------------------------------------------: | ----------------------------------------: | ---------------------------------------------: | ------------------------------------------------: | -------------------------------: | ----------------------------------------------: | -------------------------------------------------: | --------------------------------: | -------------------------------------: | ----------------------------------------: | -----------------------: | -----------------------------------------------: | --------------------------------------------------: | ---------------------------------: |
+| Appliance Rebates - EE (EE)                                     |                                                 $55,437 |                                                   $128,951 |                                       2.3 |                                        $53,324 |                                           $66,218 |                              1.2 |                                         $23,183 |                                            $66,218 |                               2.9 |                                $41,806 |                                   $37,945 |                      0.9 |                                          $23,183 |                                             $43,489 |                                1.9 |
+| Appliance Rebates - Electrification (Electrification)           |                                                       - |                                                          - |                                       0.0 |                                              - |                                                 - |                              0.0 |                                               - |                                                  - |                               0.0 |                                      - |                                         - |                      0.0 |                                                - |                                                   - |                                0.0 |
+| Home Optimization and Retrofit (EE & Electrification)           |                                                $188,811 |                                                   $322,198 |                                       1.7 |                                       $181,604 |                                           $83,217 |                              0.5 |                                        $153,625 |                                            $74,392 |                               0.5 |                               $151,593 |                                  $114,294 |                      0.8 |                                         $153,625 |                                             $90,326 |                                0.6 |
+| Home Upgrade - Electrification (Electrification)                |                                                  $9,130 |                                                     $5,889 |                                       0.6 |                                         $8,771 |                                          $(4,609) |                             -0.5 |                                          $6,873 |                                           $(6,099) |                              -0.9 |                                 $8,771 |                                    $6,609 |                      0.8 |                                           $6,873 |                                            $(4,572) |                               -0.7 |
+| HVAC - EE (EE)                                                  |                                                 $73,894 |                                                    $74,518 |                                       1.0 |                                        $71,077 |                                           $45,603 |                              0.6 |                                         $43,222 |                                            $45,599 |                               1.1 |                                $54,786 |                                   $38,307 |                      0.7 |                                          $43,222 |                                             $35,696 |                                0.8 |
+| HVAC - Electrification (Electrification)                        |                                                 $31,263 |                                                   $130,749 |                                       4.2 |                                        $30,070 |                                          $(4,475) |                             -0.1 |                                         $32,795 |                                          $(10,924) |                              -0.3 |                                $30,070 |                                  $(3,830) |                     -0.1 |                                          $32,795 |                                             $26,680 |                                0.8 |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) |                                                $788,925 |                                                 $1,725,834 |                                       2.2 |                                       $758,964 |                                          $761,638 |                              1.0 |                                        $586,291 |                                           $748,083 |                               1.3 |                               $578,261 |                                  $637,386 |                      1.1 |                                         $586,291 |                                            $558,528 |                                1.0 |
 
 [PDF p. 139]
 
-**Table ES-5 Gross 2027 to 2029 Plan - Low Scenario** 
+**Table ES-5 Gross 2027 to 2029 Plan - Low Scenario**
 _EmPOWER Maryland Energy Efficiency, Conservation, and Demand Response Forecasted Lifecycle Net Present Value Cost to Achieve for 2027-2029 Plan_
 
-| Program (category) | 2027: Forecasted Lifecycle Cost per kWh Saved ($) | 2027: Forecasted Lifecycle Cost per kW Demand Reduced ($) | 2028: Forecasted Lifecycle Cost per kWh Saved ($) | 2028: Forecasted Lifecycle Cost per kW Demand Reduced ($) | 2029: Forecasted Lifecycle Cost per kWh Saved ($) | 2029: Forecasted Lifecycle Cost per kW Demand Reduced ($) | 2027-2029: Forecasted Lifecycle Cost per kWh Saved ($) | 2027-2029: Forecasted Lifecycle Cost per kW Demand Reduced ($) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | $11.4534 | $0.0031 | $12.0251 | $0.0033 | $12.6263 | $0.0034 | $36.1049 | $0.0098 |
-| Appliance Rebates - EE (EE) | $11.4534 | $0.0031 | $12.0251 | $0.0033 | $12.6263 | $0.0034 | $36.1049 | $0.0098 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | $(10.4170) | $0.0014 | $(11.1181) | $0.0013 | $(11.8829) | $0.0012 | $(33.4179) | $0.0039 |
-| Home Upgrade - Electrification (Electrification) | $(1.6852) | $(0.0013) | $(1.9383) | $(0.0015) | $(2.2281) | $(0.0018) | $(5.8516) | $(0.0046) |
-| HVAC - EE (EE) | $2.4228 | $0.0017 | $2.5438 | $0.0018 | $2.6708 | $0.0019 | $7.6373 | $0.0053 |
-| HVAC - Electrification (Electrification) | $(12.6635) | $0.0005 | $(13.2980) | $0.0005 | $(13.9693) | $0.0005 | $(39.9308) | $0.0016 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | $(14.3487) | $(0.0008) | $(15.2364) | $(0.0010) | $(16.1973) | $(0.0012) | $(45.7824) | $(0.0031) |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | $49.6766 | $0.0432 | $47.5043 | $0.0438 | $43.1871 | $0.0446 | $140.3680 | $0.0701 |
+| Program (category)                                                     | 2027: Forecasted Lifecycle Cost per kWh Saved ($) | 2027: Forecasted Lifecycle Cost per kW Demand Reduced ($) | 2028: Forecasted Lifecycle Cost per kWh Saved ($) | 2028: Forecasted Lifecycle Cost per kW Demand Reduced ($) | 2029: Forecasted Lifecycle Cost per kWh Saved ($) | 2029: Forecasted Lifecycle Cost per kW Demand Reduced ($) | 2027-2029: Forecasted Lifecycle Cost per kWh Saved ($) | 2027-2029: Forecasted Lifecycle Cost per kW Demand Reduced ($) |
+| ---------------------------------------------------------------------- | ------------------------------------------------: | --------------------------------------------------------: | ------------------------------------------------: | --------------------------------------------------------: | ------------------------------------------------: | --------------------------------------------------------: | -----------------------------------------------------: | -------------------------------------------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |                                          $11.4534 |                                                   $0.0031 |                                          $12.0251 |                                                   $0.0033 |                                          $12.6263 |                                                   $0.0034 |                                               $36.1049 |                                                        $0.0098 |
+| Appliance Rebates - EE (EE)                                            |                                          $11.4534 |                                                   $0.0031 |                                          $12.0251 |                                                   $0.0033 |                                          $12.6263 |                                                   $0.0034 |                                               $36.1049 |                                                        $0.0098 |
+| Appliance Rebates - Electrification (Electrification)                  |                                                 - |                                                         - |                                                 - |                                                         - |                                                 - |                                                         - |                                                      - |                                                              - |
+| Home Optimization and Retrofit (EE & Electrification)                  |                                        $(10.4170) |                                                   $0.0014 |                                        $(11.1181) |                                                   $0.0013 |                                        $(11.8829) |                                                   $0.0012 |                                             $(33.4179) |                                                        $0.0039 |
+| Home Upgrade - Electrification (Electrification)                       |                                         $(1.6852) |                                                 $(0.0013) |                                         $(1.9383) |                                                 $(0.0015) |                                         $(2.2281) |                                                 $(0.0018) |                                              $(5.8516) |                                                      $(0.0046) |
+| HVAC - EE (EE)                                                         |                                           $2.4228 |                                                   $0.0017 |                                           $2.5438 |                                                   $0.0018 |                                           $2.6708 |                                                   $0.0019 |                                                $7.6373 |                                                        $0.0053 |
+| HVAC - Electrification (Electrification)                               |                                        $(12.6635) |                                                   $0.0005 |                                        $(13.2980) |                                                   $0.0005 |                                        $(13.9693) |                                                   $0.0005 |                                             $(39.9308) |                                                        $0.0016 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |                                        $(14.3487) |                                                 $(0.0008) |                                        $(15.2364) |                                                 $(0.0010) |                                        $(16.1973) |                                                 $(0.0012) |                                             $(45.7824) |                                                      $(0.0031) |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |                                          $49.6766 |                                                   $0.0432 |                                          $47.5043 |                                                   $0.0438 |                                          $43.1871 |                                                   $0.0446 |                                              $140.3680 |                                                        $0.0701 |
 
 [PDF p. 140]
 
-**Table ES-5 Net 2027 to 2029 Plan - Low Scenario** 
+**Table ES-5 Net 2027 to 2029 Plan - Low Scenario**
 _EmPOWER Maryland Energy Efficiency, Conservation, and Demand Response Forecasted Lifecycle Net Present Value Cost to Achieve for 2027-2029 Plan_
 
-| Program (category) | 2027: Forecasted Lifecycle Cost per kWh Saved ($) | 2027: Forecasted Lifecycle Cost per kW Demand Reduced ($) | 2028: Forecasted Lifecycle Cost per kWh Saved ($) | 2028: Forecasted Lifecycle Cost per kW Demand Reduced ($) | 2029: Forecasted Lifecycle Cost per kWh Saved ($) | 2029: Forecasted Lifecycle Cost per kW Demand Reduced ($) | 2027-2029: Forecasted Lifecycle Cost per kWh Saved ($) | 2027-2029: Forecasted Lifecycle Cost per kW Demand Reduced ($) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Energy Efficient Products (EE & Electrification) | $5.2620 | $0.0017 | $5.5244 | $0.0018 | $5.8005 | $0.0019 | $16.5869 | $0.0053 |
-| Appliance Rebates - EE (EE) | $5.2620 | $0.0017 | $5.5244 | $0.0018 | $5.8005 | $0.0019 | $16.5869 | $0.0053 |
-| Appliance Rebates - Electrification (Electrification) | - | - | - | - | - | - | - | - |
-| Home Optimization and Retrofit (EE & Electrification) | $(6.0317) | $0.0007 | $(6.4657) | $0.0006 | $(6.9417) | $0.0005 | $(19.4391) | $0.0017 |
-| Home Upgrade - Electrification (Electrification) | $(1.2133) | $(0.0010) | $(1.3956) | $(0.0011) | $(1.6042) | $(0.0013) | $(4.2131) | $(0.0033) |
-| HVAC - EE (EE) | $1.4220 | $0.0009 | $1.4929 | $0.0010 | $1.5674 | $0.0010 | $4.4823 | $0.0030 |
-| HVAC - Electrification (Electrification) | $(7.3488) | $0.0003 | $(7.7188) | $0.0003 | $(8.1107) | $0.0003 | $(23.1783) | $0.0009 |
-| Residential EE&C Programs - Electrification Subtotal (Electrification) | $(8.5621) | $(0.0007) | $(9.1144) | $(0.0008) | $(9.7149) | $(0.0010) | $(27.3914) | $(0.0024) |
-| Utility Portfolio Total (Excluding DHCD) (EE & Electrification) | $42.0539 | $0.0396 | $41.0897 | $0.0401 | $38.3032 | $0.0410 | $121.4468 | $0.0592 |
-
+| Program (category)                                                     | 2027: Forecasted Lifecycle Cost per kWh Saved ($) | 2027: Forecasted Lifecycle Cost per kW Demand Reduced ($) | 2028: Forecasted Lifecycle Cost per kWh Saved ($) | 2028: Forecasted Lifecycle Cost per kW Demand Reduced ($) | 2029: Forecasted Lifecycle Cost per kWh Saved ($) | 2029: Forecasted Lifecycle Cost per kW Demand Reduced ($) | 2027-2029: Forecasted Lifecycle Cost per kWh Saved ($) | 2027-2029: Forecasted Lifecycle Cost per kW Demand Reduced ($) |
+| ---------------------------------------------------------------------- | ------------------------------------------------: | --------------------------------------------------------: | ------------------------------------------------: | --------------------------------------------------------: | ------------------------------------------------: | --------------------------------------------------------: | -----------------------------------------------------: | -------------------------------------------------------------: |
+| Energy Efficient Products (EE & Electrification)                       |                                           $5.2620 |                                                   $0.0017 |                                           $5.5244 |                                                   $0.0018 |                                           $5.8005 |                                                   $0.0019 |                                               $16.5869 |                                                        $0.0053 |
+| Appliance Rebates - EE (EE)                                            |                                           $5.2620 |                                                   $0.0017 |                                           $5.5244 |                                                   $0.0018 |                                           $5.8005 |                                                   $0.0019 |                                               $16.5869 |                                                        $0.0053 |
+| Appliance Rebates - Electrification (Electrification)                  |                                                 - |                                                         - |                                                 - |                                                         - |                                                 - |                                                         - |                                                      - |                                                              - |
+| Home Optimization and Retrofit (EE & Electrification)                  |                                         $(6.0317) |                                                   $0.0007 |                                         $(6.4657) |                                                   $0.0006 |                                         $(6.9417) |                                                   $0.0005 |                                             $(19.4391) |                                                        $0.0017 |
+| Home Upgrade - Electrification (Electrification)                       |                                         $(1.2133) |                                                 $(0.0010) |                                         $(1.3956) |                                                 $(0.0011) |                                         $(1.6042) |                                                 $(0.0013) |                                              $(4.2131) |                                                      $(0.0033) |
+| HVAC - EE (EE)                                                         |                                           $1.4220 |                                                   $0.0009 |                                           $1.4929 |                                                   $0.0010 |                                           $1.5674 |                                                   $0.0010 |                                                $4.4823 |                                                        $0.0030 |
+| HVAC - Electrification (Electrification)                               |                                         $(7.3488) |                                                   $0.0003 |                                         $(7.7188) |                                                   $0.0003 |                                         $(8.1107) |                                                   $0.0003 |                                             $(23.1783) |                                                        $0.0009 |
+| Residential EE&C Programs - Electrification Subtotal (Electrification) |                                         $(8.5621) |                                                 $(0.0007) |                                         $(9.1144) |                                                 $(0.0008) |                                         $(9.7149) |                                                 $(0.0010) |                                             $(27.3914) |                                                      $(0.0024) |
+| Utility Portfolio Total (Excluding DHCD) (EE & Electrification)        |                                          $42.0539 |                                                   $0.0396 |                                          $41.0897 |                                                   $0.0401 |                                          $38.3032 |                                                   $0.0410 |                                              $121.4468 |                                                        $0.0592 |
 
 [PDF p. 141]
 
@@ -3213,118 +3217,118 @@ _EmPOWER Maryland Energy Efficiency, Conservation, and Demand Response Forecaste
 
 _Extractor note (not source text): the PDF's text layer lists the table's cells without the merged Program/Subprogram cells; the Program and Subprogram assignments below were read from the rendered page. Column headings as printed: Program | Subprogram | Measure¹ | Up To Incentive Type | Incentive Up to Amount²,³ (Future 27-29). Footnotes 1–3 are printed at the bottom of PDF p. 142._
 
-| Program | Subprogram | Measure¹ | Up To Incentive Type | Incentive Up to Amount²,³ (Future 27-29) |
-| --- | --- | --- | --- | --- |
-| Energy Efficient Products | Appliance Recycling | Refrigerator Recycling | EE | $175 |
-| Energy Efficient Products | Appliance Recycling | Freezer Recycling | EE | $175 |
-| Energy Efficient Products | Appliance Recycling | Mini Refrigerator Recycling | EE | $75 |
-| Energy Efficient Products | Appliance Recycling | Room Air Conditioner Recycling | EE | $75 |
-| Energy Efficient Products | Appliance Recycling | Dehumidifier Recycling | EE | $175 |
-| Energy Efficient Products | Appliance Recycling | Pickup Fees | EE | $175 |
-| Energy Efficient Products | Appliance Rebates | Clothes Washer - Eff | EE | $200 |
-| Energy Efficient Products | Appliance Rebates | Clothes Washer - Most Eff | EE | $250 |
-| Energy Efficient Products | Appliance Rebates | Refrigerator -Eff | EE | $250 |
-| Energy Efficient Products | Appliance Rebates | Refrigerator - Most Eff | EE | $300 |
-| Energy Efficient Products | Appliance Rebates | Beverage Coolers - Eff | EE | $75 |
-| Energy Efficient Products | Appliance Rebates | Freezers - Eff | EE | $200 |
-| Energy Efficient Products | Appliance Rebates | Freezers - Most Eff | EE | $250 |
-| Energy Efficient Products | Appliance Rebates | Clothes Dryer - Eff | EE | $200 |
-| Energy Efficient Products | Appliance Rebates | Clothes Dryer - Most Eff | EE | $250 |
-| Energy Efficient Products | Appliance Rebates | Combination Washer/Dryer | EE | $250 |
-| Energy Efficient Products | Appliance Rebates | Air Purifier/Clnr - Eff | EE | $125 |
-| Energy Efficient Products | Appliance Rebates | Air Purifier/ Cleaner - Most Eff | EE | $125 |
-| Energy Efficient Products | Appliance Rebates | Room AC - Eff | EE | $150 |
-| Energy Efficient Products | Appliance Rebates | Room AC - Most Eff | EE | $150 |
-| Energy Efficient Products | Appliance Rebates | Dehumidifier - Eff | EE | $125 |
-| Energy Efficient Products | Appliance Rebates | Dehumidifier - Most Eff | EE | $125 |
-| Energy Efficient Products | Appliance Rebates | Heat Pump Water Heater | EE | $2,500 |
-| Energy Efficient Products | Appliance Rebates | Dishwasher - Eff | EE | $150 |
-| Energy Efficient Products | Appliance Rebates | EV Charging - Eff - Res | EE | $300 |
-| Energy Efficient Products | Appliance Rebates | Smart Thermostat - Eff | EE | $200 |
-| Energy Efficient Products | Appliance Rebates | Induction Cooktop - Eff | EE | $100 |
-| Energy Efficient Products | Appliance Rebates | Advanced Power Strip | EE | $50 |
-| Energy Efficient Products | Appliance Rebates | TVs | EE | $150 |
-| Energy Efficient Products | Appliance Rebates | Occupancy Sensor / Control | EE | $25 |
-| Energy Efficient Products | Appliance Rebates | LED Holiday Lights | EE | $25 |
-| Energy Efficient Products | Appliance Rebates | Ceiling Fans - Eff | EE | $25 |
-| Energy Efficient Products | Appliance Rebates | Clothes Dryer - Heat Pump | EE | $500 |
-| Energy Efficient Products | Appliance Rebates | 1.5gpm Kitchen Aerator | EE | $10 |
-| Energy Efficient Products | Appliance Rebates | 1.0gpm Bathroom Aerator | EE | $10 |
-| Energy Efficient Products | Appliance Rebates | 1.75 gpm Showerhead | EE | $30 |
-| Energy Efficient Products | Appliance Rebates | Energy Conservation Kit | EE | $150 |
-| Energy Efficient Products | Appliance Rebates | LED Fixtures | EE | $300 |
-| Energy Efficient Products | Appliance Rebates | New or Lighting Applications not Otherwise Listed (Agricultural) | EE | Same as C&I |
-| Energy Efficient Products | Appliance Rebates | Auto Milker Takeoff | EE | Same as C&I |
-| Energy Efficient Products | Appliance Rebates | Dairy Scroll Compressor | EE | Same as C&I |
-| Energy Efficient Products | Appliance Rebates | HE Ventilation Fans | EE | Same as C&I |
-| Energy Efficient Products | Appliance Rebates | Heat Reclaimers | EE | Same as C&I |
-| Energy Efficient Products | Appliance Rebates | High Volume Low Speed Fans | EE | Same as C&I |
-| Energy Efficient Products | Appliance Rebates | Livestock Waterer | EE | Same as C&I |
-| Energy Efficient Products | Appliance Rebates | Dairy Vac Pump VSD Controls | EE | Same as C&I |
-| Energy Efficient Products | Appliance Rebates | Low Pressure Irrigation | EE | Same as C&I |
-| Energy Efficient Products | Appliance Rebates | Dairy Refrigeration Tune-Up | EE | Same as C&I |
-| Energy Efficient Products | Appliance Rebates | Engine Block Heater Timer | EE | Same as C&I |
-| Energy Efficient Products | Appliance Rebates | New Agriculture Applications not Otherwise Listed | EE | Same as C&I |
-| Energy Efficient Products | Appliance Rebates | HPWH | Electrification | $4,000 |
-| Energy Efficient Products | Appliance Rebates | Make-Ready (Circuitry, Panel, Service Upgrade, etc.) | Electrification | $4,500 |
+| Program                   | Subprogram          | Measure¹                                                         | Up To Incentive Type | Incentive Up to Amount²,³ (Future 27-29) |
+| ------------------------- | ------------------- | ---------------------------------------------------------------- | -------------------- | ---------------------------------------- |
+| Energy Efficient Products | Appliance Recycling | Refrigerator Recycling                                           | EE                   | $175                                     |
+| Energy Efficient Products | Appliance Recycling | Freezer Recycling                                                | EE                   | $175                                     |
+| Energy Efficient Products | Appliance Recycling | Mini Refrigerator Recycling                                      | EE                   | $75                                      |
+| Energy Efficient Products | Appliance Recycling | Room Air Conditioner Recycling                                   | EE                   | $75                                      |
+| Energy Efficient Products | Appliance Recycling | Dehumidifier Recycling                                           | EE                   | $175                                     |
+| Energy Efficient Products | Appliance Recycling | Pickup Fees                                                      | EE                   | $175                                     |
+| Energy Efficient Products | Appliance Rebates   | Clothes Washer - Eff                                             | EE                   | $200                                     |
+| Energy Efficient Products | Appliance Rebates   | Clothes Washer - Most Eff                                        | EE                   | $250                                     |
+| Energy Efficient Products | Appliance Rebates   | Refrigerator -Eff                                                | EE                   | $250                                     |
+| Energy Efficient Products | Appliance Rebates   | Refrigerator - Most Eff                                          | EE                   | $300                                     |
+| Energy Efficient Products | Appliance Rebates   | Beverage Coolers - Eff                                           | EE                   | $75                                      |
+| Energy Efficient Products | Appliance Rebates   | Freezers - Eff                                                   | EE                   | $200                                     |
+| Energy Efficient Products | Appliance Rebates   | Freezers - Most Eff                                              | EE                   | $250                                     |
+| Energy Efficient Products | Appliance Rebates   | Clothes Dryer - Eff                                              | EE                   | $200                                     |
+| Energy Efficient Products | Appliance Rebates   | Clothes Dryer - Most Eff                                         | EE                   | $250                                     |
+| Energy Efficient Products | Appliance Rebates   | Combination Washer/Dryer                                         | EE                   | $250                                     |
+| Energy Efficient Products | Appliance Rebates   | Air Purifier/Clnr - Eff                                          | EE                   | $125                                     |
+| Energy Efficient Products | Appliance Rebates   | Air Purifier/ Cleaner - Most Eff                                 | EE                   | $125                                     |
+| Energy Efficient Products | Appliance Rebates   | Room AC - Eff                                                    | EE                   | $150                                     |
+| Energy Efficient Products | Appliance Rebates   | Room AC - Most Eff                                               | EE                   | $150                                     |
+| Energy Efficient Products | Appliance Rebates   | Dehumidifier - Eff                                               | EE                   | $125                                     |
+| Energy Efficient Products | Appliance Rebates   | Dehumidifier - Most Eff                                          | EE                   | $125                                     |
+| Energy Efficient Products | Appliance Rebates   | Heat Pump Water Heater                                           | EE                   | $2,500                                   |
+| Energy Efficient Products | Appliance Rebates   | Dishwasher - Eff                                                 | EE                   | $150                                     |
+| Energy Efficient Products | Appliance Rebates   | EV Charging - Eff - Res                                          | EE                   | $300                                     |
+| Energy Efficient Products | Appliance Rebates   | Smart Thermostat - Eff                                           | EE                   | $200                                     |
+| Energy Efficient Products | Appliance Rebates   | Induction Cooktop - Eff                                          | EE                   | $100                                     |
+| Energy Efficient Products | Appliance Rebates   | Advanced Power Strip                                             | EE                   | $50                                      |
+| Energy Efficient Products | Appliance Rebates   | TVs                                                              | EE                   | $150                                     |
+| Energy Efficient Products | Appliance Rebates   | Occupancy Sensor / Control                                       | EE                   | $25                                      |
+| Energy Efficient Products | Appliance Rebates   | LED Holiday Lights                                               | EE                   | $25                                      |
+| Energy Efficient Products | Appliance Rebates   | Ceiling Fans - Eff                                               | EE                   | $25                                      |
+| Energy Efficient Products | Appliance Rebates   | Clothes Dryer - Heat Pump                                        | EE                   | $500                                     |
+| Energy Efficient Products | Appliance Rebates   | 1.5gpm Kitchen Aerator                                           | EE                   | $10                                      |
+| Energy Efficient Products | Appliance Rebates   | 1.0gpm Bathroom Aerator                                          | EE                   | $10                                      |
+| Energy Efficient Products | Appliance Rebates   | 1.75 gpm Showerhead                                              | EE                   | $30                                      |
+| Energy Efficient Products | Appliance Rebates   | Energy Conservation Kit                                          | EE                   | $150                                     |
+| Energy Efficient Products | Appliance Rebates   | LED Fixtures                                                     | EE                   | $300                                     |
+| Energy Efficient Products | Appliance Rebates   | New or Lighting Applications not Otherwise Listed (Agricultural) | EE                   | Same as C&I                              |
+| Energy Efficient Products | Appliance Rebates   | Auto Milker Takeoff                                              | EE                   | Same as C&I                              |
+| Energy Efficient Products | Appliance Rebates   | Dairy Scroll Compressor                                          | EE                   | Same as C&I                              |
+| Energy Efficient Products | Appliance Rebates   | HE Ventilation Fans                                              | EE                   | Same as C&I                              |
+| Energy Efficient Products | Appliance Rebates   | Heat Reclaimers                                                  | EE                   | Same as C&I                              |
+| Energy Efficient Products | Appliance Rebates   | High Volume Low Speed Fans                                       | EE                   | Same as C&I                              |
+| Energy Efficient Products | Appliance Rebates   | Livestock Waterer                                                | EE                   | Same as C&I                              |
+| Energy Efficient Products | Appliance Rebates   | Dairy Vac Pump VSD Controls                                      | EE                   | Same as C&I                              |
+| Energy Efficient Products | Appliance Rebates   | Low Pressure Irrigation                                          | EE                   | Same as C&I                              |
+| Energy Efficient Products | Appliance Rebates   | Dairy Refrigeration Tune-Up                                      | EE                   | Same as C&I                              |
+| Energy Efficient Products | Appliance Rebates   | Engine Block Heater Timer                                        | EE                   | Same as C&I                              |
+| Energy Efficient Products | Appliance Rebates   | New Agriculture Applications not Otherwise Listed                | EE                   | Same as C&I                              |
+| Energy Efficient Products | Appliance Rebates   | HPWH                                                             | Electrification      | $4,000                                   |
+| Energy Efficient Products | Appliance Rebates   | Make-Ready (Circuitry, Panel, Service Upgrade, etc.)             | Electrification      | $4,500                                   |
 
 [PDF p. 142]
 
 **Attachment 2-A: Statewide Residential Incentives** (continued)
 
-| Program | Subprogram | Measure¹ | Up To Incentive Type | Incentive Up to Amount²,³ (Future 27-29) |
-| --- | --- | --- | --- | --- |
-| Home Retrofit | Home Energy Retrofit | Quick Home Energy Checkup (QHEC) | EE | No cost to customer |
-| Home Retrofit | Home Energy Retrofit | Smart Thermostat- (QHEC/HEIP) | EE | $400 |
-| Home Retrofit | Home Energy Retrofit | HVAC - Tune Up - (QHEC/HEIP) | EE | $400 |
-| Home Retrofit | Home Energy Retrofit | Comprehensive Audit | EE | $600 |
-| Home Retrofit | Home Energy Retrofit | Whole Home Retrofit Job | EE | $20,000 |
-| Home Retrofit | Home Energy Retrofit | Direct Install (QHEC/HEIP) | EE | $20,000 |
-| Home Retrofit | HVAC | Heat Pump - Air Source - Eff | EE | $3,000 |
-| Home Retrofit | HVAC | Heat Pump - Air Source - Most Eff | EE | $4,500 |
-| Home Retrofit | HVAC | Heat Pump - Cold Climate - Eff | EE | $4,500 |
-| Home Retrofit | HVAC | Heat Pump - Wtr & Geo - Eff | EE | $10,000 |
-| Home Retrofit | HVAC | Heat Pump - Ductless Mini - Single Zone Eff | EE | $2,000 |
-| Home Retrofit | HVAC | Heat Pump - Ductless Mini - Multi Zone Eff | EE | $3,000 |
-| Home Retrofit | HVAC | Central Air Conditioner - Eff | EE | $1,000 |
-| Home Retrofit | HVAC | Central Air Conditioner - Most Eff | EE | $1,500 |
-| Home Retrofit | HVAC | Air Conditioner - Ductless Mini - Eff | EE | $2,000 |
-| Home Retrofit | HVAC | PTAC | EE | $250 |
-| Home Retrofit | HVAC | PTHP | EE | $350 |
-| Home Retrofit | HVAC | Window Heat Pumps | EE | $1,500 |
-| Home Retrofit | HVAC | Furnace Fans | EE | $100 |
-| Home Retrofit | HVAC | Smart Thermostat- Eff | EE | $200 |
-| Home Retrofit | HVAC | HVAC - Tune Up | EE | $400 |
-| Home Retrofit | HVAC | Circulating Pump | EE | $75 |
-| Home Retrofit | HVAC | Bathroom Fans | EE | $25 |
-| Home Retrofit | HVAC | Heat Pump Water Heater - Eff | EE | $3,000 |
-| Home Retrofit | HVAC | ASHP | Electrification | $10,000 |
-| Home Retrofit | HVAC | Geothermal Heat Pump | Electrification | $11,500 |
-| Home Retrofit | HVAC | HPWH | Electrification | $5,000 |
-| Home Retrofit | HVAC | Make-Ready (Circuitry, Panel, Service Upgrade, etc.) | Electrification | $4,500 |
-| Home Retrofit | Home Energy Retrofit / HPwES | ASHP | Electrification | $25,000 (one merged cell spanning the ASHP, Geothermal Heat Pump and HPWH rows) |
-| Home Retrofit | Home Energy Retrofit / HPwES | Geothermal Heat Pump | Electrification | (see above) |
-| Home Retrofit | Home Energy Retrofit / HPwES | HPWH | Electrification | (see above) |
-| Home Retrofit | Home Energy Retrofit / HPwES | Make-Ready (Circuitry, Panel, Service Upgrade, etc.) | Electrification | $4,500 |
-| Home Retrofit | All | QA/QC Inspection | Electrification | $1,000 |
-| ENERGY STAR for New Homes | ENERGY STAR for New Homes | NC -Townhouse and Duplex Units | EE | $4,000 |
-| ENERGY STAR for New Homes | ENERGY STAR for New Homes | NC - Two-on-Two Condominium Units | EE | $4,000 |
-| ENERGY STAR for New Homes | ENERGY STAR for New Homes | NC - Single-family Detached Units | EE | $4,000 |
-| ENERGY STAR for New Homes | ENERGY STAR for New Homes | NC - Multi Family Low Rise | EE | $4,000 |
-| ENERGY STAR for New Homes | ENERGY STAR for New Homes | NC - Multi Family High Rise | EE | $4,000 |
-| ENERGY STAR for New Homes | ENERGY STAR for New Homes | NC - Next Gen Homes or All Electric | EE | $7,000 |
-| ENERGY STAR for New Homes | ENERGY STAR for New Homes | Smart Thermostat - Eff | EE | $200 |
-| ENERGY STAR for New Homes | ENERGY STAR for New Homes | Heat Pump Water Heater - Eff | EE | $3,000 |
-| ENERGY STAR for New Homes | ENERGY STAR for New Homes | Central Air Conditioner - Eff | EE | $1,000 |
-| ENERGY STAR for New Homes | ENERGY STAR for New Homes | Heat Pump - Eff | EE | $4,500 |
-| ENERGY STAR for New Homes | ENERGY STAR for New Homes | Heat Pump - Wtr & Geo - Eff | EE | $10,000 |
-| ENERGY STAR for New Homes | ENERGY STAR for New Homes | HVAC Grading | EE | $500 |
-| Demand Response - Residential | Load Control - Res | Load Control - Res (Summer) | DR | $250 |
-| Demand Response - Residential | Load Control - Res | Annual Enrollment/Loyalty Bonus Incentive - Res (Summer) | DR | $250 |
-| Demand Response - Residential | Load Control - Res | Load Control - Res (Winter & Summer) | DR | $250 |
-| Demand Response - Residential | Load Control - Res | Annual Enrollment/Loyalty Bonus Incentive - Res (Winter & Summer) | DR | $250 |
-| Demand Response - Residential | Load Control - Res | Battery Storage - Load Control | DR | $1,000 |
-| Demand Response - Residential | Load Control - Res | Annual Enrollment/Loyalty Bonus Incentive - Battery Storage | DR | $3,000 |
+| Program                       | Subprogram                   | Measure¹                                                          | Up To Incentive Type | Incentive Up to Amount²,³ (Future 27-29)                                        |
+| ----------------------------- | ---------------------------- | ----------------------------------------------------------------- | -------------------- | ------------------------------------------------------------------------------- |
+| Home Retrofit                 | Home Energy Retrofit         | Quick Home Energy Checkup (QHEC)                                  | EE                   | No cost to customer                                                             |
+| Home Retrofit                 | Home Energy Retrofit         | Smart Thermostat- (QHEC/HEIP)                                     | EE                   | $400                                                                            |
+| Home Retrofit                 | Home Energy Retrofit         | HVAC - Tune Up - (QHEC/HEIP)                                      | EE                   | $400                                                                            |
+| Home Retrofit                 | Home Energy Retrofit         | Comprehensive Audit                                               | EE                   | $600                                                                            |
+| Home Retrofit                 | Home Energy Retrofit         | Whole Home Retrofit Job                                           | EE                   | $20,000                                                                         |
+| Home Retrofit                 | Home Energy Retrofit         | Direct Install (QHEC/HEIP)                                        | EE                   | $20,000                                                                         |
+| Home Retrofit                 | HVAC                         | Heat Pump - Air Source - Eff                                      | EE                   | $3,000                                                                          |
+| Home Retrofit                 | HVAC                         | Heat Pump - Air Source - Most Eff                                 | EE                   | $4,500                                                                          |
+| Home Retrofit                 | HVAC                         | Heat Pump - Cold Climate - Eff                                    | EE                   | $4,500                                                                          |
+| Home Retrofit                 | HVAC                         | Heat Pump - Wtr & Geo - Eff                                       | EE                   | $10,000                                                                         |
+| Home Retrofit                 | HVAC                         | Heat Pump - Ductless Mini - Single Zone Eff                       | EE                   | $2,000                                                                          |
+| Home Retrofit                 | HVAC                         | Heat Pump - Ductless Mini - Multi Zone Eff                        | EE                   | $3,000                                                                          |
+| Home Retrofit                 | HVAC                         | Central Air Conditioner - Eff                                     | EE                   | $1,000                                                                          |
+| Home Retrofit                 | HVAC                         | Central Air Conditioner - Most Eff                                | EE                   | $1,500                                                                          |
+| Home Retrofit                 | HVAC                         | Air Conditioner - Ductless Mini - Eff                             | EE                   | $2,000                                                                          |
+| Home Retrofit                 | HVAC                         | PTAC                                                              | EE                   | $250                                                                            |
+| Home Retrofit                 | HVAC                         | PTHP                                                              | EE                   | $350                                                                            |
+| Home Retrofit                 | HVAC                         | Window Heat Pumps                                                 | EE                   | $1,500                                                                          |
+| Home Retrofit                 | HVAC                         | Furnace Fans                                                      | EE                   | $100                                                                            |
+| Home Retrofit                 | HVAC                         | Smart Thermostat- Eff                                             | EE                   | $200                                                                            |
+| Home Retrofit                 | HVAC                         | HVAC - Tune Up                                                    | EE                   | $400                                                                            |
+| Home Retrofit                 | HVAC                         | Circulating Pump                                                  | EE                   | $75                                                                             |
+| Home Retrofit                 | HVAC                         | Bathroom Fans                                                     | EE                   | $25                                                                             |
+| Home Retrofit                 | HVAC                         | Heat Pump Water Heater - Eff                                      | EE                   | $3,000                                                                          |
+| Home Retrofit                 | HVAC                         | ASHP                                                              | Electrification      | $10,000                                                                         |
+| Home Retrofit                 | HVAC                         | Geothermal Heat Pump                                              | Electrification      | $11,500                                                                         |
+| Home Retrofit                 | HVAC                         | HPWH                                                              | Electrification      | $5,000                                                                          |
+| Home Retrofit                 | HVAC                         | Make-Ready (Circuitry, Panel, Service Upgrade, etc.)              | Electrification      | $4,500                                                                          |
+| Home Retrofit                 | Home Energy Retrofit / HPwES | ASHP                                                              | Electrification      | $25,000 (one merged cell spanning the ASHP, Geothermal Heat Pump and HPWH rows) |
+| Home Retrofit                 | Home Energy Retrofit / HPwES | Geothermal Heat Pump                                              | Electrification      | (see above)                                                                     |
+| Home Retrofit                 | Home Energy Retrofit / HPwES | HPWH                                                              | Electrification      | (see above)                                                                     |
+| Home Retrofit                 | Home Energy Retrofit / HPwES | Make-Ready (Circuitry, Panel, Service Upgrade, etc.)              | Electrification      | $4,500                                                                          |
+| Home Retrofit                 | All                          | QA/QC Inspection                                                  | Electrification      | $1,000                                                                          |
+| ENERGY STAR for New Homes     | ENERGY STAR for New Homes    | NC -Townhouse and Duplex Units                                    | EE                   | $4,000                                                                          |
+| ENERGY STAR for New Homes     | ENERGY STAR for New Homes    | NC - Two-on-Two Condominium Units                                 | EE                   | $4,000                                                                          |
+| ENERGY STAR for New Homes     | ENERGY STAR for New Homes    | NC - Single-family Detached Units                                 | EE                   | $4,000                                                                          |
+| ENERGY STAR for New Homes     | ENERGY STAR for New Homes    | NC - Multi Family Low Rise                                        | EE                   | $4,000                                                                          |
+| ENERGY STAR for New Homes     | ENERGY STAR for New Homes    | NC - Multi Family High Rise                                       | EE                   | $4,000                                                                          |
+| ENERGY STAR for New Homes     | ENERGY STAR for New Homes    | NC - Next Gen Homes or All Electric                               | EE                   | $7,000                                                                          |
+| ENERGY STAR for New Homes     | ENERGY STAR for New Homes    | Smart Thermostat - Eff                                            | EE                   | $200                                                                            |
+| ENERGY STAR for New Homes     | ENERGY STAR for New Homes    | Heat Pump Water Heater - Eff                                      | EE                   | $3,000                                                                          |
+| ENERGY STAR for New Homes     | ENERGY STAR for New Homes    | Central Air Conditioner - Eff                                     | EE                   | $1,000                                                                          |
+| ENERGY STAR for New Homes     | ENERGY STAR for New Homes    | Heat Pump - Eff                                                   | EE                   | $4,500                                                                          |
+| ENERGY STAR for New Homes     | ENERGY STAR for New Homes    | Heat Pump - Wtr & Geo - Eff                                       | EE                   | $10,000                                                                         |
+| ENERGY STAR for New Homes     | ENERGY STAR for New Homes    | HVAC Grading                                                      | EE                   | $500                                                                            |
+| Demand Response - Residential | Load Control - Res           | Load Control - Res (Summer)                                       | DR                   | $250                                                                            |
+| Demand Response - Residential | Load Control - Res           | Annual Enrollment/Loyalty Bonus Incentive - Res (Summer)          | DR                   | $250                                                                            |
+| Demand Response - Residential | Load Control - Res           | Load Control - Res (Winter & Summer)                              | DR                   | $250                                                                            |
+| Demand Response - Residential | Load Control - Res           | Annual Enrollment/Loyalty Bonus Incentive - Res (Winter & Summer) | DR                   | $250                                                                            |
+| Demand Response - Residential | Load Control - Res           | Battery Storage - Load Control                                    | DR                   | $1,000                                                                          |
+| Demand Response - Residential | Load Control - Res           | Annual Enrollment/Loyalty Bonus Incentive - Battery Storage       | DR                   | $3,000                                                                          |
 
 1. Consistent with Commission's Order 84569, not all utlities offer all products and services listed. ID: Order #84569 at 7
 2. The 'up to' values support Limited Time Offerings (LTO) and provides flexibility for demographic differences
@@ -3336,184 +3340,184 @@ _Extractor note (not source text): the text layer lists this table's cells witho
 
 **Attachment 2-B: Statewide Commercial & Industrial Incentives for 2027-2029**
 
-| Measure¹ | Incentive Type Paid | Incentive Up to Amount⁴,⁵,⁶ (Future 27-29) |
-| --- | --- | --- |
-| **Small Business Direct Install** |  |  |
-| SBDI - Smart Thermostat/HVAC Tune-up | EE | 100% of total project cost |
-| SBDI - Facility audit w DI measures and/or prescriptive | EE | 85% of total project cost |
-| SBDI - Facility audit w DI measures and/or prescriptive | Electrification | 85% of total project cost |
-| **Custom** |  |  |
-| Custom | EE and Electrification | Incentives are either paid at $.29/kWh, $125/MT CO2e up to 50 percent of the total project cost for retrofit projects, or up to 75 percent of the project cost for new construction or major renovation projects. Incentives are capped at up to $1 million per project. (see note 2 & 3) |
-| EM&V Sub-metering | EE | $7,500 per application |
-| **Retrocommissioning** |  |  |
-| DX HVAC Tune-up ≥ 3ton | EE | $500 per unit |
-| < 3 ton, PTAC/PTHP/Mini-Split Tune-up | EE | $100 per ton |
-| Building/Monitoring-Based Tune-Up | EE | 85% of total project cost⁷ |
-| EM&V Sub-metering | EE | $7,500 per application |
-| **Retrofit and New Construction Performance Lighting** |  |  |
-| **LED Luminaires** |  |  |
-| Recessed Troffer Luminaire | EE | $250 per fixture |
-| Flat Panel Luminaire | EE | $150 per fixture |
-| Linear Ambient Luminaire | EE | $80 per fixture |
-| Stairwell Luminaire | EE | $250 per fixture |
-| Interior Directional Luminaire | EE | $80 per fixture |
-| Display Case Luminaire | EE | $80 per fixture |
-| High/Low Bay Luminaire | EE | $1,200 per fixture |
-| Exterior Luminaire | EE | $1,250 per fixture |
-| **LED ENERGY STAR Fixtures** |  |  |
-| ENERGY STAR Fixture | EE | $300 per fixture |
-| **LED Sign Lighting** |  |  |
-| Sign Lighting | EE | $4 per watt reduced |
-| **LED Retrofit Kits** |  |  |
-| Linear Fixture Retrofit Kit | EE | $80 per kit |
-| Integrated Fixture Retrofit Kit | EE | $250 per kit |
-| Flat Panel Fixture Retrofit Kit | EE | $60 per kit |
-| Linear Ambient Luminaire Retrofit Kit | EE | $40 per kit |
-| High/Low Bay Luminaire Retrofit Kit | EE | $175 per kit |
-| Exterior Luminaire Retrofit Kit | EE | $175 per kit |
-| **LED Replacement Lamps** |  |  |
-| LED linear replacement lamp with new LED driver | EE | $15 per lamp |
-| LED mogul-screw base replacement for HID lamps and new external driver | EE | $100 per lamp |
-| **Lighting Controls** *Remote-mounted controls are subject to be capped |  |  |
-| Networked Lighting Controls | EE | $150 per fixture |
-| Dual Daylight & Occupancy Sensor | EE | $80 per fixture |
-| Daylight Control (Continuous) | EE | $60 per fixture |
-| Occupancy/Vacancy Controls | EE | $60 per fixture |
-| **New Construction Performance Lighting - Measure Code** |  |  |
-| Tier 1 > 10% below Base LPD | EE | $4 per watt reduced |
-| Tier 2 > 20% below Base LPD | EE | $8 per watt reduced |
-| **Other Lighting** |  |  |
-| Lighting Redesign/Optimization | EE | $5 per watt reduced |
-| New or Lighting Applications not Otherwise Listed | EE | Incentives are either paid at $.29/kWh, $125/MT CO2e see note 2 & 3 |
-| **HVAC Equipment and Controls** |  |  |
-| **Unitary HVAC Equipment** |  |  |
-| Air Conditioning Only | EE | $500 per ton |
-| Air or Water Source Heat Pump (not otherwise listed) | EE | $1,500 per ton |
-| Air or Water Source Heat Pump (not otherwise listed) | Electrification | $2,000 per ton |
-| Geothermal Heat Pump | EE | $2,000 per ton |
-| Geothermal Heat Pump | Electrification | $2,500 per ton |
-| Mini-Split Heat Pump | EE | $1,500 per ton |
-| Mini-Split Heat Pump | Electrification | $2,000 per ton |
-| PTAC/PTHP | EE | $1,500 per unit |
-| PTAC/PTHP | Electrification | $2,000 per unit |
-| Window Heat Pump | EE | $1,000 per unit |
-| Window Heat Pump | Electrification | $1,500 per unit |
-| Chiller | EE | $1,500 per ton |
-| Chiller | Electrification | $2,000 per ton |
-| Dedicated Outdoor Air Systems (DOAS) | EE | $1,500 per ton |
-| Dedicated Outdoor Air Systems (DOAS) | Electrification | $2,000 per ton |
+| Measure¹                                                                | Incentive Type Paid    | Incentive Up to Amount⁴,⁵,⁶ (Future 27-29)                                                                                                                                                                                                                                                |
+| ----------------------------------------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Small Business Direct Install**                                       |                        |                                                                                                                                                                                                                                                                                           |
+| SBDI - Smart Thermostat/HVAC Tune-up                                    | EE                     | 100% of total project cost                                                                                                                                                                                                                                                                |
+| SBDI - Facility audit w DI measures and/or prescriptive                 | EE                     | 85% of total project cost                                                                                                                                                                                                                                                                 |
+| SBDI - Facility audit w DI measures and/or prescriptive                 | Electrification        | 85% of total project cost                                                                                                                                                                                                                                                                 |
+| **Custom**                                                              |                        |                                                                                                                                                                                                                                                                                           |
+| Custom                                                                  | EE and Electrification | Incentives are either paid at $.29/kWh, $125/MT CO2e up to 50 percent of the total project cost for retrofit projects, or up to 75 percent of the project cost for new construction or major renovation projects. Incentives are capped at up to $1 million per project. (see note 2 & 3) |
+| EM&V Sub-metering                                                       | EE                     | $7,500 per application                                                                                                                                                                                                                                                                    |
+| **Retrocommissioning**                                                  |                        |                                                                                                                                                                                                                                                                                           |
+| DX HVAC Tune-up ≥ 3ton                                                  | EE                     | $500 per unit                                                                                                                                                                                                                                                                             |
+| < 3 ton, PTAC/PTHP/Mini-Split Tune-up                                   | EE                     | $100 per ton                                                                                                                                                                                                                                                                              |
+| Building/Monitoring-Based Tune-Up                                       | EE                     | 85% of total project cost⁷                                                                                                                                                                                                                                                                |
+| EM&V Sub-metering                                                       | EE                     | $7,500 per application                                                                                                                                                                                                                                                                    |
+| **Retrofit and New Construction Performance Lighting**                  |                        |                                                                                                                                                                                                                                                                                           |
+| **LED Luminaires**                                                      |                        |                                                                                                                                                                                                                                                                                           |
+| Recessed Troffer Luminaire                                              | EE                     | $250 per fixture                                                                                                                                                                                                                                                                          |
+| Flat Panel Luminaire                                                    | EE                     | $150 per fixture                                                                                                                                                                                                                                                                          |
+| Linear Ambient Luminaire                                                | EE                     | $80 per fixture                                                                                                                                                                                                                                                                           |
+| Stairwell Luminaire                                                     | EE                     | $250 per fixture                                                                                                                                                                                                                                                                          |
+| Interior Directional Luminaire                                          | EE                     | $80 per fixture                                                                                                                                                                                                                                                                           |
+| Display Case Luminaire                                                  | EE                     | $80 per fixture                                                                                                                                                                                                                                                                           |
+| High/Low Bay Luminaire                                                  | EE                     | $1,200 per fixture                                                                                                                                                                                                                                                                        |
+| Exterior Luminaire                                                      | EE                     | $1,250 per fixture                                                                                                                                                                                                                                                                        |
+| **LED ENERGY STAR Fixtures**                                            |                        |                                                                                                                                                                                                                                                                                           |
+| ENERGY STAR Fixture                                                     | EE                     | $300 per fixture                                                                                                                                                                                                                                                                          |
+| **LED Sign Lighting**                                                   |                        |                                                                                                                                                                                                                                                                                           |
+| Sign Lighting                                                           | EE                     | $4 per watt reduced                                                                                                                                                                                                                                                                       |
+| **LED Retrofit Kits**                                                   |                        |                                                                                                                                                                                                                                                                                           |
+| Linear Fixture Retrofit Kit                                             | EE                     | $80 per kit                                                                                                                                                                                                                                                                               |
+| Integrated Fixture Retrofit Kit                                         | EE                     | $250 per kit                                                                                                                                                                                                                                                                              |
+| Flat Panel Fixture Retrofit Kit                                         | EE                     | $60 per kit                                                                                                                                                                                                                                                                               |
+| Linear Ambient Luminaire Retrofit Kit                                   | EE                     | $40 per kit                                                                                                                                                                                                                                                                               |
+| High/Low Bay Luminaire Retrofit Kit                                     | EE                     | $175 per kit                                                                                                                                                                                                                                                                              |
+| Exterior Luminaire Retrofit Kit                                         | EE                     | $175 per kit                                                                                                                                                                                                                                                                              |
+| **LED Replacement Lamps**                                               |                        |                                                                                                                                                                                                                                                                                           |
+| LED linear replacement lamp with new LED driver                         | EE                     | $15 per lamp                                                                                                                                                                                                                                                                              |
+| LED mogul-screw base replacement for HID lamps and new external driver  | EE                     | $100 per lamp                                                                                                                                                                                                                                                                             |
+| **Lighting Controls** *Remote-mounted controls are subject to be capped |                        |                                                                                                                                                                                                                                                                                           |
+| Networked Lighting Controls                                             | EE                     | $150 per fixture                                                                                                                                                                                                                                                                          |
+| Dual Daylight & Occupancy Sensor                                        | EE                     | $80 per fixture                                                                                                                                                                                                                                                                           |
+| Daylight Control (Continuous)                                           | EE                     | $60 per fixture                                                                                                                                                                                                                                                                           |
+| Occupancy/Vacancy Controls                                              | EE                     | $60 per fixture                                                                                                                                                                                                                                                                           |
+| **New Construction Performance Lighting - Measure Code**                |                        |                                                                                                                                                                                                                                                                                           |
+| Tier 1 > 10% below Base LPD                                             | EE                     | $4 per watt reduced                                                                                                                                                                                                                                                                       |
+| Tier 2 > 20% below Base LPD                                             | EE                     | $8 per watt reduced                                                                                                                                                                                                                                                                       |
+| **Other Lighting**                                                      |                        |                                                                                                                                                                                                                                                                                           |
+| Lighting Redesign/Optimization                                          | EE                     | $5 per watt reduced                                                                                                                                                                                                                                                                       |
+| New or Lighting Applications not Otherwise Listed                       | EE                     | Incentives are either paid at $.29/kWh, $125/MT CO2e see note 2 & 3                                                                                                                                                                                                                       |
+| **HVAC Equipment and Controls**                                         |                        |                                                                                                                                                                                                                                                                                           |
+| **Unitary HVAC Equipment**                                              |                        |                                                                                                                                                                                                                                                                                           |
+| Air Conditioning Only                                                   | EE                     | $500 per ton                                                                                                                                                                                                                                                                              |
+| Air or Water Source Heat Pump (not otherwise listed)                    | EE                     | $1,500 per ton                                                                                                                                                                                                                                                                            |
+| Air or Water Source Heat Pump (not otherwise listed)                    | Electrification        | $2,000 per ton                                                                                                                                                                                                                                                                            |
+| Geothermal Heat Pump                                                    | EE                     | $2,000 per ton                                                                                                                                                                                                                                                                            |
+| Geothermal Heat Pump                                                    | Electrification        | $2,500 per ton                                                                                                                                                                                                                                                                            |
+| Mini-Split Heat Pump                                                    | EE                     | $1,500 per ton                                                                                                                                                                                                                                                                            |
+| Mini-Split Heat Pump                                                    | Electrification        | $2,000 per ton                                                                                                                                                                                                                                                                            |
+| PTAC/PTHP                                                               | EE                     | $1,500 per unit                                                                                                                                                                                                                                                                           |
+| PTAC/PTHP                                                               | Electrification        | $2,000 per unit                                                                                                                                                                                                                                                                           |
+| Window Heat Pump                                                        | EE                     | $1,000 per unit                                                                                                                                                                                                                                                                           |
+| Window Heat Pump                                                        | Electrification        | $1,500 per unit                                                                                                                                                                                                                                                                           |
+| Chiller                                                                 | EE                     | $1,500 per ton                                                                                                                                                                                                                                                                            |
+| Chiller                                                                 | Electrification        | $2,000 per ton                                                                                                                                                                                                                                                                            |
+| Dedicated Outdoor Air Systems (DOAS)                                    | EE                     | $1,500 per ton                                                                                                                                                                                                                                                                            |
+| Dedicated Outdoor Air Systems (DOAS)                                    | Electrification        | $2,000 per ton                                                                                                                                                                                                                                                                            |
 
 [PDF p. 144]
 
 **Attachment 2-B: Statewide Commercial & Industrial Incentives for 2027-2029** (continued)
 
-| Measure¹ | Incentive Type Paid | Incentive Up to Amount⁴,⁵,⁶ (Future 27-29) |
-| --- | --- | --- |
-| Make Ready Electrification Upgrades | Electrification | $5,000 per application |
-| **Other HVAC Equipment and Controls** |  |  |
-| Dual Enthalpy Economizer Controls | EE | $600 per unit |
-| Smart Thermostat | EE | $400 per unit |
-| Hotel Room HVAC Controls | EE | $300 per unit |
-| ERV/HRV | EE | $2,000 per unit |
-| ECM Circulating Pump | EE | $2,500 per unit |
-| ECM Circulating Fans | EE | $2,500 per unit |
-| **Performance HVAC Applications** |  |  |
-| New or HVAC Applications not Otherwise Listed | EE | Incentives are either paid at $.29/kWh, $125/MT CO2e see note 2 & 3 |
-| **Variable Frequence Drives** |  |  |
-| Variable Frequency Drives | EE | $40,000 unit up to 200HP |
-| **Refrigeration Measures** |  |  |
-| Solid Door Reach-in Refrigerator | EE | $1,200 per unit |
-| Solid Door Reach-in Freezer | EE | $2,000 per unit |
-| Glass Door Reach-in Refrigerator | EE | $1,000 per unit |
-| Glass Door Reach-in Freezer | EE | $1,700 per unit |
-| Ultra Low-Temp Freezer | EE | $4,000 per unit |
-| Anti-Fog Film/Controls | EE | $150 per unit |
-| Evaporator Controls | EE | $300 per unit |
-| Cooler Cover/Closer | EE | $1,500 per unit |
-| Display Case Doors | EE | $1,500 per unit |
-| Special Doors/Anti-Sweat Equipment | EE | $150 per door |
-| Gasket | EE | $10 per linear foot |
-| Strip Curtains for Walk-in Refrigerator/Freezer | EE | $10 per sq ft |
-| New or Refrigeration Applications not Otherwise Listed | EE | Incentives are either paid at $.29/kWh, $125/MT CO2e see note 2 & 3 |
-| **Commercial Kitchen Equipment** |  |  |
-| Ice Machine | EE | $1,000 per unit |
-| Commercial Size Oven | EE | $3,000 per unit |
-| Commercial Size Oven | Electrification | $8,000 per unit |
-| High Temperature Dishwasher | EE | $2,400 per unit |
-| High Temperature Dishwasher | Electrification | $5,000 per unit |
-| Low Temperature Dishwasher | EE | $1,200 per unit |
-| Low Temperature Dishwasher | Electrification | $2,500 per unit |
-| Fat Fryer | EE | $700 per unit |
-| Fat Fryer | Electrification | $2,000 per unit |
-| Griddle | EE | $900 per unit |
-| Griddle | Electrification | $2,000 per unit |
-| Steam Cooker | EE | $2,000 per unit |
-| Steam Cooker | Electrification | $7,000 per unit |
-| Induction Stovetop | EE | $600 per unit |
-| Induction Stovetop | Electrification | $2,000 per unit |
-| Make Ready Electrification Upgrades | Electrification | $5,000 per application |
-| Insulated Holding Cabinet | EE | $900 per unit |
-| Vending Machine/Controls | EE | $300 per unit |
-| Induction Warmer/Rethermalizer Well | EE | $800 per unit |
-| Coffee Brewer | EE | $400 per unit |
-| Pre-Rinse Sprayer | EE | $200 per unit |
-| Conveyer Toaster | EE | $900 per unit |
-| Kitchen Hood Ventilation | EE | $5 per CFM |
-| Heat Seal Wrapper | EE | $400 per unit |
-| New Commercial Kitchen Applications not Otherwise Listed | EE | Incentives are either paid at $.29/kWh, $125/MT CO2e see note 2 & 3 |
-| **Appliance and Plug Load Equipment** |  |  |
-| Heat Pump Water Heater | EE | $2,500 per unit |
-| Heat Pump Water Heater | Electrification | $4,000 per unit |
-| Dehumidifier | EE | $50 per unit |
-| Room Air Conditioner | EE | $50 per unit |
-| Water Cooler | EE | $100 per unit |
-| Clothes Washer | EE | $750 per unit |
-| Clothes Dryer | EE | $100 per unit |
-| Clothes Dryer | Electrification | $500 per unit |
-| Consumer Electronics | EE | $50 per unit |
-| Imaging | EE | $60 per unit |
-| Small Network PC Controller | EE | $60 per unit |
-| Uninterruptible Power Supply (UPS) | EE | $200 per unit |
-| Smart Power Strip/Controls | EE | $100 per unit |
-| Dehumidifier Recycling | EE | $150 per unit |
+| Measure¹                                                 | Incentive Type Paid | Incentive Up to Amount⁴,⁵,⁶ (Future 27-29)                          |
+| -------------------------------------------------------- | ------------------- | ------------------------------------------------------------------- |
+| Make Ready Electrification Upgrades                      | Electrification     | $5,000 per application                                              |
+| **Other HVAC Equipment and Controls**                    |                     |                                                                     |
+| Dual Enthalpy Economizer Controls                        | EE                  | $600 per unit                                                       |
+| Smart Thermostat                                         | EE                  | $400 per unit                                                       |
+| Hotel Room HVAC Controls                                 | EE                  | $300 per unit                                                       |
+| ERV/HRV                                                  | EE                  | $2,000 per unit                                                     |
+| ECM Circulating Pump                                     | EE                  | $2,500 per unit                                                     |
+| ECM Circulating Fans                                     | EE                  | $2,500 per unit                                                     |
+| **Performance HVAC Applications**                        |                     |                                                                     |
+| New or HVAC Applications not Otherwise Listed            | EE                  | Incentives are either paid at $.29/kWh, $125/MT CO2e see note 2 & 3 |
+| **Variable Frequence Drives**                            |                     |                                                                     |
+| Variable Frequency Drives                                | EE                  | $40,000 unit up to 200HP                                            |
+| **Refrigeration Measures**                               |                     |                                                                     |
+| Solid Door Reach-in Refrigerator                         | EE                  | $1,200 per unit                                                     |
+| Solid Door Reach-in Freezer                              | EE                  | $2,000 per unit                                                     |
+| Glass Door Reach-in Refrigerator                         | EE                  | $1,000 per unit                                                     |
+| Glass Door Reach-in Freezer                              | EE                  | $1,700 per unit                                                     |
+| Ultra Low-Temp Freezer                                   | EE                  | $4,000 per unit                                                     |
+| Anti-Fog Film/Controls                                   | EE                  | $150 per unit                                                       |
+| Evaporator Controls                                      | EE                  | $300 per unit                                                       |
+| Cooler Cover/Closer                                      | EE                  | $1,500 per unit                                                     |
+| Display Case Doors                                       | EE                  | $1,500 per unit                                                     |
+| Special Doors/Anti-Sweat Equipment                       | EE                  | $150 per door                                                       |
+| Gasket                                                   | EE                  | $10 per linear foot                                                 |
+| Strip Curtains for Walk-in Refrigerator/Freezer          | EE                  | $10 per sq ft                                                       |
+| New or Refrigeration Applications not Otherwise Listed   | EE                  | Incentives are either paid at $.29/kWh, $125/MT CO2e see note 2 & 3 |
+| **Commercial Kitchen Equipment**                         |                     |                                                                     |
+| Ice Machine                                              | EE                  | $1,000 per unit                                                     |
+| Commercial Size Oven                                     | EE                  | $3,000 per unit                                                     |
+| Commercial Size Oven                                     | Electrification     | $8,000 per unit                                                     |
+| High Temperature Dishwasher                              | EE                  | $2,400 per unit                                                     |
+| High Temperature Dishwasher                              | Electrification     | $5,000 per unit                                                     |
+| Low Temperature Dishwasher                               | EE                  | $1,200 per unit                                                     |
+| Low Temperature Dishwasher                               | Electrification     | $2,500 per unit                                                     |
+| Fat Fryer                                                | EE                  | $700 per unit                                                       |
+| Fat Fryer                                                | Electrification     | $2,000 per unit                                                     |
+| Griddle                                                  | EE                  | $900 per unit                                                       |
+| Griddle                                                  | Electrification     | $2,000 per unit                                                     |
+| Steam Cooker                                             | EE                  | $2,000 per unit                                                     |
+| Steam Cooker                                             | Electrification     | $7,000 per unit                                                     |
+| Induction Stovetop                                       | EE                  | $600 per unit                                                       |
+| Induction Stovetop                                       | Electrification     | $2,000 per unit                                                     |
+| Make Ready Electrification Upgrades                      | Electrification     | $5,000 per application                                              |
+| Insulated Holding Cabinet                                | EE                  | $900 per unit                                                       |
+| Vending Machine/Controls                                 | EE                  | $300 per unit                                                       |
+| Induction Warmer/Rethermalizer Well                      | EE                  | $800 per unit                                                       |
+| Coffee Brewer                                            | EE                  | $400 per unit                                                       |
+| Pre-Rinse Sprayer                                        | EE                  | $200 per unit                                                       |
+| Conveyer Toaster                                         | EE                  | $900 per unit                                                       |
+| Kitchen Hood Ventilation                                 | EE                  | $5 per CFM                                                          |
+| Heat Seal Wrapper                                        | EE                  | $400 per unit                                                       |
+| New Commercial Kitchen Applications not Otherwise Listed | EE                  | Incentives are either paid at $.29/kWh, $125/MT CO2e see note 2 & 3 |
+| **Appliance and Plug Load Equipment**                    |                     |                                                                     |
+| Heat Pump Water Heater                                   | EE                  | $2,500 per unit                                                     |
+| Heat Pump Water Heater                                   | Electrification     | $4,000 per unit                                                     |
+| Dehumidifier                                             | EE                  | $50 per unit                                                        |
+| Room Air Conditioner                                     | EE                  | $50 per unit                                                        |
+| Water Cooler                                             | EE                  | $100 per unit                                                       |
+| Clothes Washer                                           | EE                  | $750 per unit                                                       |
+| Clothes Dryer                                            | EE                  | $100 per unit                                                       |
+| Clothes Dryer                                            | Electrification     | $500 per unit                                                       |
+| Consumer Electronics                                     | EE                  | $50 per unit                                                        |
+| Imaging                                                  | EE                  | $60 per unit                                                        |
+| Small Network PC Controller                              | EE                  | $60 per unit                                                        |
+| Uninterruptible Power Supply (UPS)                       | EE                  | $200 per unit                                                       |
+| Smart Power Strip/Controls                               | EE                  | $100 per unit                                                       |
+| Dehumidifier Recycling                                   | EE                  | $150 per unit                                                       |
 
 [PDF p. 145]
 
 **Attachment 2-B: Statewide Commercial & Industrial Incentives for 2027-2029** (continued)
 
-| Measure¹ | Incentive Type Paid | Incentive Up to Amount⁴,⁵,⁶ (Future 27-29) |
-| --- | --- | --- |
-| Refrigerator Recycling | EE | $150 per unit |
-| Freezer Recycling | EE | $150 per unit |
-| Room Air Conditioner Recycling | EE | $65 per unit |
-| Pick Up Fees | EE | $175 per unit |
-| New Appliance/Plug Load Control Applications not Otherwise Listed | EE | Incentives are either paid at $.29/kWh, $125/MT CO2e see note 2 & 3 |
-| Make Ready Electrification Upgrades | Electrification | $5,000 per application |
-| **Agriculture** |  |  |
-| Auto Milker Takeoff | EE | $200 per unit |
-| Dairy Scroll Compressor | EE | $2,000 per unit |
-| HE Ventilation Fans | EE | $450 per unit |
-| Heat Reclaimers | EE | $2,000 per unit |
-| High Volume Low Speed Fans (Destratification) | EE | $50 per unit |
-| Livestock Waterer | EE | $125 per unit |
-| Dairy Vac Pump VSD Controls | EE | $2,000 per unit |
-| Low Pressure Irrigation | EE | $200 per unit |
-| Dairy Refrigeration Tune-Up | EE | $500 per unit |
-| Engine Block Heater Timer | EE | $50 per unit |
-| Ventilation Fan VFD | EE | $200 per horsepower |
-| New Agriculture Applications not Otherwise Listed | EE | Incentives are either paid at $.29/kWh, $125/MT CO2e see note 2 & 3 |
-| **Distributed Energy Resources** |  |  |
-| Battery Storage | EE | $0.75 per kWh of storage |
-| New Distributed energy resource not otherwise listed | EE | Incentives are either paid at $.29/kWh, $125/MT CO2e see note 2 & 3 |
-| **Other** |  |  |
-| QA/QC Compliance Inspection | EE | $1,500 per application |
-| QA/QC Compliance Inspection | Electrification | $1,500 per application |
-| Audits | EE | $20,000 per application |
-| **Demand Response** |  |  |
-| Load Control - C&I (Summer) | DR | $250 |
-| Annual Enrollment/Loyalty Bonus Incentive - C&I (Summer) | DR | $250 |
-| Load Control - C&I (Winter & Summer) | DR | $250 |
-| Annual Enrollment/Loyalty Bonus Incentive - C&I (Winter & Summer) | DR | $250 |
+| Measure¹                                                          | Incentive Type Paid | Incentive Up to Amount⁴,⁵,⁶ (Future 27-29)                          |
+| ----------------------------------------------------------------- | ------------------- | ------------------------------------------------------------------- |
+| Refrigerator Recycling                                            | EE                  | $150 per unit                                                       |
+| Freezer Recycling                                                 | EE                  | $150 per unit                                                       |
+| Room Air Conditioner Recycling                                    | EE                  | $65 per unit                                                        |
+| Pick Up Fees                                                      | EE                  | $175 per unit                                                       |
+| New Appliance/Plug Load Control Applications not Otherwise Listed | EE                  | Incentives are either paid at $.29/kWh, $125/MT CO2e see note 2 & 3 |
+| Make Ready Electrification Upgrades                               | Electrification     | $5,000 per application                                              |
+| **Agriculture**                                                   |                     |                                                                     |
+| Auto Milker Takeoff                                               | EE                  | $200 per unit                                                       |
+| Dairy Scroll Compressor                                           | EE                  | $2,000 per unit                                                     |
+| HE Ventilation Fans                                               | EE                  | $450 per unit                                                       |
+| Heat Reclaimers                                                   | EE                  | $2,000 per unit                                                     |
+| High Volume Low Speed Fans (Destratification)                     | EE                  | $50 per unit                                                        |
+| Livestock Waterer                                                 | EE                  | $125 per unit                                                       |
+| Dairy Vac Pump VSD Controls                                       | EE                  | $2,000 per unit                                                     |
+| Low Pressure Irrigation                                           | EE                  | $200 per unit                                                       |
+| Dairy Refrigeration Tune-Up                                       | EE                  | $500 per unit                                                       |
+| Engine Block Heater Timer                                         | EE                  | $50 per unit                                                        |
+| Ventilation Fan VFD                                               | EE                  | $200 per horsepower                                                 |
+| New Agriculture Applications not Otherwise Listed                 | EE                  | Incentives are either paid at $.29/kWh, $125/MT CO2e see note 2 & 3 |
+| **Distributed Energy Resources**                                  |                     |                                                                     |
+| Battery Storage                                                   | EE                  | $0.75 per kWh of storage                                            |
+| New Distributed energy resource not otherwise listed              | EE                  | Incentives are either paid at $.29/kWh, $125/MT CO2e see note 2 & 3 |
+| **Other**                                                         |                     |                                                                     |
+| QA/QC Compliance Inspection                                       | EE                  | $1,500 per application                                              |
+| QA/QC Compliance Inspection                                       | Electrification     | $1,500 per application                                              |
+| Audits                                                            | EE                  | $20,000 per application                                             |
+| **Demand Response**                                               |                     |                                                                     |
+| Load Control - C&I (Summer)                                       | DR                  | $250                                                                |
+| Annual Enrollment/Loyalty Bonus Incentive - C&I (Summer)          | DR                  | $250                                                                |
+| Load Control - C&I (Winter & Summer)                              | DR                  | $250                                                                |
+| Annual Enrollment/Loyalty Bonus Incentive - C&I (Winter & Summer) | DR                  | $250                                                                |
 
 1. Consistent with the Commission's Order 84569, not all utilities offer all products and services listed. ID: Order #84569 at 7.
 2. Incentives are either paid at $.29/kWh, $125/MT CO2e up to 50 percent of the total project cost for retrofit projects, or up to 75 percent of the project cost for new construction or major renovation projects. Incentives are capped at up to $1 million per project.
@@ -3523,32 +3527,31 @@ _Extractor note (not source text): the text layer lists this table's cells witho
 6. Additional measure-specific incentive details may be outlined in an application's programs terms and conditions.
 7. Virtual Commissioning (VCx) and Virtual Strategic Energy Management (VSEM) projects have a cap of 100% as they are Building Tune-Up services provided by a third-party vendor at no additional charge to the customer.
 
-
 [PDF p. 146]
 
 _Extractor note (not source text): PDF p. 146 is the first Attachment 3 sheet (bookmark: "7-Input Assumptions"). It prints no page number._
 
 **Attachment 3 - Avoided Costs & Benefits Assumptions**
 
-| INPUT | VALUE | SOURCE |
-| --- | --- | --- |
-| **INFLATION RATE** | | |
-| Inflation | 2.64% | Maryland Independent Program Evaluator Team |
-| **DISCOUNT RATE** | | |
-| MJST | 4.69% nominal (2% plus inflation) | Maryland Independent Program Evaluator Team |
-| TRC, PCT, PAC, RIM | 6.75% | BGE Rates - post-tax WACC |
-| **LINE LOSS FACTORS** | | |
-| Commercial & Industrial (kWh) | 5.51% | BGE, LineLosses_2024.xlsx - EAG reported |
-| Commercial & Industrial (kW) | 7.65% | BGE, LineLosses_2024.xlsx - EAG reported |
-| Residential (kWh) | 6.67% | BGE, LineLosses_2024.xlsx - EAG reported |
-| Residential (kW) | 8.90% | BGE, LineLosses_2024.xlsx - EAG reported |
-| **NON-ENERGY BENEFITS** | | |
-| Avoided Emissions - CO2e (MJST) | per Avoided Emissions calculator_2027-29 Program Years 05.08.26.xlsx | Maryland Independent Program Evaluator Team |
-| Risk Adder (MJST) | 10% added to Energy benefit only (not capacity benefits) | FPWG cost effectiveness appendix |
-| Health and Safety - Behavioral (MJST, TRC) | .113% added to Energy benefit only (not capacity benefits) | Maryland Independent Program Evaluator Team |
-| Health and Safety - Insulation, Air Sealing, Fuel Switching (MJST, TRC) | 10% added to Energy benefit only (not capacity benefits) | FPWG cost effectiveness appendix |
-| Shell Comfort - HPwES, MIW (MJST, TRC,PCT) | $42/year ($2022) for 75% of participants | Maryland Independent Program Evaluator Team |
-| Early Replacement HVAC Comfort (MJST, TRC, PCT) | $33/year ($2022) for 33% of participants | Maryland Independent Program Evaluator Team |
+| INPUT                                                                   | VALUE                                                                | SOURCE                                      |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------- |
+| **INFLATION RATE**                                                      |                                                                      |                                             |
+| Inflation                                                               | 2.64%                                                                | Maryland Independent Program Evaluator Team |
+| **DISCOUNT RATE**                                                       |                                                                      |                                             |
+| MJST                                                                    | 4.69% nominal (2% plus inflation)                                    | Maryland Independent Program Evaluator Team |
+| TRC, PCT, PAC, RIM                                                      | 6.75%                                                                | BGE Rates - post-tax WACC                   |
+| **LINE LOSS FACTORS**                                                   |                                                                      |                                             |
+| Commercial & Industrial (kWh)                                           | 5.51%                                                                | BGE, LineLosses_2024.xlsx - EAG reported    |
+| Commercial & Industrial (kW)                                            | 7.65%                                                                | BGE, LineLosses_2024.xlsx - EAG reported    |
+| Residential (kWh)                                                       | 6.67%                                                                | BGE, LineLosses_2024.xlsx - EAG reported    |
+| Residential (kW)                                                        | 8.90%                                                                | BGE, LineLosses_2024.xlsx - EAG reported    |
+| **NON-ENERGY BENEFITS**                                                 |                                                                      |                                             |
+| Avoided Emissions - CO2e (MJST)                                         | per Avoided Emissions calculator_2027-29 Program Years 05.08.26.xlsx | Maryland Independent Program Evaluator Team |
+| Risk Adder (MJST)                                                       | 10% added to Energy benefit only (not capacity benefits)             | FPWG cost effectiveness appendix            |
+| Health and Safety - Behavioral (MJST, TRC)                              | .113% added to Energy benefit only (not capacity benefits)           | Maryland Independent Program Evaluator Team |
+| Health and Safety - Insulation, Air Sealing, Fuel Switching (MJST, TRC) | 10% added to Energy benefit only (not capacity benefits)             | FPWG cost effectiveness appendix            |
+| Shell Comfort - HPwES, MIW (MJST, TRC,PCT)                              | $42/year ($2022) for 75% of participants                             | Maryland Independent Program Evaluator Team |
+| Early Replacement HVAC Comfort (MJST, TRC, PCT)                         | $33/year ($2022) for 33% of participants                             | Maryland Independent Program Evaluator Team |
 
 [PDF pp. 147-151 not transcribed: remaining Attachment 3 avoided-cost sheets: avoided capacity cost and BGE T&D avoided cost (p. 147), full-requirements energy cost (p. 148), capacity DRIPE (p. 149), avoided gas costs (p. 150) and water rates (p. 151)]
 
@@ -3559,14 +3562,14 @@ _Extractor note (not source text): PDF pp. 152-156 are the Attachment 4 and Atta
 **Attachment 4 - Residential Rider 1: Gas EmPOWER MD**
 **Charges and Bill Impact Analysis**
 
-| | Residential | Gas Efficiency Rate ($/therm) | Gas Customer Residential (55 therms/month)+ |
-| --- | --- | --- | --- |
-| 2024 (Actual)* | $ 27,904,032 | $0.0628 | $3.45 |
-| 2025 (Actual)* | $ 48,103,003 | $0.1087 | $5.98 |
-| 2026 (Actual)* | $ 31,036,611 | $0.0712 | $3.92 |
-| 2027** | $ 10,089,584 | $0.0234 | $1.29 |
-| 2028** | $ 9,832,264 | $0.0226 | $1.24 |
-| 2029** | $ 8,189,482 | $0.0189 | $1.04 |
+|                | Residential  | Gas Efficiency Rate ($/therm) | Gas Customer Residential (55 therms/month)+ |
+| -------------- | ------------ | ----------------------------- | ------------------------------------------- |
+| 2024 (Actual)* | $ 27,904,032 | $0.0628                       | $3.45                                       |
+| 2025 (Actual)* | $ 48,103,003 | $0.1087                       | $5.98                                       |
+| 2026 (Actual)* | $ 31,036,611 | $0.0712                       | $3.92                                       |
+| 2027**         | $ 10,089,584 | $0.0234                       | $1.29                                       |
+| 2028**         | $ 9,832,264  | $0.0226                       | $1.24                                       |
+| 2029**         | $ 8,189,482  | $0.0189                       | $1.04                                       |
 
 *2024-2026 costs represent actual surcharge filings
 **2027-2029 revenue requirements do not include a true-up for prior year over-/under-collections
@@ -3577,14 +3580,14 @@ _Extractor note (not source text): PDF pp. 152-156 are the Attachment 4 and Atta
 **Attachment 5 – Residential Electric EmPOWER MD**
 **High Scenario Charges and Bill Impact Analysis**
 
-| | Residential | Electric Efficiency Rate ($/kWh) | Average Monthly Charges (871 kWh/month)+ |
-| --- | --- | --- | --- |
-| 2024 (Actual)* | $122,045,735 | $0.00925 | $8.06 |
-| 2025 (Actual)* | $123,610,072 | $0.01028 | $8.95 |
-| 2026 (Actual)* | $171,407,253 | $0.01310 | $11.41 |
-| 2027** | $175,534,246 | $0.01352 | $11.78 |
-| 2028** | $252,867,576 | $0.01923 | $16.75 |
-| 2029** | $285,065,816 | $0.02158 | $18.80 |
+|                | Residential  | Electric Efficiency Rate ($/kWh) | Average Monthly Charges (871 kWh/month)+ |
+| -------------- | ------------ | -------------------------------- | ---------------------------------------- |
+| 2024 (Actual)* | $122,045,735 | $0.00925                         | $8.06                                    |
+| 2025 (Actual)* | $123,610,072 | $0.01028                         | $8.95                                    |
+| 2026 (Actual)* | $171,407,253 | $0.01310                         | $11.41                                   |
+| 2027**         | $175,534,246 | $0.01352                         | $11.78                                   |
+| 2028**         | $252,867,576 | $0.01923                         | $16.75                                   |
+| 2029**         | $285,065,816 | $0.02158                         | $18.80                                   |
 
 *2024-2026 costs represent actual surcharge filings
 **2027-2029 revenue requirements do not include a true-up for prior year over-/under-collections
@@ -3593,17 +3596,17 @@ _Extractor note (not source text): PDF pp. 152-156 are the Attachment 4 and Atta
 **Attachment 5B – Residential Rider 2: Electric Energy Efficiency**
 **High Scenario Charges and Bill Impact Analysis**
 
-| | Residential | Rate ($/kWh) | Average Monthly Charges (871 kWh/month)+ |
-| --- | --- | --- | --- |
-| 2024 (Actual)* | $77,602,670 | $0.00588 | $5.12 |
-| 2025 (Actual)* | $100,405,968 | $0.00764 | $6.65 |
-| 2026 (Actual)* | $143,577,640 | $0.01097 | $9.55 |
-| 2027 (Excl. SEIF and DHCD) | $141,084,630 | $0.01080 | |
-| 2027 DHCD | $33,633,815 | $0.00257 | |
-| 2027 SEIF | -$49,000,000 | ($0.00375) | |
-| 2027 Incl. SEIF and DHCD** | $125,718,445 | $0.00962 | $8.38 |
-| 2028** | $198,871,765 | $0.01506 | $13.12 |
-| 2029** | $224,004,052 | $0.01691 | $14.73 |
+|                            | Residential  | Rate ($/kWh) | Average Monthly Charges (871 kWh/month)+ |
+| -------------------------- | ------------ | ------------ | ---------------------------------------- |
+| 2024 (Actual)*             | $77,602,670  | $0.00588     | $5.12                                    |
+| 2025 (Actual)*             | $100,405,968 | $0.00764     | $6.65                                    |
+| 2026 (Actual)*             | $143,577,640 | $0.01097     | $9.55                                    |
+| 2027 (Excl. SEIF and DHCD) | $141,084,630 | $0.01080     |                                          |
+| 2027 DHCD                  | $33,633,815  | $0.00257     |                                          |
+| 2027 SEIF                  | -$49,000,000 | ($0.00375)   |                                          |
+| 2027 Incl. SEIF and DHCD** | $125,718,445 | $0.00962     | $8.38                                    |
+| 2028**                     | $198,871,765 | $0.01506     | $13.12                                   |
+| 2029**                     | $224,004,052 | $0.01691     | $14.73                                   |
 
 *2024-2026 costs represent actual surcharge filings
 **2027-2029 revenue requirements do not include a true-up for prior year over-/under-collections
@@ -3614,14 +3617,14 @@ _Extractor note (not source text): PDF pp. 152-156 are the Attachment 4 and Atta
 **Attachment 5C – Residential Rider 15: Demand Response Service**
 **High Scenario Charges and Bill Impact Analysis**
 
-| | Residential | Rate ($/kWh) | Average Monthly Charges (871 kWh/month)+ |
-| --- | --- | --- | --- |
-| 2024 (Actual)* | $37,151,057 | $0.00282 | $2.46 |
-| 2025 (Actual)* | $21,481,524 | $0.00251 | $2.19 |
-| 2026 (Actual)* | $25,871,481 | $0.00198 | $1.72 |
-| 2027** | $48,345,163 | $0.00370 | $3.22 |
-| 2028** | $52,525,173 | $0.00398 | $3.47 |
-| 2029** | $59,591,126 | $0.00450 | $3.92 |
+|                | Residential | Rate ($/kWh) | Average Monthly Charges (871 kWh/month)+ |
+| -------------- | ----------- | ------------ | ---------------------------------------- |
+| 2024 (Actual)* | $37,151,057 | $0.00282     | $2.46                                    |
+| 2025 (Actual)* | $21,481,524 | $0.00251     | $2.19                                    |
+| 2026 (Actual)* | $25,871,481 | $0.00198     | $1.72                                    |
+| 2027**         | $48,345,163 | $0.00370     | $3.22                                    |
+| 2028**         | $52,525,173 | $0.00398     | $3.47                                    |
+| 2029**         | $59,591,126 | $0.00450     | $3.92                                    |
 
 *2024-2026 costs represent actual surcharge filings
 **2027-2029 revenue requirements do not include a true-up for prior year over-/under-collections
@@ -3630,14 +3633,14 @@ _Extractor note (not source text): PDF pp. 152-156 are the Attachment 4 and Atta
 **Attachment 5D – Residential Rider 26: Peak Time Rebate**
 **High Scenario Charges and Bill Impact Analysis**
 
-| | Residential | Rate ($/kWh) | Average Monthly Charges (871 kWh/month)+ |
-| --- | --- | --- | --- |
-| 2024 (Actual)* | $7,292,008 | $0.00055 | $0.48 |
-| 2025 (Actual)* | $1,722,579 | $0.00013 | $0.11 |
-| 2026 (Actual)* | $1,958,132 | $0.00015 | $0.13 |
-| 2027** | $1,470,638 | $0.00020 | $0.18 |
-| 2028** | $1,470,638 | $0.00019 | $0.17 |
-| 2029** | $1,470,638 | $0.00017 | $0.15 |
+|                | Residential | Rate ($/kWh) | Average Monthly Charges (871 kWh/month)+ |
+| -------------- | ----------- | ------------ | ---------------------------------------- |
+| 2024 (Actual)* | $7,292,008  | $0.00055     | $0.48                                    |
+| 2025 (Actual)* | $1,722,579  | $0.00013     | $0.11                                    |
+| 2026 (Actual)* | $1,958,132  | $0.00015     | $0.13                                    |
+| 2027**         | $1,470,638  | $0.00020     | $0.18                                    |
+| 2028**         | $1,470,638  | $0.00019     | $0.17                                    |
+| 2029**         | $1,470,638  | $0.00017     | $0.15                                    |
 
 *2024-2026 costs represent actual surcharge filings
 **2027-2029 revenue requirements do not include a true-up for prior year over-/under-collections
@@ -3648,14 +3651,14 @@ _Extractor note (not source text): PDF pp. 152-156 are the Attachment 4 and Atta
 **Attachment 5 – Residential Electric EmPOWER MD**
 **Low Scenario Charges and Bill Impact Analysis**
 
-| | Residential | Electric Efficiency Rate ($/kWh) | Average Monthly Charges (871 kWh/month)+ |
-| --- | --- | --- | --- |
-| 2024 (Actual)* | $122,045,735 | $0.00925 | $8.06 |
-| 2025 (Actual)* | $123,610,072 | $0.01028 | $8.95 |
-| 2026 (Actual)* | $171,407,253 | $0.01310 | $11.41 |
-| 2027** | $240,887,793 | $0.01093 | $9.52 |
-| 2028** | $218,879,398 | $0.01666 | $14.51 |
-| 2029** | $248,862,466 | $0.01885 | $16.42 |
+|                | Residential  | Electric Efficiency Rate ($/kWh) | Average Monthly Charges (871 kWh/month)+ |
+| -------------- | ------------ | -------------------------------- | ---------------------------------------- |
+| 2024 (Actual)* | $122,045,735 | $0.00925                         | $8.06                                    |
+| 2025 (Actual)* | $123,610,072 | $0.01028                         | $8.95                                    |
+| 2026 (Actual)* | $171,407,253 | $0.01310                         | $11.41                                   |
+| 2027**         | $240,887,793 | $0.01093                         | $9.52                                    |
+| 2028**         | $218,879,398 | $0.01666                         | $14.51                                   |
+| 2029**         | $248,862,466 | $0.01885                         | $16.42                                   |
 
 *2024-2026 costs represent actual surcharge filings
 **2027-2029 revenue requirements do not include a true-up for prior year over-/under-collections
@@ -3664,17 +3667,17 @@ _Extractor note (not source text): PDF pp. 152-156 are the Attachment 4 and Atta
 **Attachment 5B – Residential Rider 2: Electric Energy Efficiency**
 **Low Scenario Charges and Bill Impact Analysis**
 
-| | Residential | Rate ($/kWh) | Average Monthly Charges (871 kWh/month)+ |
-| --- | --- | --- | --- |
-| 2024 (Actual)* | $77,602,670 | $0.00588 | $5.12 |
-| 2025 (Actual)* | $100,405,968 | $0.00764 | $6.65 |
-| 2026 (Actual)* | $143,577,640 | $0.01097 | $9.55 |
-| 2027 (Excl. SEIF and DHCD) | $107,267,700 | $0.00821 | |
-| 2027 DHCD | $33,633,815 | $0.00257 | |
-| 2027 SEIF | $50,170,477 | ($0.00375) | |
-| 2027 Incl. SEIF and DHCD** | $191,071,992 | $0.00703 | $6.12 |
-| 2028** | $164,883,587 | $0.01249 | $10.88 |
-| 2029** | $187,800,703 | $0.01418 | $12.35 |
+|                            | Residential  | Rate ($/kWh) | Average Monthly Charges (871 kWh/month)+ |
+| -------------------------- | ------------ | ------------ | ---------------------------------------- |
+| 2024 (Actual)*             | $77,602,670  | $0.00588     | $5.12                                    |
+| 2025 (Actual)*             | $100,405,968 | $0.00764     | $6.65                                    |
+| 2026 (Actual)*             | $143,577,640 | $0.01097     | $9.55                                    |
+| 2027 (Excl. SEIF and DHCD) | $107,267,700 | $0.00821     |                                          |
+| 2027 DHCD                  | $33,633,815  | $0.00257     |                                          |
+| 2027 SEIF                  | $50,170,477  | ($0.00375)   |                                          |
+| 2027 Incl. SEIF and DHCD** | $191,071,992 | $0.00703     | $6.12                                    |
+| 2028**                     | $164,883,587 | $0.01249     | $10.88                                   |
+| 2029**                     | $187,800,703 | $0.01418     | $12.35                                   |
 
 *2024-2026 costs represent actual surcharge filings
 **2027-2029 revenue requirements do not include a true-up for prior year over-/under-collections
@@ -3687,14 +3690,14 @@ _Extractor note (not source text): PDF pp. 152-156 are the Attachment 4 and Atta
 **Attachment 5C – Residential Rider 15: Demand Response Service**
 **Low Scenario Charges and Bill Impact Analysis**
 
-| | Residential | Rate ($/kWh) | Average Monthly Charges (871 kWh/month)+ |
-| --- | --- | --- | --- |
-| 2024 (Actual)* | $37,151,057 | $0.00282 | $2.46 |
-| 2025 (Actual)* | $21,481,524 | $0.00251 | $2.19 |
-| 2026 (Actual)* | $25,871,481 | $0.00198 | $1.72 |
-| 2027** | $48,345,163 | $0.00370 | $3.22 |
-| 2028** | $52,525,173 | $0.00398 | $3.47 |
-| 2029** | $59,591,126 | $0.00450 | $3.92 |
+|                | Residential | Rate ($/kWh) | Average Monthly Charges (871 kWh/month)+ |
+| -------------- | ----------- | ------------ | ---------------------------------------- |
+| 2024 (Actual)* | $37,151,057 | $0.00282     | $2.46                                    |
+| 2025 (Actual)* | $21,481,524 | $0.00251     | $2.19                                    |
+| 2026 (Actual)* | $25,871,481 | $0.00198     | $1.72                                    |
+| 2027**         | $48,345,163 | $0.00370     | $3.22                                    |
+| 2028**         | $52,525,173 | $0.00398     | $3.47                                    |
+| 2029**         | $59,591,126 | $0.00450     | $3.92                                    |
 
 *2024-2026 costs represent actual surcharge filings
 **2027-2029 revenue requirements do not include a true-up for prior year over-/under-collections
@@ -3703,14 +3706,14 @@ _Extractor note (not source text): PDF pp. 152-156 are the Attachment 4 and Atta
 **Attachment 5D – Residential Rider 26: Peak Time Rebate**
 **Low Scenario Charges and Bill Impact Analysis**
 
-| | Residential | Rate ($/kWh) | Average Monthly Charges (871 kWh/month)+ |
-| --- | --- | --- | --- |
-| 2024 (Actual)* | $7,292,008 | $0.00055 | $0.48 |
-| 2025 (Actual)* | $1,722,579 | $0.00013 | $0.11 |
-| 2026 (Actual)* | $1,958,132 | $0.00015 | $0.13 |
-| 2027** | $1,470,638 | $0.00020 | $0.18 |
-| 2028** | $1,470,638 | $0.00019 | $0.17 |
-| 2029** | $1,470,638 | $0.00017 | $0.15 |
+|                | Residential | Rate ($/kWh) | Average Monthly Charges (871 kWh/month)+ |
+| -------------- | ----------- | ------------ | ---------------------------------------- |
+| 2024 (Actual)* | $7,292,008  | $0.00055     | $0.48                                    |
+| 2025 (Actual)* | $1,722,579  | $0.00013     | $0.11                                    |
+| 2026 (Actual)* | $1,958,132  | $0.00015     | $0.13                                    |
+| 2027**         | $1,470,638  | $0.00020     | $0.18                                    |
+| 2028**         | $1,470,638  | $0.00019     | $0.17                                    |
+| 2029**         | $1,470,638  | $0.00017     | $0.15                                    |
 
 *2024-2026 costs represent actual surcharge filings
 **2027-2029 revenue requirements do not include a true-up for prior year over-/under-collections

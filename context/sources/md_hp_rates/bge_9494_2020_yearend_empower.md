@@ -168,14 +168,14 @@ Richard Mallory, Maryland Energy Administration
 
 **BGE EmPOWER Maryland Economic Customer Benefits - 2020**
 
-| Benefit | Amount |
-| --- | ---: |
-| Direct rebates paid to customers for energy efficiency measures | $ 70,000,000 |
-| Demand Response customer credits and signing bonuses paid to customers | $ 23,000,000 |
-| Smart Energy Rewards program credits paid to customers | $ - |
-| Value of PeakRewards devices installed in customers' homes | $ 4,000,000 |
-| Lifecycle savings to customers over the useful life of energy efficiency measures | $ 685,000,000 |
-| **Total value to BGE customers** | **$ 782,000,000** |
+| Benefit                                                                           |            Amount |
+| --------------------------------------------------------------------------------- | ----------------: |
+| Direct rebates paid to customers for energy efficiency measures                   |      $ 70,000,000 |
+| Demand Response customer credits and signing bonuses paid to customers            |      $ 23,000,000 |
+| Smart Energy Rewards program credits paid to customers                            |               $ - |
+| Value of PeakRewards devices installed in customers' homes                        |       $ 4,000,000 |
+| Lifecycle savings to customers over the useful life of energy efficiency measures |     $ 685,000,000 |
+| **Total value to BGE customers**                                                  | **$ 782,000,000** |
 
 The EmPOWER cycle performance has been outstanding. For the 2018-2020 cycle, the EmPOWER program portfolio has achieved 127% of the 2% annual target savings goal using only 83% of the overall 2018-2020 program budget. The entire portfolio achieved over 2.4 million MWhs in annualized electric energy savings. Natural gas savings were over 16 million therms. Avoided generation from these savings over the estimated life of the energy efficiency measures and services installed during the 2018-2020 cycle is over 18 million MWh. This represents a reduction of over 12.8 million metric tons of carbon dioxide gas emissions according to the EPA Greenhouse Gas Equivalents Calculator, over 7 million tons of coal not burned or over 2.7 million vehicles not driven for a year. BGE customers received incentives and bill credits of approximately $302 million over the cycle. Estimated savings on customer bills over the life of measures installed during the 2018-2020 cycle are approximately $1.9 billion.
 
@@ -265,29 +265,29 @@ BGE provides options for customers to save energy and money by installing smart 
 
 **Smart Thermostat Cross-Program Deployment (Year 2020)**
 
-| Measure | Reported Measure Quantity | Reported Annualized Savings (MWh) |
-| --- | ---: | ---: |
-| **Residential Programs** | 17,714 | 4,134 |
-| ↳ Appliance Rebates | 0 | 0 |
-| ↳ Home Performance w/ENERGY STAR | 3 | 1 |
-| ↳ HVAC | 0 | 0 |
-| ↳ Residential New Construction | 2,549 | 219 |
-| ↳ Smart Thermostat | 15,162 | 3,914 |
-| **Residential Demand Response** | 3,819 | 991 |
-| ↳ PeakRewards | 3,341 | 874 |
-| ↳ PeakRewards thermostats installed during QHECs * | 478 | 117 |
-| **Commercial Programs** | | |
-| ↳ Small Business Energy Solutions | 113 | 129 |
-| **Aggregate Smart Thermostats** | 21,646 | 5,254 |
+| Measure                                            | Reported Measure Quantity | Reported Annualized Savings (MWh) |
+| -------------------------------------------------- | ------------------------: | --------------------------------: |
+| **Residential Programs**                           |                    17,714 |                             4,134 |
+| ↳ Appliance Rebates                                |                         0 |                                 0 |
+| ↳ Home Performance w/ENERGY STAR                   |                         3 |                                 1 |
+| ↳ HVAC                                             |                         0 |                                 0 |
+| ↳ Residential New Construction                     |                     2,549 |                               219 |
+| ↳ Smart Thermostat                                 |                    15,162 |                             3,914 |
+| **Residential Demand Response**                    |                     3,819 |                               991 |
+| ↳ PeakRewards                                      |                     3,341 |                               874 |
+| ↳ PeakRewards thermostats installed during QHECs * |                       478 |                               117 |
+| **Commercial Programs**                            |                           |                                   |
+| ↳ Small Business Energy Solutions                  |                       113 |                               129 |
+| **Aggregate Smart Thermostats**                    |                    21,646 |                             5,254 |
 
 Note: * Represents PeakRewards thermostats installed coincident to the performance of a QHEC
 
 **Thermostat Optimization (Year 2020)**
 
-| Measure | Reported Measure Quantity | Reported Annualized Savings (MWh) |
-| --- | ---: | ---: |
-| Smart Thermostat Program - Residential | 35,919 | 2,153 |
-| **Aggregate Smart Thermostat Optimization** | 35,919 | 2,153 |
+| Measure                                     | Reported Measure Quantity | Reported Annualized Savings (MWh) |
+| ------------------------------------------- | ------------------------: | --------------------------------: |
+| Smart Thermostat Program - Residential      |                    35,919 |                             2,153 |
+| **Aggregate Smart Thermostat Optimization** |                    35,919 |                             2,153 |
 
 BGE’s Smart Thermostat Rebate Program offers a $75 rebate to residential customers who purchase an Energy Star-certified smart thermostat through several market venues, including various retail locations (in-store and online), directly from thermostat manufacturers, and through the BGE Marketplace where customers can receive an instant rebate at the time of purchase. Instant rebates are also available both in-store and online at Home Depot and Best Buy as well as online at ecobee.com. Whether purchased as part of the Smart Thermostat Program or through other BGE programs offering this energy savings measure, customers can take advantage of additional energy savings by replacing a manually operated or conventional programmable thermostat.
 
@@ -302,8 +302,8 @@ BGE will continue to refine and enhance the evaluation and reporting for smart t
 #### Year 2020 Annual Target Table
 
 | Year | 2020 Reported Savings (MWh)¹ | 2016 Energy Sales² | Percent of Sales | Annual Target | Percent of Annual Target |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| 2020 | 856,154 | 32,001,806 | 2.68% | 2.00% | 134% |
+| ---- | ---------------------------: | -----------------: | ---------------: | ------------: | -----------------------: |
+| 2020 |                      856,154 |         32,001,806 |            2.68% |         2.00% |                     134% |
 
 Notes: ¹ 2020 Reported Savings are at the gross wholesale level. ² 2016 Energy Sales are reported at gross wholesale levels and weather-normalized.
 
@@ -313,42 +313,42 @@ BGE’s portfolio of programs exceeded the year 2020 as-filed targets, achieving
 
 **BGE Year 2020 EmPOWER Program Tracking to Forecast Targets**
 
-| Program | Status | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Percent of Reported to Forecasted Energy Savings | 2020 Budget ($) | 2020 Expenditures ($) | Percent of Annual Budget Used |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| **Residential Portfolio** | | | | | | | |
-| ↳ Lighting | Exceeded Target | 131,421 | 166,841 | 127% | $ 11,759,569 | $ 10,350,524 | 88% |
-| ↳ Appliance Rebates | Exceeded Target | 3,252 | 9,721 | 299% | $ 2,832,391 | $ 2,751,204 | 97% |
-| ↳ Appliance Recycling | Below Target | 8,200 | 4,422 | 54% | $ 2,430,503 | $ 1,405,855 | 58% |
-| Energy Efficient Products Subtotal | Exceeded Target | 142,873 | 180,984 | 127% | $ 17,022,463 | $ 14,507,583 | 85% |
-| ↳ Quick Home Energy Checkup | Below Target | 12,183 | 6,847 | 56% | $ 11,218,274 | $ 4,625,449 | 41% |
-| ↳ Home Performance with ENERGY STAR | Below Target | 3,933 | 3,113 | 79% | $ 7,667,969 | $ 5,649,546 | 74% |
-| ↳ HVAC | Below Target | 11,226 | 6,317 | 56% | $ 6,754,985 | $ 5,471,077 | 81% |
-| ↳ Smart Thermostats | Below Target | 8,759 | 6,067 | 69% | $ 2,917,675 | $ 2,494,201 | 85% |
-| Home Optimization & Retrofit Subtotal | Below Target | 36,101 | 22,344 | 62% | 28,558,903 | 18,240,273 | 64% |
-| New Construction | On Target | 6,377 | 6,408 | 100% | $ 4,222,053 | $ 3,715,386 | 88% |
-| Smart Energy Manager | Exceeded Target | 138,305 | 193,188 | 140% | $ 6,192,806 | $ 5,775,460 | 93% |
-| Smart Energy Rewards * | | | 4,719 | | $ 16,000,000 | $ 221,025 | 1% |
-| **Total Residential Portfolio** | Exceeded Target | 328,375 | 402,924 | 123% | 71,996,225 | 42,459,727 | 59% |
-| **Commercial Industrial Portfolio:** | | | | | | | |
-| Small Business Program | Exceeded Target | 26,000 | 35,382 | 136% | $ 14,567,057 | $ 16,446,543 | 113% |
-| Efficient Buildings | | | | | | | |
-| ↳ Prescriptive | Exceeded Target | 62,000 | 108,439 | 175% | $ 30,430,493 | $ 24,945,236 | 82% |
-| ↳ Custom | Exceeded Target | 21,000 | 28,014 | 133% | $ 4,956,938 | $ 6,808,754 | 137% |
-| ↳ Retrocommissioning | Exceeded Target | 4,000 | 16,146 | 404% | $ 4,050,509 | $ 2,886,725 | 71% |
-| Efficient Buildings Subtotal | Exceeded Target | 87,000 | 152,599 | 175% | 39,437,940 | 34,640,715 | 88% |
-| Combined Heat and Power | Exceeded Target | 28,000 | 34,523 | 123% | $ 2,943,320 | $ 1,908,570 | 65% |
-| Midstream Products *** | Exceeded Target | 28,000 | 44,356 | 158% | $ (1,228,307) | $ 4,669,750 | -380% |
-| **Total Commercial & Industrial Portfolio** | Exceeded Target | 169,000 | 266,860 | 158% | 55,720,010 | 57,665,578 | 103% |
-| **Total Energy Efficiency Programs** | Exceeded Target | 497,375 | 669,784 | 135% | 127,716,235 | 100,125,305 | 78% |
-| Demand Response Programs (Residential)** | Below Target | 15,338 | 991 | 6% | $ 47,463,661 | $ 31,650,745 | 67% |
-| **Other EE&C Programs** | | | | | | | |
-| CVR (Both Residential and Commercial) | On Target | 195,000 | 184,564 | 95% | $ - | $ - | N/A |
-| Transformers (Both Residential and Comm) | Below Target | 1,500 | 815 | 54% | $ - | $ - | N/A |
-| **Program Investigation** | | | | | | | |
-| PIDD (Residential) | New Program | - | - | 0% | $ 1,000,000 | $ 278,549 | 28% |
-| **Limited Income Programs (Utility Costs Only)** | | | | | | | |
-| DHCD (Residential) | N/A | | | | $ 15,967,824 | $ 8,649,526 | 54% |
-| **Total All Programs** | Exceeded Target | 709,213 | 856,154 | 121% | $ 192,147,720 | $ 140,704,125 | 73% |
+| Program                                          | Status          | Forecasted Annualized Energy Savings (MWh) | Reported Annualized Energy Savings (MWh) | Percent of Reported to Forecasted Energy Savings | 2020 Budget ($) | 2020 Expenditures ($) | Percent of Annual Budget Used |
+| ------------------------------------------------ | --------------- | -----------------------------------------: | ---------------------------------------: | -----------------------------------------------: | --------------: | --------------------: | ----------------------------: |
+| **Residential Portfolio**                        |                 |                                            |                                          |                                                  |                 |                       |                               |
+| ↳ Lighting                                       | Exceeded Target |                                    131,421 |                                  166,841 |                                             127% |    $ 11,759,569 |          $ 10,350,524 |                           88% |
+| ↳ Appliance Rebates                              | Exceeded Target |                                      3,252 |                                    9,721 |                                             299% |     $ 2,832,391 |           $ 2,751,204 |                           97% |
+| ↳ Appliance Recycling                            | Below Target    |                                      8,200 |                                    4,422 |                                              54% |     $ 2,430,503 |           $ 1,405,855 |                           58% |
+| Energy Efficient Products Subtotal               | Exceeded Target |                                    142,873 |                                  180,984 |                                             127% |    $ 17,022,463 |          $ 14,507,583 |                           85% |
+| ↳ Quick Home Energy Checkup                      | Below Target    |                                     12,183 |                                    6,847 |                                              56% |    $ 11,218,274 |           $ 4,625,449 |                           41% |
+| ↳ Home Performance with ENERGY STAR              | Below Target    |                                      3,933 |                                    3,113 |                                              79% |     $ 7,667,969 |           $ 5,649,546 |                           74% |
+| ↳ HVAC                                           | Below Target    |                                     11,226 |                                    6,317 |                                              56% |     $ 6,754,985 |           $ 5,471,077 |                           81% |
+| ↳ Smart Thermostats                              | Below Target    |                                      8,759 |                                    6,067 |                                              69% |     $ 2,917,675 |           $ 2,494,201 |                           85% |
+| Home Optimization & Retrofit Subtotal            | Below Target    |                                     36,101 |                                   22,344 |                                              62% |      28,558,903 |            18,240,273 |                           64% |
+| New Construction                                 | On Target       |                                      6,377 |                                    6,408 |                                             100% |     $ 4,222,053 |           $ 3,715,386 |                           88% |
+| Smart Energy Manager                             | Exceeded Target |                                    138,305 |                                  193,188 |                                             140% |     $ 6,192,806 |           $ 5,775,460 |                           93% |
+| Smart Energy Rewards *                           |                 |                                            |                                    4,719 |                                                  |    $ 16,000,000 |             $ 221,025 |                            1% |
+| **Total Residential Portfolio**                  | Exceeded Target |                                    328,375 |                                  402,924 |                                             123% |      71,996,225 |            42,459,727 |                           59% |
+| **Commercial Industrial Portfolio:**             |                 |                                            |                                          |                                                  |                 |                       |                               |
+| Small Business Program                           | Exceeded Target |                                     26,000 |                                   35,382 |                                             136% |    $ 14,567,057 |          $ 16,446,543 |                          113% |
+| Efficient Buildings                              |                 |                                            |                                          |                                                  |                 |                       |                               |
+| ↳ Prescriptive                                   | Exceeded Target |                                     62,000 |                                  108,439 |                                             175% |    $ 30,430,493 |          $ 24,945,236 |                           82% |
+| ↳ Custom                                         | Exceeded Target |                                     21,000 |                                   28,014 |                                             133% |     $ 4,956,938 |           $ 6,808,754 |                          137% |
+| ↳ Retrocommissioning                             | Exceeded Target |                                      4,000 |                                   16,146 |                                             404% |     $ 4,050,509 |           $ 2,886,725 |                           71% |
+| Efficient Buildings Subtotal                     | Exceeded Target |                                     87,000 |                                  152,599 |                                             175% |      39,437,940 |            34,640,715 |                           88% |
+| Combined Heat and Power                          | Exceeded Target |                                     28,000 |                                   34,523 |                                             123% |     $ 2,943,320 |           $ 1,908,570 |                           65% |
+| Midstream Products ***                           | Exceeded Target |                                     28,000 |                                   44,356 |                                             158% |   $ (1,228,307) |           $ 4,669,750 |                         -380% |
+| **Total Commercial & Industrial Portfolio**      | Exceeded Target |                                    169,000 |                                  266,860 |                                             158% |      55,720,010 |            57,665,578 |                          103% |
+| **Total Energy Efficiency Programs**             | Exceeded Target |                                    497,375 |                                  669,784 |                                             135% |     127,716,235 |           100,125,305 |                           78% |
+| Demand Response Programs (Residential)**         | Below Target    |                                     15,338 |                                      991 |                                               6% |    $ 47,463,661 |          $ 31,650,745 |                           67% |
+| **Other EE&C Programs**                          |                 |                                            |                                          |                                                  |                 |                       |                               |
+| CVR (Both Residential and Commercial)            | On Target       |                                    195,000 |                                  184,564 |                                              95% |             $ - |                   $ - |                           N/A |
+| Transformers (Both Residential and Comm)         | Below Target    |                                      1,500 |                                      815 |                                              54% |             $ - |                   $ - |                           N/A |
+| **Program Investigation**                        |                 |                                            |                                          |                                                  |                 |                       |                               |
+| PIDD (Residential)                               | New Program     |                                          - |                                        - |                                               0% |     $ 1,000,000 |             $ 278,549 |                           28% |
+| **Limited Income Programs (Utility Costs Only)** |                 |                                            |                                          |                                                  |                 |                       |                               |
+| DHCD (Residential)                               | N/A             |                                            |                                          |                                                  |    $ 15,967,824 |           $ 8,649,526 |                           54% |
+| **Total All Programs**                           | Exceeded Target |                                    709,213 |                                  856,154 |                                             121% |   $ 192,147,720 |         $ 140,704,125 |                           73% |
 
 Note: On Target is considered to be from 90% to 100% of the target. Exceeded Target and Below Target are results outside of the On Target range.
 \* Smart Energy Rewards is a Peak Time Rebate demand reduction program
@@ -388,12 +388,12 @@ The Conservation Voltage Reduction (“CVR”) Program’s energy savings achiev
 
 **2018-2020 Goals Table**
 
-| Year | Annual Reported Savings (MWh)¹ | 2016 Energy Sales² | Percent of Sales | Annual Target | Percent of Annual Target |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| 2018 | 738,589 | 32,001,806 | 2.31% | 2.00% | 115% |
-| 2019 | 841,310 | 32,001,806 | 2.63% | 2.00% | 131% |
-| 2020 | 856,154 | 32,001,806 | 2.68% | 2.00% | 134% |
-| 2018-2020 | 812,018 | 32,001,806 | 2.54% | 2.00% | 127% |
+| Year      | Annual Reported Savings (MWh)¹ | 2016 Energy Sales² | Percent of Sales | Annual Target | Percent of Annual Target |
+| --------- | -----------------------------: | -----------------: | ---------------: | ------------: | -----------------------: |
+| 2018      |                        738,589 |         32,001,806 |            2.31% |         2.00% |                     115% |
+| 2019      |                        841,310 |         32,001,806 |            2.63% |         2.00% |                     131% |
+| 2020      |                        856,154 |         32,001,806 |            2.68% |         2.00% |                     134% |
+| 2018-2020 |                        812,018 |         32,001,806 |            2.54% |         2.00% |                     127% |
 
 Notes: ¹ Annual Reported Savings are at the gross wholesale level. ² 2016 Energy Sales are reported at gross wholesale levels and weather-normalized.
 
@@ -447,11 +447,11 @@ The pandemic and subsequent suspension of many of BGE’s energy efficiency prog
 
 The BGE pilot treatment campaigns reached over 40,000 unique customers in the first two campaigns. As of January 2021, only two of the three campaigns have been completed, with the second campaign having just sent its post campaign communication. As additional data is ingested and analyzed for the second campaign, the results may differ from the current analysis.
 
-| Disaggregated Energy Insight | Promotion Dates | Follow-up Dates | # Treatment HHs |
-| --- | --- | --- | ---: |
-| Smart Thermostat | 06/14/2020 – 07/11/2020 | 09/13/2020 – 10/10/2020 | 21,975 |
-| Quick Home Energy Checkup | 10/11/2020 – 11/14/2020 | 12/13/2020 – 01/09/2021 | 22,013 |
-| Refrigerator Recycling | March 2021 | June 2021 | TBD |
+| Disaggregated Energy Insight | Promotion Dates         | Follow-up Dates         | # Treatment HHs |
+| ---------------------------- | ----------------------- | ----------------------- | --------------: |
+| Smart Thermostat             | 06/14/2020 – 07/11/2020 | 09/13/2020 – 10/10/2020 |          21,975 |
+| Quick Home Energy Checkup    | 10/11/2020 – 11/14/2020 | 12/13/2020 – 01/09/2021 |          22,013 |
+| Refrigerator Recycling       | March 2021              | June 2021               |             TBD |
 
 [PDF p. 16 | printed p. 15]
 
@@ -531,41 +531,41 @@ Despite the gap in appliance pickups, the appliance recycling program exceeded t
 
 **Appliances & Appliance Recycling**
 
-| Measures | Reported Measure Quantity | Reported Annualized Energy Savings (MWh) | Reported Peak Demand Reduction (MW) |
-| --- | ---: | ---: | ---: |
-| **Downstream Measures - Retail** | 2,676 | 1,461 | 0.344 |
-| ↳ Advanced Power Strips | 0 | 0 | 0.000 |
-| ↳ Air Cleaners/ Purifiers | 296 | 140 | 0.016 |
-| ↳ Clothes Dryers | 0 | 0 | 0.000 |
-| ↳ Clothes Washers | 0 | 0 | 0.000 |
-| ↳↳ Tier 2 | 0 | 0 | 0.000 |
-| ↳↳ Tier 3 | 0 | 0 | 0.000 |
-| ↳ Dehumidifiers | 1,127 | 149 | 0.035 |
-| ↳ Pool Pump | 855 | 542 | 0.237 |
-| ↳↳ 2 Speed | 0 | 0 | 0.000 |
-| ↳↳ Variable Speed | 855 | 542 | 0.237 |
-| ↳ Refrigerators | 0 | 0 | 0.000 |
-| ↳↳ Tier 2 | 0 | 0 | 0.000 |
-| ↳↳ Tier 3 | 0 | 0 | 0.000 |
-| ↳ Heat Pump Water Heaters | 398 | 630 | 0.056 |
-| ↳ Smart Thermostats | 0 | 0 | 0.000 |
-| **Midstream Measures** | 68,658 | 8,260 | 0.941 |
-| ↳ Advanced Power Strips - Instant | 20,985 | 1,936 | 0.194 |
-| ↳ Air Cleaners/ Purifiers - Instant | 0 | 0 | 0.000 |
-| ↳ Clothes Dryers - RPP | 21,842 | 3,774 | 0.385 |
-| ↳ Clothes Washers - RPP | 12,848 | 1,697 | 0.190 |
-| ↳ Freezers - RPP | 2,973 | 137 | 0.023 |
-| ↳ Heat Pump Dryer - RPP | 9 | 2 | 0.000 |
-| ↳ Heat Pump Water Heaters - Distributors | 131 | 195 | 0.018 |
-| ↳ Refrigerators-RPP | 9,435 | 463 | 0.076 |
-| ↳ Room Air Conditioners - RPP | 435 | 56 | 0.055 |
-| ↳ Sound Bars - RPP | 0 | 0 | 0.000 |
-| **Recycling Measures** | 4,519 | 4,422 | 0.711 |
-| ↳ Dehumidifiers | 247 | 105 | 0.024 |
-| ↳ Freezers | 673 | 493 | 0.076 |
-| ↳ Refrigerators | 3,232 | 3,789 | 0.577 |
-| ↳ Room Air Conditioners | 367 | 35 | 0.034 |
-| **Appliances Total** | 75,853 | 14,143 | 1.996 |
+| Measures                                 | Reported Measure Quantity | Reported Annualized Energy Savings (MWh) | Reported Peak Demand Reduction (MW) |
+| ---------------------------------------- | ------------------------: | ---------------------------------------: | ----------------------------------: |
+| **Downstream Measures - Retail**         |                     2,676 |                                    1,461 |                               0.344 |
+| ↳ Advanced Power Strips                  |                         0 |                                        0 |                               0.000 |
+| ↳ Air Cleaners/ Purifiers                |                       296 |                                      140 |                               0.016 |
+| ↳ Clothes Dryers                         |                         0 |                                        0 |                               0.000 |
+| ↳ Clothes Washers                        |                         0 |                                        0 |                               0.000 |
+| ↳↳ Tier 2                                |                         0 |                                        0 |                               0.000 |
+| ↳↳ Tier 3                                |                         0 |                                        0 |                               0.000 |
+| ↳ Dehumidifiers                          |                     1,127 |                                      149 |                               0.035 |
+| ↳ Pool Pump                              |                       855 |                                      542 |                               0.237 |
+| ↳↳ 2 Speed                               |                         0 |                                        0 |                               0.000 |
+| ↳↳ Variable Speed                        |                       855 |                                      542 |                               0.237 |
+| ↳ Refrigerators                          |                         0 |                                        0 |                               0.000 |
+| ↳↳ Tier 2                                |                         0 |                                        0 |                               0.000 |
+| ↳↳ Tier 3                                |                         0 |                                        0 |                               0.000 |
+| ↳ Heat Pump Water Heaters                |                       398 |                                      630 |                               0.056 |
+| ↳ Smart Thermostats                      |                         0 |                                        0 |                               0.000 |
+| **Midstream Measures**                   |                    68,658 |                                    8,260 |                               0.941 |
+| ↳ Advanced Power Strips - Instant        |                    20,985 |                                    1,936 |                               0.194 |
+| ↳ Air Cleaners/ Purifiers - Instant      |                         0 |                                        0 |                               0.000 |
+| ↳ Clothes Dryers - RPP                   |                    21,842 |                                    3,774 |                               0.385 |
+| ↳ Clothes Washers - RPP                  |                    12,848 |                                    1,697 |                               0.190 |
+| ↳ Freezers - RPP                         |                     2,973 |                                      137 |                               0.023 |
+| ↳ Heat Pump Dryer - RPP                  |                         9 |                                        2 |                               0.000 |
+| ↳ Heat Pump Water Heaters - Distributors |                       131 |                                      195 |                               0.018 |
+| ↳ Refrigerators-RPP                      |                     9,435 |                                      463 |                               0.076 |
+| ↳ Room Air Conditioners - RPP            |                       435 |                                       56 |                               0.055 |
+| ↳ Sound Bars - RPP                       |                         0 |                                        0 |                               0.000 |
+| **Recycling Measures**                   |                     4,519 |                                    4,422 |                               0.711 |
+| ↳ Dehumidifiers                          |                       247 |                                      105 |                               0.024 |
+| ↳ Freezers                               |                       673 |                                      493 |                               0.076 |
+| ↳ Refrigerators                          |                     3,232 |                                    3,789 |                               0.577 |
+| ↳ Room Air Conditioners                  |                       367 |                                       35 |                               0.034 |
+| **Appliances Total**                     |                    75,853 |                                   14,143 |                               1.996 |
 
 Note: Clothes washers, clothes dryers and refrigerators were transitioned to the Energy Star Retail Products Program effective April 1, 2019.
 
@@ -593,35 +593,35 @@ To identify qualified candidates, BGE used its list of previous Smart Home Pilot
 
 **Home Performance with ENERGY STAR®**
 
-| | |
-| --- | ---: |
-| Participants by Audit | 2,167 |
-| Participants by Completed Project | 884 |
+|                                   |       |
+| --------------------------------- | ----: |
+| Participants by Audit             | 2,167 |
+| Participants by Completed Project |   884 |
 
-| Measures | Reported Measure Quantity | Reported Annualized Savings (MWh) | Reported Peak Demand Reduction (MW) |
-| --- | ---: | ---: | ---: |
-| **Direct Install Measures** | 19,293 | 636 | 0.072 |
-| ↳ Domestic Hot Water Pipe Insulation | 581 | 15 | 0.002 |
-| ↳ Domestic Hot Water Temperature Turndown | 0 | 0 | 0.000 |
-| ↳ Efficient Flow Showerheads | 732 | 52 | 0.007 |
-| ↳ Faucet Aerators | 568 | 13 | 0.001 |
-| ↳ LEDs | 16,271 | 458 | 0.052 |
-| ↳ Smart Thermostats | 3 | 1 | 0.000 |
-| ↳ Smart Strips | 1,137 | 97 | 0.010 |
-| ↳ Other | 1 | 0 | 0.000 |
-| **Weatherization Measures** | 4,620 | 2,477 | 0.714 |
-| ↳ Air Sealing | 841 | 614 | 0.177 |
-| ↳ Duct Sealing | 90 | 18 | 0.005 |
-| ↳ Health and Safety Measures | 0 | 0 | 0.000 |
-| ↳ HVAC | 471 | 759 | 0.220 |
-| ↳ Insulation | 2,860 | 1,074 | 0.309 |
-| ↳↳ Attic | 1,693 | 747 | 0.215 |
-| ↳↳ Floor | 874 | 187 | 0.054 |
-| ↳↳ Wall | 68 | 38 | 0.011 |
-| ↳↳ Duct | 225 | 102 | 0.029 |
-| ↳ Mechanical Equipment | 0 | 0 | 0.000 |
-| ↳ Windows | 358 | 12 | 0.003 |
-| **HPwES Total** | 23,913 | 3,113 | 0.786 |
+| Measures                                  | Reported Measure Quantity | Reported Annualized Savings (MWh) | Reported Peak Demand Reduction (MW) |
+| ----------------------------------------- | ------------------------: | --------------------------------: | ----------------------------------: |
+| **Direct Install Measures**               |                    19,293 |                               636 |                               0.072 |
+| ↳ Domestic Hot Water Pipe Insulation      |                       581 |                                15 |                               0.002 |
+| ↳ Domestic Hot Water Temperature Turndown |                         0 |                                 0 |                               0.000 |
+| ↳ Efficient Flow Showerheads              |                       732 |                                52 |                               0.007 |
+| ↳ Faucet Aerators                         |                       568 |                                13 |                               0.001 |
+| ↳ LEDs                                    |                    16,271 |                               458 |                               0.052 |
+| ↳ Smart Thermostats                       |                         3 |                                 1 |                               0.000 |
+| ↳ Smart Strips                            |                     1,137 |                                97 |                               0.010 |
+| ↳ Other                                   |                         1 |                                 0 |                               0.000 |
+| **Weatherization Measures**               |                     4,620 |                             2,477 |                               0.714 |
+| ↳ Air Sealing                             |                       841 |                               614 |                               0.177 |
+| ↳ Duct Sealing                            |                        90 |                                18 |                               0.005 |
+| ↳ Health and Safety Measures              |                         0 |                                 0 |                               0.000 |
+| ↳ HVAC                                    |                       471 |                               759 |                               0.220 |
+| ↳ Insulation                              |                     2,860 |                             1,074 |                               0.309 |
+| ↳↳ Attic                                  |                     1,693 |                               747 |                               0.215 |
+| ↳↳ Floor                                  |                       874 |                               187 |                               0.054 |
+| ↳↳ Wall                                   |                        68 |                                38 |                               0.011 |
+| ↳↳ Duct                                   |                       225 |                               102 |                               0.029 |
+| ↳ Mechanical Equipment                    |                         0 |                                 0 |                               0.000 |
+| ↳ Windows                                 |                       358 |                                12 |                               0.003 |
+| **HPwES Total**                           |                    23,913 |                             3,113 |                               0.786 |
 
 ### HVAC Rebate (Heating and Cooling Program)
 
@@ -643,28 +643,28 @@ Due to COVID-19, the HVAC industry saw supply chain disruptions throughout the y
 
 The source table lists several measures with no reported values (blank cells): Circulating Pumps, Custom, Furnace Fans, Packaged Terminal Air Conditioners, Packaged Terminal Heat Pumps and Smart Thermostats.
 
-| Measure | Reported Measure Quantity Installed | Reported Annualized Savings (MWh) | Reported Peak Demand Reduction (MW) |
-| --- | ---: | ---: | ---: |
-| **Air Source Heat Pumps** | 2,452 | 2839 | 1.139 |
-| ↳ Tier 1 | 1,879 | 1840 | 0.877 |
-| ↳ Tier 2 | 573 | 999 | 0.262 |
-| **Central Air Conditioners** | 4,139 | 1400 | 1.751 |
-| ↳ Tier 1 | 3,773 | 1196 | 1.607 |
-| ↳ Tier 2 | 366 | 204 | 0.144 |
-| **Circulating Pumps** | | | |
-| **Custom** | | | |
-| **Ductless Mini-Split Heat Pumps** | 333 | 275 | 0.050 |
-| **ECM Furnace Motors** | 779 | 229 | 0.000 |
-| ↳ Factory Installed | 779 | 229 | 0.000 |
-| ↳ Retrofit | 0 | 0 | 0.000 |
-| **Furnace Fans** | | | |
-| **Gas Furnaces** | 2,835 | 834 | 0.000 |
-| **Geothermal Heat Pumps** | 240 | 510 | 0.251 |
-| **Multi Zone Ductless Mini-Split Heat Pumps** | 225 | 230 | 0.058 |
-| **Packaged Terminal Air Conditioners** | | | |
-| **Packaged Terminal Heat Pumps** | | | |
-| **Smart Thermostats** | | | |
-| **HVAC Total** | 11,003 | 6317 | 3.249 |
+| Measure                                       | Reported Measure Quantity Installed | Reported Annualized Savings (MWh) | Reported Peak Demand Reduction (MW) |
+| --------------------------------------------- | ----------------------------------: | --------------------------------: | ----------------------------------: |
+| **Air Source Heat Pumps**                     |                               2,452 |                              2839 |                               1.139 |
+| ↳ Tier 1                                      |                               1,879 |                              1840 |                               0.877 |
+| ↳ Tier 2                                      |                                 573 |                               999 |                               0.262 |
+| **Central Air Conditioners**                  |                               4,139 |                              1400 |                               1.751 |
+| ↳ Tier 1                                      |                               3,773 |                              1196 |                               1.607 |
+| ↳ Tier 2                                      |                                 366 |                               204 |                               0.144 |
+| **Circulating Pumps**                         |                                     |                                   |                                     |
+| **Custom**                                    |                                     |                                   |                                     |
+| **Ductless Mini-Split Heat Pumps**            |                                 333 |                               275 |                               0.050 |
+| **ECM Furnace Motors**                        |                                 779 |                               229 |                               0.000 |
+| ↳ Factory Installed                           |                                 779 |                               229 |                               0.000 |
+| ↳ Retrofit                                    |                                   0 |                                 0 |                               0.000 |
+| **Furnace Fans**                              |                                     |                                   |                                     |
+| **Gas Furnaces**                              |                               2,835 |                               834 |                               0.000 |
+| **Geothermal Heat Pumps**                     |                                 240 |                               510 |                               0.251 |
+| **Multi Zone Ductless Mini-Split Heat Pumps** |                                 225 |                               230 |                               0.058 |
+| **Packaged Terminal Air Conditioners**        |                                     |                                   |                                     |
+| **Packaged Terminal Heat Pumps**              |                                     |                                   |                                     |
+| **Smart Thermostats**                         |                                     |                                   |                                     |
+| **HVAC Total**                                |                              11,003 |                              6317 |                               3.249 |
 
 Note: Ductless Mini-Split measures transitioned to the Midstream platform on 10/1/2018. Remaining HVAC unitary measures moved to the Midstream model on 11/1/2019, except for Geothermal measures (which transitioned on 1/1/2020)
 
@@ -700,14 +700,14 @@ For the 2018-2020 cycle, the program achieved 102% of the gross wholesale MWh sa
 
 **BGE/Washington Gas Light Company Coordinated Projects**
 
-| Program | Projects | Gross Annualized Energy savings - Therms | Incentives $$ |
-| --- | ---: | ---: | ---: |
-| Home Performance With Energy Star - Audits | 21 | 234 | $ 4,734.83 |
-| Home Performance With Energy Star - Jobs | 16 | 2,689 | $ 16,705.88 |
-| Quick Home Energy Check-Up - Multifamily | - | - | $ - |
-| Quick Home Energy Check-Up - Single Family | 93 | 2,113 | $ 11,241.37 |
-| New Construction | 96 | 31,067 | $ 56,550.00 |
-| **Total** | 226 | 36,103 | $ 89,232.08 |
+| Program                                    | Projects | Gross Annualized Energy savings - Therms | Incentives $$ |
+| ------------------------------------------ | -------: | ---------------------------------------: | ------------: |
+| Home Performance With Energy Star - Audits |       21 |                                      234 |    $ 4,734.83 |
+| Home Performance With Energy Star - Jobs   |       16 |                                    2,689 |   $ 16,705.88 |
+| Quick Home Energy Check-Up - Multifamily   |        - |                                        - |           $ - |
+| Quick Home Energy Check-Up - Single Family |       93 |                                    2,113 |   $ 11,241.37 |
+| New Construction                           |       96 |                                   31,067 |   $ 56,550.00 |
+| **Total**                                  |      226 |                                   36,103 |   $ 89,232.08 |
 
 ### Limited Income Table
 
@@ -718,28 +718,28 @@ Per PSC Order No. 89189, dated July 11, 2019, it was ordered that “the [EmPOWE
 EmPOWER Maryland Utility Portfolio. The last six columns are under the heading "Gross Wholesale Savings".
 
 | Residential Energy Efficiency and Conservation Programs | Reported LI Participants | Reported LI Expenditures ($) | Annualized Energy Savings (MWh) | Lifecycle Energy Savings (MWh) | Lifecycle Energy Savings ($) | Annualized Energy Savings (Therms) | Lifecycle Energy Savings (Therms) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| **Energy Efficient Products** | 137 | $ 39,070 | 121 | 953 | $ 131,454 | 0 | 0 |
-| ↳ Appliance Rebates | 13 | $ 550 | 3 | 32 | $ 4,403 | 0 | 0 |
-| ↳ Appliance Recycling | 124 | $ 38,520 | 118 | 921 | $ 127,051 | 0 | 0 |
-| **Home Optimization and Retrofit** | 928 | $ 348,173 | 418 | 5,834 | $ 804,659 | 6,344 | 65,761 |
-| ↳ Quick Home Energy Checkup | 802 | $ 261,546 | 357 | 4,853 | $ 669,454 | 5,640 | 56,081 |
-| ↳↳ Multifamily | 25 | $ 8,082 | 7 | 112 | $ 15,442 | 50 | 501 |
-| ↳↳ Single Family | 777 | $ 253,464 | 350 | 4,741 | $ 654,012 | 5,590 | 55,580 |
-| ↳ Home Performance with ENERGY STAR | 28 | $ 52,055 | 26 | 428 | $ 58,995 | 243 | 4,180 |
-| ↳↳ Audits | 22 | $ 40,914 | 8 | 120 | $ 16,487 | 4 | 55 |
-| ↳↳ Completed Projects | 6 | $ 11,141 | 18 | 308 | $ 42,508 | 239 | 4,125 |
-| ↳ Home Energy Improvement | | $ - | | | | | |
-| ↳↳ Audits | | $ - | | | | | |
-| ↳↳ Completed Projects | | $ - | | | | | |
-| ↳↳ Smart Thermostat and HVAC Tune up | | $ - | | | | | |
-| ↳ HVAC | 66 | $ 32,826 | 29 | 516 | $ 71,139 | 195 | 3,508 |
-| ↳ Smart Thermostats | 32 | $ 1,746 | 6 | 37 | $ 5,071 | 266 | 1,992 |
-| ↳ Energy Efficiency Kits | | $ - | | | | | |
-| New Construction | 35 | $ 41,984 | 48 | 711 | $ 98,130 | 617 | 8,058 |
-| Behavior Based Program (Smart Energy Manager)* | 31,896 | $ 198,676 | | | | | |
-| Dynamic Pricing (Smart Energy Rewards) | 0 | $ - | | | | | |
-| **Residential Energy Efficiency Programs Subtotal** | 32,996 | $ 627,903 | 587 | 7,498 | $ 1,034,243 | 6,961 | 73,819 |
+| ------------------------------------------------------- | -----------------------: | ---------------------------: | ------------------------------: | -----------------------------: | ---------------------------: | ---------------------------------: | --------------------------------: |
+| **Energy Efficient Products**                           |                      137 |                     $ 39,070 |                             121 |                            953 |                    $ 131,454 |                                  0 |                                 0 |
+| ↳ Appliance Rebates                                     |                       13 |                        $ 550 |                               3 |                             32 |                      $ 4,403 |                                  0 |                                 0 |
+| ↳ Appliance Recycling                                   |                      124 |                     $ 38,520 |                             118 |                            921 |                    $ 127,051 |                                  0 |                                 0 |
+| **Home Optimization and Retrofit**                      |                      928 |                    $ 348,173 |                             418 |                          5,834 |                    $ 804,659 |                              6,344 |                            65,761 |
+| ↳ Quick Home Energy Checkup                             |                      802 |                    $ 261,546 |                             357 |                          4,853 |                    $ 669,454 |                              5,640 |                            56,081 |
+| ↳↳ Multifamily                                          |                       25 |                      $ 8,082 |                               7 |                            112 |                     $ 15,442 |                                 50 |                               501 |
+| ↳↳ Single Family                                        |                      777 |                    $ 253,464 |                             350 |                          4,741 |                    $ 654,012 |                              5,590 |                            55,580 |
+| ↳ Home Performance with ENERGY STAR                     |                       28 |                     $ 52,055 |                              26 |                            428 |                     $ 58,995 |                                243 |                             4,180 |
+| ↳↳ Audits                                               |                       22 |                     $ 40,914 |                               8 |                            120 |                     $ 16,487 |                                  4 |                                55 |
+| ↳↳ Completed Projects                                   |                        6 |                     $ 11,141 |                              18 |                            308 |                     $ 42,508 |                                239 |                             4,125 |
+| ↳ Home Energy Improvement                               |                          |                          $ - |                                 |                                |                              |                                    |                                   |
+| ↳↳ Audits                                               |                          |                          $ - |                                 |                                |                              |                                    |                                   |
+| ↳↳ Completed Projects                                   |                          |                          $ - |                                 |                                |                              |                                    |                                   |
+| ↳↳ Smart Thermostat and HVAC Tune up                    |                          |                          $ - |                                 |                                |                              |                                    |                                   |
+| ↳ HVAC                                                  |                       66 |                     $ 32,826 |                              29 |                            516 |                     $ 71,139 |                                195 |                             3,508 |
+| ↳ Smart Thermostats                                     |                       32 |                      $ 1,746 |                               6 |                             37 |                      $ 5,071 |                                266 |                             1,992 |
+| ↳ Energy Efficiency Kits                                |                          |                          $ - |                                 |                                |                              |                                    |                                   |
+| New Construction                                        |                       35 |                     $ 41,984 |                              48 |                            711 |                     $ 98,130 |                                617 |                             8,058 |
+| Behavior Based Program (Smart Energy Manager)*          |                   31,896 |                    $ 198,676 |                                 |                                |                              |                                    |                                   |
+| Dynamic Pricing (Smart Energy Rewards)                  |                        0 |                          $ - |                                 |                                |                              |                                    |                                   |
+| **Residential Energy Efficiency Programs Subtotal**     |                   32,996 |                    $ 627,903 |                             587 |                          7,498 |                  $ 1,034,243 |                              6,961 |                            73,819 |
 
 _Extractor note (not source text): the nesting of the "Home Energy Improvement" rows and the "Smart Thermostat and HVAC Tune up" row follows the indentation in the rendered table; all of those rows are blank except the "$ -" expenditure._
 
@@ -829,15 +829,15 @@ were different, the evaluation team ran each of these models for the groups sepa
 
 **Table 10. List of Models Run by Model Population**
 
-| Model Type | Modeled Population | Count of Models |
-| --- | --- | ---: |
-| PPR | Compatible Thermostat - Electric; Compatible Thermostat - Gas; No Compatible Thermostat – Electric; No Compatible Thermostat - Gas | 4 |
-| LFER | Compatible Thermostat - Electric; Compatible Thermostat - Gas; No Compatible Thermostat – Electric; No Compatible Thermostat - Gas | 4 |
-| Difference in Differences | Compatible Thermostat - Electric; Compatible Thermostat - Gas; No Compatible Thermostat – Electric; No Compatible Thermostat - Gas | 4 |
-| PPR with Monthly Term | Compatible Thermostat - Electric | 1 |
-| LFER with Heating and Cooling Degree Days | Compatible Thermostat – Electric; Compatible Thermostat – Electric – Heat Pump Heater Only | 2 |
-| LFER with Paired Thermostat Term | Compatible Thermostat - Electric | 1 |
-| **Total Models** | | **16 Models** |
+| Model Type                                | Modeled Population                                                                                                                 | Count of Models |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | --------------: |
+| PPR                                       | Compatible Thermostat - Electric; Compatible Thermostat - Gas; No Compatible Thermostat – Electric; No Compatible Thermostat - Gas |               4 |
+| LFER                                      | Compatible Thermostat - Electric; Compatible Thermostat - Gas; No Compatible Thermostat – Electric; No Compatible Thermostat - Gas |               4 |
+| Difference in Differences                 | Compatible Thermostat - Electric; Compatible Thermostat - Gas; No Compatible Thermostat – Electric; No Compatible Thermostat - Gas |               4 |
+| PPR with Monthly Term                     | Compatible Thermostat - Electric                                                                                                   |               1 |
+| LFER with Heating and Cooling Degree Days | Compatible Thermostat – Electric; Compatible Thermostat – Electric – Heat Pump Heater Only                                         |               2 |
+| LFER with Paired Thermostat Term          | Compatible Thermostat - Electric                                                                                                   |               1 |
+| **Total Models**                          |                                                                                                                                    |   **16 Models** |
 
 The evaluation team established the post-period using the device-level data to know when most participants had installed their devices. Though installations started in October 2018, we set the post-period to start on January 1, 2019, and end on December 31, 2019. There are 365 days in the established post-period.
 
@@ -851,24 +851,24 @@ The randomization design was stratified by heating and cooling equipment type. T
 
 **Table 13. Heating Fuel Type by Group**
 
-| | Has Electric Heat: TREATMENT | Has Electric Heat: CONTROL | Has Natural Gas Heat: TREATMENT | Has Natural Gas Heat: CONTROL |
-| --- | ---: | ---: | ---: | ---: |
-| Compatible Thermostat | 41% | 45% | 61% | 59% |
-| No Compatible Thermostat | 41% | 45% | 60% | 57% |
+|                          | Has Electric Heat: TREATMENT | Has Electric Heat: CONTROL | Has Natural Gas Heat: TREATMENT | Has Natural Gas Heat: CONTROL |
+| ------------------------ | ---------------------------: | -------------------------: | ------------------------------: | ----------------------------: |
+| Compatible Thermostat    |                          41% |                        45% |                             61% |                           59% |
+| No Compatible Thermostat |                          41% |                        45% |                             60% |                           57% |
 
 **Table 14. Heating Equipment Type by Group**
 
-| | Uses Furnace: TREATMENT | Uses Furnace: CONTROL | Uses Heat Pump: TREATMENT | Uses Heat Pump: CONTROL | Uses Baseboard Heat: TREATMENT | Uses Baseboard Heat: CONTROL |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Compatible Thermostat | 68% | 67% | 32% | 37% | 2% | 1% |
-| No Compatible Thermostat | 65% | 67% | 31% | 32% | 3% | 3% |
+|                          | Uses Furnace: TREATMENT | Uses Furnace: CONTROL | Uses Heat Pump: TREATMENT | Uses Heat Pump: CONTROL | Uses Baseboard Heat: TREATMENT | Uses Baseboard Heat: CONTROL |
+| ------------------------ | ----------------------: | --------------------: | ------------------------: | ----------------------: | -----------------------------: | ---------------------------: |
+| Compatible Thermostat    |                     68% |                   67% |                       32% |                     37% |                             2% |                           1% |
+| No Compatible Thermostat |                     65% |                   67% |                       31% |                     32% |                             3% |                           3% |
 
 **Table 15. Cooling Equipment Type by Group**
 
-| | Uses Central Air Conditioner: TREATMENT | Uses Central Air Conditioner: CONTROL | Uses Heat Pump: TREATMENT | Uses Heat Pump: CONTROL | Uses Window AC: TREATMENT | Uses Window AC: CONTROL |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Compatible Thermostat | 89% | 86% | 19% | 22% | 2% | 3% |
-| No Compatible Thermostat | 81% | 81% | 16% | 18% | 13% | 10% |
+|                          | Uses Central Air Conditioner: TREATMENT | Uses Central Air Conditioner: CONTROL | Uses Heat Pump: TREATMENT | Uses Heat Pump: CONTROL | Uses Window AC: TREATMENT | Uses Window AC: CONTROL |
+| ------------------------ | --------------------------------------: | ------------------------------------: | ------------------------: | ----------------------: | ------------------------: | ----------------------: |
+| Compatible Thermostat    |                                     89% |                                   86% |                       19% |                     22% |                        2% |                      3% |
+| No Compatible Thermostat |                                     81% |                                   81% |                       16% |                     18% |                       13% |                     10% |
 
 [PDF p. 151 not transcribed: Attachment 2 divider page (no text layer)]
 

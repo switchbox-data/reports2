@@ -95,25 +95,23 @@ _matches_revenue(floor_enrolled, ciec_1["floor_revenue"])
 _matches_revenue(ceiling_enrolled, ciec_1["ceiling_revenue"])
 
 # Non-heat-pump sales are the upgrade-00 buildings. The revenue reduction
-# divided by this kWh is the Rate 1 per-kWh increase.
+# divided by this kWh is the Rate 1 per-kWh increase. The workpaper lists
+# these rows and sums weighted kWh there.
 _nonhp_weights = subclass_weights(
     ciec_1["release"], ciec_1["state"], ciec_1["utility"], ciec_1["upgrade"], has_hp=False
 )
 _nonhp_annual = load_billing_kwh_annual(ciec_1["state"], ciec_1["utility"], ciec_1["batch"], ciec_1["segment"])
 _nonhp_id = _nonhp_annual.select("bldg_id").head(1).collect()["bldg_id"].dtype
 _nonhp_weights = _nonhp_weights.with_columns(pl.col("bldg_id").cast(_nonhp_id))
-_nonhp_joined = (
+_nonhp_buildings = (
     _nonhp_annual.join(_nonhp_weights.lazy().select("bldg_id", "weight"), on="bldg_id", how="inner")
-    .select(
-        pl.len().alias("n"),
-        pl.col("weight").sum().alias("customers"),
-        (pl.col("annual_kwh_grid") * pl.col("weight")).sum().alias("kwh"),
-    )
+    .select("bldg_id", "weight", pl.col("annual_kwh_grid").alias("annual_kwh"))
     .collect()
+    .sort("bldg_id")
 )
-nonhp_n = int(_nonhp_joined["n"][0])
-nonhp_customers = float(_nonhp_joined["customers"][0])
-nonhp_kwh = float(_nonhp_joined["kwh"][0])
+nonhp_n = _nonhp_buildings.height
+nonhp_customers = float(_nonhp_buildings["weight"].sum())
+nonhp_kwh = float((_nonhp_buildings["annual_kwh"] * _nonhp_buildings["weight"]).sum())
 if nonhp_n != _nonhp_weights.height or nonhp_kwh <= 0:
     raise RuntimeError(f"Non-HP kWh join kept {nonhp_n} of {_nonhp_weights.height} buildings")
 stock_customers = hp_customers + nonhp_customers
@@ -194,6 +192,8 @@ Ceiling:
 print(ceiling_increase_table_md)
 ```
 
+The supporting workpaper is `CIEC-3c_rate1_charge_increase.xlsx`. It carries the revenue reductions above as values, the electricity use of each home without a heat pump, and today's Rate 1 charges. The per-kWh increase and the percent change are formulas.
+
 Assumptions:
 
 - **Timing.** Five rate years, beginning July 1 of 2027 through 2031, as in CIEC-1. Each figure is a full year of bills. A calendar year's installations are assigned to the rate year that begins that July. The 2026 installations are in the existing-customer count, and that count is included in every rate year.
@@ -201,3 +201,41 @@ Assumptions:
 - **Enrollment.** Floor and ceiling counts from CIEC-1(b) and CIEC-1(c). Every heat pump installer enrolls, none opt out, and enrollment persists.
 - **Load.** The per-customer reduction is held constant, and so is non-heat-pump sales. The reduction grows only because enrollment grows. Sales are weighted ResStock grid consumption on CAIRO's billing basis, the same load source as the heat pump bill in CIEC-1(a). The sales base is every Eversource home without a heat pump, so homes on Rate 5 and Rate 7 are included with Rate 1. ResStock weights that stock to `{python} num(stock_customers)` homes. The Rate Year bill count for Rates 1, 5, and 7 is `{python} num(rate_year_customers)`.
 - **Charges.** The increase is volumetric and the same in every month. The distribution charge includes riders. The riders match Rate 1, so the revenue reduction itself is the winter energy charge. Rate HP's winter rates stay at the levels used in CIEC-1(a). % of T&D uses today's distribution and transmission charges. % of T&D and generation adds the average of the twelve monthly generation rates. The customer charge stays at Rate 1.
+
+```{python}
+#| echo: false
+#| output: false
+
+from build_ciec_1a_workbook import DRIVE_FOLDER_ID, upload_xlsx
+from build_ciec_3_workbook import DRIVE_NAME, RevenueRow, build_workbook
+
+
+def _revenue_rows(enrolled: list[tuple[int, int]]) -> list[RevenueRow]:
+    rows: list[RevenueRow] = []
+    for i, (year, customers) in enumerate(enrolled):
+        rev = group_revenue(customers, dec_dist, dec_tx)
+        rows.append(
+            RevenueRow(
+                "Existing" if i == 0 else str(year),
+                customers,
+                rev["distribution"],
+                rev["transmission"],
+            )
+        )
+    return rows
+
+
+_wb = build_workbook(
+    _revenue_rows(floor_enrolled),
+    _revenue_rows(ceiling_enrolled),
+    _nonhp_buildings,
+    distribution=rate1_dist,
+    transmission=rate1_tx,
+    generation_monthly=gen_monthly,
+)
+_xlsx_path = Path("../cache") / DRIVE_NAME
+_wb.save(_xlsx_path)
+_link = upload_xlsx(_xlsx_path, DRIVE_FOLDER_ID, DRIVE_NAME)
+_xlsx_path.unlink()
+print(f"Uploaded {DRIVE_NAME}: {_link}")
+```

@@ -141,8 +141,8 @@ We instituted a number of survey design revisions, content changes, and variable
 - We selected housing units for the 2020 RECS using an Address-Based Sample (ABS) design. The frame for this sample was a list of residential addresses, based on the U.S. Postal Service’s (USPS) Computerized Delivery Sequence file of active mail delivery points. We augmented the frame information with supplemental data from the Decennial Census, the American Community Survey (ACS), and other sources to allow us to stratify the frame for better statistical efficiency and to represent the population of eligible housing units. Non-residential addresses were removed from the frame and procedures were implemented to account for special situations, such as accounting for non-deliverable and drop-point addresses.
 - The 2020 RECS introduced a completely self-administered design via web and paper questionnaire. Before the 2020 RECS, we conducted the study either through in-person interviews with trained interviewers at the sampled households or with a combination of in-person and self-administered modes. By eliminating interviewing staff for the 2020 RECS, the program could implement several other innovations, including increasing the sample size and moving to an unclustered sample design.
 - We added new questions on emerging technologies and usage behavior, and we made some questionnaire changes as a result of the COVID-19 pandemic. The 2020 RECS added questions about solar capacity and installation, electric vehicle ownership and charging behavior, and
-[PDF p. 8 | printed p. 7]
-smart speakers. Just before data collection, in response to the COVID-19 pandemic, we added questions about working from home and whether anyone in the household was participating in K-12 distance learning or online college courses.
+  [PDF p. 8 | printed p. 7]
+  smart speakers. Just before data collection, in response to the COVID-19 pandemic, we added questions about working from home and whether anyone in the household was participating in K-12 distance learning or online college courses.
 - A total of 18,496 respondents completed the Household Survey: 73% by web and 27% by paper. The total unweighted response rate (AAPOR 3)[^1] was 38.6%, and the total weighted response rate was 37.9%. We collected the Household Survey data in two waves: the first wave was from September through November 2020, and the second wave was from January through April 2021.
 - We conducted quality control checks and edits for all data to validate the sampled addresses of the responding households and to identify and resolve data inconsistencies. This process included identifying outliers to numeric items, identifying and resolving logical inconsistencies, and recoding write-in responses into established response categories. In addition, after we collected consumption and billing data from the ESS, we performed a comprehensive data editing process to reconcile the inconsistencies between respondent-reported characteristics data and the supplier-reported consumption data.
 - To address item nonresponse, we used a hot-deck imputation method for the 2020 RECS. In this method, we match a recipient household that has a missing value for the variable being imputed to a similar donor household that has a response for that variable and use that value to replace the missing response. We imputed responses for about 250 Household Survey variables, and the median imputation rate was 2.9%.
@@ -217,13 +217,13 @@ Previous RECS cycles used clustered sample designs by grouping housing units int
 
 Table 1. Relative standard error (RSE) requirements for average fuel consumption, 2020 RECS
 
-| Geography | All fuel total<sup>a</sup> | Electricity | Natural gas | Fuel oil |
-| --- | --- | --- | --- | --- |
-| United States | 1% | 1% | 1% | 3% |
-| Midwest, South, and West regions | 2% | 2% | 2% | - |
-| Northeast region | 2% | 2% | 2% | 4% |
-| Census divisions | 3% | 3% | 3% | - |
-| 50-states and District of Columbia | 4% | - | - | - |
+| Geography                          | All fuel total<sup>a</sup> | Electricity | Natural gas | Fuel oil |
+| ---------------------------------- | -------------------------- | ----------- | ----------- | -------- |
+| United States                      | 1%                         | 1%          | 1%          | 3%       |
+| Midwest, South, and West regions   | 2%                         | 2%          | 2%          | -        |
+| Northeast region                   | 2%                         | 2%          | 2%          | 4%       |
+| Census divisions                   | 3%                         | 3%          | 3%          | -        |
+| 50-states and District of Columbia | 4%                         | -           | -           | -        |
 
 Data source: U.S. Energy Information Administration
 <sup>a</sup> Includes electricity, natural gas, fuel oil, and propane
@@ -261,67 +261,67 @@ For sample selection, the frame was stratified explicitly by state. Within each 
 
 Table 2. Expected completed cases, assumed yield rate, and allocated starting sample, 2020 RECS
 
-| State or district | Expected completed cases | Assumed yield rate | Allocated starting sample |
-| --- | ---: | ---: | ---: |
-| Alabama | 268 | 0.377 | 712 |
-| Alaska | 211 | 0.384 | 549 |
-| Arizona | 506 | 0.355 | 1,424 |
-| Arkansas | 243 | 0.379 | 642 |
-| California | 1,172 | 0.355 | 3,299 |
-| Colorado | 321 | 0.356 | 901 |
-| Connecticut | 315 | 0.375 | 841 |
-| Delaware | 120 | 0.370 | 324 |
-| District of Columbia | 194 | 0.323 | 600 |
-| Florida | 676 | 0.383 | 1,763 |
-| Georgia | 430 | 0.335 | 1,284 |
-| Hawaii | 275 | 0.377 | 730 |
-| Idaho | 234 | 0.399 | 587 |
-| Illinois | 505 | 0.345 | 1,465 |
-| Indiana | 355 | 0.379 | 938 |
-| Iowa | 249 | 0.497 | 501 |
-| Kansas | 183 | 0.397 | 461 |
-| Kentucky | 430 | 0.397 | 1,083 |
-| Louisiana | 234 | 0.360 | 650 |
-| Maine | 196 | 0.386 | 507 |
-| Maryland | 321 | 0.368 | 873 |
-| Massachusetts | 553 | 0.378 | 1,465 |
-| Michigan | 366 | 0.440 | 832 |
-| Minnesota | 330 | 0.481 | 685 |
-| Mississippi | 188 | 0.365 | 515 |
-| Missouri | 330 | 0.421 | 783 |
-| Montana | 168 | 0.403 | 417 |
-| Nebraska | 177 | 0.402 | 440 |
-| Nevada | 243 | 0.354 | 686 |
-| New Hampshire | 179 | 0.398 | 450 |
-| New Jersey | 475 | 0.310 | 1,534 |
-| New Mexico | 182 | 0.339 | 537 |
-| New York | 997 | 0.313 | 3,190 |
-| North Carolina | 444 | 0.328 | 1,353 |
-| North Dakota | 292 | 0.398 | 734 |
-| Ohio | 405 | 0.396 | 1,023 |
+| State or district    | Expected completed cases | Assumed yield rate | Allocated starting sample |
+| -------------------- | -----------------------: | -----------------: | ------------------------: |
+| Alabama              |                      268 |              0.377 |                       712 |
+| Alaska               |                      211 |              0.384 |                       549 |
+| Arizona              |                      506 |              0.355 |                     1,424 |
+| Arkansas             |                      243 |              0.379 |                       642 |
+| California           |                    1,172 |              0.355 |                     3,299 |
+| Colorado             |                      321 |              0.356 |                       901 |
+| Connecticut          |                      315 |              0.375 |                       841 |
+| Delaware             |                      120 |              0.370 |                       324 |
+| District of Columbia |                      194 |              0.323 |                       600 |
+| Florida              |                      676 |              0.383 |                     1,763 |
+| Georgia              |                      430 |              0.335 |                     1,284 |
+| Hawaii               |                      275 |              0.377 |                       730 |
+| Idaho                |                      234 |              0.399 |                       587 |
+| Illinois             |                      505 |              0.345 |                     1,465 |
+| Indiana              |                      355 |              0.379 |                       938 |
+| Iowa                 |                      249 |              0.497 |                       501 |
+| Kansas               |                      183 |              0.397 |                       461 |
+| Kentucky             |                      430 |              0.397 |                     1,083 |
+| Louisiana            |                      234 |              0.360 |                       650 |
+| Maine                |                      196 |              0.386 |                       507 |
+| Maryland             |                      321 |              0.368 |                       873 |
+| Massachusetts        |                      553 |              0.378 |                     1,465 |
+| Michigan             |                      366 |              0.440 |                       832 |
+| Minnesota            |                      330 |              0.481 |                       685 |
+| Mississippi          |                      188 |              0.365 |                       515 |
+| Missouri             |                      330 |              0.421 |                       783 |
+| Montana              |                      168 |              0.403 |                       417 |
+| Nebraska             |                      177 |              0.402 |                       440 |
+| Nevada               |                      243 |              0.354 |                       686 |
+| New Hampshire        |                      179 |              0.398 |                       450 |
+| New Jersey           |                      475 |              0.310 |                     1,534 |
+| New Mexico           |                      182 |              0.339 |                       537 |
+| New York             |                      997 |              0.313 |                     3,190 |
+| North Carolina       |                      444 |              0.328 |                     1,353 |
+| North Dakota         |                      292 |              0.398 |                       734 |
+| Ohio                 |                      405 |              0.396 |                     1,023 |
 
 _(Table 2 continues on the next page; the header row is repeated below for the extract.)_
 
 [PDF p. 14 | printed p. 13]
 
 | State or district | Expected completed cases | Assumed yield rate | Allocated starting sample |
-| --- | ---: | ---: | ---: |
-| Oklahoma | 238 | 0.395 | 602 |
-| Oregon | 309 | 0.444 | 697 |
-| Pennsylvania | 637 | 0.356 | 1,788 |
-| Rhode Island | 202 | 0.373 | 542 |
-| South Carolina | 276 | 0.333 | 829 |
-| South Dakota | 167 | 0.408 | 410 |
-| Tennessee | 509 | 0.414 | 1,228 |
-| Texas | 1,033 | 0.334 | 3,094 |
-| Utah | 193 | 0.440 | 439 |
-| Vermont | 217 | 0.390 | 556 |
-| Virginia | 425 | 0.361 | 1,177 |
-| Washington | 405 | 0.408 | 993 |
-| West Virginia | 170 | 0.400 | 425 |
-| Wisconsin | 320 | 0.425 | 753 |
-| Wyoming | 133 | 0.393 | 338 |
-| Total | 18,001 | | 48,649 |
+| ----------------- | -----------------------: | -----------------: | ------------------------: |
+| Oklahoma          |                      238 |              0.395 |                       602 |
+| Oregon            |                      309 |              0.444 |                       697 |
+| Pennsylvania      |                      637 |              0.356 |                     1,788 |
+| Rhode Island      |                      202 |              0.373 |                       542 |
+| South Carolina    |                      276 |              0.333 |                       829 |
+| South Dakota      |                      167 |              0.408 |                       410 |
+| Tennessee         |                      509 |              0.414 |                     1,228 |
+| Texas             |                    1,033 |              0.334 |                     3,094 |
+| Utah              |                      193 |              0.440 |                       439 |
+| Vermont           |                      217 |              0.390 |                       556 |
+| Virginia          |                      425 |              0.361 |                     1,177 |
+| Washington        |                      405 |              0.408 |                       993 |
+| West Virginia     |                      170 |              0.400 |                       425 |
+| Wisconsin         |                      320 |              0.425 |                       753 |
+| Wyoming           |                      133 |              0.393 |                       338 |
+| Total             |                   18,001 |                    |                    48,649 |
 
 ## Household Survey
 
@@ -345,7 +345,7 @@ The 2020 RECS Household Survey was designed to be entirely self-administered usi
 Each time we conduct the RECS, we review the content and lessons learned from the previous cycle and revise the questionnaire appropriately. The content revisions typically include adding or dropping questions to account for household technology changes or to improve response quality. For the 2020 RECS, new questions included information on:
 
 - All-electric plug-in and hybrid plug-in vehicles and charging
-[PDF p. 15 | printed p. 14]
+  [PDF p. 15 | printed p. 14]
 - Household solar capacity
 - Smart speakers
 - Teleworking and online education at home as a result of the COVID-19 pandemic
@@ -505,15 +505,15 @@ Table A1. Main space heating fuel in U.S. homes, 2020 RECS preliminary and final
 
 _Column groups: "Preliminary estimate (June 2022)" covers the first three numeric columns; "Final estimate (February 2023)" covers the last three. Estimates are in million homes._
 
-| Main heating fuel | Preliminary (June 2022): Estimate (million homes) | Preliminary: RSE | Preliminary: 95% CI for estimate | Final (February 2023): Estimate (million homes) | Final: RSE | Final: 95% CI for estimate |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Natural gas | 56.25 | 0.97 | (55.15, 57.34) | 62.71 | 0.77 | (61.75, 63.68) |
-| Electricity | 48.89 | 0.95 | (47.96, 49.81) | 42.57 | 0.92 | (41.79, 43.35) |
-| Fuel oil or kerosene | 4.96 | 3.36 | (4.63, 5.29) | 4.93 | 3.50 | (4.59, 5.28) |
-| Propane | 5.05 | 4.01 | (4.65, 5.46) | 5.21 | 3.76 | (4.82, 5.60) |
-| Wood | 2.22 | 5.19 | (1.99, 2.46) | 2.25 | 4.88 | (2.03, 2.47) |
-| Some other fuel | Q | (-) | (-) | Q | (-) | (-) |
-| Does not use heating equipment | 6.10 | 4.53 | (5.55, 6.65) | 5.79 | 4.41 | (5.28, 6.30) |
+| Main heating fuel              | Preliminary (June 2022): Estimate (million homes) | Preliminary: RSE | Preliminary: 95% CI for estimate | Final (February 2023): Estimate (million homes) | Final: RSE | Final: 95% CI for estimate |
+| ------------------------------ | ------------------------------------------------: | ---------------: | -------------------------------: | ----------------------------------------------: | ---------: | -------------------------: |
+| Natural gas                    |                                             56.25 |             0.97 |                   (55.15, 57.34) |                                           62.71 |       0.77 |             (61.75, 63.68) |
+| Electricity                    |                                             48.89 |             0.95 |                   (47.96, 49.81) |                                           42.57 |       0.92 |             (41.79, 43.35) |
+| Fuel oil or kerosene           |                                              4.96 |             3.36 |                     (4.63, 5.29) |                                            4.93 |       3.50 |               (4.59, 5.28) |
+| Propane                        |                                              5.05 |             4.01 |                     (4.65, 5.46) |                                            5.21 |       3.76 |               (4.82, 5.60) |
+| Wood                           |                                              2.22 |             5.19 |                     (1.99, 2.46) |                                            2.25 |       4.88 |               (2.03, 2.47) |
+| Some other fuel                |                                                 Q |              (-) |                              (-) |                                               Q |        (-) |                        (-) |
+| Does not use heating equipment |                                              6.10 |             4.53 |                     (5.55, 6.65) |                                            5.79 |       4.41 |               (5.28, 6.30) |
 
 Data source: U.S. Energy Information Administration, _Residential Energy Consumption Survey_ (RECS)
 Note: Q=Data withheld because either the relative standard error (RSE) was greater than 50% or fewer than 10 households were in the reporting sample. CI=Confidence interval.
@@ -522,23 +522,23 @@ Table A2. Main space heating equipment in U.S. homes, 2020 RECS preliminary and 
 
 _Column groups as in Table A1. Table A2 continues on the next page; the header row is repeated below for the extract._
 
-| Main heating equipment | Preliminary (June 2022): Estimate (million homes) | Preliminary: RSE | Preliminary: 95% CI for estimate | Final (February 2023): Estimate (million homes) | Final: RSE | Final: 95% CI for estimate |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Central warm-air furnace | 71.98 | 0.66 | (71.02, 72.93) | 74.42 | 0.58 | (73.55, 75.29) |
-| Heat pump | 17.75 | 1.84 | (17.10, 18.40) | 16.13 | 1.83 | (15.54, 16.72) |
-| Steam or hot water system | 9.32 | 2.85 | (8.79, 9.85) | 9.29 | 2.89 | (8.75, 9.83) |
-| Ductless heat pump (mini-split) | 1.12 | 8.38 | (0.94, 1.31) | 1.06 | 8.94 | (0.87, 1.25) |
-| Built-in electric units | 8.25 | 2.74 | (7.80, 8.70) | 7.65 | 2.83 | (7.21, 8.08) |
-| Built-in oil or gas room heater | 3.04 | 5.53 | (2.71, 3.38) | 3.49 | 5.37 | (3.12, 3.87) |
-| Portable electric heaters | 3.24 | 6.15 | (2.84, 3.64) | 3.03 | 6.15 | (2.65, 3.40) |
+| Main heating equipment          | Preliminary (June 2022): Estimate (million homes) | Preliminary: RSE | Preliminary: 95% CI for estimate | Final (February 2023): Estimate (million homes) | Final: RSE | Final: 95% CI for estimate |
+| ------------------------------- | ------------------------------------------------: | ---------------: | -------------------------------: | ----------------------------------------------: | ---------: | -------------------------: |
+| Central warm-air furnace        |                                             71.98 |             0.66 |                   (71.02, 72.93) |                                           74.42 |       0.58 |             (73.55, 75.29) |
+| Heat pump                       |                                             17.75 |             1.84 |                   (17.10, 18.40) |                                           16.13 |       1.83 |             (15.54, 16.72) |
+| Steam or hot water system       |                                              9.32 |             2.85 |                     (8.79, 9.85) |                                            9.29 |       2.89 |               (8.75, 9.83) |
+| Ductless heat pump (mini-split) |                                              1.12 |             8.38 |                     (0.94, 1.31) |                                            1.06 |       8.94 |               (0.87, 1.25) |
+| Built-in electric units         |                                              8.25 |             2.74 |                     (7.80, 8.70) |                                            7.65 |       2.83 |               (7.21, 8.08) |
+| Built-in oil or gas room heater |                                              3.04 |             5.53 |                     (2.71, 3.38) |                                            3.49 |       5.37 |               (3.12, 3.87) |
+| Portable electric heaters       |                                              3.24 |             6.15 |                     (2.84, 3.64) |                                            3.03 |       6.15 |               (2.65, 3.40) |
 
 [PDF p. 23 | printed p. 22]
 
-| Main heating equipment | Preliminary (June 2022): Estimate (million homes) | Preliminary: RSE | Preliminary: 95% CI for estimate | Final (February 2023): Estimate (million homes) | Final: RSE | Final: 95% CI for estimate |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Heating stove burning wood | 1.98 | 5.76 | (1.75, 2.21) | 1.94 | 5.46 | (1.73, 2.15) |
-| Some other equipment | 0.74 | 10.02 | (0.59, 0.89) | 0.74 | 9.92 | (0.59, 0.89) |
-| Does not use heating equipment | 6.10 | 4.53 | (5.55, 6.65) | 5.79 | 4.41 | (5.28, 6.30) |
+| Main heating equipment         | Preliminary (June 2022): Estimate (million homes) | Preliminary: RSE | Preliminary: 95% CI for estimate | Final (February 2023): Estimate (million homes) | Final: RSE | Final: 95% CI for estimate |
+| ------------------------------ | ------------------------------------------------: | ---------------: | -------------------------------: | ----------------------------------------------: | ---------: | -------------------------: |
+| Heating stove burning wood     |                                              1.98 |             5.76 |                     (1.75, 2.21) |                                            1.94 |       5.46 |               (1.73, 2.15) |
+| Some other equipment           |                                              0.74 |            10.02 |                     (0.59, 0.89) |                                            0.74 |       9.92 |               (0.59, 0.89) |
+| Does not use heating equipment |                                              6.10 |             4.53 |                     (5.55, 6.65) |                                            5.79 |       4.41 |               (5.28, 6.30) |
 
 Data source: U.S. Energy Information Administration, _Residential Energy Consumption Survey_ (RECS)
 Note: Q=Data withheld because either the relative standard error (RSE) was greater than 50% or fewer than 10 households were in the reporting sample. CI=Confidence interval.
@@ -548,12 +548,12 @@ Table A3. Main water heating fuel in U.S. homes, 2020 RECS preliminary and final
 _Column groups as in Table A1._
 
 | Main water heating fuel | Preliminary (June 2022): Estimate (million homes) | Preliminary: RSE | Preliminary: 95% CI for estimate | Final (February 2023): Estimate (million homes) | Final: RSE | Final: 95% CI for estimate |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Natural gas | 57.96 | 0.84 | (56.98, 58.93) | 59.33 | 0.75 | (58.44, 60.23) |
-| Electricity | 58.24 | 0.82 | (57.28, 59.19) | 57.04 | 0.80 | (56.13, 57.96) |
-| Fuel oil or kerosene | 4.28 | 4.49 | (3.89, 4.66) | 4.12 | 4.44 | (3.76, 4.49) |
-| Propane | 2.64 | 5.20 | (2.37, 2.92) | 2.62 | 5.20 | (2.35, 2.89) |
-| Some other fuel | 0.41 | 15.84 | (0.28, 0.55) | 0.41 | 16.08 | (0.28, 0.54) |
+| ----------------------- | ------------------------------------------------: | ---------------: | -------------------------------: | ----------------------------------------------: | ---------: | -------------------------: |
+| Natural gas             |                                             57.96 |             0.84 |                   (56.98, 58.93) |                                           59.33 |       0.75 |             (58.44, 60.23) |
+| Electricity             |                                             58.24 |             0.82 |                   (57.28, 59.19) |                                           57.04 |       0.80 |             (56.13, 57.96) |
+| Fuel oil or kerosene    |                                              4.28 |             4.49 |                     (3.89, 4.66) |                                            4.12 |       4.44 |               (3.76, 4.49) |
+| Propane                 |                                              2.64 |             5.20 |                     (2.37, 2.92) |                                            2.62 |       5.20 |               (2.35, 2.89) |
+| Some other fuel         |                                              0.41 |            15.84 |                     (0.28, 0.55) |                                            0.41 |      16.08 |               (0.28, 0.54) |
 
 Data source: U.S. Energy Information Administration, _Residential Energy Consumption Survey_ (RECS)
 Note: Q=Data withheld because either the relative standard error (RSE) was greater than 50% or fewer than 10 households were in the reporting sample. CI=Confidence interval.

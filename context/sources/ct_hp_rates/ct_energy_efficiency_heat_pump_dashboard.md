@@ -17,4 +17,3 @@ why_here: CIEC-1 cites that combined installation total because it sits below th
 # Heat Pump Dashboard
 
 [Contact](mailto:CTdashboard@energizect.com "Email CT Dashboard support")
-

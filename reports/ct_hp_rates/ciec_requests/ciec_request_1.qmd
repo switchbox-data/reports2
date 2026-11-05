@@ -83,8 +83,19 @@ EXISTING_CEILING = 109_127
 NEW_FLOOR = [3_460, 3_460, 3_460, 3_460, 3_460]
 NEW_CEILING = [6_272, 7_056, 7_840, 9_408, 10_976]
 YEARS = [2027, 2028, 2029, 2030, 2031]
+# The pieces of those bounds. The workpaper calculates the bounds from these.
+REBATES_SINCE_2023 = 4_400
+CLM_2026 = 3_528
+HP_SHARE_PERCENT = 9
+CLM_ANNUAL = 3_460
+EVERSOURCE_PER_THOUSAND = 784
+ISO_NE_ADDITIONS = [8_000, 9_000, 10_000, 12_000, 14_000]
 # Average bills rendered for Rates 1, 5, and 7, Rate Year ending June 30, 2028.
 rate_year_customers = rate_year_residential_customers()
+assert REBATES_SINCE_2023 + CLM_2026 == EXISTING_FLOOR
+assert round(rate_year_customers * HP_SHARE_PERCENT / 100) == EXISTING_CEILING
+assert NEW_FLOOR == [CLM_ANNUAL] * len(YEARS)
+assert NEW_CEILING == [n * EVERSOURCE_PER_THOUSAND // 1000 for n in ISO_NE_ADDITIONS]
 floor_enrolled = cumulative_enrollment(EXISTING_FLOOR, NEW_FLOOR, YEARS)
 ceiling_enrolled = cumulative_enrollment(EXISTING_CEILING, NEW_CEILING, YEARS)
 
@@ -404,3 +415,54 @@ Assumptions:
 - **Timing.** The first five years are 2027 through 2031. The Rate Year begins July 1, 2027 [@clp_Docket260510Exhibit_2026f]. The Company's 2026 installations are counted with existing customers in CIEC-1(b).
 - **Enrollment.** Every customer who installs a heat pump enrolls, and none opt out.
 - **Shares** use the `{python} num(rate_year_customers)` Rate Year residential customers, the average bills rendered for Rates 1, 5, and 7 in Exhibit CLP-RATES-2.10 [@clp_Docket260510Exhibit_2026g].
+
+```{python}
+#| echo: false
+#| output: false
+
+from lib.rates_analysis.rate_case_funcs import sum_8760_to_monthly, weighted_avg_hourly
+from build_ciec_1a_workbook import (
+    DRIVE_FOLDER_ID,
+    DRIVE_NAME,
+    Case,
+    EnrollmentInputs,
+    build_workbook,
+    charges_from_groups,
+    upload_xlsx,
+)
+
+# The bill above uses the weighted-average month. The workpaper's 8,760 hours
+# are the same average, one hour at a time, so a monthly sum of the sheet
+# matches the bill.
+_hourly = weighted_avg_hourly(_kwh, _weights["bldg_id"].to_list(), _weights)
+_summed = sum_8760_to_monthly(_hourly)
+_check = _monthly.join(_summed, on="month_label", suffix="_hourly")
+_gap = max(float(value) for value in (_check["kwh"] - _check["kwh_hourly"]).abs().to_list())
+if _hourly.height != 8760 or _gap > 1e-6:
+    raise RuntimeError(f"hourly average is {_hourly.height} hours and differs from the monthly bill by {_gap}")
+
+_case = Case(
+    hourly=_hourly,
+    charges=charges_from_groups(_already, _drr, _srr),
+    winter_dist=WINTER_DIST,
+    winter_tx=WINTER_TX,
+    n_buildings=_weights.height,
+    total_weight=float(_weights["weight"].sum()),
+    enrollment=EnrollmentInputs(
+        rebates_since_2023=REBATES_SINCE_2023,
+        clm_2026=CLM_2026,
+        hp_share_percent=HP_SHARE_PERCENT,
+        rate_year_customers=rate_year_customers,
+        clm_annual=CLM_ANNUAL,
+        eversource_per_thousand=EVERSOURCE_PER_THOUSAND,
+        years=YEARS,
+        statewide_additions=ISO_NE_ADDITIONS,
+    ),
+)
+_wb = build_workbook(_case)
+_xlsx_path = Path("../cache") / DRIVE_NAME
+_wb.save(_xlsx_path)
+_link = upload_xlsx(_xlsx_path, DRIVE_FOLDER_ID, DRIVE_NAME)
+_xlsx_path.unlink()
+print(f"Uploaded {DRIVE_NAME}: {_link}")
+```

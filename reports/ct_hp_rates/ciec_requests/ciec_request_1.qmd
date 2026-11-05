@@ -29,21 +29,18 @@ import polars as pl
 from ciec_1 import (
     annual_bill,
     bill_table,
-    bounds_table,
-    combine_revenue,
     cumulative_enrollment,
     dollar,
-    existing_customers_table,
+    enrollment_table,
     group_revenue,
     makeup_increase,
-    makeup_table,
     new_enrollment_path,
     num,
-    pct,
     presented_bills,
     rate_year_residential_customers,
     subclass_weights,
     sum_monthly_rates,
+    td_reduction_table,
     with_winter_rates,
 )
 from lib.rdp import fetch_rdp_file
@@ -142,7 +139,6 @@ if len(set(rate1["Distribution"]["monthly_rates"].values())) != 1:
 if len(set(rate1["Transmission"]["monthly_rates"].values())) != 1:
     raise RuntimeError("Rate 1 transmission is not flat across months")
 rate1_delivery = _dist_with_riders + _tx
-rate1_delivery_cents = f"{rate1_delivery * 100:.3f}"
 rate1_dist_energy_label = f"{_core * 100:.3f}"
 rate1_tx_label = f"{_tx * 100:.3f}"
 rate_hp_dist_energy_label = f"{(WINTER_DIST - _riders) * 100:.3f}"
@@ -190,36 +186,17 @@ upgrade_who = {
 
 
 bill_table_md = bill_table(bills, BILL_ORDER)
+enrollment_table_md = enrollment_table(floor_enrolled, ceiling_enrolled)
+reduction_table_md = td_reduction_table(floor_enrolled, ceiling_enrolled, dec_dist, dec_tx)
 
+# Research only, not part of the response: the per-kWh increase on non-heat-pump
+# customers if this revenue reduction were recovered from them. Non-HP sales are
+# the upgrade-00 buildings. Upgrade 02 has has_hp true for every Eversource
+# building, so it has no non-HP subclass to spread the reduction over.
 exist_floor = group_revenue(EXISTING_FLOOR, dec_dist, dec_tx)
 exist_ceiling = group_revenue(EXISTING_CEILING, dec_dist, dec_tx)
-exist_floor_dist = exist_floor["distribution"]
-exist_floor_tx = exist_floor["transmission"]
-exist_floor_dist_5 = exist_floor["distribution_5"]
-exist_floor_tx_5 = exist_floor["transmission_5"]
-exist_ceil_dist = exist_ceiling["distribution"]
-exist_ceil_tx = exist_ceiling["transmission"]
-exist_ceil_dist_5 = exist_ceiling["distribution_5"]
-exist_ceil_tx_5 = exist_ceiling["transmission_5"]
-
 new_floor_years = new_enrollment_path(NEW_FLOOR, YEARS, dec_dist, dec_tx)
 new_ceiling_years = new_enrollment_path(NEW_CEILING, YEARS, dec_dist, dec_tx)
-new_floor_dist_5 = sum(row["distribution"] for row in new_floor_years)
-new_floor_tx_5 = sum(row["transmission"] for row in new_floor_years)
-new_ceil_dist_5 = sum(row["distribution"] for row in new_ceiling_years)
-new_ceil_tx_5 = sum(row["transmission"] for row in new_ceiling_years)
-
-floor_years = combine_revenue(exist_floor, new_floor_years)
-ceiling_years = combine_revenue(exist_ceiling, new_ceiling_years)
-floor_dist_5 = exist_floor_dist_5 + new_floor_dist_5
-floor_tx_5 = exist_floor_tx_5 + new_floor_tx_5
-floor_total_5 = floor_dist_5 + floor_tx_5
-ceiling_dist_5 = exist_ceil_dist_5 + new_ceil_dist_5
-ceiling_tx_5 = exist_ceil_tx_5 + new_ceil_tx_5
-ceiling_total_5 = ceiling_dist_5 + ceiling_tx_5
-
-# Non-HP sales are the upgrade-00 buildings. Upgrade 02 has has_hp true for every
-# Eversource building, so it has no non-HP subclass to spread the reduction over.
 _nonhp_segment = segment_name(SCENARIO, _STAGE["00"])
 _nonhp_found = segment_upgrade(STATE, BATCH, _nonhp_segment)
 if _nonhp_found != 0:
@@ -243,39 +220,36 @@ nonhp_kwh = float(_nonhp_joined["kwh"][0])
 if nonhp_n != _nonhp_weights.height or nonhp_kwh <= 0:
     raise RuntimeError(f"Non-HP kWh join kept {nonhp_n} of {_nonhp_weights.height} buildings")
 
-exist_floor_total_5 = exist_floor_dist_5 + exist_floor_tx_5
-exist_ceil_total_5 = exist_ceil_dist_5 + exist_ceil_tx_5
-new_floor_total_5 = new_floor_dist_5 + new_floor_tx_5
-new_ceil_total_5 = new_ceil_dist_5 + new_ceil_tx_5
+exist_floor_total_5 = exist_floor["distribution_5"] + exist_floor["transmission_5"]
+exist_ceil_total_5 = exist_ceiling["distribution_5"] + exist_ceiling["transmission_5"]
+new_floor_total_5 = sum(row["total"] for row in new_floor_years)
+new_ceil_total_5 = sum(row["total"] for row in new_ceiling_years)
 
 
-makeup_exist_floor = makeup_increase(exist_floor_total_5, nonhp_kwh, rate1_delivery)
-makeup_exist_ceiling = makeup_increase(exist_ceil_total_5, nonhp_kwh, rate1_delivery)
-makeup_new_floor = makeup_increase(new_floor_total_5, nonhp_kwh, rate1_delivery)
-makeup_new_ceiling = makeup_increase(new_ceil_total_5, nonhp_kwh, rate1_delivery)
-
-existing_table_md = existing_customers_table(exist_floor, exist_ceiling)
-new_table_md = bounds_table(new_floor_years, new_ceiling_years)
-revenue_table_md = bounds_table(floor_years, ceiling_years)
-makeup_table_md = makeup_table(
-    [
-        ("Existing", "Floor", makeup_exist_floor),
-        ("Existing", "Ceiling", makeup_exist_ceiling),
-        ("New", "Floor", makeup_new_floor),
-        ("New", "Ceiling", makeup_new_ceiling),
-    ]
-)
+_research_makeup = {
+    "existing_floor": makeup_increase(exist_floor_total_5, nonhp_kwh, rate1_delivery),
+    "existing_ceiling": makeup_increase(exist_ceil_total_5, nonhp_kwh, rate1_delivery),
+    "new_floor": makeup_increase(new_floor_total_5, nonhp_kwh, rate1_delivery),
+    "new_ceiling": makeup_increase(new_ceil_total_5, nonhp_kwh, rate1_delivery),
+}
 ```
 
 ## CIEC-1(a)
 
 > Please provide Mr. Velez's estimate of the total annual reduction in (i) distribution revenue and (ii) transmission revenue that the Company would collect under Rate HP, relative to Rate 1, for each of the first five years after Rate HP takes effect. Provide all workpapers in Excel format with formulas intact [@ciec_Docket260510First_2026].
 
-**Response.** On upgrade `{python} UPGRADE`, the representative heat pump customer's annual bill is **`{python} dollar(dec_total, accuracy=2)`** lower under Rate HP: **`{python} dollar(dec_dist, accuracy=2)`** less distribution revenue and **`{python} dollar(dec_tx, accuracy=2)`** less transmission revenue. The customer charge and the generation charge are unchanged.
+**Response.** These are the customers who would be on Rate HP, from the stock already enrolled to the fifth rate year. The floor and the ceiling are the bounds in CIEC-1(b) and CIEC-1(c). The existing row includes the 2026 installations. Each later row adds that year's installations and keeps everyone already enrolled.
 
-The home is the sample-weighted average load of the `{python} num(n_bldg)` Eversource buildings in upgrade `{python} UPGRADE` with `has_hp` true. `{python} upgrade_who` It uses `{python} num(annual_kwh)` kWh a year, `{python} num(winter_kwh)` of them from November through March.
+```{python}
+#| echo: false
+#| output: asis
 
-Rate HP lowers the November–March distribution energy charge from `{python} rate1_dist_energy_label` ¢/kWh to `{python} rate_hp_dist_energy_label` ¢/kWh and the transmission service rate from `{python} rate1_tx_label` ¢/kWh to `{python} rate_hp_tx_label` ¢/kWh. Summer rates, riders, generation, and the customer charge stay at Rate 1 [@velez_Docket260510Direct_2026, p. 82, line 10].
+print(enrollment_table_md)
+```
+
+A representative heat pump customer would pay **`{python} dollar(dec_total, accuracy=2)`** less per year under Rate HP than under Rate 1: **`{python} dollar(dec_dist, accuracy=2)`** in distribution and **`{python} dollar(dec_tx, accuracy=2)`** in transmission. The customer charge and the generation charge are unchanged.
+
+The home is the sample-weighted average load of the `{python} num(n_bldg)` Eversource buildings in upgrade `{python} UPGRADE` with `has_hp` true. `{python} upgrade_who` It uses `{python} num(annual_kwh)` kWh a year, `{python} num(winter_kwh)` of them from November through March. Rate HP lowers the November–March distribution energy charge from `{python} rate1_dist_energy_label` ¢/kWh to `{python} rate_hp_dist_energy_label` ¢/kWh and the transmission service rate from `{python} rate1_tx_label` ¢/kWh to `{python} rate_hp_tx_label` ¢/kWh. Summer rates, riders, generation, and the customer charge stay at Rate 1 [@velez_Docket260510Direct_2026, p. 82, line 10].
 
 ```{python}
 #| echo: false
@@ -284,49 +258,23 @@ Rate HP lowers the November–March distribution energy charge from `{python} ra
 print(bill_table_md)
 ```
 
-The `{python} num(EXISTING_FLOOR)` to `{python} num(EXISTING_CEILING)` customers already enrolled stay on Rate HP for all five years. The annual reduction is **`{python} dollar(exist_floor_dist)`** to **`{python} dollar(exist_ceil_dist)`** in distribution and **`{python} dollar(exist_floor_tx)`** to **`{python} dollar(exist_ceil_tx)`** in transmission.
+The annual revenue reduction is that per-customer reduction times the customers in each row, rounded to the dollar.
 
 ```{python}
 #| echo: false
 #| output: asis
 
-print(existing_table_md)
+print(reduction_table_md)
 ```
 
-New customers are counted from the year they enroll. On the CIEC-1(c) paths, the five-year reduction from these customers is **`{python} dollar(new_floor_dist_5)`** to **`{python} dollar(new_ceil_dist_5)`** in distribution and **`{python} dollar(new_floor_tx_5)`** to **`{python} dollar(new_ceil_tx_5)`** in transmission.
-
-```{python}
-#| echo: false
-#| output: asis
-
-print(new_table_md)
-```
-
-With both groups, the five-year reduction is **`{python} dollar(floor_total_5)`** to **`{python} dollar(ceiling_total_5)`**. Distribution is **`{python} dollar(floor_dist_5)`** to **`{python} dollar(ceiling_dist_5)`**. Transmission is **`{python} dollar(floor_tx_5)`** to **`{python} dollar(ceiling_tx_5)`**.
-
-```{python}
-#| echo: false
-#| output: asis
-
-print(revenue_table_md)
-```
-
-The non-heat-pump subclass is the `{python} num(nonhp_n)` Eversource buildings in upgrade 00 with `has_hp` false, representing `{python} num(nonhp_customers)` customers. Upgrade 02 has none. They use `{python} num(nonhp_kwh)` kWh a year. The figures below are the increase on top of Rate 1, not a new rate. For the customers already enrolled it is **`{python} dollar(makeup_exist_floor["increase"], accuracy=6)`** to **`{python} dollar(makeup_exist_ceiling["increase"], accuracy=6)`** per kWh, or **`{python} pct(makeup_exist_floor["pct"])`** to **`{python} pct(makeup_exist_ceiling["pct"])`** of the current `{python} rate1_delivery_cents` ¢/kWh distribution and transmission rate. For the new enrollments the average annual increase is **`{python} dollar(makeup_new_floor["increase"], accuracy=6)`** to **`{python} dollar(makeup_new_ceiling["increase"], accuracy=6)`** per kWh, or **`{python} pct(makeup_new_floor["pct"])`** to **`{python} pct(makeup_new_ceiling["pct"])`**.
-
-```{python}
-#| echo: false
-#| output: asis
-
-print(makeup_table_md)
-```
+Each row is a full year of bills for the customers enrolled by that year. The existing row is included in each of 2027 through 2031.
 
 Assumptions:
 
 - **Timing.** Five rate years, beginning July 1 of 2027 through 2031. Each figure is a full year of bills. A calendar year's installations are assigned to the rate year that begins that July, as in CIEC-1(c). The 2026 installations are in the existing-customer count.
-- **Load.** `UPGRADE` is `"00"` or `"02"`. One weight-averaged `has_hp` home from that upgrade is applied to every enrolled customer. Load and rates are held constant across years.
+- **Load.** One weight-averaged `has_hp` home from upgrade `{python} UPGRADE` is applied to every enrolled customer. Load and rates are held constant across years.
 - **Enrollment.** Floor and ceiling counts from CIEC-1(b) and CIEC-1(c). Every heat pump installer enrolls, none opt out, and enrollment persists.
 - **Distribution.** The distribution column includes riders. The riders match Rate 1, so the reduction is the winter energy charge.
-- **Non-HP recovery.** The increase is the annual revenue reduction divided by the sample-weighted annual grid kWh of the upgrade-00 non-heat-pump buildings. That kWh stays fixed as new customers enroll. For new enrollments the annual reduction is the five-year total divided by five. The percent is the increase divided by the current Rate 1 distribution and transmission rate. Generation and the customer charge are unchanged.
 
 ## CIEC-1(b)
 

@@ -19,10 +19,12 @@ def _load_ciec_1() -> ModuleType:
 
 ciec_1 = _load_ciec_1()
 combine_revenue = ciec_1.combine_revenue
+enrollment_table = ciec_1.enrollment_table
 group_revenue = ciec_1.group_revenue
 makeup_increase = ciec_1.makeup_increase
 new_enrollment_path = ciec_1.new_enrollment_path
 sum_monthly_rates = ciec_1.sum_monthly_rates
+td_reduction_table = ciec_1.td_reduction_table
 with_winter_rates = ciec_1.with_winter_rates
 rate_year_residential_customers = ciec_1.rate_year_residential_customers
 cumulative_enrollment = ciec_1.cumulative_enrollment
@@ -63,6 +65,18 @@ def test_rate_year_customers_sum_rates_1_5_and_7() -> None:
 def test_cumulative_enrollment_keeps_the_starting_stock() -> None:
     points = cumulative_enrollment(7_928, [3_460, 3_460], [2027, 2028])
     assert points == [(2026, 7_928), (2027, 11_388), (2028, 14_848)]
+
+
+def test_enrollment_table_labels_the_starting_stock() -> None:
+    table = enrollment_table([(2026, 10), (2027, 12)], [(2026, 20), (2027, 25)])
+    assert "| Existing | 10 | 20 |" in table
+    assert "| 2027 | 12 | 25 |" in table
+
+
+def test_td_reduction_table_scales_each_years_customers() -> None:
+    table = td_reduction_table([(2026, 10), (2027, 12)], [(2026, 20), (2027, 25)], dec_dist=2.0, dec_tx=1.0)
+    assert r"| Existing | 10 | \$20 | \$10 | \$30 | 20 | \$40 | \$20 | \$60 |" in table
+    assert r"| 2027 | 12 | \$24 | \$12 | \$36 | 25 | \$50 | \$25 | \$75 |" in table
 
 
 def test_makeup_increase_is_the_annual_adder_over_delivery_only() -> None:

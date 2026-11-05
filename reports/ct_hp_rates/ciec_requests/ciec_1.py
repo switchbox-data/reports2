@@ -233,6 +233,85 @@ def _revenue_row(
     return "| " + " | ".join(cells) + " |"
 
 
+def _enrollment_rows(
+    floor: Sequence[tuple[int, int]],
+    ceiling: Sequence[tuple[int, int]],
+    first_label: str,
+) -> list[tuple[str, int, int]]:
+    """Pair each floor point with its ceiling point and label the starting stock."""
+    rows: list[tuple[str, int, int]] = []
+    for i, ((year, floor_n), (ceiling_year, ceiling_n)) in enumerate(zip(floor, ceiling, strict=True)):
+        if year != ceiling_year:
+            raise ValueError(f"enrollment years differ: {year} and {ceiling_year}")
+        label = first_label if i == 0 else str(year)
+        rows.append((label, floor_n, ceiling_n))
+    return rows
+
+
+def enrollment_table(
+    floor: Sequence[tuple[int, int]],
+    ceiling: Sequence[tuple[int, int]],
+    *,
+    first_label: str = "Existing",
+) -> str:
+    """Customer counts from the starting stock through each later year."""
+    body = [
+        f"| {label} | {floor_n:,} | {ceiling_n:,} |"
+        for label, floor_n, ceiling_n in _enrollment_rows(floor, ceiling, first_label)
+    ]
+    return "\n".join(
+        [
+            "| Year | Floor | Ceiling |",
+            "| --- | ---: | ---: |",
+            *body,
+        ]
+    )
+
+
+def td_reduction_table(
+    floor: Sequence[tuple[int, int]],
+    ceiling: Sequence[tuple[int, int]],
+    dec_dist: float,
+    dec_tx: float,
+    *,
+    first_label: str = "Existing",
+) -> str:
+    """Annual revenue reduction for each enrollment point, floor and ceiling.
+
+    Each row is that year's enrolled customers times the one-customer
+    distribution and transmission reductions, rounded to the dollar. The first
+    row is the starting stock, and each later row includes it. T&D is
+    distribution plus transmission.
+    """
+    body: list[str] = []
+    for label, floor_n, ceiling_n in _enrollment_rows(floor, ceiling, first_label):
+        floor_rev = group_revenue(floor_n, dec_dist, dec_tx)
+        ceiling_rev = group_revenue(ceiling_n, dec_dist, dec_tx)
+        cells = [
+            label,
+            f"{floor_n:,}",
+            money(floor_rev["distribution"], 0),
+            money(floor_rev["transmission"], 0),
+            money(floor_rev["distribution"] + floor_rev["transmission"], 0),
+            f"{ceiling_n:,}",
+            money(ceiling_rev["distribution"], 0),
+            money(ceiling_rev["transmission"], 0),
+            money(ceiling_rev["distribution"] + ceiling_rev["transmission"], 0),
+        ]
+        body.append("| " + " | ".join(cells) + " |")
+    header = (
+        "| Year | Floor customers | Floor distribution | Floor transmission | Floor T&D | "
+        "Ceiling customers | Ceiling distribution | Ceiling transmission | Ceiling T&D |"
+    )
+    return "\n".join(
+        [
+            header,
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+            *body,
+        ]
+    )
+
+
 def bounds_table(floor_rows: Sequence[Mapping[str, float]], ceiling_rows: Sequence[Mapping[str, float]]) -> str:
     """Floor and ceiling revenue by year, with a five-year total of the revenue columns."""
     total_floor = {

@@ -98,8 +98,9 @@ def _margin_numbers(words: list[dict], width: float, chars: list[dict] | None = 
     ]
     if chars:
         sizes = sorted(float(c["size"]) for c in chars if c["text"].strip())
-        body_size = sizes[len(sizes) // 2]
-        candidates = [w for w in candidates if _word_size(w, chars) >= body_size * _MIN_NUMBER_SIZE]
+        if sizes:
+            body_size = sizes[len(sizes) // 2]
+            candidates = [w for w in candidates if _word_size(w, chars) >= body_size * _MIN_NUMBER_SIZE]
     columns: dict[int, list[dict]] = {}
     for w in candidates:
         columns.setdefault(round(w["x1"] / 3), []).append(w)

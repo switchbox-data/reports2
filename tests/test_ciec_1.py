@@ -1,89 +1,84 @@
-"""Tests for the CIEC-1 helpers that are not already covered in lib."""
+"""CIEC-1 charge-increase arithmetic. Does not load ResStock."""
 
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 from types import ModuleType
 
+import pytest
 
-def _load_ciec_1() -> ModuleType:
+
+def _load() -> ModuleType:
     path = Path(__file__).resolve().parents[1] / "reports" / "ct_hp_rates" / "ciec_requests" / "ciec_1.py"
     spec = importlib.util.spec_from_file_location("ciec_1_under_test", path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not load {path}")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
 
-ciec_1 = _load_ciec_1()
-combine_revenue = ciec_1.combine_revenue
-enrollment_table = ciec_1.enrollment_table
-group_revenue = ciec_1.group_revenue
-makeup_increase = ciec_1.makeup_increase
-new_enrollment_path = ciec_1.new_enrollment_path
-sum_monthly_rates = ciec_1.sum_monthly_rates
-td_reduction_table = ciec_1.td_reduction_table
-with_winter_rates = ciec_1.with_winter_rates
-rate_year_residential_customers = ciec_1.rate_year_residential_customers
-cumulative_enrollment = ciec_1.cumulative_enrollment
+ciec = _load()
 
 
-def test_sum_monthly_rates_adds_each_month() -> None:
-    first = {"monthly_rates": {"2025-01": 0.25, "2025-02": 0.50}}
-    second = {"monthly_rates": {"2025-01": 0.25, "2025-02": -0.25}}
-    assert sum_monthly_rates(first, second) == {"2025-01": 0.50, "2025-02": 0.25}
+def test_cents_converts_dollars_per_kwh() -> None:
+    assert ciec.cents(0.001234) == "0.1234¢"
+    assert ciec.cents(0.001234, accuracy=3) == "0.123¢"
 
 
-def test_with_winter_rates_replaces_only_winter_delivery() -> None:
-    rate1 = {
-        "Distribution": {"charge_unit": "$/kWh", "monthly_rates": {"2025-01": 0.11, "2025-07": 0.11}},
-        "Transmission": {"charge_unit": "$/kWh", "monthly_rates": {"2025-01": 0.05, "2025-07": 0.05}},
-        "Generation": {"charge_unit": "$/kWh", "monthly_rates": {"2025-01": 0.10, "2025-07": 0.09}},
-    }
-    rate_hp = with_winter_rates(rate1, 0.03, 0.01, ["2025-01"])
-    assert rate_hp["Distribution"]["monthly_rates"] == {"2025-01": 0.03, "2025-07": 0.11}
-    assert rate_hp["Transmission"]["monthly_rates"] == {"2025-01": 0.01, "2025-07": 0.05}
-    assert rate_hp["Generation"]["monthly_rates"] == rate1["Generation"]["monthly_rates"]
+def test_five_year_average_matches_makeup_increase() -> None:
+    rows = [
+        {"year": 2027, "distribution": 100.0, "transmission": 40.0},
+        {"year": 2028, "distribution": 200.0, "transmission": 80.0},
+        {"year": 2029, "distribution": 300.0, "transmission": 50.0},
+        {"year": 2030, "distribution": 400.0, "transmission": 60.0},
+        {"year": 2031, "distribution": 500.0, "transmission": 70.0},
+    ]
+    kwh = 1_000_000.0
+    increases = ciec.per_kwh_increases(rows, kwh)
+    dist = ciec.makeup_increase(sum(row["distribution"] for row in rows), kwh, 0.11)
+    tx = ciec.makeup_increase(sum(row["transmission"] for row in rows), kwh, 0.05)
+    assert sum(row["distribution"] for row in increases) / 5 == pytest.approx(dist["increase"])
+    assert sum(row["transmission"] for row in increases) / 5 == pytest.approx(tx["increase"])
+    assert dist["pct"] == pytest.approx(dist["increase"] / 0.11)
+    assert tx["pct"] == pytest.approx(tx["increase"] / 0.05)
 
 
-def test_new_enrollment_accumulates_and_adds_to_existing() -> None:
-    existing = group_revenue(10, dec_dist=2.0, dec_tx=1.0)
-    path = new_enrollment_path([2, 2], [2027, 2028], dec_dist=2.0, dec_tx=1.0)
-    combined = combine_revenue(existing, path)
-    assert existing["distribution"] == 20
-    assert existing["distribution_5"] == 100
-    assert [row["customers"] for row in path] == [2, 4]
-    assert [row["distribution"] for row in combined] == [24, 28]
+def test_charge_increase_table_labels_years_and_rejects_a_mismatch() -> None:
+    floor = [{"year": 2027.0, "distribution": 0.001, "transmission": 0.0004}]
+    ceiling = [{"year": 2027.0, "distribution": 0.002, "transmission": 0.0008}]
+    table = ciec.charge_increase_table(floor, ceiling, accuracy=4)
+    assert "| Year | Floor distribution (¢/kWh) |" in table
+    assert "| 2027 | 0.1000 | 0.0400 | 0.2000 | 0.0800 |" in table
+
+    floor_avg = [{"label": "Five-year average", "distribution": 0.001, "transmission": 0.0004}]
+    ceiling_other = [{"label": "Other", "distribution": 0.002, "transmission": 0.0008}]
+    with pytest.raises(ValueError, match="charge-increase labels differ"):
+        ciec.charge_increase_table(floor_avg, ceiling_other)
 
 
-def test_rate_year_customers_sum_rates_1_5_and_7() -> None:
-    assert rate_year_residential_customers() == 1_212_521
+def test_td_increase_table_divides_rounded_revenue_by_kwh() -> None:
+    enrolled = [(2026, 10), (2027, 25)]
+    table = ciec.td_increase_table(
+        enrolled,
+        1.2,
+        0.34,
+        1_000.0,
+        td_rate=0.10,
+        full_rate=0.20,
+    )
+    assert "| Year | Distribution (¢/kWh) |" in table
+    # round(10 * 1.2) = 12 and round(10 * 0.34) = 3, over 1,000 kWh.
+    assert "| Existing | 1.2000 | 0.3000 | 1.5000 | 15.00% | 7.50% |" in table
+    # round(25 * 1.2) = 30 and round(25 * 0.34) = 8.
+    assert "| 2027 | 3.0000 | 0.8000 | 3.8000 | 38.00% | 19.00% |" in table
+    with pytest.raises(ValueError, match="kwh must be positive"):
+        ciec.td_increase_table(enrolled, 1.2, 0.34, 0.0, td_rate=0.10, full_rate=0.20)
 
 
-def test_cumulative_enrollment_keeps_the_starting_stock() -> None:
-    points = cumulative_enrollment(7_928, [3_460, 3_460], [2027, 2028])
-    assert points == [(2026, 7_928), (2027, 11_388), (2028, 14_848)]
-
-
-def test_enrollment_table_labels_the_starting_stock() -> None:
-    table = enrollment_table([(2026, 10), (2027, 12)], [(2026, 20), (2027, 25)])
-    assert "| Existing | 10 | 20 |" in table
-    assert "| 2027 | 12 | 25 |" in table
-
-
-def test_td_reduction_table_scales_each_years_customers() -> None:
-    floor = td_reduction_table([(2026, 10), (2027, 12)], dec_dist=2.0, dec_tx=1.0)
-    ceiling = td_reduction_table([(2026, 20), (2027, 25)], dec_dist=2.0, dec_tx=1.0)
-    assert r"| Existing | 10 | \$20 | \$10 | \$30 |" in floor
-    assert r"| 2027 | 12 | \$24 | \$12 | \$36 |" in floor
-    assert r"| Existing | 20 | \$40 | \$20 | \$60 |" in ceiling
-    assert r"| 2027 | 25 | \$50 | \$25 | \$75 |" in ceiling
-
-
-def test_makeup_increase_is_the_annual_adder_over_delivery_only() -> None:
-    # Five years of $500 on 1,000 kWh is $0.10/kWh per year. Delivery rate is $0.20/kWh.
-    result = makeup_increase(500, nonhp_kwh=1_000, delivery_rate=0.20)
-    assert result["increase"] == 0.1
-    assert result["pct"] == 0.5
+def test_per_kwh_increases_rejects_nonpositive_sales() -> None:
+    with pytest.raises(ValueError, match="kwh must be positive"):
+        ciec.per_kwh_increases([{"year": 2027, "distribution": 1.0, "transmission": 1.0}], 0.0)

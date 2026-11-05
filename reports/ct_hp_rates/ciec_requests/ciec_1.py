@@ -34,6 +34,11 @@ def num(x: float, accuracy: int = 0) -> str:
     return f"{x:,.{accuracy}f}"
 
 
+def cents(x: float, accuracy: int = 4) -> str:
+    """Cents per kWh. ``x`` is $/kWh, so ``0.001234`` -> ``"0.1234¢"``."""
+    return f"{x * 100:,.{accuracy}f}¢"
+
+
 def pct(x: float, accuracy: int = 2) -> str:
     """Percent text. Two decimals by default, unlike ``lib.format.pct``."""
     return format_pct(x, accuracy)
@@ -180,14 +185,75 @@ def combine_revenue(existing: Mapping[str, float], new_years: Sequence[Mapping[s
 
 
 def makeup_increase(dollars_5: float, nonhp_kwh: float, delivery_rate: float) -> dict[str, float]:
-    """Annual increase per non-HP kWh, and that increase as a share of the Rate 1 delivery rate.
+    """Annual increase per non-HP kWh, and that increase as a share of a Rate 1 charge.
 
     ``dollars_5`` is five years of revenue reduction. Dividing by five puts the
-    increase on one year of ``nonhp_kwh``. ``delivery_rate`` is distribution plus
-    transmission, in $/kWh, and does not include generation.
+    increase on one year of ``nonhp_kwh``. ``delivery_rate`` is the Rate 1 charge
+    the increase is compared with, in $/kWh. For the combined delivery figure
+    that charge is distribution plus transmission, and it does not include
+    generation.
     """
     increase = dollars_5 / 5 / nonhp_kwh
     return {"increase": increase, "pct": increase / delivery_rate}
+
+
+def per_kwh_increases(revenue_rows: Sequence[Mapping[str, float]], kwh: float) -> list[dict[str, float]]:
+    """Divide each year's distribution and transmission dollars by annual kWh.
+
+    Returned ``distribution`` and ``transmission`` are $/kWh. ``revenue_rows``
+    come from :func:`group_revenue` (or the same keys) and each has ``year``.
+    """
+    if kwh <= 0:
+        raise ValueError(f"kwh must be positive, got {kwh}")
+    return [
+        {
+            "year": float(row["year"]),
+            "distribution": float(row["distribution"]) / kwh,
+            "transmission": float(row["transmission"]) / kwh,
+        }
+        for row in revenue_rows
+    ]
+
+
+def charge_increase_table(
+    floor: Sequence[Mapping[str, float]],
+    ceiling: Sequence[Mapping[str, float]],
+    *,
+    accuracy: int = 4,
+) -> str:
+    """Rate 1 distribution and transmission increases, in ¢/kWh.
+
+    Each row has ``distribution`` and ``transmission`` in $/kWh, and either
+    ``label`` or ``year``.
+    """
+
+    def label(row: Mapping[str, float]) -> str:
+        if "label" in row:
+            return str(row["label"])
+        return str(int(row["year"]))
+
+    def line(left: Mapping[str, float], right: Mapping[str, float]) -> str:
+        left_label = label(left)
+        right_label = label(right)
+        if left_label != right_label:
+            raise ValueError(f"charge-increase labels differ: {left_label} and {right_label}")
+        cells = [
+            left_label,
+            f"{left['distribution'] * 100:,.{accuracy}f}",
+            f"{left['transmission'] * 100:,.{accuracy}f}",
+            f"{right['distribution'] * 100:,.{accuracy}f}",
+            f"{right['transmission'] * 100:,.{accuracy}f}",
+        ]
+        return "| " + " | ".join(cells) + " |"
+
+    body = [line(left, right) for left, right in zip(floor, ceiling, strict=True)]
+    return "\n".join(
+        [
+            "| Year | Floor distribution (¢/kWh) | Floor transmission (¢/kWh) | Ceiling distribution (¢/kWh) | Ceiling transmission (¢/kWh) |",
+            "| --- | ---: | ---: | ---: | ---: |",
+            *body,
+        ]
+    )
 
 
 def bill_table(bills: Mapping[str, Mapping[str, float]], bill_order: Sequence[str]) -> str:
@@ -263,6 +329,54 @@ def enrollment_table(
         [
             "| Year | Floor | Ceiling |",
             "| --- | ---: | ---: |",
+            *body,
+        ]
+    )
+
+
+def td_increase_table(
+    enrolled: Sequence[tuple[int, int]],
+    dec_dist: float,
+    dec_tx: float,
+    kwh: float,
+    *,
+    td_rate: float,
+    full_rate: float,
+    first_label: str = "Existing",
+    accuracy: int = 4,
+) -> str:
+    """Per-kWh charge increase for one enrollment path.
+
+    Each row divides that year's revenue reduction, from :func:`group_revenue`,
+    by ``kwh``. Distribution, transmission, and T&D are ¢/kWh. The last two
+    columns are the T&D increase as a share of ``td_rate`` and of ``full_rate``.
+    ``td_rate`` is today's distribution plus transmission, in $/kWh. ``full_rate``
+    adds generation. The first row is the starting stock.
+    """
+    if kwh <= 0:
+        raise ValueError(f"kwh must be positive, got {kwh}")
+    if td_rate <= 0 or full_rate <= 0:
+        raise ValueError(f"rates must be positive, got td_rate={td_rate} and full_rate={full_rate}")
+    body: list[str] = []
+    for i, (_year, customers) in enumerate(enrolled):
+        label = first_label if i == 0 else str(_year)
+        rev = group_revenue(customers, dec_dist, dec_tx)
+        dist = rev["distribution"] / kwh
+        tx = rev["transmission"] / kwh
+        td = dist + tx
+        cells = [
+            label,
+            f"{dist * 100:,.{accuracy}f}",
+            f"{tx * 100:,.{accuracy}f}",
+            f"{td * 100:,.{accuracy}f}",
+            pct(td / td_rate),
+            pct(td / full_rate),
+        ]
+        body.append("| " + " | ".join(cells) + " |")
+    return "\n".join(
+        [
+            "| Year | Distribution (¢/kWh) | Transmission (¢/kWh) | T&D (¢/kWh) | % of T&D | % of T&D and generation |",
+            "| --- | ---: | ---: | ---: | ---: | ---: |",
             *body,
         ]
     )

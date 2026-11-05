@@ -34,8 +34,6 @@ from ciec_1 import (
     dollar,
     enrollment_table,
     group_revenue,
-    makeup_increase,
-    new_enrollment_path,
     num,
     presented_bills,
     rate_year_residential_customers,
@@ -48,7 +46,6 @@ from lib.rdp import fetch_rdp_file
 from lib.rates_analysis.rate_case_funcs import (
     extract_tariff_rates,
     load_billing_kwh_8760,
-    load_billing_kwh_annual,
     load_tariff_json,
     segment_name,
     segment_upgrade,
@@ -198,49 +195,51 @@ enrollment_table_md = enrollment_table(floor_enrolled, ceiling_enrolled)
 floor_reduction_table_md = td_reduction_table(floor_enrolled, dec_dist, dec_tx)
 ceiling_reduction_table_md = td_reduction_table(ceiling_enrolled, dec_dist, dec_tx)
 
-# Research only, not part of the response: the per-kWh increase on non-heat-pump
-# customers if this revenue reduction were recovered from them. Non-HP sales are
-# the upgrade-00 buildings. Upgrade 02 has has_hp true for every Eversource
-# building, so it has no non-HP subclass to spread the reduction over.
-exist_floor = group_revenue(EXISTING_FLOOR, dec_dist, dec_tx)
-exist_ceiling = group_revenue(EXISTING_CEILING, dec_dist, dec_tx)
-new_floor_years = new_enrollment_path(NEW_FLOOR, YEARS, dec_dist, dec_tx)
-new_ceiling_years = new_enrollment_path(NEW_CEILING, YEARS, dec_dist, dec_tx)
-_nonhp_segment = segment_name(SCENARIO, _STAGE["00"])
-_nonhp_found = segment_upgrade(STATE, BATCH, _nonhp_segment)
-if _nonhp_found != 0:
-    raise RuntimeError(f"Segment {_nonhp_segment} is upgrade {_nonhp_found}, expected 0")
-_nonhp_weights = subclass_weights(RELEASE, STATE, UTILITY, "00", has_hp=False)
-_nonhp_annual = load_billing_kwh_annual(STATE, UTILITY, BATCH, _nonhp_segment)
-_nonhp_id = _nonhp_annual.select("bldg_id").head(1).collect()["bldg_id"].dtype
-_nonhp_weights = _nonhp_weights.with_columns(pl.col("bldg_id").cast(_nonhp_id))
-_nonhp_joined = (
-    _nonhp_annual.join(_nonhp_weights.lazy().select("bldg_id", "weight"), on="bldg_id", how="inner")
-    .select(
-        pl.len().alias("n"),
-        pl.col("weight").sum().alias("customers"),
-        (pl.col("annual_kwh_grid") * pl.col("weight")).sum().alias("kwh"),
-    )
-    .collect()
-)
-nonhp_n = int(_nonhp_joined["n"][0])
-nonhp_customers = float(_nonhp_joined["customers"][0])
-nonhp_kwh = float(_nonhp_joined["kwh"][0])
-if nonhp_n != _nonhp_weights.height or nonhp_kwh <= 0:
-    raise RuntimeError(f"Non-HP kWh join kept {nonhp_n} of {_nonhp_weights.height} buildings")
 
-exist_floor_total_5 = exist_floor["distribution_5"] + exist_floor["transmission_5"]
-exist_ceil_total_5 = exist_ceiling["distribution_5"] + exist_ceiling["transmission_5"]
-new_floor_total_5 = sum(row["total"] for row in new_floor_years)
-new_ceil_total_5 = sum(row["total"] for row in new_ceiling_years)
+def _rate_year_revenue(enrolled: list[tuple[int, int]]) -> list[dict[str, float]]:
+    """Revenue reduction for each rate year. The first enrollment point is the 2026 stock."""
+    rows: list[dict[str, float]] = []
+    for year, customers in enrolled[1:]:
+        row = group_revenue(customers, dec_dist, dec_tx)
+        row["year"] = float(year)
+        rows.append(row)
+    return rows
 
 
-_research_makeup = {
-    "existing_floor": makeup_increase(exist_floor_total_5, nonhp_kwh, rate1_delivery),
-    "existing_ceiling": makeup_increase(exist_ceil_total_5, nonhp_kwh, rate1_delivery),
-    "new_floor": makeup_increase(new_floor_total_5, nonhp_kwh, rate1_delivery),
-    "new_ceiling": makeup_increase(new_ceil_total_5, nonhp_kwh, rate1_delivery),
+floor_revenue = _rate_year_revenue(floor_enrolled)
+ceiling_revenue = _rate_year_revenue(ceiling_enrolled)
+if [int(row["year"]) for row in floor_revenue] != YEARS:
+    raise RuntimeError(f"floor revenue years {[int(row['year']) for row in floor_revenue]} != {YEARS}")
+if [int(row["year"]) for row in ceiling_revenue] != YEARS:
+    raise RuntimeError(f"ceiling revenue years {[int(row['year']) for row in ceiling_revenue]} != {YEARS}")
+
+# CIEC-3 reads this cache instead of recomputing the bill and the enrollment bounds.
+_ciec_1_vars = {
+    "dec_dist": dec_dist,
+    "dec_tx": dec_tx,
+    "dec_total": dec_total,
+    "years": YEARS,
+    "rate_year_customers": rate_year_customers,
+    "floor_revenue": floor_revenue,
+    "ceiling_revenue": ceiling_revenue,
+    "rate1_dist": _dist_with_riders,
+    "rate1_tx": _tx,
+    "rate1_delivery": rate1_delivery,
+    "rate1_gen_monthly": {
+        month: float(rate) for month, rate in rate1["Generation"]["monthly_rates"].items()
+    },
+    "floor_enrolled": floor_enrolled,
+    "ceiling_enrolled": ceiling_enrolled,
+    "hp_customers": float(_weights["weight"].sum()),
+    "state": STATE,
+    "batch": BATCH,
+    "utility": UTILITY,
+    "release": RELEASE,
+    "upgrade": UPGRADE,
+    "segment": _segment,
 }
+_ciec_1_path = Path("../cache/ciec_1_vars.pkl")
+_ciec_1_path.write_bytes(pickle.dumps(_ciec_1_vars))
 ```
 
 **Witness:** Juan-Pablo Velez\

@@ -1304,16 +1304,17 @@ Do **not** put skills under `context/` — skills are operational guides; `conte
 
 ### Current skills
 
-| Skill                    | Path                                   | Use when …                                                                                                                                                           |
-| ------------------------ | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **copy-edit**            | `.cursor/skills/copy-edit/`            | Copy editing or proofreading a report `index.qmd` (Chicago/CMOS + Switchbox house style).                                                                            |
-| **expert-testimony**     | `.cursor/skills/expert-testimony/`     | Writing or editing expert testimony in Q&A format for regulatory proceedings (PUC/PSC/ICC rate cases, docket filings).                                               |
-| **ingest-source**        | `.cursor/skills/ingest-source/`        | Adding a source (PDF, workbook, web page) to the library: draft the details card, get approval, run `just sources-ingest`, extract, verify. Also for pending items.  |
-| **discover-sources**     | `.cursor/skills/discover-sources/`     | Searching for candidate sources on a topic; downloads to a scratch inbox and triages. Never writes to Zotero.                                                        |
-| **mdpuc-documents**      | `.cursor/skills/mdpuc-documents/`      | Fetching or extracting **Maryland PSC (MDPUC)** filings — MailLog search, `psc.maryland.gov` uploads, markdown extracts under `context/sources/md_hp_rates/`.        |
-| **testimony-provenance** | `.cursor/skills/testimony-provenance/` | Building a provenance document for filed testimony: every figure, table and number with its page/line and a permalink to the code that produced it (e.g. CT CIEC-1). |
+| Skill                    | Path                                   | Use when …                                                                                                                                                            |
+| ------------------------ | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **copy-edit**            | `.cursor/skills/copy-edit/`            | Copy editing or proofreading a report `index.qmd` (Chicago/CMOS + Switchbox house style).                                                                             |
+| **expert-testimony**     | `.cursor/skills/expert-testimony/`     | Writing or editing expert testimony in Q&A format for regulatory proceedings (PUC/PSC/ICC rate cases, docket filings).                                                |
+| **ingest-source**        | `.cursor/skills/ingest-source/`        | Adding a source (PDF, workbook, web page) to the library: draft the details card, get approval, run `just sources-ingest`, extract, verify. Also for pending items.   |
+| **discover-sources**     | `.cursor/skills/discover-sources/`     | Searching for candidate sources on a topic; downloads to a scratch inbox and triages. Never writes to Zotero.                                                         |
+| **mdpuc-documents**      | `.cursor/skills/mdpuc-documents/`      | Fetching or extracting **Maryland PSC (MDPUC)** filings — MailLog search, `psc.maryland.gov` uploads, markdown extracts under `context/sources/md_hp_rates/`.         |
+| **ctpura-documents**     | `.cursor/skills/ctpura-documents/`     | Finding and fetching **Connecticut PURA** docket filings (`dpuc.state.ct.us`): filing pages, interrogatories and responses, merged response sets for `ingest-source`. |
+| **testimony-provenance** | `.cursor/skills/testimony-provenance/` | Building a provenance document for filed testimony: every figure, table and number with its page/line and a permalink to the code that produced it (e.g. CT CIEC-1).  |
 
-More **PUC document skills** for other jurisdictions (e.g. RI PUC, ICC) may be added alongside `mdpuc-documents` as those corpora grow. Each jurisdiction gets its own skill when fetch paths and conventions differ materially.
+More **PUC document skills** for other jurisdictions (e.g. RI PUC, ICC) may be added alongside `mdpuc-documents` and `ctpura-documents` as those corpora grow. Each jurisdiction gets its own skill when fetch paths and conventions differ materially.
 
 ### PUC document skills (pattern)
 

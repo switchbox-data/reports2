@@ -31,6 +31,7 @@ from lib.rates_analysis.hh_summary_funcs import resstock_metadata_path, scan_uti
 from lib.rates_analysis.rate_case_funcs import (
     extract_tariff_rates,
     load_billing_kwh_8760,
+    load_billing_kwh_annual,
     load_tariff_json,
     monthly_bill_from_profile,
     segment_name,
@@ -76,6 +77,10 @@ def num(x: float, accuracy: int = 0) -> str:
     return f"{x:,.{accuracy}f}"
 
 
+def pct(x: float, accuracy: int = 2) -> str:
+    return f"{x * 100:,.{accuracy}f}%"
+
+
 def _sum_monthly_rates(*charge_dicts: dict) -> dict[str, float]:
     result: dict[str, float] = {}
     for charge in charge_dicts:
@@ -108,15 +113,19 @@ def _annual_bill(monthly_kwh: pl.DataFrame, rate_components: dict) -> dict[str, 
     return totals
 
 
-def _hp_weights(upgrade: str) -> pl.DataFrame:
+def _subclass_weights(upgrade: str, *, has_hp: bool) -> pl.DataFrame:
     path = resstock_metadata_path(RELEASE, STATE, upgrade)
     return (
         pl.scan_parquet(path)
         .select("bldg_id", "weight", pl.col("postprocess_group.has_hp").alias("has_hp"))
         .join(scan_utility_bldg_ids(RELEASE, STATE, UTILITY), on="bldg_id", how="semi")
-        .filter(pl.col("has_hp"))
+        .filter(pl.col("has_hp") == has_hp)
         .collect()
     )
+
+
+def _hp_weights(upgrade: str) -> pl.DataFrame:
+    return _subclass_weights(upgrade, has_hp=True)
 
 
 _rates_yaml = yaml.safe_load(
@@ -166,6 +175,12 @@ _core = float(_already["core_delivery_rate"]["monthly_rates"]["2025-01"])
 _dist_with_riders = float(rate1["Distribution"]["monthly_rates"]["2025-01"])
 _riders = _dist_with_riders - _core
 _tx = float(rate1["Transmission"]["monthly_rates"]["2025-01"])
+if len(set(rate1["Distribution"]["monthly_rates"].values())) != 1:
+    raise RuntimeError("Rate 1 distribution is not flat across months")
+if len(set(rate1["Transmission"]["monthly_rates"].values())) != 1:
+    raise RuntimeError("Rate 1 transmission is not flat across months")
+rate1_delivery = _dist_with_riders + _tx
+rate1_delivery_cents = f"{rate1_delivery * 100:.3f}"
 rate1_dist_energy_label = f"{_core * 100:.3f}"
 rate1_tx_label = f"{_tx * 100:.3f}"
 rate_hp_dist_energy_label = f"{(WINTER_DIST - _riders) * 100:.3f}"
@@ -257,19 +272,31 @@ bill_table_md = "\n".join(
 )
 
 
-def _revenue_path(existing: int, annual_new: list[int]) -> list[dict[str, float]]:
-    """Every enrolled customer takes the selected upgrade's bill decrease."""
+def _group_revenue(customers: int) -> dict[str, float]:
+    """Annual revenue reduction for a fixed group, and the same amount in each of five years."""
+    dist = round(customers * dec_dist)
+    tx = round(customers * dec_tx)
+    return {
+        "customers": customers,
+        "distribution": dist,
+        "transmission": tx,
+        "distribution_5": dist * 5,
+        "transmission_5": tx * 5,
+    }
+
+
+def _new_enrollment_path(annual_new: list[int]) -> list[dict[str, float]]:
+    """Customers are counted from the year they enroll, and they stay enrolled."""
     rows = []
-    enrolled_new = 0
+    enrolled = 0
     for year, new in zip(YEARS, annual_new, strict=True):
-        enrolled_new += new
-        customers = existing + enrolled_new
-        dist = round(customers * dec_dist)
-        tx = round(customers * dec_tx)
+        enrolled += new
+        dist = round(enrolled * dec_dist)
+        tx = round(enrolled * dec_tx)
         rows.append(
             {
                 "year": year,
-                "customers": customers,
+                "customers": enrolled,
                 "distribution": dist,
                 "transmission": tx,
                 "total": dist + tx,
@@ -278,14 +305,91 @@ def _revenue_path(existing: int, annual_new: list[int]) -> list[dict[str, float]
     return rows
 
 
-floor_years = _revenue_path(EXISTING_FLOOR, NEW_FLOOR)
-ceiling_years = _revenue_path(EXISTING_CEILING, NEW_CEILING)
-floor_dist_5 = sum(row["distribution"] for row in floor_years)
-floor_tx_5 = sum(row["transmission"] for row in floor_years)
+def _combine(existing: dict[str, float], new_years: list[dict[str, float]]) -> list[dict[str, float]]:
+    rows = []
+    for new in new_years:
+        dist = existing["distribution"] + new["distribution"]
+        tx = existing["transmission"] + new["transmission"]
+        rows.append(
+            {
+                "year": new["year"],
+                "customers": existing["customers"] + new["customers"],
+                "distribution": dist,
+                "transmission": tx,
+                "total": dist + tx,
+            }
+        )
+    return rows
+
+
+exist_floor = _group_revenue(EXISTING_FLOOR)
+exist_ceiling = _group_revenue(EXISTING_CEILING)
+exist_floor_dist = exist_floor["distribution"]
+exist_floor_tx = exist_floor["transmission"]
+exist_floor_dist_5 = exist_floor["distribution_5"]
+exist_floor_tx_5 = exist_floor["transmission_5"]
+exist_ceil_dist = exist_ceiling["distribution"]
+exist_ceil_tx = exist_ceiling["transmission"]
+exist_ceil_dist_5 = exist_ceiling["distribution_5"]
+exist_ceil_tx_5 = exist_ceiling["transmission_5"]
+
+new_floor_years = _new_enrollment_path(NEW_FLOOR)
+new_ceiling_years = _new_enrollment_path(NEW_CEILING)
+new_floor_dist_5 = sum(row["distribution"] for row in new_floor_years)
+new_floor_tx_5 = sum(row["transmission"] for row in new_floor_years)
+new_ceil_dist_5 = sum(row["distribution"] for row in new_ceiling_years)
+new_ceil_tx_5 = sum(row["transmission"] for row in new_ceiling_years)
+
+floor_years = _combine(exist_floor, new_floor_years)
+ceiling_years = _combine(exist_ceiling, new_ceiling_years)
+floor_dist_5 = exist_floor_dist_5 + new_floor_dist_5
+floor_tx_5 = exist_floor_tx_5 + new_floor_tx_5
 floor_total_5 = floor_dist_5 + floor_tx_5
-ceiling_dist_5 = sum(row["distribution"] for row in ceiling_years)
-ceiling_tx_5 = sum(row["transmission"] for row in ceiling_years)
+ceiling_dist_5 = exist_ceil_dist_5 + new_ceil_dist_5
+ceiling_tx_5 = exist_ceil_tx_5 + new_ceil_tx_5
 ceiling_total_5 = ceiling_dist_5 + ceiling_tx_5
+
+# Non-HP sales are the upgrade-00 buildings. Upgrade 02 has has_hp true for every
+# Eversource building, so it has no non-HP subclass to spread the reduction over.
+_nonhp_segment = segment_name(SCENARIO, _STAGE["00"])
+_nonhp_found = segment_upgrade(STATE, BATCH, _nonhp_segment)
+if _nonhp_found != 0:
+    raise RuntimeError(f"Segment {_nonhp_segment} is upgrade {_nonhp_found}, expected 0")
+_nonhp_weights = _subclass_weights("00", has_hp=False)
+_nonhp_annual = load_billing_kwh_annual(STATE, UTILITY, BATCH, _nonhp_segment)
+_nonhp_id = _nonhp_annual.select("bldg_id").head(1).collect()["bldg_id"].dtype
+_nonhp_weights = _nonhp_weights.with_columns(pl.col("bldg_id").cast(_nonhp_id))
+_nonhp_joined = (
+    _nonhp_annual.join(_nonhp_weights.lazy().select("bldg_id", "weight"), on="bldg_id", how="inner")
+    .select(
+        pl.len().alias("n"),
+        pl.col("weight").sum().alias("customers"),
+        (pl.col("annual_kwh_grid") * pl.col("weight")).sum().alias("kwh"),
+    )
+    .collect()
+)
+nonhp_n = int(_nonhp_joined["n"][0])
+nonhp_customers = float(_nonhp_joined["customers"][0])
+nonhp_kwh = float(_nonhp_joined["kwh"][0])
+if nonhp_n != _nonhp_weights.height or nonhp_kwh <= 0:
+    raise RuntimeError(f"Non-HP kWh join kept {nonhp_n} of {_nonhp_weights.height} buildings")
+
+exist_floor_total_5 = exist_floor_dist_5 + exist_floor_tx_5
+exist_ceil_total_5 = exist_ceil_dist_5 + exist_ceil_tx_5
+new_floor_total_5 = new_floor_dist_5 + new_floor_tx_5
+new_ceil_total_5 = new_ceil_dist_5 + new_ceil_tx_5
+
+
+def _makeup(dollars_5: float) -> dict[str, float]:
+    """Annual increase per non-HP kWh, and that increase as a share of the Rate 1 delivery rate."""
+    increase = dollars_5 / 5 / nonhp_kwh
+    return {"increase": increase, "pct": increase / rate1_delivery}
+
+
+makeup_exist_floor = _makeup(exist_floor_total_5)
+makeup_exist_ceiling = _makeup(exist_ceil_total_5)
+makeup_new_floor = _makeup(new_floor_total_5)
+makeup_new_ceiling = _makeup(new_ceil_total_5)
 
 
 def _revenue_row(
@@ -310,26 +414,76 @@ def _revenue_row(
     return "| " + " | ".join(cells) + " |"
 
 
-_floor_total_row = {
-    "year": 0,
-    "customers": 0,
-    "distribution": floor_dist_5,
-    "transmission": floor_tx_5,
-    "total": floor_total_5,
-}
-_ceiling_total_row = {
-    "year": 0,
-    "customers": 0,
-    "distribution": ceiling_dist_5,
-    "transmission": ceiling_tx_5,
-    "total": ceiling_total_5,
-}
-revenue_table_md = "\n".join(
+def _bounds_table(floor_rows: list[dict[str, float]], ceiling_rows: list[dict[str, float]]) -> str:
+    total_floor = {
+        "year": 0,
+        "customers": 0,
+        "distribution": sum(row["distribution"] for row in floor_rows),
+        "transmission": sum(row["transmission"] for row in floor_rows),
+    }
+    total_ceiling = {
+        "year": 0,
+        "customers": 0,
+        "distribution": sum(row["distribution"] for row in ceiling_rows),
+        "transmission": sum(row["transmission"] for row in ceiling_rows),
+    }
+    return "\n".join(
+        [
+            "| Year | Floor customers | Floor distribution | Floor transmission | Ceiling customers | Ceiling distribution | Ceiling transmission |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+            *[
+                _revenue_row(floor, ceiling)
+                for floor, ceiling in zip(floor_rows, ceiling_rows, strict=True)
+            ],
+            _revenue_row(total_floor, total_ceiling, label="Five-year total", customers=False),
+        ]
+    )
+
+
+def _existing_row(label: str, row: dict[str, float]) -> str:
+    return "| " + " | ".join(
+        [
+            label,
+            f"{int(row['customers']):,}",
+            _money(row["distribution"], 0),
+            _money(row["transmission"], 0),
+            _money(row["distribution_5"], 0),
+            _money(row["transmission_5"], 0),
+        ]
+    ) + " |"
+
+
+existing_table_md = "\n".join(
     [
-        "| Year | Floor customers | Floor distribution | Floor transmission | Ceiling customers | Ceiling distribution | Ceiling transmission |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
-        *[_revenue_row(floor, ceiling) for floor, ceiling in zip(floor_years, ceiling_years, strict=True)],
-        _revenue_row(_floor_total_row, _ceiling_total_row, label="Five-year total", customers=False),
+        "| Bound | Customers | Annual distribution | Annual transmission | Five-year distribution | Five-year transmission |",
+        "| --- | ---: | ---: | ---: | ---: | ---: |",
+        _existing_row("Floor", exist_floor),
+        _existing_row("Ceiling", exist_ceiling),
+    ]
+)
+new_table_md = _bounds_table(new_floor_years, new_ceiling_years)
+revenue_table_md = _bounds_table(floor_years, ceiling_years)
+
+
+def _makeup_row(group: str, bound: str, row: dict[str, float]) -> str:
+    return "| " + " | ".join(
+        [
+            group,
+            bound,
+            _money(row["increase"], 6),
+            pct(row["pct"]),
+        ]
+    ) + " |"
+
+
+makeup_table_md = "\n".join(
+    [
+        "| Group | Bound | Increase (\\$/kWh) | Change |",
+        "| --- | --- | ---: | ---: |",
+        _makeup_row("Existing", "Floor", makeup_exist_floor),
+        _makeup_row("Existing", "Ceiling", makeup_exist_ceiling),
+        _makeup_row("New", "Floor", makeup_new_floor),
+        _makeup_row("New", "Ceiling", makeup_new_ceiling),
     ]
 )
 ```
@@ -351,7 +505,25 @@ Rate HP lowers the November–March distribution energy charge from `{python} ra
 print(bill_table_md)
 ```
 
-Applied to every customer in the CIEC-1(b) and CIEC-1(c) bounds, the five-year revenue reduction is **`{python} dollar(floor_total_5)`** to **`{python} dollar(ceiling_total_5)`**. Distribution is **`{python} dollar(floor_dist_5)`** to **`{python} dollar(ceiling_dist_5)`**. Transmission is **`{python} dollar(floor_tx_5)`** to **`{python} dollar(ceiling_tx_5)`**. The customer column counts customers on Rate HP that year. The five-year row sums the revenue columns.
+The `{python} num(EXISTING_FLOOR)` to `{python} num(EXISTING_CEILING)` customers already enrolled stay on Rate HP for all five years. The annual reduction is **`{python} dollar(exist_floor_dist)`** to **`{python} dollar(exist_ceil_dist)`** in distribution and **`{python} dollar(exist_floor_tx)`** to **`{python} dollar(exist_ceil_tx)`** in transmission.
+
+```{python}
+#| echo: false
+#| output: asis
+
+print(existing_table_md)
+```
+
+New customers are counted from the year they enroll. On the CIEC-1(c) paths, the five-year reduction from these customers is **`{python} dollar(new_floor_dist_5)`** to **`{python} dollar(new_ceil_dist_5)`** in distribution and **`{python} dollar(new_floor_tx_5)`** to **`{python} dollar(new_ceil_tx_5)`** in transmission.
+
+```{python}
+#| echo: false
+#| output: asis
+
+print(new_table_md)
+```
+
+With both groups, the five-year reduction is **`{python} dollar(floor_total_5)`** to **`{python} dollar(ceiling_total_5)`**. Distribution is **`{python} dollar(floor_dist_5)`** to **`{python} dollar(ceiling_dist_5)`**. Transmission is **`{python} dollar(floor_tx_5)`** to **`{python} dollar(ceiling_tx_5)`**.
 
 ```{python}
 #| echo: false
@@ -360,12 +532,22 @@ Applied to every customer in the CIEC-1(b) and CIEC-1(c) bounds, the five-year r
 print(revenue_table_md)
 ```
 
+The non-heat-pump subclass is the `{python} num(nonhp_n)` Eversource buildings in upgrade 00 with `has_hp` false, representing `{python} num(nonhp_customers)` customers. Upgrade 02 has none. They use `{python} num(nonhp_kwh)` kWh a year. The figures below are the increase on top of Rate 1, not a new rate. For the customers already enrolled it is **`{python} dollar(makeup_exist_floor["increase"], accuracy=6)`** to **`{python} dollar(makeup_exist_ceiling["increase"], accuracy=6)`** per kWh, or **`{python} pct(makeup_exist_floor["pct"])`** to **`{python} pct(makeup_exist_ceiling["pct"])`** of the current `{python} rate1_delivery_cents` ¢/kWh distribution and transmission rate. For the new enrollments the average annual increase is **`{python} dollar(makeup_new_floor["increase"], accuracy=6)`** to **`{python} dollar(makeup_new_ceiling["increase"], accuracy=6)`** per kWh, or **`{python} pct(makeup_new_floor["pct"])`** to **`{python} pct(makeup_new_ceiling["pct"])`**.
+
+```{python}
+#| echo: false
+#| output: asis
+
+print(makeup_table_md)
+```
+
 Assumptions:
 
 - **Timing.** Five rate years, beginning July 1 of 2027 through 2031. Each figure is a full year of bills. A calendar year's installations are assigned to the rate year that begins that July, as in CIEC-1(c). The 2026 installations are in the existing-customer count.
 - **Load.** `UPGRADE` is `"00"` or `"02"`. One weight-averaged `has_hp` home from that upgrade is applied to every enrolled customer. Load and rates are held constant across years.
 - **Enrollment.** Floor and ceiling counts from CIEC-1(b) and CIEC-1(c). Every heat pump installer enrolls, none opt out, and enrollment persists.
 - **Distribution.** The distribution column includes riders. The riders match Rate 1, so the reduction is the winter energy charge.
+- **Non-HP recovery.** The increase is the annual revenue reduction divided by the sample-weighted annual grid kWh of the upgrade-00 non-heat-pump buildings. That kWh stays fixed as new customers enroll. For new enrollments the annual reduction is the five-year total divided by five. The percent is the increase divided by the current Rate 1 distribution and transmission rate. Generation and the customer charge are unchanged.
 
 ## CIEC-1(b)
 
